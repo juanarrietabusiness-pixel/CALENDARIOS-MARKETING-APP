@@ -1,0 +1,5 @@
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,system-ui,sans-serif;background:#050D1F;color:#fff;min-height:100vh}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#050D1F}::-webkit-scrollbar-thumb{background:#1E3A6B;border-radius:4px}
+input,textarea,select{font-family:inherit}
+@media print{header,.no-print,button{display:none!important}body,html{background:#050D1F!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}}

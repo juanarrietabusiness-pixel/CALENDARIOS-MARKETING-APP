@@ -1,0 +1,725 @@
+import { useState, useEffect, useRef } from "react";
+
+const DE=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+const ME=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const FMT={post:{l:"Post",i:"🖼️",c:"#1E90FF"},reel:{l:"Reel",i:"🎬",c:"#E91E63"},carrusel:{l:"Carrusel",i:"📑",c:"#FF9800"},live:{l:"Live",i:"🔴",c:"#F44336"},historia:{l:"Historia",i:"⭕",c:"#9C27B0"}};
+const OBJ={promocional:{l:"Promocional",c:"#FF5722"},informativo:{l:"Informativo",c:"#2196F3"},entretenimiento:{l:"Entretenimiento",c:"#FF9800"},educativo:{l:"Educativo",c:"#4CAF50"},testimonial:{l:"Testimonial",c:"#9C27B0"},institucional:{l:"Institucional",c:"#607D8B"},inspiracional:{l:"Inspiracional",c:"#E91E63"}};
+const STA={pending:{l:"Pendiente",bg:"#0d1f3c",t:"#64B5F6",b:"#1E3A6B"},approved:{l:"✓ Aprobado",bg:"#0d2a0d",t:"#66BB6A",b:"#388E3C"},rejected:{l:"✗ Cambios",bg:"#2a0d0d",t:"#EF5350",b:"#C62828"},published:{l:"🚀 Publicado",bg:"#200a3a",t:"#CE93D8",b:"#7B1FA2"}};
+
+const IC={
+  id:"feria-del-lente",name:"Feria del Lente",industry:"Óptica",instagram:"@opticaferiadellente",
+  phone:"6544-5656",primaryColor:"#8B1A1A",secondaryColor:"#FFFFFF",accentColor:"#000000",logo:null,
+  whatsapp:"6544-5656",sucursales:"Ciudad de Panamá | Panamá Oeste",direcciones:"Plaza Caldelas",
+  descripcion:"Óptica en Panamá con 2 sucursales. Lentes listos en 40 min. Aros y lentes de sol GRATIS.",
+  valores:"Calidad, rapidez y atención personalizada",audiencia:"Hombres y mujeres 25-55 años",
+  competencia:"Ópticas independientes",estiloGuion:"Cercano, persuasivo, emojis, CTA a agendar cita.",
+  estiloLocucion:"Voz femenina, cálida y profesional.",hashtags:"#FeriaDelLente #Óptica #Panama",
+  notasInspeccion:"Mejorar destacados con: Ofertas, Testimonios, Tips.",campaignInfo:"",calendars:[],
+  weeklyStructure:[
+    {dayOfWeek:1,dayName:"Lunes",active:true,categories:["Feria Ciudad"],slots:[{format:"reel",objective:"promocional"},{format:"post",objective:"informativo"}]},
+    {dayOfWeek:2,dayName:"Martes",active:true,categories:["Súper Feria"],slots:[{format:"carrusel",objective:"educativo"}]},
+    {dayOfWeek:3,dayName:"Miércoles",active:true,categories:["Panamá Oeste"],slots:[{format:"reel",objective:"testimonial"}]},
+    {dayOfWeek:4,dayName:"Jueves",active:true,categories:["Campaña"],slots:[{format:"post",objective:"promocional"}]},
+    {dayOfWeek:5,dayName:"Viernes",active:true,categories:["Testimonios"],slots:[{format:"reel",objective:"entretenimiento"}]},
+    {dayOfWeek:6,dayName:"Sábado",active:true,categories:["Muchacha"],slots:[{format:"reel",objective:"inspiracional"}]},
+    {dayOfWeek:0,dayName:"Domingo",active:false,categories:[],slots:[]},
+  ],
+};
+
+const dmth=(y,m)=>{const d=[],dt=new Date(y,m,1);while(dt.getMonth()===m){d.push(new Date(dt));dt.setDate(dt.getDate()+1);}return d;};
+const fdt=d=>d.toISOString().split("T")[0];
+const uid=()=>Math.random().toString(36).slice(2,8);
+
+const lsGet=k=>{try{return localStorage.getItem(k);}catch{return null;}};
+const lsSet=(k,v)=>{try{localStorage.setItem(k,v);}catch{}};
+
+async function compressImg(file,max=400){
+  return new Promise(res=>{
+    const r=new FileReader();
+    r.onload=e=>{const img=new Image();img.onload=()=>{const ratio=Math.min(max/img.width,max/img.height,1);const c=document.createElement("canvas");c.width=img.width*ratio;c.height=img.height*ratio;c.getContext("2d").drawImage(img,0,0,c.width,c.height);res(c.toDataURL("image/jpeg",.75));};img.src=e.target.result;};
+    r.readAsDataURL(file);
+  });
+}
+
+function getVid(url){
+  if(!url)return null;
+  const yt=url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  if(yt)return{type:"yt",id:yt[1]};
+  const vi=url.match(/vimeo\.com\/(\d+)/);
+  if(vi)return{type:"vi",id:vi[1]};
+  return{type:"link",url};
+}
+
+function parseIdeas(text){
+  const days=[];
+  for(const db of text.split("===DIA===").slice(1)){
+    const dm=db.match(/FECHA:\s*([\d-]+)/);if(!dm)continue;
+    const posts=[];
+    for(const pb of db.split("===POST===").slice(1)){
+      const fm=pb.match(/FORMATO:\s*(\S+)/),om=pb.match(/OBJETIVO:\s*(\S+)/),im=pb.match(/IDEA:\n?([\s\S]*?)(?:===|$)/);
+      if(fm&&im)posts.push({id:uid(),format:(fm[1]||"post").toLowerCase().trim(),objective:(om?om[1]:"informativo").toLowerCase().trim(),category:"",idea:im[1].trim(),referenceLink:"",image:null,script:"",status:"pending",comment:""});
+    }
+    if(posts.length)days.push({date:dm[1].trim(),posts});
+  }
+  return days;
+}
+
+function parseScripts(text){
+  const r={};
+  for(const b of text.split("===POST===").slice(1)){
+    const im=b.match(/ID:\s*(\S+)/),cm=b.match(/CONTENIDO:\n?([\s\S]*?)(?:===|$)/);
+    if(im&&cm)r[im[1].trim()]=cm[1].trim();
+  }
+  return r;
+}
+
+function buildHTML(client,calendar){
+  const pc=client.primaryColor||"#8B1A1A";
+  const name=calendar.name||(ME[calendar.month]+" "+calendar.year);
+  const logo=client.logo?`<img src="${client.logo}" style="width:65px;height:65px;object-fit:contain;border-radius:10px;background:rgba(255,255,255,.15);padding:6px;margin-bottom:12px;display:block;margin:0 auto 12px">`:"";
+  const days=(calendar.days||[]).map(day=>{
+    const cats=(day.categories||[]).filter(Boolean).join(" · ");
+    const posts=(day.posts||[]).map(post=>{
+      const f=FMT[post.format]||FMT.post,o=OBJ[post.objective]||OBJ.informativo;
+      const sl=post.format==="post"?"Descripción":"Guión";
+      return `<div style="background:#050D1F;border:1px solid #1E3A6B;border-radius:10px;padding:14px;margin-bottom:10px">
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+<span style="font-size:11px;padding:3px 10px;border-radius:20px;background:${f.c}22;color:${f.c};border:1px solid ${f.c}44;font-weight:600">${f.i} ${f.l}</span>
+<span style="font-size:11px;padding:3px 10px;border-radius:20px;background:${o.c}22;color:${o.c};font-weight:600">${o.l}</span>
+</div>
+${post.category?`<div style="font-size:13px;color:#FFA726;font-weight:600;margin-bottom:8px">📂 ${post.category}</div>`:""}
+${post.image?`<img src="${post.image}" style="width:100%;max-width:280px;border-radius:8px;margin:8px 0;display:block">`:""}
+${post.idea?`<div style="background:#0A1628;border-radius:8px;padding:10px;margin-bottom:8px;font-size:13px;color:#A0B4CC;line-height:1.7"><strong style="color:#64B5F6;font-size:10px;text-transform:uppercase;display:block;margin-bottom:4px">Idea</strong>${post.idea}</div>`:""}
+${post.script?`<div style="background:#0d1f3a;border-radius:8px;padding:12px;font-size:13px;color:#C8D8E8;line-height:1.8;white-space:pre-wrap"><strong style="color:#E91E63;font-size:10px;text-transform:uppercase;display:block;margin-bottom:4px">${sl}</strong>${post.script}</div>`:""}
+${post.referenceLink?`<div style="margin-top:8px"><a href="${post.referenceLink}" target="_blank" style="color:#1E90FF;font-size:12px">🔗 Ver referencia</a></div>`:""}
+</div>`;
+    }).join("");
+    return `<div style="background:#0A1628;border:1px solid #1E3A6B;border-radius:14px;margin-bottom:14px;overflow:hidden;page-break-inside:avoid">
+<div style="display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid #1E3A6B;background:#0d1f3a">
+<div style="background:${pc};color:#fff;font-size:20px;font-weight:900;padding:6px 12px;border-radius:10px;min-width:48px;text-align:center">${(day.date||"").split("-")[2]||""}</div>
+<div><div style="font-size:14px;font-weight:700;color:#fff">${day.dayName||""}</div>${cats?`<div style="font-size:12px;color:#64B5F6;margin-top:2px">${cats}</div>`:""}</div>
+</div><div style="padding:12px">${posts}</div></div>`;
+  }).join("");
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${name} — ${client.name}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Inter,Arial,sans-serif;background:#050D1F;color:#fff;padding:20px;max-width:800px;margin:0 auto}@media print{body{background:#050D1F!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:1cm}}</style>
+</head><body>
+<div style="background:linear-gradient(135deg,${pc},${pc}99);border-radius:16px;padding:24px;text-align:center;margin-bottom:24px">
+${logo}<h1 style="font-size:26px;font-weight:900;color:#fff;margin-bottom:6px">${client.name}</h1>
+<p style="font-size:14px;color:rgba(255,255,255,.85)">${name}${calendar.campaignTheme?" · "+calendar.campaignTheme:""}</p></div>
+${days}
+<div style="text-align:center;padding:20px;color:#64B5F6;font-size:12px;border-top:1px solid #1E3A6B;margin-top:20px">⚡ Creado por Juancito Ads · juanarrietabusiness@gmail.com · @juancitoads</div>
+</body></html>`;
+}
+
+const INP={width:"100%",padding:"9px 11px",background:"#050D1F",border:"1px solid #1E3A6B",borderRadius:8,color:"#fff",fontSize:13,boxSizing:"border-box",outline:"none",fontFamily:"inherit"};
+const LBL={fontSize:10,color:"#64B5F6",display:"block",marginBottom:4,textTransform:"uppercase",letterSpacing:.8,fontWeight:600};
+
+function Fmt({value,onChange}){
+  return <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+    {Object.entries(FMT).map(([k,f])=>(
+      <button key={k} onClick={()=>onChange(k)} style={{padding:"6px 10px",borderRadius:7,border:`1px solid ${value===k?f.c:"#1E3A6B"}`,cursor:"pointer",background:value===k?f.c+"33":"#1a2a4a",color:value===k?f.c:"#64B5F6",fontSize:11,fontWeight:600}}>{f.i} {f.l}</button>
+    ))}
+  </div>;
+}
+function Obj({value,onChange}){
+  return <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+    {Object.entries(OBJ).map(([k,o])=>(
+      <button key={k} onClick={()=>onChange(k)} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${value===k?o.c:"#1E3A6B"}`,cursor:"pointer",background:value===k?o.c+"33":"#1a2a4a",color:value===k?o.c:"#64B5F6",fontSize:10,fontWeight:600}}>{o.l}</button>
+    ))}
+  </div>;
+}
+function VidPrev({url}){
+  if(!url)return null;
+  const v=getVid(url);
+  if(v?.type==="yt")return <iframe src={`https://www.youtube.com/embed/${v.id}`} style={{width:"100%",height:160,borderRadius:10,border:"none",marginTop:8}} allowFullScreen/>;
+  if(v?.type==="vi")return <iframe src={`https://player.vimeo.com/video/${v.id}`} style={{width:"100%",height:160,borderRadius:10,border:"none",marginTop:8}} allowFullScreen/>;
+  return <div style={{marginTop:8,background:"#1a2a4a",borderRadius:8,padding:"8px 10px",display:"flex",alignItems:"center",gap:8}}>
+    <span>🔗</span><div style={{flex:1,minWidth:0,fontSize:11,color:"#A0B4CC",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{url}</div>
+    <button onClick={()=>window.open(url,"_blank")} style={{padding:"4px 8px",background:"#1E90FF",color:"#fff",border:"none",borderRadius:5,cursor:"pointer",fontSize:10}}>Ver →</button>
+  </div>;
+}
+
+function ApiSetup({onDone}){
+  const [key,setKey]=useState(lsGet("ja-apikey")||"");
+  return <div style={{position:"fixed",inset:0,background:"#050D1F",display:"flex",alignItems:"center",justifyContent:"center",padding:20,zIndex:999}}>
+    <div style={{background:"#0A1628",border:"1px solid #1E3A6B",borderRadius:20,padding:28,width:"100%",maxWidth:440}}>
+      <div style={{textAlign:"center",marginBottom:20}}>
+        <div style={{background:"linear-gradient(135deg,#1B3A6B,#1E90FF)",display:"inline-block",padding:"8px 14px",borderRadius:10,fontWeight:900,fontSize:18,marginBottom:12}}>JA</div>
+        <h2 style={{fontSize:18,color:"#fff",marginBottom:6}}>Juancito Ads Calendarios</h2>
+        <p style={{fontSize:12,color:"#A0B4CC"}}>Ingresa tu API key de Anthropic para activar la generación con IA</p>
+      </div>
+      <label style={LBL}>Anthropic API Key</label>
+      <input style={{...INP,marginBottom:8}} type="password" value={key} onChange={e=>setKey(e.target.value)} placeholder="sk-ant-..."/>
+      <p style={{fontSize:10,color:"#64B5F6",marginBottom:16}}>Se guarda en tu navegador. Obtenla en console.anthropic.com</p>
+      <button onClick={()=>{if(key.startsWith("sk-")){lsSet("ja-apikey",key);onDone(key);}else alert("La API key debe empezar con sk-");}} style={{width:"100%",padding:12,background:"#1E90FF",color:"#fff",border:"none",borderRadius:10,cursor:"pointer",fontSize:14,fontWeight:700}}>Entrar →</button>
+      {key&&<button onClick={()=>onDone(key)} style={{width:"100%",padding:10,background:"transparent",color:"#64B5F6",border:"none",cursor:"pointer",fontSize:12,marginTop:8}}>Continuar sin cambiar</button>}
+    </div>
+  </div>;
+}
+
+function ClientModal({initial,templates,onSave,onSaveTemplate,onDelete,onClose}){
+  const bw=[1,2,3,4,5,6,0].map(dow=>({dayOfWeek:dow,dayName:DE[dow],active:false,categories:[""],slots:[]}));
+  const [form,setForm]=useState(initial?{...initial}:{name:"",industry:"",instagram:"",phone:"",primaryColor:"#8B1A1A",secondaryColor:"#FFFFFF",accentColor:"#F5A623",logo:null,whatsapp:"",sucursales:"",direcciones:"",descripcion:"",valores:"",audiencia:"",competencia:"",estiloGuion:"",estiloLocucion:"",hashtags:"",notasInspeccion:"",campaignInfo:""});
+  const [st,setSt]=useState(()=>bw.map(w=>{const f=initial?.weeklyStructure?.find(s=>s.dayOfWeek===w.dayOfWeek);return f?{...w,slots:f.slots||[],categories:f.categories||[""],active:true}:{...w};}));
+  const [tab,setTab]=useState("basico");
+  const [tn,setTn]=useState("");const [stpl,setStpl]=useState(false);
+  const lref=useRef();
+  const sf=(k,v)=>setForm(p=>({...p,[k]:v}));
+
+  return <div style={{position:"fixed",inset:0,background:"#000000cc",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:300}}>
+    <div style={{background:"#0A1628",borderRadius:"20px 20px 0 0",padding:18,width:"100%",maxWidth:540,maxHeight:"92vh",overflowY:"auto"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <h3 style={{margin:0,color:"#fff",fontSize:15}}>{initial?"✏️ Editar":"➕ Nuevo Cliente"}</h3>
+        <button onClick={onClose} style={{background:"none",border:"none",color:"#64B5F6",fontSize:20,cursor:"pointer"}}>✕</button>
+      </div>
+      <div style={{display:"flex",gap:3,marginBottom:14,background:"#050D1F",borderRadius:10,padding:3}}>
+        {[["basico","📋 Básico"],["adn","🧬 ADN"],["voz","✍️ Voz"],["semanal","📅 Semanal"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setTab(k)} style={{flex:1,padding:"7px 2px",borderRadius:8,border:"none",cursor:"pointer",background:tab===k?"#1E90FF":"transparent",color:tab===k?"#fff":"#64B5F6",fontSize:11,fontWeight:600}}>{l}</button>
+        ))}
+      </div>
+
+      {tab==="basico"&&<div style={{display:"flex",flexDirection:"column",gap:11}}>
+        <div>
+          <label style={LBL}>Logo</label>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            {form.logo?<img src={form.logo} alt="" style={{width:50,height:50,objectFit:"contain",borderRadius:8,background:"#fff",padding:3}}/>:<div style={{width:50,height:50,borderRadius:8,background:"#1a2a4a",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>🖼️</div>}
+            <div style={{flex:1}}>
+              <input ref={lref} type="file" accept="image/*" onChange={async e=>{const f=e.target.files[0];if(f)sf("logo",await compressImg(f,150));}} style={{display:"none"}}/>
+              <button onClick={()=>lref.current?.click()} style={{width:"100%",padding:8,background:"#1a2a4a",color:"#64B5F6",border:"1px solid #1E3A6B",borderRadius:8,cursor:"pointer",fontSize:12}}>{form.logo?"Cambiar":"Subir logo"}</button>
+              {form.logo&&<button onClick={()=>sf("logo",null)} style={{width:"100%",padding:4,background:"none",color:"#EF5350",border:"none",cursor:"pointer",fontSize:10,marginTop:3}}>Quitar</button>}
+            </div>
+          </div>
+        </div>
+        {[["name","Nombre *"],["industry","Industria"],["instagram","Instagram"],["phone","Teléfono"],["whatsapp","WhatsApp"],["sucursales","Sucursales"],["direcciones","Direcciones"]].map(([k,l])=>(
+          <div key={k}><label style={LBL}>{l}</label><input style={INP} value={form[k]||""} onChange={e=>sf(k,e.target.value)}/></div>
+        ))}
+        <div><label style={LBL}>Colores de marca</label>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+            {[["primaryColor","Principal"],["secondaryColor","Secundario"],["accentColor","Acento"]].map(([k,l])=>(
+              <div key={k} style={{textAlign:"center"}}><input type="color" value={form[k]||"#000000"} onChange={e=>sf(k,e.target.value)} style={{width:"100%",height:36,border:"none",background:"none",cursor:"pointer",borderRadius:6}}/><div style={{fontSize:9,color:"#64B5F6",marginTop:2}}>{l}</div></div>
+            ))}
+          </div>
+        </div>
+      </div>}
+
+      {tab==="adn"&&<div style={{display:"flex",flexDirection:"column",gap:11}}>
+        {[["descripcion","Descripción del negocio",75,"Qué hace, servicios..."],["valores","Valores",50,""],["notasInspeccion","Notas de inspección",50,"Bio, destacados..."],["campaignInfo","Info adicional",40,""]].map(([k,l,h,ph])=>(
+          <div key={k}><label style={LBL}>{l}</label><textarea style={{...INP,height:h,resize:"vertical"}} value={form[k]||""} onChange={e=>sf(k,e.target.value)} placeholder={ph}/></div>
+        ))}
+        {[["audiencia","Audiencia","Ej: Mujeres 25-45 años"],["competencia","Competencia","Ej: Marca X"],["hashtags","Hashtags","#Hashtag1 #Panama"]].map(([k,l,ph])=>(
+          <div key={k}><label style={LBL}>{l}</label><input style={INP} value={form[k]||""} onChange={e=>sf(k,e.target.value)} placeholder={ph}/></div>
+        ))}
+      </div>}
+
+      {tab==="voz"&&<div style={{display:"flex",flexDirection:"column",gap:11}}>
+        <div><label style={LBL}>Estilo de guiones</label><textarea style={{...INP,height:80,resize:"vertical"}} value={form.estiloGuion||""} onChange={e=>sf("estiloGuion",e.target.value)} placeholder="Tono, emojis, CTA..."/></div>
+        <div><label style={LBL}>Estilo de locución</label><textarea style={{...INP,height:60,resize:"vertical"}} value={form.estiloLocucion||""} onChange={e=>sf("estiloLocucion",e.target.value)} placeholder="Voz, ritmo..."/></div>
+      </div>}
+
+      {tab==="semanal"&&<div>
+        {templates?.length>0&&<div style={{marginBottom:12}}><label style={LBL}>Cargar plantilla</label>
+          <select style={INP} onChange={e=>{const t=templates.find(t=>t.id===e.target.value);if(t)setSt([1,2,3,4,5,6,0].map(dow=>{const f=t.weeklyStructure?.find(s=>s.dayOfWeek===dow);return f?{dayOfWeek:dow,dayName:DE[dow],active:true,slots:f.slots||[],categories:f.categories||[""]}:{dayOfWeek:dow,dayName:DE[dow],active:false,slots:[],categories:[""]};}))}}>
+            <option value="">Cargar plantilla...</option>
+            {templates.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>}
+        <p style={{fontSize:11,color:"#A0B4CC",margin:"0 0 12px"}}>Define slots y categorías que se repiten cada semana.</p>
+        {st.map((s,i)=>(
+          <div key={s.dayOfWeek} style={{background:"#050D1F",borderRadius:10,padding:10,marginBottom:8}}>
+            <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:s.active?8:0}}>
+              <button onClick={()=>setSt(p=>p.map((x,j)=>j!==i?x:{...x,active:!x.active}))} style={{width:32,height:32,borderRadius:7,border:"none",cursor:"pointer",background:s.active?"#1E90FF":"#1a2a4a",color:"#fff",fontSize:12,flexShrink:0}}>{s.active?"✓":""}</button>
+              <span style={{fontSize:12,color:s.active?"#fff":"#64B5F6",fontWeight:s.active?700:400,width:76,flexShrink:0}}>{s.dayName}</span>
+              {s.active&&<span style={{fontSize:10,color:"#64B5F6"}}>{s.slots.length} slot{s.slots.length!==1?"s":""}</span>}
+            </div>
+            {s.active&&<>
+              <div style={{marginBottom:8}}>
+                <div style={{fontSize:10,color:"#64B5F6",fontWeight:600,textTransform:"uppercase",letterSpacing:.8,marginBottom:6}}>Slots</div>
+                {s.slots.map((slot,si)=>(
+                  <div key={si} style={{display:"flex",gap:6,alignItems:"flex-start",marginBottom:6,paddingLeft:8}}>
+                    <div style={{flex:1}}><Fmt value={slot.format} onChange={v=>setSt(p=>p.map((x,j)=>j!==i?x:{...x,slots:x.slots.map((ss,k)=>k!==si?ss:{...ss,format:v})}))} /></div>
+                    <button onClick={()=>setSt(p=>p.map((x,j)=>j!==i?x:{...x,slots:x.slots.filter((_,k)=>k!==si)}))} style={{background:"none",border:"none",color:"#EF5350",cursor:"pointer",fontSize:14,flexShrink:0,marginTop:4}}>✕</button>
+                  </div>
+                ))}
+                <button onClick={()=>setSt(p=>p.map((x,j)=>j!==i?x:{...x,slots:[...x.slots,{format:"post",objective:"promocional"}]}))} style={{marginLeft:8,padding:"5px 12px",background:"#1a2a4a",color:"#64B5F6",border:"1px dashed #1E3A6B",borderRadius:6,cursor:"pointer",fontSize:11}}>+ Slot</button>
+              </div>
+              <div style={{borderTop:"1px solid #1E3A6B",paddingTop:8}}>
+                <div style={{fontSize:10,color:"#64B5F6",fontWeight:600,textTransform:"uppercase",letterSpacing:.8,marginBottom:6}}>Categorías (todas las semanas)</div>
+                {(s.categories||[""]).map((cat,ci)=>(
+                  <div key={ci} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center",paddingLeft:8}}>
+                    <input style={{...INP,flex:1,fontSize:12,padding:"7px 10px"}} value={cat} placeholder={`Categoría ${ci+1}`} onChange={e=>setSt(p=>p.map((x,j)=>{if(j!==i)return x;const nc=[...(x.categories||[""])];nc[ci]=e.target.value;return{...x,categories:nc};}))}/>
+                    {ci===0&&(s.categories||[]).length<2&&<button onClick={()=>setSt(p=>p.map((x,j)=>j!==i?x:{...x,categories:[...(x.categories||[""]),""]}))}>+</button>}
+                    {ci>0&&<button onClick={()=>setSt(p=>p.map((x,j)=>j!==i?x:{...x,categories:x.categories.filter((_,k)=>k!==ci)}))} style={{background:"none",border:"none",color:"#EF5350",cursor:"pointer",fontSize:13}}>✕</button>}
+                  </div>
+                ))}
+              </div>
+            </>}
+          </div>
+        ))}
+        {stpl?<div style={{marginTop:12,display:"flex",gap:8}}>
+          <input style={{...INP,flex:1}} value={tn} onChange={e=>setTn(e.target.value)} placeholder="Nombre de la plantilla..."/>
+          <button onClick={()=>{if(tn){onSaveTemplate({id:uid(),name:tn,weeklyStructure:st.filter(s=>s.active&&s.slots.length>0)});setTn("");setStpl(false);}}} style={{padding:"9px 14px",background:"#1E90FF",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:700,flexShrink:0}}>💾</button>
+        </div>:<button onClick={()=>setStpl(true)} style={{width:"100%",padding:10,background:"#1a2a4a",color:"#64B5F6",border:"1px solid #1E3A6B",borderRadius:8,cursor:"pointer",fontSize:12,marginTop:10}}>💾 Guardar como plantilla</button>}
+      </div>}
+
+      <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:18}}>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={onClose} style={{flex:1,padding:12,background:"#1a2a4a",color:"#fff",border:"none",borderRadius:10,cursor:"pointer",fontSize:13,minHeight:46}}>Cancelar</button>
+          <button onClick={()=>{if(!form.name)return;const ws=st.filter(s=>s.active&&s.slots.length>0).map(s=>({...s,categories:(s.categories||[""]).filter(c=>c)}));onSave({...form,id:initial?.id||("c-"+Date.now()),weeklyStructure:ws,calendars:initial?.calendars||[]});onClose();}} style={{flex:2,padding:12,background:"#1E90FF",color:"#fff",border:"none",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:700,minHeight:46}}>{initial?"Guardar cambios":"Crear cliente"}</button>
+        </div>
+        {initial&&onDelete&&<button onClick={()=>{if(window.confirm(`¿Eliminar ${form.name}?`)){onDelete(initial.id);onClose();}}} style={{width:"100%",padding:11,background:"#2a0d0d",color:"#EF5350",border:"1px solid #C62828",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:600}}>🗑️ Eliminar cliente</button>}
+      </div>
+    </div>
+  </div>;
+}
+
+function PlanModal({client,month,year,theme,setTheme,onGen,onClose}){
+  const wdays=dmth(year,month).filter(d=>client.weeklyStructure.some(s=>s.dayOfWeek===d.getDay()&&s.active&&s.slots.length>0));
+  const [plans,setPlans]=useState(()=>{
+    const p={};
+    wdays.forEach(d=>{
+      const s=client.weeklyStructure.find(ws=>ws.dayOfWeek===d.getDay());
+      const cats=s?.categories?.filter(c=>c).length>0?[...s.categories]:[""];
+      const posts=(s?.slots||[{format:"post",objective:"promocional"}]).map(slot=>({id:uid(),format:slot.format,objective:slot.objective,category:"",idea:"",referenceLink:"",image:null,script:"",status:"pending",comment:""}));
+      p[fdt(d)]={categories:cats,posts};
+    });
+    return p;
+  });
+  const [exp,setExp]=useState(null);
+  const irefs=useRef({});
+
+  const sd=(date,f,v)=>setPlans(p=>({...p,[date]:{...p[date],[f]:v}}));
+  const sp=(date,id,f,v)=>setPlans(p=>({...p,[date]:{...p[date],posts:p[date].posts.map(post=>post.id!==id?post:{...post,[f]:v})}}));
+  const ap=date=>setPlans(p=>({...p,[date]:{...p[date],posts:[...p[date].posts,{id:uid(),format:"post",objective:"promocional",category:"",idea:"",referenceLink:"",image:null,script:"",status:"pending",comment:""}]}}));
+  const rp=(date,id)=>setPlans(p=>({...p,[date]:{...p[date],posts:p[date].posts.filter(pp=>pp.id!==id)}}));
+
+  return <div style={{position:"fixed",inset:0,background:"#000000cc",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:300}}>
+    <div style={{background:"#0A1628",borderRadius:"20px 20px 0 0",padding:18,width:"100%",maxWidth:560,maxHeight:"94vh",display:"flex",flexDirection:"column"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <h3 style={{margin:0,color:"#fff",fontSize:14}}>📋 {ME[month]} {year} — {client.name}</h3>
+        <button onClick={onClose} style={{background:"none",border:"none",color:"#64B5F6",fontSize:20,cursor:"pointer"}}>✕</button>
+      </div>
+      <div style={{marginBottom:10}}><label style={LBL}>Tema del mes</label><input style={INP} value={theme} onChange={e=>setTheme(e.target.value)} placeholder="Ej: Feria del Lente — Agosto"/></div>
+      <div style={{overflowY:"auto",flex:1,marginBottom:10}}>
+        {wdays.map(day=>{
+          const date=fdt(day),plan=plans[date],isE=exp===date;
+          return <div key={date} style={{background:"#050D1F",borderRadius:12,marginBottom:8,overflow:"hidden"}}>
+            <div onClick={()=>setExp(isE?null:date)} style={{padding:"10px 12px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{background:client.primaryColor,borderRadius:8,padding:"3px 9px",textAlign:"center",flexShrink:0}}>
+                  <div style={{fontSize:8,color:"rgba(255,255,255,.8)",fontWeight:600}}>{DE[day.getDay()].slice(0,3).toUpperCase()}</div>
+                  <div style={{fontSize:15,fontWeight:900,color:"#fff"}}>{day.getDate()}</div>
+                </div>
+                <div>
+                  <div style={{fontSize:11,fontWeight:600,color:"#fff"}}>{plan.categories.filter(c=>c).join(" · ")||"Sin categoría"}</div>
+                  <div style={{display:"flex",gap:4,marginTop:2}}>{plan.posts.map(p=>{const f=FMT[p.format]||FMT.post;return <span key={p.id} style={{fontSize:9,padding:"1px 5px",borderRadius:20,background:f.c+"22",color:f.c}}>{f.i} {f.l}</span>;})}</div>
+                </div>
+              </div>
+              <span style={{color:"#64B5F6",fontSize:12}}>{isE?"▲":"▼"}</span>
+            </div>
+            {isE&&<div style={{padding:"0 12px 12px",borderTop:"1px solid #1E3A6B"}}>
+              <div style={{marginTop:10,marginBottom:10}}>
+                <label style={LBL}>Categorías del día</label>
+                {plan.categories.map((cat,ci)=>(
+                  <div key={ci} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
+                    <input style={{...INP,flex:1,fontSize:12,padding:"7px 10px"}} value={cat} placeholder={`Categoría ${ci+1}`} onChange={e=>sd(date,"categories",plan.categories.map((c,k)=>k===ci?e.target.value:c))}/>
+                    {ci===0&&plan.categories.length<2&&<button onClick={()=>sd(date,"categories",[...plan.categories,""])} style={{padding:"7px 10px",background:"#1a2a4a",color:"#64B5F6",border:"1px solid #1E3A6B",borderRadius:7,cursor:"pointer",fontSize:12,flexShrink:0}}>+</button>}
+                    {ci>0&&<button onClick={()=>sd(date,"categories",plan.categories.filter((_,k)=>k!==ci))} style={{padding:"7px 10px",background:"none",color:"#EF5350",border:"none",cursor:"pointer",fontSize:13,flexShrink:0}}>✕</button>}
+                  </div>
+                ))}
+              </div>
+              {plan.posts.map((post,pi)=>{
+                const f=FMT[post.format]||FMT.post;
+                if(!irefs.current[post.id])irefs.current[post.id]={current:null};
+                const ir=irefs.current[post.id];
+                return <div key={post.id} style={{background:"#0A1628",borderRadius:10,padding:10,marginBottom:8,border:"1px solid #1E3A6B"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                    <span style={{fontSize:11,padding:"3px 8px",borderRadius:20,background:f.c+"22",color:f.c,fontWeight:600}}>{f.i} {f.l} · Post {pi+1}</span>
+                    {pi>0&&<button onClick={()=>rp(date,post.id)} style={{background:"none",border:"none",color:"#EF5350",cursor:"pointer",fontSize:12}}>✕</button>}
+                  </div>
+                  <div style={{marginBottom:6}}><label style={LBL}>Formato</label><Fmt value={post.format} onChange={v=>sp(date,post.id,"format",v)}/></div>
+                  <div style={{marginBottom:6}}><label style={LBL}>Objetivo</label><Obj value={post.objective} onChange={v=>sp(date,post.id,"objective",v)}/></div>
+                  <div style={{marginBottom:6}}><label style={LBL}>Idea (vacío = IA genera)</label><textarea style={{...INP,height:44,resize:"none",fontSize:12}} value={post.idea} onChange={e=>sp(date,post.id,"idea",e.target.value)} placeholder="Tu idea o déjalo vacío..."/></div>
+                  {(post.format==="post"||post.format==="carrusel")&&<div style={{marginBottom:6}}>
+                    <label style={LBL}>Imagen del post</label>
+                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                      {post.image&&<img src={post.image} alt="" style={{width:48,height:48,objectFit:"cover",borderRadius:6}}/>}
+                      <input ref={el=>{ir.current=el;}} type="file" accept="image/*" onChange={async e=>{const fi=e.target.files[0];if(fi)sp(date,post.id,"image",await compressImg(fi,400));}} style={{display:"none"}}/>
+                      <button onClick={()=>ir.current?.click()} style={{padding:"7px 12px",background:"#1a2a4a",color:"#64B5F6",border:"1px solid #1E3A6B",borderRadius:7,cursor:"pointer",fontSize:11}}>{post.image?"Cambiar":"Subir imagen"}</button>
+                      {post.image&&<button onClick={()=>sp(date,post.id,"image",null)} style={{background:"none",border:"none",color:"#EF5350",cursor:"pointer",fontSize:11}}>Quitar</button>}
+                    </div>
+                  </div>}
+                  {post.format==="reel"&&<div>
+                    <label style={LBL}>Link de referencia</label>
+                    <input style={{...INP,fontSize:12}} value={post.referenceLink} onChange={e=>sp(date,post.id,"referenceLink",e.target.value)} placeholder="https://youtube.com/watch?v=..."/>
+                    <VidPrev url={post.referenceLink}/>
+                  </div>}
+                </div>;
+              })}
+              <button onClick={()=>ap(date)} style={{width:"100%",padding:7,background:"#1a2a4a",color:"#64B5F6",border:"1px dashed #1E3A6B",borderRadius:8,cursor:"pointer",fontSize:11,marginTop:4}}>+ Agregar publicación</button>
+            </div>}
+          </div>;
+        })}
+      </div>
+      <div style={{display:"flex",gap:10}}>
+        <button onClick={onClose} style={{flex:1,padding:12,background:"#1a2a4a",color:"#fff",border:"none",borderRadius:10,cursor:"pointer",fontSize:13,minHeight:46}}>Cancelar</button>
+        <button onClick={()=>onGen(plans)} style={{flex:2,padding:12,background:"#1E90FF",color:"#fff",border:"none",borderRadius:10,cursor:"pointer",fontSize:13,fontWeight:700,minHeight:46}}>⚡ Generar Ideas</button>
+      </div>
+    </div>
+  </div>;
+}
+
+function MonthGrid({client,cal,onMove}){
+  const [drag,setDrag]=useState(null);
+  const [drop,setDrop]=useState(null);
+  const cells=()=>{
+    const first=new Date(cal.year,cal.month,1),last=new Date(cal.year,cal.month+1,0);
+    const s=new Date(first);const dow=s.getDay();s.setDate(s.getDate()-(dow===0?6:dow-1));
+    const e=new Date(last);const edow=e.getDay();if(edow!==0)e.setDate(e.getDate()+(7-edow));
+    const arr=[];const d=new Date(s);while(d<=e){arr.push(fdt(d));d.setDate(d.getDate()+1);}return arr;
+  };
+  const today=fdt(new Date());
+  return <div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
+      {["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"].map(n=><div key={n} style={{textAlign:"center",fontSize:10,color:"#64B5F6",fontWeight:700,padding:"4px 0",background:"#0A1628",borderRadius:6}}>{n}</div>)}
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+      {cells().map(date=>{
+        const d=new Date(date+"T12:00:00"),dd=cal.days?.find(dd=>dd.date===date),cur=d.getMonth()===cal.month;
+        return <div key={date}
+          onDragOver={e=>{e.preventDefault();setDrop(date);}}
+          onDragLeave={()=>setDrop(null)}
+          onDrop={e=>{e.preventDefault();if(drag&&drag.sd!==date)onMove(drag.pid,drag.sd,date);setDrag(null);setDrop(null);}}
+          style={{minHeight:70,background:drop===date?"#1B3A6B33":cur?"#0A1628":"#050D1F",borderRadius:6,padding:"4px 3px",border:drop===date?"1px dashed #1E90FF":"1px solid "+(cur?"#1E3A6B":"#0d1522")}}>
+          <div style={{fontSize:11,fontWeight:700,color:date===today?"#1E90FF":cur?"#fff":"#444",textAlign:"right",marginBottom:3,padding:"0 2px"}}>{d.getDate()}</div>
+          {(dd?.posts||[]).map(post=>{const f=FMT[post.format]||FMT.post,sc=STA[post.status||"pending"];return <div key={post.id} draggable onDragStart={e=>{e.dataTransfer.effectAllowed="move";setDrag({pid:post.id,sd:date});}} onDragEnd={()=>{setDrag(null);setDrop(null);}} style={{background:f.c+"22",border:"1px solid "+sc.b+"88",borderRadius:4,padding:"2px 4px",marginBottom:2,cursor:"grab",fontSize:8,color:f.c,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.i} {post.category||post.idea?.slice(0,10)||f.l}</div>;})}
+        </div>;
+      })}
+    </div>
+    <p style={{fontSize:10,color:"#64B5F6",marginTop:8,textAlign:"center"}}>💡 Arrastra publicaciones entre días</p>
+  </div>;
+}
+
+function CalView({client,cal,calId,updStatus,onGenScripts,onDelCal,onRenCal,onMove}){
+  const [vm,setVm]=useState("list");const [exp,setExp]=useState(null);const [expP,setExpP]=useState(null);
+  const [enm,setEnm]=useState(false);const [nv,setNv]=useState(cal.name||(ME[cal.month]+" "+cal.year));
+  const tp=(cal.days||[]).reduce((a,d)=>a+(d.posts||[]).length,0);
+  const ap2=(cal.days||[]).reduce((a,d)=>a+(d.posts||[]).filter(p=>p.status==="approved"||p.status==="published").length,0);
+  const pp=(cal.days||[]).reduce((a,d)=>a+(d.posts||[]).filter(p=>p.status==="published").length,0);
+  const xPdf=()=>{const s=document.createElement("style");s.id="jps";s.textContent="@media print{header,button,.no-print{display:none!important}body,html{background:#050D1F!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}}";document.head.appendChild(s);window.print();setTimeout(()=>document.getElementById("jps")?.remove(),2000);};
+  const xHtml=()=>{const h=buildHTML(client,cal);const b=new Blob([h],{type:"text/html;charset=utf-8"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=(cal.name||"calendario").replace(/\s+/g,"-")+"-"+client.name.replace(/\s+/g,"-")+".html";document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);};
+  return <div style={{paddingBottom:80}}>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+      {enm?<input style={{...INP,flex:1,fontSize:14,fontWeight:700}} value={nv} onChange={e=>setNv(e.target.value)} autoFocus onBlur={()=>{onRenCal(calId,nv);setEnm(false);}} onKeyDown={e=>e.key==="Enter"&&(onRenCal(calId,nv),setEnm(false))}/>:<>
+        <span style={{flex:1,fontSize:14,fontWeight:700,color:"#fff"}}>{cal.name||(ME[cal.month]+" "+cal.year)}</span>
+        <button onClick={()=>setEnm(true)} style={{padding:"5px 9px",background:"#1a2a4a",color:"#64B5F6",border:"1px solid #1E3A6B",borderRadius:7,cursor:"pointer",fontSize:11}}>✏️</button>
+        <button onClick={()=>{if(window.confirm("¿Eliminar este calendario?"))onDelCal(calId);}} style={{padding:"5px 9px",background:"#2a0d0d",color:"#EF5350",border:"1px solid #C62828",borderRadius:7,cursor:"pointer",fontSize:11}}>🗑️</button>
+      </>}
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
+      {[["Posts",tp,"#1E90FF"],["✓",ap2,"#66BB6A"],["🚀",pp,"#CE93D8"],["Días",(cal.days||[]).length,"#FFA726"]].map(([l,v,c])=>(
+        <div key={l} style={{background:"#0A1628",border:`1px solid ${c}33`,borderRadius:10,padding:10,textAlign:"center"}}><div style={{fontSize:20,fontWeight:900,color:c}}>{v}</div><div style={{fontSize:10,color:"#A0B4CC",marginTop:2}}>{l}</div></div>
+      ))}
+    </div>
+    <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+      <button onClick={onGenScripts} style={{flex:2,padding:10,background:"linear-gradient(135deg,#7B1FA2,#E91E63)",color:"#fff",border:"none",borderRadius:9,cursor:"pointer",fontSize:12,fontWeight:700,minHeight:40}}>✍️ Generar Guiones</button>
+      <button onClick={()=>setVm(m=>m==="list"?"monthly":"list")} style={{padding:10,background:"#1a2a4a",color:"#64B5F6",border:"1px solid #1E3A6B",borderRadius:9,cursor:"pointer",fontSize:12,minHeight:40}}>{vm==="list"?"📅 Cal":"📋 Lista"}</button>
+      <button onClick={xPdf} className="no-print" style={{padding:10,background:"#1a2a4a",color:"#A0B4CC",border:"1px solid #1E3A6B",borderRadius:9,cursor:"pointer",fontSize:12,minHeight:40}}>📄 PDF</button>
+      <button onClick={xHtml} style={{padding:10,background:"#1a2a4a",color:"#A0B4CC",border:"1px solid #1E3A6B",borderRadius:9,cursor:"pointer",fontSize:12,minHeight:40}}>🌐 HTML</button>
+    </div>
+    {vm==="monthly"?<MonthGrid client={client} cal={cal} onMove={onMove}/>:
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {(cal.days||[]).map(day=>{
+        const isE=exp===day.date;
+        return <div key={day.date} style={{background:"#0A1628",border:"1px solid #1E3A6B",borderRadius:12,overflow:"hidden"}}>
+          <div onClick={()=>setExp(isE?null:day.date)} style={{padding:"11px 13px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,minHeight:54}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:1}}>
+              <div style={{background:client.primaryColor,borderRadius:8,padding:"3px 8px",textAlign:"center",flexShrink:0,minWidth:42}}>
+                <div style={{fontSize:8,color:"rgba(255,255,255,.8)",fontWeight:600}}>{(day.dayName||"").slice(0,3).toUpperCase()}</div>
+                <div style={{fontSize:15,fontWeight:900,color:"#fff"}}>{(day.date||"").split("-")[2]}</div>
+              </div>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(day.categories||[]).filter(c=>c).join(" · ")||day.dayName}</div>
+                <div style={{display:"flex",gap:4,marginTop:2,flexWrap:"wrap"}}>{(day.posts||[]).map(p=>{const f=FMT[p.format]||FMT.post;return <span key={p.id} style={{fontSize:9,padding:"1px 6px",borderRadius:20,background:f.c+"22",color:f.c}}>{f.i} {p.category||f.l}</span>;})}</div>
+              </div>
+            </div>
+            <span style={{color:"#64B5F6",fontSize:12,flexShrink:0}}>{isE?"▲":"▼"}</span>
+          </div>
+          {isE&&<div style={{padding:"0 13px 13px",borderTop:"1px solid #1E3A6B"}}>
+            {(day.posts||[]).map(post=>{
+              const f=FMT[post.format]||FMT.post,o=OBJ[post.objective]||OBJ.informativo,sc=STA[post.status||"pending"];
+              const isPE=expP===post.id;
+              return <div key={post.id} style={{background:"#050D1F",borderRadius:10,marginTop:10,border:`1px solid ${sc.b}44`,overflow:"hidden"}}>
+                <div onClick={()=>setExpP(isPE?null:post.id)} style={{padding:"9px 11px",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6}}>
+                  <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0,flex:1}}>
+                    <span style={{fontSize:16,flexShrink:0}}>{f.i}</span>
+                    <div style={{minWidth:0}}>
+                      <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+                        <span style={{fontSize:10,color:f.c,fontWeight:700}}>{f.l}</span>
+                        <span style={{fontSize:9,padding:"1px 6px",borderRadius:20,background:o.c+"22",color:o.c}}>{o.l}</span>
+                        <span style={{fontSize:9,padding:"1px 6px",borderRadius:20,background:sc.bg,color:sc.t,border:`1px solid ${sc.b}`,fontWeight:700}}>{sc.l}</span>
+                      </div>
+                      {post.category&&<div style={{fontSize:11,color:"#FFA726",marginTop:2,fontWeight:600}}>{post.category}</div>}
+                      {post.idea&&<div style={{fontSize:10,color:"#A0B4CC",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.idea}</div>}
+                    </div>
+                  </div>
+                  <span style={{color:"#64B5F6",fontSize:11,flexShrink:0}}>{isPE?"▲":"▼"}</span>
+                </div>
+                {isPE&&<div style={{padding:"0 11px 11px",borderTop:"1px solid #1E3A6B"}}>
+                  {post.image&&<img src={post.image} alt="" style={{width:"100%",maxHeight:200,objectFit:"cover",borderRadius:8,marginTop:8}}/>}
+                  {post.idea&&<div style={{marginTop:8,padding:"8px 10px",background:"#0A1628",borderRadius:8,fontSize:12,color:"#C8D8E8",lineHeight:1.7}}><span style={{fontSize:10,color:"#64B5F6",fontWeight:600,display:"block",marginBottom:3}}>IDEA</span>{post.idea}</div>}
+                  {post.referenceLink&&<div style={{marginTop:8}}><div style={{fontSize:10,color:"#64B5F6",fontWeight:600,marginBottom:4}}>REFERENCIA</div><VidPrev url={post.referenceLink}/></div>}
+                  {post.script&&<div style={{marginTop:8,padding:"8px 10px",background:"#0A1628",borderRadius:8,fontSize:12,color:"#C8D8E8",lineHeight:1.8,whiteSpace:"pre-wrap",maxHeight:220,overflowY:"auto"}}><span style={{fontSize:10,color:"#E91E63",fontWeight:600,display:"block",marginBottom:3}}>{post.format==="post"?"DESCRIPCIÓN":"GUIÓN"}</span>{post.script}</div>}
+                  <div style={{display:"flex",gap:5,marginTop:10,flexWrap:"wrap"}}>
+                    {[["approved","✓","#66BB6A","#388E3C","#0d2a0d"],["published","🚀","#CE93D8","#7B1FA2","#200a3a"],["rejected","✗","#EF5350","#C62828","#2a0d0d"]].map(([st,ic,tc,bc,bg])=>(
+                      <button key={st} onClick={()=>updStatus(day.date,post.id,st)} style={{flex:1,padding:9,background:post.status===st?bc:bg,color:tc,border:`1px solid ${bc}`,borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:700,minHeight:40}}>{ic}</button>
+                    ))}
+                    <button onClick={()=>updStatus(day.date,post.id,"pending")} style={{padding:"9px 11px",background:"#1a2a4a",color:"#64B5F6",border:"1px solid #1E3A6B",borderRadius:8,cursor:"pointer",fontSize:11,minHeight:40}}>↺</button>
+                  </div>
+                </div>}
+              </div>;
+            })}
+          </div>}
+        </div>;
+      })}
+    </div>}
+  </div>;
+}
+
+function App(){
+  const [clients,setClients]=useState([]);
+  const [templates,setTemplates]=useState([]);
+  const [apiKey,setApiKey]=useState(lsGet("ja-apikey")||"");
+  const [showApiSetup,setShowApiSetup]=useState(false);
+  const [selCid,setSelCid]=useState(null);
+  const [selCalId,setSelCalId]=useState(null);
+  const [showAdd,setShowAdd]=useState(false);
+  const [editC,setEditC]=useState(null);
+  const [showSb,setShowSb]=useState(false);
+  const [showPlan,setShowPlan]=useState(false);
+  const [gen,setGen]=useState(false);
+  const [genP,setGenP]=useState(0);
+  const [genS,setGenS]=useState("");
+  const [genM,setGenM]=useState(new Date().getMonth());
+  const [genY,setGenY]=useState(new Date().getFullYear());
+  const [theme,setTheme]=useState("");
+  const [loading,setLoading]=useState(true);
+  const gref=useRef(false);
+  const iref=useRef();
+
+  useEffect(()=>{
+    try{const r=lsGet("jads-data");if(r){const s=JSON.parse(r);setClients(s);if(s.length)setSelCid(s[0].id);}else{setClients([IC]);setSelCid(IC.id);}
+    const t=lsGet("jads-tpl");if(t)setTemplates(JSON.parse(t));}
+    catch{setClients([IC]);setSelCid(IC.id);}
+    if(!lsGet("ja-apikey"))setShowApiSetup(true);
+    setLoading(false);
+  },[]);
+
+  useEffect(()=>{if(!loading)lsSet("jads-data",JSON.stringify(clients));},[clients,loading]);
+
+  const sc=clients.find(c=>c.id===selCid);
+  const scal=sc?.calendars?.find(c=>c.id===selCalId);
+
+  const saveCli=c=>{setClients(p=>{const ex=p.find(x=>x.id===c.id);return ex?p.map(x=>x.id===c.id?c:x):[...p,c];});setSelCid(c.id);setSelCalId(null);setEditC(null);};
+  const delCli=id=>{setClients(p=>p.filter(c=>c.id!==id));setSelCid(null);setSelCalId(null);};
+  const saveTpl=t=>{const n=[...templates,t];setTemplates(n);lsSet("jads-tpl",JSON.stringify(n));};
+  const updStatus=(date,pid,status)=>setClients(p=>p.map(c=>c.id!==selCid?c:{...c,calendars:c.calendars.map(cal=>cal.id!==selCalId?cal:{...cal,days:cal.days.map(d=>d.date!==date?d:{...d,posts:d.posts.map(post=>post.id!==pid?post:{...post,status})})})}));
+  const delCal=id=>{if(!window.confirm("¿Eliminar este calendario?"))return;setClients(p=>p.map(c=>c.id!==selCid?c:{...c,calendars:c.calendars.filter(cal=>cal.id!==id)}));if(selCalId===id)setSelCalId(null);};
+  const renCal=(id,name)=>setClients(p=>p.map(c=>c.id!==selCid?c:{...c,calendars:c.calendars.map(cal=>cal.id!==id?cal:{...cal,name})}));
+  const movePost=(pid,sd,td)=>{
+    setClients(p=>p.map(c=>{if(c.id!==selCid)return c;
+      return{...c,calendars:c.calendars.map(cal=>{if(cal.id!==selCalId)return cal;
+        const sday=cal.days.find(d=>d.date===sd);const post=sday?.posts.find(p=>p.id===pid);if(!post)return cal;
+        let days=cal.days.map(d=>{if(d.date===sd)return{...d,posts:d.posts.filter(p=>p.id!==pid)};if(d.date===td)return{...d,posts:[...(d.posts||[]),post]};return d;});
+        if(!days.find(d=>d.date===td)){const tdd=new Date(td+"T12:00:00");days=[...days,{date:td,dayName:DE[tdd.getDay()],categories:[],posts:[post]}];days.sort((a,b)=>a.date.localeCompare(b.date));}
+        return{...cal,days};
+      })};
+    }));
+  };
+
+  const xJSON=()=>{const d={clients,templates,exportedAt:new Date().toISOString()};const b=new Blob([JSON.stringify(d,null,2)],{type:"application/json"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="juancito-ads-"+Date.now()+".json";document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);};
+  const iJSON=f=>{const r=new FileReader();r.onload=e=>{try{const d=JSON.parse(e.target.result);if(d.clients){setClients(d.clients);if(d.clients.length)setSelCid(d.clients[0].id);setSelCalId(null);}if(d.templates)setTemplates(d.templates);alert("Importado correctamente");}catch{alert("Archivo inválido");}};r.readAsText(f);};
+
+  const callAI=async content=>{
+    if(!apiKey){alert("Configura tu API key primero");setShowApiSetup(true);throw new Error("No API key");}
+    const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:4000,messages:[{role:"user",content}]})});
+    if(!res.ok)throw new Error("Error "+res.status);
+    const data=await res.json();
+    if(data.error)throw new Error(data.error.message);
+    return data.content?.find(b=>b.type==="text")?.text||"";
+  };
+
+  const startGen=async plans=>{
+    if(!sc||gref.current)return;
+    gref.current=true;setShowPlan(false);setGen(true);setGenP(0);setGenS("Preparando...");
+    const calId="cal-"+Date.now(),dates=Object.keys(plans),BATCH=5,allDays=[];
+    try{
+      for(let i=0;i<dates.length;i+=BATCH){
+        const bd=dates.slice(i,i+BATCH);
+        setGenS(`Ideas ${i+1}-${Math.min(i+BATCH,dates.length)}/${dates.length}...`);setGenP(Math.round(i/dates.length*90));
+        const dls=bd.map(date=>{
+          const pl=plans[date],d=new Date(date+"T12:00:00");
+          const ps=pl.posts.map((p,pi)=>{let ln=`  Post ${pi+1}: [${p.format}] ${p.objective}`;if(p.category)ln+=` | Cat: ${p.category}`;if(p.idea)ln+=` | Idea: ${p.idea}`;if(p.referenceLink)ln+=` | Ref: ${p.referenceLink}`;return ln;}).join("\n");
+          return `${date} (${DE[d.getDay()]}) - Cats: ${pl.categories.filter(c=>c).join(", ")}
+${ps}`;
+        }).join("\n---\n");
+        const prompt=`Genera ideas para ${sc.name} (${sc.industry}).
+DESCRIPCIÓN: ${sc.descripcion||"N/A"}
+ESTILO: ${sc.estiloGuion||"Cercano"}
+HASHTAGS: ${sc.hashtags||"#Panama"}
+${theme?`CAMPAÑA: ${theme}
+`:""}
+REGLAS:
+- Si hay idea del cliente, mejórala.
+- Si está vacía, genera idea de 1-2 oraciones.
+
+FORMATO:
+===DIA===
+FECHA: YYYY-MM-DD
+===POST===
+FORMATO: post/reel/carrusel/live/historia
+OBJETIVO: objetivo
+IDEA:\n
+idea aquí
+===ENDPOST===
+===FIN===
+
+DÍAS:
+${dls}`;
+        const txt=await callAI(prompt);
+        const parsed=parseIdeas(txt);
+        for(const date of bd){
+          const pl=plans[date],d=new Date(date+"T12:00:00"),ai=parsed.find(p=>p.date===date);
+          allDays.push({date,dayName:DE[d.getDay()],categories:pl.categories.filter(c=>c),posts:pl.posts.map((post,pi)=>({...post,idea:post.idea||(ai?.posts?.[pi]?.idea||"")}))});
+        }
+        const partial={id:calId,month:genM,year:genY,campaignTheme:theme,partial:(i+BATCH)<dates.length,generatedAt:new Date().toISOString(),days:[...allDays]};
+        setClients(p=>p.map(c=>{if(c.id!==selCid)return c;const ex=c.calendars?.find(cal=>cal.id===calId);return{...c,calendars:ex?c.calendars.map(cal=>cal.id===calId?partial:cal):[...(c.calendars||[]),partial]};}));
+        setSelCalId(calId);
+      }
+      setClients(p=>p.map(c=>c.id!==selCid?c:{...c,calendars:c.calendars.map(cal=>cal.id===calId?{...cal,partial:false}:cal)}));
+      setGenP(100);setGenS("¡Ideas listas!");
+      setTimeout(()=>{setGen(false);setGenP(0);setGenS("");gref.current=false;},800);
+    }catch(e){setGenS("Error: "+e.message);setTimeout(()=>{setGen(false);setGenP(0);setGenS("");gref.current=false;},3000);}
+  };
+
+  const genScripts=async()=>{
+    if(!sc||!scal||gref.current)return;
+    gref.current=true;setGen(true);setGenP(0);setGenS("Generando guiones...");
+    try{
+      const days=scal.days||[];
+      for(let i=0;i<days.length;i+=3){
+        const batch=days.slice(i,i+3);
+        setGenS(`Guiones ${i+1}-${Math.min(i+3,days.length)}...`);setGenP(Math.round(i/days.length*90));
+        const ptg=batch.flatMap(d=>(d.posts||[]).filter(p=>!p.script));if(!ptg.length)continue;
+        const mc=[{type:"text",text:`Genera guiones para ${sc.name}.
+ESTILO: ${sc.estiloGuion||"Cercano, persuasivo"}
+WA: ${sc.whatsapp||"N/A"}
+HASHTAGS: ${sc.hashtags||"#Panama"}
+
+REGLAS:
+- post: caption emojis+CTA+hashtags
+- reel: guión escena por escena (Hook/Desarrollo/CTA)
+- carrusel: texto por tarjeta numerada
+- live/historia: nota breve
+
+FORMATO:
+===POST===
+ID: [id]
+CONTENIDO:
+contenido
+===FIN===
+
+PUBLICACIONES:`}];
+        for(const d of batch)for(const p of (d.posts||[]).filter(p=>!p.script)){
+          if(p.image)mc.push({type:"image",source:{type:"base64",media_type:"image/jpeg",data:p.image.includes(",")?p.image.split(",")[1]:p.image}});
+          mc.push({type:"text",text:`
+---
+ID: ${p.id}
+FORMATO: ${p.format}
+OBJETIVO: ${p.objective}
+CATEGORÍA: ${p.category||"N/A"}
+IDEA:\n ${p.idea||"según contexto"}`});
+        }
+        const txt=await callAI(mc);
+        const scripts=parseScripts(txt);
+        setClients(p=>p.map(c=>c.id!==selCid?c:{...c,calendars:c.calendars.map(cal=>cal.id!==selCalId?cal:{...cal,days:cal.days.map(d=>({...d,posts:(d.posts||[]).map(post=>scripts[post.id]?{...post,script:scripts[post.id]}:post)}))})}));
+      }
+      setGenP(100);setGenS("¡Guiones listos!");
+      setTimeout(()=>{setGen(false);setGenP(0);setGenS("");gref.current=false;},800);
+    }catch(e){setGenS("Error: "+e.message);setTimeout(()=>{setGen(false);setGenP(0);setGenS("");gref.current=false;},3000);}
+  };
+
+  if(loading)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"#050D1F",color:"#fff"}}><div style={{textAlign:"center"}}><div style={{fontSize:40,marginBottom:12}}>⚡</div><div>Cargando...</div></div></div>;
+  if(showApiSetup||!apiKey)return<ApiSetup onDone={k=>{setApiKey(k);setShowApiSetup(false);}}/>;
+
+  return <div style={{fontFamily:"Inter,system-ui,sans-serif",background:"#050D1F",minHeight:"100vh",color:"#fff",display:"flex",flexDirection:"column"}}>
+    <header style={{background:"#0A1628",borderBottom:"1px solid #1E90FF22",padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <button onClick={()=>setShowSb(true)} style={{background:"#1a2a4a",border:"none",color:"#64B5F6",fontSize:18,cursor:"pointer",padding:"7px 11px",borderRadius:8,minHeight:40}}>☰</button>
+        <div style={{background:"linear-gradient(135deg,#1B3A6B,#1E90FF)",padding:"5px 8px",borderRadius:8,fontWeight:900,fontSize:13}}>JA</div>
+        <div><div style={{fontWeight:700,fontSize:13,maxWidth:130,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sc?.name||"Juancito Ads"}</div><div style={{fontSize:9,color:"#1E90FF"}}>⚡ Calendarios</div></div>
+      </div>
+      <div style={{display:"flex",gap:6}}>
+        {sc&&<button onClick={()=>setShowPlan(true)} style={{padding:"7px 12px",background:"linear-gradient(135deg,#1B3A6B,#1E90FF)",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,minHeight:38}}>⚡ Nuevo</button>}
+        <button onClick={()=>setShowApiSetup(true)} style={{padding:"7px 10px",background:"#1a2a4a",color:"#64B5F6",border:"1px solid #1E3A6B",borderRadius:8,cursor:"pointer",fontSize:11,minHeight:38}}>🔑</button>
+        <button onClick={xJSON} style={{padding:"7px 10px",background:"#1a2a4a",color:"#64B5F6",border:"1px solid #1E3A6B",borderRadius:8,cursor:"pointer",fontSize:11,minHeight:38}}>⬇️</button>
+        <button onClick={()=>iref.current?.click()} style={{padding:"7px 10px",background:"#1a2a4a",color:"#64B5F6",border:"1px solid #1E3A6B",borderRadius:8,cursor:"pointer",fontSize:11,minHeight:38}}>⬆️</button>
+        <input ref={iref} type="file" accept=".json" onChange={e=>{const f=e.target.files[0];if(f)iJSON(f);e.target.value="";}} style={{display:"none"}}/>
+      </div>
+    </header>
+
+    {showSb&&<div style={{position:"fixed",inset:0,zIndex:200,display:"flex"}}>
+      <div onClick={()=>setShowSb(false)} style={{flex:1,background:"#000000aa"}}/>
+      <div style={{width:270,background:"#0A1628",borderLeft:"1px solid #1E3A6B",padding:18,overflowY:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+          <span style={{fontSize:12,color:"#64B5F6",fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Clientes</span>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>{setShowAdd(true);setShowSb(false);}} style={{background:"#1E90FF",color:"#fff",border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700}}>+ Nuevo</button>
+            <button onClick={()=>setShowSb(false)} style={{background:"none",border:"none",color:"#64B5F6",fontSize:20,cursor:"pointer"}}>✕</button>
+          </div>
+        </div>
+        {clients.map(c=>(
+          <div key={c.id} onClick={()=>{setSelCid(c.id);setSelCalId(null);setShowSb(false);}} style={{padding:"11px 13px",borderRadius:10,cursor:"pointer",marginBottom:6,background:selCid===c.id?"#1B3A6B":"#0d1a2e",border:`1px solid ${selCid===c.id?"#1E90FF":"transparent"}`,display:"flex",alignItems:"center",gap:10}}>
+            {c.logo?<img src={c.logo} alt="" style={{width:32,height:32,objectFit:"contain",borderRadius:6,background:"#fff",padding:2,flexShrink:0}}/>:<div style={{width:32,height:32,borderRadius:6,background:c.primaryColor+"44",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>🏢</div>}
+            <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:600,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</div><div style={{fontSize:10,color:"#64B5F6"}}>{c.industry}</div></div>
+          </div>
+        ))}
+      </div>
+    </div>}
+
+    <main style={{flex:1,overflowY:"auto",padding:14}}>
+      {sc?<div>
+        <div style={{background:"#0A1628",borderRadius:12,padding:13,marginBottom:12,border:"1px solid #1E3A6B",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            {sc.logo?<img src={sc.logo} alt="" style={{width:38,height:38,objectFit:"contain",borderRadius:7,background:"#fff",padding:3}}/>:<div style={{width:38,height:38,borderRadius:7,background:sc.primaryColor+"33",display:"flex",alignItems:"center",justifyContent:"center"}}>🏢</div>}
+            <div><div style={{fontWeight:700,fontSize:14,color:"#fff"}}>{sc.name}</div><div style={{fontSize:10,color:"#64B5F6"}}>{sc.industry} · {sc.instagram}</div></div>
+          </div>
+          <button onClick={()=>setEditC(sc)} style={{padding:"7px 11px",background:"#1a2a4a",color:"#64B5F6",border:"1px solid #1E3A6B",borderRadius:8,cursor:"pointer",fontSize:12,minHeight:36}}>✏️</button>
+        </div>
+        {sc.calendars?.length>0&&<div style={{display:"flex",gap:8,marginBottom:12,overflowX:"auto",paddingBottom:4}}>
+          {sc.calendars.map(c=><button key={c.id} onClick={()=>setSelCalId(c.id)} style={{padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:11,fontWeight:600,whiteSpace:"nowrap",background:selCalId===c.id?"#1E90FF":"#1a2a4a",color:"#fff",border:`1px solid ${selCalId===c.id?"#1E90FF":"#1E3A6B"}`,flexShrink:0,minHeight:36}}>{c.name||(ME[c.month]+" "+c.year)}{c.partial?" ⏳":""}</button>)}
+        </div>}
+        {scal?<CalView client={sc} cal={scal} calId={selCalId} updStatus={updStatus} onGenScripts={genScripts} onDelCal={delCal} onRenCal={renCal} onMove={movePost}/>:
+        <div style={{textAlign:"center",padding:50,border:"2px dashed #1E3A6B",borderRadius:16,color:"#64B5F6"}}>
+          <div style={{fontSize:36,marginBottom:10}}>📅</div><div style={{fontSize:14,fontWeight:600}}>Sin calendarios</div>
+          <div style={{fontSize:12,marginTop:6,color:"#A0B4CC"}}>Toca "⚡ Nuevo" para crear uno</div>
+        </div>}
+      </div>:<div style={{textAlign:"center",padding:60,color:"#64B5F6"}}><div style={{fontSize:44,marginBottom:12}}>📅</div><div style={{fontSize:15,fontWeight:600}}>Toca ☰ para seleccionar un cliente</div></div>}
+    </main>
+
+    {showPlan&&sc&&!gen&&<PlanModal client={sc} month={genM} year={genY} theme={theme} setTheme={setTheme} onGen={startGen} onClose={()=>setShowPlan(false)}/>}
+
+    {gen&&<div style={{position:"fixed",inset:0,background:"#000000cc",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:200}}>
+      <div style={{background:"#0A1628",borderRadius:"20px 20px 0 0",padding:26,width:"100%",maxWidth:500}}>
+        <h3 style={{margin:"0 0 18px",color:"#fff",fontSize:14,textAlign:"center"}}>⚡ {genS}</h3>
+        <div style={{marginBottom:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,fontSize:11}}><span style={{color:"#64B5F6"}}>{genS}</span><span style={{color:"#1E90FF",fontWeight:700}}>{genP}%</span></div>
+          <div style={{background:"#050D1F",borderRadius:999,height:8,overflow:"hidden"}}><div style={{height:"100%",width:genP+"%",background:"linear-gradient(90deg,#1B3A6B,#1E90FF)",borderRadius:999,transition:"width .4s"}}/></div>
+        </div>
+        <div style={{textAlign:"center",fontSize:11,color:"#A0B4CC"}}>Generando en lotes. No cierres esta ventana.</div>
+      </div>
+    </div>}
+
+    {(showAdd||editC)&&<ClientModal initial={editC||null} templates={templates} onSave={saveCli} onSaveTemplate={saveTpl} onDelete={delCli} onClose={()=>{setShowAdd(false);setEditC(null);}}/>}
+  </div>;
+}
+export default App;
