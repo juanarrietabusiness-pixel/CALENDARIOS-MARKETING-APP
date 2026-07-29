@@ -140,20 +140,22 @@ function VidPrev({url}){
   </div>;
 }
 
-function ApiSetup({onDone}){
+function ApiSetup({onDone,onClose}){
   const [key,setKey]=useState(lsGet("ja-apikey")||"");
-  return <div style={{position:"fixed",inset:0,background:"#050D1F",display:"flex",alignItems:"center",justifyContent:"center",padding:20,zIndex:999}}>
+  return <div style={{position:"fixed",inset:0,background:"#000000cc",display:"flex",alignItems:"center",justifyContent:"center",padding:20,zIndex:999}}>
     <div style={{background:"#0A1628",border:"1px solid #1E3A6B",borderRadius:20,padding:28,width:"100%",maxWidth:440}}>
+      <div style={{display:"flex",justifyContent:"flex-end"}}><button onClick={onClose} style={{background:"none",border:"none",color:"#64B5F6",fontSize:20,cursor:"pointer"}}>✕</button></div>
       <div style={{textAlign:"center",marginBottom:20}}>
         <div style={{background:"linear-gradient(135deg,#1B3A6B,#1E90FF)",display:"inline-block",padding:"8px 14px",borderRadius:10,fontWeight:900,fontSize:18,marginBottom:12}}>JA</div>
-        <h2 style={{fontSize:18,color:"#fff",marginBottom:6}}>Juancito Ads Calendarios</h2>
-        <p style={{fontSize:12,color:"#A0B4CC"}}>Ingresa tu API key de Anthropic para activar la generación con IA</p>
+        <h2 style={{fontSize:18,color:"#fff",marginBottom:6}}>Configurar IA</h2>
+        <p style={{fontSize:12,color:"#A0B4CC"}}>Para generar ideas y guiones con IA, ingresa tu API key de Anthropic. Sin ella, puedes usar la app de forma manual.</p>
       </div>
       <label style={LBL}>Anthropic API Key</label>
       <input style={{...INP,marginBottom:8}} type="password" value={key} onChange={e=>setKey(e.target.value)} placeholder="sk-ant-..."/>
       <p style={{fontSize:10,color:"#64B5F6",marginBottom:16}}>Se guarda en tu navegador. Obtenla en console.anthropic.com</p>
-      <button onClick={()=>{if(key.startsWith("sk-")){lsSet("ja-apikey",key);onDone(key);}else alert("La API key debe empezar con sk-");}} style={{width:"100%",padding:12,background:"#1E90FF",color:"#fff",border:"none",borderRadius:10,cursor:"pointer",fontSize:14,fontWeight:700}}>Entrar →</button>
+      <button onClick={()=>{if(key.startsWith("sk-")){lsSet("ja-apikey",key);onDone(key);}else alert("La API key debe empezar con sk-");}} style={{width:"100%",padding:12,background:"#1E90FF",color:"#fff",border:"none",borderRadius:10,cursor:"pointer",fontSize:14,fontWeight:700}}>Guardar API Key</button>
       {key&&<button onClick={()=>onDone(key)} style={{width:"100%",padding:10,background:"transparent",color:"#64B5F6",border:"none",cursor:"pointer",fontSize:12,marginTop:8}}>Continuar sin cambiar</button>}
+      <button onClick={onClose} style={{width:"100%",padding:10,background:"transparent",color:"#A0B4CC",border:"none",cursor:"pointer",fontSize:12,marginTop:4}}>Usar sin IA</button>
     </div>
   </div>;
 }
@@ -515,7 +517,6 @@ function App(){
     try{const r=lsGet("jads-data");if(r){const s=JSON.parse(r);setClients(s);if(s.length)setSelCid(s[0].id);}else{setClients([IC]);setSelCid(IC.id);}
     const t=lsGet("jads-tpl");if(t)setTemplates(JSON.parse(t));}
     catch{setClients([IC]);setSelCid(IC.id);}
-    if(!lsGet("ja-apikey"))setShowApiSetup(true);
     setLoading(false);
   },[]);
 
@@ -545,7 +546,7 @@ function App(){
   const iJSON=f=>{const r=new FileReader();r.onload=e=>{try{const d=JSON.parse(e.target.result);if(d.clients){setClients(d.clients);if(d.clients.length)setSelCid(d.clients[0].id);setSelCalId(null);}if(d.templates)setTemplates(d.templates);alert("Importado correctamente");}catch{alert("Archivo inválido");}};r.readAsText(f);};
 
   const callAI=async content=>{
-    if(!apiKey){alert("Configura tu API key primero");setShowApiSetup(true);throw new Error("No API key");}
+    if(!apiKey){setShowApiSetup(true);throw new Error("Configura tu API key en ⚙️ para usar la generación con IA");}
     const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:4000,messages:[{role:"user",content}]})});
     if(!res.ok)throw new Error("Error "+res.status);
     const data=await res.json();
@@ -654,7 +655,6 @@ IDEA:\n ${p.idea||"según contexto"}`});
   };
 
   if(loading)return<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"#050D1F",color:"#fff"}}><div style={{textAlign:"center"}}><div style={{fontSize:40,marginBottom:12}}>⚡</div><div>Cargando...</div></div></div>;
-  if(showApiSetup||!apiKey)return<ApiSetup onDone={k=>{setApiKey(k);setShowApiSetup(false);}}/>;
 
   return <div style={{fontFamily:"Inter,system-ui,sans-serif",background:"#050D1F",minHeight:"100vh",color:"#fff",display:"flex",flexDirection:"column"}}>
     <header style={{background:"#0A1628",borderBottom:"1px solid #1E90FF22",padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
@@ -665,7 +665,7 @@ IDEA:\n ${p.idea||"según contexto"}`});
       </div>
       <div style={{display:"flex",gap:6}}>
         {sc&&<button onClick={()=>setShowPlan(true)} style={{padding:"7px 12px",background:"linear-gradient(135deg,#1B3A6B,#1E90FF)",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,minHeight:38}}>⚡ Nuevo</button>}
-        <button onClick={()=>setShowApiSetup(true)} style={{padding:"7px 10px",background:"#1a2a4a",color:"#64B5F6",border:"1px solid #1E3A6B",borderRadius:8,cursor:"pointer",fontSize:11,minHeight:38}}>🔑</button>
+        <button onClick={()=>setShowApiSetup(true)} style={{padding:"7px 10px",background:apiKey?"#1a2a4a":"#2a1a0a",color:apiKey?"#64B5F6":"#FFA726",border:`1px solid ${apiKey?"#1E3A6B":"#FFA726"}`,borderRadius:8,cursor:"pointer",fontSize:11,minHeight:38}}>{apiKey?"⚙️":"⚙️ IA"}</button>
         <button onClick={xJSON} style={{padding:"7px 10px",background:"#1a2a4a",color:"#64B5F6",border:"1px solid #1E3A6B",borderRadius:8,cursor:"pointer",fontSize:11,minHeight:38}}>⬇️</button>
         <button onClick={()=>iref.current?.click()} style={{padding:"7px 10px",background:"#1a2a4a",color:"#64B5F6",border:"1px solid #1E3A6B",borderRadius:8,cursor:"pointer",fontSize:11,minHeight:38}}>⬆️</button>
         <input ref={iref} type="file" accept=".json" onChange={e=>{const f=e.target.files[0];if(f)iJSON(f);e.target.value="";}} style={{display:"none"}}/>
@@ -725,6 +725,8 @@ IDEA:\n ${p.idea||"según contexto"}`});
     </div>}
 
     {(showAdd||editC)&&<ClientModal initial={editC||null} templates={templates} onSave={saveCli} onSaveTemplate={saveTpl} onDelete={delCli} onClose={()=>{setShowAdd(false);setEditC(null);}}/>}
+
+    {showApiSetup&&<ApiSetup onDone={k=>{setApiKey(k);setShowApiSetup(false);}} onClose={()=>setShowApiSetup(false)}/>}
   </div>;
 }
 export default App;
