@@ -29,6 +29,7 @@ const IC={
 const dmth=(y,m)=>{const d=[],dt=new Date(y,m,1);while(dt.getMonth()===m){d.push(new Date(dt));dt.setDate(dt.getDate()+1);}return d;};
 const fdt=d=>d.toISOString().split("T")[0];
 const uid=()=>Math.random().toString(36).slice(2,8);
+const esc=s=>{if(!s)return"";const m={"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};return String(s).replace(/[&<>"']/g,c=>m[c]);};
 
 const lsGet=k=>{try{return localStorage.getItem(k);}catch{return null;}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,v);}catch{}};
@@ -75,10 +76,10 @@ function parseScripts(text){
 
 function buildHTML(client,calendar){
   const pc=client.primaryColor||"#8B1A1A";
-  const name=calendar.name||(ME[calendar.month]+" "+calendar.year);
-  const logo=client.logo?`<img src="${client.logo}" style="width:65px;height:65px;object-fit:contain;border-radius:10px;background:rgba(255,255,255,.15);padding:6px;margin-bottom:12px;display:block;margin:0 auto 12px">`:"";
+  const name=esc(calendar.name||(ME[calendar.month]+" "+calendar.year));
+  const logo=client.logo?`<img src="${esc(client.logo)}" style="width:65px;height:65px;object-fit:contain;border-radius:10px;background:rgba(255,255,255,.15);padding:6px;margin-bottom:12px;display:block;margin:0 auto 12px">`:"";
   const days=(calendar.days||[]).map(day=>{
-    const cats=(day.categories||[]).filter(Boolean).join(" · ");
+    const cats=esc((day.categories||[]).filter(Boolean).join(" · "));
     const posts=(day.posts||[]).map(post=>{
       const f=FMT[post.format]||FMT.post,o=OBJ[post.objective]||OBJ.informativo;
       const sl=post.format==="post"?"Descripción":"Guión";
@@ -87,25 +88,25 @@ function buildHTML(client,calendar){
 <span style="font-size:11px;padding:3px 10px;border-radius:20px;background:${f.c}22;color:${f.c};border:1px solid ${f.c}44;font-weight:600">${f.i} ${f.l}</span>
 <span style="font-size:11px;padding:3px 10px;border-radius:20px;background:${o.c}22;color:${o.c};font-weight:600">${o.l}</span>
 </div>
-${post.category?`<div style="font-size:13px;color:#FFA726;font-weight:600;margin-bottom:8px">📂 ${post.category}</div>`:""}
-${post.image?`<img src="${post.image}" style="width:100%;max-width:280px;border-radius:8px;margin:8px 0;display:block">`:""}
-${post.idea?`<div style="background:#0A1628;border-radius:8px;padding:10px;margin-bottom:8px;font-size:13px;color:#A0B4CC;line-height:1.7"><strong style="color:#64B5F6;font-size:10px;text-transform:uppercase;display:block;margin-bottom:4px">Idea</strong>${post.idea}</div>`:""}
-${post.script?`<div style="background:#0d1f3a;border-radius:8px;padding:12px;font-size:13px;color:#C8D8E8;line-height:1.8;white-space:pre-wrap"><strong style="color:#E91E63;font-size:10px;text-transform:uppercase;display:block;margin-bottom:4px">${sl}</strong>${post.script}</div>`:""}
-${post.referenceLink?`<div style="margin-top:8px"><a href="${post.referenceLink}" target="_blank" style="color:#1E90FF;font-size:12px">🔗 Ver referencia</a></div>`:""}
+${post.category?`<div style="font-size:13px;color:#FFA726;font-weight:600;margin-bottom:8px">📂 ${esc(post.category)}</div>`:""}
+${post.image?`<img src="${esc(post.image)}" style="width:100%;max-width:280px;border-radius:8px;margin:8px 0;display:block">`:""}
+${post.idea?`<div style="background:#0A1628;border-radius:8px;padding:10px;margin-bottom:8px;font-size:13px;color:#A0B4CC;line-height:1.7"><strong style="color:#64B5F6;font-size:10px;text-transform:uppercase;display:block;margin-bottom:4px">Idea</strong>${esc(post.idea)}</div>`:""}
+${post.script?`<div style="background:#0d1f3a;border-radius:8px;padding:12px;font-size:13px;color:#C8D8E8;line-height:1.8;white-space:pre-wrap"><strong style="color:#E91E63;font-size:10px;text-transform:uppercase;display:block;margin-bottom:4px">${sl}</strong>${esc(post.script)}</div>`:""}
+${post.referenceLink?`<div style="margin-top:8px"><a href="${esc(post.referenceLink)}" target="_blank" rel="noopener noreferrer" style="color:#1E90FF;font-size:12px">🔗 Ver referencia</a></div>`:""}
 </div>`;
     }).join("");
     return `<div style="background:#0A1628;border:1px solid #1E3A6B;border-radius:14px;margin-bottom:14px;overflow:hidden;page-break-inside:avoid">
 <div style="display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid #1E3A6B;background:#0d1f3a">
-<div style="background:${pc};color:#fff;font-size:20px;font-weight:900;padding:6px 12px;border-radius:10px;min-width:48px;text-align:center">${(day.date||"").split("-")[2]||""}</div>
-<div><div style="font-size:14px;font-weight:700;color:#fff">${day.dayName||""}</div>${cats?`<div style="font-size:12px;color:#64B5F6;margin-top:2px">${cats}</div>`:""}</div>
+<div style="background:${esc(pc)};color:#fff;font-size:20px;font-weight:900;padding:6px 12px;border-radius:10px;min-width:48px;text-align:center">${esc((day.date||"").split("-")[2]||"")}</div>
+<div><div style="font-size:14px;font-weight:700;color:#fff">${esc(day.dayName||"")}</div>${cats?`<div style="font-size:12px;color:#64B5F6;margin-top:2px">${cats}</div>`:""}</div>
 </div><div style="padding:12px">${posts}</div></div>`;
   }).join("");
-  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${name} — ${client.name}</title>
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${name} — ${esc(client.name)}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Inter,Arial,sans-serif;background:#050D1F;color:#fff;padding:20px;max-width:800px;margin:0 auto}@media print{body{background:#050D1F!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:1cm}}</style>
 </head><body>
-<div style="background:linear-gradient(135deg,${pc},${pc}99);border-radius:16px;padding:24px;text-align:center;margin-bottom:24px">
-${logo}<h1 style="font-size:26px;font-weight:900;color:#fff;margin-bottom:6px">${client.name}</h1>
-<p style="font-size:14px;color:rgba(255,255,255,.85)">${name}${calendar.campaignTheme?" · "+calendar.campaignTheme:""}</p></div>
+<div style="background:linear-gradient(135deg,${esc(pc)},${esc(pc)}99);border-radius:16px;padding:24px;text-align:center;margin-bottom:24px">
+${logo}<h1 style="font-size:26px;font-weight:900;color:#fff;margin-bottom:6px">${esc(client.name)}</h1>
+<p style="font-size:14px;color:rgba(255,255,255,.85)">${name}${calendar.campaignTheme?" · "+esc(calendar.campaignTheme):""}</p></div>
 ${days}
 <div style="text-align:center;padding:20px;color:#64B5F6;font-size:12px;border-top:1px solid #1E3A6B;margin-top:20px">⚡ Creado por Juancito Ads · juanarrietabusiness@gmail.com · @juancitoads</div>
 </body></html>`;
@@ -272,7 +273,7 @@ function ClientModal({initial,templates,onSave,onSaveTemplate,onDelete,onClose})
   </div>;
 }
 
-function PlanModal({client,month,year,theme,setTheme,onGen,onClose}){
+function PlanModal({client,month,year,setMonth,setYear,theme,setTheme,onGen,onClose}){
   const wdays=dmth(year,month).filter(d=>client.weeklyStructure.some(s=>s.dayOfWeek===d.getDay()&&s.active&&s.slots.length>0));
   const [plans,setPlans]=useState(()=>{
     const p={};
@@ -297,6 +298,10 @@ function PlanModal({client,month,year,theme,setTheme,onGen,onClose}){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
         <h3 style={{margin:0,color:"#fff",fontSize:14}}>📋 {ME[month]} {year} — {client.name}</h3>
         <button onClick={onClose} style={{background:"none",border:"none",color:"#64B5F6",fontSize:20,cursor:"pointer"}}>✕</button>
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:10}}>
+        <div style={{flex:1}}><label style={LBL}>Mes</label><select style={INP} value={month} onChange={e=>setMonth(Number(e.target.value))}>{ME.map((m,i)=><option key={i} value={i}>{m}</option>)}</select></div>
+        <div style={{width:90}}><label style={LBL}>Año</label><select style={INP} value={year} onChange={e=>setYear(Number(e.target.value))}>{[year-1,year,year+1,year+2].map(y=><option key={y} value={y}>{y}</option>)}</select></div>
       </div>
       <div style={{marginBottom:10}}><label style={LBL}>Tema del mes</label><input style={INP} value={theme} onChange={e=>setTheme(e.target.value)} placeholder="Ej: Feria del Lente — Agosto"/></div>
       <div style={{overflowY:"auto",flex:1,marginBottom:10}}>
@@ -368,7 +373,7 @@ function PlanModal({client,month,year,theme,setTheme,onGen,onClose}){
   </div>;
 }
 
-function MonthGrid({client,cal,onMove}){
+function MonthGrid({cal,onMove}){
   const [drag,setDrag]=useState(null);
   const [drop,setDrop]=useState(null);
   const cells=()=>{
@@ -706,7 +711,7 @@ IDEA:\n ${p.idea||"según contexto"}`});
       </div>:<div style={{textAlign:"center",padding:60,color:"#64B5F6"}}><div style={{fontSize:44,marginBottom:12}}>📅</div><div style={{fontSize:15,fontWeight:600}}>Toca ☰ para seleccionar un cliente</div></div>}
     </main>
 
-    {showPlan&&sc&&!gen&&<PlanModal client={sc} month={genM} year={genY} theme={theme} setTheme={setTheme} onGen={startGen} onClose={()=>setShowPlan(false)}/>}
+    {showPlan&&sc&&!gen&&<PlanModal client={sc} month={genM} year={genY} setMonth={setGenM} setYear={setGenY} theme={theme} setTheme={setTheme} onGen={startGen} onClose={()=>setShowPlan(false)}/>}
 
     {gen&&<div style={{position:"fixed",inset:0,background:"#000000cc",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:200}}>
       <div style={{background:"#0A1628",borderRadius:"20px 20px 0 0",padding:26,width:"100%",maxWidth:500}}>
