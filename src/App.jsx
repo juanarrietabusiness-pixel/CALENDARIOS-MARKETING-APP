@@ -142,18 +142,25 @@ function VidPrev({url}){
 
 function ApiSetup({onDone,onClose}){
   const [key,setKey]=useState(lsGet("ja-apikey")||"");
+  const detected=key.startsWith("gsk_")?"groq":key.startsWith("sk-")?"anthropic":null;
+  const provColor=detected==="groq"?"#F55036":detected==="anthropic"?"#D97706":"#64B5F6";
+  const provLabel=detected==="groq"?"Groq":detected==="anthropic"?"Anthropic":"";
   return <div style={{position:"fixed",inset:0,background:"#000000cc",display:"flex",alignItems:"center",justifyContent:"center",padding:20,zIndex:999}}>
     <div style={{background:"#0A1628",border:"1px solid #1E3A6B",borderRadius:20,padding:28,width:"100%",maxWidth:440}}>
       <div style={{display:"flex",justifyContent:"flex-end"}}><button onClick={onClose} style={{background:"none",border:"none",color:"#64B5F6",fontSize:20,cursor:"pointer"}}>✕</button></div>
       <div style={{textAlign:"center",marginBottom:20}}>
         <div style={{background:"linear-gradient(135deg,#1B3A6B,#1E90FF)",display:"inline-block",padding:"8px 14px",borderRadius:10,fontWeight:900,fontSize:18,marginBottom:12}}>JA</div>
         <h2 style={{fontSize:18,color:"#fff",marginBottom:6}}>Configurar IA</h2>
-        <p style={{fontSize:12,color:"#A0B4CC"}}>Para generar ideas y guiones con IA, ingresa tu API key de Anthropic. Sin ella, puedes usar la app de forma manual.</p>
+        <p style={{fontSize:12,color:"#A0B4CC"}}>Ingresa tu API key de <strong>Groq</strong> o <strong>Anthropic</strong>. Se detecta autom&aacute;ticamente seg&uacute;n el prefijo.</p>
       </div>
-      <label style={LBL}>Anthropic API Key</label>
-      <input style={{...INP,marginBottom:8}} type="password" value={key} onChange={e=>setKey(e.target.value)} placeholder="sk-ant-..."/>
-      <p style={{fontSize:10,color:"#64B5F6",marginBottom:16}}>Se guarda en tu navegador. Obtenla en console.anthropic.com</p>
-      <button onClick={()=>{if(key.startsWith("sk-")){lsSet("ja-apikey",key);onDone(key);}else alert("La API key debe empezar con sk-");}} style={{width:"100%",padding:12,background:"#1E90FF",color:"#fff",border:"none",borderRadius:10,cursor:"pointer",fontSize:14,fontWeight:700}}>Guardar API Key</button>
+      <label style={LBL}>API Key</label>
+      <input style={{...INP,marginBottom:4}} type="password" value={key} onChange={e=>setKey(e.target.value)} placeholder="gsk_... o sk-ant-..."/>
+      {detected&&<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><span style={{width:8,height:8,borderRadius:"50%",background:provColor,flexShrink:0}}/><span style={{fontSize:11,color:provColor,fontWeight:600}}>{provLabel} detectado</span></div>}
+      <div style={{display:"flex",gap:12,marginBottom:16}}>
+        <p style={{fontSize:10,color:"#64B5F6",flex:1}}>Groq: console.groq.com/keys</p>
+        <p style={{fontSize:10,color:"#64B5F6",flex:1}}>Anthropic: console.anthropic.com</p>
+      </div>
+      <button onClick={()=>{if(!detected){alert("La key debe empezar con gsk_ (Groq) o sk- (Anthropic)");return;}lsSet("ja-apikey",key);onDone(key);}} style={{width:"100%",padding:12,background:detected?provColor:"#1a2a4a",color:"#fff",border:"none",borderRadius:10,cursor:"pointer",fontSize:14,fontWeight:700,transition:"background .2s"}}>Guardar API Key</button>
       {key&&<button onClick={()=>onDone(key)} style={{width:"100%",padding:10,background:"transparent",color:"#64B5F6",border:"none",cursor:"pointer",fontSize:12,marginTop:8}}>Continuar sin cambiar</button>}
       <button onClick={onClose} style={{width:"100%",padding:10,background:"transparent",color:"#A0B4CC",border:"none",cursor:"pointer",fontSize:12,marginTop:4}}>Usar sin IA</button>
     </div>
@@ -495,7 +502,7 @@ function CalView({client,cal,calId,updStatus,onGenScripts,onDelCal,onRenCal,onMo
 function App(){
   const [clients,setClients]=useState([]);
   const [templates,setTemplates]=useState([]);
-  const [apiKey,setApiKey]=useState(lsGet("ja-apikey")||"");
+  const [apiKey,setApiKey]=useState(()=>{const k=lsGet("ja-apikey")||"";return(k.startsWith("gsk_")||k.startsWith("sk-"))?k:"";});
   const [showApiSetup,setShowApiSetup]=useState(false);
   const [selCid,setSelCid]=useState(null);
   const [selCalId,setSelCalId]=useState(null);
@@ -547,6 +554,17 @@ function App(){
 
   const callAI=async content=>{
     if(!apiKey){setShowApiSetup(true);throw new Error("Configura tu API key en ⚙️ para usar la generación con IA");}
+    const isGroq=apiKey.startsWith("gsk_");
+    if(isGroq){
+      let msgContent=content;
+      if(Array.isArray(content)){
+        msgContent=content.filter(b=>b.type==="text").map(b=>({type:"text",text:b.text}));
+      }
+      const res=await fetch("https://api.groq.com/openai/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+apiKey},body:JSON.stringify({model:"llama-3.3-70b-versatile",max_tokens:4000,messages:[{role:"user",content:msgContent}]})});
+      if(!res.ok){const err=await res.json().catch(()=>({}));throw new Error(err.error?.message||"Error "+res.status);}
+      const data=await res.json();
+      return data.choices?.[0]?.message?.content||"";
+    }
     const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:4000,messages:[{role:"user",content}]})});
     if(!res.ok)throw new Error("Error "+res.status);
     const data=await res.json();
