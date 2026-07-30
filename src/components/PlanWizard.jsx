@@ -3,7 +3,7 @@ import { PLANS, FORMATS, DEFAULT_CATEGORIES, MONTHS, DAYS, DAYS_SHORT } from "..
 import { uid, daysInMonth, fmtDate, getWeekNumber, dayName, parseVideoURL } from "../utils";
 import { callAI, buildClientContext, fetchGitHubADN } from "../api";
 
-const STEP_LABELS = ["Plan", "Fechas", "Campaña", "Conceptos", "Categorías", "Videos", "Ideas"];
+const STEP_LABELS = ["Plan", "Fechas", "Campana", "Conceptos", "Categorias", "Videos", "Ideas"];
 
 function StepBar({ step, setStep }) {
   return (
@@ -44,6 +44,8 @@ export default function PlanWizard({ client, apiKey, onGenerate, onClose }) {
   const [referenceVideos, setReferenceVideos] = useState([]);
   const [newVideoUrl, setNewVideoUrl] = useState("");
   const [ideas, setIdeas] = useState({});
+  const [ideaMode, setIdeaMode] = useState("day");
+  const [dowIdeas, setDowIdeas] = useState({});
   const [aiLoading, setAiLoading] = useState(false);
   const [aiStatus, setAiStatus] = useState("");
   const generating = useRef(false);
@@ -60,9 +62,9 @@ export default function PlanWizard({ client, apiKey, onGenerate, onClose }) {
     setAiStatus("Buscando fechas importantes...");
     try {
       const ctx = buildClientContext(client);
-      const prompt = `${ctx}\n\nDame 5-8 fechas importantes para ${MONTHS[month]} ${year} en Panamá relevantes para esta industria.
+      const prompt = `${ctx}\n\nDame 5-8 fechas importantes para ${MONTHS[month]} ${year} en Panama relevantes para esta industria.
 Formato JSON array: [{"date":"YYYY-MM-DD","name":"Nombre","relevant":true}]
-Solo el JSON, nada más.`;
+Solo el JSON, nada mas.`;
       const txt = await callAI(apiKey, prompt);
       const match = txt.match(/\[[\s\S]*?\]/);
       if (match) {
@@ -82,10 +84,10 @@ Solo el JSON, nada más.`;
   const suggestCampaign = async () => {
     if (!apiKey) return;
     setAiLoading(true);
-    setAiStatus("Generando sugerencias de campaña...");
+    setAiStatus("Generando sugerencias de campana...");
     try {
       const ctx = buildClientContext(client);
-      const prompt = `${ctx}\n\nSugiere 3 temas de campaña para ${MONTHS[month]} ${year}. Una línea por sugerencia. Solo las sugerencias, nada más.`;
+      const prompt = `${ctx}\n\nSugiere 3 temas de campana para ${MONTHS[month]} ${year}. Una linea por sugerencia. Solo las sugerencias, nada mas.`;
       const txt = await callAI(apiKey, prompt);
       setCampaign(txt.split("\n").filter(Boolean)[0] || "");
     } catch (e) {
@@ -103,8 +105,8 @@ Solo el JSON, nada más.`;
       const ctx = buildClientContext(client, { campaign });
       const numWeeks = Math.ceil(allDays.length / 7);
       const prompt = `${ctx}\n\nGenera ${numWeeks} conceptos semanales para el calendario de ${MONTHS[month]} ${year}.
-Campaña: ${campaign || "N/A"}
-Formato: una línea por semana, solo el concepto. ${numWeeks} líneas exactas.`;
+Campana: ${campaign || "N/A"}
+Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
       const txt = await callAI(apiKey, prompt);
       const lines = txt.split("\n").filter(Boolean).slice(0, 5);
       setWeekConcepts((prev) => prev.map((c, i) => c || lines[i] || ""));
@@ -115,16 +117,44 @@ Formato: una línea por semana, solo el concepto. ${numWeeks} líneas exactas.`;
     setAiStatus("");
   };
 
+  const applyDowIdeas = () => {
+    const newIdeas = { ...ideas };
+    allDays.forEach((d) => {
+      const date = fmtDate(d);
+      const dow = d.getDay();
+      const dowIdeaList = dowIdeas[dow];
+      if (!dowIdeaList || dowIdeaList.length === 0) return;
+      const formats = (formatConfig[dow] || []).slice(0, postsPerDay);
+      const existing = newIdeas[date] || [];
+      newIdeas[date] = formats.map((f, j) => {
+        const ex = existing[j];
+        if (ex?.idea) return ex;
+        const baseIdea = dowIdeaList[j % dowIdeaList.length]?.idea || "";
+        return {
+          id: ex?.id || uid(),
+          format: f.format,
+          idea: baseIdea,
+          referenceLink: ex?.referenceLink || "",
+          image: ex?.image || null,
+          script: "",
+          status: "pending",
+          category: dayCategories[dow] || "",
+        };
+      });
+    });
+    setIdeas(newIdeas);
+  };
+
   const generateIdeas = async () => {
     if (!apiKey || generating.current) return;
     generating.current = true;
     setAiLoading(true);
     setAiStatus("Generando ideas...");
     try {
-      let adnExtra = "";
-      if (client.githubRepo) {
+      let adnExtra = client.githubContext || "";
+      if (!adnExtra && client.githubRepo) {
         setAiStatus("Cargando ADN desde GitHub...");
-        adnExtra = await fetchGitHubADN(client.githubRepo);
+        adnExtra = await fetchGitHubADN(client.githubRepo, client.githubToken);
       }
       const ctx = buildClientContext(client, { campaign }, adnExtra);
       const daysList = allDays.map((d) => {
@@ -156,10 +186,11 @@ Formato: una línea por semana, solo el concepto. ${numWeeks} líneas exactas.`;
 
         const prompt = `${ctx}
 
-CAMPAÑA: ${campaign || "N/A"}
+CAMPANA: ${campaign || "N/A"}
 
-Genera ideas para cada publicación de estos días.
-Si ya hay idea existente, mejórala. Si no, genera una nueva.
+Genera ideas UNICAS para cada publicacion de estos dias.
+IMPORTANTE: Cada idea debe ser DIFERENTE incluso si el dia de la semana es el mismo.
+Si ya hay idea existente, mejorala. Si no, genera una nueva.
 Cada idea: 1-2 oraciones claras y accionables.
 
 FORMATO DE RESPUESTA (respeta exactamente):
@@ -168,14 +199,14 @@ FECHA: YYYY-MM-DD
 ===POST===
 FORMATO: formato
 IDEA:
-idea aquí
+idea aqui
 ===POST===
 FORMATO: formato
 IDEA:
-idea aquí
+idea aqui
 ===FIN===
 
-DÍAS:
+DIAS:
 ${daysDesc}`;
 
         const txt = await callAI(apiKey, prompt);
@@ -243,6 +274,9 @@ ${daysDesc}`;
           idea: idea?.idea || "",
           referenceLink: refVideo?.url || idea?.referenceLink || "",
           image: idea?.image || null,
+          guion: "",
+          descripcion: "",
+          hashtagsFinales: "",
           script: idea?.script || "",
           status: idea?.status || "pending",
           category: cat,
@@ -302,7 +336,7 @@ ${daysDesc}`;
                   </select>
                 </div>
                 <div style={{ width: 100 }}>
-                  <label className="label">Año</label>
+                  <label className="label">Ano</label>
                   <select className="input" value={year} onChange={(e) => setYear(Number(e.target.value))}>
                     {[year - 1, year, year + 1, year + 2].map((y) => <option key={y} value={y}>{y}</option>)}
                   </select>
@@ -339,7 +373,7 @@ ${daysDesc}`;
                   </button>
                 ))}
               </div>
-              <label className="label" style={{ marginBottom: 8 }}>Formatos por día</label>
+              <label className="label" style={{ marginBottom: 8 }}>Formatos por dia</label>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {[1, 2, 3, 4, 5, 6, 0].map((dow) => (
                   <div key={dow} style={{ background: "var(--bg)", borderRadius: 8, padding: 10 }}>
@@ -443,7 +477,7 @@ ${daysDesc}`;
           {step === 2 && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <label className="label" style={{ margin: 0 }}>Tema de campaña del mes</label>
+                <label className="label" style={{ margin: 0 }}>Tema de campana del mes</label>
                 <button
                   className="btn btn-primary btn-sm"
                   onClick={suggestCampaign}
@@ -458,7 +492,7 @@ ${daysDesc}`;
                 style={{ minHeight: 80 }}
                 value={campaign}
                 onChange={(e) => setCampaign(e.target.value)}
-                placeholder="Ej: Promoción de Regreso a Clases — Agosto 2026"
+                placeholder="Ej: Promocion de Regreso a Clases"
               />
             </div>
           )}
@@ -496,7 +530,7 @@ ${daysDesc}`;
           {/* Step 4: Daily categories */}
           {step === 4 && (
             <div>
-              <label className="label" style={{ marginBottom: 12 }}>Categoría por día de la semana</label>
+              <label className="label" style={{ marginBottom: 12 }}>Categoria por dia de la semana</label>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 12 }}>
                 {DEFAULT_CATEGORIES.map((cat) => (
                   <button
@@ -520,8 +554,16 @@ ${daysDesc}`;
                       style={{ flex: 1, fontSize: 12, padding: "7px 10px" }}
                       value={dayCategories[dow] || ""}
                       onChange={(e) => setDayCategories((prev) => ({ ...prev, [dow]: e.target.value }))}
-                      placeholder="Categoría..."
+                      placeholder="Categoria..."
                     />
+                    {dayCategories[dow] && (
+                      <button
+                        onClick={() => setDayCategories((prev) => ({ ...prev, [dow]: "" }))}
+                        style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: 13, flexShrink: 0 }}
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -607,7 +649,7 @@ ${daysDesc}`;
           {step === 6 && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <label className="label" style={{ margin: 0 }}>Ideas por día</label>
+                <label className="label" style={{ margin: 0 }}>Ideas por dia</label>
                 <button
                   className="btn btn-accent btn-sm"
                   onClick={generateIdeas}
@@ -617,6 +659,83 @@ ${daysDesc}`;
                 </button>
               </div>
               {aiStatus && <div style={{ fontSize: 11, color: "var(--accent)", marginBottom: 8 }}>{aiStatus}</div>}
+
+              {/* Idea entry mode toggle */}
+              <div style={{ display: "flex", gap: 4, marginBottom: 12, background: "var(--bg)", borderRadius: 8, padding: 3 }}>
+                <button
+                  onClick={() => setIdeaMode("day")}
+                  style={{
+                    flex: 1, padding: "6px", borderRadius: 6, border: "none", cursor: "pointer",
+                    background: ideaMode === "day" ? "var(--accent)" : "transparent",
+                    color: ideaMode === "day" ? "#fff" : "var(--text-dim)",
+                    fontSize: 11, fontWeight: 600,
+                  }}
+                >
+                  Por dia
+                </button>
+                <button
+                  onClick={() => setIdeaMode("dow")}
+                  style={{
+                    flex: 1, padding: "6px", borderRadius: 6, border: "none", cursor: "pointer",
+                    background: ideaMode === "dow" ? "var(--accent)" : "transparent",
+                    color: ideaMode === "dow" ? "#fff" : "var(--text-dim)",
+                    fontSize: 11, fontWeight: 600,
+                  }}
+                >
+                  Por dia de semana
+                </button>
+              </div>
+
+              {/* By day-of-week mode */}
+              {ideaMode === "dow" && (
+                <div style={{ marginBottom: 16 }}>
+                  <p style={{ fontSize: 10, color: "var(--text-dim)", marginBottom: 8 }}>
+                    Define una idea base por dia de la semana. Se duplicara a todas las instancias de ese dia. La IA generara versiones UNICAS para cada fecha.
+                  </p>
+                  {[1, 2, 3, 4, 5, 6, 0].map((dow) => {
+                    const formats = (formatConfig[dow] || []).slice(0, postsPerDay);
+                    const dowIdea = dowIdeas[dow] || [];
+                    return (
+                      <div key={dow} style={{ background: "var(--bg)", borderRadius: 8, padding: 8, marginBottom: 6 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>
+                          {DAYS[dow]}
+                          {dayCategories[dow] && <span style={{ color: "var(--accent-alt)", fontWeight: 400, marginLeft: 6 }}>{dayCategories[dow]}</span>}
+                        </div>
+                        {formats.map((f, j) => (
+                          <div key={j} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
+                            <span style={{ fontSize: 10, color: FORMATS[f.format]?.color || "var(--accent)", fontWeight: 600, flexShrink: 0, width: 20 }}>
+                              {FORMATS[f.format]?.icon || ""}
+                            </span>
+                            <input
+                              className="input"
+                              style={{ flex: 1, fontSize: 11, padding: "4px 8px" }}
+                              value={dowIdea[j]?.idea || ""}
+                              onChange={(e) => {
+                                setDowIdeas((prev) => {
+                                  const current = [...(prev[dow] || [])];
+                                  while (current.length <= j) current.push({ idea: "" });
+                                  current[j] = { ...current[j], idea: e.target.value };
+                                  return { ...prev, [dow]: current };
+                                });
+                              }}
+                              placeholder="Idea base (se duplicara)..."
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                  <button
+                    className="btn btn-primary btn-sm"
+                    style={{ width: "100%", marginTop: 8 }}
+                    onClick={applyDowIdeas}
+                  >
+                    Aplicar a todos los dias
+                  </button>
+                </div>
+              )}
+
+              {/* Mini calendar */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2, marginBottom: 8 }}>
                 {DAYS_SHORT.map((d) => (
                   <div key={d} style={{ textAlign: "center", fontSize: 9, fontWeight: 700, color: "var(--text-muted)", padding: 4 }}>{d}</div>
@@ -652,38 +771,42 @@ ${daysDesc}`;
                   return cells;
                 })()}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 300, overflowY: "auto" }}>
-                {allDays.map((d) => {
-                  const date = fmtDate(d);
-                  const dayIdeas = ideas[date] || [];
-                  if (!dayIdeas.length) return null;
-                  return (
-                    <div key={date} style={{ background: "var(--bg)", borderRadius: 8, padding: 8 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>
-                        {d.getDate()} {DAYS[d.getDay()]}
-                      </div>
-                      {dayIdeas.map((p, j) => (
-                        <div key={j} style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 4 }}>
-                          <span style={{ color: FORMATS[p.format]?.color || "var(--accent)", fontWeight: 600 }}>
-                            {FORMATS[p.format]?.icon || "📄"} {j + 1}:
-                          </span>{" "}
-                          <input
-                            className="input"
-                            style={{ fontSize: 11, padding: "4px 8px", marginTop: 2 }}
-                            value={p.idea || ""}
-                            onChange={(e) => {
-                              const newDayIdeas = [...dayIdeas];
-                              newDayIdeas[j] = { ...newDayIdeas[j], idea: e.target.value };
-                              setIdeas((prev) => ({ ...prev, [date]: newDayIdeas }));
-                            }}
-                            placeholder="Idea..."
-                          />
+
+              {/* Per-day idea list */}
+              {ideaMode === "day" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 300, overflowY: "auto" }}>
+                  {allDays.map((d) => {
+                    const date = fmtDate(d);
+                    const dayIdeas = ideas[date] || [];
+                    if (!dayIdeas.length) return null;
+                    return (
+                      <div key={date} style={{ background: "var(--bg)", borderRadius: 8, padding: 8 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>
+                          {d.getDate()} {DAYS[d.getDay()]}
                         </div>
-                      ))}
-                    </div>
-                  );
-                })}
-              </div>
+                        {dayIdeas.map((p, j) => (
+                          <div key={j} style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 4 }}>
+                            <span style={{ color: FORMATS[p.format]?.color || "var(--accent)", fontWeight: 600 }}>
+                              {FORMATS[p.format]?.icon || ""} {j + 1}:
+                            </span>{" "}
+                            <input
+                              className="input"
+                              style={{ fontSize: 11, padding: "4px 8px", marginTop: 2 }}
+                              value={p.idea || ""}
+                              onChange={(e) => {
+                                const newDayIdeas = [...dayIdeas];
+                                newDayIdeas[j] = { ...newDayIdeas[j], idea: e.target.value };
+                                setIdeas((prev) => ({ ...prev, [date]: newDayIdeas }));
+                              }}
+                              placeholder="Idea..."
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -691,7 +814,7 @@ ${daysDesc}`;
         <div style={{ padding: "12px 18px", borderTop: "1px solid var(--border)", display: "flex", gap: 10 }}>
           {step > 0 && (
             <button className="btn btn-secondary" onClick={goBack}>
-              Atrás
+              Atras
             </button>
           )}
           <button className="btn btn-secondary" style={{ flex: step > 0 ? undefined : 1 }} onClick={onClose}>
