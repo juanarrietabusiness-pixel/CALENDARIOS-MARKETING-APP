@@ -522,12 +522,14 @@ export default function CalendarView({
     addDebug("Inicio de generacion");
 
     try {
-      let adnExtra = "";
-      if (client.githubRepo) {
+      let adnExtra = client.githubContext || "";
+      if (!adnExtra && client.githubRepo) {
         setGenStatus("Cargando ADN desde GitHub...");
         addDebug("Fetching GitHub ADN: " + client.githubRepo);
-        adnExtra = await fetchGitHubADN(client.githubRepo);
+        adnExtra = await fetchGitHubADN(client.githubRepo, client.githubToken);
         addDebug("GitHub ADN: " + (adnExtra ? adnExtra.length + " chars" : "vacio"));
+      } else if (adnExtra) {
+        addDebug("Usando ADN cacheado: " + adnExtra.length + " chars");
       }
 
       const days = cal.days || [];

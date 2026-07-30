@@ -1,14 +1,15 @@
 import { useState, useRef } from "react";
-import { FORMATS } from "../constants";
+import { FORMATS, DEFAULT_CATEGORIES } from "../constants";
 import { uid, compressImage, createEmptyClient } from "../utils";
+import { fetchGitHubADN } from "../api";
 
 const DAYS_ORDERED = [
   { dow: 1, name: "Lunes" },
   { dow: 2, name: "Martes" },
-  { dow: 3, name: "Miércoles" },
+  { dow: 3, name: "Miercoles" },
   { dow: 4, name: "Jueves" },
   { dow: 5, name: "Viernes" },
-  { dow: 6, name: "Sábado" },
+  { dow: 6, name: "Sabado" },
   { dow: 0, name: "Domingo" },
 ];
 
@@ -38,6 +39,77 @@ function FormatPicker({ value, onChange }) {
   );
 }
 
+function CategoryTemplates({ savedCategories, onLoad, onSave }) {
+  const [templateName, setTemplateName] = useState("");
+  const [showSave, setShowSave] = useState(false);
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+        {(savedCategories || []).map((tpl, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => onLoad(tpl)}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 6,
+              border: "1px solid var(--accent)",
+              cursor: "pointer",
+              background: "var(--accent)" + "22",
+              color: "var(--accent)",
+              fontSize: 10,
+              fontWeight: 600,
+            }}
+          >
+            {tpl.name}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setShowSave(!showSave)}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 6,
+            border: "1px dashed var(--border)",
+            cursor: "pointer",
+            background: "transparent",
+            color: "var(--text-dim)",
+            fontSize: 10,
+            fontWeight: 600,
+          }}
+        >
+          + Guardar template
+        </button>
+      </div>
+      {showSave && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+          <input
+            className="input"
+            style={{ flex: 1, fontSize: 11, padding: "6px 8px" }}
+            value={templateName}
+            onChange={(e) => setTemplateName(e.target.value)}
+            placeholder="Nombre del template..."
+          />
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              if (templateName) {
+                onSave(templateName);
+                setTemplateName("");
+                setShowSave(false);
+              }
+            }}
+          >
+            Guardar
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ClientModal({ initial, onSave, onDelete, onClose }) {
   const blank = createEmptyClient();
   const [form, setForm] = useState(initial ? { ...initial } : blank);
@@ -50,8 +122,47 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
         : { dayOfWeek: dow, dayName: name, active: false, slots: [], categories: [""] };
     })
   );
+  const [ghStatus, setGhStatus] = useState("");
+  const [ghFiles, setGhFiles] = useState([]);
+  const [ghLoading, setGhLoading] = useState(false);
   const logoRef = useRef();
   const sf = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const testGitHub = async () => {
+    if (!form.githubRepo) return;
+    setGhLoading(true);
+    setGhStatus("Conectando...");
+    try {
+      const match = form.githubRepo.match(/github\.com\/([^/]+)\/([^/]+)/);
+      if (!match) { setGhStatus("URL invalida"); setGhLoading(false); return; }
+      const [, owner, repo] = match;
+      const headers = { Accept: "application/vnd.github.v3+json" };
+      if (form.githubToken) headers.Authorization = "token " + form.githubToken;
+
+      const files = [];
+      for (const path of ["", "adn/"]) {
+        const res = await fetch(`https://api.github.com/repos/${owner}/${repo.replace(/\.git$/, "")}/contents/${path}`, { headers });
+        if (!res.ok) continue;
+        const items = await res.json();
+        if (!Array.isArray(items)) continue;
+        for (const item of items) {
+          if (item.type === "file" && /\.(md|txt)$/i.test(item.name) && item.size < 50000) {
+            files.push({ name: item.name, path: item.path, size: item.size, selected: true });
+          }
+        }
+      }
+      setGhFiles(files);
+      setGhStatus(files.length > 0 ? `Conectado (${files.length} archivos)` : "Conectado, sin archivos .md/.txt");
+
+      const adnContent = await fetchGitHubADN(form.githubRepo, form.githubToken);
+      if (adnContent) {
+        sf("githubContext", adnContent);
+      }
+    } catch (e) {
+      setGhStatus("Error: " + e.message);
+    }
+    setGhLoading(false);
+  };
 
   const handleSave = () => {
     if (!form.name) return;
@@ -67,6 +178,24 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
       savedCategories: initial?.savedCategories || [],
     });
     onClose();
+  };
+
+  const saveCategoryTemplate = (name) => {
+    const cats = {};
+    weekStructure.forEach((s) => {
+      if (s.active) cats[s.dayOfWeek] = s.categories || [""];
+    });
+    sf("savedCategories", [...(form.savedCategories || []), { name, categories: cats }]);
+  };
+
+  const loadCategoryTemplate = (tpl) => {
+    setWeekStructure((prev) =>
+      prev.map((s) => {
+        const tplCats = tpl.categories[s.dayOfWeek];
+        if (tplCats) return { ...s, active: true, categories: [...tplCats] };
+        return s;
+      })
+    );
   };
 
   return (
@@ -89,7 +218,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
 
         <div style={{ display: "flex", gap: 3, marginBottom: 14, background: "var(--bg)", borderRadius: 10, padding: 3 }}>
           {[
-            ["basico", "Básico"],
+            ["basico", "Basico"],
             ["adn", "ADN"],
             ["voz", "Voz"],
             ["github", "GitHub"],
@@ -153,7 +282,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
               ["name", "Nombre *"],
               ["industry", "Industria"],
               ["instagram", "Instagram"],
-              ["phone", "Teléfono"],
+              ["phone", "Telefono"],
               ["whatsapp", "WhatsApp"],
               ["sucursales", "Sucursales"],
               ["direcciones", "Direcciones"],
@@ -189,9 +318,9 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
         {tab === "adn" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
             {[
-              ["descripcion", "Descripción del negocio", "Qué hace, servicios..."],
+              ["descripcion", "Descripcion del negocio", "Que hace, servicios..."],
               ["valores", "Valores", "Calidad, rapidez..."],
-              ["notasInspeccion", "Notas de inspección", "Bio, destacados..."],
+              ["notasInspeccion", "Notas de inspeccion", "Bio, destacados..."],
             ].map(([k, l, ph]) => (
               <div key={k}>
                 <label className="label">{l}</label>
@@ -199,7 +328,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
               </div>
             ))}
             {[
-              ["audiencia", "Audiencia", "Ej: Mujeres 25-45 años"],
+              ["audiencia", "Audiencia", "Ej: Mujeres 25-45 anos"],
               ["competencia", "Competencia", "Ej: Marca X"],
               ["hashtags", "Hashtags", "#Hashtag1 #Panama"],
             ].map(([k, l, ph]) => (
@@ -218,7 +347,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
               <textarea className="textarea" style={{ minHeight: 80 }} value={form.estiloGuion || ""} onChange={(e) => sf("estiloGuion", e.target.value)} placeholder="Tono, emojis, CTA..." />
             </div>
             <div>
-              <label className="label">Estilo de locución</label>
+              <label className="label">Estilo de locucion</label>
               <textarea className="textarea" style={{ minHeight: 60 }} value={form.estiloLocucion || ""} onChange={(e) => sf("estiloLocucion", e.target.value)} placeholder="Voz, ritmo..." />
             </div>
           </div>
@@ -227,7 +356,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
         {tab === "github" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
             <p style={{ fontSize: 12, color: "var(--text-dim)" }}>
-              Conecta un repositorio de GitHub para cargar automáticamente el ADN del cliente (archivos .md/.txt).
+              Conecta un repositorio de GitHub para cargar automaticamente el ADN del cliente (archivos .md/.txt).
             </p>
             <div>
               <label className="label">URL del repositorio</label>
@@ -238,8 +367,83 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
                 placeholder="https://github.com/usuario/repo"
               />
             </div>
+            <div>
+              <label className="label">Token GitHub (opcional, para repos privados)</label>
+              <input
+                className="input"
+                type="password"
+                value={form.githubToken || ""}
+                onChange={(e) => sf("githubToken", e.target.value)}
+                placeholder="ghp_..."
+              />
+            </div>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={testGitHub}
+              disabled={ghLoading || !form.githubRepo}
+              style={{ width: "100%" }}
+            >
+              {ghLoading ? "Conectando..." : "Conectar y sincronizar"}
+            </button>
+
+            {ghStatus && (
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 12px",
+                background: ghStatus.startsWith("Error") ? "#2a0d0d" : "#0d2a0d",
+                borderRadius: 8,
+                border: `1px solid ${ghStatus.startsWith("Error") ? "#C62828" : "#388E3C"}`,
+              }}>
+                <span style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: ghStatus.startsWith("Error") ? "var(--danger)" : "var(--success)",
+                  flexShrink: 0,
+                }} />
+                <span style={{ fontSize: 11, color: ghStatus.startsWith("Error") ? "var(--danger)" : "var(--success)" }}>{ghStatus}</span>
+              </div>
+            )}
+
+            {ghFiles.length > 0 && (
+              <div>
+                <label className="label">Archivos encontrados</label>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {ghFiles.map((f, i) => (
+                    <div key={i} style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "6px 10px",
+                      background: "var(--bg)",
+                      borderRadius: 6,
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={f.selected}
+                        onChange={() => setGhFiles((prev) => prev.map((ff, j) => j === i ? { ...ff, selected: !ff.selected } : ff))}
+                      />
+                      <span style={{ fontSize: 11, flex: 1 }}>{f.path}</span>
+                      <span style={{ fontSize: 9, color: "var(--text-dim)" }}>{Math.round(f.size / 1024)}KB</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {form.githubContext && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span className="badge" style={{ background: "#0d2a0d", color: "var(--success)", border: "1px solid #388E3C" }}>
+                  ADN sincronizado
+                </span>
+                <span style={{ fontSize: 10, color: "var(--text-dim)" }}>{form.githubContext.length} chars</span>
+              </div>
+            )}
+
             <p style={{ fontSize: 10, color: "var(--text-dim)" }}>
-              Se leerán archivos .md y .txt de la raíz y carpeta /adn/ del repositorio para contextualizar la IA.
+              Se leeran archivos .md y .txt de la raiz y carpeta /adn/ del repositorio para contextualizar la IA.
             </p>
           </div>
         )}
@@ -247,8 +451,42 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
         {tab === "semanal" && (
           <div>
             <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "0 0 12px" }}>
-              Define formatos y categorías que se repiten cada semana.
+              Define formatos y categorias que se repiten cada semana.
             </p>
+
+            <CategoryTemplates
+              savedCategories={form.savedCategories}
+              onLoad={loadCategoryTemplate}
+              onSave={saveCategoryTemplate}
+            />
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 12 }}>
+              {DEFAULT_CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  className="filter-chip"
+                  onClick={() => {
+                    const emptyDay = weekStructure.find((s) => s.active && s.categories.some((c) => !c));
+                    if (emptyDay) {
+                      const idx = weekStructure.indexOf(emptyDay);
+                      setWeekStructure((p) =>
+                        p.map((x, j) => {
+                          if (j !== idx) return x;
+                          const nc = [...x.categories];
+                          const ei = nc.findIndex((c) => !c);
+                          if (ei !== -1) nc[ei] = cat;
+                          return { ...x, categories: nc };
+                        })
+                      );
+                    }
+                  }}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
             {weekStructure.map((s, i) => (
               <div key={s.dayOfWeek} style={{ background: "var(--bg)", borderRadius: 10, padding: 10, marginBottom: 8 }}>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: s.active ? 8 : 0 }}>
@@ -306,14 +544,14 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
                       </button>
                     </div>
                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8 }}>
-                      <div className="label" style={{ marginBottom: 6 }}>Categorías</div>
+                      <div className="label" style={{ marginBottom: 6 }}>Categorias</div>
                       {(s.categories || [""]).map((cat, ci) => (
                         <div key={ci} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "center", paddingLeft: 8 }}>
                           <input
                             className="input"
                             style={{ flex: 1, fontSize: 12, padding: "7px 10px" }}
                             value={cat}
-                            placeholder={`Categoría ${ci + 1}`}
+                            placeholder={`Categoria ${ci + 1}`}
                             onChange={(e) =>
                               setWeekStructure((p) =>
                                 p.map((x, j) => {
@@ -325,15 +563,6 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
                               )
                             }
                           />
-                          {ci === 0 && (s.categories || []).length < 3 && (
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => setWeekStructure((p) => p.map((x, j) => (j !== i ? x : { ...x, categories: [...(x.categories || [""]), ""] })))}
-                            >
-                              +
-                            </button>
-                          )}
                           {ci > 0 && (
                             <button
                               type="button"
@@ -345,6 +574,16 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
                           )}
                         </div>
                       ))}
+                      {(s.categories || []).length < 3 && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          style={{ marginLeft: 8 }}
+                          onClick={() => setWeekStructure((p) => p.map((x, j) => (j !== i ? x : { ...x, categories: [...(x.categories || [""]), ""] })))}
+                        >
+                          + Categoria
+                        </button>
+                      )}
                     </div>
                   </>
                 )}
@@ -367,7 +606,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
               className="btn btn-danger"
               style={{ width: "100%" }}
               onClick={() => {
-                if (window.confirm(`¿Eliminar ${form.name}?`)) {
+                if (window.confirm(`Eliminar ${form.name}?`)) {
                   onDelete(initial.id);
                   onClose();
                 }
