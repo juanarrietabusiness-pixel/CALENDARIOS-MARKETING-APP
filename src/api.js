@@ -190,6 +190,64 @@ export async function fetchGitHubADN(repoUrl, token) {
   return adnContent;
 }
 
+export async function generateSinglePost(apiKey, client, post, day, calendar) {
+  const isPost = post.format === "post";
+  let adnExtra = client.githubContext || "";
+  if (!adnExtra && client.githubRepo) {
+    adnExtra = await fetchGitHubADN(client.githubRepo, client.githubToken);
+  }
+  const ctx = buildClientContext(client, calendar, adnExtra);
+
+  const formatRules = {
+    post: `DESCRIPCION: caption completo con emojis, CTA a WhatsApp (${client.whatsapp || "N/A"}) y hashtags (${client.hashtags || "#Panama"})`,
+    reel: `GUION:\nHook (0-3s): ...\nDesarrollo (3-20s): ...\nCTA final: ...\n\nDESCRIPCION: caption para Instagram con emojis y CTA\n\nHASHTAGS_FINALES: hashtags relevantes`,
+    carrusel: `GUION:\nPortada: ...\nSlide 1: ...\nSlide 2: ...\nCTA: ...\n\nDESCRIPCION: caption para Instagram con emojis y CTA\n\nHASHTAGS_FINALES: hashtags relevantes`,
+    historia: `GUION: nota breve de que cubrir\n\nDESCRIPCION: texto overlay si aplica\n\nHASHTAGS_FINALES: hashtags relevantes`,
+    live: `GUION: bullet points del live\n\nDESCRIPCION: caption de anuncio del live\n\nHASHTAGS_FINALES: hashtags relevantes`,
+  };
+
+  let promptText = `${ctx}
+
+CAMPANA: ${calendar?.campaign || "N/A"}
+SEMANA: ${day.concept || "N/A"}
+CATEGORIA: ${day.category || "N/A"}
+FORMATO: ${post.format}
+FECHA: ${day.date} (${day.dayName || ""})
+${post.idea ? `IDEA: ${post.idea}` : "Genera basandote en el contexto del cliente, la categoria y el concepto semanal."}
+
+Genera el contenido en este formato exacto:
+${formatRules[post.format] || formatRules.post}
+
+${isPost ? "No incluyas GUION para posts estaticos, solo DESCRIPCION." : ""}
+Escribe directamente el contenido, sin preambulos.`;
+
+  const content = [];
+  if (post.image) {
+    content.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/jpeg",
+        data: post.image.includes(",") ? post.image.split(",")[1] : post.image,
+      },
+    });
+    promptText = `Basandote en la imagen adjunta y el siguiente contexto:\n\n${promptText}`;
+  }
+  content.push({ type: "text", text: promptText });
+
+  const txt = await callAI(apiKey, content, { retries: 2 });
+
+  const guionMatch = txt.match(/GUION:\s*([\s\S]*?)(?=DESCRIPCION:|HASHTAGS_FINALES:|$)/i);
+  const descMatch = txt.match(/DESCRIPCION:\s*([\s\S]*?)(?=GUION:|HASHTAGS_FINALES:|$)/i);
+  const hashMatch = txt.match(/HASHTAGS_FINALES:\s*([\s\S]*?)(?=GUION:|DESCRIPCION:|$)/i);
+
+  return {
+    guion: guionMatch ? guionMatch[1].trim() : "",
+    descripcion: descMatch ? descMatch[1].trim() : (isPost ? txt.trim() : ""),
+    hashtagsFinales: hashMatch ? hashMatch[1].trim() : "",
+  };
+}
+
 export function buildClientContext(client, calendar, adnExtra = "") {
   return `CLIENTE: ${client.name}
 INDUSTRIA: ${client.industry || "N/A"}

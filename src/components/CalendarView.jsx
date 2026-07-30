@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { FORMATS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid, fmtDate, compressImage, parseVideoURL } from "../utils";
-import { callAI, buildClientContext, fetchGitHubADN, parseAIResponse, buildScriptPrompt } from "../api";
+import { callAI, buildClientContext, fetchGitHubADN, parseAIResponse, buildScriptPrompt, generateSinglePost } from "../api";
 import { buildExportHTML } from "../export";
 
 function CopyButton({ text, label }) {
@@ -89,7 +89,7 @@ function ContentDisplay({ post }) {
   );
 }
 
-function PostSidePanel({ post, day, onUpdate, onClose }) {
+function PostSidePanel({ post, day, onUpdate, onClose, onDelete }) {
   const [form, setForm] = useState({ ...post });
   const imgRef = useRef();
   const sf = (k, v) => setForm((p) => ({ ...p, [k]: v }));
@@ -242,8 +242,11 @@ function PostSidePanel({ post, day, onUpdate, onClose }) {
         </div>
       </div>
 
-      <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)" }}>
-        <button className="btn btn-primary" style={{ width: "100%" }} onClick={() => { save(); onClose(); }}>
+      <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)", display: "flex", gap: 8 }}>
+        <button className="btn btn-danger btn-sm" onClick={() => { if (onDelete) onDelete(day.date, post.id); onClose(); }}>
+          🗑️
+        </button>
+        <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { save(); onClose(); }}>
           Guardar cambios
         </button>
       </div>
@@ -297,7 +300,7 @@ function AddPostInline({ day, onAdd, onCancel }) {
   );
 }
 
-function MonthGrid({ cal, onPostClick, onMove }) {
+function MonthGrid({ cal, onPostClick, onMove, onAddPost }) {
   const [drag, setDrag] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const today = fmtDate(new Date());
@@ -383,12 +386,36 @@ function MonthGrid({ cal, onPostClick, onMove }) {
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 3,
                   }}
                 >
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: st.text, flexShrink: 0 }} />
                   {f.icon} {post.category || post.idea?.slice(0, 12) || f.label}
                 </div>
               );
             })}
+            {cur && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onAddPost(date); }}
+                style={{
+                  width: "100%",
+                  padding: "2px 0",
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--text-dim)",
+                  cursor: "pointer",
+                  fontSize: 10,
+                  opacity: 0.4,
+                  transition: "opacity .2s",
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = 0.4}
+              >
+                +
+              </button>
+            )}
           </div>
         );
       })}
@@ -419,6 +446,11 @@ export default function CalendarView({
   const [debugOpen, setDebugOpen] = useState(false);
   const [debugLog, setDebugLog] = useState([]);
   const [addingPostDay, setAddingPostDay] = useState(null);
+  const [genSingleLoading, setGenSingleLoading] = useState({});
+  const [incompleteInfo, setIncompleteInfo] = useState(null);
+  const [approvalLink, setApprovalLink] = useState(cal.approvalId ? true : false);
+  const [approvalModal, setApprovalModal] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("");
   const [editMeta, setEditMeta] = useState(false);
   const [metaForm, setMetaForm] = useState({
     name: cal.name || "",
@@ -474,6 +506,177 @@ export default function CalendarView({
     );
     onUpdateCal(calId, { ...cal, days: newDays });
     setAddingPostDay(null);
+  };
+
+  const deletePost = (date, postId) => {
+    if (!window.confirm("Eliminar esta publicacion?")) return;
+    const newDays = (cal.days || []).map((d) =>
+      d.date !== date ? d : { ...d, posts: d.posts.filter((p) => p.id !== postId) }
+    );
+    onUpdateCal(calId, { ...cal, days: newDays });
+    if (sidePanel?.post?.id === postId) setSidePanel(null);
+  };
+
+  const generateSinglePostContent = async (post, day) => {
+    if (!apiKey) return;
+    setGenSingleLoading((p) => ({ ...p, [post.id]: true }));
+    try {
+      const result = await generateSinglePost(apiKey, client, post, day, cal);
+      const newDays = (cal.days || []).map((d) =>
+        d.date !== day.date ? d : {
+          ...d,
+          posts: d.posts.map((p) =>
+            p.id !== post.id ? p : {
+              ...p,
+              guion: result.guion || p.guion,
+              descripcion: result.descripcion || p.descripcion,
+              hashtagsFinales: result.hashtagsFinales || p.hashtagsFinales,
+              script: result.descripcion || result.guion || p.script,
+            }
+          ),
+        }
+      );
+      onUpdateCal(calId, { ...cal, days: newDays });
+    } catch (e) {
+      alert("Error al generar: " + e.message);
+    }
+    setGenSingleLoading((p) => ({ ...p, [post.id]: false }));
+  };
+
+  const getIncompletePosts = () => {
+    return (cal.days || []).flatMap((d) =>
+      (d.posts || [])
+        .filter((p) => {
+          const hasContent = p.guion || p.descripcion || p.script;
+          return !hasContent;
+        })
+        .map((p) => ({ ...p, _date: d.date, _dayName: d.dayName }))
+    );
+  };
+
+  const retryIncomplete = async () => {
+    const incomplete = getIncompletePosts();
+    if (!incomplete.length || !apiKey) return;
+    setGenLoading(true);
+    setGenProgress(0);
+    setGenStatus(`Reintentando ${incomplete.length} posts...`);
+    setIncompleteInfo(null);
+
+    try {
+      let adnExtra = client.githubContext || "";
+      if (!adnExtra && client.githubRepo) {
+        adnExtra = await fetchGitHubADN(client.githubRepo, client.githubToken);
+      }
+
+      const BATCH = 6;
+      let allResults = {};
+      const postsToGen = incomplete.map((p) => {
+        const day = (cal.days || []).find((d) => d.date === p._date);
+        return { ...p, _weekNumber: day?.weekNumber, _concept: day?.concept };
+      });
+
+      for (let i = 0; i < postsToGen.length; i += BATCH) {
+        const batch = postsToGen.slice(i, i + BATCH);
+        setGenStatus(`Reintentando ${i + 1}-${Math.min(i + BATCH, postsToGen.length)}/${postsToGen.length}...`);
+        setGenProgress(Math.round((i / postsToGen.length) * 90));
+
+        const promptText = buildScriptPrompt(client, cal, batch, adnExtra);
+        const content = [{ type: "text", text: promptText }];
+        for (const p of batch) {
+          if (p.image) {
+            content.push({
+              type: "image",
+              source: { type: "base64", media_type: "image/jpeg", data: p.image.includes(",") ? p.image.split(",")[1] : p.image },
+            });
+          }
+        }
+
+        const txt = await callAI(apiKey, content, { retries: 2 });
+        const parsed = parseAIResponse(txt);
+        allResults = { ...allResults, ...parsed };
+      }
+
+      const newDays = (cal.days || []).map((d) => ({
+        ...d,
+        posts: (d.posts || []).map((p) => {
+          const result = allResults[p.id];
+          if (!result) return p;
+          return { ...p, guion: result.guion || p.guion, descripcion: result.descripcion || p.descripcion, hashtagsFinales: result.hashtagsFinales || p.hashtagsFinales, script: result.descripcion || result.guion || p.script };
+        }),
+      }));
+      onUpdateCal(calId, { ...cal, days: newDays });
+
+      const stillIncomplete = newDays.flatMap((d) => d.posts.filter((p) => !p.guion && !p.descripcion && !p.script));
+      setGenProgress(100);
+      setGenStatus(`Listo! ${Object.keys(allResults).length} posts generados`);
+      if (stillIncomplete.length > 0) {
+        setIncompleteInfo({ count: stillIncomplete.length });
+      }
+      setTimeout(() => { setGenLoading(false); setGenStatus(""); setGenProgress(0); }, 2000);
+    } catch (e) {
+      setGenStatus("Error: " + e.message);
+      setTimeout(() => { setGenLoading(false); setGenStatus(""); setGenProgress(0); }, 4000);
+    }
+  };
+
+  const sendToClient = async () => {
+    if (!apiKey && !cal.approvalId) {
+      const approvalId = `${client.id}-${calId}-${Date.now()}`;
+      const calData = {
+        calendar: { ...cal },
+        client: { name: client.name, industry: client.industry, primaryColor: client.primaryColor, logo: client.logo },
+        approvals: {},
+      };
+      try {
+        await fetch(`/api/approval?id=${approvalId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "save_calendar", data: calData }),
+        });
+        onUpdateCal(calId, { ...cal, approvalId });
+        setApprovalLink(true);
+        setApprovalModal(true);
+      } catch {
+        const approvalIdLocal = `${client.id}-${calId}-${Date.now()}`;
+        onUpdateCal(calId, { ...cal, approvalId: approvalIdLocal });
+        setApprovalLink(true);
+        setApprovalModal(true);
+      }
+      return;
+    }
+    setApprovalModal(true);
+  };
+
+  const syncApprovals = async () => {
+    if (!cal.approvalId) return;
+    setSyncStatus("Sincronizando...");
+    try {
+      const res = await fetch(`/api/approval?id=${cal.approvalId}`);
+      const data = await res.json();
+      if (data.approvals && Object.keys(data.approvals).length > 0) {
+        let updated = 0;
+        const newDays = (cal.days || []).map((d) => ({
+          ...d,
+          posts: (d.posts || []).map((p) => {
+            const review = data.approvals[p.id];
+            if (!review) return p;
+            updated++;
+            return {
+              ...p,
+              status: review.estado === "aprobado" ? "approved" : review.estado === "cambios" ? "rejected" : p.status,
+              comment: review.comentario || p.comment,
+            };
+          }),
+        }));
+        onUpdateCal(calId, { ...cal, days: newDays });
+        setSyncStatus(`${updated} aprobaciones sincronizadas`);
+      } else {
+        setSyncStatus("Sin aprobaciones nuevas");
+      }
+    } catch {
+      setSyncStatus("Error al sincronizar");
+    }
+    setTimeout(() => setSyncStatus(""), 3000);
   };
 
   const movePost = (postId, sourceDate, targetDate) => {
@@ -609,6 +812,11 @@ export default function CalendarView({
 
       setGenProgress(100);
       const total = Object.keys(allResults).length;
+      const stillIncomplete = newDays.flatMap((d) => (d.posts || []).filter((p) => !p.guion && !p.descripcion && !p.script));
+      if (stillIncomplete.length > 0) {
+        setIncompleteInfo({ count: stillIncomplete.length });
+        addDebug(`WARN: ${stillIncomplete.length} posts quedaron sin generar`);
+      }
       setGenStatus(`Listo! ${total} posts generados`);
       addDebug(`Completado: ${total} posts actualizados`);
       setTimeout(() => { setGenLoading(false); setGenStatus(""); setGenProgress(0); }, 2000);
@@ -769,6 +977,12 @@ export default function CalendarView({
         </button>
         <button className="btn btn-secondary no-print" onClick={exportPDF}>PDF</button>
         <button className="btn btn-secondary" onClick={exportHTML}>HTML</button>
+        <button className="btn btn-secondary" onClick={sendToClient}>🔗 Enviar</button>
+        {cal.approvalId && (
+          <button className="btn btn-secondary" onClick={syncApprovals} disabled={!!syncStatus}>
+            🔄 {syncStatus || "Sync"}
+          </button>
+        )}
         <button
           className="btn btn-secondary"
           style={{ fontSize: 10 }}
@@ -829,12 +1043,53 @@ export default function CalendarView({
         </div>
       )}
 
+      {/* Counter */}
+      {(filterStatus !== "all" || filterFormat !== "all" || filterWeek !== "all") && (
+        <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "4px 0 8px" }}>
+          Mostrando {filteredDays.reduce((a, d) => a + d.posts.length, 0)} de {totalPosts} publicaciones
+        </div>
+      )}
+
+      {/* Incomplete posts warning */}
+      {incompleteInfo && (
+        <div style={{
+          background: "#2a1a0a",
+          border: "1px solid #F5A62366",
+          borderRadius: 10,
+          padding: "10px 14px",
+          marginBottom: 12,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+        }}>
+          <span style={{ fontSize: 12, color: "#FFA726" }}>
+            ⚠️ {incompleteInfo.count} publicaciones quedaron sin generar
+          </span>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={retryIncomplete}
+            disabled={genLoading}
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
+
+      {/* Approval sync status */}
+      {syncStatus && (
+        <div style={{ fontSize: 11, color: "var(--accent)", padding: "4px 0 8px" }}>
+          {syncStatus}
+        </div>
+      )}
+
       {/* Grid view */}
       {viewMode === "grid" ? (
         <MonthGrid
           cal={{ ...cal, days: filteredDays }}
           onPostClick={(post, day) => setSidePanel({ post, day })}
           onMove={movePost}
+          onAddPost={(date) => setAddingPostDay(date)}
         />
       ) : (
         /* List view */
@@ -920,10 +1175,31 @@ export default function CalendarView({
                               padding: "10px 12px",
                               cursor: "pointer",
                               transition: "border-color .2s",
+                              position: "relative",
                             }}
                             draggable
                             onDragStart={(e) => e.dataTransfer.setData("text/plain", JSON.stringify({ postId: post.id, sourceDate: day.date }))}
                           >
+                            {/* Delete button */}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); deletePost(day.date, post.id); }}
+                              style={{
+                                position: "absolute",
+                                top: 6,
+                                right: 6,
+                                background: "none",
+                                border: "none",
+                                color: "var(--danger)",
+                                cursor: "pointer",
+                                fontSize: 12,
+                                opacity: 0.5,
+                                padding: "2px 4px",
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
+                              onMouseLeave={(e) => e.currentTarget.style.opacity = 0.5}
+                            >
+                              🗑️
+                            </button>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                               <span style={{ fontSize: 16 }}>{f.icon}</span>
                               <span className="badge" style={{ background: f.color + "22", color: f.color }}>{f.label}</span>
@@ -936,6 +1212,27 @@ export default function CalendarView({
                             {post.idea && <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.6, marginBottom: 4 }}>{post.idea}</div>}
                             <ContentDisplay post={post} />
                             {post.image && <img src={post.image} alt="" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 6, marginTop: 6 }} />}
+                            {/* Individual AI generation */}
+                            {apiKey && !post.guion && !post.descripcion && !post.script && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); generateSinglePostContent(post, day); }}
+                                disabled={genSingleLoading[post.id]}
+                                style={{
+                                  marginTop: 8,
+                                  padding: "5px 10px",
+                                  background: "linear-gradient(135deg, #7B1FA2, #E91E63)",
+                                  color: "#fff",
+                                  border: "none",
+                                  borderRadius: 6,
+                                  cursor: genSingleLoading[post.id] ? "wait" : "pointer",
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  opacity: genSingleLoading[post.id] ? 0.6 : 1,
+                                }}
+                              >
+                                {genSingleLoading[post.id] ? "Generando..." : "✨ Generar con IA"}
+                              </button>
+                            )}
                           </div>
                         );
                       })}
@@ -975,6 +1272,80 @@ export default function CalendarView({
         </div>
       )}
 
+      {/* Add post inline for grid view */}
+      {addingPostDay && viewMode === "grid" && (
+        <div className="overlay" style={{ alignItems: "flex-end" }}>
+          <div style={{ background: "var(--card)", borderRadius: "20px 20px 0 0", padding: 16, width: "100%", maxWidth: 400 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <span style={{ fontSize: 13, fontWeight: 700 }}>Agregar post — {addingPostDay}</span>
+              <button className="btn-icon" onClick={() => setAddingPostDay(null)}>✕</button>
+            </div>
+            <AddPostInline
+              day={{ date: addingPostDay }}
+              onAdd={(format, idea) => addPost(addingPostDay, format, idea)}
+              onCancel={() => setAddingPostDay(null)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Approval link modal */}
+      {approvalModal && (
+        <div className="overlay">
+          <div style={{ background: "var(--card)", borderRadius: 20, padding: 24, width: "100%", maxWidth: 440 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 15 }}>Enviar a cliente</h3>
+              <button className="btn-icon" onClick={() => setApprovalModal(false)}>✕</button>
+            </div>
+
+            {cal.approvalId ? (
+              <>
+                <label className="label">Link de aprobacion</label>
+                <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+                  <input
+                    className="input"
+                    readOnly
+                    value={`${window.location.origin}/aprobar?id=${cal.approvalId}`}
+                    onClick={(e) => e.target.select()}
+                  />
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/aprobar?id=${cal.approvalId}`);
+                    }}
+                  >
+                    Copiar
+                  </button>
+                </div>
+
+                <label className="label">Mensaje para WhatsApp</label>
+                <textarea
+                  className="textarea"
+                  readOnly
+                  style={{ minHeight: 80, marginBottom: 12 }}
+                  value={`Hola${client.name ? " " + client.name : ""}, aqui esta el calendario de ${calName} para tu revision:\n${window.location.origin}/aprobar?id=${cal.approvalId}\nPuedes aprobar o pedir cambios directamente desde tu celular 📱`}
+                  onClick={(e) => {
+                    e.target.select();
+                    navigator.clipboard.writeText(e.target.value);
+                  }}
+                />
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setApprovalModal(false)}>Cerrar</button>
+                  <button className="btn btn-primary" style={{ flex: 1 }} onClick={syncApprovals}>🔄 Sincronizar</button>
+                </div>
+              </>
+            ) : (
+              <div style={{ textAlign: "center", padding: 20, color: "var(--text-dim)" }}>
+                <div style={{ fontSize: 24, marginBottom: 8 }}>🔗</div>
+                <p style={{ fontSize: 12, marginBottom: 12 }}>Se generara un link unico para que tu cliente revise y apruebe el calendario.</p>
+                <button className="btn btn-primary" onClick={sendToClient}>Generar link de aprobacion</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Side panel */}
       {sidePanel && (
         <>
@@ -983,6 +1354,7 @@ export default function CalendarView({
             post={sidePanel.post}
             day={sidePanel.day}
             onUpdate={updatePost}
+            onDelete={deletePost}
             onClose={() => setSidePanel(null)}
           />
         </>

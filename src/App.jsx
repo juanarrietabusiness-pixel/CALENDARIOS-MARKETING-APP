@@ -5,10 +5,17 @@ import ApiSetup from "./components/ApiSetup";
 import ClientModal from "./components/ClientModal";
 import PlanWizard from "./components/PlanWizard";
 import CalendarView from "./components/CalendarView";
+import Aprobar from "./pages/Aprobar";
 
 const STORAGE_KEY = "jads-data";
 
+const isApprovalPage = () => {
+  const path = window.location.pathname;
+  return path.includes("/aprobar") || window.location.hash.includes("/aprobar");
+};
+
 function App() {
+  if (isApprovalPage()) return <Aprobar />;
   const [clients, setClients] = useState([]);
   const [apiKey, setApiKey] = useState(() => lsGet("ja-apikey") || "");
   const [showApiSetup, setShowApiSetup] = useState(false);
@@ -138,12 +145,39 @@ function App() {
           setClients(data.clients);
           if (data.clients.length) setSelectedClientId(data.clients[0].id);
           setSelectedCalId(null);
+        } else if (data.aprobaciones && data.calendarioId) {
+          importReviewsData(data);
         }
       } catch {
-        alert("Archivo inválido");
+        alert("Archivo invalido");
       }
     };
     reader.readAsText(file);
+  };
+
+  const importReviewsData = (reviewData) => {
+    if (!calendar) {
+      alert("Selecciona un calendario primero.");
+      return;
+    }
+    const { aprobaciones } = reviewData;
+    if (!aprobaciones || typeof aprobaciones !== "object") return;
+    let updated = 0;
+    const newDays = (calendar.days || []).map((d) => ({
+      ...d,
+      posts: (d.posts || []).map((p) => {
+        const review = aprobaciones[p.id];
+        if (!review) return p;
+        updated++;
+        return {
+          ...p,
+          status: review.estado === "aprobado" ? "approved" : review.estado === "cambios" ? "rejected" : p.status,
+          comment: review.comentario || p.comment,
+        };
+      }),
+    }));
+    updateCalendar(selectedCalId, { ...calendar, days: newDays });
+    alert(`Importadas ${updated} revisiones.`);
   };
 
   if (loading) {
