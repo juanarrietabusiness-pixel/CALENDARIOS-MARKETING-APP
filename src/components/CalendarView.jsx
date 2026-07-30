@@ -930,6 +930,9 @@ export default function CalendarView({
                               <span className="badge" style={{ background: st.bg, color: st.text, border: `1px solid ${st.border}` }}>{st.label}</span>
                             </div>
                             {post.category && <div style={{ fontSize: 11, color: "var(--accent-alt)", fontWeight: 600, marginBottom: 4 }}>{post.category}</div>}
+                            {post.image && !post.idea && !post.guion && !post.descripcion && !post.script && (
+                              <span className="badge" style={{ background: "#2a1a0a", color: "var(--accent-alt)", border: "1px solid #F5A62344", marginBottom: 4 }}>Solo imagen</span>
+                            )}
                             {post.idea && <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.6, marginBottom: 4 }}>{post.idea}</div>}
                             <ContentDisplay post={post} />
                             {post.image && <img src={post.image} alt="" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 6, marginTop: 6 }} />}
