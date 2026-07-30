@@ -1,49 +1,155 @@
 
-export async function callAI(apiKey, content) {
+export async function callAI(apiKey, content, { retries = 2 } = {}) {
   if (!apiKey) throw new Error("API key no configurada");
 
   const isGroq = apiKey.startsWith("gsk_");
 
-  if (isGroq) {
-    let msgContent = content;
-    if (Array.isArray(content)) {
-      msgContent = content.filter((b) => b.type === "text").map((b) => ({ type: "text", text: b.text }));
-    }
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        max_tokens: 2048,
-        messages: [{ role: "user", content: msgContent }],
-      }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || "Error " + res.status);
-    }
-    const data = await res.json();
-    return data.choices?.[0]?.message?.content || "";
-  }
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      let res;
+      if (isGroq) {
+        let msgContent = content;
+        if (Array.isArray(content)) {
+          msgContent = content.filter((b) => b.type === "text").map((b) => ({ type: "text", text: b.text }));
+        }
+        res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            max_tokens: 2048,
+            messages: [{ role: "user", content: msgContent }],
+          }),
+        });
+      } else {
+        res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "anthropic-dangerous-direct-browser-access": "true",
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 2048,
+            messages: [{ role: "user", content }],
+          }),
+        });
+      }
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-    body: JSON.stringify({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 2048,
-      messages: [{ role: "user", content }],
-    }),
-  });
-  if (!res.ok) throw new Error("Error " + res.status);
-  const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
-  return data.content?.find((b) => b.type === "text")?.text || "";
+      if (res.status === 429 || res.status >= 500) {
+        if (attempt < retries) {
+          const wait = Math.pow(2, attempt + 1) * 1000;
+          await new Promise((r) => setTimeout(r, wait));
+          continue;
+        }
+      }
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || "Error " + res.status);
+      }
+
+      const data = await res.json();
+      if (isGroq) {
+        return data.choices?.[0]?.message?.content || "";
+      }
+      if (data.error) throw new Error(data.error.message);
+      return data.content?.find((b) => b.type === "text")?.text || "";
+    } catch (e) {
+      if (attempt < retries && (e.message.includes("429") || e.message.includes("500") || e.message.includes("fetch"))) {
+        const wait = Math.pow(2, attempt + 1) * 1000;
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
+export function parseAIResponse(rawText) {
+  const results = {};
+  const blocks = rawText.split(/<<<PUBLICACION_ID:/);
+  for (let i = 1; i < blocks.length; i++) {
+    const block = blocks[i];
+    const idEnd = block.indexOf(">>>");
+    if (idEnd === -1) continue;
+    const id = block.slice(0, idEnd).trim();
+    let rest = block.slice(idEnd + 3);
+    const nextBlock = rest.indexOf("<<<PUBLICACION_ID:");
+    if (nextBlock !== -1) rest = rest.slice(0, nextBlock);
+
+    const guionMatch = rest.match(/GUION:\s*([\s\S]*?)(?=DESCRIPCION:|HASHTAGS_FINALES:|<<<|$)/i);
+    const descMatch = rest.match(/DESCRIPCION:\s*([\s\S]*?)(?=GUION:|HASHTAGS_FINALES:|<<<|$)/i);
+    const hashMatch = rest.match(/HASHTAGS_FINALES:\s*([\s\S]*?)(?=GUION:|DESCRIPCION:|<<<|$)/i);
+
+    const guion = guionMatch ? guionMatch[1].trim() : "";
+    const descripcion = descMatch ? descMatch[1].trim() : "";
+    const hashtagsFinales = hashMatch ? hashMatch[1].trim() : "";
+
+    if (guion || descripcion || hashtagsFinales) {
+      results[id] = { guion, descripcion, hashtagsFinales };
+    }
+  }
+  return results;
+}
+
+export function buildScriptPrompt(client, calendar, posts, adnExtra = "") {
+  const ctx = buildClientContext(client, calendar, adnExtra);
+  const postsList = posts.map((p) => {
+    const formatRules = {
+      post: "Solo DESCRIPCION (caption con emojis, CTA y hashtags). No escribas GUION.",
+      reel: "GUION (escena por escena: Hook → Desarrollo → CTA) + DESCRIPCION (caption para la publicación) + HASHTAGS_FINALES",
+      carrusel: "GUION (texto por cada card/slide, separados por ---) + DESCRIPCION (caption) + HASHTAGS_FINALES",
+      historia: "GUION (nota breve, max 2 oraciones) + DESCRIPCION (texto overlay si aplica) + HASHTAGS_FINALES",
+      live: "GUION (puntos clave a cubrir en el live, formato bullet) + DESCRIPCION (caption de anuncio del live) + HASHTAGS_FINALES",
+    };
+    return `<<<PUBLICACION_ID:${p.id}>>>
+FORMATO: ${p.format}
+CATEGORIA: ${p.category || "N/A"}
+DIA: ${p._date} (${p._dayName || ""})
+SEMANA: ${p._weekNumber || ""}
+CONCEPTO_SEMANAL: ${p._concept || "N/A"}
+IDEA: ${p.idea || "genera según contexto del cliente"}
+REGLAS_FORMATO: ${formatRules[p.format] || formatRules.post}`;
+  }).join("\n\n");
+
+  return `${ctx}
+
+ESTILO DE GUIONES: ${client.estiloGuion || "Cercano, persuasivo, con emojis y CTA"}
+ESTILO DE LOCUCIÓN: ${client.estiloLocucion || "Natural y profesional"}
+WHATSAPP: ${client.whatsapp || "N/A"}
+HASHTAGS BASE: ${client.hashtags || "#Panama"}
+CAMPAÑA: ${calendar?.campaign || "N/A"}
+
+---
+
+INSTRUCCIONES:
+Genera el contenido para CADA publicación listada abajo.
+Respeta el formato de salida EXACTAMENTE.
+Cada publicación va delimitada por <<<PUBLICACION_ID:xxx>>> con su ID correspondiente.
+
+REGLAS POR FORMATO:
+- post: Solo DESCRIPCION (caption con emojis + CTA + hashtags). NO incluir GUION.
+- reel: GUION (Hook → Desarrollo → CTA, escena por escena) + DESCRIPCION + HASHTAGS_FINALES
+- carrusel: GUION (texto por card, separados por ---) + DESCRIPCION + HASHTAGS_FINALES
+- historia: GUION (nota breve) + DESCRIPCION + HASHTAGS_FINALES
+- live: GUION (bullet points del live) + DESCRIPCION + HASHTAGS_FINALES
+
+FORMATO DE RESPUESTA OBLIGATORIO:
+<<<PUBLICACION_ID:id_del_post>>>
+GUION:
+(contenido del guión aquí, o vacío si es post)
+DESCRIPCION:
+(caption/descripción aquí)
+HASHTAGS_FINALES:
+(hashtags finales aquí)
+
+---
+
+PUBLICACIONES A GENERAR:
+${postsList}`;
 }
 
 export async function fetchGitHubADN(repoUrl, token) {
