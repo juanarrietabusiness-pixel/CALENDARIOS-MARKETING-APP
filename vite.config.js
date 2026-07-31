@@ -3,5 +3,18 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: process.env.NETLIFY ? '/' : '/CALENDARIOS-MARKETING-APP/',
+  base: '/',
+  build: {
+    target: 'es2020',
+    cssMinify: 'lightningcss',
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/')) {
+            return 'react';
+          }
+        },
+      },
+    },
+  },
 })
