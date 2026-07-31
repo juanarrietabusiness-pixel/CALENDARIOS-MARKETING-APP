@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { FORMATS, DEFAULT_CATEGORIES } from "../constants";
 import { uid, compressImage, createEmptyClient } from "../utils";
-import { fetchGitHubADN } from "../api";
+import { fetchGitHubADN, extractClientADN } from "../api";
 
 const DAYS_ORDERED = [
   { dow: 1, name: "Lunes" },
@@ -110,7 +110,7 @@ function CategoryTemplates({ savedCategories, onLoad, onSave }) {
   );
 }
 
-export default function ClientModal({ initial, onSave, onDelete, onClose }) {
+export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey }) {
   const blank = createEmptyClient();
   const [form, setForm] = useState(initial ? { ...initial } : blank);
   const [tab, setTab] = useState("basico");
@@ -125,13 +125,50 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
   const [ghStatus, setGhStatus] = useState("");
   const [ghFiles, setGhFiles] = useState([]);
   const [ghLoading, setGhLoading] = useState(false);
+  const [adnExtracted, setAdnExtracted] = useState(null);
+  const [adnSelected, setAdnSelected] = useState({});
+  const [adnLoading, setAdnLoading] = useState(false);
   const logoRef = useRef();
   const sf = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const ADN_FIELD_LABELS = {
+    nombre: "Nombre",
+    industria: "Industria",
+    descripcion: "Descripcion",
+    valores: "Valores",
+    audiencia: "Audiencia",
+    competencia: "Competencia",
+    estiloGuion: "Estilo de guiones",
+    estiloLocucion: "Estilo de locucion",
+    hashtags: "Hashtags",
+    whatsapp: "WhatsApp",
+    instagram: "Instagram",
+    sucursales: "Sucursales",
+    notasInspeccion: "Notas de inspeccion",
+  };
+
+  const ADN_TO_FORM_KEY = {
+    nombre: "name",
+    industria: "industry",
+    descripcion: "descripcion",
+    valores: "valores",
+    audiencia: "audiencia",
+    competencia: "competencia",
+    estiloGuion: "estiloGuion",
+    estiloLocucion: "estiloLocucion",
+    hashtags: "hashtags",
+    whatsapp: "whatsapp",
+    instagram: "instagram",
+    sucursales: "sucursales",
+    notasInspeccion: "notasInspeccion",
+  };
 
   const testGitHub = async () => {
     if (!form.githubRepo) return;
     setGhLoading(true);
     setGhStatus("Conectando...");
+    setAdnExtracted(null);
+    setAdnSelected({});
     try {
       const match = form.githubRepo.match(/github\.com\/([^/]+)\/([^/]+)/);
       if (!match) { setGhStatus("URL invalida"); setGhLoading(false); return; }
@@ -157,11 +194,41 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
       const adnContent = await fetchGitHubADN(form.githubRepo, form.githubToken);
       if (adnContent) {
         sf("githubContext", adnContent);
+
+        if (apiKey) {
+          setAdnLoading(true);
+          setGhStatus("Analizando ADN con IA...");
+          try {
+            const extracted = await extractClientADN(apiKey, adnContent);
+            setAdnExtracted(extracted);
+            const sel = {};
+            Object.entries(extracted).forEach(([k, v]) => {
+              if (v) sel[k] = true;
+            });
+            setAdnSelected(sel);
+            setGhStatus(`ADN analizado — ${Object.values(sel).filter(Boolean).length} campos encontrados`);
+          } catch (e) {
+            setGhStatus("ADN cargado. Error al analizar: " + e.message);
+          }
+          setAdnLoading(false);
+        }
       }
     } catch (e) {
       setGhStatus("Error: " + e.message);
     }
     setGhLoading(false);
+  };
+
+  const applyAdnFields = () => {
+    if (!adnExtracted) return;
+    Object.entries(adnSelected).forEach(([key, checked]) => {
+      if (!checked || !adnExtracted[key]) return;
+      const formKey = ADN_TO_FORM_KEY[key];
+      if (formKey) sf(formKey, adnExtracted[key]);
+    });
+    setAdnExtracted(null);
+    setAdnSelected({});
+    setGhStatus("Campos aplicados al perfil");
   };
 
   const handleSave = () => {
@@ -356,7 +423,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
         {tab === "github" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
             <p style={{ fontSize: 12, color: "var(--text-dim)" }}>
-              Conecta un repositorio de GitHub para cargar automaticamente el ADN del cliente (archivos .md/.txt).
+              Conecta un repositorio de GitHub para cargar el ADN del cliente y llenar automaticamente los campos del perfil.
             </p>
             <div>
               <label className="label">URL del repositorio</label>
@@ -380,10 +447,10 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
             <button
               className="btn btn-primary btn-sm"
               onClick={testGitHub}
-              disabled={ghLoading || !form.githubRepo}
+              disabled={ghLoading || adnLoading || !form.githubRepo}
               style={{ width: "100%" }}
             >
-              {ghLoading ? "Conectando..." : "Conectar y sincronizar"}
+              {adnLoading ? "Analizando ADN con IA..." : ghLoading ? "Conectando..." : "Conectar y cargar ADN"}
             </button>
 
             {ghStatus && (
@@ -407,7 +474,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
               </div>
             )}
 
-            {ghFiles.length > 0 && (
+            {ghFiles.length > 0 && !adnExtracted && (
               <div>
                 <label className="label">Archivos encontrados</label>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -433,7 +500,86 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
               </div>
             )}
 
-            {form.githubContext && (
+            {adnExtracted && (
+              <div style={{ background: "var(--bg)", borderRadius: 10, padding: 12, border: "1px solid var(--accent)" + "44" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <label className="label" style={{ margin: 0 }}>Campos encontrados por IA</label>
+                  <button
+                    onClick={() => { setAdnExtracted(null); setAdnSelected({}); }}
+                    style={{ background: "none", border: "none", color: "var(--text-dim)", cursor: "pointer", fontSize: 12 }}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+                  {Object.entries(ADN_FIELD_LABELS).map(([key, label]) => {
+                    const value = adnExtracted[key];
+                    if (!value) return (
+                      <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", opacity: 0.4 }}>
+                        <input type="checkbox" disabled checked={false} />
+                        <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{label}: <em>(no encontrado)</em></span>
+                      </div>
+                    );
+                    const formKey = ADN_TO_FORM_KEY[key];
+                    const existing = form[formKey];
+                    const hasConflict = existing && existing !== value;
+                    return (
+                      <div key={key} style={{ padding: "6px 8px", background: adnSelected[key] ? "var(--accent)" + "11" : "transparent", borderRadius: 6, border: `1px solid ${adnSelected[key] ? "var(--accent)" + "33" : "transparent"}` }}>
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                          <input
+                            type="checkbox"
+                            checked={!!adnSelected[key]}
+                            onChange={() => setAdnSelected((p) => ({ ...p, [key]: !p[key] }))}
+                            style={{ marginTop: 2, flexShrink: 0 }}
+                          />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", marginBottom: 2 }}>{label}</div>
+                            <div style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5, wordBreak: "break-word" }}>
+                              {value.length > 120 ? value.slice(0, 120) + "..." : value}
+                            </div>
+                            {hasConflict && (
+                              <div style={{ fontSize: 10, color: "var(--accent-alt)", marginTop: 4, padding: "4px 6px", background: "#2a1a0a", borderRadius: 4, border: "1px solid #F5A62333" }}>
+                                Actual: {existing.length > 80 ? existing.slice(0, 80) + "..." : existing}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    style={{ flex: 1 }}
+                    onClick={() => {
+                      const all = {};
+                      Object.entries(adnExtracted).forEach(([k, v]) => { if (v) all[k] = true; });
+                      setAdnSelected(all);
+                    }}
+                  >
+                    Todos
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    style={{ flex: 1 }}
+                    onClick={() => setAdnSelected({})}
+                  >
+                    Ninguno
+                  </button>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    style={{ flex: 2 }}
+                    onClick={applyAdnFields}
+                    disabled={!Object.values(adnSelected).some(Boolean)}
+                  >
+                    Aplicar seleccionados
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {form.githubContext && !adnExtracted && (
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span className="badge" style={{ background: "#0d2a0d", color: "var(--success)", border: "1px solid #388E3C" }}>
                   ADN sincronizado
@@ -442,8 +588,14 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
               </div>
             )}
 
+            {!apiKey && (
+              <p style={{ fontSize: 10, color: "var(--accent-alt)", background: "#2a1a0a", padding: "8px 10px", borderRadius: 6, border: "1px solid #F5A62333" }}>
+                Configura una API key en ajustes para que la IA analice el ADN y llene los campos automaticamente.
+              </p>
+            )}
+
             <p style={{ fontSize: 10, color: "var(--text-dim)" }}>
-              Se leeran archivos .md y .txt de la raiz y carpeta /adn/ del repositorio para contextualizar la IA.
+              Se leeran archivos .md y .txt de la raiz y carpeta /adn/ del repositorio. Con API key configurada, la IA analizara el contenido y sugerira campos para el perfil.
             </p>
           </div>
         )}

@@ -468,6 +468,7 @@ function App() {
           initial={editingClient}
           onSave={saveClient}
           onDelete={deleteClient}
+          apiKey={apiKey}
           onClose={() => {
             setShowClientModal(false);
             setEditingClient(null);
