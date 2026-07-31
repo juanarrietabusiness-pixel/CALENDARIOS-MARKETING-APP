@@ -248,6 +248,59 @@ Escribe directamente el contenido, sin preambulos.`;
   };
 }
 
+export async function generateFieldForPost(apiKey, client, post, day, calendar, field) {
+  let adnExtra = client.githubContext || "";
+  if (!adnExtra && client.githubRepo) {
+    adnExtra = await fetchGitHubADN(client.githubRepo, client.githubToken);
+  }
+  const ctx = buildClientContext(client, calendar, adnExtra);
+  let promptText = "";
+
+  if (field === "idea") {
+    promptText = `${ctx}
+CAMPANA: ${calendar?.campaign || "N/A"}
+SEMANA: ${day.concept || "N/A"}
+CATEGORIA: ${day.category || post.category || "N/A"}
+FORMATO: ${post.format}
+FECHA: ${day.date} (${day.dayName || ""})
+
+Genera UNA idea creativa y concreta para una publicacion de ${post.format} para este cliente.
+La idea debe ser especifica, accionable y alineada con la marca, la categoria y el concepto semanal.
+Responde SOLO con la idea, sin preambulos ni explicaciones. Maximo 2 oraciones.`;
+  } else if (field === "guion") {
+    promptText = `${ctx}
+CAMPANA: ${calendar?.campaign || "N/A"}
+SEMANA: ${day.concept || "N/A"}
+CATEGORIA: ${day.category || post.category || "N/A"}
+FORMATO: ${post.format}
+FECHA: ${day.date} (${day.dayName || ""})
+IDEA: ${post.idea || "N/A"}
+
+Basandote en la idea y el contexto del cliente, genera el GUION para esta publicacion.
+${post.format === "reel" ? "Formato: Hook (0-3s) → Desarrollo (3-20s) → CTA final" : ""}
+${post.format === "carrusel" ? "Formato: texto por cada slide, separados por ---" : ""}
+${post.format === "historia" ? "Formato: nota breve, max 2 oraciones" : ""}
+${post.format === "live" ? "Formato: bullet points de los temas a cubrir" : ""}
+Responde SOLO con el guion, sin preambulos.`;
+  } else if (field === "descripcion") {
+    promptText = `${ctx}
+CAMPANA: ${calendar?.campaign || "N/A"}
+SEMANA: ${day.concept || "N/A"}
+CATEGORIA: ${day.category || post.category || "N/A"}
+FORMATO: ${post.format}
+FECHA: ${day.date} (${day.dayName || ""})
+IDEA: ${post.idea || "N/A"}
+${post.guion ? `GUION: ${post.guion}` : ""}
+
+Basandote en la idea${post.guion ? ", el guion" : ""} y el contexto del cliente, genera la DESCRIPCION (caption) para esta publicacion.
+Incluye emojis, CTA a WhatsApp (${client.whatsapp || "N/A"}) y hashtags (${client.hashtags || "#Panama"}).
+Responde SOLO con la descripcion/caption, sin preambulos.`;
+  }
+
+  const content = [{ type: "text", text: promptText }];
+  return await callAI(apiKey, content, { retries: 2 });
+}
+
 export function buildClientContext(client, calendar, adnExtra = "") {
   return `CLIENTE: ${client.name}
 INDUSTRIA: ${client.industry || "N/A"}
