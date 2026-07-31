@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { FORMATS, DEFAULT_CATEGORIES } from "../constants";
 import { uid, compressImage, createEmptyClient } from "../utils";
-import { fetchGitHubADN, extractClientADN } from "../api";
+import { fetchGitHubADN, extractClientADN, parseGitHubUrl } from "../api";
 
 const DAYS_ORDERED = [
   { dow: 1, name: "Lunes" },
@@ -163,43 +163,45 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
     notasInspeccion: "notasInspeccion",
   };
 
+  const [ghReadingPath, setGhReadingPath] = useState("");
+
+  const handleRepoUrlChange = (url) => {
+    sf("githubRepo", url);
+    const parsed = parseGitHubUrl(url);
+    if (parsed && parsed.folder) {
+      sf("githubFolder", parsed.folder);
+    }
+  };
+
   const testGitHub = async () => {
     if (!form.githubRepo) return;
     setGhLoading(true);
     setGhStatus("Conectando...");
     setAdnExtracted(null);
     setAdnSelected({});
+    setGhReadingPath("");
+
+    const parsed = parseGitHubUrl(form.githubRepo);
+    if (!parsed) { setGhStatus("URL invalida"); setGhLoading(false); return; }
+
+    const folder = form.githubFolder || parsed.folder || "";
+    const readingLabel = folder ? `${parsed.repo}/${folder}/` : `${parsed.repo}/`;
+    setGhReadingPath(readingLabel);
+
     try {
-      const match = form.githubRepo.match(/github\.com\/([^/]+)\/([^/]+)/);
-      if (!match) { setGhStatus("URL invalida"); setGhLoading(false); return; }
-      const [, owner, repo] = match;
-      const headers = { Accept: "application/vnd.github.v3+json" };
-      if (form.githubToken) headers.Authorization = "token " + form.githubToken;
+      const result = await fetchGitHubADN(form.githubRepo, form.githubToken, folder);
+      const fileList = result.files.map((f) => ({ name: f.name, path: f.path, size: f.size, selected: true }));
+      setGhFiles(fileList);
+      setGhStatus(fileList.length > 0 ? `Conectado (${fileList.length} archivos)` : "Conectado, sin archivos .md/.txt");
 
-      const files = [];
-      for (const path of ["", "adn/"]) {
-        const res = await fetch(`https://api.github.com/repos/${owner}/${repo.replace(/\.git$/, "")}/contents/${path}`, { headers });
-        if (!res.ok) continue;
-        const items = await res.json();
-        if (!Array.isArray(items)) continue;
-        for (const item of items) {
-          if (item.type === "file" && /\.(md|txt)$/i.test(item.name) && item.size < 50000) {
-            files.push({ name: item.name, path: item.path, size: item.size, selected: true });
-          }
-        }
-      }
-      setGhFiles(files);
-      setGhStatus(files.length > 0 ? `Conectado (${files.length} archivos)` : "Conectado, sin archivos .md/.txt");
-
-      const adnContent = await fetchGitHubADN(form.githubRepo, form.githubToken);
-      if (adnContent) {
-        sf("githubContext", adnContent);
+      if (result.content) {
+        sf("githubContext", result.content);
 
         if (apiKey) {
           setAdnLoading(true);
           setGhStatus("Analizando ADN con IA...");
           try {
-            const extracted = await extractClientADN(apiKey, adnContent);
+            const extracted = await extractClientADN(apiKey, result.content);
             setAdnExtracted(extracted);
             const sel = {};
             Object.entries(extracted).forEach(([k, v]) => {
@@ -423,16 +425,29 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
         {tab === "github" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
             <p style={{ fontSize: 12, color: "var(--text-dim)" }}>
-              Conecta un repositorio de GitHub para cargar el ADN del cliente y llenar automaticamente los campos del perfil.
+              Conecta un repositorio de GitHub para cargar el ADN del cliente. Puedes pegar la URL completa con carpeta
+              (ej: github.com/user/repo/tree/main/clientes/nombre) y se detectara automaticamente.
             </p>
             <div>
-              <label className="label">URL del repositorio</label>
+              <label className="label">Repositorio GitHub</label>
               <input
                 className="input"
                 value={form.githubRepo || ""}
-                onChange={(e) => sf("githubRepo", e.target.value)}
-                placeholder="https://github.com/usuario/repo"
+                onChange={(e) => handleRepoUrlChange(e.target.value)}
+                placeholder="https://github.com/usuario/agencia"
               />
+            </div>
+            <div>
+              <label className="label">Carpeta del cliente (dentro del repo)</label>
+              <input
+                className="input"
+                value={form.githubFolder || ""}
+                onChange={(e) => sf("githubFolder", e.target.value)}
+                placeholder="clientes/nombre-del-cliente"
+              />
+              <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 3 }}>
+                Dejar vacio para leer desde la raiz del repositorio.
+              </div>
             </div>
             <div>
               <label className="label">Token GitHub (opcional, para repos privados)</label>
@@ -471,6 +486,23 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
                   flexShrink: 0,
                 }} />
                 <span style={{ fontSize: 11, color: ghStatus.startsWith("Error") ? "var(--danger)" : "var(--success)" }}>{ghStatus}</span>
+              </div>
+            )}
+
+            {ghReadingPath && (
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "6px 10px",
+                background: "var(--card-alt)",
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+              }}>
+                <span style={{ fontSize: 13 }}>📂</span>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  Leyendo: <strong style={{ color: "var(--accent)" }}>{ghReadingPath}</strong>
+                </span>
               </div>
             )}
 
@@ -595,7 +627,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
             )}
 
             <p style={{ fontSize: 10, color: "var(--text-dim)" }}>
-              Se leeran archivos .md y .txt de la raiz y carpeta /adn/ del repositorio. Con API key configurada, la IA analizara el contenido y sugerira campos para el perfil.
+              Se leeran archivos .md y .txt de la carpeta indicada (o la raiz si esta vacia) y su subcarpeta /adn/. Con API key configurada, la IA analizara el contenido y sugerira campos para el perfil.
             </p>
           </div>
         )}
