@@ -625,7 +625,8 @@ export default function CalendarView({
     try {
       let adnExtra = client.githubContext || "";
       if (!adnExtra && client.githubRepo) {
-        adnExtra = await fetchGitHubADN(client.githubRepo, client.githubToken);
+        const result = await fetchGitHubADN(client.githubRepo, client.githubToken, client.githubFolder);
+        adnExtra = result.content;
       }
 
       const BATCH = 6;
@@ -789,7 +790,8 @@ export default function CalendarView({
       if (!adnExtra && client.githubRepo) {
         setGenStatus("Cargando ADN desde GitHub...");
         addDebug("Fetching GitHub ADN: " + client.githubRepo);
-        adnExtra = await fetchGitHubADN(client.githubRepo, client.githubToken);
+        const result = await fetchGitHubADN(client.githubRepo, client.githubToken, client.githubFolder);
+        adnExtra = result.content;
         addDebug("GitHub ADN: " + (adnExtra ? adnExtra.length + " chars" : "vacio"));
       } else if (adnExtra) {
         addDebug("Usando ADN cacheado: " + adnExtra.length + " chars");

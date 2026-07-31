@@ -154,7 +154,8 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
       let adnExtra = client.githubContext || "";
       if (!adnExtra && client.githubRepo) {
         setAiStatus("Cargando ADN desde GitHub...");
-        adnExtra = await fetchGitHubADN(client.githubRepo, client.githubToken);
+        const result = await fetchGitHubADN(client.githubRepo, client.githubToken, client.githubFolder);
+        adnExtra = result.content;
       }
       const ctx = buildClientContext(client, { campaign }, adnExtra);
       const daysList = allDays.map((d) => {

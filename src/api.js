@@ -152,20 +152,33 @@ PUBLICACIONES A GENERAR:
 ${postsList}`;
 }
 
-export async function fetchGitHubADN(repoUrl, token) {
-  if (!repoUrl) return "";
-  const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
-  if (!match) return "";
-  const [, owner, repo] = match;
+export function parseGitHubUrl(url) {
+  if (!url) return null;
+  const treeMatch = url.match(/github\.com\/([^/]+)\/([^/]+)\/tree\/[^/]+\/(.+)/);
+  if (treeMatch) {
+    return { owner: treeMatch[1], repo: treeMatch[2].replace(/\.git$/, ""), folder: treeMatch[3].replace(/\/$/, "") };
+  }
+  const repoMatch = url.match(/github\.com\/([^/]+)\/([^/]+)/);
+  if (repoMatch) {
+    return { owner: repoMatch[1], repo: repoMatch[2].replace(/\.git$/, ""), folder: "" };
+  }
+  return null;
+}
+
+export async function fetchGitHubADN(repoUrl, token, folder = "") {
+  const parsed = parseGitHubUrl(repoUrl);
+  if (!parsed) return { content: "", files: [] };
+  const { owner, repo } = parsed;
+  const basePath = folder || parsed.folder || "";
   const headers = { Accept: "application/vnd.github.v3+json" };
   if (token) headers.Authorization = "token " + token;
 
-  const paths = ["", "adn/"];
+  const paths = basePath ? [basePath, basePath + "/adn"] : ["", "adn/"];
   const files = [];
 
   for (const path of paths) {
     try {
-      const res = await fetch(`https://api.github.com/repos/${owner}/${repo.replace(/\.git$/, "")}/contents/${path}`, { headers });
+      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, { headers });
       if (!res.ok) continue;
       const items = await res.json();
       if (!Array.isArray(items)) continue;
@@ -187,14 +200,15 @@ export async function fetchGitHubADN(repoUrl, token) {
       }
     } catch { /* skip */ }
   }
-  return adnContent;
+  return { content: adnContent, files, basePath, owner, repo };
 }
 
 export async function generateSinglePost(apiKey, client, post, day, calendar) {
   const isPost = post.format === "post";
   let adnExtra = client.githubContext || "";
   if (!adnExtra && client.githubRepo) {
-    adnExtra = await fetchGitHubADN(client.githubRepo, client.githubToken);
+    const result = await fetchGitHubADN(client.githubRepo, client.githubToken, client.githubFolder);
+    adnExtra = result.content;
   }
   const ctx = buildClientContext(client, calendar, adnExtra);
 
@@ -251,7 +265,8 @@ Escribe directamente el contenido, sin preambulos.`;
 export async function generateFieldForPost(apiKey, client, post, day, calendar, field) {
   let adnExtra = client.githubContext || "";
   if (!adnExtra && client.githubRepo) {
-    adnExtra = await fetchGitHubADN(client.githubRepo, client.githubToken);
+    const result = await fetchGitHubADN(client.githubRepo, client.githubToken, client.githubFolder);
+    adnExtra = result.content;
   }
   const ctx = buildClientContext(client, calendar, adnExtra);
   let promptText = "";
