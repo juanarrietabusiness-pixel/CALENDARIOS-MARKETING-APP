@@ -301,6 +301,25 @@ Responde SOLO con la descripcion/caption, sin preambulos.`;
   return await callAI(apiKey, content, { retries: 2 });
 }
 
+export async function extractClientADN(apiKey, repoContent) {
+  const promptText = `Analiza el siguiente contenido de un repositorio de GitHub de un cliente y extrae la informacion para llenar su perfil de agencia de marketing.
+
+CONTENIDO DEL REPOSITORIO:
+${repoContent}
+
+Responde UNICAMENTE con un JSON valido con esta estructura exacta, sin texto adicional:
+{"nombre":"","industria":"","descripcion":"","valores":"","audiencia":"","competencia":"","estiloGuion":"","estiloLocucion":"","hashtags":"","whatsapp":"","instagram":"","sucursales":"","notasInspeccion":""}
+
+Si no encuentras informacion para un campo, dejalo como string vacio.
+No inventes datos que no esten en el contenido.`;
+
+  const content = [{ type: "text", text: promptText }];
+  const raw = await callAI(apiKey, content, { retries: 2 });
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error("No se pudo parsear la respuesta de IA");
+  return JSON.parse(jsonMatch[0]);
+}
+
 export function buildClientContext(client, calendar, adnExtra = "") {
   return `CLIENTE: ${client.name}
 INDUSTRIA: ${client.industry || "N/A"}
