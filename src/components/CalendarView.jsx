@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { FORMATS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid, fmtDate, compressImage, parseVideoURL } from "../utils";
-import { callAI, buildClientContext, fetchGitHubADN, parseAIResponse, buildScriptPrompt, generateSinglePost } from "../api";
+import { callAI, buildClientContext, fetchGitHubADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost } from "../api";
 import { buildExportHTML } from "../export";
 
 function CopyButton({ text, label }) {
@@ -89,14 +89,40 @@ function ContentDisplay({ post }) {
   );
 }
 
-function PostSidePanel({ post, day, onUpdate, onClose, onDelete }) {
+function PostSidePanel({ post, day, onUpdate, onClose, onDelete, apiKey, client, cal }) {
   const [form, setForm] = useState({ ...post });
+  const [fieldLoading, setFieldLoading] = useState({});
   const imgRef = useRef();
   const sf = (k, v) => setForm((p) => ({ ...p, [k]: v }));
   const f = FORMATS[form.format] || FORMATS.post;
   const isPost = form.format === "post";
 
   const save = () => onUpdate(day.date, form);
+
+  const generateField = async (field) => {
+    if (!apiKey) return;
+    setFieldLoading((p) => ({ ...p, [field]: true }));
+    try {
+      const result = await generateFieldForPost(apiKey, client, form, day, cal, field);
+      sf(field, result);
+    } catch (e) {
+      alert("Error: " + e.message);
+    }
+    setFieldLoading((p) => ({ ...p, [field]: false }));
+  };
+
+  const aiBtnStyle = {
+    padding: "2px 8px",
+    background: "linear-gradient(135deg, #7B1FA2, #E91E63)",
+    color: "#fff",
+    border: "none",
+    borderRadius: 5,
+    cursor: "pointer",
+    fontSize: 9,
+    fontWeight: 700,
+    opacity: 1,
+    transition: "opacity .2s",
+  };
 
   return (
     <div className="panel-right">
@@ -163,13 +189,32 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete }) {
         </div>
 
         <div style={{ marginBottom: 12 }}>
-          <label className="label">Idea</label>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <label className="label" style={{ margin: 0 }}>Idea</label>
+            <div style={{ display: "flex", gap: 4 }}>
+              {apiKey && (
+                <button onClick={() => generateField("idea")} disabled={fieldLoading.idea} style={{ ...aiBtnStyle, opacity: fieldLoading.idea ? 0.5 : 1 }}>
+                  {fieldLoading.idea ? "Generando..." : "✨ IA"}
+                </button>
+              )}
+            </div>
+          </div>
           <textarea className="textarea" value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Idea del contenido..." />
         </div>
 
         {!isPost && (
           <div style={{ marginBottom: 12 }}>
-            <label className="label" style={{ color: "#E91E63" }}>Guion</label>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <label className="label" style={{ margin: 0, color: "#E91E63" }}>Guion</label>
+              <div style={{ display: "flex", gap: 4 }}>
+                <CopyButton text={form.guion} label="Copiar" />
+                {apiKey && (
+                  <button onClick={() => generateField("guion")} disabled={fieldLoading.guion} style={{ ...aiBtnStyle, opacity: fieldLoading.guion ? 0.5 : 1 }}>
+                    {fieldLoading.guion ? "Generando..." : "✨ IA"}
+                  </button>
+                )}
+              </div>
+            </div>
             <textarea
               className="textarea"
               style={{ minHeight: 100, lineHeight: 1.8, borderColor: "#E91E6333" }}
@@ -181,7 +226,17 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete }) {
         )}
 
         <div style={{ marginBottom: 12 }}>
-          <label className="label">Descripcion</label>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <label className="label" style={{ margin: 0 }}>Descripcion</label>
+            <div style={{ display: "flex", gap: 4 }}>
+              <CopyButton text={form.descripcion || form.script} label="Copiar" />
+              {apiKey && (
+                <button onClick={() => generateField("descripcion")} disabled={fieldLoading.descripcion} style={{ ...aiBtnStyle, opacity: fieldLoading.descripcion ? 0.5 : 1 }}>
+                  {fieldLoading.descripcion ? "Generando..." : "✨ IA"}
+                </button>
+              )}
+            </div>
+          </div>
           <textarea
             className="textarea"
             style={{ minHeight: isPost ? 120 : 80, lineHeight: 1.8 }}
@@ -438,6 +493,7 @@ export default function CalendarView({
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterFormat, setFilterFormat] = useState("all");
   const [filterWeek, setFilterWeek] = useState("all");
+  const [filterDOW, setFilterDOW] = useState("all");
   const [renaming, setRenaming] = useState(false);
   const [nameVal, setNameVal] = useState(cal.name || (MONTHS[cal.month] + " " + cal.year));
   const [genLoading, setGenLoading] = useState(false);
@@ -474,6 +530,10 @@ export default function CalendarView({
     }),
   })).filter((day) => {
     if (filterWeek !== "all" && String(day.weekNumber) !== filterWeek) return false;
+    if (filterDOW !== "all") {
+      const dow = new Date(day.date + "T12:00:00").getDay();
+      if (String(dow) !== filterDOW) return false;
+    }
     return day.posts.length > 0 || (filterStatus === "all" && filterFormat === "all");
   });
 
@@ -620,7 +680,7 @@ export default function CalendarView({
   };
 
   const sendToClient = async () => {
-    if (!apiKey && !cal.approvalId) {
+    if (!cal.approvalId) {
       const approvalId = `${client.id}-${calId}-${Date.now()}`;
       const calData = {
         calendar: { ...cal },
@@ -1042,9 +1102,17 @@ export default function CalendarView({
           ))}
         </div>
       )}
+      <div className="filter-bar">
+        <button className={`filter-chip ${filterDOW === "all" ? "active" : ""}`} onClick={() => setFilterDOW("all")}>Todos</button>
+        {[1, 2, 3, 4, 5, 6, 0].map((dow) => (
+          <button key={dow} className={`filter-chip ${filterDOW === String(dow) ? "active" : ""}`} onClick={() => setFilterDOW(String(dow))}>
+            {DAYS[dow]}
+          </button>
+        ))}
+      </div>
 
       {/* Counter */}
-      {(filterStatus !== "all" || filterFormat !== "all" || filterWeek !== "all") && (
+      {(filterStatus !== "all" || filterFormat !== "all" || filterWeek !== "all" || filterDOW !== "all") && (
         <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "4px 0 8px" }}>
           Mostrando {filteredDays.reduce((a, d) => a + d.posts.length, 0)} de {totalPosts} publicaciones
         </div>
@@ -1356,6 +1424,9 @@ export default function CalendarView({
             onUpdate={updatePost}
             onDelete={deletePost}
             onClose={() => setSidePanel(null)}
+            apiKey={apiKey}
+            client={client}
+            cal={cal}
           />
         </>
       )}
