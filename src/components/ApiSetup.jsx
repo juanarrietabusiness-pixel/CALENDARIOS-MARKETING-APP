@@ -1,6 +1,7 @@
 import { useId, useState } from "react";
 import { lsGet, lsSet } from "../utils";
 import { useDialogA11y } from "../hooks/useDialogA11y";
+import Icon from "./Icon";
 
 export default function ApiSetup({ onDone, onClose }) {
   const [key, setKey] = useState(lsGet("ja-apikey") || "");
@@ -32,7 +33,7 @@ export default function ApiSetup({ onDone, onClose }) {
     <div className="overlay">
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={`${inputId}-title`} className="dialog">
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button className="btn-icon" onClick={onClose} aria-label="Cerrar configuración de IA">✕</button>
+          <button className="btn-icon" onClick={onClose} aria-label="Cerrar configuración de IA"><Icon name="close" /></button>
         </div>
 
         <div style={{ textAlign: "center", marginBottom: "var(--sp-5)" }}>

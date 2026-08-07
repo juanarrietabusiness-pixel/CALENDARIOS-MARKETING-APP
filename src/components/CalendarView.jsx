@@ -1,9 +1,10 @@
-import { useId, useState, useRef } from "react";
-import { FORMATS, STATUSES, MONTHS, DAYS } from "../constants";
+import { useEffect, useId, useState, useRef } from "react";
+import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid, fmtDate, compressImage, parseVideoURL } from "../utils";
 import { callAI, fetchGitHubADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost } from "../api";
 import { buildExportHTML } from "../export";
 import { useDialogA11y } from "../hooks/useDialogA11y";
+import Icon from "./Icon";
 
 function stripMarkdown(text) {
   if (!text) return "";
@@ -145,7 +146,7 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, apiKey, client,
       disabled={fieldLoading[field]}
       aria-label={`Generar ${label} con IA`}
     >
-      {fieldLoading[field] ? "Generando…" : "✨ IA"}
+      {fieldLoading[field] ? "Generando…" : <><Icon name="sparkles" size={14} /> IA</>}
     </button>
   );
 
@@ -159,7 +160,7 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, apiKey, client,
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--sp-3)", padding: "var(--sp-4)", paddingTop: "calc(var(--sp-4) + var(--safe-top))", borderBottom: "1px solid var(--border)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", minWidth: 0 }}>
-          <span aria-hidden="true" style={{ fontSize: "var(--fs-lg)" }}>{f.icon}</span>
+          <Icon name={FORMAT_ICONS[form.format] || "formatPost"} size={20} style={{ color: f.color }} />
           <div style={{ minWidth: 0 }}>
             <h2 id={`${ids}-title`} style={{ fontSize: "var(--fs-sm)", fontWeight: 700 }}>
               {f.label} — {day.dayName} {(day.date || "").split("-")[2]}
@@ -167,7 +168,7 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, apiKey, client,
             <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>{day.date}</p>
           </div>
         </div>
-        <button className="btn-icon" onClick={() => { save(); onClose(); }} aria-label="Guardar y cerrar">✕</button>
+        <button className="btn-icon" onClick={() => { save(); onClose(); }} aria-label="Guardar y cerrar"><Icon name="close" /></button>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "var(--sp-4)" }}>
@@ -196,7 +197,7 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, apiKey, client,
                   minHeight: "var(--tap-sm)",
                 }}
               >
-                <span aria-hidden="true">{fmt.icon}</span> {fmt.label}
+                <Icon name={FORMAT_ICONS[k]} size={16} /> {fmt.label}
               </button>
             ))}
           </div>
@@ -348,7 +349,7 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, apiKey, client,
           aria-label="Eliminar publicación"
           onClick={() => { if (onDelete) onDelete(day.date, post.id); onClose(); }}
         >
-          🗑️
+          <Icon name="trash" size={18} />
         </button>
         <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { save(); onClose(); }}>
           Guardar cambios
@@ -386,7 +387,7 @@ function AddPostInline({ onAdd, onCancel }) {
                 minHeight: "var(--tap-sm)",
               }}
             >
-              <span aria-hidden="true">{f.icon}</span> {f.label}
+              <Icon name={FORMAT_ICONS[k]} size={16} /> {f.label}
             </button>
           ))}
         </div>
@@ -417,6 +418,65 @@ function AddPostInline({ onAdd, onCancel }) {
   );
 }
 
+/**
+ * Menú de acciones secundarias.
+ * Recoge lo que antes eran botones sueltos con el mismo peso visual que
+ * la acción principal, incluido el visor de diagnóstico.
+ */
+function OverflowMenu({ items }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e) => {
+      if (!wrapRef.current?.contains(e.target)) setOpen(false);
+    };
+    const onKeyDown = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="menu-wrap" ref={wrapRef}>
+      <button
+        className="btn-icon"
+        aria-label="Más acciones"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <Icon name="more" />
+      </button>
+      {open && (
+        <div className="menu-pop" role="menu">
+          {items.map((it, i) =>
+            it.sep ? (
+              <div key={`s${i}`} className="menu-sep" role="separator" />
+            ) : (
+              <button
+                key={it.label}
+                role="menuitem"
+                className="menu-item"
+                data-danger={it.danger ? "true" : undefined}
+                disabled={it.disabled}
+                onClick={() => { setOpen(false); it.onClick(); }}
+              >
+                <Icon name={it.icon} size={18} />
+                {it.label}
+              </button>
+            )
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
   const ref = useDialogA11y(onClose);
   const ids = useId();
@@ -426,7 +486,7 @@ function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
       <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet" style={{ maxWidth: 520 }}>
         <div className="sheet-header">
           <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)" }}>Editar calendario</h2>
-          <button className="btn-icon" onClick={onClose} aria-label="Cerrar">✕</button>
+          <button className="btn-icon" onClick={onClose} aria-label="Cerrar"><Icon name="close" /></button>
         </div>
 
         <div className="sheet-body">
@@ -486,7 +546,7 @@ function ApprovalDialog({ approvalUrl, whatsappMessage, onSync, onClose, onGener
       <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="dialog">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--sp-4)" }}>
           <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)" }}>Enviar a cliente</h2>
-          <button className="btn-icon" onClick={onClose} aria-label="Cerrar">✕</button>
+          <button className="btn-icon" onClick={onClose} aria-label="Cerrar"><Icon name="close" /></button>
         </div>
 
         <div role="status" aria-live="polite" className="sr-only">
@@ -525,7 +585,7 @@ function ApprovalDialog({ approvalUrl, whatsappMessage, onSync, onClose, onGener
           </>
         ) : (
           <div style={{ textAlign: "center", padding: "var(--sp-5) 0", color: "var(--text-dim)" }}>
-            <div aria-hidden="true" style={{ fontSize: "1.75rem", marginBottom: "var(--sp-2)" }}>🔗</div>
+            <Icon name="link" size={30} style={{ margin: "0 auto var(--sp-2)", color: "var(--text-muted)" }} />
             <p style={{ fontSize: "var(--fs-xs)", marginBottom: "var(--sp-4)" }}>
               Se generará un enlace único para que tu cliente revise y apruebe el calendario.
             </p>
@@ -546,7 +606,7 @@ function AddPostDialog({ date, onAdd, onClose }) {
       <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet" style={{ maxWidth: 420 }}>
         <div className="sheet-header">
           <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-sm)" }}>Agregar publicación — {date}</h2>
-          <button className="btn-icon" onClick={onClose} aria-label="Cerrar">✕</button>
+          <button className="btn-icon" onClick={onClose} aria-label="Cerrar"><Icon name="close" /></button>
         </div>
         <div className="sheet-body">
           <AddPostInline onAdd={onAdd} onCancel={onClose} />
@@ -664,7 +724,7 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
                   }}
                 >
                   <span className="cal-post-dot" style={{ background: st.text }} aria-hidden="true" />
-                  <span aria-hidden="true">{f.icon}</span>
+                  <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={13} />
                   <span className="cal-post-label" aria-hidden="true">{briefIdea || f.label}</span>
                   {post.publishTime && <span className="cal-post-time" aria-hidden="true">{post.publishTime}</span>}
                 </button>
@@ -758,6 +818,11 @@ export default function CalendarView({
 
   const weeks = [...new Set((cal.days || []).map((d) => d.weekNumber || 1))].sort((a, b) => a - b);
   const activeFilterCount = [filterStatus, filterFormat, filterWeek, filterDOW].filter((f) => f !== "all").length;
+  const approvalPct = totalPosts > 0 ? Math.round((approvedPosts / totalPosts) * 100) : 0;
+  const monthLabel = `${MONTHS[cal.month]} ${cal.year}`;
+  const calSubtitle = [calName === monthLabel ? null : monthLabel, cal.campaign]
+    .filter(Boolean)
+    .join(" · ");
 
   const filteredDays = (cal.days || []).map((day) => ({
     ...day,
@@ -1162,49 +1227,6 @@ export default function CalendarView({
 
   return (
     <div style={{ paddingBottom: sidePanel ? 0 : 80 }}>
-      {/* Campaign banner. El desplazamiento pegajoso se calcula desde la
-          altura real de la cabecera en lugar de un 52 fijo, que dejaba
-          un hueco o solapaba según el tamaño de fuente del sistema. */}
-      {(cal.campaign || calName) && (
-        <div style={{
-          background: "linear-gradient(135deg, #1B3A6B, var(--accent))",
-          borderRadius: "var(--radius)",
-          padding: "var(--sp-3) var(--sp-4)",
-          marginBottom: "var(--sp-3)",
-          position: "sticky",
-          top: "calc(var(--header-h) + var(--safe-top))",
-          zIndex: 10,
-        }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--sp-3)", flexWrap: "wrap" }}>
-            <div style={{ minWidth: 0 }}>
-              <h2 style={{ fontSize: "var(--fs-md)", fontWeight: 800 }}>{calName}</h2>
-              <p style={{ fontSize: "var(--fs-2xs)", color: "rgba(255,255,255,.9)" }}>
-                {MONTHS[cal.month]} {cal.year}
-                {cal.campaign && <span> · {cal.campaign}</span>}
-              </p>
-            </div>
-            <div style={{ display: "flex", gap: "var(--sp-2)" }}>
-              <button
-                className="btn-icon btn-icon-on-color"
-                aria-label="Editar campaña y conceptos semanales"
-                onClick={() => {
-                  setMetaForm({ name: cal.name || "", campaign: cal.campaign || "", weekConcepts: [...(cal.weekConcepts || [])] });
-                  setEditMeta(true);
-                }}
-              >✏️</button>
-              <button className="btn-icon btn-icon-on-color" aria-label="Renombrar calendario" onClick={() => setRenaming(true)}>📝</button>
-              <button className="btn-icon btn-icon-on-color" aria-label="Duplicar calendario" onClick={() => onDuplicateCal(calId)}>📋</button>
-              <button
-                className="btn-icon btn-icon-on-color"
-                aria-label="Eliminar calendario"
-                style={{ color: "#FFB4B1" }}
-                onClick={() => { if (window.confirm("¿Eliminar este calendario? Esta acción no se puede deshacer.")) onDeleteCal(calId); }}
-              >🗑️</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Rename inline */}
       {renaming && (
         <div className="field">
@@ -1228,84 +1250,129 @@ export default function CalendarView({
       {/* Edit calendar meta modal */}
       {editMeta && <EditMetaDialog metaForm={metaForm} setMetaForm={setMetaForm} onSave={saveMetaEdit} onClose={() => setEditMeta(false)} />}
 
-      {/* Stats */}
-      <div className="stat-grid">
-        {[
-          ["Publicaciones", totalPosts, "var(--accent)"],
-          ["Aprobadas", approvedPosts, "var(--success)"],
-          ["Publicadas", publishedPosts, "var(--purple)"],
-          ["Días", (cal.days || []).length, "var(--accent-alt)"],
-        ].map(([label, value, color]) => (
-          <div key={label} className="stat-card" style={{ borderColor: color }}>
-            <div className="stat-value" style={{ color }}>{value}</div>
-            <div className="stat-label">{label}</div>
-          </div>
-        ))}
+      {/* Identidad del calendario: una línea, no un banner de 90px.
+          El mes y el año sólo se muestran si el nombre del calendario no
+          los dice ya; si no, se leía «Agosto 2026 · Agosto 2026». */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-3)" }}>
+        <h2 style={{ fontSize: "var(--fs-lg)", fontWeight: 700, letterSpacing: "-.01em" }}>{calName}</h2>
+        {calSubtitle && (
+          <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)" }}>{calSubtitle}</span>
+        )}
       </div>
 
-      {/* Progress */}
-      {totalPosts > 0 && (
-        <div style={{ marginBottom: "var(--sp-3)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--fs-2xs)", color: "var(--text-dim)", marginBottom: "var(--sp-1)" }}>
-            <span id="progreso-label">Progreso de aprobación</span>
-            <span>{Math.round((approvedPosts / totalPosts) * 100)}%</span>
-          </div>
-          <div
-            className="progress-bar"
-            role="progressbar"
-            aria-labelledby="progreso-label"
-            aria-valuenow={Math.round((approvedPosts / totalPosts) * 100)}
-            aria-valuemin={0}
-            aria-valuemax={100}
-          >
-            <div className="progress-fill" style={{ width: `${(approvedPosts / totalPosts) * 100}%` }} />
-          </div>
+      {/* Estadísticas: una tira de una línea. Antes eran cuatro cajas de
+          490×110px con bordes de cuatro colores sin significado. */}
+      <div className="stat-strip">
+        <div className="stat-item">
+          <span className="stat-num">{totalPosts}</span>
+          <span className="stat-name">publicaciones</span>
         </div>
-      )}
+        <span className="stat-divider" aria-hidden="true" />
+        <div className="stat-item">
+          <span className="stat-num" style={{ color: "var(--success)" }}>{approvedPosts}</span>
+          <span className="stat-name">aprobadas</span>
+        </div>
+        {publishedPosts > 0 && (
+          <>
+            <span className="stat-divider" aria-hidden="true" />
+            <div className="stat-item">
+              <span className="stat-num" style={{ color: "var(--purple)" }}>{publishedPosts}</span>
+              <span className="stat-name">publicadas</span>
+            </div>
+          </>
+        )}
+        {totalPosts > 0 && (
+          <div className="stat-progress">
+            <div
+              className="progress-bar"
+              style={{ flex: 1 }}
+              role="progressbar"
+              aria-label="Progreso de aprobación"
+              aria-valuenow={approvalPct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <div className="progress-fill" style={{ width: `${approvalPct}%` }} />
+            </div>
+            <span className="stat-name" style={{ fontVariantNumeric: "tabular-nums" }}>{approvalPct}%</span>
+          </div>
+        )}
+      </div>
 
-      {/* Actions */}
-      <div className="action-row">
-        <button className="btn btn-accent" style={{ flex: "2 1 180px" }} onClick={generateScripts} disabled={genLoading || !apiKey}>
+      {/* Barra de herramientas: acción primaria, conmutador de vista y el
+          resto agrupado. Antes eran siete botones idénticos que mezclaban
+          la acción principal con un visor de registros de desarrollo. */}
+      <div className="toolbar">
+        <button className="btn btn-accent" onClick={generateScripts} disabled={genLoading || !apiKey}>
+          <Icon name="sparkles" size={18} />
           {genLoading ? genStatus : "Generar contenido"}
         </button>
-        <button
-          className="btn btn-secondary"
-          onClick={() => setViewMode((m) => (m === "list" ? "grid" : "list"))}
-          aria-label={viewMode === "list" ? "Cambiar a vista de calendario" : "Cambiar a vista de lista"}
-        >
-          {viewMode === "list" ? "Calendario" : "Lista"}
-        </button>
+
+        <div className="segmented" role="group" aria-label="Vista del calendario" style={{ width: "auto", flexShrink: 0 }}>
+          <button
+            type="button"
+            className={`segmented-btn ${viewMode === "list" ? "active" : ""}`}
+            aria-pressed={viewMode === "list"}
+            onClick={() => setViewMode("list")}
+          >
+            <Icon name="list" size={16} /> Lista
+          </button>
+          <button
+            type="button"
+            className={`segmented-btn ${viewMode === "grid" ? "active" : ""}`}
+            aria-pressed={viewMode === "grid"}
+            onClick={() => setViewMode("grid")}
+          >
+            <Icon name="grid" size={16} /> Mes
+          </button>
+        </div>
+
+        <span className="toolbar-spacer" />
+
         <button
           className="btn btn-secondary"
           onClick={() => setBankOpen((b) => !b)}
           aria-expanded={bankOpen}
-          aria-label={`Banco de ideas (${ideasBank.length})`}
+          aria-label={`Banco de ideas, ${ideasBank.length} guardadas`}
           style={{ position: "relative" }}
         >
-          <span aria-hidden="true">💡</span>
+          <Icon name="bulb" size={18} />
           {ideasBank.length > 0 && (
-            <span aria-hidden="true" style={{ position: "absolute", top: -4, right: -4, background: "var(--accent-alt)", color: "#000", borderRadius: "50%", minWidth: 18, height: 18, fontSize: "var(--fs-3xs)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>
+            <span aria-hidden="true" style={{ position: "absolute", top: -5, right: -5, background: "var(--accent-alt)", color: "#1a1200", borderRadius: "var(--radius-pill)", minWidth: 18, height: 18, fontSize: "var(--fs-3xs)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px" }}>
               {ideasBank.length}
             </span>
           )}
         </button>
-        <button className="btn btn-secondary no-print" onClick={exportPDF}>PDF</button>
-        <button className="btn btn-secondary" onClick={exportHTML}>HTML</button>
-        <button className="btn btn-secondary" onClick={sendToClient}><span aria-hidden="true">🔗</span> Enviar</button>
-        {cal.approvalId && (
-          <button className="btn btn-secondary" onClick={syncApprovals} disabled={!!syncStatus}>
-            <span aria-hidden="true">🔄</span> Sincronizar
-          </button>
-        )}
-        <button className="btn btn-secondary" onClick={() => setDebugOpen((d) => !d)} aria-expanded={debugOpen}>
-          {debugOpen ? "Cerrar diagnóstico" : "Diagnóstico"}
+
+        <button className="btn btn-primary" onClick={sendToClient}>
+          <Icon name="send" size={18} /> Enviar al cliente
         </button>
+
+        <OverflowMenu
+          items={[
+            cal.approvalId && { icon: "refresh", label: "Sincronizar aprobaciones", onClick: syncApprovals, disabled: !!syncStatus },
+            { icon: "pencil", label: "Editar campaña y conceptos", onClick: () => {
+              setMetaForm({ name: cal.name || "", campaign: cal.campaign || "", weekConcepts: [...(cal.weekConcepts || [])] });
+              setEditMeta(true);
+            } },
+            { icon: "file", label: "Renombrar calendario", onClick: () => setRenaming(true) },
+            { icon: "copy", label: "Duplicar calendario", onClick: () => onDuplicateCal(calId) },
+            { sep: true },
+            { icon: "download", label: "Exportar a HTML", onClick: exportHTML },
+            { icon: "file", label: "Imprimir o guardar en PDF", onClick: exportPDF },
+            { sep: true },
+            { icon: "terminal", label: debugOpen ? "Ocultar diagnóstico" : "Ver diagnóstico", onClick: () => setDebugOpen((d) => !d) },
+            { icon: "trash", label: "Eliminar calendario", danger: true, onClick: () => {
+              if (window.confirm("¿Eliminar este calendario? Esta acción no se puede deshacer.")) onDeleteCal(calId);
+            } },
+          ].filter(Boolean)}
+        />
       </div>
 
       {!apiKey && (
         <p className="notice notice-warn">
-          Configura una API key en <span aria-hidden="true">⚙️</span> ajustes para generar contenido con IA.
-          Mientras tanto puedes escribir las publicaciones a mano.
+          Conecta una API key desde el botón «Conectar IA» de la cabecera para generar
+          contenido automáticamente. Mientras tanto puedes escribir las publicaciones a mano.
         </p>
       )}
 
@@ -1363,7 +1430,7 @@ export default function CalendarView({
           <span>Filtros{activeFilterCount > 0 && <span className="sr-only">, {activeFilterCount} activos</span>}</span>
           <span style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
             {activeFilterCount > 0 && <span className="filters-count" aria-hidden="true">{activeFilterCount}</span>}
-            <span aria-hidden="true">{filtersOpen ? "▲" : "▼"}</span>
+            <Icon name={filtersOpen ? "chevronUp" : "chevronDown"} size={18} />
           </span>
         </button>
 
@@ -1381,7 +1448,7 @@ export default function CalendarView({
         <button className={`filter-chip ${filterFormat === "all" ? "active" : ""}`} aria-pressed={filterFormat === "all"} onClick={() => setFilterFormat("all")}>Todos</button>
         {Object.entries(FORMATS).map(([k, f]) => (
           <button key={k} className={`filter-chip ${filterFormat === k ? "active" : ""}`} aria-pressed={filterFormat === k} onClick={() => setFilterFormat(k)}>
-            <span aria-hidden="true">{f.icon}</span> {f.label}
+            <Icon name={FORMAT_ICONS[k]} size={14} /> {f.label}
           </button>
         ))}
       </div>
@@ -1429,7 +1496,7 @@ export default function CalendarView({
       {/* Incomplete posts warning */}
       {incompleteInfo && (
         <div className="notice notice-warn notice-action" role="alert">
-          <span><span aria-hidden="true">⚠️</span> {incompleteInfo.count} publicaciones quedaron sin generar</span>
+          <span style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)" }}><Icon name="alert" size={18} /> {incompleteInfo.count} publicaciones quedaron sin generar</span>
           <button className="btn btn-secondary btn-sm" onClick={retryIncomplete} disabled={genLoading}>
             Reintentar
           </button>
@@ -1473,9 +1540,9 @@ export default function CalendarView({
           }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
             <h3 style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", fontSize: "var(--fs-xs)", fontWeight: 700, color: "var(--accent-alt)" }}>
-              <span aria-hidden="true">💡</span> Banco de ideas ({ideasBank.length})
+              <Icon name="bulb" size={18} /> Banco de ideas ({ideasBank.length})
             </h3>
-            <button className="btn-icon" onClick={() => setBankOpen(false)} aria-label="Cerrar banco de ideas">✕</button>
+            <button className="btn-icon" onClick={() => setBankOpen(false)} aria-label="Cerrar banco de ideas"><Icon name="close" /></button>
           </div>
           {ideasBank.length === 0 ? (
             <p style={{ textAlign: "center", padding: "var(--sp-4) 0", color: "var(--text-dim)", fontSize: "var(--fs-2xs)" }}>
@@ -1502,7 +1569,7 @@ export default function CalendarView({
                       cursor: "grab",
                     }}
                   >
-                    <span aria-hidden="true" style={{ fontSize: "var(--fs-sm)" }}>{f.icon}</span>
+                    <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={16} style={{ color: f.color }} />
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ display: "block", fontSize: "var(--fs-2xs)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {title}
@@ -1516,7 +1583,7 @@ export default function CalendarView({
                       aria-label={`Quitar del banco: ${title}`}
                       onClick={() => removeFromBank(post.id)}
                     >
-                      ✕
+                      <Icon name="close" size={16} />
                     </button>
                   </li>
                 );
@@ -1569,49 +1636,51 @@ export default function CalendarView({
                       Enter/Espacio. Ahora es un botón con aria-expanded. */}
                   <button
                     type="button"
-                    className="tap-row"
+                    className="day-row"
                     aria-expanded={isExpanded}
                     aria-controls={`dia-${day.date}`}
                     onClick={() => setExpandedDay(isExpanded ? null : day.date)}
-                    style={{ padding: "var(--sp-3)", justifyContent: "space-between", minHeight: 60 }}
                   >
-                    <span style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)", minWidth: 0, flex: 1 }}>
-                      <span
-                        style={{
-                          background: client.primaryColor || "var(--accent)",
-                          borderRadius: "var(--radius-sm)",
-                          padding: "var(--sp-1) var(--sp-2)",
-                          textAlign: "center",
-                          flexShrink: 0,
-                          minWidth: 46,
-                        }}
-                      >
-                        <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "rgba(255,255,255,.9)", fontWeight: 600 }}>
-                          {(day.dayName || "").slice(0, 3).toUpperCase()}
-                        </span>
-                        <span style={{ display: "block", fontSize: "var(--fs-md)", fontWeight: 900, lineHeight: 1.1 }}>
-                          {(day.date || "").split("-")[2]}
-                        </span>
-                      </span>
-                      <span style={{ minWidth: 0 }}>
-                        <span style={{ display: "block", fontSize: "var(--fs-xs)", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {day.category || day.dayName}
-                          {day.specialDate && <span style={{ color: "var(--accent-alt)", marginLeft: "var(--sp-2)", fontSize: "var(--fs-2xs)" }}>{day.specialDate}</span>}
-                        </span>
-                        {day.concept && <span style={{ display: "block", fontSize: "var(--fs-2xs)", color: "var(--text-dim)", fontStyle: "italic" }}>{day.concept}</span>}
-                        <span style={{ display: "flex", gap: "var(--sp-1)", marginTop: "var(--sp-1)", flexWrap: "wrap" }}>
-                          {(day.posts || []).map((p) => {
-                            const f = FORMATS[p.format] || FORMATS.post;
-                            return (
-                              <span key={p.id} className="badge" style={{ background: f.color + "22", color: f.color, border: `1px solid ${f.color}66` }}>
-                                <span aria-hidden="true">{f.icon}</span> {p.category || f.label}
-                              </span>
-                            );
-                          })}
-                        </span>
-                      </span>
+                    <span className="day-date" style={{ background: client.primaryColor || "var(--accent)", color: "#fff" }}>
+                      <span className="day-date-dow">{(day.dayName || "").slice(0, 3).toUpperCase()}</span>
+                      <span className="day-date-num">{(day.date || "").split("-")[2]}</span>
                     </span>
-                    <span aria-hidden="true" style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)", flexShrink: 0 }}>{isExpanded ? "▲" : "▼"}</span>
+
+                    <span className="day-info">
+                      <span className="day-title">
+                        {day.category || day.dayName}
+                        {day.specialDate && <span style={{ color: "var(--accent-alt)", marginLeft: "var(--sp-2)", fontSize: "var(--fs-2xs)" }}>{day.specialDate}</span>}
+                      </span>
+                      {day.concept && <span className="day-concept">{day.concept}</span>}
+                    </span>
+
+                    {/* En pantalla ancha estos chips se van a la derecha y
+                        llenan el hueco que dejaba la fila. */}
+                    <span className="day-chips">
+                      {(day.posts || []).length === 0 ? (
+                        <span className="day-empty">Sin publicaciones</span>
+                      ) : (
+                        (day.posts || []).map((p) => {
+                          const f = FORMATS[p.format] || FORMATS.post;
+                          const st = STATUSES[p.status || "pending"];
+                          return (
+                            <span
+                              key={p.id}
+                              className="badge"
+                              style={{ background: f.color + "1F", color: f.color, border: `1px solid ${f.color}55` }}
+                            >
+                              <span style={{ width: 6, height: 6, borderRadius: "50%", background: st.text, flexShrink: 0 }} aria-hidden="true" />
+                              <Icon name={FORMAT_ICONS[p.format] || "formatPost"} size={13} />
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {p.idea || p.category || f.label}
+                              </span>
+                            </span>
+                          );
+                        })
+                      )}
+                    </span>
+
+                    <Icon name={isExpanded ? "chevronUp" : "chevronDown"} size={18} style={{ color: "var(--text-faint)" }} />
                   </button>
                   {isExpanded && (
                     <div id={`dia-${day.date}`} style={{ padding: "0 var(--sp-3) var(--sp-3)", borderTop: "1px solid var(--border)" }}>
@@ -1635,12 +1704,12 @@ export default function CalendarView({
                             onDragStart={(e) => e.dataTransfer.setData("text/plain", JSON.stringify({ postId: post.id, sourceDate: day.date }))}
                           >
                             <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-2)", flexWrap: "wrap" }}>
-                              <span aria-hidden="true" style={{ fontSize: "var(--fs-md)" }}>{f.icon}</span>
+                              <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={18} style={{ color: f.color }} />
                               <span className="badge" style={{ background: f.color + "22", color: f.color }}>{f.label}</span>
                               <span className="badge" style={{ background: st.bg, color: st.text, border: `1px solid ${st.border}` }}>{st.label}</span>
                               {post.publishTime && (
                                 <span style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>
-                                  <span aria-hidden="true">🕐</span> {post.publishTime}
+                                  <Icon name="clock" size={14} /> {post.publishTime}
                                 </span>
                               )}
                             </div>
@@ -1662,7 +1731,7 @@ export default function CalendarView({
                                 onClick={() => generateSinglePostContent(post, day)}
                                 disabled={genSingleLoading[post.id]}
                               >
-                                {genSingleLoading[post.id] ? "Generando…" : "✨ Generar con IA"}
+                                {genSingleLoading[post.id] ? "Generando…" : <><Icon name="sparkles" size={14} /> Generar con IA</>}
                               </button>
                             )}
 
@@ -1684,7 +1753,7 @@ export default function CalendarView({
                                 aria-label={`Eliminar publicación: ${postTitle}`}
                                 onClick={() => deletePost(day.date, post.id)}
                               >
-                                🗑️
+                                <Icon name="trash" size={16} />
                               </button>
                             </div>
                           </article>

@@ -57,7 +57,8 @@ persistencia real; su esquema está en `supabase/migrations/`.
 | Documento | Contenido |
 |---|---|
 | [DEPLOY.md](DEPLOY.md) | Netlify, Supabase, variables de entorno, MCP |
-| [docs/auditoria-ux-ui.md](docs/auditoria-ux-ui.md) | Auditoría de UX, UI, responsive y accesibilidad |
+| [docs/auditoria-ux-ui.md](docs/auditoria-ux-ui.md) | Auditoría de UX, responsive y accesibilidad |
+| [docs/auditoria-visual.md](docs/auditoria-visual.md) | Auditoría visual y plan de rediseño (jerarquía, iconos, densidad) |
 | [CLAUDE.md](CLAUDE.md) | Convenciones del código y arquitectura |
 | [docs/ejemplo-estructura/](docs/ejemplo-estructura/) | Cómo organizar el repositorio de ADN de clientes |
 

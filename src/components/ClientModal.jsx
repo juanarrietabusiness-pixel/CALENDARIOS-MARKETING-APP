@@ -1,8 +1,9 @@
 import { useId, useState, useRef } from "react";
-import { FORMATS, DEFAULT_CATEGORIES } from "../constants";
+import { FORMATS, FORMAT_ICONS, DEFAULT_CATEGORIES } from "../constants";
 import { uid, compressImage, createEmptyClient } from "../utils";
 import { fetchGitHubADN, extractClientADN, parseGitHubUrl } from "../api";
 import { useDialogA11y } from "../hooks/useDialogA11y";
+import Icon from "./Icon";
 
 const DAYS_ORDERED = [
   { dow: 1, name: "Lunes" },
@@ -35,7 +36,7 @@ function FormatPicker({ value, onChange, label }) {
             minHeight: "var(--tap-sm)",
           }}
         >
-          <span aria-hidden="true">{f.icon}</span> {f.label}
+          <Icon name={FORMAT_ICONS[k]} size={16} /> {f.label}
         </button>
       ))}
     </div>
@@ -290,7 +291,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet" style={{ maxWidth: 560 }}>
         <div className="sheet-header">
           <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)" }}>{initial ? "Editar cliente" : "Nuevo cliente"}</h2>
-          <button className="btn-icon" onClick={onClose} aria-label="Cerrar">✕</button>
+          <button className="btn-icon" onClick={onClose} aria-label="Cerrar"><Icon name="close" /></button>
         </div>
 
         <div className="sheet-body">
@@ -321,8 +322,8 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
                 {form.logo ? (
                   <img src={form.logo} alt="Logo actual del cliente" style={{ width: 56, height: 56, objectFit: "contain", borderRadius: "var(--radius-sm)", background: "#fff", padding: 3, flexShrink: 0 }} />
                 ) : (
-                  <span aria-hidden="true" style={{ width: 56, height: 56, borderRadius: "var(--radius-sm)", background: "var(--card-alt)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "var(--fs-xl)", flexShrink: 0 }}>
-                    🏢
+                  <span aria-hidden="true" style={{ width: 56, height: 56, borderRadius: "var(--radius)", background: "var(--surface-2)", color: "var(--text-muted)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Icon name="building" size={26} />
                   </span>
                 )}
                 <div style={{ flex: 1 }}>
@@ -525,7 +526,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
                 fontSize: "var(--fs-2xs)",
                 color: "var(--text-muted)",
               }}>
-                <span aria-hidden="true">📂</span>
+                <Icon name="folder" size={16} />
                 Leyendo: <strong style={{ color: "var(--accent)" }}>{ghReadingPath}</strong>
               </p>
             )}
@@ -551,7 +552,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
                         fontSize: "var(--fs-xs)",
                       }}
                     >
-                      <span aria-hidden="true" style={{ fontSize: "var(--fs-sm)" }}>📂</span>
+                      <Icon name="folder" size={18} />
                       <span style={{ flex: 1 }}>{sf2.name}</span>
                       <span style={{ fontSize: "var(--fs-3xs)", color: "var(--accent)" }}>Seleccionar</span>
                     </button>
@@ -599,7 +600,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
                     style={{ color: "var(--text-dim)" }}
                     onClick={() => { setAdnExtracted(null); setAdnSelected({}); }}
                   >
-                    ✕
+                    <Icon name="close" size={16} />
                   </button>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
@@ -763,7 +764,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
                     aria-pressed={s.active}
                     aria-label={`${s.active ? "Desactivar" : "Activar"} ${s.dayName}`}
                   >
-                    <span aria-hidden="true">{s.active ? "✓" : ""}</span>
+                    {s.active && <Icon name="check" size={18} />}
                   </button>
                   <span style={{ fontSize: "var(--fs-xs)", color: s.active ? "#fff" : "var(--text-muted)", fontWeight: s.active ? 700 : 500, width: 80, flexShrink: 0 }}>
                     {s.dayName}
@@ -791,7 +792,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
                             aria-label={`Quitar publicación ${si + 1} del ${s.dayName}`}
                             onClick={() => setWeekStructure((p) => p.map((x, j) => (j !== i ? x : { ...x, slots: x.slots.filter((_, k) => k !== si) })))}
                           >
-                            ✕
+                            <Icon name="close" size={16} />
                           </button>
                         </div>
                       ))}
@@ -832,7 +833,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
                               aria-label={`Quitar categoría ${ci + 1} del ${s.dayName}`}
                               onClick={() => setWeekStructure((p) => p.map((x, j) => (j !== i ? x : { ...x, categories: x.categories.filter((_, k) => k !== ci) })))}
                             >
-                              ✕
+                              <Icon name="close" size={16} />
                             </button>
                           )}
                         </div>

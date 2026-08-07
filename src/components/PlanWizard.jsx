@@ -1,8 +1,9 @@
 import { useId, useState, useRef } from "react";
-import { PLANS, FORMATS, DEFAULT_CATEGORIES, MONTHS, DAYS, DAYS_SHORT } from "../constants";
+import { PLANS, FORMATS, FORMAT_ICONS, DEFAULT_CATEGORIES, MONTHS, DAYS, DAYS_SHORT } from "../constants";
 import { uid, daysInMonth, fmtDate, getWeekNumber, dayName, parseVideoURL } from "../utils";
 import { callAI, buildClientContext, fetchGitHubADN } from "../api";
 import { useDialogA11y } from "../hooks/useDialogA11y";
+import Icon from "./Icon";
 
 const STEP_LABELS = ["Plan", "Fechas", "Campaña", "Conceptos", "Categorías", "Vídeos", "Ideas"];
 
@@ -20,7 +21,7 @@ function StepBar({ step, setStep }) {
           disabled={i > step}
           onClick={() => { if (i < step) setStep(i); }}
         >
-          <span aria-hidden="true">{i < step ? "✓" : i + 1}.</span> {label}
+          {i < step ? <Icon name="check" size={14} /> : <span aria-hidden="true">{i + 1}.</span>} {label}
         </button>
       ))}
     </nav>
@@ -320,7 +321,7 @@ ${daysDesc}`;
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet">
         <div className="sheet-header" style={{ borderBottom: "none", paddingBottom: 0 }}>
           <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)" }}>Planificar calendario</h2>
-          <button className="btn-icon" onClick={onClose} aria-label="Cerrar planificador">✕</button>
+          <button className="btn-icon" onClick={onClose} aria-label="Cerrar planificador"><Icon name="close" /></button>
         </div>
 
         <StepBar step={step} setStep={setStep} />
@@ -412,7 +413,7 @@ ${daysDesc}`;
                                 minHeight: "var(--tap-sm)",
                               }}
                             >
-                              <span aria-hidden="true">{f.icon}</span> {f.label}
+                              <Icon name={FORMAT_ICONS[fk]} size={14} /> {f.label}
                             </button>
                           ))}
                         </div>
@@ -489,7 +490,7 @@ ${daysDesc}`;
                         aria-label={`Quitar ${d.name} del ${d.date}`}
                         onClick={() => setImportantDates((prev) => prev.filter((_, j) => j !== i))}
                       >
-                        ✕
+                        <Icon name="close" size={16} />
                       </button>
                     </li>
                   ))}
@@ -586,7 +587,7 @@ ${daysDesc}`;
                         aria-label={`Borrar categoría de ${DAYS[dow]}`}
                         onClick={() => setDayCategories((prev) => ({ ...prev, [dow]: "" }))}
                       >
-                        ✕
+                        <Icon name="close" size={16} />
                       </button>
                     )}
                   </div>
@@ -647,7 +648,7 @@ ${daysDesc}`;
                             aria-label="Quitar vídeo de referencia"
                             onClick={() => setReferenceVideos((prev) => prev.filter((_, j) => j !== i))}
                           >
-                            ✕
+                            <Icon name="close" size={16} />
                           </button>
                         </div>
                         <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center" }}>
@@ -728,9 +729,7 @@ ${daysDesc}`;
                         </p>
                         {formats.map((f, j) => (
                           <div key={j} style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", marginBottom: "var(--sp-2)" }}>
-                            <span aria-hidden="true" style={{ fontSize: "var(--fs-xs)", flexShrink: 0, width: 22 }}>
-                              {FORMATS[f.format]?.icon || ""}
-                            </span>
+                            <Icon name={FORMAT_ICONS[f.format] || "formatPost"} size={16} style={{ color: FORMATS[f.format]?.color, width: 22 }} />
                             <input
                               className="input"
                               style={{ flex: 1 }}
@@ -815,7 +814,7 @@ ${daysDesc}`;
                               style={{ textTransform: "none", color: FORMATS[p.format]?.color || "var(--accent)" }}
                               htmlFor={`${ids}-idea-${date}-${j}`}
                             >
-                              <span aria-hidden="true">{FORMATS[p.format]?.icon || ""}</span> {FORMATS[p.format]?.label || "Publicación"} {j + 1}
+                              <Icon name={FORMAT_ICONS[p.format] || "formatPost"} size={14} style={{ display: "inline-block", verticalAlign: "-2px" }} /> {FORMATS[p.format]?.label || "Publicación"} {j + 1}
                             </label>
                             <input
                               id={`${ids}-idea-${date}-${j}`}

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { MONTHS } from "./constants";
 import { uid, lsGet, lsSet } from "./utils";
 import { useDialogA11y } from "./hooks/useDialogA11y";
+import Icon from "./components/Icon";
 import ApiSetup from "./components/ApiSetup";
 import ClientModal from "./components/ClientModal";
 import PlanWizard from "./components/PlanWizard";
@@ -23,17 +24,79 @@ function App() {
   return isApprovalPage() ? <Aprobar /> : <Workspace />;
 }
 
-/** Panel lateral de clientes: diálogo modal con foco atrapado y cierre con Escape. */
-function ClientSidebar({ clients, selectedClientId, onSelect, onNew, onClose, onExport, onImport }) {
+/** Lista de clientes. Se reutiliza en la barra fija y en el cajón móvil. */
+function ClientList({ clients, selectedClientId, onSelect, onNew }) {
+  return (
+    <>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
+        <h2 className="label" style={{ margin: 0 }}>Clientes</h2>
+        <button className="btn btn-secondary btn-sm" onClick={onNew}>
+          <Icon name="plus" size={16} /> Nuevo
+        </button>
+      </div>
+
+      {clients.length === 0 ? (
+        <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-faint)", padding: "var(--sp-4) 0", textAlign: "center" }}>
+          Sin clientes aún
+        </p>
+      ) : (
+        <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: 2 }}>
+          {clients.map((c) => (
+            <li key={c.id}>
+              <button
+                type="button"
+                className="client-item"
+                aria-current={selectedClientId === c.id ? "true" : undefined}
+                onClick={() => onSelect(c.id)}
+              >
+                <span className="client-avatar">
+                  {c.logo ? <img src={c.logo} alt="" /> : <Icon name="building" size={18} />}
+                </span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: "var(--fs-xs)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {c.name}
+                  </span>
+                  <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "var(--text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {c.industry || "Sin industria"} · {(c.calendars || []).length} calendario{(c.calendars || []).length === 1 ? "" : "s"}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
+/** Copia de seguridad: acciones globales, no de un cliente concreto. */
+function BackupActions({ onExport, onImport }) {
+  return (
+    <div style={{ marginTop: "auto", paddingTop: "var(--sp-4)", borderTop: "1px solid var(--border)" }}>
+      <h3 className="label">Copia de seguridad</h3>
+      <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+        <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={onExport}>
+          <Icon name="download" size={16} /> Exportar
+        </button>
+        <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={onImport}>
+          <Icon name="upload" size={16} /> Importar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Cajón de clientes en móvil: diálogo modal con foco atrapado. */
+function ClientDrawer({ clients, selectedClientId, onSelect, onNew, onClose, onExport, onImport }) {
   const dialogRef = useDialogA11y(onClose);
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex" }}>
       <button
         type="button"
-        aria-label="Cerrar panel de clientes"
+        aria-label="Cerrar lista de clientes"
         onClick={onClose}
-        style={{ flex: 1, background: "rgba(0,0,0,.6)", border: "none", cursor: "pointer" }}
+        style={{ flex: 1, background: "rgba(2,6,16,.66)", border: "none", cursor: "pointer", backdropFilter: "blur(2px)" }}
       />
       <div
         ref={dialogRef}
@@ -41,96 +104,32 @@ function ClientSidebar({ clients, selectedClientId, onSelect, onNew, onClose, on
         aria-modal="true"
         aria-label="Clientes"
         style={{
-          width: 300,
-          maxWidth: "88vw",
-          background: "var(--card)",
-          borderLeft: "1px solid var(--border)",
-          padding: "var(--sp-4)",
+          width: "var(--sidebar-w)",
+          maxWidth: "86vw",
+          background: "var(--surface)",
+          borderLeft: "1px solid var(--border-strong)",
+          boxShadow: "var(--elev-2)",
+          padding: "var(--sp-4) var(--sp-3)",
           paddingTop: "calc(var(--sp-4) + var(--safe-top))",
           paddingBottom: "calc(var(--sp-4) + var(--safe-bottom))",
           overflowY: "auto",
-          animation: "slideIn .25s ease-out",
+          display: "flex",
+          flexDirection: "column",
+          animation: "slideIn .24s cubic-bezier(.22,.61,.36,1)",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-4)" }}>
-          <h2 className="label" style={{ margin: 0 }}>Clientes</h2>
-          <div style={{ display: "flex", gap: "var(--sp-2)" }}>
-            <button className="btn btn-primary btn-sm" onClick={onNew}>+ Nuevo</button>
-            <button className="btn-icon" onClick={onClose} aria-label="Cerrar panel de clientes">✕</button>
-          </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "var(--sp-2)" }}>
+          <button className="btn-icon" onClick={onClose} aria-label="Cerrar lista de clientes">
+            <Icon name="close" />
+          </button>
         </div>
-
-        {clients.length === 0 ? (
-          <div className="empty-state" style={{ padding: "var(--sp-6) var(--sp-3)" }}>
-            <div className="empty-state-icon" aria-hidden="true">📋</div>
-            <p className="empty-state-text">Sin clientes aún</p>
-          </div>
-        ) : (
-          <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
-            {clients.map((c) => {
-              const isSelected = selectedClientId === c.id;
-              return (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    className="tap-row"
-                    aria-current={isSelected ? "true" : undefined}
-                    onClick={() => onSelect(c.id)}
-                    style={{
-                      padding: "var(--sp-3)",
-                      borderRadius: "var(--radius-sm)",
-                      background: isSelected ? "#1B3A6B" : "var(--card-alt)",
-                      border: `1px solid ${isSelected ? "var(--accent)" : "transparent"}`,
-                    }}
-                  >
-                    {c.logo ? (
-                      <img
-                        src={c.logo}
-                        alt=""
-                        style={{ width: 34, height: 34, objectFit: "contain", borderRadius: 6, background: "#fff", padding: 2, flexShrink: 0 }}
-                      />
-                    ) : (
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          width: 34, height: 34, borderRadius: 6,
-                          background: "var(--card-alt)",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          flexShrink: 0, fontSize: "var(--fs-md)",
-                        }}
-                      >
-                        🏢
-                      </span>
-                    )}
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: "block", fontSize: "var(--fs-sm)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {c.name}
-                      </span>
-                      <span style={{ display: "block", fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>
-                        {c.industry || "Sin industria"} · {(c.calendars || []).length} calendario{(c.calendars || []).length === 1 ? "" : "s"}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
-        {/* Copia de seguridad: acciones globales, no por cliente. Antes vivían
-            en la cabecera y a 360px aplastaban el nombre del cliente. */}
-        <div style={{ marginTop: "var(--sp-6)", paddingTop: "var(--sp-4)", borderTop: "1px solid var(--border)" }}>
-          <h3 className="label">Copia de seguridad</h3>
-          <div style={{ display: "flex", gap: "var(--sp-2)" }}>
-            <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={onExport}>
-              <span aria-hidden="true">⬇️</span> Exportar
-            </button>
-            <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={onImport}>
-              <span aria-hidden="true">⬆️</span> Importar
-            </button>
-          </div>
-          <p className="hint">Descarga o restaura todos tus clientes y calendarios en un archivo JSON.</p>
-        </div>
+        <ClientList
+          clients={clients}
+          selectedClientId={selectedClientId}
+          onSelect={onSelect}
+          onNew={onNew}
+        />
+        <BackupActions onExport={onExport} onImport={onImport} />
       </div>
     </div>
   );
@@ -142,7 +141,7 @@ function Workspace() {
   const [showApiSetup, setShowApiSetup] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [selectedCalId, setSelectedCalId] = useState(null);
-  const [showSidebar, setShowSidebar] = useState(false);
+  const [showDrawer, setShowDrawer] = useState(false);
   const [showClientModal, setShowClientModal] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
   const [showWizard, setShowWizard] = useState(false);
@@ -316,24 +315,33 @@ function Workspace() {
     setToast(`Importadas ${updated} revisiones.`);
   };
 
+  const openNewClient = () => {
+    setEditingClient(null);
+    setShowClientModal(true);
+    setShowDrawer(false);
+  };
+
+  const selectClient = (id) => {
+    setSelectedClientId(id);
+    setSelectedCalId(null);
+    setShowDrawer(false);
+  };
+
   if (loading) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100dvh" }}>
-        <p role="status" style={{ textAlign: "center", color: "var(--text-dim)" }}>
-          <span aria-hidden="true" style={{ fontSize: "2.5rem", display: "block", marginBottom: "var(--sp-3)" }}>⚡</span>
-          Cargando…
-        </p>
+        <p role="status" style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando…</p>
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100dvh" }}>
+    <div className="app-shell">
       <a className="skip-link" href="#contenido">Saltar al contenido</a>
 
       <header
         style={{
-          background: "var(--card)",
+          background: "var(--surface)",
           borderBottom: "1px solid var(--border)",
           height: "calc(var(--header-h) + var(--safe-top))",
           paddingTop: "var(--safe-top)",
@@ -342,55 +350,52 @@ function Workspace() {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: "var(--sp-2)",
+          gap: "var(--sp-3)",
           position: "sticky",
           top: 0,
           zIndex: 100,
         }}
       >
-        {/* min-width:0 en toda la cadena flex: sin él el bloque de texto no
-            puede encogerse y el nombre del cliente se partía letra a letra. */}
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", minWidth: 0, flex: 1, overflow: "hidden" }}>
-          <button className="btn-icon" onClick={() => setShowSidebar(true)} aria-label="Abrir lista de clientes" aria-expanded={showSidebar}>
-            ☰
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", minWidth: 0 }}>
+          <button
+            className="btn-icon menu-toggle"
+            onClick={() => setShowDrawer(true)}
+            aria-label="Abrir lista de clientes"
+            aria-expanded={showDrawer}
+          >
+            <Icon name="menu" />
           </button>
           <span
             aria-hidden="true"
             style={{
               background: "linear-gradient(135deg,#1B3A6B,var(--accent))",
               padding: "6px 9px",
-              borderRadius: 8,
-              fontWeight: 900,
+              borderRadius: "var(--radius-sm)",
+              fontWeight: 800,
               fontSize: "var(--fs-2xs)",
+              letterSpacing: ".02em",
               flexShrink: 0,
+              color: "#fff",
             }}
           >
             JA
           </span>
-          <span style={{ minWidth: 0, overflow: "hidden" }}>
-            <span style={{ display: "block", fontWeight: 700, fontSize: "var(--fs-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {client?.name || "Juancito Ads"}
-            </span>
-            <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              Calendarios
-            </span>
+          <span style={{ fontSize: "var(--fs-sm)", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            Juancito Ads
           </span>
         </div>
 
-        <div style={{ display: "flex", gap: "var(--sp-2)", flexShrink: 0 }}>
-          {client && (
-            <button className="btn btn-primary btn-sm" onClick={() => setShowWizard(true)}>
-              <span aria-hidden="true">⚡</span> Nuevo
+        <div style={{ display: "flex", gap: "var(--sp-2)", flexShrink: 0, alignItems: "center" }}>
+          {!apiKey && (
+            <button className="btn btn-secondary btn-sm" onClick={() => setShowApiSetup(true)}>
+              <Icon name="sparkles" size={16} /> Conectar IA
             </button>
           )}
-          <button
-            className="btn-icon"
-            style={!apiKey ? { background: "#2a1a0a", color: "var(--accent-alt)", borderColor: "var(--accent-alt)" } : undefined}
-            onClick={() => setShowApiSetup(true)}
-            aria-label={apiKey ? "Configurar IA" : "Configurar IA (sin API key)"}
-          >
-            ⚙️
-          </button>
+          {apiKey && (
+            <button className="btn-icon" onClick={() => setShowApiSetup(true)} aria-label="Configurar IA">
+              <Icon name="settings" />
+            </button>
+          )}
           <input
             ref={importRef}
             type="file"
@@ -406,148 +411,135 @@ function Workspace() {
         </div>
       </header>
 
-      {/* Región de anuncios: sustituye a alert() para mensajes no bloqueantes */}
-      <div role="status" aria-live="polite" className={toast ? undefined : "sr-only"}>
-        {toast && (
-          <p className="notice notice-ok" style={{ margin: "var(--sp-3) var(--sp-3) 0" }}>
-            {toast}
-          </p>
-        )}
-      </div>
+      <div className="app-body">
+        <aside className="app-sidebar" aria-label="Clientes">
+          <ClientList
+            clients={clients}
+            selectedClientId={selectedClientId}
+            onSelect={selectClient}
+            onNew={openNewClient}
+          />
+          <BackupActions onExport={exportJSON} onImport={() => importRef.current?.click()} />
+        </aside>
 
-      {showSidebar && (
-        <ClientSidebar
-          clients={clients}
-          selectedClientId={selectedClientId}
-          onSelect={(id) => {
-            setSelectedClientId(id);
-            setSelectedCalId(null);
-            setShowSidebar(false);
-          }}
-          onNew={() => {
-            setEditingClient(null);
-            setShowClientModal(true);
-            setShowSidebar(false);
-          }}
-          onExport={exportJSON}
-          onImport={() => importRef.current?.click()}
-          onClose={() => setShowSidebar(false)}
-        />
-      )}
-
-      <main
-        id="contenido"
-        style={{
-          flex: 1,
-          padding: "var(--sp-3)",
-          paddingLeft: "calc(var(--sp-3) + var(--safe-left))",
-          paddingRight: "calc(var(--sp-3) + var(--safe-right))",
-          paddingBottom: "calc(var(--sp-6) + var(--safe-bottom))",
-        }}
-      >
-        {client ? (
-          <div>
-            <div
-              className="card"
-              style={{ padding: "var(--sp-3)", marginBottom: "var(--sp-3)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--sp-3)" }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)", minWidth: 0 }}>
-                {client.logo ? (
-                  <img src={client.logo} alt={`Logo de ${client.name}`} style={{ width: 40, height: 40, objectFit: "contain", borderRadius: 8, background: "#fff", padding: 3, flexShrink: 0 }} />
-                ) : (
-                  <span
-                    aria-hidden="true"
-                    style={{ width: 40, height: 40, borderRadius: 8, background: "var(--card-alt)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-                  >
-                    🏢
-                  </span>
-                )}
-                <div style={{ minWidth: 0 }}>
-                  <h1 style={{ fontWeight: 700, fontSize: "var(--fs-md)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{client.name}</h1>
-                  <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>
-                    {client.industry}
-                    {client.instagram && ` · ${client.instagram}`}
-                  </p>
-                </div>
-              </div>
-              <button
-                className="btn-icon"
-                aria-label={`Editar cliente ${client.name}`}
-                onClick={() => {
-                  setEditingClient(client);
-                  setShowClientModal(true);
-                }}
-              >
-                ✏️
-              </button>
+        <main id="contenido" className="app-main">
+          <div className="app-content">
+            {/* Región de anuncios: sustituye a alert() */}
+            <div role="status" aria-live="polite" className={toast ? undefined : "sr-only"}>
+              {toast && <p className="notice notice-ok">{toast}</p>}
             </div>
 
-            {client.calendars?.length > 0 && (
-              <nav aria-label="Calendarios del cliente" style={{ display: "flex", gap: "var(--sp-2)", marginBottom: "var(--sp-3)", overflowX: "auto", paddingBottom: "var(--sp-1)" }}>
-                {client.calendars.map((c) => {
-                  const active = selectedCalId === c.id;
-                  return (
-                    <button
-                      key={c.id}
-                      onClick={() => setSelectedCalId(c.id)}
-                      aria-current={active ? "true" : undefined}
-                      style={{
-                        padding: "var(--sp-2) var(--sp-3)",
-                        borderRadius: "var(--radius-sm)",
-                        cursor: "pointer",
-                        fontSize: "var(--fs-2xs)",
-                        fontWeight: 600,
-                        whiteSpace: "nowrap",
-                        background: active ? "var(--accent)" : "var(--card-alt)",
-                        color: "#fff",
-                        border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
-                        flexShrink: 0,
-                        minHeight: "var(--tap-sm)",
-                      }}
-                    >
-                      {c.name || MONTHS[c.month] + " " + c.year}
-                    </button>
-                  );
-                })}
-              </nav>
-            )}
+            {client ? (
+              <>
+                {/* Un solo encabezado. Antes había cuatro bloques apilados
+                    que repetían el nombre del cliente y el del mes. */}
+                <div className="page-header">
+                  <div className="page-header-top">
+                    <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)", minWidth: 0 }}>
+                      <span className="client-avatar" style={{ width: 44, height: 44, borderRadius: "var(--radius)" }}>
+                        {client.logo ? <img src={client.logo} alt="" /> : <Icon name="building" size={22} />}
+                      </span>
+                      <div style={{ minWidth: 0 }}>
+                        <h1 className="page-title" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {client.name}
+                        </h1>
+                        <p className="page-meta">
+                          {client.industry && <span>{client.industry}</span>}
+                          {client.industry && client.instagram && <span className="page-meta-sep">·</span>}
+                          {client.instagram && <span>{client.instagram}</span>}
+                        </p>
+                      </div>
+                    </div>
 
-            {calendar ? (
-              <CalendarView
-                client={client}
-                cal={calendar}
-                calId={selectedCalId}
-                apiKey={apiKey}
-                onUpdateCal={updateCalendar}
-                onDeleteCal={deleteCalendar}
-                onDuplicateCal={duplicateCalendar}
-                onUpdateClient={(updated) => setClients((prev) => prev.map((c) => c.id === updated.id ? updated : c))}
-              />
+                    <div className="page-header-actions">
+                      <button
+                        className="btn-icon"
+                        aria-label={`Editar cliente ${client.name}`}
+                        onClick={() => {
+                          setEditingClient(client);
+                          setShowClientModal(true);
+                        }}
+                      >
+                        <Icon name="pencil" />
+                      </button>
+                      <button className="btn btn-primary" onClick={() => setShowWizard(true)}>
+                        <Icon name="plus" size={18} /> Calendario
+                      </button>
+                    </div>
+                  </div>
+
+                  {client.calendars?.length > 0 && (
+                    <nav className="cal-tabs" aria-label="Calendarios del cliente">
+                      {client.calendars.map((c) => (
+                        <button
+                          key={c.id}
+                          className="cal-tab"
+                          onClick={() => setSelectedCalId(c.id)}
+                          aria-current={selectedCalId === c.id ? "true" : undefined}
+                        >
+                          {c.name || MONTHS[c.month] + " " + c.year}
+                        </button>
+                      ))}
+                    </nav>
+                  )}
+                </div>
+
+                {calendar ? (
+                  <CalendarView
+                    client={client}
+                    cal={calendar}
+                    calId={selectedCalId}
+                    apiKey={apiKey}
+                    onUpdateCal={updateCalendar}
+                    onDeleteCal={deleteCalendar}
+                    onDuplicateCal={duplicateCalendar}
+                    onUpdateClient={(updated) => setClients((prev) => prev.map((c) => c.id === updated.id ? updated : c))}
+                  />
+                ) : (
+                  <div className="empty-state">
+                    <Icon name="calendar" size={36} className="empty-state-icon" style={{ margin: "0 auto var(--sp-3)" }} />
+                    <p className="empty-state-title">
+                      {client.calendars?.length > 0 ? "Selecciona un calendario" : "Sin calendarios"}
+                    </p>
+                    <p className="empty-state-text">
+                      {client.calendars?.length > 0
+                        ? "Elige uno de los calendarios de arriba."
+                        : "Crea el primer calendario de este cliente."}
+                    </p>
+                  </div>
+                )}
+              </>
             ) : (
-              <div className="empty-state">
-                <div className="empty-state-icon" aria-hidden="true">📅</div>
+              <div className="empty-state" style={{ border: "none", paddingTop: "var(--sp-10)" }}>
+                <Icon name="users" size={40} className="empty-state-icon" style={{ margin: "0 auto var(--sp-3)" }} />
                 <p className="empty-state-title">
-                  {client.calendars?.length > 0 ? "Selecciona un calendario arriba" : "Sin calendarios"}
+                  {clients.length > 0 ? "Selecciona un cliente" : "Crea tu primer cliente"}
                 </p>
-                <p className="empty-state-text">Pulsa «⚡ Nuevo» para crear uno.</p>
+                <p className="empty-state-text" style={{ marginBottom: "var(--sp-4)" }}>
+                  {clients.length > 0
+                    ? "Elige un cliente de la lista para ver sus calendarios."
+                    : "Necesitas un cliente antes de planificar calendarios."}
+                </p>
+                <button className="btn btn-primary" onClick={clients.length > 0 ? () => setShowDrawer(true) : openNewClient}>
+                  {clients.length > 0 ? "Ver clientes" : "Crear cliente"}
+                </button>
               </div>
             )}
           </div>
-        ) : (
-          <div className="empty-state" style={{ border: "none" }}>
-            <div className="empty-state-icon" aria-hidden="true">📅</div>
-            <p className="empty-state-title">
-              {clients.length > 0 ? "Selecciona un cliente para empezar" : "Crea tu primer cliente"}
-            </p>
-            <p className="empty-state-text" style={{ marginBottom: "var(--sp-4)" }}>
-              {clients.length > 0 ? "Abre la lista de clientes desde el menú." : "Necesitas un cliente antes de planificar calendarios."}
-            </p>
-            <button className="btn btn-primary" onClick={() => setShowSidebar(true)}>
-              {clients.length > 0 ? "Ver clientes" : "Crear cliente"}
-            </button>
-          </div>
-        )}
-      </main>
+        </main>
+      </div>
+
+      {showDrawer && (
+        <ClientDrawer
+          clients={clients}
+          selectedClientId={selectedClientId}
+          onSelect={selectClient}
+          onNew={openNewClient}
+          onExport={exportJSON}
+          onImport={() => importRef.current?.click()}
+          onClose={() => setShowDrawer(false)}
+        />
+      )}
 
       {showWizard && client && (
         <PlanWizard

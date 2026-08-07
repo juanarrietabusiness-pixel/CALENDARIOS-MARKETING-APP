@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useState } from "react";
-import { FORMATS } from "../constants";
+import { FORMATS, FORMAT_ICONS } from "../constants";
+import Icon from "../components/Icon";
 
 const API_BASE = "/api/approval";
 
@@ -72,7 +73,7 @@ export default function Aprobar() {
     return (
       <div style={styles.center}>
         <p role="status">
-          <span aria-hidden="true" style={{ fontSize: "2.5rem", display: "block", marginBottom: "var(--sp-3)" }}>📅</span>
+          <Icon name="calendar" size={36} style={{ margin: "0 auto var(--sp-3)", color: "var(--text-faint)" }} />
           <span style={{ color: "var(--text-muted)" }}>Cargando calendario…</span>
         </p>
       </div>
@@ -83,7 +84,7 @@ export default function Aprobar() {
     return (
       <div style={styles.center}>
         <p role="alert" style={{ maxWidth: 420 }}>
-          <span aria-hidden="true" style={{ fontSize: "2.5rem", display: "block", marginBottom: "var(--sp-3)" }}>⚠️</span>
+          <Icon name="alert" size={36} style={{ margin: "0 auto var(--sp-3)", color: "var(--danger)" }} />
           <span style={{ color: "var(--danger)", fontSize: "var(--fs-sm)" }}>{error}</span>
         </p>
         {approvalId && (
@@ -229,9 +230,9 @@ export default function Aprobar() {
       <div style={styles.summary} role="status" aria-live="polite">
         <h2 style={{ fontSize: "var(--fs-sm)", fontWeight: 700, marginBottom: "var(--sp-2)" }}>Resumen de revisión</h2>
         <div style={{ display: "flex", gap: "var(--sp-4)", flexWrap: "wrap", fontSize: "var(--fs-xs)" }}>
-          <span style={{ color: "var(--success)" }}>✓ {allPosts.filter((p) => approvals[p.id]?.estado === "aprobado").length} aprobadas</span>
-          <span style={{ color: "var(--danger)" }}>✗ {allPosts.filter((p) => approvals[p.id]?.estado === "cambios").length} con cambios</span>
-          <span style={{ color: "var(--text-muted)" }}>⏳ {allPosts.filter((p) => !approvals[p.id]).length} pendientes</span>
+          <span style={{ color: "var(--success)" }}>{allPosts.filter((p) => approvals[p.id]?.estado === "aprobado").length} aprobadas</span>
+          <span style={{ color: "var(--danger)" }}>{allPosts.filter((p) => approvals[p.id]?.estado === "cambios").length} con cambios</span>
+          <span style={{ color: "var(--text-muted)" }}>{allPosts.filter((p) => !approvals[p.id]).length} pendientes</span>
         </div>
         {reviewed === totalPosts && totalPosts > 0 && (
           <p className="notice notice-ok" style={{ marginTop: "var(--sp-3)", marginBottom: 0, display: "block" }}>
@@ -261,7 +262,7 @@ function PostReview({
     <div style={{ ...styles.postCard, borderColor }}>
       <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-2)", alignItems: "center" }}>
         <span className="badge" style={{ background: f.color + "22", color: f.color, border: `1px solid ${f.color}66` }}>
-          <span aria-hidden="true">{f.icon}</span> {f.label}
+          <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={14} /> {f.label}
         </span>
         {approval && (
           <span
@@ -272,7 +273,7 @@ function PostReview({
               border: `1px solid ${approval.estado === "aprobado" ? "#388E3C" : "#C62828"}`,
             }}
           >
-            {approval.estado === "aprobado" ? "✓ Aprobado" : "✗ Cambios solicitados"}
+            {approval.estado === "aprobado" ? "Aprobado" : "Cambios solicitados"}
           </span>
         )}
       </div>
@@ -313,7 +314,7 @@ function PostReview({
           className="btn"
           style={{ ...styles.approveBtn, opacity: isSaving ? 0.5 : 1 }}
         >
-          {isSaving ? "Guardando…" : "✓ Aprobar"}
+          {isSaving ? "Guardando…" : <><Icon name="check" size={18} /> Aprobar</>}
         </button>
         <button
           type="button"
@@ -324,7 +325,7 @@ function PostReview({
           className="btn"
           style={styles.changesBtn}
         >
-          ✗ Pedir cambios
+          <Icon name="close" size={18} /> Pedir cambios
         </button>
       </div>
 
@@ -352,7 +353,7 @@ function PostReview({
 
       {approval?.comentario && (
         <p style={styles.commentDisplay}>
-          <span aria-hidden="true">💬</span> {approval.comentario}
+          <Icon name="message" size={16} style={{ display: "inline-block", verticalAlign: "-3px", marginRight: "var(--sp-1)" }} />{approval.comentario}
         </p>
       )}
     </div>
