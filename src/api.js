@@ -167,7 +167,7 @@ export function parseGitHubUrl(url) {
 
 export async function fetchGitHubADN(repoUrl, token, folder = "") {
   const parsed = parseGitHubUrl(repoUrl);
-  if (!parsed) return { content: "", files: [] };
+  if (!parsed) return { content: "", files: [], subfolders: [] };
   const { owner, repo } = parsed;
   const basePath = folder || parsed.folder || "";
   const headers = { Accept: "application/vnd.github.v3+json" };
@@ -175,6 +175,7 @@ export async function fetchGitHubADN(repoUrl, token, folder = "") {
 
   const paths = basePath ? [basePath, basePath + "/adn"] : ["", "adn/"];
   const files = [];
+  const subfolders = [];
 
   for (const path of paths) {
     try {
@@ -185,6 +186,9 @@ export async function fetchGitHubADN(repoUrl, token, folder = "") {
       for (const item of items) {
         if (item.type === "file" && /\.(md|txt)$/i.test(item.name) && item.size < 50000) {
           files.push(item);
+        }
+        if (item.type === "dir" && path === (basePath || "")) {
+          subfolders.push({ name: item.name, path: item.path });
         }
       }
     } catch { /* skip */ }
@@ -200,7 +204,7 @@ export async function fetchGitHubADN(repoUrl, token, folder = "") {
       }
     } catch { /* skip */ }
   }
-  return { content: adnContent, files, basePath, owner, repo };
+  return { content: adnContent, files, subfolders, basePath, owner, repo };
 }
 
 export async function generateSinglePost(apiKey, client, post, day, calendar) {

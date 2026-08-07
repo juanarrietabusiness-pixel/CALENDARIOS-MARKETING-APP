@@ -430,6 +430,7 @@ function App() {
                 onUpdateCal={updateCalendar}
                 onDeleteCal={deleteCalendar}
                 onDuplicateCal={duplicateCalendar}
+                onUpdateClient={(updated) => setClients((prev) => prev.map((c) => c.id === updated.id ? updated : c))}
               />
             ) : (
               <div style={{ textAlign: "center", padding: 50, border: "2px dashed var(--border)", borderRadius: 16, color: "var(--text-muted)" }}>
