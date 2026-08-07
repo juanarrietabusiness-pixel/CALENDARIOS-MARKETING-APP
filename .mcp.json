@@ -1,0 +1,36 @@
+{
+  "$comment": [
+    "Servidores MCP del proyecto. Claude Code los carga al abrir este repositorio",
+    "y pedirá aprobación la primera vez.",
+    "",
+    "Antes de usarlos hay que exportar los tokens en el entorno (no se guardan aquí):",
+    "  export NETLIFY_AUTH_TOKEN=...   # Netlify → User settings → Applications → Personal access tokens",
+    "  export SUPABASE_ACCESS_TOKEN=... # Supabase → Account → Access Tokens",
+    "  export SUPABASE_PROJECT_REF=...  # el identificador del proyecto en su URL",
+    "",
+    "El servidor de Supabase se declara en modo sólo lectura: para aplicar",
+    "migraciones, quita --read-only conscientemente o usa el CLI.",
+    "Ver DEPLOY.md para el procedimiento completo."
+  ],
+  "mcpServers": {
+    "netlify": {
+      "command": "npx",
+      "args": ["-y", "@netlify/mcp"],
+      "env": {
+        "NETLIFY_AUTH_TOKEN": "${NETLIFY_AUTH_TOKEN}"
+      }
+    },
+    "supabase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@latest",
+        "--read-only",
+        "--project-ref=${SUPABASE_PROJECT_REF}"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "${SUPABASE_ACCESS_TOKEN}"
+      }
+    }
+  }
+}

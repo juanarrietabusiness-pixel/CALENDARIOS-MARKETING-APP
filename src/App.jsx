@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { MONTHS } from "./constants";
 import { uid, lsGet, lsSet } from "./utils";
+import { useDialogA11y } from "./hooks/useDialogA11y";
 import ApiSetup from "./components/ApiSetup";
 import ClientModal from "./components/ClientModal";
 import PlanWizard from "./components/PlanWizard";
@@ -14,8 +15,128 @@ const isApprovalPage = () => {
   return path.includes("/aprobar") || window.location.hash.includes("/aprobar");
 };
 
+/**
+ * Enrutador. Es un componente sin hooks para que la rama condicional
+ * no altere el orden de los hooks de Workspace (regla de los hooks).
+ */
 function App() {
-  if (isApprovalPage()) return <Aprobar />;
+  return isApprovalPage() ? <Aprobar /> : <Workspace />;
+}
+
+/** Panel lateral de clientes: diálogo modal con foco atrapado y cierre con Escape. */
+function ClientSidebar({ clients, selectedClientId, onSelect, onNew, onClose, onExport, onImport }) {
+  const dialogRef = useDialogA11y(onClose);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex" }}>
+      <button
+        type="button"
+        aria-label="Cerrar panel de clientes"
+        onClick={onClose}
+        style={{ flex: 1, background: "rgba(0,0,0,.6)", border: "none", cursor: "pointer" }}
+      />
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Clientes"
+        style={{
+          width: 300,
+          maxWidth: "88vw",
+          background: "var(--card)",
+          borderLeft: "1px solid var(--border)",
+          padding: "var(--sp-4)",
+          paddingTop: "calc(var(--sp-4) + var(--safe-top))",
+          paddingBottom: "calc(var(--sp-4) + var(--safe-bottom))",
+          overflowY: "auto",
+          animation: "slideIn .25s ease-out",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-4)" }}>
+          <h2 className="label" style={{ margin: 0 }}>Clientes</h2>
+          <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+            <button className="btn btn-primary btn-sm" onClick={onNew}>+ Nuevo</button>
+            <button className="btn-icon" onClick={onClose} aria-label="Cerrar panel de clientes">✕</button>
+          </div>
+        </div>
+
+        {clients.length === 0 ? (
+          <div className="empty-state" style={{ padding: "var(--sp-6) var(--sp-3)" }}>
+            <div className="empty-state-icon" aria-hidden="true">📋</div>
+            <p className="empty-state-text">Sin clientes aún</p>
+          </div>
+        ) : (
+          <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
+            {clients.map((c) => {
+              const isSelected = selectedClientId === c.id;
+              return (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    className="tap-row"
+                    aria-current={isSelected ? "true" : undefined}
+                    onClick={() => onSelect(c.id)}
+                    style={{
+                      padding: "var(--sp-3)",
+                      borderRadius: "var(--radius-sm)",
+                      background: isSelected ? "#1B3A6B" : "var(--card-alt)",
+                      border: `1px solid ${isSelected ? "var(--accent)" : "transparent"}`,
+                    }}
+                  >
+                    {c.logo ? (
+                      <img
+                        src={c.logo}
+                        alt=""
+                        style={{ width: 34, height: 34, objectFit: "contain", borderRadius: 6, background: "#fff", padding: 2, flexShrink: 0 }}
+                      />
+                    ) : (
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: 34, height: 34, borderRadius: 6,
+                          background: "var(--card-alt)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          flexShrink: 0, fontSize: "var(--fs-md)",
+                        }}
+                      >
+                        🏢
+                      </span>
+                    )}
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: "var(--fs-sm)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {c.name}
+                      </span>
+                      <span style={{ display: "block", fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>
+                        {c.industry || "Sin industria"} · {(c.calendars || []).length} calendario{(c.calendars || []).length === 1 ? "" : "s"}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {/* Copia de seguridad: acciones globales, no por cliente. Antes vivían
+            en la cabecera y a 360px aplastaban el nombre del cliente. */}
+        <div style={{ marginTop: "var(--sp-6)", paddingTop: "var(--sp-4)", borderTop: "1px solid var(--border)" }}>
+          <h3 className="label">Copia de seguridad</h3>
+          <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+            <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={onExport}>
+              <span aria-hidden="true">⬇️</span> Exportar
+            </button>
+            <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={onImport}>
+              <span aria-hidden="true">⬆️</span> Importar
+            </button>
+          </div>
+          <p className="hint">Descarga o restaura todos tus clientes y calendarios en un archivo JSON.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Workspace() {
   const [clients, setClients] = useState([]);
   const [apiKey, setApiKey] = useState(() => lsGet("ja-apikey") || "");
   const [showApiSetup, setShowApiSetup] = useState(false);
@@ -26,6 +147,7 @@ function App() {
   const [editingClient, setEditingClient] = useState(null);
   const [showWizard, setShowWizard] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState("");
   const importRef = useRef();
 
   useEffect(() => {
@@ -43,6 +165,14 @@ function App() {
   useEffect(() => {
     if (!loading) lsSet(STORAGE_KEY, JSON.stringify(clients));
   }, [clients, loading]);
+
+  // Los mensajes se anuncian en una región aria-live en lugar de alert(),
+  // que interrumpe al lector de pantalla y bloquea la interfaz.
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(""), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const client = clients.find((c) => c.id === selectedClientId);
   const calendar = client?.calendars?.find((c) => c.id === selectedCalId);
@@ -92,6 +222,8 @@ function App() {
         const copy = JSON.parse(JSON.stringify(original));
         copy.id = "cal-" + uid();
         copy.name = (copy.name || MONTHS[copy.month] + " " + copy.year) + " (copia)";
+        // La copia no hereda el enlace de aprobación: es un calendario nuevo.
+        delete copy.approvalId;
         copy.days = copy.days.map((d) => ({
           ...d,
           posts: d.posts.map((p) => ({ ...p, id: uid(), status: "pending", script: "" })),
@@ -134,6 +266,7 @@ function App() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    setToast("Copia de seguridad descargada.");
   };
 
   const importJSON = (file) => {
@@ -145,11 +278,14 @@ function App() {
           setClients(data.clients);
           if (data.clients.length) setSelectedClientId(data.clients[0].id);
           setSelectedCalId(null);
+          setToast(`Importados ${data.clients.length} clientes.`);
         } else if (data.aprobaciones && data.calendarioId) {
           importReviewsData(data);
+        } else {
+          setToast("El archivo no contiene clientes ni revisiones.");
         }
       } catch {
-        alert("Archivo invalido");
+        setToast("Archivo inválido: no se pudo leer el JSON.");
       }
     };
     reader.readAsText(file);
@@ -157,7 +293,7 @@ function App() {
 
   const importReviewsData = (reviewData) => {
     if (!calendar) {
-      alert("Selecciona un calendario primero.");
+      setToast("Selecciona un calendario antes de importar revisiones.");
       return;
     }
     const { aprobaciones } = reviewData;
@@ -177,213 +313,166 @@ function App() {
       }),
     }));
     updateCalendar(selectedCalId, { ...calendar, days: newDays });
-    alert(`Importadas ${updated} revisiones.`);
+    setToast(`Importadas ${updated} revisiones.`);
   };
 
   if (loading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh" }}>
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>⚡</div>
-          <div>Cargando...</div>
-        </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100dvh" }}>
+        <p role="status" style={{ textAlign: "center", color: "var(--text-dim)" }}>
+          <span aria-hidden="true" style={{ fontSize: "2.5rem", display: "block", marginBottom: "var(--sp-3)" }}>⚡</span>
+          Cargando…
+        </p>
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-      {/* Header */}
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100dvh" }}>
+      <a className="skip-link" href="#contenido">Saltar al contenido</a>
+
       <header
         style={{
           background: "var(--card)",
-          borderBottom: "1px solid var(--accent)" + "22",
-          padding: "10px 14px",
+          borderBottom: "1px solid var(--border)",
+          height: "calc(var(--header-h) + var(--safe-top))",
+          paddingTop: "var(--safe-top)",
+          paddingLeft: "calc(var(--sp-3) + var(--safe-left))",
+          paddingRight: "calc(var(--sp-3) + var(--safe-right))",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          gap: "var(--sp-2)",
           position: "sticky",
           top: 0,
           zIndex: 100,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button className="btn-icon" onClick={() => setShowSidebar(true)}>☰</button>
-          <div
+        {/* min-width:0 en toda la cadena flex: sin él el bloque de texto no
+            puede encogerse y el nombre del cliente se partía letra a letra. */}
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", minWidth: 0, flex: 1, overflow: "hidden" }}>
+          <button className="btn-icon" onClick={() => setShowSidebar(true)} aria-label="Abrir lista de clientes" aria-expanded={showSidebar}>
+            ☰
+          </button>
+          <span
+            aria-hidden="true"
             style={{
               background: "linear-gradient(135deg,#1B3A6B,var(--accent))",
-              padding: "5px 8px",
+              padding: "6px 9px",
               borderRadius: 8,
               fontWeight: 900,
-              fontSize: 13,
+              fontSize: "var(--fs-2xs)",
+              flexShrink: 0,
             }}
           >
             JA
-          </div>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 13, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          </span>
+          <span style={{ minWidth: 0, overflow: "hidden" }}>
+            <span style={{ display: "block", fontWeight: 700, fontSize: "var(--fs-sm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {client?.name || "Juancito Ads"}
-            </div>
-            <div style={{ fontSize: 9, color: "var(--accent)" }}>Calendarios</div>
-          </div>
+            </span>
+            <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              Calendarios
+            </span>
+          </span>
         </div>
-        <div style={{ display: "flex", gap: 6 }}>
+
+        <div style={{ display: "flex", gap: "var(--sp-2)", flexShrink: 0 }}>
           {client && (
             <button className="btn btn-primary btn-sm" onClick={() => setShowWizard(true)}>
-              ⚡ Nuevo
+              <span aria-hidden="true">⚡</span> Nuevo
             </button>
           )}
           <button
-            className="btn btn-secondary btn-sm"
-            style={!apiKey ? { background: "#2a1a0a", color: "var(--accent-alt)", borderColor: "var(--accent-alt)" } : {}}
+            className="btn-icon"
+            style={!apiKey ? { background: "#2a1a0a", color: "var(--accent-alt)", borderColor: "var(--accent-alt)" } : undefined}
             onClick={() => setShowApiSetup(true)}
+            aria-label={apiKey ? "Configurar IA" : "Configurar IA (sin API key)"}
           >
-            ⚙️{!apiKey && " IA"}
+            ⚙️
           </button>
-          <button className="btn btn-secondary btn-sm" onClick={exportJSON}>⬇️</button>
-          <button className="btn btn-secondary btn-sm" onClick={() => importRef.current?.click()}>⬆️</button>
           <input
             ref={importRef}
             type="file"
-            accept=".json"
+            accept=".json,application/json"
+            className="sr-only"
+            aria-label="Archivo JSON a importar"
             onChange={(e) => {
               const f = e.target.files[0];
               if (f) importJSON(f);
               e.target.value = "";
             }}
-            style={{ display: "none" }}
           />
         </div>
       </header>
 
-      {/* Sidebar overlay */}
+      {/* Región de anuncios: sustituye a alert() para mensajes no bloqueantes */}
+      <div role="status" aria-live="polite" className={toast ? undefined : "sr-only"}>
+        {toast && (
+          <p className="notice notice-ok" style={{ margin: "var(--sp-3) var(--sp-3) 0" }}>
+            {toast}
+          </p>
+        )}
+      </div>
+
       {showSidebar && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex" }}>
-          <div onClick={() => setShowSidebar(false)} style={{ flex: 1, background: "rgba(0,0,0,.6)" }} />
-          <div
-            style={{
-              width: 280,
-              background: "var(--card)",
-              borderLeft: "1px solid var(--border)",
-              padding: 18,
-              overflowY: "auto",
-              animation: "slideIn .25s ease-out",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-              <span className="label" style={{ margin: 0, letterSpacing: 1 }}>Clientes</span>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={() => {
-                    setEditingClient(null);
-                    setShowClientModal(true);
-                    setShowSidebar(false);
-                  }}
-                >
-                  + Nuevo
-                </button>
-                <button className="btn-icon" onClick={() => setShowSidebar(false)}>✕</button>
-              </div>
-            </div>
-            {clients.map((c) => (
-              <div
-                key={c.id}
-                onClick={() => {
-                  setSelectedClientId(c.id);
-                  setSelectedCalId(null);
-                  setShowSidebar(false);
-                }}
-                style={{
-                  padding: "11px 13px",
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  marginBottom: 6,
-                  background: selectedClientId === c.id ? "#1B3A6B" : "var(--card-alt)",
-                  border: `1px solid ${selectedClientId === c.id ? "var(--accent)" : "transparent"}`,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                }}
-              >
-                {c.logo ? (
-                  <img src={c.logo} alt="" style={{ width: 32, height: 32, objectFit: "contain", borderRadius: 6, background: "#fff", padding: 2, flexShrink: 0 }} />
-                ) : (
-                  <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 6,
-                      background: (c.primaryColor || "var(--accent)") + "44",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                      fontSize: 14,
-                    }}
-                  >
-                    🏢
-                  </div>
-                )}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{c.industry} · {(c.calendars || []).length} cal</div>
-                </div>
-              </div>
-            ))}
-            {clients.length === 0 && (
-              <div style={{ textAlign: "center", padding: 30, color: "var(--text-dim)" }}>
-                <div style={{ fontSize: 30, marginBottom: 8 }}>📋</div>
-                <div style={{ fontSize: 12 }}>Sin clientes aún</div>
-              </div>
-            )}
-          </div>
-        </div>
+        <ClientSidebar
+          clients={clients}
+          selectedClientId={selectedClientId}
+          onSelect={(id) => {
+            setSelectedClientId(id);
+            setSelectedCalId(null);
+            setShowSidebar(false);
+          }}
+          onNew={() => {
+            setEditingClient(null);
+            setShowClientModal(true);
+            setShowSidebar(false);
+          }}
+          onExport={exportJSON}
+          onImport={() => importRef.current?.click()}
+          onClose={() => setShowSidebar(false)}
+        />
       )}
 
-      {/* Main content */}
-      <main style={{ flex: 1, overflowY: "auto", padding: 14 }}>
+      <main
+        id="contenido"
+        style={{
+          flex: 1,
+          padding: "var(--sp-3)",
+          paddingLeft: "calc(var(--sp-3) + var(--safe-left))",
+          paddingRight: "calc(var(--sp-3) + var(--safe-right))",
+          paddingBottom: "calc(var(--sp-6) + var(--safe-bottom))",
+        }}
+      >
         {client ? (
           <div>
-            {/* Client header card */}
             <div
               className="card"
-              style={{
-                padding: 13,
-                marginBottom: 12,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
+              style={{ padding: "var(--sp-3)", marginBottom: "var(--sp-3)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--sp-3)" }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)", minWidth: 0 }}>
                 {client.logo ? (
-                  <img src={client.logo} alt="" style={{ width: 38, height: 38, objectFit: "contain", borderRadius: 7, background: "#fff", padding: 3 }} />
+                  <img src={client.logo} alt={`Logo de ${client.name}`} style={{ width: 40, height: 40, objectFit: "contain", borderRadius: 8, background: "#fff", padding: 3, flexShrink: 0 }} />
                 ) : (
-                  <div
-                    style={{
-                      width: 38,
-                      height: 38,
-                      borderRadius: 7,
-                      background: (client.primaryColor || "var(--accent)") + "33",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
+                  <span
+                    aria-hidden="true"
+                    style={{ width: 40, height: 40, borderRadius: 8, background: "var(--card-alt)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
                   >
                     🏢
-                  </div>
+                  </span>
                 )}
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{client.name}</div>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                <div style={{ minWidth: 0 }}>
+                  <h1 style={{ fontWeight: 700, fontSize: "var(--fs-md)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{client.name}</h1>
+                  <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>
                     {client.industry}
                     {client.instagram && ` · ${client.instagram}`}
-                  </div>
+                  </p>
                 </div>
               </div>
               <button
                 className="btn-icon"
+                aria-label={`Editar cliente ${client.name}`}
                 onClick={() => {
                   setEditingClient(client);
                   setShowClientModal(true);
@@ -393,34 +482,36 @@ function App() {
               </button>
             </div>
 
-            {/* Calendar tabs */}
             {client.calendars?.length > 0 && (
-              <div style={{ display: "flex", gap: 8, marginBottom: 12, overflowX: "auto", paddingBottom: 4 }}>
-                {client.calendars.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => setSelectedCalId(c.id)}
-                    style={{
-                      padding: "7px 14px",
-                      borderRadius: 8,
-                      cursor: "pointer",
-                      fontSize: 11,
-                      fontWeight: 600,
-                      whiteSpace: "nowrap",
-                      background: selectedCalId === c.id ? "var(--accent)" : "var(--card-alt)",
-                      color: "#fff",
-                      border: `1px solid ${selectedCalId === c.id ? "var(--accent)" : "var(--border)"}`,
-                      flexShrink: 0,
-                      minHeight: 36,
-                    }}
-                  >
-                    {c.name || MONTHS[c.month] + " " + c.year}
-                  </button>
-                ))}
-              </div>
+              <nav aria-label="Calendarios del cliente" style={{ display: "flex", gap: "var(--sp-2)", marginBottom: "var(--sp-3)", overflowX: "auto", paddingBottom: "var(--sp-1)" }}>
+                {client.calendars.map((c) => {
+                  const active = selectedCalId === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => setSelectedCalId(c.id)}
+                      aria-current={active ? "true" : undefined}
+                      style={{
+                        padding: "var(--sp-2) var(--sp-3)",
+                        borderRadius: "var(--radius-sm)",
+                        cursor: "pointer",
+                        fontSize: "var(--fs-2xs)",
+                        fontWeight: 600,
+                        whiteSpace: "nowrap",
+                        background: active ? "var(--accent)" : "var(--card-alt)",
+                        color: "#fff",
+                        border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+                        flexShrink: 0,
+                        minHeight: "var(--tap-sm)",
+                      }}
+                    >
+                      {c.name || MONTHS[c.month] + " " + c.year}
+                    </button>
+                  );
+                })}
+              </nav>
             )}
 
-            {/* Calendar view or empty state */}
             {calendar ? (
               <CalendarView
                 client={client}
@@ -433,28 +524,31 @@ function App() {
                 onUpdateClient={(updated) => setClients((prev) => prev.map((c) => c.id === updated.id ? updated : c))}
               />
             ) : (
-              <div style={{ textAlign: "center", padding: 50, border: "2px dashed var(--border)", borderRadius: 16, color: "var(--text-muted)" }}>
-                <div style={{ fontSize: 36, marginBottom: 10 }}>📅</div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>
+              <div className="empty-state">
+                <div className="empty-state-icon" aria-hidden="true">📅</div>
+                <p className="empty-state-title">
                   {client.calendars?.length > 0 ? "Selecciona un calendario arriba" : "Sin calendarios"}
-                </div>
-                <div style={{ fontSize: 12, marginTop: 6, color: "var(--text-dim)" }}>
-                  Toca "⚡ Nuevo" para crear uno
-                </div>
+                </p>
+                <p className="empty-state-text">Pulsa «⚡ Nuevo» para crear uno.</p>
               </div>
             )}
           </div>
         ) : (
-          <div style={{ textAlign: "center", padding: 60, color: "var(--text-muted)" }}>
-            <div style={{ fontSize: 44, marginBottom: 12 }}>📅</div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>
-              {clients.length > 0 ? "Toca ☰ para seleccionar un cliente" : "Crea tu primer cliente con ☰ → + Nuevo"}
-            </div>
+          <div className="empty-state" style={{ border: "none" }}>
+            <div className="empty-state-icon" aria-hidden="true">📅</div>
+            <p className="empty-state-title">
+              {clients.length > 0 ? "Selecciona un cliente para empezar" : "Crea tu primer cliente"}
+            </p>
+            <p className="empty-state-text" style={{ marginBottom: "var(--sp-4)" }}>
+              {clients.length > 0 ? "Abre la lista de clientes desde el menú." : "Necesitas un cliente antes de planificar calendarios."}
+            </p>
+            <button className="btn btn-primary" onClick={() => setShowSidebar(true)}>
+              {clients.length > 0 ? "Ver clientes" : "Crear cliente"}
+            </button>
           </div>
         )}
       </main>
 
-      {/* Modals */}
       {showWizard && client && (
         <PlanWizard
           client={client}

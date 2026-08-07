@@ -6,7 +6,18 @@
   NODE_VERSION = "20"
   NPM_FLAGS = "--prefer-offline"
 
-# SPA fallback — must be LAST redirect (Netlify processes top-down, first match wins)
+[dev]
+  command = "npm run dev"
+  targetPort = 5173
+  port = 8888
+  publish = "dist"
+
+# ------------------------------------------------------------
+# Redirecciones
+# El orden importa: Netlify procesa de arriba abajo y gana la primera
+# coincidencia, así que el respaldo de la SPA va SIEMPRE el último.
+# ------------------------------------------------------------
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
@@ -21,24 +32,54 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# Security + performance headers
+[functions.approval]
+  included_files = []
+
+# ------------------------------------------------------------
+# Cabeceras de seguridad
+# ------------------------------------------------------------
+
 [[headers]]
   for = "/*"
   [headers.values]
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
-    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
-    X-XSS-Protection = "1; mode=block"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), interest-cohort=()"
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    Cross-Origin-Opener-Policy = "same-origin"
+    # Política de seguridad de contenido.
+    #   'unsafe-inline' en style-src es necesario: React aplica estilos
+    #   mediante la prop `style`, que genera atributos en línea.
+    #   script-src NO lo lleva: Vite emite módulos externos, así que un
+    #   <script> inyectado no se ejecutaría.
+    #   connect-src incluye los proveedores de IA porque la aplicación
+    #   los llama desde el navegador (ver auditoría, punto S-1).
+    Content-Security-Policy = """
+      default-src 'self'; \
+      script-src 'self'; \
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; \
+      font-src 'self' https://fonts.gstatic.com; \
+      img-src 'self' data: blob: https:; \
+      connect-src 'self' https://api.anthropic.com https://api.groq.com https://api.github.com https://raw.githubusercontent.com https://*.supabase.co wss://*.supabase.co; \
+      frame-ancestors 'none'; \
+      base-uri 'self'; \
+      form-action 'self'; \
+      object-src 'none'"""
 
-# Immutable cache for hashed assets (Vite adds content hash to filenames)
+# El endpoint de aprobación no debe cachearse nunca: devuelve el estado
+# de revisión en vivo.
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0"
+
+# Los recursos con hash de contenido en el nombre son inmutables.
 [[headers]]
   for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
-# Short cache for root files (index.html, favicon, etc.)
 [[headers]]
   for = "/"
   [headers.values]
@@ -53,7 +94,3 @@
   for = "/*.svg"
   [headers.values]
     Cache-Control = "public, max-age=86400"
-
-# Serverless function config
-[functions.approval]
-  included_files = []

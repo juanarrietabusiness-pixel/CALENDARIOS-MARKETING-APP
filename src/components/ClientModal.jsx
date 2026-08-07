@@ -1,7 +1,8 @@
-import { useState, useRef } from "react";
+import { useId, useState, useRef } from "react";
 import { FORMATS, DEFAULT_CATEGORIES } from "../constants";
 import { uid, compressImage, createEmptyClient } from "../utils";
 import { fetchGitHubADN, extractClientADN, parseGitHubUrl } from "../api";
+import { useDialogA11y } from "../hooks/useDialogA11y";
 
 const DAYS_ORDERED = [
   { dow: 1, name: "Lunes" },
@@ -13,26 +14,28 @@ const DAYS_ORDERED = [
   { dow: 0, name: "Domingo" },
 ];
 
-function FormatPicker({ value, onChange }) {
+function FormatPicker({ value, onChange, label }) {
   return (
-    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+    <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }} role="group" aria-label={label}>
       {Object.entries(FORMATS).map(([k, f]) => (
         <button
           key={k}
           type="button"
+          aria-pressed={value === k}
           onClick={() => onChange(k)}
           style={{
-            padding: "5px 9px",
-            borderRadius: 7,
+            padding: "var(--sp-2) var(--sp-3)",
+            borderRadius: "var(--radius-xs)",
             border: `1px solid ${value === k ? f.color : "var(--border)"}`,
             cursor: "pointer",
             background: value === k ? f.color + "33" : "var(--card-alt)",
             color: value === k ? f.color : "var(--text-muted)",
-            fontSize: 11,
+            fontSize: "var(--fs-2xs)",
             fontWeight: 600,
+            minHeight: "var(--tap-sm)",
           }}
         >
-          {f.icon} {f.label}
+          <span aria-hidden="true">{f.icon}</span> {f.label}
         </button>
       ))}
     </div>
@@ -42,64 +45,52 @@ function FormatPicker({ value, onChange }) {
 function CategoryTemplates({ savedCategories, onLoad, onSave }) {
   const [templateName, setTemplateName] = useState("");
   const [showSave, setShowSave] = useState(false);
+  const inputId = useId();
 
   return (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+    <div style={{ marginBottom: "var(--sp-3)" }}>
+      <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-2)" }}>
         {(savedCategories || []).map((tpl, i) => (
           <button
             key={i}
             type="button"
+            className="filter-chip"
+            style={{ borderColor: "var(--accent)", background: "var(--accent-soft)", color: "var(--accent)" }}
             onClick={() => onLoad(tpl)}
-            style={{
-              padding: "4px 10px",
-              borderRadius: 6,
-              border: "1px solid var(--accent)",
-              cursor: "pointer",
-              background: "var(--accent)" + "22",
-              color: "var(--accent)",
-              fontSize: 10,
-              fontWeight: 600,
-            }}
           >
             {tpl.name}
           </button>
         ))}
         <button
           type="button"
+          className="filter-chip"
+          style={{ borderStyle: "dashed", background: "transparent" }}
+          aria-expanded={showSave}
           onClick={() => setShowSave(!showSave)}
-          style={{
-            padding: "4px 10px",
-            borderRadius: 6,
-            border: "1px dashed var(--border)",
-            cursor: "pointer",
-            background: "transparent",
-            color: "var(--text-dim)",
-            fontSize: 10,
-            fontWeight: 600,
-          }}
         >
-          + Guardar template
+          + Guardar plantilla
         </button>
       </div>
       {showSave && (
-        <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-          <input
-            className="input"
-            style={{ flex: 1, fontSize: 11, padding: "6px 8px" }}
-            value={templateName}
-            onChange={(e) => setTemplateName(e.target.value)}
-            placeholder="Nombre del template..."
-          />
+        <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "flex-end", marginBottom: "var(--sp-2)" }}>
+          <div style={{ flex: 1 }}>
+            <label className="label" htmlFor={inputId}>Nombre de la plantilla</label>
+            <input
+              id={inputId}
+              className="input"
+              value={templateName}
+              onChange={(e) => setTemplateName(e.target.value)}
+              placeholder="Ej: Estructura estándar"
+            />
+          </div>
           <button
             type="button"
-            className="btn btn-primary btn-sm"
+            className="btn btn-primary"
+            disabled={!templateName}
             onClick={() => {
-              if (templateName) {
-                onSave(templateName);
-                setTemplateName("");
-                setShowSave(false);
-              }
+              onSave(templateName);
+              setTemplateName("");
+              setShowSave(false);
             }}
           >
             Guardar
@@ -128,7 +119,10 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
   const [adnExtracted, setAdnExtracted] = useState(null);
   const [adnSelected, setAdnSelected] = useState({});
   const [adnLoading, setAdnLoading] = useState(false);
+  const [nameError, setNameError] = useState("");
   const logoRef = useRef();
+  const ids = useId();
+  const dialogRef = useDialogA11y(onClose);
   const sf = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
   const ADN_FIELD_LABELS = {
@@ -242,7 +236,15 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
   };
 
   const handleSave = () => {
-    if (!form.name) return;
+    // Antes el botón simplemente no hacía nada si faltaba el nombre, sin
+    // decir por qué ni llevar al campo que falla.
+    if (!form.name?.trim()) {
+      setNameError("El nombre del cliente es obligatorio.");
+      setTab("basico");
+      requestAnimationFrame(() => document.getElementById(`${ids}-name`)?.focus());
+      return;
+    }
+    setNameError("");
     const ws = weekStructure
       .filter((s) => s.active && s.slots.length > 0)
       .map((s) => ({ ...s, categories: (s.categories || [""]).filter((c) => c) }));
@@ -275,46 +277,36 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
     );
   };
 
+  const TABS = [
+    ["basico", "Básico"],
+    ["adn", "ADN"],
+    ["voz", "Voz"],
+    ["github", "GitHub"],
+    ["semanal", "Semanal"],
+  ];
+
   return (
-    <div className="overlay">
-      <div
-        style={{
-          background: "var(--card)",
-          borderRadius: "20px 20px 0 0",
-          padding: 18,
-          width: "100%",
-          maxWidth: 540,
-          maxHeight: "92vh",
-          overflowY: "auto",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <h3 style={{ margin: 0, fontSize: 15 }}>{initial ? "Editar Cliente" : "Nuevo Cliente"}</h3>
-          <button className="btn-icon" onClick={onClose}>✕</button>
+    <div className="overlay overlay-sheet">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet" style={{ maxWidth: 560 }}>
+        <div className="sheet-header">
+          <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)" }}>{initial ? "Editar cliente" : "Nuevo cliente"}</h2>
+          <button className="btn-icon" onClick={onClose} aria-label="Cerrar">✕</button>
         </div>
 
-        <div style={{ display: "flex", gap: 3, marginBottom: 14, background: "var(--bg)", borderRadius: 10, padding: 3 }}>
-          {[
-            ["basico", "Basico"],
-            ["adn", "ADN"],
-            ["voz", "Voz"],
-            ["github", "GitHub"],
-            ["semanal", "Semanal"],
-          ].map(([k, l]) => (
+        <div className="sheet-body">
+        {/* Pestañas con semántica de tablist para que el lector de pantalla
+            anuncie cuántas hay y cuál está activa. */}
+        <div className="segmented" role="tablist" aria-label="Secciones del cliente" style={{ marginBottom: "var(--sp-4)" }}>
+          {TABS.map(([k, l]) => (
             <button
               key={k}
+              role="tab"
+              id={`${ids}-tab-${k}`}
+              aria-selected={tab === k}
+              aria-controls={`${ids}-panel-${k}`}
+              tabIndex={tab === k ? 0 : -1}
+              className={`segmented-btn ${tab === k ? "active" : ""}`}
               onClick={() => setTab(k)}
-              style={{
-                flex: 1,
-                padding: "7px 2px",
-                borderRadius: 8,
-                border: "none",
-                cursor: "pointer",
-                background: tab === k ? "var(--accent)" : "transparent",
-                color: tab === k ? "#fff" : "var(--text-muted)",
-                fontSize: 11,
-                fontWeight: 600,
-              }}
             >
               {l}
             </button>
@@ -322,150 +314,189 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
         </div>
 
         {tab === "basico" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+          <div role="tabpanel" id={`${ids}-panel-basico`} aria-labelledby={`${ids}-tab-basico`} style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
             <div>
-              <label className="label">Logo</label>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span className="label" id={`${ids}-logo-label`}>Logo</span>
+              <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)" }}>
                 {form.logo ? (
-                  <img src={form.logo} alt="" style={{ width: 50, height: 50, objectFit: "contain", borderRadius: 8, background: "#fff", padding: 3 }} />
+                  <img src={form.logo} alt="Logo actual del cliente" style={{ width: 56, height: 56, objectFit: "contain", borderRadius: "var(--radius-sm)", background: "#fff", padding: 3, flexShrink: 0 }} />
                 ) : (
-                  <div style={{ width: 50, height: 50, borderRadius: 8, background: "var(--card-alt)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                  <span aria-hidden="true" style={{ width: 56, height: 56, borderRadius: "var(--radius-sm)", background: "var(--card-alt)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "var(--fs-xl)", flexShrink: 0 }}>
                     🏢
-                  </div>
+                  </span>
                 )}
                 <div style={{ flex: 1 }}>
                   <input
                     ref={logoRef}
                     type="file"
                     accept="image/*"
+                    className="sr-only"
+                    aria-labelledby={`${ids}-logo-label`}
                     onChange={async (e) => {
                       const f = e.target.files[0];
-                      if (f) sf("logo", await compressImage(f, 150));
+                      if (!f) return;
+                      try {
+                        sf("logo", await compressImage(f, 150));
+                      } catch (err) {
+                        setNameError(err.message);
+                      }
                     }}
-                    style={{ display: "none" }}
                   />
                   <button className="btn btn-secondary btn-sm" style={{ width: "100%" }} onClick={() => logoRef.current?.click()}>
-                    {form.logo ? "Cambiar" : "Subir logo"}
+                    {form.logo ? "Cambiar logo" : "Subir logo"}
                   </button>
                   {form.logo && (
-                    <button className="btn btn-ghost btn-sm" style={{ width: "100%", color: "var(--danger)", marginTop: 3 }} onClick={() => sf("logo", null)}>
+                    <button className="btn btn-ghost btn-sm" style={{ width: "100%", color: "var(--danger)", marginTop: "var(--sp-1)" }} onClick={() => sf("logo", null)}>
                       Quitar
                     </button>
                   )}
                 </div>
               </div>
             </div>
+
             {[
-              ["name", "Nombre *"],
-              ["industry", "Industria"],
-              ["instagram", "Instagram"],
-              ["phone", "Telefono"],
-              ["whatsapp", "WhatsApp"],
-              ["sucursales", "Sucursales"],
-              ["direcciones", "Direcciones"],
-            ].map(([k, l]) => (
+              ["name", "Nombre", "text", true],
+              ["industry", "Industria", "text", false],
+              ["instagram", "Instagram", "text", false],
+              ["phone", "Teléfono", "tel", false],
+              ["whatsapp", "WhatsApp", "tel", false],
+              ["sucursales", "Sucursales", "text", false],
+              ["direcciones", "Direcciones", "text", false],
+            ].map(([k, l, type, required]) => (
               <div key={k}>
-                <label className="label">{l}</label>
-                <input className="input" value={form[k] || ""} onChange={(e) => sf(k, e.target.value)} />
+                <label className="label" htmlFor={`${ids}-${k}`}>
+                  {l}{required && <span aria-hidden="true"> *</span>}
+                  {required && <span className="sr-only"> (obligatorio)</span>}
+                </label>
+                <input
+                  id={`${ids}-${k}`}
+                  className="input"
+                  type={type}
+                  required={required}
+                  aria-invalid={k === "name" && nameError ? "true" : undefined}
+                  aria-describedby={k === "name" && nameError ? `${ids}-name-err` : undefined}
+                  value={form[k] || ""}
+                  onChange={(e) => { sf(k, e.target.value); if (k === "name") setNameError(""); }}
+                />
+                {k === "name" && nameError && (
+                  <p id={`${ids}-name-err`} role="alert" className="notice notice-error" style={{ marginTop: "var(--sp-2)", marginBottom: 0 }}>
+                    {nameError}
+                  </p>
+                )}
               </div>
             ))}
-            <div>
-              <label className="label">Colores de marca</label>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
+
+            <fieldset style={{ border: "none" }}>
+              <legend className="label">Colores de marca</legend>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: "var(--sp-3)" }}>
                 {[
                   ["primaryColor", "Principal"],
                   ["secondaryColor", "Secundario"],
                   ["accentColor", "Acento"],
                 ].map(([k, l]) => (
                   <div key={k} style={{ textAlign: "center" }}>
+                    <label className="label" htmlFor={`${ids}-${k}`} style={{ textTransform: "none" }}>{l}</label>
                     <input
+                      id={`${ids}-${k}`}
                       type="color"
                       value={form[k] || "#000000"}
                       onChange={(e) => sf(k, e.target.value)}
-                      style={{ width: "100%", height: 36, border: "none", background: "none", cursor: "pointer", borderRadius: 6 }}
+                      style={{ width: "100%", height: 44, border: "1px solid var(--border)", background: "none", cursor: "pointer", borderRadius: "var(--radius-xs)" }}
                     />
-                    <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>{l}</div>
                   </div>
                 ))}
               </div>
-            </div>
+            </fieldset>
           </div>
         )}
 
         {tab === "adn" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+          <div role="tabpanel" id={`${ids}-panel-adn`} aria-labelledby={`${ids}-tab-adn`} style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
             {[
-              ["descripcion", "Descripcion del negocio", "Que hace, servicios..."],
-              ["valores", "Valores", "Calidad, rapidez..."],
-              ["notasInspeccion", "Notas de inspeccion", "Bio, destacados..."],
+              ["descripcion", "Descripción del negocio", "Qué hace, servicios…"],
+              ["valores", "Valores", "Calidad, rapidez…"],
+              ["notasInspeccion", "Notas de inspección", "Bio, destacados…"],
             ].map(([k, l, ph]) => (
               <div key={k}>
-                <label className="label">{l}</label>
-                <textarea className="textarea" value={form[k] || ""} onChange={(e) => sf(k, e.target.value)} placeholder={ph} />
+                <label className="label" htmlFor={`${ids}-${k}`}>{l}</label>
+                <textarea id={`${ids}-${k}`} className="textarea" value={form[k] || ""} onChange={(e) => sf(k, e.target.value)} placeholder={ph} />
               </div>
             ))}
             {[
-              ["audiencia", "Audiencia", "Ej: Mujeres 25-45 anos"],
+              ["audiencia", "Audiencia", "Ej: Mujeres de 25 a 45 años"],
               ["competencia", "Competencia", "Ej: Marca X"],
               ["hashtags", "Hashtags", "#Hashtag1 #Panama"],
             ].map(([k, l, ph]) => (
               <div key={k}>
-                <label className="label">{l}</label>
-                <input className="input" value={form[k] || ""} onChange={(e) => sf(k, e.target.value)} placeholder={ph} />
+                <label className="label" htmlFor={`${ids}-${k}`}>{l}</label>
+                <input id={`${ids}-${k}`} className="input" value={form[k] || ""} onChange={(e) => sf(k, e.target.value)} placeholder={ph} />
               </div>
             ))}
           </div>
         )}
 
         {tab === "voz" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+          <div role="tabpanel" id={`${ids}-panel-voz`} aria-labelledby={`${ids}-tab-voz`} style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
             <div>
-              <label className="label">Estilo de guiones</label>
-              <textarea className="textarea" style={{ minHeight: 80 }} value={form.estiloGuion || ""} onChange={(e) => sf("estiloGuion", e.target.value)} placeholder="Tono, emojis, CTA..." />
+              <label className="label" htmlFor={`${ids}-estiloGuion`}>Estilo de guiones</label>
+              <textarea id={`${ids}-estiloGuion`} className="textarea" style={{ minHeight: 100 }} value={form.estiloGuion || ""} onChange={(e) => sf("estiloGuion", e.target.value)} placeholder="Tono, emojis, llamada a la acción…" />
             </div>
             <div>
-              <label className="label">Estilo de locucion</label>
-              <textarea className="textarea" style={{ minHeight: 60 }} value={form.estiloLocucion || ""} onChange={(e) => sf("estiloLocucion", e.target.value)} placeholder="Voz, ritmo..." />
+              <label className="label" htmlFor={`${ids}-estiloLocucion`}>Estilo de locución</label>
+              <textarea id={`${ids}-estiloLocucion`} className="textarea" style={{ minHeight: 84 }} value={form.estiloLocucion || ""} onChange={(e) => sf("estiloLocucion", e.target.value)} placeholder="Voz, ritmo…" />
             </div>
           </div>
         )}
 
         {tab === "github" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-            <p style={{ fontSize: 12, color: "var(--text-dim)" }}>
-              Conecta un repositorio de GitHub para cargar el ADN del cliente. Puedes pegar la URL completa con carpeta
-              (ej: github.com/user/repo/tree/main/clientes/nombre) y se detectara automaticamente.
+          <div role="tabpanel" id={`${ids}-panel-github`} aria-labelledby={`${ids}-tab-github`} style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
+            <p style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)" }}>
+              Conecta un repositorio de GitHub para cargar el ADN del cliente. Puedes pegar la URL
+              completa con carpeta (ej: github.com/usuario/repo/tree/main/clientes/nombre) y se
+              detectará automáticamente.
             </p>
             <div>
-              <label className="label">Repositorio GitHub</label>
+              <label className="label" htmlFor={`${ids}-ghrepo`}>Repositorio GitHub</label>
               <input
+                id={`${ids}-ghrepo`}
                 className="input"
+                type="url"
                 value={form.githubRepo || ""}
                 onChange={(e) => handleRepoUrlChange(e.target.value)}
                 placeholder="https://github.com/usuario/agencia"
               />
             </div>
             <div>
-              <label className="label">Carpeta del cliente (dentro del repo)</label>
+              <label className="label" htmlFor={`${ids}-ghfolder`}>Carpeta del cliente (dentro del repo)</label>
               <input
+                id={`${ids}-ghfolder`}
                 className="input"
                 value={form.githubFolder || ""}
                 onChange={(e) => sf("githubFolder", e.target.value)}
                 placeholder="clientes/nombre-del-cliente"
+                aria-describedby={`${ids}-ghfolder-help`}
               />
-              <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 3 }}>
-                Dejar vacio para leer desde la raiz del repositorio.
-              </div>
+              <p id={`${ids}-ghfolder-help`} className="hint">
+                Déjalo vacío para leer desde la raíz del repositorio.
+              </p>
             </div>
             <div>
-              <label className="label">Token GitHub (opcional, para repos privados)</label>
+              <label className="label" htmlFor={`${ids}-ghtoken`}>Token de GitHub (opcional, para repos privados)</label>
               <input
+                id={`${ids}-ghtoken`}
                 className="input"
                 type="password"
+                autoComplete="off"
                 value={form.githubToken || ""}
                 onChange={(e) => sf("githubToken", e.target.value)}
-                placeholder="ghp_..."
+                placeholder="ghp_…"
+                aria-describedby={`${ids}-ghtoken-help`}
               />
+              <p id={`${ids}-ghtoken-help`} className="notice notice-warn" style={{ display: "block", marginTop: "var(--sp-2)" }}>
+                El token se guarda sin cifrar en este navegador y se incluye en las copias de
+                seguridad que exportes. Usa un token de sólo lectura (<code>repo:read</code>) y
+                revócalo cuando dejes de necesitarlo.
+              </p>
             </div>
             <button
               className="btn btn-primary btn-sm"
@@ -477,47 +508,32 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
             </button>
 
             {ghStatus && (
-              <div style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 12px",
-                background: ghStatus.startsWith("Error") ? "#2a0d0d" : "#0d2a0d",
-                borderRadius: 8,
-                border: `1px solid ${ghStatus.startsWith("Error") ? "#C62828" : "#388E3C"}`,
-              }}>
-                <span style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: ghStatus.startsWith("Error") ? "var(--danger)" : "var(--success)",
-                  flexShrink: 0,
-                }} />
-                <span style={{ fontSize: 11, color: ghStatus.startsWith("Error") ? "var(--danger)" : "var(--success)" }}>{ghStatus}</span>
-              </div>
+              <p role="status" aria-live="polite" className={`notice ${ghStatus.startsWith("Error") ? "notice-error" : "notice-ok"}`} style={{ display: "block", marginBottom: 0 }}>
+                {ghStatus}
+              </p>
             )}
 
             {ghReadingPath && (
-              <div style={{
+              <p style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 6,
-                padding: "6px 10px",
+                gap: "var(--sp-2)",
+                padding: "var(--sp-2) var(--sp-3)",
                 background: "var(--card-alt)",
-                borderRadius: 6,
+                borderRadius: "var(--radius-xs)",
                 border: "1px solid var(--border)",
+                fontSize: "var(--fs-2xs)",
+                color: "var(--text-muted)",
               }}>
-                <span style={{ fontSize: 13 }}>📂</span>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  Leyendo: <strong style={{ color: "var(--accent)" }}>{ghReadingPath}</strong>
-                </span>
-              </div>
+                <span aria-hidden="true">📂</span>
+                Leyendo: <strong style={{ color: "var(--accent)" }}>{ghReadingPath}</strong>
+              </p>
             )}
 
             {ghSubfolders.length > 0 && !form.githubFolder && (
               <div>
-                <label className="label">Carpetas de clientes encontradas</label>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <h3 className="label">Carpetas de clientes encontradas</h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
                   {ghSubfolders.map((sf2, i) => (
                     <button
                       key={i}
@@ -526,26 +542,18 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
                         setGhSubfolders([]);
                         setTimeout(() => testGitHub(), 100);
                       }}
+                      className="tap-row"
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        padding: "8px 12px",
+                        padding: "var(--sp-2) var(--sp-3)",
                         background: "var(--bg)",
-                        borderRadius: 6,
+                        borderRadius: "var(--radius-xs)",
                         border: "1px solid var(--border)",
-                        cursor: "pointer",
-                        color: "var(--text)",
-                        textAlign: "left",
-                        fontSize: 12,
-                        transition: "border-color .2s",
+                        fontSize: "var(--fs-xs)",
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.borderColor = "var(--accent)"}
-                      onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border)"}
                     >
-                      <span style={{ fontSize: 14 }}>📂</span>
+                      <span aria-hidden="true" style={{ fontSize: "var(--fs-sm)" }}>📂</span>
                       <span style={{ flex: 1 }}>{sf2.name}</span>
-                      <span style={{ fontSize: 10, color: "var(--accent)" }}>Seleccionar</span>
+                      <span style={{ fontSize: "var(--fs-3xs)", color: "var(--accent)" }}>Seleccionar</span>
                     </button>
                   ))}
                 </div>
@@ -553,76 +561,91 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
             )}
 
             {ghFiles.length > 0 && !adnExtracted && (
-              <div>
-                <label className="label">Archivos encontrados</label>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <fieldset style={{ border: "none" }}>
+                <legend className="label">Archivos encontrados</legend>
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)" }}>
                   {ghFiles.map((f, i) => (
-                    <div key={i} style={{
+                    <label key={i} style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 8,
-                      padding: "6px 10px",
+                      gap: "var(--sp-2)",
+                      padding: "var(--sp-2) var(--sp-3)",
                       background: "var(--bg)",
-                      borderRadius: 6,
+                      borderRadius: "var(--radius-xs)",
+                      minHeight: "var(--tap)",
+                      cursor: "pointer",
                     }}>
                       <input
                         type="checkbox"
                         checked={f.selected}
                         onChange={() => setGhFiles((prev) => prev.map((ff, j) => j === i ? { ...ff, selected: !ff.selected } : ff))}
                       />
-                      <span style={{ fontSize: 11, flex: 1 }}>{f.path}</span>
-                      <span style={{ fontSize: 9, color: "var(--text-dim)" }}>{Math.round(f.size / 1024)}KB</span>
-                    </div>
+                      <span style={{ fontSize: "var(--fs-2xs)", flex: 1, wordBreak: "break-all" }}>{f.path}</span>
+                      <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)", flexShrink: 0 }}>{Math.round(f.size / 1024)} KB</span>
+                    </label>
                   ))}
                 </div>
-              </div>
+              </fieldset>
             )}
 
             {adnExtracted && (
-              <div style={{ background: "var(--bg)", borderRadius: 10, padding: 12, border: "1px solid var(--accent)" + "44" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                  <label className="label" style={{ margin: 0 }}>Campos encontrados por IA</label>
+              <div style={{ background: "var(--bg)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)", border: "1px solid var(--accent-line)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
+                  <h3 className="label" style={{ margin: 0 }}>Campos encontrados por IA</h3>
                   <button
+                    type="button"
+                    className="btn-remove"
+                    aria-label="Descartar campos sugeridos"
+                    style={{ color: "var(--text-dim)" }}
                     onClick={() => { setAdnExtracted(null); setAdnSelected({}); }}
-                    style={{ background: "none", border: "none", color: "var(--text-dim)", cursor: "pointer", fontSize: 12 }}
                   >
                     ✕
                   </button>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
                   {Object.entries(ADN_FIELD_LABELS).map(([key, label]) => {
                     const value = adnExtracted[key];
                     if (!value) return (
-                      <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", opacity: 0.4 }}>
-                        <input type="checkbox" disabled checked={false} />
-                        <span style={{ fontSize: 11, color: "var(--text-dim)" }}>{label}: <em>(no encontrado)</em></span>
+                      <div key={key} style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", padding: "var(--sp-1) 0" }}>
+                        <input type="checkbox" disabled checked={false} aria-label={`${label}: no encontrado`} />
+                        <span style={{ fontSize: "var(--fs-2xs)", color: "var(--text-faint)" }}>{label}: <em>(no encontrado)</em></span>
                       </div>
                     );
                     const formKey = ADN_TO_FORM_KEY[key];
                     const existing = form[formKey];
                     const hasConflict = existing && existing !== value;
                     return (
-                      <div key={key} style={{ padding: "6px 8px", background: adnSelected[key] ? "var(--accent)" + "11" : "transparent", borderRadius: 6, border: `1px solid ${adnSelected[key] ? "var(--accent)" + "33" : "transparent"}` }}>
-                        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                          <input
-                            type="checkbox"
-                            checked={!!adnSelected[key]}
-                            onChange={() => setAdnSelected((p) => ({ ...p, [key]: !p[key] }))}
-                            style={{ marginTop: 2, flexShrink: 0 }}
-                          />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--accent)", marginBottom: 2 }}>{label}</div>
-                            <div style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5, wordBreak: "break-word" }}>
-                              {value.length > 120 ? value.slice(0, 120) + "..." : value}
-                            </div>
-                            {hasConflict && (
-                              <div style={{ fontSize: 10, color: "var(--accent-alt)", marginTop: 4, padding: "4px 6px", background: "#2a1a0a", borderRadius: 4, border: "1px solid #F5A62333" }}>
-                                Actual: {existing.length > 80 ? existing.slice(0, 80) + "..." : existing}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
+                      <label
+                        key={key}
+                        style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: "var(--sp-2)",
+                          padding: "var(--sp-2)",
+                          background: adnSelected[key] ? "var(--accent-soft)" : "transparent",
+                          borderRadius: "var(--radius-xs)",
+                          border: `1px solid ${adnSelected[key] ? "var(--accent-line)" : "transparent"}`,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!adnSelected[key]}
+                          onChange={() => setAdnSelected((p) => ({ ...p, [key]: !p[key] }))}
+                          style={{ marginTop: 2 }}
+                        />
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: "block", fontSize: "var(--fs-3xs)", fontWeight: 700, color: "var(--accent)", marginBottom: 2 }}>{label}</span>
+                          <span style={{ display: "block", fontSize: "var(--fs-2xs)", color: "var(--text-dim)", lineHeight: "var(--lh-normal)", wordBreak: "break-word" }}>
+                            {value.length > 140 ? value.slice(0, 140) + "…" : value}
+                          </span>
+                          {hasConflict && (
+                            <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "#FFC166", marginTop: "var(--sp-1)", padding: "var(--sp-1) var(--sp-2)", background: "#2a1a0a", borderRadius: 4, border: "1px solid var(--alt-line)" }}>
+                              Se reemplazará el valor actual: {existing.length > 80 ? existing.slice(0, 80) + "…" : existing}
+                            </span>
+                          )}
+                        </span>
+                      </label>
                     );
                   })}
                 </div>
@@ -658,30 +681,33 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
             )}
 
             {form.githubContext && !adnExtracted && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <p style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap" }}>
                 <span className="badge" style={{ background: "#0d2a0d", color: "var(--success)", border: "1px solid #388E3C" }}>
                   ADN sincronizado
                 </span>
-                <span style={{ fontSize: 10, color: "var(--text-dim)" }}>{form.githubContext.length} chars</span>
-              </div>
-            )}
-
-            {!apiKey && (
-              <p style={{ fontSize: 10, color: "var(--accent-alt)", background: "#2a1a0a", padding: "8px 10px", borderRadius: 6, border: "1px solid #F5A62333" }}>
-                Configura una API key en ajustes para que la IA analice el ADN y llene los campos automaticamente.
+                <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{form.githubContext.length} caracteres</span>
               </p>
             )}
 
-            <p style={{ fontSize: 10, color: "var(--text-dim)" }}>
-              Se leeran archivos .md y .txt de la carpeta indicada (o la raiz si esta vacia) y su subcarpeta /adn/. Con API key configurada, la IA analizara el contenido y sugerira campos para el perfil.
+            {!apiKey && (
+              <p className="notice notice-warn" style={{ display: "block" }}>
+                Configura una API key en ajustes para que la IA analice el ADN y rellene los campos
+                automáticamente.
+              </p>
+            )}
+
+            <p className="hint">
+              Se leerán archivos .md y .txt de la carpeta indicada (o la raíz si está vacía) y de su
+              subcarpeta /adn/. Con una API key configurada, la IA analizará el contenido y sugerirá
+              campos para el perfil.
             </p>
           </div>
         )}
 
         {tab === "semanal" && (
-          <div>
-            <p style={{ fontSize: 11, color: "var(--text-dim)", margin: "0 0 12px" }}>
-              Define formatos y categorias que se repiten cada semana.
+          <div role="tabpanel" id={`${ids}-panel-semanal`} aria-labelledby={`${ids}-tab-semanal`}>
+            <p style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)", margin: "0 0 var(--sp-3)" }}>
+              Define los formatos y categorías que se repiten cada semana.
             </p>
 
             <CategoryTemplates
@@ -725,31 +751,34 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
                     onClick={() => setWeekStructure((p) => p.map((x, j) => (j !== i ? x : { ...x, active: !x.active })))}
                     style={{
                       width: 32,
-                      height: 32,
-                      borderRadius: 7,
+                      height: 36,
+                      borderRadius: "var(--radius-xs)",
                       border: "none",
                       cursor: "pointer",
                       background: s.active ? "var(--accent)" : "var(--card-alt)",
                       color: "#fff",
-                      fontSize: 12,
+                      fontSize: "var(--fs-xs)",
                       flexShrink: 0,
                     }}
+                    aria-pressed={s.active}
+                    aria-label={`${s.active ? "Desactivar" : "Activar"} ${s.dayName}`}
                   >
-                    {s.active ? "✓" : ""}
+                    <span aria-hidden="true">{s.active ? "✓" : ""}</span>
                   </button>
-                  <span style={{ fontSize: 12, color: s.active ? "#fff" : "var(--text-muted)", fontWeight: s.active ? 700 : 400, width: 76, flexShrink: 0 }}>
+                  <span style={{ fontSize: "var(--fs-xs)", color: s.active ? "#fff" : "var(--text-muted)", fontWeight: s.active ? 700 : 500, width: 80, flexShrink: 0 }}>
                     {s.dayName}
                   </span>
-                  {s.active && <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{s.slots.length} slot{s.slots.length !== 1 ? "s" : ""}</span>}
+                  {s.active && <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-muted)" }}>{s.slots.length} publicación{s.slots.length !== 1 ? "es" : ""}</span>}
                 </div>
                 {s.active && (
                   <>
-                    <div style={{ marginBottom: 8 }}>
-                      <div className="label" style={{ marginBottom: 6 }}>Slots</div>
+                    <div style={{ marginBottom: "var(--sp-3)" }}>
+                      <p className="label">Publicaciones del día</p>
                       {s.slots.map((slot, si) => (
-                        <div key={si} style={{ display: "flex", gap: 6, alignItems: "flex-start", marginBottom: 6, paddingLeft: 8 }}>
+                        <div key={si} style={{ display: "flex", gap: "var(--sp-2)", alignItems: "flex-start", marginBottom: "var(--sp-2)", paddingLeft: "var(--sp-2)" }}>
                           <div style={{ flex: 1 }}>
                             <FormatPicker
+                              label={`Formato de la publicación ${si + 1} del ${s.dayName}`}
                               value={slot.format}
                               onChange={(v) =>
                                 setWeekStructure((p) => p.map((x, j) => (j !== i ? x : { ...x, slots: x.slots.map((ss, k) => (k !== si ? ss : { ...ss, format: v })) })))
@@ -758,8 +787,9 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
                           </div>
                           <button
                             type="button"
+                            className="btn-remove"
+                            aria-label={`Quitar publicación ${si + 1} del ${s.dayName}`}
                             onClick={() => setWeekStructure((p) => p.map((x, j) => (j !== i ? x : { ...x, slots: x.slots.filter((_, k) => k !== si) })))}
-                            style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: 14, flexShrink: 0, marginTop: 4 }}
                           >
                             ✕
                           </button>
@@ -767,21 +797,23 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
                       ))}
                       <button
                         type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ marginLeft: "var(--sp-2)" }}
                         onClick={() => setWeekStructure((p) => p.map((x, j) => (j !== i ? x : { ...x, slots: [...x.slots, { format: "post" }] })))}
-                        style={{ marginLeft: 8, padding: "5px 12px", background: "var(--card-alt)", color: "var(--text-muted)", border: "1px dashed var(--border)", borderRadius: 6, cursor: "pointer", fontSize: 11 }}
                       >
-                        + Slot
+                        + Publicación
                       </button>
                     </div>
-                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8 }}>
-                      <div className="label" style={{ marginBottom: 6 }}>Categorias</div>
+                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: "var(--sp-3)" }}>
+                      <p className="label">Categorías</p>
                       {(s.categories || [""]).map((cat, ci) => (
-                        <div key={ci} style={{ display: "flex", gap: 6, marginBottom: 6, alignItems: "center", paddingLeft: 8 }}>
+                        <div key={ci} style={{ display: "flex", gap: "var(--sp-2)", marginBottom: "var(--sp-2)", alignItems: "center", paddingLeft: "var(--sp-2)" }}>
                           <input
                             className="input"
-                            style={{ flex: 1, fontSize: 12, padding: "7px 10px" }}
+                            style={{ flex: 1 }}
                             value={cat}
-                            placeholder={`Categoria ${ci + 1}`}
+                            aria-label={`Categoría ${ci + 1} del ${s.dayName}`}
+                            placeholder={`Categoría ${ci + 1}`}
                             onChange={(e) =>
                               setWeekStructure((p) =>
                                 p.map((x, j) => {
@@ -796,8 +828,9 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
                           {ci > 0 && (
                             <button
                               type="button"
+                              className="btn-remove"
+                              aria-label={`Quitar categoría ${ci + 1} del ${s.dayName}`}
                               onClick={() => setWeekStructure((p) => p.map((x, j) => (j !== i ? x : { ...x, categories: x.categories.filter((_, k) => k !== ci) })))}
-                              style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: 13 }}
                             >
                               ✕
                             </button>
@@ -808,10 +841,10 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
                         <button
                           type="button"
                           className="btn btn-secondary btn-sm"
-                          style={{ marginLeft: 8 }}
+                          style={{ marginLeft: "var(--sp-2)" }}
                           onClick={() => setWeekStructure((p) => p.map((x, j) => (j !== i ? x : { ...x, categories: [...(x.categories || [""]), ""] })))}
                         >
-                          + Categoria
+                          + Categoría
                         </button>
                       )}
                     </div>
@@ -821,9 +854,10 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
             ))}
           </div>
         )}
+        </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 18 }}>
-          <div style={{ display: "flex", gap: 10 }}>
+        <div className="sheet-footer" style={{ flexDirection: "column", gap: "var(--sp-2)" }}>
+          <div style={{ display: "flex", gap: "var(--sp-3)", width: "100%" }}>
             <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>
               Cancelar
             </button>
@@ -836,7 +870,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
               className="btn btn-danger"
               style={{ width: "100%" }}
               onClick={() => {
-                if (window.confirm(`Eliminar ${form.name}?`)) {
+                if (window.confirm(`¿Eliminar ${form.name}? Se borrarán también sus calendarios.`)) {
                   onDelete(initial.id);
                   onClose();
                 }
