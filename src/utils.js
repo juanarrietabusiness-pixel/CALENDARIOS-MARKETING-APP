@@ -98,6 +98,7 @@ export function createEmptyClient() {
     githubFolder: "",
     githubToken: "",
     githubContext: "",
+    ideasBank: [],
     savedPlans: [],
     savedCategories: [],
     calendars: [],

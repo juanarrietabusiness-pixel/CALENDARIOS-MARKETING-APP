@@ -4,6 +4,11 @@ import { uid, fmtDate, compressImage, parseVideoURL } from "../utils";
 import { callAI, buildClientContext, fetchGitHubADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost } from "../api";
 import { buildExportHTML } from "../export";
 
+function stripMarkdown(text) {
+  if (!text) return "";
+  return text.replace(/\*\*\*(.*?)\*\*\*/g, "$1").replace(/\*\*(.*?)\*\*/g, "$1").replace(/\*(.*?)\*/g, "$1").replace(/__(.*?)__/g, "$1").replace(/_(.*?)_/g, "$1");
+}
+
 function CopyButton({ text, label }) {
   const [copied, setCopied] = useState(false);
   if (!text) return null;
@@ -11,7 +16,7 @@ function CopyButton({ text, label }) {
     <button
       onClick={(e) => {
         e.stopPropagation();
-        navigator.clipboard.writeText(text).then(() => {
+        navigator.clipboard.writeText(stripMarkdown(text)).then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
         });
@@ -181,6 +186,11 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, apiKey, client,
               </button>
             ))}
           </div>
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label className="label">Hora de publicacion</label>
+          <input className="input" type="time" value={form.publishTime || ""} onChange={(e) => sf("publishTime", e.target.value)} />
         </div>
 
         <div style={{ marginBottom: 12 }}>
@@ -355,10 +365,18 @@ function AddPostInline({ day, onAdd, onCancel }) {
   );
 }
 
-function MonthGrid({ cal, onPostClick, onMove, onAddPost }) {
+function MonthGrid({ cal, onPostClick, onMove, onAddPost, onMoveToBank, onDropFromBank, ideasBank }) {
   const [drag, setDrag] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const today = fmtDate(new Date());
+
+  const dowCategories = {};
+  for (const day of cal.days || []) {
+    if (!day.category) continue;
+    const dow = new Date(day.date + "T12:00:00").getDay();
+    const dowMon = dow === 0 ? 6 : dow - 1;
+    if (!dowCategories[dowMon]) dowCategories[dowMon] = day.category;
+  }
 
   const cells = () => {
     const first = new Date(cal.year, cal.month, 1);
@@ -380,8 +398,15 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost }) {
 
   return (
     <div className="cal-grid">
-      {["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"].map((n) => (
-        <div key={n} className="cal-header-cell">{n}</div>
+      {["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"].map((n, i) => (
+        <div key={n} className="cal-header-cell">
+          <div>{n}</div>
+          {dowCategories[i] && (
+            <div style={{ fontSize: 7, color: "var(--accent-alt)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
+              {dowCategories[i]}
+            </div>
+          )}
+        </div>
       ))}
       {allCells.map((date) => {
         const d = new Date(date + "T12:00:00");
@@ -406,6 +431,13 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost }) {
             onDragLeave={() => setDropTarget(null)}
             onDrop={(e) => {
               e.preventDefault();
+              try {
+                const data = JSON.parse(e.dataTransfer.getData("text/plain") || "{}");
+                if (data.bankPostId && onDropFromBank && ideasBank) {
+                  const bankPost = ideasBank.find((p) => p.id === data.bankPostId);
+                  if (bankPost) onDropFromBank(bankPost, date);
+                }
+              } catch { /* not bank data */ }
               if (drag && drag.sourceDate !== date) onMove(drag.postId, drag.sourceDate, date);
               setDrag(null);
               setDropTarget(null);
@@ -422,6 +454,8 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost }) {
             {(dd?.posts || []).map((post) => {
               const f = FORMATS[post.format] || FORMATS.post;
               const st = STATUSES[post.status || "pending"];
+              const isPublished = post.status === "published";
+              const briefIdea = post.idea ? post.idea.split(/[.\n]/)[0].slice(0, 20) : "";
               return (
                 <div
                   key={post.id}
@@ -430,24 +464,27 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost }) {
                   onDragEnd={() => { setDrag(null); setDropTarget(null); }}
                   onClick={() => onPostClick(post, dd)}
                   style={{
-                    background: f.color + "22",
-                    border: "1px solid " + st.border + "88",
+                    background: isPublished ? st.bg : f.color + "22",
+                    border: isPublished ? "2px solid " + st.border : "1px solid " + st.border + "88",
                     borderRadius: 4,
                     padding: "2px 4px",
                     marginBottom: 2,
                     cursor: "grab",
                     fontSize: 8,
-                    color: f.color,
+                    color: isPublished ? st.text : f.color,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
                     display: "flex",
                     alignItems: "center",
                     gap: 3,
+                    opacity: isPublished ? 0.7 : 1,
+                    textDecoration: isPublished ? "line-through" : "none",
                   }}
                 >
                   <span style={{ width: 6, height: 6, borderRadius: "50%", background: st.text, flexShrink: 0 }} />
-                  {f.icon} {post.category || post.idea?.slice(0, 12) || f.label}
+                  {f.icon} {briefIdea || f.label}
+                  {post.publishTime && <span style={{ marginLeft: "auto", fontSize: 7, opacity: 0.7 }}>{post.publishTime}</span>}
                 </div>
               );
             })}
@@ -486,6 +523,7 @@ export default function CalendarView({
   onUpdateCal,
   onDeleteCal,
   onDuplicateCal,
+  onUpdateClient,
 }) {
   const [viewMode, setViewMode] = useState("list");
   const [expandedDay, setExpandedDay] = useState(null);
@@ -508,11 +546,35 @@ export default function CalendarView({
   const [approvalModal, setApprovalModal] = useState(false);
   const [syncStatus, setSyncStatus] = useState("");
   const [editMeta, setEditMeta] = useState(false);
+  const [bankOpen, setBankOpen] = useState(false);
   const [metaForm, setMetaForm] = useState({
     name: cal.name || "",
     campaign: cal.campaign || "",
     weekConcepts: [...(cal.weekConcepts || [])],
   });
+
+  const ideasBank = client.ideasBank || [];
+
+  const addToBank = (post, sourceDate) => {
+    const bankPost = { ...post, id: uid(), _originDate: sourceDate, _originCal: calId, _addedAt: new Date().toISOString() };
+    onUpdateClient({ ...client, ideasBank: [...ideasBank, bankPost] });
+  };
+
+  const removeFromBank = (postId) => {
+    onUpdateClient({ ...client, ideasBank: ideasBank.filter((p) => p.id !== postId) });
+  };
+
+  const moveBankToCalendar = (bankPost, targetDate) => {
+    const newPost = { ...bankPost, id: uid(), status: "pending" };
+    delete newPost._originDate;
+    delete newPost._originCal;
+    delete newPost._addedAt;
+    const newDays = (cal.days || []).map((d) =>
+      d.date !== targetDate ? d : { ...d, posts: [...(d.posts || []), newPost] }
+    );
+    onUpdateCal(calId, { ...cal, days: newDays });
+    removeFromBank(bankPost.id);
+  };
 
   const calName = cal.name || (MONTHS[cal.month] + " " + cal.year);
   const totalPosts = (cal.days || []).reduce((a, d) => a + (d.posts || []).length, 0);
@@ -568,13 +630,17 @@ export default function CalendarView({
     setAddingPostDay(null);
   };
 
-  const deletePost = (date, postId) => {
-    if (!window.confirm("Eliminar esta publicacion?")) return;
+  const removePostFromDay = (date, postId) => {
     const newDays = (cal.days || []).map((d) =>
       d.date !== date ? d : { ...d, posts: d.posts.filter((p) => p.id !== postId) }
     );
     onUpdateCal(calId, { ...cal, days: newDays });
     if (sidePanel?.post?.id === postId) setSidePanel(null);
+  };
+
+  const deletePost = (date, postId) => {
+    if (!window.confirm("Eliminar esta publicacion?")) return;
+    removePostFromDay(date, postId);
   };
 
   const generateSinglePostContent = async (post, day) => {
@@ -1037,6 +1103,9 @@ export default function CalendarView({
         <button className="btn btn-secondary" onClick={() => setViewMode((m) => (m === "list" ? "grid" : "list"))}>
           {viewMode === "list" ? "Calendario" : "Lista"}
         </button>
+        <button className="btn btn-secondary" onClick={() => setBankOpen((b) => !b)} style={{ position: "relative" }}>
+          💡{ideasBank.length > 0 && <span style={{ position: "absolute", top: -4, right: -4, background: "var(--accent-alt)", color: "#000", borderRadius: "50%", width: 16, height: 16, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{ideasBank.length}</span>}
+        </button>
         <button className="btn btn-secondary no-print" onClick={exportPDF}>PDF</button>
         <button className="btn btn-secondary" onClick={exportHTML}>HTML</button>
         <button className="btn btn-secondary" onClick={sendToClient}>🔗 Enviar</button>
@@ -1153,6 +1222,87 @@ export default function CalendarView({
         </div>
       )}
 
+      {/* Ideas Bank */}
+      {bankOpen && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = "var(--accent-alt)"; }}
+          onDragLeave={(e) => { e.currentTarget.style.borderColor = "var(--accent-alt)" + "44"; }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.currentTarget.style.borderColor = "var(--accent-alt)" + "44";
+            try {
+              const data = JSON.parse(e.dataTransfer.getData("text/plain") || "{}");
+              if (data.postId && data.sourceDate) {
+                const sourceDay = (cal.days || []).find((d) => d.date === data.sourceDate);
+                const post = sourceDay?.posts?.find((p) => p.id === data.postId);
+                if (post) {
+                  addToBank(post, data.sourceDate);
+                  removePostFromDay(data.sourceDate, data.postId);
+                }
+              }
+            } catch { /* ignore */ }
+          }}
+          style={{
+            background: "var(--card)",
+            border: "1px solid var(--accent-alt)" + "44",
+            borderRadius: 12,
+            padding: 12,
+            marginBottom: 12,
+            transition: "border-color .2s",
+          }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 14 }}>💡</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-alt)" }}>Banco de Ideas ({ideasBank.length})</span>
+            </div>
+            <button className="btn-icon" onClick={() => setBankOpen(false)} style={{ fontSize: 12 }}>✕</button>
+          </div>
+          {ideasBank.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "16px 0", color: "var(--text-dim)", fontSize: 11 }}>
+              Arrastra posts del calendario aqui para guardarlos, o se agregaran automaticamente los posts no usados.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 200, overflowY: "auto" }}>
+              {ideasBank.map((post) => {
+                const f = FORMATS[post.format] || FORMATS.post;
+                return (
+                  <div
+                    key={post.id}
+                    draggable
+                    onDragStart={(e) => { e.dataTransfer.setData("text/plain", JSON.stringify({ bankPostId: post.id })); }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "6px 10px",
+                      background: "var(--bg)",
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                      cursor: "grab",
+                    }}
+                  >
+                    <span style={{ fontSize: 12 }}>{f.icon}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {post.idea || post.descripcion?.slice(0, 40) || f.label}
+                      </div>
+                      {post.category && <div style={{ fontSize: 9, color: "var(--text-dim)" }}>{post.category}</div>}
+                    </div>
+                    {post.publishTime && <span style={{ fontSize: 9, color: "var(--text-dim)" }}>{post.publishTime}</span>}
+                    <button
+                      onClick={() => removeFromBank(post.id)}
+                      style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: 11, padding: "2px 4px", flexShrink: 0 }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Grid view */}
       {viewMode === "grid" ? (
         <MonthGrid
@@ -1160,6 +1310,9 @@ export default function CalendarView({
           onPostClick={(post, day) => setSidePanel({ post, day })}
           onMove={movePost}
           onAddPost={(date) => setAddingPostDay(date)}
+          onMoveToBank={addToBank}
+          onDropFromBank={moveBankToCalendar}
+          ideasBank={ideasBank}
         />
       ) : (
         /* List view */
@@ -1238,14 +1391,15 @@ export default function CalendarView({
                             key={post.id}
                             onClick={() => setSidePanel({ post, day })}
                             style={{
-                              background: "var(--bg)",
+                              background: post.status === "published" ? st.bg : "var(--bg)",
                               borderRadius: 10,
                               marginTop: 10,
-                              border: `1px solid ${st.border}44`,
+                              border: post.status === "published" ? `2px solid ${st.border}` : `1px solid ${st.border}44`,
                               padding: "10px 12px",
                               cursor: "pointer",
                               transition: "border-color .2s",
                               position: "relative",
+                              opacity: post.status === "published" ? 0.75 : 1,
                             }}
                             draggable
                             onDragStart={(e) => e.dataTransfer.setData("text/plain", JSON.stringify({ postId: post.id, sourceDate: day.date }))}
@@ -1274,6 +1428,7 @@ export default function CalendarView({
                               <span style={{ fontSize: 16 }}>{f.icon}</span>
                               <span className="badge" style={{ background: f.color + "22", color: f.color }}>{f.label}</span>
                               <span className="badge" style={{ background: st.bg, color: st.text, border: `1px solid ${st.border}` }}>{st.label}</span>
+                              {post.publishTime && <span style={{ fontSize: 10, color: "var(--text-dim)" }}>🕐 {post.publishTime}</span>}
                             </div>
                             {post.category && <div style={{ fontSize: 11, color: "var(--accent-alt)", fontWeight: 600, marginBottom: 4 }}>{post.category}</div>}
                             {post.image && !post.idea && !post.guion && !post.descripcion && !post.script && (

@@ -164,6 +164,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
   };
 
   const [ghReadingPath, setGhReadingPath] = useState("");
+  const [ghSubfolders, setGhSubfolders] = useState([]);
 
   const handleRepoUrlChange = (url) => {
     sf("githubRepo", url);
@@ -180,6 +181,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
     setAdnExtracted(null);
     setAdnSelected({});
     setGhReadingPath("");
+    setGhSubfolders([]);
 
     const parsed = parseGitHubUrl(form.githubRepo);
     if (!parsed) { setGhStatus("URL invalida"); setGhLoading(false); return; }
@@ -192,7 +194,13 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
       const result = await fetchGitHubADN(form.githubRepo, form.githubToken, folder);
       const fileList = result.files.map((f) => ({ name: f.name, path: f.path, size: f.size, selected: true }));
       setGhFiles(fileList);
-      setGhStatus(fileList.length > 0 ? `Conectado (${fileList.length} archivos)` : "Conectado, sin archivos .md/.txt");
+      setGhSubfolders(result.subfolders || []);
+
+      if (fileList.length === 0 && result.subfolders?.length > 0) {
+        setGhStatus(`Conectado — ${result.subfolders.length} carpetas de clientes encontradas. Selecciona una carpeta abajo.`);
+      } else {
+        setGhStatus(fileList.length > 0 ? `Conectado (${fileList.length} archivos)` : "Conectado, sin archivos .md/.txt");
+      }
 
       if (result.content) {
         sf("githubContext", result.content);
@@ -503,6 +511,44 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
                 <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                   Leyendo: <strong style={{ color: "var(--accent)" }}>{ghReadingPath}</strong>
                 </span>
+              </div>
+            )}
+
+            {ghSubfolders.length > 0 && !form.githubFolder && (
+              <div>
+                <label className="label">Carpetas de clientes encontradas</label>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {ghSubfolders.map((sf2, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        sf("githubFolder", sf2.path);
+                        setGhSubfolders([]);
+                        setTimeout(() => testGitHub(), 100);
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "8px 12px",
+                        background: "var(--bg)",
+                        borderRadius: 6,
+                        border: "1px solid var(--border)",
+                        cursor: "pointer",
+                        color: "var(--text)",
+                        textAlign: "left",
+                        fontSize: 12,
+                        transition: "border-color .2s",
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.borderColor = "var(--accent)"}
+                      onMouseLeave={(e) => e.currentTarget.style.borderColor = "var(--border)"}
+                    >
+                      <span style={{ fontSize: 14 }}>📂</span>
+                      <span style={{ flex: 1 }}>{sf2.name}</span>
+                      <span style={{ fontSize: 10, color: "var(--accent)" }}>Seleccionar</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
