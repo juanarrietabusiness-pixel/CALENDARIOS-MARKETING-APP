@@ -1,4 +1,4 @@
-import { FORMATS, STATUSES, MONTHS, DAYS } from "./constants";
+import { FORMATS, STATUSES, MONTHS } from "./constants";
 import { escapeHTML as esc } from "./utils";
 
 export function buildExportHTML(client, calendar) {
@@ -185,22 +185,22 @@ body.presentation .field-text{font-size:16px}
 .no-ideas{font-size:11px;color:#555;font-style:italic}
 .toolbar{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
 .view-toggle{display:flex;border:1px solid #1E3A6B;border-radius:8px;overflow:hidden}
-.view-btn{padding:7px 16px;font-size:11px;font-weight:600;cursor:pointer;border:none;background:#0A1628;color:#A0B4CC;font-family:inherit;transition:all .2s}
+.view-btn{padding:10px 18px;font-size:13px;font-weight:600;cursor:pointer;border:none;background:#0A1628;color:#A0B4CC;font-family:inherit;min-height:40px;transition:background .2s,color .2s}
 .view-btn.active{background:#1E90FF;color:#fff}
-.tool-btn{padding:6px 12px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #1E3A6B;background:#0A1628;color:#64B5F6;font-family:inherit}
+.tool-btn{padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid #1E3A6B;background:#0A1628;color:#64B5F6;font-family:inherit;min-height:40px}
 .tool-btn:hover{background:#1E3A6B;color:#fff}
 .tool-btn.active{background:#7B1FA2;border-color:#7B1FA2;color:#fff}
 .list-view{}
 .calendar-view{display:none}
 .list-day{background:#0A1628;border:1px solid #1E3A6B;border-radius:12px;margin-bottom:8px;overflow:hidden}
-.list-day-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;cursor:pointer;transition:background .2s;user-select:none}
+.list-day-header{display:flex;align-items:center;justify-content:space-between;padding:14px;cursor:pointer;transition:background .2s;user-select:none;min-height:56px}
 .list-day-header:hover{background:#0d1f3a}
 .list-day-left{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
-.list-day-num{color:#fff;font-family:'Anton',sans-serif;font-size:18px;padding:2px 10px;border-radius:7px;min-width:40px;text-align:center}
+.list-day-num{color:#fff;font-family:'Anton',sans-serif;font-size:20px;padding:2px 10px;border-radius:7px;min-width:44px;text-align:center}
 .list-day-info{flex:1;min-width:0}
-.list-day-name{font-size:13px;font-weight:700}
-.list-day-ideas{display:flex;gap:4px;flex-wrap:wrap;margin-top:3px}
-.idea-chip{font-size:10px;padding:2px 8px;border-radius:12px;background:color-mix(in srgb,var(--fc) 12%,transparent);color:var(--fc);border:1px solid color-mix(in srgb,var(--fc) 30%,transparent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
+.list-day-name{font-size:14px;font-weight:700}
+.list-day-ideas{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.idea-chip{font-size:11px;padding:3px 9px;border-radius:12px;background:color-mix(in srgb,var(--fc) 12%,transparent);color:var(--fc);border:1px solid color-mix(in srgb,var(--fc) 35%,transparent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px}
 .list-day-arrow{color:#64B5F6;font-size:10px;flex-shrink:0;transition:transform .2s}
 .list-day-header.open .list-day-arrow{transform:rotate(180deg)}
 .list-day-content{padding:0 12px 12px}
@@ -217,27 +217,34 @@ body.presentation .field-text{font-size:16px}
 .post-ref{margin-bottom:8px}
 .post-ref a{color:#1E90FF;font-size:12px;text-decoration:none}
 .post-ref a:hover{text-decoration:underline}
-.content-box{border-radius:8px;padding:12px;font-size:13px;color:#C8D8E8;line-height:1.8;white-space:pre-wrap;margin-bottom:8px;position:relative}
+.content-box{border-radius:8px;padding:12px;font-size:15px;color:#C8D8E8;line-height:1.8;white-space:pre-wrap;margin-bottom:8px;position:relative}
 .desc-box{background:#0d1f3a}
 .guion-box{background:#1a0a2a}
 .field-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-.field-label{font-size:10px;text-transform:uppercase;font-weight:700}
+.field-label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:700}
 .desc-label{color:#1E90FF}
-.guion-label{color:#E91E63}
-.field-text{font-size:13px}
-.copy-btn{padding:4px 10px;background:#1E90FF33;color:#1E90FF;border:1px solid #1E90FF44;border-radius:6px;cursor:pointer;font-size:10px;font-weight:600;font-family:inherit}
+.guion-label{color:#FF7BA8}
+.field-text{font-size:15px}
+.copy-btn{padding:8px 12px;background:#1E90FF33;color:#8CC6FF;border:1px solid #1E90FF66;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;font-family:inherit;min-height:36px}
 .copy-btn:hover{background:#1E90FF55}
-.guion-copy{background:#E91E6333;color:#E91E63;border-color:#E91E6344}
-.hashtags{font-size:12px;color:#F5A623;margin-bottom:8px}
-.approval-buttons{display:flex;gap:6px;margin-top:10px}
-.approve-btn{flex:1;padding:10px;background:#0d2a0d;color:#66BB6A;border:1px solid #388E3C;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;transition:all .2s}
+.guion-copy{background:#E91E6333;color:#FF9DBE;border-color:#E91E6366}
+.hashtags{font-size:13px;color:#F5A623;margin-bottom:8px}
+/* Apilados en pantallas estrechas: lado a lado, "Cambios" partía en dos líneas */
+.approval-buttons{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+@media(min-width:400px){.approval-buttons{flex-direction:row}}
+/* 44px: mínimo táctil recomendado; antes eran ~38px */
+.approve-btn{flex:1;padding:12px;background:#0d2a0d;color:#8FD992;border:1px solid #388E3C;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700;font-family:inherit;min-height:44px;transition:background .2s}
 .approve-btn:hover{background:#1a3a1a}
-.changes-btn{flex:1;padding:10px;background:#2a0d0d;color:#EF5350;border:1px solid #C62828;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;transition:all .2s}
+.changes-btn{flex:1;padding:12px;background:#2a0d0d;color:#FF8A85;border:1px solid #C62828;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700;font-family:inherit;min-height:44px;transition:background .2s}
 .changes-btn:hover{background:#3a0d0d}
-.comment-section{margin-top:8px}
-.comment-input{width:100%;padding:10px;background:#050D1F;border:1px solid #1E3A6B;border-radius:8px;color:#fff;font-size:12px;resize:vertical;min-height:60px;font-family:inherit;outline:none;margin-bottom:6px}
-.send-comment-btn{width:100%;padding:8px;background:#2a0d0d;color:#EF5350;border:1px solid #C62828;border-radius:6px;cursor:pointer;font-size:11px;font-weight:700;font-family:inherit}
-.approval-status{margin-top:8px;font-size:11px;border-radius:6px;padding:6px 10px;display:none}
+.comment-section{margin-top:10px}
+/* 16px evita que iOS Safari haga zoom al enfocar el campo */
+.comment-input{width:100%;padding:12px;background:#050D1F;border:1px solid #1E3A6B;border-radius:8px;color:#fff;font-size:16px;resize:vertical;min-height:80px;font-family:inherit;outline:none;margin-bottom:8px}
+.comment-input:focus{border-color:#1E90FF;box-shadow:0 0 0 3px rgba(30,144,255,.18)}
+.send-comment-btn{width:100%;padding:12px;background:#2a0d0d;color:#FF8A85;border:1px solid #C62828;border-radius:6px;cursor:pointer;font-size:14px;font-weight:700;font-family:inherit;min-height:44px}
+.approval-status{margin-top:10px;font-size:13px;border-radius:6px;padding:8px 12px;display:none}
+button:focus-visible,a:focus-visible{outline:2px solid #3aa0ff;outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 .export-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
 .export-cal-header{text-align:center;font-size:11px;font-weight:700;color:#64B5F6;padding:6px 0}
 .export-cal-cell{background:#0A1628;border:1px solid #1E3A6B44;border-radius:8px;min-height:70px;padding:4px;position:relative}

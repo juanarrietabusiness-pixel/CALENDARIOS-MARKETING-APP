@@ -1,19 +1,23 @@
-import { useState, useRef } from "react";
+import { useId, useState, useRef } from "react";
 import { FORMATS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid, fmtDate, compressImage, parseVideoURL } from "../utils";
-import { callAI, buildClientContext, fetchGitHubADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost } from "../api";
+import { callAI, fetchGitHubADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost } from "../api";
 import { buildExportHTML } from "../export";
+import { useDialogA11y } from "../hooks/useDialogA11y";
 
 function stripMarkdown(text) {
   if (!text) return "";
   return text.replace(/\*\*\*(.*?)\*\*\*/g, "$1").replace(/\*\*(.*?)\*\*/g, "$1").replace(/\*(.*?)\*/g, "$1").replace(/__(.*?)__/g, "$1").replace(/_(.*?)_/g, "$1");
 }
 
-function CopyButton({ text, label }) {
+function CopyButton({ text, label, describes }) {
   const [copied, setCopied] = useState(false);
   if (!text) return null;
   return (
     <button
+      type="button"
+      className={`btn-copy${copied ? " is-copied" : ""}`}
+      aria-label={copied ? "Copiado al portapapeles" : `Copiar ${describes || "texto"}`}
       onClick={(e) => {
         e.stopPropagation();
         navigator.clipboard.writeText(stripMarkdown(text)).then(() => {
@@ -21,22 +25,33 @@ function CopyButton({ text, label }) {
           setTimeout(() => setCopied(false), 1500);
         });
       }}
-      style={{
-        padding: "3px 8px",
-        background: copied ? "#0d2a0d" : "var(--accent)" + "22",
-        color: copied ? "var(--success)" : "var(--accent)",
-        border: `1px solid ${copied ? "#388E3C" : "var(--accent)"}44`,
-        borderRadius: 6,
-        cursor: "pointer",
-        fontSize: 10,
-        fontWeight: 600,
-        transition: "all .2s",
-      }}
     >
       {copied ? "Copiado" : label || "Copiar"}
     </button>
   );
 }
+
+const fieldHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "var(--sp-2)",
+  marginBottom: "var(--sp-1)",
+};
+const fieldLabelStyle = {
+  fontSize: "var(--fs-3xs)",
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: ".06em",
+};
+const fieldBodyStyle = {
+  fontSize: "var(--fs-xs)",
+  color: "var(--text-dim)",
+  borderRadius: "var(--radius-xs)",
+  padding: "var(--sp-2)",
+  lineHeight: "var(--lh-relaxed)",
+  whiteSpace: "pre-wrap",
+};
 
 function ContentDisplay({ post }) {
   const f = post.format;
@@ -44,14 +59,14 @@ function ContentDisplay({ post }) {
     const text = post.descripcion || post.script || "";
     if (!text) return null;
     return (
-      <div style={{ marginTop: 6 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-          <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" }}>Descripcion</span>
-          <CopyButton text={text} />
+      <div style={{ marginTop: "var(--sp-2)" }}>
+        <div style={fieldHeaderStyle}>
+          <span style={{ ...fieldLabelStyle, color: "var(--text-muted)" }}>Descripción</span>
+          <CopyButton text={text} describes="la descripción" />
         </div>
-        <div style={{ fontSize: 12, color: "var(--text-dim)", background: "var(--card-alt)", borderRadius: 6, padding: 8, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
-          {text.slice(0, 200)}{text.length > 200 ? "..." : ""}
-        </div>
+        <p style={{ ...fieldBodyStyle, background: "var(--card-alt)" }}>
+          {text.slice(0, 220)}{text.length > 220 ? "…" : ""}
+        </p>
       </div>
     );
   }
@@ -61,33 +76,35 @@ function ContentDisplay({ post }) {
   const hashtags = post.hashtagsFinales || "";
 
   return (
-    <div style={{ marginTop: 6 }}>
+    <div style={{ marginTop: "var(--sp-2)" }}>
       {guion && (
-        <div style={{ marginBottom: 6 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
-            <span style={{ fontSize: 10, color: "#E91E63", fontWeight: 600, textTransform: "uppercase" }}>Guion</span>
-            <CopyButton text={guion} />
+        <div style={{ marginBottom: "var(--sp-2)" }}>
+          <div style={fieldHeaderStyle}>
+            <span style={{ ...fieldLabelStyle, color: "#FF7BA8" }}>Guion</span>
+            <CopyButton text={guion} describes="el guion" />
           </div>
-          <div style={{ fontSize: 11, color: "var(--text-dim)", background: "#1a0a2a", borderRadius: 6, padding: 8, lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 80, overflow: "hidden" }}>
-            {guion.slice(0, 150)}{guion.length > 150 ? "..." : ""}
-          </div>
+          <p style={{ ...fieldBodyStyle, background: "#1a0a2a" }}>
+            {guion.slice(0, 180)}{guion.length > 180 ? "…" : ""}
+          </p>
         </div>
       )}
       {descripcion && (
-        <div style={{ marginBottom: 6 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
-            <span style={{ fontSize: 10, color: "var(--accent)", fontWeight: 600, textTransform: "uppercase" }}>Descripcion</span>
-            <CopyButton text={descripcion} />
+        <div style={{ marginBottom: "var(--sp-2)" }}>
+          <div style={fieldHeaderStyle}>
+            <span style={{ ...fieldLabelStyle, color: "var(--accent)" }}>Descripción</span>
+            <CopyButton text={descripcion} describes="la descripción" />
           </div>
-          <div style={{ fontSize: 11, color: "var(--text-dim)", background: "var(--card-alt)", borderRadius: 6, padding: 8, lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 60, overflow: "hidden" }}>
-            {descripcion.slice(0, 120)}{descripcion.length > 120 ? "..." : ""}
-          </div>
+          <p style={{ ...fieldBodyStyle, background: "var(--card-alt)" }}>
+            {descripcion.slice(0, 160)}{descripcion.length > 160 ? "…" : ""}
+          </p>
         </div>
       )}
       {hashtags && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ fontSize: 10, color: "var(--accent-alt)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{hashtags.slice(0, 60)}</div>
-          <CopyButton text={hashtags} label="# Copiar" />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-2)" }}>
+          <span style={{ fontSize: "var(--fs-2xs)", color: "var(--accent-alt)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+            {hashtags.slice(0, 70)}
+          </span>
+          <CopyButton text={hashtags} label="# Copiar" describes="los hashtags" />
         </div>
       )}
     </div>
@@ -97,7 +114,10 @@ function ContentDisplay({ post }) {
 function PostSidePanel({ post, day, onUpdate, onClose, onDelete, apiKey, client, cal }) {
   const [form, setForm] = useState({ ...post });
   const [fieldLoading, setFieldLoading] = useState({});
+  const [fieldError, setFieldError] = useState("");
   const imgRef = useRef();
+  const ids = useId();
+  const panelRef = useDialogA11y(onClose);
   const sf = (k, v) => setForm((p) => ({ ...p, [k]: v }));
   const f = FORMATS[form.format] || FORMATS.post;
   const isPost = form.format === "post";
@@ -106,159 +126,165 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, apiKey, client,
 
   const generateField = async (field) => {
     if (!apiKey) return;
+    setFieldError("");
     setFieldLoading((p) => ({ ...p, [field]: true }));
     try {
       const result = await generateFieldForPost(apiKey, client, form, day, cal, field);
       sf(field, result);
     } catch (e) {
-      alert("Error: " + e.message);
+      setFieldError(`No se pudo generar «${field}»: ${e.message}`);
     }
     setFieldLoading((p) => ({ ...p, [field]: false }));
   };
 
-  const aiBtnStyle = {
-    padding: "2px 8px",
-    background: "linear-gradient(135deg, #7B1FA2, #E91E63)",
-    color: "#fff",
-    border: "none",
-    borderRadius: 5,
-    cursor: "pointer",
-    fontSize: 9,
-    fontWeight: 700,
-    opacity: 1,
-    transition: "opacity .2s",
-  };
+  const AiButton = ({ field, label }) => (
+    <button
+      type="button"
+      className="btn-ai"
+      onClick={() => generateField(field)}
+      disabled={fieldLoading[field]}
+      aria-label={`Generar ${label} con IA`}
+    >
+      {fieldLoading[field] ? "Generando…" : "✨ IA"}
+    </button>
+  );
 
   return (
-    <div className="panel-right">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "1px solid var(--border)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 18 }}>{f.icon}</span>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700 }}>{f.label} — {day.dayName} {(day.date || "").split("-")[2]}</div>
-            <div style={{ fontSize: 10, color: "var(--text-dim)" }}>{day.date}</div>
+    <div
+      ref={panelRef}
+      className="panel-right"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={`${ids}-title`}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--sp-3)", padding: "var(--sp-4)", paddingTop: "calc(var(--sp-4) + var(--safe-top))", borderBottom: "1px solid var(--border)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", minWidth: 0 }}>
+          <span aria-hidden="true" style={{ fontSize: "var(--fs-lg)" }}>{f.icon}</span>
+          <div style={{ minWidth: 0 }}>
+            <h2 id={`${ids}-title`} style={{ fontSize: "var(--fs-sm)", fontWeight: 700 }}>
+              {f.label} — {day.dayName} {(day.date || "").split("-")[2]}
+            </h2>
+            <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>{day.date}</p>
           </div>
         </div>
-        <button className="btn-icon" onClick={() => { save(); onClose(); }}>✕</button>
+        <button className="btn-icon" onClick={() => { save(); onClose(); }} aria-label="Guardar y cerrar">✕</button>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
-        <div style={{ marginBottom: 12 }}>
-          <label className="label">Formato</label>
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "var(--sp-4)" }}>
+        {fieldError && (
+          <p role="alert" className="notice notice-error">{fieldError}</p>
+        )}
+
+        <fieldset className="field" style={{ border: "none" }}>
+          <legend className="label">Formato</legend>
+          <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }}>
             {Object.entries(FORMATS).map(([k, fmt]) => (
               <button
                 key={k}
+                type="button"
+                aria-pressed={form.format === k}
                 onClick={() => sf("format", k)}
                 style={{
-                  padding: "5px 10px",
-                  borderRadius: 7,
+                  padding: "var(--sp-2) var(--sp-3)",
+                  borderRadius: "var(--radius-xs)",
                   border: `1px solid ${form.format === k ? fmt.color : "var(--border)"}`,
                   cursor: "pointer",
                   background: form.format === k ? fmt.color + "33" : "var(--card-alt)",
                   color: form.format === k ? fmt.color : "var(--text-muted)",
-                  fontSize: 11,
+                  fontSize: "var(--fs-2xs)",
                   fontWeight: 600,
+                  minHeight: "var(--tap-sm)",
                 }}
               >
-                {fmt.icon} {fmt.label}
+                <span aria-hidden="true">{fmt.icon}</span> {fmt.label}
               </button>
             ))}
           </div>
-        </div>
+        </fieldset>
 
-        <div style={{ marginBottom: 12 }}>
-          <label className="label">Estado</label>
+        <fieldset className="field" style={{ border: "none" }}>
+          <legend className="label">Estado</legend>
           <div className="status-bar">
             {Object.entries(STATUSES).map(([k, st]) => (
               <button
                 key={k}
+                type="button"
                 className="status-btn"
+                aria-pressed={form.status === k}
                 onClick={() => sf("status", k)}
                 style={{
                   background: form.status === k ? st.bg : "var(--bg)",
                   color: st.text,
                   borderColor: form.status === k ? st.border : "var(--border)",
-                  fontWeight: form.status === k ? 700 : 400,
+                  fontWeight: form.status === k ? 700 : 500,
                 }}
               >
                 {st.label}
               </button>
             ))}
           </div>
+        </fieldset>
+
+        <div className="field">
+          <label className="label" htmlFor={`${ids}-time`}>Hora de publicación</label>
+          <input id={`${ids}-time`} className="input" type="time" value={form.publishTime || ""} onChange={(e) => sf("publishTime", e.target.value)} />
         </div>
 
-        <div style={{ marginBottom: 12 }}>
-          <label className="label">Hora de publicacion</label>
-          <input className="input" type="time" value={form.publishTime || ""} onChange={(e) => sf("publishTime", e.target.value)} />
+        <div className="field">
+          <label className="label" htmlFor={`${ids}-cat`}>Categoría</label>
+          <input id={`${ids}-cat`} className="input" value={form.category || ""} onChange={(e) => sf("category", e.target.value)} placeholder="Ej: Producto estrella" />
         </div>
 
-        <div style={{ marginBottom: 12 }}>
-          <label className="label">Categoria</label>
-          <input className="input" value={form.category || ""} onChange={(e) => sf("category", e.target.value)} placeholder="Categoria..." />
-        </div>
-
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-            <label className="label" style={{ margin: 0 }}>Idea</label>
-            <div style={{ display: "flex", gap: 4 }}>
-              {apiKey && (
-                <button onClick={() => generateField("idea")} disabled={fieldLoading.idea} style={{ ...aiBtnStyle, opacity: fieldLoading.idea ? 0.5 : 1 }}>
-                  {fieldLoading.idea ? "Generando..." : "✨ IA"}
-                </button>
-              )}
-            </div>
+        <div className="field">
+          <div style={fieldHeaderStyle}>
+            <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-idea`}>Idea</label>
+            {apiKey && <AiButton field="idea" label="la idea" />}
           </div>
-          <textarea className="textarea" value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Idea del contenido..." />
+          <textarea id={`${ids}-idea`} className="textarea" value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Idea del contenido…" />
         </div>
 
         {!isPost && (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-              <label className="label" style={{ margin: 0, color: "#E91E63" }}>Guion</label>
-              <div style={{ display: "flex", gap: 4 }}>
-                <CopyButton text={form.guion} label="Copiar" />
-                {apiKey && (
-                  <button onClick={() => generateField("guion")} disabled={fieldLoading.guion} style={{ ...aiBtnStyle, opacity: fieldLoading.guion ? 0.5 : 1 }}>
-                    {fieldLoading.guion ? "Generando..." : "✨ IA"}
-                  </button>
-                )}
+          <div className="field">
+            <div style={fieldHeaderStyle}>
+              <label className="label" style={{ margin: 0, color: "#FF7BA8" }} htmlFor={`${ids}-guion`}>Guion</label>
+              <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+                <CopyButton text={form.guion} describes="el guion" />
+                {apiKey && <AiButton field="guion" label="el guion" />}
               </div>
             </div>
             <textarea
+              id={`${ids}-guion`}
               className="textarea"
-              style={{ minHeight: 100, lineHeight: 1.8, borderColor: "#E91E6333" }}
+              style={{ minHeight: 120, borderColor: "rgba(233,30,99,.35)" }}
               value={form.guion || ""}
               onChange={(e) => sf("guion", e.target.value)}
-              placeholder="Guion del contenido (escenas, bullet points...)"
+              placeholder="Guion del contenido (escenas, puntos clave…)"
             />
           </div>
         )}
 
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-            <label className="label" style={{ margin: 0 }}>Descripcion</label>
-            <div style={{ display: "flex", gap: 4 }}>
-              <CopyButton text={form.descripcion || form.script} label="Copiar" />
-              {apiKey && (
-                <button onClick={() => generateField("descripcion")} disabled={fieldLoading.descripcion} style={{ ...aiBtnStyle, opacity: fieldLoading.descripcion ? 0.5 : 1 }}>
-                  {fieldLoading.descripcion ? "Generando..." : "✨ IA"}
-                </button>
-              )}
+        <div className="field">
+          <div style={fieldHeaderStyle}>
+            <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-desc`}>Descripción</label>
+            <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+              <CopyButton text={form.descripcion || form.script} describes="la descripción" />
+              {apiKey && <AiButton field="descripcion" label="la descripción" />}
             </div>
           </div>
           <textarea
+            id={`${ids}-desc`}
             className="textarea"
-            style={{ minHeight: isPost ? 120 : 80, lineHeight: 1.8 }}
+            style={{ minHeight: isPost ? 140 : 100 }}
             value={form.descripcion || form.script || ""}
             onChange={(e) => sf("descripcion", e.target.value)}
-            placeholder="Caption / descripcion del contenido..."
+            placeholder="Caption / descripción del contenido…"
           />
         </div>
 
-        <div style={{ marginBottom: 12 }}>
-          <label className="label">Hashtags finales</label>
+        <div className="field">
+          <label className="label" htmlFor={`${ids}-tags`}>Hashtags finales</label>
           <input
+            id={`${ids}-tags`}
             className="input"
             value={form.hashtagsFinales || ""}
             onChange={(e) => sf("hashtagsFinales", e.target.value)}
@@ -266,22 +292,29 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, apiKey, client,
           />
         </div>
 
-        <div style={{ marginBottom: 12 }}>
-          <label className="label">Imagen</label>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {form.image && <img src={form.image} alt="" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 8 }} />}
+        <div className="field">
+          <span className="label" id={`${ids}-img-label`}>Imagen</span>
+          <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", flexWrap: "wrap" }}>
+            {form.image && <img src={form.image} alt="Vista previa de la imagen de la publicación" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: "var(--radius-sm)" }} />}
             <input
               ref={imgRef}
+              id={`${ids}-img`}
               type="file"
               accept="image/*"
+              className="sr-only"
+              aria-labelledby={`${ids}-img-label`}
               onChange={async (e) => {
                 const file = e.target.files[0];
-                if (file) sf("image", await compressImage(file, 400));
+                if (!file) return;
+                try {
+                  sf("image", await compressImage(file, 400));
+                } catch (err) {
+                  setFieldError(err.message);
+                }
               }}
-              style={{ display: "none" }}
             />
             <button className="btn btn-secondary btn-sm" onClick={() => imgRef.current?.click()}>
-              {form.image ? "Cambiar" : "Subir"}
+              {form.image ? "Cambiar imagen" : "Subir imagen"}
             </button>
             {form.image && (
               <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => sf("image", null)}>
@@ -291,24 +324,30 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, apiKey, client,
           </div>
         </div>
 
-        <div style={{ marginBottom: 12 }}>
-          <label className="label">Link de referencia</label>
-          <input className="input" value={form.referenceLink || ""} onChange={(e) => sf("referenceLink", e.target.value)} placeholder="https://..." />
+        <div className="field">
+          <label className="label" htmlFor={`${ids}-ref`}>Enlace de referencia</label>
+          <input id={`${ids}-ref`} className="input" type="url" value={form.referenceLink || ""} onChange={(e) => sf("referenceLink", e.target.value)} placeholder="https://…" />
           {form.referenceLink && (() => {
             const v = parseVideoURL(form.referenceLink);
-            if (v?.type === "youtube") return <img src={v.thumbnail} alt="" style={{ width: "100%", maxWidth: 250, borderRadius: 8, marginTop: 8 }} />;
+            if (v?.type === "youtube") {
+              return <img src={v.thumbnail} alt="Miniatura del vídeo de referencia" style={{ width: "100%", maxWidth: 260, borderRadius: "var(--radius-sm)", marginTop: "var(--sp-2)" }} />;
+            }
             return null;
           })()}
         </div>
 
-        <div style={{ marginBottom: 12 }}>
-          <label className="label">Comentario</label>
-          <textarea className="textarea" value={form.comment || ""} onChange={(e) => sf("comment", e.target.value)} placeholder="Notas internas..." style={{ minHeight: 50 }} />
+        <div className="field">
+          <label className="label" htmlFor={`${ids}-comment`}>Comentario interno</label>
+          <textarea id={`${ids}-comment`} className="textarea" value={form.comment || ""} onChange={(e) => sf("comment", e.target.value)} placeholder="Notas internas…" style={{ minHeight: 72 }} />
         </div>
       </div>
 
-      <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)", display: "flex", gap: 8 }}>
-        <button className="btn btn-danger btn-sm" onClick={() => { if (onDelete) onDelete(day.date, post.id); onClose(); }}>
+      <div style={{ padding: "var(--sp-3) var(--sp-4)", borderTop: "1px solid var(--border)", display: "flex", gap: "var(--sp-2)" }}>
+        <button
+          className="btn btn-danger"
+          aria-label="Eliminar publicación"
+          onClick={() => { if (onDelete) onDelete(day.date, post.id); onClose(); }}
+        >
           🗑️
         </button>
         <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { save(); onClose(); }}>
@@ -319,42 +358,55 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, apiKey, client,
   );
 }
 
-function AddPostInline({ day, onAdd, onCancel }) {
+function AddPostInline({ onAdd, onCancel }) {
   const [format, setFormat] = useState("post");
   const [idea, setIdea] = useState("");
+  const ids = useId();
+
   return (
-    <div style={{ background: "var(--bg)", borderRadius: 8, padding: 10, marginTop: 8, border: "1px dashed var(--accent)" }}>
-      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 6 }}>
-        {Object.entries(FORMATS).map(([k, f]) => (
-          <button
-            key={k}
-            onClick={() => setFormat(k)}
-            style={{
-              padding: "3px 8px",
-              borderRadius: 6,
-              border: `1px solid ${format === k ? f.color : "var(--border)"}`,
-              cursor: "pointer",
-              background: format === k ? f.color + "33" : "transparent",
-              color: format === k ? f.color : "var(--text-dim)",
-              fontSize: 10,
-              fontWeight: 600,
-            }}
-          >
-            {f.icon} {f.label}
-          </button>
-        ))}
+    <div style={{ background: "var(--bg)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)", marginTop: "var(--sp-2)", border: "1px dashed var(--accent)" }}>
+      <fieldset style={{ border: "none", marginBottom: "var(--sp-3)" }}>
+        <legend className="label">Formato</legend>
+        <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }}>
+          {Object.entries(FORMATS).map(([k, f]) => (
+            <button
+              key={k}
+              type="button"
+              aria-pressed={format === k}
+              onClick={() => setFormat(k)}
+              style={{
+                padding: "var(--sp-1) var(--sp-2)",
+                borderRadius: "var(--radius-xs)",
+                border: `1px solid ${format === k ? f.color : "var(--border)"}`,
+                cursor: "pointer",
+                background: format === k ? f.color + "33" : "transparent",
+                color: format === k ? f.color : "var(--text-dim)",
+                fontSize: "var(--fs-3xs)",
+                fontWeight: 600,
+                minHeight: "var(--tap-sm)",
+              }}
+            >
+              <span aria-hidden="true">{f.icon}</span> {f.label}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
+      <div className="field">
+        <label className="label" htmlFor={`${ids}-idea`}>Idea del post</label>
+        <input
+          id={`${ids}-idea`}
+          className="input"
+          value={idea}
+          onChange={(e) => setIdea(e.target.value)}
+          placeholder="Ej: Antes y después de un cliente"
+          autoFocus
+          onKeyDown={(e) => { if (e.key === "Enter" && idea) onAdd(format, idea); }}
+        />
       </div>
-      <input
-        className="input"
-        style={{ fontSize: 11, padding: "6px 8px", marginBottom: 6 }}
-        value={idea}
-        onChange={(e) => setIdea(e.target.value)}
-        placeholder="Idea del post..."
-        autoFocus
-        onKeyDown={(e) => { if (e.key === "Enter" && idea) onAdd(format, idea); }}
-      />
-      <div style={{ display: "flex", gap: 6 }}>
-        <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => { if (idea) onAdd(format, idea); }}>
+
+      <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+        <button className="btn btn-primary btn-sm" style={{ flex: 1 }} disabled={!idea} onClick={() => { if (idea) onAdd(format, idea); }}>
           Agregar
         </button>
         <button className="btn btn-secondary btn-sm" onClick={onCancel}>
@@ -365,7 +417,146 @@ function AddPostInline({ day, onAdd, onCancel }) {
   );
 }
 
-function MonthGrid({ cal, onPostClick, onMove, onAddPost, onMoveToBank, onDropFromBank, ideasBank }) {
+function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
+  const ref = useDialogA11y(onClose);
+  const ids = useId();
+
+  return (
+    <div className="overlay overlay-sheet">
+      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet" style={{ maxWidth: 520 }}>
+        <div className="sheet-header">
+          <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)" }}>Editar calendario</h2>
+          <button className="btn-icon" onClick={onClose} aria-label="Cerrar">✕</button>
+        </div>
+
+        <div className="sheet-body">
+          <div className="field">
+            <label className="label" htmlFor={`${ids}-name`}>Nombre</label>
+            <input id={`${ids}-name`} className="input" value={metaForm.name} onChange={(e) => setMetaForm((p) => ({ ...p, name: e.target.value }))} />
+          </div>
+          <div className="field">
+            <label className="label" htmlFor={`${ids}-camp`}>Campaña</label>
+            <input id={`${ids}-camp`} className="input" value={metaForm.campaign} onChange={(e) => setMetaForm((p) => ({ ...p, campaign: e.target.value }))} />
+          </div>
+          <fieldset style={{ border: "none" }}>
+            <legend className="label">Conceptos semanales</legend>
+            {(metaForm.weekConcepts || []).map((c, i) => (
+              <div key={i} className="field">
+                <label className="label" style={{ textTransform: "none", color: "var(--text-dim)" }} htmlFor={`${ids}-wk-${i}`}>
+                  Semana {i + 1}
+                </label>
+                <input
+                  id={`${ids}-wk-${i}`}
+                  className="input"
+                  value={c}
+                  onChange={(e) => setMetaForm((p) => {
+                    const wc = [...p.weekConcepts];
+                    wc[i] = e.target.value;
+                    return { ...p, weekConcepts: wc };
+                  })}
+                />
+              </div>
+            ))}
+          </fieldset>
+        </div>
+
+        <div className="sheet-footer">
+          <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>Cancelar</button>
+          <button className="btn btn-primary" style={{ flex: 2 }} onClick={onSave}>Guardar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ApprovalDialog({ approvalUrl, whatsappMessage, onSync, onClose, onGenerate, hasLink }) {
+  const ref = useDialogA11y(onClose);
+  const ids = useId();
+  const [copied, setCopied] = useState("");
+
+  const copy = (value, which) => {
+    navigator.clipboard.writeText(value).then(() => {
+      setCopied(which);
+      setTimeout(() => setCopied(""), 2000);
+    });
+  };
+
+  return (
+    <div className="overlay">
+      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="dialog">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--sp-4)" }}>
+          <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)" }}>Enviar a cliente</h2>
+          <button className="btn-icon" onClick={onClose} aria-label="Cerrar">✕</button>
+        </div>
+
+        <div role="status" aria-live="polite" className="sr-only">
+          {copied === "link" ? "Enlace copiado" : copied === "msg" ? "Mensaje copiado" : ""}
+        </div>
+
+        {hasLink ? (
+          <>
+            <div className="field">
+              <label className="label" htmlFor={`${ids}-url`}>Enlace de aprobación</label>
+              <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+                <input id={`${ids}-url`} className="input" readOnly value={approvalUrl} onClick={(e) => e.target.select()} />
+                <button className="btn btn-primary btn-sm" onClick={() => copy(approvalUrl, "link")}>
+                  {copied === "link" ? "Copiado" : "Copiar"}
+                </button>
+              </div>
+            </div>
+
+            <div className="field">
+              <label className="label" htmlFor={`${ids}-msg`}>Mensaje para WhatsApp</label>
+              <textarea
+                id={`${ids}-msg`}
+                className="textarea"
+                readOnly
+                style={{ minHeight: 100 }}
+                value={whatsappMessage}
+                onClick={(e) => { e.target.select(); copy(whatsappMessage, "msg"); }}
+              />
+              <p className="hint">Toca el mensaje para seleccionarlo y copiarlo.</p>
+            </div>
+
+            <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>Cerrar</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={onSync}>Sincronizar</button>
+            </div>
+          </>
+        ) : (
+          <div style={{ textAlign: "center", padding: "var(--sp-5) 0", color: "var(--text-dim)" }}>
+            <div aria-hidden="true" style={{ fontSize: "1.75rem", marginBottom: "var(--sp-2)" }}>🔗</div>
+            <p style={{ fontSize: "var(--fs-xs)", marginBottom: "var(--sp-4)" }}>
+              Se generará un enlace único para que tu cliente revise y apruebe el calendario.
+            </p>
+            <button className="btn btn-primary" onClick={onGenerate}>Generar enlace de aprobación</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AddPostDialog({ date, onAdd, onClose }) {
+  const ref = useDialogA11y(onClose);
+  const ids = useId();
+
+  return (
+    <div className="overlay overlay-sheet">
+      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet" style={{ maxWidth: 420 }}>
+        <div className="sheet-header">
+          <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-sm)" }}>Agregar publicación — {date}</h2>
+          <button className="btn-icon" onClick={onClose} aria-label="Cerrar">✕</button>
+        </div>
+        <div className="sheet-body">
+          <AddPostInline onAdd={onAdd} onCancel={onClose} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasBank }) {
   const [drag, setDrag] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const today = fmtDate(new Date());
@@ -396,16 +587,14 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onMoveToBank, onDropFr
   const allCells = cells();
   let lastWeek = null;
 
+  const FULL_DOW = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+
   return (
     <div className="cal-grid">
-      {["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"].map((n, i) => (
+      {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((n, i) => (
         <div key={n} className="cal-header-cell">
-          <div>{n}</div>
-          {dowCategories[i] && (
-            <div style={{ fontSize: 7, color: "var(--accent-alt)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
-              {dowCategories[i]}
-            </div>
-          )}
+          <abbr title={FULL_DOW[i]} style={{ textDecoration: "none" }}>{n}</abbr>
+          {dowCategories[i] && <div className="cal-header-cat">{dowCategories[i]}</div>}
         </div>
       ))}
       {allCells.map((date) => {
@@ -443,67 +632,50 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onMoveToBank, onDropFr
               setDropTarget(null);
             }}
           >
-            <div style={{ fontSize: 11, fontWeight: 700, color: isToday ? "var(--accent)" : cur ? "#fff" : "#444", textAlign: "right", marginBottom: 3, padding: "0 2px" }}>
+            <div className={`cal-daynum${isToday ? " is-today" : ""}`}>
+              {isToday && <span className="sr-only">Hoy, </span>}
               {d.getDate()}
             </div>
             {showWeekSep && concept && (
-              <div style={{ fontSize: 7, color: "var(--accent)", fontStyle: "italic", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 2 }}>
-                S{weekNum}: {concept}
-              </div>
+              <div className="cal-week-tag">S{weekNum}: {concept}</div>
             )}
             {(dd?.posts || []).map((post) => {
               const f = FORMATS[post.format] || FORMATS.post;
               const st = STATUSES[post.status || "pending"];
               const isPublished = post.status === "published";
-              const briefIdea = post.idea ? post.idea.split(/[.\n]/)[0].slice(0, 20) : "";
+              const briefIdea = post.idea ? post.idea.split(/[.\n]/)[0].slice(0, 24) : "";
               return (
-                <div
+                <button
                   key={post.id}
+                  type="button"
                   draggable
+                  className={`cal-post${isPublished ? " is-published" : ""}`}
+                  /* El texto visible se recorta a un icono en móvil, así que
+                     el nombre accesible lleva la información completa. */
+                  aria-label={`${f.label}${briefIdea ? `: ${briefIdea}` : ""} — ${st.label}${post.publishTime ? `, ${post.publishTime}` : ""}`}
                   onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDrag({ postId: post.id, sourceDate: date }); }}
                   onDragEnd={() => { setDrag(null); setDropTarget(null); }}
                   onClick={() => onPostClick(post, dd)}
                   style={{
                     background: isPublished ? st.bg : f.color + "22",
-                    border: isPublished ? "2px solid " + st.border : "1px solid " + st.border + "88",
-                    borderRadius: 4,
-                    padding: "2px 4px",
-                    marginBottom: 2,
-                    cursor: "grab",
-                    fontSize: 8,
+                    borderColor: isPublished ? st.border : st.border + "88",
+                    borderWidth: isPublished ? 2 : 1,
                     color: isPublished ? st.text : f.color,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 3,
-                    opacity: isPublished ? 0.7 : 1,
-                    textDecoration: isPublished ? "line-through" : "none",
                   }}
                 >
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: st.text, flexShrink: 0 }} />
-                  {f.icon} {briefIdea || f.label}
-                  {post.publishTime && <span style={{ marginLeft: "auto", fontSize: 7, opacity: 0.7 }}>{post.publishTime}</span>}
-                </div>
+                  <span className="cal-post-dot" style={{ background: st.text }} aria-hidden="true" />
+                  <span aria-hidden="true">{f.icon}</span>
+                  <span className="cal-post-label" aria-hidden="true">{briefIdea || f.label}</span>
+                  {post.publishTime && <span className="cal-post-time" aria-hidden="true">{post.publishTime}</span>}
+                </button>
               );
             })}
             {cur && (
               <button
+                type="button"
+                className="cal-add"
+                aria-label={`Agregar publicación el ${date}`}
                 onClick={(e) => { e.stopPropagation(); onAddPost(date); }}
-                style={{
-                  width: "100%",
-                  padding: "2px 0",
-                  background: "transparent",
-                  border: "none",
-                  color: "var(--text-dim)",
-                  cursor: "pointer",
-                  fontSize: 10,
-                  opacity: 0.4,
-                  transition: "opacity .2s",
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
-                onMouseLeave={(e) => e.currentTarget.style.opacity = 0.4}
               >
                 +
               </button>
@@ -532,6 +704,7 @@ export default function CalendarView({
   const [filterFormat, setFilterFormat] = useState("all");
   const [filterWeek, setFilterWeek] = useState("all");
   const [filterDOW, setFilterDOW] = useState("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameVal, setNameVal] = useState(cal.name || (MONTHS[cal.month] + " " + cal.year));
   const [genLoading, setGenLoading] = useState(false);
@@ -542,7 +715,6 @@ export default function CalendarView({
   const [addingPostDay, setAddingPostDay] = useState(null);
   const [genSingleLoading, setGenSingleLoading] = useState({});
   const [incompleteInfo, setIncompleteInfo] = useState(null);
-  const [approvalLink, setApprovalLink] = useState(cal.approvalId ? true : false);
   const [approvalModal, setApprovalModal] = useState(false);
   const [syncStatus, setSyncStatus] = useState("");
   const [editMeta, setEditMeta] = useState(false);
@@ -577,11 +749,15 @@ export default function CalendarView({
   };
 
   const calName = cal.name || (MONTHS[cal.month] + " " + cal.year);
+  const approvalUrl = cal.approvalId
+    ? `${window.location.origin}/aprobar?id=${encodeURIComponent(cal.approvalId)}`
+    : "";
   const totalPosts = (cal.days || []).reduce((a, d) => a + (d.posts || []).length, 0);
   const approvedPosts = (cal.days || []).reduce((a, d) => a + (d.posts || []).filter((p) => p.status === "approved" || p.status === "published").length, 0);
   const publishedPosts = (cal.days || []).reduce((a, d) => a + (d.posts || []).filter((p) => p.status === "published").length, 0);
 
   const weeks = [...new Set((cal.days || []).map((d) => d.weekNumber || 1))].sort((a, b) => a - b);
+  const activeFilterCount = [filterStatus, filterFormat, filterWeek, filterDOW].filter((f) => f !== "all").length;
 
   const filteredDays = (cal.days || []).map((day) => ({
     ...day,
@@ -664,7 +840,8 @@ export default function CalendarView({
       );
       onUpdateCal(calId, { ...cal, days: newDays });
     } catch (e) {
-      alert("Error al generar: " + e.message);
+      setSyncStatus("Error al generar: " + e.message);
+      setTimeout(() => setSyncStatus(""), 6000);
     }
     setGenSingleLoading((p) => ({ ...p, [post.id]: false }));
   };
@@ -747,31 +924,37 @@ export default function CalendarView({
   };
 
   const sendToClient = async () => {
-    if (!cal.approvalId) {
-      const approvalId = `${client.id}-${calId}-${Date.now()}`;
-      const calData = {
-        calendar: { ...cal },
-        client: { name: client.name, industry: client.industry, primaryColor: client.primaryColor, logo: client.logo },
-        approvals: {},
-      };
-      try {
-        await fetch(`/api/approval?id=${approvalId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "save_calendar", data: calData }),
-        });
-        onUpdateCal(calId, { ...cal, approvalId });
-        setApprovalLink(true);
-        setApprovalModal(true);
-      } catch {
-        const approvalIdLocal = `${client.id}-${calId}-${Date.now()}`;
-        onUpdateCal(calId, { ...cal, approvalId: approvalIdLocal });
-        setApprovalLink(true);
-        setApprovalModal(true);
-      }
+    if (cal.approvalId) {
+      setApprovalModal(true);
       return;
     }
-    setApprovalModal(true);
+
+    const approvalId = `${client.id}-${calId}-${Date.now()}`;
+    const calData = {
+      calendar: { ...cal },
+      client: { name: client.name, industry: client.industry, primaryColor: client.primaryColor, logo: client.logo },
+      approvals: {},
+    };
+
+    setSyncStatus("Generando enlace…");
+    try {
+      const res = await fetch(`/api/approval?id=${encodeURIComponent(approvalId)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "save_calendar", data: calData }),
+      });
+      // Antes se ignoraba el resultado y, ante un fallo, se guardaba un
+      // approvalId local igualmente: el enlace se veía correcto pero
+      // devolvía "link inválido" al cliente. Ahora sólo se guarda si el
+      // calendario llegó realmente al servidor.
+      if (!res.ok) throw new Error(`El servidor respondió ${res.status}`);
+      onUpdateCal(calId, { ...cal, approvalId });
+      setSyncStatus("");
+      setApprovalModal(true);
+    } catch (e) {
+      setSyncStatus(`No se pudo generar el enlace: ${e.message}. Usa «HTML» para enviar el calendario como archivo.`);
+      setTimeout(() => setSyncStatus(""), 8000);
+    }
   };
 
   const syncApprovals = async () => {
@@ -979,33 +1162,44 @@ export default function CalendarView({
 
   return (
     <div style={{ paddingBottom: sidePanel ? 0 : 80 }}>
-      {/* Campaign banner */}
+      {/* Campaign banner. El desplazamiento pegajoso se calcula desde la
+          altura real de la cabecera en lugar de un 52 fijo, que dejaba
+          un hueco o solapaba según el tamaño de fuente del sistema. */}
       {(cal.campaign || calName) && (
         <div style={{
           background: "linear-gradient(135deg, #1B3A6B, var(--accent))",
-          borderRadius: 12,
-          padding: "12px 16px",
-          marginBottom: 12,
+          borderRadius: "var(--radius)",
+          padding: "var(--sp-3) var(--sp-4)",
+          marginBottom: "var(--sp-3)",
           position: "sticky",
-          top: 52,
+          top: "calc(var(--header-h) + var(--safe-top))",
           zIndex: 10,
         }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 800 }}>{calName}</div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,.8)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--sp-3)", flexWrap: "wrap" }}>
+            <div style={{ minWidth: 0 }}>
+              <h2 style={{ fontSize: "var(--fs-md)", fontWeight: 800 }}>{calName}</h2>
+              <p style={{ fontSize: "var(--fs-2xs)", color: "rgba(255,255,255,.9)" }}>
                 {MONTHS[cal.month]} {cal.year}
                 {cal.campaign && <span> · {cal.campaign}</span>}
-              </div>
+              </p>
             </div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button className="btn-icon" style={{ background: "rgba(255,255,255,.15)", border: "none" }} onClick={() => {
-                setMetaForm({ name: cal.name || "", campaign: cal.campaign || "", weekConcepts: [...(cal.weekConcepts || [])] });
-                setEditMeta(true);
-              }}>✏️</button>
-              <button className="btn-icon" style={{ background: "rgba(255,255,255,.15)", border: "none" }} onClick={() => setRenaming(true)}>📝</button>
-              <button className="btn-icon" style={{ background: "rgba(255,255,255,.15)", border: "none" }} onClick={() => onDuplicateCal(calId)}>📋</button>
-              <button className="btn-icon" style={{ background: "rgba(255,255,255,.15)", border: "none", color: "var(--danger)" }} onClick={() => { if (window.confirm("Eliminar este calendario?")) onDeleteCal(calId); }}>🗑️</button>
+            <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+              <button
+                className="btn-icon btn-icon-on-color"
+                aria-label="Editar campaña y conceptos semanales"
+                onClick={() => {
+                  setMetaForm({ name: cal.name || "", campaign: cal.campaign || "", weekConcepts: [...(cal.weekConcepts || [])] });
+                  setEditMeta(true);
+                }}
+              >✏️</button>
+              <button className="btn-icon btn-icon-on-color" aria-label="Renombrar calendario" onClick={() => setRenaming(true)}>📝</button>
+              <button className="btn-icon btn-icon-on-color" aria-label="Duplicar calendario" onClick={() => onDuplicateCal(calId)}>📋</button>
+              <button
+                className="btn-icon btn-icon-on-color"
+                aria-label="Eliminar calendario"
+                style={{ color: "#FFB4B1" }}
+                onClick={() => { if (window.confirm("¿Eliminar este calendario? Esta acción no se puede deshacer.")) onDeleteCal(calId); }}
+              >🗑️</button>
             </div>
           </div>
         </div>
@@ -1013,203 +1207,230 @@ export default function CalendarView({
 
       {/* Rename inline */}
       {renaming && (
-        <div style={{ marginBottom: 12 }}>
+        <div className="field">
+          <label className="label" htmlFor="cal-rename">Nombre del calendario</label>
           <input
+            id="cal-rename"
             className="input"
-            style={{ fontSize: 14, fontWeight: 700 }}
+            style={{ fontWeight: 700 }}
             value={nameVal}
             onChange={(e) => setNameVal(e.target.value)}
             autoFocus
             onBlur={() => { onUpdateCal(calId, { ...cal, name: nameVal }); setRenaming(false); }}
-            onKeyDown={(e) => { if (e.key === "Enter") { onUpdateCal(calId, { ...cal, name: nameVal }); setRenaming(false); } }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { onUpdateCal(calId, { ...cal, name: nameVal }); setRenaming(false); }
+              if (e.key === "Escape") { setNameVal(calName); setRenaming(false); }
+            }}
           />
         </div>
       )}
 
       {/* Edit calendar meta modal */}
-      {editMeta && (
-        <div className="overlay" style={{ alignItems: "flex-end" }}>
-          <div style={{ background: "var(--card)", borderRadius: "20px 20px 0 0", padding: 18, width: "100%", maxWidth: 500, maxHeight: "80vh", overflowY: "auto" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <h3 style={{ margin: 0, fontSize: 15 }}>Editar Calendario</h3>
-              <button className="btn-icon" onClick={() => setEditMeta(false)}>✕</button>
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <label className="label">Nombre</label>
-              <input className="input" value={metaForm.name} onChange={(e) => setMetaForm((p) => ({ ...p, name: e.target.value }))} />
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <label className="label">Campana</label>
-              <input className="input" value={metaForm.campaign} onChange={(e) => setMetaForm((p) => ({ ...p, campaign: e.target.value }))} />
-            </div>
-            <div style={{ marginBottom: 12 }}>
-              <label className="label">Conceptos semanales</label>
-              {(metaForm.weekConcepts || []).map((c, i) => (
-                <div key={i} style={{ marginBottom: 6 }}>
-                  <label style={{ fontSize: 10, color: "var(--text-dim)" }}>Semana {i + 1}</label>
-                  <input
-                    className="input"
-                    value={c}
-                    onChange={(e) => setMetaForm((p) => {
-                      const wc = [...p.weekConcepts];
-                      wc[i] = e.target.value;
-                      return { ...p, weekConcepts: wc };
-                    })}
-                  />
-                </div>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setEditMeta(false)}>Cancelar</button>
-              <button className="btn btn-primary" style={{ flex: 2 }} onClick={saveMetaEdit}>Guardar</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {editMeta && <EditMetaDialog metaForm={metaForm} setMetaForm={setMetaForm} onSave={saveMetaEdit} onClose={() => setEditMeta(false)} />}
 
       {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, marginBottom: 12 }}>
+      <div className="stat-grid">
         {[
-          ["Posts", totalPosts, "var(--accent)"],
-          ["Aprobados", approvedPosts, "var(--success)"],
-          ["Publicados", publishedPosts, "var(--purple)"],
-          ["Dias", (cal.days || []).length, "var(--accent-alt)"],
+          ["Publicaciones", totalPosts, "var(--accent)"],
+          ["Aprobadas", approvedPosts, "var(--success)"],
+          ["Publicadas", publishedPosts, "var(--purple)"],
+          ["Días", (cal.days || []).length, "var(--accent-alt)"],
         ].map(([label, value, color]) => (
-          <div key={label} style={{ background: "var(--card)", border: `1px solid ${color}33`, borderRadius: 10, padding: 10, textAlign: "center" }}>
-            <div style={{ fontSize: 20, fontWeight: 900, color }}>{value}</div>
-            <div style={{ fontSize: 10, color: "var(--text-dim)", marginTop: 2 }}>{label}</div>
+          <div key={label} className="stat-card" style={{ borderColor: color }}>
+            <div className="stat-value" style={{ color }}>{value}</div>
+            <div className="stat-label">{label}</div>
           </div>
         ))}
       </div>
 
       {/* Progress */}
       {totalPosts > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-dim)", marginBottom: 4 }}>
-            <span>Progreso</span>
+        <div style={{ marginBottom: "var(--sp-3)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--fs-2xs)", color: "var(--text-dim)", marginBottom: "var(--sp-1)" }}>
+            <span id="progreso-label">Progreso de aprobación</span>
             <span>{Math.round((approvedPosts / totalPosts) * 100)}%</span>
           </div>
-          <div className="progress-bar">
+          <div
+            className="progress-bar"
+            role="progressbar"
+            aria-labelledby="progreso-label"
+            aria-valuenow={Math.round((approvedPosts / totalPosts) * 100)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
             <div className="progress-fill" style={{ width: `${(approvedPosts / totalPosts) * 100}%` }} />
           </div>
         </div>
       )}
 
       {/* Actions */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
-        <button className="btn btn-accent" style={{ flex: 2 }} onClick={generateScripts} disabled={genLoading}>
-          {genLoading ? genStatus : "Generar Contenido"}
+      <div className="action-row">
+        <button className="btn btn-accent" style={{ flex: "2 1 180px" }} onClick={generateScripts} disabled={genLoading || !apiKey}>
+          {genLoading ? genStatus : "Generar contenido"}
         </button>
-        <button className="btn btn-secondary" onClick={() => setViewMode((m) => (m === "list" ? "grid" : "list"))}>
+        <button
+          className="btn btn-secondary"
+          onClick={() => setViewMode((m) => (m === "list" ? "grid" : "list"))}
+          aria-label={viewMode === "list" ? "Cambiar a vista de calendario" : "Cambiar a vista de lista"}
+        >
           {viewMode === "list" ? "Calendario" : "Lista"}
         </button>
-        <button className="btn btn-secondary" onClick={() => setBankOpen((b) => !b)} style={{ position: "relative" }}>
-          💡{ideasBank.length > 0 && <span style={{ position: "absolute", top: -4, right: -4, background: "var(--accent-alt)", color: "#000", borderRadius: "50%", width: 16, height: 16, fontSize: 9, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{ideasBank.length}</span>}
+        <button
+          className="btn btn-secondary"
+          onClick={() => setBankOpen((b) => !b)}
+          aria-expanded={bankOpen}
+          aria-label={`Banco de ideas (${ideasBank.length})`}
+          style={{ position: "relative" }}
+        >
+          <span aria-hidden="true">💡</span>
+          {ideasBank.length > 0 && (
+            <span aria-hidden="true" style={{ position: "absolute", top: -4, right: -4, background: "var(--accent-alt)", color: "#000", borderRadius: "50%", minWidth: 18, height: 18, fontSize: "var(--fs-3xs)", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>
+              {ideasBank.length}
+            </span>
+          )}
         </button>
         <button className="btn btn-secondary no-print" onClick={exportPDF}>PDF</button>
         <button className="btn btn-secondary" onClick={exportHTML}>HTML</button>
-        <button className="btn btn-secondary" onClick={sendToClient}>🔗 Enviar</button>
+        <button className="btn btn-secondary" onClick={sendToClient}><span aria-hidden="true">🔗</span> Enviar</button>
         {cal.approvalId && (
           <button className="btn btn-secondary" onClick={syncApprovals} disabled={!!syncStatus}>
-            🔄 {syncStatus || "Sync"}
+            <span aria-hidden="true">🔄</span> Sincronizar
           </button>
         )}
-        <button
-          className="btn btn-secondary"
-          style={{ fontSize: 10 }}
-          onClick={() => setDebugOpen((d) => !d)}
-        >
-          {debugOpen ? "Cerrar Debug" : "Debug"}
+        <button className="btn btn-secondary" onClick={() => setDebugOpen((d) => !d)} aria-expanded={debugOpen}>
+          {debugOpen ? "Cerrar diagnóstico" : "Diagnóstico"}
         </button>
       </div>
 
+      {!apiKey && (
+        <p className="notice notice-warn">
+          Configura una API key en <span aria-hidden="true">⚙️</span> ajustes para generar contenido con IA.
+          Mientras tanto puedes escribir las publicaciones a mano.
+        </p>
+      )}
+
       {/* Generation progress */}
       {genLoading && genProgress > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}>
-            <span>{genStatus}</span>
+        <div style={{ marginBottom: "var(--sp-3)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginBottom: "var(--sp-1)" }}>
+            <span id="gen-progress-label">{genStatus}</span>
             <span>{genProgress}%</span>
           </div>
-          <div className="progress-bar">
+          <div
+            className="progress-bar"
+            role="progressbar"
+            aria-labelledby="gen-progress-label"
+            aria-valuenow={genProgress}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
             <div className="progress-fill" style={{ width: `${genProgress}%` }} />
           </div>
         </div>
       )}
 
+      {/* Anuncia el avance a lectores de pantalla sin robar el foco */}
+      <div role="status" aria-live="polite" className="sr-only">{genLoading ? genStatus : ""}</div>
+
       {/* Debug panel */}
       {debugOpen && (
-        <div style={{ background: "#0a0a0a", border: "1px solid #333", borderRadius: 8, padding: 10, marginBottom: 12, maxHeight: 200, overflowY: "auto", fontFamily: "monospace" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-            <span style={{ fontSize: 11, color: "#0f0", fontWeight: 700 }}>Debug Log</span>
-            <button onClick={() => setDebugLog([])} style={{ background: "none", border: "none", color: "#f55", cursor: "pointer", fontSize: 10 }}>Limpiar</button>
+        <div style={{ background: "#080d16", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)", marginBottom: "var(--sp-3)", maxHeight: 220, overflowY: "auto", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-2)" }}>
+            <h3 style={{ fontSize: "var(--fs-2xs)", color: "var(--success)", fontWeight: 700 }}>Registro de diagnóstico</h3>
+            <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => setDebugLog([])}>Limpiar</button>
           </div>
-          {debugLog.length === 0 && <div style={{ fontSize: 10, color: "#666" }}>Sin logs. Genera contenido para ver el debug.</div>}
+          {debugLog.length === 0 && <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>Sin registros. Genera contenido para ver el detalle.</p>}
           {debugLog.map((log, i) => (
-            <div key={i} style={{ fontSize: 10, color: log.msg.startsWith("ERROR") ? "#f55" : log.msg.startsWith("WARN") ? "#fa0" : "#aaa", marginBottom: 2 }}>
-              <span style={{ color: "#555" }}>[{log.time}]</span> {log.msg}
-            </div>
+            <p key={i} style={{ fontSize: "var(--fs-2xs)", lineHeight: 1.6, color: log.msg.startsWith("ERROR") ? "#FF8A85" : log.msg.startsWith("WARN") ? "#FFC166" : "var(--text-dim)", marginBottom: 2 }}>
+              <span style={{ color: "var(--text-faint)" }}>[{log.time}]</span> {log.msg}
+            </p>
           ))}
         </div>
       )}
 
-      {/* Filters */}
-      <div className="filter-bar">
-        <button className={`filter-chip ${filterStatus === "all" ? "active" : ""}`} onClick={() => setFilterStatus("all")}>Todos</button>
+      {/* Filters. Plegados por defecto: cuatro filas de chips empujaban la
+          primera publicación fuera de la pantalla en móvil. Cada grupo es un
+          role="group" con nombre y cada chip expone aria-pressed en lugar de
+          depender sólo del color. */}
+      <div className="filters-panel">
+        <button
+          type="button"
+          className="filters-summary"
+          aria-expanded={filtersOpen}
+          aria-controls="panel-filtros"
+          onClick={() => setFiltersOpen((f) => !f)}
+        >
+          <span>Filtros{activeFilterCount > 0 && <span className="sr-only">, {activeFilterCount} activos</span>}</span>
+          <span style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
+            {activeFilterCount > 0 && <span className="filters-count" aria-hidden="true">{activeFilterCount}</span>}
+            <span aria-hidden="true">{filtersOpen ? "▲" : "▼"}</span>
+          </span>
+        </button>
+
+        {filtersOpen && (
+          <div id="panel-filtros" className="filters-body">
+      <div className="filter-bar" role="group" aria-label="Filtrar por estado">
+        <span className="filter-bar-label" aria-hidden="true">Estado</span>
+        <button className={`filter-chip ${filterStatus === "all" ? "active" : ""}`} aria-pressed={filterStatus === "all"} onClick={() => setFilterStatus("all")}>Todos</button>
         {Object.entries(STATUSES).map(([k, st]) => (
-          <button key={k} className={`filter-chip ${filterStatus === k ? "active" : ""}`} onClick={() => setFilterStatus(k)}>{st.label}</button>
+          <button key={k} className={`filter-chip ${filterStatus === k ? "active" : ""}`} aria-pressed={filterStatus === k} onClick={() => setFilterStatus(k)}>{st.label}</button>
         ))}
       </div>
-      <div className="filter-bar">
-        <button className={`filter-chip ${filterFormat === "all" ? "active" : ""}`} onClick={() => setFilterFormat("all")}>Todos</button>
+      <div className="filter-bar" role="group" aria-label="Filtrar por formato">
+        <span className="filter-bar-label" aria-hidden="true">Formato</span>
+        <button className={`filter-chip ${filterFormat === "all" ? "active" : ""}`} aria-pressed={filterFormat === "all"} onClick={() => setFilterFormat("all")}>Todos</button>
         {Object.entries(FORMATS).map(([k, f]) => (
-          <button key={k} className={`filter-chip ${filterFormat === k ? "active" : ""}`} onClick={() => setFilterFormat(k)}>{f.icon} {f.label}</button>
+          <button key={k} className={`filter-chip ${filterFormat === k ? "active" : ""}`} aria-pressed={filterFormat === k} onClick={() => setFilterFormat(k)}>
+            <span aria-hidden="true">{f.icon}</span> {f.label}
+          </button>
         ))}
       </div>
       {weeks.length > 1 && (
-        <div className="filter-bar">
-          <button className={`filter-chip ${filterWeek === "all" ? "active" : ""}`} onClick={() => setFilterWeek("all")}>Todas</button>
+        <div className="filter-bar" role="group" aria-label="Filtrar por semana">
+          <span className="filter-bar-label" aria-hidden="true">Semana</span>
+          <button className={`filter-chip ${filterWeek === "all" ? "active" : ""}`} aria-pressed={filterWeek === "all"} onClick={() => setFilterWeek("all")}>Todas</button>
           {weeks.map((w) => (
-            <button key={w} className={`filter-chip ${filterWeek === String(w) ? "active" : ""}`} onClick={() => setFilterWeek(String(w))}>Sem {w}</button>
+            <button key={w} className={`filter-chip ${filterWeek === String(w) ? "active" : ""}`} aria-pressed={filterWeek === String(w)} onClick={() => setFilterWeek(String(w))}>
+              Semana {w}
+            </button>
           ))}
         </div>
       )}
-      <div className="filter-bar">
-        <button className={`filter-chip ${filterDOW === "all" ? "active" : ""}`} onClick={() => setFilterDOW("all")}>Todos</button>
+      <div className="filter-bar" role="group" aria-label="Filtrar por día de la semana">
+        <span className="filter-bar-label" aria-hidden="true">Día</span>
+        <button className={`filter-chip ${filterDOW === "all" ? "active" : ""}`} aria-pressed={filterDOW === "all"} onClick={() => setFilterDOW("all")}>Todos</button>
         {[1, 2, 3, 4, 5, 6, 0].map((dow) => (
-          <button key={dow} className={`filter-chip ${filterDOW === String(dow) ? "active" : ""}`} onClick={() => setFilterDOW(String(dow))}>
+          <button key={dow} className={`filter-chip ${filterDOW === String(dow) ? "active" : ""}`} aria-pressed={filterDOW === String(dow)} onClick={() => setFilterDOW(String(dow))}>
             {DAYS[dow]}
           </button>
         ))}
       </div>
 
+            {activeFilterCount > 0 && (
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ marginTop: "var(--sp-2)" }}
+                onClick={() => { setFilterStatus("all"); setFilterFormat("all"); setFilterWeek("all"); setFilterDOW("all"); }}
+              >
+                Limpiar filtros
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Counter */}
-      {(filterStatus !== "all" || filterFormat !== "all" || filterWeek !== "all" || filterDOW !== "all") && (
-        <div style={{ fontSize: 11, color: "var(--text-dim)", padding: "4px 0 8px" }}>
+      {activeFilterCount > 0 && (
+        <p role="status" aria-live="polite" style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", padding: "var(--sp-1) 0 var(--sp-2)" }}>
           Mostrando {filteredDays.reduce((a, d) => a + d.posts.length, 0)} de {totalPosts} publicaciones
-        </div>
+        </p>
       )}
 
       {/* Incomplete posts warning */}
       {incompleteInfo && (
-        <div style={{
-          background: "#2a1a0a",
-          border: "1px solid #F5A62366",
-          borderRadius: 10,
-          padding: "10px 14px",
-          marginBottom: 12,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
-        }}>
-          <span style={{ fontSize: 12, color: "#FFA726" }}>
-            ⚠️ {incompleteInfo.count} publicaciones quedaron sin generar
-          </span>
-          <button
-            className="btn btn-secondary btn-sm"
-            onClick={retryIncomplete}
-            disabled={genLoading}
-          >
+        <div className="notice notice-warn notice-action" role="alert">
+          <span><span aria-hidden="true">⚠️</span> {incompleteInfo.count} publicaciones quedaron sin generar</span>
+          <button className="btn btn-secondary btn-sm" onClick={retryIncomplete} disabled={genLoading}>
             Reintentar
           </button>
         </div>
@@ -1217,19 +1438,19 @@ export default function CalendarView({
 
       {/* Approval sync status */}
       {syncStatus && (
-        <div style={{ fontSize: 11, color: "var(--accent)", padding: "4px 0 8px" }}>
+        <p role="status" aria-live="polite" className="notice notice-ok">
           {syncStatus}
-        </div>
+        </p>
       )}
 
       {/* Ideas Bank */}
       {bankOpen && (
         <div
           onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = "var(--accent-alt)"; }}
-          onDragLeave={(e) => { e.currentTarget.style.borderColor = "var(--accent-alt)" + "44"; }}
+          onDragLeave={(e) => { e.currentTarget.style.borderColor = "var(--alt-line)"; }}
           onDrop={(e) => {
             e.preventDefault();
-            e.currentTarget.style.borderColor = "var(--accent-alt)" + "44";
+            e.currentTarget.style.borderColor = "var(--alt-line)";
             try {
               const data = JSON.parse(e.dataTransfer.getData("text/plain") || "{}");
               if (data.postId && data.sourceDate) {
@@ -1244,61 +1465,63 @@ export default function CalendarView({
           }}
           style={{
             background: "var(--card)",
-            border: "1px solid var(--accent-alt)" + "44",
-            borderRadius: 12,
-            padding: 12,
-            marginBottom: 12,
+            border: "1px solid var(--alt-line)",
+            borderRadius: "var(--radius)",
+            padding: "var(--sp-3)",
+            marginBottom: "var(--sp-3)",
             transition: "border-color .2s",
           }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 14 }}>💡</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-alt)" }}>Banco de Ideas ({ideasBank.length})</span>
-            </div>
-            <button className="btn-icon" onClick={() => setBankOpen(false)} style={{ fontSize: 12 }}>✕</button>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
+            <h3 style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", fontSize: "var(--fs-xs)", fontWeight: 700, color: "var(--accent-alt)" }}>
+              <span aria-hidden="true">💡</span> Banco de ideas ({ideasBank.length})
+            </h3>
+            <button className="btn-icon" onClick={() => setBankOpen(false)} aria-label="Cerrar banco de ideas">✕</button>
           </div>
           {ideasBank.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "16px 0", color: "var(--text-dim)", fontSize: 11 }}>
-              Arrastra posts del calendario aqui para guardarlos, o se agregaran automaticamente los posts no usados.
-            </div>
+            <p style={{ textAlign: "center", padding: "var(--sp-4) 0", color: "var(--text-dim)", fontSize: "var(--fs-2xs)" }}>
+              Arrastra publicaciones del calendario aquí para guardarlas y reutilizarlas otro mes.
+            </p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 200, overflowY: "auto" }}>
+            <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "var(--sp-2)", maxHeight: 240, overflowY: "auto" }}>
               {ideasBank.map((post) => {
                 const f = FORMATS[post.format] || FORMATS.post;
+                const title = post.idea || post.descripcion?.slice(0, 40) || f.label;
                 return (
-                  <div
+                  <li
                     key={post.id}
                     draggable
                     onDragStart={(e) => { e.dataTransfer.setData("text/plain", JSON.stringify({ bankPostId: post.id })); }}
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 8,
-                      padding: "6px 10px",
+                      gap: "var(--sp-2)",
+                      padding: "var(--sp-2) var(--sp-3)",
                       background: "var(--bg)",
-                      borderRadius: 8,
+                      borderRadius: "var(--radius-sm)",
                       border: "1px solid var(--border)",
                       cursor: "grab",
                     }}
                   >
-                    <span style={{ fontSize: 12 }}>{f.icon}</span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 11, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {post.idea || post.descripcion?.slice(0, 40) || f.label}
-                      </div>
-                      {post.category && <div style={{ fontSize: 9, color: "var(--text-dim)" }}>{post.category}</div>}
-                    </div>
-                    {post.publishTime && <span style={{ fontSize: 9, color: "var(--text-dim)" }}>{post.publishTime}</span>}
+                    <span aria-hidden="true" style={{ fontSize: "var(--fs-sm)" }}>{f.icon}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: "var(--fs-2xs)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {title}
+                      </span>
+                      {post.category && <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{post.category}</span>}
+                    </span>
+                    {post.publishTime && <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{post.publishTime}</span>}
                     <button
+                      type="button"
+                      className="btn-remove"
+                      aria-label={`Quitar del banco: ${title}`}
                       onClick={() => removeFromBank(post.id)}
-                      style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: 11, padding: "2px 4px", flexShrink: 0 }}
                     >
                       ✕
                     </button>
-                  </div>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           )}
         </div>
       )}
@@ -1310,7 +1533,6 @@ export default function CalendarView({
           onPostClick={(post, day) => setSidePanel({ post, day })}
           onMove={movePost}
           onAddPost={(date) => setAddingPostDay(date)}
-          onMoveToBank={addToBank}
           onDropFromBank={moveBankToCalendar}
           ideasBank={ideasBank}
         />
@@ -1331,161 +1553,157 @@ export default function CalendarView({
                     alignItems: "center",
                     gap: 10,
                     marginBottom: 8,
-                    marginTop: dayIdx > 0 ? 12 : 0,
-                    paddingBottom: 6,
-                    borderBottom: "1px solid var(--border)" + "44",
+                    marginTop: dayIdx > 0 ? "var(--sp-4)" : 0,
+                    paddingBottom: "var(--sp-2)",
+                    borderBottom: "1px solid var(--border-soft)",
                   }}>
-                    <span style={{ background: "var(--accent)" + "22", color: "var(--accent)", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                    <span style={{ background: "var(--accent-soft)", color: "var(--accent)", padding: "var(--sp-1) var(--sp-3)", borderRadius: 20, fontSize: "var(--fs-2xs)", fontWeight: 700, flexShrink: 0 }}>
                       Semana {day.weekNumber}
                     </span>
-                    {day.concept && <span style={{ fontSize: 12, color: "var(--text-dim)", fontStyle: "italic" }}>{day.concept}</span>}
+                    {day.concept && <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)", fontStyle: "italic" }}>{day.concept}</span>}
                   </div>
                 )}
 
                 <div className="card">
-                  <div
+                  {/* Antes era un <div onClick>: no recibía foco ni respondía a
+                      Enter/Espacio. Ahora es un botón con aria-expanded. */}
+                  <button
+                    type="button"
+                    className="tap-row"
+                    aria-expanded={isExpanded}
+                    aria-controls={`dia-${day.date}`}
                     onClick={() => setExpandedDay(isExpanded ? null : day.date)}
-                    style={{ padding: "11px 13px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 54 }}
+                    style={{ padding: "var(--sp-3)", justifyContent: "space-between", minHeight: 60 }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
-                      <div
+                    <span style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)", minWidth: 0, flex: 1 }}>
+                      <span
                         style={{
                           background: client.primaryColor || "var(--accent)",
-                          borderRadius: 8,
-                          padding: "3px 8px",
+                          borderRadius: "var(--radius-sm)",
+                          padding: "var(--sp-1) var(--sp-2)",
                           textAlign: "center",
                           flexShrink: 0,
-                          minWidth: 42,
+                          minWidth: 46,
                         }}
                       >
-                        <div style={{ fontSize: 8, color: "rgba(255,255,255,.8)", fontWeight: 600 }}>{(day.dayName || "").slice(0, 3).toUpperCase()}</div>
-                        <div style={{ fontSize: 15, fontWeight: 900 }}>{(day.date || "").split("-")[2]}</div>
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "rgba(255,255,255,.9)", fontWeight: 600 }}>
+                          {(day.dayName || "").slice(0, 3).toUpperCase()}
+                        </span>
+                        <span style={{ display: "block", fontSize: "var(--fs-md)", fontWeight: 900, lineHeight: 1.1 }}>
+                          {(day.date || "").split("-")[2]}
+                        </span>
+                      </span>
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: "block", fontSize: "var(--fs-xs)", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {day.category || day.dayName}
-                          {day.specialDate && <span style={{ color: "var(--accent-alt)", marginLeft: 6, fontSize: 10 }}>{day.specialDate}</span>}
-                        </div>
-                        {day.concept && <div style={{ fontSize: 10, color: "var(--text-dim)", fontStyle: "italic" }}>{day.concept}</div>}
-                        <div style={{ display: "flex", gap: 4, marginTop: 2, flexWrap: "wrap" }}>
+                          {day.specialDate && <span style={{ color: "var(--accent-alt)", marginLeft: "var(--sp-2)", fontSize: "var(--fs-2xs)" }}>{day.specialDate}</span>}
+                        </span>
+                        {day.concept && <span style={{ display: "block", fontSize: "var(--fs-2xs)", color: "var(--text-dim)", fontStyle: "italic" }}>{day.concept}</span>}
+                        <span style={{ display: "flex", gap: "var(--sp-1)", marginTop: "var(--sp-1)", flexWrap: "wrap" }}>
                           {(day.posts || []).map((p) => {
                             const f = FORMATS[p.format] || FORMATS.post;
                             return (
-                              <span key={p.id} className="badge" style={{ background: f.color + "22", color: f.color, border: `1px solid ${f.color}44` }}>
-                                {f.icon} {p.category || f.label}
+                              <span key={p.id} className="badge" style={{ background: f.color + "22", color: f.color, border: `1px solid ${f.color}66` }}>
+                                <span aria-hidden="true">{f.icon}</span> {p.category || f.label}
                               </span>
                             );
                           })}
-                        </div>
-                      </div>
-                    </div>
-                    <span style={{ color: "var(--text-muted)", fontSize: 12, flexShrink: 0 }}>{isExpanded ? "▲" : "▼"}</span>
-                  </div>
+                        </span>
+                      </span>
+                    </span>
+                    <span aria-hidden="true" style={{ color: "var(--text-muted)", fontSize: "var(--fs-xs)", flexShrink: 0 }}>{isExpanded ? "▲" : "▼"}</span>
+                  </button>
                   {isExpanded && (
-                    <div style={{ padding: "0 13px 13px", borderTop: "1px solid var(--border)" }}>
+                    <div id={`dia-${day.date}`} style={{ padding: "0 var(--sp-3) var(--sp-3)", borderTop: "1px solid var(--border)" }}>
                       {(day.posts || []).map((post) => {
                         const f = FORMATS[post.format] || FORMATS.post;
                         const st = STATUSES[post.status || "pending"];
+                        const isPublished = post.status === "published";
+                        const postTitle = post.idea || post.category || f.label;
                         return (
-                          <div
+                          <article
                             key={post.id}
-                            onClick={() => setSidePanel({ post, day })}
+                            aria-label={`${f.label}: ${postTitle}`}
                             style={{
-                              background: post.status === "published" ? st.bg : "var(--bg)",
-                              borderRadius: 10,
-                              marginTop: 10,
-                              border: post.status === "published" ? `2px solid ${st.border}` : `1px solid ${st.border}44`,
-                              padding: "10px 12px",
-                              cursor: "pointer",
-                              transition: "border-color .2s",
-                              position: "relative",
-                              opacity: post.status === "published" ? 0.75 : 1,
+                              background: isPublished ? st.bg : "var(--bg)",
+                              borderRadius: "var(--radius-sm)",
+                              marginTop: "var(--sp-3)",
+                              border: isPublished ? `2px solid ${st.border}` : `1px solid ${st.border}66`,
+                              padding: "var(--sp-3)",
                             }}
                             draggable
                             onDragStart={(e) => e.dataTransfer.setData("text/plain", JSON.stringify({ postId: post.id, sourceDate: day.date }))}
                           >
-                            {/* Delete button */}
-                            <button
-                              onClick={(e) => { e.stopPropagation(); deletePost(day.date, post.id); }}
-                              style={{
-                                position: "absolute",
-                                top: 6,
-                                right: 6,
-                                background: "none",
-                                border: "none",
-                                color: "var(--danger)",
-                                cursor: "pointer",
-                                fontSize: 12,
-                                opacity: 0.5,
-                                padding: "2px 4px",
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
-                              onMouseLeave={(e) => e.currentTarget.style.opacity = 0.5}
-                            >
-                              🗑️
-                            </button>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                              <span style={{ fontSize: 16 }}>{f.icon}</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-2)", flexWrap: "wrap" }}>
+                              <span aria-hidden="true" style={{ fontSize: "var(--fs-md)" }}>{f.icon}</span>
                               <span className="badge" style={{ background: f.color + "22", color: f.color }}>{f.label}</span>
                               <span className="badge" style={{ background: st.bg, color: st.text, border: `1px solid ${st.border}` }}>{st.label}</span>
-                              {post.publishTime && <span style={{ fontSize: 10, color: "var(--text-dim)" }}>🕐 {post.publishTime}</span>}
+                              {post.publishTime && (
+                                <span style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>
+                                  <span aria-hidden="true">🕐</span> {post.publishTime}
+                                </span>
+                              )}
                             </div>
-                            {post.category && <div style={{ fontSize: 11, color: "var(--accent-alt)", fontWeight: 600, marginBottom: 4 }}>{post.category}</div>}
+
+                            {post.category && <p style={{ fontSize: "var(--fs-2xs)", color: "var(--accent-alt)", fontWeight: 600, marginBottom: "var(--sp-1)" }}>{post.category}</p>}
                             {post.image && !post.idea && !post.guion && !post.descripcion && !post.script && (
-                              <span className="badge" style={{ background: "#2a1a0a", color: "var(--accent-alt)", border: "1px solid #F5A62344", marginBottom: 4 }}>Solo imagen</span>
+                              <span className="badge" style={{ background: "#2a1a0a", color: "var(--accent-alt)", border: "1px solid var(--alt-line)" }}>Solo imagen</span>
                             )}
-                            {post.idea && <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.6, marginBottom: 4 }}>{post.idea}</div>}
+                            {post.idea && <p style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)", lineHeight: "var(--lh-normal)", marginBottom: "var(--sp-1)" }}>{post.idea}</p>}
+
                             <ContentDisplay post={post} />
-                            {post.image && <img src={post.image} alt="" style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 6, marginTop: 6 }} />}
-                            {/* Individual AI generation */}
+                            {post.image && <img src={post.image} alt="" style={{ width: 68, height: 68, objectFit: "cover", borderRadius: "var(--radius-xs)", marginTop: "var(--sp-2)" }} />}
+
                             {apiKey && !post.guion && !post.descripcion && !post.script && (
                               <button
-                                onClick={(e) => { e.stopPropagation(); generateSinglePostContent(post, day); }}
+                                type="button"
+                                className="btn-ai"
+                                style={{ marginTop: "var(--sp-2)" }}
+                                onClick={() => generateSinglePostContent(post, day)}
                                 disabled={genSingleLoading[post.id]}
-                                style={{
-                                  marginTop: 8,
-                                  padding: "5px 10px",
-                                  background: "linear-gradient(135deg, #7B1FA2, #E91E63)",
-                                  color: "#fff",
-                                  border: "none",
-                                  borderRadius: 6,
-                                  cursor: genSingleLoading[post.id] ? "wait" : "pointer",
-                                  fontSize: 10,
-                                  fontWeight: 700,
-                                  opacity: genSingleLoading[post.id] ? 0.6 : 1,
-                                }}
                               >
-                                {genSingleLoading[post.id] ? "Generando..." : "✨ Generar con IA"}
+                                {genSingleLoading[post.id] ? "Generando…" : "✨ Generar con IA"}
                               </button>
                             )}
-                          </div>
+
+                            {/* Acciones explícitas. Antes toda la tarjeta era un
+                                div con onClick: no era alcanzable por teclado y
+                                el botón de borrar quedaba anidado dentro. */}
+                            <div style={{ display: "flex", gap: "var(--sp-2)", marginTop: "var(--sp-3)" }}>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ flex: 1 }}
+                                onClick={() => setSidePanel({ post, day })}
+                              >
+                                Editar publicación
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-remove"
+                                aria-label={`Eliminar publicación: ${postTitle}`}
+                                onClick={() => deletePost(day.date, post.id)}
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </article>
                         );
                       })}
                       {/* Add post button */}
                       {addingPostDay === day.date ? (
                         <AddPostInline
-                          day={day}
                           onAdd={(format, idea) => addPost(day.date, format, idea)}
                           onCancel={() => setAddingPostDay(null)}
                         />
                       ) : (
                         <button
+                          type="button"
+                          className="btn-dashed"
+                          style={{ marginTop: "var(--sp-2)" }}
                           onClick={() => setAddingPostDay(day.date)}
-                          style={{
-                            width: "100%",
-                            marginTop: 8,
-                            padding: "8px",
-                            background: "transparent",
-                            border: "1px dashed var(--border)",
-                            borderRadius: 8,
-                            color: "var(--text-dim)",
-                            cursor: "pointer",
-                            fontSize: 11,
-                            fontWeight: 600,
-                            transition: "all .2s",
-                          }}
                         >
-                          + Agregar post
+                          + Agregar publicación
                         </button>
                       )}
                     </div>
@@ -1499,82 +1717,34 @@ export default function CalendarView({
 
       {/* Add post inline for grid view */}
       {addingPostDay && viewMode === "grid" && (
-        <div className="overlay" style={{ alignItems: "flex-end" }}>
-          <div style={{ background: "var(--card)", borderRadius: "20px 20px 0 0", padding: 16, width: "100%", maxWidth: 400 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <span style={{ fontSize: 13, fontWeight: 700 }}>Agregar post — {addingPostDay}</span>
-              <button className="btn-icon" onClick={() => setAddingPostDay(null)}>✕</button>
-            </div>
-            <AddPostInline
-              day={{ date: addingPostDay }}
-              onAdd={(format, idea) => addPost(addingPostDay, format, idea)}
-              onCancel={() => setAddingPostDay(null)}
-            />
-          </div>
-        </div>
+        <AddPostDialog
+          date={addingPostDay}
+          onAdd={(format, idea) => addPost(addingPostDay, format, idea)}
+          onClose={() => setAddingPostDay(null)}
+        />
       )}
 
       {/* Approval link modal */}
       {approvalModal && (
-        <div className="overlay">
-          <div style={{ background: "var(--card)", borderRadius: 20, padding: 24, width: "100%", maxWidth: 440 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h3 style={{ margin: 0, fontSize: 15 }}>Enviar a cliente</h3>
-              <button className="btn-icon" onClick={() => setApprovalModal(false)}>✕</button>
-            </div>
-
-            {cal.approvalId ? (
-              <>
-                <label className="label">Link de aprobacion</label>
-                <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-                  <input
-                    className="input"
-                    readOnly
-                    value={`${window.location.origin}/aprobar?id=${cal.approvalId}`}
-                    onClick={(e) => e.target.select()}
-                  />
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}/aprobar?id=${cal.approvalId}`);
-                    }}
-                  >
-                    Copiar
-                  </button>
-                </div>
-
-                <label className="label">Mensaje para WhatsApp</label>
-                <textarea
-                  className="textarea"
-                  readOnly
-                  style={{ minHeight: 80, marginBottom: 12 }}
-                  value={`Hola${client.name ? " " + client.name : ""}, aqui esta el calendario de ${calName} para tu revision:\n${window.location.origin}/aprobar?id=${cal.approvalId}\nPuedes aprobar o pedir cambios directamente desde tu celular 📱`}
-                  onClick={(e) => {
-                    e.target.select();
-                    navigator.clipboard.writeText(e.target.value);
-                  }}
-                />
-
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setApprovalModal(false)}>Cerrar</button>
-                  <button className="btn btn-primary" style={{ flex: 1 }} onClick={syncApprovals}>🔄 Sincronizar</button>
-                </div>
-              </>
-            ) : (
-              <div style={{ textAlign: "center", padding: 20, color: "var(--text-dim)" }}>
-                <div style={{ fontSize: 24, marginBottom: 8 }}>🔗</div>
-                <p style={{ fontSize: 12, marginBottom: 12 }}>Se generara un link unico para que tu cliente revise y apruebe el calendario.</p>
-                <button className="btn btn-primary" onClick={sendToClient}>Generar link de aprobacion</button>
-              </div>
-            )}
-          </div>
-        </div>
+        <ApprovalDialog
+          hasLink={!!cal.approvalId}
+          approvalUrl={approvalUrl}
+          whatsappMessage={`Hola${client.name ? " " + client.name : ""}, aquí está el calendario de ${calName} para tu revisión:\n${approvalUrl}\nPuedes aprobar o pedir cambios directamente desde tu celular 📱`}
+          onSync={syncApprovals}
+          onGenerate={sendToClient}
+          onClose={() => setApprovalModal(false)}
+        />
       )}
 
       {/* Side panel */}
       {sidePanel && (
         <>
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 240 }} onClick={() => setSidePanel(null)} />
+          <button
+            type="button"
+            aria-label="Cerrar panel de edición"
+            onClick={() => setSidePanel(null)}
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 240, border: "none", cursor: "pointer" }}
+          />
           <PostSidePanel
             post={sidePanel.post}
             day={sidePanel.day}

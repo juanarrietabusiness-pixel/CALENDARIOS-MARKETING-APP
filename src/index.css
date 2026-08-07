@@ -1,4 +1,11 @@
+/* ============================================================
+   Juancito Ads — Sistema de diseño
+   Mobile-first. Tokens de color, tipografía, espaciado y
+   objetivos táctiles. Ver docs/auditoria-ux-ui.md
+   ============================================================ */
+
 :root {
+  /* ---------- Color ---------- */
   --bg: #050D1F;
   --card: #0A1628;
   --card-alt: #0d1f3a;
@@ -10,98 +17,227 @@
   --text: #FFFFFF;
   --text-muted: #64B5F6;
   --text-dim: #A0B4CC;
+  /* Texto terciario accesible: 4.6:1 sobre --bg. Sustituye a los
+     antiguos #444/#555/#666 que quedaban entre 2:1 y 3.1:1. */
+  --text-faint: #6E829B;
   --danger: #EF5350;
   --success: #66BB6A;
   --purple: #CE93D8;
+
+  /* Superficies translúcidas (evitan concatenar var() + "44",
+     que producía CSS inválido y se descartaba en silencio). */
+  --accent-soft: rgba(30, 144, 255, .13);
+  --accent-line: rgba(30, 144, 255, .27);
+  --accent-glow: rgba(30, 144, 255, .35);
+  --alt-soft: rgba(245, 166, 35, .12);
+  --alt-line: rgba(245, 166, 35, .30);
+  --border-soft: rgba(30, 58, 107, .45);
+
+  /* ---------- Tipografía ----------
+     Base 16px. Suelo de 11px: por debajo el texto deja de ser
+     legible en pantallas de ~360px con brillo bajo. */
+  --fs-3xs: 0.6875rem; /* 11px — solo micro-etiquetas y chips */
+  --fs-2xs: 0.75rem;   /* 12px — metadatos */
+  --fs-xs:  0.8125rem; /* 13px — texto secundario */
+  --fs-sm:  0.875rem;  /* 14px — cuerpo */
+  --fs-md:  1rem;      /* 16px — cuerpo destacado / inputs móvil */
+  --fs-lg:  1.125rem;  /* 18px — títulos de sección */
+  --fs-xl:  1.375rem;  /* 22px — títulos de pantalla */
+  --fs-2xl: 1.75rem;   /* 28px — cifras grandes */
+
+  --lh-tight: 1.3;
+  --lh-normal: 1.55;
+  --lh-relaxed: 1.75;
+
+  /* ---------- Espaciado (escala de 4px) ---------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+
+  /* ---------- Objetivos táctiles ----------
+     44px = mínimo recomendado (WCAG 2.5.5 / HIG de Apple).
+     --tap-sm sólo para controles densos con separación suficiente. */
+  --tap: 44px;
+  --tap-sm: 36px;
+
+  /* ---------- Formas y sombras ---------- */
   --radius: 12px;
   --radius-sm: 8px;
   --radius-xs: 6px;
   --shadow: 0 2px 8px rgba(0,0,0,.3);
   --shadow-lg: 0 4px 16px rgba(0,0,0,.4);
+
+  /* ---------- Layout ---------- */
+  --header-h: 60px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { -webkit-text-size-adjust: 100%; }
 
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background: var(--bg);
   color: var(--text);
+  /* dvh evita el salto de layout cuando la barra del navegador
+     móvil se oculta/muestra. vh queda como respaldo. */
   min-height: 100vh;
-  line-height: 1.5;
+  min-height: 100dvh;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-normal);
   -webkit-font-smoothing: antialiased;
+  overflow-wrap: break-word;
 }
 
-::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
 
-input, textarea, select { font-family: inherit; }
+input, textarea, select, button { font-family: inherit; }
 
-button { font-family: inherit; }
-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-.input {
-  width: 100%;
-  padding: 10px 12px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-size: 13px;
-  outline: none;
-  transition: border-color .2s, box-shadow .2s;
+/* ---------- Foco visible global ----------
+   Antes sólo los <button> mostraban foco. Ahora cualquier elemento
+   enfocable (incluidos los interactivos con tabIndex) lo señala. */
+:focus-visible {
+  outline: 2px solid var(--accent-hover);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
 }
-.input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(30,144,255,.15); }
-.input::placeholder { color: var(--text-dim); opacity: .6; }
+:focus:not(:focus-visible) { outline: none; }
 
-.textarea {
-  width: 100%;
-  padding: 10px 12px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-size: 13px;
-  outline: none;
-  resize: vertical;
-  min-height: 60px;
-  transition: border-color .2s, box-shadow .2s;
+/* Sólo para lectores de pantalla */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
-.textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(30,144,255,.15); }
 
-.label {
-  font-size: 10px;
-  color: var(--text-muted);
-  display: block;
-  margin-bottom: 4px;
-  text-transform: uppercase;
-  letter-spacing: .8px;
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 999;
+  background: var(--accent);
+  color: #fff;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: 0 0 var(--radius-sm) 0;
+  font-size: var(--fs-sm);
   font-weight: 600;
 }
+.skip-link:focus { left: 0; }
+
+/* ============================================================
+   Formularios
+   ============================================================ */
+
+/* 16px en móvil: por debajo, iOS Safari hace zoom automático al
+   enfocar un campo y descuadra el layout. A partir de 768px
+   bajamos a 14px, donde ya no aplica esa regla. */
+.input,
+.textarea,
+select.input {
+  width: 100%;
+  padding: var(--sp-3);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  min-height: var(--tap);
+  outline: none;
+  transition: border-color .2s, box-shadow .2s;
+}
+.input:focus,
+.textarea:focus,
+select.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.input::placeholder,
+.textarea::placeholder { color: var(--text-faint); opacity: 1; }
+
+.textarea {
+  resize: vertical;
+  min-height: 84px;
+  line-height: var(--lh-relaxed);
+}
+
+/* Casillas y radios: más grandes para el dedo */
+input[type="checkbox"],
+input[type="radio"] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.label {
+  font-size: var(--fs-3xs);
+  color: var(--text-muted);
+  display: block;
+  margin-bottom: var(--sp-2);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-weight: 700;
+}
+
+.hint {
+  font-size: var(--fs-2xs);
+  color: var(--text-dim);
+  margin-top: var(--sp-1);
+  line-height: var(--lh-normal);
+}
+
+.field { margin-bottom: var(--sp-4); }
+
+/* ============================================================
+   Botones
+   ============================================================ */
 
 .btn {
-  padding: 10px 16px;
+  padding: var(--sp-3) var(--sp-4);
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   font-weight: 600;
-  transition: all .2s;
+  line-height: 1.2;
+  transition: background .2s, box-shadow .2s, color .2s, border-color .2s;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-height: 40px;
+  gap: var(--sp-2);
+  min-height: var(--tap);
 }
 .btn:active { transform: scale(.97); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
+
 .btn-primary {
   background: linear-gradient(135deg, #1B3A6B, var(--accent));
   color: #fff;
-  box-shadow: 0 2px 8px rgba(30,144,255,.25);
+  box-shadow: 0 2px 8px var(--accent-soft);
 }
-.btn-primary:hover:not(:disabled) { background: linear-gradient(135deg, #1E4580, var(--accent-hover)); box-shadow: 0 4px 12px rgba(30,144,255,.35); }
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1E4580, var(--accent-hover));
+  box-shadow: 0 4px 12px var(--accent-glow);
+}
 .btn-accent {
   background: linear-gradient(135deg, #7B1FA2, #E91E63);
   color: #fff;
@@ -119,17 +255,24 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   color: var(--danger);
   border: 1px solid #C62828;
 }
-.btn-danger:hover { background: #3a0d0d; }
+.btn-danger:hover:not(:disabled) { background: #3a0d0d; }
 .btn-ghost {
   background: transparent;
   color: var(--text-muted);
-  padding: 8px 12px;
 }
-.btn-ghost:hover { color: #fff; background: var(--card-alt); }
-.btn-sm { padding: 6px 10px; font-size: 11px; min-height: 32px; }
+.btn-ghost:hover:not(:disabled) { color: #fff; background: var(--card-alt); }
+
+/* Variante compacta: mantiene 36px de alto real y compensa con
+   separación. Nunca baja de 11px de texto. */
+.btn-sm {
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-2xs);
+  min-height: var(--tap-sm);
+}
+
 .btn-icon {
-  width: 36px;
-  height: 36px;
+  width: var(--tap);
+  height: var(--tap);
   padding: 0;
   border-radius: var(--radius-sm);
   background: var(--card-alt);
@@ -139,10 +282,94 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
-  transition: all .2s;
+  font-size: var(--fs-md);
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background .2s, color .2s, border-color .2s;
 }
-.btn-icon:hover { background: var(--border); color: #fff; border-color: var(--accent); }
+.btn-icon:hover:not(:disabled) { background: var(--border); color: #fff; border-color: var(--accent); }
+.btn-icon:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Botón de icono translúcido sobre fondos de color (banners) */
+.btn-icon-on-color {
+  background: rgba(255,255,255,.18);
+  border: 1px solid rgba(255,255,255,.28);
+  color: #fff;
+}
+.btn-icon-on-color:hover:not(:disabled) { background: rgba(255,255,255,.3); border-color: rgba(255,255,255,.5); }
+
+/* Botón "generar con IA" */
+.btn-ai {
+  padding: var(--sp-2) var(--sp-3);
+  background: linear-gradient(135deg, #7B1FA2, #E91E63);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  font-size: var(--fs-3xs);
+  font-weight: 700;
+  min-height: var(--tap-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  transition: opacity .2s;
+}
+.btn-ai:disabled { opacity: .55; cursor: wait; }
+
+/* Botón de copiar en línea */
+.btn-copy {
+  padding: var(--sp-1) var(--sp-2);
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  font-size: var(--fs-3xs);
+  font-weight: 600;
+  min-height: 28px;
+  transition: background .2s, color .2s, border-color .2s;
+}
+.btn-copy:hover { background: var(--accent-line); }
+.btn-copy.is-copied { background: #0d2a0d; color: var(--success); border-color: #388E3C; }
+
+/* Botón discreto de borrar dentro de tarjetas */
+.btn-remove {
+  background: none;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  line-height: 1;
+  width: var(--tap-sm);
+  height: var(--tap-sm);
+  border-radius: var(--radius-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background .2s;
+}
+.btn-remove:hover { background: rgba(239,83,80,.15); }
+
+/* Botón "añadir" con borde discontinuo */
+.btn-dashed {
+  width: 100%;
+  padding: var(--sp-3);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  min-height: var(--tap);
+  transition: border-color .2s, color .2s, background .2s;
+}
+.btn-dashed:hover { border-color: var(--accent); color: var(--text-muted); background: var(--accent-soft); }
+
+/* ============================================================
+   Contenedores
+   ============================================================ */
 
 .card {
   background: var(--card);
@@ -152,30 +379,101 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   box-shadow: var(--shadow);
   transition: border-color .2s, box-shadow .2s;
 }
-.card:hover { border-color: var(--accent)44; box-shadow: var(--shadow-lg); }
+.card:hover { border-color: var(--accent-line); box-shadow: var(--shadow-lg); }
 
 .badge {
-  font-size: 10px;
-  padding: 3px 8px;
+  font-size: var(--fs-3xs);
+  padding: var(--sp-1) var(--sp-2);
   border-radius: 20px;
   font-weight: 600;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: var(--sp-1);
   white-space: nowrap;
+  line-height: 1.4;
 }
+
+/* Fila de acciones que envuelve bien en pantallas estrechas */
+.action-row {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-3);
+}
+.action-row > .btn { flex: 1 1 auto; }
+
+/* ============================================================
+   Superposiciones y diálogos
+   ============================================================ */
 
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,.7);
+  background: rgba(0,0,0,.72);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 300;
-  padding: 16px;
+  padding: var(--sp-4);
+  padding-bottom: calc(var(--sp-4) + var(--safe-bottom));
   animation: fadeIn .2s;
   backdrop-filter: blur(4px);
+  overscroll-behavior: contain;
+}
+
+/* Hoja inferior: pegada al borde en móvil, centrada en escritorio */
+.overlay-sheet {
+  align-items: flex-end;
+  padding: 0;
+}
+.sheet {
+  background: var(--card);
+  border-radius: 20px 20px 0 0;
+  border-top: 1px solid var(--border);
+  width: 100%;
+  max-width: 600px;
+  max-height: 92vh;
+  max-height: 92dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: var(--safe-bottom);
+  animation: slideUp .28s cubic-bezier(.22,.61,.36,1);
+}
+.sheet-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-4);
+  overscroll-behavior: contain;
+}
+.sheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.sheet-footer {
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Diálogo centrado */
+.dialog {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: var(--sp-5);
+  width: 100%;
+  max-width: 440px;
+  max-height: 92dvh;
+  overflow-y: auto;
+  animation: popIn .2s cubic-bezier(.22,.61,.36,1);
 }
 
 .panel-right {
@@ -183,46 +481,56 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   top: 0;
   right: 0;
   bottom: 0;
-  width: 420px;
+  width: 440px;
   max-width: 100%;
   background: var(--card);
   border-left: 1px solid var(--border);
   z-index: 250;
   display: flex;
   flex-direction: column;
+  padding-bottom: var(--safe-bottom);
   animation: slideIn .3s cubic-bezier(.22,.61,.36,1);
   box-shadow: -4px 0 24px rgba(0,0,0,.5);
 }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes popIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
 @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
 @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
+/* ============================================================
+   Asistente por pasos
+   ============================================================ */
+
 .wizard-steps {
   display: flex;
-  gap: 4px;
-  padding: 16px 20px;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
+  scrollbar-width: thin;
+  flex-shrink: 0;
 }
 .wizard-step {
   flex-shrink: 0;
-  padding: 6px 12px;
+  padding: var(--sp-2) var(--sp-3);
   border-radius: 20px;
-  font-size: 11px;
+  font-size: var(--fs-2xs);
   font-weight: 600;
   cursor: pointer;
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--text-dim);
-  transition: all .2s;
+  min-height: var(--tap-sm);
+  transition: background .2s, color .2s, border-color .2s;
 }
+.wizard-step:disabled { cursor: default; }
 .wizard-step.active {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
-  box-shadow: 0 2px 8px rgba(30,144,255,.3);
+  box-shadow: 0 2px 8px var(--accent-glow);
 }
 .wizard-step.done {
   background: #0d2a0d;
@@ -230,68 +538,173 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   color: var(--success);
 }
 
+/* ============================================================
+   Rejilla del calendario
+   ============================================================ */
+
 .cal-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 3px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: var(--sp-1);
 }
 .cal-header-cell {
   text-align: center;
-  font-size: 10px;
+  font-size: var(--fs-3xs);
   color: var(--text-muted);
   font-weight: 700;
-  padding: 6px 0;
+  padding: var(--sp-2) 2px;
   background: var(--card);
   border-radius: var(--radius-xs);
+  min-width: 0;
+}
+.cal-header-cat {
+  font-size: var(--fs-3xs);
+  color: var(--accent-alt);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 .cal-cell {
-  min-height: 100px;
+  min-height: 96px;
   background: var(--card);
   border-radius: var(--radius-xs);
-  padding: 4px;
+  padding: var(--sp-1);
   border: 1px solid var(--border-light);
-  transition: all .2s;
-  cursor: pointer;
+  transition: border-color .2s, box-shadow .2s;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
-.cal-cell:hover { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent)33; }
-.cal-cell.outside { background: var(--bg); opacity: .4; }
+.cal-cell:hover { border-color: var(--accent); }
+/* La opacidad baja hundía el contraste por debajo de 3:1.
+   Usamos un color de texto atenuado en su lugar. */
+.cal-cell.outside { background: var(--bg); border-color: transparent; }
+.cal-cell.outside .cal-daynum { color: var(--text-faint); }
 .cal-cell.today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-.cal-cell.drop-target { border: 2px dashed var(--accent); background: rgba(30,144,255,.1); }
+.cal-cell.drop-target { border: 2px dashed var(--accent); background: var(--accent-soft); }
+
+.cal-daynum {
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  text-align: right;
+  margin-bottom: 2px;
+  padding: 0 2px;
+}
+.cal-daynum.is-today { color: var(--accent); }
+
+.cal-week-tag {
+  font-size: var(--fs-3xs);
+  color: var(--accent);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 2px;
+}
+
+.cal-post {
+  border-radius: var(--radius-xs);
+  padding: 3px var(--sp-1);
+  margin-bottom: 2px;
+  cursor: grab;
+  font-size: var(--fs-3xs);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: 24px;
+  text-align: left;
+  width: 100%;
+  border: 1px solid;
+}
+.cal-post-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.cal-post-label { overflow: hidden; text-overflow: ellipsis; }
+.cal-post-time { margin-left: auto; font-size: var(--fs-3xs); opacity: .85; }
+.cal-post.is-published { opacity: .75; text-decoration: line-through; }
+
+.cal-add {
+  width: 100%;
+  margin-top: auto;
+  padding: 2px 0;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: var(--fs-2xs);
+  min-height: 28px;
+  border-radius: var(--radius-xs);
+  transition: background .2s, color .2s;
+}
+.cal-add:hover { background: var(--accent-soft); color: var(--accent); }
+
+/* En pantallas estrechas una celda mide ~46px: el texto de la idea
+   es ilegible. Se reduce a icono + hora y la celda se compacta. */
+@media (max-width: 599px) {
+  .cal-grid { gap: 2px; }
+  .cal-cell { min-height: 72px; padding: 2px; }
+  .cal-post-label { display: none; }
+  .cal-post { justify-content: center; gap: 2px; padding: 3px 2px; }
+  .cal-post-time { display: none; }
+  .cal-header-cat { display: none; }
+  .cal-week-tag { display: none; }
+}
+
+/* ============================================================
+   Estado, filtros y progreso
+   ============================================================ */
 
 .status-bar {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+@media (min-width: 480px) {
+  .status-bar { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 .status-btn {
-  flex: 1;
-  padding: 8px;
+  padding: var(--sp-2);
   border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--fs-2xs);
   font-weight: 700;
   border: 1px solid;
-  transition: all .2s;
-  min-height: 36px;
+  transition: background .2s, border-color .2s;
+  min-height: var(--tap);
   text-align: center;
 }
 
 .filter-bar {
   display: flex;
-  gap: 6px;
+  gap: var(--sp-2);
   flex-wrap: wrap;
-  padding: 8px 0;
+  padding: var(--sp-2) 0;
+  align-items: center;
+}
+.filter-bar-label {
+  font-size: var(--fs-3xs);
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-right: var(--sp-1);
 }
 .filter-chip {
-  padding: 5px 10px;
+  padding: var(--sp-2) var(--sp-3);
   border-radius: 20px;
-  font-size: 11px;
+  font-size: var(--fs-2xs);
   font-weight: 600;
   cursor: pointer;
   border: 1px solid var(--border);
   background: var(--card);
   color: var(--text-dim);
-  transition: all .15s;
+  min-height: var(--tap-sm);
+  transition: border-color .15s, color .15s, background .15s;
 }
 .filter-chip:hover { border-color: var(--accent); color: var(--text-muted); }
 .filter-chip.active {
@@ -301,10 +714,11 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 
 .progress-bar {
-  height: 6px;
+  height: 8px;
   background: var(--bg);
   border-radius: 999px;
   overflow: hidden;
+  border: 1px solid var(--border-light);
 }
 .progress-fill {
   height: 100%;
@@ -313,24 +727,218 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   transition: width .4s ease;
 }
 
+/* Tarjetas de estadística */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+@media (min-width: 480px) {
+  .stat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-3);
+  text-align: center;
+}
+.stat-value { font-size: var(--fs-lg); font-weight: 900; line-height: 1.15; }
+.stat-label { font-size: var(--fs-3xs); color: var(--text-dim); margin-top: 2px; }
+@media (min-width: 480px) {
+  .stat-card { padding: var(--sp-3); }
+  .stat-value { font-size: var(--fs-xl); }
+  .stat-label { font-size: var(--fs-2xs); }
+}
+
+/* Panel de filtros plegable: en móvil ocupaba cuatro filas de chips
+   antes de que se viera la primera publicación. */
+.filters-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  margin-bottom: var(--sp-3);
+}
+.filters-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-3);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  cursor: pointer;
+  min-height: var(--tap);
+  border-radius: var(--radius-sm);
+}
+.filters-count {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  font-size: var(--fs-3xs);
+  font-weight: 700;
+  padding: 2px 8px;
+}
+.filters-body { padding: 0 var(--sp-3) var(--sp-3); }
+
+/* Selector segmentado (pestañas tipo píldora) */
+.segmented {
+  display: flex;
+  gap: var(--sp-1);
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-1);
+  overflow-x: auto;
+}
+.segmented-btn {
+  flex: 1 1 0;
+  min-width: 64px;
+  padding: var(--sp-2) var(--sp-1);
+  border-radius: var(--radius-xs);
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  min-height: var(--tap-sm);
+  transition: background .2s, color .2s;
+}
+.segmented-btn.active { background: var(--accent); color: #fff; }
+
+/* Estado vacío */
+.empty-state {
+  text-align: center;
+  padding: var(--sp-8) var(--sp-4);
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-dim);
+}
+.empty-state-icon { font-size: 2.25rem; margin-bottom: var(--sp-3); }
+.empty-state-title { font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+.empty-state-text { font-size: var(--fs-xs); margin-top: var(--sp-2); }
+
+/* Aviso / alerta en línea.
+   Por defecto es un bloque de texto: cuando era flex, cualquier <span>
+   dentro del párrafo se convertía en ítem flexible y se separaba del
+   texto al que pertenecía. Usa .notice-action si lleva un botón. */
+.notice {
+  display: block;
+  border-radius: var(--radius-sm);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-3);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-normal);
+}
+.notice-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+.notice-warn { background: #2a1a0a; border: 1px solid var(--alt-line); color: #FFC166; }
+.notice-error { background: #2a0d0d; border: 1px solid #C62828; color: #FF8A85; }
+.notice-ok { background: #0d2a0d; border: 1px solid #388E3C; color: #8FD992; }
+
+/* Aprobar / Pedir cambios en la página del cliente.
+   Lado a lado a partir de 400px; apilados por debajo, donde «Pedir
+   cambios» partía en dos líneas dentro de media columna. */
+.review-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+.review-actions > .btn { width: 100%; }
+@media (min-width: 400px) {
+  .review-actions { flex-direction: row; }
+  .review-actions > .btn { flex: 1; width: auto; }
+}
+
+/* Elemento de lista pulsable (día, post, cliente) */
+.tap-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  min-height: var(--tap);
+}
+
 .tooltip { position: relative; }
-.tooltip:hover::after {
+.tooltip:hover::after,
+.tooltip:focus-visible::after {
   content: attr(data-tip);
   position: absolute;
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  background: #222;
+  background: #16233b;
+  border: 1px solid var(--border);
   color: #fff;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 10px;
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--radius-xs);
+  font-size: var(--fs-3xs);
   white-space: nowrap;
   z-index: 50;
 }
 
+/* ============================================================
+   Puntos de ruptura
+   ============================================================ */
+
+/* A partir de tablet el texto de formulario puede bajar a 14px
+   sin disparar el zoom de iOS. */
+@media (min-width: 768px) {
+  .input, .textarea, select.input { font-size: var(--fs-sm); }
+  .cal-cell { min-height: 110px; }
+}
+
 @media (max-width: 768px) {
   .panel-right { width: 100%; }
+}
+
+/* Pantallas muy estrechas (<= 360px) */
+@media (max-width: 360px) {
+  :root { --sp-4: 12px; --sp-5: 16px; }
+  .btn { padding: var(--sp-2) var(--sp-3); }
+}
+
+/* ============================================================
+   Preferencias del usuario
+   ============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .btn:active { transform: none; }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --border: #4A7BC8;
+    --border-light: #35558f;
+    --text-dim: #C7D6E8;
+    --text-faint: #93A7BF;
+  }
 }
 
 @media print {
@@ -340,4 +948,5 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
+  .panel-right, .overlay { display: none !important; }
 }

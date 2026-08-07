@@ -12,6 +12,16 @@ dist
 dist-ssr
 *.local
 
+# Variables de entorno — nunca se suben (contienen claves)
+.env
+.env.*
+!.env.example
+
+# Netlify / Supabase local
+.netlify
+supabase/.branches
+supabase/.temp
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -1,23 +1,29 @@
-import { useState, useRef } from "react";
+import { useId, useState, useRef } from "react";
 import { PLANS, FORMATS, DEFAULT_CATEGORIES, MONTHS, DAYS, DAYS_SHORT } from "../constants";
 import { uid, daysInMonth, fmtDate, getWeekNumber, dayName, parseVideoURL } from "../utils";
 import { callAI, buildClientContext, fetchGitHubADN } from "../api";
+import { useDialogA11y } from "../hooks/useDialogA11y";
 
-const STEP_LABELS = ["Plan", "Fechas", "Campana", "Conceptos", "Categorias", "Videos", "Ideas"];
+const STEP_LABELS = ["Plan", "Fechas", "Campaña", "Conceptos", "Categorías", "Vídeos", "Ideas"];
 
 function StepBar({ step, setStep }) {
   return (
-    <div className="wizard-steps">
+    <nav className="wizard-steps" aria-label={`Paso ${step + 1} de ${STEP_LABELS.length}: ${STEP_LABELS[step]}`}>
       {STEP_LABELS.map((label, i) => (
         <button
           key={i}
+          type="button"
           className={`wizard-step ${i === step ? "active" : i < step ? "done" : ""}`}
+          aria-current={i === step ? "step" : undefined}
+          /* Los pasos futuros ya no eran pulsables pero seguían recibiendo
+             foco y no lo comunicaban: ahora se deshabilitan de verdad. */
+          disabled={i > step}
           onClick={() => { if (i < step) setStep(i); }}
         >
-          {i < step ? "✓" : i + 1}. {label}
+          <span aria-hidden="true">{i < step ? "✓" : i + 1}.</span> {label}
         </button>
       ))}
-    </div>
+    </nav>
   );
 }
 
@@ -48,7 +54,11 @@ export default function PlanWizard({ client, apiKey, onGenerate, onClose }) {
   const [dowIdeas, setDowIdeas] = useState({});
   const [aiLoading, setAiLoading] = useState(false);
   const [aiStatus, setAiStatus] = useState("");
+  const [newDate, setNewDate] = useState("");
+  const [newDateName, setNewDateName] = useState("");
   const generating = useRef(false);
+  const ids = useId();
+  const dialogRef = useDialogA11y(onClose);
 
   const allDays = daysInMonth(year, month);
   const postsPerDay = PLANS[plan]?.posts || 2;
@@ -306,48 +316,42 @@ ${daysDesc}`;
   };
 
   return (
-    <div className="overlay" style={{ alignItems: "flex-end" }}>
-      <div
-        style={{
-          background: "var(--card)",
-          borderRadius: "20px 20px 0 0",
-          width: "100%",
-          maxWidth: 600,
-          maxHeight: "94vh",
-          display: "flex",
-          flexDirection: "column",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px 0" }}>
-          <h3 style={{ margin: 0, fontSize: 15 }}>Planificar Calendario</h3>
-          <button className="btn-icon" onClick={onClose}>✕</button>
+    <div className="overlay overlay-sheet">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet">
+        <div className="sheet-header" style={{ borderBottom: "none", paddingBottom: 0 }}>
+          <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)" }}>Planificar calendario</h2>
+          <button className="btn-icon" onClick={onClose} aria-label="Cerrar planificador">✕</button>
         </div>
 
         <StepBar step={step} setStep={setStep} />
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "14px 18px" }}>
+        <div className="sheet-body">
+          <div role="status" aria-live="polite" className="sr-only">{aiLoading ? aiStatus : ""}</div>
           {/* Step 0: Plan selection */}
           {step === 0 && (
             <div>
-              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              <div style={{ display: "flex", gap: "var(--sp-3)", marginBottom: "var(--sp-4)" }}>
                 <div style={{ flex: 1 }}>
-                  <label className="label">Mes</label>
-                  <select className="input" value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+                  <label className="label" htmlFor={`${ids}-month`}>Mes</label>
+                  <select id={`${ids}-month`} className="input" value={month} onChange={(e) => setMonth(Number(e.target.value))}>
                     {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
                   </select>
                 </div>
-                <div style={{ width: 100 }}>
-                  <label className="label">Ano</label>
-                  <select className="input" value={year} onChange={(e) => setYear(Number(e.target.value))}>
+                <div style={{ width: 110 }}>
+                  <label className="label" htmlFor={`${ids}-year`}>Año</label>
+                  <select id={`${ids}-year`} className="input" value={year} onChange={(e) => setYear(Number(e.target.value))}>
                     {[year - 1, year, year + 1, year + 2].map((y) => <option key={y} value={y}>{y}</option>)}
                   </select>
                 </div>
               </div>
-              <label className="label" style={{ marginBottom: 8 }}>Plan de publicaciones</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+              <fieldset style={{ border: "none", marginBottom: "var(--sp-4)" }}>
+                <legend className="label">Plan de publicaciones</legend>
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
                 {Object.entries(PLANS).map(([k, p]) => (
                   <button
                     key={k}
+                    type="button"
+                    aria-pressed={plan === k}
                     onClick={() => {
                       setPlan(k);
                       setFormatConfig((prev) => {
@@ -360,140 +364,157 @@ ${daysDesc}`;
                       });
                     }}
                     style={{
-                      padding: "14px 16px",
-                      borderRadius: 12,
+                      padding: "var(--sp-4)",
+                      borderRadius: "var(--radius)",
                       border: `2px solid ${plan === k ? "var(--accent)" : "var(--border)"}`,
                       cursor: "pointer",
-                      background: plan === k ? "var(--accent)" + "22" : "var(--bg)",
+                      background: plan === k ? "var(--accent-soft)" : "var(--bg)",
                       color: "#fff",
                       textAlign: "left",
+                      minHeight: "var(--tap)",
                     }}
                   >
-                    <div style={{ fontWeight: 700, fontSize: 14 }}>{p.label}</div>
-                    <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>{p.description}</div>
+                    <span style={{ display: "block", fontWeight: 700, fontSize: "var(--fs-sm)" }}>{p.label}</span>
+                    <span style={{ display: "block", fontSize: "var(--fs-xs)", color: "var(--text-dim)", marginTop: 2 }}>{p.description}</span>
                   </button>
                 ))}
               </div>
-              <label className="label" style={{ marginBottom: 8 }}>Formatos por dia</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {[1, 2, 3, 4, 5, 6, 0].map((dow) => (
-                  <div key={dow} style={{ background: "var(--bg)", borderRadius: 8, padding: 10 }}>
-                    <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{DAYS[dow]}</div>
-                    {(formatConfig[dow] || []).map((slot, si) => (
-                      <div key={si} style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 4 }}>
-                        {Object.entries(FORMATS).map(([fk, f]) => (
-                          <button
-                            key={fk}
-                            type="button"
-                            onClick={() =>
-                              setFormatConfig((prev) => ({
-                                ...prev,
-                                [dow]: prev[dow].map((s, j) => (j === si ? { format: fk } : s)),
-                              }))
-                            }
-                            style={{
-                              padding: "3px 8px",
-                              borderRadius: 6,
-                              border: `1px solid ${slot.format === fk ? f.color : "var(--border)"}`,
-                              cursor: "pointer",
-                              background: slot.format === fk ? f.color + "33" : "transparent",
-                              color: slot.format === fk ? f.color : "var(--text-dim)",
-                              fontSize: 10,
-                              fontWeight: 600,
-                            }}
-                          >
-                            {f.icon} {f.label}
-                          </button>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                ))}
-              </div>
+              </fieldset>
+
+              <fieldset style={{ border: "none" }}>
+                <legend className="label">Formatos por día</legend>
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
+                  {[1, 2, 3, 4, 5, 6, 0].map((dow) => (
+                    <div key={dow} style={{ background: "var(--bg)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)" }}>
+                      <p style={{ fontSize: "var(--fs-xs)", fontWeight: 700, marginBottom: "var(--sp-2)" }}>{DAYS[dow]}</p>
+                      {(formatConfig[dow] || []).map((slot, si) => (
+                        <div key={si} role="group" aria-label={`${DAYS[dow]}, publicación ${si + 1}`} style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-2)" }}>
+                          {Object.entries(FORMATS).map(([fk, f]) => (
+                            <button
+                              key={fk}
+                              type="button"
+                              aria-pressed={slot.format === fk}
+                              onClick={() =>
+                                setFormatConfig((prev) => ({
+                                  ...prev,
+                                  [dow]: prev[dow].map((s, j) => (j === si ? { format: fk } : s)),
+                                }))
+                              }
+                              style={{
+                                padding: "var(--sp-1) var(--sp-2)",
+                                borderRadius: "var(--radius-xs)",
+                                border: `1px solid ${slot.format === fk ? f.color : "var(--border)"}`,
+                                cursor: "pointer",
+                                background: slot.format === fk ? f.color + "33" : "transparent",
+                                color: slot.format === fk ? f.color : "var(--text-dim)",
+                                fontSize: "var(--fs-3xs)",
+                                fontWeight: 600,
+                                minHeight: "var(--tap-sm)",
+                              }}
+                            >
+                              <span aria-hidden="true">{f.icon}</span> {f.label}
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </fieldset>
             </div>
           )}
 
           {/* Step 1: Important dates */}
           {step === 1 && (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <label className="label" style={{ margin: 0 }}>Fechas importantes</label>
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={suggestDates}
-                  disabled={aiLoading || !apiKey}
-                >
-                  {aiLoading ? "..." : "IA Sugerir"}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-3)", marginBottom: "var(--sp-3)" }}>
+                <h3 className="label" style={{ margin: 0 }}>Fechas importantes</h3>
+                <button className="btn btn-primary btn-sm" onClick={suggestDates} disabled={aiLoading || !apiKey}>
+                  {aiLoading ? "Buscando…" : "Sugerir con IA"}
                 </button>
               </div>
-              {aiStatus && <div style={{ fontSize: 11, color: "var(--accent)", marginBottom: 8 }}>{aiStatus}</div>}
-              <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-                <input
-                  className="input"
-                  type="date"
-                  id="newDateInput"
-                  style={{ flex: 1 }}
-                />
-                <input className="input" id="newDateName" placeholder="Nombre" style={{ flex: 2 }} />
+              {aiStatus && <p role="status" style={{ fontSize: "var(--fs-2xs)", color: "var(--accent)", marginBottom: "var(--sp-2)" }}>{aiStatus}</p>}
+
+              {/* Antes estos dos campos se leían con document.getElementById y
+                  se limpiaban mutando el DOM: React no conocía su valor. */}
+              <div style={{ display: "flex", gap: "var(--sp-2)", marginBottom: "var(--sp-3)", flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div style={{ flex: "1 1 140px" }}>
+                  <label className="label" htmlFor={`${ids}-newdate`}>Fecha</label>
+                  <input
+                    id={`${ids}-newdate`}
+                    className="input"
+                    type="date"
+                    value={newDate}
+                    onChange={(e) => setNewDate(e.target.value)}
+                  />
+                </div>
+                <div style={{ flex: "2 1 160px" }}>
+                  <label className="label" htmlFor={`${ids}-newdatename`}>Nombre</label>
+                  <input
+                    id={`${ids}-newdatename`}
+                    className="input"
+                    value={newDateName}
+                    onChange={(e) => setNewDateName(e.target.value)}
+                    placeholder="Ej: Día de la Madre"
+                  />
+                </div>
                 <button
-                  className="btn btn-secondary btn-sm"
+                  className="btn btn-secondary"
+                  disabled={!newDate || !newDateName}
                   onClick={() => {
-                    const dateEl = document.getElementById("newDateInput");
-                    const nameEl = document.getElementById("newDateName");
-                    if (dateEl.value && nameEl.value) {
-                      setImportantDates((prev) => [...prev, { date: dateEl.value, name: nameEl.value }]);
-                      dateEl.value = "";
-                      nameEl.value = "";
-                    }
+                    setImportantDates((prev) => [...prev, { date: newDate, name: newDateName }]);
+                    setNewDate("");
+                    setNewDateName("");
                   }}
                 >
-                  +
+                  Agregar
                 </button>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                {importantDates.map((d, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px", background: "var(--bg)", borderRadius: 8 }}>
-                    <div>
-                      <span style={{ fontSize: 12, fontWeight: 600 }}>{d.date}</span>
-                      <span style={{ fontSize: 12, color: "var(--text-dim)", marginLeft: 8 }}>{d.name}</span>
-                    </div>
-                    <button
-                      onClick={() => setImportantDates((prev) => prev.filter((_, j) => j !== i))}
-                      style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: 14 }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-                {importantDates.length === 0 && (
-                  <p style={{ fontSize: 12, color: "var(--text-dim)", textAlign: "center", padding: 20 }}>
-                    Sin fechas especiales. Usa "IA Sugerir" o agrega manualmente.
-                  </p>
-                )}
-              </div>
+
+              {importantDates.length === 0 ? (
+                <p style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)", textAlign: "center", padding: "var(--sp-5)" }}>
+                  Sin fechas especiales. Usa «Sugerir con IA» o agrégalas a mano.
+                </p>
+              ) : (
+                <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
+                  {importantDates.map((d, i) => (
+                    <li key={`${d.date}-${i}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-2)", padding: "var(--sp-2) var(--sp-3)", background: "var(--bg)", borderRadius: "var(--radius-sm)" }}>
+                      <span>
+                        <span style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>{d.date}</span>
+                        <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)", marginLeft: "var(--sp-2)" }}>{d.name}</span>
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-remove"
+                        aria-label={`Quitar ${d.name} del ${d.date}`}
+                        onClick={() => setImportantDates((prev) => prev.filter((_, j) => j !== i))}
+                      >
+                        ✕
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 
           {/* Step 2: Campaign theme */}
           {step === 2 && (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                <label className="label" style={{ margin: 0 }}>Tema de campana del mes</label>
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={suggestCampaign}
-                  disabled={aiLoading || !apiKey}
-                >
-                  {aiLoading ? "..." : "IA Sugerir"}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-3)", marginBottom: "var(--sp-2)" }}>
+                <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-campaign`}>Tema de campaña del mes</label>
+                <button className="btn btn-primary btn-sm" onClick={suggestCampaign} disabled={aiLoading || !apiKey}>
+                  {aiLoading ? "Generando…" : "Sugerir con IA"}
                 </button>
               </div>
-              {aiStatus && <div style={{ fontSize: 11, color: "var(--accent)", marginBottom: 8 }}>{aiStatus}</div>}
+              {aiStatus && <p role="status" style={{ fontSize: "var(--fs-2xs)", color: "var(--accent)", marginBottom: "var(--sp-2)" }}>{aiStatus}</p>}
               <textarea
+                id={`${ids}-campaign`}
                 className="textarea"
-                style={{ minHeight: 80 }}
+                style={{ minHeight: 100 }}
                 value={campaign}
                 onChange={(e) => setCampaign(e.target.value)}
-                placeholder="Ej: Promocion de Regreso a Clases"
+                placeholder="Ej: Promoción de Regreso a Clases"
               />
             </div>
           )}
@@ -501,22 +522,19 @@ ${daysDesc}`;
           {/* Step 3: Weekly concepts */}
           {step === 3 && (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <label className="label" style={{ margin: 0 }}>Conceptos semanales</label>
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={suggestConcepts}
-                  disabled={aiLoading || !apiKey}
-                >
-                  {aiLoading ? "..." : "IA Sugerir"}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-3)", marginBottom: "var(--sp-3)" }}>
+                <h3 className="label" style={{ margin: 0 }}>Conceptos semanales</h3>
+                <button className="btn btn-primary btn-sm" onClick={suggestConcepts} disabled={aiLoading || !apiKey}>
+                  {aiLoading ? "Generando…" : "Sugerir con IA"}
                 </button>
               </div>
-              {aiStatus && <div style={{ fontSize: 11, color: "var(--accent)", marginBottom: 8 }}>{aiStatus}</div>}
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {aiStatus && <p role="status" style={{ fontSize: "var(--fs-2xs)", color: "var(--accent)", marginBottom: "var(--sp-2)" }}>{aiStatus}</p>}
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
                 {weekConcepts.map((c, i) => (
                   <div key={i}>
-                    <label className="label">Semana {i + 1}</label>
+                    <label className="label" htmlFor={`${ids}-wc-${i}`}>Semana {i + 1}</label>
                     <input
+                      id={`${ids}-wc-${i}`}
                       className="input"
                       value={c}
                       onChange={(e) => setWeekConcepts((prev) => prev.map((v, j) => (j === i ? e.target.value : v)))}
@@ -531,11 +549,12 @@ ${daysDesc}`;
           {/* Step 4: Daily categories */}
           {step === 4 && (
             <div>
-              <label className="label" style={{ marginBottom: 12 }}>Categoria por dia de la semana</label>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 12 }}>
+              <h3 className="label">Categoría por día de la semana</h3>
+              <div className="filter-bar" role="group" aria-label="Categorías sugeridas: al pulsar se asignan al primer día libre">
                 {DEFAULT_CATEGORIES.map((cat) => (
                   <button
                     key={cat}
+                    type="button"
                     className="filter-chip"
                     onClick={() => {
                       const emptyDow = Object.entries(dayCategories).find(([, v]) => !v);
@@ -546,21 +565,26 @@ ${daysDesc}`;
                   </button>
                 ))}
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)", marginTop: "var(--sp-3)" }}>
                 {[1, 2, 3, 4, 5, 6, 0].map((dow) => (
-                  <div key={dow} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", background: "var(--bg)", borderRadius: 8 }}>
-                    <span style={{ fontWeight: 700, minWidth: 90, fontSize: 12 }}>{DAYS[dow]}</span>
+                  <div key={dow} style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", padding: "var(--sp-2) var(--sp-3)", background: "var(--bg)", borderRadius: "var(--radius-sm)" }}>
+                    <label style={{ fontWeight: 700, minWidth: 84, fontSize: "var(--fs-xs)", flexShrink: 0 }} htmlFor={`${ids}-cat-${dow}`}>
+                      {DAYS[dow]}
+                    </label>
                     <input
+                      id={`${ids}-cat-${dow}`}
                       className="input"
-                      style={{ flex: 1, fontSize: 12, padding: "7px 10px" }}
+                      style={{ flex: 1 }}
                       value={dayCategories[dow] || ""}
                       onChange={(e) => setDayCategories((prev) => ({ ...prev, [dow]: e.target.value }))}
-                      placeholder="Categoria..."
+                      placeholder="Categoría…"
                     />
                     {dayCategories[dow] && (
                       <button
+                        type="button"
+                        className="btn-remove"
+                        aria-label={`Borrar categoría de ${DAYS[dow]}`}
                         onClick={() => setDayCategories((prev) => ({ ...prev, [dow]: "" }))}
-                        style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: 13, flexShrink: 0 }}
                       >
                         ✕
                       </button>
@@ -574,142 +598,143 @@ ${daysDesc}`;
           {/* Step 5: Reference videos */}
           {step === 5 && (
             <div>
-              <label className="label" style={{ marginBottom: 8 }}>Videos de referencia</label>
-              <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+              <label className="label" htmlFor={`${ids}-video`}>Vídeos de referencia</label>
+              <div style={{ display: "flex", gap: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
                 <input
+                  id={`${ids}-video`}
                   className="input"
+                  type="url"
                   style={{ flex: 1 }}
                   value={newVideoUrl}
                   onChange={(e) => setNewVideoUrl(e.target.value)}
-                  placeholder="https://youtube.com/watch?v=... o TikTok/Instagram"
+                  placeholder="https://youtube.com/watch?v=…"
                 />
                 <button
-                  className="btn btn-primary btn-sm"
+                  className="btn btn-primary"
+                  disabled={!newVideoUrl}
                   onClick={() => {
-                    if (newVideoUrl) {
-                      setReferenceVideos((prev) => [...prev, { id: uid(), url: newVideoUrl, assignedDate: null, postIndex: 0 }]);
-                      setNewVideoUrl("");
-                    }
+                    setReferenceVideos((prev) => [...prev, { id: uid(), url: newVideoUrl, assignedDate: null, postIndex: 0 }]);
+                    setNewVideoUrl("");
                   }}
                 >
-                  +
+                  Agregar
                 </button>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {referenceVideos.map((v, i) => {
-                  const parsed = parseVideoURL(v.url);
-                  return (
-                    <div key={v.id} style={{ background: "var(--bg)", borderRadius: 10, padding: 10 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          {parsed?.type === "youtube" && (
-                            <img src={parsed.thumbnail} alt="" style={{ width: "100%", maxWidth: 200, borderRadius: 6, marginBottom: 6 }} />
-                          )}
-                          <div style={{ fontSize: 11, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {v.url}
+              <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>Acepta YouTube, TikTok, Instagram o Vimeo.</p>
+
+              {referenceVideos.length === 0 ? (
+                <p style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)", textAlign: "center", padding: "var(--sp-5)" }}>
+                  Aún no has añadido vídeos de referencia.
+                </p>
+              ) : (
+                <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
+                  {referenceVideos.map((v, i) => {
+                    const parsed = parseVideoURL(v.url);
+                    return (
+                      <li key={v.id} style={{ background: "var(--bg)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "var(--sp-2)", marginBottom: "var(--sp-2)" }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            {parsed?.type === "youtube" && (
+                              <img src={parsed.thumbnail} alt="" style={{ width: "100%", maxWidth: 220, borderRadius: "var(--radius-xs)", marginBottom: "var(--sp-2)" }} />
+                            )}
+                            <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {v.url}
+                            </p>
                           </div>
+                          <button
+                            type="button"
+                            className="btn-remove"
+                            aria-label="Quitar vídeo de referencia"
+                            onClick={() => setReferenceVideos((prev) => prev.filter((_, j) => j !== i))}
+                          >
+                            ✕
+                          </button>
                         </div>
-                        <button
-                          onClick={() => setReferenceVideos((prev) => prev.filter((_, j) => j !== i))}
-                          style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: 14, flexShrink: 0 }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                        <label style={{ fontSize: 10, color: "var(--text-muted)", flexShrink: 0 }}>Asignar a:</label>
-                        <select
-                          className="input"
-                          style={{ flex: 1, fontSize: 11, padding: "5px 8px" }}
-                          value={v.assignedDate || ""}
-                          onChange={(e) =>
-                            setReferenceVideos((prev) => prev.map((vv, j) => (j === i ? { ...vv, assignedDate: e.target.value } : vv)))
-                          }
-                        >
-                          <option value="">Sin asignar</option>
-                          {allDays.map((d) => (
-                            <option key={fmtDate(d)} value={fmtDate(d)}>
-                              {d.getDate()} {DAYS_SHORT[d.getDay()]}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  );
-                })}
-                {referenceVideos.length === 0 && (
-                  <p style={{ fontSize: 12, color: "var(--text-dim)", textAlign: "center", padding: 20 }}>
-                    Agrega URLs de YouTube, TikTok, Instagram o Vimeo.
-                  </p>
-                )}
-              </div>
+                        <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center" }}>
+                          <label style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", flexShrink: 0 }} htmlFor={`${ids}-vid-${v.id}`}>
+                            Asignar a:
+                          </label>
+                          <select
+                            id={`${ids}-vid-${v.id}`}
+                            className="input"
+                            style={{ flex: 1 }}
+                            value={v.assignedDate || ""}
+                            onChange={(e) =>
+                              setReferenceVideos((prev) => prev.map((vv, j) => (j === i ? { ...vv, assignedDate: e.target.value } : vv)))
+                            }
+                          >
+                            <option value="">Sin asignar</option>
+                            {allDays.map((d) => (
+                              <option key={fmtDate(d)} value={fmtDate(d)}>
+                                {d.getDate()} {DAYS_SHORT[d.getDay()]}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </div>
           )}
 
           {/* Step 6: Ideas review */}
           {step === 6 && (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <label className="label" style={{ margin: 0 }}>Ideas por dia</label>
-                <button
-                  className="btn btn-accent btn-sm"
-                  onClick={generateIdeas}
-                  disabled={aiLoading || !apiKey}
-                >
-                  {aiLoading ? aiStatus || "Generando..." : "IA Generar Ideas"}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-3)", marginBottom: "var(--sp-3)" }}>
+                <h3 className="label" style={{ margin: 0 }}>Ideas por día</h3>
+                <button className="btn btn-accent btn-sm" onClick={generateIdeas} disabled={aiLoading || !apiKey}>
+                  {aiLoading ? aiStatus || "Generando…" : "Generar ideas con IA"}
                 </button>
               </div>
-              {aiStatus && <div style={{ fontSize: 11, color: "var(--accent)", marginBottom: 8 }}>{aiStatus}</div>}
+              {aiStatus && <p role="status" style={{ fontSize: "var(--fs-2xs)", color: "var(--accent)", marginBottom: "var(--sp-2)" }}>{aiStatus}</p>}
 
               {/* Idea entry mode toggle */}
-              <div style={{ display: "flex", gap: 4, marginBottom: 12, background: "var(--bg)", borderRadius: 8, padding: 3 }}>
+              <div className="segmented" role="group" aria-label="Modo de entrada de ideas" style={{ marginBottom: "var(--sp-3)" }}>
                 <button
+                  type="button"
+                  className={`segmented-btn ${ideaMode === "day" ? "active" : ""}`}
+                  aria-pressed={ideaMode === "day"}
                   onClick={() => setIdeaMode("day")}
-                  style={{
-                    flex: 1, padding: "6px", borderRadius: 6, border: "none", cursor: "pointer",
-                    background: ideaMode === "day" ? "var(--accent)" : "transparent",
-                    color: ideaMode === "day" ? "#fff" : "var(--text-dim)",
-                    fontSize: 11, fontWeight: 600,
-                  }}
                 >
-                  Por dia
+                  Por día
                 </button>
                 <button
+                  type="button"
+                  className={`segmented-btn ${ideaMode === "dow" ? "active" : ""}`}
+                  aria-pressed={ideaMode === "dow"}
                   onClick={() => setIdeaMode("dow")}
-                  style={{
-                    flex: 1, padding: "6px", borderRadius: 6, border: "none", cursor: "pointer",
-                    background: ideaMode === "dow" ? "var(--accent)" : "transparent",
-                    color: ideaMode === "dow" ? "#fff" : "var(--text-dim)",
-                    fontSize: 11, fontWeight: 600,
-                  }}
                 >
-                  Por dia de semana
+                  Por día de semana
                 </button>
               </div>
 
               {/* By day-of-week mode */}
               {ideaMode === "dow" && (
-                <div style={{ marginBottom: 16 }}>
-                  <p style={{ fontSize: 10, color: "var(--text-dim)", marginBottom: 8 }}>
-                    Define una idea base por dia de la semana. Se duplicara a todas las instancias de ese dia. La IA generara versiones UNICAS para cada fecha.
+                <div style={{ marginBottom: "var(--sp-4)" }}>
+                  <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
+                    Define una idea base por día de la semana. Se duplicará en todas las fechas de
+                    ese día; la IA generará después versiones únicas para cada una.
                   </p>
                   {[1, 2, 3, 4, 5, 6, 0].map((dow) => {
                     const formats = (formatConfig[dow] || []).slice(0, postsPerDay);
                     const dowIdea = dowIdeas[dow] || [];
                     return (
-                      <div key={dow} style={{ background: "var(--bg)", borderRadius: 8, padding: 8, marginBottom: 6 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>
+                      <div key={dow} style={{ background: "var(--bg)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)", marginBottom: "var(--sp-2)" }}>
+                        <p style={{ fontSize: "var(--fs-2xs)", fontWeight: 700, marginBottom: "var(--sp-2)" }}>
                           {DAYS[dow]}
-                          {dayCategories[dow] && <span style={{ color: "var(--accent-alt)", fontWeight: 400, marginLeft: 6 }}>{dayCategories[dow]}</span>}
-                        </div>
+                          {dayCategories[dow] && <span style={{ color: "var(--accent-alt)", fontWeight: 400, marginLeft: "var(--sp-2)" }}>{dayCategories[dow]}</span>}
+                        </p>
                         {formats.map((f, j) => (
-                          <div key={j} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 4 }}>
-                            <span style={{ fontSize: 10, color: FORMATS[f.format]?.color || "var(--accent)", fontWeight: 600, flexShrink: 0, width: 20 }}>
+                          <div key={j} style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", marginBottom: "var(--sp-2)" }}>
+                            <span aria-hidden="true" style={{ fontSize: "var(--fs-xs)", flexShrink: 0, width: 22 }}>
                               {FORMATS[f.format]?.icon || ""}
                             </span>
                             <input
                               className="input"
-                              style={{ flex: 1, fontSize: 11, padding: "4px 8px" }}
+                              style={{ flex: 1 }}
+                              aria-label={`Idea base de ${DAYS[dow]}, ${FORMATS[f.format]?.label || "publicación"} ${j + 1}`}
                               value={dowIdea[j]?.idea || ""}
                               onChange={(e) => {
                                 setDowIdeas((prev) => {
@@ -719,30 +744,26 @@ ${daysDesc}`;
                                   return { ...prev, [dow]: current };
                                 });
                               }}
-                              placeholder="Idea base (se duplicara)..."
+                              placeholder="Idea base (se duplicará)…"
                             />
                           </div>
                         ))}
                       </div>
                     );
                   })}
-                  <button
-                    className="btn btn-primary btn-sm"
-                    style={{ width: "100%", marginTop: 8 }}
-                    onClick={applyDowIdeas}
-                  >
-                    Aplicar a todos los dias
+                  <button className="btn btn-primary" style={{ width: "100%", marginTop: "var(--sp-2)" }} onClick={applyDowIdeas}>
+                    Aplicar a todos los días
                   </button>
                 </div>
               )}
 
-              {/* Mini calendar */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2, marginBottom: 8 }}>
+              {/* Mini calendario: sólo resumen visual del progreso */}
+              <div aria-hidden="true" style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 2, marginBottom: "var(--sp-2)" }}>
                 {DAYS_SHORT.map((d) => (
-                  <div key={d} style={{ textAlign: "center", fontSize: 9, fontWeight: 700, color: "var(--text-muted)", padding: 4 }}>{d}</div>
+                  <div key={d} style={{ textAlign: "center", fontSize: "var(--fs-3xs)", fontWeight: 700, color: "var(--text-muted)", padding: "var(--sp-1)" }}>{d}</div>
                 ))}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2, marginBottom: 16 }}>
+              <div aria-hidden="true" style={{ display: "grid", gridTemplateColumns: "repeat(7,minmax(0,1fr))", gap: 2, marginBottom: "var(--sp-2)" }}>
                 {(() => {
                   const first = new Date(year, month, 1);
                   const pad = first.getDay();
@@ -756,50 +777,56 @@ ${daysDesc}`;
                       <div
                         key={date}
                         style={{
-                          padding: 4,
+                          padding: "var(--sp-1)",
                           textAlign: "center",
-                          borderRadius: 6,
-                          background: hasIdeas ? "var(--accent)" + "33" : "var(--bg)",
+                          borderRadius: "var(--radius-xs)",
+                          background: hasIdeas ? "var(--accent-soft)" : "var(--bg)",
                           border: `1px solid ${impDate ? "var(--accent-alt)" : hasIdeas ? "var(--accent)" : "var(--border-light)"}`,
-                          cursor: "default",
                         }}
                       >
-                        <div style={{ fontSize: 11, fontWeight: 700 }}>{d.getDate()}</div>
-                        <div style={{ fontSize: 8, color: "var(--text-dim)" }}>{(ideas[date] || []).filter((p) => p.idea).length}/{postsPerDay}</div>
+                        <div style={{ fontSize: "var(--fs-2xs)", fontWeight: 700 }}>{d.getDate()}</div>
+                        <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{(ideas[date] || []).filter((p) => p.idea).length}/{postsPerDay}</div>
                       </div>
                     );
                   });
                   return cells;
                 })()}
               </div>
+              <p role="status" className="hint" style={{ marginBottom: "var(--sp-4)" }}>
+                {Object.values(ideas).flat().filter((p) => p?.idea).length} ideas definidas de {allDays.length * postsPerDay} publicaciones.
+              </p>
 
               {/* Per-day idea list */}
               {ideaMode === "day" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 300, overflowY: "auto" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
                   {allDays.map((d) => {
                     const date = fmtDate(d);
                     const dayIdeas = ideas[date] || [];
                     if (!dayIdeas.length) return null;
                     return (
-                      <div key={date} style={{ background: "var(--bg)", borderRadius: 8, padding: 8 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>
+                      <div key={date} style={{ background: "var(--bg)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)" }}>
+                        <p style={{ fontSize: "var(--fs-2xs)", fontWeight: 700, marginBottom: "var(--sp-2)" }}>
                           {d.getDate()} {DAYS[d.getDay()]}
-                        </div>
+                        </p>
                         {dayIdeas.map((p, j) => (
-                          <div key={j} style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 4 }}>
-                            <span style={{ color: FORMATS[p.format]?.color || "var(--accent)", fontWeight: 600 }}>
-                              {FORMATS[p.format]?.icon || ""} {j + 1}:
-                            </span>{" "}
+                          <div key={j} style={{ marginBottom: "var(--sp-2)" }}>
+                            <label
+                              className="label"
+                              style={{ textTransform: "none", color: FORMATS[p.format]?.color || "var(--accent)" }}
+                              htmlFor={`${ids}-idea-${date}-${j}`}
+                            >
+                              <span aria-hidden="true">{FORMATS[p.format]?.icon || ""}</span> {FORMATS[p.format]?.label || "Publicación"} {j + 1}
+                            </label>
                             <input
+                              id={`${ids}-idea-${date}-${j}`}
                               className="input"
-                              style={{ fontSize: 11, padding: "4px 8px", marginTop: 2 }}
                               value={p.idea || ""}
                               onChange={(e) => {
                                 const newDayIdeas = [...dayIdeas];
                                 newDayIdeas[j] = { ...newDayIdeas[j], idea: e.target.value };
                                 setIdeas((prev) => ({ ...prev, [date]: newDayIdeas }));
                               }}
-                              placeholder="Idea..."
+                              placeholder="Idea…"
                             />
                           </div>
                         ))}
@@ -812,10 +839,10 @@ ${daysDesc}`;
           )}
         </div>
 
-        <div style={{ padding: "12px 18px", borderTop: "1px solid var(--border)", display: "flex", gap: 10 }}>
+        <div className="sheet-footer">
           {step > 0 && (
             <button className="btn btn-secondary" onClick={goBack}>
-              Atras
+              Atrás
             </button>
           )}
           <button className="btn btn-secondary" style={{ flex: step > 0 ? undefined : 1 }} onClick={onClose}>
@@ -827,7 +854,7 @@ ${daysDesc}`;
             </button>
           ) : (
             <button className="btn btn-accent" style={{ flex: 2 }} onClick={handleGenerate}>
-              Crear Calendario
+              Crear calendario
             </button>
           )}
         </div>

@@ -1,8 +1,25 @@
 import { DAYS } from "./constants";
 
-export const uid = () => Math.random().toString(36).slice(2, 10);
+export const uid = () => {
+  // Los IDs identifican publicaciones dentro del mapa de aprobaciones y
+  // del parseo de la IA: una colisión mezclaría el contenido de dos posts.
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID().slice(0, 13).replace(/-/g, "");
+  }
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+};
 
-export const fmtDate = (d) => d.toISOString().split("T")[0];
+/**
+ * Fecha local en formato YYYY-MM-DD.
+ *
+ * No usar toISOString(): convierte a UTC, así que en cualquier zona
+ * horaria al este de Greenwich la medianoche local cae en el día
+ * anterior en UTC y el calendario entero se desplazaba un día.
+ */
+export const fmtDate = (d) =>
+  d.getFullYear() +
+  "-" + String(d.getMonth() + 1).padStart(2, "0") +
+  "-" + String(d.getDate()).padStart(2, "0");
 
 export const daysInMonth = (year, month) => {
   const days = [];
@@ -41,15 +58,19 @@ export const escapeHTML = (s) => {
 };
 
 export async function compressImage(file, maxSize = 400) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
+    reader.onerror = () => reject(new Error("No se pudo leer el archivo"));
     reader.onload = (e) => {
       const img = new Image();
+      // Sin este manejador, un archivo con extensión de imagen pero
+      // contenido corrupto dejaba la promesa colgada para siempre.
+      img.onerror = () => reject(new Error("El archivo no es una imagen válida"));
       img.onload = () => {
         const ratio = Math.min(maxSize / img.width, maxSize / img.height, 1);
         const canvas = document.createElement("canvas");
-        canvas.width = img.width * ratio;
-        canvas.height = img.height * ratio;
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
         canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
         resolve(canvas.toDataURL("image/jpeg", 0.75));
       };

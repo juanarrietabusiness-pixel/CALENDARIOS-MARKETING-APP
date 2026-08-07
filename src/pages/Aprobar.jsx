@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { FORMATS, STATUSES } from "../constants";
+import { useCallback, useEffect, useId, useState } from "react";
+import { FORMATS } from "../constants";
 
 const API_BASE = "/api/approval";
 
@@ -9,6 +9,7 @@ export default function Aprobar() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState({});
+  const [saveError, setSaveError] = useState("");
   const [commentInputs, setCommentInputs] = useState({});
   const [showComment, setShowComment] = useState({});
   const [activeWeek, setActiveWeek] = useState("all");
@@ -16,22 +17,15 @@ export default function Aprobar() {
   const params = new URLSearchParams(window.location.search);
   const approvalId = params.get("id");
 
-  useEffect(() => {
-    if (!approvalId) {
-      setError("Link invalido: falta el ID del calendario.");
-      setLoading(false);
-      return;
-    }
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`${API_BASE}?id=${approvalId}`);
-      if (!res.ok) throw new Error("Error al cargar");
+      const res = await fetch(`${API_BASE}?id=${encodeURIComponent(approvalId)}`);
+      if (!res.ok) throw new Error(`El servidor respondió ${res.status}`);
       const data = await res.json();
       if (!data.calendar) {
-        setError("Link invalido o expirado.");
+        setError("Enlace inválido o caducado. Pide uno nuevo a tu agencia.");
         setLoading(false);
         return;
       }
@@ -41,27 +35,35 @@ export default function Aprobar() {
       setError("No se pudo cargar el calendario: " + e.message);
     }
     setLoading(false);
-  };
+  }, [approvalId]);
+
+  useEffect(() => {
+    if (!approvalId) {
+      setError("Enlace inválido: falta el identificador del calendario.");
+      setLoading(false);
+      return;
+    }
+    loadData();
+  }, [approvalId, loadData]);
 
   const handleApproval = async (postId, estado, comentario = "") => {
     setSaving((p) => ({ ...p, [postId]: true }));
+    setSaveError("");
     try {
-      await fetch(`${API_BASE}?id=${approvalId}`, {
+      const res = await fetch(`${API_BASE}?id=${encodeURIComponent(approvalId)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "approve",
-          publicacionId: postId,
-          estado,
-          comentario,
-        }),
+        body: JSON.stringify({ action: "approve", publicacionId: postId, estado, comentario }),
       });
+      // Antes no se comprobaba res.ok: si el servidor fallaba, la interfaz
+      // marcaba la publicación como aprobada sin haberla guardado.
+      if (!res.ok) throw new Error(`El servidor respondió ${res.status}`);
       setApprovals((p) => ({
         ...p,
         [postId]: { estado, comentario, timestamp: new Date().toISOString() },
       }));
-    } catch {
-      alert("Error al guardar. Intenta de nuevo.");
+    } catch (e) {
+      setSaveError(`No se pudo guardar tu respuesta (${e.message}). Revisa tu conexión e inténtalo otra vez.`);
     }
     setSaving((p) => ({ ...p, [postId]: false }));
   };
@@ -69,8 +71,10 @@ export default function Aprobar() {
   if (loading) {
     return (
       <div style={styles.center}>
-        <div style={{ fontSize: 40, marginBottom: 12 }}>📅</div>
-        <div style={{ color: "#64B5F6" }}>Cargando calendario...</div>
+        <p role="status">
+          <span aria-hidden="true" style={{ fontSize: "2.5rem", display: "block", marginBottom: "var(--sp-3)" }}>📅</span>
+          <span style={{ color: "var(--text-muted)" }}>Cargando calendario…</span>
+        </p>
       </div>
     );
   }
@@ -78,8 +82,15 @@ export default function Aprobar() {
   if (error) {
     return (
       <div style={styles.center}>
-        <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
-        <div style={{ color: "#EF5350", fontSize: 14 }}>{error}</div>
+        <p role="alert" style={{ maxWidth: 420 }}>
+          <span aria-hidden="true" style={{ fontSize: "2.5rem", display: "block", marginBottom: "var(--sp-3)" }}>⚠️</span>
+          <span style={{ color: "var(--danger)", fontSize: "var(--fs-sm)" }}>{error}</span>
+        </p>
+        {approvalId && (
+          <button className="btn btn-secondary" style={{ marginTop: "var(--sp-4)" }} onClick={loadData}>
+            Reintentar
+          </button>
+        )}
       </div>
     );
   }
@@ -91,6 +102,7 @@ export default function Aprobar() {
   );
   const totalPosts = allPosts.length;
   const reviewed = allPosts.filter((p) => approvals[p.id]).length;
+  const pct = totalPosts > 0 ? Math.round((reviewed / totalPosts) * 100) : 0;
 
   const weekGroups = {};
   (calendar.days || []).forEach((day) => {
@@ -99,54 +111,70 @@ export default function Aprobar() {
     weekGroups[wk].days.push(day);
   });
   const weeks = Object.keys(weekGroups).sort((a, b) => a - b);
-
-  const filteredWeeks =
-    activeWeek === "all"
-      ? weeks
-      : weeks.filter((w) => w === activeWeek);
+  const filteredWeeks = activeWeek === "all" ? weeks : weeks.filter((w) => w === activeWeek);
 
   return (
     <div style={styles.page}>
-      {/* Header */}
-      <div style={{ ...styles.header, background: `linear-gradient(135deg, ${pc}, ${pc}99)` }}>
+      <a className="skip-link" href="#publicaciones">Saltar a las publicaciones</a>
+
+      <header style={{ ...styles.header, background: `linear-gradient(135deg, ${pc}, ${pc}99)` }}>
         {client?.logo && (
           <img
             src={client.logo}
-            alt=""
-            style={{ width: 50, height: 50, objectFit: "contain", borderRadius: 10, background: "rgba(255,255,255,.15)", padding: 4, marginBottom: 8 }}
+            alt={`Logo de ${client.name || "el cliente"}`}
+            style={{ width: 56, height: 56, objectFit: "contain", borderRadius: 12, background: "rgba(255,255,255,.18)", padding: 4, marginBottom: "var(--sp-2)" }}
           />
         )}
-        <h1 style={{ fontSize: 20, fontWeight: 900, margin: 0 }}>{client?.name || "Cliente"}</h1>
-        <p style={{ fontSize: 13, color: "rgba(255,255,255,.85)", margin: "4px 0 0" }}>
+        <h1 style={{ fontSize: "var(--fs-xl)", fontWeight: 900 }}>{client?.name || "Cliente"}</h1>
+        <p style={{ fontSize: "var(--fs-sm)", color: "rgba(255,255,255,.92)", marginTop: "var(--sp-1)" }}>
           {calendar.name || "Calendario"}{calendar.campaign ? ` · ${calendar.campaign}` : ""}
         </p>
-      </div>
+        <p style={{ fontSize: "var(--fs-xs)", color: "rgba(255,255,255,.85)", marginTop: "var(--sp-2)" }}>
+          Revisa cada publicación y marca si la apruebas o quieres cambios.
+        </p>
+      </header>
 
-      {/* Progress bar */}
+      {/* Progreso: pegajoso para que el cliente sepa siempre cuánto le queda */}
       <div style={styles.progressSection}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#A0B4CC", marginBottom: 4 }}>
-          <span>{reviewed} de {totalPosts} publicaciones revisadas</span>
-          <span>{totalPosts > 0 ? Math.round((reviewed / totalPosts) * 100) : 0}%</span>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--fs-2xs)", color: "var(--text-dim)", marginBottom: "var(--sp-1)" }}>
+          <span id="rev-label">{reviewed} de {totalPosts} publicaciones revisadas</span>
+          <span>{pct}%</span>
         </div>
-        <div style={{ height: 6, background: "#050D1F", borderRadius: 999, overflow: "hidden" }}>
-          <div style={{ height: "100%", width: `${totalPosts > 0 ? (reviewed / totalPosts) * 100 : 0}%`, background: `linear-gradient(90deg, #1B3A6B, ${pc})`, borderRadius: 999, transition: "width .4s ease" }} />
+        <div
+          className="progress-bar"
+          role="progressbar"
+          aria-labelledby="rev-label"
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <div className="progress-fill" style={{ width: `${pct}%`, background: `linear-gradient(90deg, #1B3A6B, ${pc})` }} />
         </div>
       </div>
 
-      {/* Week tabs */}
+      {saveError && (
+        <p role="alert" className="notice notice-error" style={{ margin: "0 var(--sp-4) var(--sp-3)" }}>
+          {saveError}
+        </p>
+      )}
+
       {weeks.length > 1 && (
-        <div style={styles.tabs}>
+        <div className="filter-bar" role="group" aria-label="Filtrar por semana" style={{ padding: "0 var(--sp-4) var(--sp-3)", flexWrap: "nowrap", overflowX: "auto" }}>
           <button
+            className={`filter-chip ${activeWeek === "all" ? "active" : ""}`}
+            aria-pressed={activeWeek === "all"}
             onClick={() => setActiveWeek("all")}
-            style={{ ...styles.tab, ...(activeWeek === "all" ? styles.tabActive : {}) }}
+            style={{ flexShrink: 0 }}
           >
             Todas
           </button>
           {weeks.map((w) => (
             <button
               key={w}
+              className={`filter-chip ${activeWeek === w ? "active" : ""}`}
+              aria-pressed={activeWeek === w}
               onClick={() => setActiveWeek(w)}
-              style={{ ...styles.tab, ...(activeWeek === w ? styles.tabActive : {}) }}
+              style={{ flexShrink: 0 }}
             >
               Semana {w}
             </button>
@@ -154,132 +182,179 @@ export default function Aprobar() {
         </div>
       )}
 
-      {/* Content */}
-      {filteredWeeks.map((wk) => {
-        const { concept, days } = weekGroups[wk];
-        return (
-          <div key={wk} style={{ marginBottom: 24 }}>
-            <div style={styles.weekHeader}>
-              <span style={styles.weekBadge}>Semana {wk}</span>
-              {concept && <span style={{ fontSize: 12, color: "#A0B4CC", fontStyle: "italic" }}>{concept}</span>}
-            </div>
-            {days.map((day) => (
-              <div key={day.date} style={styles.dayCard}>
-                <div style={{ ...styles.dayHeader, borderColor: pc + "44" }}>
-                  <div style={{ ...styles.dayNum, background: pc }}>{(day.date || "").split("-")[2]}</div>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{day.dayName || ""}</div>
-                    {day.category && <div style={{ fontSize: 11, color: "#FFA726" }}>{day.category}</div>}
-                  </div>
-                </div>
-                <div style={{ padding: 12 }}>
-                  {(day.posts || []).map((post) => {
-                    const f = FORMATS[post.format] || FORMATS.post;
-                    const approval = approvals[post.id];
-                    const isSaving = saving[post.id];
-                    const isPost = post.format === "post";
-
-                    return (
-                      <div key={post.id} style={{ ...styles.postCard, borderColor: approval?.estado === "aprobado" ? "#388E3C" : approval?.estado === "cambios" ? "#C62828" : "#1E3A6B" }}>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
-                          <span style={{ ...styles.badge, background: f.color + "22", color: f.color, borderColor: f.color + "44" }}>{f.icon} {f.label}</span>
-                          {approval && (
-                            <span style={{ ...styles.badge, background: approval.estado === "aprobado" ? "#0d2a0d" : "#2a0d0d", color: approval.estado === "aprobado" ? "#66BB6A" : "#EF5350", borderColor: approval.estado === "aprobado" ? "#388E3C" : "#C62828" }}>
-                              {approval.estado === "aprobado" ? "✓ Aprobado" : "✗ Cambios"}
-                            </span>
-                          )}
-                        </div>
-
-                        {post.category && <div style={{ fontSize: 11, color: "#FFA726", fontWeight: 600, marginBottom: 6 }}>{post.category}</div>}
-                        {post.image && <img src={post.image} alt="" style={{ width: "100%", maxWidth: 300, borderRadius: 8, marginBottom: 8 }} />}
-                        {post.idea && <div style={styles.contentBox}><strong style={{ ...styles.fieldLabel, color: "#64B5F6" }}>Idea</strong>{post.idea}</div>}
-
-                        {!isPost && post.guion && (
-                          <div style={{ ...styles.contentBox, background: "#1a0a2a" }}>
-                            <strong style={{ ...styles.fieldLabel, color: "#E91E63" }}>Guion</strong>
-                            <div style={{ whiteSpace: "pre-wrap" }}>{post.guion}</div>
-                          </div>
-                        )}
-
-                        {(post.descripcion || post.script) && (
-                          <div style={{ ...styles.contentBox, position: "relative" }}>
-                            <strong style={{ ...styles.fieldLabel, color: "#1E90FF" }}>Descripcion</strong>
-                            <div style={{ whiteSpace: "pre-wrap" }}>{post.descripcion || post.script}</div>
-                            <CopyBtn text={post.descripcion || post.script} />
-                          </div>
-                        )}
-
-                        {post.hashtagsFinales && (
-                          <div style={{ fontSize: 11, color: "#F5A623", marginBottom: 8 }}>{post.hashtagsFinales}</div>
-                        )}
-
-                        {/* Approval buttons */}
-                        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                          <button
-                            disabled={isSaving}
-                            onClick={() => handleApproval(post.id, "aprobado")}
-                            style={{ ...styles.approveBtn, opacity: isSaving ? 0.5 : 1 }}
-                          >
-                            {isSaving ? "..." : "✓ Aprobar"}
-                          </button>
-                          <button
-                            disabled={isSaving}
-                            onClick={() => setShowComment((p) => ({ ...p, [post.id]: !p[post.id] }))}
-                            style={styles.changesBtn}
-                          >
-                            ✗ Pedir cambios
-                          </button>
-                        </div>
-
-                        {showComment[post.id] && (
-                          <div style={{ marginTop: 8 }}>
-                            <textarea
-                              value={commentInputs[post.id] || ""}
-                              onChange={(e) => setCommentInputs((p) => ({ ...p, [post.id]: e.target.value }))}
-                              placeholder="Describe los cambios que necesitas..."
-                              style={styles.commentArea}
-                            />
-                            <button
-                              disabled={isSaving}
-                              onClick={() => {
-                                handleApproval(post.id, "cambios", commentInputs[post.id] || "");
-                                setShowComment((p) => ({ ...p, [post.id]: false }));
-                              }}
-                              style={{ ...styles.changesBtn, width: "100%", marginTop: 6 }}
-                            >
-                              Enviar cambios
-                            </button>
-                          </div>
-                        )}
-
-                        {approval?.comentario && (
-                          <div style={styles.commentDisplay}>
-                            💬 {approval.comentario}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+      <main id="publicaciones">
+        {filteredWeeks.map((wk) => {
+          const { concept, days } = weekGroups[wk];
+          return (
+            <section key={wk} aria-label={`Semana ${wk}`} style={{ marginBottom: "var(--sp-6)" }}>
+              <div style={styles.weekHeader}>
+                <h2 style={styles.weekBadge}>Semana {wk}</h2>
+                {concept && <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)", fontStyle: "italic" }}>{concept}</span>}
               </div>
-            ))}
-          </div>
-        );
-      })}
+              {days.map((day) => (
+                <article key={day.date} style={styles.dayCard}>
+                  <div style={{ ...styles.dayHeader, borderColor: pc + "44" }}>
+                    <span style={{ ...styles.dayNum, background: pc }}>{(day.date || "").split("-")[2]}</span>
+                    <span>
+                      <h3 style={{ fontSize: "var(--fs-sm)", fontWeight: 700 }}>{day.dayName || ""}</h3>
+                      {day.category && <span style={{ display: "block", fontSize: "var(--fs-2xs)", color: "#FFC166" }}>{day.category}</span>}
+                    </span>
+                  </div>
+                  <div style={{ padding: "var(--sp-3)" }}>
+                    {(day.posts || []).map((post) => (
+                      <PostReview
+                        key={post.id}
+                        post={post}
+                        approval={approvals[post.id]}
+                        isSaving={saving[post.id]}
+                        commentValue={commentInputs[post.id] || ""}
+                        commentOpen={!!showComment[post.id]}
+                        onCommentChange={(v) => setCommentInputs((p) => ({ ...p, [post.id]: v }))}
+                        onToggleComment={() => setShowComment((p) => ({ ...p, [post.id]: !p[post.id] }))}
+                        onApprove={() => handleApproval(post.id, "aprobado")}
+                        onRequestChanges={() => {
+                          handleApproval(post.id, "cambios", commentInputs[post.id] || "");
+                          setShowComment((p) => ({ ...p, [post.id]: false }));
+                        }}
+                      />
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </section>
+          );
+        })}
+      </main>
 
-      {/* Summary button */}
-      <div style={styles.summary}>
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Resumen de revision</div>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12 }}>
-          <span style={{ color: "#66BB6A" }}>✓ {allPosts.filter((p) => approvals[p.id]?.estado === "aprobado").length} aprobadas</span>
-          <span style={{ color: "#EF5350" }}>✗ {allPosts.filter((p) => approvals[p.id]?.estado === "cambios").length} con cambios</span>
-          <span style={{ color: "#64B5F6" }}>⏳ {allPosts.filter((p) => !approvals[p.id]).length} pendientes</span>
+      <div style={styles.summary} role="status" aria-live="polite">
+        <h2 style={{ fontSize: "var(--fs-sm)", fontWeight: 700, marginBottom: "var(--sp-2)" }}>Resumen de revisión</h2>
+        <div style={{ display: "flex", gap: "var(--sp-4)", flexWrap: "wrap", fontSize: "var(--fs-xs)" }}>
+          <span style={{ color: "var(--success)" }}>✓ {allPosts.filter((p) => approvals[p.id]?.estado === "aprobado").length} aprobadas</span>
+          <span style={{ color: "var(--danger)" }}>✗ {allPosts.filter((p) => approvals[p.id]?.estado === "cambios").length} con cambios</span>
+          <span style={{ color: "var(--text-muted)" }}>⏳ {allPosts.filter((p) => !approvals[p.id]).length} pendientes</span>
         </div>
+        {reviewed === totalPosts && totalPosts > 0 && (
+          <p className="notice notice-ok" style={{ marginTop: "var(--sp-3)", marginBottom: 0, display: "block" }}>
+            Has revisado todas las publicaciones. Tu agencia ya puede ver tus respuestas.
+          </p>
+        )}
       </div>
 
-      <div style={{ textAlign: "center", padding: 24, color: "#64B5F6", fontSize: 11, borderTop: "1px solid #1E3A6B", marginTop: 24 }}>
-        Juancito Ads · Calendario de Contenido
+      <footer style={{ textAlign: "center", padding: "var(--sp-6)", color: "var(--text-muted)", fontSize: "var(--fs-2xs)", borderTop: "1px solid var(--border)", marginTop: "var(--sp-6)" }}>
+        Juancito Ads · Calendario de contenido
+      </footer>
+    </div>
+  );
+}
+
+function PostReview({
+  post, approval, isSaving, commentValue, commentOpen,
+  onCommentChange, onToggleComment, onApprove, onRequestChanges,
+}) {
+  const f = FORMATS[post.format] || FORMATS.post;
+  const isPost = post.format === "post";
+  const ids = useId();
+  const borderColor =
+    approval?.estado === "aprobado" ? "#388E3C" : approval?.estado === "cambios" ? "#C62828" : "var(--border)";
+
+  return (
+    <div style={{ ...styles.postCard, borderColor }}>
+      <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-2)", alignItems: "center" }}>
+        <span className="badge" style={{ background: f.color + "22", color: f.color, border: `1px solid ${f.color}66` }}>
+          <span aria-hidden="true">{f.icon}</span> {f.label}
+        </span>
+        {approval && (
+          <span
+            className="badge"
+            style={{
+              background: approval.estado === "aprobado" ? "#0d2a0d" : "#2a0d0d",
+              color: approval.estado === "aprobado" ? "var(--success)" : "var(--danger)",
+              border: `1px solid ${approval.estado === "aprobado" ? "#388E3C" : "#C62828"}`,
+            }}
+          >
+            {approval.estado === "aprobado" ? "✓ Aprobado" : "✗ Cambios solicitados"}
+          </span>
+        )}
       </div>
+
+      {post.category && <p style={{ fontSize: "var(--fs-2xs)", color: "#FFC166", fontWeight: 600, marginBottom: "var(--sp-2)" }}>{post.category}</p>}
+      {post.image && <img src={post.image} alt="" style={{ width: "100%", maxWidth: 340, borderRadius: "var(--radius-sm)", marginBottom: "var(--sp-2)" }} />}
+      {post.idea && (
+        <div style={styles.contentBox}>
+          <strong style={{ ...styles.fieldLabel, color: "var(--text-muted)" }}>Idea</strong>
+          {post.idea}
+        </div>
+      )}
+
+      {!isPost && post.guion && (
+        <div style={{ ...styles.contentBox, background: "#1a0a2a" }}>
+          <strong style={{ ...styles.fieldLabel, color: "#FF7BA8" }}>Guion</strong>
+          <div style={{ whiteSpace: "pre-wrap" }}>{post.guion}</div>
+        </div>
+      )}
+
+      {(post.descripcion || post.script) && (
+        <div style={{ ...styles.contentBox, position: "relative", paddingTop: "var(--sp-8)" }}>
+          <strong style={{ ...styles.fieldLabel, color: "var(--accent)" }}>Descripción</strong>
+          <div style={{ whiteSpace: "pre-wrap" }}>{post.descripcion || post.script}</div>
+          <CopyBtn text={post.descripcion || post.script} />
+        </div>
+      )}
+
+      {post.hashtagsFinales && (
+        <p style={{ fontSize: "var(--fs-2xs)", color: "var(--accent-alt)", marginBottom: "var(--sp-2)" }}>{post.hashtagsFinales}</p>
+      )}
+
+      <div className="review-actions">
+        <button
+          type="button"
+          disabled={isSaving}
+          onClick={onApprove}
+          className="btn"
+          style={{ ...styles.approveBtn, opacity: isSaving ? 0.5 : 1 }}
+        >
+          {isSaving ? "Guardando…" : "✓ Aprobar"}
+        </button>
+        <button
+          type="button"
+          disabled={isSaving}
+          onClick={onToggleComment}
+          aria-expanded={commentOpen}
+          aria-controls={`${ids}-comment`}
+          className="btn"
+          style={styles.changesBtn}
+        >
+          ✗ Pedir cambios
+        </button>
+      </div>
+
+      {commentOpen && (
+        <div id={`${ids}-comment`} style={{ marginTop: "var(--sp-3)" }}>
+          <label className="label" htmlFor={`${ids}-comment-input`}>¿Qué quieres cambiar?</label>
+          <textarea
+            id={`${ids}-comment-input`}
+            className="textarea"
+            value={commentValue}
+            onChange={(e) => onCommentChange(e.target.value)}
+            placeholder="Describe los cambios que necesitas…"
+          />
+          <button
+            type="button"
+            disabled={isSaving}
+            onClick={onRequestChanges}
+            className="btn"
+            style={{ ...styles.changesBtn, width: "100%", marginTop: "var(--sp-2)" }}
+          >
+            Enviar cambios
+          </button>
+        </div>
+      )}
+
+      {approval?.comentario && (
+        <p style={styles.commentDisplay}>
+          <span aria-hidden="true">💬</span> {approval.comentario}
+        </p>
+      )}
     </div>
   );
 }
@@ -289,25 +364,16 @@ function CopyBtn({ text }) {
   if (!text) return null;
   return (
     <button
+      type="button"
+      className={`btn-copy${copied ? " is-copied" : ""}`}
+      aria-label={copied ? "Copiado al portapapeles" : "Copiar la descripción"}
       onClick={() => {
         navigator.clipboard.writeText(text).then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
         });
       }}
-      style={{
-        position: "absolute",
-        top: 8,
-        right: 8,
-        padding: "4px 8px",
-        background: copied ? "#0d2a0d" : "#1E90FF33",
-        color: copied ? "#66BB6A" : "#1E90FF",
-        border: `1px solid ${copied ? "#388E3C" : "#1E90FF44"}`,
-        borderRadius: 6,
-        cursor: "pointer",
-        fontSize: 10,
-        fontWeight: 600,
-      }}
+      style={{ position: "absolute", top: "var(--sp-2)", right: "var(--sp-2)" }}
     >
       {copied ? "Copiado" : "Copiar"}
     </button>
@@ -316,172 +382,126 @@ function CopyBtn({ text }) {
 
 const styles = {
   page: {
-    fontFamily: "'Inter', system-ui, sans-serif",
-    background: "#050D1F",
-    color: "#fff",
-    minHeight: "100vh",
-    maxWidth: 600,
+    background: "var(--bg)",
+    color: "var(--text)",
+    minHeight: "100dvh",
+    maxWidth: 640,
     margin: "0 auto",
-    padding: "0 0 40px",
+    paddingBottom: "calc(var(--sp-10) + var(--safe-bottom))",
   },
   center: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    height: "100vh",
-    background: "#050D1F",
-    color: "#fff",
-    fontFamily: "'Inter', system-ui, sans-serif",
+    minHeight: "100dvh",
+    padding: "var(--sp-5)",
+    textAlign: "center",
+    background: "var(--bg)",
+    color: "var(--text)",
   },
   header: {
-    padding: "28px 20px",
+    padding: "calc(var(--sp-8) + var(--safe-top)) var(--sp-5) var(--sp-6)",
     textAlign: "center",
-    borderRadius: "0 0 16px 16px",
+    borderRadius: "0 0 18px 18px",
   },
   progressSection: {
-    padding: "12px 16px",
-  },
-  tabs: {
-    display: "flex",
-    gap: 6,
-    padding: "0 16px 12px",
-    overflowX: "auto",
-  },
-  tab: {
-    padding: "6px 14px",
-    borderRadius: 20,
-    fontSize: 11,
-    fontWeight: 600,
-    cursor: "pointer",
-    border: "1px solid #1E3A6B",
-    background: "#0A1628",
-    color: "#A0B4CC",
-    whiteSpace: "nowrap",
-    flexShrink: 0,
-  },
-  tabActive: {
-    background: "#1E90FF",
-    borderColor: "#1E90FF",
-    color: "#fff",
+    padding: "var(--sp-3) var(--sp-4)",
+    position: "sticky",
+    top: 0,
+    background: "var(--bg)",
+    zIndex: 10,
   },
   weekHeader: {
     display: "flex",
     alignItems: "center",
-    gap: 10,
-    padding: "0 16px 8px",
+    gap: "var(--sp-3)",
+    flexWrap: "wrap",
+    padding: "0 var(--sp-4) var(--sp-2)",
   },
   weekBadge: {
-    background: "#1E90FF22",
-    color: "#1E90FF",
-    padding: "4px 12px",
+    background: "var(--accent-soft)",
+    color: "var(--accent)",
+    padding: "var(--sp-1) var(--sp-3)",
     borderRadius: 20,
-    fontSize: 11,
+    fontSize: "var(--fs-2xs)",
     fontWeight: 700,
   },
   dayCard: {
-    background: "#0A1628",
-    border: "1px solid #1E3A6B",
-    borderRadius: 14,
-    margin: "0 16px 10px",
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    margin: "0 var(--sp-4) var(--sp-3)",
     overflow: "hidden",
   },
   dayHeader: {
     display: "flex",
     alignItems: "center",
-    gap: 12,
-    padding: 14,
-    borderBottom: "1px solid #1E3A6B",
-    background: "#0d1f3a",
+    gap: "var(--sp-3)",
+    padding: "var(--sp-4)",
+    borderBottom: "1px solid var(--border)",
+    background: "var(--card-alt)",
   },
   dayNum: {
     color: "#fff",
-    fontSize: 18,
+    fontSize: "var(--fs-lg)",
     fontWeight: 900,
-    padding: "4px 10px",
-    borderRadius: 8,
-    minWidth: 40,
+    padding: "var(--sp-1) var(--sp-3)",
+    borderRadius: "var(--radius-sm)",
+    minWidth: 44,
     textAlign: "center",
+    flexShrink: 0,
   },
   postCard: {
-    background: "#050D1F",
-    border: "1px solid #1E3A6B",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 8,
+    background: "var(--bg)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius-sm)",
+    padding: "var(--sp-3)",
+    marginBottom: "var(--sp-3)",
     transition: "border-color .3s",
   },
-  badge: {
-    fontSize: 10,
-    padding: "3px 8px",
-    borderRadius: 20,
-    fontWeight: 600,
-    border: "1px solid",
-  },
   contentBox: {
-    background: "#0d1f3a",
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 12,
+    background: "var(--card-alt)",
+    borderRadius: "var(--radius-xs)",
+    padding: "var(--sp-3)",
+    // 14px: es el texto que el cliente lee de verdad en el móvil.
+    fontSize: "var(--fs-sm)",
     color: "#C8D8E8",
-    lineHeight: 1.7,
-    marginBottom: 8,
+    lineHeight: "var(--lh-relaxed)",
+    marginBottom: "var(--sp-2)",
     position: "relative",
   },
   fieldLabel: {
-    fontSize: 10,
+    fontSize: "var(--fs-3xs)",
     textTransform: "uppercase",
+    letterSpacing: ".06em",
     display: "block",
-    marginBottom: 4,
+    marginBottom: "var(--sp-1)",
   },
   approveBtn: {
-    flex: 1,
-    padding: 10,
     background: "#0d2a0d",
-    color: "#66BB6A",
+    color: "var(--success)",
     border: "1px solid #388E3C",
-    borderRadius: 8,
-    cursor: "pointer",
-    fontSize: 12,
-    fontWeight: 700,
   },
   changesBtn: {
-    flex: 1,
-    padding: 10,
     background: "#2a0d0d",
-    color: "#EF5350",
+    color: "var(--danger)",
     border: "1px solid #C62828",
-    borderRadius: 8,
-    cursor: "pointer",
-    fontSize: 12,
-    fontWeight: 700,
-  },
-  commentArea: {
-    width: "100%",
-    padding: 10,
-    background: "#050D1F",
-    border: "1px solid #1E3A6B",
-    borderRadius: 8,
-    color: "#fff",
-    fontSize: 12,
-    resize: "vertical",
-    minHeight: 60,
-    fontFamily: "inherit",
-    outline: "none",
   },
   commentDisplay: {
-    marginTop: 8,
-    padding: 8,
-    background: "#1a2a0a",
-    borderRadius: 6,
-    fontSize: 11,
-    color: "#FFA726",
+    marginTop: "var(--sp-3)",
+    padding: "var(--sp-2) var(--sp-3)",
+    background: "#2a1a0a",
+    border: "1px solid var(--alt-line)",
+    borderRadius: "var(--radius-xs)",
+    fontSize: "var(--fs-2xs)",
+    color: "#FFC166",
   },
   summary: {
-    margin: "0 16px",
-    padding: 16,
-    background: "#0A1628",
-    border: "1px solid #1E3A6B",
-    borderRadius: 12,
+    margin: "0 var(--sp-4)",
+    padding: "var(--sp-4)",
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
   },
 };
