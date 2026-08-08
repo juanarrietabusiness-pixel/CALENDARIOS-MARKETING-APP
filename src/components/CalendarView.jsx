@@ -3,6 +3,7 @@ import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid, fmtDate, compressImage, parseVideoURL } from "../utils";
 import { callAI, fetchGitHubADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost } from "../api";
 import { buildExportHTML } from "../export";
+import { shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
 
@@ -112,7 +113,7 @@ function ContentDisplay({ post }) {
   );
 }
 
-function PostSidePanel({ post, day, onUpdate, onClose, onDelete, apiKey, client, cal }) {
+function PostSidePanel({ post, day, onUpdate, onClose, onDelete, client, cal }) {
   const [form, setForm] = useState({ ...post });
   const [fieldLoading, setFieldLoading] = useState({});
   const [fieldError, setFieldError] = useState("");
@@ -126,11 +127,10 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, apiKey, client,
   const save = () => onUpdate(day.date, form);
 
   const generateField = async (field) => {
-    if (!apiKey) return;
     setFieldError("");
     setFieldLoading((p) => ({ ...p, [field]: true }));
     try {
-      const result = await generateFieldForPost(apiKey, client, form, day, cal, field);
+      const result = await generateFieldForPost(client, form, day, cal, field);
       sf(field, result);
     } catch (e) {
       setFieldError(`No se pudo generar «${field}»: ${e.message}`);
@@ -239,7 +239,7 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, apiKey, client,
         <div className="field">
           <div style={fieldHeaderStyle}>
             <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-idea`}>Idea</label>
-            {apiKey && <AiButton field="idea" label="la idea" />}
+            <AiButton field="idea" label="la idea" />
           </div>
           <textarea id={`${ids}-idea`} className="textarea" value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Idea del contenido…" />
         </div>
@@ -250,7 +250,7 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, apiKey, client,
               <label className="label" style={{ margin: 0, color: "#FF7BA8" }} htmlFor={`${ids}-guion`}>Guion</label>
               <div style={{ display: "flex", gap: "var(--sp-2)" }}>
                 <CopyButton text={form.guion} describes="el guion" />
-                {apiKey && <AiButton field="guion" label="el guion" />}
+                <AiButton field="guion" label="el guion" />
               </div>
             </div>
             <textarea
@@ -269,7 +269,7 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, apiKey, client,
             <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-desc`}>Descripción</label>
             <div style={{ display: "flex", gap: "var(--sp-2)" }}>
               <CopyButton text={form.descripcion || form.script} describes="la descripción" />
-              {apiKey && <AiButton field="descripcion" label="la descripción" />}
+              <AiButton field="descripcion" label="la descripción" />
             </div>
           </div>
           <textarea
@@ -529,7 +529,10 @@ function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
   );
 }
 
-function ApprovalDialog({ approvalUrl, whatsappMessage, onSync, onClose, onGenerate, hasLink }) {
+function ApprovalDialog({
+  approvalUrl, whatsappMessage, onClose, onGenerate, onRevoke, onReopen,
+  hasLink, shareEnabled, working,
+}) {
   const ref = useDialogA11y(onClose);
   const ids = useId();
   const [copied, setCopied] = useState("");
@@ -555,6 +558,13 @@ function ApprovalDialog({ approvalUrl, whatsappMessage, onSync, onClose, onGener
 
         {hasLink ? (
           <>
+            {!shareEnabled && (
+              <p className="notice notice-warn" style={{ display: "block" }}>
+                El enlace está <strong>revocado</strong>: quien lo abra no verá nada. Puedes
+                reactivarlo sin reenviarlo, porque conserva la misma dirección.
+              </p>
+            )}
+
             <div className="field">
               <label className="label" htmlFor={`${ids}-url`}>Enlace de aprobación</label>
               <div style={{ display: "flex", gap: "var(--sp-2)" }}>
@@ -563,6 +573,9 @@ function ApprovalDialog({ approvalUrl, whatsappMessage, onSync, onClose, onGener
                   {copied === "link" ? "Copiado" : "Copiar"}
                 </button>
               </div>
+              <p className="hint">
+                Sólo permite ver y responder este calendario. No da acceso a ningún otro dato.
+              </p>
             </div>
 
             <div className="field">
@@ -578,9 +591,23 @@ function ApprovalDialog({ approvalUrl, whatsappMessage, onSync, onClose, onGener
               <p className="hint">Toca el mensaje para seleccionarlo y copiarlo.</p>
             </div>
 
+            {/* Ya no hay botón «Sincronizar»: las respuestas del cliente
+                llegan solas por Realtime. */}
+            <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
+              Las respuestas de tu cliente aparecen aquí al instante, sin recargar.
+            </p>
+
             <div style={{ display: "flex", gap: "var(--sp-2)" }}>
               <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>Cerrar</button>
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={onSync}>Sincronizar</button>
+              {shareEnabled ? (
+                <button className="btn btn-danger" style={{ flex: 1 }} onClick={onRevoke} disabled={working}>
+                  {working ? "Revocando…" : "Revocar enlace"}
+                </button>
+              ) : (
+                <button className="btn btn-primary" style={{ flex: 1 }} onClick={onReopen} disabled={working}>
+                  {working ? "Reactivando…" : "Reactivar enlace"}
+                </button>
+              )}
             </div>
           </>
         ) : (
@@ -589,7 +616,9 @@ function ApprovalDialog({ approvalUrl, whatsappMessage, onSync, onClose, onGener
             <p style={{ fontSize: "var(--fs-xs)", marginBottom: "var(--sp-4)" }}>
               Se generará un enlace único para que tu cliente revise y apruebe el calendario.
             </p>
-            <button className="btn btn-primary" onClick={onGenerate}>Generar enlace de aprobación</button>
+            <button className="btn btn-primary" onClick={onGenerate} disabled={working}>
+              {working ? "Generando…" : "Generar enlace de aprobación"}
+            </button>
           </div>
         )}
       </div>
@@ -751,8 +780,8 @@ export default function CalendarView({
   client,
   cal,
   calId,
-  apiKey,
   onUpdateCal,
+  onUpdateCalLocal,
   onDeleteCal,
   onDuplicateCal,
   onUpdateClient,
@@ -777,6 +806,7 @@ export default function CalendarView({
   const [incompleteInfo, setIncompleteInfo] = useState(null);
   const [approvalModal, setApprovalModal] = useState(false);
   const [syncStatus, setSyncStatus] = useState("");
+  const [shareWorking, setShareWorking] = useState(false);
   const [editMeta, setEditMeta] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
   const [metaForm, setMetaForm] = useState({
@@ -784,6 +814,61 @@ export default function CalendarView({
     campaign: cal.campaign || "",
     weekConcepts: [...(cal.weekConcepts || [])],
   });
+
+  // ----------------------------------------------------------
+  // Respuestas del cliente final, en vivo
+  //
+  // Se vuelcan sobre `days` en el estado local únicamente. Persistirlas
+  // dispararía una escritura por cada respuesta recibida, y esa
+  // escritura volvería como otro evento: un bucle. La tabla `approvals`
+  // es la fuente de verdad y se relee en cada carga.
+  //
+  // La referencia lleva el calendario más reciente a la suscripción sin
+  // que ésta tenga que rehacerse en cada edición.
+  // ----------------------------------------------------------
+  const setCalRef = useRef(null);
+  setCalRef.current = (updater) => onUpdateCalLocal(calId, updater(cal));
+
+  useEffect(() => {
+    if (!cal.shareToken || !cal.id) return;
+    let alive = true;
+
+    const aplicar = async () => {
+      try {
+        const approvals = await fetchApprovals(cal.id);
+        if (!alive || Object.keys(approvals).length === 0) return;
+
+        setCalRef.current?.((actual) => {
+          const days = (actual.days || []).map((d) => ({
+            ...d,
+            posts: (d.posts || []).map((p) => {
+              const review = approvals[p.id];
+              if (!review) return p;
+              return {
+                ...p,
+                status: review.estado === "aprobado" ? "approved"
+                  : review.estado === "cambios" ? "rejected"
+                    : p.status,
+                comment: review.comentario || p.comment,
+              };
+            }),
+          }));
+          return { ...actual, days };
+        });
+      } catch (e) {
+        console.error("No se pudieron leer las aprobaciones:", e);
+      }
+    };
+
+    aplicar();
+    const unsubscribe = subscribeApprovals(cal.id, () => {
+      setSyncStatus("Tu cliente acaba de responder.");
+      setTimeout(() => setSyncStatus(""), 4000);
+      aplicar();
+    });
+
+    return () => { alive = false; unsubscribe(); };
+  }, [cal.id, cal.shareToken]);
 
   const ideasBank = client.ideasBank || [];
 
@@ -809,8 +894,8 @@ export default function CalendarView({
   };
 
   const calName = cal.name || (MONTHS[cal.month] + " " + cal.year);
-  const approvalUrl = cal.approvalId
-    ? `${window.location.origin}/aprobar?id=${encodeURIComponent(cal.approvalId)}`
+  const approvalUrl = cal.shareToken
+    ? `${window.location.origin}/aprobar?t=${encodeURIComponent(cal.shareToken)}`
     : "";
   const totalPosts = (cal.days || []).reduce((a, d) => a + (d.posts || []).length, 0);
   const approvedPosts = (cal.days || []).reduce((a, d) => a + (d.posts || []).filter((p) => p.status === "approved" || p.status === "published").length, 0);
@@ -885,10 +970,9 @@ export default function CalendarView({
   };
 
   const generateSinglePostContent = async (post, day) => {
-    if (!apiKey) return;
     setGenSingleLoading((p) => ({ ...p, [post.id]: true }));
     try {
-      const result = await generateSinglePost(apiKey, client, post, day, cal);
+      const result = await generateSinglePost(client, post, day, cal);
       const newDays = (cal.days || []).map((d) =>
         d.date !== day.date ? d : {
           ...d,
@@ -924,7 +1008,7 @@ export default function CalendarView({
 
   const retryIncomplete = async () => {
     const incomplete = getIncompletePosts();
-    if (!incomplete.length || !apiKey) return;
+    if (!incomplete.length) return;
     setGenLoading(true);
     setGenProgress(0);
     setGenStatus(`Reintentando ${incomplete.length} posts...`);
@@ -933,7 +1017,7 @@ export default function CalendarView({
     try {
       let adnExtra = client.githubContext || "";
       if (!adnExtra && client.githubRepo) {
-        const result = await fetchGitHubADN(client.githubRepo, client.githubToken, client.githubFolder);
+        const result = await fetchGitHubADN(client.githubRepo, client.githubFolder);
         adnExtra = result.content;
       }
 
@@ -960,7 +1044,7 @@ export default function CalendarView({
           }
         }
 
-        const txt = await callAI(apiKey, content, { retries: 2 });
+        const txt = await callAI(content);
         const parsed = parseAIResponse(txt);
         allResults = { ...allResults, ...parsed };
       }
@@ -988,70 +1072,38 @@ export default function CalendarView({
     }
   };
 
+  // El calendario ya no se copia a ningún sitio al compartirlo: el
+  // enlace apunta a la misma fila que edita la agencia, así que el
+  // cliente ve siempre la versión actual sin volver a enviarlo.
   const sendToClient = async () => {
-    if (cal.approvalId) {
+    if (cal.shareToken) {
       setApprovalModal(true);
       return;
     }
-
-    const approvalId = `${client.id}-${calId}-${Date.now()}`;
-    const calData = {
-      calendar: { ...cal },
-      client: { name: client.name, industry: client.industry, primaryColor: client.primaryColor, logo: client.logo },
-      approvals: {},
-    };
-
-    setSyncStatus("Generando enlace…");
+    setShareWorking(true);
     try {
-      const res = await fetch(`/api/approval?id=${encodeURIComponent(approvalId)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save_calendar", data: calData }),
-      });
-      // Antes se ignoraba el resultado y, ante un fallo, se guardaba un
-      // approvalId local igualmente: el enlace se veía correcto pero
-      // devolvía "link inválido" al cliente. Ahora sólo se guarda si el
-      // calendario llegó realmente al servidor.
-      if (!res.ok) throw new Error(`El servidor respondió ${res.status}`);
-      onUpdateCal(calId, { ...cal, approvalId });
-      setSyncStatus("");
+      const token = await shareCalendar(cal.id);
+      onUpdateCalLocal(calId, { ...cal, shareToken: token, shareEnabled: true });
       setApprovalModal(true);
     } catch (e) {
-      setSyncStatus(`No se pudo generar el enlace: ${e.message}. Usa «HTML» para enviar el calendario como archivo.`);
+      setSyncStatus(`No se pudo generar el enlace: ${e.message}. Usa «HTML» para enviarlo como archivo.`);
       setTimeout(() => setSyncStatus(""), 8000);
     }
+    setShareWorking(false);
   };
 
-  const syncApprovals = async () => {
-    if (!cal.approvalId) return;
-    setSyncStatus("Sincronizando...");
+  const changeShare = async (enabled) => {
+    setShareWorking(true);
     try {
-      const res = await fetch(`/api/approval?id=${cal.approvalId}`);
-      const data = await res.json();
-      if (data.approvals && Object.keys(data.approvals).length > 0) {
-        let updated = 0;
-        const newDays = (cal.days || []).map((d) => ({
-          ...d,
-          posts: (d.posts || []).map((p) => {
-            const review = data.approvals[p.id];
-            if (!review) return p;
-            updated++;
-            return {
-              ...p,
-              status: review.estado === "aprobado" ? "approved" : review.estado === "cambios" ? "rejected" : p.status,
-              comment: review.comentario || p.comment,
-            };
-          }),
-        }));
-        onUpdateCal(calId, { ...cal, days: newDays });
-        setSyncStatus(`${updated} aprobaciones sincronizadas`);
-      } else {
-        setSyncStatus("Sin aprobaciones nuevas");
-      }
-    } catch {
-      setSyncStatus("Error al sincronizar");
+      await setShareEnabled(cal.id, enabled);
+      onUpdateCalLocal(calId, { ...cal, shareEnabled: enabled });
+      setSyncStatus(enabled ? "Enlace reactivado." : "Enlace revocado.");
+      setTimeout(() => setSyncStatus(""), 4000);
+    } catch (e) {
+      setSyncStatus(`No se pudo cambiar el enlace: ${e.message}`);
+      setTimeout(() => setSyncStatus(""), 6000);
     }
-    setTimeout(() => setSyncStatus(""), 3000);
+    setShareWorking(false);
   };
 
   const movePost = (postId, sourceDate, targetDate) => {
@@ -1092,7 +1144,7 @@ export default function CalendarView({
   };
 
   const generateScripts = async () => {
-    if (!apiKey || genLoading) return;
+    if (genLoading) return;
     setGenLoading(true);
     setGenProgress(0);
     setGenStatus("Preparando...");
@@ -1104,7 +1156,7 @@ export default function CalendarView({
       if (!adnExtra && client.githubRepo) {
         setGenStatus("Cargando ADN desde GitHub...");
         addDebug("Fetching GitHub ADN: " + client.githubRepo);
-        const result = await fetchGitHubADN(client.githubRepo, client.githubToken, client.githubFolder);
+        const result = await fetchGitHubADN(client.githubRepo, client.githubFolder);
         adnExtra = result.content;
         addDebug("GitHub ADN: " + (adnExtra ? adnExtra.length + " chars" : "vacio"));
       } else if (adnExtra) {
@@ -1156,7 +1208,7 @@ export default function CalendarView({
           }
         }
 
-        const txt = await callAI(apiKey, content, { retries: 2 });
+        const txt = await callAI(content);
         addDebug(`Respuesta: ${txt.length} chars`);
 
         const parsed = parseAIResponse(txt);
@@ -1303,7 +1355,7 @@ export default function CalendarView({
           resto agrupado. Antes eran siete botones idénticos que mezclaban
           la acción principal con un visor de registros de desarrollo. */}
       <div className="toolbar">
-        <button className="btn btn-accent" onClick={generateScripts} disabled={genLoading || !apiKey}>
+        <button className="btn btn-accent" onClick={generateScripts} disabled={genLoading}>
           <Icon name="sparkles" size={18} />
           {genLoading ? genStatus : "Generar contenido"}
         </button>
@@ -1350,7 +1402,6 @@ export default function CalendarView({
 
         <OverflowMenu
           items={[
-            cal.approvalId && { icon: "refresh", label: "Sincronizar aprobaciones", onClick: syncApprovals, disabled: !!syncStatus },
             { icon: "pencil", label: "Editar campaña y conceptos", onClick: () => {
               setMetaForm({ name: cal.name || "", campaign: cal.campaign || "", weekConcepts: [...(cal.weekConcepts || [])] });
               setEditMeta(true);
@@ -1368,13 +1419,6 @@ export default function CalendarView({
           ].filter(Boolean)}
         />
       </div>
-
-      {!apiKey && (
-        <p className="notice notice-warn">
-          Conecta una API key desde el botón «Conectar IA» de la cabecera para generar
-          contenido automáticamente. Mientras tanto puedes escribir las publicaciones a mano.
-        </p>
-      )}
 
       {/* Generation progress */}
       {genLoading && genProgress > 0 && (
@@ -1723,7 +1767,7 @@ export default function CalendarView({
                             <ContentDisplay post={post} />
                             {post.image && <img src={post.image} alt="" style={{ width: 68, height: 68, objectFit: "cover", borderRadius: "var(--radius-xs)", marginTop: "var(--sp-2)" }} />}
 
-                            {apiKey && !post.guion && !post.descripcion && !post.script && (
+                            {!post.guion && !post.descripcion && !post.script && (
                               <button
                                 type="button"
                                 className="btn-ai"
@@ -1796,11 +1840,14 @@ export default function CalendarView({
       {/* Approval link modal */}
       {approvalModal && (
         <ApprovalDialog
-          hasLink={!!cal.approvalId}
+          hasLink={!!cal.shareToken}
+          shareEnabled={cal.shareEnabled !== false}
+          working={shareWorking}
           approvalUrl={approvalUrl}
           whatsappMessage={`Hola${client.name ? " " + client.name : ""}, aquí está el calendario de ${calName} para tu revisión:\n${approvalUrl}\nPuedes aprobar o pedir cambios directamente desde tu celular 📱`}
-          onSync={syncApprovals}
           onGenerate={sendToClient}
+          onRevoke={() => changeShare(false)}
+          onReopen={() => changeShare(true)}
           onClose={() => setApprovalModal(false)}
         />
       )}
@@ -1820,7 +1867,6 @@ export default function CalendarView({
             onUpdate={updatePost}
             onDelete={deletePost}
             onClose={() => setSidePanel(null)}
-            apiKey={apiKey}
             client={client}
             cal={cal}
           />

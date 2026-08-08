@@ -102,7 +102,7 @@ function CategoryTemplates({ savedCategories, onLoad, onSave }) {
   );
 }
 
-export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey }) {
+export default function ClientModal({ initial, onSave, onDelete, onClose }) {
   const blank = createEmptyClient();
   const [form, setForm] = useState(initial ? { ...initial } : blank);
   const [tab, setTab] = useState("basico");
@@ -186,7 +186,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
     setGhReadingPath(readingLabel);
 
     try {
-      const result = await fetchGitHubADN(form.githubRepo, form.githubToken, folder);
+      const result = await fetchGitHubADN(form.githubRepo, folder);
       const fileList = result.files.map((f) => ({ name: f.name, path: f.path, size: f.size, selected: true }));
       setGhFiles(fileList);
       setGhSubfolders(result.subfolders || []);
@@ -200,23 +200,23 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
       if (result.content) {
         sf("githubContext", result.content);
 
-        if (apiKey) {
-          setAdnLoading(true);
-          setGhStatus("Analizando ADN con IA...");
-          try {
-            const extracted = await extractClientADN(apiKey, result.content);
-            setAdnExtracted(extracted);
-            const sel = {};
-            Object.entries(extracted).forEach(([k, v]) => {
-              if (v) sel[k] = true;
-            });
-            setAdnSelected(sel);
-            setGhStatus(`ADN analizado — ${Object.values(sel).filter(Boolean).length} campos encontrados`);
-          } catch (e) {
-            setGhStatus("ADN cargado. Error al analizar: " + e.message);
-          }
-          setAdnLoading(false);
+        // La IA la sirve el servidor, así que ya no hay que comprobar si
+        // el usuario configuró una clave: siempre está disponible.
+        setAdnLoading(true);
+        setGhStatus("Analizando ADN con IA…");
+        try {
+          const extracted = await extractClientADN(result.content);
+          setAdnExtracted(extracted);
+          const sel = {};
+          Object.entries(extracted).forEach(([k, v]) => {
+            if (v) sel[k] = true;
+          });
+          setAdnSelected(sel);
+          setGhStatus(`ADN analizado — ${Object.values(sel).filter(Boolean).length} campos encontrados`);
+        } catch (e) {
+          setGhStatus("ADN cargado. Error al analizar: " + e.message);
         }
+        setAdnLoading(false);
       }
     } catch (e) {
       setGhStatus("Error: " + e.message);
@@ -481,24 +481,6 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
                 Déjalo vacío para leer desde la raíz del repositorio.
               </p>
             </div>
-            <div>
-              <label className="label" htmlFor={`${ids}-ghtoken`}>Token de GitHub (opcional, para repos privados)</label>
-              <input
-                id={`${ids}-ghtoken`}
-                className="input"
-                type="password"
-                autoComplete="off"
-                value={form.githubToken || ""}
-                onChange={(e) => sf("githubToken", e.target.value)}
-                placeholder="ghp_…"
-                aria-describedby={`${ids}-ghtoken-help`}
-              />
-              <p id={`${ids}-ghtoken-help`} className="notice notice-warn" style={{ display: "block", marginTop: "var(--sp-2)" }}>
-                El token se guarda sin cifrar en este navegador y se incluye en las copias de
-                seguridad que exportes. Usa un token de sólo lectura (<code>repo:read</code>) y
-                revócalo cuando dejes de necesitarlo.
-              </p>
-            </div>
             <button
               className="btn btn-primary btn-sm"
               onClick={testGitHub}
@@ -690,17 +672,11 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
               </p>
             )}
 
-            {!apiKey && (
-              <p className="notice notice-warn" style={{ display: "block" }}>
-                Configura una API key en ajustes para que la IA analice el ADN y rellene los campos
-                automáticamente.
-              </p>
-            )}
-
             <p className="hint">
               Se leerán archivos .md y .txt de la carpeta indicada (o la raíz si está vacía) y de su
-              subcarpeta /adn/. Con una API key configurada, la IA analizará el contenido y sugerirá
-              campos para el perfil.
+              subcarpeta /adn/. La IA analizará el contenido y sugerirá campos para el perfil.
+              Para repositorios privados, el token de GitHub se configura una sola vez en el
+              servidor (<code>GITHUB_TOKEN</code>), no aquí.
             </p>
           </div>
         )}

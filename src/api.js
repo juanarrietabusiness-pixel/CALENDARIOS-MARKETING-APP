@@ -1,71 +1,45 @@
+import { supabase, isSupabaseEnabled } from "./lib/supabase";
 
-export async function callAI(apiKey, content, { retries = 2 } = {}) {
-  if (!apiKey) throw new Error("API key no configurada");
-
-  const isGroq = apiKey.startsWith("gsk_");
-
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      let res;
-      if (isGroq) {
-        let msgContent = content;
-        if (Array.isArray(content)) {
-          msgContent = content.filter((b) => b.type === "text").map((b) => ({ type: "text", text: b.text }));
-        }
-        res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
-          body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
-            max_tokens: 2048,
-            messages: [{ role: "user", content: msgContent }],
-          }),
-        });
-      } else {
-        res = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-            "anthropic-dangerous-direct-browser-access": "true",
-          },
-          body: JSON.stringify({
-            model: "claude-haiku-4-5-20251001",
-            max_tokens: 2048,
-            messages: [{ role: "user", content }],
-          }),
-        });
-      }
-
-      if (res.status === 429 || res.status >= 500) {
-        if (attempt < retries) {
-          const wait = Math.pow(2, attempt + 1) * 1000;
-          await new Promise((r) => setTimeout(r, wait));
-          continue;
-        }
-      }
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error?.message || "Error " + res.status);
-      }
-
-      const data = await res.json();
-      if (isGroq) {
-        return data.choices?.[0]?.message?.content || "";
-      }
-      if (data.error) throw new Error(data.error.message);
-      return data.content?.find((b) => b.type === "text")?.text || "";
-    } catch (e) {
-      if (attempt < retries && (e.message.includes("429") || e.message.includes("500") || e.message.includes("fetch"))) {
-        const wait = Math.pow(2, attempt + 1) * 1000;
-        await new Promise((r) => setTimeout(r, wait));
-        continue;
-      }
-      throw e;
-    }
+/**
+ * Llama a una función del servidor.
+ *
+ * Las claves de IA y el token de GitHub viven en los secretos del
+ * proyecto: el navegador nunca las ve. supabase-js adjunta el token de
+ * la sesión, así que las funciones pueden exigir que haya una.
+ *
+ * El error útil viene en el cuerpo de la respuesta, no en `error.message`
+ * (que sólo dice «non-2xx status code»), de ahí la lectura de `context`.
+ */
+async function invokeFunction(name, body) {
+  if (!isSupabaseEnabled) {
+    throw new Error("El servidor de IA no está configurado en este despliegue.");
   }
+
+  const { data, error } = await supabase.functions.invoke(name, { body });
+
+  if (error) {
+    let mensaje = "";
+    try {
+      mensaje = (await error.context?.json())?.error ?? "";
+    } catch {
+      /* la respuesta no era JSON */
+    }
+    throw new Error(mensaje || "No se pudo contactar con el servidor.");
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+/**
+ * Genera texto con la IA.
+ *
+ * Los reintentos y la elección de proveedor ya no están aquí: los hace
+ * la función del servidor, que además no tiene el límite de tiempo del
+ * navegador cerrando la pestaña a medias.
+ */
+export async function callAI(content, { maxTokens } = {}) {
+  const data = await invokeFunction("ai", { content, maxTokens });
+  return data?.text ?? "";
 }
 
 export function parseAIResponse(rawText) {
@@ -165,53 +139,25 @@ export function parseGitHubUrl(url) {
   return null;
 }
 
-export async function fetchGitHubADN(repoUrl, token, folder = "") {
-  const parsed = parseGitHubUrl(repoUrl);
-  if (!parsed) return { content: "", files: [], subfolders: [] };
-  const { owner, repo } = parsed;
-  const basePath = folder || parsed.folder || "";
-  const headers = { Accept: "application/vnd.github.v3+json" };
-  if (token) headers.Authorization = "token " + token;
-
-  const paths = basePath ? [basePath, basePath + "/adn"] : ["", "adn/"];
-  const files = [];
-  const subfolders = [];
-
-  for (const path of paths) {
-    try {
-      const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, { headers });
-      if (!res.ok) continue;
-      const items = await res.json();
-      if (!Array.isArray(items)) continue;
-      for (const item of items) {
-        if (item.type === "file" && /\.(md|txt)$/i.test(item.name) && item.size < 50000) {
-          files.push(item);
-        }
-        if (item.type === "dir" && path === (basePath || "")) {
-          subfolders.push({ name: item.name, path: item.path });
-        }
-      }
-    } catch { /* skip */ }
+/**
+ * Lee el ADN de marca del repositorio del cliente.
+ *
+ * Ya no recibe token: el de GitHub es uno solo del servidor. Antes cada
+ * cliente guardaba el suyo en el navegador y acababa dentro del JSON de
+ * «Exportar».
+ */
+export async function fetchGitHubADN(repoUrl, folder = "") {
+  if (!parseGitHubUrl(repoUrl)) {
+    return { content: "", files: [], subfolders: [] };
   }
-
-  let adnContent = "";
-  for (const file of files.slice(0, 5)) {
-    try {
-      const res = await fetch(file.download_url);
-      if (res.ok) {
-        const text = await res.text();
-        adnContent += `\n--- ${file.name} ---\n${text.slice(0, 3000)}\n`;
-      }
-    } catch { /* skip */ }
-  }
-  return { content: adnContent, files, subfolders, basePath, owner, repo };
+  return await invokeFunction("github-adn", { repoUrl, folder });
 }
 
-export async function generateSinglePost(apiKey, client, post, day, calendar) {
+export async function generateSinglePost(client, post, day, calendar) {
   const isPost = post.format === "post";
   let adnExtra = client.githubContext || "";
   if (!adnExtra && client.githubRepo) {
-    const result = await fetchGitHubADN(client.githubRepo, client.githubToken, client.githubFolder);
+    const result = await fetchGitHubADN(client.githubRepo, client.githubFolder);
     adnExtra = result.content;
   }
   const ctx = buildClientContext(client, calendar, adnExtra);
@@ -253,7 +199,7 @@ Escribe directamente el contenido, sin preambulos.`;
   }
   content.push({ type: "text", text: promptText });
 
-  const txt = await callAI(apiKey, content, { retries: 2 });
+  const txt = await callAI(content);
 
   const guionMatch = txt.match(/GUION:\s*([\s\S]*?)(?=DESCRIPCION:|HASHTAGS_FINALES:|$)/i);
   const descMatch = txt.match(/DESCRIPCION:\s*([\s\S]*?)(?=GUION:|HASHTAGS_FINALES:|$)/i);
@@ -266,10 +212,10 @@ Escribe directamente el contenido, sin preambulos.`;
   };
 }
 
-export async function generateFieldForPost(apiKey, client, post, day, calendar, field) {
+export async function generateFieldForPost(client, post, day, calendar, field) {
   let adnExtra = client.githubContext || "";
   if (!adnExtra && client.githubRepo) {
-    const result = await fetchGitHubADN(client.githubRepo, client.githubToken, client.githubFolder);
+    const result = await fetchGitHubADN(client.githubRepo, client.githubFolder);
     adnExtra = result.content;
   }
   const ctx = buildClientContext(client, calendar, adnExtra);
@@ -317,10 +263,10 @@ Responde SOLO con la descripcion/caption, sin preambulos.`;
   }
 
   const content = [{ type: "text", text: promptText }];
-  return await callAI(apiKey, content, { retries: 2 });
+  return await callAI(content);
 }
 
-export async function extractClientADN(apiKey, repoContent) {
+export async function extractClientADN(repoContent) {
   const promptText = `Analiza el siguiente contenido de un repositorio de GitHub de un cliente y extrae la informacion para llenar su perfil de agencia de marketing.
 
 CONTENIDO DEL REPOSITORIO:
@@ -333,7 +279,7 @@ Si no encuentras informacion para un campo, dejalo como string vacio.
 No inventes datos que no esten en el contenido.`;
 
   const content = [{ type: "text", text: promptText }];
-  const raw = await callAI(apiKey, content, { retries: 2 });
+  const raw = await callAI(content);
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("No se pudo parsear la respuesta de IA");
   return JSON.parse(jsonMatch[0]);

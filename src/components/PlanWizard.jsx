@@ -28,7 +28,7 @@ function StepBar({ step, setStep }) {
   );
 }
 
-export default function PlanWizard({ client, apiKey, onGenerate, onClose }) {
+export default function PlanWizard({ client, onGenerate, onClose }) {
   const [step, setStep] = useState(0);
   const [month, setMonth] = useState(new Date().getMonth());
   const [year, setYear] = useState(new Date().getFullYear());
@@ -68,7 +68,6 @@ export default function PlanWizard({ client, apiKey, onGenerate, onClose }) {
   const goBack = () => setStep((s) => Math.max(s - 1, 0));
 
   const suggestDates = async () => {
-    if (!apiKey) return;
     setAiLoading(true);
     setAiStatus("Buscando fechas importantes...");
     try {
@@ -76,7 +75,7 @@ export default function PlanWizard({ client, apiKey, onGenerate, onClose }) {
       const prompt = `${ctx}\n\nDame 5-8 fechas importantes para ${MONTHS[month]} ${year} en Panama relevantes para esta industria.
 Formato JSON array: [{"date":"YYYY-MM-DD","name":"Nombre","relevant":true}]
 Solo el JSON, nada mas.`;
-      const txt = await callAI(apiKey, prompt);
+      const txt = await callAI(prompt);
       const match = txt.match(/\[[\s\S]*?\]/);
       if (match) {
         const dates = JSON.parse(match[0]);
@@ -93,13 +92,12 @@ Solo el JSON, nada mas.`;
   };
 
   const suggestCampaign = async () => {
-    if (!apiKey) return;
     setAiLoading(true);
     setAiStatus("Generando sugerencias de campana...");
     try {
       const ctx = buildClientContext(client);
       const prompt = `${ctx}\n\nSugiere 3 temas de campana para ${MONTHS[month]} ${year}. Una linea por sugerencia. Solo las sugerencias, nada mas.`;
-      const txt = await callAI(apiKey, prompt);
+      const txt = await callAI(prompt);
       setCampaign(txt.split("\n").filter(Boolean)[0] || "");
     } catch (e) {
       setAiStatus("Error: " + e.message);
@@ -109,7 +107,6 @@ Solo el JSON, nada mas.`;
   };
 
   const suggestConcepts = async () => {
-    if (!apiKey) return;
     setAiLoading(true);
     setAiStatus("Generando conceptos semanales...");
     try {
@@ -118,7 +115,7 @@ Solo el JSON, nada mas.`;
       const prompt = `${ctx}\n\nGenera ${numWeeks} conceptos semanales para el calendario de ${MONTHS[month]} ${year}.
 Campana: ${campaign || "N/A"}
 Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
-      const txt = await callAI(apiKey, prompt);
+      const txt = await callAI(prompt);
       const lines = txt.split("\n").filter(Boolean).slice(0, 5);
       setWeekConcepts((prev) => prev.map((c, i) => c || lines[i] || ""));
     } catch (e) {
@@ -157,7 +154,7 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
   };
 
   const generateIdeas = async () => {
-    if (!apiKey || generating.current) return;
+    if (generating.current) return;
     generating.current = true;
     setAiLoading(true);
     setAiStatus("Generando ideas...");
@@ -165,7 +162,7 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
       let adnExtra = client.githubContext || "";
       if (!adnExtra && client.githubRepo) {
         setAiStatus("Cargando ADN desde GitHub...");
-        const result = await fetchGitHubADN(client.githubRepo, client.githubToken, client.githubFolder);
+        const result = await fetchGitHubADN(client.githubRepo, client.githubFolder);
         adnExtra = result.content;
       }
       const ctx = buildClientContext(client, { campaign }, adnExtra);
@@ -221,7 +218,7 @@ idea aqui
 DIAS:
 ${daysDesc}`;
 
-        const txt = await callAI(apiKey, prompt);
+        const txt = await callAI(prompt);
         for (const block of txt.split("===DIA===").slice(1)) {
           const dateMatch = block.match(/FECHA:\s*([\d-]+)/);
           if (!dateMatch) continue;
@@ -430,7 +427,7 @@ ${daysDesc}`;
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-3)", marginBottom: "var(--sp-3)" }}>
                 <h3 className="label" style={{ margin: 0 }}>Fechas importantes</h3>
-                <button className="btn btn-primary btn-sm" onClick={suggestDates} disabled={aiLoading || !apiKey}>
+                <button className="btn btn-primary btn-sm" onClick={suggestDates} disabled={aiLoading}>
                   {aiLoading ? "Buscando…" : "Sugerir con IA"}
                 </button>
               </div>
@@ -504,7 +501,7 @@ ${daysDesc}`;
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-3)", marginBottom: "var(--sp-2)" }}>
                 <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-campaign`}>Tema de campaña del mes</label>
-                <button className="btn btn-primary btn-sm" onClick={suggestCampaign} disabled={aiLoading || !apiKey}>
+                <button className="btn btn-primary btn-sm" onClick={suggestCampaign} disabled={aiLoading}>
                   {aiLoading ? "Generando…" : "Sugerir con IA"}
                 </button>
               </div>
@@ -525,7 +522,7 @@ ${daysDesc}`;
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-3)", marginBottom: "var(--sp-3)" }}>
                 <h3 className="label" style={{ margin: 0 }}>Conceptos semanales</h3>
-                <button className="btn btn-primary btn-sm" onClick={suggestConcepts} disabled={aiLoading || !apiKey}>
+                <button className="btn btn-primary btn-sm" onClick={suggestConcepts} disabled={aiLoading}>
                   {aiLoading ? "Generando…" : "Sugerir con IA"}
                 </button>
               </div>
@@ -685,7 +682,7 @@ ${daysDesc}`;
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-3)", marginBottom: "var(--sp-3)" }}>
                 <h3 className="label" style={{ margin: 0 }}>Ideas por día</h3>
-                <button className="btn btn-accent btn-sm" onClick={generateIdeas} disabled={aiLoading || !apiKey}>
+                <button className="btn btn-accent btn-sm" onClick={generateIdeas} disabled={aiLoading}>
                   {aiLoading ? aiStatus || "Generando…" : "Generar ideas con IA"}
                 </button>
               </div>
