@@ -32,9 +32,6 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-[functions.approval]
-  included_files = []
-
 # ------------------------------------------------------------
 # Cabeceras de seguridad
 # ------------------------------------------------------------
