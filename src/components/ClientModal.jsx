@@ -121,6 +121,8 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
   const [adnSelected, setAdnSelected] = useState({});
   const [adnLoading, setAdnLoading] = useState(false);
   const [nameError, setNameError] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [saving, setSaving] = useState(false);
   const logoRef = useRef();
   const ids = useId();
   const dialogRef = useDialogA11y(onClose);
@@ -236,7 +238,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
     setGhStatus("Campos aplicados al perfil");
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     // Antes el botón simplemente no hacía nada si faltaba el nombre, sin
     // decir por qué ni llevar al campo que falla.
     if (!form.name?.trim()) {
@@ -249,15 +251,25 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
     const ws = weekStructure
       .filter((s) => s.active && s.slots.length > 0)
       .map((s) => ({ ...s, categories: (s.categories || [""]).filter((c) => c) }));
-    onSave({
-      ...form,
-      id: initial?.id || "client-" + uid(),
-      weeklyStructure: ws,
-      calendars: initial?.calendars || [],
-      savedPlans: initial?.savedPlans || [],
-      savedCategories: initial?.savedCategories || [],
-    });
-    onClose();
+
+    // Guardar va a la red: si falla, el diálogo tiene que seguir abierto
+    // con los datos dentro. Antes se cerraba a la vez que se enviaba y el
+    // trabajo se perdía sin más aviso que un mensaje de fondo.
+    setSaving(true);
+    setSaveError("");
+    try {
+      await onSave({
+        ...form,
+        id: initial?.id || "client-" + uid(),
+        weeklyStructure: ws,
+        calendars: initial?.calendars || [],
+        savedPlans: initial?.savedPlans || [],
+        savedCategories: initial?.savedCategories || [],
+      });
+    } catch (e) {
+      setSaveError(e.message || "No se pudo guardar el cliente.");
+      setSaving(false);
+    }
   };
 
   const saveCategoryTemplate = (name) => {
@@ -838,10 +850,16 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
             <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>
               Cancelar
             </button>
-            <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleSave}>
-              {initial ? "Guardar cambios" : "Crear cliente"}
+            <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleSave} disabled={saving}>
+              {saving ? "Guardando…" : initial ? "Guardar cambios" : "Crear cliente"}
             </button>
           </div>
+
+          {saveError && (
+            <p role="alert" className="notice notice-error" style={{ display: "block", marginTop: "var(--sp-3)" }}>
+              {saveError}
+            </p>
+          )}
           {initial && onDelete && (
             <button
               className="btn btn-danger"

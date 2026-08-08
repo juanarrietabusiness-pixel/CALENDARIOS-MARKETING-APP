@@ -230,20 +230,19 @@ function Workspace({ session }) {
 
   const fallo = (accion) => (e) => setToast(`No se pudo ${accion}: ${e.message}`);
 
+  // Deja escapar el error a propósito: ClientModal lo muestra dentro del
+  // diálogo y lo mantiene abierto con los datos, en vez de cerrarse y
+  // perderlos.
   const saveClient = async (c) => {
-    try {
-      const guardado = await db.saveClient(c, ownerId);
-      setClients((prev) => {
-        const exists = prev.find((x) => x.id === guardado.id);
-        return exists ? prev.map((x) => (x.id === guardado.id ? guardado : x)) : [...prev, guardado];
-      });
-      setSelectedClientId(guardado.id);
-      setSelectedCalId(null);
-      setEditingClient(null);
-      setShowClientModal(false);
-    } catch (e) {
-      fallo("guardar el cliente")(e);
-    }
+    const guardado = await db.saveClient(c, ownerId);
+    setClients((prev) => {
+      const exists = prev.find((x) => x.id === guardado.id);
+      return exists ? prev.map((x) => (x.id === guardado.id ? guardado : x)) : [...prev, guardado];
+    });
+    setSelectedClientId(guardado.id);
+    setSelectedCalId(null);
+    setEditingClient(null);
+    setShowClientModal(false);
   };
 
   const deleteClient = async (id) => {
