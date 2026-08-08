@@ -1262,6 +1262,9 @@ input[type="radio"] {
 
 @media (max-width: 768px) {
   .panel-right { width: 100%; }
+  /* La cabecera ya lleva el menú, el logo y «Salir»: el correo de la
+     sesión empujaba el nombre de la agencia fuera de la pantalla. */
+  .session-email { display: none; }
 }
 
 /* Pantallas muy estrechas (<= 360px) */

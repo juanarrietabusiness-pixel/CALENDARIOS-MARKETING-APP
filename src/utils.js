@@ -117,7 +117,6 @@ export function createEmptyClient() {
     notasInspeccion: "",
     githubRepo: "",
     githubFolder: "",
-    githubToken: "",
     githubContext: "",
     ideasBank: [],
     savedPlans: [],

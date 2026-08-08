@@ -1,18 +1,20 @@
 import { useState, useEffect, useRef } from "react";
 import { MONTHS } from "./constants";
-import { uid, lsGet, lsSet } from "./utils";
+import { uid } from "./utils";
 import { useDialogA11y } from "./hooks/useDialogA11y";
 import Icon from "./components/Icon";
 // Importado (no ruta absoluta) para que Vite le ponga hash y respete la
 // base del despliegue: el sitio también se publica bajo un subdirectorio.
 import logoMark from "./assets/logo-mark.png";
-import ApiSetup from "./components/ApiSetup";
 import ClientModal from "./components/ClientModal";
 import PlanWizard from "./components/PlanWizard";
 import CalendarView from "./components/CalendarView";
 import Aprobar from "./pages/Aprobar";
-
-const STORAGE_KEY = "jads-data";
+import Login from "./pages/Login";
+import { isSupabaseEnabled } from "./lib/supabase";
+import { useSession, signOut } from "./lib/auth";
+import * as db from "./lib/db";
+import { migrateLocalData } from "./lib/migrateLocal";
 
 const isApprovalPage = () => {
   const path = window.location.pathname;
@@ -21,10 +23,42 @@ const isApprovalPage = () => {
 
 /**
  * Enrutador. Es un componente sin hooks para que la rama condicional
- * no altere el orden de los hooks de Workspace (regla de los hooks).
+ * no altere el orden de los hooks de los componentes de destino
+ * (regla de los hooks).
  */
 function App() {
-  return isApprovalPage() ? <Aprobar /> : <Workspace />;
+  return isApprovalPage() ? <Aprobar /> : <Panel />;
+}
+
+/** Pantalla centrada de una sola línea. Se usa al cargar y al fallar. */
+function Aviso({ children, tono = "status" }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100dvh", padding: "var(--sp-5)" }}>
+      <p role={tono} style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)", maxWidth: 420, textAlign: "center" }}>
+        {children}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Puerta de acceso. Todos los hooks se llaman antes de cualquier
+ * `return`, así que las ramas no alteran su orden.
+ */
+function Panel() {
+  const { session, loading } = useSession();
+
+  if (!isSupabaseEnabled) {
+    return (
+      <Aviso tono="alert">
+        Este despliegue no tiene Supabase configurado. Define VITE_SUPABASE_URL y
+        VITE_SUPABASE_ANON_KEY en las variables del sitio y vuelve a desplegar.
+      </Aviso>
+    );
+  }
+  if (loading) return <Aviso>Cargando…</Aviso>;
+  if (!session) return <Login />;
+  return <Workspace session={session} />;
 }
 
 /** Lista de clientes. Se reutiliza en la barra fija y en el cajón móvil. */
@@ -138,10 +172,10 @@ function ClientDrawer({ clients, selectedClientId, onSelect, onNew, onClose, onE
   );
 }
 
-function Workspace() {
+function Workspace({ session }) {
+  const ownerId = session.user.id;
+
   const [clients, setClients] = useState([]);
-  const [apiKey, setApiKey] = useState(() => lsGet("ja-apikey") || "");
-  const [showApiSetup, setShowApiSetup] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [selectedCalId, setSelectedCalId] = useState(null);
   const [showDrawer, setShowDrawer] = useState(false);
@@ -149,56 +183,83 @@ function Workspace() {
   const [editingClient, setEditingClient] = useState(null);
   const [showWizard, setShowWizard] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
   const importRef = useRef();
+  // Un temporizador por calendario: las ediciones seguidas se agrupan en
+  // una sola escritura en lugar de una por pulsación.
+  const saveTimers = useRef(new Map());
 
   useEffect(() => {
-    try {
-      const raw = lsGet(STORAGE_KEY);
-      if (raw) {
-        const data = JSON.parse(raw);
+    let alive = true;
+    (async () => {
+      try {
+        const { migrados } = await migrateLocalData(ownerId);
+        const data = await db.loadWorkspace();
+        if (!alive) return;
         setClients(data);
         if (data.length) setSelectedClientId(data[0].id);
+        if (migrados > 0) {
+          setToast(`Se migraron ${migrados} clientes desde este navegador a la nube.`);
+        }
+      } catch (e) {
+        if (alive) setLoadError(e.message || "No se pudieron cargar los datos.");
       }
-    } catch { /* empty storage */ }
-    setLoading(false);
-  }, []);
+      if (alive) setLoading(false);
+    })();
+    return () => { alive = false; };
+  }, [ownerId]);
 
+  // Los temporizadores pendientes se cancelan al desmontar: si no, un
+  // guardado en vuelo escribiría después de cerrar sesión.
   useEffect(() => {
-    if (!loading) lsSet(STORAGE_KEY, JSON.stringify(clients));
-  }, [clients, loading]);
+    const timers = saveTimers.current;
+    return () => { timers.forEach(clearTimeout); timers.clear(); };
+  }, []);
 
   // Los mensajes se anuncian en una región aria-live en lugar de alert(),
   // que interrumpe al lector de pantalla y bloquea la interfaz.
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(""), 4000);
+    const t = setTimeout(() => setToast(""), 5000);
     return () => clearTimeout(t);
   }, [toast]);
 
   const client = clients.find((c) => c.id === selectedClientId);
   const calendar = client?.calendars?.find((c) => c.id === selectedCalId);
 
-  const saveClient = (c) => {
+  const fallo = (accion) => (e) => setToast(`No se pudo ${accion}: ${e.message}`);
+
+  // Deja escapar el error a propósito: ClientModal lo muestra dentro del
+  // diálogo y lo mantiene abierto con los datos, en vez de cerrarse y
+  // perderlos.
+  const saveClient = async (c) => {
+    const guardado = await db.saveClient(c, ownerId);
     setClients((prev) => {
-      const exists = prev.find((x) => x.id === c.id);
-      return exists ? prev.map((x) => (x.id === c.id ? c : x)) : [...prev, c];
+      const exists = prev.find((x) => x.id === guardado.id);
+      return exists ? prev.map((x) => (x.id === guardado.id ? guardado : x)) : [...prev, guardado];
     });
-    setSelectedClientId(c.id);
+    setSelectedClientId(guardado.id);
     setSelectedCalId(null);
     setEditingClient(null);
     setShowClientModal(false);
   };
 
-  const deleteClient = (id) => {
-    setClients((prev) => prev.filter((c) => c.id !== id));
-    if (selectedClientId === id) {
-      setSelectedClientId(null);
-      setSelectedCalId(null);
+  const deleteClient = async (id) => {
+    try {
+      await db.deleteClient(id);
+      setClients((prev) => prev.filter((c) => c.id !== id));
+      if (selectedClientId === id) {
+        setSelectedClientId(null);
+        setSelectedCalId(null);
+      }
+    } catch (e) {
+      fallo("borrar el cliente")(e);
     }
   };
 
-  const updateCalendar = (calId, updatedCal) => {
+  /** Sólo estado: lo usan las aprobaciones en vivo, que no deben persistirse. */
+  const updateCalendarLocal = (calId, updatedCal) => {
     setClients((prev) =>
       prev.map((c) =>
         c.id !== selectedClientId ? c : { ...c, calendars: c.calendars.map((cal) => (cal.id === calId ? updatedCal : cal)) }
@@ -206,39 +267,62 @@ function Workspace() {
     );
   };
 
-  const deleteCalendar = (calId) => {
-    setClients((prev) =>
-      prev.map((c) =>
-        c.id !== selectedClientId ? c : { ...c, calendars: c.calendars.filter((cal) => cal.id !== calId) }
-      )
-    );
-    if (selectedCalId === calId) setSelectedCalId(null);
+  /** Estado inmediato y escritura agrupada: la interfaz no espera a la red. */
+  const updateCalendar = (calId, updatedCal) => {
+    updateCalendarLocal(calId, updatedCal);
+
+    const timers = saveTimers.current;
+    clearTimeout(timers.get(calId));
+    timers.set(calId, setTimeout(() => {
+      timers.delete(calId);
+      db.saveCalendar(updatedCal, selectedClientId, ownerId)
+        .catch(fallo("guardar el calendario"));
+    }, 600));
   };
 
-  const duplicateCalendar = (calId) => {
-    setClients((prev) =>
-      prev.map((c) => {
-        if (c.id !== selectedClientId) return c;
-        const original = c.calendars.find((cal) => cal.id === calId);
-        if (!original) return c;
-        const copy = JSON.parse(JSON.stringify(original));
-        copy.id = "cal-" + uid();
-        copy.name = (copy.name || MONTHS[copy.month] + " " + copy.year) + " (copia)";
-        // La copia no hereda el enlace de aprobación: es un calendario nuevo.
-        delete copy.approvalId;
-        copy.days = copy.days.map((d) => ({
-          ...d,
-          posts: d.posts.map((p) => ({ ...p, id: uid(), status: "pending", script: "" })),
-        }));
-        return { ...c, calendars: [...c.calendars, copy] };
-      })
-    );
+  const deleteCalendar = async (calId) => {
+    try {
+      clearTimeout(saveTimers.current.get(calId));
+      saveTimers.current.delete(calId);
+      await db.deleteCalendar(calId);
+      setClients((prev) =>
+        prev.map((c) =>
+          c.id !== selectedClientId ? c : { ...c, calendars: c.calendars.filter((cal) => cal.id !== calId) }
+        )
+      );
+      if (selectedCalId === calId) setSelectedCalId(null);
+    } catch (e) {
+      fallo("borrar el calendario")(e);
+    }
   };
 
-  const handleWizardGenerate = (calendarData) => {
-    const calId = "cal-" + uid();
-    const newCal = {
-      id: calId,
+  const duplicateCalendar = async (calId) => {
+    const original = client?.calendars?.find((cal) => cal.id === calId);
+    if (!original) return;
+
+    const copy = JSON.parse(JSON.stringify(original));
+    // La copia es un calendario nuevo: ni id ni enlace se heredan.
+    delete copy.id;
+    delete copy.dbId;
+    delete copy.shareToken;
+    copy.name = (copy.name || MONTHS[copy.month] + " " + copy.year) + " (copia)";
+    copy.days = (copy.days || []).map((d) => ({
+      ...d,
+      posts: (d.posts || []).map((p) => ({ ...p, id: uid(), status: "pending", script: "" })),
+    }));
+
+    try {
+      const creado = await db.saveCalendar(copy, selectedClientId, ownerId);
+      setClients((prev) =>
+        prev.map((c) => (c.id !== selectedClientId ? c : { ...c, calendars: [...c.calendars, creado] }))
+      );
+    } catch (e) {
+      fallo("duplicar el calendario")(e);
+    }
+  };
+
+  const handleWizardGenerate = async (calendarData) => {
+    const nuevo = {
       name: calendarData.campaign || MONTHS[calendarData.month] + " " + calendarData.year,
       month: calendarData.month,
       year: calendarData.year,
@@ -248,13 +332,20 @@ function Workspace() {
       days: calendarData.days,
     };
 
-    setClients((prev) =>
-      prev.map((c) =>
-        c.id !== selectedClientId ? c : { ...c, calendars: [...(c.calendars || []), newCal] }
-      )
-    );
-    setSelectedCalId(calId);
-    setShowWizard(false);
+    try {
+      // Se inserta primero para que el id sea el de la base de datos: el
+      // enlace de aprobación se pide con él.
+      const creado = await db.saveCalendar(nuevo, selectedClientId, ownerId);
+      setClients((prev) =>
+        prev.map((c) =>
+          c.id !== selectedClientId ? c : { ...c, calendars: [...(c.calendars || []), creado] }
+        )
+      );
+      setSelectedCalId(creado.id);
+      setShowWizard(false);
+    } catch (e) {
+      fallo("crear el calendario")(e);
+    }
   };
 
   const exportJSON = () => {
@@ -273,21 +364,46 @@ function Workspace() {
 
   const importJSON = (file) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
+      let data;
       try {
-        const data = JSON.parse(e.target.result);
-        if (data.clients) {
-          setClients(data.clients);
-          if (data.clients.length) setSelectedClientId(data.clients[0].id);
-          setSelectedCalId(null);
-          setToast(`Importados ${data.clients.length} clientes.`);
-        } else if (data.aprobaciones && data.calendarioId) {
-          importReviewsData(data);
-        } else {
-          setToast("El archivo no contiene clientes ni revisiones.");
-        }
+        data = JSON.parse(e.target.result);
       } catch {
         setToast("Archivo inválido: no se pudo leer el JSON.");
+        return;
+      }
+
+      if (Array.isArray(data.clients)) {
+        // Se añaden a lo que ya hay en la nube; antes se reemplazaba el
+        // estado entero y los clientes existentes desaparecían de la vista
+        // aunque siguieran en la base de datos.
+        setToast("Importando…");
+        try {
+          const añadidos = [];
+          for (const c of data.clients) {
+            const copia = { ...c };
+            delete copia.dbId;
+            const guardado = await db.saveClient(copia, ownerId);
+            for (const cal of c.calendars ?? []) {
+              const calCopia = { ...cal };
+              delete calCopia.dbId;
+              delete calCopia.shareToken;
+              const calGuardado = await db.saveCalendar(calCopia, guardado.id, ownerId);
+              guardado.calendars = [...(guardado.calendars ?? []), calGuardado];
+            }
+            añadidos.push(guardado);
+          }
+          setClients((prev) => [...prev, ...añadidos]);
+          if (añadidos.length) setSelectedClientId(añadidos[0].id);
+          setSelectedCalId(null);
+          setToast(`Importados ${añadidos.length} clientes.`);
+        } catch (err) {
+          fallo("importar")(err);
+        }
+      } else if (data.aprobaciones && data.calendarioId) {
+        importReviewsData(data);
+      } else {
+        setToast("El archivo no contiene clientes ni revisiones.");
       }
     };
     reader.readAsText(file);
@@ -330,13 +446,8 @@ function Workspace() {
     setShowDrawer(false);
   };
 
-  if (loading) {
-    return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100dvh" }}>
-        <p role="status" style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando…</p>
-      </div>
-    );
-  }
+  if (loading) return <Aviso>Cargando tus clientes…</Aviso>;
+  if (loadError) return <Aviso tono="alert">{loadError}</Aviso>;
 
   return (
     <div className="app-shell">
@@ -381,16 +492,15 @@ function Workspace() {
         </div>
 
         <div style={{ display: "flex", gap: "var(--sp-2)", flexShrink: 0, alignItems: "center" }}>
-          {!apiKey && (
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowApiSetup(true)}>
-              <Icon name="sparkles" size={16} /> Conectar IA
-            </button>
-          )}
-          {apiKey && (
-            <button className="btn-icon" onClick={() => setShowApiSetup(true)} aria-label="Configurar IA">
-              <Icon name="settings" />
-            </button>
-          )}
+          <span
+            style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            className="session-email"
+          >
+            {session.user.email}
+          </span>
+          <button className="btn btn-secondary btn-sm" onClick={signOut}>
+            <Icon name="close" size={16} /> Salir
+          </button>
           <input
             ref={importRef}
             type="file"
@@ -484,8 +594,8 @@ function Workspace() {
                     client={client}
                     cal={calendar}
                     calId={selectedCalId}
-                    apiKey={apiKey}
                     onUpdateCal={updateCalendar}
+                    onUpdateCalLocal={updateCalendarLocal}
                     onDeleteCal={deleteCalendar}
                     onDuplicateCal={duplicateCalendar}
                     onUpdateClient={(updated) => setClients((prev) => prev.map((c) => c.id === updated.id ? updated : c))}
@@ -539,7 +649,6 @@ function Workspace() {
       {showWizard && client && (
         <PlanWizard
           client={client}
-          apiKey={apiKey}
           onGenerate={handleWizardGenerate}
           onClose={() => setShowWizard(false)}
         />
@@ -550,21 +659,10 @@ function Workspace() {
           initial={editingClient}
           onSave={saveClient}
           onDelete={deleteClient}
-          apiKey={apiKey}
           onClose={() => {
             setShowClientModal(false);
             setEditingClient(null);
           }}
-        />
-      )}
-
-      {showApiSetup && (
-        <ApiSetup
-          onDone={(k) => {
-            setApiKey(k);
-            setShowApiSetup(false);
-          }}
-          onClose={() => setShowApiSetup(false)}
         />
       )}
     </div>

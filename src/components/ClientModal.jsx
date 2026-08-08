@@ -102,7 +102,7 @@ function CategoryTemplates({ savedCategories, onLoad, onSave }) {
   );
 }
 
-export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey }) {
+export default function ClientModal({ initial, onSave, onDelete, onClose }) {
   const blank = createEmptyClient();
   const [form, setForm] = useState(initial ? { ...initial } : blank);
   const [tab, setTab] = useState("basico");
@@ -121,6 +121,8 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
   const [adnSelected, setAdnSelected] = useState({});
   const [adnLoading, setAdnLoading] = useState(false);
   const [nameError, setNameError] = useState("");
+  const [saveError, setSaveError] = useState("");
+  const [saving, setSaving] = useState(false);
   const logoRef = useRef();
   const ids = useId();
   const dialogRef = useDialogA11y(onClose);
@@ -186,7 +188,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
     setGhReadingPath(readingLabel);
 
     try {
-      const result = await fetchGitHubADN(form.githubRepo, form.githubToken, folder);
+      const result = await fetchGitHubADN(form.githubRepo, folder);
       const fileList = result.files.map((f) => ({ name: f.name, path: f.path, size: f.size, selected: true }));
       setGhFiles(fileList);
       setGhSubfolders(result.subfolders || []);
@@ -200,23 +202,23 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
       if (result.content) {
         sf("githubContext", result.content);
 
-        if (apiKey) {
-          setAdnLoading(true);
-          setGhStatus("Analizando ADN con IA...");
-          try {
-            const extracted = await extractClientADN(apiKey, result.content);
-            setAdnExtracted(extracted);
-            const sel = {};
-            Object.entries(extracted).forEach(([k, v]) => {
-              if (v) sel[k] = true;
-            });
-            setAdnSelected(sel);
-            setGhStatus(`ADN analizado — ${Object.values(sel).filter(Boolean).length} campos encontrados`);
-          } catch (e) {
-            setGhStatus("ADN cargado. Error al analizar: " + e.message);
-          }
-          setAdnLoading(false);
+        // La IA la sirve el servidor, así que ya no hay que comprobar si
+        // el usuario configuró una clave: siempre está disponible.
+        setAdnLoading(true);
+        setGhStatus("Analizando ADN con IA…");
+        try {
+          const extracted = await extractClientADN(result.content);
+          setAdnExtracted(extracted);
+          const sel = {};
+          Object.entries(extracted).forEach(([k, v]) => {
+            if (v) sel[k] = true;
+          });
+          setAdnSelected(sel);
+          setGhStatus(`ADN analizado — ${Object.values(sel).filter(Boolean).length} campos encontrados`);
+        } catch (e) {
+          setGhStatus("ADN cargado. Error al analizar: " + e.message);
         }
+        setAdnLoading(false);
       }
     } catch (e) {
       setGhStatus("Error: " + e.message);
@@ -236,7 +238,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
     setGhStatus("Campos aplicados al perfil");
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     // Antes el botón simplemente no hacía nada si faltaba el nombre, sin
     // decir por qué ni llevar al campo que falla.
     if (!form.name?.trim()) {
@@ -249,15 +251,25 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
     const ws = weekStructure
       .filter((s) => s.active && s.slots.length > 0)
       .map((s) => ({ ...s, categories: (s.categories || [""]).filter((c) => c) }));
-    onSave({
-      ...form,
-      id: initial?.id || "client-" + uid(),
-      weeklyStructure: ws,
-      calendars: initial?.calendars || [],
-      savedPlans: initial?.savedPlans || [],
-      savedCategories: initial?.savedCategories || [],
-    });
-    onClose();
+
+    // Guardar va a la red: si falla, el diálogo tiene que seguir abierto
+    // con los datos dentro. Antes se cerraba a la vez que se enviaba y el
+    // trabajo se perdía sin más aviso que un mensaje de fondo.
+    setSaving(true);
+    setSaveError("");
+    try {
+      await onSave({
+        ...form,
+        id: initial?.id || "client-" + uid(),
+        weeklyStructure: ws,
+        calendars: initial?.calendars || [],
+        savedPlans: initial?.savedPlans || [],
+        savedCategories: initial?.savedCategories || [],
+      });
+    } catch (e) {
+      setSaveError(e.message || "No se pudo guardar el cliente.");
+      setSaving(false);
+    }
   };
 
   const saveCategoryTemplate = (name) => {
@@ -481,24 +493,6 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
                 Déjalo vacío para leer desde la raíz del repositorio.
               </p>
             </div>
-            <div>
-              <label className="label" htmlFor={`${ids}-ghtoken`}>Token de GitHub (opcional, para repos privados)</label>
-              <input
-                id={`${ids}-ghtoken`}
-                className="input"
-                type="password"
-                autoComplete="off"
-                value={form.githubToken || ""}
-                onChange={(e) => sf("githubToken", e.target.value)}
-                placeholder="ghp_…"
-                aria-describedby={`${ids}-ghtoken-help`}
-              />
-              <p id={`${ids}-ghtoken-help`} className="notice notice-warn" style={{ display: "block", marginTop: "var(--sp-2)" }}>
-                El token se guarda sin cifrar en este navegador y se incluye en las copias de
-                seguridad que exportes. Usa un token de sólo lectura (<code>repo:read</code>) y
-                revócalo cuando dejes de necesitarlo.
-              </p>
-            </div>
             <button
               className="btn btn-primary btn-sm"
               onClick={testGitHub}
@@ -690,17 +684,11 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
               </p>
             )}
 
-            {!apiKey && (
-              <p className="notice notice-warn" style={{ display: "block" }}>
-                Configura una API key en ajustes para que la IA analice el ADN y rellene los campos
-                automáticamente.
-              </p>
-            )}
-
             <p className="hint">
               Se leerán archivos .md y .txt de la carpeta indicada (o la raíz si está vacía) y de su
-              subcarpeta /adn/. Con una API key configurada, la IA analizará el contenido y sugerirá
-              campos para el perfil.
+              subcarpeta /adn/. La IA analizará el contenido y sugerirá campos para el perfil.
+              Para repositorios privados, el token de GitHub se configura una sola vez en el
+              servidor (<code>GITHUB_TOKEN</code>), no aquí.
             </p>
           </div>
         )}
@@ -862,10 +850,16 @@ export default function ClientModal({ initial, onSave, onDelete, onClose, apiKey
             <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>
               Cancelar
             </button>
-            <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleSave}>
-              {initial ? "Guardar cambios" : "Crear cliente"}
+            <button className="btn btn-primary" style={{ flex: 2 }} onClick={handleSave} disabled={saving}>
+              {saving ? "Guardando…" : initial ? "Guardar cambios" : "Crear cliente"}
             </button>
           </div>
+
+          {saveError && (
+            <p role="alert" className="notice notice-error" style={{ display: "block", marginTop: "var(--sp-3)" }}>
+              {saveError}
+            </p>
+          )}
           {initial && onDelete && (
             <button
               className="btn btn-danger"

@@ -24,8 +24,9 @@ export const supabase = isSupabaseEnabled
 
 /**
  * Convierte un cliente del formato de la aplicación al de la base de datos.
- * El token de GitHub se omite a propósito: es un secreto del usuario y no
- * debe salir del navegador.
+ *
+ * Ya no hay token de GitHub por cliente: lo lleva la función `github-adn`
+ * con un único token del servidor.
  */
 export function clientToRow(client, ownerId) {
   return {
@@ -86,7 +87,6 @@ export function rowToClient(row) {
     githubRepo: row.github_repo,
     githubFolder: row.github_folder,
     githubContext: row.github_context,
-    githubToken: "",
     ideasBank: row.ideas_bank || [],
     savedCategories: row.saved_categories || [],
     weeklyStructure: row.weekly_structure || [],
@@ -95,6 +95,12 @@ export function rowToClient(row) {
   };
 }
 
+/**
+ * `share_token`, `share_enabled` y `share_expires_at` no se escriben desde
+ * aquí: los gobiernan las funciones share_calendar y set_share_enabled,
+ * que generan el token dentro de la base de datos. Mandarlos en un UPDATE
+ * dejaría que el navegador eligiera su propio token.
+ */
 export function calendarToRow(cal, clientDbId, ownerId) {
   return {
     id: cal.dbId || undefined,
@@ -106,7 +112,6 @@ export function calendarToRow(cal, clientDbId, ownerId) {
     campaign: cal.campaign || "",
     week_concepts: cal.weekConcepts || [],
     days: cal.days || [],
-    approval_id: cal.approvalId || null,
     generated_at: cal.generatedAt || null,
   };
 }
@@ -121,7 +126,8 @@ export function rowToCalendar(row) {
     campaign: row.campaign,
     weekConcepts: row.week_concepts || [],
     days: row.days || [],
-    approvalId: row.approval_id || undefined,
+    shareToken: row.share_token || null,
+    shareEnabled: row.share_enabled !== false,
     generatedAt: row.generated_at,
   };
 }

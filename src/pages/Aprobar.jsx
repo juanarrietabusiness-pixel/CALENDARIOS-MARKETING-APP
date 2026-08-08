@@ -1,10 +1,20 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { FORMATS, FORMAT_ICONS } from "../constants";
+import { supabase, isSupabaseEnabled } from "../lib/supabase";
 import Icon from "../components/Icon";
 import logoMark from "../assets/logo-mark.png";
 
-const API_BASE = "/api/approval";
-
+/**
+ * Página pública de aprobación.
+ *
+ * Habla directamente con Postgres a través de dos funciones que validan
+ * el token dentro de la base de datos. No hay clave de servicio de por
+ * medio, y como la respuesta del cliente entra en la tabla al momento,
+ * la agencia la ve en vivo sin sondear nada.
+ *
+ * El enlace sólo permite ver y responder este calendario: las políticas
+ * RLS impiden leer ninguna otra fila.
+ */
 export default function Aprobar() {
   const [calData, setCalData] = useState(null);
   const [approvals, setApprovals] = useState({});
@@ -17,17 +27,18 @@ export default function Aprobar() {
   const [activeWeek, setActiveWeek] = useState("all");
 
   const params = new URLSearchParams(window.location.search);
-  const approvalId = params.get("id");
+  const token = params.get("t");
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}?id=${encodeURIComponent(approvalId)}`);
-      if (!res.ok) throw new Error(`El servidor respondió ${res.status}`);
-      const data = await res.json();
-      if (!data.calendar) {
-        setError("Enlace inválido o caducado. Pide uno nuevo a tu agencia.");
+      const { data, error: rpcError } = await supabase.rpc("get_shared_calendar", {
+        p_token: token,
+      });
+      if (rpcError) throw new Error(rpcError.message);
+      if (!data?.calendar) {
+        setError("Enlace inválido, revocado o caducado. Pide uno nuevo a tu agencia.");
         setLoading(false);
         return;
       }
@@ -37,29 +48,37 @@ export default function Aprobar() {
       setError("No se pudo cargar el calendario: " + e.message);
     }
     setLoading(false);
-  }, [approvalId]);
+  }, [token]);
 
   useEffect(() => {
-    if (!approvalId) {
-      setError("Enlace inválido: falta el identificador del calendario.");
+    if (!isSupabaseEnabled) {
+      setError("Este sitio no está configurado para mostrar calendarios compartidos.");
+      setLoading(false);
+      return;
+    }
+    if (!token) {
+      setError("Enlace inválido: le falta el identificador del calendario.");
       setLoading(false);
       return;
     }
     loadData();
-  }, [approvalId, loadData]);
+  }, [token, loadData]);
 
   const handleApproval = async (postId, estado, comentario = "") => {
     setSaving((p) => ({ ...p, [postId]: true }));
     setSaveError("");
     try {
-      const res = await fetch(`${API_BASE}?id=${encodeURIComponent(approvalId)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "approve", publicacionId: postId, estado, comentario }),
+      // El estado local sólo cambia si la base de datos confirmó la
+      // escritura: antes se marcaba como aprobado aunque fallara.
+      const { error: rpcError } = await supabase.rpc("submit_approval", {
+        p_token: token,
+        p_post_id: postId,
+        p_estado: estado,
+        p_comentario: comentario,
+        p_reviewer: "",
       });
-      // Antes no se comprobaba res.ok: si el servidor fallaba, la interfaz
-      // marcaba la publicación como aprobada sin haberla guardado.
-      if (!res.ok) throw new Error(`El servidor respondió ${res.status}`);
+      if (rpcError) throw new Error(rpcError.message);
+
       setApprovals((p) => ({
         ...p,
         [postId]: { estado, comentario, timestamp: new Date().toISOString() },
@@ -88,7 +107,7 @@ export default function Aprobar() {
           <Icon name="alert" size={36} style={{ margin: "0 auto var(--sp-3)", color: "var(--danger)" }} />
           <span style={{ color: "var(--danger)", fontSize: "var(--fs-sm)" }}>{error}</span>
         </p>
-        {approvalId && (
+        {token && (
           <button className="btn btn-secondary" style={{ marginTop: "var(--sp-4)" }} onClick={loadData}>
             Reintentar
           </button>

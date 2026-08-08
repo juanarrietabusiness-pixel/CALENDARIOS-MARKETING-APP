@@ -22,33 +22,46 @@ decide entre dos vistas según la URL.
 
 ```
 src/
-  App.jsx                 Enrutado + estado global (clientes, cliente activo)
+  App.jsx                 Enrutado (App) + puerta de acceso (Panel) + estado (Workspace)
   constants.js            Formatos, estados, planes, meses, categorías
   utils.js                Fechas, IDs, compresión de imágenes, escapado
-  api.js                  Llamadas a IA (Anthropic/Groq) y lectura de ADN en GitHub
+  api.js                  Llama a las funciones del servidor (IA y ADN)
   export.js               Genera el HTML autónomo que se envía al cliente
   index.css               Sistema de diseño: tokens y clases base
   hooks/useDialogA11y.js  Foco atrapado, Escape y bloqueo de scroll en diálogos
-  lib/supabase.js         Cliente de Supabase (inerte si no hay variables)
+  lib/
+    supabase.js           Cliente de Supabase + conversores fila ⇄ aplicación
+    auth.js               Sesión, inicio y cierre
+    db.js                 CRUD, enlace de aprobación y suscripción a Realtime
+    migrateLocal.js       Sube a la nube lo que quedara en el navegador
   components/
     Icon.jsx              Set de iconos SVG monocromos (rejilla 24, trazo 1.75)
-    ApiSetup.jsx          Diálogo de configuración de la clave de IA
     ClientModal.jsx       Alta y edición de cliente (5 pestañas)
     PlanWizard.jsx        Asistente de 7 pasos para crear un calendario
     CalendarView.jsx      Vista de lista y de rejilla, filtros, generación, envío
-  pages/Aprobar.jsx       Página pública que ve el cliente final
+  pages/
+    Login.jsx             Acceso del administrador
+    Aprobar.jsx           Página pública que ve el cliente final
 netlify/functions/
-  approval.mjs            API del flujo de aprobación (Supabase o Netlify Blobs)
-supabase/migrations/      Esquema y políticas RLS
+  admin-seed.mjs          Alta del administrador desde las variables de Netlify
+supabase/
+  functions/ai/           Proxy de Anthropic/Groq
+  functions/github-adn/   Lectura del ADN de marca con el token del servidor
+  migrations/             Esquema, políticas RLS y funciones del enlace
 ```
 
 ### Dónde viven los datos
 
-- **Ahora:** `localStorage`, clave `jads-data`. La clave de IA en `ja-apikey`.
-- **Aprobaciones:** función de Netlify → Supabase si está configurado, si no
-  Netlify Blobs.
-- **Supabase:** el esquema existe y la función lo usa, pero la aplicación
-  todavía **no** guarda clientes ni calendarios ahí. Ver `DEPLOY.md` § 6.
+Todo en Supabase. `localStorage` sólo conserva la marca de migración
+(`jads-migrado-a-supabase`) y los datos antiguos (`jads-data`) como red de
+seguridad; ya no se leen.
+
+- **clients / calendars:** RLS por `owner_id`. El navegador consulta directo.
+- **approvals:** las escribe el cliente final por RPC y la agencia las recibe
+  por Realtime. No hay botón de sincronizar.
+
+**Ninguna clave vive en el navegador.** Las de IA y la de GitHub están en los
+secretos de Supabase; las credenciales del administrador, en Netlify.
 
 ### Modelo de datos
 
@@ -146,13 +159,31 @@ las líneas superaban los 150 caracteres.
 para obtener una fecha: convierte a UTC y desplaza el día en medio mundo.
 
 **Secretos.** Sólo las variables `VITE_*` llegan al navegador. La clave
-`service_role` de Supabase jamás lleva ese prefijo.
+`service_role`, las de IA y `ADMIN_PASSWORD` jamás llevan ese prefijo.
+
+Si alguna vez vuelves a ver `api.anthropic.com`, `api.groq.com` o
+`api.github.com` en el `connect-src` de `netlify.toml`, es la señal de que
+una clave ha vuelto al front: esas llamadas son del servidor.
 
 ## Trampas conocidas
 
-- `App.jsx` separa el enrutado (`App`) del estado (`Workspace`) a propósito:
-  llamar hooks después de un `return` condicional rompe la regla de los hooks,
-  y oxlint lo marca como error.
+- `App.jsx` separa el enrutado (`App`), la puerta de acceso (`Panel`) y el
+  estado (`Workspace`) a propósito: llamar hooks después de un `return`
+  condicional rompe la regla de los hooks, y oxlint lo marca como error.
+- **`isSupabaseEnabled` se resuelve en tiempo de compilación.** Sin las
+  variables `VITE_*` en el build, Vite lo constant-folda a `false` y rollup
+  elimina el panel entero del bundle (127 kB en vez de 380 kB): el sitio sólo
+  muestra el aviso de configuración. Para verificar el bundle hay que
+  construir con esas variables definidas, o estarás analizando media
+  aplicación.
+- Las aprobaciones que llegan por Realtime se vuelcan sobre `days` **sólo en
+  el estado** (`onUpdateCalLocal`). Persistirlas dispararía una escritura por
+  respuesta, y esa escritura volvería como otro evento: un bucle. La tabla
+  `approvals` es la fuente de verdad y se relee al cargar.
+- Las funciones `security definer` de Supabase llevan `set search_path = ''`
+  y nombres cualificados. Además, este proyecto concede EXECUTE a `anon` por
+  defecto en toda función nueva de `public`, y `revoke ... from public` **no**
+  deshace una concesión por rol: hay que revocar de `anon` explícitamente.
 - El HTML exportado por `export.js` es autónomo y usa manejadores `onclick`
   en línea. Es correcto: se abre como archivo local, fuera de la CSP del sitio.
 - La CSP de `netlify.toml` necesita `'unsafe-inline'` en `style-src` porque
