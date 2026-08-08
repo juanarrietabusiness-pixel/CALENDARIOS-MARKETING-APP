@@ -5,17 +5,33 @@
    ============================================================ */
 
 :root {
-  /* ---------- Color ---------- */
+  /* ---------- Color ----------
+     Superficies por elevación, no por nombre arbitrario:
+     bg (fondo) < surface (tarjeta) < surface-2 (elemento dentro de
+     tarjeta) < surface-3 (capa flotante). */
   --bg: #050D1F;
-  --card: #0A1628;
-  --card-alt: #0d1f3a;
+  --surface: #0A1628;
+  --surface-2: #0F1E36;
+  --surface-3: #142744;
+  /* Alias heredados: hay estilos en línea que aún los usan. */
+  --card: var(--surface);
+  --card-alt: var(--surface-2);
+
   --accent: #1E90FF;
   --accent-hover: #3aa0ff;
   --accent-alt: #F5A623;
-  --border: #1E3A6B;
-  --border-light: #152a4a;
-  --text: #FFFFFF;
-  --text-muted: #64B5F6;
+
+  /* Bordes en rgba: el #1E3A6B opaco dibujaba una rejilla de líneas
+     azules que pesaba más que el contenido que enmarcaba. */
+  --border: rgba(120, 170, 235, .16);
+  --border-strong: rgba(120, 170, 235, .28);
+  --border-light: rgba(120, 170, 235, .09);
+  --border-soft: rgba(120, 170, 235, .12);
+
+  /* Blanco puro sobre casi negro (19:1) produce halo en OLED.
+     #EAF0F8 mantiene 16:1 y descansa la vista. */
+  --text: #EAF0F8;
+  --text-muted: #8FC3F7;
   --text-dim: #A0B4CC;
   /* Texto terciario accesible: 4.6:1 sobre --bg. Sustituye a los
      antiguos #444/#555/#666 que quedaban entre 2:1 y 3.1:1. */
@@ -31,7 +47,6 @@
   --accent-glow: rgba(30, 144, 255, .35);
   --alt-soft: rgba(245, 166, 35, .12);
   --alt-line: rgba(245, 166, 35, .30);
-  --border-soft: rgba(30, 58, 107, .45);
 
   /* ---------- Tipografía ----------
      Base 16px. Suelo de 11px: por debajo el texto deja de ser
@@ -65,15 +80,33 @@
   --tap: 44px;
   --tap-sm: 36px;
 
-  /* ---------- Formas y sombras ---------- */
-  --radius: 12px;
+  /* ---------- Formas ----------
+     Tres radios y una píldora. Regla: un hijo nunca supera el radio
+     del padre. Antes convivían 4, 5, 6, 7, 8, 10, 12, 14 y 20 px. */
   --radius-sm: 8px;
-  --radius-xs: 6px;
-  --shadow: 0 2px 8px rgba(0,0,0,.3);
-  --shadow-lg: 0 4px 16px rgba(0,0,0,.4);
+  --radius: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+  /* Alias heredado */
+  --radius-xs: var(--radius-sm);
+
+  /* ---------- Elevación ----------
+     Tres niveles con destino asignado:
+       0 · superficie plana, sólo borde (filas, campos)
+       1 · tarjeta que se despega del fondo
+       2 · capa flotante (menús, diálogos, panel lateral) */
+  --elev-1: 0 1px 2px rgba(0,0,0,.28), 0 4px 12px rgba(0,0,0,.22);
+  --elev-2: 0 8px 24px rgba(0,0,0,.42), 0 2px 6px rgba(0,0,0,.3);
+  /* Alias heredados */
+  --shadow: var(--elev-1);
+  --shadow-lg: var(--elev-2);
 
   /* ---------- Layout ---------- */
   --header-h: 60px;
+  --sidebar-w: 264px;
+  /* Ancho de lectura cómodo: a 1960px las líneas pasaban de 150
+     caracteres, muy por encima del rango legible de 45-75. */
+  --content-max: 1180px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
@@ -227,7 +260,18 @@ input[type="radio"] {
   min-height: var(--tap);
 }
 .btn:active { transform: scale(.97); }
-.btn:disabled { opacity: .5; cursor: not-allowed; }
+/* Un botón deshabilitado con su gradiente al 50% seguía siendo el
+   elemento más llamativo de la pantalla. Al deshabilitarse pierde el
+   relleno y pasa a leerse como inactivo. */
+.btn:disabled {
+  cursor: not-allowed;
+  background: var(--surface-2) !important;
+  color: var(--text-faint) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: none !important;
+  opacity: 1;
+}
+.btn:disabled:active { transform: none; }
 
 .btn-primary {
   background: linear-gradient(135deg, #1B3A6B, var(--accent));
@@ -368,18 +412,227 @@ input[type="radio"] {
 .btn-dashed:hover { border-color: var(--accent); color: var(--text-muted); background: var(--accent-soft); }
 
 /* ============================================================
+   Armazón de la aplicación
+
+   Móvil: una columna, lista de clientes en cajón modal.
+   ≥1024px: barra lateral permanente + columna de contenido con
+   ancho máximo. Antes la misma columna se estiraba hasta 1960px.
+   ============================================================ */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.app-body { display: flex; flex: 1; min-height: 0; }
+
+/* Barra lateral permanente: sólo a partir de 1024px */
+.app-sidebar { display: none; }
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  padding: var(--sp-3);
+  padding-left: calc(var(--sp-3) + var(--safe-left));
+  padding-right: calc(var(--sp-3) + var(--safe-right));
+  padding-bottom: calc(var(--sp-8) + var(--safe-bottom));
+}
+
+.app-content { max-width: var(--content-max); margin: 0 auto; }
+
+@media (min-width: 1024px) {
+  .app-sidebar {
+    display: flex;
+    flex-direction: column;
+    width: var(--sidebar-w);
+    flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: var(--sp-4) var(--sp-3);
+    gap: var(--sp-4);
+    position: sticky;
+    top: calc(var(--header-h) + var(--safe-top));
+    height: calc(100dvh - var(--header-h) - var(--safe-top));
+    overflow-y: auto;
+  }
+  .app-main { padding: var(--sp-5) var(--sp-6); }
+  /* El botón de menú deja de hacer falta cuando la lista está fija */
+  .menu-toggle { display: none; }
+}
+
+/* ============================================================
+   Encabezado de página
+   Sustituye a los cuatro bloques apilados (cabecera, tarjeta de
+   cliente, pestaña de calendario y banner de campaña) que repetían
+   el nombre del cliente dos veces y el del mes tres.
+   ============================================================ */
+
+.page-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-bottom: var(--sp-4);
+  margin-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--border);
+}
+/* En móvil el bloque de identidad y las acciones se apilan: en una
+   sola fila los botones dejaban al nombre del cliente 90px y se leía
+   «Feri…». */
+.page-header-top {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-3);
+}
+.page-header-actions { display: flex; gap: var(--sp-2); }
+.page-header-actions > .btn { flex: 1; }
+
+@media (min-width: 600px) {
+  .page-header-top {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+  .page-header-actions { flex-shrink: 0; }
+  .page-header-actions > .btn { flex: 0 0 auto; }
+}
+.page-title {
+  font-size: var(--fs-xl);
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -.01em;
+}
+.page-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  margin-top: var(--sp-1);
+}
+.page-meta-sep { color: var(--text-faint); }
+
+@media (min-width: 768px) {
+  .page-title { font-size: var(--fs-2xl); }
+}
+
+/* Selector de calendario: fila desplazable de píldoras */
+.cal-tabs {
+  display: flex;
+  gap: var(--sp-2);
+  overflow-x: auto;
+  padding-bottom: var(--sp-1);
+  scrollbar-width: thin;
+}
+.cal-tab {
+  flex-shrink: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  min-height: var(--tap-sm);
+  transition: background .18s, color .18s, border-color .18s;
+}
+.cal-tab:hover { border-color: var(--border-strong); color: var(--text); }
+.cal-tab[aria-current="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ============================================================
+   Barra de herramientas
+   Grupos separados por función en lugar de siete botones iguales.
+   ============================================================ */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-4);
+}
+.toolbar-spacer { flex: 1; min-width: 0; }
+
+/* Menú de desbordamiento */
+.menu-wrap { position: relative; }
+.menu-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--sp-2));
+  z-index: 60;
+  min-width: 216px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--elev-2);
+  padding: var(--sp-1);
+  animation: popIn .14s ease-out;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-xs);
+  text-align: left;
+  cursor: pointer;
+  min-height: var(--tap);
+  transition: background .15s;
+}
+.menu-item:hover { background: var(--surface-2); }
+.menu-item[data-danger="true"] { color: var(--danger); }
+.menu-sep { height: 1px; background: var(--border); margin: var(--sp-1) 0; }
+
+/* ============================================================
+   Tira de estadísticas
+   Antes: cuatro cajas de 490×110px con bordes de cuatro colores
+   distintos para mostrar cuatro números de una o dos cifras.
+   ============================================================ */
+
+.stat-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: var(--sp-4);
+}
+.stat-item { display: flex; align-items: baseline; gap: var(--sp-2); }
+.stat-num { font-size: var(--fs-lg); font-weight: 800; line-height: 1; }
+.stat-name { font-size: var(--fs-2xs); color: var(--text-dim); }
+.stat-divider { width: 1px; height: 20px; background: var(--border); }
+.stat-progress { flex: 1; min-width: 140px; display: flex; align-items: center; gap: var(--sp-3); }
+
+/* ============================================================
    Contenedores
    ============================================================ */
 
 .card {
-  background: var(--card);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-  box-shadow: var(--shadow);
-  transition: border-color .2s, box-shadow .2s;
+  transition: border-color .2s, background .2s;
 }
-.card:hover { border-color: var(--accent-line); box-shadow: var(--shadow-lg); }
+.card:hover { border-color: var(--border-strong); }
 
 .badge {
   font-size: var(--fs-3xs);
@@ -427,9 +680,10 @@ input[type="radio"] {
   padding: 0;
 }
 .sheet {
-  background: var(--card);
-  border-radius: 20px 20px 0 0;
-  border-top: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  border-top: 1px solid var(--border-strong);
+  box-shadow: var(--elev-2);
   width: 100%;
   max-width: 600px;
   max-height: 92vh;
@@ -465,9 +719,10 @@ input[type="radio"] {
 
 /* Diálogo centrado */
 .dialog {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-2);
   padding: var(--sp-5);
   width: 100%;
   max-width: 440px;
@@ -483,15 +738,51 @@ input[type="radio"] {
   bottom: 0;
   width: 440px;
   max-width: 100%;
-  background: var(--card);
-  border-left: 1px solid var(--border);
+  background: var(--surface);
+  border-left: 1px solid var(--border-strong);
   z-index: 250;
   display: flex;
   flex-direction: column;
   padding-bottom: var(--safe-bottom);
   animation: slideIn .3s cubic-bezier(.22,.61,.36,1);
-  box-shadow: -4px 0 24px rgba(0,0,0,.5);
+  box-shadow: var(--elev-2);
 }
+
+/* Elemento de la lista de clientes (cajón móvil y barra fija) */
+.client-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  text-align: left;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  min-height: var(--tap);
+  transition: background .16s, border-color .16s;
+}
+.client-item:hover { background: var(--surface-2); }
+.client-item[aria-current="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+.client-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-3);
+  color: var(--text-muted);
+  overflow: hidden;
+}
+.client-avatar img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes popIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: scale(1); } }
@@ -727,38 +1018,13 @@ input[type="radio"] {
   transition: width .4s ease;
 }
 
-/* Tarjetas de estadística */
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--sp-2);
-  margin-bottom: var(--sp-3);
-}
-@media (min-width: 480px) {
-  .stat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}
-.stat-card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: var(--sp-2) var(--sp-3);
-  text-align: center;
-}
-.stat-value { font-size: var(--fs-lg); font-weight: 900; line-height: 1.15; }
-.stat-label { font-size: var(--fs-3xs); color: var(--text-dim); margin-top: 2px; }
-@media (min-width: 480px) {
-  .stat-card { padding: var(--sp-3); }
-  .stat-value { font-size: var(--fs-xl); }
-  .stat-label { font-size: var(--fs-2xs); }
-}
-
 /* Panel de filtros plegable: en móvil ocupaba cuatro filas de chips
    antes de que se viera la primera publicación. */
 .filters-panel {
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--card);
-  margin-bottom: var(--sp-3);
+  border-radius: var(--radius);
+  background: var(--surface);
+  margin-bottom: var(--sp-4);
 }
 .filters-summary {
   display: flex;
@@ -799,8 +1065,15 @@ input[type="radio"] {
 .segmented-btn {
   flex: 1 1 0;
   min-width: 64px;
-  padding: var(--sp-2) var(--sp-1);
-  border-radius: var(--radius-xs);
+  /* Sin display:flex el icono se apilaba encima del texto y cada
+     botón tomaba un ancho distinto. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  white-space: nowrap;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
   border: none;
   cursor: pointer;
   background: transparent;
@@ -860,6 +1133,87 @@ input[type="radio"] {
 @media (min-width: 400px) {
   .review-actions { flex-direction: row; }
   .review-actions > .btn { flex: 1; width: auto; }
+}
+
+/* ============================================================
+   Fila de día (vista de lista)
+
+   En móvil se apila. A partir de 900px las publicaciones del día se
+   mueven a la derecha: antes la fila medía 1960px con un chip de fecha
+   y dos líneas de texto, y había que abrir cada día para ver qué
+   contenía teniendo 1700px libres al lado.
+   ============================================================ */
+
+/* Móvil: rejilla de dos columnas (fecha | info) con los chips en una
+   segunda fila a todo el ancho. En una sola fila los chips le robaban
+   el espacio al título y quedaba «P» / «A.». */
+.day-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "date info chevron"
+    "chips chips chips";
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  min-height: 60px;
+  padding: var(--sp-3);
+}
+.day-date { grid-area: date; }
+.day-info { grid-area: info; }
+.day-chips { grid-area: chips; }
+.day-row > svg { grid-area: chevron; }
+.day-date {
+  border-radius: var(--radius-sm);
+  padding: var(--sp-1) var(--sp-2);
+  text-align: center;
+  flex-shrink: 0;
+  min-width: 46px;
+  line-height: 1.15;
+}
+.day-date-dow { display: block; font-size: var(--fs-3xs); font-weight: 700; opacity: .85; }
+.day-date-num { display: block; font-size: var(--fs-md); font-weight: 800; }
+.day-info { min-width: 0; flex: 1; }
+.day-title {
+  display: block;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.day-concept {
+  display: block;
+  font-size: var(--fs-2xs);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.day-chips {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.day-chips .badge { max-width: 100%; overflow: hidden; }
+.day-empty { font-size: var(--fs-2xs); color: var(--text-faint); }
+
+/* A partir de 900px todo cabe en una fila y los chips se alinean a la
+   derecha, llenando el hueco que antes dejaba la fila vacía. */
+@media (min-width: 900px) {
+  .day-row {
+    grid-template-columns: auto minmax(140px, 0.9fr) minmax(0, 1.6fr) auto;
+    grid-template-areas: "date info chips chevron";
+  }
+  .day-chips { justify-content: flex-end; flex-wrap: nowrap; overflow: hidden; }
+  .day-chips .badge { max-width: 340px; }
 }
 
 /* Elemento de lista pulsable (día, post, cliente) */

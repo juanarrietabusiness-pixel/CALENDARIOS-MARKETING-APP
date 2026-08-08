@@ -2,11 +2,22 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Juancito Ads — Calendarios de Marketing</title>
     <meta name="description" content="Planifica, genera y gestiona calendarios de contenido para redes sociales con IA." />
     <meta name="theme-color" content="#050D1F" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- Los iconos usan %BASE_URL% porque el sitio se publica también en
+         GitHub Pages bajo un subdirectorio; una ruta absoluta se rompería. -->
+    <link rel="icon" type="image/png" sizes="32x32" href="%BASE_URL%favicon-32.png" />
+    <link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Juancito Ads — Calendarios de Marketing" />
+    <meta property="og:description" content="Planifica, genera y gestiona calendarios de contenido para redes sociales con IA." />
+    <meta property="og:image" content="%BASE_URL%logo.png" />
+    <meta name="twitter:card" content="summary" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />

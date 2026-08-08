@@ -1,6 +1,8 @@
 import { useId, useState } from "react";
 import { lsGet, lsSet } from "../utils";
 import { useDialogA11y } from "../hooks/useDialogA11y";
+import Icon from "./Icon";
+import logoMark from "../assets/logo-mark.png";
 
 export default function ApiSetup({ onDone, onClose }) {
   const [key, setKey] = useState(lsGet("ja-apikey") || "");
@@ -32,24 +34,17 @@ export default function ApiSetup({ onDone, onClose }) {
     <div className="overlay">
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={`${inputId}-title`} className="dialog">
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button className="btn-icon" onClick={onClose} aria-label="Cerrar configuración de IA">✕</button>
+          <button className="btn-icon" onClick={onClose} aria-label="Cerrar configuración de IA"><Icon name="close" /></button>
         </div>
 
         <div style={{ textAlign: "center", marginBottom: "var(--sp-5)" }}>
-          <span
-            aria-hidden="true"
-            style={{
-              background: "linear-gradient(135deg,#1B3A6B,var(--accent))",
-              display: "inline-block",
-              padding: "var(--sp-2) var(--sp-3)",
-              borderRadius: 10,
-              fontWeight: 900,
-              fontSize: "var(--fs-lg)",
-              marginBottom: "var(--sp-3)",
-            }}
-          >
-            JA
-          </span>
+          <img
+            src={logoMark}
+            alt=""
+            width={56}
+            height={56}
+            style={{ width: 56, height: 56, objectFit: "contain", margin: "0 auto var(--sp-3)" }}
+          />
           <h2 id={`${inputId}-title`} style={{ fontSize: "var(--fs-lg)", marginBottom: "var(--sp-2)" }}>Configurar IA</h2>
           <p style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)" }}>
             Introduce tu clave de <strong>Groq</strong> o <strong>Anthropic</strong>. Se detecta
