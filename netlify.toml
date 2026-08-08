@@ -3,7 +3,9 @@
   publish = "dist"
 
 [build.environment]
-  NODE_VERSION = "20"
+  # Node 22: la 20 no trae WebSocket nativo, y varias librerías modernas
+  # (entre ellas el cliente de Supabase) fallan al arrancar sin él.
+  NODE_VERSION = "22"
   NPM_FLAGS = "--prefer-offline"
 
 [dev]

@@ -1,4 +1,3 @@
-import { createClient } from "@supabase/supabase-js";
 import { timingSafeEqual } from "node:crypto";
 
 // ------------------------------------------------------------
@@ -16,9 +15,15 @@ import { timingSafeEqual } from "node:crypto";
 // Se protege con ADMIN_SEED_TOKEN. Sin esa variable la función se niega
 // a ejecutarse: un endpoint que crea administradores no puede quedar
 // abierto por un despiste de configuración.
+//
+// Se habla con la API de Auth por HTTP en vez de usar @supabase/supabase-js:
+// el cliente arrastra el módulo de Realtime, que exige un WebSocket nativo
+// y revienta al construirse en Node 20 («native WebSocket not found»)
+// aunque esta función no suscriba nada. Tres peticiones sueltas no
+// justifican una dependencia que puede caerse por el runtime de turno.
 // ------------------------------------------------------------
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_URL = (process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
@@ -37,6 +42,28 @@ function tokenMatches(received) {
   const b = Buffer.from(SEED_TOKEN);
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
+}
+
+/** La API de Auth pide la clave de servicio en las dos cabeceras. */
+function authHeaders() {
+  return {
+    "Content-Type": "application/json",
+    apikey: SERVICE_KEY,
+    Authorization: `Bearer ${SERVICE_KEY}`,
+  };
+}
+
+async function authFetch(path, options = {}) {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/admin${path}`, {
+    ...options,
+    headers: authHeaders(),
+  });
+  const cuerpo = await res.json().catch(() => null);
+  if (!res.ok) {
+    const detalle = cuerpo?.msg || cuerpo?.error_description || cuerpo?.message || res.status;
+    throw new Error(`Auth respondió ${res.status}: ${detalle}`);
+  }
+  return cuerpo;
 }
 
 export default async (req) => {
@@ -60,43 +87,33 @@ export default async (req) => {
     return json({ error: "ADMIN_PASSWORD debe tener al menos 12 caracteres." }, 400);
   }
 
-  const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
   try {
     const email = ADMIN_EMAIL.trim().toLowerCase();
 
-    const { data: list, error: listErr } = await supabase.auth.admin.listUsers({
-      page: 1,
-      perPage: 200,
-    });
-    if (listErr) throw listErr;
+    const lista = await authFetch("/users?page=1&per_page=200");
+    const existente = (lista?.users ?? []).find(
+      (u) => (u.email || "").toLowerCase() === email
+    );
 
-    const existing = list?.users?.find((u) => (u.email || "").toLowerCase() === email);
-
-    if (existing) {
-      const { error } = await supabase.auth.admin.updateUserById(existing.id, {
-        password: ADMIN_PASSWORD,
-        email_confirm: true,
+    if (existente) {
+      await authFetch(`/users/${existente.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ password: ADMIN_PASSWORD, email_confirm: true }),
       });
-      if (error) throw error;
       return json({ ok: true, creado: false, email, mensaje: "Contraseña actualizada." });
     }
 
-    const { error } = await supabase.auth.admin.createUser({
-      email,
-      password: ADMIN_PASSWORD,
-      email_confirm: true,
+    await authFetch("/users", {
+      method: "POST",
+      body: JSON.stringify({ email, password: ADMIN_PASSWORD, email_confirm: true }),
     });
-    if (error) throw error;
 
     return json({ ok: true, creado: true, email, mensaje: "Administrador creado." });
   } catch (e) {
     // El mensaje de Supabase puede describir la configuración del
-    // proyecto: se registra, no se devuelve.
+    // proyecto: se registra entero, y al cliente sólo le llega el motivo.
     console.error("admin-seed:", e);
-    return json({ error: "No se pudo crear o actualizar el administrador." }, 500);
+    return json({ error: "No se pudo crear o actualizar el administrador.", detalle: e.message }, 500);
   }
 };
 
