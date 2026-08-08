@@ -102,6 +102,27 @@ toman su color sin variantes.
 - El icono de cada formato de publicación está en `FORMATS[x].icon`
   (constants.js), y `FORMAT_ICONS` mapea formato → nombre de icono.
 
+**Marca.** El logo original (2048×2048, 1,3 MB) está fuera del repositorio;
+lo que se versiona son los derivados optimizados:
+
+| Archivo | Qué es | Dónde se usa |
+|---|---|---|
+| `src/assets/logo-mark.png` | Monograma, 192px, fondo transparente | Cabecera, diálogo de IA, pie de la página de aprobación |
+| `public/logo.png` | Lockup completo con «JUANCITO», 512px | `og:image` |
+| `public/favicon-32.png` | Sólo las letras «JA» sobre placa blanca | Pestaña del navegador |
+| `public/apple-touch-icon.png` | Igual, 180px a sangre | Pantalla de inicio en iOS |
+
+Dos decisiones a respetar si se regeneran:
+
+- **El favicon lleva sólo las letras, no el monograma completo.** El megáfono
+  y la constelación son ilegibles por debajo de 32px, y el azul de marca no
+  contrasta contra el fondo oscuro del navegador. La placa blanca resuelve
+  ambas cosas y funciona en tema claro y oscuro.
+- **Las imágenes de la interfaz se importan** (`import logoMark from
+  "./assets/logo-mark.png"`), no se referencian con ruta absoluta: el sitio
+  también se publica en GitHub Pages bajo un subdirectorio y `/logo.png` se
+  rompería. En `index.html` se usa `%BASE_URL%` por el mismo motivo.
+
 **Layout.** El armazón es `.app-shell` > `.app-body` > `.app-sidebar` +
 `.app-main` > `.app-content`. La barra lateral aparece a partir de 1024px;
 por debajo, la lista de clientes es un cajón modal (`ClientDrawer`).

@@ -185,7 +185,42 @@ en la propia fila, a la derecha.
 
 ---
 
-### 🟢 D-11 · Radios inconsistentes
+### 🟠 D-11 · El logo de la marca no estaba en ninguna parte
+
+`public/logo.png` se subió al repositorio pero no se usaba: la aplicación
+mostraba en su lugar un cuadrado azul con las letras «JA» puestas a mano con
+un degradado CSS. El favicon seguía siendo el rayo morado de la plantilla de
+Vite, sin relación con la agencia.
+
+Además el archivo pesaba **1,3 MB**: un PNG de 2048×2048 con un 18 % de
+margen transparente y ruido de alfa (valores de 1 a 12) por todo el lienzo,
+que impedía recortarlo automáticamente. Servido tal cual, era ocho veces el
+peso de todo el JavaScript de la aplicación.
+
+**Corregido.** Se recorta el margen, se limpia el ruido de alfa y se generan
+cuatro derivados con paleta de 256 colores (error medio de 1,1/255, es decir
+imperceptible):
+
+| Archivo | Tamaño | Peso |
+|---|---|---|
+| `public/logo.png` (lockup completo) | 512×576 | 33 KB |
+| `src/assets/logo-mark.png` (monograma) | 192×192 | 7 KB |
+| `public/favicon-32.png` | 32×32 | 0,8 KB |
+| `public/apple-touch-icon.png` | 180×180 | 3,5 KB |
+| **Total** | | **45 KB** (−96 %) |
+
+**Un hallazgo de diseño:** el logo **no reduce bien a tamaño de favicon**.
+El monograma completo (megáfono + constelación + dos letras entrelazadas) se
+convierte en una mancha por debajo de 32px, y el azul de marca no contrasta
+contra el fondo oscuro del navegador. La solución aplicada es la estándar
+para logos complejos: el favicon usa **sólo las letras «JA» sobre una placa
+blanca redondeada**, que se lee a 16px y funciona igual en tema claro y
+oscuro. El monograma completo se reserva para 28px en adelante.
+
+También se eliminan `src/assets/hero.png`, `react.svg` y `vite.svg`, restos
+de la plantilla de Vite que nadie referenciaba.
+
+### 🟢 D-12 · Radios inconsistentes
 
 Conviven 4, 5, 6, 7, 8, 10, 12, 14, 20 px de radio, a menudo en elementos
 anidados donde el hijo tiene más radio que el padre.

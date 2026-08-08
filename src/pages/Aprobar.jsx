@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { FORMATS, FORMAT_ICONS } from "../constants";
 import Icon from "../components/Icon";
+import logoMark from "../assets/logo-mark.png";
 
 const API_BASE = "/api/approval";
 
@@ -241,7 +242,8 @@ export default function Aprobar() {
         )}
       </div>
 
-      <footer style={{ textAlign: "center", padding: "var(--sp-6)", color: "var(--text-muted)", fontSize: "var(--fs-2xs)", borderTop: "1px solid var(--border)", marginTop: "var(--sp-6)" }}>
+      <footer style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-2)", padding: "var(--sp-6)", color: "var(--text-dim)", fontSize: "var(--fs-2xs)", borderTop: "1px solid var(--border)", marginTop: "var(--sp-6)" }}>
+        <img src={logoMark} alt="" width={36} height={36} style={{ width: 36, height: 36, objectFit: "contain", opacity: .9 }} />
         Juancito Ads · Calendario de contenido
       </footer>
     </div>

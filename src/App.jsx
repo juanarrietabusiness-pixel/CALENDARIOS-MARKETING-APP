@@ -3,6 +3,9 @@ import { MONTHS } from "./constants";
 import { uid, lsGet, lsSet } from "./utils";
 import { useDialogA11y } from "./hooks/useDialogA11y";
 import Icon from "./components/Icon";
+// Importado (no ruta absoluta) para que Vite le ponga hash y respete la
+// base del despliegue: el sitio también se publica bajo un subdirectorio.
+import logoMark from "./assets/logo-mark.png";
 import ApiSetup from "./components/ApiSetup";
 import ClientModal from "./components/ClientModal";
 import PlanWizard from "./components/PlanWizard";
@@ -365,21 +368,13 @@ function Workspace() {
           >
             <Icon name="menu" />
           </button>
-          <span
-            aria-hidden="true"
-            style={{
-              background: "linear-gradient(135deg,#1B3A6B,var(--accent))",
-              padding: "6px 9px",
-              borderRadius: "var(--radius-sm)",
-              fontWeight: 800,
-              fontSize: "var(--fs-2xs)",
-              letterSpacing: ".02em",
-              flexShrink: 0,
-              color: "#fff",
-            }}
-          >
-            JA
-          </span>
+          <img
+            src={logoMark}
+            alt=""
+            width={32}
+            height={32}
+            style={{ width: 32, height: 32, objectFit: "contain", flexShrink: 0 }}
+          />
           <span style={{ fontSize: "var(--fs-sm)", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             Juancito Ads
           </span>
