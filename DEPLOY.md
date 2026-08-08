@@ -53,10 +53,21 @@ sigas**: cualquiera con la clave anónima podría leer todos los clientes.
 
 ### 1.1 Cerrar el registro público
 
-*Authentication → Sign In / Providers → Email* y desactiva
-**«Allow new users to sign up»**. La única cuenta debe ser la de la agencia;
-si no, cualquiera podría registrarse (aunque RLS le mostraría un panel
-vacío, no hay motivo para permitirlo).
+*Authentication → Sign In / Providers → Email*. Hay **dos interruptores** y
+se parecen mucho:
+
+| Interruptor | Debe quedar |
+|---|---|
+| **Enable Email provider** | **encendido** — apagarlo bloquea también el acceso |
+| **Allow new users to sign up** | **apagado** — impide crear cuentas nuevas |
+
+Apagar el primero por error deja el login devolviendo
+`422: Email logins are disabled`, y el usuario administrador no puede entrar
+aunque exista.
+
+La única cuenta debe ser la de la agencia; si no, cualquiera podría
+registrarse (aunque RLS le mostraría un panel vacío, no hay motivo para
+permitirlo).
 
 ### 1.2 Secretos de las Edge Functions
 

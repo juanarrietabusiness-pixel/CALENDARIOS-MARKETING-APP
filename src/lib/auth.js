@@ -41,11 +41,23 @@ export function useSession() {
   return { session, loading };
 }
 
-/** Traduce los mensajes de Supabase, que llegan siempre en inglés. */
+/**
+ * Traduce los mensajes de Supabase, que llegan siempre en inglés.
+ *
+ * El caso desconocido arrastra el mensaje original en vez de tragárselo:
+ * un «No se pudo iniciar sesión» a secas obligó a ir a buscar el registro
+ * del servidor para descubrir que el proveedor de correo estaba apagado.
+ * Es un panel de una sola persona, no hay a quién ocultarle el detalle.
+ */
 function translateAuthError(message = "") {
   const m = message.toLowerCase();
   if (m.includes("invalid login credentials")) {
     return "Usuario o contraseña incorrectos.";
+  }
+  if (m.includes("email logins are disabled") || m.includes("email_provider_disabled")) {
+    return "El acceso por correo está desactivado en Supabase. Actívalo en "
+      + "Authentication → Sign In / Providers → Email («Enable Email provider» "
+      + "encendido, «Allow new users to sign up» apagado).";
   }
   if (m.includes("email not confirmed")) {
     return "La cuenta existe pero no está confirmada. Vuelve a lanzar el alta del administrador.";
@@ -56,7 +68,7 @@ function translateAuthError(message = "") {
   if (m.includes("failed to fetch") || m.includes("network")) {
     return "No hay conexión con el servidor. Revisa tu red.";
   }
-  return "No se pudo iniciar sesión. Inténtalo de nuevo.";
+  return `No se pudo iniciar sesión (${message}).`;
 }
 
 export async function signIn(email, password) {
