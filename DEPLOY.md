@@ -78,23 +78,54 @@ barato para generar en lote. Para textos más cuidados en español, ponlo a
 
 ## 2. Netlify
 
-*Add new site → Import an existing project → GitHub*. La configuración de
-build ya viene en `netlify.toml`: comando `npm run build`, carpeta `dist`,
-funciones en `netlify/functions`.
+El sitio ya está creado:
 
-### 2.1 Variables de entorno
+| | |
+|---|---|
+| Proyecto | **calendarioapp-juancito** |
+| URL | `https://calendarioapp-juancito.netlify.app` |
+| Site ID | `f2cf94be-9970-45a4-95f3-2a4dd99f3e9b` |
+| Panel | https://app.netlify.com/projects/calendarioapp-juancito |
 
-*Site configuration → Environment variables*:
+`calendarioapp` a secas ya estaba ocupado: los subdominios de Netlify son
+únicos en toda la plataforma. Con un dominio propio el subdominio deja de
+verse.
 
-| Variable | Valor | Ámbito |
-|---|---|---|
-| `VITE_SUPABASE_URL` | `https://lwkepnrprcyabyhhorrc.supabase.co` | **Builds** |
-| `VITE_SUPABASE_ANON_KEY` | clave `anon` / publicable | **Builds** |
-| `SUPABASE_URL` | la misma URL | Functions |
-| `SUPABASE_SERVICE_ROLE_KEY` | clave `service_role` | Functions |
-| `ADMIN_EMAIL` | tu correo de acceso | Functions |
-| `ADMIN_PASSWORD` | tu contraseña (mínimo 12 caracteres) | Functions |
-| `ADMIN_SEED_TOKEN` | `openssl rand -hex 32` | Functions |
+> **Ojo:** el sitio `juancitoads` de la misma cuenta es otra cosa — la web
+> pública de la agencia (repositorio `PAGINA-JUANCITO-ADS`, en Astro). No lo
+> toques.
+
+### 2.1 Conectar el repositorio
+
+Esto hay que hacerlo desde la interfaz: requiere autorizar la aplicación de
+GitHub, y no se puede automatizar desde fuera.
+
+*Project configuration → Build & deploy → Continuous deployment → Link
+repository* → GitHub → `juanarrietabusiness-pixel/CALENDARIOS-MARKETING-APP`,
+rama de producción `main`.
+
+No hay que rellenar el comando ni la carpeta: los toma de `netlify.toml`
+(`npm run build`, `dist`, funciones en `netlify/functions`).
+
+### 2.2 Variables de entorno
+
+*Site configuration → Environment variables*. Ya están creadas; las dos
+públicas de Supabase con su valor real y el resto con un marcador
+`PENDIENTE-…` que hay que sustituir:
+
+| Variable | Valor | Ámbito | Estado |
+|---|---|---|---|
+| `VITE_SUPABASE_URL` | `https://lwkepnrprcyabyhhorrc.supabase.co` | **Builds** | ✅ puesto |
+| `VITE_SUPABASE_ANON_KEY` | clave `anon` / publicable | **Builds** | ✅ puesto |
+| `SUPABASE_URL` | la misma URL | Functions | ✅ puesto |
+| `SUPABASE_SERVICE_ROLE_KEY` | clave `service_role` | Functions | ⬜ pegar |
+| `ADMIN_EMAIL` | tu correo de acceso | Functions | ⬜ pegar |
+| `ADMIN_PASSWORD` | tu contraseña (mínimo 12 caracteres) | Functions | ⬜ pegar |
+| `ADMIN_SEED_TOKEN` | `openssl rand -hex 32` | Functions | ⬜ pegar |
+
+`SUPABASE_SERVICE_ROLE_KEY` y `ADMIN_PASSWORD` están marcadas como secretas:
+se pueden escribir pero no volver a leer, y Netlify aborta el build si su
+valor apareciera en los archivos publicados.
 
 > ⚠️ **Las dos `VITE_` tienen que estar disponibles en el build.** Si faltan,
 > la aplicación se compila **sin el panel**: el código queda como rama muerta
@@ -118,7 +149,7 @@ con ese valor.
 Una sola vez, con el sitio ya desplegado:
 
 ```bash
-curl -X POST https://TU-SITIO.netlify.app/api/admin-seed \
+curl -X POST https://calendarioapp-juancito.netlify.app/api/admin-seed \
   -H "x-seed-token: EL_VALOR_DE_ADMIN_SEED_TOKEN"
 ```
 
