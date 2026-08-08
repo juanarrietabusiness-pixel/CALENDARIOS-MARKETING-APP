@@ -1,175 +1,172 @@
 # Despliegue: Netlify + Supabase
 
-Guía para poner la aplicación en producción. Está escrita para hacerse
-conversando con Claude a través de los MCP de Netlify y Supabase, pero cada
-paso incluye también la alternativa manual.
+Guía para poner la aplicación en producción.
 
-**Estado actual del repositorio:** todo lo que sigue está ya preparado. No hay
-que escribir código para desplegar; sólo conectar cuentas y pegar variables.
+**Estado del repositorio:** el esquema, las funciones y la aplicación están
+listos. No hay que escribir código: sólo conectar cuentas y pegar claves.
 
 ---
 
-## 0. Antes de empezar
+## 0. Cómo está repartido
 
-Necesitas tres cosas:
+```
+NAVEGADOR (agencia)              SUPABASE                    NETLIFY
+──────────────────               ────────                    ───────
+Login ─────────────────────────▶ Auth
+Clientes y calendarios ────────▶ Postgres + RLS
+Aprobaciones en vivo ◀─────────  Realtime
+Generar contenido ─────────────▶ Edge Function `ai`
+Leer ADN ──────────────────────▶ Edge Function `github-adn`
+                                                             Sitio estático
+Alta del administrador ────────────────────────────────────▶ /api/admin-seed
 
-| Qué | Dónde se consigue |
-|---|---|
-| Cuenta de Netlify | netlify.com |
-| Proyecto de Supabase | supabase.com → New project |
-| Tokens de acceso para los MCP | ver paso 1 |
-
-La aplicación **funciona sin Supabase**: los datos se guardan en el navegador
-(`localStorage`). Supabase añade persistencia real, acceso desde varios
-dispositivos y aprobaciones fiables. Puedes desplegar primero en Netlify y
-conectar Supabase después.
-
----
-
-## 1. Conectar los MCP
-
-El repositorio incluye `.mcp.json` con los dos servidores ya declarados.
-Sólo hay que exportar los tokens antes de abrir Claude Code:
-
-```bash
-# Netlify → User settings → Applications → Personal access tokens
-export NETLIFY_AUTH_TOKEN="nfp_..."
-
-# Supabase → Account → Access Tokens
-export SUPABASE_ACCESS_TOKEN="sbp_..."
-
-# El "Project ref": lo ves en la URL del proyecto
-# https://supabase.com/dashboard/project/AQUI_VA_EL_REF
-export SUPABASE_PROJECT_REF="abcdefghijklmnop"
+NAVEGADOR (cliente final)
+─────────────────
+/aprobar?t=<token> ────────────▶ get_shared_calendar / submit_approval
 ```
 
-Al abrir Claude Code en el repositorio, pedirá aprobación para los servidores.
-Compruébalo con `/mcp`.
-
-> El MCP de Supabase está declarado **en modo sólo lectura** (`--read-only`).
-> Es lo correcto para el día a día: Claude puede inspeccionar el esquema y
-> consultar datos, pero no puede borrar tablas por error. Para aplicar las
-> migraciones del paso 2 usa el CLI o quita esa bandera a conciencia.
+**Por qué la IA está en Supabase y no en Netlify.** Netlify corta las
+peticiones a los 10 s (26 s en Pro, bajo petición). Un lote de 6
+publicaciones con Anthropic tarda unos 40 s, así que se cortaría siempre.
+Supabase da 150 s en el plan gratuito, y su límite de 2 s de CPU no aplica
+porque esperar al proveedor es E/S asíncrona, no cálculo.
 
 ---
 
-## 2. Crear el esquema en Supabase
+## 1. Supabase — ya está hecho
 
-La migración está en `supabase/migrations/20260101000000_init.sql`. Crea tres
-tablas (`clients`, `calendars`, `approvals`), activa RLS en todas y define una
-función `get_shared_calendar` para la página pública de aprobación.
+El proyecto **Calendario APP** (`lwkepnrprcyabyhhorrc`) tiene aplicadas las
+migraciones de `supabase/migrations/` y desplegadas las dos Edge Functions.
 
-**Con el CLI** (recomendado, deja historial de migraciones):
+Si partes de un proyecto nuevo:
 
 ```bash
-npx supabase link --project-ref "$SUPABASE_PROJECT_REF"
+npx supabase link --project-ref TU_REF
 npx supabase db push
+npx supabase functions deploy ai
+npx supabase functions deploy github-adn
 ```
 
-**Desde el panel:** copia el contenido del archivo en
-*SQL Editor → New query* y ejecútalo. Es idempotente (`if not exists`,
-`drop policy if exists`), así que se puede volver a lanzar sin romper nada.
+**Comprobación:** en *Table editor* deben verse `clients`, `calendars` y
+`approvals`, las tres con «RLS enabled». Si alguna aparece sin RLS, **no
+sigas**: cualquiera con la clave anónima podría leer todos los clientes.
 
-**Verificación:** en *Table editor* deben aparecer las tres tablas, y en
-*Authentication → Policies* cada una debe mostrar «RLS enabled».
-Si alguna aparece sin RLS, **no sigas**: cualquiera con la clave anónima
-podría leer todos los clientes.
+### 1.1 Cerrar el registro público
+
+*Authentication → Sign In / Providers → Email* y desactiva
+**«Allow new users to sign up»**. La única cuenta debe ser la de la agencia;
+si no, cualquiera podría registrarse (aunque RLS le mostraría un panel
+vacío, no hay motivo para permitirlo).
+
+### 1.2 Secretos de las Edge Functions
+
+*Project Settings → Edge Functions → Secrets*:
+
+| Secreto | Valor |
+|---|---|
+| `ANTHROPIC_API_KEY` | tu clave de Anthropic |
+| `GROQ_API_KEY` | tu clave de Groq (opcional si usas Anthropic) |
+| `AI_PROVIDER` | `anthropic` o `groq` |
+| `GITHUB_TOKEN` | token de sólo lectura para el ADN |
+| `ALLOWED_ORIGINS` | la URL final del sitio, cuando la tengas |
+
+`AI_MODEL` es opcional: por defecto `claude-haiku-4-5-20251001`, rápido y
+barato para generar en lote. Para textos más cuidados en español, ponlo a
+`claude-sonnet-5`.
 
 ---
 
-## 3. Desplegar en Netlify
+## 2. Netlify
 
-**Con el MCP**, pídele a Claude algo como:
+*Add new site → Import an existing project → GitHub*. La configuración de
+build ya viene en `netlify.toml`: comando `npm run build`, carpeta `dist`,
+funciones en `netlify/functions`.
 
-> Crea un sitio en Netlify a partir de este repositorio, con la rama `main`
-> como rama de producción, y despliégalo.
+### 2.1 Variables de entorno
 
-**Manualmente:** *Add new site → Import an existing project → GitHub* y elige
-este repositorio. La configuración de build ya viene en `netlify.toml`:
-
-- Comando: `npm run build`
-- Carpeta publicada: `dist`
-- Funciones: `netlify/functions`
-
-No hace falta tocar nada en la interfaz.
-
----
-
-## 4. Variables de entorno
-
-En *Site configuration → Environment variables* (o pidiéndoselo al MCP de
-Netlify). Los valores están en Supabase → *Project Settings → API*:
+*Site configuration → Environment variables*:
 
 | Variable | Valor | Ámbito |
 |---|---|---|
-| `VITE_SUPABASE_URL` | Project URL | Navegador |
-| `VITE_SUPABASE_ANON_KEY` | Clave `anon` / `public` | Navegador |
-| `SUPABASE_URL` | El mismo Project URL | Servidor |
-| `SUPABASE_SERVICE_ROLE_KEY` | Clave `service_role` | Servidor |
+| `VITE_SUPABASE_URL` | `https://lwkepnrprcyabyhhorrc.supabase.co` | **Builds** |
+| `VITE_SUPABASE_ANON_KEY` | clave `anon` / publicable | **Builds** |
+| `SUPABASE_URL` | la misma URL | Functions |
+| `SUPABASE_SERVICE_ROLE_KEY` | clave `service_role` | Functions |
+| `ADMIN_EMAIL` | tu correo de acceso | Functions |
+| `ADMIN_PASSWORD` | tu contraseña (mínimo 12 caracteres) | Functions |
+| `ADMIN_SEED_TOKEN` | `openssl rand -hex 32` | Functions |
 
-⚠️ **La regla que no se puede romper:** todo lo que empieza por `VITE_` se
-incrusta en el JavaScript que descarga el navegador. La clave `service_role`
-ignora RLS y da acceso total al proyecto: **nunca** debe llevar el prefijo
-`VITE_`. Si se filtra, revócala inmediatamente en Supabase.
+> ⚠️ **Las dos `VITE_` tienen que estar disponibles en el build.** Si faltan,
+> la aplicación se compila **sin el panel**: el código queda como rama muerta
+> y rollup lo elimina, y el sitio sólo muestra un aviso de configuración. Se
+> nota en el tamaño del bundle — con panel pesa unos 380 kB, sin él 127 kB.
+
+> ⚠️ **Sólo `VITE_` llega al navegador.** La `service_role`, las claves de IA
+> y `ADMIN_PASSWORD` **nunca** deben llevar ese prefijo.
 
 Tras añadirlas hay que **volver a desplegar** para que el build las recoja.
 
----
+### 2.2 Cerrar el círculo del CORS
 
-## 5. Comprobar que funciona
-
-1. Abre el sitio. Debe cargar sin errores en consola.
-2. Crea un cliente y un calendario.
-3. Pulsa **🔗 Enviar** → se genera el enlace de aprobación.
-4. Abre ese enlace en una ventana privada: debe verse el calendario y permitir
-   aprobar. Si dice «Enlace inválido o caducado», la función no está
-   guardando: revisa los registros en *Netlify → Functions → approval*.
-5. Vuelve a la aplicación y pulsa **Sincronizar**: deben aparecer las
-   respuestas.
+Con la URL definitiva del sitio, vuelve a Supabase y pon `ALLOWED_ORIGINS`
+con ese valor.
 
 ---
 
-## 6. Lo que queda pendiente (decisión del propietario)
+## 3. Crear el administrador
 
-El esquema, el cliente de Supabase (`src/lib/supabase.js`) y los conversores
-entre formatos están listos, pero **la aplicación sigue leyendo y escribiendo
-en `localStorage`**. Completar la migración requiere dos decisiones que no se
-pueden tomar sin ti:
+Una sola vez, con el sitio ya desplegado:
 
-1. **Autenticación.** ¿Cómo entran los usuarios? Supabase ofrece enlace mágico
-   por correo, contraseña, o proveedores (Google…). Sin `auth.uid()` las
-   políticas RLS del esquema no dejan escribir nada, que es justo lo que se
-   busca.
+```bash
+curl -X POST https://TU-SITIO.netlify.app/api/admin-seed \
+  -H "x-seed-token: EL_VALOR_DE_ADMIN_SEED_TOKEN"
+```
 
-2. **Qué pasa con los datos que ya existen** en el navegador de quien ya usa
-   la aplicación: importarlos al iniciar sesión por primera vez, o empezar de
-   cero.
+Respuesta esperada: `{"ok":true,"creado":true,"email":"…"}`.
 
-Cuando las tengas decididas, el trabajo restante es: añadir la pantalla de
-inicio de sesión, sustituir las llamadas a `lsGet`/`lsSet` de `App.jsx` por
-consultas a Supabase usando los conversores ya escritos, y añadir un indicador
-de sincronización. La función de aprobación ya usa Supabase cuando está
-configurada, así que esa parte no hay que tocarla.
+Es idempotente: si vuelves a lanzarlo, actualiza la contraseña al valor
+actual de `ADMIN_PASSWORD`. Sirve también para recuperar el acceso si la
+olvidas.
 
-Mientras tanto el sistema es coherente: los datos de trabajo viven en el
-navegador y se respaldan con **Exportar** (menú ☰ → Copia de seguridad).
+**Cuando termines, borra `ADMIN_SEED_TOKEN` de Netlify.** Sin esa variable
+la función se desactiva sola.
+
+> Alternativa sin curl: *Supabase → Authentication → Add user*, con
+> «Auto Confirm User» marcado.
 
 ---
 
-## Notas de seguridad conocidas
+## 4. Comprobar que funciona
 
-Ver `docs/auditoria-ux-ui.md` para el detalle. En resumen:
+1. Abre el sitio: debe pedir correo y contraseña. Si en su lugar ves un
+   aviso de configuración, faltan las variables `VITE_` en el build.
+2. Entra con tus credenciales.
+3. Crea un cliente y un calendario. Recarga: deben seguir ahí.
+4. Ábrelo en **otro navegador** con la misma cuenta: deben aparecer también.
+   Eso confirma que ya no dependes de un solo dispositivo.
+5. Genera contenido con IA. En la pestaña **Red** del inspector, la llamada
+   debe ir a `…supabase.co/functions/v1/ai` y **nunca** a `api.anthropic.com`.
+6. Pulsa **Enviar** → se genera el enlace `…/aprobar?t=…`.
+7. Abre ese enlace en una ventana privada: debe verse el calendario y dejar
+   aprobar. **Deja las dos ventanas abiertas.**
+8. Aprueba algo desde la ventana privada. El panel de la agencia debe
+   actualizarse **solo, sin recargar**. Eso es Realtime funcionando.
+9. Revoca el enlace desde el panel y recarga la ventana privada: debe decir
+   que el enlace es inválido.
 
-- **La clave de IA se guarda en el navegador** y las llamadas salen desde él.
-  Quien tenga acceso al dispositivo puede leerla. Usa claves con límite de
-  gasto. Moverlo a una función de Netlify es la solución definitiva.
-- **El token de GitHub por cliente** se guarda igual y además se incluye en el
-  JSON exportado. Usa tokens de sólo lectura.
-- **El enlace de aprobación no lleva contraseña**: quien lo tenga puede ver y
-  responder ese calendario. Es intencionado (el cliente no debe crear cuenta),
-  pero conviene saberlo antes de compartirlo por canales públicos.
-- `npm audit` reporta un aviso de severidad alta en `image-size`, dependencia
-  transitiva de `@netlify/blobs`. Afecta a analizadores de imagen ICNS/JXL/HEIF
-  que este proyecto nunca invoca. Se resolverá cuando Netlify publique la
-  actualización; forzar el arreglo degradaría `@netlify/blobs` a una versión
-  incompatible.
+---
+
+## 5. Notas de seguridad
+
+- **El enlace de aprobación no lleva contraseña.** Quien lo tenga puede ver y
+  responder ese calendario, y sólo ése. Es intencionado: el cliente no debe
+  crear cuenta. El token son 24 bytes al azar, así que no se adivina, pero
+  conviene saberlo antes de publicarlo en un canal abierto. Se puede revocar
+  en cualquier momento desde el panel.
+- **Rota las claves de IA que hayas usado antes.** Estuvieron en el navegador
+  y en el `localStorage` de cualquier equipo donde se abriera la aplicación.
+- **Los datos locales no se borran** al migrar: siguen en `localStorage` bajo
+  `jads-data` como red de seguridad. Bórralos a mano cuando compruebes que
+  todo está en la nube.
+- Las imágenes viajan en base64 dentro de `calendars.days`. Funciona, pero
+  para volumen alto lo correcto sería Supabase Storage. Queda pendiente.

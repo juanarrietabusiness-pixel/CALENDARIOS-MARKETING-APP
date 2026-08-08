@@ -15,8 +15,10 @@ redes sociales para clientes de una agencia.
   a publicación: guion, descripción y hashtags según el formato.
 - **Dos vistas**: lista por días y rejilla mensual, con arrastrar y soltar,
   filtros y banco de ideas reutilizables.
-- **Aprobación del cliente**: se genera un enlace que el cliente abre en su
-  móvil para aprobar o pedir cambios, y las respuestas vuelven a la aplicación.
+- **Aprobación del cliente**: se genera un enlace de sólo lectura que el
+  cliente abre en su móvil para aprobar o pedir cambios. Sus respuestas
+  aparecen en el panel **en vivo**, sin recargar ni sincronizar nada. El
+  enlace se puede revocar y reactivar cuando quieras.
 - **Exportación** a HTML autónomo, PDF (impresión) y copia de seguridad JSON.
 
 ## Puesta en marcha
@@ -28,11 +30,14 @@ npm run dev
 
 Abre http://localhost:5173.
 
-No hace falta configurar nada para empezar: los datos se guardan en el
-navegador. La generación con IA requiere una clave propia de
-[Groq](https://console.groq.com/keys) o
-[Anthropic](https://console.anthropic.com), que se introduce en ⚙️ dentro de la
-aplicación.
+Hace falta un proyecto de Supabase: la aplicación guarda ahí los clientes y
+los calendarios, y el acceso está detrás de un inicio de sesión. Copia
+`.env.example` a `.env` y rellena `VITE_SUPABASE_URL` y
+`VITE_SUPABASE_ANON_KEY`. Sin ellas el sitio arranca, pero sólo muestra un
+aviso de configuración.
+
+Las claves de IA no se ponen aquí ni en la aplicación: viven en los secretos
+de Supabase. Ver [DEPLOY.md](DEPLOY.md).
 
 ## Comandos
 
@@ -45,12 +50,12 @@ aplicación.
 
 ## Despliegue
 
-Ver **[DEPLOY.md](DEPLOY.md)** para el procedimiento completo con Netlify y
-Supabase, incluida la configuración de los servidores MCP.
+Ver **[DEPLOY.md](DEPLOY.md)** para el procedimiento completo.
 
-Resumen: el repositorio se conecta a Netlify y se despliega con la
-configuración de `netlify.toml` sin tocar nada. Supabase es opcional y añade
-persistencia real; su esquema está en `supabase/migrations/`.
+Resumen: el sitio y la función de alta del administrador van en Netlify; la
+base de datos, la autenticación y las funciones de IA, en Supabase. La IA está
+en Supabase porque Netlify corta las peticiones a los 10 s y generar un lote
+de publicaciones tarda unos 40 s.
 
 ## Documentación
 
@@ -64,13 +69,17 @@ persistencia real; su esquema está en `supabase/migrations/`.
 
 ## Stack
 
-React 19 · Vite 8 · Funciones de Netlify · Supabase (opcional) · sin framework
-de CSS: sistema de diseño propio en `src/index.css`.
+React 19 · Vite 8 · Supabase (Postgres, Auth, Realtime, Edge Functions) ·
+Funciones de Netlify · sin framework de CSS: sistema de diseño propio en
+`src/index.css`.
 
 ## Privacidad y claves
 
-La clave de IA y los tokens de GitHub se guardan **en el navegador de cada
-usuario**, no en un servidor. Eso significa que quien tenga acceso al
-dispositivo puede leerlos, y que los tokens de GitHub viajan dentro del archivo
-de copia de seguridad que exportes. Usa claves con límite de gasto y tokens de
-sólo lectura. El detalle y las alternativas están en la auditoría.
+**Ninguna clave llega al navegador.** Las de IA y la de GitHub están en los
+secretos de Supabase y sólo las usan las funciones del servidor; las
+credenciales del administrador, en las variables de Netlify. Lo único que se
+incrusta en el bundle es la URL del proyecto y la clave anónima de Supabase,
+que son públicas por diseño y están respaldadas por políticas RLS.
+
+El enlace que se comparte con el cliente lleva un token de 24 bytes al azar,
+sólo da acceso a ese calendario y se puede revocar en cualquier momento.
