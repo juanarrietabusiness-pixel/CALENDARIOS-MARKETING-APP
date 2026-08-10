@@ -6,6 +6,7 @@ import { buildExportHTML } from "../export";
 import { shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
+import IdeasBank from "./IdeasBank";
 
 function stripMarkdown(text) {
   if (!text) return "";
@@ -877,10 +878,6 @@ export default function CalendarView({
     onUpdateClient({ ...client, ideasBank: [...ideasBank, bankPost] });
   };
 
-  const removeFromBank = (postId) => {
-    onUpdateClient({ ...client, ideasBank: ideasBank.filter((p) => p.id !== postId) });
-  };
-
   const moveBankToCalendar = (bankPost, targetDate) => {
     const newPost = { ...bankPost, id: uid(), status: "pending" };
     delete newPost._originDate;
@@ -890,7 +887,7 @@ export default function CalendarView({
       d.date !== targetDate ? d : { ...d, posts: [...(d.posts || []), newPost] }
     );
     onUpdateCal(calId, { ...cal, days: newDays });
-    removeFromBank(bankPost.id);
+    onUpdateClient({ ...client, ideasBank: ideasBank.filter((p) => p.id !== bankPost.id) });
   };
 
   const calName = cal.name || (MONTHS[cal.month] + " " + cal.year);
@@ -1556,85 +1553,12 @@ export default function CalendarView({
 
       {/* Ideas Bank */}
       {bankOpen && (
-        <div
-          onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = "var(--accent-alt)"; }}
-          onDragLeave={(e) => { e.currentTarget.style.borderColor = "var(--alt-line)"; }}
-          onDrop={(e) => {
-            e.preventDefault();
-            e.currentTarget.style.borderColor = "var(--alt-line)";
-            try {
-              const data = JSON.parse(e.dataTransfer.getData("text/plain") || "{}");
-              if (data.postId && data.sourceDate) {
-                const sourceDay = (cal.days || []).find((d) => d.date === data.sourceDate);
-                const post = sourceDay?.posts?.find((p) => p.id === data.postId);
-                if (post) {
-                  addToBank(post, data.sourceDate);
-                  removePostFromDay(data.sourceDate, data.postId);
-                }
-              }
-            } catch { /* ignore */ }
-          }}
-          style={{
-            background: "var(--card)",
-            border: "1px solid var(--alt-line)",
-            borderRadius: "var(--radius)",
-            padding: "var(--sp-3)",
-            marginBottom: "var(--sp-3)",
-            transition: "border-color .2s",
-          }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
-            <h3 style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", fontSize: "var(--fs-xs)", fontWeight: 700, color: "var(--accent-alt)" }}>
-              <Icon name="bulb" size={18} /> Banco de ideas ({ideasBank.length})
-            </h3>
-            <button className="btn-icon" onClick={() => setBankOpen(false)} aria-label="Cerrar banco de ideas"><Icon name="close" /></button>
-          </div>
-          {ideasBank.length === 0 ? (
-            <p style={{ textAlign: "center", padding: "var(--sp-4) 0", color: "var(--text-dim)", fontSize: "var(--fs-2xs)" }}>
-              Arrastra publicaciones del calendario aquí para guardarlas y reutilizarlas otro mes.
-            </p>
-          ) : (
-            <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "var(--sp-2)", maxHeight: 240, overflowY: "auto" }}>
-              {ideasBank.map((post) => {
-                const f = FORMATS[post.format] || FORMATS.post;
-                const title = post.idea || post.descripcion?.slice(0, 40) || f.label;
-                return (
-                  <li
-                    key={post.id}
-                    draggable
-                    onDragStart={(e) => { e.dataTransfer.setData("text/plain", JSON.stringify({ bankPostId: post.id })); }}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "var(--sp-2)",
-                      padding: "var(--sp-2) var(--sp-3)",
-                      background: "var(--bg)",
-                      borderRadius: "var(--radius-sm)",
-                      border: "1px solid var(--border)",
-                      cursor: "grab",
-                    }}
-                  >
-                    <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={16} style={{ color: f.color }} />
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: "block", fontSize: "var(--fs-2xs)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {title}
-                      </span>
-                      {post.category && <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{post.category}</span>}
-                    </span>
-                    {post.publishTime && <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{post.publishTime}</span>}
-                    <button
-                      type="button"
-                      className="btn-remove"
-                      aria-label={`Quitar del banco: ${title}`}
-                      onClick={() => removeFromBank(post.id)}
-                    >
-                      <Icon name="close" size={16} />
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
+        <IdeasBank
+          client={client}
+          onUpdateClient={onUpdateClient}
+          calDays={cal.days}
+          onRemoveFromCal={removePostFromDay}
+        />
       )}
 
       {/* Grid view */}

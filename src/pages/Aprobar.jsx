@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useState } from "react";
-import { FORMATS, FORMAT_ICONS } from "../constants";
+import { FORMATS, FORMAT_ICONS, DAYS } from "../constants";
 import { supabase, isSupabaseEnabled } from "../lib/supabase";
 import Icon from "../components/Icon";
 import logoMark from "../assets/logo-mark.png";
@@ -25,6 +25,8 @@ export default function Aprobar() {
   const [commentInputs, setCommentInputs] = useState({});
   const [showComment, setShowComment] = useState({});
   const [activeWeek, setActiveWeek] = useState("all");
+  const [summaryOpen, setSummaryOpen] = useState(true);
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   const params = new URLSearchParams(window.location.search);
   const token = params.get("t");
@@ -89,6 +91,36 @@ export default function Aprobar() {
     setSaving((p) => ({ ...p, [postId]: false }));
   };
 
+  const handleBulkApprove = async () => {
+    if (!calData) return;
+    const pending = (calData.calendar.days || [])
+      .flatMap((d) => (d.posts || []).map((p) => p))
+      .filter((p) => !approvals[p.id]);
+    if (pending.length === 0) return;
+    if (!confirm(`Aprobar ${pending.length} publicaciones pendientes?`)) return;
+    setBulkSaving(true);
+    for (const post of pending) {
+      try {
+        const { error: rpcError } = await supabase.rpc("submit_approval", {
+          p_token: token,
+          p_post_id: post.id,
+          p_estado: "aprobado",
+          p_comentario: "",
+          p_reviewer: "",
+        });
+        if (!rpcError) {
+          setApprovals((p) => ({
+            ...p,
+            [post.id]: { estado: "aprobado", comentario: "", timestamp: new Date().toISOString() },
+          }));
+        }
+      } catch {
+        // continue with remaining
+      }
+    }
+    setBulkSaving(false);
+  };
+
   if (loading) {
     return (
       <div style={styles.center}>
@@ -134,6 +166,16 @@ export default function Aprobar() {
   const weeks = Object.keys(weekGroups).sort((a, b) => a - b);
   const filteredWeeks = activeWeek === "all" ? weeks : weeks.filter((w) => w === activeWeek);
 
+  const approvedCount = allPosts.filter((p) => approvals[p.id]?.estado === "aprobado").length;
+  const changesCount = allPosts.filter((p) => approvals[p.id]?.estado === "cambios").length;
+  const pendingCount = allPosts.filter((p) => !approvals[p.id]).length;
+
+  const categoryPattern = {};
+  (calendar.days || []).forEach((day) => {
+    const dow = new Date(day.date + "T12:00:00").getDay();
+    if (day.category && !categoryPattern[dow]) categoryPattern[dow] = day.category;
+  });
+
   return (
     <div style={styles.page}>
       <a className="skip-link" href="#publicaciones">Saltar a las publicaciones</a>
@@ -148,12 +190,37 @@ export default function Aprobar() {
         )}
         <h1 style={{ fontSize: "var(--fs-xl)", fontWeight: 900 }}>{client?.name || "Cliente"}</h1>
         <p style={{ fontSize: "var(--fs-sm)", color: "rgba(255,255,255,.92)", marginTop: "var(--sp-1)" }}>
-          {calendar.name || "Calendario"}{calendar.campaign ? ` · ${calendar.campaign}` : ""}
+          {calendar.name || "Calendario"}
         </p>
+        {calendar.campaign && (
+          <span style={{ display: "inline-block", marginTop: "var(--sp-2)", padding: "var(--sp-1) var(--sp-3)", background: "rgba(255,255,255,.15)", borderRadius: 20, fontSize: "var(--fs-xs)", fontWeight: 700 }}>
+            {calendar.campaign}
+          </span>
+        )}
         <p style={{ fontSize: "var(--fs-xs)", color: "rgba(255,255,255,.85)", marginTop: "var(--sp-2)" }}>
           Revisa cada publicación y marca si la apruebas o quieres cambios.
         </p>
       </header>
+
+      {/* Stats bar */}
+      <div style={styles.statsBar}>
+        <div style={styles.stat}>
+          <div style={{ ...styles.statNum, color: pc }}>{totalPosts}</div>
+          <div style={styles.statLabel}>Posts</div>
+        </div>
+        <div style={styles.stat}>
+          <div style={{ ...styles.statNum, color: "var(--success)" }}>{approvedCount}</div>
+          <div style={styles.statLabel}>Aprobados</div>
+        </div>
+        <div style={styles.stat}>
+          <div style={{ ...styles.statNum, color: "var(--danger)" }}>{changesCount}</div>
+          <div style={styles.statLabel}>Cambios</div>
+        </div>
+        <div style={styles.stat}>
+          <div style={{ ...styles.statNum, color: "var(--text-muted)" }}>{pendingCount}</div>
+          <div style={styles.statLabel}>Pendientes</div>
+        </div>
+      </div>
 
       {/* Progreso: pegajoso para que el cliente sepa siempre cuánto le queda */}
       <div style={styles.progressSection}>
@@ -172,6 +239,76 @@ export default function Aprobar() {
           <div className="progress-fill" style={{ width: `${pct}%`, background: `linear-gradient(90deg, #1B3A6B, ${pc})` }} />
         </div>
       </div>
+
+      {/* Campaign summary section */}
+      <div style={styles.campaignSection}>
+        <button
+          type="button"
+          onClick={() => setSummaryOpen(!summaryOpen)}
+          style={styles.campaignToggle}
+        >
+          <span style={{ fontWeight: 700, fontSize: "var(--fs-sm)" }}>Resumen de Campana</span>
+          <span style={{ fontSize: "var(--fs-sm)", transition: "transform .2s", transform: summaryOpen ? "rotate(180deg)" : "rotate(0)" }}>▼</span>
+        </button>
+        {summaryOpen && (
+          <div style={{ padding: "0 var(--sp-4) var(--sp-4)" }}>
+            {Object.keys(categoryPattern).length > 0 && (
+              <>
+                <h3 style={styles.sectionHeading}>Patron Semanal</h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)" }}>
+                  {Object.entries(categoryPattern)
+                    .sort(([a], [b]) => ((+a || 7) - (+b || 7)))
+                    .map(([dow, cat]) => (
+                      <div key={dow} style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)", padding: "var(--sp-1) 0" }}>
+                        <span style={{ fontSize: "var(--fs-2xs)", fontWeight: 700, color: "var(--text)", minWidth: 80 }}>{DAYS[dow]}</span>
+                        <span style={{ fontSize: "var(--fs-2xs)", color: "#FFC166", fontWeight: 600 }}>{cat}</span>
+                      </div>
+                    ))}
+                </div>
+              </>
+            )}
+            <h3 style={styles.sectionHeading}>Ideas por Semana</h3>
+            {weeks.map((wk) => {
+              const { concept, days } = weekGroups[wk];
+              const ideas = days.flatMap((d) => (d.posts || []).map((p) => p.idea).filter(Boolean));
+              return (
+                <div key={wk} style={styles.weekIdeaBlock}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-2)" }}>
+                    <span style={styles.weekBadgeSm}>Sem {wk}</span>
+                    {concept && <span style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", fontStyle: "italic" }}>{concept}</span>}
+                  </div>
+                  {ideas.length > 0 ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      {ideas.map((idea, i) => (
+                        <div key={i} style={{ fontSize: "var(--fs-xs)", color: "#C8D8E8", padding: "var(--sp-1) 0 var(--sp-1) var(--sp-3)", borderLeft: "2px solid var(--border)" }}>
+                          → {idea}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", fontStyle: "italic" }}>Sin ideas definidas</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Bulk approve */}
+      {pendingCount > 0 && (
+        <div style={{ padding: "0 var(--sp-4) var(--sp-3)" }}>
+          <button
+            type="button"
+            className="btn"
+            onClick={handleBulkApprove}
+            disabled={bulkSaving}
+            style={{ ...styles.approveBtn, width: "100%", opacity: bulkSaving ? 0.5 : 1 }}
+          >
+            {bulkSaving ? "Aprobando…" : <><Icon name="check" size={18} /> Aprobar todo ({pendingCount})</>}
+          </button>
+        </div>
+      )}
 
       {saveError && (
         <p role="alert" className="notice notice-error" style={{ margin: "0 var(--sp-4) var(--sp-3)" }}>
@@ -250,9 +387,9 @@ export default function Aprobar() {
       <div style={styles.summary} role="status" aria-live="polite">
         <h2 style={{ fontSize: "var(--fs-sm)", fontWeight: 700, marginBottom: "var(--sp-2)" }}>Resumen de revisión</h2>
         <div style={{ display: "flex", gap: "var(--sp-4)", flexWrap: "wrap", fontSize: "var(--fs-xs)" }}>
-          <span style={{ color: "var(--success)" }}>{allPosts.filter((p) => approvals[p.id]?.estado === "aprobado").length} aprobadas</span>
-          <span style={{ color: "var(--danger)" }}>{allPosts.filter((p) => approvals[p.id]?.estado === "cambios").length} con cambios</span>
-          <span style={{ color: "var(--text-muted)" }}>{allPosts.filter((p) => !approvals[p.id]).length} pendientes</span>
+          <span style={{ color: "var(--success)" }}>{approvedCount} aprobadas</span>
+          <span style={{ color: "var(--danger)" }}>{changesCount} con cambios</span>
+          <span style={{ color: "var(--text-muted)" }}>{pendingCount} pendientes</span>
         </div>
         {reviewed === totalPosts && totalPosts > 0 && (
           <p className="notice notice-ok" style={{ marginTop: "var(--sp-3)", marginBottom: 0, display: "block" }}>
@@ -276,8 +413,10 @@ function PostReview({
   const f = FORMATS[post.format] || FORMATS.post;
   const isPost = post.format === "post";
   const ids = useId();
+  const [expanded, setExpanded] = useState(false);
   const borderColor =
     approval?.estado === "aprobado" ? "#388E3C" : approval?.estado === "cambios" ? "#C62828" : "var(--border)";
+  const hasContent = post.guion || post.descripcion || post.script;
 
   return (
     <div style={{ ...styles.postCard, borderColor }}>
@@ -285,6 +424,7 @@ function PostReview({
         <span className="badge" style={{ background: f.color + "22", color: f.color, border: `1px solid ${f.color}66` }}>
           <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={14} /> {f.label}
         </span>
+        {post.publishTime && <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{post.publishTime}</span>}
         {approval && (
           <span
             className="badge"
@@ -308,19 +448,37 @@ function PostReview({
         </div>
       )}
 
-      {!isPost && post.guion && (
-        <div style={{ ...styles.contentBox, background: "#1a0a2a" }}>
-          <strong style={{ ...styles.fieldLabel, color: "#FF7BA8" }}>Guion</strong>
-          <div style={{ whiteSpace: "pre-wrap" }}>{post.guion}</div>
-        </div>
-      )}
+      {hasContent && (
+        <>
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            aria-expanded={expanded}
+            style={styles.expandBtn}
+          >
+            <span>{expanded ? "Ocultar contenido" : "Ver contenido"}</span>
+            <span style={{ transition: "transform .2s", transform: expanded ? "rotate(180deg)" : "rotate(0)" }}>▼</span>
+          </button>
 
-      {(post.descripcion || post.script) && (
-        <div style={{ ...styles.contentBox, position: "relative", paddingTop: "var(--sp-8)" }}>
-          <strong style={{ ...styles.fieldLabel, color: "var(--accent)" }}>Descripción</strong>
-          <div style={{ whiteSpace: "pre-wrap" }}>{post.descripcion || post.script}</div>
-          <CopyBtn text={post.descripcion || post.script} />
-        </div>
+          {expanded && (
+            <div style={{ marginTop: "var(--sp-2)" }}>
+              {!isPost && post.guion && (
+                <div style={{ ...styles.contentBox, background: "#1a0a2a" }}>
+                  <strong style={{ ...styles.fieldLabel, color: "#FF7BA8" }}>Guion</strong>
+                  <div style={{ whiteSpace: "pre-wrap" }}>{post.guion}</div>
+                </div>
+              )}
+
+              {(post.descripcion || post.script) && (
+                <div style={{ ...styles.contentBox, position: "relative", paddingTop: "var(--sp-8)" }}>
+                  <strong style={{ ...styles.fieldLabel, color: "var(--accent)" }}>Descripción</strong>
+                  <div style={{ whiteSpace: "pre-wrap" }}>{post.descripcion || post.script}</div>
+                  <CopyBtn text={post.descripcion || post.script} />
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       {post.hashtagsFinales && (
@@ -427,12 +585,96 @@ const styles = {
     textAlign: "center",
     borderRadius: "0 0 18px 18px",
   },
+  statsBar: {
+    display: "flex",
+    justifyContent: "space-around",
+    padding: "var(--sp-4) var(--sp-4)",
+    background: "var(--card)",
+    margin: "0 var(--sp-4)",
+    borderRadius: "var(--radius)",
+    marginTop: -8,
+    border: "1px solid var(--border)",
+    position: "relative",
+    zIndex: 1,
+  },
+  stat: {
+    textAlign: "center",
+  },
+  statNum: {
+    fontSize: "var(--fs-xl)",
+    fontWeight: 900,
+  },
+  statLabel: {
+    fontSize: "var(--fs-3xs)",
+    color: "var(--text-dim)",
+    textTransform: "uppercase",
+    letterSpacing: ".04em",
+    fontWeight: 600,
+  },
   progressSection: {
     padding: "var(--sp-3) var(--sp-4)",
     position: "sticky",
     top: 0,
     background: "var(--bg)",
     zIndex: 10,
+  },
+  campaignSection: {
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    margin: "0 var(--sp-4) var(--sp-3)",
+    overflow: "hidden",
+  },
+  campaignToggle: {
+    width: "100%",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "var(--sp-4)",
+    background: "transparent",
+    border: "none",
+    color: "var(--text)",
+    cursor: "pointer",
+    fontFamily: "inherit",
+  },
+  sectionHeading: {
+    fontSize: "var(--fs-3xs)",
+    color: "var(--text-muted)",
+    textTransform: "uppercase",
+    letterSpacing: ".06em",
+    fontWeight: 700,
+    marginBottom: "var(--sp-2)",
+    marginTop: "var(--sp-3)",
+  },
+  weekIdeaBlock: {
+    background: "var(--bg)",
+    borderRadius: "var(--radius-sm)",
+    padding: "var(--sp-3)",
+    marginBottom: "var(--sp-2)",
+  },
+  weekBadgeSm: {
+    background: "var(--accent-soft)",
+    color: "var(--accent)",
+    padding: "var(--sp-1) var(--sp-2)",
+    borderRadius: 10,
+    fontSize: "var(--fs-3xs)",
+    fontWeight: 700,
+  },
+  expandBtn: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+    padding: "var(--sp-2) var(--sp-3)",
+    background: "var(--card-alt)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius-xs)",
+    color: "var(--text-muted)",
+    cursor: "pointer",
+    fontSize: "var(--fs-2xs)",
+    fontWeight: 600,
+    fontFamily: "inherit",
+    marginBottom: "var(--sp-1)",
   },
   weekHeader: {
     display: "flex",
