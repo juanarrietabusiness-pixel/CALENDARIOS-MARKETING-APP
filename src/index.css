@@ -848,19 +848,19 @@ input[type="radio"] {
   border-radius: var(--radius-xs);
   min-width: 0;
 }
-.cal-header-cat {
+.cal-header-idea {
   font-size: var(--fs-3xs);
-  color: var(--accent-alt);
-  font-weight: 700;
-  background: rgba(245,166,35,.1);
-  padding: 1px 5px;
-  border-radius: 4px;
+  color: var(--text-dim);
+  font-weight: 500;
+  font-style: italic;
+  padding: 1px 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
   margin-top: 2px;
   display: inline-block;
+  line-height: 1.3;
 }
 .cal-cell {
   min-height: 96px;
@@ -938,6 +938,75 @@ input[type="radio"] {
 }
 .cal-add:hover { background: var(--accent-soft); color: var(--accent); }
 
+/* Selector de hora digital */
+.time-picker-btn { font-family: inherit; }
+.time-picker-drop {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 50;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--sp-3);
+  box-shadow: var(--elev-2);
+  min-width: 220px;
+  margin-top: var(--sp-1);
+}
+.time-picker-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.time-picker-arrow {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: var(--sp-1);
+  min-width: var(--tap-sm);
+  min-height: var(--tap-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s, border-color .15s;
+}
+.time-picker-arrow:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.time-picker-digit {
+  font-size: var(--fs-xl);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  min-width: 52px;
+  text-align: center;
+  line-height: 1;
+  padding: var(--sp-1) 0;
+}
+.time-picker-sep {
+  font-size: var(--fs-xl);
+  font-weight: 800;
+  color: var(--accent);
+  line-height: 1;
+  padding-top: 2px;
+}
+.time-picker-preset {
+  background: var(--bg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xs);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: var(--sp-1);
+  min-height: 28px;
+  transition: background .15s, border-color .15s;
+}
+.time-picker-preset:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.time-picker-preset.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
 /* En pantallas estrechas una celda mide ~46px: el texto de la idea
    es ilegible. Se reduce a icono + hora y la celda se compacta. */
 @media (max-width: 599px) {
@@ -946,8 +1015,41 @@ input[type="radio"] {
   .cal-post-label { display: none; }
   .cal-post { justify-content: center; gap: 2px; padding: 3px 2px; }
   .cal-post-time { display: none; }
-  .cal-header-cat { display: none; }
+  .cal-header-idea { display: none; }
   .cal-week-tag { display: none; }
+}
+
+/* ============================================================
+   Layout: calendario + banco de ideas
+   ============================================================ */
+
+.cal-layout {
+  display: flex;
+  gap: var(--sp-4);
+  align-items: flex-start;
+}
+.cal-layout-main { flex: 1; min-width: 0; }
+
+.bank-panel {
+  width: 340px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  position: sticky;
+  top: var(--sp-4);
+  transition: border-color .2s;
+}
+
+@media (max-width: 1023px) {
+  .cal-layout { flex-direction: column; }
+  .bank-panel {
+    width: 100%;
+    position: static;
+    max-height: 50vh;
+  }
 }
 
 /* ============================================================

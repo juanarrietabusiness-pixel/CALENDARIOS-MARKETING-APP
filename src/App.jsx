@@ -329,6 +329,8 @@ function Workspace({ session }) {
       year: calendarData.year,
       campaign: calendarData.campaign,
       weekConcepts: calendarData.weekConcepts,
+      offers: calendarData.offers || "",
+      promoCode: calendarData.promoCode || "",
       generatedAt: new Date().toISOString(),
       days: calendarData.days,
     };

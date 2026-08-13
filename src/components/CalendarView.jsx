@@ -6,7 +6,7 @@ import { buildExportHTML } from "../export";
 import { shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
-import IdeasBank from "./IdeasBank";
+
 
 function stripMarkdown(text) {
   if (!text) return "";
@@ -56,6 +56,102 @@ const fieldBodyStyle = {
   whiteSpace: "pre-wrap",
 };
 
+function TimePicker({ value, onChange, id }) {
+  const [open, setOpen] = useState(false);
+  const parts = (value || "").split(":");
+  const hour = parts[0] || "";
+  const minute = parts[1] || "";
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e) => {
+      if (!wrapRef.current?.contains(e.target)) setOpen(false);
+    };
+    const onKeyDown = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  const setTime = (h, m) => {
+    onChange(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+  };
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <button
+        type="button"
+        id={id}
+        className="input time-picker-btn"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", cursor: "pointer", minWidth: 120 }}
+      >
+        <Icon name="clock" size={16} />
+        <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+          {value || "--:--"}
+        </span>
+      </button>
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Seleccionar hora"
+          className="time-picker-drop"
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", justifyContent: "center", marginBottom: "var(--sp-3)" }}>
+            <div className="time-picker-col">
+              <button type="button" className="time-picker-arrow" aria-label="Hora anterior" onClick={() => setTime((+hour + 23) % 24, +minute || 0)}>
+                <Icon name="chevronUp" size={18} />
+              </button>
+              <span className="time-picker-digit">{hour ? hour.padStart(2, "0") : "--"}</span>
+              <button type="button" className="time-picker-arrow" aria-label="Hora siguiente" onClick={() => setTime((+hour + 1) % 24, +minute || 0)}>
+                <Icon name="chevronDown" size={18} />
+              </button>
+            </div>
+            <span className="time-picker-sep">:</span>
+            <div className="time-picker-col">
+              <button type="button" className="time-picker-arrow" aria-label="Minuto anterior" onClick={() => setTime(+hour || 0, (+minute + 55) % 60)}>
+                <Icon name="chevronUp" size={18} />
+              </button>
+              <span className="time-picker-digit">{minute ? minute.padStart(2, "0") : "--"}</span>
+              <button type="button" className="time-picker-arrow" aria-label="Minuto siguiente" onClick={() => setTime(+hour || 0, (+minute + 5) % 60)}>
+                <Icon name="chevronDown" size={18} />
+              </button>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 4, marginBottom: "var(--sp-2)" }}>
+            {[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].map((h) => (
+              <button
+                key={h}
+                type="button"
+                className={`time-picker-preset${+hour === h ? " active" : ""}`}
+                onClick={() => { setTime(h, +minute || 0); }}
+              >
+                {String(h).padStart(2, "0")}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+            <button type="button" className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => setOpen(false)}>
+              Listo
+            </button>
+            {value && (
+              <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => { onChange(""); setOpen(false); }}>
+                Quitar
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ContentDisplay({ post }) {
   const f = post.format;
   if (f === "post") {
@@ -76,7 +172,6 @@ function ContentDisplay({ post }) {
 
   const guion = post.guion || "";
   const descripcion = post.descripcion || post.script || "";
-  const hashtags = post.hashtagsFinales || "";
 
   return (
     <div style={{ marginTop: "var(--sp-2)" }}>
@@ -102,22 +197,16 @@ function ContentDisplay({ post }) {
           </p>
         </div>
       )}
-      {hashtags && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-2)" }}>
-          <span style={{ fontSize: "var(--fs-2xs)", color: "var(--accent-alt)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-            {hashtags.slice(0, 70)}
-          </span>
-          <CopyButton text={hashtags} label="# Copiar" describes="los hashtags" />
-        </div>
-      )}
     </div>
   );
 }
 
-function PostSidePanel({ post, day, onUpdate, onClose, onDelete, client, cal }) {
+function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onSendToBank, client, cal }) {
   const [form, setForm] = useState({ ...post });
   const [fieldLoading, setFieldLoading] = useState({});
   const [fieldError, setFieldError] = useState("");
+  const [moveDateOpen, setMoveDateOpen] = useState(false);
+  const [moveTarget, setMoveTarget] = useState("");
   const imgRef = useRef();
   const ids = useId();
   const panelRef = useDialogA11y(onClose);
@@ -229,7 +318,7 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, client, cal }) 
 
         <div className="field">
           <label className="label" htmlFor={`${ids}-time`}>Hora de publicación</label>
-          <input id={`${ids}-time`} className="input" type="time" value={form.publishTime || ""} onChange={(e) => sf("publishTime", e.target.value)} />
+          <TimePicker id={`${ids}-time`} value={form.publishTime || ""} onChange={(v) => sf("publishTime", v)} />
         </div>
 
         <div className="field">
@@ -284,17 +373,6 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, client, cal }) 
         </div>
 
         <div className="field">
-          <label className="label" htmlFor={`${ids}-tags`}>Hashtags finales</label>
-          <input
-            id={`${ids}-tags`}
-            className="input"
-            value={form.hashtagsFinales || ""}
-            onChange={(e) => sf("hashtagsFinales", e.target.value)}
-            placeholder="#hashtag1 #hashtag2"
-          />
-        </div>
-
-        <div className="field">
           <span className="label" id={`${ids}-img-label`}>Imagen</span>
           <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", flexWrap: "wrap" }}>
             {form.image && <img src={form.image} alt="Vista previa de la imagen de la publicación" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: "var(--radius-sm)" }} />}
@@ -344,17 +422,47 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, client, cal }) 
         </div>
       </div>
 
-      <div style={{ padding: "var(--sp-3) var(--sp-4)", borderTop: "1px solid var(--border)", display: "flex", gap: "var(--sp-2)" }}>
-        <button
-          className="btn btn-danger"
-          aria-label="Eliminar publicación"
-          onClick={() => { if (onDelete) onDelete(day.date, post.id); onClose(); }}
-        >
-          <Icon name="trash" size={18} />
-        </button>
-        <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { save(); onClose(); }}>
-          Guardar cambios
-        </button>
+      <div style={{ padding: "var(--sp-3) var(--sp-4)", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
+        {moveDateOpen && (
+          <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "flex-end" }}>
+            <div style={{ flex: 1 }}>
+              <label className="label" htmlFor={`${ids}-move-date`}>Mover a fecha</label>
+              <input id={`${ids}-move-date`} className="input" type="date" value={moveTarget} onChange={(e) => setMoveTarget(e.target.value)} />
+            </div>
+            <button className="btn btn-primary btn-sm" disabled={!moveTarget || moveTarget === day.date} onClick={() => { save(); onMoveDate?.(post.id, day.date, moveTarget); onClose(); }}>
+              Mover
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setMoveDateOpen(false)}>
+              <Icon name="close" size={14} />
+            </button>
+          </div>
+        )}
+        <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+          <button
+            className="btn btn-danger"
+            aria-label="Eliminar publicación"
+            onClick={() => { if (onDelete) onDelete(day.date, post.id); onClose(); }}
+          >
+            <Icon name="trash" size={18} />
+          </button>
+          <button
+            className="btn btn-secondary btn-sm"
+            aria-label="Cambiar fecha de publicación"
+            onClick={() => setMoveDateOpen((o) => !o)}
+          >
+            <Icon name="calendar" size={16} />
+          </button>
+          <button
+            className="btn btn-secondary btn-sm"
+            aria-label="Enviar al banco de ideas"
+            onClick={() => { save(); onSendToBank?.(form, day.date); onClose(); }}
+          >
+            <Icon name="bulb" size={16} />
+          </button>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { save(); onClose(); }}>
+            Guardar cambios
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -481,44 +589,120 @@ function OverflowMenu({ items }) {
 function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
   const ref = useDialogA11y(onClose);
   const ids = useId();
+  const [activeTab, setActiveTab] = useState("general");
 
   return (
     <div className="overlay overlay-sheet">
-      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet" style={{ maxWidth: 520 }}>
+      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet" style={{ maxWidth: 560 }}>
         <div className="sheet-header">
           <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)" }}>Editar calendario</h2>
           <button className="btn-icon" onClick={onClose} aria-label="Cerrar"><Icon name="close" /></button>
         </div>
 
+        <div className="segmented" role="group" aria-label="Sección de edición" style={{ margin: "0 var(--sp-4)", marginBottom: "var(--sp-2)" }}>
+          <button type="button" className={`segmented-btn ${activeTab === "general" ? "active" : ""}`} aria-pressed={activeTab === "general"} onClick={() => setActiveTab("general")}>
+            General
+          </button>
+          <button type="button" className={`segmented-btn ${activeTab === "weeks" ? "active" : ""}`} aria-pressed={activeTab === "weeks"} onClick={() => setActiveTab("weeks")}>
+            Semanas
+          </button>
+          <button type="button" className={`segmented-btn ${activeTab === "categories" ? "active" : ""}`} aria-pressed={activeTab === "categories"} onClick={() => setActiveTab("categories")}>
+            Categorías
+          </button>
+          <button type="button" className={`segmented-btn ${activeTab === "offers" ? "active" : ""}`} aria-pressed={activeTab === "offers"} onClick={() => setActiveTab("offers")}>
+            Ofertas
+          </button>
+        </div>
+
         <div className="sheet-body">
-          <div className="field">
-            <label className="label" htmlFor={`${ids}-name`}>Nombre</label>
-            <input id={`${ids}-name`} className="input" value={metaForm.name} onChange={(e) => setMetaForm((p) => ({ ...p, name: e.target.value }))} />
-          </div>
-          <div className="field">
-            <label className="label" htmlFor={`${ids}-camp`}>Campaña</label>
-            <input id={`${ids}-camp`} className="input" value={metaForm.campaign} onChange={(e) => setMetaForm((p) => ({ ...p, campaign: e.target.value }))} />
-          </div>
-          <fieldset style={{ border: "none" }}>
-            <legend className="label">Conceptos semanales</legend>
-            {(metaForm.weekConcepts || []).map((c, i) => (
-              <div key={i} className="field">
-                <label className="label" style={{ textTransform: "none", color: "var(--text-dim)" }} htmlFor={`${ids}-wk-${i}`}>
-                  Semana {i + 1}
-                </label>
+          {activeTab === "general" && (
+            <>
+              <div className="field">
+                <label className="label" htmlFor={`${ids}-name`}>Nombre</label>
+                <input id={`${ids}-name`} className="input" value={metaForm.name} onChange={(e) => setMetaForm((p) => ({ ...p, name: e.target.value }))} />
+              </div>
+              <div className="field">
+                <label className="label" htmlFor={`${ids}-camp`}>Campaña</label>
+                <input id={`${ids}-camp`} className="input" value={metaForm.campaign} onChange={(e) => setMetaForm((p) => ({ ...p, campaign: e.target.value }))} />
+              </div>
+            </>
+          )}
+
+          {activeTab === "weeks" && (
+            <fieldset style={{ border: "none" }}>
+              <legend className="label">Conceptos semanales</legend>
+              {(metaForm.weekConcepts || []).map((c, i) => (
+                <div key={i} className="field">
+                  <label className="label" style={{ textTransform: "none", color: "var(--text-dim)" }} htmlFor={`${ids}-wk-${i}`}>
+                    Semana {i + 1}
+                  </label>
+                  <input
+                    id={`${ids}-wk-${i}`}
+                    className="input"
+                    value={c}
+                    onChange={(e) => setMetaForm((p) => {
+                      const wc = [...p.weekConcepts];
+                      wc[i] = e.target.value;
+                      return { ...p, weekConcepts: wc };
+                    })}
+                  />
+                </div>
+              ))}
+            </fieldset>
+          )}
+
+          {activeTab === "categories" && (
+            <fieldset style={{ border: "none" }}>
+              <legend className="label">Categoría por día de la semana</legend>
+              <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
+                Edita las categorías asignadas a cada día. Se aplicarán a las publicaciones del calendario.
+              </p>
+              {[1, 2, 3, 4, 5, 6, 0].map((dow) => (
+                <div key={dow} style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-2)" }}>
+                  <label style={{ fontWeight: 700, minWidth: 84, fontSize: "var(--fs-xs)", flexShrink: 0 }} htmlFor={`${ids}-ecat-${dow}`}>
+                    {DAYS[dow]}
+                  </label>
+                  <input
+                    id={`${ids}-ecat-${dow}`}
+                    className="input"
+                    style={{ flex: 1 }}
+                    value={(metaForm.dayCategories || {})[dow] || ""}
+                    onChange={(e) => setMetaForm((p) => ({ ...p, dayCategories: { ...(p.dayCategories || {}), [dow]: e.target.value } }))}
+                    placeholder="Categoría…"
+                  />
+                </div>
+              ))}
+            </fieldset>
+          )}
+
+          {activeTab === "offers" && (
+            <>
+              <div className="field">
+                <label className="label" htmlFor={`${ids}-offers`}>Descuentos y ofertas del mes</label>
+                <textarea
+                  id={`${ids}-offers`}
+                  className="textarea"
+                  style={{ minHeight: 100 }}
+                  value={metaForm.offers || ""}
+                  onChange={(e) => setMetaForm((p) => ({ ...p, offers: e.target.value }))}
+                  placeholder="Ej: 20% de descuento en todos los servicios, 2x1 en productos seleccionados…"
+                />
+                <p className="hint">
+                  Estas ofertas se incluyen como contexto al generar contenido con IA.
+                </p>
+              </div>
+              <div className="field">
+                <label className="label" htmlFor={`${ids}-promo-code`}>Código promocional</label>
                 <input
-                  id={`${ids}-wk-${i}`}
+                  id={`${ids}-promo-code`}
                   className="input"
-                  value={c}
-                  onChange={(e) => setMetaForm((p) => {
-                    const wc = [...p.weekConcepts];
-                    wc[i] = e.target.value;
-                    return { ...p, weekConcepts: wc };
-                  })}
+                  value={metaForm.promoCode || ""}
+                  onChange={(e) => setMetaForm((p) => ({ ...p, promoCode: e.target.value }))}
+                  placeholder="Ej: VERANO2026"
                 />
               </div>
-            ))}
-          </fieldset>
+            </>
+          )}
         </div>
 
         <div className="sheet-footer">
@@ -651,12 +835,13 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
   const [dropTarget, setDropTarget] = useState(null);
   const today = fmtDate(new Date());
 
-  const dowCategories = {};
+  const dowBaseIdeas = {};
   for (const day of cal.days || []) {
-    if (!day.category) continue;
     const dow = new Date(day.date + "T12:00:00").getDay();
     const dowMon = dow === 0 ? 6 : dow - 1;
-    if (!dowCategories[dowMon]) dowCategories[dowMon] = day.category;
+    if (dowBaseIdeas[dowMon]) continue;
+    const firstIdea = (day.posts || []).find((p) => p.idea)?.idea;
+    if (firstIdea) dowBaseIdeas[dowMon] = firstIdea;
   }
 
   const cells = () => {
@@ -684,7 +869,7 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
       {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((n, i) => (
         <div key={n} className="cal-header-cell">
           <abbr title={FULL_DOW[i]} style={{ textDecoration: "none" }}>{n}</abbr>
-          {dowCategories[i] && <div className="cal-header-cat">{dowCategories[i]}</div>}
+          {dowBaseIdeas[i] && <div className="cal-header-idea">{dowBaseIdeas[i]}</div>}
         </div>
       ))}
       {allCells.map((date) => {
@@ -777,6 +962,346 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
   );
 }
 
+function BankPanel({ client, onUpdateClient, calDays, onRemoveFromCal, onClose, cal, calId, onUpdateCal }) {
+  const [newIdeaOpen, setNewIdeaOpen] = useState(false);
+  const [newIdea, setNewIdea] = useState("");
+  const [newCategory, setNewCategory] = useState("");
+  const [newFormat, setNewFormat] = useState("post");
+  const [editingPost, setEditingPost] = useState(null);
+
+  const ideasBank = client.ideasBank || [];
+
+  const addNewIdea = () => {
+    if (!newIdea.trim()) return;
+    const idea = {
+      id: uid(),
+      format: newFormat,
+      idea: newIdea.trim(),
+      category: newCategory.trim(),
+      guion: "",
+      descripcion: "",
+      script: "",
+      status: "pending",
+      image: null,
+      referenceLink: "",
+      comment: "",
+      publishTime: "",
+      _addedAt: new Date().toISOString(),
+    };
+    onUpdateClient({ ...client, ideasBank: [...ideasBank, idea] });
+    setNewIdea("");
+    setNewCategory("");
+    setNewFormat("post");
+    setNewIdeaOpen(false);
+  };
+
+  const removeFromBank = (postId) => {
+    onUpdateClient({ ...client, ideasBank: ideasBank.filter((p) => p.id !== postId) });
+  };
+
+  const updateBankPost = (updatedPost) => {
+    onUpdateClient({ ...client, ideasBank: ideasBank.map((p) => p.id === updatedPost.id ? updatedPost : p) });
+    setEditingPost(null);
+  };
+
+  const moveBankToCalendar = (bankPost, targetDate) => {
+    const newPost = { ...bankPost, id: uid(), status: "pending" };
+    delete newPost._originDate;
+    delete newPost._originCal;
+    delete newPost._addedAt;
+    const newDays = (cal.days || []).map((d) =>
+      d.date !== targetDate ? d : { ...d, posts: [...(d.posts || []), newPost] }
+    );
+    onUpdateCal(calId, { ...cal, days: newDays });
+    onUpdateClient({ ...client, ideasBank: ideasBank.filter((p) => p.id !== bankPost.id) });
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.currentTarget.style.borderColor = "var(--border)";
+    try {
+      const data = JSON.parse(e.dataTransfer.getData("text/plain") || "{}");
+      if (data.postId && data.sourceDate && calDays) {
+        const sourceDay = calDays.find((d) => d.date === data.sourceDate);
+        const post = sourceDay?.posts?.find((p) => p.id === data.postId);
+        if (post) {
+          const bankPost = { ...post, id: uid(), _originDate: data.sourceDate, _addedAt: new Date().toISOString() };
+          onUpdateClient({ ...client, ideasBank: [...ideasBank, bankPost] });
+          if (onRemoveFromCal) onRemoveFromCal(data.sourceDate, data.postId);
+        }
+      }
+    } catch { /* ignore */ }
+  };
+
+  return (
+    <div
+      className="bank-panel"
+      onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = "var(--accent)"; }}
+      onDragLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
+      onDrop={handleDrop}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "var(--sp-3)", borderBottom: "1px solid var(--border)" }}>
+        <h3 style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", fontSize: "var(--fs-xs)", fontWeight: 700, color: "var(--accent-alt)" }}>
+          <Icon name="bulb" size={18} /> Banco ({ideasBank.length})
+        </h3>
+        <div style={{ display: "flex", gap: "var(--sp-1)" }}>
+          <button className="btn btn-secondary btn-sm" onClick={() => setNewIdeaOpen(!newIdeaOpen)}>
+            <Icon name="plus" size={14} />
+          </button>
+          <button className="btn-icon" onClick={onClose} aria-label="Cerrar banco de ideas">
+            <Icon name="close" size={18} />
+          </button>
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "var(--sp-2)" }}>
+        {newIdeaOpen && (
+          <div style={{ background: "var(--bg)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)", marginBottom: "var(--sp-2)", border: "1px dashed var(--accent-alt)" }}>
+            <div style={{ display: "flex", gap: "var(--sp-1)", flexWrap: "wrap", marginBottom: "var(--sp-2)" }}>
+              {Object.entries(FORMATS).map(([k, f]) => (
+                <button
+                  key={k}
+                  type="button"
+                  aria-pressed={newFormat === k}
+                  onClick={() => setNewFormat(k)}
+                  style={{
+                    padding: "2px var(--sp-2)",
+                    borderRadius: "var(--radius-xs)",
+                    border: `1px solid ${newFormat === k ? f.color : "var(--border)"}`,
+                    cursor: "pointer",
+                    background: newFormat === k ? f.color + "33" : "transparent",
+                    color: newFormat === k ? f.color : "var(--text-dim)",
+                    fontSize: "var(--fs-3xs)",
+                    fontWeight: 600,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 3,
+                    fontFamily: "inherit",
+                  }}
+                >
+                  <Icon name={FORMAT_ICONS[k] || "formatPost"} size={12} /> {f.label}
+                </button>
+              ))}
+            </div>
+            <input
+              className="input"
+              style={{ fontSize: "var(--fs-2xs)", marginBottom: "var(--sp-1)" }}
+              value={newIdea}
+              onChange={(e) => setNewIdea(e.target.value)}
+              placeholder="Idea…"
+              autoFocus
+              onKeyDown={(e) => { if (e.key === "Enter" && newIdea.trim()) addNewIdea(); }}
+            />
+            <input
+              className="input"
+              style={{ fontSize: "var(--fs-2xs)", marginBottom: "var(--sp-2)" }}
+              value={newCategory}
+              onChange={(e) => setNewCategory(e.target.value)}
+              placeholder="Categoría (opc.)"
+            />
+            <div style={{ display: "flex", gap: "var(--sp-1)" }}>
+              <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={addNewIdea} disabled={!newIdea.trim()}>Agregar</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setNewIdeaOpen(false)}>Cancelar</button>
+            </div>
+          </div>
+        )}
+
+        {editingPost && (
+          <BankPostEditor
+            post={editingPost}
+            onSave={updateBankPost}
+            onCancel={() => setEditingPost(null)}
+            onMoveToCalendar={(targetDate) => { moveBankToCalendar(editingPost, targetDate); setEditingPost(null); }}
+            calDays={calDays}
+            client={client}
+            cal={cal}
+          />
+        )}
+
+        {ideasBank.length === 0 && !newIdeaOpen ? (
+          <p style={{ textAlign: "center", padding: "var(--sp-4) 0", color: "var(--text-dim)", fontSize: "var(--fs-2xs)" }}>
+            {calDays
+              ? "Arrastra publicaciones aquí o crea una nueva idea."
+              : "Crea una nueva idea para este cliente."}
+          </p>
+        ) : (
+          <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "var(--sp-1)" }}>
+            {ideasBank.map((post) => {
+              const f = FORMATS[post.format] || FORMATS.post;
+              const title = post.idea || post.descripcion?.slice(0, 40) || f.label;
+              return (
+                <li
+                  key={post.id}
+                  draggable
+                  onDragStart={(e) => { e.dataTransfer.setData("text/plain", JSON.stringify({ bankPostId: post.id })); }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--sp-1)",
+                    padding: "var(--sp-2)",
+                    background: "var(--bg)",
+                    borderRadius: "var(--radius-sm)",
+                    border: "1px solid var(--border-light)",
+                    cursor: "grab",
+                  }}
+                >
+                  <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={14} style={{ color: f.color, flexShrink: 0 }} />
+                  <button
+                    type="button"
+                    style={{ flex: 1, minWidth: 0, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0, color: "inherit", fontFamily: "inherit" }}
+                    onClick={() => setEditingPost(post)}
+                    aria-label={`Editar: ${title}`}
+                  >
+                    <span style={{ display: "block", fontSize: "var(--fs-2xs)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {title}
+                    </span>
+                    {post.category && <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{post.category}</span>}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-remove"
+                    aria-label={`Quitar del banco: ${title}`}
+                    onClick={() => removeFromBank(post.id)}
+                  >
+                    <Icon name="close" size={14} />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BankPostEditor({ post, onSave, onCancel, onMoveToCalendar, calDays, client, cal }) {
+  const [form, setForm] = useState({ ...post });
+  const [moveDate, setMoveDate] = useState("");
+  const [fieldLoading, setFieldLoading] = useState({});
+  const [fieldError, setFieldError] = useState("");
+  const imgRef = useRef();
+  const ids = useId();
+  const sf = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+  const f = FORMATS[form.format] || FORMATS.post;
+  const isPost = form.format === "post";
+
+  const generateField = async (field) => {
+    setFieldError("");
+    setFieldLoading((p) => ({ ...p, [field]: true }));
+    try {
+      const mockDay = { date: form._originDate || "", dayName: "", concept: "", category: form.category || "" };
+      const result = await generateFieldForPost(client, form, mockDay, cal, field);
+      sf(field, result);
+    } catch (e) {
+      setFieldError(`Error: ${e.message}`);
+    }
+    setFieldLoading((p) => ({ ...p, [field]: false }));
+  };
+
+  return (
+    <div style={{ background: "var(--surface-2)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)", marginBottom: "var(--sp-2)", border: "1px solid var(--accent-alt)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-2)" }}>
+        <Icon name={FORMAT_ICONS[form.format] || "formatPost"} size={16} style={{ color: f.color }} />
+        <span style={{ fontSize: "var(--fs-xs)", fontWeight: 700, flex: 1 }}>Editar idea</span>
+        <button className="btn-icon" onClick={onCancel} aria-label="Cerrar editor"><Icon name="close" size={16} /></button>
+      </div>
+
+      {fieldError && <p role="alert" style={{ fontSize: "var(--fs-3xs)", color: "var(--danger)", marginBottom: "var(--sp-2)" }}>{fieldError}</p>}
+
+      <div style={{ display: "flex", gap: "var(--sp-1)", flexWrap: "wrap", marginBottom: "var(--sp-2)" }}>
+        {Object.entries(FORMATS).map(([k, fmt]) => (
+          <button
+            key={k} type="button" aria-pressed={form.format === k}
+            onClick={() => sf("format", k)}
+            style={{
+              padding: "2px var(--sp-2)", borderRadius: "var(--radius-xs)",
+              border: `1px solid ${form.format === k ? fmt.color : "var(--border)"}`,
+              cursor: "pointer", background: form.format === k ? fmt.color + "33" : "transparent",
+              color: form.format === k ? fmt.color : "var(--text-dim)",
+              fontSize: "var(--fs-3xs)", fontWeight: 600, fontFamily: "inherit",
+              display: "inline-flex", alignItems: "center", gap: 3,
+            }}
+          >
+            <Icon name={FORMAT_ICONS[k]} size={12} /> {fmt.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ marginBottom: "var(--sp-2)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+          <label className="label" style={{ margin: 0, fontSize: "var(--fs-3xs)" }} htmlFor={`${ids}-b-idea`}>Idea</label>
+          <button type="button" className="btn-ai" style={{ fontSize: "var(--fs-3xs)", padding: "1px 6px" }} onClick={() => generateField("idea")} disabled={fieldLoading.idea}>
+            {fieldLoading.idea ? "…" : <><Icon name="sparkles" size={11} /> IA</>}
+          </button>
+        </div>
+        <textarea id={`${ids}-b-idea`} className="textarea" style={{ minHeight: 56, fontSize: "var(--fs-2xs)" }} value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Idea…" />
+      </div>
+
+      <div style={{ marginBottom: "var(--sp-2)" }}>
+        <label className="label" style={{ fontSize: "var(--fs-3xs)" }} htmlFor={`${ids}-b-cat`}>Categoría</label>
+        <input id={`${ids}-b-cat`} className="input" style={{ fontSize: "var(--fs-2xs)" }} value={form.category || ""} onChange={(e) => sf("category", e.target.value)} placeholder="Categoría…" />
+      </div>
+
+      <div style={{ marginBottom: "var(--sp-2)" }}>
+        <label className="label" style={{ fontSize: "var(--fs-3xs)" }} htmlFor={`${ids}-b-time`}>Hora</label>
+        <TimePicker id={`${ids}-b-time`} value={form.publishTime || ""} onChange={(v) => sf("publishTime", v)} />
+      </div>
+
+      {!isPost && (
+        <div style={{ marginBottom: "var(--sp-2)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+            <label className="label" style={{ margin: 0, fontSize: "var(--fs-3xs)", color: "#FF7BA8" }} htmlFor={`${ids}-b-guion`}>Guion</label>
+            <button type="button" className="btn-ai" style={{ fontSize: "var(--fs-3xs)", padding: "1px 6px" }} onClick={() => generateField("guion")} disabled={fieldLoading.guion}>
+              {fieldLoading.guion ? "…" : <><Icon name="sparkles" size={11} /> IA</>}
+            </button>
+          </div>
+          <textarea id={`${ids}-b-guion`} className="textarea" style={{ minHeight: 64, fontSize: "var(--fs-2xs)" }} value={form.guion || ""} onChange={(e) => sf("guion", e.target.value)} placeholder="Guion…" />
+        </div>
+      )}
+
+      <div style={{ marginBottom: "var(--sp-2)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+          <label className="label" style={{ margin: 0, fontSize: "var(--fs-3xs)" }} htmlFor={`${ids}-b-desc`}>Descripción</label>
+          <button type="button" className="btn-ai" style={{ fontSize: "var(--fs-3xs)", padding: "1px 6px" }} onClick={() => generateField("descripcion")} disabled={fieldLoading.descripcion}>
+            {fieldLoading.descripcion ? "…" : <><Icon name="sparkles" size={11} /> IA</>}
+          </button>
+        </div>
+        <textarea id={`${ids}-b-desc`} className="textarea" style={{ minHeight: 64, fontSize: "var(--fs-2xs)" }} value={form.descripcion || form.script || ""} onChange={(e) => sf("descripcion", e.target.value)} placeholder="Descripción…" />
+      </div>
+
+      {form.image && <img src={form.image} alt="" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: "var(--radius-xs)", marginBottom: "var(--sp-2)" }} />}
+      <input ref={imgRef} type="file" accept="image/*" className="sr-only" aria-label="Imagen" onChange={async (e) => { const file = e.target.files[0]; if (!file) return; try { sf("image", await compressImage(file, 400)); } catch (err) { setFieldError(err.message); } }} />
+      <div style={{ display: "flex", gap: "var(--sp-1)", marginBottom: "var(--sp-2)" }}>
+        <button className="btn btn-secondary btn-sm" style={{ fontSize: "var(--fs-3xs)" }} onClick={() => imgRef.current?.click()}>
+          {form.image ? "Cambiar img" : "Subir img"}
+        </button>
+        {form.image && <button className="btn btn-ghost btn-sm" style={{ fontSize: "var(--fs-3xs)", color: "var(--danger)" }} onClick={() => sf("image", null)}>Quitar</button>}
+      </div>
+
+      {calDays && (
+        <div style={{ display: "flex", gap: "var(--sp-1)", alignItems: "flex-end", marginBottom: "var(--sp-2)" }}>
+          <div style={{ flex: 1 }}>
+            <label className="label" style={{ fontSize: "var(--fs-3xs)" }} htmlFor={`${ids}-b-move`}>Mover al calendario</label>
+            <select id={`${ids}-b-move`} className="input" style={{ fontSize: "var(--fs-2xs)" }} value={moveDate} onChange={(e) => setMoveDate(e.target.value)}>
+              <option value="">Elegir fecha…</option>
+              {calDays.map((d) => <option key={d.date} value={d.date}>{d.date.split("-")[2]} {d.dayName}</option>)}
+            </select>
+          </div>
+          <button className="btn btn-accent btn-sm" style={{ fontSize: "var(--fs-3xs)" }} disabled={!moveDate} onClick={() => onMoveToCalendar(moveDate)}>
+            <Icon name="calendar" size={14} />
+          </button>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: "var(--sp-1)" }}>
+        <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => onSave(form)}>Guardar</button>
+        <button className="btn btn-ghost btn-sm" onClick={onCancel}>Cancelar</button>
+      </div>
+    </div>
+  );
+}
+
 export default function CalendarView({
   client,
   cal,
@@ -810,10 +1335,22 @@ export default function CalendarView({
   const [shareWorking, setShareWorking] = useState(false);
   const [editMeta, setEditMeta] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
-  const [metaForm, setMetaForm] = useState({
-    name: cal.name || "",
-    campaign: cal.campaign || "",
-    weekConcepts: [...(cal.weekConcepts || [])],
+
+  const [metaForm, setMetaForm] = useState(() => {
+    const cats = {};
+    for (const day of cal.days || []) {
+      if (!day.category) continue;
+      const dow = new Date(day.date + "T12:00:00").getDay();
+      if (!cats[dow]) cats[dow] = day.category;
+    }
+    return {
+      name: cal.name || "",
+      campaign: cal.campaign || "",
+      weekConcepts: [...(cal.weekConcepts || [])],
+      dayCategories: cats,
+      offers: cal.offers || "",
+      promoCode: cal.promoCode || "",
+    };
   });
 
   // ----------------------------------------------------------
@@ -1126,15 +1663,22 @@ export default function CalendarView({
 
   const saveMetaEdit = () => {
     const updatedConcepts = metaForm.weekConcepts;
-    const newDays = (cal.days || []).map((d) => ({
-      ...d,
-      concept: updatedConcepts[(d.weekNumber || 1) - 1] || d.concept || "",
-    }));
+    const cats = metaForm.dayCategories || {};
+    const newDays = (cal.days || []).map((d) => {
+      const dow = new Date(d.date + "T12:00:00").getDay();
+      return {
+        ...d,
+        concept: updatedConcepts[(d.weekNumber || 1) - 1] || d.concept || "",
+        category: cats[dow] !== undefined ? cats[dow] : d.category || "",
+      };
+    });
     onUpdateCal(calId, {
       ...cal,
       name: metaForm.name || calName,
       campaign: metaForm.campaign,
       weekConcepts: updatedConcepts,
+      offers: metaForm.offers || "",
+      promoCode: metaForm.promoCode || "",
       days: newDays,
     });
     setEditMeta(false);
@@ -1399,8 +1943,14 @@ export default function CalendarView({
 
         <OverflowMenu
           items={[
-            { icon: "pencil", label: "Editar campaña y conceptos", onClick: () => {
-              setMetaForm({ name: cal.name || "", campaign: cal.campaign || "", weekConcepts: [...(cal.weekConcepts || [])] });
+            { icon: "pencil", label: "Editar calendario", onClick: () => {
+              const cats = {};
+              for (const day of cal.days || []) {
+                if (!day.category) continue;
+                const dow = new Date(day.date + "T12:00:00").getDay();
+                if (!cats[dow]) cats[dow] = day.category;
+              }
+              setMetaForm({ name: cal.name || "", campaign: cal.campaign || "", weekConcepts: [...(cal.weekConcepts || [])], dayCategories: cats, offers: cal.offers || "", promoCode: cal.promoCode || "" });
               setEditMeta(true);
             } },
             { icon: "file", label: "Renombrar calendario", onClick: () => setRenaming(true) },
@@ -1551,16 +2101,9 @@ export default function CalendarView({
         </p>
       )}
 
-      {/* Ideas Bank */}
-      {bankOpen && (
-        <IdeasBank
-          client={client}
-          onUpdateClient={onUpdateClient}
-          calDays={cal.days}
-          onRemoveFromCal={removePostFromDay}
-        />
-      )}
-
+      {/* Calendar + Ideas Bank layout */}
+      <div className={`cal-layout${bankOpen ? " bank-visible" : ""}`}>
+      <div className="cal-layout-main">
       {/* Grid view */}
       {viewMode === "grid" ? (
         <MonthGrid
@@ -1717,6 +2260,14 @@ export default function CalendarView({
                               </button>
                               <button
                                 type="button"
+                                className="btn btn-secondary btn-sm"
+                                aria-label="Enviar al banco de ideas"
+                                onClick={() => { addToBank(post, day.date); removePostFromDay(day.date, post.id); }}
+                              >
+                                <Icon name="bulb" size={16} />
+                              </button>
+                              <button
+                                type="button"
                                 className="btn-remove"
                                 aria-label={`Eliminar publicación: ${postTitle}`}
                                 onClick={() => deletePost(day.date, post.id)}
@@ -1760,6 +2311,22 @@ export default function CalendarView({
           onClose={() => setAddingPostDay(null)}
         />
       )}
+      </div>{/* end cal-layout-main */}
+
+      {/* Ideas Bank side panel */}
+      {bankOpen && (
+        <BankPanel
+          client={client}
+          onUpdateClient={onUpdateClient}
+          calDays={cal.days}
+          onRemoveFromCal={removePostFromDay}
+          onClose={() => setBankOpen(false)}
+          cal={cal}
+          calId={calId}
+          onUpdateCal={onUpdateCal}
+        />
+      )}
+      </div>{/* end cal-layout */}
 
       {/* Approval link modal */}
       {approvalModal && (
@@ -1790,6 +2357,8 @@ export default function CalendarView({
             day={sidePanel.day}
             onUpdate={updatePost}
             onDelete={deletePost}
+            onMoveDate={movePost}
+            onSendToBank={(post, date) => { addToBank(post, date); removePostFromDay(date, post.id); }}
             onClose={() => setSidePanel(null)}
             client={client}
             cal={cal}
