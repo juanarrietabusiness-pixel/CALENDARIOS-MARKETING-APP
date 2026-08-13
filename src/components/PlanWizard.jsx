@@ -5,7 +5,7 @@ import { callAI, buildClientContext, fetchGitHubADN } from "../api";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
 
-const STEP_LABELS = ["Plan", "Fechas", "Campaña", "Conceptos", "Categorías", "Vídeos", "Ideas"];
+const STEP_LABELS = ["Plan", "Fechas", "Campaña", "Conceptos", "Categorías", "Ofertas", "Vídeos", "Ideas"];
 
 function StepBar({ step, setStep }) {
   return (
@@ -48,6 +48,8 @@ export default function PlanWizard({ client, onGenerate, onClose }) {
     for (let dow = 0; dow < 7; dow++) cats[dow] = "";
     return cats;
   });
+  const [offers, setOffers] = useState("");
+  const [promoCode, setPromoCode] = useState("");
   const [referenceVideos, setReferenceVideos] = useState([]);
   const [newVideoUrl, setNewVideoUrl] = useState("");
   const [ideas, setIdeas] = useState({});
@@ -309,6 +311,8 @@ ${daysDesc}`;
       year,
       campaign,
       weekConcepts,
+      offers: offers || "",
+      promoCode: promoCode || "",
       days: calDays,
     });
   };
@@ -593,8 +597,40 @@ ${daysDesc}`;
             </div>
           )}
 
-          {/* Step 5: Reference videos */}
+          {/* Step 5: Offers / discounts */}
           {step === 5 && (
+            <div>
+              <h3 className="label">Descuentos y ofertas del mes</h3>
+              <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
+                Si hay descuentos, promociones u ofertas especiales este mes, descríbelas aquí.
+                Se usarán como contexto al generar el contenido con IA.
+              </p>
+              <div className="field">
+                <label className="label" htmlFor={`${ids}-offers`}>Ofertas y promociones</label>
+                <textarea
+                  id={`${ids}-offers`}
+                  className="textarea"
+                  style={{ minHeight: 100 }}
+                  value={offers}
+                  onChange={(e) => setOffers(e.target.value)}
+                  placeholder="Ej: 20% de descuento en todos los servicios, 2x1 en productos seleccionados, envío gratis por compras mayores a $50…"
+                />
+              </div>
+              <div className="field">
+                <label className="label" htmlFor={`${ids}-promo`}>Código promocional (opcional)</label>
+                <input
+                  id={`${ids}-promo`}
+                  className="input"
+                  value={promoCode}
+                  onChange={(e) => setPromoCode(e.target.value)}
+                  placeholder="Ej: VERANO2026"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Step 6: Reference videos */}
+          {step === 6 && (
             <div>
               <label className="label" htmlFor={`${ids}-video`}>Vídeos de referencia</label>
               <div style={{ display: "flex", gap: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
@@ -677,8 +713,8 @@ ${daysDesc}`;
             </div>
           )}
 
-          {/* Step 6: Ideas review */}
-          {step === 6 && (
+          {/* Step 7: Ideas review */}
+          {step === 7 && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-3)", marginBottom: "var(--sp-3)" }}>
                 <h3 className="label" style={{ margin: 0 }}>Ideas por día</h3>

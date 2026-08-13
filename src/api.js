@@ -73,11 +73,11 @@ export function buildScriptPrompt(client, calendar, posts, adnExtra = "") {
   const ctx = buildClientContext(client, calendar, adnExtra);
   const postsList = posts.map((p) => {
     const formatRules = {
-      post: "Solo DESCRIPCION (caption con emojis, CTA y hashtags). No escribas GUION.",
-      reel: "GUION (escena por escena: Hook → Desarrollo → CTA) + DESCRIPCION (caption para la publicación) + HASHTAGS_FINALES",
-      carrusel: "GUION (texto por cada card/slide, separados por ---) + DESCRIPCION (caption) + HASHTAGS_FINALES",
-      historia: "GUION (nota breve, max 2 oraciones) + DESCRIPCION (texto overlay si aplica) + HASHTAGS_FINALES",
-      live: "GUION (puntos clave a cubrir en el live, formato bullet) + DESCRIPCION (caption de anuncio del live) + HASHTAGS_FINALES",
+      post: "Solo DESCRIPCION (caption con emojis, CTA y hashtags al final). No escribas GUION.",
+      reel: "GUION (escena por escena: Hook → Desarrollo → CTA) + DESCRIPCION (caption con hashtags al final)",
+      carrusel: "GUION (texto por cada card/slide, separados por ---) + DESCRIPCION (caption con hashtags al final)",
+      historia: "GUION (nota breve, max 2 oraciones) + DESCRIPCION (texto overlay con hashtags al final)",
+      live: "GUION (puntos clave a cubrir en el live, formato bullet) + DESCRIPCION (caption de anuncio con hashtags al final)",
     };
     return `<<<PUBLICACION_ID:${p.id}>>>
 FORMATO: ${p.format}
@@ -96,6 +96,8 @@ ESTILO DE LOCUCIÓN: ${client.estiloLocucion || "Natural y profesional"}
 WHATSAPP: ${client.whatsapp || "N/A"}
 HASHTAGS BASE: ${client.hashtags || "#Panama"}
 CAMPAÑA: ${calendar?.campaign || "N/A"}
+${calendar?.offers ? `OFERTAS Y DESCUENTOS DEL MES: ${calendar.offers}` : ""}
+${calendar?.promoCode ? `CÓDIGO PROMOCIONAL: ${calendar.promoCode}` : ""}
 
 ---
 
@@ -105,20 +107,20 @@ Respeta el formato de salida EXACTAMENTE.
 Cada publicación va delimitada por <<<PUBLICACION_ID:xxx>>> con su ID correspondiente.
 
 REGLAS POR FORMATO:
-- post: Solo DESCRIPCION (caption con emojis + CTA + hashtags). NO incluir GUION.
-- reel: GUION (Hook → Desarrollo → CTA, escena por escena) + DESCRIPCION + HASHTAGS_FINALES
-- carrusel: GUION (texto por card, separados por ---) + DESCRIPCION + HASHTAGS_FINALES
-- historia: GUION (nota breve) + DESCRIPCION + HASHTAGS_FINALES
-- live: GUION (bullet points del live) + DESCRIPCION + HASHTAGS_FINALES
+- post: Solo DESCRIPCION (caption con emojis + CTA + hashtags al final del texto). NO incluir GUION.
+- reel: GUION (Hook → Desarrollo → CTA, escena por escena) + DESCRIPCION (incluye hashtags al final)
+- carrusel: GUION (texto por card, separados por ---) + DESCRIPCION (incluye hashtags al final)
+- historia: GUION (nota breve) + DESCRIPCION (incluye hashtags al final)
+- live: GUION (bullet points del live) + DESCRIPCION (incluye hashtags al final)
+
+IMPORTANTE: Los hashtags deben ir DENTRO de la DESCRIPCION, al final del caption. NO uses un campo HASHTAGS_FINALES separado.
 
 FORMATO DE RESPUESTA OBLIGATORIO:
 <<<PUBLICACION_ID:id_del_post>>>
 GUION:
 (contenido del guión aquí, o vacío si es post)
 DESCRIPCION:
-(caption/descripción aquí)
-HASHTAGS_FINALES:
-(hashtags finales aquí)
+(caption/descripción aquí, con hashtags al final)
 
 ---
 
@@ -163,11 +165,11 @@ export async function generateSinglePost(client, post, day, calendar) {
   const ctx = buildClientContext(client, calendar, adnExtra);
 
   const formatRules = {
-    post: `DESCRIPCION: caption completo con emojis, CTA a WhatsApp (${client.whatsapp || "N/A"}) y hashtags (${client.hashtags || "#Panama"})`,
-    reel: `GUION:\nHook (0-3s): ...\nDesarrollo (3-20s): ...\nCTA final: ...\n\nDESCRIPCION: caption para Instagram con emojis y CTA\n\nHASHTAGS_FINALES: hashtags relevantes`,
-    carrusel: `GUION:\nPortada: ...\nSlide 1: ...\nSlide 2: ...\nCTA: ...\n\nDESCRIPCION: caption para Instagram con emojis y CTA\n\nHASHTAGS_FINALES: hashtags relevantes`,
-    historia: `GUION: nota breve de que cubrir\n\nDESCRIPCION: texto overlay si aplica\n\nHASHTAGS_FINALES: hashtags relevantes`,
-    live: `GUION: bullet points del live\n\nDESCRIPCION: caption de anuncio del live\n\nHASHTAGS_FINALES: hashtags relevantes`,
+    post: `DESCRIPCION: caption completo con emojis, CTA a WhatsApp (${client.whatsapp || "N/A"}) y hashtags al final (${client.hashtags || "#Panama"})`,
+    reel: `GUION:\nHook (0-3s): ...\nDesarrollo (3-20s): ...\nCTA final: ...\n\nDESCRIPCION: caption para Instagram con emojis, CTA y hashtags al final`,
+    carrusel: `GUION:\nPortada: ...\nSlide 1: ...\nSlide 2: ...\nCTA: ...\n\nDESCRIPCION: caption para Instagram con emojis, CTA y hashtags al final`,
+    historia: `GUION: nota breve de que cubrir\n\nDESCRIPCION: texto overlay con hashtags al final`,
+    live: `GUION: bullet points del live\n\nDESCRIPCION: caption de anuncio del live con hashtags al final`,
   };
 
   let promptText = `${ctx}
@@ -258,8 +260,8 @@ IDEA: ${post.idea || "N/A"}
 ${post.guion ? `GUION: ${post.guion}` : ""}
 
 Basandote en la idea${post.guion ? ", el guion" : ""} y el contexto del cliente, genera la DESCRIPCION (caption) para esta publicacion.
-Incluye emojis, CTA a WhatsApp (${client.whatsapp || "N/A"}) y hashtags (${client.hashtags || "#Panama"}).
-Responde SOLO con la descripcion/caption, sin preambulos.`;
+Incluye emojis, CTA a WhatsApp (${client.whatsapp || "N/A"}) y hashtags relevantes al final del texto (${client.hashtags || "#Panama"}).
+Responde SOLO con la descripcion/caption completa incluyendo los hashtags, sin preambulos.`;
   }
 
   const content = [{ type: "text", text: promptText }];
