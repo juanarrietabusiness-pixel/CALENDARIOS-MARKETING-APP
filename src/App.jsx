@@ -10,6 +10,7 @@ import ClientModal from "./components/ClientModal";
 import PlanWizard from "./components/PlanWizard";
 import CalendarView from "./components/CalendarView";
 import Aprobar from "./pages/Aprobar";
+import IdeasBank from "./components/IdeasBank";
 import Login from "./pages/Login";
 import { isSupabaseEnabled } from "./lib/supabase";
 import { useSession, signOut } from "./lib/auth";
@@ -590,6 +591,12 @@ function Workspace({ session }) {
                     </nav>
                   )}
                 </div>
+
+                {/* Ideas Bank at client level */}
+                <IdeasBank
+                  client={client}
+                  onUpdateClient={(updated) => setClients((prev) => prev.map((c) => c.id === updated.id ? updated : c))}
+                />
 
                 {calendar ? (
                   <CalendarView
