@@ -1034,13 +1034,19 @@ input[type="radio"] {
   width: 340px;
   flex-shrink: 0;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 2px dashed var(--border);
   border-radius: var(--radius);
   max-height: calc(100vh - 120px);
   overflow-y: auto;
   position: sticky;
   top: var(--sp-4);
-  transition: border-color .2s;
+  transition: border-color .2s, background .2s;
+  display: flex;
+  flex-direction: column;
+}
+.bank-panel.drop-hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 @media (max-width: 1023px) {
