@@ -963,7 +963,7 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
   );
 }
 
-function BankPanel({ client, onUpdateClient, calDays, onRemoveFromCal, onClose, cal, calId, onUpdateCal }) {
+function BankPanel({ client, onUpdateClient, calDays, onRemoveFromCal, onClose, cal, calId, onUpdateCal, onMoveBankToCal }) {
   const [editingId, setEditingId] = useState(null);
   const [dropHover, setDropHover] = useState(false);
 
@@ -991,6 +991,11 @@ function BankPanel({ client, onUpdateClient, calDays, onRemoveFromCal, onClose, 
   };
 
   const moveBankToCalendar = (bankPost, targetDate) => {
+    if (onMoveBankToCal) {
+      onMoveBankToCal(bankPost, targetDate);
+      if (editingId === bankPost.id) setEditingId(null);
+      return;
+    }
     const newPost = { ...bankPost, id: uid(), status: "pending" };
     delete newPost._originDate;
     delete newPost._originCal;
@@ -1244,6 +1249,7 @@ export default function CalendarView({
   onDeleteCal,
   onDuplicateCal,
   onUpdateClient,
+  onMoveBankToCal,
 }) {
   const [viewMode, setViewMode] = useState("list");
   const [expandedDay, setExpandedDay] = useState(null);
@@ -1349,6 +1355,10 @@ export default function CalendarView({
   };
 
   const moveBankToCalendar = (bankPost, targetDate) => {
+    if (onMoveBankToCal) {
+      onMoveBankToCal(bankPost, targetDate);
+      return;
+    }
     const newPost = { ...bankPost, id: uid(), status: "pending" };
     delete newPost._originDate;
     delete newPost._originCal;
@@ -2257,6 +2267,7 @@ export default function CalendarView({
           cal={cal}
           calId={calId}
           onUpdateCal={onUpdateCal}
+          onMoveBankToCal={onMoveBankToCal}
         />
       )}
       </div>{/* end cal-layout */}

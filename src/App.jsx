@@ -608,6 +608,35 @@ function Workspace({ session }) {
                     onDeleteCal={deleteCalendar}
                     onDuplicateCal={duplicateCalendar}
                     onUpdateClient={(updated) => setClients((prev) => prev.map((c) => c.id === updated.id ? updated : c))}
+                    onMoveBankToCal={(bankPost, targetDate) => {
+                      setClients((prev) => prev.map((c) => {
+                        if (c.id !== selectedClientId) return c;
+                        const newPost = { ...bankPost, id: crypto.randomUUID().slice(0, 8), status: "pending" };
+                        delete newPost._originDate;
+                        delete newPost._originCal;
+                        delete newPost._addedAt;
+                        const cals = c.calendars.map((cal) => {
+                          if (cal.id !== selectedCalId) return cal;
+                          const days = (cal.days || []).map((d) =>
+                            d.date !== targetDate ? d : { ...d, posts: [...(d.posts || []), newPost] }
+                          );
+                          return { ...cal, days };
+                        });
+                        const bank = (c.ideasBank || []).filter((p) => p.id !== bankPost.id);
+                        return { ...c, calendars: cals, ideasBank: bank };
+                      }));
+                      clearTimeout(saveTimers.current.get(selectedCalId));
+                      saveTimers.current.set(selectedCalId, setTimeout(() => {
+                        saveTimers.current.delete(selectedCalId);
+                        setClients((cur) => {
+                          const cl = cur.find((c) => c.id === selectedClientId);
+                          const cal = cl?.calendars?.find((c) => c.id === selectedCalId);
+                          if (cal) db.saveCalendar(cal, selectedClientId, ownerId).catch(fallo("guardar el calendario"));
+                          if (cl) db.saveClient(cl, ownerId).catch(fallo("guardar el cliente"));
+                          return cur;
+                        });
+                      }, 600));
+                    }}
                   />
                 ) : (
                   <div className="empty-state">
