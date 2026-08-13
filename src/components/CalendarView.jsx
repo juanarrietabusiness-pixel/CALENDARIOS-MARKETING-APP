@@ -895,14 +895,15 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
             onDragLeave={() => setDropTarget(null)}
             onDrop={(e) => {
               e.preventDefault();
+              let handled = false;
               try {
                 const data = JSON.parse(e.dataTransfer.getData("text/plain") || "{}");
                 if (data.bankPostId && onDropFromBank && ideasBank) {
                   const bankPost = ideasBank.find((p) => p.id === data.bankPostId);
-                  if (bankPost) onDropFromBank(bankPost, date);
+                  if (bankPost) { onDropFromBank(bankPost, date); handled = true; }
                 }
               } catch { /* not bank data */ }
-              if (drag && drag.sourceDate !== date) onMove(drag.postId, drag.sourceDate, date);
+              if (!handled && drag && drag.sourceDate !== date) onMove(drag.postId, drag.sourceDate, date);
               setDrag(null);
               setDropTarget(null);
             }}
@@ -928,7 +929,7 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
                   /* El texto visible se recorta a un icono en móvil, así que
                      el nombre accesible lleva la información completa. */
                   aria-label={`${f.label}${briefIdea ? `: ${briefIdea}` : ""} — ${st.label}${post.publishTime ? `, ${post.publishTime}` : ""}`}
-                  onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDrag({ postId: post.id, sourceDate: date }); }}
+                  onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", JSON.stringify({ postId: post.id, sourceDate: date })); setDrag({ postId: post.id, sourceDate: date }); }}
                   onDragEnd={() => { setDrag(null); setDropTarget(null); }}
                   onClick={() => onPostClick(post, dd)}
                   style={{
@@ -963,45 +964,30 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
 }
 
 function BankPanel({ client, onUpdateClient, calDays, onRemoveFromCal, onClose, cal, calId, onUpdateCal }) {
-  const [newIdeaOpen, setNewIdeaOpen] = useState(false);
-  const [newIdea, setNewIdea] = useState("");
-  const [newCategory, setNewCategory] = useState("");
-  const [newFormat, setNewFormat] = useState("post");
-  const [editingPost, setEditingPost] = useState(null);
+  const [editingId, setEditingId] = useState(null);
+  const [dropHover, setDropHover] = useState(false);
 
   const ideasBank = client.ideasBank || [];
+  const saveBankList = (next) => onUpdateClient({ ...client, ideasBank: next });
 
-  const addNewIdea = () => {
-    if (!newIdea.trim()) return;
-    const idea = {
-      id: uid(),
-      format: newFormat,
-      idea: newIdea.trim(),
-      category: newCategory.trim(),
-      guion: "",
-      descripcion: "",
-      script: "",
-      status: "pending",
-      image: null,
-      referenceLink: "",
-      comment: "",
-      publishTime: "",
+  const addNewPost = () => {
+    const post = {
+      id: uid(), format: "post", idea: "", category: "", guion: "",
+      descripcion: "", script: "", status: "pending", image: null,
+      referenceLink: "", comment: "", publishTime: "",
       _addedAt: new Date().toISOString(),
     };
-    onUpdateClient({ ...client, ideasBank: [...ideasBank, idea] });
-    setNewIdea("");
-    setNewCategory("");
-    setNewFormat("post");
-    setNewIdeaOpen(false);
+    saveBankList([...ideasBank, post]);
+    setEditingId(post.id);
+  };
+
+  const updateBankPost = (updated) => {
+    saveBankList(ideasBank.map((p) => p.id === updated.id ? updated : p));
   };
 
   const removeFromBank = (postId) => {
-    onUpdateClient({ ...client, ideasBank: ideasBank.filter((p) => p.id !== postId) });
-  };
-
-  const updateBankPost = (updatedPost) => {
-    onUpdateClient({ ...client, ideasBank: ideasBank.map((p) => p.id === updatedPost.id ? updatedPost : p) });
-    setEditingPost(null);
+    saveBankList(ideasBank.filter((p) => p.id !== postId));
+    if (editingId === postId) setEditingId(null);
   };
 
   const moveBankToCalendar = (bankPost, targetDate) => {
@@ -1013,12 +999,13 @@ function BankPanel({ client, onUpdateClient, calDays, onRemoveFromCal, onClose, 
       d.date !== targetDate ? d : { ...d, posts: [...(d.posts || []), newPost] }
     );
     onUpdateCal(calId, { ...cal, days: newDays });
-    onUpdateClient({ ...client, ideasBank: ideasBank.filter((p) => p.id !== bankPost.id) });
+    saveBankList(ideasBank.filter((p) => p.id !== bankPost.id));
+    if (editingId === bankPost.id) setEditingId(null);
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
-    e.currentTarget.style.borderColor = "var(--border)";
+    setDropHover(false);
     try {
       const data = JSON.parse(e.dataTransfer.getData("text/plain") || "{}");
       if (data.postId && data.sourceDate && calDays) {
@@ -1026,7 +1013,7 @@ function BankPanel({ client, onUpdateClient, calDays, onRemoveFromCal, onClose, 
         const post = sourceDay?.posts?.find((p) => p.id === data.postId);
         if (post) {
           const bankPost = { ...post, id: uid(), _originDate: data.sourceDate, _addedAt: new Date().toISOString() };
-          onUpdateClient({ ...client, ideasBank: [...ideasBank, bankPost] });
+          saveBankList([...ideasBank, bankPost]);
           if (onRemoveFromCal) onRemoveFromCal(data.sourceDate, data.postId);
         }
       }
@@ -1035,9 +1022,9 @@ function BankPanel({ client, onUpdateClient, calDays, onRemoveFromCal, onClose, 
 
   return (
     <div
-      className="bank-panel"
-      onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = "var(--accent)"; }}
-      onDragLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
+      className={`bank-panel${dropHover ? " drop-hover" : ""}`}
+      onDragOver={(e) => { e.preventDefault(); setDropHover(true); }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropHover(false); }}
       onDrop={handleDrop}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "var(--sp-3)", borderBottom: "1px solid var(--border)" }}>
@@ -1045,7 +1032,7 @@ function BankPanel({ client, onUpdateClient, calDays, onRemoveFromCal, onClose, 
           <Icon name="bulb" size={18} /> Banco ({ideasBank.length})
         </h3>
         <div style={{ display: "flex", gap: "var(--sp-1)" }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => setNewIdeaOpen(!newIdeaOpen)}>
+          <button className="btn btn-secondary btn-sm" onClick={addNewPost} aria-label="Crear nueva idea">
             <Icon name="plus" size={14} />
           </button>
           <button className="btn-icon" onClick={onClose} aria-label="Cerrar banco de ideas">
@@ -1055,136 +1042,46 @@ function BankPanel({ client, onUpdateClient, calDays, onRemoveFromCal, onClose, 
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "var(--sp-2)" }}>
-        {newIdeaOpen && (
-          <div style={{ background: "var(--bg)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)", marginBottom: "var(--sp-2)", border: "1px dashed var(--accent-alt)" }}>
-            <div style={{ display: "flex", gap: "var(--sp-1)", flexWrap: "wrap", marginBottom: "var(--sp-2)" }}>
-              {Object.entries(FORMATS).map(([k, f]) => (
-                <button
-                  key={k}
-                  type="button"
-                  aria-pressed={newFormat === k}
-                  onClick={() => setNewFormat(k)}
-                  style={{
-                    padding: "2px var(--sp-2)",
-                    borderRadius: "var(--radius-xs)",
-                    border: `1px solid ${newFormat === k ? f.color : "var(--border)"}`,
-                    cursor: "pointer",
-                    background: newFormat === k ? f.color + "33" : "transparent",
-                    color: newFormat === k ? f.color : "var(--text-dim)",
-                    fontSize: "var(--fs-3xs)",
-                    fontWeight: 600,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 3,
-                    fontFamily: "inherit",
-                  }}
-                >
-                  <Icon name={FORMAT_ICONS[k] || "formatPost"} size={12} /> {f.label}
-                </button>
-              ))}
-            </div>
-            <input
-              className="input"
-              style={{ fontSize: "var(--fs-2xs)", marginBottom: "var(--sp-1)" }}
-              value={newIdea}
-              onChange={(e) => setNewIdea(e.target.value)}
-              placeholder="Idea…"
-              autoFocus
-              onKeyDown={(e) => { if (e.key === "Enter" && newIdea.trim()) addNewIdea(); }}
-            />
-            <input
-              className="input"
-              style={{ fontSize: "var(--fs-2xs)", marginBottom: "var(--sp-2)" }}
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
-              placeholder="Categoría (opc.)"
-            />
-            <div style={{ display: "flex", gap: "var(--sp-1)" }}>
-              <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={addNewIdea} disabled={!newIdea.trim()}>Agregar</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => setNewIdeaOpen(false)}>Cancelar</button>
-            </div>
-          </div>
-        )}
-
-        {editingPost && (
-          <BankPostEditor
-            post={editingPost}
-            onSave={updateBankPost}
-            onCancel={() => setEditingPost(null)}
-            onMoveToCalendar={(targetDate) => { moveBankToCalendar(editingPost, targetDate); setEditingPost(null); }}
-            calDays={calDays}
-            client={client}
-            cal={cal}
-          />
-        )}
-
-        {ideasBank.length === 0 && !newIdeaOpen ? (
+        {ideasBank.length === 0 ? (
           <p style={{ textAlign: "center", padding: "var(--sp-4) 0", color: "var(--text-dim)", fontSize: "var(--fs-2xs)" }}>
             {calDays
               ? "Arrastra publicaciones aquí o crea una nueva idea."
               : "Crea una nueva idea para este cliente."}
           </p>
         ) : (
-          <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "var(--sp-1)" }}>
-            {ideasBank.map((post) => {
-              const f = FORMATS[post.format] || FORMATS.post;
-              const title = post.idea || post.descripcion?.slice(0, 40) || f.label;
-              return (
-                <li
-                  key={post.id}
-                  draggable
-                  onDragStart={(e) => { e.dataTransfer.setData("text/plain", JSON.stringify({ bankPostId: post.id })); }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "var(--sp-1)",
-                    padding: "var(--sp-2)",
-                    background: "var(--bg)",
-                    borderRadius: "var(--radius-sm)",
-                    border: "1px solid var(--border-light)",
-                    cursor: "grab",
-                  }}
-                >
-                  <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={14} style={{ color: f.color, flexShrink: 0 }} />
-                  <button
-                    type="button"
-                    style={{ flex: 1, minWidth: 0, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0, color: "inherit", fontFamily: "inherit" }}
-                    onClick={() => setEditingPost(post)}
-                    aria-label={`Editar: ${title}`}
-                  >
-                    <span style={{ display: "block", fontSize: "var(--fs-2xs)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {title}
-                    </span>
-                    {post.category && <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{post.category}</span>}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-remove"
-                    aria-label={`Quitar del banco: ${title}`}
-                    onClick={() => removeFromBank(post.id)}
-                  >
-                    <Icon name="close" size={14} />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
+            {ideasBank.map((post) => (
+              <BankPostCard
+                key={post.id}
+                post={post}
+                isEditing={editingId === post.id}
+                onToggleEdit={() => setEditingId(editingId === post.id ? null : post.id)}
+                onSave={updateBankPost}
+                onRemove={() => removeFromBank(post.id)}
+                onMoveToCalendar={(date) => moveBankToCalendar(post, date)}
+                calDays={calDays}
+                client={client}
+                cal={cal}
+              />
+            ))}
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-function BankPostEditor({ post, onSave, onCancel, onMoveToCalendar, calDays, client, cal }) {
+function BankPostCard({ post, isEditing, onToggleEdit, onSave, onRemove, onMoveToCalendar, calDays, client, cal }) {
   const [form, setForm] = useState({ ...post });
   const [moveDate, setMoveDate] = useState("");
   const [fieldLoading, setFieldLoading] = useState({});
   const [fieldError, setFieldError] = useState("");
   const imgRef = useRef();
-  const ids = useId();
-  const sf = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+  const cardId = useId();
+  const sf = (k, v) => { setForm((p) => { const next = { ...p, [k]: v }; onSave(next); return next; }); };
   const f = FORMATS[form.format] || FORMATS.post;
   const isPost = form.format === "post";
+  const title = form.idea || form.descripcion?.slice(0, 40) || f.label;
 
   const generateField = async (field) => {
     setFieldError("");
@@ -1195,16 +1092,53 @@ function BankPostEditor({ post, onSave, onCancel, onMoveToCalendar, calDays, cli
       sf(field, result);
     } catch (e) {
       setFieldError(`Error: ${e.message}`);
+    } finally {
+      setFieldLoading((p) => ({ ...p, [field]: false }));
     }
-    setFieldLoading((p) => ({ ...p, [field]: false }));
   };
 
+  const handleDragStart = (e) => {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", JSON.stringify({ bankPostId: post.id }));
+  };
+
+  if (!isEditing) {
+    return (
+      <div
+        draggable
+        onDragStart={handleDragStart}
+        style={{
+          display: "flex", alignItems: "center", gap: "var(--sp-2)",
+          padding: "var(--sp-2)", background: "var(--bg)", borderRadius: "var(--radius-sm)",
+          border: `1px solid ${f.color}44`, cursor: "grab",
+        }}
+      >
+        <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={16} style={{ color: f.color, flexShrink: 0 }} />
+        <button
+          type="button" draggable={false}
+          style={{ flex: 1, minWidth: 0, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0, color: "inherit", fontFamily: "inherit" }}
+          onClick={onToggleEdit}
+          aria-label={`Editar: ${title}`}
+        >
+          <span style={{ display: "block", fontSize: "var(--fs-2xs)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {title}
+          </span>
+          {form.category && <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{form.category}</span>}
+          {form.publishTime && <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}><Icon name="clock" size={10} /> {form.publishTime}</span>}
+        </button>
+        <button type="button" draggable={false} className="btn-remove" aria-label={`Quitar del banco: ${title}`} onClick={onRemove}>
+          <Icon name="close" size={14} />
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ background: "var(--surface-2)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)", marginBottom: "var(--sp-2)", border: "1px solid var(--accent-alt)" }}>
+    <div style={{ background: "var(--surface-2)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)", border: `1px solid ${f.color}66` }}>
       <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-2)" }}>
         <Icon name={FORMAT_ICONS[form.format] || "formatPost"} size={16} style={{ color: f.color }} />
         <span style={{ fontSize: "var(--fs-xs)", fontWeight: 700, flex: 1 }}>Editar idea</span>
-        <button className="btn-icon" onClick={onCancel} aria-label="Cerrar editor"><Icon name="close" size={16} /></button>
+        <button className="btn-icon" onClick={onToggleEdit} aria-label="Cerrar editor"><Icon name="close" size={16} /></button>
       </div>
 
       {fieldError && <p role="alert" style={{ fontSize: "var(--fs-3xs)", color: "var(--danger)", marginBottom: "var(--sp-2)" }}>{fieldError}</p>}
@@ -1230,44 +1164,44 @@ function BankPostEditor({ post, onSave, onCancel, onMoveToCalendar, calDays, cli
 
       <div style={{ marginBottom: "var(--sp-2)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
-          <label className="label" style={{ margin: 0, fontSize: "var(--fs-3xs)" }} htmlFor={`${ids}-b-idea`}>Idea</label>
+          <label className="label" style={{ margin: 0, fontSize: "var(--fs-3xs)" }} htmlFor={`${cardId}-idea`}>Idea</label>
           <button type="button" className="btn-ai" style={{ fontSize: "var(--fs-3xs)", padding: "1px 6px" }} onClick={() => generateField("idea")} disabled={fieldLoading.idea}>
             {fieldLoading.idea ? "…" : <><Icon name="sparkles" size={11} /> IA</>}
           </button>
         </div>
-        <textarea id={`${ids}-b-idea`} className="textarea" style={{ minHeight: 56, fontSize: "var(--fs-2xs)" }} value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Idea…" />
+        <textarea id={`${cardId}-idea`} className="textarea" style={{ minHeight: 56, fontSize: "var(--fs-2xs)" }} value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Idea…" />
       </div>
 
       <div style={{ marginBottom: "var(--sp-2)" }}>
-        <label className="label" style={{ fontSize: "var(--fs-3xs)" }} htmlFor={`${ids}-b-cat`}>Categoría</label>
-        <input id={`${ids}-b-cat`} className="input" style={{ fontSize: "var(--fs-2xs)" }} value={form.category || ""} onChange={(e) => sf("category", e.target.value)} placeholder="Categoría…" />
+        <label className="label" style={{ fontSize: "var(--fs-3xs)" }} htmlFor={`${cardId}-cat`}>Categoría</label>
+        <input id={`${cardId}-cat`} className="input" style={{ fontSize: "var(--fs-2xs)" }} value={form.category || ""} onChange={(e) => sf("category", e.target.value)} placeholder="Categoría…" />
       </div>
 
       <div style={{ marginBottom: "var(--sp-2)" }}>
-        <label className="label" style={{ fontSize: "var(--fs-3xs)" }} htmlFor={`${ids}-b-time`}>Hora</label>
-        <TimePicker id={`${ids}-b-time`} value={form.publishTime || ""} onChange={(v) => sf("publishTime", v)} />
+        <label className="label" style={{ fontSize: "var(--fs-3xs)" }} htmlFor={`${cardId}-time`}>Hora</label>
+        <TimePicker id={`${cardId}-time`} value={form.publishTime || ""} onChange={(v) => sf("publishTime", v)} />
       </div>
 
       {!isPost && (
         <div style={{ marginBottom: "var(--sp-2)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
-            <label className="label" style={{ margin: 0, fontSize: "var(--fs-3xs)", color: "#FF7BA8" }} htmlFor={`${ids}-b-guion`}>Guion</label>
+            <label className="label" style={{ margin: 0, fontSize: "var(--fs-3xs)", color: "#FF7BA8" }} htmlFor={`${cardId}-guion`}>Guion</label>
             <button type="button" className="btn-ai" style={{ fontSize: "var(--fs-3xs)", padding: "1px 6px" }} onClick={() => generateField("guion")} disabled={fieldLoading.guion}>
               {fieldLoading.guion ? "…" : <><Icon name="sparkles" size={11} /> IA</>}
             </button>
           </div>
-          <textarea id={`${ids}-b-guion`} className="textarea" style={{ minHeight: 64, fontSize: "var(--fs-2xs)" }} value={form.guion || ""} onChange={(e) => sf("guion", e.target.value)} placeholder="Guion…" />
+          <textarea id={`${cardId}-guion`} className="textarea" style={{ minHeight: 64, fontSize: "var(--fs-2xs)" }} value={form.guion || ""} onChange={(e) => sf("guion", e.target.value)} placeholder="Guion…" />
         </div>
       )}
 
       <div style={{ marginBottom: "var(--sp-2)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
-          <label className="label" style={{ margin: 0, fontSize: "var(--fs-3xs)" }} htmlFor={`${ids}-b-desc`}>Descripción</label>
+          <label className="label" style={{ margin: 0, fontSize: "var(--fs-3xs)" }} htmlFor={`${cardId}-desc`}>Descripción</label>
           <button type="button" className="btn-ai" style={{ fontSize: "var(--fs-3xs)", padding: "1px 6px" }} onClick={() => generateField("descripcion")} disabled={fieldLoading.descripcion}>
             {fieldLoading.descripcion ? "…" : <><Icon name="sparkles" size={11} /> IA</>}
           </button>
         </div>
-        <textarea id={`${ids}-b-desc`} className="textarea" style={{ minHeight: 64, fontSize: "var(--fs-2xs)" }} value={form.descripcion || form.script || ""} onChange={(e) => sf("descripcion", e.target.value)} placeholder="Descripción…" />
+        <textarea id={`${cardId}-desc`} className="textarea" style={{ minHeight: 64, fontSize: "var(--fs-2xs)" }} value={form.descripcion || form.script || ""} onChange={(e) => sf("descripcion", e.target.value)} placeholder="Descripción…" />
       </div>
 
       {form.image && <img src={form.image} alt="" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: "var(--radius-xs)", marginBottom: "var(--sp-2)" }} />}
@@ -1282,8 +1216,8 @@ function BankPostEditor({ post, onSave, onCancel, onMoveToCalendar, calDays, cli
       {calDays && (
         <div style={{ display: "flex", gap: "var(--sp-1)", alignItems: "flex-end", marginBottom: "var(--sp-2)" }}>
           <div style={{ flex: 1 }}>
-            <label className="label" style={{ fontSize: "var(--fs-3xs)" }} htmlFor={`${ids}-b-move`}>Mover al calendario</label>
-            <select id={`${ids}-b-move`} className="input" style={{ fontSize: "var(--fs-2xs)" }} value={moveDate} onChange={(e) => setMoveDate(e.target.value)}>
+            <label className="label" style={{ fontSize: "var(--fs-3xs)" }} htmlFor={`${cardId}-move`}>Mover al calendario</label>
+            <select id={`${cardId}-move`} className="input" style={{ fontSize: "var(--fs-2xs)" }} value={moveDate} onChange={(e) => setMoveDate(e.target.value)}>
               <option value="">Elegir fecha…</option>
               {calDays.map((d) => <option key={d.date} value={d.date}>{d.date.split("-")[2]} {d.dayName}</option>)}
             </select>
@@ -1294,10 +1228,9 @@ function BankPostEditor({ post, onSave, onCancel, onMoveToCalendar, calDays, cli
         </div>
       )}
 
-      <div style={{ display: "flex", gap: "var(--sp-1)" }}>
-        <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => onSave(form)}>Guardar</button>
-        <button className="btn btn-ghost btn-sm" onClick={onCancel}>Cancelar</button>
-      </div>
+      <button className="btn btn-ghost btn-sm" style={{ width: "100%", color: "var(--danger)", fontSize: "var(--fs-3xs)" }} onClick={onRemove}>
+        <Icon name="trash" size={14} /> Eliminar del banco
+      </button>
     </div>
   );
 }
