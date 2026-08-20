@@ -7,6 +7,12 @@ import Icon from "./Icon";
 
 const STEP_LABELS = ["Plan", "Fechas", "Campaña", "Conceptos", "Categorías", "Ofertas", "Vídeos", "Ideas"];
 
+const TEMPLATES_KEY = "jads-templates";
+function loadTemplates() {
+  try { return JSON.parse(localStorage.getItem(TEMPLATES_KEY) || "[]"); } catch { return []; }
+}
+function saveTemplates(list) { localStorage.setItem(TEMPLATES_KEY, JSON.stringify(list)); }
+
 function StepBar({ step, setStep }) {
   return (
     <nav className="wizard-steps" aria-label={`Paso ${step + 1} de ${STEP_LABELS.length}: ${STEP_LABELS[step]}`}>
@@ -62,12 +68,53 @@ export default function PlanWizard({ client, onGenerate, onClose }) {
   const generating = useRef(false);
   const ids = useId();
   const dialogRef = useDialogA11y(onClose);
+  const [templates, setTemplates] = useState(loadTemplates);
+  const [tplName, setTplName] = useState("");
+  const [tplPicker, setTplPicker] = useState(null);
 
   const allDays = daysInMonth(year, month);
   const postsPerDay = PLANS[plan]?.posts || 2;
 
   const goNext = () => setStep((s) => Math.min(s + 1, STEP_LABELS.length - 1));
   const goBack = () => setStep((s) => Math.max(s - 1, 0));
+
+  const saveTemplate = (type) => {
+    const name = tplName.trim();
+    if (!name) return;
+    const tpl = { id: uid(), name, type, plan, createdAt: new Date().toISOString() };
+    if (type === "formats" || type === "full") tpl.formatConfig = formatConfig;
+    if (type === "categories" || type === "full") tpl.dayCategories = dayCategories;
+    if (type === "full") {
+      tpl.campaign = campaign;
+      tpl.weekConcepts = weekConcepts;
+      tpl.offers = offers;
+      tpl.promoCode = promoCode;
+    }
+    const next = [...templates, tpl];
+    setTemplates(next);
+    saveTemplates(next);
+    setTplName("");
+    setTplPicker(null);
+  };
+
+  const applyTemplate = (tpl) => {
+    if (tpl.formatConfig) {
+      setFormatConfig(tpl.formatConfig);
+      if (tpl.plan) setPlan(tpl.plan);
+    }
+    if (tpl.dayCategories) setDayCategories(tpl.dayCategories);
+    if (tpl.campaign !== undefined) setCampaign(tpl.campaign);
+    if (tpl.weekConcepts) setWeekConcepts(tpl.weekConcepts);
+    if (tpl.offers !== undefined) setOffers(tpl.offers);
+    if (tpl.promoCode !== undefined) setPromoCode(tpl.promoCode);
+    setTplPicker(null);
+  };
+
+  const deleteTemplate = (tplId) => {
+    const next = templates.filter((t) => t.id !== tplId);
+    setTemplates(next);
+    saveTemplates(next);
+  };
 
   const suggestDates = async () => {
     setAiLoading(true);
@@ -383,6 +430,33 @@ ${daysDesc}`;
               </div>
               </fieldset>
 
+              <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", flexWrap: "wrap", marginBottom: "var(--sp-3)" }}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setTplPicker(tplPicker === "formats" ? null : "formats")}>
+                  <Icon name="calendar" size={14} /> Plantillas de formatos
+                </button>
+              </div>
+              {tplPicker === "formats" && (
+                <div style={{ background: "var(--surface)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)", marginBottom: "var(--sp-3)", border: "1px solid var(--border)" }}>
+                  <p style={{ fontSize: "var(--fs-xs)", fontWeight: 700, marginBottom: "var(--sp-2)" }}>Plantillas guardadas</p>
+                  {templates.filter((t) => t.type === "formats" || t.type === "full").length === 0 && (
+                    <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", marginBottom: "var(--sp-2)" }}>Sin plantillas de formatos.</p>
+                  )}
+                  {templates.filter((t) => t.type === "formats" || t.type === "full").map((t) => (
+                    <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "var(--sp-2)", background: "var(--bg)", borderRadius: "var(--radius-xs)", marginBottom: "var(--sp-1)" }}>
+                      <span style={{ fontSize: "var(--fs-2xs)", fontWeight: 600 }}>{t.name} <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>({t.type})</span></span>
+                      <div style={{ display: "flex", gap: "var(--sp-1)" }}>
+                        <button type="button" className="btn btn-primary btn-sm" style={{ fontSize: "var(--fs-3xs)" }} onClick={() => applyTemplate(t)}>Aplicar</button>
+                        <button type="button" className="btn-remove" aria-label={`Eliminar plantilla ${t.name}`} onClick={() => deleteTemplate(t.id)}><Icon name="close" size={14} /></button>
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", gap: "var(--sp-2)", marginTop: "var(--sp-2)" }}>
+                    <input className="input" style={{ flex: 1, fontSize: "var(--fs-2xs)" }} placeholder="Nombre de la plantilla…" value={tplName} onChange={(e) => setTplName(e.target.value)} />
+                    <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: "var(--fs-3xs)" }} disabled={!tplName.trim()} onClick={() => saveTemplate("formats")}>Guardar formatos</button>
+                  </div>
+                </div>
+              )}
+
               <fieldset style={{ border: "none" }}>
                 <legend className="label">Formatos por día</legend>
                 <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
@@ -552,6 +626,32 @@ ${daysDesc}`;
           {step === 4 && (
             <div>
               <h3 className="label">Categoría por día de la semana</h3>
+              <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", flexWrap: "wrap", marginBottom: "var(--sp-3)" }}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setTplPicker(tplPicker === "categories" ? null : "categories")}>
+                  <Icon name="calendar" size={14} /> Plantillas de categorías
+                </button>
+              </div>
+              {tplPicker === "categories" && (
+                <div style={{ background: "var(--surface)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)", marginBottom: "var(--sp-3)", border: "1px solid var(--border)" }}>
+                  <p style={{ fontSize: "var(--fs-xs)", fontWeight: 700, marginBottom: "var(--sp-2)" }}>Plantillas guardadas</p>
+                  {templates.filter((t) => t.type === "categories" || t.type === "full").length === 0 && (
+                    <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", marginBottom: "var(--sp-2)" }}>Sin plantillas de categorías.</p>
+                  )}
+                  {templates.filter((t) => t.type === "categories" || t.type === "full").map((t) => (
+                    <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "var(--sp-2)", background: "var(--bg)", borderRadius: "var(--radius-xs)", marginBottom: "var(--sp-1)" }}>
+                      <span style={{ fontSize: "var(--fs-2xs)", fontWeight: 600 }}>{t.name} <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>({t.type})</span></span>
+                      <div style={{ display: "flex", gap: "var(--sp-1)" }}>
+                        <button type="button" className="btn btn-primary btn-sm" style={{ fontSize: "var(--fs-3xs)" }} onClick={() => applyTemplate(t)}>Aplicar</button>
+                        <button type="button" className="btn-remove" aria-label={`Eliminar plantilla ${t.name}`} onClick={() => deleteTemplate(t.id)}><Icon name="close" size={14} /></button>
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", gap: "var(--sp-2)", marginTop: "var(--sp-2)" }}>
+                    <input className="input" style={{ flex: 1, fontSize: "var(--fs-2xs)" }} placeholder="Nombre de la plantilla…" value={tplName} onChange={(e) => setTplName(e.target.value)} />
+                    <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: "var(--fs-3xs)" }} disabled={!tplName.trim()} onClick={() => saveTemplate("categories")}>Guardar categorías</button>
+                  </div>
+                </div>
+              )}
               <div className="filter-bar" role="group" aria-label="Categorías sugeridas: al pulsar se asignan al primer día libre">
                 {DEFAULT_CATEGORIES.map((cat) => (
                   <button
@@ -871,6 +971,14 @@ ${daysDesc}`;
           )}
         </div>
 
+        {step === STEP_LABELS.length - 1 && (
+          <div style={{ padding: "0 var(--sp-4) var(--sp-2)", display: "flex", gap: "var(--sp-2)", alignItems: "center", flexWrap: "wrap" }}>
+            <input className="input" style={{ flex: 1, minWidth: 140, fontSize: "var(--fs-2xs)" }} placeholder="Nombre de plantilla completa…" value={tplName} onChange={(e) => setTplName(e.target.value)} />
+            <button type="button" className="btn btn-secondary btn-sm" style={{ fontSize: "var(--fs-3xs)" }} disabled={!tplName.trim()} onClick={() => saveTemplate("full")}>
+              <Icon name="calendar" size={14} /> Guardar como plantilla
+            </button>
+          </div>
+        )}
         <div className="sheet-footer">
           {step > 0 && (
             <button className="btn btn-secondary" onClick={goBack}>

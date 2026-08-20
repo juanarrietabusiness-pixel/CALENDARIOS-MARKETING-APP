@@ -42,6 +42,7 @@ const paths = {
   send: <><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></>,
   sparkles: <><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z" /><path d="M18.5 16.5 19 18l1.5.5L19 19l-.5 1.5L18 19l-1.5-.5L18 18Z" /></>,
   bolt: <path d="M13 2 4.5 13.5H11l-1 8.5 8.5-11.5H12Z" />,
+  wand: <><path d="m15 4 5 5" /><path d="M13.5 6.5 3 17a1.4 1.4 0 0 0 0 2l2 2a1.4 1.4 0 0 0 2 0L17.5 10.5Z" /><path d="m18 2 4 4" /><path d="M22 6h.01" /><path d="M18 10h.01" /><path d="M22 10h.01" /></>,
 
   // --- Objetos ---
   calendar: <><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18" /><path d="M8 2v4" /><path d="M16 2v4" /></>,

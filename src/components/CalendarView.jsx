@@ -1,12 +1,19 @@
 import { useEffect, useId, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid, fmtDate, compressImage, parseVideoURL } from "../utils";
-import { callAI, fetchGitHubADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost } from "../api";
+import { callAI, fetchGitHubADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost, generateImagePrompt, generateImage, checkImageGenConfigured } from "../api";
 import { buildExportHTML } from "../export";
 import { shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
 
+
+const CATEGORY_HUES = [210, 340, 30, 160, 270, 50, 190, 0, 130, 300, 80, 230];
+function categoryHue(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return CATEGORY_HUES[((h % CATEGORY_HUES.length) + CATEGORY_HUES.length) % CATEGORY_HUES.length];
+}
 
 function stripMarkdown(text) {
   if (!text) return "";
@@ -201,7 +208,7 @@ function ContentDisplay({ post }) {
   );
 }
 
-function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onSendToBank, client, cal }) {
+function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onSendToBank, suggestion, onAcceptSuggestion, onRejectSuggestion, client, cal }) {
   const [form, setForm] = useState({ ...post });
   const [fieldLoading, setFieldLoading] = useState({});
   const [fieldError, setFieldError] = useState("");
@@ -372,6 +379,50 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onS
           />
         </div>
 
+        {suggestion && (suggestion.guion || suggestion.descripcion) && (
+          <div style={{
+            padding: "var(--sp-3)", background: "var(--surface)", borderRadius: "var(--radius-sm)",
+            border: "1px solid var(--accent-alt)", marginBottom: "var(--sp-3)",
+          }}>
+            <p style={{ fontSize: "var(--fs-xs)", fontWeight: 700, color: "var(--accent-alt)", marginBottom: "var(--sp-2)" }}>
+              <Icon name="message" size={16} /> Sugerencias del cliente
+            </p>
+            {suggestion.comentario && (
+              <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", marginBottom: "var(--sp-2)", fontStyle: "italic" }}>
+                &ldquo;{suggestion.comentario}&rdquo;
+              </p>
+            )}
+            {suggestion.guion && (
+              <div style={{ marginBottom: "var(--sp-2)" }}>
+                <p style={{ fontSize: "var(--fs-3xs)", fontWeight: 600, color: "#FF7BA8", marginBottom: 2 }}>Guion sugerido:</p>
+                <p style={{ fontSize: "var(--fs-2xs)", whiteSpace: "pre-wrap", background: "var(--bg)", padding: "var(--sp-2)", borderRadius: "var(--radius-xs)" }}>{suggestion.guion}</p>
+                <div style={{ display: "flex", gap: "var(--sp-1)", marginTop: "var(--sp-1)" }}>
+                  <button className="btn btn-primary btn-sm" style={{ fontSize: "var(--fs-3xs)" }} onClick={() => { sf("guion", suggestion.guion); onAcceptSuggestion?.(post.id, "guion", suggestion.guion); }}>
+                    <Icon name="check" size={14} /> Aceptar
+                  </button>
+                  <button className="btn btn-ghost btn-sm" style={{ fontSize: "var(--fs-3xs)", color: "var(--danger)" }} onClick={() => onRejectSuggestion?.(post.id, "guion")}>
+                    <Icon name="close" size={14} /> Rechazar
+                  </button>
+                </div>
+              </div>
+            )}
+            {suggestion.descripcion && (
+              <div>
+                <p style={{ fontSize: "var(--fs-3xs)", fontWeight: 600, color: "var(--accent)", marginBottom: 2 }}>Descripción sugerida:</p>
+                <p style={{ fontSize: "var(--fs-2xs)", whiteSpace: "pre-wrap", background: "var(--bg)", padding: "var(--sp-2)", borderRadius: "var(--radius-xs)" }}>{suggestion.descripcion}</p>
+                <div style={{ display: "flex", gap: "var(--sp-1)", marginTop: "var(--sp-1)" }}>
+                  <button className="btn btn-primary btn-sm" style={{ fontSize: "var(--fs-3xs)" }} onClick={() => { sf("descripcion", suggestion.descripcion); onAcceptSuggestion?.(post.id, "descripcion", suggestion.descripcion); }}>
+                    <Icon name="check" size={14} /> Aceptar
+                  </button>
+                  <button className="btn btn-ghost btn-sm" style={{ fontSize: "var(--fs-3xs)", color: "var(--danger)" }} onClick={() => onRejectSuggestion?.(post.id, "descripcion")}>
+                    <Icon name="close" size={14} /> Rechazar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="field">
           <span className="label" id={`${ids}-img-label`}>Imagen</span>
           <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", flexWrap: "wrap" }}>
@@ -401,7 +452,81 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onS
                 Quitar
               </button>
             )}
+            {form.imagePrompt && (
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={fieldLoading.imageGen}
+                onClick={async () => {
+                  setFieldError("");
+                  setFieldLoading((p) => ({ ...p, imageGen: true }));
+                  try {
+                    const url = await generateImage(form.imagePrompt, form.format);
+                    sf("generatedImageUrl", url);
+                  } catch (e) {
+                    if (e.message === "NOT_CONFIGURED") {
+                      setFieldError("La generación de imágenes no está configurada. Pide al administrador que añada IMAGE_GEN_API_KEY en Supabase.");
+                    } else {
+                      setFieldError(`No se pudo generar la imagen: ${e.message}`);
+                    }
+                  }
+                  setFieldLoading((p) => ({ ...p, imageGen: false }));
+                }}
+                aria-label="Generar imagen con IA"
+              >
+                {fieldLoading.imageGen ? "Generando…" : <><Icon name="image" size={14} /> Generar imagen</>}
+              </button>
+            )}
           </div>
+          {form.generatedImageUrl && (
+            <div style={{ marginTop: "var(--sp-2)" }}>
+              <p style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)", marginBottom: "var(--sp-1)" }}>Imagen generada:</p>
+              <img src={form.generatedImageUrl} alt="Imagen generada por IA" style={{ width: "100%", maxWidth: 300, borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }} />
+              <div style={{ display: "flex", gap: "var(--sp-2)", marginTop: "var(--sp-1)" }}>
+                <button className="btn btn-primary btn-sm" style={{ fontSize: "var(--fs-3xs)" }} onClick={() => { sf("image", form.generatedImageUrl); sf("generatedImageUrl", null); }}>
+                  Usar como imagen del post
+                </button>
+                <button className="btn btn-ghost btn-sm" style={{ fontSize: "var(--fs-3xs)", color: "var(--danger)" }} onClick={() => sf("generatedImageUrl", null)}>
+                  Descartar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="field">
+          <div style={fieldHeaderStyle}>
+            <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-prompt`}>Prompt visual</label>
+            <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+              <CopyButton text={form.imagePrompt} describes="el prompt visual" />
+              <button
+                type="button"
+                className="btn-ai"
+                onClick={async () => {
+                  setFieldError("");
+                  setFieldLoading((p) => ({ ...p, imagePrompt: true }));
+                  try {
+                    const result = await generateImagePrompt(client, form, day, cal);
+                    sf("imagePrompt", result);
+                  } catch (e) {
+                    setFieldError(`No se pudo generar el prompt: ${e.message}`);
+                  }
+                  setFieldLoading((p) => ({ ...p, imagePrompt: false }));
+                }}
+                disabled={fieldLoading.imagePrompt}
+                aria-label="Generar prompt visual con IA"
+              >
+                {fieldLoading.imagePrompt ? "Generando…" : <><Icon name="wand" size={14} /> Prompt</>}
+              </button>
+            </div>
+          </div>
+          <textarea
+            id={`${ids}-prompt`}
+            className="textarea"
+            style={{ minHeight: 100 }}
+            value={form.imagePrompt || ""}
+            onChange={(e) => sf("imagePrompt", e.target.value)}
+            placeholder="Prompt para generar imagen o video…"
+          />
         </div>
 
         <div className="field">
@@ -716,7 +841,7 @@ function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
 
 function ApprovalDialog({
   approvalUrl, whatsappMessage, onClose, onGenerate, onRevoke, onReopen,
-  hasLink, shareEnabled, working,
+  hasLink, shareEnabled, working, allowEditing, onToggleEditing,
 }) {
   const ref = useDialogA11y(onClose);
   const ids = useId();
@@ -776,11 +901,29 @@ function ApprovalDialog({
               <p className="hint">Toca el mensaje para seleccionarlo y copiarlo.</p>
             </div>
 
-            {/* Ya no hay botón «Sincronizar»: las respuestas del cliente
-                llegan solas por Realtime. */}
             <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
               Las respuestas de tu cliente aparecen aquí al instante, sin recargar.
             </p>
+
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "var(--sp-3)", background: "var(--surface)", borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--border)", marginBottom: "var(--sp-3)",
+            }}>
+              <div>
+                <span style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Permitir edición</span>
+                <p className="hint" style={{ margin: 0 }}>El cliente puede sugerir cambios a la descripción y guion.</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={allowEditing}
+                className={`toggle${allowEditing ? " is-on" : ""}`}
+                onClick={onToggleEditing}
+              >
+                <span className="toggle-thumb" />
+              </button>
+            </div>
 
             <div style={{ display: "flex", gap: "var(--sp-2)" }}>
               <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>Cerrar</button>
@@ -919,20 +1062,26 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
               const f = FORMATS[post.format] || FORMATS.post;
               const st = STATUSES[post.status || "pending"];
               const isPublished = post.status === "published";
+              const cat = post.category || dd?.category || "";
+              const hue = cat ? categoryHue(cat) : 0;
               const briefIdea = post.idea ? post.idea.split(/[.\n]/)[0].slice(0, 24) : "";
+              const chipLabel = cat || f.label;
               return (
                 <button
                   key={post.id}
                   type="button"
                   draggable
-                  className={`cal-post${isPublished ? " is-published" : ""}`}
-                  /* El texto visible se recorta a un icono en móvil, así que
-                     el nombre accesible lleva la información completa. */
-                  aria-label={`${f.label}${briefIdea ? `: ${briefIdea}` : ""} — ${st.label}${post.publishTime ? `, ${post.publishTime}` : ""}`}
+                  className={`cal-post${isPublished ? " is-published" : ""}${cat ? " has-cat" : ""}`}
+                  aria-label={`${f.label}${cat ? ` — ${cat}` : ""}${briefIdea ? `: ${briefIdea}` : ""} — ${st.label}${post.publishTime ? `, ${post.publishTime}` : ""}`}
                   onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", JSON.stringify({ postId: post.id, sourceDate: date })); setDrag({ postId: post.id, sourceDate: date }); }}
                   onDragEnd={() => { setDrag(null); setDropTarget(null); }}
                   onClick={() => onPostClick(post, dd)}
-                  style={{
+                  style={cat ? {
+                    background: isPublished ? st.bg : `hsl(${hue} 60% 25% / .35)`,
+                    borderColor: isPublished ? st.border : `hsl(${hue} 55% 50% / .5)`,
+                    borderWidth: isPublished ? 2 : 1,
+                    color: isPublished ? st.text : `hsl(${hue} 70% 75%)`,
+                  } : {
                     background: isPublished ? st.bg : f.color + "22",
                     borderColor: isPublished ? st.border : st.border + "88",
                     borderWidth: isPublished ? 2 : 1,
@@ -941,7 +1090,7 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
                 >
                   <span className="cal-post-dot" style={{ background: st.text }} aria-hidden="true" />
                   <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={13} />
-                  <span className="cal-post-label" aria-hidden="true">{briefIdea || f.label}</span>
+                  <span className="cal-post-label" aria-hidden="true">{chipLabel}</span>
                   {post.publishTime && <span className="cal-post-time" aria-hidden="true">{post.publishTime}</span>}
                 </button>
               );
@@ -1274,6 +1423,7 @@ export default function CalendarView({
   const [shareWorking, setShareWorking] = useState(false);
   const [editMeta, setEditMeta] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState({});
 
   const [metaForm, setMetaForm] = useState(() => {
     const cats = {};
@@ -1314,6 +1464,18 @@ export default function CalendarView({
       try {
         const approvals = await fetchApprovals(cal.id);
         if (!alive || Object.keys(approvals).length === 0) return;
+
+        const newSuggestions = {};
+        for (const [postId, review] of Object.entries(approvals)) {
+          if (review.suggestedDescripcion || review.suggestedGuion) {
+            newSuggestions[postId] = {
+              descripcion: review.suggestedDescripcion,
+              guion: review.suggestedGuion,
+              comentario: review.comentario,
+            };
+          }
+        }
+        setSuggestions(newSuggestions);
 
         setCalRef.current?.((actual) => {
           const days = (actual.days || []).map((d) => ({
@@ -1404,10 +1566,11 @@ export default function CalendarView({
 
   const addDebug = (msg) => setDebugLog((prev) => [...prev, { time: new Date().toLocaleTimeString(), msg }]);
 
-  const updatePost = (date, updatedPost) => {
-    const newDays = (cal.days || []).map((d) =>
-      d.date !== date ? d : { ...d, posts: d.posts.map((p) => (p.id === updatedPost.id ? updatedPost : p)) }
-    );
+  const updatePost = (_date, updatedPost) => {
+    const newDays = (cal.days || []).map((d) => ({
+      ...d,
+      posts: (d.posts || []).map((p) => (p.id === updatedPost.id ? updatedPost : p)),
+    }));
     onUpdateCal(calId, { ...cal, days: newDays });
   };
 
@@ -1752,6 +1915,92 @@ export default function CalendarView({
     URL.revokeObjectURL(url);
   };
 
+  const exportPrompts = (formatFilter = "all") => {
+    const lines = [];
+    for (const day of cal.days || []) {
+      for (const post of day.posts || []) {
+        if (!post.imagePrompt) continue;
+        if (formatFilter !== "all" && post.format !== formatFilter) continue;
+        const fmt = FORMATS[post.format] || FORMATS.post;
+        lines.push(`═══════════════════════════════════════`);
+        lines.push(`${fmt.label.toUpperCase()} — ${day.date} (${day.dayName || ""})`);
+        lines.push(`Categoría: ${post.category || day.category || "—"}`);
+        lines.push(`Idea: ${post.idea || "—"}`);
+        lines.push(`───────────────────────────────────────`);
+        lines.push(post.imagePrompt);
+        lines.push("");
+      }
+    }
+    if (lines.length === 0) {
+      setGenStatus("No hay prompts generados para exportar.");
+      setTimeout(() => setGenStatus(""), 3000);
+      return;
+    }
+    const header = `PROMPTS VISUALES — ${client.name}\n${calName}\n${formatFilter !== "all" ? `Filtro: ${FORMATS[formatFilter]?.label || formatFilter}` : "Todos los formatos"}\nGenerado: ${new Date().toLocaleString()}\n\n`;
+    const blob = new Blob([header + lines.join("\n")], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `prompts-${calName.replace(/\s+/g, "-")}-${client.name.replace(/\s+/g, "-")}${formatFilter !== "all" ? `-${formatFilter}` : ""}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const [promptExportFilter, setPromptExportFilter] = useState("all");
+  const [promptExportOpen, setPromptExportOpen] = useState(false);
+  const [imageGenAvailable, setImageGenAvailable] = useState(null);
+  const [batchImageGen, setBatchImageGen] = useState(false);
+  const [batchImageProgress, setBatchImageProgress] = useState("");
+
+  useEffect(() => {
+    checkImageGenConfigured().then(setImageGenAvailable);
+  }, []);
+
+  const generateBatchImages = async () => {
+    const postsWithPrompts = [];
+    for (const day of cal.days || []) {
+      for (const post of day.posts || []) {
+        if (post.imagePrompt && !post.generatedImageUrl) {
+          postsWithPrompts.push({ post, day });
+        }
+      }
+    }
+    if (postsWithPrompts.length === 0) {
+      setGenStatus("No hay prompts sin imagen generada.");
+      setTimeout(() => setGenStatus(""), 3000);
+      return;
+    }
+
+    setBatchImageGen(true);
+    let newDays = [...(cal.days || [])];
+    let done = 0;
+    for (const { post } of postsWithPrompts) {
+      done++;
+      setBatchImageProgress(`Generando imagen ${done}/${postsWithPrompts.length}…`);
+      try {
+        const url = await generateImage(post.imagePrompt, post.format);
+        newDays = newDays.map((d) => ({
+          ...d,
+          posts: (d.posts || []).map((p) =>
+            p.id === post.id ? { ...p, generatedImageUrl: url } : p
+          ),
+        }));
+      } catch (e) {
+        if (e.message === "NOT_CONFIGURED") {
+          setBatchImageProgress("La generación de imágenes no está configurada.");
+          setTimeout(() => { setBatchImageGen(false); setBatchImageProgress(""); }, 3000);
+          return;
+        }
+        addDebug(`WARN: no se pudo generar imagen para ${post.id}: ${e.message}`);
+      }
+    }
+    onUpdateCal(calId, { ...cal, days: newDays });
+    setBatchImageProgress(`Listo! ${done} imágenes procesadas`);
+    setTimeout(() => { setBatchImageGen(false); setBatchImageProgress(""); }, 2000);
+  };
+
   const exportPDF = () => {
     const s = document.createElement("style");
     s.id = "print-style";
@@ -1785,6 +2034,39 @@ export default function CalendarView({
 
       {/* Edit calendar meta modal */}
       {editMeta && <EditMetaDialog metaForm={metaForm} setMetaForm={setMetaForm} onSave={saveMetaEdit} onClose={() => setEditMeta(false)} />}
+
+      {promptExportOpen && (
+        <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) setPromptExportOpen(false); }}>
+          <div className="dialog" role="dialog" aria-modal="true" aria-label="Exportar prompts visuales" style={{ maxWidth: 400 }}>
+            <h3 style={{ fontSize: "var(--fs-base)", fontWeight: 700, marginBottom: "var(--sp-3)" }}>
+              <Icon name="wand" size={20} /> Exportar prompts visuales
+            </h3>
+            <div className="field">
+              <label className="label" htmlFor="prompt-export-filter">Filtrar por formato</label>
+              <select
+                id="prompt-export-filter"
+                className="input"
+                value={promptExportFilter}
+                onChange={(e) => setPromptExportFilter(e.target.value)}
+              >
+                <option value="all">Todos los formatos</option>
+                {Object.entries(FORMATS).map(([k, fmt]) => (
+                  <option key={k} value={k}>{fmt.label}</option>
+                ))}
+              </select>
+            </div>
+            <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", marginBottom: "var(--sp-3)" }}>
+              Se exportarán solo los posts que tengan un prompt visual generado.
+            </p>
+            <div style={{ display: "flex", gap: "var(--sp-2)", justifyContent: "flex-end" }}>
+              <button className="btn btn-ghost" onClick={() => setPromptExportOpen(false)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={() => { exportPrompts(promptExportFilter); setPromptExportOpen(false); }}>
+                <Icon name="download" size={16} /> Exportar .txt
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Identidad del calendario: una línea, no un banner de 90px.
           El mes y el año sólo se muestran si el nombre del calendario no
@@ -1901,6 +2183,8 @@ export default function CalendarView({
             { sep: true },
             { icon: "download", label: "Exportar a HTML", onClick: exportHTML },
             { icon: "file", label: "Imprimir o guardar en PDF", onClick: exportPDF },
+            { icon: "wand", label: "Exportar prompts visuales", onClick: () => setPromptExportOpen(true) },
+            imageGenAvailable ? { icon: "image", label: batchImageGen ? batchImageProgress : "Generar imágenes en lote", onClick: generateBatchImages, disabled: batchImageGen } : null,
             { sep: true },
             { icon: "terminal", label: debugOpen ? "Ocultar diagnóstico" : "Ver diagnóstico", onClick: () => setDebugOpen((d) => !d) },
             { icon: "trash", label: "Eliminar calendario", danger: true, onClick: () => {
@@ -2117,16 +2401,24 @@ export default function CalendarView({
                         (day.posts || []).map((p) => {
                           const f = FORMATS[p.format] || FORMATS.post;
                           const st = STATUSES[p.status || "pending"];
+                          const pCat = p.category || day.category || "";
+                          const pHue = pCat ? categoryHue(pCat) : 0;
                           return (
                             <span
                               key={p.id}
                               className="badge"
-                              style={{ background: f.color + "1F", color: f.color, border: `1px solid ${f.color}55` }}
+                              style={pCat ? {
+                                background: `hsl(${pHue} 60% 25% / .35)`,
+                                color: `hsl(${pHue} 70% 75%)`,
+                                border: `1px solid hsl(${pHue} 55% 50% / .5)`,
+                              } : {
+                                background: f.color + "1F", color: f.color, border: `1px solid ${f.color}55`,
+                              }}
                             >
                               <span style={{ width: 6, height: 6, borderRadius: "50%", background: st.text, flexShrink: 0 }} aria-hidden="true" />
                               <Icon name={FORMAT_ICONS[p.format] || "formatPost"} size={13} />
                               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {p.idea || p.category || f.label}
+                                {pCat || f.label}
                               </span>
                             </span>
                           );
@@ -2283,6 +2575,8 @@ export default function CalendarView({
           onGenerate={sendToClient}
           onRevoke={() => changeShare(false)}
           onReopen={() => changeShare(true)}
+          allowEditing={cal.allowEditing || false}
+          onToggleEditing={() => onUpdateCal(calId, { ...cal, allowEditing: !cal.allowEditing })}
           onClose={() => setApprovalModal(false)}
         />
       )}
@@ -2304,6 +2598,29 @@ export default function CalendarView({
             onMoveDate={movePost}
             onSendToBank={(post, date) => { addToBank(post, date); removePostFromDay(date, post.id); }}
             onClose={() => setSidePanel(null)}
+            suggestion={suggestions[sidePanel.post.id] || null}
+            onAcceptSuggestion={(postId, field, value) => {
+              const post = (cal.days || []).flatMap((d) => d.posts || []).find((p) => p.id === postId);
+              if (post) updatePost(null, { ...post, [field]: value });
+              setSuggestions((p) => {
+                const n = { ...p };
+                if (n[postId]) {
+                  n[postId] = { ...n[postId], [field === "descripcion" ? "descripcion" : "guion"]: null };
+                  if (!n[postId].descripcion && !n[postId].guion) delete n[postId];
+                }
+                return n;
+              });
+            }}
+            onRejectSuggestion={(postId, field) => {
+              setSuggestions((p) => {
+                const n = { ...p };
+                if (n[postId]) {
+                  n[postId] = { ...n[postId], [field === "descripcion" ? "descripcion" : "guion"]: null };
+                  if (!n[postId].descripcion && !n[postId].guion) delete n[postId];
+                }
+                return n;
+              });
+            }}
             client={client}
             cal={cal}
           />

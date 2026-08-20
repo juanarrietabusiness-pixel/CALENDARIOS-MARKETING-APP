@@ -113,6 +113,7 @@ export function calendarToRow(cal, clientDbId, ownerId) {
     week_concepts: cal.weekConcepts || [],
     days: cal.days || [],
     generated_at: cal.generatedAt || null,
+    allow_editing: cal.allowEditing || false,
   };
 }
 
@@ -128,6 +129,7 @@ export function rowToCalendar(row) {
     days: row.days || [],
     shareToken: row.share_token || null,
     shareEnabled: row.share_enabled !== false,
+    allowEditing: row.allow_editing || false,
     generatedAt: row.generated_at,
   };
 }

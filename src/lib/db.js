@@ -95,7 +95,7 @@ export async function setShareEnabled(calendarDbId, enabled) {
 export async function fetchApprovals(calendarDbId) {
   const { data, error } = await supabase
     .from("approvals")
-    .select("post_id, estado, comentario, reviewer_name, updated_at")
+    .select("post_id, estado, comentario, reviewer_name, updated_at, suggested_descripcion, suggested_guion")
     .eq("calendar_id", calendarDbId);
   if (error) throw error;
 
@@ -106,6 +106,8 @@ export async function fetchApprovals(calendarDbId) {
       comentario: row.comentario,
       revisor: row.reviewer_name,
       timestamp: row.updated_at,
+      suggestedDescripcion: row.suggested_descripcion || null,
+      suggestedGuion: row.suggested_guion || null,
     };
   }
   return map;

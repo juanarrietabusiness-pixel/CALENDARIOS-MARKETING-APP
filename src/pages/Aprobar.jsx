@@ -66,25 +66,32 @@ export default function Aprobar() {
     loadData();
   }, [token, loadData]);
 
-  const handleApproval = async (postId, estado, comentario = "") => {
+  const [editedFields, setEditedFields] = useState({});
+
+  const handleApproval = async (postId, estado, comentario = "", suggestions = null) => {
     setSaving((p) => ({ ...p, [postId]: true }));
     setSaveError("");
     try {
-      // El estado local sólo cambia si la base de datos confirmó la
-      // escritura: antes se marcaba como aprobado aunque fallara.
       const { error: rpcError } = await supabase.rpc("submit_approval", {
         p_token: token,
         p_post_id: postId,
         p_estado: estado,
         p_comentario: comentario,
         p_reviewer: "",
+        p_suggested_descripcion: suggestions?.descripcion || null,
+        p_suggested_guion: suggestions?.guion || null,
       });
       if (rpcError) throw new Error(rpcError.message);
 
       setApprovals((p) => ({
         ...p,
-        [postId]: { estado, comentario, timestamp: new Date().toISOString() },
+        [postId]: {
+          estado, comentario, timestamp: new Date().toISOString(),
+          suggestedDescripcion: suggestions?.descripcion || null,
+          suggestedGuion: suggestions?.guion || null,
+        },
       }));
+      if (suggestions) setEditedFields((p) => { const n = { ...p }; delete n[postId]; return n; });
     } catch (e) {
       setSaveError(`No se pudo guardar tu respuesta (${e.message}). Revisa tu conexión e inténtalo otra vez.`);
     }
@@ -367,11 +374,19 @@ export default function Aprobar() {
                         isSaving={saving[post.id]}
                         commentValue={commentInputs[post.id] || ""}
                         commentOpen={!!showComment[post.id]}
+                        allowEditing={calendar.allowEditing || false}
+                        editedFields={editedFields[post.id] || null}
+                        onEditField={(field, value) => setEditedFields((p) => ({ ...p, [post.id]: { ...(p[post.id] || {}), [field]: value } }))}
                         onCommentChange={(v) => setCommentInputs((p) => ({ ...p, [post.id]: v }))}
                         onToggleComment={() => setShowComment((p) => ({ ...p, [post.id]: !p[post.id] }))}
                         onApprove={() => handleApproval(post.id, "aprobado")}
                         onRequestChanges={() => {
-                          handleApproval(post.id, "cambios", commentInputs[post.id] || "");
+                          const edits = editedFields[post.id];
+                          const hasSuggestions = edits && (edits.descripcion !== undefined || edits.guion !== undefined);
+                          handleApproval(
+                            post.id, "cambios", commentInputs[post.id] || "",
+                            hasSuggestions ? edits : null,
+                          );
                           setShowComment((p) => ({ ...p, [post.id]: false }));
                         }}
                       />
@@ -407,7 +422,8 @@ export default function Aprobar() {
 }
 
 function PostReview({
-  post, approval, isSaving, commentValue, commentOpen,
+  post, approval, isSaving, commentValue, commentOpen, allowEditing,
+  editedFields, onEditField,
   onCommentChange, onToggleComment, onApprove, onRequestChanges,
 }) {
   const f = FORMATS[post.format] || FORMATS.post;
@@ -465,15 +481,48 @@ function PostReview({
               {!isPost && post.guion && (
                 <div style={{ ...styles.contentBox, background: "#1a0a2a" }}>
                   <strong style={{ ...styles.fieldLabel, color: "#FF7BA8" }}>Guion</strong>
-                  <div style={{ whiteSpace: "pre-wrap" }}>{post.guion}</div>
+                  {allowEditing ? (
+                    <>
+                      <div style={{ whiteSpace: "pre-wrap", marginBottom: "var(--sp-2)" }}>{post.guion}</div>
+                      <label className="label" htmlFor={`${ids}-edit-guion`} style={{ fontSize: "var(--fs-3xs)", color: "#FF7BA8" }}>Sugerir cambio al guion</label>
+                      <textarea
+                        id={`${ids}-edit-guion`}
+                        className="textarea"
+                        style={{ minHeight: 80, fontSize: "var(--fs-2xs)", background: "var(--bg)", borderColor: "#FF7BA844" }}
+                        value={editedFields?.guion ?? ""}
+                        onChange={(e) => onEditField("guion", e.target.value)}
+                        placeholder="Escribe tu versión sugerida del guion…"
+                      />
+                    </>
+                  ) : (
+                    <div style={{ whiteSpace: "pre-wrap" }}>{post.guion}</div>
+                  )}
                 </div>
               )}
 
               {(post.descripcion || post.script) && (
                 <div style={{ ...styles.contentBox, position: "relative", paddingTop: "var(--sp-8)" }}>
                   <strong style={{ ...styles.fieldLabel, color: "var(--accent)" }}>Descripción</strong>
-                  <div style={{ whiteSpace: "pre-wrap" }}>{post.descripcion || post.script}</div>
-                  <CopyBtn text={post.descripcion || post.script} />
+                  {allowEditing ? (
+                    <>
+                      <div style={{ whiteSpace: "pre-wrap", marginBottom: "var(--sp-2)" }}>{post.descripcion || post.script}</div>
+                      <CopyBtn text={post.descripcion || post.script} />
+                      <label className="label" htmlFor={`${ids}-edit-desc`} style={{ fontSize: "var(--fs-3xs)" }}>Sugerir cambio a la descripción</label>
+                      <textarea
+                        id={`${ids}-edit-desc`}
+                        className="textarea"
+                        style={{ minHeight: 80, fontSize: "var(--fs-2xs)", background: "var(--bg)" }}
+                        value={editedFields?.descripcion ?? ""}
+                        onChange={(e) => onEditField("descripcion", e.target.value)}
+                        placeholder="Escribe tu versión sugerida de la descripción…"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ whiteSpace: "pre-wrap" }}>{post.descripcion || post.script}</div>
+                      <CopyBtn text={post.descripcion || post.script} />
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -534,6 +583,21 @@ function PostReview({
         <p style={styles.commentDisplay}>
           <Icon name="message" size={16} style={{ display: "inline-block", verticalAlign: "-3px", marginRight: "var(--sp-1)" }} />{approval.comentario}
         </p>
+      )}
+      {(approval?.suggestedDescripcion || approval?.suggestedGuion) && (
+        <div style={{ ...styles.contentBox, background: "#1a1a0a", borderColor: "var(--accent-alt)", marginTop: "var(--sp-2)" }}>
+          <strong style={{ ...styles.fieldLabel, color: "var(--accent-alt)" }}>Sugerencias enviadas</strong>
+          {approval.suggestedGuion && (
+            <p style={{ fontSize: "var(--fs-2xs)", marginBottom: "var(--sp-1)" }}>
+              <strong style={{ color: "#FF7BA8" }}>Guion:</strong> {approval.suggestedGuion.slice(0, 100)}{approval.suggestedGuion.length > 100 ? "…" : ""}
+            </p>
+          )}
+          {approval.suggestedDescripcion && (
+            <p style={{ fontSize: "var(--fs-2xs)" }}>
+              <strong style={{ color: "var(--accent)" }}>Descripción:</strong> {approval.suggestedDescripcion.slice(0, 100)}{approval.suggestedDescripcion.length > 100 ? "…" : ""}
+            </p>
+          )}
+        </div>
       )}
     </div>
   );
