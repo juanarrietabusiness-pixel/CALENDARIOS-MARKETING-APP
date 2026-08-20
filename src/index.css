@@ -921,6 +921,7 @@ input[type="radio"] {
 .cal-post-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .cal-post-label { overflow: hidden; text-overflow: ellipsis; }
 .cal-post-time { margin-left: auto; font-size: var(--fs-3xs); opacity: .85; }
+.cal-post.has-cat .cal-post-label { font-weight: 600; }
 .cal-post.is-published { opacity: .75; text-decoration: line-through; }
 
 .cal-add {

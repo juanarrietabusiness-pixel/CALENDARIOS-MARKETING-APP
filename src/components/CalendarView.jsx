@@ -8,6 +8,13 @@ import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
 
 
+const CATEGORY_HUES = [210, 340, 30, 160, 270, 50, 190, 0, 130, 300, 80, 230];
+function categoryHue(name) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+  return CATEGORY_HUES[((h % CATEGORY_HUES.length) + CATEGORY_HUES.length) % CATEGORY_HUES.length];
+}
+
 function stripMarkdown(text) {
   if (!text) return "";
   return text.replace(/\*\*\*(.*?)\*\*\*/g, "$1").replace(/\*\*(.*?)\*\*/g, "$1").replace(/\*(.*?)\*/g, "$1").replace(/__(.*?)__/g, "$1").replace(/_(.*?)_/g, "$1");
@@ -919,20 +926,26 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
               const f = FORMATS[post.format] || FORMATS.post;
               const st = STATUSES[post.status || "pending"];
               const isPublished = post.status === "published";
+              const cat = post.category || dd?.category || "";
+              const hue = cat ? categoryHue(cat) : 0;
               const briefIdea = post.idea ? post.idea.split(/[.\n]/)[0].slice(0, 24) : "";
+              const chipLabel = cat || f.label;
               return (
                 <button
                   key={post.id}
                   type="button"
                   draggable
-                  className={`cal-post${isPublished ? " is-published" : ""}`}
-                  /* El texto visible se recorta a un icono en móvil, así que
-                     el nombre accesible lleva la información completa. */
-                  aria-label={`${f.label}${briefIdea ? `: ${briefIdea}` : ""} — ${st.label}${post.publishTime ? `, ${post.publishTime}` : ""}`}
+                  className={`cal-post${isPublished ? " is-published" : ""}${cat ? " has-cat" : ""}`}
+                  aria-label={`${f.label}${cat ? ` — ${cat}` : ""}${briefIdea ? `: ${briefIdea}` : ""} — ${st.label}${post.publishTime ? `, ${post.publishTime}` : ""}`}
                   onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", JSON.stringify({ postId: post.id, sourceDate: date })); setDrag({ postId: post.id, sourceDate: date }); }}
                   onDragEnd={() => { setDrag(null); setDropTarget(null); }}
                   onClick={() => onPostClick(post, dd)}
-                  style={{
+                  style={cat ? {
+                    background: isPublished ? st.bg : `hsl(${hue} 60% 25% / .35)`,
+                    borderColor: isPublished ? st.border : `hsl(${hue} 55% 50% / .5)`,
+                    borderWidth: isPublished ? 2 : 1,
+                    color: isPublished ? st.text : `hsl(${hue} 70% 75%)`,
+                  } : {
                     background: isPublished ? st.bg : f.color + "22",
                     borderColor: isPublished ? st.border : st.border + "88",
                     borderWidth: isPublished ? 2 : 1,
@@ -941,7 +954,7 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
                 >
                   <span className="cal-post-dot" style={{ background: st.text }} aria-hidden="true" />
                   <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={13} />
-                  <span className="cal-post-label" aria-hidden="true">{briefIdea || f.label}</span>
+                  <span className="cal-post-label" aria-hidden="true">{chipLabel}</span>
                   {post.publishTime && <span className="cal-post-time" aria-hidden="true">{post.publishTime}</span>}
                 </button>
               );
@@ -2117,16 +2130,24 @@ export default function CalendarView({
                         (day.posts || []).map((p) => {
                           const f = FORMATS[p.format] || FORMATS.post;
                           const st = STATUSES[p.status || "pending"];
+                          const pCat = p.category || day.category || "";
+                          const pHue = pCat ? categoryHue(pCat) : 0;
                           return (
                             <span
                               key={p.id}
                               className="badge"
-                              style={{ background: f.color + "1F", color: f.color, border: `1px solid ${f.color}55` }}
+                              style={pCat ? {
+                                background: `hsl(${pHue} 60% 25% / .35)`,
+                                color: `hsl(${pHue} 70% 75%)`,
+                                border: `1px solid hsl(${pHue} 55% 50% / .5)`,
+                              } : {
+                                background: f.color + "1F", color: f.color, border: `1px solid ${f.color}55`,
+                              }}
                             >
                               <span style={{ width: 6, height: 6, borderRadius: "50%", background: st.text, flexShrink: 0 }} aria-hidden="true" />
                               <Icon name={FORMAT_ICONS[p.format] || "formatPost"} size={13} />
                               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {p.idea || p.category || f.label}
+                                {pCat || f.label}
                               </span>
                             </span>
                           );
