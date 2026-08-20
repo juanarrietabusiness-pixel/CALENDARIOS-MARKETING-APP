@@ -208,7 +208,7 @@ function ContentDisplay({ post }) {
   );
 }
 
-function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onSendToBank, client, cal }) {
+function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onSendToBank, suggestion, onAcceptSuggestion, onRejectSuggestion, client, cal }) {
   const [form, setForm] = useState({ ...post });
   const [fieldLoading, setFieldLoading] = useState({});
   const [fieldError, setFieldError] = useState("");
@@ -378,6 +378,50 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onS
             placeholder="Caption / descripción del contenido…"
           />
         </div>
+
+        {suggestion && (suggestion.guion || suggestion.descripcion) && (
+          <div style={{
+            padding: "var(--sp-3)", background: "var(--surface)", borderRadius: "var(--radius-sm)",
+            border: "1px solid var(--accent-alt)", marginBottom: "var(--sp-3)",
+          }}>
+            <p style={{ fontSize: "var(--fs-xs)", fontWeight: 700, color: "var(--accent-alt)", marginBottom: "var(--sp-2)" }}>
+              <Icon name="message" size={16} /> Sugerencias del cliente
+            </p>
+            {suggestion.comentario && (
+              <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", marginBottom: "var(--sp-2)", fontStyle: "italic" }}>
+                &ldquo;{suggestion.comentario}&rdquo;
+              </p>
+            )}
+            {suggestion.guion && (
+              <div style={{ marginBottom: "var(--sp-2)" }}>
+                <p style={{ fontSize: "var(--fs-3xs)", fontWeight: 600, color: "#FF7BA8", marginBottom: 2 }}>Guion sugerido:</p>
+                <p style={{ fontSize: "var(--fs-2xs)", whiteSpace: "pre-wrap", background: "var(--bg)", padding: "var(--sp-2)", borderRadius: "var(--radius-xs)" }}>{suggestion.guion}</p>
+                <div style={{ display: "flex", gap: "var(--sp-1)", marginTop: "var(--sp-1)" }}>
+                  <button className="btn btn-primary btn-sm" style={{ fontSize: "var(--fs-3xs)" }} onClick={() => { sf("guion", suggestion.guion); onAcceptSuggestion?.(post.id, "guion", suggestion.guion); }}>
+                    <Icon name="check" size={14} /> Aceptar
+                  </button>
+                  <button className="btn btn-ghost btn-sm" style={{ fontSize: "var(--fs-3xs)", color: "var(--danger)" }} onClick={() => onRejectSuggestion?.(post.id, "guion")}>
+                    <Icon name="close" size={14} /> Rechazar
+                  </button>
+                </div>
+              </div>
+            )}
+            {suggestion.descripcion && (
+              <div>
+                <p style={{ fontSize: "var(--fs-3xs)", fontWeight: 600, color: "var(--accent)", marginBottom: 2 }}>Descripción sugerida:</p>
+                <p style={{ fontSize: "var(--fs-2xs)", whiteSpace: "pre-wrap", background: "var(--bg)", padding: "var(--sp-2)", borderRadius: "var(--radius-xs)" }}>{suggestion.descripcion}</p>
+                <div style={{ display: "flex", gap: "var(--sp-1)", marginTop: "var(--sp-1)" }}>
+                  <button className="btn btn-primary btn-sm" style={{ fontSize: "var(--fs-3xs)" }} onClick={() => { sf("descripcion", suggestion.descripcion); onAcceptSuggestion?.(post.id, "descripcion", suggestion.descripcion); }}>
+                    <Icon name="check" size={14} /> Aceptar
+                  </button>
+                  <button className="btn btn-ghost btn-sm" style={{ fontSize: "var(--fs-3xs)", color: "var(--danger)" }} onClick={() => onRejectSuggestion?.(post.id, "descripcion")}>
+                    <Icon name="close" size={14} /> Rechazar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="field">
           <span className="label" id={`${ids}-img-label`}>Imagen</span>
@@ -723,7 +767,7 @@ function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
 
 function ApprovalDialog({
   approvalUrl, whatsappMessage, onClose, onGenerate, onRevoke, onReopen,
-  hasLink, shareEnabled, working,
+  hasLink, shareEnabled, working, allowEditing, onToggleEditing,
 }) {
   const ref = useDialogA11y(onClose);
   const ids = useId();
@@ -783,11 +827,29 @@ function ApprovalDialog({
               <p className="hint">Toca el mensaje para seleccionarlo y copiarlo.</p>
             </div>
 
-            {/* Ya no hay botón «Sincronizar»: las respuestas del cliente
-                llegan solas por Realtime. */}
             <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
               Las respuestas de tu cliente aparecen aquí al instante, sin recargar.
             </p>
+
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "var(--sp-3)", background: "var(--surface)", borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--border)", marginBottom: "var(--sp-3)",
+            }}>
+              <div>
+                <span style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Permitir edición</span>
+                <p className="hint" style={{ margin: 0 }}>El cliente puede sugerir cambios a la descripción y guion.</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={allowEditing}
+                className={`toggle${allowEditing ? " is-on" : ""}`}
+                onClick={onToggleEditing}
+              >
+                <span className="toggle-thumb" />
+              </button>
+            </div>
 
             <div style={{ display: "flex", gap: "var(--sp-2)" }}>
               <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>Cerrar</button>
@@ -1287,6 +1349,7 @@ export default function CalendarView({
   const [shareWorking, setShareWorking] = useState(false);
   const [editMeta, setEditMeta] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState({});
 
   const [metaForm, setMetaForm] = useState(() => {
     const cats = {};
@@ -1327,6 +1390,18 @@ export default function CalendarView({
       try {
         const approvals = await fetchApprovals(cal.id);
         if (!alive || Object.keys(approvals).length === 0) return;
+
+        const newSuggestions = {};
+        for (const [postId, review] of Object.entries(approvals)) {
+          if (review.suggestedDescripcion || review.suggestedGuion) {
+            newSuggestions[postId] = {
+              descripcion: review.suggestedDescripcion,
+              guion: review.suggestedGuion,
+              comentario: review.comentario,
+            };
+          }
+        }
+        setSuggestions(newSuggestions);
 
         setCalRef.current?.((actual) => {
           const days = (actual.days || []).map((d) => ({
@@ -1417,10 +1492,11 @@ export default function CalendarView({
 
   const addDebug = (msg) => setDebugLog((prev) => [...prev, { time: new Date().toLocaleTimeString(), msg }]);
 
-  const updatePost = (date, updatedPost) => {
-    const newDays = (cal.days || []).map((d) =>
-      d.date !== date ? d : { ...d, posts: d.posts.map((p) => (p.id === updatedPost.id ? updatedPost : p)) }
-    );
+  const updatePost = (_date, updatedPost) => {
+    const newDays = (cal.days || []).map((d) => ({
+      ...d,
+      posts: (d.posts || []).map((p) => (p.id === updatedPost.id ? updatedPost : p)),
+    }));
     onUpdateCal(calId, { ...cal, days: newDays });
   };
 
@@ -2304,6 +2380,8 @@ export default function CalendarView({
           onGenerate={sendToClient}
           onRevoke={() => changeShare(false)}
           onReopen={() => changeShare(true)}
+          allowEditing={cal.allowEditing || false}
+          onToggleEditing={() => onUpdateCal(calId, { ...cal, allowEditing: !cal.allowEditing })}
           onClose={() => setApprovalModal(false)}
         />
       )}
@@ -2325,6 +2403,29 @@ export default function CalendarView({
             onMoveDate={movePost}
             onSendToBank={(post, date) => { addToBank(post, date); removePostFromDay(date, post.id); }}
             onClose={() => setSidePanel(null)}
+            suggestion={suggestions[sidePanel.post.id] || null}
+            onAcceptSuggestion={(postId, field, value) => {
+              const post = (cal.days || []).flatMap((d) => d.posts || []).find((p) => p.id === postId);
+              if (post) updatePost(null, { ...post, [field]: value });
+              setSuggestions((p) => {
+                const n = { ...p };
+                if (n[postId]) {
+                  n[postId] = { ...n[postId], [field === "descripcion" ? "descripcion" : "guion"]: null };
+                  if (!n[postId].descripcion && !n[postId].guion) delete n[postId];
+                }
+                return n;
+              });
+            }}
+            onRejectSuggestion={(postId, field) => {
+              setSuggestions((p) => {
+                const n = { ...p };
+                if (n[postId]) {
+                  n[postId] = { ...n[postId], [field === "descripcion" ? "descripcion" : "guion"]: null };
+                  if (!n[postId].descripcion && !n[postId].guion) delete n[postId];
+                }
+                return n;
+              });
+            }}
             client={client}
             cal={cal}
           />
