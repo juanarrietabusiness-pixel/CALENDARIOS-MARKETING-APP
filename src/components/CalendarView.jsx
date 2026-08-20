@@ -1,7 +1,7 @@
 import { useEffect, useId, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid, fmtDate, compressImage, parseVideoURL } from "../utils";
-import { callAI, fetchGitHubADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost } from "../api";
+import { callAI, fetchGitHubADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost, generateImagePrompt, generateImage, checkImageGenConfigured } from "../api";
 import { buildExportHTML } from "../export";
 import { shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
@@ -452,7 +452,81 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onS
                 Quitar
               </button>
             )}
+            {form.imagePrompt && (
+              <button
+                className="btn btn-secondary btn-sm"
+                disabled={fieldLoading.imageGen}
+                onClick={async () => {
+                  setFieldError("");
+                  setFieldLoading((p) => ({ ...p, imageGen: true }));
+                  try {
+                    const url = await generateImage(form.imagePrompt, form.format);
+                    sf("generatedImageUrl", url);
+                  } catch (e) {
+                    if (e.message === "NOT_CONFIGURED") {
+                      setFieldError("La generación de imágenes no está configurada. Pide al administrador que añada IMAGE_GEN_API_KEY en Supabase.");
+                    } else {
+                      setFieldError(`No se pudo generar la imagen: ${e.message}`);
+                    }
+                  }
+                  setFieldLoading((p) => ({ ...p, imageGen: false }));
+                }}
+                aria-label="Generar imagen con IA"
+              >
+                {fieldLoading.imageGen ? "Generando…" : <><Icon name="image" size={14} /> Generar imagen</>}
+              </button>
+            )}
           </div>
+          {form.generatedImageUrl && (
+            <div style={{ marginTop: "var(--sp-2)" }}>
+              <p style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)", marginBottom: "var(--sp-1)" }}>Imagen generada:</p>
+              <img src={form.generatedImageUrl} alt="Imagen generada por IA" style={{ width: "100%", maxWidth: 300, borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }} />
+              <div style={{ display: "flex", gap: "var(--sp-2)", marginTop: "var(--sp-1)" }}>
+                <button className="btn btn-primary btn-sm" style={{ fontSize: "var(--fs-3xs)" }} onClick={() => { sf("image", form.generatedImageUrl); sf("generatedImageUrl", null); }}>
+                  Usar como imagen del post
+                </button>
+                <button className="btn btn-ghost btn-sm" style={{ fontSize: "var(--fs-3xs)", color: "var(--danger)" }} onClick={() => sf("generatedImageUrl", null)}>
+                  Descartar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="field">
+          <div style={fieldHeaderStyle}>
+            <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-prompt`}>Prompt visual</label>
+            <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+              <CopyButton text={form.imagePrompt} describes="el prompt visual" />
+              <button
+                type="button"
+                className="btn-ai"
+                onClick={async () => {
+                  setFieldError("");
+                  setFieldLoading((p) => ({ ...p, imagePrompt: true }));
+                  try {
+                    const result = await generateImagePrompt(client, form, day, cal);
+                    sf("imagePrompt", result);
+                  } catch (e) {
+                    setFieldError(`No se pudo generar el prompt: ${e.message}`);
+                  }
+                  setFieldLoading((p) => ({ ...p, imagePrompt: false }));
+                }}
+                disabled={fieldLoading.imagePrompt}
+                aria-label="Generar prompt visual con IA"
+              >
+                {fieldLoading.imagePrompt ? "Generando…" : <><Icon name="wand" size={14} /> Prompt</>}
+              </button>
+            </div>
+          </div>
+          <textarea
+            id={`${ids}-prompt`}
+            className="textarea"
+            style={{ minHeight: 100 }}
+            value={form.imagePrompt || ""}
+            onChange={(e) => sf("imagePrompt", e.target.value)}
+            placeholder="Prompt para generar imagen o video…"
+          />
         </div>
 
         <div className="field">
@@ -1841,6 +1915,92 @@ export default function CalendarView({
     URL.revokeObjectURL(url);
   };
 
+  const exportPrompts = (formatFilter = "all") => {
+    const lines = [];
+    for (const day of cal.days || []) {
+      for (const post of day.posts || []) {
+        if (!post.imagePrompt) continue;
+        if (formatFilter !== "all" && post.format !== formatFilter) continue;
+        const fmt = FORMATS[post.format] || FORMATS.post;
+        lines.push(`═══════════════════════════════════════`);
+        lines.push(`${fmt.label.toUpperCase()} — ${day.date} (${day.dayName || ""})`);
+        lines.push(`Categoría: ${post.category || day.category || "—"}`);
+        lines.push(`Idea: ${post.idea || "—"}`);
+        lines.push(`───────────────────────────────────────`);
+        lines.push(post.imagePrompt);
+        lines.push("");
+      }
+    }
+    if (lines.length === 0) {
+      setGenStatus("No hay prompts generados para exportar.");
+      setTimeout(() => setGenStatus(""), 3000);
+      return;
+    }
+    const header = `PROMPTS VISUALES — ${client.name}\n${calName}\n${formatFilter !== "all" ? `Filtro: ${FORMATS[formatFilter]?.label || formatFilter}` : "Todos los formatos"}\nGenerado: ${new Date().toLocaleString()}\n\n`;
+    const blob = new Blob([header + lines.join("\n")], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `prompts-${calName.replace(/\s+/g, "-")}-${client.name.replace(/\s+/g, "-")}${formatFilter !== "all" ? `-${formatFilter}` : ""}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const [promptExportFilter, setPromptExportFilter] = useState("all");
+  const [promptExportOpen, setPromptExportOpen] = useState(false);
+  const [imageGenAvailable, setImageGenAvailable] = useState(null);
+  const [batchImageGen, setBatchImageGen] = useState(false);
+  const [batchImageProgress, setBatchImageProgress] = useState("");
+
+  useEffect(() => {
+    checkImageGenConfigured().then(setImageGenAvailable);
+  }, []);
+
+  const generateBatchImages = async () => {
+    const postsWithPrompts = [];
+    for (const day of cal.days || []) {
+      for (const post of day.posts || []) {
+        if (post.imagePrompt && !post.generatedImageUrl) {
+          postsWithPrompts.push({ post, day });
+        }
+      }
+    }
+    if (postsWithPrompts.length === 0) {
+      setGenStatus("No hay prompts sin imagen generada.");
+      setTimeout(() => setGenStatus(""), 3000);
+      return;
+    }
+
+    setBatchImageGen(true);
+    let newDays = [...(cal.days || [])];
+    let done = 0;
+    for (const { post } of postsWithPrompts) {
+      done++;
+      setBatchImageProgress(`Generando imagen ${done}/${postsWithPrompts.length}…`);
+      try {
+        const url = await generateImage(post.imagePrompt, post.format);
+        newDays = newDays.map((d) => ({
+          ...d,
+          posts: (d.posts || []).map((p) =>
+            p.id === post.id ? { ...p, generatedImageUrl: url } : p
+          ),
+        }));
+      } catch (e) {
+        if (e.message === "NOT_CONFIGURED") {
+          setBatchImageProgress("La generación de imágenes no está configurada.");
+          setTimeout(() => { setBatchImageGen(false); setBatchImageProgress(""); }, 3000);
+          return;
+        }
+        addDebug(`WARN: no se pudo generar imagen para ${post.id}: ${e.message}`);
+      }
+    }
+    onUpdateCal(calId, { ...cal, days: newDays });
+    setBatchImageProgress(`Listo! ${done} imágenes procesadas`);
+    setTimeout(() => { setBatchImageGen(false); setBatchImageProgress(""); }, 2000);
+  };
+
   const exportPDF = () => {
     const s = document.createElement("style");
     s.id = "print-style";
@@ -1874,6 +2034,39 @@ export default function CalendarView({
 
       {/* Edit calendar meta modal */}
       {editMeta && <EditMetaDialog metaForm={metaForm} setMetaForm={setMetaForm} onSave={saveMetaEdit} onClose={() => setEditMeta(false)} />}
+
+      {promptExportOpen && (
+        <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) setPromptExportOpen(false); }}>
+          <div className="dialog" role="dialog" aria-modal="true" aria-label="Exportar prompts visuales" style={{ maxWidth: 400 }}>
+            <h3 style={{ fontSize: "var(--fs-base)", fontWeight: 700, marginBottom: "var(--sp-3)" }}>
+              <Icon name="wand" size={20} /> Exportar prompts visuales
+            </h3>
+            <div className="field">
+              <label className="label" htmlFor="prompt-export-filter">Filtrar por formato</label>
+              <select
+                id="prompt-export-filter"
+                className="input"
+                value={promptExportFilter}
+                onChange={(e) => setPromptExportFilter(e.target.value)}
+              >
+                <option value="all">Todos los formatos</option>
+                {Object.entries(FORMATS).map(([k, fmt]) => (
+                  <option key={k} value={k}>{fmt.label}</option>
+                ))}
+              </select>
+            </div>
+            <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", marginBottom: "var(--sp-3)" }}>
+              Se exportarán solo los posts que tengan un prompt visual generado.
+            </p>
+            <div style={{ display: "flex", gap: "var(--sp-2)", justifyContent: "flex-end" }}>
+              <button className="btn btn-ghost" onClick={() => setPromptExportOpen(false)}>Cancelar</button>
+              <button className="btn btn-primary" onClick={() => { exportPrompts(promptExportFilter); setPromptExportOpen(false); }}>
+                <Icon name="download" size={16} /> Exportar .txt
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Identidad del calendario: una línea, no un banner de 90px.
           El mes y el año sólo se muestran si el nombre del calendario no
@@ -1990,6 +2183,8 @@ export default function CalendarView({
             { sep: true },
             { icon: "download", label: "Exportar a HTML", onClick: exportHTML },
             { icon: "file", label: "Imprimir o guardar en PDF", onClick: exportPDF },
+            { icon: "wand", label: "Exportar prompts visuales", onClick: () => setPromptExportOpen(true) },
+            imageGenAvailable ? { icon: "image", label: batchImageGen ? batchImageProgress : "Generar imágenes en lote", onClick: generateBatchImages, disabled: batchImageGen } : null,
             { sep: true },
             { icon: "terminal", label: debugOpen ? "Ocultar diagnóstico" : "Ver diagnóstico", onClick: () => setDebugOpen((d) => !d) },
             { icon: "trash", label: "Eliminar calendario", danger: true, onClick: () => {
