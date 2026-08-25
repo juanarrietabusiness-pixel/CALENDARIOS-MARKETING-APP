@@ -29,6 +29,13 @@ export const MODOS_META = {
 
 const LIENZO_POR_DEFECTO = { ancho: 1080, alto: 1350 };
 
+import { componerPieza } from "./lib/componer";
+
+// Se reexporta para que el diálogo pueda enseñar lo que la composición
+// encontró —un titular que no cabe, uno que bajó de cuerpo— antes de que el
+// humano pegue el prompt en Meta AI.
+export { avisosDeComposicion } from "./lib/componer";
+
 const lista = (xs, vacio = "—") =>
   Array.isArray(xs) && xs.length ? xs.map((x) => `· ${x}`).join("\n") : vacio;
 
@@ -163,10 +170,96 @@ solo tramo.
 ${receta.velo ? `
 EL VELO
 ${bloque(receta.velo)}
+
+Ninguna caja detrás del texto. Ni tarjeta, ni franja, ni rectángulo
+semitransparente, ni sombra sobre las letras. El contraste lo pone el velo,
+que es continuo y no tiene borde. Una caja detrás de un titular es la señal
+más rápida de que la pieza se maquetó sin sistema.
+
+Y si con el velo puesto el titular todavía compite con la imagen, EL FONDO
+ESTÁ MAL GENERADO: se regenera pidiendo que el detalle se apague antes de
+llegar al carril del texto. No se sube el velo hasta tapar la imagen.
 ` : ""}
-LOS CORTES DE LÍNEA
+LA INTERLÍNEA DEL TITULAR NO ES UN NÚMERO: ES UNA CUENTA
+${interlineado(receta)}
+
+DÓNDE SE ANCLA EL BLOQUE — sobre la versalita, no sobre la tinta
+El tope del bloque es el TOPE DE VERSALITA de la primera línea, y la base es
+la LÍNEA BASE de la última. Nunca la caja de tinta.
+Si se midieran sobre la tinta, una pieza cuyo titular empieza con tilde
+caería respecto de otra que no la lleva, y dos piezas del mismo mes no
+cuadrarían. La tilde de la primera línea vive en el aire de encima.
+
+Y NO LO RECORTES
+Con la interlínea por debajo de 1, la tinta de la primera línea sale por
+encima de su propia caja de línea. Cualquier recorte sobre el bloque de
+texto —una caja de alto fijo que corte lo que sobra, un overflow:hidden— le
+rasura la tilde a la primera línea. El bloque no lleva recorte de ningún tipo.
+
+LOS CORTES DE LÍNEA SE ESCRIBEN, NO SE CALCULAN
 Cada titular llega con sus saltos ya decididos. Son saltos duros: no dejes
-que el navegador reparta las palabras por su cuenta.`;
+que el navegador reparta las palabras por su cuenta. Y están cortados por
+unidad de sentido, con estas tres reglas:
+
+1. Una unidad de sentido por línea. Sujeto, o verbo con su objeto, o el
+   remate. No se parte un sustantivo de su adjetivo.
+2. Sin líneas huérfanas, salvo que la huérfana sea el remate. Una
+   preposición sola nunca.
+3. La última línea lleva el punto. El titular de esta marca termina.`;
+}
+
+/**
+ * La cuenta de la interlínea, con los valores medidos de la familia.
+ *
+ * Es lo que más rompe una pieza en español sin que nadie sepa nombrarlo: la
+ * tilde de una Á y el trazo de una Ñ se comen la línea de arriba cuando la
+ * interlínea baja de 1. Los valores no son de gusto ni se copian de otra
+ * marca: son exactamente lo que sobresale la tinta de ESA familia, y por eso
+ * viven en la receta del cliente y no aquí.
+ */
+function interlineado(receta) {
+  const i = receta.interlineado;
+  if (!i) {
+    return `Los cortes y la interlínea de cada titular vienen ya decididos. No los
+recalcules.`;
+  }
+
+  const sup = Object.entries(i.holguraSuperior || {})
+    .map(([chars, v]) => `· Si la línea de ABAJO lleva  ${chars}   →  suma ${v}`)
+    .join("\n");
+  const inf = Object.entries(i.holguraInferior || {})
+    .map(([chars, v]) => `· Si la línea de ARRIBA lleva ${chars}  →  suma ${v}`)
+    .join("\n");
+
+  return `${i.formula || "avance(n → n+1) = base + holguraSuperior(línea n+1) + holguraInferior(línea n)"}
+
+La interlínea base es la de su tamaño, la que dice la escala de arriba, y NO
+se aplica igual a todas las líneas:
+
+${sup}
+${inf}
+
+Las dos se suman cuando coinciden. Una línea con tilde debajo de otra que
+termina en coma lleva las dos holguras.
+
+SE CALCULA PARA CADA PAR DE LÍNEAS CONSECUTIVAS, SIN EXCEPCIÓN. No sólo para
+el primer par que se note. Un titular de cuatro líneas con tilde en la 2 y
+eñe en la 3 lleva DOS holguras distintas, una en cada par. El error más caro
+aquí no es olvidar la fórmula: es aplicarla al primer par y dejar el resto
+del bloque en la interlínea base, como si ya estuviera resuelto. Recorre las
+N líneas del titular una por una, del primer par al último.
+
+En HTML esa holgura es un margen superior en «em» sobre la línea que la
+necesita, con la interlínea base puesta en el bloque. En el lienzo de
+exportación es ese mismo valor sumado al avance vertical de esa línea.
+
+Cada holgura es exactamente lo que sobresale la tinta, ni un punto más: el
+hueco óptico que queda es el mismo que ya había entre dos líneas sin tilde,
+así que el bloque se sigue viendo igual de apretado. NO subas la interlínea
+de todas las líneas para arreglarlo: eso afloja el bloque entero para
+resolver dos líneas, y deja de ser el titular de esta marca.
+
+${i.seAplicaA ? `Dónde NO se toca: ${i.seAplicaA}` : ""}`;
 }
 
 /**
@@ -179,6 +272,7 @@ que el navegador reparta las palabras por su cuenta.`;
  */
 function seccionTres(receta, modo, piezas) {
   const n = piezas.length;
+  const esCarrusel = modo === "carrusel";
   const { ancho, alto } = receta.lienzo || LIENZO_POR_DEFECTO;
   const logo = receta.logo || {};
   const proporcion = logo.proporcion || "la del archivo, sin deformar";
@@ -254,7 +348,34 @@ y queda incluida en el PNG. Mientras no se cargue nada, esa zona muestra
 un rectángulo con el texto «FOTO REAL — cárgala aquí», y el botón de
 descarga de esa pieza tampoco exporta.
 ` : ""}
-CADA PIEZA Y SU DESCARGA
+${esCarrusel ? `EL CARRUSEL SE MONTA COMO UNA TIRA, NO COMO ${n} PIEZAS SEGUIDAS
+Un carrusel es una pieza larga cortada. El documento tiene que dejar ver las
+dos cosas, y en este orden:
+
+1. Primero LA TIRA: las ${n} diapositivas en fila, pegadas por el borde, sin
+   ninguna separación, margen ni borde entre ellas, reducidas para que
+   quepan a lo ancho. Es la única vista donde se ven las costuras.
+2. Debajo, cada diapositiva por separado, a su tamaño de vista previa y con
+   su botón de descarga.
+
+El fondo del carrusel es UNA sola imagen panorámica que cubre ${ancho * n}×${alto}.
+La diapositiva k NO lleva su propia imagen: lleva la panorámica entera
+desplazada −${ancho}·k. En la vista previa eso es background-position; en el
+lienzo de exportación es la misma imagen dibujada con ese desplazamiento.
+
+El velo es vertical y con exactamente los mismos valores en las ${n}
+diapositivas. El brillo de la imagen es exactamente el mismo número en las
+${n}. Si cambia entre diapositivas, aparece un escalón en cada costura.
+
+El antetítulo, el anclaje del bloque de texto y el tamaño del titular no
+cambian entre diapositivas salvo que el texto de cada una lo diga.
+
+Por qué la tira va primero: una diapositiva suelta puede estar perfecta y
+romper el carrusel. Un escalón de brillo o un punto focal partido por la
+mitad sólo se ven con las ${n} pegadas. Si el documento no las enseña juntas,
+ese fallo llega a la publicación.
+
+` : ""}CADA PIEZA Y SU DESCARGA
 · Un botón por pieza, que la descarga en PNG a tamaño real.
 · Un botón que descargue las ${n}, con los nombres numerados:
   ${receta.slug || "marca"}-01.png … ${receta.slug || "marca"}-${String(n).padStart(2, "0")}.png
@@ -298,6 +419,14 @@ poder ocurrir. Aun así van escritas, porque cada una es un fallo observado:
 5. Un botón que lanza muchas descargas seguidas lo bloquea el navegador a
    la tercera. Sepáralas con una pausa de unos 300 ms y avisa de que hay
    que permitirlas, o agrúpalas en un ZIP de verdad.
+6. El avance vertical entre líneas del titular NO es líneas × interlínea.
+   Lleva la holgura de las tildes sumada línea a línea (sección 2). Acumula
+   el avance real; si lo calculas multiplicando, el PNG sale con las líneas
+   comidas aunque la vista previa esté bien, o al revés.${esCarrusel ? `
+7. El fondo de cada diapositiva es un TROZO de una sola imagen. Se dibuja la
+   panorámica entera desplazada −${ancho}·k, no una imagen por diapositiva. Si
+   recortas y reescalas cada trozo por separado, los redondeos dejan una
+   línea de costura de uno o dos píxeles en cada corte.` : ""}
 ${(receta.trampasPropias || []).length ? `\nY estas, propias de esta marca:\n${lista(receta.trampasPropias)}\n` : ""}
 LA INTERFAZ DEL DOCUMENTO
 ${bloque(receta.interfaz) || "Sobria y con los colores de la marca. Ningún color fuera de la paleta, tampoco aquí."}`;
@@ -330,6 +459,34 @@ Nada de esto puede aparecer en ninguna imagen generada:
 ${bloque(receta.negativos) || "—"}${extra}`;
 }
 
+/**
+ * La interlínea de este titular, ya calculada.
+ *
+ * No es la fórmula: son los números. La skill de PanaClaw lo dice en una
+ * línea —«se entrega resuelta, no como regla: si Meta tiene que decidirlo,
+ * no lo hace»— y es la diferencia entre un prompt que se ejecuta y uno que
+ * se interpreta. El motivo de cada holgura va escrito para que el humano
+ * pueda comprobar el resultado sin rehacer la cuenta.
+ */
+function interlineaResuelta(pieza) {
+  const pares = pieza._interlinea;
+  if (!pares || !pares.length) return "";
+
+  const filas = pares.map((x) => {
+    const px = String(x.avancePx).padStart(4);
+    return `  línea ${x.de} → ${x.a}:  ${x.avanceEm.toFixed(2)} em = ${px} px   (${x.porque})`;
+  }).join("\n");
+
+  const hayHolgura = pares.some((x) => x.holguraSuperior || x.holguraInferior);
+
+  return `INTERLÍNEA YA RESUELTA — usa estos avances tal cual, NO los recalcules:
+${filas}${hayHolgura ? `
+
+Los avances que llevan holgura no son un error de redondeo: son exactamente
+lo que sobresale la tinta de esa tilde o esa cola. Si los igualas todos a la
+interlínea base, la tilde cae dentro de las letras de la línea de arriba.` : ""}`;
+}
+
 /** Sección 6 · Las piezas. Es lo único que escribe la IA. */
 function seccionSeis(receta, modo, piezas) {
   const esCarrusel = modo === "carrusel";
@@ -346,11 +503,14 @@ function seccionSeis(receta, modo, piezas) {
       p.fecha ? `SE PUBLICA: ${p.fecha}` : "",
       esCarrusel ? `NUMERADOR: ${num}/${String(total).padStart(2, "0")}` : "",
       p.antetitulo ? `ANTETÍTULO: ${p.antetitulo}` : "",
-      `TITULAR — ${lineas} línea${lineas === 1 ? "" : "s"}, cortes exactos:\n${titular}`,
+      `TITULAR — ${lineas} línea${lineas === 1 ? "" : "s"}${p._tamano ? `, ${p._tamano.familia || ""} ${p._tamano.px} px` : ""}, cortes exactos:\n${titular}`,
+      interlineaResuelta(p),
       p.bajada ? `BAJADA: ${p.bajada}` : "",
       p.cifra ? `CIFRA: ${p.cifra}` : "",
       p.nota ? `NOTA: ${p.nota}` : "",
-      p.anclaje ? `ANCLAJE: ${p.anclaje}` : "",
+      p._anclaje
+        ? `ANCLAJE: ${p._anclaje.nombre} — ${p._anclaje.donde}`
+        : p.anclaje ? `ANCLAJE: ${p.anclaje}` : "",
       p.fotoReal ? "FOTO REAL: sí — esta pieza lleva su propio selector de archivo" : "",
       `PROMPT DEL FONDO:\n${p.promptFondo || "—"}`,
       p.guion ? `GUION (va debajo de la pieza, en texto seleccionable, NO dentro de la imagen):\n${p.guion}` : "",
@@ -378,6 +538,7 @@ ${fichas}${comun}`;
 /** Sección 7 · Antes de devolver. La prohibición otra vez, y la lista. */
 function seccionSiete(receta, modo, piezas) {
   const n = piezas.length;
+  const esCarrusel = modo === "carrusel";
   const { ancho, alto } = receta.lienzo || LIENZO_POR_DEFECTO;
 
   const tildes = (receta.tildes || []).length
@@ -429,12 +590,49 @@ ${tildes}
 [ ] ¿Dibujaste tú algún logo, en vez de componer el archivo que carga el
     humano? Si lo hiciste, quítalo y deja el hueco.
 [ ] ¿Bloquea de verdad la descarga cuando no hay logo cargado?
+[ ] Busca las tildes, las eñes y los signos de apertura del titular.
+    ¿Cada línea que lleva una tiene su holgura sumada al avance? Y si encima
+    de ella hay una Q, un ¿, un ¡ o una coma, ¿está sumada también la de
+    abajo?
+[ ] Si el titular tiene más de un par de líneas que necesita holgura, ¿está
+    calculada en CADA par, o sólo en el primero que se notó?
+[ ] Amplía el titular y mira el punto donde una tilde queda debajo de una
+    letra. Si se tocan, falta holgura. Si hay un dedo de aire, sobra.
+[ ] ¿El bloque de texto va sin recorte, para que la tilde de la primera
+    línea no salga rasurada?
+[ ] ¿Los cortes de línea respetan las unidades de sentido? ¿Hay alguna línea
+    huérfana que no sea el remate?
 [ ] ¿El exportador lee las posiciones del DOM ya maquetado, o las
     recalcula?
+[ ] ¿El avance entre líneas lo acumulas línea a línea, o lo multiplicas por
+    la interlínea? Multiplicarlo se come las tildes en el PNG.
 [ ] ¿Esperas a document.fonts.ready antes de medir y antes de exportar?
 [ ] ¿Esperas a que el logo esté decodificado antes de dibujarlo?
+[ ] ¿Se lee el titular al tamaño de un pulgar? Aléjate y míralo pequeño.
 ${hashtags}${hashtags ? "\n" : ""}${emojis}${emojis ? "\n" : ""}${cifras}
-${(receta.verificacionPropia || []).map((v) => `[ ] ${v}`).join("\n")}`;
+${(receta.verificacionPropia || []).map((v) => `[ ] ${v}`).join("\n")}
+${esCarrusel ? `
+Y por ser un carrusel:
+
+[ ] ¿El fondo salió de UNA SOLA imagen cortada, o de ${n} imágenes distintas?
+[ ] ¿El anclaje del texto es el mismo en todas?
+[ ] ¿El brillo de la imagen es el mismo número en todas?
+[ ] ¿El antetítulo es el mismo en todas?
+[ ] Lee sólo los tramos acentuados en orden: ¿forman una frase?
+[ ] ¿Está el numerador encendido en las ${n}?
+[ ] Ponlas en tira, pegadas. ¿Se ve alguna costura? ¿Hay un escalón de
+    brillo en algún corte? ¿Hay un punto focal partido por la mitad?
+` : ""}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+LA COMPROBACIÓN QUE HACE EL HUMANO, NO TÚ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Descarga una pieza y ponla al lado de su vista previa. Si no son idénticas,
+el exportador está mal — y si está mal en una, está mal en las ${n}.
+
+Un desfase de dos o tres píxeles entre las dos es normal: viene de que el
+lienzo posiciona por la caja del tipo y el navegador por la caja de línea.
+Por encima de eso, es una de las trampas de la sección 3.`;
 }
 
 /**
@@ -445,7 +643,9 @@ ${(receta.verificacionPropia || []).map((v) => `[ ] ${v}`).join("\n")}`;
  */
 export function buildMetaMasterPrompt({ receta, piezas, modo = "lote", tema = "", publico = "", negativosDelLote = [] }) {
   const r = receta || {};
-  const p = Array.isArray(piezas) ? piezas : [];
+  // El cuerpo, el anclaje y la interlínea se resuelven aquí, no en el
+  // prompt: a Meta AI le llega el número, no la cuenta.
+  const p = (Array.isArray(piezas) ? piezas : []).map((x) => componerPieza(r, x));
   const m = MODOS_META[modo] ? modo : "lote";
 
   const cabecera = `PROMPT MAESTRO · ${r.marca || "Marca"} · ${MODOS_META[m].label}

@@ -1,0 +1,31 @@
+# Lint, tests y build en cada push y cada pull request.
+#
+# Existe porque esta semana se mergeó un arreglo a medias y el fallo se
+# descubrió en una captura de pantalla del cliente. Un PR que no pase esto
+# no debería llegar a main.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      # El build se hace con las variables definidas a propósito: sin ellas
+      # Vite constant-folda `isSupabaseEnabled` a false y rollup elimina el
+      # panel entero del bundle. Se estaría comprobando media aplicación.
+      - run: npm run build
+        env:
+          VITE_SUPABASE_URL: https://ejemplo.supabase.co
+          VITE_SUPABASE_ANON_KEY: clave-de-ejemplo-solo-para-el-build
