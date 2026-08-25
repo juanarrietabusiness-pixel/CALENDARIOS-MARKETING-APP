@@ -114,6 +114,36 @@ describe.skipIf(!hayWorkspace)("las recetas publicadas", () => {
         }
       });
 
+      it("trae la cuenta de interlínea medida de SU familia", () => {
+        // Lo que más rompe una pieza en español: la tilde de una Á y el
+        // trazo de una Ñ se comen la línea de arriba cuando la interlínea
+        // baja de 1. Los valores no son de gusto ni se copian de otra
+        // marca: son lo que sobresale la tinta de esa familia concreta.
+        const i = receta.interlineado;
+        expect(i, `${cliente} no tiene la cuenta de interlínea`).toBeTruthy();
+        expect(i.formula).toContain("avance(n → n+1)");
+        expect(i.$medidoEn, `${cliente}: no dice de qué familia salieron los valores`).toBeTruthy();
+
+        const sup = Object.values(i.holguraSuperior);
+        const inf = Object.values(i.holguraInferior);
+        expect(sup.length).toBeGreaterThan(0);
+        expect(inf.length).toBeGreaterThan(0);
+        // Una holgura fuera de este rango no es una medida: es un número
+        // puesto a ojo.
+        for (const v of [...sup, ...inf]) {
+          expect(v, `${cliente}: holgura ${v} fuera de rango`).toBeGreaterThan(0.05);
+          expect(v, `${cliente}: holgura ${v} fuera de rango`).toBeLessThan(0.4);
+        }
+      });
+
+      it("aplica la cuenta sólo donde la interlínea baja de 1", () => {
+        // Si el titular va por encima de interlínea 1 no hay nada que
+        // corregir, y la receta estaría cargando una regla que no aplica.
+        const titulares = receta.escala.filter((e) => /titular/i.test(e.elemento));
+        const alguna = titulares.some((t) => parseFloat(t.interlinea) < 1);
+        expect(alguna, `${cliente}: ningún titular baja de interlínea 1`).toBe(true);
+      });
+
       it("arma un prompt maestro completo, sin huecos", () => {
         const piezas = [{
           n: 1,
@@ -143,6 +173,55 @@ describe.skipIf(!hayWorkspace)("las recetas publicadas", () => {
         expect(prompt).toContain(receta.fuentes.url);
         expect(prompt).toContain(receta.bloqueEstilo.split("\n")[0]);
         expect(prompt).toContain("No generes ningún logotipo");
+      });
+
+      it("lleva la ingeniería que hace impecable el resultado", () => {
+        // Cada línea de aquí es algo que PanaClaw tiene y a nosotros nos
+        // faltaba. Sin ellas el prompt tiene la estructura correcta y el
+        // resultado sale roto: tildes comidas, bloques recortados y
+        // exportadores que recalculan.
+        const prompt = buildMetaMasterPrompt({
+          receta,
+          piezas: [{ n: 1, titular: ["UNA"], promptFondo: "x", descripcion: "y", hashtags: "#z" }],
+          modo: "lote",
+        });
+        const exigencias = [
+          [/CADA PAR DE LÍNEAS CONSECUTIVAS/, "la holgura se calcula en cada par, no sólo en el primero"],
+          [/TOPE DE VERSALITA/, "el anclaje se mide sobre la versalita, no sobre la tinta"],
+          [/no lleva recorte/i, "el bloque de texto va sin recorte"],
+          [/unidad de sentido/i, "los cortes de línea van por unidad de sentido"],
+          [/huérfan/i, "sin líneas huérfanas salvo el remate"],
+          [/NO es líneas × interlínea/, "el avance se acumula, no se multiplica"],
+          [/ponla al lado de su vista previa/i, "la comprobación que hace el humano"],
+          [/dos o tres píxeles/, "la tolerancia normal entre lienzo y navegador"],
+        ];
+        for (const [re, que] of exigencias) {
+          expect(re.test(prompt), `${cliente}: falta «${que}»`).toBe(true);
+        }
+        // Los valores medidos de SU familia tienen que aparecer, no los de otra.
+        for (const v of Object.values(receta.interlineado.holguraSuperior)) {
+          expect(prompt, `${cliente}: la holgura ${v} no llega al prompt`).toContain(String(v));
+        }
+      });
+
+      it("monta el carrusel como una tira, no como piezas sueltas", () => {
+        const piezas = [1, 2, 3, 4].map((n) => ({
+          n, titular: ["UNA"], promptFondo: "x",
+          descripcionConjunto: "una sola", hashtagsConjunto: "#uno",
+        }));
+        const prompt = buildMetaMasterPrompt({ receta, piezas, modo: "carrusel" });
+        const { ancho } = receta.lienzo;
+        for (const [re, que] of [
+          [/Primero LA TIRA/, "la tira va primero"],
+          [/panorámica entera desplazada/, "un solo fondo panorámico cortado"],
+          [new RegExp(`${ancho * 4}×`), "la panorámica cubre el ancho de las cuatro"],
+          [/línea de costura/, "la trampa de la costura"],
+          [/forman una frase/, "los tramos acentuados leídos en orden"],
+          [/NUMERADOR: 01\/04/, "el numerador encendido"],
+          [/UNA SOLA DESCRIPCIÓN PARA EL CARRUSEL/, "una sola descripción para el conjunto"],
+        ]) {
+          expect(re.test(prompt), `${cliente}: falta «${que}» en el carrusel`).toBe(true);
+        }
       });
     });
   }
