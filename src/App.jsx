@@ -186,10 +186,23 @@ function Workspace({ session }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
+  const [saveError, setSaveError] = useState(null);
   const importRef = useRef();
   // Un temporizador por calendario: las ediciones seguidas se agrupan en
   // una sola escritura en lugar de una por pulsación.
   const saveTimers = useRef(new Map());
+  const pendingSaves = useRef(new Map());
+
+  const flushPendingSaves = () => {
+    const timers = saveTimers.current;
+    const pending = pendingSaves.current;
+    timers.forEach(clearTimeout);
+    timers.clear();
+    for (const [, entry] of pending) {
+      db.saveCalendar(entry.cal, entry.clientDbId, entry.ownerId).catch(() => {});
+    }
+    pending.clear();
+  };
 
   useEffect(() => {
     let alive = true;
@@ -211,11 +224,16 @@ function Workspace({ session }) {
     return () => { alive = false; };
   }, [ownerId]);
 
-  // Los temporizadores pendientes se cancelan al desmontar: si no, un
-  // guardado en vuelo escribiría después de cerrar sesión.
   useEffect(() => {
-    const timers = saveTimers.current;
-    return () => { timers.forEach(clearTimeout); timers.clear(); };
+    const flush = () => flushPendingSaves();
+    const onVisChange = () => { if (document.visibilityState === "hidden") flush(); };
+    window.addEventListener("beforeunload", flush);
+    document.addEventListener("visibilitychange", onVisChange);
+    return () => {
+      window.removeEventListener("beforeunload", flush);
+      document.removeEventListener("visibilitychange", onVisChange);
+      flushPendingSaves();
+    };
   }, []);
 
   // Los mensajes se anuncian en una región aria-live en lugar de alert(),
@@ -273,18 +291,33 @@ function Workspace({ session }) {
     updateCalendarLocal(calId, updatedCal);
 
     const timers = saveTimers.current;
+    const pending = pendingSaves.current;
+    const entry = { cal: updatedCal, clientDbId: selectedClientId, ownerId };
+    pending.set(calId, entry);
     clearTimeout(timers.get(calId));
     timers.set(calId, setTimeout(() => {
       timers.delete(calId);
+      pending.delete(calId);
       db.saveCalendar(updatedCal, selectedClientId, ownerId)
-        .catch(fallo("guardar el calendario"));
+        .then(() => setSaveError(null))
+        .catch((e) => setSaveError({ calId, entry, message: e.message }));
     }, 600));
+  };
+
+  const retrySave = () => {
+    if (!saveError) return;
+    const { calId: cId, entry } = saveError;
+    setSaveError(null);
+    db.saveCalendar(entry.cal, entry.clientDbId, entry.ownerId)
+      .then(() => setToast("Calendario guardado correctamente."))
+      .catch((e) => setSaveError({ calId: cId, entry, message: e.message }));
   };
 
   const deleteCalendar = async (calId) => {
     try {
       clearTimeout(saveTimers.current.get(calId));
       saveTimers.current.delete(calId);
+      pendingSaves.current.delete(calId);
       await db.deleteCalendar(calId);
       setClients((prev) =>
         prev.map((c) =>
@@ -536,6 +569,15 @@ function Workspace({ session }) {
             <div role="status" aria-live="polite" className={toast ? undefined : "sr-only"}>
               {toast && <p className="notice notice-ok">{toast}</p>}
             </div>
+            {saveError && (
+              <div role="alert" className="notice notice-error" style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap" }}>
+                <span style={{ flex: 1 }}>No se pudo guardar el calendario: {saveError.message}</span>
+                <button className="btn btn-primary btn-sm" onClick={retrySave}>Reintentar</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setSaveError(null)} aria-label="Descartar aviso">
+                  <Icon name="close" size={16} />
+                </button>
+              </div>
+            )}
 
             {client ? (
               <>
