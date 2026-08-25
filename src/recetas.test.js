@@ -204,6 +204,62 @@ describe.skipIf(!hayWorkspace)("las recetas publicadas", () => {
         }
       });
 
+      it("declara sus anclajes como tabla, no como prosa", () => {
+        // Con el anclaje en prosa lo decide el modelo, y el contrato dice que
+        // Meta AI copia y no decide. La tabla es lo que permite calcularlo.
+        expect(Array.isArray(receta.anclajes), `${cliente}: anclajes no es una lista`).toBe(true);
+        expect(receta.anclajes.length).toBeGreaterThan(0);
+        for (const a of receta.anclajes) {
+          expect(a.nombre, `${cliente}: un anclaje sin nombre`).toBeTruthy();
+          expect(a.donde, `${cliente}: «${a.nombre}» no dice dónde`).toBeTruthy();
+          // O va por plantilla, o por número de líneas. Uno de los dos.
+          const porPlantilla = Boolean(a.plantilla);
+          const porLineas = Array.isArray(a.lineas) && a.lineas.length === 2;
+          expect(porPlantilla || porLineas, `${cliente}: «${a.nombre}» no dice cuándo aplica`).toBe(true);
+        }
+      });
+
+      it("cubre con un anclaje cada plantilla que declara", () => {
+        // Una plantilla sin anclaje deja esa pieza sin base, y el prompt cae
+        // a la prosa: la pieza se compone distinto que sus hermanas.
+        const porPlantilla = receta.anclajes.filter((a) => a.plantilla);
+        if (!porPlantilla.length) return; // esta marca ancla por número de líneas
+        for (const t of receta.plantillas) {
+          const tiene = porPlantilla.some((a) => String(a.plantilla) === String(t.id));
+          expect(tiene, `${cliente}: la plantilla ${t.id} no tiene anclaje`).toBe(true);
+        }
+      });
+
+      it("entrega la interlínea RESUELTA en el prompt, no la fórmula", () => {
+        // El paso 5 de la skill de PanaClaw: «se entrega resuelta, no como
+        // regla: si Meta tiene que decidirlo, no lo hace». Éste es el test
+        // que comprueba que el número llega, no sólo que se calcula.
+        const plantilla = receta.plantillas[0]?.id;
+        const prompt = buildMetaMasterPrompt({
+          receta,
+          modo: "lote",
+          piezas: [{
+            n: 1, plantilla,
+            // Primer par: la línea 2 lleva tilde y la 1 acaba en Q, así que
+            // suma las dos holguras. Segundo par: ninguna, interlínea base.
+            titular: ["COSAS QUE", "CON TILDÉ", "FINAL"],
+            promptFondo: "x", descripcion: "y", hashtags: "#z",
+          }],
+        });
+
+        expect(prompt).toContain("INTERLÍNEA YA RESUELTA");
+        expect(prompt).toMatch(/línea 1 → 2:\s+\d\.\d\d em =\s+\d+ px/);
+        expect(prompt).toMatch(/línea 2 → 3:\s+\d\.\d\d em =\s+\d+ px/);
+        // El motivo va escrito: es lo que permite comprobarlo sin rehacer
+        // la cuenta.
+        expect(prompt).toMatch(/É en la línea 2/);
+        expect(prompt).toMatch(/Q en la línea 1/);
+        expect(prompt).toMatch(/línea 2 → 3:.+interlínea base/);
+        // Y el cuerpo y el anclaje van resueltos también.
+        expect(prompt).toMatch(/TITULAR — 3 líneas, .+ \d+ px/);
+        expect(prompt).toContain("ANCLAJE:");
+      });
+
       it("monta el carrusel como una tira, no como piezas sueltas", () => {
         const piezas = [1, 2, 3, 4].map((n) => ({
           n, titular: ["UNA"], promptFondo: "x",

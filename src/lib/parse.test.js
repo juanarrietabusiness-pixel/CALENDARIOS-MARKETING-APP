@@ -226,3 +226,29 @@ Sólo descripción`;
     expect(r.def456.guion).toBe("");
   });
 });
+
+// ============================================================
+// El prompt que recibe el modelo redactor.
+//
+// No se prueba llamando a la IA: se prueba que las instrucciones que
+// gobiernan su trabajo estén ahí. Las dos de abajo se perdieron una vez
+// cada una en un refactor y nadie se enteró hasta ver la pieza.
+// ============================================================
+
+describe("las instrucciones al redactor", () => {
+  it("le prohíbe decidir la maquetación", async () => {
+    // Si el modelo elige el cuerpo o el anclaje, dos piezas del mismo mes
+    // salen compuestas distinto. Esas cuentas las hace `componer.js`.
+    const { default: src } = await import("../api.js?raw").catch(() => ({ default: "" }));
+    const texto = src || (await import("node:fs")).readFileSync("src/api.js", "utf8");
+    expect(texto).toContain("NO decidas el cuerpo del titular, ni el anclaje, ni la interlínea");
+  });
+
+  it("le manda mirar lo ya publicado", async () => {
+    // El estándar de la agencia obliga a revisar Calendarios_Aprobados para
+    // no repetir. Se leía del repositorio y nadie le decía que lo usara.
+    const texto = (await import("node:fs")).readFileSync("src/api.js", "utf8");
+    expect(texto).toContain("Calendarios_Aprobados");
+    expect(texto).toMatch(/no vuelve, ni con otras palabras/);
+  });
+});
