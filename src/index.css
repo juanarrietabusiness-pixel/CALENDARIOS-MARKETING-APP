@@ -865,10 +865,50 @@ input[type="radio"] {
   font-size: var(--fs-3xs);
   color: var(--text-muted);
   font-weight: 700;
-  padding: var(--sp-2) 2px;
-  background: var(--card);
-  border-radius: var(--radius-xs);
+  padding: var(--sp-1) 2px var(--sp-2);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.cal-header-label {
+  display: block;
+  width: 100%;
+  font-size: var(--fs-3xs);
+  color: var(--text-dim);
+  font-weight: 500;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: var(--lh-tight);
+  min-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.cal-header-label:hover {
+  background: var(--accent-soft);
+  color: var(--text-muted);
+}
+.cal-header-input {
+  width: 100%;
+  font-size: var(--fs-3xs);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent-line);
+  border-radius: 4px;
+  padding: 2px 4px;
+  text-align: center;
+  font-family: inherit;
+  outline: none;
+  min-height: 20px;
 }
 .cal-header-idea {
   font-size: var(--fs-3xs);
@@ -1039,6 +1079,8 @@ input[type="radio"] {
   .cal-post { justify-content: center; gap: 2px; padding: 3px 2px; }
   .cal-post-time { display: none; }
   .cal-header-idea { display: none; }
+  .cal-header-label { display: none; }
+  .cal-header-input { display: none; }
   .cal-week-tag { display: none; }
 }
 

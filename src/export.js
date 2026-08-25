@@ -99,7 +99,7 @@ export function buildExportHTML(client, calendar) {
 
       const ideaSummary = (day.posts || []).map((p) => {
         const f = FORMATS[p.format] || FORMATS.post;
-        return `<span class="idea-chip" style="--fc:${f.color}">${f.icon} ${esc(p.idea || p.category || f.label)}</span>`;
+        return `<span class="idea-chip" style="--fc:${f.color}">${f.icon} ${esc(p.title || p.idea || p.category || f.label)}</span>`;
       }).join("");
 
       return `<div class="list-day" data-list-date="${esc(day.date)}">
@@ -138,7 +138,7 @@ export function buildExportHTML(client, calendar) {
       const postsIcons = posts.map((p) => {
         const f = FORMATS[p.format] || FORMATS.post;
         const st = STATUSES[p.status || "pending"];
-        return `<div class="cal-post-dot" style="background:${f.color}22;color:${f.color};border:1px solid ${st.text}44" title="${esc(p.idea || p.category || f.label)}" onclick="scrollToDay('${dt}')">${f.icon}</div>`;
+        return `<div class="cal-post-dot" style="background:${f.color}22;color:${f.color};border:1px solid ${st.text}44" title="${esc(p.title || p.idea || p.category || f.label)}" onclick="scrollToDay('${dt}')">${f.icon}</div>`;
       }).join("");
       arr.push(`<div class="export-cal-cell${inMonth ? "" : " outside"}">${inMonth ? `<div class="export-cal-num">${d.getDate()}</div>${postsIcons}` : `<div class="export-cal-num outside-num">${d.getDate()}</div>`}</div>`);
       d.setDate(d.getDate() + 1);

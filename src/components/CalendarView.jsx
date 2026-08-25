@@ -63,6 +63,14 @@ const fieldBodyStyle = {
   whiteSpace: "pre-wrap",
 };
 
+function fmt12h(value) {
+  if (!value) return "--:--";
+  const [h, m] = value.split(":").map(Number);
+  const suffix = h >= 12 ? "PM" : "AM";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${String(m).padStart(2, "0")} ${suffix}`;
+}
+
 function TimePicker({ value, onChange, id }) {
   const [open, setOpen] = useState(false);
   const parts = (value || "").split(":");
@@ -101,7 +109,7 @@ function TimePicker({ value, onChange, id }) {
       >
         <Icon name="clock" size={16} />
         <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
-          {value || "--:--"}
+          {fmt12h(value)}
         </span>
       </button>
       {open && (
@@ -115,7 +123,7 @@ function TimePicker({ value, onChange, id }) {
               <button type="button" className="time-picker-arrow" aria-label="Hora anterior" onClick={() => setTime((+hour + 23) % 24, +minute || 0)}>
                 <Icon name="chevronUp" size={18} />
               </button>
-              <span className="time-picker-digit">{hour ? hour.padStart(2, "0") : "--"}</span>
+              <span className="time-picker-digit">{hour ? (hour === "00" ? "12" : +hour > 12 ? String(+hour - 12) : hour.replace(/^0/, "")) : "--"}</span>
               <button type="button" className="time-picker-arrow" aria-label="Hora siguiente" onClick={() => setTime((+hour + 1) % 24, +minute || 0)}>
                 <Icon name="chevronDown" size={18} />
               </button>
@@ -130,18 +138,25 @@ function TimePicker({ value, onChange, id }) {
                 <Icon name="chevronDown" size={18} />
               </button>
             </div>
+            <span className="time-picker-sep" style={{ fontSize: "var(--fs-xs)", fontWeight: 700, color: "var(--text-muted)" }}>
+              {hour && +hour >= 12 ? "PM" : "AM"}
+            </span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 4, marginBottom: "var(--sp-2)" }}>
-            {[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].map((h) => (
-              <button
-                key={h}
-                type="button"
-                className={`time-picker-preset${+hour === h ? " active" : ""}`}
-                onClick={() => { setTime(h, +minute || 0); }}
-              >
-                {String(h).padStart(2, "0")}
-              </button>
-            ))}
+            {[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].map((h) => {
+              const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+              const sfx = h >= 12 ? "PM" : "AM";
+              return (
+                <button
+                  key={h}
+                  type="button"
+                  className={`time-picker-preset${+hour === h ? " active" : ""}`}
+                  onClick={() => { setTime(h, +minute || 0); }}
+                >
+                  {h12} {sfx}
+                </button>
+              );
+            })}
           </div>
           <div style={{ display: "flex", gap: "var(--sp-2)" }}>
             <button type="button" className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => setOpen(false)}>
@@ -334,11 +349,16 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onS
         </div>
 
         <div className="field">
+          <label className="label" htmlFor={`${ids}-title`}>Título</label>
+          <input id={`${ids}-title`} className="input" value={form.title || ""} onChange={(e) => sf("title", e.target.value)} placeholder="Nombre corto de la publicación" />
+        </div>
+
+        <div className="field">
           <div style={fieldHeaderStyle}>
-            <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-idea`}>Idea</label>
+            <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-idea`}>Idea / Brief</label>
             <AiButton field="idea" label="la idea" />
           </div>
-          <textarea id={`${ids}-idea`} className="textarea" value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Idea del contenido…" />
+          <textarea id={`${ids}-idea`} className="textarea" value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Explicación o prompt para la generación con IA…" />
         </div>
 
         {!isPost && (
@@ -595,6 +615,7 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onS
 
 function AddPostInline({ onAdd, onCancel }) {
   const [format, setFormat] = useState("post");
+  const [title, setTitle] = useState("");
   const [idea, setIdea] = useState("");
   const ids = useId();
 
@@ -628,20 +649,32 @@ function AddPostInline({ onAdd, onCancel }) {
       </fieldset>
 
       <div className="field">
-        <label className="label" htmlFor={`${ids}-idea`}>Idea del post</label>
+        <label className="label" htmlFor={`${ids}-title`}>Título</label>
+        <input
+          id={`${ids}-title`}
+          className="input"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Nombre corto de la publicación"
+          autoFocus
+          onKeyDown={(e) => { if (e.key === "Enter" && title) onAdd(format, idea, title); }}
+        />
+      </div>
+
+      <div className="field">
+        <label className="label" htmlFor={`${ids}-idea`}>Idea / Brief</label>
         <input
           id={`${ids}-idea`}
           className="input"
           value={idea}
           onChange={(e) => setIdea(e.target.value)}
-          placeholder="Ej: Antes y después de un cliente"
-          autoFocus
-          onKeyDown={(e) => { if (e.key === "Enter" && idea) onAdd(format, idea); }}
+          placeholder="Explicación o prompt para IA (opcional)"
+          onKeyDown={(e) => { if (e.key === "Enter" && title) onAdd(format, idea, title); }}
         />
       </div>
 
       <div style={{ display: "flex", gap: "var(--sp-2)" }}>
-        <button className="btn btn-primary btn-sm" style={{ flex: 1 }} disabled={!idea} onClick={() => { if (idea) onAdd(format, idea); }}>
+        <button className="btn btn-primary btn-sm" style={{ flex: 1 }} disabled={!title} onClick={() => { if (title) onAdd(format, idea, title); }}>
           Agregar
         </button>
         <button className="btn btn-secondary btn-sm" onClick={onCancel}>
@@ -715,6 +748,26 @@ function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
   const ref = useDialogA11y(onClose);
   const ids = useId();
   const [activeTab, setActiveTab] = useState("general");
+  const imgInputRef = useRef(null);
+
+  const addVisualRef = async (file) => {
+    try {
+      const dataUrl = await compressImage(file, 600);
+      setMetaForm((p) => ({
+        ...p,
+        visualReferences: [...(p.visualReferences || []), { id: uid(), url: dataUrl, name: file.name }],
+      }));
+    } catch (e) {
+      console.error("No se pudo comprimir la imagen:", e);
+    }
+  };
+
+  const removeVisualRef = (refId) => {
+    setMetaForm((p) => ({
+      ...p,
+      visualReferences: (p.visualReferences || []).filter((r) => r.id !== refId),
+    }));
+  };
 
   return (
     <div className="overlay overlay-sheet">
@@ -724,7 +777,7 @@ function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
           <button className="btn-icon" onClick={onClose} aria-label="Cerrar"><Icon name="close" /></button>
         </div>
 
-        <div className="segmented" role="group" aria-label="Sección de edición" style={{ margin: "0 var(--sp-4)", marginBottom: "var(--sp-2)" }}>
+        <div className="segmented" role="group" aria-label="Sección de edición" style={{ margin: "0 var(--sp-4)", marginBottom: "var(--sp-2)", flexWrap: "wrap" }}>
           <button type="button" className={`segmented-btn ${activeTab === "general" ? "active" : ""}`} aria-pressed={activeTab === "general"} onClick={() => setActiveTab("general")}>
             General
           </button>
@@ -736,6 +789,9 @@ function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
           </button>
           <button type="button" className={`segmented-btn ${activeTab === "offers" ? "active" : ""}`} aria-pressed={activeTab === "offers"} onClick={() => setActiveTab("offers")}>
             Ofertas
+          </button>
+          <button type="button" className={`segmented-btn ${activeTab === "visuals" ? "active" : ""}`} aria-pressed={activeTab === "visuals"} onClick={() => setActiveTab("visuals")}>
+            Ref. Visuales
           </button>
         </div>
 
@@ -827,6 +883,57 @@ function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
                 />
               </div>
             </>
+          )}
+
+          {activeTab === "visuals" && (
+            <fieldset style={{ border: "none" }}>
+              <legend className="label">Referencias visuales</legend>
+              <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
+                Sube imágenes de referencia para mostrar al cliente el estilo de diseño del calendario.
+              </p>
+              <input
+                ref={imgInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="sr-only"
+                aria-label="Subir imágenes de referencia"
+                onChange={(e) => {
+                  for (const file of e.target.files) addVisualRef(file);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                style={{ marginBottom: "var(--sp-3)" }}
+                onClick={() => imgInputRef.current?.click()}
+              >
+                <Icon name="upload" size={16} /> Subir imágenes
+              </button>
+              {(metaForm.visualReferences || []).length > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: "var(--sp-2)" }}>
+                  {(metaForm.visualReferences || []).map((vr) => (
+                    <div key={vr.id} style={{ position: "relative" }}>
+                      <img
+                        src={vr.url}
+                        alt={vr.name || "Referencia visual"}
+                        style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}
+                      />
+                      <button
+                        type="button"
+                        className="btn-icon"
+                        aria-label={`Quitar referencia ${vr.name || ""}`}
+                        onClick={() => removeVisualRef(vr.id)}
+                        style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,.6)", borderRadius: "50%", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}
+                      >
+                        <Icon name="close" size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </fieldset>
           )}
         </div>
 
@@ -973,19 +1080,11 @@ function AddPostDialog({ date, onAdd, onClose }) {
   );
 }
 
-function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasBank }) {
+function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasBank, dayLabels, onUpdateDayLabel }) {
   const [drag, setDrag] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
+  const [editingHeader, setEditingHeader] = useState(null);
   const today = fmtDate(new Date());
-
-  const dowBaseIdeas = {};
-  for (const day of cal.days || []) {
-    const dow = new Date(day.date + "T12:00:00").getDay();
-    const dowMon = dow === 0 ? 6 : dow - 1;
-    if (dowBaseIdeas[dowMon]) continue;
-    const firstIdea = (day.posts || []).find((p) => p.idea)?.idea;
-    if (firstIdea) dowBaseIdeas[dowMon] = firstIdea;
-  }
 
   const cells = () => {
     const first = new Date(cal.year, cal.month, 1);
@@ -1009,12 +1108,37 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
 
   return (
     <div className="cal-grid">
-      {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((n, i) => (
-        <div key={n} className="cal-header-cell">
-          <abbr title={FULL_DOW[i]} style={{ textDecoration: "none" }}>{n}</abbr>
-          {dowBaseIdeas[i] && <div className="cal-header-idea">{dowBaseIdeas[i]}</div>}
-        </div>
-      ))}
+      {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((n, i) => {
+        const label = (dayLabels || {})[i] || "";
+        const isEditing = editingHeader === i;
+        return (
+          <div key={n} className="cal-header-cell">
+            <abbr title={FULL_DOW[i]} style={{ textDecoration: "none" }}>{n}</abbr>
+            {isEditing ? (
+              <input
+                className="cal-header-input"
+                defaultValue={label}
+                autoFocus
+                placeholder="Etiqueta…"
+                onBlur={(e) => { onUpdateDayLabel?.(i, e.target.value); setEditingHeader(null); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { onUpdateDayLabel?.(i, e.target.value); setEditingHeader(null); }
+                  if (e.key === "Escape") setEditingHeader(null);
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                className="cal-header-label"
+                onClick={() => setEditingHeader(i)}
+                aria-label={`Editar etiqueta de ${FULL_DOW[i]}`}
+              >
+                {label || <span style={{ color: "var(--text-faint)" }}>+</span>}
+              </button>
+            )}
+          </div>
+        );
+      })}
       {allCells.map((date) => {
         const d = new Date(date + "T12:00:00");
         const dd = cal.days?.find((dd) => dd.date === date);
@@ -1064,7 +1188,7 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
               const isPublished = post.status === "published";
               const cat = post.category || dd?.category || "";
               const hue = cat ? categoryHue(cat) : 0;
-              const briefIdea = post.idea ? post.idea.split(/[.\n]/)[0].slice(0, 24) : "";
+              const briefIdea = (post.title || post.idea || "").split(/[.\n]/)[0].slice(0, 24);
               const chipLabel = cat || f.label;
               return (
                 <button
@@ -1072,7 +1196,7 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
                   type="button"
                   draggable
                   className={`cal-post${isPublished ? " is-published" : ""}${cat ? " has-cat" : ""}`}
-                  aria-label={`${f.label}${cat ? ` — ${cat}` : ""}${briefIdea ? `: ${briefIdea}` : ""} — ${st.label}${post.publishTime ? `, ${post.publishTime}` : ""}`}
+                  aria-label={`${f.label}${cat ? ` — ${cat}` : ""}${briefIdea ? `: ${briefIdea}` : ""} — ${st.label}${post.publishTime ? `, ${fmt12h(post.publishTime)}` : ""}`}
                   onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", JSON.stringify({ postId: post.id, sourceDate: date })); setDrag({ postId: post.id, sourceDate: date }); }}
                   onDragEnd={() => { setDrag(null); setDropTarget(null); }}
                   onClick={() => onPostClick(post, dd)}
@@ -1091,7 +1215,7 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
                   <span className="cal-post-dot" style={{ background: st.text }} aria-hidden="true" />
                   <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={13} />
                   <span className="cal-post-label" aria-hidden="true">{chipLabel}</span>
-                  {post.publishTime && <span className="cal-post-time" aria-hidden="true">{post.publishTime}</span>}
+                  {post.publishTime && <span className="cal-post-time" aria-hidden="true">{fmt12h(post.publishTime)}</span>}
                 </button>
               );
             })}
@@ -1439,6 +1563,7 @@ export default function CalendarView({
       dayCategories: cats,
       offers: cal.offers || "",
       promoCode: cal.promoCode || "",
+      visualReferences: [...(cal.visualReferences || [])],
     };
   });
 
@@ -1574,10 +1699,11 @@ export default function CalendarView({
     onUpdateCal(calId, { ...cal, days: newDays });
   };
 
-  const addPost = (date, format, idea) => {
+  const addPost = (date, format, idea, title) => {
     const newPost = {
       id: uid(),
       format,
+      title: title || "",
       idea,
       guion: "",
       descripcion: "",
@@ -1785,6 +1911,7 @@ export default function CalendarView({
       weekConcepts: updatedConcepts,
       offers: metaForm.offers || "",
       promoCode: metaForm.promoCode || "",
+      visualReferences: metaForm.visualReferences || [],
       days: newDays,
     });
     setEditMeta(false);
@@ -2340,6 +2467,11 @@ export default function CalendarView({
           onAddPost={(date) => setAddingPostDay(date)}
           onDropFromBank={moveBankToCalendar}
           ideasBank={ideasBank}
+          dayLabels={cal.dayLabels || {}}
+          onUpdateDayLabel={(dow, value) => {
+            const updated = { ...(cal.dayLabels || {}), [dow]: value };
+            onUpdateCal(calId, { ...cal, dayLabels: updated });
+          }}
         />
       ) : (
         /* List view */
@@ -2434,7 +2566,7 @@ export default function CalendarView({
                         const f = FORMATS[post.format] || FORMATS.post;
                         const st = STATUSES[post.status || "pending"];
                         const isPublished = post.status === "published";
-                        const postTitle = post.idea || post.category || f.label;
+                        const postTitle = post.title || post.idea || post.category || f.label;
                         return (
                           <article
                             key={post.id}
@@ -2455,13 +2587,14 @@ export default function CalendarView({
                               <span className="badge" style={{ background: st.bg, color: st.text, border: `1px solid ${st.border}` }}>{st.label}</span>
                               {post.publishTime && (
                                 <span style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>
-                                  <Icon name="clock" size={14} /> {post.publishTime}
+                                  <Icon name="clock" size={14} /> {fmt12h(post.publishTime)}
                                 </span>
                               )}
                             </div>
 
                             {post.category && <p style={{ fontSize: "var(--fs-2xs)", color: "var(--accent-alt)", fontWeight: 600, marginBottom: "var(--sp-1)" }}>{post.category}</p>}
-                            {post.image && !post.idea && !post.guion && !post.descripcion && !post.script && (
+                            {post.title && <p style={{ fontSize: "var(--fs-sm)", fontWeight: 700, marginBottom: "var(--sp-1)" }}>{post.title}</p>}
+                            {post.image && !post.title && !post.idea && !post.guion && !post.descripcion && !post.script && (
                               <span className="badge" style={{ background: "#2a1a0a", color: "var(--accent-alt)", border: "1px solid var(--alt-line)" }}>Solo imagen</span>
                             )}
                             {post.idea && <p style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)", lineHeight: "var(--lh-normal)", marginBottom: "var(--sp-1)" }}>{post.idea}</p>}
@@ -2516,7 +2649,7 @@ export default function CalendarView({
                       {/* Add post button */}
                       {addingPostDay === day.date ? (
                         <AddPostInline
-                          onAdd={(format, idea) => addPost(day.date, format, idea)}
+                          onAdd={(format, idea, title) => addPost(day.date, format, idea, title)}
                           onCancel={() => setAddingPostDay(null)}
                         />
                       ) : (
@@ -2542,7 +2675,7 @@ export default function CalendarView({
       {addingPostDay && viewMode === "grid" && (
         <AddPostDialog
           date={addingPostDay}
-          onAdd={(format, idea) => addPost(addingPostDay, format, idea)}
+          onAdd={(format, idea, title) => addPost(addingPostDay, format, idea, title)}
           onClose={() => setAddingPostDay(null)}
         />
       )}
