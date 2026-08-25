@@ -114,6 +114,8 @@ export function calendarToRow(cal, clientDbId, ownerId) {
     days: cal.days || [],
     generated_at: cal.generatedAt || null,
     allow_editing: cal.allowEditing || false,
+    visual_references: cal.visualReferences || [],
+    day_labels: cal.dayLabels || {},
   };
 }
 
@@ -131,5 +133,7 @@ export function rowToCalendar(row) {
     shareEnabled: row.share_enabled !== false,
     allowEditing: row.allow_editing || false,
     generatedAt: row.generated_at,
+    visualReferences: row.visual_references || [],
+    dayLabels: row.day_labels || {},
   };
 }

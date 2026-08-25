@@ -4,6 +4,14 @@ import { supabase, isSupabaseEnabled } from "../lib/supabase";
 import Icon from "../components/Icon";
 import logoMark from "../assets/logo-mark.png";
 
+function fmt12h(value) {
+  if (!value) return "--:--";
+  const [h, m] = value.split(":").map(Number);
+  const suffix = h >= 12 ? "PM" : "AM";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${String(m).padStart(2, "0")} ${suffix}`;
+}
+
 /**
  * Página pública de aprobación.
  *
@@ -302,6 +310,26 @@ export default function Aprobar() {
         )}
       </div>
 
+      {/* Visual references gallery */}
+      {(calendar.visualReferences || []).length > 0 && (
+        <div style={styles.visualRefsSection}>
+          <h3 style={styles.sectionHeading}>Referencias visuales</h3>
+          <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", marginBottom: "var(--sp-3)" }}>
+            Estilo general de los diseños que se usarán en este calendario.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: "var(--sp-2)" }}>
+            {calendar.visualReferences.map((vr) => (
+              <img
+                key={vr.id}
+                src={vr.url}
+                alt={vr.name || "Referencia visual"}
+                style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Bulk approve */}
       {pendingCount > 0 && (
         <div style={{ padding: "0 var(--sp-4) var(--sp-3)" }}>
@@ -440,7 +468,7 @@ function PostReview({
         <span className="badge" style={{ background: f.color + "22", color: f.color, border: `1px solid ${f.color}66` }}>
           <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={14} /> {f.label}
         </span>
-        {post.publishTime && <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{post.publishTime}</span>}
+        {post.publishTime && <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{fmt12h(post.publishTime)}</span>}
         {approval && (
           <span
             className="badge"
@@ -688,6 +716,13 @@ const styles = {
     borderRadius: "var(--radius)",
     margin: "0 var(--sp-4) var(--sp-3)",
     overflow: "hidden",
+  },
+  visualRefsSection: {
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    margin: "0 var(--sp-4) var(--sp-3)",
+    padding: "var(--sp-4)",
   },
   campaignToggle: {
     width: "100%",
