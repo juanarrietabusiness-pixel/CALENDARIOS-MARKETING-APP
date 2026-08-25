@@ -586,13 +586,22 @@ REGLAS QUE NO SE ROMPEN:
    en los tres bloques de texto de abajo, y se copian LITERALES, carácter
    por carácter, del ADN. No los resumas, no los reordenes, no los
    traduzcas y no les quites un elemento por parecerte redundante.
-3. \`logo\`: describe dónde va y con qué reglas, nunca cómo se dibuja. El
+3. \`fuentes.url\`: la URL de Google Fonts va COMPLETA, con sus \`&\` y sus
+   \`:wght@\`. Está en la sección del contrato del HTML del ADN. Cópiala
+   entera; una URL a medias carga la mitad de las fuentes y la pieza deja
+   de ser de la marca.
+4. \`escala\`: el ADN suele traerla como tabla. Conviértela fila a fila —
+   una entrada por cada rol tipográfico, sin saltarte ninguna. \`elemento\`
+   es el rol («Titular XL · 2–3 líneas»), \`px\` el tamaño como número,
+   \`interlinea\` y \`tracking\` como texto si los trae. Este campo es de los
+   que más se olvidan: si el ADN tiene una tabla de tamaños, tiene escala.
+5. \`logo\`: describe dónde va y con qué reglas, nunca cómo se dibuja. El
    logo de este cliente es un archivo que el humano carga; no se
    reproduce con formas ni con texto.
-4. \`tildes\`: las palabras con tilde o eñe que aparecen en el vocabulario
+6. \`tildes\`: las palabras con tilde o eñe que aparecen en el vocabulario
    de esta marca y que un modelo escribe mal (página, diseño, CAMPAÑA…).
-5. \`cifrasPermitidas\`: sólo las que estén verificadas en el ADN.
-6. \`productoFisico\`: true si la marca vende producto tangible.
+7. \`cifrasPermitidas\`: sólo las que estén verificadas en el ADN.
+8. \`productoFisico\`: true si la marca vende producto tangible.
    \`fotoReal\`: true si su ADN pide que las piezas de producto lleven la
    foto real del cliente en vez de una imagen generada.
 
@@ -615,12 +624,77 @@ ${adnTexto}`;
 
   const raw = await callAI([cachedBlock(promptText)], { maxTokens: 16000, tier: "calidad" });
   const receta = parseJSONLoose(raw);
+
+  // La URL de Google Fonts no se le pide a un modelo: es una cadena exacta
+  // que está en el ADN o no está. Pedírsela a un modelo que acaba de leer
+  // 50 000 caracteres es darle la oportunidad de olvidarla, y la olvidaba.
+  if (!receta.fuentes?.url) {
+    const url = adnTexto.match(/https:\/\/fonts\.googleapis\.com\/css2\?[^\s"'`)\]]+/)?.[0];
+    if (url) receta.fuentes = { ...(receta.fuentes || {}), url };
+  }
   // Los tres literales van fuera del JSON: son el texto que más comillas y
   // saltos de línea lleva, y es donde el escapado se rompía.
   const bloques = parseBloques(raw, ["RETICULA", "BLOQUE_ESTILO", "NEGATIVOS"]);
   receta.reticula = { texto: bloques.RETICULA || "" };
   receta.bloqueEstilo = bloques.BLOQUE_ESTILO || "";
   receta.negativos = bloques.NEGATIVOS || "";
+
+  return await repescarFaltantes(receta, adnTexto, client);
+}
+
+/**
+ * Lo que falta de un campo crítico se vuelve a pedir, solo.
+ *
+ * La primera pasada saca veinticuatro campos de cincuenta mil caracteres, y
+ * ahí siempre se cae algo: con D'CASA se caían la URL de las fuentes y la
+ * escala, que están las dos en su archivo. Una segunda llamada que pregunta
+ * por dos cosas concretas acierta donde una que pregunta por veinticuatro
+ * falla, y sólo se paga cuando hace falta. El ADN va marcado para la caché,
+ * así que la segunda pasada no lo vuelve a cobrar entero.
+ */
+async function repescarFaltantes(receta, adnTexto, client) {
+  const huecos = [
+    { campo: "escala", falta: !(receta.escala || []).length,
+      pide: "El array `escala`: una entrada por rol tipográfico, con elemento, px, interlinea, tracking y mayusculas. Si el ADN trae una tabla de tamaños, conviértela fila a fila sin saltarte ninguna." },
+    { campo: "plantillas", falta: !(receta.plantillas || []).length,
+      pide: "El array `plantillas`: una por cada plantilla o tipo de pieza que describa el ADN, con id, nombre, cuando y composicion." },
+    { campo: "logo", falta: !receta.logo?.posicion,
+      pide: "El objeto `logo`: posicion, ancho, ancla, proporcion, resguardo, sobreFondo y reglas. Dónde va y con qué resguardo, nunca cómo se dibuja." },
+    { campo: "colores", falta: !(receta.colores || []).length,
+      pide: "El array `colores`: hex, nombre y el papel de cada uno." },
+  ].filter((h) => h.falta);
+
+  if (!huecos.length) return receta;
+
+  const promptText = `Del ADN de «${client?.name || ""}» que va abajo faltan por extraer estos
+campos. En la primera lectura se quedaron vacíos, y casi siempre es porque
+se pasaron por alto, no porque el dato no esté. Búscalos con atención.
+
+${huecos.map((h) => `· ${h.pide}`).join("\n\n")}
+
+Si después de buscarlo de verdad un dato NO está en el ADN, devuelve ese
+campo vacío. No lo inventes: un campo vacío es una pregunta al humano, uno
+inventado es una pieza publicada que está mal.
+
+Responde ÚNICAMENTE con un JSON que contenga sólo estos campos:
+${huecos.map((h) => h.campo).join(", ")}
+
+═══ ADN DEL CLIENTE ═══
+${adnTexto}`;
+
+  try {
+    const raw = await callAI([cachedBlock(promptText)], { maxTokens: 8000, tier: "calidad" });
+    const parcial = parseJSONLoose(raw);
+    for (const { campo } of huecos) {
+      const v = parcial[campo];
+      const traeAlgo = Array.isArray(v) ? v.length : v && typeof v === "object" ? Object.keys(v).length : Boolean(v);
+      if (traeAlgo) receta[campo] = v;
+    }
+  } catch (e) {
+    // La repesca es una mejora, no un requisito: si falla, la receta sigue
+    // valiendo con los huecos que tenga y la interfaz los enseña.
+    console.error("repesca de la receta:", e);
+  }
   return receta;
 }
 
