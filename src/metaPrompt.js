@@ -476,15 +476,28 @@ importa: la primera dice lo que no debes hacer y la última lo repite.`;
  */
 export function faltantesDeReceta(receta) {
   const r = receta || {};
-  const faltan = [];
-  if (!r.marca) faltan.push("El nombre de la marca — `01_brand_guidelines.md`");
-  if (!(r.colores || []).length) faltan.push("La paleta con el papel de cada color — `01_brand_guidelines.md` · paleta");
-  if (!(r.fuentes?.familias || []).length) faltan.push("Las familias tipográficas y su papel — `01_brand_guidelines.md` · tipografía");
-  if (!r.fuentes?.url) faltan.push("La URL de Google Fonts — `05_prompt_maestro_meta_ai.md`");
-  if (!r.reticula?.texto) faltan.push("La retícula en píxeles — `05_prompt_maestro_meta_ai.md`");
-  if (!(r.escala || []).length) faltan.push("La escala tipográfica — `05_prompt_maestro_meta_ai.md`");
-  if (!r.bloqueEstilo) faltan.push("El bloque de estilo — `05_prompt_maestro_meta_ai.md`");
-  if (!r.negativos) faltan.push("Los negativos — `05_prompt_maestro_meta_ai.md`");
-  if (!r.logo?.posicion) faltan.push("Dónde va el logo y con qué resguardo — `05_prompt_maestro_meta_ai.md` · la firma");
-  return faltan;
+  const f = [];
+  const falta = (cond, que, donde, critico) => { if (cond) f.push({ que, donde, critico }); };
+
+  // Críticos: sin ellos el prompt sale con huecos, y un prompt con huecos es
+  // peor que ninguno — Meta AI rellena el hueco improvisando, que es
+  // exactamente lo que este sistema existe para impedir.
+  falta(!r.fuentes?.url,            "La URL de Google Fonts",              "05_prompt_maestro_meta_ai.md", true);
+  falta(!r.reticula?.texto,         "La retícula en píxeles",              "05_prompt_maestro_meta_ai.md", true);
+  falta(!(r.escala || []).length,   "La escala tipográfica",               "05_prompt_maestro_meta_ai.md", true);
+  falta(!r.bloqueEstilo,            "El bloque de estilo",                 "05_prompt_maestro_meta_ai.md", true);
+  falta(!r.negativos,               "Los negativos",                       "05_prompt_maestro_meta_ai.md", true);
+  falta(!r.logo?.posicion,          "Dónde va el logo y con qué resguardo", "05_prompt_maestro_meta_ai.md · la firma", true);
+
+  // El resto degrada la pieza, pero no la deja sin sistema visual.
+  falta(!r.marca,                          "El nombre de la marca",                    "01_brand_guidelines.md", false);
+  falta(!(r.colores || []).length,          "La paleta con el papel de cada color",     "01_brand_guidelines.md · paleta", false);
+  falta(!(r.fuentes?.familias || []).length, "Las familias tipográficas y su papel",    "01_brand_guidelines.md · tipografía", false);
+
+  return f;
+}
+
+/** Los que impiden emitir el prompt, no sólo empeorarlo. */
+export function faltantesCriticos(receta) {
+  return faltantesDeReceta(receta).filter((x) => x.critico);
 }
