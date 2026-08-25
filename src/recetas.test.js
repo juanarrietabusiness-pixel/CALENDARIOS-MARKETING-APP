@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
 import { buildMetaMasterPrompt, faltantesDeReceta, faltantesCriticos } from "./metaPrompt";
+import { CLIENTES, hayWorkspace, leerReceta } from "./lib/workspace.test-helper";
 
 // ============================================================
 // Las recetas reales de Agencia_Workspace, validadas contra lo que el
@@ -14,17 +14,6 @@ import { buildMetaMasterPrompt, faltantesDeReceta, faltantesCriticos } from "./m
 // El repositorio de la agencia es un checkout aparte, así que si no está
 // presente los casos se saltan en vez de fallar: en CI no lo estará.
 // ============================================================
-
-const RAIZ = "/home/user/Agencia_Workspace";
-const CLIENTES = ["Dcasa", "Juancito Ads", "Baby Caleb", "Feria del lente"];
-
-function leerReceta(cliente) {
-  const ruta = `${RAIZ}/${cliente}/01_ADN_y_Memoria/05_receta.json`;
-  if (!existsSync(ruta)) return null;
-  return JSON.parse(readFileSync(ruta, "utf8"));
-}
-
-const hayWorkspace = existsSync(RAIZ);
 
 describe.skipIf(!hayWorkspace)("las recetas publicadas", () => {
   for (const cliente of CLIENTES) {

@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
 import {
   elegirTamano, resolverInterlinea, elegirAnclaje, componerPieza, avisosDeComposicion,
 } from "./componer";
+import { leerReceta as receta, hayWorkspace as hay } from "./workspace.test-helper";
 
 // ============================================================
 // La composición es lo que separa nuestro entregable del de PanaClaw.
@@ -10,10 +10,6 @@ import {
 // Meta tiene que decidirlo, no lo hace». Estas pruebas comprueban que se
 // resuelve, y que se resuelve bien.
 // ============================================================
-
-const RAIZ = "/home/user/Agencia_Workspace";
-const receta = (c) => JSON.parse(readFileSync(`${RAIZ}/${c}/01_ADN_y_Memoria/05_receta.json`, "utf8"));
-const hay = existsSync(RAIZ);
 
 describe.skipIf(!hay)("elegirTamano", () => {
   const r = receta("Dcasa");
