@@ -1,9 +1,43 @@
 import { useId, useMemo, useState } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
-import { loadADN, compileMetaRecipe, generateMetaPieces, fetchGitHubADN } from "../api";
+import { loadADN, cargarReceta, generateMetaPieces, fetchGitHubADN } from "../api";
 import { buildMetaMasterPrompt, faltantesDeReceta, faltantesCriticos, MODOS_META } from "../metaPrompt";
 import { MONTHS } from "../constants";
+
+/**
+ * Lo que hizo falta para responder «¿por qué falta este campo?».
+ *
+ * Sin esto, cada fallo costaba una suposición, un despliegue y una captura
+ * de pantalla. Con esto, la respuesta está en la propia pantalla: qué
+ * archivos llegaron, cuáles se recortaron, de dónde salió la receta y qué
+ * campos vinieron vacíos.
+ */
+function construirDiag(adn, receta, origen, avisoJson) {
+  return {
+    origen,
+    avisoJson: avisoJson || "",
+    totalChars: adn?.totalChars ?? 0,
+    truncado: Boolean(adn?.truncated),
+    archivos: (adn?.files || []).map((f) => ({
+      nombre: f.name,
+      papel: f.role,
+      chars: f.chars,
+      recortado: f.truncated,
+    })),
+    assets: (adn?.assets || []).map((a) => a.name),
+    vacios: Object.entries({
+      "fuentes.url": !receta?.fuentes?.url,
+      escala: !(receta?.escala || []).length,
+      "reticula.texto": !receta?.reticula?.texto,
+      bloqueEstilo: !receta?.bloqueEstilo,
+      negativos: !receta?.negativos,
+      "logo.posicion": !receta?.logo?.posicion,
+      colores: !(receta?.colores || []).length,
+      plantillas: !(receta?.plantillas || []).length,
+    }).filter(([, vacio]) => vacio).map(([campo]) => campo),
+  };
+}
 
 /**
  * Prompt maestro para Meta AI.
@@ -24,6 +58,7 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
   const idTema = useId();
   const idPublico = useId();
   const idPrompt = useId();
+  const idDiag = useId();
 
   const [modo, setModo] = useState("lote");
   const [tema, setTema] = useState(cal?.campaign || "");
@@ -34,6 +69,8 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
   const [prompt, setPrompt] = useState("");
   const [faltan, setFaltan] = useState(() => (client.metaRecipe ? faltantesDeReceta(client.metaRecipe) : []));
   const [aviso, setAviso] = useState("");
+  const [diag, setDiag] = useState(null);
+  const [diagAbierto, setDiagAbierto] = useState(false);
 
   // Sólo entran las publicaciones que ya tienen contenido: el prompt
   // maestro traduce lo aprobado, no lo inventa sobre la marcha.
@@ -74,25 +111,24 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
         setAviso("El ADN es más largo que el presupuesto de lectura y se recortó por lo menos prioritario. La receta y las guías de marca sí entraron completas.");
       }
 
-      // ---- 2. La receta, sólo si hace falta ----
-      let receta = client.metaRecipe;
-      const shaActual = adn.recipeSha || "";
-      const desfasada = shaActual && client.metaRecipeSha && shaActual !== client.metaRecipeSha;
-
-      if (!receta || desfasada) {
-        setEstado(desfasada
-          ? "El repositorio cambió: recompilando la receta visual…"
-          : "Compilando la receta visual del cliente…");
-        receta = await compileMetaRecipe(adn.content, client);
-        receta.slug = receta.slug || recetaSlug;
-        const actualizado = {
-          ...client,
-          metaRecipe: receta,
-          metaRecipeSha: shaActual,
-          metaRecipeAt: new Date().toISOString(),
-        };
-        onPersistClient?.(actualizado);
+      // ---- 2. La receta ----
+      // Siempre se relee: con 05_receta.json es instantáneo y gratis, así
+      // que cachearla sólo servía para arrastrar una versión vieja.
+      setEstado(adn.sections?.recetaJson
+        ? "Leyendo la receta del repositorio…"
+        : "Compilando la receta visual del cliente…");
+      const { receta, origen, avisoJson } = await cargarReceta(adn, client);
+      receta.slug = receta.slug || recetaSlug;
+      setDiag(construirDiag(adn, receta, origen, avisoJson));
+      if (avisoJson) {
+        setAviso(`El 05_receta.json de ${client.name} no se pudo leer (${avisoJson}), así que se compiló con IA. Revisa ese archivo.`);
       }
+      onPersistClient?.({
+        ...client,
+        metaRecipe: receta,
+        metaRecipeSha: adn.recipeSha || "",
+        metaRecipeAt: new Date().toISOString(),
+      });
 
       const pendientes = faltantesDeReceta(receta);
       setFaltan(pendientes);
@@ -167,9 +203,12 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
     try {
       setEstado("Releyendo el repositorio…");
       const fresco = await fetchGitHubADN(client.githubRepo, client.githubFolder);
-      setEstado("Recompilando la receta visual…");
-      const receta = await compileMetaRecipe(fresco.content, client);
+      setEstado(fresco.sections?.recetaJson
+        ? "Leyendo la receta del repositorio…"
+        : "Recompilando la receta visual…");
+      const { receta, origen, avisoJson } = await cargarReceta(fresco, client);
       receta.slug = receta.slug || recetaSlug;
+      setDiag(construirDiag(fresco, receta, origen, avisoJson));
       onPersistClient?.({
         ...client,
         githubContext: fresco.content,
@@ -361,6 +400,45 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
               </button>
             </div>
           </>
+        )}
+
+        {diag && (
+          <div style={{ marginTop: "var(--sp-3)", borderTop: "1px solid var(--border)", paddingTop: "var(--sp-2)" }}>
+            <button
+              className="btn btn-ghost"
+              onClick={() => setDiagAbierto((d) => !d)}
+              aria-expanded={diagAbierto}
+              aria-controls={idDiag}
+              style={{ fontSize: "var(--fs-2xs)", padding: "var(--sp-1) 0" }}
+            >
+              <Icon name="terminal" size={14} /> {diagAbierto ? "Ocultar" : "Ver"} diagnóstico
+            </button>
+            {diagAbierto && (
+              <div id={idDiag} style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)", lineHeight: 1.7, marginTop: "var(--sp-2)", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
+                <div>
+                  Receta leída de{" "}
+                  <strong style={{ color: diag.origen === "json" ? "var(--text-muted)" : "var(--accent-alt, #F5A623)" }}>
+                    {diag.origen === "json" ? "05_receta.json — sin IA" : "prosa, compilada con IA"}
+                  </strong>
+                </div>
+                <div>ADN leído: {diag.totalChars.toLocaleString("es-PA")} caracteres{diag.truncado ? " · SE RECORTÓ ALGO" : ""}</div>
+                <div style={{ marginTop: "var(--sp-1)" }}>Archivos:</div>
+                <ul style={{ paddingLeft: "var(--sp-3)" }}>
+                  {diag.archivos.map((a) => (
+                    <li key={a.nombre}>
+                      {a.nombre} · {a.papel} · {a.chars?.toLocaleString("es-PA")} car.
+                      {a.recortado ? " · RECORTADO" : ""}
+                    </li>
+                  ))}
+                </ul>
+                {diag.assets.length > 0 && <div>Assets visuales: {diag.assets.join(", ")}</div>}
+                <div style={{ marginTop: "var(--sp-1)" }}>
+                  Campos vacíos: {diag.vacios.length ? diag.vacios.join(", ") : "ninguno"}
+                </div>
+                {diag.avisoJson && <div style={{ marginTop: "var(--sp-1)" }}>Error del JSON: {diag.avisoJson}</div>}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

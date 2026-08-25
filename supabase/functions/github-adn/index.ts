@@ -59,6 +59,9 @@ const IMAGE_RE = /\.(png|jpe?g|svg|webp|gif)$/i;
  * marca. Si hay que recortar algo, se recorta lo de abajo.
  */
 const PRIORITY: { re: RegExp; rank: number; budget: number; role: string }[] = [
+  // La receta en JSON va primera y entera. Es la fuente de verdad del
+  // sistema visual: la app la lee tal cual, sin pasarla por ningún modelo.
+  { re: /05_receta\.json$/i,               rank: -1, budget: 80_000, role: "recetaJson" },
   { re: /05_prompt_maestro_meta_ai\.md$/i, rank: 0, budget: 60_000, role: "receta" },
   { re: /01_brand_guidelines\.md$/i,       rank: 1, budget: 40_000, role: "guidelines" },
   { re: /02_buyer_personas\.md$/i,         rank: 2, budget: 20_000, role: "personas" },
