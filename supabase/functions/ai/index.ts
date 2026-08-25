@@ -25,13 +25,27 @@ const AI_PROVIDER = (Deno.env.get("AI_PROVIDER") ?? "").trim().toLowerCase();
 // Modelo configurable: Haiku es rápido y barato para generar en lote.
 // Para textos más cuidados, poner AI_MODEL=claude-sonnet-5.
 const ANTHROPIC_MODEL = Deno.env.get("AI_MODEL") || "claude-haiku-4-5-20251001";
+
+// El prompt maestro de Meta AI no es una tarea de lote: lleva los cortes
+// de línea del titular, el tramo acentuado y la verificación de que
+// ninguna cifra se sale del ADN. Haiku hace bien los captions y falla
+// esto, así que la app pide «calidad» y aquí se traduce a un modelo.
+// La lista es cerrada a propósito: el navegador no elige un modelo
+// arbitrario ni puede pedir uno que no se quiera pagar.
+const MODEL_TIERS: Record<string, string> = {
+  rapido: ANTHROPIC_MODEL,
+  calidad: Deno.env.get("AI_MODEL_CALIDAD") || "claude-sonnet-5",
+};
 const GROQ_MODEL = Deno.env.get("GROQ_MODEL") || "llama-3.3-70b-versatile";
 
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
   .split(",").map((o) => o.trim()).filter(Boolean);
 
 const MAX_BODY_BYTES = 5 * 1024 * 1024; // las publicaciones llevan imágenes en base64
-const MAX_TOKENS_CAP = 4096;
+// Un prompt maestro de 12 piezas —con titular, cortes, prompt de fondo,
+// descripción y hashtags por pieza— no cabe en 4096 tokens: se cortaba a
+// media pieza y el HTML salía incompleto.
+const MAX_TOKENS_CAP = 32_000;
 
 function corsHeaders(origin: string): Record<string, string> {
   const headers: Record<string, string> = {
@@ -62,7 +76,7 @@ function textOnly(content: unknown): unknown {
     .map((b) => ({ type: "text", text: (b as { text?: string }).text ?? "" }));
 }
 
-async function callAnthropic(content: unknown, maxTokens: number) {
+async function callAnthropic(content: unknown, maxTokens: number, model: string) {
   return await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -71,7 +85,7 @@ async function callAnthropic(content: unknown, maxTokens: number) {
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: ANTHROPIC_MODEL,
+      model,
       max_tokens: maxTokens,
       messages: [{ role: "user", content }],
     }),
@@ -122,7 +136,7 @@ Deno.serve(async (req) => {
     return json({ error: "La petición es demasiado grande" }, 413, headers);
   }
 
-  let body: { content?: unknown; maxTokens?: unknown };
+  let body: { content?: unknown; maxTokens?: unknown; tier?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -134,6 +148,8 @@ Deno.serve(async (req) => {
     return json({ error: "Falta el contenido de la petición" }, 400, headers);
   }
   const maxTokens = Math.min(Math.max(Number(body?.maxTokens) || 2048, 256), MAX_TOKENS_CAP);
+  const tier = String(body?.tier ?? "rapido");
+  const model = MODEL_TIERS[tier] ?? MODEL_TIERS.rapido;
 
   // ---- Proveedor ----
   const useGroq = AI_PROVIDER === "groq"
@@ -156,7 +172,7 @@ Deno.serve(async (req) => {
     try {
       res = useGroq
         ? await callGroq(content, maxTokens)
-        : await callAnthropic(content, maxTokens);
+        : await callAnthropic(content, maxTokens, model);
     } catch (e) {
       if (attempt < retries) {
         await sleep(2 ** (attempt + 1) * 1000);
@@ -188,7 +204,15 @@ Deno.serve(async (req) => {
       ? (data?.choices?.[0]?.message?.content ?? "")
       : (data?.content?.find((b: { type?: string }) => b.type === "text")?.text ?? "");
 
-    return json({ text, provider: useGroq ? "groq" : "anthropic" }, 200, headers);
+    return json({
+      text,
+      provider: useGroq ? "groq" : "anthropic",
+      model: useGroq ? GROQ_MODEL : model,
+      // `stop_reason: "max_tokens"` es la diferencia entre un prompt
+      // maestro entero y uno cortado a media pieza, y desde el navegador
+      // no se distingue de un modelo que decidió parar.
+      truncated: !useGroq && data?.stop_reason === "max_tokens",
+    }, 200, headers);
   }
 
   return json({ error: "No se pudo generar el contenido" }, 502, headers);

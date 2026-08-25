@@ -37,9 +37,26 @@ async function invokeFunction(name, body) {
  * la función del servidor, que además no tiene el límite de tiempo del
  * navegador cerrando la pestaña a medias.
  */
-export async function callAI(content, { maxTokens } = {}) {
-  const data = await invokeFunction("ai", { content, maxTokens });
+export async function callAI(content, { maxTokens, tier } = {}) {
+  const data = await invokeFunction("ai", { content, maxTokens, tier });
+  // El servidor avisa si el modelo se quedó sin tokens a media respuesta.
+  // Sin esto, un prompt maestro cortado a media pieza llega a Meta AI
+  // como si estuviera entero.
+  if (data?.truncated) {
+    throw new Error("La respuesta se cortó por longitud. Prueba con menos piezas por tanda.");
+  }
   return data?.text ?? "";
+}
+
+/**
+ * Marca un bloque para la caché de prompt de Anthropic.
+ *
+ * El ADN del cliente son decenas de miles de caracteres y se reenvía en
+ * cada tanda de seis publicaciones. Marcado, se paga una vez y las tandas
+ * siguientes lo leen de la caché.
+ */
+export function cachedBlock(text) {
+  return { type: "text", text, cache_control: { type: "ephemeral" } };
 }
 
 export function parseAIResponse(rawText) {
@@ -157,11 +174,7 @@ export async function fetchGitHubADN(repoUrl, folder = "") {
 
 export async function generateSinglePost(client, post, day, calendar) {
   const isPost = post.format === "post";
-  let adnExtra = client.githubContext || "";
-  if (!adnExtra && client.githubRepo) {
-    const result = await fetchGitHubADN(client.githubRepo, client.githubFolder);
-    adnExtra = result.content;
-  }
+  const adnExtra = (await loadADN(client)).content;
   const ctx = buildClientContext(client, calendar, adnExtra);
 
   const formatRules = {
@@ -215,11 +228,7 @@ Escribe directamente el contenido, sin preambulos.`;
 }
 
 export async function generateFieldForPost(client, post, day, calendar, field) {
-  let adnExtra = client.githubContext || "";
-  if (!adnExtra && client.githubRepo) {
-    const result = await fetchGitHubADN(client.githubRepo, client.githubFolder);
-    adnExtra = result.content;
-  }
+  const adnExtra = (await loadADN(client)).content;
   const ctx = buildClientContext(client, calendar, adnExtra);
   let promptText = "";
 
@@ -269,11 +278,7 @@ Responde SOLO con la descripcion/caption completa incluyendo los hashtags, sin p
 }
 
 export async function generateImagePrompt(client, post, day, calendar) {
-  let adnExtra = client.githubContext || "";
-  if (!adnExtra && client.githubRepo) {
-    const result = await fetchGitHubADN(client.githubRepo, client.githubFolder);
-    adnExtra = result.content;
-  }
+  const adnExtra = (await loadADN(client)).content;
   const ctx = buildClientContext(client, calendar, adnExtra);
 
   const formatInstructions = {
@@ -356,8 +361,46 @@ export async function generateImage(prompt, format = "post") {
   return data?.imageUrl ?? "";
 }
 
+/**
+ * El contexto que ve el modelo antes de escribir nada.
+ *
+ * El orden importa y antes estaba al revés. La ficha de la aplicación
+ * —nueve campos cortos que alguien tecleó una vez— iba primero, y el ADN
+ * del repositorio iba al final bajo el título «CONTEXTO ADICIONAL»: el
+ * modelo leía como accesorio lo que el orquestador define como fuente de
+ * verdad, y como autoritativo un resumen de trece cadenas.
+ *
+ * Ahora el ADN va primero, dice de qué archivo sale cada trozo, y la
+ * ficha queda debajo declarada como lo que es: un índice, no una fuente.
+ */
 export function buildClientContext(client, calendar, adnExtra = "") {
-  return `CLIENTE: ${client.name}
+  if (adnExtra) {
+    return `Escribes para ${client.name}, cliente de la agencia Juancito Ads.
+
+═══════════════════════════════════════════════════════════
+QUÉ MANDA, CUANDO DOS COSAS SE CONTRADIGAN
+═══════════════════════════════════════════════════════════
+1. El ADN del repositorio que viene abajo. Es la fuente de verdad.
+2. La campaña y las ofertas de este calendario.
+3. La ficha de la aplicación. Es un índice de contacto, no una fuente:
+   si dice algo distinto del ADN, gana el ADN.
+
+Tres reglas del orquestador de la agencia, que aquí no se negocian:
+· No mezcles memoria, tono ni assets con los de otro cliente, aunque
+  compartan nicho.
+· No inventes identidad de marca, ofertas ni precios. Toda cifra, precio,
+  plazo, testimonio y caso sale del ADN y sólo de ahí. Si un dato no está,
+  no se usa: se deja fuera y se dice qué falta.
+· Escribe en español de Panamá, con tildes y con signos de apertura.
+
+═══════════════════════════════════════════════════════════
+ADN DE ${(client.name || "").toUpperCase()} — leído de su repositorio
+═══════════════════════════════════════════════════════════
+${adnExtra}
+
+═══════════════════════════════════════════════════════════
+FICHA EN LA APLICACIÓN — datos de contacto y preferencias
+═══════════════════════════════════════════════════════════
 INDUSTRIA: ${client.industry || "N/A"}
 DESCRIPCIÓN: ${client.descripcion || "N/A"}
 VALORES: ${client.valores || "N/A"}
@@ -366,6 +409,250 @@ ESTILO DE GUIONES: ${client.estiloGuion || "Cercano, persuasivo, con emojis y CT
 ESTILO DE LOCUCIÓN: ${client.estiloLocucion || "N/A"}
 HASHTAGS: ${client.hashtags || "#Panama"}
 COMPETENCIA: ${client.competencia || "N/A"}
-${calendar?.campaign ? `CAMPAÑA DEL MES: ${calendar.campaign}` : ""}
-${adnExtra ? `\nCONTEXTO ADICIONAL DEL CLIENTE:\n${adnExtra}` : ""}`;
+${calendar?.campaign ? `CAMPAÑA DEL MES: ${calendar.campaign}` : ""}`;
+  }
+
+  // Sin ADN del repositorio, la ficha es lo único que hay. Se dice, para
+  // que el modelo no rellene los huecos como si supiera.
+  return `CLIENTE: ${client.name}
+AVISO: este cliente no tiene ADN conectado desde su repositorio. Trabaja
+sólo con lo que hay aquí abajo y no inventes lo que falte.
+INDUSTRIA: ${client.industry || "N/A"}
+DESCRIPCIÓN: ${client.descripcion || "N/A"}
+VALORES: ${client.valores || "N/A"}
+AUDIENCIA: ${client.audiencia || "N/A"}
+ESTILO DE GUIONES: ${client.estiloGuion || "Cercano, persuasivo, con emojis y CTA"}
+ESTILO DE LOCUCIÓN: ${client.estiloLocucion || "N/A"}
+HASHTAGS: ${client.hashtags || "#Panama"}
+COMPETENCIA: ${client.competencia || "N/A"}
+${calendar?.campaign ? `CAMPAÑA DEL MES: ${calendar.campaign}` : ""}`;
+}
+
+// ============================================================
+// Prompt maestro para Meta AI
+//
+// Dos llamadas y un ensamblado. La primera compila la receta del cliente
+// —lo que no cambia de un mes a otro— y se guarda. La segunda escribe las
+// piezas del calendario. El prompt final lo arma `metaPrompt.js` sin
+// pasar por ningún modelo: así la retícula, los negativos y el contrato
+// del HTML llegan a Meta AI tal y como están escritos en el repositorio.
+// ============================================================
+
+/**
+ * Carga el ADN del cliente, del caché o del repositorio.
+ *
+ * Estaba copiado en cinco sitios con el mismo fallo: `githubContext`
+ * ganaba siempre, así que el ADN se congelaba en la primera lectura y no
+ * volvía a mirar el repositorio nunca. `forzar` es lo que permite
+ * releerlo cuando el repositorio ha cambiado.
+ */
+export async function loadADN(client, { forzar = false } = {}) {
+  if (!forzar && client.githubContext) {
+    return { content: client.githubContext, sections: {}, cacheado: true };
+  }
+  if (!client.githubRepo) return { content: "", sections: {}, cacheado: false };
+  const result = await fetchGitHubADN(client.githubRepo, client.githubFolder);
+  return { ...result, cacheado: false };
+}
+
+const CAMPOS_RECETA = `{
+  "marca": "", "slug": "", "productoFisico": false, "fotoReal": false,
+  "lienzo": {"ancho":1080,"alto":1350},
+  "fuentes": {"url":"","familias":[{"nombre":"","pesos":"","rol":""}]},
+  "fuentesProhibidas": [],
+  "colores": [{"hex":"","nombre":"","rol":""}],
+  "coloresProhibidos": [{"hex":"","porque":""}],
+  "combinacionesProhibidas": [],
+  "reticula": {"texto":""},
+  "anclaje": "",
+  "ordenBloque": [],
+  "escala": [{"elemento":"","px":0,"interlinea":"","tracking":"","mayusculas":false}],
+  "acento": {"regla":""},
+  "velo": "",
+  "plantillas": [{"id":"","nombre":"","cuando":"","composicion":""}],
+  "logo": {"posicion":"","ancho":0,"ancla":"","proporcion":"","resguardo":"","sobreFondo":"","reglas":[]},
+  "bloqueEstilo": "",
+  "negativos": "",
+  "trampasPropias": [],
+  "interfaz": "",
+  "reglasDuras": [],
+  "verificacionPropia": [],
+  "tildes": [],
+  "hashtags": {"cantidad":0,"donde":""},
+  "emojis": {"cantidad":0,"donde":""},
+  "cifrasPermitidas": [],
+  "cta": ""
+}`;
+
+/**
+ * Compila la receta visual del cliente a partir de su repositorio.
+ *
+ * No inventa: extrae. Lo que no esté en el ADN se queda vacío y
+ * `faltantesDeReceta()` lo enseña en la interfaz, que es lo que manda el
+ * estándar — si un dato no está, se pide, no se rellena.
+ */
+export async function compileMetaRecipe(adnTexto, client) {
+  const promptText = `Eres el compilador de recetas visuales de la agencia Juancito Ads.
+
+Abajo está el ADN completo del cliente «${client?.name || ""}», leído de su
+repositorio. Contiene, entre otros, su \`01_brand_guidelines.md\` y —si
+existe— su \`05_prompt_maestro_meta_ai.md\`, que es el archivo que define
+cómo se maquetan sus piezas.
+
+TU TRABAJO: devolver ese sistema visual como JSON. No lo redactas: lo
+extraes. Cada valor tiene que estar literalmente en el ADN.
+
+REGLAS QUE NO SE ROMPEN:
+1. No inventes NADA. Ni un hex, ni un píxel, ni una tipografía, ni una
+   cifra. Si un dato no está en el ADN, deja el campo vacío ("" o [] o 0).
+   Un campo vacío se convierte en una pregunta al humano; un campo
+   inventado se convierte en una pieza publicada que está mal.
+2. \`bloqueEstilo\` y \`negativos\` se copian LITERALES, carácter por
+   carácter, del ADN. No los resumas, no los reordenes, no los traduzcas
+   y no les quites un elemento por parecerte redundante.
+3. \`reticula.texto\` va en píxeles, tal y como esté escrito en el ADN.
+4. \`logo\`: describe dónde va y con qué reglas, nunca cómo se dibuja. El
+   logo de este cliente es un archivo que el humano carga; no se
+   reproduce con formas ni con texto.
+5. \`tildes\`: las palabras con tilde o eñe que aparecen en el vocabulario
+   de esta marca y que un modelo escribe mal (página, diseño, CAMPAÑA…).
+6. \`cifrasPermitidas\`: sólo las que estén verificadas en el ADN.
+7. \`productoFisico\`: true si la marca vende producto tangible.
+   \`fotoReal\`: true si su ADN pide que las piezas de producto lleven la
+   foto real del cliente en vez de una imagen generada.
+
+Responde ÚNICAMENTE con el JSON, sin texto antes ni después, sin bloque de
+código. Estructura exacta:
+${CAMPOS_RECETA}
+
+═══ ADN DEL CLIENTE ═══
+${adnTexto}`;
+
+  const raw = await callAI([cachedBlock(promptText)], { maxTokens: 16000, tier: "calidad" });
+  const json = raw.match(/\{[\s\S]*\}/);
+  if (!json) throw new Error("El compilador no devolvió JSON. Revisa el ADN del cliente.");
+  return JSON.parse(json[0]);
+}
+
+/**
+ * Escribe las piezas del lote: la sección 6 y nada más.
+ *
+ * Se le pasa el calendario ya generado y aprobado, así que no reinventa
+ * el contenido: lo traduce a titulares con sus cortes de línea, su tramo
+ * acentuado y el prompt de su fondo.
+ */
+export async function generateMetaPieces({ client, calendar, receta, posts, modo = "lote", tema = "", adnTexto = "" }) {
+  const esCarrusel = modo === "carrusel";
+
+  const listaPosts = posts.map((p, i) => `── PIEZA ${i + 1}
+FECHA: ${p._date || "—"}${p._dayName ? ` (${p._dayName})` : ""}
+FORMATO: ${p.format || "post"}
+CATEGORÍA: ${p.category || p._category || "—"}
+CONCEPTO DE LA SEMANA: ${p._concept || "—"}
+IDEA: ${p.idea || "—"}
+${p.guion ? `GUION YA APROBADO:\n${p.guion}` : ""}
+${p.descripcion || p.script ? `DESCRIPCIÓN YA APROBADA:\n${p.descripcion || p.script}` : ""}
+${p.hashtagsFinales ? `HASHTAGS YA APROBADOS: ${p.hashtagsFinales}` : ""}`).join("\n\n");
+
+  const plantillas = (receta.plantillas || []).length
+    ? `\nLAS PLANTILLAS DE ESTA MARCA — elige una por pieza y ponla en \`plantilla\`:\n${
+        receta.plantillas.map((t) => `· ${t.id || t.nombre}: ${t.nombre || ""} — ${t.cuando || ""}`).join("\n")
+      }\n`
+    : "";
+
+  const escalaTitular = (receta.escala || []).filter((e) => /titular/i.test(e.elemento || ""));
+  const pistaCortes = escalaTitular.length
+    ? `El titular se compone a ${escalaTitular[0].px} px. Con ese cuerpo caben unos 16 a 20 caracteres por línea en un lienzo de ${receta.lienzo?.ancho || 1080} px con los márgenes de la retícula. Cuenta los caracteres de cada línea que escribas.`
+    : "Cuenta los caracteres de cada línea: en un titular a caja alta caben unos 16 a 20 por línea.";
+
+  const promptText = `Eres el redactor de la agencia Juancito Ads. Escribes las piezas de un
+lote que va a montar Meta AI. Meta AI no escribe: copia lo que tú
+escribas, literal. Así que lo que escribas mal se publica mal.
+
+${buildClientContext(client, calendar, adnTexto)}
+
+═══════════════════════════════════════════════════════════
+EL SISTEMA VISUAL AL QUE TIENES QUE ESCRIBIR
+═══════════════════════════════════════════════════════════
+LIENZO: ${receta.lienzo?.ancho || 1080}×${receta.lienzo?.alto || 1350}
+RETÍCULA:
+${receta.reticula?.texto || "—"}
+${plantillas}
+REGLA DEL ACENTO: ${receta.acento?.regla || "Un solo acento por titular."}
+${receta.hashtags?.cantidad ? `HASHTAGS: exactamente ${receta.hashtags.cantidad}, ${receta.hashtags.donde || "al final de la descripción"}.` : ""}
+${(receta.cifrasPermitidas || []).length ? `CIFRAS QUE PUEDES USAR, y ninguna otra: ${receta.cifrasPermitidas.join(", ")}` : "NO uses ninguna cifra que no esté en el ADN de arriba."}
+${receta.cta ? `LLAMADA A LA ACCIÓN: ${receta.cta}` : ""}
+
+═══════════════════════════════════════════════════════════
+CÓMO SE ESCRIBE UN TITULAR
+═══════════════════════════════════════════════════════════
+· Llega con sus saltos de línea ya decididos. Tú los decides; el navegador
+  no reparte nada. ${pistaCortes}
+· Lleva UN SOLO tramo acentuado, marcado con ⟦ ⟧. El tramo puede cruzar un
+  salto de línea y sigue siendo uno solo. Fuera de los corchetes va el
+  color base. Los corchetes no se imprimen.
+· Va con todas sus tildes y todas sus eñes, también en mayúsculas.
+· No lleva emojis dentro. Los emojis, si el ADN los permite, van en la
+  descripción, nunca en el lienzo.
+
+═══════════════════════════════════════════════════════════
+EL PROMPT DEL FONDO
+═══════════════════════════════════════════════════════════
+· En español, autocontenido, y sin una sola letra dentro de la imagen.
+· Describe la composición por BANDAS DE PORCENTAJE de la altura, no con
+  «deja espacio para el texto». Di qué hay en cada banda:
+  ✓ «El sujeto ocupa entre el 74 % y el 88 % de la altura; del 15 % al
+     74 % no hay más que fondo liso, sin brillo y sin detalle.»
+  ✗ «Composición con espacio libre en la zona central para el texto.»
+· Protege la banda del logo pidiendo fondo liso ahí: un resplandor detrás
+  del logo se lo come.
+· No repitas el bloque de estilo ni los negativos: van aparte, una vez.
+
+═══════════════════════════════════════════════════════════
+LAS PUBLICACIONES DEL CALENDARIO
+═══════════════════════════════════════════════════════════
+${tema ? `TEMA DEL LOTE: ${tema}\n` : ""}Son ${posts.length}, ya aprobadas. Tu trabajo es traducirlas a piezas, no
+cambiarles la idea. Si una ya trae descripción aprobada, respétala salvo
+que incumpla la cuenta de hashtags.
+
+${listaPosts}
+
+═══════════════════════════════════════════════════════════
+FORMATO DE SALIDA
+═══════════════════════════════════════════════════════════
+Responde ÚNICAMENTE con un array JSON, sin texto antes ni después y sin
+bloque de código. Un objeto por pieza, en el mismo orden:
+
+[{
+  "n": 1,
+  "plantilla": "",
+  "formato": "",
+  "fecha": "",
+  "antetitulo": "",
+  "titular": ["LÍNEA UNO", "⟦LÍNEA DOS", "LÍNEA TRES⟧"],
+  "bajada": "",
+  "cifra": "",
+  "nota": "",
+  "anclaje": "",
+  "fotoReal": false,
+  "promptFondo": "",
+  "guion": "",
+  "descripcion": "",
+  "hashtags": ""
+}]
+
+\`titular\` es un array: un elemento por línea, con los corchetes ⟦ ⟧ donde
+empiece y acabe el acento.
+${esCarrusel ? `
+Es un CARRUSEL: además de lo anterior, la PRIMERA pieza lleva
+\`descripcionConjunto\` y \`hashtagsConjunto\` con la descripción única y el
+único juego de hashtags de todo el carrusel; las demás dejan
+\`descripcion\` y \`hashtags\` vacíos. La primera diapositiva lleva el titular
+más corto y más grande —es la única que se ve en el feed sin deslizar— y
+la última cierra o pide algo, no se muere en un dato.` : ""}`;
+
+  const raw = await callAI([cachedBlock(promptText)], { maxTokens: 24000, tier: "calidad" });
+  const json = raw.match(/\[[\s\S]*\]/);
+  if (!json) throw new Error("La IA no devolvió las piezas en JSON. Inténtalo de nuevo.");
+  return JSON.parse(json[0]);
 }

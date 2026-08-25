@@ -9,6 +9,23 @@
 // valida el destino: sólo api.github.com y raw.githubusercontent.com.
 // Sin esa comprobación, una URL manipulada convertiría esta función en
 // un proxy hacia la red interna.
+//
+// ---- Por qué se lee el árbol entero y no dos carpetas ----
+//
+// La versión anterior listaba `basePath` y `basePath/adn`, leía los 5
+// primeros .md y cortaba cada uno a 3000 caracteres. Contra la estructura
+// real de Agencia_Workspace eso significaba que de la carpeta de un
+// cliente no llegaba nada (sólo tiene subcarpetas), y que apuntando a
+// `01_ADN_y_Memoria` llegaba el 20 % del ADN: de los 27 000 caracteres
+// del prompt maestro de Meta AI se leían los 3000 primeros, que son la
+// introducción. El formato de entrega, las plantillas, la escala, los
+// negativos y el contrato del HTML nunca cruzaban.
+//
+// Ahora se pide el árbol completo en UNA llamada (git/trees?recursive=1),
+// se recorre la carpeta del cliente entera y se reparte un presupuesto de
+// caracteres por prioridad: los archivos que definen la marca entran
+// completos y lo accesorio cede sitio. Cada archivo dice si se truncó,
+// para que la interfaz pueda avisar en vez de degradarse en silencio.
 // ============================================================
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -21,9 +38,39 @@ const GITHUB_TOKEN = Deno.env.get("GITHUB_TOKEN") ?? "";
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
   .split(",").map((o) => o.trim()).filter(Boolean);
 
-const MAX_FILES = 5;
-const MAX_FILE_BYTES = 50_000;
-const MAX_CHARS_PER_FILE = 3000;
+// Presupuesto global. 200 000 caracteres son unos 50 000 tokens: cabe de
+// sobra en la ventana de Claude y, con la caché de prompt, se paga una vez.
+const MAX_TOTAL_CHARS = 200_000;
+// Un archivo de más de 400 kB no es ADN, es un volcado. Se descarta.
+const MAX_FILE_BYTES = 400_000;
+const MAX_FILES = 40;
+// Profundidad dentro de la carpeta del cliente. `01_ADN_y_Memoria/
+// Assets_Visuales_Base/x` son dos niveles; tres deja margen sin invitar
+// a arrastrar el repositorio entero.
+const MAX_DEPTH = 3;
+
+const TEXT_RE = /\.(md|txt|json|ya?ml)$/i;
+const IMAGE_RE = /\.(png|jpe?g|svg|webp|gif)$/i;
+
+/**
+ * Cuánto se deja leer de cada archivo, y en qué orden se sirve el
+ * presupuesto. Los dos primeros son los que la app estaba cortando: el
+ * prompt maestro define el formato de entrega y las guías definen la
+ * marca. Si hay que recortar algo, se recorta lo de abajo.
+ */
+const PRIORITY: { re: RegExp; rank: number; budget: number; role: string }[] = [
+  { re: /05_prompt_maestro_meta_ai\.md$/i, rank: 0, budget: 60_000, role: "receta" },
+  { re: /01_brand_guidelines\.md$/i,       rank: 1, budget: 40_000, role: "guidelines" },
+  { re: /02_buyer_personas\.md$/i,         rank: 2, budget: 20_000, role: "personas" },
+  { re: /04_master_prompts\.md$/i,         rank: 3, budget: 20_000, role: "masterPrompts" },
+  { re: /03_diccionario_seo\.json$/i,      rank: 4, budget: 10_000, role: "seo" },
+  { re: /Calendarios_Aprobados\//i,        rank: 6, budget:  4_000, role: "publicado" },
+  { re: /Auditorias\//i,                   rank: 7, budget:  3_000, role: "auditoria" },
+];
+const DEFAULT_RULE = { rank: 5, budget: 8_000, role: "otro" };
+
+/** Carpetas que nunca aportan contexto y sí pesan. */
+const SKIP_DIRS = /(^|\/)(06_Assets_Brutos_Solo_Lectura|node_modules|\.git|dist|build)(\/|$)/i;
 
 function corsHeaders(origin: string): Record<string, string> {
   const headers: Record<string, string> = {
@@ -68,6 +115,29 @@ function isAllowedDownload(url: string) {
   }
 }
 
+function ruleFor(path: string) {
+  return PRIORITY.find((p) => p.re.test(path)) ?? DEFAULT_RULE;
+}
+
+/** Profundidad de `path` relativa a `base`. `base` mismo es 0. */
+function depthUnder(path: string, base: string) {
+  const rel = base ? path.slice(base.length).replace(/^\//, "") : path;
+  if (!rel) return 0;
+  return rel.split("/").length - 1;
+}
+
+/**
+ * Los blobs se piden por SHA en vez de por `download_url`.
+ * `download_url` de un repositorio privado lleva un parámetro de acceso
+ * en la URL, y el endpoint de blobs funciona igual con el token en la
+ * cabecera, que es donde debe ir.
+ */
+function decodeBlob(base64: string) {
+  const clean = base64.replace(/\s/g, "");
+  const bytes = Uint8Array.from(atob(clean), (c) => c.charCodeAt(0));
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
 Deno.serve(async (req) => {
   const origin = req.headers.get("origin") ?? "";
   const headers = corsHeaders(origin);
@@ -105,42 +175,100 @@ Deno.serve(async (req) => {
   const ghHeaders: Record<string, string> = { Accept: "application/vnd.github.v3+json" };
   if (GITHUB_TOKEN) ghHeaders.Authorization = `token ${GITHUB_TOKEN}`;
 
-  const paths = basePath ? [basePath, `${basePath}/adn`] : ["", "adn/"];
-  const files: { name: string; path: string; download_url: string; size: number }[] = [];
-  const subfolders: { name: string; path: string }[] = [];
+  const api = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
 
-  for (const path of paths) {
-    try {
-      const res = await fetch(
-        `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${path}`,
-        { headers: ghHeaders },
-      );
-      if (!res.ok) continue;
-      const items = await res.json();
-      if (!Array.isArray(items)) continue;
-      for (const item of items) {
-        if (item.type === "file" && /\.(md|txt)$/i.test(item.name) && item.size < MAX_FILE_BYTES) {
-          files.push(item);
-        }
-        if (item.type === "dir" && path === basePath) {
-          subfolders.push({ name: item.name, path: item.path });
-        }
-      }
-    } catch (e) {
-      console.error("github-adn: no se pudo listar", path, e);
+  // ---- El árbol completo, en una llamada ----
+  let tree: { path: string; type: string; sha: string; size?: number }[] = [];
+  let truncatedTree = false;
+  try {
+    const res = await fetch(`${api}/git/trees/HEAD?recursive=1`, { headers: ghHeaders });
+    if (!res.ok) {
+      const detalle = res.status === 404
+        ? "No se encontró el repositorio, o el token del servidor no tiene acceso."
+        : res.status === 403
+          ? "GitHub rechazó la petición (límite de peticiones o permisos del token)."
+          : `GitHub respondió ${res.status}.`;
+      return json({ error: detalle }, 502, headers);
     }
+    const data = await res.json();
+    tree = Array.isArray(data?.tree) ? data.tree : [];
+    truncatedTree = Boolean(data?.truncated);
+  } catch (e) {
+    console.error("github-adn: no se pudo leer el árbol", e);
+    return json({ error: "No se pudo contactar con GitHub" }, 502, headers);
   }
 
+  const inBase = (p: string) => !basePath || p === basePath || p.startsWith(`${basePath}/`);
+
+  // ---- Subcarpetas directas: es lo que la interfaz ofrece para navegar ----
+  const subfolders = tree
+    .filter((n) => n.type === "tree" && inBase(n.path) && depthUnder(n.path, basePath) === 0 && n.path !== basePath)
+    .map((n) => ({ name: n.path.split("/").pop()!, path: n.path }));
+
+  // ---- Assets visuales: no se descargan, se listan ----
+  // El logo del cliente lo carga el humano en la ficha; aquí sólo se dice
+  // qué archivos existen, para poder avisar si falta.
+  const assets = tree
+    .filter((n) => n.type === "blob" && inBase(n.path) && IMAGE_RE.test(n.path) && !SKIP_DIRS.test(n.path))
+    .map((n) => ({ name: n.path.split("/").pop()!, path: n.path, size: n.size ?? 0 }))
+    .slice(0, 30);
+
+  // ---- Candidatos de texto, ordenados por prioridad ----
+  const candidates = tree
+    .filter((n) =>
+      n.type === "blob" &&
+      inBase(n.path) &&
+      TEXT_RE.test(n.path) &&
+      !SKIP_DIRS.test(n.path) &&
+      depthUnder(n.path, basePath) <= MAX_DEPTH &&
+      (n.size ?? 0) < MAX_FILE_BYTES
+    )
+    .map((n) => ({ ...n, rule: ruleFor(n.path) }))
+    .sort((a, b) => a.rule.rank - b.rule.rank || a.path.localeCompare(b.path))
+    .slice(0, MAX_FILES);
+
+  // ---- Descarga con presupuesto ----
+  const sections: Record<string, string> = {};
+  const files: { name: string; path: string; role: string; chars: number; truncated: boolean }[] = [];
+  const shas: Record<string, string> = {};
+  let restante = MAX_TOTAL_CHARS;
+  let algoTruncado = false;
   let content = "";
-  for (const file of files.slice(0, MAX_FILES)) {
-    if (!isAllowedDownload(file.download_url)) continue;
+
+  for (const file of candidates) {
+    if (restante <= 0) { algoTruncado = true; break; }
+    const url = `${api}/git/blobs/${file.sha}`;
+    if (!isAllowedDownload(url)) continue;
     try {
-      const res = await fetch(file.download_url, { headers: ghHeaders });
+      const res = await fetch(url, { headers: ghHeaders });
       if (!res.ok) continue;
-      const text = await res.text();
-      content += `\n--- ${file.name} ---\n${text.slice(0, MAX_CHARS_PER_FILE)}\n`;
+      const data = await res.json();
+      if (data?.encoding !== "base64" || typeof data?.content !== "string") continue;
+
+      const full = decodeBlob(data.content);
+      const tope = Math.min(file.rule.budget, restante);
+      const texto = full.length > tope ? full.slice(0, tope) : full;
+      const truncado = texto.length < full.length;
+      if (truncado) algoTruncado = true;
+
+      restante -= texto.length;
+      const name = file.path.split("/").pop()!;
+      const role = file.rule.role;
+
+      files.push({ name, path: file.path, role, chars: texto.length, truncated: truncado });
+      shas[file.path] = file.sha;
+
+      // Los roles únicos se exponen sueltos para que la app pueda usarlos
+      // sin volver a partir el blob; los repetibles se acumulan.
+      if (role === "publicado" || role === "auditoria" || role === "otro") {
+        sections[role] = `${sections[role] ?? ""}\n--- ${name} ---\n${texto}\n`;
+      } else {
+        sections[role] = texto;
+      }
+
+      content += `\n--- ${file.path}${truncado ? " (recortado)" : ""} ---\n${texto}\n`;
     } catch (e) {
-      console.error("github-adn: no se pudo descargar", file.name, e);
+      console.error("github-adn: no se pudo descargar", file.path, e);
     }
   }
 
@@ -148,10 +276,17 @@ Deno.serve(async (req) => {
   // el repositorio es privado.
   return json({
     content,
-    files: files.map((f) => ({ name: f.name, path: f.path })),
+    sections,
+    files,
     subfolders,
+    assets,
     basePath,
     owner,
     repo,
+    // El SHA de la receta permite saber si hay que recompilarla sin
+    // volver a leer el archivo entero.
+    recipeSha: Object.entries(shas).find(([p]) => /05_prompt_maestro_meta_ai\.md$/i.test(p))?.[1] ?? "",
+    totalChars: MAX_TOTAL_CHARS - restante,
+    truncated: algoTruncado || truncatedTree,
   }, 200, headers);
 });

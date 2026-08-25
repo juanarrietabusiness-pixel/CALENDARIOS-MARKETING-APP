@@ -1,7 +1,7 @@
 import { useId, useState, useRef } from "react";
 import { PLANS, FORMATS, FORMAT_ICONS, DEFAULT_CATEGORIES, MONTHS, DAYS, DAYS_SHORT } from "../constants";
 import { uid, daysInMonth, fmtDate, getWeekNumber, dayName, parseVideoURL } from "../utils";
-import { callAI, buildClientContext, fetchGitHubADN } from "../api";
+import { callAI, buildClientContext, loadADN } from "../api";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
 
@@ -208,12 +208,8 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
     setAiLoading(true);
     setAiStatus("Generando ideas...");
     try {
-      let adnExtra = client.githubContext || "";
-      if (!adnExtra && client.githubRepo) {
-        setAiStatus("Cargando ADN desde GitHub...");
-        const result = await fetchGitHubADN(client.githubRepo, client.githubFolder);
-        adnExtra = result.content;
-      }
+      if (!client.githubContext && client.githubRepo) setAiStatus("Cargando ADN desde GitHub...");
+      const adnExtra = (await loadADN(client)).content;
       const ctx = buildClientContext(client, { campaign }, adnExtra);
       const daysList = allDays.map((d) => {
         const date = fmtDate(d);
