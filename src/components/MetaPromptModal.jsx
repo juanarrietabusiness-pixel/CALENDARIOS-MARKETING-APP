@@ -2,7 +2,7 @@ import { useId, useMemo, useState } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { loadADN, cargarReceta, generateMetaPieces, fetchGitHubADN } from "../api";
-import { buildMetaMasterPrompt, faltantesDeReceta, faltantesCriticos, MODOS_META } from "../metaPrompt";
+import { buildMetaMasterPrompt, faltantesDeReceta, faltantesCriticos, avisosDeComposicion, MODOS_META } from "../metaPrompt";
 import { MONTHS } from "../constants";
 
 /**
@@ -157,6 +157,12 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
 
       // ---- 4. El ensamblado, sin IA ----
       setEstado("Armando el prompt…");
+      // La composición puede descubrir un titular que no cabe en el cuerpo
+      // más pequeño. Eso lo arregla el humano acortando la línea, no Meta AI.
+      const problemas = avisosDeComposicion(receta, piezas);
+      if (problemas.length) {
+        setAviso(problemas.join(" "));
+      }
       setPrompt(buildMetaMasterPrompt({ receta, piezas, modo, tema, publico }));
       setFase("listo");
       setEstado("");

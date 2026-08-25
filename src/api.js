@@ -677,6 +677,16 @@ EL PROMPT DEL FONDO
 · No repitas el bloque de estilo ni los negativos: van aparte, una vez.
 
 ═══════════════════════════════════════════════════════════
+LO QUE YA SE PUBLICÓ, Y NO SE REPITE
+═══════════════════════════════════════════════════════════
+El ADN de arriba incluye la carpeta \`03_Redes_Sociales/Calendarios_Aprobados/\`
+de este cliente. Antes de escribir, míralo: un titular que ya salió el mes
+pasado no vuelve, ni con otras palabras. Si el lote se parece demasiado a lo
+ya publicado, cambia el ángulo, no el sinónimo.
+
+Si esa carpeta está vacía, no pasa nada: es el primer lote.
+
+═══════════════════════════════════════════════════════════
 LAS PUBLICACIONES DEL CALENDARIO
 ═══════════════════════════════════════════════════════════
 ${tema ? `TEMA DEL LOTE: ${tema}\n` : ""}Son ${posts.length}, ya aprobadas. Tu trabajo es traducirlas a piezas, no
@@ -705,7 +715,6 @@ TITULAR:
 BAJADA: (una línea)
 CIFRA: (sólo si el ADN la respalda)
 NOTA: (una línea)
-ANCLAJE: (una línea)
 FOTO_REAL: si
 PROMPT_FONDO:
 (varias líneas, en español, sin una sola letra dentro de la imagen)
@@ -720,6 +729,12 @@ HASHTAGS: (en una sola línea)
 
 TITULAR y PROMPT_FONDO empiezan en la línea siguiente a su etiqueta.
 FOTO_REAL sólo se escribe si la pieza lleva foto real; si no, se omite.
+
+NO decidas el cuerpo del titular, ni el anclaje, ni la interlínea. Los
+resuelve la aplicación a partir del número de líneas que escribas y de los
+caracteres de cada una, y llegan a Meta AI ya calculados. Tu trabajo es
+escribir el texto y sus cortes; la maquetación es una cuenta, no una
+opinión.
 ${esCarrusel ? `
 Es un CARRUSEL: la PRIMERA pieza lleva además DESCRIPCION_CONJUNTO y
 HASHTAGS_CONJUNTO —la descripción única y el único juego de hashtags de todo

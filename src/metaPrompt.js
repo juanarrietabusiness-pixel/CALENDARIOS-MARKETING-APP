@@ -29,6 +29,13 @@ export const MODOS_META = {
 
 const LIENZO_POR_DEFECTO = { ancho: 1080, alto: 1350 };
 
+import { componerPieza } from "./lib/componer";
+
+// Se reexporta para que el diálogo pueda enseñar lo que la composición
+// encontró —un titular que no cabe, uno que bajó de cuerpo— antes de que el
+// humano pegue el prompt en Meta AI.
+export { avisosDeComposicion } from "./lib/componer";
+
 const lista = (xs, vacio = "—") =>
   Array.isArray(xs) && xs.length ? xs.map((x) => `· ${x}`).join("\n") : vacio;
 
@@ -452,6 +459,34 @@ Nada de esto puede aparecer en ninguna imagen generada:
 ${bloque(receta.negativos) || "—"}${extra}`;
 }
 
+/**
+ * La interlínea de este titular, ya calculada.
+ *
+ * No es la fórmula: son los números. La skill de PanaClaw lo dice en una
+ * línea —«se entrega resuelta, no como regla: si Meta tiene que decidirlo,
+ * no lo hace»— y es la diferencia entre un prompt que se ejecuta y uno que
+ * se interpreta. El motivo de cada holgura va escrito para que el humano
+ * pueda comprobar el resultado sin rehacer la cuenta.
+ */
+function interlineaResuelta(pieza) {
+  const pares = pieza._interlinea;
+  if (!pares || !pares.length) return "";
+
+  const filas = pares.map((x) => {
+    const px = String(x.avancePx).padStart(4);
+    return `  línea ${x.de} → ${x.a}:  ${x.avanceEm.toFixed(2)} em = ${px} px   (${x.porque})`;
+  }).join("\n");
+
+  const hayHolgura = pares.some((x) => x.holguraSuperior || x.holguraInferior);
+
+  return `INTERLÍNEA YA RESUELTA — usa estos avances tal cual, NO los recalcules:
+${filas}${hayHolgura ? `
+
+Los avances que llevan holgura no son un error de redondeo: son exactamente
+lo que sobresale la tinta de esa tilde o esa cola. Si los igualas todos a la
+interlínea base, la tilde cae dentro de las letras de la línea de arriba.` : ""}`;
+}
+
 /** Sección 6 · Las piezas. Es lo único que escribe la IA. */
 function seccionSeis(receta, modo, piezas) {
   const esCarrusel = modo === "carrusel";
@@ -468,11 +503,14 @@ function seccionSeis(receta, modo, piezas) {
       p.fecha ? `SE PUBLICA: ${p.fecha}` : "",
       esCarrusel ? `NUMERADOR: ${num}/${String(total).padStart(2, "0")}` : "",
       p.antetitulo ? `ANTETÍTULO: ${p.antetitulo}` : "",
-      `TITULAR — ${lineas} línea${lineas === 1 ? "" : "s"}, cortes exactos:\n${titular}`,
+      `TITULAR — ${lineas} línea${lineas === 1 ? "" : "s"}${p._tamano ? `, ${p._tamano.familia || ""} ${p._tamano.px} px` : ""}, cortes exactos:\n${titular}`,
+      interlineaResuelta(p),
       p.bajada ? `BAJADA: ${p.bajada}` : "",
       p.cifra ? `CIFRA: ${p.cifra}` : "",
       p.nota ? `NOTA: ${p.nota}` : "",
-      p.anclaje ? `ANCLAJE: ${p.anclaje}` : "",
+      p._anclaje
+        ? `ANCLAJE: ${p._anclaje.nombre} — ${p._anclaje.donde}`
+        : p.anclaje ? `ANCLAJE: ${p.anclaje}` : "",
       p.fotoReal ? "FOTO REAL: sí — esta pieza lleva su propio selector de archivo" : "",
       `PROMPT DEL FONDO:\n${p.promptFondo || "—"}`,
       p.guion ? `GUION (va debajo de la pieza, en texto seleccionable, NO dentro de la imagen):\n${p.guion}` : "",
@@ -605,7 +643,9 @@ Por encima de eso, es una de las trampas de la sección 3.`;
  */
 export function buildMetaMasterPrompt({ receta, piezas, modo = "lote", tema = "", publico = "", negativosDelLote = [] }) {
   const r = receta || {};
-  const p = Array.isArray(piezas) ? piezas : [];
+  // El cuerpo, el anclaje y la interlínea se resuelven aquí, no en el
+  // prompt: a Meta AI le llega el número, no la cuenta.
+  const p = (Array.isArray(piezas) ? piezas : []).map((x) => componerPieza(r, x));
   const m = MODOS_META[modo] ? modo : "lote";
 
   const cabecera = `PROMPT MAESTRO · ${r.marca || "Marca"} · ${MODOS_META[m].label}
