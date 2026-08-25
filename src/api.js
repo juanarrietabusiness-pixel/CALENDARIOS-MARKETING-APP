@@ -455,6 +455,84 @@ export async function loadADN(client, { forzar = false } = {}) {
   return { ...result, cacheado: false };
 }
 
+/**
+ * Parsea JSON de un modelo, reparando lo que un modelo rompe.
+ *
+ * No es paranoia: los dos fallos de abajo se dieron en producción con un
+ * lote de 12 piezas. Un modelo que escribe prosa española dentro de una
+ * cadena JSON acaba metiendo una comilla sin escapar —«el titular "corto"
+ * va arriba»— y a partir de ahí el resto del documento es ilegible.
+ *
+ * Para la prosa larga ya no se usa JSON en absoluto (ver `parseBloques`).
+ * Esto cubre el JSON que queda, que son valores cortos.
+ */
+export function parseJSONLoose(texto, apertura = "{", cierre = "}") {
+  const sinVallas = texto.replace(/```(?:json)?/gi, "");
+  const ini = sinVallas.indexOf(apertura);
+  const fin = sinVallas.lastIndexOf(cierre);
+  if (ini === -1 || fin <= ini) throw new Error("La respuesta no contenía JSON.");
+  const crudo = sinVallas.slice(ini, fin + 1);
+
+  try {
+    return JSON.parse(crudo);
+  } catch {
+    /* se intenta reparar abajo */
+  }
+
+  // Recorre carácter a carácter llevando la cuenta de si está dentro de una
+  // cadena. Dentro de una cadena: los saltos de línea y tabuladores se
+  // escapan, y una comilla sólo cierra de verdad si lo siguiente que hay
+  // es `,` `}` `]` o `:`. Cualquier otra es una comilla literal del texto.
+  let salida = "";
+  let dentro = false;
+  for (let i = 0; i < crudo.length; i++) {
+    const c = crudo[i];
+    if (!dentro) {
+      if (c === '"') dentro = true;
+      salida += c;
+      continue;
+    }
+    if (c === "\\") { salida += c + (crudo[i + 1] ?? ""); i++; continue; }
+    if (c === "\n") { salida += "\\n"; continue; }
+    if (c === "\r") { salida += "\\r"; continue; }
+    if (c === "\t") { salida += "\\t"; continue; }
+    if (c === '"') {
+      const siguiente = crudo.slice(i + 1).match(/^\s*(.)/)?.[1];
+      if (siguiente && !",}]:".includes(siguiente)) { salida += '\\"'; continue; }
+      dentro = false;
+      salida += c;
+      continue;
+    }
+    salida += c;
+  }
+  // Comas colgantes antes de un cierre.
+  return JSON.parse(salida.replace(/,(\s*[}\]])/g, "$1"));
+}
+
+/**
+ * Lee bloques etiquetados de un texto plano.
+ *
+ * Es el mismo formato que ya usa `parseAIResponse` para los guiones, y por
+ * la misma razón: la prosa española lleva comillas, tildes, saltos de línea
+ * y guiones largos, y ninguno de ellos necesita escaparse aquí. Un campo
+ * empieza en `ETIQUETA:` a principio de línea y termina donde empieza la
+ * siguiente etiqueta conocida.
+ */
+export function parseBloques(texto, etiquetas) {
+  const siguiente = `^(?:${etiquetas.join("|")}):`;
+  const campos = {};
+  for (const etiqueta of etiquetas) {
+    // `(?![\s\S])` y no `$`: con la bandera `m`, `$` casa al final de CADA
+    // línea, así que el cuantificador perezoso paraba en el primer salto y
+    // los campos multilínea —el titular, el prompt del fondo, el guion—
+    // llegaban vacíos o con una sola línea.
+    const re = new RegExp(`^${etiqueta}:[ \\t]*([\\s\\S]*?)(?=${siguiente}|(?![\\s\\S]))`, "m");
+    const m = texto.match(re);
+    if (m) campos[etiqueta] = m[1].trim();
+  }
+  return campos;
+}
+
 const CAMPOS_RECETA = `{
   "marca": "", "slug": "", "productoFisico": false, "fotoReal": false,
   "lienzo": {"ancho":1080,"alto":1350},
@@ -463,7 +541,6 @@ const CAMPOS_RECETA = `{
   "colores": [{"hex":"","nombre":"","rol":""}],
   "coloresProhibidos": [{"hex":"","porque":""}],
   "combinacionesProhibidas": [],
-  "reticula": {"texto":""},
   "anclaje": "",
   "ordenBloque": [],
   "escala": [{"elemento":"","px":0,"interlinea":"","tracking":"","mayusculas":false}],
@@ -471,8 +548,6 @@ const CAMPOS_RECETA = `{
   "velo": "",
   "plantillas": [{"id":"","nombre":"","cuando":"","composicion":""}],
   "logo": {"posicion":"","ancho":0,"ancla":"","proporcion":"","resguardo":"","sobreFondo":"","reglas":[]},
-  "bloqueEstilo": "",
-  "negativos": "",
   "trampasPropias": [],
   "interfaz": "",
   "reglasDuras": [],
@@ -507,31 +582,46 @@ REGLAS QUE NO SE ROMPEN:
    cifra. Si un dato no está en el ADN, deja el campo vacío ("" o [] o 0).
    Un campo vacío se convierte en una pregunta al humano; un campo
    inventado se convierte en una pieza publicada que está mal.
-2. \`bloqueEstilo\` y \`negativos\` se copian LITERALES, carácter por
-   carácter, del ADN. No los resumas, no los reordenes, no los traduzcas
-   y no les quites un elemento por parecerte redundante.
-3. \`reticula.texto\` va en píxeles, tal y como esté escrito en el ADN.
-4. \`logo\`: describe dónde va y con qué reglas, nunca cómo se dibuja. El
+2. El bloque de estilo, los negativos y la retícula NO van en el JSON: van
+   en los tres bloques de texto de abajo, y se copian LITERALES, carácter
+   por carácter, del ADN. No los resumas, no los reordenes, no los
+   traduzcas y no les quites un elemento por parecerte redundante.
+3. \`logo\`: describe dónde va y con qué reglas, nunca cómo se dibuja. El
    logo de este cliente es un archivo que el humano carga; no se
    reproduce con formas ni con texto.
-5. \`tildes\`: las palabras con tilde o eñe que aparecen en el vocabulario
+4. \`tildes\`: las palabras con tilde o eñe que aparecen en el vocabulario
    de esta marca y que un modelo escribe mal (página, diseño, CAMPAÑA…).
-6. \`cifrasPermitidas\`: sólo las que estén verificadas en el ADN.
-7. \`productoFisico\`: true si la marca vende producto tangible.
+5. \`cifrasPermitidas\`: sólo las que estén verificadas en el ADN.
+6. \`productoFisico\`: true si la marca vende producto tangible.
    \`fotoReal\`: true si su ADN pide que las piezas de producto lleven la
    foto real del cliente en vez de una imagen generada.
 
-Responde ÚNICAMENTE con el JSON, sin texto antes ni después, sin bloque de
-código. Estructura exacta:
+FORMATO DE SALIDA — primero el JSON, después los tres bloques literales.
+Sin texto antes, sin texto en medio y sin bloque de código.
+
 ${CAMPOS_RECETA}
+
+RETICULA:
+(la retícula en píxeles, tal y como esté escrita en el ADN)
+
+BLOQUE_ESTILO:
+(el párrafo de estilo, literal)
+
+NEGATIVOS:
+(la lista de negativos, literal)
 
 ═══ ADN DEL CLIENTE ═══
 ${adnTexto}`;
 
   const raw = await callAI([cachedBlock(promptText)], { maxTokens: 16000, tier: "calidad" });
-  const json = raw.match(/\{[\s\S]*\}/);
-  if (!json) throw new Error("El compilador no devolvió JSON. Revisa el ADN del cliente.");
-  return JSON.parse(json[0]);
+  const receta = parseJSONLoose(raw);
+  // Los tres literales van fuera del JSON: son el texto que más comillas y
+  // saltos de línea lleva, y es donde el escapado se rompía.
+  const bloques = parseBloques(raw, ["RETICULA", "BLOQUE_ESTILO", "NEGATIVOS"]);
+  receta.reticula = { texto: bloques.RETICULA || "" };
+  receta.bloqueEstilo = bloques.BLOQUE_ESTILO || "";
+  receta.negativos = bloques.NEGATIVOS || "";
+  return receta;
 }
 
 /**
@@ -620,39 +710,87 @@ ${listaPosts}
 ═══════════════════════════════════════════════════════════
 FORMATO DE SALIDA
 ═══════════════════════════════════════════════════════════
-Responde ÚNICAMENTE con un array JSON, sin texto antes ni después y sin
-bloque de código. Un objeto por pieza, en el mismo orden:
+NO uses JSON. Las descripciones y los prompts de fondo llevan comillas,
+guiones largos y saltos de línea, y dentro de una cadena JSON eso se rompe.
 
-[{
-  "n": 1,
-  "plantilla": "",
-  "formato": "",
-  "fecha": "",
-  "antetitulo": "",
-  "titular": ["LÍNEA UNO", "⟦LÍNEA DOS", "LÍNEA TRES⟧"],
-  "bajada": "",
-  "cifra": "",
-  "nota": "",
-  "anclaje": "",
-  "fotoReal": false,
-  "promptFondo": "",
-  "guion": "",
-  "descripcion": "",
-  "hashtags": ""
-}]
+Devuelve una ficha por pieza, en el mismo orden, con este formato exacto.
+Cada etiqueta va a principio de línea y en MAYÚSCULAS. Omite la etiqueta
+entera si esa pieza no lleva ese campo. Sin texto antes ni después.
 
-\`titular\` es un array: un elemento por línea, con los corchetes ⟦ ⟧ donde
-empiece y acabe el acento.
+<<<PIEZA:1>>>
+PLANTILLA: (el id de la plantilla)
+FORMATO: (post, reel, carrusel, historia o live)
+FECHA: (aaaa-mm-dd)
+ANTETITULO: (una línea)
+TITULAR:
+(una línea por cada línea del titular, con ⟦ ⟧ marcando el acento)
+BAJADA: (una línea)
+CIFRA: (sólo si el ADN la respalda)
+NOTA: (una línea)
+ANCLAJE: (una línea)
+FOTO_REAL: si
+PROMPT_FONDO:
+(varias líneas, en español, sin una sola letra dentro de la imagen)
+GUION:
+(varias líneas, sólo si el formato lo lleva)
+DESCRIPCION:
+(el caption completo, con sus hashtags al final)
+HASHTAGS: (en una sola línea)
+
+<<<PIEZA:2>>>
+…y así hasta la última.
+
+TITULAR y PROMPT_FONDO empiezan en la línea siguiente a su etiqueta.
+FOTO_REAL sólo se escribe si la pieza lleva foto real; si no, se omite.
 ${esCarrusel ? `
-Es un CARRUSEL: además de lo anterior, la PRIMERA pieza lleva
-\`descripcionConjunto\` y \`hashtagsConjunto\` con la descripción única y el
-único juego de hashtags de todo el carrusel; las demás dejan
-\`descripcion\` y \`hashtags\` vacíos. La primera diapositiva lleva el titular
-más corto y más grande —es la única que se ve en el feed sin deslizar— y
-la última cierra o pide algo, no se muere en un dato.` : ""}`;
+Es un CARRUSEL: la PRIMERA pieza lleva además DESCRIPCION_CONJUNTO y
+HASHTAGS_CONJUNTO —la descripción única y el único juego de hashtags de todo
+el carrusel— y las demás omiten DESCRIPCION y HASHTAGS. La primera
+diapositiva lleva el titular más corto y más grande, porque es la única que se
+ve en el feed sin deslizar; la última cierra o pide algo, no se muere en un
+dato.` : ""}`;
 
   const raw = await callAI([cachedBlock(promptText)], { maxTokens: 24000, tier: "calidad" });
-  const json = raw.match(/\[[\s\S]*\]/);
-  if (!json) throw new Error("La IA no devolvió las piezas en JSON. Inténtalo de nuevo.");
-  return JSON.parse(json[0]);
+  const piezas = parsePiezas(raw);
+  if (!piezas.length) {
+    throw new Error("La IA no devolvió ninguna pieza reconocible. Inténtalo de nuevo.");
+  }
+  return piezas;
+}
+
+const ETIQUETAS_PIEZA = [
+  "PLANTILLA", "FORMATO", "FECHA", "ANTETITULO", "TITULAR", "BAJADA",
+  "CIFRA", "NOTA", "ANCLAJE", "FOTO_REAL", "PROMPT_FONDO", "GUION",
+  "DESCRIPCION", "HASHTAGS", "DESCRIPCION_CONJUNTO", "HASHTAGS_CONJUNTO",
+];
+
+/** Convierte las fichas de texto en los objetos que espera `metaPrompt.js`. */
+export function parsePiezas(texto) {
+  const bloques = texto.split(/<<<PIEZA:/).slice(1);
+  return bloques.map((bloque, i) => {
+    const cuerpo = bloque.slice(bloque.indexOf(">>>") + 3);
+    const c = parseBloques(cuerpo, ETIQUETAS_PIEZA);
+    const n = Number(bloque.slice(0, bloque.indexOf(">>>")).trim()) || i + 1;
+    return {
+      n,
+      plantilla: c.PLANTILLA || "",
+      formato: c.FORMATO || "",
+      fecha: c.FECHA || "",
+      antetitulo: c.ANTETITULO || "",
+      // El titular es una línea por línea del lienzo: los cortes ya vienen
+      // decididos y no se recalculan en ningún punto de la cadena.
+      titular: (c.TITULAR || "").split("\n").map((l) => l.trim()).filter(Boolean),
+      bajada: c.BAJADA || "",
+      cifra: c.CIFRA || "",
+      nota: c.NOTA || "",
+      anclaje: c.ANCLAJE || "",
+      fotoReal: /^s[ií]$/i.test((c.FOTO_REAL || "").trim()),
+      promptFondo: c.PROMPT_FONDO || "",
+      guion: c.GUION || "",
+      descripcion: c.DESCRIPCION || "",
+      hashtags: c.HASHTAGS || "",
+      descripcionConjunto: c.DESCRIPCION_CONJUNTO || "",
+      hashtagsConjunto: c.HASHTAGS_CONJUNTO || "",
+    };
+  });
 }

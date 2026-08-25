@@ -2,7 +2,7 @@ import { useId, useMemo, useState } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { loadADN, compileMetaRecipe, generateMetaPieces, fetchGitHubADN } from "../api";
-import { buildMetaMasterPrompt, faltantesDeReceta, MODOS_META } from "../metaPrompt";
+import { buildMetaMasterPrompt, faltantesDeReceta, faltantesCriticos, MODOS_META } from "../metaPrompt";
 import { MONTHS } from "../constants";
 
 /**
@@ -32,7 +32,7 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
   const [estado, setEstado] = useState("");
   const [error, setError] = useState("");
   const [prompt, setPrompt] = useState("");
-  const [faltan, setFaltan] = useState([]);
+  const [faltan, setFaltan] = useState(() => (client.metaRecipe ? faltantesDeReceta(client.metaRecipe) : []));
   const [aviso, setAviso] = useState("");
 
   // Sólo entran las publicaciones que ya tienen contenido: el prompt
@@ -96,6 +96,16 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
 
       const pendientes = faltantesDeReceta(receta);
       setFaltan(pendientes);
+
+      // Con el sistema visual incompleto no se emite. El estándar es
+      // explícito: si un dato no está, se pide — no se rellena.
+      const criticos = pendientes.filter((x) => x.critico);
+      if (criticos.length) {
+        throw new Error(
+          `El sistema visual de ${client.name} está incompleto: falta ${criticos.length === 1 ? "1 dato" : `${criticos.length} datos`}. ` +
+          `Créale su 01_ADN_y_Memoria/05_prompt_maestro_meta_ai.md en el repositorio y vuelve a recompilar la receta.`
+        );
+      }
 
       // ---- 3. Las piezas ----
       setEstado(`Escribiendo ${seleccion.length} piezas…`);
@@ -167,8 +177,12 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
         metaRecipeSha: fresco.recipeSha || "",
         metaRecipeAt: new Date().toISOString(),
       });
-      setFaltan(faltantesDeReceta(receta));
-      setEstado("Receta recompilada desde el repositorio.");
+      const pendientes = faltantesDeReceta(receta);
+      setFaltan(pendientes);
+      const criticos = pendientes.filter((x) => x.critico);
+      setEstado(criticos.length
+        ? `Receta recompilada, pero siguen faltando ${criticos.length} datos del sistema visual.`
+        : "Receta recompilada desde el repositorio.");
       setFase("config");
     } catch (e) {
       setError(e.message || "No se pudo recompilar la receta.");
@@ -177,6 +191,9 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
   };
 
   const tieneReceta = Boolean(client.metaRecipe);
+  // Con receta compilada y datos críticos ausentes, generar sólo gastaría una
+  // llamada para devolver un prompt con huecos.
+  const bloqueado = tieneReceta && faltantesCriticos(client.metaRecipe).length > 0;
 
   return (
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -253,10 +270,25 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
 
             {faltan.length > 0 && (
               <div style={{ marginBottom: "var(--sp-3)" }}>
-                <div style={{ fontSize: "var(--fs-2xs)", fontWeight: 700, marginBottom: "var(--sp-1)" }}>Falta en el ADN, y no se inventa:</div>
-                <ul style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)", paddingLeft: "var(--sp-3)", lineHeight: 1.6 }}>
-                  {faltan.map((f) => <li key={f}>{f}</li>)}
+                <div style={{ fontSize: "var(--fs-2xs)", fontWeight: 700, marginBottom: "var(--sp-1)" }}>
+                  Falta en el ADN, y no se inventa:
+                </div>
+                <ul style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)", paddingLeft: "var(--sp-3)", lineHeight: 1.7 }}>
+                  {faltan.map((f) => (
+                    <li key={f.que} style={{ color: f.critico ? "var(--text-muted)" : undefined }}>
+                      {f.que} — <code style={{ fontSize: "var(--fs-3xs)" }}>{f.donde}</code>
+                      {f.critico && " · imprescindible"}
+                    </li>
+                  ))}
                 </ul>
+                {bloqueado && (
+                  <p style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)", marginTop: "var(--sp-2)", lineHeight: 1.6 }}>
+                    Sin esos datos el prompt sale con huecos, y un hueco es lo que
+                    hace improvisar a Meta AI. Créale a {client.name} su{" "}
+                    <code style={{ fontSize: "var(--fs-3xs)" }}>01_ADN_y_Memoria/05_prompt_maestro_meta_ai.md</code>{" "}
+                    y recompila la receta.
+                  </p>
+                )}
               </div>
             )}
 
@@ -267,7 +299,7 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
                   <Icon name="refresh" size={16} /> Recompilar receta
                 </button>
               )}
-              <button className="btn btn-primary" onClick={generar} disabled={!seleccion.length}>
+              <button className="btn btn-primary" onClick={generar} disabled={!seleccion.length || bloqueado}>
                 <Icon name="wand" size={16} /> Generar prompt
               </button>
             </div>
@@ -295,7 +327,9 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
               <div style={{ marginBottom: "var(--sp-3)", background: "var(--surface-2)", borderRadius: "var(--radius-sm)", padding: "var(--sp-2)" }}>
                 <div style={{ fontSize: "var(--fs-2xs)", fontWeight: 700, marginBottom: "var(--sp-1)" }}>Qué no incluye</div>
                 <ul style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)", paddingLeft: "var(--sp-3)", lineHeight: 1.6 }}>
-                  {faltan.map((f) => <li key={f}>{f}</li>)}
+                  {faltan.map((f) => (
+                    <li key={f.que}>{f.que} — <code style={{ fontSize: "var(--fs-3xs)" }}>{f.donde}</code></li>
+                  ))}
                 </ul>
               </div>
             )}
