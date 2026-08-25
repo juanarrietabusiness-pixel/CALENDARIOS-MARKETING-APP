@@ -264,6 +264,20 @@ function Workspace({ session }) {
     setShowClientModal(false);
   };
 
+  // Guarda un cliente sin tocar la selección ni cerrar diálogos.
+  // `saveClient` sirve al modal de alta y edición: además de guardar,
+  // cambia de cliente y cierra la ficha. Para lo que se guarda de fondo
+  // —la receta visual compilada, el ADN releído— eso sería un salto de
+  // pantalla cada vez.
+  const persistClient = async (c) => {
+    try {
+      const guardado = await db.saveClient(c, ownerId);
+      setClients((prev) => prev.map((x) => (x.id === guardado.id ? guardado : x)));
+    } catch (e) {
+      console.error("No se pudo guardar el cliente:", e);
+    }
+  };
+
   const deleteClient = async (id) => {
     try {
       await db.deleteClient(id);
@@ -650,6 +664,7 @@ function Workspace({ session }) {
                     onDeleteCal={deleteCalendar}
                     onDuplicateCal={duplicateCalendar}
                     onUpdateClient={(updated) => setClients((prev) => prev.map((c) => c.id === updated.id ? updated : c))}
+                    onPersistClient={persistClient}
                     onMoveBankToCal={(bankPost, targetDate) => {
                       setClients((prev) => prev.map((c) => {
                         if (c.id !== selectedClientId) return c;

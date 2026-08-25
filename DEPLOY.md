@@ -68,11 +68,36 @@ vacío, no hay motivo para permitirlo).
 | `GROQ_API_KEY` | tu clave de Groq (opcional si usas Anthropic) |
 | `AI_PROVIDER` | `anthropic` o `groq` |
 | `GITHUB_TOKEN` | token de sólo lectura para el ADN |
+| `AI_MODEL_CALIDAD` | modelo del prompt maestro (opcional) |
 | `ALLOWED_ORIGINS` | la URL final del sitio, cuando la tengas |
 
 `AI_MODEL` es opcional: por defecto `claude-haiku-4-5-20251001`, rápido y
 barato para generar en lote. Para textos más cuidados en español, ponlo a
 `claude-sonnet-5`.
+
+`AI_MODEL_CALIDAD` es el modelo del prompt maestro de Meta AI y de la
+compilación de la receta del cliente. Por defecto `claude-sonnet-5`. No
+comparte valor con `AI_MODEL` a propósito: los lotes de guiones son muchos y
+cortos, y el prompt maestro es uno al mes con los cortes de línea del titular
+y la verificación de que ninguna cifra se sale del ADN.
+
+### Sobre `GITHUB_TOKEN`
+
+**No cambia lo que se lee** — un token autenticado devuelve el mismo contenido
+que uno anónimo. Lo que cambia es el límite: GitHub da **60 peticiones por hora
+y por IP** sin autenticar, y las Edge Functions de Supabase salen por IPs
+compartidas, así que ese cupo se agota con lo que gasten otros proyectos. Cada
+lectura de ADN cuesta unas 10 peticiones. Con token son 5000 por hora.
+
+**Usa un fine-grained token con el permiso mínimo: repositorios públicos, sólo
+lectura.** No uno clásico con scope `repo`, que concede escritura sobre todo.
+`github-adn` acepta cualquier URL de repositorio que le pase un usuario
+autenticado de la agencia: con un token de sólo-lectura-pública el alcance de
+eso es nulo, con uno amplio le estarías dando a la función más poder del que
+necesita.
+
+Si alguna carpeta de cliente pasa a privada, hay que ampliar el token a ese
+repositorio en concreto, no a todos.
 
 ---
 

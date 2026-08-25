@@ -1,10 +1,11 @@
 import { useEffect, useId, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid, fmtDate, compressImage, parseVideoURL } from "../utils";
-import { callAI, fetchGitHubADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost, generateImagePrompt, generateImage, checkImageGenConfigured } from "../api";
+import { callAI, loadADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost, generateImagePrompt, generateImage, checkImageGenConfigured } from "../api";
 import { buildExportHTML } from "../export";
 import { shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
+import MetaPromptModal from "./MetaPromptModal";
 import Icon from "./Icon";
 
 
@@ -1522,9 +1523,11 @@ export default function CalendarView({
   onDeleteCal,
   onDuplicateCal,
   onUpdateClient,
+  onPersistClient,
   onMoveBankToCal,
 }) {
   const [viewMode, setViewMode] = useState("list");
+  const [metaPromptOpen, setMetaPromptOpen] = useState(false);
   const [expandedDay, setExpandedDay] = useState(null);
   const [sidePanel, setSidePanel] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
@@ -1781,11 +1784,7 @@ export default function CalendarView({
     setIncompleteInfo(null);
 
     try {
-      let adnExtra = client.githubContext || "";
-      if (!adnExtra && client.githubRepo) {
-        const result = await fetchGitHubADN(client.githubRepo, client.githubFolder);
-        adnExtra = result.content;
-      }
+      const adnExtra = (await loadADN(client)).content;
 
       const BATCH = 6;
       let allResults = {};
@@ -1926,16 +1925,10 @@ export default function CalendarView({
     addDebug("Inicio de generacion");
 
     try {
-      let adnExtra = client.githubContext || "";
-      if (!adnExtra && client.githubRepo) {
-        setGenStatus("Cargando ADN desde GitHub...");
-        addDebug("Fetching GitHub ADN: " + client.githubRepo);
-        const result = await fetchGitHubADN(client.githubRepo, client.githubFolder);
-        adnExtra = result.content;
-        addDebug("GitHub ADN: " + (adnExtra ? adnExtra.length + " chars" : "vacio"));
-      } else if (adnExtra) {
-        addDebug("Usando ADN cacheado: " + adnExtra.length + " chars");
-      }
+      if (!client.githubContext && client.githubRepo) setGenStatus("Cargando ADN desde GitHub...");
+      const adn = await loadADN(client);
+      const adnExtra = adn.content;
+      addDebug(`ADN ${adn.cacheado ? "cacheado" : "de GitHub"}: ${adnExtra.length} caracteres`);
 
       const days = cal.days || [];
       const postsToGen = days.flatMap((d) =>
@@ -2162,6 +2155,18 @@ export default function CalendarView({
       {/* Edit calendar meta modal */}
       {editMeta && <EditMetaDialog metaForm={metaForm} setMetaForm={setMetaForm} onSave={saveMetaEdit} onClose={() => setEditMeta(false)} />}
 
+      {metaPromptOpen && (
+        <MetaPromptModal
+          client={client}
+          cal={cal}
+          onClose={() => setMetaPromptOpen(false)}
+          onPersistClient={(actualizado) => {
+            onUpdateClient?.(actualizado);
+            onPersistClient?.(actualizado);
+          }}
+        />
+      )}
+
       {promptExportOpen && (
         <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) setPromptExportOpen(false); }}>
           <div className="dialog" role="dialog" aria-modal="true" aria-label="Exportar prompts visuales" style={{ maxWidth: 400 }}>
@@ -2311,6 +2316,7 @@ export default function CalendarView({
             { icon: "download", label: "Exportar a HTML", onClick: exportHTML },
             { icon: "file", label: "Imprimir o guardar en PDF", onClick: exportPDF },
             { icon: "wand", label: "Exportar prompts visuales", onClick: () => setPromptExportOpen(true) },
+            { icon: "sparkles", label: "Prompt maestro para Meta AI", onClick: () => setMetaPromptOpen(true) },
             imageGenAvailable ? { icon: "image", label: batchImageGen ? batchImageProgress : "Generar imágenes en lote", onClick: generateBatchImages, disabled: batchImageGen } : null,
             { sep: true },
             { icon: "terminal", label: debugOpen ? "Ocultar diagnóstico" : "Ver diagnóstico", onClick: () => setDebugOpen((d) => !d) },
