@@ -1,5 +1,6 @@
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
 import { cachedBlock, parseBloques, parseJSONLoose, parseGitHubUrl, parsePiezas } from "./lib/parse";
+import { enTandas } from "./lib/tandas";
 
 // Se reexportan porque media aplicación las importa desde aquí. Viven en
 // `lib/parse.js` para poder probarlas sin arrastrar el cliente de Supabase.
@@ -23,13 +24,27 @@ async function invokeFunction(name, body) {
   const { data, error } = await supabase.functions.invoke(name, { body });
 
   if (error) {
+    // El error útil viene en el cuerpo de la respuesta, no en
+    // `error.message` (que sólo dice «non-2xx status code»). Y cuando el
+    // cuerpo no es JSON, el código de estado es la única pista que queda:
+    // decir «no se pudo contactar con el servidor» ante un 504 manda a
+    // buscar un problema de red que no existe.
+    const status = error.context?.status ?? 0;
     let mensaje = "";
     try {
       mensaje = (await error.context?.json())?.error ?? "";
     } catch {
-      /* la respuesta no era JSON */
+      /* la respuesta no era JSON: pasa en los cortes del gateway */
     }
-    throw new Error(mensaje || "No se pudo contactar con el servidor.");
+    if (mensaje) throw new Error(mensaje);
+
+    if (status === 504 || status === 408 || status === 0) {
+      throw new Error(
+        `La función «${name}» tardó más de lo que aguanta Supabase y se cortó. ` +
+        "Si estabas generando un lote, prueba con menos publicaciones."
+      );
+    }
+    throw new Error(`La función «${name}» respondió ${status || "sin cuerpo legible"}.`);
   }
   if (data?.error) throw new Error(data.error);
   return data;
@@ -765,3 +780,9 @@ dato.` : ""}`;
   }
   return piezas;
 }
+
+/** Genera las piezas del lote en tandas, para no pasarse del límite. */
+export function generateMetaPiecesEnTandas(opciones, alProgresar) {
+  return enTandas(opciones, generateMetaPieces, alProgresar);
+}
+
