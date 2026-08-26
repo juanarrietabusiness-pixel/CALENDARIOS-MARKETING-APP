@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
-import { loadADN, cargarReceta, generateMetaPiecesEnTandas, despliegueDesfasado } from "../api";
+import { loadADN, cargarReceta, generateMetaPiecesEnTandas, despliegueDesfasado, adnParaEscribir } from "../api";
 import { buildMetaMasterPrompt, faltantesDeReceta, faltantesCriticos, avisosDeComposicion, MODOS_META } from "../metaPrompt";
 import { MONTHS } from "../constants";
 
@@ -181,7 +181,7 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
         posts: seleccion,
         modo,
         tema,
-        adnTexto: datos.adn.content,
+        adnTexto: adnParaEscribir(datos.adn),
       }, (hechas, total) => {
         // Un lote de doce va en tres tandas y tarda un par de minutos. Sin
         // esto la pantalla se queda quieta y parece colgada.

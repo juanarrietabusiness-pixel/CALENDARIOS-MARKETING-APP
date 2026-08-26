@@ -12,7 +12,7 @@
 // en silencio —la numeración— sin llamar a nadie.
 // ============================================================
 
-export const PIEZAS_POR_TANDA = 4;
+export const PIEZAS_POR_TANDA = 3;
 
 /**
  * Genera las piezas en tandas y las devuelve numeradas sobre el lote entero.

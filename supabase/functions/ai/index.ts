@@ -47,6 +47,18 @@ const MAX_BODY_BYTES = 5 * 1024 * 1024; // las publicaciones llevan imágenes en
 // media pieza y el HTML salía incompleto.
 const MAX_TOKENS_CAP = 32_000;
 
+// Presupuesto de tiempo de la función entera.
+//
+// Supabase corta a los 150 s, y cuando corta no devuelve JSON: devuelve una
+// página del gateway que el navegador no sabe leer, así que el error llega
+// como «no se pudo contactar con el servidor» y manda a buscar un problema
+// de red que no existe. Con este margen la función se rinde ANTES y explica
+// qué pasó.
+//
+// El bucle de reintentos era el que más se pasaba: tres intentos completos
+// más sus esperas se comen el presupuesto sin que nadie lo note.
+const PRESUPUESTO_MS = 110_000;
+
 function corsHeaders(origin: string): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json; charset=utf-8",
@@ -76,9 +88,10 @@ function textOnly(content: unknown): unknown {
     .map((b) => ({ type: "text", text: (b as { text?: string }).text ?? "" }));
 }
 
-async function callAnthropic(content: unknown, maxTokens: number, model: string) {
+async function callAnthropic(content: unknown, maxTokens: number, model: string, signal: AbortSignal) {
   return await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
+    signal,
     headers: {
       "Content-Type": "application/json",
       "x-api-key": ANTHROPIC_API_KEY,
@@ -92,9 +105,10 @@ async function callAnthropic(content: unknown, maxTokens: number, model: string)
   });
 }
 
-async function callGroq(content: unknown, maxTokens: number) {
+async function callGroq(content: unknown, maxTokens: number, signal: AbortSignal) {
   return await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
+    signal,
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${GROQ_API_KEY}`,
@@ -165,24 +179,49 @@ Deno.serve(async (req) => {
     return json({ error: "El servidor no tiene configurada la clave de Anthropic" }, 503, headers);
   }
 
-  // ---- Llamada con reintentos ----
+  // ---- Llamada con reintentos, dentro del presupuesto ----
+  const arranque = Date.now();
+  const restante = () => PRESUPUESTO_MS - (Date.now() - arranque);
+  const transcurrido = () => Math.round((Date.now() - arranque) / 1000);
+
   const retries = 2;
   for (let attempt = 0; attempt <= retries; attempt++) {
+    // Cada intento sólo puede usar lo que quede: así el tercero no empieza
+    // sabiendo que no va a caber.
+    const ms = restante();
+    if (ms <= 5_000) {
+      return json({
+        error: `El proveedor de IA no respondió en ${transcurrido()} s y se agotó el margen. ` +
+          "Prueba con menos publicaciones por tanda.",
+      }, 504, headers);
+    }
+
+    const abortar = new AbortController();
+    const reloj = setTimeout(() => abortar.abort(), ms);
     let res: Response;
     try {
       res = useGroq
-        ? await callGroq(content, maxTokens)
-        : await callAnthropic(content, maxTokens, model);
+        ? await callGroq(content, maxTokens, abortar.signal)
+        : await callAnthropic(content, maxTokens, model, abortar.signal);
     } catch (e) {
-      if (attempt < retries) {
+      clearTimeout(reloj);
+      if (abortar.signal.aborted) {
+        return json({
+          error: `El proveedor de IA no respondió en ${transcurrido()} s y se agotó el margen. ` +
+            "Prueba con menos publicaciones por tanda.",
+        }, 504, headers);
+      }
+      // Sólo se reintenta si queda tiempo para que el reintento sirva.
+      if (attempt < retries && restante() > 30_000) {
         await sleep(2 ** (attempt + 1) * 1000);
         continue;
       }
       console.error("ai: fallo de red hacia el proveedor:", e);
       return json({ error: "No se pudo contactar con el proveedor de IA" }, 502, headers);
     }
+    clearTimeout(reloj);
 
-    if ((res.status === 429 || res.status >= 500) && attempt < retries) {
+    if ((res.status === 429 || res.status >= 500) && attempt < retries && restante() > 30_000) {
       await sleep(2 ** (attempt + 1) * 1000);
       continue;
     }
@@ -212,6 +251,9 @@ Deno.serve(async (req) => {
       // maestro entero y uno cortado a media pieza, y desde el navegador
       // no se distingue de un modelo que decidió parar.
       truncated: !useGroq && data?.stop_reason === "max_tokens",
+      // Cuánto tardó, para poder decirlo cuando algo va apretado en vez de
+      // descubrirlo cuando ya se cortó.
+      segundos: transcurrido(),
     }, 200, headers);
   }
 
