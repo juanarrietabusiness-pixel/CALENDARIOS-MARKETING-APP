@@ -81,6 +81,10 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
   const [receta, setReceta] = useState(null);
   const [adn, setAdn] = useState(null);
 
+  // Lo que costó de verdad, sumado tanda a tanda. Sin esto, «¿esto sale
+  // caro?» sólo se podía contestar estimando.
+  const [gasto, setGasto] = useState(null);
+
   // Sólo entran las publicaciones que ya tienen contenido: el prompt
   // maestro traduce lo aprobado, no lo inventa sobre la marcha.
   const candidatas = useMemo(() => {
@@ -166,6 +170,7 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
 
   const generar = async () => {
     setError("");
+    setGasto(null);
     setFase("trabajando");
 
     try {
@@ -182,6 +187,13 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
         modo,
         tema,
         adnTexto: adnParaEscribir(datos.adn),
+        alMedir: (d) => setGasto((prev) => ({
+          tandas: (prev?.tandas ?? 0) + 1,
+          entrada: (prev?.entrada ?? 0) + (d.entrada || 0),
+          salida: (prev?.salida ?? 0) + (d.salida || 0),
+          cacheLeido: (prev?.cacheLeido ?? 0) + (d.cacheLeido || 0),
+          cacheEscrito: (prev?.cacheEscrito ?? 0) + (d.cacheEscrito || 0),
+        })),
       }, (hechas, total) => {
         // Un lote de doce va en tres tandas y tarda un par de minutos. Sin
         // esto la pantalla se queda quieta y parece colgada.
@@ -461,6 +473,20 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
                   Campos vacíos: {diag.vacios.length ? diag.vacios.join(", ") : "ninguno"}
                 </div>
                 {diag.avisoJson && <div style={{ marginTop: "var(--sp-1)" }}>Error del JSON: {diag.avisoJson}</div>}
+                {gasto && (
+                  <div style={{ marginTop: "var(--sp-2)" }}>
+                    <div><strong>Gasto real del lote</strong> · {gasto.tandas} tanda{gasto.tandas === 1 ? "" : "s"}</div>
+                    <div>Entrada: {gasto.entrada.toLocaleString("es-PA")} tokens</div>
+                    <div>Salida: {gasto.salida.toLocaleString("es-PA")} tokens</div>
+                    <div>
+                      Caché: {gasto.cacheLeido.toLocaleString("es-PA")} leídos ·{" "}
+                      {gasto.cacheEscrito.toLocaleString("es-PA")} escritos
+                      {gasto.tandas > 1 && gasto.cacheLeido === 0
+                        ? " — la caché NO está funcionando"
+                        : ""}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

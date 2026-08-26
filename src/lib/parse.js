@@ -65,6 +65,18 @@ export function cachedBlock(text) {
 }
 
 /**
+ * Un bloque de texto SIN marca de caché: lo que cambia en cada llamada.
+ *
+ * La caché de Anthropic es por prefijo, y `cache_control` marca dónde
+ * termina el trozo reutilizable. Todo lo que varíe tiene que ir detrás de
+ * esa marca, en su propio bloque, o el prefijo deja de coincidir y no se
+ * reutiliza nada.
+ */
+export function bloque(text) {
+  return { type: "text", text };
+}
+
+/**
  * Parsea JSON de un modelo, reparando lo que un modelo rompe.
  *
  * No es paranoia: los dos fallos de abajo se dieron en producción con un

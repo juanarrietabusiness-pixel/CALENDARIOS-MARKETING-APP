@@ -5,6 +5,8 @@ import {
   parseGitHubUrl,
   parseJSONLoose,
   parsePiezas,
+  cachedBlock,
+  bloque,
 } from "./parse";
 
 // ============================================================
@@ -290,5 +292,20 @@ de la pieza. Con esos datos del cliente gana mucho.`;
 NOTA: Entrega en toda la ciudad
 y aquí el modelo siguió explicándose`);
     expect(pieza.nota).toBe("Entrega en toda la ciudad");
+  });
+});
+
+describe("bloques para la caché", () => {
+  // La caché de Anthropic es por prefijo: `cache_control` marca dónde acaba
+  // el trozo reutilizable. Lo que cambie tiene que ir en un bloque aparte y
+  // SIN marca, o el prefijo deja de coincidir y no se reutiliza nada.
+  it("marca el bloque estable y deja limpio el variable", () => {
+    expect(cachedBlock("ADN")).toEqual({
+      type: "text", text: "ADN", cache_control: { type: "ephemeral" },
+    });
+    expect(bloque("las publicaciones de esta tanda")).toEqual({
+      type: "text", text: "las publicaciones de esta tanda",
+    });
+    expect(bloque("x")).not.toHaveProperty("cache_control");
   });
 });

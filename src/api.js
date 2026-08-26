@@ -1,10 +1,10 @@
 import { supabase, isSupabaseEnabled } from "./lib/supabase";
-import { cachedBlock, parseBloques, parseJSONLoose, parseGitHubUrl, parsePiezas } from "./lib/parse";
+import { bloque, cachedBlock, parseBloques, parseJSONLoose, parseGitHubUrl, parsePiezas } from "./lib/parse";
 import { enTandas } from "./lib/tandas";
 
 // Se reexportan porque media aplicación las importa desde aquí. Viven en
 // `lib/parse.js` para poder probarlas sin arrastrar el cliente de Supabase.
-export { parseAIResponse, parseGitHubUrl, parsePiezas, parseJSONLoose, parseBloques, cachedBlock } from "./lib/parse";
+export { parseAIResponse, parseGitHubUrl, parsePiezas, parseJSONLoose, parseBloques, cachedBlock, bloque } from "./lib/parse";
 
 /**
  * Llama a una función del servidor.
@@ -679,7 +679,7 @@ export function adnParaEscribir(adn) {
   return partes.map(([titulo, texto]) => `\n═══ ${titulo} ═══\n${texto}`).join("\n");
 }
 
-export async function generateMetaPieces({ client, calendar, receta, posts, modo = "lote", tema = "", adnTexto = "" }) {
+export async function generateMetaPieces({ client, calendar, receta, posts, modo = "lote", tema = "", adnTexto = "", alMedir }) {
   const esCarrusel = modo === "carrusel";
 
   const listaPosts = posts.map((p, i) => `── PIEZA ${i + 1}
@@ -703,7 +703,7 @@ ${p.hashtagsFinales ? `HASHTAGS YA APROBADOS: ${p.hashtagsFinales}` : ""}`).join
     ? `El titular se compone a ${escalaTitular[0].px} px. Con ese cuerpo caben unos 16 a 20 caracteres por línea en un lienzo de ${receta.lienzo?.ancho || 1080} px con los márgenes de la retícula. Cuenta los caracteres de cada línea que escribas.`
     : "Cuenta los caracteres de cada línea: en un titular a caja alta caben unos 16 a 20 por línea.";
 
-  const promptText = `Eres el redactor de la agencia Juancito Ads. Escribes las piezas de un
+  const estable = `Eres el redactor de la agencia Juancito Ads. Escribes las piezas de un
 lote que va a montar Meta AI. Meta AI no escribe: copia lo que tú
 escribas, literal. Así que lo que escribas mal se publica mal.
 
@@ -736,14 +736,35 @@ CÓMO SE ESCRIBE UN TITULAR
 ═══════════════════════════════════════════════════════════
 EL PROMPT DEL FONDO
 ═══════════════════════════════════════════════════════════
+Cada fondo es UNA FOTOGRAFÍA DE UN SITIO REAL. Un rectángulo de color
+plano no es un fondo: es el hueco donde debería haber uno, y se nota en
+cuanto la pieza se publica al lado de las de cualquier otra marca.
+
 · En español, autocontenido, y sin una sola letra dentro de la imagen.
-· Describe la composición por BANDAS DE PORCENTAJE de la altura, no con
-  «deja espacio para el texto». Di qué hay en cada banda:
-  ✓ «El sujeto ocupa entre el 74 % y el 88 % de la altura; del 15 % al
-     74 % no hay más que fondo liso, sin brillo y sin detalle.»
+· Describe la composición por BANDAS DE PORCENTAJE de la altura, y di qué
+  hay en CADA banda. En todas hay algo: el carril del texto no se vacía,
+  se aquieta.
+· El texto se lee porque encima tiene una superficie tranquila —una pared
+  en penumbra, un plano desenfocado, un suelo parejo—, no porque no haya
+  nada. Pide desenfoque, sombra o caída de luz; nunca ausencia de escena.
+
+  ✓ «Del 0 % al 15 %, la pared del fondo en penumbra pareja, sin cuadros
+     ni molduras. Del 15 % al 70 %, esa misma pared sigue, desenfocada y
+     en sombra suave, con la luz cayendo de izquierda a derecha: hay
+     pared, no vacío. Del 70 % al 90 %, el sujeto nítido y a foco. Del
+     90 % al 100 %, suelo de baldosa clara, parejo y sin objetos.»
+
+  ✗ «Del 15 % al 74 % no hay más que fondo liso, sin brillo y sin detalle.»
+  ✗ «Fondo liso azul cobalto uniforme, sin textura ni degradado.»
   ✗ «Composición con espacio libre en la zona central para el texto.»
-· Protege la banda del logo pidiendo fondo liso ahí: un resplandor detrás
-  del logo se lo come.
+
+· Protege la banda del logo con una superficie tranquila —pared lisa,
+  sombra pareja—, no con un vacío: un resplandor detrás del logo se lo
+  come, pero un rectángulo de color lo deja flotando.
+· ÚNICA excepción: si la retícula de esta pieza pide expresamente una masa
+  plana de color de marca con el producto recortado encima, esa masa ES el
+  fondo y el interés lo pone el producto. Sólo cuando la plantilla lo pida,
+  nunca por defecto.
 · No repitas el bloque de estilo ni los negativos: van aparte, una vez.
 
 ═══════════════════════════════════════════════════════════
@@ -755,15 +776,6 @@ pasado no vuelve, ni con otras palabras. Si el lote se parece demasiado a lo
 ya publicado, cambia el ángulo, no el sinónimo.
 
 Si esa carpeta está vacía, no pasa nada: es el primer lote.
-
-═══════════════════════════════════════════════════════════
-LAS PUBLICACIONES DEL CALENDARIO
-═══════════════════════════════════════════════════════════
-${tema ? `TEMA DEL LOTE: ${tema}\n` : ""}Son ${posts.length}, ya aprobadas. Tu trabajo es traducirlas a piezas, no
-cambiarles la idea. Si una ya trae descripción aprobada, respétala salvo
-que incumpla la cuenta de hashtags.
-
-${listaPosts}
 
 ═══════════════════════════════════════════════════════════
 FORMATO DE SALIDA
@@ -822,6 +834,30 @@ diapositiva lleva el titular más corto y más grande, porque es la única que s
 ve en el feed sin deslizar; la última cierra o pide algo, no se muere en un
 dato.` : ""}`;
 
+  // Lo que cambia en cada tanda: las publicaciones de ESTA vuelta.
+  //
+  // Va en su propio bloque y detrás del estable, y no es cosmético. La
+  // caché de Anthropic es por prefijo: `cache_control` marca dónde acaba
+  // el trozo reutilizable, así que mientras la lista de publicaciones
+  // estuvo DENTRO de ese trozo, el prefijo cambiaba en cada tanda y no se
+  // reutilizaba nunca nada. Un lote de doce reenviaba seis veces los
+  // ~24 000 caracteres de ADN a precio completo.
+  //
+  // Por eso el formato de salida subió al bloque estable y aquí abajo sólo
+  // queda el recordatorio: la instrucción larga se cachea, y lo último que
+  // lee el modelo antes de escribir sigue siendo qué tiene que escribir.
+  const variable = `═══════════════════════════════════════════════════════════
+LAS PUBLICACIONES DEL CALENDARIO
+═══════════════════════════════════════════════════════════
+${tema ? `TEMA DEL LOTE: ${tema}\n` : ""}Son ${posts.length}, ya aprobadas. Tu trabajo es traducirlas a piezas, no
+cambiarles la idea. Si una ya trae descripción aprobada, respétala salvo
+que incumpla la cuenta de hashtags.
+
+${listaPosts}
+
+Devuelve ahora una ficha por cada una, en este mismo orden y con el formato
+exacto de arriba, empezando por <<<PIEZA:1>>>. Sin texto antes ni después.`;
+
   // El presupuesto es para ESCRIBIR. Mientras el modelo venía pensando por
   // su cuenta —Sonnet 5 lo hace si no se le dice lo contrario—, este número
   // se repartía entre el razonamiento y el texto, y subirlo sólo compraba
@@ -829,9 +865,15 @@ dato.` : ""}`;
   // servidor, 3 000 por pieza es margen de sobra incluso con guion largo.
   const maxTokens = Math.min(3000 * posts.length + 1000, MAX_TOKENS_SERVIDOR);
 
-  const { texto, cortada, diagnostico } = await callAI([cachedBlock(promptText)], {
-    maxTokens, tier: "calidad", tolerarCorte: true,
-  });
+  const { texto, cortada, diagnostico } = await callAI(
+    [cachedBlock(estable), bloque(variable)],
+    { maxTokens, tier: "calidad", tolerarCorte: true },
+  );
+
+  // Los tokens reales de esta tanda suben a quien llama. `enTandas` pasa
+  // las opciones tal cual, así que el diálogo se entera de las seis sin que
+  // el troceador tenga que saber nada de esto.
+  if (diagnostico) alMedir?.(diagnostico);
 
   const piezas = parsePiezas(texto);
   if (!piezas.length) {
