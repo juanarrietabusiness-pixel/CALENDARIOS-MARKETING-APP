@@ -411,25 +411,6 @@ No inventes datos que no esten en el contenido.`;
   return JSON.parse(jsonMatch[0]);
 }
 
-export async function checkImageGenConfigured() {
-  try {
-    const data = await invokeFunction("image-gen", { prompt: "__ping__" });
-    if (data?.error === "not_configured") return false;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export async function generateImage(prompt, format = "post") {
-  const data = await invokeFunction("image-gen", { prompt, format });
-  if (data?.error === "not_configured") {
-    throw new Error("NOT_CONFIGURED");
-  }
-  if (data?.error) throw new Error(data.error);
-  return data?.imageUrl ?? "";
-}
-
 /**
  * El contexto que ve el modelo antes de escribir nada.
  *

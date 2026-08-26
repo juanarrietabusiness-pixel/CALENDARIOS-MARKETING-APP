@@ -1,10 +1,11 @@
 import { useEffect, useId, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid, fmtDate, compressImage, parseVideoURL } from "../utils";
-import { callAI, loadADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost, generateImagePrompt, generateImage, checkImageGenConfigured } from "../api";
+import { callAI, loadADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost, generateImagePrompt } from "../api";
 import { buildExportHTML } from "../export";
 import { shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals } from "../lib/db";
 import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO } from "../lib/exportarContenido";
+import { completitud, resumenCompletitud } from "../lib/completitud";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import MetaPromptModal from "./MetaPromptModal";
 import Icon from "./Icon";
@@ -503,45 +504,7 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onS
                 Quitar
               </button>
             )}
-            {form.imagePrompt && (
-              <button
-                className="btn btn-secondary btn-sm"
-                disabled={fieldLoading.imageGen}
-                onClick={async () => {
-                  setFieldError("");
-                  setFieldLoading((p) => ({ ...p, imageGen: true }));
-                  try {
-                    const url = await generateImage(form.imagePrompt, form.format);
-                    sf("generatedImageUrl", url);
-                  } catch (e) {
-                    if (e.message === "NOT_CONFIGURED") {
-                      setFieldError("La generación de imágenes no está configurada. Pide al administrador que añada IMAGE_GEN_API_KEY en Supabase.");
-                    } else {
-                      setFieldError(`No se pudo generar la imagen: ${e.message}`);
-                    }
-                  }
-                  setFieldLoading((p) => ({ ...p, imageGen: false }));
-                }}
-                aria-label="Generar imagen con IA"
-              >
-                {fieldLoading.imageGen ? "Generando…" : <><Icon name="image" size={14} /> Generar imagen</>}
-              </button>
-            )}
           </div>
-          {form.generatedImageUrl && (
-            <div style={{ marginTop: "var(--sp-2)" }}>
-              <p style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)", marginBottom: "var(--sp-1)" }}>Imagen generada:</p>
-              <img src={form.generatedImageUrl} alt="Imagen generada por IA" style={{ width: "100%", maxWidth: 300, borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }} />
-              <div style={{ display: "flex", gap: "var(--sp-2)", marginTop: "var(--sp-1)" }}>
-                <button className="btn btn-primary btn-sm" style={{ fontSize: "var(--fs-3xs)" }} onClick={() => { sf("image", form.generatedImageUrl); sf("generatedImageUrl", null); }}>
-                  Usar como imagen del post
-                </button>
-                <button className="btn btn-ghost btn-sm" style={{ fontSize: "var(--fs-3xs)", color: "var(--danger)" }} onClick={() => sf("generatedImageUrl", null)}>
-                  Descartar
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="field">
@@ -1336,13 +1299,19 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
               const hue = cat ? categoryHue(cat) : 0;
               const briefIdea = (post.title || post.idea || "").split(/[.\n]/)[0].slice(0, 24);
               const chipLabel = cat || f.label;
+              // Cuánto le falta a esta publicación. Va en la barra de abajo
+              // y, en palabras, en el nombre accesible y en el `title`: un
+              // color no se lee con lector de pantalla.
+              const avance = completitud(post, dd);
+              const resumen = resumenCompletitud(post, dd);
               return (
                 <button
                   key={post.id}
                   type="button"
                   draggable
+                  title={resumen}
                   className={`cal-post${isPublished ? " is-published" : ""}${cat ? " has-cat" : ""}`}
-                  aria-label={`${f.label}${cat ? ` — ${cat}` : ""}${briefIdea ? `: ${briefIdea}` : ""} — ${st.label}${post.publishTime ? `, ${fmt12h(post.publishTime)}` : ""}`}
+                  aria-label={`${f.label}${cat ? ` — ${cat}` : ""}${briefIdea ? `: ${briefIdea}` : ""} — ${st.label}${post.publishTime ? `, ${fmt12h(post.publishTime)}` : ""}. ${resumen}`}
                   onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", JSON.stringify({ postId: post.id, sourceDate: date })); setDrag({ postId: post.id, sourceDate: date }); }}
                   onDragEnd={() => { setDrag(null); setDropTarget(null); }}
                   onClick={() => onPostClick(post, dd)}
@@ -1362,6 +1331,15 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
                   <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={13} />
                   <span className="cal-post-label" aria-hidden="true">{chipLabel}</span>
                   {post.publishTime && <span className="cal-post-time" aria-hidden="true">{fmt12h(post.publishTime)}</span>}
+                  {/* La pista se dibuja siempre, aunque esté a cero: si sólo
+                      apareciera al haber algo escrito, un chip sin barra se
+                      leería como «este formato no la lleva». */}
+                  <span className="cal-post-avance" aria-hidden="true">
+                    <span
+                      className={`cal-post-avance-fill${avance.porcentaje === 100 ? " is-full" : ""}`}
+                      style={{ width: `${avance.porcentaje}%` }}
+                    />
+                  </span>
                 </button>
               );
             })}
@@ -2239,57 +2217,6 @@ export default function CalendarView({
     URL.revokeObjectURL(url);
   };
 
-  const [imageGenAvailable, setImageGenAvailable] = useState(null);
-  const [batchImageGen, setBatchImageGen] = useState(false);
-  const [batchImageProgress, setBatchImageProgress] = useState("");
-
-  useEffect(() => {
-    checkImageGenConfigured().then(setImageGenAvailable);
-  }, []);
-
-  const generateBatchImages = async () => {
-    const postsWithPrompts = [];
-    for (const day of cal.days || []) {
-      for (const post of day.posts || []) {
-        if (post.imagePrompt && !post.generatedImageUrl) {
-          postsWithPrompts.push({ post, day });
-        }
-      }
-    }
-    if (postsWithPrompts.length === 0) {
-      setGenStatus("No hay prompts sin imagen generada.");
-      setTimeout(() => setGenStatus(""), 3000);
-      return;
-    }
-
-    setBatchImageGen(true);
-    let newDays = [...(cal.days || [])];
-    let done = 0;
-    for (const { post } of postsWithPrompts) {
-      done++;
-      setBatchImageProgress(`Generando imagen ${done}/${postsWithPrompts.length}…`);
-      try {
-        const url = await generateImage(post.imagePrompt, post.format);
-        newDays = newDays.map((d) => ({
-          ...d,
-          posts: (d.posts || []).map((p) =>
-            p.id === post.id ? { ...p, generatedImageUrl: url } : p
-          ),
-        }));
-      } catch (e) {
-        if (e.message === "NOT_CONFIGURED") {
-          setBatchImageProgress("La generación de imágenes no está configurada.");
-          setTimeout(() => { setBatchImageGen(false); setBatchImageProgress(""); }, 3000);
-          return;
-        }
-        addDebug(`WARN: no se pudo generar imagen para ${post.id}: ${e.message}`);
-      }
-    }
-    onUpdateCal(calId, { ...cal, days: newDays });
-    setBatchImageProgress(`Listo! ${done} imágenes procesadas`);
-    setTimeout(() => { setBatchImageGen(false); setBatchImageProgress(""); }, 2000);
-  };
-
   const exportPDF = () => {
     const s = document.createElement("style");
     s.id = "print-style";
@@ -2465,7 +2392,6 @@ export default function CalendarView({
             { icon: "file", label: "Imprimir o guardar en PDF", onClick: exportPDF },
             { icon: "copy", label: "Exportar ideas y descripciones", onClick: () => setPromptExportOpen(true) },
             { icon: "sparkles", label: "Prompt maestro para Meta AI", onClick: () => setMetaPromptOpen(true) },
-            imageGenAvailable ? { icon: "image", label: batchImageGen ? batchImageProgress : "Generar imágenes en lote", onClick: generateBatchImages, disabled: batchImageGen } : null,
             { sep: true },
             { icon: "terminal", label: debugOpen ? "Ocultar diagnóstico" : "Ver diagnóstico", onClick: () => setDebugOpen((d) => !d) },
             { icon: "trash", label: "Eliminar calendario", danger: true, onClick: () => {
