@@ -57,13 +57,19 @@ async function invokeFunction(name, body) {
  * la función del servidor, que además no tiene el límite de tiempo del
  * navegador cerrando la pestaña a medias.
  */
-export async function callAI(content, { maxTokens, tier } = {}) {
+export async function callAI(content, { maxTokens, tier, tolerarCorte = false } = {}) {
   const data = await invokeFunction("ai", { content, maxTokens, tier });
+
   // El servidor avisa si el modelo se quedó sin tokens a media respuesta.
-  // Sin esto, un prompt maestro cortado a media pieza llega a Meta AI
-  // como si estuviera entero.
-  if (data?.truncated) {
+  // Sin esto, un texto cortado a la mitad se trataría como completo.
+  //
+  // `tolerarCorte` es para quien sabe rescatar lo que sí llegó: en un lote
+  // de piezas, que la última quede a medias no invalida las anteriores.
+  if (data?.truncated && !tolerarCorte) {
     throw new Error("La respuesta se cortó por longitud. Prueba con menos piezas por tanda.");
+  }
+  if (tolerarCorte) {
+    return { texto: data?.text ?? "", cortada: Boolean(data?.truncated), segundos: data?.segundos };
   }
   return data?.text ?? "";
 }
@@ -802,17 +808,34 @@ diapositiva lleva el titular más corto y más grande, porque es la única que s
 ve en el feed sin deslizar; la última cierra o pide algo, no se muere en un
 dato.` : ""}`;
 
-  // Proporcional a la tanda, no un tope fijo: 24 000 tokens para cuatro
-  // piezas de unos 250 no acota nada y le quita al modelo toda presión para
-  // terminar. 1200 por pieza va holgado incluso con guion.
-  const maxTokens = Math.min(1200 * posts.length + 1000, 16000);
-  const raw = await callAI([cachedBlock(promptText)], { maxTokens, tier: "calidad" });
-  const piezas = parsePiezas(raw);
+  // El presupuesto sale de lo MEDIDO en los registros de la API, no de una
+  // estimación: un lote de doce piezas consumió 24 000 tokens de salida, o
+  // sea 2 000 por pieza. Con 1 200 se cortaba siempre. 3 000 deja margen
+  // real incluso para una pieza con guion largo.
+  const maxTokens = Math.min(3000 * posts.length + 1000, MAX_TOKENS_SERVIDOR);
+
+  const { texto, cortada } = await callAI([cachedBlock(promptText)], {
+    maxTokens, tier: "calidad", tolerarCorte: true,
+  });
+
+  const piezas = parsePiezas(texto);
   if (!piezas.length) {
-    throw new Error("La IA no devolvió ninguna pieza reconocible. Inténtalo de nuevo.");
+    throw new Error(
+      cortada
+        ? "La respuesta se cortó antes de completar ninguna pieza. Prueba con menos publicaciones."
+        : "La IA no devolvió ninguna pieza reconocible. Inténtalo de nuevo."
+    );
   }
+
+  // Si se cortó, la última pieza viene a medias: se descarta y quien llama
+  // vuelve a pedirla. Tirar las tres por culpa de la última era perder dos
+  // que estaban bien, y volver a pagarlas.
+  if (cortada && piezas.length > 1) piezas.pop();
   return piezas;
 }
+
+/** El tope que acepta la función del servidor. Más alto, lo recorta ella. */
+const MAX_TOKENS_SERVIDOR = 32000;
 
 /** Genera las piezas del lote en tandas, para no pasarse del límite. */
 export function generateMetaPiecesEnTandas(opciones, alProgresar) {
