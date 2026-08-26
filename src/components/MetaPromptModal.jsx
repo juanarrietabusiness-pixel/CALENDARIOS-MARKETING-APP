@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
-import { loadADN, cargarReceta, generateMetaPieces } from "../api";
+import { loadADN, cargarReceta, generateMetaPieces, despliegueDesfasado } from "../api";
 import { buildMetaMasterPrompt, faltantesDeReceta, faltantesCriticos, avisosDeComposicion, MODOS_META } from "../metaPrompt";
 import { MONTHS } from "../constants";
 
@@ -16,6 +16,7 @@ import { MONTHS } from "../constants";
 function construirDiag(adn, receta, origen, avisoJson) {
   return {
     origen,
+    version: adn?.version ?? 0,
     avisoJson: avisoJson || "",
     totalChars: adn?.totalChars ?? 0,
     truncado: Boolean(adn?.truncated),
@@ -126,7 +127,17 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
     setDiag(construirDiag(fresco, r, origen, avisoJson));
     setEstado("");
 
-    if (avisoJson) {
+    if (despliegueDesfasado(fresco)) {
+      // Se dice antes que nada: mientras esto pase, todo lo demás que
+      // muestre esta pantalla es consecuencia de ello y no de los datos.
+      setAviso(
+        "La función github-adn desplegada en Supabase es una versión anterior: " +
+        "está recortando el ADN y no lee el 05_receta.json, así que la receta se " +
+        "está deduciendo con IA. Haz `git pull` en tu clon y vuelve a ejecutar " +
+        "`npx supabase functions deploy github-adn`. Hasta entonces, los datos " +
+        "que falten aquí abajo son de eso, no del repositorio."
+      );
+    } else if (avisoJson) {
       setAviso(`El 05_receta.json de ${client.name} no se pudo leer (${avisoJson}), así que se compiló con IA. Revisa ese archivo.`);
     } else if (fresco.truncated) {
       setAviso("El ADN es más largo que el presupuesto de lectura y se recortó por lo menos prioritario. La receta y las guías de marca sí entraron completas.");
@@ -425,7 +436,11 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
                     {diag.origen === "json" ? "05_receta.json — sin IA" : "prosa, compilada con IA"}
                   </strong>
                 </div>
-                <div>ADN leído: {diag.totalChars.toLocaleString("es-PA")} caracteres{diag.truncado ? " · SE RECORTÓ ALGO" : ""}</div>
+                <div>
+                  Función github-adn: v{diag.version}
+                  {diag.version < 2 && <strong style={{ color: "var(--accent-alt, #F5A623)" }}> · DESFASADA, hace falta v2</strong>}
+                </div>
+                <div>ADN leído: {(diag.totalChars || 0).toLocaleString("es-PA")} caracteres{diag.truncado ? " · SE RECORTÓ ALGO" : ""}</div>
                 <div style={{ marginTop: "var(--sp-1)" }}>Archivos:</div>
                 <ul style={{ paddingLeft: "var(--sp-3)" }}>
                   {diag.archivos.map((a) => (
