@@ -119,6 +119,16 @@ ${postsList}`;
  * cliente guardaba el suyo en el navegador y acababa dentro del JSON de
  * «Exportar».
  */
+/**
+ * Versión mínima del contrato de `github-adn` que esta aplicación necesita.
+ *
+ * Sin ella la función devuelve el ADN recortado a 3000 caracteres por
+ * archivo y sin el 05_receta.json, así que la receta se deduce con IA y
+ * vuelven a faltar campos. Es un fallo que se ve igual que «el repositorio
+ * está mal», y no lo es: es un despliegue que no entró.
+ */
+export const VERSION_ADN_REQUERIDA = 2;
+
 export async function fetchGitHubADN(repoUrl, folder = "") {
   if (!parseGitHubUrl(repoUrl)) {
     return { content: "", files: [], subfolders: [] };
@@ -400,6 +410,11 @@ ${calendar?.campaign ? `CAMPAÑA DEL MES: ${calendar.campaign}` : ""}`;
  * volvía a mirar el repositorio nunca. `forzar` es lo que permite
  * releerlo cuando el repositorio ha cambiado.
  */
+/** Falta el despliegue de la función, y se dice con esas palabras. */
+export function despliegueDesfasado(adn) {
+  return (adn?.version ?? 0) < VERSION_ADN_REQUERIDA;
+}
+
 export async function loadADN(client, { forzar = false } = {}) {
   if (!forzar && client.githubContext) {
     return { content: client.githubContext, sections: {}, cacheado: true };

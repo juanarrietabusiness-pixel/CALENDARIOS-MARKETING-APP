@@ -40,6 +40,12 @@ const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
 
 // Presupuesto global. 200 000 caracteres son unos 50 000 tokens: cabe de
 // sobra en la ventana de Claude y, con la caché de prompt, se paga una vez.
+// Versión del contrato de respuesta. Sube cuando cambie lo que devuelve
+// esta función, para que la aplicación pueda decir «estás corriendo una
+// versión vieja» en una línea, en vez de que alguien tenga que deducirlo de
+// tres campos vacíos en un diagnóstico. Pasó, y costó una tarde.
+const VERSION = 2;
+
 const MAX_TOTAL_CHARS = 200_000;
 // Un archivo de más de 400 kB no es ADN, es un volcado. Se descarta.
 const MAX_FILE_BYTES = 400_000;
@@ -278,6 +284,7 @@ Deno.serve(async (req) => {
   // Nunca se devuelve `download_url`: lleva parámetros de acceso cuando
   // el repositorio es privado.
   return json({
+    version: VERSION,
     content,
     sections,
     files,
