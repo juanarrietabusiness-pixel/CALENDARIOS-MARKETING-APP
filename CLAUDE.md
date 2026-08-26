@@ -45,6 +45,7 @@ src/
     db.js                 CRUD, enlace de aprobación y suscripción a Realtime
     migrateLocal.js       Sube a la nube lo que quedara en el navegador
     exportarContenido.js  Texto de «Exportar ideas y descripciones» (puro)
+    completitud.js        Cuánto le falta a una publicación (puro)
   components/
     Icon.jsx              Set de iconos SVG monocromos (rejilla 24, trazo 1.75)
     ClientModal.jsx       Alta y edición de cliente (5 pestañas)
@@ -237,6 +238,12 @@ una clave ha vuelto al front: esas llamadas son del servidor.
   `yaEscrito` antes de reescribir el calendario ellos mismos: sin esa
   guarda, el guardado del desmonte llega con el calendario de antes y
   deshace lo que acaban de hacer.
+- **El chip del mes reserva sitio para la barra de completado.** `.cal-post`
+  lleva `position: relative` y 6px de padding inferior, y la barra va
+  absoluta pegada al borde de abajo. La regla de móvil vuelve a declarar el
+  padding: si se resetea a `3px 2px`, la barra se come el texto. La pista es
+  un blanco translúcido y no un token de color porque el fondo del chip es
+  un HSL calculado a partir de la categoría.
 - **Rellenar no es reescribir.** «Generar guiones» sólo escribe donde no
   hay nada: lo que ya tiene texto gana sobre lo que devuelve el modelo.
   Y lo que le falta a una publicación depende de su formato —un post sólo

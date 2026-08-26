@@ -963,8 +963,9 @@ input[type="radio"] {
 }
 
 .cal-post {
+  position: relative;
   border-radius: var(--radius-xs);
-  padding: 3px var(--sp-1);
+  padding: 3px var(--sp-1) 6px;
   margin-bottom: 2px;
   cursor: grab;
   font-size: var(--fs-3xs);
@@ -981,6 +982,31 @@ input[type="radio"] {
   border: 1px solid;
 }
 .cal-post-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+/* Barra de contenido completado.
+   Va pegada al borde de abajo del chip, dentro de su `overflow: hidden`,
+   así que no necesita redondear sus esquinas: las recorta el padre. El
+   chip reserva 4px de padding inferior para no escribir encima. */
+.cal-post-avance {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  /* Un blanco translúcido y no un token: el fondo del chip es un HSL
+     calculado a partir de la categoría, y un color fijo se pierde contra
+     la mitad de ellos. En negro desaparecía sobre los formatos oscuros, y
+     un chip sin barra visible se lee como «aquí no se mide», no como
+     «aquí no hay nada escrito», que es justo lo contrario. */
+  background: rgba(255, 255, 255, .16);
+}
+.cal-post-avance-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent-alt);
+  transition: width .2s ease;
+}
+.cal-post-avance-fill.is-full { background: var(--success); }
 .cal-post-label { overflow: hidden; text-overflow: ellipsis; }
 .cal-post-time { margin-left: auto; font-size: var(--fs-3xs); opacity: .85; }
 .cal-post.has-cat .cal-post-label { font-weight: 600; }
@@ -1076,7 +1102,8 @@ input[type="radio"] {
   .cal-grid { gap: 2px; }
   .cal-cell { min-height: 72px; padding: 2px; }
   .cal-post-label { display: none; }
-  .cal-post { justify-content: center; gap: 2px; padding: 3px 2px; }
+  /* El padding inferior se mantiene: debajo va la barra de completado. */
+  .cal-post { justify-content: center; gap: 2px; padding: 3px 2px 6px; }
   .cal-post-time { display: none; }
   .cal-header-idea { display: none; }
   .cal-header-label { display: none; }

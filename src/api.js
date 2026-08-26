@@ -336,62 +336,6 @@ Responde SOLO con la descripcion/caption completa incluyendo los hashtags, sin p
   return await callAI(content);
 }
 
-export async function generateImagePrompt(client, post, day, calendar) {
-  const adnExtra = (await loadADN(client)).content;
-  const ctx = buildClientContext(client, calendar, adnExtra);
-
-  const formatInstructions = {
-    post: `Genera un prompt detallado para generar UNA imagen estática para un post de Instagram.
-Describe la composición visual, colores, estilo fotográfico o de ilustración, elementos principales,
-iluminación, encuadre y texto overlay si lo hay.`,
-    carrusel: `Genera un prompt para un set coherente de imágenes de carrusel de Instagram.
-Describe el estilo visual unificado, la composición de cada slide (portada, slides intermedios, CTA final),
-paleta de colores consistente, tipografía y elementos gráficos que conecten las slides.`,
-    reel: `Genera un prompt para un video corto (reel) de Instagram.
-Describe el concepto visual escena por escena: tipo de tomas, transiciones, ritmo,
-estilo de edición, texto en pantalla, estilo de color grading y música sugerida.`,
-    historia: `Genera un prompt para una imagen o visual de historia de Instagram.
-Describe la composición vertical (9:16), elementos visuales, texto overlay,
-stickers o elementos interactivos sugeridos, y estilo visual.`,
-    live: `Genera un prompt para la imagen de portada/anuncio de un live de Instagram.
-Describe la composición visual que transmita urgencia y exclusividad,
-incluye elementos como hora, tema y speakers si aplica.`,
-  };
-
-  const promptText = `${ctx}
-
-CAMPAÑA: ${calendar?.campaign || "N/A"}
-SEMANA: ${day.concept || "N/A"}
-CATEGORÍA: ${day.category || post.category || "N/A"}
-FORMATO: ${post.format}
-FECHA: ${day.date} (${day.dayName || ""})
-IDEA: ${post.idea || "N/A"}
-${post.guion ? `GUION: ${post.guion}` : ""}
-${post.descripcion ? `DESCRIPCION: ${post.descripcion}` : ""}
-
-${formatInstructions[post.format] || formatInstructions.post}
-
-REGLAS:
-- El prompt debe estar en español.
-- Respeta los colores de marca del cliente si los conoces del contexto.
-- Sé específico con estilos visuales: fotografía, ilustración, 3D, flat design, etc.
-- Incluye dimensiones recomendadas (1080x1080 para post, 1080x1920 para reel/historia).
-- No incluyas preámbulos ni explicaciones, solo el prompt visual listo para usar.
-- El prompt debe ser autocontenido: quien lo lea debe poder generar la imagen sin contexto adicional.`;
-
-  // El presupuesto va por encima del que se pide por defecto: un prompt de
-  // carrusel describe portada, slides y cierre, y con 2048 tokens la
-  // respuesta volvía cortada —y `callAI` la rechaza entera, no a medias—.
-  const texto = await callAI([{ type: "text", text: promptText }], { maxTokens: 4000 });
-
-  // Una respuesta vacía se escribía encima del campo y borraba el prompt
-  // anterior sin decir nada. Ahora se dice.
-  if (!texto.trim()) {
-    throw new Error("El modelo devolvió una respuesta vacía. Inténtalo otra vez.");
-  }
-  return texto;
-}
-
 export async function extractClientADN(repoContent) {
   const promptText = `Analiza el siguiente contenido de un repositorio de GitHub de un cliente y extrae la informacion para llenar su perfil de agencia de marketing.
 
@@ -409,25 +353,6 @@ No inventes datos que no esten en el contenido.`;
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("No se pudo parsear la respuesta de IA");
   return JSON.parse(jsonMatch[0]);
-}
-
-export async function checkImageGenConfigured() {
-  try {
-    const data = await invokeFunction("image-gen", { prompt: "__ping__" });
-    if (data?.error === "not_configured") return false;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export async function generateImage(prompt, format = "post") {
-  const data = await invokeFunction("image-gen", { prompt, format });
-  if (data?.error === "not_configured") {
-    throw new Error("NOT_CONFIGURED");
-  }
-  if (data?.error) throw new Error(data.error);
-  return data?.imageUrl ?? "";
 }
 
 /**
