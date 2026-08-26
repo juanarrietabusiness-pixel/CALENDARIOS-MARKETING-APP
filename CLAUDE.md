@@ -44,6 +44,7 @@ src/
     auth.js               Sesión, inicio y cierre
     db.js                 CRUD, enlace de aprobación y suscripción a Realtime
     migrateLocal.js       Sube a la nube lo que quedara en el navegador
+    exportarContenido.js  Texto de «Exportar ideas y descripciones» (puro)
   components/
     Icon.jsx              Set de iconos SVG monocromos (rejilla 24, trazo 1.75)
     ClientModal.jsx       Alta y edición de cliente (5 pestañas)
@@ -218,6 +219,29 @@ una clave ha vuelto al front: esas llamadas son del servidor.
   que deducir a qué se fue el presupuesto.
 - El asistente y los modales se anidan dentro de `.overlay`; el scroll del
   fondo lo bloquea `useDialogA11y`, no hace falta añadir nada.
+- **La carpeta del ADN se guarda escapada.** GitHub escribe los espacios
+  como `%20` en la barra de direcciones, así que la ficha de un cliente
+  acaba con `Baby%20Caleb/01_ADN_y_Memoria`. Las rutas del árbol que
+  devuelve la API vienen SIN escapar: la carpeta no coincidía con ninguna,
+  la lectura volvía vacía y el cliente parecía desconectado —sólo los
+  clientes con un espacio en el nombre, que es lo que lo hacía invisible—.
+  Lo deshace `decodeRutaGitHub()` en `lib/parse.js`, y la función lo
+  decodifica otra vez por su cuenta para las fichas viejas. Además, una
+  carpeta que no existe en el árbol ahora devuelve 404 con el nombre, en
+  vez de 200 con todo vacío.
+- **El panel lateral guarda al desmontar, no al pulsar cerrar.** El fondo
+  oscuro y la tecla Escape llaman a `onClose` a secas: con el guardado
+  colgado sólo del botón, todo lo editado —y todo lo que acababa de
+  generar la IA— se perdía sin decir nada. Los tres botones que sacan la
+  publicación de su sitio (borrar, mover, banco de ideas) levantan
+  `yaEscrito` antes de reescribir el calendario ellos mismos: sin esa
+  guarda, el guardado del desmonte llega con el calendario de antes y
+  deshace lo que acaban de hacer.
+- **Rellenar no es reescribir.** «Generar guiones» sólo escribe donde no
+  hay nada: lo que ya tiene texto gana sobre lo que devuelve el modelo.
+  Y lo que le falta a una publicación depende de su formato —un post sólo
+  lleva caption; un reel, además, guion—, así que un reel que llega del
+  asistente con la descripción escrita sigue entrando a por su guion.
 
 ## Documentos relacionados
 

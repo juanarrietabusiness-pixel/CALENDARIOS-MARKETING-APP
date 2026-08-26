@@ -139,6 +139,68 @@ ${postsList}`;
 }
 
 /**
+ * Prompt para escribir SÓLO las descripciones de un lote de publicaciones.
+ *
+ * El asistente de creación tiene dos pasos separados a propósito: primero
+ * se acuerdan las ideas y se revisan, y sólo después se escriben los
+ * captions. Pedir guion y descripción a la vez —que es lo que hace
+ * `buildScriptPrompt`— gasta el doble de presupuesto para tirar la mitad,
+ * y en un mes entero eso es la diferencia entre una tanda y tres.
+ *
+ * El contrato de salida es el mismo `<<<PUBLICACION_ID:…>>>` de siempre,
+ * para poder leerlo con `parseAIResponse` sin un segundo parser.
+ */
+export function buildDescripcionesPrompt(client, calendar, posts, adnExtra = "") {
+  const ctx = buildClientContext(client, calendar, adnExtra);
+
+  const reglas = {
+    post: "Caption de post estático: gancho en la primera línea, cuerpo breve, CTA y hashtags al final.",
+    reel: "Caption de reel: gancho corto que invite a ver el vídeo, CTA y hashtags al final.",
+    carrusel: "Caption de carrusel: promete lo que se aprende deslizando, CTA y hashtags al final.",
+    historia: "Texto para la historia: dos líneas como mucho, directo, con hashtags al final.",
+    live: "Caption de anuncio del live: día, hora y motivo para conectarse, con hashtags al final.",
+  };
+
+  const lista = posts.map((p) => `<<<PUBLICACION_ID:${p.id}>>>
+FORMATO: ${p.format}
+CATEGORIA: ${p.category || "N/A"}
+DIA: ${p._date} (${p._dayName || ""})
+SEMANA: ${p._weekNumber || ""} — ${p._concept || "libre"}
+IDEA: ${p.idea}
+REGLA: ${reglas[p.format] || reglas.post}`).join("\n\n");
+
+  return `${ctx}
+
+ESTILO DE GUIONES: ${client.estiloGuion || "Cercano, persuasivo, con emojis y CTA"}
+WHATSAPP: ${client.whatsapp || "N/A"}
+HASHTAGS BASE: ${client.hashtags || "#Panama"}
+CAMPAÑA: ${calendar?.campaign || "N/A"}
+${calendar?.offers ? `OFERTAS Y DESCUENTOS DEL MES: ${calendar.offers}` : ""}
+${calendar?.promoCode ? `CÓDIGO PROMOCIONAL: ${calendar.promoCode}` : ""}
+
+---
+
+INSTRUCCIONES:
+Escribe la DESCRIPCION (el caption que se publica) de CADA publicación de
+la lista, partiendo de su idea. No escribas guion, ni títulos, ni notas de
+producción: sólo el caption.
+
+Cada caption lleva emojis con medida, una llamada a la acción hacia
+WhatsApp (${client.whatsapp || "N/A"}) y los hashtags al final del propio
+texto. No uses un campo de hashtags aparte.
+
+FORMATO DE RESPUESTA OBLIGATORIO, sin nada más:
+<<<PUBLICACION_ID:id_de_la_publicacion>>>
+DESCRIPCION:
+(caption completo, con los hashtags al final)
+
+---
+
+PUBLICACIONES:
+${lista}`;
+}
+
+/**
  * Lee el ADN de marca del repositorio del cliente.
  *
  * Ya no recibe token: el de GitHub es uno solo del servidor. Antes cada
@@ -148,12 +210,19 @@ ${postsList}`;
 /**
  * Versión mínima del contrato de `github-adn` que esta aplicación necesita.
  *
- * Sin ella la función devuelve el ADN recortado a 3000 caracteres por
- * archivo y sin el 05_receta.json, así que la receta se deduce con IA y
- * vuelven a faltar campos. Es un fallo que se ve igual que «el repositorio
- * está mal», y no lo es: es un despliegue que no entró.
+ * v2 trajo la lectura completa del repositorio: sin ella la función
+ * recorta cada archivo a 3000 caracteres y no lee el 05_receta.json, así
+ * que la receta se deduce con IA y vuelven a faltar campos.
+ *
+ * v3 decodifica la carpeta del cliente: sin ella, la carpeta de un cliente
+ * con un espacio en el nombre («Baby Caleb/…», guardada como
+ * «Baby%20Caleb/…») no coincide con ninguna ruta del repositorio y el ADN
+ * vuelve vacío.
+ *
+ * Los dos se ven igual que «el repositorio está mal», y no lo es: es un
+ * despliegue que no entró.
  */
-export const VERSION_ADN_REQUERIDA = 2;
+export const VERSION_ADN_REQUERIDA = 3;
 
 export async function fetchGitHubADN(repoUrl, folder = "") {
   if (!parseGitHubUrl(repoUrl)) {
@@ -310,7 +379,17 @@ REGLAS:
 - No incluyas preámbulos ni explicaciones, solo el prompt visual listo para usar.
 - El prompt debe ser autocontenido: quien lo lea debe poder generar la imagen sin contexto adicional.`;
 
-  return await callAI([{ type: "text", text: promptText }]);
+  // El presupuesto va por encima del que se pide por defecto: un prompt de
+  // carrusel describe portada, slides y cierre, y con 2048 tokens la
+  // respuesta volvía cortada —y `callAI` la rechaza entera, no a medias—.
+  const texto = await callAI([{ type: "text", text: promptText }], { maxTokens: 4000 });
+
+  // Una respuesta vacía se escribía encima del campo y borraba el prompt
+  // anterior sin decir nada. Ahora se dice.
+  if (!texto.trim()) {
+    throw new Error("El modelo devolvió una respuesta vacía. Inténtalo otra vez.");
+  }
+  return texto;
 }
 
 export async function extractClientADN(repoContent) {

@@ -44,7 +44,7 @@ const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
 // esta función, para que la aplicación pueda decir «estás corriendo una
 // versión vieja» en una línea, en vez de que alguien tenga que deducirlo de
 // tres campos vacíos en un diagnóstico. Pasó, y costó una tarde.
-const VERSION = 2;
+const VERSION = 3;
 
 const MAX_TOTAL_CHARS = 200_000;
 // Un archivo de más de 400 kB no es ADN, es un volcado. Se descarta.
@@ -99,12 +99,38 @@ function json(data: unknown, status: number, headers: Record<string, string>) {
   return new Response(JSON.stringify(data), { status, headers });
 }
 
+/**
+ * Deshace el escapado de una ruta copiada de la barra del navegador.
+ *
+ * Las rutas del árbol que devuelve GitHub vienen SIN escapar, así que un
+ * `basePath` con `%20` no coincidía con ninguna y la carpeta del cliente
+ * salía vacía: ni archivos, ni subcarpetas, ni error. Sólo les pasaba a
+ * los clientes cuya carpeta lleva un espacio en el nombre.
+ */
+function decodeRuta(ruta: string) {
+  if (!ruta) return "";
+  return ruta
+    .split("/")
+    .map((seg) => {
+      try {
+        return decodeURIComponent(seg);
+      } catch {
+        return seg;
+      }
+    })
+    .join("/");
+}
+
 /** Mismo formato que la versión del navegador, para no cambiar las llamadas. */
 function parseGitHubUrl(url: string) {
   if (!url) return null;
   const tree = url.match(/github\.com\/([^/]+)\/([^/]+)\/tree\/[^/]+\/(.+)/);
   if (tree) {
-    return { owner: tree[1], repo: tree[2].replace(/\.git$/, ""), folder: tree[3].replace(/\/$/, "") };
+    return {
+      owner: tree[1],
+      repo: tree[2].replace(/\.git$/, ""),
+      folder: decodeRuta(tree[3].replace(/\/$/, "")),
+    };
   }
   const repo = url.match(/github\.com\/([^/]+)\/([^/]+)/);
   if (repo) {
@@ -179,7 +205,10 @@ Deno.serve(async (req) => {
   }
 
   const { owner, repo } = parsed;
-  const basePath = String(body?.folder ?? "") || parsed.folder || "";
+  // La carpeta puede llegar escapada desde la ficha del cliente: se guardó
+  // así durante meses. Se decodifica aquí también para que las fichas
+  // antiguas funcionen sin tener que reescribirlas una a una.
+  const basePath = decodeRuta(String(body?.folder ?? "")) || parsed.folder || "";
 
   const ghHeaders: Record<string, string> = { Accept: "application/vnd.github.v3+json" };
   if (GITHUB_TOKEN) ghHeaders.Authorization = `token ${GITHUB_TOKEN}`;
@@ -208,6 +237,16 @@ Deno.serve(async (req) => {
   }
 
   const inBase = (p: string) => !basePath || p === basePath || p.startsWith(`${basePath}/`);
+
+  // Una carpeta que no está en el árbol se dice con esas palabras. Antes
+  // se devolvía 200 con todo vacío, y la interfaz lo enseñaba como
+  // «conectado, sin archivos»: el fallo del `%20` vivió meses ahí dentro.
+  if (basePath && !tree.some((n) => inBase(n.path))) {
+    return json({
+      error: `La carpeta «${basePath}» no existe en ${owner}/${repo}. ` +
+        "Revisa la ruta en la ficha del cliente, pestaña GitHub.",
+    }, 404, headers);
+  }
 
   // ---- Subcarpetas directas: es lo que la interfaz ofrece para navegar ----
   const subfolders = tree

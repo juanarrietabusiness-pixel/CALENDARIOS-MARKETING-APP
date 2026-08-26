@@ -3,6 +3,7 @@ import {
   parseAIResponse,
   parseBloques,
   parseGitHubUrl,
+  decodeRutaGitHub,
   parseJSONLoose,
   parsePiezas,
   cachedBlock,
@@ -206,6 +207,27 @@ describe("parseGitHubUrl", () => {
   it("devuelve null si no es una URL de GitHub", () => {
     expect(parseGitHubUrl("https://gitlab.com/uno/dos")).toBeNull();
     expect(parseGitHubUrl("")).toBeNull();
+  });
+
+  // El fallo: Baby Caleb y Feria del Lente daban «este cliente no tiene ADN
+  // conectado» mientras D'CASA funcionaba. La diferencia era el espacio del
+  // nombre de la carpeta: GitHub lo escribe como %20 en la barra de
+  // direcciones, la ficha lo guardaba así, y las rutas del árbol de la API
+  // vienen sin escapar, de modo que la carpeta no coincidía con ninguna.
+  it("decodifica los espacios escapados de la carpeta", () => {
+    const u = "https://github.com/abrinay1997-stack/Agencia_Workspace/tree/main/Baby%20Caleb/01_ADN_y_Memoria";
+    expect(parseGitHubUrl(u).folder).toBe("Baby Caleb/01_ADN_y_Memoria");
+  });
+
+  it("deja igual una carpeta que ya viene legible", () => {
+    expect(decodeRutaGitHub("Feria del lente/01_ADN_y_Memoria"))
+      .toBe("Feria del lente/01_ADN_y_Memoria");
+  });
+
+  // Un `%` suelto no es escapado válido: decodeURIComponent lanza. Antes de
+  // partir por segmentos, eso tiraba la ruta entera.
+  it("no se rompe con un % que no es un escapado", () => {
+    expect(decodeRutaGitHub("Descuento 50%/adn")).toBe("Descuento 50%/adn");
   });
 });
 
