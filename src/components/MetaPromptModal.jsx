@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
-import { loadADN, cargarReceta, generateMetaPieces, despliegueDesfasado } from "../api";
+import { loadADN, cargarReceta, generateMetaPiecesEnTandas, despliegueDesfasado } from "../api";
 import { buildMetaMasterPrompt, faltantesDeReceta, faltantesCriticos, avisosDeComposicion, MODOS_META } from "../metaPrompt";
 import { MONTHS } from "../constants";
 
@@ -174,7 +174,7 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
 
       // ---- 3. Las piezas ----
       setEstado(`Escribiendo ${seleccion.length} piezas…`);
-      const piezas = await generateMetaPieces({
+      const piezas = await generateMetaPiecesEnTandas({
         client,
         calendar: cal,
         receta: datos.receta,
@@ -182,6 +182,12 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
         modo,
         tema,
         adnTexto: datos.adn.content,
+      }, (hechas, total) => {
+        // Un lote de doce va en tres tandas y tarda un par de minutos. Sin
+        // esto la pantalla se queda quieta y parece colgada.
+        setEstado(hechas < total
+          ? `Escribiendo piezas… ${hechas} de ${total}`
+          : "Componiendo la maquetación…");
       });
 
       // ---- 4. El ensamblado, sin IA ----
