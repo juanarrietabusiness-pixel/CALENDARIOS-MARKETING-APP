@@ -5,6 +5,8 @@ import {
   parseGitHubUrl,
   parseJSONLoose,
   parsePiezas,
+  cachedBlock,
+  bloque,
 } from "./parse";
 
 // ============================================================
@@ -250,5 +252,60 @@ describe("las instrucciones al redactor", () => {
     const texto = (await import("node:fs")).readFileSync("src/api.js", "utf8");
     expect(texto).toContain("Calendarios_Aprobados");
     expect(texto).toMatch(/no vuelve, ni con otras palabras/);
+  });
+});
+
+
+describe("fugas del modelo al final de una ficha", () => {
+  // Observado en producción: tras la última ficha el modelo añadió un
+  // comentario sobre lo que no había podido escribir. `parseBloques` lee
+  // hasta la siguiente etiqueta conocida, así que aquello se quedó dentro de
+  // HASHTAGS, viajó al prompt maestro y acabó rotulado como «EXTRA» en el
+  // documento que montó Meta AI.
+  const conComentario = `<<<PIEZA:1>>>
+FORMATO: post
+TITULAR:
+LAS ⟦3⟧
+ZAPATERAS
+BAJADA: Para que elijas la que te cabe
+DESCRIPCION:
+Un caption con su punto final.
+HASHTAGS: #Uno #Dos #Tres
+
+**Lo que falta y no inventé:** los precios exactos, que son el corazón
+de la pieza. Con esos datos del cliente gana mucho.`;
+
+  it("no deja que el comentario entre en los hashtags", () => {
+    const [pieza] = parsePiezas(conComentario);
+    expect(pieza.hashtags).toBe("#Uno #Dos #Tres");
+    expect(pieza.hashtags).not.toContain("inventé");
+  });
+
+  it("conserva enteros los campos que sí son multilínea", () => {
+    const [pieza] = parsePiezas(conComentario);
+    expect(pieza.titular).toEqual(["LAS ⟦3⟧", "ZAPATERAS"]);
+    expect(pieza.descripcion).toBe("Un caption con su punto final.");
+  });
+
+  it("recorta la NOTA a una línea, que es lo que se imprime", () => {
+    const [pieza] = parsePiezas(`<<<PIEZA:1>>>
+NOTA: Entrega en toda la ciudad
+y aquí el modelo siguió explicándose`);
+    expect(pieza.nota).toBe("Entrega en toda la ciudad");
+  });
+});
+
+describe("bloques para la caché", () => {
+  // La caché de Anthropic es por prefijo: `cache_control` marca dónde acaba
+  // el trozo reutilizable. Lo que cambie tiene que ir en un bloque aparte y
+  // SIN marca, o el prefijo deja de coincidir y no se reutiliza nada.
+  it("marca el bloque estable y deja limpio el variable", () => {
+    expect(cachedBlock("ADN")).toEqual({
+      type: "text", text: "ADN", cache_control: { type: "ephemeral" },
+    });
+    expect(bloque("las publicaciones de esta tanda")).toEqual({
+      type: "text", text: "las publicaciones de esta tanda",
+    });
+    expect(bloque("x")).not.toHaveProperty("cache_control");
   });
 });

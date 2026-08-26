@@ -15,6 +15,16 @@ npm run preview  # sirve dist/ para comprobar el build
 
 Antes de dar por terminado cualquier cambio: `npm run lint && npm run build`.
 
+**Ese `build` a secas NO verifica el panel.** Sin las `VITE_*`, Vite lo
+elimina entero y el bundle sale a 137 kB en vez de 500 kB: el build pasa sin
+haber compilado lo que acabas de tocar, y el hash del chunk ni siquiera
+cambia. Para comprobar de verdad:
+
+```bash
+VITE_SUPABASE_URL="https://ejemplo.supabase.co" \
+VITE_SUPABASE_ANON_KEY="verificacion-de-build" npm run build
+```
+
 ## Arquitectura
 
 Aplicación de una sola página en React 19 + Vite. Sin router: `App.jsx`
