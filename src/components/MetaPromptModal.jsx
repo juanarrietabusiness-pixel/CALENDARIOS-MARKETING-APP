@@ -169,8 +169,8 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
       // muestre esta pantalla es consecuencia de ello y no de los datos.
       setAviso(
         "La función github-adn desplegada en Supabase es una versión anterior: " +
-        "está recortando el ADN y no lee el 05_receta.json, así que la receta se " +
-        "está deduciendo con IA. Haz `git pull` en tu clon y vuelve a ejecutar " +
+        "recorta el ADN, no lee el 05_receta.json y no entiende las carpetas con " +
+        "espacios en el nombre. Haz `git pull` en tu clon y vuelve a ejecutar " +
         "`npx supabase functions deploy github-adn`. Hasta entonces, los datos " +
         "que falten aquí abajo son de eso, no del repositorio."
       );

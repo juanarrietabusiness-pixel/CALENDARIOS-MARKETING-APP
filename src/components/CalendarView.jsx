@@ -4,6 +4,7 @@ import { uid, fmtDate, compressImage, parseVideoURL } from "../utils";
 import { callAI, loadADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost, generateImagePrompt, generateImage, checkImageGenConfigured } from "../api";
 import { buildExportHTML } from "../export";
 import { shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals } from "../lib/db";
+import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO } from "../lib/exportarContenido";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import MetaPromptModal from "./MetaPromptModal";
 import Icon from "./Icon";
@@ -238,6 +239,35 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onS
   const isPost = form.format === "post";
 
   const save = () => onUpdate(day.date, form);
+
+  // ---- Por qué se guarda al desmontar ----
+  //
+  // Antes sólo guardaba el botón de cerrar. El fondo oscuro y la tecla
+  // Escape llamaban a `onClose` a secas, así que todo lo escrito en el
+  // panel —y todo lo que acababa de generar la IA— se perdía sin decir
+  // nada. Es lo que se veía como «el prompt visual no funciona»: se
+  // generaba bien, se pintaba en el campo, y desaparecía al cerrar. El
+  // exportador de prompts, después, no encontraba ninguno.
+  //
+  // Guardar al desmontar cubre las tres salidas a la vez. `updatePost`
+  // busca la publicación por id en todo el calendario, así que si se
+  // acaba de borrar no encuentra nada y no la resucita, y si se acaba de
+  // mover la actualiza ya en su fecha nueva.
+  const ultimo = useRef(form);
+  ultimo.current = form;
+  const guardarRef = useRef(onUpdate);
+  guardarRef.current = onUpdate;
+  const fechaRef = useRef(day.date);
+  fechaRef.current = day.date;
+  // Borrar, mover y mandar al banco reescriben el calendario ellos mismos y
+  // luego cierran. El guardado del desmonte llegaría con el calendario de
+  // antes de esa reescritura y la desharía: devolvería la publicación
+  // borrada a su día, o la traería de vuelta de la fecha nueva.
+  const yaEscrito = useRef(false);
+  useEffect(() => () => {
+    if (yaEscrito.current) return;
+    guardarRef.current?.(fechaRef.current, ultimo.current);
+  }, []);
 
   const generateField = async (field) => {
     setFieldError("");
@@ -575,7 +605,7 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onS
               <label className="label" htmlFor={`${ids}-move-date`}>Mover a fecha</label>
               <input id={`${ids}-move-date`} className="input" type="date" value={moveTarget} onChange={(e) => setMoveTarget(e.target.value)} />
             </div>
-            <button className="btn btn-primary btn-sm" disabled={!moveTarget || moveTarget === day.date} onClick={() => { save(); onMoveDate?.(post.id, day.date, moveTarget); onClose(); }}>
+            <button className="btn btn-primary btn-sm" disabled={!moveTarget || moveTarget === day.date} onClick={() => { save(); yaEscrito.current = true; onMoveDate?.(post.id, day.date, moveTarget); onClose(); }}>
               Mover
             </button>
             <button className="btn btn-ghost btn-sm" onClick={() => setMoveDateOpen(false)}>
@@ -584,10 +614,12 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onS
           </div>
         )}
         <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+          {/* Se guarda antes de preguntar: si se cancela el borrado, el
+              panel se cierra igual y lo editado no se pierde. */}
           <button
             className="btn btn-danger"
             aria-label="Eliminar publicación"
-            onClick={() => { if (onDelete) onDelete(day.date, post.id); onClose(); }}
+            onClick={() => { save(); yaEscrito.current = true; if (onDelete) onDelete(day.date, post.id); onClose(); }}
           >
             <Icon name="trash" size={18} />
           </button>
@@ -601,12 +633,125 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onS
           <button
             className="btn btn-secondary btn-sm"
             aria-label="Enviar al banco de ideas"
-            onClick={() => { save(); onSendToBank?.(form, day.date); onClose(); }}
+            onClick={() => { save(); yaEscrito.current = true; onSendToBank?.(form, day.date); onClose(); }}
           >
             <Icon name="bulb" size={16} />
           </button>
           <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { save(); onClose(); }}>
             Guardar cambios
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Diálogo de exportación del contenido del calendario.
+ *
+ * Enseña el texto antes de sacarlo, que es lo que faltaba: el exportador
+ * anterior descargaba un .txt a ciegas y había que abrirlo para descubrir
+ * que estaba casi vacío. Aquí se ve lo que hay, se dice qué quedó fuera y
+ * por qué, y se puede copiar sin pasar por un archivo.
+ */
+function ExportContenidoDialog({ exportacion, formatos, onToggleFormato, onCopiar, copiado, onDescargar, onClose }) {
+  const ids = useId();
+  const dialogRef = useDialogA11y(onClose);
+  const { texto, completas, incompletas } = exportacion;
+
+  return (
+    <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div
+        ref={dialogRef}
+        className="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={`${ids}-titulo`}
+        style={{ maxWidth: 720, width: "100%" }}
+      >
+        <h3 id={`${ids}-titulo`} style={{ fontSize: "var(--fs-base)", fontWeight: 700, marginBottom: "var(--sp-1)" }}>
+          <Icon name="copy" size={20} /> Exportar ideas y descripciones
+        </h3>
+        <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
+          Cada publicación sale completa: formato, fecha y hora, idea, descripción y hashtags.
+          Las que tengan algún campo sin escribir se quedan fuera.
+        </p>
+
+        <fieldset className="field" style={{ border: "none", padding: 0 }}>
+          <legend className="label">Formatos que entran</legend>
+          <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }}>
+            {Object.entries(FORMATS).map(([k, fmt]) => {
+              const activo = formatos.includes(k);
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  aria-pressed={activo}
+                  onClick={() => onToggleFormato(k)}
+                  style={{
+                    padding: "var(--sp-2) var(--sp-3)",
+                    borderRadius: "var(--radius-sm)",
+                    border: `1px solid ${activo ? fmt.color : "var(--border)"}`,
+                    cursor: "pointer",
+                    background: activo ? fmt.color + "33" : "var(--card-alt)",
+                    color: activo ? fmt.color : "var(--text-muted)",
+                    fontSize: "var(--fs-2xs)",
+                    fontWeight: 600,
+                    minHeight: "var(--tap-sm)",
+                  }}
+                >
+                  <Icon name={FORMAT_ICONS[k]} size={16} /> {fmt.label}
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+
+        <p role="status" style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", marginBottom: "var(--sp-2)" }}>
+          {completas} {completas === 1 ? "publicación completa" : "publicaciones completas"}
+          {incompletas.length > 0 && (
+            <>
+              {" · "}
+              <span style={{ color: "var(--accent-alt)" }}>
+                {incompletas.length} fuera por faltarles algo
+              </span>
+            </>
+          )}
+        </p>
+
+        {incompletas.length > 0 && (
+          <details style={{ marginBottom: "var(--sp-3)" }}>
+            <summary style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", cursor: "pointer", minHeight: "var(--tap-sm)" }}>
+              Ver qué le falta a cada una
+            </summary>
+            <ul style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", margin: "var(--sp-2) 0 0", paddingLeft: "var(--sp-4)", maxHeight: 140, overflowY: "auto" }}>
+              {incompletas.map(({ day, post, falta }) => (
+                <li key={post.id} style={{ marginBottom: 2 }}>
+                  {day.date} · {FORMATS[post.format]?.label || post.format} — falta {falta.join(", ")}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+
+        <div className="field">
+          <label className="label" htmlFor={`${ids}-texto`}>Texto que se exporta</label>
+          <textarea
+            id={`${ids}-texto`}
+            className="textarea"
+            readOnly
+            value={texto || "No hay ninguna publicación completa con los formatos elegidos."}
+            style={{ minHeight: 220, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "var(--fs-2xs)" }}
+          />
+        </div>
+
+        <div style={{ display: "flex", gap: "var(--sp-2)", justifyContent: "flex-end", flexWrap: "wrap" }}>
+          <button className="btn btn-ghost" onClick={onClose}>Cerrar</button>
+          <button className="btn btn-secondary" onClick={onDescargar} disabled={!texto}>
+            <Icon name="download" size={16} /> Descargar .txt
+          </button>
+          <button className="btn btn-primary" onClick={onCopiar} disabled={!texto}>
+            <Icon name="copy" size={16} /> {copiado ? "Copiado" : "Copiar"}
           </button>
         </div>
       </div>
@@ -1931,9 +2076,21 @@ export default function CalendarView({
       addDebug(`ADN ${adn.cacheado ? "cacheado" : "de GitHub"}: ${adnExtra.length} caracteres`);
 
       const days = cal.days || [];
+
+      // Qué le falta a cada publicación depende de su formato: un post
+      // sólo lleva caption, y un reel además guion. Antes bastaba tener
+      // uno de los dos para quedar fuera, así que un reel que llegara del
+      // asistente con la descripción escrita se quedaba sin guion para
+      // siempre y nadie lo veía hasta el día de grabarlo.
+      const leFalta = (p) => {
+        const tieneCaption = Boolean(p.descripcion || p.script);
+        if (p.format === "post") return !tieneCaption;
+        return !p.guion || !tieneCaption;
+      };
+
       const postsToGen = days.flatMap((d) =>
         (d.posts || [])
-          .filter((p) => !p.guion && !p.descripcion && !p.script)
+          .filter(leFalta)
           .map((p) => ({
             ...p,
             _date: d.date,
@@ -1994,12 +2151,16 @@ export default function CalendarView({
         posts: (d.posts || []).map((p) => {
           const result = allResults[p.id];
           if (!result) return p;
+          // Lo que ya estaba escrito manda sobre lo que acaba de llegar:
+          // esta generación rellena huecos, no reescribe lo aprobado. Un
+          // caption editado a mano —o traído del asistente— no se pisa por
+          // pedir el guion que faltaba.
           return {
             ...p,
-            guion: result.guion || p.guion || "",
-            descripcion: result.descripcion || p.descripcion || "",
-            hashtagsFinales: result.hashtagsFinales || p.hashtagsFinales || "",
-            script: result.descripcion || result.guion || p.script || "",
+            guion: p.guion || result.guion || "",
+            descripcion: p.descripcion || result.descripcion || "",
+            hashtagsFinales: p.hashtagsFinales || result.hashtagsFinales || "",
+            script: p.script || result.descripcion || result.guion || "",
           };
         }),
       }));
@@ -2007,7 +2168,7 @@ export default function CalendarView({
 
       setGenProgress(100);
       const total = Object.keys(allResults).length;
-      const stillIncomplete = newDays.flatMap((d) => (d.posts || []).filter((p) => !p.guion && !p.descripcion && !p.script));
+      const stillIncomplete = newDays.flatMap((d) => (d.posts || []).filter(leFalta));
       if (stillIncomplete.length > 0) {
         setIncompleteInfo({ count: stillIncomplete.length });
         addDebug(`WARN: ${stillIncomplete.length} posts quedaron sin generar`);
@@ -2035,41 +2196,49 @@ export default function CalendarView({
     URL.revokeObjectURL(url);
   };
 
-  const exportPrompts = (formatFilter = "all") => {
-    const lines = [];
-    for (const day of cal.days || []) {
-      for (const post of day.posts || []) {
-        if (!post.imagePrompt) continue;
-        if (formatFilter !== "all" && post.format !== formatFilter) continue;
-        const fmt = FORMATS[post.format] || FORMATS.post;
-        lines.push(`═══════════════════════════════════════`);
-        lines.push(`${fmt.label.toUpperCase()} — ${day.date} (${day.dayName || ""})`);
-        lines.push(`Categoría: ${post.category || day.category || "—"}`);
-        lines.push(`Idea: ${post.idea || "—"}`);
-        lines.push(`───────────────────────────────────────`);
-        lines.push(post.imagePrompt);
-        lines.push("");
-      }
-    }
-    if (lines.length === 0) {
-      setGenStatus("No hay prompts generados para exportar.");
-      setTimeout(() => setGenStatus(""), 3000);
-      return;
-    }
-    const header = `PROMPTS VISUALES — ${client.name}\n${calName}\n${formatFilter !== "all" ? `Filtro: ${FORMATS[formatFilter]?.label || formatFilter}` : "Todos los formatos"}\nGenerado: ${new Date().toLocaleString()}\n\n`;
-    const blob = new Blob([header + lines.join("\n")], { type: "text/plain;charset=utf-8" });
+  // La construcción del texto vive en `lib/exportarContenido.js`: es pura
+  // y allí se puede probar sin montar el componente entero.
+  const [formatosExport, setFormatosExport] = useState(FORMATOS_EXPORTABLES_POR_DEFECTO);
+  const [promptExportOpen, setPromptExportOpen] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+
+  const exportacion = promptExportOpen
+    ? construirExportacion({
+        days: cal.days || [],
+        formatos: formatosExport,
+        cliente: client.name,
+        calendario: calName,
+      })
+    : { texto: "", completas: 0, incompletas: [] };
+
+  const alternarFormatoExport = (clave) => {
+    setFormatosExport((prev) =>
+      prev.includes(clave) ? prev.filter((f) => f !== clave) : [...prev, clave]
+    );
+  };
+
+  const copiarExportacion = () => {
+    navigator.clipboard.writeText(exportacion.texto).then(
+      () => {
+        setCopiado(true);
+        setTimeout(() => setCopiado(false), 2000);
+      },
+      () => setGenStatus("El navegador no dejó copiar al portapapeles.")
+    );
+  };
+
+  const descargarExportacion = () => {
+    const blob = new Blob([exportacion.texto], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `prompts-${calName.replace(/\s+/g, "-")}-${client.name.replace(/\s+/g, "-")}${formatFilter !== "all" ? `-${formatFilter}` : ""}.txt`;
+    a.download = `contenido-${calName.replace(/\s+/g, "-")}-${client.name.replace(/\s+/g, "-")}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
-  const [promptExportFilter, setPromptExportFilter] = useState("all");
-  const [promptExportOpen, setPromptExportOpen] = useState(false);
   const [imageGenAvailable, setImageGenAvailable] = useState(null);
   const [batchImageGen, setBatchImageGen] = useState(false);
   const [batchImageProgress, setBatchImageProgress] = useState("");
@@ -2168,36 +2337,15 @@ export default function CalendarView({
       )}
 
       {promptExportOpen && (
-        <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) setPromptExportOpen(false); }}>
-          <div className="dialog" role="dialog" aria-modal="true" aria-label="Exportar prompts visuales" style={{ maxWidth: 400 }}>
-            <h3 style={{ fontSize: "var(--fs-base)", fontWeight: 700, marginBottom: "var(--sp-3)" }}>
-              <Icon name="wand" size={20} /> Exportar prompts visuales
-            </h3>
-            <div className="field">
-              <label className="label" htmlFor="prompt-export-filter">Filtrar por formato</label>
-              <select
-                id="prompt-export-filter"
-                className="input"
-                value={promptExportFilter}
-                onChange={(e) => setPromptExportFilter(e.target.value)}
-              >
-                <option value="all">Todos los formatos</option>
-                {Object.entries(FORMATS).map(([k, fmt]) => (
-                  <option key={k} value={k}>{fmt.label}</option>
-                ))}
-              </select>
-            </div>
-            <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", marginBottom: "var(--sp-3)" }}>
-              Se exportarán solo los posts que tengan un prompt visual generado.
-            </p>
-            <div style={{ display: "flex", gap: "var(--sp-2)", justifyContent: "flex-end" }}>
-              <button className="btn btn-ghost" onClick={() => setPromptExportOpen(false)}>Cancelar</button>
-              <button className="btn btn-primary" onClick={() => { exportPrompts(promptExportFilter); setPromptExportOpen(false); }}>
-                <Icon name="download" size={16} /> Exportar .txt
-              </button>
-            </div>
-          </div>
-        </div>
+        <ExportContenidoDialog
+          exportacion={exportacion}
+          formatos={formatosExport}
+          onToggleFormato={alternarFormatoExport}
+          onCopiar={copiarExportacion}
+          copiado={copiado}
+          onDescargar={descargarExportacion}
+          onClose={() => setPromptExportOpen(false)}
+        />
       )}
 
       {/* Identidad del calendario: una línea, no un banner de 90px.
@@ -2315,7 +2463,7 @@ export default function CalendarView({
             { sep: true },
             { icon: "download", label: "Exportar a HTML", onClick: exportHTML },
             { icon: "file", label: "Imprimir o guardar en PDF", onClick: exportPDF },
-            { icon: "wand", label: "Exportar prompts visuales", onClick: () => setPromptExportOpen(true) },
+            { icon: "copy", label: "Exportar ideas y descripciones", onClick: () => setPromptExportOpen(true) },
             { icon: "sparkles", label: "Prompt maestro para Meta AI", onClick: () => setMetaPromptOpen(true) },
             imageGenAvailable ? { icon: "image", label: batchImageGen ? batchImageProgress : "Generar imágenes en lote", onClick: generateBatchImages, disabled: batchImageGen } : null,
             { sep: true },

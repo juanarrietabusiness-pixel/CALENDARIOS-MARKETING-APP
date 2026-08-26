@@ -40,11 +40,44 @@ export function parseAIResponse(rawText) {
   return results;
 }
 
+/**
+ * Deshace el escapado de una ruta copiada de la barra del navegador.
+ *
+ * GitHub escribe los espacios como `%20`, así que «Baby Caleb/01_ADN» se
+ * copiaba como «Baby%20Caleb/01_ADN» y se guardaba así en la ficha del
+ * cliente. La API de GitHub devuelve las rutas del árbol SIN escapar, de
+ * modo que esa carpeta no coincidía con ninguna: la lectura del ADN
+ * volvía vacía y el cliente parecía desconectado. Sólo pasaba con los
+ * clientes cuya carpeta lleva un espacio en el nombre; los demás
+ * funcionaban, que es lo que hacía tan difícil de ver el fallo.
+ *
+ * Se decodifica segmento a segmento y sin romperse: una ruta que ya viene
+ * legible pasa igual, y un `%` suelto —que no es escapado válido— se deja
+ * tal cual en vez de tirar la lectura entera.
+ */
+export function decodeRutaGitHub(ruta) {
+  if (!ruta) return "";
+  return ruta
+    .split("/")
+    .map((seg) => {
+      try {
+        return decodeURIComponent(seg);
+      } catch {
+        return seg;
+      }
+    })
+    .join("/");
+}
+
 export function parseGitHubUrl(url) {
   if (!url) return null;
   const treeMatch = url.match(/github\.com\/([^/]+)\/([^/]+)\/tree\/[^/]+\/(.+)/);
   if (treeMatch) {
-    return { owner: treeMatch[1], repo: treeMatch[2].replace(/\.git$/, ""), folder: treeMatch[3].replace(/\/$/, "") };
+    return {
+      owner: treeMatch[1],
+      repo: treeMatch[2].replace(/\.git$/, ""),
+      folder: decodeRutaGitHub(treeMatch[3].replace(/\/$/, "")),
+    };
   }
   const repoMatch = url.match(/github\.com\/([^/]+)\/([^/]+)/);
   if (repoMatch) {

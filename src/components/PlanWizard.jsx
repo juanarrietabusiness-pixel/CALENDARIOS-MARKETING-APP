@@ -1,7 +1,7 @@
 import { useId, useState, useRef } from "react";
 import { PLANS, FORMATS, FORMAT_ICONS, DEFAULT_CATEGORIES, MONTHS, DAYS, DAYS_SHORT } from "../constants";
 import { uid, daysInMonth, fmtDate, getWeekNumber, dayName, parseVideoURL } from "../utils";
-import { callAI, buildClientContext, loadADN } from "../api";
+import { callAI, buildClientContext, buildDescripcionesPrompt, loadADN, parseAIResponse } from "../api";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
 
@@ -60,6 +60,11 @@ export default function PlanWizard({ client, onGenerate, onClose }) {
   const [newVideoUrl, setNewVideoUrl] = useState("");
   const [ideas, setIdeas] = useState({});
   const [ideaMode, setIdeaMode] = useState("day");
+  // Qué trozo del mes se genera: «mes» o el número de una semana. El mes
+  // entero son treinta días por siete tandas; una semana cabe en una, y es
+  // lo que se quiere cuando el calendario se va aprobando por partes.
+  const [alcance, setAlcance] = useState("mes");
+  const [descLoading, setDescLoading] = useState(false);
   const [dowIdeas, setDowIdeas] = useState({});
   const [aiLoading, setAiLoading] = useState(false);
   const [aiStatus, setAiStatus] = useState("");
@@ -193,6 +198,8 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
           idea: baseIdea,
           referenceLink: ex?.referenceLink || "",
           image: ex?.image || null,
+          descripcion: ex?.descripcion || "",
+          hashtagsFinales: ex?.hashtagsFinales || "",
           script: "",
           status: "pending",
           category: dayCategories[dow] || "",
@@ -201,6 +208,44 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
     });
     setIdeas(newIdeas);
   };
+
+  /**
+   * La estructura del mes, día a día: qué formatos toca, de qué semana es
+   * y qué ideas hay ya. La usan la generación de ideas, la de descripciones
+   * y el recuento del selector, que antes la calculaban por separado.
+   */
+  const estructuraDelMes = () =>
+    allDays.map((d) => {
+      const date = fmtDate(d);
+      const dow = d.getDay();
+      const wk = getWeekNumber(date, fmtDate(allDays[0]));
+      const cat = dayCategories[dow] || "";
+      const impDate = importantDates.find((id) => id.date === date);
+      const formats = (formatConfig[dow] || []).slice(0, postsPerDay);
+      const existingIdeas = ideas[date] || [];
+      return { date, dow, wk, cat, impDate, formats, existingIdeas };
+    });
+
+  /** Las semanas que tiene este mes, para poblar el selector. */
+  const semanas = [...new Set(estructuraDelMes().map((d) => d.wk))].sort((a, b) => a - b);
+
+  /** Se queda con los días del alcance elegido: el mes entero o una semana. */
+  const enAlcance = (lista) =>
+    alcance === "mes" ? lista : lista.filter((d) => String(d.wk) === alcance);
+
+  // «todo el mes» y no «el mes» para que las frases que la usan salgan
+  // bien: «Generar ideas de todo el mes», «Generar ideas de la semana 2».
+  const etiquetaAlcance = alcance === "mes" ? "todo el mes" : `la semana ${alcance}`;
+
+  /** Cuántos días naturales caen en esa semana, para el selector. */
+  const diasDeSemana = (w) => estructuraDelMes().filter((d) => d.wk === w).length;
+
+  /** Ideas ya escritas dentro del alcance: sin ellas no hay qué describir. */
+  const ideasEnAlcance = enAlcance(estructuraDelMes())
+    .reduce((total, d) => total + (ideas[d.date] || []).filter((p) => p?.idea?.trim()).length, 0);
+
+  /** Un solo botón a la vez: las dos generaciones comparten `generating`. */
+  const ocupado = aiLoading || descLoading;
 
   const generateIdeas = async () => {
     if (generating.current) return;
@@ -211,22 +256,13 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
       if (!client.githubContext && client.githubRepo) setAiStatus("Cargando ADN desde GitHub...");
       const adnExtra = (await loadADN(client)).content;
       const ctx = buildClientContext(client, { campaign }, adnExtra);
-      const daysList = allDays.map((d) => {
-        const date = fmtDate(d);
-        const dow = d.getDay();
-        const wk = getWeekNumber(date, fmtDate(allDays[0]));
-        const cat = dayCategories[dow] || "";
-        const impDate = importantDates.find((id) => id.date === date);
-        const formats = (formatConfig[dow] || []).slice(0, postsPerDay);
-        const existingIdeas = ideas[date] || [];
-        return { date, dow, wk, cat, impDate, formats, existingIdeas };
-      });
+      const daysList = enAlcance(estructuraDelMes());
 
       const BATCH = 7;
       const newIdeas = { ...ideas };
       for (let i = 0; i < daysList.length; i += BATCH) {
         const batch = daysList.slice(i, i + BATCH);
-        setAiStatus(`Ideas ${i + 1}-${Math.min(i + BATCH, daysList.length)}/${daysList.length}...`);
+        setAiStatus(`Ideas ${i + 1}-${Math.min(i + BATCH, daysList.length)} de ${daysList.length} días…`);
         const daysDesc = batch
           .map((d) => {
             const fmts = d.formats.map((f) => f.format).join(", ");
@@ -290,6 +326,11 @@ ${daysDesc}`;
                 idea: existing?.idea || aiIdea?.idea || "",
                 referenceLink: existing?.referenceLink || "",
                 image: existing?.image || null,
+                // La descripción sobrevive a una regeneración de ideas: si
+                // la idea no cambió, tirar su caption es tirar una llamada
+                // al modelo por nada.
+                descripcion: existing?.descripcion || "",
+                hashtagsFinales: existing?.hashtagsFinales || "",
                 script: "",
                 status: "pending",
                 category: dayData.cat,
@@ -307,6 +348,98 @@ ${daysDesc}`;
     setAiLoading(false);
     setAiStatus("");
     generating.current = false;
+  };
+
+  /**
+   * Escribe los captions de las ideas que ya están definidas.
+   *
+   * Es el segundo paso del asistente: primero se acuerdan las ideas —y se
+   * revisan a mano, que para eso están en pantalla—, y sólo después se
+   * escriben las descripciones. Trabaja sobre el mismo alcance que las
+   * ideas: el mes entero o una semana.
+   *
+   * Salta las publicaciones que ya tienen caption, para que volver a
+   * pulsar el botón complete lo que faltó en vez de reescribir el mes.
+   */
+  const generarDescripciones = async () => {
+    if (generating.current) return;
+    generating.current = true;
+    setDescLoading(true);
+    setAiStatus("Preparando descripciones…");
+    try {
+      if (!client.githubContext && client.githubRepo) setAiStatus("Cargando ADN desde GitHub…");
+      const adnExtra = (await loadADN(client)).content;
+
+      // Se aplana a lista de publicaciones: la tanda se mide en
+      // publicaciones, no en días, porque un día premium lleva tres.
+      const pendientes = [];
+      for (const d of enAlcance(estructuraDelMes())) {
+        (ideas[d.date] || []).forEach((p, j) => {
+          if (!p?.idea?.trim() || p.descripcion?.trim()) return;
+          pendientes.push({
+            ...p,
+            _date: d.date,
+            _dayName: DAYS[d.dow],
+            _weekNumber: d.wk,
+            _concept: weekConcepts[d.wk - 1] || "",
+            _indice: j,
+            format: p.format || d.formats[j]?.format || "post",
+            category: p.category || d.cat,
+          });
+        });
+      }
+
+      if (!pendientes.length) {
+        setAiStatus(`No hay ideas sin descripción en ${etiquetaAlcance}.`);
+        setTimeout(() => setAiStatus(""), 3000);
+        return;
+      }
+
+      const calendarioParcial = { campaign, offers, promoCode, weekConcepts };
+      const BATCH = 6;
+      const escritas = { ...ideas };
+
+      for (let i = 0; i < pendientes.length; i += BATCH) {
+        const tanda = pendientes.slice(i, i + BATCH);
+        setAiStatus(`Descripciones ${i + 1}-${Math.min(i + BATCH, pendientes.length)} de ${pendientes.length}…`);
+
+        const prompt = buildDescripcionesPrompt(client, calendarioParcial, tanda, adnExtra);
+        // `tolerarCorte` porque una tanda que se corta en la última
+        // publicación trae las cinco anteriores enteras: rechazarla entera
+        // obligaba a repetir el mes por una descripción.
+        const { texto } = await callAI([{ type: "text", text: prompt }], { maxTokens: 8000, tolerarCorte: true });
+        const leidas = parseAIResponse(texto);
+
+        for (const p of tanda) {
+          const r = leidas[p.id];
+          if (!r?.descripcion) continue;
+          const dia = [...(escritas[p._date] || [])];
+          dia[p._indice] = {
+            ...dia[p._indice],
+            descripcion: r.descripcion,
+            hashtagsFinales: r.hashtagsFinales || dia[p._indice]?.hashtagsFinales || "",
+          };
+          escritas[p._date] = dia;
+        }
+        setIdeas({ ...escritas });
+      }
+
+      const sinEscribir = pendientes.filter((p) => !escritas[p._date]?.[p._indice]?.descripcion?.trim());
+      setAiStatus(
+        sinEscribir.length
+          ? `Listo, pero ${sinEscribir.length} de ${pendientes.length} se quedaron sin descripción. Vuelve a pulsar para completarlas.`
+          : `Listo: ${pendientes.length} descripciones escritas.`
+      );
+      setTimeout(() => setAiStatus(""), 4000);
+    } catch (e) {
+      setAiStatus("Error: " + e.message);
+      setTimeout(() => setAiStatus(""), 5000);
+    } finally {
+      // En `finally` porque hay una salida temprana cuando no queda nada
+      // que escribir: sin esto, el botón se quedaba bloqueado.
+      setDescLoading(false);
+      generating.current = false;
+    }
   };
 
   const handleGenerate = () => {
@@ -329,9 +462,12 @@ ${daysDesc}`;
           referenceLink: refVideo?.url || idea?.referenceLink || "",
           image: idea?.image || null,
           guion: "",
-          descripcion: "",
-          hashtagsFinales: "",
-          script: idea?.script || "",
+          // Lo escrito en el asistente viaja al calendario. Antes se
+          // vaciaba aquí, así que las descripciones generadas en el paso
+          // de ideas se perdían al pulsar «Crear calendario».
+          descripcion: idea?.descripcion || "",
+          hashtagsFinales: idea?.hashtagsFinales || "",
+          script: idea?.descripcion || idea?.script || "",
           status: idea?.status || "pending",
           category: cat,
           comment: "",
@@ -812,12 +948,46 @@ ${daysDesc}`;
           {/* Step 7: Ideas review */}
           {step === 7 && (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-3)", marginBottom: "var(--sp-3)" }}>
-                <h3 className="label" style={{ margin: 0 }}>Ideas por día</h3>
-                <button className="btn btn-accent btn-sm" onClick={generateIdeas} disabled={aiLoading}>
-                  {aiLoading ? aiStatus || "Generando…" : "Generar ideas con IA"}
+              <h3 className="label" style={{ marginBottom: "var(--sp-3)" }}>Ideas por día</h3>
+
+              {/* Alcance: el mes entero o una semana suelta. Un mes son
+                  siete tandas contra el modelo; una semana, una. */}
+              <div className="field">
+                <label className="label" htmlFor={`${ids}-alcance`}>Qué generar</label>
+                <select
+                  id={`${ids}-alcance`}
+                  className="input"
+                  value={alcance}
+                  onChange={(e) => setAlcance(e.target.value)}
+                  disabled={ocupado}
+                >
+                  <option value="mes">Todo el mes — {allDays.length} días</option>
+                  {semanas.map((w) => (
+                    <option key={w} value={String(w)}>
+                      Semana {w}{weekConcepts[w - 1] ? ` · ${weekConcepts[w - 1]}` : ""} — {diasDeSemana(w)} días
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-2)" }}>
+                <button className="btn btn-accent btn-sm" style={{ flex: 1, minWidth: 160 }} onClick={generateIdeas} disabled={ocupado}>
+                  {aiLoading ? "Generando ideas…" : `Generar ideas de ${etiquetaAlcance}`}
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  style={{ flex: 1, minWidth: 160 }}
+                  onClick={generarDescripciones}
+                  disabled={ocupado || ideasEnAlcance === 0}
+                  title={ideasEnAlcance === 0 ? "Primero hacen falta ideas" : undefined}
+                >
+                  {descLoading ? "Escribiendo…" : `Generar descripciones de ${etiquetaAlcance}`}
                 </button>
               </div>
+              <p className="hint" style={{ marginBottom: "var(--sp-2)" }}>
+                Las descripciones se escriben sobre las ideas ya definidas, respetando el formato de
+                cada publicación. Las que ya tengan caption no se reescriben.
+              </p>
               {aiStatus && <p role="status" style={{ fontSize: "var(--fs-2xs)", color: "var(--accent)", marginBottom: "var(--sp-2)" }}>{aiStatus}</p>}
 
               {/* Idea entry mode toggle */}
@@ -921,7 +1091,9 @@ ${daysDesc}`;
                 })()}
               </div>
               <p role="status" className="hint" style={{ marginBottom: "var(--sp-4)" }}>
-                {Object.values(ideas).flat().filter((p) => p?.idea).length} ideas definidas de {allDays.length * postsPerDay} publicaciones.
+                {Object.values(ideas).flat().filter((p) => p?.idea).length} ideas definidas de {allDays.length * postsPerDay} publicaciones
+                {" · "}
+                {Object.values(ideas).flat().filter((p) => p?.descripcion).length} con descripción escrita.
               </p>
 
               {/* Per-day idea list */}
@@ -956,6 +1128,31 @@ ${daysDesc}`;
                               }}
                               placeholder="Idea…"
                             />
+                            {/* El caption aparece cuando existe: enseñarlo
+                                vacío en todas las publicaciones del mes
+                                convertía este paso en un muro de cajas. */}
+                            {p.descripcion && (
+                              <>
+                                <label
+                                  className="label"
+                                  style={{ textTransform: "none", marginTop: "var(--sp-2)", color: "var(--text-dim)" }}
+                                  htmlFor={`${ids}-desc-${date}-${j}`}
+                                >
+                                  Descripción
+                                </label>
+                                <textarea
+                                  id={`${ids}-desc-${date}-${j}`}
+                                  className="textarea"
+                                  style={{ minHeight: 90, fontSize: "var(--fs-2xs)" }}
+                                  value={p.descripcion}
+                                  onChange={(e) => {
+                                    const newDayIdeas = [...dayIdeas];
+                                    newDayIdeas[j] = { ...newDayIdeas[j], descripcion: e.target.value };
+                                    setIdeas((prev) => ({ ...prev, [date]: newDayIdeas }));
+                                  }}
+                                />
+                              </>
+                            )}
                           </div>
                         ))}
                       </div>
