@@ -1,7 +1,7 @@
 import { useEffect, useId, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid, fmtDate, compressImage, parseVideoURL } from "../utils";
-import { callAI, loadADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost, generateImagePrompt } from "../api";
+import { callAI, loadADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost } from "../api";
 import { buildExportHTML } from "../export";
 import { shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals } from "../lib/db";
 import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO } from "../lib/exportarContenido";
@@ -246,9 +246,8 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onS
   // Antes sólo guardaba el botón de cerrar. El fondo oscuro y la tecla
   // Escape llamaban a `onClose` a secas, así que todo lo escrito en el
   // panel —y todo lo que acababa de generar la IA— se perdía sin decir
-  // nada. Es lo que se veía como «el prompt visual no funciona»: se
-  // generaba bien, se pintaba en el campo, y desaparecía al cerrar. El
-  // exportador de prompts, después, no encontraba ninguno.
+  // nada. Se veía como «la generación con IA no funciona»: el texto
+  // llegaba bien, se pintaba en el campo, y desaparecía al cerrar.
   //
   // Guardar al desmontar cubre las tres salidas a la vez. `updatePost`
   // busca la publicación por id en todo el calendario, así que si se
@@ -505,42 +504,6 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onS
               </button>
             )}
           </div>
-        </div>
-
-        <div className="field">
-          <div style={fieldHeaderStyle}>
-            <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-prompt`}>Prompt visual</label>
-            <div style={{ display: "flex", gap: "var(--sp-2)" }}>
-              <CopyButton text={form.imagePrompt} describes="el prompt visual" />
-              <button
-                type="button"
-                className="btn-ai"
-                onClick={async () => {
-                  setFieldError("");
-                  setFieldLoading((p) => ({ ...p, imagePrompt: true }));
-                  try {
-                    const result = await generateImagePrompt(client, form, day, cal);
-                    sf("imagePrompt", result);
-                  } catch (e) {
-                    setFieldError(`No se pudo generar el prompt: ${e.message}`);
-                  }
-                  setFieldLoading((p) => ({ ...p, imagePrompt: false }));
-                }}
-                disabled={fieldLoading.imagePrompt}
-                aria-label="Generar prompt visual con IA"
-              >
-                {fieldLoading.imagePrompt ? "Generando…" : <><Icon name="wand" size={14} /> Prompt</>}
-              </button>
-            </div>
-          </div>
-          <textarea
-            id={`${ids}-prompt`}
-            className="textarea"
-            style={{ minHeight: 100 }}
-            value={form.imagePrompt || ""}
-            onChange={(e) => sf("imagePrompt", e.target.value)}
-            placeholder="Prompt para generar imagen o video…"
-          />
         </div>
 
         <div className="field">
