@@ -137,10 +137,29 @@ export function parseBloques(texto, etiquetas) {
     // llegaban vacíos o con una sola línea.
     const re = new RegExp(`^${etiqueta}:[ \\t]*([\\s\\S]*?)(?=${siguiente}|(?![\\s\\S]))`, "m");
     const m = texto.match(re);
-    if (m) campos[etiqueta] = m[1].trim();
+    if (!m) continue;
+    const valor = m[1].trim();
+    campos[etiqueta] = ETIQUETAS_DE_UNA_LINEA.has(etiqueta)
+      ? valor.split("\n")[0].trim()
+      : valor;
   }
   return campos;
 }
+
+/**
+ * Las etiquetas que el formato declara de UNA sola línea.
+ *
+ * `parseBloques` lee hasta la siguiente etiqueta conocida, así que todo lo
+ * que el modelo escriba después de la última —un resumen, una nota sobre lo
+ * que falta— se queda dentro de ese campo. Pasó: un comentario del modelo
+ * viajó dentro de HASHTAGS hasta el prompt maestro y de ahí al documento que
+ * montó Meta AI. Cortar por la primera línea lo corta en el origen, y no
+ * puede perder nada legítimo: el formato las declara de una línea.
+ */
+const ETIQUETAS_DE_UNA_LINEA = new Set([
+  "PLANTILLA", "FORMATO", "FECHA", "ANTETITULO", "BAJADA", "CIFRA",
+  "NOTA", "ANCLAJE", "FOTO_REAL", "HASHTAGS", "HASHTAGS_CONJUNTO",
+]);
 
 const ETIQUETAS_PIEZA = [
   "PLANTILLA", "FORMATO", "FECHA", "ANTETITULO", "TITULAR", "BAJADA",

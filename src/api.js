@@ -784,7 +784,11 @@ TITULAR:
 (una línea por cada línea del titular, con ⟦ ⟧ marcando el acento)
 BAJADA: (una línea)
 CIFRA: (sólo si el ADN la respalda)
-NOTA: (una línea)
+NOTA: (una línea que se IMPRIME en el lienzo, como remate o aclaración
+      de venta: «Entrega en toda la ciudad», «Stock limitado». NO es un
+      recado para la agencia. Si lo que ibas a escribir es que falta un
+      dato, OMITE la etiqueta entera: un «falta el precio verificado»
+      acaba rotulado sobre la pieza publicada.)
 FOTO_REAL: si
 PROMPT_FONDO:
 (varias líneas, en español, sin una sola letra dentro de la imagen)
@@ -796,6 +800,11 @@ HASHTAGS: (en una sola línea)
 
 <<<PIEZA:2>>>
 …y así hasta la última.
+
+Después de la última ficha no escribas NADA MÁS: ni resumen, ni notas
+sobre lo que falta, ni comentarios sobre el lote. Lo que escribas ahí se
+cuela dentro del último campo de esa pieza y viaja hasta el documento
+final. Si falta un dato, ya lo dice el campo que lo necesita.
 
 TITULAR y PROMPT_FONDO empiezan en la línea siguiente a su etiqueta.
 FOTO_REAL sólo se escribe si la pieza lleva foto real; si no, se omite.

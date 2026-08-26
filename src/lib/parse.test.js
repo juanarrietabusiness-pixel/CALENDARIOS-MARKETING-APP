@@ -252,3 +252,43 @@ describe("las instrucciones al redactor", () => {
     expect(texto).toMatch(/no vuelve, ni con otras palabras/);
   });
 });
+
+
+describe("fugas del modelo al final de una ficha", () => {
+  // Observado en producción: tras la última ficha el modelo añadió un
+  // comentario sobre lo que no había podido escribir. `parseBloques` lee
+  // hasta la siguiente etiqueta conocida, así que aquello se quedó dentro de
+  // HASHTAGS, viajó al prompt maestro y acabó rotulado como «EXTRA» en el
+  // documento que montó Meta AI.
+  const conComentario = `<<<PIEZA:1>>>
+FORMATO: post
+TITULAR:
+LAS ⟦3⟧
+ZAPATERAS
+BAJADA: Para que elijas la que te cabe
+DESCRIPCION:
+Un caption con su punto final.
+HASHTAGS: #Uno #Dos #Tres
+
+**Lo que falta y no inventé:** los precios exactos, que son el corazón
+de la pieza. Con esos datos del cliente gana mucho.`;
+
+  it("no deja que el comentario entre en los hashtags", () => {
+    const [pieza] = parsePiezas(conComentario);
+    expect(pieza.hashtags).toBe("#Uno #Dos #Tres");
+    expect(pieza.hashtags).not.toContain("inventé");
+  });
+
+  it("conserva enteros los campos que sí son multilínea", () => {
+    const [pieza] = parsePiezas(conComentario);
+    expect(pieza.titular).toEqual(["LAS ⟦3⟧", "ZAPATERAS"]);
+    expect(pieza.descripcion).toBe("Un caption con su punto final.");
+  });
+
+  it("recorta la NOTA a una línea, que es lo que se imprime", () => {
+    const [pieza] = parsePiezas(`<<<PIEZA:1>>>
+NOTA: Entrega en toda la ciudad
+y aquí el modelo siguió explicándose`);
+    expect(pieza.nota).toBe("Entrega en toda la ciudad");
+  });
+});
