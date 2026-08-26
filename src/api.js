@@ -69,7 +69,12 @@ export async function callAI(content, { maxTokens, tier, tolerarCorte = false } 
     throw new Error("La respuesta se cortó por longitud. Prueba con menos piezas por tanda.");
   }
   if (tolerarCorte) {
-    return { texto: data?.text ?? "", cortada: Boolean(data?.truncated), segundos: data?.segundos };
+    return {
+      texto: data?.text ?? "",
+      cortada: Boolean(data?.truncated),
+      segundos: data?.segundos,
+      diagnostico: data?.diagnostico ?? null,
+    };
   }
   return data?.text ?? "";
 }
@@ -808,23 +813,20 @@ diapositiva lleva el titular más corto y más grande, porque es la única que s
 ve en el feed sin deslizar; la última cierra o pide algo, no se muere en un
 dato.` : ""}`;
 
-  // El presupuesto sale de lo MEDIDO en los registros de la API, no de una
-  // estimación: un lote de doce piezas consumió 24 000 tokens de salida, o
-  // sea 2 000 por pieza. Con 1 200 se cortaba siempre. 3 000 deja margen
-  // real incluso para una pieza con guion largo.
+  // El presupuesto es para ESCRIBIR. Mientras el modelo venía pensando por
+  // su cuenta —Sonnet 5 lo hace si no se le dice lo contrario—, este número
+  // se repartía entre el razonamiento y el texto, y subirlo sólo compraba
+  // más razonamiento. Con el pensamiento apagado en la función del
+  // servidor, 3 000 por pieza es margen de sobra incluso con guion largo.
   const maxTokens = Math.min(3000 * posts.length + 1000, MAX_TOKENS_SERVIDOR);
 
-  const { texto, cortada } = await callAI([cachedBlock(promptText)], {
+  const { texto, cortada, diagnostico } = await callAI([cachedBlock(promptText)], {
     maxTokens, tier: "calidad", tolerarCorte: true,
   });
 
   const piezas = parsePiezas(texto);
   if (!piezas.length) {
-    throw new Error(
-      cortada
-        ? "La respuesta se cortó antes de completar ninguna pieza. Prueba con menos publicaciones."
-        : "La IA no devolvió ninguna pieza reconocible. Inténtalo de nuevo."
-    );
+    throw new Error(explicarLoteVacio({ cortada, texto, diagnostico }));
   }
 
   // Si se cortó, la última pieza viene a medias: se descarta y quien llama
@@ -832,6 +834,36 @@ dato.` : ""}`;
   // que estaban bien, y volver a pagarlas.
   if (cortada && piezas.length > 1) piezas.pop();
   return piezas;
+}
+
+/**
+ * Por qué una tanda volvió sin ninguna pieza.
+ *
+ * El mensaje viejo decía siempre «prueba con menos publicaciones», y en el
+ * fallo que de verdad ocurría ese consejo empeoraba las cosas: menos piezas
+ * es menos presupuesto, y el presupuesto no se estaba yendo en piezas. Aquí
+ * se distingue el caso y se enseñan los tokens que informó el servidor, para
+ * no volver a deducirlos.
+ */
+function explicarLoteVacio({ cortada, texto, diagnostico }) {
+  const d = diagnostico;
+  const cuenta = d ? ` (entrada ${d.entrada}, salida ${d.salida} de ${d.maxTokens}; bloques: ${(d.tipos || []).join(", ") || "ninguno"})` : "";
+
+  if (cortada && !texto.trim()) {
+    return (
+      "El modelo agotó el presupuesto de la tanda sin escribir una sola línea" +
+      `${cuenta}. Es el síntoma de que está razonando en vez de transcribir: ` +
+      "revisa que la función «ai» desplegada apague el pensamiento en el nivel " +
+      "«calidad». Pedir menos publicaciones NO lo arregla."
+    );
+  }
+  if (cortada) {
+    return `La respuesta se cortó antes de terminar la primera pieza${cuenta}. Prueba con menos publicaciones por tanda.`;
+  }
+  if (!texto.trim()) {
+    return `El servidor de IA devolvió una respuesta vacía${cuenta}. Inténtalo de nuevo.`;
+  }
+  return `La IA respondió, pero sin ninguna ficha «<<<PIEZA:n>>>» reconocible${cuenta}. Inténtalo de nuevo.`;
 }
 
 /** El tope que acepta la función del servidor. Más alto, lo recorta ella. */

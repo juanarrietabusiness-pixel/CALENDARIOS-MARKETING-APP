@@ -32,9 +32,34 @@ const ANTHROPIC_MODEL = Deno.env.get("AI_MODEL") || "claude-haiku-4-5-20251001";
 // esto, así que la app pide «calidad» y aquí se traduce a un modelo.
 // La lista es cerrada a propósito: el navegador no elige un modelo
 // arbitrario ni puede pedir uno que no se quiera pagar.
-const MODEL_TIERS: Record<string, string> = {
-  rapido: ANTHROPIC_MODEL,
-  calidad: Deno.env.get("AI_MODEL_CALIDAD") || "claude-sonnet-5",
+//
+// Y lleva además la política de pensamiento, que es la que rompía el lote.
+//
+// Sonnet 5 piensa por defecto: si no se manda `thinking`, corre en modo
+// adaptativo. Los tokens de ese razonamiento salen del MISMO `max_tokens`
+// que el texto, y su presentación viene «omitida», así que el bloque llega
+// vacío. Resultado: la respuesta agotaba el presupuesto pensando, volvía
+// con `stop_reason: "max_tokens"` y sin un solo bloque de texto — que es
+// exactamente el «se cortó antes de completar ninguna pieza» que veía la
+// agencia. Pedir menos publicaciones lo empeoraba: bajaba el presupuesto
+// y le dejaba aún menos sitio al texto.
+//
+// Escribir las fichas del lote es transcribir, no razonar: el calendario ya
+// está aprobado. Así que aquí se apaga a propósito.
+//
+// `pensar`:
+//   "omitir"     no se manda el campo (Haiku 4.5 ya viene sin pensamiento)
+//   "no"         se apaga explícitamente
+//   "adaptativo" se enciende con esfuerzo bajo, por si hiciera falta
+type Nivel = { model: string; pensar: "omitir" | "no" | "adaptativo" };
+
+const PENSAR_CALIDAD = (Deno.env.get("AI_PENSAR") ?? "").trim().toLowerCase() === "adaptativo"
+  ? "adaptativo" as const
+  : "no" as const;
+
+const MODEL_TIERS: Record<string, Nivel> = {
+  rapido: { model: ANTHROPIC_MODEL, pensar: "omitir" },
+  calidad: { model: Deno.env.get("AI_MODEL_CALIDAD") || "claude-sonnet-5", pensar: PENSAR_CALIDAD },
 };
 const GROQ_MODEL = Deno.env.get("GROQ_MODEL") || "llama-3.3-70b-versatile";
 
@@ -88,7 +113,24 @@ function textOnly(content: unknown): unknown {
     .map((b) => ({ type: "text", text: (b as { text?: string }).text ?? "" }));
 }
 
-async function callAnthropic(content: unknown, maxTokens: number, model: string, signal: AbortSignal) {
+async function callAnthropic(content: unknown, maxTokens: number, nivel: Nivel, signal: AbortSignal) {
+  const cuerpo: Record<string, unknown> = {
+    model: nivel.model,
+    max_tokens: maxTokens,
+    messages: [{ role: "user", content }],
+  };
+
+  // El campo sólo se manda cuando hay algo que decir: a los modelos que ya
+  // vienen sin pensamiento no se les cambia la petición.
+  if (nivel.pensar === "no") {
+    cuerpo.thinking = { type: "disabled" };
+  } else if (nivel.pensar === "adaptativo") {
+    cuerpo.thinking = { type: "adaptive" };
+    // Sin esto el esfuerzo es «high» y el razonamiento se come el
+    // presupuesto igual que cuando no se configuraba nada.
+    cuerpo.output_config = { effort: "low" };
+  }
+
   return await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     signal,
@@ -97,11 +139,7 @@ async function callAnthropic(content: unknown, maxTokens: number, model: string,
       "x-api-key": ANTHROPIC_API_KEY,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify({
-      model,
-      max_tokens: maxTokens,
-      messages: [{ role: "user", content }],
-    }),
+    body: JSON.stringify(cuerpo),
   });
 }
 
@@ -163,7 +201,7 @@ Deno.serve(async (req) => {
   }
   const maxTokens = Math.min(Math.max(Number(body?.maxTokens) || 2048, 256), MAX_TOKENS_CAP);
   const tier = String(body?.tier ?? "rapido");
-  const model = MODEL_TIERS[tier] ?? MODEL_TIERS.rapido;
+  const nivel = MODEL_TIERS[tier] ?? MODEL_TIERS.rapido;
 
   // ---- Proveedor ----
   const useGroq = AI_PROVIDER === "groq"
@@ -202,7 +240,7 @@ Deno.serve(async (req) => {
     try {
       res = useGroq
         ? await callGroq(content, maxTokens, abortar.signal)
-        : await callAnthropic(content, maxTokens, model, abortar.signal);
+        : await callAnthropic(content, maxTokens, nivel, abortar.signal);
     } catch (e) {
       clearTimeout(reloj);
       if (abortar.signal.aborted) {
@@ -239,14 +277,22 @@ Deno.serve(async (req) => {
     }
 
     const data = await res.json();
+
+    // Se concatenan TODOS los bloques de texto, no el primero que aparezca.
+    // Con `find` bastaba un bloque de pensamiento por delante para que la
+    // respuesta llegara vacía sin que nadie supiera por qué.
+    const bloques: { type?: string; text?: string }[] =
+      Array.isArray(data?.content) ? data.content : [];
     const text = useGroq
       ? (data?.choices?.[0]?.message?.content ?? "")
-      : (data?.content?.find((b: { type?: string }) => b.type === "text")?.text ?? "");
+      : bloques.filter((b) => b?.type === "text").map((b) => b?.text ?? "").join("");
+
+    const u = data?.usage ?? {};
 
     return json({
       text,
       provider: useGroq ? "groq" : "anthropic",
-      model: useGroq ? GROQ_MODEL : model,
+      model: useGroq ? GROQ_MODEL : nivel.model,
       // `stop_reason: "max_tokens"` es la diferencia entre un prompt
       // maestro entero y uno cortado a media pieza, y desde el navegador
       // no se distingue de un modelo que decidió parar.
@@ -254,6 +300,20 @@ Deno.serve(async (req) => {
       // Cuánto tardó, para poder decirlo cuando algo va apretado en vez de
       // descubrirlo cuando ya se cortó.
       segundos: transcurrido(),
+      // El diagnóstico viaja con la respuesta a propósito. Sin estos
+      // números, «se cortó» obliga a adivinar si el presupuesto se fue en
+      // texto o en pensamiento, y esa duda ya costó tres rondas de
+      // arreglos que apuntaban al sitio equivocado.
+      diagnostico: useGroq ? null : {
+        stopReason: data?.stop_reason ?? "",
+        pensamiento: nivel.pensar,
+        maxTokens,
+        tipos: bloques.map((b) => b?.type ?? "?"),
+        entrada: u.input_tokens ?? 0,
+        salida: u.output_tokens ?? 0,
+        cacheLeido: u.cache_read_input_tokens ?? 0,
+        cacheEscrito: u.cache_creation_input_tokens ?? 0,
+      },
     }, 200, headers);
   }
 

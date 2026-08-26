@@ -189,6 +189,23 @@ una clave ha vuelto al front: esas llamadas son del servidor.
 - La CSP de `netlify.toml` necesita `'unsafe-inline'` en `style-src` porque
   React aplica la prop `style` como atributo en línea. `script-src` no lo
   lleva y no debe llevarlo.
+- **Los modelos actuales piensan si no se les dice que no, y ese
+  pensamiento se paga del mismo `max_tokens` que el texto.** Sonnet 5 corre
+  en modo adaptativo cuando la petición no lleva `thinking`, y su
+  presentación viene «omitida»: el bloque llega vacío. Una respuesta puede
+  volver con `stop_reason: "max_tokens"` y **sin un solo bloque de texto**.
+  Eso se veía como «la respuesta se cortó antes de completar ninguna pieza»,
+  y subir el presupuesto o pedir menos publicaciones no lo arreglaba: sólo
+  cambiaba cuánto razonaba. `supabase/functions/ai/` fija la política por
+  nivel (`Nivel.pensar`) y en «calidad» lo apaga, porque escribir las fichas
+  del lote es transcribir un calendario ya aprobado, no razonar. Para
+  volver a encenderlo: `AI_PENSAR=adaptativo` en los secretos de Supabase.
+- **Al leer la respuesta de Anthropic hay que recorrer TODOS los bloques**,
+  no `content.find(b => b.type === "text")`: basta un bloque de pensamiento
+  por delante para que ese `find` devuelva `undefined` y el texto llegue
+  vacío sin ningún error. La función devuelve además `diagnostico`
+  (`stopReason`, tokens de entrada y salida, tipos de bloque) para no tener
+  que deducir a qué se fue el presupuesto.
 - El asistente y los modales se anidan dentro de `.overlay`; el scroll del
   fondo lo bloquea `useDialogA11y`, no hace falta añadir nada.
 
