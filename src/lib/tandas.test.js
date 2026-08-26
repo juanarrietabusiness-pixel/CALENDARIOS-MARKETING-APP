@@ -22,7 +22,7 @@ describe("enTandas", () => {
       fingirModelo(llamadas)
     );
     expect(piezas.map((p) => p.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-    expect(llamadas).toEqual([4, 4, 2]);
+    expect(llamadas).toEqual([3, 3, 3, 1]);
   });
 
   it("no parte un lote que ya cabe en una llamada", async () => {

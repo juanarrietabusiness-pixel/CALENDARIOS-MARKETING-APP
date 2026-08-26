@@ -639,6 +639,35 @@ ${adnTexto}`;
  * el contenido: lo traduce a titulares con sus cortes de línea, su tramo
  * acentuado y el prompt de su fondo.
  */
+/**
+ * El ADN que hace falta para ESCRIBIR, que no es todo el ADN.
+ *
+ * Se estaban mandando los 65 698 caracteres enteros en cada tanda, con los
+ * 26 042 del `.md` de la receta y los 15 363 del JSON dentro — y el sistema
+ * visual ya viaja aparte, como objeto, porque la receta se pasa por su
+ * cuenta. Era pagar tres veces por lo mismo y llenar la ventana de lo que no
+ * se necesita.
+ *
+ * Para escribir una pieza hacen falta la voz, el público, el léxico, las
+ * reglas duras y lo ya publicado. La retícula no: de eso se encarga
+ * `metaPrompt.js` con la receta.
+ */
+export function adnParaEscribir(adn) {
+  const s = adn?.sections;
+  if (!s) return adn?.content ?? "";
+
+  const partes = [
+    ["Guías de marca", s.guidelines],
+    ["Buyer personas", s.personas],
+    ["Prompts maestros de la marca", s.masterPrompts],
+    ["Diccionario SEO", s.seo],
+    ["Lo ya publicado", s.publicado],
+  ].filter(([, texto]) => texto);
+
+  if (!partes.length) return adn.content ?? "";
+  return partes.map(([titulo, texto]) => `\n═══ ${titulo} ═══\n${texto}`).join("\n");
+}
+
 export async function generateMetaPieces({ client, calendar, receta, posts, modo = "lote", tema = "", adnTexto = "" }) {
   const esCarrusel = modo === "carrusel";
 
@@ -773,7 +802,11 @@ diapositiva lleva el titular más corto y más grande, porque es la única que s
 ve en el feed sin deslizar; la última cierra o pide algo, no se muere en un
 dato.` : ""}`;
 
-  const raw = await callAI([cachedBlock(promptText)], { maxTokens: 24000, tier: "calidad" });
+  // Proporcional a la tanda, no un tope fijo: 24 000 tokens para cuatro
+  // piezas de unos 250 no acota nada y le quita al modelo toda presión para
+  // terminar. 1200 por pieza va holgado incluso con guion.
+  const maxTokens = Math.min(1200 * posts.length + 1000, 16000);
+  const raw = await callAI([cachedBlock(promptText)], { maxTokens, tier: "calidad" });
   const piezas = parsePiezas(raw);
   if (!piezas.length) {
     throw new Error("La IA no devolvió ninguna pieza reconocible. Inténtalo de nuevo.");
