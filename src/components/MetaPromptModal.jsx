@@ -4,6 +4,7 @@ import { useDialogA11y } from "../hooks/useDialogA11y";
 import { loadADN, cargarReceta, generateMetaPiecesEnTandas, despliegueDesfasado, adnParaEscribir } from "../api";
 import { buildMetaMasterPrompt, faltantesDeReceta, faltantesCriticos, avisosDeComposicion, MODOS_META } from "../metaPrompt";
 import { MONTHS } from "../constants";
+import { primeras, siguientes, restantes, alternar as alternarSeleccion } from "../lib/seleccion";
 
 /**
  * Lo que hizo falta para responder «¿por qué falta este campo?».
@@ -60,6 +61,7 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
   const idPublico = useId();
   const idPrompt = useId();
   const idDiag = useId();
+  const idLista = useId();
 
   const [modo, setModo] = useState("lote");
   const [tema, setTema] = useState(cal?.campaign || "");
@@ -102,7 +104,38 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
   }, [cal]);
 
   const tope = modo === "carrusel" ? 10 : modo === "semana" ? 5 : 12;
-  const seleccion = candidatas.slice(0, tope);
+
+  /**
+   * Qué publicaciones entran en el lote.
+   *
+   * Antes era `candidatas.slice(0, tope)` y punto: con 21 publicaciones con
+   * contenido, nueve se caían del lote sin que nadie lo decidiera, sin
+   * aparecer en ningún sitio y sin forma de generarlas después. El tope
+   * sigue existiendo —es el que aguanta una tanda—, pero ahora eliges tú
+   * cuáles, y «Las siguientes» retoma justo donde acabó el lote anterior.
+   */
+  const [elegidas, setElegidas] = useState(() => new Set());
+  const [listaAbierta, setListaAbierta] = useState(false);
+
+  // Al abrir, y cuando cambia el modo (y con él el tope), se propone la
+  // misma tanda que antes salía sola: las primeras del calendario.
+  useEffect(() => {
+    setElegidas(new Set(primeras(candidatas, tope)));
+  }, [candidatas, tope]);
+
+  // Se filtra sobre `candidatas` y no sobre el Set para que el lote salga en
+  // orden de calendario pase lo que pase con el orden de marcado.
+  const seleccion = useMemo(
+    () => candidatas.filter((p) => elegidas.has(p.id)),
+    [candidatas, elegidas],
+  );
+
+  const alternar = (id) => setElegidas((prev) => alternarSeleccion(prev, id, tope));
+
+  // Cuántas quedan detrás de la última marcada. Es lo que convierte
+  // «se perdieron nueve» en «genera las nueve».
+  const quedan = restantes(candidatas, elegidas);
+  const siguienteTanda = () => setElegidas(new Set(siguientes(candidatas, elegidas, tope)));
 
   const recetaSlug = `${(client.name || "marca").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
 
@@ -329,7 +362,90 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
             </div>
 
             <div style={{ background: "var(--surface-2)", borderRadius: "var(--radius-sm)", padding: "var(--sp-2)", marginBottom: "var(--sp-3)", fontSize: "var(--fs-2xs)", lineHeight: 1.6 }}>
-              <div><strong>{seleccion.length}</strong> publicaciones entran en el lote{candidatas.length > tope ? ` (de ${candidatas.length} con contenido; el modo «${MODOS_META[modo].label}» admite ${tope})` : ""}.</div>
+              <div>
+                <strong>{seleccion.length}</strong> de {candidatas.length} publicaciones con contenido
+                entran en el lote. El modo «{MODOS_META[modo].label}» admite {tope}.
+              </div>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--sp-1)", marginTop: "var(--sp-1)" }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ minHeight: "var(--tap-sm)", fontSize: "var(--fs-3xs)" }}
+                  aria-expanded={listaAbierta}
+                  aria-controls={idLista}
+                  onClick={() => setListaAbierta((v) => !v)}
+                >
+                  <Icon name={listaAbierta ? "chevronUp" : "chevronDown"} />
+                  {listaAbierta ? "Ocultar la lista" : "Elegir cuáles"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ minHeight: "var(--tap-sm)", fontSize: "var(--fs-3xs)" }}
+                  disabled={!quedan}
+                  onClick={siguienteTanda}
+                  title={quedan
+                    ? "Marca las que vienen después de la última elegida"
+                    : "No queda ninguna publicación después de la última elegida"}
+                >
+                  Las siguientes {Math.min(tope, quedan)}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ minHeight: "var(--tap-sm)", fontSize: "var(--fs-3xs)" }}
+                  onClick={() => setElegidas(new Set(primeras(candidatas, tope)))}
+                >
+                  Las primeras {Math.min(tope, candidatas.length)}
+                </button>
+              </div>
+
+              {listaAbierta && (
+                <ul id={idLista} style={{ listStyle: "none", margin: "var(--sp-2) 0 0", padding: 0, maxHeight: 260, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2 }}>
+                  {candidatas.map((p) => {
+                    const marcada = elegidas.has(p.id);
+                    const lleno = !marcada && elegidas.size >= tope;
+                    return (
+                      <li key={p.id}>
+                        <label
+                          style={{
+                            display: "flex", alignItems: "flex-start", gap: "var(--sp-1)",
+                            minHeight: "var(--tap-sm)", padding: "var(--sp-1)",
+                            borderRadius: "var(--radius-sm)",
+                            background: marcada ? "var(--accent-soft)" : "transparent",
+                            opacity: lleno ? 0.45 : 1,
+                            cursor: lleno ? "not-allowed" : "pointer",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={marcada}
+                            disabled={lleno}
+                            onChange={() => alternar(p.id)}
+                            style={{ marginTop: 2 }}
+                          />
+                          <span>
+                            <span style={{ fontVariantNumeric: "tabular-nums" }}>{p._date}</span>
+                            {" · "}{p.format || "post"}
+                            {p._concept ? ` · ${p._concept}` : ""}
+                            <span style={{ display: "block", color: "var(--text-dim)" }}>
+                              {(p.idea || p.descripcion || p.guion || p.script || "").slice(0, 90) || "sin idea escrita"}
+                            </span>
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              {elegidas.size >= tope && candidatas.length > tope && (
+                <div style={{ marginTop: "var(--sp-1)", color: "var(--text-dim)" }}>
+                  Llegaste al tope del modo. Desmarca una para poder marcar otra, o genera
+                  este lote y vuelve con «Las siguientes».
+                </div>
+              )}
               <div style={{ color: "var(--text-dim)" }}>
                 Receta visual: {receta
                   ? (desdeJson ? "leída de 05_receta.json, sin IA" : "compilada con IA desde la prosa del ADN")
