@@ -47,6 +47,30 @@ npx supabase functions deploy ai
 npx supabase functions deploy github-adn
 ```
 
+### Las funciones se despliegan solas
+
+**No hace falta ejecutar nada a mano.** `.github/workflows/desplegar-funciones.yml`
+despliega las tres Edge Functions cada vez que algo bajo `supabase/functions/`
+llega a `main`.
+
+Sólo pide **un secreto, una vez**:
+
+1. Genera un token en <https://supabase.com/dashboard/account/tokens>.
+2. En el repositorio: *Settings → Secrets and variables → Actions → New
+   repository secret*, con el nombre `SUPABASE_ACCESS_TOKEN`.
+
+El identificador del proyecto va en el propio workflow: no es un secreto,
+está en la URL del panel.
+
+Si falta el token, el workflow falla con el mensaje de qué hacer, en vez de
+un error críptico del CLI.
+
+**Por qué existe esto.** El despliegue manual se quedó sin hacer durante
+horas y el fallo se veía igual que un repositorio mal escrito: con la función
+vieja el ADN llega recortado, la aplicación cae al compilador de IA y faltan
+campos de la receta. Nadie tiene por qué acordarse de desplegar, y no todo el
+mundo trabaja desde un clon local.
+
 **Comprobación:** en *Table editor* deben verse `clients`, `calendars` y
 `approvals`, las tres con «RLS enabled». Si alguna aparece sin RLS, **no
 sigas**: cualquiera con la clave anónima podría leer todos los clientes.
