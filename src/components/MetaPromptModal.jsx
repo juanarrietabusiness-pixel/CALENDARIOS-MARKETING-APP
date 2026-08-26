@@ -1,7 +1,7 @@
-import { useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
-import { loadADN, cargarReceta, generateMetaPieces, fetchGitHubADN } from "../api";
+import { loadADN, cargarReceta, generateMetaPieces } from "../api";
 import { buildMetaMasterPrompt, faltantesDeReceta, faltantesCriticos, avisosDeComposicion, MODOS_META } from "../metaPrompt";
 import { MONTHS } from "../constants";
 
@@ -67,10 +67,18 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
   const [estado, setEstado] = useState("");
   const [error, setError] = useState("");
   const [prompt, setPrompt] = useState("");
-  const [faltan, setFaltan] = useState(() => (client.metaRecipe ? faltantesDeReceta(client.metaRecipe) : []));
   const [aviso, setAviso] = useState("");
   const [diag, setDiag] = useState(null);
   const [diagAbierto, setDiagAbierto] = useState(false);
+
+  // La receta que se va a usar, leída del repositorio al abrir. No se
+  // arranca con `client.metaRecipe`: ésa es la copia guardada en la base de
+  // datos, y arrancar con ella enseñaba los huecos de una compilación vieja
+  // y dejaba el botón bloqueado hasta que alguien supiera pulsar
+  // «Recompilar». Leer el 05_receta.json es instantáneo y gratis, así que se
+  // hace siempre y no hay estado viejo que arrastrar.
+  const [receta, setReceta] = useState(null);
+  const [adn, setAdn] = useState(null);
 
   // Sólo entran las publicaciones que ya tienen contenido: el prompt
   // maestro traduce lo aprobado, no lo inventa sobre la marcha.
@@ -93,77 +101,87 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
 
   const recetaSlug = `${(client.name || "marca").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
 
+  /**
+   * Lee el ADN y la receta del repositorio.
+   *
+   * Se llama al abrir el diálogo y desde «Releer receta». Con
+   * `05_receta.json` no hay ninguna llamada a un modelo, así que releer es
+   * más barato que cachear: lo que se ahorraba cacheando era una lectura
+   * instantánea, y lo que costaba era enseñar una receta de hace un mes.
+   */
+  const cargar = useCallback(async () => {
+    setError("");
+    setEstado("Leyendo la receta del repositorio…");
+    const fresco = await loadADN(client, { forzar: true });
+    if (!fresco.content) {
+      throw new Error(
+        "Este cliente no tiene ADN conectado. Ábrelo en «Editar cliente» → pestaña GitHub y conecta su carpeta del repositorio."
+      );
+    }
+    const { receta: r, origen, avisoJson } = await cargarReceta(fresco, client);
+    r.slug = r.slug || recetaSlug;
+
+    setAdn(fresco);
+    setReceta(r);
+    setDiag(construirDiag(fresco, r, origen, avisoJson));
+    setEstado("");
+
+    if (avisoJson) {
+      setAviso(`El 05_receta.json de ${client.name} no se pudo leer (${avisoJson}), así que se compiló con IA. Revisa ese archivo.`);
+    } else if (fresco.truncated) {
+      setAviso("El ADN es más largo que el presupuesto de lectura y se recortó por lo menos prioritario. La receta y las guías de marca sí entraron completas.");
+    }
+
+    onPersistClient?.({
+      ...client,
+      metaRecipe: r,
+      metaRecipeSha: fresco.recipeSha || "",
+      metaRecipeAt: new Date().toISOString(),
+    });
+    return { adn: fresco, receta: r };
+  }, [client, recetaSlug, onPersistClient]);
+
+  // Al abrir. `hecho` evita que el diálogo relea si React vuelve a montar
+  // el efecto, que en modo estricto pasa dos veces.
+  const hecho = useRef(false);
+  useEffect(() => {
+    if (hecho.current) return;
+    hecho.current = true;
+    setFase("cargando");
+    cargar()
+      .then(() => setFase("config"))
+      .catch((e) => { setError(e.message || "No se pudo leer la receta."); setFase("config"); });
+  }, [cargar]);
+
   const generar = async () => {
     setError("");
-    setAviso("");
     setFase("trabajando");
 
     try {
-      // ---- 1. El ADN, del repositorio ----
-      setEstado("Leyendo el ADN del repositorio…");
-      const adn = await loadADN(client, { forzar: true });
-      if (!adn.content) {
-        throw new Error(
-          "Este cliente no tiene ADN conectado. Ábrelo en «Editar cliente» → pestaña GitHub y conecta su carpeta del repositorio."
-        );
-      }
-      if (adn.truncated) {
-        setAviso("El ADN es más largo que el presupuesto de lectura y se recortó por lo menos prioritario. La receta y las guías de marca sí entraron completas.");
-      }
+      const datos = receta ? { adn, receta } : await cargar();
 
-      // ---- 2. La receta ----
-      // Siempre se relee: con 05_receta.json es instantáneo y gratis, así
-      // que cachearla sólo servía para arrastrar una versión vieja.
-      setEstado(adn.sections?.recetaJson
-        ? "Leyendo la receta del repositorio…"
-        : "Compilando la receta visual del cliente…");
-      const { receta, origen, avisoJson } = await cargarReceta(adn, client);
-      receta.slug = receta.slug || recetaSlug;
-      setDiag(construirDiag(adn, receta, origen, avisoJson));
-      if (avisoJson) {
-        setAviso(`El 05_receta.json de ${client.name} no se pudo leer (${avisoJson}), así que se compiló con IA. Revisa ese archivo.`);
-      }
-      onPersistClient?.({
-        ...client,
-        metaRecipe: receta,
-        metaRecipeSha: adn.recipeSha || "",
-        metaRecipeAt: new Date().toISOString(),
-      });
-
-      const pendientes = faltantesDeReceta(receta);
-      setFaltan(pendientes);
-
-      // Con el sistema visual incompleto no se emite. El estándar es
-      // explícito: si un dato no está, se pide — no se rellena.
-      const criticos = pendientes.filter((x) => x.critico);
-      if (criticos.length) {
-        throw new Error(
-          `El sistema visual de ${client.name} está incompleto: falta ${criticos.length === 1 ? "1 dato" : `${criticos.length} datos`}. ` +
-          `Créale su 01_ADN_y_Memoria/05_prompt_maestro_meta_ai.md en el repositorio y vuelve a recompilar la receta.`
-        );
-      }
 
       // ---- 3. Las piezas ----
       setEstado(`Escribiendo ${seleccion.length} piezas…`);
       const piezas = await generateMetaPieces({
         client,
         calendar: cal,
-        receta,
+        receta: datos.receta,
         posts: seleccion,
         modo,
         tema,
-        adnTexto: adn.content,
+        adnTexto: datos.adn.content,
       });
 
       // ---- 4. El ensamblado, sin IA ----
       setEstado("Armando el prompt…");
       // La composición puede descubrir un titular que no cabe en el cuerpo
       // más pequeño. Eso lo arregla el humano acortando la línea, no Meta AI.
-      const problemas = avisosDeComposicion(receta, piezas);
+      const problemas = avisosDeComposicion(datos.receta, piezas);
       if (problemas.length) {
         setAviso(problemas.join(" "));
       }
-      setPrompt(buildMetaMasterPrompt({ receta, piezas, modo, tema, publico }));
+      setPrompt(buildMetaMasterPrompt({ receta: datos.receta, piezas, modo, tema, publico }));
       setFase("listo");
       setEstado("");
     } catch (e) {
@@ -203,42 +221,22 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
     URL.revokeObjectURL(url);
   };
 
-  const recompilar = async () => {
-    setError("");
-    setFase("trabajando");
+  const releer = async () => {
+    setFase("cargando");
+    setAviso("");
     try {
-      setEstado("Releyendo el repositorio…");
-      const fresco = await fetchGitHubADN(client.githubRepo, client.githubFolder);
-      setEstado(fresco.sections?.recetaJson
-        ? "Leyendo la receta del repositorio…"
-        : "Recompilando la receta visual…");
-      const { receta, origen, avisoJson } = await cargarReceta(fresco, client);
-      receta.slug = receta.slug || recetaSlug;
-      setDiag(construirDiag(fresco, receta, origen, avisoJson));
-      onPersistClient?.({
-        ...client,
-        githubContext: fresco.content,
-        metaRecipe: receta,
-        metaRecipeSha: fresco.recipeSha || "",
-        metaRecipeAt: new Date().toISOString(),
-      });
-      const pendientes = faltantesDeReceta(receta);
-      setFaltan(pendientes);
-      const criticos = pendientes.filter((x) => x.critico);
-      setEstado(criticos.length
-        ? `Receta recompilada, pero siguen faltando ${criticos.length} datos del sistema visual.`
-        : "Receta recompilada desde el repositorio.");
-      setFase("config");
+      await cargar();
+      setEstado("Receta releída del repositorio.");
     } catch (e) {
-      setError(e.message || "No se pudo recompilar la receta.");
-      setFase("config");
+      setError(e.message || "No se pudo leer la receta.");
     }
+    setFase("config");
   };
 
-  const tieneReceta = Boolean(client.metaRecipe);
-  // Con receta compilada y datos críticos ausentes, generar sólo gastaría una
-  // llamada para devolver un prompt con huecos.
-  const bloqueado = tieneReceta && faltantesCriticos(client.metaRecipe).length > 0;
+  // Todo se deriva de la receta que se acaba de leer, no de la guardada.
+  const faltan = receta ? faltantesDeReceta(receta) : [];
+  const bloqueado = Boolean(receta) && faltantesCriticos(receta).length > 0;
+  const desdeJson = diag?.origen === "json";
 
   return (
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -304,9 +302,9 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
             <div style={{ background: "var(--surface-2)", borderRadius: "var(--radius-sm)", padding: "var(--sp-2)", marginBottom: "var(--sp-3)", fontSize: "var(--fs-2xs)", lineHeight: 1.6 }}>
               <div><strong>{seleccion.length}</strong> publicaciones entran en el lote{candidatas.length > tope ? ` (de ${candidatas.length} con contenido; el modo «${MODOS_META[modo].label}» admite ${tope})` : ""}.</div>
               <div style={{ color: "var(--text-dim)" }}>
-                Receta visual: {tieneReceta
-                  ? <>compilada{client.metaRecipeAt ? ` el ${new Date(client.metaRecipeAt).toLocaleDateString("es-PA")}` : ""}</>
-                  : "sin compilar — se compila en esta misma generación"}
+                Receta visual: {receta
+                  ? (desdeJson ? "leída de 05_receta.json, sin IA" : "compilada con IA desde la prosa del ADN")
+                  : "sin leer todavía"}
               </div>
               <div style={{ color: client.logo ? "var(--text-dim)" : "var(--accent-alt, #F5A623)" }}>
                 Logo del cliente: {client.logo ? "cargado, se ofrece para pegar en el HTML" : "sin cargar — el HTML pedirá que lo cargues a mano"}
@@ -329,9 +327,9 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
                 {bloqueado && (
                   <p style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)", marginTop: "var(--sp-2)", lineHeight: 1.6 }}>
                     Sin esos datos el prompt sale con huecos, y un hueco es lo que
-                    hace improvisar a Meta AI. Créale a {client.name} su{" "}
-                    <code style={{ fontSize: "var(--fs-3xs)" }}>01_ADN_y_Memoria/05_prompt_maestro_meta_ai.md</code>{" "}
-                    y recompila la receta.
+                    hace improvisar a Meta AI. Complétale a {client.name} su{" "}
+                    <code style={{ fontSize: "var(--fs-3xs)" }}>01_ADN_y_Memoria/05_receta.json</code>{" "}
+                    en el repositorio y vuelve a abrir esto.
                   </p>
                 )}
               </div>
@@ -339,9 +337,9 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
 
             <div style={{ display: "flex", gap: "var(--sp-2)", justifyContent: "flex-end", flexWrap: "wrap" }}>
               <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-              {tieneReceta && client.githubRepo && (
-                <button className="btn btn-ghost" onClick={recompilar}>
-                  <Icon name="refresh" size={16} /> Recompilar receta
+              {client.githubRepo && (
+                <button className="btn btn-ghost" onClick={releer}>
+                  <Icon name="refresh" size={16} /> Releer receta
                 </button>
               )}
               <button className="btn btn-primary" onClick={generar} disabled={!seleccion.length || bloqueado}>
@@ -357,7 +355,7 @@ export default function MetaPromptModal({ client, cal, onClose, onPersistClient 
           </>
         )}
 
-        {fase === "trabajando" && (
+        {(fase === "trabajando" || fase === "cargando") && (
           <div style={{ padding: "var(--sp-4) 0", textAlign: "center", fontSize: "var(--fs-sm)", color: "var(--text-muted)" }}>
             <div className="progress-bar" style={{ marginBottom: "var(--sp-3)" }}>
               <div className="progress-fill" style={{ width: "100%", opacity: .5 }} />
