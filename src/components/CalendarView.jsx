@@ -1,7 +1,7 @@
 import { useEffect, useId, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid, fmtDate, compressImage, parseVideoURL } from "../utils";
-import { callAI, loadADN, parseAIResponse, buildScriptPrompt, generateSinglePost, generateFieldForPost } from "../api";
+import { callAI, loadADN, parseAIResponse, buildScriptPrompt, buildDescripcionesPrompt, buildClientContext, generateSinglePost, generateFieldForPost } from "../api";
 import { buildExportHTML } from "../export";
 import { shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals } from "../lib/db";
 import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO } from "../lib/exportarContenido";
@@ -599,7 +599,7 @@ function ExportContenidoDialog({ exportacion, formatos, onToggleFormato, onCopia
           <Icon name="copy" size={20} /> Exportar ideas y descripciones
         </h3>
         <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
-          Cada publicación sale completa: formato, fecha y hora, idea, descripción y hashtags.
+          Cada publicación sale completa: formato, fecha y hora, idea, guion (reels, carruseles…), descripción y hashtags.
           Las que tengan algún campo sin escribir se quedan fuera.
         </p>
 
@@ -1261,7 +1261,7 @@ function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasB
               const cat = post.category || dd?.category || "";
               const hue = cat ? categoryHue(cat) : 0;
               const briefIdea = (post.title || post.idea || "").split(/[.\n]/)[0].slice(0, 24);
-              const chipLabel = cat || f.label;
+              const chipLabel = post.title || cat || f.label;
               // Cuánto le falta a esta publicación. Va en la barra de abajo
               // y, en palabras, en el nombre accesible y en el `title`: un
               // color no se lee con lector de pantalla.
@@ -2008,7 +2008,7 @@ export default function CalendarView({
     setGenProgress(0);
     setGenStatus("Preparando...");
     setDebugLog([]);
-    addDebug("Inicio de generacion");
+    addDebug("Inicio de generación por fases");
 
     try {
       if (!client.githubContext && client.githubRepo) setGenStatus("Cargando ADN desde GitHub...");
@@ -2016,106 +2016,157 @@ export default function CalendarView({
       const adnExtra = adn.content;
       addDebug(`ADN ${adn.cacheado ? "cacheado" : "de GitHub"}: ${adnExtra.length} caracteres`);
 
-      const days = cal.days || [];
+      let currentDays = cal.days || [];
+      const BATCH = 6;
+      const formatosConGuion = new Set(["reel", "carrusel", "historia", "live"]);
 
-      // Qué le falta a cada publicación depende de su formato: un post
-      // sólo lleva caption, y un reel además guion. Antes bastaba tener
-      // uno de los dos para quedar fuera, así que un reel que llegara del
-      // asistente con la descripción escrita se quedaba sin guion para
-      // siempre y nadie lo veía hasta el día de grabarlo.
+      // ── FASE 1: Ideas para publicaciones sin idea ──
+      const sinIdea = currentDays.flatMap((d) =>
+        (d.posts || []).filter((p) => !(p.idea || "").trim()).map((p) => ({
+          ...p, _date: d.date, _dayName: d.dayName, _weekNumber: d.weekNumber, _concept: d.concept,
+        }))
+      );
+
+      if (sinIdea.length) {
+        addDebug(`Fase 1: ${sinIdea.length} posts sin idea`);
+        const ctx = buildClientContext(client, cal, adnExtra);
+        let ideasResults = {};
+
+        for (let i = 0; i < sinIdea.length; i += BATCH) {
+          const batch = sinIdea.slice(i, i + BATCH);
+          setGenStatus(`Fase 1 — Ideas ${i + 1}-${Math.min(i + BATCH, sinIdea.length)} de ${sinIdea.length}…`);
+          setGenProgress(Math.round((i / sinIdea.length) * 25));
+
+          const prompt = `${ctx}
+
+CAMPAÑA: ${cal.campaign || "N/A"}
+${cal.offers ? `OFERTAS: ${cal.offers}` : ""}
+
+Genera una idea ÚNICA para cada publicación. Cada idea: 1-2 oraciones claras y accionables.
+
+FORMATO DE RESPUESTA (respeta exactamente):
+<<<PUBLICACION_ID:id>>>
+IDEA:
+idea aqui
+
+PUBLICACIONES:
+${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p._date} (${p._dayName || ""})\nCATEGORIA: ${p.category || "N/A"}\nSEMANA: ${p._weekNumber || ""} — ${p._concept || "libre"}${p.creativo ? `\nTIPO_CREATIVO: ${p.creativo}` : ""}`).join("\n\n")}`;
+
+          const txt = await callAI([{ type: "text", text: prompt }]);
+          const parsed = parseAIResponse(txt);
+          ideasResults = { ...ideasResults, ...parsed };
+          addDebug(`Fase 1 batch: ${Object.keys(parsed).length} ideas`);
+        }
+
+        currentDays = currentDays.map((d) => ({
+          ...d,
+          posts: (d.posts || []).map((p) => {
+            const r = ideasResults[p.id];
+            if (!r?.idea) return p;
+            return { ...p, idea: p.idea || r.idea };
+          }),
+        }));
+        onUpdateCal(calId, { ...cal, days: currentDays });
+        addDebug(`Fase 1 completa: ${Object.keys(ideasResults).length} ideas generadas`);
+      } else {
+        addDebug("Fase 1: todas las publicaciones ya tienen idea");
+      }
+
+      // ── FASE 2: Guiones para reels/carruseles/historias/lives sin guion ──
+      const sinGuion = currentDays.flatMap((d) =>
+        (d.posts || []).filter((p) => formatosConGuion.has(p.format) && (p.idea || "").trim() && !(p.guion || "").trim())
+          .map((p) => ({ ...p, _date: d.date, _dayName: d.dayName, _weekNumber: d.weekNumber, _concept: d.concept }))
+      );
+
+      if (sinGuion.length) {
+        addDebug(`Fase 2: ${sinGuion.length} posts necesitan guion`);
+
+        for (let i = 0; i < sinGuion.length; i += BATCH) {
+          const batch = sinGuion.slice(i, i + BATCH);
+          setGenStatus(`Fase 2 — Guiones ${i + 1}-${Math.min(i + BATCH, sinGuion.length)} de ${sinGuion.length}…`);
+          setGenProgress(25 + Math.round((i / sinGuion.length) * 30));
+
+          const promptText = buildScriptPrompt(client, cal, batch, adnExtra);
+          const content = [{ type: "text", text: promptText }];
+          const txt = await callAI(content);
+          const parsed = parseAIResponse(txt);
+          addDebug(`Fase 2 batch: ${Object.keys(parsed).length} guiones`);
+
+          currentDays = currentDays.map((d) => ({
+            ...d,
+            posts: (d.posts || []).map((p) => {
+              const r = parsed[p.id];
+              if (!r) return p;
+              return {
+                ...p,
+                guion: p.guion || r.guion || "",
+                descripcion: p.descripcion || r.descripcion || "",
+                hashtagsFinales: p.hashtagsFinales || r.hashtagsFinales || "",
+                script: p.script || r.descripcion || r.guion || "",
+              };
+            }),
+          }));
+          onUpdateCal(calId, { ...cal, days: currentDays });
+        }
+        addDebug("Fase 2 completa");
+      } else {
+        addDebug("Fase 2: nada necesita guion");
+      }
+
+      // ── FASE 3: Descripciones para lo que falta ──
+      const sinDesc = currentDays.flatMap((d) =>
+        (d.posts || []).filter((p) => (p.idea || "").trim() && !(p.descripcion || p.script || "").trim())
+          .map((p) => ({ ...p, _date: d.date, _dayName: d.dayName, _weekNumber: d.weekNumber, _concept: d.concept }))
+      );
+
+      if (sinDesc.length) {
+        addDebug(`Fase 3: ${sinDesc.length} posts necesitan descripción`);
+
+        for (let i = 0; i < sinDesc.length; i += BATCH) {
+          const batch = sinDesc.slice(i, i + BATCH);
+          setGenStatus(`Fase 3 — Descripciones ${i + 1}-${Math.min(i + BATCH, sinDesc.length)} de ${sinDesc.length}…`);
+          setGenProgress(55 + Math.round((i / sinDesc.length) * 40));
+
+          const promptText = buildDescripcionesPrompt(client, cal, batch, adnExtra);
+          const { texto } = await callAI([{ type: "text", text: promptText }], { maxTokens: 8000, tolerarCorte: true });
+          const parsed = parseAIResponse(texto);
+          addDebug(`Fase 3 batch: ${Object.keys(parsed).length} descripciones`);
+
+          currentDays = currentDays.map((d) => ({
+            ...d,
+            posts: (d.posts || []).map((p) => {
+              const r = parsed[p.id];
+              if (!r?.descripcion) return p;
+              return {
+                ...p,
+                descripcion: p.descripcion || r.descripcion,
+                hashtagsFinales: p.hashtagsFinales || r.hashtagsFinales || "",
+                script: p.script || r.descripcion,
+              };
+            }),
+          }));
+          onUpdateCal(calId, { ...cal, days: currentDays });
+        }
+        addDebug("Fase 3 completa");
+      } else {
+        addDebug("Fase 3: nada necesita descripción");
+      }
+
+      // ── Resultado final ──
       const leFalta = (p) => {
         const tieneCaption = Boolean(p.descripcion || p.script);
         if (p.format === "post") return !tieneCaption;
         return !p.guion || !tieneCaption;
       };
-
-      const postsToGen = days.flatMap((d) =>
-        (d.posts || [])
-          .filter(leFalta)
-          .map((p) => ({
-            ...p,
-            _date: d.date,
-            _dayName: d.dayName,
-            _weekNumber: d.weekNumber,
-            _concept: d.concept,
-          }))
-      );
-
-      if (!postsToGen.length) {
-        setGenStatus("Todos los posts ya tienen contenido.");
-        addDebug("Nada que generar");
-        setTimeout(() => { setGenLoading(false); setGenStatus(""); }, 1500);
-        return;
-      }
-
-      addDebug(`${postsToGen.length} posts a generar`);
-
-      const BATCH = 6;
-      let allResults = {};
-
-      for (let i = 0; i < postsToGen.length; i += BATCH) {
-        const batch = postsToGen.slice(i, i + BATCH);
-        const batchLabel = `${i + 1}-${Math.min(i + BATCH, postsToGen.length)}/${postsToGen.length}`;
-        setGenStatus(`Generando ${batchLabel}...`);
-        setGenProgress(Math.round((i / postsToGen.length) * 90));
-        addDebug(`Batch ${batchLabel}: ${batch.map((p) => p.id).join(", ")}`);
-
-        const promptText = buildScriptPrompt(client, cal, batch, adnExtra);
-        addDebug(`Prompt length: ${promptText.length} chars`);
-
-        const content = [{ type: "text", text: promptText }];
-        for (const p of batch) {
-          if (p.image) {
-            content.push({
-              type: "image",
-              source: { type: "base64", media_type: "image/jpeg", data: p.image.includes(",") ? p.image.split(",")[1] : p.image },
-            });
-          }
-        }
-
-        const txt = await callAI(content);
-        addDebug(`Respuesta: ${txt.length} chars`);
-
-        const parsed = parseAIResponse(txt);
-        const parsedIds = Object.keys(parsed);
-        addDebug(`Parseados: ${parsedIds.length} posts — IDs: ${parsedIds.join(", ")}`);
-
-        if (parsedIds.length === 0) {
-          addDebug("WARN: No se parsearon posts. Respuesta cruda: " + txt.slice(0, 300));
-        }
-
-        allResults = { ...allResults, ...parsed };
-      }
-
-      const newDays = (cal.days || []).map((d) => ({
-        ...d,
-        posts: (d.posts || []).map((p) => {
-          const result = allResults[p.id];
-          if (!result) return p;
-          // Lo que ya estaba escrito manda sobre lo que acaba de llegar:
-          // esta generación rellena huecos, no reescribe lo aprobado. Un
-          // caption editado a mano —o traído del asistente— no se pisa por
-          // pedir el guion que faltaba.
-          return {
-            ...p,
-            guion: p.guion || result.guion || "",
-            descripcion: p.descripcion || result.descripcion || "",
-            hashtagsFinales: p.hashtagsFinales || result.hashtagsFinales || "",
-            script: p.script || result.descripcion || result.guion || "",
-          };
-        }),
-      }));
-      onUpdateCal(calId, { ...cal, days: newDays });
-
-      setGenProgress(100);
-      const total = Object.keys(allResults).length;
-      const stillIncomplete = newDays.flatMap((d) => (d.posts || []).filter(leFalta));
+      const stillIncomplete = currentDays.flatMap((d) => (d.posts || []).filter(leFalta));
       if (stillIncomplete.length > 0) {
         setIncompleteInfo({ count: stillIncomplete.length });
-        addDebug(`WARN: ${stillIncomplete.length} posts quedaron sin generar`);
+        addDebug(`${stillIncomplete.length} posts quedaron incompletos`);
       }
-      setGenStatus(`Listo! ${total} posts generados`);
-      addDebug(`Completado: ${total} posts actualizados`);
+
+      setGenProgress(100);
+      setGenStatus("Listo — contenido generado por fases");
+      addDebug("Generación por fases completada");
       setTimeout(() => { setGenLoading(false); setGenStatus(""); setGenProgress(0); }, 2000);
     } catch (e) {
       addDebug("ERROR: " + e.message);
@@ -2593,7 +2644,7 @@ export default function CalendarView({
                               <span style={{ width: 6, height: 6, borderRadius: "50%", background: st.text, flexShrink: 0 }} aria-hidden="true" />
                               <Icon name={FORMAT_ICONS[p.format] || "formatPost"} size={13} />
                               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {pCat || f.label}
+                                {p.title || pCat || f.label}
                               </span>
                             </span>
                           );

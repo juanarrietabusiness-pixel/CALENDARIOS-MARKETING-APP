@@ -4,7 +4,7 @@
 // Sustituye al exportador de prompts visuales, que sacaba el prompt de
 // imagen de cada publicación y poco más. Lo que hace falta pegar en el
 // sitio donde se diseña y se programa es la ficha entera: formato, fecha
-// y hora, idea, descripción y hashtags.
+// y hora, idea, guion (para reels y carruseles), descripción y hashtags.
 //
 // Y entera de verdad. Una publicación a la que le falte la descripción o
 // los hashtags no se exporta a medias: una idea suelta no se puede
@@ -58,6 +58,9 @@ export function fechaLarga(day) {
  * @param formatos  claves de FORMATS que entran
  * @param ahora     se pasa para poder fijarla en los tests
  */
+/** Los formatos que llevan guion y hay que exportarlo. */
+const FORMATOS_CON_GUION = new Set(["reel", "carrusel", "historia", "live"]);
+
 export function construirExportacion({ days = [], formatos = [], cliente = "", calendario = "", ahora = new Date() }) {
   const piezas = [];
   const incompletas = [];
@@ -67,11 +70,14 @@ export function construirExportacion({ days = [], formatos = [], cliente = "", c
       if (!formatos.includes(post.format)) continue;
 
       const idea = (post.idea || "").trim();
+      const guion = (post.guion || "").trim();
       const descripcion = (post.descripcion || post.script || "").trim();
       const hashtags = hashtagsDe(post);
+      const necesitaGuion = FORMATOS_CON_GUION.has(post.format);
 
       const falta = [];
       if (!idea) falta.push("idea");
+      if (necesitaGuion && !guion) falta.push("guion");
       if (!descripcion) falta.push("descripción");
       if (!hashtags) falta.push("hashtags");
       if (falta.length) {
@@ -79,7 +85,7 @@ export function construirExportacion({ days = [], formatos = [], cliente = "", c
         continue;
       }
 
-      piezas.push({ day, post, idea, descripcion, hashtags });
+      piezas.push({ day, post, idea, guion, descripcion, hashtags });
     }
   }
 
@@ -88,7 +94,7 @@ export function construirExportacion({ days = [], formatos = [], cliente = "", c
   }
 
   const lineas = [];
-  piezas.forEach(({ day, post, idea, descripcion, hashtags }, i) => {
+  piezas.forEach(({ day, post, idea, guion, descripcion, hashtags }, i) => {
     const fmt = FORMATS[post.format] || FORMATS.post;
     lineas.push("═══════════════════════════════════════");
     lineas.push(`${i + 1} · ${fmt.label.toUpperCase()}`);
@@ -100,6 +106,11 @@ export function construirExportacion({ days = [], formatos = [], cliente = "", c
     lineas.push("IDEA:");
     lineas.push(idea);
     lineas.push("");
+    if (guion) {
+      lineas.push("GUION:");
+      lineas.push(guion);
+      lineas.push("");
+    }
     lineas.push("DESCRIPCIÓN:");
     lineas.push(descripcion);
     lineas.push("");

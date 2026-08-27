@@ -1,11 +1,11 @@
 import { useId, useState, useRef } from "react";
 import { PLANS, FORMATS, FORMAT_ICONS, DEFAULT_CATEGORIES, MONTHS, DAYS, DAYS_SHORT } from "../constants";
-import { uid, daysInMonth, fmtDate, getWeekNumber, dayName, parseVideoURL } from "../utils";
+import { uid, daysInMonth, fmtDate, getWeekNumber, dayName } from "../utils";
 import { callAI, buildClientContext, buildDescripcionesPrompt, loadADN, parseAIResponse } from "../api";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
 
-const STEP_LABELS = ["Plan", "Fechas", "Campaña", "Conceptos", "Categorías", "Ofertas", "Vídeos", "Ideas"];
+const STEP_LABELS = ["Plan", "Fechas", "Campaña", "Conceptos", "Categorías", "Ofertas", "Creativo", "Ideas"];
 
 const TEMPLATES_KEY = "jads-templates";
 function loadTemplates() {
@@ -56,8 +56,11 @@ export default function PlanWizard({ client, onGenerate, onClose }) {
   });
   const [offers, setOffers] = useState("");
   const [promoCode, setPromoCode] = useState("");
-  const [referenceVideos, setReferenceVideos] = useState([]);
-  const [newVideoUrl, setNewVideoUrl] = useState("");
+  const [creativoConfig, setCreativoConfig] = useState(() => {
+    const cfg = {};
+    for (let dow = 0; dow < 7; dow++) cfg[dow] = [];
+    return cfg;
+  });
   const [ideas, setIdeas] = useState({});
   const [ideaMode, setIdeaMode] = useState("day");
   // Qué trozo del mes se genera: «mes» o el número de una semana. El mes
@@ -89,6 +92,7 @@ export default function PlanWizard({ client, onGenerate, onClose }) {
     const tpl = { id: uid(), name, type, plan, createdAt: new Date().toISOString() };
     if (type === "formats" || type === "full") tpl.formatConfig = formatConfig;
     if (type === "categories" || type === "full") tpl.dayCategories = dayCategories;
+    if (type === "formats" || type === "full") tpl.creativoConfig = creativoConfig;
     if (type === "full") {
       tpl.campaign = campaign;
       tpl.weekConcepts = weekConcepts;
@@ -107,6 +111,7 @@ export default function PlanWizard({ client, onGenerate, onClose }) {
       setFormatConfig(tpl.formatConfig);
       if (tpl.plan) setPlan(tpl.plan);
     }
+    if (tpl.creativoConfig) setCreativoConfig(tpl.creativoConfig);
     if (tpl.dayCategories) setDayCategories(tpl.dayCategories);
     if (tpl.campaign !== undefined) setCampaign(tpl.campaign);
     if (tpl.weekConcepts) setWeekConcepts(tpl.weekConcepts);
@@ -452,25 +457,24 @@ ${daysDesc}`;
       const formats = (formatConfig[dow] || []).slice(0, postsPerDay);
       const dayIdeas = ideas[date] || [];
 
+      const creativos = creativoConfig[dow] || [];
       const posts = formats.map((f, j) => {
         const idea = dayIdeas[j];
-        const refVideo = referenceVideos.find((v) => v.assignedDate === date && v.postIndex === j);
         return {
           id: idea?.id || uid(),
           format: f.format,
           idea: idea?.idea || "",
-          referenceLink: refVideo?.url || idea?.referenceLink || "",
+          referenceLink: idea?.referenceLink || "",
           image: idea?.image || null,
           guion: "",
-          // Lo escrito en el asistente viaja al calendario. Antes se
-          // vaciaba aquí, así que las descripciones generadas en el paso
-          // de ideas se perdían al pulsar «Crear calendario».
           descripcion: idea?.descripcion || "",
           hashtagsFinales: idea?.hashtagsFinales || "",
           script: idea?.descripcion || idea?.script || "",
           status: idea?.status || "pending",
           category: cat,
           comment: "",
+          publishTime: f.publishTime || "",
+          creativo: creativos[j] || "",
         };
       });
 
@@ -539,7 +543,7 @@ ${daysDesc}`;
                         const cfg = {};
                         for (let dow = 0; dow < 7; dow++) {
                           const existing = prev[dow] || [];
-                          cfg[dow] = Array.from({ length: p.posts }, (_, i) => existing[i] || { format: i === 0 ? "post" : "reel" });
+                          cfg[dow] = Array.from({ length: p.posts }, (_, i) => existing[i] || { format: i === 0 ? "post" : "reel", publishTime: "" });
                         }
                         return cfg;
                       });
@@ -596,7 +600,7 @@ ${daysDesc}`;
                     <div key={dow} style={{ background: "var(--bg)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)" }}>
                       <p style={{ fontSize: "var(--fs-xs)", fontWeight: 700, marginBottom: "var(--sp-2)" }}>{DAYS[dow]}</p>
                       {(formatConfig[dow] || []).map((slot, si) => (
-                        <div key={si} role="group" aria-label={`${DAYS[dow]}, publicación ${si + 1}`} style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-2)" }}>
+                        <div key={si} role="group" aria-label={`${DAYS[dow]}, publicación ${si + 1}`} style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-2)", alignItems: "center" }}>
                           {Object.entries(FORMATS).map(([fk, f]) => (
                             <button
                               key={fk}
@@ -605,7 +609,7 @@ ${daysDesc}`;
                               onClick={() =>
                                 setFormatConfig((prev) => ({
                                   ...prev,
-                                  [dow]: prev[dow].map((s, j) => (j === si ? { format: fk } : s)),
+                                  [dow]: prev[dow].map((s, j) => (j === si ? { ...s, format: fk } : s)),
                                 }))
                               }
                               style={{
@@ -623,6 +627,19 @@ ${daysDesc}`;
                               <Icon name={FORMAT_ICONS[fk]} size={14} /> {f.label}
                             </button>
                           ))}
+                          <input
+                            type="time"
+                            className="input"
+                            aria-label={`Hora de publicación, ${DAYS[dow]} publicación ${si + 1}`}
+                            value={slot.publishTime || ""}
+                            onChange={(e) =>
+                              setFormatConfig((prev) => ({
+                                ...prev,
+                                [dow]: prev[dow].map((s, j) => (j === si ? { ...s, publishTime: e.target.value } : s)),
+                              }))
+                            }
+                            style={{ width: 100, fontSize: "var(--fs-3xs)", padding: "var(--sp-1)" }}
+                          />
                         </div>
                       ))}
                     </div>
@@ -861,87 +878,49 @@ ${daysDesc}`;
             </div>
           )}
 
-          {/* Step 6: Reference videos */}
+          {/* Step 6: Creativo / Producción */}
           {step === 6 && (
             <div>
-              <label className="label" htmlFor={`${ids}-video`}>Vídeos de referencia</label>
-              <div style={{ display: "flex", gap: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
-                <input
-                  id={`${ids}-video`}
-                  className="input"
-                  type="url"
-                  style={{ flex: 1 }}
-                  value={newVideoUrl}
-                  onChange={(e) => setNewVideoUrl(e.target.value)}
-                  placeholder="https://youtube.com/watch?v=…"
-                />
-                <button
-                  className="btn btn-primary"
-                  disabled={!newVideoUrl}
-                  onClick={() => {
-                    setReferenceVideos((prev) => [...prev, { id: uid(), url: newVideoUrl, assignedDate: null, postIndex: 0 }]);
-                    setNewVideoUrl("");
-                  }}
-                >
-                  Agregar
-                </button>
-              </div>
-              <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>Acepta YouTube, TikTok, Instagram o Vimeo.</p>
-
-              {referenceVideos.length === 0 ? (
-                <p style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)", textAlign: "center", padding: "var(--sp-5)" }}>
-                  Aún no has añadido vídeos de referencia.
-                </p>
-              ) : (
-                <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
-                  {referenceVideos.map((v, i) => {
-                    const parsed = parseVideoURL(v.url);
-                    return (
-                      <li key={v.id} style={{ background: "var(--bg)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "var(--sp-2)", marginBottom: "var(--sp-2)" }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            {parsed?.type === "youtube" && (
-                              <img src={parsed.thumbnail} alt="" style={{ width: "100%", maxWidth: 220, borderRadius: "var(--radius-xs)", marginBottom: "var(--sp-2)" }} />
-                            )}
-                            <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {v.url}
-                            </p>
+              <h3 className="label" style={{ marginBottom: "var(--sp-1)" }}>Creativo / Producción</h3>
+              <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
+                Define el tipo de producción para cada publicación por día de la semana.
+                Se repite cada semana y se usa como contexto al generar guiones y descripciones.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
+                {[1, 2, 3, 4, 5, 6, 0].map((dow) => {
+                  const formats = (formatConfig[dow] || []).slice(0, postsPerDay);
+                  const creativos = creativoConfig[dow] || [];
+                  return (
+                    <div key={dow} style={{ background: "var(--bg)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)" }}>
+                      <p style={{ fontSize: "var(--fs-xs)", fontWeight: 700, marginBottom: "var(--sp-2)" }}>{DAYS[dow]}</p>
+                      {formats.map((f, j) => {
+                        const fmt = FORMATS[f.format] || FORMATS.post;
+                        return (
+                          <div key={j} style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", marginBottom: "var(--sp-2)" }}>
+                            <Icon name={FORMAT_ICONS[f.format] || "formatPost"} size={16} style={{ color: fmt.color, flexShrink: 0, width: 22 }} />
+                            <span style={{ fontSize: "var(--fs-2xs)", fontWeight: 600, color: fmt.color, minWidth: 60, flexShrink: 0 }}>{fmt.label}</span>
+                            <input
+                              className="input"
+                              style={{ flex: 1, fontSize: "var(--fs-2xs)" }}
+                              aria-label={`Tipo creativo, ${DAYS[dow]} ${fmt.label} ${j + 1}`}
+                              value={creativos[j] || ""}
+                              onChange={(e) => {
+                                setCreativoConfig((prev) => {
+                                  const current = [...(prev[dow] || [])];
+                                  while (current.length <= j) current.push("");
+                                  current[j] = e.target.value;
+                                  return { ...prev, [dow]: current };
+                                });
+                              }}
+                              placeholder="Ej: video con rostro, post real, generado con IA…"
+                            />
                           </div>
-                          <button
-                            type="button"
-                            className="btn-remove"
-                            aria-label="Quitar vídeo de referencia"
-                            onClick={() => setReferenceVideos((prev) => prev.filter((_, j) => j !== i))}
-                          >
-                            <Icon name="close" size={16} />
-                          </button>
-                        </div>
-                        <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center" }}>
-                          <label style={{ fontSize: "var(--fs-2xs)", color: "var(--text-muted)", flexShrink: 0 }} htmlFor={`${ids}-vid-${v.id}`}>
-                            Asignar a:
-                          </label>
-                          <select
-                            id={`${ids}-vid-${v.id}`}
-                            className="input"
-                            style={{ flex: 1 }}
-                            value={v.assignedDate || ""}
-                            onChange={(e) =>
-                              setReferenceVideos((prev) => prev.map((vv, j) => (j === i ? { ...vv, assignedDate: e.target.value } : vv)))
-                            }
-                          >
-                            <option value="">Sin asignar</option>
-                            {allDays.map((d) => (
-                              <option key={fmtDate(d)} value={fmtDate(d)}>
-                                {d.getDate()} {DAYS_SHORT[d.getDay()]}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
