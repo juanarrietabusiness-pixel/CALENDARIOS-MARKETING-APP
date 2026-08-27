@@ -4,7 +4,7 @@ import { uid, fmtDate, compressImage, parseVideoURL } from "../utils";
 import { callAI, loadADN, parseAIResponse, buildScriptPrompt, buildDescripcionesPrompt, buildClientContext, generateSinglePost, generateFieldForPost } from "../api";
 import { buildExportHTML } from "../export";
 import { shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals } from "../lib/db";
-import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO } from "../lib/exportarContenido";
+import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO, CAMPOS_EXPORTABLES } from "../lib/exportarContenido";
 import { completitud, resumenCompletitud } from "../lib/completitud";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import MetaPromptModal from "./MetaPromptModal";
@@ -580,7 +580,9 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onS
  * que estaba casi vacío. Aquí se ve lo que hay, se dice qué quedó fuera y
  * por qué, y se puede copiar sin pasar por un archivo.
  */
-function ExportContenidoDialog({ exportacion, formatos, onToggleFormato, onCopiar, copiado, onDescargar, onClose }) {
+const CAMPOS_LABELS = { idea: "Ideas", guion: "Guiones", descripcion: "Descripciones", hashtags: "Hashtags" };
+
+function ExportContenidoDialog({ exportacion, formatos, onToggleFormato, campos, onToggleCampo, onCopiar, copiado, onDescargar, onClose }) {
   const ids = useId();
   const dialogRef = useDialogA11y(onClose);
   const { texto, completas, incompletas } = exportacion;
@@ -627,6 +629,36 @@ function ExportContenidoDialog({ exportacion, formatos, onToggleFormato, onCopia
                   }}
                 >
                   <Icon name={FORMAT_ICONS[k]} size={16} /> {fmt.label}
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+
+        <fieldset className="field" style={{ border: "none", padding: 0 }}>
+          <legend className="label">Campos que entran</legend>
+          <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }}>
+            {CAMPOS_EXPORTABLES.map((c) => {
+              const activo = campos.includes(c);
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  aria-pressed={activo}
+                  onClick={() => onToggleCampo(c)}
+                  style={{
+                    padding: "var(--sp-2) var(--sp-3)",
+                    borderRadius: "var(--radius-sm)",
+                    border: `1px solid ${activo ? "var(--accent)" : "var(--border)"}`,
+                    cursor: "pointer",
+                    background: activo ? "var(--accent-soft)" : "var(--card-alt)",
+                    color: activo ? "var(--accent)" : "var(--text-muted)",
+                    fontSize: "var(--fs-2xs)",
+                    fontWeight: 600,
+                    minHeight: "var(--tap-sm)",
+                  }}
+                >
+                  {CAMPOS_LABELS[c] || c}
                 </button>
               );
             })}
@@ -2052,7 +2084,8 @@ idea aqui
 PUBLICACIONES:
 ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p._date} (${p._dayName || ""})\nCATEGORIA: ${p.category || "N/A"}\nSEMANA: ${p._weekNumber || ""} — ${p._concept || "libre"}${p.creativo ? `\nTIPO_CREATIVO: ${p.creativo}` : ""}`).join("\n\n")}`;
 
-          const txt = await callAI([{ type: "text", text: prompt }]);
+          const res = await callAI([{ type: "text", text: prompt }], { maxTokens: 4000, tolerarCorte: true });
+          const txt = typeof res === "string" ? res : res.texto;
           const parsed = parseAIResponse(txt);
           ideasResults = { ...ideasResults, ...parsed };
           addDebug(`Fase 1 batch: ${Object.keys(parsed).length} ideas`);
@@ -2088,8 +2121,9 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
 
           const promptText = buildScriptPrompt(client, cal, batch, adnExtra);
           const content = [{ type: "text", text: promptText }];
-          const txt = await callAI(content);
-          const parsed = parseAIResponse(txt);
+          const res2 = await callAI(content, { maxTokens: 8000, tolerarCorte: true });
+          const txt2 = typeof res2 === "string" ? res2 : res2.texto;
+          const parsed = parseAIResponse(txt2);
           addDebug(`Fase 2 batch: ${Object.keys(parsed).length} guiones`);
 
           currentDays = currentDays.map((d) => ({
@@ -2191,6 +2225,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
   // La construcción del texto vive en `lib/exportarContenido.js`: es pura
   // y allí se puede probar sin montar el componente entero.
   const [formatosExport, setFormatosExport] = useState(FORMATOS_EXPORTABLES_POR_DEFECTO);
+  const [camposExport, setCamposExport] = useState(CAMPOS_EXPORTABLES);
   const [promptExportOpen, setPromptExportOpen] = useState(false);
   const [copiado, setCopiado] = useState(false);
 
@@ -2198,6 +2233,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
     ? construirExportacion({
         days: cal.days || [],
         formatos: formatosExport,
+        campos: camposExport,
         cliente: client.name,
         calendario: calName,
       })
@@ -2206,6 +2242,12 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
   const alternarFormatoExport = (clave) => {
     setFormatosExport((prev) =>
       prev.includes(clave) ? prev.filter((f) => f !== clave) : [...prev, clave]
+    );
+  };
+
+  const alternarCampoExport = (clave) => {
+    setCamposExport((prev) =>
+      prev.includes(clave) ? prev.filter((c) => c !== clave) : [...prev, clave]
     );
   };
 
@@ -2282,6 +2324,8 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           exportacion={exportacion}
           formatos={formatosExport}
           onToggleFormato={alternarFormatoExport}
+          campos={camposExport}
+          onToggleCampo={alternarCampoExport}
           onCopiar={copiarExportacion}
           copiado={copiado}
           onDescargar={descargarExportacion}

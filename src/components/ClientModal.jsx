@@ -458,6 +458,18 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
               <label className="label" htmlFor={`${ids}-estiloLocucion`}>Estilo de locución</label>
               <textarea id={`${ids}-estiloLocucion`} className="textarea" style={{ minHeight: 84 }} value={form.estiloLocucion || ""} onChange={(e) => sf("estiloLocucion", e.target.value)} placeholder="Voz, ritmo…" />
             </div>
+            <div>
+              <label className="label" htmlFor={`${ids}-aiInstructions`}>Instrucciones para la IA</label>
+              <textarea
+                id={`${ids}-aiInstructions`}
+                className="textarea"
+                style={{ minHeight: 120 }}
+                value={form.aiInstructions || ""}
+                onChange={(e) => sf("aiInstructions", e.target.value)}
+                placeholder={"Reglas que la IA debe seguir siempre para este cliente.\nEj: «Nunca uses la palabra increíble», «Los reels siempre empiezan con una pregunta», «No menciones precios si no están en el ADN»…"}
+              />
+              <p className="hint">Se envían como instrucciones obligatorias en cada generación de contenido para este cliente.</p>
+            </div>
           </div>
         )}
 

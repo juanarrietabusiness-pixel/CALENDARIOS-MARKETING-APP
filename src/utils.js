@@ -113,6 +113,7 @@ export function createEmptyClient() {
     competencia: "",
     estiloGuion: "",
     estiloLocucion: "",
+    aiInstructions: "",
     hashtags: "",
     notasInspeccion: "",
     githubRepo: "",
