@@ -409,7 +409,8 @@ ESTILO DE GUIONES: ${client.estiloGuion || "Cercano, persuasivo, con emojis y CT
 ESTILO DE LOCUCIÓN: ${client.estiloLocucion || "N/A"}
 HASHTAGS: ${client.hashtags || "#Panama"}
 COMPETENCIA: ${client.competencia || "N/A"}
-${calendar?.campaign ? `CAMPAÑA DEL MES: ${calendar.campaign}` : ""}`;
+${calendar?.campaign ? `CAMPAÑA DEL MES: ${calendar.campaign}` : ""}
+${client.aiInstructions ? `\n═══════════════════════════════════════════════════════════\nINSTRUCCIONES OBLIGATORIAS DEL CLIENTE\n═══════════════════════════════════════════════════════════\n${client.aiInstructions}` : ""}`;
   }
 
   // Sin ADN del repositorio, la ficha es lo único que hay. Se dice, para
@@ -425,7 +426,8 @@ ESTILO DE GUIONES: ${client.estiloGuion || "Cercano, persuasivo, con emojis y CT
 ESTILO DE LOCUCIÓN: ${client.estiloLocucion || "N/A"}
 HASHTAGS: ${client.hashtags || "#Panama"}
 COMPETENCIA: ${client.competencia || "N/A"}
-${calendar?.campaign ? `CAMPAÑA DEL MES: ${calendar.campaign}` : ""}`;
+${calendar?.campaign ? `CAMPAÑA DEL MES: ${calendar.campaign}` : ""}
+${client.aiInstructions ? `\nINSTRUCCIONES OBLIGATORIAS DEL CLIENTE:\n${client.aiInstructions}` : ""}`;
 }
 
 // ============================================================

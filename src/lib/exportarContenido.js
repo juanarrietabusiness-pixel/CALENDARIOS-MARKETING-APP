@@ -21,6 +21,9 @@ import { FORMATS, MONTHS } from "../constants";
 /** Los formatos que se exportan si nadie toca nada: los que se diseñan. */
 export const FORMATOS_EXPORTABLES_POR_DEFECTO = ["post", "carrusel"];
 
+/** Los campos que se exportan por defecto. */
+export const CAMPOS_EXPORTABLES = ["idea", "guion", "descripcion", "hashtags"];
+
 /**
  * Los hashtags de una publicación.
  *
@@ -51,19 +54,24 @@ export function fechaLarga(day) {
   return `${diaSemana}${Number(dia)} de ${nombreMes} de ${anio}`;
 }
 
+/** Los formatos que llevan guion y hay que exportarlo. */
+const FORMATOS_CON_GUION = new Set(["reel", "carrusel", "historia", "live"]);
+
 /**
  * Arma el texto de la exportación y dice qué se quedó fuera.
  *
  * @param days      los días del calendario, con sus publicaciones
  * @param formatos  claves de FORMATS que entran
+ * @param campos    qué campos incluir: "idea", "guion", "descripcion", "hashtags"
  * @param ahora     se pasa para poder fijarla en los tests
  */
-/** Los formatos que llevan guion y hay que exportarlo. */
-const FORMATOS_CON_GUION = new Set(["reel", "carrusel", "historia", "live"]);
-
-export function construirExportacion({ days = [], formatos = [], cliente = "", calendario = "", ahora = new Date() }) {
+export function construirExportacion({ days = [], formatos = [], campos = CAMPOS_EXPORTABLES, cliente = "", calendario = "", ahora = new Date() }) {
   const piezas = [];
   const incompletas = [];
+  const quiereIdea = campos.includes("idea");
+  const quiereGuion = campos.includes("guion");
+  const quiereDesc = campos.includes("descripcion");
+  const quiereHash = campos.includes("hashtags");
 
   for (const day of days) {
     for (const post of day.posts || []) {
@@ -76,10 +84,10 @@ export function construirExportacion({ days = [], formatos = [], cliente = "", c
       const necesitaGuion = FORMATOS_CON_GUION.has(post.format);
 
       const falta = [];
-      if (!idea) falta.push("idea");
-      if (necesitaGuion && !guion) falta.push("guion");
-      if (!descripcion) falta.push("descripción");
-      if (!hashtags) falta.push("hashtags");
+      if (quiereIdea && !idea) falta.push("idea");
+      if (quiereGuion && necesitaGuion && !guion) falta.push("guion");
+      if (quiereDesc && !descripcion) falta.push("descripción");
+      if (quiereHash && !hashtags) falta.push("hashtags");
       if (falta.length) {
         incompletas.push({ day, post, falta });
         continue;
@@ -103,27 +111,35 @@ export function construirExportacion({ days = [], formatos = [], cliente = "", c
     const categoria = post.category || day.category;
     if (categoria) lineas.push(`CATEGORÍA: ${categoria}`);
     lineas.push("───────────────────────────────────────");
-    lineas.push("IDEA:");
-    lineas.push(idea);
-    lineas.push("");
-    if (guion) {
+    if (quiereIdea && idea) {
+      lineas.push("IDEA:");
+      lineas.push(idea);
+      lineas.push("");
+    }
+    if (quiereGuion && guion) {
       lineas.push("GUION:");
       lineas.push(guion);
       lineas.push("");
     }
-    lineas.push("DESCRIPCIÓN:");
-    lineas.push(descripcion);
-    lineas.push("");
-    lineas.push("HASHTAGS:");
-    lineas.push(hashtags);
-    lineas.push("");
+    if (quiereDesc && descripcion) {
+      lineas.push("DESCRIPCIÓN:");
+      lineas.push(descripcion);
+      lineas.push("");
+    }
+    if (quiereHash && hashtags) {
+      lineas.push("HASHTAGS:");
+      lineas.push(hashtags);
+      lineas.push("");
+    }
   });
 
   const etiquetas = formatos.map((f) => FORMATS[f]?.label || f).join(", ");
+  const camposLabel = campos.map((c) => ({ idea: "ideas", guion: "guiones", descripcion: "descripciones", hashtags: "hashtags" })[c] || c).join(", ");
   const cabecera = [
     `CONTENIDO DEL CALENDARIO — ${cliente}`,
     calendario,
     `Formatos: ${etiquetas || "ninguno"}`,
+    `Campos: ${camposLabel}`,
     `${piezas.length} publicaciones completas`,
     `Generado: ${ahora.toLocaleString()}`,
     "",
