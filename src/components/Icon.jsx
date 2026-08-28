@@ -29,6 +29,7 @@ const paths = {
   chevronLeft: <path d="m15 18-6-6 6 6" />,
   more: <><circle cx="12" cy="12" r="1.2" /><circle cx="19" cy="12" r="1.2" /><circle cx="5" cy="12" r="1.2" /></>,
   plus: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
+  minus: <path d="M5 12h14" />,
 
   // --- Acciones ---
   pencil: <><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></>,
