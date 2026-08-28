@@ -124,6 +124,8 @@ export function calendarToRow(cal, clientDbId, ownerId) {
     allow_editing: cal.allowEditing || false,
     visual_references: cal.visualReferences || [],
     day_labels: cal.dayLabels || {},
+    offers: cal.offers || "",
+    promo_code: cal.promoCode || "",
   };
 }
 
@@ -143,5 +145,7 @@ export function rowToCalendar(row) {
     generatedAt: row.generated_at,
     visualReferences: row.visual_references || [],
     dayLabels: row.day_labels || {},
+    offers: row.offers || "",
+    promoCode: row.promo_code || "",
   };
 }

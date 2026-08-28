@@ -29,6 +29,7 @@ export const PLANS = {
   basic:    { label: "Básico",   posts: 1, description: "1 publicación diaria" },
   standard: { label: "Estándar", posts: 2, description: "2 publicaciones diarias" },
   premium:  { label: "Premium",  posts: 3, description: "3 publicaciones diarias" },
+  custom:   { label: "Personalizada", posts: 1, description: "Elige cuántas publicaciones por semana y en qué días", custom: true },
 };
 
 export const DEFAULT_CATEGORIES = [

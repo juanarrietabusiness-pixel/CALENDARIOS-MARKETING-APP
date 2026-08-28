@@ -5,7 +5,7 @@ import { callAI, buildClientContext, buildDescripcionesPrompt, loadADN, parseAIR
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
 
-const STEP_LABELS = ["Plan", "Fechas", "Campaña", "Conceptos", "Categorías", "Ofertas", "Creativo", "Ideas"];
+const STEP_LABELS = ["Plan", "Fechas", "Campaña", "Conceptos", "Categorías", "Ofertas", "Ideas"];
 
 const TEMPLATES_KEY = "jads-templates";
 function loadTemplates() {
@@ -56,11 +56,6 @@ export default function PlanWizard({ client, onGenerate, onClose }) {
   });
   const [offers, setOffers] = useState("");
   const [promoCode, setPromoCode] = useState("");
-  const [creativoConfig, setCreativoConfig] = useState(() => {
-    const cfg = {};
-    for (let dow = 0; dow < 7; dow++) cfg[dow] = [];
-    return cfg;
-  });
   const [ideas, setIdeas] = useState({});
   const [ideaMode, setIdeaMode] = useState("day");
   // Qué trozo del mes se genera: «mes» o el número de una semana. El mes
@@ -81,6 +76,7 @@ export default function PlanWizard({ client, onGenerate, onClose }) {
   const [tplPicker, setTplPicker] = useState(null);
 
   const allDays = daysInMonth(year, month);
+  const isCustom = plan === "custom";
   const postsPerDay = PLANS[plan]?.posts || 2;
 
   const goNext = () => setStep((s) => Math.min(s + 1, STEP_LABELS.length - 1));
@@ -92,7 +88,6 @@ export default function PlanWizard({ client, onGenerate, onClose }) {
     const tpl = { id: uid(), name, type, plan, createdAt: new Date().toISOString() };
     if (type === "formats" || type === "full") tpl.formatConfig = formatConfig;
     if (type === "categories" || type === "full") tpl.dayCategories = dayCategories;
-    if (type === "formats" || type === "full") tpl.creativoConfig = creativoConfig;
     if (type === "full") {
       tpl.campaign = campaign;
       tpl.weekConcepts = weekConcepts;
@@ -111,7 +106,6 @@ export default function PlanWizard({ client, onGenerate, onClose }) {
       setFormatConfig(tpl.formatConfig);
       if (tpl.plan) setPlan(tpl.plan);
     }
-    if (tpl.creativoConfig) setCreativoConfig(tpl.creativoConfig);
     if (tpl.dayCategories) setDayCategories(tpl.dayCategories);
     if (tpl.campaign !== undefined) setCampaign(tpl.campaign);
     if (tpl.weekConcepts) setWeekConcepts(tpl.weekConcepts);
@@ -191,7 +185,7 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
       const dow = d.getDay();
       const dowIdeaList = dowIdeas[dow];
       if (!dowIdeaList || dowIdeaList.length === 0) return;
-      const formats = (formatConfig[dow] || []).slice(0, postsPerDay);
+      const formats = isCustom ? (formatConfig[dow] || []) : (formatConfig[dow] || []).slice(0, postsPerDay);
       const existing = newIdeas[date] || [];
       newIdeas[date] = formats.map((f, j) => {
         const ex = existing[j];
@@ -226,7 +220,7 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
       const wk = getWeekNumber(date, fmtDate(allDays[0]));
       const cat = dayCategories[dow] || "";
       const impDate = importantDates.find((id) => id.date === date);
-      const formats = (formatConfig[dow] || []).slice(0, postsPerDay);
+      const formats = isCustom ? (formatConfig[dow] || []) : (formatConfig[dow] || []).slice(0, postsPerDay);
       const existingIdeas = ideas[date] || [];
       return { date, dow, wk, cat, impDate, formats, existingIdeas };
     });
@@ -454,10 +448,9 @@ ${daysDesc}`;
       const wk = getWeekNumber(date, fmtDate(allDays[0]));
       const cat = dayCategories[dow] || "";
       const impDate = importantDates.find((id) => id.date === date);
-      const formats = (formatConfig[dow] || []).slice(0, postsPerDay);
+      const formats = isCustom ? (formatConfig[dow] || []) : (formatConfig[dow] || []).slice(0, postsPerDay);
       const dayIdeas = ideas[date] || [];
 
-      const creativos = creativoConfig[dow] || [];
       const posts = formats.map((f, j) => {
         const idea = dayIdeas[j];
         return {
@@ -474,7 +467,6 @@ ${daysDesc}`;
           category: cat,
           comment: "",
           publishTime: f.publishTime || "",
-          creativo: creativos[j] || "",
         };
       });
 
@@ -539,14 +531,16 @@ ${daysDesc}`;
                     aria-pressed={plan === k}
                     onClick={() => {
                       setPlan(k);
-                      setFormatConfig((prev) => {
-                        const cfg = {};
-                        for (let dow = 0; dow < 7; dow++) {
-                          const existing = prev[dow] || [];
-                          cfg[dow] = Array.from({ length: p.posts }, (_, i) => existing[i] || { format: i === 0 ? "post" : "reel", publishTime: "" });
-                        }
-                        return cfg;
-                      });
+                      if (!p.custom) {
+                        setFormatConfig((prev) => {
+                          const cfg = {};
+                          for (let dow = 0; dow < 7; dow++) {
+                            const existing = prev[dow] || [];
+                            cfg[dow] = Array.from({ length: p.posts }, (_, i) => existing[i] || { format: i === 0 ? "post" : "reel", publishTime: "" });
+                          }
+                          return cfg;
+                        });
+                      }
                     }}
                     style={{
                       padding: "var(--sp-4)",
@@ -596,10 +590,42 @@ ${daysDesc}`;
               <fieldset style={{ border: "none" }}>
                 <legend className="label">Formatos por día</legend>
                 <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
-                  {[1, 2, 3, 4, 5, 6, 0].map((dow) => (
+                  {[1, 2, 3, 4, 5, 6, 0].map((dow) => {
+                    const slots = formatConfig[dow] || [];
+                    return (
                     <div key={dow} style={{ background: "var(--bg)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)" }}>
-                      <p style={{ fontSize: "var(--fs-xs)", fontWeight: 700, marginBottom: "var(--sp-2)" }}>{DAYS[dow]}</p>
-                      {(formatConfig[dow] || []).map((slot, si) => (
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--sp-2)" }}>
+                        <p style={{ fontSize: "var(--fs-xs)", fontWeight: 700, margin: 0 }}>{DAYS[dow]}</p>
+                        {isCustom && (
+                          <div style={{ display: "flex", gap: "var(--sp-1)", alignItems: "center" }}>
+                            <button
+                              type="button"
+                              className="btn-icon"
+                              aria-label={`Quitar publicación de ${DAYS[dow]}`}
+                              disabled={slots.length === 0}
+                              onClick={() => setFormatConfig((prev) => ({ ...prev, [dow]: prev[dow].slice(0, -1) }))}
+                              style={{ width: 28, height: 28 }}
+                            >
+                              <Icon name="minus" size={14} />
+                            </button>
+                            <span style={{ fontSize: "var(--fs-2xs)", fontWeight: 600, minWidth: 16, textAlign: "center" }}>{slots.length}</span>
+                            <button
+                              type="button"
+                              className="btn-icon"
+                              aria-label={`Agregar publicación a ${DAYS[dow]}`}
+                              disabled={slots.length >= 5}
+                              onClick={() => setFormatConfig((prev) => ({ ...prev, [dow]: [...prev[dow], { format: "post", publishTime: "" }] }))}
+                              style={{ width: 28, height: 28 }}
+                            >
+                              <Icon name="plus" size={14} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {slots.length === 0 && isCustom && (
+                        <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", fontStyle: "italic" }}>Sin publicaciones este día</p>
+                      )}
+                      {slots.map((slot, si) => (
                         <div key={si} role="group" aria-label={`${DAYS[dow]}, publicación ${si + 1}`} style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-2)", alignItems: "center" }}>
                           {Object.entries(FORMATS).map(([fk, f]) => (
                             <button
@@ -643,7 +669,8 @@ ${daysDesc}`;
                         </div>
                       ))}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </fieldset>
             </div>
@@ -878,54 +905,8 @@ ${daysDesc}`;
             </div>
           )}
 
-          {/* Step 6: Creativo / Producción */}
+          {/* Step 6: Ideas review */}
           {step === 6 && (
-            <div>
-              <h3 className="label" style={{ marginBottom: "var(--sp-1)" }}>Creativo / Producción</h3>
-              <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
-                Define el tipo de producción para cada publicación por día de la semana.
-                Se repite cada semana y se usa como contexto al generar guiones y descripciones.
-              </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
-                {[1, 2, 3, 4, 5, 6, 0].map((dow) => {
-                  const formats = (formatConfig[dow] || []).slice(0, postsPerDay);
-                  const creativos = creativoConfig[dow] || [];
-                  return (
-                    <div key={dow} style={{ background: "var(--bg)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)" }}>
-                      <p style={{ fontSize: "var(--fs-xs)", fontWeight: 700, marginBottom: "var(--sp-2)" }}>{DAYS[dow]}</p>
-                      {formats.map((f, j) => {
-                        const fmt = FORMATS[f.format] || FORMATS.post;
-                        return (
-                          <div key={j} style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", marginBottom: "var(--sp-2)" }}>
-                            <Icon name={FORMAT_ICONS[f.format] || "formatPost"} size={16} style={{ color: fmt.color, flexShrink: 0, width: 22 }} />
-                            <span style={{ fontSize: "var(--fs-2xs)", fontWeight: 600, color: fmt.color, minWidth: 60, flexShrink: 0 }}>{fmt.label}</span>
-                            <input
-                              className="input"
-                              style={{ flex: 1, fontSize: "var(--fs-2xs)" }}
-                              aria-label={`Tipo creativo, ${DAYS[dow]} ${fmt.label} ${j + 1}`}
-                              value={creativos[j] || ""}
-                              onChange={(e) => {
-                                setCreativoConfig((prev) => {
-                                  const current = [...(prev[dow] || [])];
-                                  while (current.length <= j) current.push("");
-                                  current[j] = e.target.value;
-                                  return { ...prev, [dow]: current };
-                                });
-                              }}
-                              placeholder="Ej: video con rostro, post real, generado con IA…"
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Step 7: Ideas review */}
-          {step === 7 && (
             <div>
               <h3 className="label" style={{ marginBottom: "var(--sp-3)" }}>Ideas por día</h3>
 
@@ -997,7 +978,7 @@ ${daysDesc}`;
                     ese día; la IA generará después versiones únicas para cada una.
                   </p>
                   {[1, 2, 3, 4, 5, 6, 0].map((dow) => {
-                    const formats = (formatConfig[dow] || []).slice(0, postsPerDay);
+                    const formats = isCustom ? (formatConfig[dow] || []) : (formatConfig[dow] || []).slice(0, postsPerDay);
                     const dowIdea = dowIdeas[dow] || [];
                     return (
                       <div key={dow} style={{ background: "var(--bg)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)", marginBottom: "var(--sp-2)" }}>
@@ -1062,7 +1043,7 @@ ${daysDesc}`;
                         }}
                       >
                         <div style={{ fontSize: "var(--fs-2xs)", fontWeight: 700 }}>{d.getDate()}</div>
-                        <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{(ideas[date] || []).filter((p) => p.idea).length}/{postsPerDay}</div>
+                        <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{(ideas[date] || []).filter((p) => p.idea).length}/{isCustom ? (formatConfig[d.getDay()] || []).length : postsPerDay}</div>
                       </div>
                     );
                   });
@@ -1070,7 +1051,7 @@ ${daysDesc}`;
                 })()}
               </div>
               <p role="status" className="hint" style={{ marginBottom: "var(--sp-4)" }}>
-                {Object.values(ideas).flat().filter((p) => p?.idea).length} ideas definidas de {allDays.length * postsPerDay} publicaciones
+                {Object.values(ideas).flat().filter((p) => p?.idea).length} ideas definidas de {isCustom ? allDays.reduce((t, d) => t + (formatConfig[d.getDay()] || []).length, 0) : allDays.length * postsPerDay} publicaciones
                 {" · "}
                 {Object.values(ideas).flat().filter((p) => p?.descripcion).length} con descripción escrita.
               </p>

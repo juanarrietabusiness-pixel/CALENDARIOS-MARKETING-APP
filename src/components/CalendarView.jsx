@@ -848,22 +848,132 @@ function OverflowMenu({ items }) {
   );
 }
 
+const REF_FORMATS = [
+  { key: "post", label: "Post", icon: "formatPost", color: "#4DA3FF" },
+  { key: "carrusel", label: "Carrusel", icon: "formatCarrusel", color: "#FFA53D" },
+  { key: "video", label: "Reel / Video", icon: "formatReel", color: "#FF6392" },
+];
+
+function VisualRefSection({ formatKey, label, icon, color, refs, onAdd, onRemove, onAddLink, ids }) {
+  const inputRef = useRef(null);
+  const [linkUrl, setLinkUrl] = useState("");
+  const isVideo = formatKey === "video";
+  const items = refs.filter((r) => r.format === formatKey);
+
+  return (
+    <div style={{ marginBottom: "var(--sp-4)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-2)" }}>
+        <Icon name={icon} size={18} style={{ color }} />
+        <span style={{ fontWeight: 700, fontSize: "var(--fs-sm)", color }}>{label}</span>
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,video/*"
+        multiple
+        className="sr-only"
+        aria-label={`Subir referencias de ${label}`}
+        onChange={(e) => {
+          for (const file of e.target.files) onAdd(file, formatKey);
+          e.target.value = "";
+        }}
+      />
+      <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-2)" }}>
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => inputRef.current?.click()}
+        >
+          <Icon name="upload" size={14} /> Subir archivos
+        </button>
+      </div>
+      {isVideo && (
+        <div style={{ display: "flex", gap: "var(--sp-2)", marginBottom: "var(--sp-2)", alignItems: "flex-end" }}>
+          <div style={{ flex: 1 }}>
+            <label className="label" style={{ textTransform: "none", color: "var(--text-dim)" }} htmlFor={`${ids}-vlink-${formatKey}`}>
+              Pegar enlace de video
+            </label>
+            <input
+              id={`${ids}-vlink-${formatKey}`}
+              className="input"
+              style={{ fontSize: "var(--fs-2xs)" }}
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              placeholder="https://youtube.com/… o https://instagram.com/reel/…"
+            />
+          </div>
+          <button
+            type="button"
+            className="btn btn-accent btn-sm"
+            disabled={!linkUrl.trim()}
+            onClick={() => {
+              onAddLink(linkUrl.trim(), formatKey);
+              setLinkUrl("");
+            }}
+          >
+            <Icon name="link" size={14} /> Agregar
+          </button>
+        </div>
+      )}
+      {items.length > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: "var(--sp-2)" }}>
+          {items.map((vr) => (
+            <div key={vr.id} style={{ position: "relative" }}>
+              {vr.type === "link" ? (
+                <a href={vr.url} target="_blank" rel="noopener noreferrer" style={{ width: "100%", aspectRatio: "1", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", background: "var(--surface)", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", textDecoration: "none", padding: "var(--sp-2)" }}>
+                  <Icon name="link" size={24} style={{ color: "var(--accent)", marginBottom: "var(--sp-1)" }} />
+                  <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)", wordBreak: "break-all", textAlign: "center", lineHeight: 1.2 }}>{vr.name || vr.url}</span>
+                </a>
+              ) : (
+                <img
+                  src={vr.url}
+                  alt={vr.name || "Referencia visual"}
+                  style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}
+                />
+              )}
+              <button
+                type="button"
+                className="btn-icon"
+                aria-label={`Quitar referencia ${vr.name || ""}`}
+                onClick={() => onRemove(vr.id)}
+                style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,.6)", borderRadius: "50%", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}
+              >
+                <Icon name="close" size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {items.length === 0 && (
+        <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", fontStyle: "italic" }}>Sin referencias</p>
+      )}
+    </div>
+  );
+}
+
 function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
   const ref = useDialogA11y(onClose);
   const ids = useId();
   const [activeTab, setActiveTab] = useState("general");
-  const imgInputRef = useRef(null);
 
-  const addVisualRef = async (file) => {
+  const addVisualRef = async (file, format) => {
     try {
       const dataUrl = await compressImage(file, 600);
       setMetaForm((p) => ({
         ...p,
-        visualReferences: [...(p.visualReferences || []), { id: uid(), url: dataUrl, name: file.name }],
+        visualReferences: [...(p.visualReferences || []), { id: uid(), url: dataUrl, name: file.name, format: format || "post" }],
       }));
     } catch (e) {
       console.error("No se pudo comprimir la imagen:", e);
     }
+  };
+
+  const addVisualLink = (url, format) => {
+    const hostname = (() => { try { return new URL(url).hostname; } catch { return url; } })();
+    setMetaForm((p) => ({
+      ...p,
+      visualReferences: [...(p.visualReferences || []), { id: uid(), url, name: hostname, format, type: "link" }],
+    }));
   };
 
   const removeVisualRef = (refId) => {
@@ -991,52 +1101,25 @@ function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
 
           {activeTab === "visuals" && (
             <fieldset style={{ border: "none" }}>
-              <legend className="label">Referencias visuales</legend>
+              <legend className="label">Referencias visuales por formato</legend>
               <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
-                Sube imágenes de referencia para mostrar al cliente el estilo de diseño del calendario.
+                Sube imágenes de referencia organizadas por formato para que el cliente vea
+                el estilo de cada tipo de contenido. En video también puedes pegar enlaces.
               </p>
-              <input
-                ref={imgInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="sr-only"
-                aria-label="Subir imágenes de referencia"
-                onChange={(e) => {
-                  for (const file of e.target.files) addVisualRef(file);
-                  e.target.value = "";
-                }}
-              />
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                style={{ marginBottom: "var(--sp-3)" }}
-                onClick={() => imgInputRef.current?.click()}
-              >
-                <Icon name="upload" size={16} /> Subir imágenes
-              </button>
-              {(metaForm.visualReferences || []).length > 0 && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: "var(--sp-2)" }}>
-                  {(metaForm.visualReferences || []).map((vr) => (
-                    <div key={vr.id} style={{ position: "relative" }}>
-                      <img
-                        src={vr.url}
-                        alt={vr.name || "Referencia visual"}
-                        style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}
-                      />
-                      <button
-                        type="button"
-                        className="btn-icon"
-                        aria-label={`Quitar referencia ${vr.name || ""}`}
-                        onClick={() => removeVisualRef(vr.id)}
-                        style={{ position: "absolute", top: 2, right: 2, background: "rgba(0,0,0,.6)", borderRadius: "50%", width: 24, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}
-                      >
-                        <Icon name="close" size={14} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {REF_FORMATS.map((rf) => (
+                <VisualRefSection
+                  key={rf.key}
+                  formatKey={rf.key}
+                  label={rf.label}
+                  icon={rf.icon}
+                  color={rf.color}
+                  refs={metaForm.visualReferences || []}
+                  onAdd={addVisualRef}
+                  onRemove={removeVisualRef}
+                  onAddLink={addVisualLink}
+                  ids={ids}
+                />
+              ))}
             </fieldset>
           )}
         </div>
@@ -1684,7 +1767,7 @@ export default function CalendarView({
       dayCategories: cats,
       offers: cal.offers || "",
       promoCode: cal.promoCode || "",
-      visualReferences: [...(cal.visualReferences || [])],
+      visualReferences: (cal.visualReferences || []).map((r) => r.format ? r : { ...r, format: "post" }),
     };
   });
 
@@ -2082,7 +2165,7 @@ IDEA:
 idea aqui
 
 PUBLICACIONES:
-${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p._date} (${p._dayName || ""})\nCATEGORIA: ${p.category || "N/A"}\nSEMANA: ${p._weekNumber || ""} — ${p._concept || "libre"}${p.creativo ? `\nTIPO_CREATIVO: ${p.creativo}` : ""}`).join("\n\n")}`;
+${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p._date} (${p._dayName || ""})\nCATEGORIA: ${p.category || "N/A"}\nSEMANA: ${p._weekNumber || ""} — ${p._concept || "libre"}`).join("\n\n")}`;
 
           const res = await callAI([{ type: "text", text: prompt }], { maxTokens: 4000, tolerarCorte: true });
           const txt = typeof res === "string" ? res : res.texto;
@@ -2440,7 +2523,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
                 const dow = new Date(day.date + "T12:00:00").getDay();
                 if (!cats[dow]) cats[dow] = day.category;
               }
-              setMetaForm({ name: cal.name || "", campaign: cal.campaign || "", weekConcepts: [...(cal.weekConcepts || [])], dayCategories: cats, offers: cal.offers || "", promoCode: cal.promoCode || "" });
+              setMetaForm({ name: cal.name || "", campaign: cal.campaign || "", weekConcepts: [...(cal.weekConcepts || [])], dayCategories: cats, offers: cal.offers || "", promoCode: cal.promoCode || "", visualReferences: (cal.visualReferences || []).map((r) => r.format ? r : { ...r, format: "post" }) });
               setEditMeta(true);
             } },
             { icon: "file", label: "Renombrar calendario", onClick: () => setRenaming(true) },

@@ -95,7 +95,6 @@ CATEGORIA: ${p.category || "N/A"}
 DIA: ${p._date} (${p._dayName || ""})
 SEMANA: ${p._weekNumber || ""}
 CONCEPTO_SEMANAL: ${p._concept || "N/A"}
-${p.creativo ? `TIPO_CREATIVO: ${p.creativo}` : ""}
 IDEA: ${p.idea || "genera según contexto del cliente"}
 REGLAS_FORMATO: ${formatRules[p.format] || formatRules.post}`;
   }).join("\n\n");
@@ -167,7 +166,6 @@ FORMATO: ${p.format}
 CATEGORIA: ${p.category || "N/A"}
 DIA: ${p._date} (${p._dayName || ""})
 SEMANA: ${p._weekNumber || ""} — ${p._concept || "libre"}
-${p.creativo ? `TIPO_CREATIVO: ${p.creativo}` : ""}
 IDEA: ${p.idea}
 REGLA: ${reglas[p.format] || reglas.post}`).join("\n\n");
 
@@ -253,7 +251,7 @@ SEMANA: ${day.concept || "N/A"}
 CATEGORIA: ${day.category || "N/A"}
 FORMATO: ${post.format}
 FECHA: ${day.date} (${day.dayName || ""})
-${post.creativo ? `TIPO CREATIVO: ${post.creativo}` : ""}
+
 ${post.idea ? `IDEA: ${post.idea}` : "Genera basandote en el contexto del cliente, la categoria y el concepto semanal."}
 
 Genera el contenido en este formato exacto:
@@ -301,7 +299,7 @@ SEMANA: ${day.concept || "N/A"}
 CATEGORIA: ${day.category || post.category || "N/A"}
 FORMATO: ${post.format}
 FECHA: ${day.date} (${day.dayName || ""})
-${post.creativo ? `TIPO CREATIVO: ${post.creativo}` : ""}
+
 
 Genera UNA idea creativa y concreta para una publicacion de ${post.format} para este cliente.
 La idea debe ser especifica, accionable y alineada con la marca, la categoria y el concepto semanal.
@@ -313,7 +311,7 @@ SEMANA: ${day.concept || "N/A"}
 CATEGORIA: ${day.category || post.category || "N/A"}
 FORMATO: ${post.format}
 FECHA: ${day.date} (${day.dayName || ""})
-${post.creativo ? `TIPO CREATIVO: ${post.creativo}` : ""}
+
 IDEA: ${post.idea || "N/A"}
 
 Basandote en la idea y el contexto del cliente, genera el GUION para esta publicacion.
@@ -329,7 +327,7 @@ SEMANA: ${day.concept || "N/A"}
 CATEGORIA: ${day.category || post.category || "N/A"}
 FORMATO: ${post.format}
 FECHA: ${day.date} (${day.dayName || ""})
-${post.creativo ? `TIPO CREATIVO: ${post.creativo}` : ""}
+
 IDEA: ${post.idea || "N/A"}
 ${post.guion ? `GUION: ${post.guion}` : ""}
 
