@@ -35,6 +35,7 @@ export default function Aprobar() {
   const [activeWeek, setActiveWeek] = useState("all");
   const [summaryOpen, setSummaryOpen] = useState(true);
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [editSaving, setEditSaving] = useState({});
 
   const params = new URLSearchParams(window.location.search);
   const token = params.get("t");
@@ -99,26 +100,66 @@ export default function Aprobar() {
           suggestedGuion: suggestions?.guion || null,
         },
       }));
-      if (suggestions) setEditedFields((p) => { const n = { ...p }; delete n[postId]; return n; });
     } catch (e) {
       setSaveError(`No se pudo guardar tu respuesta (${e.message}). Revisa tu conexión e inténtalo otra vez.`);
     }
     setSaving((p) => ({ ...p, [postId]: false }));
   };
 
+  const handleSaveEdit = async (postId, field, value) => {
+    const key = `${postId}-${field}`;
+    setEditSaving((p) => ({ ...p, [key]: true }));
+    setSaveError("");
+    try {
+      const params = { p_token: token, p_post_id: postId };
+      if (field === "descripcion") params.p_descripcion = value;
+      if (field === "guion") params.p_guion = value;
+      const { error: rpcError } = await supabase.rpc("update_post_content", params);
+      if (rpcError) throw new Error(rpcError.message);
+      setCalData((prev) => ({
+        ...prev,
+        calendar: {
+          ...prev.calendar,
+          days: (prev.calendar.days || []).map((day) => ({
+            ...day,
+            posts: (day.posts || []).map((p) =>
+              p.id === postId ? { ...p, [field]: value } : p
+            ),
+          })),
+        },
+      }));
+      setEditedFields((p) => {
+        const n = { ...p };
+        if (n[postId]) {
+          const f = { ...n[postId] };
+          delete f[field];
+          if (Object.keys(f).length === 0) delete n[postId];
+          else n[postId] = f;
+        }
+        return n;
+      });
+    } catch (e) {
+      setSaveError(`No se pudo guardar (${e.message}). Revisa tu conexión e inténtalo otra vez.`);
+    }
+    setEditSaving((p) => ({ ...p, [key]: false }));
+  };
+
   const handleBulkApprove = async () => {
     if (!calData) return;
-    const pending = (calData.calendar.days || [])
-      .flatMap((d) => (d.posts || []).map((p) => p))
+    const pendingPosts = (calData.calendar.days || [])
+      .flatMap((d) => (d.posts || []))
       .filter((p) => !approvals[p.id]);
+    const pendingRefs = (calData.calendar.visualReferences || [])
+      .filter((r) => !approvals[r.id]);
+    const pending = [...pendingPosts.map((p) => p.id), ...pendingRefs.map((r) => r.id)];
     if (pending.length === 0) return;
-    if (!confirm(`Aprobar ${pending.length} publicaciones pendientes?`)) return;
+    if (!confirm(`¿Aprobar ${pending.length} elementos pendientes?`)) return;
     setBulkSaving(true);
-    for (const post of pending) {
+    for (const id of pending) {
       try {
         const { error: rpcError } = await supabase.rpc("submit_approval", {
           p_token: token,
-          p_post_id: post.id,
+          p_post_id: id,
           p_estado: "aprobado",
           p_comentario: "",
           p_reviewer: "",
@@ -126,7 +167,7 @@ export default function Aprobar() {
         if (!rpcError) {
           setApprovals((p) => ({
             ...p,
-            [post.id]: { estado: "aprobado", comentario: "", timestamp: new Date().toISOString() },
+            [id]: { estado: "aprobado", comentario: "", timestamp: new Date().toISOString() },
           }));
         }
       } catch {
@@ -184,6 +225,10 @@ export default function Aprobar() {
   const approvedCount = allPosts.filter((p) => approvals[p.id]?.estado === "aprobado").length;
   const changesCount = allPosts.filter((p) => approvals[p.id]?.estado === "cambios").length;
   const pendingCount = allPosts.filter((p) => !approvals[p.id]).length;
+
+  const allRefs = calendar.visualReferences || [];
+  const pendingRefsCount = allRefs.filter((r) => !approvals[r.id]).length;
+  const totalPending = pendingCount + pendingRefsCount;
 
   const categoryPattern = {};
   (calendar.days || []).forEach((day) => {
@@ -310,28 +355,17 @@ export default function Aprobar() {
         )}
       </div>
 
-      {/* Visual references gallery */}
-      {(calendar.visualReferences || []).length > 0 && (
-        <div style={styles.visualRefsSection}>
-          <h3 style={styles.sectionHeading}>Referencias visuales</h3>
-          <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", marginBottom: "var(--sp-3)" }}>
-            Estilo general de los diseños que se usarán en este calendario.
-          </p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: "var(--sp-2)" }}>
-            {calendar.visualReferences.map((vr) => (
-              <img
-                key={vr.id}
-                src={vr.url}
-                alt={vr.name || "Referencia visual"}
-                style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}
-              />
-            ))}
-          </div>
-        </div>
+      {allRefs.length > 0 && (
+        <RefApprovalSection
+          refs={allRefs}
+          approvals={approvals}
+          saving={saving}
+          onApprove={(refId) => handleApproval(refId, "aprobado")}
+          onReject={(refId) => handleApproval(refId, "cambios")}
+        />
       )}
 
-      {/* Bulk approve */}
-      {pendingCount > 0 && (
+      {totalPending > 0 && (
         <div style={{ padding: "0 var(--sp-4) var(--sp-3)" }}>
           <button
             type="button"
@@ -340,7 +374,7 @@ export default function Aprobar() {
             disabled={bulkSaving}
             style={{ ...styles.approveBtn, width: "100%", opacity: bulkSaving ? 0.5 : 1 }}
           >
-            {bulkSaving ? "Aprobando…" : <><Icon name="check" size={18} /> Aprobar todo ({pendingCount})</>}
+            {bulkSaving ? "Aprobando…" : <><Icon name="check" size={18} /> Aprobar todo ({totalPending})</>}
           </button>
         </div>
       )}
@@ -404,17 +438,14 @@ export default function Aprobar() {
                         commentOpen={!!showComment[post.id]}
                         allowEditing={calendar.allowEditing || false}
                         editedFields={editedFields[post.id] || null}
+                        editSaving={editSaving}
                         onEditField={(field, value) => setEditedFields((p) => ({ ...p, [post.id]: { ...(p[post.id] || {}), [field]: value } }))}
+                        onSaveEdit={handleSaveEdit}
                         onCommentChange={(v) => setCommentInputs((p) => ({ ...p, [post.id]: v }))}
                         onToggleComment={() => setShowComment((p) => ({ ...p, [post.id]: !p[post.id] }))}
                         onApprove={() => handleApproval(post.id, "aprobado")}
                         onRequestChanges={() => {
-                          const edits = editedFields[post.id];
-                          const hasSuggestions = edits && (edits.descripcion !== undefined || edits.guion !== undefined);
-                          handleApproval(
-                            post.id, "cambios", commentInputs[post.id] || "",
-                            hasSuggestions ? edits : null,
-                          );
+                          handleApproval(post.id, "cambios", commentInputs[post.id] || "");
                           setShowComment((p) => ({ ...p, [post.id]: false }));
                         }}
                       />
@@ -451,7 +482,7 @@ export default function Aprobar() {
 
 function PostReview({
   post, approval, isSaving, commentValue, commentOpen, allowEditing,
-  editedFields, onEditField,
+  editedFields, editSaving, onEditField, onSaveEdit,
   onCommentChange, onToggleComment, onApprove, onRequestChanges,
 }) {
   const f = FORMATS[post.format] || FORMATS.post;
@@ -461,6 +492,13 @@ function PostReview({
   const borderColor =
     approval?.estado === "aprobado" ? "#388E3C" : approval?.estado === "cambios" ? "#C62828" : "var(--border)";
   const hasContent = post.guion || post.descripcion || post.script;
+
+  const currentDesc = post.descripcion || post.script || "";
+  const currentGuion = post.guion || "";
+  const editedDesc = editedFields?.descripcion;
+  const editedGuion = editedFields?.guion;
+  const descChanged = editedDesc !== undefined && editedDesc !== currentDesc;
+  const guionChanged = editedGuion !== undefined && editedGuion !== currentGuion;
 
   return (
     <div style={{ ...styles.postCard, borderColor }}>
@@ -492,7 +530,7 @@ function PostReview({
         </div>
       )}
 
-      {hasContent && (
+      {(hasContent || allowEditing) && (
         <>
           <button
             type="button"
@@ -506,49 +544,73 @@ function PostReview({
 
           {expanded && (
             <div style={{ marginTop: "var(--sp-2)" }}>
-              {!isPost && post.guion && (
+              {!isPost && (currentGuion || allowEditing) && (
                 <div style={{ ...styles.contentBox, background: "#1a0a2a" }}>
-                  <strong style={{ ...styles.fieldLabel, color: "#FF7BA8" }}>Guion</strong>
+                  <strong style={{ ...styles.fieldLabel, color: "#FF7BA8" }}>
+                    Guion
+                    {allowEditing && <span style={{ ...styles.editableBadge, borderColor: "#FF7BA844", color: "#FF7BA8" }}>Editable</span>}
+                  </strong>
                   {allowEditing ? (
                     <>
-                      <div style={{ whiteSpace: "pre-wrap", marginBottom: "var(--sp-2)" }}>{post.guion}</div>
-                      <label className="label" htmlFor={`${ids}-edit-guion`} style={{ fontSize: "var(--fs-3xs)", color: "#FF7BA8" }}>Sugerir cambio al guion</label>
                       <textarea
                         id={`${ids}-edit-guion`}
                         className="textarea"
-                        style={{ minHeight: 80, fontSize: "var(--fs-2xs)", background: "var(--bg)", borderColor: "#FF7BA844" }}
-                        value={editedFields?.guion ?? ""}
+                        style={{ minHeight: 100, fontSize: "var(--fs-sm)", background: "var(--bg)", borderColor: "#FF7BA844", lineHeight: "var(--lh-relaxed)" }}
+                        value={editedGuion !== undefined ? editedGuion : currentGuion}
                         onChange={(e) => onEditField("guion", e.target.value)}
-                        placeholder="Escribe tu versión sugerida del guion…"
                       />
+                      {guionChanged && (
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          disabled={editSaving?.[`${post.id}-guion`]}
+                          onClick={() => onSaveEdit(post.id, "guion", editedGuion)}
+                          style={{ ...styles.saveEditBtn, marginTop: "var(--sp-2)" }}
+                        >
+                          {editSaving?.[`${post.id}-guion`] ? "Guardando…" : <><Icon name="check" size={14} /> Guardar cambio</>}
+                        </button>
+                      )}
                     </>
                   ) : (
-                    <div style={{ whiteSpace: "pre-wrap" }}>{post.guion}</div>
+                    <div style={{ whiteSpace: "pre-wrap" }}>{currentGuion}</div>
                   )}
                 </div>
               )}
 
-              {(post.descripcion || post.script) && (
-                <div style={{ ...styles.contentBox, position: "relative", paddingTop: "var(--sp-8)" }}>
-                  <strong style={{ ...styles.fieldLabel, color: "var(--accent)" }}>Descripción</strong>
+              {(currentDesc || allowEditing) && (
+                <div style={{ ...styles.contentBox, position: "relative" }}>
+                  <strong style={{ ...styles.fieldLabel, color: "var(--accent)" }}>
+                    Descripción
+                    {allowEditing && <span style={styles.editableBadge}>Editable</span>}
+                  </strong>
                   {allowEditing ? (
                     <>
-                      <div style={{ whiteSpace: "pre-wrap", marginBottom: "var(--sp-2)" }}>{post.descripcion || post.script}</div>
-                      <CopyBtn text={post.descripcion || post.script} />
-                      <label className="label" htmlFor={`${ids}-edit-desc`} style={{ fontSize: "var(--fs-3xs)" }}>Sugerir cambio a la descripción</label>
                       <textarea
                         id={`${ids}-edit-desc`}
                         className="textarea"
-                        style={{ minHeight: 80, fontSize: "var(--fs-2xs)", background: "var(--bg)" }}
-                        value={editedFields?.descripcion ?? ""}
+                        style={{ minHeight: 100, fontSize: "var(--fs-sm)", background: "var(--bg)", lineHeight: "var(--lh-relaxed)" }}
+                        value={editedDesc !== undefined ? editedDesc : currentDesc}
                         onChange={(e) => onEditField("descripcion", e.target.value)}
-                        placeholder="Escribe tu versión sugerida de la descripción…"
                       />
+                      <div style={{ display: "flex", gap: "var(--sp-2)", marginTop: "var(--sp-2)", alignItems: "center" }}>
+                        {descChanged && (
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            disabled={editSaving?.[`${post.id}-descripcion`]}
+                            onClick={() => onSaveEdit(post.id, "descripcion", editedDesc)}
+                            style={styles.saveEditBtn}
+                          >
+                            {editSaving?.[`${post.id}-descripcion`] ? "Guardando…" : <><Icon name="check" size={14} /> Guardar cambio</>}
+                          </button>
+                        )}
+                        <CopyBtn text={editedDesc !== undefined ? editedDesc : currentDesc} inline />
+                      </div>
                     </>
                   ) : (
                     <>
-                      <div style={{ whiteSpace: "pre-wrap" }}>{post.descripcion || post.script}</div>
-                      <CopyBtn text={post.descripcion || post.script} />
+                      <div style={{ whiteSpace: "pre-wrap" }}>{currentDesc}</div>
+                      <CopyBtn text={currentDesc} />
                     </>
                   )}
                 </div>
@@ -612,26 +674,11 @@ function PostReview({
           <Icon name="message" size={16} style={{ display: "inline-block", verticalAlign: "-3px", marginRight: "var(--sp-1)" }} />{approval.comentario}
         </p>
       )}
-      {(approval?.suggestedDescripcion || approval?.suggestedGuion) && (
-        <div style={{ ...styles.contentBox, background: "#1a1a0a", borderColor: "var(--accent-alt)", marginTop: "var(--sp-2)" }}>
-          <strong style={{ ...styles.fieldLabel, color: "var(--accent-alt)" }}>Sugerencias enviadas</strong>
-          {approval.suggestedGuion && (
-            <p style={{ fontSize: "var(--fs-2xs)", marginBottom: "var(--sp-1)" }}>
-              <strong style={{ color: "#FF7BA8" }}>Guion:</strong> {approval.suggestedGuion.slice(0, 100)}{approval.suggestedGuion.length > 100 ? "…" : ""}
-            </p>
-          )}
-          {approval.suggestedDescripcion && (
-            <p style={{ fontSize: "var(--fs-2xs)" }}>
-              <strong style={{ color: "var(--accent)" }}>Descripción:</strong> {approval.suggestedDescripcion.slice(0, 100)}{approval.suggestedDescripcion.length > 100 ? "…" : ""}
-            </p>
-          )}
-        </div>
-      )}
     </div>
   );
 }
 
-function CopyBtn({ text }) {
+function CopyBtn({ text, inline }) {
   const [copied, setCopied] = useState(false);
   if (!text) return null;
   return (
@@ -645,10 +692,88 @@ function CopyBtn({ text }) {
           setTimeout(() => setCopied(false), 1500);
         });
       }}
-      style={{ position: "absolute", top: "var(--sp-2)", right: "var(--sp-2)" }}
+      style={inline ? {} : { position: "absolute", top: "var(--sp-2)", right: "var(--sp-2)" }}
     >
       {copied ? "Copiado" : "Copiar"}
     </button>
+  );
+}
+
+const REF_FORMATS = [
+  { key: "post", label: "Post", icon: "formatPost", color: "#4DA3FF" },
+  { key: "carrusel", label: "Carrusel", icon: "formatCarrusel", color: "#FFA53D" },
+  { key: "video", label: "Reel / Video", icon: "formatReel", color: "#FF6392" },
+];
+
+function RefApprovalSection({ refs, approvals, saving, onApprove, onReject }) {
+  const grouped = { post: [], carrusel: [], video: [] };
+  refs.forEach((r) => {
+    const fmt = r.format || "post";
+    (grouped[fmt] || grouped.post).push(r);
+  });
+
+  const approvedRefs = refs.filter((r) => approvals[r.id]?.estado === "aprobado").length;
+  const totalRefs = refs.length;
+
+  return (
+    <div style={styles.visualRefsSection}>
+      <h3 style={styles.sectionHeading}>Referencias visuales</h3>
+      <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", marginBottom: "var(--sp-3)" }}>
+        Revisa y aprueba las referencias de diseño para cada formato.
+        {totalRefs > 0 && (
+          <span style={{ display: "block", marginTop: "var(--sp-1)", fontWeight: 600, color: approvedRefs === totalRefs ? "var(--success)" : "var(--text-muted)" }}>
+            {approvedRefs} de {totalRefs} aprobadas
+          </span>
+        )}
+      </p>
+      {REF_FORMATS.map((rf) => {
+        const items = grouped[rf.key];
+        if (!items || items.length === 0) return null;
+        return (
+          <div key={rf.key} style={{ marginBottom: "var(--sp-4)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-2)" }}>
+              <Icon name={rf.icon} size={18} style={{ color: rf.color }} />
+              <span style={{ fontWeight: 700, fontSize: "var(--fs-sm)", color: rf.color }}>{rf.label}</span>
+              <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>({items.length})</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: "var(--sp-3)" }}>
+              {items.map((vr) => {
+                const isLink = vr.type === "link";
+                const approval = approvals[vr.id];
+                const bColor = approval?.estado === "aprobado" ? "#388E3C" : approval?.estado === "cambios" ? "#C62828" : "var(--border)";
+                return (
+                  <div key={vr.id} style={{ border: `2px solid ${bColor}`, borderRadius: "var(--radius-sm)", overflow: "hidden", background: "var(--card-alt)", transition: "border-color .3s" }}>
+                    {isLink ? (
+                      <a href={vr.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", aspectRatio: "1", background: "var(--bg)", color: rf.color, fontSize: "var(--fs-2xs)", padding: "var(--sp-2)", textAlign: "center", textDecoration: "none", wordBreak: "break-all" }}>
+                        <span><Icon name="formatReel" size={24} style={{ display: "block", margin: "0 auto var(--sp-1)" }} />Ver video</span>
+                      </a>
+                    ) : (
+                      <img src={vr.url} alt={vr.name || "Referencia"} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
+                    )}
+                    <div style={{ padding: "var(--sp-2)", display: "flex", gap: "var(--sp-1)" }}>
+                      {approval ? (
+                        <span className="badge" style={{ width: "100%", textAlign: "center", justifyContent: "center", background: approval.estado === "aprobado" ? "#0d2a0d" : "#2a0d0d", color: approval.estado === "aprobado" ? "var(--success)" : "var(--danger)", border: `1px solid ${approval.estado === "aprobado" ? "#388E3C" : "#C62828"}` }}>
+                          {approval.estado === "aprobado" ? "Aprobado" : "Cambios"}
+                        </span>
+                      ) : (
+                        <>
+                          <button type="button" className="btn btn-sm" disabled={saving[vr.id]} onClick={() => onApprove(vr.id)} style={{ ...styles.approveBtn, flex: 1, padding: "var(--sp-1)" }} aria-label={`Aprobar referencia ${vr.name || ""}`}>
+                            <Icon name="check" size={14} />
+                          </button>
+                          <button type="button" className="btn btn-sm" disabled={saving[vr.id]} onClick={() => onReject(vr.id)} style={{ ...styles.changesBtn, flex: 1, padding: "var(--sp-1)" }} aria-label={`Rechazar referencia ${vr.name || ""}`}>
+                            <Icon name="close" size={14} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -859,6 +984,24 @@ const styles = {
     borderRadius: "var(--radius-xs)",
     fontSize: "var(--fs-2xs)",
     color: "#FFC166",
+  },
+  editableBadge: {
+    display: "inline-block",
+    marginLeft: "var(--sp-2)",
+    padding: "1px var(--sp-2)",
+    borderRadius: 8,
+    fontSize: "var(--fs-3xs)",
+    fontWeight: 600,
+    textTransform: "none",
+    letterSpacing: 0,
+    border: "1px solid var(--accent-line)",
+    color: "var(--accent)",
+    verticalAlign: "middle",
+  },
+  saveEditBtn: {
+    background: "#0d2a0d",
+    color: "var(--success)",
+    border: "1px solid #388E3C",
   },
   summary: {
     margin: "0 var(--sp-4)",
