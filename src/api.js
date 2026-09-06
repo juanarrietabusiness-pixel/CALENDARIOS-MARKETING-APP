@@ -935,3 +935,47 @@ export function generateMetaPiecesEnTandas(opciones, alProgresar) {
   return enTandas(opciones, generateMetaPieces, alProgresar);
 }
 
+// ============================================================
+// Chat del asistente por cliente
+// ============================================================
+
+export async function callAIChat(messages, system) {
+  const data = await invokeFunction("ai-chat", { messages, system, maxTokens: 2048 });
+  return data?.text ?? "";
+}
+
+export function buildChatSystemPrompt(client, calendar, adnExtra = "") {
+  const ctx = buildClientContext(client, calendar, adnExtra);
+
+  let calendarInfo = "";
+  if (calendar) {
+    const totalPosts = (calendar.days || []).reduce(
+      (sum, d) => sum + (d.posts || []).length, 0,
+    );
+    calendarInfo = `\nCALENDARIO SELECCIONADO: ${calendar.name || "Sin nombre"}
+MES: ${(calendar.month ?? 0) + 1}/${calendar.year}
+CAMPAÑA: ${calendar.campaign || "N/A"}
+PUBLICACIONES: ${totalPosts}
+CONCEPTOS SEMANALES: ${(calendar.weekConcepts || []).join(", ") || "N/A"}${
+  calendar.offers ? `\nOFERTAS: ${calendar.offers}` : ""
+}${calendar.promoCode ? `\nCÓDIGO PROMOCIONAL: ${calendar.promoCode}` : ""}`;
+  }
+
+  return `Eres el asistente de contenido de la agencia Juancito Ads, dedicado al cliente «${client.name}».
+
+QUIÉN ERES:
+· Un estratega de redes sociales y redactor creativo.
+· Conoces a este cliente a fondo: su marca, su tono, su audiencia.
+· Cuando escribes contenido, lo entregas listo para publicar.
+
+${ctx}
+${calendarInfo}
+
+CÓMO DEBES RESPONDER:
+· En español de Panamá, con tildes y signos de apertura (¿, ¡).
+· Conciso y directo. Sin preámbulos innecesarios.
+· Si generas una descripción o guion, escríbelo listo para copiar y pegar.
+· Si necesitas más información, pregúntala en vez de inventar.
+· No inventes datos, precios, testimonios ni cifras que no estén en el contexto.`;
+}
+
