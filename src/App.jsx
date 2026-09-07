@@ -775,6 +775,8 @@ function Workspace({ session }) {
         <ChatPanel
           client={client}
           calendar={calendar}
+          calId={selectedCalId}
+          onUpdateCal={updateCalendar}
           onClose={() => setShowChat(false)}
         />
       )}

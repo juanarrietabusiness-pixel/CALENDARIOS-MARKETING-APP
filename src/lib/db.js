@@ -167,3 +167,35 @@ export async function clearChatMessages(clientId) {
     .eq("client_id", clientId);
   if (error) throw error;
 }
+
+// ------------------------------------------------------------
+// Memorias persistentes del asistente
+// ------------------------------------------------------------
+
+export async function loadClientMemories(clientId) {
+  const { data, error } = await supabase
+    .from("client_memories")
+    .select("id, content, created_at")
+    .eq("client_id", clientId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function saveClientMemory(clientId, content) {
+  const { data, error } = await supabase
+    .from("client_memories")
+    .insert({ client_id: clientId, content })
+    .select("id, content, created_at")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteClientMemory(memoryId) {
+  const { error } = await supabase
+    .from("client_memories")
+    .delete()
+    .eq("id", memoryId);
+  if (error) throw error;
+}

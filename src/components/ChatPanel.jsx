@@ -1,27 +1,39 @@
 import { useState, useEffect, useRef, useId, useCallback } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
-import { callAIChat, buildChatSystemPrompt } from "../api";
+import { callAIChat, buildChatSystemPrompt, getChatTools } from "../api";
+import { uid } from "../utils";
 import * as db from "../lib/db";
 
-export default function ChatPanel({ client, calendar, onClose }) {
+export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClose }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [error, setError] = useState("");
+  const [memories, setMemories] = useState([]);
+  const [showMemories, setShowMemories] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState([]);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const dialogRef = useDialogA11y(onClose);
   const inputId = useId();
   const clientId = client.dbId || client.id;
+  const calRef = useRef(calendar);
+  calRef.current = calendar;
 
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const history = await db.loadChatMessages(clientId);
-        if (alive) setMessages(history);
+        const [history, mems] = await Promise.all([
+          db.loadChatMessages(clientId),
+          db.loadClientMemories(clientId),
+        ]);
+        if (alive) {
+          setMessages(history);
+          setMemories(mems);
+        }
       } catch {
         if (alive) setError("No se pudo cargar el historial.");
       }
@@ -32,11 +44,95 @@ export default function ChatPanel({ client, calendar, onClose }) {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages, loading, actionFeedback]);
 
   useEffect(() => {
     if (!loadingHistory) inputRef.current?.focus();
   }, [loadingHistory]);
+
+  const executeToolCall = useCallback(async (toolName, toolInput) => {
+    if (toolName === "guardar_memoria") {
+      const mem = await db.saveClientMemory(clientId, toolInput.contenido);
+      setMemories((prev) => [...prev, mem]);
+      return { ok: true, mensaje: `Guardado: «${toolInput.contenido}»` };
+    }
+
+    if (toolName === "borrar_memoria") {
+      const found = memories.find((m) => m.content === toolInput.contenido);
+      if (!found) return { ok: false, mensaje: "No encontré esa memoria." };
+      await db.deleteClientMemory(found.id);
+      setMemories((prev) => prev.filter((m) => m.id !== found.id));
+      return { ok: true, mensaje: `Olvidado: «${toolInput.contenido}»` };
+    }
+
+    const cal = calRef.current;
+    if (!cal || !calId || !onUpdateCal) {
+      return { ok: false, mensaje: "No hay calendario seleccionado." };
+    }
+
+    if (toolName === "crear_publicacion") {
+      const day = (cal.days || []).find((d) => d.date === toolInput.fecha);
+      if (!day) return { ok: false, mensaje: `No existe el día ${toolInput.fecha} en este calendario.` };
+      const newPost = {
+        id: uid(),
+        format: toolInput.formato || "post",
+        idea: toolInput.idea || "",
+        descripcion: toolInput.descripcion || "",
+        guion: toolInput.guion || "",
+        category: toolInput.categoria || "",
+        status: "pending",
+        hashtagsFinales: "",
+      };
+      const newDays = cal.days.map((d) =>
+        d.date !== toolInput.fecha ? d : { ...d, posts: [...(d.posts || []), newPost] },
+      );
+      const updated = { ...cal, days: newDays };
+      calRef.current = updated;
+      onUpdateCal(calId, updated);
+      return { ok: true, mensaje: `Publicación creada: ${newPost.format} el ${toolInput.fecha}.` };
+    }
+
+    if (toolName === "editar_publicacion") {
+      let found = false;
+      const newDays = cal.days.map((d) => ({
+        ...d,
+        posts: (d.posts || []).map((p) => {
+          if (p.id !== toolInput.post_id) return p;
+          found = true;
+          const upd = { ...p };
+          if (toolInput.idea !== undefined) upd.idea = toolInput.idea;
+          if (toolInput.descripcion !== undefined) upd.descripcion = toolInput.descripcion;
+          if (toolInput.guion !== undefined) upd.guion = toolInput.guion;
+          if (toolInput.categoria !== undefined) upd.category = toolInput.categoria;
+          if (toolInput.formato !== undefined) upd.format = toolInput.formato;
+          return upd;
+        }),
+      }));
+      if (!found) return { ok: false, mensaje: `No encontré la publicación ${toolInput.post_id}.` };
+      const updated = { ...cal, days: newDays };
+      calRef.current = updated;
+      onUpdateCal(calId, updated);
+      return { ok: true, mensaje: `Publicación ${toolInput.post_id} editada.` };
+    }
+
+    if (toolName === "eliminar_publicaciones") {
+      const ids = new Set(toolInput.post_ids || []);
+      let count = 0;
+      const newDays = cal.days.map((d) => {
+        const before = (d.posts || []).length;
+        const filtered = (d.posts || []).filter((p) => !ids.has(p.id));
+        count += before - filtered.length;
+        return { ...d, posts: filtered };
+      });
+      if (count === 0) return { ok: false, mensaje: "No se encontraron las publicaciones indicadas." };
+      const updated = { ...cal, days: newDays };
+      calRef.current = updated;
+      onUpdateCal(calId, updated);
+      return { ok: true, mensaje: `${count} publicación${count === 1 ? "" : "es"} eliminada${count === 1 ? "" : "s"}.` };
+    }
+
+    return { ok: false, mensaje: `Herramienta desconocida: ${toolName}` };
+  }, [clientId, calId, onUpdateCal, memories]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -44,6 +140,7 @@ export default function ChatPanel({ client, calendar, onClose }) {
 
     setInput("");
     setError("");
+    setActionFeedback([]);
 
     const userMsg = { role: "user", content: text, created_at: new Date().toISOString() };
     setMessages((prev) => [...prev, userMsg]);
@@ -54,37 +151,89 @@ export default function ChatPanel({ client, calendar, onClose }) {
 
       const system = buildChatSystemPrompt(
         client,
-        calendar,
+        calRef.current,
         client.githubContext || "",
+        memories,
       );
-      const history = [...messages, userMsg].slice(-50).map((m) => ({
+      const tools = getChatTools(Boolean(calRef.current));
+
+      let conversationMessages = [...messages, userMsg].slice(-50).map((m) => ({
         role: m.role,
         content: m.content,
       }));
 
-      const response = await callAIChat(history, system);
+      let maxLoops = 6;
+      const feedbacks = [];
 
-      await db.saveChatMessage(clientId, "assistant", response);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: response, created_at: new Date().toISOString() },
-      ]);
+      while (maxLoops-- > 0) {
+        const response = await callAIChat(conversationMessages, system, tools);
+
+        const toolUseBlocks = response.content.filter((b) => b.type === "tool_use");
+        const textBlocks = response.content.filter((b) => b.type === "text");
+        const assistantText = textBlocks.map((b) => b.text || "").join("");
+
+        if (toolUseBlocks.length === 0 || response.stopReason === "end_turn") {
+          if (assistantText) {
+            await db.saveChatMessage(clientId, "assistant", assistantText);
+            setMessages((prev) => [
+              ...prev,
+              { role: "assistant", content: assistantText, created_at: new Date().toISOString() },
+            ]);
+          }
+          break;
+        }
+
+        conversationMessages.push({ role: "assistant", content: response.content });
+
+        const toolResults = [];
+        for (const toolBlock of toolUseBlocks) {
+          try {
+            const result = await executeToolCall(toolBlock.name, toolBlock.input);
+            feedbacks.push({ tool: toolBlock.name, ...result });
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: toolBlock.id,
+              content: JSON.stringify(result),
+            });
+          } catch (e) {
+            const result = { ok: false, mensaje: e.message || "Error al ejecutar la acción." };
+            feedbacks.push({ tool: toolBlock.name, ...result });
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: toolBlock.id,
+              content: JSON.stringify(result),
+            });
+          }
+        }
+        setActionFeedback([...feedbacks]);
+        conversationMessages.push({ role: "user", content: toolResults });
+      }
     } catch (e) {
       setError(e.message || "Error al generar respuesta.");
     } finally {
       setLoading(false);
     }
-  }, [input, loading, messages, client, calendar, clientId]);
+  }, [input, loading, messages, client, clientId, memories, executeToolCall]);
 
   const handleClear = useCallback(async () => {
     try {
       await db.clearChatMessages(clientId);
       setMessages([]);
       setError("");
+      setActionFeedback([]);
     } catch {
       setError("No se pudo limpiar el historial.");
     }
   }, [clientId]);
+
+  const handleDeleteMemory = useCallback(async (memId) => {
+    try {
+      await db.deleteClientMemory(memId);
+      setMemories((prev) => prev.filter((m) => m.id !== memId));
+    } catch {
+      setError("No se pudo borrar la memoria.");
+    }
+  }, []);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -124,7 +273,7 @@ export default function ChatPanel({ client, calendar, onClose }) {
           animation: "slideIn .24s cubic-bezier(.22,.61,.36,1)",
         }}
       >
-        {/* ── Cabecera ── */}
+        {/* Cabecera */}
         <div style={{
           padding: "var(--sp-3) var(--sp-4)",
           paddingTop: "calc(var(--sp-3) + var(--safe-top))",
@@ -148,9 +297,20 @@ export default function ChatPanel({ client, calendar, onClose }) {
               Asistente de {client.name}
             </div>
             <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)" }}>
-              Conversa, genera ideas y crea contenido
+              Conversa, genera ideas y ejecuta acciones
             </div>
           </div>
+          {memories.length > 0 && (
+            <button
+              className="btn-icon"
+              onClick={() => setShowMemories(!showMemories)}
+              aria-label="Ver memorias"
+              aria-pressed={showMemories}
+              title={`${memories.length} memoria${memories.length === 1 ? "" : "s"}`}
+            >
+              <Icon name="brain" size={18} />
+            </button>
+          )}
           {messages.length > 0 && (
             <button
               className="btn-icon"
@@ -166,7 +326,43 @@ export default function ChatPanel({ client, calendar, onClose }) {
           </button>
         </div>
 
-        {/* ── Mensajes ── */}
+        {/* Panel de memorias */}
+        {showMemories && memories.length > 0 && (
+          <div style={{
+            padding: "var(--sp-2) var(--sp-4)",
+            borderBottom: "1px solid var(--border)",
+            background: "var(--surface-2)",
+            maxHeight: 160,
+            overflowY: "auto",
+            flexShrink: 0,
+          }}>
+            <div style={{ fontSize: "var(--fs-3xs)", fontWeight: 600, color: "var(--text-dim)", marginBottom: "var(--sp-1)" }}>
+              Memorias ({memories.length})
+            </div>
+            {memories.map((m) => (
+              <div key={m.id} style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "var(--sp-1)",
+                fontSize: "var(--fs-3xs)",
+                color: "var(--text)",
+                padding: "2px 0",
+              }}>
+                <span style={{ flex: 1, lineHeight: 1.4 }}>{m.content}</span>
+                <button
+                  className="btn-icon"
+                  onClick={() => handleDeleteMemory(m.id)}
+                  aria-label={`Borrar memoria: ${m.content}`}
+                  style={{ flexShrink: 0, width: 24, height: 24, minHeight: 24 }}
+                >
+                  <Icon name="close" size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Mensajes */}
         <div style={{
           flex: 1,
           overflowY: "auto",
@@ -180,9 +376,16 @@ export default function ChatPanel({ client, calendar, onClose }) {
               Cargando historial…
             </p>
           ) : messages.length === 0 ? (
-            <EmptyState clientName={client.name} />
+            <EmptyState clientName={client.name} hasCalendar={Boolean(calendar)} />
           ) : (
             messages.map((msg, i) => <ChatMessage key={i} message={msg} />)
+          )}
+          {actionFeedback.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)" }}>
+              {actionFeedback.map((fb, i) => (
+                <ActionChip key={i} feedback={fb} />
+              ))}
+            </div>
           )}
           {loading && (
             <div style={{
@@ -209,7 +412,7 @@ export default function ChatPanel({ client, calendar, onClose }) {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* ── Entrada ── */}
+        {/* Entrada */}
         <div style={{
           padding: "var(--sp-3) var(--sp-4)",
           paddingBottom: "calc(var(--sp-3) + var(--safe-bottom))",
@@ -253,7 +456,7 @@ export default function ChatPanel({ client, calendar, onClose }) {
   );
 }
 
-function EmptyState({ clientName }) {
+function EmptyState({ clientName, hasCalendar }) {
   return (
     <div style={{
       textAlign: "center",
@@ -269,8 +472,8 @@ function EmptyState({ clientName }) {
       </span>
       <p style={{ fontSize: "var(--fs-xs)", maxWidth: 280 }}>
         Soy tu asistente para <strong style={{ color: "var(--text)" }}>{clientName}</strong>.
-        Puedo ayudarte a crear descripciones, guiones, ideas de campañas y
-        planificar contenido.
+        Puedo ayudarte a crear descripciones, guiones, ideas de campañas,
+        planificar contenido y ejecutar acciones en el calendario.
       </p>
       <div style={{
         display: "flex",
@@ -283,7 +486,13 @@ function EmptyState({ clientName }) {
         <span>Prueba con algo como:</span>
         <span style={{ fontStyle: "italic" }}>«Escríbeme un caption para un reel de lanzamiento»</span>
         <span style={{ fontStyle: "italic" }}>«Dame 5 ideas para posts educativos»</span>
-        <span style={{ fontStyle: "italic" }}>«Propón una campaña para septiembre»</span>
+        {hasCalendar && (
+          <>
+            <span style={{ fontStyle: "italic" }}>«Créame un reel para el martes sobre tips»</span>
+            <span style={{ fontStyle: "italic" }}>«Elimina las publicaciones de los lunes»</span>
+          </>
+        )}
+        <span style={{ fontStyle: "italic" }}>«Recuerda que prefiero un tono formal»</span>
       </div>
     </div>
   );
@@ -311,6 +520,33 @@ function ChatMessage({ message }) {
       }}>
         {message.content}
       </div>
+    </div>
+  );
+}
+
+function ActionChip({ feedback }) {
+  const TOOL_LABELS = {
+    guardar_memoria: "Memoria",
+    borrar_memoria: "Memoria",
+    crear_publicacion: "Calendario",
+    editar_publicacion: "Calendario",
+    eliminar_publicaciones: "Calendario",
+  };
+  return (
+    <div style={{
+      display: "flex",
+      alignItems: "center",
+      gap: "var(--sp-2)",
+      padding: "var(--sp-1) var(--sp-2)",
+      borderRadius: "var(--radius-sm)",
+      background: feedback.ok ? "var(--accent-soft)" : "var(--alt-soft)",
+      fontSize: "var(--fs-3xs)",
+      color: feedback.ok ? "var(--accent)" : "var(--danger)",
+      alignSelf: "flex-start",
+    }}>
+      <Icon name={feedback.ok ? "check" : "alert"} size={14} />
+      <span style={{ fontWeight: 600 }}>{TOOL_LABELS[feedback.tool] || feedback.tool}</span>
+      <span style={{ color: "var(--text-dim)" }}>{feedback.mensaje}</span>
     </div>
   );
 }
