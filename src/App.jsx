@@ -11,6 +11,7 @@ import PlanWizard from "./components/PlanWizard";
 import CalendarView from "./components/CalendarView";
 import Aprobar from "./pages/Aprobar";
 import IdeasBank from "./components/IdeasBank";
+import ChatPanel from "./components/ChatPanel";
 import Login from "./pages/Login";
 import { isSupabaseEnabled } from "./lib/supabase";
 import { useSession, signOut } from "./lib/auth";
@@ -183,6 +184,7 @@ function Workspace({ session }) {
   const [showClientModal, setShowClientModal] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
   const [showWizard, setShowWizard] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
@@ -618,6 +620,14 @@ function Workspace({ session }) {
                     <div className="page-header-actions">
                       <button
                         className="btn-icon"
+                        aria-label={`Abrir asistente de ${client.name}`}
+                        onClick={() => setShowChat(true)}
+                        title="Asistente IA"
+                      >
+                        <Icon name="sparkles" />
+                      </button>
+                      <button
+                        className="btn-icon"
                         aria-label={`Editar cliente ${client.name}`}
                         onClick={() => {
                           setEditingClient(client);
@@ -758,6 +768,16 @@ function Workspace({ session }) {
             setShowClientModal(false);
             setEditingClient(null);
           }}
+        />
+      )}
+
+      {showChat && client && (
+        <ChatPanel
+          client={client}
+          calendar={calendar}
+          calId={selectedCalId}
+          onUpdateCal={updateCalendar}
+          onClose={() => setShowChat(false)}
         />
       )}
     </div>

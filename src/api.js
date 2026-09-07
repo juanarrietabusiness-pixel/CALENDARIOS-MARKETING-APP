@@ -935,3 +935,166 @@ export function generateMetaPiecesEnTandas(opciones, alProgresar) {
   return enTandas(opciones, generateMetaPieces, alProgresar);
 }
 
+// ============================================================
+// Chat del asistente por cliente
+// ============================================================
+
+export async function callAIChat(messages, system, tools) {
+  const body = { messages, system, maxTokens: 4096 };
+  if (tools?.length) body.tools = tools;
+  const data = await invokeFunction("ai-chat", body);
+  return {
+    content: data?.content ?? [],
+    text: data?.text ?? "",
+    stopReason: data?.stopReason ?? "end_turn",
+  };
+}
+
+export function buildChatSystemPrompt(client, calendar, adnExtra = "", memories = []) {
+  const ctx = buildClientContext(client, calendar, adnExtra);
+
+  let calendarInfo = "";
+  if (calendar) {
+    const postLines = [];
+    for (const day of calendar.days || []) {
+      for (const post of day.posts || []) {
+        const parts = [`ID:${post.id}`, day.date];
+        if (post.format) parts.push(post.format);
+        if (post.category) parts.push(post.category);
+        if (post.idea) parts.push(`«${post.idea.slice(0, 80)}»`);
+        if (post.status && post.status !== "pending") parts.push(`[${post.status}]`);
+        postLines.push("  · " + parts.join(" | "));
+      }
+    }
+    calendarInfo = `\nCALENDARIO SELECCIONADO: ${calendar.name || "Sin nombre"}
+MES: ${(calendar.month ?? 0) + 1}/${calendar.year}
+CAMPAÑA: ${calendar.campaign || "N/A"}
+CONCEPTOS SEMANALES: ${(calendar.weekConcepts || []).join(", ") || "N/A"}${
+  calendar.offers ? `\nOFERTAS: ${calendar.offers}` : ""
+}${calendar.promoCode ? `\nCÓDIGO PROMOCIONAL: ${calendar.promoCode}` : ""}
+PUBLICACIONES (${postLines.length}):
+${postLines.length ? postLines.join("\n") : "  (vacío)"}`;
+  }
+
+  let memoriesBlock = "";
+  if (memories.length > 0) {
+    memoriesBlock = `\n\n═══════════════════════════════════════════════════════════
+MEMORIAS GUARDADAS DE ESTE CLIENTE
+═══════════════════════════════════════════════════════════
+${memories.map((m) => `· ${m.content}`).join("\n")}
+
+Usa estas memorias como contexto para personalizar tus respuestas.
+Si el usuario te pide que recuerdes algo nuevo, usa la herramienta guardar_memoria.
+Si te pide olvidar algo, usa borrar_memoria con el contenido exacto.`;
+  }
+
+  return `Eres el asistente de contenido de la agencia Juancito Ads, dedicado al cliente «${client.name}».
+
+QUIÉN ERES:
+· Un estratega de redes sociales y redactor creativo.
+· Conoces a este cliente a fondo: su marca, su tono, su audiencia.
+· Cuando escribes contenido, lo entregas listo para publicar.
+· Puedes ejecutar acciones sobre el calendario: crear, editar y eliminar publicaciones.
+· Puedes guardar preferencias y datos importantes en tu memoria para recordarlos después.
+
+${ctx}
+${calendarInfo}${memoriesBlock}
+
+CÓMO DEBES RESPONDER:
+· En español de Panamá, con tildes y signos de apertura (¿, ¡).
+· Conciso y directo. Sin preámbulos innecesarios.
+· Si generas una descripción o guion, escríbelo listo para copiar y pegar.
+· Si necesitas más información, pregúntala en vez de inventar.
+· No inventes datos, precios, testimonios ni cifras que no estén en el contexto.
+· Cuando el usuario pida acciones sobre el calendario (crear, editar, eliminar publicaciones),
+  usa las herramientas disponibles. Confirma lo que vas a hacer antes de ejecutar acciones destructivas.
+· Cuando el usuario confirme una preferencia o dato que debas recordar, guárdalo con guardar_memoria.`;
+}
+
+export function getChatTools(hasCalendar) {
+  const tools = [
+    {
+      name: "guardar_memoria",
+      description: "Guarda una preferencia, instrucción o dato importante del cliente para recordarlo en futuras conversaciones. Úsala cuando el usuario confirme algo que quiere que recuerdes siempre.",
+      input_schema: {
+        type: "object",
+        properties: {
+          contenido: {
+            type: "string",
+            description: "La frase a recordar, breve y concreta. Ej: «Nunca usar emojis de fuego», «El horario de publicación es 9am y 6pm», «Prefiere un tono formal».",
+          },
+        },
+        required: ["contenido"],
+      },
+    },
+    {
+      name: "borrar_memoria",
+      description: "Elimina una memoria guardada que ya no aplica o que el usuario pide olvidar.",
+      input_schema: {
+        type: "object",
+        properties: {
+          contenido: {
+            type: "string",
+            description: "El contenido exacto de la memoria a eliminar.",
+          },
+        },
+        required: ["contenido"],
+      },
+    },
+  ];
+
+  if (hasCalendar) {
+    tools.push(
+      {
+        name: "crear_publicacion",
+        description: "Crea una nueva publicación en un día del calendario. El usuario debe indicar la fecha y el formato.",
+        input_schema: {
+          type: "object",
+          properties: {
+            fecha: { type: "string", description: "Fecha en formato AAAA-MM-DD." },
+            formato: { type: "string", enum: ["post", "reel", "carrusel", "historia", "live"], description: "Formato de la publicación." },
+            idea: { type: "string", description: "Idea o concepto de la publicación." },
+            categoria: { type: "string", description: "Categoría temática (ej: educativo, venta, entretenimiento)." },
+            descripcion: { type: "string", description: "Caption/descripción lista para publicar." },
+            guion: { type: "string", description: "Guion para reels, carruseles, historias o lives." },
+          },
+          required: ["fecha", "formato"],
+        },
+      },
+      {
+        name: "editar_publicacion",
+        description: "Edita campos de una publicación existente. Necesitas el ID de la publicación (visible en el contexto del calendario).",
+        input_schema: {
+          type: "object",
+          properties: {
+            post_id: { type: "string", description: "ID de la publicación a editar." },
+            idea: { type: "string", description: "Nueva idea." },
+            descripcion: { type: "string", description: "Nueva descripción/caption." },
+            guion: { type: "string", description: "Nuevo guion." },
+            categoria: { type: "string", description: "Nueva categoría." },
+            formato: { type: "string", enum: ["post", "reel", "carrusel", "historia", "live"], description: "Nuevo formato." },
+          },
+          required: ["post_id"],
+        },
+      },
+      {
+        name: "eliminar_publicaciones",
+        description: "Elimina una o varias publicaciones del calendario. Pide confirmación al usuario antes de usar esta herramienta.",
+        input_schema: {
+          type: "object",
+          properties: {
+            post_ids: {
+              type: "array",
+              items: { type: "string" },
+              description: "Lista de IDs de las publicaciones a eliminar.",
+            },
+          },
+          required: ["post_ids"],
+        },
+      },
+    );
+  }
+
+  return tools;
+}
+

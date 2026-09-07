@@ -137,3 +137,65 @@ export function subscribeApprovals(calendarDbId, onChange) {
 
   return () => { supabase.removeChannel(channel); };
 }
+
+// ------------------------------------------------------------
+// Chat del asistente por cliente
+// ------------------------------------------------------------
+
+export async function loadChatMessages(clientId, limit = 100) {
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select("role, content, created_at")
+    .eq("client_id", clientId)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function saveChatMessage(clientId, role, content) {
+  const { error } = await supabase
+    .from("chat_messages")
+    .insert({ client_id: clientId, role, content });
+  if (error) throw error;
+}
+
+export async function clearChatMessages(clientId) {
+  const { error } = await supabase
+    .from("chat_messages")
+    .delete()
+    .eq("client_id", clientId);
+  if (error) throw error;
+}
+
+// ------------------------------------------------------------
+// Memorias persistentes del asistente
+// ------------------------------------------------------------
+
+export async function loadClientMemories(clientId) {
+  const { data, error } = await supabase
+    .from("client_memories")
+    .select("id, content, created_at")
+    .eq("client_id", clientId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function saveClientMemory(clientId, content) {
+  const { data, error } = await supabase
+    .from("client_memories")
+    .insert({ client_id: clientId, content })
+    .select("id, content, created_at")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteClientMemory(memoryId) {
+  const { error } = await supabase
+    .from("client_memories")
+    .delete()
+    .eq("id", memoryId);
+  if (error) throw error;
+}
