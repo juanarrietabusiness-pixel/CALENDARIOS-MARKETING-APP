@@ -132,7 +132,7 @@ describe("construirExportacion", () => {
       posts: [
         publicacion({ id: "a", format: "post" }),
         publicacion({ id: "b", format: "reel" }),
-        publicacion({ id: "c", format: "carrusel" }),
+        publicacion({ id: "c", format: "carrusel", guion: "Slide 1: intro\nSlide 2: cierre" }),
       ],
     })];
 
