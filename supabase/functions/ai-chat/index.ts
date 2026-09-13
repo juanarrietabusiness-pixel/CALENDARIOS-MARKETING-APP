@@ -4,9 +4,9 @@
 // Recibe un historial de mensajes y un prompt de sistema con el
 // contexto del cliente. Devuelve la respuesta del asistente.
 //
-// Usa el mismo modelo rápido que el lote (`AI_MODEL`, Haiku 4.5
-// por defecto). El pensamiento se apaga: la conversación es
-// pregunta–respuesta, no razonamiento largo.
+// Usa un modelo dedicado (`AI_CHAT_MODEL`, Sonnet 5 por defecto)
+// para la conversación. El pensamiento se apaga: la conversación
+// es pregunta–respuesta, no razonamiento largo.
 // ============================================================
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -15,13 +15,16 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
-const ANTHROPIC_MODEL = Deno.env.get("AI_MODEL") || "claude-haiku-4-5-20251001";
+const ANTHROPIC_MODEL =
+  Deno.env.get("AI_CHAT_MODEL") ||
+  Deno.env.get("AI_MODEL") ||
+  "claude-sonnet-5";
 
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
   .split(",").map((o) => o.trim()).filter(Boolean);
 
-const MAX_BODY_BYTES = 2 * 1024 * 1024;
-const MAX_TOKENS = 4096;
+const MAX_BODY_BYTES = 8 * 1024 * 1024;
+const MAX_TOKENS = 8192;
 const PRESUPUESTO_MS = 60_000;
 
 function corsHeaders(origin: string): Record<string, string> {
@@ -70,7 +73,12 @@ Deno.serve(async (req) => {
     return json({ error: "La petición es demasiado grande" }, 413, headers);
   }
 
-  let body: { messages?: unknown[]; system?: string; maxTokens?: number };
+  let body: {
+    messages?: unknown[];
+    system?: string;
+    maxTokens?: number;
+    tools?: unknown[];
+  };
   try {
     body = await req.json();
   } catch {
@@ -82,20 +90,23 @@ Deno.serve(async (req) => {
     return json({ error: "Falta el historial de mensajes" }, 400, headers);
   }
 
-  // Validar estructura mínima de cada mensaje.
   for (const m of messages) {
     if (!m || typeof m !== "object") return json({ error: "Mensaje inválido" }, 400, headers);
-    const msg = m as { role?: string; content?: string };
+    const msg = m as { role?: string; content?: unknown };
     if (msg.role !== "user" && msg.role !== "assistant") {
       return json({ error: "Rol de mensaje inválido" }, 400, headers);
     }
-    if (typeof msg.content !== "string" || !msg.content.trim()) {
+    if (typeof msg.content !== "string" && !Array.isArray(msg.content)) {
+      return json({ error: "Contenido de mensaje inválido" }, 400, headers);
+    }
+    if (typeof msg.content === "string" && !msg.content.trim()) {
       return json({ error: "Contenido de mensaje vacío" }, 400, headers);
     }
   }
 
   const system = typeof body?.system === "string" ? body.system : "";
-  const maxTokens = Math.min(Math.max(Number(body?.maxTokens) || 2048, 256), MAX_TOKENS);
+  const maxTokens = Math.min(Math.max(Number(body?.maxTokens) || 4096, 256), MAX_TOKENS);
+  const tools = Array.isArray(body?.tools) ? body.tools : undefined;
 
   if (!ANTHROPIC_API_KEY) {
     return json({ error: "El servidor no tiene configurada la clave de Anthropic" }, 503, headers);
@@ -121,6 +132,7 @@ Deno.serve(async (req) => {
       thinking: { type: "disabled" },
     };
     if (system) apiBody.system = system;
+    if (tools?.length) apiBody.tools = tools;
 
     let res: Response;
     try {
@@ -171,7 +183,12 @@ Deno.serve(async (req) => {
       .map((b) => b?.text ?? "")
       .join("");
 
-    return json({ text, model: ANTHROPIC_MODEL }, 200, headers);
+    return json({
+      content: data?.content ?? [],
+      text,
+      model: ANTHROPIC_MODEL,
+      stopReason: data?.stop_reason ?? "end_turn",
+    }, 200, headers);
   }
 
   return json({ error: "No se pudo generar la respuesta" }, 502, headers);
