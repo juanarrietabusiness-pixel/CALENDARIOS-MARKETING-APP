@@ -16,9 +16,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 const ANTHROPIC_MODEL =
-  Deno.env.get("AI_CHAT_MODEL") ||
-  Deno.env.get("AI_MODEL") ||
-  "claude-sonnet-5";
+  Deno.env.get("AI_CHAT_MODEL") || "claude-sonnet-5";
 
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
   .split(",").map((o) => o.trim()).filter(Boolean);
