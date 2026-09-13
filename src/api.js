@@ -79,8 +79,11 @@ export async function callAI(content, { maxTokens, tier, tolerarCorte = false } 
   return data?.text ?? "";
 }
 
-export function buildScriptPrompt(client, calendar, posts, adnExtra = "") {
+export function buildScriptPrompt(client, calendar, posts, adnExtra = "", memories = []) {
   const ctx = buildClientContext(client, calendar, adnExtra);
+  const memBlock = memories.length
+    ? `\nMEMORIAS DEL ASISTENTE:\n${memories.map((m) => `· ${typeof m === "string" ? m : m.content}`).join("\n")}\n`
+    : "";
   const postsList = posts.map((p) => {
     const formatRules = {
       post: "Solo DESCRIPCION (caption con emojis, CTA y hashtags al final). No escribas GUION.",
@@ -100,7 +103,7 @@ REGLAS_FORMATO: ${formatRules[p.format] || formatRules.post}`;
   }).join("\n\n");
 
   return `${ctx}
-
+${memBlock}
 ESTILO DE GUIONES: ${client.estiloGuion || "Cercano, persuasivo, con emojis y CTA"}
 ESTILO DE LOCUCIÓN: ${client.estiloLocucion || "Natural y profesional"}
 WHATSAPP: ${client.whatsapp || "N/A"}
@@ -150,8 +153,11 @@ ${postsList}`;
  * El contrato de salida es el mismo `<<<PUBLICACION_ID:…>>>` de siempre,
  * para poder leerlo con `parseAIResponse` sin un segundo parser.
  */
-export function buildDescripcionesPrompt(client, calendar, posts, adnExtra = "") {
+export function buildDescripcionesPrompt(client, calendar, posts, adnExtra = "", memories = []) {
   const ctx = buildClientContext(client, calendar, adnExtra);
+  const memBlock = memories.length
+    ? `\nMEMORIAS DEL ASISTENTE:\n${memories.map((m) => `· ${typeof m === "string" ? m : m.content}`).join("\n")}\n`
+    : "";
 
   const reglas = {
     post: "Caption de post estático: gancho en la primera línea, cuerpo breve, CTA y hashtags al final.",
@@ -170,7 +176,7 @@ IDEA: ${p.idea}
 REGLA: ${reglas[p.format] || reglas.post}`).join("\n\n");
 
   return `${ctx}
-
+${memBlock}
 ESTILO DE GUIONES: ${client.estiloGuion || "Cercano, persuasivo, con emojis y CTA"}
 WHATSAPP: ${client.whatsapp || "N/A"}
 HASHTAGS BASE: ${client.hashtags || "#Panama"}
@@ -940,7 +946,7 @@ export function generateMetaPiecesEnTandas(opciones, alProgresar) {
 // ============================================================
 
 export async function callAIChat(messages, system, tools) {
-  const body = { messages, system, maxTokens: 4096 };
+  const body = { messages, system, maxTokens: 8192 };
   if (tools?.length) body.tools = tools;
   const data = await invokeFunction("ai-chat", body);
   return {
@@ -961,7 +967,10 @@ export function buildChatSystemPrompt(client, calendar, adnExtra = "", memories 
         const parts = [`ID:${post.id}`, day.date];
         if (post.format) parts.push(post.format);
         if (post.category) parts.push(post.category);
-        if (post.idea) parts.push(`«${post.idea.slice(0, 80)}»`);
+        if (post.idea) parts.push(`Idea: «${post.idea}»`);
+        if (post.descripcion) parts.push(`Descripción: «${post.descripcion}»`);
+        if (post.guion) parts.push(`Guion: «${post.guion}»`);
+        if (post.hashtagsFinales) parts.push(`Hashtags: ${post.hashtagsFinales}`);
         if (post.status && post.status !== "pending") parts.push(`[${post.status}]`);
         postLines.push("  · " + parts.join(" | "));
       }
@@ -995,7 +1004,9 @@ QUIÉN ERES:
 · Conoces a este cliente a fondo: su marca, su tono, su audiencia.
 · Cuando escribes contenido, lo entregas listo para publicar.
 · Puedes ejecutar acciones sobre el calendario: crear, editar y eliminar publicaciones.
+· Puedes editar en lote: cambiar descripciones, guiones o ideas de múltiples publicaciones filtradas por día, formato o categoría.
 · Puedes guardar preferencias y datos importantes en tu memoria para recordarlos después.
+· Puedes analizar imágenes que el usuario te envíe y crear contenido basado en ellas.
 
 ${ctx}
 ${calendarInfo}${memoriesBlock}
@@ -1090,6 +1101,45 @@ export function getChatTools(hasCalendar) {
             },
           },
           required: ["post_ids"],
+        },
+      },
+      {
+        name: "editar_publicaciones_lote",
+        description: "Edita campos de múltiples publicaciones a la vez, filtrando por día de la semana, formato y/o categoría. Usa esta herramienta cuando el usuario pida cambios masivos como «cambia todas las descripciones de los lunes a tono formal» o «reescribe los guiones de todos los reels».",
+        input_schema: {
+          type: "object",
+          properties: {
+            filtro_dia: {
+              type: "string",
+              enum: ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"],
+              description: "Filtrar por día de la semana (opcional).",
+            },
+            filtro_formato: {
+              type: "string",
+              enum: ["post", "reel", "carrusel", "historia", "live"],
+              description: "Filtrar por formato (opcional).",
+            },
+            filtro_categoria: {
+              type: "string",
+              description: "Filtrar por categoría (opcional).",
+            },
+            cambios: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  post_id: { type: "string", description: "ID de la publicación." },
+                  idea: { type: "string", description: "Nueva idea." },
+                  descripcion: { type: "string", description: "Nueva descripción/caption." },
+                  guion: { type: "string", description: "Nuevo guion." },
+                  categoria: { type: "string", description: "Nueva categoría." },
+                },
+                required: ["post_id"],
+              },
+              description: "Lista de cambios por publicación. Cada entrada lleva el post_id y los campos a cambiar.",
+            },
+          },
+          required: ["cambios"],
         },
       },
     );

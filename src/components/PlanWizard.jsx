@@ -2,6 +2,7 @@ import { useId, useState, useRef } from "react";
 import { PLANS, FORMATS, FORMAT_ICONS, DEFAULT_CATEGORIES, MONTHS, DAYS, DAYS_SHORT } from "../constants";
 import { uid, daysInMonth, fmtDate, getWeekNumber, dayName } from "../utils";
 import { callAI, buildClientContext, buildDescripcionesPrompt, loadADN, parseAIResponse } from "../api";
+import { loadClientMemories } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
 
@@ -367,7 +368,10 @@ ${daysDesc}`;
     setAiStatus("Preparando descripciones…");
     try {
       if (!client.githubContext && client.githubRepo) setAiStatus("Cargando ADN desde GitHub…");
-      const adnExtra = (await loadADN(client)).content;
+      const [{ content: adnExtra }, wizMems] = await Promise.all([
+        loadADN(client),
+        loadClientMemories(client.dbId || client.id).catch(() => []),
+      ]);
 
       // Se aplana a lista de publicaciones: la tanda se mide en
       // publicaciones, no en días, porque un día premium lleva tres.
@@ -402,7 +406,7 @@ ${daysDesc}`;
         const tanda = pendientes.slice(i, i + BATCH);
         setAiStatus(`Descripciones ${i + 1}-${Math.min(i + BATCH, pendientes.length)} de ${pendientes.length}…`);
 
-        const prompt = buildDescripcionesPrompt(client, calendarioParcial, tanda, adnExtra);
+        const prompt = buildDescripcionesPrompt(client, calendarioParcial, tanda, adnExtra, wizMems);
         // `tolerarCorte` porque una tanda que se corta en la última
         // publicación trae las cinco anteriores enteras: rechazarla entera
         // obligaba a repetir el mes por una descripción.

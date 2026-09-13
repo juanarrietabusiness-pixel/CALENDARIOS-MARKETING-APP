@@ -12,6 +12,10 @@ import CalendarView from "./components/CalendarView";
 import Aprobar from "./pages/Aprobar";
 import IdeasBank from "./components/IdeasBank";
 import ChatPanel from "./components/ChatPanel";
+import GlobalChatPanel from "./components/GlobalChatPanel";
+import TaskPanel from "./components/TaskPanel";
+import { TaskTemplatesManager } from "./components/TaskPanel";
+import ContentBankPanel from "./components/ContentBankPanel";
 import Login from "./pages/Login";
 import { isSupabaseEnabled } from "./lib/supabase";
 import { useSession, signOut } from "./lib/auth";
@@ -185,6 +189,7 @@ function Workspace({ session }) {
   const [editingClient, setEditingClient] = useState(null);
   const [showWizard, setShowWizard] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [showGlobalChat, setShowGlobalChat] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
@@ -255,6 +260,7 @@ function Workspace({ session }) {
   // diálogo y lo mantiene abierto con los datos, en vez de cerrarse y
   // perderlos.
   const saveClient = async (c) => {
+    const isNew = !clients.find((x) => x.id === c.id || x.id === c.dbId);
     const guardado = await db.saveClient(c, ownerId);
     setClients((prev) => {
       const exists = prev.find((x) => x.id === guardado.id);
@@ -264,6 +270,14 @@ function Workspace({ session }) {
     setSelectedCalId(null);
     setEditingClient(null);
     setShowClientModal(false);
+
+    if (isNew) {
+      db.loadTaskTemplates()
+        .then((templates) => {
+          if (templates.length) return db.applyTemplatesToClient(guardado.id, templates);
+        })
+        .catch(() => {});
+    }
   };
 
   // Guarda un cliente sin tocar la selección ni cerrar diálogos.
@@ -544,6 +558,14 @@ function Workspace({ session }) {
         </div>
 
         <div style={{ display: "flex", gap: "var(--sp-2)", flexShrink: 0, alignItems: "center" }}>
+          <button
+            className="btn-icon"
+            onClick={() => setShowGlobalChat(true)}
+            aria-label="Abrir agente global"
+            title="Agente de la agencia"
+          >
+            <Icon name="globe" />
+          </button>
           <span
             style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
             className="session-email"
@@ -576,6 +598,9 @@ function Workspace({ session }) {
             onSelect={selectClient}
             onNew={openNewClient}
           />
+          <div style={{ marginTop: "var(--sp-4)", paddingTop: "var(--sp-4)", borderTop: "1px solid var(--border)" }}>
+            <TaskTemplatesManager />
+          </div>
           <BackupActions onExport={exportJSON} onImport={() => importRef.current?.click()} />
         </aside>
 
@@ -663,6 +688,12 @@ function Workspace({ session }) {
                   client={client}
                   onUpdateClient={(updated) => setClients((prev) => prev.map((c) => c.id === updated.id ? updated : c))}
                 />
+
+                {/* Tareas y banco de contenido */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
+                  <TaskPanel client={client} />
+                  <ContentBankPanel client={client} />
+                </div>
 
                 {calendar ? (
                   <CalendarView
@@ -778,6 +809,18 @@ function Workspace({ session }) {
           calId={selectedCalId}
           onUpdateCal={updateCalendar}
           onClose={() => setShowChat(false)}
+        />
+      )}
+
+      {showGlobalChat && (
+        <GlobalChatPanel
+          clients={clients}
+          onClose={() => setShowGlobalChat(false)}
+          onSelectClient={(id) => {
+            setSelectedClientId(id);
+            setSelectedCalId(null);
+            setShowGlobalChat(false);
+          }}
         />
       )}
     </div>

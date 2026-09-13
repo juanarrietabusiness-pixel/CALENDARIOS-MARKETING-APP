@@ -63,6 +63,9 @@ const paths = {
   alert: <><path d="M12 3 2.5 20h19Z" /><path d="M12 10v4" /><path d="M12 17.5h.01" /></>,
   message: <path d="M21 12a8 8 0 0 1-8 8H8l-5 3 1.2-4.2A8 8 0 0 1 13 4a8 8 0 0 1 8 8Z" />,
   brain: <><path d="M12 2a5 5 0 0 0-4.8 3.6A4 4 0 0 0 4 9.5a4 4 0 0 0 1.2 2.9A4.5 4.5 0 0 0 4 15a4.5 4.5 0 0 0 3.5 4.4A3.5 3.5 0 0 0 11 22h2a3.5 3.5 0 0 0 3.5-2.6A4.5 4.5 0 0 0 20 15a4.5 4.5 0 0 0-1.2-2.6A4 4 0 0 0 20 9.5a4 4 0 0 0-3.2-3.9A5 5 0 0 0 12 2Z" /><path d="M12 2v20" /></>,
+  mic: <><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><path d="M12 19v3" /></>,
+  photo: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9.5" r="1.5" /><path d="m21 16-5-5L8 20" /></>,
+  globe: <><circle cx="12" cy="12" r="9" /><path d="M3.6 9h16.8" /><path d="M3.6 15h16.8" /><path d="M12 3a15 15 0 0 1 4 9 15 15 0 0 1-4 9" /><path d="M12 3a15 15 0 0 0-4 9 15 15 0 0 0 4 9" /></>,
 
   // --- Formatos de publicación ---
   formatPost: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9.5" r="1.5" /><path d="m21 16-5-5L8 20" /></>,

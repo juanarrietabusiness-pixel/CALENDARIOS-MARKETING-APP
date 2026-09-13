@@ -199,3 +199,176 @@ export async function deleteClientMemory(memoryId) {
     .eq("id", memoryId);
   if (error) throw error;
 }
+
+// ------------------------------------------------------------
+// Tareas por cliente
+// ------------------------------------------------------------
+
+export async function loadClientTasks(clientId) {
+  const { data, error } = await supabase
+    .from("client_tasks")
+    .select("*")
+    .eq("client_id", clientId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function saveClientTask(task) {
+  const row = { ...task };
+  if (!row.id) delete row.id;
+  const { data, error } = await supabase
+    .from("client_tasks")
+    .upsert(row)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteClientTask(taskId) {
+  const { error } = await supabase
+    .from("client_tasks")
+    .delete()
+    .eq("id", taskId);
+  if (error) throw error;
+}
+
+export async function completeClientTask(taskId) {
+  const { data, error } = await supabase
+    .from("client_tasks")
+    .update({ status: "completed", completed_at: new Date().toISOString() })
+    .eq("id", taskId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function reopenClientTask(taskId) {
+  const { data, error } = await supabase
+    .from("client_tasks")
+    .update({ status: "pending", completed_at: null })
+    .eq("id", taskId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// ------------------------------------------------------------
+// Plantillas de tareas
+// ------------------------------------------------------------
+
+export async function loadTaskTemplates() {
+  const { data, error } = await supabase
+    .from("task_templates")
+    .select("*")
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function saveTaskTemplate(template) {
+  const row = { ...template };
+  if (!row.id) delete row.id;
+  const { data, error } = await supabase
+    .from("task_templates")
+    .upsert(row)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteTaskTemplate(templateId) {
+  const { error } = await supabase
+    .from("task_templates")
+    .delete()
+    .eq("id", templateId);
+  if (error) throw error;
+}
+
+export async function applyTemplatesToClient(clientId, templates) {
+  const rows = templates.map((t) => ({
+    client_id: clientId,
+    title: t.title,
+    description: t.description || "",
+    recurrence: t.recurrence || "none",
+    recurrence_day: t.recurrence_day ?? null,
+  }));
+  if (!rows.length) return [];
+  const { data, error } = await supabase
+    .from("client_tasks")
+    .insert(rows)
+    .select();
+  if (error) throw error;
+  return data ?? [];
+}
+
+// ------------------------------------------------------------
+// Banco de contenido
+// ------------------------------------------------------------
+
+export async function loadContentBank(clientId) {
+  const { data, error } = await supabase
+    .from("content_bank")
+    .select("*")
+    .eq("client_id", clientId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function uploadContentBankItem(clientId, file) {
+  const ext = file.name.split(".").pop() || "bin";
+  const path = `${clientId}/${crypto.randomUUID()}.${ext}`;
+
+  const { error: uploadErr } = await supabase.storage
+    .from("content-bank")
+    .upload(path, file, { cacheControl: "3600", upsert: false });
+  if (uploadErr) throw uploadErr;
+
+  const isVideo = file.type.startsWith("video/");
+  const { data, error } = await supabase
+    .from("content_bank")
+    .insert({
+      client_id: clientId,
+      file_path: path,
+      file_name: file.name,
+      file_type: isVideo ? "video" : "image",
+      size_bytes: file.size,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteContentBankItem(item) {
+  const { error: storageErr } = await supabase.storage
+    .from("content-bank")
+    .remove([item.file_path]);
+  if (storageErr) throw storageErr;
+
+  const { error } = await supabase
+    .from("content_bank")
+    .delete()
+    .eq("id", item.id);
+  if (error) throw error;
+}
+
+export function getContentBankUrl(filePath) {
+  const { data } = supabase.storage
+    .from("content-bank")
+    .getPublicUrl(filePath);
+  return data?.publicUrl || "";
+}
+
+export async function getContentBankSignedUrl(filePath) {
+  const { data, error } = await supabase.storage
+    .from("content-bank")
+    .createSignedUrl(filePath, 3600);
+  if (error) throw error;
+  return data?.signedUrl || "";
+}

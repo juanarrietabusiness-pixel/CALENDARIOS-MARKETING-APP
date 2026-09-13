@@ -3,7 +3,7 @@ import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid, fmtDate, compressImage, parseVideoURL } from "../utils";
 import { callAI, loadADN, parseAIResponse, buildScriptPrompt, buildDescripcionesPrompt, buildClientContext, generateSinglePost, generateFieldForPost } from "../api";
 import { buildExportHTML } from "../export";
-import { shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals } from "../lib/db";
+import { shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals, loadClientMemories } from "../lib/db";
 import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO, CAMPOS_EXPORTABLES } from "../lib/exportarContenido";
 import { completitud, resumenCompletitud } from "../lib/completitud";
 import { useDialogA11y } from "../hooks/useDialogA11y";
@@ -1985,7 +1985,11 @@ export default function CalendarView({
     setIncompleteInfo(null);
 
     try {
-      const adnExtra = (await loadADN(client)).content;
+      const [adn2, mems2] = await Promise.all([
+        loadADN(client),
+        loadClientMemories(client.dbId || client.id).catch(() => []),
+      ]);
+      const adnExtra = adn2.content;
 
       const BATCH = 6;
       let allResults = {};
@@ -1999,7 +2003,7 @@ export default function CalendarView({
         setGenStatus(`Reintentando ${i + 1}-${Math.min(i + BATCH, postsToGen.length)}/${postsToGen.length}...`);
         setGenProgress(Math.round((i / postsToGen.length) * 90));
 
-        const promptText = buildScriptPrompt(client, cal, batch, adnExtra);
+        const promptText = buildScriptPrompt(client, cal, batch, adnExtra, mems2);
         const content = [{ type: "text", text: promptText }];
         for (const p of batch) {
           if (p.image) {
@@ -2127,8 +2131,12 @@ export default function CalendarView({
 
     try {
       if (!client.githubContext && client.githubRepo) setGenStatus("Cargando ADN desde GitHub...");
-      const adn = await loadADN(client);
+      const [adn, mems] = await Promise.all([
+        loadADN(client),
+        loadClientMemories(client.dbId || client.id).catch(() => []),
+      ]);
       const adnExtra = adn.content;
+      const memories = mems;
       addDebug(`ADN ${adn.cacheado ? "cacheado" : "de GitHub"}: ${adnExtra.length} caracteres`);
 
       let currentDays = cal.days || [];
@@ -2202,7 +2210,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           setGenStatus(`Fase 2 — Guiones ${i + 1}-${Math.min(i + BATCH, sinGuion.length)} de ${sinGuion.length}…`);
           setGenProgress(25 + Math.round((i / sinGuion.length) * 30));
 
-          const promptText = buildScriptPrompt(client, cal, batch, adnExtra);
+          const promptText = buildScriptPrompt(client, cal, batch, adnExtra, memories);
           const content = [{ type: "text", text: promptText }];
           const res2 = await callAI(content, { maxTokens: 8000, tolerarCorte: true });
           const txt2 = typeof res2 === "string" ? res2 : res2.texto;
@@ -2244,7 +2252,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           setGenStatus(`Fase 3 — Descripciones ${i + 1}-${Math.min(i + BATCH, sinDesc.length)} de ${sinDesc.length}…`);
           setGenProgress(55 + Math.round((i / sinDesc.length) * 40));
 
-          const promptText = buildDescripcionesPrompt(client, cal, batch, adnExtra);
+          const promptText = buildDescripcionesPrompt(client, cal, batch, adnExtra, memories);
           const { texto } = await callAI([{ type: "text", text: promptText }], { maxTokens: 8000, tolerarCorte: true });
           const parsed = parseAIResponse(texto);
           addDebug(`Fase 3 batch: ${Object.keys(parsed).length} descripciones`);

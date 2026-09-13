@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useId, useCallback } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { callAIChat, buildChatSystemPrompt, getChatTools } from "../api";
-import { uid } from "../utils";
+import { uid, compressImage } from "../utils";
 import * as db from "../lib/db";
 
 export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClose }) {
@@ -14,8 +14,13 @@ export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClos
   const [memories, setMemories] = useState([]);
   const [showMemories, setShowMemories] = useState(false);
   const [actionFeedback, setActionFeedback] = useState([]);
+  const [listening, setListening] = useState(false);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [imageData, setImageData] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const fileRef = useRef(null);
+  const recognitionRef = useRef(null);
   const dialogRef = useDialogA11y(onClose);
   const inputId = useId();
   const clientId = client.dbId || client.id;
@@ -49,6 +54,66 @@ export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClos
   useEffect(() => {
     if (!loadingHistory) inputRef.current?.focus();
   }, [loadingHistory]);
+
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch { /* ya parado */ }
+      }
+    };
+  }, []);
+
+  const toggleVoice = useCallback(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      setError("Tu navegador no soporta dictado por voz.");
+      return;
+    }
+
+    if (listening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setListening(false);
+      return;
+    }
+
+    const recognition = new SR();
+    recognition.lang = "es-PA";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+
+    recognition.onresult = (e) => {
+      const transcript = Array.from(e.results)
+        .map((r) => r[0].transcript)
+        .join("");
+      setInput((prev) => prev ? prev + " " + transcript : transcript);
+      setListening(false);
+    };
+    recognition.onerror = () => setListening(false);
+    recognition.onend = () => setListening(false);
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setListening(true);
+  }, [listening]);
+
+  const handleImageSelect = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const compressed = await compressImage(file, 800);
+      setImagePreview(URL.createObjectURL(file));
+      setImageData(compressed);
+    } catch {
+      setError("No se pudo procesar la imagen.");
+    }
+    if (fileRef.current) fileRef.current.value = "";
+  }, []);
+
+  const clearImage = useCallback(() => {
+    setImagePreview(null);
+    setImageData(null);
+  }, []);
 
   const executeToolCall = useCallback(async (toolName, toolInput) => {
     if (toolName === "guardar_memoria") {
@@ -131,23 +196,55 @@ export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClos
       return { ok: true, mensaje: `${count} publicación${count === 1 ? "" : "es"} eliminada${count === 1 ? "" : "s"}.` };
     }
 
+    if (toolName === "editar_publicaciones_lote") {
+      const cambios = toolInput.cambios || [];
+      if (!cambios.length) return { ok: false, mensaje: "No se indicaron cambios." };
+      const idsMap = new Map(cambios.map((c) => [c.post_id, c]));
+      let count = 0;
+      const newDays = cal.days.map((d) => ({
+        ...d,
+        posts: (d.posts || []).map((p) => {
+          const c = idsMap.get(p.id);
+          if (!c) return p;
+          count++;
+          const upd = { ...p };
+          if (c.idea !== undefined) upd.idea = c.idea;
+          if (c.descripcion !== undefined) upd.descripcion = c.descripcion;
+          if (c.guion !== undefined) upd.guion = c.guion;
+          if (c.categoria !== undefined) upd.category = c.categoria;
+          return upd;
+        }),
+      }));
+      if (count === 0) return { ok: false, mensaje: "No se encontraron las publicaciones indicadas." };
+      const updated = { ...cal, days: newDays };
+      calRef.current = updated;
+      onUpdateCal(calId, updated);
+      return { ok: true, mensaje: `${count} publicación${count === 1 ? "" : "es"} editada${count === 1 ? "" : "s"} en lote.` };
+    }
+
     return { ok: false, mensaje: `Herramienta desconocida: ${toolName}` };
   }, [clientId, calId, onUpdateCal, memories]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
-    if (!text || loading) return;
+    if ((!text && !imageData) || loading) return;
 
     setInput("");
     setError("");
     setActionFeedback([]);
 
-    const userMsg = { role: "user", content: text, created_at: new Date().toISOString() };
+    const hasImage = Boolean(imageData);
+    const displayText = text || (hasImage ? "[Imagen enviada]" : "");
+    const userMsg = { role: "user", content: displayText, created_at: new Date().toISOString(), hasImage };
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
 
+    const sentImagePreview = imagePreview;
+    const sentImageData = imageData;
+    clearImage();
+
     try {
-      await db.saveChatMessage(clientId, "user", text);
+      await db.saveChatMessage(clientId, "user", displayText);
 
       const system = buildChatSystemPrompt(
         client,
@@ -157,11 +254,28 @@ export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClos
       );
       const tools = getChatTools(Boolean(calRef.current));
 
-      let conversationMessages = [...messages, userMsg].slice(-50).map((m) => ({
+      const previousMsgs = [...messages, userMsg].slice(-50).map((m) => ({
         role: m.role,
         content: m.content,
       }));
 
+      if (sentImageData) {
+        const base64 = sentImageData.includes(",") ? sentImageData.split(",")[1] : sentImageData;
+        const lastMsg = previousMsgs[previousMsgs.length - 1];
+        const contentBlocks = [];
+        contentBlocks.push({
+          type: "image",
+          source: { type: "base64", media_type: "image/jpeg", data: base64 },
+        });
+        if (text) {
+          contentBlocks.push({ type: "text", text });
+        } else {
+          contentBlocks.push({ type: "text", text: "Analiza esta imagen." });
+        }
+        lastMsg.content = contentBlocks;
+      }
+
+      let conversationMessages = previousMsgs;
       let maxLoops = 6;
       const feedbacks = [];
 
@@ -212,8 +326,9 @@ export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClos
       setError(e.message || "Error al generar respuesta.");
     } finally {
       setLoading(false);
+      if (sentImagePreview) URL.revokeObjectURL(sentImagePreview);
     }
-  }, [input, loading, messages, client, clientId, memories, executeToolCall]);
+  }, [input, loading, messages, client, clientId, memories, executeToolCall, imageData, imagePreview, clearImage]);
 
   const handleClear = useCallback(async () => {
     try {
@@ -247,6 +362,9 @@ export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClos
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 120) + "px";
   };
+
+  const hasSpeechAPI = typeof window !== "undefined" &&
+    (window.SpeechRecognition || window.webkitSpeechRecognition);
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", justifyContent: "flex-end" }}>
@@ -412,6 +530,42 @@ export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClos
           <div ref={messagesEndRef} />
         </div>
 
+        {/* Vista previa de imagen adjunta */}
+        {imagePreview && (
+          <div style={{
+            padding: "var(--sp-2) var(--sp-4)",
+            borderTop: "1px solid var(--border)",
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--sp-2)",
+            flexShrink: 0,
+            background: "var(--surface-2)",
+          }}>
+            <img
+              src={imagePreview}
+              alt="Imagen adjunta"
+              style={{
+                width: 48,
+                height: 48,
+                objectFit: "cover",
+                borderRadius: "var(--radius-sm)",
+                border: "1px solid var(--border)",
+              }}
+            />
+            <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)", flex: 1 }}>
+              Imagen lista para enviar
+            </span>
+            <button
+              className="btn-icon"
+              onClick={clearImage}
+              aria-label="Quitar imagen"
+              style={{ width: 28, height: 28, minHeight: 28 }}
+            >
+              <Icon name="close" size={14} />
+            </button>
+          </div>
+        )}
+
         {/* Entrada */}
         <div style={{
           padding: "var(--sp-3) var(--sp-4)",
@@ -422,6 +576,41 @@ export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClos
           alignItems: "flex-end",
           flexShrink: 0,
         }}>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            onChange={handleImageSelect}
+            style={{ display: "none" }}
+            aria-hidden="true"
+          />
+          <button
+            className="btn-icon"
+            onClick={() => fileRef.current?.click()}
+            aria-label="Adjuntar imagen"
+            title="Adjuntar imagen"
+            disabled={loading}
+            style={{ minHeight: "var(--tap)", minWidth: "var(--tap)" }}
+          >
+            <Icon name="image" size={18} />
+          </button>
+          {hasSpeechAPI && (
+            <button
+              className="btn-icon"
+              onClick={toggleVoice}
+              aria-label={listening ? "Detener dictado" : "Dictar por voz"}
+              aria-pressed={listening}
+              title={listening ? "Detener dictado" : "Dictar por voz"}
+              disabled={loading}
+              style={{
+                minHeight: "var(--tap)",
+                minWidth: "var(--tap)",
+                color: listening ? "var(--danger)" : undefined,
+              }}
+            >
+              <Icon name="mic" size={18} />
+            </button>
+          )}
           <label htmlFor={inputId} className="sr-only">Mensaje</label>
           <textarea
             ref={inputRef}
@@ -430,7 +619,7 @@ export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClos
             value={input}
             onChange={(e) => { setInput(e.target.value); autoGrow(e); }}
             onKeyDown={handleKeyDown}
-            placeholder="Escribe tu mensaje…"
+            placeholder={listening ? "Escuchando…" : "Escribe tu mensaje…"}
             rows={1}
             style={{
               flex: 1,
@@ -444,7 +633,7 @@ export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClos
           <button
             className="btn btn-primary"
             onClick={handleSend}
-            disabled={!input.trim() || loading}
+            disabled={(!input.trim() && !imageData) || loading}
             aria-label="Enviar mensaje"
             style={{ minHeight: "var(--tap)", paddingInline: "var(--sp-3)" }}
           >
@@ -489,7 +678,7 @@ function EmptyState({ clientName, hasCalendar }) {
         {hasCalendar && (
           <>
             <span style={{ fontStyle: "italic" }}>«Créame un reel para el martes sobre tips»</span>
-            <span style={{ fontStyle: "italic" }}>«Elimina las publicaciones de los lunes»</span>
+            <span style={{ fontStyle: "italic" }}>«Cambia todas las descripciones de los lunes a tono formal»</span>
           </>
         )}
         <span style={{ fontStyle: "italic" }}>«Recuerda que prefiero un tono formal»</span>
@@ -518,6 +707,19 @@ function ChatMessage({ message }) {
         whiteSpace: "pre-wrap",
         wordBreak: "break-word",
       }}>
+        {message.hasImage && (
+          <div style={{
+            marginBottom: "var(--sp-1)",
+            fontSize: "var(--fs-3xs)",
+            opacity: 0.8,
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--sp-1)",
+          }}>
+            <Icon name="image" size={12} />
+            <span>Imagen adjunta</span>
+          </div>
+        )}
         {message.content}
       </div>
     </div>
@@ -531,6 +733,7 @@ function ActionChip({ feedback }) {
     crear_publicacion: "Calendario",
     editar_publicacion: "Calendario",
     eliminar_publicaciones: "Calendario",
+    editar_publicaciones_lote: "Lote",
   };
   return (
     <div style={{
