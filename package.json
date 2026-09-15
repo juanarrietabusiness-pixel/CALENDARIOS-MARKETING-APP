@@ -9,7 +9,11 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:bundle": "vitest run --config vitest.bundle.config.js",
+    "test:infra": "vitest run --config vitest.infra.config.js",
+    "build:verificado": "node scripts/build-verificado.mjs",
+    "verificar": "npm run lint && npm test && npm run build:verificado && npm run test:bundle"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.2",

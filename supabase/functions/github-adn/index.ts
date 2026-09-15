@@ -46,6 +46,11 @@ const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
 // tres campos vacíos en un diagnóstico. Pasó, y costó una tarde.
 const VERSION = 3;
 
+// El cuerpo que entra son dos cadenas —la URL del repositorio y la
+// carpeta—, así que 64 kB sobran. El tope está por lo de siempre: una
+// función sin límite acepta lo que le manden y lo carga en memoria.
+const MAX_BODY_BYTES = 64 * 1024;
+
 const MAX_TOTAL_CHARS = 200_000;
 // Un archivo de más de 400 kB no es ADN, es un volcado. Se descarta.
 const MAX_FILE_BYTES = 400_000;
@@ -190,6 +195,11 @@ Deno.serve(async (req) => {
   const { data: userData, error: userErr } = await supabase.auth.getUser();
   if (userErr || !userData?.user) {
     return json({ error: "Sesión inválida o caducada" }, 401, headers);
+  }
+
+  const declared = Number(req.headers.get("content-length") ?? 0);
+  if (declared > MAX_BODY_BYTES) {
+    return json({ error: "La petición es demasiado grande" }, 413, headers);
   }
 
   let body: { repoUrl?: string; folder?: string };
