@@ -13,17 +13,50 @@ npm run build    # build de producción a dist/
 npm run preview  # sirve dist/ para comprobar el build
 ```
 
-Antes de dar por terminado cualquier cambio: `npm run lint && npm run build`.
-
-**Ese `build` a secas NO verifica el panel.** Sin las `VITE_*`, Vite lo
-elimina entero y el bundle sale a 137 kB en vez de 500 kB: el build pasa sin
-haber compilado lo que acabas de tocar, y el hash del chunk ni siquiera
-cambia. Para comprobar de verdad:
+**Antes de dar por terminado cualquier cambio:**
 
 ```bash
-VITE_SUPABASE_URL="https://ejemplo.supabase.co" \
-VITE_SUPABASE_ANON_KEY="verificacion-de-build" npm run build
+npm run verificar
 ```
+
+Es lint + tests + build con las variables + tests de bundle, en ese orden,
+y es exactamente lo que ejecuta CI. Si pasa aquí, pasa allí.
+
+**El `build` a secas NO verifica el panel.** Sin las `VITE_*`, Vite lo
+elimina entero y el bundle sale a 140 kB en vez de 570 kB: el build pasa sin
+haber compilado lo que acabas de tocar, y el hash del chunk ni siquiera
+cambia. Por eso existe `npm run build:verificado`, que las define solo.
+Y por eso el primer test de bundle es un canario que falla si el `dist`
+que se está midiendo es el de media aplicación.
+
+### Tests
+
+| Comando | Qué comprueba | Necesita |
+|---|---|---|
+| `npm test` | Lógica y todo lo que se resuelve leyendo el repositorio | Nada |
+| `npm run test:bundle` | El `dist/`: peso, caché, minificado | Un build con variables |
+| `npm run test:infra` | El proyecto de Supabase y el sitio publicado | Llaves |
+| `npm run verificar` | Los tres primeros en orden | Nada |
+
+`tests/despliegue/` no comprueba que la aplicación funcione: comprueba
+que **lo que se despliega es lo que se cree que se despliega**. La CSP, las
+cabeceras, el orden de las redirecciones, las políticas RLS, la paridad
+entre `supabase/functions/` y el workflow que las despliega, el
+presupuesto de descarga y las trampas de este archivo. Nada de eso se ve
+mirando la pantalla: el sitio se ve igual con la CSP puesta que sin ella.
+
+Cada fallo se imprime con **qué, dónde, por qué importa y el arreglo**, y
+CI compone con esos campos un `informe-despliegue.md` que sube como
+artefacto y comenta en el pull request. El procedimiento para corregir
+está en `.claude/skills/arreglar-despliegue/`.
+
+**`main` está protegida:** sin el job `verificar` en verde no se puede
+mergear. El nombre del job está en `ci.yml` y en el ruleset del
+repositorio; si se renombra en uno, hay que renombrarlo en el otro.
+
+Los tests de migraciones leen el SQL del repositorio: que pasen significa
+que la corrección **está escrita**, no aplicada. Para lo aplicado está
+`npm run test:infra`.
 
 ## Arquitectura
 
@@ -54,6 +87,9 @@ src/
   pages/
     Login.jsx             Acceso del administrador
     Aprobar.jsx           Página pública que ve el cliente final
+tests/
+  utils/                  Lector de netlify.toml, del SQL, formato de fallos e informe
+  despliegue/             Plantillas, secretos, migraciones, funciones, bundle, regresiones
 netlify/functions/
   admin-seed.mjs          Alta del administrador desde las variables de Netlify
 supabase/
@@ -244,6 +280,20 @@ una clave ha vuelto al front: esas llamadas son del servidor.
   padding: si se resetea a `3px 2px`, la barra se come el texto. La pista es
   un blanco translúcido y no un token de color porque el fondo del chip es
   un HSL calculado a partir de la categoría.
+- **Una política puede llamarse «own X» y no acotar nada.** Las tres del
+  banco de contenido decían «can read/delete own content-bank» y su única
+  condición era `bucket_id = 'content-bank'`: cualquier sesión
+  autenticada leía —y borraba— los archivos de todos los clientes. Con
+  una sola cuenta de agencia no se nota nada. Lo arregla
+  `20260915000000_cerrar_brechas_rls.sql`, acotando por `owner`, y lo
+  vigila `tests/despliegue/migraciones.test.js`.
+- **Una función desplegada a mano no está en ningún commit.** `ai-chat`
+  corrió semanas con código que no estaba en el repositorio porque el
+  workflow sólo desplegaba `ai` y `github-adn`. El síntoma no se parece a
+  la causa: campos que faltan, respuestas recortadas, y un diff limpio.
+  El test de paridad exige que toda carpeta de `supabase/functions/` tenga
+  su paso en el workflow; el test en vivo detecta lo contrario —lo que
+  corre en producción sin código aquí—.
 - **Rellenar no es reescribir.** «Generar guiones» sólo escribe donde no
   hay nada: lo que ya tiene texto gana sobre lo que devuelve el modelo.
   Y lo que le falta a una publicación depende de su formato —un post sólo

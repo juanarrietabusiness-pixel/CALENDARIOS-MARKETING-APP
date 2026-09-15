@@ -32,3 +32,9 @@ supabase/.temp
 *.njsproj
 *.sln
 *.sw?
+
+# Ruedas de Python y otros binarios que se cuelan al trabajar en local
+*.whl
+
+# Informe que generan los tests de despliegue en cada ejecución
+informe-despliegue.md

@@ -54,3 +54,11 @@ jobs:
         run: supabase functions deploy github-adn --project-ref "$PROJECT_REF"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      # ai-chat se desplegaba a mano: en producción corría una versión que
+      # no estaba en ningún commit. Lo destapó el test de paridad entre
+      # supabase/functions/ y este workflow.
+      - name: Desplegar ai-chat
+        run: supabase functions deploy ai-chat --project-ref "$PROJECT_REF"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

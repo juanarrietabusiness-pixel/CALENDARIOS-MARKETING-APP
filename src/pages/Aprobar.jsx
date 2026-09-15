@@ -35,6 +35,12 @@ export default function Aprobar() {
   const [activeWeek, setActiveWeek] = useState("all");
   const [summaryOpen, setSummaryOpen] = useState(true);
   const [bulkSaving, setBulkSaving] = useState(false);
+  // Confirmación de «Aprobar todo» en dos pasos. Antes era un confirm()
+  // del navegador: bloquea la pestaña entera, no se puede estilar y en
+  // móvil aparece como un aviso ajeno a la página que está viendo el
+  // cliente. El paso intermedio conserva la red —aprobar todo no se
+  // deshace— sin salirse de la aplicación.
+  const [bulkConfirm, setBulkConfirm] = useState(false);
   const [editSaving, setEditSaving] = useState({});
 
   const params = new URLSearchParams(window.location.search);
@@ -153,7 +159,7 @@ export default function Aprobar() {
       .filter((r) => !approvals[r.id]);
     const pending = [...pendingPosts.map((p) => p.id), ...pendingRefs.map((r) => r.id)];
     if (pending.length === 0) return;
-    if (!confirm(`¿Aprobar ${pending.length} elementos pendientes?`)) return;
+    setBulkConfirm(false);
     setBulkSaving(true);
     for (const id of pending) {
       try {
@@ -367,15 +373,42 @@ export default function Aprobar() {
 
       {totalPending > 0 && (
         <div style={{ padding: "0 var(--sp-4) var(--sp-3)" }}>
-          <button
-            type="button"
-            className="btn"
-            onClick={handleBulkApprove}
-            disabled={bulkSaving}
-            style={{ ...styles.approveBtn, width: "100%", opacity: bulkSaving ? 0.5 : 1 }}
-          >
-            {bulkSaving ? "Aprobando…" : <><Icon name="check" size={18} /> Aprobar todo ({totalPending})</>}
-          </button>
+          {bulkConfirm && !bulkSaving ? (
+            <div role="alertdialog" aria-label="Confirmar aprobación de todo lo pendiente">
+              <p role="status" style={{ margin: "0 0 var(--sp-2)", fontSize: "var(--fs-sm)", color: "var(--text-muted)" }}>
+                Se aprobarán {totalPending} elementos pendientes. Esto no se deshace.
+              </p>
+              <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={handleBulkApprove}
+                  autoFocus
+                  style={{ ...styles.approveBtn, flex: 1 }}
+                >
+                  <Icon name="check" size={18} /> Sí, aprobar {totalPending}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setBulkConfirm(false)}
+                  style={{ minHeight: "var(--tap)" }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setBulkConfirm(true)}
+              disabled={bulkSaving}
+              style={{ ...styles.approveBtn, width: "100%", opacity: bulkSaving ? 0.5 : 1 }}
+            >
+              {bulkSaving ? "Aprobando…" : <><Icon name="check" size={18} /> Aprobar todo ({totalPending})</>}
+            </button>
+          )}
         </div>
       )}
 

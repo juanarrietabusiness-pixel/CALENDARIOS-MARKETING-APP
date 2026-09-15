@@ -1,0 +1,61 @@
+# Comprueba la infraestructura que hay desplegada de verdad.
+#
+# Los tests de `npm test` leen el repositorio: dicen si el código está
+# bien escrito, no si lo que corre en producción es ese código. La deriva
+# —una función subida a mano que no está en ningún commit, una migración
+# escrita y sin aplicar— sólo se ve mirando el proyecto.
+#
+# No va en CI porque necesita llaves y porque no tiene sentido pedírselas
+# a cada pull request. Corre cada mañana y cuando alguien lo lanza.
+#
+# HACEN FALTA DOS SECRETOS:
+#   SUPABASE_ACCESS_TOKEN — https://supabase.com/dashboard/account/tokens
+#   SITIO_URL             — la dirección del sitio publicado (opcional;
+#                           sin ella se saltan las cabeceras)
+name: Infraestructura
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SUPABASE_PROJECT_REF: lwkepnrprcyabyhhorrc
+
+jobs:
+  comprobar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Comprobar que hay token
+        run: |
+          if [ -z "${{ secrets.SUPABASE_ACCESS_TOKEN }}" ]; then
+            echo "::error::Falta el secreto SUPABASE_ACCESS_TOKEN."
+            echo "Sin él estos tests se saltarían y dirían que todo está bien"
+            echo "sin haber mirado nada, que es peor que no ejecutarlos."
+            exit 1
+          fi
+
+      - name: Tests de infraestructura
+        run: npm run test:infra
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ env.SUPABASE_PROJECT_REF }}
+          SITIO_URL: ${{ secrets.SITIO_URL }}
+
+      - name: Subir el informe
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: informe-infraestructura
+          path: informe-despliegue.md
+          if-no-files-found: ignore
