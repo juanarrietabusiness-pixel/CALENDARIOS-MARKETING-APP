@@ -1,6 +1,15 @@
 -- ============================================================
 -- Juancito Ads — Cierre de las brechas que destapó la auditoría
 --
+-- YA APLICADA en el proyecto lwkepnrprcyabyhhorrc el 2026-09-15. El
+-- nombre del archivo lleva la versión con la que quedó registrada en
+-- `supabase_migrations.schema_migrations`, para que `db push` la vea
+-- aplicada y no intente repetirla.
+--
+-- Ojo: el historial de esa tabla y los archivos de esta carpeta NO se
+-- corresponden (ver DEPLOY.md). No ejecutes `supabase db push` sin leer
+-- antes esa nota.
+--
 -- Tres cosas, todas encontradas por los tests de despliegue y
 -- confirmadas contra el proyecto real:
 --

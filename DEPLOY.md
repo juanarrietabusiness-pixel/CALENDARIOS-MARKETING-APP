@@ -75,6 +75,46 @@ mundo trabaja desde un clon local.
 `approvals`, las tres con «RLS enabled». Si alguna aparece sin RLS, **no
 sigas**: cualquiera con la clave anónima podría leer todos los clientes.
 
+### 1.0 Las migraciones: `db push` NO es seguro aquí
+
+El historial de migraciones de la base de datos y los archivos de
+`supabase/migrations/` **no se corresponden**. Lo destapó la auditoría de
+despliegue de septiembre de 2026:
+
+| En la base de datos | En el repositorio |
+|---|---|
+| `20260808011018 init` | `20260101000000_init.sql` |
+| `20260808011336 restrict_agency_rpc_to_authenticated` | *no existe archivo* |
+| *no registradas* | `client_editing`, `visual_refs_and_day_labels`, `meta_recipe`, `ai_instructions`, `calendar_offers_and_meta_recipe`, `ref_approvals_and_post_editing` |
+
+**El esquema está bien**: esas seis migraciones sí se aplicaron —sus
+tablas, columnas y funciones están ahí, comprobado—, pero se aplicaron
+por una vía que no las anotó en `supabase_migrations.schema_migrations`
+(el editor SQL del panel, o un MCP). Lo que está mal es el registro.
+
+La consecuencia práctica: **`supabase db push` intentaría aplicar esas
+seis otra vez**, y varias fallarían al chocar con lo que ya existe
+(`create table` sin `if not exists`, `create policy` sobre una política
+que ya está).
+
+Mientras no se reconcilie, aplica cada migración nueva de una de estas
+dos formas:
+
+1. Por el editor SQL del panel de Supabase, pegando el archivo.
+2. Con `supabase migration repair --status applied <versión>` para cada
+   una de las seis que faltan, y sólo entonces `db push`.
+
+Y comprueba después que quedó aplicada de verdad:
+
+```bash
+SUPABASE_ACCESS_TOKEN=... SUPABASE_PROJECT_REF=... npm run test:infra
+```
+
+Los tests de `tests/despliegue/migraciones.test.js` leen el SQL del
+repositorio: que pasen significa que la corrección **está escrita**, no
+que esté aplicada. Esa diferencia es justo la que este desajuste hace
+fácil de pasar por alto.
+
 ### 1.1 Cerrar el registro público
 
 *Authentication → Sign In / Providers → Email* y desactiva
