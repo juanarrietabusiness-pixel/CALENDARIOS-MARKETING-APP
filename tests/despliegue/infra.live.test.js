@@ -124,7 +124,22 @@ conCuenta("la cuenta de Cloudflare", () => {
     // exactamente el caso de `image-gen`.
     const { result } = await api("/workers/scripts");
     const nombres = (result ?? []).map((w) => w.id ?? w.name);
-    const conocidos = ["calendarios", "juancitoads-bot", "nebula-storefront", "nebula-admin"];
+    // Los Workers de la cuenta que SÍ tienen dueño conocido. Cada uno
+    // se declara a mano a propósito: si la lista se calculara sola, el
+    // test no detectaría nada. Añadir uno aquí es decir «éste sé de
+    // dónde sale», y eso es una decisión, no un trámite.
+    //
+    //   calendarios        este repositorio
+    //   juancitoads-bot    el bot de atención, con su D1 juancitoads-bot-db
+    //   juancitoads-bot-wa la pata de WhatsApp del bot, con su D1 de sesión
+    //   nebula-*           la tienda
+    const conocidos = [
+      "calendarios",
+      "juancitoads-bot",
+      "juancitoads-bot-wa",
+      "nebula-storefront",
+      "nebula-admin",
+    ];
     const desconocidos = nombres.filter((n) => !conocidos.includes(n));
 
     expect(

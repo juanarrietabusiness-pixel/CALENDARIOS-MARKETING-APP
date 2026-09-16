@@ -271,6 +271,25 @@ son del servidor.
   los 263 tests pasaban. Por eso **todo `create` del esquema lleva
   `if not exists`**, y `tests/despliegue/migraciones.test.js` falla si
   aparece uno que no lo lleve.
+- **Las filas importadas no pertenecen a quien las tenía en Supabase.**
+  El `owner_id` que traen es de un usuario de GoTrue, y en D1 no existe:
+  el administrador se siembra aparte, con un UUID nuevo. La primera
+  importación real murió en el primer cliente con «FOREIGN KEY constraint
+  failed», que no dice ni qué clave ni por qué. Lo resuelve
+  `resolverDueno()`, y tampoco casa por correo —aquí la agencia entra con
+  uno distinto del que tenía—: con un dueño a cada lado la
+  correspondencia es evidente, y con más de uno para en vez de adivinar.
+- **Un ensayo que no toca la base no comprueba nada de la base.** El
+  ensayo de la migración pasó en verde y la importación real cayó a la
+  primera fila. Ahora las LECTURAS sí se hacen en ensayo —la de usuarios,
+  que es la que faltaba—; sólo se saltan las escrituras.
+- **La clave del banco de contenido lleva prefijo.** En Supabase la ruta
+  era `{clientId}/{uuid}.jpg`; en R2 todo cuelga de `clientes/`, y la
+  ruta de medios del Worker lo exige para saber de qué cliente es el
+  archivo. Una clave sin prefijo no la sirve nadie, y el fallo es mudo:
+  la fila está, el objeto está, y la imagen no carga. Lo normaliza
+  `claveBanco()`, que usan el volcado y la importación para que la fila
+  y el objeto coincidan.
 - **D1 corta la fila a 2.000.000 bytes y la sentencia a 100.000.** Las
   imágenes iban en base64 dentro del JSON: el calendario de agosto ocupaba
   501.884 caracteres con 12 de 25 publicaciones ilustradas. Por eso viven en
