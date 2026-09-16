@@ -305,3 +305,8 @@ una clave ha vuelto al front: esas llamadas son del servidor.
 - `DEPLOY.md` — puesta en producción con Netlify y Supabase vía MCP.
 - `docs/auditoria-ux-ui.md` — auditoría de UX, UI, responsive y accesibilidad,
   con lo corregido y lo pendiente.
+- `docs/migracion-cloudflare.md` — plan para mover la aplicación de Supabase +
+  Netlify a Cloudflare (D1, R2, Workers). Escrito sobre la base viva, no sobre
+  el repositorio: incluye dónde los dos no coinciden.
+- `docs/hub-cloudflare.md` — plan del hub donde este calendario pasa a ser una
+  herramienta más, junto al bot y la tienda que ya están en Cloudflare.
