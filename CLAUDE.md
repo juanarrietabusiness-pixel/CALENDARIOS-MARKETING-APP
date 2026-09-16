@@ -138,7 +138,8 @@ tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
   despliegue/             Plantillas, secretos, migraciones, funciones, acceso,
                           tiempo real, bundle
-  migracion/              Conversión, capa de acceso, enlace público y equipo
+  migracion/              Conversión, capa de acceso, enlace público, equipo
+                          y enrutado (pide las rutas del Worker de verdad)
 ```
 
 ### Las direcciones
@@ -551,6 +552,26 @@ son del servidor.
   aplicación que funciona y no tiene nada dentro, y nadie sabe por qué.
   Al fundador no se le puede sacar: ahí la cascada sí se llevaría los
   clientes y los calendarios, que cuelgan de su id.
+- **La subida de imágenes estaba escrita, desplegada y muerta.** `POST
+  /api/media` iba en un `if` posterior al que valida la clave, y a `POST`
+  no le llega ninguna clave: `partes` vale `["media"]`, la clave sale
+  vacía, y el `if (!m) return noEncontrado("Archivo")` de arriba
+  contestaba 404 antes de que nadie mirase el método. Leyendo el fichero
+  las dos ramas están ahí y las dos parecen bien. Es la misma forma del
+  fallo de `ai-chat` —código en el commit que no se ejecuta nunca—, pero
+  DENTRO de `worker/index.js`, donde `funciones.test.js` no llega: ese
+  test sólo vigila `worker/rutas/`. Lo cubre ahora
+  `tests/migracion/enrutado.test.js`, que **pide las rutas de verdad**
+  con un `env` de mentira en vez de leer el fichero. Si añades una rama a
+  esta puerta, ponle su caso ahí: leerla no basta para saber si alguien
+  llega.
+- **`.wrangler/` no se versiona.** Estuvo versionado por descuido hasta
+  que se sacó. Es la D1 y el R2 de `wrangler dev`: cada arranque
+  reescribe catorce ficheros `.sqlite-shm`/`.sqlite-wal`, y quien levante
+  el Worker en local contra datos de verdad acaba con clientes reales
+  dentro de un binario que nadie mira antes de hacer commit. Misma
+  familia que `scripts/migracion/datos/`. (El que había en el historial
+  estaba vacío: no llegó a colarse ningún dato.)
 - **`connect-src 'self'` ya cubre el WebSocket.** En una página `https`,
   `'self'` casa con `wss:` del mismo host —lo dice la especificación de
   CSP—. Si alguien ve el socket caer y «lo arregla» metiendo un origen

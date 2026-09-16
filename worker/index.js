@@ -181,36 +181,55 @@ export default {
 
       if (partes[0] === "equipo") return rutasEquipo(req, env, { acceso, partes, metodo, usuario });
 
-      // Medios con sesión: la clave tiene que ser de un cliente de este
-      // dueño. Sin esta comprobación, /api/media/ sería un lector de R2
-      // para cualquiera que tenga sesión, y en el hub eso ya no es «la
-      // única cuenta de la agencia».
+      // ---------- Medios ----------
+      //
+      // EL ORDEN DE ESTE BLOQUE, OTRA VEZ.
+      //
+      // La subida iba en un `if` aparte, DESPUÉS del que comprueba la
+      // clave, y nunca se alcanzaba: en `POST /api/media` no hay clave
+      // —`partes` es sólo ["media"]—, así que la comprobación de arriba
+      // devolvía 404 y se acababa la petición ahí. Código escrito, en el
+      // commit, desplegado, y muerto; la misma forma del fallo que
+      // `tests/despliegue/funciones.test.js` vigila en worker/rutas/,
+      // sólo que dentro de este fichero, donde ese test no llega.
+      //
+      // Por eso van juntos ahora: la subida PRIMERO, porque es el caso
+      // sin clave, y la lectura y el borrado después, que sí la tienen.
       if (partes[0] === "media") {
+        // Subida de imágenes de publicación y logos. Devuelve la CLAVE,
+        // que es lo que se guarda en el JSON del calendario: nunca un
+        // data: URI, que es lo que llevaba la fila contra el techo de 2 MB.
+        //
+        // Aquí no hay clave que validar —la inventa el servidor, que es
+        // justo lo que impide escribir en la carpeta de otro—: lo que se
+        // comprueba es que el cliente sea de este espacio.
+        if (partes.length === 1 && metodo === "POST") {
+          const form = await req.formData().catch(() => null);
+          const archivo = form?.get("archivo");
+          const clientId = String(form?.get("clientId") ?? "");
+          const carpeta = String(form?.get("carpeta") ?? "posts").replace(/[^a-z]/g, "") || "posts";
+          if (!archivo || typeof archivo === "string") return error("Falta el archivo");
+          if (!(await acceso.leerUno("clients", { id: clientId }))) return noEncontrado("Cliente");
+
+          const ext = (archivo.name?.split(".").pop() || "jpg").toLowerCase().slice(0, 8);
+          const clave = `clientes/${clientId}/${carpeta}/${crypto.randomUUID()}.${ext}`;
+          await env.MEDIA.put(clave, archivo.stream(), {
+            httpMetadata: { contentType: archivo.type || "image/jpeg" },
+          });
+          return json({ clave }, 201);
+        }
+
+        // Leer y borrar: la clave viene en la ruta y tiene que ser de un
+        // cliente de este espacio. Sin esta comprobación, /api/media/
+        // sería un lector de R2 para cualquiera que tenga sesión, y con
+        // equipo eso ya no es «la única cuenta de la agencia».
         const clave = partes.slice(1).join("/");
         const m = /^clientes\/([^/]+)\//.exec(clave);
         if (!m) return noEncontrado("Archivo");
         if (!(await acceso.leerUno("clients", { id: m[1] }))) return noEncontrado("Archivo");
         if (metodo === "GET") return sirveMedia(env, clave, true);
         if (metodo === "DELETE") { await env.MEDIA.delete(clave); return json({ ok: true }); }
-      }
-
-      // Subida de imágenes de publicación y logos. Devuelve la CLAVE,
-      // que es lo que se guarda en el JSON del calendario: nunca un
-      // data: URI, que es lo que llevaba la fila contra el techo de 2 MB.
-      if (partes[0] === "media" && partes.length === 1 && metodo === "POST") {
-        const form = await req.formData().catch(() => null);
-        const archivo = form?.get("archivo");
-        const clientId = String(form?.get("clientId") ?? "");
-        const carpeta = String(form?.get("carpeta") ?? "posts").replace(/[^a-z]/g, "") || "posts";
-        if (!archivo || typeof archivo === "string") return error("Falta el archivo");
-        if (!(await acceso.leerUno("clients", { id: clientId }))) return noEncontrado("Cliente");
-
-        const ext = (archivo.name?.split(".").pop() || "jpg").toLowerCase().slice(0, 8);
-        const clave = `clientes/${clientId}/${carpeta}/${crypto.randomUUID()}.${ext}`;
-        await env.MEDIA.put(clave, archivo.stream(), {
-          httpMetadata: { contentType: archivo.type || "image/jpeg" },
-        });
-        return json({ clave }, 201);
+        return error(`Método ${metodo} no permitido aquí`, 405);
       }
 
       return rutasDatos(req, env, { acceso, partes, metodo, usuario });
