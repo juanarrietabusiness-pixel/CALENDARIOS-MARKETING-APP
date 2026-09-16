@@ -87,6 +87,37 @@ describe("el dist que se mide es la aplicación entera", () => {
   });
 });
 
+describe("el HTML publicado encuentra sus recursos", () => {
+  it("cada ruta que referencia index.html existe en dist/", () => {
+    // ESTE ES EL TEST QUE FALTABA. `base` estaba condicionado a
+    // GITHUB_ACTIONS por la época de GitHub Pages, así que el build de
+    // CI —el que se publica— salía pidiendo
+    // /CALENDARIOS-MARKETING-APP/assets/index-*.js. Esa ruta no existe,
+    // el respaldo de la SPA devuelve index.html en su lugar, y el
+    // navegador se niega a ejecutar HTML como módulo: página en blanco,
+    // con el título correcto en la pestaña y sin nada que mirar.
+    //
+    // Los pesos no lo detectaban: el bundle pesaba lo de siempre. Sólo
+    // lo detecta comprobar que las rutas resuelven.
+    const html = readFileSync(join(DIST, "index.html"), "utf8");
+    const rutas = [...html.matchAll(/(?:src|href)="(\/[^"]+\.(?:js|css|png|svg|ico))"/g)]
+      .map((m) => m[1]);
+
+    expect(rutas.length, "index.html no referencia ningún recurso propio").toBeGreaterThan(0);
+
+    const rotas = rutas.filter((r) => !existsSync(join(DIST, r.replace(/^\//, ""))));
+    expect(
+      rotas,
+      fallo({
+        que: `index.html pide recursos que no están en dist/: ${rotas.join(", ")}`,
+        donde: "dist/index.html — y casi seguro `base` en vite.config.js",
+        porque: "La ruta no existe, el respaldo de la SPA devuelve index.html en su lugar, y el navegador rechaza ejecutar HTML como módulo. La página sale EN BLANCO, con el título correcto y sin ningún error en el registro.",
+        arreglo: "Comprueba que `base` en vite.config.js sea la del sitio publicado. No la condiciones a una variable de CI: el build de CI es el que se publica.",
+      }),
+    ).toEqual([]);
+  });
+});
+
 describe("presupuesto de descarga", () => {
   it("el JavaScript total cabe en el presupuesto", () => {
     const total = Math.round(js().reduce((s, a) => s + a.gzip, 0) / 1024);

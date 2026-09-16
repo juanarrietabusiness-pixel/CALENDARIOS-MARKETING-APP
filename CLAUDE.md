@@ -312,6 +312,20 @@ son del servidor.
 - La CSP de `public/_headers` necesita `'unsafe-inline'` en `style-src`
   porque React aplica la prop `style` como atributo en línea. `script-src` no
   lo lleva y no debe llevarlo.
+- **La página salía EN BLANCO y los 278 tests estaban en verde.** `base`
+  de `vite.config.js` estaba condicionado a `GITHUB_ACTIONS` —de cuando
+  el sitio se publicaba en GitHub Pages bajo un subdirectorio—, así que
+  el build de CI, **que es el que se publica**, pedía los recursos en
+  `/CALENDARIOS-MARKETING-APP/assets/…`. Esa ruta no existe; el respaldo
+  de la SPA devuelve `index.html` con `content-type: text/html`; y el
+  navegador se niega —bien— a ejecutar HTML como módulo. Título correcto
+  en la pestaña, cero errores en el registro, y nada en pantalla.
+  En local funcionaba, porque en local no hay `GITHUB_ACTIONS`.
+  Lo peor: **un test exigía la condición** («usa base relativa cuando
+  publica en GitHub Pages»), así que la suite defendía el fallo. Ahora
+  hay tres guardas: `base` fija, un caso de bundle que comprueba que
+  cada ruta de `dist/index.html` exista en `dist/`, y uno en vivo que
+  exige que el JavaScript se sirva **como** JavaScript.
 - **Las cabeceras de seguridad viven en DOS sitios.** `public/_headers` vale
   para el HTML y los recursos; **no se aplica a lo que genera el Worker**. Lo
   de `/api/*` lo pone `worker/lib/respuesta.js`. Traducir la configuración

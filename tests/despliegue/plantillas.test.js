@@ -291,15 +291,17 @@ describe("index.html", () => {
   const html = leer("index.html");
 
   it("referencia sus recursos con %BASE_URL%", () => {
-    // El sitio también se publica en GitHub Pages bajo un subdirectorio:
-    // una ruta absoluta se rompe allí en silencio.
+    // `%BASE_URL%` se resuelve con la base del build, así que el HTML
+    // sigue valiendo si algún día el sitio cuelga de un subdirectorio.
+    // Hoy la base es «/» y las dos formas coinciden; la plantilla se
+    // mantiene porque no cuesta nada y evita rehacer esto.
     const absolutas = [...html.matchAll(/(?:href|content)="(\/[^"]*\.(?:png|svg|ico|jpg))"/g)];
     expect(
       absolutas.map((m) => m[1]),
       fallo({
         que: "index.html referencia recursos con ruta absoluta",
         donde: "index.html",
-        porque: "En GitHub Pages el sitio cuelga de un subdirectorio y /logo.png no existe: el icono y la og:image se rompen sin error.",
+        porque: "Una ruta absoluta se rompe en silencio el día que el sitio cuelgue de un subdirectorio: el icono y la og:image dejan de estar y no hay ningún error.",
         arreglo: "Usa %BASE_URL%logo.png en vez de /logo.png.",
       }),
     ).toEqual([]);
@@ -343,8 +345,33 @@ describe("vite.config.js", () => {
     expect(cfg).toMatch(/react-dom/);
   });
 
-  it("usa base relativa cuando publica en GitHub Pages", () => {
-    expect(cfg).toMatch(/GITHUB_ACTIONS/);
+  it("la base NO depende de si construye CI", () => {
+    // Este test decía lo contrario —exigía GITHUB_ACTIONS— porque el
+    // sitio se publicaba en GitHub Pages bajo un subdirectorio. Cuando
+    // el despliegue pasó a Cloudflare, la condición se quedó y siguió
+    // exigiéndose: el build de CI, que es EL QUE SE PUBLICA, salía con
+    // los recursos colgando de /CALENDARIOS-MARKETING-APP/ y la página
+    // quedaba en blanco.
+    //
+    // Es la peor forma de un fallo: en local todo bien, y sólo se rompe
+    // lo que llega al usuario.
+    // Sin quitar los comentarios, el propio comentario que explica esta
+    // historia —que nombra GITHUB_ACTIONS— hace fallar el test. Es el
+    // mismo motivo por el que `buscar()` de utils/repo.js se salta las
+    // líneas de comentario: en este repositorio se explica todo, y lo
+    // explicado no es lo que se ejecuta.
+    const codigo = cfg.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+
+    expect(
+      codigo,
+      fallo({
+        que: "la base del build depende de una variable de entorno de CI",
+        donde: "vite.config.js → base",
+        porque: "El build de CI es el que se publica. Si su base no es la del sitio, el HTML pide los recursos donde no están, el respaldo de la SPA devuelve index.html en su lugar, y la página sale en blanco sin ningún error.",
+        arreglo: "Deja `base: '/'` fijo. Si algún día hace falta publicar en un subdirectorio, que sea una configuración aparte y con su propio test.",
+      }),
+    ).not.toMatch(/GITHUB_ACTIONS|CI\s*\?/);
+    expect(codigo).toMatch(/base:\s*['"]\/['"]/);
   });
 });
 

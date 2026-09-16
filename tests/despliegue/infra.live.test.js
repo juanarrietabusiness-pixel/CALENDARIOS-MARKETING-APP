@@ -72,6 +72,36 @@ conSitio("el sitio publicado", () => {
     }
   });
 
+  it("la aplicación ARRANCA: su JavaScript se sirve como JavaScript", async () => {
+    // Que `/` devuelva 200 y un título correcto no significa que la
+    // aplicación se vea. Con `base` mal puesta, el HTML pedía
+    // /CALENDARIOS-MARKETING-APP/assets/index-*.js; esa ruta no existe,
+    // el respaldo de la SPA devolvía index.html con content-type
+    // text/html, y el navegador —bien— se negaba a ejecutar HTML como
+    // módulo. Página en blanco. Los seis casos de aquí pasaban igual.
+    const html = await (await fetch(SITIO)).text();
+    const rutas = [...html.matchAll(/(?:src|href)="(\/[^"]+\.(?:js|css))"/g)].map((m) => m[1]);
+    expect(rutas.length, "el HTML publicado no referencia ningún script propio").toBeGreaterThan(0);
+
+    const malos = [];
+    for (const ruta of rutas) {
+      const res = await fetch(`${SITIO}${ruta}`);
+      const tipo = res.headers.get("content-type") ?? "";
+      const esperado = ruta.endsWith(".js") ? /javascript/ : /css/;
+      if (!res.ok || !esperado.test(tipo)) malos.push(`${ruta} → ${res.status} ${tipo}`);
+    }
+
+    expect(
+      malos,
+      fallo({
+        que: `el sitio sirve recursos con el tipo equivocado: ${malos.join(", ")}`,
+        donde: `${SITIO} → recursos de index.html`,
+        porque: "Un text/html donde debería ir JavaScript significa que la ruta no existe y la está atendiendo el respaldo de la SPA. El navegador no ejecuta el módulo y la página sale EN BLANCO, con el título correcto y sin ningún error.",
+        arreglo: "Revisa `base` en vite.config.js: tiene que coincidir con la raíz del sitio publicado.",
+      }),
+    ).toEqual([]);
+  });
+
   it("la API responde y no se cachea", async () => {
     // /api/yo sin sesión tiene que decir 401, no 404: un 404 significa
     // que el Worker no está atendiendo /api/* y los assets se lo comen.
