@@ -42,14 +42,19 @@ export function fuentesNavegador() {
   return listar("src", /\.(js|jsx)$/).filter((f) => !/\.test\.js$|test-helper/.test(f));
 }
 
-/** Los fuentes de las Edge Functions. */
-export function fuentesEdge() {
-  return listar("supabase/functions", /\.ts$/);
+/** Los fuentes del Worker: rutas, módulos de acceso y entrada. */
+export function fuentesWorker() {
+  return listar("worker", /\.js$/);
 }
 
-/** Las migraciones, en el orden en que se aplican. */
+/** Sólo las rutas, que son la superficie que atiende peticiones. */
+export function rutasWorker() {
+  return listar("worker/rutas", /\.js$/);
+}
+
+/** Las migraciones de D1, en el orden en que se aplican. */
 export function migraciones() {
-  return listar("supabase/migrations", /\.sql$/).sort();
+  return listar("migraciones/d1", /\.sql$/).sort();
 }
 
 /**

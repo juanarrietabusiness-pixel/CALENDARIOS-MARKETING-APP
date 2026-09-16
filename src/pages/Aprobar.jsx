@@ -1,6 +1,26 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { FORMATS, FORMAT_ICONS, DAYS } from "../constants";
-import { supabase, isSupabaseEnabled } from "../lib/supabase";
+
+/**
+ * Llamada al enlace público del Worker.
+ *
+ * No lleva sesión —ni debe—: esta página es la que ve el cliente final,
+ * que no tiene cuenta. Quien acota es el testigo, y el servidor
+ * comprueba que la publicación pertenezca a ESE calendario.
+ *
+ * Sustituye a las tres funciones `security definer` de Supabase:
+ * get_shared_calendar, submit_approval y update_post_content.
+ */
+async function publico(ruta, opciones = {}) {
+  const res = await fetch(`/api/publico${ruta}`, {
+    ...opciones,
+    headers: opciones.body ? { "Content-Type": "application/json" } : undefined,
+  });
+  let datos = null;
+  try { datos = await res.json(); } catch { /* el borde no siempre devuelve JSON */ }
+  if (!res.ok) throw new Error(datos?.error || `El servidor respondió ${res.status}.`);
+  return datos;
+}
 import Icon from "../components/Icon";
 import logoMark from "../assets/logo-mark.png";
 
@@ -50,10 +70,12 @@ export default function Aprobar() {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: rpcError } = await supabase.rpc("get_shared_calendar", {
-        p_token: token,
-      });
-      if (rpcError) throw new Error(rpcError.message);
+      let data = null;
+      try {
+        data = await publico(`/${encodeURIComponent(token)}`);
+      } catch {
+        data = null;   // 404: enlace inválido, revocado o caducado
+      }
       if (!data?.calendar) {
         setError("Enlace inválido, revocado o caducado. Pide uno nuevo a tu agencia.");
         setLoading(false);
@@ -68,11 +90,6 @@ export default function Aprobar() {
   }, [token]);
 
   useEffect(() => {
-    if (!isSupabaseEnabled) {
-      setError("Este sitio no está configurado para mostrar calendarios compartidos.");
-      setLoading(false);
-      return;
-    }
     if (!token) {
       setError("Enlace inválido: le falta el identificador del calendario.");
       setLoading(false);
@@ -87,16 +104,14 @@ export default function Aprobar() {
     setSaving((p) => ({ ...p, [postId]: true }));
     setSaveError("");
     try {
-      const { error: rpcError } = await supabase.rpc("submit_approval", {
-        p_token: token,
-        p_post_id: postId,
-        p_estado: estado,
-        p_comentario: comentario,
-        p_reviewer: "",
-        p_suggested_descripcion: suggestions?.descripcion || null,
-        p_suggested_guion: suggestions?.guion || null,
+      await publico(`/${encodeURIComponent(token)}/aprobacion`, {
+        method: "POST",
+        body: JSON.stringify({
+          postId, estado, comentario, revisor: "",
+          sugeridaDescripcion: suggestions?.descripcion || null,
+          sugeridoGuion: suggestions?.guion || null,
+        }),
       });
-      if (rpcError) throw new Error(rpcError.message);
 
       setApprovals((p) => ({
         ...p,
@@ -117,11 +132,13 @@ export default function Aprobar() {
     setEditSaving((p) => ({ ...p, [key]: true }));
     setSaveError("");
     try {
-      const params = { p_token: token, p_post_id: postId };
-      if (field === "descripcion") params.p_descripcion = value;
-      if (field === "guion") params.p_guion = value;
-      const { error: rpcError } = await supabase.rpc("update_post_content", params);
-      if (rpcError) throw new Error(rpcError.message);
+      const cambio = {};
+      if (field === "descripcion") cambio.descripcion = value;
+      if (field === "guion") cambio.guion = value;
+      await publico(
+        `/${encodeURIComponent(token)}/publicacion/${encodeURIComponent(postId)}`,
+        { method: "PATCH", body: JSON.stringify(cambio) },
+      );
       setCalData((prev) => ({
         ...prev,
         calendar: {
@@ -163,19 +180,14 @@ export default function Aprobar() {
     setBulkSaving(true);
     for (const id of pending) {
       try {
-        const { error: rpcError } = await supabase.rpc("submit_approval", {
-          p_token: token,
-          p_post_id: id,
-          p_estado: "aprobado",
-          p_comentario: "",
-          p_reviewer: "",
+        await publico(`/${encodeURIComponent(token)}/aprobacion`, {
+          method: "POST",
+          body: JSON.stringify({ postId: id, estado: "aprobado", comentario: "", revisor: "" }),
         });
-        if (!rpcError) {
-          setApprovals((p) => ({
-            ...p,
-            [id]: { estado: "aprobado", comentario: "", timestamp: new Date().toISOString() },
-          }));
-        }
+        setApprovals((p) => ({
+          ...p,
+          [id]: { estado: "aprobado", comentario: "", timestamp: new Date().toISOString() },
+        }));
       } catch {
         // continue with remaining
       }

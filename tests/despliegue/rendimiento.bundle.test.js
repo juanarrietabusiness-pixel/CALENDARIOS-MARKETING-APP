@@ -9,15 +9,18 @@ import { fallo } from "../utils/fallo";
 // Lo que de verdad descarga el navegador
 //
 // Este archivo NO se ejecuta con `npm test`: necesita un dist/ recién
-// construido y con las variables VITE_ puestas. Corre con
-// `npm run test:bundle`, y las dos cosas juntas son `npm run verificar`.
+// construido. Corre con `npm run test:bundle`, y las dos cosas juntas
+// son `npm run verificar`.
 //
-// La separación no es un capricho. `npm run build` a secas compila media
-// aplicación: sin las VITE_*, `isSupabaseEnabled` se constant-folda a
-// false y rollup elimina el panel entero. El build pasa, el bundle sale a
-// 137 kB en vez de 570, y no se ha verificado nada. El primer caso de
-// aquí es exactamente ese: un canario que falla si el dist que se está
-// midiendo es el de media aplicación.
+// Aquí vivía un canario: con Supabase, `npm run build` a secas compilaba
+// MEDIA aplicación —sin las VITE_*, Vite plegaba `isSupabaseEnabled` a
+// false y rollup borraba el panel entero—, el build pasaba, el hash del
+// chunk ni cambiaba, y no se había verificado nada.
+//
+// Ese canario ya no hace falta: la API vive en el mismo origen y no hay
+// ninguna variable de la que dependa QUÉ se compila. Se queda la
+// comprobación de contenido —que el panel esté dentro—, porque avisa de
+// lo mismo sin depender de un número.
 // ============================================================
 
 const DIST = join(RAIZ, "dist");
@@ -26,16 +29,18 @@ const ASSETS = join(DIST, "assets");
 // Presupuestos, en kB de transferencia (gzip) salvo donde se diga.
 // Se fijan con holgura sobre la medida de hoy: la idea no es congelar el
 // tamaño, es que doblarlo tenga que ser una decisión y no un descuido.
+// Bajados tras la migración: quitar @supabase/supabase-js —que arrastraba
+// PostgREST, GoTrue, Storage y Realtime con su WebSocket— se llevó 54 kB
+// comprimidos del chunk principal, de 150 a 96. Los presupuestos bajan
+// con él: dejarlos donde estaban sería regalar el margen que acabamos de
+// ganar.
 const PRESUPUESTO = {
-  jsTotalGz: 230,   // hoy ~210
-  cssGz: 12,        // hoy ~6
-  chunkMayorGz: 170, // hoy ~150
+  jsTotalGz: 170,    // hoy ~155
+  cssGz: 12,         // hoy ~6
+  chunkMayorGz: 110, // hoy ~96
   htmlGz: 2,
-  totalInicialGz: 240,
+  totalInicialGz: 180,
 };
-
-// Por debajo de esto, el dist es el de un build sin variables VITE_.
-const MINIMO_JS_CRUDO_KB = 400;
 
 let archivos = [];
 const kb = (n) => Math.round(n / 1024);
@@ -45,9 +50,7 @@ beforeAll(() => {
   if (!existsSync(ASSETS)) {
     throw new Error(
       "\n\n  No hay dist/ que medir.\n" +
-      "  Construye antes con las variables puestas:\n\n" +
-      '    VITE_SUPABASE_URL="https://ejemplo.supabase.co" \\\n' +
-      '    VITE_SUPABASE_ANON_KEY="verificacion-de-build" npm run build\n\n' +
+      "  Construye antes:\n\n    npm run build\n\n" +
       "  O ejecuta `npm run verificar`, que hace las dos cosas.\n",
     );
   }
@@ -61,37 +64,24 @@ const js = () => archivos.filter((a) => a.nombre.endsWith(".js"));
 const css = () => archivos.filter((a) => a.nombre.endsWith(".css"));
 
 describe("el dist que se mide es la aplicación entera", () => {
-  it("no es un build sin variables VITE_", () => {
-    const crudoKb = kb(js().reduce((s, a) => s + a.bytes, 0));
-    expect(
-      crudoKb,
-      fallo({
-        que: `el JavaScript construido pesa ${crudoKb} kB, menos de ${MINIMO_JS_CRUDO_KB}`,
-        donde: "dist/assets/",
-        porque: "Sin las VITE_*, Vite constant-folda `isSupabaseEnabled` a false y rollup elimina el panel entero. El build pasa, el hash del chunk ni cambia, y lo que se acaba de tocar no se ha compilado.",
-        arreglo: 'Construye con VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY definidas, o usa `npm run verificar`.',
-      }),
-    ).toBeGreaterThan(MINIMO_JS_CRUDO_KB);
-  });
-
   it("el panel está dentro del bundle", () => {
-    // Una comprobación de contenido, no de tamaño: el tope de kB avisa de
-    // que falta bulto, pero no de QUÉ falta.
+    // Una comprobación de CONTENIDO, no de tamaño: el tope de kB avisa
+    // de que falta bulto, pero no de QUÉ falta.
     //
-    // Las marcas están escogidas midiendo los dos builds: aparecen en el
-    // completo y desaparecen del que se construye sin variables. Una
-    // cadena como «Calendario» no vale, porque sobrevive en el aviso de
-    // configuración que sí se compila siempre.
+    // Las marcas son rutas y textos que sólo existen dentro del panel.
+    // «Calendario» no valdría: aparece en sitios que se compilan
+    // siempre. Antes una de las marcas era «share_calendar», el nombre
+    // de la RPC de Supabase; ahora es la ruta que la sustituyó.
     const todo = js().map((a) => a.buf.toString("utf8")).join("");
-    const marcas = ["share_calendar", "Banco de contenido"];
+    const marcas = ["/enlace", "Banco de contenido", "/espacio"];
     const ausentes = marcas.filter((m) => !todo.includes(m));
     expect(
       ausentes,
       fallo({
         que: `el bundle no contiene ${ausentes.join(", ")}`,
         donde: "dist/assets/",
-        porque: "Son código que sólo existe dentro del panel: si no están, rollup lo eliminó y lo que se está midiendo es el aviso de configuración.",
-        arreglo: "Construye con las variables VITE_ definidas (`npm run verificar`).",
+        porque: "Es código que sólo existe dentro del panel. Si no está, rollup lo eliminó y lo que se está midiendo no es la aplicación entera.",
+        arreglo: "Revisa que el build no esté tirando el panel por una rama muerta, y que las marcas sigan existiendo en el código.",
       }),
     ).toEqual([]);
   });
@@ -147,7 +137,7 @@ describe("la caché puede hacer su trabajo", () => {
       fallo({
         que: "hay recursos sin hash en el nombre",
         donde: sinHash.map((a) => `dist/assets/${a.nombre}`).join(", "),
-        porque: "netlify.toml cachea /assets/* como inmutable durante un año: un archivo sin hash queda congelado en los navegadores con la versión vieja.",
+        porque: "public/_headers cachea /assets/* como inmutable durante un año: un archivo sin hash queda congelado en los navegadores con la versión vieja.",
         arreglo: "Deja que Vite nombre los assets; no fuerces nombres fijos en rollupOptions.output.",
       }),
     ).toEqual([]);

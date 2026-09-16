@@ -1,0 +1,32 @@
+# ============================================================
+# Cabeceras de los recursos estáticos
+#
+# OJO: esto NO se aplica a las respuestas que genera el Worker. La
+# documentación de Workers Static Assets es explícita: «los encabezados
+# personalizados definidos en _headers no se aplican a las respuestas
+# generadas por el código de tu Worker».
+#
+# Las cabeceras de /api/* viven en worker/lib/respuesta.js. Si sólo se
+# tradujera netlify.toml a este fichero, la API se quedaría sin
+# nosniff, sin Cache-Control y sin CSP —y el sitio se vería exactamente
+# igual—. Lo vigila tests/despliegue/plantillas.test.js.
+# ============================================================
+
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Cross-Origin-Opener-Policy: same-origin
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'
+
+# Los recursos con hash de contenido en el nombre son inmutables.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/
+  Cache-Control: public, max-age=0, must-revalidate

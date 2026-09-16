@@ -1,0 +1,65 @@
+# Despliegue a Cloudflare Workers.
+#
+# Sustituye a «desplegar-funciones.yml», que subía las Edge Functions de
+# Supabase una por una. Ese paso a paso era el origen de una trampa:
+# `ai-chat` corrió semanas con código que no estaba en ningún commit
+# porque el workflow sólo desplegaba `ai` y `github-adn`, y el síntoma
+# —campos que faltan, respuestas recortadas— no se parecía a la causa.
+#
+# `wrangler deploy` sube el Worker ENTERO: no hay carpeta que se pueda
+# quedar fuera por olvido. El desajuste desaparece por construcción.
+name: Desplegar
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: desplegar
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  desplegar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Comprobar que hay credenciales
+        run: |
+          if [ -z "${{ secrets.CLOUDFLARE_API_TOKEN }}" ]; then
+            echo "Falta el secreto CLOUDFLARE_API_TOKEN del repositorio."
+            echo "Se crea en el panel de Cloudflare con permiso de editar Workers, D1 y R2."
+            exit 1
+          fi
+
+      # El mismo build que verifica CI. Si el bundle no pasa su
+      # presupuesto, no se despliega: es más barato no publicar que
+      # publicar y revertir.
+      - name: Construir
+        run: npm run build
+
+      - name: Tests de bundle
+        run: npm run test:bundle
+
+      # Las migraciones van ANTES que el código. Al revés, el Worker
+      # nuevo pide columnas que la base todavía no tiene.
+      - name: Aplicar migraciones de D1
+        run: npx wrangler d1 migrations apply calendarios-db --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Desplegar el Worker
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

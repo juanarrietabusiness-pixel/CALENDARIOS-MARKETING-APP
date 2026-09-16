@@ -30,38 +30,51 @@ npm run dev
 
 Abre http://localhost:5173.
 
-Hace falta un proyecto de Supabase: la aplicación guarda ahí los clientes y
-los calendarios, y el acceso está detrás de un inicio de sesión. Copia
-`.env.example` a `.env` y rellena `VITE_SUPABASE_URL` y
-`VITE_SUPABASE_ANON_KEY`. Sin ellas el sitio arranca, pero sólo muestra un
-aviso de configuración.
+`npm run dev` sirve **sólo la interfaz**: las llamadas a `/api/*` no van a
+ninguna parte. Para trabajar contra la API de verdad:
 
-Las claves de IA no se ponen aquí ni en la aplicación: viven en los secretos
-de Supabase. Ver [DEPLOY.md](DEPLOY.md).
+```bash
+npm run dev:worker
+```
+
+que levanta el Worker con D1 y R2 en local. El navegador no necesita
+ninguna variable de entorno: la API vive en el mismo origen.
+
+Las claves de IA no se ponen aquí ni en la aplicación: son secretos del
+Worker. Ver [DEPLOY.md](DEPLOY.md).
 
 ## Comandos
 
 | Comando | Qué hace |
 |---|---|
-| `npm run dev` | Servidor de desarrollo con recarga en caliente |
+| `npm run dev` | Sólo la interfaz, con recarga en caliente |
+| `npm run dev:worker` | Aplicación + API sobre el runtime real |
 | `npm run build` | Build de producción en `dist/` |
-| `npm run preview` | Sirve `dist/` para comprobar el build |
+| `npm run deploy` | Build y despliegue a Cloudflare |
+| `npm run sembrar` | Alta del administrador |
 | `npm run lint` | Análisis estático con oxlint |
+| `npm run verificar` | Lint + tests + build + bundle (lo mismo que CI) |
 
 ## Despliegue
 
 Ver **[DEPLOY.md](DEPLOY.md)** para el procedimiento completo.
 
-Resumen: el sitio y la función de alta del administrador van en Netlify; la
-base de datos, la autenticación y las funciones de IA, en Supabase. La IA está
-en Supabase porque Netlify corta las peticiones a los 10 s y generar un lote
-de publicaciones tarda unos 40 s.
+Resumen: **un solo Worker** sirve la aplicación y la API en el mismo origen.
+Los datos en D1, las imágenes en R2, las claves como secretos del Worker.
+
+Generar un lote de publicaciones tarda unos 40 s. Antes eso obligaba a
+repartir el despliegue —Netlify cortaba a los 10 s, así que la IA vivía en
+Supabase—; en Workers el reloj no tiene límite mientras el cliente siga
+conectado, y los cinco minutos son de CPU, que esperar a Anthropic no
+consume.
 
 ## Documentación
 
 | Documento | Contenido |
 |---|---|
-| [DEPLOY.md](DEPLOY.md) | Netlify, Supabase, variables de entorno, MCP |
+| [DEPLOY.md](DEPLOY.md) | Cloudflare: Worker, D1, R2, secretos y el corte |
+| [docs/migracion-cloudflare.md](docs/migracion-cloudflare.md) | Cómo se migró desde Supabase + Netlify, y qué se midió |
+| [docs/hub-cloudflare.md](docs/hub-cloudflare.md) | El hub donde este calendario es una herramienta más |
 | [docs/auditoria-ux-ui.md](docs/auditoria-ux-ui.md) | Auditoría de UX, responsive y accesibilidad |
 | [docs/auditoria-visual.md](docs/auditoria-visual.md) | Auditoría visual y plan de rediseño (jerarquía, iconos, densidad) |
 | [CLAUDE.md](CLAUDE.md) | Convenciones del código y arquitectura |
@@ -69,17 +82,20 @@ de publicaciones tarda unos 40 s.
 
 ## Stack
 
-React 19 · Vite 8 · Supabase (Postgres, Auth, Realtime, Edge Functions) ·
-Funciones de Netlify · sin framework de CSS: sistema de diseño propio en
-`src/index.css`.
+React 19 · Vite 8 · Cloudflare Workers (D1, R2, Static Assets) · sin
+dependencias de cliente más allá de React: la API se llama con `fetch` ·
+sin framework de CSS: sistema de diseño propio en `src/index.css`.
 
 ## Privacidad y claves
 
-**Ninguna clave llega al navegador.** Las de IA y la de GitHub están en los
-secretos de Supabase y sólo las usan las funciones del servidor; las
-credenciales del administrador, en las variables de Netlify. Lo único que se
-incrusta en el bundle es la URL del proyecto y la clave anónima de Supabase,
-que son públicas por diseño y están respaldadas por políticas RLS.
+**Ninguna clave llega al navegador, y ahora tampoco ninguna variable.** Las
+de IA y la de GitHub son secretos del Worker y sólo las usa el servidor. El
+bundle no incrusta nada configurable: la API vive en el mismo origen, así
+que la CSP puede quedarse en `connect-src 'self'` a secas.
+
+La sesión va en una cookie con prefijo `__Host-`, que es `HttpOnly` —un XSS
+no puede leerla— y que el navegador rechaza si llevara `Domain`: vale para
+este origen y ningún subdominio la ve.
 
 El enlace que se comparte con el cliente lleva un token de 24 bytes al azar,
 sólo da acceso a ese calendario y se puede revocar en cualquier momento.

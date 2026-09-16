@@ -1,26 +1,16 @@
-import { createClient } from "@supabase/supabase-js";
-
-const url = import.meta.env.VITE_SUPABASE_URL;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-/**
- * ¿Está configurado Supabase en este despliegue?
- *
- * La aplicación funciona sin él: los datos viven en localStorage. En
- * cuanto se definen las variables de entorno, `supabase` deja de ser
- * null y las funciones de sincronización pasan a estar disponibles.
- */
-export const isSupabaseEnabled = Boolean(url && anonKey);
-
-export const supabase = isSupabaseEnabled
-  ? createClient(url, anonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-      },
-    })
-  : null;
+// ============================================================
+// Conversores fila ⇄ aplicación
+//
+// Vivían en lib/supabase.js, pero nunca tuvieron nada de Supabase: son
+// el mapeo entre los nombres de columna (inglés, snake_case) y los de la
+// aplicación (camelCase). Al migrar a Cloudflare se quedan intactos, y
+// por eso la API del Worker devuelve FILAS y no objetos ya convertidos:
+// así CalendarView, ClientModal y Workspace no se enteran del cambio.
+//
+// `owner_id` ya no viaja desde aquí. Lo impone la capa de acceso del
+// Worker a partir de la sesión: si el navegador pudiera fijarlo,
+// cualquiera escribiría en nombre de otro.
+// ============================================================
 
 /**
  * Convierte un cliente del formato de la aplicación al de la base de datos.
@@ -28,10 +18,9 @@ export const supabase = isSupabaseEnabled
  * Ya no hay token de GitHub por cliente: lo lleva la función `github-adn`
  * con un único token del servidor.
  */
-export function clientToRow(client, ownerId) {
+export function clientToRow(client) {
   return {
     id: client.dbId || undefined,
-    owner_id: ownerId,
     name: client.name,
     industry: client.industry || "",
     instagram: client.instagram || "",
@@ -109,11 +98,10 @@ export function rowToClient(row) {
  * que generan el token dentro de la base de datos. Mandarlos en un UPDATE
  * dejaría que el navegador eligiera su propio token.
  */
-export function calendarToRow(cal, clientDbId, ownerId) {
+export function calendarToRow(cal, clientDbId) {
   return {
     id: cal.dbId || undefined,
     client_id: clientDbId,
-    owner_id: ownerId,
     name: cal.name || "",
     month: cal.month,
     year: cal.year,

@@ -16,6 +16,23 @@ import { TABLAS_CON_DUENO, TABLAS_POR_CALENDARIO } from "../../worker/lib/acceso
 const CAPA = "worker/lib/acceso.js";
 const ESQUEMA = "migraciones/d1/0001_esquema.sql";
 
+/**
+ * Los únicos ficheros que pueden hablar con D1. No es «uno solo» porque
+ * hay tres clases de consulta y las tres necesitan revisarse aparte:
+ *
+ *   acceso.js   las tablas con dueño. Acota por owner_id siempre.
+ *   sesion.js   users y sessions. No tienen dueño: LO DEFINEN.
+ *   publico.js  el enlace de aprobación, sin sesión. Acota por testigo.
+ *
+ * Añadir un cuarto es una decisión, no un descuido: hay que escribirlo
+ * aquí y explicar por qué sus consultas no caben en ninguno de los tres.
+ */
+const MODULOS_CON_ACCESO = [
+  CAPA,
+  "worker/lib/sesion.js",
+  "worker/lib/publico.js",
+];
+
 /** Tablas del esquema de D1 y sus columnas. */
 function tablasDelEsquema() {
   const sql = leer(ESQUEMA);
@@ -27,17 +44,30 @@ function tablasDelEsquema() {
 }
 
 describe("nadie habla con D1 por fuera de la capa de acceso", () => {
-  it(`sólo ${CAPA} llama a prepare()`, () => {
-    const fuentes = listar("worker", /\.(js|ts)$/).filter((f) => rel(f) !== CAPA);
+  it("sólo los módulos declarados llaman a prepare()", () => {
+    const fuentes = listar("worker", /\.(js|ts)$/).filter((f) => !MODULOS_CON_ACCESO.includes(rel(f)));
     const sueltos = buscar(fuentes, /\.prepare\s*\(/);
 
     const lista = sueltos.map((h) => fallo({
-      que: "hay una consulta a D1 fuera de la capa de acceso",
+      que: "hay una consulta a D1 fuera de los módulos de acceso",
       donde: `${h.archivo}:${h.linea} — ${h.texto}`,
       porque: "D1 no tiene RLS. Si a esa consulta se le olvida el owner_id no falla nada: devuelve datos de otro cliente, en silencio. Es la misma forma del fallo que tuvo el banco de contenido en Supabase.",
-      arreglo: `Sacarla a ${CAPA} y llamarla desde aquí, o —si de verdad es una consulta sin dueño, como el enlace público— dejarla allí también, con su propia guarda y su comentario.`,
+      arreglo: `Sacarla a ${CAPA} —o a sesion.js / publico.js si de verdad es una consulta sin dueño— y llamarla desde aquí.`,
     }));
 
+    expect(lista, fallos(lista)).toEqual([]);
+  });
+
+  it("los módulos declarados existen", () => {
+    // Una ruta mal escrita en la lista abre un agujero silencioso: el
+    // fichero real deja de estar exento… o peor, uno que no lo es pasa
+    // a estarlo porque alguien copió mal el nombre.
+    const lista = MODULOS_CON_ACCESO.filter((f) => !hay(f)).map((f) => fallo({
+      que: `«${f}» está en MODULOS_CON_ACCESO y no existe`,
+      donde: "tests/despliegue/acceso.test.js",
+      porque: "La exención no protege nada y disimula que la lista está desactualizada.",
+      arreglo: "Corregir la ruta o quitarla de la lista.",
+    }));
     expect(lista, fallos(lista)).toEqual([]);
   });
 });

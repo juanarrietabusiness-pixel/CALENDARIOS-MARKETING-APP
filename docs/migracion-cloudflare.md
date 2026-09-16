@@ -13,10 +13,24 @@ sitio, y lo hace dejándola lista para entrar allí.
 
 | Fase | Estado |
 |---|---|
-| 0 · Congelar la verdad | Utillaje escrito (`scripts/migracion/`); falta ejecutarlo y decidir `image-gen` |
-| 1 · Cimientos | **D1 `calendarios-db` creada, esquema aplicado y probado** |
-| 3 · La API de datos | **Capa de acceso escrita y vigilada** (`worker/lib/acceso.js`); faltan las rutas |
-| 2, 4–9 | Pendientes |
+| 0 · Congelar la verdad | Utillaje escrito; falta **ejecutarlo** y borrar `image-gen` |
+| 1 · Cimientos | ✔ D1 `calendarios-db` y R2 `juancito-contenido` creadas; esquema aplicado y probado |
+| 2 · Sesión y acceso | ✔ `worker/lib/sesion.js` + `scripts/sembrar-admin.mjs` |
+| 3 · La API de datos | ✔ Capa de acceso, rutas y `db.js` reescrito con las mismas firmas |
+| 4 · El enlace público | ✔ `worker/lib/publico.js`, con 23 casos |
+| 5 · Las funciones de IA | ✔ Portadas a `worker/rutas/` |
+| 6 · Imágenes a R2 | Rutas y conversión listas; **falta mover los datos** |
+| 7 · Aprobaciones en vivo | ✔ Sondeo de 15 s, misma firma |
+| 8 · Hosting | ✔ `wrangler.jsonc` + `public/_headers`; **falta desplegar y mover el DNS** |
+| 9 · Tests de despliegue | ✔ Reescritos: 260 tests + 11 de bundle |
+
+**Lo que falta no es código.** Falta ejecutar el volcado (necesita la clave
+de servicio de Supabase), desplegar el Worker (necesita
+`CLOUDFLARE_API_TOKEN`) y mover el DNS.
+
+> **Esta rama no se puede mergear y desplegar a Netlify.** El front ya no
+> habla con Supabase: habla con `/api/*`, que sólo existe dentro del Worker.
+> Mergear sin desplegar el Worker deja el sitio sin datos.
 
 Lo comprobado contra la D1 real está en § 5.2; el utillaje, en
 [`scripts/migracion/README.md`](../scripts/migracion/README.md).

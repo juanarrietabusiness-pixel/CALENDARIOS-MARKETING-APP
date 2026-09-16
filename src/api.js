@@ -1,4 +1,3 @@
-import { supabase, isSupabaseEnabled } from "./lib/supabase";
 import { bloque, cachedBlock, parseBloques, parseJSONLoose, parseGitHubUrl, parsePiezas } from "./lib/parse";
 import { enTandas } from "./lib/tandas";
 
@@ -7,45 +6,55 @@ import { enTandas } from "./lib/tandas";
 export { parseAIResponse, parseGitHubUrl, parsePiezas, parseJSONLoose, parseBloques, cachedBlock, bloque } from "./lib/parse";
 
 /**
- * Llama a una función del servidor.
+ * Llama a una ruta del servidor.
  *
  * Las claves de IA y el token de GitHub viven en los secretos del
- * proyecto: el navegador nunca las ve. supabase-js adjunta el token de
- * la sesión, así que las funciones pueden exigir que haya una.
+ * Worker: el navegador nunca las ve. La sesión viaja en la cookie
+ * `__Host-`, que el navegador manda sola —antes había que adjuntar el
+ * token de supabase-js a mano—.
  *
- * El error útil viene en el cuerpo de la respuesta, no en `error.message`
- * (que sólo dice «non-2xx status code»), de ahí la lectura de `context`.
+ * El error útil viene en el cuerpo. Cuando el cuerpo no es JSON, el
+ * código de estado es la única pista que queda: decir «no se pudo
+ * contactar con el servidor» ante un 504 manda a buscar un problema de
+ * red que no existe.
  */
+const RUTAS = { ai: "/api/ia", "ai-chat": "/api/ia/chat", "github-adn": "/api/adn" };
+
 async function invokeFunction(name, body) {
-  if (!isSupabaseEnabled) {
-    throw new Error("El servidor de IA no está configurado en este despliegue.");
+  const ruta = RUTAS[name];
+  if (!ruta) throw new Error(`No hay ninguna ruta para «${name}».`);
+
+  let res;
+  try {
+    res = await fetch(ruta, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error("No hay conexión con el servidor. Revisa tu red.");
   }
 
-  const { data, error } = await supabase.functions.invoke(name, { body });
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    /* la respuesta no era JSON: pasa en los cortes del borde */
+  }
 
-  if (error) {
-    // El error útil viene en el cuerpo de la respuesta, no en
-    // `error.message` (que sólo dice «non-2xx status code»). Y cuando el
-    // cuerpo no es JSON, el código de estado es la única pista que queda:
-    // decir «no se pudo contactar con el servidor» ante un 504 manda a
-    // buscar un problema de red que no existe.
-    const status = error.context?.status ?? 0;
-    let mensaje = "";
-    try {
-      mensaje = (await error.context?.json())?.error ?? "";
-    } catch {
-      /* la respuesta no era JSON: pasa en los cortes del gateway */
-    }
-    if (mensaje) throw new Error(mensaje);
-
-    if (status === 504 || status === 408 || status === 0) {
+  if (!res.ok) {
+    if (data?.error) throw new Error(data.error);
+    if (res.status === 504 || res.status === 408) {
       throw new Error(
-        `La función «${name}» tardó más de lo que aguanta Supabase y se cortó. ` +
+        `La ruta «${name}» se quedó sin margen y se cortó. ` +
         "Si estabas generando un lote, prueba con menos publicaciones."
       );
     }
-    throw new Error(`La función «${name}» respondió ${status || "sin cuerpo legible"}.`);
+    if (res.status === 401) throw new Error("La sesión caducó. Vuelve a entrar.");
+    throw new Error(`La ruta «${name}» respondió ${res.status}.`);
   }
+
   if (data?.error) throw new Error(data.error);
   return data;
 }

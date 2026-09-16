@@ -1,0 +1,55 @@
+{
+  // ============================================================
+  // Calendarios — Juancito Ads
+  //
+  // Un solo Worker sirve la aplicación (Static Assets) y la API, en el
+  // MISMO origen. Eso es lo que permite `connect-src 'self'` en la CSP y
+  // la cookie con prefijo `__Host-`, que ningún subdominio puede leer.
+  //
+  // `run_worker_first` sólo para /api/*: todo lo demás lo resuelve el
+  // servidor de assets sin despertar al Worker, que es más rápido y no
+  // se factura como invocación.
+  //
+  // `not_found_handling: single-page-application` es lo que sustituye al
+  // `/* → /index.html 200` de Netlify. Sin esto, /aprobar devuelve 404.
+  // ============================================================
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "calendarios",
+  "main": "./worker/index.js",
+  "compatibility_date": "2026-09-16",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "assets": {
+    "directory": "./dist/",
+    "not_found_handling": "single-page-application",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "calendarios-db",
+      "database_id": "77aa10eb-e35b-4376-abf7-5bac2f12af5b",
+      "migrations_dir": "migraciones/d1"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "juancito-contenido"
+    }
+  ],
+
+  // Los secretos NO van aquí. Se ponen con `wrangler secret put`:
+  //   ANTHROPIC_API_KEY, GROQ_API_KEY, GITHUB_TOKEN
+  // Estas variables sí son públicas en el sentido de que no abren nada:
+  // son nombres de modelo y políticas.
+  "vars": {
+    "AI_PROVIDER": "anthropic",
+    "AI_PENSAR": "no"
+  },
+
+  "observability": { "enabled": true }
+}
