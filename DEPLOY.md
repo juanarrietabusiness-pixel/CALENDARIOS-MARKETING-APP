@@ -130,6 +130,34 @@ y por eso había que protegerlo con un token: uno que quede abierto por un
 despiste entrega el panel entero. Aquí la puerta es el permiso de lanzar
 workflows en este repositorio.
 
+## Parte 6 bis · Meter a alguien más en el equipo
+
+Esto NO se hace desde Actions ni desde ninguna consola: se hace dentro de
+la aplicación, y por eso está aquí abajo y no arriba.
+
+1. Entra con la cuenta de administrador.
+2. Icono de **Equipo** en la cabecera → **Invitar a alguien**.
+3. Pon el nombre (y el correo, si quieres que venga ya escrito), elige si
+   esa persona podrá invitar a su vez, y **Crear enlace**.
+4. **Copia el enlace en ese momento.** Se enseña una sola vez: en la base
+   sólo queda su huella SHA-256, así que ni una consulta a D1 ni un
+   volcado pueden reconstruirlo. Si se pierde, se invita otra vez y ya.
+5. Mándaselo por donde ya habléis. Quien lo abra elige **su propia**
+   contraseña —tú no llegas a verla nunca— y entra directo.
+
+El enlace caduca a la semana y sólo sirve una vez.
+
+**Por qué no hay correo de invitación:** mandar correo exige un proveedor
+—y su clave, y su dominio verificado—, que es la misma dependencia que
+aplaza los enlaces mágicos al hub. Copiar un enlace y pegarlo en WhatsApp
+resuelve lo mismo hoy y no añade nada que mantener.
+
+**Para sacar a alguien:** misma pantalla, botón **Sacar**. Se lleva su
+cuenta y sus sesiones; no se lleva ni un cliente ni un calendario, porque
+esas filas están a nombre del ESPACIO —el id de quien lo fundó—, no de
+quien las escribió. A quien fundó el espacio la aplicación se niega a
+sacarlo: ahí la cascada sí se llevaría todo por delante.
+
 ## Parte 7 · Traer los datos de Supabase
 
 1. **Actions** → **Migrar datos desde Supabase**.
@@ -221,6 +249,14 @@ mañana y mira lo que no se ve en pantalla:
   veces con Supabase: `ai-chat` corrió semanas con código que no estaba
   en ningún commit, e `image-gen` corrió meses entera sin existir en el
   repositorio.
+
+Y una cosa que sólo se comprueba con **dos navegadores abiertos a la
+vez**, porque con uno solo es invisible: entra con las dos cuentas, abre
+el mismo cliente, y edita en uno. En el otro tiene que aparecer el cambio
+sin recargar, y en la cabecera tiene que verse el avatar de la otra
+persona con el punto verde. Si el punto se queda gris, el Worker no está
+sirviendo `/api/live`: mira que el Durable Object se haya creado en el
+despliegue (`EspacioHub`, migración `v1` de `wrangler.jsonc`).
 
 ---
 

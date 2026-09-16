@@ -20,6 +20,18 @@
 // tablas con dueño sólo se tocan por estas funciones, que reciben el
 // `ownerId` al construirse y no ofrecen ninguna forma de omitirlo.
 // `tests/despliegue/acceso.test.js` lo vigila.
+//
+// QUÉ ES HOY `ownerId`
+//
+// El ESPACIO DE TRABAJO, no quien ha iniciado sesión. Mientras hubo una
+// sola cuenta las dos cosas coincidían y el nombre no mentía; con dos
+// personas en la misma agencia, sí: los clientes son de la agencia, y
+// los ve igual quien los creó que quien entró ayer.
+//
+// El espacio se identifica por el id del administrador que lo fundó, así
+// que **las filas de antes siguen valiendo sin tocar una sola**. Quien
+// traduce «este usuario → este espacio» es `worker/lib/sesion.js`: aquí
+// no puede hacerse, porque hace falta el espacio para construir esto.
 // ============================================================
 
 /**
@@ -34,6 +46,13 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "client_tasks",
   "task_templates",
   "content_bank",
+  // Del equipo. Tienen dueño como las demás: la lista de miembros de un
+  // espacio es un dato del espacio, y pedirla sin acotar devolvería la
+  // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué
+  // espacio es?» NO es esta capa —no puede: hace falta el espacio para
+  // construirla— sino sesion.js, que es quien define al dueño.
+  "memberships",
+  "invitaciones",
 ]);
 
 /**
@@ -64,9 +83,9 @@ function exigirColumnas(cols) {
 const ahora = () => new Date().toISOString();
 
 /**
- * Construye el acceso para UNA sesión. El `ownerId` se fija aquí y ya no
- * vuelve a pasar por parámetro: así no hay ninguna llamada en la que se
- * pueda olvidar.
+ * Construye el acceso para UNA sesión. El `ownerId` —el espacio, ver la
+ * cabecera— se fija aquí y ya no vuelve a pasar por parámetro: así no
+ * hay ninguna llamada en la que se pueda olvidar.
  */
 export function crearAcceso(db, ownerId) {
   if (!ownerId || typeof ownerId !== "string") {

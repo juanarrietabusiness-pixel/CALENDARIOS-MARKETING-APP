@@ -21,14 +21,33 @@ import { clientToRow, rowToClient, calendarToRow, rowToCalendar } from "./filas"
  *
  * El error útil viene en el cuerpo. Sin esto, un 400 llegaría como
  * «Failed to fetch» y mandaría a buscar un problema de red que no existe.
+ *
+ * Se exporta para que `equipo.js` no tenga que reimplementarla: dos
+ * copias del mismo `fetch` es una que un día deja de mandar la cookie
+ * —o de leer el error del cuerpo— y nadie sabe por qué esa pantalla
+ * concreta dice «Failed to fetch».
  */
-async function pedir(ruta, opciones = {}) {
+/**
+ * Esta pestaña.
+ *
+ * Viaja en una cabecera con cada escritura y vuelve dentro del evento de
+ * tiempo real, para que el navegador que originó un cambio no se lo
+ * aplique a sí mismo. Sin esto, guardar mientras escribes te devolvía tu
+ * propio guardado por el socket y te pisaba lo que hubieras tecleado en
+ * los milisegundos siguientes: el cursor saltaba y la última palabra
+ * desaparecía. Con el id de PESTAÑA y no el de persona, dos pestañas
+ * abiertas por la misma persona sí se ven entre ellas, que es lo que se
+ * espera cuando tienes el panel en el portátil y en el móvil.
+ */
+export const PESTANA = (globalThis.crypto?.randomUUID?.() ?? String(Math.random())).slice(0, 12);
+
+export async function pedir(ruta, opciones = {}) {
   const res = await fetch(`/api${ruta}`, {
     credentials: "same-origin",
     ...opciones,
     headers: opciones.body instanceof FormData
-      ? opciones.headers
-      : { "Content-Type": "application/json", ...(opciones.headers ?? {}) },
+      ? { "X-Pestana": PESTANA, ...(opciones.headers ?? {}) }
+      : { "Content-Type": "application/json", "X-Pestana": PESTANA, ...(opciones.headers ?? {}) },
   });
 
   if (res.status === 204) return null;
@@ -129,16 +148,19 @@ export async function fetchApprovals(calendarDbId) {
  * se persistía, así que el trabajo de verdad ya lo hacía `fetchApprovals`
  * y la suscripción sólo disparaba una relectura.
  *
- * Quince segundos mientras el calendario está abierto. El cliente final
- * tarda minutos en revisar: nadie nota la diferencia, y se ahorra un
- * Durable Object entero. Cuando el hub justifique notificaciones de
- * verdad —varias herramientas, avisos al móvil— se sustituye por uno con
- * hibernación de WebSocket que sirva a las tres.
+ * AHORA SÍ HAY DURABLE OBJECT, y esto sigue aquí a propósito.
+ *
+ * El enlace público avisa al espacio en cuanto el cliente final
+ * responde, así que la relectura llega en el momento y no en el próximo
+ * minuto. Pero el socket puede estar caído —túnel, avión, el móvil que
+ * congeló la pestaña— y entonces este sondeo es lo único que queda. Es
+ * barato y es la red de debajo: se sube a sesenta segundos, que es lo
+ * que tiene sentido para algo que ya no es el camino principal.
  *
  * La firma es la misma, así que quien llama no cambia.
  */
 export function subscribeApprovals(calendarDbId, onChange) {
-  const id = setInterval(() => { onChange(); }, 15000);
+  const id = setInterval(() => { onChange(); }, 60000);
   return () => { clearInterval(id); };
 }
 

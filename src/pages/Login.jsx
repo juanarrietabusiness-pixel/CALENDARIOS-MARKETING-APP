@@ -4,14 +4,20 @@ import Icon from "../components/Icon";
 import logoMark from "../assets/logo-mark.png";
 
 /**
- * Acceso del administrador.
+ * Acceso.
  *
- * Las credenciales las define la agencia en las variables de Netlify y
- * las materializa `/api/admin-seed` como usuario de Supabase Auth. Aquí
- * sólo se inicia sesión: no hay registro, porque no debe haber más
- * cuentas que la de la agencia.
+ * `onAcceso` NO es opcional por comodidad: es el único camino por el que
+ * la sesión recién abierta llega al estado. Antes esta pantalla llamaba
+ * a `signIn` y no hacía nada con lo que devolvía, confiando en un
+ * `onAuthStateChange` que se fue con Supabase. El resultado era que
+ * entrar funcionaba —cookie puesta, 200 del servidor— y la pantalla no
+ * se movía hasta recargar.
+ *
+ * No hay registro público: a las cuentas nuevas se entra por invitación
+ * (`/invitacion/<testigo>`), que es la que crea la persona y la mete en
+ * el espacio de la agencia.
  */
-export default function Login() {
+export default function Login({ onAcceso }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -26,8 +32,10 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await signIn(email, password);
-      // No hace falta navegar: onAuthStateChange levanta el workspace.
+      const sesion = await signIn(email, password);
+      // Esta línea es el arreglo. Sin ella la sesión existe en el
+      // servidor y no existe en la pantalla.
+      onAcceso(sesion);
     } catch (err) {
       setError(err.message);
       setLoading(false);
@@ -124,8 +132,8 @@ export default function Login() {
         </form>
 
         <p className="hint" style={{ marginTop: "var(--sp-5)", textAlign: "center" }}>
-          ¿No tienes acceso? Las credenciales se definen en las variables de
-          entorno del sitio. Consulta <code>DEPLOY.md</code>.
+          ¿No tienes cuenta? Pídele a quien administra el espacio que te
+          mande un enlace de invitación desde <strong>Equipo</strong>.
         </p>
       </main>
     </div>

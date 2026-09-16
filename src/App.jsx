@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { MONTHS } from "./constants";
 import { uid } from "./utils";
 import { useDialogA11y } from "./hooks/useDialogA11y";
@@ -17,21 +17,50 @@ import TaskPanel from "./components/TaskPanel";
 import { TaskTemplatesManager } from "./components/TaskPanel";
 import ContentBankPanel from "./components/ContentBankPanel";
 import Login from "./pages/Login";
+import Invitacion from "./pages/Invitacion";
+import Equipo from "./pages/Equipo";
+import Presencia, { PresenciaEnCliente } from "./components/Presencia";
 import { useSession, signOut } from "./lib/auth";
 import * as db from "./lib/db";
-
-const isApprovalPage = () => {
-  const path = window.location.pathname;
-  return path.includes("/aprobar") || window.location.hash.includes("/aprobar");
-};
+import { rowToCalendar, rowToClient } from "./lib/filas";
+import { vivo } from "./lib/vivo";
+import {
+  analizarRuta, construirRuta, navegar,
+  porRuta, slugsDeCalendarios, slugsDeClientes,
+} from "./lib/rutas";
 
 /**
- * Enrutador. Es un componente sin hooks para que la rama condicional
- * no altere el orden de los hooks de los componentes de destino
- * (regla de los hooks).
+ * La dirección actual, y se vuelve a pintar cuando cambia.
+ *
+ * `popstate` lo dispara el navegador al pulsar atrás y lo dispara
+ * `navegar()` a mano cuando el cambio lo hace la aplicación: `pushState`
+ * NO lo lanza solo, y sin ese aviso la barra de direcciones cambiaría y
+ * la pantalla no.
+ */
+function useRuta() {
+  const [ruta, setRuta] = useState(analizarRuta);
+  useEffect(() => {
+    const alCambiar = () => setRuta(analizarRuta());
+    window.addEventListener("popstate", alCambiar);
+    return () => window.removeEventListener("popstate", alCambiar);
+  }, []);
+  return ruta;
+}
+
+/**
+ * Enrutador.
+ *
+ * Los hooks van todos ANTES del primer `return`: llamarlos después de
+ * una rama condicional rompe la regla de los hooks, y oxlint lo marca
+ * como error. Por eso el enrutado (App), la puerta de acceso (Panel) y
+ * el estado (Workspace) siguen siendo tres componentes y no uno.
  */
 function App() {
-  return isApprovalPage() ? <Aprobar /> : <Panel />;
+  const ruta = useRuta();
+  // La página de aprobación es la del cliente final: ni sesión, ni
+  // panel, ni nada de lo que cuelga de Panel.
+  if (ruta.vista === "aprobar") return <Aprobar />;
+  return <Panel ruta={ruta} />;
 }
 
 /** Pantalla centrada de una sola línea. Se usa al cargar y al fallar. */
@@ -49,21 +78,29 @@ function Aviso({ children, tono = "status" }) {
  * Puerta de acceso. Todos los hooks se llaman antes de cualquier
  * `return`, así que las ramas no alteran su orden.
  */
-function Panel() {
-  const { session, loading } = useSession();
+function Panel({ ruta }) {
+  const { session, loading, setSession } = useSession();
 
   // Ya no hay puerta de configuración. Con Supabase, `isSupabaseEnabled`
   // era una constante de compilación: sin las VITE_*, Vite la plegaba a
   // false y rollup borraba el panel entero del bundle. La API vive ahora
   // en el mismo origen que la aplicación, así que no hay variable que
   // pueda faltar ni media aplicación que pueda compilarse por descuido.
+
+  // La invitación va ANTES de mirar la sesión: quien abre ese enlace no
+  // tiene cuenta todavía, que es precisamente para lo que se le manda.
+  if (ruta.vista === "invitacion") return <Invitacion onAcceso={setSession} />;
+
   if (loading) return <Aviso>Cargando…</Aviso>;
-  if (!session) return <Login />;
-  return <Workspace session={session} />;
+  // `setSession` es el arreglo del fallo de acceso: sin pasárselo a
+  // Login, entrar dejaba la cookie puesta y la pantalla quieta. Ver
+  // src/lib/auth.js.
+  if (!session) return <Login onAcceso={setSession} />;
+  return <Workspace session={session} ruta={ruta} />;
 }
 
 /** Lista de clientes. Se reutiliza en la barra fija y en el cajón móvil. */
-function ClientList({ clients, selectedClientId, onSelect, onNew }) {
+function ClientList({ clients, selectedClientId, onSelect, onNew, presentes = [], yo }) {
   return (
     <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
@@ -98,6 +135,10 @@ function ClientList({ clients, selectedClientId, onSelect, onNew }) {
                     {c.industry || "Sin industria"} · {(c.calendars || []).length} calendario{(c.calendars || []).length === 1 ? "" : "s"}
                   </span>
                 </span>
+                {/* Quién del equipo está dentro de este cliente ahora
+                    mismo. Verlo antes de entrar es lo que evita que dos
+                    personas reescriban la misma semana. */}
+                <PresenciaEnCliente presentes={presentes} clienteId={c.id} yo={yo} />
               </button>
             </li>
           ))}
@@ -125,7 +166,7 @@ function BackupActions({ onExport, onImport }) {
 }
 
 /** Cajón de clientes en móvil: diálogo modal con foco atrapado. */
-function ClientDrawer({ clients, selectedClientId, onSelect, onNew, onClose, onExport, onImport }) {
+function ClientDrawer({ clients, selectedClientId, onSelect, onNew, onClose, onExport, onImport, presentes, yo }) {
   const dialogRef = useDialogA11y(onClose);
 
   return (
@@ -166,6 +207,8 @@ function ClientDrawer({ clients, selectedClientId, onSelect, onNew, onClose, onE
           selectedClientId={selectedClientId}
           onSelect={onSelect}
           onNew={onNew}
+          presentes={presentes}
+          yo={yo}
         />
         <BackupActions onExport={onExport} onImport={onImport} />
       </div>
@@ -173,12 +216,18 @@ function ClientDrawer({ clients, selectedClientId, onSelect, onNew, onClose, onE
   );
 }
 
-function Workspace({ session }) {
-  const ownerId = session.user.id;
+function Workspace({ session, ruta }) {
+  // El dueño de las filas es el ESPACIO, no la persona: los clientes son
+  // de la agencia y los ve igual quien los creó que quien entró ayer.
+  // `?? id` cubre la sesión de antes de que existiera el equipo.
+  const ownerId = session.user.ownerId ?? session.user.id;
+  const yo = session.user;
 
   const [clients, setClients] = useState([]);
-  const [selectedClientId, setSelectedClientId] = useState(null);
-  const [selectedCalId, setSelectedCalId] = useState(null);
+  // Qué cliente y qué calendario se están mirando NO son estado: son la
+  // dirección. Guardarlos en `useState` era justo lo que hacía que
+  // recargar te devolviera al principio y que no se pudiera pasar un
+  // enlace a nadie.
   const [showDrawer, setShowDrawer] = useState(false);
   const [showClientModal, setShowClientModal] = useState(false);
   const [editingClient, setEditingClient] = useState(null);
@@ -189,6 +238,17 @@ function Workspace({ session }) {
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
   const [saveError, setSaveError] = useState(null);
+  // Tiempo real.
+  const [presentes, setPresentes] = useState([]);
+  const [estadoVivo, setEstadoVivo] = useState("desconectado");
+  // Sube cada vez que llega un cambio de algo que carga su propio panel
+  // (tareas, banco, aprobaciones). Se pasa como prop y va en las
+  // dependencias de su efecto: subirlo es decirles «vuelve a leer».
+  const [pulso, setPulso] = useState(0);
+  // Alguien ha guardado un calendario que yo tengo a medio escribir.
+  const [pisada, setPisada] = useState(null);
+  // Qué publicación tiene abierta cada cual: postId → persona.
+  const [editandoOtros, setEditandoOtros] = useState({});
   const importRef = useRef();
   // Un temporizador por calendario: las ediciones seguidas se agrupan en
   // una sola escritura en lugar de una por pulsación.
@@ -206,21 +266,193 @@ function Workspace({ session }) {
     pending.clear();
   };
 
+  /**
+   * Relee el espacio entero.
+   *
+   * Se usa al arrancar y al RECONECTAR: mientras el socket estuvo caído
+   * pudo pasar cualquier cosa, y ninguno de esos eventos llegó. El
+   * socket acelera; esto es lo que garantiza que lo que se ve es lo que
+   * hay.
+   */
+  const cargar = useCallback(async () => {
+    try {
+      const data = await db.loadWorkspace();
+      setClients(data);
+      setLoadError("");
+    } catch (e) {
+      setLoadError(e.message || "No se pudieron cargar los datos.");
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { void cargar(); }, [cargar, ownerId]);
+
+  // ----------------------------------------------------------
+  // Tiempo real
+  //
+  // Lo que llega por aquí es un ATAJO: evita recargar para enterarse de
+  // lo que ha hecho el resto del equipo. La fuente de verdad sigue
+  // siendo D1, y por eso al reconectar se relee entero: si se ha perdido
+  // un evento, la relectura lo repone.
+  //
+  // DOS FILTROS QUE NO SON OPCIONALES
+  //
+  //  1. Los eventos de esta MISMA PESTAÑA se descartan. El Durable
+  //     Object reparte a todos —no sabe de qué socket salió un cambio
+  //     que le llegó por HTTP—, así que tu propio guardado vuelve. Si se
+  //     aplicara, te pisaría lo que hubieras seguido escribiendo en los
+  //     milisegundos siguientes: el cursor salta y la última palabra
+  //     desaparece.
+  //
+  //  2. Un calendario con escritura PENDIENTE no se pisa. Si alguien
+  //     guarda el mismo mes que tú estás editando, aplicar su versión te
+  //     borraría lo que tienes a medias sin decir nada. Se avisa y se
+  //     deja elegir, que es lo único honesto que se puede hacer aquí.
+  // ----------------------------------------------------------
   useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const data = await db.loadWorkspace();
-        if (!alive) return;
-        setClients(data);
-        if (data.length) setSelectedClientId(data[0].id);
-      } catch (e) {
-        if (alive) setLoadError(e.message || "No se pudieron cargar los datos.");
+    let yaEstuvo = false;
+    vivo.conectar();
+
+    const aplicarCalendario = (cal, clientId) => {
+      setClients((prev) => prev.map((c) => {
+        if (c.id !== clientId) return c;
+        const cals = c.calendars ?? [];
+        return {
+          ...c,
+          calendars: cals.some((x) => x.id === cal.id)
+            ? cals.map((x) => (x.id === cal.id ? cal : x))
+            : [...cals, cal],
+        };
+      }));
+    };
+
+    const bajaEventos = vivo.al((ev) => {
+      if (ev.tipo === "hola" || ev.tipo === "presencia") {
+        const presentes = ev.presentes ?? [];
+        setPresentes(presentes);
+        // Quien se desconecta deja de estar editando nada. Sin esto, un
+        // cierre de pestaña dejaba su aviso pegado a una publicación
+        // para siempre: el `editando: false` del desmonte no llega
+        // cuando el navegador se va de golpe.
+        const vivos = new Set(presentes.map((p) => p.userId));
+        setEditandoOtros((prev) => {
+          const siguiente = Object.fromEntries(
+            Object.entries(prev).filter(([, persona]) => vivos.has(persona?.userId)),
+          );
+          return Object.keys(siguiente).length === Object.keys(prev).length ? prev : siguiente;
+        });
+        return;
       }
-      if (alive) setLoading(false);
-    })();
-    return () => { alive = false; };
-  }, [ownerId]);
+      // Filtro 1: mi propio eco.
+      if (ev.por?.tab && ev.por.tab === db.PESTANA) return;
+
+      switch (ev.tipo) {
+        case "cliente": {
+          const nuevo = rowToClient(ev.cliente);
+          setClients((prev) => {
+            const previo = prev.find((c) => c.id === nuevo.id);
+            // `rowToClient` deja `calendars: []`: la fila del cliente no
+            // los trae. Pisarlos con eso vaciaría la lista de meses de la
+            // pantalla de quien no ha tocado nada.
+            const fusion = { ...nuevo, calendars: previo?.calendars ?? [] };
+            return previo
+              ? prev.map((c) => (c.id === nuevo.id ? fusion : c))
+              : [...prev, fusion];
+          });
+          break;
+        }
+
+        case "cliente:fuera":
+          setClients((prev) => prev.filter((c) => c.id !== ev.id));
+          break;
+
+        case "calendario": {
+          const cal = rowToCalendar(ev.calendario);
+          // Filtro 2.
+          if (pendingSaves.current.has(cal.id) || saveTimers.current.has(cal.id)) {
+            setPisada({ calId: cal.id, quien: ev.por?.nombre ?? "Alguien" });
+            break;
+          }
+          aplicarCalendario(cal, ev.calendario.client_id);
+          break;
+        }
+
+        case "calendario:recargar":
+          // El mes no cabía en un mensaje: se relee. Ver TOPE_EVENTO en
+          // worker/lib/vivo.js.
+          if (!pendingSaves.current.size) void cargar();
+          break;
+
+        case "calendario:fuera":
+          setClients((prev) => prev.map((c) => ({
+            ...c,
+            calendars: (c.calendars ?? []).filter((cal) => cal.id !== ev.id),
+          })));
+          break;
+
+        case "calendario:enlace":
+          setClients((prev) => prev.map((c) => ({
+            ...c,
+            calendars: (c.calendars ?? []).map((cal) =>
+              cal.id === ev.id ? { ...cal, shareEnabled: ev.enabled } : cal),
+          })));
+          break;
+
+        // Tareas, banco, memorias y respuestas del cliente final: cada
+        // panel carga lo suyo, así que no se parchea el estado desde
+        // aquí —sería copiar su lógica en otro sitio—. Se les dice que
+        // vuelvan a leer.
+        case "tarea":
+        case "tarea:fuera":
+        case "banco":
+        case "banco:fuera":
+        case "memoria":
+        // Lo del equipo lo pinta la pantalla de Equipo, que carga lo
+        // suyo: se le dice que vuelva a leer, igual que a los paneles.
+        case "miembro":
+        case "miembro:fuera":
+        case "invitacion":
+        case "invitacion:fuera":
+          setPulso((n) => n + 1);
+          break;
+
+        case "editando":
+          // Se guarda por publicación, no por persona: lo que hace falta
+          // saber al abrir una es si alguien más la tiene delante.
+          setEditandoOtros((prev) => {
+            const siguiente = { ...prev };
+            if (ev.activo) siguiente[ev.postId] = ev.por;
+            else delete siguiente[ev.postId];
+            return siguiente;
+          });
+          break;
+
+        case "aprobacion":
+          setPulso((n) => n + 1);
+          setToast(`${ev.por?.nombre ?? "El cliente"} acaba de responder en el calendario.`);
+          break;
+
+        default:
+          break;
+      }
+    });
+
+    const bajaEstado = vivo.alCambiarEstado((e) => {
+      setEstadoVivo(e);
+      if (e !== "conectado") return;
+      // La primera conexión no recarga: los datos acaban de llegar. Las
+      // siguientes sí, porque son una RE-conexión y ahí sí hay un hueco
+      // que tapar.
+      if (yaEstuvo) void cargar();
+      yaEstuvo = true;
+    });
+
+    return () => {
+      bajaEventos();
+      bajaEstado();
+      vivo.desconectar();
+    };
+  }, [cargar]);
 
   useEffect(() => {
     const flush = () => flushPendingSaves();
@@ -242,8 +474,67 @@ function Workspace({ session }) {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const client = clients.find((c) => c.id === selectedClientId);
-  const calendar = client?.calendars?.find((c) => c.id === selectedCalId);
+  // ----------------------------------------------------------
+  // De la dirección a lo que se mira
+  //
+  // Al revés que antes: la URL manda y el cliente y el calendario salen
+  // de ella. Por eso recargar ya no pierde el sitio, y por eso un enlace
+  // pegado en un mensaje abre exactamente lo mismo que veía quien lo
+  // mandó.
+  // ----------------------------------------------------------
+  const slugsCliente = useMemo(() => slugsDeClientes(clients), [clients]);
+  const client = useMemo(
+    () => porRuta(clients, slugsCliente, ruta.cliente),
+    [clients, slugsCliente, ruta.cliente],
+  );
+  const selectedClientId = client?.id ?? null;
+
+  const slugsCal = useMemo(() => slugsDeCalendarios(client?.calendars ?? []), [client]);
+  const calendar = useMemo(
+    () => porRuta(client?.calendars ?? [], slugsCal, ruta.calendario),
+    [client, slugsCal, ruta.calendario],
+  );
+  const selectedCalId = calendar?.id ?? null;
+
+  /**
+   * Navega a un cliente, y opcionalmente a uno de sus calendarios.
+   *
+   * `lista` existe porque justo después de crear o importar algo, el
+   * estado todavía no lo tiene: el slug hay que calcularlo sobre la
+   * lista que va a haber, no sobre la que hay. Sin eso, un cliente
+   * recién creado navegaba a una dirección que aún no resolvía.
+   */
+  const irA = useCallback((clienteId, calId = null, lista = clients) => {
+    if (!clienteId) { navegar("/"); return; }
+    const cliente = lista.find((c) => c.id === clienteId);
+    const slug = slugsDeClientes(lista).get(clienteId) ?? clienteId;
+    const calSlug = calId
+      ? (slugsDeCalendarios(cliente?.calendars ?? []).get(calId) ?? calId)
+      : null;
+    navegar(construirRuta({ cliente: slug, calendario: calSlug }));
+  }, [clients]);
+
+  // Una dirección que no resuelve —cliente borrado, enlace viejo, un
+  // nombre cambiado— vuelve al inicio en vez de dejar la pantalla vacía
+  // sin explicar nada. Se hace REEMPLAZANDO: no es navegar, es corregir,
+  // y meterlo en el historial obligaría a pulsar «atrás» dos veces.
+  useEffect(() => {
+    // Con un error de carga no se corrige nada: la lista está vacía
+    // porque no se ha podido leer, no porque el cliente no exista, y
+    // devolver al inicio borraría la dirección a la que hay que volver
+    // cuando la red se recupere.
+    if (loading || loadError || !ruta.cliente) return;
+    if (!client) {
+      setToast("Ese cliente ya no está. Te hemos devuelto al inicio.");
+      navegar("/", { reemplazar: true });
+    }
+  }, [loading, loadError, ruta.cliente, client]);
+
+  // Contarle al equipo dónde estoy. Es lo que dibuja los avatares sobre
+  // el cliente en la lista de al lado.
+  useEffect(() => {
+    vivo.mirar(selectedClientId, selectedCalId);
+  }, [selectedClientId, selectedCalId]);
 
   const fallo = (accion) => (e) => setToast(`No se pudo ${accion}: ${e.message}`);
 
@@ -253,12 +544,23 @@ function Workspace({ session }) {
   const saveClient = async (c) => {
     const isNew = !clients.find((x) => x.id === c.id || x.id === c.dbId);
     const guardado = await db.saveClient(c, ownerId);
-    setClients((prev) => {
-      const exists = prev.find((x) => x.id === guardado.id);
-      return exists ? prev.map((x) => (x.id === guardado.id ? guardado : x)) : [...prev, guardado];
-    });
-    setSelectedClientId(guardado.id);
-    setSelectedCalId(null);
+    // El estado se actualiza en forma de función: entre el render y esta
+    // línea puede haber entrado un cambio de la otra persona por el
+    // socket, y reemplazar la lista entera con la de antes lo perdería.
+    setClients((prev) => (prev.find((x) => x.id === guardado.id)
+      ? prev.map((x) => (x.id === guardado.id ? guardado : x))
+      : [...prev, guardado]));
+    // Para NAVEGAR, en cambio, hace falta la lista que va a haber: el
+    // slug depende de los nombres que hay alrededor, y con la de ahora un
+    // cliente recién creado iría a una dirección que todavía no resuelve
+    // y rebotaría al inicio.
+    // Y conservando su SITIO en la lista, no empujándolo al final: el
+    // orden es lo que decide, cuando dos clientes normalizan al mismo
+    // slug, cuál se queda el limpio. Moverlo cambiaría la dirección de un
+    // cliente que sólo se estaba renombrando.
+    irA(guardado.id, null, clients.some((x) => x.id === guardado.id)
+      ? clients.map((x) => (x.id === guardado.id ? guardado : x))
+      : [...clients, guardado]);
     setEditingClient(null);
     setShowClientModal(false);
 
@@ -289,10 +591,7 @@ function Workspace({ session }) {
     try {
       await db.deleteClient(id);
       setClients((prev) => prev.filter((c) => c.id !== id));
-      if (selectedClientId === id) {
-        setSelectedClientId(null);
-        setSelectedCalId(null);
-      }
+      if (selectedClientId === id) irA(null);
     } catch (e) {
       fallo("borrar el cliente")(e);
     }
@@ -345,7 +644,7 @@ function Workspace({ session }) {
           c.id !== selectedClientId ? c : { ...c, calendars: c.calendars.filter((cal) => cal.id !== calId) }
         )
       );
-      if (selectedCalId === calId) setSelectedCalId(null);
+      if (selectedCalId === calId) irA(selectedClientId);
     } catch (e) {
       fallo("borrar el calendario")(e);
     }
@@ -398,7 +697,12 @@ function Workspace({ session }) {
           c.id !== selectedClientId ? c : { ...c, calendars: [...(c.calendars || []), creado] }
         )
       );
-      setSelectedCalId(creado.id);
+      // La lista con el calendario nuevo ya dentro, por lo mismo que en
+      // saveClient: el slug del mes tiene que existir para navegar a él.
+      irA(
+        selectedClientId, creado.id,
+        clients.map((c) => (c.id !== selectedClientId ? c : { ...c, calendars: [...(c.calendars || []), creado] })),
+      );
       setShowWizard(false);
     } catch (e) {
       fallo("crear el calendario")(e);
@@ -451,8 +755,7 @@ function Workspace({ session }) {
             añadidos.push(guardado);
           }
           setClients((prev) => [...prev, ...añadidos]);
-          if (añadidos.length) setSelectedClientId(añadidos[0].id);
-          setSelectedCalId(null);
+          if (añadidos.length) irA(añadidos[0].id, null, [...clients, ...añadidos]);
           setToast(`Importados ${añadidos.length} clientes.`);
         } catch (err) {
           fallo("importar")(err);
@@ -498,8 +801,7 @@ function Workspace({ session }) {
   };
 
   const selectClient = (id) => {
-    setSelectedClientId(id);
-    setSelectedCalId(null);
+    irA(id);
     setShowDrawer(false);
   };
 
@@ -549,6 +851,20 @@ function Workspace({ session }) {
         </div>
 
         <div style={{ display: "flex", gap: "var(--sp-2)", flexShrink: 0, alignItems: "center" }}>
+          {/* Quién más está dentro, y si mi propia conexión está viva.
+              Lo segundo importa tanto como lo primero: cuando el socket
+              se cae, la pantalla deja de actualizarse sola y sin este
+              aviso parecería que nadie ha tocado nada. */}
+          <Presencia presentes={presentes} yo={yo} estado={estadoVivo} clientes={clients} />
+          <button
+            className="btn-icon"
+            onClick={() => navegar(construirRuta({ vista: "equipo" }))}
+            aria-label="Ver el equipo"
+            title="Equipo"
+            aria-current={ruta.vista === "equipo" ? "page" : undefined}
+          >
+            <Icon name="users" />
+          </button>
           <button
             className="btn-icon"
             onClick={() => setShowGlobalChat(true)}
@@ -561,7 +877,7 @@ function Workspace({ session }) {
             style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
             className="session-email"
           >
-            {session.user.email}
+            {yo.nombre || yo.email}
           </span>
           <button className="btn btn-secondary btn-sm" onClick={signOut}>
             <Icon name="close" size={16} /> Salir
@@ -588,6 +904,8 @@ function Workspace({ session }) {
             selectedClientId={selectedClientId}
             onSelect={selectClient}
             onNew={openNewClient}
+            presentes={presentes}
+            yo={yo}
           />
           <div style={{ marginTop: "var(--sp-4)", paddingTop: "var(--sp-4)", borderTop: "1px solid var(--border)" }}>
             <TaskTemplatesManager />
@@ -611,7 +929,28 @@ function Workspace({ session }) {
               </div>
             )}
 
-            {client ? (
+            {/* Sólo sobre el calendario al que se refiere: el aviso
+                habla de «este calendario», y enseñarlo mientras miras
+                otro es peor que no enseñarlo. Al volver, reaparece. */}
+            {pisada && pisada.calId === selectedCalId && (
+              <div role="alert" className="notice notice-warn" style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap" }}>
+                <span style={{ flex: 1 }}>
+                  {pisada.quien} ha guardado este calendario mientras tú lo
+                  editabas. Lo que ves es lo tuyo: al guardar, tus cambios
+                  ganan. Recarga si prefieres quedarte con los suyos.
+                </span>
+                <button className="btn btn-secondary btn-sm" onClick={() => { setPisada(null); void cargar(); }}>
+                  Ver los suyos
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setPisada(null)} aria-label="Descartar aviso">
+                  <Icon name="close" size={16} />
+                </button>
+              </div>
+            )}
+
+            {ruta.vista === "equipo" ? (
+              <Equipo presentes={presentes} yo={yo} pulso={pulso} onVolver={() => navegar("/")} />
+            ) : client ? (
               <>
                 {/* Un solo encabezado. Antes había cuatro bloques apilados
                     que repetían el nombre del cliente y el del mes. */}
@@ -664,7 +1003,7 @@ function Workspace({ session }) {
                         <button
                           key={c.id}
                           className="cal-tab"
-                          onClick={() => setSelectedCalId(c.id)}
+                          onClick={() => irA(selectedClientId, c.id)}
                           aria-current={selectedCalId === c.id ? "true" : undefined}
                         >
                           {c.name || MONTHS[c.month] + " " + c.year}
@@ -682,8 +1021,8 @@ function Workspace({ session }) {
 
                 {/* Tareas y banco de contenido */}
                 <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
-                  <TaskPanel client={client} />
-                  <ContentBankPanel client={client} />
+                  <TaskPanel client={client} pulso={pulso} />
+                  <ContentBankPanel client={client} pulso={pulso} />
                 </div>
 
                 {calendar ? (
@@ -691,6 +1030,8 @@ function Workspace({ session }) {
                     client={client}
                     cal={calendar}
                     calId={selectedCalId}
+                    pulso={pulso}
+                    editandoOtros={editandoOtros}
                     onUpdateCal={updateCalendar}
                     onUpdateCalLocal={updateCalendarLocal}
                     onDeleteCal={deleteCalendar}
@@ -767,6 +1108,8 @@ function Workspace({ session }) {
           selectedClientId={selectedClientId}
           onSelect={selectClient}
           onNew={openNewClient}
+          presentes={presentes}
+          yo={yo}
           onExport={exportJSON}
           onImport={() => importRef.current?.click()}
           onClose={() => setShowDrawer(false)}
@@ -808,8 +1151,7 @@ function Workspace({ session }) {
           clients={clients}
           onClose={() => setShowGlobalChat(false)}
           onSelectClient={(id) => {
-            setSelectedClientId(id);
-            setSelectedCalId(null);
+            irA(id);
             setShowGlobalChat(false);
           }}
         />

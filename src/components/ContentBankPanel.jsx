@@ -8,7 +8,7 @@ function formatBytes(bytes) {
   return (bytes / 1048576).toFixed(1) + " MB";
 }
 
-export default function ContentBankPanel({ client }) {
+export default function ContentBankPanel({ client, pulso = 0 }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -40,7 +40,8 @@ export default function ContentBankPanel({ client }) {
       .catch(() => { if (alive) setError("No se pudo cargar el banco de contenido."); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [clientId]);
+    // Ver la nota de `pulso` en TaskPanel.
+  }, [clientId, pulso]);
 
   const handleUpload = useCallback(async (e) => {
     const files = Array.from(e.target.files || []);

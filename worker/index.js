@@ -8,10 +8,15 @@
 // EL ORDEN DE ESTE FICHERO IMPORTA:
 //
 //   1. Lo público va PRIMERO. /api/publico/* es la página que ve el
-//      cliente final; si cayera detrás de la sesión, todos los enlaces
-//      ya enviados dejarían de abrirse.
-//   2. Después se resuelve la sesión, una sola vez.
-//   3. Y sólo entonces se construye el acceso a D1, que exige el dueño.
+//      cliente final y /api/invitacion/* es el enlace con el que entra
+//      alguien nuevo; si cualquiera de los dos cayera detrás de la
+//      sesión, dejaría de abrirse para justo quien no tiene cuenta.
+//   2. Después se resuelve la sesión, una sola vez. Desde que hay
+//      equipo, resolverla devuelve DOS identidades: la persona
+//      (`usuario.id`, quién firma) y el espacio (`usuario.ownerId`, qué
+//      filas puede tocar). Antes eran la misma y no se notaba.
+//   3. Y sólo entonces se construye el acceso a D1, que exige el dueño
+//      —el ESPACIO, no la persona—.
 //
 // Las cabeceras de seguridad de /api/* las pone respuesta.js, no
 // `public/_headers`: los encabezados de ese fichero NO se aplican a lo
@@ -22,10 +27,18 @@ import { json, error, noAutenticado, noEncontrado, cuerpo, CABECERAS_API } from 
 import { crearAcceso } from "./lib/acceso.js";
 import { usuarioDeLaPeticion, iniciarSesion, cerrarSesion, cookieSesion, cookieBorrada } from "./lib/sesion.js";
 import { calendarioPorTestigo, enviarAprobacion, actualizarContenido, mediaPermitida } from "./lib/publico.js";
+import { difundir } from "./lib/vivo.js";
 import { rutasDatos } from "./rutas/datos.js";
+import { rutasEquipo, rutaInvitacionPublica } from "./rutas/equipo.js";
 import { rutaIA } from "./rutas/ia.js";
 import { rutaChat } from "./rutas/chat.js";
 import { rutaADN } from "./rutas/adn.js";
+
+// El Durable Object del espacio. Se reexporta desde aquí porque
+// `wrangler.jsonc` apunta su `class_name` al módulo de entrada: si se
+// exportara sólo desde hub.js, el despliegue moriría con «class not
+// found» y el síntoma no diría de qué clase habla.
+export { EspacioHub } from "./hub.js";
 
 /** Los errores del enlace público son de quien lo usa, no del servidor. */
 function comoRespuesta(e) {
@@ -72,14 +85,32 @@ export default {
         if (partes[2] === "aprobacion" && metodo === "POST") {
           const b = (await cuerpo(req)) ?? {};
           try {
-            return json(await enviarAprobacion(env.DB, { ...b, token: testigo }));
+            const r = await enviarAprobacion(env.DB, { ...b, token: testigo });
+            // Quien responde no tiene sesión —es el cliente final—, así
+            // que la firma no es una persona del equipo: es el enlace.
+            difundir(env, r.ownerId, {
+              tipo: "aprobacion",
+              calId: r.calendarId,
+              postId: r.postId,
+              estado: r.estado,
+              por: { userId: "cliente", nombre: b.revisor || "El cliente", color: "#F5A623" },
+            });
+            return json({ ok: r.ok, estado: r.estado });
           } catch (e) { return comoRespuesta(e); }
         }
 
         if (partes[2] === "publicacion" && metodo === "PATCH") {
           const b = (await cuerpo(req)) ?? {};
           try {
-            return json(await actualizarContenido(env.DB, { ...b, token: testigo, postId: partes[3] }));
+            const r = await actualizarContenido(env.DB, { ...b, token: testigo, postId: partes[3] });
+            difundir(env, r.ownerId, {
+              tipo: "aprobacion",
+              calId: r.calendarId,
+              postId: r.postId,
+              estado: null,
+              por: { userId: "cliente", nombre: "El cliente", color: "#F5A623" },
+            });
+            return json({ ok: r.ok });
           } catch (e) { return comoRespuesta(e); }
         }
 
@@ -90,6 +121,12 @@ export default {
         }
 
         return noEncontrado("Ruta");
+      }
+
+      // El enlace de invitación, también sin sesión: quien lo abre
+      // todavía no tiene cuenta. Ver worker/rutas/equipo.js.
+      if (partes[0] === "invitacion") {
+        return rutaInvitacionPublica(req, env, { partes, metodo });
       }
 
       // ---------- 2. Acceso ----------
@@ -116,39 +153,83 @@ export default {
       if (partes[0] === "ia" && !partes[1] && metodo === "POST") return rutaIA(req, env);
       if (partes[0] === "adn" && metodo === "POST") return rutaADN(req, env);
 
-      // ---------- 5. Acceso a datos ----------
-      const acceso = crearAcceso(env.DB, usuario.id);
+      // ---------- 5. Tiempo real ----------
+      //
+      // La sesión se comprueba AQUÍ y sólo después se entrega el socket
+      // al Durable Object del espacio, que es el único que ve a todo el
+      // equipo a la vez. El objeto no sabe leer cookies, y es mejor que
+      // no lo sepa: la autorización vive en un solo sitio.
+      if (partes[0] === "live") {
+        if (req.headers.get("Upgrade") !== "websocket") {
+          return error("Se esperaba una conexión WebSocket", 426);
+        }
+        if (!env.HUB) return error("El tiempo real no está configurado en este entorno", 503);
 
-      // Medios con sesión: la clave tiene que ser de un cliente de este
-      // dueño. Sin esta comprobación, /api/media/ sería un lector de R2
-      // para cualquiera que tenga sesión, y en el hub eso ya no es «la
-      // única cuenta de la agencia».
+        const hub = env.HUB.get(env.HUB.idFromName(usuario.ownerId));
+        const destino = new URL("https://hub/conectar");
+        destino.searchParams.set("userId", usuario.id);
+        destino.searchParams.set("nombre", usuario.nombre);
+        destino.searchParams.set("color", usuario.color);
+        return hub.fetch(new Request(destino, req));
+      }
+
+      // ---------- 6. Acceso a datos ----------
+      //
+      // El dueño es el ESPACIO, no quien ha entrado: los clientes son de
+      // la agencia y los ve igual quien los creó que quien llegó ayer.
+      const acceso = crearAcceso(env.DB, usuario.ownerId);
+
+      if (partes[0] === "equipo") return rutasEquipo(req, env, { acceso, partes, metodo, usuario });
+
+      // ---------- Medios ----------
+      //
+      // EL ORDEN DE ESTE BLOQUE, OTRA VEZ.
+      //
+      // La subida iba en un `if` aparte, DESPUÉS del que comprueba la
+      // clave, y nunca se alcanzaba: en `POST /api/media` no hay clave
+      // —`partes` es sólo ["media"]—, así que la comprobación de arriba
+      // devolvía 404 y se acababa la petición ahí. Código escrito, en el
+      // commit, desplegado, y muerto; la misma forma del fallo que
+      // `tests/despliegue/funciones.test.js` vigila en worker/rutas/,
+      // sólo que dentro de este fichero, donde ese test no llega.
+      //
+      // Por eso van juntos ahora: la subida PRIMERO, porque es el caso
+      // sin clave, y la lectura y el borrado después, que sí la tienen.
       if (partes[0] === "media") {
+        // Subida de imágenes de publicación y logos. Devuelve la CLAVE,
+        // que es lo que se guarda en el JSON del calendario: nunca un
+        // data: URI, que es lo que llevaba la fila contra el techo de 2 MB.
+        //
+        // Aquí no hay clave que validar —la inventa el servidor, que es
+        // justo lo que impide escribir en la carpeta de otro—: lo que se
+        // comprueba es que el cliente sea de este espacio.
+        if (partes.length === 1 && metodo === "POST") {
+          const form = await req.formData().catch(() => null);
+          const archivo = form?.get("archivo");
+          const clientId = String(form?.get("clientId") ?? "");
+          const carpeta = String(form?.get("carpeta") ?? "posts").replace(/[^a-z]/g, "") || "posts";
+          if (!archivo || typeof archivo === "string") return error("Falta el archivo");
+          if (!(await acceso.leerUno("clients", { id: clientId }))) return noEncontrado("Cliente");
+
+          const ext = (archivo.name?.split(".").pop() || "jpg").toLowerCase().slice(0, 8);
+          const clave = `clientes/${clientId}/${carpeta}/${crypto.randomUUID()}.${ext}`;
+          await env.MEDIA.put(clave, archivo.stream(), {
+            httpMetadata: { contentType: archivo.type || "image/jpeg" },
+          });
+          return json({ clave }, 201);
+        }
+
+        // Leer y borrar: la clave viene en la ruta y tiene que ser de un
+        // cliente de este espacio. Sin esta comprobación, /api/media/
+        // sería un lector de R2 para cualquiera que tenga sesión, y con
+        // equipo eso ya no es «la única cuenta de la agencia».
         const clave = partes.slice(1).join("/");
         const m = /^clientes\/([^/]+)\//.exec(clave);
         if (!m) return noEncontrado("Archivo");
         if (!(await acceso.leerUno("clients", { id: m[1] }))) return noEncontrado("Archivo");
         if (metodo === "GET") return sirveMedia(env, clave, true);
         if (metodo === "DELETE") { await env.MEDIA.delete(clave); return json({ ok: true }); }
-      }
-
-      // Subida de imágenes de publicación y logos. Devuelve la CLAVE,
-      // que es lo que se guarda en el JSON del calendario: nunca un
-      // data: URI, que es lo que llevaba la fila contra el techo de 2 MB.
-      if (partes[0] === "media" && partes.length === 1 && metodo === "POST") {
-        const form = await req.formData().catch(() => null);
-        const archivo = form?.get("archivo");
-        const clientId = String(form?.get("clientId") ?? "");
-        const carpeta = String(form?.get("carpeta") ?? "posts").replace(/[^a-z]/g, "") || "posts";
-        if (!archivo || typeof archivo === "string") return error("Falta el archivo");
-        if (!(await acceso.leerUno("clients", { id: clientId }))) return noEncontrado("Cliente");
-
-        const ext = (archivo.name?.split(".").pop() || "jpg").toLowerCase().slice(0, 8);
-        const clave = `clientes/${clientId}/${carpeta}/${crypto.randomUUID()}.${ext}`;
-        await env.MEDIA.put(clave, archivo.stream(), {
-          httpMetadata: { contentType: archivo.type || "image/jpeg" },
-        });
-        return json({ clave }, 201);
+        return error(`Método ${metodo} no permitido aquí`, 405);
       }
 
       return rutasDatos(req, env, { acceso, partes, metodo, usuario });

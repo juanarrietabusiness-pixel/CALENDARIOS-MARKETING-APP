@@ -22,6 +22,15 @@ dist-ssr
 supabase/.branches
 supabase/.temp
 
+# Estado de `wrangler dev`: la D1 y el R2 de local, más las trazas.
+#
+# Estuvo versionado por descuido hasta ahora. No es sólo ruido —cada
+# arranque reescribe siete .sqlite-shm y siete .sqlite-wal— sino la misma
+# forma de fuga que scripts/migracion/datos/: quien levante el Worker en
+# local contra datos de verdad acaba con clientes reales dentro de un
+# fichero binario que nadie va a mirar antes de hacer commit.
+.wrangler/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

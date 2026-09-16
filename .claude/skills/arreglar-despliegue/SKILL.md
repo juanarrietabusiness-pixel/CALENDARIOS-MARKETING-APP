@@ -88,6 +88,34 @@ una Edge Function y quita el origen de la CSP en `netlify.toml`.
 Iguala los dos números. `node-version` en `ci.yml` y `NODE_VERSION` en
 `netlify.toml`.
 
+### «el servidor manda “X” y nadie lo recoge»
+
+Lo emite `tests/despliegue/tiempo-real.test.js`. Has añadido un
+`difundir({ tipo: "X", … })` en el Worker y no hay un `case "X"` en el
+escuchador de `src/App.jsx`. No falla nada en producción: la escritura
+entra en D1, la respuesta es 200, y la otra persona sigue viendo lo de
+antes hasta que recargue.
+
+Añade el caso. Si lo que cambia lo carga un panel por su cuenta —tareas,
+banco, equipo—, basta con `setPulso((n) => n + 1)`: ese panel lleva
+`pulso` en las dependencias de su efecto y vuelve a leer.
+
+### «no se difunde “X”»
+
+Al revés: hay una escritura en `worker/rutas/datos.js` sin su aviso.
+Pon el `difundir()` **pegado** a la escritura, no al final de la función,
+y con la firma: `firma(ctx.usuario, req)`. El `req` no es decorativo:
+lleva el id de la pestaña, que es lo que evita que quien guardó se aplique
+su propio eco encima de lo que estaba escribiendo.
+
+### «el cliente o el calendario seleccionados vuelven a ser estado»
+
+Alguien ha metido un `useState` para `selectedClientId` o
+`selectedCalId`. Esos dos salen de la dirección (`src/lib/rutas.js`):
+derívalos con `porRuta()` y cambia de sitio con `navegar()`. Si vuelven a
+ser estado, recargar devuelve al inicio y un enlace compartido deja de
+abrir lo mismo que veía quien lo mandó.
+
 ## Migraciones: escribir no es aplicar
 
 Los tests de `migraciones.test.js` leen el SQL del repositorio. Que pasen

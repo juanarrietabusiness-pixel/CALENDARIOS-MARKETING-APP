@@ -80,14 +80,18 @@ que no estén en ningún commit. Eso ya pasó dos veces —`ai-chat` y
 
 ## Arquitectura
 
-Aplicación de una sola página en React 19 + Vite. Sin router: `App.jsx`
-decide entre dos vistas según la URL.
+Aplicación de una sola página en React 19 + Vite, con **direcciones de
+verdad** (`/cliente/baby-caleb/agosto-2026`) resueltas por un router
+propio de 150 líneas: `src/lib/rutas.js`. Sin dependencias nuevas —un
+router de librería son 10 kB comprimidos para cinco direcciones— y sin
+`hash`: el respaldo de la SPA de `wrangler.jsonc` sirve `index.html` para
+cualquier ruta, así que recargar en cualquier sitio funciona.
 
 ```
 src/
   App.jsx                 Enrutado (App) + puerta de acceso (Panel) + estado (Workspace)
   constants.js            Formatos, estados, planes, meses, categorías
-  utils.js                Fechas, IDs, compresión de imágenes, escapado
+  utils.js                Fechas, IDs, compresión de imágenes, escapado, iniciales
   api.js                  Llama a las funciones del servidor (IA y ADN)
   export.js               Genera el HTML autónomo que se envía al cliente
   index.css               Sistema de diseño: tokens y clases base
@@ -96,36 +100,78 @@ src/
     filas.js              Conversores fila ⇄ aplicación
     auth.js               Sesión, inicio y cierre
     db.js                 Llama a /api/*; conserva todas sus firmas
+    equipo.js             Miembros, invitaciones y perfil propio
+    rutas.js              Slugs, análisis y construcción de direcciones (puro)
+    vivo.js               WebSocket: reconexión, latido, presencia
     exportarContenido.js  Texto de «Exportar ideas y descripciones» (puro)
     completitud.js        Cuánto le falta a una publicación (puro)
   components/
     Icon.jsx              Set de iconos SVG monocromos (rejilla 24, trazo 1.75)
+    Presencia.jsx         Avatares, estado de la conexión, «X está editando»
     ClientModal.jsx       Alta y edición de cliente (5 pestañas)
     PlanWizard.jsx        Asistente de 7 pasos para crear un calendario
     CalendarView.jsx      Vista de lista y de rejilla, filtros, generación, envío
   pages/
-    Login.jsx             Acceso del administrador
+    Login.jsx             Acceso
+    Equipo.jsx            Quién entra en el espacio; invitar y sacar
+    Invitacion.jsx        Lo que ve quien abre un enlace de invitación
     Aprobar.jsx           Página pública que ve el cliente final
 worker/
   index.js                Enrutado, sesión y cabeceras de /api/*
+  hub.js                  Durable Object: un espacio, sus sockets y su presencia
   lib/
     acceso.js             La capa que sustituye a las políticas RLS
-    sesion.js             PBKDF2, cookie __Host-, alta del administrador
+    sesion.js             PBKDF2, cookie __Host-, espacio de trabajo e invitaciones
+    vivo.js               Difundir un cambio al espacio; la firma de quién lo hizo
     publico.js            El enlace de aprobación, sin sesión
     respuesta.js          Cabeceras y errores de la API
     ids.js                UUID, testigos, huellas
   rutas/
     datos.js              CRUD: clientes, calendarios, chat, tareas, banco
+    equipo.js             Miembros e invitaciones; la ruta pública del enlace
     ia.js                 Proxy de Anthropic/Groq
     chat.js               El asistente
     adn.js                Lectura del ADN de marca con el token del servidor
-migraciones/d1/           Esquema de D1
+migraciones/d1/           Esquema de D1 (0001 base, 0002 equipo)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
-  despliegue/             Plantillas, secretos, migraciones, funciones, acceso, bundle
-  migracion/              Conversión, capa de acceso y enlace público
+  despliegue/             Plantillas, secretos, migraciones, funciones, acceso,
+                          tiempo real, bundle
+  migracion/              Conversión, capa de acceso, enlace público, equipo
+                          y enrutado (pide las rutas del Worker de verdad)
 ```
+
+### Las direcciones
+
+| Dirección | Qué es |
+|---|---|
+| `/` | Panel, sin cliente elegido |
+| `/cliente/<slug>` | Un cliente |
+| `/cliente/<slug>/<slug-del-mes>` | Un calendario de ese cliente |
+| `/equipo` | Quién entra en el espacio |
+| `/invitacion/<testigo>` | Enlace de invitación (sin sesión) |
+| `/aprobar?t=<testigo>` | Página del cliente final (sin sesión) |
+
+El slug sale del nombre normalizado, y `slugsUnicos()` garantiza que dos
+clientes que normalicen igual no compartan dirección. Un id en crudo
+también resuelve, para los enlaces que alguien pegara antes.
+
+### El tiempo real
+
+Un **Durable Object por espacio** (`worker/hub.js`), con hibernación de
+WebSocket. Cloudflare garantiza una sola instancia por espacio en todo el
+mundo: las dos personas, estén donde estén, se conectan a la misma.
+
+```
+navegador ──HTTP──> Worker ──escribe──> D1
+                       └──difundir()──> Durable Object ──WS──> los demás navegadores
+```
+
+Toda escritura de `worker/rutas/datos.js` lleva su `difundir()` pegado.
+El aviso NO se espera: si el objeto tarda o falla, la escritura ya entró
+en D1 y la respuesta no debe retrasarse por eso. Lo que se pierda se
+repone al reconectar, porque **el socket es un atajo y D1 es la verdad**.
 
 ### Dónde viven los datos
 
@@ -135,10 +181,35 @@ habla con el Worker, que es quien acota.
 
 - **clients / calendars:** el navegador pide, el Worker acota por
   `owner_id`. D1 **no tiene RLS**: la red es `worker/lib/acceso.js`.
-- **approvals:** las escribe el cliente final por el enlace público y la
-  agencia las relee con un sondeo cada 15 s mientras el calendario está
-  abierto. No hay botón de sincronizar.
+- **memberships / invitaciones:** quién entra en el espacio y con qué
+  papel. Tienen dueño como las demás, así que pasan por la misma capa.
+- **approvals:** las escribe el cliente final por el enlace público. El
+  enlace avisa al espacio en el momento, así que la agencia lo ve sin
+  recargar; el sondeo de `subscribeApprovals` sigue ahí, a un minuto,
+  como red para cuando el socket esté caído. No hay botón de sincronizar.
 - **imágenes:** en R2, y en el JSON va la clave, nunca los bytes.
+
+### Qué significa `owner_id`
+
+**El ESPACIO DE TRABAJO, no quien ha iniciado sesión.** Mientras hubo una
+sola cuenta las dos cosas coincidían y el nombre no mentía; con dos
+personas en la agencia, sí: los clientes son de la agencia y los ve igual
+quien los creó que quien entró ayer.
+
+El espacio se identifica por el id del administrador que lo fundó, así
+que **las filas de antes siguen valiendo sin tocar ni una**: el
+administrador ya era su propio espacio sin saberlo. La sesión devuelve
+las dos identidades por separado:
+
+| Campo | Qué es | Para qué |
+|---|---|---|
+| `usuario.id` | La persona | Quién firma un cambio, quién sale en la presencia |
+| `usuario.ownerId` | El espacio | Qué filas puede tocar: es lo que recibe `crearAcceso` |
+| `usuario.rol` | `admin` o `editor` | Sólo `admin` invita y saca gente |
+
+Quien traduce «este usuario → este espacio» es `worker/lib/sesion.js`, no
+la capa de acceso: la capa necesita el espacio para construirse, así que
+no puede ser quien lo averigüe.
 
 **Ninguna clave vive en el navegador, y ahora tampoco ninguna variable.**
 Las de IA y la de GitHub son secretos del Worker (`wrangler secret put`).
@@ -254,6 +325,9 @@ son del servidor.
 - `App.jsx` separa el enrutado (`App`), la puerta de acceso (`Panel`) y el
   estado (`Workspace`) a propósito: llamar hooks después de un `return`
   condicional rompe la regla de los hooks, y oxlint lo marca como error.
+  `App` sí llama un hook ahora —`useRuta`—, pero antes de su primer
+  `return`; la separación es lo que impide que alguien meta el siguiente
+  después.
 - **D1 no tiene RLS, y con una sola cuenta no se nota.** Supabase tenía
   dieciséis políticas haciendo de segunda red: aunque el código pidiera mal
   los datos, Postgres no devolvía filas de otro dueño. Aquí no hay nada. Una
@@ -419,6 +493,90 @@ son del servidor.
   Y lo que le falta a una publicación depende de su formato —un post sólo
   lleva caption; un reel, además, guion—, así que un reel que llega del
   asistente con la descripción escrita sigue entrando a por su guion.
+- **El acceso ponía la cookie y no cambiaba de pantalla.** `Login.jsx`
+  llamaba a `signIn()` y **no hacía nada con lo que devolvía**: el
+  comentario decía «no hace falta navegar, onAuthStateChange levanta el
+  workspace», y `onAuthStateChange` se fue con Supabase. Aquí no hay
+  ningún canal que se dispare solo. El servidor respondía 200, ponía la
+  cookie `__Host-`, y la pantalla de acceso se quedaba quieta; al
+  recargar sí entrabas, porque el arranque pregunta a `/api/yo`. Ahora
+  `useSession` devuelve `setSession` y Login lo llama —igual que
+  `Invitacion`—. Lo vigila `tests/despliegue/tiempo-real.test.js`.
+  **La regla general: la sesión es de quien la pinta.** Cualquier pantalla
+  nueva que abra sesión tiene que propagarla a mano.
+- **Qué se está mirando NO es estado: es la dirección.** `selectedClientId`
+  y `selectedCalId` eran `useState`, y por eso recargar devolvía al
+  principio, el botón de atrás sacaba de la aplicación y no había forma de
+  mandarle a nadie «mira esto». Ahora salen de la URL con `porRuta()` y se
+  cambian con `navegar()`. Dos cosas que hay que recordar al tocarlo:
+  `pushState` **no dispara `popstate`**, así que `navegar()` lo lanza a
+  mano o la barra cambia y la pantalla no; y justo después de crear algo,
+  el slug hay que calcularlo sobre la lista **que va a haber**, no sobre la
+  que hay, o se navega a una dirección que todavía no resuelve.
+- **El Durable Object te devuelve tu propio guardado, y te pisa lo que
+  estabas escribiendo.** El evento de un cambio va a TODOS los conectados
+  —llegó por HTTP, así que el objeto no sabe de qué socket salió—, y eso
+  incluye a quien lo hizo. Aplicarse el propio eco parecía inofensivo
+  hasta que se ve el síntoma: guardas, sigues tecleando, y a los 300 ms
+  el cursor salta y la última palabra desaparece. Lo corta el id de
+  **PESTAÑA** (`X-Pestana` en `src/lib/db.js`, que vuelve en `por.tab`).
+  Por pestaña y no por persona a propósito: el panel abierto en el
+  portátil y en el móvil sí tiene que verse.
+- **Un evento que el servidor manda y nadie recoge no falla.** La
+  escritura fue bien, la respuesta fue 200, y la otra persona sigue
+  viendo lo de antes hasta que recargue. Con una sola sesión abierta
+  —que es como se mira siempre— es invisible. Por eso hay un test que
+  compara los `tipo: "x"` del Worker con los `case "x"` de `App.jsx`: si
+  añades un evento y no lo atiendes, falla al escribirlo, no en
+  producción.
+- **Una escritura remota no puede pisar lo que tienes a medias.** Si
+  alguien guarda el mismo calendario que estás editando, aplicar su
+  versión te borra el buffer sin decir nada. `App.jsx` comprueba
+  `pendingSaves`/`saveTimers` antes de aplicar y, si hay algo pendiente,
+  **avisa en vez de pisar**: lo tuyo se queda, y se ofrece releer.
+- **En los Durable Objects, `new_sqlite_classes` y no `new_classes`.**
+  Los de almacenamiento SQLite son los que entran en el plan gratuito;
+  con `new_classes` el despliegue pide plan de pago y el error habla de
+  facturación, no de que la clase esté mal declarada. Y la clase se
+  **reexporta desde `worker/index.js`**, que es el módulo al que apunta
+  `main`: exportándola sólo desde `hub.js`, el despliegue muere con
+  «class not found».
+- **Un aviso que aparece solo cada poco deja de querer decir algo.** El
+  sondeo de aprobaciones anunciaba «tu cliente acaba de responder» en
+  CADA vuelta, respondiera alguien o no. Ahora compara una huella de lo
+  que ya había visto y sólo habla si de verdad cambió algo.
+- **Sacar a alguien del equipo borra su cuenta, no sólo su pertenencia.**
+  Dejar la cuenta viva sin fila en `memberships` es peor: al volver a
+  entrar, la resolución de espacio la trata como un administrador sin
+  sitio y le funda un espacio propio y vacío. La persona ve una
+  aplicación que funciona y no tiene nada dentro, y nadie sabe por qué.
+  Al fundador no se le puede sacar: ahí la cascada sí se llevaría los
+  clientes y los calendarios, que cuelgan de su id.
+- **La subida de imágenes estaba escrita, desplegada y muerta.** `POST
+  /api/media` iba en un `if` posterior al que valida la clave, y a `POST`
+  no le llega ninguna clave: `partes` vale `["media"]`, la clave sale
+  vacía, y el `if (!m) return noEncontrado("Archivo")` de arriba
+  contestaba 404 antes de que nadie mirase el método. Leyendo el fichero
+  las dos ramas están ahí y las dos parecen bien. Es la misma forma del
+  fallo de `ai-chat` —código en el commit que no se ejecuta nunca—, pero
+  DENTRO de `worker/index.js`, donde `funciones.test.js` no llega: ese
+  test sólo vigila `worker/rutas/`. Lo cubre ahora
+  `tests/migracion/enrutado.test.js`, que **pide las rutas de verdad**
+  con un `env` de mentira en vez de leer el fichero. Si añades una rama a
+  esta puerta, ponle su caso ahí: leerla no basta para saber si alguien
+  llega.
+- **`.wrangler/` no se versiona.** Estuvo versionado por descuido hasta
+  que se sacó. Es la D1 y el R2 de `wrangler dev`: cada arranque
+  reescribe catorce ficheros `.sqlite-shm`/`.sqlite-wal`, y quien levante
+  el Worker en local contra datos de verdad acaba con clientes reales
+  dentro de un binario que nadie mira antes de hacer commit. Misma
+  familia que `scripts/migracion/datos/`. (El que había en el historial
+  estaba vacío: no llegó a colarse ningún dato.)
+- **`connect-src 'self'` ya cubre el WebSocket.** En una página `https`,
+  `'self'` casa con `wss:` del mismo host —lo dice la especificación de
+  CSP—. Si alguien ve el socket caer y «lo arregla» metiendo un origen
+  ahí, rompe la regla de oro: un tercero en `connect-src` es la señal de
+  que una clave ha vuelto al navegador.
 
 ## Documentos relacionados
 

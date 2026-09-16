@@ -42,6 +42,38 @@
     }
   ],
 
+  // ============================================================
+  // Tiempo real: un Durable Object por espacio de trabajo.
+  //
+  // Cloudflare garantiza UNA sola instancia por espacio en todo el
+  // mundo, así que las dos personas del equipo —estén donde estén— se
+  // conectan a la misma y se ven escribir. Ver worker/hub.js.
+  //
+  // `new_sqlite_classes` y no `new_classes`: los Durable Objects con
+  // almacenamiento SQLite son los que entran en el plan gratuito. Con
+  // `new_classes` el despliegue pide plan de pago, y el error habla de
+  // facturación en vez de decir que la clase está mal declarada.
+  //
+  // La etiqueta `v1` NO se reutiliza: cada migración de Durable Objects
+  // lleva la suya y quedan registradas en la cuenta. Renumerar una ya
+  // aplicada hace que wrangler intente reaplicarla.
+  // ============================================================
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "HUB",
+        "class_name": "EspacioHub"
+      }
+    ]
+  },
+
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["EspacioHub"]
+    }
+  ],
+
   // Los secretos NO van aquí. Se ponen con `wrangler secret put`:
   //   ANTHROPIC_API_KEY, GROQ_API_KEY, GITHUB_TOKEN
   // Estas variables sí son públicas en el sentido de que no abren nada:

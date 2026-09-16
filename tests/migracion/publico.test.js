@@ -9,6 +9,9 @@ const TESTIGO = "a".repeat(48);
 const CAL = () => ({
   id: "cal1",
   client_id: "c1",
+  // El dueño no sale nunca hacia el cliente final; se lee para poder
+  // avisar al espacio de la agencia de que acaban de responder.
+  owner_id: "dueno1",
   name: "MES DE AGOSTO",
   month: 7,
   year: 2026,
@@ -161,7 +164,14 @@ describe("enviarAprobacion", () => {
     const r = await enviarAprobacion(db, {
       token: TESTIGO, postId: "p1", estado: "cambios", sugeridoGuion: "nuevo guion",
     });
-    expect(r).toEqual({ ok: true, estado: "cambios" });
+    // Devuelve además a QUÉ calendario y a qué espacio pertenece la
+    // respuesta. Sin eso, el Worker no sabría a qué Durable Object avisar
+    // y la agencia no vería la aprobación hasta la siguiente vuelta del
+    // sondeo. Son ids internos: la respuesta HTTP no los reenvía.
+    expect(r).toEqual({
+      ok: true, estado: "cambios",
+      calendarId: "cal1", ownerId: "dueno1", postId: "p1",
+    });
     expect(db.escrituras).toHaveLength(1);
   });
 
