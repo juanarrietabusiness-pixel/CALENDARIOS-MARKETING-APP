@@ -131,6 +131,37 @@ export function claveAleatoria() {
   return crypto.randomUUID();
 }
 
+/**
+ * Busca `data:` URIs en campos que NADIE está convirtiendo.
+ *
+ * Hoy sólo `posts[].image` y `visualReferences[].url` llevan base64 —se
+ * comprobó contra la base viva: una publicación tiene además `creativo`,
+ * `referenceLink`, `status`, `category`, `comment`, `title`, `script` y
+ * `hashtagsFinales`, y ninguno pasa de 24 caracteres—.
+ *
+ * Pero eso puede cambiar con una versión de la interfaz, y el fallo sería
+ * mudo: el campo nuevo viaja a D1 con sus 40 kB de base64 dentro, la fila
+ * engorda, y nadie se entera hasta que D1 la rechaza por el techo de 2 MB.
+ * Esto lo convierte en un aviso durante la importación.
+ */
+export function base64SinConvertir(cal) {
+  const hallazgos = [];
+  const mirar = (objeto, ruta) => {
+    for (const [clave, valor] of Object.entries(objeto ?? {})) {
+      if (clave === "image" || clave === "url") continue;   // ésos sí se convierten
+      if (esDataUri(valor)) hallazgos.push({ campo: `${ruta}.${clave}`, bytes: valor.length });
+    }
+  };
+
+  (cal.days ?? []).forEach((dia, i) => {
+    mirar(dia, `days[${i}]`);
+    (dia?.posts ?? []).forEach((post, j) => mirar(post, `days[${i}].posts[${j}]`));
+  });
+  (cal.visualReferences ?? []).forEach((ref, i) => mirar(ref, `visualReferences[${i}]`));
+
+  return hallazgos;
+}
+
 // ------------------------------------------------------------
 // Filas
 // ------------------------------------------------------------

@@ -250,6 +250,30 @@ La segunda confirma que D1 aplica las claves ajenas: la importación va en
 orden (`users` → `clients` → `calendars` → el resto) o falla en la primera
 fila.
 
+#### La forma real de los datos, perfilada
+
+Antes de mover nada se perfiló lo que hay, porque el riesgo de una
+conversión no es el volumen: es un campo que nadie esperaba.
+
+| Qué | Resultado |
+|---|---|
+| Claves de una publicación | `category, comment, creativo, descripcion, format, guion, hashtagsFinales, id, idea, image, publishTime, referenceLink, script, status, title` |
+| Claves de un día | `category, concept, date, dayName, posts, specialDate, weekNumber` |
+| Claves de una referencia visual | `format, id, name, url` |
+| JSON con tipo inesperado | 0 |
+| Testigos de menos de 24 caracteres | 0 |
+| Meses fuera de 0–11 | 0 |
+| Campos con `data:` | **sólo `posts[].image` (12) y `visualReferences[].url`** |
+
+`creativo` asustaba —suena a imagen— pero no pasa de **24 caracteres**, y
+`referenceLink` es una dirección. O sea que el conversor cubre todo lo que
+hay hoy.
+
+Lo que no cubre es lo que venga mañana: si una versión de la interfaz
+empieza a guardar una miniatura en un campo nuevo, ese base64 viaja a D1
+sin que nadie lo note hasta que la fila choca con el techo de 2 MB. Por eso
+`base64SinConvertir()` recorre TODOS los campos y el importador lo avisa.
+
 ### 5.3. Sacar las imágenes rompe dos cosas que nadie mira
 
 Esto no se descubre leyendo `db.js`. Hay dos sitios que necesitan **los bytes**,

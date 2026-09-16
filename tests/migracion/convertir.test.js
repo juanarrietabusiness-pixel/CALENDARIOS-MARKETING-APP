@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { fallo, fallos } from "../utils/fallo.js";
 import {
   texto, textoONulo, entero, booleano, json, instante,
-  esDataUri, extensionDe, extraerImagenes,
+  esDataUri, extensionDe, extraerImagenes, base64SinConvertir,
   filaCliente, filaCalendario, filaAprobacion,
   pesoDeFila, cabeEnD1, LIMITE_FILA_D1,
 } from "../../scripts/migracion/convertir.js";
@@ -303,5 +303,45 @@ describe("el esquema de D1 y el conversor no se contradicen", () => {
       }
     }
     expect(lista, fallos(lista)).toEqual([]);
+  });
+});
+
+describe("base64SinConvertir: el campo que nadie mira", () => {
+  it("no señala nada cuando sólo image y url llevan data: URIs", () => {
+    // Comprobado contra la base viva: una publicación tiene además
+    // creativo, referenceLink, status, category, comment, title, script y
+    // hashtagsFinales, y ninguno pasa de 24 caracteres.
+    const cal = {
+      days: [{ posts: [{
+        id: "p1", image: "data:image/jpeg;base64,AAAA",
+        creativo: "carrusel-3", referenceLink: "https://ejemplo.com",
+        status: "pending", category: "venta", title: "Un título",
+      }] }],
+      visualReferences: [{ id: "r1", url: "data:image/png;base64,BBBB" }],
+    };
+    expect(base64SinConvertir(cal)).toEqual([]);
+  });
+
+  it("señala un campo nuevo que traiga base64", () => {
+    // Si una versión de la interfaz empieza a guardar la miniatura en
+    // `creativo`, el campo viaja a D1 con sus 40 kB dentro y la fila
+    // engorda sin que nada avise hasta que D1 la rechaza.
+    const cal = {
+      days: [{ posts: [{ id: "p1", creativo: "data:image/png;base64," + "x".repeat(40_000) }] }],
+    };
+    const hallazgos = base64SinConvertir(cal);
+    expect(hallazgos).toHaveLength(1);
+    expect(hallazgos[0].campo).toBe("days[0].posts[0].creativo");
+    expect(hallazgos[0].bytes).toBeGreaterThan(40_000);
+  });
+
+  it("mira también los días y las referencias visuales", () => {
+    const cal = {
+      days: [{ portada: "data:image/png;base64,AAAA", posts: [] }],
+      visualReferences: [{ id: "r1", url: "https://ok", miniatura: "data:image/png;base64,BBBB" }],
+    };
+    expect(base64SinConvertir(cal).map((h) => h.campo)).toEqual([
+      "days[0].portada", "visualReferences[0].miniatura",
+    ]);
   });
 });

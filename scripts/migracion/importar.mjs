@@ -31,7 +31,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
   filaCliente, filaCalendario, filaAprobacion,
-  extraerImagenes, pesoDeFila, cabeEnD1, LIMITE_FILA_D1,
+  extraerImagenes, base64SinConvertir, pesoDeFila, cabeEnD1, LIMITE_FILA_D1,
 } from "./convertir.js";
 
 const CUENTA = process.env.CLOUDFLARE_ACCOUNT_ID || "";
@@ -124,6 +124,12 @@ async function main() {
     for (const img of imagenes) {
       bytesR2 += await subirAR2(img.clave, img.dataUri);
       imagenesR2 += 1;
+    }
+
+    // Un campo nuevo con base64 dentro viajaría a D1 sin que nadie lo
+    // note, hasta que la fila choca con el techo de 2 MB.
+    for (const h of base64SinConvertir({ days, visualReferences })) {
+      avisos.push(`«${row.name}» lleva base64 en ${h.campo} (${h.bytes} bytes) y nadie lo convierte`);
     }
 
     const fila = filaCalendario({ ...row, days, visual_references: visualReferences });
