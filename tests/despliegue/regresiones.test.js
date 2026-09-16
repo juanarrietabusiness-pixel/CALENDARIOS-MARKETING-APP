@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { leer, fuentesNavegador, fuentesEdge, buscar } from "../utils/repo";
+import { leer, fuentesNavegador, fuentesWorker, buscar } from "../utils/repo";
 import { escapeHTML } from "../../src/utils.js";
 import { fallo, fallos } from "../utils/fallo";
 
@@ -16,7 +16,7 @@ import { fallo, fallos } from "../utils/fallo";
 // ============================================================
 
 const NAVEGADOR = fuentesNavegador();
-const EDGE = fuentesEdge();
+const EDGE = fuentesWorker();
 
 describe("fechas", () => {
   it("nadie usa toISOString() para obtener una fecha", () => {
@@ -245,16 +245,22 @@ describe("el aislamiento de las aprobaciones en vivo", () => {
   });
 
   it("la suscripción se da de baja", () => {
+    // Cambió el mecanismo, no la regla. Con Supabase era un canal de
+    // Realtime y se cerraba con removeChannel; ahora es un sondeo cada
+    // 15 s y se cierra con clearInterval. Lo que no puede cambiar es que
+    // `subscribeApprovals` devuelva con qué pararlo: sin eso, cambiar de
+    // calendario deja temporizadores vivos que siguen pidiendo
+    // aprobaciones del calendario anterior, y se acumulan.
     const db = leer("src/lib/db.js");
     expect(
       db,
       fallo({
         que: "subscribeApprovals no devuelve función de baja",
         donde: "src/lib/db.js",
-        porque: "Cambiar de calendario dejaría canales abiertos acumulándose hasta agotar el límite de conexiones.",
-        arreglo: "Devuelve () => supabase.removeChannel(channel).",
+        porque: "Cambiar de calendario dejaría sondeos vivos acumulándose, cada uno pidiendo las aprobaciones de un calendario que ya nadie mira.",
+        arreglo: "Devuelve () => clearInterval(id) —o el cierre que corresponda al mecanismo que uses—.",
       }),
-    ).toMatch(/removeChannel/);
+    ).toMatch(/clearInterval|removeChannel|unsubscribe/);
   });
 });
 

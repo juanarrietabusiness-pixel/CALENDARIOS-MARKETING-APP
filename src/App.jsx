@@ -17,10 +17,8 @@ import TaskPanel from "./components/TaskPanel";
 import { TaskTemplatesManager } from "./components/TaskPanel";
 import ContentBankPanel from "./components/ContentBankPanel";
 import Login from "./pages/Login";
-import { isSupabaseEnabled } from "./lib/supabase";
 import { useSession, signOut } from "./lib/auth";
 import * as db from "./lib/db";
-import { migrateLocalData } from "./lib/migrateLocal";
 
 const isApprovalPage = () => {
   const path = window.location.pathname;
@@ -54,14 +52,11 @@ function Aviso({ children, tono = "status" }) {
 function Panel() {
   const { session, loading } = useSession();
 
-  if (!isSupabaseEnabled) {
-    return (
-      <Aviso tono="alert">
-        Este despliegue no tiene Supabase configurado. Define VITE_SUPABASE_URL y
-        VITE_SUPABASE_ANON_KEY en las variables del sitio y vuelve a desplegar.
-      </Aviso>
-    );
-  }
+  // Ya no hay puerta de configuración. Con Supabase, `isSupabaseEnabled`
+  // era una constante de compilación: sin las VITE_*, Vite la plegaba a
+  // false y rollup borraba el panel entero del bundle. La API vive ahora
+  // en el mismo origen que la aplicación, así que no hay variable que
+  // pueda faltar ni media aplicación que pueda compilarse por descuido.
   if (loading) return <Aviso>Cargando…</Aviso>;
   if (!session) return <Login />;
   return <Workspace session={session} />;
@@ -215,14 +210,10 @@ function Workspace({ session }) {
     let alive = true;
     (async () => {
       try {
-        const { migrados } = await migrateLocalData(ownerId);
         const data = await db.loadWorkspace();
         if (!alive) return;
         setClients(data);
         if (data.length) setSelectedClientId(data[0].id);
-        if (migrados > 0) {
-          setToast(`Se migraron ${migrados} clientes desde este navegador a la nube.`);
-        }
       } catch (e) {
         if (alive) setLoadError(e.message || "No se pudieron cargar los datos.");
       }

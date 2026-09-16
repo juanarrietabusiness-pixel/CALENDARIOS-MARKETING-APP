@@ -1,292 +1,220 @@
-# Despliegue: Netlify + Supabase
+# Puesta en producción
 
-Guía para poner la aplicación en producción.
+**Todo esto se hace desde el navegador.** No hay ningún paso que requiera
+una consola: el código vive en GitHub y se publica en Cloudflare a través
+de GitHub Actions, que es quien ejecuta los comandos.
 
-**Estado del repositorio:** el esquema, las funciones y la aplicación están
-listos. No hay que escribir código: sólo conectar cuentas y pegar claves.
+## Por qué NO se conecta Cloudflare directamente al repositorio
 
----
+Cloudflare ofrece conectar el repositorio y desplegar solo en cada push.
+**No se usa, y no es una preferencia de estilo.** Esa integración
+construye y publica **sin pasar por los tests de este repositorio**: un
+merge a medias, o un push directo a `main`, llegaría a producción sin que
+nada lo parase, y el fallo se descubriría en una captura de pantalla del
+cliente.
 
-## 0. Cómo está repartido
-
-```
-NAVEGADOR (agencia)              SUPABASE                    NETLIFY
-──────────────────               ────────                    ───────
-Login ─────────────────────────▶ Auth
-Clientes y calendarios ────────▶ Postgres + RLS
-Aprobaciones en vivo ◀─────────  Realtime
-Generar contenido ─────────────▶ Edge Function `ai`
-Leer ADN ──────────────────────▶ Edge Function `github-adn`
-                                                             Sitio estático
-Alta del administrador ────────────────────────────────────▶ /api/admin-seed
-
-NAVEGADOR (cliente final)
-─────────────────
-/aprobar?t=<token> ────────────▶ get_shared_calendar / submit_approval
-```
-
-**Por qué la IA está en Supabase y no en Netlify.** Netlify corta las
-peticiones a los 10 s (26 s en Pro, bajo petición). Un lote de 6
-publicaciones con Anthropic tarda unos 40 s, así que se cortaría siempre.
-Supabase da 150 s en el plan gratuito, y su límite de 2 s de CPU no aplica
-porque esperar al proveedor es E/S asíncrona, no cálculo.
+El despliegue vive en `.github/workflows/desplegar.yml`, y ese job corre
+`npm run verificar` —lint, tests, build y presupuesto de bundle— **entero
+y antes de publicar nada**. El filtro está dentro del mismo job, no en
+otro del que éste dependa: así no hay forma de saltárselo.
 
 ---
 
-## 1. Supabase — ya está hecho
+## Parte 1 · Crear el token de Cloudflare
 
-El proyecto **Calendario APP** (`lwkepnrprcyabyhhorrc`) tiene aplicadas las
-migraciones de `supabase/migrations/` y desplegadas las dos Edge Functions.
+1. Entra en **dash.cloudflare.com**.
+2. Arriba a la derecha, el icono de tu perfil → **My Profile**.
+3. Pestaña **API Tokens** → **Create Token**.
+4. Abajo del todo, **Create Custom Token** → *Get started*.
+5. Ponle un nombre: `despliegue-calendarios`.
+6. En **Permissions**, añade estas cuatro filas. Todas son de tipo
+   **Account** (la primera columna del desplegable):
 
-Si partes de un proyecto nuevo:
+   | Permiso | Nivel |
+   |---|---|
+   | `Workers Scripts` | **Edit** |
+   | `D1` | **Edit** |
+   | `Workers R2 Storage` | **Edit** |
+   | `Account Settings` | **Read** |
 
-```bash
-npx supabase link --project-ref TU_REF
-npx supabase db push
-npx supabase functions deploy ai
-npx supabase functions deploy github-adn
-```
+7. En **Account Resources**: *Include* → tu cuenta.
+8. **Continue to summary** → **Create Token**.
+9. **Copia el token ahora.** Sólo se muestra una vez; si lo pierdes hay
+   que crear otro.
 
-### Las funciones se despliegan solas
+> Atajo: en *Permission policies* existe una plantilla llamada **Edit
+> Cloudflare Workers** que ya trae todo esto. Sirve igual, sólo que
+> concede algo más de lo necesario.
 
-**No hace falta ejecutar nada a mano.** `.github/workflows/desplegar-funciones.yml`
-despliega las tres Edge Functions cada vez que algo bajo `supabase/functions/`
-llega a `main`.
+## Parte 2 · Copiar el Account ID
 
-Sólo pide **un secreto, una vez**:
+1. En el menú lateral, **Workers & Pages**.
+2. En la columna de la derecha, **Account Details**.
+3. Botón de copiar junto a **Account ID**.
 
-1. Genera un token en <https://supabase.com/dashboard/account/tokens>.
-2. En el repositorio: *Settings → Secrets and variables → Actions → New
-   repository secret*, con el nombre `SUPABASE_ACCESS_TOKEN`.
+## Parte 3 · Pegar los secretos en GitHub
 
-El identificador del proyecto va en el propio workflow: no es un secreto,
-está en la URL del panel.
+En el repositorio: **Settings** → **Secrets and variables** → **Actions**
+→ botón **New repository secret**. Uno por uno:
 
-Si falta el token, el workflow falla con el mensaje de qué hacer, en vez de
-un error críptico del CLI.
+| Nombre | Qué pegar | Hace falta para |
+|---|---|---|
+| `CLOUDFLARE_API_TOKEN` | El token de la Parte 1 | Desplegar |
+| `CLOUDFLARE_ACCOUNT_ID` | El id de la Parte 2 | Desplegar |
+| `ADMIN_EMAIL` | Tu correo de acceso al panel | Entrar |
+| `ADMIN_PASSWORD` | Una contraseña de **12 caracteres o más** | Entrar |
+| `SUPABASE_URL` | `https://lwkepnrprcyabyhhorrc.supabase.co` | Traer los datos (una vez) |
+| `SUPABASE_SERVICE_ROLE_KEY` | La clave `service_role` del proyecto | Traer los datos (una vez) |
+| `SITIO_URL` | La dirección publicada | Comprobación diaria (opcional) |
 
-**Por qué existe esto.** El despliegue manual se quedó sin hacer durante
-horas y el fallo se veía igual que un repositorio mal escrito: con la función
-vieja el ADN llega recortado, la aplicación cae al compilador de IA y faltan
-campos de la receta. Nadie tiene por qué acordarse de desplegar, y no todo el
-mundo trabaja desde un clon local.
+La clave `service_role` está en el panel de Supabase: **Project Settings**
+→ **API** → *Project API keys* → `service_role`. **Ignora RLS y da acceso
+total al proyecto**: se usa una vez y se borra en la Parte 7.
 
-**Comprobación:** en *Table editor* deben verse `clients`, `calendars` y
-`approvals`, las tres con «RLS enabled». Si alguna aparece sin RLS, **no
-sigas**: cualquiera con la clave anónima podría leer todos los clientes.
+> `ADMIN_PASSWORD` también se borra después. No se guarda en ningún sitio
+> de forma permanente: lo que queda en la base es su hash.
 
-### 1.0 Las migraciones: `db push` NO es seguro aquí
+## Parte 4 · Publicar por primera vez
 
-El historial de migraciones de la base de datos y los archivos de
-`supabase/migrations/` **no se corresponden**. Lo destapó la auditoría de
-despliegue de septiembre de 2026:
+1. Mergea el pull request a `main`. Eso dispara **Desplegar** solo.
+2. Pestaña **Actions** → workflow **Desplegar**. Tarda un par de minutos.
+3. Si sale en rojo en el paso **Verificar**, no se ha publicado nada: el
+   filtro hizo su trabajo. El motivo está en el registro, y el informe con
+   *qué / dónde / por qué importa / arreglo* queda como artefacto.
 
-| En la base de datos | En el repositorio |
-|---|---|
-| `20260808011018 init` | `20260101000000_init.sql` |
-| `20260808011336 restrict_agency_rpc_to_authenticated` | *no existe archivo* |
-| *no registradas* | `client_editing`, `visual_refs_and_day_labels`, `meta_recipe`, `ai_instructions`, `calendar_offers_and_meta_recipe`, `ref_approvals_and_post_editing` |
+Al terminar, el Worker `calendarios` existe y el sitio responde. Las
+funciones de IA todavía no: les faltan las claves, que van en la Parte 5.
 
-**El esquema está bien**: esas seis migraciones sí se aplicaron —sus
-tablas, columnas y funciones están ahí, comprobado—, pero se aplicaron
-por una vía que no las anotó en `supabase_migrations.schema_migrations`
-(el editor SQL del panel, o un MCP). Lo que está mal es el registro.
+## Parte 5 · Pegar las claves en Cloudflare
 
-La consecuencia práctica: **`supabase db push` intentaría aplicar esas
-seis otra vez**, y varias fallarían al chocar con lo que ya existe
-(`create table` sin `if not exists`, `create policy` sobre una política
-que ya está).
+Ahora que el Worker existe, ya tiene dónde guardarlas.
 
-Mientras no se reconcilie, aplica cada migración nueva de una de estas
-dos formas:
+1. **Workers & Pages** → **calendarios**.
+2. Pestaña **Settings** → **Variables and Secrets**.
+3. **Add** → en *Type* elige **Secret** (no *Text*: *Text* se ve en claro
+   y se versiona en el panel).
 
-1. Por el editor SQL del panel de Supabase, pegando el archivo.
-2. Con `supabase migration repair --status applied <versión>` para cada
-   una de las seis que faltan, y sólo entonces `db push`.
+| Nombre | Qué pegar | Dónde se saca |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Tu clave de Anthropic | console.anthropic.com → API Keys |
+| `GITHUB_TOKEN` | Un token de **sólo lectura** | GitHub → Settings → Developer settings → Personal access tokens |
+| `GROQ_API_KEY` | Opcional | console.groq.com |
 
-Y comprueba después que quedó aplicada de verdad:
+El `GITHUB_TOKEN` es para leer el ADN de marca de los repositorios de los
+clientes. Con permiso de lectura de repositorios basta; no necesita
+escritura.
 
-```bash
-SUPABASE_ACCESS_TOKEN=... SUPABASE_PROJECT_REF=... npm run test:infra
-```
+> Ese nombre sólo vale aquí. GitHub no deja crear un secreto de
+> repositorio que empiece por `GITHUB_`, pero esto vive en Cloudflare.
 
-Los tests de `tests/despliegue/migraciones.test.js` leen el SQL del
-repositorio: que pasen significa que la corrección **está escrita**, no
-que esté aplicada. Esa diferencia es justo la que este desajuste hace
-fácil de pasar por alto.
+**Los secretos sobreviven a los despliegues.** No hay que volver a
+ponerlos cada vez.
 
-### 1.1 Cerrar el registro público
+Lo que **no** va aquí son los modelos y las políticas: viven en `vars` de
+`wrangler.jsonc`, se versionan y no abren nada.
 
-*Authentication → Sign In / Providers → Email* y desactiva
-**«Allow new users to sign up»**. La única cuenta debe ser la de la agencia;
-si no, cualquiera podría registrarse (aunque RLS le mostraría un panel
-vacío, no hay motivo para permitirlo).
+## Parte 6 · Dar de alta al administrador
 
-### 1.2 Secretos de las Edge Functions
+1. Pestaña **Actions** → workflow **Sembrar administrador**.
+2. **Run workflow** → **Run workflow**.
 
-*Project Settings → Edge Functions → Secrets*:
+Lee `ADMIN_EMAIL` y `ADMIN_PASSWORD` de los secretos, calcula el hash
+—PBKDF2-SHA256 con 210.000 iteraciones— y lo guarda. La contraseña nunca
+se guarda en claro ni aparece en el registro.
 
-| Secreto | Valor |
-|---|---|
-| `ANTHROPIC_API_KEY` | tu clave de Anthropic |
-| `GROQ_API_KEY` | tu clave de Groq (opcional si usas Anthropic) |
-| `AI_PROVIDER` | `anthropic` o `groq` |
-| `GITHUB_TOKEN` | token de sólo lectura para el ADN |
-| `AI_MODEL_CALIDAD` | modelo del prompt maestro (opcional) |
-| `ALLOWED_ORIGINS` | la URL final del sitio, cuando la tengas |
+Es idempotente: si lo vuelves a lanzar con otra contraseña, la cambia.
+Eso es también cómo se recupera el acceso si se olvida.
 
-`AI_MODEL` es opcional: por defecto `claude-haiku-4-5-20251001`, rápido y
-barato para generar en lote. Para textos más cuidados en español, ponlo a
-`claude-sonnet-5`.
+**No existe ningún endpoint que cree administradores.** Antes sí lo había
+y por eso había que protegerlo con un token: uno que quede abierto por un
+despiste entrega el panel entero. Aquí la puerta es el permiso de lanzar
+workflows en este repositorio.
 
-`AI_MODEL_CALIDAD` es el modelo del prompt maestro de Meta AI y de la
-compilación de la receta del cliente. Por defecto `claude-sonnet-5`. No
-comparte valor con `AI_MODEL` a propósito: los lotes de guiones son muchos y
-cortos, y el prompt maestro es uno al mes con los cortes de línea del titular
-y la verificación de que ninguna cifra se sale del ADN.
+## Parte 7 · Traer los datos de Supabase
 
-### Sobre `GITHUB_TOKEN`
+1. **Actions** → **Migrar datos desde Supabase**.
+2. **Run workflow**. Déjalo con la casilla de **ensayo marcada** la
+   primera vez: convierte, mide y avisa **sin escribir nada**.
+3. Mira el registro. Lo que hay que comprobar:
+   - que ningún calendario supere los **2.000.000 bytes** que admite D1;
+   - cuántas imágenes saldrían del JSON hacia R2;
+   - que los recuentos cuadren con los de Supabase.
+4. Si todo cuadra, vuelve a lanzarlo **desmarcando la casilla**.
 
-**No cambia lo que se lee** — un token autenticado devuelve el mismo contenido
-que uno anónimo. Lo que cambia es el límite: GitHub da **60 peticiones por hora
-y por IP** sin autenticar, y las Edge Functions de Supabase salen por IPs
-compartidas, así que ese cupo se agota con lo que gasten otros proyectos. Cada
-lectura de ADN cuesta unas 10 peticiones. Con token son 5000 por hora.
+El volcado no se sube como artefacto ni se imprime: son clientes reales.
+Vive sólo en la máquina de la ejecución, que se destruye al terminar.
 
-**Usa un fine-grained token con el permiso mínimo: repositorios públicos, sólo
-lectura.** No uno clásico con scope `repo`, que concede escritura sobre todo.
-`github-adn` acepta cualquier URL de repositorio que le pase un usuario
-autenticado de la agencia: con un token de sólo-lectura-pública el alcance de
-eso es nulo, con uno amplio le estarías dando a la función más poder del que
-necesita.
+**Los testigos de compartición se migran tal cual.** Si se regeneraran,
+todos los enlaces que tus clientes ya tienen en su correo dejarían de
+abrirse.
 
-Si alguna carpeta de cliente pasa a privada, hay que ampliar el token a ese
-repositorio en concreto, no a todos.
+### Y ahora borra dos secretos
 
----
+Vuelve a **Settings** → **Secrets and variables** → **Actions** y borra:
 
-## 2. Netlify
+- `SUPABASE_SERVICE_ROLE_KEY` — ya no hace falta, y da acceso total al
+  proyecto de Supabase.
+- `ADMIN_PASSWORD` — ya está aplicada. Dejarla guardada sólo añade un
+  sitio más del que se puede filtrar.
 
-El sitio ya está creado:
+## Parte 8 · El dominio
 
-| | |
-|---|---|
-| Proyecto | **calendarioapp-juancito** |
-| URL | `https://calendarioapp-juancito.netlify.app` |
-| Site ID | `f2cf94be-9970-45a4-95f3-2a4dd99f3e9b` |
-| Panel | https://app.netlify.com/projects/calendarioapp-juancito |
+1. **Workers & Pages** → **calendarios** → **Settings** → **Domains &
+   Routes** → **Add** → **Custom domain**.
+2. Escribe el dominio. Si está en Cloudflare, el DNS se configura solo.
 
-`calendarioapp` a secas ya estaba ocupado: los subdominios de Netlify son
-únicos en toda la plataforma. Con un dominio propio el subdominio deja de
-verse.
+Elige con calma: el dominio entra en la cookie de sesión, en la CSP y en
+los enlaces de aprobación que ya tienen tus clientes. Cambiarlo después
+cuesta.
 
-> **Ojo:** el sitio `juancitoads` de la misma cuenta es otra cosa — la web
-> pública de la agencia (repositorio `PAGINA-JUANCITO-ADS`, en Astro). No lo
-> toques.
-
-### 2.1 Conectar el repositorio
-
-Esto hay que hacerlo desde la interfaz: requiere autorizar la aplicación de
-GitHub, y no se puede automatizar desde fuera.
-
-*Project configuration → Build & deploy → Continuous deployment → Link
-repository* → GitHub → `juanarrietabusiness-pixel/CALENDARIOS-MARKETING-APP`,
-rama de producción `main`.
-
-No hay que rellenar el comando ni la carpeta: los toma de `netlify.toml`
-(`npm run build`, `dist`, funciones en `netlify/functions`).
-
-### 2.2 Variables de entorno
-
-*Site configuration → Environment variables*. Ya están creadas; las dos
-públicas de Supabase con su valor real y el resto con un marcador
-`PENDIENTE-…` que hay que sustituir:
-
-| Variable | Valor | Ámbito | Estado |
-|---|---|---|---|
-| `VITE_SUPABASE_URL` | `https://lwkepnrprcyabyhhorrc.supabase.co` | **Builds** | ✅ puesto |
-| `VITE_SUPABASE_ANON_KEY` | clave `anon` / publicable | **Builds** | ✅ puesto |
-| `SUPABASE_URL` | la misma URL | Functions | ✅ puesto |
-| `SUPABASE_SERVICE_ROLE_KEY` | clave `service_role` | Functions | ⬜ pegar |
-| `ADMIN_EMAIL` | tu correo de acceso | Functions | ⬜ pegar |
-| `ADMIN_PASSWORD` | tu contraseña (mínimo 12 caracteres) | Functions | ⬜ pegar |
-| `ADMIN_SEED_TOKEN` | `openssl rand -hex 32` | Functions | ⬜ pegar |
-
-`SUPABASE_SERVICE_ROLE_KEY` y `ADMIN_PASSWORD` están marcadas como secretas:
-se pueden escribir pero no volver a leer, y Netlify aborta el build si su
-valor apareciera en los archivos publicados.
-
-> ⚠️ **Las dos `VITE_` tienen que estar disponibles en el build.** Si faltan,
-> la aplicación se compila **sin el panel**: el código queda como rama muerta
-> y rollup lo elimina, y el sitio sólo muestra un aviso de configuración. Se
-> nota en el tamaño del bundle — con panel pesa unos 380 kB, sin él 127 kB.
-
-> ⚠️ **Sólo `VITE_` llega al navegador.** La `service_role`, las claves de IA
-> y `ADMIN_PASSWORD` **nunca** deben llevar ese prefijo.
-
-Tras añadirlas hay que **volver a desplegar** para que el build las recoja.
-
-### 2.2 Cerrar el círculo del CORS
-
-Con la URL definitiva del sitio, vuelve a Supabase y pon `ALLOWED_ORIGINS`
-con ese valor.
+Cuando esté, añade `SITIO_URL` a los secretos de GitHub para que la
+comprobación diaria pueda mirar el sitio publicado.
 
 ---
 
-## 3. Crear el administrador
+## Comprobar que llegó
 
-Una sola vez, con el sitio ya desplegado:
+**Actions** → **Infraestructura** → **Run workflow**. Corre sola cada
+mañana y mira lo que no se ve en pantalla:
 
-```bash
-curl -X POST https://calendarioapp-juancito.netlify.app/api/admin-seed \
-  -H "x-seed-token: EL_VALOR_DE_ADMIN_SEED_TOKEN"
-```
-
-Respuesta esperada: `{"ok":true,"creado":true,"email":"…"}`.
-
-Es idempotente: si vuelves a lanzarlo, actualiza la contraseña al valor
-actual de `ADMIN_PASSWORD`. Sirve también para recuperar el acceso si la
-olvidas.
-
-**Cuando termines, borra `ADMIN_SEED_TOKEN` de Netlify.** Sin esa variable
-la función se desactiva sola.
-
-> Alternativa sin curl: *Supabase → Authentication → Add user*, con
-> «Auto Confirm User» marcado.
+- que las cabeceras de seguridad **lleguen de verdad** —estar en el
+  fichero no es llegar al navegador—;
+- que la CSP publicada no deje hablar con Supabase ni con ningún
+  proveedor de IA;
+- que `/api/yo` responda **401 y no 404**. Un 404 ahí significa que el
+  Worker no atiende `/api/*` y toda la API está muerta aunque el sitio se
+  vea perfectamente;
+- que no haya Workers desplegados que nadie declara. Eso ya pasó dos
+  veces con Supabase: `ai-chat` corrió semanas con código que no estaba
+  en ningún commit, e `image-gen` corrió meses entera sin existir en el
+  repositorio.
 
 ---
 
-## 4. Comprobar que funciona
+## Resumen de dónde va cada cosa
 
-1. Abre el sitio: debe pedir correo y contraseña. Si en su lugar ves un
-   aviso de configuración, faltan las variables `VITE_` en el build.
-2. Entra con tus credenciales.
-3. Crea un cliente y un calendario. Recarga: deben seguir ahí.
-4. Ábrelo en **otro navegador** con la misma cuenta: deben aparecer también.
-   Eso confirma que ya no dependes de un solo dispositivo.
-5. Genera contenido con IA. En la pestaña **Red** del inspector, la llamada
-   debe ir a `…supabase.co/functions/v1/ai` y **nunca** a `api.anthropic.com`.
-6. Pulsa **Enviar** → se genera el enlace `…/aprobar?t=…`.
-7. Abre ese enlace en una ventana privada: debe verse el calendario y dejar
-   aprobar. **Deja las dos ventanas abiertas.**
-8. Aprueba algo desde la ventana privada. El panel de la agencia debe
-   actualizarse **solo, sin recargar**. Eso es Realtime funcionando.
-9. Revoca el enlace desde el panel y recarga la ventana privada: debe decir
-   que el enlace es inválido.
+| Secreto | Dónde | Por qué ahí |
+|---|---|---|
+| `CLOUDFLARE_API_TOKEN` | GitHub | Lo usa el workflow para publicar |
+| `CLOUDFLARE_ACCOUNT_ID` | GitHub | Idem |
+| `ADMIN_EMAIL` | GitHub | Lo lee el workflow de alta |
+| `ADMIN_PASSWORD` | GitHub, **y se borra** | Idem |
+| `SUPABASE_*` | GitHub, **y se borra** | Sólo para la migración |
+| `SITIO_URL` | GitHub | Lo lee la comprobación diaria |
+| `ANTHROPIC_API_KEY` | **Cloudflare** | La usa el Worker en cada petición |
+| `GITHUB_TOKEN` | **Cloudflare** | Idem |
+| `GROQ_API_KEY` | **Cloudflare** | Idem |
+
+La regla: **en GitHub, lo que necesita el workflow. En Cloudflare, lo que
+necesita el Worker mientras corre.** Ninguna de las dos listas llega
+nunca al navegador.
 
 ---
 
-## 5. Notas de seguridad
+## Marcha atrás
 
-- **El enlace de aprobación no lleva contraseña.** Quien lo tenga puede ver y
-  responder ese calendario, y sólo ése. Es intencionado: el cliente no debe
-  crear cuenta. El token son 24 bytes al azar, así que no se adivina, pero
-  conviene saberlo antes de publicarlo en un canal abierto. Se puede revocar
-  en cualquier momento desde el panel.
-- **Rota las claves de IA que hayas usado antes.** Estuvieron en el navegador
-  y en el `localStorage` de cualquier equipo donde se abriera la aplicación.
-- **Los datos locales no se borran** al migrar: siguen en `localStorage` bajo
-  `jads-data` como red de seguridad. Bórralos a mano cuando compruebes que
-  todo está en la nube.
-- Las imágenes viajan en base64 dentro de `calendars.days`. Funciona, pero
-  para volumen alto lo correcto sería Supabase Storage. Queda pendiente.
+Mientras el dominio no apunte al Worker, el despliegue anterior sigue
+siendo la producción y esto es un ensayo.
+
+El proyecto de Supabase se deja **pausado, no borrado**, un mes: uno
+pausado conserva los datos; uno borrado, no.

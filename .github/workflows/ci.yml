@@ -30,12 +30,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          # La misma versión que Netlify usa para construir en producción
-          # (NODE_VERSION en netlify.toml). Con la 20 aquí y la 22 allí, CI
-          # daba verde sobre un runtime que no es el del sitio; y la 20 no
-          # trae WebSocket nativo, que es justo lo que necesita el cliente
-          # de Supabase para arrancar. El test de plantillas comprueba que
-          # estos dos números siguen siendo el mismo.
+          # La misma versión con la que se construye para desplegar.
           node-version: 22
           cache: npm
       - run: npm ci
@@ -46,14 +41,15 @@ jobs:
       - name: Tests
         run: npm test
 
-      # El build se hace con las variables definidas a propósito: sin ellas
-      # Vite constant-folda `isSupabaseEnabled` a false y rollup elimina el
-      # panel entero. Se estaría comprobando media aplicación.
+      # `npm run build` a secas vuelve a ser suficiente. Con Supabase hacía
+      # falta construir con las VITE_* puestas o Vite plegaba
+      # `isSupabaseEnabled` a false y rollup borraba el panel entero del
+      # bundle: el build pasaba sin haber compilado media aplicación. Ya no
+      # hay ninguna variable de la que dependa qué se compila.
       - name: Construir
-        run: npm run build:verificado
+        run: npm run build
 
-      # Sobre el dist recién construido: presupuesto de descarga, caché,
-      # y el canario que detecta un build sin variables.
+      # Sobre el dist recién construido: presupuesto de descarga y caché.
       - name: Tests de bundle
         run: npm run test:bundle
 

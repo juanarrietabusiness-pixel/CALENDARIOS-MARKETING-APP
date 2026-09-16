@@ -1,91 +1,103 @@
-import { supabase } from "./supabase";
-import { clientToRow, rowToClient, calendarToRow, rowToCalendar } from "./supabase";
+import { clientToRow, rowToClient, calendarToRow, rowToCalendar } from "./filas";
 
 // ------------------------------------------------------------
 // Acceso a datos
 //
-// Las políticas RLS ya limitan cada fila a su propietario, así que
-// ninguna consulta filtra por owner_id: si alguna vez se colara un
-// filtro de más y faltara la política, el fallo pasaría inadvertido.
+// Antes esto hablaba con PostgREST y las políticas RLS acotaban cada
+// fila a su propietario. Ahora habla con el Worker, y quien acota es su
+// capa de acceso: ninguna consulta viaja desde aquí, sólo la intención.
+//
+// **Todas las firmas se conservan.** `ownerId` sigue en los parámetros
+// de saveClient y saveCalendar y ya no se usa —lo impone el servidor a
+// partir de la sesión—, pero quitarlo obligaría a tocar App.jsx sin
+// ganar nada. Es lo que hace que esta migración sea larga y no arriesgada.
+//
+// La sesión viaja en una cookie `__Host-` que el navegador manda sola:
+// no hay ningún token que adjuntar a mano, ni que se pueda olvidar.
 // ------------------------------------------------------------
 
-/** El id de la fila es undefined al crear; PostgREST rechaza la clave vacía. */
-function withoutEmptyId(row) {
-  if (!row.id) {
-    const { id: _omit, ...rest } = row;
-    return rest;
+/**
+ * Una llamada a la API.
+ *
+ * El error útil viene en el cuerpo. Sin esto, un 400 llegaría como
+ * «Failed to fetch» y mandaría a buscar un problema de red que no existe.
+ */
+async function pedir(ruta, opciones = {}) {
+  const res = await fetch(`/api${ruta}`, {
+    credentials: "same-origin",
+    ...opciones,
+    headers: opciones.body instanceof FormData
+      ? opciones.headers
+      : { "Content-Type": "application/json", ...(opciones.headers ?? {}) },
+  });
+
+  if (res.status === 204) return null;
+
+  let datos = null;
+  try { datos = await res.json(); } catch { /* 502 del borde: no es JSON */ }
+
+  if (!res.ok) {
+    throw new Error(datos?.error || `La petición falló con estado ${res.status}.`);
   }
-  return row;
+  return datos;
 }
+
+const conCuerpo = (metodo, datos) => ({ method: metodo, body: JSON.stringify(datos) });
 
 /** Carga clientes y calendarios y los devuelve con la forma que usa la aplicación. */
 export async function loadWorkspace() {
-  const [clientsRes, calendarsRes] = await Promise.all([
-    supabase.from("clients").select("*").order("created_at", { ascending: true }),
-    supabase.from("calendars").select("*").order("created_at", { ascending: true }),
-  ]);
-
-  if (clientsRes.error) throw clientsRes.error;
-  if (calendarsRes.error) throw calendarsRes.error;
+  const { clients = [], calendars = [] } = await pedir("/espacio");
 
   const byClient = new Map();
-  for (const row of calendarsRes.data ?? []) {
+  for (const row of calendars) {
     const list = byClient.get(row.client_id) ?? [];
     list.push(rowToCalendar(row));
     byClient.set(row.client_id, list);
   }
 
-  return (clientsRes.data ?? []).map((row) => ({
+  return clients.map((row) => ({
     ...rowToClient(row),
     calendars: byClient.get(row.id) ?? [],
   }));
 }
 
-export async function saveClient(client, ownerId) {
-  const row = withoutEmptyId(clientToRow(client, ownerId));
-  const { data, error } = await supabase
-    .from("clients").upsert(row).select().single();
-  if (error) throw error;
+export async function saveClient(client, _ownerId) {
+  const row = clientToRow(client);
+  const id = client.dbId || "nuevo";
+  const data = await pedir(`/clientes/${id}`, conCuerpo("PUT", row));
   return { ...rowToClient(data), calendars: client.calendars ?? [] };
 }
 
 export async function deleteClient(clientDbId) {
-  const { error } = await supabase.from("clients").delete().eq("id", clientDbId);
-  if (error) throw error;
+  await pedir(`/clientes/${clientDbId}`, { method: "DELETE" });
 }
 
-export async function saveCalendar(cal, clientDbId, ownerId) {
-  const row = withoutEmptyId(calendarToRow(cal, clientDbId, ownerId));
-  const { data, error } = await supabase
-    .from("calendars").upsert(row).select().single();
-  if (error) throw error;
-  return rowToCalendar(data);
+export async function saveCalendar(cal, clientDbId, _ownerId) {
+  const row = calendarToRow(cal, clientDbId);
+  const id = cal.dbId || "nuevo";
+  return rowToCalendar(await pedir(`/calendarios/${id}`, conCuerpo("PUT", row)));
 }
 
 export async function deleteCalendar(calendarDbId) {
-  const { error } = await supabase.from("calendars").delete().eq("id", calendarDbId);
-  if (error) throw error;
+  await pedir(`/calendarios/${calendarDbId}`, { method: "DELETE" });
 }
 
 // ------------------------------------------------------------
 // Enlace de aprobación
 // ------------------------------------------------------------
 
-/** Abre el enlace y devuelve el token. Lo genera la base de datos. */
+/**
+ * Abre el enlace y devuelve el token. Lo genera EL SERVIDOR, y reutiliza
+ * el que ya hubiera: regenerarlo mataría los enlaces que el cliente ya
+ * tiene en su correo.
+ */
 export async function shareCalendar(calendarDbId) {
-  const { data, error } = await supabase.rpc("share_calendar", {
-    p_calendar_id: calendarDbId,
-  });
-  if (error) throw error;
-  return data;
+  const { token } = await pedir(`/calendarios/${calendarDbId}/enlace`, { method: "POST" });
+  return token;
 }
 
 export async function setShareEnabled(calendarDbId, enabled) {
-  const { error } = await supabase.rpc("set_share_enabled", {
-    p_calendar_id: calendarDbId,
-    p_enabled: enabled,
-  });
-  if (error) throw error;
+  await pedir(`/calendarios/${calendarDbId}/enlace`, conCuerpo("PATCH", { enabled }));
 }
 
 // ------------------------------------------------------------
@@ -93,14 +105,9 @@ export async function setShareEnabled(calendarDbId, enabled) {
 // ------------------------------------------------------------
 
 export async function fetchApprovals(calendarDbId) {
-  const { data, error } = await supabase
-    .from("approvals")
-    .select("post_id, estado, comentario, reviewer_name, updated_at, suggested_descripcion, suggested_guion")
-    .eq("calendar_id", calendarDbId);
-  if (error) throw error;
-
+  const filas = await pedir(`/calendarios/${calendarDbId}/aprobaciones`);
   const map = {};
-  for (const row of data ?? []) {
+  for (const row of filas ?? []) {
     map[row.post_id] = {
       estado: row.estado,
       comentario: row.comentario,
@@ -114,28 +121,25 @@ export async function fetchApprovals(calendarDbId) {
 }
 
 /**
- * Avisa cuando el cliente final responde. Sustituye al botón
- * «Sincronizar», que obligaba a la agencia a preguntar a mano.
+ * Avisa cuando el cliente final responde.
  *
- * Devuelve la función para darse de baja: sin ella, cambiar de
- * calendario dejaba canales abiertos acumulándose.
+ * Antes era una suscripción a Realtime de Supabase; Cloudflare no tiene
+ * equivalente. Y resulta que casi no hacía falta: lo que llegaba por
+ * Realtime se volcaba **sólo en el estado** (`onUpdateCalLocal`), nunca
+ * se persistía, así que el trabajo de verdad ya lo hacía `fetchApprovals`
+ * y la suscripción sólo disparaba una relectura.
+ *
+ * Quince segundos mientras el calendario está abierto. El cliente final
+ * tarda minutos en revisar: nadie nota la diferencia, y se ahorra un
+ * Durable Object entero. Cuando el hub justifique notificaciones de
+ * verdad —varias herramientas, avisos al móvil— se sustituye por uno con
+ * hibernación de WebSocket que sirva a las tres.
+ *
+ * La firma es la misma, así que quien llama no cambia.
  */
 export function subscribeApprovals(calendarDbId, onChange) {
-  const channel = supabase
-    .channel(`approvals-${calendarDbId}`)
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "approvals",
-        filter: `calendar_id=eq.${calendarDbId}`,
-      },
-      onChange,
-    )
-    .subscribe();
-
-  return () => { supabase.removeChannel(channel); };
+  const id = setInterval(() => { onChange(); }, 15000);
+  return () => { clearInterval(id); };
 }
 
 // ------------------------------------------------------------
@@ -143,29 +147,16 @@ export function subscribeApprovals(calendarDbId, onChange) {
 // ------------------------------------------------------------
 
 export async function loadChatMessages(clientId, limit = 100) {
-  const { data, error } = await supabase
-    .from("chat_messages")
-    .select("role, content, created_at")
-    .eq("client_id", clientId)
-    .order("created_at", { ascending: true })
-    .limit(limit);
-  if (error) throw error;
-  return data ?? [];
+  const filas = await pedir(`/clientes/${clientId}/chat`);
+  return (filas ?? []).slice(-limit);
 }
 
 export async function saveChatMessage(clientId, role, content) {
-  const { error } = await supabase
-    .from("chat_messages")
-    .insert({ client_id: clientId, role, content });
-  if (error) throw error;
+  await pedir(`/clientes/${clientId}/chat`, conCuerpo("POST", { role, content }));
 }
 
 export async function clearChatMessages(clientId) {
-  const { error } = await supabase
-    .from("chat_messages")
-    .delete()
-    .eq("client_id", clientId);
-  if (error) throw error;
+  await pedir(`/clientes/${clientId}/chat`, { method: "DELETE" });
 }
 
 // ------------------------------------------------------------
@@ -173,31 +164,15 @@ export async function clearChatMessages(clientId) {
 // ------------------------------------------------------------
 
 export async function loadClientMemories(clientId) {
-  const { data, error } = await supabase
-    .from("client_memories")
-    .select("id, content, created_at")
-    .eq("client_id", clientId)
-    .order("created_at", { ascending: true });
-  if (error) throw error;
-  return data ?? [];
+  return (await pedir(`/clientes/${clientId}/memoria`)) ?? [];
 }
 
 export async function saveClientMemory(clientId, content) {
-  const { data, error } = await supabase
-    .from("client_memories")
-    .insert({ client_id: clientId, content })
-    .select("id, content, created_at")
-    .single();
-  if (error) throw error;
-  return data;
+  return pedir(`/clientes/${clientId}/memoria`, conCuerpo("POST", { content }));
 }
 
 export async function deleteClientMemory(memoryId) {
-  const { error } = await supabase
-    .from("client_memories")
-    .delete()
-    .eq("id", memoryId);
-  if (error) throw error;
+  await pedir(`/memoria/${memoryId}`, { method: "DELETE" });
 }
 
 // ------------------------------------------------------------
@@ -205,55 +180,23 @@ export async function deleteClientMemory(memoryId) {
 // ------------------------------------------------------------
 
 export async function loadClientTasks(clientId) {
-  const { data, error } = await supabase
-    .from("client_tasks")
-    .select("*")
-    .eq("client_id", clientId)
-    .order("created_at", { ascending: true });
-  if (error) throw error;
-  return data ?? [];
+  return (await pedir(`/clientes/${clientId}/tareas`)) ?? [];
 }
 
 export async function saveClientTask(task) {
-  const row = { ...task };
-  if (!row.id) delete row.id;
-  const { data, error } = await supabase
-    .from("client_tasks")
-    .upsert(row)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+  return pedir(`/clientes/${task.client_id}/tareas`, conCuerpo("POST", task));
 }
 
 export async function deleteClientTask(taskId) {
-  const { error } = await supabase
-    .from("client_tasks")
-    .delete()
-    .eq("id", taskId);
-  if (error) throw error;
+  await pedir(`/tareas/${taskId}`, { method: "DELETE" });
 }
 
 export async function completeClientTask(taskId) {
-  const { data, error } = await supabase
-    .from("client_tasks")
-    .update({ status: "completed", completed_at: new Date().toISOString() })
-    .eq("id", taskId)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+  return pedir(`/tareas/${taskId}/completar`, { method: "POST" });
 }
 
 export async function reopenClientTask(taskId) {
-  const { data, error } = await supabase
-    .from("client_tasks")
-    .update({ status: "pending", completed_at: null })
-    .eq("id", taskId)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+  return pedir(`/tareas/${taskId}/reabrir`, { method: "POST" });
 }
 
 // ------------------------------------------------------------
@@ -261,49 +204,20 @@ export async function reopenClientTask(taskId) {
 // ------------------------------------------------------------
 
 export async function loadTaskTemplates() {
-  const { data, error } = await supabase
-    .from("task_templates")
-    .select("*")
-    .order("created_at", { ascending: true });
-  if (error) throw error;
-  return data ?? [];
+  return (await pedir("/plantillas-tarea")) ?? [];
 }
 
 export async function saveTaskTemplate(template) {
-  const row = { ...template };
-  if (!row.id) delete row.id;
-  const { data, error } = await supabase
-    .from("task_templates")
-    .upsert(row)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+  return pedir("/plantillas-tarea", conCuerpo("POST", template));
 }
 
 export async function deleteTaskTemplate(templateId) {
-  const { error } = await supabase
-    .from("task_templates")
-    .delete()
-    .eq("id", templateId);
-  if (error) throw error;
+  await pedir(`/plantillas-tarea/${templateId}`, { method: "DELETE" });
 }
 
 export async function applyTemplatesToClient(clientId, templates) {
-  const rows = templates.map((t) => ({
-    client_id: clientId,
-    title: t.title,
-    description: t.description || "",
-    recurrence: t.recurrence || "none",
-    recurrence_day: t.recurrence_day ?? null,
-  }));
-  if (!rows.length) return [];
-  const { data, error } = await supabase
-    .from("client_tasks")
-    .insert(rows)
-    .select();
-  if (error) throw error;
-  return data ?? [];
+  if (!templates.length) return [];
+  return (await pedir(`/clientes/${clientId}/tareas/plantillas`, conCuerpo("POST", { templates }))) ?? [];
 }
 
 // ------------------------------------------------------------
@@ -311,64 +225,31 @@ export async function applyTemplatesToClient(clientId, templates) {
 // ------------------------------------------------------------
 
 export async function loadContentBank(clientId) {
-  const { data, error } = await supabase
-    .from("content_bank")
-    .select("*")
-    .eq("client_id", clientId)
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return data ?? [];
+  return (await pedir(`/clientes/${clientId}/banco`)) ?? [];
 }
 
 export async function uploadContentBankItem(clientId, file) {
-  const ext = file.name.split(".").pop() || "bin";
-  const path = `${clientId}/${crypto.randomUUID()}.${ext}`;
-
-  const { error: uploadErr } = await supabase.storage
-    .from("content-bank")
-    .upload(path, file, { cacheControl: "3600", upsert: false });
-  if (uploadErr) throw uploadErr;
-
-  const isVideo = file.type.startsWith("video/");
-  const { data, error } = await supabase
-    .from("content_bank")
-    .insert({
-      client_id: clientId,
-      file_path: path,
-      file_name: file.name,
-      file_type: isVideo ? "video" : "image",
-      size_bytes: file.size,
-    })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+  const form = new FormData();
+  form.append("archivo", file);
+  return pedir(`/clientes/${clientId}/banco`, { method: "POST", body: form });
 }
 
 export async function deleteContentBankItem(item) {
-  const { error: storageErr } = await supabase.storage
-    .from("content-bank")
-    .remove([item.file_path]);
-  if (storageErr) throw storageErr;
-
-  const { error } = await supabase
-    .from("content_bank")
-    .delete()
-    .eq("id", item.id);
-  if (error) throw error;
+  await pedir(`/banco/${item.id}`, { method: "DELETE" });
 }
 
+/**
+ * La dirección de un archivo del banco.
+ *
+ * Ya no hay URL pública ni URL firmada: R2 no se expone al exterior y
+ * todo pasa por `/api/media/*`, que comprueba la sesión y que la clave
+ * sea de un cliente de este dueño. Las dos funciones se conservan —una
+ * síncrona y otra asíncrona— porque así las llama la interfaz.
+ */
 export function getContentBankUrl(filePath) {
-  const { data } = supabase.storage
-    .from("content-bank")
-    .getPublicUrl(filePath);
-  return data?.publicUrl || "";
+  return `/api/media/${filePath}`;
 }
 
 export async function getContentBankSignedUrl(filePath) {
-  const { data, error } = await supabase.storage
-    .from("content-bank")
-    .createSignedUrl(filePath, 3600);
-  if (error) throw error;
-  return data?.signedUrl || "";
+  return getContentBankUrl(filePath);
 }

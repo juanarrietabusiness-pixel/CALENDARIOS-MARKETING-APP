@@ -158,10 +158,7 @@ describe("el navegador sólo ve lo que puede ver", () => {
 
 describe("las funciones del servidor no se exponen de más", () => {
   it("ningún secreto del servidor lleva el prefijo VITE_", () => {
-    const fuentes = [
-      ...listar("netlify/functions", /\.(mjs|js|ts)$/),
-      ...listar("supabase/functions", /\.ts$/),
-    ];
+    const fuentes = listar("worker", /\.js$/);
     const hits = buscar(fuentes, /VITE_[A-Z_]*(KEY|TOKEN|SECRET|PASSWORD)/);
     expect(
       hits.map((h) => `${h.archivo}:${h.linea}`),
@@ -174,24 +171,90 @@ describe("las funciones del servidor no se exponen de más", () => {
     ).toEqual([]);
   });
 
-  it("admin-seed exige su token y lo compara en tiempo constante", () => {
-    const fn = leer("netlify/functions/admin-seed.mjs");
-    expect(fn, "admin-seed no usa timingSafeEqual").toContain("timingSafeEqual");
+  it("el alta del administrador ya no es un endpoint", () => {
+    // Antes vivía en netlify/functions/admin-seed.mjs, protegida con
+    // ADMIN_SEED_TOKEN y comparación en tiempo constante, porque un
+    // endpoint que crea administradores y queda abierto por un despiste
+    // de configuración entrega el panel entero.
+    //
+    // Ahora se siembra desde la línea de órdenes. No hay token que
+    // proteger porque no hay nada expuesto: es la forma buena de
+    // resolver ese riesgo, quitarle la puerta a la calle.
+    const worker = listar("worker", /\.js$/).map((f) => leer(rel(f))).join("\n");
+    const sospechosas = buscar(listar("worker", /\.js$/), /["'`]\/?(seed|sembrar|admin-seed)["'`]/);
+
     expect(
-      fn,
+      sospechosas.map((h) => `${h.archivo}:${h.linea}`),
       fallo({
-        que: "admin-seed no se desactiva cuando falta ADMIN_SEED_TOKEN",
-        donde: "netlify/functions/admin-seed.mjs",
-        porque: "Un endpoint que crea administradores y queda abierto por un despiste de configuración entrega el panel entero.",
-        arreglo: "Devuelve 503 si !SEED_TOKEN antes de cualquier otra comprobación.",
+        que: "el Worker expone una ruta de alta de administradores",
+        donde: sospechosas.map((h) => `${h.archivo}:${h.linea}`).join(", "),
+        porque: "Un endpoint que crea administradores no puede quedar abierto por un despiste de configuración: entrega el panel entero.",
+        arreglo: "Siembra el usuario con `npm run sembrar`, que corre en local contra wrangler y no está expuesto a la red.",
       }),
-    ).toMatch(/if\s*\(\s*!SEED_TOKEN\s*\)/);
-    expect(fn, "admin-seed no exige longitud mínima de contraseña").toMatch(/ADMIN_PASSWORD\.length\s*<\s*12/);
+    ).toEqual([]);
+
+    // La contraseña sigue teniendo su longitud mínima, sólo que ahora la
+    // exigen el script y el Worker, no la función de Netlify.
+    expect(
+      leer("scripts/sembrar-admin.mjs"),
+      "el script de alta no exige longitud mínima de contraseña",
+    ).toMatch(/length\s*<\s*12/);
+    expect(worker, "sembrarUsuario no exige longitud mínima").toMatch(/length\s*<\s*12/);
+  });
+
+  it("las contraseñas no se guardan en claro ni con un hash rápido", () => {
+    // SHA-256 a secas se prueba a millones por segundo. PBKDF2 con
+    // 210.000 iteraciones es la recomendación vigente de OWASP, y es lo
+    // único que crypto.subtle ofrece en Workers —no hay bcrypt—.
+    const sesion = leer("worker/lib/sesion.js");
+    expect(
+      sesion,
+      fallo({
+        que: "las contraseñas no pasan por PBKDF2",
+        donde: "worker/lib/sesion.js",
+        porque: "Un hash rápido se prueba a millones por segundo: un volcado de la tabla users equivale a tener las contraseñas.",
+        arreglo: "Deriva con PBKDF2-SHA256 y al menos 210.000 iteraciones.",
+      }),
+    ).toMatch(/PBKDF2/);
+    const iteraciones = Number(sesion.match(/ITERACIONES\s*=\s*([\d_]+)/)?.[1]?.replace(/_/g, "") ?? 0);
+    expect(iteraciones, `sólo se usan ${iteraciones} iteraciones`).toBeGreaterThanOrEqual(210_000);
+  });
+
+  it("en sessions se guarda la huella del testigo, no el testigo", () => {
+    expect(
+      leer("worker/lib/sesion.js"),
+      fallo({
+        que: "la sesión se guarda en claro",
+        donde: "worker/lib/sesion.js",
+        porque: "Un volcado de D1 —o una consulta de más— devolvería sesiones utilizables tal cual.",
+        arreglo: "Guarda sha256(testigo) en token_hash y manda el testigo sólo en la cookie.",
+      }),
+    ).toMatch(/token_hash[\s\S]{0,200}sha256\(/);
+  });
+
+  it("la cookie de sesión lleva prefijo __Host- y es HttpOnly", () => {
+    // `__Host-` PROHÍBE el atributo Domain: la cookie sólo vale para
+    // este origen exacto y ningún subdominio la ve. HttpOnly impide que
+    // un XSS la lea.
+    const sesion = leer("worker/lib/sesion.js");
+    expect(sesion, "la cookie no lleva prefijo __Host-").toMatch(/__Host-/);
+    for (const atributo of ["Secure", "HttpOnly", "SameSite"]) {
+      expect(sesion, `la cookie no lleva ${atributo}`).toContain(atributo);
+    }
+    expect(
+      sesion,
+      fallo({
+        que: "la cookie de sesión declara Domain",
+        donde: "worker/lib/sesion.js",
+        porque: "Con prefijo __Host- el navegador RECHAZA la cookie si lleva Domain, así que no se guardaría ninguna sesión. Y sin el prefijo, cualquier subdominio comprometido la vería.",
+        arreglo: "No pongas Domain. La cookie vale para este origen y ya.",
+      }),
+    ).not.toMatch(/Domain=/);
   });
 
   it("ninguna función devuelve al cliente el error crudo del proveedor", () => {
     // El error de un proveedor puede describir la clave o la cuenta.
-    const hits = buscar(listar("supabase/functions", /\.ts$/), /error:\s*(await\s+)?res\.(text|json)\(\)/);
+    const hits = buscar(listar("worker", /\.js$/), /error\((await\s+)?res\.(text|json)\(\)/);
     expect(hits.map((h) => `${h.archivo}:${h.linea}`)).toEqual([]);
   });
 });

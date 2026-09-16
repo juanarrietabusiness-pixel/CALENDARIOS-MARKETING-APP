@@ -1,0 +1,70 @@
+# Alta (o recuperación) del administrador.
+#
+# Se lanza a mano desde la pestaña Actions. No hay ningún endpoint que
+# cree administradores —antes sí lo había y por eso hacía falta
+# protegerlo con un token: uno abierto por un despiste entrega el panel
+# entero—. Aquí la puerta es el permiso de lanzar workflows en este
+# repositorio.
+#
+# Es idempotente: si el usuario ya existe, le pone la contraseña actual.
+# Sirve tanto para el alta inicial como para recuperar el acceso.
+#
+# El correo y la contraseña salen de los SECRETOS del repositorio, no de
+# los campos del formulario: lo que se escribe en un campo de
+# `workflow_dispatch` queda guardado en el registro de la ejecución.
+name: Sembrar administrador
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: sembrar-admin
+
+permissions:
+  contents: read
+
+jobs:
+  sembrar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Comprobar que hay credenciales
+        env:
+          CORREO: ${{ secrets.ADMIN_EMAIL }}
+          CLAVE: ${{ secrets.ADMIN_PASSWORD }}
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          falta=""
+          [ -z "$CORREO" ] && falta="$falta ADMIN_EMAIL"
+          [ -z "$CLAVE" ]  && falta="$falta ADMIN_PASSWORD"
+          [ -z "$TOKEN" ]  && falta="$falta CLOUDFLARE_API_TOKEN"
+          if [ -n "$falta" ]; then
+            echo "Faltan secretos del repositorio:$falta"
+            echo "Se ponen en Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      # La contraseña se guarda como PBKDF2-SHA256 con 210.000
+      # iteraciones, nunca en claro. El hash se calcula aquí y lo que
+      # viaja a D1 es el hash, no la contraseña.
+      - name: Dar de alta
+        run: npm run sembrar
+        env:
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Recordatorio
+        run: |
+          echo "### Administrador listo" >> "$GITHUB_STEP_SUMMARY"
+          echo "Ya puedes entrar con ese correo." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Borra ahora \`ADMIN_PASSWORD\` de los secretos del repositorio.**" >> "$GITHUB_STEP_SUMMARY"
+          echo "Ya está aplicada; dejarla guardada sólo añade un sitio más del que se puede filtrar." >> "$GITHUB_STEP_SUMMARY"

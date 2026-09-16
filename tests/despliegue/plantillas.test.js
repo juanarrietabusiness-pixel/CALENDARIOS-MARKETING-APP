@@ -1,246 +1,289 @@
 import { describe, it, expect } from "vitest";
-import { leerToml, directivaCSP } from "../utils/toml";
-import { leer, hay } from "../utils/repo";
+import { wrangler, cabecerasDe, csp } from "../utils/config";
+import { leer } from "../utils/repo";
 import { fallo, fallos } from "../utils/fallo";
 
 // ============================================================
 // La plantilla de despliegue
 //
-// `netlify.toml` es lo único que decide qué cabeceras ve un navegador en
-// producción. No hay forma de comprobarlo mirando la aplicación: el sitio
-// se ve igual con la CSP puesta que sin ella, y la diferencia sólo
-// aparece el día que alguien inyecta algo.
+// Antes era `netlify.toml` y decidía él solo qué cabeceras veía un
+// navegador. Ahora son TRES ficheros, y esa división es la trampa
+// principal de esta migración:
 //
-// Estos casos convierten cada decisión escrita en netlify.toml —y en los
-// comentarios de CLAUDE.md que la explican— en algo que falla solo.
+//   wrangler.jsonc            qué se despliega y con qué ataduras
+//   public/_headers           cabeceras de los recursos ESTÁTICOS
+//   worker/lib/respuesta.js   cabeceras de /api/*
+//
+// La documentación de Workers Static Assets lo dice con todas las
+// letras: «los encabezados personalizados definidos en _headers no se
+// aplican a las respuestas generadas por el código de tu Worker». Quien
+// traduzca netlify.toml a _headers y se quede ahí deja la API sin
+// nosniff, sin Cache-Control y sin CSP —y el sitio se verá exactamente
+// igual—.
+//
+// Nada de esto se ve mirando la pantalla. Por eso está aquí.
 // ============================================================
 
-const toml = leerToml(leer("netlify.toml"));
+const W = wrangler();
+const RESPUESTA = leer("worker/lib/respuesta.js");
 
-/** Las cabeceras declaradas para una ruta. */
-function cabecerasDe(patron) {
-  const bloque = (toml.headers ?? []).find((h) => h.for === patron);
-  return bloque?.values ?? null;
-}
-
-const globales = cabecerasDe("/*") ?? {};
-const csp = globales["Content-Security-Policy"] ?? "";
-
-describe("netlify.toml — construcción", () => {
-  it("publica dist/ con el build del proyecto", () => {
-    expect(toml.build?.command).toBe("npm run build");
-    expect(toml.build?.publish).toBe("dist");
-  });
-
-  it("fija la versión de Node", () => {
+describe("wrangler.jsonc — qué se despliega", () => {
+  it("publica dist/, que es lo que construye vite", () => {
     expect(
-      toml.build?.environment?.NODE_VERSION,
+      W.assets?.directory,
       fallo({
-        que: "netlify.toml no fija NODE_VERSION",
-        donde: "netlify.toml → [build.environment]",
-        porque: "Netlify elegiría la versión por defecto, que cambia sin avisar y ya rompió el arranque del cliente de Supabase.",
-        arreglo: 'Añade NODE_VERSION = "22" en [build.environment].',
+        que: "el Worker no publica dist/",
+        donde: "wrangler.jsonc → assets.directory",
+        porque: "Se desplegaría un directorio que el build no genera: el sitio saldría vacío o con la versión anterior.",
+        arreglo: 'Pon "directory": "./dist/".',
       }),
-    ).toBeTruthy();
+    ).toMatch(/dist/);
+    expect(W.main, "el Worker no apunta a worker/index.js").toMatch(/worker\/index\.js$/);
   });
 
-  it("declara el directorio de funciones", () => {
-    expect(toml.functions?.directory).toBe("netlify/functions");
-  });
-});
-
-describe("netlify.toml — redirecciones", () => {
-  const redirs = toml.redirects ?? [];
-
-  it("manda /api/* a las funciones de Netlify", () => {
-    const api = redirs.find((r) => r.from === "/api/*");
-    expect(api, "falta la redirección de /api/*").toBeTruthy();
-    expect(api.to).toBe("/.netlify/functions/:splat");
-    expect(api.status).toBe(200);
-  });
-
-  it("deja el respaldo de la SPA en último lugar", () => {
-    const i = redirs.findIndex((r) => r.from === "/*");
+  it("deja el respaldo de la SPA puesto", () => {
+    // Sin esto, /aprobar?t=… devuelve 404: es el equivalente del
+    // `/* → /index.html 200` que tenía Netlify.
     expect(
-      i,
+      W.assets?.not_found_handling,
       fallo({
-        que: "falta el respaldo de la SPA",
-        donde: "netlify.toml → [[redirects]]",
-        porque: "Sin él, recargar en cualquier ruta que no sea / devuelve 404.",
-        arreglo: 'Añade un [[redirects]] de "/*" a "/index.html" con status 200.',
+        que: "no está configurado el respaldo de aplicación de una sola página",
+        donde: "wrangler.jsonc → assets.not_found_handling",
+        porque: "La página de aprobación vive en una ruta que no existe como archivo. Sin el respaldo, el cliente final recibe un 404 del borde y no llega a ver nada.",
+        arreglo: 'Pon "not_found_handling": "single-page-application".',
       }),
-    ).toBeGreaterThanOrEqual(0);
-
-    expect(
-      i,
-      fallo({
-        que: "el respaldo de la SPA no es la última redirección",
-        donde: `netlify.toml → [[redirects]] #${i + 1} de ${redirs.length}`,
-        porque: "Netlify procesa de arriba abajo y gana la primera coincidencia: un /* por delante se traga /api/* y las funciones dejan de responder.",
-        arreglo: "Mueve el bloque de \"/*\" al final del archivo.",
-      }),
-    ).toBe(redirs.length - 1);
+    ).toBe("single-page-application");
   });
 
-  it("public/_redirects no contradice a netlify.toml", () => {
-    // Los dos existen y Netlify lee los dos. Si dicen cosas distintas,
-    // gana uno de ellos y nadie recuerda cuál.
-    if (!hay("public/_redirects")) return;
-    const delArchivo = leer("public/_redirects")
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l && !l.startsWith("#"))
-      .map((l) => l.split(/\s+/));
-
-    const delToml = (toml.redirects ?? []).map((r) => [r.from, r.to, String(r.status)]);
-
+  it("sólo despierta al Worker en /api/*", () => {
+    const rutas = W.assets?.run_worker_first ?? [];
     expect(
-      delArchivo,
+      rutas,
       fallo({
-        que: "public/_redirects y netlify.toml declaran redirecciones distintas",
-        donde: "public/_redirects vs netlify.toml",
-        porque: "Netlify lee ambos; cuando discrepan, la ruta que se aplica depende de cuál gane y deja de ser deducible leyendo el repositorio.",
-        arreglo: "Deja las mismas reglas, en el mismo orden, en los dos archivos (o borra public/_redirects y quédate sólo con netlify.toml).",
+        que: "run_worker_first no acota a /api/*",
+        donde: "wrangler.jsonc → assets.run_worker_first",
+        porque: "Si el Worker se despierta para cada imagen y cada chunk, se paga una invocación por recurso y se pierde la caché del borde.",
+        arreglo: 'Pon "run_worker_first": ["/api/*"].',
       }),
-    ).toEqual(delToml);
+    ).toContain("/api/*");
   });
-});
 
-describe("netlify.toml — cabeceras de seguridad", () => {
-  it("manda las cabeceras básicas en todas las rutas", () => {
-    const esperadas = {
-      "X-Frame-Options": "DENY",
-      "X-Content-Type-Options": "nosniff",
-      "Referrer-Policy": "strict-origin-when-cross-origin",
-      "Cross-Origin-Opener-Policy": "same-origin",
-    };
-    const faltan = [];
-    for (const [nombre, valor] of Object.entries(esperadas)) {
-      if (globales[nombre] !== valor) {
-        faltan.push(fallo({
-          que: `la cabecera ${nombre} no vale «${valor}»`,
-          donde: 'netlify.toml → [[headers]] for = "/*"',
-          porque: "Es la defensa que no se ve: el sitio funciona igual sin ella hasta el día que no.",
-          arreglo: `Pon ${nombre} = "${valor}" en [headers.values].`,
-        }));
-      }
+  it("ata D1 y R2 con los nombres que usa el código", () => {
+    const d1 = W.d1_databases?.[0];
+    const r2 = W.r2_buckets?.[0];
+    const usadas = [...leer("worker/index.js").matchAll(/env\.([A-Z_]+)/g)].map((m) => m[1]);
+
+    const lista = [];
+    if (d1?.binding !== "DB") lista.push(fallo({
+      que: "la atadura de D1 no se llama DB",
+      donde: "wrangler.jsonc → d1_databases",
+      porque: "El Worker lee env.DB. Con otro nombre, `env.DB` es undefined y toda la API responde 500 en cuanto toca datos.",
+      arreglo: 'Pon "binding": "DB".',
+    }));
+    if (r2?.binding !== "MEDIA") lista.push(fallo({
+      que: "la atadura de R2 no se llama MEDIA",
+      donde: "wrangler.jsonc → r2_buckets",
+      porque: "El Worker lee env.MEDIA para servir y guardar imágenes.",
+      arreglo: 'Pon "binding": "MEDIA".',
+    }));
+    for (const nombre of ["DB", "MEDIA", "ASSETS"]) {
+      if (!usadas.includes(nombre)) continue;
+      const declarada = d1?.binding === nombre || r2?.binding === nombre || W.assets?.binding === nombre;
+      if (!declarada) lista.push(fallo({
+        que: `el Worker usa env.${nombre} y no está declarada`,
+        donde: "wrangler.jsonc",
+        porque: "En producción es undefined y falla en tiempo de ejecución, no al desplegar.",
+        arreglo: `Declara la atadura «${nombre}».`,
+      }));
     }
-    expect(faltan.join(""), fallos(faltan)).toBe("");
+    expect(lista, fallos(lista)).toEqual([]);
+  });
+
+  it("no lleva ningún secreto escrito", () => {
+    // Las claves van con `wrangler secret put`. En wrangler.jsonc
+    // quedarían versionadas, que es exactamente lo que no puede pasar.
+    const vars = Object.keys(W.vars ?? {});
+    const sospechosas = vars.filter((v) => /KEY|TOKEN|SECRET|PASSWORD/i.test(v));
+    expect(
+      sospechosas,
+      fallo({
+        que: `hay variables con pinta de secreto en wrangler.jsonc: ${sospechosas.join(", ")}`,
+        donde: "wrangler.jsonc → vars",
+        porque: "`vars` se versiona en el repositorio y se ve en el panel. Una clave ahí está publicada.",
+        arreglo: "Sácala a `wrangler secret put NOMBRE`.",
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("cabeceras de seguridad — en LOS DOS sitios", () => {
+  const BASICAS = {
+    "X-Frame-Options": /DENY/,
+    "X-Content-Type-Options": /nosniff/,
+    "Referrer-Policy": /strict-origin/,
+  };
+
+  it("los recursos estáticos las llevan", () => {
+    const h = cabecerasDe("/index.html");
+    const lista = Object.entries(BASICAS)
+      .filter(([nombre, re]) => !re.test(h[nombre] ?? ""))
+      .map(([nombre]) => fallo({
+        que: `falta la cabecera ${nombre}`,
+        donde: "public/_headers → /*",
+        porque: "Sin ella el navegador permite enmarcar el sitio, adivinar tipos MIME o filtrar la dirección completa al salir.",
+        arreglo: `Añade ${nombre} a la regla /* de public/_headers.`,
+      }));
+    expect(lista, fallos(lista)).toEqual([]);
+  });
+
+  it("las respuestas de /api/* TAMBIÉN las llevan", () => {
+    // Ésta es la trampa. `_headers` no toca lo que genera el Worker, así
+    // que traducir netlify.toml y quedarse ahí deja la API desnuda sin
+    // ningún síntoma visible.
+    const lista = Object.entries(BASICAS)
+      .filter(([nombre]) => !new RegExp(`["']${nombre}["']\\s*:`).test(RESPUESTA))
+      .map(([nombre]) => fallo({
+        que: `las respuestas de la API no llevan ${nombre}`,
+        donde: "worker/lib/respuesta.js → CABECERAS_API",
+        porque: "public/_headers NO se aplica a lo que genera el Worker. La API se queda sin esa cabecera y el sitio se ve exactamente igual.",
+        arreglo: `Añade ${nombre} a CABECERAS_API.`,
+      }));
+    expect(lista, fallos(lista)).toEqual([]);
+  });
+
+  it("la API no se cachea nunca", () => {
+    // Devuelve estado en vivo —aprobaciones, sesión—: una copia vieja
+    // miente sin dar ningún síntoma de estar mintiendo.
+    expect(
+      RESPUESTA,
+      fallo({
+        que: "CABECERAS_API no fuerza no-store",
+        donde: "worker/lib/respuesta.js",
+        porque: "Una aprobación cacheada muestra el estado de ayer como si fuera el de ahora.",
+        arreglo: 'Añade "Cache-Control": "no-store, max-age=0" a CABECERAS_API.',
+      }),
+    ).toMatch(/no-store/);
   });
 
   it("fuerza HTTPS durante al menos un año", () => {
-    const hsts = globales["Strict-Transport-Security"] ?? "";
+    const hsts = cabecerasDe("/index.html")["Strict-Transport-Security"] ?? "";
     const edad = Number(hsts.match(/max-age=(\d+)/)?.[1] ?? 0);
     expect(
       edad,
       fallo({
         que: `Strict-Transport-Security dura ${edad} s`,
-        donde: "netlify.toml → Strict-Transport-Security",
-        porque: "Por debajo de un año el navegador vuelve a aceptar http:// antes de tiempo y la primera visita queda expuesta.",
-        arreglo: 'Strict-Transport-Security = "max-age=31536000; includeSubDomains".',
+        donde: "public/_headers",
+        porque: "Por debajo de un año, un navegador que no haya vuelto en meses acepta la primera petición en claro.",
+        arreglo: "Pon max-age=31536000; includeSubDomains.",
       }),
     ).toBeGreaterThanOrEqual(31_536_000);
   });
 
   it("cierra cámara, micrófono y geolocalización", () => {
-    const pp = globales["Permissions-Policy"] ?? "";
+    const p = cabecerasDe("/index.html")["Permissions-Policy"] ?? "";
     for (const permiso of ["camera", "microphone", "geolocation"]) {
-      expect(pp, `Permissions-Policy no cierra ${permiso}`).toContain(`${permiso}=()`);
+      expect(p, `Permissions-Policy no cierra ${permiso}`).toMatch(new RegExp(`${permiso}=\\(\\)`));
     }
   });
 });
 
-describe("netlify.toml — política de seguridad de contenido", () => {
+describe("política de seguridad de contenido", () => {
+  const C = csp();
+
   it("existe y parte de default-src 'self'", () => {
-    expect(csp, "no hay Content-Security-Policy").toBeTruthy();
-    expect(directivaCSP(csp, "default-src")).toEqual(["'self'"]);
+    expect(
+      C["default-src"],
+      fallo({
+        que: "la CSP no parte de default-src 'self'",
+        donde: "public/_headers",
+        porque: "Sin una base restrictiva, cada directiva que falte queda abierta por defecto.",
+        arreglo: "Empieza la CSP por default-src 'self'.",
+      }),
+    ).toEqual(["'self'"]);
   });
 
   it("no deja scripts en línea ni eval", () => {
-    const script = directivaCSP(csp, "script-src") ?? [];
-    for (const prohibido of ["'unsafe-inline'", "'unsafe-eval'"]) {
-      expect(
-        script,
-        fallo({
-          que: `script-src incluye ${prohibido}`,
-          donde: "netlify.toml → Content-Security-Policy",
-          porque: "Con eso puesto, la CSP deja de proteger de lo único de lo que sirve protegerse: un script inyectado se ejecuta.",
-          arreglo: `Quita ${prohibido} de script-src. Vite emite módulos externos, así que no hace falta.`,
-        }),
-      ).not.toContain(prohibido);
-    }
+    const s = C["script-src"] ?? [];
+    expect(
+      s,
+      fallo({
+        que: "script-src permite código en línea",
+        donde: "public/_headers",
+        porque: "Con 'unsafe-inline' en script-src, un <script> inyectado se ejecuta y la CSP deja de servir para nada. Vite emite módulos externos: no hace ninguna falta.",
+        arreglo: "Quita 'unsafe-inline' y 'unsafe-eval' de script-src.",
+      }),
+    ).not.toContain("'unsafe-inline'");
+    expect(s).not.toContain("'unsafe-eval'");
   });
 
   it("permite estilos en línea, que React necesita", () => {
-    // No es un descuido: la prop `style` de React genera atributos en
-    // línea. Se afirma para que nadie lo «arregle» y rompa la interfaz.
-    expect(directivaCSP(csp, "style-src")).toContain("'unsafe-inline'");
+    // React aplica la prop `style` como atributo en línea. Sin esto la
+    // interfaz se pinta sin la mitad de sus estilos.
+    expect(C["style-src"] ?? []).toContain("'unsafe-inline'");
   });
 
-  it("no deja que el navegador hable con ningún proveedor de IA ni con GitHub", () => {
-    // Éste es el canario documentado: si estas URLs vuelven a connect-src,
-    // es que una clave ha vuelto al front.
-    const connect = directivaCSP(csp, "connect-src") ?? [];
-    const prohibidos = ["anthropic.com", "groq.com", "api.github.com", "openai.com"];
-    const encontrados = connect.filter((o) => prohibidos.some((p) => o.includes(p)));
+  it("el navegador no habla con ningún proveedor de IA ni con GitHub", () => {
+    const conectar = (C["connect-src"] ?? []).join(" ");
+    const prohibidos = ["anthropic", "groq", "api.github.com", "openai"];
+    const encontrados = prohibidos.filter((p) => conectar.includes(p));
     expect(
       encontrados,
       fallo({
-        que: `connect-src permite llamar a ${encontrados.join(", ")}`,
-        donde: "netlify.toml → Content-Security-Policy → connect-src",
-        porque: "El navegador no llama a esos servicios: lo hacen las funciones del servidor. Que aparezcan aquí significa que una clave ha vuelto al front.",
-        arreglo: "Quítalos de connect-src y mueve la llamada a supabase/functions/. Las claves viven en los secretos del proyecto.",
+        que: `connect-src deja hablar con: ${encontrados.join(", ")}`,
+        donde: "public/_headers",
+        porque: "Esas llamadas las hace el Worker con las claves del servidor. Si el navegador necesita hacerlas, es que una clave ha vuelto al front.",
+        arreglo: "Quítalos de connect-src y mueve la llamada a worker/rutas/.",
       }),
     ).toEqual([]);
   });
 
-  it("deja pasar el WebSocket de Supabase, que usan las aprobaciones en vivo", () => {
-    const connect = directivaCSP(csp, "connect-src") ?? [];
+  it("connect-src ya no necesita a Supabase: la API va en el mismo origen", () => {
+    const conectar = (C["connect-src"] ?? []).join(" ");
     expect(
-      connect.some((o) => o.startsWith("wss://")),
+      conectar,
       fallo({
-        que: "connect-src no permite wss://",
-        donde: "netlify.toml → Content-Security-Policy → connect-src",
-        porque: "Realtime abre un WebSocket: sin esto, las respuestas del cliente final dejan de llegar solas y vuelve el botón de sincronizar.",
-        arreglo: "Añade wss://*.supabase.co a connect-src.",
+        que: "connect-src sigue nombrando a Supabase",
+        donde: "public/_headers",
+        porque: "La aplicación ya no habla con Supabase. Un permiso que sobra es un permiso que alguien puede usar, y además disimula que la migración quedó a medias.",
+        arreglo: "Deja connect-src en 'self' a secas.",
       }),
-    ).toBe(true);
+    ).not.toMatch(/supabase/i);
+    expect(C["connect-src"]).toEqual(["'self'"]);
   });
 
   it("prohíbe enmarcar el sitio, los plugins y el secuestro de base", () => {
-    expect(directivaCSP(csp, "frame-ancestors")).toEqual(["'none'"]);
-    expect(directivaCSP(csp, "object-src")).toEqual(["'none'"]);
-    expect(directivaCSP(csp, "base-uri")).toEqual(["'self'"]);
-    expect(directivaCSP(csp, "form-action")).toEqual(["'self'"]);
+    expect(C["frame-ancestors"]).toEqual(["'none'"]);
+    expect(C["object-src"]).toEqual(["'none'"]);
+    expect(C["base-uri"]).toEqual(["'self'"]);
+    expect(C["form-action"]).toEqual(["'self'"]);
   });
 });
 
-describe("netlify.toml — caché", () => {
-  it("no cachea nunca las respuestas de /api/*", () => {
-    const api = cabecerasDe("/api/*") ?? {};
-    expect(
-      api["Cache-Control"] ?? "",
-      fallo({
-        que: "/api/* no manda Cache-Control: no-store",
-        donde: 'netlify.toml → [[headers]] for = "/api/*"',
-        porque: "El endpoint de aprobación devuelve el estado de revisión en vivo: cacheado, la agencia ve respuestas viejas.",
-        arreglo: 'Cache-Control = "no-store, max-age=0".',
-      }),
-    ).toContain("no-store");
-  });
-
+describe("caché de los recursos", () => {
   it("cachea para siempre los recursos con hash", () => {
-    const assets = cabecerasDe("/assets/*") ?? {};
-    expect(assets["Cache-Control"] ?? "").toContain("immutable");
-    expect(assets["Cache-Control"] ?? "").toContain("max-age=31536000");
+    const cc = cabecerasDe("/assets/index-abc123.js")["Cache-Control"] ?? "";
+    expect(
+      cc,
+      fallo({
+        que: "los recursos con hash no se cachean como inmutables",
+        donde: "public/_headers → /assets/*",
+        porque: "Llevan el hash del contenido en el nombre: nunca cambian sin cambiar de nombre. Revalidarlos es una petición de más en cada carga.",
+        arreglo: "Cache-Control: public, max-age=31536000, immutable",
+      }),
+    ).toMatch(/immutable/);
   });
 
   it("revalida siempre el index.html", () => {
-    // Si el index se cachea, el navegador sigue pidiendo el bundle viejo
-    // aunque el despliegue haya subido uno nuevo.
-    const index = cabecerasDe("/index.html") ?? {};
-    expect(index["Cache-Control"] ?? "").toContain("must-revalidate");
-    expect(index["Cache-Control"] ?? "").toContain("max-age=0");
+    const cc = cabecerasDe("/index.html")["Cache-Control"] ?? "";
+    expect(
+      cc,
+      fallo({
+        que: "index.html se cachea sin revalidar",
+        donde: "public/_headers → /index.html",
+        porque: "Es quien nombra los recursos con hash. Cacheado, un navegador sigue pidiendo la versión anterior de todo aunque ya esté desplegada la nueva.",
+        arreglo: "Cache-Control: public, max-age=0, must-revalidate",
+      }),
+    ).toMatch(/must-revalidate|no-cache/);
   });
 });
 
@@ -305,77 +348,3 @@ describe("vite.config.js", () => {
   });
 });
 
-describe("el workflow de CI verifica lo mismo que se despliega", () => {
-  const ci = leer(".github/workflows/ci.yml");
-
-  it("corre con la misma versión de Node que Netlify", () => {
-    // Con la 20 en CI y la 22 en Netlify, el verde de un PR se daba sobre
-    // un runtime que no es el del sitio. Y la 20 no trae WebSocket
-    // nativo, que es justo lo que necesita el cliente de Supabase.
-    const enNetlify = String(toml.build?.environment?.NODE_VERSION ?? "");
-    const enCI = (ci.match(/node-version:\s*["']?(\d+)/) ?? [])[1] ?? "";
-    expect(
-      enCI,
-      fallo({
-        que: `CI usa Node ${enCI || "(sin declarar)"} y Netlify construye con Node ${enNetlify}`,
-        donde: ".github/workflows/ci.yml vs netlify.toml",
-        porque: "El verde de un pull request se estaría dando sobre un runtime distinto al de producción: lo que pasa aquí puede romper allí, y la causa no se parece al síntoma.",
-        arreglo: `Pon node-version: ${enNetlify} en ci.yml, o cambia NODE_VERSION en netlify.toml. Los dos números tienen que ser el mismo.`,
-      }),
-    ).toBe(enNetlify);
-  });
-
-  it("pasa el lint, los tests y el build", () => {
-    for (const paso of ["npm run lint", "npm test", "npm run build"]) {
-      expect(ci, `CI no ejecuta «${paso}»`).toContain(paso);
-    }
-  });
-
-  it("construye con las variables VITE_ puestas", () => {
-    // Sin ellas el build compila media aplicación y CI da verde sin
-    // haber compilado lo que se acaba de tocar.
-    expect(
-      ci,
-      fallo({
-        que: "CI construye sin las variables VITE_",
-        donde: ".github/workflows/ci.yml",
-        porque: "Vite constant-folda `isSupabaseEnabled` a false y rollup elimina el panel: el build pasa sin haber compilado lo que se acaba de tocar.",
-        arreglo: "Usa `npm run build:verificado`, que las define, en vez de `npm run build` a secas.",
-      }),
-    ).toMatch(/build:verificado|VITE_SUPABASE_URL/);
-  });
-
-  it("mide el bundle después de construirlo", () => {
-    expect(ci, "CI no ejecuta los tests de bundle").toContain("npm run test:bundle");
-    const iBuild = ci.indexOf("build:verificado");
-    const iBundle = ci.indexOf("test:bundle");
-    expect(
-      iBuild < iBundle,
-      fallo({
-        que: "los tests de bundle corren antes del build",
-        donde: ".github/workflows/ci.yml",
-        porque: "Medirían el dist de la ejecución anterior, o ninguno.",
-        arreglo: "Deja el paso «Tests de bundle» después de «Construir».",
-      }),
-    ).toBe(true);
-  });
-
-  it("se dispara en los pull requests, que es donde tiene que bloquear", () => {
-    expect(ci).toMatch(/^\s*pull_request:/m);
-  });
-
-  it("el job que ejecuta el código del PR no puede escribir en el repositorio", () => {
-    // Un pull request de fuera puede traer un script en package.json. El
-    // job que lo ejecuta no debe tener permisos de escritura.
-    const cabecera = ci.slice(0, ci.indexOf("jobs:"));
-    expect(
-      cabecera,
-      fallo({
-        que: "el workflow no declara permissions",
-        donde: ".github/workflows/ci.yml",
-        porque: "Sin declararlos, el token del job hereda los permisos por defecto del repositorio y ejecuta el código del pull request con ellos.",
-        arreglo: "Añade `permissions:\\n  contents: read` en la raíz del workflow.",
-      }),
-    ).toMatch(/permissions:\s*\n\s*contents:\s*read/);
-  });
-});

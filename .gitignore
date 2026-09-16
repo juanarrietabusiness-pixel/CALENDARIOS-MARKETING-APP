@@ -38,3 +38,6 @@ supabase/.temp
 
 # Informe que generan los tests de despliegue en cada ejecución
 informe-despliegue.md
+
+# Volcado de la migración: datos de clientes reales, fuera del historial
+scripts/migracion/datos/
