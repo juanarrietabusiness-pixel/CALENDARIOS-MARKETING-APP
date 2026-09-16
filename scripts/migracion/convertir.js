@@ -263,3 +263,173 @@ export function pesoDeFila(fila) {
 export function cabeEnD1(fila) {
   return pesoDeFila(fila) <= LIMITE_FILA_D1;
 }
+
+// ------------------------------------------------------------
+// El dueño
+// ------------------------------------------------------------
+
+/**
+ * A quién pertenecen las filas importadas.
+ *
+ * ESTO ES LO QUE TUMBÓ LA PRIMERA IMPORTACIÓN REAL. Las filas de
+ * Supabase traen el `owner_id` de allí —un usuario de GoTrue— y en D1
+ * ese identificador no existe: el administrador se siembra aparte, con
+ * un UUID nuevo. La inserción moría en el primer cliente con
+ * «FOREIGN KEY constraint failed», sin decir qué clave ni por qué.
+ *
+ * Tampoco vale casar por correo: la agencia puede entrar con uno
+ * distinto del que tenía en Supabase —aquí pasó: `…99@gmail.com` contra
+ * `…business@gmail.com`—. Con un dueño a cada lado la correspondencia
+ * es evidente, y es el caso real. Con más de uno hay que decidir, y
+ * decidir a ciegas es peor que parar.
+ *
+ * @param {{id:string,email?:string}[]} origen   usuarios del volcado
+ * @param {{id:string,email?:string}[]} destino  usuarios que ya hay en D1
+ * @returns {{mapa: Record<string,string>, notas: string[]}}
+ */
+export function resolverDueno(origen = [], destino = []) {
+  if (destino.length === 0) {
+    throw new Error(
+      "D1 no tiene ningún usuario. Lanza «Sembrar administrador» antes de importar: " +
+      "las filas necesitan un dueño que exista.",
+    );
+  }
+  if (origen.length === 0) {
+    throw new Error("El volcado no trae ningún usuario: no se sabe a quién pertenecían las filas.");
+  }
+
+  const mapa = {};
+  const notas = [];
+
+  // Caso real y único hoy: una agencia, una cuenta.
+  if (origen.length === 1 && destino.length === 1) {
+    mapa[origen[0].id] = destino[0].id;
+    if (origen[0].email && destino[0].email && origen[0].email !== destino[0].email) {
+      notas.push(
+        `El dueño cambia de correo: «${origen[0].email}» (Supabase) → ` +
+        `«${destino[0].email}» (D1). Es el único usuario a cada lado, así que se asigna igual.`,
+      );
+    }
+    return { mapa, notas };
+  }
+
+  // Con varios, sólo se acepta lo que no admite duda: mismo correo.
+  const porCorreo = new Map(destino.filter((u) => u.email).map((u) => [u.email.toLowerCase(), u.id]));
+  const huerfanos = [];
+  for (const u of origen) {
+    const destinoId = u.email ? porCorreo.get(u.email.toLowerCase()) : undefined;
+    if (destinoId) mapa[u.id] = destinoId;
+    else huerfanos.push(u.email || u.id);
+  }
+
+  if (huerfanos.length) {
+    throw new Error(
+      `No se sabe a qué usuario de D1 asignar: ${huerfanos.join(", ")}. ` +
+      "Con más de una cuenta hay que casarlas por correo; crea las que falten y vuelve a lanzarlo.",
+    );
+  }
+  return { mapa, notas };
+}
+
+/** Reasigna el dueño de una fila ya convertida. Falla si no hay a quién. */
+export function conDueno(fila, mapa) {
+  const nuevo = mapa[fila.owner_id];
+  if (!nuevo) {
+    throw new Error(
+      `La fila «${fila.id}» pertenece a «${fila.owner_id}», que no está en la correspondencia de dueños.`,
+    );
+  }
+  return { ...fila, owner_id: nuevo };
+}
+
+// ------------------------------------------------------------
+// Las tablas que quedaban sin conversor
+//
+// Iban con `(r) => r`: la fila de Postgres tal cual. Eso pasa el
+// `owner_id` de Supabase —que en D1 no existe—, los booleanos como
+// true/false en vez de 0/1 y las fechas sin normalizar. Ninguna de las
+// tres cosas la detecta el ensayo, porque el ensayo no inserta.
+// ------------------------------------------------------------
+
+export function filaChat(row) {
+  return {
+    id: texto(row.id),
+    client_id: texto(row.client_id),
+    owner_id: texto(row.owner_id),
+    role: texto(row.role),
+    content: texto(row.content),
+    created_at: instante(row.created_at),
+  };
+}
+
+export function filaMemoria(row) {
+  return {
+    id: texto(row.id),
+    client_id: texto(row.client_id),
+    owner_id: texto(row.owner_id),
+    content: texto(row.content),
+    created_at: instante(row.created_at),
+  };
+}
+
+export function filaTarea(row) {
+  return {
+    id: texto(row.id),
+    client_id: texto(row.client_id),
+    owner_id: texto(row.owner_id),
+    title: texto(row.title),
+    description: texto(row.description),
+    status: texto(row.status) || "pending",
+    due_date: textoONulo(row.due_date),
+    recurrence: texto(row.recurrence) || "none",
+    recurrence_day: row.recurrence_day == null ? null : entero(row.recurrence_day),
+    completed_at: instante(row.completed_at),
+    created_at: instante(row.created_at),
+  };
+}
+
+export function filaPlantilla(row) {
+  return {
+    id: texto(row.id),
+    owner_id: texto(row.owner_id),
+    title: texto(row.title),
+    description: texto(row.description),
+    recurrence: texto(row.recurrence) || "none",
+    recurrence_day: row.recurrence_day == null ? null : entero(row.recurrence_day),
+    is_mandatory: booleano(row.is_mandatory),
+    created_at: instante(row.created_at),
+  };
+}
+
+/**
+ * La clave del archivo del banco dentro de R2.
+ *
+ * En Supabase el bucket era `content-bank` y la ruta dentro
+ * `{clientId}/{uuid}.{ext}`. En R2 todo cuelga de `clientes/`, y la
+ * ruta de medios del Worker lo EXIGE: `/^clientes\/([^/]+)\//` es lo
+ * que le dice de qué cliente es el archivo para comprobar que sea
+ * tuyo. Una clave sin ese prefijo no la sirve nadie —y el fallo es
+ * mudo: la fila existe, el objeto existe, y la imagen no carga—.
+ *
+ * Es idempotente: una clave ya normalizada se deja igual.
+ */
+export function claveBanco(row) {
+  const ruta = texto(row.file_path);
+  if (!ruta) return "";
+  if (ruta.startsWith("clientes/")) return ruta;
+  return `clientes/${texto(row.client_id)}/banco/${ruta.split("/").pop()}`;
+}
+
+export function filaBanco(row) {
+  return {
+    id: texto(row.id),
+    client_id: texto(row.client_id),
+    owner_id: texto(row.owner_id),
+    file_path: claveBanco(row),
+    file_name: texto(row.file_name),
+    file_type: texto(row.file_type) || "image",
+    description: texto(row.description),
+    size_bytes: entero(row.size_bytes),
+    created_at: instante(row.created_at),
+  };
+}

@@ -23,7 +23,8 @@
 // repositorio para siempre.
 // ============================================================
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { claveBanco } from "./convertir.js";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -76,6 +77,44 @@ async function leerObjetos() {
   return res.json();
 }
 
+/**
+ * Los archivos del banco, bytes incluidos.
+ *
+ * Listarlos no basta: viven en el Storage de Supabase y hay que
+ * traérselos, o `content_bank` acabaría en D1 con filas que apuntan a
+ * objetos que R2 no tiene. El fallo sería mudo —la fila existe, la
+ * imagen no carga— y sólo se vería abriendo el banco de un cliente.
+ */
+async function bajarBanco(filas) {
+  if (!filas.length) return [];
+  await mkdir(join(DESTINO, "banco"), { recursive: true });
+
+  const indice = [];
+  for (const fila of filas) {
+    const res = await fetch(
+      `${URL_BASE}/storage/v1/object/content-bank/${fila.file_path.split("/").map(encodeURIComponent).join("/")}`,
+      { headers: { apikey: CLAVE, Authorization: `Bearer ${CLAVE}` } },
+    );
+    if (!res.ok) {
+      console.warn(`    · no se pudo bajar «${fila.file_path}»: ${res.status}`);
+      continue;
+    }
+    const bytes = Buffer.from(await res.arrayBuffer());
+    const local = `${fila.id}.bin`;
+    await writeFile(join(DESTINO, "banco", local), bytes);
+    indice.push({
+      local,
+      // La MISMA clave que va a escribir `filaBanco` en D1: si las dos
+      // no coinciden, la fila apunta a un objeto que no está.
+      clave: claveBanco(fila),
+      tipo: fila.file_type === "video" ? "video/mp4" : "image/jpeg",
+      bytes: bytes.length,
+    });
+  }
+  await writeFile(join(DESTINO, "banco", "indice.json"), JSON.stringify(indice, null, 2));
+  return indice;
+}
+
 async function main() {
   exigir(URL_BASE, "Falta SUPABASE_URL.");
   exigir(CLAVE, "Falta SUPABASE_SERVICE_ROLE_KEY.");
@@ -97,6 +136,11 @@ async function main() {
   const objetos = await leerObjetos();
   await writeFile(join(DESTINO, "storage.json"), JSON.stringify(objetos, null, 2));
   resumen["storage.objects"] = objetos.length;
+
+  const banco = await bajarBanco(JSON.parse(
+    await readFile(join(DESTINO, "content_bank.json"), "utf8"),
+  ));
+  resumen["archivos del banco"] = banco.length;
 
   await writeFile(
     join(DESTINO, "recuentos.json"),

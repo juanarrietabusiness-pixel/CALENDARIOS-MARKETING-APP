@@ -32,6 +32,8 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
   filaCliente, filaCalendario, filaAprobacion,
+  filaChat, filaMemoria, filaTarea, filaPlantilla, filaBanco,
+  resolverDueno, conDueno,
   extraerImagenes, base64SinConvertir, pesoDeFila, cabeEnD1, LIMITE_FILA_D1,
 } from "./convertir.js";
 
@@ -70,9 +72,26 @@ function exigir(condicion, mensaje) {
 
 const leer = async (f) => JSON.parse(await readFile(join(DATOS, f), "utf8"));
 
-/** Una consulta a D1 por la API HTTP. `params` va aparte del `sql`. */
-async function d1(sql, params = []) {
-  if (ENSAYO) return { success: true, ensayo: true };
+/** Lo que `volcar.mjs` dejó en datos/banco/, o nada si no hay. */
+async function listarBanco() {
+  try {
+    return JSON.parse(await readFile(join(DATOS, "banco", "indice.json"), "utf8"));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Una consulta a D1 por la API HTTP. `params` va aparte del `sql`.
+ *
+ * En ensayo se saltan las ESCRITURAS, no las lecturas: un ensayo que no
+ * mira la base no puede detectar nada de la base. La primera
+ * importación real murió con «FOREIGN KEY constraint failed» después de
+ * que el ensayo pasara en verde, precisamente por eso.
+ */
+async function d1(sql, params = [], lectura = false) {
+  if (ENSAYO && !lectura) return { success: true, ensayo: true };
+  if (ENSAYO && !(CUENTA && TOKEN && BASE_D1)) return { result: [{ results: [] }] };
   const res = await fetch(
     `https://api.cloudflare.com/client/v4/accounts/${CUENTA}/d1/database/${BASE_D1}/query`,
     {
@@ -94,7 +113,11 @@ async function insertar(tabla, fila) {
   const sql = `insert into ${tabla} (${cols.join(",")}) values (${cols.map(() => "?").join(",")})`;
   // D1 admite 100 parámetros por consulta; la tabla más ancha (clients)
   // tiene 33 columnas, así que una fila por consulta va sobrada.
-  await d1(sql, cols.map((c) => (fila[c] === null || fila[c] === undefined ? null : String(fila[c]))));
+  //
+  // Los números van como números y los nulos como nulos. Pasarlo todo
+  // por String() metía "null" donde debía haber NULL, y eso no falla:
+  // guarda la palabra.
+  await d1(sql, cols.map((c) => (fila[c] === undefined ? null : fila[c])));
 }
 
 async function subirAR2(clave, dataUri) {
@@ -111,18 +134,35 @@ async function subirAR2(clave, dataUri) {
 }
 
 async function main() {
-  exigir(ENSAYO || CUENTA, "Falta CLOUDFLARE_ACCOUNT_ID.");
-  exigir(ENSAYO || TOKEN, "Falta CLOUDFLARE_API_TOKEN.");
-  exigir(ENSAYO || BASE_D1, "wrangler.jsonc no declara ninguna base de D1.");
+  // También en ensayo: sin ellas no se puede leer la tabla de usuarios,
+  // y sin eso el ensayo no comprueba a quién van a pertenecer las filas.
+  exigir(CUENTA, "Falta CLOUDFLARE_ACCOUNT_ID.");
+  exigir(TOKEN, "Falta CLOUDFLARE_API_TOKEN.");
+  exigir(BASE_D1, "wrangler.jsonc no declara ninguna base de D1.");
 
   const avisos = [];
   let bytesR2 = 0;
   let imagenesR2 = 0;
 
+  // ---- 0. ¿De quién van a ser estas filas? ----
+  //
+  // Las de Supabase traen el owner_id de allí, y en D1 ese usuario no
+  // existe: el administrador se siembra aparte, con un UUID nuevo. Sin
+  // esta correspondencia, la primera inserción muere con
+  // «FOREIGN KEY constraint failed» y no dice qué clave.
+  const usuariosOrigen = await leer("users.json");
+  // Lectura: se hace TAMBIÉN en ensayo. Es la comprobación que faltaba.
+  const usuariosDestino = (await d1("select id, email from users", [], true))
+    ?.result?.[0]?.results ?? [];
+
+  const { mapa: DUENOS, notas } = resolverDueno(usuariosOrigen, usuariosDestino);
+  avisos.push(...notas);
+  console.log(`\n  Dueño: ${usuariosOrigen.length} en el volcado → ${usuariosDestino.length} en D1`);
+
   // ---- 1. Clientes (el logo también sale del JSON) ----
   const clientes = await leer("clients.json");
   for (const row of clientes) {
-    const fila = filaCliente(row);
+    const fila = conDueno(filaCliente(row), DUENOS);
     if (fila.logo && fila.logo.startsWith("data:")) {
       const clave = `clientes/${fila.id}/logo.jpg`;
       bytesR2 += await subirAR2(clave, fila.logo);
@@ -151,7 +191,7 @@ async function main() {
       avisos.push(`«${row.name}» lleva base64 en ${h.campo} (${h.bytes} bytes) y nadie lo convierte`);
     }
 
-    const fila = filaCalendario({ ...row, days, visual_references: visualReferences });
+    const fila = conDueno(filaCalendario({ ...row, days, visual_references: visualReferences }), DUENOS);
     const peso = pesoDeFila(fila);
     if (!cabeEnD1(fila)) {
       avisos.push(`«${fila.name}» pesa ${peso} bytes, por encima del techo de ${LIMITE_FILA_D1} de D1`);
@@ -164,19 +204,43 @@ async function main() {
   }
 
   // ---- 3. El resto ----
+  //
+  // `approvals` no tiene owner_id: pertenece a su calendario. Las demás
+  // sí, y todas pasan por la correspondencia de dueños.
   const sueltas = [
-    ["approvals", "approvals.json", filaAprobacion],
-    ["chat_messages", "chat_messages.json", (r) => r],
-    ["client_memories", "client_memories.json", (r) => r],
-    ["client_tasks", "client_tasks.json", (r) => r],
-    ["task_templates", "task_templates.json", (r) => r],
-    ["content_bank", "content_bank.json", (r) => r],
+    ["approvals", "approvals.json", filaAprobacion, false],
+    ["chat_messages", "chat_messages.json", filaChat, true],
+    ["client_memories", "client_memories.json", filaMemoria, true],
+    ["client_tasks", "client_tasks.json", filaTarea, true],
+    ["task_templates", "task_templates.json", filaPlantilla, true],
+    ["content_bank", "content_bank.json", filaBanco, true],
   ];
   const recuentos = { clients: clientes.length, calendars: calendarios.length };
-  for (const [tabla, fichero, convertir] of sueltas) {
+  for (const [tabla, fichero, convertir, tieneDueno] of sueltas) {
     const filas = await leer(fichero);
-    for (const row of filas) await insertar(tabla, convertir(row));
+    for (const row of filas) {
+      const fila = convertir(row);
+      await insertar(tabla, tieneDueno ? conDueno(fila, DUENOS) : fila);
+    }
     recuentos[tabla] = filas.length;
+  }
+
+  // ---- 4. Los archivos del banco de contenido ----
+  //
+  // Viven en el Storage de Supabase, no en el JSON. `volcar.mjs` los
+  // baja a datos/banco/; aquí suben a R2 con la MISMA clave que guarda
+  // content_bank.file_path, o la fila apuntaría a un objeto que no está.
+  for (const fichero of await listarBanco()) {
+    const bytes = await readFile(join(DATOS, "banco", fichero.local));
+    if (!ENSAYO) {
+      const res = await fetch(
+        `https://api.cloudflare.com/client/v4/accounts/${CUENTA}/r2/buckets/${BUCKET}/objects/${encodeURIComponent(fichero.clave)}`,
+        { method: "PUT", headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": fichero.tipo }, body: bytes },
+      );
+      if (!res.ok) throw new Error(`R2 ${fichero.clave}: ${res.status} ${await res.text()}`);
+    }
+    bytesR2 += bytes.length;
+    imagenesR2 += 1;
   }
 
   await mkdir(DATOS, { recursive: true });

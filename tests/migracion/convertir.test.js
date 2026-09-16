@@ -6,6 +6,8 @@ import {
   esDataUri, extensionDe, extraerImagenes, base64SinConvertir,
   filaCliente, filaCalendario, filaAprobacion,
   pesoDeFila, cabeEnD1, LIMITE_FILA_D1,
+  resolverDueno, conDueno, claveBanco,
+  filaChat, filaMemoria, filaTarea, filaPlantilla, filaBanco,
 } from "../../scripts/migracion/convertir.js";
 
 // Claves predecibles: sin esto no se puede afirmar nada sobre el resultado.
@@ -343,5 +345,108 @@ describe("base64SinConvertir: el campo que nadie mira", () => {
     expect(base64SinConvertir(cal).map((h) => h.campo)).toEqual([
       "days[0].portada", "visualReferences[0].miniatura",
     ]);
+  });
+});
+
+describe("resolverDueno: lo que tumbó la primera importación real", () => {
+  const SUPA = [{ id: "21e796f2", email: "juandavidarrieta99@gmail.com" }];
+  const D1 = [{ id: "a0b8d072", email: "juanarrietabusiness@gmail.com" }];
+
+  it("con un dueño a cada lado, los casa aunque el correo cambie", () => {
+    // Es el caso real: la agencia entra con un correo distinto del que
+    // tenía en Supabase. Casar por correo habría fallado aquí.
+    const { mapa, notas } = resolverDueno(SUPA, D1);
+    expect(mapa).toEqual({ "21e796f2": "a0b8d072" });
+    expect(notas.join(" ")).toMatch(/cambia de correo/);
+  });
+
+  it("no inventa nada si D1 está sin sembrar", () => {
+    // Sin esto, la inserción muere con «FOREIGN KEY constraint failed»
+    // y ese mensaje no dice qué clave falta ni por qué.
+    expect(() => resolverDueno(SUPA, [])).toThrow(/Sembrar administrador/);
+  });
+
+  it("no importa si el volcado no dice de quién eran las filas", () => {
+    expect(() => resolverDueno([], D1)).toThrow(/ningún usuario/);
+  });
+
+  it("con varios usuarios exige que los correos casen", () => {
+    const origen = [{ id: "u1", email: "a@x.com" }, { id: "u2", email: "b@x.com" }];
+    const destino = [{ id: "d1", email: "a@x.com" }, { id: "d2", email: "b@x.com" }];
+    expect(resolverDueno(origen, destino).mapa).toEqual({ u1: "d1", u2: "d2" });
+  });
+
+  it("y para si alguno se queda sin pareja, en vez de adivinar", () => {
+    const origen = [{ id: "u1", email: "a@x.com" }, { id: "u2", email: "huerfano@x.com" }];
+    const destino = [{ id: "d1", email: "a@x.com" }, { id: "d2", email: "otro@x.com" }];
+    expect(() => resolverDueno(origen, destino)).toThrow(/huerfano@x\.com/);
+  });
+});
+
+describe("conDueno", () => {
+  it("reasigna el dueño de la fila", () => {
+    expect(conDueno({ id: "c1", owner_id: "viejo" }, { viejo: "nuevo" }).owner_id).toBe("nuevo");
+  });
+
+  it("falla con el id de la fila cuando no hay correspondencia", () => {
+    // El mensaje de D1 dice sólo «FOREIGN KEY constraint failed». Éste
+    // dice qué fila y qué dueño, que es lo que hace falta para
+    // arreglarlo sin adivinar.
+    expect(() => conDueno({ id: "c1", owner_id: "fantasma" }, {}))
+      .toThrow(/«c1».*«fantasma»/);
+  });
+});
+
+describe("claveBanco: el prefijo que el Worker exige", () => {
+  it("antepone clientes/ a la ruta que traía Supabase", () => {
+    // La ruta de medios comprueba /^clientes\/([^/]+)\// para saber de
+    // qué cliente es el archivo. Sin el prefijo no lo sirve nadie, y el
+    // fallo es mudo: la fila está, el objeto está, la imagen no carga.
+    expect(claveBanco({ client_id: "c1", file_path: "c1/abc.jpg" }))
+      .toBe("clientes/c1/banco/abc.jpg");
+  });
+
+  it("es idempotente con una clave ya normalizada", () => {
+    expect(claveBanco({ client_id: "c1", file_path: "clientes/c1/banco/abc.jpg" }))
+      .toBe("clientes/c1/banco/abc.jpg");
+  });
+
+  it("filaBanco la usa, así que la fila y el objeto coinciden", () => {
+    expect(filaBanco({ id: "b1", client_id: "c1", file_path: "c1/abc.jpg" }).file_path)
+      .toBe("clientes/c1/banco/abc.jpg");
+  });
+});
+
+describe("las tablas que iban con el conversor de identidad", () => {
+  it("task_templates convierte el booleano a 0/1", () => {
+    // Iba como `true`, y la columna lleva check (is_mandatory in (0,1)).
+    expect(filaPlantilla({ id: "t1", owner_id: "u1", title: "x", is_mandatory: true }).is_mandatory).toBe(1);
+    expect(filaPlantilla({ id: "t1", owner_id: "u1", title: "x", is_mandatory: false }).is_mandatory).toBe(0);
+  });
+
+  it("client_tasks normaliza fechas y conserva los nulos", () => {
+    const fila = filaTarea({
+      id: "t1", client_id: "c1", owner_id: "u1", title: "Publicar",
+      created_at: "2026-09-13T22:02:16Z", completed_at: null,
+      due_date: null, recurrence_day: null,
+    });
+    expect(fila.created_at).toBe("2026-09-13T22:02:16.000Z");
+    expect(fila.completed_at).toBe(null);
+    expect(fila.due_date).toBe(null);
+    expect(fila.recurrence_day).toBe(null);
+    expect(fila.status).toBe("pending");
+  });
+
+  it("chat y memoria salen con las columnas exactas de su tabla", () => {
+    expect(Object.keys(filaChat({}))).toEqual(
+      ["id", "client_id", "owner_id", "role", "content", "created_at"]);
+    expect(Object.keys(filaMemoria({}))).toEqual(
+      ["id", "client_id", "owner_id", "content", "created_at"]);
+  });
+
+  it("todas llevan owner_id, que es lo que hay que reasignar", () => {
+    for (const convertir of [filaChat, filaMemoria, filaTarea, filaPlantilla, filaBanco]) {
+      expect(Object.keys(convertir({}))).toContain("owner_id");
+    }
   });
 });
