@@ -37,7 +37,7 @@ const MODULOS_CON_ACCESO = [
 function tablasDelEsquema() {
   const sql = leer(ESQUEMA);
   const tablas = {};
-  for (const m of sql.matchAll(/create table (\w+) \(([\s\S]*?)\n\);/g)) {
+  for (const m of sql.matchAll(/create table (?:if not exists )?(\w+) \(([\s\S]*?)\n\);/g)) {
     tablas[m[1]] = [...m[2].matchAll(/^\s{2}(\w+)\s/gm)].map((c) => c[1]);
   }
   return tablas;

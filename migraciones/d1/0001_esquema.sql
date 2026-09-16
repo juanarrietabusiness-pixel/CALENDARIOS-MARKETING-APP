@@ -37,7 +37,7 @@ pragma foreign_keys = on;
 -- estas dos tablas se retiran.
 -- ------------------------------------------------------------
 
-create table users (
+create table if not exists users (
   id            text primary key,
   email         text not null unique,
   password_hash text not null,          -- PBKDF2-SHA256, 210.000 iteraciones
@@ -47,21 +47,21 @@ create table users (
 
 -- Se guarda el SHA-256 del testigo, nunca el testigo: un volcado de
 -- D1 no puede devolver sesiones utilizables.
-create table sessions (
+create table if not exists sessions (
   token_hash text primary key,
   user_id    text not null references users(id) on delete cascade,
   created_at text not null,
   expires_at text not null,
   user_agent text not null default ''
 );
-create index sessions_expira  on sessions(expires_at);
-create index sessions_usuario on sessions(user_id);
+create index if not exists sessions_expira  on sessions(expires_at);
+create index if not exists sessions_usuario on sessions(user_id);
 
 -- ------------------------------------------------------------
 -- Clientes
 -- ------------------------------------------------------------
 
-create table clients (
+create table if not exists clients (
   id               text primary key,
   owner_id         text not null references users(id) on delete cascade,
   name             text not null,
@@ -96,7 +96,7 @@ create table clients (
   created_at       text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at       text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
-create index clients_owner on clients(owner_id, created_at);
+create index if not exists clients_owner on clients(owner_id, created_at);
 
 -- ------------------------------------------------------------
 -- Calendarios
@@ -107,7 +107,7 @@ create index clients_owner on clients(owner_id, created_at);
 -- caracteres, y D1 corta la fila a 2 MB y la sentencia a 100 kB.
 -- ------------------------------------------------------------
 
-create table calendars (
+create table if not exists calendars (
   id                text primary key,
   client_id         text not null references clients(id) on delete cascade,
   owner_id          text not null references users(id)   on delete cascade,
@@ -130,9 +130,9 @@ create table calendars (
   created_at        text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at        text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
-create index        calendars_owner  on calendars(owner_id, created_at);
-create index        calendars_client on calendars(client_id);
-create unique index calendars_share  on calendars(share_token) where share_token is not null;
+create index        if not exists calendars_owner  on calendars(owner_id, created_at);
+create index        if not exists calendars_client on calendars(client_id);
+create unique index if not exists calendars_share  on calendars(share_token) where share_token is not null;
 
 -- ------------------------------------------------------------
 -- Aprobaciones
@@ -141,7 +141,7 @@ create unique index calendars_share  on calendars(share_token) where share_token
 -- (calendar_id, post_id) que hacía submit_approval.
 -- ------------------------------------------------------------
 
-create table approvals (
+create table if not exists approvals (
   id                    text primary key,
   calendar_id           text not null references calendars(id) on delete cascade,
   post_id               text not null,
@@ -154,13 +154,13 @@ create table approvals (
   updated_at            text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   unique (calendar_id, post_id)
 );
-create index approvals_cal on approvals(calendar_id);
+create index if not exists approvals_cal on approvals(calendar_id);
 
 -- ------------------------------------------------------------
 -- Asistente, memoria, tareas y banco
 -- ------------------------------------------------------------
 
-create table chat_messages (
+create table if not exists chat_messages (
   id         text primary key,
   client_id  text not null references clients(id) on delete cascade,
   owner_id   text not null references users(id)   on delete cascade,
@@ -168,20 +168,20 @@ create table chat_messages (
   content    text not null,
   created_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
-create index chat_cliente on chat_messages(client_id, created_at);
-create index chat_dueno   on chat_messages(owner_id);
+create index if not exists chat_cliente on chat_messages(client_id, created_at);
+create index if not exists chat_dueno   on chat_messages(owner_id);
 
-create table client_memories (
+create table if not exists client_memories (
   id         text primary key,
   client_id  text not null references clients(id) on delete cascade,
   owner_id   text not null references users(id)   on delete cascade,
   content    text not null,
   created_at text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
-create index memorias_cliente on client_memories(client_id, created_at);
-create index memorias_dueno   on client_memories(owner_id);
+create index if not exists memorias_cliente on client_memories(client_id, created_at);
+create index if not exists memorias_dueno   on client_memories(owner_id);
 
-create table client_tasks (
+create table if not exists client_tasks (
   id             text primary key,
   client_id      text not null references clients(id) on delete cascade,
   owner_id       text not null references users(id)   on delete cascade,
@@ -194,10 +194,10 @@ create table client_tasks (
   completed_at   text,
   created_at     text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
-create index tareas_cliente on client_tasks(client_id, status);
-create index tareas_dueno   on client_tasks(owner_id);
+create index if not exists tareas_cliente on client_tasks(client_id, status);
+create index if not exists tareas_dueno   on client_tasks(owner_id);
 
-create table task_templates (
+create table if not exists task_templates (
   id             text primary key,
   owner_id       text not null references users(id) on delete cascade,
   title          text not null,
@@ -207,9 +207,9 @@ create table task_templates (
   is_mandatory   integer not null default 1 check (is_mandatory in (0,1)),
   created_at     text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
-create index plantillas_dueno on task_templates(owner_id);
+create index if not exists plantillas_dueno on task_templates(owner_id);
 
-create table content_bank (
+create table if not exists content_bank (
   id          text primary key,
   client_id   text not null references clients(id) on delete cascade,
   owner_id    text not null references users(id)   on delete cascade,
@@ -220,5 +220,5 @@ create table content_bank (
   size_bytes  integer not null default 0,
   created_at  text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
-create index banco_cliente on content_bank(client_id, created_at);
-create index banco_dueno   on content_bank(owner_id);
+create index if not exists banco_cliente on content_bank(client_id, created_at);
+create index if not exists banco_dueno   on content_bank(owner_id);
