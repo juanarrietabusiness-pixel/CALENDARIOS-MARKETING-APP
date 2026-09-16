@@ -9,6 +9,17 @@ ser la primera herramienta de un hub. Ese segundo plan está en
 [`hub-cloudflare.md`](./hub-cloudflare.md); éste sólo mueve la aplicación de
 sitio, y lo hace dejándola lista para entrar allí.
 
+## Estado
+
+| Fase | Estado |
+|---|---|
+| 0 · Congelar la verdad | Utillaje escrito (`scripts/migracion/`); falta ejecutarlo y decidir `image-gen` |
+| 1 · Cimientos | **D1 `calendarios-db` creada y con el esquema aplicado y probado** |
+| 2 en adelante | Pendientes |
+
+Lo comprobado contra la D1 real está en § 5.2; el utillaje, en
+[`scripts/migracion/README.md`](../scripts/migracion/README.md).
+
 ---
 
 ## 1. Lo que hay hoy, medido
@@ -183,6 +194,28 @@ ni importar** con un `INSERT` literal: hay que pasarlo por parámetros ligados.
 **Mitigación:** las imágenes salen del JSON a R2 **durante** la migración
 (fase 6), no después. Es el único momento en que ese cambio sale gratis,
 porque ya se está reescribiendo el formato de cada fila.
+
+#### Lo que se midió, no lo que se supone
+
+El esquema de § 6 se aplicó sobre una D1 de verdad (`calendarios-db`) y se
+sometió a estos casos antes de dar nada por bueno:
+
+| Caso | Resultado |
+|---|---|
+| Un `days` de **500.036 bytes** | Entra. `json_valid` = 1 y `json_extract` navega dentro |
+| `client_id` que no existe | `FOREIGN KEY constraint failed` |
+| `days` que no es JSON | `CHECK constraint failed: json_valid(days)` |
+| `month = 12` | `CHECK constraint failed: month between 0 and 11` |
+| Upsert `(calendar_id, post_id)` ×2 | Una sola fila, con el último estado |
+
+La primera línea es la que importa: **el calendario de agosto cabe**. El
+techo de 2 MB es real pero todavía no está tocado, así que la migración no
+depende de resolver las imágenes el mismo día — pero sí antes de que se
+ilustren las trece publicaciones que hoy van sin imagen.
+
+La segunda confirma que D1 aplica las claves ajenas: la importación va en
+orden (`users` → `clients` → `calendars` → el resto) o falla en la primera
+fila.
 
 ### 5.3. Sacar las imágenes rompe dos cosas que nadie mira
 
@@ -482,13 +515,17 @@ Workers Paid ($5/mes). No es por el precio: es porque el plan gratuito da
 objetos de medio mega.
 
 ```
-D1  →  calendarios-db
+D1  →  calendarios-db     ✔ creada (77aa10eb-…), esquema aplicado y probado
 R2  →  juancito-contenido
 Worker → calendarios  (wrangler.jsonc, assets + run_worker_first ["/api/*"])
 ```
 
-**Salida:** `wrangler d1 execute calendarios-db --command "select count(*) from clients"`
-responde `0` contra el esquema de § 6.
+El esquema vive en `migraciones/d1/0001_esquema.sql` y la conversión de tipos,
+en `scripts/migracion/convertir.js` —puro y con 27 casos en `npm test`, porque
+es donde se pierden datos sin que falle nada—.
+
+**Salida:** ✔ las diez tablas y los diez índices existen, y los cinco casos de
+§ 5.2 se comportan como se esperaba.
 
 ### Fase 2 — Sesión y acceso · 1–2 días
 
