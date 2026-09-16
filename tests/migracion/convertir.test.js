@@ -284,7 +284,7 @@ describe("el esquema de D1 y el conversor no se contradicen", () => {
   it("toda columna del conversor existe en migraciones/d1/0001_esquema.sql", () => {
     const sql = readFileSync(new URL("../../migraciones/d1/0001_esquema.sql", import.meta.url), "utf8");
     const bloque = (tabla) => {
-      const m = new RegExp(`create table ${tabla} \\(([\\s\\S]*?)\\n\\);`).exec(sql);
+      const m = new RegExp(`create table (?:if not exists )?${tabla} \\(([\\s\\S]*?)\\n\\);`).exec(sql);
       return m ? m[1] : "";
     };
 

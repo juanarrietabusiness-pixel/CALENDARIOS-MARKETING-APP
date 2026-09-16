@@ -28,7 +28,7 @@ const SQL = FICHEROS.map((abs) => leer(rel(abs))).join("\n");
 /** Las tablas del esquema con sus columnas, tal como se declaran. */
 function tablas() {
   const salida = {};
-  for (const m of SQL.matchAll(/create table (\w+) \(([\s\S]*?)\n\);/g)) {
+  for (const m of SQL.matchAll(/create table (?:if not exists )?(\w+) \(([\s\S]*?)\n\);/g)) {
     salida[m[1]] = {
       cuerpo: m[2],
       columnas: [...m[2].matchAll(/^\s{2}(\w+)\s/gm)].map((c) => c[1]),
@@ -38,7 +38,7 @@ function tablas() {
 }
 
 const T = tablas();
-const INDICES = [...SQL.matchAll(/create (?:unique )?index\s+(\w+)\s+on\s+(\w+)\(([^)]+)\)/g)]
+const INDICES = [...SQL.matchAll(/create (?:unique )?index\s+(?:if not exists )?(\w+)\s+on\s+(\w+)\(([^)]+)\)/g)]
   .map((m) => ({ nombre: m[1], tabla: m[2], columnas: m[3].split(",").map((c) => c.trim().split(" ")[0]) }));
 
 describe("el esquema se lee y tiene lo que debe", () => {
@@ -68,7 +68,7 @@ describe("índices", () => {
           que: `${tabla}.${columna} es clave ajena y no tiene índice`,
           donde: rel(FICHEROS[0]),
           porque: "SQLite no indexa las claves ajenas solo. Cada borrado en cascada recorre la tabla hija entera, y con el tiempo el borrado de un cliente se nota.",
-          arreglo: `create index ${tabla}_${columna} on ${tabla}(${columna});`,
+          arreglo: `create index if not exists ${tabla}_${columna} on ${tabla}(${columna});`,
         }));
       }
     }
@@ -80,12 +80,12 @@ describe("índices", () => {
     // algunos motores; el parcial dice exactamente lo que se quiere.
     const i = INDICES.find((x) => x.tabla === "calendars" && x.columnas.includes("share_token"));
     expect(
-      i && /create unique index calendars_share[\s\S]*?where share_token is not null/.test(SQL),
+      i && /create unique index (?:if not exists )?calendars_share[\s\S]*?where share_token is not null/.test(SQL),
       fallo({
         que: "share_token no tiene índice único parcial",
         donde: "migraciones/d1/0001_esquema.sql",
         porque: "Dos calendarios con el mismo testigo abrirían el mismo enlace, y sin el `where … is not null` los calendarios sin compartir chocarían entre sí.",
-        arreglo: "create unique index calendars_share on calendars(share_token) where share_token is not null;",
+        arreglo: "create unique index if not exists calendars_share on calendars(share_token) where share_token is not null;",
       }),
     ).toBe(true);
   });
@@ -198,6 +198,30 @@ describe("orden y forma de las migraciones", () => {
           donde: `${rel(abs)}:${i + 1} — ${linea.trim()}`,
           porque: "La migración pasa, el despliegue pasa, y el dato ya no está. Es la pérdida que más tarda en descubrirse.",
           arreglo: "Pon encima un comentario diciendo qué se borra y por qué es seguro.",
+        }));
+      });
+    }
+    expect(lista, fallos(lista)).toEqual([]);
+  });
+
+  it("toda migración se puede volver a aplicar", () => {
+    // El esquema de la fase 1 se aplicó a mano sobre la D1 viva, así que
+    // `d1_migrations` quedó vacía: wrangler no sabía que 0001 ya estaba
+    // puesto y lo reaplicó al desplegar. Murió en la primera sentencia
+    // —«table users already exists»— y el Worker no llegó a subir. El
+    // síntoma no se parece a la causa: el SQL era correcto, los tests
+    // pasaban, y el despliegue caía igual.
+    const lista = [];
+    for (const abs of FICHEROS) {
+      const fuente = leer(rel(abs));
+      fuente.split("\n").forEach((linea, i) => {
+        const m = /^create\s+(?:unique\s+)?(table|index)\b/i.exec(linea);
+        if (!m || /if not exists/i.test(linea)) return;
+        lista.push(fallo({
+          que: `${rel(abs)}:${i + 1} crea un ${m[1]} que no se puede reaplicar`,
+          donde: `${rel(abs)}:${i + 1} — ${linea.trim()}`,
+          porque: "Sobre una base que ya lo tiene, la sentencia aborta la migración entera y el despliegue se para antes de subir el Worker.",
+          arreglo: `Añade \`if not exists\` tras \`${m[1]}\`.`,
         }));
       });
     }

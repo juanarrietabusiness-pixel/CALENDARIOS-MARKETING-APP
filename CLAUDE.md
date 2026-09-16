@@ -262,6 +262,15 @@ son del servidor.
   **al construirse** —no en cada llamada, que es donde se olvidaría—, y
   `tests/despliegue/acceso.test.js`, que falla si aparece un `prepare()`
   fuera de los tres módulos declarados.
+- **Una migración que no se puede reaplicar para el despliegue entero.** El
+  esquema de la fase 1 se aplicó a mano sobre la D1 viva, así que
+  `d1_migrations` quedó vacía: al desplegar, wrangler no sabía que
+  `0001_esquema.sql` ya estaba puesto y lo reaplicó. Murió en la primera
+  sentencia —«table users already exists»— y el paso «Desplegar el Worker»
+  ni se intentó. El síntoma no se parece a la causa: el SQL era correcto y
+  los 263 tests pasaban. Por eso **todo `create` del esquema lleva
+  `if not exists`**, y `tests/despliegue/migraciones.test.js` falla si
+  aparece uno que no lo lleve.
 - **D1 corta la fila a 2.000.000 bytes y la sentencia a 100.000.** Las
   imágenes iban en base64 dentro del JSON: el calendario de agosto ocupaba
   501.884 caracteres con 12 de 25 publicaciones ilustradas. Por eso viven en

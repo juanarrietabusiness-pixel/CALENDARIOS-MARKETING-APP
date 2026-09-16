@@ -21,7 +21,7 @@ sitio, y lo hace dejándola lista para entrar allí.
 | 5 · Las funciones de IA | ✔ Portadas a `worker/rutas/` |
 | 6 · Imágenes a R2 | Rutas y conversión listas; **falta mover los datos** |
 | 7 · Aprobaciones en vivo | ✔ Sondeo de 15 s, misma firma |
-| 8 · Hosting | ✔ `wrangler.jsonc` + `public/_headers`; **falta desplegar y mover el DNS** |
+| 8 · Hosting | ✔ `wrangler.jsonc` + `public/_headers`; **falta desplegar, mover el DNS y apagar Netlify** |
 | 9 · Tests de despliegue | ✔ Reescritos: 260 tests + 11 de bundle |
 
 **Lo que falta no es código.** Falta ejecutar el volcado (necesita la clave
@@ -743,6 +743,13 @@ recargar.
   }
 }
 ```
+
+**El corte no lo hace el repositorio.** Quitar `netlify.toml` no
+desconecta Netlify: la integración vive en su panel, así que sigue
+construyendo `main` y publicando un front cuyo `/api/*` allí no existe.
+El sitio se ve igual y no trae datos. El procedimiento está en la
+parte 9 de `DEPLOY.md`, y va **después** del dominio: hasta que el Worker
+sirva, Netlify es la marcha atrás.
 
 **La trampa de las cabeceras.** Workers Static Assets lee un `public/_headers`
 (hasta 100 reglas, 2.000 caracteres por línea), pero
