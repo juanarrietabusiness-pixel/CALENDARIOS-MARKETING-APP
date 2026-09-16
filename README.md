@@ -62,6 +62,11 @@ Ver **[DEPLOY.md](DEPLOY.md)** para el procedimiento completo.
 Resumen: **un solo Worker** sirve la aplicación y la API en el mismo origen.
 Los datos en D1, las imágenes en R2, las claves como secretos del Worker.
 
+Se publica **a través de GitHub Actions**, no conectando Cloudflare al
+repositorio: esa integración despliega en cada push sin pasar por los
+tests, y bastaría un merge a medias para que llegara a producción. El job
+de despliegue corre `npm run verificar` entero antes de publicar.
+
 Generar un lote de publicaciones tarda unos 40 s. Antes eso obligaba a
 repartir el despliegue —Netlify cortaba a los 10 s, así que la IA vivía en
 Supabase—; en Workers el reloj no tiene límite mientras el cliente siga

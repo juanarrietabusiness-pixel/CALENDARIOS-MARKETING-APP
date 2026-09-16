@@ -1,0 +1,88 @@
+# Traer los datos desde Supabase a D1 y R2. Se lanza a mano, una vez.
+#
+# Por defecto hace un ENSAYO: convierte, mide y avisa sin escribir nada.
+# Hay que desmarcar la casilla para que escriba de verdad.
+#
+# El volcado son clientes reales —nombres, teléfonos, ADN de marca,
+# logos—. NO se sube como artefacto y NO se imprime: sólo salen los
+# recuentos y los avisos. Lo que se descarga vive únicamente en el
+# runner, que se destruye al terminar.
+name: Migrar datos desde Supabase
+
+on:
+  workflow_dispatch:
+    inputs:
+      ensayo:
+        description: "Ensayo (convierte y mide, no escribe nada)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: migrar-datos
+
+permissions:
+  contents: read
+
+jobs:
+  migrar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Comprobar que hay credenciales
+        env:
+          SUPA_URL: ${{ secrets.SUPABASE_URL }}
+          SUPA_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CUENTA: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          falta=""
+          [ -z "$SUPA_URL" ] && falta="$falta SUPABASE_URL"
+          [ -z "$SUPA_KEY" ] && falta="$falta SUPABASE_SERVICE_ROLE_KEY"
+          [ -z "$TOKEN" ]    && falta="$falta CLOUDFLARE_API_TOKEN"
+          [ -z "$CUENTA" ]   && falta="$falta CLOUDFLARE_ACCOUNT_ID"
+          if [ -n "$falta" ]; then
+            echo "Faltan secretos del repositorio:$falta"
+            exit 1
+          fi
+
+      # Sólo lee. No escribe nada en Supabase.
+      - name: Volcar desde Supabase
+        run: node scripts/migracion/volcar.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      # Convierte, saca las imágenes del JSON a R2 e inserta en D1 con
+      # parámetros ligados: D1 corta la sentencia a 100 kB y un
+      # calendario ocupa cinco veces eso.
+      - name: Importar a D1 y R2
+        run: |
+          if [ "${{ inputs.ensayo }}" = "true" ]; then
+            node scripts/migracion/importar.mjs --ensayo
+          else
+            node scripts/migracion/importar.mjs
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Resumen
+        if: always()
+        run: |
+          {
+            echo "### Migración de datos"
+            if [ "${{ inputs.ensayo }}" = "true" ]; then
+              echo "**Ensayo**: no se ha escrito nada. Vuelve a lanzarlo con la casilla desmarcada."
+            else
+              echo "Datos importados a D1 y R2."
+            fi
+            echo ""
+            echo "Los recuentos y avisos están en el registro del paso anterior."
+            echo "El volcado no se sube: son datos de clientes reales."
+          } >> "$GITHUB_STEP_SUMMARY"

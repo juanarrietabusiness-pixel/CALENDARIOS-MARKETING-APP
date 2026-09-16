@@ -30,6 +30,12 @@ if (contrasena.length < 12) {
   console.error("\n  ✗ La contraseña debe tener 12 caracteres como mínimo.\n");
   process.exit(1);
 }
+// El correo entra en el SQL: si trajera una comilla, la rompería. El
+// hash y la sal son hexadecimal, así que no hace falta comprobarlos.
+if (!/^[^\s'"\\;]+@[^\s'"\\;]+\.[^\s'"\\;]+$/.test(email)) {
+  console.error(`\n  ✗ «${email}» no parece un correo válido.\n`);
+  process.exit(1);
+}
 
 const hex = (buf) => [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, "0")).join("");
 const deHex = (s) => new Uint8Array(s.match(/../g).map((h) => parseInt(h, 16)));

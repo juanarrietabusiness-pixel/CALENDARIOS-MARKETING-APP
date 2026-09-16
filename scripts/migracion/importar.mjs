@@ -27,6 +27,7 @@
 // ============================================================
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
@@ -36,9 +37,27 @@ import {
 
 const CUENTA = process.env.CLOUDFLARE_ACCOUNT_ID || "";
 const TOKEN = process.env.CLOUDFLARE_API_TOKEN || "";
-const BASE_D1 = process.env.D1_DATABASE_ID || "";
-const BUCKET = process.env.R2_BUCKET || "juancito-contenido";
 const ENSAYO = process.argv.includes("--ensayo");
+
+/**
+ * El identificador de D1 y el nombre del bucket salen de wrangler.jsonc,
+ * que es donde ya viven. Pedirlos aparte sería una variable más que
+ * pegar y una más que puede quedar desincronizada del despliegue.
+ */
+function deWrangler() {
+  const crudo = readFileSync(new URL("../../wrangler.jsonc", import.meta.url), "utf8");
+  // JSONC: fuera comentarios y comas colgantes.
+  const limpio = crudo
+    .replace(/"(?:[^"\\]|\\.)*"|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (m) => (m.startsWith('"') ? m : " "))
+    .replace(/,(\s*[}\]])/g, "$1");
+  const cfg = JSON.parse(limpio);
+  return {
+    baseD1: cfg.d1_databases?.[0]?.database_id ?? "",
+    bucket: cfg.r2_buckets?.[0]?.bucket_name ?? "juancito-contenido",
+  };
+}
+
+const { baseD1: BASE_D1, bucket: BUCKET } = deWrangler();
 
 const DATOS = join(dirname(fileURLToPath(import.meta.url)), "datos");
 
@@ -94,7 +113,7 @@ async function subirAR2(clave, dataUri) {
 async function main() {
   exigir(ENSAYO || CUENTA, "Falta CLOUDFLARE_ACCOUNT_ID.");
   exigir(ENSAYO || TOKEN, "Falta CLOUDFLARE_API_TOKEN.");
-  exigir(ENSAYO || BASE_D1, "Falta D1_DATABASE_ID.");
+  exigir(ENSAYO || BASE_D1, "wrangler.jsonc no declara ninguna base de D1.");
 
   const avisos = [];
   let bytesR2 = 0;

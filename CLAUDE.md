@@ -19,6 +19,17 @@ npm run sembrar    # alta del administrador (ADMIN_EMAIL / ADMIN_PASSWORD)
 ninguna parte. Para trabajar contra la API de verdad, `npm run dev:worker`,
 que levanta el Worker con D1 y R2 en local.
 
+**Las operaciones NO se hacen desde una consola.** Desplegar, dar de alta
+al administrador, migrar datos y comprobar la infraestructura son
+workflows que se lanzan desde la pestaña Actions de GitHub. El
+procedimiento completo está en `DEPLOY.md`, y es sólo de navegador.
+
+Y **Cloudflare no se conecta directamente al repositorio**: esa
+integración construye y publica en cada push sin pasar por los tests. El
+despliegue vive en `.github/workflows/desplegar.yml`, que corre
+`npm run verificar` entero y dentro del mismo job antes de publicar
+nada, para que no haya forma de saltárselo.
+
 **Antes de dar por terminado cualquier cambio:**
 
 ```bash
