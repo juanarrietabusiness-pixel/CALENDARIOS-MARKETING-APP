@@ -312,6 +312,24 @@ son del servidor.
 - La CSP de `public/_headers` necesita `'unsafe-inline'` en `style-src`
   porque React aplica la prop `style` como atributo en línea. `script-src` no
   lo lleva y no debe llevarlo.
+- **El tope de PBKDF2 sólo existe en producción.** workerd rechaza más
+  de **100.000 iteraciones por llamada** a `deriveBits`
+  —«Pbkdf2 failed: iteration counts above 100000 are not supported»—, y
+  ese tope **no lo aplican ni `wrangler dev` ni Node**. Con 210.000 de
+  una vez, entrar devolvía «Error interno» en el sitio publicado
+  mientras en local funcionaba y los 278 tests seguían verdes. Por eso
+  `derivar()` encadena vueltas de 100.000 hasta sumar las 600.000 que
+  recomienda OWASP: el coste para quien intente adivinar la contraseña
+  es el mismo y ninguna llamada pasa del tope.
+  El caso que lo vigila espía lo que se le pide a `crypto.subtle`,
+  porque ejecutarlo en cualquier entorno de pruebas pasa igual.
+- **El alta y el acceso no pueden tener dos implementaciones del hash.**
+  `scripts/sembrar-admin.mjs` reimplementaba PBKDF2 por su cuenta. Dos
+  copias del mismo cálculo es una que se queda atrás: el día que una
+  cambie un parámetro, el hash guardado deja de cuadrar y nadie entra
+  —y el síntoma es «contraseña incorrecta», que no apunta a nada—.
+  Ahora el script importa `hashearContrasena` del Worker, y un test
+  falla si vuelve a nombrar `deriveBits`.
 - **La página salía EN BLANCO y los 278 tests estaban en verde.** `base`
   de `vite.config.js` estaba condicionado a `GITHUB_ACTIONS` —de cuando
   el sitio se publicaba en GitHub Pages bajo un subdirectorio—, así que

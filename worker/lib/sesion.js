@@ -8,9 +8,15 @@
 //
 // TRES DECISIONES
 //
-//  1. PBKDF2-SHA256 con 210.000 iteraciones. Workers no trae bcrypt;
-//     crypto.subtle sí trae PBKDF2, y 210.000 es la recomendación
-//     vigente de OWASP para SHA-256.
+//  1. PBKDF2-SHA256, 600.000 iteraciones, EN VUELTAS DE 100.000.
+//     Workers no trae bcrypt; crypto.subtle sí trae PBKDF2. Pero
+//     **workerd en producción rechaza más de 100.000 iteraciones por
+//     llamada** —«Pbkdf2 failed: iteration counts above 100000 are not
+//     supported»—, un tope que NO aplican ni `wrangler dev` ni Node.
+//     Con 210.000 de una vez, el acceso devolvía 500 en producción
+//     mientras en local funcionaba y los tests pasaban en verde.
+//     Encadenando vueltas se alcanza el total sin pasar del tope: el
+//     trabajo que le cuesta a un atacante es el mismo.
 //
 //  2. En `sessions` se guarda el SHA-256 del testigo, no el testigo.
 //     Un volcado de D1 —o una consulta de más— no puede devolver
@@ -25,22 +31,46 @@
 import { sha256, testigo, uuid, ahora, enHoras } from "./ids.js";
 
 export const COOKIE = "__Host-sesion";
-const ITERACIONES = 210_000;
+
+/** Trabajo total. OWASP recomienda 600.000 para PBKDF2-SHA256. */
+export const ITERACIONES = 600_000;
+
+/**
+ * Lo máximo que acepta workerd en producción por cada `deriveBits`.
+ * Superarlo lanza NotSupportedError, y sólo allí: en local pasa.
+ */
+export const MAX_POR_LLAMADA = 100_000;
+
 const HORAS_SESION = 24 * 30;
 
 const hex = (buf) => [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, "0")).join("");
 const deHex = (s) => new Uint8Array((s.match(/../g) ?? []).map((h) => parseInt(h, 16)));
 
-/** PBKDF2-SHA256 → 256 bits en hexadecimal. */
-export async function derivar(contrasena, salHex, iteraciones = ITERACIONES) {
-  const clave = await crypto.subtle.importKey(
-    "raw", new TextEncoder().encode(contrasena), "PBKDF2", false, ["deriveBits"],
-  );
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", hash: "SHA-256", salt: deHex(salHex), iterations: iteraciones },
-    clave, 256,
-  );
-  return hex(bits);
+/**
+ * PBKDF2-SHA256 → 256 bits en hexadecimal.
+ *
+ * Se hace en vueltas de como mucho `MAX_POR_LLAMADA`, encadenando: la
+ * salida de una vuelta es el material de entrada de la siguiente. El
+ * coste total para quien intente adivinar la contraseña es el mismo que
+ * una sola llamada de `total` iteraciones, y ninguna llamada pasa del
+ * tope que impone workerd en producción.
+ */
+export async function derivar(contrasena, salHex, total = ITERACIONES) {
+  const salt = deHex(salHex);
+  let material = new TextEncoder().encode(contrasena);
+  let restantes = total;
+
+  while (restantes > 0) {
+    const vuelta = Math.min(restantes, MAX_POR_LLAMADA);
+    const clave = await crypto.subtle.importKey("raw", material, "PBKDF2", false, ["deriveBits"]);
+    const bits = await crypto.subtle.deriveBits(
+      { name: "PBKDF2", hash: "SHA-256", salt, iterations: vuelta },
+      clave, 256,
+    );
+    material = new Uint8Array(bits);
+    restantes -= vuelta;
+  }
+  return hex(material);
 }
 
 export async function hashearContrasena(contrasena) {
