@@ -172,6 +172,39 @@ comprobación diaria pueda mirar el sitio publicado.
 
 ---
 
+## Parte 9 · Apagar Netlify
+
+**Netlify sigue conectado al repositorio.** Del repositorio ya no queda
+nada suyo —`netlify.toml` y `_redirects` se fueron en la migración—, pero
+la integración vive en el panel de Netlify, no aquí, así que sobrevive a
+todo lo que se borre del árbol: construye y publica en cada push a `main`
+y deja su vista previa en cada pull request.
+
+Y lo que publica ahora está roto de una forma que no se ve: el front pide
+a `/api/*`, y `/api/*` sólo existe dentro del Worker. En Netlify no hay
+nada ahí. El sitio carga, se ve igual que siempre, y ninguna pantalla
+trae datos.
+
+**El orden importa.** Mientras el dominio no sirva desde el Worker
+—parte 8—, **Netlify sigue siendo la producción**: es la marcha atrás.
+No lo apagues antes.
+
+Cuando el dominio ya responda desde el Worker:
+
+1. **app.netlify.com** → el proyecto `calendarioapp-juancito` → **Site
+   configuration** → **Build & deploy** → **Continuous deployment**.
+   Ahí hay dos niveles: **Stop builds** deja el sitio publicado pero deja
+   de construir en cada push, y desvincular el repositorio corta del todo.
+2. Quita la **Netlify GitHub App** del repositorio si no la usa otro
+   proyecto. Eso es lo que hace desaparecer los checks de Netlify y los
+   comentarios de vista previa de los pull requests.
+3. **No borres el sitio todavía.** Igual que el proyecto de Supabase se
+   deja pausado un mes, el sitio de Netlify se deja publicado hasta estar
+   seguro de que el Worker aguanta. Borrarlo es lo último, y no corre
+   prisa.
+
+---
+
 ## Comprobar que llegó
 
 **Actions** → **Infraestructura** → **Run workflow**. Corre sola cada
@@ -213,8 +246,10 @@ nunca al navegador.
 
 ## Marcha atrás
 
-Mientras el dominio no apunte al Worker, el despliegue anterior sigue
-siendo la producción y esto es un ensayo.
+Mientras el dominio no apunte al Worker, **el despliegue anterior es
+Netlify** —sigue construyendo en cada push— y esto es un ensayo. Por eso
+la parte 9 va después de la 8 y no antes: apagarlo mientras sirve la
+producción deja el sitio sin nada detrás.
 
 El proyecto de Supabase se deja **pausado, no borrado**, un mes: uno
 pausado conserva los datos; uno borrado, no.

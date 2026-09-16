@@ -51,7 +51,7 @@ describe("no hay claves escritas en el repositorio", () => {
             que: `hay algo con forma de ${nombre}`,
             donde: archivo,
             porque: "Una clave versionada está filtrada aunque se borre después: queda en el historial de git y en cada clon.",
-            arreglo: "Revócala en el proveedor, muévela a los secretos de Supabase o Netlify, y reescribe el historial si hiciera falta.",
+            arreglo: "Revócala en el proveedor, muévela a los secretos del Worker (`wrangler secret put`), y reescribe el historial si hiciera falta.",
           }));
         }
       }
@@ -130,7 +130,7 @@ describe("el navegador sólo ve lo que puede ver", () => {
         que: "el código del navegador lee un secreto del servidor",
         donde: hits.map((h) => `${h.archivo}:${h.linea}`).join(", "),
         porque: "Todo lo que hay en src/ se empaqueta y se sirve como archivo estático: cualquiera lo descarga.",
-        arreglo: "Mueve esa llamada a supabase/functions/ o netlify/functions/, donde el secreto sí existe.",
+        arreglo: "Mueve esa llamada a worker/rutas/, donde el secreto sí existe, y llámala desde el navegador por /api/*.",
       }),
     ).toEqual([]);
   });
