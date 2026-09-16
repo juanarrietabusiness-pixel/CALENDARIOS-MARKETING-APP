@@ -62,8 +62,14 @@ describe("índices", () => {
     for (const [tabla, def] of Object.entries(T)) {
       for (const m of def.cuerpo.matchAll(/^\s{2}(\w+)\s+text[^\n]*references (\w+)\(/gm)) {
         const columna = m[1];
+        // La clave primaria ya lleva su índice: pedirle otro sería un
+        // duplicado. Se comprueba con espaciado libre porque las
+        // columnas de este esquema van alineadas en columnas, y un
+        // `includes` de un espacio exacto dejaba fuera a las que llevan
+        // dos —y entonces el fallo pedía crear un índice que sobra—.
+        const esClavePrimaria = new RegExp(`${columna}\\s+text\\s+primary key`).test(def.cuerpo);
         const cubierta = INDICES.some((i) => i.tabla === tabla && i.columnas[0] === columna)
-          || def.cuerpo.includes(`${columna} text primary key`);
+          || esClavePrimaria;
         if (!cubierta) lista.push(fallo({
           que: `${tabla}.${columna} es clave ajena y no tiene índice`,
           donde: rel(FICHEROS[0]),

@@ -4,7 +4,7 @@ import * as db from "../lib/db";
 
 const RECURRENCE_LABELS = { none: "Una vez", weekly: "Semanal", monthly: "Mensual" };
 
-export default function TaskPanel({ client }) {
+export default function TaskPanel({ client, pulso = 0 }) {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -24,7 +24,10 @@ export default function TaskPanel({ client }) {
       .catch(() => { if (alive) setError("No se pudieron cargar las tareas."); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [clientId]);
+    // `pulso` sube cuando otra persona del equipo toca una tarea: es la
+    // forma de decirle a este panel «vuelve a leer» sin duplicar aquí la
+    // lógica de carga que ya está justo arriba.
+  }, [clientId, pulso]);
 
   const handleAdd = useCallback(async () => {
     const title = newTitle.trim();

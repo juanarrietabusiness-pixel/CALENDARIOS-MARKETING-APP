@@ -125,3 +125,19 @@ export function createEmptyClient() {
     calendars: [],
   };
 }
+
+/**
+ * Las iniciales de un nombre, para el avatar de la presencia.
+ *
+ * Una palabra da dos letras («Ana» → «AN»); dos o más, la primera de la
+ * primera y la primera de la última («Ana Ruiz Pérez» → «AP»). Vive aquí
+ * y no junto al componente porque exportar una función desde un fichero
+ * de componentes rompe el refresco en caliente de Vite —y oxlint lo
+ * avisa—, además de que así se puede probar sin montar nada.
+ */
+export function iniciales(nombre) {
+  const partes = String(nombre ?? "").trim().split(/\s+/).filter(Boolean);
+  if (!partes.length) return "?";
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
+}

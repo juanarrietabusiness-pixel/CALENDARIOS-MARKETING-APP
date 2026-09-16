@@ -13,10 +13,18 @@
 //  2. En D1 el boolean es 0/1. Y `rowToCalendar` hace
 //     `row.share_enabled !== false`: con un 0 eso da **true**, así que
 //     un enlace desactivado se vería activo. No falla nada; sólo miente.
+//
+// Y UNA REGLA NUEVA: TODA ESCRITURA AVISA
+//
+// Detrás de cada `acceso.guardar/insertar/borrar` va un `difundir`. Una
+// que se olvide no falla —guarda perfectamente— y deja a la otra persona
+// mirando lo de antes sin ningún síntoma. Por eso van pegados: el aviso
+// se escribe en la misma línea que la escritura o no se escribe nunca.
 // ============================================================
 
 import { json, error, sinContenido, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { uuid, testigo, ahora } from "../lib/ids.js";
+import { difundir, firma } from "../lib/vivo.js";
 
 const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe"];
 const JSON_CALENDARIOS = ["week_concepts", "days", "visual_references", "day_labels"];
@@ -85,12 +93,16 @@ export async function rutasDatos(req, env, ctx) {
       fila.created_at ??= ahora();
       fila.updated_at = ahora();
       await acceso.guardar("clients", fila);
-      return json(salidaCliente(await acceso.leerUno("clients", { id: fila.id })));
+      const guardado = salidaCliente(await acceso.leerUno("clients", { id: fila.id }));
+      difundir(env, acceso.ownerId, { tipo: "cliente", cliente: guardado, por: firma(ctx.usuario, req) });
+      return json(guardado);
     }
 
     if (!sub && metodo === "DELETE") {
       const n = await acceso.borrar("clients", { id });
-      return n ? sinContenido() : noEncontrado("Cliente");
+      if (!n) return noEncontrado("Cliente");
+      difundir(env, acceso.ownerId, { tipo: "cliente:fuera", id, por: firma(ctx.usuario, req) });
+      return sinContenido();
     }
 
     // ---- subrecursos del cliente ----
@@ -124,6 +136,7 @@ export async function rutasDatos(req, env, ctx) {
         if (!content) return error("Falta el contenido");
         const fila = { id: uuid(), client_id: id, content, created_at: ahora() };
         await acceso.insertar("client_memories", fila);
+        difundir(env, acceso.ownerId, { tipo: "memoria", clientId: id, por: firma(ctx.usuario, req) });
         return json({ id: fila.id, content: fila.content, created_at: fila.created_at }, 201);
       }
     }
@@ -145,6 +158,7 @@ export async function rutasDatos(req, env, ctx) {
           await acceso.insertar("client_tasks", fila);
           creadas.push(fila);
         }
+        for (const t of creadas) difundir(env, acceso.ownerId, { tipo: "tarea", tarea: t, por: firma(ctx.usuario, req) });
         return json(creadas, 201);
       }
       if (metodo === "POST") {
@@ -154,7 +168,9 @@ export async function rutasDatos(req, env, ctx) {
           id: datos.id || uuid(), client_id: id, created_at: datos.created_at || ahora(),
         };
         await acceso.guardar("client_tasks", fila);
-        return json(await acceso.leerUno("client_tasks", { id: fila.id }), 201);
+        const tarea = await acceso.leerUno("client_tasks", { id: fila.id });
+        difundir(env, acceso.ownerId, { tipo: "tarea", tarea, por: firma(ctx.usuario, req) });
+        return json(tarea, 201);
       }
     }
 
@@ -184,6 +200,7 @@ export async function rutasDatos(req, env, ctx) {
           description: "", size_bytes: archivo.size ?? 0, created_at: ahora(),
         };
         await acceso.insertar("content_bank", fila);
+        difundir(env, acceso.ownerId, { tipo: "banco", archivo: fila, por: firma(ctx.usuario, req) });
         return json(fila, 201);
       }
     }
@@ -204,12 +221,22 @@ export async function rutasDatos(req, env, ctx) {
       fila.created_at ??= ahora();
       fila.updated_at = ahora();
       await acceso.guardar("calendars", fila);
-      return json(salidaCalendario(await acceso.leerUno("calendars", { id: fila.id })));
+      const guardado = salidaCalendario(await acceso.leerUno("calendars", { id: fila.id }));
+      // Un mes escrito entero puede no caber en un mensaje: por eso va
+      // el aviso ligero de repuesto. Ver TOPE_EVENTO en lib/vivo.js.
+      difundir(
+        env, acceso.ownerId,
+        { tipo: "calendario", calendario: guardado, por: firma(ctx.usuario, req) },
+        { tipo: "calendario:recargar", id: fila.id, clientId: guardado.client_id, por: firma(ctx.usuario, req) },
+      );
+      return json(guardado);
     }
 
     if (!sub && metodo === "DELETE") {
       const n = await acceso.borrar("calendars", { id });
-      return n ? sinContenido() : noEncontrado("Calendario");
+      if (!n) return noEncontrado("Calendario");
+      difundir(env, acceso.ownerId, { tipo: "calendario:fuera", id, por: firma(ctx.usuario, req) });
+      return sinContenido();
     }
 
     // share_calendar: el testigo lo genera el SERVIDOR, y se reutiliza si
@@ -221,13 +248,16 @@ export async function rutasDatos(req, env, ctx) {
       await acceso.actualizar("calendars", { id }, {
         share_token: token, share_enabled: 1, share_expires_at: null,
       });
+      difundir(env, acceso.ownerId, { tipo: "calendario:enlace", id, enabled: true, por: firma(ctx.usuario, req) });
       return json({ token });
     }
 
     if (sub === "enlace" && metodo === "PATCH") {
       const { enabled } = (await cuerpo(req)) ?? {};
       const n = await acceso.actualizar("calendars", { id }, { share_enabled: enabled ? 1 : 0 });
-      return n ? json({ enabled: Boolean(enabled) }) : noEncontrado("Calendario");
+      if (!n) return noEncontrado("Calendario");
+      difundir(env, acceso.ownerId, { tipo: "calendario:enlace", id, enabled: Boolean(enabled), por: firma(ctx.usuario, req) });
+      return json({ enabled: Boolean(enabled) });
     }
 
     if (sub === "aprobaciones" && metodo === "GET") {
@@ -244,13 +274,17 @@ export async function rutasDatos(req, env, ctx) {
   // ---- recursos sueltos ----
   if (seccion === "memoria" && metodo === "DELETE") {
     const n = await acceso.borrar("client_memories", { id });
-    return n ? sinContenido() : noEncontrado("Memoria");
+    if (!n) return noEncontrado("Memoria");
+    difundir(env, acceso.ownerId, { tipo: "memoria", clientId: null, por: firma(ctx.usuario, req) });
+    return sinContenido();
   }
 
   if (seccion === "tareas") {
     if (metodo === "DELETE") {
       const n = await acceso.borrar("client_tasks", { id });
-      return n ? sinContenido() : noEncontrado("Tarea");
+      if (!n) return noEncontrado("Tarea");
+      difundir(env, acceso.ownerId, { tipo: "tarea:fuera", id, por: firma(ctx.usuario, req) });
+      return sinContenido();
     }
     if (metodo === "POST" && (sub === "completar" || sub === "reabrir")) {
       const completada = sub === "completar";
@@ -258,7 +292,10 @@ export async function rutasDatos(req, env, ctx) {
         status: completada ? "completed" : "pending",
         completed_at: completada ? ahora() : null,
       });
-      return n ? json(await acceso.leerUno("client_tasks", { id })) : noEncontrado("Tarea");
+      if (!n) return noEncontrado("Tarea");
+      const tarea = await acceso.leerUno("client_tasks", { id });
+      difundir(env, acceso.ownerId, { tipo: "tarea", tarea, por: firma(ctx.usuario, req) });
+      return json(tarea);
     }
   }
 
@@ -285,6 +322,7 @@ export async function rutasDatos(req, env, ctx) {
     if (!item) return noEncontrado("Archivo");
     await env.MEDIA.delete(item.file_path);
     await acceso.borrar("content_bank", { id });
+    difundir(env, acceso.ownerId, { tipo: "banco:fuera", id, clientId: item.client_id, por: firma(ctx.usuario, req) });
     return sinContenido();
   }
 

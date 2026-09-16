@@ -13,8 +13,19 @@ import { useEffect, useState } from "react";
 // una petición al cargar, y a cambio la respuesta es la verdad y no una
 // copia caducada.
 //
-// Las tres funciones conservan su firma: App.jsx, Panel y Login.jsx no
-// cambian.
+// Y DE AHÍ SALÍA EL FALLO QUE ESTO ARREGLA
+//
+// Con Supabase, `signIn` disparaba `onAuthStateChange` y el panel se
+// levantaba solo: nadie tenía que pasar la sesión a ninguna parte.
+// Aquí NO hay nada que se dispare. `signIn` devuelve el usuario y, si
+// quien la llama no hace nada con él, el estado de `useSession` sigue
+// diciendo `null` para siempre. Eso es exactamente lo que se veía:
+// escribías correo y contraseña, el servidor respondía 200 y ponía la
+// cookie, y la pantalla de acceso se quedaba ahí. Al recargar entrabas,
+// porque el arranque sí pregunta a `/api/yo`.
+//
+// Por eso `useSession` devuelve `setSession` y **Login lo usa**. La
+// sesión es de quien la pinta; no hay ningún canal mágico detrás.
 // ------------------------------------------------------------
 
 /**

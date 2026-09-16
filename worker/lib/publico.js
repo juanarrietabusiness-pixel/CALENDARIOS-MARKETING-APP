@@ -33,7 +33,7 @@ async function calendarioVigente(db, token) {
   if (!testigoValido(token)) return null;
   return db
     .prepare(
-      `select id, client_id, name, month, year, campaign, week_concepts, days,
+      `select id, client_id, owner_id, name, month, year, campaign, week_concepts, days,
               visual_references, day_labels, allow_editing
          from calendars
         where share_token = ? and share_enabled = 1
@@ -47,6 +47,9 @@ async function calendarioVigente(db, token) {
  * get_shared_calendar.
  *
  * La lista de campos está escrita a mano, igual que en el SQL original.
+ * `calendarioVigente` sí LEE `owner_id` —hace falta para avisar al
+ * espacio de que el cliente acaba de responder—, pero de aquí no sale:
+ * la respuesta se construye campo a campo, no con el `cal` entero.
  * NO se devuelve owner_id, ni share_token, ni el ADN de marca del
  * cliente. Un `select *` recortado después en JavaScript es una
  * filtración esperando su turno: basta que alguien añada una columna.
@@ -170,7 +173,10 @@ export async function enviarAprobacion(db, datos) {
     )
     .run();
 
-  return { ok: true, estado };
+  // Los ids salen para que el Worker pueda avisar al espacio: la agencia
+  // ve la respuesta del cliente final en el momento, sin esperar a la
+  // siguiente vuelta del sondeo.
+  return { ok: true, estado, calendarId: cal.id, ownerId: cal.owner_id, postId };
 }
 
 /**
@@ -210,7 +216,7 @@ export async function actualizarContenido(db, { token, postId, descripcion, guio
     .bind(JSON.stringify(days), ahora(), cal.id)
     .run();
 
-  return { ok: true };
+  return { ok: true, calendarId: cal.id, ownerId: cal.owner_id, postId };
 }
 
 /**

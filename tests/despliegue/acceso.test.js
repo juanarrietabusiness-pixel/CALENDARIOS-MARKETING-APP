@@ -9,12 +9,12 @@
 // ============================================================
 
 import { describe, it, expect } from "vitest";
-import { leer, listar, buscar, rel, hay } from "../utils/repo.js";
+import { leer, listar, buscar, rel, hay, migraciones } from "../utils/repo.js";
 import { fallo, fallos } from "../utils/fallo.js";
 import { TABLAS_CON_DUENO, TABLAS_POR_CALENDARIO } from "../../worker/lib/acceso.js";
 
 const CAPA = "worker/lib/acceso.js";
-const ESQUEMA = "migraciones/d1/0001_esquema.sql";
+const ESQUEMA = "migraciones/d1/";
 
 /**
  * Los únicos ficheros que pueden hablar con D1. No es «uno solo» porque
@@ -33,9 +33,18 @@ const MODULOS_CON_ACCESO = [
   "worker/lib/publico.js",
 ];
 
-/** Tablas del esquema de D1 y sus columnas. */
+/**
+ * Tablas del esquema de D1 y sus columnas.
+ *
+ * Lee TODAS las migraciones, no sólo la primera. Cuando sólo leía
+ * `0001_esquema.sql`, una tabla creada en una migración posterior era
+ * invisible aquí: la comprobación de «declarada y existe» la daba por
+ * inventada, y —peor— la de «tiene owner_id y está declarada» no la
+ * habría visto nunca. Justo lo contrario de lo que este fichero existe
+ * para vigilar.
+ */
 function tablasDelEsquema() {
-  const sql = leer(ESQUEMA);
+  const sql = migraciones().map((abs) => leer(rel(abs))).join("\n");
   const tablas = {};
   for (const m of sql.matchAll(/create table (?:if not exists )?(\w+) \(([\s\S]*?)\n\);/g)) {
     tablas[m[1]] = [...m[2].matchAll(/^\s{2}(\w+)\s/gm)].map((c) => c[1]);

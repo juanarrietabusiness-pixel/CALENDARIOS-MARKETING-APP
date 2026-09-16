@@ -1471,6 +1471,11 @@ input[type="radio"] {
   /* La cabecera ya lleva el menú, el logo y «Salir»: el correo de la
      sesión empujaba el nombre de la agencia fuera de la pantalla. */
   .session-email { display: none; }
+  /* Con la presencia añadida, lo mismo pasa con «En vivo»: el punto de
+     color ya dice el estado, y el texto sigue estando en el `title` y en
+     el `role="status"` para quien use lector de pantalla. Se oculta la
+     palabra, no la información. */
+  .presencia-texto { display: none; }
 }
 
 /* Pantallas muy estrechas (<= 360px) */

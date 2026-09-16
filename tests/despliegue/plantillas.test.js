@@ -237,6 +237,21 @@ describe("política de seguridad de contenido", () => {
     ).toEqual([]);
   });
 
+  it("connect-src 'self' es lo que abre también el WebSocket", () => {
+    // Y por eso NO hay que añadir `wss://…` cuando se toca el tiempo
+    // real. La especificación de CSP dice que, en una página https,
+    // `'self'` casa con `wss:` del mismo host. Alguien que vea el socket
+    // caer en local —donde la CSP ni siquiera se aplica igual— podría
+    // «arreglarlo» metiendo un origen aquí, y eso rompe la regla de oro
+    // del repositorio: si en connect-src aparece un tercero, es la señal
+    // de que una clave ha vuelto al navegador.
+    expect(C["connect-src"], "connect-src dejó de ser 'self' a secas").toEqual(["'self'"]);
+    expect(
+      (C["connect-src"] ?? []).join(" "),
+      "no hace falta declarar wss: y declararlo enturbia la regla",
+    ).not.toContain("wss:");
+  });
+
   it("connect-src ya no necesita a Supabase: la API va en el mismo origen", () => {
     const conectar = (C["connect-src"] ?? []).join(" ");
     expect(

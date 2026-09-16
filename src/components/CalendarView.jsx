@@ -4,6 +4,8 @@ import { uid, fmtDate, compressImage, parseVideoURL } from "../utils";
 import { callAI, loadADN, parseAIResponse, buildScriptPrompt, buildDescripcionesPrompt, buildClientContext, generateSinglePost, generateFieldForPost } from "../api";
 import { buildExportHTML } from "../export";
 import { shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals, loadClientMemories } from "../lib/db";
+import { vivo } from "../lib/vivo";
+import { AvisoEditando } from "./Presencia";
 import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO, CAMPOS_EXPORTABLES } from "../lib/exportarContenido";
 import { completitud, resumenCompletitud } from "../lib/completitud";
 import { useDialogA11y } from "../hooks/useDialogA11y";
@@ -226,7 +228,7 @@ function ContentDisplay({ post }) {
   );
 }
 
-function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onSendToBank, suggestion, onAcceptSuggestion, onRejectSuggestion, client, cal }) {
+function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onSendToBank, suggestion, onAcceptSuggestion, onRejectSuggestion, client, cal, editandoOtros = {} }) {
   const [form, setForm] = useState({ ...post });
   const [fieldLoading, setFieldLoading] = useState({});
   const [fieldError, setFieldError] = useState("");
@@ -269,6 +271,23 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onS
     guardarRef.current?.(fechaRef.current, ultimo.current);
   }, []);
 
+  // ---- «Estoy editando esta publicación» ----
+  //
+  // Se anuncia al abrir y se retira al cerrar, en el mismo efecto: si el
+  // aviso se quedara puesto, el resto del equipo vería para siempre que
+  // alguien está dentro de una publicación que nadie tiene abierta.
+  //
+  // No bloquea nada, y es a propósito: un bloqueo de verdad hay que
+  // soltarlo bien en TODOS los caminos —cerrar la pestaña, quedarse sin
+  // batería— y su forma de fallar es dejar una publicación trabada sin
+  // nadie dentro. Avisar no puede atascarse.
+  useEffect(() => {
+    vivo.editar(cal.id, post.id, true);
+    return () => vivo.editar(cal.id, post.id, false);
+  }, [cal.id, post.id]);
+
+  const otroEditando = editandoOtros[post.id] ?? null;
+
   const generateField = async (field) => {
     setFieldError("");
     setFieldLoading((p) => ({ ...p, [field]: true }));
@@ -309,6 +328,11 @@ function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onS
               {f.label} — {day.dayName} {(day.date || "").split("-")[2]}
             </h2>
             <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>{day.date}</p>
+            {otroEditando && (
+              <p role="status" style={{ marginTop: 4 }}>
+                <AvisoEditando persona={otroEditando} />
+              </p>
+            )}
           </div>
         </div>
         <button className="btn-icon" onClick={() => { save(); onClose(); }} aria-label="Guardar y cerrar"><Icon name="close" /></button>
@@ -1719,6 +1743,8 @@ export default function CalendarView({
   client,
   cal,
   calId,
+  pulso = 0,
+  editandoOtros = {},
   onUpdateCal,
   onUpdateCalLocal,
   onDeleteCal,
@@ -1785,14 +1811,29 @@ export default function CalendarView({
   const setCalRef = useRef(null);
   setCalRef.current = (updater) => onUpdateCalLocal(calId, updater(cal));
 
+  // Huella de las aprobaciones ya vistas. El sondeo de repuesto se
+  // dispara cada minuto haya respuesta o no, y antes anunciaba «tu
+  // cliente acaba de responder» en CADA vuelta, respondiera alguien o
+  // no: un aviso que aparece solo cada quince segundos deja de querer
+  // decir nada, y con él se pierde el que sí importa.
+  const vistas = useRef("");
+
   useEffect(() => {
     if (!cal.shareToken || !cal.id) return;
     let alive = true;
 
-    const aplicar = async () => {
+    const aplicar = async ({ anunciar = false } = {}) => {
       try {
         const approvals = await fetchApprovals(cal.id);
         if (!alive || Object.keys(approvals).length === 0) return;
+
+        const huella = JSON.stringify(approvals);
+        const huboNovedad = vistas.current !== "" && vistas.current !== huella;
+        vistas.current = huella;
+        if (anunciar && huboNovedad) {
+          setSyncStatus("Tu cliente acaba de responder.");
+          setTimeout(() => setSyncStatus(""), 4000);
+        }
 
         const newSuggestions = {};
         for (const [postId, review] of Object.entries(approvals)) {
@@ -1829,14 +1870,13 @@ export default function CalendarView({
     };
 
     aplicar();
-    const unsubscribe = subscribeApprovals(cal.id, () => {
-      setSyncStatus("Tu cliente acaba de responder.");
-      setTimeout(() => setSyncStatus(""), 4000);
-      aplicar();
-    });
+    const unsubscribe = subscribeApprovals(cal.id, () => { aplicar({ anunciar: true }); });
 
     return () => { alive = false; unsubscribe(); };
-  }, [cal.id, cal.shareToken]);
+    // `pulso` sube cuando el enlace público avisa de que el cliente final
+    // acaba de responder. El sondeo de abajo sigue ahí como red: si el
+    // socket está caído, es lo único que queda.
+  }, [cal.id, cal.shareToken, pulso]);
 
   const ideasBank = client.ideasBank || [];
 
@@ -2955,6 +2995,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           <PostSidePanel
             post={sidePanel.post}
             day={sidePanel.day}
+            editandoOtros={editandoOtros}
             onUpdate={updatePost}
             onDelete={deletePost}
             onMoveDate={movePost}
