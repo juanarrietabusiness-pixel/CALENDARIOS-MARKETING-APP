@@ -14,8 +14,9 @@ sitio, y lo hace dejándola lista para entrar allí.
 | Fase | Estado |
 |---|---|
 | 0 · Congelar la verdad | Utillaje escrito (`scripts/migracion/`); falta ejecutarlo y decidir `image-gen` |
-| 1 · Cimientos | **D1 `calendarios-db` creada y con el esquema aplicado y probado** |
-| 2 en adelante | Pendientes |
+| 1 · Cimientos | **D1 `calendarios-db` creada, esquema aplicado y probado** |
+| 3 · La API de datos | **Capa de acceso escrita y vigilada** (`worker/lib/acceso.js`); faltan las rutas |
+| 2, 4–9 | Pendientes |
 
 Lo comprobado contra la D1 real está en § 5.2; el utillaje, en
 [`scripts/migracion/README.md`](../scripts/migracion/README.md).
@@ -166,9 +167,27 @@ contenido —tres políticas que se llamaban «own» y sólo filtraban por
 
 **Mitigación, y es innegociable:** una única capa de acceso. Ningún
 `env.DB.prepare(...)` suelto por el Worker. Las tablas con dueño se leen y se
-escriben por funciones que reciben el `owner_id` como primer argumento y no
-tienen forma de omitirlo. Y un test de despliegue que busque `prepare(` fuera
-de esa capa y falle (§ fase 9).
+escriben por funciones que reciben el `owner_id` **al construirse** —no en cada
+llamada, que es donde se olvidaría— y no ofrecen forma de omitirlo.
+
+Ya está escrita: `worker/lib/acceso.js`, con 21 casos en
+`tests/migracion/acceso.test.js` y una guarda en
+`tests/despliegue/acceso.test.js` que falla si aparece un `prepare(` fuera de
+ella. La guarda se probó rompiéndola a propósito: señala archivo, línea y el
+arreglo.
+
+Tres decisiones que el código fija y conviene conocer:
+
+- `approvals` no tiene `owner_id`: se acota por `calendar_id in (select id
+  from calendars where owner_id = ?)`, que es lo que hacía su política RLS.
+  Acotar por `calendar_id` a secas dejaría leer las aprobaciones de cualquier
+  calendario cuyo identificador se filtre.
+- En `insertar`, el `owner_id` de la capa **pisa** el que traiga el cuerpo de
+  la petición. Si el cuerpo pudiera fijarlo, cualquiera escribiría en nombre
+  de otro.
+- El upsert de `guardar` lleva `where <tabla>.owner_id = ?` al final. Sin eso,
+  un upsert con el identificador de una fila ajena la sobrescribiría: el
+  INSERT choca, el UPDATE gana, y el dato de otro desaparece sin ningún error.
 
 ### 5.2. El techo de 2 MB por fila, con 490 kB ya gastados
 
