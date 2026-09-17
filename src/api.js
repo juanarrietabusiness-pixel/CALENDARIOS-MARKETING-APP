@@ -1,5 +1,7 @@
 import { bloque, cachedBlock, parseBloques, parseJSONLoose, parseGitHubUrl, parsePiezas } from "./lib/parse";
 import { enTandas } from "./lib/tandas";
+import { hora12 } from "./lib/horas";
+import { getWeekNumber, dayName } from "./utils";
 
 // Se reexportan porque media aplicación las importa desde aquí. Viven en
 // `lib/parse.js` para poder probarlas sin arrastrar el cliente de Supabase.
@@ -970,12 +972,22 @@ export function buildChatSystemPrompt(client, calendar, adnExtra = "", memories 
 
   let calendarInfo = "";
   if (calendar) {
+    // La SEMANA y el DÍA van en cada línea porque es como se pide el
+    // trabajo —«los guiones de la semana 2», «pon las 9am los lunes»— y
+    // sin ellos el modelo tiene que deducirlos de la fecha, que es
+    // justo donde se equivoca. La semana sale de `getWeekNumber`, la
+    // misma que numera los conceptos semanales: dos numeraciones
+    // distintas para lo mismo sería peor que ninguna.
+    const primerDia = (calendar.days || [])[0]?.date;
     const postLines = [];
     for (const day of calendar.days || []) {
       for (const post of day.posts || []) {
         const parts = [`ID:${post.id}`, day.date];
+        if (primerDia) parts.push(`semana ${getWeekNumber(day.date, primerDia)}`);
+        parts.push(dayName(day.date));
         if (post.format) parts.push(post.format);
         if (post.category) parts.push(post.category);
+        parts.push(post.publishTime ? `Hora: ${hora12(post.publishTime)}` : "Hora: sin asignar");
         if (post.idea) parts.push(`Idea: «${post.idea}»`);
         if (post.descripcion) parts.push(`Descripción: «${post.descripcion}»`);
         if (post.guion) parts.push(`Guion: «${post.guion}»`);
@@ -1012,7 +1024,13 @@ QUIÉN ERES:
 · Un estratega de redes sociales y redactor creativo.
 · Conoces a este cliente a fondo: su marca, su tono, su audiencia.
 · Cuando escribes contenido, lo entregas listo para publicar.
+· TIENES DELANTE EL CALENDARIO ENTERO, más abajo: cada publicación con su fecha,
+  su semana, su día, su hora, su idea, su descripción, su guion y sus hashtags.
+  Cuando te pidan leer, listar, resumir o reportar algo de él —«pásame los guiones
+  de la semana 2», «qué posts están sin descripción», «qué llevo aprobado»—,
+  respóndelo con esos datos. NO digas que no puedes: lo tienes escrito abajo.
 · Puedes ejecutar acciones sobre el calendario: crear, editar y eliminar publicaciones.
+· Puedes poner la HORA de publicación, de una en una o a muchas a la vez.
 · Puedes editar en lote: cambiar descripciones, guiones o ideas de múltiples publicaciones filtradas por día, formato o categoría.
 · Puedes guardar preferencias y datos importantes en tu memoria para recordarlos después.
 · Puedes analizar imágenes que el usuario te envíe y crear contenido basado en ellas.
@@ -1026,8 +1044,13 @@ CÓMO DEBES RESPONDER:
 · Si generas una descripción o guion, escríbelo listo para copiar y pegar.
 · Si necesitas más información, pregúntala en vez de inventar.
 · No inventes datos, precios, testimonios ni cifras que no estén en el contexto.
+· Cuando te pidan CONSULTAR el calendario, contesta directamente leyendo el listado
+  de abajo. Cita el ID de cada publicación para que el usuario pueda pedirte cambios
+  sobre ella, y respeta la semana y el día tal como aparecen ahí.
 · Cuando el usuario pida acciones sobre el calendario (crear, editar, eliminar publicaciones),
   usa las herramientas disponibles. Confirma lo que vas a hacer antes de ejecutar acciones destructivas.
+· Para poner la misma hora a varias publicaciones, usa editar_publicaciones_lote con
+  un filtro y aplicar_a_todas, no una llamada por publicación.
 · Cuando el usuario confirme una preferencia o dato que debas recordar, guárdalo con guardar_memoria.`;
 }
 
@@ -1077,6 +1100,7 @@ export function getChatTools(hasCalendar) {
             categoria: { type: "string", description: "Categoría temática (ej: educativo, venta, entretenimiento)." },
             descripcion: { type: "string", description: "Caption/descripción lista para publicar." },
             guion: { type: "string", description: "Guion para reels, carruseles, historias o lives." },
+            hora: { type: "string", description: "Hora de publicación. Se entiende «9am», «9:00», «21:30» o «6 pm»." },
           },
           required: ["fecha", "formato"],
         },
@@ -1093,6 +1117,7 @@ export function getChatTools(hasCalendar) {
             guion: { type: "string", description: "Nuevo guion." },
             categoria: { type: "string", description: "Nueva categoría." },
             formato: { type: "string", enum: ["post", "reel", "carrusel", "historia", "live"], description: "Nuevo formato." },
+            hora: { type: "string", description: "Hora de publicación. Se entiende «9am», «9:00», «21:30» o «6 pm». Escribe «quitar» para dejarla sin asignar." },
           },
           required: ["post_id"],
         },
@@ -1114,7 +1139,7 @@ export function getChatTools(hasCalendar) {
       },
       {
         name: "editar_publicaciones_lote",
-        description: "Edita campos de múltiples publicaciones a la vez, filtrando por día de la semana, formato y/o categoría. Usa esta herramienta cuando el usuario pida cambios masivos como «cambia todas las descripciones de los lunes a tono formal» o «reescribe los guiones de todos los reels».",
+        description: "Edita muchas publicaciones a la vez. Dos formas, y se pueden combinar: `aplicar_a_todas` pone los MISMOS valores en todas las que pasen el filtro —para «pon las 9am a todos los lunes» o «marca como aprobados todos los reels»—, y `cambios` da valores DISTINTOS a cada publicación por su ID —para reescribir textos, que son diferentes en cada una—.",
         input_schema: {
           type: "object",
           properties: {
@@ -1132,6 +1157,19 @@ export function getChatTools(hasCalendar) {
               type: "string",
               description: "Filtrar por categoría (opcional).",
             },
+            filtro_semana: {
+              type: "integer",
+              description: "Filtrar por número de semana del mes, tal como aparece en el contexto (opcional).",
+            },
+            aplicar_a_todas: {
+              type: "object",
+              properties: {
+                hora: { type: "string", description: "Hora de publicación: «9am», «9:00», «21:30», «6 pm». Escribe «quitar» para dejarla sin asignar." },
+                categoria: { type: "string", description: "Categoría para todas." },
+                formato: { type: "string", enum: ["post", "reel", "carrusel", "historia", "live"], description: "Formato para todas." },
+              },
+              description: "Los MISMOS valores para todas las publicaciones que pasen el filtro. Requiere al menos un filtro: sin filtro no se aplica nada, para no tocar el mes entero por accidente.",
+            },
             cambios: {
               type: "array",
               items: {
@@ -1142,13 +1180,13 @@ export function getChatTools(hasCalendar) {
                   descripcion: { type: "string", description: "Nueva descripción/caption." },
                   guion: { type: "string", description: "Nuevo guion." },
                   categoria: { type: "string", description: "Nueva categoría." },
+                  hora: { type: "string", description: "Hora de publicación para esta publicación en concreto." },
                 },
                 required: ["post_id"],
               },
-              description: "Lista de cambios por publicación. Cada entrada lleva el post_id y los campos a cambiar.",
+              description: "Valores distintos para cada publicación, por ID. Para textos, que no se repiten.",
             },
           },
-          required: ["cambios"],
         },
       },
     );

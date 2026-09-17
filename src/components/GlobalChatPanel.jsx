@@ -3,6 +3,8 @@ import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { callAIChat } from "../api";
 import { compressImage } from "../utils";
+import { buscarCliente, consultarPublicaciones, resumenAgencia, indiceParaPrompt } from "../lib/agencia";
+import * as db from "../lib/db";
 
 export default function GlobalChatPanel({ clients, onClose, onSelectClient }) {
   const [messages, setMessages] = useState([]);
@@ -87,44 +89,105 @@ export default function GlobalChatPanel({ clients, onClose, onSelectClient }) {
   }, []);
 
   const buildSystemPrompt = useCallback(() => {
-    const clientSummaries = clients.map((c) => {
-      const calCount = (c.calendars || []).length;
-      const postCount = (c.calendars || []).reduce(
-        (acc, cal) => acc + (cal.days || []).reduce((a2, d) => a2 + (d.posts || []).length, 0),
-        0,
-      );
-      return `· ${c.name} (ID: ${c.id}) — ${c.industry || "Sin industria"} · ${calCount} calendario${calCount === 1 ? "" : "s"} · ${postCount} publicación${postCount === 1 ? "" : "es"}${c.instagram ? ` · ${c.instagram}` : ""}`;
-    }).join("\n");
+    // El índice, no el volcado: una línea por cliente con lo que hace
+    // falta para saber a quién preguntarle el detalle. Ver lib/agencia.js.
+    const clientSummaries = indiceParaPrompt(clients);
 
     return `Eres el asistente general de la agencia Juancito Ads.
 
 QUIÉN ERES:
 · Un estratega de marketing digital que conoce TODOS los clientes de la agencia.
-· Puedes dar ideas, sugerencias y análisis que abarquen a uno, varios o todos los clientes.
-· No tienes acceso directo a los calendarios desde aquí: para editar publicaciones, el usuario debe ir al chat del cliente específico.
-· Puedes sugerir al usuario que navegue a un cliente concreto cuando quiera ejecutar acciones.
+· PUEDES LEER los calendarios y las tareas de todos ellos, con las herramientas
+  consultar_publicaciones, consultar_tareas y resumen_agencia. Úsalas siempre que
+  te pidan datos: reportes, qué está pendiente, qué falta por escribir, qué se
+  publica esta semana, cuántos posts lleva aprobados un cliente. NO respondas que
+  no tienes acceso —lo tienes— y NO te inventes cifras: pídelas.
+· El índice de abajo te dice quién hay y cuánto tiene. El detalle lo traes tú con
+  las herramientas: no está escrito aquí para no gastar la conversación entera en
+  datos que quizá no hagan falta.
+· Para EDITAR publicaciones, el usuario debe ir al chat del cliente concreto: usa
+  ir_a_cliente para llevarlo allí.
 
-CLIENTES DE LA AGENCIA (${clients.length}):
+ÍNDICE DE LA AGENCIA (${clients.length} cliente${clients.length === 1 ? "" : "s"}):
 ${clientSummaries || "(Sin clientes aún)"}
 
 CÓMO DEBES RESPONDER:
 · En español de Panamá, con tildes y signos de apertura (¿, ¡).
 · Conciso y directo.
 · Cuando hables de un cliente, referéncialo por nombre.
+· En los reportes, da la cifra y luego el detalle que la sostiene. Si listas
+  publicaciones, incluye cliente, fecha y formato: una lista sin cliente no sirve.
 · Puedes comparar clientes, sugerir estrategias cruzadas y dar ideas de campañas.
-· Si te preguntan algo que requiere editar un calendario, indica que deben ir al asistente del cliente específico.
-· No inventes datos que no estén en el contexto.`;
+· Si te preguntan algo que requiere editar un calendario, ofrece llevarlo al
+  asistente de ese cliente.
+· No inventes datos: si no los has consultado, consúltalos.`;
   }, [clients]);
 
   const executeToolCall = useCallback(async (toolName, toolInput) => {
     if (toolName === "ir_a_cliente") {
-      const target = clients.find(
-        (c) => c.id === toolInput.client_id || c.name.toLowerCase() === (toolInput.nombre || "").toLowerCase(),
-      );
+      const target = buscarCliente(clients, toolInput.client_id || toolInput.nombre);
       if (!target) return { ok: false, mensaje: "No encontré ese cliente." };
       onSelectClient(target.id);
       return { ok: true, mensaje: `Navegando a ${target.name}.` };
     }
+
+    if (toolName === "resumen_agencia") {
+      return { ok: true, ...resumenAgencia(clients) };
+    }
+
+    if (toolName === "consultar_publicaciones") {
+      const r = consultarPublicaciones(clients, toolInput || {});
+      if (!r.ok) return r;
+      // Un mes entero de cinco clientes no cabe en una respuesta útil. Se
+      // recorta y se DICE que se recortó, para que la IA pida más fino en
+      // vez de dar por buena una lista a medias como si fuera completa.
+      const TOPE = 120;
+      if (r.total > TOPE) {
+        return {
+          ok: true,
+          total: r.total,
+          mostradas: TOPE,
+          aviso: `Hay ${r.total} publicaciones y se muestran las primeras ${TOPE}. Afina el filtro (cliente, mes, semana, estado) si necesitas el resto.`,
+          publicaciones: r.publicaciones.slice(0, TOPE),
+        };
+      }
+      return r;
+    }
+
+    if (toolName === "consultar_tareas") {
+      const objetivo = toolInput?.cliente ? buscarCliente(clients, toolInput.cliente) : null;
+      if (toolInput?.cliente && !objetivo) {
+        return { ok: false, mensaje: `No encontré ningún cliente que se parezca a «${toolInput.cliente}».` };
+      }
+      const objetivos = objetivo ? [objetivo] : clients;
+      const filas = [];
+      for (const c of objetivos) {
+        const id = c.dbId || c.id;
+        let tareas = [];
+        try {
+          tareas = await db.loadClientTasks(id);
+        } catch {
+          // Que falle la lectura de un cliente no debe tumbar el informe
+          // entero: se dice de quién no se pudo leer y se sigue.
+          filas.push({ cliente: c.name, error: "No se pudieron leer sus tareas." });
+          continue;
+        }
+        for (const t of tareas) {
+          if (toolInput?.estado && (t.status || "pending") !== toolInput.estado) continue;
+          filas.push({
+            cliente: c.name,
+            id: t.id,
+            titulo: t.title,
+            descripcion: t.description || "",
+            estado: t.status || "pending",
+            vence: t.due_date || null,
+            recurrencia: t.recurrence || "none",
+          });
+        }
+      }
+      return { ok: true, total: filas.length, tareas: filas };
+    }
+
     return { ok: false, mensaje: `Herramienta desconocida: ${toolName}` };
   }, [clients, onSelectClient]);
 
@@ -148,6 +211,45 @@ CÓMO DEBES RESPONDER:
     try {
       const system = buildSystemPrompt();
       const tools = [
+        {
+          name: "resumen_agencia",
+          description: "Cifras de toda la agencia: por cliente, cuántas publicaciones hay y en qué estado (pendientes, aprobadas, rechazadas, publicadas), cuántas están incompletas y cuántas sin hora. Úsala para reportes generales y para saber a qué cliente mirar de cerca.",
+          input_schema: { type: "object", properties: {} },
+        },
+        {
+          name: "consultar_publicaciones",
+          description: "Lee publicaciones de los calendarios, de uno o de todos los clientes. Devuelve cliente, fecha, día, semana, formato, categoría, estado, hora, idea, descripción, guion y qué le falta a cada una. Úsala para «pásame los guiones de la semana 2», «qué hay sin descripción», «qué se publica el lunes» o «qué lleva aprobado este cliente». Sin filtros devuelve todo, así que filtra.",
+          input_schema: {
+            type: "object",
+            properties: {
+              cliente: { type: "string", description: "Nombre o ID del cliente. Omítelo para mirar a todos." },
+              mes: { type: "integer", description: "Mes como lo dice una persona: 1 = enero, 12 = diciembre." },
+              anio: { type: "integer", description: "Año de cuatro cifras." },
+              semana: { type: "integer", description: "Número de semana dentro del calendario (1 es la del primer día del mes)." },
+              dia: { type: "string", enum: ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"], description: "Día de la semana." },
+              desde: { type: "string", description: "Fecha inicial AAAA-MM-DD, inclusive." },
+              hasta: { type: "string", description: "Fecha final AAAA-MM-DD, inclusive." },
+              estado: { type: "string", enum: ["pending", "approved", "rejected", "published"], description: "Estado de aprobación." },
+              formato: { type: "string", enum: ["post", "reel", "carrusel", "historia", "live"], description: "Formato." },
+              categoria: { type: "string", description: "Categoría temática." },
+              sin_descripcion: { type: "boolean", description: "Sólo las que no tienen descripción escrita." },
+              sin_guion: { type: "boolean", description: "Sólo las que no tienen guion escrito." },
+              sin_hora: { type: "boolean", description: "Sólo las que no tienen hora de publicación." },
+              incompletas: { type: "boolean", description: "Sólo las que a las que les falta algún campo para su formato." },
+            },
+          },
+        },
+        {
+          name: "consultar_tareas",
+          description: "Lee las tareas de los clientes: título, descripción, estado, fecha de vencimiento y recurrencia. Úsala para «qué tareas tengo pendientes» o «qué falta por hacer con este cliente».",
+          input_schema: {
+            type: "object",
+            properties: {
+              cliente: { type: "string", description: "Nombre o ID del cliente. Omítelo para todos." },
+              estado: { type: "string", enum: ["pending", "completed"], description: "Filtrar por estado." },
+            },
+          },
+        },
         {
           name: "ir_a_cliente",
           description: "Navega al asistente de un cliente específico para poder ejecutar acciones sobre su calendario.",
