@@ -24,7 +24,6 @@ import { COOKIE } from "../../worker/lib/sesion.js";
 // ============================================================
 
 const TESTIGO = "un-testigo-de-sesion-de-prueba";
-const DENTRO_DE_UN_ANO = new Date(Date.now() + 365 * 24 * 3600_000).toISOString();
 
 /** D1 de mentira: reconoce las tres consultas que hace esta puerta. */
 function dbFalsa({ clientes = ["cliente-1"], huella } = {}) {
