@@ -52,8 +52,9 @@ origen y no hay variable de la que dependa qué se compila—, y con ella
 |---|---|---|
 | `npm test` | Lógica y todo lo que se resuelve leyendo el repositorio | Nada |
 | `npm run test:bundle` | El `dist/`: peso, caché, minificado | Un build |
+| `npm run test:vivo` | Que el cambio de una persona **llega** al socket de la otra | Nada (levanta `wrangler dev`) |
 | `npm run test:infra` | El sitio publicado y la cuenta de Cloudflare | Llaves |
-| `npm run verificar` | Los tres primeros en orden | Nada |
+| `npm run verificar` | Los cuatro primeros en orden | Nada |
 
 `tests/despliegue/` no comprueba que la aplicación funcione: comprueba
 que **lo que se despliega es lo que se cree que se despliega**. La CSP y
@@ -140,6 +141,8 @@ tests/
                           tiempo real, bundle
   migracion/              Conversión, capa de acceso, enlace público, equipo
                           y enrutado (pide las rutas del Worker de verdad)
+  vivo/                   Levanta workerd y comprueba que el cambio de una
+                          persona LLEGA al socket de la otra
 ```
 
 ### Las direcciones
@@ -529,6 +532,26 @@ son del servidor.
   compara los `tipo: "x"` del Worker con los `case "x"` de `App.jsx`: si
   añades un evento y no lo atiendes, falla al escribirlo, no en
   producción.
+- **Que el tiempo real esté ESCRITO no es que llegue.** Los 27 casos de
+  `tests/despliegue/tiempo-real.test.js` se resuelven leyendo ficheros:
+  comparan los `tipo:` con los `case`, buscan el `difundir()` pegado a
+  cada escritura, comprueban que el objeto usa `acceptWebSocket`. Con
+  todos en verde, el tiempo real puede estar muerto: entre lo escrito y
+  lo que llega están el binding `HUB` —sin él `difundir()` hace `return`
+  y no se entera nadie—, la ruta `/api/live`, la cookie que el socket
+  lleva o no lleva, y que las dos personas caigan en el **mismo** objeto.
+  Las cuatro fallan calladas, con la misma cara: la fila entra en D1, la
+  respuesta es 200, y la otra persona sigue viendo lo de antes.
+  Lo ejecuta `npm run test:vivo` (`tests/vivo/`), que levanta workerd de
+  verdad y mira el socket de la otra persona. Trece segundos, sin llaves,
+  y está dentro de `verificar`: un test que sólo se lanza a mano no
+  defiende nada.
+- **`/api/entrar` no existe: la ruta de acceso es `/api/acceso`.** Pedir
+  a una ruta que no está devuelve **401 «No autenticado»**, no un 404,
+  porque la comprobación de sesión va antes de que nadie mire el camino.
+  Así que un error de nombre se disfraza de «credenciales incorrectas» y
+  se puede pasar media tarde depurando el acceso. Un 401 sólo dice algo
+  del acceso si el cuerpo es «Usuario o contraseña incorrectos.».
 - **Una escritura remota no puede pisar lo que tienes a medias.** Si
   alguien guarda el mismo calendario que estás editando, aplicar su
   versión te borra el buffer sin decir nada. `App.jsx` comprueba

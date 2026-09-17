@@ -1,13 +1,34 @@
 # Tests
 
-Tres grupos, separados porque necesitan cosas distintas.
+Cuatro grupos, separados porque necesitan cosas distintas.
 
 | Comando | Qué comprueba | Necesita |
 |---|---|---|
 | `npm test` | Lógica de la aplicación y todo lo que se resuelve leyendo el repositorio | Nada |
-| `npm run test:bundle` | El `dist/` construido: peso, caché, minificado | Un build con variables |
-| `npm run test:infra` | El proyecto de Supabase y el sitio publicado | Llaves |
-| `npm run verificar` | Los tres primeros en orden. **Es lo que corre CI** | Nada |
+| `npm run test:bundle` | El `dist/` construido: peso, caché, minificado | Un build |
+| `npm run test:vivo` | Que un cambio de una persona **llega** al socket de la otra | Nada (levanta `wrangler dev`) |
+| `npm run test:infra` | El sitio publicado y la cuenta de Cloudflare | Llaves |
+| `npm run verificar` | Los cuatro primeros en orden. **Es lo que corre CI** | Nada |
+
+## Qué hay en `tests/vivo/`
+
+El resto de los tests del tiempo real —los 27 de
+`despliegue/tiempo-real.test.js`— comprueban que el tiempo real está
+**escrito**: que cada evento que emite el servidor tiene su `case` en
+`App.jsx`, que toda escritura lleva su `difundir()` pegado, que el
+Durable Object usa `acceptWebSocket`. Todo eso leyendo ficheros.
+
+Escrito y que llegue no son lo mismo. En medio están el binding `HUB`
+—sin él `difundir()` hace `return` y no se entera nadie—, la ruta
+`/api/live`, la cookie que el socket lleva o no lleva, y que las dos
+personas caigan en el **mismo** Durable Object. Ninguna de esas cuatro
+se ve leyendo un fichero, y las cuatro fallan calladas: la escritura
+entra en D1, la respuesta es 200, y la otra persona sigue viendo lo de
+antes hasta que recargue.
+
+`colaboracion.test.js` levanta workerd de verdad, mete a dos personas en
+un espacio y mira si el cambio de una aparece en el socket de la otra.
+Tarda unos trece segundos y no necesita ninguna llave.
 
 ## Qué hay en `tests/despliegue/`
 

@@ -14,8 +14,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:bundle": "vitest run --config vitest.bundle.config.js",
+    "test:vivo": "vitest run --config vitest.vivo.config.js",
     "test:infra": "vitest run --config vitest.infra.config.js",
-    "verificar": "npm run lint && npm test && npm run build && npm run test:bundle"
+    "verificar": "npm run lint && npm test && npm run build && npm run test:bundle && npm run test:vivo"
   },
   "dependencies": {
     "react": "^19.2.7",
@@ -28,6 +29,7 @@
     "oxlint": "^1.71.0",
     "vite": "^8.1.1",
     "vitest": "^4.1.11",
-    "wrangler": "^4.45.0"
+    "wrangler": "^4.45.0",
+    "ws": "^8.21.3"
   }
 }

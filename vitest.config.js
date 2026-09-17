@@ -14,13 +14,18 @@ import { defineConfig } from "vitest/config";
 //                      aplicación. Por eso no entra en `npm test`: se
 //                      ejecuta después del build.
 //
+//   npm run test:vivo  levanta `wrangler dev` y comprueba que un cambio
+//                      de una persona LLEGA al socket de la otra. No
+//                      necesita llaves —workerd corre en local—, pero
+//                      arranca un proceso, así que va aparte.
+//
 //   npm run test:infra  habla con Supabase y con el sitio publicado.
 //                      Necesita llaves; sin ellas se salta.
 //
 // `npm run verificar` es la secuencia completa, la misma que corre CI.
 // ============================================================
 
-const SIEMPRE = ["**/*.bundle.test.js", "**/*.live.test.js"];
+const SIEMPRE = ["**/*.bundle.test.js", "**/*.live.test.js", "tests/vivo/**"];
 
 export default defineConfig({
   test: {

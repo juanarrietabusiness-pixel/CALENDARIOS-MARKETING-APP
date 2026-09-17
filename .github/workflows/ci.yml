@@ -53,6 +53,17 @@ jobs:
       - name: Tests de bundle
         run: npm run test:bundle
 
+      # El tiempo real, EJECUTADO: levanta `wrangler dev` —workerd de
+      # verdad, con su D1 y su Durable Object—, mete a dos personas en un
+      # espacio y comprueba que lo que escribe una llega al socket de la
+      # otra. No necesita llaves ni cuenta de Cloudflare: corre en local.
+      #
+      # Va aquí y no en `npm test` porque arranca un proceso. Pero va en
+      # CI, no sólo a mano: los demás casos del tiempo real comprueban que
+      # el evento está ESCRITO, y que esté escrito no es que llegue.
+      - name: Tests de tiempo real
+        run: npm run test:vivo
+
       # El informe se escribe siempre, y se sube incluso si algo falló:
       # es lo que se lee para corregir sin volver a auditar el repositorio.
       - name: Subir el informe
