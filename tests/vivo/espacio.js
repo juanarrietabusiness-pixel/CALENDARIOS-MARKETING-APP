@@ -119,10 +119,16 @@ export async function levantarEspacio() {
        ('${BRUNO.id}', '${ANA.id}', 'editor', '${BRUNO.nombre}', '#EC4899');`,
   );
 
+  // `detached` hace del hijo el LÍDER DE SU GRUPO, y eso es lo que
+  // permite matarlo entero después. Sin esto, `npx` deja detrás al
+  // `node` que lanza —y ése es el que tiene el puerto y workerd—: cada
+  // pasada de `verificar` abandonaba un Worker vivo, y en CI eso son
+  // procesos colgados que nadie ve hasta que el runner se queda sin
+  // nada. El síntoma no se parece a la causa: los tests pasan.
   const proceso = spawn("npx", [
     "wrangler", "dev", "--port", String(puerto),
     "--persist-to", estado, "--log-level", "warn",
-  ], { cwd: RAIZ, stdio: ["ignore", "pipe", "pipe"] });
+  ], { cwd: RAIZ, stdio: ["ignore", "pipe", "pipe"], detached: true });
 
   let salida = "";
   proceso.stdout.on("data", (d) => { salida += d; });
@@ -138,8 +144,14 @@ export async function levantarEspacio() {
       await esperar(500);
     }
   }
+  /** Se mata el GRUPO (-pid), no el proceso: ver el comentario del spawn. */
+  const matarGrupo = (senal) => {
+    try { process.kill(-proceso.pid, senal); } catch { /* ya no está */ }
+  };
+
   if (!vivo) {
-    proceso.kill("SIGKILL");
+    matarGrupo("SIGKILL");
+    await rm(estado, { recursive: true, force: true });
     throw new Error(`El Worker no arrancó en local.\n${salida.slice(-2000)}`);
   }
 
@@ -213,9 +225,12 @@ export async function levantarEspacio() {
 
   async function cerrar() {
     for (const ws of sockets) { try { ws.close(); } catch { /* ya estaba */ } }
-    proceso.kill("SIGTERM");
-    await esperar(300);
-    proceso.kill("SIGKILL");
+    matarGrupo("SIGTERM");
+    // Se espera a que muera de verdad antes de rematar: workerd cierra
+    // sus ficheros al salir, y borrar el estado por debajo deja avisos
+    // que parecen fallos del test.
+    for (let i = 0; i < 20 && !proceso.killed; i++) await esperar(100);
+    matarGrupo("SIGKILL");
     await rm(estado, { recursive: true, force: true });
   }
 
