@@ -7,7 +7,7 @@
 // la imagen no carga—.
 // ============================================================
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { FORMATS } from "../../constants";
 import { uid, compressImage } from "../../utils";
 import { generateFieldForPost } from "../../api";
