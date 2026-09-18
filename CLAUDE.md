@@ -473,11 +473,30 @@ son del servidor.
   guarda, el guardado del desmonte llega con el calendario de antes y
   deshace lo que acaban de hacer.
 - **El chip del mes reserva sitio para la barra de completado.** `.cal-post`
-  lleva `position: relative` y 6px de padding inferior, y la barra va
+  lleva `position: relative` y 8px de padding inferior, y la barra va
   absoluta pegada al borde de abajo. La regla de móvil vuelve a declarar el
   padding: si se resetea a `3px 2px`, la barra se come el texto. La pista es
   un blanco translúcido y no un token de color porque el fondo del chip es
   un HSL calculado a partir de la categoría.
+- **El chip del mes es un BOTÓN, y medía 24px.** Por debajo de `--tap-sm`
+  (36) y de `--tap` (44), y encima arrastrable. Metía cinco cosas en una
+  sola línea con `nowrap` —punto, icono, etiqueta, hora y barra—, así que
+  la etiqueta acababa SIEMPRE en puntos suspensivos: el texto estaba y no
+  servía. Ahora son dos filas en rejilla (`grid-template-areas`): arriba
+  estado, formato y hora; abajo el texto a todo el ancho, hasta dos
+  líneas. La hora en la misma fila le robaba media columna —la celda mide
+  ~1/7 de la pantalla— y era la causa real del recorte, no la longitud.
+  `--tap-sm` y no `--tap` a propósito: a 44px un mes de cinco semanas con
+  cuatro publicaciones por día no entra en ninguna pantalla. Es el caso de
+  «control denso» del sistema de diseño, y quien trabaje a dedo tiene la
+  vista de lista.
+- **En móvil el chip no decía NADA.** La regla de `max-width: 599px`
+  ocultaba `.cal-post-label` **y** `.cal-post-time`, y el comentario decía
+  «se reduce a icono + hora» —describía algo que el CSS no hacía—. Quedaba
+  un punto de color y un icono de formato: en el teléfono no había forma
+  de saber qué era ninguna publicación sin abrirla. Ahora la etiqueta va a
+  una línea recortada, que distingue «Promo…» de «Educa…»; la hora sí se
+  cae, que ahí no cabe.
 - **Algo puede llamarse «own X» y no acotar nada.** Las tres políticas del
   banco de contenido decían «can read/delete own content-bank» y su única
   condición era `bucket_id = 'content-bank'`: cualquier sesión autenticada

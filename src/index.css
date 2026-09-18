@@ -963,25 +963,48 @@ input[type="radio"] {
   margin-bottom: 2px;
 }
 
+/* El chip de una publicación en la rejilla del mes.
+   ES UN BOTÓN, y además arrastrable: medía 24px de alto, por debajo de
+   `--tap-sm` (36) y de `--tap` (44). Y metía cinco cosas —punto, icono,
+   etiqueta, hora y barra de avance— en una sola línea con `nowrap`, así
+   que la etiqueta no se leía nunca entera: siempre acababa en puntos
+   suspensivos. Ahora la etiqueta ocupa hasta dos líneas y el chip crece
+   con ella.
+
+   `--tap-sm` y no `--tap`: en la rejilla del mes caben hasta cuatro
+   publicaciones por día, y a 44px un mes de cinco semanas no entra en
+   ninguna pantalla. Es el caso de «control denso» del sistema de diseño.
+   Quien trabaje a dedo tiene la vista de lista, que sí va a `--tap`. */
 .cal-post {
   position: relative;
   border-radius: var(--radius-xs);
-  padding: 3px var(--sp-1) 6px;
+  padding: var(--sp-1) var(--sp-1) 8px;
   margin-bottom: 2px;
   cursor: grab;
-  font-size: var(--fs-3xs);
-  line-height: 1.3;
+  font-size: var(--fs-2xs);
+  line-height: 1.35;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: flex;
+  /* Dos filas: arriba el estado, el formato y la hora; abajo el texto a
+     todo el ancho. En una sola fila la hora le robaba la mitad de la
+     columna a la etiqueta —la celda mide ~1/7 de la pantalla— y «Promoción
+     de temporada alta» se quedaba en «Promoción de…» incluso con dos
+     líneas. Abajo, con el ancho entero, cabe el doble. */
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  grid-template-areas:
+    "dot icon hora"
+    "texto texto texto";
   align-items: center;
-  gap: var(--sp-1);
-  min-height: 24px;
+  gap: 2px var(--sp-1);
+  min-height: var(--tap-sm);
   text-align: left;
   width: 100%;
   border: 1px solid;
 }
+.cal-post > .cal-post-dot { grid-area: dot; }
+.cal-post > svg { grid-area: icon; }
+.cal-post-label { grid-area: texto; }
+.cal-post-time { grid-area: hora; justify-self: end; }
 .cal-post-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 
 /* Barra de contenido completado.
@@ -1008,8 +1031,18 @@ input[type="radio"] {
   transition: width .2s ease;
 }
 .cal-post-avance-fill.is-full { background: var(--success); }
-.cal-post-label { overflow: hidden; text-overflow: ellipsis; }
-.cal-post-time { margin-left: auto; font-size: var(--fs-3xs); opacity: .85; }
+/* Hasta dos líneas, y luego sí se corta. Una sola línea con ellipsis
+   dejaba «Promoción de temporada…» en «Promo…» en casi todos los chips:
+   el texto estaba y no servía para nada. */
+.cal-post-label {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.cal-post-time { font-size: var(--fs-3xs); opacity: .85; white-space: nowrap; }
 .cal-post.has-cat .cal-post-label { font-weight: 600; }
 .cal-post.is-published { opacity: .75; text-decoration: line-through; }
 
@@ -1098,13 +1131,27 @@ input[type="radio"] {
 .time-picker-preset.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
 /* En pantallas estrechas una celda mide ~46px: el texto de la idea
-   es ilegible. Se reduce a icono + hora y la celda se compacta. */
+   es ilegible, así que aquí la etiqueta va a UNA línea y la hora se cae.
+
+   Antes se caían las dos —el comentario decía «icono + hora» y el CSS
+   ocultaba también la hora—, y el chip quedaba en un punto de color y un
+   icono de formato: en el teléfono no había forma de saber qué era
+   ninguna publicación sin abrirla. Una línea recortada dice bastante
+   más que ninguna. */
 @media (max-width: 599px) {
   .cal-grid { gap: 2px; }
   .cal-cell { min-height: 72px; padding: 2px; }
-  .cal-post-label { display: none; }
+  .cal-post-label {
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+    font-size: var(--fs-3xs);
+  }
   /* El padding inferior se mantiene: debajo va la barra de completado. */
-  .cal-post { justify-content: center; gap: 2px; padding: 3px 2px 6px; }
+  .cal-post {
+    gap: 1px 2px;
+    padding: 3px 2px 8px;
+    min-height: 32px;
+  }
   .cal-post-time { display: none; }
   .cal-header-idea { display: none; }
   .cal-header-label { display: none; }
