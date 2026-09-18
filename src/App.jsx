@@ -405,6 +405,8 @@ function Workspace({ session, ruta }) {
         // vuelvan a leer.
         case "tarea":
         case "tarea:fuera":
+        case "tarea-rapida":
+        case "tarea-rapida:fuera":
         case "banco":
         case "banco:fuera":
         case "memoria":
