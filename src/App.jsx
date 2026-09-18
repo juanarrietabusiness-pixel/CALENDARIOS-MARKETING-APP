@@ -15,6 +15,7 @@ import ChatPanel from "./components/ChatPanel";
 import GlobalChatPanel from "./components/GlobalChatPanel";
 import TaskPanel from "./components/TaskPanel";
 import { TaskTemplatesManager } from "./components/TaskPanel";
+import QuickTasksPanel from "./components/QuickTasksPanel";
 import ContentBankPanel from "./components/ContentBankPanel";
 import Login from "./pages/Login";
 import Invitacion from "./pages/Invitacion";
@@ -948,6 +949,10 @@ function Workspace({ session, ruta }) {
               </div>
             )}
 
+            {ruta.vista !== "equipo" && !client && (
+              <QuickTasksPanel pulso={pulso} />
+            )}
+
             {ruta.vista === "equipo" ? (
               <Equipo presentes={presentes} yo={yo} pulso={pulso} onVolver={() => navegar("/")} />
             ) : client ? (
@@ -1019,8 +1024,9 @@ function Workspace({ session, ruta }) {
                   onUpdateClient={(updated) => setClients((prev) => prev.map((c) => c.id === updated.id ? updated : c))}
                 />
 
-                {/* Tareas y banco de contenido */}
+                {/* Tareas rápidas, tareas del cliente y banco de contenido */}
                 <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
+                  <QuickTasksPanel pulso={pulso} />
                   <TaskPanel client={client} pulso={pulso} />
                   <ContentBankPanel client={client} pulso={pulso} />
                 </div>

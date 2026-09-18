@@ -980,6 +980,7 @@ export function buildChatSystemPrompt(client, calendar, adnExtra = "", memories 
         if (post.descripcion) parts.push(`Descripción: «${post.descripcion}»`);
         if (post.guion) parts.push(`Guion: «${post.guion}»`);
         if (post.hashtagsFinales) parts.push(`Hashtags: ${post.hashtagsFinales}`);
+        if (post.publishTime) parts.push(`Hora: ${post.publishTime}`);
         if (post.status && post.status !== "pending") parts.push(`[${post.status}]`);
         postLines.push("  · " + parts.join(" | "));
       }
@@ -1077,6 +1078,7 @@ export function getChatTools(hasCalendar) {
             categoria: { type: "string", description: "Categoría temática (ej: educativo, venta, entretenimiento)." },
             descripcion: { type: "string", description: "Caption/descripción lista para publicar." },
             guion: { type: "string", description: "Guion para reels, carruseles, historias o lives." },
+            hora: { type: "string", description: "Hora de publicación en formato HH:MM (24h). Ej: «09:00», «18:30»." },
           },
           required: ["fecha", "formato"],
         },
@@ -1093,6 +1095,7 @@ export function getChatTools(hasCalendar) {
             guion: { type: "string", description: "Nuevo guion." },
             categoria: { type: "string", description: "Nueva categoría." },
             formato: { type: "string", enum: ["post", "reel", "carrusel", "historia", "live"], description: "Nuevo formato." },
+            hora: { type: "string", description: "Nueva hora de publicación en formato HH:MM (24h)." },
           },
           required: ["post_id"],
         },
@@ -1142,6 +1145,7 @@ export function getChatTools(hasCalendar) {
                   descripcion: { type: "string", description: "Nueva descripción/caption." },
                   guion: { type: "string", description: "Nuevo guion." },
                   categoria: { type: "string", description: "Nueva categoría." },
+                  hora: { type: "string", description: "Nueva hora de publicación en formato HH:MM (24h)." },
                 },
                 required: ["post_id"],
               },

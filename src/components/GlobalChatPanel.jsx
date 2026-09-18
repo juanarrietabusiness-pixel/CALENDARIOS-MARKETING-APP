@@ -60,11 +60,22 @@ export default function GlobalChatPanel({ clients, onClose, onSelectClient }) {
       setInput((prev) => prev ? prev + " " + transcript : transcript);
       setListening(false);
     };
-    recognition.onerror = () => setListening(false);
+    recognition.onerror = (ev) => {
+      setListening(false);
+      const msgs = {
+        "not-allowed": "Permiso de micrófono denegado. Actívalo en los ajustes del navegador.",
+        "no-speech": "No se detectó voz. Intenta de nuevo.",
+        "audio-capture": "No se encontró micrófono. Conecta uno e intenta de nuevo.",
+        "network": "Error de red al procesar la voz.",
+        "aborted": "",
+      };
+      const msg = msgs[ev.error] ?? `Error de dictado: ${ev.error || "desconocido"}.`;
+      if (msg) setError(msg);
+    };
     recognition.onend = () => setListening(false);
 
     recognitionRef.current = recognition;
-    recognition.start();
+    try { recognition.start(); } catch { setError("No se pudo iniciar el dictado."); setListening(false); return; }
     setListening(true);
   }, [listening]);
 
@@ -87,31 +98,47 @@ export default function GlobalChatPanel({ clients, onClose, onSelectClient }) {
   }, []);
 
   const buildSystemPrompt = useCallback(() => {
-    const clientSummaries = clients.map((c) => {
-      const calCount = (c.calendars || []).length;
-      const postCount = (c.calendars || []).reduce(
-        (acc, cal) => acc + (cal.days || []).reduce((a2, d) => a2 + (d.posts || []).length, 0),
-        0,
-      );
-      return `· ${c.name} (ID: ${c.id}) — ${c.industry || "Sin industria"} · ${calCount} calendario${calCount === 1 ? "" : "s"} · ${postCount} publicación${postCount === 1 ? "" : "es"}${c.instagram ? ` · ${c.instagram}` : ""}`;
-    }).join("\n");
+    const clientBlocks = clients.map((c) => {
+      const lines = [`· ${c.name} (ID: ${c.id}) — ${c.industry || "Sin industria"}${c.instagram ? ` · ${c.instagram}` : ""}`];
+      for (const cal of c.calendars || []) {
+        const postLines = [];
+        for (const day of cal.days || []) {
+          for (const post of day.posts || []) {
+            const parts = [`ID:${post.id}`, day.date];
+            if (post.format) parts.push(post.format);
+            if (post.category) parts.push(post.category);
+            if (post.idea) parts.push(`Idea: «${post.idea}»`);
+            if (post.descripcion) parts.push(`Desc: «${post.descripcion.slice(0, 120)}»`);
+            if (post.publishTime) parts.push(`Hora: ${post.publishTime}`);
+            if (post.status && post.status !== "pending") parts.push(`[${post.status}]`);
+            postLines.push("      · " + parts.join(" | "));
+          }
+        }
+        lines.push(`    Calendario: ${cal.name || "Sin nombre"} — ${(cal.month ?? 0) + 1}/${cal.year} — ${postLines.length} pub.`);
+        if (cal.campaign) lines.push(`    Campaña: ${cal.campaign}`);
+        if (postLines.length) lines.push(...postLines);
+      }
+      return lines.join("\n");
+    }).join("\n\n");
 
     return `Eres el asistente general de la agencia Juancito Ads.
 
 QUIÉN ERES:
 · Un estratega de marketing digital que conoce TODOS los clientes de la agencia.
+· Tienes acceso COMPLETO a todos los calendarios y publicaciones de cada cliente.
 · Puedes dar ideas, sugerencias y análisis que abarquen a uno, varios o todos los clientes.
-· No tienes acceso directo a los calendarios desde aquí: para editar publicaciones, el usuario debe ir al chat del cliente específico.
-· Puedes sugerir al usuario que navegue a un cliente concreto cuando quiera ejecutar acciones.
+· Puedes citar datos concretos de las publicaciones: ideas, descripciones, formatos, fechas y estados.
+· Para editar publicaciones, el usuario debe ir al chat del cliente específico.
 
 CLIENTES DE LA AGENCIA (${clients.length}):
-${clientSummaries || "(Sin clientes aún)"}
+${clientBlocks || "(Sin clientes aún)"}
 
 CÓMO DEBES RESPONDER:
 · En español de Panamá, con tildes y signos de apertura (¿, ¡).
 · Conciso y directo.
 · Cuando hables de un cliente, referéncialo por nombre.
 · Puedes comparar clientes, sugerir estrategias cruzadas y dar ideas de campañas.
+· Si citas una publicación, incluye su fecha y formato para que sea fácil ubicarla.
 · Si te preguntan algo que requiere editar un calendario, indica que deben ir al asistente del cliente específico.
 · No inventes datos que no estén en el contexto.`;
   }, [clients]);
