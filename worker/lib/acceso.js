@@ -46,6 +46,7 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "client_tasks",
   "task_templates",
   "content_bank",
+  "quick_tasks",
   // Del equipo. Tienen dueño como las demás: la lista de miembros de un
   // espacio es un dato del espacio, y pedirla sin acotar devolvería la
   // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué

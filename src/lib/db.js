@@ -243,6 +243,30 @@ export async function applyTemplatesToClient(clientId, templates) {
 }
 
 // ------------------------------------------------------------
+// Tareas rápidas (inbox global)
+// ------------------------------------------------------------
+
+export async function loadQuickTasks() {
+  return (await pedir("/tareas-rapidas")) ?? [];
+}
+
+export async function saveQuickTask(task) {
+  return pedir("/tareas-rapidas", conCuerpo("POST", task));
+}
+
+export async function deleteQuickTask(taskId) {
+  await pedir(`/tareas-rapidas/${taskId}`, { method: "DELETE" });
+}
+
+export async function completeQuickTask(taskId) {
+  return pedir(`/tareas-rapidas/${taskId}/completar`, { method: "POST" });
+}
+
+export async function reopenQuickTask(taskId) {
+  return pedir(`/tareas-rapidas/${taskId}/reabrir`, { method: "POST" });
+}
+
+// ------------------------------------------------------------
 // Banco de contenido
 // ------------------------------------------------------------
 

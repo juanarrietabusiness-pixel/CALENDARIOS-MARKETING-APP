@@ -4,6 +4,28 @@ import * as db from "../lib/db";
 
 const RECURRENCE_LABELS = { none: "Una vez", weekly: "Semanal", monthly: "Mensual" };
 
+const DAY_NAMES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+
+const MONTHLY_ANCHORS = [
+  { value: "", label: "Elegir…" },
+  { value: "1", label: "Día 1" },
+  { value: "15", label: "Día 15" },
+  { value: "last_monday", label: "Último lunes" },
+  { value: "last_friday", label: "Último viernes" },
+  { value: "week_before_end", label: "Semana antes del cierre" },
+];
+
+function formatRecurrenceDetail(recurrence, recurrenceDay) {
+  if (recurrence === "weekly" && recurrenceDay != null) {
+    return `Cada ${DAY_NAMES[recurrenceDay] ?? "semana"}`;
+  }
+  if (recurrence === "monthly" && recurrenceDay != null) {
+    const anchor = MONTHLY_ANCHORS.find((a) => String(a.value) === String(recurrenceDay));
+    return anchor ? `Mensual · ${anchor.label}` : "Mensual";
+  }
+  return RECURRENCE_LABELS[recurrence] ?? recurrence;
+}
+
 export default function TaskPanel({ client, pulso = 0 }) {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -12,6 +34,8 @@ export default function TaskPanel({ client, pulso = 0 }) {
   const [adding, setAdding] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newRecurrence, setNewRecurrence] = useState("none");
+  const [newRecurrenceDay, setNewRecurrenceDay] = useState("");
+  const [newAssigned, setNewAssigned] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const formId = useId();
   const clientId = client.dbId || client.id;
@@ -24,24 +48,29 @@ export default function TaskPanel({ client, pulso = 0 }) {
       .catch(() => { if (alive) setError("No se pudieron cargar las tareas."); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-    // `pulso` sube cuando otra persona del equipo toca una tarea: es la
-    // forma de decirle a este panel «vuelve a leer» sin duplicar aquí la
-    // lógica de carga que ya está justo arriba.
   }, [clientId, pulso]);
 
   const handleAdd = useCallback(async () => {
     const title = newTitle.trim();
     if (!title) return;
     try {
-      const task = await db.saveClientTask({ client_id: clientId, title, recurrence: newRecurrence });
+      const task = await db.saveClientTask({
+        client_id: clientId,
+        title,
+        recurrence: newRecurrence,
+        recurrence_day: newRecurrenceDay || null,
+        assigned_to: newAssigned.trim(),
+      });
       setTasks((prev) => [...prev, task]);
       setNewTitle("");
       setNewRecurrence("none");
+      setNewRecurrenceDay("");
+      setNewAssigned("");
       setAdding(false);
     } catch {
       setError("No se pudo crear la tarea.");
     }
-  }, [clientId, newTitle, newRecurrence]);
+  }, [clientId, newTitle, newRecurrence, newRecurrenceDay, newAssigned]);
 
   const handleComplete = useCallback(async (taskId) => {
     try {
@@ -136,7 +165,6 @@ export default function TaskPanel({ client, pulso = 0 }) {
             </p>
           )}
 
-          {/* Tareas pendientes */}
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)" }}>
             {pending.map((task) => (
               <TaskRow
@@ -148,7 +176,6 @@ export default function TaskPanel({ client, pulso = 0 }) {
             ))}
           </div>
 
-          {/* Tareas completadas */}
           {completed.length > 0 && (
             <>
               <button
@@ -184,7 +211,6 @@ export default function TaskPanel({ client, pulso = 0 }) {
             </>
           )}
 
-          {/* Formulario de nueva tarea */}
           {adding ? (
             <div style={{
               marginTop: "var(--sp-2)",
@@ -203,22 +229,58 @@ export default function TaskPanel({ client, pulso = 0 }) {
                 autoFocus
                 style={{ fontSize: "var(--fs-xs)" }}
               />
-              <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center" }}>
+              <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", flexWrap: "wrap" }}>
                 <select
                   className="input"
                   value={newRecurrence}
-                  onChange={(e) => setNewRecurrence(e.target.value)}
+                  onChange={(e) => { setNewRecurrence(e.target.value); setNewRecurrenceDay(""); }}
                   aria-label="Recurrencia"
-                  style={{ fontSize: "var(--fs-3xs)", flex: 1 }}
+                  style={{ fontSize: "var(--fs-3xs)", minWidth: 90 }}
                 >
                   <option value="none">Una vez</option>
                   <option value="weekly">Semanal</option>
                   <option value="monthly">Mensual</option>
                 </select>
+
+                {newRecurrence === "weekly" && (
+                  <select
+                    className="input"
+                    value={newRecurrenceDay}
+                    onChange={(e) => setNewRecurrenceDay(e.target.value)}
+                    aria-label="Día de la semana"
+                    style={{ fontSize: "var(--fs-3xs)", minWidth: 100 }}
+                  >
+                    <option value="">Cualquier día</option>
+                    {DAY_NAMES.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                  </select>
+                )}
+
+                {newRecurrence === "monthly" && (
+                  <select
+                    className="input"
+                    value={newRecurrenceDay}
+                    onChange={(e) => setNewRecurrenceDay(e.target.value)}
+                    aria-label="Ancla mensual"
+                    style={{ fontSize: "var(--fs-3xs)", minWidth: 140 }}
+                  >
+                    {MONTHLY_ANCHORS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+                  </select>
+                )}
+
+                <input
+                  className="input"
+                  value={newAssigned}
+                  onChange={(e) => setNewAssigned(e.target.value)}
+                  placeholder="Asignar a…"
+                  aria-label="Asignar a"
+                  style={{ fontSize: "var(--fs-3xs)", minWidth: 90, flex: 1 }}
+                />
+              </div>
+              <div style={{ display: "flex", gap: "var(--sp-2)" }}>
                 <button className="btn btn-primary" onClick={handleAdd} disabled={!newTitle.trim()} style={{ fontSize: "var(--fs-3xs)", padding: "var(--sp-1) var(--sp-3)" }}>
                   Añadir
                 </button>
-                <button className="btn" onClick={() => { setAdding(false); setNewTitle(""); }} style={{ fontSize: "var(--fs-3xs)", padding: "var(--sp-1) var(--sp-3)" }}>
+                <button className="btn" onClick={() => { setAdding(false); setNewTitle(""); setNewAssigned(""); }} style={{ fontSize: "var(--fs-3xs)", padding: "var(--sp-1) var(--sp-3)" }}>
                   Cancelar
                 </button>
               </div>
@@ -255,6 +317,10 @@ export default function TaskPanel({ client, pulso = 0 }) {
 
 function TaskRow({ task, onComplete, onReopen, onDelete }) {
   const isDone = task.status === "completed";
+  const detail = task.recurrence !== "none"
+    ? formatRecurrenceDetail(task.recurrence, task.recurrence_day)
+    : null;
+
   return (
     <div style={{
       display: "flex",
@@ -296,11 +362,18 @@ function TaskRow({ task, onComplete, onReopen, onDelete }) {
         }}>
           {task.title}
         </span>
-        {task.recurrence !== "none" && (
-          <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)" }}>
-            {RECURRENCE_LABELS[task.recurrence]}
-          </span>
-        )}
+        <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }}>
+          {detail && (
+            <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)" }}>
+              {detail}
+            </span>
+          )}
+          {task.assigned_to && (
+            <span style={{ fontSize: "var(--fs-3xs)", color: "var(--accent)" }}>
+              {task.assigned_to}
+            </span>
+          )}
+        </div>
       </div>
       <button
         type="button"
@@ -320,6 +393,8 @@ export function TaskTemplatesManager() {
   const [loading, setLoading] = useState(true);
   const [newTitle, setNewTitle] = useState("");
   const [newRecurrence, setNewRecurrence] = useState("none");
+  const [newRecurrenceDay, setNewRecurrenceDay] = useState("");
+  const [newAssigned, setNewAssigned] = useState("");
   const [error, setError] = useState("");
   const formId = useId();
 
@@ -334,10 +409,17 @@ export function TaskTemplatesManager() {
     const title = newTitle.trim();
     if (!title) return;
     try {
-      const tpl = await db.saveTaskTemplate({ title, recurrence: newRecurrence });
+      const tpl = await db.saveTaskTemplate({
+        title,
+        recurrence: newRecurrence,
+        recurrence_day: newRecurrenceDay || null,
+        assigned_to: newAssigned.trim(),
+      });
       setTemplates((prev) => [...prev, tpl]);
       setNewTitle("");
       setNewRecurrence("none");
+      setNewRecurrenceDay("");
+      setNewAssigned("");
     } catch {
       setError("No se pudo crear la plantilla.");
     }
@@ -381,7 +463,12 @@ export function TaskTemplatesManager() {
             }}>
               <span style={{ flex: 1, color: "var(--text)" }}>{tpl.title}</span>
               {tpl.recurrence !== "none" && (
-                <span style={{ color: "var(--text-faint)" }}>{RECURRENCE_LABELS[tpl.recurrence]}</span>
+                <span style={{ color: "var(--text-faint)" }}>
+                  {formatRecurrenceDetail(tpl.recurrence, tpl.recurrence_day)}
+                </span>
+              )}
+              {tpl.assigned_to && (
+                <span style={{ color: "var(--accent)" }}>{tpl.assigned_to}</span>
               )}
               <button
                 className="btn-icon"
@@ -396,7 +483,7 @@ export function TaskTemplatesManager() {
         </div>
       )}
 
-      <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center" }}>
+      <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", flexWrap: "wrap" }}>
         <label htmlFor={formId} className="sr-only">Nueva plantilla</label>
         <input
           id={formId}
@@ -405,12 +492,12 @@ export function TaskTemplatesManager() {
           onChange={(e) => setNewTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
           placeholder="Nueva plantilla…"
-          style={{ flex: 1, fontSize: "var(--fs-3xs)" }}
+          style={{ flex: 1, fontSize: "var(--fs-3xs)", minWidth: 120 }}
         />
         <select
           className="input"
           value={newRecurrence}
-          onChange={(e) => setNewRecurrence(e.target.value)}
+          onChange={(e) => { setNewRecurrence(e.target.value); setNewRecurrenceDay(""); }}
           aria-label="Recurrencia"
           style={{ fontSize: "var(--fs-3xs)", width: 100 }}
         >
@@ -418,6 +505,41 @@ export function TaskTemplatesManager() {
           <option value="weekly">Semanal</option>
           <option value="monthly">Mensual</option>
         </select>
+
+        {newRecurrence === "weekly" && (
+          <select
+            className="input"
+            value={newRecurrenceDay}
+            onChange={(e) => setNewRecurrenceDay(e.target.value)}
+            aria-label="Día de la semana"
+            style={{ fontSize: "var(--fs-3xs)", width: 100 }}
+          >
+            <option value="">Cualquier día</option>
+            {DAY_NAMES.map((d, i) => <option key={i} value={i}>{d}</option>)}
+          </select>
+        )}
+
+        {newRecurrence === "monthly" && (
+          <select
+            className="input"
+            value={newRecurrenceDay}
+            onChange={(e) => setNewRecurrenceDay(e.target.value)}
+            aria-label="Ancla mensual"
+            style={{ fontSize: "var(--fs-3xs)", width: 140 }}
+          >
+            {MONTHLY_ANCHORS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+          </select>
+        )}
+
+        <input
+          className="input"
+          value={newAssigned}
+          onChange={(e) => setNewAssigned(e.target.value)}
+          placeholder="Asignar a…"
+          aria-label="Asignar a"
+          style={{ fontSize: "var(--fs-3xs)", width: 90 }}
+        />
+
         <button className="btn btn-primary" onClick={handleAdd} disabled={!newTitle.trim()} style={{ fontSize: "var(--fs-3xs)", padding: "var(--sp-1) var(--sp-3)" }}>
           <Icon name="plus" size={14} />
         </button>
