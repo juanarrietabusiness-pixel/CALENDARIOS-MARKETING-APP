@@ -473,11 +473,30 @@ son del servidor.
   guarda, el guardado del desmonte llega con el calendario de antes y
   deshace lo que acaban de hacer.
 - **El chip del mes reserva sitio para la barra de completado.** `.cal-post`
-  lleva `position: relative` y 6px de padding inferior, y la barra va
+  lleva `position: relative` y 8px de padding inferior, y la barra va
   absoluta pegada al borde de abajo. La regla de móvil vuelve a declarar el
   padding: si se resetea a `3px 2px`, la barra se come el texto. La pista es
   un blanco translúcido y no un token de color porque el fondo del chip es
   un HSL calculado a partir de la categoría.
+- **El chip del mes es un BOTÓN, y medía 24px.** Por debajo de `--tap-sm`
+  (36) y de `--tap` (44), y encima arrastrable. Metía cinco cosas en una
+  sola línea con `nowrap` —punto, icono, etiqueta, hora y barra—, así que
+  la etiqueta acababa SIEMPRE en puntos suspensivos: el texto estaba y no
+  servía. Ahora son dos filas en rejilla (`grid-template-areas`): arriba
+  estado, formato y hora; abajo el texto a todo el ancho, hasta dos
+  líneas. La hora en la misma fila le robaba media columna —la celda mide
+  ~1/7 de la pantalla— y era la causa real del recorte, no la longitud.
+  `--tap-sm` y no `--tap` a propósito: a 44px un mes de cinco semanas con
+  cuatro publicaciones por día no entra en ninguna pantalla. Es el caso de
+  «control denso» del sistema de diseño, y quien trabaje a dedo tiene la
+  vista de lista.
+- **En móvil el chip no decía NADA.** La regla de `max-width: 599px`
+  ocultaba `.cal-post-label` **y** `.cal-post-time`, y el comentario decía
+  «se reduce a icono + hora» —describía algo que el CSS no hacía—. Quedaba
+  un punto de color y un icono de formato: en el teléfono no había forma
+  de saber qué era ninguna publicación sin abrirla. Ahora la etiqueta va a
+  una línea recortada, que distingue «Promo…» de «Educa…»; la hora sí se
+  cae, que ahí no cabe.
 - **Algo puede llamarse «own X» y no acotar nada.** Las tres políticas del
   banco de contenido decían «can read/delete own content-bank» y su única
   condición era `bucket_id = 'content-bank'`: cualquier sesión autenticada
@@ -525,6 +544,23 @@ son del servidor.
   hay que cambiarlo por consultas —que la IA pida lo que necesita en vez
   de recibirlo todo—. La descripción ya se recorta a 120 caracteres para
   que quepa, que es la primera señal.
+- **Un fichero de 3.000 líneas hace que las guardas dejen de guardar.**
+  `CalendarView.jsx` tenía 3.034 líneas y diecisiete componentes dentro.
+  El test que exige `useDialogA11y` en todo fichero con `role="dialog"`
+  pasaba en verde **porque la cadena aparecía en algún otro sitio del
+  mismo fichero**: bastaba con que uno de los diecisiete lo llamara. Al
+  partirlo salió lo que tapaba — el desplegable de la hora se anunciaba
+  como diálogo sin foco atrapado—. Con ficheros por componente, la
+  granularidad del test es la del componente.
+  Al partir también hay que declarar qué usa cada pieza, que es lo que
+  el ámbito común no obligaba a hacer: dos de los componentes movidos
+  arrastraban importaciones que nunca habían necesitado.
+- **Un desplegable anclado a un botón NO es `role="dialog"`.** Ese rol
+  le promete a un lector de pantalla foco atrapado y fondo inerte. El
+  selector de hora se cierra con Escape y con un clic fuera, y el fondo
+  sigue navegable a propósito: es `role="group"`. Poner el rol de
+  diálogo «porque flota» obliga después a meter un `useDialogA11y` que
+  rompería justo lo que hace que funcione.
 - **Rellenar no es reescribir.** «Generar guiones» sólo escribe donde no
   hay nada: lo que ya tiene texto gana sobre lo que devuelve el modelo.
   Y lo que le falta a una publicación depende de su formato —un post sólo

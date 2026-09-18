@@ -215,12 +215,13 @@ describe("el guardado del panel lateral", () => {
   it("el panel guarda al desmontar, no al pulsar cerrar", () => {
     // El fondo oscuro y la tecla Escape llaman a onClose a secas: con el
     // guardado colgado del botón, todo lo editado se perdía sin decir nada.
-    const vista = leer("src/components/CalendarView.jsx");
+    // El panel salió de CalendarView.jsx al partirlo por componentes.
+    const vista = leer("src/components/calendario/PostSidePanel.jsx");
     expect(
       vista,
       fallo({
         que: "no hay guardado al desmontar el panel lateral",
-        donde: "src/components/CalendarView.jsx",
+        donde: "src/components/calendario/PostSidePanel.jsx",
         porque: "El fondo oscuro y Escape llaman a onClose directamente: si el guardado cuelga del botón, se pierde todo lo editado —y todo lo que acababa de generar la IA— sin un aviso.",
         arreglo: "Guarda en el cleanup del useEffect, y levanta `yaEscrito` en los botones que reescriben el calendario por su cuenta.",
       }),
