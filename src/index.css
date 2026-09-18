@@ -101,6 +101,20 @@
   --shadow: var(--elev-1);
   --shadow-lg: var(--elev-2);
 
+  /* ---------- Apilado ----------
+     Los seis niveles que hay, en orden y con destino. Estaban sueltos
+     por el fichero —999, 300, 250, 60 y dos empatados en 50—, y con dos
+     iguales quien queda delante lo decide el orden en el DOM, que no es
+     una decisión de nadie. Regla: no se escribe un `z-index` con un
+     número; se elige un nivel. Si hace falta uno nuevo, se añade aquí
+     con su nombre, que obliga a decir para qué es. */
+  --z-desplegable: 50;  /* desplegable anclado a un control (hora) */
+  --z-pista: 55;        /* tooltip: por encima del desplegable que describe */
+  --z-menu: 60;         /* menú flotante de acciones */
+  --z-panel: 250;       /* panel lateral */
+  --z-overlay: 300;     /* diálogo modal: tapa el panel lateral */
+  --z-salto: 999;       /* saltar al contenido: por encima de todo */
+
   /* ---------- Layout ---------- */
   --header-h: 60px;
   --sidebar-w: 264px;
@@ -164,7 +178,7 @@ input, textarea, select, button { font-family: inherit; }
   position: absolute;
   left: -9999px;
   top: 0;
-  z-index: 999;
+  z-index: var(--z-salto);
   background: var(--accent);
   color: #fff;
   padding: var(--sp-3) var(--sp-4);
@@ -590,7 +604,7 @@ input[type="radio"] {
   position: absolute;
   right: 0;
   top: calc(100% + var(--sp-2));
-  z-index: 60;
+  z-index: var(--z-menu);
   min-width: 216px;
   background: var(--surface-3);
   border: 1px solid var(--border-strong);
@@ -688,7 +702,7 @@ input[type="radio"] {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 300;
+  z-index: var(--z-overlay);
   padding: var(--sp-4);
   padding-bottom: calc(var(--sp-4) + var(--safe-bottom));
   animation: fadeIn .2s;
@@ -762,7 +776,7 @@ input[type="radio"] {
   max-width: 100%;
   background: var(--surface);
   border-left: 1px solid var(--border-strong);
-  z-index: 250;
+  z-index: var(--z-panel);
   display: flex;
   flex-direction: column;
   padding-bottom: var(--safe-bottom);
@@ -1067,7 +1081,7 @@ input[type="radio"] {
   position: absolute;
   top: 100%;
   left: 0;
-  z-index: 50;
+  z-index: var(--z-desplegable);
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1499,7 +1513,7 @@ input[type="radio"] {
   border-radius: var(--radius-xs);
   font-size: var(--fs-3xs);
   white-space: nowrap;
-  z-index: 50;
+  z-index: var(--z-pista);
 }
 
 /* ============================================================

@@ -544,6 +544,23 @@ son del servidor.
   hay que cambiarlo por consultas —que la IA pida lo que necesita en vez
   de recibirlo todo—. La descripción ya se recorta a 120 caracteres para
   que quepa, que es la primera señal.
+- **Un fichero de 3.000 líneas hace que las guardas dejen de guardar.**
+  `CalendarView.jsx` tenía 3.034 líneas y diecisiete componentes dentro.
+  El test que exige `useDialogA11y` en todo fichero con `role="dialog"`
+  pasaba en verde **porque la cadena aparecía en algún otro sitio del
+  mismo fichero**: bastaba con que uno de los diecisiete lo llamara. Al
+  partirlo salió lo que tapaba — el desplegable de la hora se anunciaba
+  como diálogo sin foco atrapado—. Con ficheros por componente, la
+  granularidad del test es la del componente.
+  Al partir también hay que declarar qué usa cada pieza, que es lo que
+  el ámbito común no obligaba a hacer: dos de los componentes movidos
+  arrastraban importaciones que nunca habían necesitado.
+- **Un desplegable anclado a un botón NO es `role="dialog"`.** Ese rol
+  le promete a un lector de pantalla foco atrapado y fondo inerte. El
+  selector de hora se cierra con Escape y con un clic fuera, y el fondo
+  sigue navegable a propósito: es `role="group"`. Poner el rol de
+  diálogo «porque flota» obliga después a meter un `useDialogA11y` que
+  rompería justo lo que hace que funcione.
 - **Rellenar no es reescribir.** «Generar guiones» sólo escribe donde no
   hay nada: lo que ya tiene texto gana sobre lo que devuelve el modelo.
   Y lo que le falta a una publicación depende de su formato —un post sólo
