@@ -317,6 +317,43 @@ export async function rutasDatos(req, env, ctx) {
     }
   }
 
+  // ---- /api/tareas-rapidas ----
+  if (seccion === "tareas-rapidas") {
+    if (metodo === "GET") {
+      return json(await acceso.leer("quick_tasks", {}, "created_at asc"));
+    }
+    if (metodo === "POST" && !id) {
+      const datos = (await cuerpo(req)) ?? {};
+      const fila = {
+        id: uuid(), title: datos.title || "", status: "pending",
+        assigned_to: datos.assigned_to || "", created_at: ahora(),
+      };
+      await acceso.insertar("quick_tasks", fila);
+      difundir(env, acceso.ownerId, { tipo: "tarea-rapida", tarea: fila, por: firma(ctx.usuario, req) });
+      return json(fila, 201);
+    }
+    if (metodo === "DELETE" && id) {
+      const n = await acceso.borrar("quick_tasks", { id });
+      if (!n) return noEncontrado("Tarea rápida");
+      difundir(env, acceso.ownerId, { tipo: "tarea-rapida:fuera", id, por: firma(ctx.usuario, req) });
+      return sinContenido();
+    }
+    if (metodo === "POST" && sub === "completar") {
+      const n = await acceso.actualizar("quick_tasks", { id }, { status: "completed", completed_at: ahora() });
+      if (!n) return noEncontrado("Tarea rápida");
+      const tarea = await acceso.leerUno("quick_tasks", { id });
+      difundir(env, acceso.ownerId, { tipo: "tarea-rapida", tarea, por: firma(ctx.usuario, req) });
+      return json(tarea);
+    }
+    if (metodo === "POST" && sub === "reabrir") {
+      const n = await acceso.actualizar("quick_tasks", { id }, { status: "pending", completed_at: null });
+      if (!n) return noEncontrado("Tarea rápida");
+      const tarea = await acceso.leerUno("quick_tasks", { id });
+      difundir(env, acceso.ownerId, { tipo: "tarea-rapida", tarea, por: firma(ctx.usuario, req) });
+      return json(tarea);
+    }
+  }
+
   if (seccion === "banco" && metodo === "DELETE") {
     const item = await acceso.leerUno("content_bank", { id });
     if (!item) return noEncontrado("Archivo");

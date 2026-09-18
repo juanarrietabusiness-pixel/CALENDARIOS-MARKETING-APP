@@ -106,8 +106,6 @@ src/
     vivo.js               WebSocket: reconexión, latido, presencia
     horas.js              «9am» → «09:00» y vuelta (puro)
     lote.js               Editar muchas publicaciones de una vez (puro)
-    agencia.js            Lo que el asistente global consulta: publicaciones,
-                          cifras e índice de clientes (puro)
     exportarContenido.js  Texto de «Exportar ideas y descripciones» (puro)
     completitud.js        Cuánto le falta a una publicación (puro)
   components/
@@ -520,15 +518,13 @@ son del servidor.
   guardó, y la publicación no tiene hora. Lo normaliza
   `normalizarHora()`, y lo que no entiende se RECHAZA con un mensaje en
   vez de escribirse.
-- **Al asistente global no se le vuelca la agencia entera: se le dan
-  consultas.** Cinco clientes con un mes escrito son decenas de miles de
-  tokens en CADA mensaje, se pagan aunque la pregunta sea «hola» y
-  desplazan la conversación. El prompt lleva el índice —una línea por
-  cliente, `indiceParaPrompt()`— y el detalle lo pide él con
-  `consultar_publicaciones`, `consultar_tareas` y `resumen_agencia`.
-  Cuando una consulta devuelve más de lo que cabe, la respuesta **dice
-  que se recortó**: una lista a medias que parece completa es peor que
-  no tenerla.
+- **El asistente global vuelca TODAS las publicaciones en el prompt, y
+  eso tiene fecha de caducidad.** Hoy son cuatro clientes y cabe. El
+  coste se paga en CADA mensaje, aunque la pregunta sea «hola», y crece
+  con la agencia: a partir de cierto punto desplaza la conversación y
+  hay que cambiarlo por consultas —que la IA pida lo que necesita en vez
+  de recibirlo todo—. La descripción ya se recorta a 120 caracteres para
+  que quepa, que es la primera señal.
 - **Rellenar no es reescribir.** «Generar guiones» sólo escribe donde no
   hay nada: lo que ya tiene texto gana sobre lo que devuelve el modelo.
   Y lo que le falta a una publicación depende de su formato —un post sólo

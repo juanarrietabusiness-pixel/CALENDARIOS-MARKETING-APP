@@ -89,11 +89,22 @@ export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClos
       setInput((prev) => prev ? prev + " " + transcript : transcript);
       setListening(false);
     };
-    recognition.onerror = () => setListening(false);
+    recognition.onerror = (ev) => {
+      setListening(false);
+      const msgs = {
+        "not-allowed": "Permiso de micrófono denegado. Actívalo en los ajustes del navegador.",
+        "no-speech": "No se detectó voz. Intenta de nuevo.",
+        "audio-capture": "No se encontró micrófono. Conecta uno e intenta de nuevo.",
+        "network": "Error de red al procesar la voz.",
+        "aborted": "",
+      };
+      const msg = msgs[ev.error] ?? `Error de dictado: ${ev.error || "desconocido"}.`;
+      if (msg) setError(msg);
+    };
     recognition.onend = () => setListening(false);
 
     recognitionRef.current = recognition;
-    recognition.start();
+    try { recognition.start(); } catch { setError("No se pudo iniciar el dictado."); setListening(false); return; }
     setListening(true);
   }, [listening]);
 
