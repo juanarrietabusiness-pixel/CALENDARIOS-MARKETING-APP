@@ -555,6 +555,23 @@ son del servidor.
   Al partir también hay que declarar qué usa cada pieza, que es lo que
   el ámbito común no obligaba a hacer: dos de los componentes movidos
   arrastraban importaciones que nunca habían necesitado.
+- **Un hook sin importar no lo ve el lint, ni el build: revienta al
+  renderizar.** Al meter `useCallback` en `CalendarView.jsx` no se añadió
+  al `import` de react. oxlint no lo marca, `vite build` compila, los 425
+  tests pasan, y el bundle se publica. Falla al RENDERIZAR, con
+  «useCallback is not defined» — y como el fallo está en el árbol de la
+  vista CON SESIÓN, abrir el sitio sin entrar no lo reproduce: la
+  pantalla de acceso se pinta perfecta. El síntoma es la página en blanco
+  con el título correcto en la pestaña, igual que la trampa del `base` de
+  Vite, y tampoco apunta a su causa.
+  Lo vigila `tests/despliegue/capas.test.js`, que compara los hooks
+  LLAMADOS con los importados en cada fichero. Sólo cuenta llamadas y
+  descarta comentarios: `rutas.js` nombra `useState` al explicar por qué
+  la dirección ya no es estado.
+  La lección más general: **una refactorización que mueve código entre
+  ficheros hay que probarla en la pantalla que usa ese código**, no sólo
+  con `npm run verificar`. La que lo cazó fue cargar la vista autenticada
+  en Chromium con una sesión de verdad.
 - **Un desplegable anclado a un botón NO es `role="dialog"`.** Ese rol
   le promete a un lector de pantalla foco atrapado y fondo inerte. El
   selector de hora se cierra con Escape y con un clic fuera, y el fondo

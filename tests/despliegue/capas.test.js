@@ -110,3 +110,45 @@ describe("los estilos siguen saliendo del sistema", () => {
     expect(lista.join(""), fallos(lista)).toBe("");
   });
 });
+
+describe("los hooks que se usan están importados", () => {
+  it("ningún fichero llama a un hook que no ha importado de react", () => {
+    // ESTO LLEGÓ A PRODUCCIÓN. Al meter `useCallback` en CalendarView no
+    // se añadió al import, y oxlint no lo marca: el build compila, el
+    // bundle se publica, y revienta al RENDERIZAR con
+    // «useCallback is not defined». La página queda en blanco con el
+    // título correcto en la pestaña, y sólo en la vista con sesión
+    // —así que abrirla sin entrar no lo reproduce—.
+    const HOOKS = /\buse(State|Effect|Ref|Callback|Memo|Id|Reducer|LayoutEffect|ImperativeHandle|Transition|DeferredValue|SyncExternalStore)\b/g;
+    const lista = [];
+
+    for (const ruta of NAVEGADOR) {
+      const rel = ruta.replace(/^.*\/src\//, "src/");
+      const texto = leer(rel);
+      // Sin comentarios: `rutas.js` NOMBRA useState al explicar por qué
+      // la dirección ya no es estado, y eso no es una llamada.
+      const codigo = texto
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "");
+      const linea = texto.match(/^import \{([^}]*)\} from "react";/m);
+      const importados = new Set((linea?.[1] ?? "").split(",").map((s) => s.trim()));
+      // Lo que declara el propio fichero (hooks propios) no cuenta.
+      const propios = new Set([...codigo.matchAll(/(?:function|const)\s+(use[A-Z]\w*)/g)].map((m) => m[1]));
+
+      // Sólo cuentan las LLAMADAS: `useState(` y no la palabra suelta.
+      const usados = new Set(
+        [...codigo.matchAll(new RegExp(HOOKS.source + "\\s*\\(", "g"))].map((m) => m[0].replace(/\s*\($/, "")),
+      );
+      for (const h of usados) {
+        if (importados.has(h) || propios.has(h)) continue;
+        lista.push(fallo({
+          que: `«${h}» se usa sin importarlo de react`,
+          donde: rel,
+          porque: "oxlint no lo marca y el build compila. Falla al RENDERIZAR, con la página en blanco y el título correcto: el síntoma no apunta a un import.",
+          arreglo: `Añade ${h} al import de react de ese fichero.`,
+        }));
+      }
+    }
+    expect(lista.join(""), fallos(lista)).toBe("");
+  });
+});
