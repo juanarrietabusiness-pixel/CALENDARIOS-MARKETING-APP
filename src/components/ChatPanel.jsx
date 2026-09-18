@@ -3,6 +3,7 @@ import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { callAIChat, buildChatSystemPrompt, getChatTools } from "../api";
 import { uid, compressImage } from "../utils";
+import { leerHora, MAL, aplicarLote } from "../lib/lote";
 import * as db from "../lib/db";
 
 export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClose }) {
@@ -149,6 +150,11 @@ export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClos
     if (toolName === "crear_publicacion") {
       const day = (cal.days || []).find((d) => d.date === toolInput.fecha);
       if (!day) return { ok: false, mensaje: `No existe el día ${toolInput.fecha} en este calendario.` };
+      // Una hora que no se entiende se RECHAZA. Guardarla tal cual deja
+      // el `<input type="time">` vacío y la publicación sin hora, sin que
+      // nadie vea un error: la IA habría dicho que sí.
+      const hora = leerHora(toolInput.hora);
+      if (hora === MAL) return { ok: false, mensaje: `No entendí la hora «${toolInput.hora}». Escríbela como «9am», «21:30» o «6 pm».` };
       const newPost = {
         id: uid(),
         format: toolInput.formato || "post",
@@ -158,7 +164,7 @@ export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClos
         category: toolInput.categoria || "",
         status: "pending",
         hashtagsFinales: "",
-        publishTime: toolInput.hora || "",
+        publishTime: hora ?? "",
       };
       const newDays = cal.days.map((d) =>
         d.date !== toolInput.fecha ? d : { ...d, posts: [...(d.posts || []), newPost] },
@@ -170,6 +176,8 @@ export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClos
     }
 
     if (toolName === "editar_publicacion") {
+      const hora = leerHora(toolInput.hora);
+      if (hora === MAL) return { ok: false, mensaje: `No entendí la hora «${toolInput.hora}». Escríbela como «9am», «21:30» o «6 pm».` };
       let found = false;
       const newDays = cal.days.map((d) => ({
         ...d,
@@ -182,7 +190,7 @@ export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClos
           if (toolInput.guion !== undefined) upd.guion = toolInput.guion;
           if (toolInput.categoria !== undefined) upd.category = toolInput.categoria;
           if (toolInput.formato !== undefined) upd.format = toolInput.formato;
-          if (toolInput.hora !== undefined) upd.publishTime = toolInput.hora;
+          if (hora !== undefined) upd.publishTime = hora;
           return upd;
         }),
       }));
@@ -210,30 +218,12 @@ export default function ChatPanel({ client, calendar, calId, onUpdateCal, onClos
     }
 
     if (toolName === "editar_publicaciones_lote") {
-      const cambios = toolInput.cambios || [];
-      if (!cambios.length) return { ok: false, mensaje: "No se indicaron cambios." };
-      const idsMap = new Map(cambios.map((c) => [c.post_id, c]));
-      let count = 0;
-      const newDays = cal.days.map((d) => ({
-        ...d,
-        posts: (d.posts || []).map((p) => {
-          const c = idsMap.get(p.id);
-          if (!c) return p;
-          count++;
-          const upd = { ...p };
-          if (c.idea !== undefined) upd.idea = c.idea;
-          if (c.descripcion !== undefined) upd.descripcion = c.descripcion;
-          if (c.guion !== undefined) upd.guion = c.guion;
-          if (c.categoria !== undefined) upd.category = c.categoria;
-          if (c.hora !== undefined) upd.publishTime = c.hora;
-          return upd;
-        }),
-      }));
-      if (count === 0) return { ok: false, mensaje: "No se encontraron las publicaciones indicadas." };
-      const updated = { ...cal, days: newDays };
+      const r = aplicarLote(cal, toolInput);
+      if (!r.ok) return r;
+      const updated = { ...cal, days: r.dias };
       calRef.current = updated;
       onUpdateCal(calId, updated);
-      return { ok: true, mensaje: `${count} publicación${count === 1 ? "" : "es"} editada${count === 1 ? "" : "s"} en lote.` };
+      return { ok: true, mensaje: `${r.count} publicación${r.count === 1 ? "" : "es"} editada${r.count === 1 ? "" : "s"} en lote.` };
     }
 
     return { ok: false, mensaje: `Herramienta desconocida: ${toolName}` };

@@ -104,6 +104,8 @@ src/
     equipo.js             Miembros, invitaciones y perfil propio
     rutas.js              Slugs, análisis y construcción de direcciones (puro)
     vivo.js               WebSocket: reconexión, latido, presencia
+    horas.js              «9am» → «09:00» y vuelta (puro)
+    lote.js               Editar muchas publicaciones de una vez (puro)
     exportarContenido.js  Texto de «Exportar ideas y descripciones» (puro)
     completitud.js        Cuánto le falta a una publicación (puro)
   components/
@@ -491,6 +493,38 @@ son del servidor.
   no puede darse; lo que sí puede es una ruta escrita y **no enrutada**, y
   eso lo vigila `tests/despliegue/funciones.test.js`. El test en vivo busca
   lo contrario: Workers desplegados que nadie declara.
+- **«No puedo» de la IA casi nunca es del modelo: es que no le diste la
+  herramienta.** `publishTime` existe en el modelo de datos desde el
+  principio, pero no estaba en el esquema de ninguna de las herramientas
+  del asistente, así que a «ponle las 9 de la mañana» contestaba que no
+  podía —y era verdad—. Antes de tocar el prompt o cambiar de modelo,
+  mira `getChatTools()` y el contexto de `buildChatSystemPrompt()`: lo
+  que no está declarado ahí no existe para la IA.
+  El mismo fallo al revés: los datos SÍ estaban —descripción y guion van
+  en el contexto— y aun así decía que no podía leerlos, porque la lista
+  de «QUIÉN ERES» enumeraba sólo crear, editar y eliminar. Un modelo se
+  ciñe a lo que le dicen que puede hacer, aunque tenga el dato delante.
+- **Un filtro declarado y no implementado no falla: acierta por
+  casualidad.** `editar_publicaciones_lote` declaraba `filtro_dia`,
+  `filtro_formato` y `filtro_categoria`, y el ejecutor **no los leía**:
+  aplicaba los cambios por `post_id` y ya. Como la IA además mandaba los
+  ids correctos, el resultado salía bien y nadie lo notó. El día que
+  confiara en el filtro habría editado lo que no era. Ahora la lógica
+  vive en `lib/lote.js`, que es pura y tiene sus casos.
+- **Una hora que el campo no entiende se guarda igual y desaparece.**
+  El modelo escribe «9am», «9:00 PM» o «21:30» según le venga. Si eso
+  entra tal cual en `publishTime`, el `<input type="time">` —que exige
+  «HH:MM»— lo muestra **vacío**: la IA dice que puso la hora, la fila se
+  guardó, y la publicación no tiene hora. Lo normaliza
+  `normalizarHora()`, y lo que no entiende se RECHAZA con un mensaje en
+  vez de escribirse.
+- **El asistente global vuelca TODAS las publicaciones en el prompt, y
+  eso tiene fecha de caducidad.** Hoy son cuatro clientes y cabe. El
+  coste se paga en CADA mensaje, aunque la pregunta sea «hola», y crece
+  con la agencia: a partir de cierto punto desplaza la conversación y
+  hay que cambiarlo por consultas —que la IA pida lo que necesita en vez
+  de recibirlo todo—. La descripción ya se recorta a 120 caracteres para
+  que quepa, que es la primera señal.
 - **Rellenar no es reescribir.** «Generar guiones» sólo escribe donde no
   hay nada: lo que ya tiene texto gana sobre lo que devuelve el modelo.
   Y lo que le falta a una publicación depende de su formato —un post sólo
