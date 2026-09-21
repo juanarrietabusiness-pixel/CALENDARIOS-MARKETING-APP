@@ -152,3 +152,44 @@ describe("los hooks que se usan están importados", () => {
     expect(lista.join(""), fallos(lista)).toBe("");
   });
 });
+
+describe("la red que atrapa un identificador sin importar", () => {
+  // El caso de arriba vigila los HOOKS. Pero la forma del fallo no tiene
+  // nada que ver con los hooks: es un identificador que el fichero usa y
+  // no ha importado, y da igual que se llame `useCallback` o
+  // `FORMAT_ICONS`. Al partir CalendarView.jsx en seis se quedaron por
+  // el camino cuatro —FORMAT_ICONS, fieldHeaderStyle, vivo y
+  // CAMPOS_EXPORTABLES—, y con ellos el panel de edición de una
+  // publicación, el banco de ideas con contenido, el diálogo de
+  // exportar y «Agregar publicación».
+  //
+  // Quien cubre la clase entera es `no-undef`, que corre en `npm run
+  // lint` y por tanto en `verificar`. Si alguien lo apaga, la red
+  // desaparece sin que nada lo diga: esto es lo que lo dice.
+  const config = JSON.parse(leer(".oxlintrc.json"));
+
+  it("«no-undef» sigue en error", () => {
+    const regla = config.rules?.["no-undef"];
+    const activa = regla === "error" || (Array.isArray(regla) && regla[0] === "error");
+    const lista = activa ? [] : [fallo({
+      que: "«no-undef» ya no está en error",
+      donde: ".oxlintrc.json → rules",
+      porque: "Es lo único que atrapa un identificador usado y no importado. Sin ella, oxlint pasa, vite compila, el bundle se publica y revienta al RENDERIZAR: página en blanco con el título correcto, o un panel que no abre. Ya pasó dos veces.",
+      arreglo: 'Devuelve «"no-undef": "error"» a las reglas de .oxlintrc.json.',
+    })];
+    expect(lista.join(""), fallos(lista)).toBe("");
+  });
+
+  it("y el entorno está declarado, que es lo que la hace soportable", () => {
+    // Sin `env`, no-undef marca `document`, `window` y `fetch` en cada
+    // fichero: cientos de avisos que no son fallos. Ahí es cuando
+    // alguien apaga la regla, y con ella la red.
+    const lista = config.env?.browser === true ? [] : [fallo({
+      que: "el entorno del navegador no está declarado",
+      donde: ".oxlintrc.json → env",
+      porque: "Sin env.browser, no-undef marca document, window y fetch en todos los ficheros. Esa avalancha es la razón por la que alguien acabaría apagando la regla.",
+      arreglo: 'Pon «"env": { "browser": true, "es2024": true }» en .oxlintrc.json.',
+    })];
+    expect(lista.join(""), fallos(lista)).toBe("");
+  });
+});

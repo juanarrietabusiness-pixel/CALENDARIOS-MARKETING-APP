@@ -13,7 +13,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import Icon from "../Icon";
-import { fmt12h, stripMarkdown } from "./formato";
+import { fieldHeaderStyle, fmt12h, stripMarkdown } from "./formato";
 
 export function CopyButton({ text, label, describes }) {
   const [copied, setCopied] = useState(false);
@@ -36,13 +36,6 @@ export function CopyButton({ text, label, describes }) {
   );
 }
 
-const fieldHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "var(--sp-2)",
-  marginBottom: "var(--sp-1)",
-};
 const fieldLabelStyle = {
   fontSize: "var(--fs-3xs)",
   fontWeight: 700,
