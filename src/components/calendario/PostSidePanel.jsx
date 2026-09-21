@@ -10,14 +10,16 @@
 // ============================================================
 
 import { useEffect, useId, useState, useRef } from "react";
-import { FORMATS, STATUSES } from "../../constants";
+import { FORMATS, FORMAT_ICONS, STATUSES } from "../../constants";
 import { compressImage, parseVideoURL } from "../../utils";
 import { generateFieldForPost } from "../../api";
+import { vivo } from "../../lib/vivo";
 
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { AvisoEditando } from "../Presencia";
 import Icon from "../Icon";
 import { CopyButton, TimePicker } from "./primitivas";
+import { fieldHeaderStyle } from "./formato";
 
 export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onSendToBank, suggestion, onAcceptSuggestion, onRejectSuggestion, client, cal, editandoOtros = {} }) {
   const [form, setForm] = useState({ ...post });

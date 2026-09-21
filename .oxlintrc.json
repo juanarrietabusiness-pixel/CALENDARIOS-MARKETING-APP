@@ -1,8 +1,17 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["react", "oxc"],
+  "env": { "browser": true, "es2024": true },
+  "globals": { "WebSocketPair": "readonly" },
   "rules": {
+    "no-undef": "error",
     "react/rules-of-hooks": "error",
     "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
+  },
+  "overrides": [
+    {
+      "files": ["worker/**", "scripts/**", "tests/**", "**/*.test.js", "**/*.test-helper.js", "*.config.js", "*.config.mjs"],
+      "env": { "browser": true, "es2024": true, "node": true, "worker": true }
+    }
+  ]
 }

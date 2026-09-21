@@ -10,8 +10,9 @@
 // ============================================================
 
 import { useId, useState, useRef } from "react";
-import { FORMATS, DAYS } from "../../constants";
+import { FORMATS, FORMAT_ICONS, DAYS } from "../../constants";
 import { uid, compressImage } from "../../utils";
+import { CAMPOS_EXPORTABLES } from "../../lib/exportarContenido";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import Icon from "../Icon";
 

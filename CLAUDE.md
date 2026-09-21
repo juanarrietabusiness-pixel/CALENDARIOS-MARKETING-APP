@@ -572,6 +572,29 @@ son del servidor.
   ficheros hay que probarla en la pantalla que usa ese código**, no sólo
   con `npm run verificar`. La que lo cazó fue cargar la vista autenticada
   en Chromium con una sesión de verdad.
+- **Y no eran sólo los hooks: el mismo corte se dejó cuatro
+  constantes.** `FORMAT_ICONS`, `fieldHeaderStyle`, `vivo` y
+  `CAMPOS_EXPORTABLES` se quedaron sin importar al partir
+  `CalendarView.jsx` en seis ficheros. Con ellas quedaron rotos el
+  **panel de edición de una publicación** —el centro de la aplicación—,
+  el banco de ideas en cuanto tiene algo dentro, el diálogo de «Exportar
+  ideas y descripciones» y «Agregar publicación». Los cuatro revientan
+  al abrirlos con «FORMAT_ICONS is not defined», y los cuatro estuvieron
+  así **en producción** con todo en verde: lint limpio, 426 tests, build,
+  bundle y tiempo real.
+  Por qué no lo vio el caso de arriba: vigila los HOOKS. La forma del
+  fallo no es «un hook sin importar», es **un identificador sin
+  importar**, y ahí caben las constantes.
+  Lo cubre ahora `no-undef` en `.oxlintrc.json`, que corre en
+  `npm run lint` y por tanto en `verificar` y en CI. Lleva `env.browser`
+  a propósito: sin declarar el entorno marcaría `document`, `window` y
+  `fetch` en cada fichero, y esa avalancha es justo la razón por la que
+  alguien acabaría apagando la regla. Que siga encendida —y con su
+  entorno— lo vigila `tests/despliegue/capas.test.js`.
+  Y la lección de la entrada anterior, otra vez: **lo que caza esto es
+  abrir la pantalla**. El panel de edición no se abre desde la lista
+  —hay que desplegar el día y pulsar «Editar publicación»—, así que un
+  barrido que sólo pulsa lo que se ve a primera vista lo da por bueno.
 - **Un desplegable anclado a un botón NO es `role="dialog"`.** Ese rol
   le promete a un lector de pantalla foco atrapado y fondo inerte. El
   selector de hora se cierra con Escape y con un clic fuera, y el fondo

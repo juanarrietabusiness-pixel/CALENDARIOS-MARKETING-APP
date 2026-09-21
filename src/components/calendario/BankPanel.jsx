@@ -8,7 +8,7 @@
 // ============================================================
 
 import { useId, useRef, useState } from "react";
-import { FORMATS } from "../../constants";
+import { FORMATS, FORMAT_ICONS } from "../../constants";
 import { uid, compressImage } from "../../utils";
 import { generateFieldForPost } from "../../api";
 import Icon from "../Icon";

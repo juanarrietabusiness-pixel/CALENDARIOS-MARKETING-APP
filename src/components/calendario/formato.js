@@ -28,3 +28,18 @@ export function fmt12h(value) {
   const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
   return `${h12}:${String(m).padStart(2, "0")} ${suffix}`;
 }
+
+/**
+ * La cabecera de un campo del panel: etiqueta a la izquierda, botón de
+ * IA a la derecha. Vive aquí y no en `primitivas.jsx` por lo que dice
+ * la cabecera de este fichero: un fichero de componentes que exporta
+ * algo que no es un componente rompe el recargado en caliente, y oxlint
+ * lo avisa.
+ */
+export const fieldHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "var(--sp-2)",
+  marginBottom: "var(--sp-1)",
+};
