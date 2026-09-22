@@ -411,6 +411,45 @@ CÓMO DEBES RESPONDER:
       return { ok: true, mensaje: `${r.count} publicación${r.count === 1 ? "" : "es"} editada${r.count === 1 ? "" : "s"} en lote.` };
     }
 
+    if (toolName === "generar_imagen") {
+      if (!toolInput.prompt) return { ok: false, mensaje: "Falta la descripción de la imagen." };
+      try {
+        const post = toolInput.post_id
+          ? cal.days.flatMap((d) => d.posts || []).find((p) => p.id === toolInput.post_id)
+          : null;
+        const res = await db.generateImage({
+          clientId,
+          idea: toolInput.prompt,
+          format: post?.format || "",
+          category: post?.category || "",
+          title: post?.idea || "",
+          descripcion: post?.descripcion || "",
+          guion: post?.guion || "",
+          imageFormat: toolInput.formato_imagen || "square",
+        });
+        if (!res?.clave) return { ok: false, mensaje: "La IA no devolvió ninguna imagen." };
+        if (toolInput.post_id) {
+          let found = false;
+          const newDays = cal.days.map((d) => ({
+            ...d,
+            posts: (d.posts || []).map((p) => {
+              if (p.id !== toolInput.post_id) return p;
+              found = true;
+              return { ...p, image: res.clave };
+            }),
+          }));
+          if (!found) return { ok: true, mensaje: `Imagen generada (${res.clave}) pero no encontré la publicación ${toolInput.post_id} para asignarla.` };
+          const updated = { ...cal, days: newDays };
+          calRef.current = updated;
+          onUpdateCal(calId, updated);
+          return { ok: true, mensaje: `Imagen generada y asignada a la publicación ${toolInput.post_id}.` };
+        }
+        return { ok: true, mensaje: `Imagen generada: ${res.clave}. Dime a qué publicación asignarla.` };
+      } catch (err) {
+        return { ok: false, mensaje: err?.message || "Error al generar la imagen." };
+      }
+    }
+
     return { ok: false, mensaje: `Herramienta desconocida: ${toolName}` };
   }, [chatMode, clientId, calId, onUpdateCal, memories, resolveClient, onSelectClient]);
 
