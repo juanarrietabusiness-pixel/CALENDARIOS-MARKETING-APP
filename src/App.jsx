@@ -411,6 +411,10 @@ function Workspace({ session, ruta }) {
         case "banco":
         case "banco:fuera":
         case "memoria":
+        case "plantilla-imagen":
+        case "plantilla-imagen:fuera":
+        case "referencia-imagen":
+        case "referencia-imagen:fuera":
         // Lo del equipo lo pinta la pantalla de Equipo, que carga lo
         // suyo: se le dice que vuelva a leer, igual que a los paneles.
         case "miembro":

@@ -33,6 +33,7 @@ import { rutasEquipo, rutaInvitacionPublica } from "./rutas/equipo.js";
 import { rutaIA } from "./rutas/ia.js";
 import { rutaChat } from "./rutas/chat.js";
 import { rutaADN } from "./rutas/adn.js";
+import { rutaGenerarImagen } from "./rutas/imagen.js";
 
 // El Durable Object del espacio. Se reexporta desde aquí porque
 // `wrangler.jsonc` apunta su `class_name` al módulo de entrada: si se
@@ -178,6 +179,11 @@ export default {
       // El dueño es el ESPACIO, no quien ha entrado: los clientes son de
       // la agencia y los ve igual quien los creó que quien llegó ayer.
       const acceso = crearAcceso(env.DB, usuario.ownerId);
+
+      // ---------- Generación de imágenes ----------
+      if (partes[0] === "generar-imagen" && metodo === "POST") {
+        return rutaGenerarImagen(req, env, { acceso, usuario });
+      }
 
       if (partes[0] === "equipo") return rutasEquipo(req, env, { acceso, partes, metodo, usuario });
 

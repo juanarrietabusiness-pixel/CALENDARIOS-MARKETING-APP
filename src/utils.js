@@ -116,6 +116,7 @@ export function createEmptyClient() {
     aiInstructions: "",
     hashtags: "",
     notasInspeccion: "",
+    visualStyle: "",
     githubRepo: "",
     githubFolder: "",
     githubContext: "",
