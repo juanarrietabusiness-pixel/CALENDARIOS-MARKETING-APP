@@ -50,6 +50,10 @@ export default function CalendarView({
   const [incompleteInfo, setIncompleteInfo] = useState(null);
   const [syncStatus, setSyncStatus] = useState("");
   const [shareWorking, setShareWorking] = useState(false);
+  const [selectedPosts, setSelectedPosts] = useState(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
+  const undoRef = useRef(null);
+  const [undoVisible, setUndoVisible] = useState(false);
   // ------------------------------------------------------------
   // UNA SOLA CAPA POR ENCIMA DEL CALENDARIO
   //
@@ -267,6 +271,52 @@ export default function CalendarView({
     if (!window.confirm("Eliminar esta publicacion?")) return;
     removePostFromDay(date, postId);
   };
+
+  const togglePostSelection = (postId) => {
+    setSelectedPosts((prev) => {
+      const next = new Set(prev);
+      if (next.has(postId)) next.delete(postId);
+      else next.add(postId);
+      return next;
+    });
+  };
+
+  const bulkDelete = () => {
+    if (selectedPosts.size === 0) return;
+    const label = selectedPosts.size === 1 ? "1 publicación" : `${selectedPosts.size} publicaciones`;
+    if (!window.confirm(`¿Eliminar ${label}?`)) return;
+    const snapshot = (cal.days || []).map((d) => ({ ...d, posts: [...(d.posts || [])] }));
+    const newDays = (cal.days || []).map((d) => ({
+      ...d,
+      posts: (d.posts || []).filter((p) => !selectedPosts.has(p.id)),
+    }));
+    onUpdateCal(calId, { ...cal, days: newDays });
+    undoRef.current = snapshot;
+    setUndoVisible(true);
+    setSelectedPosts(new Set());
+    setSelectionMode(false);
+    setTimeout(() => setUndoVisible(false), 8000);
+  };
+
+  const undoLastAction = () => {
+    if (!undoRef.current) return;
+    onUpdateCal(calId, { ...cal, days: undoRef.current });
+    undoRef.current = null;
+    setUndoVisible(false);
+  };
+
+  const togglePublished = (date, post) => {
+    const newStatus = post.status === "published" ? "approved" : "published";
+    updatePost(date, { ...post, status: newStatus });
+  };
+
+  const sortedPosts = (posts) =>
+    [...(posts || [])].sort((a, b) => {
+      if (!a.publishTime && !b.publishTime) return 0;
+      if (!a.publishTime) return 1;
+      if (!b.publishTime) return -1;
+      return a.publishTime.localeCompare(b.publishTime);
+    });
 
   const generateSinglePostContent = async (post, day) => {
     setGenSingleLoading((p) => ({ ...p, [post.id]: true }));
@@ -832,6 +882,15 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
         <span className="toolbar-spacer" />
 
         <button
+          className={`btn ${selectionMode ? "btn-accent" : "btn-secondary"} btn-sm`}
+          onClick={() => { setSelectionMode((s) => !s); setSelectedPosts(new Set()); }}
+          aria-pressed={selectionMode}
+          aria-label="Seleccionar publicaciones"
+        >
+          <Icon name="checkSquare" size={16} />
+        </button>
+
+        <button
           className="btn btn-secondary"
           onClick={() => setCapa((c) => (c === "banco" ? null : "banco"))}
           aria-expanded={capa === "banco"}
@@ -995,6 +1054,37 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
         </p>
       )}
 
+      {/* Bulk selection toolbar */}
+      {selectionMode && (
+        <div className="notice" style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)", background: "var(--accent-soft)", border: "1px solid var(--accent-line)", justifyContent: "space-between" }}>
+          <span style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>
+            {selectedPosts.size > 0
+              ? `${selectedPosts.size} seleccionada${selectedPosts.size > 1 ? "s" : ""}`
+              : "Selecciona publicaciones"}
+          </span>
+          <span style={{ display: "flex", gap: "var(--sp-2)" }}>
+            {selectedPosts.size > 0 && (
+              <button type="button" className="btn btn-danger btn-sm" onClick={bulkDelete}>
+                <Icon name="trash" size={14} /> Eliminar
+              </button>
+            )}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setSelectionMode(false); setSelectedPosts(new Set()); }}>
+              Cancelar
+            </button>
+          </span>
+        </div>
+      )}
+
+      {/* Undo toast */}
+      {undoVisible && (
+        <div className="notice notice-ok" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", position: "fixed", bottom: "calc(var(--sp-5) + var(--safe-bottom))", left: "50%", transform: "translateX(-50%)", zIndex: 100, minWidth: 280, maxWidth: 420, boxShadow: "var(--elev-2)" }}>
+          <span style={{ fontSize: "var(--fs-xs)" }}>Publicaciones eliminadas</span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={undoLastAction}>
+            <Icon name="undo" size={14} /> Deshacer
+          </button>
+        </div>
+      )}
+
       {/* Incomplete posts warning */}
       {incompleteInfo && (
         <div className="notice notice-warn notice-action" role="alert">
@@ -1087,7 +1177,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
                       {(day.posts || []).length === 0 ? (
                         <span className="day-empty">Sin publicaciones</span>
                       ) : (
-                        (day.posts || []).map((p) => {
+                        sortedPosts(day.posts).map((p) => {
                           const f = FORMATS[p.format] || FORMATS.post;
                           const st = STATUSES[p.status || "pending"];
                           const pCat = p.category || day.category || "";
@@ -1119,26 +1209,36 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
                   </button>
                   {isExpanded && (
                     <div id={`dia-${day.date}`} style={{ padding: "0 var(--sp-3) var(--sp-3)", borderTop: "1px solid var(--border)" }}>
-                      {(day.posts || []).map((post) => {
+                      {sortedPosts(day.posts).map((post) => {
                         const f = FORMATS[post.format] || FORMATS.post;
                         const st = STATUSES[post.status || "pending"];
                         const isPublished = post.status === "published";
+                        const isSelected = selectedPosts.has(post.id);
                         const postTitle = post.title || post.idea || post.category || f.label;
+                        const imgName = post.image && typeof post.image === "string" && post.image.startsWith("/api/media/")
+                          ? decodeURIComponent(post.image.split("/").pop().replace(/\.[^.]+$/, ""))
+                          : null;
                         return (
                           <article
                             key={post.id}
                             aria-label={`${f.label}: ${postTitle}`}
                             style={{
-                              background: isPublished ? st.bg : "var(--bg)",
+                              background: isPublished ? st.bg : isSelected ? "var(--accent-soft)" : "var(--bg)",
                               borderRadius: "var(--radius-sm)",
                               marginTop: "var(--sp-3)",
-                              border: isPublished ? `2px solid ${st.border}` : `1px solid ${st.border}66`,
+                              border: isSelected ? "2px solid var(--accent)" : isPublished ? `2px solid ${st.border}` : `1px solid ${st.border}66`,
                               padding: "var(--sp-3)",
                             }}
-                            draggable
-                            onDragStart={(e) => e.dataTransfer.setData("text/plain", JSON.stringify({ postId: post.id, sourceDate: day.date }))}
+                            draggable={!selectionMode}
+                            onDragStart={(e) => { if (selectionMode) { e.preventDefault(); return; } e.dataTransfer.setData("text/plain", JSON.stringify({ postId: post.id, sourceDate: day.date })); }}
+                            onClick={selectionMode ? () => togglePostSelection(post.id) : undefined}
                           >
                             <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-2)", flexWrap: "wrap" }}>
+                              {selectionMode && (
+                                <button type="button" aria-label={isSelected ? "Deseleccionar" : "Seleccionar"} onClick={(e) => { e.stopPropagation(); togglePostSelection(post.id); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: isSelected ? "var(--accent)" : "var(--text-dim)" }}>
+                                  <Icon name={isSelected ? "checkSquare" : "square"} size={18} />
+                                </button>
+                              )}
                               <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={18} style={{ color: f.color }} />
                               <span className="badge" style={{ background: f.color + "22", color: f.color }}>{f.label}</span>
                               <span className="badge" style={{ background: st.bg, color: st.text, border: `1px solid ${st.border}` }}>{st.label}</span>
@@ -1147,6 +1247,17 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
                                   <Icon name="clock" size={14} /> {fmt12h(post.publishTime)}
                                 </span>
                               )}
+                              <span style={{ flex: 1 }} />
+                              <button
+                                type="button"
+                                className={`btn btn-sm ${isPublished ? "btn-accent" : "btn-ghost"}`}
+                                style={{ padding: "2px 8px", fontSize: "var(--fs-3xs)", minHeight: 28 }}
+                                aria-label={isPublished ? "Desmarcar como publicado" : "Marcar como publicado"}
+                                title={isPublished ? "Desmarcar publicado" : "Marcar publicado"}
+                                onClick={(e) => { e.stopPropagation(); togglePublished(day.date, post); }}
+                              >
+                                <Icon name="rocket" size={14} />
+                              </button>
                             </div>
 
                             {post.category && <p style={{ fontSize: "var(--fs-2xs)", color: "var(--accent-alt)", fontWeight: 600, marginBottom: "var(--sp-1)" }}>{post.category}</p>}
@@ -1157,7 +1268,12 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
                             {post.idea && <p style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)", lineHeight: "var(--lh-normal)", marginBottom: "var(--sp-1)" }}>{post.idea}</p>}
 
                             <ContentDisplay post={post} />
-                            {post.image && <img src={post.image} alt="" style={{ width: 68, height: 68, objectFit: "cover", borderRadius: "var(--radius-xs)", marginTop: "var(--sp-2)" }} />}
+                            {post.image && (
+                              <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", marginTop: "var(--sp-2)" }}>
+                                <img src={post.image} alt="" style={{ width: 52, height: 52, objectFit: "cover", borderRadius: "var(--radius-xs)" }} />
+                                {imgName && <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160 }}>{imgName}</span>}
+                              </div>
+                            )}
 
                             {!post.guion && !post.descripcion && !post.script && (
                               <button
@@ -1171,9 +1287,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
                               </button>
                             )}
 
-                            {/* Acciones explícitas. Antes toda la tarjeta era un
-                                div con onClick: no era alcanzable por teclado y
-                                el botón de borrar quedaba anidado dentro. */}
+                            {!selectionMode && (
                             <div style={{ display: "flex", gap: "var(--sp-2)", marginTop: "var(--sp-3)" }}>
                               <button
                                 type="button"
@@ -1200,6 +1314,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
                                 <Icon name="trash" size={16} />
                               </button>
                             </div>
+                            )}
                           </article>
                         );
                       })}

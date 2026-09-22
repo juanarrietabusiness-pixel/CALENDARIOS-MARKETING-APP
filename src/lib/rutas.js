@@ -117,6 +117,7 @@ export function analizarRuta(url = window.location) {
 
   if (partes[0] === "invitacion") return { vista: "invitacion", testigo: partes[1] ?? "" };
   if (partes[0] === "equipo") return { vista: "equipo" };
+  if (partes[0] === "tareas") return { vista: "tareas" };
 
   if (partes[0] === "cliente" && partes[1]) {
     return { vista: "panel", cliente: partes[1], calendario: partes[2] ?? null };
@@ -128,6 +129,7 @@ export function analizarRuta(url = window.location) {
 /** La dirección de una vista. El inverso exacto de `analizarRuta`. */
 export function construirRuta({ vista = "panel", cliente = null, calendario = null, testigo = "" } = {}) {
   if (vista === "equipo") return "/equipo";
+  if (vista === "tareas") return "/tareas";
   if (vista === "invitacion") return `/invitacion/${encodeURIComponent(testigo)}`;
   if (!cliente) return "/";
   const base = `/cliente/${encodeURIComponent(cliente)}`;

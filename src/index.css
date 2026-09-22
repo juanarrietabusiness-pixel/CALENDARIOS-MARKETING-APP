@@ -826,6 +826,63 @@ input[type="radio"] {
 @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 @keyframes chatDotPulse { 0%, 80% { opacity: .3; transform: scale(.8); } 40% { opacity: 1; transform: scale(1); } }
 
+/* Botón flotante del chat */
+.chat-fab {
+  position: fixed;
+  bottom: calc(var(--sp-5) + var(--safe-bottom));
+  right: calc(var(--sp-5) + var(--safe-right));
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: var(--elev-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-menu);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+.chat-fab:hover { transform: scale(1.08); box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+.chat-fab:active { transform: scale(.95); }
+
+/* Pestañas del selector de contexto del chat */
+.chat-mode-tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.chat-mode-tab {
+  flex: 1;
+  padding: var(--sp-1) var(--sp-2);
+  border: none;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--fs-3xs);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-height: 28px;
+  transition: background .15s, color .15s;
+}
+.chat-mode-tab[aria-selected="true"] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+}
+.chat-mode-tab:hover:not([aria-selected="true"]) {
+  color: var(--text);
+}
+
 /* ============================================================
    Asistente por pasos
    ============================================================ */
@@ -1537,6 +1594,16 @@ input[type="radio"] {
      el `role="status"` para quien use lector de pantalla. Se oculta la
      palabra, no la información. */
   .presencia-texto { display: none; }
+}
+
+/* Teléfonos: ajustes para la barra de herramientas y tarjetas */
+@media (max-width: 599px) {
+  .toolbar { gap: var(--sp-1); }
+  .toolbar .btn { font-size: var(--fs-3xs); padding: var(--sp-1) var(--sp-2); min-height: var(--tap-sm); }
+  .toolbar .segmented-btn { font-size: var(--fs-3xs); padding: var(--sp-1) var(--sp-2); }
+  .stat-strip { gap: var(--sp-2); flex-wrap: wrap; }
+  .page-header-actions { gap: var(--sp-1); }
+  .chat-fab { width: 48px; height: 48px; bottom: calc(var(--sp-3) + var(--safe-bottom)); right: calc(var(--sp-3) + var(--safe-right)); }
 }
 
 /* Pantallas muy estrechas (<= 360px) */

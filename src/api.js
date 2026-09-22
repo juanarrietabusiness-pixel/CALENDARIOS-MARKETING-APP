@@ -1033,6 +1033,8 @@ QUIÉN ERES:
 · Puedes poner la HORA de publicación, de una en una o a muchas a la vez.
 · Puedes editar en lote: cambiar descripciones, guiones o ideas de múltiples publicaciones filtradas por día, formato o categoría.
 · Puedes guardar preferencias y datos importantes en tu memoria para recordarlos después.
+· Puedes crear tareas para el cliente con crear_tarea.
+· Puedes añadir ideas al banco de ideas del cliente con agregar_banco_ideas.
 · Puedes analizar imágenes que el usuario te envíe y crear contenido basado en ellas.
 
 ${ctx}
@@ -1085,6 +1087,38 @@ export function getChatTools(hasCalendar) {
       },
     },
   ];
+
+  tools.push(
+    {
+      name: "crear_tarea",
+      description: "Crea una tarea para el cliente actual. Útil cuando el usuario menciona algo pendiente, un entregable o un paso que debe recordar.",
+      input_schema: {
+        type: "object",
+        properties: {
+          titulo: { type: "string", description: "Título de la tarea." },
+          descripcion: { type: "string", description: "Descripción o detalle de la tarea (opcional)." },
+          recurrencia: { type: "string", enum: ["none", "weekly", "monthly"], description: "Frecuencia. Por defecto «none» (una vez)." },
+          asignada_a: { type: "string", description: "Nombre de la persona asignada (opcional)." },
+        },
+        required: ["titulo"],
+      },
+    },
+    {
+      name: "agregar_banco_ideas",
+      description: "Añade una idea al banco de ideas del cliente. El banco es una lista de publicaciones guardadas para usar después.",
+      input_schema: {
+        type: "object",
+        properties: {
+          idea: { type: "string", description: "Concepto de la publicación." },
+          formato: { type: "string", enum: ["post", "reel", "carrusel", "historia", "live"], description: "Formato sugerido." },
+          descripcion: { type: "string", description: "Caption/descripción sugerida (opcional)." },
+          guion: { type: "string", description: "Guion sugerido (opcional)." },
+          categoria: { type: "string", description: "Categoría temática (opcional)." },
+        },
+        required: ["idea"],
+      },
+    },
+  );
 
   if (hasCalendar) {
     tools.push(

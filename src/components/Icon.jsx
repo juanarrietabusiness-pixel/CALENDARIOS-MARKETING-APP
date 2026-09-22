@@ -67,6 +67,15 @@ const paths = {
   photo: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9.5" r="1.5" /><path d="m21 16-5-5L8 20" /></>,
   globe: <><circle cx="12" cy="12" r="9" /><path d="M3.6 9h16.8" /><path d="M3.6 15h16.8" /><path d="M12 3a15 15 0 0 1 4 9 15 15 0 0 1-4 9" /><path d="M12 3a15 15 0 0 0-4 9 15 15 0 0 0 4 9" /></>,
   inbox: <><path d="M22 12H16l-2 3H10l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z" /></>,
+  grip: <><circle cx="9" cy="5" r="1.2" /><circle cx="15" cy="5" r="1.2" /><circle cx="9" cy="12" r="1.2" /><circle cx="15" cy="12" r="1.2" /><circle cx="9" cy="19" r="1.2" /><circle cx="15" cy="19" r="1.2" /></>,
+  clipboardCheck: <><rect x="8" y="2" width="8" height="4" rx="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><path d="m9 14 2 2 4-4" /></>,
+  arrowUp: <><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></>,
+  arrowDown: <><path d="M12 5v14" /><path d="m19 12-7 7-7-7" /></>,
+  messageCircle: <><path d="M21 12a9 9 0 0 1-9 9c-1.6 0-3.1-.4-4.4-1.1L3 21l1.1-4.6A9 9 0 0 1 12 3a9 9 0 0 1 9 9Z" /></>,
+  checkSquare: <><rect x="3" y="3" width="18" height="18" rx="2" /><path d="m9 12 2 2 4-4" /></>,
+  square: <rect x="3" y="3" width="18" height="18" rx="2" />,
+  rocket: <><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09Z" /><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2Z" /><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" /><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" /></>,
+  undo: <><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6.69 3L3 13" /></>,
 
   // --- Formatos de publicación ---
   formatPost: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9.5" r="1.5" /><path d="m21 16-5-5L8 20" /></>,

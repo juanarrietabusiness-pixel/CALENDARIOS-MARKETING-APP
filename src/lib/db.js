@@ -209,6 +209,10 @@ export async function saveClientTask(task) {
   return pedir(`/clientes/${task.client_id}/tareas`, conCuerpo("POST", task));
 }
 
+export async function updateClientTask(taskId, data) {
+  return pedir(`/tareas/${taskId}`, conCuerpo("PUT", data));
+}
+
 export async function deleteClientTask(taskId) {
   await pedir(`/tareas/${taskId}`, { method: "DELETE" });
 }
@@ -221,6 +225,10 @@ export async function reopenClientTask(taskId) {
   return pedir(`/tareas/${taskId}/reabrir`, { method: "POST" });
 }
 
+export async function reorderClientTasks(clientId, ids) {
+  return pedir(`/tareas/${clientId}/reordenar`, conCuerpo("POST", { ids }));
+}
+
 // ------------------------------------------------------------
 // Plantillas de tareas
 // ------------------------------------------------------------
@@ -231,6 +239,10 @@ export async function loadTaskTemplates() {
 
 export async function saveTaskTemplate(template) {
   return pedir("/plantillas-tarea", conCuerpo("POST", template));
+}
+
+export async function updateTaskTemplate(templateId, data) {
+  return pedir(`/plantillas-tarea/${templateId}`, conCuerpo("PUT", data));
 }
 
 export async function deleteTaskTemplate(templateId) {
@@ -254,6 +266,10 @@ export async function saveQuickTask(task) {
   return pedir("/tareas-rapidas", conCuerpo("POST", task));
 }
 
+export async function updateQuickTask(taskId, data) {
+  return pedir(`/tareas-rapidas/${taskId}`, conCuerpo("PUT", data));
+}
+
 export async function deleteQuickTask(taskId) {
   await pedir(`/tareas-rapidas/${taskId}`, { method: "DELETE" });
 }
@@ -264,6 +280,14 @@ export async function completeQuickTask(taskId) {
 
 export async function reopenQuickTask(taskId) {
   return pedir(`/tareas-rapidas/${taskId}/reabrir`, { method: "POST" });
+}
+
+export async function reorderQuickTasks(ids) {
+  return pedir("/tareas-rapidas/reordenar", conCuerpo("POST", { ids }));
+}
+
+export async function loadAllTasks() {
+  return pedir("/todas-tareas");
 }
 
 // ------------------------------------------------------------
