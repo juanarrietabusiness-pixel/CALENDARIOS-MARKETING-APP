@@ -116,7 +116,7 @@ export async function rutaGenerarImagen(req, env, ctx) {
     parts.push(...refParts);
   }
 
-  const modelo = env.GEMINI_MODEL || "gemini-2.0-flash-exp";
+  const modelo = env.GEMINI_MODEL || "gemini-2.0-flash-preview-image-generation";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${env.GOOGLE_AI_KEY}`;
 
   const abortar = new AbortController();
@@ -131,7 +131,7 @@ export async function rutaGenerarImagen(req, env, ctx) {
       body: JSON.stringify({
         contents: [{ parts }],
         generationConfig: {
-          responseModalities: ["IMAGE"],
+          responseModalities: ["TEXT", "IMAGE"],
         },
       }),
     });
@@ -153,7 +153,15 @@ export async function rutaGenerarImagen(req, env, ctx) {
     if (res.status === 401 || res.status === 403) {
       return error("La clave de Google AI no es válida. Revísala en los secretos del Worker.", 502);
     }
-    return error("Google AI devolvió un error al generar la imagen.", 502);
+    let detalle = "";
+    try {
+      const obj = JSON.parse(texto);
+      detalle = obj?.error?.message || "";
+    } catch { /* no es JSON */ }
+    return error(
+      `Google AI devolvió un error (${res.status})${detalle ? ": " + detalle.slice(0, 200) : ". Inténtalo de nuevo."}`,
+      502,
+    );
   }
 
   const data = await res.json();
