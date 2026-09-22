@@ -13,6 +13,7 @@ import { useEffect, useId, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES } from "../../constants";
 import { compressImage, parseVideoURL } from "../../utils";
 import { generateFieldForPost } from "../../api";
+import { generateImage, feedbackImage, loadImageTemplates } from "../../lib/db";
 import { vivo } from "../../lib/vivo";
 
 import { useDialogA11y } from "../../hooks/useDialogA11y";
@@ -92,6 +93,63 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
     }
     setFieldLoading((p) => ({ ...p, [field]: false }));
   };
+
+  const [imgGenOpen, setImgGenOpen] = useState(false);
+  const [imgGenFormat, setImgGenFormat] = useState("square");
+  const [imgGenTemplateId, setImgGenTemplateId] = useState("");
+  const [imgGenLoading, setImgGenLoading] = useState(false);
+  const [imgGenPreview, setImgGenPreview] = useState(null);
+  const [imgGenKey, setImgGenKey] = useState(null);
+  const [imgTemplates, setImgTemplates] = useState([]);
+
+  useEffect(() => {
+    if (imgGenOpen && client?.dbId) {
+      loadImageTemplates(client.dbId).then(setImgTemplates).catch(() => {});
+    }
+  }, [imgGenOpen, client?.dbId]);
+
+  const handleGenerateImage = async () => {
+    setImgGenLoading(true);
+    setFieldError("");
+    try {
+      const result = await generateImage({
+        clientId: client.dbId,
+        idea: form.idea,
+        descripcion: form.descripcion || form.script,
+        guion: form.guion,
+        format: form.format,
+        category: form.category,
+        title: form.title,
+        imageFormat: imgGenFormat,
+        templateId: imgGenTemplateId || undefined,
+      });
+      setImgGenPreview(`/api/media/${result.clave}`);
+      setImgGenKey(result.clave);
+    } catch (e) {
+      setFieldError(`No se pudo generar la imagen: ${e.message}`);
+    }
+    setImgGenLoading(false);
+  };
+
+  const handleImageFeedback = async (liked) => {
+    if (!imgGenKey) return;
+    try {
+      await feedbackImage(client.dbId, imgGenKey, liked);
+    } catch { /* no bloquear el flujo */ }
+    if (liked) {
+      sf("image", `/api/media/${imgGenKey}`);
+    }
+    setImgGenPreview(null);
+    setImgGenKey(null);
+    setImgGenOpen(false);
+  };
+
+  const IMAGE_FORMATS = [
+    ["square", "1080×1080"],
+    ["vertical", "1080×1350"],
+    ["story", "1080×1920"],
+    ["horizontal", "1200×630"],
+  ];
 
   const AiButton = ({ field, label }) => (
     <button
@@ -315,12 +373,120 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
             <button className="btn btn-secondary btn-sm" onClick={() => imgRef.current?.click()}>
               {form.image ? "Cambiar imagen" : "Subir imagen"}
             </button>
+            <button
+              className="btn-ai"
+              onClick={() => setImgGenOpen((o) => !o)}
+              aria-expanded={imgGenOpen}
+              aria-label="Generar imagen con IA"
+            >
+              <Icon name="imageAi" size={14} /> Generar
+            </button>
             {form.image && (
               <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => sf("image", null)}>
                 Quitar
               </button>
             )}
           </div>
+
+          {imgGenOpen && (
+            <div style={{
+              marginTop: "var(--sp-3)", padding: "var(--sp-3)",
+              background: "var(--surface)", borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--border)",
+            }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
+                <fieldset style={{ border: "none" }}>
+                  <legend className="label" style={{ marginBottom: "var(--sp-1)" }}>Formato de imagen</legend>
+                  <div style={{ display: "flex", gap: "var(--sp-1)", flexWrap: "wrap" }}>
+                    {IMAGE_FORMATS.map(([k, l]) => (
+                      <button
+                        key={k}
+                        type="button"
+                        className="filter-chip"
+                        aria-pressed={imgGenFormat === k}
+                        onClick={() => setImgGenFormat(k)}
+                        style={{
+                          background: imgGenFormat === k ? "var(--accent-soft)" : "var(--bg)",
+                          borderColor: imgGenFormat === k ? "var(--accent)" : "var(--border)",
+                          color: imgGenFormat === k ? "var(--accent)" : "var(--text-muted)",
+                          fontWeight: imgGenFormat === k ? 700 : 500,
+                        }}
+                      >
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+
+                {imgTemplates.length > 0 && (
+                  <div>
+                    <label className="label" htmlFor={`${ids}-img-tpl`}>Plantilla visual</label>
+                    <select
+                      id={`${ids}-img-tpl`}
+                      className="input"
+                      value={imgGenTemplateId}
+                      onChange={(e) => setImgGenTemplateId(e.target.value)}
+                    >
+                      <option value="">Sin plantilla</option>
+                      {imgTemplates.map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {imgGenPreview ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
+                    <img
+                      src={imgGenPreview}
+                      alt="Imagen generada por IA"
+                      style={{
+                        width: "100%", maxHeight: 300, objectFit: "contain",
+                        borderRadius: "var(--radius-sm)", background: "var(--bg)",
+                      }}
+                    />
+                    <div style={{ display: "flex", gap: "var(--sp-2)", justifyContent: "center" }}>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => handleImageFeedback(true)}
+                        aria-label="Me gusta, usar como imagen y guardar como referencia"
+                      >
+                        <Icon name="thumbsUp" size={16} /> Usar y guardar
+                      </button>
+                      <button
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => { sf("image", imgGenPreview); setImgGenPreview(null); setImgGenKey(null); setImgGenOpen(false); }}
+                        aria-label="Usar esta imagen sin guardar como referencia"
+                      >
+                        Solo usar
+                      </button>
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        style={{ color: "var(--danger)" }}
+                        onClick={() => handleImageFeedback(false)}
+                        aria-label="No me gusta, descartar imagen"
+                      >
+                        <Icon name="thumbsDown" size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    className="btn btn-primary"
+                    style={{ width: "100%" }}
+                    onClick={handleGenerateImage}
+                    disabled={imgGenLoading}
+                  >
+                    {imgGenLoading ? (
+                      <>Generando imagen…</>
+                    ) : (
+                      <><Icon name="sparkles" size={16} /> Generar imagen con IA</>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="field">

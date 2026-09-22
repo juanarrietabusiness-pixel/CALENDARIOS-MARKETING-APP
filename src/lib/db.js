@@ -291,6 +291,52 @@ export async function loadAllTasks() {
 }
 
 // ------------------------------------------------------------
+// Generación de imágenes
+// ------------------------------------------------------------
+
+export async function generateImage(datos) {
+  return pedir("/generar-imagen", conCuerpo("POST", datos));
+}
+
+export async function feedbackImage(clientId, clave, liked) {
+  return pedir("/feedback-imagen", conCuerpo("POST", { clientId, clave, liked }));
+}
+
+// ---- Plantillas de imagen ----
+
+export async function loadImageTemplates(clientId) {
+  return (await pedir(`/plantillas-imagen/${clientId}`)) ?? [];
+}
+
+export async function saveImageTemplate(template) {
+  return pedir("/plantillas-imagen", conCuerpo("POST", template));
+}
+
+export async function updateImageTemplate(templateId, data) {
+  return pedir(`/plantillas-imagen/${templateId}`, conCuerpo("PUT", data));
+}
+
+export async function deleteImageTemplate(templateId) {
+  await pedir(`/plantillas-imagen/${templateId}`, { method: "DELETE" });
+}
+
+// ---- Referencias de imagen ----
+
+export async function loadImageReferences(clientId) {
+  return (await pedir(`/referencias-imagen/${clientId}`)) ?? [];
+}
+
+export async function uploadImageReference(clientId, file) {
+  const form = new FormData();
+  form.append("archivo", file);
+  return pedir(`/referencias-imagen/${clientId}`, { method: "POST", body: form });
+}
+
+export async function deleteImageReference(refId) {
+  await pedir(`/referencias-imagen/${refId}`, { method: "DELETE" });
+}
+
+// ------------------------------------------------------------
 // Banco de contenido
 // ------------------------------------------------------------
 

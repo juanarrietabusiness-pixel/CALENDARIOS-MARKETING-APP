@@ -1,7 +1,8 @@
-import { useId, useState, useRef } from "react";
+import { useEffect, useId, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, DEFAULT_CATEGORIES } from "../constants";
 import { uid, compressImage, createEmptyClient } from "../utils";
 import { fetchGitHubADN, extractClientADN, parseGitHubUrl } from "../api";
+import { loadImageTemplates, saveImageTemplate, deleteImageTemplate, loadImageReferences, uploadImageReference, deleteImageReference } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
 
@@ -123,10 +124,26 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
   const [nameError, setNameError] = useState("");
   const [saveError, setSaveError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [imgTemplates, setImgTemplates] = useState([]);
+  const [imgRefs, setImgRefs] = useState([]);
+  const [newTplName, setNewTplName] = useState("");
+  const [newTplPrompt, setNewTplPrompt] = useState("");
+  const [newTplFormat, setNewTplFormat] = useState("square");
+  const [showNewTpl, setShowNewTpl] = useState(false);
+  const [tplSaving, setTplSaving] = useState(false);
+  const [refUploading, setRefUploading] = useState(false);
+  const refInputRef = useRef();
   const logoRef = useRef();
   const ids = useId();
   const dialogRef = useDialogA11y(onClose);
   const sf = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  useEffect(() => {
+    if (initial?.dbId && tab === "visual") {
+      loadImageTemplates(initial.dbId).then(setImgTemplates).catch(() => {});
+      loadImageReferences(initial.dbId).then(setImgRefs).catch(() => {});
+    }
+  }, [initial?.dbId, tab]);
 
   const ADN_FIELD_LABELS = {
     nombre: "Nombre",
@@ -294,6 +311,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
     ["basico", "Básico"],
     ["adn", "ADN"],
     ["voz", "Voz"],
+    ["visual", "Visual"],
     ["github", "GitHub"],
     ["semanal", "Semanal"],
   ];
@@ -470,6 +488,225 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
               />
               <p className="hint">Se envían como instrucciones obligatorias en cada generación de contenido para este cliente.</p>
             </div>
+          </div>
+        )}
+
+        {tab === "visual" && (
+          <div role="tabpanel" id={`${ids}-panel-visual`} aria-labelledby={`${ids}-tab-visual`} style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
+            <div>
+              <label className="label" htmlFor={`${ids}-visualStyle`}>Guía visual</label>
+              <textarea
+                id={`${ids}-visualStyle`}
+                className="textarea"
+                style={{ minHeight: 120 }}
+                value={form.visualStyle || ""}
+                onChange={(e) => sf("visualStyle", e.target.value)}
+                placeholder={"Describe el estilo visual que quieres para este cliente.\nEj: «Fondo pastel, tipografía sans-serif moderna, fotos con filtro cálido, mucho espacio en blanco», «Estilo minimalista con acentos en el color de marca (#2563EB)»…"}
+              />
+              <p className="hint">La IA usará esta guía cada vez que genere una imagen para este cliente. Puedes ir refinándola.</p>
+            </div>
+
+            {initial?.dbId && (
+              <>
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--sp-2)" }}>
+                    <span className="label" style={{ margin: 0 }}>Plantillas visuales</span>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      aria-expanded={showNewTpl}
+                      onClick={() => setShowNewTpl((o) => !o)}
+                    >
+                      <Icon name="plus" size={14} /> Nueva
+                    </button>
+                  </div>
+
+                  {showNewTpl && (
+                    <div style={{
+                      padding: "var(--sp-3)", background: "var(--bg)",
+                      borderRadius: "var(--radius-sm)", border: "1px solid var(--border)",
+                      marginBottom: "var(--sp-2)", display: "flex", flexDirection: "column", gap: "var(--sp-2)",
+                    }}>
+                      <div>
+                        <label className="label" htmlFor={`${ids}-tpl-name`}>Nombre</label>
+                        <input id={`${ids}-tpl-name`} className="input" value={newTplName} onChange={(e) => setNewTplName(e.target.value)} placeholder="Ej: Post promocional" />
+                      </div>
+                      <div>
+                        <label className="label" htmlFor={`${ids}-tpl-prompt`}>Instrucciones visuales</label>
+                        <textarea id={`${ids}-tpl-prompt`} className="textarea" value={newTplPrompt} onChange={(e) => setNewTplPrompt(e.target.value)} placeholder="Ej: Foto de producto centrada, fondo degradado, texto grande arriba…" />
+                      </div>
+                      <fieldset style={{ border: "none" }}>
+                        <legend className="label">Formato por defecto</legend>
+                        <div style={{ display: "flex", gap: "var(--sp-1)", flexWrap: "wrap" }}>
+                          {[["square", "Cuadrado"], ["vertical", "Vertical"], ["story", "Historia"], ["horizontal", "Horizontal"]].map(([k, l]) => (
+                            <button
+                              key={k}
+                              type="button"
+                              className="filter-chip"
+                              aria-pressed={newTplFormat === k}
+                              onClick={() => setNewTplFormat(k)}
+                              style={{
+                                background: newTplFormat === k ? "var(--accent-soft)" : "var(--bg)",
+                                borderColor: newTplFormat === k ? "var(--accent)" : "var(--border)",
+                                color: newTplFormat === k ? "var(--accent)" : "var(--text-muted)",
+                              }}
+                            >
+                              {l}
+                            </button>
+                          ))}
+                        </div>
+                      </fieldset>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={!newTplName.trim() || tplSaving}
+                        onClick={async () => {
+                          setTplSaving(true);
+                          try {
+                            const tpl = await saveImageTemplate({
+                              client_id: initial.dbId, name: newTplName.trim(),
+                              prompt: newTplPrompt, format: newTplFormat,
+                            });
+                            setImgTemplates((p) => [...p, tpl]);
+                            setNewTplName(""); setNewTplPrompt(""); setNewTplFormat("square"); setShowNewTpl(false);
+                          } catch (e) { setSaveError(e.message); }
+                          setTplSaving(false);
+                        }}
+                      >
+                        {tplSaving ? "Guardando…" : "Guardar plantilla"}
+                      </button>
+                    </div>
+                  )}
+
+                  {imgTemplates.length === 0 && !showNewTpl && (
+                    <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>
+                      Sin plantillas. Crea una para reutilizar estilos visuales.
+                    </p>
+                  )}
+
+                  {imgTemplates.map((tpl) => (
+                    <div key={tpl.id} style={{
+                      display: "flex", alignItems: "center", gap: "var(--sp-2)",
+                      padding: "var(--sp-2) var(--sp-3)", background: "var(--bg)",
+                      borderRadius: "var(--radius-xs)", border: "1px solid var(--border)",
+                      marginBottom: "var(--sp-1)", minHeight: "var(--tap-sm)",
+                    }}>
+                      <Icon name="palette" size={16} style={{ color: "var(--accent)", flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>{tpl.name}</p>
+                        {tpl.prompt && <p style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tpl.prompt}</p>}
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-remove"
+                        aria-label={`Eliminar plantilla ${tpl.name}`}
+                        onClick={async () => {
+                          try {
+                            await deleteImageTemplate(tpl.id);
+                            setImgTemplates((p) => p.filter((t) => t.id !== tpl.id));
+                          } catch (e) { setSaveError(e.message); }
+                        }}
+                      >
+                        <Icon name="trash" size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--sp-2)" }}>
+                    <span className="label" style={{ margin: 0 }}>Imágenes de referencia</span>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => refInputRef.current?.click()}
+                      disabled={refUploading}
+                    >
+                      <Icon name="upload" size={14} /> {refUploading ? "Subiendo…" : "Subir"}
+                    </button>
+                  </div>
+                  <input
+                    ref={refInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="sr-only"
+                    aria-label="Subir imágenes de referencia"
+                    onChange={async (e) => {
+                      const files = Array.from(e.target.files || []);
+                      if (!files.length) return;
+                      setRefUploading(true);
+                      for (const f of files) {
+                        try {
+                          const ref = await uploadImageReference(initial.dbId, f);
+                          setImgRefs((p) => [ref, ...p]);
+                        } catch { /* silenciar errores individuales */ }
+                      }
+                      setRefUploading(false);
+                      e.target.value = "";
+                    }}
+                  />
+
+                  <p className="hint" style={{ marginBottom: "var(--sp-2)" }}>
+                    La IA usará estas imágenes como referencia visual. Las imágenes que marques con &ldquo;me gusta&rdquo; al generar se guardan aquí automáticamente.
+                  </p>
+
+                  {imgRefs.length === 0 && (
+                    <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>
+                      Sin referencias. Sube imágenes o genera con IA y marca las que te gusten.
+                    </p>
+                  )}
+
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--sp-2)" }}>
+                    {imgRefs.map((ref) => (
+                      <div key={ref.id} style={{ position: "relative", width: 72, height: 72 }}>
+                        <img
+                          src={`/api/media/${ref.file_path}`}
+                          alt="Referencia visual"
+                          style={{
+                            width: 72, height: 72, objectFit: "cover",
+                            borderRadius: "var(--radius-xs)", border: "1px solid var(--border)",
+                          }}
+                        />
+                        {ref.source === "liked" && (
+                          <span style={{
+                            position: "absolute", bottom: 2, left: 2, background: "var(--accent)",
+                            borderRadius: "var(--radius-xs)", padding: "1px 3px", lineHeight: 1,
+                          }}>
+                            <Icon name="thumbsUp" size={10} style={{ color: "#fff" }} />
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          className="btn-remove"
+                          style={{
+                            position: "absolute", top: -4, right: -4,
+                            background: "var(--surface)", borderRadius: "50%",
+                            width: 20, height: 20, display: "flex", alignItems: "center",
+                            justifyContent: "center", boxShadow: "var(--elev-1)",
+                          }}
+                          aria-label="Eliminar referencia"
+                          onClick={async () => {
+                            try {
+                              await deleteImageReference(ref.id);
+                              setImgRefs((p) => p.filter((r) => r.id !== ref.id));
+                            } catch (e) { setSaveError(e.message); }
+                          }}
+                        >
+                          <Icon name="close" size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {!initial?.dbId && (
+              <p style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)" }}>
+                Guarda el cliente primero para poder agregar plantillas y referencias visuales.
+              </p>
+            )}
           </div>
         )}
 

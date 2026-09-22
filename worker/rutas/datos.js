@@ -405,6 +405,92 @@ export async function rutasDatos(req, env, ctx) {
     }
   }
 
+  // ---- /api/plantillas-imagen ----
+  if (seccion === "plantillas-imagen") {
+    if (metodo === "GET" && id) {
+      return json(await acceso.leer("image_templates", { client_id: id }, "created_at asc"));
+    }
+    if (metodo === "POST") {
+      const datos = (await cuerpo(req)) ?? {};
+      if (!datos.client_id || !datos.name) return error("Falta cliente o nombre");
+      const fila = {
+        id: uuid(), client_id: datos.client_id, name: datos.name,
+        prompt: datos.prompt || "", format: datos.format || "square",
+        created_at: ahora(),
+      };
+      await acceso.insertar("image_templates", fila);
+      difundir(env, acceso.ownerId, { tipo: "plantilla-imagen", plantilla: fila, por: firma(ctx.usuario, req) });
+      return json(fila, 201);
+    }
+    if (metodo === "PUT" && id) {
+      const datos = (await cuerpo(req)) ?? {};
+      const campos = sinCamposDeServidor(datos, ["owner_id", "id", "created_at"]);
+      const n = await acceso.actualizar("image_templates", { id }, campos);
+      if (!n) return noEncontrado("Plantilla");
+      const plantilla = await acceso.leerUno("image_templates", { id });
+      return json(plantilla);
+    }
+    if (metodo === "DELETE" && id) {
+      const n = await acceso.borrar("image_templates", { id });
+      if (!n) return noEncontrado("Plantilla");
+      difundir(env, acceso.ownerId, { tipo: "plantilla-imagen:fuera", id, por: firma(ctx.usuario, req) });
+      return sinContenido();
+    }
+  }
+
+  // ---- /api/referencias-imagen ----
+  if (seccion === "referencias-imagen") {
+    if (metodo === "GET" && id) {
+      return json(await acceso.leer("image_references", { client_id: id }, "created_at desc"));
+    }
+    if (metodo === "POST") {
+      if (!(await acceso.leerUno("clients", { id }))) return noEncontrado("Cliente");
+      const form = await req.formData().catch(() => null);
+      const archivo = form?.get("archivo");
+      if (!archivo || typeof archivo === "string") return error("Falta el archivo");
+      const ext = (archivo.name?.split(".").pop() || "jpg").toLowerCase().slice(0, 8);
+      const clave = `clientes/${id}/referencias/${uuid()}.${ext}`;
+      await env.MEDIA.put(clave, archivo.stream(), {
+        httpMetadata: { contentType: archivo.type || "image/jpeg" },
+      });
+      const fila = {
+        id: uuid(), client_id: id, file_path: clave,
+        source: "upload", created_at: ahora(),
+      };
+      await acceso.insertar("image_references", fila);
+      difundir(env, acceso.ownerId, { tipo: "referencia-imagen", referencia: fila, por: firma(ctx.usuario, req) });
+      return json(fila, 201);
+    }
+    if (metodo === "DELETE" && id) {
+      const item = await acceso.leerUno("image_references", { id });
+      if (!item) return noEncontrado("Referencia");
+      await env.MEDIA.delete(item.file_path);
+      await acceso.borrar("image_references", { id });
+      difundir(env, acceso.ownerId, { tipo: "referencia-imagen:fuera", id, por: firma(ctx.usuario, req) });
+      return sinContenido();
+    }
+  }
+
+  // ---- /api/feedback-imagen ----
+  if (seccion === "feedback-imagen" && metodo === "POST") {
+    const datos = (await cuerpo(req)) ?? {};
+    const { clientId, clave, liked } = datos;
+    if (!clientId || !clave) return error("Falta cliente o clave");
+
+    if (liked) {
+      const fila = {
+        id: uuid(), client_id: clientId, file_path: clave,
+        source: "liked", created_at: ahora(),
+      };
+      await acceso.insertar("image_references", fila);
+      difundir(env, acceso.ownerId, { tipo: "referencia-imagen", referencia: fila, por: firma(ctx.usuario, req) });
+      return json(fila, 201);
+    }
+
+    await env.MEDIA.delete(clave);
+    return json({ ok: true });
+  }
+
   if (seccion === "banco" && metodo === "DELETE") {
     const item = await acceso.leerUno("content_bank", { id });
     if (!item) return noEncontrado("Archivo");
