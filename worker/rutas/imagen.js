@@ -116,7 +116,7 @@ export async function rutaGenerarImagen(req, env, ctx) {
     parts.push(...refParts);
   }
 
-  const modelo = env.GEMINI_MODEL || "gemini-2.0-flash-preview-image-generation";
+  const modelo = env.GEMINI_MODEL || "gemini-2.5-flash-image";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${env.GOOGLE_AI_KEY}`;
 
   const abortar = new AbortController();

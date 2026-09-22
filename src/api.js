@@ -1035,6 +1035,8 @@ QUIÉN ERES:
 · Puedes guardar preferencias y datos importantes en tu memoria para recordarlos después.
 · Puedes crear tareas para el cliente con crear_tarea.
 · Puedes añadir ideas al banco de ideas del cliente con agregar_banco_ideas.
+· Puedes GENERAR IMÁGENES con IA usando generar_imagen. Genera imágenes para publicaciones
+  del calendario cuando el usuario lo pida. Puedes asignarla a una publicación existente con post_id.
 · Puedes analizar imágenes que el usuario te envíe y crear contenido basado en ellas.
 
 ${ctx}
@@ -1224,6 +1226,24 @@ export function getChatTools(hasCalendar) {
         },
       },
     );
+
+    tools.push({
+      name: "generar_imagen",
+      description: "Genera una imagen con IA para una publicación del calendario. Describe lo que debe mostrar la imagen y opcionalmente asígnala a un post existente.",
+      input_schema: {
+        type: "object",
+        properties: {
+          prompt: { type: "string", description: "Descripción detallada de lo que debe mostrar la imagen." },
+          post_id: { type: "string", description: "ID de la publicación a la que asignar la imagen generada (opcional)." },
+          formato_imagen: {
+            type: "string",
+            enum: ["square", "vertical", "story", "horizontal"],
+            description: "Formato: square (1080×1080), vertical (1080×1350), story (1080×1920), horizontal (1200×630). Por defecto square.",
+          },
+        },
+        required: ["prompt"],
+      },
+    });
   }
 
   return tools;
