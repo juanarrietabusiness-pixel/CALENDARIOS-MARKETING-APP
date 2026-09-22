@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useId } from "react";
 import Icon from "./Icon";
 import * as db from "../lib/db";
+import { useDialogA11y } from "../hooks/useDialogA11y";
 
 const RECURRENCE_LABELS = { none: "Una vez", weekly: "Semanal", monthly: "Mensual" };
 
@@ -36,7 +37,11 @@ export default function TaskPanel({ client, pulso = 0 }) {
   const [newRecurrence, setNewRecurrence] = useState("none");
   const [newRecurrenceDay, setNewRecurrenceDay] = useState("");
   const [newAssigned, setNewAssigned] = useState("");
+  const [newDescription, setNewDescription] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
+  const [detailTask, setDetailTask] = useState(null);
+  const [editingTask, setEditingTask] = useState(null);
+  const [dragId, setDragId] = useState(null);
   const formId = useId();
   const clientId = client.dbId || client.id;
 
@@ -57,12 +62,14 @@ export default function TaskPanel({ client, pulso = 0 }) {
       const task = await db.saveClientTask({
         client_id: clientId,
         title,
+        description: newDescription.trim(),
         recurrence: newRecurrence,
         recurrence_day: newRecurrenceDay || null,
         assigned_to: newAssigned.trim(),
       });
       setTasks((prev) => [...prev, task]);
       setNewTitle("");
+      setNewDescription("");
       setNewRecurrence("none");
       setNewRecurrenceDay("");
       setNewAssigned("");
@@ -70,7 +77,18 @@ export default function TaskPanel({ client, pulso = 0 }) {
     } catch {
       setError("No se pudo crear la tarea.");
     }
-  }, [clientId, newTitle, newRecurrence, newRecurrenceDay, newAssigned]);
+  }, [clientId, newTitle, newDescription, newRecurrence, newRecurrenceDay, newAssigned]);
+
+  const handleUpdate = useCallback(async (taskId, data) => {
+    try {
+      const updated = await db.updateClientTask(taskId, data);
+      setTasks((prev) => prev.map((t) => t.id === taskId ? updated : t));
+      if (editingTask?.id === taskId) setEditingTask(null);
+      if (detailTask?.id === taskId) setDetailTask(updated);
+    } catch {
+      setError("No se pudo actualizar la tarea.");
+    }
+  }, [editingTask, detailTask]);
 
   const handleComplete = useCallback(async (taskId) => {
     try {
@@ -94,13 +112,40 @@ export default function TaskPanel({ client, pulso = 0 }) {
     try {
       await db.deleteClientTask(taskId);
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      if (detailTask?.id === taskId) setDetailTask(null);
     } catch {
       setError("No se pudo eliminar la tarea.");
     }
-  }, []);
+  }, [detailTask]);
+
+  const handleDragStart = (id) => setDragId(id);
+
+  const handleDragOver = useCallback((e, targetId) => {
+    e.preventDefault();
+    if (!dragId || dragId === targetId) return;
+    setTasks((prev) => {
+      const from = prev.findIndex((t) => t.id === dragId);
+      const to = prev.findIndex((t) => t.id === targetId);
+      if (from < 0 || to < 0) return prev;
+      const copy = [...prev];
+      const [moved] = copy.splice(from, 1);
+      copy.splice(to, 0, moved);
+      return copy;
+    });
+  }, [dragId]);
+
+  const handleDragEnd = useCallback(() => {
+    if (dragId) {
+      const pendingIds = tasks.filter((t) => t.status === "pending").map((t) => t.id);
+      db.reorderClientTasks(clientId, pendingIds).catch(() => {});
+    }
+    setDragId(null);
+  }, [dragId, tasks, clientId]);
 
   const pending = tasks.filter((t) => t.status === "pending");
   const completed = tasks.filter((t) => t.status === "completed");
+  const recurring = pending.filter((t) => t.recurrence && t.recurrence !== "none");
+  const oneTime = pending.filter((t) => !t.recurrence || t.recurrence === "none");
 
   return (
     <section style={{
@@ -165,16 +210,55 @@ export default function TaskPanel({ client, pulso = 0 }) {
             </p>
           )}
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)" }}>
-            {pending.map((task) => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                onComplete={() => handleComplete(task.id)}
-                onDelete={() => handleDelete(task.id)}
-              />
-            ))}
-          </div>
+          {recurring.length > 0 && (
+            <>
+              <div style={{ fontSize: "var(--fs-3xs)", fontWeight: 600, color: "var(--text-dim)", padding: "var(--sp-1) 0", display: "flex", alignItems: "center", gap: "var(--sp-1)" }}>
+                <Icon name="refresh" size={12} /> Recurrentes
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)", marginBottom: "var(--sp-2)" }}>
+                {recurring.map((task) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    onComplete={() => handleComplete(task.id)}
+                    onDelete={() => handleDelete(task.id)}
+                    onEdit={() => setEditingTask(task)}
+                    onDetail={() => setDetailTask(task)}
+                    onDragStart={() => handleDragStart(task.id)}
+                    onDragOver={(e) => handleDragOver(e, task.id)}
+                    onDragEnd={handleDragEnd}
+                    isDragging={dragId === task.id}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {oneTime.length > 0 && (
+            <>
+              {recurring.length > 0 && (
+                <div style={{ fontSize: "var(--fs-3xs)", fontWeight: 600, color: "var(--text-dim)", padding: "var(--sp-1) 0", display: "flex", alignItems: "center", gap: "var(--sp-1)" }}>
+                  <Icon name="check" size={12} /> Únicas
+                </div>
+              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)" }}>
+                {oneTime.map((task) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    onComplete={() => handleComplete(task.id)}
+                    onDelete={() => handleDelete(task.id)}
+                    onEdit={() => setEditingTask(task)}
+                    onDetail={() => setDetailTask(task)}
+                    onDragStart={() => handleDragStart(task.id)}
+                    onDragOver={(e) => handleDragOver(e, task.id)}
+                    onDragEnd={handleDragEnd}
+                    isDragging={dragId === task.id}
+                  />
+                ))}
+              </div>
+            </>
+          )}
 
           {completed.length > 0 && (
             <>
@@ -204,6 +288,7 @@ export default function TaskPanel({ client, pulso = 0 }) {
                       task={task}
                       onReopen={() => handleReopen(task.id)}
                       onDelete={() => handleDelete(task.id)}
+                      onDetail={() => setDetailTask(task)}
                     />
                   ))}
                 </div>
@@ -212,79 +297,22 @@ export default function TaskPanel({ client, pulso = 0 }) {
           )}
 
           {adding ? (
-            <div style={{
-              marginTop: "var(--sp-2)",
-              display: "flex",
-              flexDirection: "column",
-              gap: "var(--sp-2)",
-            }}>
-              <label htmlFor={formId} className="sr-only">Título de la tarea</label>
-              <input
-                id={formId}
-                className="input"
-                value={newTitle}
-                onChange={(e) => setNewTitle(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
-                placeholder="Título de la tarea…"
-                autoFocus
-                style={{ fontSize: "var(--fs-xs)" }}
-              />
-              <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", flexWrap: "wrap" }}>
-                <select
-                  className="input"
-                  value={newRecurrence}
-                  onChange={(e) => { setNewRecurrence(e.target.value); setNewRecurrenceDay(""); }}
-                  aria-label="Recurrencia"
-                  style={{ fontSize: "var(--fs-3xs)", minWidth: 90 }}
-                >
-                  <option value="none">Una vez</option>
-                  <option value="weekly">Semanal</option>
-                  <option value="monthly">Mensual</option>
-                </select>
-
-                {newRecurrence === "weekly" && (
-                  <select
-                    className="input"
-                    value={newRecurrenceDay}
-                    onChange={(e) => setNewRecurrenceDay(e.target.value)}
-                    aria-label="Día de la semana"
-                    style={{ fontSize: "var(--fs-3xs)", minWidth: 100 }}
-                  >
-                    <option value="">Cualquier día</option>
-                    {DAY_NAMES.map((d, i) => <option key={i} value={i}>{d}</option>)}
-                  </select>
-                )}
-
-                {newRecurrence === "monthly" && (
-                  <select
-                    className="input"
-                    value={newRecurrenceDay}
-                    onChange={(e) => setNewRecurrenceDay(e.target.value)}
-                    aria-label="Ancla mensual"
-                    style={{ fontSize: "var(--fs-3xs)", minWidth: 140 }}
-                  >
-                    {MONTHLY_ANCHORS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-                  </select>
-                )}
-
-                <input
-                  className="input"
-                  value={newAssigned}
-                  onChange={(e) => setNewAssigned(e.target.value)}
-                  placeholder="Asignar a…"
-                  aria-label="Asignar a"
-                  style={{ fontSize: "var(--fs-3xs)", minWidth: 90, flex: 1 }}
-                />
-              </div>
-              <div style={{ display: "flex", gap: "var(--sp-2)" }}>
-                <button className="btn btn-primary" onClick={handleAdd} disabled={!newTitle.trim()} style={{ fontSize: "var(--fs-3xs)", padding: "var(--sp-1) var(--sp-3)" }}>
-                  Añadir
-                </button>
-                <button className="btn" onClick={() => { setAdding(false); setNewTitle(""); setNewAssigned(""); }} style={{ fontSize: "var(--fs-3xs)", padding: "var(--sp-1) var(--sp-3)" }}>
-                  Cancelar
-                </button>
-              </div>
-            </div>
+            <TaskForm
+              formId={formId}
+              title={newTitle}
+              description={newDescription}
+              recurrence={newRecurrence}
+              recurrenceDay={newRecurrenceDay}
+              assigned={newAssigned}
+              onTitleChange={setNewTitle}
+              onDescriptionChange={setNewDescription}
+              onRecurrenceChange={(v) => { setNewRecurrence(v); setNewRecurrenceDay(""); }}
+              onRecurrenceDayChange={setNewRecurrenceDay}
+              onAssignedChange={setNewAssigned}
+              onSubmit={handleAdd}
+              onCancel={() => { setAdding(false); setNewTitle(""); setNewDescription(""); setNewAssigned(""); }}
+              submitLabel="Añadir"
+            />
           ) : (
             <button
               type="button"
@@ -311,24 +339,53 @@ export default function TaskPanel({ client, pulso = 0 }) {
           )}
         </div>
       )}
+
+      {editingTask && (
+        <TaskEditModal
+          task={editingTask}
+          onSave={(data) => handleUpdate(editingTask.id, data)}
+          onClose={() => setEditingTask(null)}
+        />
+      )}
+
+      {detailTask && !editingTask && (
+        <TaskDetailModal
+          task={detailTask}
+          onEdit={() => setEditingTask(detailTask)}
+          onClose={() => setDetailTask(null)}
+        />
+      )}
     </section>
   );
 }
 
-function TaskRow({ task, onComplete, onReopen, onDelete }) {
+function TaskRow({ task, onComplete, onReopen, onDelete, onEdit, onDetail, onDragStart, onDragOver, onDragEnd, isDragging }) {
   const isDone = task.status === "completed";
   const detail = task.recurrence !== "none"
     ? formatRecurrenceDetail(task.recurrence, task.recurrence_day)
     : null;
+  const [showDesc, setShowDesc] = useState(false);
 
   return (
-    <div style={{
-      display: "flex",
-      alignItems: "center",
-      gap: "var(--sp-2)",
-      padding: "var(--sp-1) 0",
-      opacity: isDone ? 0.6 : 1,
-    }}>
+    <div
+      draggable={!isDone && Boolean(onDragStart)}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragEnd={onDragEnd}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "var(--sp-2)",
+        padding: "var(--sp-1) 0",
+        opacity: isDragging ? 0.5 : isDone ? 0.6 : 1,
+        cursor: !isDone && onDragStart ? "grab" : undefined,
+      }}
+    >
+      {!isDone && onDragStart && (
+        <span style={{ color: "var(--text-faint)", flexShrink: 0, cursor: "grab", display: "flex" }}>
+          <Icon name="grip" size={14} />
+        </span>
+      )}
       <button
         type="button"
         className="btn-icon"
@@ -350,7 +407,13 @@ function TaskRow({ task, onComplete, onReopen, onDelete }) {
       >
         {isDone && <Icon name="check" size={14} />}
       </button>
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div
+        style={{ flex: 1, minWidth: 0, cursor: "pointer" }}
+        onClick={onDetail}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === "Enter") onDetail?.(); }}
+      >
         <span style={{
           fontSize: "var(--fs-xs)",
           textDecoration: isDone ? "line-through" : "none",
@@ -362,7 +425,7 @@ function TaskRow({ task, onComplete, onReopen, onDelete }) {
         }}>
           {task.title}
         </span>
-        <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap", alignItems: "center" }}>
           {detail && (
             <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)" }}>
               {detail}
@@ -373,8 +436,44 @@ function TaskRow({ task, onComplete, onReopen, onDelete }) {
               {task.assigned_to}
             </span>
           )}
+          {task.description && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setShowDesc(!showDesc); }}
+              style={{
+                background: "none", border: "none", cursor: "pointer", padding: 0,
+                fontSize: "var(--fs-3xs)", color: "var(--text-faint)", display: "flex", alignItems: "center", gap: 2,
+              }}
+              aria-label={showDesc ? "Ocultar descripción" : "Ver descripción"}
+            >
+              <Icon name={showDesc ? "chevronUp" : "chevronDown"} size={10} />
+              <Icon name="message" size={10} />
+            </button>
+          )}
         </div>
+        {showDesc && task.description && (
+          <p style={{
+            fontSize: "var(--fs-3xs)",
+            color: "var(--text-dim)",
+            margin: "var(--sp-1) 0 0",
+            lineHeight: 1.4,
+            whiteSpace: "pre-wrap",
+          }}>
+            {task.description}
+          </p>
+        )}
       </div>
+      {onEdit && !isDone && (
+        <button
+          type="button"
+          className="btn-icon"
+          onClick={onEdit}
+          aria-label={`Editar tarea: ${task.title}`}
+          style={{ width: 24, height: 24, minHeight: 24, flexShrink: 0 }}
+        >
+          <Icon name="pencil" size={14} />
+        </button>
+      )}
       <button
         type="button"
         className="btn-icon"
@@ -388,6 +487,219 @@ function TaskRow({ task, onComplete, onReopen, onDelete }) {
   );
 }
 
+function TaskForm({ formId, title, description, recurrence, recurrenceDay, assigned, onTitleChange, onDescriptionChange, onRecurrenceChange, onRecurrenceDayChange, onAssignedChange, onSubmit, onCancel, submitLabel }) {
+  return (
+    <div style={{
+      marginTop: "var(--sp-2)",
+      display: "flex",
+      flexDirection: "column",
+      gap: "var(--sp-2)",
+    }}>
+      <label htmlFor={formId} className="sr-only">Título de la tarea</label>
+      <input
+        id={formId}
+        className="input"
+        value={title}
+        onChange={(e) => onTitleChange(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") onSubmit(); }}
+        placeholder="Título de la tarea…"
+        autoFocus
+        style={{ fontSize: "var(--fs-xs)" }}
+      />
+      <textarea
+        className="input"
+        value={description}
+        onChange={(e) => onDescriptionChange(e.target.value)}
+        placeholder="Descripción (opcional)…"
+        aria-label="Descripción de la tarea"
+        rows={2}
+        style={{ fontSize: "var(--fs-3xs)", resize: "vertical", minHeight: 40 }}
+      />
+      <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", flexWrap: "wrap" }}>
+        <select
+          className="input"
+          value={recurrence}
+          onChange={(e) => onRecurrenceChange(e.target.value)}
+          aria-label="Recurrencia"
+          style={{ fontSize: "var(--fs-3xs)", minWidth: 90 }}
+        >
+          <option value="none">Una vez</option>
+          <option value="weekly">Semanal</option>
+          <option value="monthly">Mensual</option>
+        </select>
+
+        {recurrence === "weekly" && (
+          <select
+            className="input"
+            value={recurrenceDay}
+            onChange={(e) => onRecurrenceDayChange(e.target.value)}
+            aria-label="Día de la semana"
+            style={{ fontSize: "var(--fs-3xs)", minWidth: 100 }}
+          >
+            <option value="">Cualquier día</option>
+            {DAY_NAMES.map((d, i) => <option key={i} value={i}>{d}</option>)}
+          </select>
+        )}
+
+        {recurrence === "monthly" && (
+          <select
+            className="input"
+            value={recurrenceDay}
+            onChange={(e) => onRecurrenceDayChange(e.target.value)}
+            aria-label="Ancla mensual"
+            style={{ fontSize: "var(--fs-3xs)", minWidth: 140 }}
+          >
+            {MONTHLY_ANCHORS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+          </select>
+        )}
+
+        <input
+          className="input"
+          value={assigned}
+          onChange={(e) => onAssignedChange(e.target.value)}
+          placeholder="Asignar a…"
+          aria-label="Asignar a"
+          style={{ fontSize: "var(--fs-3xs)", minWidth: 90, flex: 1 }}
+        />
+      </div>
+      <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+        <button className="btn btn-primary" onClick={onSubmit} disabled={!title.trim()} style={{ fontSize: "var(--fs-3xs)", padding: "var(--sp-1) var(--sp-3)" }}>
+          {submitLabel}
+        </button>
+        <button className="btn" onClick={onCancel} style={{ fontSize: "var(--fs-3xs)", padding: "var(--sp-1) var(--sp-3)" }}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function TaskEditModal({ task, onSave, onClose }) {
+  const [title, setTitle] = useState(task.title);
+  const [description, setDescription] = useState(task.description || "");
+  const [recurrence, setRecurrence] = useState(task.recurrence || "none");
+  const [recurrenceDay, setRecurrenceDay] = useState(task.recurrence_day ?? "");
+  const [assigned, setAssigned] = useState(task.assigned_to || "");
+  const dialogRef = useDialogA11y(onClose);
+
+  const handleSubmit = () => {
+    onSave({
+      title: title.trim(),
+      description: description.trim(),
+      recurrence,
+      recurrence_day: recurrenceDay || null,
+      assigned_to: assigned.trim(),
+    });
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <button type="button" onClick={onClose} aria-label="Cerrar" style={{ position: "absolute", inset: 0, background: "rgba(2,6,16,.66)", border: "none", cursor: "pointer" }} />
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Editar tarea"
+        style={{
+          position: "relative",
+          background: "var(--surface)",
+          borderRadius: "var(--radius)",
+          boxShadow: "var(--elev-2)",
+          padding: "var(--sp-4)",
+          width: 380,
+          maxWidth: "90vw",
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--sp-3)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontWeight: 600, fontSize: "var(--fs-sm)" }}>Editar tarea</span>
+          <button className="btn-icon" onClick={onClose} aria-label="Cerrar"><Icon name="close" size={18} /></button>
+        </div>
+        <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Título" style={{ fontSize: "var(--fs-xs)" }} />
+        <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Descripción…" rows={3} style={{ fontSize: "var(--fs-3xs)", resize: "vertical" }} />
+        <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }}>
+          <select className="input" value={recurrence} onChange={(e) => { setRecurrence(e.target.value); setRecurrenceDay(""); }} aria-label="Recurrencia" style={{ fontSize: "var(--fs-3xs)", flex: 1 }}>
+            <option value="none">Una vez</option>
+            <option value="weekly">Semanal</option>
+            <option value="monthly">Mensual</option>
+          </select>
+          {recurrence === "weekly" && (
+            <select className="input" value={recurrenceDay} onChange={(e) => setRecurrenceDay(e.target.value)} aria-label="Día" style={{ fontSize: "var(--fs-3xs)", flex: 1 }}>
+              <option value="">Cualquier día</option>
+              {DAY_NAMES.map((d, i) => <option key={i} value={i}>{d}</option>)}
+            </select>
+          )}
+          {recurrence === "monthly" && (
+            <select className="input" value={recurrenceDay} onChange={(e) => setRecurrenceDay(e.target.value)} aria-label="Ancla" style={{ fontSize: "var(--fs-3xs)", flex: 1 }}>
+              {MONTHLY_ANCHORS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+            </select>
+          )}
+        </div>
+        <input className="input" value={assigned} onChange={(e) => setAssigned(e.target.value)} placeholder="Asignar a…" aria-label="Asignar a" style={{ fontSize: "var(--fs-3xs)" }} />
+        <div style={{ display: "flex", gap: "var(--sp-2)", justifyContent: "flex-end" }}>
+          <button className="btn" onClick={onClose} style={{ fontSize: "var(--fs-3xs)" }}>Cancelar</button>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={!title.trim()} style={{ fontSize: "var(--fs-3xs)" }}>Guardar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TaskDetailModal({ task, onEdit, onClose }) {
+  const dialogRef = useDialogA11y(onClose);
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <button type="button" onClick={onClose} aria-label="Cerrar" style={{ position: "absolute", inset: 0, background: "rgba(2,6,16,.66)", border: "none", cursor: "pointer" }} />
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Detalle de tarea"
+        style={{
+          position: "relative",
+          background: "var(--surface)",
+          borderRadius: "var(--radius)",
+          boxShadow: "var(--elev-2)",
+          padding: "var(--sp-4)",
+          width: 380,
+          maxWidth: "90vw",
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--sp-3)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontWeight: 600, fontSize: "var(--fs-sm)" }}>{task.title}</span>
+          <button className="btn-icon" onClick={onClose} aria-label="Cerrar"><Icon name="close" size={18} /></button>
+        </div>
+        {task.description && (
+          <p style={{ fontSize: "var(--fs-xs)", color: "var(--text)", lineHeight: 1.5, whiteSpace: "pre-wrap", margin: 0 }}>
+            {task.description}
+          </p>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>
+          <span>Estado: {task.status === "completed" ? "Completada" : "Pendiente"}</span>
+          {task.recurrence && task.recurrence !== "none" && (
+            <span>{formatRecurrenceDetail(task.recurrence, task.recurrence_day)}</span>
+          )}
+          {task.assigned_to && <span>Asignada a: <strong style={{ color: "var(--accent)" }}>{task.assigned_to}</strong></span>}
+          {task.created_at && <span>Creada: {new Date(task.created_at).toLocaleDateString("es-PA")}</span>}
+          {task.completed_at && <span>Completada: {new Date(task.completed_at).toLocaleDateString("es-PA")}</span>}
+        </div>
+        {task.status !== "completed" && (
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button className="btn btn-secondary btn-sm" onClick={() => { onClose(); onEdit(); }}>
+              <Icon name="pencil" size={14} /> Editar
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function TaskTemplatesManager() {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -395,7 +707,9 @@ export function TaskTemplatesManager() {
   const [newRecurrence, setNewRecurrence] = useState("none");
   const [newRecurrenceDay, setNewRecurrenceDay] = useState("");
   const [newAssigned, setNewAssigned] = useState("");
+  const [newDescription, setNewDescription] = useState("");
   const [error, setError] = useState("");
+  const [editingTpl, setEditingTpl] = useState(null);
   const formId = useId();
 
   useEffect(() => {
@@ -411,17 +725,29 @@ export function TaskTemplatesManager() {
     try {
       const tpl = await db.saveTaskTemplate({
         title,
+        description: newDescription.trim(),
         recurrence: newRecurrence,
         recurrence_day: newRecurrenceDay || null,
         assigned_to: newAssigned.trim(),
       });
       setTemplates((prev) => [...prev, tpl]);
       setNewTitle("");
+      setNewDescription("");
       setNewRecurrence("none");
       setNewRecurrenceDay("");
       setNewAssigned("");
     } catch {
       setError("No se pudo crear la plantilla.");
+    }
+  };
+
+  const handleUpdate = async (id, data) => {
+    try {
+      const updated = await db.updateTaskTemplate(id, data);
+      setTemplates((prev) => prev.map((t) => t.id === id ? updated : t));
+      setEditingTpl(null);
+    } catch {
+      setError("No se pudo actualizar la plantilla.");
     }
   };
 
@@ -470,6 +796,14 @@ export function TaskTemplatesManager() {
               {tpl.assigned_to && (
                 <span style={{ color: "var(--accent)" }}>{tpl.assigned_to}</span>
               )}
+              <button
+                className="btn-icon"
+                onClick={() => setEditingTpl(tpl)}
+                aria-label={`Editar plantilla: ${tpl.title}`}
+                style={{ width: 24, height: 24, minHeight: 24 }}
+              >
+                <Icon name="pencil" size={12} />
+              </button>
               <button
                 className="btn-icon"
                 onClick={() => handleDelete(tpl.id)}
@@ -544,6 +878,14 @@ export function TaskTemplatesManager() {
           <Icon name="plus" size={14} />
         </button>
       </div>
+
+      {editingTpl && (
+        <TaskEditModal
+          task={editingTpl}
+          onSave={(data) => handleUpdate(editingTpl.id, data)}
+          onClose={() => setEditingTpl(null)}
+        />
+      )}
     </div>
   );
 }

@@ -143,7 +143,7 @@ export async function rutasDatos(req, env, ctx) {
 
     if (sub === "tareas") {
       if (metodo === "GET") {
-        return json(await acceso.leer("client_tasks", { client_id: id }, "created_at asc"));
+        return json(await acceso.leer("client_tasks", { client_id: id }, "position asc, created_at asc"));
       }
       if (metodo === "POST" && subId === "plantillas") {
         const { templates = [] } = (await cuerpo(req)) ?? {};
@@ -286,6 +286,23 @@ export async function rutasDatos(req, env, ctx) {
       difundir(env, acceso.ownerId, { tipo: "tarea:fuera", id, por: firma(ctx.usuario, req) });
       return sinContenido();
     }
+    if (metodo === "PUT" && id) {
+      const datos = (await cuerpo(req)) ?? {};
+      const campos = sinCamposDeServidor(datos, ["owner_id", "id", "created_at"]);
+      const n = await acceso.actualizar("client_tasks", { id }, campos);
+      if (!n) return noEncontrado("Tarea");
+      const tarea = await acceso.leerUno("client_tasks", { id });
+      difundir(env, acceso.ownerId, { tipo: "tarea", tarea, por: firma(ctx.usuario, req) });
+      return json(tarea);
+    }
+    if (metodo === "POST" && sub === "reordenar") {
+      const { ids = [] } = (await cuerpo(req)) ?? {};
+      for (let i = 0; i < ids.length; i++) {
+        await acceso.actualizar("client_tasks", { id: ids[i] }, { position: i });
+      }
+      difundir(env, acceso.ownerId, { tipo: "tarea:reorden", por: firma(ctx.usuario, req) });
+      return json({ ok: true });
+    }
     if (metodo === "POST" && (sub === "completar" || sub === "reabrir")) {
       const completada = sub === "completar";
       const n = await acceso.actualizar("client_tasks", { id }, {
@@ -297,6 +314,14 @@ export async function rutasDatos(req, env, ctx) {
       difundir(env, acceso.ownerId, { tipo: "tarea", tarea, por: firma(ctx.usuario, req) });
       return json(tarea);
     }
+  }
+
+  if (seccion === "todas-tareas" && metodo === "GET") {
+    const [clientTasks, quickTasks] = await Promise.all([
+      acceso.leer("client_tasks", {}, "position asc, created_at asc"),
+      acceso.leer("quick_tasks", {}, "position asc, created_at asc"),
+    ]);
+    return json({ clientTasks, quickTasks });
   }
 
   if (seccion === "plantillas-tarea") {
@@ -311,6 +336,14 @@ export async function rutasDatos(req, env, ctx) {
       await acceso.guardar("task_templates", fila);
       return json(await acceso.leerUno("task_templates", { id: fila.id }), 201);
     }
+    if (metodo === "PUT" && id) {
+      const datos = (await cuerpo(req)) ?? {};
+      const campos = sinCamposDeServidor(datos, ["owner_id", "id", "created_at"]);
+      if (campos.is_mandatory !== undefined) campos.is_mandatory = campos.is_mandatory ? 1 : 0;
+      const n = await acceso.actualizar("task_templates", { id }, campos);
+      if (!n) return noEncontrado("Plantilla");
+      return json(await acceso.leerUno("task_templates", { id }));
+    }
     if (metodo === "DELETE") {
       const n = await acceso.borrar("task_templates", { id });
       return n ? sinContenido() : noEncontrado("Plantilla");
@@ -320,23 +353,41 @@ export async function rutasDatos(req, env, ctx) {
   // ---- /api/tareas-rapidas ----
   if (seccion === "tareas-rapidas") {
     if (metodo === "GET") {
-      return json(await acceso.leer("quick_tasks", {}, "created_at asc"));
+      return json(await acceso.leer("quick_tasks", {}, "position asc, created_at asc"));
     }
     if (metodo === "POST" && !id) {
       const datos = (await cuerpo(req)) ?? {};
       const fila = {
         id: uuid(), title: datos.title || "", status: "pending",
-        assigned_to: datos.assigned_to || "", created_at: ahora(),
+        assigned_to: datos.assigned_to || "", description: datos.description || "",
+        position: datos.position ?? 0, created_at: ahora(),
       };
       await acceso.insertar("quick_tasks", fila);
       difundir(env, acceso.ownerId, { tipo: "tarea-rapida", tarea: fila, por: firma(ctx.usuario, req) });
       return json(fila, 201);
+    }
+    if (metodo === "PUT" && id) {
+      const datos = (await cuerpo(req)) ?? {};
+      const campos = sinCamposDeServidor(datos, ["owner_id", "id", "created_at"]);
+      const n = await acceso.actualizar("quick_tasks", { id }, campos);
+      if (!n) return noEncontrado("Tarea rápida");
+      const tarea = await acceso.leerUno("quick_tasks", { id });
+      difundir(env, acceso.ownerId, { tipo: "tarea-rapida", tarea, por: firma(ctx.usuario, req) });
+      return json(tarea);
     }
     if (metodo === "DELETE" && id) {
       const n = await acceso.borrar("quick_tasks", { id });
       if (!n) return noEncontrado("Tarea rápida");
       difundir(env, acceso.ownerId, { tipo: "tarea-rapida:fuera", id, por: firma(ctx.usuario, req) });
       return sinContenido();
+    }
+    if (metodo === "POST" && id === "reordenar" && !sub) {
+      const { ids = [] } = (await cuerpo(req)) ?? {};
+      for (let i = 0; i < ids.length; i++) {
+        await acceso.actualizar("quick_tasks", { id: ids[i] }, { position: i });
+      }
+      difundir(env, acceso.ownerId, { tipo: "tarea-rapida:reorden", por: firma(ctx.usuario, req) });
+      return json({ ok: true });
     }
     if (metodo === "POST" && sub === "completar") {
       const n = await acceso.actualizar("quick_tasks", { id }, { status: "completed", completed_at: ahora() });

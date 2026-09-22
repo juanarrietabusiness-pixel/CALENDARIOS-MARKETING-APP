@@ -12,7 +12,6 @@ import CalendarView from "./components/CalendarView";
 import Aprobar from "./pages/Aprobar";
 import IdeasBank from "./components/IdeasBank";
 import ChatPanel from "./components/ChatPanel";
-import GlobalChatPanel from "./components/GlobalChatPanel";
 import TaskPanel from "./components/TaskPanel";
 import { TaskTemplatesManager } from "./components/TaskPanel";
 import QuickTasksPanel from "./components/QuickTasksPanel";
@@ -20,6 +19,7 @@ import ContentBankPanel from "./components/ContentBankPanel";
 import Login from "./pages/Login";
 import Invitacion from "./pages/Invitacion";
 import Equipo from "./pages/Equipo";
+import Tareas from "./pages/Tareas";
 import Presencia, { PresenciaEnCliente } from "./components/Presencia";
 import { useSession, signOut } from "./lib/auth";
 import * as db from "./lib/db";
@@ -234,7 +234,6 @@ function Workspace({ session, ruta }) {
   const [editingClient, setEditingClient] = useState(null);
   const [showWizard, setShowWizard] = useState(false);
   const [showChat, setShowChat] = useState(false);
-  const [showGlobalChat, setShowGlobalChat] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
@@ -405,8 +404,10 @@ function Workspace({ session, ruta }) {
         // vuelvan a leer.
         case "tarea":
         case "tarea:fuera":
+        case "tarea:reorden":
         case "tarea-rapida":
         case "tarea-rapida:fuera":
+        case "tarea-rapida:reorden":
         case "banco":
         case "banco:fuera":
         case "memoria":
@@ -540,6 +541,17 @@ function Workspace({ session, ruta }) {
   }, [selectedClientId, selectedCalId]);
 
   const fallo = (accion) => (e) => setToast(`No se pudo ${accion}: ${e.message}`);
+
+  const handleAddIdea = useCallback((idea, targetClientId) => {
+    const cId = targetClientId || selectedClientId;
+    if (!cId) return;
+    setClients((prev) => prev.map((c) => {
+      if (c.id !== cId) return c;
+      const updated = { ...c, ideasBank: [...(c.ideasBank || []), idea] };
+      db.saveClient(updated, ownerId).catch(() => {});
+      return updated;
+    }));
+  }, [selectedClientId, ownerId]);
 
   // Deja escapar el error a propósito: ClientModal lo muestra dentro del
   // diálogo y lo mantiene abierto con los datos, en vez de cerrarse y
@@ -861,20 +873,21 @@ function Workspace({ session, ruta }) {
           <Presencia presentes={presentes} yo={yo} estado={estadoVivo} clientes={clients} />
           <button
             className="btn-icon"
+            onClick={() => navegar(construirRuta({ vista: "tareas" }))}
+            aria-label="Ver todas las tareas"
+            title="Tareas"
+            aria-current={ruta.vista === "tareas" ? "page" : undefined}
+          >
+            <Icon name="clipboardCheck" />
+          </button>
+          <button
+            className="btn-icon"
             onClick={() => navegar(construirRuta({ vista: "equipo" }))}
             aria-label="Ver el equipo"
             title="Equipo"
             aria-current={ruta.vista === "equipo" ? "page" : undefined}
           >
             <Icon name="users" />
-          </button>
-          <button
-            className="btn-icon"
-            onClick={() => setShowGlobalChat(true)}
-            aria-label="Abrir agente global"
-            title="Agente de la agencia"
-          >
-            <Icon name="globe" />
           </button>
           <span
             style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
@@ -951,11 +964,13 @@ function Workspace({ session, ruta }) {
               </div>
             )}
 
-            {ruta.vista !== "equipo" && !client && (
+            {ruta.vista !== "equipo" && ruta.vista !== "tareas" && !client && (
               <QuickTasksPanel pulso={pulso} />
             )}
 
-            {ruta.vista === "equipo" ? (
+            {ruta.vista === "tareas" ? (
+              <Tareas clients={clients} pulso={pulso} onSelectClient={(id) => irA(id)} />
+            ) : ruta.vista === "equipo" ? (
               <Equipo presentes={presentes} yo={yo} pulso={pulso} onVolver={() => navegar("/")} />
             ) : client ? (
               <>
@@ -980,14 +995,6 @@ function Workspace({ session, ruta }) {
                     </div>
 
                     <div className="page-header-actions">
-                      <button
-                        className="btn-icon"
-                        aria-label={`Abrir asistente de ${client.name}`}
-                        onClick={() => setShowChat(true)}
-                        title="Asistente IA"
-                      >
-                        <Icon name="sparkles" />
-                      </button>
                       <button
                         className="btn-icon"
                         aria-label={`Editar cliente ${client.name}`}
@@ -1144,23 +1151,29 @@ function Workspace({ session, ruta }) {
         />
       )}
 
-      {showChat && client && (
+      {!showChat && (
+        <button
+          className="chat-fab"
+          onClick={() => setShowChat(true)}
+          aria-label="Abrir asistente"
+          title="Asistente IA"
+        >
+          <Icon name="messageCircle" size={24} />
+        </button>
+      )}
+
+      {showChat && (
         <ChatPanel
           client={client}
           calendar={calendar}
           calId={selectedCalId}
+          clients={clients}
           onUpdateCal={updateCalendar}
           onClose={() => setShowChat(false)}
-        />
-      )}
-
-      {showGlobalChat && (
-        <GlobalChatPanel
-          clients={clients}
-          onClose={() => setShowGlobalChat(false)}
+          onAddIdea={handleAddIdea}
           onSelectClient={(id) => {
             irA(id);
-            setShowGlobalChat(false);
+            setShowChat(false);
           }}
         />
       )}
