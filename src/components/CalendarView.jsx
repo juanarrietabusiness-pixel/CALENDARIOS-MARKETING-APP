@@ -8,6 +8,8 @@ import { shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals, loa
 import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO, CAMPOS_EXPORTABLES } from "../lib/exportarContenido";
 import MetaPromptModal from "./MetaPromptModal";
 import Icon from "./Icon";
+import { useConfigIA } from "../hooks/useConfigIA";
+import { etiquetaIA } from "../lib/configIA";
 import { ContentDisplay, OverflowMenu } from "./calendario/primitivas";
 import { PostSidePanel } from "./calendario/PostSidePanel";
 import { MonthGrid } from "./calendario/MonthGrid";
@@ -33,6 +35,7 @@ export default function CalendarView({
   onMoveBankToCal,
 }) {
   const [viewMode, setViewMode] = useState("list");
+  const configIA = useConfigIA();
   const [expandedDay, setExpandedDay] = useState(null);
   const [sidePanel, setSidePanel] = useState(null);
   const [filterStatus, setFilterStatus] = useState("all");
@@ -939,7 +942,12 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
         <div style={{ marginBottom: "var(--sp-3)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginBottom: "var(--sp-1)" }}>
             <span id="gen-progress-label">{genStatus}</span>
-            <span>{genProgress}%</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--sp-2)" }}>
+              <span className="badge" style={{ background: "var(--accent-soft)", color: "var(--accent)", fontSize: "var(--fs-3xs)" }} title="Se cambia en Equipo → Inteligencia artificial">
+                {etiquetaIA(configIA)}
+              </span>
+              {genProgress}%
+            </span>
           </div>
           <div
             className="progress-bar"

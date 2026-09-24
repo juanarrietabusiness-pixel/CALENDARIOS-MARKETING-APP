@@ -320,6 +320,16 @@ export async function saveAjustes(ajustes) {
   return pedir("/ajustes", conCuerpo("PUT", ajustes));
 }
 
+/** Los modelos que tiene la cuenta de Anthropic y el que está en uso. */
+export async function loadModelosIA() {
+  return pedir("/ia/modelos");
+}
+
+/** Lo que costó la IA en un mes (AAAA-MM), por función y por modelo. */
+export async function loadConsumoIA(mes = "") {
+  return pedir(`/ia/consumo${mes ? `?mes=${encodeURIComponent(mes)}` : ""}`);
+}
+
 // ------------------------------------------------------------
 // Generación de imágenes
 // ------------------------------------------------------------

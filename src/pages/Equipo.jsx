@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import Icon from "../components/Icon";
 import { Avatar } from "../components/Presencia";
+import SeccionIA from "../components/SeccionIA";
 import {
   cargarEquipo, invitar, retirarInvitacion, sacarMiembro,
   guardarMiPerfil, enlaceDeInvitacion,
@@ -107,7 +108,7 @@ export default function Equipo({ presentes = [], yo, pulso = 0, onVolver }) {
             <div style={{ minWidth: 0 }}>
               <h1 className="page-title">Equipo</h1>
               <p className="page-meta">
-                Quién entra en este espacio y cómo os veis mientras trabajáis.
+                Quién entra en este espacio, cómo os veis mientras trabajáis y con qué IA.
               </p>
             </div>
           </div>
@@ -273,6 +274,9 @@ export default function Equipo({ presentes = [], yo, pulso = 0, onVolver }) {
               )}
             </section>
           )}
+
+          {/* ---- La IA del espacio ---- */}
+          <SeccionIA esAdmin={esAdmin} pulso={pulso} />
 
           {/* ---- Cómo te ven ---- */}
           <section>

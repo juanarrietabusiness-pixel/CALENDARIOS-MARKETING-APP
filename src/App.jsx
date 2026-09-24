@@ -17,7 +17,6 @@ import QuickTasksPanel from "./components/QuickTasksPanel";
 import ContentBankPanel from "./components/ContentBankPanel";
 import Login from "./pages/Login";
 import Invitacion from "./pages/Invitacion";
-import Equipo from "./pages/Equipo";
 import Presencia, { PresenciaEnCliente } from "./components/Presencia";
 import { useSession, signOut } from "./lib/auth";
 import * as db from "./lib/db";
@@ -36,6 +35,8 @@ import {
 const ChatPanel = lazy(() => import("./components/ChatPanel"));
 // «Mi día» es una página aparte: no tiene por qué venir en la primera descarga.
 const Tareas = lazy(() => import("./pages/Tareas"));
+// Igual Equipo, que ahora trae la sección de IA con su consumo.
+const Equipo = lazy(() => import("./pages/Equipo"));
 
 /**
  * La dirección actual, y se vuelve a pintar cuando cambia.
@@ -1005,7 +1006,9 @@ function Workspace({ session, ruta }) {
               />
               </Suspense>
             ) : ruta.vista === "equipo" ? (
-              <Equipo presentes={presentes} yo={yo} pulso={pulso} onVolver={() => navegar("/")} />
+              <Suspense fallback={<p style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando Equipo…</p>}>
+                <Equipo presentes={presentes} yo={yo} pulso={pulso} onVolver={() => navegar("/")} />
+              </Suspense>
             ) : client ? (
               <>
                 {/* Un solo encabezado. Antes había cuatro bloques apilados
