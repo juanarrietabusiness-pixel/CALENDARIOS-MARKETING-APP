@@ -94,7 +94,10 @@ export default function Presencia({ presentes = [], yo, estado = "desconectado",
             <span key={p.userId} style={{ marginLeft: i === 0 ? 0 : -8 }}>
               <Avatar
                 persona={p}
-                donde={p.mirando?.clienteId ? `viendo ${nombreDeCliente(p.mirando.clienteId) || "un cliente"}` : "en el panel"}
+                donde={[
+                  p.foco ? `hoy en ${nombreDeCliente(p.foco) || "una empresa"}` : "",
+                  p.mirando?.clienteId ? `viendo ${nombreDeCliente(p.mirando.clienteId) || "un cliente"}` : "en el panel",
+                ].filter(Boolean).join(" · ")}
               />
             </span>
           ))}

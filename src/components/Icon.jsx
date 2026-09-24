@@ -26,7 +26,7 @@ const paths = {
   chevronDown: <path d="m6 9 6 6 6-6" />,
   chevronUp: <path d="m18 15-6-6-6 6" />,
   chevronRight: <path d="m9 18 6-6-6-6" />,
-  chevronLeft: <path d="m15 18-6-6 6 6" />,
+  chevronLeft: <path d="m15 18-6-6 6-6" />,
   more: <><circle cx="12" cy="12" r="1.2" /><circle cx="19" cy="12" r="1.2" /><circle cx="5" cy="12" r="1.2" /></>,
   plus: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
   minus: <path d="M5 12h14" />,

@@ -18,12 +18,14 @@ import ContentBankPanel from "./components/ContentBankPanel";
 import Login from "./pages/Login";
 import Invitacion from "./pages/Invitacion";
 import Equipo from "./pages/Equipo";
-import Tareas from "./pages/Tareas";
 import Presencia, { PresenciaEnCliente } from "./components/Presencia";
 import { useSession, signOut } from "./lib/auth";
 import * as db from "./lib/db";
 import { rowToCalendar, rowToClient } from "./lib/filas";
 import { vivo } from "./lib/vivo";
+import { leerFoco, guardarFoco } from "./lib/foco";
+import { fechaEnZona } from "./lib/agenda";
+import ContadorAtrasadas from "./components/ContadorAtrasadas";
 import {
   analizarRuta, construirRuta, navegar,
   porRuta, slugsDeCalendarios, slugsDeClientes,
@@ -32,6 +34,8 @@ import {
 // El asistente sólo se descarga al abrirlo: es la pantalla más pesada y
 // la mayoría de las visitas no la abren.
 const ChatPanel = lazy(() => import("./components/ChatPanel"));
+// «Mi día» es una página aparte: no tiene por qué venir en la primera descarga.
+const Tareas = lazy(() => import("./pages/Tareas"));
 
 /**
  * La dirección actual, y se vuelve a pintar cuando cambia.
@@ -549,6 +553,15 @@ function Workspace({ session, ruta }) {
     vivo.mirar(selectedClientId, selectedCalId);
   }, [selectedClientId, selectedCalId]);
 
+  // La empresa en la que trabajo hoy. Se lee al entrar —la de ayer ya
+  // no vale— y se le cuenta al equipo por la presencia.
+  const [foco, setFoco] = useState(() => leerFoco(yo.id, fechaEnZona()));
+  useEffect(() => { vivo.enfocar(foco); }, [foco]);
+  const cambiarFoco = useCallback((clienteId) => {
+    guardarFoco(yo.id, fechaEnZona(), clienteId);
+    setFoco(clienteId || null);
+  }, [yo.id]);
+
   const fallo = (accion) => (e) => setToast(`No se pudo ${accion}: ${e.message}`);
 
   const handleAddIdea = useCallback((idea, targetClientId) => {
@@ -883,11 +896,13 @@ function Workspace({ session, ruta }) {
           <button
             className="btn-icon"
             onClick={() => navegar(construirRuta({ vista: "tareas" }))}
-            aria-label="Ver todas las tareas"
-            title="Tareas"
+            title="Mi día"
             aria-current={ruta.vista === "tareas" ? "page" : undefined}
+            style={{ position: "relative" }}
           >
             <Icon name="clipboardCheck" />
+            <span className="sr-only">Mi día</span>
+            <ContadorAtrasadas pulso={pulso} />
           </button>
           <button
             className="btn-icon"
@@ -933,7 +948,7 @@ function Workspace({ session, ruta }) {
             yo={yo}
           />
           <div style={{ marginTop: "var(--sp-4)", paddingTop: "var(--sp-4)", borderTop: "1px solid var(--border)" }}>
-            <TaskTemplatesManager />
+            <TaskTemplatesManager clients={clients} />
           </div>
           <BackupActions onExport={exportJSON} onImport={() => importRef.current?.click()} />
         </aside>
@@ -978,7 +993,17 @@ function Workspace({ session, ruta }) {
             )}
 
             {ruta.vista === "tareas" ? (
-              <Tareas clients={clients} pulso={pulso} onSelectClient={(id) => irA(id)} />
+              <Suspense fallback={<p style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando Mi día…</p>}>
+              <Tareas
+                clients={clients}
+                pulso={pulso}
+                onSelectClient={(id) => irA(id)}
+                yo={yo}
+                presentes={presentes}
+                foco={foco}
+                onFoco={cambiarFoco}
+              />
+              </Suspense>
             ) : ruta.vista === "equipo" ? (
               <Equipo presentes={presentes} yo={yo} pulso={pulso} onVolver={() => navegar("/")} />
             ) : client ? (

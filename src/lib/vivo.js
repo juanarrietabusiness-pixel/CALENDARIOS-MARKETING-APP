@@ -39,6 +39,8 @@ export class Vivo {
     // Lo último que se dijo estar mirando. Se reenvía al reconectar:
     // para el resto del equipo, una reconexión no es un cambio de sitio.
     this.ultimoMirando = null;
+    // Igual con la empresa en foco: sobrevive a las reconexiones.
+    this.ultimoFoco = null;
     this.alVolver = this.alVolver.bind(this);
   }
 
@@ -81,6 +83,14 @@ export class Vivo {
     // No se reenvía lo mismo dos veces: cada envío hace que el servidor
     // recalcule y reparta la presencia a todo el equipo.
     if (!igual) this.enviar(m);
+  }
+
+  /** «Hoy trabajo en esta empresa.» `null` para quitarlo. */
+  enfocar(clienteId) {
+    const m = { tipo: "foco", clienteId: clienteId ?? null };
+    if (this.ultimoFoco?.clienteId === m.clienteId) return;
+    this.ultimoFoco = m;
+    this.enviar(m);
   }
 
   /** «Estoy editando esta publicación», y su contrario al cerrar. */
@@ -137,6 +147,7 @@ export class Vivo {
       this.intentos = 0;
       this.marcar("conectado");
       if (this.ultimoMirando) this.enviar(this.ultimoMirando);
+      if (this.ultimoFoco) this.enviar(this.ultimoFoco);
       this.latido = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) ws.send("ping");
       }, LATIDO_MS);

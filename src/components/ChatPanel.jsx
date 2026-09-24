@@ -10,6 +10,7 @@ import { leerHora, MAL, aplicarLote } from "../lib/lote";
 import { partirMensaje, marcarImagen, marcarContexto, FORMATOS_IMAGEN, INSTRUCCION_PIEZAS, INSTRUCCION_ADJUNTOS } from "../lib/mensajeChat";
 import { imagenParaModelo, fotogramasDeVideo, descargarEnTamano } from "../lib/medios";
 import * as db from "../lib/db";
+import { tareaDesdeIA, fechaEnZona, PROPIEDADES_FECHA_TAREA } from "../lib/agenda";
 
 const MAX_ADJUNTOS = 6;
 const MAX_VIDEOS = 2;
@@ -335,7 +336,7 @@ CÓMO DEBES RESPONDER:
           cliente: { type: "string", description: "Nombre del cliente." },
           titulo: { type: "string", description: "Título de la tarea." },
           descripcion: { type: "string", description: "Descripción (opcional)." },
-          recurrencia: { type: "string", enum: ["none", "weekly", "monthly"] },
+          ...PROPIEDADES_FECHA_TAREA,
           asignada_a: { type: "string", description: "Persona asignada (opcional)." },
         },
         required: ["cliente", "titulo"],
@@ -370,12 +371,14 @@ CÓMO DEBES RESPONDER:
       if (toolName === "crear_tarea") {
         const target = resolveClient(toolInput.cliente);
         if (!target) return { ok: false, mensaje: `No encontré el cliente «${toolInput.cliente}».` };
+        const fechas = tareaDesdeIA(toolInput, fechaEnZona());
+        if (fechas.error) return { ok: false, mensaje: fechas.error };
         await db.saveClientTask({
           client_id: target.dbId || target.id,
           title: toolInput.titulo,
           description: toolInput.descripcion || "",
-          recurrence: toolInput.recurrencia || "none",
           assigned_to: toolInput.asignada_a || "",
+          ...fechas,
         });
         return { ok: true, mensaje: `Tarea creada para ${target.name}: «${toolInput.titulo}»` };
       }
@@ -412,12 +415,14 @@ CÓMO DEBES RESPONDER:
     }
 
     if (toolName === "crear_tarea") {
+      const fechas = tareaDesdeIA(toolInput, fechaEnZona());
+      if (fechas.error) return { ok: false, mensaje: fechas.error };
       await db.saveClientTask({
         client_id: clientId,
         title: toolInput.titulo,
         description: toolInput.descripcion || "",
-        recurrence: toolInput.recurrencia || "none",
         assigned_to: toolInput.asignada_a || "",
+        ...fechas,
       });
       return { ok: true, mensaje: `Tarea creada: «${toolInput.titulo}»` };
     }

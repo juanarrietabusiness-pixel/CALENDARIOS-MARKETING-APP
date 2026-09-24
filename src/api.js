@@ -4,6 +4,7 @@ import { hora12 } from "./lib/horas";
 import { getWeekNumber, dayName } from "./utils";
 import { INSTRUCCION_PIEZAS, INSTRUCCION_ADJUNTOS } from "./lib/mensajeChat";
 import { base64DeImagen } from "./lib/medios";
+import { PROPIEDADES_FECHA_TAREA } from "./lib/agenda";
 
 // Se reexportan porque media aplicación las importa desde aquí. Viven en
 // `lib/parse.js` para poder probarlas sin arrastrar el cliente de Supabase.
@@ -1101,7 +1102,7 @@ export function getChatTools(hasCalendar) {
         properties: {
           titulo: { type: "string", description: "Título de la tarea." },
           descripcion: { type: "string", description: "Descripción o detalle de la tarea (opcional)." },
-          recurrencia: { type: "string", enum: ["none", "weekly", "monthly"], description: "Frecuencia. Por defecto «none» (una vez)." },
+          ...PROPIEDADES_FECHA_TAREA,
           asignada_a: { type: "string", description: "Nombre de la persona asignada (opcional)." },
         },
         required: ["titulo"],
