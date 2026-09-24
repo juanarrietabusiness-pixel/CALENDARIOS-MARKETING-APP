@@ -10,11 +10,11 @@
 //
 // Ahora:
 //
-//   · Opus 5.5, que razona SIEMPRE —en este modelo no se puede apagar:
-//     `thinking: disabled` es un 400— y cuya profundidad se ajusta con
-//     `effort` (AI_CHAT_ESFUERZO, «high» por defecto; el del modelo sin
-//     decir nada es «medium»). El razonamiento se paga del mismo
-//     max_tokens que la respuesta, así que el tope sube a 32 000.
+//   · Sonnet 5 con razonamiento adaptativo, cuya profundidad se ajusta
+//     con `effort` (AI_CHAT_ESFUERZO, «high» por defecto). El
+//     razonamiento se paga del mismo max_tokens que la respuesta, así
+//     que el tope sube a 32 000. Otro modelo se elige con AI_CHAT_MODEL;
+//     si la cuenta no lo tiene, se vuelve solo a Sonnet 5 (ver abajo).
 //   · Streaming de punta a punta: el Worker lee el SSE de Anthropic y le
 //     reenvía al navegador el texto según se escribe.
 //   · Un BUCLE en el servidor para las herramientas de servidor (web,
@@ -26,13 +26,26 @@
 //     automática, que cubre el historial. En una conversación larga el
 //     prefijo se lee de caché a una décima parte del precio.
 //
-// DOS REGLAS DE OPUS 5.5 QUE ESTO RESPETA
+// DOS REGLAS DE LOS MODELOS ACTUALES QUE ESTO RESPETA
 //
 //   · Los bloques de razonamiento se devuelven INTACTOS dentro de un
 //     turno —firma incluida—; por eso el navegador reenvía `mensajes`
 //     tal cual los recibe. Entre turnos no se reenvían: el historial
 //     guardado es texto.
-//   · `tool_choice` forzado es un 400. No se usa.
+//   · `tool_choice` forzado es un 400 en Opus 5.5. No se usa.
+//
+// CUANDO LA CUENTA NO ACEPTA ALGO
+//
+// El despliegue con Opus 5.5 por defecto devolvió «El proveedor de IA
+// devolvió un error» en el primer «Hola»: la misma clave que funcionaba
+// con Sonnet 5 no tenía ese modelo, y el mensaje genérico escondía el
+// motivo —el mismo fallo de diseño que tuvo antes la generación de
+// imágenes con Gemini—. Ahora:
+//
+//   · un modelo que la cuenta no tiene se sustituye por MODELO_RESPALDO;
+//   · la búsqueda web desactivada en la organización se quita de la
+//     petición y se avisa, en vez de tumbar la respuesta entera;
+//   · cualquier otro rechazo enseña el mensaje real de Anthropic.
 // ============================================================
 
 import { error, cuerpo, CABECERAS_API, json } from "../lib/respuesta.js";
@@ -56,7 +69,36 @@ const INSTRUCCION_SERVIDOR = `HERRAMIENTAS QUE TIENES ADEMÁS DE LAS DEL CALENDA
   y de otros meses. Pide lo que necesites en vez de suponerlo.
 Antes de decir que no tienes un dato, mira si alguna de estas herramientas lo trae.`;
 
-export const modeloChat = (env) => env.AI_CHAT_MODEL || "claude-opus-5-5";
+export const MODELO_RESPALDO = "claude-sonnet-5";
+export const modeloChat = (env) => env.AI_CHAT_MODEL || MODELO_RESPALDO;
+
+/** Un rechazo de Anthropic con su código y su motivo, para decidir qué hacer. */
+class RechazoAnthropic extends Error {
+  constructor(estado, tipo, mensaje) {
+    super(mensaje || `Anthropic respondió ${estado}`);
+    this.estado = estado;
+    this.tipo = tipo;
+  }
+}
+
+const NOMBRES_WEB = new Set(HERRAMIENTAS_WEB.map((h) => h.name));
+
+/** ¿El rechazo es porque la cuenta no tiene ese modelo? */
+export const esRechazoDeModelo = (e) =>
+  e instanceof RechazoAnthropic &&
+  (e.tipo === "not_found_error" || (e.estado === 400 && /\bmodel\b/i.test(e.message) && !/tool/i.test(e.message)));
+
+/** ¿El rechazo es por la búsqueda o la lectura web? */
+export const esRechazoDeWeb = (e) =>
+  e instanceof RechazoAnthropic && (e.estado === 400 || e.estado === 403) &&
+  /web[_ ]?(search|fetch)/i.test(e.message);
+
+/** Lo que se le enseña a la persona: el motivo de verdad, no uno genérico. */
+function mensajeDeRechazo(e) {
+  if (e.estado === 429) return "El asistente está saturado. Inténtalo en unos segundos.";
+  if (e.estado === 401 || e.estado === 403) return "La clave de IA del servidor no es válida o no tiene permiso.";
+  return `Anthropic rechazó la petición (${e.estado}): ${String(e.message).slice(0, 300)}`;
+}
 const esfuerzo = (env) => (ESFUERZOS.has(env.AI_CHAT_ESFUERZO) ? env.AI_CHAT_ESFUERZO : "high");
 
 function validarMensajes(messages) {
@@ -105,11 +147,9 @@ async function abrirFlujo(env, peticion) {
     if (!res.ok) {
       const cuerpoError = await res.text().catch(() => "");
       console.error("chat: error", res.status, cuerpoError);
-      throw new Error(res.status === 429
-        ? "El asistente está saturado. Inténtalo en unos segundos."
-        : res.status === 401 || res.status === 403
-          ? "La clave de IA del servidor no es válida."
-          : "El proveedor de IA devolvió un error.");
+      let detalle = {};
+      try { detalle = JSON.parse(cuerpoError)?.error ?? {}; } catch { /* no era JSON */ }
+      throw new RechazoAnthropic(res.status, detalle.type ?? "", detalle.message ?? "");
     }
     return res;
   }
@@ -189,6 +229,36 @@ export async function rutaChat(req, env, { acceso, ctx } = {}) {
     }
   };
 
+  /**
+   * Abre la llamada y, si la cuenta rechaza el modelo o la web, ajusta
+   * la petición UNA vez por motivo y lo intenta otra vez. El ajuste se
+   * queda en `base`: las vueltas siguientes ya salen con él.
+   */
+  const abrirConAjustes = async (peticion) => {
+    for (let ajuste = 0; ajuste < 3; ajuste++) {
+      try {
+        return await abrirFlujo(env, peticion);
+      } catch (e) {
+        if (esRechazoDeModelo(e) && base.model !== MODELO_RESPALDO) {
+          console.warn(`chat: la cuenta no acepta ${base.model}; se usa ${MODELO_RESPALDO}`);
+          base.model = MODELO_RESPALDO;
+          peticion = { ...peticion, model: MODELO_RESPALDO };
+          continue;
+        }
+        if (esRechazoDeWeb(e) && base.tools.some((t) => NOMBRES_WEB.has(t.name))) {
+          console.warn("chat: la cuenta rechaza la búsqueda web; se quita");
+          base.tools = base.tools.filter((t) => !NOMBRES_WEB.has(t.name));
+          peticion = { ...peticion, tools: base.tools };
+          await emitir({ t: "aviso", texto: "Sin búsqueda en internet: no está activada en la cuenta de Anthropic" });
+          continue;
+        }
+        if (e instanceof RechazoAnthropic) throw new Error(mensajeDeRechazo(e));
+        throw e;
+      }
+    }
+    throw new Error("No se pudo generar la respuesta");
+  };
+
   const trabajo = (async () => {
     const mensajes = [...body.messages];
     const nuevos = [];
@@ -211,7 +281,7 @@ export async function rutaChat(req, env, { acceso, ctx } = {}) {
     const uso = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
     try {
       for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
-        const res = await abrirFlujo(env, { ...base, messages: mensajes });
+        const res = await abrirConAjustes({ ...base, messages: mensajes });
         const m = await leerFlujo(res, async (trozo) => {
           if (trozo.tipo === "servidor") await emitir({ t: "herramienta", texto: describirUso(trozo.nombre, trozo.entrada) });
           else await emitir({ t: trozo.tipo, d: trozo.texto });
