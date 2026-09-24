@@ -382,3 +382,149 @@ describe("la puerta, en general", () => {
     expect(res.headers.get("Cache-Control")).toContain("no-store");
   });
 });
+
+describe("el asistente: streaming y bucle de herramientas de servidor", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const sse = (tipo, datos) => `event: ${tipo}\ndata: ${JSON.stringify(datos)}\n\n`;
+  const respuestaTexto = (texto) => new Response([
+    sse("message_start", { message: { model: "claude-opus-5-5", usage: { input_tokens: 5 } } }),
+    sse("content_block_start", { index: 0, content_block: { type: "text", text: "" } }),
+    sse("content_block_delta", { index: 0, delta: { type: "text_delta", text: texto } }),
+    sse("content_block_stop", { index: 0 }),
+    sse("message_delta", { delta: { stop_reason: "end_turn" }, usage: { output_tokens: 3 } }),
+  ].join(""), { headers: { "content-type": "text/event-stream" } });
+  const respuestaHerramienta = (id, name, input) => new Response([
+    sse("message_start", { message: { model: "claude-opus-5-5", usage: {} } }),
+    sse("content_block_start", { index: 0, content_block: { type: "thinking", thinking: "" } }),
+    sse("content_block_delta", { index: 0, delta: { type: "signature_delta", signature: "firma" } }),
+    sse("content_block_stop", { index: 0 }),
+    sse("content_block_start", { index: 1, content_block: { type: "tool_use", id, name, input: {} } }),
+    sse("content_block_delta", { index: 1, delta: { type: "input_json_delta", partial_json: JSON.stringify(input) } }),
+    sse("content_block_stop", { index: 1 }),
+    sse("message_delta", { delta: { stop_reason: "tool_use" } }),
+  ].join(""), { headers: { "content-type": "text/event-stream" } });
+
+  /** Simula Anthropic: devuelve las respuestas en orden y guarda las peticiones. */
+  function anthropicFalso(...respuestas) {
+    const peticiones = [];
+    vi.stubGlobal("fetch", async (url, opciones) => {
+      if (String(url).startsWith("https://api.anthropic.com/")) {
+        peticiones.push(JSON.parse(opciones.body));
+        return respuestas.shift();
+      }
+      throw new Error(`fetch inesperado a ${url}`);
+    });
+    return peticiones;
+  }
+
+  const pedir = (cuerpo) => conSesion("/api/ia/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cuerpo),
+  });
+  const eventos = async (res) => (await res.text())
+    .split("\n\n").filter((t) => t.startsWith("data: ")).map((t) => JSON.parse(t.slice(6)));
+
+  const BASE = {
+    messages: [{ role: "user", content: "hola" }],
+    system: "Eres el asistente.",
+    clienteId: "cliente-1",
+    tools: [
+      { name: "crear_publicacion", description: "x", input_schema: { type: "object", properties: {} } },
+      { name: "web_search", description: "suplantada", input_schema: { type: "object", properties: {} } },
+    ],
+  };
+
+  it("sin clave de Anthropic dice 503 con motivo", async () => {
+    const res = await worker.fetch(pedir(BASE), await entorno());
+    expect(res.status).toBe(503);
+  });
+
+  it("un cliente de otro espacio no existe", async () => {
+    const env = { ...(await entorno()), ANTHROPIC_API_KEY: "k" };
+    const res = await worker.fetch(pedir({ ...BASE, clienteId: "cliente-de-otro" }), env);
+    expect(res.status).toBe(404);
+  });
+
+  it("reenvía el texto según llega y cierra con «fin»", async () => {
+    anthropicFalso(respuestaTexto("¡Hola!"));
+    const env = { ...(await entorno()), ANTHROPIC_API_KEY: "k" };
+    const res = await worker.fetch(pedir(BASE), env);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    const evs = await eventos(res);
+    expect(evs.filter((e) => e.t === "texto").map((e) => e.d).join("")).toBe("¡Hola!");
+    const fin = evs.find((e) => e.t === "fin");
+    expect(fin.stopReason).toBe("end_turn");
+    expect(fin.mensajes).toEqual([{ role: "assistant", content: [{ type: "text", text: "¡Hola!" }] }]);
+  });
+
+  it("la petición: Opus 5.5, razonamiento adaptativo, esfuerzo, caché, sin tool_choice forzado", async () => {
+    const peticiones = anthropicFalso(respuestaTexto("ok"));
+    const env = { ...(await entorno()), ANTHROPIC_API_KEY: "k" };
+    await eventos(await worker.fetch(pedir(BASE), env));
+    const p = peticiones[0];
+    expect(p.model).toBe("claude-opus-5-5");
+    expect(p.thinking.type).toBe("adaptive");
+    expect(p.output_config.effort).toBe("high");
+    expect(p.stream).toBe(true);
+    expect(p.cache_control).toEqual({ type: "ephemeral" });
+    expect(p.system.at(-1)).toMatchObject({ text: "Eres el asistente.", cache_control: { type: "ephemeral" } });
+    expect(p).not.toHaveProperty("tool_choice");
+    const nombres = p.tools.map((t) => t.name);
+    expect(nombres).toContain("crear_publicacion");
+    expect(nombres).toContain("ver_tareas");
+    // La web_search del navegador se descarta: la única es la de Anthropic.
+    expect(p.tools.filter((t) => t.name === "web_search")).toEqual([
+      expect.objectContaining({ type: "web_search_20260209" }),
+    ]);
+  });
+
+  it("encadena una herramienta de servidor sin volver al navegador, con el razonamiento intacto", async () => {
+    const peticiones = anthropicFalso(
+      respuestaHerramienta("tu_1", "ver_tareas", {}),
+      respuestaTexto("No hay tareas."),
+    );
+    const env = { ...(await entorno()), ANTHROPIC_API_KEY: "k" };
+    const evs = await eventos(await worker.fetch(pedir(BASE), env));
+    expect(peticiones).toHaveLength(2);
+    const segunda = peticiones[1].messages;
+    expect(segunda[1].content[0]).toEqual({ type: "thinking", thinking: "", signature: "firma" });
+    expect(segunda[2].content[0]).toMatchObject({ type: "tool_result", tool_use_id: "tu_1" });
+    expect(evs.some((e) => e.t === "herramienta")).toBe(true);
+    const fin = evs.find((e) => e.t === "fin");
+    expect(fin.stopReason).toBe("end_turn");
+    expect(fin.mensajes).toHaveLength(3);
+  });
+
+  it("una herramienta del navegador termina el turno para que la ejecute él", async () => {
+    const peticiones = anthropicFalso(respuestaHerramienta("tu_2", "crear_publicacion", { fecha: "2026-09-30" }));
+    const env = { ...(await entorno()), ANTHROPIC_API_KEY: "k" };
+    const evs = await eventos(await worker.fetch(pedir(BASE), env));
+    expect(peticiones).toHaveLength(1);
+    const fin = evs.find((e) => e.t === "fin");
+    expect(fin.stopReason).toBe("tool_use");
+    expect(fin.resultadosServidor).toEqual([]);
+    expect(fin.mensajes[0].content[1]).toMatchObject({ type: "tool_use", name: "crear_publicacion", input: { fecha: "2026-09-30" } });
+  });
+
+  it("un error de Anthropic llega como evento «error», no como un corte mudo", async () => {
+    anthropicFalso(new Response("{}", { status: 400 }));
+    const env = { ...(await entorno()), ANTHROPIC_API_KEY: "k" };
+    const evs = await eventos(await worker.fetch(pedir(BASE), env));
+    expect(evs).toEqual([{ t: "error", mensaje: "El proveedor de IA devolvió un error." }]);
+  });
+});
+
+describe("el resumen del chat", () => {
+  it("sin nada guardado devuelve un resumen vacío", async () => {
+    const res = await worker.fetch(conSesion("/api/ia/chat/resumen?cliente=cliente-1"), await entorno());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ resumen: "", hasta: null });
+  });
+
+  it("de un cliente de otro espacio, 404", async () => {
+    const res = await worker.fetch(conSesion("/api/ia/chat/resumen?cliente=cliente-de-otro"), await entorno());
+    expect(res.status).toBe(404);
+  });
+});

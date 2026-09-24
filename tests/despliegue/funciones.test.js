@@ -166,7 +166,15 @@ describe("el proxy de IA", () => {
         arreglo: 'Manda thinking: { type: "disabled" } en el nivel de calidad.',
       }),
     ).toMatch(/thinking/);
-    expect(CHAT, "el asistente no apaga el pensamiento").toMatch(/thinking:\s*\{\s*type:\s*"disabled"\s*\}/);
+    // El asistente corre en Opus 5.5, donde el razonamiento NO se puede
+    // apagar (`disabled` es un 400). La política ahí es otra: adaptativo
+    // dicho en voz alta, el esfuerzo lo fija el servidor, y el tope de
+    // salida deja sitio al razonamiento —que se paga del mismo max_tokens—.
+    expect(CHAT, "el asistente vuelve a apagar el pensamiento: en Opus 5.5 es un 400").not.toMatch(/type:\s*"disabled"/);
+    expect(CHAT, "el asistente no fija el razonamiento").toMatch(/thinking:\s*\{\s*type:\s*"adaptive"/);
+    expect(CHAT, "el asistente no fija el esfuerzo").toMatch(/output_config:\s*\{\s*effort/);
+    const tope = Number((/MAX_TOKENS\s*=\s*([\d_]+)/.exec(CHAT)?.[1] ?? "0").replace(/_/g, ""));
+    expect(tope, "max_tokens del asistente sin sitio para razonar").toBeGreaterThanOrEqual(16_000);
   });
 
   it("no deja que el navegador elija el modelo", () => {
