@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import worker from "../../worker/index.js";
+import { olvidarModelos } from "../../worker/lib/configIA.js";
 import { sha256 } from "../../worker/lib/ids.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 
@@ -26,7 +27,7 @@ import { COOKIE } from "../../worker/lib/sesion.js";
 const TESTIGO = "un-testigo-de-sesion-de-prueba";
 
 /** D1 de mentira: reconoce las tres consultas que hace esta puerta. */
-function dbFalsa({ clientes = ["cliente-1"], huella } = {}) {
+function dbFalsa({ clientes = ["cliente-1"], huella, ajustes = null, rol = "admin" } = {}) {
   const responder = (sql, binds) => {
     const s = sql.toLowerCase().replace(/\s+/g, " ");
 
@@ -34,9 +35,11 @@ function dbFalsa({ clientes = ["cliente-1"], huella } = {}) {
       if (binds[0] !== huella) return null;
       return {
         id: "u-jefe", email: "jefe@a.com",
-        owner_id: "u-jefe", rol: "admin", nombre: "Juan", color: "#1E90FF",
+        owner_id: "u-jefe", rol, nombre: "Juan", color: "#1E90FF",
       };
     }
+
+    if (s.startsWith("select * from ajustes_espacio where id = ? and owner_id = ?")) return ajustes;
 
     // acceso.leerUno("clients", { id }) — acotado por el espacio.
     if (s.startsWith("select * from clients where id = ? and owner_id = ?")) {
@@ -348,7 +351,8 @@ describe("tareas terminadas, responsables y ajustes", () => {
 
   it("sin ajustes guardados, las terminadas no se borran solas", async () => {
     const res = await worker.fetch(pedirJSON("/api/ajustes", "GET"), await entorno());
-    expect(await res.json()).toEqual({ purga_tareas: "nunca" });
+    // Y la IA en sus valores por defecto: Sonnet 5 con razonamiento alto.
+    expect(await res.json()).toEqual({ purga_tareas: "nunca", ia_modelo: "sonnet", ia_razonamiento: "alto" });
   });
 
   it("un modo de borrado que no existe es 400, no se guarda", async () => {
@@ -468,12 +472,12 @@ describe("el asistente: streaming y bucle de herramientas de servidor", () => {
     expect(fin.mensajes).toEqual([{ role: "assistant", content: [{ type: "text", text: "¡Hola!" }] }]);
   });
 
-  it("la petición: Opus 5.5, razonamiento adaptativo, esfuerzo, caché, sin tool_choice forzado", async () => {
+  it("la petición: Sonnet 5 por defecto, razonamiento adaptativo alto, caché, sin tool_choice forzado", async () => {
     const peticiones = anthropicFalso(respuestaTexto("ok"));
     const env = { ...(await entorno()), ANTHROPIC_API_KEY: "k" };
     await eventos(await worker.fetch(pedir(BASE), env));
     const p = peticiones[0];
-    expect(p.model).toBe("claude-opus-5-5");
+    expect(p.model).toBe("claude-sonnet-5");
     expect(p.thinking.type).toBe("adaptive");
     expect(p.output_config.effort).toBe("high");
     expect(p.stream).toBe(true);
@@ -517,11 +521,24 @@ describe("el asistente: streaming y bucle de herramientas de servidor", () => {
     expect(fin.mensajes[0].content[1]).toMatchObject({ type: "tool_use", name: "crear_publicacion", input: { fecha: "2026-09-30" } });
   });
 
-  it("un error de Anthropic llega como evento «error», no como un corte mudo", async () => {
-    anthropicFalso(new Response("{}", { status: 400 }));
+  it("un error de Anthropic llega con SU motivo, no con uno genérico", async () => {
+    // «El proveedor de IA devolvió un error» fue lo único que se vio
+    // cuando la cuenta no tenía Opus 5.5: el motivo estaba en el cuerpo.
+    anthropicFalso(new Response(JSON.stringify({
+      type: "error", error: { type: "invalid_request_error", message: "tools.3: formato no admitido" },
+    }), { status: 400 }));
     const env = { ...(await entorno()), ANTHROPIC_API_KEY: "k" };
     const evs = await eventos(await worker.fetch(pedir(BASE), env));
-    expect(evs).toEqual([{ t: "error", mensaje: "El proveedor de IA devolvió un error." }]);
+    expect(evs.filter((e) => e.t === "error")).toEqual([
+      { t: "error", mensaje: "Anthropic rechazó la petición (400): tools.3: formato no admitido" },
+    ]);
+  });
+
+  it("dice qué modelo responde antes de empezar", async () => {
+    anthropicFalso(respuestaTexto("ok"));
+    const env = { ...(await entorno()), ANTHROPIC_API_KEY: "k" };
+    const evs = await eventos(await worker.fetch(pedir(BASE), env));
+    expect(evs[0]).toEqual({ t: "modelo", id: "claude-sonnet-5", etiqueta: "Sonnet 5", esfuerzo: "high" });
   });
 });
 
@@ -535,5 +552,121 @@ describe("el resumen del chat", () => {
   it("de un cliente de otro espacio, 404", async () => {
     const res = await worker.fetch(conSesion("/api/ia/chat/resumen?cliente=cliente-de-otro"), await entorno());
     expect(res.status).toBe(404);
+  });
+});
+
+describe("la IA del espacio: modelo, razonamiento y respaldo", () => {
+  afterEach(() => { vi.unstubAllGlobals(); olvidarModelos(); });
+
+  const sse = (tipo, datos) => `event: ${tipo}\ndata: ${JSON.stringify(datos)}\n\n`;
+  const texto = (t) => new Response([
+    sse("message_start", { message: { model: "x", usage: { input_tokens: 1000 } } }),
+    sse("content_block_start", { index: 0, content_block: { type: "thinking", thinking: "" } }),
+    sse("content_block_stop", { index: 0 }),
+    sse("content_block_start", { index: 1, content_block: { type: "text", text: "" } }),
+    sse("content_block_delta", { index: 1, delta: { type: "text_delta", text: t } }),
+    sse("content_block_stop", { index: 1 }),
+    sse("message_delta", { delta: { stop_reason: "end_turn" }, usage: { output_tokens: 500 } }),
+  ].join(""), { headers: { "content-type": "text/event-stream" } });
+
+  /** Anthropic de mentira: /v1/models con esta lista y /v1/messages con estas respuestas. */
+  function anthropic({ modelos = ["claude-sonnet-5", "claude-opus-5"], respuestas = [] } = {}) {
+    const mensajes = [];
+    vi.stubGlobal("fetch", async (url, opciones = {}) => {
+      const u = String(url);
+      if (u.startsWith("https://api.anthropic.com/v1/models")) return Response.json({ data: modelos.map((id) => ({ id })) });
+      if (u.startsWith("https://api.anthropic.com/v1/messages")) {
+        mensajes.push(JSON.parse(opciones.body));
+        return respuestas.shift();
+      }
+      throw new Error(`fetch inesperado a ${u}`);
+    });
+    return mensajes;
+  }
+  const generar = (maxTokens = 4000) => conSesion("/api/ia", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: [{ type: "text", text: "Escribe un guion" }], maxTokens, tier: "rapido" }),
+  });
+
+  it("el calendario escribe con Sonnet 5 y razonamiento alto, aunque el navegador pida «rapido»", async () => {
+    const peticiones = anthropic({ respuestas: [texto("GUION: hola")] });
+    const env = { ...(await entorno()), ANTHROPIC_API_KEY: "k" };
+    const res = await worker.fetch(generar(4000), env);
+    expect(res.status).toBe(200);
+    const cuerpo = await res.json();
+    expect(cuerpo.text).toBe("GUION: hola");
+    expect(cuerpo.model).toBe("claude-sonnet-5");
+    const p = peticiones[0];
+    expect(p.model).toBe("claude-sonnet-5");
+    expect(p.thinking).toEqual({ type: "adaptive" });
+    expect(p.output_config).toEqual({ effort: "high" });
+    expect(p.stream).toBe(true);
+    // Lo pedido para escribir más el margen del razonamiento alto.
+    expect(p.max_tokens).toBe(4000 + 16_000);
+  });
+
+  it("con Opus elegido usa el Opus más reciente que tenga la cuenta", async () => {
+    const peticiones = anthropic({ modelos: ["claude-sonnet-5", "claude-opus-4-8", "claude-opus-5"], respuestas: [texto("ok")] });
+    const env = { ...(await entorno({ ajustes: { ia_modelo: "opus", ia_razonamiento: "maximo" } })), ANTHROPIC_API_KEY: "k" };
+    await worker.fetch(generar(), env);
+    expect(peticiones[0].model).toBe("claude-opus-5");
+    expect(peticiones[0].output_config).toEqual({ effort: "max" });
+  });
+
+  it("si la cuenta rechaza el Opus, escribe con Sonnet 5 y lo dice", async () => {
+    const peticiones = anthropic({
+      respuestas: [
+        new Response(JSON.stringify({ type: "error", error: { type: "not_found_error", message: "model: claude-opus-5" } }), { status: 404 }),
+        texto("ok"),
+      ],
+    });
+    const env = { ...(await entorno({ ajustes: { ia_modelo: "opus", ia_razonamiento: "alto" } })), ANTHROPIC_API_KEY: "k" };
+    const cuerpo = await (await worker.fetch(generar(), env)).json();
+    expect(peticiones.map((p) => p.model)).toEqual(["claude-opus-5", "claude-sonnet-5"]);
+    expect(cuerpo.model).toBe("claude-sonnet-5");
+    expect(cuerpo.aviso).toMatch(/Sonnet 5/);
+  });
+
+  it("un rechazo que no es del modelo enseña el motivo real", async () => {
+    anthropic({ respuestas: [new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "prompt demasiado largo" } }), { status: 400 })] });
+    const env = { ...(await entorno()), ANTHROPIC_API_KEY: "k" };
+    const res = await worker.fetch(generar(), env);
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toBe("Anthropic rechazó la petición (400): prompt demasiado largo");
+  });
+
+  it("la lista de modelos de la cuenta y el que está en uso", async () => {
+    anthropic({ modelos: ["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5"] });
+    const env = { ...(await entorno({ ajustes: { ia_modelo: "opus", ia_razonamiento: "alto" } })), ANTHROPIC_API_KEY: "k" };
+    const cuerpo = await (await worker.fetch(conSesion("/api/ia/modelos"), env)).json();
+    expect(cuerpo.disponibles.map((m) => m.nombre)).toEqual(["Sonnet 5", "Opus 5", "Haiku 4.5"]);
+    expect(cuerpo.enUso).toMatchObject({ id: "claude-opus-5", nombre: "Opus 5", esfuerzo: "high" });
+  });
+
+  const guardarAjustes = (datos) => conSesion("/api/ajustes", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(datos),
+  });
+
+  it("el administrador cambia el modelo y el razonamiento", async () => {
+    const res = await worker.fetch(guardarAjustes({ ia_modelo: "opus", ia_razonamiento: "medio" }), await entorno());
+    expect(res.status).toBe(200);
+  });
+
+  it("un editor no puede cambiar la IA", async () => {
+    const res = await worker.fetch(guardarAjustes({ ia_modelo: "opus" }), await entorno({ rol: "editor" }));
+    expect(res.status).toBe(403);
+  });
+
+  it("pero sí el borrado de tareas, que no cuesta dinero", async () => {
+    const res = await worker.fetch(guardarAjustes({ purga_tareas: "semanal" }), await entorno({ rol: "editor" }));
+    expect(res.status).toBe(200);
+  });
+
+  it("un modelo o un nivel que no existen son 400", async () => {
+    expect((await worker.fetch(guardarAjustes({ ia_modelo: "gpt" }), await entorno())).status).toBe(400);
+    expect((await worker.fetch(guardarAjustes({ ia_razonamiento: "altisimo" }), await entorno())).status).toBe(400);
   });
 });

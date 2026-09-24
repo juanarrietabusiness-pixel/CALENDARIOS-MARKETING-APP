@@ -97,6 +97,7 @@ src/
   export.js               Genera el HTML autónomo que se envía al cliente
   index.css               Sistema de diseño: tokens y clases base
   hooks/useDialogA11y.js  Foco atrapado, Escape y bloqueo de scroll en diálogos
+  hooks/useConfigIA.js    El modelo y el razonamiento del espacio, releídos con `pulso`
   lib/
     filas.js              Conversores fila ⇄ aplicación
     auth.js               Sesión, inicio y cierre
@@ -111,11 +112,14 @@ src/
     agenda.js             «Mi día»: hoy, atrasos, periodos de las recurrentes (puro;
                           también lo importa el Worker)
     foco.js               La empresa en foco de cada persona, por día
+    configIA.js           Nombres de modelos y niveles de razonamiento (puro)
     mensajeChat.js        Marcas del chat: piezas, imágenes, contexto (puro)
     medios.js             Fotogramas de video, imagen para la IA, descarga a tamaño
   components/
     Icon.jsx              Set de iconos SVG monocromos (rejilla 24, trazo 1.75)
     Presencia.jsx         Avatares, estado de la conexión, «X está editando»
+    SelectorFecha.jsx     Calendario del mes para escoger una fecha (portal)
+    SeccionIA.jsx         Equipo → Inteligencia artificial: modelo, nivel, consumo
     ClientModal.jsx       Alta y edición de cliente (5 pestañas)
     PlanWizard.jsx        Asistente de 7 pasos para crear un calendario
     CalendarView.jsx      Vista de lista y de rejilla, filtros, generación, envío
@@ -135,19 +139,22 @@ worker/
     publico.js            El enlace de aprobación, sin sesión
     respuesta.js          Cabeceras y errores de la API
     flujoAnthropic.js     El SSE de Anthropic, reconstruido en mensaje (puro)
+    anthropic.js          La llamada a Anthropic: streaming, reintento, rechazo con motivo
+    configIA.js           Modelo y razonamiento del espacio, Opus de la cuenta, costo
     herramientasServidor.js  Lo que el asistente consulta sin el navegador:
                           web, repositorio de GitHub, calendarios, tareas, ideas
     ids.js                UUID, testigos, huellas
   rutas/
     datos.js              CRUD: clientes, calendarios, chat, tareas, banco
     equipo.js             Miembros e invitaciones; la ruta pública del enlace
-    ia.js                 Proxy de Anthropic/Groq
+    ia.js                 Generación del calendario (Anthropic/Groq)
+    iaEspacio.js          Modelos de la cuenta y consumo del mes
     chat.js               El asistente: streaming, bucle de herramientas de
                           servidor y resumen de conversaciones largas
     imagen.js             Generación de imágenes (Gemini)
     video.js              Análisis de un video del banco (Gemini)
     adn.js                Lectura del ADN de marca con el token del servidor
-migraciones/d1/           Esquema de D1 (0001 base, 0002 equipo … 0007 Mi día, 0008 resumen del chat)
+migraciones/d1/           Esquema de D1 (0001 base … 0007 Mi día, 0008 resumen del chat, 0009 IA)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -448,7 +455,8 @@ son del servidor.
   enlace de un calendario que ya lo tenía devuelve el mismo: generar uno
   nuevo mataría los enlaces que el cliente ya tiene en su correo.
 - **Los modelos actuales piensan si no se les dice que no, y ese
-  pensamiento se paga del mismo `max_tokens` que el texto.** Sonnet 5 corre
+  pensamiento se paga del mismo `max_tokens` que el texto.** (Historia:
+  hoy el razonamiento va ENCENDIDO a propósito, ver la entrada siguiente.) Sonnet 5 corre
   en modo adaptativo cuando la petición no lleva `thinking`, y su
   presentación viene «omitida»: el bloque llega vacío. Una respuesta puede
   volver con `stop_reason: "max_tokens"` y **sin un solo bloque de texto**.
@@ -456,15 +464,32 @@ son del servidor.
   y subir el presupuesto o pedir menos publicaciones no lo arreglaba: sólo
   cambiaba cuánto razonaba. Porque escribir las fichas
   del lote es transcribir un calendario ya aprobado, no razonar. Lo fija
-  `worker/rutas/ia.js` por nivel (`niveles()`) y en «calidad» lo apaga. Para
-  volver a encenderlo: `AI_PENSAR=adaptativo` en `vars` de `wrangler.jsonc`.
-- **El asistente NO apaga el razonamiento, y no es un descuido.** Corre en
-  Opus 5.5 (`AI_CHAT_MODEL`, por defecto `claude-opus-5-5`), donde
-  `thinking: disabled` es un 400: la profundidad se controla con el
-  esfuerzo (`AI_CHAT_ESFUERZO`, «high» por defecto; el del modelo, si no
-  se dice nada, es «medium») y el tope de salida es de 32 000 porque el
-  razonamiento se paga de ahí. Lo que se dice arriba de apagarlo vale
-  para `ia.js`, no para el chat; `funciones.test.js` vigila las dos cosas.
+  `worker/rutas/ia.js` por nivel (`niveles()`) y en «calidad» lo apagaba.
+- **Qué modelo y cuánto razona lo decide el ESPACIO, no el código.**
+  Había tres modelos repartidos sin que se vieran: Haiku para casi todo
+  el calendario —los guiones profesionales los escribía el más pequeño
+  sin que nadie lo hubiera decidido—, Sonnet sin razonar para las fichas
+  y Opus 5.5 fijo en el chat. Ahora TODA la IA de texto lee
+  `ajustes_espacio.ia_modelo` («sonnet» por defecto, u «opus») e
+  `ia_razonamiento` («alto» por defecto), que cambia sólo el
+  administrador en Equipo → Inteligencia artificial (`worker/lib/configIA.js`).
+  El razonamiento va siempre encendido y se le suma su margen
+  (`MARGEN_RAZONAMIENTO`) al presupuesto que pide el navegador: sin él
+  vuelve la trampa de arriba. El `tier` que manda el navegador ya no
+  elige nada. Imágenes y video siguen en Gemini.
+- **Un id de modelo fijo es una apuesta sobre la cuenta, y se perdió.**
+  Con `claude-opus-5-5` fijo, el primer «Hola» devolvió «El proveedor de
+  IA devolvió un error»: la clave no tenía ese modelo y el mensaje
+  genérico lo escondía (lo mismo que pasó con Gemini). Tres guardas:
+  «opus» se resuelve preguntando a `/v1/models` cuál tiene la cuenta; si
+  aun así la cuenta rechaza el modelo, se vuelve a Sonnet 5 y se avisa;
+  y cualquier otro rechazo enseña el motivo de Anthropic
+  (`mensajeDeRechazo()` en `worker/lib/anthropic.js`). Todo pasa por esa
+  librería y en streaming: con razonamiento, una respuesta puede tardar
+  minutos, y sin streaming la API rechaza lo que podría pasar de diez.
+- **Cada llamada deja su costo en `consumo_ia`.** Es lo que enseña el
+  contador del mes en Equipo. `registrarConsumo()` no puede tumbar una
+  respuesta: si falla, se pierde un apunte, no el guion.
 - **El asistente tiene DOS bucles, y cada herramienta vive en uno.** Las
   de servidor (búsqueda web y lectura de páginas de Anthropic; repositorio
   de GitHub; ver_calendario/tareas/ideas) las encadena el Worker sin
@@ -776,6 +801,13 @@ son del servidor.
   MISMO módulo que usa «Mi día»: dos copias de «qué semana es» acaban
   discrepando, y entonces la tarea sale atrasada en pantalla y cerrada en
   la base. El «hoy» es el de Panamá (`fechaEnZona`), nunca `toISOString()`.
+- **Las fechas de las tareas se escogen en un calendario, no se teclean.**
+  El `<input type="date">` pedía día, mes y año a mano y cada navegador lo
+  pintaba distinto. `SelectorFecha` abre el mes y se toca el día. Va en un
+  PORTAL con posición fija y su propio nivel (`--z-sobre-dialogo`): dentro
+  del panel de tareas (`overflow: hidden`) o del diálogo de edición, un
+  desplegable normal salía recortado o debajo del fondo oscuro. Es un
+  desplegable, no un diálogo: rol de grupo, Escape y clic fuera.
 - **«Hoy» es una FECHA, no un sí/no.** `today_date` guarda el día en que
   se marcó: si no se hace, al día siguiente queda en el pasado y la tarea
   pasa sola a Atrasadas sin que nadie la desmarque.

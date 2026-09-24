@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useId } from "react";
 import Icon from "./Icon";
 import LimpiezaTerminadas from "./LimpiezaTerminadas";
 import CampoResponsable from "./CampoResponsable";
+import SelectorFecha from "./SelectorFecha";
 import * as db from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { fechaEnZona, textoFecha, textoAtraso, fechaObjetivo, diasEntre } from "../lib/agenda";
@@ -605,16 +606,7 @@ function TaskForm({ formId, title, description, recurrence, recurrenceDay, assig
           </select>
         )}
 
-        <label style={{ display: "inline-flex", alignItems: "center", gap: "var(--sp-1)", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>
-          Vence
-          <input
-            type="date"
-            className="input"
-            value={due ?? ""}
-            onChange={(e) => onDueChange(e.target.value)}
-            style={{ fontSize: "var(--fs-3xs)", width: 150 }}
-          />
-        </label>
+        <SelectorFecha value={due} onChange={(f) => onDueChange(f ?? "")} etiqueta="Fecha límite de la tarea nueva" vacio="Fecha límite" />
       </div>
       <CampoResponsable value={assigned} onChange={onAssignedChange} />
       <div style={{ display: "flex", gap: "var(--sp-2)" }}>
@@ -697,10 +689,10 @@ function TaskEditModal({ task, onSave, onClose, conFecha = true }) {
           )}
         </div>
         {conFecha && (
-          <label style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>
             Fecha límite
-            <input type="date" className="input" value={due} onChange={(e) => setDue(e.target.value)} style={{ fontSize: "var(--fs-3xs)", flex: 1 }} />
-          </label>
+            <SelectorFecha value={due} onChange={(f) => setDue(f ?? "")} etiqueta={`Fecha límite de ${task.title}`} vacio="Escoger fecha" />
+          </div>
         )}
         <CampoResponsable value={assigned} onChange={setAssigned} />
         <div style={{ display: "flex", gap: "var(--sp-2)", justifyContent: "flex-end" }}>

@@ -10,11 +10,10 @@
 //
 // Ahora:
 //
-//   · Opus 5.5, que razona SIEMPRE —en este modelo no se puede apagar:
-//     `thinking: disabled` es un 400— y cuya profundidad se ajusta con
-//     `effort` (AI_CHAT_ESFUERZO, «high» por defecto; el del modelo sin
-//     decir nada es «medium»). El razonamiento se paga del mismo
-//     max_tokens que la respuesta, así que el tope sube a 32 000.
+//   · El modelo y el esfuerzo de razonamiento que diga la configuración
+//     del espacio (Ajustes → IA; Sonnet 5 · alto por defecto). El
+//     razonamiento se paga del mismo max_tokens que la respuesta, así
+//     que el tope sube a 32 000.
 //   · Streaming de punta a punta: el Worker lee el SSE de Anthropic y le
 //     reenvía al navegador el texto según se escribe.
 //   · Un BUCLE en el servidor para las herramientas de servidor (web,
@@ -26,26 +25,39 @@
 //     automática, que cubre el historial. En una conversación larga el
 //     prefijo se lee de caché a una décima parte del precio.
 //
-// DOS REGLAS DE OPUS 5.5 QUE ESTO RESPETA
+// DOS REGLAS DE LOS MODELOS ACTUALES QUE ESTO RESPETA
 //
 //   · Los bloques de razonamiento se devuelven INTACTOS dentro de un
 //     turno —firma incluida—; por eso el navegador reenvía `mensajes`
 //     tal cual los recibe. Entre turnos no se reenvían: el historial
 //     guardado es texto.
-//   · `tool_choice` forzado es un 400. No se usa.
+//   · `tool_choice` forzado es un 400 en Opus 5.5. No se usa.
+//
+// CUANDO LA CUENTA NO ACEPTA ALGO
+//
+// El despliegue con Opus 5.5 fijo devolvió «El proveedor de IA
+// devolvió un error» en el primer «Hola»: la misma clave que funcionaba
+// con Sonnet 5 no tenía ese modelo, y el mensaje genérico escondía el
+// motivo —el mismo fallo de diseño que tuvo antes la generación de
+// imágenes con Gemini—. Ahora:
+//
+//   · el modelo y el razonamiento salen de la configuración del espacio
+//     (configIA.js: Sonnet 5 · alto por defecto); si la cuenta rechaza el
+//     Opus elegido, se vuelve a Sonnet 5 y se avisa;
+//   · la búsqueda web desactivada en la organización se quita de la
+//     petición y se avisa, en vez de tumbar la respuesta entera;
+//   · cualquier otro rechazo enseña el mensaje real de Anthropic.
 // ============================================================
 
 import { error, cuerpo, CABECERAS_API, json } from "../lib/respuesta.js";
-import { partirSSE, crearAcumulador } from "../lib/flujoAnthropic.js";
+import { abrirFlujo, leerFlujo, esRechazoDeModelo, esRechazoDeWeb, mensajeDeRechazo, RechazoAnthropic, textoDe } from "../lib/anthropic.js";
+import { leerConfigIA, resolverIA, registrarConsumo, MODELO_SONNET, etiquetaModelo } from "../lib/configIA.js";
 import { crearEjecutor, DEFINICIONES, HERRAMIENTAS_WEB, NOMBRES, describirUso } from "../lib/herramientasServidor.js";
 import { ahora, uuid } from "../lib/ids.js";
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_TOKENS = 32_000;
 const MAX_VUELTAS = 8;
-const ESFUERZOS = new Set(["low", "medium", "high", "xhigh", "max"]);
-
-const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const INSTRUCCION_SERVIDOR = `HERRAMIENTAS QUE TIENES ADEMÁS DE LAS DEL CALENDARIO:
 · web_search y web_fetch: busca en internet y lee páginas cuando necesites datos actuales —tendencias,
@@ -56,8 +68,7 @@ const INSTRUCCION_SERVIDOR = `HERRAMIENTAS QUE TIENES ADEMÁS DE LAS DEL CALENDA
   y de otros meses. Pide lo que necesites en vez de suponerlo.
 Antes de decir que no tienes un dato, mira si alguna de estas herramientas lo trae.`;
 
-export const modeloChat = (env) => env.AI_CHAT_MODEL || "claude-opus-5-5";
-const esfuerzo = (env) => (ESFUERZOS.has(env.AI_CHAT_ESFUERZO) ? env.AI_CHAT_ESFUERZO : "high");
+const NOMBRES_WEB = new Set(HERRAMIENTAS_WEB.map((h) => h.name));
 
 function validarMensajes(messages) {
   if (!Array.isArray(messages) || messages.length === 0) return "Falta el historial de mensajes";
@@ -79,64 +90,6 @@ function herramientasDelNavegador(tools) {
     .map(({ name, description, input_schema }) => ({ name, description, input_schema }));
 }
 
-/**
- * Una llamada a Anthropic. Reintenta UNA vez si falla antes de empezar
- * a llegar nada (429, 5xx, red); a mitad del streaming no se reintenta,
- * que ya se ha enseñado texto.
- */
-async function abrirFlujo(env, peticion) {
-  for (let intento = 0; intento <= 1; intento++) {
-    let res;
-    try {
-      res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": env.ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify(peticion),
-      });
-    } catch (e) {
-      if (intento < 1) { await dormir(2000); continue; }
-      throw new Error("No se pudo contactar con el proveedor de IA", { cause: e });
-    }
-    if ((res.status === 429 || res.status >= 500) && intento < 1) { await dormir(2000); continue; }
-    if (!res.ok) {
-      const cuerpoError = await res.text().catch(() => "");
-      console.error("chat: error", res.status, cuerpoError);
-      throw new Error(res.status === 429
-        ? "El asistente está saturado. Inténtalo en unos segundos."
-        : res.status === 401 || res.status === 403
-          ? "La clave de IA del servidor no es válida."
-          : "El proveedor de IA devolvió un error.");
-    }
-    return res;
-  }
-  throw new Error("No se pudo generar la respuesta");
-}
-
-/** Lee un flujo SSE entero, avisando de cada trozo. */
-async function leerFlujo(res, alTrozo) {
-  const acc = crearAcumulador();
-  const lector = res.body.getReader();
-  const dec = new TextDecoder();
-  let buffer = "";
-  for (;;) {
-    const { done, value } = await lector.read();
-    if (done) break;
-    buffer += dec.decode(value, { stream: true });
-    const { eventos, resto } = partirSSE(buffer);
-    buffer = resto;
-    for (const ev of eventos) {
-      const salida = acc.consumir(ev);
-      if (salida) await alTrozo(salida);
-    }
-  }
-  if (buffer.trim()) for (const ev of partirSSE(`${buffer}\n\n`).eventos) acc.consumir(ev);
-  return acc.mensaje();
-}
-
 export async function rutaChat(req, env, { acceso, ctx } = {}) {
   const declarado = Number(req.headers.get("content-length") ?? 0);
   if (declarado > MAX_BODY_BYTES) return error("La petición es demasiado grande", 413);
@@ -153,6 +106,7 @@ export async function rutaChat(req, env, { acceso, ctx } = {}) {
     if (!clienteActual) return error("Cliente no encontrado", 404);
   }
   const ejecutor = crearEjecutor({ env, acceso, clienteActual });
+  const ia = await resolverIA(env, await leerConfigIA(acceso));
 
   const system = [{ type: "text", text: INSTRUCCION_SERVIDOR }];
   if (typeof body.system === "string" && body.system.trim()) {
@@ -164,11 +118,10 @@ export async function rutaChat(req, env, { acceso, ctx } = {}) {
     ...(env.AI_CHAT_WEB === "no" ? [] : HERRAMIENTAS_WEB),
   ];
   const base = {
-    model: modeloChat(env),
+    model: ia.modelo,
     max_tokens: MAX_TOKENS,
-    stream: true,
     thinking: { type: "adaptive", display: "summarized" },
-    output_config: { effort: esfuerzo(env) },
+    output_config: { effort: ia.esfuerzo },
     cache_control: { type: "ephemeral" },
     system,
     tools,
@@ -189,7 +142,42 @@ export async function rutaChat(req, env, { acceso, ctx } = {}) {
     }
   };
 
+  /**
+   * Abre la llamada y, si la cuenta rechaza el modelo o la web, ajusta
+   * la petición UNA vez por motivo y lo intenta otra vez. El ajuste se
+   * queda en `base`: las vueltas siguientes ya salen con él.
+   */
+  const abrirConAjustes = async (peticion) => {
+    for (let ajuste = 0; ajuste < 3; ajuste++) {
+      try {
+        return await abrirFlujo(env, peticion);
+      } catch (e) {
+        if (esRechazoDeModelo(e) && base.model !== MODELO_SONNET) {
+          console.warn(`chat: la cuenta no acepta ${base.model}; se usa ${MODELO_SONNET}`);
+          await emitir({ t: "aviso", texto: `Tu cuenta de Anthropic rechazó ${etiquetaModelo(base.model)}: responde Sonnet 5` });
+          base.model = MODELO_SONNET;
+          peticion = { ...peticion, model: MODELO_SONNET };
+          continue;
+        }
+        if (esRechazoDeWeb(e) && base.tools.some((t) => NOMBRES_WEB.has(t.name))) {
+          console.warn("chat: la cuenta rechaza la búsqueda web; se quita");
+          base.tools = base.tools.filter((t) => !NOMBRES_WEB.has(t.name));
+          peticion = { ...peticion, tools: base.tools };
+          await emitir({ t: "aviso", texto: "Sin búsqueda en internet: no está activada en la cuenta de Anthropic" });
+          continue;
+        }
+        if (e instanceof RechazoAnthropic) throw new Error(mensajeDeRechazo(e));
+        throw e;
+      }
+    }
+    throw new Error("No se pudo generar la respuesta");
+  };
+
   const trabajo = (async () => {
+    // Quién va a responder, antes de nada: la etiqueta del panel sale de
+    // aquí, así que refleja el modelo real y no sólo el elegido.
+    await emitir({ t: "modelo", id: base.model, etiqueta: etiquetaModelo(base.model), esfuerzo: ia.esfuerzo });
+    if (ia.aviso) await emitir({ t: "aviso", texto: ia.aviso });
     const mensajes = [...body.messages];
     const nuevos = [];
     // Si quien preguntó cerró la pestaña a mitad, la respuesta la guarda
@@ -211,7 +199,7 @@ export async function rutaChat(req, env, { acceso, ctx } = {}) {
     const uso = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
     try {
       for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
-        const res = await abrirFlujo(env, { ...base, messages: mensajes });
+        const res = await abrirConAjustes({ ...base, messages: mensajes });
         const m = await leerFlujo(res, async (trozo) => {
           if (trozo.tipo === "servidor") await emitir({ t: "herramienta", texto: describirUso(trozo.nombre, trozo.entrada) });
           else await emitir({ t: trozo.tipo, d: trozo.texto });
@@ -230,6 +218,7 @@ export async function rutaChat(req, env, { acceso, ctx } = {}) {
 
         if (m.stop_reason !== "tool_use") {
           await emitir({ t: "fin", mensajes: nuevos, resultadosServidor: [], stopReason: m.stop_reason, uso, modelo: m.model });
+          await registrarConsumo(acceso, { funcion: "asistente", modelo: base.model, uso });
           await guardarSiSeFue();
           return;
         }
@@ -249,9 +238,11 @@ export async function rutaChat(req, env, { acceso, ctx } = {}) {
         // Hay herramientas del navegador: él las ejecuta y junta sus
         // resultados con éstos en UN mismo mensaje, como exige la API.
         await emitir({ t: "fin", mensajes: nuevos, resultadosServidor: resultados, stopReason: "tool_use", uso, modelo: m.model });
+        await registrarConsumo(acceso, { funcion: "asistente", modelo: base.model, uso });
         return;
       }
       await emitir({ t: "fin", mensajes: nuevos, resultadosServidor: [], stopReason: "limite", uso });
+      await registrarConsumo(acceso, { funcion: "asistente", modelo: base.model, uso });
     } catch (e) {
       console.error("chat:", e);
       await emitir({ t: "error", mensaje: e?.message || "No se pudo generar la respuesta" });
@@ -300,17 +291,12 @@ export async function rutaResumenChat(req, env, { acceso, metodo }) {
     .map((m) => `${m.role === "user" ? "USUARIO" : "ASISTENTE"}: ${m.content}`)
     .join("\n\n");
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: modeloChat(env),
-      max_tokens: 8000,
-      output_config: { effort: "low" },
+  const ia = await resolverIA(env, await leerConfigIA(acceso));
+  const peticion = {
+      model: ia.modelo,
+      max_tokens: 24000,
+      thinking: { type: "adaptive" },
+      output_config: { effort: ia.esfuerzo },
       system:
         "Resumes conversaciones entre una agencia de marketing y su asistente de contenido. " +
         "El resumen sustituye a los mensajes: conserva decisiones, preferencias del cliente, " +
@@ -322,14 +308,21 @@ export async function rutaResumenChat(req, env, { acceso, metodo }) {
           `${actual?.content ? `RESUMEN ANTERIOR:\n${actual.content}\n\n` : ""}` +
           `CONVERSACIÓN A AÑADIR:\n${transcripcion}\n\nDevuelve el resumen actualizado completo.`,
       }],
-    }),
-  });
-  if (!res.ok) {
-    console.error("resumen:", res.status, await res.text().catch(() => ""));
-    return error("No se pudo resumir la conversación", 502);
+  };
+  let m;
+  try {
+    m = await leerFlujo(await abrirFlujo(env, peticion).catch((e) => {
+      if (esRechazoDeModelo(e) && peticion.model !== MODELO_SONNET) {
+        peticion.model = MODELO_SONNET;
+        return abrirFlujo(env, peticion);
+      }
+      throw e;
+    }));
+  } catch (e) {
+    return error(`No se pudo resumir la conversación: ${mensajeDeRechazo(e)}`, 502, e);
   }
-  const data = await res.json();
-  const resumen = (data?.content ?? []).filter((b) => b?.type === "text").map((b) => b.text).join("").trim();
+  await registrarConsumo(acceso, { funcion: "resumen del chat", modelo: peticion.model, uso: m.usage });
+  const resumen = textoDe(m).trim();
   if (!resumen) return error("El resumen salió vacío", 502);
 
   const hasta = aPlegar[aPlegar.length - 1].created_at;

@@ -32,6 +32,7 @@ import { rutasDatos } from "./rutas/datos.js";
 import { rutasEquipo, rutaInvitacionPublica } from "./rutas/equipo.js";
 import { rutaIA } from "./rutas/ia.js";
 import { rutaChat, rutaResumenChat } from "./rutas/chat.js";
+import { rutaModelos, rutaConsumo } from "./rutas/iaEspacio.js";
 import { rutaADN } from "./rutas/adn.js";
 import { rutaGenerarImagen } from "./rutas/imagen.js";
 import { rutaAnalizarVideo } from "./rutas/video.js";
@@ -151,7 +152,6 @@ export default {
       if (partes[0] === "yo" && metodo === "GET") return json({ usuario });
 
       // ---------- 4. IA ----------
-      if (partes[0] === "ia" && !partes[1] && metodo === "POST") return rutaIA(req, env);
       if (partes[0] === "adn" && metodo === "POST") return rutaADN(req, env);
 
       // ---------- 5. Tiempo real ----------
@@ -197,6 +197,11 @@ export default {
       if (partes[0] === "ia" && partes[1] === "chat" && !partes[2] && metodo === "POST") {
         return rutaChat(req, env, { acceso, ctx });
       }
+      // La generación del calendario, también después del acceso: el
+      // modelo y el razonamiento salen de la configuración del espacio.
+      if (partes[0] === "ia" && !partes[1] && metodo === "POST") return rutaIA(req, env, { acceso });
+      if (partes[0] === "ia" && partes[1] === "modelos" && metodo === "GET") return rutaModelos(req, env, { acceso });
+      if (partes[0] === "ia" && partes[1] === "consumo" && metodo === "GET") return rutaConsumo(req, env, { acceso });
 
       if (partes[0] === "equipo") return rutasEquipo(req, env, { acceso, partes, metodo, usuario });
 

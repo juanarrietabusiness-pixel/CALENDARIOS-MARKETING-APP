@@ -10,6 +10,10 @@ import { leerHora, MAL, aplicarLote } from "../lib/lote";
 import { partirMensaje, marcarImagen, marcarContexto, FORMATOS_IMAGEN, INSTRUCCION_PIEZAS, INSTRUCCION_ADJUNTOS } from "../lib/mensajeChat";
 import { imagenParaModelo, fotogramasDeVideo, descargarEnTamano } from "../lib/medios";
 import * as db from "../lib/db";
+import { useConfigIA } from "../hooks/useConfigIA";
+import { etiquetaIA, NIVELES_IA } from "../lib/configIA";
+
+const NIVEL_DE_ESFUERZO = { low: "bajo", medium: "medio", high: "alto", max: "maximo" };
 import { tareaDesdeIA, fechaEnZona, PROPIEDADES_FECHA_TAREA } from "../lib/agenda";
 
 const MAX_ADJUNTOS = 6;
@@ -56,6 +60,10 @@ export default function ChatPanel({
   // Lo que llega en streaming mientras el asistente escribe.
   const [enVivo, setEnVivo] = useState({ texto: "", pensando: "", pasos: [] });
   const [resumen, setResumen] = useState({ resumen: "", hasta: null });
+  // Qué modelo respondió de verdad la última vez: si el elegido falló y
+  // contestó el de respaldo, la etiqueta lo dice.
+  const configIA = useConfigIA();
+  const [modeloVivo, setModeloVivo] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
@@ -698,7 +706,8 @@ CÓMO DEBES RESPONDER:
       const onEvento = (ev) => {
         if (ev.t === "texto") setEnVivo((v) => ({ ...v, texto: v.texto + ev.d }));
         else if (ev.t === "pensando") setEnVivo((v) => ({ ...v, pensando: v.pensando + ev.d }));
-        else if (ev.t === "herramienta") {
+        else if (ev.t === "modelo") setModeloVivo(ev);
+        else if (ev.t === "herramienta" || ev.t === "aviso") {
           pasos.push(ev.texto);
           setEnVivo((v) => ({ ...v, pasos: [...v.pasos, ev.texto] }));
         }
@@ -870,8 +879,17 @@ CÓMO DEBES RESPONDER:
               }}>
                 {isGlobal ? "Agente de la agencia" : `Asistente de ${client?.name || ""}`}
               </div>
-              <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)" }}>
-                {isGlobal ? "Conoce todos tus clientes" : "Conversa, genera ideas y ejecuta acciones"}
+              <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)", display: "flex", alignItems: "center", gap: "var(--sp-1)", flexWrap: "wrap" }}>
+                <span>{isGlobal ? "Conoce todos tus clientes" : "Conversa, genera ideas y ejecuta acciones"}</span>
+                <span
+                  className="badge"
+                  style={{ background: "var(--accent-soft)", color: "var(--accent)", fontSize: "var(--fs-3xs)" }}
+                  title="Modelo y nivel de razonamiento. Se cambian en Equipo → Inteligencia artificial."
+                >
+                  {modeloVivo
+                    ? `${modeloVivo.etiqueta} · ${NIVELES_IA.find((n) => n.id === NIVEL_DE_ESFUERZO[modeloVivo.esfuerzo])?.nombre ?? ""}`
+                    : etiquetaIA(configIA)}
+                </span>
               </div>
             </div>
             {!isGlobal && memories.length > 0 && (

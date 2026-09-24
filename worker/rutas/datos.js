@@ -27,6 +27,7 @@ import { uuid, testigo, ahora } from "../lib/ids.js";
 import { difundir, firma } from "../lib/vivo.js";
 import { tareasParaPurgar, terminadasBorrables, MODOS_PURGA } from "../lib/tareas.js";
 import { fechaEnZona, debeReabrirse, esFecha } from "../../src/lib/agenda.js";
+import { leerConfigIA, MODELOS_ELEGIBLES, RAZONAMIENTOS } from "../lib/configIA.js";
 
 const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe"];
 const JSON_CALENDARIOS = ["week_concepts", "days", "visual_references", "day_labels"];
@@ -144,21 +145,43 @@ export async function rutasDatos(req, env, ctx) {
   const [, seccion, id, sub, subId] = ["", ...partes];
 
   // ---- /api/ajustes ----
+  //
+  // Las opciones de la IA las cambia SÓLO el administrador: el modelo y
+  // el razonamiento deciden lo que cuesta cada mes, y eso no puede
+  // cambiarlo cualquiera sin querer. Se guarda lo que llega y nada más:
+  // cada ajuste se valida por su cuenta.
   if (seccion === "ajustes") {
     if (metodo === "GET") {
       const fila = await acceso.leerUno("ajustes_espacio", { id: acceso.ownerId });
-      return json({ purga_tareas: fila?.purga_tareas ?? "nunca" });
+      return json({ purga_tareas: fila?.purga_tareas ?? "nunca", ...(await leerConfigIA(acceso)) });
     }
     if (metodo === "PUT") {
-      const { purga_tareas } = (await cuerpo(req)) ?? {};
-      if (!(purga_tareas in MODOS_PURGA)) return error("Modo de borrado inválido");
+      const datos = (await cuerpo(req)) ?? {};
+      const cambios = {};
+      if ("purga_tareas" in datos) {
+        if (!(datos.purga_tareas in MODOS_PURGA)) return error("Modo de borrado inválido");
+        cambios.purga_tareas = datos.purga_tareas;
+      }
+      if ("ia_modelo" in datos || "ia_razonamiento" in datos) {
+        if (ctx.usuario?.rol !== "admin") return error("Sólo el administrador cambia la configuración de la IA", 403);
+        if ("ia_modelo" in datos) {
+          if (!MODELOS_ELEGIBLES.includes(datos.ia_modelo)) return error("Modelo inválido");
+          cambios.ia_modelo = datos.ia_modelo;
+        }
+        if ("ia_razonamiento" in datos) {
+          if (!(datos.ia_razonamiento in RAZONAMIENTOS)) return error("Nivel de razonamiento inválido");
+          cambios.ia_razonamiento = datos.ia_razonamiento;
+        }
+      }
+      if (!Object.keys(cambios).length) return error("Nada que guardar");
       const previa = await acceso.leerUno("ajustes_espacio", { id: acceso.ownerId });
       await acceso.guardar("ajustes_espacio", {
-        id: acceso.ownerId, purga_tareas,
+        id: acceso.ownerId, ...cambios,
         created_at: previa?.created_at ?? ahora(), updated_at: ahora(),
       });
       difundir(env, acceso.ownerId, { tipo: "ajustes", por: firma(ctx.usuario, req) });
-      return json({ purga_tareas });
+      const fila = await acceso.leerUno("ajustes_espacio", { id: acceso.ownerId });
+      return json({ purga_tareas: fila?.purga_tareas ?? "nunca", ...(await leerConfigIA(acceso)) });
     }
   }
 

@@ -115,6 +115,7 @@
   --z-menu: 60;         /* menú flotante de acciones */
   --z-panel: 250;       /* panel lateral */
   --z-overlay: 300;     /* diálogo modal: tapa el panel lateral */
+  --z-sobre-dialogo: 320; /* desplegable que puede abrirse desde un diálogo (calendario de fecha) */
   --z-salto: 999;       /* saltar al contenido: por encima de todo */
 
   /* ---------- Layout ---------- */
@@ -1715,7 +1716,6 @@ input[type="radio"] {
   cursor: pointer;
 }
 .dia-hoy[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
-.dia-fecha { width: 150px; font-size: var(--fs-3xs); }
 .contador-atrasadas {
   position: absolute;
   top: 2px;
@@ -1741,4 +1741,90 @@ input[type="radio"] {
   border-radius: var(--radius-pill);
   background: var(--surface-2);
   border: 1px solid var(--border);
+}
+
+/* ---------- Selector de fecha ---------- */
+.selector-fecha-boton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: var(--tap-sm);
+  padding: 0 var(--sp-3);
+  border-radius: var(--radius-pill);
+  border: 1px dashed var(--border-strong);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--fs-3xs);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.selector-fecha-boton:hover { border-color: var(--accent); color: var(--text); }
+.selector-fecha-boton.con-fecha {
+  border-style: solid;
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.selector-fecha {
+  position: fixed;
+  z-index: var(--z-sobre-dialogo);
+  padding: var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-2);
+}
+.selector-fecha-cabecera {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-2);
+}
+.selector-fecha-titulo { font-size: var(--fs-sm); font-weight: 700; }
+.selector-fecha-semana,
+.selector-fecha-dias {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.selector-fecha-semana span {
+  text-align: center;
+  font-size: var(--fs-3xs);
+  font-weight: 700;
+  color: var(--text-faint);
+  padding-bottom: var(--sp-1);
+}
+.selector-fecha-semana span[data-finde="true"] { color: var(--text-dim); }
+.selector-fecha-dia {
+  aspect-ratio: 1;
+  min-height: var(--tap-sm);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.selector-fecha-dia:hover { background: var(--surface-2); border-color: var(--border-strong); }
+.selector-fecha-dia:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.selector-fecha-dia[data-finde="true"] { color: var(--text-muted); }
+.selector-fecha-dia[data-pasado="true"] { color: var(--text-faint); }
+.selector-fecha-dia[data-hoy="true"] { border-color: var(--accent); font-weight: 700; color: var(--accent); }
+.selector-fecha-dia[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 2px 8px var(--accent-soft);
+}
+.selector-fecha-atajos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--border);
 }

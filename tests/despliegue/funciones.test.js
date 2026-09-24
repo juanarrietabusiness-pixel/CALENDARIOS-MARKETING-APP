@@ -129,7 +129,15 @@ describe("el proxy de IA", () => {
   it("recorre todos los bloques de la respuesta, no el primero", () => {
     // Basta un bloque de pensamiento por delante para que `find`
     // devuelva undefined y el texto llegue vacío sin ningún error.
+    // Los dos leen la respuesta con `textoDe`, de worker/lib/anthropic.js:
+    // lo que se vigila es esa función, y que ninguno se salte de ella.
+    const LIB = leer("worker/lib/anthropic.js");
+    const textoDe = LIB.match(/export const textoDe[\s\S]*?;\n/)?.[0] ?? "";
     for (const [nombre, fuente] of [["ia", IA], ["chat", CHAT]]) {
+      expect(fuente, `«${nombre}» no lee la respuesta con textoDe`).toMatch(/textoDe\(/);
+      expect(fuente, `«${nombre}» vuelve a buscar el primer bloque de texto`).not.toMatch(/\.find\([^)]*type === "text"/);
+    }
+    for (const [nombre, fuente] of [["anthropic.js", textoDe]]) {
       expect(
         fuente,
         fallo({

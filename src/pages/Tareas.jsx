@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useId, useMemo } from "react";
 import Icon from "../components/Icon";
 import { Avatar } from "../components/Presencia";
+import SelectorFecha from "../components/SelectorFecha";
 import * as db from "../lib/db";
 import { navegar } from "../lib/rutas";
 import { clasificar, fechaEnZona, textoAtraso, textoFecha } from "../lib/agenda";
@@ -233,7 +234,6 @@ function FilaDia({ item, hoy, empresa, enFoco, onToggle, onHoy, onFecha, onEmpre
   const { tarea: t, fecha, atraso } = item;
   const esHecha = hecha(t);
   const marcadaHoy = t.today_date === hoy;
-  const fechaId = useId();
   const rec = RECURRENCIA[t.recurrence];
 
   return (
@@ -272,15 +272,7 @@ function FilaDia({ item, hoy, empresa, enFoco, onToggle, onHoy, onFecha, onEmpre
 
       {!esHecha && (
         <>
-          <label htmlFor={fechaId} className="sr-only">Fecha límite de {t.title}</label>
-          <input
-            id={fechaId}
-            type="date"
-            className="input dia-fecha"
-            value={t.due_date ?? ""}
-            onChange={(e) => onFecha(e.target.value)}
-            title="Fecha límite"
-          />
+          <SelectorFecha value={t.due_date} onChange={onFecha} etiqueta={`Fecha límite de ${t.title}`} vacio="Fecha límite" />
           <button type="button" className="dia-hoy" aria-pressed={marcadaHoy} onClick={onHoy} title={marcadaHoy ? "Quitar de hoy" : "Hacerla hoy"}>
             Hoy
           </button>
