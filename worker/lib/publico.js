@@ -230,10 +230,12 @@ export async function mediaPermitida(db, token, clave) {
   const cal = await calendarioVigente(db, token);
   if (!cal) return false;
 
+  // La interfaz guarda la imagen como ruta (`/api/media/<clave>`), que
+  // es lo que pinta un <img>; aquí llega la clave a secas.
   const days = JSON.parse(cal.days || "[]");
   for (const dia of days) {
     for (const post of dia?.posts ?? []) {
-      if (post?.image === clave) return true;
+      if (post?.image === clave || post?.image === `/api/media/${clave}`) return true;
     }
   }
   const refs = JSON.parse(cal.visual_references || "[]");

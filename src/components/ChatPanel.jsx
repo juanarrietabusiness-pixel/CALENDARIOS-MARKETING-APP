@@ -1,10 +1,19 @@
 import { useState, useEffect, useRef, useId, useCallback } from "react";
 import Icon from "./Icon";
+import BancoSelector from "./BancoSelector";
+import { CopyButton } from "./calendario/primitivas";
+import { stripMarkdown } from "./calendario/formato";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { callAIChat, buildChatSystemPrompt, getChatTools } from "../api";
 import { uid, compressImage } from "../utils";
 import { leerHora, MAL, aplicarLote } from "../lib/lote";
+import { partirMensaje, marcarImagen, marcarContexto, FORMATOS_IMAGEN, INSTRUCCION_PIEZAS, INSTRUCCION_ADJUNTOS } from "../lib/mensajeChat";
+import { imagenParaModelo, fotogramasDeVideo, descargarEnTamano } from "../lib/medios";
 import * as db from "../lib/db";
+
+const MAX_ADJUNTOS = 6;
+const MAX_VIDEOS = 2;
+const FOTOGRAMAS = 6;
 
 export default function ChatPanel({
   client,
@@ -27,8 +36,9 @@ export default function ChatPanel({
   const [showMemories, setShowMemories] = useState(false);
   const [actionFeedback, setActionFeedback] = useState([]);
   const [listening, setListening] = useState(false);
-  const [imagePreview, setImagePreview] = useState(null);
-  const [imageData, setImageData] = useState(null);
+  const [adjuntos, setAdjuntos] = useState([]);
+  const [bancoAbierto, setBancoAbierto] = useState(false);
+  const [progreso, setProgreso] = useState("");
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
@@ -147,24 +157,116 @@ export default function ChatPanel({
     setListening(true);
   }, [listening]);
 
-  const handleImageSelect = useCallback(async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const compressed = await compressImage(file, 800);
-      setImagePreview(URL.createObjectURL(file));
-      setImageData(compressed);
-    } catch {
-      setError("No se pudo procesar la imagen.");
+  const agregarAdjuntos = useCallback((nuevos) => {
+    const lista = [...adjuntos];
+    for (const a of nuevos) {
+      const videos = lista.filter((x) => x.tipo === "video").length;
+      if (lista.length >= MAX_ADJUNTOS || (a.tipo === "video" && videos >= MAX_VIDEOS)) {
+        setError(`Como máximo ${MAX_ADJUNTOS} adjuntos por mensaje, y ${MAX_VIDEOS} de ellos videos.`);
+        if (a.origen === "subida") URL.revokeObjectURL(a.preview);
+        continue;
+      }
+      lista.push(a);
     }
-    if (fileRef.current) fileRef.current.value = "";
-  }, []);
+    setAdjuntos(lista);
+  }, [adjuntos]);
 
-  const clearImage = useCallback(() => {
-    setImagePreview(null);
-    setImageData(null);
-  }, []);
+  const handleFiles = useCallback(async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (fileRef.current) fileRef.current.value = "";
+    const nuevos = [];
+    for (const file of files) {
+      if (file.type.startsWith("video/")) {
+        // El video se guarda en el banco antes de analizarlo: el análisis
+        // lo hace el servidor leyendo de R2, y R2 es por cliente.
+        if (!clientId) {
+          setError("Para analizar un video, abre el asistente de un cliente: el video se guarda en su banco de contenido.");
+          continue;
+        }
+        nuevos.push({ id: uid(), tipo: "video", nombre: file.name, origen: "subida", file, preview: null });
+      } else if (file.type.startsWith("image/")) {
+        try {
+          const data = await compressImage(file, 1024);
+          nuevos.push({ id: uid(), tipo: "imagen", nombre: file.name, origen: "subida", base64: data.split(",")[1], preview: URL.createObjectURL(file) });
+        } catch {
+          setError(`No se pudo procesar «${file.name}».`);
+        }
+      }
+    }
+    agregarAdjuntos(nuevos);
+  }, [clientId, agregarAdjuntos]);
+
+  const desdeBanco = useCallback((items) => {
+    setBancoAbierto(false);
+    agregarAdjuntos(items.map((item) => ({
+      id: uid(),
+      tipo: item.file_type === "video" ? "video" : "imagen",
+      nombre: item.file_name,
+      origen: "banco",
+      clave: item.file_path,
+      preview: db.getContentBankUrl(item.file_path),
+    })));
+  }, [agregarAdjuntos]);
+
+  const quitarAdjunto = useCallback((id) => {
+    const a = adjuntos.find((x) => x.id === id);
+    if (a?.origen === "subida") URL.revokeObjectURL(a.preview);
+    setAdjuntos(adjuntos.filter((x) => x.id !== id));
+  }, [adjuntos]);
+
+  /**
+   * Convierte los adjuntos en lo que recibe el modelo. De las imágenes,
+   * la imagen. De los videos, el análisis de Gemini —que se guarda en el
+   * historial, para que el hilo lo recuerde en los mensajes siguientes—
+   * y unos fotogramas, que sólo viajan en este turno.
+   */
+  const prepararAdjuntos = useCallback(async (lista) => {
+    const bloques = [];
+    const contextos = [];
+    const imagenes = lista.filter((a) => a.tipo === "imagen");
+    if (imagenes.length) {
+      contextos.push(marcarContexto(
+        imagenes.length === 1 ? "Imagen adjunta" : `${imagenes.length} imágenes adjuntas`,
+        imagenes.map((a) => `· ${a.nombre}${a.origen === "banco" ? " (del banco)" : ""}`).join("\n"),
+      ));
+    }
+    for (const a of lista) {
+      if (a.tipo === "imagen") {
+        setProgreso(`Preparando «${a.nombre}»…`);
+        const base64 = a.base64 ?? await imagenParaModelo(a.preview);
+        bloques.push({ type: "text", text: `Imagen adjunta «${a.nombre}»:` });
+        bloques.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: base64 } });
+        continue;
+      }
+
+      let clave = a.clave;
+      if (!clave) {
+        setProgreso(`Guardando «${a.nombre}» en el banco…`);
+        clave = (await db.uploadContentBankItem(clientId, a.file)).file_path;
+      }
+      setProgreso(`Viendo y escuchando «${a.nombre}»… (puede tardar un minuto)`);
+      const [analisis, fotos] = await Promise.allSettled([
+        db.analizarVideo(clave),
+        fotogramasDeVideo(db.getContentBankUrl(clave), FOTOGRAMAS),
+      ]);
+      if (analisis.status === "rejected" && fotos.status === "rejected") {
+        throw new Error(`No se pudo leer el video «${a.nombre}»: ${analisis.reason?.message || "error desconocido"}`);
+      }
+      contextos.push(marcarContexto(
+        `Video «${a.nombre}»`,
+        analisis.status === "fulfilled"
+          ? analisis.value.analisis
+          : `No se pudo analizar el audio ni las escenas (${analisis.reason?.message || "error desconocido"}). Sólo hay fotogramas.`,
+      ));
+      if (fotos.status === "fulfilled") {
+        bloques.push({ type: "text", text: `Fotogramas del video «${a.nombre}», en los segundos ${fotos.value.map((f) => f.segundo).join(", ")}:` });
+        for (const f of fotos.value) {
+          bloques.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: f.base64 } });
+        }
+      }
+    }
+    return { bloques, contextos };
+  }, [clientId]);
 
   const resolveClient = useCallback((nameOrId) => {
     if (!nameOrId) return null;
@@ -199,6 +301,10 @@ QUIÉN ERES:
 
 CLIENTES DE LA AGENCIA (${clients.length}):
 ${clientBlocks || "(Sin clientes aún)"}
+
+${INSTRUCCION_PIEZAS}
+
+${INSTRUCCION_ADJUNTOS}
 
 CÓMO DEBES RESPONDER:
 · En español de Panamá, con tildes y signos de apertura (¿, ¡).
@@ -331,6 +437,52 @@ CÓMO DEBES RESPONDER:
     }
 
     const cal = calRef.current;
+
+    // Antes que la comprobación del calendario: una imagen para el chat
+    // no lo necesita. Sólo asignarla a una publicación sí.
+    if (toolName === "generar_imagen") {
+      if (!toolInput.prompt) return { ok: false, mensaje: "Falta la descripción de la imagen." };
+      const formato = FORMATOS_IMAGEN[toolInput.formato_imagen] ? toolInput.formato_imagen : "square";
+      const post = toolInput.post_id && cal
+        ? cal.days.flatMap((d) => d.posts || []).find((p) => p.id === toolInput.post_id)
+        : null;
+      setProgreso(`Generando la imagen (${FORMATOS_IMAGEN[formato].label})…`);
+      try {
+        const res = await db.generateImage({
+          clientId,
+          idea: toolInput.prompt,
+          format: post?.format || "",
+          category: post?.category || "",
+          title: post?.idea || "",
+          descripcion: post?.descripcion || "",
+          guion: post?.guion || "",
+          imageFormat: formato,
+        });
+        if (!res?.clave) return { ok: false, mensaje: "La IA no devolvió ninguna imagen." };
+        const entregada = { ok: true, _imagen: { clave: res.clave, formato } };
+        if (!toolInput.post_id) {
+          return { ...entregada, mensaje: `Imagen generada y mostrada en el chat (${FORMATOS_IMAGEN[formato].label}).` };
+        }
+        if (!post || !calId || !onUpdateCal) {
+          return { ...entregada, mensaje: `Imagen mostrada en el chat, pero no encontré la publicación ${toolInput.post_id} para asignarla.` };
+        }
+        const updated = {
+          ...cal,
+          days: cal.days.map((d) => ({
+            ...d,
+            posts: (d.posts || []).map((p) => (p.id === toolInput.post_id ? { ...p, image: res.clave } : p)),
+          })),
+        };
+        calRef.current = updated;
+        onUpdateCal(calId, updated);
+        return { ...entregada, mensaje: `Imagen mostrada en el chat y asignada a la publicación ${toolInput.post_id}.` };
+      } catch (err) {
+        return { ok: false, mensaje: err?.message || "Error al generar la imagen." };
+      } finally {
+        setProgreso("");
+      }
+    }
+
     if (!cal || !calId || !onUpdateCal) {
       return { ok: false, mensaje: "No hay calendario seleccionado." };
     }
@@ -411,69 +563,41 @@ CÓMO DEBES RESPONDER:
       return { ok: true, mensaje: `${r.count} publicación${r.count === 1 ? "" : "es"} editada${r.count === 1 ? "" : "s"} en lote.` };
     }
 
-    if (toolName === "generar_imagen") {
-      if (!toolInput.prompt) return { ok: false, mensaje: "Falta la descripción de la imagen." };
-      try {
-        const post = toolInput.post_id
-          ? cal.days.flatMap((d) => d.posts || []).find((p) => p.id === toolInput.post_id)
-          : null;
-        const res = await db.generateImage({
-          clientId,
-          idea: toolInput.prompt,
-          format: post?.format || "",
-          category: post?.category || "",
-          title: post?.idea || "",
-          descripcion: post?.descripcion || "",
-          guion: post?.guion || "",
-          imageFormat: toolInput.formato_imagen || "square",
-        });
-        if (!res?.clave) return { ok: false, mensaje: "La IA no devolvió ninguna imagen." };
-        if (toolInput.post_id) {
-          let found = false;
-          const newDays = cal.days.map((d) => ({
-            ...d,
-            posts: (d.posts || []).map((p) => {
-              if (p.id !== toolInput.post_id) return p;
-              found = true;
-              return { ...p, image: res.clave };
-            }),
-          }));
-          if (!found) return { ok: true, mensaje: `Imagen generada (${res.clave}) pero no encontré la publicación ${toolInput.post_id} para asignarla.` };
-          const updated = { ...cal, days: newDays };
-          calRef.current = updated;
-          onUpdateCal(calId, updated);
-          return { ok: true, mensaje: `Imagen generada y asignada a la publicación ${toolInput.post_id}.` };
-        }
-        return { ok: true, mensaje: `Imagen generada: ${res.clave}. Dime a qué publicación asignarla.` };
-      } catch (err) {
-        return { ok: false, mensaje: err?.message || "Error al generar la imagen." };
-      }
-    }
-
     return { ok: false, mensaje: `Herramienta desconocida: ${toolName}` };
   }, [chatMode, clientId, calId, onUpdateCal, memories, resolveClient, onSelectClient]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
-    if ((!text && !imageData) || loading) return;
+    if ((!text && !adjuntos.length) || loading) return;
 
+    const enviados = adjuntos;
     setInput("");
     setError("");
     setActionFeedback([]);
+    setAdjuntos([]);
 
-    const hasImage = Boolean(imageData);
-    const displayText = text || (hasImage ? "[Imagen enviada]" : "");
-    const userMsg = { role: "user", content: displayText, created_at: new Date().toISOString(), hasImage };
+    const pedido = text || (enviados.some((a) => a.tipo === "video")
+      ? "Analiza el video que te adjunto."
+      : "Analiza lo que te adjunto.");
+    const userMsg = { role: "user", content: pedido, created_at: new Date().toISOString() };
     setMessages((prev) => [...prev, userMsg]);
     setLoading(true);
 
-    const sentImagePreview = imagePreview;
-    const sentImageData = imageData;
-    clearImage();
-
     try {
+      // Lo que se guarda lleva el análisis de cada video: así el hilo lo
+      // sigue sabiendo en los mensajes siguientes, y al recargar.
+      let bloquesAdjuntos = [];
+      let guardado = pedido;
+      if (enviados.length) {
+        const { bloques, contextos } = await prepararAdjuntos(enviados);
+        bloquesAdjuntos = bloques;
+        guardado = [pedido, ...contextos].join("\n\n");
+        setMessages((prev) => prev.map((m) => (m === userMsg ? { ...m, content: guardado } : m)));
+        setProgreso("");
+      }
+
       if (chatMode === "client" && clientId) {
-        await db.saveChatMessage(clientId, "user", displayText);
+        await db.saveChatMessage(clientId, "user", guardado);
       }
 
       const system = chatMode === "client" && client
@@ -484,30 +608,36 @@ CÓMO DEBES RESPONDER:
         ? getChatTools(Boolean(calRef.current))
         : getGlobalTools();
 
-      const previousMsgs = [...messages, userMsg].slice(-50).map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-
-      if (sentImageData) {
-        const base64 = sentImageData.includes(",") ? sentImageData.split(",")[1] : sentImageData;
-        const lastMsg = previousMsgs[previousMsgs.length - 1];
-        const contentBlocks = [];
-        contentBlocks.push({
-          type: "image",
-          source: { type: "base64", media_type: "image/jpeg", data: base64 },
-        });
-        if (text) {
-          contentBlocks.push({ type: "text", text });
-        } else {
-          contentBlocks.push({ type: "text", text: "Analiza esta imagen." });
-        }
-        lastMsg.content = contentBlocks;
+      const conversationMessages = [...messages, { role: "user", content: guardado }]
+        .slice(-50)
+        .map((m) => ({ role: m.role, content: m.content }));
+      if (bloquesAdjuntos.length) {
+        conversationMessages[conversationMessages.length - 1].content = [
+          ...bloquesAdjuntos,
+          { type: "text", text: guardado },
+        ];
       }
 
-      let conversationMessages = previousMsgs;
       let maxLoops = 6;
       const feedbacks = [];
+      // Las imágenes generadas van al mensaje final como marcas: así se
+      // pintan debajo del texto y siguen ahí al recargar el historial.
+      const imagenes = [];
+      let entregado = false;
+
+      const entregar = async (textoAsistente) => {
+        const contenido = [textoAsistente, ...imagenes.map((i) => marcarImagen(i.clave, i.formato))]
+          .filter(Boolean).join("\n\n");
+        entregado = true;
+        if (!contenido) return;
+        if (chatMode === "client" && clientId) {
+          await db.saveChatMessage(clientId, "assistant", contenido);
+        }
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: contenido, created_at: new Date().toISOString() },
+        ]);
+      };
 
       while (maxLoops-- > 0) {
         const response = await callAIChat(conversationMessages, system, tools);
@@ -517,15 +647,7 @@ CÓMO DEBES RESPONDER:
         const assistantText = textBlocks.map((b) => b.text || "").join("");
 
         if (toolUseBlocks.length === 0 || response.stopReason === "end_turn") {
-          if (assistantText) {
-            if (chatMode === "client" && clientId) {
-              await db.saveChatMessage(clientId, "assistant", assistantText);
-            }
-            setMessages((prev) => [
-              ...prev,
-              { role: "assistant", content: assistantText, created_at: new Date().toISOString() },
-            ]);
-          }
+          await entregar(assistantText);
           break;
         }
 
@@ -538,6 +660,7 @@ CÓMO DEBES RESPONDER:
             if (result._idea && onAddIdea) {
               onAddIdea(result._idea, result._clientId);
             }
+            if (result._imagen) imagenes.push(result._imagen);
             feedbacks.push({ tool: toolBlock.name, ...result });
             toolResults.push({
               type: "tool_result",
@@ -557,13 +680,17 @@ CÓMO DEBES RESPONDER:
         setActionFeedback([...feedbacks]);
         conversationMessages.push({ role: "user", content: toolResults });
       }
+      // Seis vueltas de herramientas sin respuesta final: lo generado no
+      // puede perderse por eso.
+      if (!entregado && imagenes.length) await entregar("");
     } catch (e) {
       setError(e.message || "Error al generar respuesta.");
     } finally {
       setLoading(false);
-      if (sentImagePreview) URL.revokeObjectURL(sentImagePreview);
+      setProgreso("");
+      for (const a of enviados) if (a.origen === "subida") URL.revokeObjectURL(a.preview);
     }
-  }, [input, loading, messages, client, clientId, chatMode, memories, executeToolCall, imageData, imagePreview, clearImage, buildGlobalSystemPrompt, getGlobalTools, onAddIdea]);
+  }, [input, loading, messages, client, clientId, chatMode, memories, executeToolCall, adjuntos, prepararAdjuntos, buildGlobalSystemPrompt, getGlobalTools, onAddIdea]);
 
   const handleClear = useCallback(async () => {
     if (chatMode === "client" && clientId) {
@@ -789,7 +916,7 @@ CÓMO DEBES RESPONDER:
               <span style={{ display: "inline-flex", gap: 3 }}>
                 <Dot delay="0s" /><Dot delay=".2s" /><Dot delay=".4s" />
               </span>
-              <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)" }}>Pensando…</span>
+              <span role="status" style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)" }}>{progreso || "Pensando…"}</span>
             </div>
           )}
           {error && (
@@ -800,40 +927,62 @@ CÓMO DEBES RESPONDER:
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Vista previa de imagen adjunta */}
-        {imagePreview && (
+        {/* Adjuntos listos para enviar */}
+        {adjuntos.length > 0 && (
           <div style={{
             padding: "var(--sp-2) var(--sp-4)",
             borderTop: "1px solid var(--border)",
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--sp-2)",
             flexShrink: 0,
             background: "var(--surface-2)",
           }}>
-            <img
-              src={imagePreview}
-              alt="Imagen adjunta"
-              style={{
-                width: 48,
-                height: 48,
-                objectFit: "cover",
-                borderRadius: "var(--radius-sm)",
-                border: "1px solid var(--border)",
-              }}
-            />
-            <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)", flex: 1 }}>
-              Imagen lista para enviar
-            </span>
-            <button
-              className="btn-icon"
-              onClick={clearImage}
-              aria-label="Quitar imagen"
-              style={{ width: 28, height: 28, minHeight: 28 }}
-            >
-              <Icon name="close" size={14} />
-            </button>
+            <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)", marginBottom: "var(--sp-1)" }}>
+              {adjuntos.length} adjunto{adjuntos.length === 1 ? "" : "s"} listo{adjuntos.length === 1 ? "" : "s"}
+              {adjuntos.some((a) => a.tipo === "video") && " · los videos se analizan al enviar"}
+            </div>
+            <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", gap: "var(--sp-2)", overflowX: "auto" }}>
+              {adjuntos.map((a) => (
+                <li key={a.id} style={{ position: "relative", flexShrink: 0 }}>
+                  {/* Un video recién escogido es un blob:, y la CSP no deja
+                      reproducirlos (media-src cae en 'self'): se enseña el
+                      icono hasta que esté en el banco. */}
+                  {a.tipo === "video" && a.origen === "banco" ? (
+                    <video src={`${a.preview}#t=0.5`} muted preload="metadata" aria-label={`Video: ${a.nombre}`} style={{ width: 56, height: 56, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", display: "block", background: "var(--bg)" }} />
+                  ) : a.tipo === "video" ? (
+                    <span role="img" aria-label={`Video: ${a.nombre}`} title={a.nombre} style={{ width: 56, height: 56, borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", color: "var(--text-dim)" }}>
+                      <Icon name="video" size={22} />
+                    </span>
+                  ) : (
+                    <img src={a.preview} alt={`Imagen: ${a.nombre}`} style={{ width: 56, height: 56, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", display: "block" }} />
+                  )}
+                  {a.tipo === "video" && (
+                    <span aria-hidden="true" style={{ position: "absolute", left: 4, bottom: 4, background: "rgba(0,0,0,.6)", color: "#fff", borderRadius: "var(--radius-pill)", padding: 3, display: "flex" }}>
+                      <Icon name="play" size={10} />
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="btn-icon"
+                    onClick={() => quitarAdjunto(a.id)}
+                    aria-label={`Quitar ${a.nombre}`}
+                    disabled={loading}
+                    style={{ position: "absolute", top: -6, right: -6, width: 24, height: 24, minHeight: 24, background: "var(--surface-3)" }}
+                  >
+                    <Icon name="close" size={12} />
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
+        )}
+
+        {bancoAbierto && clientId && (
+          <BancoSelector
+            clientId={clientId}
+            maximo={MAX_ADJUNTOS - adjuntos.length}
+            titulo="Adjuntar del banco de contenido"
+            onSelect={desdeBanco}
+            onClose={() => setBancoAbierto(false)}
+          />
         )}
 
         {/* Entrada */}
@@ -849,21 +998,35 @@ CÓMO DEBES RESPONDER:
           <input
             ref={fileRef}
             type="file"
-            accept="image/*"
-            onChange={handleImageSelect}
+            accept={clientId ? "image/*,video/*" : "image/*"}
+            multiple
+            onChange={handleFiles}
             style={{ display: "none" }}
             aria-hidden="true"
+            tabIndex={-1}
           />
           <button
             className="btn-icon"
             onClick={() => fileRef.current?.click()}
-            aria-label="Adjuntar imagen"
-            title="Adjuntar imagen"
-            disabled={loading}
+            aria-label={clientId ? "Adjuntar imagen o video" : "Adjuntar imagen"}
+            title={clientId ? "Adjuntar imagen o video" : "Adjuntar imagen"}
+            disabled={loading || adjuntos.length >= MAX_ADJUNTOS}
             style={{ minHeight: "var(--tap)", minWidth: "var(--tap)" }}
           >
-            <Icon name="image" size={18} />
+            <Icon name="paperclip" size={18} />
           </button>
+          {clientId && (
+            <button
+              className="btn-icon"
+              onClick={() => setBancoAbierto(true)}
+              aria-label="Adjuntar del banco de contenido"
+              title="Adjuntar del banco de contenido"
+              disabled={loading || adjuntos.length >= MAX_ADJUNTOS}
+              style={{ minHeight: "var(--tap)", minWidth: "var(--tap)" }}
+            >
+              <Icon name="folder" size={18} />
+            </button>
+          )}
           {hasSpeechAPI && (
             <button
               className="btn-icon"
@@ -903,7 +1066,7 @@ CÓMO DEBES RESPONDER:
           <button
             className="btn btn-primary"
             onClick={handleSend}
-            disabled={(!input.trim() && !imageData) || loading}
+            disabled={(!input.trim() && !adjuntos.length) || loading}
             aria-label="Enviar mensaje"
             style={{ minHeight: "var(--tap)", paddingInline: "var(--sp-3)" }}
           >
@@ -944,7 +1107,9 @@ function EmptyState({ clientName, hasCalendar }) {
       }}>
         <span>Prueba con algo como:</span>
         <span style={{ fontStyle: "italic" }}>«Escríbeme un caption para un reel de lanzamiento»</span>
-        <span style={{ fontStyle: "italic" }}>«Dame 5 ideas para posts educativos»</span>
+        <span style={{ fontStyle: "italic" }}>«Dame 4 descripciones para este post» — cada una sale con su botón de copiar</span>
+        <span style={{ fontStyle: "italic" }}>Adjunta un video del banco: «Hazme 3 guiones inspirados en este»</span>
+        <span style={{ fontStyle: "italic" }}>«Genérame una imagen vertical para el lanzamiento»</span>
         {hasCalendar && (
           <>
             <span style={{ fontStyle: "italic" }}>«Créame un reel para el martes sobre tips»</span>
@@ -996,74 +1161,191 @@ function GlobalEmptyState({ clientCount }) {
 
 function ChatMessage({ message }) {
   const isUser = message.role === "user";
+  const bloques = partirMensaje(message.content);
+  // Si hay piezas, cada una trae su botón: copiar además el mensaje
+  // entero sería volver a pegarlo todo junto.
+  const hayPiezas = bloques.some((b) => b.tipo === "pieza");
+
+  return (
+    <div style={{
+      display: "flex",
+      flexDirection: "column",
+      alignItems: isUser ? "flex-end" : "flex-start",
+      gap: "var(--sp-2)",
+    }}>
+      {bloques.map((b, i) => {
+        if (b.tipo === "texto") return <Burbuja key={i} isUser={isUser} texto={b.texto} copiable={!isUser && !hayPiezas} />;
+        if (b.tipo === "pieza") return <Pieza key={i} titulo={b.titulo} texto={b.texto} />;
+        if (b.tipo === "imagen") return <ImagenGenerada key={i} clave={b.clave} formato={b.formato} />;
+        return <Contexto key={i} titulo={b.titulo} texto={b.texto} />;
+      })}
+    </div>
+  );
+}
+
+function Burbuja({ isUser, texto, copiable }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(message.content).then(() => {
+    navigator.clipboard.writeText(stripMarkdown(texto)).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     }).catch(() => {});
   };
 
   return (
-    <div style={{
-      display: "flex",
-      justifyContent: isUser ? "flex-end" : "flex-start",
-    }}>
+    <div style={{ maxWidth: "85%", position: "relative" }}>
       <div style={{
-        maxWidth: "85%",
-        position: "relative",
+        padding: "var(--sp-2) var(--sp-3)",
+        borderRadius: isUser
+          ? "var(--radius) var(--radius) var(--radius-sm) var(--radius)"
+          : "var(--radius) var(--radius) var(--radius) var(--radius-sm)",
+        background: isUser ? "var(--accent)" : "var(--surface-2)",
+        color: isUser ? "#fff" : "var(--text)",
+        fontSize: "var(--fs-xs)",
+        lineHeight: 1.55,
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
       }}>
-        <div style={{
-          padding: "var(--sp-2) var(--sp-3)",
-          borderRadius: isUser
-            ? "var(--radius) var(--radius) var(--radius-sm) var(--radius)"
-            : "var(--radius) var(--radius) var(--radius) var(--radius-sm)",
-          background: isUser ? "var(--accent)" : "var(--surface-2)",
-          color: isUser ? "#fff" : "var(--text)",
-          fontSize: "var(--fs-xs)",
-          lineHeight: 1.55,
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-        }}>
-          {message.hasImage && (
-            <div style={{
-              marginBottom: "var(--sp-1)",
-              fontSize: "var(--fs-3xs)",
-              opacity: 0.8,
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--sp-1)",
-            }}>
-              <Icon name="image" size={12} />
-              <span>Imagen adjunta</span>
-            </div>
-          )}
-          {message.content}
-        </div>
-        {!isUser && message.content && (
-          <button
-            type="button"
-            className="btn-icon"
-            onClick={handleCopy}
-            aria-label={copied ? "Copiado" : "Copiar texto"}
-            title={copied ? "Copiado" : "Copiar"}
-            style={{
-              position: "absolute",
-              top: 2,
-              right: -30,
-              width: 24,
-              height: 24,
-              minHeight: 24,
-              opacity: copied ? 1 : 0.4,
-              color: copied ? "var(--accent)" : "var(--text-dim)",
-            }}
-          >
-            <Icon name={copied ? "check" : "copy"} size={14} />
-          </button>
-        )}
+        {texto}
       </div>
+      {copiable && (
+        <button
+          type="button"
+          className="btn-icon"
+          onClick={handleCopy}
+          aria-label={copied ? "Copiado" : "Copiar texto"}
+          title={copied ? "Copiado" : "Copiar"}
+          style={{
+            position: "absolute",
+            top: 2,
+            right: -30,
+            width: 24,
+            height: 24,
+            minHeight: 24,
+            opacity: copied ? 1 : 0.4,
+            color: copied ? "var(--accent)" : "var(--text-dim)",
+          }}
+        >
+          <Icon name={copied ? "check" : "copy"} size={14} />
+        </button>
+      )}
     </div>
+  );
+}
+
+/** Un texto para pegar: su título, su botón y nada más. */
+function Pieza({ titulo, texto }) {
+  return (
+    <section
+      aria-label={titulo || "Texto para copiar"}
+      style={{
+        width: "92%",
+        background: "var(--surface-2)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius)",
+        overflow: "hidden",
+      }}
+    >
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "var(--sp-2)",
+        padding: "var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-3)",
+        borderBottom: "1px solid var(--border)",
+        background: "var(--surface-3)",
+      }}>
+        <span style={{ flex: 1, minWidth: 0, fontSize: "var(--fs-3xs)", fontWeight: 600, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {titulo || "Texto"}
+        </span>
+        <CopyButton text={texto} describes={titulo || "este texto"} />
+      </div>
+      <div style={{
+        padding: "var(--sp-2) var(--sp-3)",
+        fontSize: "var(--fs-xs)",
+        lineHeight: 1.55,
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
+        color: "var(--text)",
+      }}>
+        {/* Se enseña lo mismo que se copia: sin asteriscos de markdown. */}
+        {stripMarkdown(texto)}
+      </div>
+    </section>
+  );
+}
+
+/** Lo que se le mandó al modelo con el mensaje: plegado, para no tapar la conversación. */
+function Contexto({ titulo, texto }) {
+  return (
+    <details style={{
+      width: "85%",
+      background: "var(--surface-2)",
+      border: "1px solid var(--border)",
+      borderRadius: "var(--radius-sm)",
+      fontSize: "var(--fs-3xs)",
+      color: "var(--text-dim)",
+    }}>
+      <summary style={{ cursor: "pointer", padding: "var(--sp-2)", minHeight: "var(--tap-sm)", display: "flex", alignItems: "center", gap: "var(--sp-1)" }}>
+        <Icon name={/^video/i.test(titulo) ? "video" : "image"} size={14} />
+        <span>{titulo || "Adjunto"}</span>
+      </summary>
+      <div style={{ padding: "0 var(--sp-2) var(--sp-2)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 260, overflowY: "auto", lineHeight: 1.5 }}>
+        {texto}
+      </div>
+    </details>
+  );
+}
+
+/** La imagen que generó el asistente, lista para bajar al tamaño que se pidió. */
+function ImagenGenerada({ clave, formato }) {
+  const [tamano, setTamano] = useState(formato);
+  const [bajando, setBajando] = useState(false);
+  const [fallo, setFallo] = useState("");
+  const selId = useId();
+  const url = db.getContentBankUrl(clave);
+  const f = FORMATOS_IMAGEN[tamano];
+
+  const descargar = async () => {
+    setBajando(true);
+    setFallo("");
+    try {
+      await descargarEnTamano(url, f.w, f.h, `imagen-${f.w}x${f.h}.png`);
+    } catch (e) {
+      setFallo(e?.message || "No se pudo descargar la imagen.");
+    }
+    setBajando(false);
+  };
+
+  return (
+    <figure style={{
+      margin: 0,
+      width: "92%",
+      background: "var(--surface-2)",
+      border: "1px solid var(--border)",
+      borderRadius: "var(--radius)",
+      overflow: "hidden",
+    }}>
+      <a href={url} target="_blank" rel="noopener noreferrer" aria-label="Abrir la imagen en tamaño original">
+        <img src={url} alt="Imagen generada por el asistente" style={{ display: "block", width: "100%", maxHeight: 420, objectFit: "contain", background: "var(--bg)" }} />
+      </a>
+      <figcaption style={{ display: "flex", flexWrap: "wrap", gap: "var(--sp-2)", alignItems: "center", padding: "var(--sp-2)" }}>
+        <label htmlFor={selId} className="sr-only">Tamaño de descarga</label>
+        <select
+          id={selId}
+          className="input"
+          value={tamano}
+          onChange={(e) => setTamano(e.target.value)}
+          style={{ flex: 1, minWidth: 190, minHeight: "var(--tap-sm)" }}
+        >
+          {Object.entries(FORMATOS_IMAGEN).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
+        <button type="button" className="btn btn-primary btn-sm" onClick={descargar} disabled={bajando} style={{ minHeight: "var(--tap-sm)" }}>
+          <Icon name="download" size={16} /> {bajando ? "Preparando…" : "Descargar"}
+        </button>
+      </figcaption>
+      {fallo && <p role="alert" style={{ margin: 0, padding: "0 var(--sp-2) var(--sp-2)", color: "var(--danger)", fontSize: "var(--fs-3xs)" }}>{fallo}</p>}
+    </figure>
   );
 }
 
@@ -1078,6 +1360,7 @@ function ActionChip({ feedback }) {
     crear_tarea: "Tarea",
     agregar_banco_ideas: "Banco de ideas",
     ir_a_cliente: "Navegación",
+    generar_imagen: "Imagen",
   };
   return (
     <div style={{

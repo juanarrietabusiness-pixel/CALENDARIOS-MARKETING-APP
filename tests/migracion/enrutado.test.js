@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import worker from "../../worker/index.js";
 import { sha256 } from "../../worker/lib/ids.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
@@ -210,6 +210,104 @@ describe("leer y borrar un archivo", () => {
     const env = await entorno({ r2: { [CLAVE]: "bytes" } });
     const res = await worker.fetch(conSesion(`/api/media/${CLAVE}`, { method: "PUT" }), env);
     expect(res.status).toBe(405);
+  });
+});
+
+describe("leer un video para el asistente", () => {
+  const CLAVE = "clientes/cliente-1/banco/reel.mp4";
+  const pedir = (clave) => conSesion("/api/ia/video", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clave }),
+  });
+
+  /** Un R2 que sabe lo que el análisis le pregunta a un objeto. */
+  function conVideo(env, tipo = "video/mp4") {
+    env.MEDIA = {
+      async get(clave) {
+        if (clave !== CLAVE) return null;
+        return { size: 3, httpMetadata: { contentType: tipo }, arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer };
+      },
+    };
+    env.GOOGLE_AI_KEY = "clave-de-prueba";
+    return env;
+  }
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("sin la clave de Google dice 503 con motivo, no un 500", async () => {
+    const env = await entorno();
+    const res = await worker.fetch(pedir(CLAVE), env);
+    expect(res.status).toBe(503);
+  });
+
+  it("el video de otro espacio no existe", async () => {
+    const env = conVideo(await entorno({ clientes: ["cliente-1"] }));
+    const res = await worker.fetch(pedir("clientes/cliente-de-otro/banco/reel.mp4"), env);
+    expect(res.status).toBe(404);
+  });
+
+  it("llega a Gemini, espera a que procese, devuelve el análisis y borra el archivo", async () => {
+    const llamadas = [];
+    vi.stubGlobal("fetch", async (url, init = {}) => {
+      llamadas.push(`${init.method ?? "GET"} ${String(url).replace("https://generativelanguage.googleapis.com", "")}`);
+      const u = String(url);
+      if (u.endsWith("/upload/v1beta/files")) return new Response("{}", { headers: { "x-goog-upload-url": "https://subida.test/1" } });
+      if (u === "https://subida.test/1") return Response.json({ file: { name: "files/abc", uri: "u", state: "PROCESSING", mimeType: "video/mov" } });
+      if (u.endsWith("/v1beta/files/abc") && init.method !== "DELETE") return Response.json({ name: "files/abc", uri: "u", state: "ACTIVE", mimeType: "video/mov" });
+      if (u.includes(":generateContent")) {
+        const cuerpo = JSON.parse(init.body);
+        expect(cuerpo.contents[0].parts[0].fileData).toEqual({ mimeType: "video/mov", fileUri: "u" });
+        return Response.json({ candidates: [{ content: { parts: [{ text: "1. TRANSCRIPCIÓN: hola" }] } }] });
+      }
+      return new Response("{}");
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    const env = conVideo(await entorno(), "video/quicktime");
+    let res = null;
+    worker.fetch(pedir(CLAVE), env).then((r) => { res = r; });
+    // La espera entre consultas es un setTimeout: se avanza el reloj
+    // hasta que llega la respuesta en vez de dormir de verdad.
+    for (let i = 0; i < 50 && !res; i++) await vi.advanceTimersByTimeAsync(1000);
+    vi.useRealTimers();
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ analisis: "1. TRANSCRIPCIÓN: hola" });
+    expect(llamadas.at(-1)).toBe("DELETE /v1beta/files/abc");
+  });
+});
+
+describe("tareas terminadas, responsables y ajustes", () => {
+  const pedirJSON = (ruta, metodo, cuerpo) => conSesion(ruta, {
+    method: metodo,
+    headers: { "Content-Type": "application/json" },
+    ...(cuerpo ? { body: JSON.stringify(cuerpo) } : {}),
+  });
+
+  it("vaciar las terminadas rápidas llega a su rama, no al borrado de una tarea llamada «terminadas»", async () => {
+    const res = await worker.fetch(pedirJSON("/api/tareas-rapidas/terminadas", "DELETE"), await entorno());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ borradas: 0 });
+  });
+
+  it("vaciar las terminadas de un cliente también", async () => {
+    const res = await worker.fetch(pedirJSON("/api/clientes/cliente-1/tareas/terminadas", "DELETE"), await entorno());
+    expect(res.status).toBe(200);
+  });
+
+  it("sin ajustes guardados, las terminadas no se borran solas", async () => {
+    const res = await worker.fetch(pedirJSON("/api/ajustes", "GET"), await entorno());
+    expect(await res.json()).toEqual({ purga_tareas: "nunca" });
+  });
+
+  it("un modo de borrado que no existe es 400, no se guarda", async () => {
+    const res = await worker.fetch(pedirJSON("/api/ajustes", "PUT", { purga_tareas: "diario" }), await entorno());
+    expect(res.status).toBe(400);
+  });
+
+  it("un responsable sin nombre es 400", async () => {
+    const res = await worker.fetch(pedirJSON("/api/responsables", "POST", { nombre: "  " }), await entorno());
+    expect(res.status).toBe(400);
   });
 });
 

@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useId } from "react";
 import Icon from "./Icon";
+import LimpiezaTerminadas from "./LimpiezaTerminadas";
+import CampoResponsable from "./CampoResponsable";
 import * as db from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 
@@ -291,6 +293,14 @@ export default function TaskPanel({ client, pulso = 0 }) {
                       onDetail={() => setDetailTask(task)}
                     />
                   ))}
+                  <LimpiezaTerminadas
+                    cantidad={completed.filter((t) => !t.recurrence || t.recurrence === "none").length}
+                    pulso={pulso}
+                    onVaciar={async () => {
+                      await db.borrarTerminadas(clientId);
+                      setTasks((prev) => prev.filter((t) => t.status !== "completed" || (t.recurrence && t.recurrence !== "none")));
+                    }}
+                  />
                 </div>
               )}
             </>
@@ -553,15 +563,8 @@ function TaskForm({ formId, title, description, recurrence, recurrenceDay, assig
           </select>
         )}
 
-        <input
-          className="input"
-          value={assigned}
-          onChange={(e) => onAssignedChange(e.target.value)}
-          placeholder="Asignar a…"
-          aria-label="Asignar a"
-          style={{ fontSize: "var(--fs-3xs)", minWidth: 90, flex: 1 }}
-        />
       </div>
+      <CampoResponsable value={assigned} onChange={onAssignedChange} />
       <div style={{ display: "flex", gap: "var(--sp-2)" }}>
         <button className="btn btn-primary" onClick={onSubmit} disabled={!title.trim()} style={{ fontSize: "var(--fs-3xs)", padding: "var(--sp-1) var(--sp-3)" }}>
           {submitLabel}
@@ -637,7 +640,7 @@ function TaskEditModal({ task, onSave, onClose }) {
             </select>
           )}
         </div>
-        <input className="input" value={assigned} onChange={(e) => setAssigned(e.target.value)} placeholder="Asignar a…" aria-label="Asignar a" style={{ fontSize: "var(--fs-3xs)" }} />
+        <CampoResponsable value={assigned} onChange={setAssigned} />
         <div style={{ display: "flex", gap: "var(--sp-2)", justifyContent: "flex-end" }}>
           <button className="btn" onClick={onClose} style={{ fontSize: "var(--fs-3xs)" }}>Cancelar</button>
           <button className="btn btn-primary" onClick={handleSubmit} disabled={!title.trim()} style={{ fontSize: "var(--fs-3xs)" }}>Guardar</button>
@@ -865,14 +868,7 @@ export function TaskTemplatesManager() {
           </select>
         )}
 
-        <input
-          className="input"
-          value={newAssigned}
-          onChange={(e) => setNewAssigned(e.target.value)}
-          placeholder="Asignar a…"
-          aria-label="Asignar a"
-          style={{ fontSize: "var(--fs-3xs)", width: 90 }}
-        />
+        <CampoResponsable value={newAssigned} onChange={setNewAssigned} />
 
         <button className="btn btn-primary" onClick={handleAdd} disabled={!newTitle.trim()} style={{ fontSize: "var(--fs-3xs)", padding: "var(--sp-1) var(--sp-3)" }}>
           <Icon name="plus" size={14} />

@@ -108,6 +108,8 @@ src/
     lote.js               Editar muchas publicaciones de una vez (puro)
     exportarContenido.js  Texto de «Exportar ideas y descripciones» (puro)
     completitud.js        Cuánto le falta a una publicación (puro)
+    mensajeChat.js        Marcas del chat: piezas, imágenes, contexto (puro)
+    medios.js             Fotogramas de video, imagen para la IA, descarga a tamaño
   components/
     Icon.jsx              Set de iconos SVG monocromos (rejilla 24, trazo 1.75)
     Presencia.jsx         Avatares, estado de la conexión, «X está editando»
@@ -134,6 +136,8 @@ worker/
     equipo.js             Miembros e invitaciones; la ruta pública del enlace
     ia.js                 Proxy de Anthropic/Groq
     chat.js               El asistente
+    imagen.js             Generación de imágenes (Gemini)
+    video.js              Análisis de un video del banco (Gemini)
     adn.js                Lectura del ADN de marca con el token del servidor
 migraciones/d1/           Esquema de D1 (0001 base, 0002 equipo)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
@@ -705,6 +709,34 @@ son del servidor.
   dentro de un binario que nadie mira antes de hacer commit. Misma
   familia que `scripts/migracion/datos/`. (El que había en el historial
   estaba vacío: no llegó a colarse ningún dato.)
+- **Lo que no es prosa en el chat viaja DENTRO del texto, como marca.**
+  `chat_messages.content` es texto, así que las piezas copiables
+  (`[[pieza: …]]`), las imágenes generadas (`[[imagen: clave | formato]]`)
+  y el análisis de lo adjuntado (`[[contexto: …]]`) se guardan como
+  marcas y `partirMensaje()` (`lib/mensajeChat.js`) las convierte en
+  bloques al pintar. Las de pieza las escribe el MODELO porque se le pide
+  en `INSTRUCCION_PIEZAS`: si un día salen juntas otra vez, mira el prompt
+  antes que el pintado. Una clave de imagen que no cuelgue de `clientes/`
+  se queda como texto: nunca llega a un `src`.
+- **La API de Claude no recibe video.** El video lo ve Gemini
+  (`worker/rutas/video.js`, por su Files API para no pasar decenas de
+  megas a base64 dentro del Worker) y el análisis escrito se guarda en el
+  mensaje del usuario, para que el hilo lo recuerde después. Los
+  fotogramas los saca el navegador y sólo viajan en ese turno. Un video
+  subido desde el chat se guarda antes en el banco del cliente: el
+  análisis lee de R2.
+- **`post.image` es una ruta `/api/media/…`, y el cliente final no tiene
+  sesión.** La página de aprobación la reescribe a
+  `/api/publico/<testigo>/media/…` (`srcPublico()`), y `mediaPermitida`
+  acepta la imagen en las dos formas. El HTML exportado las incrusta
+  antes de construirse (`conImagenesIncrustadas`), y lo que se manda a la
+  IA pasa por `base64DeImagen()`: mandar la ruta como si fuera base64
+  hace que Anthropic rechace la petición entera. Las imágenes viejas en
+  `data:` siguen valiendo.
+- **Las tareas terminadas se borran solas al LEER, no con un cron.**
+  `purgarTareas()` corre en cada GET de tareas según
+  `ajustes_espacio.purga_tareas`. Una tarea recurrente no se borra nunca
+  —ni a mano ni sola—: es la definición de algo que vuelve.
 - **`connect-src 'self'` ya cubre el WebSocket.** En una página `https`,
   `'self'` casa con `wss:` del mismo host —lo dice la especificación de
   CSP—. Si alguien ve el socket caer y «lo arregla» metiendo un origen

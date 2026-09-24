@@ -63,6 +63,17 @@ beforeAll(() => {
 const js = () => archivos.filter((a) => a.nombre.endsWith(".js"));
 const css = () => archivos.filter((a) => a.nombre.endsWith(".css"));
 
+/**
+ * Lo que se descarga ANTES de pintar: lo que `index.html` pide o precarga.
+ * Un chunk de `import()` —el asistente— no entra hasta que se abre, así
+ * que contarlo aquí castigaba justo el arreglo que el presupuesto pide.
+ * Los diferidos siguen vigilados, cada uno, por «ningún chunk se desmadra».
+ */
+const jsInicial = () => {
+  const html = readFileSync(join(DIST, "index.html"), "utf8");
+  return js().filter((a) => html.includes(`/assets/${a.nombre}`));
+};
+
 describe("el dist que se mide es la aplicación entera", () => {
   it("el panel está dentro del bundle", () => {
     // Una comprobación de CONTENIDO, no de tamaño: el tope de kB avisa
@@ -120,12 +131,12 @@ describe("el HTML publicado encuentra sus recursos", () => {
 
 describe("presupuesto de descarga", () => {
   it("el JavaScript total cabe en el presupuesto", () => {
-    const total = Math.round(js().reduce((s, a) => s + a.gzip, 0) / 1024);
+    const total = Math.round(jsInicial().reduce((s, a) => s + a.gzip, 0) / 1024);
     expect(
       total,
       fallo({
         que: `el JavaScript pesa ${total} kB comprimidos, por encima de ${PRESUPUESTO.jsTotalGz}`,
-        donde: js().map((a) => `${a.nombre} (${kb(a.gzip)} kB gz)`).join(", "),
+        donde: jsInicial().map((a) => `${a.nombre} (${kb(a.gzip)} kB gz)`).join(", "),
         porque: "Es lo que se descarga antes de ver nada. En una conexión móvil cada 50 kB son casi un segundo de pantalla en blanco.",
         arreglo: "Mira qué entró nuevo en el chunk grande y sepáralo con import() dinámico, o sube el presupuesto a conciencia en tests/despliegue/rendimiento.bundle.test.js.",
       }),
@@ -153,7 +164,7 @@ describe("presupuesto de descarga", () => {
   it("la primera visita entera cabe en el presupuesto", () => {
     const html = statSync(join(DIST, "index.html")).size;
     const total = Math.round(
-      (js().reduce((s, a) => s + a.gzip, 0) + css().reduce((s, a) => s + a.gzip, 0) + gz(readFileSync(join(DIST, "index.html")))) / 1024,
+      (jsInicial().reduce((s, a) => s + a.gzip, 0) + css().reduce((s, a) => s + a.gzip, 0) + gz(readFileSync(join(DIST, "index.html")))) / 1024,
     );
     expect(html).toBeGreaterThan(0);
     expect(total, `la carga inicial suma ${total} kB comprimidos`).toBeLessThanOrEqual(PRESUPUESTO.totalInicialGz);

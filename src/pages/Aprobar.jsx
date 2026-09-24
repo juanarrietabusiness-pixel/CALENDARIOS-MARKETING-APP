@@ -24,6 +24,16 @@ async function publico(ruta, opciones = {}) {
 import Icon from "../components/Icon";
 import logoMark from "../assets/logo-mark.png";
 
+/**
+ * Quien abre el enlace no tiene sesión: `/api/media/…` le devolvería
+ * 401. Las imágenes guardadas en R2 se piden por la ruta pública del
+ * enlace, que comprueba que pertenezcan a este calendario.
+ */
+function srcPublico(image, token) {
+  if (typeof image !== "string" || !image.startsWith("/api/media/")) return image;
+  return `/api/publico/${encodeURIComponent(token)}/media/${image.slice("/api/media/".length)}`;
+}
+
 function fmt12h(value) {
   if (!value) return "--:--";
   const [h, m] = value.split(":").map(Number);
@@ -477,6 +487,7 @@ export default function Aprobar() {
                       <PostReview
                         key={post.id}
                         post={post}
+                        imageSrc={srcPublico(post.image, token)}
                         approval={approvals[post.id]}
                         isSaving={saving[post.id]}
                         commentValue={commentInputs[post.id] || ""}
@@ -526,7 +537,7 @@ export default function Aprobar() {
 }
 
 function PostReview({
-  post, approval, isSaving, commentValue, commentOpen, allowEditing,
+  post, imageSrc, approval, isSaving, commentValue, commentOpen, allowEditing,
   editedFields, editSaving, onEditField, onSaveEdit,
   onCommentChange, onToggleComment, onApprove, onRequestChanges,
 }) {
@@ -567,7 +578,7 @@ function PostReview({
       </div>
 
       {post.category && <p style={{ fontSize: "var(--fs-2xs)", color: "#FFC166", fontWeight: 600, marginBottom: "var(--sp-2)" }}>{post.category}</p>}
-      {post.image && <img src={post.image} alt="" style={{ width: "100%", maxWidth: 340, borderRadius: "var(--radius-sm)", marginBottom: "var(--sp-2)" }} />}
+      {imageSrc && <img src={imageSrc} alt="" style={{ width: "100%", maxWidth: 340, borderRadius: "var(--radius-sm)", marginBottom: "var(--sp-2)" }} />}
       {post.idea && (
         <div style={styles.contentBox}>
           <strong style={{ ...styles.fieldLabel, color: "var(--text-muted)" }}>Idea</strong>

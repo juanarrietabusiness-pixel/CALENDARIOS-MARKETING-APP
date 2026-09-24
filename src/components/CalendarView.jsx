@@ -3,6 +3,7 @@ import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid } from "../utils";
 import { callAI, loadADN, parseAIResponse, buildScriptPrompt, buildDescripcionesPrompt, buildClientContext, generateSinglePost } from "../api";
 import { buildExportHTML } from "../export";
+import { base64DeImagen, conImagenesIncrustadas } from "../lib/medios";
 import { shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals, loadClientMemories } from "../lib/db";
 import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO, CAMPOS_EXPORTABLES } from "../lib/exportarContenido";
 import MetaPromptModal from "./MetaPromptModal";
@@ -385,12 +386,8 @@ export default function CalendarView({
         const promptText = buildScriptPrompt(client, cal, batch, adnExtra, mems2);
         const content = [{ type: "text", text: promptText }];
         for (const p of batch) {
-          if (p.image) {
-            content.push({
-              type: "image",
-              source: { type: "base64", media_type: "image/jpeg", data: p.image.includes(",") ? p.image.split(",")[1] : p.image },
-            });
-          }
+          const data = await base64DeImagen(p.image).catch(() => null);
+          if (data) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data } });
         }
 
         const txt = await callAI(content);
@@ -679,8 +676,8 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
     }
   };
 
-  const exportHTML = () => {
-    const html = buildExportHTML(client, cal);
+  const exportHTML = async () => {
+    const html = buildExportHTML(client, await conImagenesIncrustadas(cal));
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

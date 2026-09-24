@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useId } from "react";
 import Icon from "./Icon";
+import LimpiezaTerminadas from "./LimpiezaTerminadas";
+import CampoResponsable from "./CampoResponsable";
 import * as db from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 
@@ -224,6 +226,14 @@ export default function QuickTasksPanel({ pulso = 0 }) {
                       onDetail={() => setDetailTask(task)}
                     />
                   ))}
+                  <LimpiezaTerminadas
+                    cantidad={completed.length}
+                    pulso={pulso}
+                    onVaciar={async () => {
+                      await db.borrarTerminadas();
+                      setTasks((prev) => prev.filter((t) => t.status !== "completed"));
+                    }}
+                  />
                 </div>
               )}
             </>
@@ -256,15 +266,8 @@ export default function QuickTasksPanel({ pulso = 0 }) {
                 rows={2}
                 style={{ fontSize: "var(--fs-3xs)", resize: "vertical", minHeight: 40 }}
               />
+              <CampoResponsable value={newAssigned} onChange={setNewAssigned} />
               <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center" }}>
-                <input
-                  className="input"
-                  value={newAssigned}
-                  onChange={(e) => setNewAssigned(e.target.value)}
-                  placeholder="Asignar a…"
-                  aria-label="Asignar a"
-                  style={{ fontSize: "var(--fs-3xs)", flex: 1 }}
-                />
                 <button className="btn btn-primary" onClick={handleAdd} disabled={!newTitle.trim()} style={{ fontSize: "var(--fs-3xs)", padding: "var(--sp-1) var(--sp-3)" }}>
                   Añadir
                 </button>
@@ -480,7 +483,7 @@ function QuickEditModal({ task, onSave, onClose }) {
         </div>
         <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Título" style={{ fontSize: "var(--fs-xs)" }} />
         <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Descripción…" rows={3} style={{ fontSize: "var(--fs-3xs)", resize: "vertical" }} />
-        <input className="input" value={assigned} onChange={(e) => setAssigned(e.target.value)} placeholder="Asignar a…" aria-label="Asignar a" style={{ fontSize: "var(--fs-3xs)" }} />
+        <CampoResponsable value={assigned} onChange={setAssigned} />
         <div style={{ display: "flex", gap: "var(--sp-2)", justifyContent: "flex-end" }}>
           <button className="btn" onClick={onClose} style={{ fontSize: "var(--fs-3xs)" }}>Cancelar</button>
           <button className="btn btn-primary" onClick={handleSubmit} disabled={!title.trim()} style={{ fontSize: "var(--fs-3xs)" }}>Guardar</button>

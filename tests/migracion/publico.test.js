@@ -243,6 +243,14 @@ describe("mediaPermitida: el testigo no abre los medios de otro", () => {
     expect(await mediaPermitida(db, TESTIGO, "clientes/c1/referencias/b.png")).toBe(true);
   });
 
+  it("permite la imagen guardada como ruta /api/media/…, que es como la guarda la interfaz", async () => {
+    const cal = CAL();
+    cal.days = JSON.stringify([{ date: "2026-08-01", posts: [{ id: "p1", image: "/api/media/clientes/c1/banco/b.jpg" }] }]);
+    const db = d1Con({ calendario: cal });
+    expect(await mediaPermitida(db, TESTIGO, "clientes/c1/banco/b.jpg")).toBe(true);
+    expect(await mediaPermitida(db, TESTIGO, "clientes/c1/banco/otra.jpg")).toBe(false);
+  });
+
   it("permite el logo del cliente de ese calendario", async () => {
     const db = d1Con({ calendario: CAL() });
     expect(await mediaPermitida(db, TESTIGO, "clientes/c1/logo.jpg")).toBe(true);

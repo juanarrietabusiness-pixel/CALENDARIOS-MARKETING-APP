@@ -2,6 +2,8 @@ import { bloque, cachedBlock, parseBloques, parseJSONLoose, parseGitHubUrl, pars
 import { enTandas } from "./lib/tandas";
 import { hora12 } from "./lib/horas";
 import { getWeekNumber, dayName } from "./utils";
+import { INSTRUCCION_PIEZAS, INSTRUCCION_ADJUNTOS } from "./lib/mensajeChat";
+import { base64DeImagen } from "./lib/medios";
 
 // Se reexportan porque media aplicación las importa desde aquí. Viven en
 // `lib/parse.js` para poder probarlas sin arrastrar el cliente de Supabase.
@@ -278,15 +280,9 @@ ${isPost ? "No incluyas GUION para posts estaticos, solo DESCRIPCION." : ""}
 Escribe directamente el contenido, sin preambulos.`;
 
   const content = [];
-  if (post.image) {
-    content.push({
-      type: "image",
-      source: {
-        type: "base64",
-        media_type: "image/jpeg",
-        data: post.image.includes(",") ? post.image.split(",")[1] : post.image,
-      },
-    });
+  const imagen = await base64DeImagen(post.image).catch(() => null);
+  if (imagen) {
+    content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: imagen } });
     promptText = `Basandote en la imagen adjunta y el siguiente contexto:\n\n${promptText}`;
   }
   content.push({ type: "text", text: promptText });
@@ -1035,17 +1031,23 @@ QUIÉN ERES:
 · Puedes guardar preferencias y datos importantes en tu memoria para recordarlos después.
 · Puedes crear tareas para el cliente con crear_tarea.
 · Puedes añadir ideas al banco de ideas del cliente con agregar_banco_ideas.
-· Puedes GENERAR IMÁGENES con IA usando generar_imagen. Genera imágenes para publicaciones
-  del calendario cuando el usuario lo pida. Puedes asignarla a una publicación existente con post_id.
-· Puedes analizar imágenes que el usuario te envíe y crear contenido basado en ellas.
+· Puedes GENERAR IMÁGENES con IA usando generar_imagen. La imagen se ENTREGA AQUÍ MISMO, en el
+  chat, y el usuario la descarga en el tamaño que pidió. Úsala siempre que te pidan una imagen,
+  sea o no para una publicación. Si además piden ponerla en una publicación, pasa su post_id.
+  No escribas la clave ni un enlace: la imagen aparece sola debajo de tu mensaje.
+· Puedes ver las imágenes y los videos que el usuario te adjunte y crear contenido basado en ellos.
 
 ${ctx}
 ${calendarInfo}${memoriesBlock}
 
+${INSTRUCCION_PIEZAS}
+
+${INSTRUCCION_ADJUNTOS}
+
 CÓMO DEBES RESPONDER:
 · En español de Panamá, con tildes y signos de apertura (¿, ¡).
 · Conciso y directo. Sin preámbulos innecesarios.
-· Si generas una descripción o guion, escríbelo listo para copiar y pegar.
+· Si generas una descripción o guion, escríbelo listo para copiar y pegar, en su bloque de pieza.
 · Si necesitas más información, pregúntala en vez de inventar.
 · No inventes datos, precios, testimonios ni cifras que no estén en el contexto.
 · Cuando te pidan CONSULTAR el calendario, contesta directamente leyendo el listado
@@ -1226,25 +1228,26 @@ export function getChatTools(hasCalendar) {
         },
       },
     );
-
-    tools.push({
-      name: "generar_imagen",
-      description: "Genera una imagen con IA para una publicación del calendario. Describe lo que debe mostrar la imagen y opcionalmente asígnala a un post existente.",
-      input_schema: {
-        type: "object",
-        properties: {
-          prompt: { type: "string", description: "Descripción detallada de lo que debe mostrar la imagen." },
-          post_id: { type: "string", description: "ID de la publicación a la que asignar la imagen generada (opcional)." },
-          formato_imagen: {
-            type: "string",
-            enum: ["square", "vertical", "story", "horizontal"],
-            description: "Formato: square (1080×1080), vertical (1080×1350), story (1080×1920), horizontal (1200×630). Por defecto square.",
-          },
-        },
-        required: ["prompt"],
-      },
-    });
   }
+
+  // Fuera del `if`: una imagen para el chat no necesita calendario.
+  tools.push({
+    name: "generar_imagen",
+    description: "Genera una imagen con IA y la ENTREGA EN EL CHAT, donde el usuario la ve y la descarga en el tamaño pedido. Úsala siempre que pidan una imagen. Si también piden ponerla en una publicación del calendario, pasa post_id.",
+    input_schema: {
+      type: "object",
+      properties: {
+        prompt: { type: "string", description: "Descripción detallada de lo que debe mostrar la imagen: sujeto, composición, estilo, colores, luz y, si lo piden, el texto exacto que debe llevar." },
+        formato_imagen: {
+          type: "string",
+          enum: ["square", "vertical", "story", "horizontal"],
+          description: "Tamaño: square (1080×1080, post), vertical (1080×1350, post de feed alto), story (1080×1920, historia o reel), horizontal (1200×630, portada o anuncio web). Elige el que corresponda a lo que pidan; por defecto square.",
+        },
+        post_id: { type: "string", description: "ID de una publicación del calendario a la que además asignarla (opcional)." },
+      },
+      required: ["prompt"],
+    },
+  });
 
   return tools;
 }

@@ -80,18 +80,6 @@ export async function compressImage(file, maxSize = 400) {
   });
 }
 
-export function parseVideoURL(url) {
-  if (!url) return null;
-  const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-  if (yt) return { type: "youtube", id: yt[1], thumbnail: `https://img.youtube.com/vi/${yt[1]}/mqdefault.jpg` };
-  const vi = url.match(/vimeo\.com\/(\d+)/);
-  if (vi) return { type: "vimeo", id: vi[1] };
-  const tk = url.match(/tiktok\.com\/@[\w.]+\/video\/(\d+)/);
-  if (tk) return { type: "tiktok", id: tk[1] };
-  const ig = url.match(/instagram\.com\/(reel|p)\/([\w-]+)/);
-  if (ig) return { type: "instagram", id: ig[2] };
-  return { type: "link", url };
-}
 
 export function createEmptyClient() {
   return {
