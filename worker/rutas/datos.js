@@ -26,6 +26,7 @@ import { json, error, sinContenido, cuerpo, noEncontrado } from "../lib/respuest
 import { uuid, testigo, ahora } from "../lib/ids.js";
 import { difundir, firma } from "../lib/vivo.js";
 import { tareasParaPurgar, terminadasBorrables, MODOS_PURGA } from "../lib/tareas.js";
+import { fechaEnZona, debeReabrirse, esFecha } from "../../src/lib/agenda.js";
 
 const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe"];
 const JSON_CALENDARIOS = ["week_concepts", "days", "visual_references", "day_labels"];
@@ -60,6 +61,15 @@ function aTexto(datos, columnas, booleanos = []) {
   return fila;
 }
 
+/**
+ * Las fechas de una tarea son días AAAA-MM-DD o nada. Otra forma —un
+ * instante ISO, «mañana»— se guardaría igual y el `<input type="date">`
+ * la mostraría vacía: la tarea tendría fecha y nadie la vería.
+ */
+function fechasValidas(campos) {
+  return ["due_date", "today_date"].every((c) => campos[c] == null || esFecha(campos[c]));
+}
+
 /** Quita lo que el navegador no puede fijar. */
 function sinCamposDeServidor(datos, prohibidos) {
   const fila = { ...datos };
@@ -84,12 +94,34 @@ async function recordarResponsable(env, ctx, req, nombre) {
 }
 
 /**
+ * Una recurrente cerrada vuelve a pendiente cuando empieza su periodo
+ * siguiente: la diaria cada mañana, la de los lunes cada lunes. Sin
+ * esto se completaba una vez y no volvía a aparecer nunca, que es justo
+ * lo contrario de lo que significa «recurrente».
+ *
+ * Al leer, como la purga, y con la misma cuenta de fechas que usa el
+ * navegador (src/lib/agenda.js): dos copias de «qué semana es» acaban
+ * discrepando.
+ */
+async function reabrirRecurrentes(env, ctx, req) {
+  const { acceso } = ctx;
+  const hoy = fechaEnZona();
+  const cerradas = await acceso.leer("client_tasks", { status: "completed" });
+  for (const t of cerradas) {
+    if (!debeReabrirse(t, hoy)) continue;
+    await acceso.actualizar("client_tasks", { id: t.id }, { status: "pending", completed_at: null });
+    difundir(env, acceso.ownerId, { tipo: "tarea", tarea: { ...t, status: "pending", completed_at: null }, por: firma(ctx.usuario, req) });
+  }
+}
+
+/**
  * La purga automática corre al LEER tareas, no con un cron: sin nadie
  * mirando no hace falta que desaparezcan, y así no hay otra pieza que
  * desplegar ni que pueda quedarse parada sin que nadie lo note.
  */
 async function purgarTareas(env, ctx, req) {
   const { acceso } = ctx;
+  await reabrirRecurrentes(env, ctx, req);
   const ajustes = await acceso.leerUno("ajustes_espacio", { id: acceso.ownerId });
   const modo = ajustes?.purga_tareas ?? "nunca";
   if (modo === "nunca") return;
@@ -241,7 +273,7 @@ export async function rutasDatos(req, env, ctx) {
             id: uuid(), client_id: id, title: t.title,
             description: t.description || "", status: "pending",
             recurrence: t.recurrence || "none", recurrence_day: t.recurrence_day ?? null,
-            created_at: ahora(),
+            assigned_to: t.assigned_to || "", created_at: ahora(),
           };
           await acceso.insertar("client_tasks", fila);
           creadas.push(fila);
@@ -255,6 +287,7 @@ export async function rutasDatos(req, env, ctx) {
           ...sinCamposDeServidor(datos, ["owner_id"]),
           id: datos.id || uuid(), client_id: id, created_at: datos.created_at || ahora(),
         };
+        if (!fechasValidas(fila)) return error("Fecha inválida: se espera AAAA-MM-DD");
         await acceso.guardar("client_tasks", fila);
         const tarea = await acceso.leerUno("client_tasks", { id: fila.id });
         difundir(env, acceso.ownerId, { tipo: "tarea", tarea, por: firma(ctx.usuario, req) });
@@ -378,6 +411,7 @@ export async function rutasDatos(req, env, ctx) {
     if (metodo === "PUT" && id) {
       const datos = (await cuerpo(req)) ?? {};
       const campos = sinCamposDeServidor(datos, ["owner_id", "id", "created_at"]);
+      if (!fechasValidas(campos)) return error("Fecha inválida: se espera AAAA-MM-DD");
       const n = await acceso.actualizar("client_tasks", { id }, campos);
       if (!n) return noEncontrado("Tarea");
       const tarea = await acceso.leerUno("client_tasks", { id });
@@ -465,7 +499,9 @@ export async function rutasDatos(req, env, ctx) {
         id: uuid(), title: datos.title || "", status: "pending",
         assigned_to: datos.assigned_to || "", description: datos.description || "",
         position: datos.position ?? 0, created_at: ahora(),
+        due_date: datos.due_date || null, today_date: datos.today_date || null,
       };
+      if (!fechasValidas(fila)) return error("Fecha inválida: se espera AAAA-MM-DD");
       await acceso.insertar("quick_tasks", fila);
       difundir(env, acceso.ownerId, { tipo: "tarea-rapida", tarea: fila, por: firma(ctx.usuario, req) });
       await recordarResponsable(env, ctx, req, fila.assigned_to);
@@ -474,6 +510,7 @@ export async function rutasDatos(req, env, ctx) {
     if (metodo === "PUT" && id) {
       const datos = (await cuerpo(req)) ?? {};
       const campos = sinCamposDeServidor(datos, ["owner_id", "id", "created_at"]);
+      if (!fechasValidas(campos)) return error("Fecha inválida: se espera AAAA-MM-DD");
       const n = await acceso.actualizar("quick_tasks", { id }, campos);
       if (!n) return noEncontrado("Tarea rápida");
       const tarea = await acceso.leerUno("quick_tasks", { id });

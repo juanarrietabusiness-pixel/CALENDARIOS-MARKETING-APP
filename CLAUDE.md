@@ -108,6 +108,9 @@ src/
     lote.js               Editar muchas publicaciones de una vez (puro)
     exportarContenido.js  Texto de «Exportar ideas y descripciones» (puro)
     completitud.js        Cuánto le falta a una publicación (puro)
+    agenda.js             «Mi día»: hoy, atrasos, periodos de las recurrentes (puro;
+                          también lo importa el Worker)
+    foco.js               La empresa en foco de cada persona, por día
     mensajeChat.js        Marcas del chat: piezas, imágenes, contexto (puro)
     medios.js             Fotogramas de video, imagen para la IA, descarga a tamaño
   components/
@@ -121,6 +124,7 @@ src/
     Equipo.jsx            Quién entra en el espacio; invitar y sacar
     Invitacion.jsx        Lo que ve quien abre un enlace de invitación
     Aprobar.jsx           Página pública que ve el cliente final
+    Tareas.jsx            «Mi día»: Atrasadas, Hoy, Próximas; y la vista por empresa
 worker/
   index.js                Enrutado, sesión y cabeceras de /api/*
   hub.js                  Durable Object: un espacio, sus sockets y su presencia
@@ -139,7 +143,7 @@ worker/
     imagen.js             Generación de imágenes (Gemini)
     video.js              Análisis de un video del banco (Gemini)
     adn.js                Lectura del ADN de marca con el token del servidor
-migraciones/d1/           Esquema de D1 (0001 base, 0002 equipo)
+migraciones/d1/           Esquema de D1 (0001 base, 0002 equipo … 0007 Mi día)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -737,6 +741,17 @@ son del servidor.
   `purgarTareas()` corre en cada GET de tareas según
   `ajustes_espacio.purga_tareas`. Una tarea recurrente no se borra nunca
   —ni a mano ni sola—: es la definición de algo que vuelve.
+- **Una tarea recurrente se completaba una vez y no volvía nunca.**
+  `recurrence` se guardaba y se pintaba, pero nada la reabría: la de los
+  lunes, hecha un lunes, seguía cerrada para siempre. Ahora el Worker la
+  reabre AL LEER (`reabrirRecurrentes()`, junto a la purga) cuando empieza
+  su periodo siguiente. Las fechas las calcula `src/lib/agenda.js`, el
+  MISMO módulo que usa «Mi día»: dos copias de «qué semana es» acaban
+  discrepando, y entonces la tarea sale atrasada en pantalla y cerrada en
+  la base. El «hoy» es el de Panamá (`fechaEnZona`), nunca `toISOString()`.
+- **«Hoy» es una FECHA, no un sí/no.** `today_date` guarda el día en que
+  se marcó: si no se hace, al día siguiente queda en el pasado y la tarea
+  pasa sola a Atrasadas sin que nadie la desmarque.
 - **`connect-src 'self'` ya cubre el WebSocket.** En una página `https`,
   `'self'` casa con `wss:` del mismo host —lo dice la especificación de
   CSP—. Si alguien ve el socket caer y «lo arregla» metiendo un origen

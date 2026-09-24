@@ -75,6 +75,7 @@ export class EspacioHub {
         nombre: url.searchParams.get("nombre") ?? "",
         color: url.searchParams.get("color") ?? "#1E90FF",
         mirando: null,
+        foco: null,
       });
 
       servidor.send(JSON.stringify({ tipo: "hola", userId, presentes: this.presentes() }));
@@ -119,6 +120,19 @@ export class EspacioHub {
       ws.serializeAttachment({
         ...datos,
         mirando: m.clienteId ? { clienteId: m.clienteId, calId: m.calId ?? null } : null,
+      });
+      this.difundir({ tipo: "presencia", presentes: this.presentes() });
+      return;
+    }
+
+    // «Hoy trabajo en esta empresa». Distinto de `mirando`: aquello es
+    // la pantalla que tienes delante y cambia a cada clic; esto es lo que
+    // decidiste por la mañana, y sigue valiendo aunque abras otro cliente
+    // un momento para mirar algo.
+    if (m.tipo === "foco") {
+      ws.serializeAttachment({
+        ...datos,
+        foco: typeof m.clienteId === "string" && m.clienteId ? m.clienteId.slice(0, 80) : null,
       });
       this.difundir({ tipo: "presencia", presentes: this.presentes() });
       return;
@@ -171,6 +185,7 @@ export class EspacioHub {
         nombre: d.nombre,
         color: d.color,
         mirando: d.mirando ?? previo?.mirando ?? null,
+        foco: d.foco ?? previo?.foco ?? null,
       });
     }
     return [...porPersona.values()];

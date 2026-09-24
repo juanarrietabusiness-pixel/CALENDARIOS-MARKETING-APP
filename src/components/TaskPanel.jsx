@@ -4,8 +4,9 @@ import LimpiezaTerminadas from "./LimpiezaTerminadas";
 import CampoResponsable from "./CampoResponsable";
 import * as db from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
+import { fechaEnZona, textoFecha, textoAtraso, fechaObjetivo, diasEntre } from "../lib/agenda";
 
-const RECURRENCE_LABELS = { none: "Una vez", weekly: "Semanal", monthly: "Mensual" };
+const RECURRENCE_LABELS = { none: "Una vez", daily: "Diaria", weekly: "Semanal", monthly: "Mensual" };
 
 const DAY_NAMES = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
@@ -40,6 +41,7 @@ export default function TaskPanel({ client, pulso = 0 }) {
   const [newRecurrenceDay, setNewRecurrenceDay] = useState("");
   const [newAssigned, setNewAssigned] = useState("");
   const [newDescription, setNewDescription] = useState("");
+  const [newDue, setNewDue] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const [detailTask, setDetailTask] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
@@ -68,10 +70,12 @@ export default function TaskPanel({ client, pulso = 0 }) {
         recurrence: newRecurrence,
         recurrence_day: newRecurrenceDay || null,
         assigned_to: newAssigned.trim(),
+        due_date: newDue || null,
       });
       setTasks((prev) => [...prev, task]);
       setNewTitle("");
       setNewDescription("");
+      setNewDue("");
       setNewRecurrence("none");
       setNewRecurrenceDay("");
       setNewAssigned("");
@@ -79,7 +83,7 @@ export default function TaskPanel({ client, pulso = 0 }) {
     } catch {
       setError("No se pudo crear la tarea.");
     }
-  }, [clientId, newTitle, newDescription, newRecurrence, newRecurrenceDay, newAssigned]);
+  }, [clientId, newTitle, newDescription, newRecurrence, newRecurrenceDay, newAssigned, newDue]);
 
   const handleUpdate = useCallback(async (taskId, data) => {
     try {
@@ -119,6 +123,13 @@ export default function TaskPanel({ client, pulso = 0 }) {
       setError("No se pudo eliminar la tarea.");
     }
   }, [detailTask]);
+
+  // «Hoy»: la marca es para ESTA fecha. Si no se hace, mañana la tarea
+  // está en Atrasadas de «Mi día» sin que nadie la desmarque.
+  const hoy = fechaEnZona();
+  const handleHoy = useCallback((task) => {
+    void handleUpdate(task.id, { today_date: task.today_date === hoy ? null : hoy });
+  }, [handleUpdate, hoy]);
 
   const handleDragStart = (id) => setDragId(id);
 
@@ -226,6 +237,8 @@ export default function TaskPanel({ client, pulso = 0 }) {
                     onDelete={() => handleDelete(task.id)}
                     onEdit={() => setEditingTask(task)}
                     onDetail={() => setDetailTask(task)}
+                    onHoy={() => handleHoy(task)}
+                    hoy={hoy}
                     onDragStart={() => handleDragStart(task.id)}
                     onDragOver={(e) => handleDragOver(e, task.id)}
                     onDragEnd={handleDragEnd}
@@ -252,6 +265,8 @@ export default function TaskPanel({ client, pulso = 0 }) {
                     onDelete={() => handleDelete(task.id)}
                     onEdit={() => setEditingTask(task)}
                     onDetail={() => setDetailTask(task)}
+                    onHoy={() => handleHoy(task)}
+                    hoy={hoy}
                     onDragStart={() => handleDragStart(task.id)}
                     onDragOver={(e) => handleDragOver(e, task.id)}
                     onDragEnd={handleDragEnd}
@@ -314,13 +329,15 @@ export default function TaskPanel({ client, pulso = 0 }) {
               recurrence={newRecurrence}
               recurrenceDay={newRecurrenceDay}
               assigned={newAssigned}
+              due={newDue}
+              onDueChange={setNewDue}
               onTitleChange={setNewTitle}
               onDescriptionChange={setNewDescription}
               onRecurrenceChange={(v) => { setNewRecurrence(v); setNewRecurrenceDay(""); }}
               onRecurrenceDayChange={setNewRecurrenceDay}
               onAssignedChange={setNewAssigned}
               onSubmit={handleAdd}
-              onCancel={() => { setAdding(false); setNewTitle(""); setNewDescription(""); setNewAssigned(""); }}
+              onCancel={() => { setAdding(false); setNewTitle(""); setNewDescription(""); setNewAssigned(""); setNewDue(""); }}
               submitLabel="Añadir"
             />
           ) : (
@@ -369,8 +386,11 @@ export default function TaskPanel({ client, pulso = 0 }) {
   );
 }
 
-function TaskRow({ task, onComplete, onReopen, onDelete, onEdit, onDetail, onDragStart, onDragOver, onDragEnd, isDragging }) {
+function TaskRow({ task, onComplete, onReopen, onDelete, onEdit, onDetail, onHoy, hoy, onDragStart, onDragOver, onDragEnd, isDragging }) {
   const isDone = task.status === "completed";
+  const objetivo = !isDone && hoy ? fechaObjetivo(task, hoy) : null;
+  const atraso = objetivo && objetivo < hoy ? diasEntre(objetivo, hoy) : 0;
+  const marcadaHoy = Boolean(hoy) && task.today_date === hoy;
   const detail = task.recurrence !== "none"
     ? formatRecurrenceDetail(task.recurrence, task.recurrence_day)
     : null;
@@ -446,6 +466,14 @@ function TaskRow({ task, onComplete, onReopen, onDelete, onEdit, onDetail, onDra
               {task.assigned_to}
             </span>
           )}
+          {atraso > 0 && (
+            <span className="dia-atraso" style={{ fontSize: "var(--fs-3xs)" }}>{textoAtraso(atraso)}</span>
+          )}
+          {!atraso && task.due_date && !isDone && (
+            <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)" }}>
+              Vence {textoFecha(task.due_date, hoy).toLowerCase()}
+            </span>
+          )}
           {task.description && (
             <button
               type="button"
@@ -473,6 +501,19 @@ function TaskRow({ task, onComplete, onReopen, onDelete, onEdit, onDetail, onDra
           </p>
         )}
       </div>
+      {onHoy && !isDone && (
+        <button
+          type="button"
+          className="dia-hoy"
+          aria-pressed={marcadaHoy}
+          onClick={onHoy}
+          title={marcadaHoy ? "Quitar de hoy" : "Hacerla hoy: aparece en «Mi día»"}
+          aria-label={`${marcadaHoy ? "Quitar de hoy" : "Hacer hoy"}: ${task.title}`}
+          style={{ flexShrink: 0 }}
+        >
+          Hoy
+        </button>
+      )}
       {onEdit && !isDone && (
         <button
           type="button"
@@ -497,7 +538,7 @@ function TaskRow({ task, onComplete, onReopen, onDelete, onEdit, onDetail, onDra
   );
 }
 
-function TaskForm({ formId, title, description, recurrence, recurrenceDay, assigned, onTitleChange, onDescriptionChange, onRecurrenceChange, onRecurrenceDayChange, onAssignedChange, onSubmit, onCancel, submitLabel }) {
+function TaskForm({ formId, title, description, recurrence, recurrenceDay, assigned, due, onDueChange, onTitleChange, onDescriptionChange, onRecurrenceChange, onRecurrenceDayChange, onAssignedChange, onSubmit, onCancel, submitLabel }) {
   return (
     <div style={{
       marginTop: "var(--sp-2)",
@@ -534,6 +575,7 @@ function TaskForm({ formId, title, description, recurrence, recurrenceDay, assig
           style={{ fontSize: "var(--fs-3xs)", minWidth: 90 }}
         >
           <option value="none">Una vez</option>
+          <option value="daily">Diaria</option>
           <option value="weekly">Semanal</option>
           <option value="monthly">Mensual</option>
         </select>
@@ -563,6 +605,16 @@ function TaskForm({ formId, title, description, recurrence, recurrenceDay, assig
           </select>
         )}
 
+        <label style={{ display: "inline-flex", alignItems: "center", gap: "var(--sp-1)", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>
+          Vence
+          <input
+            type="date"
+            className="input"
+            value={due ?? ""}
+            onChange={(e) => onDueChange(e.target.value)}
+            style={{ fontSize: "var(--fs-3xs)", width: 150 }}
+          />
+        </label>
       </div>
       <CampoResponsable value={assigned} onChange={onAssignedChange} />
       <div style={{ display: "flex", gap: "var(--sp-2)" }}>
@@ -577,12 +629,13 @@ function TaskForm({ formId, title, description, recurrence, recurrenceDay, assig
   );
 }
 
-function TaskEditModal({ task, onSave, onClose }) {
+function TaskEditModal({ task, onSave, onClose, conFecha = true }) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description || "");
   const [recurrence, setRecurrence] = useState(task.recurrence || "none");
   const [recurrenceDay, setRecurrenceDay] = useState(task.recurrence_day ?? "");
   const [assigned, setAssigned] = useState(task.assigned_to || "");
+  const [due, setDue] = useState(task.due_date || "");
   const dialogRef = useDialogA11y(onClose);
 
   const handleSubmit = () => {
@@ -592,6 +645,8 @@ function TaskEditModal({ task, onSave, onClose }) {
       recurrence,
       recurrence_day: recurrenceDay || null,
       assigned_to: assigned.trim(),
+      // Las plantillas no tienen fecha: son moldes, no tareas.
+      ...(conFecha ? { due_date: due || null } : {}),
     });
   };
 
@@ -625,6 +680,7 @@ function TaskEditModal({ task, onSave, onClose }) {
         <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }}>
           <select className="input" value={recurrence} onChange={(e) => { setRecurrence(e.target.value); setRecurrenceDay(""); }} aria-label="Recurrencia" style={{ fontSize: "var(--fs-3xs)", flex: 1 }}>
             <option value="none">Una vez</option>
+            <option value="daily">Diaria</option>
             <option value="weekly">Semanal</option>
             <option value="monthly">Mensual</option>
           </select>
@@ -640,6 +696,12 @@ function TaskEditModal({ task, onSave, onClose }) {
             </select>
           )}
         </div>
+        {conFecha && (
+          <label style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>
+            Fecha límite
+            <input type="date" className="input" value={due} onChange={(e) => setDue(e.target.value)} style={{ fontSize: "var(--fs-3xs)", flex: 1 }} />
+          </label>
+        )}
         <CampoResponsable value={assigned} onChange={setAssigned} />
         <div style={{ display: "flex", gap: "var(--sp-2)", justifyContent: "flex-end" }}>
           <button className="btn" onClick={onClose} style={{ fontSize: "var(--fs-3xs)" }}>Cancelar</button>
@@ -688,6 +750,7 @@ function TaskDetailModal({ task, onEdit, onClose }) {
             <span>{formatRecurrenceDetail(task.recurrence, task.recurrence_day)}</span>
           )}
           {task.assigned_to && <span>Asignada a: <strong style={{ color: "var(--accent)" }}>{task.assigned_to}</strong></span>}
+          {task.due_date && <span>Vence: {new Date(`${task.due_date}T12:00:00`).toLocaleDateString("es-PA")}</span>}
           {task.created_at && <span>Creada: {new Date(task.created_at).toLocaleDateString("es-PA")}</span>}
           {task.completed_at && <span>Completada: {new Date(task.completed_at).toLocaleDateString("es-PA")}</span>}
         </div>
@@ -703,7 +766,7 @@ function TaskDetailModal({ task, onEdit, onClose }) {
   );
 }
 
-export function TaskTemplatesManager() {
+export function TaskTemplatesManager({ clients = [] }) {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newTitle, setNewTitle] = useState("");
@@ -713,7 +776,34 @@ export function TaskTemplatesManager() {
   const [newDescription, setNewDescription] = useState("");
   const [error, setError] = useState("");
   const [editingTpl, setEditingTpl] = useState(null);
+  const [aviso, setAviso] = useState("");
+  const [aplicando, setAplicando] = useState(null);
   const formId = useId();
+
+  // Las obligatorias —subir las historias de cada cliente cada día— se
+  // ponen UNA vez y llegan a todas las empresas. Las que ya tienen una
+  // tarea con el mismo título se saltan: aplicar dos veces no duplica.
+  const aplicarATodas = async (tpl) => {
+    setAplicando(tpl.id);
+    setAviso("");
+    let creadas = 0;
+    try {
+      for (const c of clients) {
+        const id = c.dbId || c.id;
+        const tareas = await db.loadClientTasks(id);
+        const titulo = tpl.title.trim().toLowerCase();
+        if (tareas.some((t) => t.title.trim().toLowerCase() === titulo)) continue;
+        await db.applyTemplatesToClient(id, [tpl]);
+        creadas++;
+      }
+      setAviso(creadas
+        ? `«${tpl.title}» añadida a ${creadas} empresa${creadas === 1 ? "" : "s"}.`
+        : `Todas las empresas ya tenían «${tpl.title}».`);
+    } catch {
+      setError("No se pudo aplicar la plantilla a todas las empresas.");
+    }
+    setAplicando(null);
+  };
 
   useEffect(() => {
     db.loadTaskTemplates()
@@ -775,6 +865,7 @@ export function TaskTemplatesManager() {
       {error && (
         <p role="alert" style={{ fontSize: "var(--fs-3xs)", color: "var(--danger)" }}>{error}</p>
       )}
+      <p role="status" style={{ fontSize: "var(--fs-3xs)", color: "var(--success)", margin: 0 }}>{aviso}</p>
 
       {loading ? (
         <p style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)" }}>Cargando…</p>
@@ -798,6 +889,18 @@ export function TaskTemplatesManager() {
               )}
               {tpl.assigned_to && (
                 <span style={{ color: "var(--accent)" }}>{tpl.assigned_to}</span>
+              )}
+              {clients.length > 0 && (
+                <button
+                  className="btn-icon"
+                  onClick={() => aplicarATodas(tpl)}
+                  disabled={aplicando === tpl.id}
+                  aria-label={`Añadir «${tpl.title}» a todas las empresas`}
+                  title="Añadir a todas las empresas"
+                  style={{ width: 24, height: 24, minHeight: 24 }}
+                >
+                  <Icon name={aplicando === tpl.id ? "clock" : "users"} size={12} />
+                </button>
               )}
               <button
                 className="btn-icon"
@@ -839,6 +942,7 @@ export function TaskTemplatesManager() {
           style={{ fontSize: "var(--fs-3xs)", width: 100 }}
         >
           <option value="none">Una vez</option>
+          <option value="daily">Diaria</option>
           <option value="weekly">Semanal</option>
           <option value="monthly">Mensual</option>
         </select>
@@ -870,13 +974,14 @@ export function TaskTemplatesManager() {
 
         <CampoResponsable value={newAssigned} onChange={setNewAssigned} />
 
-        <button className="btn btn-primary" onClick={handleAdd} disabled={!newTitle.trim()} style={{ fontSize: "var(--fs-3xs)", padding: "var(--sp-1) var(--sp-3)" }}>
+        <button className="btn btn-primary" onClick={handleAdd} disabled={!newTitle.trim()} aria-label="Añadir plantilla" style={{ fontSize: "var(--fs-3xs)", padding: "var(--sp-1) var(--sp-3)" }}>
           <Icon name="plus" size={14} />
         </button>
       </div>
 
       {editingTpl && (
         <TaskEditModal
+          conFecha={false}
           task={editingTpl}
           onSave={(data) => handleUpdate(editingTpl.id, data)}
           onClose={() => setEditingTpl(null)}
