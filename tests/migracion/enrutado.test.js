@@ -213,6 +213,48 @@ describe("leer y borrar un archivo", () => {
   });
 });
 
+describe("descartar una imagen generada", () => {
+  const GENERADA = "clientes/cliente-1/generadas/img.png";
+  const pedir = (cuerpo) => conSesion("/api/feedback-imagen", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(cuerpo),
+  });
+
+  it("borra la generada del cliente", async () => {
+    const env = await entorno({ r2: { [GENERADA]: "bytes" } });
+    const res = await worker.fetch(pedir({ clientId: "cliente-1", clave: GENERADA, liked: false }), env);
+    expect(res.status).toBe(200);
+    expect(env.MEDIA.objetos.has(GENERADA)).toBe(false);
+  });
+
+  it("no borra un archivo de otro espacio aunque se lo nombren", async () => {
+    // El fallo: la clave llegaba del navegador y se borraba sin mirar
+    // de quién era.
+    const ajena = "clientes/cliente-de-otro/banco/video.mp4";
+    const env = await entorno({ r2: { [ajena]: "bytes" } });
+    const res = await worker.fetch(pedir({ clientId: "cliente-de-otro", clave: ajena, liked: false }), env);
+    expect(res.status).toBe(404);
+    expect(env.MEDIA.objetos.has(ajena)).toBe(true);
+  });
+
+  it("ni uno del banco del propio cliente: sólo las generadas", async () => {
+    const banco = "clientes/cliente-1/banco/foto.jpg";
+    const env = await entorno({ r2: { [banco]: "bytes" } });
+    const res = await worker.fetch(pedir({ clientId: "cliente-1", clave: banco, liked: false }), env);
+    expect(res.status).toBe(403);
+    expect(env.MEDIA.objetos.has(banco)).toBe(true);
+  });
+
+  it("ni una clave que se salga con ..", async () => {
+    const env = await entorno();
+    const res = await worker.fetch(
+      pedir({ clientId: "cliente-1", clave: "clientes/cliente-1/generadas/../../otro/x", liked: false }), env,
+    );
+    expect(res.status).toBe(403);
+  });
+});
+
 describe("leer un video para el asistente", () => {
   const CLAVE = "clientes/cliente-1/banco/reel.mp4";
   const pedir = (clave) => conSesion("/api/ia/video", {

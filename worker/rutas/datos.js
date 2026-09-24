@@ -582,6 +582,12 @@ export async function rutasDatos(req, env, ctx) {
     const datos = (await cuerpo(req)) ?? {};
     const { clientId, clave, liked } = datos;
     if (!clientId || !clave) return error("Falta cliente o clave");
+    // La clave llega del navegador: sin esto, un «no me gusta» borraba
+    // cualquier objeto de R2, fuera de quien fuera.
+    if (!(await acceso.leerUno("clients", { id: clientId }))) return noEncontrado("Cliente");
+    if (!String(clave).startsWith(`clientes/${clientId}/generadas/`) || String(clave).includes("..")) {
+      return error("La imagen no es de este cliente", 403);
+    }
 
     if (liked) {
       const fila = {
