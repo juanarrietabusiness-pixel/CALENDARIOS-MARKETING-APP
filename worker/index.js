@@ -34,6 +34,7 @@ import { rutaIA } from "./rutas/ia.js";
 import { rutaChat } from "./rutas/chat.js";
 import { rutaADN } from "./rutas/adn.js";
 import { rutaGenerarImagen } from "./rutas/imagen.js";
+import { rutaAnalizarVideo } from "./rutas/video.js";
 
 // El Durable Object del espacio. Se reexporta desde aquí porque
 // `wrangler.jsonc` apunta su `class_name` al módulo de entrada: si se
@@ -183,6 +184,11 @@ export default {
       // ---------- Generación de imágenes ----------
       if (partes[0] === "generar-imagen" && metodo === "POST") {
         return rutaGenerarImagen(req, env, { acceso, usuario });
+      }
+      // Aquí y no con el resto de /ia: necesita el acceso para saber si
+      // el video es de un cliente de este espacio.
+      if (partes[0] === "ia" && partes[1] === "video" && metodo === "POST") {
+        return rutaAnalizarVideo(req, env, { acceso });
       }
 
       if (partes[0] === "equipo") return rutasEquipo(req, env, { acceso, partes, metodo, usuario });

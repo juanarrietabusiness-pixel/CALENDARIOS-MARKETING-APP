@@ -290,12 +290,61 @@ export async function loadAllTasks() {
   return pedir("/todas-tareas");
 }
 
+/** Borra las terminadas de un cliente, o las rápidas si no hay cliente. Las recurrentes se quedan. */
+export async function borrarTerminadas(clientId = null) {
+  const ruta = clientId ? `/clientes/${clientId}/tareas/terminadas` : "/tareas-rapidas/terminadas";
+  return pedir(ruta, { method: "DELETE" });
+}
+
+// ------------------------------------------------------------
+// Responsables y ajustes del espacio
+// ------------------------------------------------------------
+
+export async function loadResponsables() {
+  return (await pedir("/responsables")) ?? [];
+}
+
+export async function saveResponsable(nombre) {
+  return pedir("/responsables", conCuerpo("POST", { nombre }));
+}
+
+export async function deleteResponsable(id) {
+  await pedir(`/responsables/${id}`, { method: "DELETE" });
+}
+
+export async function loadAjustes() {
+  return pedir("/ajustes");
+}
+
+export async function saveAjustes(ajustes) {
+  return pedir("/ajustes", conCuerpo("PUT", ajustes));
+}
+
 // ------------------------------------------------------------
 // Generación de imágenes
 // ------------------------------------------------------------
 
 export async function generateImage(datos) {
   return pedir("/generar-imagen", conCuerpo("POST", datos));
+}
+
+/**
+ * Sube la imagen de una publicación a R2 y devuelve la ruta que se
+ * guarda en `post.image`. En el calendario va la ruta, nunca los bytes:
+ * el JSON del mes crece hasta el techo de fila de D1.
+ */
+export async function subirImagenPublicacion(clientId, file) {
+  const form = new FormData();
+  form.append("archivo", file);
+  form.append("clientId", clientId);
+  form.append("carpeta", "posts");
+  const { clave } = await pedir("/media", { method: "POST", body: form });
+  return getContentBankUrl(clave);
+}
+
+/** Lo que Gemini ve y oye en un video del banco, por escrito. */
+export async function analizarVideo(clave) {
+  return pedir("/ia/video", conCuerpo("POST", { clave }));
 }
 
 export async function feedbackImage(clientId, clave, liked) {

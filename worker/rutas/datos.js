@@ -25,6 +25,7 @@
 import { json, error, sinContenido, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { uuid, testigo, ahora } from "../lib/ids.js";
 import { difundir, firma } from "../lib/vivo.js";
+import { tareasParaPurgar, terminadasBorrables, MODOS_PURGA } from "../lib/tareas.js";
 
 const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe"];
 const JSON_CALENDARIOS = ["week_concepts", "days", "visual_references", "day_labels"];
@@ -66,9 +67,85 @@ function sinCamposDeServidor(datos, prohibidos) {
   return fila;
 }
 
+/**
+ * Toda tarea que se guarda con alguien asignado deja su nombre en
+ * `responsables`, para escogerlo la próxima vez en vez de escribirlo.
+ * Así se llena solo, también con lo que crea el asistente.
+ */
+async function recordarResponsable(env, ctx, req, nombre) {
+  const n = String(nombre ?? "").trim().slice(0, 80);
+  if (!n) return;
+  const { acceso } = ctx;
+  if (await acceso.leerUno("responsables", { nombre: n })) return;
+  try {
+    await acceso.insertar("responsables", { id: uuid(), nombre: n, created_at: ahora() });
+    difundir(env, acceso.ownerId, { tipo: "responsable", por: firma(ctx.usuario, req) });
+  } catch { /* dos guardados a la vez: el índice único ya lo tiene */ }
+}
+
+/**
+ * La purga automática corre al LEER tareas, no con un cron: sin nadie
+ * mirando no hace falta que desaparezcan, y así no hay otra pieza que
+ * desplegar ni que pueda quedarse parada sin que nadie lo note.
+ */
+async function purgarTareas(env, ctx, req) {
+  const { acceso } = ctx;
+  const ajustes = await acceso.leerUno("ajustes_espacio", { id: acceso.ownerId });
+  const modo = ajustes?.purga_tareas ?? "nunca";
+  if (modo === "nunca") return;
+  const [deClientes, rapidas] = await Promise.all([
+    acceso.leer("client_tasks", { status: "completed" }),
+    acceso.leer("quick_tasks", { status: "completed" }),
+  ]);
+  for (const t of tareasParaPurgar(deClientes, modo)) {
+    await acceso.borrar("client_tasks", { id: t.id });
+    difundir(env, acceso.ownerId, { tipo: "tarea:fuera", id: t.id, por: firma(ctx.usuario, req) });
+  }
+  for (const t of tareasParaPurgar(rapidas, modo)) {
+    await acceso.borrar("quick_tasks", { id: t.id });
+    difundir(env, acceso.ownerId, { tipo: "tarea-rapida:fuera", id: t.id, por: firma(ctx.usuario, req) });
+  }
+}
+
 export async function rutasDatos(req, env, ctx) {
   const { acceso, partes, metodo } = ctx;
   const [, seccion, id, sub, subId] = ["", ...partes];
+
+  // ---- /api/ajustes ----
+  if (seccion === "ajustes") {
+    if (metodo === "GET") {
+      const fila = await acceso.leerUno("ajustes_espacio", { id: acceso.ownerId });
+      return json({ purga_tareas: fila?.purga_tareas ?? "nunca" });
+    }
+    if (metodo === "PUT") {
+      const { purga_tareas } = (await cuerpo(req)) ?? {};
+      if (!(purga_tareas in MODOS_PURGA)) return error("Modo de borrado inválido");
+      const previa = await acceso.leerUno("ajustes_espacio", { id: acceso.ownerId });
+      await acceso.guardar("ajustes_espacio", {
+        id: acceso.ownerId, purga_tareas,
+        created_at: previa?.created_at ?? ahora(), updated_at: ahora(),
+      });
+      difundir(env, acceso.ownerId, { tipo: "ajustes", por: firma(ctx.usuario, req) });
+      return json({ purga_tareas });
+    }
+  }
+
+  // ---- /api/responsables ----
+  if (seccion === "responsables") {
+    if (metodo === "GET") return json(await acceso.leer("responsables", {}, "nombre collate nocase asc"));
+    if (metodo === "POST") {
+      const { nombre } = (await cuerpo(req)) ?? {};
+      if (!String(nombre ?? "").trim()) return error("Falta el nombre");
+      await recordarResponsable(env, ctx, req, nombre);
+      return json(await acceso.leerUno("responsables", { nombre: String(nombre).trim().slice(0, 80) }), 201);
+    }
+    if (metodo === "DELETE" && id) {
+      const n = await acceso.borrar("responsables", { id });
+      if (!n) return noEncontrado("Responsable");
+      difundir(env, acceso.ownerId, { tipo: "responsable", por: firma(ctx.usuario, req) });
+      return sinContenido();
+    }
+  }
 
   // ---- /api/espacio ----
   if (seccion === "espacio" && metodo === "GET") {
@@ -143,7 +220,18 @@ export async function rutasDatos(req, env, ctx) {
 
     if (sub === "tareas") {
       if (metodo === "GET") {
+        await purgarTareas(env, ctx, req);
         return json(await acceso.leer("client_tasks", { client_id: id }, "position asc, created_at asc"));
+      }
+      // Vaciar a mano las terminadas de este cliente. Las recurrentes se
+      // quedan: son la definición de algo que vuelve.
+      if (metodo === "DELETE" && subId === "terminadas") {
+        const borrables = terminadasBorrables(await acceso.leer("client_tasks", { client_id: id, status: "completed" }));
+        for (const t of borrables) {
+          await acceso.borrar("client_tasks", { id: t.id });
+          difundir(env, acceso.ownerId, { tipo: "tarea:fuera", id: t.id, por: firma(ctx.usuario, req) });
+        }
+        return json({ borradas: borrables.length });
       }
       if (metodo === "POST" && subId === "plantillas") {
         const { templates = [] } = (await cuerpo(req)) ?? {};
@@ -170,6 +258,7 @@ export async function rutasDatos(req, env, ctx) {
         await acceso.guardar("client_tasks", fila);
         const tarea = await acceso.leerUno("client_tasks", { id: fila.id });
         difundir(env, acceso.ownerId, { tipo: "tarea", tarea, por: firma(ctx.usuario, req) });
+        await recordarResponsable(env, ctx, req, fila.assigned_to);
         return json(tarea, 201);
       }
     }
@@ -293,6 +382,7 @@ export async function rutasDatos(req, env, ctx) {
       if (!n) return noEncontrado("Tarea");
       const tarea = await acceso.leerUno("client_tasks", { id });
       difundir(env, acceso.ownerId, { tipo: "tarea", tarea, por: firma(ctx.usuario, req) });
+      await recordarResponsable(env, ctx, req, campos.assigned_to);
       return json(tarea);
     }
     if (metodo === "POST" && sub === "reordenar") {
@@ -317,6 +407,7 @@ export async function rutasDatos(req, env, ctx) {
   }
 
   if (seccion === "todas-tareas" && metodo === "GET") {
+    await purgarTareas(env, ctx, req);
     const [clientTasks, quickTasks] = await Promise.all([
       acceso.leer("client_tasks", {}, "position asc, created_at asc"),
       acceso.leer("quick_tasks", {}, "position asc, created_at asc"),
@@ -334,6 +425,7 @@ export async function rutasDatos(req, env, ctx) {
       };
       if (fila.is_mandatory !== undefined) fila.is_mandatory = fila.is_mandatory ? 1 : 0;
       await acceso.guardar("task_templates", fila);
+      await recordarResponsable(env, ctx, req, fila.assigned_to);
       return json(await acceso.leerUno("task_templates", { id: fila.id }), 201);
     }
     if (metodo === "PUT" && id) {
@@ -342,6 +434,7 @@ export async function rutasDatos(req, env, ctx) {
       if (campos.is_mandatory !== undefined) campos.is_mandatory = campos.is_mandatory ? 1 : 0;
       const n = await acceso.actualizar("task_templates", { id }, campos);
       if (!n) return noEncontrado("Plantilla");
+      await recordarResponsable(env, ctx, req, campos.assigned_to);
       return json(await acceso.leerUno("task_templates", { id }));
     }
     if (metodo === "DELETE") {
@@ -353,7 +446,18 @@ export async function rutasDatos(req, env, ctx) {
   // ---- /api/tareas-rapidas ----
   if (seccion === "tareas-rapidas") {
     if (metodo === "GET") {
+      await purgarTareas(env, ctx, req);
       return json(await acceso.leer("quick_tasks", {}, "position asc, created_at asc"));
+    }
+    // Antes que el DELETE por id: si no, «terminadas» se tomaría por el
+    // id de una tarea y contestaría 404.
+    if (metodo === "DELETE" && id === "terminadas" && !sub) {
+      const borrables = terminadasBorrables(await acceso.leer("quick_tasks", { status: "completed" }));
+      for (const t of borrables) {
+        await acceso.borrar("quick_tasks", { id: t.id });
+        difundir(env, acceso.ownerId, { tipo: "tarea-rapida:fuera", id: t.id, por: firma(ctx.usuario, req) });
+      }
+      return json({ borradas: borrables.length });
     }
     if (metodo === "POST" && !id) {
       const datos = (await cuerpo(req)) ?? {};
@@ -364,6 +468,7 @@ export async function rutasDatos(req, env, ctx) {
       };
       await acceso.insertar("quick_tasks", fila);
       difundir(env, acceso.ownerId, { tipo: "tarea-rapida", tarea: fila, por: firma(ctx.usuario, req) });
+      await recordarResponsable(env, ctx, req, fila.assigned_to);
       return json(fila, 201);
     }
     if (metodo === "PUT" && id) {
@@ -373,6 +478,7 @@ export async function rutasDatos(req, env, ctx) {
       if (!n) return noEncontrado("Tarea rápida");
       const tarea = await acceso.leerUno("quick_tasks", { id });
       difundir(env, acceso.ownerId, { tipo: "tarea-rapida", tarea, por: firma(ctx.usuario, req) });
+      await recordarResponsable(env, ctx, req, campos.assigned_to);
       return json(tarea);
     }
     if (metodo === "DELETE" && id) {
@@ -476,6 +582,12 @@ export async function rutasDatos(req, env, ctx) {
     const datos = (await cuerpo(req)) ?? {};
     const { clientId, clave, liked } = datos;
     if (!clientId || !clave) return error("Falta cliente o clave");
+    // La clave llega del navegador: sin esto, un «no me gusta» borraba
+    // cualquier objeto de R2, fuera de quien fuera.
+    if (!(await acceso.leerUno("clients", { id: clientId }))) return noEncontrado("Cliente");
+    if (!String(clave).startsWith(`clientes/${clientId}/generadas/`) || String(clave).includes("..")) {
+      return error("La imagen no es de este cliente", 403);
+    }
 
     if (liked) {
       const fila = {

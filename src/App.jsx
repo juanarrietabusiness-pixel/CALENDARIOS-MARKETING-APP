@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { MONTHS } from "./constants";
 import { uid } from "./utils";
 import { useDialogA11y } from "./hooks/useDialogA11y";
@@ -11,7 +11,6 @@ import PlanWizard from "./components/PlanWizard";
 import CalendarView from "./components/CalendarView";
 import Aprobar from "./pages/Aprobar";
 import IdeasBank from "./components/IdeasBank";
-import ChatPanel from "./components/ChatPanel";
 import TaskPanel from "./components/TaskPanel";
 import { TaskTemplatesManager } from "./components/TaskPanel";
 import QuickTasksPanel from "./components/QuickTasksPanel";
@@ -29,6 +28,10 @@ import {
   analizarRuta, construirRuta, navegar,
   porRuta, slugsDeCalendarios, slugsDeClientes,
 } from "./lib/rutas";
+
+// El asistente sólo se descarga al abrirlo: es la pantalla más pesada y
+// la mayoría de las visitas no la abren.
+const ChatPanel = lazy(() => import("./components/ChatPanel"));
 
 /**
  * La dirección actual, y se vuelve a pintar cuando cambia.
@@ -408,6 +411,8 @@ function Workspace({ session, ruta }) {
         case "tarea-rapida":
         case "tarea-rapida:fuera":
         case "tarea-rapida:reorden":
+        case "responsable":
+        case "ajustes":
         case "banco":
         case "banco:fuera":
         case "memoria":
@@ -1167,19 +1172,21 @@ function Workspace({ session, ruta }) {
       )}
 
       {showChat && (
-        <ChatPanel
-          client={client}
-          calendar={calendar}
-          calId={selectedCalId}
-          clients={clients}
-          onUpdateCal={updateCalendar}
-          onClose={() => setShowChat(false)}
-          onAddIdea={handleAddIdea}
-          onSelectClient={(id) => {
-            irA(id);
-            setShowChat(false);
-          }}
-        />
+        <Suspense fallback={null}>
+          <ChatPanel
+            client={client}
+            calendar={calendar}
+            calId={selectedCalId}
+            clients={clients}
+            onUpdateCal={updateCalendar}
+            onClose={() => setShowChat(false)}
+            onAddIdea={handleAddIdea}
+            onSelectClient={(id) => {
+              irA(id);
+              setShowChat(false);
+            }}
+          />
+        </Suspense>
       )}
     </div>
   );

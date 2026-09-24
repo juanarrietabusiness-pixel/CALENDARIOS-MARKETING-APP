@@ -56,6 +56,8 @@ export const TABLAS_CON_DUENO = Object.freeze([
   // construirla— sino sesion.js, que es quien define al dueño.
   "memberships",
   "invitaciones",
+  "responsables",
+  "ajustes_espacio",
 ]);
 
 /**

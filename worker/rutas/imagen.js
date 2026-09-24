@@ -18,12 +18,28 @@ import { uuid } from "../lib/ids.js";
 const PRESUPUESTO_MS = 120_000;
 const MAX_REFS = 5;
 
+// `ratio` es lo que Gemini entiende. 1200×630 no tiene proporción
+// propia: sale en 16:9 y el navegador lo recorta al descargar.
 const FORMATOS = {
-  square:     { w: 1080, h: 1080, label: "Cuadrado 1080×1080" },
-  vertical:   { w: 1080, h: 1350, label: "Vertical 1080×1350" },
-  story:      { w: 1080, h: 1920, label: "Historia/Reel 1080×1920" },
-  horizontal: { w: 1200, h: 630,  label: "Horizontal 1200×630" },
+  square:     { w: 1080, h: 1080, ratio: "1:1",  label: "Cuadrado 1080×1080" },
+  vertical:   { w: 1080, h: 1350, ratio: "4:5",  label: "Vertical 1080×1350" },
+  story:      { w: 1080, h: 1920, ratio: "9:16", label: "Historia/Reel 1080×1920" },
+  horizontal: { w: 1200, h: 630,  ratio: "16:9", label: "Horizontal 1200×630" },
 };
+
+/**
+ * A trozos: `String.fromCharCode(...bytes)` con una imagen de más de
+ * ~100 KB pasa del máximo de argumentos, lanza, y el `catch` de abajo
+ * descartaba la referencia sin decir nada.
+ */
+function aBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
+}
 
 function construirPrompt(datos) {
   const { idea, descripcion, guion, format, category, title, clientName,
@@ -69,7 +85,7 @@ async function cargarReferencias(env, acceso, clientId) {
       const obj = await env.MEDIA.get(ref.file_path);
       if (!obj) continue;
       const buf = await obj.arrayBuffer();
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      const base64 = aBase64(buf);
       const mime = obj.httpMetadata?.contentType || "image/jpeg";
       partes.push({ inlineData: { mimeType: mime, data: base64 } });
     } catch { /* la referencia ya no existe en R2 */ }
@@ -132,6 +148,7 @@ export async function rutaGenerarImagen(req, env, ctx) {
         contents: [{ parts }],
         generationConfig: {
           responseModalities: ["TEXT", "IMAGE"],
+          imageConfig: { aspectRatio: (FORMATOS[imageFormat] ?? FORMATOS.square).ratio },
         },
       }),
     });
