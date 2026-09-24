@@ -310,7 +310,16 @@ describe("leer un video para el asistente", () => {
     worker.fetch(pedir(CLAVE), env).then((r) => { res = r; });
     // La espera entre consultas es un setTimeout: se avanza el reloj
     // hasta que llega la respuesta en vez de dormir de verdad.
-    for (let i = 0; i < 50 && !res; i++) await vi.advanceTimersByTimeAsync(1000);
+    // Con un plazo REAL y no un número de vueltas: parte del camino es
+    // asíncrono de verdad (el hash de la sesión con crypto.subtle), y en
+    // un runner lento cincuenta vueltas del reloj falso se acababan antes
+    // de que llegara la respuesta. `setImmediate` no está falseado y deja
+    // que eso avance entre vuelta y vuelta.
+    const hasta = Date.now() + 15_000;
+    while (!res && Date.now() < hasta) {
+      await vi.advanceTimersByTimeAsync(1000);
+      await new Promise((r) => setImmediate(r));
+    }
     vi.useRealTimers();
 
     expect(res.status).toBe(200);
