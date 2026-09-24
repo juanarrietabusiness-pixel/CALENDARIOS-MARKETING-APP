@@ -31,7 +31,7 @@ import { difundir } from "./lib/vivo.js";
 import { rutasDatos } from "./rutas/datos.js";
 import { rutasEquipo, rutaInvitacionPublica } from "./rutas/equipo.js";
 import { rutaIA } from "./rutas/ia.js";
-import { rutaChat } from "./rutas/chat.js";
+import { rutaChat, rutaResumenChat } from "./rutas/chat.js";
 import { rutaADN } from "./rutas/adn.js";
 import { rutaGenerarImagen } from "./rutas/imagen.js";
 import { rutaAnalizarVideo } from "./rutas/video.js";
@@ -64,7 +64,7 @@ async function sirveMedia(env, clave, cacheable) {
 }
 
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const url = new URL(req.url);
     const ruta = url.pathname;
 
@@ -151,7 +151,6 @@ export default {
       if (partes[0] === "yo" && metodo === "GET") return json({ usuario });
 
       // ---------- 4. IA ----------
-      if (partes[0] === "ia" && partes[1] === "chat" && metodo === "POST") return rutaChat(req, env);
       if (partes[0] === "ia" && !partes[1] && metodo === "POST") return rutaIA(req, env);
       if (partes[0] === "adn" && metodo === "POST") return rutaADN(req, env);
 
@@ -189,6 +188,14 @@ export default {
       // el video es de un cliente de este espacio.
       if (partes[0] === "ia" && partes[1] === "video" && metodo === "POST") {
         return rutaAnalizarVideo(req, env, { acceso });
+      }
+      // El asistente, también aquí: sus herramientas de servidor leen D1
+      // y el repositorio del cliente, y eso se acota por el espacio.
+      if (partes[0] === "ia" && partes[1] === "chat" && partes[2] === "resumen") {
+        return rutaResumenChat(req, env, { acceso, metodo });
+      }
+      if (partes[0] === "ia" && partes[1] === "chat" && !partes[2] && metodo === "POST") {
+        return rutaChat(req, env, { acceso, ctx });
       }
 
       if (partes[0] === "equipo") return rutasEquipo(req, env, { acceso, partes, metodo, usuario });

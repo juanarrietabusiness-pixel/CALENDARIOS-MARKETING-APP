@@ -231,6 +231,9 @@ export async function rutasDatos(req, env, ctx) {
       }
       if (metodo === "DELETE") {
         await acceso.borrar("chat_messages", { client_id: id });
+        // El resumen es de esos mensajes: borrarlos y dejarlo haría que
+        // el asistente «recordara» una conversación que ya no está.
+        await acceso.borrar("chat_resumenes", { client_id: id });
         return sinContenido();
       }
     }

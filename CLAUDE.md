@@ -134,16 +134,20 @@ worker/
     vivo.js               Difundir un cambio al espacio; la firma de quién lo hizo
     publico.js            El enlace de aprobación, sin sesión
     respuesta.js          Cabeceras y errores de la API
+    flujoAnthropic.js     El SSE de Anthropic, reconstruido en mensaje (puro)
+    herramientasServidor.js  Lo que el asistente consulta sin el navegador:
+                          web, repositorio de GitHub, calendarios, tareas, ideas
     ids.js                UUID, testigos, huellas
   rutas/
     datos.js              CRUD: clientes, calendarios, chat, tareas, banco
     equipo.js             Miembros e invitaciones; la ruta pública del enlace
     ia.js                 Proxy de Anthropic/Groq
-    chat.js               El asistente
+    chat.js               El asistente: streaming, bucle de herramientas de
+                          servidor y resumen de conversaciones largas
     imagen.js             Generación de imágenes (Gemini)
     video.js              Análisis de un video del banco (Gemini)
     adn.js                Lectura del ADN de marca con el token del servidor
-migraciones/d1/           Esquema de D1 (0001 base, 0002 equipo … 0007 Mi día)
+migraciones/d1/           Esquema de D1 (0001 base, 0002 equipo … 0007 Mi día, 0008 resumen del chat)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -454,6 +458,29 @@ son del servidor.
   del lote es transcribir un calendario ya aprobado, no razonar. Lo fija
   `worker/rutas/ia.js` por nivel (`niveles()`) y en «calidad» lo apaga. Para
   volver a encenderlo: `AI_PENSAR=adaptativo` en `vars` de `wrangler.jsonc`.
+- **El asistente NO apaga el razonamiento, y no es un descuido.** Corre en
+  Opus 5.5 (`AI_CHAT_MODEL`, por defecto `claude-opus-5-5`), donde
+  `thinking: disabled` es un 400: la profundidad se controla con el
+  esfuerzo (`AI_CHAT_ESFUERZO`, «high» por defecto; el del modelo, si no
+  se dice nada, es «medium») y el tope de salida es de 32 000 porque el
+  razonamiento se paga de ahí. Lo que se dice arriba de apagarlo vale
+  para `ia.js`, no para el chat; `funciones.test.js` vigila las dos cosas.
+- **El asistente tiene DOS bucles, y cada herramienta vive en uno.** Las
+  de servidor (búsqueda web y lectura de páginas de Anthropic; repositorio
+  de GitHub; ver_calendario/tareas/ideas) las encadena el Worker sin
+  volver al navegador. Las que ESCRIBEN en el calendario abierto siguen en
+  el navegador, que sabe no pisar lo que la persona está editando: cuando
+  el modelo pide una, el Worker cierra el turno con `resultadosServidor`
+  y el navegador junta los suyos en el MISMO mensaje —la API exige todos
+  los tool_result de una vuelta juntos—. Y lo que el Worker devuelve en
+  `mensajes` se reenvía TAL CUAL: los bloques de razonamiento llevan
+  firma, y tocados son un 400. Entre turnos no se reenvían: el historial
+  guardado es texto.
+- **Lo que el asistente hace se guarda con su respuesta.** Va plegado como
+  `[[contexto: Acciones realizadas]]`: antes sólo se guardaba el texto y
+  «¿qué cambiaste ayer?» no tenía respuesta. El historial ya no se corta
+  en 50 mensajes: pasado el umbral, lo viejo se pliega en `chat_resumenes`
+  y el modelo recibe resumen + recientes enteros.
 - **Al leer la respuesta de Anthropic hay que recorrer TODOS los bloques**,
   no `content.find(b => b.type === "text")`: basta un bloque de pensamiento
   por delante para que ese `find` devuelva `undefined` y el texto llegue

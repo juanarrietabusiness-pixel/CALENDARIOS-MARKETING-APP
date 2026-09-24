@@ -96,7 +96,7 @@ export function profundidad(path, base) {
   return rel.split("/").length - 1;
 }
 
-function decodificarBlob(base64) {
+export function decodificarBlob(base64) {
   const limpio = base64.replace(/\s/g, "");
   const bytes = Uint8Array.from(atob(limpio), (c) => c.charCodeAt(0));
   return new TextDecoder("utf-8").decode(bytes);

@@ -5,6 +5,7 @@ import { getWeekNumber, dayName } from "./utils";
 import { INSTRUCCION_PIEZAS, INSTRUCCION_ADJUNTOS } from "./lib/mensajeChat";
 import { base64DeImagen } from "./lib/medios";
 import { PROPIEDADES_FECHA_TAREA } from "./lib/agenda";
+import { partirSSE } from "../worker/lib/flujoAnthropic.js";
 
 // Se reexportan porque media aplicación las importa desde aquí. Viven en
 // `lib/parse.js` para poder probarlas sin arrastrar el cliente de Supabase.
@@ -23,7 +24,7 @@ export { parseAIResponse, parseGitHubUrl, parsePiezas, parseJSONLoose, parseBloq
  * contactar con el servidor» ante un 504 manda a buscar un problema de
  * red que no existe.
  */
-const RUTAS = { ai: "/api/ia", "ai-chat": "/api/ia/chat", "github-adn": "/api/adn" };
+const RUTAS = { ai: "/api/ia", "github-adn": "/api/adn" };
 
 async function invokeFunction(name, body) {
   const ruta = RUTAS[name];
@@ -953,15 +954,72 @@ export function generateMetaPiecesEnTandas(opciones, alProgresar) {
 // Chat del asistente por cliente
 // ============================================================
 
-export async function callAIChat(messages, system, tools) {
-  const body = { messages, system, maxTokens: 8192 };
-  if (tools?.length) body.tools = tools;
-  const data = await invokeFunction("ai-chat", body);
-  return {
-    content: data?.content ?? [],
-    text: data?.text ?? "",
-    stopReason: data?.stopReason ?? "end_turn",
-  };
+/**
+ * Una vuelta del asistente, en streaming.
+ *
+ * El Worker reenvía el texto según se escribe (`onEvento` recibe
+ * «texto», «pensando» y «herramienta») y resuelve con el evento «fin»:
+ * los `mensajes` que añadió en esta vuelta —se reenvían TAL CUAL en la
+ * siguiente, razonamiento con firma incluido— y, si el modelo pidió
+ * herramientas del navegador, los resultados de las del servidor que
+ * hay que juntar con los de aquí en un mismo mensaje.
+ */
+export async function conversarIA({ messages, system, tools, clienteId = null, onEvento = () => {} }) {
+  let res;
+  try {
+    res = await fetch("/api/ia/chat", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages, system, tools, clienteId }),
+    });
+  } catch {
+    throw new Error("No hay conexión con el servidor. Revisa tu red.");
+  }
+  if (!res.ok || !res.body) {
+    let data = null;
+    try { data = await res.json(); } catch { /* no era JSON */ }
+    if (res.status === 401) throw new Error("La sesión caducó. Vuelve a entrar.");
+    throw new Error(data?.error || `El asistente respondió ${res.status}.`);
+  }
+
+  const lector = res.body.getReader();
+  const dec = new TextDecoder();
+  let buffer = "";
+  let fin = null;
+  for (;;) {
+    const { done, value } = await lector.read();
+    if (done) break;
+    buffer += dec.decode(value, { stream: true });
+    const { eventos, resto } = partirSSE(buffer);
+    buffer = resto;
+    for (const { datos: ev } of eventos) {
+      if (ev.t === "error") throw new Error(ev.mensaje || "No se pudo generar la respuesta.");
+      if (ev.t === "fin") fin = ev;
+      else onEvento(ev);
+    }
+  }
+  if (!fin) throw new Error("La respuesta del asistente se cortó. Inténtalo de nuevo.");
+  return fin;
+}
+
+/** El resumen guardado de la conversación de un cliente. */
+export async function leerResumenChat(clienteId) {
+  const res = await fetch(`/api/ia/chat/resumen?cliente=${encodeURIComponent(clienteId)}`, { credentials: "same-origin" });
+  if (!res.ok) return { resumen: "", hasta: null };
+  return res.json();
+}
+
+/** Pliega lo viejo en el resumen si la conversación ya es larga. */
+export async function resumirChat(clienteId) {
+  const res = await fetch("/api/ia/chat/resumen", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clienteId }),
+  });
+  if (!res.ok) return null;
+  return res.json();
 }
 
 export function buildChatSystemPrompt(client, calendar, adnExtra = "", memories = []) {

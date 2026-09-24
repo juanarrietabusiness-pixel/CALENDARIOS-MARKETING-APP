@@ -4,7 +4,7 @@ import BancoSelector from "./BancoSelector";
 import { CopyButton } from "./calendario/primitivas";
 import { stripMarkdown } from "./calendario/formato";
 import { useDialogA11y } from "../hooks/useDialogA11y";
-import { callAIChat, buildChatSystemPrompt, getChatTools } from "../api";
+import { conversarIA, leerResumenChat, resumirChat, buildChatSystemPrompt, getChatTools } from "../api";
 import { uid, compressImage } from "../utils";
 import { leerHora, MAL, aplicarLote } from "../lib/lote";
 import { partirMensaje, marcarImagen, marcarContexto, FORMATOS_IMAGEN, INSTRUCCION_PIEZAS, INSTRUCCION_ADJUNTOS } from "../lib/mensajeChat";
@@ -13,6 +13,19 @@ import * as db from "../lib/db";
 import { tareaDesdeIA, fechaEnZona, PROPIEDADES_FECHA_TAREA } from "../lib/agenda";
 
 const MAX_ADJUNTOS = 6;
+// Vueltas del navegador con herramientas propias. Las del servidor
+// (web, repositorio, consultas) no cuentan: las encadena el Worker.
+const MAX_VUELTAS = 8;
+// Pasado este número de mensajes sin resumir, lo más viejo se pliega en
+// el resumen. Lo decide el servidor; esto sólo evita pedirlo en balde.
+const UMBRAL_RESUMEN = 60;
+
+/** El texto de los mensajes del asistente de una vuelta, en orden. */
+const textoDe = (mensajes) => mensajes
+  .filter((m) => m.role === "assistant" && Array.isArray(m.content))
+  .flatMap((m) => m.content.filter((b) => b.type === "text").map((b) => b.text || ""))
+  .join("")
+  .trim();
 const MAX_VIDEOS = 2;
 const FOTOGRAMAS = 6;
 
@@ -40,6 +53,9 @@ export default function ChatPanel({
   const [adjuntos, setAdjuntos] = useState([]);
   const [bancoAbierto, setBancoAbierto] = useState(false);
   const [progreso, setProgreso] = useState("");
+  // Lo que llega en streaming mientras el asistente escribe.
+  const [enVivo, setEnVivo] = useState({ texto: "", pensando: "", pasos: [] });
+  const [resumen, setResumen] = useState({ resumen: "", hasta: null });
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
@@ -73,13 +89,17 @@ export default function ChatPanel({
     let alive = true;
     (async () => {
       try {
-        const [history, mems] = await Promise.all([
-          db.loadChatMessages(clientId),
+        // El historial entero: el corte en 100 mensajes era perder lo de
+        // hace semanas. Lo más viejo lo cubre el resumen.
+        const [history, mems, res] = await Promise.all([
+          db.loadChatMessages(clientId, Infinity),
           db.loadClientMemories(clientId),
+          leerResumenChat(clientId),
         ]);
         if (alive) {
           setMessages(history);
           setMemories(mems);
+          setResumen(res);
         }
       } catch {
         if (alive) setError("No se pudo cargar el historial.");
@@ -605,17 +625,36 @@ CÓMO DEBES RESPONDER:
         await db.saveChatMessage(clientId, "user", guardado);
       }
 
-      const system = chatMode === "client" && client
+      // Conversación larga: se pliega lo viejo ANTES de montar el prompt.
+      let res = resumen;
+      if (chatMode === "client" && clientId) {
+        const sinResumir = messages.filter((m) => !res.hasta || m.created_at > res.hasta).length;
+        if (sinResumir > UMBRAL_RESUMEN) {
+          setProgreso("Resumiendo la conversación anterior…");
+          const nuevo = await resumirChat(clientId).catch(() => null);
+          if (nuevo) { res = nuevo; setResumen(nuevo); }
+          setProgreso("");
+        }
+      }
+
+      let system = chatMode === "client" && client
         ? buildChatSystemPrompt(client, calRef.current, client.githubContext || "", memories)
         : buildGlobalSystemPrompt();
+      if (res.resumen) {
+        system += `\n\nRESUMEN DE LA CONVERSACIÓN ANTERIOR (lo más antiguo, ya plegado; lo reciente va entero en los mensajes):\n${res.resumen}`;
+      }
 
       const tools = chatMode === "client"
         ? getChatTools(Boolean(calRef.current))
         : getGlobalTools();
 
-      const conversationMessages = [...messages, { role: "user", content: guardado }]
-        .slice(-50)
+      const recientes = [...messages, { role: "user", content: guardado, created_at: userMsg.created_at }]
+        .filter((m) => chatMode !== "client" || !res.hasta || m.created_at > res.hasta)
+        .slice(chatMode === "client" ? 0 : -100)
         .map((m) => ({ role: m.role, content: m.content }));
+      // La API exige empezar por el usuario.
+      while (recientes.length && recientes[0].role !== "user") recientes.shift();
+      const conversationMessages = recientes;
       if (bloquesAdjuntos.length) {
         conversationMessages[conversationMessages.length - 1].content = [
           ...bloquesAdjuntos,
@@ -623,16 +662,28 @@ CÓMO DEBES RESPONDER:
         ];
       }
 
-      let maxLoops = 6;
       const feedbacks = [];
+      const pasos = [];
       // Las imágenes generadas van al mensaje final como marcas: así se
       // pintan debajo del texto y siguen ahí al recargar el historial.
       const imagenes = [];
       let entregado = false;
+      let textoTurno = "";
 
+      // Lo que el asistente HIZO se guarda con su respuesta, plegado: así
+      // el hilo lo recuerda en los mensajes siguientes y al recargar.
+      // Antes sólo se guardaba el texto, y «¿qué cambiaste ayer?» no
+      // tenía respuesta.
       const entregar = async (textoAsistente) => {
-        const contenido = [textoAsistente, ...imagenes.map((i) => marcarImagen(i.clave, i.formato))]
-          .filter(Boolean).join("\n\n");
+        const hechas = [
+          ...pasos,
+          ...feedbacks.map((f) => `${f.ok ? "Hecho" : "Falló"}: ${f.mensaje}`),
+        ];
+        const contenido = [
+          textoAsistente,
+          ...imagenes.map((i) => marcarImagen(i.clave, i.formato)),
+          hechas.length ? marcarContexto("Acciones realizadas", hechas.join("\n")) : "",
+        ].filter(Boolean).join("\n\n");
         entregado = true;
         if (!contenido) return;
         if (chatMode === "client" && clientId) {
@@ -644,21 +695,46 @@ CÓMO DEBES RESPONDER:
         ]);
       };
 
-      while (maxLoops-- > 0) {
-        const response = await callAIChat(conversationMessages, system, tools);
+      const onEvento = (ev) => {
+        if (ev.t === "texto") setEnVivo((v) => ({ ...v, texto: v.texto + ev.d }));
+        else if (ev.t === "pensando") setEnVivo((v) => ({ ...v, pensando: v.pensando + ev.d }));
+        else if (ev.t === "herramienta") {
+          pasos.push(ev.texto);
+          setEnVivo((v) => ({ ...v, pasos: [...v.pasos, ev.texto] }));
+        }
+      };
 
-        const toolUseBlocks = response.content.filter((b) => b.type === "tool_use");
-        const textBlocks = response.content.filter((b) => b.type === "text");
-        const assistantText = textBlocks.map((b) => b.text || "").join("");
+      for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
+        setEnVivo((v) => ({ ...v, pensando: "" }));
+        const fin = await conversarIA({
+          messages: conversationMessages,
+          system,
+          tools,
+          clienteId: chatMode === "client" ? clientId : null,
+          onEvento,
+        });
+        // TAL CUAL: los bloques de razonamiento llevan firma y la API
+        // rechaza la vuelta siguiente si llegan tocados.
+        conversationMessages.push(...fin.mensajes);
+        const texto = textoDe(fin.mensajes);
+        if (texto) textoTurno = [textoTurno, texto].filter(Boolean).join("\n\n");
 
-        if (toolUseBlocks.length === 0 || response.stopReason === "end_turn") {
-          await entregar(assistantText);
+        if (fin.stopReason === "refusal") {
+          await entregar([textoTurno, "No puedo ayudar con esa petición tal como está planteada. ¿La reformulamos?"].filter(Boolean).join("\n\n"));
+          break;
+        }
+        if (fin.stopReason !== "tool_use") {
+          if (fin.stopReason === "max_tokens") textoTurno += "\n\n(La respuesta se cortó por largo. Pídeme que continúe.)";
+          if (fin.stopReason === "limite") textoTurno += "\n\n(Llegué al límite de pasos de este turno. Dime si sigo.)";
+          await entregar(textoTurno);
           break;
         }
 
-        conversationMessages.push({ role: "assistant", content: response.content });
+        const yaResueltas = new Set((fin.resultadosServidor ?? []).map((r) => r.tool_use_id));
+        const ultimo = fin.mensajes[fin.mensajes.length - 1]?.content ?? [];
+        const toolUseBlocks = ultimo.filter((b) => b.type === "tool_use" && !yaResueltas.has(b.id));
 
-        const toolResults = [];
+        const toolResults = [...(fin.resultadosServidor ?? [])];
         for (const toolBlock of toolUseBlocks) {
           try {
             const result = await executeToolCall(toolBlock.name, toolBlock.input);
@@ -679,23 +755,27 @@ CÓMO DEBES RESPONDER:
               type: "tool_result",
               tool_use_id: toolBlock.id,
               content: JSON.stringify(result),
+              is_error: true,
             });
           }
         }
         setActionFeedback([...feedbacks]);
         conversationMessages.push({ role: "user", content: toolResults });
       }
-      // Seis vueltas de herramientas sin respuesta final: lo generado no
-      // puede perderse por eso.
-      if (!entregado && imagenes.length) await entregar("");
+      // Sin respuesta final tras todas las vueltas: lo generado y lo
+      // hecho no pueden perderse por eso.
+      if (!entregado && (textoTurno || imagenes.length || feedbacks.length)) {
+        await entregar([textoTurno, "(Me quedé sin vueltas antes de terminar. Dime si sigo.)"].filter(Boolean).join("\n\n"));
+      }
     } catch (e) {
       setError(e.message || "Error al generar respuesta.");
     } finally {
       setLoading(false);
       setProgreso("");
+      setEnVivo({ texto: "", pensando: "", pasos: [] });
       for (const a of enviados) if (a.origen === "subida") URL.revokeObjectURL(a.preview);
     }
-  }, [input, loading, messages, client, clientId, chatMode, memories, executeToolCall, adjuntos, prepararAdjuntos, buildGlobalSystemPrompt, getGlobalTools, onAddIdea]);
+  }, [input, loading, messages, client, clientId, chatMode, memories, executeToolCall, adjuntos, prepararAdjuntos, buildGlobalSystemPrompt, getGlobalTools, onAddIdea, resumen]);
 
   const handleClear = useCallback(async () => {
     if (chatMode === "client" && clientId) {
@@ -707,6 +787,7 @@ CÓMO DEBES RESPONDER:
       }
     }
     setMessages([]);
+    setResumen({ resumen: "", hasta: null });
     if (chatMode === "global") globalMsgsRef.current = [];
     setError("");
     setActionFeedback([]);
@@ -907,7 +988,13 @@ CÓMO DEBES RESPONDER:
               ))}
             </div>
           )}
-          {loading && (
+          {loading && (enVivo.pasos.length > 0 || enVivo.pensando) && (
+            <EnVivo pasos={enVivo.pasos} pensando={enVivo.pensando} />
+          )}
+          {loading && enVivo.texto && (
+            <ChatMessage message={{ role: "assistant", content: enVivo.texto }} />
+          )}
+          {loading && !enVivo.texto && (
             <div style={{
               display: "flex",
               gap: "var(--sp-2)",
@@ -921,7 +1008,9 @@ CÓMO DEBES RESPONDER:
               <span style={{ display: "inline-flex", gap: 3 }}>
                 <Dot delay="0s" /><Dot delay=".2s" /><Dot delay=".4s" />
               </span>
-              <span role="status" style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)" }}>{progreso || "Pensando…"}</span>
+              <span role="status" style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)" }}>
+                {progreso || (enVivo.pasos.length ? enVivo.pasos[enVivo.pasos.length - 1] + "…" : "Pensando…")}
+              </span>
             </div>
           )}
           {error && (
@@ -1292,7 +1381,7 @@ function Contexto({ titulo, texto }) {
       color: "var(--text-dim)",
     }}>
       <summary style={{ cursor: "pointer", padding: "var(--sp-2)", minHeight: "var(--tap-sm)", display: "flex", alignItems: "center", gap: "var(--sp-1)" }}>
-        <Icon name={/^video/i.test(titulo) ? "video" : "image"} size={14} />
+        <Icon name={/^video/i.test(titulo) ? "video" : /^acciones/i.test(titulo) ? "bolt" : "image"} size={14} />
         <span>{titulo || "Adjunto"}</span>
       </summary>
       <div style={{ padding: "0 var(--sp-2) var(--sp-2)", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 260, overflowY: "auto", lineHeight: 1.5 }}>
@@ -1396,5 +1485,33 @@ function Dot({ delay }) {
       display: "inline-block",
       animation: `chatDotPulse .8s ${delay} infinite ease-in-out`,
     }} />
+  );
+}
+
+/**
+ * Lo que el asistente está haciendo mientras responde: los pasos —buscar
+ * en internet, leer un archivo del repositorio— y, plegado, el resumen
+ * de lo que va razonando. Sin esto, un turno largo era un «Pensando…»
+ * de un minuto sin ninguna pista de si avanzaba.
+ */
+function EnVivo({ pasos, pensando }) {
+  return (
+    <div style={{ width: "85%", display: "flex", flexDirection: "column", gap: "var(--sp-1)", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>
+      {pasos.map((p, i) => (
+        <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: "var(--sp-1)" }}>
+          <Icon name={i === pasos.length - 1 ? "clock" : "check"} size={12} /> {p}
+        </span>
+      ))}
+      {pensando && (
+        <details>
+          <summary style={{ cursor: "pointer", minHeight: "var(--tap-sm)", display: "flex", alignItems: "center", gap: "var(--sp-1)" }}>
+            <Icon name="brain" size={12} /> Razonando…
+          </summary>
+          <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.5, maxHeight: 200, overflowY: "auto", padding: "var(--sp-1) 0" }}>
+            {pensando}
+          </div>
+        </details>
+      )}
+    </div>
   );
 }

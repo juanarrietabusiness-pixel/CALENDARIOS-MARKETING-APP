@@ -1,82 +1,95 @@
 // ============================================================
-// El asistente — el puerto de supabase/functions/ai-chat
+// El asistente
 //
-// Ésta es la función que corrió semanas con código que no estaba en
-// ningún commit, porque el workflow sólo desplegaba `ai` y `github-adn`.
-// El síntoma no se parecía a la causa: campos que faltaban, respuestas
-// recortadas, y un diff limpio. En Cloudflare ese desajuste desaparece
-// por construcción —`wrangler deploy` sube el Worker entero, no carpeta
-// por carpeta—, pero la lección se queda escrita.
+// QUÉ CAMBIÓ Y POR QUÉ
 //
-// `thinking: disabled` va fijo y no es un descuido: el asistente
-// responde sobre un calendario que ya existe. Razonar aquí se paga del
-// mismo max_tokens que el texto y devuelve respuestas vacías con
-// stop_reason «max_tokens».
+// Era un proxy de una sola llamada: Sonnet con el razonamiento apagado,
+// 8 192 tokens de respuesta, sin streaming, y todo lo que el modelo
+// sabía tenía que venir escrito en el prompt. «Pierde información» no
+// era una impresión: lo que no cabía en el resumen del ADN no existía.
+//
+// Ahora:
+//
+//   · Opus 5.5, que razona SIEMPRE —en este modelo no se puede apagar:
+//     `thinking: disabled` es un 400— y cuya profundidad se ajusta con
+//     `effort` (AI_CHAT_ESFUERZO, «high» por defecto; el del modelo sin
+//     decir nada es «medium»). El razonamiento se paga del mismo
+//     max_tokens que la respuesta, así que el tope sube a 32 000.
+//   · Streaming de punta a punta: el Worker lee el SSE de Anthropic y le
+//     reenvía al navegador el texto según se escribe.
+//   · Un BUCLE en el servidor para las herramientas de servidor (web,
+//     repositorio de GitHub, consultas a D1: ver herramientasServidor.js).
+//     Cuando el modelo pide una herramienta del navegador —las que
+//     escriben en el calendario abierto—, el Worker termina el turno y
+//     el navegador la ejecuta y vuelve a llamar, como antes.
+//   · Caché del prompt: el sistema lleva su marca y la petición la
+//     automática, que cubre el historial. En una conversación larga el
+//     prefijo se lee de caché a una décima parte del precio.
+//
+// DOS REGLAS DE OPUS 5.5 QUE ESTO RESPETA
+//
+//   · Los bloques de razonamiento se devuelven INTACTOS dentro de un
+//     turno —firma incluida—; por eso el navegador reenvía `mensajes`
+//     tal cual los recibe. Entre turnos no se reenvían: el historial
+//     guardado es texto.
+//   · `tool_choice` forzado es un 400. No se usa.
 // ============================================================
 
-import { json, error, cuerpo } from "../lib/respuesta.js";
+import { error, cuerpo, CABECERAS_API, json } from "../lib/respuesta.js";
+import { partirSSE, crearAcumulador } from "../lib/flujoAnthropic.js";
+import { crearEjecutor, DEFINICIONES, HERRAMIENTAS_WEB, NOMBRES, describirUso } from "../lib/herramientasServidor.js";
+import { ahora, uuid } from "../lib/ids.js";
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
-const MAX_TOKENS = 8192;
-const PRESUPUESTO_MS = 120_000;
+const MAX_TOKENS = 32_000;
+const MAX_VUELTAS = 8;
+const ESFUERZOS = new Set(["low", "medium", "high", "xhigh", "max"]);
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function rutaChat(req, env) {
-  const declarado = Number(req.headers.get("content-length") ?? 0);
-  if (declarado > MAX_BODY_BYTES) return error("La petición es demasiado grande", 413);
+const INSTRUCCION_SERVIDOR = `HERRAMIENTAS QUE TIENES ADEMÁS DE LAS DEL CALENDARIO:
+· web_search y web_fetch: busca en internet y lee páginas cuando necesites datos actuales —tendencias,
+  fechas, competencia, noticias del sector—. Cita de dónde sale lo que traigas de fuera.
+· listar_repositorio y leer_archivo_repositorio: el repositorio de GitHub con el ADN de marca del
+  cliente. El contexto de abajo trae un RESUMEN; si necesitas el detalle de un documento, léelo entero.
+· ver_calendario, ver_tareas y ver_banco_ideas: consulta lo que hay guardado, de este u otro cliente
+  y de otros meses. Pide lo que necesites en vez de suponerlo.
+Antes de decir que no tienes un dato, mira si alguna de estas herramientas lo trae.`;
 
-  const body = await cuerpo(req);
-  if (!body) return error("JSON inválido");
+export const modeloChat = (env) => env.AI_CHAT_MODEL || "claude-opus-5-5";
+const esfuerzo = (env) => (ESFUERZOS.has(env.AI_CHAT_ESFUERZO) ? env.AI_CHAT_ESFUERZO : "high");
 
-  const messages = body.messages;
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return error("Falta el historial de mensajes");
-  }
+function validarMensajes(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return "Falta el historial de mensajes";
   for (const m of messages) {
-    if (!m || typeof m !== "object") return error("Mensaje inválido");
-    if (m.role !== "user" && m.role !== "assistant") return error("Rol de mensaje inválido");
-    if (typeof m.content !== "string" && !Array.isArray(m.content)) {
-      return error("Contenido de mensaje inválido");
-    }
-    if (typeof m.content === "string" && !m.content.trim()) {
-      return error("Contenido de mensaje vacío");
-    }
+    if (!m || typeof m !== "object") return "Mensaje inválido";
+    if (m.role !== "user" && m.role !== "assistant") return "Rol de mensaje inválido";
+    if (typeof m.content !== "string" && !Array.isArray(m.content)) return "Contenido de mensaje inválido";
+    if (typeof m.content === "string" && !m.content.trim()) return "Contenido de mensaje vacío";
   }
+  return null;
+}
 
-  const system = typeof body.system === "string" ? body.system : "";
-  const maxTokens = Math.min(Math.max(Number(body.maxTokens) || 4096, 256), MAX_TOKENS);
-  const tools = Array.isArray(body.tools) ? body.tools : undefined;
-  const modelo = env.AI_CHAT_MODEL || "claude-sonnet-5";
+/** Las herramientas del navegador, sin nombres que choquen con las del servidor. */
+function herramientasDelNavegador(tools) {
+  if (!Array.isArray(tools)) return [];
+  return tools
+    .filter((t) => t && typeof t.name === "string" && t.input_schema && !NOMBRES.has(t.name))
+    .slice(0, 40)
+    .map(({ name, description, input_schema }) => ({ name, description, input_schema }));
+}
 
-  if (!env.ANTHROPIC_API_KEY) {
-    return error("El servidor no tiene configurada la clave de Anthropic", 503);
-  }
-
-  const arranque = Date.now();
-  const restante = () => PRESUPUESTO_MS - (Date.now() - arranque);
-
+/**
+ * Una llamada a Anthropic. Reintenta UNA vez si falla antes de empezar
+ * a llegar nada (429, 5xx, red); a mitad del streaming no se reintenta,
+ * que ya se ha enseñado texto.
+ */
+async function abrirFlujo(env, peticion) {
   for (let intento = 0; intento <= 1; intento++) {
-    const ms = restante();
-    if (ms <= 3_000) return error("Tiempo agotado.", 504);
-
-    const abortar = new AbortController();
-    const reloj = setTimeout(() => abortar.abort(), ms);
-
-    const peticion = {
-      model: modelo,
-      max_tokens: maxTokens,
-      messages,
-      thinking: { type: "disabled" },
-    };
-    if (system) peticion.system = system;
-    if (tools?.length) peticion.tools = tools;
-
     let res;
     try {
       res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        signal: abortar.signal,
         headers: {
           "Content-Type": "application/json",
           "x-api-key": env.ANTHROPIC_API_KEY,
@@ -85,41 +98,244 @@ export async function rutaChat(req, env) {
         body: JSON.stringify(peticion),
       });
     } catch (e) {
-      clearTimeout(reloj);
-      if (abortar.signal.aborted) return error("Tiempo agotado.", 504);
-      if (intento < 1 && restante() > 10_000) { await dormir(2000); continue; }
-      return error("No se pudo contactar con el proveedor de IA", 502, e);
+      if (intento < 1) { await dormir(2000); continue; }
+      throw new Error("No se pudo contactar con el proveedor de IA", { cause: e });
     }
-    clearTimeout(reloj);
-
-    if ((res.status === 429 || res.status >= 500) && intento < 1 && restante() > 10_000) {
-      await dormir(2000);
-      continue;
-    }
-
+    if ((res.status === 429 || res.status >= 500) && intento < 1) { await dormir(2000); continue; }
     if (!res.ok) {
-      console.error("chat: error", res.status, await res.text().catch(() => ""));
-      const msg = res.status === 429
+      const cuerpoError = await res.text().catch(() => "");
+      console.error("chat: error", res.status, cuerpoError);
+      throw new Error(res.status === 429
         ? "El asistente está saturado. Inténtalo en unos segundos."
         : res.status === 401 || res.status === 403
           ? "La clave de IA del servidor no es válida."
-          : "El proveedor de IA devolvió un error.";
-      return error(msg, res.status === 429 ? 429 : 502);
+          : "El proveedor de IA devolvió un error.");
     }
-
-    const data = await res.json();
-    // Todos los bloques, no el primero: basta uno de pensamiento por
-    // delante para que `find` devuelva undefined y el texto llegue vacío.
-    const bloques = Array.isArray(data?.content) ? data.content : [];
-    const text = bloques.filter((b) => b?.type === "text").map((b) => b?.text ?? "").join("");
-
-    return json({
-      content: data?.content ?? [],
-      text,
-      model: modelo,
-      stopReason: data?.stop_reason ?? "end_turn",
-    });
+    return res;
   }
+  throw new Error("No se pudo generar la respuesta");
+}
 
-  return error("No se pudo generar la respuesta", 502);
+/** Lee un flujo SSE entero, avisando de cada trozo. */
+async function leerFlujo(res, alTrozo) {
+  const acc = crearAcumulador();
+  const lector = res.body.getReader();
+  const dec = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await lector.read();
+    if (done) break;
+    buffer += dec.decode(value, { stream: true });
+    const { eventos, resto } = partirSSE(buffer);
+    buffer = resto;
+    for (const ev of eventos) {
+      const salida = acc.consumir(ev);
+      if (salida) await alTrozo(salida);
+    }
+  }
+  if (buffer.trim()) for (const ev of partirSSE(`${buffer}\n\n`).eventos) acc.consumir(ev);
+  return acc.mensaje();
+}
+
+export async function rutaChat(req, env, { acceso, ctx } = {}) {
+  const declarado = Number(req.headers.get("content-length") ?? 0);
+  if (declarado > MAX_BODY_BYTES) return error("La petición es demasiado grande", 413);
+
+  const body = await cuerpo(req);
+  if (!body) return error("JSON inválido");
+  const invalido = validarMensajes(body.messages);
+  if (invalido) return error(invalido);
+  if (!env.ANTHROPIC_API_KEY) return error("El servidor no tiene configurada la clave de Anthropic", 503);
+
+  let clienteActual = null;
+  if (body.clienteId) {
+    clienteActual = await acceso.leerUno("clients", { id: String(body.clienteId) });
+    if (!clienteActual) return error("Cliente no encontrado", 404);
+  }
+  const ejecutor = crearEjecutor({ env, acceso, clienteActual });
+
+  const system = [{ type: "text", text: INSTRUCCION_SERVIDOR }];
+  if (typeof body.system === "string" && body.system.trim()) {
+    system.push({ type: "text", text: body.system, cache_control: { type: "ephemeral" } });
+  }
+  const tools = [
+    ...herramientasDelNavegador(body.tools),
+    ...DEFINICIONES,
+    ...(env.AI_CHAT_WEB === "no" ? [] : HERRAMIENTAS_WEB),
+  ];
+  const base = {
+    model: modeloChat(env),
+    max_tokens: MAX_TOKENS,
+    stream: true,
+    thinking: { type: "adaptive", display: "summarized" },
+    output_config: { effort: esfuerzo(env) },
+    cache_control: { type: "ephemeral" },
+    system,
+    tools,
+  };
+
+  const { readable, writable } = new TransformStream();
+  const escritor = writable.getWriter();
+  const enc = new TextEncoder();
+  let conectado = true;
+  const emitir = async (obj) => {
+    if (!conectado) return;
+    try {
+      await escritor.write(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
+    } catch {
+      // El navegador se fue. El bucle sigue hasta acabar su vuelta: lo
+      // que ya pidió a Anthropic se paga igual.
+      conectado = false;
+    }
+  };
+
+  const trabajo = (async () => {
+    const mensajes = [...body.messages];
+    const nuevos = [];
+    // Si quien preguntó cerró la pestaña a mitad, la respuesta la guarda
+    // el servidor: el mensaje del usuario ya estaba en el historial y la
+    // respuesta, pagada. Sólo cuando no queda nada por hacer en el
+    // navegador —si faltaba una herramienta suya, no hay respuesta que
+    // guardar—.
+    const guardarSiSeFue = async () => {
+      if (conectado || !clienteActual) return;
+      const texto = nuevos
+        .filter((x) => x.role === "assistant")
+        .flatMap((x) => x.content.filter((b) => b.type === "text").map((b) => b.text))
+        .join("").trim();
+      if (!texto) return;
+      await acceso.insertar("chat_messages", {
+        id: uuid(), client_id: clienteActual.id, role: "assistant", content: texto, created_at: ahora(),
+      }).catch((e) => console.error("chat: no se pudo guardar la respuesta huérfana", e));
+    };
+    const uso = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+    try {
+      for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
+        const res = await abrirFlujo(env, { ...base, messages: mensajes });
+        const m = await leerFlujo(res, async (trozo) => {
+          if (trozo.tipo === "servidor") await emitir({ t: "herramienta", texto: describirUso(trozo.nombre, trozo.entrada) });
+          else await emitir({ t: trozo.tipo, d: trozo.texto });
+        });
+        if (m.error) throw new Error(m.error.type === "overloaded_error"
+          ? "El asistente está saturado. Inténtalo en unos segundos."
+          : "El proveedor de IA cortó la respuesta.");
+        for (const k of Object.keys(uso)) uso[k] += Number(m.usage?.[k] ?? 0);
+
+        const asistente = { role: "assistant", content: m.content };
+        nuevos.push(asistente);
+        mensajes.push(asistente);
+
+        // La búsqueda web larga pausa el turno: se reenvía tal cual y sigue.
+        if (m.stop_reason === "pause_turn") continue;
+
+        if (m.stop_reason !== "tool_use") {
+          await emitir({ t: "fin", mensajes: nuevos, resultadosServidor: [], stopReason: m.stop_reason, uso, modelo: m.model });
+          await guardarSiSeFue();
+          return;
+        }
+
+        const usos = m.content.filter((b) => b.type === "tool_use");
+        const resultados = [];
+        for (const b of usos.filter((u) => ejecutor.esDelServidor(u.name))) {
+          await emitir({ t: "herramienta", texto: describirUso(b.name, b.input) });
+          resultados.push(await ejecutor.ejecutar(b));
+        }
+        if (resultados.length === usos.length) {
+          const respuesta = { role: "user", content: resultados };
+          nuevos.push(respuesta);
+          mensajes.push(respuesta);
+          continue;
+        }
+        // Hay herramientas del navegador: él las ejecuta y junta sus
+        // resultados con éstos en UN mismo mensaje, como exige la API.
+        await emitir({ t: "fin", mensajes: nuevos, resultadosServidor: resultados, stopReason: "tool_use", uso, modelo: m.model });
+        return;
+      }
+      await emitir({ t: "fin", mensajes: nuevos, resultadosServidor: [], stopReason: "limite", uso });
+    } catch (e) {
+      console.error("chat:", e);
+      await emitir({ t: "error", mensaje: e?.message || "No se pudo generar la respuesta" });
+    } finally {
+      try { await escritor.close(); } catch { /* ya cerrado */ }
+    }
+  })();
+  ctx?.waitUntil?.(trabajo);
+
+  return new Response(readable, {
+    status: 200,
+    headers: { ...CABECERAS_API, "Content-Type": "text/event-stream; charset=utf-8" },
+  });
+}
+
+// ============================================================
+// El resumen de las conversaciones largas
+//
+// El historial ya no se corta en los últimos 50 mensajes, que era
+// perder lo de hace dos semanas sin que nadie lo decidiera. Cuando pasa
+// de UMBRAL mensajes sin resumir, lo más viejo se pliega en un resumen
+// —que se guarda, y se actualiza encima del anterior— y al modelo le
+// llegan el resumen más los mensajes recientes enteros.
+// ============================================================
+
+const UMBRAL = 60;
+const RECIENTES = 20;
+
+export async function rutaResumenChat(req, env, { acceso, metodo }) {
+  const url = new URL(req.url);
+  const clienteId = metodo === "GET" ? url.searchParams.get("cliente") : (await cuerpo(req))?.clienteId;
+  if (!clienteId) return error("Falta el cliente");
+  if (!(await acceso.leerUno("clients", { id: String(clienteId) }))) return error("Cliente no encontrado", 404);
+
+  const actual = await acceso.leerUno("chat_resumenes", { id: String(clienteId) });
+  if (metodo === "GET") return json({ resumen: actual?.content ?? "", hasta: actual?.hasta ?? null });
+  if (metodo !== "POST") return error(`Método ${metodo} no permitido aquí`, 405);
+  if (!env.ANTHROPIC_API_KEY) return error("El servidor no tiene configurada la clave de Anthropic", 503);
+
+  const todos = await acceso.leer("chat_messages", { client_id: String(clienteId) }, "created_at asc");
+  const sinResumir = actual?.hasta ? todos.filter((m) => m.created_at > actual.hasta) : todos;
+  if (sinResumir.length <= UMBRAL) return json({ resumen: actual?.content ?? "", hasta: actual?.hasta ?? null });
+
+  const aPlegar = sinResumir.slice(0, sinResumir.length - RECIENTES);
+  const transcripcion = aPlegar
+    .map((m) => `${m.role === "user" ? "USUARIO" : "ASISTENTE"}: ${m.content}`)
+    .join("\n\n");
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: modeloChat(env),
+      max_tokens: 8000,
+      output_config: { effort: "low" },
+      system:
+        "Resumes conversaciones entre una agencia de marketing y su asistente de contenido. " +
+        "El resumen sustituye a los mensajes: conserva decisiones, preferencias del cliente, " +
+        "textos aprobados o rechazados y por qué, datos concretos (fechas, precios, nombres) y " +
+        "tareas pendientes. Omite saludos y lo que ya no importa. En español, en viñetas.",
+      messages: [{
+        role: "user",
+        content:
+          `${actual?.content ? `RESUMEN ANTERIOR:\n${actual.content}\n\n` : ""}` +
+          `CONVERSACIÓN A AÑADIR:\n${transcripcion}\n\nDevuelve el resumen actualizado completo.`,
+      }],
+    }),
+  });
+  if (!res.ok) {
+    console.error("resumen:", res.status, await res.text().catch(() => ""));
+    return error("No se pudo resumir la conversación", 502);
+  }
+  const data = await res.json();
+  const resumen = (data?.content ?? []).filter((b) => b?.type === "text").map((b) => b.text).join("").trim();
+  if (!resumen) return error("El resumen salió vacío", 502);
+
+  const hasta = aPlegar[aPlegar.length - 1].created_at;
+  await acceso.guardar("chat_resumenes", {
+    id: String(clienteId), client_id: String(clienteId), content: resumen, hasta,
+    created_at: actual?.created_at ?? ahora(), updated_at: ahora(),
+  });
+  return json({ resumen, hasta });
 }
