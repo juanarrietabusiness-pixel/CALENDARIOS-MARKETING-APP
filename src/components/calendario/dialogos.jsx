@@ -15,6 +15,7 @@ import { uid, compressImage } from "../../utils";
 import { CAMPOS_EXPORTABLES } from "../../lib/exportarContenido";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import Icon from "../Icon";
+import SelectorFecha from "../SelectorFecha";
 
 const CAMPOS_LABELS = { idea: "Ideas", guion: "Guiones", descripcion: "Descripciones", hashtags: "Hashtags" };
 
@@ -519,10 +520,12 @@ export function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
 export function ApprovalDialog({
   approvalUrl, whatsappMessage, onClose, onGenerate, onRevoke, onReopen,
   hasLink, shareEnabled, working, allowEditing, onToggleEditing,
+  opciones = {}, onCambiarOpciones, revisionEnviada = null, revisionRevisor = "",
 }) {
   const ref = useDialogA11y(onClose);
   const ids = useId();
   const [copied, setCopied] = useState("");
+  const [mensaje, setMensaje] = useState(opciones.mensajeCliente ?? "");
 
   const copy = (value, which) => {
     navigator.clipboard.writeText(value).then(() => {
@@ -582,11 +585,7 @@ export function ApprovalDialog({
               Las respuestas de tu cliente aparecen aquí al instante, sin recargar.
             </p>
 
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "var(--sp-3)", background: "var(--surface)", borderRadius: "var(--radius-sm)",
-              border: "1px solid var(--border)", marginBottom: "var(--sp-3)",
-            }}>
+            <div className="interruptor-fila">
               <div>
                 <span style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Permitir edición</span>
                 <p className="hint" style={{ margin: 0 }}>El cliente puede sugerir cambios a la descripción y guion.</p>
@@ -601,6 +600,60 @@ export function ApprovalDialog({
                 <span className="toggle-thumb" />
               </button>
             </div>
+
+            {/* Lo que ve el cliente en la portada de su página: la fecha
+                para revisar y un mensaje de la agencia. */}
+            <div className="field">
+              <span className="label" id={`${ids}-limite`}>Revisar antes del</span>
+              <SelectorFecha
+                value={opciones.fechaLimite || null}
+                onChange={(f) => onCambiarOpciones?.({ fechaLimite: f || "" })}
+                etiqueta="Fecha límite para que el cliente revise"
+                vacio="Sin fecha límite"
+                prefijo="Antes del"
+              />
+            </div>
+            <div className="field">
+              <label className="label" htmlFor={`${ids}-mensaje`}>Mensaje para el cliente</label>
+              <textarea
+                id={`${ids}-mensaje`}
+                className="textarea"
+                style={{ minHeight: 72 }}
+                value={mensaje}
+                maxLength={2000}
+                onChange={(e) => setMensaje(e.target.value)}
+                onBlur={() => mensaje !== (opciones.mensajeCliente ?? "") && onCambiarOpciones?.({ mensajeCliente: mensaje })}
+                placeholder="Ej.: ¡Hola! Aquí está el contenido de octubre. Cualquier cambio, pídelo en cada publicación."
+              />
+              <p className="hint">Sale en la portada de su página.</p>
+            </div>
+
+            <div className="interruptor-fila">
+              <div>
+                <span id={`${ids}-auto`} style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Programar al aprobar</span>
+                <p className="hint" style={{ margin: 0 }}>
+                  Cuando el cliente aprueba una publicación que ya tiene fecha, hora y medios, se programa sola en las
+                  redes conectadas del cliente.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-labelledby={`${ids}-auto`}
+                aria-checked={!!opciones.programarAlAprobar}
+                className={`toggle${opciones.programarAlAprobar ? " is-on" : ""}`}
+                onClick={() => onCambiarOpciones?.({ programarAlAprobar: !opciones.programarAlAprobar })}
+              >
+                <span className="toggle-thumb" />
+              </button>
+            </div>
+
+            {revisionEnviada && (
+              <p className="notice notice-ok" style={{ display: "block" }}>
+                {revisionRevisor || "El cliente"} envió su revisión el{" "}
+                {new Date(revisionEnviada).toLocaleString("es-PA", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}.
+              </p>
+            )}
 
             <div style={{ display: "flex", gap: "var(--sp-2)" }}>
               <button className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose}>Cerrar</button>

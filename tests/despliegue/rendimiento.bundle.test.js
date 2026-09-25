@@ -69,6 +69,16 @@ const css = () => archivos.filter((a) => a.nombre.endsWith(".css"));
  * que contarlo aquí castigaba justo el arreglo que el presupuesto pide.
  * Los diferidos siguen vigilados, cada uno, por «ningún chunk se desmadra».
  */
+/**
+ * El CSS que se descarga antes de pintar, igual que `jsInicial`: el de
+ * la página del cliente y el de Ajustes van en su chunk y sólo bajan al
+ * abrir esas páginas.
+ */
+const cssInicial = () => {
+  const html = readFileSync(join(DIST, "index.html"), "utf8");
+  return css().filter((a) => html.includes(`/assets/${a.nombre}`));
+};
+
 const jsInicial = () => {
   const html = readFileSync(join(DIST, "index.html"), "utf8");
   return js().filter((a) => html.includes(`/assets/${a.nombre}`));
@@ -157,14 +167,16 @@ describe("presupuesto de descarga", () => {
   });
 
   it("los estilos caben en el presupuesto", () => {
-    const total = Math.round(css().reduce((s, a) => s + a.gzip, 0) / 1024);
-    expect(total, `el CSS pesa ${total} kB comprimidos`).toBeLessThanOrEqual(PRESUPUESTO.cssGz);
+    const total = Math.round(cssInicial().reduce((s, a) => s + a.gzip, 0) / 1024);
+    expect(total, `el CSS inicial pesa ${total} kB comprimidos`).toBeLessThanOrEqual(PRESUPUESTO.cssGz);
+    // Y ningún CSS diferido se desmadra por su cuenta.
+    for (const a of css()) expect(Math.round(a.gzip / 1024), `${a.nombre}`).toBeLessThanOrEqual(PRESUPUESTO.cssGz);
   });
 
   it("la primera visita entera cabe en el presupuesto", () => {
     const html = statSync(join(DIST, "index.html")).size;
     const total = Math.round(
-      (jsInicial().reduce((s, a) => s + a.gzip, 0) + css().reduce((s, a) => s + a.gzip, 0) + gz(readFileSync(join(DIST, "index.html")))) / 1024,
+      (jsInicial().reduce((s, a) => s + a.gzip, 0) + cssInicial().reduce((s, a) => s + a.gzip, 0) + gz(readFileSync(join(DIST, "index.html")))) / 1024,
     );
     expect(html).toBeGreaterThan(0);
     expect(total, `la carga inicial suma ${total} kB comprimidos`).toBeLessThanOrEqual(PRESUPUESTO.totalInicialGz);

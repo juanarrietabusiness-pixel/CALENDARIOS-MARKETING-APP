@@ -1,7 +1,8 @@
 import { useEffect, useId, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, DEFAULT_CATEGORIES } from "../constants";
 import { uid, compressImage, createEmptyClient } from "../utils";
-import { fetchGitHubADN, extractClientADN, parseGitHubUrl } from "../api";
+import { fetchGitHubADN, extractClientADN, parseGitHubUrl, imagenDelADN } from "../api";
+import { elegirLogo, tresColores } from "../lib/colores";
 import { loadImageTemplates, saveImageTemplate, deleteImageTemplate, loadImageReferences, uploadImageReference, deleteImageReference } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
@@ -104,6 +105,13 @@ function CategoryTemplates({ savedCategories, onLoad, onSave }) {
   );
 }
 
+/** La receta del prompt maestro puede venir como objeto o como texto JSON. */
+function recetaDe(receta) {
+  if (!receta) return null;
+  if (typeof receta === "object") return receta;
+  try { return JSON.parse(receta); } catch { return null; }
+}
+
 export default function ClientModal({ initial, onSave, onDelete, onClose }) {
   const blank = createEmptyClient();
   const [form, setForm] = useState(initial ? { ...initial } : blank);
@@ -118,6 +126,10 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
   );
   const [ghStatus, setGhStatus] = useState("");
   const [ghFiles, setGhFiles] = useState([]);
+  // El logo que se encontró en el repositorio, si hay uno importable.
+  const [ghLogo, setGhLogo] = useState(null);
+  const [importandoLogo, setImportandoLogo] = useState(false);
+  const coloresReceta = tresColores(recetaDe(form.metaRecipe)?.colores ?? []);
   const [ghLoading, setGhLoading] = useState(false);
   const [adnExtracted, setAdnExtracted] = useState(null);
   const [adnSelected, setAdnSelected] = useState({});
@@ -160,6 +172,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
     instagram: "Instagram",
     sucursales: "Sucursales",
     notasInspeccion: "Notas de inspeccion",
+    estiloVisual: "Estilo visual, tipografías y paleta",
   };
 
   const ADN_TO_FORM_KEY = {
@@ -176,6 +189,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
     instagram: "instagram",
     sucursales: "sucursales",
     notasInspeccion: "notasInspeccion",
+    estiloVisual: "visualStyle",
   };
 
   const [ghReadingPath, setGhReadingPath] = useState("");
@@ -209,6 +223,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
       const result = await fetchGitHubADN(form.githubRepo, folder);
       const fileList = result.files.map((f) => ({ name: f.name, path: f.path, size: f.size, selected: true }));
       setGhFiles(fileList);
+      setGhLogo(elegirLogo(result.assets));
       setGhSubfolders(result.subfolders || []);
 
       if (fileList.length === 0 && result.subfolders?.length > 0) {
@@ -228,9 +243,11 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
           const extracted = await extractClientADN(result.content);
           setAdnExtracted(extracted);
           const sel = {};
-          Object.entries(extracted).forEach(([k, v]) => {
-            if (v) sel[k] = true;
+          Object.entries(ADN_FIELD_LABELS).forEach(([k]) => {
+            if (extracted[k]) sel[k] = true;
           });
+          if (extracted.colorPrincipal) sel.colores = true;
+          if (elegirLogo(result.assets) && !form.logo) sel.logo = true;
           setAdnSelected(sel);
           setGhStatus(`ADN analizado — ${Object.values(sel).filter(Boolean).length} campos encontrados`);
         } catch (e) {
@@ -244,16 +261,33 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
     setGhLoading(false);
   };
 
-  const applyAdnFields = () => {
+  const applyAdnFields = async () => {
     if (!adnExtracted) return;
     Object.entries(adnSelected).forEach(([key, checked]) => {
-      if (!checked || !adnExtracted[key]) return;
+      if (!checked || typeof adnExtracted[key] !== "string" || !adnExtracted[key]) return;
       const formKey = ADN_TO_FORM_KEY[key];
       if (formKey) sf(formKey, adnExtracted[key]);
     });
+    // La marca visual: los tres colores de la ficha, que son los que usan
+    // la página de aprobación, los informes y la generación de imágenes.
+    if (adnSelected.colores) {
+      if (adnExtracted.colorPrincipal) sf("primaryColor", adnExtracted.colorPrincipal);
+      if (adnExtracted.colorSecundario) sf("secondaryColor", adnExtracted.colorSecundario);
+      if (adnExtracted.colorAcento) sf("accentColor", adnExtracted.colorAcento);
+    }
+    let avisoLogo = "";
+    if (adnSelected.logo && ghLogo) {
+      setImportandoLogo(true);
+      try {
+        sf("logo", await compressImage(await imagenDelADN(form.githubRepo, ghLogo.path), 150));
+      } catch (e) {
+        avisoLogo = ` · El logo no se pudo importar: ${e.message}`;
+      }
+      setImportandoLogo(false);
+    }
     setAdnExtracted(null);
     setAdnSelected({});
-    setGhStatus("Campos aplicados al perfil");
+    setGhStatus(`Campos aplicados al perfil${avisoLogo}`);
   };
 
   const handleSave = async () => {
@@ -420,6 +454,22 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
 
             <fieldset style={{ border: "none" }}>
               <legend className="label">Colores de marca</legend>
+              {/* El prompt maestro ya trae la paleta del manual; antes se
+                  quedaba ahí y la ficha seguía con los colores por defecto. */}
+              {coloresReceta.principal && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ marginBottom: "var(--sp-2)" }}
+                  onClick={() => {
+                    sf("primaryColor", coloresReceta.principal);
+                    if (coloresReceta.secundario) sf("secondaryColor", coloresReceta.secundario);
+                    if (coloresReceta.acento) sf("accentColor", coloresReceta.acento);
+                  }}
+                >
+                  <Icon name="palette" size={16} /> Usar los colores del prompt maestro
+                </button>
+              )}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: "var(--sp-3)" }}>
                 {[
                   ["primaryColor", "Principal"],
@@ -866,6 +916,53 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
                     <Icon name="close" size={16} />
                   </button>
                 </div>
+                {(adnExtracted.colorPrincipal || ghLogo) && (
+                  <div className="adn-marca">
+                    {adnExtracted.colorPrincipal && (
+                      <label className="adn-marca-fila" data-activa={!!adnSelected.colores}>
+                        <input
+                          type="checkbox"
+                          checked={!!adnSelected.colores}
+                          onChange={() => setAdnSelected((p) => ({ ...p, colores: !p.colores }))}
+                        />
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span className="adn-marca-titulo">Colores de marca</span>
+                          <span className="adn-muestras">
+                            {[["Principal", adnExtracted.colorPrincipal], ["Secundario", adnExtracted.colorSecundario], ["Acento", adnExtracted.colorAcento]]
+                              .filter(([, hex]) => hex)
+                              .map(([nombre, hex]) => (
+                                <span key={nombre} className="adn-muestra">
+                                  <span style={{ background: hex }} aria-hidden="true" />
+                                  {nombre} <code>{hex}</code>
+                                </span>
+                              ))}
+                          </span>
+                          {adnExtracted.paleta?.length > 3 && (
+                            <span className="adn-paleta" aria-label="Paleta completa">
+                              {adnExtracted.paleta.map((c) => (
+                                <span key={c.hex} title={`${c.hex} ${c.nombre} ${c.rol}`.trim()} style={{ background: c.hex }} />
+                              ))}
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                    )}
+                    {ghLogo && (
+                      <label className="adn-marca-fila" data-activa={!!adnSelected.logo}>
+                        <input
+                          type="checkbox"
+                          checked={!!adnSelected.logo}
+                          onChange={() => setAdnSelected((p) => ({ ...p, logo: !p.logo }))}
+                        />
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span className="adn-marca-titulo">Usar como logo del cliente</span>
+                          <span style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", wordBreak: "break-all" }}>{ghLogo.path}</span>
+                          {form.logo && <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "var(--accent-alt)" }}>Se reemplazará el logo actual.</span>}
+                        </span>
+                      </label>
+                    )}
+                  </div>
+                )}
                 <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)", marginBottom: "var(--sp-3)" }}>
                   {Object.entries(ADN_FIELD_LABELS).map(([key, label]) => {
                     const value = adnExtracted[key];
@@ -919,7 +1016,9 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
                     style={{ flex: 1 }}
                     onClick={() => {
                       const all = {};
-                      Object.entries(adnExtracted).forEach(([k, v]) => { if (v) all[k] = true; });
+                      Object.keys(ADN_FIELD_LABELS).forEach((k) => { if (adnExtracted[k]) all[k] = true; });
+                      if (adnExtracted.colorPrincipal) all.colores = true;
+                      if (ghLogo) all.logo = true;
                       setAdnSelected(all);
                     }}
                   >
@@ -936,9 +1035,9 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
                     className="btn btn-primary btn-sm"
                     style={{ flex: 2 }}
                     onClick={applyAdnFields}
-                    disabled={!Object.values(adnSelected).some(Boolean)}
+                    disabled={!Object.values(adnSelected).some(Boolean) || importandoLogo}
                   >
-                    Aplicar seleccionados
+                    {importandoLogo ? "Importando el logo…" : "Aplicar seleccionados"}
                   </button>
                 </div>
               </div>

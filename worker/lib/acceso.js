@@ -68,7 +68,7 @@ export const TABLAS_CON_DUENO = Object.freeze([
  * calendario tiene dueño. Se acota por ese salto, no por columna, que es
  * lo que hacía su política RLS.
  */
-export const TABLAS_POR_CALENDARIO = Object.freeze(["approvals"]);
+export const TABLAS_POR_CALENDARIO = Object.freeze(["approvals", "comentarios_aprobacion"]);
 
 const CON_DUENO = new Set(TABLAS_CON_DUENO);
 const POR_CALENDARIO = new Set(TABLAS_POR_CALENDARIO);

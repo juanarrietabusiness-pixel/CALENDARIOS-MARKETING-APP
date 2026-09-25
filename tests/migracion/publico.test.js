@@ -83,14 +83,33 @@ describe("calendarioPorTestigo: la lista blanca es la seguridad", () => {
     expect(texto).not.toContain("owner_id");
     expect(texto).not.toContain(TESTIGO);
     expect(texto).not.toContain("SECRETO");
-    expect(Object.keys(salida.calendar.client).sort()).toEqual(["industry", "logo", "name", "primaryColor"]);
+    // Los tres colores y el Instagram: la página del cliente sale con SU
+    // marca y la vista previa con su usuario. Nada más de la ficha.
+    expect(Object.keys(salida.calendar.client).sort()).toEqual([
+      "accentColor", "industry", "instagram", "logo", "name", "primaryColor", "secondaryColor",
+    ]);
+  });
+
+  it("de cada publicación sale sólo lo que el cliente debe ver", async () => {
+    // Antes se mandaban los días enteros, con el «Comentario interno» de
+    // la agencia y la idea que se le da a la IA.
+    const cal = CAL();
+    const dias = JSON.parse(cal.days);
+    dias[0].category = "interna";
+    Object.assign(dias[0].posts[0], { comment: "NOTA INTERNA", category: "INTERNA", _originCal: "k" });
+    const salida = await calendarioPorTestigo(d1Con({ calendario: { ...cal, days: JSON.stringify(dias) } }), TESTIGO);
+    const texto = JSON.stringify(salida);
+    expect(texto).not.toContain("NOTA INTERNA");
+    expect(texto).not.toContain("Una idea");
+    expect(texto).not.toContain("INTERNA");
+    expect(salida.calendar.calendar.days[0].posts[0]).toMatchObject({ id: "p1", descripcion: "Una descripción", guion: "Un guion" });
   });
 
   it("devuelve el calendario con el JSON ya deserializado", async () => {
     const salida = await calendarioPorTestigo(d1Con({ calendario: CAL() }), TESTIGO);
     expect(salida.calendar.calendar.days[0].posts[0].id).toBe("p1");
     expect(salida.calendar.calendar.allowEditing).toBe(false);
-    expect(salida.calendar.calendar.dayLabels).toEqual({});
+    expect(salida.calendar.calendar.fechaLimite).toBe("");
   });
 
   it("mapea las aprobaciones por post_id, como hacía el jsonb_object_agg", async () => {

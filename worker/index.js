@@ -26,14 +26,14 @@
 import { json, error, noAutenticado, noEncontrado, cuerpo, CABECERAS_API } from "./lib/respuesta.js";
 import { crearAcceso } from "./lib/acceso.js";
 import { usuarioDeLaPeticion, iniciarSesion, cerrarSesion, cookieSesion, cookieBorrada } from "./lib/sesion.js";
-import { calendarioPorTestigo, enviarAprobacion, actualizarContenido, mediaPermitida } from "./lib/publico.js";
+import { calendarioPorTestigo, enviarAprobacion, actualizarContenido, mediaPermitida, comentarCliente, enviarRevision } from "./lib/publico.js";
 import { difundir } from "./lib/vivo.js";
 import { rutasDatos } from "./rutas/datos.js";
 import { rutasEquipo, rutaInvitacionPublica } from "./rutas/equipo.js";
 import { rutaIA } from "./rutas/ia.js";
 import { rutaChat, rutaResumenChat } from "./rutas/chat.js";
 import { rutaModelos, rutaConsumo, rutaGasto } from "./rutas/iaEspacio.js";
-import { rutaADN } from "./rutas/adn.js";
+import { rutaADN, rutaImagenADN } from "./rutas/adn.js";
 import { rutaGenerarImagen } from "./rutas/imagen.js";
 import { rutaAnalizarVideo } from "./rutas/video.js";
 import { rutasDrive, rutaDriveCallback } from "./rutas/drive.js";
@@ -118,6 +118,32 @@ export default {
           } catch (e) { return comoRespuesta(e); }
         }
 
+        if (partes[2] === "comentario" && metodo === "POST") {
+          const b = (await cuerpo(req)) ?? {};
+          try {
+            const r = await comentarCliente(env.DB, { ...b, token: testigo });
+            difundir(env, r.ownerId, {
+              tipo: "comentario", calId: r.calendarId, postId: r.comentario.postId,
+              por: { userId: "cliente", nombre: r.comentario.nombre, color: "#F5A623" },
+            });
+            return json({ ok: true, comentario: r.comentario });
+          } catch (e) { return comoRespuesta(e); }
+        }
+
+        // «Enviar mi revisión»: el cliente terminó. La agencia lo ve al
+        // momento, con quién la envió.
+        if (partes[2] === "revision" && metodo === "POST") {
+          const b = (await cuerpo(req)) ?? {};
+          try {
+            const r = await enviarRevision(env.DB, { token: testigo, revisor: b.revisor });
+            difundir(env, r.ownerId, {
+              tipo: "revision", calId: r.calendarId, clientId: r.clientId,
+              por: { userId: "cliente", nombre: b.revisor || "El cliente", color: "#F5A623" },
+            });
+            return json({ ok: true, fecha: r.fecha });
+          } catch (e) { return comoRespuesta(e); }
+        }
+
         if (partes[2] === "media" && metodo === "GET") {
           const clave = partes.slice(3).join("/");
           if (!(await mediaPermitida(env.DB, testigo, clave))) return noEncontrado("Archivo");
@@ -160,7 +186,8 @@ export default {
       if (partes[0] === "yo" && metodo === "GET") return json({ usuario });
 
       // ---------- 4. IA ----------
-      if (partes[0] === "adn" && metodo === "POST") return rutaADN(req, env);
+      if (partes[0] === "adn" && partes[1] === "imagen" && metodo === "POST") return rutaImagenADN(req, env);
+      if (partes[0] === "adn" && !partes[1] && metodo === "POST") return rutaADN(req, env);
 
       // ---------- 5. Tiempo real ----------
       //

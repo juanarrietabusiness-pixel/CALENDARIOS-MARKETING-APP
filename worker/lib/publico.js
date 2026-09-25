@@ -19,6 +19,7 @@
 // ============================================================
 
 import { uuid, ahora } from "./ids.js";
+import { diaParaCliente, rutasDeMedios } from "../../src/lib/publicacion.js";
 
 const MIN_TESTIGO = 24;
 const corta = (s, n) => (s == null ? null : String(s).slice(0, n));
@@ -34,7 +35,7 @@ async function calendarioVigente(db, token) {
   return db
     .prepare(
       `select id, client_id, owner_id, name, month, year, campaign, week_concepts, days,
-              visual_references, day_labels, allow_editing
+              visual_references, day_labels, allow_editing, opciones, revision_enviada, revision_revisor
          from calendars
         where share_token = ? and share_enabled = 1
           and (share_expires_at is null or share_expires_at > ?)`,
@@ -59,7 +60,7 @@ export async function calendarioPorTestigo(db, token) {
   if (!cal) return null;
 
   const cliente = await db
-    .prepare("select name, industry, primary_color, logo from clients where id = ?")
+    .prepare("select name, industry, instagram, primary_color, secondary_color, accent_color, logo from clients where id = ?")
     .bind(cal.client_id)
     .first();
   if (!cliente) return null;
@@ -85,6 +86,17 @@ export async function calendarioPorTestigo(db, token) {
     };
   }
 
+  const { results: comentarios = [] } = await db
+    .prepare("select id, post_id, autor, nombre, texto, created_at from comentarios_aprobacion where calendar_id = ? order by created_at asc")
+    .bind(cal.id)
+    .all();
+
+  // Sólo lo que el cliente debe ver, campo a campo: antes los días iban
+  // enteros y con ellos el «Comentario interno» de la agencia y la idea
+  // que se le da a la IA. Lo decide `diaParaCliente` (lista blanca).
+  let opciones = {};
+  try { opciones = JSON.parse(cal.opciones || "{}"); } catch { opciones = {}; }
+
   return {
     calendar: {
       calendar: {
@@ -94,20 +106,64 @@ export async function calendarioPorTestigo(db, token) {
         year: cal.year,
         campaign: cal.campaign,
         weekConcepts: JSON.parse(cal.week_concepts || "[]"),
-        days: JSON.parse(cal.days || "[]"),
+        days: JSON.parse(cal.days || "[]").map(diaParaCliente),
         allowEditing: cal.allow_editing === 1,
         visualReferences: JSON.parse(cal.visual_references || "[]"),
-        dayLabels: JSON.parse(cal.day_labels || "{}"),
+        fechaLimite: typeof opciones.fechaLimite === "string" ? opciones.fechaLimite : "",
+        mensaje: typeof opciones.mensajeCliente === "string" ? opciones.mensajeCliente.slice(0, 2000) : "",
+        revisionEnviada: cal.revision_enviada || null,
+        revisionRevisor: cal.revision_revisor || "",
       },
       client: {
         name: cliente.name,
         industry: cliente.industry,
+        instagram: cliente.instagram,
         primaryColor: cliente.primary_color,
+        secondaryColor: cliente.secondary_color,
+        accentColor: cliente.accent_color,
         logo: cliente.logo,
       },
     },
     approvals,
+    comentarios: comentarios.map((c) => ({
+      id: c.id, postId: c.post_id, autor: c.autor, nombre: c.nombre, texto: c.texto, fecha: c.created_at,
+    })),
   };
+}
+
+/**
+ * Un comentario del cliente en la conversación de una publicación. Va
+ * además de la aprobación: «pedir cambios» deja su motivo aquí, y la
+ * agencia contesta en el mismo hilo.
+ */
+export async function comentarCliente(db, { token, postId, texto, nombre }) {
+  if (!testigoValido(token)) throw new Error("Enlace inválido");
+  const limpio = String(texto ?? "").trim().slice(0, 2000);
+  if (!limpio) throw new Error("El comentario está vacío: inválido");
+  const cal = await calendarioVigente(db, token);
+  if (!cal) throw new Error("Enlace inválido o caducado");
+  if (typeof postId !== "string" || !perteneceAlCalendario(cal, postId)) {
+    throw new Error("El elemento no pertenece a este calendario");
+  }
+  const fila = { id: uuid(), post_id: postId, nombre: corta(nombre ?? "", 120) || "El cliente", texto: limpio, created_at: ahora() };
+  await db
+    .prepare("insert into comentarios_aprobacion (id, calendar_id, post_id, autor, nombre, texto, created_at) values (?,?,?,?,?,?,?)")
+    .bind(fila.id, cal.id, fila.post_id, "cliente", fila.nombre, fila.texto, fila.created_at)
+    .run();
+  return { ok: true, comentario: { id: fila.id, postId, autor: "cliente", nombre: fila.nombre, texto: fila.texto, fecha: fila.created_at }, calendarId: cal.id, ownerId: cal.owner_id };
+}
+
+/** «Enviar mi revisión»: el cliente terminó. Se guarda quién y cuándo. */
+export async function enviarRevision(db, { token, revisor }) {
+  if (!testigoValido(token)) throw new Error("Enlace inválido");
+  const cal = await calendarioVigente(db, token);
+  if (!cal) throw new Error("Enlace inválido o caducado");
+  const t = ahora();
+  await db
+    .prepare("update calendars set revision_enviada = ?, revision_revisor = ? where id = ?")
+    .bind(t, corta(revisor ?? "", 120) ?? "", cal.id)
+    .run();
+  return { ok: true, fecha: t, calendarId: cal.id, ownerId: cal.owner_id, clientId: cal.client_id };
 }
 
 /**
@@ -232,10 +288,12 @@ export async function mediaPermitida(db, token, clave) {
 
   // La interfaz guarda la imagen como ruta (`/api/media/<clave>`), que
   // es lo que pinta un <img>; aquí llega la clave a secas.
+  // Todos los medios de la publicación —carrusel, video, portada y la
+  // imagen de antes de una corrección—, no sólo `image`.
   const days = JSON.parse(cal.days || "[]");
   for (const dia of days) {
     for (const post of dia?.posts ?? []) {
-      if (post?.image === clave || post?.image === `/api/media/${clave}`) return true;
+      if (rutasDeMedios(post).some((r) => r === clave || r === `/api/media/${clave}`)) return true;
     }
   }
   const refs = JSON.parse(cal.visual_references || "[]");

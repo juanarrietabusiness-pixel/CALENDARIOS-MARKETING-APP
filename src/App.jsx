@@ -541,6 +541,16 @@ function Workspace({ session, ruta }) {
           setToast(`${ev.por?.nombre ?? "El cliente"} acaba de responder en el calendario.`);
           break;
 
+        case "comentario":
+          setPulso((n) => n + 1);
+          if (ev.por?.userId === "cliente") setToast(`${ev.por?.nombre ?? "El cliente"} dejó un comentario.`);
+          break;
+
+        case "revision":
+          setPulso((n) => n + 1);
+          setToast(`${ev.por?.nombre ?? "El cliente"} terminó y envió su revisión.`);
+          break;
+
         default:
           break;
       }

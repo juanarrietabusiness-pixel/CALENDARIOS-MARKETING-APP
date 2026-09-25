@@ -225,3 +225,53 @@ export async function rutaADN(req, env) {
     truncated: algoTruncado || arbolTruncado,
   });
 }
+
+// ============================================================
+// Una imagen del repositorio (el logo), para la ficha del cliente
+//
+// El ADN listaba los assets y el logo había que subirlo a mano: la
+// marca quedaba descrita pero no puesta. Esto trae UNA imagen del
+// repositorio por su ruta, con el token del servidor —el repositorio
+// puede ser privado—, y la ficha la reduce a miniatura como si se
+// hubiera subido.
+//
+// Sólo PNG, JPG y WebP: un SVG servido desde este origen es código que
+// se ejecuta con la sesión de la agencia.
+// ============================================================
+
+const IMAGEN_SEGURA = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp" };
+const MAX_IMAGEN = 5 * 1024 * 1024;
+
+export async function rutaImagenADN(req, env) {
+  const body = await cuerpo(req);
+  const parsed = parseGitHubUrl(String(body?.repoUrl ?? ""));
+  if (!parsed) return error("La URL del repositorio no es válida");
+  const ruta = decodeRuta(String(body?.path ?? "")).replace(/^\/+/, "");
+  if (!ruta || ruta.includes("..")) return error("Falta la ruta de la imagen");
+  const ext = ruta.split(".").pop().toLowerCase();
+  const tipo = IMAGEN_SEGURA[ext];
+  if (!tipo) return error("Sólo se importan imágenes PNG, JPG o WebP. Si el logo es SVG, expórtalo a PNG.");
+
+  const cabeceras = { Accept: "application/vnd.github.raw", "User-Agent": "juancito-calendarios" };
+  if (env.GITHUB_TOKEN) cabeceras.Authorization = `token ${env.GITHUB_TOKEN}`;
+  const url = `https://api.github.com/repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}` +
+    `/contents/${ruta.split("/").map(encodeURIComponent).join("/")}`;
+  let res;
+  try {
+    res = await fetch(url, { headers: cabeceras });
+  } catch (e) {
+    return error("No se pudo contactar con GitHub", 502, e);
+  }
+  if (!res.ok) return error(res.status === 404 ? `No se encontró «${ruta}» en el repositorio.` : `GitHub respondió ${res.status}.`, 502);
+  const bytes = await res.arrayBuffer();
+  if (bytes.byteLength > MAX_IMAGEN) return error("La imagen pesa más de 5 MB.", 413);
+  return new Response(bytes, {
+    status: 200,
+    headers: {
+      "Content-Type": tipo,
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": "sandbox; default-src 'none'",
+    },
+  });
+}

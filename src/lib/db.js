@@ -494,10 +494,18 @@ export async function papeleraDrive(clienteId, id) {
   return pedir(rutaDrive(clienteId, `papelera/${encodeURIComponent(id)}`), { method: "POST" });
 }
 
-/** Copia una imagen de Drive a R2 y devuelve la ruta que va en `post.image`. */
+/**
+ * Copia un archivo de Drive (imagen o video) a R2 y devuelve la ruta que
+ * va en la publicación. Se copia porque la página del cliente y Meta a la
+ * hora de publicar no pueden leer el Drive de la agencia.
+ */
 export async function imagenDeDriveParaPublicacion(clienteId, fileId) {
-  const { clave } = await pedir(rutaDrive(clienteId, "a-publicacion"), conCuerpo("POST", { fileId }));
-  return getContentBankUrl(clave);
+  return (await medioDeDrive(clienteId, fileId)).src;
+}
+
+export async function medioDeDrive(clienteId, fileId) {
+  const { clave, tipo, nombre } = await pedir(rutaDrive(clienteId, "a-publicacion"), conCuerpo("POST", { fileId }));
+  return { src: getContentBankUrl(clave), tipo: tipo === "video" ? "video" : "imagen", nombre: nombre ?? "" };
 }
 
 /** Una tanda de la migración del banco de antes a Drive. */
@@ -508,4 +516,16 @@ export async function migrarBancoADrive(clienteId) {
 /** Lo que Gemini ve y oye en un video de Drive. */
 export async function analizarVideoDrive(clienteId, fileId) {
   return avisarGasto(pedir("/ia/video", conCuerpo("POST", { drive: { clienteId, fileId } })));
+}
+
+// ------------------------------------------------------------
+// Conversación de cada publicación con el cliente
+// ------------------------------------------------------------
+
+export async function loadComentarios(calId) {
+  return (await pedir(`/calendarios/${encodeURIComponent(calId)}/comentarios`)) ?? [];
+}
+
+export async function comentarComoAgencia(calId, postId, texto) {
+  return pedir(`/calendarios/${encodeURIComponent(calId)}/comentarios`, conCuerpo("POST", { postId, texto }));
 }

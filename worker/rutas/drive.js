@@ -36,6 +36,7 @@ import { MIME_CARPETA, tipoDeArchivo } from "../../src/lib/drive.js";
 const CAMPOS_ARCHIVO = "id,name,mimeType,size,modifiedTime,thumbnailLink,imageMediaMetadata(width,height),videoMediaMetadata(durationMillis)";
 const MAX_SUBIDA = 100 * 1024 * 1024; // lo que un Worker acepta de cuerpo
 const MAX_A_PUBLICACION = 20 * 1024 * 1024;
+const MAX_VIDEO_PUBLICACION = 300 * 1024 * 1024;
 const PROFUNDIDAD_MAX = 12;
 const CARPETA_MIGRACION = "Banco de la app";
 const POR_TANDA_MIGRACION = 4;
@@ -321,21 +322,29 @@ async function rutasConSesion(req, env, { acceso, usuario, partes, metodo }) {
     });
   }
 
-  // Poner una imagen de Drive en una publicación: se copia a R2.
+  // Poner una imagen o un video de Drive en una publicación: se copia a
+  // R2. La página del cliente y Meta —que descarga el medio por URL al
+  // publicar— no pueden leer el Drive de la agencia.
   if (sub === "a-publicacion" && metodo === "POST") {
     const { fileId } = (await cuerpo(req)) ?? {};
     if (!fileId || !(await dentroDelCliente(env, acceso, raiz, String(fileId)))) return noEncontrado("Archivo");
     const meta = await drive(env, acceso, `/drive/v3/files/${encodeURIComponent(fileId)}`, { query: { fields: "name,mimeType,size" } });
-    if (!meta.mimeType?.startsWith("image/") || meta.mimeType.includes("svg")) {
-      return error("En la publicación sólo va una imagen (JPG, PNG, WebP…). Los videos se quedan en Drive.");
+    const esVideo = meta.mimeType?.startsWith("video/");
+    if ((!meta.mimeType?.startsWith("image/") && !esVideo) || meta.mimeType.includes("svg")) {
+      return error("En una publicación sólo van imágenes (JPG, PNG, WebP) o videos.");
     }
-    if (Number(meta.size ?? 0) > MAX_A_PUBLICACION) return error("La imagen pesa más de 20 MB. Redúcela antes de usarla.", 413);
+    const tope = esVideo ? MAX_VIDEO_PUBLICACION : MAX_A_PUBLICACION;
+    if (Number(meta.size ?? 0) > tope) {
+      return error(`El archivo pesa más de ${Math.round(tope / 1048576)} MB. Redúcelo antes de usarlo.`, 413);
+    }
     const res = await drive(env, acceso, `/drive/v3/files/${encodeURIComponent(fileId)}`, { query: { alt: "media" }, crudo: true });
     if (!res.ok) throw await errorDe(res);
-    const ext = ({ "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/heic": "heic" })[meta.mimeType] ?? "jpg";
+    const EXT = { "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/heic": "heic", "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm" };
+    const ext = EXT[meta.mimeType] ?? (esVideo ? "mp4" : "jpg");
     const clave = `clientes/${clienteId}/drive/${uuid()}.${ext}`;
-    await env.MEDIA.put(clave, await res.arrayBuffer(), { httpMetadata: { contentType: meta.mimeType } });
-    return json({ clave, nombre: meta.name }, 201);
+    // Los videos van en flujo: cargarlos enteros en memoria no cabe en un Worker.
+    await env.MEDIA.put(clave, esVideo ? res.body : await res.arrayBuffer(), { httpMetadata: { contentType: meta.mimeType } });
+    return json({ clave, nombre: meta.name, tipo: esVideo ? "video" : "imagen" }, 201);
   }
 
   // Pasar el banco de antes (R2) a Drive, por tandas: el navegador repite

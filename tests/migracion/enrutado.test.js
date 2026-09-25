@@ -856,12 +856,26 @@ describe("Google Drive como banco de contenido", () => {
     expect((await res.json()).error).toMatch(/Ajustes/);
   });
 
-  it("poner un video en una publicación se rechaza: sólo imágenes", async () => {
-    googleFalso({ clip: { mimeType: "video/mp4", parents: [RAIZ] } });
+  it("un video de Drive también va a la publicación (reels e historias), copiado a R2", async () => {
+    googleFalso({ clip: { mimeType: "video/mp4", parents: [RAIZ], contenido: "MP4" } });
+    const env = await conDrive();
     const res = await worker.fetch(conSesion("/api/drive/clientes/cliente-1/a-publicacion", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileId: "clip" }),
-    }), await conDrive());
-    expect(res.status).toBe(400);
+    }), env);
+    expect(res.status).toBe(201);
+    const r = await res.json();
+    expect(r.tipo).toBe("video");
+    expect(r.clave).toMatch(/\.mp4$/);
+  });
+
+  it("un PDF o un SVG de Drive no va a una publicación", async () => {
+    googleFalso({ doc: { mimeType: "application/pdf", parents: [RAIZ] }, svg: { mimeType: "image/svg+xml", parents: [RAIZ] } });
+    for (const fileId of ["doc", "svg"]) {
+      const res = await worker.fetch(conSesion("/api/drive/clientes/cliente-1/a-publicacion", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileId }),
+      }), await conDrive());
+      expect(res.status).toBe(400);
+    }
   });
 
   it("una imagen de Drive en una publicación se COPIA a R2 y devuelve su clave", async () => {
