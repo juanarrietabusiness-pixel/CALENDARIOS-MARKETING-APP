@@ -23,6 +23,7 @@
 
 import { crearAcceso, cuentasSinFoto } from "./acceso.js";
 import { graph, descifrarMeta } from "./meta.js";
+import { tokenTikTok, usuarioTikTok, videosTikTok } from "./tiktok.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 
 const DIAS_PUBLICACIONES = 45;
@@ -178,7 +179,7 @@ async function publicacionesFB(env, token, pagina, desde) {
  * cliente. Devuelve la fila de la cuenta.
  */
 export async function fotografiarCuenta(env, acceso, cuenta, fecha = fechaDeFoto()) {
-  const token = await descifrarMeta(env, cuenta.token_cifrado);
+  const token = cuenta.red === "tiktok" ? await tokenTikTok(env, acceso, cuenta) : await descifrarMeta(env, cuenta.token_cifrado);
   const desde = Date.now() - DIAS_PUBLICACIONES * 86400_000;
   let base = {};
   let dia = {};
@@ -194,6 +195,26 @@ export async function fotografiarCuenta(env, acceso, cuenta, fecha = fechaDeFoto
     base = (await intentar(() => graph(env, token, `/${cuenta.externo_id}`, { params: { fields: "followers_count,fan_count" } }))) ?? {};
     dia = await metricasDelDiaFB(env, token, cuenta.externo_id, fecha);
     publicaciones = await publicacionesFB(env, token, cuenta.externo_id, desde);
+  } else if (cuenta.red === "tiktok") {
+    // TikTok no da métricas por día de la cuenta: seguidores y totales,
+    // y de cada video sus vistas, me gusta, comentarios y compartidos.
+    const u = (await intentar(() => usuarioTikTok(token))) ?? {};
+    base = { followers_count: u.follower_count, media_count: u.video_count };
+    datos = { meGustaTotales: num(u.likes_count) };
+    publicaciones = ((await intentar(() => videosTikTok(token, 20))) ?? [])
+      .filter((v) => Number(v.create_time) * 1000 >= desde)
+      .map((v) => {
+        const meGusta = num(v.like_count) ?? 0;
+        const comentarios = num(v.comment_count) ?? 0;
+        const compartidos = num(v.share_count) ?? 0;
+        return {
+          externo_id: String(v.id), tipo: "video", enlace: v.share_url ?? "",
+          texto: String(v.video_description || v.title || "").slice(0, 300), miniatura: v.cover_image_url ?? "",
+          publicada_at: new Date(Number(v.create_time) * 1000).toJSON(),
+          me_gusta: meGusta, comentarios, guardados: 0, compartidos, alcance: 0, vistas: num(v.view_count) ?? 0,
+          interacciones: meGusta + comentarios + compartidos,
+        };
+      });
   }
 
   // Si ni siquiera llegaron los seguidores, el token no vale: se deja sin

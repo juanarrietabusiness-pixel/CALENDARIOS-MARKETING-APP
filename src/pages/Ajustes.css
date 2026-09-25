@@ -181,3 +181,6 @@
   .cuentas-sociales li { grid-template-columns: auto 1fr; }
   .cuentas-sociales-cliente { grid-column: 1 / -1; }
 }
+.tiktok-fila { grid-template-columns: 1fr auto auto; }
+.tiktok-acciones { display: flex; gap: var(--sp-1); flex-wrap: wrap; justify-content: flex-end; grid-column: 2 / -1; }
+@media (max-width: 599px) { .tiktok-fila { grid-template-columns: 1fr; } .tiktok-acciones { grid-column: 1; justify-content: flex-start; } }

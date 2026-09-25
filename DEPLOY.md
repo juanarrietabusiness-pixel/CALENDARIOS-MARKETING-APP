@@ -104,6 +104,8 @@ Ahora que el Worker existe, ya tiene dónde guardarlas.
 | `META_APP_ID` | El identificador de la app de Meta | Ver «Instagram y Facebook» abajo |
 | `META_APP_SECRET` | Su clave secreta | Ver «Instagram y Facebook» abajo |
 | `META_CONFIG_ID` | El ID de configuración del inicio de sesión | Ver «Instagram y Facebook» abajo |
+| `TIKTOK_CLIENT_KEY` | La Client key de la app de TikTok | Ver «TikTok» abajo |
+| `TIKTOK_CLIENT_SECRET` | Su Client secret | Ver «TikTok» abajo |
 
 El `GITHUB_TOKEN` es para leer el ADN de marca de los repositorios de los
 clientes. Con permiso de lectura de repositorios basta; no necesita
@@ -171,6 +173,31 @@ Una vez, con el Facebook de la AGENCIA (el que administra las páginas):
 Cada Instagram tiene que ser **profesional** (empresa o creador) y estar
 vinculado a su página de Facebook. Un cliente nuevo da acceso a la agencia
 como **socio** desde su Business Suite; después, **Actualizar cuentas**.
+
+### TikTok
+
+Una vez, con la cuenta de TikTok de la AGENCIA:
+
+1. developers.tiktok.com → **Manage apps → Connect an app**.
+2. Productos: **Login Kit** y **Content Posting API** (con «Direct Post» si
+   se quiere publicar sin pasar por la bandeja del cliente).
+3. En Login Kit, *Redirect URI*: la que enseña la app en **Ajustes →
+   Integraciones** (`https://<dominio>/api/redes/tiktok/callback`).
+4. Permisos: `user.info.basic`, `user.info.profile`, `user.info.stats`,
+   `video.list`, `video.upload`, `video.publish`. Política de privacidad:
+   `https://<dominio>/privacidad`.
+5. Pegar aquí `TIKTOK_CLIENT_KEY` y `TIKTOK_CLIENT_SECRET` (tipo *Secret*).
+6. Hasta que TikTok revise la app, funciona en **Sandbox**: añadir ahí las
+   cuentas de los clientes como usuarios de prueba (hasta 10). Para más,
+   enviarla a revisión desde el mismo panel.
+
+Cada cliente se conecta aparte (en TikTok no hay un usuario de agencia que
+vea todas): **Conectar aquí** si la agencia tiene su acceso, o **Enlace para
+el cliente**, que el cliente abre en su teléfono (vale una semana).
+
+Por defecto los videos van a la **bandeja de TikTok del cliente** (modo
+Borrador) y se publican desde la app con un toque. En modo **Directo**
+salen publicados, pero **en privado** hasta que TikTok audite la app.
 
 **La programación la cumple el cron** (`triggers` en `wrangler.jsonc`,
 cada minuto): la app no tiene que estar abierta. Instagram admite 50

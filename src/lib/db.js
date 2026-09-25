@@ -625,3 +625,24 @@ export async function borrarInforme(id) {
 export async function informePublico(testigo) {
   return pedir(`/publico-informe/${encodeURIComponent(testigo)}`);
 }
+
+// ------------------------------------------------------------
+// TikTok: una conexión por cliente
+// ------------------------------------------------------------
+
+/** Conectar aquí es NAVEGAR a TikTok (con la cuenta del cliente). */
+export const urlConectarTikTok = (clientId) => `/api/redes/tiktok/conectar?cliente=${encodeURIComponent(clientId)}`;
+
+/** El enlace para que el cliente conecte su TikTok desde su teléfono (vale una semana). */
+export async function enlaceTikTok(clientId) {
+  return pedir("/redes/tiktok/enlace", conCuerpo("POST", { clientId }));
+}
+
+export async function desconectarTikTok(cuentaId) {
+  return pedir("/redes/tiktok/desconectar", conCuerpo("POST", { cuentaId }));
+}
+
+/** «borrador» (a la bandeja del cliente) o «directo». */
+export async function modoTikTok(cuentaId, modo) {
+  return pedir(`/redes/cuentas/${encodeURIComponent(cuentaId)}`, conCuerpo("PUT", { modo }));
+}

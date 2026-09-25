@@ -37,7 +37,7 @@ import { rutaADN, rutaImagenADN } from "./rutas/adn.js";
 import { rutaGenerarImagen } from "./rutas/imagen.js";
 import { rutaAnalizarVideo } from "./rutas/video.js";
 import { rutasDrive, rutaDriveCallback } from "./rutas/drive.js";
-import { rutasRedes, rutasPublicar, rutaMetaCallback, rutaMedioPublico } from "./rutas/redes.js";
+import { rutasRedes, rutasPublicar, rutaMetaCallback, rutaMedioPublico, rutaTikTokPublica } from "./rutas/redes.js";
 import { procesarCola, programarAlAprobar, cancelarPendientes } from "./lib/publicador.js";
 import { rutasMetricas } from "./rutas/metricas.js";
 import { fotoPendiente } from "./lib/metricas.js";
@@ -187,6 +187,11 @@ export default {
       // Y la de Facebook, igual.
       if (partes[0] === "redes" && partes[1] === "meta" && partes[2] === "callback" && metodo === "GET") {
         return rutaMetaCallback(req, env);
+      }
+      // TikTok: la vuelta, y el enlace con el que el CLIENTE conecta su
+      // cuenta desde su teléfono. Los dos sin sesión: la identidad va firmada.
+      if (partes[0] === "redes" && partes[1] === "tiktok" && (partes[2] === "callback" || partes[2] === "inicio") && metodo === "GET") {
+        return rutaTikTokPublica(req, env, partes);
       }
       // Lo que Meta descarga al publicar: Meta no tiene sesión. Abre sólo
       // el archivo que dice el testigo firmado. Ver worker/rutas/redes.js.

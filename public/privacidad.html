@@ -49,6 +49,7 @@
       <li>De los clientes de la agencia: la ficha de marca, los calendarios, las publicaciones, las tareas
         y las conversaciones con el asistente.</li>
       <li>Las respuestas que deja un cliente en la página de aprobación de su calendario.</li>
+      <li>Las estadísticas diarias de las cuentas de redes sociales conectadas y los informes mensuales.</li>
     </ul>
     <p>Todo se guarda en la infraestructura de Cloudflare (base de datos D1 y almacenamiento R2).</p>
 
@@ -78,12 +79,48 @@
       usuario de los servicios de las API de Google</a>, incluidos los requisitos de uso limitado.
     </p>
 
+    <h2>Instagram y Facebook (Meta)</h2>
+    <p>
+      La aplicación se conecta a Meta con la cuenta de Facebook de la agencia, y sólo cuando el
+      administrador lo autoriza. Usa las páginas de Facebook y las cuentas profesionales de Instagram que
+      esa cuenta gestiona para:
+    </p>
+    <ul>
+      <li>publicar y programar las publicaciones que la agencia prepara y el cliente aprueba;</li>
+      <li>poner el primer comentario de una publicación;</li>
+      <li>leer las estadísticas de la cuenta y de sus publicaciones (seguidores, alcance, interacciones y
+        datos agregados de la audiencia) para los resultados y los informes mensuales;</li>
+      <li>consultar datos públicos de cuentas profesionales de la competencia que el cliente indique.</li>
+    </ul>
+    <p>
+      Los permisos se guardan cifrados en el servidor y nunca llegan al navegador. Se retiran desde la
+      aplicación (Ajustes → Integraciones → Desconectar) o desde la configuración de Facebook
+      («Integraciones comerciales»). Para que Meta descargue una imagen o un video al publicar, se crea un
+      enlace temporal que sólo abre ese archivo y caduca en tres días.
+    </p>
+
+    <h2>TikTok</h2>
+    <p>
+      Cada cliente conecta su propia cuenta de TikTok, y sólo si quiere. Con ese permiso la aplicación:
+    </p>
+    <ul>
+      <li>envía los videos preparados a la bandeja de borradores de su cuenta, o los publica si así se
+        configuró;</li>
+      <li>lee sus datos básicos de perfil y las estadísticas de su cuenta y de sus videos (seguidores,
+        vistas, me gusta, comentarios y compartidos) para los resultados y los informes.</li>
+    </ul>
+    <p>
+      Los permisos se guardan cifrados en el servidor. El cliente puede retirarlos en cualquier momento
+      desde la aplicación de TikTok (Configuración → Seguridad → Apps y servicios) o pidiéndolo a la
+      agencia.
+    </p>
+
     <h2>Inteligencia artificial</h2>
     <p>
       Para redactar contenido, la aplicación envía a Anthropic (Claude) el texto necesario de cada
-      petición. Para generar imágenes y analizar videos usa Google Gemini, y sólo le envía el archivo o la
-      descripción de esa petición. Ninguno de los dos recibe el acceso a Drive ni los datos de acceso de
-      nadie.
+      petición —también las cifras de un mes para escribir el análisis del informe—. Para generar imágenes
+      y analizar videos usa Google Gemini, y sólo le envía el archivo o la descripción de esa petición.
+      Ninguno de los dos recibe el acceso a Drive, a Meta o a TikTok, ni los datos de acceso de nadie.
     </p>
 
     <h2>Qué NO se hace</h2>

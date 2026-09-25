@@ -132,6 +132,7 @@ src/
     SeccionPresupuesto.jsx  Ajustes → presupuesto, qué pasa al llegar, consumo por día/cliente
     SeccionDrive.jsx      Ajustes → Integraciones: conectar Google Drive
     SeccionMeta.jsx       Ajustes → Integraciones: conectar Meta y asignar cuentas
+    SeccionTikTok.jsx     Ajustes → Integraciones: TikTok de cada cliente y su modo
     SeccionInformes.jsx   Resultados → informes mensuales: generar, revisar, compartir
     InformeVista.jsx      El informe como documento (claro, con la marca, imprimible)
     Graficas.jsx          Línea y barras en SVG, sin librería
@@ -170,7 +171,8 @@ worker/
                           «¿está dentro de la carpeta del cliente?»
     firmas.js             Cifrar y firmar con el secreto de una integración (HKDF)
     meta.js               OAuth de Meta, cliente de la Graph API, cuentas, medios firmados
-    publicador.js         La cola: programar, procesar (Instagram/Facebook), reintentos
+    publicador.js         La cola: programar, procesar (Instagram/Facebook/TikTok), reintentos
+    tiktok.js             OAuth de TikTok por cliente, tokens que se renuevan, subida en trozos
     metricas.js           La foto diaria de métricas de cada cuenta y de la competencia
     informes.js           Cifras del mes (congeladas) + análisis de la IA; el del día 1
     herramientasServidor.js  Lo que el asistente consulta sin el navegador:
@@ -966,6 +968,20 @@ son del servidor.
   `img-src 'self'`. Pasan por `/api/metricas/miniatura`, que sólo sirve
   imágenes de `*.cdninstagram.com` y `*.fbcdn.net`. Ampliar la CSP a esos
   dominios sería abrir la puerta a cualquier imagen de Meta.
+- **TikTok no es Meta: una conexión POR CLIENTE.** No hay un usuario de
+  agencia que vea todas las cuentas; cada una se conecta entrando con
+  ella. Por eso existe el enlace firmado para el cliente
+  (`/api/redes/tiktok/inicio/<firmado>`, sin sesión, una semana), que
+  abre el permiso en SU teléfono y deja la cuenta en SU ficha. El token
+  de acceso dura 24 horas: `tokenTikTok()` lo renueva y GUARDA el nuevo
+  (TikTok puede cambiar también el de renovación; perderlo obliga a
+  reconectar). Sin auditar, la publicación directa sale en privado: el
+  modo por defecto es Borrador, que llega a la bandeja del cliente.
+- **A TikTok el video se le SUBE, en trozos, desde R2.** Que lo descargue
+  de una URL exige verificar el dominio, y en workers.dev no se puede.
+  Cada trozo es un rango de R2 que pasa tal cual (sin cargarlo en
+  memoria). El `publish_id` se guarda sólo cuando la subida terminó: a
+  partir de ahí nunca se abre otra, que sería un segundo video.
 - **Las cifras del informe NO las escribe la IA.** Las calcula
   `src/lib/resultados.js` —el mismo código que la pestaña Resultados— y
   se CONGELAN en `informes.contenido`; la IA sólo escribe el análisis con
