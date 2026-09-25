@@ -106,3 +106,4 @@
 .dialogo-informe-cabecera h2 { flex: 1; font-size: var(--fs-md); margin: 0; }
 .dialogo-informe .informe { border-radius: 0; }
 @media print { .dialogo-informe { max-height: none; overflow: visible; } }
+.resultados-problemas { list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-2xs); overflow-wrap: anywhere; }

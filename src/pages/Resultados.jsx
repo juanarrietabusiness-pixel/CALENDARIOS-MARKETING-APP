@@ -142,6 +142,15 @@ export default function Resultados({ client, pulso = 0, onPersistClient }) {
   }
 
   const sinFotos = datos && !datos.serie.some((f) => !f.error);
+  // La última foto de cada cuenta: si Meta no dejó leer sus publicaciones
+  // o la foto falló entera, se dice aquí en vez de enseñar ceros.
+  const ultimas = new Map();
+  for (const f of datos?.serie ?? []) ultimas.set(f.cuentaId, f);
+  const problemas = [...ultimas.values()].filter((f) => f.error || f.avisoPublicaciones).map((f) => {
+    const c = datos.cuentas.find((x) => x.id === f.cuentaId);
+    const nombre = `${REDES[f.red]?.nombre ?? f.red} ${c?.usuario ? `@${c.usuario}` : c?.nombre ?? ""}`.trim();
+    return { id: f.cuentaId, texto: f.error ? `${nombre}: no se pudo medir (${f.error})` : `${nombre}: Meta no dejó leer sus publicaciones (${f.avisoPublicaciones})` };
+  });
 
   return (
     <div className="resultados">
@@ -169,6 +178,11 @@ export default function Resultados({ client, pulso = 0, onPersistClient }) {
       </div>
       <div role="status" aria-live="polite">{actualizando && <p className="hint">{actualizando}</p>}</div>
       {fallo && <p role="alert" className="notice notice-error">{fallo}</p>}
+      {problemas.length > 0 && (
+        <ul className="notice notice-warn resultados-problemas" aria-label="Cuentas con datos incompletos">
+          {problemas.map((p) => <li key={p.id}>{p.texto}</li>)}
+        </ul>
+      )}
 
       {sinFotos ? (
         <p className="notice notice-warn">
