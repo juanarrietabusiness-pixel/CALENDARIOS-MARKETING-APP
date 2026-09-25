@@ -12,11 +12,14 @@
 // come el tiempo de CPU del Worker. La subida es un `fetch` con los
 // bytes tal cual.
 //
-// Sólo videos que ya están en R2 y son de un cliente de este espacio:
-// la clave se comprueba igual que en /api/media.
+// Sólo videos de un cliente de este espacio: los de R2 se comprueban
+// por la clave, igual que en /api/media; los de Drive, subiendo por sus
+// carpetas hasta la del cliente (worker/rutas/drive.js).
 // ============================================================
 
 import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
+import { bloqueoPorPresupuesto, registrarConsumoGemini } from "../lib/configIA.js";
+import { leerDeDrive, respuestaDeFallo as respuestaDeFalloDrive } from "../lib/google.js";
 
 const API = "https://generativelanguage.googleapis.com";
 const MAX_BYTES = 80 * 1024 * 1024;
@@ -44,25 +47,53 @@ export async function rutaAnalizarVideo(req, env, { acceso }) {
     return error("El servidor no tiene configurada la clave de Google AI, que es la que lee los videos", 503);
   }
 
-  const { clave } = (await cuerpo(req)) ?? {};
-  const m = /^clientes\/([^/]+)\//.exec(String(clave ?? ""));
-  if (!m || String(clave).includes("..")) return error("Falta la clave del video");
-  if (!(await acceso.leerUno("clients", { id: m[1] }))) return noEncontrado("Archivo");
+  const pedido = (await cuerpo(req)) ?? {};
+  const pesado = (tamano) => error(
+    `El video pesa ${Math.round(tamano / 1048576)} MB; el máximo para analizarlo es ${MAX_BYTES / 1048576} MB.`, 413,
+  );
 
-  const objeto = await env.MEDIA.get(clave);
-  if (!objeto) return noEncontrado("Archivo");
-  if (objeto.size > MAX_BYTES) {
-    return error(`El video pesa ${Math.round(objeto.size / 1048576)} MB; el máximo para analizarlo es ${MAX_BYTES / 1048576} MB.`, 413);
+  // Dos orígenes: el banco de antes (una clave de R2) o Google Drive
+  // (cliente + id del archivo, que se comprueba dentro de su carpeta).
+  let bytes, tipo, nombre, clienteId;
+  if (pedido.drive) {
+    clienteId = String(pedido.drive.clienteId ?? "");
+    const fileId = String(pedido.drive.fileId ?? "");
+    if (!clienteId || !fileId) return error("Falta el video de Drive");
+    const bloqueo = await bloqueoPorPresupuesto(acceso);
+    if (bloqueo) return error(bloqueo, 402);
+    let leido;
+    try {
+      leido = await leerDeDrive(env, acceso, clienteId, fileId, { maxBytes: MAX_BYTES });
+    } catch (e) {
+      return respuestaDeFalloDrive(e);
+    }
+    if (!leido) return noEncontrado("Archivo");
+    if (leido.demasiado) return pesado(leido.demasiado);
+    ({ bytes, nombre } = leido);
+    tipo = leido.mime || "video/mp4";
+  } else {
+    const { clave } = pedido;
+    const m = /^clientes\/([^/]+)\//.exec(String(clave ?? ""));
+    if (!m || String(clave).includes("..")) return error("Falta la clave del video");
+    if (!(await acceso.leerUno("clients", { id: m[1] }))) return noEncontrado("Archivo");
+    clienteId = m[1];
+    const bloqueo = await bloqueoPorPresupuesto(acceso);
+    if (bloqueo) return error(bloqueo, 402);
+
+    const objeto = await env.MEDIA.get(clave);
+    if (!objeto) return noEncontrado("Archivo");
+    if (objeto.size > MAX_BYTES) return pesado(objeto.size);
+    tipo = objeto.httpMetadata?.contentType || "video/mp4";
+    nombre = clave.split("/").pop();
+    bytes = await objeto.arrayBuffer();
   }
 
-  const tipo = objeto.httpMetadata?.contentType || "video/mp4";
   if (!tipo.startsWith("video/")) return error("Ese archivo no es un video");
   const mime = MIME[tipo] ?? tipo;
 
   const arranque = Date.now();
   const restante = () => PRESUPUESTO_MS - (Date.now() - arranque);
   const cabeceras = { "x-goog-api-key": env.GOOGLE_AI_KEY };
-  const bytes = await objeto.arrayBuffer();
 
   // 1. Abrir la subida y 2. mandar los bytes.
   const inicio = await fetch(`${API}/upload/v1beta/files`, {
@@ -75,7 +106,7 @@ export async function rutaAnalizarVideo(req, env, { acceso }) {
       "X-Goog-Upload-Header-Content-Length": String(bytes.byteLength),
       "X-Goog-Upload-Header-Content-Type": mime,
     },
-    body: JSON.stringify({ file: { display_name: clave.split("/").pop() } }),
+    body: JSON.stringify({ file: { display_name: nombre } }),
   });
   const urlSubida = inicio.headers.get("x-goog-upload-url");
   if (!inicio.ok || !urlSubida) return fallo("abrir la subida", inicio);
@@ -121,6 +152,10 @@ export async function rutaAnalizarVideo(req, env, { acceso }) {
     if (!res.ok) return fallo("analizar el video", res);
 
     const data = await res.json();
+    await registrarConsumoGemini(acceso, {
+      funcion: "análisis de video", modelo: env.GEMINI_VIDEO_MODEL || "gemini-2.5-flash",
+      meta: data?.usageMetadata, clienteId,
+    });
     const analisis = (data?.candidates?.[0]?.content?.parts ?? [])
       .map((p) => p?.text ?? "").join("").trim();
     if (!analisis) return error("Google AI no devolvió ningún análisis del video.", 422);

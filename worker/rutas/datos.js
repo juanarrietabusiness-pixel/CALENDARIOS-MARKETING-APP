@@ -27,7 +27,7 @@ import { uuid, testigo, ahora } from "../lib/ids.js";
 import { difundir, firma } from "../lib/vivo.js";
 import { tareasParaPurgar, terminadasBorrables, MODOS_PURGA } from "../lib/tareas.js";
 import { fechaEnZona, debeReabrirse, esFecha } from "../../src/lib/agenda.js";
-import { leerConfigIA, MODELOS_ELEGIBLES, RAZONAMIENTOS } from "../lib/configIA.js";
+import { leerConfigIA, MODELOS_ELEGIBLES, RAZONAMIENTOS, ACCIONES_LIMITE } from "../lib/configIA.js";
 
 const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe"];
 const JSON_CALENDARIOS = ["week_concepts", "days", "visual_references", "day_labels"];
@@ -162,8 +162,23 @@ export async function rutasDatos(req, env, ctx) {
         if (!(datos.purga_tareas in MODOS_PURGA)) return error("Modo de borrado inválido");
         cambios.purga_tareas = datos.purga_tareas;
       }
-      if ("ia_modelo" in datos || "ia_razonamiento" in datos) {
+      const CAMPOS_ADMIN = ["ia_modelo", "ia_razonamiento", "ia_razonamiento_chat", "presupuesto_usd", "al_limite"];
+      if (CAMPOS_ADMIN.some((c) => c in datos)) {
         if (ctx.usuario?.rol !== "admin") return error("Sólo el administrador cambia la configuración de la IA", 403);
+        if ("ia_razonamiento_chat" in datos) {
+          const v = datos.ia_razonamiento_chat;
+          if (v !== null && !(v in RAZONAMIENTOS)) return error("Nivel del asistente inválido");
+          cambios.ia_razonamiento_chat = v;
+        }
+        if ("presupuesto_usd" in datos) {
+          const v = Number(datos.presupuesto_usd);
+          if (!Number.isFinite(v) || v < 0 || v > 100_000) return error("Presupuesto inválido");
+          cambios.presupuesto_usd = Math.round(v * 100) / 100;
+        }
+        if ("al_limite" in datos) {
+          if (!ACCIONES_LIMITE.includes(datos.al_limite)) return error("Acción al límite inválida");
+          cambios.al_limite = datos.al_limite;
+        }
         if ("ia_modelo" in datos) {
           if (!MODELOS_ELEGIBLES.includes(datos.ia_modelo)) return error("Modelo inválido");
           cambios.ia_modelo = datos.ia_modelo;

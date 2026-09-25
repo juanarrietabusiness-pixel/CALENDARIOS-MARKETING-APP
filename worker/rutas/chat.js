@@ -23,7 +23,12 @@
 //     el navegador la ejecuta y vuelve a llamar, como antes.
 //   · Caché del prompt: el sistema lleva su marca y la petición la
 //     automática, que cubre el historial. En una conversación larga el
-//     prefijo se lee de caché a una décima parte del precio.
+//     prefijo se lee de caché a una décima parte del precio. PERO la
+//     caché dura cinco minutos y escribirla cuesta 1,25×: el consumo real
+//     mostró tres mensajes separados por horas que escribieron 49 000
+//     tokens de caché y no leyeron ninguno. Por eso sólo se marca cuando
+//     la conversación va seguida (`seguido`, que manda el navegador) o
+//     a partir de la segunda vuelta del bucle, que sí la va a leer.
 //
 // DOS REGLAS DE LOS MODELOS ACTUALES QUE ESTO RESPETA
 //
@@ -51,7 +56,7 @@
 
 import { error, cuerpo, CABECERAS_API, json } from "../lib/respuesta.js";
 import { abrirFlujo, leerFlujo, esRechazoDeModelo, esRechazoDeWeb, mensajeDeRechazo, RechazoAnthropic, textoDe } from "../lib/anthropic.js";
-import { leerConfigIA, resolverIA, registrarConsumo, MODELO_SONNET, etiquetaModelo } from "../lib/configIA.js";
+import { prepararIA, registrarConsumo, MODELO_SONNET, etiquetaModelo } from "../lib/configIA.js";
 import { crearEjecutor, DEFINICIONES, HERRAMIENTAS_WEB, NOMBRES, describirUso } from "../lib/herramientasServidor.js";
 import { ahora, uuid } from "../lib/ids.js";
 
@@ -105,13 +110,20 @@ export async function rutaChat(req, env, { acceso, ctx } = {}) {
     clienteActual = await acceso.leerUno("clients", { id: String(body.clienteId) });
     if (!clienteActual) return error("Cliente no encontrado", 404);
   }
+  const ia = await prepararIA(env, acceso, { para: "chat" });
+  if (ia.bloqueo) return error(ia.bloqueo, 402);
   const ejecutor = crearEjecutor({ env, acceso, clienteActual });
-  const ia = await resolverIA(env, await leerConfigIA(acceso));
 
+  const cachear = body.seguido === true;
   const system = [{ type: "text", text: INSTRUCCION_SERVIDOR }];
   if (typeof body.system === "string" && body.system.trim()) {
-    system.push({ type: "text", text: body.system, cache_control: { type: "ephemeral" } });
+    system.push({ type: "text", text: body.system });
   }
+  const conCache = (peticion) => ({
+    ...peticion,
+    cache_control: { type: "ephemeral" },
+    system: peticion.system.map((b, i, todos) => (i === todos.length - 1 ? { ...b, cache_control: { type: "ephemeral" } } : b)),
+  });
   const tools = [
     ...herramientasDelNavegador(body.tools),
     ...DEFINICIONES,
@@ -122,7 +134,6 @@ export async function rutaChat(req, env, { acceso, ctx } = {}) {
     max_tokens: MAX_TOKENS,
     thinking: { type: "adaptive", display: "summarized" },
     output_config: { effort: ia.esfuerzo },
-    cache_control: { type: "ephemeral" },
     system,
     tools,
   };
@@ -197,9 +208,17 @@ export async function rutaChat(req, env, { acceso, ctx } = {}) {
       }).catch((e) => console.error("chat: no se pudo guardar la respuesta huérfana", e));
     };
     const uso = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+    let busquedas = 0;
+    const anotar = () => registrarConsumo(acceso, {
+      funcion: "asistente",
+      modelo: base.model,
+      uso: { ...uso, server_tool_use: { web_search_requests: busquedas } },
+      clienteId: clienteActual?.id,
+    });
     try {
       for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
-        const res = await abrirConAjustes({ ...base, messages: mensajes });
+        const peticion = { ...base, messages: mensajes };
+        const res = await abrirConAjustes(cachear || vuelta > 0 ? conCache(peticion) : peticion);
         const m = await leerFlujo(res, async (trozo) => {
           if (trozo.tipo === "servidor") await emitir({ t: "herramienta", texto: describirUso(trozo.nombre, trozo.entrada) });
           else await emitir({ t: trozo.tipo, d: trozo.texto });
@@ -208,6 +227,7 @@ export async function rutaChat(req, env, { acceso, ctx } = {}) {
           ? "El asistente está saturado. Inténtalo en unos segundos."
           : "El proveedor de IA cortó la respuesta.");
         for (const k of Object.keys(uso)) uso[k] += Number(m.usage?.[k] ?? 0);
+        busquedas += Number(m.usage?.server_tool_use?.web_search_requests ?? 0);
 
         const asistente = { role: "assistant", content: m.content };
         nuevos.push(asistente);
@@ -218,7 +238,7 @@ export async function rutaChat(req, env, { acceso, ctx } = {}) {
 
         if (m.stop_reason !== "tool_use") {
           await emitir({ t: "fin", mensajes: nuevos, resultadosServidor: [], stopReason: m.stop_reason, uso, modelo: m.model });
-          await registrarConsumo(acceso, { funcion: "asistente", modelo: base.model, uso });
+          await anotar();
           await guardarSiSeFue();
           return;
         }
@@ -238,11 +258,11 @@ export async function rutaChat(req, env, { acceso, ctx } = {}) {
         // Hay herramientas del navegador: él las ejecuta y junta sus
         // resultados con éstos en UN mismo mensaje, como exige la API.
         await emitir({ t: "fin", mensajes: nuevos, resultadosServidor: resultados, stopReason: "tool_use", uso, modelo: m.model });
-        await registrarConsumo(acceso, { funcion: "asistente", modelo: base.model, uso });
+        await anotar();
         return;
       }
       await emitir({ t: "fin", mensajes: nuevos, resultadosServidor: [], stopReason: "limite", uso });
-      await registrarConsumo(acceso, { funcion: "asistente", modelo: base.model, uso });
+      await anotar();
     } catch (e) {
       console.error("chat:", e);
       await emitir({ t: "error", mensaje: e?.message || "No se pudo generar la respuesta" });
@@ -291,7 +311,8 @@ export async function rutaResumenChat(req, env, { acceso, metodo }) {
     .map((m) => `${m.role === "user" ? "USUARIO" : "ASISTENTE"}: ${m.content}`)
     .join("\n\n");
 
-  const ia = await resolverIA(env, await leerConfigIA(acceso));
+  const ia = await prepararIA(env, acceso);
+  if (ia.bloqueo) return error(ia.bloqueo, 402);
   const peticion = {
       model: ia.modelo,
       max_tokens: 24000,
@@ -321,7 +342,7 @@ export async function rutaResumenChat(req, env, { acceso, metodo }) {
   } catch (e) {
     return error(`No se pudo resumir la conversación: ${mensajeDeRechazo(e)}`, 502, e);
   }
-  await registrarConsumo(acceso, { funcion: "resumen del chat", modelo: peticion.model, uso: m.usage });
+  await registrarConsumo(acceso, { funcion: "resumen del chat", modelo: peticion.model, uso: m.usage, clienteId });
   const resumen = textoDe(m).trim();
   if (!resumen) return error("El resumen salió vacío", 502);
 

@@ -100,6 +100,9 @@ Ahora que el Worker existe, ya tiene dónde guardarlas.
 | `GITHUB_TOKEN` | Un token de **sólo lectura** | GitHub → Settings → Developer settings → Personal access tokens |
 | `GROQ_API_KEY` | Opcional | console.groq.com |
 
+| `GOOGLE_CLIENT_ID` | El ID de cliente OAuth de Google | Ver «Google Drive» abajo |
+| `GOOGLE_CLIENT_SECRET` | Su secreto | Ver «Google Drive» abajo |
+
 El `GITHUB_TOKEN` es para leer el ADN de marca de los repositorios de los
 clientes. Con permiso de lectura de repositorios basta; no necesita
 escritura.
@@ -112,6 +115,25 @@ ponerlos cada vez.
 
 Lo que **no** va aquí son los modelos y las políticas: viven en `vars` de
 `wrangler.jsonc`, se versionan y no abren nada.
+
+### Google Drive (el banco de contenido)
+
+Una vez, con la cuenta de Google de la AGENCIA:
+
+1. console.cloud.google.com → crear un proyecto.
+2. **APIs y servicios → Biblioteca → Google Drive API → Habilitar.**
+3. **Pantalla de consentimiento de OAuth**: tipo *Externo*; en *Público*,
+   **Publicar app** («En producción»). En modo de prueba Google corta la
+   conexión cada 7 días.
+4. **Clientes → Crear cliente → Aplicación web**. En *URI de
+   redireccionamiento autorizados*, la dirección que enseña la app en
+   **Ajustes → Integraciones** (`https://<dominio>/api/drive/callback`).
+5. Pegar el ID y el secreto aquí, como `GOOGLE_CLIENT_ID` y
+   `GOOGLE_CLIENT_SECRET` (tipo *Secret*).
+6. En la app: **Ajustes → Integraciones → Conectar Google Drive**. Al aviso
+   de «Google no verificó esta app»: *Configuración avanzada → Ir a…*.
+7. Cada cliente comparte su carpeta con la cuenta de la agencia (Editor) y
+   se pega el enlace en su **Ficha → Drive y GitHub**.
 
 ## Parte 6 · Dar de alta al administrador
 

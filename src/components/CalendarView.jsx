@@ -33,11 +33,24 @@ export default function CalendarView({
   onUpdateClient,
   onPersistClient,
   onMoveBankToCal,
+  abrirPublicacion = null,
+  onPublicacionAbierta,
 }) {
   const [viewMode, setViewMode] = useState("list");
   const configIA = useConfigIA();
   const [expandedDay, setExpandedDay] = useState(null);
   const [sidePanel, setSidePanel] = useState(null);
+
+  // El buscador (Ctrl+K) puede pedir que se abra una publicación concreta
+  // al llegar a este calendario.
+  useEffect(() => {
+    if (!abrirPublicacion) return;
+    for (const day of cal?.days ?? []) {
+      const post = (day.posts ?? []).find((p) => p.id === abrirPublicacion);
+      if (post) { setSidePanel({ post, day }); break; }
+    }
+    onPublicacionAbierta?.();
+  }, [abrirPublicacion, cal, onPublicacionAbierta]);
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterFormat, setFilterFormat] = useState("all");
   const [filterWeek, setFilterWeek] = useState("all");
@@ -393,7 +406,7 @@ export default function CalendarView({
           if (data) content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data } });
         }
 
-        const txt = await callAI(content);
+        const txt = await callAI(content, { funcion: "calendario", clienteId: client?.id });
         const parsed = parseAIResponse(txt);
         allResults = { ...allResults, ...parsed };
       }
@@ -554,7 +567,7 @@ idea aqui
 PUBLICACIONES:
 ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p._date} (${p._dayName || ""})\nCATEGORIA: ${p.category || "N/A"}\nSEMANA: ${p._weekNumber || ""} — ${p._concept || "libre"}`).join("\n\n")}`;
 
-          const res = await callAI([{ type: "text", text: prompt }], { maxTokens: 4000, tolerarCorte: true });
+          const res = await callAI([{ type: "text", text: prompt }], { maxTokens: 4000, tolerarCorte: true, funcion: "guiones", clienteId: client?.id });
           const txt = typeof res === "string" ? res : res.texto;
           const parsed = parseAIResponse(txt);
           ideasResults = { ...ideasResults, ...parsed };
@@ -591,7 +604,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
 
           const promptText = buildScriptPrompt(client, cal, batch, adnExtra, memories);
           const content = [{ type: "text", text: promptText }];
-          const res2 = await callAI(content, { maxTokens: 8000, tolerarCorte: true });
+          const res2 = await callAI(content, { maxTokens: 8000, tolerarCorte: true, funcion: "guiones", clienteId: client?.id });
           const txt2 = typeof res2 === "string" ? res2 : res2.texto;
           const parsed = parseAIResponse(txt2);
           addDebug(`Fase 2 batch: ${Object.keys(parsed).length} guiones`);
@@ -632,7 +645,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           setGenProgress(55 + Math.round((i / sinDesc.length) * 40));
 
           const promptText = buildDescripcionesPrompt(client, cal, batch, adnExtra, memories);
-          const { texto } = await callAI([{ type: "text", text: promptText }], { maxTokens: 8000, tolerarCorte: true });
+          const { texto } = await callAI([{ type: "text", text: promptText }], { maxTokens: 8000, tolerarCorte: true, funcion: "guiones", clienteId: client?.id });
           const parsed = parseAIResponse(texto);
           addDebug(`Fase 3 batch: ${Object.keys(parsed).length} descripciones`);
 
@@ -943,7 +956,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--fs-2xs)", color: "var(--text-muted)", marginBottom: "var(--sp-1)" }}>
             <span id="gen-progress-label">{genStatus}</span>
             <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--sp-2)" }}>
-              <span className="badge" style={{ background: "var(--accent-soft)", color: "var(--accent)", fontSize: "var(--fs-3xs)" }} title="Se cambia en Equipo → Inteligencia artificial">
+              <span className="badge" style={{ background: "var(--accent-soft)", color: "var(--accent)", fontSize: "var(--fs-3xs)" }} title="Se cambia en Ajustes → Inteligencia artificial">
                 {etiquetaIA(configIA)}
               </span>
               {genProgress}%

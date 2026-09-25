@@ -115,11 +115,23 @@ src/
     configIA.js           Nombres de modelos y niveles de razonamiento (puro)
     mensajeChat.js        Marcas del chat: piezas, imágenes, contexto (puro)
     medios.js             Fotogramas de video, imagen para la IA, descarga a tamaño
+    drive.js              Id de carpeta a partir del enlace, tipo y tamaño (puro;
+                          también lo importa el Worker)
+    buscar.js             Lo que encuentra el buscador Ctrl+K (puro)
+    resumenCliente.js     Por aprobar / con cambios / a medias; mes por defecto (puro)
   components/
     Icon.jsx              Set de iconos SVG monocromos (rejilla 24, trazo 1.75)
     Presencia.jsx         Avatares, estado de la conexión, «X está editando»
     SelectorFecha.jsx     Calendario del mes para escoger una fecha (portal)
-    SeccionIA.jsx         Equipo → Inteligencia artificial: modelo, nivel, consumo
+    SeccionIA.jsx         Ajustes → IA: modelo, nivel al escribir, nivel del asistente
+    SeccionPresupuesto.jsx  Ajustes → presupuesto, qué pasa al llegar, consumo por día/cliente
+    SeccionDrive.jsx      Ajustes → Integraciones: conectar Google Drive
+    MedidorIA.jsx         El gasto del mes contra el presupuesto, en la cabecera
+    ExploradorDrive.jsx   La carpeta de Drive de un cliente: gestionar o escoger
+    BancoSelector.jsx     Escoger de Drive (o del banco anterior); forma única
+    PestanaContenido.jsx  La pestaña Contenido: Drive + migrar el banco anterior
+    NavPrincipal.jsx / MenuCuenta.jsx / BarraInferior.jsx / Buscador.jsx
+                          Armazón: secciones, cuenta, barra del móvil, Ctrl+K
     ClientModal.jsx       Alta y edición de cliente (5 pestañas)
     PlanWizard.jsx        Asistente de 7 pasos para crear un calendario
     CalendarView.jsx      Vista de lista y de rejilla, filtros, generación, envío
@@ -129,6 +141,7 @@ src/
     Invitacion.jsx        Lo que ve quien abre un enlace de invitación
     Aprobar.jsx           Página pública que ve el cliente final
     Tareas.jsx            «Mi día»: Atrasadas, Hoy, Próximas; y la vista por empresa
+    Ajustes.jsx           IA, presupuesto y consumo, integraciones, tareas, copia
 worker/
   index.js                Enrutado, sesión y cabeceras de /api/*
   hub.js                  Durable Object: un espacio, sus sockets y su presencia
@@ -140,7 +153,10 @@ worker/
     respuesta.js          Cabeceras y errores de la API
     flujoAnthropic.js     El SSE de Anthropic, reconstruido en mensaje (puro)
     anthropic.js          La llamada a Anthropic: streaming, reintento, rechazo con motivo
-    configIA.js           Modelo y razonamiento del espacio, Opus de la cuenta, costo
+    configIA.js           Modelo y razonamiento del espacio, Opus de la cuenta, costo,
+                          presupuesto (`prepararIA`, `bloqueoPorPresupuesto`)
+    google.js             OAuth de Drive, refresh token cifrado, llamadas a Drive,
+                          «¿está dentro de la carpeta del cliente?»
     herramientasServidor.js  Lo que el asistente consulta sin el navegador:
                           web, repositorio de GitHub, calendarios, tareas, ideas
     ids.js                UUID, testigos, huellas
@@ -154,7 +170,10 @@ worker/
     imagen.js             Generación de imágenes (Gemini)
     video.js              Análisis de un video del banco (Gemini)
     adn.js                Lectura del ADN de marca con el token del servidor
-migraciones/d1/           Esquema de D1 (0001 base … 0007 Mi día, 0008 resumen del chat, 0009 IA)
+    drive.js              Google Drive como banco: listar, miniatura, archivo,
+                          subir, papelera, a-publicacion, migrar-banco
+    iaEspacio.js          Modelos de la cuenta, consumo del mes y el medidor (/ia/gasto)
+migraciones/d1/           Esquema de D1 (0001 base … 0009 IA, 0010 presupuesto, 0011 Drive)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -173,12 +192,17 @@ tests/
 | `/` | Panel, sin cliente elegido |
 | `/cliente/<slug>` | Un cliente |
 | `/cliente/<slug>/<slug-del-mes>` | Un calendario de ese cliente |
+| `/cliente/<slug>/tareas` · `/contenido` · `/ideas` · `/ficha` | Las otras pestañas del cliente |
+| `/tareas` | Mi día |
+| `/ajustes` | IA, presupuesto, integraciones, tareas, copia de seguridad |
 | `/equipo` | Quién entra en el espacio |
 | `/invitacion/<testigo>` | Enlace de invitación (sin sesión) |
 | `/aprobar?t=<testigo>` | Página del cliente final (sin sesión) |
 
 El slug sale del nombre normalizado, y `slugsUnicos()` garantiza que dos
-clientes que normalicen igual no compartan dirección. Un id en crudo
+clientes que normalicen igual no compartan dirección. Los nombres de las
+pestañas (`PESTANAS_CLIENTE`) están reservados: un calendario llamado
+«Ideas» no puede quedarse `/ideas`. Un id en crudo
 también resuelve, para los enlaces que alguien pegara antes.
 
 ### El tiempo real
@@ -212,6 +236,9 @@ habla con el Worker, que es quien acota.
   recargar; el sondeo de `subscribeApprovals` sigue ahí, a un minuto,
   como red para cuando el socket esté caído. No hay botón de sincronizar.
 - **imágenes:** en R2, y en el JSON va la clave, nunca los bytes.
+- **banco de contenido:** la carpeta de **Google Drive** de cada cliente
+  (`clients.drive_folder`, el id). La tabla `content_bank` es el banco
+  de antes y se vacía con «Pasar todo a Drive».
 
 ### Qué significa `owner_id`
 
@@ -236,7 +263,8 @@ la capa de acceso: la capa necesita el espacio para construirse, así que
 no puede ser quien lo averigüe.
 
 **Ninguna clave vive en el navegador, y ahora tampoco ninguna variable.**
-Las de IA y la de GitHub son secretos del Worker (`wrangler secret put`).
+Las de IA, la de GitHub y `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` son
+secretos del Worker (`wrangler secret put`).
 
 ### Modelo de datos
 
@@ -811,6 +839,52 @@ son del servidor.
 - **«Hoy» es una FECHA, no un sí/no.** `today_date` guarda el día en que
   se marcó: si no se hace, al día siguiente queda en el pasado y la tarea
   pasa sola a Atrasadas sin que nadie la desmarque.
+- **El saldo de Anthropic se acabó sin que nadie lo viera.** El contador
+  existía, al fondo de Equipo, sin tope, y sin contar ni la búsqueda web
+  (10 $ por 1.000) ni lo que se paga a Google. Ahora: medidor en la
+  cabecera, Ajustes con presupuesto (`presupuesto_usd`, 30 $ por defecto)
+  y qué hacer al llegar (`al_limite`: avisar, bajar a Sonnet Bajo o
+  detener, 402). TODA llamada de IA pasa por `prepararIA()` (texto) o
+  `bloqueoPorPresupuesto()` (Gemini) antes de salir, y por
+  `registrarConsumo()`/`registrarConsumoGemini()` al volver. Una ruta de
+  IA nueva que se salte cualquiera de las dos gasta sin tope o sin
+  apuntarlo. Lo que gaste OTRA aplicación con la misma clave no lo ve
+  nadie aquí: sólo la consola de Anthropic.
+- **Escribir caché que nadie lee cuesta un 25 % más.** El consumo real
+  del asistente enseñó 49.000 tokens escritos en caché y 0 leídos: los
+  mensajes llegaban con horas de diferencia y la caché dura cinco
+  minutos. El navegador manda `seguido` (menos de 4,5 min desde la
+  anterior) y el Worker sólo marca caché entonces o desde la segunda
+  vuelta del bucle, que sí la lee.
+- **El saldo agotado llega como un 400 cualquiera.** «Your credit balance
+  is too low…» se traduce en `mensajeDeRechazo()` a qué hacer.
+- **Google Drive: tres trampas.** (1) Con la app de Google «en prueba»,
+  el refresh token caduca a los 7 días: tiene que estar «en producción».
+  Si Google lo revoca (`invalid_grant`), la fila se borra y la pantalla
+  pide reconectar. (2) Una cuenta de servicio NO sirve: no tiene espacio y
+  no sube a un Drive personal; entra la cuenta de la agencia por OAuth.
+  (3) El Picker de Google carga scripts de Google: rompería la CSP. Todo
+  pasa por `/api/drive/*`.
+- **Cada id de Drive que llega del navegador se comprueba subiendo por
+  sus padres hasta la carpeta del cliente** (`dentroDelCliente`). Sin
+  eso, con la sesión de la agencia se leería cualquier archivo suyo.
+- **Lo que se sirve desde Drive no puede ejecutarse en este origen.** Un
+  `.html` o un `.svg` servido tal cual sería código con la sesión de la
+  agencia: sólo imagen (sin SVG) y video van en línea, lo demás como
+  descarga, y todo con `sandbox` y `nosniff`. Lo vigila
+  `tests/migracion/enrutado.test.js`.
+- **La imagen de Drive que va en una publicación se COPIA a R2**
+  (`a-publicacion`). La página de aprobación y el HTML exportado no
+  pueden leer el Drive de la agencia.
+- **La vuelta del OAuth (`/api/drive/callback`) va SIN sesión**: la
+  identidad viaja en el `state` firmado con HMAC y atado a la cookie
+  `__Host-drive-oauth` de la pestaña que lo pidió. Sin la cookie, un
+  enlace de conexión reenviado conectaría el Drive de otra persona al
+  espacio de quien lo generó.
+- **El asistente es diálogo o panel según el ancho.** Desde 1280 px se
+  acopla a la derecha (`role="complementary"`, `useDialogA11y(…, {
+  activo: false })`): sin foco atrapado ni fondo oscuro. Por debajo,
+  diálogo como siempre.
 - **`connect-src 'self'` ya cubre el WebSocket.** En una página `https`,
   `'self'` casa con `wss:` del mismo host —lo dice la especificación de
   CSP—. Si alguien ve el socket caer y «lo arregla» metiendo un origen

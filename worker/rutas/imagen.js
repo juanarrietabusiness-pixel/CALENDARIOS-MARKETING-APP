@@ -14,6 +14,7 @@
 
 import { json, error, cuerpo } from "../lib/respuesta.js";
 import { uuid } from "../lib/ids.js";
+import { bloqueoPorPresupuesto, registrarConsumoGemini } from "../lib/configIA.js";
 
 const PRESUPUESTO_MS = 120_000;
 const MAX_REFS = 5;
@@ -109,6 +110,8 @@ export async function rutaGenerarImagen(req, env, ctx) {
   const { acceso } = ctx;
   const cliente = await acceso.leerUno("clients", { id: clientId });
   if (!cliente) return error("Cliente no encontrado", 404);
+  const bloqueo = await bloqueoPorPresupuesto(acceso);
+  if (bloqueo) return error(bloqueo, 402);
 
   let templatePrompt = "";
   if (templateId) {
@@ -182,6 +185,7 @@ export async function rutaGenerarImagen(req, env, ctx) {
   }
 
   const data = await res.json();
+  await registrarConsumoGemini(acceso, { funcion: "imagen", modelo, meta: data?.usageMetadata, clienteId: clientId });
   const candidates = data?.candidates ?? [];
   const partesRespuesta = candidates[0]?.content?.parts ?? [];
 

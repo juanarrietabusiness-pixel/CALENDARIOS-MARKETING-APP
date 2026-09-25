@@ -6,15 +6,13 @@ import Icon from "./components/Icon";
 // Importado (no ruta absoluta) para que Vite le ponga hash y respete la
 // base del despliegue: el sitio también se publica bajo un subdirectorio.
 import logoMark from "./assets/logo-mark.png";
-import ClientModal from "./components/ClientModal";
-import PlanWizard from "./components/PlanWizard";
 import CalendarView from "./components/CalendarView";
-import Aprobar from "./pages/Aprobar";
-import IdeasBank from "./components/IdeasBank";
-import TaskPanel from "./components/TaskPanel";
-import { TaskTemplatesManager } from "./components/TaskPanel";
 import QuickTasksPanel from "./components/QuickTasksPanel";
-import ContentBankPanel from "./components/ContentBankPanel";
+import ResumenCliente from "./components/ResumenCliente";
+import NavPrincipal from "./components/NavPrincipal";
+import MenuCuenta from "./components/MenuCuenta";
+import MedidorIA from "./components/MedidorIA";
+import BarraInferior from "./components/BarraInferior";
 import Login from "./pages/Login";
 import Invitacion from "./pages/Invitacion";
 import Presencia, { PresenciaEnCliente } from "./components/Presencia";
@@ -24,7 +22,7 @@ import { rowToCalendar, rowToClient } from "./lib/filas";
 import { vivo } from "./lib/vivo";
 import { leerFoco, guardarFoco } from "./lib/foco";
 import { fechaEnZona } from "./lib/agenda";
-import ContadorAtrasadas from "./components/ContadorAtrasadas";
+import { calendarioPorDefecto, resumenCalendario } from "./lib/resumenCliente";
 import {
   analizarRuta, construirRuta, navegar,
   porRuta, slugsDeCalendarios, slugsDeClientes,
@@ -35,8 +33,45 @@ import {
 const ChatPanel = lazy(() => import("./components/ChatPanel"));
 // «Mi día» es una página aparte: no tiene por qué venir en la primera descarga.
 const Tareas = lazy(() => import("./pages/Tareas"));
-// Igual Equipo, que ahora trae la sección de IA con su consumo.
+// Igual Equipo y Ajustes, que no se abren en cada visita.
 const Equipo = lazy(() => import("./pages/Equipo"));
+const Ajustes = lazy(() => import("./pages/Ajustes"));
+// Lo que sólo se abre a demanda —diálogos, pestañas que no son el
+// calendario, la página del cliente final— tampoco va en la primera
+// descarga: con Drive, el buscador y Ajustes, el inicial pasaba de 170 kB.
+const ClientModal = lazy(() => import("./components/ClientModal"));
+const PlanWizard = lazy(() => import("./components/PlanWizard"));
+const Aprobar = lazy(() => import("./pages/Aprobar"));
+const IdeasBank = lazy(() => import("./components/IdeasBank"));
+const TaskPanel = lazy(() => import("./components/TaskPanel"));
+const PestanaContenido = lazy(() => import("./components/PestanaContenido"));
+const FichaCliente = lazy(() => import("./components/FichaCliente"));
+const Buscador = lazy(() => import("./components/Buscador"));
+
+const Cargando = () => <p role="status" style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando…</p>;
+
+/** Las pestañas de un cliente: [id, nombre, icono]. El id va en la dirección. */
+const PESTANAS = [
+  ["calendario", "Calendario", "calendar"],
+  ["tareas", "Tareas", "clipboardCheck"],
+  ["contenido", "Contenido", "cloud"],
+  ["ideas", "Ideas", "bulb"],
+  ["ficha", "Ficha", "building"],
+];
+
+/** Pantalla ancha: donde el asistente cabe al lado del contenido. */
+function useAnchoAmplio(minimo = 1280) {
+  const consulta = `(min-width: ${minimo}px)`;
+  const [amplio, setAmplio] = useState(() => window.matchMedia?.(consulta).matches ?? false);
+  useEffect(() => {
+    const mq = window.matchMedia?.(consulta);
+    if (!mq) return;
+    const alCambiar = () => setAmplio(mq.matches);
+    mq.addEventListener("change", alCambiar);
+    return () => mq.removeEventListener("change", alCambiar);
+  }, [consulta]);
+  return amplio;
+}
 
 /**
  * La dirección actual, y se vuelve a pintar cuando cambia.
@@ -68,7 +103,7 @@ function App() {
   const ruta = useRuta();
   // La página de aprobación es la del cliente final: ni sesión, ni
   // panel, ni nada de lo que cuelga de Panel.
-  if (ruta.vista === "aprobar") return <Aprobar />;
+  if (ruta.vista === "aprobar") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><Aprobar /></Suspense>;
   return <Panel ruta={ruta} />;
 }
 
@@ -157,32 +192,15 @@ function ClientList({ clients, selectedClientId, onSelect, onNew, presentes = []
   );
 }
 
-/** Copia de seguridad: acciones globales, no de un cliente concreto. */
-function BackupActions({ onExport, onImport }) {
-  return (
-    <div style={{ marginTop: "auto", paddingTop: "var(--sp-4)", borderTop: "1px solid var(--border)" }}>
-      <h3 className="label">Copia de seguridad</h3>
-      <div style={{ display: "flex", gap: "var(--sp-2)" }}>
-        <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={onExport}>
-          <Icon name="download" size={16} /> Exportar
-        </button>
-        <button className="btn btn-secondary btn-sm" style={{ flex: 1 }} onClick={onImport}>
-          <Icon name="upload" size={16} /> Importar
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/** Cajón de clientes en móvil: diálogo modal con foco atrapado. */
-function ClientDrawer({ clients, selectedClientId, onSelect, onNew, onClose, onExport, onImport, presentes, yo }) {
+/** Cajón del móvil (secciones y clientes): diálogo modal con foco atrapado. */
+function ClientDrawer({ ruta, pulso, clients, selectedClientId, onSelect, onNew, onClose, presentes, yo }) {
   const dialogRef = useDialogA11y(onClose);
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex" }}>
       <button
         type="button"
-        aria-label="Cerrar lista de clientes"
+        aria-label="Cerrar el menú"
         onClick={onClose}
         style={{ flex: 1, background: "rgba(2,6,16,.66)", border: "none", cursor: "pointer", backdropFilter: "blur(2px)" }}
       />
@@ -190,7 +208,7 @@ function ClientDrawer({ clients, selectedClientId, onSelect, onNew, onClose, onE
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Clientes"
+        aria-label="Menú"
         style={{
           width: "var(--sidebar-w)",
           maxWidth: "86vw",
@@ -207,20 +225,89 @@ function ClientDrawer({ clients, selectedClientId, onSelect, onNew, onClose, onE
         }}
       >
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "var(--sp-2)" }}>
-          <button className="btn-icon" onClick={onClose} aria-label="Cerrar lista de clientes">
+          <button className="btn-icon" onClick={onClose} aria-label="Cerrar el menú">
             <Icon name="close" />
           </button>
         </div>
-        <ClientList
-          clients={clients}
-          selectedClientId={selectedClientId}
-          onSelect={onSelect}
-          onNew={onNew}
-          presentes={presentes}
-          yo={yo}
-        />
-        <BackupActions onExport={onExport} onImport={onImport} />
+        <NavPrincipal ruta={ruta} pulso={pulso} onIr={onClose} />
+        <div className="app-sidebar-clientes">
+          <ClientList
+            clients={clients}
+            selectedClientId={selectedClientId}
+            onSelect={onSelect}
+            onNew={onNew}
+            presentes={presentes}
+            yo={yo}
+          />
+        </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * El inicio: las tareas rápidas y los clientes con lo que tienen
+ * pendiente, para entrar donde haga falta sin buscar.
+ */
+function Inicio({ yo, clients, pulso, presentes, onAbrir, onNuevo }) {
+  const hoy = fechaEnZona();
+  const saludo = (() => {
+    const h = Number(new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: "America/Panama" }).format(new Date()));
+    return h < 12 ? "Buenos días" : h < 19 ? "Buenas tardes" : "Buenas noches";
+  })();
+
+  if (!clients.length) {
+    return (
+      <div className="empty-state" style={{ border: "none", paddingTop: "var(--sp-10)" }}>
+        <Icon name="users" size={40} className="empty-state-icon" style={{ margin: "0 auto var(--sp-3)" }} />
+        <p className="empty-state-title">Crea tu primer cliente</p>
+        <p className="empty-state-text" style={{ marginBottom: "var(--sp-4)" }}>
+          Necesitas un cliente antes de planificar calendarios.
+        </p>
+        <button className="btn btn-primary" onClick={onNuevo}>Crear cliente</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="inicio">
+      <div className="page-header">
+        <h1 className="page-title">{saludo}{yo?.nombre ? `, ${yo.nombre.split(" ")[0]}` : ""}</h1>
+        <p className="page-meta">Tus clientes y lo que tienen pendiente este mes.</p>
+      </div>
+
+      <ul className="inicio-clientes" aria-label="Clientes">
+        {clients.map((c) => {
+          const cal = calendarioPorDefecto(c.calendars ?? [], hoy);
+          const r = resumenCalendario(cal);
+          return (
+            <li key={c.id}>
+              <button type="button" className="inicio-cliente" onClick={() => onAbrir(c.id)}>
+                <span className="client-avatar" style={{ width: 40, height: 40 }}>
+                  {c.logo ? <img src={c.logo} alt="" /> : <Icon name="building" size={20} />}
+                </span>
+                <span className="inicio-cliente-texto">
+                  <span className="inicio-cliente-nombre">{c.name}</span>
+                  <span className="inicio-cliente-meta">
+                    {cal ? (cal.name || `${MONTHS[cal.month]} ${cal.year}`) : "Sin calendarios"}
+                    {cal && r.publicaciones > 0 && ` · ${r.aprobadas + r.publicadas}/${r.publicaciones} aprobadas`}
+                  </span>
+                  {cal && (r.porAprobar > 0 || r.conCambios > 0) && (
+                    <span className="inicio-cliente-pendiente">
+                      {r.porAprobar > 0 && `${r.porAprobar} por aprobar`}
+                      {r.porAprobar > 0 && r.conCambios > 0 && " · "}
+                      {r.conCambios > 0 && `${r.conCambios} con cambios`}
+                    </span>
+                  )}
+                </span>
+                <PresenciaEnCliente presentes={presentes} clienteId={c.id} yo={yo} />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      <QuickTasksPanel pulso={pulso} />
     </div>
   );
 }
@@ -242,6 +329,10 @@ function Workspace({ session, ruta }) {
   const [editingClient, setEditingClient] = useState(null);
   const [showWizard, setShowWizard] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  const [showBuscador, setShowBuscador] = useState(false);
+  // Una publicación que el buscador pidió abrir al llegar a su calendario.
+  const [postPedido, setPostPedido] = useState(null);
+  const anchoAmplio = useAnchoAmplio();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
@@ -508,8 +599,11 @@ function Workspace({ session, ruta }) {
   const selectedClientId = client?.id ?? null;
 
   const slugsCal = useMemo(() => slugsDeCalendarios(client?.calendars ?? []), [client]);
+  // Sin mes en la dirección, se abre el del mes en curso (o el más
+  // reciente): antes salía «Selecciona un calendario» y había que buscarlo.
   const calendar = useMemo(
-    () => porRuta(client?.calendars ?? [], slugsCal, ruta.calendario),
+    () => porRuta(client?.calendars ?? [], slugsCal, ruta.calendario)
+      ?? (!ruta.calendario ? calendarioPorDefecto(client?.calendars ?? [], fechaEnZona()) : null),
     [client, slugsCal, ruta.calendario],
   );
   const selectedCalId = calendar?.id ?? null;
@@ -843,86 +937,80 @@ function Workspace({ session, ruta }) {
     setShowDrawer(false);
   };
 
+  // ----------------------------------------------------------
+  // Atajos: Ctrl+K (⌘K en Mac) abre el buscador desde cualquier sitio.
+  // ----------------------------------------------------------
+  useEffect(() => {
+    const tecla = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setShowBuscador((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, []);
+
+  const elegirDelBuscador = (r) => {
+    setShowBuscador(false);
+    const a = r.accion;
+    if (a.tipo === "ruta") navegar(a.ruta);
+    else if (a.tipo === "asistente") setShowChat(true);
+    else if (a.tipo === "nuevo-cliente") openNewClient();
+    else if (a.tipo === "nuevo-calendario") setShowWizard(true);
+    else if (a.tipo === "cliente") irA(a.clienteId);
+    else if (a.tipo === "calendario") irA(a.clienteId, a.calId);
+    else if (a.tipo === "publicacion") {
+      setPostPedido({ calId: a.calId, postId: a.postId });
+      irA(a.clienteId, a.calId);
+    }
+  };
+  const publicacionAbierta = useCallback(() => setPostPedido(null), []);
+
   if (loading) return <Aviso>Cargando tus clientes…</Aviso>;
   if (loadError) return <Aviso tono="alert">{loadError}</Aviso>;
 
+  const pestana = client ? (ruta.pestana ?? "calendario") : null;
+  const slugCliente = client ? slugsCliente.get(client.id) ?? client.id : null;
+  const irAPestana = (p) => navegar(construirRuta({ cliente: slugCliente, pestana: p }));
+  // En pantalla ancha el asistente se acopla a la derecha y el contenido
+  // se aparta: se trabaja con el calendario a la vista, sin fondo oscuro.
+  const chatAcoplado = showChat && anchoAmplio;
+
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-chat={chatAcoplado ? "acoplado" : undefined}>
       <a className="skip-link" href="#contenido">Saltar al contenido</a>
 
-      <header
-        style={{
-          background: "var(--surface)",
-          borderBottom: "1px solid var(--border)",
-          height: "calc(var(--header-h) + var(--safe-top))",
-          paddingTop: "var(--safe-top)",
-          paddingLeft: "calc(var(--sp-3) + var(--safe-left))",
-          paddingRight: "calc(var(--sp-3) + var(--safe-right))",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "var(--sp-3)",
-          position: "sticky",
-          top: 0,
-          zIndex: 100,
-        }}
-      >
+      <header className="app-header">
         <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", minWidth: 0 }}>
           <button
             className="btn-icon menu-toggle"
             onClick={() => setShowDrawer(true)}
-            aria-label="Abrir lista de clientes"
+            aria-label="Abrir el menú y la lista de clientes"
             aria-expanded={showDrawer}
           >
             <Icon name="menu" />
           </button>
-          <img
-            src={logoMark}
-            alt=""
-            width={32}
-            height={32}
-            style={{ width: 32, height: 32, objectFit: "contain", flexShrink: 0 }}
-          />
-          <span style={{ fontSize: "var(--fs-sm)", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            Juancito Ads
-          </span>
+          <button type="button" className="app-marca" onClick={() => navegar("/")} aria-label="Juancito Ads: ir al inicio">
+            <img src={logoMark} alt="" width={32} height={32} />
+            <span>Juancito Ads</span>
+          </button>
         </div>
 
+        <button type="button" className="buscador-disparador" onClick={() => setShowBuscador(true)} aria-label="Buscar (Ctrl+K)">
+          <Icon name="search" size={16} />
+          <span className="buscador-disparador-texto">Buscar clientes, meses, publicaciones…</span>
+          <kbd aria-hidden="true">Ctrl K</kbd>
+        </button>
+
         <div style={{ display: "flex", gap: "var(--sp-2)", flexShrink: 0, alignItems: "center" }}>
+          <MedidorIA pulso={pulso} />
           {/* Quién más está dentro, y si mi propia conexión está viva.
               Lo segundo importa tanto como lo primero: cuando el socket
               se cae, la pantalla deja de actualizarse sola y sin este
               aviso parecería que nadie ha tocado nada. */}
           <Presencia presentes={presentes} yo={yo} estado={estadoVivo} clientes={clients} />
-          <button
-            className="btn-icon"
-            onClick={() => navegar(construirRuta({ vista: "tareas" }))}
-            title="Mi día"
-            aria-current={ruta.vista === "tareas" ? "page" : undefined}
-            style={{ position: "relative" }}
-          >
-            <Icon name="clipboardCheck" />
-            <span className="sr-only">Mi día</span>
-            <ContadorAtrasadas pulso={pulso} />
-          </button>
-          <button
-            className="btn-icon"
-            onClick={() => navegar(construirRuta({ vista: "equipo" }))}
-            aria-label="Ver el equipo"
-            title="Equipo"
-            aria-current={ruta.vista === "equipo" ? "page" : undefined}
-          >
-            <Icon name="users" />
-          </button>
-          <span
-            style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-            className="session-email"
-          >
-            {yo.nombre || yo.email}
-          </span>
-          <button className="btn btn-secondary btn-sm" onClick={signOut}>
-            <Icon name="close" size={16} /> Salir
-          </button>
+          <MenuCuenta yo={yo} onSalir={signOut} />
           <input
             ref={importRef}
             type="file"
@@ -939,19 +1027,18 @@ function Workspace({ session, ruta }) {
       </header>
 
       <div className="app-body">
-        <aside className="app-sidebar" aria-label="Clientes">
-          <ClientList
-            clients={clients}
-            selectedClientId={selectedClientId}
-            onSelect={selectClient}
-            onNew={openNewClient}
-            presentes={presentes}
-            yo={yo}
-          />
-          <div style={{ marginTop: "var(--sp-4)", paddingTop: "var(--sp-4)", borderTop: "1px solid var(--border)" }}>
-            <TaskTemplatesManager clients={clients} />
+        <aside className="app-sidebar" aria-label="Navegación y clientes">
+          <NavPrincipal ruta={ruta} pulso={pulso} />
+          <div className="app-sidebar-clientes">
+            <ClientList
+              clients={clients}
+              selectedClientId={selectedClientId}
+              onSelect={selectClient}
+              onNew={openNewClient}
+              presentes={presentes}
+              yo={yo}
+            />
           </div>
-          <BackupActions onExport={exportJSON} onImport={() => importRef.current?.click()} />
         </aside>
 
         <main id="contenido" className="app-main">
@@ -989,10 +1076,6 @@ function Workspace({ session, ruta }) {
               </div>
             )}
 
-            {ruta.vista !== "equipo" && ruta.vista !== "tareas" && !client && (
-              <QuickTasksPanel pulso={pulso} />
-            )}
-
             {ruta.vista === "tareas" ? (
               <Suspense fallback={<p style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando Mi día…</p>}>
               <Tareas
@@ -1008,6 +1091,17 @@ function Workspace({ session, ruta }) {
             ) : ruta.vista === "equipo" ? (
               <Suspense fallback={<p style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando Equipo…</p>}>
                 <Equipo presentes={presentes} yo={yo} pulso={pulso} onVolver={() => navegar("/")} />
+              </Suspense>
+            ) : ruta.vista === "ajustes" ? (
+              <Suspense fallback={<p style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando Ajustes…</p>}>
+                <Ajustes
+                  yo={yo}
+                  clients={clients}
+                  pulso={pulso}
+                  onVolver={() => navegar("/")}
+                  onExportar={exportJSON}
+                  onImportar={() => importRef.current?.click()}
+                />
               </Suspense>
             ) : client ? (
               <>
@@ -1048,42 +1142,75 @@ function Workspace({ session, ruta }) {
                     </div>
                   </div>
 
-                  {client.calendars?.length > 0 && (
-                    <nav className="cal-tabs" aria-label="Calendarios del cliente">
-                      {client.calendars.map((c) => (
-                        <button
-                          key={c.id}
-                          className="cal-tab"
-                          onClick={() => irA(selectedClientId, c.id)}
-                          aria-current={selectedCalId === c.id ? "true" : undefined}
-                        >
-                          {c.name || MONTHS[c.month] + " " + c.year}
-                        </button>
-                      ))}
-                    </nav>
-                  )}
+                  <ResumenCliente client={client} calendar={calendar} pulso={pulso} onIr={irAPestana} />
+
+                  {/* Las pestañas del cliente. Son direcciones —se
+                      recargan, se comparten, atrás funciona—, así que es
+                      navegación con aria-current, no role="tab". Antes
+                      todo esto iba apilado ENCIMA del calendario, que es
+                      lo que se usa todo el día, y había que bajar para
+                      llegar a él. */}
+                  <nav className="pestanas-cliente" aria-label={`Secciones de ${client.name}`}>
+                    {PESTANAS.map(([id, nombre, icono]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        className="pestana-cliente"
+                        aria-current={pestana === id ? "page" : undefined}
+                        onClick={() => (id === "calendario" ? irA(client.id, selectedCalId) : irAPestana(id))}
+                      >
+                        <Icon name={icono} size={16} /> {nombre}
+                      </button>
+                    ))}
+                  </nav>
                 </div>
 
-                {/* Ideas Bank at client level */}
-                <IdeasBank
-                  client={client}
-                  onUpdateClient={(updated) => setClients((prev) => prev.map((c) => c.id === updated.id ? updated : c))}
-                />
+                <Suspense fallback={<Cargando />}>
+                {pestana === "tareas" && <TaskPanel client={client} pulso={pulso} />}
 
-                {/* Tareas rápidas, tareas del cliente y banco de contenido */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
-                  <QuickTasksPanel pulso={pulso} />
-                  <TaskPanel client={client} pulso={pulso} />
-                  <ContentBankPanel client={client} pulso={pulso} />
-                </div>
+                {pestana === "contenido" && (
+                  <PestanaContenido client={client} pulso={pulso} onPersistClient={persistClient} />
+                )}
 
-                {calendar ? (
+                {pestana === "ideas" && (
+                  <IdeasBank
+                    client={client}
+                    onUpdateClient={(updated) => setClients((prev) => prev.map((c) => c.id === updated.id ? updated : c))}
+                  />
+                )}
+
+                {pestana === "ficha" && (
+                  <FichaCliente
+                    client={client}
+                    onEditar={() => { setEditingClient(client); setShowClientModal(true); }}
+                  />
+                )}
+                </Suspense>
+
+                {pestana === "calendario" && client.calendars?.length > 0 && (
+                  <nav className="cal-tabs" aria-label="Calendarios del cliente">
+                    {client.calendars.map((c) => (
+                      <button
+                        key={c.id}
+                        className="cal-tab"
+                        onClick={() => irA(selectedClientId, c.id)}
+                        aria-current={selectedCalId === c.id ? "true" : undefined}
+                      >
+                        {c.name || MONTHS[c.month] + " " + c.year}
+                      </button>
+                    ))}
+                  </nav>
+                )}
+
+                {pestana === "calendario" && (calendar ? (
                   <CalendarView
                     client={client}
                     cal={calendar}
                     calId={selectedCalId}
                     pulso={pulso}
                     editandoOtros={editandoOtros}
+                    abrirPublicacion={postPedido?.calId === selectedCalId ? postPedido.postId : null}
+                    onPublicacionAbierta={publicacionAbierta}
                     onUpdateCal={updateCalendar}
                     onUpdateCalLocal={updateCalendarLocal}
                     onDeleteCal={deleteCalendar}
@@ -1123,70 +1250,83 @@ function Workspace({ session, ruta }) {
                 ) : (
                   <div className="empty-state">
                     <Icon name="calendar" size={36} className="empty-state-icon" style={{ margin: "0 auto var(--sp-3)" }} />
-                    <p className="empty-state-title">
-                      {client.calendars?.length > 0 ? "Selecciona un calendario" : "Sin calendarios"}
-                    </p>
-                    <p className="empty-state-text">
-                      {client.calendars?.length > 0
-                        ? "Elige uno de los calendarios de arriba."
-                        : "Crea el primer calendario de este cliente."}
-                    </p>
+                    <p className="empty-state-title">Sin calendarios</p>
+                    <p className="empty-state-text" style={{ marginBottom: "var(--sp-4)" }}>Crea el primer calendario de este cliente.</p>
+                    <button className="btn btn-primary" onClick={() => setShowWizard(true)}>
+                      <Icon name="plus" size={18} /> Crear calendario
+                    </button>
                   </div>
-                )}
+                ))}
               </>
             ) : (
-              <div className="empty-state" style={{ border: "none", paddingTop: "var(--sp-10)" }}>
-                <Icon name="users" size={40} className="empty-state-icon" style={{ margin: "0 auto var(--sp-3)" }} />
-                <p className="empty-state-title">
-                  {clients.length > 0 ? "Selecciona un cliente" : "Crea tu primer cliente"}
-                </p>
-                <p className="empty-state-text" style={{ marginBottom: "var(--sp-4)" }}>
-                  {clients.length > 0
-                    ? "Elige un cliente de la lista para ver sus calendarios."
-                    : "Necesitas un cliente antes de planificar calendarios."}
-                </p>
-                <button className="btn btn-primary" onClick={clients.length > 0 ? () => setShowDrawer(true) : openNewClient}>
-                  {clients.length > 0 ? "Ver clientes" : "Crear cliente"}
-                </button>
-              </div>
+              <Inicio
+                yo={yo}
+                clients={clients}
+                pulso={pulso}
+                presentes={presentes}
+                onAbrir={(id) => irA(id)}
+                onNuevo={openNewClient}
+              />
             )}
           </div>
         </main>
       </div>
 
+      <BarraInferior
+        ruta={ruta}
+        hayCliente={Boolean(client)}
+        chatAbierto={showChat}
+        pulso={pulso}
+        onMiDia={() => navegar("/tareas")}
+        onCalendario={() => (client ? irA(client.id, selectedCalId) : navegar("/"))}
+        onChat={() => setShowChat((v) => !v)}
+        onMas={() => setShowDrawer(true)}
+      />
+
       {showDrawer && (
         <ClientDrawer
+          ruta={ruta}
+          pulso={pulso}
           clients={clients}
           selectedClientId={selectedClientId}
           onSelect={selectClient}
           onNew={openNewClient}
           presentes={presentes}
           yo={yo}
-          onExport={exportJSON}
-          onImport={() => importRef.current?.click()}
           onClose={() => setShowDrawer(false)}
         />
       )}
 
-      {showWizard && client && (
-        <PlanWizard
-          client={client}
-          onGenerate={handleWizardGenerate}
-          onClose={() => setShowWizard(false)}
-        />
-      )}
+      <Suspense fallback={null}>
+        {showBuscador && (
+          <Buscador
+            clients={clients}
+            client={client}
+            onClose={() => setShowBuscador(false)}
+            onElegir={elegirDelBuscador}
+          />
+        )}
 
-      {showClientModal && (
-        <ClientModal
-          initial={editingClient}
-          onSave={saveClient}
-          onDelete={deleteClient}
-          onClose={() => {
-            setShowClientModal(false);
-            setEditingClient(null);
-          }}
-        />
-      )}
+        {showWizard && client && (
+          <PlanWizard
+            client={client}
+            onGenerate={handleWizardGenerate}
+            onClose={() => setShowWizard(false)}
+          />
+        )}
+
+        {showClientModal && (
+          <ClientModal
+            initial={editingClient}
+            onSave={saveClient}
+            onDelete={deleteClient}
+            onClose={() => {
+              setShowClientModal(false);
+              setEditingClient(null);
+            }}
+          />
+        )}
+      </Suspense>
 
       {!showChat && (
         <button
@@ -1206,12 +1346,14 @@ function Workspace({ session, ruta }) {
             calendar={calendar}
             calId={selectedCalId}
             clients={clients}
+            acoplado={chatAcoplado}
             onUpdateCal={updateCalendar}
             onClose={() => setShowChat(false)}
             onAddIdea={handleAddIdea}
             onSelectClient={(id) => {
               irA(id);
-              setShowChat(false);
+              // Acoplado, el asistente se queda: se trabaja al lado.
+              if (!chatAcoplado) setShowChat(false);
             }}
           />
         </Suspense>

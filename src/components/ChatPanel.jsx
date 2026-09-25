@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useId, useCallback } from "react";
 import Icon from "./Icon";
 import BancoSelector from "./BancoSelector";
+import { idDeCarpeta } from "../lib/drive";
 import { CopyButton } from "./calendario/primitivas";
 import { stripMarkdown } from "./calendario/formato";
 import { useDialogA11y } from "../hooks/useDialogA11y";
@@ -43,6 +44,7 @@ export default function ChatPanel({
   onAddIdea,
   onSelectClient,
   defaultMode,
+  acoplado = false,
 }) {
   const [chatMode, setChatMode] = useState(defaultMode || (client ? "client" : "global"));
   const [messages, setMessages] = useState([]);
@@ -68,9 +70,10 @@ export default function ChatPanel({
   const inputRef = useRef(null);
   const fileRef = useRef(null);
   const recognitionRef = useRef(null);
-  const dialogRef = useDialogA11y(onClose);
+  const dialogRef = useDialogA11y(onClose, { activo: !acoplado });
   const inputId = useId();
   const clientId = client?.dbId || client?.id;
+  const raizDrive = idDeCarpeta(client?.driveFolder);
   const calRef = useRef(calendar);
   calRef.current = calendar;
 
@@ -225,15 +228,18 @@ export default function ChatPanel({
     agregarAdjuntos(nuevos);
   }, [clientId, agregarAdjuntos]);
 
+  // Del selector llega la misma forma venga de Drive o del banco de
+  // antes (ver BancoSelector): `fileId` para Drive, `clave` para R2.
   const desdeBanco = useCallback((items) => {
     setBancoAbierto(false);
     agregarAdjuntos(items.map((item) => ({
       id: uid(),
-      tipo: item.file_type === "video" ? "video" : "imagen",
-      nombre: item.file_name,
-      origen: "banco",
-      clave: item.file_path,
-      preview: db.getContentBankUrl(item.file_path),
+      tipo: item.tipo,
+      nombre: item.nombre,
+      origen: item.fuente,
+      clave: item.clave ?? null,
+      fileId: item.fileId ?? null,
+      preview: item.url,
     })));
   }, [agregarAdjuntos]);
 
@@ -256,7 +262,7 @@ export default function ChatPanel({
     if (imagenes.length) {
       contextos.push(marcarContexto(
         imagenes.length === 1 ? "Imagen adjunta" : `${imagenes.length} imágenes adjuntas`,
-        imagenes.map((a) => `· ${a.nombre}${a.origen === "banco" ? " (del banco)" : ""}`).join("\n"),
+        imagenes.map((a) => `· ${a.nombre}${a.origen === "drive" ? " (de Google Drive)" : a.origen === "banco" ? " (del banco)" : ""}`).join("\n"),
       ));
     }
     for (const a of lista) {
@@ -268,15 +274,22 @@ export default function ChatPanel({
         continue;
       }
 
-      let clave = a.clave;
-      if (!clave) {
-        setProgreso(`Guardando «${a.nombre}» en el banco…`);
-        clave = (await db.uploadContentBankItem(clientId, a.file)).file_path;
+      // El video tiene que estar guardado para que Gemini lo vea: si el
+      // cliente tiene Drive, va a su carpeta; si no, al banco de antes.
+      let { clave, fileId } = a;
+      if (!clave && !fileId) {
+        if (raizDrive) {
+          setProgreso(`Guardando «${a.nombre}» en el Drive del cliente…`);
+          fileId = (await db.subirADrive(clientId, a.file)).id;
+        } else {
+          setProgreso(`Guardando «${a.nombre}» en el banco…`);
+          clave = (await db.uploadContentBankItem(clientId, a.file)).file_path;
+        }
       }
       setProgreso(`Viendo y escuchando «${a.nombre}»… (puede tardar un minuto)`);
       const [analisis, fotos] = await Promise.allSettled([
-        db.analizarVideo(clave),
-        fotogramasDeVideo(db.getContentBankUrl(clave), FOTOGRAMAS),
+        fileId ? db.analizarVideoDrive(clientId, fileId) : db.analizarVideo(clave),
+        fotogramasDeVideo(fileId ? db.urlArchivoDrive(clientId, fileId) : db.getContentBankUrl(clave), FOTOGRAMAS),
       ]);
       if (analisis.status === "rejected" && fotos.status === "rejected") {
         throw new Error(`No se pudo leer el video «${a.nombre}»: ${analisis.reason?.message || "error desconocido"}`);
@@ -295,7 +308,7 @@ export default function ChatPanel({
       }
     }
     return { bloques, contextos };
-  }, [clientId]);
+  }, [clientId, raizDrive]);
 
   const resolveClient = useCallback((nameOrId) => {
     if (!nameOrId) return null;
@@ -831,28 +844,33 @@ CÓMO DEBES RESPONDER:
   const panelLabel = isGlobal ? "Agente de la agencia" : `Chat con asistente de ${client?.name || ""}`;
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 200, display: "flex", justifyContent: "flex-end" }}>
-      <button
-        type="button"
-        aria-label="Cerrar chat"
-        onClick={onClose}
-        style={{ flex: 1, background: "rgba(2,6,16,.66)", border: "none", cursor: "pointer", backdropFilter: "blur(2px)" }}
-      />
+    <div className={acoplado ? "chat-acoplado" : undefined} style={acoplado ? undefined : { position: "fixed", inset: 0, zIndex: 200, display: "flex", justifyContent: "flex-end" }}>
+      {/* Acoplado —pantalla ancha— es un panel al lado del contenido, no
+          un diálogo: sin fondo oscuro, sin foco atrapado y con el resto
+          de la pantalla usable. */}
+      {!acoplado && (
+        <button
+          type="button"
+          aria-label="Cerrar chat"
+          onClick={onClose}
+          style={{ flex: 1, background: "rgba(2,6,16,.66)", border: "none", cursor: "pointer", backdropFilter: "blur(2px)" }}
+        />
+      )}
       <div
         ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
+        role={acoplado ? "complementary" : "dialog"}
+        aria-modal={acoplado ? undefined : "true"}
         aria-label={panelLabel}
         style={{
-          width: 420,
+          width: acoplado ? "100%" : 420,
           maxWidth: "100vw",
           height: "100%",
           background: "var(--surface)",
           borderLeft: "1px solid var(--border-strong)",
-          boxShadow: "var(--elev-2)",
+          boxShadow: acoplado ? "none" : "var(--elev-2)",
           display: "flex",
           flexDirection: "column",
-          animation: "slideIn .24s cubic-bezier(.22,.61,.36,1)",
+          animation: acoplado ? undefined : "slideIn .24s cubic-bezier(.22,.61,.36,1)",
         }}
       >
         {/* Cabecera */}
@@ -884,11 +902,11 @@ CÓMO DEBES RESPONDER:
                 <span
                   className="badge"
                   style={{ background: "var(--accent-soft)", color: "var(--accent)", fontSize: "var(--fs-3xs)" }}
-                  title="Modelo y nivel de razonamiento. Se cambian en Equipo → Inteligencia artificial."
+                  title="Modelo y nivel de razonamiento. Se cambian en Ajustes → Inteligencia artificial."
                 >
                   {modeloVivo
                     ? `${modeloVivo.etiqueta} · ${NIVELES_IA.find((n) => n.id === NIVEL_DE_ESFUERZO[modeloVivo.esfuerzo])?.nombre ?? ""}`
-                    : etiquetaIA(configIA)}
+                    : etiquetaIA(configIA, { para: "chat" })}
                 </span>
               </div>
             </div>
@@ -1057,7 +1075,7 @@ CÓMO DEBES RESPONDER:
                   {/* Un video recién escogido es un blob:, y la CSP no deja
                       reproducirlos (media-src cae en 'self'): se enseña el
                       icono hasta que esté en el banco. */}
-                  {a.tipo === "video" && a.origen === "banco" ? (
+                  {a.tipo === "video" && (a.origen === "banco" || a.origen === "drive") ? (
                     <video src={`${a.preview}#t=0.5`} muted preload="metadata" aria-label={`Video: ${a.nombre}`} style={{ width: 56, height: 56, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", display: "block", background: "var(--bg)" }} />
                   ) : a.tipo === "video" ? (
                     <span role="img" aria-label={`Video: ${a.nombre}`} title={a.nombre} style={{ width: 56, height: 56, borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", color: "var(--text-dim)" }}>
@@ -1090,8 +1108,9 @@ CÓMO DEBES RESPONDER:
         {bancoAbierto && clientId && (
           <BancoSelector
             clientId={clientId}
+            driveFolder={client?.driveFolder}
             maximo={MAX_ADJUNTOS - adjuntos.length}
-            titulo="Adjuntar del banco de contenido"
+            titulo={raizDrive ? "Adjuntar desde Google Drive" : "Adjuntar del banco de contenido"}
             onSelect={desdeBanco}
             onClose={() => setBancoAbierto(false)}
           />
@@ -1131,8 +1150,8 @@ CÓMO DEBES RESPONDER:
             <button
               className="btn-icon"
               onClick={() => setBancoAbierto(true)}
-              aria-label="Adjuntar del banco de contenido"
-              title="Adjuntar del banco de contenido"
+              aria-label={raizDrive ? "Adjuntar desde Google Drive" : "Adjuntar del banco de contenido"}
+              title={raizDrive ? "Adjuntar desde Google Drive" : "Adjuntar del banco de contenido"}
               disabled={loading || adjuntos.length >= MAX_ADJUNTOS}
               style={{ minHeight: "var(--tap)", minWidth: "var(--tap)" }}
             >

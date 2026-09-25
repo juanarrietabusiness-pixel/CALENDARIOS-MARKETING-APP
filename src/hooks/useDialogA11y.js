@@ -19,8 +19,13 @@ const FOCUSABLE = [
  * - Bloquea el desplazamiento del fondo mientras está abierto.
  *
  * Devuelve la ref que hay que colocar en el contenedor del diálogo.
+ *
+ * `activo: false` lo apaga entero: es para un panel que a veces es
+ * diálogo y a veces no —el asistente, que en pantalla ancha se acopla al
+ * lado del contenido y ahí no debe atrapar el foco ni bloquear el fondo—.
+ * Escape sigue cerrándolo.
  */
-export function useDialogA11y(onClose) {
+export function useDialogA11y(onClose, { activo = true } = {}) {
   const ref = useRef(null);
   // onClose suele ser una función nueva en cada render; la guardamos en
   // una ref para no re-suscribir el listener en cada uno.
@@ -30,6 +35,11 @@ export function useDialogA11y(onClose) {
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
+    if (!activo) {
+      const soloEscape = (e) => { if (e.key === "Escape") { e.stopPropagation(); closeRef.current?.(); } };
+      node.addEventListener("keydown", soloEscape);
+      return () => node.removeEventListener("keydown", soloEscape);
+    }
 
     const previouslyFocused = document.activeElement;
 
@@ -84,7 +94,7 @@ export function useDialogA11y(onClose) {
         previouslyFocused.focus({ preventScroll: true });
       }
     };
-  }, []);
+  }, [activo]);
 
   return ref;
 }

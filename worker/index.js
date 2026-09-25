@@ -32,10 +32,11 @@ import { rutasDatos } from "./rutas/datos.js";
 import { rutasEquipo, rutaInvitacionPublica } from "./rutas/equipo.js";
 import { rutaIA } from "./rutas/ia.js";
 import { rutaChat, rutaResumenChat } from "./rutas/chat.js";
-import { rutaModelos, rutaConsumo } from "./rutas/iaEspacio.js";
+import { rutaModelos, rutaConsumo, rutaGasto } from "./rutas/iaEspacio.js";
 import { rutaADN } from "./rutas/adn.js";
 import { rutaGenerarImagen } from "./rutas/imagen.js";
 import { rutaAnalizarVideo } from "./rutas/video.js";
+import { rutasDrive, rutaDriveCallback } from "./rutas/drive.js";
 
 // El Durable Object del espacio. Se reexporta desde aquí porque
 // `wrangler.jsonc` apunta su `class_name` al módulo de entrada: si se
@@ -132,6 +133,13 @@ export default {
         return rutaInvitacionPublica(req, env, { partes, metodo });
       }
 
+      // La vuelta de Google al conectar Drive. Sin sesión a propósito: la
+      // identidad viaja en el `state` FIRMADO, atado a una cookie de la
+      // pestaña que lo pidió. Ver worker/rutas/drive.js.
+      if (partes[0] === "drive" && partes[1] === "callback" && metodo === "GET") {
+        return rutaDriveCallback(req, env);
+      }
+
       // ---------- 2. Acceso ----------
       if (partes[0] === "acceso" && metodo === "POST") {
         const { email, password } = (await cuerpo(req)) ?? {};
@@ -202,8 +210,12 @@ export default {
       if (partes[0] === "ia" && !partes[1] && metodo === "POST") return rutaIA(req, env, { acceso });
       if (partes[0] === "ia" && partes[1] === "modelos" && metodo === "GET") return rutaModelos(req, env, { acceso });
       if (partes[0] === "ia" && partes[1] === "consumo" && metodo === "GET") return rutaConsumo(req, env, { acceso });
+      if (partes[0] === "ia" && partes[1] === "gasto" && metodo === "GET") return rutaGasto(req, env, { acceso });
 
       if (partes[0] === "equipo") return rutasEquipo(req, env, { acceso, partes, metodo, usuario });
+
+      // ---------- Google Drive: el banco de contenido ----------
+      if (partes[0] === "drive") return rutasDrive(req, env, { acceso, usuario, partes, metodo });
 
       // ---------- Medios ----------
       //

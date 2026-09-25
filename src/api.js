@@ -49,6 +49,12 @@ async function invokeFunction(name, body) {
     /* la respuesta no era JSON: pasa en los cortes del borde */
   }
 
+  // El medidor de gasto de la cabecera se relee al terminar cualquier
+  // llamada de IA, haya ido bien o mal: una que falla a medias también cuesta.
+  if (name === "ai") {
+    window.dispatchEvent(new Event("ia:gasto"));
+  }
+
   if (!res.ok) {
     if (data?.error) throw new Error(data.error);
     if (res.status === 504 || res.status === 408) {
@@ -72,8 +78,12 @@ async function invokeFunction(name, body) {
  * la función del servidor, que además no tiene el límite de tiempo del
  * navegador cerrando la pestaña a medias.
  */
-export async function callAI(content, { maxTokens, tier, tolerarCorte = false } = {}) {
-  const data = await invokeFunction("ai", { content, maxTokens, tier });
+/**
+ * `funcion` y `clienteId` sólo sirven para el contador de gasto: dicen en
+ * qué se fue cada dólar y de qué cliente. El `tier` ya no elige nada.
+ */
+export async function callAI(content, { maxTokens, tier, tolerarCorte = false, funcion, clienteId } = {}) {
+  const data = await invokeFunction("ai", { content, maxTokens, tier, funcion, clienteId });
 
   // El servidor avisa si el modelo se quedó sin tokens a media respuesta.
   // Sin esto, un texto cortado a la mitad se trataría como completo.
@@ -289,7 +299,7 @@ Escribe directamente el contenido, sin preambulos.`;
   }
   content.push({ type: "text", text: promptText });
 
-  const txt = await callAI(content);
+  const txt = await callAI(content, { funcion: "publicación", clienteId: client?.id });
 
   const guionMatch = txt.match(/GUION:\s*([\s\S]*?)(?=DESCRIPCION:|HASHTAGS_FINALES:|$)/i);
   const descMatch = txt.match(/DESCRIPCION:\s*([\s\S]*?)(?=GUION:|HASHTAGS_FINALES:|$)/i);
@@ -352,7 +362,7 @@ Responde SOLO con la descripcion/caption completa incluyendo los hashtags, sin p
   }
 
   const content = [{ type: "text", text: promptText }];
-  return await callAI(content);
+  return await callAI(content, { funcion: "publicación", clienteId: client?.id });
 }
 
 export async function extractClientADN(repoContent) {
@@ -368,7 +378,7 @@ Si no encuentras informacion para un campo, dejalo como string vacio.
 No inventes datos que no esten en el contenido.`;
 
   const content = [{ type: "text", text: promptText }];
-  const raw = await callAI(content);
+  const raw = await callAI(content, { funcion: "ADN de marca" });
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("No se pudo parsear la respuesta de IA");
   return JSON.parse(jsonMatch[0]);
@@ -592,7 +602,7 @@ NEGATIVOS:
 ═══ ADN DEL CLIENTE ═══
 ${adnTexto}`;
 
-  const raw = await callAI([cachedBlock(promptText)], { maxTokens: 16000, tier: "calidad" });
+  const raw = await callAI([cachedBlock(promptText)], { maxTokens: 16000, tier: "calidad", funcion: "prompt maestro", clienteId: client?.id });
   const receta = parseJSONLoose(raw);
 
   // La URL de Google Fonts no se le pide a un modelo: es una cadena exacta
@@ -653,7 +663,7 @@ ${huecos.map((h) => h.campo).join(", ")}
 ${adnTexto}`;
 
   try {
-    const raw = await callAI([cachedBlock(promptText)], { maxTokens: 8000, tier: "calidad" });
+    const raw = await callAI([cachedBlock(promptText)], { maxTokens: 8000, tier: "calidad", funcion: "prompt maestro", clienteId: client?.id });
     const parcial = parseJSONLoose(raw);
     for (const { campo } of huecos) {
       const v = parcial[campo];
@@ -892,7 +902,7 @@ exacto de arriba, empezando por <<<PIEZA:1>>>. Sin texto antes ni después.`;
 
   const { texto, cortada, diagnostico } = await callAI(
     [cachedBlock(estable), bloque(variable)],
-    { maxTokens, tier: "calidad", tolerarCorte: true },
+    { maxTokens, tier: "calidad", tolerarCorte: true, funcion: "prompt maestro", clienteId: client?.id },
   );
 
   // Los tokens reales de esta tanda suben a quien llama. `enTandas` pasa
@@ -964,14 +974,21 @@ export function generateMetaPiecesEnTandas(opciones, alProgresar) {
  * herramientas del navegador, los resultados de las del servidor que
  * hay que juntar con los de aquí en un mismo mensaje.
  */
+// La caché del prompt dura cinco minutos y escribirla cuesta 1,25×: sólo
+// se pide cuando la conversación va seguida, que es cuando se va a leer.
+const VIDA_CACHE_MS = 4.5 * 60_000;
+let ultimaLlamadaChat = 0;
+
 export async function conversarIA({ messages, system, tools, clienteId = null, onEvento = () => {} }) {
+  const seguido = Date.now() - ultimaLlamadaChat < VIDA_CACHE_MS;
+  ultimaLlamadaChat = Date.now();
   let res;
   try {
     res = await fetch("/api/ia/chat", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages, system, tools, clienteId }),
+      body: JSON.stringify({ messages, system, tools, clienteId, seguido }),
     });
   } catch {
     throw new Error("No hay conexión con el servidor. Revisa tu red.");
@@ -987,17 +1004,22 @@ export async function conversarIA({ messages, system, tools, clienteId = null, o
   const dec = new TextDecoder();
   let buffer = "";
   let fin = null;
-  for (;;) {
-    const { done, value } = await lector.read();
-    if (done) break;
-    buffer += dec.decode(value, { stream: true });
-    const { eventos, resto } = partirSSE(buffer);
-    buffer = resto;
-    for (const { datos: ev } of eventos) {
-      if (ev.t === "error") throw new Error(ev.mensaje || "No se pudo generar la respuesta.");
-      if (ev.t === "fin") fin = ev;
-      else onEvento(ev);
+  try {
+    for (;;) {
+      const { done, value } = await lector.read();
+      if (done) break;
+      buffer += dec.decode(value, { stream: true });
+      const { eventos, resto } = partirSSE(buffer);
+      buffer = resto;
+      for (const { datos: ev } of eventos) {
+        if (ev.t === "error") throw new Error(ev.mensaje || "No se pudo generar la respuesta.");
+        if (ev.t === "fin") fin = ev;
+        else onEvento(ev);
+      }
     }
+  } finally {
+    // El medidor de gasto de la cabecera se relee: esta respuesta ya costó.
+    window.dispatchEvent(new Event("ia:gasto"));
   }
   if (!fin) throw new Error("La respuesta del asistente se cortó. Inténtalo de nuevo.");
   return fin;

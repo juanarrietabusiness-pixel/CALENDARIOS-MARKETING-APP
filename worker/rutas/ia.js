@@ -30,7 +30,7 @@
 
 import { json, error, cuerpo } from "../lib/respuesta.js";
 import { abrirFlujo, leerFlujo, textoDe, esRechazoDeModelo, mensajeDeRechazo, RechazoAnthropic } from "../lib/anthropic.js";
-import { leerConfigIA, resolverIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET } from "../lib/configIA.js";
+import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET } from "../lib/configIA.js";
 
 const MAX_BODY_BYTES = 5 * 1024 * 1024;   // las publicaciones llevan imágenes
 const MAX_TOKENS_CAP = 64_000;            // texto pedido + margen del razonamiento
@@ -96,8 +96,8 @@ export async function rutaIA(req, env, { acceso } = {}) {
 
   if (usarGroq) return rutaGroq(env, content, pedido, { restante, transcurrido, seAgoto });
 
-  const config = acceso ? await leerConfigIA(acceso) : { ia_modelo: "sonnet", ia_razonamiento: "alto" };
-  const ia = await resolverIA(env, config);
+  const ia = await prepararIA(env, acceso);
+  if (ia.bloqueo) return error(ia.bloqueo, 402);
   // El presupuesto del navegador es para ESCRIBIR; el razonamiento va aparte.
   const maxTokens = Math.min(pedido + (MARGEN_RAZONAMIENTO[ia.esfuerzo] ?? 16_000), MAX_TOKENS_CAP);
   let modelo = ia.modelo;
@@ -141,7 +141,12 @@ export async function rutaIA(req, env, { acceso } = {}) {
       ? "La IA está saturada. Inténtalo en unos segundos."
       : `La IA cortó la respuesta: ${m.error.message ?? "sin motivo"}`, 502);
   }
-  await registrarConsumo(acceso, { funcion: String(body.funcion ?? "calendario").slice(0, 40), modelo, uso: m.usage });
+  await registrarConsumo(acceso, {
+    funcion: String(body.funcion ?? "calendario").slice(0, 40),
+    modelo,
+    uso: m.usage,
+    clienteId: typeof body.clienteId === "string" ? body.clienteId.slice(0, 80) : null,
+  });
 
   const u = m.usage ?? {};
   const bloques = m.content ?? [];
