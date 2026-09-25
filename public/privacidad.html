@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Política de privacidad · Juancito Ads Calendarios</title>
+  <meta name="description" content="Qué datos usa la aplicación de calendarios de Juancito Ads y para qué.">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <!-- Página estática, sin scripts: la pide Google para publicar el
+       acceso OAuth a Drive, y tiene que abrirse sin sesión. -->
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      background: #050D1F;
+      color: #EAF0F8;
+      font: 16px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main { max-width: 720px; margin: 0 auto; padding: 40px 20px 64px; }
+    h1 { font-size: 1.75rem; line-height: 1.3; margin: 0 0 4px; }
+    h2 { font-size: 1.125rem; margin: 32px 0 8px; }
+    p, li { color: #C9D6E6; }
+    a { color: #3aa0ff; }
+    .meta { color: #8a9bb3; font-size: .875rem; margin-bottom: 24px; }
+    header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+    header img { width: 40px; height: 40px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <img src="/logo.png" alt="">
+      <strong>Juancito Ads · Calendarios</strong>
+    </header>
+
+    <h1>Política de privacidad</h1>
+    <p class="meta">Última actualización: 25 de septiembre de 2026</p>
+
+    <p>
+      Esta aplicación la usa internamente la agencia <strong>Juancito Ads</strong> para planificar,
+      redactar y aprobar calendarios de contenido para redes sociales de sus clientes. No es un servicio
+      abierto al público: sólo entran las personas del equipo de la agencia, con una cuenta que crea el
+      administrador.
+    </p>
+
+    <h2>Qué datos se guardan</h2>
+    <ul>
+      <li>De las personas del equipo: nombre, correo y una contraseña cifrada (nunca en claro).</li>
+      <li>De los clientes de la agencia: la ficha de marca, los calendarios, las publicaciones, las tareas
+        y las conversaciones con el asistente.</li>
+      <li>Las respuestas que deja un cliente en la página de aprobación de su calendario.</li>
+    </ul>
+    <p>Todo se guarda en la infraestructura de Cloudflare (base de datos D1 y almacenamiento R2).</p>
+
+    <h2>Google Drive</h2>
+    <p>
+      La aplicación se conecta a Google Drive con la cuenta de la agencia, y sólo cuando el administrador
+      lo autoriza. Se usa para:
+    </p>
+    <ul>
+      <li>ver y organizar los archivos de la carpeta de cada cliente que se ha compartido con la agencia;</li>
+      <li>subir a esa carpeta imágenes y videos;</li>
+      <li>usar una imagen de esa carpeta en una publicación (se guarda una copia para el calendario);</li>
+      <li>adjuntar un archivo de esa carpeta al asistente para que lo analice.</li>
+    </ul>
+    <p>
+      La aplicación sólo abre archivos que estén dentro de la carpeta asignada a cada cliente, aunque el
+      permiso de Google sea más amplio. No lee, no copia y no modifica ningún otro archivo del Drive.
+    </p>
+    <p>
+      El permiso de acceso se guarda cifrado en el servidor y nunca llega al navegador. Se puede retirar
+      en cualquier momento desde la aplicación (Ajustes → Integraciones → Desconectar) o desde
+      <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.
+    </p>
+    <p>
+      El uso de la información recibida de las API de Google cumple la
+      <a href="https://developers.google.com/terms/api-services-user-data-policy">Política de datos de
+      usuario de los servicios de las API de Google</a>, incluidos los requisitos de uso limitado.
+    </p>
+
+    <h2>Inteligencia artificial</h2>
+    <p>
+      Para redactar contenido, la aplicación envía a Anthropic (Claude) el texto necesario de cada
+      petición. Para generar imágenes y analizar videos usa Google Gemini, y sólo le envía el archivo o la
+      descripción de esa petición. Ninguno de los dos recibe el acceso a Drive ni los datos de acceso de
+      nadie.
+    </p>
+
+    <h2>Qué NO se hace</h2>
+    <ul>
+      <li>No se venden ni se ceden datos a terceros.</li>
+      <li>No se usan los datos para publicidad.</li>
+      <li>No se usan cookies de seguimiento: sólo la cookie de sesión necesaria para entrar.</li>
+    </ul>
+
+    <h2>Borrar los datos</h2>
+    <p>
+      Un cliente o una persona del equipo puede pedir que se borren sus datos escribiendo a la agencia.
+      Al borrar un cliente en la aplicación se borran con él sus calendarios, tareas y conversaciones.
+    </p>
+
+    <h2>Contacto</h2>
+    <p>Juancito Ads · <a href="mailto:juanarrietabusiness@gmail.com">juanarrietabusiness@gmail.com</a></p>
+
+    <p><a href="/">Volver a la aplicación</a></p>
+  </main>
+</body>
+</html>
