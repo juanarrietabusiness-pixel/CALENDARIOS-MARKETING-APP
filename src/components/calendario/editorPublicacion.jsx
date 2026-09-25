@@ -47,7 +47,17 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError })
       setSubiendo(`Subiendo «${f.name}»…`);
       try {
         const src = await subirImagenPublicacion(clientId, f);
-        nuevos = [...nuevos, { src, tipo: esVideoArchivo(f) ? "video" : "imagen", nombre: f.name }];
+        // Las medidas, para avisar YA si Instagram no aceptará la
+        // proporción, y no a la hora de publicar.
+        let medidas = {};
+        if (!esVideoArchivo(f)) {
+          try {
+            const b = await createImageBitmap(f);
+            medidas = { ancho: b.width, alto: b.height };
+            b.close?.();
+          } catch { /* sin medidas: se toman al programar */ }
+        }
+        nuevos = [...nuevos, { src, tipo: esVideoArchivo(f) ? "video" : "imagen", nombre: f.name, ...medidas }];
         poner(nuevos);
       } catch (e) {
         onError?.(`No se pudo subir «${f.name}»: ${e.message}`);
@@ -121,7 +131,9 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError })
         accept="image/*,video/*"
         className="sr-only"
         aria-label="Imágenes o videos para la publicación"
-        onChange={(e) => { const fs = e.target.files; e.target.value = ""; if (fs?.length) void subir(fs); }}
+        // Copiar ANTES de vaciar: `files` es la misma lista que se vacía al
+        // resetear el campo, y la subida no llegaba a salir.
+        onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ""; if (fs.length) void subir(fs); }}
       />
       <div className="editor-medios-botones">
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => entrada.current?.click()} disabled={!!subiendo || medios.length >= maximo}>

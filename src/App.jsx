@@ -551,6 +551,15 @@ function Workspace({ session, ruta }) {
           setToast(`${ev.por?.nombre ?? "El cliente"} terminó y envió su revisión.`);
           break;
 
+        // La cola de publicación: la mueve el cron, sin nadie delante. Se
+        // avisa de lo que sale y de lo que falla; lo demás sólo refresca.
+        case "publicacion":
+          setPulso((n) => n + 1);
+          if (ev.aviso) setToast(ev.aviso);
+          else if (ev.estado === "publicada") setToast(`Publicada en ${ev.red === "facebook" ? "Facebook" : "Instagram"}.`);
+          else if (ev.estado === "error") setToast(`No se pudo publicar en ${ev.red === "facebook" ? "Facebook" : "Instagram"}. Mira el detalle en la publicación.`);
+          break;
+
         default:
           break;
       }

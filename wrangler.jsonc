@@ -75,13 +75,24 @@
   ],
 
   // Los secretos NO van aquí. Se ponen con `wrangler secret put`:
-  //   ANTHROPIC_API_KEY, GROQ_API_KEY, GITHUB_TOKEN
+  //   ANTHROPIC_API_KEY, GROQ_API_KEY, GITHUB_TOKEN,
+  //   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, META_APP_ID, META_APP_SECRET
   // Estas variables sí son públicas en el sentido de que no abren nada:
   // son nombres de modelo y políticas.
   "vars": {
     "AI_PROVIDER": "anthropic",
     "AI_PENSAR": "no"
   },
+
+  // ============================================================
+  // El cron: cada minuto publica lo que ya toca.
+  //
+  // Instagram no deja programar por API; la hora la cumple el servidor
+  // (worker/lib/publicador.js). Un solo disparador para todo lo
+  // periódico —la foto diaria de métricas mira la hora dentro—: el plan
+  // gratuito tiene pocos por cuenta.
+  // ============================================================
+  "triggers": { "crons": ["* * * * *"] },
 
   "observability": { "enabled": true }
 }

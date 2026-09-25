@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   mediosDe, conMedios, textoPara, primerComentario, destinoInstagram, revisarPublicacion,
-  publicacionParaCliente, marcarActualizada, contarHashtags, rutasDeMedios,
+  publicacionParaCliente, marcarActualizada, contarHashtags, rutasDeMedios, momentoPublicacion, esJPEG,
 } from "./publicacion.js";
 
 describe("medios", () => {
@@ -89,5 +89,37 @@ describe("marcarActualizada", () => {
     expect(r.anterior.descripcion).toBe("viejo");
     expect(marcarActualizada({ ...antes, status: "pending" }, { ...antes, descripcion: "nuevo" }, "t").actualizadaAt).toBeUndefined();
     expect(marcarActualizada(antes, { ...antes, comment: "nota interna" }, "t").actualizadaAt).toBeUndefined();
+  });
+});
+
+describe("momentoPublicacion", () => {
+  it("el día y la hora del calendario, en Panamá (UTC−5, sin horario de verano)", () => {
+    expect(momentoPublicacion("2026-10-05", "10:00")).toBe("2026-10-05T15:00:00.000Z");
+    expect(momentoPublicacion("2026-12-31", "21:30")).toBe("2027-01-01T02:30:00.000Z");
+  });
+  it("sin hora, a las 9:00; sin fecha válida, null", () => {
+    expect(momentoPublicacion("2026-10-05", "")).toBe("2026-10-05T14:00:00.000Z");
+    expect(momentoPublicacion("5 de octubre", "10:00")).toBeNull();
+  });
+});
+
+describe("Instagram: proporción y formato", () => {
+  const conImagen = (ancho, alto, src = "/api/media/clientes/c/posts/a.jpg") =>
+    ({ format: "post", descripcion: "x", medios: [{ src, tipo: "imagen", ancho, alto }] });
+
+  it("de 4:5 a 1.91:1 entra; más alta o más ancha, no", () => {
+    expect(revisarPublicacion(conImagen(1080, 1350)).errores).toEqual([]);
+    expect(revisarPublicacion(conImagen(1080, 566)).errores).toEqual([]);
+    expect(revisarPublicacion(conImagen(1080, 1920)).errores.join()).toMatch(/4:5/);
+    expect(revisarPublicacion(conImagen(2000, 800)).errores.join()).toMatch(/1\.91:1/);
+  });
+  it("una historia vertical sí vale", () => {
+    expect(revisarPublicacion({ ...conImagen(1080, 1920), format: "historia" }).errores).toEqual([]);
+  });
+  it("un PNG avisa de que se convertirá; no bloquea el panel", () => {
+    const r = revisarPublicacion(conImagen(1080, 1080, "/api/media/clientes/c/posts/a.png"));
+    expect(r.errores).toEqual([]);
+    expect(r.avisos.join()).toMatch(/JPEG/);
+    expect(esJPEG("/x/a.JPEG")).toBe(true);
   });
 });

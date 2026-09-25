@@ -119,6 +119,10 @@ src/
                           también lo importa el Worker)
     buscar.js             Lo que encuentra el buscador Ctrl+K (puro)
     resumenCliente.js     Por aprobar / con cambios / a medias; mes por defecto (puro)
+    publicacion.js        Qué se publica, límites de cada red, qué ve el cliente, a qué
+                          hora sale (puro; también lo importa el Worker)
+    cola.js               La cola de publicación resumida para la rejilla y el panel (puro)
+    colores.js            Colores y logo de la marca a partir del ADN (puro)
   components/
     Icon.jsx              Set de iconos SVG monocromos (rejilla 24, trazo 1.75)
     Presencia.jsx         Avatares, estado de la conexión, «X está editando»
@@ -126,6 +130,7 @@ src/
     SeccionIA.jsx         Ajustes → IA: modelo, nivel al escribir, nivel del asistente
     SeccionPresupuesto.jsx  Ajustes → presupuesto, qué pasa al llegar, consumo por día/cliente
     SeccionDrive.jsx      Ajustes → Integraciones: conectar Google Drive
+    SeccionMeta.jsx       Ajustes → Integraciones: conectar Meta y asignar cuentas
     MedidorIA.jsx         El gasto del mes contra el presupuesto, en la cabecera
     ExploradorDrive.jsx   La carpeta de Drive de un cliente: gestionar o escoger
     BancoSelector.jsx     Escoger de Drive (o del banco anterior); forma única
@@ -157,6 +162,9 @@ worker/
                           presupuesto (`prepararIA`, `bloqueoPorPresupuesto`)
     google.js             OAuth de Drive, refresh token cifrado, llamadas a Drive,
                           «¿está dentro de la carpeta del cliente?»
+    firmas.js             Cifrar y firmar con el secreto de una integración (HKDF)
+    meta.js               OAuth de Meta, cliente de la Graph API, cuentas, medios firmados
+    publicador.js         La cola: programar, procesar (Instagram/Facebook), reintentos
     herramientasServidor.js  Lo que el asistente consulta sin el navegador:
                           web, repositorio de GitHub, calendarios, tareas, ideas
     ids.js                UUID, testigos, huellas
@@ -173,7 +181,9 @@ worker/
     drive.js              Google Drive como banco: listar, miniatura, archivo,
                           subir, papelera, a-publicacion, migrar-banco
     iaEspacio.js          Modelos de la cuenta, consumo del mes y el medidor (/ia/gasto)
-migraciones/d1/           Esquema de D1 (0001 base … 0009 IA, 0010 presupuesto, 0011 Drive)
+    redes.js              Conectar Meta, asignar cuentas, la cola (/api/publicar) y el
+                          medio público firmado que descarga Meta
+migraciones/d1/           Esquema de D1 (0001 base … 0011 Drive, 0012 aprobación, 0013 redes)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -890,6 +900,45 @@ son del servidor.
   CSP—. Si alguien ve el socket caer y «lo arregla» metiendo un origen
   ahí, rompe la regla de oro: un tercero en `connect-src` es la señal de
   que una clave ha vuelto al navegador.
+
+- **Instagram no deja programar por API: la hora la cumple el cron.**
+  `scheduled` en `worker/index.js`, cada minuto, procesa
+  `publicaciones_programadas` (`worker/lib/publicador.js`). Publicar en
+  Instagram son varios pasos —contenedor, esperar a que Meta lo procese,
+  publicar— y un reel no cabe en una vuelta: cada paso guarda su avance y
+  la siguiente sigue. Lo que NUNCA se repite es publicar: el id que
+  devuelve Meta se guarda antes que nada, y a partir de ahí un fallo deja
+  la fila «publicada con aviso» en vez de reintentar (sería un duplicado
+  en el perfil del cliente). Dos vueltas a la vez se evitan reservando la
+  fila con su `updated_at` como condición.
+- **Meta DESCARGA los medios: no se le suben.** Los de R2 están detrás de
+  la sesión, así que se le da `/api/medio-publico/<testigo>/<nombre>`,
+  firmado con `META_APP_SECRET`, que abre ESE archivo y caduca en tres
+  días. Va antes de la sesión en `worker/index.js`, igual que la vuelta
+  del OAuth (`/api/redes/meta/callback`, atada a la cookie
+  `__Host-meta-oauth`). La cola necesita saber el dominio sin petición
+  delante: lo guarda `integracion_meta.origen` al conectar.
+- **Instagram sólo publica JPEG, y el Worker no puede convertir.** El
+  panel convierte con el lienzo antes de programar
+  (`prepararMediosParaMeta` en `lib/medios.js`) y de paso apunta las
+  medidas, que es lo que deja comprobar la proporción del feed (4:5 a
+  1.91:1) al escribir y no a la hora de salir. «Programar al aprobar»
+  corre en el servidor sin navegador: si la imagen no es JPEG, lo avisa
+  al equipo en vez de programar.
+- **Lo que sale es lo que hay en D1, no lo que hay en pantalla.** Antes de
+  programar, el panel guarda el calendario YA (sin esperar al agrupado de
+  600 ms), y la cola relee la publicación del calendario antes del primer
+  paso. Mover una publicación de día u hora mueve lo programado
+  (`resincronizarCalendario`, en el PUT del calendario); quitarla lo
+  cancela; que el cliente pida cambios, también.
+- **Un campo de archivo se vacía al resetearlo, y su `files` con él.**
+  `const fs = e.target.files; e.target.value = ""` dejaba `fs` vacío y la
+  subida de imágenes del panel no salía nunca, sin error. Copiar la lista
+  ANTES de resetear (`[...e.target.files]`).
+- **`tests/utils/d1Memoria.js` es una D1 de verdad** (SQLite de Node con
+  todas las migraciones). Para lo que un doble a mano no ve: que las
+  consultas de la capa de acceso existen en el esquema. La cola de
+  publicación se prueba ahí (`tests/migracion/publicar.test.js`).
 
 ## Documentos relacionados
 

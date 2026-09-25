@@ -52,6 +52,9 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "chat_resumenes",
   "consumo_ia",
   "integracion_drive",
+  "integracion_meta",
+  "cuentas_sociales",
+  "publicaciones_programadas",
   // Del equipo. Tienen dueño como las demás: la lista de miembros de un
   // espacio es un dato del espacio, y pedirla sin acotar devolvería la
   // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué
@@ -202,4 +205,34 @@ export function crearAcceso(db, ownerId) {
       return meta?.changes ?? 0;
     },
   };
+}
+
+/**
+ * La cola de publicación, de TODOS los espacios: lo que ya toca publicar
+ * o volver a mirar. Es la única lectura sin dueño fuera de la sesión y
+ * el enlace público, y por eso vive aquí: devuelve sólo id y dueño, y
+ * cada fila se procesa después con `crearAcceso(db, owner_id)`, que
+ * vuelve a acotar todo lo demás.
+ */
+export async function colaPendiente(db, ahoraISO, limite = 10) {
+  const { results } = await db
+    .prepare(
+      `select id, owner_id from publicaciones_programadas
+        where estado in ('programada','procesando')
+          and programada_para <= ?
+          and (siguiente_intento is null or siguiente_intento <= ?)
+        order by programada_para asc
+        limit ?`,
+    )
+    .bind(ahoraISO, ahoraISO, limite)
+    .all();
+  return results ?? [];
+}
+
+/** Los espacios con alguna cuenta social conectada: para la foto diaria de métricas. */
+export async function espaciosConRedes(db) {
+  const { results } = await db
+    .prepare("select distinct owner_id from cuentas_sociales where client_id is not null")
+    .all();
+  return (results ?? []).map((r) => r.owner_id);
 }

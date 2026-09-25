@@ -121,3 +121,51 @@ export async function descargarEnTamano(url, ancho, alto, nombre) {
   enlace.remove();
   setTimeout(() => URL.revokeObjectURL(enlace.href), 1000);
 }
+
+/** Lado mayor con el que se publica: Instagram reduce a 1440 de ancho y rechaza más de 8 MB. */
+const LADO_PUBLICAR = 2160;
+
+/**
+ * Las imágenes de una publicación, listas para Meta: en JPEG y con sus
+ * medidas. Instagram SÓLO publica JPEG, y el servidor no puede convertir
+ * —un Worker no trae un decodificador de imágenes—, así que se hace aquí,
+ * con el lienzo, antes de programar. Lo que ya es JPEG y trae medidas no
+ * se toca.
+ *
+ * `subir(file)` guarda el archivo nuevo y devuelve su ruta.
+ * @returns {Promise<{ medios: Array, cambio: boolean }>}
+ */
+export async function prepararMediosParaMeta(medios, subir) {
+  let cambio = false;
+  const salida = [];
+  for (const m of medios) {
+    const esJpeg = /\.jpe?g(\?|$)/i.test(m.src);
+    if (m.tipo === "video" || (esJpeg && m.ancho && m.alto)) { salida.push(m); continue; }
+    const res = await fetch(m.src, { credentials: "same-origin" });
+    if (!res.ok) throw new Error(`No se pudo leer «${m.nombre || "una imagen"}».`);
+    const bitmap = await createImageBitmap(await res.blob());
+    if (esJpeg) {
+      salida.push({ ...m, ancho: bitmap.width, alto: bitmap.height });
+      bitmap.close?.();
+      cambio = true;
+      continue;
+    }
+    const escala = Math.min(1, LADO_PUBLICAR / Math.max(bitmap.width, bitmap.height));
+    const lienzo = document.createElement("canvas");
+    lienzo.width = Math.round(bitmap.width * escala);
+    lienzo.height = Math.round(bitmap.height * escala);
+    const ctx = lienzo.getContext("2d");
+    // Un PNG con transparencia saldría con fondo negro en JPEG.
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, lienzo.width, lienzo.height);
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bitmap, 0, 0, lienzo.width, lienzo.height);
+    bitmap.close?.();
+    const blob = await new Promise((ok) => lienzo.toBlob(ok, "image/jpeg", 0.9));
+    const nombre = `${(m.nombre || "imagen").replace(/\.[a-z0-9]+$/i, "")}.jpg`;
+    const src = await subir(new File([blob], nombre, { type: "image/jpeg" }));
+    salida.push({ src, tipo: "imagen", nombre, ancho: lienzo.width, alto: lienzo.height });
+    cambio = true;
+  }
+  return { medios: salida, cambio };
+}

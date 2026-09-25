@@ -529,3 +529,48 @@ export async function loadComentarios(calId) {
 export async function comentarComoAgencia(calId, postId, texto) {
   return pedir(`/calendarios/${encodeURIComponent(calId)}/comentarios`, conCuerpo("POST", { postId, texto }));
 }
+
+// ------------------------------------------------------------
+// Redes: Meta, las cuentas de cada cliente y la cola de publicación
+//
+// El navegador no habla con Facebook: todo por /api/redes/* y
+// /api/publicar. Ver worker/rutas/redes.js.
+// ------------------------------------------------------------
+
+export async function estadoRedes() {
+  return pedir("/redes/estado");
+}
+
+/** Conectar es NAVEGAR a Facebook, igual que con Drive. */
+export const urlConectarMeta = () => "/api/redes/meta/conectar";
+
+export async function sincronizarMeta() {
+  return pedir("/redes/meta/sincronizar", { method: "POST" });
+}
+
+export async function desconectarMeta() {
+  return pedir("/redes/meta/desconectar", { method: "POST" });
+}
+
+export async function asignarCuenta(cuentaId, clientId) {
+  return pedir(`/redes/cuentas/${encodeURIComponent(cuentaId)}`, conCuerpo("PUT", { clientId: clientId || null }));
+}
+
+/** La cola de un calendario (o de un cliente). */
+export async function listarPublicaciones({ calendario = "", cliente = "" } = {}) {
+  const p = new URLSearchParams(calendario ? { calendario } : { cliente });
+  return (await pedir(`/publicar?${p}`)) ?? [];
+}
+
+/** Programar a su día y hora, o `ahora: true` para que salga ya. */
+export async function publicar({ calendarId, postId, redes, ahora = false }) {
+  return pedir("/publicar", conCuerpo("POST", { calendarId, postId, redes, ahora }));
+}
+
+export async function cancelarPublicacion(id) {
+  return pedir(`/publicar/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function reintentarPublicacion(id) {
+  return pedir(`/publicar/${encodeURIComponent(id)}/reintentar`, { method: "POST" });
+}

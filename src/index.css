@@ -1066,10 +1066,10 @@ input[type="radio"] {
      de temporada alta» se quedaba en «Promoción de…» incluso con dos
      líneas. Abajo, con el ancho entero, cabe el doble. */
   display: grid;
-  grid-template-columns: auto auto 1fr;
+  grid-template-columns: auto auto auto 1fr;
   grid-template-areas:
-    "dot icon hora"
-    "texto texto texto";
+    "dot icon cola hora"
+    "texto texto texto texto";
   align-items: center;
   gap: 2px var(--sp-1);
   min-height: var(--tap-sm);
@@ -1082,6 +1082,11 @@ input[type="radio"] {
 .cal-post-label { grid-area: texto; }
 .cal-post-time { grid-area: hora; justify-self: end; }
 .cal-post-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+/* En la cola de publicación: reloj, visto o alerta. */
+.cal-post-cola { grid-area: cola; display: inline-flex; }
+.cal-post-cola[data-estado="error"], .badge-cola[data-estado="error"] { color: var(--danger); }
+.cal-post-cola[data-estado="publicada"], .badge-cola[data-estado="publicada"] { color: var(--success); }
+.badge-cola { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); }
 
 /* Barra de contenido completado.
    Va pegada al borde de abajo del chip, dentro de su `overflow: hidden`,
@@ -2500,6 +2505,18 @@ a.btn, a.btn-icon { text-decoration: none; }
 .revision-lista[data-tipo="aviso"] li { color: var(--accent-alt); }
 .revision-ok { font-size: var(--fs-2xs); color: var(--success); display: flex; align-items: center; gap: var(--sp-1); margin: 0; }
 .seccion-publicar-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.acciones-publicar { flex-basis: 100%; display: flex; flex-direction: column; gap: var(--sp-2); }
+.acciones-publicar-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.cola-lista { list-style: none; display: flex; flex-direction: column; gap: var(--sp-1); }
+.cola-fila {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2);
+  padding: var(--sp-2); border-radius: var(--radius-sm); background: var(--surface-2); font-size: var(--fs-2xs);
+}
+.cola-red { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+.cola-estado { flex: 1; color: var(--text-dim); }
+.cola-fila[data-estado="publicada"] .cola-estado { color: var(--success); }
+.cola-fila[data-estado="error"] .cola-estado { color: var(--danger); }
+.cola-detalle { flex-basis: 100%; color: var(--text-dim); font-size: var(--fs-3xs); }
 
 .conversacion-hilo { list-style: none; display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-2); }
 .conversacion-hilo li { padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); background: var(--surface-2); font-size: var(--fs-2xs); display: flex; flex-direction: column; gap: 2px; max-width: 92%; }
