@@ -148,14 +148,30 @@ async function metricasDelDiaFB(env, token, pagina, fecha) {
   return salida;
 }
 
+/**
+ * Las publicaciones recientes de la página. Meta no dice lo mismo a todas
+ * las cuentas: con ciertos permisos, pedir las reacciones hace fallar la
+ * petición ENTERA. Se prueba de más a menos campos, y el motivo de cada
+ * fallo se devuelve para guardarlo en la foto: callado, eso se veía como
+ * «esta página no publicó nada en un mes».
+ */
 async function publicacionesFB(env, token, pagina, desde) {
-  const r = await intentar(() => graph(env, token, `/${pagina}/posts`, {
-    params: {
-      fields: "id,message,created_time,permalink_url,full_picture,shares,reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)",
-      limit: 25,
-    },
-  }));
-  return (r?.data ?? []).filter((p) => Date.parse(p.created_time) >= desde).slice(0, MAX_PUBLICACIONES).map((p) => {
+  const intentos = [
+    ["/posts", "id,message,created_time,permalink_url,full_picture,shares,reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)"],
+    ["/posts", "id,message,created_time,permalink_url,full_picture,shares"],
+    ["/published_posts", "id,message,created_time,permalink_url,full_picture,shares"],
+  ];
+  const fallos = [];
+  let r = null;
+  for (const [ruta, fields] of intentos) {
+    try {
+      r = await graph(env, token, `/${pagina}${ruta}`, { params: { fields, limit: 25 } });
+      break;
+    } catch (e) {
+      fallos.push(`${ruta} (${fields.includes("reactions") ? "con reacciones" : "básico"}): ${e?.message ?? e}`.slice(0, 240));
+    }
+  }
+  const lista = (r?.data ?? []).filter((p) => Date.parse(p.created_time) >= desde).slice(0, MAX_PUBLICACIONES).map((p) => {
     const reacciones = num(p.reactions?.summary?.total_count) ?? 0;
     const comentarios = num(p.comments?.summary?.total_count) ?? 0;
     const compartidos = num(p.shares?.count) ?? 0;
@@ -167,6 +183,7 @@ async function publicacionesFB(env, token, pagina, desde) {
       interacciones: reacciones + comentarios + compartidos,
     };
   });
+  return { lista, fallos, recibidas: r?.data?.length ?? 0 };
 }
 
 // ------------------------------------------------------------
@@ -194,7 +211,12 @@ export async function fotografiarCuenta(env, acceso, cuenta, fecha = fechaDeFoto
   } else if (cuenta.red === "facebook") {
     base = (await intentar(() => graph(env, token, `/${cuenta.externo_id}`, { params: { fields: "followers_count,fan_count" } }))) ?? {};
     dia = await metricasDelDiaFB(env, token, cuenta.externo_id, fecha);
-    publicaciones = await publicacionesFB(env, token, cuenta.externo_id, desde);
+    const fb = await publicacionesFB(env, token, cuenta.externo_id, desde);
+    publicaciones = fb.lista;
+    // Por qué no llegaron publicaciones, si no llegaron: sin esto, un
+    // permiso que falta se ve igual que una página que no publica.
+    if (fb.fallos.length) datos = { ...datos, avisos: { publicaciones: fb.fallos } };
+    else datos = { ...datos, recibidas: fb.recibidas };
   } else if (cuenta.red === "tiktok") {
     // TikTok no da métricas por día de la cuenta: seguidores y totales,
     // y de cada video sus vistas, me gusta, comentarios y compartidos.

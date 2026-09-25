@@ -110,6 +110,17 @@ describe("la foto de una cuenta", () => {
     expect(db.sqlite.prepare("select interacciones from metricas_publicacion where cuenta_id = 'fb'").get().interacciones).toBe(36);
   });
 
+  it("Facebook: si pedir las reacciones hace fallar la petición, se reintenta sin ellas y queda el motivo", async () => {
+    const original = respuestas["/PAGE1/posts"];
+    respuestas["/PAGE1/posts"] = (p) => (p.fields.includes("reactions")
+      ? { __error: { message: "(#10) This endpoint requires the 'pages_read_user_content' permission", code: 10 } }
+      : original);
+    await fotografiarCuenta(env, acceso(), { ...cuenta("fb") }, "2026-10-14");
+    expect(db.sqlite.prepare("select count(*) n from metricas_publicacion where cuenta_id = 'fb'").get().n).toBe(1);
+    const datos = JSON.parse(db.sqlite.prepare("select datos from metricas_cuenta where cuenta_id = 'fb'").get().datos);
+    expect(datos.avisos.publicaciones[0]).toMatch(/pages_read_user_content/);
+  });
+
   it("repetir la foto del mismo día la reescribe, no la duplica", async () => {
     await fotografiarCuenta(env, acceso(), { ...cuenta("ig") }, "2026-10-14");
     await fotografiarCuenta(env, acceso(), { ...cuenta("ig") }, "2026-10-14");
