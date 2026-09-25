@@ -16,6 +16,7 @@ const SECCIONES = [
   { vista: "tareas", ruta: "/tareas", nombre: "Mi día", icono: "clipboardCheck", contador: true },
   { vista: "programacion", ruta: "/programacion", nombre: "Programación", icono: "clock", fallidas: true },
   { vista: "resultados", ruta: "/resultados", nombre: "Resultados", icono: "chart" },
+  { vista: "auditorias", ruta: "/auditorias", nombre: "Auditorías", icono: "search" },
   { vista: "equipo", ruta: "/equipo", nombre: "Equipo", icono: "users" },
   { vista: "ajustes", ruta: "/ajustes", nombre: "Ajustes", icono: "settings" },
 ];

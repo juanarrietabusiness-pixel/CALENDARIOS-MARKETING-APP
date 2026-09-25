@@ -125,6 +125,8 @@ src/
                           página Programación y «Programar lo aprobado» (puro)
     resultados.js         De las filas de métricas a cifras, formatos, horarios (puro)
     colores.js            Colores y logo de la marca a partir del ADN (puro)
+    auditoria.js          Auditoría de perfil: cifras, usuario, límites de Instagram (puro;
+                          también lo importa el Worker)
   components/
     Icon.jsx              Set de iconos SVG monocromos (rejilla 24, trazo 1.75)
     Presencia.jsx         Avatares, estado de la conexión, «X está editando»
@@ -136,6 +138,7 @@ src/
     SeccionTikTok.jsx     Ajustes → Integraciones: TikTok de cada cliente y su modo
     SeccionInformes.jsx   Resultados → informes mensuales: generar, revisar, compartir
     InformeVista.jsx      El informe como documento (claro, con la marca, imprimible)
+    AuditoriaVista.jsx    La auditoría de perfil como documento, con copiar y portadas
     Graficas.jsx          Línea y barras en SVG, sin librería
     MedidorIA.jsx         El gasto del mes contra el presupuesto, en la cabecera
     ExploradorDrive.jsx   La carpeta de Drive de un cliente: gestionar o escoger
@@ -154,6 +157,8 @@ src/
     Tareas.jsx            «Mi día»: Atrasadas, Hoy, Próximas; y la vista por empresa
     Resultados.jsx        La pestaña Resultados de un cliente y /resultados (la agencia)
     Programacion.jsx      /programacion: lo que sale en todas las cuentas; lo que falló, arriba
+    Auditorias.jsx        /auditorias: auditar el perfil de un cliente o de un prospecto
+    AuditoriaPublica.jsx  Lo que abre el cliente o el prospecto con el enlace (sin sesión)
     Informe.jsx           Lo que ve el cliente al abrir su informe mensual (sin sesión)
     Ajustes.jsx           IA, presupuesto y consumo, integraciones, tareas, copia
 worker/
@@ -177,6 +182,7 @@ worker/
     tiktok.js             OAuth de TikTok por cliente, tokens que se renuevan, subida en trozos
     metricas.js           La foto diaria de métricas de cada cuenta y de la competencia
     informes.js           Cifras del mes (congeladas) + análisis de la IA; el del día 1
+    auditorias.js         Leer un perfil (cuenta propia o business_discovery) y auditarlo
     herramientasServidor.js  Lo que el asistente consulta sin el navegador:
                           web, repositorio de GitHub, calendarios, tareas, ideas
     ids.js                UUID, testigos, huellas
@@ -197,7 +203,8 @@ worker/
                           medio público firmado que descarga Meta
     metricas.js           Resultados de un cliente, de la agencia y la miniatura de Meta
     informes.js           Informes: listar, generar, compartir; el público va en index.js
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes)
+    auditorias.js         Auditorías: listar, generar, compartir; la pública va en index.js
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -221,6 +228,8 @@ tests/
 | `/ajustes` | IA, presupuesto, integraciones, tareas, copia de seguridad |
 | `/resultados` | Todos los clientes, últimos 30 días |
 | `/programacion` | La cola de todos los clientes: lo que falló, lo que sale, lo que salió |
+| `/auditorias` | Auditorías de perfil de clientes y prospectos |
+| `/auditoria?t=<testigo>` | Auditoría compartida (sin sesión) |
 | `/equipo` | Quién entra en el espacio |
 | `/invitacion/<testigo>` | Enlace de invitación (sin sesión) |
 | `/aprobar?t=<testigo>` | Página del cliente final (sin sesión) |
@@ -1063,6 +1072,20 @@ son del servidor.
   misma franja, o cuatro en la franja contando toda la semana. Con menos,
   nada: una sugerencia sacada de una publicación es ruido con aspecto de
   consejo.
+- **Una auditoría de un PROSPECTO se lee con la cuenta de otro.**
+  `business_discovery` pide una cuenta de Instagram conectada del espacio
+  desde la que mirar, y sólo lee cuentas de empresa o creador. Una
+  personal devuelve un error de Meta que no dice eso («Invalid user id»):
+  `leerPerfil()` lo traduce y ofrece las capturas, que es además lo único
+  que enseña los destacados (la API no los da nunca). `client_id` puede
+  ir vacío: un prospecto no es cliente.
+- **La IA juzga la rejilla MIRÁNDOLA.** La foto de perfil y las nueve
+  últimas publicaciones van como imágenes (bajadas del CDN de Meta en el
+  Worker, nunca como URL en el texto). Las cifras las calcula
+  `cifrasPerfil()` y lo propuesto pasa por `limpiarAnalisis()`, que tira
+  la biografía que pase de 150 caracteres: una que no entra en Instagram
+  no sirve para copiar y pegar. La foto se guarda incrustada porque el
+  enlace público no tiene sesión para pasar por el proxy de miniaturas.
 - **`tests/utils/d1Memoria.js` es una D1 de verdad** (SQLite de Node con
   todas las migraciones). Para lo que un doble a mano no ve: que las
   consultas de la capa de acceso existen en el esquema. La cola de

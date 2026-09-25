@@ -26,7 +26,7 @@
 import { json, error, noAutenticado, noEncontrado, cuerpo, CABECERAS_API } from "./lib/respuesta.js";
 import { crearAcceso } from "./lib/acceso.js";
 import { usuarioDeLaPeticion, iniciarSesion, cerrarSesion, cookieSesion, cookieBorrada } from "./lib/sesion.js";
-import { calendarioPorTestigo, enviarAprobacion, actualizarContenido, mediaPermitida, comentarCliente, enviarRevision, informePorTestigo } from "./lib/publico.js";
+import { calendarioPorTestigo, enviarAprobacion, actualizarContenido, mediaPermitida, comentarCliente, enviarRevision, informePorTestigo, auditoriaPorTestigo } from "./lib/publico.js";
 import { difundir } from "./lib/vivo.js";
 import { rutasDatos } from "./rutas/datos.js";
 import { rutasEquipo, rutaInvitacionPublica } from "./rutas/equipo.js";
@@ -42,6 +42,7 @@ import { procesarCola, programarAlAprobar, cancelarPendientes } from "./lib/publ
 import { rutasMetricas } from "./rutas/metricas.js";
 import { fotoPendiente } from "./lib/metricas.js";
 import { rutasInformes } from "./rutas/informes.js";
+import { rutasAuditorias } from "./rutas/auditorias.js";
 import { informePendiente } from "./lib/informes.js";
 
 // El Durable Object del espacio. Se reexporta desde aquí porque
@@ -172,6 +173,13 @@ export default {
         return datos ? json(datos) : noEncontrado("Informe");
       }
 
+      // La auditoría de perfil que se le manda a un cliente o a un
+      // prospecto: igual que el informe, sin sesión y sólo si se compartió.
+      if (partes[0] === "publico-auditoria" && partes.length === 2 && metodo === "GET") {
+        const datos = await auditoriaPorTestigo(env.DB, partes[1]);
+        return datos ? json(datos) : noEncontrado("Auditoría");
+      }
+
       // El enlace de invitación, también sin sesión: quien lo abre
       // todavía no tiene cuenta. Ver worker/rutas/equipo.js.
       if (partes[0] === "invitacion") {
@@ -282,6 +290,7 @@ export default {
       if (partes[0] === "publicar") return rutasPublicar(req, env, { acceso, usuario, partes, metodo, ctx });
       if (partes[0] === "metricas") return rutasMetricas(req, env, { acceso, usuario, partes, metodo });
       if (partes[0] === "informes") return rutasInformes(req, env, { acceso, usuario, partes, metodo });
+      if (partes[0] === "auditorias") return rutasAuditorias(req, env, { acceso, usuario, partes, metodo });
 
       // ---------- Medios ----------
       //
