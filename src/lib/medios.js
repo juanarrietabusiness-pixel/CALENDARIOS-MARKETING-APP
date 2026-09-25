@@ -7,6 +7,9 @@
 // ============================================================
 
 import { compressImage } from "../utils";
+import {
+  mediosDe, historiasDe, piezasDe, publicacionDeVariante, objetivoDe, necesitaAjuste, claveAdaptado, medidasAjuste,
+} from "./publicacion";
 
 /** Una imagen del banco, reducida y en base64 para mandarla al modelo. */
 export async function imagenParaModelo(url, lado = 1024) {
@@ -168,4 +171,128 @@ export async function prepararMediosParaMeta(medios, subir) {
     cambio = true;
   }
   return { medios: salida, cambio };
+}
+
+// ------------------------------------------------------------
+// Ajustar imágenes a lo que admite cada red
+// ------------------------------------------------------------
+
+async function bitmapDe(src) {
+  const res = await fetch(src, { credentials: "same-origin" });
+  if (!res.ok) throw new Error("No se pudo leer la imagen.");
+  return createImageBitmap(await res.blob());
+}
+
+/** Dibuja `img` ocupando todo el lienzo (recortando lo que sobre). */
+function cubrir(ctx, img, w, h) {
+  const e = Math.max(w / img.width, h / img.height);
+  ctx.drawImage(img, (w - img.width * e) / 2, (h - img.height * e) / 2, img.width * e, img.height * e);
+}
+
+/** Dibuja `img` entera, centrada (dejando márgenes). */
+function contener(ctx, img, w, h) {
+  const e = Math.min(w / img.width, h / img.height);
+  ctx.drawImage(img, (w - img.width * e) / 2, (h - img.height * e) / 2, img.width * e, img.height * e);
+}
+
+/**
+ * La imagen encajada en `ancho`×`alto`:
+ *   · difuminado: entera, sobre la misma imagen ampliada y desenfocada
+ *     (lo que hace Metricool). El desenfoque se hace reduciendo y
+ *     ampliando, que funciona igual en Safari, sin `ctx.filter`.
+ *   · color: entera, sobre el color de la marca.
+ *   · recorte: llenando el lienzo, recortada al centro.
+ */
+export function encajar(img, { ancho, alto }, modo = "difuminado", color = "#ffffff") {
+  const lienzo = document.createElement("canvas");
+  lienzo.width = ancho;
+  lienzo.height = alto;
+  const ctx = lienzo.getContext("2d");
+  ctx.imageSmoothingQuality = "high";
+  if (modo === "recorte") {
+    cubrir(ctx, img, ancho, alto);
+    return lienzo;
+  }
+  if (modo === "color") {
+    ctx.fillStyle = color || "#ffffff";
+    ctx.fillRect(0, 0, ancho, alto);
+  } else {
+    const chico = document.createElement("canvas");
+    chico.width = Math.max(8, Math.round(ancho / 28));
+    chico.height = Math.max(8, Math.round(alto / 28));
+    cubrir(chico.getContext("2d"), img, chico.width, chico.height);
+    ctx.drawImage(chico, 0, 0, ancho, alto);
+    ctx.fillStyle = "rgba(0, 0, 0, 0.12)";
+    ctx.fillRect(0, 0, ancho, alto);
+  }
+  contener(ctx, img, ancho, alto);
+  return lienzo;
+}
+
+const aBlob = (lienzo, calidad = 0.9) => new Promise((ok) => lienzo.toBlob(ok, "image/jpeg", calidad));
+
+/** Cómo quedará: una vista pequeña (data: URL) sin subir nada. */
+export async function vistaAjuste(src, objetivo, modo, color) {
+  const img = await bitmapDe(src);
+  const m = medidasAjuste(img.width, img.height, objetivo);
+  const escala = 360 / m.ancho;
+  const lienzo = encajar(img, { ancho: Math.round(m.ancho * escala), alto: Math.round(m.alto * escala) }, modo, color);
+  img.close?.();
+  return lienzo.toDataURL("image/jpeg", 0.75);
+}
+
+/** Una imagen llevada a historia 9:16 (sin IA) y subida: lista para `post.historias`. */
+export async function historiaDesdeImagen(src, subir, modo = "difuminado", color) {
+  const img = await bitmapDe(src);
+  const lienzo = encajar(img, { ancho: 1080, alto: 1920 }, modo, color);
+  img.close?.();
+  const nuevo = await subir(new File([await aBlob(lienzo)], "historia.jpg", { type: "image/jpeg" }));
+  return { src: nuevo, tipo: "imagen", nombre: "historia.jpg", ancho: 1080, alto: 1920 };
+}
+
+/**
+ * Todo lo que necesita una publicación para salir en esas redes, hecho en
+ * el navegador (el Worker no puede tocar imágenes):
+ *   1. Imágenes del post y de su historia en JPEG y con sus medidas.
+ *   2. Copias adaptadas (`adaptados`) de las que no caben en su destino:
+ *      4:5 para el feed de Instagram, 9:16 para las historias. El original
+ *      no se toca; sólo cambia lo que sale en esa red.
+ * Devuelve la publicación nueva y si cambió algo (para guardarla).
+ */
+export async function prepararParaRedes(post, redes, { subir, colorMarca } = {}) {
+  const meta = redes.some((r) => r === "instagram" || r === "facebook");
+  if (!meta) return { post, cambio: false };
+  let cambio = false;
+  let nuevo = { ...post };
+
+  const r1 = await prepararMediosParaMeta(mediosDe(nuevo), subir);
+  if (r1.cambio) { nuevo = { ...nuevo, medios: r1.medios, image: r1.medios.find((m) => m.tipo !== "video")?.src ?? null }; cambio = true; }
+  if (historiasDe(nuevo).length) {
+    const r2 = await prepararMediosParaMeta(historiasDe(nuevo), subir);
+    if (r2.cambio) { nuevo = { ...nuevo, historias: r2.medios }; cambio = true; }
+  }
+
+  const modo = nuevo.ajusteIG || "difuminado";
+  const adaptados = { ...(nuevo.adaptados ?? {}) };
+  for (const { red, variante } of piezasDe(nuevo, redes)) {
+    if (red === "tiktok") continue;
+    const pieza = publicacionDeVariante(nuevo, variante);
+    const objetivo = objetivoDe(pieza, red);
+    if (!objetivo) continue;
+    for (const m of mediosDe(pieza)) {
+      if (!necesitaAjuste(m, objetivo)) continue;
+      const clave = claveAdaptado(objetivo, m.src);
+      if (adaptados[clave]?.modo === modo) continue;
+      const img = await bitmapDe(m.src);
+      const medidas = medidasAjuste(img.width, img.height, objetivo);
+      const lienzo = encajar(img, medidas, modo, colorMarca);
+      img.close?.();
+      const nombre = `${(m.nombre || "imagen").replace(/\.[a-z0-9]+$/i, "")}-${objetivo}.jpg`;
+      const src = await subir(new File([await aBlob(lienzo)], nombre, { type: "image/jpeg" }));
+      adaptados[clave] = { src, ancho: medidas.ancho, alto: medidas.alto, modo };
+      cambio = true;
+    }
+  }
+  if (cambio) nuevo = { ...nuevo, adaptados };
+  return { post: nuevo, cambio };
 }

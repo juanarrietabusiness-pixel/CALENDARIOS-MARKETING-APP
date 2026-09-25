@@ -12,8 +12,8 @@
 
 import { useEffect, useState } from "react";
 import Icon from "../Icon";
-import { REDES, revisarPublicacion, momentoPublicacion } from "../../lib/publicacion";
-import { colaDe, fechaHora, TEXTO_ESTADO } from "../../lib/cola";
+import { REDES, revisarPublicacion, momentoPublicacion, piezasDe } from "../../lib/publicacion";
+import { colaDe, clavePieza, fechaHora, TEXTO_ESTADO } from "../../lib/cola";
 import { navegar } from "../../lib/rutas";
 
 const irAIntegraciones = (e) => {
@@ -26,12 +26,18 @@ export default function AccionesPublicar({ post, fecha, filas, estadoRedes, clie
   const [mensaje, setMensaje] = useState(null);
   const redes = Array.isArray(post.redes) && post.redes.length ? post.redes : ["instagram"];
   const cola = colaDe(filas, post.id);
-  const { errores } = revisarPublicacion(post, redes);
+  const { errores } = revisarPublicacion(post, redes, { navegador: true });
 
   const meta = estadoRedes?.meta;
   const conMeta = redes.some((r) => r === "instagram" || r === "facebook");
   const sinCuenta = redes.filter((r) => !(estadoRedes?.cuentas ?? []).some((c) => c.red === r && c.clientId === clientId));
-  const pendientes = redes.filter((r) => !cola[r] || cola[r].estado === "error");
+  // Lo que falta por salir: cada red y, si la hay, su historia. Se manda
+  // la lista de redes; el servidor programa las piezas que falten.
+  const piezasPendientes = piezasDe(post, redes).filter((p) => {
+    const f = cola[clavePieza(p.red, p.variante)];
+    return !f || f.estado === "error";
+  });
+  const pendientes = [...new Set(piezasPendientes.map((p) => p.red))];
   const cuando = momentoPublicacion(fecha, post.publishTime);
   const yaPaso = cuando && Date.parse(cuando) < Date.now();
 
@@ -61,9 +67,12 @@ export default function AccionesPublicar({ post, fecha, filas, estadoRedes, clie
     <div className="acciones-publicar">
       {Object.keys(cola).length > 0 && (
         <ul className="cola-lista" aria-label="Estado en cada red">
-          {Object.entries(cola).map(([red, f]) => (
+          {Object.values(cola).map((f) => (
             <li key={f.id} className="cola-fila" data-estado={f.estado}>
-              <span className="cola-red"><Icon name={REDES[red]?.icono ?? "globe"} size={14} /> {REDES[red]?.nombre ?? red}</span>
+              <span className="cola-red">
+                <Icon name={REDES[f.red]?.icono ?? "globe"} size={14} /> {REDES[f.red]?.nombre ?? f.red}
+                {f.variante === "historia" && <span className="cola-variante">historia</span>}
+              </span>
               <span className="cola-estado">
                 {TEXTO_ESTADO[f.estado] ?? f.estado}
                 {f.estado === "programada" && <> · {f.ahoraMismo ? "en un momento" : fechaHora(f.programadaPara)}</>}

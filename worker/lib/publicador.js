@@ -35,7 +35,7 @@ import { ErrorMeta, graph, mensajeMeta, descifrarMeta, urlMedioPublico, urlGraph
 import { ErrorTikTok, mensajeTikTok, tokenTikTok, iniciarSubida, subirTrozos, estadoSubida } from "./tiktok.js";
 import {
   REDES, revisarPublicacion, mediosDe, textoPara, primerComentario, destinoInstagram,
-  momentoPublicacion, esJPEG,
+  esJPEG, piezasDe, publicacionDeVariante, momentoDeVariante, mediosParaRed, colaboradoresDe, conHistoria,
 } from "../../src/lib/publicacion.js";
 
 /** Un error que es de lo que se pidió, no del servidor: se enseña tal cual. */
@@ -77,6 +77,7 @@ export function filaPublica(f) {
     calendarId: f.calendar_id,
     postId: f.post_id,
     red: f.red,
+    variante: f.variante ?? "post",
     cuentaId: f.cuenta_id,
     programadaPara: f.programada_para,
     estado: f.estado,
@@ -122,7 +123,9 @@ export async function programar(env, acceso, { calendarId, postId, redes = null,
 
   const { errores } = revisarPublicacion(post, lista);
   if (errores.length) throw new ErrorPublicar(errores.join(" "));
-  if (lista.includes("instagram") && mediosDe(post).some((m) => m.tipo === "imagen" && !esJPEG(m.src))) {
+  const piezas = piezasDe(post, lista);
+  if (lista.includes("instagram") && piezas.some((p) => p.red === "instagram" &&
+    mediosParaRed(post, "instagram", p.variante).some((m) => m.tipo === "imagen" && !esJPEG(m.src)))) {
     throw new ErrorPublicar("Instagram sólo acepta imágenes JPEG. Programa desde el panel de la publicación: allí se convierten solas.");
   }
   if (lista.includes("tiktok") && !mediosDe(post).some((m) => m.tipo === "video" && m.src.startsWith("/api/media/clientes/"))) {
@@ -132,29 +135,33 @@ export async function programar(env, acceso, { calendarId, postId, redes = null,
     throw new ErrorPublicar("Meta no está conectado. Conéctalo en Ajustes → Integraciones.");
   }
 
-  const cuando = ahoraMismo ? ahora() : momentoPublicacion(fecha, post.publishTime);
-  if (!cuando) throw new ErrorPublicar("La publicación no tiene una fecha válida.");
-  if (!ahoraMismo && Date.parse(cuando) < Date.now() - 60_000) {
+  const cuandoDe = (variante) => (ahoraMismo
+    ? new Date(Date.now() + (variante === "historia" ? retrasoAhora(post) : 0)).toJSON()
+    : momentoDeVariante(fecha, post.publishTime, post, variante));
+  if (!cuandoDe("post")) throw new ErrorPublicar("La publicación no tiene una fecha válida.");
+  if (!ahoraMismo && Date.parse(cuandoDe("post")) < Date.now() - 60_000) {
     throw new ErrorPublicar("Esa fecha y hora ya pasaron. Cámbiala o usa «Publicar ahora».");
   }
 
+  // Lo que ya salió o se está publicando no se vuelve a meter: se
+  // programa lo demás. Si no queda nada, se dice.
   const previas = await acceso.leer("publicaciones_programadas", { calendar_id: calendarId, post_id: postId });
-  for (const red of lista) {
-    const nombre = REDES[red].nombre;
-    if (previas.some((f) => f.red === red && f.estado === "procesando")) throw new ErrorPublicar(`Ya se está publicando en ${nombre}.`);
-    if (previas.some((f) => f.red === red && f.estado === "publicada")) throw new ErrorPublicar(`Esta publicación ya salió en ${nombre}.`);
+  const deLaPieza = (f, p) => f.red === p.red && (f.variante ?? "post") === p.variante;
+  const pendientes = piezas.filter((p) => !previas.some((f) => deLaPieza(f, p) && (f.estado === "procesando" || f.estado === "publicada")));
+  if (!pendientes.length) {
+    throw new ErrorPublicar(`Esta publicación ya salió (o está saliendo) en ${lista.map((r) => REDES[r].nombre).join(" y ")}.`);
   }
 
   const creadas = [];
-  for (const red of lista) {
-    // Lo programado antes para la misma red se sustituye: una fila viva
-    // por publicación y red, o saldría dos veces.
-    for (const f of previas.filter((x) => x.red === red && (x.estado === "programada" || x.estado === "error"))) {
+  for (const p of pendientes) {
+    // Lo programado antes para la misma pieza se sustituye: una fila viva
+    // por publicación, red y variante, o saldría dos veces.
+    for (const f of previas.filter((x) => deLaPieza(x, p) && (x.estado === "programada" || x.estado === "error"))) {
       await acceso.actualizar("publicaciones_programadas", { id: f.id }, { estado: "cancelada", updated_at: ahora() });
     }
     const fila = {
-      id: uuid(), client_id: cal.client_id, calendar_id: calendarId, post_id: postId, red,
-      cuenta_id: cuentas[red].id, programada_para: cuando, estado: "programada", intentos: 0,
+      id: uuid(), client_id: cal.client_id, calendar_id: calendarId, post_id: postId, red: p.red, variante: p.variante,
+      cuenta_id: cuentas[p.red].id, programada_para: cuandoDe(p.variante), estado: "programada", intentos: 0,
       siguiente_intento: null, carga: JSON.stringify({ ahoraMismo, post }), creado_por: usuarioId,
       created_at: ahora(), updated_at: ahora(),
     };
@@ -163,6 +170,9 @@ export async function programar(env, acceso, { calendarId, postId, redes = null,
   }
   return creadas;
 }
+
+/** «Publicar ahora» con historia: la historia sale a los minutos pedidos, pero como mucho a los 5. */
+const retrasoAhora = (post) => Math.min(Number(post?.historiaRetraso ?? 5), 5) * 60_000;
 
 /** Saca de la cola lo que aún no salió de una publicación (el cliente pidió cambios, por ejemplo). */
 export async function cancelarPendientes(acceso, calendarId, postId, motivo) {
@@ -190,14 +200,19 @@ export async function resincronizarCalendario(env, acceso, cal, por) {
     const carga = leerJSON(f.carga, {});
     if (f.contenedor_id || f.intentos > 0 || carga.ahoraMismo) continue;
     const hallada = buscarPublicacion(days, f.post_id);
-    if (!hallada || (hallada.post.redes?.length && !hallada.post.redes.includes(f.red))) {
+    const variante = f.variante ?? "post";
+    const motivo = !hallada ? "Se quitó del calendario."
+      : hallada.post.redes?.length && !hallada.post.redes.includes(f.red) ? "Se quitó esta red de la publicación."
+        : variante === "historia" && !conHistoria(hallada.post) ? "Se quitó la historia de la publicación."
+          : null;
+    if (motivo) {
       await acceso.actualizar("publicaciones_programadas", { id: f.id, updated_at: f.updated_at }, {
-        estado: "cancelada", error: hallada ? "Se quitó esta red de la publicación." : "Se quitó del calendario.", updated_at: ahora(),
+        estado: "cancelada", error: motivo, updated_at: ahora(),
       });
       cambios += 1;
       continue;
     }
-    const cuando = momentoPublicacion(hallada.fecha, hallada.post.publishTime);
+    const cuando = momentoDeVariante(hallada.fecha, hallada.post.publishTime, hallada.post, variante);
     if (cuando && cuando !== f.programada_para) {
       await acceso.actualizar("publicaciones_programadas", { id: f.id, updated_at: f.updated_at }, {
         programada_para: cuando, updated_at: ahora(),
@@ -277,7 +292,8 @@ export async function procesarPublicacion(env, { id, owner_id: ownerId }) {
     fila = { ...fila, ...cambios, updated_at: t };
   };
   const avisar = () => difundir(env, ownerId, {
-    tipo: "publicacion", calId: fila.calendar_id, postId: fila.post_id, red: fila.red, estado: fila.estado, por: FIRMA_SISTEMA,
+    tipo: "publicacion", calId: fila.calendar_id, postId: fila.post_id, red: fila.red, variante: fila.variante ?? "post",
+    estado: fila.estado, por: FIRMA_SISTEMA,
   });
 
   try {
@@ -292,7 +308,12 @@ export async function procesarPublicacion(env, { id, owner_id: ownerId }) {
         return fila;
       }
       if (hallada) carga.post = hallada.post;
-      const { errores } = revisarPublicacion(carga.post, [fila.red]);
+      if ((fila.variante ?? "post") === "historia" && !conHistoria(carga.post)) {
+        await guardar({ estado: "cancelada", error: "Se quitó la historia de la publicación.", siguiente_intento: null });
+        avisar();
+        return fila;
+      }
+      const { errores } = revisarPublicacion(publicacionDeVariante(carga.post, fila.variante), [fila.red]);
       if (errores.length) throw new ErrorPublicar(errores.join(" "));
     }
 
@@ -329,14 +350,20 @@ export async function procesarPublicacion(env, { id, owner_id: ownerId }) {
   } catch (e) {
     const intentos = (fila.intentos ?? 0) + 1;
     const mensaje = e instanceof ErrorPublicar ? e.message : e instanceof ErrorTikTok ? mensajeTikTok(e) : mensajeMeta(e);
+    const parcial = carga.tanda?.ids?.length ?? 0;
     if (fila.externo_id) {
       // Ya salió. Lo que falló es lo de después: no se vuelve a publicar.
       carga.aviso = `Se publicó, pero después: ${mensaje}`;
       await guardar({ estado: "publicada", siguiente_intento: null, publicada_at: fila.publicada_at ?? ahora() });
+    } else if (parcial && !((e instanceof ErrorMeta || e instanceof ErrorTikTok) && e.transitorio && intentos < MAX_INTENTOS)) {
+      // Una tanda de historias a medias: las que salieron, salieron. No se
+      // repiten; se dice cuántas faltaron.
+      carga.aviso = `Salieron ${parcial} de ${carga.tanda.total} historias; el resto falló: ${mensaje}`;
+      await guardar({ estado: "publicada", externo_id: carga.tanda.ids[0], siguiente_intento: null, publicada_at: ahora() });
     } else if ((e instanceof ErrorMeta || e instanceof ErrorTikTok) && e.transitorio && intentos < MAX_INTENTOS) {
       await guardar({
         intentos, error: mensaje,
-        estado: fila.contenedor_id || carga.hijos ? "procesando" : "programada",
+        estado: fila.contenedor_id || carga.hijos || carga.tanda ? "procesando" : "programada",
         siguiente_intento: dentroDe(ESPERAS_MIN[intentos - 1] * 60_000),
       });
     } else {
@@ -357,14 +384,69 @@ async function estadoContenedor(env, token, id) {
   return { codigo: c.status_code ?? "FINISHED", detalle: c.status ?? "" };
 }
 
+/**
+ * Una tanda de historias, una tras otra (Instagram y Facebook publican
+ * las historias de una en una). El avance vive en `carga.tanda`: cuántas
+ * salieron y sus ids. Una historia que ya salió no se repite nunca, y una
+ * tanda que falla a medias queda «publicada» con cuántas faltaron.
+ */
+async function pasoTanda({ carga, guardar }, medios, { crear, listo = null, publicar }) {
+  carga.tanda ??= { i: 0, ids: [], total: medios.length };
+  const t = carga.tanda;
+  if (t.i >= medios.length) {
+    await guardar({ externo_id: t.ids[0] ?? "historia", publicada_at: ahora() });
+    return { hecho: true };
+  }
+  const m = medios[t.i];
+  if (!t.contenedor) {
+    t.contenedor = await crear(m);
+    await guardar({});
+    return { esperar: m.tipo === "video" ? 20_000 : 0 };
+  }
+  if (listo) {
+    const estado = await listo(t.contenedor);
+    if (estado === "espera") return { esperar: 20_000 };
+    if (estado === "error") {
+      delete t.contenedor;
+      await guardar({});
+      throw new ErrorMeta({ message: `No se pudo procesar la historia ${t.i + 1}.`, is_transient: true }, 400);
+    }
+  }
+  const id = await publicar(t.contenedor, m);
+  t.ids.push(String(id));
+  t.i += 1;
+  delete t.contenedor;
+  await guardar({});
+  return { esperar: 0 };
+}
+
 async function pasoInstagram(env, { cuenta, token, origen, carga, guardar, fila: actual }) {
   const fila = actual();
   const ig = cuenta.externo_id;
-  const post = carga.post ?? {};
+  const post = publicacionDeVariante(carga.post ?? {}, fila.variante);
   const destino = destinoInstagram(post);
-  const medios = mediosDe(post);
+  const medios = mediosParaRed(carga.post ?? {}, "instagram", fila.variante);
   const url = (src) => urlDe(env, origen, src);
   const texto = textoPara(post, "instagram");
+  // Hasta 3 cuentas públicas; el invitado acepta desde su app.
+  const colab = colaboradoresDe(post);
+  const conColab = colab.length && destino !== "historia" ? { collaborators: JSON.stringify(colab.slice(0, 3)) } : {};
+
+  // Historias: una tras otra, con su propio avance.
+  if (destino === "historia") {
+    if (fila.externo_id) return { hecho: true };
+    return pasoTanda({ carga, guardar }, medios.slice(0, 10), {
+      crear: async (m) => (await graph(env, token, `/${ig}/media`, {
+        metodo: "POST",
+        params: m.tipo === "video" ? { media_type: "STORIES", video_url: await url(m.src) } : { media_type: "STORIES", image_url: await url(m.src) },
+      })).id,
+      listo: async (id) => {
+        const { codigo } = await estadoContenedor(env, token, id);
+        return codigo === "IN_PROGRESS" ? "espera" : codigo === "ERROR" || codigo === "EXPIRED" ? "error" : "ok";
+      },
+      publicar: async (id) => (await graph(env, token, `/${ig}/media_publish`, { metodo: "POST", params: { creation_id: id } })).id,
+    });
+  }
 
   // 4. Ya publicada: el enlace y el primer comentario, sin reintentar nada.
   if (fila.externo_id) {
@@ -433,7 +515,7 @@ async function pasoInstagram(env, { cuenta, token, origen, carga, guardar, fila:
       }
     }
     const padre = await graph(env, token, `/${ig}/media`, {
-      metodo: "POST", params: { media_type: "CAROUSEL", children: carga.hijos.join(","), caption: texto },
+      metodo: "POST", params: { media_type: "CAROUSEL", children: carga.hijos.join(","), caption: texto, ...conColab },
     });
     await guardar({ contenedor_id: padre.id });
     return { esperar: 0 };
@@ -442,18 +524,14 @@ async function pasoInstagram(env, { cuenta, token, origen, carga, guardar, fila:
   // 1. El contenedor de un solo elemento.
   const primero = medios[0];
   let params;
-  if (destino === "historia") {
-    params = primero.tipo === "video"
-      ? { media_type: "STORIES", video_url: await url(primero.src) }
-      : { media_type: "STORIES", image_url: await url(primero.src) };
-  } else if (destino === "reel") {
+  if (destino === "reel") {
     const video = medios.find((m) => m.tipo === "video");
     params = {
-      media_type: "REELS", video_url: await url(video.src), caption: texto, share_to_feed: true,
+      media_type: "REELS", video_url: await url(video.src), caption: texto, share_to_feed: true, ...conColab,
       ...(post.portada && !/\.(mp4|mov|m4v|webm)/i.test(post.portada) ? { cover_url: await url(post.portada) } : {}),
     };
   } else {
-    params = { image_url: await url(primero.src), caption: texto };
+    params = { image_url: await url(primero.src), caption: texto, ...conColab };
   }
   const c = await graph(env, token, `/${ig}/media`, { metodo: "POST", params });
   await guardar({ contenedor_id: c.id });
@@ -469,9 +547,36 @@ async function pasoFacebook(env, { cuenta, token, origen, carga, guardar, fila: 
   const fila = actual();
   if (fila.externo_id) return { hecho: true };
   const pagina = cuenta.externo_id;
-  const post = carga.post ?? {};
+  const post = publicacionDeVariante(carga.post ?? {}, fila.variante);
   const texto = textoPara(post, "facebook");
-  const medios = mediosDe(post);
+  const medios = mediosParaRed(carga.post ?? {}, "facebook", fila.variante);
+
+  // Historias de la página: foto (se sube sin publicar y se publica como
+  // historia) o video (subida en tres fases: empezar, subir, terminar).
+  if (post.format === "historia") {
+    return pasoTanda({ carga, guardar }, medios.slice(0, 10), {
+      crear: async (m) => {
+        if (m.tipo !== "video") {
+          const f = await graph(env, token, `/${pagina}/photos`, { metodo: "POST", params: { url: await urlDe(env, origen, m.src), published: false } });
+          return `foto:${f.id}`;
+        }
+        const inicio = await graph(env, token, `/${pagina}/video_stories`, { metodo: "POST", params: { upload_phase: "start" } });
+        const r = await fetch(inicio.upload_url, {
+          method: "POST",
+          headers: { Authorization: `OAuth ${token}`, file_url: await urlDe(env, origen, m.src) },
+        });
+        if (!r.ok) throw new ErrorMeta({ message: `Facebook no pudo recibir el video de la historia (${r.status}).`, is_transient: r.status >= 500 }, r.status);
+        return `video:${inicio.video_id}`;
+      },
+      publicar: async (contenedor) => {
+        const [tipo, id] = contenedor.split(":");
+        const r = tipo === "foto"
+          ? await graph(env, token, `/${pagina}/photo_stories`, { metodo: "POST", params: { photo_id: id } })
+          : await graph(env, token, `/${pagina}/video_stories`, { metodo: "POST", params: { upload_phase: "finish", video_id: id } });
+        return r.post_id ?? r.id ?? id;
+      },
+    });
+  }
   const video = medios.find((m) => m.tipo === "video");
   const url = (src) => urlDe(env, origen, src);
 
@@ -516,7 +621,7 @@ async function pasoFacebook(env, { cuenta, token, origen, carga, guardar, fila: 
  */
 async function pasoTikTok(env, { cuenta, token, carga, guardar, fila: actual }) {
   const fila = actual();
-  const post = carga.post ?? {};
+  const post = publicacionDeVariante(carga.post ?? {}, fila.variante);
   if (fila.externo_id) return { hecho: true };
 
   if (!fila.contenedor_id) {

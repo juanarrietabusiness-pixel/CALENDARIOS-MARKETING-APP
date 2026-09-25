@@ -1,0 +1,86 @@
+/* El panel de una publicación: medios, publicar, cola, conversación,
+   vista previa e historias. Se carga con el panel (trozo aparte), no con
+   la aplicación: el CSS inicial tiene su presupuesto. */
+.editor-medios-cuenta { font-weight: 400; color: var(--text-faint); margin-left: var(--sp-1); }
+.editor-medios { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.editor-medios li { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.editor-medios-vista { position: relative; aspect-ratio: 4 / 5; background: var(--bg); }
+.editor-medios-vista img, .editor-medios-vista video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.editor-medios-portada { position: absolute; left: 4px; top: 4px; font-size: var(--fs-3xs); font-weight: 700; padding: 1px 6px; border-radius: var(--radius-pill); background: var(--accent); color: #fff; }
+.editor-medios-tipo { position: absolute; right: 4px; top: 4px; padding: 3px; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; display: flex; }
+.editor-medios-acciones { display: flex; justify-content: space-between; }
+.editor-medios-acciones .btn-icon { min-width: 30px; min-height: var(--tap-sm); }
+.editor-medios-botones { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.contadores { font-size: var(--fs-3xs); color: var(--text-faint); margin: 0; }
+.contador { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-dim); }
+.contador[data-pasa] { color: var(--danger); }
+
+.seccion-publicar {
+  border: 1px solid var(--accent-line); background: var(--accent-soft); border-radius: var(--radius);
+  padding: var(--sp-3); margin-bottom: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-2);
+}
+.seccion-publicar h3 { margin: 0; }
+.redes-destino { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.revision-lista { list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-2xs); }
+.revision-lista[data-tipo="error"] li { color: var(--danger); display: flex; gap: var(--sp-1); align-items: flex-start; }
+.revision-lista[data-tipo="aviso"] li { color: var(--accent-alt); }
+.revision-ok { font-size: var(--fs-2xs); color: var(--success); display: flex; align-items: center; gap: var(--sp-1); margin: 0; }
+.seccion-publicar-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.acciones-publicar { flex-basis: 100%; display: flex; flex-direction: column; gap: var(--sp-2); }
+.acciones-publicar-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.cola-lista { list-style: none; display: flex; flex-direction: column; gap: var(--sp-1); }
+.cola-fila {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2);
+  padding: var(--sp-2); border-radius: var(--radius-sm); background: var(--surface-2); font-size: var(--fs-2xs);
+}
+.cola-red { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+.cola-estado { flex: 1; color: var(--text-dim); }
+.cola-fila[data-estado="publicada"] .cola-estado { color: var(--success); }
+.cola-fila[data-estado="error"] .cola-estado { color: var(--danger); }
+.cola-detalle { flex-basis: 100%; color: var(--text-dim); font-size: var(--fs-3xs); }
+
+.conversacion-hilo { list-style: none; display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.conversacion-hilo li { padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); background: var(--surface-2); font-size: var(--fs-2xs); display: flex; flex-direction: column; gap: 2px; max-width: 92%; }
+.conversacion-hilo li[data-autor="agencia"] { background: var(--accent-soft); align-self: flex-end; }
+.conversacion-hilo strong { font-size: var(--fs-3xs); color: var(--text-faint); }
+.conversacion-form { display: flex; gap: var(--sp-2); align-items: center; }
+.conversacion-form .input { flex: 1; }
+
+/* Vista previa: un teléfono con la publicación */
+.vista-previa { max-width: 440px; }
+.vista-previa-cabecera { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.vista-previa-cabecera h2 { font-size: var(--fs-md); flex: 1; }
+.vista-previa-telefono { background: #fff; color: #0B1220; border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--border); }
+.vista-previa-autor { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); font-size: var(--fs-xs); }
+.vista-previa-avatar { width: 30px; height: 30px; border-radius: 50%; background: #E4E8F0; overflow: hidden; display: inline-flex; }
+.vista-previa-avatar img { width: 100%; height: 100%; object-fit: contain; }
+.vista-previa-medio { position: relative; aspect-ratio: 4 / 5; background: #0B1220; display: flex; align-items: center; justify-content: center; color: #fff; font-size: var(--fs-xs); }
+.vista-previa-medio[data-vertical] { aspect-ratio: 9 / 16; max-height: 60vh; }
+.vista-previa-medio img, .vista-previa-medio video { width: 100%; height: 100%; object-fit: cover; }
+.vista-previa-flecha { position: absolute; top: 50%; transform: translateY(-50%); width: 32px; height: 32px; border-radius: 50%; border: none; background: rgba(255,255,255,.9); color: #0B1220; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.vista-previa-flecha[data-lado="izq"] { left: 8px; }
+.vista-previa-flecha[data-lado="der"] { right: 8px; }
+.vista-previa-flecha:disabled { opacity: 0; }
+.vista-previa-contador { position: absolute; top: 8px; right: 8px; font-size: var(--fs-3xs); background: rgba(0,0,0,.6); color: #fff; padding: 2px 8px; border-radius: var(--radius-pill); }
+.vista-previa-texto, .vista-previa-comentario, .vista-previa-nota { padding: var(--sp-2) var(--sp-3); font-size: var(--fs-xs); white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.vista-previa-comentario { color: #4B5566; border-top: 1px solid rgba(11,18,32,.08); }
+.vista-previa-nota { color: #6B7385; font-style: italic; }
+
+/* La historia que acompaña al post, y el ajuste de imágenes para Instagram. */
+.historias-post { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius); }
+.historias-post-cabecera { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); }
+.historias-post-cabecera h3 { margin: 0; flex-basis: 100%; }
+.historias-post-retraso { max-width: 240px; }
+.historias-post-lista, .historias-post-candidatas { list-style: none; display: flex; gap: var(--sp-2); overflow-x: auto; padding-bottom: 4px; }
+.historias-post-lista li { position: relative; flex: 0 0 auto; width: 96px; aspect-ratio: 9 / 16; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-2); }
+.historias-post-lista img, .historias-post-marco img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.historias-post-lista .btn-icon { position: absolute; top: 4px; right: 4px; width: var(--tap-sm); height: var(--tap-sm); min-width: 0; min-height: 0; padding: 0; border-radius: 50%; background: rgba(0, 0, 0, .6); color: #fff; }
+.historias-post-candidatas li { flex: 0 0 auto; width: 120px; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-3xs); }
+.historias-post-marco { aspect-ratio: 9 / 16; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-2); display: flex; align-items: center; justify-content: center; text-align: center; padding: 0; color: var(--text-dim); }
+.historias-post-marco[data-estado="error"] { color: var(--danger); padding: var(--sp-1); }
+.historias-post-acciones, .historias-post-botones { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.ajuste-imagen { display: flex; gap: var(--sp-3); align-items: flex-start; padding: var(--sp-2); border-radius: var(--radius-sm); background: var(--surface-2); font-size: var(--fs-2xs); }
+.ajuste-imagen-vista { flex: 0 0 96px; border-radius: var(--radius-sm); overflow: hidden; background: var(--bg); display: flex; align-items: center; justify-content: center; min-height: 120px; color: var(--text-faint); font-size: var(--fs-3xs); text-align: center; }
+.ajuste-imagen-vista img { width: 100%; display: block; }
+.ajuste-imagen-opciones { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.cola-variante { margin-left: 4px; padding: 0 6px; border-radius: var(--radius-pill); background: var(--accent-soft); color: var(--accent); font-size: var(--fs-3xs); font-weight: 600; }

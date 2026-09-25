@@ -1,3 +1,4 @@
+import "./publicar.css";
 // ============================================================
 // El panel lateral de una publicación
 //
@@ -20,6 +21,7 @@ import { AvisoEditando } from "../Presencia";
 import Icon from "../Icon";
 import { EditorMedios, CamposRedes, ConversacionCliente } from "./editorPublicacion";
 import SeccionPublicar from "./seccionPublicar";
+import HistoriasDelPost from "./historiasPost";
 import { CopyButton, TimePicker } from "./primitivas";
 import { fieldHeaderStyle } from "./formato";
 
@@ -306,6 +308,10 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         />
 
         <CamposRedes post={form} sf={sf} />
+
+        {!["historia", "live"].includes(form.format) && (
+          <HistoriasDelPost post={form} sf={sf} clientId={clientId} colorMarca={client?.primaryColor} onError={setFieldError} />
+        )}
 
         <SeccionPublicar post={form} sf={sf} client={client}>
           {accionesPublicar?.(form, setForm)}

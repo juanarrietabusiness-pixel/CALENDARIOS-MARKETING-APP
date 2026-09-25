@@ -9,6 +9,10 @@ describe("la cola en el navegador", () => {
     expect(Object.keys(c)).toEqual(["instagram"]);
     expect(c.instagram.estado).toBe("programada");
   });
+  it("la historia de un post es otra pieza de la misma red", () => {
+    const c = colaDe([fila("instagram", "programada"), fila("instagram", "programada", { id: "h", variante: "historia" })], "p1");
+    expect(Object.keys(c).sort()).toEqual(["instagram", "instagram:historia"]);
+  });
   it("el resumen: lo que falló manda; publicada sólo si salió en todas", () => {
     expect(resumenCola([], "p1")).toBeNull();
     expect(resumenCola([fila("instagram", "publicada"), fila("facebook", "error")], "p1").estado).toBe("error");

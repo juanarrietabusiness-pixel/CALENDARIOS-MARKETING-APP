@@ -4,7 +4,7 @@ import { FORMATS, FORMAT_ICONS, MONTHS } from "../constants";
 import Icon from "../components/Icon";
 import logoMark from "../assets/logo-mark.png";
 import { useDialogA11y } from "../hooks/useDialogA11y";
-import { mediosDe, textoPara, primerComentario } from "../lib/publicacion";
+import { mediosDe, textoPara, primerComentario, historiasDe } from "../lib/publicacion";
 import { normalizarColor, textoSobre, conAlfa } from "../lib/colores";
 import { fechaEnZona } from "../lib/agenda";
 
@@ -606,6 +606,17 @@ function TarjetaPublicacion({
       </header>
 
       <Medios post={post} token={token} />
+
+      {post.historiaTambien && historiasDe(post).length > 0 && (
+        <div className="aprobar-historias">
+          <p><Icon name="photo" size={14} /> También sale en historias:</p>
+          <ul aria-label="Historias que acompañan a esta publicación">
+            {historiasDe(post).map((h, i) => (
+              <li key={`${h.src}-${i}`}><img src={srcPublico(h.src, token)} alt={`Historia ${i + 1}`} loading="lazy" /></li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="aprobar-post-cuerpo">
         {estado === "actualizada" && post.anterior && (

@@ -1003,6 +1003,29 @@ son del servidor.
   un `<header>` y la vista previa de la agencia vive en un diálogo: sin
   las excepciones de `InformeVista.css`, el PDF salía sin portada, o en
   blanco desde la vista previa.
+- **Una publicación puede salir DOS veces por red: el post y su
+  historia.** Cada salida es una fila de la cola con su `variante`
+  (`post` | `historia`); `piezasDe()` dice cuáles tocan y
+  `publicacionDeVariante()` convierte el post en la historia (sus medios
+  son `post.historias`). Al reprogramar, lo que ya salió o está saliendo
+  se SALTA en vez de fallar: si no, añadir la historia a un post ya
+  publicado obligaría a borrar la fila publicada.
+- **Una tanda de historias sale una a una, y nunca se repite una.** El
+  avance vive en `carga.tanda` (`i`, `ids`); una tanda que falla a medias
+  queda «publicada» con cuántas faltaron. Mismo principio que
+  `externo_id`: publicar es lo único que no se reintenta.
+- **La imagen de Flow (3:4) no se recorta: se ADAPTA una copia.**
+  `post.adaptados["feed|<src>"]` (o `"historia|<src>"`) es la copia 4:5 o
+  9:16 que sale en esa red; el original lo siguen viendo Facebook, el
+  cliente y la página de aprobación. La hace el NAVEGADOR al programar
+  (`prepararParaRedes` en `lib/medios.js`): el Worker no puede tocar
+  imágenes, así que el servidor, sin copia, sigue dando error.
+  `revisarPublicacion(…, { navegador: true })` convierte ese error en aviso
+  para el panel; sin la opción, la regla es la estricta.
+- **El panel de una publicación se carga aparte** (`lazy` en
+  `CalendarView.jsx`, con su `publicar.css`). El JS principal estaba en
+  107,6 kB de un tope de 110 y el CSS inicial en 10,5 de 12: lo que sólo
+  usa el panel no va al arranque.
 - **`tests/utils/d1Memoria.js` es una D1 de verdad** (SQLite de Node con
   todas las migraciones). Para lo que un doble a mano no ve: que las
   consultas de la capa de acceso existen en el esquema. La cola de
@@ -1016,5 +1039,7 @@ son del servidor.
 - `docs/migracion-cloudflare.md` — plan para mover la aplicación de Supabase +
   Netlify a Cloudflare (D1, R2, Workers). Escrito sobre la base viva, no sobre
   el repositorio: incluye dónde los dos no coinciden.
+- `docs/propuesta-publicacion.md` — propuesta para la experiencia de publicar
+  (Flow a 4:5, historias, colaboradores, página de programación, MCP).
 - `docs/hub-cloudflare.md` — plan del hub donde este calendario pasa a ser una
   herramienta más, junto al bot y la tienda que ya están en Cloudflare.
