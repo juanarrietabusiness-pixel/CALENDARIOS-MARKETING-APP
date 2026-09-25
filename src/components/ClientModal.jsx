@@ -5,6 +5,7 @@ import { fetchGitHubADN, extractClientADN, parseGitHubUrl } from "../api";
 import { loadImageTemplates, saveImageTemplate, deleteImageTemplate, loadImageReferences, uploadImageReference, deleteImageReference } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
+import { idDeCarpeta } from "../lib/drive";
 
 const DAYS_ORDERED = [
   { dow: 1, name: "Lunes" },
@@ -312,7 +313,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
     ["adn", "ADN"],
     ["voz", "Voz"],
     ["visual", "Visual"],
-    ["github", "GitHub"],
+    ["github", "Drive y GitHub"],
     ["semanal", "Semanal"],
   ];
 
@@ -712,6 +713,25 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
 
         {tab === "github" && (
           <div role="tabpanel" id={`${ids}-panel-github`} aria-labelledby={`${ids}-tab-github`} style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
+            <div>
+              <label className="label" htmlFor={`${ids}-drive`}>Carpeta de Google Drive</label>
+              <input
+                id={`${ids}-drive`}
+                className="input"
+                value={form.driveFolder || ""}
+                onChange={(e) => sf("driveFolder", idDeCarpeta(e.target.value) || e.target.value)}
+                placeholder="https://drive.google.com/drive/folders/…"
+                aria-describedby={`${ids}-drive-help`}
+              />
+              <p id={`${ids}-drive-help`} className="hint">
+                Es el banco de contenido del cliente. Pega el enlace de su carpeta: tiene que estar compartida con la
+                cuenta de Google de la agencia, como Editor.
+                {form.driveFolder && !idDeCarpeta(form.driveFolder) && (
+                  <strong style={{ color: "var(--danger)" }}> Eso no parece un enlace de carpeta de Drive.</strong>
+                )}
+              </p>
+            </div>
+            <hr style={{ border: 0, borderTop: "1px solid var(--border)", margin: "var(--sp-1) 0" }} />
             <p style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)" }}>
               Conecta un repositorio de GitHub para cargar el ADN del cliente. Puedes pegar la URL
               completa con carpeta (ej: github.com/usuario/repo/tree/main/clientes/nombre) y se

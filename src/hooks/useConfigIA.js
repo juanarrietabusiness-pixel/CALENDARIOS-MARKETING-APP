@@ -11,7 +11,7 @@ export function useConfigIA(pulso = 0) {
   useEffect(() => {
     let vivo = true;
     loadAjustes()
-      .then((a) => { if (vivo && a) setConfig({ ia_modelo: a.ia_modelo, ia_razonamiento: a.ia_razonamiento }); })
+      .then((a) => { if (vivo && a) setConfig({ ...CONFIG_IA_POR_DEFECTO, ...a }); })
       .catch(() => {});
     return () => { vivo = false; };
   }, [pulso]);

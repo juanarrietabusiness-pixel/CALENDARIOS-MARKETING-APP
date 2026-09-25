@@ -325,9 +325,19 @@ export async function loadModelosIA() {
   return pedir("/ia/modelos");
 }
 
-/** Lo que costó la IA en un mes (AAAA-MM), por función y por modelo. */
+/** Lo que costó la IA en un mes (AAAA-MM): por función, modelo, día y cliente. */
 export async function loadConsumoIA(mes = "") {
   return pedir(`/ia/consumo${mes ? `?mes=${encodeURIComponent(mes)}` : ""}`);
+}
+
+/** Relee el medidor de gasto cuando termina una llamada que cuesta. */
+function avisarGasto(promesa) {
+  return promesa.finally(() => window.dispatchEvent(new Event("ia:gasto")));
+}
+
+/** Lo justo para el medidor: gastado, presupuesto y estado del mes. */
+export async function loadGastoIA() {
+  return pedir("/ia/gasto");
 }
 
 // ------------------------------------------------------------
@@ -335,7 +345,7 @@ export async function loadConsumoIA(mes = "") {
 // ------------------------------------------------------------
 
 export async function generateImage(datos) {
-  return pedir("/generar-imagen", conCuerpo("POST", datos));
+  return avisarGasto(pedir("/generar-imagen", conCuerpo("POST", datos)));
 }
 
 /**
@@ -354,7 +364,7 @@ export async function subirImagenPublicacion(clientId, file) {
 
 /** Lo que Gemini ve y oye en un video del banco, por escrito. */
 export async function analizarVideo(clave) {
-  return pedir("/ia/video", conCuerpo("POST", { clave }));
+  return avisarGasto(pedir("/ia/video", conCuerpo("POST", { clave })));
 }
 
 export async function feedbackImage(clientId, clave, liked) {
@@ -427,4 +437,75 @@ export function getContentBankUrl(filePath) {
 
 export async function getContentBankSignedUrl(filePath) {
   return getContentBankUrl(filePath);
+}
+
+// ------------------------------------------------------------
+// Google Drive: el banco de contenido
+//
+// Todo pasa por /api/drive/*: el navegador no habla con Google, y así
+// `connect-src` sigue en 'self'. Ver worker/rutas/drive.js.
+// ------------------------------------------------------------
+
+const rutaDrive = (clienteId, resto) => `/drive/clientes/${encodeURIComponent(clienteId)}/${resto}`;
+
+/** ¿Está Google configurado en el servidor y conectado el espacio? */
+export async function estadoDrive() {
+  return pedir("/drive/estado");
+}
+
+/** Conectar es NAVEGAR (Google pide permiso en su página), no un fetch. */
+export const urlConectarDrive = () => "/api/drive/conectar";
+
+export async function desconectarDrive() {
+  return pedir("/drive/desconectar", { method: "POST" });
+}
+
+export async function listarDrive(clienteId, { carpeta = "", q = "", tipo = "", pagina = "" } = {}) {
+  const p = new URLSearchParams();
+  if (carpeta) p.set("carpeta", carpeta);
+  if (q) p.set("q", q);
+  if (tipo) p.set("tipo", tipo);
+  if (pagina) p.set("pagina", pagina);
+  return pedir(`${rutaDrive(clienteId, "archivos")}${p.size ? `?${p}` : ""}`);
+}
+
+export const urlArchivoDrive = (clienteId, id, { descargar = false } = {}) =>
+  `/api${rutaDrive(clienteId, `archivo/${encodeURIComponent(id)}`)}${descargar ? "?descargar=1" : ""}`;
+
+export const urlMiniaturaDrive = (clienteId, id, tam = 400) =>
+  `/api${rutaDrive(clienteId, `miniatura/${encodeURIComponent(id)}`)}?t=${tam}`;
+
+/** Sube el archivo tal cual, sin FormData: el Worker lo pasa a Drive sin copiarlo. */
+export async function subirADrive(clienteId, file, carpeta = "") {
+  const p = new URLSearchParams({ nombre: file.name || "archivo" });
+  if (carpeta) p.set("carpeta", carpeta);
+  return pedir(`${rutaDrive(clienteId, "subir")}?${p}`, {
+    method: "POST",
+    body: file,
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+  });
+}
+
+export async function crearCarpetaDrive(clienteId, nombre, dentro = "") {
+  return pedir(rutaDrive(clienteId, "carpeta"), conCuerpo("POST", { nombre, dentro }));
+}
+
+export async function papeleraDrive(clienteId, id) {
+  return pedir(rutaDrive(clienteId, `papelera/${encodeURIComponent(id)}`), { method: "POST" });
+}
+
+/** Copia una imagen de Drive a R2 y devuelve la ruta que va en `post.image`. */
+export async function imagenDeDriveParaPublicacion(clienteId, fileId) {
+  const { clave } = await pedir(rutaDrive(clienteId, "a-publicacion"), conCuerpo("POST", { fileId }));
+  return getContentBankUrl(clave);
+}
+
+/** Una tanda de la migración del banco de antes a Drive. */
+export async function migrarBancoADrive(clienteId) {
+  return pedir(rutaDrive(clienteId, "migrar-banco"), { method: "POST" });
+}
+
+/** Lo que Gemini ve y oye en un video de Drive. */
+export async function analizarVideoDrive(clienteId, fileId) {
+  return avisarGasto(pedir("/ia/video", conCuerpo("POST", { drive: { clienteId, fileId } })));
 }

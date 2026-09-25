@@ -3,6 +3,7 @@ import worker from "../../worker/index.js";
 import { olvidarModelos } from "../../worker/lib/configIA.js";
 import { sha256 } from "../../worker/lib/ids.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
+import { cifrar, firmarEstado, olvidarToken } from "../../worker/lib/google.js";
 
 // ============================================================
 // La puerta del Worker, pedida de verdad
@@ -27,7 +28,7 @@ import { COOKIE } from "../../worker/lib/sesion.js";
 const TESTIGO = "un-testigo-de-sesion-de-prueba";
 
 /** D1 de mentira: reconoce las tres consultas que hace esta puerta. */
-function dbFalsa({ clientes = ["cliente-1"], huella, ajustes = null, rol = "admin" } = {}) {
+function dbFalsa({ clientes = ["cliente-1"], huella, ajustes = null, rol = "admin", gasto = 0, driveFolder = "", integracion = null } = {}) {
   const responder = (sql, binds) => {
     const s = sql.toLowerCase().replace(/\s+/g, " ");
 
@@ -40,11 +41,13 @@ function dbFalsa({ clientes = ["cliente-1"], huella, ajustes = null, rol = "admi
     }
 
     if (s.startsWith("select * from ajustes_espacio where id = ? and owner_id = ?")) return ajustes;
+    if (s.startsWith("select coalesce(sum(costo_usd), 0) as total from consumo_ia")) return { total: gasto };
 
     // acceso.leerUno("clients", { id }) — acotado por el espacio.
     if (s.startsWith("select * from clients where id = ? and owner_id = ?")) {
-      return clientes.includes(binds[0]) && binds[1] === "u-jefe" ? { id: binds[0] } : null;
+      return clientes.includes(binds[0]) && binds[1] === "u-jefe" ? { id: binds[0], drive_folder: driveFolder } : null;
     }
+    if (s.startsWith("select * from integracion_drive where id = ? and owner_id = ?")) return integracion;
     return null;
   };
 
@@ -352,7 +355,10 @@ describe("tareas terminadas, responsables y ajustes", () => {
   it("sin ajustes guardados, las terminadas no se borran solas", async () => {
     const res = await worker.fetch(pedirJSON("/api/ajustes", "GET"), await entorno());
     // Y la IA en sus valores por defecto: Sonnet 5 con razonamiento alto.
-    expect(await res.json()).toEqual({ purga_tareas: "nunca", ia_modelo: "sonnet", ia_razonamiento: "alto" });
+    expect(await res.json()).toEqual({
+      purga_tareas: "nunca", ia_modelo: "sonnet", ia_razonamiento: "alto",
+      ia_razonamiento_chat: null, presupuesto_usd: 30, al_limite: "avisar",
+    });
   });
 
   it("un modo de borrado que no existe es 400, no se guarda", async () => {
@@ -475,7 +481,7 @@ describe("el asistente: streaming y bucle de herramientas de servidor", () => {
   it("la petición: Sonnet 5 por defecto, razonamiento adaptativo alto, caché, sin tool_choice forzado", async () => {
     const peticiones = anthropicFalso(respuestaTexto("ok"));
     const env = { ...(await entorno()), ANTHROPIC_API_KEY: "k" };
-    await eventos(await worker.fetch(pedir(BASE), env));
+    await eventos(await worker.fetch(pedir({ ...BASE, seguido: true }), env));
     const p = peticiones[0];
     expect(p.model).toBe("claude-sonnet-5");
     expect(p.thinking.type).toBe("adaptive");
@@ -508,6 +514,46 @@ describe("el asistente: streaming y bucle de herramientas de servidor", () => {
     const fin = evs.find((e) => e.t === "fin");
     expect(fin.stopReason).toBe("end_turn");
     expect(fin.mensajes).toHaveLength(3);
+    // Sin conversación seguida, la primera vuelta no escribe caché —
+    // caduca en cinco minutos y escribirla cuesta 1,25×—; la segunda sí,
+    // porque la tercera la va a leer.
+    expect(peticiones[0]).not.toHaveProperty("cache_control");
+    expect(peticiones[0].system.at(-1)).not.toHaveProperty("cache_control");
+    expect(peticiones[1].cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("con el presupuesto agotado y «detener», no llama a Anthropic: 402 con el motivo", async () => {
+    const peticiones = anthropicFalso(respuestaTexto("no debería"));
+    const env = {
+      ...(await entorno({ ajustes: { presupuesto_usd: 10, al_limite: "detener" }, gasto: 10.5 })),
+      ANTHROPIC_API_KEY: "k",
+    };
+    const res = await worker.fetch(pedir(BASE), env);
+    expect(res.status).toBe(402);
+    expect((await res.json()).error).toMatch(/presupuesto de IA del mes/);
+    expect(peticiones).toHaveLength(0);
+  });
+
+  it("con el presupuesto agotado y «bajar», responde Sonnet en nivel Bajo y lo avisa", async () => {
+    const peticiones = anthropicFalso(respuestaTexto("ok"));
+    const env = {
+      ...(await entorno({ ajustes: { ia_modelo: "opus", presupuesto_usd: 10, al_limite: "bajar" }, gasto: 12 })),
+      ANTHROPIC_API_KEY: "k",
+    };
+    const evs = await eventos(await worker.fetch(pedir(BASE), env));
+    expect(peticiones[0].model).toBe("claude-sonnet-5");
+    expect(peticiones[0].output_config.effort).toBe("low");
+    expect(evs.find((e) => e.t === "aviso")?.texto).toMatch(/nivel Bajo/);
+  });
+
+  it("el asistente usa su propio nivel si el espacio le puso uno", async () => {
+    const peticiones = anthropicFalso(respuestaTexto("ok"));
+    const env = {
+      ...(await entorno({ ajustes: { ia_razonamiento: "alto", ia_razonamiento_chat: "medio" } })),
+      ANTHROPIC_API_KEY: "k",
+    };
+    await eventos(await worker.fetch(pedir(BASE), env));
+    expect(peticiones[0].output_config.effort).toBe("medium");
   });
 
   it("una herramienta del navegador termina el turno para que la ejecute él", async () => {
@@ -668,5 +714,165 @@ describe("la IA del espacio: modelo, razonamiento y respaldo", () => {
   it("un modelo o un nivel que no existen son 400", async () => {
     expect((await worker.fetch(guardarAjustes({ ia_modelo: "gpt" }), await entorno())).status).toBe(400);
     expect((await worker.fetch(guardarAjustes({ ia_razonamiento: "altisimo" }), await entorno())).status).toBe(400);
+  });
+});
+
+// ============================================================
+// Google Drive
+// ============================================================
+
+describe("Google Drive como banco de contenido", () => {
+  const GOOGLE = { GOOGLE_CLIENT_ID: "id-cliente", GOOGLE_CLIENT_SECRET: "secreto-de-prueba" };
+  const RAIZ = "carpetaRaizDelCliente1";
+
+  afterEach(() => { vi.unstubAllGlobals(); olvidarToken("u-jefe"); });
+
+  /** Un Drive de mentira: cada archivo con su padre y su tipo. */
+  function googleFalso(archivos) {
+    const pedidos = [];
+    vi.stubGlobal("fetch", async (url, opciones = {}) => {
+      const u = new URL(String(url));
+      pedidos.push({ url: u, opciones });
+      if (u.host === "oauth2.googleapis.com" && u.pathname === "/token") {
+        return Response.json({ access_token: "token-acceso", expires_in: 3600 });
+      }
+      const m = /^\/drive\/v3\/files\/([^/]+)$/.exec(u.pathname);
+      if (m) {
+        const f = archivos[decodeURIComponent(m[1])];
+        if (!f) return new Response("{}", { status: 404 });
+        if (u.searchParams.get("alt") === "media") return new Response(f.contenido ?? "bytes", { headers: { "Content-Type": f.mimeType } });
+        return Response.json({ id: m[1], name: f.name ?? m[1], mimeType: f.mimeType, size: "10", parents: f.parents ?? [] });
+      }
+      return new Response("no esperado", { status: 500 });
+    });
+    return pedidos;
+  }
+
+  const conDrive = async (extra = {}) => {
+    const base = await entorno({ driveFolder: `https://drive.google.com/drive/folders/${RAIZ}`, ...extra });
+    const env = { ...base, ...GOOGLE };
+    env.DB = dbFalsa({
+      driveFolder: `https://drive.google.com/drive/folders/${RAIZ}`,
+      huella: await sha256(TESTIGO),
+      integracion: { id: "u-jefe", refresh_cifrado: await cifrar(env, "refresh-de-prueba"), email: "agencia@gmail.com" },
+      ...extra,
+    });
+    return env;
+  };
+
+  it("sin las claves de Google, el estado lo dice y enseña la dirección de vuelta", async () => {
+    const res = await worker.fetch(conSesion("/api/drive/estado"), await entorno());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      configurado: false, conectado: false, redireccion: "https://calendarios.test/api/drive/callback",
+    });
+  });
+
+  it("conectar es sólo del administrador", async () => {
+    const env = { ...(await entorno({ rol: "editor" })), ...GOOGLE };
+    expect((await worker.fetch(conSesion("/api/drive/conectar"), env)).status).toBe(403);
+  });
+
+  it("conectar manda a Google con el state firmado y deja la cookie que lo ata a esta pestaña", async () => {
+    const env = { ...(await entorno()), ...GOOGLE };
+    const res = await worker.fetch(conSesion("/api/drive/conectar"), env);
+    expect(res.status).toBe(302);
+    const destino = new URL(res.headers.get("Location"));
+    expect(destino.host).toBe("accounts.google.com");
+    expect(destino.searchParams.get("access_type")).toBe("offline");
+    expect(destino.searchParams.get("redirect_uri")).toBe("https://calendarios.test/api/drive/callback");
+    expect(destino.searchParams.get("state")).toMatch(/\./);
+    expect(res.headers.get("Set-Cookie")).toMatch(/^__Host-drive-oauth=\w+; Secure; HttpOnly; SameSite=Lax/);
+  });
+
+  it("la vuelta de Google sin la cookie de la pestaña se rechaza", async () => {
+    // Un enlace de conexión reenviado a otra persona conectaría SU Drive
+    // al espacio de quien lo generó. La cookie es lo que lo impide.
+    const env = { ...(await entorno()), ...GOOGLE };
+    const state = await firmarEstado(env, { ownerId: "u-jefe", userId: "u-jefe", nonce: "abc" });
+    const pedidos = googleFalso({});
+    const res = await worker.fetch(new Request(`https://calendarios.test/api/drive/callback?code=x&state=${encodeURIComponent(state)}`), env);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toContain("drive=error");
+    expect(pedidos).toHaveLength(0);
+  });
+
+  it("un state manipulado se rechaza aunque traiga cookie", async () => {
+    const env = { ...(await entorno()), ...GOOGLE };
+    const state = await firmarEstado(env, { ownerId: "otro-espacio", userId: "x", nonce: "abc" });
+    const [cuerpo, firma] = state.split(".");
+    const trucado = `${cuerpo.slice(0, -2)}AA.${firma}`;
+    const res = await worker.fetch(new Request(`https://calendarios.test/api/drive/callback?code=x&state=${encodeURIComponent(trucado)}`, {
+      headers: { Cookie: "__Host-drive-oauth=abc" },
+    }), env);
+    expect(res.headers.get("Location")).toContain("drive=error");
+  });
+
+  it("un archivo de fuera de la carpeta del cliente no se sirve", async () => {
+    googleFalso({
+      ajeno: { mimeType: "image/jpeg", parents: ["otraCarpetaDeLaAgencia"] },
+      otraCarpetaDeLaAgencia: { mimeType: "application/vnd.google-apps.folder", parents: [] },
+    });
+    const res = await worker.fetch(conSesion("/api/drive/clientes/cliente-1/archivo/ajeno"), await conDrive());
+    expect(res.status).toBe(404);
+  });
+
+  it("uno de dentro, aunque esté en una subcarpeta, sí", async () => {
+    googleFalso({
+      foto: { mimeType: "image/jpeg", parents: ["sub"], contenido: "JPEG" },
+      sub: { mimeType: "application/vnd.google-apps.folder", parents: [RAIZ] },
+    });
+    const res = await worker.fetch(conSesion("/api/drive/clientes/cliente-1/archivo/foto"), await conDrive());
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("image/jpeg");
+    expect(await res.text()).toBe("JPEG");
+  });
+
+  it("lo que podría ejecutarse (HTML, SVG) se descarga, nunca se sirve en línea", async () => {
+    googleFalso({
+      pagina: { name: "truco.html", mimeType: "text/html", parents: [RAIZ], contenido: "<script>alert(1)</script>" },
+      dibujo: { name: "logo.svg", mimeType: "image/svg+xml", parents: [RAIZ], contenido: "<svg/>" },
+    });
+    for (const id of ["pagina", "dibujo"]) {
+      const res = await worker.fetch(conSesion(`/api/drive/clientes/cliente-1/archivo/${id}`), await conDrive());
+      expect(res.headers.get("Content-Type")).toBe("application/octet-stream");
+      expect(res.headers.get("Content-Disposition")).toMatch(/^attachment/);
+      expect(res.headers.get("Content-Security-Policy")).toMatch(/sandbox/);
+    }
+  });
+
+  it("un cliente sin carpeta de Drive lo dice en vez de listar nada", async () => {
+    const env = { ...(await entorno()), ...GOOGLE };
+    const res = await worker.fetch(conSesion("/api/drive/clientes/cliente-1/archivos"), env);
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/carpeta de Drive/);
+  });
+
+  it("sin conexión con Google, 409 con el camino para arreglarlo", async () => {
+    googleFalso({});
+    const env = await conDrive({ integracion: null });
+    const res = await worker.fetch(conSesion("/api/drive/clientes/cliente-1/archivos"), env);
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/Ajustes/);
+  });
+
+  it("poner un video en una publicación se rechaza: sólo imágenes", async () => {
+    googleFalso({ clip: { mimeType: "video/mp4", parents: [RAIZ] } });
+    const res = await worker.fetch(conSesion("/api/drive/clientes/cliente-1/a-publicacion", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileId: "clip" }),
+    }), await conDrive());
+    expect(res.status).toBe(400);
+  });
+
+  it("una imagen de Drive en una publicación se COPIA a R2 y devuelve su clave", async () => {
+    googleFalso({ foto: { mimeType: "image/png", parents: [RAIZ], contenido: "PNG" } });
+    const env = await conDrive();
+    const res = await worker.fetch(conSesion("/api/drive/clientes/cliente-1/a-publicacion", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileId: "foto" }),
+    }), env);
+    expect(res.status).toBe(201);
+    const { clave } = await res.json();
+    expect(clave).toMatch(/^clientes\/cliente-1\/drive\/.+\.png$/);
+    expect(env.MEDIA.objetos.has(clave)).toBe(true);
   });
 });

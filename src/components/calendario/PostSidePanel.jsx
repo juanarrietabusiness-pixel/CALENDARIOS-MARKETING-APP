@@ -12,7 +12,7 @@
 import { useEffect, useId, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES } from "../../constants";
 import { generateFieldForPost } from "../../api";
-import { subirImagenPublicacion, getContentBankUrl } from "../../lib/db";
+import { subirImagenPublicacion, getContentBankUrl, imagenDeDriveParaPublicacion } from "../../lib/db";
 import { vivo } from "../../lib/vivo";
 
 import { useDialogA11y } from "../../hooks/useDialogA11y";
@@ -96,6 +96,21 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
 
   const clientId = client?.dbId || client?.id;
   const [subiendo, setSubiendo] = useState(false);
+
+  // Del banco de antes, la clave ya está en R2. De Drive, se COPIA a R2:
+  // la página de aprobación del cliente y el HTML exportado no pueden
+  // leer el Drive de la agencia.
+  const ponerImagen = async (item) => {
+    if (item.fuente !== "drive") { sf("image", getContentBankUrl(item.clave)); return; }
+    setSubiendo(true);
+    setFieldError("");
+    try {
+      sf("image", await imagenDeDriveParaPublicacion(clientId, item.fileId));
+    } catch (e) {
+      setFieldError(`No se pudo traer la imagen de Drive: ${e.message}`);
+    }
+    setSubiendo(false);
+  };
   const [bancoAbierto, setBancoAbierto] = useState(false);
 
   const subirImagen = async (file) => {
@@ -329,7 +344,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
             </button>
             {clientId && (
               <button className="btn btn-secondary btn-sm" onClick={() => setBancoAbierto(true)} disabled={subiendo}>
-                <Icon name="folder" size={16} /> Escoger del banco
+                <Icon name="folder" size={16} /> {client?.driveFolder ? "Escoger de Drive" : "Escoger del banco"}
               </button>
             )}
             {form.image && (
@@ -341,9 +356,10 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           {bancoAbierto && (
             <BancoSelector
               clientId={clientId}
+              driveFolder={client?.driveFolder}
               tipos={["image"]}
-              titulo="Escoger imagen del banco"
-              onSelect={([item]) => { sf("image", getContentBankUrl(item.file_path)); setBancoAbierto(false); }}
+              titulo={client?.driveFolder ? "Escoger imagen de Google Drive" : "Escoger imagen del banco"}
+              onSelect={([item]) => { setBancoAbierto(false); void ponerImagen(item); }}
               onClose={() => setBancoAbierto(false)}
             />
           )}

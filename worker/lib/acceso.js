@@ -51,6 +51,7 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "image_references",
   "chat_resumenes",
   "consumo_ia",
+  "integracion_drive",
   // Del equipo. Tienen dueño como las demás: la lista de miembros de un
   // espacio es un dato del espacio, y pedirla sin acotar devolvería la
   // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué
@@ -182,6 +183,17 @@ export function crearAcceso(db, ownerId) {
         .bind(...cols.map((c) => campos[c]), ...valores)
         .run();
       return meta?.changes ?? 0;
+    },
+
+    /** La suma de una columna, acotada igual que `leer`. 0 si no hay filas. */
+    async sumar(tabla, columna, where = {}) {
+      exigirColumnas([columna]);
+      const { sql, valores } = acotar(tabla, where);
+      const fila = await db
+        .prepare(`select coalesce(sum(${columna}), 0) as total from ${tabla} where ${sql}`)
+        .bind(...valores)
+        .first();
+      return Number(fila?.total ?? 0);
     },
 
     async borrar(tabla, where) {

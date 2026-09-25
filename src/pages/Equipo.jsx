@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import Icon from "../components/Icon";
 import { Avatar } from "../components/Presencia";
-import SeccionIA from "../components/SeccionIA";
+import { navegar } from "../lib/rutas";
 import {
   cargarEquipo, invitar, retirarInvitacion, sacarMiembro,
   guardarMiPerfil, enlaceDeInvitacion,
@@ -108,7 +108,7 @@ export default function Equipo({ presentes = [], yo, pulso = 0, onVolver }) {
             <div style={{ minWidth: 0 }}>
               <h1 className="page-title">Equipo</h1>
               <p className="page-meta">
-                Quién entra en este espacio, cómo os veis mientras trabajáis y con qué IA.
+                Quién entra en este espacio y cómo os veis mientras trabajáis.
               </p>
             </div>
           </div>
@@ -275,8 +275,14 @@ export default function Equipo({ presentes = [], yo, pulso = 0, onVolver }) {
             </section>
           )}
 
-          {/* ---- La IA del espacio ---- */}
-          <SeccionIA esAdmin={esAdmin} pulso={pulso} />
+          {/* La IA y su gasto se mudaron a Ajustes: aquí nadie los
+              encontró el día que se acabó el saldo. */}
+          <p className="hint" style={{ margin: 0 }}>
+            El modelo de IA, el nivel de razonamiento y el presupuesto están en{" "}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => navegar("/ajustes")}>
+              <Icon name="settings" size={14} /> Ajustes
+            </button>
+          </p>
 
           {/* ---- Cómo te ven ---- */}
           <section>

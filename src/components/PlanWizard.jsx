@@ -129,7 +129,7 @@ export default function PlanWizard({ client, onGenerate, onClose }) {
       const prompt = `${ctx}\n\nDame 5-8 fechas importantes para ${MONTHS[month]} ${year} en Panama relevantes para esta industria.
 Formato JSON array: [{"date":"YYYY-MM-DD","name":"Nombre","relevant":true}]
 Solo el JSON, nada mas.`;
-      const txt = await callAI(prompt);
+      const txt = await callAI(prompt, { funcion: "calendario", clienteId: client?.id });
       const match = txt.match(/\[[\s\S]*?\]/);
       if (match) {
         const dates = JSON.parse(match[0]);
@@ -151,7 +151,7 @@ Solo el JSON, nada mas.`;
     try {
       const ctx = buildClientContext(client);
       const prompt = `${ctx}\n\nSugiere 3 temas de campana para ${MONTHS[month]} ${year}. Una linea por sugerencia. Solo las sugerencias, nada mas.`;
-      const txt = await callAI(prompt);
+      const txt = await callAI(prompt, { funcion: "calendario", clienteId: client?.id });
       setCampaign(txt.split("\n").filter(Boolean)[0] || "");
     } catch (e) {
       setAiStatus("Error: " + e.message);
@@ -169,7 +169,7 @@ Solo el JSON, nada mas.`;
       const prompt = `${ctx}\n\nGenera ${numWeeks} conceptos semanales para el calendario de ${MONTHS[month]} ${year}.
 Campana: ${campaign || "N/A"}
 Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
-      const txt = await callAI(prompt);
+      const txt = await callAI(prompt, { funcion: "calendario", clienteId: client?.id });
       const lines = txt.split("\n").filter(Boolean).slice(0, 5);
       setWeekConcepts((prev) => prev.map((c, i) => c || lines[i] || ""));
     } catch (e) {
@@ -299,7 +299,7 @@ idea aqui
 DIAS:
 ${daysDesc}`;
 
-        const txt = await callAI(prompt);
+        const txt = await callAI(prompt, { funcion: "calendario", clienteId: client?.id });
         for (const block of txt.split("===DIA===").slice(1)) {
           const dateMatch = block.match(/FECHA:\s*([\d-]+)/);
           if (!dateMatch) continue;
@@ -410,7 +410,7 @@ ${daysDesc}`;
         // `tolerarCorte` porque una tanda que se corta en la última
         // publicación trae las cinco anteriores enteras: rechazarla entera
         // obligaba a repetir el mes por una descripción.
-        const { texto } = await callAI([{ type: "text", text: prompt }], { maxTokens: 8000, tolerarCorte: true });
+        const { texto } = await callAI([{ type: "text", text: prompt }], { maxTokens: 8000, tolerarCorte: true, funcion: "descripciones", clienteId: client?.id });
         const leidas = parseAIResponse(texto);
 
         for (const p of tanda) {

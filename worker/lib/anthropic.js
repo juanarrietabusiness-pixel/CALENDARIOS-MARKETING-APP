@@ -41,8 +41,18 @@ export const esRechazoDeWeb = (e) =>
   /web[_ ]?(search|fetch)/i.test(e.message);
 
 /** Lo que se le enseña a la persona: el motivo de verdad, no uno genérico. */
+/** «Your credit balance is too low to access the Anthropic API». */
+export const esSaldoAgotado = (e) =>
+  e instanceof RechazoAnthropic && /credit balance|billing/i.test(String(e.message ?? ""));
+
 export function mensajeDeRechazo(e) {
   if (!(e instanceof RechazoAnthropic)) return e?.message || "No se pudo generar la respuesta.";
+  // El saldo agotado llega como un 400 más, con el motivo en inglés. Es
+  // justo el caso en que hace falta saber qué hacer, no qué pasó.
+  if (esSaldoAgotado(e)) {
+    return "Se acabó el saldo de Anthropic. Recárgalo en console.anthropic.com → Billing; " +
+      "hasta entonces la IA de texto no puede responder.";
+  }
   if (e.estado === 429) return "La IA está saturada. Inténtalo en unos segundos.";
   if (e.estado === 401) return "La clave de Anthropic del servidor no es válida.";
   if (e.estado === 403) return `Anthropic no permite esta petición con la clave del servidor: ${String(e.message).slice(0, 300)}`;

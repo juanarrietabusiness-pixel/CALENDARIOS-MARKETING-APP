@@ -96,19 +96,39 @@ describe("analizar y construir son inversas", () => {
   const url = (pathname, hash = "") => ({ pathname, hash });
 
   it("la raíz es el panel sin nada seleccionado", () => {
-    expect(analizarRuta(url("/"))).toEqual({ vista: "panel", cliente: null, calendario: null });
+    expect(analizarRuta(url("/"))).toEqual({ vista: "panel", cliente: null, calendario: null, pestana: "calendario" });
   });
 
   it("un cliente", () => {
     expect(analizarRuta(url("/cliente/baby-caleb"))).toEqual({
-      vista: "panel", cliente: "baby-caleb", calendario: null,
+      vista: "panel", cliente: "baby-caleb", calendario: null, pestana: "calendario",
     });
   });
 
   it("un cliente y un calendario", () => {
     expect(analizarRuta(url("/cliente/baby-caleb/agosto-2026"))).toEqual({
-      vista: "panel", cliente: "baby-caleb", calendario: "agosto-2026",
+      vista: "panel", cliente: "baby-caleb", calendario: "agosto-2026", pestana: "calendario",
     });
+  });
+
+  it("las pestañas del cliente van donde iría el mes, y no son un mes", () => {
+    for (const pestana of ["tareas", "contenido", "ideas", "ficha"]) {
+      const r = analizarRuta(url(`/cliente/baby-caleb/${pestana}`));
+      expect(r).toEqual({ vista: "panel", cliente: "baby-caleb", calendario: null, pestana });
+      expect(construirRuta(r)).toBe(`/cliente/baby-caleb/${pestana}`);
+    }
+  });
+
+  it("Ajustes tiene su dirección", () => {
+    expect(analizarRuta(url("/ajustes"))).toEqual({ vista: "ajustes" });
+    expect(construirRuta({ vista: "ajustes" })).toBe("/ajustes");
+  });
+
+  it("un calendario llamado como una pestaña no se queda su dirección", () => {
+    // Si «Ideas» se quedara «ideas», abrir ese mes abriría la pestaña.
+    const slugs = slugsDeCalendarios([{ id: "abcdef123", name: "Ideas" }, { id: "x2", name: "Agosto 2026" }]);
+    expect(slugs.get("abcdef123")).toBe("ideas-abcdef");
+    expect(slugs.get("x2")).toBe("agosto-2026");
   });
 
   it("el equipo y la invitación", () => {
