@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   variacion, enPanama, serieDiaria, kpis, porFormato, mejoresMomentos, mejoresPublicaciones, resumenCompetencia, numeroCorto,
+  horaSugerida,
 } from "./resultados.js";
 
 const dia = (fecha, red, seguidores, alcance = 0, extra = {}) => ({ cuentaId: `${red}-1`, red, fecha, seguidores, alcance, vistas: 0, interacciones: 0, visitas: 0, ...extra });
@@ -65,5 +66,27 @@ describe("resultados", () => {
     expect(numeroCorto(950)).toBe("950");
     expect(numeroCorto(12500)).toBe("12,5 mil");
     expect(numeroCorto(1_250_000)).toBe("1,3 M");
+  });
+});
+
+describe("la hora sugerida", () => {
+  // 2026-10-06 es martes. 23:00 UTC = 18:00 en Panamá (franja 18–21).
+  const pub = (iso, interacciones) => ({ publicadaAt: iso, interacciones });
+  const martesTarde = [pub("2026-09-29T23:00:00Z", 200), pub("2026-09-22T23:30:00Z", 180)];
+  const martesManana = [pub("2026-09-29T14:00:00Z", 40), pub("2026-09-22T14:00:00Z", 60)];
+  it("la mejor franja de ese día de la semana, con su motivo", () => {
+    const s = horaSugerida([...martesTarde, ...martesManana], "2026-10-06");
+    expect(s.hora).toBe("19:00");
+    expect(s.motivo).toMatch(/^Los martes de 18–21 h/);
+    expect(s.motivo).toMatch(/190 interacciones de media en 2 publicaciones/);
+  });
+  it("si ese día no hay datos, la mejor franja de la semana", () => {
+    const s = horaSugerida([...martesTarde, pub("2026-09-24T23:00:00Z", 100), pub("2026-09-25T23:00:00Z", 100), ...martesManana], "2026-10-04");
+    expect(s.hora).toBe("19:00");
+    expect(s.motivo).toMatch(/^De 18–21 h/);
+  });
+  it("con pocos datos, nada: una publicación no es una tendencia", () => {
+    expect(horaSugerida([pub("2026-09-29T23:00:00Z", 500)], "2026-10-06")).toBeNull();
+    expect(horaSugerida([], "2026-10-06")).toBeNull();
   });
 });

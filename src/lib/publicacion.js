@@ -228,29 +228,47 @@ export function destinoInstagram(post) {
 export function revisarPublicacion(post, redes = post?.redes ?? ["instagram"], { navegador = false } = {}) {
   const errores = [];
   const avisos = [];
+  // El arreglo de cada problema que lo tiene, por su texto: el panel lo
+  // pinta como botón al lado (ver `aplicarArreglo`).
+  const arreglos = {};
+  const con = (lista, texto, arreglo) => { lista.push(texto); if (arreglo) arreglos[texto] = arreglo; };
   const medios = mediosDe(post);
   const videos = medios.filter((m) => m.tipo === "video");
 
   if (post?.format === "live") {
     errores.push("Un directo no se puede publicar por API: queda sólo como planificación.");
-    return { errores, avisos };
+    return { errores, avisos, arreglos };
   }
 
   if (redes.includes("instagram")) {
     const L = LIMITES.instagram;
     const texto = textoPara(post, "instagram");
     const deIG = mediosParaRed(post, "instagram");
-    if (!medios.length) errores.push("Instagram necesita al menos una imagen o un video.");
-    if (post?.format === "reel" && !videos.length) errores.push("Un reel necesita un video.");
-    if (post?.format === "carrusel" && medios.length > 0 && medios.length < L.carruselMin) {
-      errores.push("Un carrusel necesita al menos 2 imágenes o videos.");
+    if (!medios.length) con(errores, "Instagram necesita al menos una imagen o un video.", { codigo: "medios", etiqueta: "Añadir imagen o video" });
+    if (post?.format === "reel" && !videos.length) {
+      con(errores, "Un reel necesita un video.", medios.length
+        ? { codigo: medios.length > 1 ? "formato:carrusel" : "formato:post", etiqueta: medios.length > 1 ? "Publicarlo como carrusel" : "Publicarlo como post" }
+        : null);
     }
-    if (medios.length > L.carruselMax) errores.push(`Instagram admite hasta ${L.carruselMax} elementos por ${post?.format === "historia" ? "tanda de historias" : "carrusel"}.`);
+    if (post?.format === "carrusel" && medios.length > 0 && medios.length < L.carruselMin) {
+      con(errores, "Un carrusel necesita al menos 2 imágenes o videos.", { codigo: "formato:post", etiqueta: "Publicarlo como post" });
+    }
+    if (medios.length > L.carruselMax) {
+      con(errores, `Instagram admite hasta ${L.carruselMax} elementos por ${post?.format === "historia" ? "tanda de historias" : "carrusel"}.`, { codigo: "recortar-medios", etiqueta: `Quedarse con los ${L.carruselMax} primeros` });
+    }
     if (post?.format === "historia" && medios.length > 1) avisos.push(`Salen ${medios.length} historias seguidas, en este orden.`);
     if (post?.format === "historia" && texto) avisos.push("Una historia no muestra el texto: el texto va dentro de la imagen o el video.");
-    if (texto.length > L.caracteres) errores.push(`El texto de Instagram tiene ${texto.length} caracteres; el máximo es ${L.caracteres}.`);
+    if (texto.length > L.caracteres) {
+      const mover = !post?.hashtagsEnComentario && String(post?.hashtagsFinales ?? "").trim() &&
+        textoPara({ ...post, hashtagsEnComentario: true }, "instagram").length <= L.caracteres;
+      con(errores, `El texto de Instagram tiene ${texto.length} caracteres; el máximo es ${L.caracteres}.`,
+        mover ? { codigo: "hashtags-al-comentario", etiqueta: "Mover los hashtags al primer comentario" } : null);
+    }
     const h = contarHashtags(texto) + (post?.hashtagsEnComentario ? contarHashtags(post?.hashtagsFinales) : 0);
-    if (h > L.hashtags) errores.push(`Instagram admite ${L.hashtags} hashtags y hay ${h}.`);
+    if (h > L.hashtags) {
+      con(errores, `Instagram admite ${L.hashtags} hashtags y hay ${h}.`,
+        contarHashtags(post?.hashtagsFinales) ? { codigo: "recortar-hashtags", etiqueta: `Dejar ${L.hashtags} hashtags` } : null);
+    }
     if (contarMenciones(texto) > L.menciones) errores.push(`Instagram admite ${L.menciones} menciones.`);
     const objetivo = objetivoDe(post, "instagram");
     const fuera = deIG.find((m) => objetivo === "feed" && necesitaAjuste(m, "feed"));
@@ -262,23 +280,27 @@ export function revisarPublicacion(post, redes = post?.redes ?? ["instagram"], {
       avisos.push("Instagram sólo acepta JPEG: las imágenes en otro formato se convierten al programar.");
     }
     const colab = colaboradoresDe(post);
-    if (colab.length > MAX_COLABORADORES) errores.push(`Instagram admite hasta ${MAX_COLABORADORES} colaboradores y hay ${colab.length}.`);
-    if (colab.length && post?.format === "historia") avisos.push("Las historias no llevan colaboradores: sólo se invitan en posts, carruseles y reels.");
+    if (colab.length > MAX_COLABORADORES) {
+      con(errores, `Instagram admite hasta ${MAX_COLABORADORES} colaboradores y hay ${colab.length}.`, { codigo: "recortar-colaboradores", etiqueta: `Dejar los ${MAX_COLABORADORES} primeros` });
+    }
+    if (colab.length && post?.format === "historia") {
+      con(avisos, "Las historias no llevan colaboradores: sólo se invitan en posts, carruseles y reels.", { codigo: "quitar-colaboradores", etiqueta: "Quitar colaboradores" });
+    }
   }
 
   if (redes.includes("facebook")) {
     const texto = textoPara(post, "facebook");
     if (post?.format === "historia") {
-      if (!medios.length) errores.push("Una historia de Facebook necesita una imagen o un video.");
+      if (!medios.length) con(errores, "Una historia de Facebook necesita una imagen o un video.", quitarRed(redes, "facebook"));
     } else {
-      if (!medios.length && !texto) errores.push("Facebook necesita texto o al menos una imagen o un video.");
+      if (!medios.length && !texto) con(errores, "Facebook necesita texto o al menos una imagen o un video.", quitarRed(redes, "facebook"));
       if (videos.length && medios.length > 1) avisos.push("Facebook no mezcla video y fotos en una publicación: se publicará sólo el video.");
     }
     if (texto.length > LIMITES.facebook.caracteres) errores.push("El texto de Facebook es demasiado largo.");
   }
 
   if (redes.includes("tiktok")) {
-    if (!videos.length) errores.push("TikTok necesita un video.");
+    if (!videos.length) con(errores, "TikTok necesita un video.", quitarRed(redes, "tiktok"));
     const texto = textoPara(post, "tiktok");
     if (texto.length > LIMITES.tiktok.caracteres) errores.push(`El texto de TikTok tiene ${texto.length} caracteres; el máximo es ${LIMITES.tiktok.caracteres}.`);
   }
@@ -286,12 +308,44 @@ export function revisarPublicacion(post, redes = post?.redes ?? ["instagram"], {
   // La historia que acompaña al post.
   if (post?.historiaTambien && !["historia", "live"].includes(post?.format)) {
     const hs = historiasDe(post);
-    if (!hs.length) errores.push("Marcaste «también como historia», pero no hay ninguna imagen de historia: créala con IA o usa la del post.");
+    if (!hs.length) {
+      con(errores, "Marcaste «también como historia», pero no hay ninguna imagen de historia: créala con IA o usa la del post.", { codigo: "sin-historia", etiqueta: "No publicar historia" });
+    }
     else if (hs.length > LIMITES.instagram.carruselMax) errores.push(`Como mucho ${LIMITES.instagram.carruselMax} historias por publicación.`);
     else if (redes.every((r) => r === "tiktok")) avisos.push("TikTok no tiene historias por API: la historia saldrá sólo en Instagram y Facebook.");
   }
 
-  return { errores, avisos };
+  return { errores, avisos, arreglos };
+}
+
+/** «Quitar esta red», sólo si queda otra: quitar la única no arregla nada. */
+const quitarRed = (redes, red) => (redes.length > 1 ? { codigo: `quitar-red:${red}`, etiqueta: `Quitar ${REDES[red].nombre}` } : null);
+
+/**
+ * Aplica el arreglo de un problema (el `codigo` de `revisarPublicacion`)
+ * y devuelve la publicación nueva. Sólo toca lo que dice el arreglo: lo
+ * escrito no se reescribe. «medios» no cambia nada: lo resuelve el panel
+ * abriendo la subida.
+ */
+export function aplicarArreglo(post, codigo) {
+  const [accion, valor] = String(codigo).split(":");
+  const redes = Array.isArray(post?.redes) && post.redes.length ? post.redes : ["instagram"];
+  switch (accion) {
+    case "formato": return { ...post, format: valor };
+    case "recortar-medios": return conMedios(post, mediosDe(post).slice(0, LIMITES.instagram.carruselMax));
+    case "hashtags-al-comentario": return { ...post, hashtagsEnComentario: true };
+    case "recortar-hashtags": {
+      const enTexto = post?.hashtagsEnComentario ? 0 : contarHashtags(post?.descripcion || post?.script);
+      const libres = Math.max(0, LIMITES.instagram.hashtags - enTexto);
+      const tags = String(post?.hashtagsFinales ?? "").match(/#[\p{L}\p{N}_]+/gu) ?? [];
+      return { ...post, hashtagsFinales: tags.slice(0, libres).join(" ") };
+    }
+    case "recortar-colaboradores": return { ...post, colaboradores: colaboradoresDe(post).slice(0, MAX_COLABORADORES) };
+    case "quitar-colaboradores": return { ...post, colaboradores: [] };
+    case "quitar-red": return { ...post, redes: redes.filter((r) => r !== valor) };
+    case "sin-historia": return { ...post, historiaTambien: false };
+    default: return post;
+  }
 }
 
 /**
