@@ -2492,3 +2492,11 @@ a.btn, a.btn-icon { text-decoration: none; }
 /* Panel de una publicación: medios, redes, publicar */
 .casilla { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-2xs); color: var(--text-dim); min-height: var(--tap-sm); cursor: pointer; }
 .panel-cargando { position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100vw); z-index: var(--z-panel); background: var(--surface); display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: var(--fs-xs); }
+
+/* La pantalla de permiso de Claude (OAuth). Poca cosa: va en el CSS inicial. */
+.conectar-claude { display: flex; justify-content: center; padding: var(--sp-6) 0; }
+.conectar-claude-tarjeta { max-width: 480px; width: 100%; padding: var(--sp-5); border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--sp-3); }
+.conectar-claude-tarjeta h1 { font-size: var(--fs-lg); margin: 0; }
+.conectar-claude-lista { list-style: none; display: flex; flex-direction: column; gap: var(--sp-2); font-size: var(--fs-xs); }
+.conectar-claude-lista li { display: flex; gap: var(--sp-2); align-items: flex-start; }
+.conectar-claude-botones { display: flex; gap: var(--sp-2); justify-content: flex-end; }

@@ -5,15 +5,16 @@ encima: funciona, pero se hace desde un panel pensado para escribir ideas.
 Este documento recoge qué falla hoy, qué permite de verdad la API de Meta
 (y qué no) y un plan por fases.
 
-**Estado:** hecho lo de las secciones 3.1, 3.2, 3.3 (salvo el
-recorte arrastrando), 3.5 y 3.6: imágenes de Flow adaptadas a 4:5 y 9:16
-sin tocar el original; historias del post (la misma imagen o tres
-variantes de Nano Banana) que salen solas unos minutos después;
-historias de Facebook; colaboradores; la página Programación; «Programar
-lo aprobado»; los fallos en la navegación y en Mi día; y el panel con la
-pestaña Publicar (vista previa real, arreglos con un botón, hora
-sugerida, texto alternativo y nombre del audio). Hecha también la auditoría de perfil de clientes y prospectos
-(`/auditorias`). Faltan la publicación asistida (3.4) y el MCP (4), en curso.
+**Estado:** hecho todo lo propuesto salvo el recorte arrastrando el
+encuadre (3.1: se recorta al centro). Imágenes de Flow adaptadas a 4:5 y
+9:16 sin tocar el original; historias del post (la misma imagen o tres
+variantes de Nano Banana); historias de Facebook; colaboradores; la
+página Programación; «Programar lo aprobado»; los fallos en la
+navegación y en Mi día; el panel con la pestaña Publicar (vista previa
+real, arreglos con un botón, hora sugerida); la publicación asistida
+desde el teléfono (3.4); la auditoría de perfil de clientes y
+prospectos; y el MCP para Claude (4), con OAuth y conexiones en
+Ajustes → Claude.
 
 ---
 

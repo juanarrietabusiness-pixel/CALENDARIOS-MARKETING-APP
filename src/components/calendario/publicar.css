@@ -125,3 +125,6 @@
 .editor-medios-zona[data-encima] { border-color: var(--accent); background: var(--accent-soft); }
 .editor-medios li[draggable] { cursor: grab; }
 .editor-medios-ayuda { margin: 0; }
+.a-mano-panel { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius); }
+.a-mano-panel h3 { margin: 0; }
+.a-mano-panel .btn { align-self: flex-start; }

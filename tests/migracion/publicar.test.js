@@ -584,3 +584,11 @@ describe("programar lo aprobado de una vez y la cola del espacio", () => {
     expect(await (await worker.fetch(conSesion("/api/publicar?todo=1&dias=60"), env, {})).json()).toHaveLength(1);
   });
 });
+
+describe("publicar a mano", () => {
+  it("lo marcado para publicarlo desde el teléfono no se programa solo, ni en lote", async () => {
+    await sembrar({ posts: [post({ asistida: true, notaAsistida: "canción X" })] });
+    await expect(programar(env, acceso(), { calendarId: "cal1", postId: "p1" })).rejects.toThrow(/a mano/);
+    expect(filas()).toEqual([]);
+  });
+});

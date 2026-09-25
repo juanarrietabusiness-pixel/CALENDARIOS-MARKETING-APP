@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { colaDe, resumenCola, filtrarCola, ordenarProgramacion, aprobadasSinProgramar, nombreDia, revisarAprobadas } from "./cola.js";
+import { colaDe, resumenCola, filtrarCola, ordenarProgramacion, aprobadasSinProgramar, nombreDia, revisarAprobadas, asistidasPendientes } from "./cola.js";
 
 const fila = (red, estado, extra = {}) => ({ id: `${red}-${estado}`, postId: "p1", red, estado, programadaPara: "2026-10-05T15:00:00.000Z", ...extra });
 
@@ -91,5 +91,22 @@ describe("revisar lo aprobado antes de programarlo", () => {
   it("sólo las redes que el cliente tiene: la otra la salta, no la bloquea", () => {
     const [r] = revisarAprobadas([{ post: post({ redes: ["instagram", "facebook"] }), fecha: "2026-10-06" }], ["facebook"], ahora);
     expect(r).toMatchObject({ lista: true, redes: ["facebook"] });
+  });
+});
+
+describe("lo que se publica a mano", () => {
+  it("las marcadas y sin publicar, de hoy en adelante y las atrasadas, por hora", () => {
+    const clients = [{ id: "c", name: "Café", calendars: [{ id: "k", days: [
+      { date: "2026-10-03", posts: [{ id: "vieja", asistida: true, publishTime: "09:00" }] },
+      { date: "2026-10-05", posts: [
+        { id: "tarde", asistida: true, publishTime: "18:00" }, { id: "manana", asistida: true, publishTime: "08:00" },
+        { id: "normal", publishTime: "10:00" }, { id: "hecha", asistida: true, status: "published" },
+      ] },
+      { date: "2026-10-30", posts: [{ id: "lejos", asistida: true }] },
+    ] }] }];
+    const r = asistidasPendientes(clients, "2026-10-05", 7);
+    expect(r.map((x) => x.post.id)).toEqual(["vieja", "manana", "tarde"]);
+    expect(r[0].atrasada).toBe(true);
+    expect(r[1]).toMatchObject({ fecha: "2026-10-05", cuando: "2026-10-05T13:00:00.000Z" });
   });
 });

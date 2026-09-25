@@ -396,3 +396,112 @@ export async function expulsarDelEspacio(db, ownerId, userId) {
   const { meta } = await db.prepare("delete from users where id = ?").bind(userId).run();
   return meta?.changes ?? 0;
 }
+
+// ------------------------------------------------------------
+// Conectar Claude (MCP): OAuth 2.1 con PKCE
+//
+// Claude se registra solo (RFC 7591), abre la pantalla de permiso de la
+// aplicación con la sesión de siempre, y cambia el código por un token
+// atado a ESA persona y a SU espacio. Vive aquí porque es lo mismo que
+// una sesión: define quién es quien llama. Como en `sessions`, sólo se
+// guardan huellas.
+// ------------------------------------------------------------
+
+export const MINUTOS_CODIGO_MCP = 10;
+export const HORAS_ACCESO_MCP = 1;
+export const DIAS_RENOVACION_MCP = 90;
+
+/** Una URI de vuelta aceptable: https, o http sólo en la propia máquina. */
+export function uriDeVueltaValida(uri) {
+  try {
+    const u = new URL(uri);
+    if (u.hash) return false;
+    return u.protocol === "https:" || (u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname));
+  } catch { return false; }
+}
+
+export async function registrarClienteMCP(db, { nombre = "", redirectUris = [] }) {
+  const uris = [...new Set((Array.isArray(redirectUris) ? redirectUris : []).map(String))];
+  if (!uris.length || uris.length > 10 || !uris.every(uriDeVueltaValida)) return null;
+  const id = `mcp_${testigo(16)}`;
+  await db.prepare("insert into mcp_clientes (id, nombre, redirect_uris, created_at) values (?,?,?,?)")
+    .bind(id, String(nombre).slice(0, 120), JSON.stringify(uris), ahora()).run();
+  return { id, nombre: String(nombre).slice(0, 120), redirectUris: uris };
+}
+
+export async function clienteMCP(db, id) {
+  const f = await db.prepare("select id, nombre, redirect_uris from mcp_clientes where id = ?").bind(String(id ?? "")).first();
+  if (!f) return null;
+  let uris = [];
+  try { uris = JSON.parse(f.redirect_uris); } catch { /* vacío */ }
+  return { id: f.id, nombre: f.nombre, redirectUris: uris };
+}
+
+/** El código de un solo uso que vuelve a Claude tras el permiso. */
+export async function crearCodigoMCP(db, { clienteId, usuario, redirectUri, reto }) {
+  const bruto = testigo(24);
+  await db.prepare("insert into mcp_codigos (codigo_hash, owner_id, user_id, cliente_id, redirect_uri, reto, expira, created_at) values (?,?,?,?,?,?,?,?)")
+    .bind(await sha256(bruto), usuario.ownerId, usuario.id, clienteId, redirectUri, reto, enHoras(MINUTOS_CODIGO_MCP / 60), ahora()).run();
+  return bruto;
+}
+
+async function retoS256(verificador) {
+  const huella = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verificador));
+  return btoa(String.fromCharCode(...new Uint8Array(huella))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+async function emitirTokensMCP(db, { ownerId, userId, clienteId, id = null }) {
+  const acceso = testigo(32);
+  const renovacion = testigo(32);
+  const valores = [await sha256(acceso), await sha256(renovacion), enHoras(HORAS_ACCESO_MCP)];
+  if (id) {
+    await db.prepare("update mcp_tokens set acceso_hash = ?, renovacion_hash = ?, expira = ?, usado_at = ? where id = ?")
+      .bind(...valores, ahora(), id).run();
+  } else {
+    await db.prepare("insert into mcp_tokens (id, owner_id, user_id, cliente_id, acceso_hash, renovacion_hash, expira, created_at) values (?,?,?,?,?,?,?,?)")
+      .bind(uuid(), ownerId, userId, clienteId, ...valores, ahora()).run();
+  }
+  return { access_token: acceso, token_type: "Bearer", expires_in: HORAS_ACCESO_MCP * 3600, refresh_token: renovacion };
+}
+
+/**
+ * Código → tokens. Se borra al leerlo, valga o no: un código sólo sirve
+ * una vez, y uno robado que llega segundo no encuentra nada.
+ */
+export async function canjearCodigoMCP(db, { codigo, clienteId, redirectUri, verificador }) {
+  const huella = await sha256(String(codigo ?? ""));
+  const f = await db.prepare("select * from mcp_codigos where codigo_hash = ?").bind(huella).first();
+  if (!f) return null;
+  await db.prepare("delete from mcp_codigos where codigo_hash = ?").bind(huella).run();
+  if (f.expira <= ahora() || f.cliente_id !== clienteId || f.redirect_uri !== redirectUri) return null;
+  if (!verificador || (await retoS256(String(verificador))) !== f.reto) return null;
+  return emitirTokensMCP(db, { ownerId: f.owner_id, userId: f.user_id, clienteId });
+}
+
+/** Renovar: el de renovación se rota en cada uso, y vence si pasa mucho sin usarse. */
+export async function renovarTokenMCP(db, { renovacion, clienteId }) {
+  const f = await db.prepare("select id, cliente_id, usado_at, created_at from mcp_tokens where renovacion_hash = ?")
+    .bind(await sha256(String(renovacion ?? ""))).first();
+  if (!f || f.cliente_id !== clienteId) return null;
+  const ultimo = Date.parse(f.usado_at ?? f.created_at);
+  if (Date.now() - ultimo > DIAS_RENOVACION_MCP * 86_400_000) return null;
+  return emitirTokensMCP(db, { id: f.id });
+}
+
+/** Quién llama al MCP, por su token. La misma forma que `usuarioDeLaPeticion`. */
+export async function usuarioDeTokenMCP(db, bruto) {
+  if (!bruto) return null;
+  const fila = await db
+    .prepare(
+      `select t.id as token_id, u.id, u.email, m.owner_id, m.rol, m.nombre, m.color
+         from mcp_tokens t
+         join users u on u.id = t.user_id
+         join memberships m on m.user_id = u.id and m.owner_id = t.owner_id
+        where t.acceso_hash = ? and t.expira > ?`,
+    )
+    .bind(await sha256(bruto), ahora())
+    .first();
+  if (!fila) return null;
+  await db.prepare("update mcp_tokens set usado_at = ? where id = ?").bind(ahora(), fila.token_id).run();
+  return comoPerfil(fila.id, fila.email, fila);
+}

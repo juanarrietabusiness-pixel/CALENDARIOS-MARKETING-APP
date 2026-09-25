@@ -1,0 +1,17 @@
+/* Publicar desde el teléfono: una columna, botones grandes. */
+.a-mano { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--sp-4); }
+.a-mano-cabecera h1 { font-size: var(--fs-xl); margin: 0; line-height: 1.2; }
+.a-mano-cliente { font-size: var(--fs-2xs); color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; margin: 0; }
+.a-mano-cuando { display: flex; align-items: center; gap: var(--sp-2); color: var(--accent); font-weight: 600; margin: var(--sp-1) 0 0; }
+.a-mano-nota { display: flex; gap: var(--sp-2); align-items: flex-start; padding: var(--sp-3); border-radius: var(--radius); background: var(--alt-soft); border: 1px solid var(--alt-line); margin: 0; font-size: var(--fs-sm); }
+.a-mano-bloque { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); }
+.a-mano-bloque h2 { font-size: var(--fs-sm); margin: 0; }
+.a-mano-bloque > .btn { min-height: var(--tap); }
+.a-mano-medios { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--sp-2); }
+.a-mano-medios li { display: flex; flex-direction: column; gap: var(--sp-1); }
+.a-mano-medios img, .a-mano-medios video { width: 100%; border-radius: var(--radius-sm); background: var(--bg); display: block; }
+.a-mano-medios .btn { min-height: var(--tap); justify-content: center; }
+.a-mano-texto { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-xs); margin: 0; padding: var(--sp-2); border-radius: var(--radius-sm); background: var(--surface-2); max-height: 240px; overflow-y: auto; }
+.a-mano-botones, .a-mano-final { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.a-mano-botones .btn, .a-mano-final .btn { flex: 1 1 200px; min-height: var(--tap); justify-content: center; }
+.a-mano-final .notice { flex: 1 1 200px; margin: 0; display: flex; align-items: center; gap: var(--sp-2); }

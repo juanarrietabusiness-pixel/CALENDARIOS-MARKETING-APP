@@ -695,3 +695,24 @@ export async function borrarAuditoria(id) {
 export async function auditoriaPublica(testigo) {
   return pedir(`/publico-auditoria/${encodeURIComponent(testigo)}`);
 }
+
+// ------------------------------------------------------------
+// Claude (MCP): el permiso y las conexiones. Ver worker/rutas/mcp.js.
+// ------------------------------------------------------------
+
+export async function mcpCliente(clientId, redirectUri) {
+  return pedir(`/mcp/cliente?${new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri })}`);
+}
+
+/** Da (o niega) el permiso. Devuelve { redirect } a donde hay que volver. */
+export async function mcpAutorizar(datos) {
+  return pedir("/mcp/autorizar", conCuerpo("POST", datos));
+}
+
+export async function mcpConexiones() {
+  return (await pedir("/mcp/conexiones")) ?? [];
+}
+
+export async function mcpDesconectar(id) {
+  return pedir(`/mcp/conexiones/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
