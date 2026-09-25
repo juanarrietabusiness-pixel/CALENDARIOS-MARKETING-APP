@@ -159,7 +159,10 @@ export default function SeccionMeta({ esAdmin, clients = [], pulso = 0 }) {
           <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)", flexWrap: "wrap" }}>
             <p style={{ fontSize: "var(--fs-2xs)", flex: 1, minWidth: 200 }}>
               Conectado como <strong>{meta.nombre || "la cuenta de la agencia"}</strong>.
-              {meta.expira && <> El permiso se renueva al pulsar «Actualizar cuentas»; caduca el {new Date(meta.expira).toLocaleDateString("es-PA", { day: "numeric", month: "long" })}.</>}
+              {" "}Publicar y medir no caducan: cada página guarda su propio permiso, y ése no vence.
+              {meta.expira && (Date.parse(meta.expira) > Date.now()
+                ? <> Para traer páginas NUEVAS sirve «Actualizar cuentas» hasta el {new Date(meta.expira).toLocaleDateString("es-PA", { day: "numeric", month: "long" })}; después, «Volver a conectar».</>
+                : <> Para traer páginas nuevas, pulsa «Volver a conectar».</>)}
             </p>
             {esAdmin && (
               <>

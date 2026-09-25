@@ -925,6 +925,14 @@ son del servidor.
   la fila «publicada con aviso» en vez de reintentar (sería un duplicado
   en el perfil del cliente). Dos vueltas a la vez se evitan reservando la
   fila con su `updated_at` como condición.
+- **Lo que caduca a los 60 días es el token de la PERSONA, no el de las
+  páginas.** El de usuario (`integracion_meta`) sólo sirve para listar
+  páginas («Actualizar cuentas»). Publicar y medir usan el token de cada
+  página (`cuentas_sociales.token_cifrado`), que se pide con el de larga
+  duración y por eso no vence (salvo que se cambie la contraseña, se
+  quite la app o se pierda el rol en la página: entonces, reconectar).
+  Decirle a la agencia que «tiene que renovar cada 60 días» es falso y
+  ya se dijo una vez; la pantalla lo explica bien ahora.
 - **Meta DESCARGA los medios: no se le suben.** Los de R2 están detrás de
   la sesión, así que se le da `/api/medio-publico/<testigo>/<nombre>`,
   firmado con `META_APP_SECRET`, que abre ESE archivo y caduca en tres
