@@ -1042,6 +1042,27 @@ son del servidor.
   se descarta: el número rojo de «Programación» en la navegación
   (`?fallidas=1`, una lectura corta porque se repite con cada `pulso`),
   el bloque de Mi día y el primer bloque de /programacion, con el motivo.
+- **El panel de una publicación tiene dos pestañas sobre el MISMO `form`.**
+  Contenido planifica; Publicar (`calendario/seccionPublicar.jsx`) va en el
+  orden en que se publica: redes, medios (arrastrar, pegar con Ctrl+V,
+  reordenar), vista previa, texto, revisión y una barra fija con la hora y
+  los botones. Cambiar de pestaña no guarda ni pierde nada: el guardado
+  sigue siendo al desmontar el panel.
+- **La vista previa pasa cada imagen por el mismo lienzo que el
+  programado** (`vistaAjuste`, `calendario/vistaRed.jsx`). Si enseñara el
+  original, volvería a mentir sobre lo que Instagram corta: ése era el
+  fallo de la vista previa anterior.
+- **Cada problema lleva su arreglo, pero la regla sigue siendo una.**
+  `revisarPublicacion()` devuelve además `arreglos` (por texto del
+  problema: `{ codigo, etiqueta }`) y `aplicarArreglo()` lo aplica; los
+  dos son puros y tienen sus casos. Un arreglo sólo toca lo que dice
+  —quitar una red, mover los hashtags al comentario, recortar a 30—, y
+  «quitar la red» no se ofrece si es la única: no arreglaría nada.
+- **La hora sugerida no sale con pocos datos** (`horaSugerida()` en
+  `lib/resultados.js`): dos publicaciones ese día de la semana en la
+  misma franja, o cuatro en la franja contando toda la semana. Con menos,
+  nada: una sugerencia sacada de una publicación es ruido con aspecto de
+  consejo.
 - **`tests/utils/d1Memoria.js` es una D1 de verdad** (SQLite de Node con
   todas las migraciones). Para lo que un doble a mano no ve: que las
   consultas de la capa de acceso existen en el esquema. La cola de

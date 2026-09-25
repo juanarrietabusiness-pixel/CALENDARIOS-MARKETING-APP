@@ -479,6 +479,19 @@ describe("historias y variantes", () => {
     expect(JSON.parse(llamadas[0].params.collaborators)).toEqual(["marca.amiga", "otra_cuenta"]);
   });
 
+  it("el texto alternativo va en la imagen, y el nombre del audio en el reel", async () => {
+    await sembrar({ posts: [
+      post({ altTexto: "Una taza de café sobre la mesa" }),
+      post({ id: "r", format: "reel", medios: [{ src: "/api/media/clientes/c1/posts/v.mp4", tipo: "video" }], audioNombre: "Sonido original de Café Luna" }),
+    ] });
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
+    await programar(env, acceso(), { calendarId: "cal1", postId: "r", ahoraMismo: true });
+    await procesarCola(env);
+    const creados = llamadas.filter((l) => l.metodo === "POST" && l.ruta === "/IG1/media");
+    expect(creados.find((l) => l.params.image_url).params.alt_text).toBe("Una taza de café sobre la mesa");
+    expect(creados.find((l) => l.params.media_type === "REELS").params.audio_name).toBe("Sonido original de Café Luna");
+  });
+
   it("la copia adaptada (4:5) es la que sale en Instagram; el original sigue en la publicación", async () => {
     const original = { src: "/api/media/clientes/c1/posts/flow.jpg", tipo: "imagen", ancho: 896, alto: 1200 };
     const adaptada = { src: "/api/media/clientes/c1/posts/flow-45.jpg", ancho: 960, alto: 1200 };

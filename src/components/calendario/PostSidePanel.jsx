@@ -8,22 +8,30 @@ import "./publicar.css";
 // perdía sin decir nada. Los tres botones que sacan la publicación de
 // su sitio (borrar, mover, banco) levantan `yaEscrito` antes de
 // reescribir el calendario ellos mismos.
+//
+// DOS PESTAÑAS: Contenido (planificar: idea, guion, descripción,
+// aprobación, conversación) y Publicar (medios, vista previa real, texto
+// de cada red, revisión con arreglos y la barra de programar). Es la
+// misma publicación y el mismo `form`: cambiar de pestaña no guarda ni
+// pierde nada. La última elegida se recuerda mientras dure la sesión.
 // ============================================================
 
 import { useEffect, useId, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES } from "../../constants";
 import { generateFieldForPost } from "../../api";
 import { vivo } from "../../lib/vivo";
-import { conMedios } from "../../lib/publicacion";
+import { mediosDe } from "../../lib/publicacion";
 
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { AvisoEditando } from "../Presencia";
 import Icon from "../Icon";
-import { EditorMedios, CamposRedes, ConversacionCliente } from "./editorPublicacion";
-import SeccionPublicar from "./seccionPublicar";
-import HistoriasDelPost from "./historiasPost";
+import { ConversacionCliente } from "./editorPublicacion";
+import PestanaPublicar from "./seccionPublicar";
 import { CopyButton, TimePicker } from "./primitivas";
 import { fieldHeaderStyle } from "./formato";
+
+const PESTANAS = [["contenido", "Contenido", "pencil"], ["publicar", "Publicar", "send"]];
+let pestanaRecordada = "contenido";
 
 export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onSendToBank, suggestion, onAcceptSuggestion, onRejectSuggestion, client, cal, editandoOtros = {}, pulso = 0, accionesPublicar = null }) {
   const [form, setForm] = useState({ ...post });
@@ -33,6 +41,14 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
   const [moveTarget, setMoveTarget] = useState("");
   const ids = useId();
   const panelRef = useDialogA11y(onClose);
+  const [pestana, setPestanaEstado] = useState(pestanaRecordada);
+  const setPestana = (p) => { pestanaRecordada = p; setPestanaEstado(p); };
+  const teclaPestana = (e) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    const otra = pestana === "contenido" ? "publicar" : "contenido";
+    setPestana(otra);
+    document.getElementById(`${ids}-tab-${otra}`)?.focus();
+  };
   const sf = (k, v) => setForm((p) => ({ ...p, [k]: v }));
   const f = FORMATS[form.format] || FORMATS.post;
   const isPost = form.format === "post";
@@ -136,10 +152,57 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         <button className="btn-icon" onClick={() => { save(); onClose(); }} aria-label="Guardar y cerrar"><Icon name="close" /></button>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: "var(--sp-4)" }}>
+      <div className="panel-pestanas" role="tablist" aria-label="Secciones de la publicación">
+        {PESTANAS.map(([k, nombre, icono]) => (
+          <button
+            key={k}
+            id={`${ids}-tab-${k}`}
+            type="button"
+            role="tab"
+            aria-selected={pestana === k}
+            aria-controls={`${ids}-panel-${k}`}
+            tabIndex={pestana === k ? 0 : -1}
+            onClick={() => setPestana(k)}
+            onKeyDown={teclaPestana}
+          >
+            <Icon name={icono} size={16} /> {nombre}
+          </button>
+        ))}
+      </div>
+
+      <div
+        id={`${ids}-panel-${pestana}`}
+        role="tabpanel"
+        aria-labelledby={`${ids}-tab-${pestana}`}
+        className="panel-cuerpo"
+        style={{ flex: 1, overflowY: "auto", padding: "var(--sp-4)", paddingBottom: pestana === "publicar" ? 0 : "var(--sp-4)" }}
+      >
         {fieldError && (
           <p role="alert" className="notice notice-error">{fieldError}</p>
         )}
+
+        {pestana === "publicar" ? (
+          <PestanaPublicar
+            post={form}
+            sf={sf}
+            setForm={setForm}
+            client={client}
+            clientId={clientId}
+            day={day}
+            onError={setFieldError}
+            acciones={accionesPublicar?.(form, setForm)}
+          >
+            {form.status === "published" ? (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => sf("status", "approved")}>
+                Quitar «publicada a mano»
+              </button>
+            ) : (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => sf("status", "published")}>
+                Ya la publiqué a mano
+              </button>
+            )}
+          </PestanaPublicar>
+        ) : (<>
 
         <fieldset className="field" style={{ border: "none" }}>
           <legend className="label">Formato</legend>
@@ -205,8 +268,8 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         </div>
 
         <div className="field">
-          <label className="label" htmlFor={`${ids}-title`}>Título</label>
-          <input id={`${ids}-title`} className="input" value={form.title || ""} onChange={(e) => sf("title", e.target.value)} placeholder="Nombre corto de la publicación" />
+          <label className="label" htmlFor={`${ids}-titulo`}>Título</label>
+          <input id={`${ids}-titulo`} className="input" value={form.title || ""} onChange={(e) => sf("title", e.target.value)} placeholder="Nombre corto de la publicación" />
         </div>
 
         <div className="field">
@@ -299,32 +362,20 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           </div>
         )}
 
-        <EditorMedios
-          post={form}
-          clientId={clientId}
-          driveFolder={client?.driveFolder}
-          onChange={(medios) => setForm((p) => conMedios(p, medios))}
-          onError={setFieldError}
-        />
-
-        <CamposRedes post={form} sf={sf} />
-
-        {!["historia", "live"].includes(form.format) && (
-          <HistoriasDelPost post={form} sf={sf} clientId={clientId} colorMarca={client?.primaryColor} onError={setFieldError} />
-        )}
-
-        <SeccionPublicar post={form} sf={sf} client={client}>
-          {accionesPublicar?.(form, setForm)}
-          {form.status === "published" ? (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => sf("status", "approved")}>
-              Quitar «publicada a mano»
+        {/* Los medios se editan en Publicar; aquí, un vistazo y el camino. */}
+        <div className="field">
+          <span className="label">Imágenes y videos</span>
+          <div className="medios-resumen">
+            {mediosDe(form).slice(0, 4).map((m, i) => (
+              <span key={`${m.src}-${i}`} className="medios-resumen-item">
+                {m.tipo === "video" ? <Icon name="play" size={16} /> : <img src={m.src} alt="" />}
+              </span>
+            ))}
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPestana("publicar")}>
+              <Icon name={mediosDe(form).length ? "pencil" : "upload"} size={14} /> {mediosDe(form).length ? `${mediosDe(form).length} · editar en Publicar` : "Añadir en Publicar"}
             </button>
-          ) : (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => sf("status", "published")}>
-              Ya la publiqué a mano
-            </button>
-          )}
-        </SeccionPublicar>
+          </div>
+        </div>
 
         {cal?.shareToken && <ConversacionCliente calId={cal.id} postId={post.id} pulso={pulso} />}
 
@@ -332,6 +383,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           <label className="label" htmlFor={`${ids}-comment`}>Nota interna <span style={{ fontWeight: 400, textTransform: "none" }}>· el cliente no la ve</span></label>
           <textarea id={`${ids}-comment`} className="textarea" value={form.comment || ""} onChange={(e) => sf("comment", e.target.value)} placeholder="Notas internas…" style={{ minHeight: 72 }} />
         </div>
+        </>)}
       </div>
 
       <div style={{ padding: "var(--sp-3) var(--sp-4)", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>

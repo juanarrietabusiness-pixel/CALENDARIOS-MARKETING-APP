@@ -501,6 +501,8 @@ async function pasoInstagram(env, { cuenta, token, origen, carga, guardar, fila:
   // Hasta 3 cuentas públicas; el invitado acepta desde su app.
   const colab = colaboradoresDe(post);
   const conColab = colab.length && destino !== "historia" ? { collaborators: JSON.stringify(colab.slice(0, 3)) } : {};
+  // Texto alternativo para lectores de pantalla (sólo imágenes del feed).
+  const conAlt = post.altTexto?.trim() ? { alt_text: post.altTexto.trim().slice(0, 1000) } : {};
 
   // Historias: una tras otra, con su propio avance.
   if (destino === "historia") {
@@ -568,7 +570,7 @@ async function pasoInstagram(env, { cuenta, token, origen, carga, guardar, fila:
       for (const m of medios.slice(0, 10)) {
         const params = m.tipo === "video"
           ? { media_type: "VIDEO", video_url: await url(m.src), is_carousel_item: true }
-          : { image_url: await url(m.src), is_carousel_item: true };
+          : { image_url: await url(m.src), is_carousel_item: true, ...conAlt };
         hijos.push((await graph(env, token, `/${ig}/media`, { metodo: "POST", params })).id);
       }
       carga.hijos = hijos;
@@ -598,10 +600,11 @@ async function pasoInstagram(env, { cuenta, token, origen, carga, guardar, fila:
     const video = medios.find((m) => m.tipo === "video");
     params = {
       media_type: "REELS", video_url: await url(video.src), caption: texto, share_to_feed: true, ...conColab,
+      ...(post.audioNombre?.trim() ? { audio_name: post.audioNombre.trim().slice(0, 100) } : {}),
       ...(post.portada && !/\.(mp4|mov|m4v|webm)/i.test(post.portada) ? { cover_url: await url(post.portada) } : {}),
     };
   } else {
-    params = { image_url: await url(primero.src), caption: texto, ...conColab };
+    params = { image_url: await url(primero.src), caption: texto, ...conColab, ...conAlt };
   }
   const c = await graph(env, token, `/${ig}/media`, { metodo: "POST", params });
   await guardar({ contenedor_id: c.id });

@@ -10,7 +10,6 @@
 //     reel, historia), desde el equipo o desde Drive.
 //   · CamposRedes: hashtags con su contador, primer comentario y el
 //     texto propio de Facebook.
-//   · VistaPrevia: cómo se verá en Instagram y en Facebook.
 //   · ConversacionCliente: el hilo con el cliente de esa publicación.
 //
 // Las reglas (límites, qué se publica) no viven aquí: son las de
@@ -20,9 +19,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Icon from "../Icon";
 import BancoSelector from "../BancoSelector";
-import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { subirImagenPublicacion, getContentBankUrl, medioDeDrive, loadComentarios, comentarComoAgencia } from "../../lib/db";
-import { mediosDe, textoPara, primerComentario, contarHashtags, LIMITES, REDES } from "../../lib/publicacion";
+import { mediosDe, textoPara, contarHashtags, LIMITES } from "../../lib/publicacion";
 
 const esVideoArchivo = (f) => f?.type?.startsWith("video/");
 
@@ -30,11 +28,14 @@ const esVideoArchivo = (f) => f?.type?.startsWith("video/");
 // Medios
 // ------------------------------------------------------------
 
-export function EditorMedios({ post, clientId, driveFolder, onChange, onError }) {
+export function EditorMedios({ post, clientId, driveFolder, onChange, onError, entradaRef = null }) {
   const ids = useId();
-  const entrada = useRef(null);
+  const propia = useRef(null);
+  const entrada = entradaRef ?? propia;
   const [subiendo, setSubiendo] = useState("");
   const [escogiendo, setEscogiendo] = useState(false);
+  const [encima, setEncima] = useState(false);
+  const arrastrado = useRef(null);
   const medios = mediosDe(post);
   const maximo = LIMITES.instagram.carruselMax;
 
@@ -93,15 +94,62 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError })
     poner(lista);
   };
 
+  // Reordenar arrastrando: se saca de su sitio y se mete delante del que
+  // recibe. Las flechas siguen ahí: con teclado o lector de pantalla no
+  // se arrastra.
+  const soltarEn = (j) => {
+    const i = arrastrado.current;
+    arrastrado.current = null;
+    if (i === null || i === j) return;
+    const lista = [...medios];
+    const [m] = lista.splice(i, 1);
+    lista.splice(j, 0, m);
+    poner(lista);
+  };
+
+  // Pegar con Ctrl+V una imagen copiada (una captura, una imagen de la
+  // web). Sólo si lo pegado trae archivos: pegar texto en un campo sigue
+  // siendo pegar texto.
+  useEffect(() => {
+    const alPegar = (e) => {
+      const archivos = [...(e.clipboardData?.files ?? [])].filter((f) => /^(image|video)\//.test(f.type));
+      if (!archivos.length || subiendo) return;
+      e.preventDefault();
+      void subir(archivos);
+    };
+    window.addEventListener("paste", alPegar);
+    return () => window.removeEventListener("paste", alPegar);
+  });
+
+  const alSoltarArchivos = (e) => {
+    if (!e.dataTransfer?.files?.length) return;
+    e.preventDefault();
+    setEncima(false);
+    const archivos = [...e.dataTransfer.files].filter((f) => /^(image|video)\//.test(f.type));
+    if (archivos.length) void subir(archivos);
+  };
+
   return (
-    <div className="field">
+    <div
+      className="field editor-medios-zona"
+      data-encima={encima || undefined}
+      onDragOver={(e) => { if ([...(e.dataTransfer?.types ?? [])].includes("Files")) { e.preventDefault(); setEncima(true); } }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setEncima(false); }}
+      onDrop={alSoltarArchivos}
+    >
       <span className="label" id={`${ids}-t`}>
         Imágenes y videos <span className="editor-medios-cuenta">{medios.length}/{maximo}</span>
       </span>
       {medios.length > 0 && (
         <ol className="editor-medios" aria-labelledby={`${ids}-t`}>
           {medios.map((m, i) => (
-            <li key={`${m.src}-${i}`}>
+            <li
+              key={`${m.src}-${i}`}
+              draggable
+              onDragStart={(e) => { arrastrado.current = i; e.dataTransfer.effectAllowed = "move"; }}
+              onDragOver={(e) => { if (arrastrado.current !== null) e.preventDefault(); }}
+              onDrop={(e) => { if (arrastrado.current !== null) { e.preventDefault(); e.stopPropagation(); soltarEn(i); } }}
+            >
               <div className="editor-medios-vista">
                 {m.tipo === "video"
                   ? <video src={`${m.src}#t=0.5`} muted preload="metadata" aria-hidden="true" />
@@ -145,6 +193,7 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError })
           </button>
         )}
       </div>
+      <p className="hint editor-medios-ayuda">Arrastra aquí imágenes o videos, o pégalos con Ctrl+V. Arrastra las miniaturas para cambiar el orden.</p>
       <div role="status" aria-live="polite" className={subiendo ? "hint" : "sr-only"}>{subiendo}</div>
       {escogiendo && (
         <BancoSelector
@@ -244,68 +293,6 @@ export function CamposRedes({ post, sf }) {
         )}
       </div>
     </>
-  );
-}
-
-// ------------------------------------------------------------
-// Vista previa
-// ------------------------------------------------------------
-
-export function VistaPrevia({ post, client, onClose }) {
-  const ref = useDialogA11y(onClose);
-  const ids = useId();
-  const [red, setRed] = useState("instagram");
-  const [i, setI] = useState(0);
-  const medios = mediosDe(post);
-  const m = medios[Math.min(i, medios.length - 1)];
-  const usuario = (client?.instagram || client?.name || "").replace(/^@/, "");
-  const texto = textoPara(post, red);
-  const comentario = red === "instagram" ? primerComentario(post) : "";
-  const vertical = post.format === "reel" || post.format === "historia";
-
-  return (
-    <div className="overlay">
-      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="dialog vista-previa">
-        <div className="vista-previa-cabecera">
-          <h2 id={`${ids}-t`}>Vista previa</h2>
-          <div className="segmented" role="group" aria-label="Red">
-            {["instagram", "facebook"].map((r) => (
-              <button key={r} type="button" className={`segmented-btn ${red === r ? "active" : ""}`} aria-pressed={red === r} onClick={() => setRed(r)}>
-                {REDES[r].nombre}
-              </button>
-            ))}
-          </div>
-          <button className="btn-icon" onClick={onClose} aria-label="Cerrar la vista previa"><Icon name="close" /></button>
-        </div>
-        <div className="vista-previa-telefono" data-red={red}>
-          <div className="vista-previa-autor">
-            <span className="vista-previa-avatar">{client?.logo ? <img src={client.logo} alt="" /> : null}</span>
-            <strong>{red === "instagram" ? usuario : client?.name}</strong>
-          </div>
-          <div className="vista-previa-medio" data-vertical={vertical || undefined}>
-            {!m ? <span>Sin imagen ni video</span>
-              : m.tipo === "video" ? <video src={m.src} controls playsInline preload="metadata" />
-                : <img src={m.src} alt="" />}
-            {medios.length > 1 && (
-              <>
-                <button type="button" className="vista-previa-flecha" data-lado="izq" disabled={i === 0} onClick={() => setI(i - 1)} aria-label="Anterior"><Icon name="chevronLeft" size={16} /></button>
-                <button type="button" className="vista-previa-flecha" data-lado="der" disabled={i >= medios.length - 1} onClick={() => setI(i + 1)} aria-label="Siguiente"><Icon name="chevronRight" size={16} /></button>
-                <span className="vista-previa-contador">{i + 1}/{medios.length}</span>
-              </>
-            )}
-          </div>
-          {post.format === "historia" && red === "instagram" ? (
-            <p className="vista-previa-nota">Las historias no muestran el texto.</p>
-          ) : (
-            <p className="vista-previa-texto">
-              {red === "instagram" && <strong>{usuario} </strong>}
-              {texto || <em>Sin texto</em>}
-            </p>
-          )}
-          {comentario && <p className="vista-previa-comentario"><strong>{usuario}</strong> {comentario}</p>}
-        </div>
-      </div>
-    </div>
   );
 }
 

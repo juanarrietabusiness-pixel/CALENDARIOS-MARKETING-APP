@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   mediosDe, conMedios, textoPara, primerComentario, destinoInstagram, revisarPublicacion,
   publicacionParaCliente, marcarActualizada, contarHashtags, rutasDeMedios, momentoPublicacion, esJPEG,
+  aplicarArreglo,
 } from "./publicacion.js";
 
 describe("medios", () => {
@@ -172,6 +173,52 @@ describe("historias, ajustes y colaboradores", async () => {
 
   it("las historias de Facebook ya se publican: sin aviso de «no se puede»", () => {
     const r = revisarPublicacion({ format: "historia", medios: [img("/h.jpg", 1080, 1920)] }, ["facebook"]);
-    expect(r).toEqual({ errores: [], avisos: [] });
+    expect(r).toMatchObject({ errores: [], avisos: [] });
+  });
+});
+
+describe("cada problema trae su arreglo", () => {
+  const img = (n) => ({ src: `/api/media/clientes/c/${n}.jpg`, tipo: "imagen", ancho: 1080, alto: 1350 });
+  const arreglar = (post, redes) => {
+    const r = revisarPublicacion(post, redes, { navegador: true });
+    const texto = [...r.errores, ...r.avisos].find((t) => r.arreglos[t]);
+    return texto ? { texto, ...r.arreglos[texto], despues: aplicarArreglo(post, r.arreglos[texto].codigo) } : null;
+  };
+  it("un reel sin video, con una imagen: se publica como post", () => {
+    const a = arreglar({ format: "reel", descripcion: "x", medios: [img(1)] }, ["instagram"]);
+    expect(a.etiqueta).toBe("Publicarlo como post");
+    expect(revisarPublicacion(a.despues, ["instagram"]).errores).toEqual([]);
+  });
+  it("un texto largo por los hashtags: se mueven al comentario", () => {
+    const post = { format: "post", descripcion: "a".repeat(2150), hashtagsFinales: "#uno #dos #tres #cuatro #cinco #seis #siete #ocho #nueve #diez", medios: [img(1)] };
+    const a = arreglar(post, ["instagram"]);
+    expect(a.codigo).toBe("hashtags-al-comentario");
+    expect(revisarPublicacion(a.despues, ["instagram"]).errores).toEqual([]);
+  });
+  it("demasiados hashtags: se dejan los que caben, contando los de la descripción", () => {
+    const tags = Array.from({ length: 35 }, (_, i) => `#t${i}`).join(" ");
+    const a = arreglar({ format: "post", descripcion: "Hola #uno #dos", hashtagsFinales: tags, medios: [img(1)] }, ["instagram"]);
+    expect(a.codigo).toBe("recortar-hashtags");
+    expect(contarHashtags(a.despues.hashtagsFinales)).toBe(28);
+    expect(revisarPublicacion(a.despues, ["instagram"]).errores).toEqual([]);
+  });
+  it("TikTok sin video: se quita TikTok, pero no si es la única red", () => {
+    const a = arreglar({ format: "post", descripcion: "x", medios: [img(1)] }, ["instagram", "tiktok"]);
+    expect(a).toMatchObject({ codigo: "quitar-red:tiktok", etiqueta: "Quitar TikTok" });
+    expect(a.despues.redes).toEqual(["instagram"]);
+    expect(arreglar({ format: "post", descripcion: "x", medios: [img(1)] }, ["tiktok"])).toBeNull();
+  });
+  it("once imágenes, cuatro colaboradores y una historia sin imagen", () => {
+    const once = arreglar({ format: "carrusel", descripcion: "x", medios: Array.from({ length: 11 }, (_, i) => img(i)) }, ["instagram"]);
+    expect(mediosDe(once.despues)).toHaveLength(10);
+    const colab = arreglar({ format: "post", descripcion: "x", medios: [img(1)], colaboradores: "@a @b @c @d" }, ["instagram"]);
+    expect(colab.despues.colaboradores).toEqual(["a", "b", "c"]);
+    const hist = arreglar({ format: "post", descripcion: "x", medios: [img(1)], historiaTambien: true, historias: [] }, ["instagram"]);
+    expect(hist.despues.historiaTambien).toBe(false);
+  });
+  it("sin medios, el arreglo lo hace el panel (abrir la subida): la publicación no cambia", () => {
+    const a = arreglar({ format: "post", descripcion: "x" }, ["instagram"]);
+    expect(a.codigo).toBe("medios");
+    expect(a.despues).toEqual({ format: "post", descripcion: "x" });
   });
 });

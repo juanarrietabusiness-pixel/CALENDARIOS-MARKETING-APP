@@ -132,6 +132,42 @@ export function mejoresMomentos(publicaciones = []) {
   return { matriz, mejores: mejores.slice(0, 3), maximo };
 }
 
+/**
+ * La hora a proponer para una publicación de ese día: la franja en la que
+ * mejor le responde la cuenta ese día de la semana; si ese día no hay
+ * bastantes publicaciones para decirlo, la mejor franja de la semana.
+ * Con pocos datos, null: una sugerencia sacada de una sola publicación
+ * es ruido con aspecto de consejo.
+ */
+export function horaSugerida(publicaciones = [], fecha = "", minimo = 2) {
+  const { matriz } = mejoresMomentos(publicaciones);
+  const candidatos = [];
+  const dia = /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? new Date(`${fecha}T12:00:00Z`).getUTCDay() : null;
+  if (dia !== null) {
+    matriz[dia].forEach((c, bloque) => { if (c && c.cantidad >= minimo) candidatos.push({ bloque, media: c.media, cantidad: c.cantidad, dia }); });
+  }
+  if (!candidatos.length) {
+    for (let bloque = 0; bloque < BLOQUES_HORA.length; bloque++) {
+      const celdas = matriz.map((f) => f[bloque]).filter(Boolean);
+      const cantidad = suma(celdas.map((c) => c.cantidad));
+      if (cantidad < minimo * 2) continue;
+      candidatos.push({ bloque, media: suma(celdas.map((c) => c.media * c.cantidad)) / cantidad, cantidad, dia: null });
+    }
+  }
+  if (!candidatos.length) return null;
+  const mejor = candidatos.sort((a, b) => b.media - a.media)[0];
+  const hora = `${String(mejor.bloque * 3 + 1).padStart(2, "0")}:00`;
+  const franja = `de ${BLOQUES_HORA[mejor.bloque]} h`;
+  const cifra = `${Math.round(mejor.media)} interacciones de media en ${mejor.cantidad} publicaciones`;
+  const plural = (d) => (d.endsWith("s") ? d : `${d}s`).toLowerCase();
+  return {
+    hora,
+    motivo: mejor.dia !== null
+      ? `Los ${plural(DIAS_SEMANA[mejor.dia])} ${franja} es cuando mejor responde su audiencia: ${cifra}.`
+      : `${franja.charAt(0).toUpperCase()}${franja.slice(1)} es cuando mejor responde su audiencia: ${cifra}.`,
+  };
+}
+
 /** Las que más movieron, de más a menos. */
 export const mejoresPublicaciones = (publicaciones = [], n = 6) =>
   [...publicaciones].sort((a, b) => (b.interacciones ?? 0) - (a.interacciones ?? 0)).slice(0, n);

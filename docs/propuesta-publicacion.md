@@ -5,10 +5,15 @@ encima: funciona, pero se hace desde un panel pensado para escribir ideas.
 Este documento recoge qué falla hoy, qué permite de verdad la API de Meta
 (y qué no) y un plan por fases.
 
-**Estado:** fases 1 y 2 hechas. Fase 1 —imágenes de Flow adaptadas a 4:5 y 9:16 sin
-tocar el original, historias del post (la misma imagen o tres variantes
-de Nano Banana) que salen solas unos minutos después, historias de
-Facebook y colaboradores—. Fase 2: la página Programación (todas las cuentas, lo que falló arriba con su motivo y «Reintentar»), «Programar lo aprobado» de un calendario en un paso, «Programar al aprobar» a la vista y los fallos en la navegación y en Mi día. Las demás fases, en curso.
+**Estado:** hecho lo de las secciones 3.1, 3.2, 3.3 (salvo el
+recorte arrastrando), 3.5 y 3.6: imágenes de Flow adaptadas a 4:5 y 9:16
+sin tocar el original; historias del post (la misma imagen o tres
+variantes de Nano Banana) que salen solas unos minutos después;
+historias de Facebook; colaboradores; la página Programación; «Programar
+lo aprobado»; los fallos en la navegación y en Mi día; y el panel con la
+pestaña Publicar (vista previa real, arreglos con un botón, hora
+sugerida, texto alternativo y nombre del audio). Faltan la publicación
+asistida (3.4) y el MCP (4), en curso.
 
 ---
 
