@@ -58,6 +58,7 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "metricas_cuenta",
   "metricas_publicacion",
   "metricas_competencia",
+  "informes",
   // Del equipo. Tienen dueño como las demás: la lista de miembros de un
   // espacio es un dato del espacio, y pedirla sin acotar devolvería la
   // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué
@@ -273,6 +274,23 @@ export async function cuentasSinFoto(db, fecha, limite = 1) {
         limit ?`,
     )
     .bind(fecha, limite)
+    .all();
+  return results ?? [];
+}
+
+/**
+ * Los clientes con cuentas asignadas que aún no tienen informe de `mes`,
+ * de todos los espacios: para el informe automático del día 1.
+ */
+export async function clientesSinInforme(db, mes, limite = 1) {
+  const { results } = await db
+    .prepare(
+      `select distinct c.client_id, c.owner_id from cuentas_sociales c
+        where c.client_id is not null
+          and not exists (select 1 from informes i where i.client_id = c.client_id and i.mes = ?)
+        limit ?`,
+    )
+    .bind(mes, limite)
     .all();
   return results ?? [];
 }

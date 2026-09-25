@@ -26,7 +26,7 @@
 import { json, error, noAutenticado, noEncontrado, cuerpo, CABECERAS_API } from "./lib/respuesta.js";
 import { crearAcceso } from "./lib/acceso.js";
 import { usuarioDeLaPeticion, iniciarSesion, cerrarSesion, cookieSesion, cookieBorrada } from "./lib/sesion.js";
-import { calendarioPorTestigo, enviarAprobacion, actualizarContenido, mediaPermitida, comentarCliente, enviarRevision } from "./lib/publico.js";
+import { calendarioPorTestigo, enviarAprobacion, actualizarContenido, mediaPermitida, comentarCliente, enviarRevision, informePorTestigo } from "./lib/publico.js";
 import { difundir } from "./lib/vivo.js";
 import { rutasDatos } from "./rutas/datos.js";
 import { rutasEquipo, rutaInvitacionPublica } from "./rutas/equipo.js";
@@ -41,6 +41,8 @@ import { rutasRedes, rutasPublicar, rutaMetaCallback, rutaMedioPublico } from ".
 import { procesarCola, programarAlAprobar, cancelarPendientes } from "./lib/publicador.js";
 import { rutasMetricas } from "./rutas/metricas.js";
 import { fotoPendiente } from "./lib/metricas.js";
+import { rutasInformes } from "./rutas/informes.js";
+import { informePendiente } from "./lib/informes.js";
 
 // El Durable Object del espacio. Se reexporta desde aquí porque
 // `wrangler.jsonc` apunta su `class_name` al módulo de entrada: si se
@@ -163,6 +165,13 @@ export default {
         return noEncontrado("Ruta");
       }
 
+      // El informe mensual que se le manda al cliente: sin sesión, igual
+      // que el calendario. Sólo lectura, y sólo si se compartió.
+      if (partes[0] === "publico-informe" && partes.length === 2 && metodo === "GET") {
+        const datos = await informePorTestigo(env.DB, partes[1]);
+        return datos ? json(datos) : noEncontrado("Informe");
+      }
+
       // El enlace de invitación, también sin sesión: quien lo abre
       // todavía no tiene cuenta. Ver worker/rutas/equipo.js.
       if (partes[0] === "invitacion") {
@@ -267,6 +276,7 @@ export default {
       if (partes[0] === "redes") return rutasRedes(req, env, { acceso, usuario, partes, metodo });
       if (partes[0] === "publicar") return rutasPublicar(req, env, { acceso, usuario, partes, metodo, ctx });
       if (partes[0] === "metricas") return rutasMetricas(req, env, { acceso, usuario, partes, metodo });
+      if (partes[0] === "informes") return rutasInformes(req, env, { acceso, usuario, partes, metodo });
 
       // ---------- Medios ----------
       //
@@ -338,8 +348,14 @@ export default {
       // Publicar va primero. La foto de métricas sólo si la cola no tenía
       // nada: las dos juntas no caben en los límites de una invocación
       // del plan gratuito (ver worker/lib/metricas.js).
+      // Y el informe del día 1 sólo si tampoco quedaban fotos: necesita la
+      // del último día del mes, y cabe él solo en la vuelta.
+      const cuando = new Date(controlador?.scheduledTime ?? Date.now());
       const publicadas = await procesarCola(env).catch((e) => { console.error("cron:", e); return 1; });
-      if (!publicadas) await fotoPendiente(env, new Date(controlador?.scheduledTime ?? Date.now())).catch((e) => console.error("cron métricas:", e));
+      if (publicadas) return;
+      const fotos = await fotoPendiente(env, cuando).catch((e) => { console.error("cron métricas:", e); return 1; });
+      if (fotos) return;
+      await informePendiente(env, cuando).catch((e) => console.error("cron informes:", e));
     })());
   },
 };

@@ -2,6 +2,7 @@ import "./Resultados.css";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import Icon from "../components/Icon";
 import { GraficaLinea, GraficaBarras } from "../components/Graficas";
+import SeccionInformes from "../components/SeccionInformes";
 import * as db from "../lib/db";
 import { navegar } from "../lib/rutas";
 import { fechaEnZona, sumarDias } from "../lib/agenda";
@@ -298,6 +299,8 @@ export default function Resultados({ client, pulso = 0, onPersistClient }) {
           )}
         </>
       )}
+
+      <SeccionInformes client={client} pulso={pulso} />
 
       <section className="resultados-tarjeta" aria-labelledby="res-com">
         <h3 id="res-com">Competencia</h3>
