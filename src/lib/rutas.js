@@ -89,7 +89,7 @@ export function slugsUnicos(items = [], porDefecto = "sin-nombre", reservados = 
  * sitio de la dirección que el mes —`/cliente/baby-caleb/contenido`—, así
  * que sus nombres quedan reservados para los slugs de los calendarios.
  */
-export const PESTANAS_CLIENTE = Object.freeze(["tareas", "contenido", "ideas", "ficha"]);
+export const PESTANAS_CLIENTE = Object.freeze(["tareas", "contenido", "ideas", "resultados", "ficha"]);
 
 export const slugsDeClientes = (clientes = []) => slugsUnicos(clientes, "cliente");
 export const slugsDeCalendarios = (cals = []) => slugsUnicos(cals, "calendario", PESTANAS_CLIENTE);
@@ -128,6 +128,7 @@ export function analizarRuta(url = window.location) {
   if (partes[0] === "equipo") return { vista: "equipo" };
   if (partes[0] === "tareas") return { vista: "tareas" };
   if (partes[0] === "ajustes") return { vista: "ajustes" };
+  if (partes[0] === "resultados") return { vista: "resultados" };
 
   if (partes[0] === "cliente" && partes[1]) {
     const pestana = PESTANAS_CLIENTE.includes(partes[2]) ? partes[2] : "calendario";
@@ -147,6 +148,7 @@ export function construirRuta({ vista = "panel", cliente = null, calendario = nu
   if (vista === "equipo") return "/equipo";
   if (vista === "tareas") return "/tareas";
   if (vista === "ajustes") return "/ajustes";
+  if (vista === "resultados") return "/resultados";
   if (vista === "invitacion") return `/invitacion/${encodeURIComponent(testigo)}`;
   if (!cliente) return "/";
   const base = `/cliente/${encodeURIComponent(cliente)}`;

@@ -30,7 +30,7 @@ import { fechaEnZona, debeReabrirse, esFecha } from "../../src/lib/agenda.js";
 import { leerConfigIA, MODELOS_ELEGIBLES, RAZONAMIENTOS, ACCIONES_LIMITE } from "../lib/configIA.js";
 import { resincronizarCalendario } from "../lib/publicador.js";
 
-const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe"];
+const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe", "competidores"];
 const JSON_CALENDARIOS = ["week_concepts", "days", "visual_references", "day_labels", "opciones"];
 const BOOL_CALENDARIOS = ["share_enabled", "allow_editing"];
 

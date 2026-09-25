@@ -13,6 +13,7 @@ import { navegar } from "../lib/rutas";
 const SECCIONES = [
   { vista: "panel", ruta: "/", nombre: "Inicio", icono: "home" },
   { vista: "tareas", ruta: "/tareas", nombre: "Mi día", icono: "clipboardCheck", contador: true },
+  { vista: "resultados", ruta: "/resultados", nombre: "Resultados", icono: "chart" },
   { vista: "equipo", ruta: "/equipo", nombre: "Equipo", icono: "users" },
   { vista: "ajustes", ruta: "/ajustes", nombre: "Ajustes", icono: "settings" },
 ];

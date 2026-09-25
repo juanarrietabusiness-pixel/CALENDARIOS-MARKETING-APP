@@ -25,6 +25,11 @@ export function d1EnMemoria() {
   const limpiar = (fila) => (fila ? { ...fila } : null);
   return {
     sqlite,
+    async batch(sentencias) {
+      const salida = [];
+      for (const s of sentencias) salida.push(await s.run());
+      return salida;
+    },
     prepare(sql) {
       let binds = [];
       return {

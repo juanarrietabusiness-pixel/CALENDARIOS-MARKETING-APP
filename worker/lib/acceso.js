@@ -55,6 +55,9 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "integracion_meta",
   "cuentas_sociales",
   "publicaciones_programadas",
+  "metricas_cuenta",
+  "metricas_publicacion",
+  "metricas_competencia",
   // Del equipo. Tienen dueño como las demás: la lista de miembros de un
   // espacio es un dato del espacio, y pedirla sin acotar devolvería la
   // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué
@@ -199,6 +202,32 @@ export function crearAcceso(db, ownerId) {
       return Number(fila?.total ?? 0);
     },
 
+    /**
+     * Varias filas de una vez (`guardar` de cada una), en UN lote de D1:
+     * la foto diaria de métricas escribe decenas, y el plan gratuito
+     * cuenta las consultas por invocación.
+     */
+    async guardarVarios(tabla, filas) {
+      exigirTabla(tabla);
+      if (!filas.length) return 0;
+      const sentencias = filas.map((datos) => {
+        const fila = CON_DUENO.has(tabla) ? { ...datos, owner_id: ownerId } : { ...datos };
+        if ("updated_at" in fila) fila.updated_at = ahora();
+        const cols = exigirColumnas(Object.keys(fila));
+        const sinId = cols.filter((c) => c !== "id");
+        return db
+          .prepare(
+            `insert into ${tabla} (${cols.join(",")}) values (${cols.map(() => "?").join(",")}) ` +
+              `on conflict (id) do update set ${sinId.map((c) => `${c} = excluded.${c}`).join(", ")} ` +
+              `where ${tabla}.owner_id = ?`,
+          )
+          .bind(...cols.map((c) => fila[c]), ownerId);
+      });
+      if (db.batch) await db.batch(sentencias);
+      else for (const s of sentencias) await s.run();
+      return filas.length;
+    },
+
     async borrar(tabla, where) {
       const { sql, valores } = acotar(tabla, where);
       const { meta } = await db.prepare(`delete from ${tabla} where ${sql}`).bind(...valores).run();
@@ -214,7 +243,7 @@ export function crearAcceso(db, ownerId) {
  * cada fila se procesa después con `crearAcceso(db, owner_id)`, que
  * vuelve a acotar todo lo demás.
  */
-export async function colaPendiente(db, ahoraISO, limite = 10) {
+export async function colaPendiente(db, ahoraISO, limite = 3) {
   const { results } = await db
     .prepare(
       `select id, owner_id from publicaciones_programadas
@@ -229,10 +258,21 @@ export async function colaPendiente(db, ahoraISO, limite = 10) {
   return results ?? [];
 }
 
-/** Los espacios con alguna cuenta social conectada: para la foto diaria de métricas. */
-export async function espaciosConRedes(db) {
+/**
+ * Las cuentas asignadas a un cliente que aún no tienen su foto de
+ * métricas de `fecha`, de todos los espacios. Igual que `colaPendiente`:
+ * sólo ids y dueño, y lo demás se lee después con `crearAcceso`.
+ */
+export async function cuentasSinFoto(db, fecha, limite = 1) {
   const { results } = await db
-    .prepare("select distinct owner_id from cuentas_sociales where client_id is not null")
+    .prepare(
+      `select c.id, c.owner_id from cuentas_sociales c
+        where c.client_id is not null and c.red in ('instagram','facebook')
+          and not exists (select 1 from metricas_cuenta m where m.cuenta_id = c.id and m.fecha = ?)
+        order by c.updated_at asc
+        limit ?`,
+    )
+    .bind(fecha, limite)
     .all();
-  return (results ?? []).map((r) => r.owner_id);
+  return results ?? [];
 }
