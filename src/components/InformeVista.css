@@ -1,0 +1,125 @@
+/* El informe mensual: documento CLARO con la marca del cliente, igual que
+   la página de aprobación. Redefine los tokens dentro de .informe. Sólo lo
+   cargan Resultados y /informe (chunks aparte). */
+
+.informe {
+  --bg: #F4F6FA;
+  --surface: #FFFFFF;
+  --surface-2: #F1F3F8;
+  --surface-3: #E4E8F0;
+  --text: #0B1220;
+  --text-dim: #4B5566;
+  --text-faint: #6B7385;
+  --border: rgba(11, 18, 32, .12);
+  --accent: var(--marca, #1E90FF);
+  --accent-soft: var(--marca-suave, rgba(30, 144, 255, .1));
+  --success: #1E8E3E;
+  --danger: #C62828;
+  color-scheme: light;
+  background: var(--bg);
+  color: var(--text);
+  max-width: 880px;
+  margin: 0 auto;
+  padding: var(--sp-5);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  line-height: 1.5;
+}
+.informe a { color: var(--accent); }
+.informe .hint { color: var(--text-dim); }
+
+.informe-portada {
+  display: flex; align-items: center; gap: var(--sp-4);
+  padding: var(--sp-5);
+  border-radius: var(--radius);
+  background: var(--marca, #1E90FF);
+  color: var(--marca-texto, #fff);
+}
+.informe-portada h1 { font-size: var(--fs-2xl); line-height: 1.15; margin: 0; }
+.informe-logo { width: 72px; height: 72px; border-radius: var(--radius); object-fit: contain; background: #fff; padding: 6px; flex-shrink: 0; }
+.informe-sobre { font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: .08em; opacity: .85; }
+.informe-mes { font-size: var(--fs-md); font-weight: 600; }
+.informe-redes { font-size: var(--fs-2xs); opacity: .85; margin-top: var(--sp-1); }
+
+.informe-bloque {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--sp-4);
+  display: flex; flex-direction: column; gap: var(--sp-3);
+  break-inside: avoid;
+  min-width: 0;
+}
+.informe-bloque h2 { font-size: var(--fs-md); margin: 0; }
+.informe-resumen p { font-size: var(--fs-md); }
+
+/* Seis cifras: tres y tres (dos y dos en el teléfono), nunca una suelta. */
+.informe-cifras { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-2); }
+@media (max-width: 599px) { .informe-cifras { grid-template-columns: repeat(2, 1fr); } }
+.informe-cifra { padding: var(--sp-3); border-radius: var(--radius-sm); background: var(--surface-2); }
+.informe-cifra-titulo { font-size: var(--fs-3xs); text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); font-weight: 600; }
+.informe-cifra-valor { font-size: var(--fs-xl); font-weight: 700; font-variant-numeric: tabular-nums; }
+.informe-cambio { display: inline-flex; align-items: center; gap: 2px; font-size: var(--fs-3xs); color: var(--text-dim); }
+.informe-cambio[data-tono="bien"] { color: var(--success); }
+.informe-cambio[data-tono="mal"] { color: var(--danger); }
+.informe-nota { font-size: var(--fs-2xs); color: var(--text-dim); }
+
+.informe-lista { list-style: none; display: flex; flex-direction: column; gap: var(--sp-2); }
+.informe-lista li { display: flex; gap: var(--sp-2); align-items: flex-start; }
+.informe-lista li svg { color: var(--accent); flex-shrink: 0; margin-top: 3px; }
+
+.informe-graficas { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--sp-4); }
+.informe .grafica-ejes line { stroke: var(--border); }
+.informe .grafica-ejes text { fill: var(--text-faint); font-size: 11px; }
+.informe .grafica-linea { fill: none; stroke: var(--accent); stroke-width: 2.25; }
+.informe .grafica-area { fill: var(--accent-soft); }
+.informe .grafica-punto, .informe .grafica-barra { fill: var(--accent); }
+.informe .grafica { width: 100%; height: auto; display: block; }
+
+.informe-top { padding-left: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3); }
+.informe-top-meta { font-size: var(--fs-3xs); color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
+.informe-top-texto { overflow-wrap: anywhere; }
+.informe-top-cifras { font-size: var(--fs-2xs); color: var(--text-dim); }
+.informe-top-cifras strong { color: var(--text); }
+
+.informe-tabla { width: 100%; border-collapse: collapse; font-size: var(--fs-2xs); }
+.informe-tabla th, .informe-tabla td { padding: var(--sp-2); text-align: right; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+.informe-tabla th:first-child { text-align: left; }
+.informe-tabla thead th { color: var(--text-dim); font-size: var(--fs-3xs); }
+
+.informe-ideas { list-style: none; display: flex; flex-direction: column; gap: var(--sp-2); }
+.informe-ideas li { padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); background: var(--surface-2); }
+.informe-etiqueta {
+  display: inline-block; margin-right: var(--sp-2); padding: 1px 8px; border-radius: var(--radius-pill);
+  background: var(--accent-soft); color: var(--accent); font-size: var(--fs-3xs); font-weight: 600;
+}
+
+.informe-pie { display: flex; align-items: center; justify-content: center; gap: var(--sp-2); font-size: var(--fs-2xs); color: var(--text-dim); padding-top: var(--sp-2); }
+
+@media (max-width: 599px) {
+  .informe { padding: var(--sp-3); border-radius: 0; }
+  .informe-portada { flex-direction: column; align-items: flex-start; }
+}
+
+/* Imprimir = «Descargar PDF». Sólo el informe; nada de la aplicación. */
+@media print {
+  body * { visibility: hidden !important; }
+  .informe, .informe * { visibility: visible !important; }
+  .informe { position: absolute; inset: 0 auto auto 0; width: 100%; max-width: none; padding: 0; background: #fff; }
+  .informe-bloque { border-color: #ddd; }
+  .informe-portada, .informe-etiqueta { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .no-imprimir { display: none !important; }
+  /* La impresión general (index.css) oculta todo <header> y los
+     .overlay: aquí la portada ES el informe, y la vista previa de la
+     agencia vive dentro de un diálogo. */
+  .informe .informe-portada { display: flex !important; }
+  .overlay:has(.informe) { display: block !important; position: static; background: none; }
+}
+
+/* La página pública que lo envuelve. */
+.informe-pagina { min-height: 100dvh; background: #E9EDF4; padding: var(--sp-4) 0 var(--sp-6); color-scheme: light; }
+.informe-pagina > .notice, .informe-pagina > .hint { max-width: 880px; margin: var(--sp-6) auto; padding: var(--sp-4); }
+.informe-acciones { max-width: 880px; margin: 0 auto var(--sp-3); display: flex; justify-content: flex-end; padding: 0 var(--sp-4); }
+@media print { .informe-pagina { background: #fff; padding: 0; } }

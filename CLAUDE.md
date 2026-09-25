@@ -132,6 +132,9 @@ src/
     SeccionPresupuesto.jsx  Ajustes → presupuesto, qué pasa al llegar, consumo por día/cliente
     SeccionDrive.jsx      Ajustes → Integraciones: conectar Google Drive
     SeccionMeta.jsx       Ajustes → Integraciones: conectar Meta y asignar cuentas
+    SeccionInformes.jsx   Resultados → informes mensuales: generar, revisar, compartir
+    InformeVista.jsx      El informe como documento (claro, con la marca, imprimible)
+    Graficas.jsx          Línea y barras en SVG, sin librería
     MedidorIA.jsx         El gasto del mes contra el presupuesto, en la cabecera
     ExploradorDrive.jsx   La carpeta de Drive de un cliente: gestionar o escoger
     BancoSelector.jsx     Escoger de Drive (o del banco anterior); forma única
@@ -148,6 +151,7 @@ src/
     Aprobar.jsx           Página pública que ve el cliente final
     Tareas.jsx            «Mi día»: Atrasadas, Hoy, Próximas; y la vista por empresa
     Resultados.jsx        La pestaña Resultados de un cliente y /resultados (la agencia)
+    Informe.jsx           Lo que ve el cliente al abrir su informe mensual (sin sesión)
     Ajustes.jsx           IA, presupuesto y consumo, integraciones, tareas, copia
 worker/
   index.js                Enrutado, sesión y cabeceras de /api/*
@@ -168,6 +172,7 @@ worker/
     meta.js               OAuth de Meta, cliente de la Graph API, cuentas, medios firmados
     publicador.js         La cola: programar, procesar (Instagram/Facebook), reintentos
     metricas.js           La foto diaria de métricas de cada cuenta y de la competencia
+    informes.js           Cifras del mes (congeladas) + análisis de la IA; el del día 1
     herramientasServidor.js  Lo que el asistente consulta sin el navegador:
                           web, repositorio de GitHub, calendarios, tareas, ideas
     ids.js                UUID, testigos, huellas
@@ -187,7 +192,8 @@ worker/
     redes.js              Conectar Meta, asignar cuentas, la cola (/api/publicar) y el
                           medio público firmado que descarga Meta
     metricas.js           Resultados de un cliente, de la agencia y la miniatura de Meta
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas)
+    informes.js           Informes: listar, generar, compartir; el público va en index.js
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -213,6 +219,7 @@ tests/
 | `/equipo` | Quién entra en el espacio |
 | `/invitacion/<testigo>` | Enlace de invitación (sin sesión) |
 | `/aprobar?t=<testigo>` | Página del cliente final (sin sesión) |
+| `/informe?t=<testigo>` | Informe mensual del cliente final (sin sesión) |
 
 El slug sale del nombre normalizado, y `slugsUnicos()` garantiza que dos
 clientes que normalicen igual no compartan dirección. Los nombres de las
@@ -959,6 +966,19 @@ son del servidor.
   `img-src 'self'`. Pasan por `/api/metricas/miniatura`, que sólo sirve
   imágenes de `*.cdninstagram.com` y `*.fbcdn.net`. Ampliar la CSP a esos
   dominios sería abrir la puerta a cualquier imagen de Meta.
+- **Las cifras del informe NO las escribe la IA.** Las calcula
+  `src/lib/resultados.js` —el mismo código que la pestaña Resultados— y
+  se CONGELAN en `informes.contenido`; la IA sólo escribe el análisis con
+  esas cifras delante y la orden de no inventar ninguna. Si el informe y
+  la pantalla dicen números distintos, alguien calculó por su cuenta.
+  Regenerar conserva el testigo: el enlace que el cliente ya tiene sigue
+  valiendo. El automático sale del día 1 al 5, desde las 9:00, después de
+  la cola y de las fotos (ver `scheduled`).
+- **La impresión general oculta todo `<header>` y los `.overlay`**
+  (`index.css`, para imprimir un calendario). El informe tiene portada en
+  un `<header>` y la vista previa de la agencia vive en un diálogo: sin
+  las excepciones de `InformeVista.css`, el PDF salía sin portada, o en
+  blanco desde la vista previa.
 - **`tests/utils/d1Memoria.js` es una D1 de verdad** (SQLite de Node con
   todas las migraciones). Para lo que un doble a mano no ve: que las
   consultas de la capa de acceso existen en el esquema. La cola de

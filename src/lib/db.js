@@ -591,3 +591,37 @@ export async function actualizarMetricasCuenta(cuentaId) {
 export async function resumenMetricas() {
   return pedir("/metricas/resumen");
 }
+
+// ------------------------------------------------------------
+// Informes mensuales
+// ------------------------------------------------------------
+
+export async function listarInformes(clientId) {
+  return (await pedir(`/informes?cliente=${encodeURIComponent(clientId)}`)) ?? [];
+}
+
+export async function leerInforme(id) {
+  return pedir(`/informes/${encodeURIComponent(id)}`);
+}
+
+/** Generar tarda: la IA escribe el análisis (hasta un par de minutos). */
+export async function generarInforme(clientId, mes) {
+  return avisarGasto(pedir("/informes", conCuerpo("POST", { clientId, mes })));
+}
+
+export async function compartirInforme(id) {
+  return pedir(`/informes/${encodeURIComponent(id)}/enlace`, { method: "POST" });
+}
+
+export async function dejarDeCompartirInforme(id) {
+  return pedir(`/informes/${encodeURIComponent(id)}/enlace`, conCuerpo("PATCH", { compartido: false }));
+}
+
+export async function borrarInforme(id) {
+  return pedir(`/informes/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** El informe que abre el cliente, sin sesión: sólo si se compartió. */
+export async function informePublico(testigo) {
+  return pedir(`/publico-informe/${encodeURIComponent(testigo)}`);
+}

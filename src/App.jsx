@@ -44,6 +44,7 @@ const ResumenAgencia = lazy(() => import("./pages/Resultados").then((m) => ({ de
 const ClientModal = lazy(() => import("./components/ClientModal"));
 const PlanWizard = lazy(() => import("./components/PlanWizard"));
 const Aprobar = lazy(() => import("./pages/Aprobar"));
+const Informe = lazy(() => import("./pages/Informe"));
 const IdeasBank = lazy(() => import("./components/IdeasBank"));
 const TaskPanel = lazy(() => import("./components/TaskPanel"));
 const PestanaContenido = lazy(() => import("./components/PestanaContenido"));
@@ -107,6 +108,8 @@ function App() {
   // La página de aprobación es la del cliente final: ni sesión, ni
   // panel, ni nada de lo que cuelga de Panel.
   if (ruta.vista === "aprobar") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><Aprobar /></Suspense>;
+  // El informe mensual que abre el cliente, igual: sin sesión.
+  if (ruta.vista === "informe") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><Informe /></Suspense>;
   return <Panel ruta={ruta} />;
 }
 
@@ -556,6 +559,11 @@ function Workspace({ session, ruta }) {
 
         case "metricas":
           setPulso((n) => n + 1);
+          break;
+
+        case "informe":
+          setPulso((n) => n + 1);
+          if (ev.estado === "listo" && ev.por?.userId === "sistema") setToast("El informe mensual está listo.");
           break;
 
         // La cola de publicación: la mueve el cron, sin nadie delante. Se

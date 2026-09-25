@@ -12,6 +12,8 @@
 //     carpeta del cliente: el repositorio es de la agencia entera.
 //   · ver_calendario, ver_tareas, ver_banco_ideas: lo que hay en D1,
 //     siempre por la capa de acceso —el espacio de la sesión—.
+//   · ver_resultados: cómo le fue en redes (las fotos diarias de
+//     métricas), con las MISMAS cuentas que la pestaña Resultados.
 //
 // Son de LECTURA a propósito. Lo que escribe se queda en el navegador,
 // que es quien tiene el estado abierto y sabe no pisar lo que la
@@ -19,6 +21,10 @@
 // ============================================================
 
 import { parseGitHubUrl, decodeRuta, decodificarBlob } from "../rutas/adn.js";
+import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
+import {
+  kpis, porFormato, mejoresMomentos, mejoresPublicaciones, resumenCompetencia, numeroCorto, DIAS_SEMANA, BLOQUES_HORA,
+} from "../../src/lib/resultados.js";
 
 const MAX_LECTURA = 60_000;
 const MAX_LISTADO = 200;
@@ -97,6 +103,17 @@ export const DEFINICIONES = Object.freeze([
     name: "ver_banco_ideas",
     description: "Lista las ideas guardadas en el banco de ideas de un cliente.",
     input_schema: { type: "object", properties: { ...clienteOpcional } },
+  },
+  {
+    name: "ver_resultados",
+    description: "Cómo le fue en redes a un cliente: seguidores, alcance, interacciones y su cambio contra el periodo anterior, las publicaciones que mejor funcionaron, qué formato rinde más, a qué hora y cómo va la competencia. Úsala antes de proponer contenido basado en lo que funciona, o si preguntan por resultados.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteOpcional,
+        dias: { type: "integer", description: "Días hacia atrás (7 a 90). Por defecto, 30." },
+      },
+    },
   },
 ]);
 
@@ -266,6 +283,57 @@ export function crearEjecutor({ env, acceso, clienteActual = null }) {
     },
   };
 
+  acciones.ver_resultados = async ({ cliente, dias = 30 }) => {
+    const c = await resolverCliente(cliente);
+    const n = Math.min(90, Math.max(7, Number(dias) || 30));
+    const hasta = fechaEnZona();
+    const desde = sumarDias(hasta, -n);
+    const [serieBruta, pubsBrutas, compBruta] = await Promise.all([
+      acceso.leer("metricas_cuenta", { client_id: c.id }, "fecha asc"),
+      acceso.leer("metricas_publicacion", { client_id: c.id }, "publicada_at desc"),
+      acceso.leer("metricas_competencia", { client_id: c.id }, "fecha asc"),
+    ]);
+    if (!serieBruta.length) return `${c.name} todavía no tiene resultados medidos: hay que conectar Meta y asignar sus cuentas en Ajustes → Integraciones.`;
+    const serie = serieBruta.filter((f) => !JSON_SEGURO(f.datos, {})?.error).map((f) => ({
+      red: f.red, fecha: f.fecha, seguidores: f.seguidores, alcance: f.alcance, vistas: f.vistas, interacciones: f.interacciones, visitas: f.visitas_perfil,
+    }));
+    const publicaciones = pubsBrutas.map((p) => ({
+      red: p.red, tipo: p.tipo, texto: p.texto, publicadaAt: p.publicada_at, interacciones: p.interacciones, alcance: p.alcance, vistas: p.vistas,
+    }));
+    const delPeriodo = publicaciones.filter((p) => (p.publicadaAt ?? "") >= `${desde}T05:00:00`);
+    const k = kpis({ serie, publicaciones }, { desde, hasta });
+    const cambio = (x) => (x?.cambio == null ? "" : ` (${x.cambio >= 0 ? "+" : ""}${x.cambio.toFixed(1)} % vs. periodo anterior)`);
+    const lineas = [
+      `Resultados de ${c.name}, últimos ${n} días (${desde} a ${hasta}):`,
+      `· Seguidores: ${numeroCorto(k.seguidores.valor)}${k.seguidores.ganados != null ? `, ${k.seguidores.ganados >= 0 ? "+" : ""}${k.seguidores.ganados} en el periodo` : ""}`,
+      `· Alcance: ${numeroCorto(k.alcance.valor)}${cambio(k.alcance)}`,
+      `· Vistas: ${numeroCorto(k.vistas.valor)}${cambio(k.vistas)}`,
+      `· Interacciones: ${numeroCorto(k.interacciones.valor)}${cambio(k.interacciones)}`,
+      `· Tasa de interacción: ${k.tasaInteraccion.valor == null ? "—" : `${k.tasaInteraccion.valor.toFixed(2)} %`}`,
+      `· Publicaciones: ${k.publicaciones.valor}`,
+      "",
+      "Las que mejor funcionaron:",
+      ...mejoresPublicaciones(delPeriodo, 5).map((p) =>
+        `· ${p.tipo} del ${(p.publicadaAt ?? "").slice(0, 10)}: ${p.interacciones} interacciones, ${p.alcance} de alcance — «${String(p.texto ?? "").slice(0, 100)}»`),
+      "",
+      "Por formato (interacción media):",
+      ...porFormato(delPeriodo).map((f) => `· ${f.nombre}: ${f.cantidad} publicaciones, ${Math.round(f.interacciones)} de media`),
+    ];
+    const momentos = mejoresMomentos(delPeriodo).mejores;
+    if (momentos.length) {
+      lineas.push("", `Mejores momentos (hora de Panamá): ${momentos.map((m) => `${DIAS_SEMANA[m.dia]} ${BLOQUES_HORA[m.bloque]} h (${Math.round(m.media)})`).join(", ")}`);
+    }
+    const competencia = resumenCompetencia(compBruta.map((f) => ({
+      usuario: f.usuario, fecha: f.fecha, seguidores: f.seguidores, publicaciones: f.publicaciones,
+      interaccionesPromedio: f.interacciones_promedio, datos: JSON_SEGURO(f.datos, {}),
+    })), desde);
+    if (competencia.length) {
+      lineas.push("", "Competencia:", ...competencia.map((x) =>
+        `· @${x.usuario}: ${numeroCorto(x.seguidores)} seguidores${x.cambio == null ? "" : ` (${x.cambio >= 0 ? "+" : ""}${x.cambio.toFixed(1)} %)`}, ${numeroCorto(x.interaccionesPromedio)} interacciones por publicación`));
+    }
+    return lineas.join("\n");
+  };
+
   /** Ejecuta una herramienta y devuelve SIEMPRE un tool_result. */
   async function ejecutar(bloque) {
     const accion = acciones[bloque.name];
@@ -291,6 +359,7 @@ export function describirUso(nombre, entrada = {}) {
     case "ver_calendario": return `Consultó el calendario${entrada.cliente ? ` de ${entrada.cliente}` : ""}${entrada.mes ? ` (${entrada.mes})` : ""}`;
     case "ver_tareas": return `Consultó las tareas${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "ver_banco_ideas": return `Consultó el banco de ideas${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
+    case "ver_resultados": return `Consultó los resultados${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     default: return nombre;
   }
 }

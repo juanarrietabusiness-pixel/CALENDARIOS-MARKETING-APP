@@ -71,6 +71,9 @@ const INSTRUCCION_SERVIDOR = `HERRAMIENTAS QUE TIENES ADEMÁS DE LAS DEL CALENDA
   cliente. El contexto de abajo trae un RESUMEN; si necesitas el detalle de un documento, léelo entero.
 · ver_calendario, ver_tareas y ver_banco_ideas: consulta lo que hay guardado, de este u otro cliente
   y de otros meses. Pide lo que necesites en vez de suponerlo.
+· ver_resultados: cómo le fue en redes —seguidores, alcance, interacciones, las publicaciones que mejor
+  funcionaron, el formato y la hora que rinden más, la competencia—. Míralo antes de proponer contenido
+  y apóyate en lo que de verdad funciona.
 Antes de decir que no tienes un dato, mira si alguna de estas herramientas lo trae.`;
 
 const NOMBRES_WEB = new Set(HERRAMIENTAS_WEB.map((h) => h.name));

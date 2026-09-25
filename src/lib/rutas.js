@@ -125,6 +125,7 @@ export function analizarRuta(url = window.location) {
   if (partes[0] === "aprobar" || hash.includes("/aprobar")) return { vista: "aprobar" };
 
   if (partes[0] === "invitacion") return { vista: "invitacion", testigo: partes[1] ?? "" };
+  if (partes[0] === "informe") return { vista: "informe" };
   if (partes[0] === "equipo") return { vista: "equipo" };
   if (partes[0] === "tareas") return { vista: "tareas" };
   if (partes[0] === "ajustes") return { vista: "ajustes" };

@@ -302,3 +302,36 @@ export async function mediaPermitida(db, token, clave) {
   const cliente = await db.prepare("select logo from clients where id = ?").bind(cal.client_id).first();
   return cliente?.logo === clave;
 }
+
+/**
+ * El informe mensual que se le manda al cliente: sin sesión, por su
+ * testigo, y sólo si la agencia lo compartió. Igual que el calendario, se
+ * construye campo a campo: ni el dueño, ni el id, ni quién lo generó.
+ */
+export async function informePorTestigo(db, token) {
+  if (!testigoValido(token)) return null;
+  const inf = await db
+    .prepare("select client_id, mes, contenido, updated_at from informes where testigo = ? and compartido = 1 and estado = 'listo'")
+    .bind(token)
+    .first();
+  if (!inf) return null;
+  const cliente = await db
+    .prepare("select name, instagram, primary_color, secondary_color, accent_color, logo from clients where id = ?")
+    .bind(inf.client_id)
+    .first();
+  if (!cliente) return null;
+  let contenido = {};
+  try { contenido = JSON.parse(inf.contenido); } catch { /* vacío */ }
+  return {
+    mes: inf.mes,
+    actualizado: inf.updated_at,
+    cifras: contenido.cifras ?? null,
+    analisis: contenido.analisis ?? null,
+    cliente: {
+      name: cliente.name, instagram: cliente.instagram,
+      primaryColor: cliente.primary_color, secondaryColor: cliente.secondary_color, accentColor: cliente.accent_color,
+      // Sólo un logo incrustado: una ruta de R2 necesitaría sesión.
+      logo: typeof cliente.logo === "string" && cliente.logo.startsWith("data:image/") ? cliente.logo : null,
+    },
+  };
+}
