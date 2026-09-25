@@ -46,6 +46,8 @@ const ClientModal = lazy(() => import("./components/ClientModal"));
 const PlanWizard = lazy(() => import("./components/PlanWizard"));
 const Aprobar = lazy(() => import("./pages/Aprobar"));
 const Informe = lazy(() => import("./pages/Informe"));
+const AuditoriaPublica = lazy(() => import("./pages/AuditoriaPublica"));
+const Auditorias = lazy(() => import("./pages/Auditorias"));
 const IdeasBank = lazy(() => import("./components/IdeasBank"));
 const TaskPanel = lazy(() => import("./components/TaskPanel"));
 const PestanaContenido = lazy(() => import("./components/PestanaContenido"));
@@ -113,6 +115,8 @@ function App() {
   if (ruta.vista === "aprobar") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><Aprobar /></Suspense>;
   // El informe mensual que abre el cliente, igual: sin sesión.
   if (ruta.vista === "informe") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><Informe /></Suspense>;
+  // Y la auditoría de perfil que se le manda a un cliente o a un prospecto.
+  if (ruta.vista === "auditoria") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><AuditoriaPublica /></Suspense>;
   return <Panel ruta={ruta} />;
 }
 
@@ -562,6 +566,11 @@ function Workspace({ session, ruta }) {
 
         case "metricas":
           setPulso((n) => n + 1);
+          break;
+
+        case "auditoria":
+          setPulso((n) => n + 1);
+          if (ev.estado === "error" && ev.por?.userId === "sistema") setToast("La auditoría no se pudo terminar: el motivo está en Auditorías.");
           break;
 
         case "informe":
@@ -1137,6 +1146,10 @@ function Workspace({ session, ruta }) {
             ) : ruta.vista === "programacion" ? (
               <Suspense fallback={<Cargando />}>
                 <Programacion clients={clients} pulso={pulso} onAbrir={abrirPublicacionDeCola} />
+              </Suspense>
+            ) : ruta.vista === "auditorias" ? (
+              <Suspense fallback={<Cargando />}>
+                <Auditorias clients={clients} pulso={pulso} />
               </Suspense>
             ) : ruta.vista === "resultados" ? (
               <Suspense fallback={<Cargando />}>

@@ -124,6 +124,9 @@ describe("analizar y construir son inversas", () => {
     expect(construirRuta({ vista: "ajustes" })).toBe("/ajustes");
     expect(analizarRuta(url("/programacion"))).toEqual({ vista: "programacion" });
     expect(construirRuta({ vista: "programacion" })).toBe("/programacion");
+    expect(analizarRuta(url("/auditorias"))).toEqual({ vista: "auditorias" });
+    expect(construirRuta({ vista: "auditorias" })).toBe("/auditorias");
+    expect(analizarRuta(url("/auditoria"))).toEqual({ vista: "auditoria" });
   });
 
   it("un calendario llamado como una pestaña no se queda su dirección", () => {

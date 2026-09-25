@@ -335,3 +335,35 @@ export async function informePorTestigo(db, token) {
     },
   };
 }
+
+/**
+ * La auditoría de perfil compartida: lo que se auditó y el análisis, sin
+ * nada de la agencia. Si es de un cliente, sus colores para la portada.
+ */
+export async function auditoriaPorTestigo(db, token) {
+  if (!testigoValido(token)) return null;
+  const a = await db
+    .prepare("select client_id, usuario, datos, analisis, updated_at from auditorias where testigo = ? and compartido = 1 and estado = 'listo'")
+    .bind(token)
+    .first();
+  if (!a) return null;
+  const cliente = a.client_id
+    ? await db.prepare("select name, primary_color, secondary_color, accent_color, logo from clients where id = ?").bind(a.client_id).first()
+    : null;
+  let datos = {};
+  let analisis = {};
+  try { datos = JSON.parse(a.datos); } catch { /* vacío */ }
+  try { analisis = JSON.parse(a.analisis); } catch { /* vacío */ }
+  return {
+    usuario: a.usuario,
+    actualizado: a.updated_at,
+    perfil: datos.perfil ? { ...datos.perfil, medios: (datos.perfil.medios ?? []).map(({ imagen: _imagen, ...m }) => m) } : null,
+    cifras: datos.cifras ?? null,
+    auditadoEl: datos.auditadoEl ?? a.updated_at,
+    analisis,
+    cliente: cliente ? {
+      name: cliente.name, primaryColor: cliente.primary_color, secondaryColor: cliente.secondary_color, accentColor: cliente.accent_color,
+      logo: typeof cliente.logo === "string" && cliente.logo.startsWith("data:image/") ? cliente.logo : null,
+    } : null,
+  };
+}

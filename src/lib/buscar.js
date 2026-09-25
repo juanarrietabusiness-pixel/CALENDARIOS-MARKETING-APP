@@ -19,6 +19,7 @@ export function buscarEnEspacio({ clients = [], client = null, texto = "", meses
 
   const acciones = [
     { clave: "mi-dia", titulo: "Mi día", icono: "clipboardCheck", accion: { tipo: "ruta", ruta: "/tareas" } },
+    { clave: "auditorias", titulo: "Auditar un perfil de Instagram", icono: "search", accion: { tipo: "ruta", ruta: "/auditorias" } },
     { clave: "programacion", titulo: "Programación: lo que sale y lo que falló", icono: "clock", accion: { tipo: "ruta", ruta: "/programacion" } },
     { clave: "asistente", titulo: "Abrir el asistente", icono: "messageCircle", accion: { tipo: "asistente" } },
     ...(client ? [{ clave: "nuevo-cal", titulo: `Nuevo calendario de ${client.name}`, icono: "plus", accion: { tipo: "nuevo-calendario" } }] : []),

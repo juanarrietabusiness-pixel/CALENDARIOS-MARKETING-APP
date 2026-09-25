@@ -661,3 +661,37 @@ export async function desconectarTikTok(cuentaId) {
 export async function modoTikTok(cuentaId, modo) {
   return pedir(`/redes/cuentas/${encodeURIComponent(cuentaId)}`, conCuerpo("PUT", { modo }));
 }
+
+// ------------------------------------------------------------
+// Auditorías de perfil (clientes y prospectos). Ver worker/rutas/auditorias.js.
+// ------------------------------------------------------------
+
+export async function listarAuditorias() {
+  return (await pedir("/auditorias")) ?? [];
+}
+
+export async function leerAuditoria(id) {
+  return pedir(`/auditorias/${encodeURIComponent(id)}`);
+}
+
+/** { clientId?, usuario?, capturas?: [dataURL], nota? } */
+export async function crearAuditoria(datos) {
+  return avisarGasto(pedir("/auditorias", conCuerpo("POST", datos)));
+}
+
+export async function compartirAuditoria(id) {
+  return pedir(`/auditorias/${encodeURIComponent(id)}/enlace`, { method: "POST" });
+}
+
+export async function dejarDeCompartirAuditoria(id) {
+  return pedir(`/auditorias/${encodeURIComponent(id)}/enlace`, conCuerpo("PATCH", { compartido: false }));
+}
+
+export async function borrarAuditoria(id) {
+  return pedir(`/auditorias/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** La auditoría que abre el cliente o el prospecto, sin sesión. */
+export async function auditoriaPublica(testigo) {
+  return pedir(`/publico-auditoria/${encodeURIComponent(testigo)}`);
+}

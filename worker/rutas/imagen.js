@@ -90,6 +90,23 @@ const VARIANTES_HISTORIA = Object.freeze({
   detalle: "Crea una historia vertical 9:16 con un primer plano (detalle) del motivo principal de ESTA imagen: el mismo producto o escena, con la misma luz, colores y estilo, como si fuera una foto real tomada más cerca. Sin texto.",
 });
 
+/**
+ * La portada de un destacado del perfil. Instagram la enseña recortada en
+ * CÍRCULO y muy pequeña: un icono simple en el centro, sobre el color de
+ * la marca, sin texto —el título ya va debajo, escrito por Instagram—.
+ */
+function construirPromptPortada({ titulo, contenido }, { clientName, colores, visualStyle }) {
+  return [
+    `Genera la PORTADA de un destacado de Instagram (1080×1080) para la marca ${clientName}.`,
+    `El destacado se llama «${String(titulo).slice(0, 30)}»${contenido ? ` y contiene: ${String(contenido).slice(0, 200)}` : ""}.`,
+    `Diseño: fondo liso de color ${colores[0]}${colores[1] ? ` (o un degradado muy suave hacia ${colores[1]})` : ""}; en el centro, un icono minimalista de línea, en blanco, que represente ese tema de un vistazo.`,
+    `Instagram la recorta en círculo y la enseña a unos 60 px: el icono debe caber holgado en el círculo central (60 % del ancho), ser grueso y simple, sin detalles finos.`,
+    `SIN TEXTO, sin letras, sin marcos ni sombras.`,
+    visualStyle ? `\nGUÍA VISUAL DEL CLIENTE (respetar):\n${visualStyle}` : "",
+    `Genera SOLO la imagen, sin explicación.`,
+  ].filter(Boolean).join("\n");
+}
+
 function construirPromptHistoria(variante, { clientName, visualStyle }) {
   return [
     `Genera una imagen para una HISTORIA de Instagram (1080×1920, vertical 9:16) a partir de la imagen de la publicación que te adjunto.`,
@@ -156,6 +173,7 @@ export async function rutaGenerarImagen(req, env, ctx) {
 
   // Historia a partir de la imagen de un post: otra petición, otra base.
   const historia = body.historiaDe && typeof body.historiaDe === "object" ? body.historiaDe : null;
+  const portada = !historia && body.portada && typeof body.portada === "object" && body.portada.titulo ? body.portada : null;
   let formatoFinal = imageFormat || "square";
   let parts;
   if (historia) {
@@ -167,6 +185,10 @@ export async function rutaGenerarImagen(req, env, ctx) {
       { text: "\nIMAGEN DE LA PUBLICACIÓN (la base):" },
       base,
     ];
+  } else if (portada) {
+    formatoFinal = "square";
+    const colores = [cliente.primary_color, cliente.secondary_color].filter((c) => /^#[0-9a-f]{6}$/i.test(c ?? "") && c.toUpperCase() !== "#FFFFFF");
+    parts = [{ text: construirPromptPortada(portada, { clientName: cliente.name, colores: colores.length ? colores : ["#1E90FF"], visualStyle: cliente.visual_style || "" }) }];
   } else {
     const prompt = construirPrompt({
       idea, descripcion, guion, format, category, title,
@@ -233,7 +255,7 @@ export async function rutaGenerarImagen(req, env, ctx) {
   }
 
   const data = await res.json();
-  await registrarConsumoGemini(acceso, { funcion: historia ? "historia" : "imagen", modelo, meta: data?.usageMetadata, clienteId: clientId });
+  await registrarConsumoGemini(acceso, { funcion: historia ? "historia" : portada ? "portada" : "imagen", modelo, meta: data?.usageMetadata, clienteId: clientId });
   const candidates = data?.candidates ?? [];
   const partesRespuesta = candidates[0]?.content?.parts ?? [];
 

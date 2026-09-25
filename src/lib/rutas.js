@@ -126,6 +126,8 @@ export function analizarRuta(url = window.location) {
 
   if (partes[0] === "invitacion") return { vista: "invitacion", testigo: partes[1] ?? "" };
   if (partes[0] === "informe") return { vista: "informe" };
+  if (partes[0] === "auditoria") return { vista: "auditoria" };
+  if (partes[0] === "auditorias") return { vista: "auditorias" };
   if (partes[0] === "equipo") return { vista: "equipo" };
   if (partes[0] === "tareas") return { vista: "tareas" };
   if (partes[0] === "ajustes") return { vista: "ajustes" };
@@ -152,6 +154,7 @@ export function construirRuta({ vista = "panel", cliente = null, calendario = nu
   if (vista === "ajustes") return "/ajustes";
   if (vista === "resultados") return "/resultados";
   if (vista === "programacion") return "/programacion";
+  if (vista === "auditorias") return "/auditorias";
   if (vista === "invitacion") return `/invitacion/${encodeURIComponent(testigo)}`;
   if (!cliente) return "/";
   const base = `/cliente/${encodeURIComponent(cliente)}`;

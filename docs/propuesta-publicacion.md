@@ -12,8 +12,8 @@ variantes de Nano Banana) que salen solas unos minutos después;
 historias de Facebook; colaboradores; la página Programación; «Programar
 lo aprobado»; los fallos en la navegación y en Mi día; y el panel con la
 pestaña Publicar (vista previa real, arreglos con un botón, hora
-sugerida, texto alternativo y nombre del audio). Faltan la publicación
-asistida (3.4) y el MCP (4), en curso.
+sugerida, texto alternativo y nombre del audio). Hecha también la auditoría de perfil de clientes y prospectos
+(`/auditorias`). Faltan la publicación asistida (3.4) y el MCP (4), en curso.
 
 ---
 

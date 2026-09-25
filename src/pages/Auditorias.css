@@ -1,0 +1,31 @@
+/* Auditorías: se carga con la página. */
+.auditorias { display: flex; flex-direction: column; gap: var(--sp-4); }
+.aud-rejilla { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--sp-4); align-items: start; }
+.aud-nueva, .aud-hechas {
+  padding: var(--sp-4); border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0;
+}
+.aud-nueva h2, .aud-hechas h2 { font-size: var(--fs-md); margin: 0; }
+.aud-nueva .segmented { width: auto; align-self: flex-start; }
+.aud-nueva .field { margin: 0; }
+.aud-capturas { list-style: none; display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-2); }
+.aud-capturas li { position: relative; width: 72px; aspect-ratio: 9 / 16; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-2); }
+.aud-capturas img { width: 100%; height: 100%; object-fit: cover; }
+.aud-capturas .btn-icon { position: absolute; top: 2px; right: 2px; width: var(--tap-sm); height: var(--tap-sm); min-width: 0; min-height: 0; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; }
+.aud-hechas ul { list-style: none; display: flex; flex-direction: column; gap: var(--sp-1); }
+.aud-item {
+  width: 100%; display: grid; grid-template-columns: 1fr auto; grid-template-areas: "u e" "m e"; gap: 2px var(--sp-2);
+  text-align: left; padding: var(--sp-2) var(--sp-3); min-height: var(--tap); border-radius: var(--radius-sm);
+  background: var(--surface-2); border: 1px solid transparent; color: var(--text); cursor: pointer;
+}
+.aud-item:hover { border-color: var(--border-strong); }
+.aud-item-usuario { grid-area: u; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aud-item-meta { grid-area: m; font-size: var(--fs-3xs); color: var(--text-dim); }
+.aud-item-estado { grid-area: e; align-self: center; font-weight: 800; font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
+.aud-item[data-estado="error"] .aud-item-estado { color: var(--danger); font-size: var(--fs-2xs); }
+.aud-item[data-estado="generando"] .aud-item-estado { color: var(--text-dim); font-size: var(--fs-2xs); font-weight: 600; }
+.aud-barra { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+
+@media (max-width: 899px) {
+  .aud-rejilla { grid-template-columns: 1fr; }
+}
