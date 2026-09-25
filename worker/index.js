@@ -37,6 +37,8 @@ import { rutaADN, rutaImagenADN } from "./rutas/adn.js";
 import { rutaGenerarImagen } from "./rutas/imagen.js";
 import { rutaAnalizarVideo } from "./rutas/video.js";
 import { rutasDrive, rutaDriveCallback } from "./rutas/drive.js";
+import { rutasRedes, rutasPublicar, rutaMetaCallback, rutaMedioPublico } from "./rutas/redes.js";
+import { procesarCola, programarAlAprobar, cancelarPendientes } from "./lib/publicador.js";
 
 // El Durable Object del espacio. Se reexporta desde aquí porque
 // `wrangler.jsonc` apunta su `class_name` al módulo de entrada: si se
@@ -99,6 +101,12 @@ export default {
               estado: r.estado,
               por: { userId: "cliente", nombre: b.revisor || "El cliente", color: "#F5A623" },
             });
+            // Aprobada: entra sola en la cola si el calendario lo pide.
+            // Con cambios: lo que estuviera programado ya no debe salir.
+            const cola = r.estado === "aprobado"
+              ? programarAlAprobar(env, r.ownerId, r.calendarId, r.postId)
+              : cancelarPendientes(crearAcceso(env.DB, r.ownerId), r.calendarId, r.postId, "El cliente pidió cambios.");
+            ctx?.waitUntil?.(cola.catch((e) => console.error("cola al aprobar:", e)));
             return json({ ok: r.ok, estado: r.estado });
           } catch (e) { return comoRespuesta(e); }
         }
@@ -164,6 +172,15 @@ export default {
       // pestaña que lo pidió. Ver worker/rutas/drive.js.
       if (partes[0] === "drive" && partes[1] === "callback" && metodo === "GET") {
         return rutaDriveCallback(req, env);
+      }
+      // Y la de Facebook, igual.
+      if (partes[0] === "redes" && partes[1] === "meta" && partes[2] === "callback" && metodo === "GET") {
+        return rutaMetaCallback(req, env);
+      }
+      // Lo que Meta descarga al publicar: Meta no tiene sesión. Abre sólo
+      // el archivo que dice el testigo firmado. Ver worker/rutas/redes.js.
+      if (partes[0] === "medio-publico" && metodo === "GET") {
+        return rutaMedioPublico(env, partes);
       }
 
       // ---------- 2. Acceso ----------
@@ -244,6 +261,10 @@ export default {
       // ---------- Google Drive: el banco de contenido ----------
       if (partes[0] === "drive") return rutasDrive(req, env, { acceso, usuario, partes, metodo });
 
+      // ---------- Redes: Meta, cuentas y la cola de publicación ----------
+      if (partes[0] === "redes") return rutasRedes(req, env, { acceso, usuario, partes, metodo });
+      if (partes[0] === "publicar") return rutasPublicar(req, env, { acceso, usuario, partes, metodo, ctx });
+
       // ---------- Medios ----------
       //
       // EL ORDEN DE ESTE BLOQUE, OTRA VEZ.
@@ -302,5 +323,14 @@ export default {
         status: 500, headers: CABECERAS_API,
       });
     }
+  },
+
+  /**
+   * El cron de cada minuto (`triggers` en wrangler.jsonc): publica lo que
+   * ya toca. Instagram no deja programar por API, así que la hora la
+   * cumple esto, con la aplicación cerrada.
+   */
+  async scheduled(_controlador, env, ctx) {
+    ctx.waitUntil(procesarCola(env).catch((e) => console.error("cron:", e)));
   },
 };

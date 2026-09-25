@@ -308,7 +308,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         <CamposRedes post={form} sf={sf} />
 
         <SeccionPublicar post={form} sf={sf} client={client}>
-          {accionesPublicar?.(form)}
+          {accionesPublicar?.(form, setForm)}
           {form.status === "published" ? (
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => sf("status", "approved")}>
               Quitar «publicada a mano»

@@ -22,6 +22,26 @@ export const REDES = Object.freeze({
 
 const esVideo = (src = "", tipo = "") => tipo === "video" || /\.(mp4|mov|m4v|webm)(\?|$)/i.test(src);
 
+/** Instagram sólo publica imágenes JPEG. */
+export const esJPEG = (src = "") => /\.jpe?g(\?|$)/i.test(src);
+
+/** El feed de Instagram acepta de 4:5 (0,8) a 1.91:1. Con un pelo de tolerancia. */
+export const PROPORCION_FEED = Object.freeze({ min: 0.795, max: 1.915 });
+
+/**
+ * El momento exacto en que sale una publicación: el día del calendario y
+ * su hora, en Panamá (UTC−5 todo el año, sin horario de verano). Sin
+ * hora, a las 9:00. Devuelve ISO en UTC, o null si la fecha no vale.
+ */
+export function momentoPublicacion(fecha, hora) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha ?? ""))) return null;
+  const h = /^\d{2}:\d{2}$/.test(String(hora ?? "")) ? hora : "09:00";
+  const d = new Date(`${fecha}T${h}:00-05:00`);
+  // Un INSTANTE, no una fecha: aquí UTC es lo correcto (`toJSON` da el
+  // mismo ISO; la guarda de fechas vigila `toISOString` a propósito).
+  return Number.isNaN(d.getTime()) ? null : d.toJSON();
+}
+
 /**
  * Los medios de una publicación, en orden. Las publicaciones de antes
  * tienen sólo `image`; las nuevas, `medios`. Siempre devuelve la misma
@@ -31,7 +51,10 @@ export function mediosDe(post) {
   if (Array.isArray(post?.medios) && post.medios.length) {
     return post.medios
       .filter((m) => m && typeof m.src === "string" && m.src)
-      .map((m) => ({ src: m.src, tipo: esVideo(m.src, m.tipo) ? "video" : "imagen", nombre: m.nombre ?? "" }));
+      .map((m) => ({
+        src: m.src, tipo: esVideo(m.src, m.tipo) ? "video" : "imagen", nombre: m.nombre ?? "",
+        ...(m.ancho && m.alto ? { ancho: m.ancho, alto: m.alto } : {}),
+      }));
   }
   if (typeof post?.image === "string" && post.image) {
     return [{ src: post.image, tipo: esVideo(post.image) ? "video" : "imagen", nombre: "" }];
@@ -115,6 +138,17 @@ export function revisarPublicacion(post, redes = post?.redes ?? ["instagram"]) {
     const h = contarHashtags(texto) + (post?.hashtagsEnComentario ? contarHashtags(post?.hashtagsFinales) : 0);
     if (h > L.hashtags) errores.push(`Instagram admite ${L.hashtags} hashtags y hay ${h}.`);
     if (contarMenciones(texto) > L.menciones) errores.push(`Instagram admite ${L.menciones} menciones.`);
+    const destino = destinoInstagram(post);
+    if (destino === "imagen" || destino === "carrusel") {
+      const fuera = medios.find((m) => m.tipo === "imagen" && m.ancho && m.alto &&
+        (m.ancho / m.alto < PROPORCION_FEED.min || m.ancho / m.alto > PROPORCION_FEED.max));
+      if (fuera) {
+        errores.push(`Una imagen mide ${fuera.ancho}×${fuera.alto}: el feed de Instagram acepta de 4:5 (vertical) a 1.91:1 (horizontal). Recórtala o publícala como historia.`);
+      }
+    }
+    if (medios.some((m) => m.tipo === "imagen" && !esJPEG(m.src))) {
+      avisos.push("Instagram sólo acepta JPEG: las imágenes en otro formato se convierten al programar.");
+    }
   }
 
   if (redes.includes("facebook")) {

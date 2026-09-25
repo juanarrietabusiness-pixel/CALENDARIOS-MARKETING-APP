@@ -159,3 +159,25 @@
   user-select: all;
 }
 
+/* Dos tarjetas seguidas dentro de Integraciones. */
+.integracion + .integracion { margin-top: var(--sp-3); }
+.permisos-meta { display: flex; flex-wrap: wrap; gap: 4px; margin: var(--sp-1) 0; }
+.permisos-meta code { font-size: var(--fs-3xs); padding: 1px 6px; border-radius: var(--radius-sm); background: var(--bg); color: var(--text); }
+.cuentas-sociales { list-style: none; display: flex; flex-direction: column; gap: var(--sp-2); }
+.cuentas-sociales li {
+  display: grid;
+  grid-template-columns: auto 1fr minmax(160px, 220px);
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: var(--fs-2xs);
+}
+.cuentas-sociales-red { display: inline-flex; align-items: center; gap: 4px; color: var(--text-dim); }
+.cuentas-sociales-nombre { min-width: 0; overflow-wrap: anywhere; }
+.cuentas-sociales-nombre span { color: var(--text-dim); }
+@media (max-width: 599px) {
+  .cuentas-sociales li { grid-template-columns: auto 1fr; }
+  .cuentas-sociales-cliente { grid-column: 1 / -1; }
+}

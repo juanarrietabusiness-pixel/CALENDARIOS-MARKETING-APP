@@ -28,6 +28,7 @@ import { difundir, firma } from "../lib/vivo.js";
 import { tareasParaPurgar, terminadasBorrables, MODOS_PURGA } from "../lib/tareas.js";
 import { fechaEnZona, debeReabrirse, esFecha } from "../../src/lib/agenda.js";
 import { leerConfigIA, MODELOS_ELEGIBLES, RAZONAMIENTOS, ACCIONES_LIMITE } from "../lib/configIA.js";
+import { resincronizarCalendario } from "../lib/publicador.js";
 
 const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe"];
 const JSON_CALENDARIOS = ["week_concepts", "days", "visual_references", "day_labels", "opciones"];
@@ -387,7 +388,11 @@ export async function rutasDatos(req, env, ctx) {
       fila.created_at ??= ahora();
       fila.updated_at = ahora();
       await acceso.guardar("calendars", fila);
-      const guardado = salidaCalendario(await acceso.leerUno("calendars", { id: fila.id }));
+      const crudo = await acceso.leerUno("calendars", { id: fila.id });
+      const guardado = salidaCalendario(crudo);
+      // Lo programado sigue al calendario: si una publicación cambió de
+      // día u hora, o se quitó, la cola se entera aquí.
+      try { await resincronizarCalendario(env, acceso, crudo, firma(ctx.usuario, req)); } catch (e) { console.error("resincronizar cola:", e); }
       // Un mes escrito entero puede no caber en un mensaje: por eso va
       // el aviso ligero de repuesto. Ver TOPE_EVENTO en lib/vivo.js.
       difundir(

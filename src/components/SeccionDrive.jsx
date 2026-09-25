@@ -26,7 +26,7 @@ function leerVuelta() {
   return vuelta;
 }
 
-export default function SeccionDrive({ esAdmin, pulso = 0 }) {
+export default function SeccionDrive({ esAdmin, pulso = 0, children = null }) {
   const ids = useId();
   const [estado, setEstado] = useState(null);
   const [vuelta] = useState(leerVuelta);
@@ -67,7 +67,7 @@ export default function SeccionDrive({ esAdmin, pulso = 0 }) {
       <div className="integracion">
         <div className="integracion-cabecera">
           <span className="integracion-icono" aria-hidden="true"><Icon name="cloud" size={22} /></span>
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ flex: 1, minWidth: "min(200px, 100%)" }}>
             <p style={{ fontWeight: 600, fontSize: "var(--fs-sm)" }}>Google Drive</p>
             <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>
               El banco de contenido de cada cliente es su carpeta de Drive: escoger, subir, adjuntar al chat y
@@ -150,6 +150,7 @@ export default function SeccionDrive({ esAdmin, pulso = 0 }) {
           </div>
         )}
       </div>
+      {children}
     </section>
   );
 }

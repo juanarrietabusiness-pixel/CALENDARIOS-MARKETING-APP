@@ -2,7 +2,9 @@ import "./Ajustes.css";
 import Icon from "../components/Icon";
 import SeccionIA from "../components/SeccionIA";
 import SeccionPresupuesto from "../components/SeccionPresupuesto";
+import { useEffect } from "react";
 import SeccionDrive from "../components/SeccionDrive";
+import SeccionMeta from "../components/SeccionMeta";
 import LimpiezaTerminadas from "../components/LimpiezaTerminadas";
 import { TaskTemplatesManager } from "../components/TaskPanel";
 
@@ -26,6 +28,13 @@ const INDICE = [
 
 export default function Ajustes({ yo, clients = [], pulso = 0, onVolver, onExportar, onImportar }) {
   const esAdmin = yo?.rol === "admin";
+
+  // Se llega con «#integraciones» desde la vuelta de Google o de Meta y
+  // desde el panel de una publicación: la SPA no desplaza sola al ancla.
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (id) requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: "start" }));
+  }, []);
 
   const irA = (id) => (e) => {
     e.preventDefault();
@@ -56,7 +65,9 @@ export default function Ajustes({ yo, clients = [], pulso = 0, onVolver, onExpor
       <div className="ajustes-rejilla">
         <SeccionIA esAdmin={esAdmin} pulso={pulso} />
         <SeccionPresupuesto esAdmin={esAdmin} pulso={pulso} />
-        <SeccionDrive esAdmin={esAdmin} pulso={pulso} />
+        <SeccionDrive esAdmin={esAdmin} pulso={pulso}>
+          <SeccionMeta esAdmin={esAdmin} clients={clients} pulso={pulso} />
+        </SeccionDrive>
 
         <section id="tareas" className="ajustes-seccion" aria-labelledby="ajustes-tareas">
           <h2 className="ajustes-titulo" id="ajustes-tareas">

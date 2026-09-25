@@ -13,8 +13,9 @@ import { fmtDate } from "../../utils";
 import { completitud, resumenCompletitud } from "../../lib/completitud";
 import Icon from "../Icon";
 import { categoryHue, fmt12h } from "./formato";
+import { resumenCola } from "../../lib/cola";
 
-export function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank, ideasBank, dayLabels, onUpdateDayLabel }) {
+export function MonthGrid({ cal, cola = [], onPostClick, onMove, onAddPost, onDropFromBank, ideasBank, dayLabels, onUpdateDayLabel }) {
   const [drag, setDrag] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const [editingHeader, setEditingHeader] = useState(null);
@@ -129,6 +130,7 @@ export function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank,
               // color no se lee con lector de pantalla.
               const avance = completitud(post, dd);
               const resumen = resumenCompletitud(post, dd);
+              const enCola = resumenCola(cola, post.id);
               return (
                 <button
                   key={post.id}
@@ -136,7 +138,7 @@ export function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank,
                   draggable
                   title={resumen}
                   className={`cal-post${isPublished ? " is-published" : ""}${cat ? " has-cat" : ""}`}
-                  aria-label={`${f.label}${cat ? ` — ${cat}` : ""}${briefIdea ? `: ${briefIdea}` : ""} — ${st.label}${post.publishTime ? `, ${fmt12h(post.publishTime)}` : ""}. ${resumen}`}
+                  aria-label={`${f.label}${cat ? ` — ${cat}` : ""}${briefIdea ? `: ${briefIdea}` : ""} — ${st.label}${post.publishTime ? `, ${fmt12h(post.publishTime)}` : ""}${enCola ? `. ${enCola.texto}` : ""}. ${resumen}`}
                   onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", JSON.stringify({ postId: post.id, sourceDate: date })); setDrag({ postId: post.id, sourceDate: date }); }}
                   onDragEnd={() => { setDrag(null); setDropTarget(null); }}
                   onClick={() => onPostClick(post, dd)}
@@ -154,6 +156,11 @@ export function MonthGrid({ cal, onPostClick, onMove, onAddPost, onDropFromBank,
                 >
                   <span className="cal-post-dot" style={{ background: st.text }} aria-hidden="true" />
                   <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={13} />
+                  {enCola && (
+                    <span className="cal-post-cola" data-estado={enCola.estado} aria-hidden="true">
+                      <Icon name={enCola.icono} size={11} />
+                    </span>
+                  )}
                   <span className="cal-post-label" aria-hidden="true">{chipLabel}</span>
                   {post.publishTime && <span className="cal-post-time" aria-hidden="true">{fmt12h(post.publishTime)}</span>}
                   {/* La pista se dibuja siempre, aunque esté a cero: si sólo

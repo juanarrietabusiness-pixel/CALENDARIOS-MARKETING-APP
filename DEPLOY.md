@@ -99,9 +99,11 @@ Ahora que el Worker existe, ya tiene dónde guardarlas.
 | `ANTHROPIC_API_KEY` | Tu clave de Anthropic | console.anthropic.com → API Keys |
 | `GITHUB_TOKEN` | Un token de **sólo lectura** | GitHub → Settings → Developer settings → Personal access tokens |
 | `GROQ_API_KEY` | Opcional | console.groq.com |
-
 | `GOOGLE_CLIENT_ID` | El ID de cliente OAuth de Google | Ver «Google Drive» abajo |
 | `GOOGLE_CLIENT_SECRET` | Su secreto | Ver «Google Drive» abajo |
+| `META_APP_ID` | El identificador de la app de Meta | Ver «Instagram y Facebook» abajo |
+| `META_APP_SECRET` | Su clave secreta | Ver «Instagram y Facebook» abajo |
+| `META_CONFIG_ID` | El ID de configuración del inicio de sesión | Ver «Instagram y Facebook» abajo |
 
 El `GITHUB_TOKEN` es para leer el ADN de marca de los repositorios de los
 clientes. Con permiso de lectura de repositorios basta; no necesita
@@ -134,6 +136,45 @@ Una vez, con la cuenta de Google de la AGENCIA:
    de «Google no verificó esta app»: *Configuración avanzada → Ir a…*.
 7. Cada cliente comparte su carpeta con la cuenta de la agencia (Editor) y
    se pega el enlace en su **Ficha → Drive y GitHub**.
+
+### Instagram y Facebook (publicar y programar)
+
+**No hace falta la revisión de Meta.** Con acceso estándar, la app puede
+hacer todo mientras quien la conecta tenga un rol en ella (administrador o
+desarrollador). La revisión sólo es para apps que usan personas ajenas.
+
+Una vez, con el Facebook de la AGENCIA (el que administra las páginas):
+
+1. developers.facebook.com/apps → **Crear app** → caso de uso **Otro** →
+   tipo **Empresa** → asociarla al portafolio comercial de la agencia.
+2. Añadir los productos **Inicio de sesión con Facebook para empresas** e
+   **Instagram** (configuración con inicio de sesión con Facebook).
+3. **Inicio de sesión con Facebook para empresas → Configuración** → en
+   *URI de redireccionamiento de OAuth válidos*, la dirección que enseña la
+   app en **Ajustes → Integraciones** (`https://<dominio>/api/redes/meta/callback`).
+4. **Configuraciones → Crear configuración**: token de acceso de
+   **usuario**, y los permisos `pages_show_list`, `pages_read_engagement`,
+   `pages_manage_posts`, `read_insights`, `business_management`,
+   `instagram_basic`, `instagram_content_publish`,
+   `instagram_manage_insights`, `instagram_manage_comments`. Copiar el
+   **ID de configuración**.
+5. **Configuración de la app → Básica**: copiar el identificador y la clave
+   secreta; poner `https://<dominio>/privacidad` como política de
+   privacidad.
+6. Pegar aquí `META_APP_ID`, `META_APP_SECRET` y `META_CONFIG_ID` (tipo
+   *Secret*).
+7. Poner la app en modo **Activo** y, en la app del calendario, **Ajustes →
+   Integraciones → Conectar con Facebook**. Marcar TODAS las páginas e
+   Instagram de los clientes.
+8. En la misma pantalla, asignar cada cuenta a su cliente.
+
+Cada Instagram tiene que ser **profesional** (empresa o creador) y estar
+vinculado a su página de Facebook. Un cliente nuevo da acceso a la agencia
+como **socio** desde su Business Suite; después, **Actualizar cuentas**.
+
+**La programación la cumple el cron** (`triggers` en `wrangler.jsonc`,
+cada minuto): la app no tiene que estar abierta. Instagram admite 50
+publicaciones por API cada 24 horas y cuenta.
 
 ## Parte 6 · Dar de alta al administrador
 

@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid } from "../utils";
-import { marcarActualizada } from "../lib/publicacion";
+import { marcarActualizada, mediosDe, conMedios } from "../lib/publicacion";
 import { callAI, loadADN, parseAIResponse, buildScriptPrompt, buildDescripcionesPrompt, buildClientContext, generateSinglePost } from "../api";
 import { buildExportHTML } from "../export";
-import { base64DeImagen, conImagenesIncrustadas } from "../lib/medios";
-import { shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals, loadClientMemories } from "../lib/db";
+import { base64DeImagen, conImagenesIncrustadas, prepararMediosParaMeta } from "../lib/medios";
+import {
+  shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals, loadClientMemories,
+  listarPublicaciones, publicar, cancelarPublicacion, reintentarPublicacion, estadoRedes as leerEstadoRedes,
+  subirImagenPublicacion, saveCalendar,
+} from "../lib/db";
+import AccionesPublicar from "./calendario/accionesPublicar";
+import { resumenCola } from "../lib/cola";
 import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO, CAMPOS_EXPORTABLES } from "../lib/exportarContenido";
 import MetaPromptModal from "./MetaPromptModal";
 import Icon from "./Icon";
@@ -52,6 +58,50 @@ export default function CalendarView({
     }
     onPublicacionAbierta?.();
   }, [abrirPublicacion, cal, onPublicacionAbierta]);
+
+  // La cola de publicación de este calendario y qué hay conectado. Se
+  // relee con `pulso`: la cola la mueve el cron, sin nadie delante.
+  const [cola, setCola] = useState([]);
+  const [redes, setRedes] = useState(null);
+  const calDb = cal?.dbId || cal?.id;
+  const clienteDb = client?.dbId || client?.id;
+  const recargarCola = useCallback(() => {
+    if (!calDb) return;
+    listarPublicaciones({ calendario: calDb }).then(setCola).catch(() => {});
+  }, [calDb]);
+  useEffect(() => { recargarCola(); }, [recargarCola, pulso]);
+  useEffect(() => {
+    leerEstadoRedes().then(setRedes).catch(() => setRedes({ meta: {}, cuentas: [] }));
+  }, [pulso]);
+
+  /**
+   * Publicar o programar desde el panel. Lo que sale es lo que hay en D1,
+   * así que antes: imágenes a JPEG (Instagram no acepta otra cosa) y
+   * guardado INMEDIATO, sin esperar al agrupado de 600 ms.
+   */
+  const publicarDesdePanel = async (form, setForm, { ahora, redes: destino }) => {
+    let post = form;
+    if (destino.includes("instagram") || destino.includes("facebook")) {
+      const { medios, cambio } = await prepararMediosParaMeta(mediosDe(form), (f) => subirImagenPublicacion(clienteDb, f));
+      if (cambio) {
+        post = conMedios(form, medios);
+        setForm(post);
+      }
+    }
+    const ahoraISO = new Date().toISOString();
+    const nuevo = {
+      ...cal,
+      days: (cal.days || []).map((d) => ({
+        ...d,
+        posts: (d.posts || []).map((p) => (p.id === post.id ? marcarActualizada(p, post, ahoraISO) : p)),
+      })),
+    };
+    onUpdateCal(calId, nuevo);
+    await saveCalendar(nuevo, clienteDb);
+    await publicar({ calendarId: calDb, postId: post.id, redes: destino, ahora });
+    recargarCola();
+  };
+
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterFormat, setFilterFormat] = useState("all");
   const [filterWeek, setFilterWeek] = useState("all");
@@ -1136,6 +1186,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
       {viewMode === "grid" ? (
         <MonthGrid
           cal={{ ...cal, days: filteredDays }}
+          cola={cola}
           onPostClick={(post, day) => setSidePanel({ post, day })}
           onMove={movePost}
           onAddPost={(date) => setAddingPostDay(date)}
@@ -1269,6 +1320,14 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
                               <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={18} style={{ color: f.color }} />
                               <span className="badge" style={{ background: f.color + "22", color: f.color }}>{f.label}</span>
                               <span className="badge" style={{ background: st.bg, color: st.text, border: `1px solid ${st.border}` }}>{st.label}</span>
+                              {(() => {
+                                const enCola = resumenCola(cola, post.id);
+                                return enCola && (
+                                  <span className="badge badge-cola" data-estado={enCola.estado}>
+                                    <Icon name={enCola.icono} size={12} /> {enCola.texto}
+                                  </span>
+                                );
+                              })()}
                               {post.publishTime && (
                                 <span style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>
                                   <Icon name="clock" size={14} /> {fmt12h(post.publishTime)}
@@ -1431,6 +1490,18 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
             day={sidePanel.day}
             editandoOtros={editandoOtros}
             pulso={pulso}
+            accionesPublicar={(form, setForm) => (
+              <AccionesPublicar
+                post={form}
+                fecha={sidePanel.day?.date}
+                filas={cola}
+                estadoRedes={redes}
+                clientId={clienteDb}
+                onPublicar={(op) => publicarDesdePanel(form, setForm, op)}
+                onCancelar={async (id) => { await cancelarPublicacion(id); recargarCola(); }}
+                onReintentar={async (id) => { await reintentarPublicacion(id); recargarCola(); }}
+              />
+            )}
             onUpdate={updatePost}
             onDelete={deletePost}
             onMoveDate={movePost}
