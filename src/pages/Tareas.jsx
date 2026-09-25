@@ -5,6 +5,8 @@ import SelectorFecha from "../components/SelectorFecha";
 import * as db from "../lib/db";
 import { navegar } from "../lib/rutas";
 import { clasificar, fechaEnZona, textoAtraso, textoFecha } from "../lib/agenda";
+import { filtrarCola, ordenarProgramacion, horaDe } from "../lib/cola";
+import { REDES } from "../lib/publicacion";
 
 // ============================================================
 // Mi día
@@ -173,6 +175,8 @@ export default function Tareas({
               </button>
             )}
           </div>
+
+          <PublicacionesDeHoy pulso={pulso} nombreDe={nombreDe} />
 
           <Bloque titulo="Atrasadas" icono="alert" color="var(--danger)" items={bloques.atrasadas} filaProps={filaProps} />
           <Bloque
@@ -401,5 +405,46 @@ function PorEmpresa({ todas, nombreDe, filaProps, hoy }) {
         </section>
       ))}
     </>
+  );
+}
+
+/**
+ * La cola, vista desde Mi día: lo que no se publicó —que es trabajo, como
+ * una tarea atrasada— y lo que sale hoy. El detalle está en Programación.
+ */
+function PublicacionesDeHoy({ pulso, nombreDe }) {
+  const [filas, setFilas] = useState([]);
+  useEffect(() => {
+    let vivo = true;
+    db.listarProgramacion(1).then((f) => { if (vivo) setFilas(f); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [pulso]);
+  const { fallidas, proximas } = ordenarProgramacion(filtrarCola(filas, { rango: 1 }));
+  const hoy = proximas[0]?.nombre === "Hoy" ? proximas[0].filas : [];
+  if (!fallidas.length && !hoy.length) return null;
+  const ir = (e) => { e.preventDefault(); navegar("/programacion"); };
+  const linea = (f) => `${nombreDe(f.clientId) || "Cliente"} · ${REDES[f.red]?.nombre ?? f.red}${f.variante === "historia" ? " (historia)" : ""}`;
+
+  return (
+    <section className="dia-bloque" aria-label="Publicaciones">
+      {fallidas.length > 0 && (
+        <div className="notice notice-error" style={{ display: "block", marginBottom: "var(--sp-2)" }}>
+          <p style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
+            <Icon name="alert" size={16} /> {fallidas.length} {fallidas.length === 1 ? "publicación no se publicó" : "publicaciones no se publicaron"}
+          </p>
+          <ul style={{ margin: "var(--sp-1) 0 var(--sp-2) var(--sp-4)", fontSize: "var(--fs-2xs)" }}>
+            {fallidas.slice(0, 3).map((f) => <li key={f.id}><strong>{linea(f)}:</strong> {f.error}</li>)}
+          </ul>
+          <a href="/programacion" onClick={ir}>Revisar y reintentar en Programación</a>
+        </div>
+      )}
+      {hoy.length > 0 && (
+        <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap" }}>
+          <Icon name="clock" size={14} />
+          Hoy {hoy.length === 1 ? "sale 1 publicación" : `salen ${hoy.length} publicaciones`}; la próxima a las {horaDe(hoy[0].programadaPara)} ({linea(hoy[0])}).
+          <a href="/programacion" onClick={ir}>Ver la cola</a>
+        </p>
+      )}
+    </section>
   );
 }

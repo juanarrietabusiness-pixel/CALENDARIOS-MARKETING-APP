@@ -1,5 +1,6 @@
 import Icon from "./Icon";
 import ContadorAtrasadas from "./ContadorAtrasadas";
+import ContadorFallidas from "./ContadorFallidas";
 import { navegar } from "../lib/rutas";
 
 // ============================================================
@@ -13,6 +14,7 @@ import { navegar } from "../lib/rutas";
 const SECCIONES = [
   { vista: "panel", ruta: "/", nombre: "Inicio", icono: "home" },
   { vista: "tareas", ruta: "/tareas", nombre: "Mi día", icono: "clipboardCheck", contador: true },
+  { vista: "programacion", ruta: "/programacion", nombre: "Programación", icono: "clock", fallidas: true },
   { vista: "resultados", ruta: "/resultados", nombre: "Resultados", icono: "chart" },
   { vista: "equipo", ruta: "/equipo", nombre: "Equipo", icono: "users" },
   { vista: "ajustes", ruta: "/ajustes", nombre: "Ajustes", icono: "settings" },
@@ -34,6 +36,7 @@ export default function NavPrincipal({ ruta, pulso = 0, onIr }) {
               <Icon name={s.icono} size={18} />
               <span>{s.nombre}</span>
               {s.contador && <ContadorAtrasadas pulso={pulso} />}
+              {s.fallidas && <ContadorFallidas pulso={pulso} />}
             </button>
           </li>
         ))}

@@ -25,7 +25,7 @@ import {
   COOKIE_META, metaConfigurado, urlVueltaMeta, firmarEstadoMeta, leerEstadoMeta, urlConsentimientoMeta,
   canjearCodigoMeta, cifrarMeta, descifrarMeta, graph, sincronizarCuentasMeta, mensajeMeta, claveDeMedioPublico,
 } from "../lib/meta.js";
-import { programar, procesarPublicacion, filaPublica, ErrorPublicar } from "../lib/publicador.js";
+import { programar, programarLote, procesarPublicacion, filaPublica, filaConResumen, ErrorPublicar } from "../lib/publicador.js";
 import {
   COOKIE_TIKTOK, tiktokConfigurado, urlVueltaTikTok, firmarEstadoTikTok, leerEstadoTikTok, firmarEnlaceTikTok, leerEnlaceTikTok,
   urlConsentimientoTikTok, canjearCodigoTikTok, revocarTikTok, filaDeTokens, tokenTikTok, usuarioTikTok, mensajeTikTok,
@@ -332,6 +332,8 @@ export async function rutasRedes(req, env, { acceso, usuario, partes, metodo }) 
  *
  *   GET  ?calendario=:id       La cola de un calendario (o ?cliente=:id)
  *   POST { calendarId, postId, redes, ahora }
+ *   GET  ?todo=1&dias=14       Todo el espacio (la página Programación)
+ *   POST /lote { calendarId, postIds }  Programar varias (lo aprobado)
  *   DELETE /:id                Cancelar lo que aún no salió
  *   POST /:id/reintentar       Volver a intentar una que falló
  */
@@ -342,6 +344,22 @@ export async function rutasPublicar(req, env, { acceso, usuario, partes, metodo,
   if (!id && metodo === "GET") {
     const calendario = url.searchParams.get("calendario");
     const cliente = url.searchParams.get("cliente");
+    // La página Programación: todo el espacio. Lo pendiente y lo que
+    // falló, entero; lo que ya salió, sólo lo de los últimos días.
+    // El aviso de la cabecera sólo quiere lo que falló: una lectura corta,
+    // que se repite con cada cambio del equipo.
+    if (url.searchParams.get("fallidas")) {
+      const filas = await acceso.leer("publicaciones_programadas", { estado: "error" }, "programada_para desc");
+      return json(filas.map(filaConResumen));
+    }
+    if (url.searchParams.get("todo")) {
+      const dias = Math.min(60, Math.max(1, Number(url.searchParams.get("dias")) || 14));
+      const desde = new Date(Date.now() - dias * 86_400_000).toJSON();
+      const filas = await acceso.leer("publicaciones_programadas", {}, "programada_para asc");
+      return json(filas
+        .filter((f) => f.estado !== "cancelada" && (f.estado !== "publicada" || (f.publicada_at ?? f.programada_para) >= desde))
+        .map(filaConResumen));
+    }
     if (!calendario && !cliente) return error("Falta el calendario o el cliente");
     const filas = await acceso.leer(
       "publicaciones_programadas",
@@ -368,6 +386,22 @@ export async function rutasPublicar(req, env, { acceso, usuario, partes, metodo,
       }
       difundir(env, acceso.ownerId, { tipo: "publicacion", calId: b.calendarId, postId: b.postId, por: firma(usuario, req) });
       return json(filas.map(filaPublica), 201);
+    } catch (e) {
+      if (e instanceof ErrorPublicar) return error(e.message, 422);
+      throw e;
+    }
+  }
+
+  // «Programar todo lo aprobado»: varias publicaciones de un calendario.
+  if (id === "lote" && !sub && metodo === "POST") {
+    const b = (await cuerpo(req)) ?? {};
+    if (!b.calendarId || !Array.isArray(b.postIds) || !b.postIds.length) return error("Faltan las publicaciones");
+    try {
+      const { nuevas, fallidas } = await programarLote(env, acceso, {
+        calendarId: String(b.calendarId), postIds: b.postIds, usuarioId: usuario.id,
+      });
+      if (nuevas.length) difundir(env, acceso.ownerId, { tipo: "publicacion", calId: b.calendarId, por: firma(usuario, req) });
+      return json({ programadas: nuevas.map(filaPublica), fallidas });
     } catch (e) {
       if (e instanceof ErrorPublicar) return error(e.message, 422);
       throw e;

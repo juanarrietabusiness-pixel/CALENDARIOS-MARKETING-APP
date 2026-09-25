@@ -5,10 +5,10 @@ encima: funciona, pero se hace desde un panel pensado para escribir ideas.
 Este documento recoge qué falla hoy, qué permite de verdad la API de Meta
 (y qué no) y un plan por fases.
 
-**Estado:** fase 1 hecha —imágenes de Flow adaptadas a 4:5 y 9:16 sin
+**Estado:** fases 1 y 2 hechas. Fase 1 —imágenes de Flow adaptadas a 4:5 y 9:16 sin
 tocar el original, historias del post (la misma imagen o tres variantes
 de Nano Banana) que salen solas unos minutos después, historias de
-Facebook y colaboradores—. Las demás fases, en curso.
+Facebook y colaboradores—. Fase 2: la página Programación (todas las cuentas, lo que falló arriba con su motivo y «Reintentar»), «Programar lo aprobado» de un calendario en un paso, «Programar al aprobar» a la vista y los fallos en la navegación y en Mi día. Las demás fases, en curso.
 
 ---
 

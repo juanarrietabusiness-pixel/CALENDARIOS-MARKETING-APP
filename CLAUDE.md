@@ -121,7 +121,8 @@ src/
     resumenCliente.js     Por aprobar / con cambios / a medias; mes por defecto (puro)
     publicacion.js        Qué se publica, límites de cada red, qué ve el cliente, a qué
                           hora sale (puro; también lo importa el Worker)
-    cola.js               La cola de publicación resumida para la rejilla y el panel (puro)
+    cola.js               La cola de publicación resumida para la rejilla y el panel, la
+                          página Programación y «Programar lo aprobado» (puro)
     resultados.js         De las filas de métricas a cifras, formatos, horarios (puro)
     colores.js            Colores y logo de la marca a partir del ADN (puro)
   components/
@@ -152,6 +153,7 @@ src/
     Aprobar.jsx           Página pública que ve el cliente final
     Tareas.jsx            «Mi día»: Atrasadas, Hoy, Próximas; y la vista por empresa
     Resultados.jsx        La pestaña Resultados de un cliente y /resultados (la agencia)
+    Programacion.jsx      /programacion: lo que sale en todas las cuentas; lo que falló, arriba
     Informe.jsx           Lo que ve el cliente al abrir su informe mensual (sin sesión)
     Ajustes.jsx           IA, presupuesto y consumo, integraciones, tareas, copia
 worker/
@@ -218,6 +220,7 @@ tests/
 | `/tareas` | Mi día |
 | `/ajustes` | IA, presupuesto, integraciones, tareas, copia de seguridad |
 | `/resultados` | Todos los clientes, últimos 30 días |
+| `/programacion` | La cola de todos los clientes: lo que falló, lo que sale, lo que salió |
 | `/equipo` | Quién entra en el espacio |
 | `/invitacion/<testigo>` | Enlace de invitación (sin sesión) |
 | `/aprobar?t=<testigo>` | Página del cliente final (sin sesión) |
@@ -1026,6 +1029,19 @@ son del servidor.
   `CalendarView.jsx`, con su `publicar.css`). El JS principal estaba en
   107,6 kB de un tope de 110 y el CSS inicial en 10,5 de 12: lo que sólo
   usa el panel no va al arranque.
+- **Programar una y programar muchas son LA MISMA regla.** `programar()` y
+  `programarLote()` (worker/lib/publicador.js) llaman a `planificar()`,
+  que no toca la base: se le da leído lo común (cuentas, Meta, la cola del
+  calendario) y devuelve qué crear y qué sustituir. Uno a uno, «Programar
+  lo aprobado» de un mes de veinte publicaciones pasaba de las 50
+  consultas por invocación del plan gratuito; en lote son cuatro lecturas
+  y un `guardarVarios`. Un caso lo vigila contando los `prepare()`.
+- **Lo que falla en la cola no se puede perder en un aviso.** El cron
+  publica sin nadie delante, así que el aviso del momento se va si nadie
+  miraba. Lo que no salió se queda en tres sitios hasta que se reintenta o
+  se descarta: el número rojo de «Programación» en la navegación
+  (`?fallidas=1`, una lectura corta porque se repite con cada `pulso`),
+  el bloque de Mi día y el primer bloque de /programacion, con el motivo.
 - **`tests/utils/d1Memoria.js` es una D1 de verdad** (SQLite de Node con
   todas las migraciones). Para lo que un doble a mano no ve: que las
   consultas de la capa de acceso existen en el esquema. La cola de

@@ -90,6 +90,25 @@ export function filaPublica(f) {
   };
 }
 
+/**
+ * La fila con lo justo de su publicación para reconocerla fuera del
+ * calendario —la página Programación mezcla todos los clientes—: título,
+ * formato y la primera imagen de lo que sale en ESA pieza.
+ */
+export function filaConResumen(f) {
+  const post = leerJSON(f.carga, {}).post ?? {};
+  const variante = f.variante ?? "post";
+  const imagen = mediosParaRed(post, f.red, variante).find((m) => m.tipo === "imagen");
+  const texto = post.title || post.idea || post.descripcion || post.script || "";
+  return {
+    ...filaPublica(f),
+    titulo: String(texto).replace(/\s+/g, " ").trim().slice(0, 140),
+    formato: variante === "historia" ? "historia" : post.format ?? "post",
+    miniatura: imagen?.src?.startsWith("/api/media/") ? imagen.src : "",
+    hora: post.publishTime ?? "",
+  };
+}
+
 // ------------------------------------------------------------
 // Programar
 // ------------------------------------------------------------
@@ -107,19 +126,72 @@ export async function programar(env, acceso, { calendarId, postId, redes = null,
   if (!cal) throw new ErrorPublicar("Ese calendario no existe.");
   const hallada = buscarPublicacion(leerJSON(cal.days, []), postId);
   if (!hallada) throw new ErrorPublicar("La publicación ya no está en el calendario.");
-  const { post, fecha } = hallada;
+  const [cuentas, meta, previas] = await Promise.all([
+    acceso.leer("cuentas_sociales", { client_id: cal.client_id }),
+    acceso.leerUno("integracion_meta", { id: acceso.ownerId }),
+    acceso.leer("publicaciones_programadas", { calendar_id: calendarId, post_id: postId }),
+  ]);
+  const plan = planificar({ ...hallada, cal, cuentas, hayMeta: Boolean(meta), previas, redes, ahoraMismo, usuarioId, soloPosibles });
+  await acceso.guardarVarios("publicaciones_programadas", [...plan.cancelar, ...plan.nuevas]);
+  return plan.nuevas;
+}
 
+/**
+ * «Programar todo lo aprobado» de un calendario: las mismas reglas que
+ * `programar`, pero leyendo UNA vez lo que es común —calendario, cuentas,
+ * Meta, la cola del calendario— y escribiendo en UN lote. Uno a uno, un
+ * mes de veinte publicaciones pasaría de las 50 consultas por invocación
+ * del plan gratuito. Lo que no se puede programar no para a lo demás:
+ * vuelve con su motivo.
+ */
+export async function programarLote(env, acceso, { calendarId, postIds = [], usuarioId = null }) {
+  const cal = await acceso.leerUno("calendars", { id: calendarId });
+  if (!cal) throw new ErrorPublicar("Ese calendario no existe.");
+  const [cuentas, meta, cola] = await Promise.all([
+    acceso.leer("cuentas_sociales", { client_id: cal.client_id }),
+    acceso.leerUno("integracion_meta", { id: acceso.ownerId }),
+    acceso.leer("publicaciones_programadas", { calendar_id: calendarId }),
+  ]);
+  const days = leerJSON(cal.days, []);
+  const nuevas = [];
+  const cancelar = [];
+  const fallidas = [];
+  for (const postId of [...new Set(postIds.map(String))].slice(0, 100)) {
+    const hallada = buscarPublicacion(days, postId);
+    if (!hallada) { fallidas.push({ postId, motivo: "La publicación ya no está en el calendario." }); continue; }
+    try {
+      const previas = cola.filter((f) => f.post_id === postId);
+      const plan = planificar({ ...hallada, cal, cuentas, hayMeta: Boolean(meta), previas, usuarioId, soloPosibles: true });
+      nuevas.push(...plan.nuevas);
+      cancelar.push(...plan.cancelar);
+    } catch (e) {
+      if (!(e instanceof ErrorPublicar)) throw e;
+      fallidas.push({ postId, motivo: e.message });
+    }
+  }
+  await acceso.guardarVarios("publicaciones_programadas", [...cancelar, ...nuevas]);
+  return { nuevas, fallidas };
+}
+
+/**
+ * Qué filas crear y cuáles sustituir para una publicación. Sin E/S: lo
+ * que necesita se le da leído, para que programar una y programar muchas
+ * apliquen exactamente las mismas reglas.
+ */
+function planificar({ post, fecha, cal, cuentas: todas, hayMeta, previas, redes = null, ahoraMismo = false, usuarioId = null, soloPosibles = false }) {
+  const postId = post.id;
+  const calendarId = cal.id;
   let lista = [...new Set(redes?.length ? redes : post.redes?.length ? post.redes : ["instagram"])].filter((r) => r in REDES);
   const cuentas = {};
   for (const red of lista) {
-    const cuenta = await acceso.leerUno("cuentas_sociales", { client_id: cal.client_id, red });
+    const cuenta = todas.find((c) => c.red === red);
     if (cuenta) cuentas[red] = cuenta;
     else if (!soloPosibles) {
       throw new ErrorPublicar(`Este cliente no tiene una cuenta de ${REDES[red].nombre} asignada. Asígnala en Ajustes → Integraciones.`);
     }
   }
   lista = lista.filter((r) => cuentas[r]);
-  if (!lista.length) throw new ErrorPublicar("No hay ninguna red a la que publicar.");
+  if (!lista.length) throw new ErrorPublicar("El cliente no tiene asignada ninguna cuenta de las redes de esta publicación.");
 
   const { errores } = revisarPublicacion(post, lista);
   if (errores.length) throw new ErrorPublicar(errores.join(" "));
@@ -131,7 +203,7 @@ export async function programar(env, acceso, { calendarId, postId, redes = null,
   if (lista.includes("tiktok") && !mediosDe(post).some((m) => m.tipo === "video" && m.src.startsWith("/api/media/clientes/"))) {
     throw new ErrorPublicar("Para TikTok, el video tiene que estar subido a la publicación (desde el equipo o desde Drive).");
   }
-  if ((lista.includes("instagram") || lista.includes("facebook")) && !(await acceso.leerUno("integracion_meta", { id: acceso.ownerId }))) {
+  if ((lista.includes("instagram") || lista.includes("facebook")) && !hayMeta) {
     throw new ErrorPublicar("Meta no está conectado. Conéctalo en Ajustes → Integraciones.");
   }
 
@@ -145,30 +217,28 @@ export async function programar(env, acceso, { calendarId, postId, redes = null,
 
   // Lo que ya salió o se está publicando no se vuelve a meter: se
   // programa lo demás. Si no queda nada, se dice.
-  const previas = await acceso.leer("publicaciones_programadas", { calendar_id: calendarId, post_id: postId });
   const deLaPieza = (f, p) => f.red === p.red && (f.variante ?? "post") === p.variante;
   const pendientes = piezas.filter((p) => !previas.some((f) => deLaPieza(f, p) && (f.estado === "procesando" || f.estado === "publicada")));
   if (!pendientes.length) {
     throw new ErrorPublicar(`Esta publicación ya salió (o está saliendo) en ${lista.map((r) => REDES[r].nombre).join(" y ")}.`);
   }
 
-  const creadas = [];
+  const nuevas = [];
+  const cancelar = [];
   for (const p of pendientes) {
     // Lo programado antes para la misma pieza se sustituye: una fila viva
     // por publicación, red y variante, o saldría dos veces.
     for (const f of previas.filter((x) => deLaPieza(x, p) && (x.estado === "programada" || x.estado === "error"))) {
-      await acceso.actualizar("publicaciones_programadas", { id: f.id }, { estado: "cancelada", updated_at: ahora() });
+      cancelar.push({ ...f, estado: "cancelada", updated_at: ahora() });
     }
-    const fila = {
+    nuevas.push({
       id: uuid(), client_id: cal.client_id, calendar_id: calendarId, post_id: postId, red: p.red, variante: p.variante,
       cuenta_id: cuentas[p.red].id, programada_para: cuandoDe(p.variante), estado: "programada", intentos: 0,
       siguiente_intento: null, carga: JSON.stringify({ ahoraMismo, post }), creado_por: usuarioId,
       created_at: ahora(), updated_at: ahora(),
-    };
-    await acceso.insertar("publicaciones_programadas", fila);
-    creadas.push(fila);
+    });
   }
-  return creadas;
+  return { nuevas, cancelar };
 }
 
 /** «Publicar ahora» con historia: la historia sale a los minutos pedidos, pero como mucho a los 5. */
