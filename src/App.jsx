@@ -36,6 +36,8 @@ const Tareas = lazy(() => import("./pages/Tareas"));
 // Igual Equipo y Ajustes, que no se abren en cada visita.
 const Equipo = lazy(() => import("./pages/Equipo"));
 const Ajustes = lazy(() => import("./pages/Ajustes"));
+const Resultados = lazy(() => import("./pages/Resultados"));
+const ResumenAgencia = lazy(() => import("./pages/Resultados").then((m) => ({ default: m.ResumenAgencia })));
 // Lo que sólo se abre a demanda —diálogos, pestañas que no son el
 // calendario, la página del cliente final— tampoco va en la primera
 // descarga: con Drive, el buscador y Ajustes, el inicial pasaba de 170 kB.
@@ -56,6 +58,7 @@ const PESTANAS = [
   ["tareas", "Tareas", "clipboardCheck"],
   ["contenido", "Contenido", "cloud"],
   ["ideas", "Ideas", "bulb"],
+  ["resultados", "Resultados", "chart"],
   ["ficha", "Ficha", "building"],
 ];
 
@@ -549,6 +552,10 @@ function Workspace({ session, ruta }) {
         case "revision":
           setPulso((n) => n + 1);
           setToast(`${ev.por?.nombre ?? "El cliente"} terminó y envió su revisión.`);
+          break;
+
+        case "metricas":
+          setPulso((n) => n + 1);
           break;
 
         // La cola de publicación: la mueve el cron, sin nadie delante. Se
@@ -1111,6 +1118,10 @@ function Workspace({ session, ruta }) {
               <Suspense fallback={<p style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando Equipo…</p>}>
                 <Equipo presentes={presentes} yo={yo} pulso={pulso} onVolver={() => navegar("/")} />
               </Suspense>
+            ) : ruta.vista === "resultados" ? (
+              <Suspense fallback={<Cargando />}>
+                <ResumenAgencia clients={clients} pulso={pulso} />
+              </Suspense>
             ) : ruta.vista === "ajustes" ? (
               <Suspense fallback={<p style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando Ajustes…</p>}>
                 <Ajustes
@@ -1196,6 +1207,10 @@ function Workspace({ session, ruta }) {
                     client={client}
                     onUpdateClient={(updated) => setClients((prev) => prev.map((c) => c.id === updated.id ? updated : c))}
                   />
+                )}
+
+                {pestana === "resultados" && (
+                  <Resultados client={client} pulso={pulso} onPersistClient={persistClient} />
                 )}
 
                 {pestana === "ficha" && (

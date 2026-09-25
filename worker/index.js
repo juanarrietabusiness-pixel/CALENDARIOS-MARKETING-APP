@@ -39,6 +39,8 @@ import { rutaAnalizarVideo } from "./rutas/video.js";
 import { rutasDrive, rutaDriveCallback } from "./rutas/drive.js";
 import { rutasRedes, rutasPublicar, rutaMetaCallback, rutaMedioPublico } from "./rutas/redes.js";
 import { procesarCola, programarAlAprobar, cancelarPendientes } from "./lib/publicador.js";
+import { rutasMetricas } from "./rutas/metricas.js";
+import { fotoPendiente } from "./lib/metricas.js";
 
 // El Durable Object del espacio. Se reexporta desde aquí porque
 // `wrangler.jsonc` apunta su `class_name` al módulo de entrada: si se
@@ -264,6 +266,7 @@ export default {
       // ---------- Redes: Meta, cuentas y la cola de publicación ----------
       if (partes[0] === "redes") return rutasRedes(req, env, { acceso, usuario, partes, metodo });
       if (partes[0] === "publicar") return rutasPublicar(req, env, { acceso, usuario, partes, metodo, ctx });
+      if (partes[0] === "metricas") return rutasMetricas(req, env, { acceso, usuario, partes, metodo });
 
       // ---------- Medios ----------
       //
@@ -330,7 +333,13 @@ export default {
    * ya toca. Instagram no deja programar por API, así que la hora la
    * cumple esto, con la aplicación cerrada.
    */
-  async scheduled(_controlador, env, ctx) {
-    ctx.waitUntil(procesarCola(env).catch((e) => console.error("cron:", e)));
+  async scheduled(controlador, env, ctx) {
+    ctx.waitUntil((async () => {
+      // Publicar va primero. La foto de métricas sólo si la cola no tenía
+      // nada: las dos juntas no caben en los límites de una invocación
+      // del plan gratuito (ver worker/lib/metricas.js).
+      const publicadas = await procesarCola(env).catch((e) => { console.error("cron:", e); return 1; });
+      if (!publicadas) await fotoPendiente(env, new Date(controlador?.scheduledTime ?? Date.now())).catch((e) => console.error("cron métricas:", e));
+    })());
   },
 };

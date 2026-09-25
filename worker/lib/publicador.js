@@ -231,8 +231,13 @@ export async function programarAlAprobar(env, ownerId, calendarId, postId) {
 // Procesar la cola
 // ------------------------------------------------------------
 
-/** Una vuelta del cron: lo que ya toca, en orden. */
-export async function procesarCola(env, limite = 10) {
+/**
+ * Una vuelta del cron: lo que ya toca, en orden. Pocas por vuelta a
+ * propósito: el plan gratuito de Workers admite 50 consultas a D1 y 50
+ * peticiones de salida por invocación, y cada publicación gasta unas
+ * diez de cada. Con el cron cada minuto, tres por minuto sobra.
+ */
+export async function procesarCola(env, limite = 3) {
   const filas = await colaPendiente(env.DB, ahora(), limite);
   for (const f of filas) {
     try { await procesarPublicacion(env, f); } catch (e) { console.error("cola de publicación:", e); }

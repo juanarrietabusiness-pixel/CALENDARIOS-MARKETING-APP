@@ -574,3 +574,20 @@ export async function cancelarPublicacion(id) {
 export async function reintentarPublicacion(id) {
   return pedir(`/publicar/${encodeURIComponent(id)}/reintentar`, { method: "POST" });
 }
+
+// ------------------------------------------------------------
+// Resultados: las métricas guardadas por el cron
+// ------------------------------------------------------------
+
+export async function metricasCliente(clientId, dias = 30) {
+  return pedir(`/metricas/clientes/${encodeURIComponent(clientId)}?dias=${dias}`);
+}
+
+/** La foto de una cuenta, ahora (una por petición: cada una son ~30 llamadas a Meta). */
+export async function actualizarMetricasCuenta(cuentaId) {
+  return pedir(`/metricas/cuentas/${encodeURIComponent(cuentaId)}/actualizar`, { method: "POST" });
+}
+
+export async function resumenMetricas() {
+  return pedir("/metricas/resumen");
+}

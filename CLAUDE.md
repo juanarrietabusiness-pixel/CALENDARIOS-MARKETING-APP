@@ -122,6 +122,7 @@ src/
     publicacion.js        Qué se publica, límites de cada red, qué ve el cliente, a qué
                           hora sale (puro; también lo importa el Worker)
     cola.js               La cola de publicación resumida para la rejilla y el panel (puro)
+    resultados.js         De las filas de métricas a cifras, formatos, horarios (puro)
     colores.js            Colores y logo de la marca a partir del ADN (puro)
   components/
     Icon.jsx              Set de iconos SVG monocromos (rejilla 24, trazo 1.75)
@@ -146,6 +147,7 @@ src/
     Invitacion.jsx        Lo que ve quien abre un enlace de invitación
     Aprobar.jsx           Página pública que ve el cliente final
     Tareas.jsx            «Mi día»: Atrasadas, Hoy, Próximas; y la vista por empresa
+    Resultados.jsx        La pestaña Resultados de un cliente y /resultados (la agencia)
     Ajustes.jsx           IA, presupuesto y consumo, integraciones, tareas, copia
 worker/
   index.js                Enrutado, sesión y cabeceras de /api/*
@@ -165,6 +167,7 @@ worker/
     firmas.js             Cifrar y firmar con el secreto de una integración (HKDF)
     meta.js               OAuth de Meta, cliente de la Graph API, cuentas, medios firmados
     publicador.js         La cola: programar, procesar (Instagram/Facebook), reintentos
+    metricas.js           La foto diaria de métricas de cada cuenta y de la competencia
     herramientasServidor.js  Lo que el asistente consulta sin el navegador:
                           web, repositorio de GitHub, calendarios, tareas, ideas
     ids.js                UUID, testigos, huellas
@@ -183,7 +186,8 @@ worker/
     iaEspacio.js          Modelos de la cuenta, consumo del mes y el medidor (/ia/gasto)
     redes.js              Conectar Meta, asignar cuentas, la cola (/api/publicar) y el
                           medio público firmado que descarga Meta
-migraciones/d1/           Esquema de D1 (0001 base … 0011 Drive, 0012 aprobación, 0013 redes)
+    metricas.js           Resultados de un cliente, de la agencia y la miniatura de Meta
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -202,9 +206,10 @@ tests/
 | `/` | Panel, sin cliente elegido |
 | `/cliente/<slug>` | Un cliente |
 | `/cliente/<slug>/<slug-del-mes>` | Un calendario de ese cliente |
-| `/cliente/<slug>/tareas` · `/contenido` · `/ideas` · `/ficha` | Las otras pestañas del cliente |
+| `/cliente/<slug>/tareas` · `/contenido` · `/ideas` · `/resultados` · `/ficha` | Las otras pestañas del cliente |
 | `/tareas` | Mi día |
 | `/ajustes` | IA, presupuesto, integraciones, tareas, copia de seguridad |
+| `/resultados` | Todos los clientes, últimos 30 días |
 | `/equipo` | Quién entra en el espacio |
 | `/invitacion/<testigo>` | Enlace de invitación (sin sesión) |
 | `/aprobar?t=<testigo>` | Página del cliente final (sin sesión) |
@@ -935,6 +940,25 @@ son del servidor.
   `const fs = e.target.files; e.target.value = ""` dejaba `fs` vacío y la
   subida de imágenes del panel no salía nunca, sin error. Copiar la lista
   ANTES de resetear (`[...e.target.files]`).
+- **El cron vive dentro de los límites del plan GRATUITO de Workers:**
+  50 peticiones de salida y 50 consultas a D1 por invocación. Por eso la
+  cola publica tres por vuelta, la foto de métricas es UNA cuenta por
+  vuelta (~30 llamadas a Meta) y sólo si la cola no tenía nada, y
+  «Actualizar ahora» en Resultados mide cuenta a cuenta, una petición
+  cada una. Las escrituras en serie van en `acceso.guardarVarios`, que
+  las manda en un lote. Una tercera tarea periódica que se sume a la
+  misma vuelta pasa del límite y falla a medias, sin avisar.
+- **Meta sólo guarda unos días de historia: los seguidores de hace un mes
+  sólo existen si se apuntaron.** La foto es de AYER (el último día
+  completo), desde las 6:00 de Panamá. Cada grupo de métricas se pide por
+  su lado: Meta retira y renombra (`impressions` → `views`), y una
+  métrica que falla deja su hueco vacío, no la foto entera. Una cuenta
+  cuyo token no vale se apunta con `datos.error` para no bloquear a las
+  demás, y la pantalla la salta.
+- **Las miniaturas de Instagram no se pintan tal cual:** la CSP dice
+  `img-src 'self'`. Pasan por `/api/metricas/miniatura`, que sólo sirve
+  imágenes de `*.cdninstagram.com` y `*.fbcdn.net`. Ampliar la CSP a esos
+  dominios sería abrir la puerta a cualquier imagen de Meta.
 - **`tests/utils/d1Memoria.js` es una D1 de verdad** (SQLite de Node con
   todas las migraciones). Para lo que un doble a mano no ve: que las
   consultas de la capa de acceso existen en el esquema. La cola de
