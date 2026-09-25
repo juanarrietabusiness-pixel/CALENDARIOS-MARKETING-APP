@@ -1,0 +1,16 @@
+/* Programar lo aprobado: se carga con el diálogo. */
+.programar-aprobadas { max-width: 640px; width: 100%; display: flex; flex-direction: column; gap: var(--sp-3); }
+.programar-aprobadas .dialog-titulo { font-size: var(--fs-base); font-weight: 700; display: flex; align-items: center; gap: var(--sp-2); margin: 0; }
+.pa-grupo { border: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.pa-lista { list-style: none; display: flex; flex-direction: column; gap: var(--sp-1); max-height: 40vh; overflow-y: auto; }
+.pa-fila {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: var(--sp-2); border-radius: var(--radius-sm); background: var(--surface-2); min-height: var(--tap);
+}
+.pa-problema { background: var(--danger-soft); }
+.pa-texto { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-2xs); }
+.pa-texto strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pa-meta { color: var(--text-dim); font-size: var(--fs-3xs); }
+.pa-motivo { color: var(--danger); font-size: var(--fs-3xs); }
+.pa-fallidas { margin: var(--sp-1) 0 0 var(--sp-4); font-size: var(--fs-2xs); }
+.programar-aprobadas .dialog-acciones { display: flex; gap: var(--sp-2); justify-content: flex-end; flex-wrap: wrap; }

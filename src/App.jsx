@@ -37,6 +37,7 @@ const Tareas = lazy(() => import("./pages/Tareas"));
 const Equipo = lazy(() => import("./pages/Equipo"));
 const Ajustes = lazy(() => import("./pages/Ajustes"));
 const Resultados = lazy(() => import("./pages/Resultados"));
+const Programacion = lazy(() => import("./pages/Programacion"));
 const ResumenAgencia = lazy(() => import("./pages/Resultados").then((m) => ({ default: m.ResumenAgencia })));
 // Lo que sólo se abre a demanda —diálogos, pestañas que no son el
 // calendario, la página del cliente final— tampoco va en la primera
@@ -52,6 +53,8 @@ const FichaCliente = lazy(() => import("./components/FichaCliente"));
 const Buscador = lazy(() => import("./components/Buscador"));
 
 const Cargando = () => <p role="status" style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando…</p>;
+
+const NOMBRE_RED = { instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok" };
 
 /** Las pestañas de un cliente: [id, nombre, icono]. El id va en la dirección. */
 const PESTANAS = [
@@ -571,8 +574,8 @@ function Workspace({ session, ruta }) {
         case "publicacion":
           setPulso((n) => n + 1);
           if (ev.aviso) setToast(ev.aviso);
-          else if (ev.estado === "publicada") setToast(`Publicada en ${ev.red === "facebook" ? "Facebook" : "Instagram"}.`);
-          else if (ev.estado === "error") setToast(`No se pudo publicar en ${ev.red === "facebook" ? "Facebook" : "Instagram"}. Mira el detalle en la publicación.`);
+          else if (ev.estado === "publicada") setToast(`Publicada ${ev.variante === "historia" ? "la historia " : ""}en ${NOMBRE_RED[ev.red] ?? ev.red}.`);
+          else if (ev.estado === "error") setToast(`No se pudo publicar en ${NOMBRE_RED[ev.red] ?? ev.red}. El motivo está en Programación.`);
           break;
 
         default:
@@ -1000,6 +1003,11 @@ function Workspace({ session, ruta }) {
     }
   };
   const publicacionAbierta = useCallback(() => setPostPedido(null), []);
+  // Desde Programación o Mi día: abrir la publicación de una fila de la cola.
+  const abrirPublicacionDeCola = ({ clientId, calendarId, postId }) => {
+    if (calendarId && postId) setPostPedido({ calId: calendarId, postId });
+    irA(clientId, calendarId);
+  };
 
   if (loading) return <Aviso>Cargando tus clientes…</Aviso>;
   if (loadError) return <Aviso tono="alert">{loadError}</Aviso>;
@@ -1125,6 +1133,10 @@ function Workspace({ session, ruta }) {
             ) : ruta.vista === "equipo" ? (
               <Suspense fallback={<p style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando Equipo…</p>}>
                 <Equipo presentes={presentes} yo={yo} pulso={pulso} onVolver={() => navegar("/")} />
+              </Suspense>
+            ) : ruta.vista === "programacion" ? (
+              <Suspense fallback={<Cargando />}>
+                <Programacion clients={clients} pulso={pulso} onAbrir={abrirPublicacionDeCola} />
               </Suspense>
             ) : ruta.vista === "resultados" ? (
               <Suspense fallback={<Cargando />}>

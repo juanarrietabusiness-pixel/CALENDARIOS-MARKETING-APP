@@ -562,6 +562,21 @@ export async function listarPublicaciones({ calendario = "", cliente = "" } = {}
   return (await pedir(`/publicar?${p}`)) ?? [];
 }
 
+/** Todo el espacio, para la página Programación: pendiente, fallido y lo publicado de los últimos `dias`. */
+export async function listarProgramacion(dias = 14) {
+  return (await pedir(`/publicar?todo=1&dias=${dias}`)) ?? [];
+}
+
+/** Sólo lo que no se pudo publicar (el aviso de la cabecera y Mi día). */
+export async function listarFallidas() {
+  return (await pedir("/publicar?fallidas=1")) ?? [];
+}
+
+/** «Programar todo lo aprobado»: devuelve { programadas, fallidas: [{ postId, motivo }] }. */
+export async function programarVarias(calendarId, postIds) {
+  return pedir("/publicar/lote", conCuerpo("POST", { calendarId, postIds }));
+}
+
 /** Programar a su día y hora, o `ahora: true` para que salga ya. */
 export async function publicar({ calendarId, postId, redes, ahora = false }) {
   return pedir("/publicar", conCuerpo("POST", { calendarId, postId, redes, ahora }));

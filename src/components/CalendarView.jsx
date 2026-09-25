@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState, useRef } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid } from "../utils";
 import { marcarActualizada } from "../lib/publicacion";
@@ -8,10 +8,11 @@ import { base64DeImagen, conImagenesIncrustadas, prepararParaRedes } from "../li
 import {
   shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals, loadClientMemories,
   listarPublicaciones, publicar, cancelarPublicacion, reintentarPublicacion, estadoRedes as leerEstadoRedes,
-  subirImagenPublicacion, saveCalendar,
+  subirImagenPublicacion, saveCalendar, programarVarias,
 } from "../lib/db";
 import AccionesPublicar from "./calendario/accionesPublicar";
-import { resumenCola } from "../lib/cola";
+import { resumenCola, aprobadasSinProgramar } from "../lib/cola";
+import { navegar } from "../lib/rutas";
 import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO, CAMPOS_EXPORTABLES } from "../lib/exportarContenido";
 import MetaPromptModal from "./MetaPromptModal";
 import Icon from "./Icon";
@@ -21,6 +22,7 @@ import { ContentDisplay, OverflowMenu } from "./calendario/primitivas";
 // El panel de una publicación se carga al abrirlo: medios, publicar,
 // historias y vista previa son mucho código que el mes no necesita.
 const PostSidePanel = lazy(() => import("./calendario/PostSidePanel").then((m) => ({ default: m.PostSidePanel })));
+const ProgramarAprobadas = lazy(() => import("./calendario/programarAprobadas"));
 import { MonthGrid } from "./calendario/MonthGrid";
 import { BankPanel } from "./calendario/BankPanel";
 import {
@@ -105,6 +107,61 @@ export default function CalendarView({
     await saveCalendar(nuevo, clienteDb);
     await publicar({ calendarId: calDb, postId: post.id, redes: destino, ahora });
     recargarCola();
+  };
+
+  // Lo aprobado que aún no está en la cola, y las redes que el cliente
+  // tiene de verdad: sin ninguna cuenta, la barra de publicar no sale.
+  const candidatas = useMemo(() => aprobadasSinProgramar(cal?.days ?? [], cola), [cal?.days, cola]);
+  const redesDelCliente = useMemo(
+    () => [...new Set((redes?.cuentas ?? []).filter((c) => c.clientId === clienteDb).map((c) => c.red))],
+    [redes, clienteDb],
+  );
+
+  /**
+   * «Programar lo aprobado»: prepara las imágenes de cada una como el
+   * panel (JPEG y copias adaptadas), guarda el calendario UNA vez y
+   * programa todas en una sola petición.
+   */
+  const programarAprobadas = async (lista, avisar) => {
+    const ahoraISO = new Date().toISOString();
+    const preparadas = new Map();
+    for (const [i, r] of lista.entries()) {
+      avisar(`Preparando imágenes (${i + 1} de ${lista.length})…`);
+      const { post, cambio } = await prepararParaRedes(r.post, r.redes, {
+        subir: (f) => subirImagenPublicacion(clienteDb, f),
+        colorMarca: client?.primaryColor,
+      });
+      if (cambio) preparadas.set(post.id, post);
+    }
+    const nuevo = {
+      ...cal,
+      days: (cal.days || []).map((d) => ({
+        ...d,
+        posts: (d.posts || []).map((p) => (preparadas.has(p.id) ? marcarActualizada(p, preparadas.get(p.id), ahoraISO) : p)),
+      })),
+    };
+    if (preparadas.size) onUpdateCal(calId, nuevo);
+    avisar("Guardando el calendario…");
+    await saveCalendar(nuevo, clienteDb);
+    avisar("Programando…");
+    const r = await programarVarias(calDb, lista.map((x) => x.post.id));
+    recargarCola();
+    const titulo = (id) => {
+      const p = lista.find((x) => x.post.id === id)?.post;
+      return p?.title || p?.idea || "Publicación";
+    };
+    return {
+      programadas: r?.programadas?.length ?? 0,
+      fallidas: (r?.fallidas ?? []).map((f) => ({ ...f, titulo: titulo(f.postId) })),
+    };
+  };
+
+  const abrirDesdeLista = (postId) => {
+    setCapa(null);
+    for (const day of cal?.days ?? []) {
+      const post = (day.posts ?? []).find((p) => p.id === postId);
+      if (post) { setSidePanel({ post, day }); break; }
+    }
   };
 
   const [filterStatus, setFilterStatus] = useState("all");
@@ -865,6 +922,18 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
         />
       )}
 
+      {capa === "programarAprobadas" && (
+        <Suspense fallback={null}>
+          <ProgramarAprobadas
+            candidatas={candidatas}
+            redesDelCliente={redesDelCliente}
+            onProgramar={programarAprobadas}
+            onAbrir={abrirDesdeLista}
+            onClose={cerrarCapa}
+          />
+        </Suspense>
+      )}
+
       {capa === "exportar" && (
         <ExportContenidoDialog
           exportacion={exportacion}
@@ -1013,6 +1082,42 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           ].filter(Boolean)}
         />
       </div>
+
+      {/* Publicar: sólo si el cliente tiene alguna cuenta conectada. Lo
+          aprobado se programa de una vez, y «Programar al aprobar» está a
+          la vista: antes vivía escondido en el diálogo de enviar. */}
+      {redesDelCliente.length > 0 && (
+        <div className="barra-publicar">
+          <span className="barra-publicar-texto">
+            <Icon name="clock" size={16} />
+            {candidatas.length
+              ? `${candidatas.length} ${candidatas.length === 1 ? "aprobada" : "aprobadas"} sin programar`
+              : "Nada aprobado pendiente de programar"}
+          </span>
+          {candidatas.length > 0 && (
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => abrirCapa("programarAprobadas")}>
+              Programar lo aprobado
+            </button>
+          )}
+          <span className="interruptor-corto">
+            <span id={`auto-${calId}`}>Programar al aprobar</span>
+            <button
+              type="button"
+              role="switch"
+              aria-labelledby={`auto-${calId}`}
+              aria-checked={!!cal.opciones?.programarAlAprobar}
+              className={`toggle${cal.opciones?.programarAlAprobar ? " is-on" : ""}`}
+              onClick={() => onUpdateCal(calId, { ...cal, opciones: { ...(cal.opciones || {}), programarAlAprobar: !cal.opciones?.programarAlAprobar } })}
+              title="Cuando el cliente aprueba una publicación, entra sola en la cola a su día y hora"
+            >
+              <span className="toggle-thumb" />
+            </button>
+          </span>
+          <a className="barra-publicar-enlace" href="/programacion" onClick={(e) => { e.preventDefault(); navegar("/programacion"); }}>
+            Ver la cola
+          </a>
+        </div>
+      )}
 
       {/* Generation progress */}
       {genLoading && genProgress > 0 && (

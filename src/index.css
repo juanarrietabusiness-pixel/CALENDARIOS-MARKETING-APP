@@ -2478,6 +2478,17 @@ a.btn, a.btn-icon { text-decoration: none; }
   border: 1px solid var(--border); margin-bottom: var(--sp-3);
 }
 
+/* La barra de publicar del calendario: lo aprobado y «programar al aprobar» */
+.barra-publicar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3); margin-bottom: var(--sp-3);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  font-size: var(--fs-2xs);
+}
+.barra-publicar-texto { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text-dim); }
+.interruptor-corto { display: inline-flex; align-items: center; gap: var(--sp-2); margin-left: auto; color: var(--text-dim); }
+.barra-publicar-enlace { min-height: var(--tap-sm); display: inline-flex; align-items: center; }
+
 /* Panel de una publicación: medios, redes, publicar */
 .casilla { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-2xs); color: var(--text-dim); min-height: var(--tap-sm); cursor: pointer; }
 .panel-cargando { position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100vw); z-index: var(--z-panel); background: var(--surface); display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: var(--fs-xs); }

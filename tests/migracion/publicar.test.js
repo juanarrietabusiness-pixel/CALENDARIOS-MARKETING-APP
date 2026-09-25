@@ -501,3 +501,73 @@ describe("historias y variantes", () => {
     expect(filas().map((f) => `${f.variante}:${f.estado}`).sort()).toEqual(["historia:cancelada", "post:programada"]);
   });
 });
+
+describe("programar lo aprobado de una vez y la cola del espacio", () => {
+  const conSesion = (ruta, opciones = {}) => new Request(`https://calendarios.test${ruta}`, {
+    ...opciones, headers: { Cookie: `${COOKIE}=${TESTIGO}`, "Content-Type": "application/json", ...(opciones.headers ?? {}) },
+  });
+  const lote = (postIds) => worker.fetch(conSesion("/api/publicar/lote", { method: "POST", body: JSON.stringify({ calendarId: "cal1", postIds }) }), env, {});
+
+  it("programa las que pueden salir y devuelve las demás con su motivo, sin parar", async () => {
+    await sembrar({ posts: [
+      post({ id: "a" }),
+      post({ id: "b", redes: ["instagram", "facebook"] }),
+      post({ id: "sin", image: null }),
+    ] });
+    const res = await lote(["a", "b", "sin", "no-existe"]);
+    expect(res.status).toBe(200);
+    const { programadas, fallidas } = await res.json();
+    expect(programadas.map((f) => `${f.postId}:${f.red}`).sort()).toEqual(["a:instagram", "b:facebook", "b:instagram"]);
+    expect(fallidas.map((f) => f.postId).sort()).toEqual(["no-existe", "sin"]);
+    expect(fallidas.find((f) => f.postId === "sin").motivo).toMatch(/imagen|video|medio/i);
+  });
+
+  it("las mismas reglas que una a una: lo que ya salió no se repite y lo programado se sustituye", async () => {
+    await sembrar({ posts: [post({ id: "a" }), post({ id: "b" })] });
+    await programar(env, acceso(), { calendarId: "cal1", postId: "a" });
+    db.sqlite.prepare("update publicaciones_programadas set estado = 'publicada', externo_id = 'm' where post_id = 'a'").run();
+    await programar(env, acceso(), { calendarId: "cal1", postId: "b" });
+    const { programadas, fallidas } = await (await lote(["a", "b"])).json();
+    expect(programadas.map((f) => f.postId)).toEqual(["b"]);
+    expect(fallidas).toMatchObject([{ postId: "a", motivo: expect.stringMatching(/ya salió/) }]);
+    const vivas = filas().filter((f) => f.post_id === "b" && f.estado === "programada");
+    expect(vivas).toHaveLength(1);
+  });
+
+  it("una red sin cuenta se salta; sin ninguna, el motivo lo dice", async () => {
+    await sembrar({ posts: [post({ id: "a", redes: ["instagram", "tiktok"] }), post({ id: "t", redes: ["tiktok"] })], cuentas: ["instagram"] });
+    const { programadas, fallidas } = await (await lote(["a", "t"])).json();
+    expect(programadas.map((f) => `${f.postId}:${f.red}`)).toEqual(["a:instagram"]);
+    expect(fallidas[0]).toMatchObject({ postId: "t", motivo: expect.stringMatching(/ninguna cuenta/) });
+  });
+
+  it("veinte publicaciones caben en el límite de consultas del plan gratuito", async () => {
+    const posts = Array.from({ length: 20 }, (_, i) => post({ id: `p${i}`, redes: ["instagram", "facebook"] }));
+    await sembrar({ posts });
+    const prepare = vi.spyOn(db, "prepare");
+    const { programadas } = await (await lote(posts.map((p) => p.id))).json();
+    expect(programadas).toHaveLength(40);
+    expect(prepare.mock.calls.length).toBeLessThan(50);
+  });
+
+  it("la cola del espacio trae lo justo para reconocer cada pieza, y las fallidas por separado", async () => {
+    await sembrar({ posts: [post({ id: "a", title: "Lanzamiento de otoño" }), post({ id: "b" })] });
+    await programar(env, acceso(), { calendarId: "cal1", postId: "a" });
+    await programar(env, acceso(), { calendarId: "cal1", postId: "b" });
+    db.sqlite.prepare("update publicaciones_programadas set estado = 'error', error = 'Meta dijo que no' where post_id = 'b'").run();
+    const todo = await (await worker.fetch(conSesion("/api/publicar?todo=1"), env, {})).json();
+    expect(todo).toHaveLength(2);
+    expect(todo.find((f) => f.postId === "a")).toMatchObject({ titulo: "Lanzamiento de otoño", formato: "post", miniatura: IMAGEN, clientId: "c1" });
+    expect(JSON.stringify(todo)).not.toMatch(/carga|token/);
+    const fallidas = await (await worker.fetch(conSesion("/api/publicar?fallidas=1"), env, {})).json();
+    expect(fallidas).toMatchObject([{ postId: "b", error: "Meta dijo que no" }]);
+  });
+
+  it("lo publicado hace más de los días pedidos ya no sale en la cola del espacio", async () => {
+    await sembrar();
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1" });
+    db.sqlite.prepare("update publicaciones_programadas set estado = 'publicada', publicada_at = '2026-09-01T00:00:00.000Z'").run();
+    expect(await (await worker.fetch(conSesion("/api/publicar?todo=1&dias=14"), env, {})).json()).toEqual([]);
+    expect(await (await worker.fetch(conSesion("/api/publicar?todo=1&dias=60"), env, {})).json()).toHaveLength(1);
+  });
+});
