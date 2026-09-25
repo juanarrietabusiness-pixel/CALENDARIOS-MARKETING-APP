@@ -30,7 +30,7 @@ import { fechaEnZona, debeReabrirse, esFecha } from "../../src/lib/agenda.js";
 import { leerConfigIA, MODELOS_ELEGIBLES, RAZONAMIENTOS, ACCIONES_LIMITE } from "../lib/configIA.js";
 
 const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe"];
-const JSON_CALENDARIOS = ["week_concepts", "days", "visual_references", "day_labels"];
+const JSON_CALENDARIOS = ["week_concepts", "days", "visual_references", "day_labels", "opciones"];
 const BOOL_CALENDARIOS = ["share_enabled", "allow_editing"];
 
 function parsear(fila, columnas, booleanos = []) {
@@ -376,8 +376,11 @@ export async function rutasDatos(req, env, ctx) {
       if (!datos) return error("Cuerpo inválido");
       // El navegador no elige su propio testigo de compartición ni
       // reactiva un enlace por su cuenta: eso son rutas aparte.
+      // Tampoco escribe la revisión del cliente: eso lo marca el enlace
+      // público cuando el cliente pulsa «Enviar mi revisión».
       const limpio = sinCamposDeServidor(datos, [
         "owner_id", "share_token", "share_enabled", "share_expires_at",
+        "revision_enviada", "revision_revisor",
       ]);
       const fila = aTexto(limpio, JSON_CALENDARIOS, ["allow_editing"]);
       fila.id = id && id !== "nuevo" ? id : (fila.id || uuid());
@@ -393,6 +396,27 @@ export async function rutasDatos(req, env, ctx) {
         { tipo: "calendario:recargar", id: fila.id, clientId: guardado.client_id, por: firma(ctx.usuario, req) },
       );
       return json(guardado);
+    }
+
+    // La conversación de cada publicación con el cliente. Lo del cliente
+    // entra por el enlace público; lo de la agencia, por aquí.
+    if (sub === "comentarios") {
+      if (!(await acceso.leerUno("calendars", { id }))) return noEncontrado("Calendario");
+      if (metodo === "GET") {
+        return json(await acceso.leer("comentarios_aprobacion", { calendar_id: id }, "created_at asc"));
+      }
+      if (metodo === "POST") {
+        const { postId, texto } = (await cuerpo(req)) ?? {};
+        const limpio = String(texto ?? "").trim().slice(0, 2000);
+        if (!postId || !limpio) return error("Falta la publicación o el texto");
+        const fila = {
+          id: uuid(), calendar_id: id, post_id: String(postId).slice(0, 200), autor: "agencia",
+          nombre: ctx.usuario?.nombre ?? "La agencia", texto: limpio, created_at: ahora(),
+        };
+        await acceso.insertar("comentarios_aprobacion", fila);
+        difundir(env, acceso.ownerId, { tipo: "comentario", calId: id, postId: fila.post_id, por: firma(ctx.usuario, req) });
+        return json(fila, 201);
+      }
     }
 
     if (!sub && metodo === "DELETE") {

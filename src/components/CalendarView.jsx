@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid } from "../utils";
+import { marcarActualizada } from "../lib/publicacion";
 import { callAI, loadADN, parseAIResponse, buildScriptPrompt, buildDescripcionesPrompt, buildClientContext, generateSinglePost } from "../api";
 import { buildExportHTML } from "../export";
 import { base64DeImagen, conImagenesIncrustadas } from "../lib/medios";
@@ -165,10 +166,14 @@ export default function CalendarView({
               if (!review) return p;
               return {
                 ...p,
-                status: review.estado === "aprobado" ? "approved"
-                  : review.estado === "cambios" ? "rejected"
-                    : p.status,
-                comment: review.comentario || p.comment,
+                // «Publicada» no la pisa una aprobación: ya salió.
+                status: p.status === "published" ? p.status
+                  : review.estado === "aprobado" ? "approved"
+                    : review.estado === "cambios" ? "rejected"
+                      : p.status,
+                // El comentario del cliente ya NO se copia a la nota
+                // interna: vive en la conversación de la publicación, y
+                // mezclarlos pisaba lo que la agencia había escrito.
               };
             }),
           }));
@@ -246,9 +251,13 @@ export default function CalendarView({
   const addDebug = (msg) => setDebugLog((prev) => [...prev, { time: new Date().toLocaleTimeString(), msg }]);
 
   const updatePost = (_date, updatedPost) => {
+    // Si el cliente había pedido cambios y se corrige algo que él ve, la
+    // publicación vuelve a su página como «Actualizada», con lo de antes
+    // tachado: así no tiene que releer el mes entero.
+    const ahoraISO = new Date().toISOString();
     const newDays = (cal.days || []).map((d) => ({
       ...d,
-      posts: (d.posts || []).map((p) => (p.id === updatedPost.id ? updatedPost : p)),
+      posts: (d.posts || []).map((p) => (p.id === updatedPost.id ? marcarActualizada(p, updatedPost, ahoraISO) : p)),
     }));
     onUpdateCal(calId, { ...cal, days: newDays });
   };
@@ -1394,12 +1403,16 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           shareEnabled={cal.shareEnabled !== false}
           working={shareWorking}
           approvalUrl={approvalUrl}
-          whatsappMessage={`Hola${client.name ? " " + client.name : ""}, aquí está el calendario de ${calName} para tu revisión:\n${approvalUrl}\nPuedes aprobar o pedir cambios directamente desde tu celular 📱`}
+          whatsappMessage={`Hola${client.name ? " " + client.name : ""}, aquí está el calendario de ${calName} para tu revisión:\n${approvalUrl}\nPuedes aprobar o pedir cambios directamente desde tu celular.`}
           onGenerate={sendToClient}
           onRevoke={() => changeShare(false)}
           onReopen={() => changeShare(true)}
           allowEditing={cal.allowEditing || false}
           onToggleEditing={() => onUpdateCal(calId, { ...cal, allowEditing: !cal.allowEditing })}
+          opciones={cal.opciones || {}}
+          onCambiarOpciones={(cambios) => onUpdateCal(calId, { ...cal, opciones: { ...(cal.opciones || {}), ...cambios } })}
+          revisionEnviada={cal.revisionEnviada}
+          revisionRevisor={cal.revisionRevisor}
           onClose={cerrarCapa}
         />
       )}
@@ -1417,6 +1430,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
             post={sidePanel.post}
             day={sidePanel.day}
             editandoOtros={editandoOtros}
+            pulso={pulso}
             onUpdate={updatePost}
             onDelete={deletePost}
             onMoveDate={movePost}

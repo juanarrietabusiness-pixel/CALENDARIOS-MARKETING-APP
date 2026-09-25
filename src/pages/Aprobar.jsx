@@ -1,16 +1,43 @@
-import { useCallback, useEffect, useId, useState } from "react";
-import { FORMATS, FORMAT_ICONS, DAYS } from "../constants";
+import "./Aprobar.css";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { FORMATS, FORMAT_ICONS, MONTHS } from "../constants";
+import Icon from "../components/Icon";
+import logoMark from "../assets/logo-mark.png";
+import { useDialogA11y } from "../hooks/useDialogA11y";
+import { mediosDe, textoPara, primerComentario } from "../lib/publicacion";
+import { normalizarColor, textoSobre, conAlfa } from "../lib/colores";
+import { fechaEnZona } from "../lib/agenda";
 
-/**
- * Llamada al enlace público del Worker.
- *
- * No lleva sesión —ni debe—: esta página es la que ve el cliente final,
- * que no tiene cuenta. Quien acota es el testigo, y el servidor
- * comprueba que la publicación pertenezca a ESE calendario.
- *
- * Sustituye a las tres funciones `security definer` de Supabase:
- * get_shared_calendar, submit_approval y update_post_content.
- */
+// ============================================================
+// La página que ve el cliente final
+//
+// QUÉ CAMBIÓ Y POR QUÉ
+//
+// La página de antes obligaba a pulsar «Ver contenido» en CADA
+// publicación para leer el copy —que es justo lo que hay que revisar—,
+// enseñaba cajas de texto en vez de la publicación, mostraba lo interno
+// (la idea para la IA, la categoría y, sin querer, el comentario interno
+// de la agencia), no sabía quién aprobaba y no tenía final: la agencia
+// no se enteraba de cuándo el cliente había terminado.
+//
+// Ahora:
+//   · Portada con la marca DEL CLIENTE —su logo, sus colores—, el mes,
+//     el mensaje de la agencia y la fecha límite. Tema claro: es un
+//     documento para el cliente, no la herramienta de la agencia.
+//   · Tres vistas: feed (cada publicación como en Instagram, con el
+//     texto completo), calendario del mes y rejilla del perfil.
+//   · Revisión rápida en el móvil: una publicación a pantalla completa,
+//     Aprobar o Pedir cambio, y pasa sola a la siguiente.
+//   · Pedir un cambio con atajos (imagen, texto, fecha) y una
+//     conversación por publicación que la agencia contesta.
+//   · «Actualizada»: lo que la agencia corrigió vuelve con lo de antes
+//     tachado, para no releer todo.
+//   · «Enviar mi revisión» al terminar: la agencia lo ve al momento.
+//
+// Sin sesión: quien acota es el testigo, y el servidor comprueba que
+// cada publicación y cada medio pertenezcan a ESTE calendario.
+// ============================================================
+
 async function publico(ruta, opciones = {}) {
   const res = await fetch(`/api/publico${ruta}`, {
     ...opciones,
@@ -21,1049 +48,873 @@ async function publico(ruta, opciones = {}) {
   if (!res.ok) throw new Error(datos?.error || `El servidor respondió ${res.status}.`);
   return datos;
 }
-import Icon from "../components/Icon";
-import logoMark from "../assets/logo-mark.png";
 
 /**
  * Quien abre el enlace no tiene sesión: `/api/media/…` le devolvería
- * 401. Las imágenes guardadas en R2 se piden por la ruta pública del
- * enlace, que comprueba que pertenezcan a este calendario.
+ * 401. Los medios se piden por la ruta pública del enlace, que comprueba
+ * que pertenezcan a este calendario.
  */
-function srcPublico(image, token) {
-  if (typeof image !== "string" || !image.startsWith("/api/media/")) return image;
-  return `/api/publico/${encodeURIComponent(token)}/media/${image.slice("/api/media/".length)}`;
+function srcPublico(src, token) {
+  if (typeof src !== "string" || !src.startsWith("/api/media/")) return src;
+  return `/api/publico/${encodeURIComponent(token)}/media/${src.slice("/api/media/".length)}`;
 }
 
-function fmt12h(value) {
-  if (!value) return "--:--";
+function hora12(value) {
+  if (!value) return "";
   const [h, m] = value.split(":").map(Number);
-  const suffix = h >= 12 ? "PM" : "AM";
+  const sufijo = h >= 12 ? "p. m." : "a. m.";
   const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return `${h12}:${String(m).padStart(2, "0")} ${suffix}`;
+  return `${h12}:${String(m).padStart(2, "0")} ${sufijo}`;
 }
 
-/**
- * Página pública de aprobación.
- *
- * Habla directamente con Postgres a través de dos funciones que validan
- * el token dentro de la base de datos. No hay clave de servicio de por
- * medio, y como la respuesta del cliente entra en la tabla al momento,
- * la agencia la ve en vivo sin sondear nada.
- *
- * El enlace sólo permite ver y responder este calendario: las políticas
- * RLS impiden leer ninguna otra fila.
- */
+// Sólo la primera letra en mayúscula: con `text-transform: capitalize`
+// salía «Viernes, 25 De Septiembre · 9:00 A. M.».
+const mayuscula = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : "");
+const fechaLarga = (f) => (f
+  ? mayuscula(new Date(`${f}T12:00:00Z`).toLocaleDateString("es-PA", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" }))
+  : "");
+const fechaCorta = (f) => (f
+  ? mayuscula(new Date(`${f}T12:00:00Z`).toLocaleDateString("es-PA", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }))
+  : "");
+
+// El nombre de quien revisa se pide una vez y se recuerda en ESTE
+// navegador. localStorage puede no estar (modo privado): nunca rompe.
+const CLAVE_REVISOR = "aprobar:revisor";
+const leerRevisor = () => { try { return localStorage.getItem(CLAVE_REVISOR) || ""; } catch { return ""; } };
+const guardarRevisor = (n) => { try { localStorage.setItem(CLAVE_REVISOR, n); } catch { /* sin almacenamiento */ } };
+
+const ATAJOS_CAMBIO = ["Imagen o video", "Texto", "Fecha u hora", "Hashtags", "Otro"];
+
+/** En qué punto está una publicación para el cliente. */
+function estadoDe(post, aprobacion) {
+  if (!aprobacion) return "pendiente";
+  if (aprobacion.estado === "cambios" && post.actualizadaAt && post.actualizadaAt > (aprobacion.timestamp || "")) {
+    return "actualizada";
+  }
+  return aprobacion.estado === "aprobado" ? "aprobada" : "cambios";
+}
+
+const ETIQUETA_ESTADO = {
+  pendiente: "Por revisar",
+  aprobada: "Aprobada",
+  cambios: "Cambios pedidos",
+  actualizada: "Actualizada · revísala",
+};
+
 export default function Aprobar() {
-  const [calData, setCalData] = useState(null);
+  const token = new URLSearchParams(window.location.search).get("t");
+  const [datos, setDatos] = useState(null);
   const [approvals, setApprovals] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [comentarios, setComentarios] = useState([]);
+  const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(null);
-  const [saving, setSaving] = useState({});
-  const [saveError, setSaveError] = useState("");
-  const [commentInputs, setCommentInputs] = useState({});
-  const [showComment, setShowComment] = useState({});
-  const [activeWeek, setActiveWeek] = useState("all");
-  const [summaryOpen, setSummaryOpen] = useState(true);
-  const [bulkSaving, setBulkSaving] = useState(false);
-  // Confirmación de «Aprobar todo» en dos pasos. Antes era un confirm()
-  // del navegador: bloquea la pestaña entera, no se puede estilar y en
-  // móvil aparece como un aviso ajeno a la página que está viendo el
-  // cliente. El paso intermedio conserva la red —aprobar todo no se
-  // deshace— sin salirse de la aplicación.
-  const [bulkConfirm, setBulkConfirm] = useState(false);
-  const [editSaving, setEditSaving] = useState({});
+  const [aviso, setAviso] = useState("");
+  const [fallo, setFallo] = useState("");
+  const [guardando, setGuardando] = useState({});
+  const [revisor, setRevisor] = useState(leerRevisor);
+  const [nombreBorrador, setNombreBorrador] = useState("");
+  const [vista, setVista] = useState("feed");
+  const [filtro, setFiltro] = useState("todas");
+  const [rapida, setRapida] = useState(false);
+  const [confirmarEnvio, setConfirmarEnvio] = useState(false);
+  const [confirmarTodo, setConfirmarTodo] = useState(false);
+  const [enfocar, setEnfocar] = useState(null);
 
-  const params = new URLSearchParams(window.location.search);
-  const token = params.get("t");
-
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const cargar = useCallback(async () => {
+    setCargando(true);
     setError(null);
     try {
-      let data = null;
-      try {
-        data = await publico(`/${encodeURIComponent(token)}`);
-      } catch {
-        data = null;   // 404: enlace inválido, revocado o caducado
+      const d = await publico(`/${encodeURIComponent(token)}`).catch(() => null);
+      if (!d?.calendar) {
+        setError("Este enlace no es válido, se desactivó o caducó. Pide uno nuevo a tu agencia.");
+      } else {
+        setDatos(d.calendar);
+        setApprovals(d.approvals || {});
+        setComentarios(d.comentarios || []);
       }
-      if (!data?.calendar) {
-        setError("Enlace inválido, revocado o caducado. Pide uno nuevo a tu agencia.");
-        setLoading(false);
-        return;
-      }
-      setCalData(data.calendar);
-      setApprovals(data.approvals || {});
     } catch (e) {
-      setError("No se pudo cargar el calendario: " + e.message);
+      setError(`No se pudo cargar el calendario: ${e.message}`);
     }
-    setLoading(false);
+    setCargando(false);
   }, [token]);
 
   useEffect(() => {
-    if (!token) {
-      setError("Enlace inválido: le falta el identificador del calendario.");
-      setLoading(false);
-      return;
-    }
-    loadData();
-  }, [token, loadData]);
+    if (!token) { setError("Al enlace le falta el identificador del calendario."); setCargando(false); return; }
+    void cargar();
+  }, [token, cargar]);
 
-  const [editedFields, setEditedFields] = useState({});
+  useEffect(() => {
+    if (!aviso) return;
+    const t = setTimeout(() => setAviso(""), 4000);
+    return () => clearTimeout(t);
+  }, [aviso]);
 
-  const handleApproval = async (postId, estado, comentario = "", suggestions = null) => {
-    setSaving((p) => ({ ...p, [postId]: true }));
-    setSaveError("");
+  const publicaciones = useMemo(() => (datos?.calendar?.days ?? [])
+    .flatMap((d) => (d.posts ?? []).map((p) => ({ ...p, _fecha: d.date, _dia: d })))
+    .sort((a, b) => (a._fecha + (a.publishTime || "")).localeCompare(b._fecha + (b.publishTime || ""))),
+  [datos]);
+
+  const estados = useMemo(() => Object.fromEntries(publicaciones.map((p) => [p.id, estadoDe(p, approvals[p.id])])), [publicaciones, approvals]);
+  const cuenta = (e) => Object.values(estados).filter((x) => x === e).length;
+  const revisadas = publicaciones.filter((p) => estados[p.id] === "aprobada" || estados[p.id] === "cambios").length;
+  const porRevisar = publicaciones.filter((p) => estados[p.id] === "pendiente" || estados[p.id] === "actualizada");
+
+  const responder = async (postId, estado, comentario = "") => {
+    setGuardando((g) => ({ ...g, [postId]: true }));
+    setFallo("");
     try {
       await publico(`/${encodeURIComponent(token)}/aprobacion`, {
         method: "POST",
-        body: JSON.stringify({
-          postId, estado, comentario, revisor: "",
-          sugeridaDescripcion: suggestions?.descripcion || null,
-          sugeridoGuion: suggestions?.guion || null,
-        }),
+        body: JSON.stringify({ postId, estado, comentario, revisor }),
       });
-
-      setApprovals((p) => ({
-        ...p,
-        [postId]: {
-          estado, comentario, timestamp: new Date().toISOString(),
-          suggestedDescripcion: suggestions?.descripcion || null,
-          suggestedGuion: suggestions?.guion || null,
-        },
-      }));
-    } catch (e) {
-      setSaveError(`No se pudo guardar tu respuesta (${e.message}). Revisa tu conexión e inténtalo otra vez.`);
-    }
-    setSaving((p) => ({ ...p, [postId]: false }));
-  };
-
-  const handleSaveEdit = async (postId, field, value) => {
-    const key = `${postId}-${field}`;
-    setEditSaving((p) => ({ ...p, [key]: true }));
-    setSaveError("");
-    try {
-      const cambio = {};
-      if (field === "descripcion") cambio.descripcion = value;
-      if (field === "guion") cambio.guion = value;
-      await publico(
-        `/${encodeURIComponent(token)}/publicacion/${encodeURIComponent(postId)}`,
-        { method: "PATCH", body: JSON.stringify(cambio) },
-      );
-      setCalData((prev) => ({
-        ...prev,
-        calendar: {
-          ...prev.calendar,
-          days: (prev.calendar.days || []).map((day) => ({
-            ...day,
-            posts: (day.posts || []).map((p) =>
-              p.id === postId ? { ...p, [field]: value } : p
-            ),
-          })),
-        },
-      }));
-      setEditedFields((p) => {
-        const n = { ...p };
-        if (n[postId]) {
-          const f = { ...n[postId] };
-          delete f[field];
-          if (Object.keys(f).length === 0) delete n[postId];
-          else n[postId] = f;
-        }
-        return n;
-      });
-    } catch (e) {
-      setSaveError(`No se pudo guardar (${e.message}). Revisa tu conexión e inténtalo otra vez.`);
-    }
-    setEditSaving((p) => ({ ...p, [key]: false }));
-  };
-
-  const handleBulkApprove = async () => {
-    if (!calData) return;
-    const pendingPosts = (calData.calendar.days || [])
-      .flatMap((d) => (d.posts || []))
-      .filter((p) => !approvals[p.id]);
-    const pendingRefs = (calData.calendar.visualReferences || [])
-      .filter((r) => !approvals[r.id]);
-    const pending = [...pendingPosts.map((p) => p.id), ...pendingRefs.map((r) => r.id)];
-    if (pending.length === 0) return;
-    setBulkConfirm(false);
-    setBulkSaving(true);
-    for (const id of pending) {
-      try {
-        await publico(`/${encodeURIComponent(token)}/aprobacion`, {
+      setApprovals((a) => ({ ...a, [postId]: { estado, comentario, revisor, timestamp: new Date().toISOString() } }));
+      if (comentario) {
+        const r = await publico(`/${encodeURIComponent(token)}/comentario`, {
           method: "POST",
-          body: JSON.stringify({ postId: id, estado: "aprobado", comentario: "", revisor: "" }),
-        });
-        setApprovals((p) => ({
-          ...p,
-          [id]: { estado: "aprobado", comentario: "", timestamp: new Date().toISOString() },
-        }));
-      } catch {
-        // continue with remaining
+          body: JSON.stringify({ postId, texto: comentario, nombre: revisor }),
+        }).catch(() => null);
+        if (r?.comentario) setComentarios((c) => [...c, r.comentario]);
       }
+      setAviso(estado === "aprobado" ? "Aprobada. ¡Gracias!" : "Enviamos tu pedido de cambio a la agencia.");
+      return true;
+    } catch (e) {
+      setFallo(`No se pudo guardar tu respuesta (${e.message}). Revisa tu conexión e inténtalo otra vez.`);
+      return false;
+    } finally {
+      setGuardando((g) => ({ ...g, [postId]: false }));
     }
-    setBulkSaving(false);
   };
 
-  if (loading) {
+  const comentar = async (postId, texto) => {
+    try {
+      const r = await publico(`/${encodeURIComponent(token)}/comentario`, {
+        method: "POST",
+        body: JSON.stringify({ postId, texto, nombre: revisor }),
+      });
+      setComentarios((c) => [...c, r.comentario]);
+      return true;
+    } catch (e) {
+      setFallo(`No se pudo enviar el comentario (${e.message}).`);
+      return false;
+    }
+  };
+
+  const sugerirTexto = async (postId, campo, valor) => {
+    try {
+      await publico(`/${encodeURIComponent(token)}/publicacion/${encodeURIComponent(postId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ [campo]: valor }),
+      });
+      setDatos((d) => ({
+        ...d,
+        calendar: {
+          ...d.calendar,
+          days: d.calendar.days.map((dia) => ({ ...dia, posts: dia.posts.map((p) => (p.id === postId ? { ...p, [campo]: valor } : p)) })),
+        },
+      }));
+      setAviso("Guardamos tu cambio en el texto.");
+      return true;
+    } catch (e) {
+      setFallo(`No se pudo guardar el texto (${e.message}).`);
+      return false;
+    }
+  };
+
+  const aprobarTodo = async () => {
+    setConfirmarTodo(false);
+    for (const p of porRevisar) {
+      if (!(await responder(p.id, "aprobado"))) break;
+    }
+    setAviso("Aprobamos todas las publicaciones que faltaban.");
+  };
+
+  const enviarRevision = async () => {
+    setConfirmarEnvio(false);
+    try {
+      const r = await publico(`/${encodeURIComponent(token)}/revision`, { method: "POST", body: JSON.stringify({ revisor }) });
+      setDatos((d) => ({ ...d, calendar: { ...d.calendar, revisionEnviada: r.fecha, revisionRevisor: revisor } }));
+      setAviso("¡Listo! Tu agencia ya tiene tu revisión.");
+    } catch (e) {
+      setFallo(`No se pudo enviar la revisión (${e.message}).`);
+    }
+  };
+
+  const irAPublicacion = (id) => { setVista("feed"); setFiltro("todas"); setEnfocar(id); };
+
+  // ---------- Pantallas de carga y error ----------
+  if (cargando) {
     return (
-      <div style={styles.center}>
-        <p role="status">
-          <Icon name="calendar" size={36} style={{ margin: "0 auto var(--sp-3)", color: "var(--text-faint)" }} />
-          <span style={{ color: "var(--text-muted)" }}>Cargando calendario…</span>
-        </p>
+      <div className="aprobar aprobar-centro">
+        <p role="status"><Icon name="calendar" size={36} /> Cargando tu calendario…</p>
       </div>
     );
   }
-
   if (error) {
     return (
-      <div style={styles.center}>
-        <p role="alert" style={{ maxWidth: 420 }}>
-          <Icon name="alert" size={36} style={{ margin: "0 auto var(--sp-3)", color: "var(--danger)" }} />
-          <span style={{ color: "var(--danger)", fontSize: "var(--fs-sm)" }}>{error}</span>
-        </p>
-        {token && (
-          <button className="btn btn-secondary" style={{ marginTop: "var(--sp-4)" }} onClick={loadData}>
-            Reintentar
-          </button>
-        )}
+      <div className="aprobar aprobar-centro">
+        <p role="alert" style={{ maxWidth: 420 }}><Icon name="alert" size={36} /> {error}</p>
+        {token && <button className="btn btn-secondary" onClick={cargar}>Reintentar</button>}
       </div>
     );
   }
 
-  const { client, calendar } = calData;
-  const pc = client?.primaryColor || "#1E90FF";
-  const allPosts = (calendar.days || []).flatMap((d) =>
-    (d.posts || []).map((p) => ({ ...p, _date: d.date }))
-  );
-  const totalPosts = allPosts.length;
-  const reviewed = allPosts.filter((p) => approvals[p.id]).length;
-  const pct = totalPosts > 0 ? Math.round((reviewed / totalPosts) * 100) : 0;
+  const { client, calendar } = datos;
+  const marca = normalizarColor(client?.primaryColor) || "#1E90FF";
+  const estiloMarca = {
+    "--marca": marca,
+    "--marca-texto": textoSobre(marca),
+    "--marca-suave": conAlfa(marca, 0.1),
+    "--marca-linea": conAlfa(marca, 0.35),
+    "--marca-2": normalizarColor(client?.secondaryColor) || marca,
+  };
+  const mes = calendar.name || `${MONTHS[calendar.month] ?? ""} ${calendar.year ?? ""}`;
+  const usuario = (client?.instagram || client?.name || "").replace(/^@/, "");
+  const hoy = fechaEnZona();
+  const vencida = calendar.fechaLimite && calendar.fechaLimite < hoy;
+  const lista = publicaciones.filter((p) => filtro === "todas" || estados[p.id] === filtro ||
+    (filtro === "pendiente" && estados[p.id] === "actualizada"));
+  const refs = calendar.visualReferences ?? [];
 
-  const weekGroups = {};
-  (calendar.days || []).forEach((day) => {
-    const wk = day.weekNumber || 1;
-    if (!weekGroups[wk]) weekGroups[wk] = { concept: day.concept || "", days: [] };
-    weekGroups[wk].days.push(day);
-  });
-  const weeks = Object.keys(weekGroups).sort((a, b) => a - b);
-  const filteredWeeks = activeWeek === "all" ? weeks : weeks.filter((w) => w === activeWeek);
-
-  const approvedCount = allPosts.filter((p) => approvals[p.id]?.estado === "aprobado").length;
-  const changesCount = allPosts.filter((p) => approvals[p.id]?.estado === "cambios").length;
-  const pendingCount = allPosts.filter((p) => !approvals[p.id]).length;
-
-  const allRefs = calendar.visualReferences || [];
-  const pendingRefsCount = allRefs.filter((r) => !approvals[r.id]).length;
-  const totalPending = pendingCount + pendingRefsCount;
-
-  const categoryPattern = {};
-  (calendar.days || []).forEach((day) => {
-    const dow = new Date(day.date + "T12:00:00").getDay();
-    if (day.category && !categoryPattern[dow]) categoryPattern[dow] = day.category;
-  });
+  // ---------- Bienvenida: el nombre, una sola vez ----------
+  if (!revisor) {
+    return (
+      <div className="aprobar" style={estiloMarca}>
+        <main className="aprobar-bienvenida">
+          <Portada client={client} mes={mes} calendar={calendar} vencida={vencida} />
+          <form
+            className="aprobar-tarjeta aprobar-nombre"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const n = nombreBorrador.trim();
+              if (!n) return;
+              guardarRevisor(n);
+              setRevisor(n);
+            }}
+          >
+            <h2>¡Hola! Antes de empezar</h2>
+            <p>Así tu agencia sabe quién aprobó cada publicación.</p>
+            <label htmlFor="aprobar-nombre" className="label">Tu nombre</label>
+            <input
+              id="aprobar-nombre"
+              className="input"
+              autoComplete="name"
+              value={nombreBorrador}
+              onChange={(e) => setNombreBorrador(e.target.value)}
+              placeholder="Ej.: María"
+            />
+            <button type="submit" className="btn aprobar-btn-marca" disabled={!nombreBorrador.trim()}>
+              Empezar a revisar <Icon name="chevronRight" size={18} />
+            </button>
+            <p className="aprobar-meta">
+              {publicaciones.length} publicaciones · {porRevisar.length} por revisar
+            </p>
+          </form>
+        </main>
+      </div>
+    );
+  }
 
   return (
-    <div style={styles.page}>
+    <div className="aprobar" style={estiloMarca}>
       <a className="skip-link" href="#publicaciones">Saltar a las publicaciones</a>
+      <Portada client={client} mes={mes} calendar={calendar} vencida={vencida} />
 
-      <header style={{ ...styles.header, background: `linear-gradient(135deg, ${pc}, ${pc}99)` }}>
-        {client?.logo && (
-          <img
-            src={client.logo}
-            alt={`Logo de ${client.name || "el cliente"}`}
-            style={{ width: 56, height: 56, objectFit: "contain", borderRadius: 12, background: "rgba(255,255,255,.18)", padding: 4, marginBottom: "var(--sp-2)" }}
-          />
-        )}
-        <h1 style={{ fontSize: "var(--fs-xl)", fontWeight: 900 }}>{client?.name || "Cliente"}</h1>
-        <p style={{ fontSize: "var(--fs-sm)", color: "rgba(255,255,255,.92)", marginTop: "var(--sp-1)" }}>
-          {calendar.name || "Calendario"}
-        </p>
-        {calendar.campaign && (
-          <span style={{ display: "inline-block", marginTop: "var(--sp-2)", padding: "var(--sp-1) var(--sp-3)", background: "rgba(255,255,255,.15)", borderRadius: 20, fontSize: "var(--fs-xs)", fontWeight: 700 }}>
-            {calendar.campaign}
-          </span>
-        )}
-        <p style={{ fontSize: "var(--fs-xs)", color: "rgba(255,255,255,.85)", marginTop: "var(--sp-2)" }}>
-          Revisa cada publicación y marca si la apruebas o quieres cambios.
-        </p>
-      </header>
+      <div role="status" aria-live="polite" className={aviso ? "aprobar-aviso" : "sr-only"}>{aviso}</div>
+      {fallo && <p role="alert" className="aprobar-fallo">{fallo}</p>}
 
-      {/* Stats bar */}
-      <div style={styles.statsBar}>
-        <div style={styles.stat}>
-          <div style={{ ...styles.statNum, color: pc }}>{totalPosts}</div>
-          <div style={styles.statLabel}>Posts</div>
-        </div>
-        <div style={styles.stat}>
-          <div style={{ ...styles.statNum, color: "var(--success)" }}>{approvedCount}</div>
-          <div style={styles.statLabel}>Aprobados</div>
-        </div>
-        <div style={styles.stat}>
-          <div style={{ ...styles.statNum, color: "var(--danger)" }}>{changesCount}</div>
-          <div style={styles.statLabel}>Cambios</div>
-        </div>
-        <div style={styles.stat}>
-          <div style={{ ...styles.statNum, color: "var(--text-muted)" }}>{pendingCount}</div>
-          <div style={styles.statLabel}>Pendientes</div>
-        </div>
-      </div>
-
-      {/* Progreso: pegajoso para que el cliente sepa siempre cuánto le queda */}
-      <div style={styles.progressSection}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "var(--fs-2xs)", color: "var(--text-dim)", marginBottom: "var(--sp-1)" }}>
-          <span id="rev-label">{reviewed} de {totalPosts} publicaciones revisadas</span>
-          <span>{pct}%</span>
-        </div>
-        <div
-          className="progress-bar"
-          role="progressbar"
-          aria-labelledby="rev-label"
-          aria-valuenow={pct}
-          aria-valuemin={0}
-          aria-valuemax={100}
-        >
-          <div className="progress-fill" style={{ width: `${pct}%`, background: `linear-gradient(90deg, #1B3A6B, ${pc})` }} />
-        </div>
-      </div>
-
-      {/* Campaign summary section */}
-      <div style={styles.campaignSection}>
-        <button
-          type="button"
-          onClick={() => setSummaryOpen(!summaryOpen)}
-          style={styles.campaignToggle}
-        >
-          <span style={{ fontWeight: 700, fontSize: "var(--fs-sm)" }}>Resumen de Campana</span>
-          <span style={{ fontSize: "var(--fs-sm)", transition: "transform .2s", transform: summaryOpen ? "rotate(180deg)" : "rotate(0)" }}>▼</span>
-        </button>
-        {summaryOpen && (
-          <div style={{ padding: "0 var(--sp-4) var(--sp-4)" }}>
-            {Object.keys(categoryPattern).length > 0 && (
-              <>
-                <h3 style={styles.sectionHeading}>Patron Semanal</h3>
-                <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)" }}>
-                  {Object.entries(categoryPattern)
-                    .sort(([a], [b]) => ((+a || 7) - (+b || 7)))
-                    .map(([dow, cat]) => (
-                      <div key={dow} style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)", padding: "var(--sp-1) 0" }}>
-                        <span style={{ fontSize: "var(--fs-2xs)", fontWeight: 700, color: "var(--text)", minWidth: 80 }}>{DAYS[dow]}</span>
-                        <span style={{ fontSize: "var(--fs-2xs)", color: "#FFC166", fontWeight: 600 }}>{cat}</span>
-                      </div>
-                    ))}
-                </div>
-              </>
-            )}
-            <h3 style={styles.sectionHeading}>Ideas por Semana</h3>
-            {weeks.map((wk) => {
-              const { concept, days } = weekGroups[wk];
-              const ideas = days.flatMap((d) => (d.posts || []).map((p) => p.idea).filter(Boolean));
-              return (
-                <div key={wk} style={styles.weekIdeaBlock}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-2)" }}>
-                    <span style={styles.weekBadgeSm}>Sem {wk}</span>
-                    {concept && <span style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", fontStyle: "italic" }}>{concept}</span>}
-                  </div>
-                  {ideas.length > 0 ? (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      {ideas.map((idea, i) => (
-                        <div key={i} style={{ fontSize: "var(--fs-xs)", color: "#C8D8E8", padding: "var(--sp-1) 0 var(--sp-1) var(--sp-3)", borderLeft: "2px solid var(--border)" }}>
-                          → {idea}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", fontStyle: "italic" }}>Sin ideas definidas</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {allRefs.length > 0 && (
-        <RefApprovalSection
-          refs={allRefs}
-          approvals={approvals}
-          saving={saving}
-          onApprove={(refId) => handleApproval(refId, "aprobado")}
-          onReject={(refId) => handleApproval(refId, "cambios")}
-        />
-      )}
-
-      {totalPending > 0 && (
-        <div style={{ padding: "0 var(--sp-4) var(--sp-3)" }}>
-          {bulkConfirm && !bulkSaving ? (
-            <div role="alertdialog" aria-label="Confirmar aprobación de todo lo pendiente">
-              <p role="status" style={{ margin: "0 0 var(--sp-2)", fontSize: "var(--fs-sm)", color: "var(--text-muted)" }}>
-                Se aprobarán {totalPending} elementos pendientes. Esto no se deshace.
-              </p>
-              <div style={{ display: "flex", gap: "var(--sp-2)" }}>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={handleBulkApprove}
-                  autoFocus
-                  style={{ ...styles.approveBtn, flex: 1 }}
-                >
-                  <Icon name="check" size={18} /> Sí, aprobar {totalPending}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setBulkConfirm(false)}
-                  style={{ minHeight: "var(--tap)" }}
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="btn"
-              onClick={() => setBulkConfirm(true)}
-              disabled={bulkSaving}
-              style={{ ...styles.approveBtn, width: "100%", opacity: bulkSaving ? 0.5 : 1 }}
-            >
-              {bulkSaving ? "Aprobando…" : <><Icon name="check" size={18} /> Aprobar todo ({totalPending})</>}
-            </button>
-          )}
-        </div>
-      )}
-
-      {saveError && (
-        <p role="alert" className="notice notice-error" style={{ margin: "0 var(--sp-4) var(--sp-3)" }}>
-          {saveError}
+      {calendar.revisionEnviada && (
+        <p className="aprobar-enviada">
+          <Icon name="check" size={16} /> {calendar.revisionRevisor || "Tu equipo"} envió la revisión el{" "}
+          {new Date(calendar.revisionEnviada).toLocaleDateString("es-PA", { day: "numeric", month: "long" })}.
+          {porRevisar.length > 0 && " Hay publicaciones nuevas o actualizadas por revisar."}
         </p>
       )}
 
-      {weeks.length > 1 && (
-        <div className="filter-bar" role="group" aria-label="Filtrar por semana" style={{ padding: "0 var(--sp-4) var(--sp-3)", flexWrap: "nowrap", overflowX: "auto" }}>
-          <button
-            className={`filter-chip ${activeWeek === "all" ? "active" : ""}`}
-            aria-pressed={activeWeek === "all"}
-            onClick={() => setActiveWeek("all")}
-            style={{ flexShrink: 0 }}
-          >
-            Todas
-          </button>
-          {weeks.map((w) => (
-            <button
-              key={w}
-              className={`filter-chip ${activeWeek === w ? "active" : ""}`}
-              aria-pressed={activeWeek === w}
-              onClick={() => setActiveWeek(w)}
-              style={{ flexShrink: 0 }}
-            >
-              Semana {w}
+      <div className="aprobar-barra">
+        <div className="aprobar-vistas" role="group" aria-label="Cómo ver el calendario">
+          {[["feed", "Publicaciones", "list"], ["calendario", "Calendario", "calendar"], ["perfil", "Perfil", "grid"]].map(([id, nombre, icono]) => (
+            <button key={id} type="button" aria-pressed={vista === id} onClick={() => setVista(id)}>
+              <Icon name={icono} size={16} /> {nombre}
             </button>
           ))}
         </div>
-      )}
+        {vista === "feed" && (
+          <div className="aprobar-filtros" role="group" aria-label="Filtrar publicaciones">
+            {[
+              ["todas", `Todas · ${publicaciones.length}`],
+              ["pendiente", `Por revisar · ${porRevisar.length}`],
+              ["cambios", `Con cambios · ${cuenta("cambios")}`],
+              ["aprobada", `Aprobadas · ${cuenta("aprobada")}`],
+            ].map(([id, nombre]) => (
+              <button key={id} type="button" className="filter-chip" aria-pressed={filtro === id} onClick={() => setFiltro(id)}>
+                {nombre}
+              </button>
+            ))}
+          </div>
+        )}
+        {porRevisar.length > 0 && (
+          <button type="button" className="btn aprobar-btn-marca aprobar-rapida-btn" onClick={() => setRapida(true)}>
+            <Icon name="bolt" size={18} /> Revisión rápida ({porRevisar.length})
+          </button>
+        )}
+      </div>
 
-      <main id="publicaciones">
-        {filteredWeeks.map((wk) => {
-          const { concept, days } = weekGroups[wk];
-          return (
-            <section key={wk} aria-label={`Semana ${wk}`} style={{ marginBottom: "var(--sp-6)" }}>
-              <div style={styles.weekHeader}>
-                <h2 style={styles.weekBadge}>Semana {wk}</h2>
-                {concept && <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)", fontStyle: "italic" }}>{concept}</span>}
-              </div>
-              {days.map((day) => (
-                <article key={day.date} style={styles.dayCard}>
-                  <div style={{ ...styles.dayHeader, borderColor: pc + "44" }}>
-                    <span style={{ ...styles.dayNum, background: pc }}>{(day.date || "").split("-")[2]}</span>
-                    <span>
-                      <h3 style={{ fontSize: "var(--fs-sm)", fontWeight: 700 }}>{day.dayName || ""}</h3>
-                      {day.category && <span style={{ display: "block", fontSize: "var(--fs-2xs)", color: "#FFC166" }}>{day.category}</span>}
-                    </span>
-                  </div>
-                  <div style={{ padding: "var(--sp-3)" }}>
-                    {(day.posts || []).map((post) => (
-                      <PostReview
-                        key={post.id}
-                        post={post}
-                        imageSrc={srcPublico(post.image, token)}
-                        approval={approvals[post.id]}
-                        isSaving={saving[post.id]}
-                        commentValue={commentInputs[post.id] || ""}
-                        commentOpen={!!showComment[post.id]}
-                        allowEditing={calendar.allowEditing || false}
-                        editedFields={editedFields[post.id] || null}
-                        editSaving={editSaving}
-                        onEditField={(field, value) => setEditedFields((p) => ({ ...p, [post.id]: { ...(p[post.id] || {}), [field]: value } }))}
-                        onSaveEdit={handleSaveEdit}
-                        onCommentChange={(v) => setCommentInputs((p) => ({ ...p, [post.id]: v }))}
-                        onToggleComment={() => setShowComment((p) => ({ ...p, [post.id]: !p[post.id] }))}
-                        onApprove={() => handleApproval(post.id, "aprobado")}
-                        onRequestChanges={() => {
-                          handleApproval(post.id, "cambios", commentInputs[post.id] || "");
-                          setShowComment((p) => ({ ...p, [post.id]: false }));
-                        }}
-                      />
-                    ))}
-                  </div>
-                </article>
+      <main id="publicaciones" className="aprobar-contenido">
+        {vista === "feed" && (
+          lista.length === 0 ? (
+            <p className="aprobar-vacio">No hay publicaciones con este filtro.</p>
+          ) : (
+            <ul className="aprobar-feed" aria-label="Publicaciones del mes">
+              {lista.map((p) => (
+                <li key={p.id}>
+                  <TarjetaPublicacion
+                    post={p}
+                    token={token}
+                    usuario={usuario}
+                    logo={client?.logo}
+                    estado={estados[p.id]}
+                    aprobacion={approvals[p.id]}
+                    comentarios={comentarios.filter((c) => c.postId === p.id)}
+                    guardando={!!guardando[p.id]}
+                    permiteEditar={!!calendar.allowEditing}
+                    enfocar={enfocar === p.id}
+                    onEnfocado={() => setEnfocar(null)}
+                    onResponder={responder}
+                    onComentar={comentar}
+                    onSugerir={sugerirTexto}
+                  />
+                </li>
               ))}
-            </section>
-          );
-        })}
+            </ul>
+          )
+        )}
+
+        {vista === "calendario" && (
+          <MesCalendario calendar={calendar} estados={estados} token={token} onElegir={irAPublicacion} />
+        )}
+
+        {vista === "perfil" && (
+          <RejillaPerfil publicaciones={publicaciones} estados={estados} token={token} usuario={usuario} logo={client?.logo} nombre={client?.name} onElegir={irAPublicacion} />
+        )}
+
+        {refs.length > 0 && (
+          <Referencias refs={refs} token={token} approvals={approvals} guardando={guardando} onResponder={responder} />
+        )}
       </main>
 
-      <div style={styles.summary} role="status" aria-live="polite">
-        <h2 style={{ fontSize: "var(--fs-sm)", fontWeight: 700, marginBottom: "var(--sp-2)" }}>Resumen de revisión</h2>
-        <div style={{ display: "flex", gap: "var(--sp-4)", flexWrap: "wrap", fontSize: "var(--fs-xs)" }}>
-          <span style={{ color: "var(--success)" }}>{approvedCount} aprobadas</span>
-          <span style={{ color: "var(--danger)" }}>{changesCount} con cambios</span>
-          <span style={{ color: "var(--text-muted)" }}>{pendingCount} pendientes</span>
-        </div>
-        {reviewed === totalPosts && totalPosts > 0 && (
-          <p className="notice notice-ok" style={{ marginTop: "var(--sp-3)", marginBottom: 0, display: "block" }}>
-            Has revisado todas las publicaciones. Tu agencia ya puede ver tus respuestas.
-          </p>
-        )}
-      </div>
-
-      <footer style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-2)", padding: "var(--sp-6)", color: "var(--text-dim)", fontSize: "var(--fs-2xs)", borderTop: "1px solid var(--border)", marginTop: "var(--sp-6)" }}>
-        <img src={logoMark} alt="" width={36} height={36} style={{ width: 36, height: 36, objectFit: "contain", opacity: .9 }} />
+      <footer className="aprobar-pie">
+        <img src={logoMark} alt="" width={32} height={32} />
         Juancito Ads · Calendario de contenido
       </footer>
+
+      <div className="aprobar-fija">
+        <div className="aprobar-progreso">
+          <span id="aprobar-progreso">{revisadas} de {publicaciones.length} revisadas</span>
+          <div className="aprobar-progreso-barra" role="progressbar" aria-labelledby="aprobar-progreso"
+            aria-valuenow={revisadas} aria-valuemin={0} aria-valuemax={publicaciones.length}>
+            <span style={{ width: `${publicaciones.length ? (revisadas / publicaciones.length) * 100 : 0}%` }} />
+          </div>
+        </div>
+        {confirmarTodo ? (
+          <div className="aprobar-confirmar" role="group" aria-label="Confirmar aprobar todas">
+            <span>¿Aprobar las {porRevisar.length} que faltan?</span>
+            <button type="button" className="btn aprobar-btn-ok" onClick={aprobarTodo}>Sí, aprobar</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setConfirmarTodo(false)}>Cancelar</button>
+          </div>
+        ) : confirmarEnvio ? (
+          <div className="aprobar-confirmar" role="group" aria-label="Confirmar envío de la revisión">
+            <span>Te quedan {porRevisar.length} sin revisar. ¿Enviar igual?</span>
+            <button type="button" className="btn aprobar-btn-marca" onClick={enviarRevision}>Enviar</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setConfirmarEnvio(false)}>Seguir revisando</button>
+          </div>
+        ) : (
+          <div className="aprobar-acciones-fijas">
+            {porRevisar.length > 1 && (
+              <button type="button" className="btn btn-secondary" onClick={() => setConfirmarTodo(true)}>
+                Aprobar todas
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn aprobar-btn-marca"
+              onClick={() => (porRevisar.length ? setConfirmarEnvio(true) : enviarRevision())}
+            >
+              <Icon name="send" size={18} /> Enviar mi revisión
+            </button>
+          </div>
+        )}
+      </div>
+
+      {rapida && (
+        <RevisionRapida
+          pendientes={porRevisar}
+          token={token}
+          usuario={usuario}
+          onResponder={responder}
+          onCerrar={() => setRapida(false)}
+        />
+      )}
     </div>
   );
 }
 
-function PostReview({
-  post, imageSrc, approval, isSaving, commentValue, commentOpen, allowEditing,
-  editedFields, editSaving, onEditField, onSaveEdit,
-  onCommentChange, onToggleComment, onApprove, onRequestChanges,
-}) {
-  const f = FORMATS[post.format] || FORMATS.post;
-  const isPost = post.format === "post";
-  const ids = useId();
-  const [expanded, setExpanded] = useState(false);
-  const borderColor =
-    approval?.estado === "aprobado" ? "#388E3C" : approval?.estado === "cambios" ? "#C62828" : "var(--border)";
-  const hasContent = post.guion || post.descripcion || post.script;
+// ------------------------------------------------------------
+// Portada
+// ------------------------------------------------------------
 
-  const currentDesc = post.descripcion || post.script || "";
-  const currentGuion = post.guion || "";
-  const editedDesc = editedFields?.descripcion;
-  const editedGuion = editedFields?.guion;
-  const descChanged = editedDesc !== undefined && editedDesc !== currentDesc;
-  const guionChanged = editedGuion !== undefined && editedGuion !== currentGuion;
-
+function Portada({ client, mes, calendar, vencida }) {
   return (
-    <div style={{ ...styles.postCard, borderColor }}>
-      <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-2)", alignItems: "center" }}>
-        <span className="badge" style={{ background: f.color + "22", color: f.color, border: `1px solid ${f.color}66` }}>
-          <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={14} /> {f.label}
-        </span>
-        {post.publishTime && <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{fmt12h(post.publishTime)}</span>}
-        {approval && (
-          <span
-            className="badge"
-            style={{
-              background: approval.estado === "aprobado" ? "#0d2a0d" : "#2a0d0d",
-              color: approval.estado === "aprobado" ? "var(--success)" : "var(--danger)",
-              border: `1px solid ${approval.estado === "aprobado" ? "#388E3C" : "#C62828"}`,
-            }}
-          >
-            {approval.estado === "aprobado" ? "Aprobado" : "Cambios solicitados"}
-          </span>
+    <header className="aprobar-portada">
+      <div className="aprobar-portada-marca">
+        {client?.logo ? (
+          <img src={client.logo} alt={`Logo de ${client.name || "la marca"}`} />
+        ) : (
+          <span aria-hidden="true">{(client?.name || "?").slice(0, 1)}</span>
         )}
       </div>
-
-      {post.category && <p style={{ fontSize: "var(--fs-2xs)", color: "#FFC166", fontWeight: 600, marginBottom: "var(--sp-2)" }}>{post.category}</p>}
-      {imageSrc && <img src={imageSrc} alt="" style={{ width: "100%", maxWidth: 340, borderRadius: "var(--radius-sm)", marginBottom: "var(--sp-2)" }} />}
-      {post.idea && (
-        <div style={styles.contentBox}>
-          <strong style={{ ...styles.fieldLabel, color: "var(--text-muted)" }}>Idea</strong>
-          {post.idea}
-        </div>
-      )}
-
-      {(hasContent || allowEditing) && (
-        <>
-          <button
-            type="button"
-            onClick={() => setExpanded(!expanded)}
-            aria-expanded={expanded}
-            style={styles.expandBtn}
-          >
-            <span>{expanded ? "Ocultar contenido" : "Ver contenido"}</span>
-            <span style={{ transition: "transform .2s", transform: expanded ? "rotate(180deg)" : "rotate(0)" }}>▼</span>
-          </button>
-
-          {expanded && (
-            <div style={{ marginTop: "var(--sp-2)" }}>
-              {!isPost && (currentGuion || allowEditing) && (
-                <div style={{ ...styles.contentBox, background: "#1a0a2a" }}>
-                  <strong style={{ ...styles.fieldLabel, color: "#FF7BA8" }}>
-                    Guion
-                    {allowEditing && <span style={{ ...styles.editableBadge, borderColor: "#FF7BA844", color: "#FF7BA8" }}>Editable</span>}
-                  </strong>
-                  {allowEditing ? (
-                    <>
-                      <textarea
-                        id={`${ids}-edit-guion`}
-                        className="textarea"
-                        style={{ minHeight: 100, fontSize: "var(--fs-sm)", background: "var(--bg)", borderColor: "#FF7BA844", lineHeight: "var(--lh-relaxed)" }}
-                        value={editedGuion !== undefined ? editedGuion : currentGuion}
-                        onChange={(e) => onEditField("guion", e.target.value)}
-                      />
-                      {guionChanged && (
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          disabled={editSaving?.[`${post.id}-guion`]}
-                          onClick={() => onSaveEdit(post.id, "guion", editedGuion)}
-                          style={{ ...styles.saveEditBtn, marginTop: "var(--sp-2)" }}
-                        >
-                          {editSaving?.[`${post.id}-guion`] ? "Guardando…" : <><Icon name="check" size={14} /> Guardar cambio</>}
-                        </button>
-                      )}
-                    </>
-                  ) : (
-                    <div style={{ whiteSpace: "pre-wrap" }}>{currentGuion}</div>
-                  )}
-                </div>
-              )}
-
-              {(currentDesc || allowEditing) && (
-                <div style={{ ...styles.contentBox, position: "relative" }}>
-                  <strong style={{ ...styles.fieldLabel, color: "var(--accent)" }}>
-                    Descripción
-                    {allowEditing && <span style={styles.editableBadge}>Editable</span>}
-                  </strong>
-                  {allowEditing ? (
-                    <>
-                      <textarea
-                        id={`${ids}-edit-desc`}
-                        className="textarea"
-                        style={{ minHeight: 100, fontSize: "var(--fs-sm)", background: "var(--bg)", lineHeight: "var(--lh-relaxed)" }}
-                        value={editedDesc !== undefined ? editedDesc : currentDesc}
-                        onChange={(e) => onEditField("descripcion", e.target.value)}
-                      />
-                      <div style={{ display: "flex", gap: "var(--sp-2)", marginTop: "var(--sp-2)", alignItems: "center" }}>
-                        {descChanged && (
-                          <button
-                            type="button"
-                            className="btn btn-sm"
-                            disabled={editSaving?.[`${post.id}-descripcion`]}
-                            onClick={() => onSaveEdit(post.id, "descripcion", editedDesc)}
-                            style={styles.saveEditBtn}
-                          >
-                            {editSaving?.[`${post.id}-descripcion`] ? "Guardando…" : <><Icon name="check" size={14} /> Guardar cambio</>}
-                          </button>
-                        )}
-                        <CopyBtn text={editedDesc !== undefined ? editedDesc : currentDesc} inline />
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div style={{ whiteSpace: "pre-wrap" }}>{currentDesc}</div>
-                      <CopyBtn text={currentDesc} />
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </>
-      )}
-
-      {post.hashtagsFinales && (
-        <p style={{ fontSize: "var(--fs-2xs)", color: "var(--accent-alt)", marginBottom: "var(--sp-2)" }}>{post.hashtagsFinales}</p>
-      )}
-
-      <div className="review-actions">
-        <button
-          type="button"
-          disabled={isSaving}
-          onClick={onApprove}
-          className="btn"
-          style={{ ...styles.approveBtn, opacity: isSaving ? 0.5 : 1 }}
-        >
-          {isSaving ? "Guardando…" : <><Icon name="check" size={18} /> Aprobar</>}
-        </button>
-        <button
-          type="button"
-          disabled={isSaving}
-          onClick={onToggleComment}
-          aria-expanded={commentOpen}
-          aria-controls={`${ids}-comment`}
-          className="btn"
-          style={styles.changesBtn}
-        >
-          <Icon name="close" size={18} /> Pedir cambios
-        </button>
-      </div>
-
-      {commentOpen && (
-        <div id={`${ids}-comment`} style={{ marginTop: "var(--sp-3)" }}>
-          <label className="label" htmlFor={`${ids}-comment-input`}>¿Qué quieres cambiar?</label>
-          <textarea
-            id={`${ids}-comment-input`}
-            className="textarea"
-            value={commentValue}
-            onChange={(e) => onCommentChange(e.target.value)}
-            placeholder="Describe los cambios que necesitas…"
-          />
-          <button
-            type="button"
-            disabled={isSaving}
-            onClick={onRequestChanges}
-            className="btn"
-            style={{ ...styles.changesBtn, width: "100%", marginTop: "var(--sp-2)" }}
-          >
-            Enviar cambios
-          </button>
-        </div>
-      )}
-
-      {approval?.comentario && (
-        <p style={styles.commentDisplay}>
-          <Icon name="message" size={16} style={{ display: "inline-block", verticalAlign: "-3px", marginRight: "var(--sp-1)" }} />{approval.comentario}
+      <p className="aprobar-portada-cliente">{client?.name}</p>
+      <h1>Calendario de {mes}</h1>
+      {calendar.campaign && <p className="aprobar-portada-campana">{calendar.campaign}</p>}
+      {calendar.mensaje && <p className="aprobar-portada-mensaje">{calendar.mensaje}</p>}
+      {calendar.fechaLimite && (
+        <p className="aprobar-portada-limite" data-vencida={vencida || undefined}>
+          <Icon name="clock" size={16} /> {vencida ? "La fecha para revisar era el" : "Revisa antes del"} {fechaLarga(calendar.fechaLimite)}
         </p>
       )}
+    </header>
+  );
+}
+
+// ------------------------------------------------------------
+// Una publicación, como se verá
+// ------------------------------------------------------------
+
+function Medios({ post, token, compacto = false }) {
+  const medios = mediosDe(post);
+  const pista = useRef(null);
+  const [actual, setActual] = useState(0);
+  const id = useId();
+  if (!medios.length) {
+    return (
+      <div className="aprobar-sin-medio">
+        <Icon name={FORMAT_ICONS[post.format] || "image"} size={32} />
+        <span>La imagen o el video llegan pronto</span>
+      </div>
+    );
+  }
+  const ir = (i) => {
+    const n = Math.max(0, Math.min(medios.length - 1, i));
+    pista.current?.children[n]?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "start" });
+    setActual(n);
+  };
+  return (
+    <div className="aprobar-medios" data-formato={post.format}>
+      <div
+        ref={pista}
+        className="aprobar-medios-pista"
+        onScroll={(e) => setActual(Math.round(e.currentTarget.scrollLeft / e.currentTarget.clientWidth))}
+        aria-roledescription={medios.length > 1 ? "carrusel" : undefined}
+        aria-label={medios.length > 1 ? `${medios.length} elementos` : undefined}
+      >
+        {medios.map((m, i) => (
+          <div key={`${m.src}-${i}`} className="aprobar-medio" id={`${id}-${i}`}>
+            {m.tipo === "video" ? (
+              <video src={srcPublico(m.src, token)} controls={!compacto} muted={compacto} playsInline preload="metadata"
+                poster={post.portada ? srcPublico(post.portada, token) : undefined} />
+            ) : (
+              <img src={srcPublico(m.src, token)} alt={i === 0 ? (post.title || "Imagen de la publicación") : `Imagen ${i + 1}`} loading="lazy" />
+            )}
+          </div>
+        ))}
+      </div>
+      {medios.length > 1 && !compacto && (
+        <>
+          <button type="button" className="aprobar-medios-flecha" data-lado="izq" onClick={() => ir(actual - 1)} disabled={actual === 0} aria-label="Anterior">
+            <Icon name="chevronLeft" size={18} />
+          </button>
+          <button type="button" className="aprobar-medios-flecha" data-lado="der" onClick={() => ir(actual + 1)} disabled={actual === medios.length - 1} aria-label="Siguiente">
+            <Icon name="chevronRight" size={18} />
+          </button>
+          <span className="aprobar-medios-puntos" aria-hidden="true">
+            {medios.map((m, i) => <span key={i} data-activo={i === actual} />)}
+          </span>
+        </>
+      )}
     </div>
   );
 }
 
-function CopyBtn({ text, inline }) {
-  const [copied, setCopied] = useState(false);
-  if (!text) return null;
+function Texto({ texto, limite = 280 }) {
+  const [abierto, setAbierto] = useState(false);
+  if (!texto) return null;
+  const largo = texto.length > limite;
   return (
-    <button
-      type="button"
-      className={`btn-copy${copied ? " is-copied" : ""}`}
-      aria-label={copied ? "Copiado al portapapeles" : "Copiar la descripción"}
-      onClick={() => {
-        navigator.clipboard.writeText(text).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        });
-      }}
-      style={inline ? {} : { position: "absolute", top: "var(--sp-2)", right: "var(--sp-2)" }}
-    >
-      {copied ? "Copiado" : "Copiar"}
-    </button>
+    <p className="aprobar-texto">
+      {largo && !abierto ? `${texto.slice(0, limite).trimEnd()}… ` : texto}
+      {largo && (
+        <button type="button" className="aprobar-ver-mas" onClick={() => setAbierto((v) => !v)} aria-expanded={abierto}>
+          {abierto ? " ver menos" : "ver más"}
+        </button>
+      )}
+    </p>
   );
 }
 
-const REF_FORMATS = [
-  { key: "post", label: "Post", icon: "formatPost", color: "#4DA3FF" },
-  { key: "carrusel", label: "Carrusel", icon: "formatCarrusel", color: "#FFA53D" },
-  { key: "video", label: "Reel / Video", icon: "formatReel", color: "#FF6392" },
-];
+function TarjetaPublicacion({
+  post, token, usuario, logo, estado, aprobacion, comentarios, guardando, permiteEditar,
+  enfocar, onEnfocado, onResponder, onComentar, onSugerir,
+}) {
+  const ids = useId();
+  const ref = useRef(null);
+  const [pidiendo, setPidiendo] = useState(false);
+  const [atajos, setAtajos] = useState([]);
+  const [motivo, setMotivo] = useState("");
+  const [respuesta, setRespuesta] = useState("");
+  const [editando, setEditando] = useState(false);
+  const [borrador, setBorrador] = useState("");
+  const f = FORMATS[post.format] || FORMATS.post;
+  const texto = textoPara(post, "instagram");
+  const comentario1 = primerComentario(post);
 
-function RefApprovalSection({ refs, approvals, saving, onApprove, onReject }) {
-  const grouped = { post: [], carrusel: [], video: [] };
-  refs.forEach((r) => {
-    const fmt = r.format || "post";
-    (grouped[fmt] || grouped.post).push(r);
-  });
+  useEffect(() => {
+    if (!enfocar) return;
+    ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    ref.current?.focus({ preventScroll: true });
+    onEnfocado?.();
+  }, [enfocar, onEnfocado]);
 
-  const approvedRefs = refs.filter((r) => approvals[r.id]?.estado === "aprobado").length;
-  const totalRefs = refs.length;
+  const pedirCambio = async (e) => {
+    e.preventDefault();
+    const cuerpo = [atajos.length ? `[${atajos.join(", ")}]` : "", motivo.trim()].filter(Boolean).join(" ");
+    if (!cuerpo) return;
+    if (await onResponder(post.id, "cambios", cuerpo)) {
+      setPidiendo(false);
+      setAtajos([]);
+      setMotivo("");
+    }
+  };
 
   return (
-    <div style={styles.visualRefsSection}>
-      <h3 style={styles.sectionHeading}>Referencias visuales</h3>
-      <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", marginBottom: "var(--sp-3)" }}>
-        Revisa y aprueba las referencias de diseño para cada formato.
-        {totalRefs > 0 && (
-          <span style={{ display: "block", marginTop: "var(--sp-1)", fontWeight: 600, color: approvedRefs === totalRefs ? "var(--success)" : "var(--text-muted)" }}>
-            {approvedRefs} de {totalRefs} aprobadas
-          </span>
+    <article ref={ref} tabIndex={-1} className="aprobar-post" data-estado={estado} aria-labelledby={`${ids}-t`}>
+      <header className="aprobar-post-cabecera">
+        <span className="aprobar-avatar">{logo ? <img src={logo} alt="" /> : <Icon name="building" size={16} />}</span>
+        <span className="aprobar-post-quien">
+          <strong id={`${ids}-t`}>{fechaLarga(post._fecha)}{post.publishTime ? ` · ${hora12(post.publishTime)}` : ""}</strong>
+          <span>@{usuario} · <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={12} /> {f.label}</span>
+        </span>
+        <span className="aprobar-estado" data-estado={estado}>{ETIQUETA_ESTADO[estado]}</span>
+      </header>
+
+      <Medios post={post} token={token} />
+
+      <div className="aprobar-post-cuerpo">
+        {estado === "actualizada" && post.anterior && (
+          <div className="aprobar-cambio">
+            <p className="aprobar-cambio-titulo"><Icon name="refresh" size={14} /> La agencia hizo los cambios que pediste</p>
+            {post.anterior.descripcion && post.anterior.descripcion !== post.descripcion && (
+              <p className="aprobar-cambio-antes"><span>Antes:</span> <del>{post.anterior.descripcion}</del></p>
+            )}
+            {post.anterior.publishTime && post.anterior.publishTime !== post.publishTime && (
+              <p className="aprobar-cambio-antes"><span>Hora antes:</span> <del>{hora12(post.anterior.publishTime)}</del></p>
+            )}
+          </div>
         )}
-      </p>
-      {REF_FORMATS.map((rf) => {
-        const items = grouped[rf.key];
-        if (!items || items.length === 0) return null;
-        return (
-          <div key={rf.key} style={{ marginBottom: "var(--sp-4)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-2)" }}>
-              <Icon name={rf.icon} size={18} style={{ color: rf.color }} />
-              <span style={{ fontWeight: 700, fontSize: "var(--fs-sm)", color: rf.color }}>{rf.label}</span>
-              <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>({items.length})</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: "var(--sp-3)" }}>
-              {items.map((vr) => {
-                const isLink = vr.type === "link";
-                const approval = approvals[vr.id];
-                const bColor = approval?.estado === "aprobado" ? "#388E3C" : approval?.estado === "cambios" ? "#C62828" : "var(--border)";
-                return (
-                  <div key={vr.id} style={{ border: `2px solid ${bColor}`, borderRadius: "var(--radius-sm)", overflow: "hidden", background: "var(--card-alt)", transition: "border-color .3s" }}>
-                    {isLink ? (
-                      <a href={vr.url} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", aspectRatio: "1", background: "var(--bg)", color: rf.color, fontSize: "var(--fs-2xs)", padding: "var(--sp-2)", textAlign: "center", textDecoration: "none", wordBreak: "break-all" }}>
-                        <span><Icon name="formatReel" size={24} style={{ display: "block", margin: "0 auto var(--sp-1)" }} />Ver video</span>
-                      </a>
-                    ) : (
-                      <img src={vr.url} alt={vr.name || "Referencia"} style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
-                    )}
-                    <div style={{ padding: "var(--sp-2)", display: "flex", gap: "var(--sp-1)" }}>
-                      {approval ? (
-                        <span className="badge" style={{ width: "100%", textAlign: "center", justifyContent: "center", background: approval.estado === "aprobado" ? "#0d2a0d" : "#2a0d0d", color: approval.estado === "aprobado" ? "var(--success)" : "var(--danger)", border: `1px solid ${approval.estado === "aprobado" ? "#388E3C" : "#C62828"}` }}>
-                          {approval.estado === "aprobado" ? "Aprobado" : "Cambios"}
-                        </span>
-                      ) : (
-                        <>
-                          <button type="button" className="btn btn-sm" disabled={saving[vr.id]} onClick={() => onApprove(vr.id)} style={{ ...styles.approveBtn, flex: 1, padding: "var(--sp-1)" }} aria-label={`Aprobar referencia ${vr.name || ""}`}>
-                            <Icon name="check" size={14} />
-                          </button>
-                          <button type="button" className="btn btn-sm" disabled={saving[vr.id]} onClick={() => onReject(vr.id)} style={{ ...styles.changesBtn, flex: 1, padding: "var(--sp-1)" }} aria-label={`Rechazar referencia ${vr.name || ""}`}>
-                            <Icon name="close" size={14} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+
+        {editando ? (
+          <div className="aprobar-editar">
+            <label htmlFor={`${ids}-edit`} className="label">Tu versión del texto</label>
+            <textarea id={`${ids}-edit`} className="textarea" value={borrador} onChange={(e) => setBorrador(e.target.value)} />
+            <div className="aprobar-fila">
+              <button type="button" className="btn aprobar-btn-marca" onClick={async () => { if (await onSugerir(post.id, "descripcion", borrador)) setEditando(false); }}>
+                Guardar texto
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => setEditando(false)}>Cancelar</button>
             </div>
           </div>
-        );
-      })}
+        ) : (
+          <>
+            <Texto texto={post.format === "historia" ? "" : texto} />
+            {post.format === "historia" && texto && (
+              <p className="aprobar-nota">En las historias el texto va dentro de la imagen o el video.</p>
+            )}
+          </>
+        )}
+
+        {comentario1 && (
+          <p className="aprobar-comentario1"><span>Primer comentario:</span> {comentario1}</p>
+        )}
+
+        {post.guion && post.format !== "post" && (
+          <details className="aprobar-guion">
+            <summary>Ver el guion</summary>
+            <p>{post.guion}</p>
+          </details>
+        )}
+
+        {comentarios.length > 0 && (
+          <ul className="aprobar-hilo" aria-label="Conversación con la agencia">
+            {comentarios.map((c) => (
+              <li key={c.id} data-autor={c.autor}>
+                <strong>{c.autor === "agencia" ? `${c.nombre} · agencia` : c.nombre}</strong>
+                <span>{c.texto}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {aprobacion?.estado === "cambios" && estado === "cambios" && (
+          <form
+            className="aprobar-responder"
+            onSubmit={async (e) => { e.preventDefault(); if (respuesta.trim() && await onComentar(post.id, respuesta.trim())) setRespuesta(""); }}
+          >
+            <label htmlFor={`${ids}-resp`} className="sr-only">Añadir un comentario</label>
+            <input id={`${ids}-resp`} className="input" value={respuesta} onChange={(e) => setRespuesta(e.target.value)} placeholder="Añadir un comentario…" />
+            <button type="submit" className="btn-icon" aria-label="Enviar comentario" disabled={!respuesta.trim()}><Icon name="send" size={18} /></button>
+          </form>
+        )}
+
+        {pidiendo ? (
+          <form className="aprobar-pedir" onSubmit={pedirCambio}>
+            <p className="label" id={`${ids}-que`}>¿Qué quieres cambiar?</p>
+            <div className="aprobar-atajos" role="group" aria-labelledby={`${ids}-que`}>
+              {ATAJOS_CAMBIO.map((a) => (
+                <button key={a} type="button" className="filter-chip" aria-pressed={atajos.includes(a)}
+                  onClick={() => setAtajos((x) => (x.includes(a) ? x.filter((y) => y !== a) : [...x, a]))}>
+                  {a}
+                </button>
+              ))}
+            </div>
+            <label htmlFor={`${ids}-motivo`} className="sr-only">Cuéntanos el cambio</label>
+            <textarea id={`${ids}-motivo`} className="textarea" value={motivo} onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Cuéntanos qué cambiarías (opcional si elegiste arriba)" />
+            <div className="aprobar-fila">
+              <button type="submit" className="btn aprobar-btn-cambios" disabled={guardando || (!atajos.length && !motivo.trim())}>
+                Enviar el cambio
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => setPidiendo(false)}>Cancelar</button>
+            </div>
+          </form>
+        ) : (
+          <div className="aprobar-acciones">
+            <button type="button" className="btn aprobar-btn-ok" disabled={guardando} aria-pressed={estado === "aprobada"}
+              onClick={() => onResponder(post.id, "aprobado")}>
+              <Icon name="check" size={18} /> {estado === "aprobada" ? "Aprobada" : "Aprobar"}
+            </button>
+            <button type="button" className="btn aprobar-btn-cambios" disabled={guardando} aria-expanded={pidiendo}
+              onClick={() => setPidiendo(true)}>
+              <Icon name="pencil" size={18} /> Pedir cambio
+            </button>
+            {permiteEditar && (
+              <button type="button" className="btn btn-ghost" onClick={() => { setBorrador(post.descripcion || ""); setEditando(true); }}>
+                Editar el texto
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+// ------------------------------------------------------------
+// Revisión rápida: una a una, a pantalla completa
+// ------------------------------------------------------------
+
+function RevisionRapida({ pendientes, token, usuario, onResponder, onCerrar }) {
+  const ref = useDialogA11y(onCerrar);
+  // La lista se congela al abrir: si se recalculara, cada respuesta
+  // sacaría la publicación de la lista y el índice saltaría una.
+  const [cola] = useState(pendientes);
+  const [i, setI] = useState(0);
+  const [pidiendo, setPidiendo] = useState(false);
+  const [motivo, setMotivo] = useState("");
+  const [atajos, setAtajos] = useState([]);
+  const post = cola[i];
+  const ids = useId();
+
+  const siguiente = () => { setPidiendo(false); setMotivo(""); setAtajos([]); setI((n) => n + 1); };
+
+  return (
+    <div className="overlay aprobar-rapida-capa">
+      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="aprobar aprobar-rapida">
+        <header className="aprobar-rapida-cabecera">
+          <h2 id={`${ids}-t`}>{post ? `${i + 1} de ${cola.length}` : "¡Terminaste!"}</h2>
+          <button type="button" className="btn-icon" onClick={onCerrar} aria-label="Cerrar la revisión rápida"><Icon name="close" /></button>
+        </header>
+        {post ? (
+          <>
+            <div className="aprobar-rapida-cuerpo">
+              <p className="aprobar-rapida-fecha">{fechaCorta(post._fecha)}{post.publishTime ? ` · ${hora12(post.publishTime)}` : ""} · @{usuario}</p>
+              <Medios post={post} token={token} />
+              <Texto texto={post.format === "historia" ? "" : textoPara(post, "instagram")} limite={400} />
+              {pidiendo && (
+                <div className="aprobar-pedir">
+                  <div className="aprobar-atajos" role="group" aria-label="Qué cambiar">
+                    {ATAJOS_CAMBIO.map((a) => (
+                      <button key={a} type="button" className="filter-chip" aria-pressed={atajos.includes(a)}
+                        onClick={() => setAtajos((x) => (x.includes(a) ? x.filter((y) => y !== a) : [...x, a]))}>{a}</button>
+                    ))}
+                  </div>
+                  <label htmlFor={`${ids}-m`} className="sr-only">Cuéntanos el cambio</label>
+                  <textarea id={`${ids}-m`} className="textarea" value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Cuéntanos qué cambiarías" />
+                </div>
+              )}
+            </div>
+            <footer className="aprobar-rapida-pie">
+              {pidiendo ? (
+                <>
+                  <button type="button" className="btn btn-secondary" onClick={() => setPidiendo(false)}>Volver</button>
+                  <button type="button" className="btn aprobar-btn-cambios" disabled={!atajos.length && !motivo.trim()}
+                    onClick={async () => {
+                      const cuerpo = [atajos.length ? `[${atajos.join(", ")}]` : "", motivo.trim()].filter(Boolean).join(" ");
+                      if (await onResponder(post.id, "cambios", cuerpo)) siguiente();
+                    }}>
+                    Enviar cambio
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" className="btn aprobar-btn-cambios" onClick={() => setPidiendo(true)}>
+                    <Icon name="pencil" size={20} /> Pedir cambio
+                  </button>
+                  <button type="button" className="btn aprobar-btn-ok" onClick={async () => { if (await onResponder(post.id, "aprobado")) siguiente(); }}>
+                    <Icon name="check" size={20} /> Aprobar
+                  </button>
+                </>
+              )}
+            </footer>
+          </>
+        ) : (
+          <div className="aprobar-rapida-fin">
+            <Icon name="check" size={40} />
+            <p>Revisaste todas las publicaciones pendientes.</p>
+            <p>Cuando quieras, pulsa <strong>Enviar mi revisión</strong> abajo para avisar a tu agencia.</p>
+            <button type="button" className="btn aprobar-btn-marca" onClick={onCerrar}>Volver al calendario</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-const styles = {
-  page: {
-    background: "var(--bg)",
-    color: "var(--text)",
-    minHeight: "100dvh",
-    maxWidth: 640,
-    margin: "0 auto",
-    paddingBottom: "calc(var(--sp-10) + var(--safe-bottom))",
-  },
-  center: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: "100dvh",
-    padding: "var(--sp-5)",
-    textAlign: "center",
-    background: "var(--bg)",
-    color: "var(--text)",
-  },
-  header: {
-    padding: "calc(var(--sp-8) + var(--safe-top)) var(--sp-5) var(--sp-6)",
-    textAlign: "center",
-    borderRadius: "0 0 18px 18px",
-  },
-  statsBar: {
-    display: "flex",
-    justifyContent: "space-around",
-    padding: "var(--sp-4) var(--sp-4)",
-    background: "var(--card)",
-    margin: "0 var(--sp-4)",
-    borderRadius: "var(--radius)",
-    marginTop: -8,
-    border: "1px solid var(--border)",
-    position: "relative",
-    zIndex: 1,
-  },
-  stat: {
-    textAlign: "center",
-  },
-  statNum: {
-    fontSize: "var(--fs-xl)",
-    fontWeight: 900,
-  },
-  statLabel: {
-    fontSize: "var(--fs-3xs)",
-    color: "var(--text-dim)",
-    textTransform: "uppercase",
-    letterSpacing: ".04em",
-    fontWeight: 600,
-  },
-  progressSection: {
-    padding: "var(--sp-3) var(--sp-4)",
-    position: "sticky",
-    top: 0,
-    background: "var(--bg)",
-    zIndex: 10,
-  },
-  campaignSection: {
-    background: "var(--card)",
-    border: "1px solid var(--border)",
-    borderRadius: "var(--radius)",
-    margin: "0 var(--sp-4) var(--sp-3)",
-    overflow: "hidden",
-  },
-  visualRefsSection: {
-    background: "var(--card)",
-    border: "1px solid var(--border)",
-    borderRadius: "var(--radius)",
-    margin: "0 var(--sp-4) var(--sp-3)",
-    padding: "var(--sp-4)",
-  },
-  campaignToggle: {
-    width: "100%",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "var(--sp-4)",
-    background: "transparent",
-    border: "none",
-    color: "var(--text)",
-    cursor: "pointer",
-    fontFamily: "inherit",
-  },
-  sectionHeading: {
-    fontSize: "var(--fs-3xs)",
-    color: "var(--text-muted)",
-    textTransform: "uppercase",
-    letterSpacing: ".06em",
-    fontWeight: 700,
-    marginBottom: "var(--sp-2)",
-    marginTop: "var(--sp-3)",
-  },
-  weekIdeaBlock: {
-    background: "var(--bg)",
-    borderRadius: "var(--radius-sm)",
-    padding: "var(--sp-3)",
-    marginBottom: "var(--sp-2)",
-  },
-  weekBadgeSm: {
-    background: "var(--accent-soft)",
-    color: "var(--accent)",
-    padding: "var(--sp-1) var(--sp-2)",
-    borderRadius: 10,
-    fontSize: "var(--fs-3xs)",
-    fontWeight: 700,
-  },
-  expandBtn: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    width: "100%",
-    padding: "var(--sp-2) var(--sp-3)",
-    background: "var(--card-alt)",
-    border: "1px solid var(--border)",
-    borderRadius: "var(--radius-xs)",
-    color: "var(--text-muted)",
-    cursor: "pointer",
-    fontSize: "var(--fs-2xs)",
-    fontWeight: 600,
-    fontFamily: "inherit",
-    marginBottom: "var(--sp-1)",
-  },
-  weekHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: "var(--sp-3)",
-    flexWrap: "wrap",
-    padding: "0 var(--sp-4) var(--sp-2)",
-  },
-  weekBadge: {
-    background: "var(--accent-soft)",
-    color: "var(--accent)",
-    padding: "var(--sp-1) var(--sp-3)",
-    borderRadius: 20,
-    fontSize: "var(--fs-2xs)",
-    fontWeight: 700,
-  },
-  dayCard: {
-    background: "var(--card)",
-    border: "1px solid var(--border)",
-    borderRadius: "var(--radius)",
-    margin: "0 var(--sp-4) var(--sp-3)",
-    overflow: "hidden",
-  },
-  dayHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: "var(--sp-3)",
-    padding: "var(--sp-4)",
-    borderBottom: "1px solid var(--border)",
-    background: "var(--card-alt)",
-  },
-  dayNum: {
-    color: "#fff",
-    fontSize: "var(--fs-lg)",
-    fontWeight: 900,
-    padding: "var(--sp-1) var(--sp-3)",
-    borderRadius: "var(--radius-sm)",
-    minWidth: 44,
-    textAlign: "center",
-    flexShrink: 0,
-  },
-  postCard: {
-    background: "var(--bg)",
-    border: "1px solid var(--border)",
-    borderRadius: "var(--radius-sm)",
-    padding: "var(--sp-3)",
-    marginBottom: "var(--sp-3)",
-    transition: "border-color .3s",
-  },
-  contentBox: {
-    background: "var(--card-alt)",
-    borderRadius: "var(--radius-xs)",
-    padding: "var(--sp-3)",
-    // 14px: es el texto que el cliente lee de verdad en el móvil.
-    fontSize: "var(--fs-sm)",
-    color: "#C8D8E8",
-    lineHeight: "var(--lh-relaxed)",
-    marginBottom: "var(--sp-2)",
-    position: "relative",
-  },
-  fieldLabel: {
-    fontSize: "var(--fs-3xs)",
-    textTransform: "uppercase",
-    letterSpacing: ".06em",
-    display: "block",
-    marginBottom: "var(--sp-1)",
-  },
-  approveBtn: {
-    background: "#0d2a0d",
-    color: "var(--success)",
-    border: "1px solid #388E3C",
-  },
-  changesBtn: {
-    background: "#2a0d0d",
-    color: "var(--danger)",
-    border: "1px solid #C62828",
-  },
-  commentDisplay: {
-    marginTop: "var(--sp-3)",
-    padding: "var(--sp-2) var(--sp-3)",
-    background: "#2a1a0a",
-    border: "1px solid var(--alt-line)",
-    borderRadius: "var(--radius-xs)",
-    fontSize: "var(--fs-2xs)",
-    color: "#FFC166",
-  },
-  editableBadge: {
-    display: "inline-block",
-    marginLeft: "var(--sp-2)",
-    padding: "1px var(--sp-2)",
-    borderRadius: 8,
-    fontSize: "var(--fs-3xs)",
-    fontWeight: 600,
-    textTransform: "none",
-    letterSpacing: 0,
-    border: "1px solid var(--accent-line)",
-    color: "var(--accent)",
-    verticalAlign: "middle",
-  },
-  saveEditBtn: {
-    background: "#0d2a0d",
-    color: "var(--success)",
-    border: "1px solid #388E3C",
-  },
-  summary: {
-    margin: "0 var(--sp-4)",
-    padding: "var(--sp-4)",
-    background: "var(--card)",
-    border: "1px solid var(--border)",
-    borderRadius: "var(--radius)",
-  },
-};
+// ------------------------------------------------------------
+// Calendario del mes y rejilla del perfil
+// ------------------------------------------------------------
+
+function MesCalendario({ calendar, estados, token, onElegir }) {
+  const dias = calendar.days ?? [];
+  if (!dias.length) return <p className="aprobar-vacio">Este calendario no tiene días.</p>;
+  const primero = `${calendar.year}-${String(Number(calendar.month) + 1).padStart(2, "0")}-01`;
+  const hueco = (new Date(`${primero}T12:00:00Z`).getUTCDay() + 6) % 7;
+  const ultimo = new Date(Date.UTC(Number(calendar.year), Number(calendar.month) + 1, 0)).getUTCDate();
+  const porFecha = Object.fromEntries(dias.map((d) => [d.date, d]));
+  const celdas = [...Array(hueco).fill(null), ...Array.from({ length: ultimo }, (_, i) => `${primero.slice(0, 8)}${String(i + 1).padStart(2, "0")}`)];
+  return (
+    <div className="aprobar-mes">
+      <div className="aprobar-mes-semana" aria-hidden="true">
+        {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => <span key={d}>{d}</span>)}
+      </div>
+      <ol className="aprobar-mes-dias" aria-label="Días del mes">
+        {celdas.map((f, i) => {
+          if (!f) return <li key={`h${i}`} aria-hidden="true" />;
+          const posts = porFecha[f]?.posts ?? [];
+          return (
+            <li key={f} className="aprobar-mes-dia" data-vacio={!posts.length || undefined}>
+              <span className="aprobar-mes-num">{Number(f.slice(8))}</span>
+              {posts.map((p) => {
+                const m = mediosDe(p)[0];
+                return (
+                  <button key={p.id} type="button" className="aprobar-mes-post" data-estado={estados[p.id]}
+                    onClick={() => onElegir(p.id)} aria-label={`${fechaCorta(f)}, ${FORMATS[p.format]?.label ?? "publicación"}: ${ETIQUETA_ESTADO[estados[p.id]]}`}>
+                    {m?.tipo === "imagen" ? <img src={srcPublico(m.src, token)} alt="" loading="lazy" /> : <Icon name={FORMAT_ICONS[p.format] || "formatPost"} size={16} />}
+                  </button>
+                );
+              })}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+function RejillaPerfil({ publicaciones, estados, token, usuario, logo, nombre, onElegir }) {
+  // Como en Instagram: lo más reciente arriba, y sin las historias, que
+  // no se quedan en el perfil.
+  const enPerfil = publicaciones.filter((p) => p.format !== "historia" && p.format !== "live").slice().reverse();
+  return (
+    <section className="aprobar-perfil" aria-label="Así se verá tu perfil">
+      <div className="aprobar-perfil-cabecera">
+        <span className="aprobar-avatar aprobar-avatar-grande">{logo ? <img src={logo} alt="" /> : <Icon name="building" size={24} />}</span>
+        <div>
+          <strong>@{usuario}</strong>
+          <span>{nombre}</span>
+        </div>
+      </div>
+      <ul className="aprobar-perfil-rejilla">
+        {enPerfil.map((p) => {
+          const medios = mediosDe(p);
+          const m = medios[0];
+          return (
+            <li key={p.id}>
+              <button type="button" onClick={() => onElegir(p.id)} data-estado={estados[p.id]}
+                aria-label={`${fechaCorta(p._fecha)}: ${ETIQUETA_ESTADO[estados[p.id]]}`}>
+                {m?.tipo === "imagen" ? (
+                  <img src={srcPublico(m.src, token)} alt="" loading="lazy" />
+                ) : m?.tipo === "video" ? (
+                  <video src={srcPublico(m.src, token)} muted playsInline preload="metadata" aria-hidden="true" />
+                ) : (
+                  <span className="aprobar-perfil-vacio"><Icon name={FORMAT_ICONS[p.format] || "formatPost"} size={22} /></span>
+                )}
+                {(medios.length > 1 || p.format === "reel") && (
+                  <span className="aprobar-perfil-icono" aria-hidden="true">
+                    <Icon name={p.format === "reel" ? "play" : "copy"} size={14} />
+                  </span>
+                )}
+                <span className="aprobar-perfil-estado" data-estado={estados[p.id]} aria-hidden="true" />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+// ------------------------------------------------------------
+// Referencias visuales (también se aprueban)
+// ------------------------------------------------------------
+
+function Referencias({ refs, token, approvals, guardando, onResponder }) {
+  return (
+    <section className="aprobar-refs" aria-labelledby="aprobar-refs-t">
+      <h2 id="aprobar-refs-t">Referencias visuales</h2>
+      <p>El estilo que proponemos para las piezas del mes.</p>
+      <ul>
+        {refs.map((r) => {
+          const a = approvals[r.id]?.estado;
+          // La referencia guarda la clave de R2 a secas o la ruta de medios.
+          const src = r.url?.startsWith("clientes/") ? srcPublico(`/api/media/${r.url}`, token) : srcPublico(r.url, token);
+          const esImagen = /^(\/api\/|clientes\/)/.test(r.url || "") || /\.(png|jpe?g|webp|gif)(\?|$)/i.test(r.url || "");
+          return (
+            <li key={r.id} data-estado={a === "aprobado" ? "aprobada" : a === "cambios" ? "cambios" : "pendiente"}>
+              {esImagen
+                ? <img src={src} alt={r.name || "Referencia"} loading="lazy" />
+                : <a href={r.url} target="_blank" rel="noopener noreferrer">{r.name || r.url}</a>}
+              <div className="aprobar-fila">
+                <button type="button" className="btn aprobar-btn-ok" disabled={guardando[r.id]} aria-pressed={a === "aprobado"}
+                  onClick={() => onResponder(r.id, "aprobado")} aria-label={`Aprobar referencia ${r.name || ""}`}>
+                  <Icon name="check" size={16} />
+                </button>
+                <button type="button" className="btn aprobar-btn-cambios" disabled={guardando[r.id]} aria-pressed={a === "cambios"}
+                  onClick={() => onResponder(r.id, "cambios")} aria-label={`No me gusta la referencia ${r.name || ""}`}>
+                  <Icon name="close" size={16} />
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}

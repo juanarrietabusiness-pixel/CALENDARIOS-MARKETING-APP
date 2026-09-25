@@ -1,3 +1,4 @@
+import "./Ajustes.css";
 import Icon from "../components/Icon";
 import SeccionIA from "../components/SeccionIA";
 import SeccionPresupuesto from "../components/SeccionPresupuesto";

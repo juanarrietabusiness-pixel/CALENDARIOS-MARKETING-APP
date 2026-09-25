@@ -12,23 +12,23 @@
 import { useEffect, useId, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES } from "../../constants";
 import { generateFieldForPost } from "../../api";
-import { subirImagenPublicacion, getContentBankUrl, imagenDeDriveParaPublicacion } from "../../lib/db";
 import { vivo } from "../../lib/vivo";
+import { conMedios } from "../../lib/publicacion";
 
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { AvisoEditando } from "../Presencia";
-import BancoSelector from "../BancoSelector";
 import Icon from "../Icon";
+import { EditorMedios, CamposRedes, ConversacionCliente } from "./editorPublicacion";
+import SeccionPublicar from "./seccionPublicar";
 import { CopyButton, TimePicker } from "./primitivas";
 import { fieldHeaderStyle } from "./formato";
 
-export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onSendToBank, suggestion, onAcceptSuggestion, onRejectSuggestion, client, cal, editandoOtros = {} }) {
+export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onSendToBank, suggestion, onAcceptSuggestion, onRejectSuggestion, client, cal, editandoOtros = {}, pulso = 0, accionesPublicar = null }) {
   const [form, setForm] = useState({ ...post });
   const [fieldLoading, setFieldLoading] = useState({});
   const [fieldError, setFieldError] = useState("");
   const [moveDateOpen, setMoveDateOpen] = useState(false);
   const [moveTarget, setMoveTarget] = useState("");
-  const imgRef = useRef();
   const ids = useId();
   const panelRef = useDialogA11y(onClose);
   const sf = (k, v) => setForm((p) => ({ ...p, [k]: v }));
@@ -95,34 +95,6 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
   };
 
   const clientId = client?.dbId || client?.id;
-  const [subiendo, setSubiendo] = useState(false);
-
-  // Del banco de antes, la clave ya está en R2. De Drive, se COPIA a R2:
-  // la página de aprobación del cliente y el HTML exportado no pueden
-  // leer el Drive de la agencia.
-  const ponerImagen = async (item) => {
-    if (item.fuente !== "drive") { sf("image", getContentBankUrl(item.clave)); return; }
-    setSubiendo(true);
-    setFieldError("");
-    try {
-      sf("image", await imagenDeDriveParaPublicacion(clientId, item.fileId));
-    } catch (e) {
-      setFieldError(`No se pudo traer la imagen de Drive: ${e.message}`);
-    }
-    setSubiendo(false);
-  };
-  const [bancoAbierto, setBancoAbierto] = useState(false);
-
-  const subirImagen = async (file) => {
-    setFieldError("");
-    setSubiendo(true);
-    try {
-      sf("image", await subirImagenPublicacion(clientId, file));
-    } catch (err) {
-      setFieldError(`No se pudo subir la imagen: ${err.message}`);
-    }
-    setSubiendo(false);
-  };
 
   const AiButton = ({ field, label }) => (
     <button
@@ -195,9 +167,12 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         </fieldset>
 
         <fieldset className="field" style={{ border: "none" }}>
-          <legend className="label">Estado</legend>
+          <legend className="label">Aprobación</legend>
+          {/* «Publicada» ya no se marca aquí: la publicación tiene su propio
+              estado en «Publicar», abajo. Aprobación y publicación son dos
+              cosas: una puede estar aprobada Y con error al publicar. */}
           <div className="status-bar">
-            {Object.entries(STATUSES).map(([k, st]) => (
+            {Object.entries(STATUSES).filter(([k]) => k !== "published").map(([k, st]) => (
               <button
                 key={k}
                 type="button"
@@ -322,51 +297,33 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           </div>
         )}
 
-        <div className="field">
-          <span className="label" id={`${ids}-img-label`}>Imagen</span>
-          <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", flexWrap: "wrap" }}>
-            {form.image && <img src={form.image} alt="Vista previa de la imagen de la publicación" style={{ width: 64, height: 64, objectFit: "cover", borderRadius: "var(--radius-sm)" }} />}
-            <input
-              ref={imgRef}
-              id={`${ids}-img`}
-              type="file"
-              accept="image/*"
-              className="sr-only"
-              aria-labelledby={`${ids}-img-label`}
-              onChange={(e) => {
-                const file = e.target.files[0];
-                e.target.value = "";
-                if (file) subirImagen(file);
-              }}
-            />
-            <button className="btn btn-secondary btn-sm" onClick={() => imgRef.current?.click()} disabled={subiendo}>
-              <Icon name="upload" size={16} /> {subiendo ? "Subiendo…" : form.image ? "Cambiar imagen" : "Subir imagen"}
+        <EditorMedios
+          post={form}
+          clientId={clientId}
+          driveFolder={client?.driveFolder}
+          onChange={(medios) => setForm((p) => conMedios(p, medios))}
+          onError={setFieldError}
+        />
+
+        <CamposRedes post={form} sf={sf} />
+
+        <SeccionPublicar post={form} sf={sf} client={client}>
+          {accionesPublicar?.(form)}
+          {form.status === "published" ? (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => sf("status", "approved")}>
+              Quitar «publicada a mano»
             </button>
-            {clientId && (
-              <button className="btn btn-secondary btn-sm" onClick={() => setBancoAbierto(true)} disabled={subiendo}>
-                <Icon name="folder" size={16} /> {client?.driveFolder ? "Escoger de Drive" : "Escoger del banco"}
-              </button>
-            )}
-            {form.image && (
-              <button className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => sf("image", null)}>
-                Quitar
-              </button>
-            )}
-          </div>
-          {bancoAbierto && (
-            <BancoSelector
-              clientId={clientId}
-              driveFolder={client?.driveFolder}
-              tipos={["image"]}
-              titulo={client?.driveFolder ? "Escoger imagen de Google Drive" : "Escoger imagen del banco"}
-              onSelect={([item]) => { setBancoAbierto(false); void ponerImagen(item); }}
-              onClose={() => setBancoAbierto(false)}
-            />
+          ) : (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => sf("status", "published")}>
+              Ya la publiqué a mano
+            </button>
           )}
-        </div>
+        </SeccionPublicar>
+
+        {cal?.shareToken && <ConversacionCliente calId={cal.id} postId={post.id} pulso={pulso} />}
 
         <div className="field">
-          <label className="label" htmlFor={`${ids}-comment`}>Comentario interno</label>
+          <label className="label" htmlFor={`${ids}-comment`}>Nota interna <span style={{ fontWeight: 400, textTransform: "none" }}>· el cliente no la ve</span></label>
           <textarea id={`${ids}-comment`} className="textarea" value={form.comment || ""} onChange={(e) => sf("comment", e.target.value)} placeholder="Notas internas…" style={{ minHeight: 72 }} />
         </div>
       </div>

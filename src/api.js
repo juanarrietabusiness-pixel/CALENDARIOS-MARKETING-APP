@@ -1,4 +1,5 @@
 import { bloque, cachedBlock, parseBloques, parseJSONLoose, parseGitHubUrl, parsePiezas } from "./lib/parse";
+import { normalizarColor, coloresDelTexto, tresColores } from "./lib/colores";
 import { enTandas } from "./lib/tandas";
 import { hora12 } from "./lib/horas";
 import { getWeekNumber, dayName } from "./utils";
@@ -366,22 +367,69 @@ Responde SOLO con la descripcion/caption completa incluyendo los hashtags, sin p
 }
 
 export async function extractClientADN(repoContent) {
+  // La marca VISUAL también: antes el JSON no tenía ni un campo de color,
+  // así que aunque el manual dijera «#0A2540», la ficha seguía con el
+  // azul por defecto y la página del cliente salía con la marca de otro.
   const promptText = `Analiza el siguiente contenido de un repositorio de GitHub de un cliente y extrae la informacion para llenar su perfil de agencia de marketing.
 
 CONTENIDO DEL REPOSITORIO:
 ${repoContent}
 
 Responde UNICAMENTE con un JSON valido con esta estructura exacta, sin texto adicional:
-{"nombre":"","industria":"","descripcion":"","valores":"","audiencia":"","competencia":"","estiloGuion":"","estiloLocucion":"","hashtags":"","whatsapp":"","instagram":"","sucursales":"","notasInspeccion":""}
+{"nombre":"","industria":"","descripcion":"","valores":"","audiencia":"","competencia":"","estiloGuion":"","estiloLocucion":"","hashtags":"","whatsapp":"","instagram":"","sucursales":"","notasInspeccion":"","colores":[{"hex":"","nombre":"","rol":""}],"tipografias":"","estiloVisual":""}
 
-Si no encuentras informacion para un campo, dejalo como string vacio.
+- "colores": la paleta de marca tal como la defina el contenido. "hex" en formato #RRGGBB (convierte RGB a hex si viene asi; si solo hay Pantone sin equivalente, omitelo). "rol" es su papel: principal, secundario, acento, fondo, texto…
+- "tipografias": las fuentes de la marca y para que se usa cada una.
+- "estiloVisual": como se ven las piezas de la marca (fotografia, composicion, iluminacion, estilo grafico), en un parrafo.
+
+Si no encuentras informacion para un campo, dejalo vacio.
 No inventes datos que no esten en el contenido.`;
 
   const content = [{ type: "text", text: promptText }];
   const raw = await callAI(content, { funcion: "ADN de marca" });
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("No se pudo parsear la respuesta de IA");
-  return JSON.parse(jsonMatch[0]);
+  const datos = JSON.parse(jsonMatch[0]);
+
+  let paleta = (Array.isArray(datos.colores) ? datos.colores : [])
+    .map((c) => ({ hex: normalizarColor(c?.hex), nombre: String(c?.nombre ?? ""), rol: String(c?.rol ?? "") }))
+    .filter((c) => c.hex);
+  // Red: si la IA no devolvió paleta pero el manual trae códigos escritos.
+  if (!paleta.length) paleta = coloresDelTexto(repoContent).map((hex) => ({ hex, nombre: "", rol: "" }));
+  const tres = tresColores(paleta);
+
+  const visual = [
+    String(datos.estiloVisual ?? "").trim(),
+    datos.tipografias ? `Tipografías: ${String(datos.tipografias).trim()}` : "",
+    paleta.length ? `Paleta: ${paleta.map((c) => `${c.hex}${c.nombre ? ` ${c.nombre}` : ""}${c.rol ? ` (${c.rol})` : ""}`).join(", ")}` : "",
+  ].filter(Boolean).join("\n");
+
+  delete datos.colores;
+  delete datos.tipografias;
+  return {
+    ...datos,
+    estiloVisual: visual,
+    colorPrincipal: tres.principal,
+    colorSecundario: tres.secundario,
+    colorAcento: tres.acento,
+    paleta,
+  };
+}
+
+/** Una imagen del repositorio del ADN (el logo), como Blob. */
+export async function imagenDelADN(repoUrl, path) {
+  const res = await fetch("/api/adn/imagen", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ repoUrl, path }),
+  });
+  if (!res.ok) {
+    let d = null;
+    try { d = await res.json(); } catch { /* no era JSON */ }
+    throw new Error(d?.error || `GitHub respondió ${res.status}.`);
+  }
+  return res.blob();
 }
 
 /**

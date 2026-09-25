@@ -118,6 +118,7 @@ export function calendarToRow(cal, clientDbId) {
     day_labels: cal.dayLabels || {},
     offers: cal.offers || "",
     promo_code: cal.promoCode || "",
+    opciones: cal.opciones || {},
   };
 }
 
@@ -139,5 +140,10 @@ export function rowToCalendar(row) {
     dayLabels: row.day_labels || {},
     offers: row.offers || "",
     promoCode: row.promo_code || "",
+    // Lo que la agencia decide al enviar el enlace: fecha límite, mensaje
+    // para el cliente, programar al aprobar.
+    opciones: row.opciones || {},
+    revisionEnviada: row.revision_enviada || null,
+    revisionRevisor: row.revision_revisor || "",
   };
 }
