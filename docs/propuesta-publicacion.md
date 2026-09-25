@@ -3,7 +3,12 @@
 La aplicación nació para **planificar**, y la publicación se le añadió
 encima: funciona, pero se hace desde un panel pensado para escribir ideas.
 Este documento recoge qué falla hoy, qué permite de verdad la API de Meta
-(y qué no) y un plan por fases. Todavía no hay nada implementado.
+(y qué no) y un plan por fases.
+
+**Estado:** fase 1 hecha —imágenes de Flow adaptadas a 4:5 y 9:16 sin
+tocar el original, historias del post (la misma imagen o tres variantes
+de Nano Banana) que salen solas unos minutos después, historias de
+Facebook y colaboradores—. Las demás fases, en curso.
 
 ---
 
