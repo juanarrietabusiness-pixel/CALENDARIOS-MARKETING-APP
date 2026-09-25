@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState, useRef } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid } from "../utils";
-import { marcarActualizada, mediosDe, conMedios } from "../lib/publicacion";
+import { marcarActualizada } from "../lib/publicacion";
 import { callAI, loadADN, parseAIResponse, buildScriptPrompt, buildDescripcionesPrompt, buildClientContext, generateSinglePost } from "../api";
 import { buildExportHTML } from "../export";
-import { base64DeImagen, conImagenesIncrustadas, prepararMediosParaMeta } from "../lib/medios";
+import { base64DeImagen, conImagenesIncrustadas, prepararParaRedes } from "../lib/medios";
 import {
   shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals, loadClientMemories,
   listarPublicaciones, publicar, cancelarPublicacion, reintentarPublicacion, estadoRedes as leerEstadoRedes,
@@ -18,7 +18,9 @@ import Icon from "./Icon";
 import { useConfigIA } from "../hooks/useConfigIA";
 import { etiquetaIA } from "../lib/configIA";
 import { ContentDisplay, OverflowMenu } from "./calendario/primitivas";
-import { PostSidePanel } from "./calendario/PostSidePanel";
+// El panel de una publicación se carga al abrirlo: medios, publicar,
+// historias y vista previa son mucho código que el mes no necesita.
+const PostSidePanel = lazy(() => import("./calendario/PostSidePanel").then((m) => ({ default: m.PostSidePanel })));
 import { MonthGrid } from "./calendario/MonthGrid";
 import { BankPanel } from "./calendario/BankPanel";
 import {
@@ -80,13 +82,16 @@ export default function CalendarView({
    * guardado INMEDIATO, sin esperar al agrupado de 600 ms.
    */
   const publicarDesdePanel = async (form, setForm, { ahora, redes: destino }) => {
+    // JPEG, medidas y las copias adaptadas (4:5 para el feed, 9:16 para
+    // las historias) de lo que no quepa. El original no se toca.
     let post = form;
-    if (destino.includes("instagram") || destino.includes("facebook")) {
-      const { medios, cambio } = await prepararMediosParaMeta(mediosDe(form), (f) => subirImagenPublicacion(clienteDb, f));
-      if (cambio) {
-        post = conMedios(form, medios);
-        setForm(post);
-      }
+    const preparada = await prepararParaRedes(form, destino, {
+      subir: (f) => subirImagenPublicacion(clienteDb, f),
+      colorMarca: client?.primaryColor,
+    });
+    if (preparada.cambio) {
+      post = preparada.post;
+      setForm(post);
     }
     const ahoraISO = new Date().toISOString();
     const nuevo = {
@@ -1485,6 +1490,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
             onClick={() => setSidePanel(null)}
             style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 240, border: "none", cursor: "pointer" }}
           />
+          <Suspense fallback={<div className="panel-cargando" role="status">Abriendo la publicación…</div>}>
           <PostSidePanel
             post={sidePanel.post}
             day={sidePanel.day}
@@ -1533,6 +1539,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
             client={client}
             cal={cal}
           />
+          </Suspense>
         </>
       )}
     </div>

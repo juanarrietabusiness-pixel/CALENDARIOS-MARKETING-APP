@@ -123,3 +123,55 @@ describe("Instagram: proporción y formato", () => {
     expect(esJPEG("/x/a.JPEG")).toBe(true);
   });
 });
+
+describe("historias, ajustes y colaboradores", async () => {
+  const { medidasAjuste, piezasDe, publicacionDeVariante, momentoDeVariante, mediosParaRed, colaboradoresDe, conHistoria } = await import("./publicacion.js");
+  const img = (src, ancho, alto) => ({ src, tipo: "imagen", ancho, alto });
+
+  it("medidas del ajuste: 3:4 → 1080×1350; panorámica → 1080×566; historia → 1080×1920", () => {
+    expect(medidasAjuste(896, 1200, "feed")).toEqual({ ancho: 1080, alto: 1350 });
+    expect(medidasAjuste(3000, 1000, "feed")).toEqual({ ancho: 1080, alto: 566 });
+    expect(medidasAjuste(1080, 1080, "feed")).toEqual({ ancho: 1080, alto: 1080 });
+    expect(medidasAjuste(1080, 1080, "historia")).toEqual({ ancho: 1080, alto: 1920 });
+  });
+
+  it("la historia es otra pieza por red de Meta, no en TikTok", () => {
+    const p = { format: "post", historiaTambien: true, historias: [img("/h.jpg", 1080, 1920)] };
+    expect(conHistoria(p)).toBe(true);
+    expect(piezasDe(p, ["instagram", "tiktok"])).toEqual([
+      { red: "instagram", variante: "post" }, { red: "instagram", variante: "historia" }, { red: "tiktok", variante: "post" },
+    ]);
+    expect(publicacionDeVariante(p, "historia")).toMatchObject({ format: "historia", medios: [{ src: "/h.jpg" }] });
+    expect(conHistoria({ ...p, format: "historia" })).toBe(false);
+  });
+
+  it("la historia sale los minutos pedidos después del post", () => {
+    expect(momentoDeVariante("2026-10-05", "10:00", { historiaRetraso: 30 }, "historia")).toBe("2026-10-05T15:30:00.000Z");
+    expect(momentoDeVariante("2026-10-05", "10:00", {}, "historia")).toBe("2026-10-05T15:15:00.000Z");
+  });
+
+  it("Instagram usa la copia adaptada; Facebook, el original", () => {
+    const p = { format: "post", medios: [img("/a.jpg", 896, 1200)], adaptados: { "feed|/a.jpg": { src: "/a-45.jpg", ancho: 1080, alto: 1350 } } };
+    expect(mediosParaRed(p, "instagram")[0].src).toBe("/a-45.jpg");
+    expect(mediosParaRed(p, "facebook")[0].src).toBe("/a.jpg");
+    expect(revisarPublicacion(p, ["instagram"]).errores).toEqual([]);
+  });
+
+  it("en el panel, una 3:4 sin adaptar es un aviso (se ajusta sola); en el servidor, un error", () => {
+    const p = { format: "post", descripcion: "x", medios: [img("/a.jpg", 896, 1200)] };
+    expect(revisarPublicacion(p, ["instagram"], { navegador: true }).errores).toEqual([]);
+    expect(revisarPublicacion(p, ["instagram"], { navegador: true }).avisos.join()).toMatch(/se ajusta sola/);
+    expect(revisarPublicacion(p, ["instagram"]).errores.join()).toMatch(/4:5/);
+  });
+
+  it("colaboradores limpios, y más de tres no deja programar", () => {
+    expect(colaboradoresDe({ colaboradores: "@Uno, dos  tres" })).toEqual(["uno", "dos", "tres"]);
+    const p = { format: "post", descripcion: "x", medios: [img("/a.jpg", 1080, 1080)], colaboradores: "a b c d" };
+    expect(revisarPublicacion(p, ["instagram"]).errores.join()).toMatch(/3 colaboradores/);
+  });
+
+  it("las historias de Facebook ya se publican: sin aviso de «no se puede»", () => {
+    const r = revisarPublicacion({ format: "historia", medios: [img("/h.jpg", 1080, 1920)] }, ["facebook"]);
+    expect(r).toEqual({ errores: [], avisos: [] });
+  });
+});

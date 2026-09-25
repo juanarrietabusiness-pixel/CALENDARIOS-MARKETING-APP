@@ -414,3 +414,90 @@ describe("programar al aprobar", () => {
     expect(filas()).toMatchObject([{ post_id: "p1", red: "instagram", estado: "programada" }]);
   });
 });
+
+describe("historias y variantes", () => {
+  const historia = (n) => ({ src: `/api/media/clientes/c1/generadas/h${n}.jpg`, tipo: "imagen", ancho: 1080, alto: 1920 });
+
+  it("un post con «también como historia» son dos piezas por red; la historia sale 15 min después", async () => {
+    await sembrar({ posts: [post({ redes: ["instagram", "facebook"], historiaTambien: true, historias: [historia(1)] })] });
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1" });
+    const r = filas().map((f) => `${f.red}:${f.variante}@${f.programada_para}`).sort();
+    expect(r).toEqual([
+      "facebook:historia@2026-10-05T15:15:00.000Z", "facebook:post@2026-10-05T15:00:00.000Z",
+      "instagram:historia@2026-10-05T15:15:00.000Z", "instagram:post@2026-10-05T15:00:00.000Z",
+    ]);
+  });
+
+  it("sin imágenes de historia, «también como historia» no deja programar", async () => {
+    await sembrar({ posts: [post({ historiaTambien: true, historias: [] })] });
+    await expect(programar(env, acceso(), { calendarId: "cal1", postId: "p1" })).rejects.toThrow(/imagen de historia/);
+  });
+
+  it("Instagram: una tanda de historias sale una tras otra y no se repite ninguna", async () => {
+    let n = 0;
+    respuestas["POST /IG1/media"] = (p) => ({ id: p.media_type === "STORIES" ? `st-${n++}` : "cont1" });
+    respuestas["GET /st-0"] = respuestas["GET /st-1"] = { status_code: "FINISHED" };
+    let pub = 0;
+    respuestas["POST /IG1/media_publish"] = () => ({ id: `pub-${pub++}` });
+    await sembrar({ posts: [post({ format: "historia", medios: [historia(1), historia(2)] })] });
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
+    await procesarCola(env);
+    expect(llamadas.filter((l) => l.ruta === "/IG1/media").map((l) => l.params.media_type)).toEqual(["STORIES", "STORIES"]);
+    expect(pasos().filter((p) => p === "POST /IG1/media_publish")).toHaveLength(2);
+    expect(filas()[0]).toMatchObject({ estado: "publicada", externo_id: "pub-0" });
+    expect(JSON.parse(filas()[0].carga).tanda.ids).toEqual(["pub-0", "pub-1"]);
+  });
+
+  it("una tanda que falla a medias queda publicada con cuántas faltaron", async () => {
+    let n = 0;
+    respuestas["POST /IG1/media"] = () => (n++ === 0 ? { id: "st-0" } : { __estado: 400, cuerpo: { error: { message: "no vale", code: 100 } } });
+    respuestas["GET /st-0"] = { status_code: "FINISHED" };
+    respuestas["POST /IG1/media_publish"] = { id: "pub-0" };
+    await sembrar({ posts: [post({ format: "historia", medios: [historia(1), historia(2)] })] });
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
+    await procesarCola(env);
+    const [f] = filas();
+    expect(f.estado).toBe("publicada");
+    expect(JSON.parse(f.carga).aviso).toMatch(/Salieron 1 de 2/);
+  });
+
+  it("Facebook: la historia de foto se sube sin publicar y se publica como historia", async () => {
+    respuestas["POST /PAGE1/photo_stories"] = { post_id: "PAGE1_st" };
+    await sembrar({ posts: [post({ redes: ["facebook"], format: "historia", medios: [historia(1)] })] });
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
+    await procesarCola(env);
+    expect(pasos()).toEqual(["POST /PAGE1/photos", "POST /PAGE1/photo_stories"]);
+    expect(llamadas[0].params.published).toBe("false");
+    expect(llamadas[1].params.photo_id).toMatch(/^foto-/);
+    expect(filas()[0]).toMatchObject({ estado: "publicada", externo_id: "PAGE1_st" });
+  });
+
+  it("colaboradores: van en el post de Instagram, limpios y como mucho tres", async () => {
+    await sembrar({ posts: [post({ colaboradores: ["@Marca.Amiga", "otra_cuenta"] })] });
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
+    await procesarCola(env);
+    expect(JSON.parse(llamadas[0].params.collaborators)).toEqual(["marca.amiga", "otra_cuenta"]);
+  });
+
+  it("la copia adaptada (4:5) es la que sale en Instagram; el original sigue en la publicación", async () => {
+    const original = { src: "/api/media/clientes/c1/posts/flow.jpg", tipo: "imagen", ancho: 896, alto: 1200 };
+    const adaptada = { src: "/api/media/clientes/c1/posts/flow-45.jpg", ancho: 960, alto: 1200 };
+    await sembrar({ posts: [post({ medios: [original], adaptados: { [`feed|${original.src}`]: adaptada } })] });
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
+    await procesarCola(env);
+    expect(llamadas[0].params.image_url).toMatch(/\/flow-45\.jpg$/);
+  });
+
+  it("sin copia adaptada, una imagen 3:4 no se programa desde el servidor", async () => {
+    await sembrar({ posts: [post({ medios: [{ src: "/api/media/clientes/c1/posts/flow.jpg", tipo: "imagen", ancho: 896, alto: 1200 }] })] });
+    await expect(programar(env, acceso(), { calendarId: "cal1", postId: "p1" })).rejects.toThrow(/4:5/);
+  });
+
+  it("quitar «también como historia» cancela la historia programada y deja el post", async () => {
+    await sembrar({ posts: [post({ historiaTambien: true, historias: [historia(1)] })] });
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1" });
+    pasar();
+    await resincronizarCalendario(env, acceso(), { id: "cal1", days: JSON.stringify([{ date: "2026-10-05", posts: [post({ historiaTambien: false, historias: [historia(1)] })] }]) });
+    expect(filas().map((f) => `${f.variante}:${f.estado}`).sort()).toEqual(["historia:cancelada", "post:programada"]);
+  });
+});

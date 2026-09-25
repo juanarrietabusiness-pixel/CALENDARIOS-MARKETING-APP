@@ -19,14 +19,17 @@ export const TEXTO_ESTADO = {
   error: "No se publicó",
 };
 
-/** La fila más reciente por red, sin las canceladas. */
+/** La clave de una pieza: la red y, si es la historia que acompaña al post, «:historia». */
+export const clavePieza = (red, variante = "post") => (variante === "historia" ? `${red}:historia` : red);
+
+/** La fila más reciente por pieza (red y variante), sin las canceladas. */
 export function colaDe(filas = [], postId) {
-  const porRed = {};
+  const porPieza = {};
   for (const f of filas) {
     if (f.postId !== postId || f.estado === "cancelada") continue;
-    porRed[f.red] = f;
+    porPieza[clavePieza(f.red, f.variante)] = f;
   }
-  return porRed;
+  return porPieza;
 }
 
 /**

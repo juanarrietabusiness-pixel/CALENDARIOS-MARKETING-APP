@@ -75,6 +75,41 @@ function construirPrompt(datos) {
   return partes.join("\n");
 }
 
+/**
+ * Las historias que salen de un post. La imagen del post va como BASE
+ * (no como inspiración): lo que se pide es la misma pieza llevada a 9:16,
+ * no otra nueva. Tres variantes para escoger.
+ *
+ * Todas dejan libres las zonas seguras de una historia —arriba el nombre
+ * de la cuenta, abajo la barra de respuesta— y un hueco para el sticker
+ * de enlace o encuesta, que por API no se puede poner.
+ */
+const VARIANTES_HISTORIA = Object.freeze({
+  adaptacion: "Adapta ESTA imagen a una historia vertical 9:16. Conserva exactamente el mismo contenido, producto, personas, colores, estilo y cualquier texto que ya tenga, sin cambiarlo ni traducirlo. Completa el lienzo ampliando el fondo arriba y abajo de forma natural y coherente (sin franjas, sin bordes, sin repetir el motivo). No recortes el motivo principal: debe verse entero, centrado.",
+  anuncio: "Diseña una historia vertical 9:16 que anuncie ESTA publicación: coloca la imagen del post entera, como una tarjeta centrada con esquinas suavemente redondeadas y una sombra sutil, sobre un fondo limpio con los colores de la marca (puede ser un degradado suave o una textura sutil). Encima de la tarjeta, en letras grandes y limpias, sólo el texto «NUEVO POST». Ningún otro texto.",
+  detalle: "Crea una historia vertical 9:16 con un primer plano (detalle) del motivo principal de ESTA imagen: el mismo producto o escena, con la misma luz, colores y estilo, como si fuera una foto real tomada más cerca. Sin texto.",
+});
+
+function construirPromptHistoria(variante, { clientName, visualStyle }) {
+  return [
+    `Genera una imagen para una HISTORIA de Instagram (1080×1920, vertical 9:16) a partir de la imagen de la publicación que te adjunto.`,
+    clientName ? `Marca: ${clientName}.` : "",
+    VARIANTES_HISTORIA[variante] ?? VARIANTES_HISTORIA.adaptacion,
+    `ZONAS SEGURAS: deja libres de texto y de elementos importantes los ~250 px de arriba (ahí va el nombre de la cuenta) y los ~350 px de abajo (ahí va la barra de respuesta y el sticker).`,
+    visualStyle ? `\nGUÍA VISUAL DEL CLIENTE (respetar):\n${visualStyle}` : "",
+    `Genera SOLO la imagen, sin explicación.`,
+  ].filter(Boolean).join("\n");
+}
+
+/** La imagen del post, de R2, siempre de ESTE cliente. */
+async function imagenDelPost(env, clientId, src) {
+  const clave = String(src ?? "").replace(/^\/api\/media\//, "");
+  if (!clave.startsWith(`clientes/${clientId}/`) || clave.includes("..")) return null;
+  const obj = await env.MEDIA.get(clave);
+  if (!obj) return null;
+  return { inlineData: { mimeType: obj.httpMetadata?.contentType || "image/jpeg", data: aBase64(await obj.arrayBuffer()) } };
+}
+
 async function cargarReferencias(env, acceso, clientId) {
   const refs = await acceso.leer(
     "image_references", { client_id: clientId }, "created_at desc",
@@ -119,20 +154,33 @@ export async function rutaGenerarImagen(req, env, ctx) {
     if (tpl) templatePrompt = tpl.prompt;
   }
 
-  const prompt = construirPrompt({
-    idea, descripcion, guion, format, category, title,
-    clientName: cliente.name,
-    visualStyle: cliente.visual_style || "",
-    templatePrompt,
-    imageFormat: imageFormat || "square",
-  });
-
-  const parts = [{ text: prompt }];
-
-  const refParts = await cargarReferencias(env, acceso, clientId);
-  if (refParts.length > 0) {
-    parts.push({ text: "\nIMÁGENES DE REFERENCIA (usa estas como inspiración visual):" });
-    parts.push(...refParts);
+  // Historia a partir de la imagen de un post: otra petición, otra base.
+  const historia = body.historiaDe && typeof body.historiaDe === "object" ? body.historiaDe : null;
+  let formatoFinal = imageFormat || "square";
+  let parts;
+  if (historia) {
+    const base = await imagenDelPost(env, clientId, historia.src);
+    if (!base) return error("No encontré la imagen del post: tiene que estar subida a la publicación.", 404);
+    formatoFinal = "story";
+    parts = [
+      { text: construirPromptHistoria(historia.variante, { clientName: cliente.name, visualStyle: cliente.visual_style || "" }) },
+      { text: "\nIMAGEN DE LA PUBLICACIÓN (la base):" },
+      base,
+    ];
+  } else {
+    const prompt = construirPrompt({
+      idea, descripcion, guion, format, category, title,
+      clientName: cliente.name,
+      visualStyle: cliente.visual_style || "",
+      templatePrompt,
+      imageFormat: formatoFinal,
+    });
+    parts = [{ text: prompt }];
+    const refParts = await cargarReferencias(env, acceso, clientId);
+    if (refParts.length > 0) {
+      parts.push({ text: "\nIMÁGENES DE REFERENCIA (usa estas como inspiración visual):" });
+      parts.push(...refParts);
+    }
   }
 
   const modelo = env.GEMINI_MODEL || "gemini-2.5-flash-image";
@@ -151,7 +199,7 @@ export async function rutaGenerarImagen(req, env, ctx) {
         contents: [{ parts }],
         generationConfig: {
           responseModalities: ["TEXT", "IMAGE"],
-          imageConfig: { aspectRatio: (FORMATOS[imageFormat] ?? FORMATOS.square).ratio },
+          imageConfig: { aspectRatio: (FORMATOS[formatoFinal] ?? FORMATOS.square).ratio },
         },
       }),
     });
@@ -185,7 +233,7 @@ export async function rutaGenerarImagen(req, env, ctx) {
   }
 
   const data = await res.json();
-  await registrarConsumoGemini(acceso, { funcion: "imagen", modelo, meta: data?.usageMetadata, clienteId: clientId });
+  await registrarConsumoGemini(acceso, { funcion: historia ? "historia" : "imagen", modelo, meta: data?.usageMetadata, clienteId: clientId });
   const candidates = data?.candidates ?? [];
   const partesRespuesta = candidates[0]?.content?.parts ?? [];
 

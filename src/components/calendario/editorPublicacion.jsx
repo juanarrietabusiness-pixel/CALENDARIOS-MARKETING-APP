@@ -218,6 +218,17 @@ export function CamposRedes({ post, sf }) {
         />
       </div>
       <div className="field">
+        <label className="label" htmlFor={`${ids}-colab`}>Colaboradores de Instagram (opcional)</label>
+        <input
+          id={`${ids}-colab`}
+          className="input"
+          value={Array.isArray(post.colaboradores) ? post.colaboradores.join(", ") : post.colaboradores || ""}
+          onChange={(e) => sf("colaboradores", e.target.value)}
+          placeholder="@marca_amiga, @otra_cuenta"
+        />
+        <p className="hint">Hasta 3 cuentas públicas. Sale en los dos perfiles cuando la otra cuenta acepta la invitación desde su app. No aplica a historias.</p>
+      </div>
+      <div className="field">
         <label className="casilla">
           <input type="checkbox" checked={fb} onChange={(e) => { setFb(e.target.checked); if (!e.target.checked) sf("textoFacebook", ""); }} />
           Texto distinto para Facebook
