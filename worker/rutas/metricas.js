@@ -21,7 +21,8 @@ import { fotografiarCuenta, fechaDeFoto } from "../lib/metricas.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
-const CDN_META = /(^|\.)(cdninstagram\.com|fbcdn\.net)$/;
+// Los CDN de Meta y de TikTok (las portadas de los videos).
+const CDN_META = /(^|\.)(cdninstagram\.com|fbcdn\.net|tiktokcdn\.com|tiktokcdn-us\.com)$/;
 
 const salidaSerie = (f) => {
   const datos = leerJSON(f.datos, {});

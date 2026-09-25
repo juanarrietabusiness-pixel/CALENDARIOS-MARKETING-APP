@@ -5,6 +5,7 @@ import SeccionPresupuesto from "../components/SeccionPresupuesto";
 import { useEffect } from "react";
 import SeccionDrive from "../components/SeccionDrive";
 import SeccionMeta from "../components/SeccionMeta";
+import SeccionTikTok from "../components/SeccionTikTok";
 import LimpiezaTerminadas from "../components/LimpiezaTerminadas";
 import { TaskTemplatesManager } from "../components/TaskPanel";
 
@@ -67,6 +68,7 @@ export default function Ajustes({ yo, clients = [], pulso = 0, onVolver, onExpor
         <SeccionPresupuesto esAdmin={esAdmin} pulso={pulso} />
         <SeccionDrive esAdmin={esAdmin} pulso={pulso}>
           <SeccionMeta esAdmin={esAdmin} clients={clients} pulso={pulso} />
+          <SeccionTikTok clients={clients} pulso={pulso} />
         </SeccionDrive>
 
         <section id="tareas" className="ajustes-seccion" aria-labelledby="ajustes-tareas">

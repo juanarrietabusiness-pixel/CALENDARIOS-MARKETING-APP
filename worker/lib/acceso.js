@@ -268,7 +268,7 @@ export async function cuentasSinFoto(db, fecha, limite = 1) {
   const { results } = await db
     .prepare(
       `select c.id, c.owner_id from cuentas_sociales c
-        where c.client_id is not null and c.red in ('instagram','facebook')
+        where c.client_id is not null and c.red in ('instagram','facebook','tiktok')
           and not exists (select 1 from metricas_cuenta m where m.cuenta_id = c.id and m.fecha = ?)
         order by c.updated_at asc
         limit ?`,

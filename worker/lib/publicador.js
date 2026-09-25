@@ -32,6 +32,7 @@ import { crearAcceso, colaPendiente } from "./acceso.js";
 import { difundir } from "./vivo.js";
 import { uuid, ahora } from "./ids.js";
 import { ErrorMeta, graph, mensajeMeta, descifrarMeta, urlMedioPublico, urlGraphVideo } from "./meta.js";
+import { ErrorTikTok, mensajeTikTok, tokenTikTok, iniciarSubida, subirTrozos, estadoSubida } from "./tiktok.js";
 import {
   REDES, revisarPublicacion, mediosDe, textoPara, primerComentario, destinoInstagram,
   momentoPublicacion, esJPEG,
@@ -123,6 +124,9 @@ export async function programar(env, acceso, { calendarId, postId, redes = null,
   if (errores.length) throw new ErrorPublicar(errores.join(" "));
   if (lista.includes("instagram") && mediosDe(post).some((m) => m.tipo === "imagen" && !esJPEG(m.src))) {
     throw new ErrorPublicar("Instagram sólo acepta imágenes JPEG. Programa desde el panel de la publicación: allí se convierten solas.");
+  }
+  if (lista.includes("tiktok") && !mediosDe(post).some((m) => m.tipo === "video" && m.src.startsWith("/api/media/clientes/"))) {
+    throw new ErrorPublicar("Para TikTok, el video tiene que estar subido a la publicación (desde el equipo o desde Drive).");
   }
   if ((lista.includes("instagram") || lista.includes("facebook")) && !(await acceso.leerUno("integracion_meta", { id: acceso.ownerId }))) {
     throw new ErrorPublicar("Meta no está conectado. Conéctalo en Ajustes → Integraciones.");
@@ -294,13 +298,20 @@ export async function procesarPublicacion(env, { id, owner_id: ownerId }) {
 
     const cuenta = fila.cuenta_id ? await acceso.leerUno("cuentas_sociales", { id: fila.cuenta_id }) : null;
     if (!cuenta?.token_cifrado) throw new ErrorPublicar("La cuenta de destino ya no está conectada. Revísala en Ajustes → Integraciones.");
-    const meta = await acceso.leerUno("integracion_meta", { id: ownerId });
-    if (!meta) throw new ErrorPublicar("Meta no está conectado. Conéctalo en Ajustes → Integraciones.");
-    const token = await descifrarMeta(env, cuenta.token_cifrado);
-    const paso = fila.red === "instagram" ? pasoInstagram : fila.red === "facebook" ? pasoFacebook : null;
+    let token;
+    let origen = "";
+    if (fila.red === "tiktok") {
+      token = await tokenTikTok(env, acceso, cuenta);
+    } else {
+      const meta = await acceso.leerUno("integracion_meta", { id: ownerId });
+      if (!meta) throw new ErrorPublicar("Meta no está conectado. Conéctalo en Ajustes → Integraciones.");
+      token = await descifrarMeta(env, cuenta.token_cifrado);
+      origen = meta.origen;
+    }
+    const paso = { instagram: pasoInstagram, facebook: pasoFacebook, tiktok: pasoTikTok }[fila.red];
     if (!paso) throw new ErrorPublicar(`Publicar en ${REDES[fila.red]?.nombre ?? fila.red} todavía no está disponible.`);
 
-    const contexto = { cuenta, token, origen: meta.origen, carga, guardar, fila: () => fila };
+    const contexto = { cuenta, token, origen, carga, guardar, fila: () => fila };
     const inicio = Date.now();
     for (let vuelta = 0; vuelta < 20; vuelta++) {
       const r = await paso(env, contexto);
@@ -317,12 +328,12 @@ export async function procesarPublicacion(env, { id, owner_id: ownerId }) {
     }
   } catch (e) {
     const intentos = (fila.intentos ?? 0) + 1;
-    const mensaje = e instanceof ErrorPublicar ? e.message : mensajeMeta(e);
+    const mensaje = e instanceof ErrorPublicar ? e.message : e instanceof ErrorTikTok ? mensajeTikTok(e) : mensajeMeta(e);
     if (fila.externo_id) {
       // Ya salió. Lo que falló es lo de después: no se vuelve a publicar.
       carga.aviso = `Se publicó, pero después: ${mensaje}`;
       await guardar({ estado: "publicada", siguiente_intento: null, publicada_at: fila.publicada_at ?? ahora() });
-    } else if (e instanceof ErrorMeta && e.transitorio && intentos < MAX_INTENTOS) {
+    } else if ((e instanceof ErrorMeta || e instanceof ErrorTikTok) && e.transitorio && intentos < MAX_INTENTOS) {
       await guardar({
         intentos, error: mensaje,
         estado: fila.contenedor_id || carga.hijos ? "procesando" : "programada",
@@ -490,4 +501,58 @@ async function pasoFacebook(env, { cuenta, token, origen, carga, guardar, fila: 
   }
   await guardar({ externo_id: idPublicado, enlace: enlace ?? `https://www.facebook.com/${idPublicado}`, publicada_at: ahora() });
   return { hecho: true };
+}
+
+// ------------------------------------------------------------
+// TikTok
+// ------------------------------------------------------------
+
+/**
+ * 1. Abrir la subida (bandeja o directo) y subir el video en trozos desde
+ *    R2. El `publish_id` se guarda SÓLO cuando la subida terminó: a partir
+ *    de ahí no se vuelve a abrir otra, que sería un segundo video.
+ * 2. Esperar a que TikTok lo procese: en la bandeja del cliente
+ *    (borrador) o publicado.
+ */
+async function pasoTikTok(env, { cuenta, token, carga, guardar, fila: actual }) {
+  const fila = actual();
+  const post = carga.post ?? {};
+  if (fila.externo_id) return { hecho: true };
+
+  if (!fila.contenedor_id) {
+    const video = mediosDe(post).find((m) => m.tipo === "video");
+    const clave = String(video?.src ?? "").replace(/^\/api\/media\//, "");
+    if (!/^clientes\/[^/]+\//.test(clave)) throw new ErrorPublicar("Para TikTok, el video tiene que estar subido a la publicación.");
+    const cabeza = await env.MEDIA.head(clave);
+    if (!cabeza) throw new ErrorPublicar("El video ya no está en el almacenamiento: vuelve a añadirlo a la publicación.");
+    const modo = leerJSON(cuenta.datos, {})?.modo === "directo" ? "directo" : "borrador";
+    const { publishId, uploadUrl, privacidad } = await iniciarSubida(token, { modo, tamano: cabeza.size, titulo: textoPara(post, "tiktok") });
+    await subirTrozos(env, clave, uploadUrl, cabeza.size);
+    carga.modo = modo;
+    carga.privacidad = privacidad;
+    await guardar({ contenedor_id: publishId });
+    return { esperar: 15_000 };
+  }
+
+  const estado = await estadoSubida(token, fila.contenedor_id);
+  if (estado.status === "SEND_TO_USER_INBOX") {
+    carga.aviso = "Está en la bandeja de TikTok del cliente: se publica desde la app, con un toque.";
+    await guardar({ externo_id: fila.contenedor_id, publicada_at: ahora() });
+    return { hecho: true };
+  }
+  if (estado.status === "PUBLISH_COMPLETE") {
+    const id = estado.publicaly_available_post_id?.[0];
+    if (carga.privacidad === "SELF_ONLY") carga.aviso = "Publicada en privado: hasta que TikTok revise la app, sólo la ve la cuenta. Cámbiala a pública desde la app.";
+    await guardar({
+      externo_id: String(id ?? fila.contenedor_id),
+      enlace: id && cuenta.usuario ? `https://www.tiktok.com/@${cuenta.usuario}/video/${id}` : "",
+      publicada_at: ahora(),
+    });
+    return { hecho: true };
+  }
+  if (estado.status === "FAILED") {
+    await guardar({ contenedor_id: null });
+    throw new ErrorTikTok({ code: estado.fail_reason ?? "failed", message: `TikTok no pudo procesar el video (${estado.fail_reason ?? "sin motivo"}).` }, 400);
+  }
+  return { esperar: 20_000 };
 }
