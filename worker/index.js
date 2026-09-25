@@ -43,6 +43,7 @@ import { rutasMetricas } from "./rutas/metricas.js";
 import { fotoPendiente } from "./lib/metricas.js";
 import { rutasInformes } from "./rutas/informes.js";
 import { rutasAuditorias } from "./rutas/auditorias.js";
+import { rutasMCP, rutasMCPPublicas } from "./rutas/mcp.js";
 import { informePendiente } from "./lib/informes.js";
 
 // El Durable Object del espacio. Se reexporta desde aquí porque
@@ -76,6 +77,16 @@ export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url);
     const ruta = url.pathname;
+
+    // Claude (MCP) y su OAuth viven fuera de /api: son direcciones que
+    // fija el estándar (/.well-known/…) o que se pegan en claude.ai (/mcp).
+    if (ruta === "/mcp" || ruta.startsWith("/.well-known/oauth-") || ruta.startsWith("/oauth/")) {
+      try {
+        return (await rutasMCPPublicas(req, env)) ?? env.ASSETS.fetch(req);
+      } catch (e) {
+        return error("Error interno", 500, e);
+      }
+    }
 
     // Lo que no es API lo sirve Static Assets (SPA).
     if (!ruta.startsWith("/api/")) return env.ASSETS.fetch(req);
@@ -291,6 +302,7 @@ export default {
       if (partes[0] === "metricas") return rutasMetricas(req, env, { acceso, usuario, partes, metodo });
       if (partes[0] === "informes") return rutasInformes(req, env, { acceso, usuario, partes, metodo });
       if (partes[0] === "auditorias") return rutasAuditorias(req, env, { acceso, usuario, partes, metodo });
+      if (partes[0] === "mcp") return rutasMCP(req, env, { acceso, usuario, partes, metodo });
 
       // ---------- Medios ----------
       //

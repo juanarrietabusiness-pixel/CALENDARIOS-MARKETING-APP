@@ -4,7 +4,7 @@ import Icon from "../components/Icon";
 import * as db from "../lib/db";
 import { navegar } from "../lib/rutas";
 import { REDES } from "../lib/publicacion";
-import { filtrarCola, ordenarProgramacion, fechaHora, horaDe, TEXTO_ESTADO } from "../lib/cola";
+import { filtrarCola, ordenarProgramacion, fechaHora, horaDe, TEXTO_ESTADO, asistidasPendientes } from "../lib/cola";
 import { FORMAT_ICONS } from "../constants";
 
 // ============================================================
@@ -89,7 +89,12 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir }) {
   };
   const abrir = (f) => onAbrir?.({ clientId: f.clientId, calendarId: f.calendarId, postId: f.postId });
 
-  const total = vista.fallidas.length + vista.proximas.reduce((a, g) => a + g.filas.length, 0) + vista.publicadas.reduce((a, g) => a + g.filas.length, 0);
+  // Lo que se publica a mano sale de los calendarios, no de la cola.
+  const aMano = useMemo(
+    () => (estado && estado !== "pendiente") || red ? [] : asistidasPendientes(clients, undefined, rango).filter((x) => !cliente || x.cliente.id === cliente),
+    [clients, rango, cliente, red, estado],
+  );
+  const total = aMano.length + vista.fallidas.length + vista.proximas.reduce((a, g) => a + g.filas.length, 0) + vista.publicadas.reduce((a, g) => a + g.filas.length, 0);
 
   return (
     <div className="programacion">
@@ -161,6 +166,31 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir }) {
                   <button type="button" className="btn btn-secondary btn-sm" onClick={() => abrir(f)}>Abrir</button>
                   <button type="button" className="btn btn-ghost btn-sm" disabled={ocupada === f.id} onClick={() => cancelar(f, "¿Descartar esta publicación fallida? No se volverá a intentar.")}>
                     Descartar
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {aMano.length > 0 && (
+        <section className="prog-bloque" aria-labelledby={`${ids}-am`}>
+          <h2 id={`${ids}-am`} className="prog-titulo">
+            <Icon name="photo" size={16} /> Para publicar a mano ({aMano.length})
+          </h2>
+          <ul className="prog-lista">
+            {aMano.map((x) => (
+              <li key={x.post.id} className="prog-fila" data-estado={x.atrasada ? "error" : "programada"}>
+                <span className="prog-hora">{x.cuando ? horaDe(x.cuando) : ""}</span>
+                <div className="prog-cuerpo">
+                  <span className="prog-pieza"><span className="prog-cliente">{x.cliente.name}</span> {fechaHora(x.cuando)}{x.atrasada ? " · atrasada" : ""}</span>
+                  <p className="prog-texto">{x.post.title || x.post.idea || "Sin título"}</p>
+                  {x.post.notaAsistida && <p className="prog-cuando">A mano: {x.post.notaAsistida}</p>}
+                </div>
+                <div className="prog-acciones">
+                  <button type="button" className="btn btn-primary btn-sm" onClick={() => navegar(`/a-mano/${encodeURIComponent(x.calendario.dbId || x.calendario.id)}/${encodeURIComponent(x.post.id)}`)}>
+                    Publicarla
                   </button>
                 </div>
               </li>

@@ -124,7 +124,7 @@ export function aprobadasSinProgramar(days = [], filas = [], hoy = fechaEnZona(n
   for (const d of days) {
     if (!d?.date || d.date < hoy) continue;
     for (const p of d.posts ?? []) {
-      if (p?.status === "approved" && p.format !== "live" && !enCola.has(p.id)) salida.push({ post: p, fecha: d.date });
+      if (p?.status === "approved" && p.format !== "live" && !p.asistida && !enCola.has(p.id)) salida.push({ post: p, fecha: d.date });
     }
   }
   return salida;
@@ -151,4 +151,28 @@ export function revisarAprobadas(candidatas = [], redesDelCliente = [], ahora = 
     if (cuando && Date.parse(cuando) < ahora - 60_000) errores.push("Su día y hora ya pasaron.");
     return { post, fecha, redes, cuando, errores, lista: errores.length === 0 };
   });
+}
+
+/**
+ * Lo que se publica A MANO desde el teléfono (música, stickers, encuestas:
+ * lo que la API no deja): las publicaciones marcadas `asistida` que aún
+ * no se han publicado, de hoy a `dias` más, y las atrasadas. Van en orden
+ * de hora, que es el orden en que hay que hacerlas.
+ */
+export function asistidasPendientes(clients = [], hoy = fechaEnZona(new Date(), ZONA), dias = 7) {
+  const hasta = sumarDias(hoy, dias - 1);
+  const salida = [];
+  for (const c of clients) {
+    for (const cal of c.calendars ?? []) {
+      for (const d of cal.days ?? []) {
+        if (!d?.date || d.date > hasta) continue;
+        for (const p of d.posts ?? []) {
+          if (!p?.asistida || p.status === "published") continue;
+          const cuando = momentoPublicacion(d.date, p.publishTime);
+          salida.push({ cliente: c, calendario: cal, fecha: d.date, post: p, cuando, atrasada: d.date < hoy });
+        }
+      }
+    }
+  }
+  return salida.sort((a, b) => (a.cuando < b.cuando ? -1 : 1));
 }

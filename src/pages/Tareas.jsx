@@ -5,7 +5,7 @@ import SelectorFecha from "../components/SelectorFecha";
 import * as db from "../lib/db";
 import { navegar } from "../lib/rutas";
 import { clasificar, fechaEnZona, textoAtraso, textoFecha } from "../lib/agenda";
-import { filtrarCola, ordenarProgramacion, horaDe } from "../lib/cola";
+import { filtrarCola, ordenarProgramacion, horaDe, asistidasPendientes } from "../lib/cola";
 import { REDES } from "../lib/publicacion";
 
 // ============================================================
@@ -176,7 +176,7 @@ export default function Tareas({
             )}
           </div>
 
-          <PublicacionesDeHoy pulso={pulso} nombreDe={nombreDe} />
+          <PublicacionesDeHoy pulso={pulso} nombreDe={nombreDe} clients={clients} />
 
           <Bloque titulo="Atrasadas" icono="alert" color="var(--danger)" items={bloques.atrasadas} filaProps={filaProps} />
           <Bloque
@@ -412,7 +412,7 @@ function PorEmpresa({ todas, nombreDe, filaProps, hoy }) {
  * La cola, vista desde Mi día: lo que no se publicó —que es trabajo, como
  * una tarea atrasada— y lo que sale hoy. El detalle está en Programación.
  */
-function PublicacionesDeHoy({ pulso, nombreDe }) {
+function PublicacionesDeHoy({ pulso, nombreDe, clients }) {
   const [filas, setFilas] = useState([]);
   useEffect(() => {
     let vivo = true;
@@ -421,7 +421,8 @@ function PublicacionesDeHoy({ pulso, nombreDe }) {
   }, [pulso]);
   const { fallidas, proximas } = ordenarProgramacion(filtrarCola(filas, { rango: 1 }));
   const hoy = proximas[0]?.nombre === "Hoy" ? proximas[0].filas : [];
-  if (!fallidas.length && !hoy.length) return null;
+  const aMano = asistidasPendientes(clients, undefined, 1);
+  if (!fallidas.length && !hoy.length && !aMano.length) return null;
   const ir = (e) => { e.preventDefault(); navegar("/programacion"); };
   const linea = (f) => `${nombreDe(f.clientId) || "Cliente"} · ${REDES[f.red]?.nombre ?? f.red}${f.variante === "historia" ? " (historia)" : ""}`;
 
@@ -436,6 +437,23 @@ function PublicacionesDeHoy({ pulso, nombreDe }) {
             {fallidas.slice(0, 3).map((f) => <li key={f.id}><strong>{linea(f)}:</strong> {f.error}</li>)}
           </ul>
           <a href="/programacion" onClick={ir}>Revisar y reintentar en Programación</a>
+        </div>
+      )}
+      {aMano.length > 0 && (
+        <div className="notice notice-warn" style={{ display: "block", marginBottom: "var(--sp-2)" }}>
+          <p style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
+            <Icon name="photo" size={16} /> Hoy toca publicar a mano ({aMano.length})
+          </p>
+          <ul style={{ margin: "var(--sp-1) 0 0 var(--sp-4)", fontSize: "var(--fs-2xs)" }}>
+            {aMano.map((x) => (
+              <li key={x.post.id}>
+                <a href={`/a-mano/${x.calendario.dbId || x.calendario.id}/${x.post.id}`} onClick={(e) => { e.preventDefault(); navegar(`/a-mano/${encodeURIComponent(x.calendario.dbId || x.calendario.id)}/${encodeURIComponent(x.post.id)}`); }}>
+                  {x.cuando ? horaDe(x.cuando) : ""} · {x.cliente.name}: {x.post.title || x.post.idea || "publicación"}
+                </a>
+                {x.atrasada ? " (atrasada)" : ""}{x.post.notaAsistida ? ` — ${x.post.notaAsistida}` : ""}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       {hoy.length > 0 && (

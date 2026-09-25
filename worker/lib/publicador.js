@@ -181,6 +181,9 @@ export async function programarLote(env, acceso, { calendarId, postIds = [], usu
 function planificar({ post, fecha, cal, cuentas: todas, hayMeta, previas, redes = null, ahoraMismo = false, usuarioId = null, soloPosibles = false }) {
   const postId = post.id;
   const calendarId = cal.id;
+  // Marcada para publicarla a mano (música, stickers…): si saliera sola,
+  // saldría sin lo que sólo se pone desde el teléfono.
+  if (post.asistida) throw new ErrorPublicar("Está marcada para publicarla a mano desde el teléfono: no se programa sola.");
   let lista = [...new Set(redes?.length ? redes : post.redes?.length ? post.redes : ["instagram"])].filter((r) => r in REDES);
   const cuentas = {};
   for (const red of lista) {

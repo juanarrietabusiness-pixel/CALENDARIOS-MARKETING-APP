@@ -191,6 +191,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
             day={day}
             onError={setFieldError}
             acciones={accionesPublicar?.(form, setForm)}
+            enlaceAMano={`/a-mano/${encodeURIComponent(cal?.dbId || cal?.id || "")}/${encodeURIComponent(post.id)}`}
           >
             {form.status === "published" ? (
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => sf("status", "approved")}>

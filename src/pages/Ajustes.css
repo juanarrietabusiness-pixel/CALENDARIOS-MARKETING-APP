@@ -184,3 +184,10 @@
 .tiktok-fila { grid-template-columns: 1fr auto auto; }
 .tiktok-acciones { display: flex; gap: var(--sp-1); flex-wrap: wrap; justify-content: flex-end; grid-column: 2 / -1; }
 @media (max-width: 599px) { .tiktok-fila { grid-template-columns: 1fr; } .tiktok-acciones { grid-column: 1; justify-content: flex-start; } }
+
+/* Claude en cualquier chat */
+.ajustes-pasos { padding-left: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-2); font-size: var(--fs-xs); }
+.ajustes-copiable { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
+.ajustes-copiable code { padding: var(--sp-1) var(--sp-2); border-radius: var(--radius-sm); background: var(--surface-2); overflow-wrap: anywhere; font-size: var(--fs-2xs); }
+.ajustes-conexiones { list-style: none; display: flex; flex-direction: column; gap: var(--sp-1); }
+.ajustes-conexiones li { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); background: var(--surface-2); font-size: var(--fs-2xs); flex-wrap: wrap; }

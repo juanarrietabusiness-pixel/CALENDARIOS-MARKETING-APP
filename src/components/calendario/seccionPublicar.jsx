@@ -31,6 +31,7 @@ import HistoriasDelPost from "./historiasPost";
 import VistaRed from "./vistaRed";
 import { TimePicker } from "./primitivas";
 import { fmt12h } from "./formato";
+import { navegar } from "../../lib/rutas";
 
 /**
  * Una imagen que Instagram no acepta tal cual (la de Flow, 3:4): en vez de
@@ -98,7 +99,7 @@ function HoraSugerida({ clientId, fecha, hora, onUsar }) {
 
 const REDES_POR_DEFECTO = ["instagram"];
 
-export default function PestanaPublicar({ post, sf, setForm, client, clientId, day, onError, acciones, children }) {
+export default function PestanaPublicar({ post, sf, setForm, client, clientId, day, onError, acciones, children, enlaceAMano = null }) {
   const ids = useId();
   const entrada = useRef(null);
   const redes = Array.isArray(post.redes) && post.redes.length ? post.redes : REDES_POR_DEFECTO;
@@ -206,6 +207,29 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
         {!errores.length && <p className="revision-ok"><Icon name="check" size={14} /> Lista para publicar en {redes.map((r) => REDES[r].nombre).join(" y ")}.</p>}
       </section>
 
+      <section className="a-mano-panel" aria-labelledby={`${ids}-am`}>
+        <h3 id={`${ids}-am`} className="label">Publicarla a mano</h3>
+        <label className="casilla">
+          <input type="checkbox" checked={!!post.asistida} onChange={(e) => sf("asistida", e.target.checked)} />
+          La publico yo desde el teléfono
+        </label>
+        <p className="hint" style={{ margin: 0 }}>
+          Para la música de Instagram, los stickers o las encuestas, que la API no deja poner. Sale en Mi día y en Programación a su hora,
+          con la imagen lista para guardar y el texto para copiar.
+        </p>
+        {post.asistida && (
+          <>
+            <label className="sr-only" htmlFor={`${ids}-nota`}>Qué hay que poner a mano</label>
+            <input id={`${ids}-nota`} className="input" maxLength={300} value={post.notaAsistida || ""} onChange={(e) => sf("notaAsistida", e.target.value)} placeholder="Ej.: canción «…» desde el minuto 0:15; sticker de encuesta" />
+            {enlaceAMano && (
+              <a className="btn btn-secondary btn-sm" href={enlaceAMano} onClick={(e) => { e.preventDefault(); navegar(enlaceAMano); }}>
+                <Icon name="photo" size={14} /> Abrir la pantalla para publicarla
+              </a>
+            )}
+          </>
+        )}
+      </section>
+
       <div className="barra-fija-publicar">
         <div className="bfp-cuando">
           <span className="bfp-dia"><Icon name="calendar" size={14} /> {day.dayName} {Number((day.date || "").split("-")[2])}</span>
@@ -213,7 +237,9 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           <TimePicker id={`${ids}-hora`} value={post.publishTime || ""} onChange={(v) => sf("publishTime", v)} />
           <HoraSugerida clientId={clientId} fecha={day.date} hora={post.publishTime || ""} onUsar={(h) => sf("publishTime", h)} />
         </div>
-        {acciones}
+        {post.asistida
+          ? <p className="hint" style={{ margin: 0 }}>Marcada para publicarla a mano: no se programa sola.</p>
+          : acciones}
         {children}
       </div>
     </div>

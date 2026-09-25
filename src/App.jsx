@@ -48,6 +48,8 @@ const Aprobar = lazy(() => import("./pages/Aprobar"));
 const Informe = lazy(() => import("./pages/Informe"));
 const AuditoriaPublica = lazy(() => import("./pages/AuditoriaPublica"));
 const Auditorias = lazy(() => import("./pages/Auditorias"));
+const ConectarClaude = lazy(() => import("./pages/ConectarClaude"));
+const PublicarAMano = lazy(() => import("./pages/PublicarAMano"));
 const IdeasBank = lazy(() => import("./components/IdeasBank"));
 const TaskPanel = lazy(() => import("./components/TaskPanel"));
 const PestanaContenido = lazy(() => import("./components/PestanaContenido"));
@@ -1146,6 +1148,14 @@ function Workspace({ session, ruta }) {
             ) : ruta.vista === "programacion" ? (
               <Suspense fallback={<Cargando />}>
                 <Programacion clients={clients} pulso={pulso} onAbrir={abrirPublicacionDeCola} />
+              </Suspense>
+            ) : ruta.vista === "a-mano" ? (
+              <Suspense fallback={<Cargando />}>
+                <PublicarAMano clients={clients} ruta={ruta} onGuardado={updateCalendarLocal} />
+              </Suspense>
+            ) : ruta.vista === "conectar-claude" ? (
+              <Suspense fallback={<Cargando />}>
+                <ConectarClaude yo={yo} />
               </Suspense>
             ) : ruta.vista === "auditorias" ? (
               <Suspense fallback={<Cargando />}>

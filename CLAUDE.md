@@ -159,6 +159,8 @@ src/
     Programacion.jsx      /programacion: lo que sale en todas las cuentas; lo que falló, arriba
     Auditorias.jsx        /auditorias: auditar el perfil de un cliente o de un prospecto
     AuditoriaPublica.jsx  Lo que abre el cliente o el prospecto con el enlace (sin sesión)
+    ConectarClaude.jsx    /conectar-claude: el permiso que pide Claude (OAuth)
+    PublicarAMano.jsx     /a-mano/…: publicar desde el teléfono (música, stickers…)
     Informe.jsx           Lo que ve el cliente al abrir su informe mensual (sin sesión)
     Ajustes.jsx           IA, presupuesto y consumo, integraciones, tareas, copia
 worker/
@@ -183,6 +185,7 @@ worker/
     metricas.js           La foto diaria de métricas de cada cuenta y de la competencia
     informes.js           Cifras del mes (congeladas) + análisis de la IA; el del día 1
     auditorias.js         Leer un perfil (cuenta propia o business_discovery) y auditarlo
+    mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
     herramientasServidor.js  Lo que el asistente consulta sin el navegador:
                           web, repositorio de GitHub, calendarios, tareas, ideas
     ids.js                UUID, testigos, huellas
@@ -204,7 +207,9 @@ worker/
     metricas.js           Resultados de un cliente, de la agencia y la miniatura de Meta
     informes.js           Informes: listar, generar, compartir; el público va en index.js
     auditorias.js         Auditorías: listar, generar, compartir; la pública va en index.js
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías)
+    mcp.js                El servidor MCP (/mcp), su OAuth (/oauth/*, /.well-known/*) y
+                          el permiso y las conexiones (/api/mcp/*)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -230,6 +235,9 @@ tests/
 | `/programacion` | La cola de todos los clientes: lo que falló, lo que sale, lo que salió |
 | `/auditorias` | Auditorías de perfil de clientes y prospectos |
 | `/auditoria?t=<testigo>` | Auditoría compartida (sin sesión) |
+| `/conectar-claude?…` | El permiso de Claude (OAuth: `authorization_endpoint`) |
+| `/a-mano/<calendario>/<publicación>` | Publicar a mano desde el teléfono |
+| `/mcp` | El servidor MCP (del Worker, no de la SPA) |
 | `/equipo` | Quién entra en el espacio |
 | `/invitacion/<testigo>` | Enlace de invitación (sin sesión) |
 | `/aprobar?t=<testigo>` | Página del cliente final (sin sesión) |
@@ -1086,6 +1094,28 @@ son del servidor.
   la biografía que pase de 150 caracteres: una que no entra en Instagram
   no sirve para copiar y pegar. La foto se guarda incrustada porque el
   enlace público no tiene sesión para pasar por el proxy de miniaturas.
+- **El MCP vive FUERA de `/api`, y eso obliga a tocar `run_worker_first`.**
+  `/mcp`, `/oauth/*` y `/.well-known/oauth-*` los fija el estándar o se
+  pegan en claude.ai; sin estar en `run_worker_first` de wrangler.jsonc,
+  el respaldo de la SPA contesta `index.html` con un 200 y Claude dice
+  «no se pudo conectar» sin más. La pantalla de permiso, en cambio, SÍ
+  es de la SPA (`/conectar-claude`): así se entra con la sesión de
+  siempre, y la puerta de acceso sale sola si no la hay.
+- **El token del MCP es una sesión: vive en `sesion.js` y se guarda en
+  huella.** Queda atado a la persona y a SU espacio (se construye la capa
+  de acceso con el `owner_id` del token), el código sirve una vez, PKCE
+  S256 es obligatorio y el de renovación se rota en cada uso. Desconectar
+  en Ajustes → Claude borra la fila y corta al momento.
+- **Claude es el asistente, no llama al asistente.** Las consultas del MCP
+  son las MISMAS funciones del asistente (`crearEjecutor`); las escrituras
+  hacen lo que el PUT del calendario (resincronizar la cola y avisar al
+  espacio con `calendario:recargar`), firmadas «Claude (persona)».
+- **Lo marcado «a mano» no sale solo.** `post.asistida` es para lo que la
+  API no deja (música de Instagram, stickers, encuestas): `planificar()`
+  lo rechaza, así que no se cuela ni por «Programar lo aprobado», ni al
+  aprobar, ni desde el MCP. Sale en Mi día y en Programación, y
+  `/a-mano/…` da el archivo para guardar o compartir con Instagram y el
+  texto para copiar.
 - **`tests/utils/d1Memoria.js` es una D1 de verdad** (SQLite de Node con
   todas las migraciones). Para lo que un doble a mano no ve: que las
   consultas de la capa de acceso existen en el esquema. La cola de

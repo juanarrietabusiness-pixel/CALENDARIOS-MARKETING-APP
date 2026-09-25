@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import SeccionDrive from "../components/SeccionDrive";
 import SeccionMeta from "../components/SeccionMeta";
 import SeccionTikTok from "../components/SeccionTikTok";
+import SeccionClaude from "../components/SeccionClaude";
 import LimpiezaTerminadas from "../components/LimpiezaTerminadas";
 import { TaskTemplatesManager } from "../components/TaskPanel";
 
@@ -23,6 +24,7 @@ const INDICE = [
   ["ia", "Inteligencia artificial"],
   ["presupuesto", "Presupuesto y consumo"],
   ["integraciones", "Integraciones"],
+  ["claude", "Claude"],
   ["tareas", "Tareas"],
   ["copia", "Copia de seguridad"],
 ];
@@ -70,6 +72,7 @@ export default function Ajustes({ yo, clients = [], pulso = 0, onVolver, onExpor
           <SeccionMeta esAdmin={esAdmin} clients={clients} pulso={pulso} />
           <SeccionTikTok clients={clients} pulso={pulso} />
         </SeccionDrive>
+        <SeccionClaude pulso={pulso} />
 
         <section id="tareas" className="ajustes-seccion" aria-labelledby="ajustes-tareas">
           <h2 className="ajustes-titulo" id="ajustes-tareas">
