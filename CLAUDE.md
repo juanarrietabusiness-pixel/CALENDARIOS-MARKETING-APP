@@ -1039,5 +1039,7 @@ son del servidor.
 - `docs/migracion-cloudflare.md` — plan para mover la aplicación de Supabase +
   Netlify a Cloudflare (D1, R2, Workers). Escrito sobre la base viva, no sobre
   el repositorio: incluye dónde los dos no coinciden.
+- `docs/propuesta-publicacion.md` — propuesta para la experiencia de publicar
+  (Flow a 4:5, historias, colaboradores, página de programación, MCP).
 - `docs/hub-cloudflare.md` — plan del hub donde este calendario pasa a ser una
   herramienta más, junto al bot y la tienda que ya están en Cloudflare.
