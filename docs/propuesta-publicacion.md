@@ -265,6 +265,25 @@ esta semana?».
 | **4** | MCP para Claude | Independiente de lo demás; puede ir en paralelo |
 | **5** | Publicación asistida (música, stickers) · etiquetas de personas · texto alternativo · reels de prueba | Complementos |
 
+### Después de las cinco fases: subir en un paso
+
+Hecho tras usarlo: publicar seguía siendo el último de cinco pasos.
+
+- **«Subir»** en la cabecera, la barra del móvil, Ctrl+K y Programación:
+  cliente → archivo (arrastrar, elegir o pegar) → formato deducido → la IA
+  escribe mirando el archivo → cuándo sale. Crea la publicación en su día
+  (y el calendario del mes si no hay). Sale **directo**: queda aprobada.
+- **La IA lee el contenido**: «Escribir a partir del contenido» en el
+  panel; rellena texto, hashtags, primer comentario, texto alternativo,
+  idea y título, sólo donde esté vacío.
+- **«¿Cuándo sale?»**: Ahora / Programar / La publico yo, con un solo
+  botón que dice lo que pasa; programar para otro día la mueve; una vez
+  en la cola, «Programada para… · Cambiar · Cancelar». Pestañas «Idea» y
+  «Subir».
+- El calendario abre en **Mes**, también en el móvil.
+- Pendiente (fase 2): recibir lo compartido desde el teléfono (PWA
+  *share target*).
+
 ## 6. Preguntas abiertas
 
 1. **Relleno por defecto para Flow**: ¿fondo difuminado, color de marca o

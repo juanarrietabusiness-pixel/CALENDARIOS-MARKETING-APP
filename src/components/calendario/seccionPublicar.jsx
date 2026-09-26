@@ -24,14 +24,12 @@ import {
   revisarPublicacion, aplicarArreglo, REDES, AJUSTES, mediosDe, objetivoDe, necesitaAjuste, conMedios, destinoInstagram,
 } from "../../lib/publicacion";
 import { vistaAjuste } from "../../lib/medios";
-import { horaSugerida } from "../../lib/resultados";
-import { metricasCliente } from "../../lib/db";
 import { EditorMedios, CamposRedes } from "./editorPublicacion";
 import HistoriasDelPost from "./historiasPost";
 import VistaRed from "./vistaRed";
-import { TimePicker } from "./primitivas";
-import { fmt12h } from "./formato";
-import { navegar } from "../../lib/rutas";
+import CuandoSale from "./cuandoSale";
+import { escribirDesdeContenido } from "../../api";
+import { rellenarDesdeContenido, tieneContenido } from "../../lib/subir";
 
 /**
  * Una imagen que Instagram no acepta tal cual (la de Flow, 3:4): en vez de
@@ -66,42 +64,31 @@ function AjusteImagen({ post, sf, medio, objetivo, color }) {
   );
 }
 
-// Las publicaciones medidas de cada cliente, una vez por sesión: la hora
-// sugerida no merece una petición cada vez que se abre una publicación.
-const medidas = new Map();
-
-/** El chip de la hora sugerida: la franja en que mejor responde la cuenta ese día. */
-function HoraSugerida({ clientId, fecha, hora, onUsar }) {
-  const [pubs, setPubs] = useState(() => medidas.get(clientId) ?? null);
-  useEffect(() => {
-    if (!clientId || medidas.has(clientId)) return undefined;
-    let vivo = true;
-    metricasCliente(clientId, 90)
-      .then((d) => { const p = d?.publicaciones ?? []; medidas.set(clientId, p); if (vivo) setPubs(p); })
-      .catch(() => { medidas.set(clientId, []); });
-    return () => { vivo = false; };
-  }, [clientId]);
-  const s = pubs ? horaSugerida(pubs, fecha) : null;
-  if (!s) return null;
-  // La sugerida es la franja de tres horas que empieza una antes.
-  const inicio = Number(s.hora.slice(0, 2)) - 1;
-  const h = Number(String(hora).slice(0, 2));
-  if (hora && h >= inicio && h < inicio + 3) {
-    return <span className="hora-sugerida" data-dentro title={s.motivo}><Icon name="check" size={12} /> En su mejor franja</span>;
-  }
-  return (
-    <button type="button" className="hora-sugerida" onClick={() => onUsar(s.hora)} title={s.motivo}>
-      <Icon name="sparkles" size={12} /> Mejor a las {fmt12h(s.hora)}
-      <span className="sr-only">. {s.motivo}</span>
-    </button>
-  );
-}
-
 const REDES_POR_DEFECTO = ["instagram"];
 
-export default function PestanaPublicar({ post, sf, setForm, client, clientId, day, onError, acciones, children, enlaceAMano = null }) {
+export default function PestanaPublicar({ post, sf, setForm, client, clientId, day, cal = null, onError, publicacion = null, children, enlaceAMano = null }) {
   const ids = useId();
   const entrada = useRef(null);
+  const [escribiendo, setEscribiendo] = useState("");
+  const [escrito, setEscrito] = useState("");
+
+  // «Escribir a partir del contenido»: la IA mira lo subido y rellena lo
+  // que esté vacío. Lo escrito a mano no se toca.
+  const escribir = async () => {
+    setEscrito("");
+    setEscribiendo("Preparando…");
+    try {
+      const propuesta = await escribirDesdeContenido(client, post, { calendar: cal, fecha: day.date, alProgresar: setEscribiendo });
+      // El aviso se calcula con lo de ahora; el cambio se aplica sobre lo que
+      // haya cuando llegue (se pudo seguir escribiendo mientras la IA miraba).
+      const { rellenados } = rellenarDesdeContenido(post, propuesta);
+      setForm((p) => rellenarDesdeContenido(p, propuesta).post);
+      setEscrito(rellenados.length ? "Listo: la IA escribió lo que faltaba. Revísalo y retócalo." : "Ya estaba todo escrito: no cambié nada. Vacía un campo si quieres que lo reescriba.");
+    } catch (e) {
+      onError?.(`No se pudo escribir a partir del contenido: ${e.message}`);
+    }
+    setEscribiendo("");
+  };
   const redes = Array.isArray(post.redes) && post.redes.length ? post.redes : REDES_POR_DEFECTO;
   const { errores, avisos, arreglos } = revisarPublicacion(post, redes, { navegador: true });
   const objetivo = redes.includes("instagram") ? objetivoDe(post, "instagram") : null;
@@ -148,6 +135,18 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
         onError={onError}
         entradaRef={entrada}
       />
+
+      <div className="escribir-contenido">
+        <button type="button" className="btn btn-accent btn-sm" disabled={!tieneContenido(post) || !!escribiendo} onClick={escribir}>
+          <Icon name="sparkles" size={16} /> {escribiendo || "Escribir a partir del contenido"}
+        </button>
+        <span className="hint">
+          {tieneContenido(post)
+            ? "La IA mira la imagen o el video y escribe el texto, los hashtags, el primer comentario y el texto alternativo que falten."
+            : "Sube una imagen o un video y la IA escribe el texto mirándolo."}
+        </span>
+        <div role="status" aria-live="polite" className={escrito ? undefined : "sr-only"}>{escrito && <p className="notice notice-ok">{escrito}</p>}</div>
+      </div>
 
       {fuera && <AjusteImagen post={post} sf={sf} medio={fuera} objetivo={objetivo} color={client?.primaryColor} />}
 
@@ -207,39 +206,20 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
         {!errores.length && <p className="revision-ok"><Icon name="check" size={14} /> Lista para publicar en {redes.map((r) => REDES[r].nombre).join(" y ")}.</p>}
       </section>
 
-      <section className="a-mano-panel" aria-labelledby={`${ids}-am`}>
-        <h3 id={`${ids}-am`} className="label">Publicarla a mano</h3>
-        <label className="casilla">
-          <input type="checkbox" checked={!!post.asistida} onChange={(e) => sf("asistida", e.target.checked)} />
-          La publico yo desde el teléfono
-        </label>
-        <p className="hint" style={{ margin: 0 }}>
-          Para la música de Instagram, los stickers o las encuestas, que la API no deja poner. Sale en Mi día y en Programación a su hora,
-          con la imagen lista para guardar y el texto para copiar.
-        </p>
-        {post.asistida && (
-          <>
-            <label className="sr-only" htmlFor={`${ids}-nota`}>Qué hay que poner a mano</label>
-            <input id={`${ids}-nota`} className="input" maxLength={300} value={post.notaAsistida || ""} onChange={(e) => sf("notaAsistida", e.target.value)} placeholder="Ej.: canción «…» desde el minuto 0:15; sticker de encuesta" />
-            {enlaceAMano && (
-              <a className="btn btn-secondary btn-sm" href={enlaceAMano} onClick={(e) => { e.preventDefault(); navegar(enlaceAMano); }}>
-                <Icon name="photo" size={14} /> Abrir la pantalla para publicarla
-              </a>
-            )}
-          </>
-        )}
-      </section>
-
       <div className="barra-fija-publicar">
-        <div className="bfp-cuando">
-          <span className="bfp-dia"><Icon name="calendar" size={14} /> {day.dayName} {Number((day.date || "").split("-")[2])}</span>
-          <label className="sr-only" htmlFor={`${ids}-hora`}>Hora de publicación</label>
-          <TimePicker id={`${ids}-hora`} value={post.publishTime || ""} onChange={(v) => sf("publishTime", v)} />
-          <HoraSugerida clientId={clientId} fecha={day.date} hora={post.publishTime || ""} onUsar={(h) => sf("publishTime", h)} />
-        </div>
-        {post.asistida
-          ? <p className="hint" style={{ margin: 0 }}>Marcada para publicarla a mano: no se programa sola.</p>
-          : acciones}
+        <CuandoSale
+          post={post}
+          sf={sf}
+          day={day}
+          clientId={clientId}
+          filas={publicacion?.filas ?? []}
+          estadoRedes={publicacion?.estadoRedes ?? null}
+          errores={errores}
+          enlaceAMano={enlaceAMano}
+          onPublicar={(op) => publicacion.onPublicar(post, setForm, op)}
+          onCancelar={publicacion?.onCancelar}
+          onReintentar={publicacion?.onReintentar}
+        />
         {children}
       </div>
     </div>

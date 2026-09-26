@@ -45,7 +45,7 @@ function Pieza({ fila, cliente }) {
   );
 }
 
-export default function Programacion({ clients = [], pulso = 0, onAbrir }) {
+export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir }) {
   const ids = useId();
   const [filas, setFilas] = useState(null);
   const [fallo, setFallo] = useState("");
@@ -99,7 +99,16 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir }) {
   return (
     <div className="programacion">
       <div className="page-header">
-        <h1 className="page-title">Programación</h1>
+        <div className="page-header-top">
+          <h1 className="page-title">Programación</h1>
+          {onSubir && (
+            <div className="page-header-actions">
+              <button type="button" className="btn btn-primary" onClick={onSubir}>
+                <Icon name="upload" size={18} /> Subir contenido
+              </button>
+            </div>
+          )}
+        </div>
         <p className="page-meta">Lo que sale en las cuentas de todos los clientes, a la hora de Panamá. Lo que no se pudo publicar va arriba.</p>
       </div>
 
