@@ -185,7 +185,8 @@ Una vez, con la cuenta de TikTok de la AGENCIA:
    Integraciones** (`https://<dominio>/api/redes/tiktok/callback`).
 4. Permisos: `user.info.basic`, `user.info.profile`, `user.info.stats`,
    `video.list`, `video.upload`, `video.publish`. Política de privacidad:
-   `https://<dominio>/privacidad`.
+   `https://<dominio>/privacidad`; términos de servicio:
+   `https://<dominio>/terminos`.
 5. Pegar aquí `TIKTOK_CLIENT_KEY` y `TIKTOK_CLIENT_SECRET` (tipo *Secret*).
 6. Hasta que TikTok revise la app, funciona en **Sandbox**: añadir ahí las
    cuentas de los clientes como usuarios de prueba (hasta 10). Para más,
