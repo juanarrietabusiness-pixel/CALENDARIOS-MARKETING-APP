@@ -20,6 +20,8 @@
 
 import { uuid, ahora } from "./ids.js";
 import { diaParaCliente, rutasDeMedios } from "../../src/lib/publicacion.js";
+import { aprobacionVigente, tipoAprobacion, huellaPieza } from "../../src/lib/aprobacion.js";
+import { visibleParaCliente } from "../../src/lib/trabajo.js";
 
 const MIN_TESTIGO = 24;
 const corta = (s, n) => (s == null ? null : String(s).slice(0, n));
@@ -60,7 +62,7 @@ export async function calendarioPorTestigo(db, token) {
   if (!cal) return null;
 
   const cliente = await db
-    .prepare("select name, industry, instagram, primary_color, secondary_color, accent_color, logo from clients where id = ?")
+    .prepare("select name, industry, instagram, primary_color, secondary_color, accent_color, logo, revision_interna from clients where id = ?")
     .bind(cal.client_id)
     .first();
   if (!cliente) return null;
@@ -68,15 +70,23 @@ export async function calendarioPorTestigo(db, token) {
   const { results = [] } = await db
     .prepare(
       `select post_id, estado, comentario, reviewer_name, updated_at,
-              suggested_descripcion, suggested_guion
+              suggested_descripcion, suggested_guion, tipo
          from approvals where calendar_id = ?`,
     )
     .bind(cal.id)
     .all();
 
+  // Lo que el cliente respondió antes de que se le volviera a pedir
+  // (`pideAprobacionDesde`) ya no cuenta: vuelve a verla por aprobar.
+  const dias = JSON.parse(cal.days || "[]");
+  const porId = new Map();
+  for (const d of dias) for (const p of d?.posts ?? []) if (p?.id) porId.set(p.id, p);
   const approvals = {};
   for (const a of results) {
+    const post = porId.get(a.post_id);
+    if (post && !aprobacionVigente(post, { timestamp: a.updated_at })) continue;
     approvals[a.post_id] = {
+      tipo: a.tipo || null,
       estado: a.estado,
       comentario: a.comentario,
       revisor: a.reviewer_name,
@@ -106,7 +116,10 @@ export async function calendarioPorTestigo(db, token) {
         year: cal.year,
         campaign: cal.campaign,
         weekConcepts: JSON.parse(cal.week_concepts || "[]"),
-        days: JSON.parse(cal.days || "[]").map(diaParaCliente),
+        // Con revisión interna, sólo lo que pasó la revisión (lib/trabajo.js).
+        days: dias
+          .map((d) => ({ ...d, posts: (d?.posts ?? []).filter((p) => visibleParaCliente(p, cliente.revision_interna === 1)) }))
+          .map(diaParaCliente),
         allowEditing: cal.allow_editing === 1,
         visualReferences: JSON.parse(cal.visual_references || "[]"),
         fechaLimite: typeof opciones.fechaLimite === "string" ? opciones.fechaLimite : "",
@@ -185,6 +198,14 @@ export function perteneceAlCalendario(cal, postId) {
   return refs.some((r) => r?.id === postId);
 }
 
+/** La publicación con ese id dentro del calendario, o null (una referencia visual no lo es). */
+function buscarPublicacion(cal, postId) {
+  for (const dia of JSON.parse(cal.days || "[]")) {
+    for (const post of dia?.posts ?? []) if (post?.id === postId) return post;
+  }
+  return null;
+}
+
 /** submit_approval. */
 export async function enviarAprobacion(db, datos) {
   const { token, postId, estado, comentario, revisor, sugeridaDescripcion, sugeridoGuion } = datos;
@@ -204,19 +225,29 @@ export async function enviarAprobacion(db, datos) {
     throw new Error("La edición no está habilitada para este calendario");
   }
 
+  // Qué se le pedía (idea o pieza final) y con qué texto: lo que deja
+  // saber después si está «por producir» o «por programar», y si la
+  // agencia cambió algo tras el sí. Lo calcula el servidor sobre lo
+  // guardado, no lo que diga el navegador del cliente.
+  const post = buscarPublicacion(cal, postId);
+  const tipo = post ? tipoAprobacion(post) : null;
+  const huella = post ? huellaPieza(post) : null;
+
   const t = ahora();
   await db
     .prepare(
       `insert into approvals
          (id, calendar_id, post_id, estado, comentario, reviewer_name,
-          suggested_descripcion, suggested_guion, created_at, updated_at)
-       values (?,?,?,?,?,?,?,?,?,?)
+          suggested_descripcion, suggested_guion, tipo, huella, created_at, updated_at)
+       values (?,?,?,?,?,?,?,?,?,?,?,?)
        on conflict (calendar_id, post_id) do update set
          estado                = excluded.estado,
          comentario            = excluded.comentario,
          reviewer_name         = excluded.reviewer_name,
          suggested_descripcion = excluded.suggested_descripcion,
          suggested_guion       = excluded.suggested_guion,
+         tipo                  = excluded.tipo,
+         huella                = excluded.huella,
          updated_at            = excluded.updated_at`,
     )
     .bind(
@@ -225,6 +256,7 @@ export async function enviarAprobacion(db, datos) {
       corta(revisor ?? "", 120),
       corta(sugeridaDescripcion, 5000),
       corta(sugeridoGuion, 5000),
+      tipo, huella,
       t, t,
     )
     .run();
@@ -232,7 +264,7 @@ export async function enviarAprobacion(db, datos) {
   // Los ids salen para que el Worker pueda avisar al espacio: la agencia
   // ve la respuesta del cliente final en el momento, sin esperar a la
   // siguiente vuelta del sondeo.
-  return { ok: true, estado, calendarId: cal.id, ownerId: cal.owner_id, postId };
+  return { ok: true, estado, tipo, calendarId: cal.id, ownerId: cal.owner_id, clientId: cal.client_id, postId };
 }
 
 /**

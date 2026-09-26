@@ -485,7 +485,7 @@ export function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
 export function ApprovalDialog({
   approvalUrl, whatsappMessage, onClose, onGenerate, onRevoke, onReopen,
   hasLink, shareEnabled, working, allowEditing, onToggleEditing,
-  opciones = {}, onCambiarOpciones, revisionEnviada = null, revisionRevisor = "",
+  opciones = {}, onCambiarOpciones, revisionEnviada = null, revisionRevisor = "", resumen = null,
 }) {
   const ref = useDialogA11y(onClose);
   const ids = useId();
@@ -550,6 +550,22 @@ export function ApprovalDialog({
               Las respuestas de tu cliente aparecen aquí al instante, sin recargar.
             </p>
 
+            {resumen && resumen.idea + resumen.pieza > 0 && (
+              <div className="notice envio-resumen" style={{ display: "block", marginBottom: "var(--sp-3)" }}>
+                <p style={{ margin: 0 }}>
+                  Se le pide aprobar{" "}
+                  {[
+                    resumen.idea && `${resumen.idea} ${resumen.idea === 1 ? "idea" : "ideas"}`,
+                    resumen.pieza && `${resumen.pieza} ${resumen.pieza === 1 ? "pieza final" : "piezas finales"}`,
+                  ].filter(Boolean).join(" y ")}.
+                </p>
+                <p className="hint" style={{ margin: 0 }}>
+                  Cada publicación lo dice en su pestaña Idea («¿Qué aprueba el cliente?»). Una idea aprobada queda por
+                  producir; una pieza aprobada, por programar.
+                </p>
+              </div>
+            )}
+
             <div className="interruptor-fila">
               <div>
                 <span style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Permitir edición</span>
@@ -597,8 +613,8 @@ export function ApprovalDialog({
               <div>
                 <span id={`${ids}-auto`} style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Programar al aprobar</span>
                 <p className="hint" style={{ margin: 0 }}>
-                  Cuando el cliente aprueba una publicación que ya tiene fecha, hora y medios, se programa sola en las
-                  redes conectadas del cliente.
+                  Apagado (lo normal): lo aprobado espera en Programación → «Aprobadas, por programar» a que alguien dé
+                  el paso final. Encendido: la PIEZA FINAL aprobada se programa sola; una idea aprobada, nunca.
                 </p>
               </div>
               <button

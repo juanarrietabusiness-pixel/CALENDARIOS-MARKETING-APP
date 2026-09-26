@@ -7,6 +7,7 @@
 // acababa siempre en puntos suspensivos—. Ver `.cal-post` en index.css.
 // ============================================================
 
+import { porProducir } from "../../lib/aprobacion";
 import { useState } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES } from "../../constants";
 import { fmtDate } from "../../utils";
@@ -15,7 +16,7 @@ import Icon from "../Icon";
 import { categoryHue, fmt12h } from "./formato";
 import { resumenCola } from "../../lib/cola";
 
-export function MonthGrid({ cal, cola = [], onPostClick, onMove, onAddPost, onDropFromBank, ideasBank, dayLabels, onUpdateDayLabel }) {
+export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, onAddPost, onDropFromBank, ideasBank, dayLabels, onUpdateDayLabel }) {
   const [drag, setDrag] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const [editingHeader, setEditingHeader] = useState(null);
@@ -131,6 +132,7 @@ export function MonthGrid({ cal, cola = [], onPostClick, onMove, onAddPost, onDr
               const avance = completitud(post, dd);
               const resumen = resumenCompletitud(post, dd);
               const enCola = resumenCola(cola, post.id);
+              const lleva = post.responsableId ? miembros.find((m) => m.userId === post.responsableId) : null;
               return (
                 <button
                   key={post.id}
@@ -138,7 +140,7 @@ export function MonthGrid({ cal, cola = [], onPostClick, onMove, onAddPost, onDr
                   draggable
                   title={resumen}
                   className={`cal-post${isPublished ? " is-published" : ""}${cat ? " has-cat" : ""}`}
-                  aria-label={`${f.label}${cat ? ` — ${cat}` : ""}${briefIdea ? `: ${briefIdea}` : ""} — ${st.label}${post.publishTime ? `, ${fmt12h(post.publishTime)}` : ""}${enCola ? `. ${enCola.texto}` : ""}. ${resumen}`}
+                  aria-label={`${f.label}${cat ? ` — ${cat}` : ""}${briefIdea ? `: ${briefIdea}` : ""} — ${porProducir(post) ? "Idea aprobada, por producir" : st.label}${post.publishTime ? `, ${fmt12h(post.publishTime)}` : ""}${enCola ? `. ${enCola.texto}` : ""}${lleva ? `. Lo lleva ${lleva.nombre}` : ""}. ${resumen}`}
                   onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", JSON.stringify({ postId: post.id, sourceDate: date })); setDrag({ postId: post.id, sourceDate: date }); }}
                   onDragEnd={() => { setDrag(null); setDropTarget(null); }}
                   onClick={() => onPostClick(post, dd)}
@@ -154,7 +156,10 @@ export function MonthGrid({ cal, cola = [], onPostClick, onMove, onAddPost, onDr
                     color: isPublished ? st.text : f.color,
                   }}
                 >
-                  <span className="cal-post-dot" style={{ background: st.text }} aria-hidden="true" />
+                  {/* Idea aprobada: un punto hueco, porque falta la pieza. */}
+                  {/* Quién la lleva: una franja con su color (el nombre va en la etiqueta accesible). */}
+                  {lleva && <span className="cal-post-quien" style={{ background: lleva.color }} aria-hidden="true" />}
+                  <span className={`cal-post-dot${porProducir(post) ? " es-idea" : ""}`} style={{ background: porProducir(post) ? "transparent" : st.text, borderColor: st.text }} aria-hidden="true" />
                   <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={13} />
                   {enCola && (
                     <span className="cal-post-cola" data-estado={enCola.estado} aria-hidden="true">

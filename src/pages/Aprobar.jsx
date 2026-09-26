@@ -605,6 +605,13 @@ function TarjetaPublicacion({
         <span className="aprobar-estado" data-estado={estado}>{ETIQUETA_ESTADO[estado]}</span>
       </header>
 
+      {post.aprobacion === "idea" && (
+        <p className="aprobar-tipo" data-tipo="idea">
+          <Icon name="bulb" size={16} />
+          <span><strong>Idea para aprobar.</strong> Apruebas el concepto; la pieza final te la mandamos después.</span>
+        </p>
+      )}
+
       <Medios post={post} token={token} />
 
       {post.historiaTambien && historiasDe(post).length > 0 && (
@@ -656,7 +663,7 @@ function TarjetaPublicacion({
         )}
 
         {post.guion && post.format !== "post" && (
-          <details className="aprobar-guion">
+          <details className="aprobar-guion" open={post.aprobacion === "idea"}>
             <summary>Ver el guion</summary>
             <p>{post.guion}</p>
           </details>
@@ -709,7 +716,7 @@ function TarjetaPublicacion({
           <div className="aprobar-acciones">
             <button type="button" className="btn aprobar-btn-ok" disabled={guardando} aria-pressed={estado === "aprobada"}
               onClick={() => onResponder(post.id, "aprobado")}>
-              <Icon name="check" size={18} /> {estado === "aprobada" ? "Aprobada" : "Aprobar"}
+              <Icon name="check" size={18} /> {estado === "aprobada" ? "Aprobada" : post.aprobacion === "idea" ? "Aprobar la idea" : "Aprobar"}
             </button>
             <button type="button" className="btn aprobar-btn-cambios" disabled={guardando} aria-expanded={pidiendo}
               onClick={() => setPidiendo(true)}>
@@ -756,6 +763,9 @@ function RevisionRapida({ pendientes, token, usuario, onResponder, onCerrar }) {
           <>
             <div className="aprobar-rapida-cuerpo">
               <p className="aprobar-rapida-fecha">{fechaCorta(post._fecha)}{post.publishTime ? ` · ${hora12(post.publishTime)}` : ""} · @{usuario}</p>
+              {post.aprobacion === "idea" && (
+                <p className="aprobar-tipo" data-tipo="idea"><Icon name="bulb" size={16} /> <span><strong>Idea:</strong> apruebas el concepto, no la pieza final.</span></p>
+              )}
               <Medios post={post} token={token} />
               <Texto texto={post.format === "historia" ? "" : textoPara(post, "instagram")} limite={400} />
               {pidiendo && (
@@ -789,7 +799,7 @@ function RevisionRapida({ pendientes, token, usuario, onResponder, onCerrar }) {
                     <Icon name="pencil" size={20} /> Pedir cambio
                   </button>
                   <button type="button" className="btn aprobar-btn-ok" onClick={async () => { if (await onResponder(post.id, "aprobado")) siguiente(); }}>
-                    <Icon name="check" size={20} /> Aprobar
+                    <Icon name="check" size={20} /> {post.aprobacion === "idea" ? "Aprobar la idea" : "Aprobar"}
                   </button>
                 </>
               )}

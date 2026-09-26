@@ -1,0 +1,17 @@
+/* Equipo: papeles y carga (se carga con la página). */
+.papel-miembro { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--sp-2); margin-top: var(--sp-2); }
+.papel-miembro > .input { width: auto; flex: 0 1 200px; }
+.elegir-clientes { border: none; padding: 0; margin: 0; flex-basis: 100%; }
+.elegir-clientes-lista { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); }
+.elegir-cliente { display: inline-flex; align-items: center; gap: var(--sp-1); min-height: var(--tap-sm); font-size: var(--fs-xs); cursor: pointer; }
+.elegir-cliente input { width: 18px; height: 18px; accent-color: var(--accent); }
+.carga-tabla-caja { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.carga-tabla { width: 100%; border-collapse: collapse; font-size: var(--fs-2xs); }
+.carga-tabla th, .carga-tabla td { padding: var(--sp-2); border-bottom: 1px solid var(--border); text-align: center; white-space: nowrap; }
+.carga-tabla thead th { font-size: var(--fs-3xs); color: var(--text-dim); font-weight: 600; text-transform: capitalize; }
+.carga-tabla tbody th { text-align: left; font-weight: 600; }
+.carga-quien { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.carga-tabla td[data-nivel="1"] { background: var(--accent-soft); }
+.carga-tabla td[data-nivel="2"] { background: var(--accent-line); }
+.carga-tabla td[data-nivel="3"] { background: var(--accent); color: #fff; font-weight: 700; }
+.carga-tabla td[data-atraso] { color: var(--danger); font-weight: 700; }

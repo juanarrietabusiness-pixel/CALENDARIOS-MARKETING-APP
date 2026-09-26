@@ -74,7 +74,8 @@ describe("destinoInstagram", () => {
 describe("lo que ve el cliente", () => {
   it("nunca el comentario interno ni la idea para la IA", () => {
     const p = publicacionParaCliente({ id: "1", descripcion: "x", comment: "no se lo digas", idea: "prompt", category: "interna", _originCal: "k" });
-    expect(p).toEqual({ id: "1", descripcion: "x" });
+    // `aprobacion` no es un campo guardado: es lo que se le pide (idea o pieza).
+    expect(p).toEqual({ id: "1", descripcion: "x", aprobacion: "idea" });
   });
   it("las rutas de medios incluyen portada y la imagen anterior", () => {
     expect(rutasDeMedios({ medios: [{ src: "/a.jpg" }], portada: "/p.jpg", anterior: { image: "/v.jpg" } }))

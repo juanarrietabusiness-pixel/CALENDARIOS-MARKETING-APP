@@ -70,7 +70,11 @@ export default function Tareas({
     ...quickTasks.map((t) => ({ ...t, client_id: "", _rapida: true })),
   ], [clientTasks, quickTasks]);
 
+  // «Mías» es por PERSONA (`asignado_id`), no por nombre: cambiarse el
+  // nombre ya no deja las tareas sin dueño. Las de antes sin persona
+  // casada se siguen comparando por nombre.
   const mias = (t) => {
+    if (t.asignado_id) return t.asignado_id === yo?.id;
     const yoNombre = (yo?.nombre ?? "").trim().toLowerCase();
     return !yoNombre || (t.assigned_to ?? "").trim().toLowerCase() === yoNombre;
   };
@@ -414,15 +418,19 @@ function PorEmpresa({ todas, nombreDe, filaProps, hoy }) {
  */
 function PublicacionesDeHoy({ pulso, nombreDe, clients }) {
   const [filas, setFilas] = useState([]);
+  const [aprobadas, setAprobadas] = useState({ porProgramar: [], porProducir: [] });
   useEffect(() => {
     let vivo = true;
     db.listarProgramacion(1).then((f) => { if (vivo) setFilas(f); }).catch(() => {});
+    db.listarAprobadas().then((a) => { if (vivo) setAprobadas(a); }).catch(() => {});
     return () => { vivo = false; };
   }, [pulso]);
   const { fallidas, proximas } = ordenarProgramacion(filtrarCola(filas, { rango: 1 }));
   const hoy = proximas[0]?.nombre === "Hoy" ? proximas[0].filas : [];
   const aMano = asistidasPendientes(clients, undefined, 1);
-  if (!fallidas.length && !hoy.length && !aMano.length) return null;
+  const nProgramar = aprobadas.porProgramar?.length ?? 0;
+  const nProducir = aprobadas.porProducir?.length ?? 0;
+  if (!fallidas.length && !hoy.length && !aMano.length && !nProgramar && !nProducir) return null;
   const ir = (e) => { e.preventDefault(); navegar("/programacion"); };
   const linea = (f) => `${nombreDe(f.clientId) || "Cliente"} · ${REDES[f.red]?.nombre ?? f.red}${f.variante === "historia" ? " (historia)" : ""}`;
 
@@ -437,6 +445,21 @@ function PublicacionesDeHoy({ pulso, nombreDe, clients }) {
             {fallidas.slice(0, 3).map((f) => <li key={f.id}><strong>{linea(f)}:</strong> {f.error}</li>)}
           </ul>
           <a href="/programacion" onClick={ir}>Revisar y reintentar en Programación</a>
+        </div>
+      )}
+      {(nProgramar > 0 || nProducir > 0) && (
+        <div className="notice" style={{ display: "block", marginBottom: "var(--sp-2)" }}>
+          <p style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap" }}>
+            <Icon name="checkSquare" size={16} />
+            {[
+              nProgramar && `${nProgramar} ${nProgramar === 1 ? "aprobada" : "aprobadas"} por programar`,
+              nProducir && `${nProducir} ${nProducir === 1 ? "idea aprobada" : "ideas aprobadas"} por producir`,
+            ].filter(Boolean).join(" · ")}
+          </p>
+          <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", margin: "var(--sp-1) 0" }}>
+            Lo aprobado no sale solo: revísalo y dale el paso final.
+          </p>
+          <a href="/programacion" onClick={ir}>Revisar y programar en Programación</a>
         </div>
       )}
       {aMano.length > 0 && (

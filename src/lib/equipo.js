@@ -19,12 +19,32 @@ export async function cargarEquipo() {
  * Por eso la pantalla lo enseña para copiar en el momento y no ofrece
  * «volver a verlo» —no existe— sino «invitar otra vez».
  */
-export async function invitar({ email = "", nombre = "", rol = "editor" } = {}) {
+export async function invitar({ email = "", nombre = "", rol = "editor", papel = null, clientes = null } = {}) {
   return pedir("/equipo/invitacion", {
     method: "POST",
-    body: JSON.stringify({ email, nombre, rol }),
+    body: JSON.stringify({ email, nombre, rol, papel: papel ?? rol, clientes }),
   });
 }
+
+/** Administrador, editor, colaborador (sólo `clientes`) o sólo lectura. */
+export async function cambiarPapel(userId, { papel, clientes = null }) {
+  return pedir(`/equipo/miembro/${encodeURIComponent(userId)}`, { method: "PUT", body: JSON.stringify({ papel, clientes }) });
+}
+
+/** El papel que se enseña, a partir de lo que guarda el servidor. */
+export function papelDe(m) {
+  if (m?.rol === "admin") return "admin";
+  if (m?.soloLectura) return "lectura";
+  if (Array.isArray(m?.clientes)) return "colaborador";
+  return "editor";
+}
+
+export const PAPELES = [
+  ["admin", "Administra", "Todo: invitar, cambiar papeles, borrar clientes o calendarios y publicar al momento."],
+  ["editor", "Edita", "Todos los clientes. No borra clientes ni calendarios enteros ni publica al momento."],
+  ["colaborador", "Colaborador", "Como Edita, pero sólo ve y toca los clientes que elijas."],
+  ["lectura", "Sólo lectura", "Mira todo, no cambia nada."],
+];
 
 export async function retirarInvitacion(id) {
   await pedir(`/equipo/invitacion/${encodeURIComponent(id)}`, { method: "DELETE" });

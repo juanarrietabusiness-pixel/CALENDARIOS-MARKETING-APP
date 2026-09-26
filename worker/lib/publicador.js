@@ -37,6 +37,8 @@ import {
   REDES, revisarPublicacion, mediosDe, textoPara, primerComentario, destinoInstagram,
   esJPEG, piezasDe, publicacionDeVariante, momentoDeVariante, mediosParaRed, colaboradoresDe, conHistoria,
 } from "../../src/lib/publicacion.js";
+import { tipoAprobacion } from "../../src/lib/aprobacion.js";
+import { avisarFallo } from "./equipo.js";
 
 /** Un error que es de lo que se pidió, no del servidor: se enseña tal cual. */
 export class ErrorPublicar extends Error {
@@ -300,12 +302,17 @@ export async function resincronizarCalendario(env, acceso, cal, por) {
 /**
  * «Programar al aprobar»: cuando el cliente aprueba y el calendario lo
  * tiene encendido, la publicación entra sola en la cola, a su día y hora.
+ * Viene APAGADO: lo normal es que lo aprobado espere en «Por programar» a
+ * que alguien de la agencia dé el paso final. Y aun encendido, sólo la
+ * PIEZA FINAL: aprobar una idea no es aprobar lo que se publica.
  * Lo que no se pueda programar se avisa al equipo; no se calla.
  */
 export async function programarAlAprobar(env, ownerId, calendarId, postId) {
   const acceso = crearAcceso(env.DB, ownerId);
   const cal = await acceso.leerUno("calendars", { id: calendarId });
   if (!leerJSON(cal?.opciones, {})?.programarAlAprobar) return null;
+  const hallada = buscarPublicacion(leerJSON(cal.days, []), postId);
+  if (!hallada || tipoAprobacion(hallada.post) !== "pieza") return null;
   try {
     const filas = await programar(env, acceso, { calendarId, postId, soloPosibles: true });
     difundir(env, ownerId, { tipo: "publicacion", calId: calendarId, postId, por: FIRMA_SISTEMA });
@@ -442,6 +449,8 @@ export async function procesarPublicacion(env, { id, owner_id: ownerId }) {
     } else {
       if (!(e instanceof ErrorPublicar)) console.error("publicar:", e);
       await guardar({ intentos, estado: "error", error: mensaje, siguiente_intento: null });
+      // A la bandeja de quien la lleva: el cron publica sin nadie delante.
+      await avisarFallo(env, acceso, fila, mensaje);
     }
   }
   avisar();

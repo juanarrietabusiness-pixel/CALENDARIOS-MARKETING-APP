@@ -363,6 +363,10 @@ const CAMPOS_PUBLICOS = [
 export function publicacionParaCliente(post) {
   const salida = {};
   for (const k of CAMPOS_PUBLICOS) if (post?.[k] !== undefined) salida[k] = post[k];
+  // Qué se le pide: la idea o la pieza final (lib/aprobacion.js). Se
+  // calcula aquí para no importar en círculo: sin elegir, pieza si hay archivo.
+  salida.aprobacion = post?.aprobacion === "idea" || post?.aprobacion === "pieza"
+    ? post.aprobacion : (mediosDe(post).length ? "pieza" : "idea");
   return salida;
 }
 

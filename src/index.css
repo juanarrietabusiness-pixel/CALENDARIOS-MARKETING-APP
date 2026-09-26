@@ -1095,6 +1095,8 @@ input[type="radio"] {
 .cal-post-label { grid-area: texto; }
 .cal-post-time { grid-area: hora; justify-self: end; }
 .cal-post-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.cal-post-dot.es-idea { border: 1.5px solid; width: 7px; height: 7px; }
+.cal-post-quien { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
 /* En la cola de publicación: reloj, visto o alerta. */
 .cal-post-cola { grid-area: cola; display: inline-flex; }
 .cal-post-cola[data-estado="error"], .badge-cola[data-estado="error"] { color: var(--danger); }
@@ -2039,6 +2041,20 @@ input[type="radio"] {
 }
 .menu-cuenta-item:hover { background: var(--surface-3); }
 .menu-cuenta-item[data-peligro="true"] { color: var(--danger); }
+
+/* La campana de avisos (Avisos.jsx): mismo desplegable que la cuenta. */
+.avisos { position: relative; }
+.avisos-boton { position: relative; }
+.avisos-numero { position: absolute; top: 4px; right: 2px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: var(--radius-pill); background: var(--danger); color: #fff; font-size: var(--fs-3xs); font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.avisos-panel { position: absolute; right: 0; top: calc(100% + 6px); width: min(340px, calc(100vw - 32px)); max-height: 70dvh; overflow-y: auto; background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--elev-2); padding: var(--sp-2); z-index: var(--z-menu); display: flex; flex-direction: column; gap: var(--sp-1); }
+.avisos-cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: 0 var(--sp-1); font-size: var(--fs-xs); }
+.avisos-lista { list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.avisos-item { width: 100%; display: flex; flex-direction: column; gap: 2px; min-height: var(--tap); padding: var(--sp-2); background: var(--accent-soft); border: none; border-radius: var(--radius-sm); color: var(--text); text-align: left; cursor: pointer; font-size: var(--fs-2xs); line-height: var(--lh-normal); }
+.avisos-item[data-leido] { background: none; color: var(--text-dim); }
+.avisos-item:hover { background: var(--surface-3); }
+.avisos-cuando { font-size: var(--fs-3xs); color: var(--text-faint); }
+.avisos-vacio { font-size: var(--fs-2xs); color: var(--text-dim); padding: var(--sp-2); margin: 0; }
+.avisos-permiso { align-self: flex-start; }
 
 /* Secciones (barra lateral y cajón) */
 .nav-principal ul { list-style: none; display: flex; flex-direction: column; gap: 2px; }

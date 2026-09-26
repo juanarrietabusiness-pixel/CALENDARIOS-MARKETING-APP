@@ -140,7 +140,7 @@ async function servidorMCP(req, env) {
   const mensaje = await cuerpo(req);
   if (!mensaje || typeof mensaje !== "object") return conCors(rpcError(null, -32700, "JSON no válido"), 400);
   const lote = Array.isArray(mensaje) ? mensaje : [mensaje];
-  const herramientas = crearHerramientasMCP({ env, acceso: crearAcceso(env.DB, usuario.ownerId), usuario });
+  const herramientas = crearHerramientasMCP({ env, acceso: crearAcceso(env.DB, usuario.ownerId, { clientes: usuario.clientes }), usuario });
 
   const respuestas = [];
   for (const m of lote) {
@@ -167,6 +167,12 @@ async function servidorMCP(req, env) {
         const nombre = m.params?.name;
         if (!HERRAMIENTAS_MCP.some((h) => h.name === nombre)) {
           respuestas.push(rpcError(m.id, -32602, `Herramienta desconocida: ${nombre}`));
+          break;
+        }
+        // Sólo lectura: Claude puede consultar por esa persona, no escribir.
+        const herramienta = HERRAMIENTAS_MCP.find((h) => h.name === nombre);
+        if (usuario.soloLectura && !herramienta.annotations?.readOnlyHint) {
+          respuestas.push(rpc(m.id, { content: [{ type: "text", text: "Tu papel es de sólo lectura: puedo consultar, pero no cambiar nada." }], isError: true }));
           break;
         }
         respuestas.push(rpc(m.id, await herramientas.llamar(nombre, m.params?.arguments ?? {})));

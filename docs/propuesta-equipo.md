@@ -1,7 +1,11 @@
 # Propuesta: trabajar en equipo, delegar y saber quién hace qué
 
-> Estado: **análisis y propuesta, sin implementar**. Escrito leyendo el
-> código de esta rama (septiembre de 2026), no de memoria.
+> Estado: **implementada** (las tres fases), con estas decisiones tomadas
+> por defecto: la revisión interna se enciende por cliente; los avisos
+> fuera de la aplicación son las notificaciones del navegador (correo y
+> WhatsApp necesitan un proveedor que no hay); «Publicar ahora» y borrar
+> clientes o calendarios quedan para quien administra. Ver CLAUDE.md →
+> Trampas, y `tests/migracion/trabajo.test.js`.
 
 La aplicación nació para una sola persona y creció a «un espacio con
 varias personas dentro»: invitaciones, papeles (`admin` / `editor`),

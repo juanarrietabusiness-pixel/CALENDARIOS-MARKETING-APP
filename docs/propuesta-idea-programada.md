@@ -1,7 +1,13 @@
 # Propuesta: la idea que sale sola cuando el cliente la aprueba
 
-> Estado: **propuesta, sin implementar**. Hace falta que la agencia decida
-> los tres puntos de «Decisiones» antes de escribir código.
+> Estado: **implementada con un cambio de la agencia**: lo aprobado NO sale
+> solo. La agencia quiere un paso de decisión final aunque esté aprobado,
+> así que la respuesta del cliente deja la publicación en «Aprobadas, por
+> programar» (Programación y Mi día) y alguien la programa. Además se
+> distingue qué aprueba el cliente: la IDEA (queda «por producir», nunca
+> se programa) o la PIEZA FINAL (queda «por programar»). Se avisa si se
+> cambió algo después del sí. «Programar al aprobar» sigue, apagado por
+> defecto y sólo para piezas. Lo de abajo es la propuesta original.
 
 ## El problema
 

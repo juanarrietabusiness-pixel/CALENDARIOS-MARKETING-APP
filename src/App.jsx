@@ -13,6 +13,7 @@ import ResumenCliente from "./components/ResumenCliente";
 import NavPrincipal from "./components/NavPrincipal";
 import MenuCuenta from "./components/MenuCuenta";
 import MedidorIA from "./components/MedidorIA";
+import Avisos from "./components/Avisos";
 import BarraInferior from "./components/BarraInferior";
 import Login from "./pages/Login";
 import Invitacion from "./pages/Invitacion";
@@ -21,6 +22,7 @@ import { useSession, signOut } from "./lib/auth";
 import * as db from "./lib/db";
 import { rowToCalendar, rowToClient } from "./lib/filas";
 import { vivo } from "./lib/vivo";
+import { fijarYo, esAdmin } from "./lib/sesionActual";
 import { leerFoco, guardarFoco } from "./lib/foco";
 import { fechaEnZona } from "./lib/agenda";
 import { calendarioPorDefecto, resumenCalendario } from "./lib/resumenCliente";
@@ -39,6 +41,7 @@ const Equipo = lazy(() => import("./pages/Equipo"));
 const Ajustes = lazy(() => import("./pages/Ajustes"));
 const Resultados = lazy(() => import("./pages/Resultados"));
 const Programacion = lazy(() => import("./pages/Programacion"));
+const Tablero = lazy(() => import("./pages/Tablero"));
 const ResumenAgencia = lazy(() => import("./pages/Resultados").then((m) => ({ default: m.ResumenAgencia })));
 // Lo que sólo se abre a demanda —diálogos, pestañas que no son el
 // calendario, la página del cliente final— tampoco va en la primera
@@ -321,6 +324,7 @@ function Workspace({ session, ruta }) {
   // `?? id` cubre la sesión de antes de que existiera el equipo.
   const ownerId = session.user.ownerId ?? session.user.id;
   const yo = session.user;
+  fijarYo(yo);
 
   const [clients, setClients] = useState([]);
   // Qué cliente y qué calendario se están mirando NO son estado: son la
@@ -522,6 +526,10 @@ function Workspace({ session, ruta }) {
         case "referencia-imagen:fuera":
         // Lo del equipo lo pinta la pantalla de Equipo, que carga lo
         // suyo: se le dice que vuelva a leer, igual que a los paneles.
+        // La bandeja de avisos y el hilo interno: la campana y el panel
+        // se releen solos con el pulso.
+        case "avisos":
+        case "nota":
         case "miembro":
         case "miembro:fuera":
         case "invitacion":
@@ -1004,6 +1012,16 @@ function Workspace({ session, ruta }) {
     }
   };
   const publicacionAbierta = useCallback(() => setPostPedido(null), []);
+  // Un enlace de aviso (`/cliente/…/…?publicacion=<id>`) abre esa publicación.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const postId = q.get("publicacion");
+    if (!postId || !selectedCalId) return;
+    setPostPedido({ calId: selectedCalId, postId });
+    q.delete("publicacion");
+    const resto = q.toString();
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${resto ? `?${resto}` : ""}`);
+  }, [selectedCalId, ruta]);
   // «Subir» guarda el calendario por su cuenta: el eco de la propia pestaña
   // se ignora, así que el estado se pone al día aquí.
   const calendarioGuardado = (clientId, cal) => setClients((prev) => prev.map((c) => {
@@ -1061,10 +1079,13 @@ function Workspace({ session, ruta }) {
         </button>
 
         <div style={{ display: "flex", gap: "var(--sp-2)", flexShrink: 0, alignItems: "center" }}>
-          <button type="button" className="btn btn-primary btn-sm boton-subir" onClick={() => setShowSubir(true)} aria-label="Subir contenido">
-            <Icon name="upload" size={16} /> <span className="boton-subir-texto">Subir</span>
-          </button>
+          {!yo.soloLectura && (
+            <button type="button" className="btn btn-primary btn-sm boton-subir" onClick={() => setShowSubir(true)} aria-label="Subir contenido">
+              <Icon name="upload" size={16} /> <span className="boton-subir-texto">Subir</span>
+            </button>
+          )}
           <MedidorIA pulso={pulso} />
+          <Avisos pulso={pulso} onAbrirPublicacion={abrirPublicacionDeCola} />
           {/* Quién más está dentro, y si mi propia conexión está viva.
               Lo segundo importa tanto como lo primero: cuando el socket
               se cae, la pantalla deja de actualizarse sola y sin este
@@ -1103,6 +1124,11 @@ function Workspace({ session, ruta }) {
 
         <main id="contenido" className="app-main">
           <div className="app-content">
+            {yo.soloLectura && (
+              <p className="notice" role="note" style={{ display: "block" }}>
+                <Icon name="alert" size={14} /> Tu papel es de <strong>sólo lectura</strong>: puedes mirar todo, pero lo que cambies no se guarda.
+              </p>
+            )}
             {/* Región de anuncios: sustituye a alert() */}
             <div role="status" aria-live="polite" className={toast ? undefined : "sr-only"}>
               {toast && <p className="notice notice-ok">{toast}</p>}
@@ -1150,11 +1176,28 @@ function Workspace({ session, ruta }) {
               </Suspense>
             ) : ruta.vista === "equipo" ? (
               <Suspense fallback={<p style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando Equipo…</p>}>
-                <Equipo presentes={presentes} yo={yo} pulso={pulso} onVolver={() => navegar("/")} />
+                <Equipo presentes={presentes} yo={yo} pulso={pulso} clients={clients} onVolver={() => navegar("/")} />
+              </Suspense>
+            ) : ruta.vista === "tablero" ? (
+              <Suspense fallback={<Cargando />}>
+                <Tablero
+                  clients={clients}
+                  pulso={pulso}
+                  onAbrir={abrirPublicacionDeCola}
+                  onCalendarioGuardado={calendarioGuardado}
+                  soltarPendiente={soltarPendiente}
+                />
               </Suspense>
             ) : ruta.vista === "programacion" ? (
               <Suspense fallback={<Cargando />}>
-                <Programacion clients={clients} pulso={pulso} onAbrir={abrirPublicacionDeCola} onSubir={() => setShowSubir(true)} />
+                <Programacion
+                  clients={clients}
+                  pulso={pulso}
+                  onAbrir={abrirPublicacionDeCola}
+                  onSubir={() => setShowSubir(true)}
+                  onCalendarioGuardado={calendarioGuardado}
+                  soltarPendiente={soltarPendiente}
+                />
               </Suspense>
             ) : ruta.vista === "a-mano" ? (
               <Suspense fallback={<Cargando />}>
@@ -1415,7 +1458,7 @@ function Workspace({ session, ruta }) {
           <ClientModal
             initial={editingClient}
             onSave={saveClient}
-            onDelete={deleteClient}
+            onDelete={esAdmin() ? deleteClient : null}
             onClose={() => {
               setShowClientModal(false);
               setEditingClient(null);

@@ -22,7 +22,7 @@
 
 import { json, error, sinContenido, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { uuid, testigo, sha256, ahora, enHoras } from "../lib/ids.js";
-import { HORAS_INVITACION, aceptarInvitacion, invitacionPorTestigo, expulsarDelEspacio, cookieSesion } from "../lib/sesion.js";
+import { HORAS_INVITACION, aceptarInvitacion, invitacionPorTestigo, expulsarDelEspacio, cookieSesion, clientesPermitidos } from "../lib/sesion.js";
 import { difundir, firma } from "../lib/vivo.js";
 
 const COLOR_VALIDO = /^#[0-9a-fA-F]{6}$/;
@@ -34,8 +34,27 @@ const salidaMiembro = (m) => ({
   nombre: m.nombre,
   color: m.color,
   rol: m.rol,
+  soloLectura: m.solo_lectura === 1,
+  clientes: clientesPermitidos(m.clientes),
   desde: m.created_at,
 });
+
+/**
+ * El papel que se enseña, a partir de las tres columnas: administrador,
+ * editor, colaborador (sólo algunos clientes) o sólo lectura.
+ */
+const PAPELES = ["admin", "editor", "colaborador", "lectura"];
+
+/** Lo que se guarda para un papel. `clientes` sólo cuenta para el colaborador. */
+function columnasDePapel(papel, clientes) {
+  if (papel === "admin") return { rol: "admin", solo_lectura: 0, clientes: null };
+  if (papel === "lectura") return { rol: "editor", solo_lectura: 1, clientes: null };
+  if (papel === "colaborador") {
+    const lista = Array.isArray(clientes) ? [...new Set(clientes.map(String))].slice(0, 200) : [];
+    return { rol: "editor", solo_lectura: 0, clientes: JSON.stringify(lista) };
+  }
+  return { rol: "editor", solo_lectura: 0, clientes: null };
+}
 
 /** Una invitación, sin su testigo: en la base sólo está el SHA-256. */
 const salidaInvitacion = (i) => ({
@@ -43,6 +62,8 @@ const salidaInvitacion = (i) => ({
   email: i.email,
   nombre: i.nombre,
   rol: i.rol,
+  soloLectura: i.solo_lectura === 1,
+  clientes: clientesPermitidos(i.clientes),
   creada: i.created_at,
   caduca: i.expires_at,
   aceptada: Boolean(i.aceptada_at),
@@ -80,6 +101,12 @@ export async function rutasEquipo(req, env, ctx) {
     const n = await acceso.actualizar("memberships", { user_id: usuario.id }, cambios);
     if (!n) return noEncontrado("Miembro");
 
+    // Sus tareas siguen siendo suyas: van por `asignado_id`, y el nombre
+    // que se enseña se pone al día.
+    if (cambios.nombre) {
+      await acceso.actualizar("client_tasks", { asignado_id: usuario.id }, { assigned_to: cambios.nombre });
+      await acceso.actualizar("quick_tasks", { asignado_id: usuario.id }, { assigned_to: cambios.nombre });
+    }
     const fila = await acceso.leerUno("memberships", { user_id: usuario.id });
     difundir(env, usuario.ownerId, { tipo: "miembro", miembro: salidaMiembro(fila), por: firma(usuario, req) });
     return json(salidaMiembro(fila));
@@ -89,10 +116,12 @@ export async function rutasEquipo(req, env, ctx) {
   if (sub === "invitacion" && metodo === "POST") {
     if (!esAdmin) return error("Sólo quien administra el espacio puede invitar.", 403);
 
-    const { email = "", nombre = "", rol = "editor" } = (await cuerpo(req)) ?? {};
+    const { email = "", nombre = "", rol = "editor", papel = null, clientes = null } = (await cuerpo(req)) ?? {};
     const limpio = String(email).trim().toLowerCase();
     if (limpio && !EMAIL_VALIDO.test(limpio)) return error("Ese correo no es válido.");
-    if (rol !== "editor" && rol !== "admin") return error("Ese papel no existe.");
+    const elegido = papel ?? rol;
+    if (!PAPELES.includes(elegido)) return error("Ese papel no existe.");
+    const columnas = columnasDePapel(elegido, clientes);
 
     // El testigo se devuelve UNA vez, aquí. En la base queda su huella,
     // así que ni una consulta ni un volcado pueden reconstruir el
@@ -103,7 +132,9 @@ export async function rutasEquipo(req, env, ctx) {
       token_hash: await sha256(bruto),
       email: limpio,
       nombre: String(nombre).trim().slice(0, 60),
-      rol,
+      rol: columnas.rol,
+      solo_lectura: columnas.solo_lectura,
+      clientes: columnas.clientes,
       creada_por: usuario.id,
       expires_at: enHoras(HORAS_INVITACION),
       aceptada_at: null,
@@ -122,6 +153,20 @@ export async function rutasEquipo(req, env, ctx) {
     if (!n) return noEncontrado("Invitación");
     difundir(env, usuario.ownerId, { tipo: "invitacion:fuera", id: subId, por: firma(usuario, req) });
     return sinContenido();
+  }
+
+  // ---- PUT /api/equipo/miembro/:userId ---- cambiar el papel
+  if (sub === "miembro" && metodo === "PUT") {
+    if (!esAdmin) return error("Sólo quien administra el espacio puede cambiar papeles.", 403);
+    if (subId === usuario.id) return error("No puedes cambiar tu propio papel: pídeselo a otra persona que administre.", 400);
+    const { papel, clientes = null } = (await cuerpo(req)) ?? {};
+    if (!PAPELES.includes(papel)) return error("Ese papel no existe.");
+    if (subId === usuario.ownerId) return error("Quien fundó el espacio es siempre administrador.", 400);
+    const n = await acceso.actualizar("memberships", { user_id: subId }, columnasDePapel(papel, clientes));
+    if (!n) return noEncontrado("Miembro");
+    const fila = await acceso.leerUno("memberships", { user_id: subId });
+    difundir(env, usuario.ownerId, { tipo: "miembro", miembro: salidaMiembro(fila), por: firma(usuario, req) });
+    return json(salidaMiembro(fila));
   }
 
   // ---- DELETE /api/equipo/miembro/:userId ----

@@ -30,6 +30,7 @@ import { EditorMedios, CamposRedes } from "./editorPublicacion";
 import HistoriasDelPost from "./historiasPost";
 import VistaRed from "./vistaRed";
 import CuandoSale from "./cuandoSale";
+import { EstadoAprobacion } from "./aprobacionCliente";
 import DestinoRedes from "./destinoRedes";
 import { escribirDesdeContenido } from "../../api";
 import { rellenarDesdeContenido, tieneContenido, formatoDeMedios } from "../../lib/subir";
@@ -108,8 +109,11 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
     ? [...new Set((publicacion.estadoRedes.cuentas ?? []).filter((c) => c.clientId === clientId).map((c) => c.red))]
     : null), [publicacion?.estadoRedes, clientId]);
   const elegirFormato = (k) => { auto.current = false; sf("format", k); };
+  // `mediosCambiadosAt` deja saber si los archivos cambiaron DESPUÉS de
+  // que el cliente aprobara la pieza (lib/aprobacion.js). Convertir a JPEG
+  // al programar no pasa por aquí, así que no cuenta como cambio.
   const alCambiarMedios = (medios) => setForm((p) => {
-    const siguiente = conMedios(p, medios);
+    const siguiente = { ...conMedios(p, medios), mediosCambiadosAt: new Date().toISOString() };
     return auto.current && medios.length ? { ...siguiente, format: formatoDeMedios(medios) ?? p.format } : siguiente;
   });
   const esHistoria = post.format === "historia";
@@ -246,6 +250,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
       </div>
 
       <div className="barra-fija-publicar">
+        <EstadoAprobacion post={post} setForm={setForm} />
         <CuandoSale
           post={post}
           sf={sf}

@@ -19,6 +19,7 @@ import { fechaEnZona } from "../lib/agenda";
 import { fechaHora } from "../lib/cola";
 import { MONTHS } from "../constants";
 import { uid } from "../utils";
+import { esAdmin } from "../lib/sesionActual";
 
 // ============================================================
 // «Subir»: el archivo primero, todo lo demás después
@@ -245,7 +246,8 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
                 <legend className="label">¿Cuándo sale?</legend>
                 <div className="segmented" role="radiogroup" aria-label="Cuándo sale">
                   {MODOS.map(([k, nombre, icono]) => (
-                    <button key={k} type="button" role="radio" aria-checked={modo === k} className={`segmented-btn ${modo === k ? "active" : ""}`} onClick={() => setModo(k)}>
+                    <button key={k} type="button" role="radio" aria-checked={modo === k} className={`segmented-btn ${modo === k ? "active" : ""}`} onClick={() => setModo(k)}
+                      disabled={k === "ahora" && !esAdmin()} title={k === "ahora" && !esAdmin() ? "Publicar al momento es de quien administra" : undefined}>
                       <Icon name={icono} size={14} /> {nombre}
                     </button>
                   ))}

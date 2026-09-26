@@ -62,6 +62,11 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "auditorias",
   "mcp_codigos",
   "mcp_tokens",
+  // El trabajo en equipo: la bandeja de avisos de cada persona, el hilo
+  // interno de cada publicación y quién cambió qué.
+  "avisos",
+  "notas_equipo",
+  "historial",
   // Del equipo. Tienen dueño como las demás: la lista de miembros de un
   // espacio es un dato del espacio, y pedirla sin acotar devolvería la
   // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué
@@ -80,7 +85,35 @@ export const TABLAS_CON_DUENO = Object.freeze([
  */
 export const TABLAS_POR_CALENDARIO = Object.freeze(["approvals", "comentarios_aprobacion"]);
 
+/**
+ * Las tablas cuyas filas son de UN cliente (`client_id`). Con un
+ * colaborador —alguien que sólo lleva algunos clientes— la capa añade
+ * `client_id in (…)` a todo lo que lee y comprueba el cliente de todo lo
+ * que escribe, igual que añade el dueño: aquí, no en cada ruta, que es
+ * donde se olvidaría. Una fila sin cliente (una auditoría de un
+ * prospecto, una cuenta sin asignar) no la ve un colaborador.
+ */
+export const TABLAS_CON_CLIENTE = Object.freeze([
+  "calendars", "chat_messages", "chat_resumenes", "client_memories", "client_tasks", "content_bank",
+  "consumo_ia", "cuentas_sociales", "image_references", "image_templates", "informes", "auditorias",
+  "metricas_competencia", "metricas_cuenta", "metricas_publicacion", "publicaciones_programadas",
+]);
+
+/** Las que cuelgan de un calendario sin llevar el cliente: se acotan por el calendario. */
+export const TABLAS_CON_CALENDARIO = Object.freeze(["approvals", "comentarios_aprobacion", "notas_equipo", "historial"]);
+
 const CON_DUENO = new Set(TABLAS_CON_DUENO);
+const CON_CLIENTE = new Set(TABLAS_CON_CLIENTE);
+const CON_CALENDARIO = new Set(TABLAS_CON_CALENDARIO);
+
+/** Escribir en un cliente que no es de los tuyos. Es de la petición, no del servidor. */
+export class ErrorAcceso extends Error {
+  constructor(mensaje = "No tienes acceso a ese cliente.") {
+    super(mensaje);
+    this.name = "ErrorAcceso";
+    this.status = 403;
+  }
+}
 const POR_CALENDARIO = new Set(TABLAS_POR_CALENDARIO);
 
 /** Sin esto, un nombre de tabla que venga de fuera entra en el SQL. */
@@ -105,9 +138,42 @@ const ahora = () => new Date().toISOString();
  * cabecera— se fija aquí y ya no vuelve a pasar por parámetro: así no
  * hay ninguna llamada en la que se pueda olvidar.
  */
-export function crearAcceso(db, ownerId) {
+export function crearAcceso(db, ownerId, { clientes = null } = {}) {
   if (!ownerId || typeof ownerId !== "string") {
     throw new Error("crearAcceso necesita un ownerId: sin él no hay nada que acotar.");
+  }
+  // null = todos los clientes del espacio; una lista = un colaborador.
+  const limitado = Array.isArray(clientes);
+  const permitidos = limitado ? clientes.map(String) : [];
+
+  /** La condición de «sólo estos clientes» para una tabla, o null si no aplica. */
+  function porCliente(tabla, alias = "") {
+    if (!limitado) return null;
+    const pre = alias ? `${alias}.` : "";
+    const dentro = permitidos.length ? `in (${permitidos.map(() => "?").join(",")})` : null;
+    const nada = { sql: "1 = 0", valores: [] };
+    if (tabla === "clients") return dentro ? { sql: `${pre}id ${dentro}`, valores: permitidos } : nada;
+    if (CON_CLIENTE.has(tabla)) return dentro ? { sql: `${pre}client_id ${dentro}`, valores: permitidos } : nada;
+    if (CON_CALENDARIO.has(tabla)) {
+      return dentro ? { sql: `${pre}calendar_id in (select id from calendars where client_id ${dentro})`, valores: permitidos } : nada;
+    }
+    return null;
+  }
+
+  /** Lo que se escribe tiene que ser de un cliente permitido. */
+  function comprobarCliente(tabla, fila) {
+    if (!limitado) return;
+    const id = tabla === "clients" ? fila.id : CON_CLIENTE.has(tabla) ? fila.client_id : undefined;
+    if (id === undefined) return;
+    // consumo_ia sin cliente (el asistente general) no es de nadie en concreto.
+    if (id === null && tabla === "consumo_ia") return;
+    if (!permitidos.includes(String(id))) throw new ErrorAcceso();
+  }
+
+  /** Lo que se añade al `on conflict … where` para no pisar la fila de otro cliente con el mismo id. */
+  function guardaUpsert(tabla) {
+    const r = porCliente(tabla, tabla);
+    return r ? { sql: ` and ${r.sql}`, valores: r.valores } : { sql: "", valores: [] };
   }
 
   /** Añade el dueño a un WHERE que puede traer más condiciones. */
@@ -115,11 +181,13 @@ export function crearAcceso(db, ownerId) {
     exigirTabla(tabla);
     const cols = exigirColumnas(Object.keys(where));
     const valores = cols.map((c) => where[c]);
+    const cliente = porCliente(tabla);
+    const extra = cliente ? { sql: [cliente.sql], valores: cliente.valores } : { sql: [], valores: [] };
 
     if (CON_DUENO.has(tabla)) {
       return {
-        sql: [...cols.map((c) => `${c} = ?`), "owner_id = ?"].join(" and "),
-        valores: [...valores, ownerId],
+        sql: [...cols.map((c) => `${c} = ?`), "owner_id = ?", ...extra.sql].join(" and "),
+        valores: [...valores, ownerId, ...extra.valores],
       };
     }
     // approvals: el dueño está un salto más allá.
@@ -127,18 +195,22 @@ export function crearAcceso(db, ownerId) {
       sql: [
         ...cols.map((c) => `${c} = ?`),
         "calendar_id in (select id from calendars where owner_id = ?)",
+        ...extra.sql,
       ].join(" and "),
-      valores: [...valores, ownerId],
+      valores: [...valores, ownerId, ...extra.valores],
     };
   }
 
   return {
     ownerId,
+    /** null = todos; una lista = los clientes de un colaborador. */
+    clientes: limitado ? [...permitidos] : null,
 
-    async leer(tabla, where = {}, orden = "created_at asc") {
+    async leer(tabla, where = {}, orden = "created_at asc", limite = null) {
       const { sql, valores } = acotar(tabla, where);
+      const tope = Number.isInteger(limite) && limite > 0 ? ` limit ${limite}` : "";
       const { results } = await db
-        .prepare(`select * from ${tabla} where ${sql} order by ${orden}`)
+        .prepare(`select * from ${tabla} where ${sql} order by ${orden}${tope}`)
         .bind(...valores)
         .all();
       return results ?? [];
@@ -157,6 +229,7 @@ export function crearAcceso(db, ownerId) {
     async insertar(tabla, datos) {
       exigirTabla(tabla);
       const fila = CON_DUENO.has(tabla) ? { ...datos, owner_id: ownerId } : { ...datos };
+      comprobarCliente(tabla, fila);
       const cols = exigirColumnas(Object.keys(fila));
       await db
         .prepare(`insert into ${tabla} (${cols.join(",")}) values (${cols.map(() => "?").join(",")})`)
@@ -169,16 +242,18 @@ export function crearAcceso(db, ownerId) {
     async guardar(tabla, datos) {
       exigirTabla(tabla);
       const fila = CON_DUENO.has(tabla) ? { ...datos, owner_id: ownerId } : { ...datos };
+      comprobarCliente(tabla, fila);
       if ("updated_at" in fila) fila.updated_at = ahora();
       const cols = exigirColumnas(Object.keys(fila));
       const sinId = cols.filter((c) => c !== "id");
+      const guarda = guardaUpsert(tabla);
       await db
         .prepare(
           `insert into ${tabla} (${cols.join(",")}) values (${cols.map(() => "?").join(",")}) ` +
             `on conflict (id) do update set ${sinId.map((c) => `${c} = excluded.${c}`).join(", ")} ` +
-            `where ${tabla}.owner_id = ?`,
+            `where ${tabla}.owner_id = ?${guarda.sql}`,
         )
-        .bind(...cols.map((c) => fila[c]), ownerId)
+        .bind(...cols.map((c) => fila[c]), ownerId, ...guarda.valores)
         .run();
       return fila;
     },
@@ -214,8 +289,10 @@ export function crearAcceso(db, ownerId) {
     async guardarVarios(tabla, filas) {
       exigirTabla(tabla);
       if (!filas.length) return 0;
+      const guarda = guardaUpsert(tabla);
       const sentencias = filas.map((datos) => {
         const fila = CON_DUENO.has(tabla) ? { ...datos, owner_id: ownerId } : { ...datos };
+        comprobarCliente(tabla, fila);
         if ("updated_at" in fila) fila.updated_at = ahora();
         const cols = exigirColumnas(Object.keys(fila));
         const sinId = cols.filter((c) => c !== "id");
@@ -223,9 +300,9 @@ export function crearAcceso(db, ownerId) {
           .prepare(
             `insert into ${tabla} (${cols.join(",")}) values (${cols.map(() => "?").join(",")}) ` +
               `on conflict (id) do update set ${sinId.map((c) => `${c} = excluded.${c}`).join(", ")} ` +
-              `where ${tabla}.owner_id = ?`,
+              `where ${tabla}.owner_id = ?${guarda.sql}`,
           )
-          .bind(...cols.map((c) => fila[c]), ownerId);
+          .bind(...cols.map((c) => fila[c]), ownerId, ...guarda.valores);
       });
       if (db.batch) await db.batch(sentencias);
       else for (const s of sentencias) await s.run();

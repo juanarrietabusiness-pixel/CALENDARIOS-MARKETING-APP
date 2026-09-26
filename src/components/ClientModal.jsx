@@ -489,6 +489,28 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
                 ))}
               </div>
             </fieldset>
+
+            {/* Revisión interna: lo que el equipo produce lo revisa otra
+                persona antes de que lo vea el cliente. */}
+            <div className="interruptor-fila">
+              <div>
+                <span id={`${ids}-revision`} style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Revisión interna antes del cliente</span>
+                <p className="hint" style={{ margin: 0 }}>
+                  El enlace de aprobación sólo enseña lo que pasó a «Con el cliente»: lo que está en idea, producción o
+                  revisión se queda dentro del equipo.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-labelledby={`${ids}-revision`}
+                aria-checked={Boolean(form.revisionInterna)}
+                className={`toggle${form.revisionInterna ? " is-on" : ""}`}
+                onClick={() => sf("revisionInterna", !form.revisionInterna)}
+              >
+                <span className="toggle-thumb" />
+              </button>
+            </div>
           </div>
         )}
 

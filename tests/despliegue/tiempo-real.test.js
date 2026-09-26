@@ -219,7 +219,7 @@ describe("la sesión y el espacio son dos cosas", () => {
         porque: "Quien entra por invitación vería un panel vacío: sus filas están a nombre del espacio, no suyo. La aplicación «funciona» y no tiene nada dentro.",
         arreglo: "Pásale usuario.ownerId, que es el espacio.",
       }),
-    ).toMatch(/crearAcceso\(env\.DB,\s*usuario\.ownerId\)/);
+    ).toMatch(/crearAcceso\(env\.DB,\s*usuario\.ownerId[,)]/);
   });
 
   it("el enlace de invitación se atiende ANTES de exigir sesión", () => {

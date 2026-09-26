@@ -47,7 +47,7 @@ function d1Falsa({ users = [], memberships = [], invitaciones = [], sessions = [
       return { id: u.id, email: u.email, owner_id: m?.owner_id ?? null, rol: m?.rol ?? null, nombre: m?.nombre ?? null, color: m?.color ?? null };
     }
 
-    if (s.startsWith("select owner_id, rol, nombre, color from memberships")) {
+    if (s.startsWith("select owner_id, rol, nombre, color, solo_lectura, clientes from memberships")) {
       return tablas.memberships.find((x) => x.user_id === binds[0]) ?? null;
     }
 
@@ -203,7 +203,19 @@ describe("de quién es este espacio", () => {
     });
     expect(await perfilDeUsuario(db, "u1", "ana@a.com")).toEqual({
       id: "u1", email: "ana@a.com", ownerId: "u9", rol: "editor", nombre: "Ana", color: "#123456",
+      soloLectura: false, clientes: null,
     });
+  });
+
+  it("los papeles finos: sólo lectura y colaborador de algunos clientes; al admin no le afectan", async () => {
+    const db = d1Falsa({
+      memberships: [{ user_id: "u1", owner_id: "u9", rol: "editor", nombre: "Ana", color: "#123456", solo_lectura: 1, clientes: '["c1"]' }],
+    });
+    expect(await perfilDeUsuario(db, "u1", "ana@a.com")).toMatchObject({ soloLectura: true, clientes: ["c1"] });
+    const admin = d1Falsa({
+      memberships: [{ user_id: "u1", owner_id: "u9", rol: "admin", nombre: "Ana", color: "#123456", solo_lectura: 1, clientes: '["c1"]' }],
+    });
+    expect(await perfilDeUsuario(admin, "u1", "ana@a.com")).toMatchObject({ soloLectura: false, clientes: null });
   });
 
   it("un nombre en blanco cae al trozo del correo, no a una cadena vacía", async () => {

@@ -413,6 +413,74 @@ describe("programar al aprobar", () => {
     await Promise.all(esperas);
     expect(filas()).toMatchObject([{ post_id: "p1", red: "instagram", estado: "programada" }]);
   });
+
+  const aprobar = async (postId = "p1") => {
+    const esperas = [];
+    const res = await worker.fetch(
+      new Request(`https://calendarios.test/api/publico/${"t".repeat(48)}/aprobacion`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId, estado: "aprobado", revisor: "Ana" }),
+      }),
+      env, { waitUntil: (p) => esperas.push(p) },
+    );
+    await Promise.all(esperas);
+    return res;
+  };
+  const conSesion = (ruta) => new Request(`https://calendarios.test${ruta}`, { headers: { Cookie: `${COOKIE}=${TESTIGO}` } });
+
+  it("aun encendida, una IDEA aprobada no se programa: aprobar un concepto no es aprobar la pieza", async () => {
+    await sembrar({ opciones: { programarAlAprobar: true }, posts: [post({ aprobacion: "idea" })] });
+    db.sqlite.prepare("update calendars set share_token = ?, share_enabled = 1 where id = 'cal1'").run("t".repeat(48));
+    expect((await aprobar()).status).toBe(200);
+    expect(filas()).toHaveLength(0);
+    expect(db.sqlite.prepare("select tipo from approvals").get().tipo).toBe("idea");
+  });
+
+  it("apagada (lo normal), la pieza aprobada espera en «por programar» con su huella", async () => {
+    await sembrar();
+    db.sqlite.prepare("update calendars set share_token = ?, share_enabled = 1 where id = 'cal1'").run("t".repeat(48));
+    await aprobar();
+    expect(filas()).toHaveLength(0);
+    const a = db.sqlite.prepare("select tipo, huella from approvals").get();
+    expect(a.tipo).toBe("pieza");
+    expect(a.huella).toBeTruthy();
+    const r = await (await worker.fetch(conSesion("/api/publicar/aprobadas"), env, {})).json();
+    expect(r.porProgramar).toMatchObject([{ postId: "p1", cliente: "Café Luna", calendarId: "cal1", cambios: [] }]);
+    expect(r.porProducir).toEqual([]);
+  });
+
+  it("si la agencia cambia el texto después, lo dice; y lo ya programado sale de la lista", async () => {
+    await sembrar();
+    db.sqlite.prepare("update calendars set share_token = ?, share_enabled = 1 where id = 'cal1'").run("t".repeat(48));
+    await aprobar();
+    db.sqlite.prepare("update calendars set days = ? where id = 'cal1'")
+      .run(JSON.stringify([{ date: "2026-10-05", posts: [post({ descripcion: "Otro texto" })] }]));
+    let r = await (await worker.fetch(conSesion("/api/publicar/aprobadas"), env, {})).json();
+    expect(r.porProgramar[0].cambios).toEqual(["el texto"]);
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1" });
+    r = await (await worker.fetch(conSesion("/api/publicar/aprobadas"), env, {})).json();
+    expect(r.porProgramar).toEqual([]);
+  });
+
+  it("la idea aprobada va a «por producir»; reenviada como pieza, el cliente la vuelve a ver por aprobar", async () => {
+    await sembrar({ posts: [post({ aprobacion: "idea" })] });
+    db.sqlite.prepare("update calendars set share_token = ?, share_enabled = 1 where id = 'cal1'").run("t".repeat(48));
+    await aprobar();
+    let r = await (await worker.fetch(conSesion("/api/publicar/aprobadas"), env, {})).json();
+    expect(r.porProducir).toMatchObject([{ postId: "p1" }]);
+    expect(r.porProgramar).toEqual([]);
+    // «Pedir aprobación de la pieza»: lo de antes deja de contar.
+    pasar(60_000);
+    db.sqlite.prepare("update calendars set days = ? where id = 'cal1'").run(JSON.stringify([{ date: "2026-10-05", posts: [
+      post({ aprobacion: "pieza", status: "pending", pideAprobacionDesde: new Date().toISOString() }),
+    ] }]));
+    const publico = await (await worker.fetch(new Request(`https://calendarios.test/api/publico/${"t".repeat(48)}`), env, {})).json();
+    expect(publico.approvals.p1).toBeUndefined();
+    expect(publico.calendar.calendar.days[0].posts[0].aprobacion).toBe("pieza");
+    r = await (await worker.fetch(conSesion("/api/publicar/aprobadas"), env, {})).json();
+    expect(r.porProducir).toEqual([]);
+    expect(r.porProgramar).toEqual([]);
+  });
 });
 
 describe("historias y variantes", () => {

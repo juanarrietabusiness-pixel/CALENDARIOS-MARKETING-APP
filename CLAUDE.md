@@ -99,6 +99,7 @@ src/
   hooks/useDialogA11y.js  Foco atrapado, Escape y bloqueo de scroll en diálogos
   hooks/useConfigIA.js    El modelo y el razonamiento del espacio, releídos con `pulso`
   hooks/useAnchoAmplio.js ¿Pantalla ancha? (asistente acoplado, panel a dos columnas)
+  hooks/useEquipo.js      Los miembros del espacio (para «Lo lleva», menciones, carga)
   lib/
     filas.js              Conversores fila ⇄ aplicación
     auth.js               Sesión, inicio y cierre
@@ -129,6 +130,13 @@ src/
     semanas.js            La vista de lista por semanas: agrupar, resumen, cuál se abre (puro)
     subir.js              «Subir»: formato deducido, redes por defecto, rellenar lo vacío con
                           la propuesta de la IA, poner o mover una publicación de día (puro)
+    aprobacion.js         Qué aprueba el cliente (idea o pieza final), qué cuenta de su respuesta,
+                          por programar / por producir, cambios tras aprobar (puro; también
+                          lo importa el Worker)
+    trabajo.js            Equipo: menciones, etapas, qué ve el cliente con revisión interna,
+                          historial (qué cambió) y carga (puro; también lo importa el Worker)
+    programarAprobadas.js Preparar imágenes, guardar y programar en lote lo aprobado de un calendario
+    sesionActual.js       Quién está dentro (papel), para las piezas que no reciben `yo`
     auditoria.js          Auditoría de perfil: cifras, usuario, límites de Instagram (puro;
                           también lo importa el Worker)
   components/
@@ -145,6 +153,12 @@ src/
     AuditoriaVista.jsx    La auditoría de perfil como documento, con copiar y portadas
     Graficas.jsx          Línea y barras en SVG, sin librería
     MedidorIA.jsx         El gasto del mes contra el presupuesto, en la cabecera
+    Avisos.jsx            La campana: la bandeja de avisos de cada persona (y las del sistema)
+    PorProgramar.jsx      «Aprobadas, por programar» (el paso final) e «Ideas por producir»
+    CargaEquipo.jsx       Qué tiene cada persona los próximos 7 días
+    calendario/aprobacionCliente.jsx  «¿Qué aprueba el cliente?» y en qué quedó
+    calendario/equipoPublicacion.jsx  Lo lleva, etapa, hilo del equipo, tareas de la
+                          publicación e historial
     SubirRapido.jsx       «Subir»: cliente → archivo → la IA escribe → cuándo sale (diálogo)
     calendario/cuandoSale.jsx   «¿Cuándo sale?» del panel: Ahora / Programar / La publico yo
     calendario/horaSugerida.jsx La hora con mejores resultados, compartida por los dos
@@ -165,7 +179,8 @@ src/
     Aprobar.jsx           Página pública que ve el cliente final
     Tareas.jsx            «Mi día»: Atrasadas, Hoy, Próximas; y la vista por empresa
     Resultados.jsx        La pestaña Resultados de un cliente y /resultados (la agencia)
-    Programacion.jsx      /programacion: lo que sale en todas las cuentas; lo que falló, arriba
+    Programacion.jsx      /programacion: lo aprobado por programar, lo que falló y lo que sale
+    Tablero.jsx           /tablero: las publicaciones de todos los clientes por etapa
     Auditorias.jsx        /auditorias: auditar el perfil de un cliente o de un prospecto
     AuditoriaPublica.jsx  Lo que abre el cliente o el prospecto con el enlace (sin sesión)
     ConectarClaude.jsx    /conectar-claude: el permiso que pide Claude (OAuth)
@@ -197,6 +212,7 @@ worker/
     mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
     herramientasServidor.js  Lo que el asistente consulta sin el navegador:
                           web, repositorio de GitHub, calendarios, tareas, ideas
+    equipo.js             Avisos (guardar y anunciar), historial y asignaciones
     ids.js                UUID, testigos, huellas
   rutas/
     datos.js              CRUD: clientes, calendarios, chat, tareas, banco
@@ -218,7 +234,8 @@ worker/
     auditorias.js         Auditorías: listar, generar, compartir; la pública va en index.js
     mcp.js                El servidor MCP (/mcp), su OAuth (/oauth/*, /.well-known/*) y
                           el permiso y las conexiones (/api/mcp/*)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp)
+    avisos.js             /api/avisos: la bandeja de quien pregunta y marcar leídos
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -241,7 +258,8 @@ tests/
 | `/tareas` | Mi día |
 | `/ajustes` | IA, presupuesto, integraciones, tareas, copia de seguridad |
 | `/resultados` | Todos los clientes, últimos 30 días |
-| `/programacion` | La cola de todos los clientes: lo que falló, lo que sale, lo que salió |
+| `/programacion` | Lo aprobado por programar y la cola de todos los clientes: lo que falló, lo que sale, lo que salió |
+| `/tablero` | Las publicaciones de todos los clientes por etapa (Idea → Publicada) |
 | `/auditorias` | Auditorías de perfil de clientes y prospectos |
 | `/auditoria?t=<testigo>` | Auditoría compartida (sin sesión) |
 | `/conectar-claude?…` | El permiso de Claude (OAuth: `authorization_endpoint`) |
@@ -1180,6 +1198,54 @@ son del servidor.
   Idea, lo que se escribe y lo que se habla con el cliente. La barra de
   «¿Cuándo sale?» sólo es fija a lo ancho: en el teléfono tapaba más de
   media pantalla y va al final.
+- **Lo aprobado NO sale solo: espera el paso final.** El cliente aprueba
+  a veces sólo la IDEA y a veces la PIEZA FINAL; cada publicación dice cuál
+  se le pide (`post.aprobacion`, sin elegir: pieza si hay archivo) y la
+  respuesta guarda qué aprobó y con qué texto (`approvals.tipo`, `huella`,
+  0019). Idea aprobada = «por producir»: nunca se programa. Pieza aprobada
+  = «por programar»: espera en Programación → «Aprobadas, por programar»
+  (y en Mi día) a que alguien la revise y pulse Programar. «Programar al
+  aprobar» sigue, APAGADO por defecto, y aun encendido sólo con piezas.
+  Lo subido con «Subir» sigue saliendo directo.
+- **El `status` de `days` no es la verdad de la aprobación.** Se pone al
+  día al abrir ESE calendario (en el estado). Todo lo que mira varios
+  calendarios —Programación, Mi día, el tablero— lee las filas de
+  `approvals` (`/api/publicar/aprobadas`, `/api/aprobaciones`) y las aplica
+  con `conAprobacion()`. Pedir otra vez la aprobación (`pideAprobacionDesde`)
+  invalida lo que el cliente respondió antes: si no, al recargar volvería
+  a salir aprobada.
+- **«Cambiaste … después de que el cliente la aprobara».** El texto se
+  compara por huella; los ARCHIVOS no, porque al programar se convierten a
+  JPEG y cambian de ruta sin que nadie los toque: para ellos está
+  `mediosCambiadosAt`, que sólo escribe el editor de medios del panel.
+- **Un colaborador sólo ve sus clientes, y lo acota la CAPA.** Papeles:
+  admin, editor, colaborador (`memberships.clientes`, JSON) y sólo lectura
+  (`solo_lectura`); sin tocar el `check` de `rol`, que obligaría a
+  reconstruir la tabla. `crearAcceso(db, owner, { clientes })` añade
+  `client_id in (…)` a toda lectura de `TABLAS_CON_CLIENTE`, acota por
+  calendario lo que cuelga de uno y comprueba el cliente de lo que se
+  escribe —también en el `on conflict`, o un id ajeno se «movería»—. Un
+  test falla si aparece una tabla con `client_id` sin declarar. Sólo
+  lectura se corta en `worker/index.js` antes de cualquier ruta. Borrar
+  clientes/calendarios y publicar al momento son de admin.
+- **`return await` en las rutas con sesión.** Un error lanzado dentro de
+  una ruta devuelta sin `await` escapa del `try` de `fetch` y sale como
+  500 genérico: así se perdía el 403 de un colaborador.
+- **Los avisos se GUARDAN** (`avisos`) y además se anuncian (`tipo:
+  "avisos"`) para que la campana se relea: llegan aunque la persona no
+  estuviera conectada. Nunca al que lo provocó. Van a quien lleva la
+  publicación (`post.responsableId`) o, si nadie, a todo el equipo. El
+  hilo interno (`notas_equipo`) y el historial (`historial`) van en sus
+  tablas y no en `days`: varias personas escriben a la vez y el
+  calendario se guarda entero.
+- **Responsable = persona.** `assigned_to` sigue siendo el nombre (para
+  quien no tiene cuenta) y `asignado_id` la persona, que el servidor casa
+  por nombre al guardar (0020 casó las de antes). «Mías» va por
+  `asignado_id`; cambiarse el nombre pone al día el texto.
+- **Revisión interna por cliente** (`clients.revision_interna`): el enlace
+  del cliente sólo enseña lo que está en «Con el cliente» (o ya
+  respondido) — `visibleParaCliente()`. Encenderla esconde todo lo
+  pendiente sin etapa: es a propósito.
 - **`tests/utils/d1Memoria.js` es una D1 de verdad** (SQLite de Node con
   todas las migraciones). Para lo que un doble a mano no ve: que las
   consultas de la capa de acceso existen en el esquema. La cola de
@@ -1195,9 +1261,10 @@ son del servidor.
   el repositorio: incluye dónde los dos no coinciden.
 - `docs/propuesta-publicacion.md` — propuesta para la experiencia de publicar
   (Flow a 4:5, historias, colaboradores, página de programación, MCP).
-- `docs/propuesta-idea-programada.md` — la idea que sale sola cuando el cliente
-  la aprueba («Programar cuando el cliente apruebe»). Sin implementar.
-- `docs/propuesta-equipo.md` — análisis de lo que falla al trabajar en equipo y
-  propuesta en tres fases (responsables, avisos, flujo de producción, papeles).
+- `docs/propuesta-idea-programada.md` — aprobar la idea o la pieza final, y el
+  paso final antes de programar lo aprobado. Implementada (sin que salga sola).
+- `docs/propuesta-equipo.md` — trabajar en equipo en tres fases (responsables,
+  avisos, hilo, etapas, revisión interna, tablero, historial, papeles, carga).
+  Implementada.
 - `docs/hub-cloudflare.md` — plan del hub donde este calendario pasa a ser una
   herramienta más, junto al bot y la tienda que ya están en Cloudflare.

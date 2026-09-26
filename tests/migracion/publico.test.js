@@ -123,6 +123,7 @@ describe("calendarioPorTestigo: la lista blanca es la seguridad", () => {
     });
     const { approvals } = await calendarioPorTestigo(db, TESTIGO);
     expect(approvals.p1).toEqual({
+      tipo: null,
       estado: "cambios", comentario: "Cambiar el copy", revisor: "Ana",
       timestamp: "2026-09-01T10:00:00.000Z",
       suggestedDescripcion: null, suggestedGuion: null,
@@ -190,6 +191,8 @@ describe("enviarAprobacion", () => {
     expect(r).toEqual({
       ok: true, estado: "cambios",
       calendarId: "cal1", ownerId: "dueno1", postId: "p1",
+      // Qué se le pedía: con archivo y sin elegir, la pieza final.
+      tipo: "pieza", clientId: "c1",
     });
     expect(db.escrituras).toHaveLength(1);
   });

@@ -25,6 +25,7 @@ import { REDES, momentoPublicacion, piezasDe } from "../../lib/publicacion";
 import { colaDe, clavePieza, fechaHora, TEXTO_ESTADO } from "../../lib/cola";
 import { resumenDestino } from "../../lib/subir";
 import { navegar } from "../../lib/rutas";
+import { esAdmin } from "../../lib/sesionActual";
 
 const MODOS = [["ahora", "Ahora", "send"], ["programar", "Programar", "clock"], ["mano", "La publico yo", "photo"]];
 
@@ -145,11 +146,13 @@ export default function CuandoSale({
           <legend className="label">¿Cuándo sale?</legend>
           <div className="segmented" role="radiogroup" aria-label="Cuándo sale">
             {MODOS.map(([k, nombre, icono]) => (
-              <button key={k} type="button" role="radio" aria-checked={modo === k} className={`segmented-btn ${modo === k ? "active" : ""}`} onClick={() => setModo(k)}>
+              <button key={k} type="button" role="radio" aria-checked={modo === k} className={`segmented-btn ${modo === k ? "active" : ""}`} onClick={() => setModo(k)}
+                disabled={k === "ahora" && !esAdmin()} title={k === "ahora" && !esAdmin() ? "Publicar al momento es de quien administra" : undefined}>
                 <Icon name={icono} size={14} /> {nombre}
               </button>
             ))}
           </div>
+          {!esAdmin() && <p className="hint" style={{ margin: 0 }}>Publicar al momento es de quien administra; tú prográmala y sale a su hora.</p>}
 
           {modo === "programar" && (
             <div className="cuando-fecha">

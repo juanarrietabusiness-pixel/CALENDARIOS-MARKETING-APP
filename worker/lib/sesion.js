@@ -125,7 +125,7 @@ export async function usuarioDeLaPeticion(db, req) {
   if (!bruto) return null;
   const fila = await db
     .prepare(
-      `select u.id, u.email, m.owner_id, m.rol, m.nombre, m.color
+      `select u.id, u.email, m.owner_id, m.rol, m.nombre, m.color, m.solo_lectura, m.clientes
          from sessions s
          join users u on u.id = s.user_id
          left join memberships m on m.user_id = u.id
@@ -160,7 +160,22 @@ function comoPerfil(id, email, m) {
     rol: m.rol,
     nombre: m.nombre || nombrePorCorreo(email),
     color: m.color,
+    // Papeles finos (0020_equipo.sql): sólo mirar, o sólo algunos clientes.
+    // Un administrador los ve todos siempre.
+    soloLectura: m.rol !== "admin" && (m.solo_lectura === 1 || m.solo_lectura === true),
+    clientes: m.rol !== "admin" ? clientesPermitidos(m.clientes) : null,
   };
+}
+
+/** null = todos; una lista JSON de ids = un colaborador. Lo que no se entiende, todos NO: ninguno. */
+export function clientesPermitidos(texto) {
+  if (texto == null || texto === "") return null;
+  try {
+    const lista = JSON.parse(texto);
+    return Array.isArray(lista) ? lista.map(String) : [];
+  } catch {
+    return [];
+  }
 }
 
 /** El trozo del correo que sirve de nombre mientras nadie ponga otro. */
@@ -173,7 +188,7 @@ const COLOR_ADMIN = "#1E90FF";
 /** Igual que lo que resuelve la cookie, pero partiendo del id: lo usa el acceso. */
 export async function perfilDeUsuario(db, id, email) {
   const m = await db
-    .prepare("select owner_id, rol, nombre, color from memberships where user_id = ?")
+    .prepare("select owner_id, rol, nombre, color, solo_lectura, clientes from memberships where user_id = ?")
     .bind(id)
     .first();
   return m ? comoPerfil(id, email, m) : fundarEspacio(db, id, email);
@@ -188,7 +203,7 @@ async function fundarEspacio(db, id, email) {
     )
     .bind(id, id, nombre, COLOR_ADMIN, ahora())
     .run();
-  return { id, email, ownerId: id, rol: "admin", nombre, color: COLOR_ADMIN };
+  return { id, email, ownerId: id, rol: "admin", nombre, color: COLOR_ADMIN, soloLectura: false, clientes: null };
 }
 
 export async function iniciarSesion(db, email, contrasena, userAgent = "") {
@@ -277,7 +292,7 @@ export async function invitacionPorTestigo(db, bruto) {
   const fila = await db
     .prepare(
       `select i.id, i.owner_id, i.email, i.nombre, i.rol, i.expires_at, i.aceptada_at,
-              m.nombre as invita
+              i.solo_lectura, i.clientes, m.nombre as invita
          from invitaciones i
          left join memberships m on m.user_id = i.creada_por
         where i.token_hash = ?`,
@@ -291,6 +306,8 @@ export async function invitacionPorTestigo(db, bruto) {
     email: fila.email,
     nombre: fila.nombre,
     rol: fila.rol,
+    soloLectura: fila.solo_lectura === 1,
+    clientes: fila.clientes ?? null,
     invita: fila.invita || "la agencia",
     caducada: fila.expires_at <= ahora(),
     aceptada: Boolean(fila.aceptada_at),
@@ -336,9 +353,9 @@ export async function aceptarInvitacion(db, bruto, { email, contrasena, nombre, 
     db.prepare("insert into users (id, email, password_hash, salt, created_at) values (?,?,?,?,?)")
       .bind(id, limpio, password_hash, salt, t),
     db.prepare(
-      `insert into memberships (user_id, owner_id, rol, nombre, color, created_at)
-       values (?,?,?,?,?,?)`,
-    ).bind(id, inv.ownerId, inv.rol, visible, colorDeNombre(visible), t),
+      `insert into memberships (user_id, owner_id, rol, nombre, color, solo_lectura, clientes, created_at)
+       values (?,?,?,?,?,?,?,?)`,
+    ).bind(id, inv.ownerId, inv.rol, visible, colorDeNombre(visible), inv.soloLectura ? 1 : 0, inv.clientes ?? null, t),
     db.prepare("update invitaciones set aceptada_at = ? where id = ? and aceptada_at is null")
       .bind(t, inv.id),
   ]);
@@ -351,7 +368,10 @@ export async function aceptarInvitacion(db, bruto, { email, contrasena, nombre, 
 
   return {
     testigo: bruto2,
-    usuario: { id, email: limpio, ownerId: inv.ownerId, rol: inv.rol, nombre: visible, color: colorDeNombre(visible) },
+    usuario: comoPerfil(id, limpio, {
+      owner_id: inv.ownerId, rol: inv.rol, nombre: visible, color: colorDeNombre(visible),
+      solo_lectura: inv.soloLectura ? 1 : 0, clientes: inv.clientes ?? null,
+    }),
   };
 }
 
@@ -493,7 +513,7 @@ export async function usuarioDeTokenMCP(db, bruto) {
   if (!bruto) return null;
   const fila = await db
     .prepare(
-      `select t.id as token_id, u.id, u.email, m.owner_id, m.rol, m.nombre, m.color
+      `select t.id as token_id, u.id, u.email, m.owner_id, m.rol, m.nombre, m.color, m.solo_lectura, m.clientes
          from mcp_tokens t
          join users u on u.id = t.user_id
          join memberships m on m.user_id = u.id and m.owner_id = t.owner_id

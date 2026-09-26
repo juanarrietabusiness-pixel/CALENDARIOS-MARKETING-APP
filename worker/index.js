@@ -29,6 +29,8 @@ import { usuarioDeLaPeticion, iniciarSesion, cerrarSesion, cookieSesion, cookieB
 import { calendarioPorTestigo, enviarAprobacion, actualizarContenido, mediaPermitida, comentarCliente, enviarRevision, informePorTestigo, auditoriaPorTestigo } from "./lib/publico.js";
 import { difundir } from "./lib/vivo.js";
 import { rutasDatos } from "./rutas/datos.js";
+import { rutasAvisos } from "./rutas/avisos.js";
+import { avisarRespuestaCliente } from "./lib/equipo.js";
 import { rutasEquipo, rutaInvitacionPublica } from "./rutas/equipo.js";
 import { rutaIA } from "./rutas/ia.js";
 import { rutaChat, rutaResumenChat } from "./rutas/chat.js";
@@ -123,6 +125,12 @@ export default {
               ? programarAlAprobar(env, r.ownerId, r.calendarId, r.postId)
               : cancelarPendientes(crearAcceso(env.DB, r.ownerId), r.calendarId, r.postId, "El cliente pidió cambios.");
             ctx?.waitUntil?.(cola.catch((e) => console.error("cola al aprobar:", e)));
+            // Y a la bandeja de quien la lleva (o de todo el equipo).
+            const aviso = avisarRespuestaCliente(env, crearAcceso(env.DB, r.ownerId), {
+              calendarId: r.calendarId, postId: r.postId, estado: r.estado, revisor: b.revisor,
+            });
+            if (ctx?.waitUntil) ctx.waitUntil(aviso.catch((e) => console.error("aviso al aprobar:", e)));
+            else await aviso.catch(() => {});
             return json({ ok: r.ok, estado: r.estado });
           } catch (e) { return comoRespuesta(e); }
         }
@@ -237,6 +245,16 @@ export default {
 
       if (partes[0] === "yo" && metodo === "GET") return json({ usuario });
 
+      // Sólo lectura: mira todo lo suyo, no cambia nada. Se corta aquí,
+      // antes de cualquier ruta, para que una ruta nueva no se cuele por
+      // olvido. Lo único que escribe es lo suyo propio: su nombre y color,
+      // y marcar sus avisos como leídos.
+      if (usuario.soloLectura && metodo !== "GET" && !(
+        (partes[0] === "equipo" && partes[1] === "yo") || partes[0] === "avisos"
+      )) {
+        return error("Tu papel es de sólo lectura: puedes mirar, pero no cambiar nada.", 403);
+      }
+
       // ---------- 4. IA ----------
       if (partes[0] === "adn" && partes[1] === "imagen" && metodo === "POST") return rutaImagenADN(req, env);
       if (partes[0] === "adn" && !partes[1] && metodo === "POST") return rutaADN(req, env);
@@ -265,44 +283,49 @@ export default {
       //
       // El dueño es el ESPACIO, no quien ha entrado: los clientes son de
       // la agencia y los ve igual quien los creó que quien llegó ayer.
-      const acceso = crearAcceso(env.DB, usuario.ownerId);
+      // Un colaborador sólo ve —y sólo toca— sus clientes: lo acota la capa.
+      // Por eso las rutas de aquí abajo van con `return await`: sin él, un
+      // ErrorAcceso lanzado dentro escaparía del `catch` y sería un 500.
+      const acceso = crearAcceso(env.DB, usuario.ownerId, { clientes: usuario.clientes });
+
+      if (partes[0] === "avisos") return await rutasAvisos(req, env, { acceso, usuario, partes, metodo });
 
       // ---------- Generación de imágenes ----------
       if (partes[0] === "generar-imagen" && metodo === "POST") {
-        return rutaGenerarImagen(req, env, { acceso, usuario });
+        return await rutaGenerarImagen(req, env, { acceso, usuario });
       }
       // Aquí y no con el resto de /ia: necesita el acceso para saber si
       // el video es de un cliente de este espacio.
       if (partes[0] === "ia" && partes[1] === "video" && metodo === "POST") {
-        return rutaAnalizarVideo(req, env, { acceso });
+        return await rutaAnalizarVideo(req, env, { acceso });
       }
       // El asistente, también aquí: sus herramientas de servidor leen D1
       // y el repositorio del cliente, y eso se acota por el espacio.
       if (partes[0] === "ia" && partes[1] === "chat" && partes[2] === "resumen") {
-        return rutaResumenChat(req, env, { acceso, metodo });
+        return await rutaResumenChat(req, env, { acceso, metodo });
       }
       if (partes[0] === "ia" && partes[1] === "chat" && !partes[2] && metodo === "POST") {
-        return rutaChat(req, env, { acceso, ctx });
+        return await rutaChat(req, env, { acceso, ctx });
       }
       // La generación del calendario, también después del acceso: el
       // modelo y el razonamiento salen de la configuración del espacio.
-      if (partes[0] === "ia" && !partes[1] && metodo === "POST") return rutaIA(req, env, { acceso });
-      if (partes[0] === "ia" && partes[1] === "modelos" && metodo === "GET") return rutaModelos(req, env, { acceso });
-      if (partes[0] === "ia" && partes[1] === "consumo" && metodo === "GET") return rutaConsumo(req, env, { acceso });
-      if (partes[0] === "ia" && partes[1] === "gasto" && metodo === "GET") return rutaGasto(req, env, { acceso });
+      if (partes[0] === "ia" && !partes[1] && metodo === "POST") return await rutaIA(req, env, { acceso });
+      if (partes[0] === "ia" && partes[1] === "modelos" && metodo === "GET") return await rutaModelos(req, env, { acceso });
+      if (partes[0] === "ia" && partes[1] === "consumo" && metodo === "GET") return await rutaConsumo(req, env, { acceso });
+      if (partes[0] === "ia" && partes[1] === "gasto" && metodo === "GET") return await rutaGasto(req, env, { acceso });
 
-      if (partes[0] === "equipo") return rutasEquipo(req, env, { acceso, partes, metodo, usuario });
+      if (partes[0] === "equipo") return await rutasEquipo(req, env, { acceso, partes, metodo, usuario });
 
       // ---------- Google Drive: el banco de contenido ----------
-      if (partes[0] === "drive") return rutasDrive(req, env, { acceso, usuario, partes, metodo });
+      if (partes[0] === "drive") return await rutasDrive(req, env, { acceso, usuario, partes, metodo });
 
       // ---------- Redes: Meta, cuentas y la cola de publicación ----------
-      if (partes[0] === "redes") return rutasRedes(req, env, { acceso, usuario, partes, metodo });
-      if (partes[0] === "publicar") return rutasPublicar(req, env, { acceso, usuario, partes, metodo, ctx });
-      if (partes[0] === "metricas") return rutasMetricas(req, env, { acceso, usuario, partes, metodo });
-      if (partes[0] === "informes") return rutasInformes(req, env, { acceso, usuario, partes, metodo });
-      if (partes[0] === "auditorias") return rutasAuditorias(req, env, { acceso, usuario, partes, metodo });
-      if (partes[0] === "mcp") return rutasMCP(req, env, { acceso, usuario, partes, metodo });
+      if (partes[0] === "redes") return await rutasRedes(req, env, { acceso, usuario, partes, metodo });
+      if (partes[0] === "publicar") return await rutasPublicar(req, env, { acceso, usuario, partes, metodo, ctx });
+      if (partes[0] === "metricas") return await rutasMetricas(req, env, { acceso, usuario, partes, metodo });
+      if (partes[0] === "informes") return await rutasInformes(req, env, { acceso, usuario, partes, metodo });
+      if (partes[0] === "auditorias") return await rutasAuditorias(req, env, { acceso, usuario, partes, metodo });
+      if (partes[0] === "mcp") return await rutasMCP(req, env, { acceso, usuario, partes, metodo });
 
       // ---------- Medios ----------
       //
@@ -355,8 +378,10 @@ export default {
         return error(`Método ${metodo} no permitido aquí`, 405);
       }
 
-      return rutasDatos(req, env, { acceso, partes, metodo, usuario });
+      return await rutasDatos(req, env, { acceso, partes, metodo, usuario, exec: ctx });
     } catch (e) {
+      // Escribir en un cliente que no es de los tuyos (colaborador).
+      if (e?.name === "ErrorAcceso") return error(e.message, 403);
       console.error("worker:", e);
       return new Response(JSON.stringify({ error: "Error interno" }), {
         status: 500, headers: CABECERAS_API,

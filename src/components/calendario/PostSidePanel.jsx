@@ -40,6 +40,10 @@ import { AvisoEditando } from "../Presencia";
 import Icon from "../Icon";
 import { ConversacionCliente } from "./editorPublicacion";
 import PestanaPublicar from "./seccionPublicar";
+import { QueAprueba } from "./aprobacionCliente";
+import { LoLleva, EtapaPublicacion, HiloEquipo, TareasDePublicacion, HistorialPublicacion } from "./equipoPublicacion";
+import { useEquipo } from "../../hooks/useEquipo";
+import { resumenCola } from "../../lib/cola";
 import { CopyButton } from "./primitivas";
 import { fieldHeaderStyle } from "./formato";
 
@@ -57,6 +61,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
   const ids = useId();
   const panelRef = useDialogA11y(onClose);
   const ancho = useAnchoAmplio(1024);
+  const miembros = useEquipo(pulso);
   const [pestana, setPestanaEstado] = useState(() => {
     if (pestanaInicial) pestanaRecordada = pestanaInicial;
     return pestanaRecordada;
@@ -370,6 +375,15 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         </div>
 
         <div className="idea-lado">
+        <LoLleva post={form} sf={sf} miembros={miembros} />
+        <EtapaPublicacion
+          post={form}
+          sf={sf}
+          miembros={miembros}
+          estadoCola={resumenCola(publicacion?.filas ?? [], post.id)?.estado ?? null}
+          compartido={Boolean(cal?.shareToken)}
+          revisionInterna={Boolean(client?.revisionInterna)}
+        />
         <fieldset className="field" style={{ border: "none" }}>
           <legend className="label">Aprobación</legend>
           {/* «Publicada» ya no se marca aquí: la publicación tiene su propio
@@ -394,6 +408,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
               </button>
             ))}
           </div>
+          <QueAprueba post={form} sf={sf} setForm={setForm} />
         </fieldset>
 
 
@@ -414,10 +429,10 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
 
         {cal?.shareToken && <ConversacionCliente calId={cal.id} postId={post.id} pulso={pulso} />}
 
-        <div className="field">
-          <label className="label" htmlFor={`${ids}-comment`}>Nota interna <span style={{ fontWeight: 400, textTransform: "none" }}>· el cliente no la ve</span></label>
-          <textarea id={`${ids}-comment`} className="textarea" value={form.comment || ""} onChange={(e) => sf("comment", e.target.value)} placeholder="Notas internas…" style={{ minHeight: 72 }} />
-        </div>
+        {/* La nota interna de antes se enseña arriba del hilo, sin perderla. */}
+        <HiloEquipo calId={cal.dbId || cal.id} postId={post.id} pulso={pulso} miembros={miembros} notaAnterior={form.comment || ""} />
+        <TareasDePublicacion calId={cal.dbId || cal.id} clientId={clientId} post={form} pulso={pulso} miembros={miembros} />
+        <HistorialPublicacion calId={cal.dbId || cal.id} postId={post.id} pulso={pulso} />
         </div>
         </div>)}
       </div>
