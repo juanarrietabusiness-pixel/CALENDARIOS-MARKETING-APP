@@ -9,3 +9,13 @@
 .subir-botones .cuando-principal { flex: 1 1 260px; }
 .subir-hecho { display: flex; flex-direction: column; gap: var(--sp-3); }
 .subir-hecho .notice { display: flex; align-items: center; gap: var(--sp-2); margin: 0; }
+.subir-columnas, .subir-config { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+/* Pantalla ancha: configurar a la izquierda, cómo queda a la derecha. */
+.subir-rapido.subir-ancho { max-width: 1180px; }
+.subir-ancho .subir-columnas { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); gap: var(--sp-5); align-items: start; }
+.subir-vista {
+  position: sticky; top: 0; display: flex; flex-direction: column; gap: var(--sp-2);
+  padding: var(--sp-3); border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border);
+}
+.subir-vista > h3 { margin: 0; }
+.subir-vista .vista-red-telefono { max-width: 100%; }

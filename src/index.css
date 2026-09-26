@@ -452,6 +452,19 @@ input[type="radio"] {
 }
 .btn-dashed:hover { border-color: var(--accent); color: var(--text-muted); background: var(--accent-soft); }
 
+/* «Agregar publicación»: subir contenido o agregar idea, sin formulario */
+.nueva-publicacion { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-2); }
+.nueva-publicacion-opcion {
+  display: flex; align-items: center; gap: var(--sp-3); min-height: var(--tap); padding: var(--sp-3);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2);
+  color: var(--text); text-align: left; cursor: pointer; transition: border-color .15s, background .15s;
+}
+.nueva-publicacion-opcion:hover { border-color: var(--accent); background: var(--accent-soft); }
+.nueva-publicacion-opcion > svg { color: var(--accent); flex-shrink: 0; }
+.nueva-publicacion-opcion span { display: flex; flex-direction: column; gap: 2px; }
+.nueva-publicacion-opcion strong { font-size: var(--fs-xs); }
+.nueva-publicacion-opcion small { font-size: var(--fs-3xs); color: var(--text-dim); }
+
 /* ============================================================
    Armazón de la aplicación
 
@@ -1332,7 +1345,9 @@ input[type="radio"] {
   transition: border-color .15s, color .15s, background .15s;
 }
 .filter-chip:hover { border-color: var(--accent); color: var(--text-muted); }
-.filter-chip.active {
+/* `aria-pressed` también: los chips de alternar lo usan, y sin esta
+   regla lo elegido se veía igual que lo no elegido. */
+.filter-chip.active, .filter-chip[aria-pressed="true"] {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;

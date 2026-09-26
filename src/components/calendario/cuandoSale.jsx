@@ -23,6 +23,7 @@ import HoraSugerida from "./horaSugerida";
 import { TimePicker } from "./primitivas";
 import { REDES, momentoPublicacion, piezasDe } from "../../lib/publicacion";
 import { colaDe, clavePieza, fechaHora, TEXTO_ESTADO } from "../../lib/cola";
+import { resumenDestino } from "../../lib/subir";
 import { navegar } from "../../lib/rutas";
 
 const MODOS = [["ahora", "Ahora", "send"], ["programar", "Programar", "clock"], ["mano", "La publico yo", "photo"]];
@@ -193,6 +194,8 @@ export default function CuandoSale({
           )}
           {modo !== "mano" && errores.length > 0 && <p className="hint">Arregla lo que falta (arriba) para poder publicarla.</p>}
 
+          {/* Al lado del botón, dónde sale: arriba se eligió, aquí se confirma. */}
+          <p className="cuando-destino"><Icon name="send" size={13} /> {resumenDestino(post, redes)}</p>
           <div className="cuando-botones">
             <button type="button" className="btn btn-primary cuando-principal" disabled={deshabilitado} onClick={confirmar}>
               <Icon name={MODOS.find(([k]) => k === modo)[2]} size={16} />

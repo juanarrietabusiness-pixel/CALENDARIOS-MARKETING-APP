@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } fro
 import { MONTHS } from "./constants";
 import { uid } from "./utils";
 import { useDialogA11y } from "./hooks/useDialogA11y";
+import { useAnchoAmplio } from "./hooks/useAnchoAmplio";
 import Icon from "./components/Icon";
 // Importado (no ruta absoluta) para que Vite le ponga hash y respete la
 // base del despliegue: el sitio también se publica bajo un subdirectorio.
@@ -70,20 +71,6 @@ const PESTANAS = [
   ["resultados", "Resultados", "chart"],
   ["ficha", "Ficha", "building"],
 ];
-
-/** Pantalla ancha: donde el asistente cabe al lado del contenido. */
-function useAnchoAmplio(minimo = 1280) {
-  const consulta = `(min-width: ${minimo}px)`;
-  const [amplio, setAmplio] = useState(() => window.matchMedia?.(consulta).matches ?? false);
-  useEffect(() => {
-    const mq = window.matchMedia?.(consulta);
-    if (!mq) return;
-    const alCambiar = () => setAmplio(mq.matches);
-    mq.addEventListener("change", alCambiar);
-    return () => mq.removeEventListener("change", alCambiar);
-  }, [consulta]);
-  return amplio;
-}
 
 /**
  * La dirección actual, y se vuelve a pintar cuando cambia.

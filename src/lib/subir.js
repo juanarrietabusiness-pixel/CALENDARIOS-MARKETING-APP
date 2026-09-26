@@ -8,7 +8,7 @@
 // deduce, para que el diálogo rápido y el panel decidan igual.
 // ============================================================
 
-import { mediosDe } from "./publicacion.js";
+import { mediosDe, destinoInstagram, conHistoria, REDES } from "./publicacion.js";
 import { semanaDelMes } from "./semanas.js";
 
 const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
@@ -28,6 +28,44 @@ export function formatoDeMedios(medios = []) {
 export function redesPorDefecto(redesDelCliente = []) {
   const orden = ["instagram", "facebook"].filter((r) => redesDelCliente.includes(r));
   return orden.length ? orden : redesDelCliente.length ? [redesDelCliente[0]] : ["instagram"];
+}
+
+const PIEZA_INSTAGRAM = { imagen: "post en el feed", carrusel: "carrusel", reel: "reel", historia: "historia" };
+
+/**
+ * Qué sale en UNA red con esta publicación: «reel», «historia»,
+ * «publicación»… Es lo que se pinta debajo de cada red al elegirlas: la
+ * agencia elegía redes sin saber qué iba a salir en cada una, y una
+ * historia pensada sólo para Instagram salió también en Facebook.
+ */
+export function queSaleEn(post, red) {
+  if (red === "instagram") return PIEZA_INSTAGRAM[destinoInstagram(post)];
+  if (red === "tiktok") return "video";
+  return post?.format === "historia" ? "historia" : "publicación";
+}
+
+const unir = (lista) => (lista.length < 2 ? lista.join("") : `${lista.slice(0, -1).join(", ")} y ${lista[lista.length - 1]}`);
+
+/**
+ * La frase de dónde sale y dónde NO: «Sale en Instagram (reel + historia)
+ * y Facebook (publicación). No sale en TikTok.» Lo que queda fuera se
+ * dice también: callarlo es lo que hacía creer que no saldría.
+ */
+export function resumenDestino(post, redes = []) {
+  const dentro = redes.filter((r) => REDES[r]).map((r) => {
+    const extra = r !== "tiktok" && conHistoria(post) ? " + historia" : "";
+    return `${REDES[r].nombre} (${queSaleEn(post, r)}${extra})`;
+  });
+  const fuera = Object.keys(REDES).filter((r) => !redes.includes(r)).map((r) => REDES[r].nombre);
+  if (!dentro.length) return "No sale en ninguna red: elige al menos una.";
+  return `Sale en ${unir(dentro)}.${fuera.length ? ` No sale en ${unir(fuera)}.` : ""}`;
+}
+
+/** ¿Está vacía? Una publicación recién creada que se cierra sin escribir ni subir nada. */
+export function publicacionVacia(post = {}) {
+  const texto = ["title", "idea", "guion", "descripcion", "script", "hashtagsFinales", "primerComentario", "comment"]
+    .some((k) => String(post[k] ?? "").trim());
+  return !texto && !mediosDe(post).length && !(post.historias ?? []).length;
 }
 
 /**

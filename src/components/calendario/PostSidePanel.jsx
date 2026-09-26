@@ -10,10 +10,21 @@ import "./publicar.css";
 // reescribir el calendario ellos mismos.
 //
 // DOS PESTAÑAS: Idea (planificar: idea, guion, descripción, aprobación,
-// conversación) y Subir (medios, la IA que escribe mirándolos, vista
-// previa real, texto de cada red, revisión con arreglos y «¿Cuándo sale?»). Es la
-// misma publicación y el mismo `form`: cambiar de pestaña no guarda ni
-// pierde nada. La última elegida se recuerda mientras dure la sesión.
+// conversación) y Subir (qué sale y dónde, medios, la IA que escribe
+// mirándolos, vista previa real, texto de cada red, revisión con arreglos
+// y «¿Cuándo sale?»). Es la misma publicación y el mismo `form`: cambiar
+// de pestaña no guarda ni pierde nada. La última elegida se recuerda
+// mientras dure la sesión, salvo que se abra pidiendo una
+// («Agregar publicación» → «Subir contenido» o «Agregar idea»).
+//
+// A LO ANCHO desde 1024 px. En 440 px, configurar la publicación tapaba
+// cómo iba a quedar: ahora es una ventana grande, con la vista previa en
+// su columna en Subir y, en Idea, lo que se escribe a un lado y lo que se
+// habla con el cliente al otro.
+//
+// Una publicación recién creada que se cierra sin escribir ni subir nada
+// se descarta: crearla ya no pide título, así que no debe quedar una
+// vacía por cada vez que alguien abrió y se arrepintió.
 // ============================================================
 
 import { useEffect, useId, useState, useRef } from "react";
@@ -21,13 +32,15 @@ import { FORMATS, FORMAT_ICONS, STATUSES } from "../../constants";
 import { generateFieldForPost } from "../../api";
 import { vivo } from "../../lib/vivo";
 import { mediosDe } from "../../lib/publicacion";
+import { publicacionVacia } from "../../lib/subir";
+import { useAnchoAmplio } from "../../hooks/useAnchoAmplio";
 
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { AvisoEditando } from "../Presencia";
 import Icon from "../Icon";
 import { ConversacionCliente } from "./editorPublicacion";
 import PestanaPublicar from "./seccionPublicar";
-import { CopyButton, TimePicker } from "./primitivas";
+import { CopyButton } from "./primitivas";
 import { fieldHeaderStyle } from "./formato";
 
 // «Idea» planifica; «Subir» es archivo, texto y cuándo sale —como lo llama
@@ -35,7 +48,7 @@ import { fieldHeaderStyle } from "./formato";
 const PESTANAS = [["contenido", "Idea", "bulb"], ["publicar", "Subir", "upload"]];
 let pestanaRecordada = "contenido";
 
-export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onSendToBank, suggestion, onAcceptSuggestion, onRejectSuggestion, client, cal, editandoOtros = {}, pulso = 0, publicacion = null }) {
+export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onSendToBank, onDescartar, suggestion, onAcceptSuggestion, onRejectSuggestion, client, cal, editandoOtros = {}, pulso = 0, publicacion = null, pestanaInicial = null, nueva = false }) {
   const [form, setForm] = useState({ ...post });
   const [fieldLoading, setFieldLoading] = useState({});
   const [fieldError, setFieldError] = useState("");
@@ -43,7 +56,11 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
   const [moveTarget, setMoveTarget] = useState("");
   const ids = useId();
   const panelRef = useDialogA11y(onClose);
-  const [pestana, setPestanaEstado] = useState(pestanaRecordada);
+  const ancho = useAnchoAmplio(1024);
+  const [pestana, setPestanaEstado] = useState(() => {
+    if (pestanaInicial) pestanaRecordada = pestanaInicial;
+    return pestanaRecordada;
+  });
   const setPestana = (p) => { pestanaRecordada = p; setPestanaEstado(p); };
   const teclaPestana = (e) => {
     if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
@@ -80,9 +97,26 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
   // antes de esa reescritura y la desharía: devolvería la publicación
   // borrada a su día, o la traería de vuelta de la fecha nueva.
   const yaEscrito = useRef(false);
-  useEffect(() => () => {
-    if (yaEscrito.current) return;
-    guardarRef.current?.(fechaRef.current, ultimo.current);
+  const descartarRef = useRef(onDescartar);
+  descartarRef.current = onDescartar;
+  const nuevaRef = useRef(nueva);
+  const montado = useRef(false);
+  useEffect(() => {
+    montado.current = true;
+    const esNueva = nuevaRef.current;
+    return () => {
+      montado.current = false;
+      if (yaEscrito.current) return;
+      // Recién creada y sin nada dentro: se quita en vez de guardarse. En
+      // diferido y comprobando que no se volvió a montar: en desarrollo,
+      // StrictMode desmonta y monta cada efecto una vez, y sin esta
+      // guarda la publicación nueva desaparecía nada más abrirse.
+      if (esNueva && descartarRef.current && publicacionVacia(ultimo.current)) {
+        setTimeout(() => { if (!montado.current) descartarRef.current?.(fechaRef.current, ultimo.current.id); }, 0);
+        return;
+      }
+      guardarRef.current?.(fechaRef.current, ultimo.current);
+    };
   }, []);
 
   // ---- «Estoy editando esta publicación» ----
@@ -131,7 +165,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
   return (
     <div
       ref={panelRef}
-      className="panel-right"
+      className={`panel-right panel-publicacion${ancho ? " panel-ancho" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby={`${ids}-title`}
@@ -195,6 +229,8 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
             cal={cal}
             publicacion={publicacion}
             enlaceAMano={`/a-mano/${encodeURIComponent(cal?.dbId || cal?.id || "")}/${encodeURIComponent(post.id)}`}
+            formatoAuto={nueva && pestanaInicial === "publicar"}
+            ancho={ancho}
           >
             {form.status === "published" ? (
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => sf("status", "approved")}>
@@ -206,7 +242,8 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
               </button>
             )}
           </PestanaPublicar>
-        ) : (<>
+        ) : (<div className="idea-columnas" data-ancho={ancho || undefined}>
+        <div className="idea-escribir">
 
         <fieldset className="field" style={{ border: "none" }}>
           <legend className="label">Formato</legend>
@@ -235,44 +272,8 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           </div>
         </fieldset>
 
-        <fieldset className="field" style={{ border: "none" }}>
-          <legend className="label">Aprobación</legend>
-          {/* «Publicada» ya no se marca aquí: la publicación tiene su propio
-              estado en «Publicar», abajo. Aprobación y publicación son dos
-              cosas: una puede estar aprobada Y con error al publicar. */}
-          <div className="status-bar">
-            {Object.entries(STATUSES).filter(([k]) => k !== "published").map(([k, st]) => (
-              <button
-                key={k}
-                type="button"
-                className="status-btn"
-                aria-pressed={form.status === k}
-                onClick={() => sf("status", k)}
-                style={{
-                  background: form.status === k ? st.bg : "var(--bg)",
-                  color: st.text,
-                  borderColor: form.status === k ? st.border : "var(--border)",
-                  fontWeight: form.status === k ? 700 : 500,
-                }}
-              >
-                {st.label}
-              </button>
-            ))}
-          </div>
-        </fieldset>
-
         <div className="field">
-          <label className="label" htmlFor={`${ids}-time`}>Hora de publicación</label>
-          <TimePicker id={`${ids}-time`} value={form.publishTime || ""} onChange={(v) => sf("publishTime", v)} />
-        </div>
-
-        <div className="field">
-          <label className="label" htmlFor={`${ids}-cat`}>Categoría</label>
-          <input id={`${ids}-cat`} className="input" value={form.category || ""} onChange={(e) => sf("category", e.target.value)} placeholder="Ej: Producto estrella" />
-        </div>
-
-        <div className="field">
-          <label className="label" htmlFor={`${ids}-titulo`}>Título</label>
+          <label className="label" htmlFor={`${ids}-titulo`}>Título <span style={{ fontWeight: 400, textTransform: "none" }}>· opcional</span></label>
           <input id={`${ids}-titulo`} className="input" value={form.title || ""} onChange={(e) => sf("title", e.target.value)} placeholder="Nombre corto de la publicación" />
         </div>
 
@@ -366,7 +367,37 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           </div>
         )}
 
-        {/* Los medios se editan en Publicar; aquí, un vistazo y el camino. */}
+        </div>
+
+        <div className="idea-lado">
+        <fieldset className="field" style={{ border: "none" }}>
+          <legend className="label">Aprobación</legend>
+          {/* «Publicada» ya no se marca aquí: la publicación tiene su propio
+              estado en «Publicar», abajo. Aprobación y publicación son dos
+              cosas: una puede estar aprobada Y con error al publicar. */}
+          <div className="status-bar">
+            {Object.entries(STATUSES).filter(([k]) => k !== "published").map(([k, st]) => (
+              <button
+                key={k}
+                type="button"
+                className="status-btn"
+                aria-pressed={form.status === k}
+                onClick={() => sf("status", k)}
+                style={{
+                  background: form.status === k ? st.bg : "var(--bg)",
+                  color: st.text,
+                  borderColor: form.status === k ? st.border : "var(--border)",
+                  fontWeight: form.status === k ? 700 : 500,
+                }}
+              >
+                {st.label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+
+        {/* Los medios se editan en Subir; aquí, un vistazo y el camino. */}
         <div className="field">
           <span className="label">Imágenes y videos</span>
           <div className="medios-resumen">
@@ -387,7 +418,8 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           <label className="label" htmlFor={`${ids}-comment`}>Nota interna <span style={{ fontWeight: 400, textTransform: "none" }}>· el cliente no la ve</span></label>
           <textarea id={`${ids}-comment`} className="textarea" value={form.comment || ""} onChange={(e) => sf("comment", e.target.value)} placeholder="Notas internas…" style={{ minHeight: 72 }} />
         </div>
-        </>)}
+        </div>
+        </div>)}
       </div>
 
       <div style={{ padding: "var(--sp-3) var(--sp-4)", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>

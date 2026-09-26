@@ -13,7 +13,7 @@ import {
 import { resumenCola, aprobadasSinProgramar } from "../lib/cola";
 import { navegar } from "../lib/rutas";
 import { agruparPorSemana, semanaInicial, rangoSemana } from "../lib/semanas";
-import { moverEnCalendario } from "../lib/subir";
+import { moverEnCalendario, ponerEnDia } from "../lib/subir";
 import { fechaEnZona } from "../lib/agenda";
 import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO, CAMPOS_EXPORTABLES } from "../lib/exportarContenido";
 import MetaPromptModal from "./MetaPromptModal";
@@ -28,7 +28,7 @@ const ProgramarAprobadas = lazy(() => import("./calendario/programarAprobadas"))
 import { MonthGrid } from "./calendario/MonthGrid";
 import { BankPanel } from "./calendario/BankPanel";
 import {
-  ExportContenidoDialog, AddPostInline,
+  ExportContenidoDialog, ElegirNuevaPublicacion,
   EditMetaDialog, ApprovalDialog, AddPostDialog,
 } from "./calendario/dialogos";
 import { categoryHue, fmt12h } from "./calendario/formato";
@@ -392,27 +392,36 @@ export default function CalendarView({
     onUpdateCal(calId, { ...cal, days: newDays });
   };
 
-  const addPost = (date, format, idea, title) => {
+  /**
+   * «Agregar publicación» → «Subir contenido» o «Agregar idea». Se crea al
+   * momento, sin pedir título, y se abre en la pestaña que toca. Lo subido
+   * sale directo (aprobada, como el botón «Subir»); la idea espera al
+   * cliente. `ponerEnDia` crea el día si el calendario aún no lo tenía: el
+   * «+» de la rejilla se ofrece en todos los días del mes, y antes la
+   * publicación de un día sin fila se perdía sin decir nada.
+   */
+  const addPost = (date, pestana) => {
+    const subir = pestana === "publicar";
     const newPost = {
       id: uid(),
-      format,
-      title: title || "",
-      idea,
+      format: "post",
+      title: "",
+      idea: "",
       guion: "",
       descripcion: "",
       hashtagsFinales: "",
       script: "",
-      status: "pending",
+      status: subir ? "approved" : "pending",
       category: "",
       image: null,
       referenceLink: "",
       comment: "",
+      ...(subir ? { subidaRapida: true } : {}),
     };
-    const newDays = (cal.days || []).map((d) =>
-      d.date !== date ? d : { ...d, posts: [...(d.posts || []), newPost] }
-    );
-    onUpdateCal(calId, { ...cal, days: newDays });
+    const nuevo = ponerEnDia(cal, date, newPost);
+    onUpdateCal(calId, nuevo);
     setAddingPostDay(null);
+    setSidePanel({ post: newPost, day: nuevo.days.find((d) => d.date === date), pestana, nueva: true });
   };
 
   const removePostFromDay = (date, postId) => {
@@ -1526,8 +1535,8 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
                       })}
                       {/* Add post button */}
                       {addingPostDay === day.date ? (
-                        <AddPostInline
-                          onAdd={(format, idea, title) => addPost(day.date, format, idea, title)}
+                        <ElegirNuevaPublicacion
+                          onElegir={(pestana) => addPost(day.date, pestana)}
                           onCancel={() => setAddingPostDay(null)}
                         />
                       ) : (
@@ -1607,7 +1616,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
       {addingPostDay && viewMode === "grid" && (
         <AddPostDialog
           date={addingPostDay}
-          onAdd={(format, idea, title) => addPost(addingPostDay, format, idea, title)}
+          onElegir={(pestana) => addPost(addingPostDay, pestana)}
           onClose={() => setAddingPostDay(null)}
         />
       )}
@@ -1661,8 +1670,12 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           />
           <Suspense fallback={<div className="panel-cargando" role="status">Abriendo la publicación…</div>}>
           <PostSidePanel
+            key={sidePanel.post.id}
             post={sidePanel.post}
             day={sidePanel.day}
+            pestanaInicial={sidePanel.pestana ?? null}
+            nueva={sidePanel.nueva ?? false}
+            onDescartar={removePostFromDay}
             editandoOtros={editandoOtros}
             pulso={pulso}
             publicacion={{

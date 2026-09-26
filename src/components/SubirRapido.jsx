@@ -5,16 +5,19 @@ import Icon from "./Icon";
 import SelectorFecha from "./SelectorFecha";
 import HoraSugerida from "./calendario/horaSugerida";
 import { EditorMedios } from "./calendario/editorPublicacion";
+import DestinoRedes from "./calendario/destinoRedes";
+import VistaRed from "./calendario/vistaRed";
 import { TimePicker } from "./calendario/primitivas";
 import { useDialogA11y } from "../hooks/useDialogA11y";
+import { useAnchoAmplio } from "../hooks/useAnchoAmplio";
 import { estadoRedes as leerEstadoRedes, saveCalendar, publicar, subirImagenPublicacion } from "../lib/db";
 import { escribirDesdeContenido } from "../api";
 import { prepararParaRedes } from "../lib/medios";
 import { REDES, conMedios, revisarPublicacion, momentoPublicacion, mediosDe } from "../lib/publicacion";
-import { formatoDeMedios, redesPorDefecto, rellenarDesdeContenido, ponerEnDia } from "../lib/subir";
+import { formatoDeMedios, redesPorDefecto, rellenarDesdeContenido, ponerEnDia, resumenDestino } from "../lib/subir";
 import { fechaEnZona } from "../lib/agenda";
 import { fechaHora } from "../lib/cola";
-import { FORMATS, FORMAT_ICONS, MONTHS } from "../constants";
+import { MONTHS } from "../constants";
 import { uid } from "../utils";
 
 // ============================================================
@@ -30,13 +33,17 @@ import { uid } from "../utils";
 //   4. La IA mira el archivo y escribe el texto; se retoca.
 //   5. ¿Cuándo sale? Ahora, programada, o a mano desde el teléfono.
 //
+// En pantalla ancha es una ventana grande: a la izquierda se configura y
+// a la derecha se ve cómo queda en cada red, con su texto. Qué sale y
+// dónde lo dice la misma pieza que el panel (`DestinoRedes`): cada red
+// marcada o no, y la frase de dónde sale y dónde NO.
+//
 // Por detrás se crea la publicación en su día —y el calendario de ese mes
 // si no existe—. Lo que se sube así sale DIRECTO: queda aprobada, sin pasar
 // por la aprobación del cliente (decisión de la agencia).
 // ============================================================
 
 const MODOS = [["ahora", "Ahora", "send"], ["programar", "Programar", "clock"], ["mano", "La publico yo", "photo"]];
-const FORMATOS_SUBIDA = ["post", "carrusel", "reel", "historia"];
 
 /** La hora de Panamá de ahora, «HH:MM». */
 const horaAhora = () => new Intl.DateTimeFormat("en-GB", { timeZone: "America/Panama", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
@@ -50,6 +57,7 @@ function proximaHora() {
 export default function SubirRapido({ clients = [], clienteInicial = null, onCalendarioGuardado, soltarPendiente, onAbrir, onClose }) {
   const ids = useId();
   const ref = useDialogA11y(onClose);
+  const ancho = useAnchoAmplio(1024);
   const entrada = useRef(null);
   const [clienteId, setClienteId] = useState(clienteInicial ?? clients[0]?.id ?? "");
   const [post, setPost] = useState({ medios: [], format: null, descripcion: "", hashtagsFinales: "" });
@@ -162,6 +170,8 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
     setTrabajando("");
   };
 
+  const vista = cliente && hayMedios ? <VistaRed post={completo} redes={destino} client={cliente} /> : null;
+
   const etiqueta = modo === "ahora" ? "Publicar ahora" : modo === "mano" ? "Guardar para publicar a mano" : cuando ? `Programar para ${fechaHora(cuando)}` : "Programar";
   const bloqueado = !!trabajando || !!escribiendo || !cliente || !hayMedios
     || (modo !== "mano" && (errores.length > 0 || sinCuenta.length > 0 || !estado?.meta?.conectado && destino.some((r) => r !== "tiktok")))
@@ -169,7 +179,7 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
 
   return (
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget && !trabajando) onClose(); }}>
-      <div ref={ref} className="dialog subir-rapido" role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`}>
+      <div ref={ref} className={`dialog subir-rapido${ancho ? " subir-ancho" : ""}`} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`}>
         <div className="subir-cabecera">
           <h2 id={`${ids}-t`}><Icon name="upload" size={20} /> Subir contenido</h2>
           <button type="button" className="btn-icon" onClick={onClose} aria-label="Cerrar" disabled={!!trabajando}><Icon name="close" /></button>
@@ -186,7 +196,8 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
             </div>
           </div>
         ) : (
-          <>
+          <div className="subir-columnas">
+          <div className="subir-config">
             <div className="field">
               <label className="label" htmlFor={`${ids}-c`}>Cliente</label>
               <select id={`${ids}-c`} className="input" value={clienteId} onChange={(e) => cambiarCliente(e.target.value)} disabled={!!trabajando}>
@@ -200,21 +211,14 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
 
             {hayMedios && (
               <>
-                <div className="subir-fila" role="group" aria-label="Formato">
-                  {FORMATOS_SUBIDA.map((k) => (
-                    <button key={k} type="button" className="filter-chip" aria-pressed={formato === k} onClick={() => setFormatoElegido(k)}>
-                      <Icon name={FORMAT_ICONS[k]} size={14} /> {FORMATS[k]?.label ?? k}
-                    </button>
-                  ))}
-                </div>
-                <div className="subir-fila" role="group" aria-label="Dónde se publica">
-                  {Object.entries(REDES).map(([id, r]) => (
-                    <button key={id} type="button" className="filter-chip" aria-pressed={destino.includes(id)}
-                      onClick={() => setRedes(destino.includes(id) ? destino.filter((x) => x !== id) : [...destino, id])}>
-                      <Icon name={r.icono} size={14} /> {r.nombre}
-                    </button>
-                  ))}
-                </div>
+                <DestinoRedes
+                  post={completo}
+                  redes={destino}
+                  onRedes={setRedes}
+                  cuentas={estado ? redesDelCliente : null}
+                  formato={formato}
+                  onFormato={setFormatoElegido}
+                />
 
                 {formato !== "historia" && (
                   <div className="field">
@@ -232,6 +236,7 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
                   </div>
                 )}
                 {formato === "historia" && escribiendo && <p className="hint" role="status">{escribiendo}</p>}
+                {!ancho && vista}
               </>
             )}
 
@@ -273,13 +278,21 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
             {fallo && <p role="alert" className="notice notice-error">{fallo}</p>}
             <div role="status" aria-live="polite" className={trabajando ? "hint" : "sr-only"}>{trabajando}</div>
 
+            {hayMedios && <p className="cuando-destino"><Icon name="send" size={13} /> {resumenDestino(completo, destino)}</p>}
             <div className="subir-botones">
               <button type="button" className="btn btn-secondary" onClick={onClose} disabled={!!trabajando}>Cancelar</button>
               <button type="button" className="btn btn-primary cuando-principal" disabled={bloqueado} onClick={confirmar}>
                 <Icon name={MODOS.find(([k]) => k === modo)[2]} size={16} /> {trabajando ? "Un momento…" : hayMedios ? etiqueta : "Sube un archivo para seguir"}
               </button>
             </div>
-          </>
+          </div>
+          {ancho && (
+            <aside className="subir-vista" aria-label="Cómo se va a ver">
+              <h3 className="label">Así se va a ver</h3>
+              {hayMedios ? vista : <p className="hint">Sube una imagen o un video y aquí verás cómo queda en cada red, con su texto.</p>}
+            </aside>
+          )}
+          </div>
         )}
       </div>
     </div>

@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { formatoDeMedios, redesPorDefecto, rellenarDesdeContenido, ponerEnDia, moverEnCalendario, tieneContenido } from "./subir.js";
+import {
+  formatoDeMedios, redesPorDefecto, rellenarDesdeContenido, ponerEnDia, moverEnCalendario, tieneContenido,
+  queSaleEn, resumenDestino, publicacionVacia,
+} from "./subir.js";
 
 const img = (n) => ({ src: `/api/media/clientes/c/${n}.jpg`, tipo: "imagen" });
 const vid = { src: "/api/media/clientes/c/v.mp4", tipo: "video" };
@@ -51,5 +54,29 @@ describe("subir contenido", () => {
   it("sólo lo subido a la aplicación se le puede enseñar a la IA", () => {
     expect(tieneContenido({ medios: [img(1)] })).toBe(true);
     expect(tieneContenido({ image: "data:image/png;base64,xx" })).toBe(false);
+  });
+
+  it("dice qué sale en cada red", () => {
+    expect(queSaleEn({ format: "historia", medios: [img(1)] }, "instagram")).toBe("historia");
+    expect(queSaleEn({ format: "historia", medios: [img(1)] }, "facebook")).toBe("historia");
+    expect(queSaleEn({ format: "post", medios: [img(1), img(2)] }, "instagram")).toBe("carrusel");
+    expect(queSaleEn({ format: "reel", medios: [vid] }, "instagram")).toBe("reel");
+    expect(queSaleEn({ format: "post", medios: [img(1)] }, "facebook")).toBe("publicación");
+  });
+
+  it("el resumen dice dónde sale y también dónde NO", () => {
+    const historia = { format: "historia", medios: [img(1)] };
+    expect(resumenDestino(historia, ["instagram"])).toBe("Sale en Instagram (historia). No sale en Facebook y TikTok.");
+    const conSuHistoria = { format: "post", medios: [img(1)], historiaTambien: true, historias: [img(2)] };
+    expect(resumenDestino(conSuHistoria, ["instagram", "facebook", "tiktok"]))
+      .toBe("Sale en Instagram (post en el feed + historia), Facebook (publicación + historia) y TikTok (video).");
+    expect(resumenDestino(historia, [])).toMatch(/ninguna red/);
+  });
+
+  it("una publicación recién creada y sin tocar está vacía", () => {
+    expect(publicacionVacia({ id: "x", format: "post", status: "pending", title: "", idea: "" })).toBe(true);
+    expect(publicacionVacia({ idea: "Latte de otoño" })).toBe(false);
+    expect(publicacionVacia({ medios: [img(1)] })).toBe(false);
+    expect(publicacionVacia({ comment: "  " })).toBe(true);
   });
 });

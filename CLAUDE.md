@@ -98,6 +98,7 @@ src/
   index.css               Sistema de diseño: tokens y clases base
   hooks/useDialogA11y.js  Foco atrapado, Escape y bloqueo de scroll en diálogos
   hooks/useConfigIA.js    El modelo y el razonamiento del espacio, releídos con `pulso`
+  hooks/useAnchoAmplio.js ¿Pantalla ancha? (asistente acoplado, panel a dos columnas)
   lib/
     filas.js              Conversores fila ⇄ aplicación
     auth.js               Sesión, inicio y cierre
@@ -147,6 +148,8 @@ src/
     SubirRapido.jsx       «Subir»: cliente → archivo → la IA escribe → cuándo sale (diálogo)
     calendario/cuandoSale.jsx   «¿Cuándo sale?» del panel: Ahora / Programar / La publico yo
     calendario/horaSugerida.jsx La hora con mejores resultados, compartida por los dos
+    calendario/destinoRedes.jsx «¿Qué sale y dónde?»: formato y cada red con su casilla y
+                          lo que sale en ella; la usan el panel y «Subir»
     ExploradorDrive.jsx   La carpeta de Drive de un cliente: gestionar o escoger
     BancoSelector.jsx     Escoger de Drive (o del banco anterior); forma única
     PestanaContenido.jsx  La pestaña Contenido: Drive + migrar el banco anterior
@@ -1157,6 +1160,26 @@ son del servidor.
   publicación nueva.
 - **El calendario abre en «Mes», también en el móvil.** La lista por
   semanas sigue a un toque.
+- **Un chip de alternar con `aria-pressed` no se pintaba.** `.filter-chip`
+  sólo tenía estilo para `.active`, así que las redes elegidas en Subir se
+  veían IGUAL que las no elegidas: una historia pensada sólo para
+  Instagram salió también en Facebook. Ahora `index.css` pinta también
+  `[aria-pressed="true"]`, y las redes son tarjetas con casilla
+  (`DestinoRedes`) con la frase «Sale en… No sale en…» (`resumenDestino`,
+  lib/subir.js), repetida junto al botón de programar.
+- **«Agregar publicación» ya no pide nada: pregunta.** «Subir contenido»
+  (aprobada, sale directo, el formato sigue al archivo hasta que se escoja
+  uno) o «Agregar idea» (pendiente, para el cliente), y abre el panel en
+  esa pestaña. Como se crea vacía, el panel la DESCARTA si se cierra sin
+  nada dentro (`publicacionVacia`). El descarte va en diferido y
+  comprobando que el panel no se volvió a montar: StrictMode desmonta y
+  monta cada efecto en desarrollo, y sin esa guarda la publicación nueva
+  desaparecía nada más abrirse.
+- **El panel de una publicación es una ventana ancha desde 1024 px.** En
+  Subir, configurar a la izquierda y la vista previa a la derecha; en
+  Idea, lo que se escribe y lo que se habla con el cliente. La barra de
+  «¿Cuándo sale?» sólo es fija a lo ancho: en el teléfono tapaba más de
+  media pantalla y va al final.
 - **`tests/utils/d1Memoria.js` es una D1 de verdad** (SQLite de Node con
   todas las migraciones). Para lo que un doble a mano no ve: que las
   consultas de la capa de acceso existen en el esquema. La cola de
@@ -1172,5 +1195,9 @@ son del servidor.
   el repositorio: incluye dónde los dos no coinciden.
 - `docs/propuesta-publicacion.md` — propuesta para la experiencia de publicar
   (Flow a 4:5, historias, colaboradores, página de programación, MCP).
+- `docs/propuesta-idea-programada.md` — la idea que sale sola cuando el cliente
+  la aprueba («Programar cuando el cliente apruebe»). Sin implementar.
+- `docs/propuesta-equipo.md` — análisis de lo que falla al trabajar en equipo y
+  propuesta en tres fases (responsables, avisos, flujo de producción, papeles).
 - `docs/hub-cloudflare.md` — plan del hub donde este calendario pasa a ser una
   herramienta más, junto al bot y la tienda que ya están en Cloudflare.
