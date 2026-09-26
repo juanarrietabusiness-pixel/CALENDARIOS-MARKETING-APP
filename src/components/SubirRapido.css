@@ -1,0 +1,11 @@
+/* «Subir»: se carga con el diálogo. */
+.subir-rapido { max-width: 600px; width: 100%; display: flex; flex-direction: column; gap: var(--sp-3); max-height: calc(100dvh - 2 * var(--sp-4)); overflow-y: auto; }
+.subir-cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.subir-cabecera h2 { font-size: var(--fs-lg); margin: 0; display: flex; align-items: center; gap: var(--sp-2); }
+.subir-rapido .field { margin: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.subir-fila { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.subir-texto-cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.subir-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); justify-content: flex-end; }
+.subir-botones .cuando-principal { flex: 1 1 260px; }
+.subir-hecho { display: flex; flex-direction: column; gap: var(--sp-3); }
+.subir-hecho .notice { display: flex; align-items: center; gap: var(--sp-2); margin: 0; }

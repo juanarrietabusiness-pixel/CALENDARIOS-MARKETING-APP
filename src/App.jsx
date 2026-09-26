@@ -55,6 +55,7 @@ const TaskPanel = lazy(() => import("./components/TaskPanel"));
 const PestanaContenido = lazy(() => import("./components/PestanaContenido"));
 const FichaCliente = lazy(() => import("./components/FichaCliente"));
 const Buscador = lazy(() => import("./components/Buscador"));
+const SubirRapido = lazy(() => import("./components/SubirRapido"));
 
 const Cargando = () => <p role="status" style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando…</p>;
 
@@ -345,6 +346,7 @@ function Workspace({ session, ruta }) {
   const [showWizard, setShowWizard] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showBuscador, setShowBuscador] = useState(false);
+  const [showSubir, setShowSubir] = useState(false);
   // Una publicación que el buscador pidió abrir al llegar a su calendario.
   const [postPedido, setPostPedido] = useState(null);
   const anchoAmplio = useAnchoAmplio();
@@ -1004,6 +1006,7 @@ function Workspace({ session, ruta }) {
     const a = r.accion;
     if (a.tipo === "ruta") navegar(a.ruta);
     else if (a.tipo === "asistente") setShowChat(true);
+    else if (a.tipo === "subir") setShowSubir(true);
     else if (a.tipo === "nuevo-cliente") openNewClient();
     else if (a.tipo === "nuevo-calendario") setShowWizard(true);
     else if (a.tipo === "cliente") irA(a.clienteId);
@@ -1014,6 +1017,20 @@ function Workspace({ session, ruta }) {
     }
   };
   const publicacionAbierta = useCallback(() => setPostPedido(null), []);
+  // «Subir» guarda el calendario por su cuenta: el eco de la propia pestaña
+  // se ignora, así que el estado se pone al día aquí.
+  const calendarioGuardado = (clientId, cal) => setClients((prev) => prev.map((c) => {
+    if (c.id !== clientId) return c;
+    const cals = c.calendars || [];
+    return { ...c, calendars: cals.some((k) => k.id === cal.id) ? cals.map((k) => (k.id === cal.id ? cal : k)) : [...cals, cal] };
+  }));
+  // Lo pendiente de ese calendario ya va dentro de lo que guarda «Subir»
+  // (sale del estado); si se guardara después, pisaría la publicación nueva.
+  const soltarPendiente = (calId) => {
+    clearTimeout(saveTimers.current.get(calId));
+    saveTimers.current.delete(calId);
+    pendingSaves.current.delete(calId);
+  };
   // Desde Programación o Mi día: abrir la publicación de una fila de la cola.
   const abrirPublicacionDeCola = ({ clientId, calendarId, postId }) => {
     if (calendarId && postId) setPostPedido({ calId: calendarId, postId });
@@ -1057,6 +1074,9 @@ function Workspace({ session, ruta }) {
         </button>
 
         <div style={{ display: "flex", gap: "var(--sp-2)", flexShrink: 0, alignItems: "center" }}>
+          <button type="button" className="btn btn-primary btn-sm boton-subir" onClick={() => setShowSubir(true)} aria-label="Subir contenido">
+            <Icon name="upload" size={16} /> <span className="boton-subir-texto">Subir</span>
+          </button>
           <MedidorIA pulso={pulso} />
           {/* Quién más está dentro, y si mi propia conexión está viva.
               Lo segundo importa tanto como lo primero: cuando el socket
@@ -1147,7 +1167,7 @@ function Workspace({ session, ruta }) {
               </Suspense>
             ) : ruta.vista === "programacion" ? (
               <Suspense fallback={<Cargando />}>
-                <Programacion clients={clients} pulso={pulso} onAbrir={abrirPublicacionDeCola} />
+                <Programacion clients={clients} pulso={pulso} onAbrir={abrirPublicacionDeCola} onSubir={() => setShowSubir(true)} />
               </Suspense>
             ) : ruta.vista === "a-mano" ? (
               <Suspense fallback={<Cargando />}>
@@ -1357,6 +1377,7 @@ function Workspace({ session, ruta }) {
         onMiDia={() => navegar("/tareas")}
         onCalendario={() => (client ? irA(client.id, selectedCalId) : navegar("/"))}
         onChat={() => setShowChat((v) => !v)}
+        onSubir={() => setShowSubir(true)}
         onMas={() => setShowDrawer(true)}
       />
 
@@ -1381,6 +1402,17 @@ function Workspace({ session, ruta }) {
             client={client}
             onClose={() => setShowBuscador(false)}
             onElegir={elegirDelBuscador}
+          />
+        )}
+
+        {showSubir && (
+          <SubirRapido
+            clients={clients}
+            clienteInicial={selectedClientId || foco}
+            onCalendarioGuardado={calendarioGuardado}
+            soltarPendiente={soltarPendiente}
+            onAbrir={abrirPublicacionDeCola}
+            onClose={() => setShowSubir(false)}
           />
         )}
 

@@ -10,10 +10,10 @@ import {
   listarPublicaciones, publicar, cancelarPublicacion, reintentarPublicacion, estadoRedes as leerEstadoRedes,
   subirImagenPublicacion, saveCalendar, programarVarias,
 } from "../lib/db";
-import AccionesPublicar from "./calendario/accionesPublicar";
 import { resumenCola, aprobadasSinProgramar } from "../lib/cola";
 import { navegar } from "../lib/rutas";
 import { agruparPorSemana, semanaInicial, rangoSemana } from "../lib/semanas";
+import { moverEnCalendario } from "../lib/subir";
 import { fechaEnZona } from "../lib/agenda";
 import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO, CAMPOS_EXPORTABLES } from "../lib/exportarContenido";
 import MetaPromptModal from "./MetaPromptModal";
@@ -49,7 +49,9 @@ export default function CalendarView({
   abrirPublicacion = null,
   onPublicacionAbierta,
 }) {
-  const [viewMode, setViewMode] = useState("list");
+  // Mes por defecto, también en el móvil: es la vista que se usa. La lista
+  // (por semanas) queda a un toque.
+  const [viewMode, setViewMode] = useState("grid");
   const configIA = useConfigIA();
   const [expandedDay, setExpandedDay] = useState(null);
   const [sidePanel, setSidePanel] = useState(null);
@@ -85,11 +87,13 @@ export default function CalendarView({
    * así que antes: imágenes a JPEG (Instagram no acepta otra cosa) y
    * guardado INMEDIATO, sin esperar al agrupado de 600 ms.
    */
-  const publicarDesdePanel = async (form, setForm, { ahora, redes: destino }) => {
+  const publicarDesdePanel = async (form, setForm, { ahora, redes: destino, fecha = null, cambios = null }) => {
+    // Lo que cambia al elegir el «cuándo» (deja de ser «a mano») va con ella.
+    let post = cambios ? { ...form, ...cambios } : form;
+    if (cambios) setForm(post);
     // JPEG, medidas y las copias adaptadas (4:5 para el feed, 9:16 para
     // las historias) de lo que no quepa. El original no se toca.
-    let post = form;
-    const preparada = await prepararParaRedes(form, destino, {
+    const preparada = await prepararParaRedes(post, destino, {
       subir: (f) => subirImagenPublicacion(clienteDb, f),
       colorMarca: client?.primaryColor,
     });
@@ -98,13 +102,21 @@ export default function CalendarView({
       setForm(post);
     }
     const ahoraISO = new Date().toISOString();
-    const nuevo = {
+    let nuevo = {
       ...cal,
       days: (cal.days || []).map((d) => ({
         ...d,
         posts: (d.posts || []).map((p) => (p.id === post.id ? marcarActualizada(p, post, ahoraISO) : p)),
       })),
     };
+    // Programar para OTRO día la mueve en el calendario: el día es parte
+    // del «cuándo», no algo que haya que cambiar en otro sitio antes.
+    const diaActual = (cal.days || []).find((d) => (d.posts || []).some((p) => p.id === post.id))?.date;
+    if (!ahora && fecha && fecha !== diaActual) {
+      nuevo = moverEnCalendario(nuevo, post.id, fecha);
+      const dia = nuevo.days.find((d) => d.date === fecha);
+      setSidePanel((s) => (s && s.post.id === post.id ? { ...s, day: dia } : s));
+    }
     onUpdateCal(calId, nuevo);
     await saveCalendar(nuevo, clienteDb);
     await publicar({ calendarId: calDb, postId: post.id, redes: destino, ahora });
@@ -1653,18 +1665,13 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
             day={sidePanel.day}
             editandoOtros={editandoOtros}
             pulso={pulso}
-            accionesPublicar={(form, setForm) => (
-              <AccionesPublicar
-                post={form}
-                fecha={sidePanel.day?.date}
-                filas={cola}
-                estadoRedes={redes}
-                clientId={clienteDb}
-                onPublicar={(op) => publicarDesdePanel(form, setForm, op)}
-                onCancelar={async (id) => { await cancelarPublicacion(id); recargarCola(); }}
-                onReintentar={async (id) => { await reintentarPublicacion(id); recargarCola(); }}
-              />
-            )}
+            publicacion={{
+              filas: cola,
+              estadoRedes: redes,
+              onPublicar: publicarDesdePanel,
+              onCancelar: async (id) => { await cancelarPublicacion(id); recargarCola(); },
+              onReintentar: async (id) => { await reintentarPublicacion(id); recargarCola(); },
+            }}
             onUpdate={updatePost}
             onDelete={deletePost}
             onMoveDate={movePost}

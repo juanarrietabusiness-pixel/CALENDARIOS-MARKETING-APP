@@ -11,7 +11,7 @@ import ContadorAtrasadas from "./ContadorAtrasadas";
 // clientes. Sólo se ve por debajo de 1024 px (index.css).
 // ============================================================
 
-export default function BarraInferior({ ruta, hayCliente, chatAbierto, pulso = 0, onMiDia, onCalendario, onChat, onMas }) {
+export default function BarraInferior({ ruta, hayCliente, chatAbierto, pulso = 0, onMiDia, onCalendario, onChat, onSubir, onMas }) {
   const item = (props) => (
     <button type="button" className="barra-inferior-item" {...props} />
   );
@@ -26,6 +26,10 @@ export default function BarraInferior({ ruta, hayCliente, chatAbierto, pulso = 0
         onClick: onCalendario,
         "aria-current": ruta.vista === "panel" && hayCliente ? "page" : undefined,
         children: (<><Icon name="calendar" size={22} /><span>{hayCliente ? "Calendario" : "Inicio"}</span></>),
+      })}
+      {item({
+        onClick: onSubir,
+        children: (<><Icon name="upload" size={22} /><span>Subir</span></>),
       })}
       {item({
         onClick: onChat,

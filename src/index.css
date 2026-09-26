@@ -1916,6 +1916,10 @@ input[type="radio"] {
   .buscador-disparador-texto, .buscador-disparador kbd { display: none; }
 }
 
+/* «Subir» en la cabecera: en el móvil está en la barra de abajo. */
+.boton-subir { min-height: var(--tap-sm); }
+@media (max-width: 1023px) { .boton-subir { display: none; } }
+
 /* El gasto de la IA en la cabecera. */
 .medidor-ia {
   display: inline-flex;
@@ -2136,7 +2140,7 @@ input[type="radio"] {
     bottom: 0;
     z-index: var(--z-menu);
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     height: calc(var(--barra-inferior-h) + var(--safe-bottom));
     padding-bottom: var(--safe-bottom);
     background: var(--surface);

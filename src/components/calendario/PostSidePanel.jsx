@@ -9,9 +9,9 @@ import "./publicar.css";
 // su sitio (borrar, mover, banco) levantan `yaEscrito` antes de
 // reescribir el calendario ellos mismos.
 //
-// DOS PESTAÑAS: Contenido (planificar: idea, guion, descripción,
-// aprobación, conversación) y Publicar (medios, vista previa real, texto
-// de cada red, revisión con arreglos y la barra de programar). Es la
+// DOS PESTAÑAS: Idea (planificar: idea, guion, descripción, aprobación,
+// conversación) y Subir (medios, la IA que escribe mirándolos, vista
+// previa real, texto de cada red, revisión con arreglos y «¿Cuándo sale?»). Es la
 // misma publicación y el mismo `form`: cambiar de pestaña no guarda ni
 // pierde nada. La última elegida se recuerda mientras dure la sesión.
 // ============================================================
@@ -30,10 +30,12 @@ import PestanaPublicar from "./seccionPublicar";
 import { CopyButton, TimePicker } from "./primitivas";
 import { fieldHeaderStyle } from "./formato";
 
-const PESTANAS = [["contenido", "Contenido", "pencil"], ["publicar", "Publicar", "send"]];
+// «Idea» planifica; «Subir» es archivo, texto y cuándo sale —como lo llama
+// la agencia—. Los valores internos siguen siendo contenido/publicar.
+const PESTANAS = [["contenido", "Idea", "bulb"], ["publicar", "Subir", "upload"]];
 let pestanaRecordada = "contenido";
 
-export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onSendToBank, suggestion, onAcceptSuggestion, onRejectSuggestion, client, cal, editandoOtros = {}, pulso = 0, accionesPublicar = null }) {
+export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onSendToBank, suggestion, onAcceptSuggestion, onRejectSuggestion, client, cal, editandoOtros = {}, pulso = 0, publicacion = null }) {
   const [form, setForm] = useState({ ...post });
   const [fieldLoading, setFieldLoading] = useState({});
   const [fieldError, setFieldError] = useState("");
@@ -190,7 +192,8 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
             clientId={clientId}
             day={day}
             onError={setFieldError}
-            acciones={accionesPublicar?.(form, setForm)}
+            cal={cal}
+            publicacion={publicacion}
             enlaceAMano={`/a-mano/${encodeURIComponent(cal?.dbId || cal?.id || "")}/${encodeURIComponent(post.id)}`}
           >
             {form.status === "published" ? (
@@ -373,7 +376,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
               </span>
             ))}
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPestana("publicar")}>
-              <Icon name={mediosDe(form).length ? "pencil" : "upload"} size={14} /> {mediosDe(form).length ? `${mediosDe(form).length} · editar en Publicar` : "Añadir en Publicar"}
+              <Icon name={mediosDe(form).length ? "pencil" : "upload"} size={14} /> {mediosDe(form).length ? `${mediosDe(form).length} · editar en Subir` : "Añadir en Subir"}
             </button>
           </div>
         </div>

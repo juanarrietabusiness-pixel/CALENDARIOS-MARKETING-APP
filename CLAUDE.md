@@ -126,6 +126,8 @@ src/
     resultados.js         De las filas de métricas a cifras, formatos, horarios (puro)
     colores.js            Colores y logo de la marca a partir del ADN (puro)
     semanas.js            La vista de lista por semanas: agrupar, resumen, cuál se abre (puro)
+    subir.js              «Subir»: formato deducido, redes por defecto, rellenar lo vacío con
+                          la propuesta de la IA, poner o mover una publicación de día (puro)
     auditoria.js          Auditoría de perfil: cifras, usuario, límites de Instagram (puro;
                           también lo importa el Worker)
   components/
@@ -142,6 +144,9 @@ src/
     AuditoriaVista.jsx    La auditoría de perfil como documento, con copiar y portadas
     Graficas.jsx          Línea y barras en SVG, sin librería
     MedidorIA.jsx         El gasto del mes contra el presupuesto, en la cabecera
+    SubirRapido.jsx       «Subir»: cliente → archivo → la IA escribe → cuándo sale (diálogo)
+    calendario/cuandoSale.jsx   «¿Cuándo sale?» del panel: Ahora / Programar / La publico yo
+    calendario/horaSugerida.jsx La hora con mejores resultados, compartida por los dos
     ExploradorDrive.jsx   La carpeta de Drive de un cliente: gestionar o escoger
     BancoSelector.jsx     Escoger de Drive (o del banco anterior); forma única
     PestanaContenido.jsx  La pestaña Contenido: Drive + migrar el banco anterior
@@ -1124,6 +1129,34 @@ son del servidor.
   domingo si el día no la trae—, con su resumen, y sólo se abre la semana
   de hoy. La rejilla del mes en el móvil NO se quita: la agencia la
   prefiere a la lista.
+- **Publicar es UNA pregunta: «¿Cuándo sale?».** Programar, publicar ya
+  y «la publico yo» eran tres controles que parecían cosas distintas, y
+  el día no se podía cambiar desde ahí. `calendario/cuandoSale.jsx` pone
+  un solo botón que dice lo que va a pasar («Programar para sáb 10 oct,
+  9:00 a. m.»). Programar para OTRO día MUEVE la publicación
+  (`moverEnCalendario`, lib/subir.js); a otro mes no, que es otro
+  calendario. Una vez en la cola, el selector se cambia por la tarjeta
+  «Programada para… · Cambiar · Cancelar»: así no quedan botones que
+  inviten a programar dos veces. Las pestañas del panel son «Idea» y
+  «Subir».
+- **La IA lee el contenido, y sólo RELLENA.** «Escribir a partir del
+  contenido» (`escribirDesdeContenido` en api.js) manda las imágenes y,
+  de un video, el análisis de Gemini más cuatro fotogramas: la API de
+  Claude no recibe video. `rellenarDesdeContenido()` escribe sólo en los
+  campos vacíos; lo escrito a mano gana. En el panel el aviso se calcula
+  con lo de ahora y el cambio se aplica con `setForm(p => …)`: se pudo
+  seguir escribiendo mientras la IA miraba.
+- **Lo subido con «Subir» sale DIRECTO: queda aprobado** (`subidaRapida`),
+  sin pasar por el cliente —decisión de la agencia—. El diálogo crea la
+  publicación en su día y el calendario del mes si no existe, y guarda el
+  calendario por su cuenta. Dos cosas que lo hacen funcionar: el eco de la
+  propia pestaña se ignora, así que App lo mete en el estado
+  (`calendarioGuardado`); y ANTES de guardar suelta el guardado agrupado
+  pendiente de ese calendario (`soltarPendiente`): lo pendiente ya va
+  dentro —sale del estado—, y si saliera después, borraría la
+  publicación nueva.
+- **El calendario abre en «Mes», también en el móvil.** La lista por
+  semanas sigue a un toque.
 - **`tests/utils/d1Memoria.js` es una D1 de verdad** (SQLite de Node con
   todas las migraciones). Para lo que un doble a mano no ve: que las
   consultas de la capa de acceso existen en el esquema. La cola de

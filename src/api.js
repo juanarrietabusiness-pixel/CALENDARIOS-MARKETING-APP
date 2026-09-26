@@ -4,7 +4,9 @@ import { enTandas } from "./lib/tandas";
 import { hora12 } from "./lib/horas";
 import { getWeekNumber, dayName } from "./utils";
 import { INSTRUCCION_PIEZAS, INSTRUCCION_ADJUNTOS } from "./lib/mensajeChat";
-import { base64DeImagen } from "./lib/medios";
+import { base64DeImagen, fotogramasDeVideo } from "./lib/medios";
+import { mediosDe } from "./lib/publicacion";
+import { analizarVideo } from "./lib/db";
 import { PROPIEDADES_FECHA_TAREA } from "./lib/agenda";
 import { partirSSE } from "../worker/lib/flujoAnthropic.js";
 
@@ -364,6 +366,79 @@ Responde SOLO con la descripcion/caption completa incluyendo los hashtags, sin p
 
   const content = [{ type: "text", text: promptText }];
   return await callAI(content, { funcion: "publicación", clienteId: client?.id });
+}
+
+/**
+ * «Escribir a partir del contenido»: la IA MIRA lo subido —las imágenes,
+ * y de un video su análisis de Gemini y unos fotogramas— y escribe en una
+ * sola llamada el texto, los hashtags, el primer comentario, el texto
+ * alternativo, la idea y el título. Antes el botón «IA» mandaba sólo texto
+ * y, con una foto sin idea escrita, escribía a ciegas.
+ *
+ * Devuelve la propuesta; quien llama la pone con `rellenarDesdeContenido`,
+ * que no pisa lo que ya hay escrito.
+ */
+export async function escribirDesdeContenido(client, post, { calendar = null, fecha = "", alProgresar = () => {} } = {}) {
+  const medios = mediosDe(post).filter((m) => m.src.startsWith("/api/media/"));
+  if (!medios.length) throw new Error("Primero sube una imagen o un video: la IA escribe mirándolo.");
+  const bloques = [];
+  const notas = [];
+  for (const [i, m] of medios.slice(0, 6).entries()) {
+    if (m.tipo === "imagen") {
+      alProgresar(`Preparando la imagen ${i + 1}…`);
+      const data = await base64DeImagen(m.src, 1024).catch(() => null);
+      if (data) {
+        bloques.push({ type: "text", text: `Imagen ${i + 1} de la publicación:` });
+        bloques.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data } });
+      }
+      continue;
+    }
+    alProgresar("Mirando el video (puede tardar un poco)…");
+    const [analisis, fotos] = await Promise.allSettled([
+      analizarVideo(m.src.replace(/^\/api\/media\//, "")),
+      fotogramasDeVideo(m.src, 4, 640),
+    ]);
+    if (analisis.status === "fulfilled" && analisis.value?.analisis) notas.push(`Lo que se ve y se oye en el video ${i + 1}:\n${analisis.value.analisis}`);
+    if (fotos.status === "fulfilled") {
+      bloques.push({ type: "text", text: `Fotogramas del video ${i + 1}:` });
+      for (const f of fotos.value) bloques.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: f.base64 } });
+    }
+  }
+  if (!bloques.length && !notas.length) throw new Error("No pude leer el archivo para enseñárselo a la IA.");
+
+  alProgresar("Escribiendo…");
+  const adnExtra = (await loadADN(client).catch(() => ({ content: "" }))).content;
+  const ctx = buildClientContext(client, calendar, adnExtra);
+  const formato = post.format || "post";
+  const pedido = `${ctx}
+
+Vas a escribir la publicación de ${client.name} a partir de SU CONTENIDO, que va adjunto: míralo con atención y describe lo que de verdad se ve (producto, personas, lugar, texto que aparezca), no algo genérico.
+FORMATO: ${formato}${fecha ? `\nFECHA: ${fecha}` : ""}${calendar?.campaign ? `\nCAMPAÑA: ${calendar.campaign}` : ""}
+${post.idea ? `IDEA YA ESCRITA (respétala): ${post.idea}` : ""}
+${post.title ? `TÍTULO YA ESCRITO: ${post.title}` : ""}
+${notas.join("\n\n")}
+
+Devuelve SOLO un objeto JSON, sin texto antes ni después:
+{
+  "titulo": "nombre corto para el calendario (máx. 6 palabras)",
+  "idea": "en una frase, de qué va la publicación",
+  "descripcion": "${formato === "historia" ? "" : "el caption: gancho en la primera línea, emojis con medida y una llamada a la acción" + (client.whatsapp ? ` a WhatsApp (${client.whatsapp})` : "") + ". SIN hashtags"}",
+  "hashtags": "${formato === "historia" ? "" : `de 5 a 12 hashtags relevantes separados por espacios${client.hashtags ? `, incluidos los de la marca (${client.hashtags})` : ""}`}",
+  "primerComentario": "${formato === "historia" ? "" : "opcional: una línea útil para el primer comentario, o vacío"}",
+  "altTexto": "texto alternativo: qué se ve, en una frase, para quien no puede verlo"
+}
+En español de Panamá, con el tono de la marca.`;
+  const texto = await callAI([...bloques, { type: "text", text: pedido }], { funcion: "publicación", clienteId: client?.id });
+  const bruto = parseJSONLoose(texto);
+  const limpio = (x, max) => String(x ?? "").trim().slice(0, max);
+  return {
+    titulo: limpio(bruto.titulo, 80),
+    idea: limpio(bruto.idea, 400),
+    descripcion: limpio(bruto.descripcion, 2100),
+    hashtags: limpio(bruto.hashtags, 600),
+    primerComentario: limpio(bruto.primerComentario, 600),
+    altTexto: limpio(bruto.altTexto, 1000),
+  };
 }
 
 export async function extractClientADN(repoContent) {
