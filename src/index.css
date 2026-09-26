@@ -2500,3 +2500,31 @@ a.btn, a.btn-icon { text-decoration: none; }
 .conectar-claude-lista { list-style: none; display: flex; flex-direction: column; gap: var(--sp-2); font-size: var(--fs-xs); }
 .conectar-claude-lista li { display: flex; gap: var(--sp-2); align-items: flex-start; }
 .conectar-claude-botones { display: flex; gap: var(--sp-2); justify-content: flex-end; }
+
+/* La vista de lista, por semanas plegables (lib/semanas.js) */
+.semanas-lista { display: flex; flex-direction: column; gap: var(--sp-3); }
+.semanas-barra { display: flex; justify-content: flex-end; }
+.semana { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); overflow: hidden; }
+.semana[data-hoy] { border-color: var(--accent-line); }
+.semana-cabecera {
+  width: 100%; display: grid; grid-template-columns: 1fr auto; gap: var(--sp-1) var(--sp-3); align-items: center;
+  padding: var(--sp-3) var(--sp-4); min-height: var(--tap); background: none; border: none; color: var(--text);
+  text-align: left; cursor: pointer; font: inherit;
+}
+.semana-cabecera:hover { background: var(--surface-2); }
+.semana-titulo { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-2); }
+.semana-num { font-size: var(--fs-md); font-weight: 800; }
+.semana-rango { font-size: var(--fs-xs); color: var(--text-dim); font-weight: 600; }
+.semana-hoy { font-size: var(--fs-3xs); font-weight: 700; padding: 1px var(--sp-2); border-radius: var(--radius-pill); background: var(--accent-soft); color: var(--accent); }
+.semana-concepto { grid-column: 1; font-size: var(--fs-xs); color: var(--text-dim); font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.semana-resumen { grid-column: 1; display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); font-size: var(--fs-2xs); color: var(--text-dim); }
+.semana-ok { color: var(--success); font-weight: 600; }
+.semana-cambios { color: var(--accent-alt); font-weight: 600; }
+.semana-barra-avance { grid-column: 1; height: 4px; border-radius: var(--radius-pill); background: var(--surface-3); overflow: hidden; max-width: 320px; }
+.semana-barra-avance span { display: block; height: 100%; background: var(--success); }
+.semana-flecha { grid-column: 2; grid-row: 1 / span 4; color: var(--text-faint); }
+.semana-dias { display: flex; flex-direction: column; gap: var(--sp-2); padding: 0 var(--sp-3) var(--sp-3); border-top: 1px solid var(--border); padding-top: var(--sp-3); }
+@media (max-width: 599px) {
+  .semana-cabecera { padding: var(--sp-3); }
+  .semana-dias { padding: var(--sp-2); }
+}

@@ -125,6 +125,7 @@ src/
                           página Programación y «Programar lo aprobado» (puro)
     resultados.js         De las filas de métricas a cifras, formatos, horarios (puro)
     colores.js            Colores y logo de la marca a partir del ADN (puro)
+    semanas.js            La vista de lista por semanas: agrupar, resumen, cuál se abre (puro)
     auditoria.js          Auditoría de perfil: cifras, usuario, límites de Instagram (puro;
                           también lo importa el Worker)
   components/
@@ -1116,6 +1117,13 @@ son del servidor.
   aprobar, ni desde el MCP. Sale en Mi día y en Programación, y
   `/a-mano/…` da el archivo para guardar o compartir con Instagram y el
   texto para copiar.
+- **La lista va por semanas plegables; el mes del móvil se queda.** La
+  lista era los treinta días seguidos: interminable en el teléfono. Ahora
+  `agruparPorSemana()` (lib/semanas.js) la parte por la semana del
+  calendario (`weekNumber`, la del concepto) —o la natural de lunes a
+  domingo si el día no la trae—, con su resumen, y sólo se abre la semana
+  de hoy. La rejilla del mes en el móvil NO se quita: la agencia la
+  prefiere a la lista.
 - **`tests/utils/d1Memoria.js` es una D1 de verdad** (SQLite de Node con
   todas las migraciones). Para lo que un doble a mano no ve: que las
   consultas de la capa de acceso existen en el esquema. La cola de
