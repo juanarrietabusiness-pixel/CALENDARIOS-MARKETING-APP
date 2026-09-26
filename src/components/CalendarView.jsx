@@ -13,6 +13,8 @@ import {
 import AccionesPublicar from "./calendario/accionesPublicar";
 import { resumenCola, aprobadasSinProgramar } from "../lib/cola";
 import { navegar } from "../lib/rutas";
+import { agruparPorSemana, semanaInicial, rangoSemana } from "../lib/semanas";
+import { fechaEnZona } from "../lib/agenda";
 import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO, CAMPOS_EXPORTABLES } from "../lib/exportarContenido";
 import MetaPromptModal from "./MetaPromptModal";
 import Icon from "./Icon";
@@ -167,6 +169,10 @@ export default function CalendarView({
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterFormat, setFilterFormat] = useState("all");
   const [filterWeek, setFilterWeek] = useState("all");
+  // La lista va por semanas plegables. null = lo de entrada (sólo la
+  // semana de hoy abierta); en cuanto alguien abre o cierra, es un Set.
+  const [semanasAbiertas, setSemanasAbiertas] = useState(null);
+  useEffect(() => { setSemanasAbiertas(null); }, [calId]);
   const [filterDOW, setFilterDOW] = useState("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -1309,33 +1315,25 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           }}
         />
       ) : (
-        /* List view */
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {filteredDays.map((day, dayIdx) => {
+        /* List view: por semanas plegables (lib/semanas.js). Antes eran los
+           treinta días seguidos, interminable en el teléfono. */
+        (() => {
+          const grupos = agruparPorSemana(filteredDays);
+          const porDefecto = filterWeek !== "all"
+            ? new Set(grupos.map((g) => g.numero))
+            : new Set([semanaInicial(grupos, fechaEnZona())]);
+          const abiertas = semanasAbiertas ?? porDefecto;
+          const todas = grupos.length > 0 && grupos.every((g) => abiertas.has(g.numero));
+          const alternar = (n) => setSemanasAbiertas(() => {
+            const siguiente = new Set(abiertas);
+            if (siguiente.has(n)) siguiente.delete(n); else siguiente.add(n);
+            return siguiente;
+          });
+          const hoy = fechaEnZona();
+          const tarjetaDia = (day) => {
             const isExpanded = expandedDay === day.date;
-            const prevDay = dayIdx > 0 ? filteredDays[dayIdx - 1] : null;
-            const showWeekHeader = !prevDay || prevDay.weekNumber !== day.weekNumber;
-
             return (
               <div key={day.date}>
-                {/* Week separator */}
-                {showWeekHeader && day.weekNumber && (
-                  <div style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    marginBottom: 8,
-                    marginTop: dayIdx > 0 ? "var(--sp-4)" : 0,
-                    paddingBottom: "var(--sp-2)",
-                    borderBottom: "1px solid var(--border-soft)",
-                  }}>
-                    <span style={{ background: "var(--accent-soft)", color: "var(--accent)", padding: "var(--sp-1) var(--sp-3)", borderRadius: 20, fontSize: "var(--fs-2xs)", fontWeight: 700, flexShrink: 0 }}>
-                      Semana {day.weekNumber}
-                    </span>
-                    {day.concept && <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)", fontStyle: "italic" }}>{day.concept}</span>}
-                  </div>
-                )}
-
                 <div className="card">
                   {/* Antes era un <div onClick>: no recibía foco ni respondía a
                       Enter/Espacio. Ahora es un botón con aria-expanded. */}
@@ -1535,8 +1533,62 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
                 </div>
               </div>
             );
-          })}
-        </div>
+          };
+          return (
+            <div className="semanas-lista">
+              {grupos.length > 1 && (
+                <div className="semanas-barra">
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setSemanasAbiertas(todas ? new Set() : new Set(grupos.map((g) => g.numero)))}
+                  >
+                    <Icon name={todas ? "chevronUp" : "chevronDown"} size={16} /> {todas ? "Plegar todas" : "Abrir todas"}
+                  </button>
+                </div>
+              )}
+              {grupos.map((g) => {
+                const abierta = abiertas.has(g.numero);
+                const esHoy = g.desde <= hoy && hoy <= g.hasta;
+                const pct = g.total ? Math.round((g.aprobadas / g.total) * 100) : 0;
+                return (
+                  <section key={g.numero} className="semana" data-abierta={abierta || undefined} data-hoy={esHoy || undefined} aria-labelledby={`semana-t-${g.numero}`}>
+                    <button
+                      type="button"
+                      id={`semana-t-${g.numero}`}
+                      className="semana-cabecera"
+                      aria-expanded={abierta}
+                      aria-controls={`semana-${g.numero}`}
+                      onClick={() => alternar(g.numero)}
+                    >
+                      <span className="semana-titulo">
+                        <span className="semana-num">Semana {g.numero}</span>
+                        <span className="semana-rango">{rangoSemana(g.desde, g.hasta)}</span>
+                        {esHoy && <span className="semana-hoy">Esta semana</span>}
+                      </span>
+                      {g.concepto && <span className="semana-concepto">{g.concepto}</span>}
+                      <span className="semana-resumen">
+                        <span>{g.total} {g.total === 1 ? "publicación" : "publicaciones"}</span>
+                        {g.total > 0 && <span className="semana-ok">{g.aprobadas} aprobadas</span>}
+                        {g.cambios > 0 && <span className="semana-cambios">{g.cambios} con cambios</span>}
+                        {g.pendientes > 0 && <span>{g.pendientes} por aprobar</span>}
+                      </span>
+                      {g.total > 0 && (
+                        <span className="semana-barra-avance" aria-hidden="true"><span style={{ width: `${pct}%` }} /></span>
+                      )}
+                      <Icon name={abierta ? "chevronUp" : "chevronDown"} size={18} className="semana-flecha" />
+                    </button>
+                    {abierta && (
+                      <div id={`semana-${g.numero}`} className="semana-dias">
+                        {g.dias.map(tarjetaDia)}
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+          );
+        })()
       )}
 
       {/* Add post inline for grid view */}
