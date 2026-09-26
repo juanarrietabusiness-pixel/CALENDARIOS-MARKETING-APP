@@ -6,6 +6,7 @@ import { navegar } from "../lib/rutas";
 import { REDES } from "../lib/publicacion";
 import { filtrarCola, ordenarProgramacion, fechaHora, horaDe, TEXTO_ESTADO, asistidasPendientes } from "../lib/cola";
 import { FORMAT_ICONS } from "../constants";
+import PorProgramar from "../components/PorProgramar";
 
 // ============================================================
 // Programación: lo que sale, en todas las cuentas
@@ -45,7 +46,7 @@ function Pieza({ fila, cliente }) {
   );
 }
 
-export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir }) {
+export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir, onCalendarioGuardado, soltarPendiente }) {
   const ids = useId();
   const [filas, setFilas] = useState(null);
   const [fallo, setFallo] = useState("");
@@ -112,6 +113,15 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
         <p className="page-meta">Lo que sale en las cuentas de todos los clientes, a la hora de Panamá. Lo que no se pudo publicar va arriba.</p>
       </div>
 
+      <PorProgramar
+        clients={clients}
+        pulso={pulso}
+        onAbrir={onAbrir}
+        onCalendarioGuardado={onCalendarioGuardado}
+        soltarPendiente={soltarPendiente}
+        onProgramado={cargar}
+      />
+
       <div className="prog-filtros">
         <div className="segmented" role="group" aria-label="Cuántos días mirar">
           {RANGOS.map(([n, nombre]) => (
@@ -148,7 +158,7 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
           <p>
             {filas.length
               ? "Nada con estos filtros."
-              : "Todavía no hay nada programado. Programa desde una publicación, o usa «Programar lo aprobado» en el calendario de un cliente."}
+              : "Todavía no hay nada programado. Programa desde una publicación o desde «Aprobadas, por programar», arriba."}
           </p>
         </div>
       )}
@@ -271,8 +281,8 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
       )}
 
       <p className="hint">
-        ¿Falta algo? Las publicaciones aprobadas que aún no están en la cola se programan de una vez desde el calendario del cliente
-        {" "}(«Programar lo aprobado»). <a href="/ajustes#integraciones" onClick={(e) => { e.preventDefault(); navegar("/ajustes#integraciones"); }}>Cuentas conectadas</a>.
+        ¿Falta algo? Lo que el cliente aprobó como pieza final y aún no está en la cola sale arriba, en «Aprobadas, por
+        programar»; también se programa de una vez desde el calendario del cliente. <a href="/ajustes#integraciones" onClick={(e) => { e.preventDefault(); navegar("/ajustes#integraciones"); }}>Cuentas conectadas</a>.
       </p>
     </div>
   );

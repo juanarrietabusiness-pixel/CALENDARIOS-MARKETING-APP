@@ -154,74 +154,39 @@ export function ExportContenidoDialog({ exportacion, formatos, onToggleFormato, 
   );
 }
 
-export function AddPostInline({ onAdd, onCancel }) {
-  const [format, setFormat] = useState("post");
-  const [title, setTitle] = useState("");
-  const [idea, setIdea] = useState("");
-  const ids = useId();
+/**
+ * «Agregar publicación»: una pregunta y dos respuestas.
+ *
+ * Antes pedía formato y un TÍTULO obligatorio antes de dejar crearla, y
+ * luego había que abrirla y buscar la pestaña. Ahora se escoge qué se
+ * quiere hacer y se abre directamente ahí, sin rellenar nada:
+ *
+ *   · Subir contenido → la pestaña Subir; el formato sale del archivo y
+ *     queda aprobada (sale directo, como el botón «Subir»).
+ *   · Agregar idea    → la pestaña Idea, para que el cliente la revise.
+ *
+ * Si se cierra sin escribir ni subir nada, el panel la descarta.
+ */
+const TIPOS_NUEVA = [
+  ["publicar", "Subir contenido", "upload", "Ya tengo el archivo: sale directo, aprobada."],
+  ["contenido", "Agregar idea", "bulb", "Para que el cliente la revise y la apruebe."],
+];
 
+export function ElegirNuevaPublicacion({ onElegir, onCancel = null }) {
   return (
-    <div style={{ background: "var(--bg)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)", marginTop: "var(--sp-2)", border: "1px dashed var(--accent)" }}>
-      <fieldset style={{ border: "none", marginBottom: "var(--sp-3)" }}>
-        <legend className="label">Formato</legend>
-        <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }}>
-          {Object.entries(FORMATS).map(([k, f]) => (
-            <button
-              key={k}
-              type="button"
-              aria-pressed={format === k}
-              onClick={() => setFormat(k)}
-              style={{
-                padding: "var(--sp-1) var(--sp-2)",
-                borderRadius: "var(--radius-xs)",
-                border: `1px solid ${format === k ? f.color : "var(--border)"}`,
-                cursor: "pointer",
-                background: format === k ? f.color + "33" : "transparent",
-                color: format === k ? f.color : "var(--text-dim)",
-                fontSize: "var(--fs-3xs)",
-                fontWeight: 600,
-                minHeight: "var(--tap-sm)",
-              }}
-            >
-              <Icon name={FORMAT_ICONS[k]} size={16} /> {f.label}
-            </button>
-          ))}
-        </div>
-      </fieldset>
-
-      <div className="field">
-        <label className="label" htmlFor={`${ids}-title`}>Título</label>
-        <input
-          id={`${ids}-title`}
-          className="input"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Nombre corto de la publicación"
-          autoFocus
-          onKeyDown={(e) => { if (e.key === "Enter" && title) onAdd(format, idea, title); }}
-        />
-      </div>
-
-      <div className="field">
-        <label className="label" htmlFor={`${ids}-idea`}>Idea / Brief</label>
-        <input
-          id={`${ids}-idea`}
-          className="input"
-          value={idea}
-          onChange={(e) => setIdea(e.target.value)}
-          placeholder="Explicación o prompt para IA (opcional)"
-          onKeyDown={(e) => { if (e.key === "Enter" && title) onAdd(format, idea, title); }}
-        />
-      </div>
-
-      <div style={{ display: "flex", gap: "var(--sp-2)" }}>
-        <button className="btn btn-primary btn-sm" style={{ flex: 1 }} disabled={!title} onClick={() => { if (title) onAdd(format, idea, title); }}>
-          Agregar
+    <div className="nueva-publicacion" role="group" aria-label="Qué quieres agregar">
+      {TIPOS_NUEVA.map(([k, nombre, icono, detalle], i) => (
+        <button key={k} type="button" className="nueva-publicacion-opcion" onClick={() => onElegir(k)} autoFocus={i === 0}>
+          <Icon name={icono} size={20} />
+          <span>
+            <strong>{nombre}</strong>
+            <small>{detalle}</small>
+          </span>
         </button>
-        <button className="btn btn-secondary btn-sm" onClick={onCancel}>
-          Cancelar
-        </button>
-      </div>
+      ))}
+      {onCancel && (
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>Cancelar</button>
+      )}
     </div>
   );
 }
@@ -520,7 +485,7 @@ export function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
 export function ApprovalDialog({
   approvalUrl, whatsappMessage, onClose, onGenerate, onRevoke, onReopen,
   hasLink, shareEnabled, working, allowEditing, onToggleEditing,
-  opciones = {}, onCambiarOpciones, revisionEnviada = null, revisionRevisor = "",
+  opciones = {}, onCambiarOpciones, revisionEnviada = null, revisionRevisor = "", resumen = null,
 }) {
   const ref = useDialogA11y(onClose);
   const ids = useId();
@@ -585,6 +550,22 @@ export function ApprovalDialog({
               Las respuestas de tu cliente aparecen aquí al instante, sin recargar.
             </p>
 
+            {resumen && resumen.idea + resumen.pieza > 0 && (
+              <div className="notice envio-resumen" style={{ display: "block", marginBottom: "var(--sp-3)" }}>
+                <p style={{ margin: 0 }}>
+                  Se le pide aprobar{" "}
+                  {[
+                    resumen.idea && `${resumen.idea} ${resumen.idea === 1 ? "idea" : "ideas"}`,
+                    resumen.pieza && `${resumen.pieza} ${resumen.pieza === 1 ? "pieza final" : "piezas finales"}`,
+                  ].filter(Boolean).join(" y ")}.
+                </p>
+                <p className="hint" style={{ margin: 0 }}>
+                  Cada publicación lo dice en su pestaña Idea («¿Qué aprueba el cliente?»). Una idea aprobada queda por
+                  producir; una pieza aprobada, por programar.
+                </p>
+              </div>
+            )}
+
             <div className="interruptor-fila">
               <div>
                 <span style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Permitir edición</span>
@@ -632,8 +613,8 @@ export function ApprovalDialog({
               <div>
                 <span id={`${ids}-auto`} style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Programar al aprobar</span>
                 <p className="hint" style={{ margin: 0 }}>
-                  Cuando el cliente aprueba una publicación que ya tiene fecha, hora y medios, se programa sola en las
-                  redes conectadas del cliente.
+                  Apagado (lo normal): lo aprobado espera en Programación → «Aprobadas, por programar» a que alguien dé
+                  el paso final. Encendido: la PIEZA FINAL aprobada se programa sola; una idea aprobada, nunca.
                 </p>
               </div>
               <button
@@ -684,7 +665,7 @@ export function ApprovalDialog({
   );
 }
 
-export function AddPostDialog({ date, onAdd, onClose }) {
+export function AddPostDialog({ date, onElegir, onClose }) {
   const ref = useDialogA11y(onClose);
   const ids = useId();
 
@@ -696,10 +677,9 @@ export function AddPostDialog({ date, onAdd, onClose }) {
           <button className="btn-icon" onClick={onClose} aria-label="Cerrar"><Icon name="close" /></button>
         </div>
         <div className="sheet-body">
-          <AddPostInline onAdd={onAdd} onCancel={onClose} />
+          <ElegirNuevaPublicacion onElegir={onElegir} />
         </div>
       </div>
     </div>
   );
 }
-

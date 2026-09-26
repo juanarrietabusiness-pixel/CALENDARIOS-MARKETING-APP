@@ -155,6 +155,8 @@
 .aprobar-texto { font-size: var(--fs-sm); line-height: var(--lh-normal); white-space: pre-wrap; overflow-wrap: anywhere; }
 .aprobar-ver-mas { background: none; border: none; color: var(--text-faint); font-weight: 600; cursor: pointer; padding: 0; font-size: inherit; }
 .aprobar-nota { font-size: var(--fs-2xs); color: var(--text-faint); }
+.aprobar-tipo { display: flex; align-items: flex-start; gap: var(--sp-2); margin: 0 var(--sp-3) var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius); background: var(--alt-soft); color: var(--text); font-size: var(--fs-xs); line-height: var(--lh-normal); }
+.aprobar-tipo svg { flex-shrink: 0; margin-top: 2px; color: var(--accent-alt); }
 .aprobar-comentario1 { font-size: var(--fs-xs); color: var(--text-dim); padding: var(--sp-2) var(--sp-3); border-left: 3px solid var(--border-strong); white-space: pre-wrap; }
 .aprobar-comentario1 span { font-weight: 700; }
 .aprobar-guion { background: var(--surface-2); border-radius: var(--radius); padding: var(--sp-2) var(--sp-3); }

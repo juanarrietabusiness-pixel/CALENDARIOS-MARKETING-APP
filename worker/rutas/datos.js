@@ -29,6 +29,21 @@ import { tareasParaPurgar, terminadasBorrables, MODOS_PURGA } from "../lib/tarea
 import { fechaEnZona, debeReabrirse, esFecha } from "../../src/lib/agenda.js";
 import { leerConfigIA, MODELOS_ELEGIBLES, RAZONAMIENTOS, ACCIONES_LIMITE } from "../lib/configIA.js";
 import { resincronizarCalendario } from "../lib/publicador.js";
+import { asignarTarea, alGuardarCalendario, avisarNota, avisar, enlacePublicacion } from "../lib/equipo.js";
+
+/**
+ * Lo que va después de responder (avisos, historial): con el `waitUntil`
+ * de la invocación si lo hay, o esperándolo si no (los tests). Nunca
+ * tumba la respuesta.
+ */
+function despues(ctx, promesa) {
+  const segura = promesa.catch((e) => console.error("después de responder:", e));
+  if (ctx.exec?.waitUntil) { ctx.exec.waitUntil(segura); return Promise.resolve(); }
+  return segura;
+}
+
+/** Borrar un cliente o un calendario entero, sólo quien administra. */
+const soloAdmin = (ctx) => (ctx.usuario?.rol === "admin" ? null : error("Sólo quien administra el espacio puede borrar clientes o calendarios enteros.", 403));
 
 const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe", "competidores"];
 const JSON_CALENDARIOS = ["week_concepts", "days", "visual_references", "day_labels", "opciones"];
@@ -247,6 +262,8 @@ export async function rutasDatos(req, env, ctx) {
     }
 
     if (!sub && metodo === "DELETE") {
+      const prohibido = soloAdmin(ctx);
+      if (prohibido) return prohibido;
       const n = await acceso.borrar("clients", { id });
       if (!n) return noEncontrado("Cliente");
       difundir(env, acceso.ownerId, { tipo: "cliente:fuera", id, por: firma(ctx.usuario, req) });
@@ -325,11 +342,16 @@ export async function rutasDatos(req, env, ctx) {
       }
       if (metodo === "POST") {
         const datos = (await cuerpo(req)) ?? {};
-        const fila = {
-          ...sinCamposDeServidor(datos, ["owner_id"]),
+        let fila = {
+          ...sinCamposDeServidor(datos, ["owner_id", "asignado_id"]),
           id: datos.id || uuid(), client_id: id, created_at: datos.created_at || ahora(),
         };
         if (!fechasValidas(fila)) return error("Fecha inválida: se espera AAAA-MM-DD");
+        const antes = await acceso.leerUno("client_tasks", { id: fila.id });
+        fila = await asignarTarea(env, ctx, req, {
+          antes, fila,
+          enlace: fila.calendar_id && fila.post_id ? enlacePublicacion(id, fila.calendar_id, fila.post_id) : `/cliente/${encodeURIComponent(id)}/tareas`,
+        });
         await acceso.guardar("client_tasks", fila);
         const tarea = await acceso.leerUno("client_tasks", { id: fila.id });
         difundir(env, acceso.ownerId, { tipo: "tarea", tarea, por: firma(ctx.usuario, req) });
@@ -387,9 +409,20 @@ export async function rutasDatos(req, env, ctx) {
       fila.id = id && id !== "nuevo" ? id : (fila.id || uuid());
       fila.created_at ??= ahora();
       fila.updated_at = ahora();
+      // Lo de antes, para el historial y los avisos (a quién se asignó qué).
+      const previo = await acceso.leerUno("calendars", { id: fila.id });
       await acceso.guardar("calendars", fila);
       const crudo = await acceso.leerUno("calendars", { id: fila.id });
       const guardado = salidaCalendario(crudo);
+      if (previo) {
+        await despues(ctx, (async () => {
+          const cliente = await acceso.leerUno("clients", { id: crudo.client_id });
+          await alGuardarCalendario(env, acceso, {
+            antes: salidaCalendario(previo).days, despues: guardado.days, usuario: ctx.usuario ?? {},
+            calId: fila.id, clientId: crudo.client_id, clienteNombre: cliente?.name ?? "",
+          });
+        })());
+      }
       // Lo programado sigue al calendario: si una publicación cambió de
       // día u hora, o se quitó, la cola se entera aquí.
       try { await resincronizarCalendario(env, acceso, crudo, firma(ctx.usuario, req)); } catch (e) { console.error("resincronizar cola:", e); }
@@ -401,6 +434,49 @@ export async function rutasDatos(req, env, ctx) {
         { tipo: "calendario:recargar", id: fila.id, clientId: guardado.client_id, por: firma(ctx.usuario, req) },
       );
       return json(guardado);
+    }
+
+    // El hilo INTERNO de cada publicación: el equipo, con autor y hora.
+    // El cliente no lo ve nunca. Las @menciones avisan a quien nombran.
+    if (sub === "notas") {
+      const cal = await acceso.leerUno("calendars", { id });
+      if (!cal) return noEncontrado("Calendario");
+      if (metodo === "GET") {
+        const postId = new URL(req.url).searchParams.get("post");
+        const filas = await acceso.leer("notas_equipo", postId ? { calendar_id: id, post_id: postId } : { calendar_id: id }, "created_at asc");
+        return json(filas.map((n) => ({ ...n, menciones: JSON.parse(n.menciones || "[]") })));
+      }
+      if (metodo === "POST") {
+        const { postId, texto } = (await cuerpo(req)) ?? {};
+        const limpio = String(texto ?? "").trim().slice(0, 2000);
+        if (!postId || !limpio) return error("Falta la publicación o el texto");
+        const fila = {
+          id: uuid(), calendar_id: id, post_id: String(postId).slice(0, 200),
+          autor_id: ctx.usuario?.id ?? "", autor_nombre: ctx.usuario?.nombre ?? "", texto: limpio, menciones: "[]", created_at: ahora(),
+        };
+        let post = null;
+        for (const d of JSON.parse(cal.days || "[]")) for (const p of d?.posts ?? []) if (p?.id === fila.post_id) post = p;
+        const menciones = await avisarNota(env, acceso, { nota: fila, post, clientId: cal.client_id, usuario: ctx.usuario ?? {} });
+        fila.menciones = JSON.stringify(menciones);
+        await acceso.insertar("notas_equipo", fila);
+        difundir(env, acceso.ownerId, { tipo: "nota", calId: id, postId: fila.post_id, por: firma(ctx.usuario, req) });
+        return json({ ...fila, menciones }, 201);
+      }
+    }
+
+    // Quién cambió qué en una publicación (lo escribe el PUT del calendario).
+    if (sub === "historial" && metodo === "GET") {
+      if (!(await acceso.leerUno("calendars", { id }))) return noEncontrado("Calendario");
+      const postId = new URL(req.url).searchParams.get("post");
+      if (!postId) return error("Falta la publicación");
+      return json(await acceso.leer("historial", { calendar_id: id, post_id: postId }, "created_at desc", 50));
+    }
+
+    // Las tareas ligadas a una publicación («Diseñar esto para el jueves»).
+    if (sub === "tareas" && metodo === "GET") {
+      const postId = new URL(req.url).searchParams.get("post");
+      if (!postId) return error("Falta la publicación");
+      return json(await acceso.leer("client_tasks", { calendar_id: id, post_id: postId }, "created_at asc"));
     }
 
     // La conversación de cada publicación con el cliente. Lo del cliente
@@ -425,6 +501,8 @@ export async function rutasDatos(req, env, ctx) {
     }
 
     if (!sub && metodo === "DELETE") {
+      const prohibido = soloAdmin(ctx);
+      if (prohibido) return prohibido;
       const n = await acceso.borrar("calendars", { id });
       if (!n) return noEncontrado("Calendario");
       difundir(env, acceso.ownerId, { tipo: "calendario:fuera", id, por: firma(ctx.usuario, req) });
@@ -459,6 +537,7 @@ export async function rutasDatos(req, env, ctx) {
         reviewer_name: a.reviewer_name, updated_at: a.updated_at,
         suggested_descripcion: a.suggested_descripcion,
         suggested_guion: a.suggested_guion,
+        tipo: a.tipo ?? null, huella: a.huella ?? null,
       })));
     }
   }
@@ -480,8 +559,11 @@ export async function rutasDatos(req, env, ctx) {
     }
     if (metodo === "PUT" && id) {
       const datos = (await cuerpo(req)) ?? {};
-      const campos = sinCamposDeServidor(datos, ["owner_id", "id", "created_at"]);
+      let campos = sinCamposDeServidor(datos, ["owner_id", "id", "created_at", "asignado_id"]);
       if (!fechasValidas(campos)) return error("Fecha inválida: se espera AAAA-MM-DD");
+      const antes = await acceso.leerUno("client_tasks", { id });
+      if (!antes) return noEncontrado("Tarea");
+      campos = await asignarTarea(env, ctx, req, { antes, fila: { title: antes.title, ...campos }, enlace: `/cliente/${encodeURIComponent(antes.client_id)}/tareas` });
       const n = await acceso.actualizar("client_tasks", { id }, campos);
       if (!n) return noEncontrado("Tarea");
       const tarea = await acceso.leerUno("client_tasks", { id });
@@ -506,8 +588,33 @@ export async function rutasDatos(req, env, ctx) {
       if (!n) return noEncontrado("Tarea");
       const tarea = await acceso.leerUno("client_tasks", { id });
       difundir(env, acceso.ownerId, { tipo: "tarea", tarea, por: firma(ctx.usuario, req) });
+      // Una tarea de una publicación, terminada: quien la lleva se entera
+      // para moverla a la etapa siguiente (no se mueve sola: el calendario
+      // puede estar abierto y a medias en otra pantalla).
+      if (completada && tarea.calendar_id && tarea.post_id) {
+        await despues(ctx, (async () => {
+          const cal = await acceso.leerUno("calendars", { id: tarea.calendar_id });
+          let post = null;
+          for (const d of JSON.parse(cal?.days || "[]")) for (const p of d?.posts ?? []) if (p?.id === tarea.post_id) post = p;
+          if (!post?.responsableId) return;
+          await avisar(env, acceso, {
+            para: [post.responsableId], tipo: "tarea",
+            texto: `${ctx.usuario?.nombre || "Alguien"} terminó «${tarea.title}». Si ya está, pásala a la etapa siguiente.`,
+            enlace: enlacePublicacion(cal.client_id, tarea.calendar_id, tarea.post_id), por: { userId: ctx.usuario?.id, nombre: ctx.usuario?.nombre },
+          });
+        })());
+      }
       return json(tarea);
     }
+  }
+
+  // Las respuestas del cliente de TODO el espacio: el tablero las aplica a
+  // cada publicación (en `days` sólo se ponen al día al abrir el calendario).
+  if (seccion === "aprobaciones" && metodo === "GET" && !id) {
+    const filas = await acceso.leer("approvals", {}, "updated_at asc");
+    return json(filas.map((a) => ({
+      calendar_id: a.calendar_id, post_id: a.post_id, estado: a.estado, tipo: a.tipo ?? null, huella: a.huella ?? null, updated_at: a.updated_at,
+    })));
   }
 
   if (seccion === "todas-tareas" && metodo === "GET") {
@@ -565,13 +672,14 @@ export async function rutasDatos(req, env, ctx) {
     }
     if (metodo === "POST" && !id) {
       const datos = (await cuerpo(req)) ?? {};
-      const fila = {
+      let fila = {
         id: uuid(), title: datos.title || "", status: "pending",
         assigned_to: datos.assigned_to || "", description: datos.description || "",
         position: datos.position ?? 0, created_at: ahora(),
         due_date: datos.due_date || null, today_date: datos.today_date || null,
       };
       if (!fechasValidas(fila)) return error("Fecha inválida: se espera AAAA-MM-DD");
+      fila = await asignarTarea(env, ctx, req, { antes: null, fila, enlace: "/tareas" });
       await acceso.insertar("quick_tasks", fila);
       difundir(env, acceso.ownerId, { tipo: "tarea-rapida", tarea: fila, por: firma(ctx.usuario, req) });
       await recordarResponsable(env, ctx, req, fila.assigned_to);
@@ -579,8 +687,11 @@ export async function rutasDatos(req, env, ctx) {
     }
     if (metodo === "PUT" && id) {
       const datos = (await cuerpo(req)) ?? {};
-      const campos = sinCamposDeServidor(datos, ["owner_id", "id", "created_at"]);
+      let campos = sinCamposDeServidor(datos, ["owner_id", "id", "created_at", "asignado_id"]);
       if (!fechasValidas(campos)) return error("Fecha inválida: se espera AAAA-MM-DD");
+      const antes = await acceso.leerUno("quick_tasks", { id });
+      if (!antes) return noEncontrado("Tarea rápida");
+      campos = await asignarTarea(env, ctx, req, { antes, fila: { title: antes.title, ...campos }, enlace: "/tareas" });
       const n = await acceso.actualizar("quick_tasks", { id }, campos);
       if (!n) return noEncontrado("Tarea rápida");
       const tarea = await acceso.leerUno("quick_tasks", { id });

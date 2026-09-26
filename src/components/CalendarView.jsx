@@ -8,12 +8,16 @@ import { base64DeImagen, conImagenesIncrustadas, prepararParaRedes } from "../li
 import {
   shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals, loadClientMemories,
   listarPublicaciones, publicar, cancelarPublicacion, reintentarPublicacion, estadoRedes as leerEstadoRedes,
-  subirImagenPublicacion, saveCalendar, programarVarias,
+  subirImagenPublicacion, saveCalendar,
 } from "../lib/db";
 import { resumenCola, aprobadasSinProgramar } from "../lib/cola";
 import { navegar } from "../lib/rutas";
 import { agruparPorSemana, semanaInicial, rangoSemana } from "../lib/semanas";
-import { moverEnCalendario } from "../lib/subir";
+import { moverEnCalendario, ponerEnDia } from "../lib/subir";
+import { conAprobacion, resumenEnvio } from "../lib/aprobacion";
+import { programarAprobadasDe } from "../lib/programarAprobadas";
+import { useEquipo } from "../hooks/useEquipo";
+import { yoActual, esAdmin } from "../lib/sesionActual";
 import { fechaEnZona } from "../lib/agenda";
 import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO, CAMPOS_EXPORTABLES } from "../lib/exportarContenido";
 import MetaPromptModal from "./MetaPromptModal";
@@ -28,7 +32,7 @@ const ProgramarAprobadas = lazy(() => import("./calendario/programarAprobadas"))
 import { MonthGrid } from "./calendario/MonthGrid";
 import { BankPanel } from "./calendario/BankPanel";
 import {
-  ExportContenidoDialog, AddPostInline,
+  ExportContenidoDialog, ElegirNuevaPublicacion,
   EditMetaDialog, ApprovalDialog, AddPostDialog,
 } from "./calendario/dialogos";
 import { categoryHue, fmt12h } from "./calendario/formato";
@@ -137,37 +141,10 @@ export default function CalendarView({
    * programa todas en una sola petición.
    */
   const programarAprobadas = async (lista, avisar) => {
-    const ahoraISO = new Date().toISOString();
-    const preparadas = new Map();
-    for (const [i, r] of lista.entries()) {
-      avisar(`Preparando imágenes (${i + 1} de ${lista.length})…`);
-      const { post, cambio } = await prepararParaRedes(r.post, r.redes, {
-        subir: (f) => subirImagenPublicacion(clienteDb, f),
-        colorMarca: client?.primaryColor,
-      });
-      if (cambio) preparadas.set(post.id, post);
-    }
-    const nuevo = {
-      ...cal,
-      days: (cal.days || []).map((d) => ({
-        ...d,
-        posts: (d.posts || []).map((p) => (preparadas.has(p.id) ? marcarActualizada(p, preparadas.get(p.id), ahoraISO) : p)),
-      })),
-    };
-    if (preparadas.size) onUpdateCal(calId, nuevo);
-    avisar("Guardando el calendario…");
-    await saveCalendar(nuevo, clienteDb);
-    avisar("Programando…");
-    const r = await programarVarias(calDb, lista.map((x) => x.post.id));
+    const r = await programarAprobadasDe({ cal, clienteDb, colorMarca: client?.primaryColor, lista, avisar });
+    if (r.cambiado) onUpdateCal(calId, { ...cal, days: r.nuevo.days });
     recargarCola();
-    const titulo = (id) => {
-      const p = lista.find((x) => x.post.id === id)?.post;
-      return p?.title || p?.idea || "Publicación";
-    };
-    return {
-      programadas: r?.programadas?.length ?? 0,
-      fallidas: (r?.fallidas ?? []).map((f) => ({ ...f, titulo: titulo(f.postId) })),
-    };
+    return { programadas: r.programadas, fallidas: r.fallidas };
   };
 
   const abrirDesdeLista = (postId) => {
@@ -180,6 +157,9 @@ export default function CalendarView({
 
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterFormat, setFilterFormat] = useState("all");
+  // «all», «mias» o el id de una persona del equipo.
+  const [filterPersona, setFilterPersona] = useState("all");
+  const miembros = useEquipo(pulso);
   const [filterWeek, setFilterWeek] = useState("all");
   // La lista va por semanas plegables. null = lo de entrada (sólo la
   // semana de hoy abierta); en cuanto alguien abre o cierra, es un Set.
@@ -291,21 +271,11 @@ export default function CalendarView({
         setCalRef.current?.((actual) => {
           const days = (actual.days || []).map((d) => ({
             ...d,
-            posts: (d.posts || []).map((p) => {
-              const review = approvals[p.id];
-              if (!review) return p;
-              return {
-                ...p,
-                // «Publicada» no la pisa una aprobación: ya salió.
-                status: p.status === "published" ? p.status
-                  : review.estado === "aprobado" ? "approved"
-                    : review.estado === "cambios" ? "rejected"
-                      : p.status,
-                // El comentario del cliente ya NO se copia a la nota
-                // interna: vive en la conversación de la publicación, y
-                // mezclarlos pisaba lo que la agencia había escrito.
-              };
-            }),
+            // «Publicada» no la pisa una aprobación: ya salió. Y lo que el
+            // cliente respondió ANTES de que se le volviera a pedir, no
+            // cuenta (lib/aprobacion.js). El comentario del cliente NO se
+            // copia a la nota interna: vive en la conversación.
+            posts: (d.posts || []).map((p) => conAprobacion(p, approvals[p.id])),
           }));
           return { ...actual, days };
         });
@@ -355,7 +325,8 @@ export default function CalendarView({
   const publishedPosts = (cal.days || []).reduce((a, d) => a + (d.posts || []).filter((p) => p.status === "published").length, 0);
 
   const weeks = [...new Set((cal.days || []).map((d) => d.weekNumber || 1))].sort((a, b) => a - b);
-  const activeFilterCount = [filterStatus, filterFormat, filterWeek, filterDOW].filter((f) => f !== "all").length;
+  const activeFilterCount = [filterStatus, filterFormat, filterWeek, filterDOW, filterPersona].filter((f) => f !== "all").length;
+  const personaFiltrada = filterPersona === "mias" ? yoActual()?.id : filterPersona;
   const approvalPct = totalPosts > 0 ? Math.round((approvedPosts / totalPosts) * 100) : 0;
   const monthLabel = `${MONTHS[cal.month]} ${cal.year}`;
   const calSubtitle = [calName === monthLabel ? null : monthLabel, cal.campaign]
@@ -367,6 +338,7 @@ export default function CalendarView({
     posts: (day.posts || []).filter((p) => {
       if (filterStatus !== "all" && p.status !== filterStatus) return false;
       if (filterFormat !== "all" && p.format !== filterFormat) return false;
+      if (filterPersona !== "all" && p.responsableId !== personaFiltrada) return false;
       return true;
     }),
   })).filter((day) => {
@@ -375,7 +347,7 @@ export default function CalendarView({
       const dow = new Date(day.date + "T12:00:00").getDay();
       if (String(dow) !== filterDOW) return false;
     }
-    return day.posts.length > 0 || (filterStatus === "all" && filterFormat === "all");
+    return day.posts.length > 0 || (filterStatus === "all" && filterFormat === "all" && filterPersona === "all");
   });
 
   const addDebug = (msg) => setDebugLog((prev) => [...prev, { time: new Date().toLocaleTimeString(), msg }]);
@@ -392,27 +364,36 @@ export default function CalendarView({
     onUpdateCal(calId, { ...cal, days: newDays });
   };
 
-  const addPost = (date, format, idea, title) => {
+  /**
+   * «Agregar publicación» → «Subir contenido» o «Agregar idea». Se crea al
+   * momento, sin pedir título, y se abre en la pestaña que toca. Lo subido
+   * sale directo (aprobada, como el botón «Subir»); la idea espera al
+   * cliente. `ponerEnDia` crea el día si el calendario aún no lo tenía: el
+   * «+» de la rejilla se ofrece en todos los días del mes, y antes la
+   * publicación de un día sin fila se perdía sin decir nada.
+   */
+  const addPost = (date, pestana) => {
+    const subir = pestana === "publicar";
     const newPost = {
       id: uid(),
-      format,
-      title: title || "",
-      idea,
+      format: "post",
+      title: "",
+      idea: "",
       guion: "",
       descripcion: "",
       hashtagsFinales: "",
       script: "",
-      status: "pending",
+      status: subir ? "approved" : "pending",
       category: "",
       image: null,
       referenceLink: "",
       comment: "",
+      ...(subir ? { subidaRapida: true } : {}),
     };
-    const newDays = (cal.days || []).map((d) =>
-      d.date !== date ? d : { ...d, posts: [...(d.posts || []), newPost] }
-    );
-    onUpdateCal(calId, { ...cal, days: newDays });
+    const nuevo = ponerEnDia(cal, date, newPost);
+    onUpdateCal(calId, nuevo);
     setAddingPostDay(null);
+    setSidePanel({ post: newPost, day: nuevo.days.find((d) => d.date === date), pestana, nueva: true });
   };
 
   const removePostFromDay = (date, postId) => {
@@ -1094,7 +1075,8 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
             { icon: "sparkles", label: "Prompt maestro para Meta AI", onClick: () => abrirCapa("promptMeta") },
             { sep: true },
             { icon: "terminal", label: capa === "diagnostico" ? "Ocultar diagnóstico" : "Ver diagnóstico", onClick: () => setCapa((c) => (c === "diagnostico" ? null : "diagnostico")) },
-            { icon: "trash", label: "Eliminar calendario", danger: true, onClick: () => {
+            // Borrar un calendario entero es de quien administra (el servidor lo exige).
+            esAdmin() && { icon: "trash", label: "Eliminar calendario", danger: true, onClick: () => {
               if (window.confirm("¿Eliminar este calendario? Esta acción no se puede deshacer.")) onDeleteCal(calId);
             } },
           ].filter(Boolean)}
@@ -1126,7 +1108,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
               aria-checked={!!cal.opciones?.programarAlAprobar}
               className={`toggle${cal.opciones?.programarAlAprobar ? " is-on" : ""}`}
               onClick={() => onUpdateCal(calId, { ...cal, opciones: { ...(cal.opciones || {}), programarAlAprobar: !cal.opciones?.programarAlAprobar } })}
-              title="Cuando el cliente aprueba una publicación, entra sola en la cola a su día y hora"
+              title="Apagado: lo aprobado espera en Programación a que alguien lo programe. Encendido: la pieza final aprobada entra sola en la cola (una idea aprobada, nunca)"
             >
               <span className="toggle-thumb" />
             </button>
@@ -1209,6 +1191,16 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           <button key={k} className={`filter-chip ${filterStatus === k ? "active" : ""}`} aria-pressed={filterStatus === k} onClick={() => setFilterStatus(k)}>{st.label}</button>
         ))}
       </div>
+      {miembros.length > 1 && (
+        <div className="filter-bar" role="group" aria-label="Filtrar por quién la lleva">
+          <span className="filter-bar-label" aria-hidden="true">Lo lleva</span>
+          <button className={`filter-chip ${filterPersona === "all" ? "active" : ""}`} aria-pressed={filterPersona === "all"} onClick={() => setFilterPersona("all")}>Todos</button>
+          <button className={`filter-chip ${filterPersona === "mias" ? "active" : ""}`} aria-pressed={filterPersona === "mias"} onClick={() => setFilterPersona("mias")}>Mías</button>
+          {miembros.filter((m) => m.userId !== yoActual()?.id).map((m) => (
+            <button key={m.userId} className={`filter-chip ${filterPersona === m.userId ? "active" : ""}`} aria-pressed={filterPersona === m.userId} onClick={() => setFilterPersona(m.userId)}>{m.nombre}</button>
+          ))}
+        </div>
+      )}
       <div className="filter-bar" role="group" aria-label="Filtrar por formato">
         <span className="filter-bar-label" aria-hidden="true">Formato</span>
         <button className={`filter-chip ${filterFormat === "all" ? "active" : ""}`} aria-pressed={filterFormat === "all"} onClick={() => setFilterFormat("all")}>Todos</button>
@@ -1315,6 +1307,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
         <MonthGrid
           cal={{ ...cal, days: filteredDays }}
           cola={cola}
+          miembros={miembros}
           onPostClick={(post, day) => setSidePanel({ post, day })}
           onMove={movePost}
           onAddPost={(date) => setAddingPostDay(date)}
@@ -1526,8 +1519,8 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
                       })}
                       {/* Add post button */}
                       {addingPostDay === day.date ? (
-                        <AddPostInline
-                          onAdd={(format, idea, title) => addPost(day.date, format, idea, title)}
+                        <ElegirNuevaPublicacion
+                          onElegir={(pestana) => addPost(day.date, pestana)}
                           onCancel={() => setAddingPostDay(null)}
                         />
                       ) : (
@@ -1607,7 +1600,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
       {addingPostDay && viewMode === "grid" && (
         <AddPostDialog
           date={addingPostDay}
-          onAdd={(format, idea, title) => addPost(addingPostDay, format, idea, title)}
+          onElegir={(pestana) => addPost(addingPostDay, pestana)}
           onClose={() => setAddingPostDay(null)}
         />
       )}
@@ -1646,6 +1639,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           onCambiarOpciones={(cambios) => onUpdateCal(calId, { ...cal, opciones: { ...(cal.opciones || {}), ...cambios } })}
           revisionEnviada={cal.revisionEnviada}
           revisionRevisor={cal.revisionRevisor}
+          resumen={resumenEnvio(cal.days)}
           onClose={cerrarCapa}
         />
       )}
@@ -1661,8 +1655,12 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           />
           <Suspense fallback={<div className="panel-cargando" role="status">Abriendo la publicación…</div>}>
           <PostSidePanel
+            key={sidePanel.post.id}
             post={sidePanel.post}
             day={sidePanel.day}
+            pestanaInicial={sidePanel.pestana ?? null}
+            nueva={sidePanel.nueva ?? false}
+            onDescartar={removePostFromDay}
             editandoOtros={editandoOtros}
             pulso={pulso}
             publicacion={{

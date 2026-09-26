@@ -59,3 +59,10 @@
   .prog-acciones { flex-basis: 100%; justify-content: flex-start; }
   .prog-filtros .input { max-width: none; }
 }
+
+/* «Aprobadas, por programar» (components/PorProgramar.jsx). */
+.prog-por-programar { padding: var(--sp-3); border: 1px solid var(--accent-line); border-radius: var(--radius-lg); background: var(--accent-soft); }
+.por-programar-cabecera { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.por-programar-marca { width: 22px; height: 22px; flex-shrink: 0; accent-color: var(--accent); }
+.por-programar-cambio { color: var(--accent-alt); display: flex; align-items: center; gap: 4px; }
+.por-producir summary { cursor: pointer; font-size: var(--fs-sm); font-weight: 700; min-height: var(--tap-sm); display: flex; align-items: center; gap: var(--sp-2); }

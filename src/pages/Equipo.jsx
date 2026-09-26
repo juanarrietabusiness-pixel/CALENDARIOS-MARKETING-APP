@@ -1,11 +1,64 @@
+import "./Equipo.css";
 import { useCallback, useEffect, useId, useState } from "react";
 import Icon from "../components/Icon";
 import { Avatar } from "../components/Presencia";
+import CargaEquipo from "../components/CargaEquipo";
 import { navegar } from "../lib/rutas";
 import {
   cargarEquipo, invitar, retirarInvitacion, sacarMiembro,
-  guardarMiPerfil, enlaceDeInvitacion,
+  guardarMiPerfil, enlaceDeInvitacion, cambiarPapel, papelDe, PAPELES,
 } from "../lib/equipo";
+
+const NOMBRE_PAPEL = Object.fromEntries(PAPELES.map(([k, n]) => [k, n]));
+
+/** Los clientes que puede ver un colaborador: casillas. */
+function ElegirClientes({ clients, valor = [], onCambiar, etiqueta }) {
+  const ids = useId();
+  return (
+    <fieldset className="elegir-clientes">
+      <legend className="label">{etiqueta}</legend>
+      <div className="elegir-clientes-lista">
+        {clients.map((c) => (
+          <label key={c.id} htmlFor={`${ids}-${c.id}`} className="elegir-cliente">
+            <input
+              id={`${ids}-${c.id}`}
+              type="checkbox"
+              checked={valor.includes(c.id)}
+              onChange={() => onCambiar(valor.includes(c.id) ? valor.filter((x) => x !== c.id) : [...valor, c.id])}
+            />
+            {c.name}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+/** El papel de un miembro, editable por quien administra. */
+function PapelMiembro({ m, clients, onGuardado, onError }) {
+  const ids = useId();
+  const [papel, setPapel] = useState(papelDe(m));
+  const [clientes, setClientes] = useState(m.clientes ?? []);
+  const cambiado = papel !== papelDe(m) || (papel === "colaborador" && JSON.stringify([...clientes].sort()) !== JSON.stringify([...(m.clientes ?? [])].sort()));
+  const guardar = async () => {
+    try {
+      await cambiarPapel(m.userId, { papel, clientes: papel === "colaborador" ? clientes : null });
+      onGuardado(`${m.nombre}: ${NOMBRE_PAPEL[papel]}.`);
+    } catch (e) { onError(e.message); }
+  };
+  return (
+    <div className="papel-miembro">
+      <label className="sr-only" htmlFor={`${ids}-papel`}>Papel de {m.nombre}</label>
+      <select id={`${ids}-papel`} className="input" value={papel} onChange={(e) => setPapel(e.target.value)}>
+        {PAPELES.map(([k, n]) => <option key={k} value={k}>{n}</option>)}
+      </select>
+      {papel === "colaborador" && (
+        <ElegirClientes clients={clients} valor={clientes} onCambiar={setClientes} etiqueta={`Clientes de ${m.nombre}`} />
+      )}
+      {cambiado && <button type="button" className="btn btn-primary btn-sm" onClick={guardar}>Guardar papel</button>}
+    </div>
+  );
+}
 
 /**
  * Equipo.
@@ -21,7 +74,7 @@ import {
  *  3. Cómo te ven: tu nombre y tu color, que son los que salen en la
  *     presencia y en «X está editando esto».
  */
-export default function Equipo({ presentes = [], yo, pulso = 0, onVolver }) {
+export default function Equipo({ presentes = [], yo, pulso = 0, onVolver, clients = [] }) {
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
@@ -31,6 +84,7 @@ export default function Equipo({ presentes = [], yo, pulso = 0, onVolver }) {
   const [correo, setCorreo] = useState("");
   const [nombreInvitado, setNombreInvitado] = useState("");
   const [rol, setRol] = useState("editor");
+  const [clientesInvitado, setClientesInvitado] = useState([]);
 
   const [miNombre, setMiNombre] = useState(yo?.nombre ?? "");
 
@@ -64,7 +118,7 @@ export default function Equipo({ presentes = [], yo, pulso = 0, onVolver }) {
     setEnviando(true);
     setError("");
     try {
-      const { testigo } = await invitar({ email: correo, nombre: nombreInvitado, rol });
+      const { testigo } = await invitar({ email: correo, nombre: nombreInvitado, papel: rol, clientes: rol === "colaborador" ? clientesInvitado : null });
       setEnlaceNuevo(enlaceDeInvitacion(testigo));
       setCorreo("");
       setNombreInvitado("");
@@ -146,10 +200,14 @@ export default function Equipo({ presentes = [], yo, pulso = 0, onVolver }) {
                       )}
                     </p>
                     <p style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)" }}>
-                      {m.rol === "admin" ? "Administra el espacio" : "Edita calendarios"}
+                      {NOMBRE_PAPEL[papelDe(m)]}
+                      {papelDe(m) === "colaborador" && ` (${(m.clientes ?? []).length} ${(m.clientes ?? []).length === 1 ? "cliente" : "clientes"})`}
                       {" · "}
                       {conectado(m.userId) ? "conectado ahora" : "desconectado"}
                     </p>
+                    {esAdmin && m.userId !== yo?.id && m.userId !== yo?.ownerId && (
+                      <PapelMiembro m={m} clients={clients} onGuardado={(t) => { setAviso(t); void recargar(); }} onError={setError} />
+                    )}
                   </div>
                   {esAdmin && m.userId !== yo?.id && (
                     <button
@@ -202,10 +260,15 @@ export default function Equipo({ presentes = [], yo, pulso = 0, onVolver }) {
                     id={`${ids}-rol`} className="input"
                     value={rol} onChange={(e) => setRol(e.target.value)}
                   >
-                    <option value="editor">Editar calendarios</option>
-                    <option value="admin">Todo, incluido invitar</option>
+                    {PAPELES.map(([k, n]) => <option key={k} value={k}>{n}</option>)}
                   </select>
                 </div>
+                <p className="hint" style={{ flexBasis: "100%", margin: 0 }}>{PAPELES.find(([k]) => k === rol)?.[2]}</p>
+                {rol === "colaborador" && (
+                  <div style={{ flexBasis: "100%" }}>
+                    <ElegirClientes clients={clients} valor={clientesInvitado} onCambiar={setClientesInvitado} etiqueta="Qué clientes verá" />
+                  </div>
+                )}
                 <button className="btn btn-primary" type="submit" disabled={enviando}>
                   <Icon name="link" size={18} /> {enviando ? "Generando…" : "Crear enlace"}
                 </button>
@@ -252,7 +315,7 @@ export default function Equipo({ presentes = [], yo, pulso = 0, onVolver }) {
                         <span style={{ flex: 1, minWidth: 0, fontSize: "var(--fs-2xs)" }}>
                           {i.nombre || i.email || "Sin nombre"}
                           <span style={{ color: "var(--text-faint)" }}>
-                            {" · "}{i.rol === "admin" ? "administra" : "edita"}
+                            {" · "}{NOMBRE_PAPEL[papelDe(i)].toLowerCase()}
                           </span>
                         </span>
                         <button
@@ -274,6 +337,9 @@ export default function Equipo({ presentes = [], yo, pulso = 0, onVolver }) {
               )}
             </section>
           )}
+
+          {/* ---- Carga ---- */}
+          <CargaEquipo clients={clients} miembros={datos.miembros} pulso={pulso} />
 
           {/* La IA y su gasto se mudaron a Ajustes: aquí nadie los
               encontró el día que se acabó el saldo. */}

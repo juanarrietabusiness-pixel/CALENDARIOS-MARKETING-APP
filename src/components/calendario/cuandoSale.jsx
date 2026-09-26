@@ -23,7 +23,9 @@ import HoraSugerida from "./horaSugerida";
 import { TimePicker } from "./primitivas";
 import { REDES, momentoPublicacion, piezasDe } from "../../lib/publicacion";
 import { colaDe, clavePieza, fechaHora, TEXTO_ESTADO } from "../../lib/cola";
+import { resumenDestino } from "../../lib/subir";
 import { navegar } from "../../lib/rutas";
+import { esAdmin } from "../../lib/sesionActual";
 
 const MODOS = [["ahora", "Ahora", "send"], ["programar", "Programar", "clock"], ["mano", "La publico yo", "photo"]];
 
@@ -144,11 +146,13 @@ export default function CuandoSale({
           <legend className="label">¿Cuándo sale?</legend>
           <div className="segmented" role="radiogroup" aria-label="Cuándo sale">
             {MODOS.map(([k, nombre, icono]) => (
-              <button key={k} type="button" role="radio" aria-checked={modo === k} className={`segmented-btn ${modo === k ? "active" : ""}`} onClick={() => setModo(k)}>
+              <button key={k} type="button" role="radio" aria-checked={modo === k} className={`segmented-btn ${modo === k ? "active" : ""}`} onClick={() => setModo(k)}
+                disabled={k === "ahora" && !esAdmin()} title={k === "ahora" && !esAdmin() ? "Publicar al momento es de quien administra" : undefined}>
                 <Icon name={icono} size={14} /> {nombre}
               </button>
             ))}
           </div>
+          {!esAdmin() && <p className="hint" style={{ margin: 0 }}>Publicar al momento es de quien administra; tú prográmala y sale a su hora.</p>}
 
           {modo === "programar" && (
             <div className="cuando-fecha">
@@ -193,6 +197,8 @@ export default function CuandoSale({
           )}
           {modo !== "mano" && errores.length > 0 && <p className="hint">Arregla lo que falta (arriba) para poder publicarla.</p>}
 
+          {/* Al lado del botón, dónde sale: arriba se eligió, aquí se confirma. */}
+          <p className="cuando-destino"><Icon name="send" size={13} /> {resumenDestino(post, redes)}</p>
           <div className="cuando-botones">
             <button type="button" className="btn btn-primary cuando-principal" disabled={deshabilitado} onClick={confirmar}>
               <Icon name={MODOS.find(([k]) => k === modo)[2]} size={16} />

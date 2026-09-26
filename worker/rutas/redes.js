@@ -25,6 +25,7 @@ import {
   COOKIE_META, metaConfigurado, urlVueltaMeta, firmarEstadoMeta, leerEstadoMeta, urlConsentimientoMeta,
   canjearCodigoMeta, cifrarMeta, descifrarMeta, graph, sincronizarCuentasMeta, mensajeMeta, claveDeMedioPublico,
 } from "../lib/meta.js";
+import { aprobadasDelEspacio } from "../../src/lib/aprobacion.js";
 import { programar, programarLote, procesarPublicacion, filaPublica, filaConResumen, ErrorPublicar } from "../lib/publicador.js";
 import {
   COOKIE_TIKTOK, tiktokConfigurado, urlVueltaTikTok, firmarEstadoTikTok, leerEstadoTikTok, firmarEnlaceTikTok, leerEnlaceTikTok,
@@ -372,6 +373,9 @@ export async function rutasPublicar(req, env, { acceso, usuario, partes, metodo,
   if (!id && metodo === "POST") {
     const b = (await cuerpo(req)) ?? {};
     if (!b.calendarId || !b.postId) return error("Falta la publicación");
+    // Publicar AL MOMENTO en la cuenta del cliente no tiene vuelta atrás:
+    // es de quien administra (docs/propuesta-equipo.md, papeles).
+    if (b.ahora && usuario.rol !== "admin") return error("Sólo quien administra puede publicar al momento. Prográmala y sale a su hora.", 403);
     try {
       const filas = await programar(env, acceso, {
         calendarId: String(b.calendarId), postId: String(b.postId),
@@ -390,6 +394,21 @@ export async function rutasPublicar(req, env, { acceso, usuario, partes, metodo,
       if (e instanceof ErrorPublicar) return error(e.message, 422);
       throw e;
     }
+  }
+
+  // Lo aprobado de TODO el espacio que espera a la agencia: la pieza
+  // aprobada «por programar» (el paso final) y la idea «por producir».
+  if (id === "aprobadas" && !sub && metodo === "GET") {
+    const [calendarios, aprobaciones, filas, clientes] = await Promise.all([
+      acceso.leer("calendars"),
+      acceso.leer("approvals"),
+      acceso.leer("publicaciones_programadas"),
+      acceso.leer("clients"),
+    ]);
+    return json(aprobadasDelEspacio({
+      calendarios, aprobaciones, filas,
+      clientes: Object.fromEntries(clientes.map((c) => [c.id, c.name])),
+    }));
   }
 
   // «Programar todo lo aprobado»: varias publicaciones de un calendario.

@@ -6,9 +6,11 @@
 // causaba y ninguno traía su arreglo. Ahora es su propia pestaña, pensada
 // en el orden en que se publica:
 //
-//   1. Dónde sale (las redes) y con qué (los medios, arrastrando o
-//      pegando).
-//   2. Cómo se va a ver, con el recorte de verdad de cada red.
+//   1. Qué sale y dónde (formato y redes, cada una marcada o no y con
+//      lo que sale en ella) y con qué (los medios, arrastrando o pegando).
+//   2. Cómo se va a ver, con el recorte de verdad de cada red. En pantalla
+//      ancha va en su propia columna, a la derecha y siempre a la vista:
+//      en el panel estrecho de antes, configurar tapaba el resultado.
 //   3. El texto de cada red, sus hashtags y su primer comentario.
 //   4. Lo que falta, cada cosa con su botón para arreglarla.
 //   5. Una barra fija abajo con el día, la hora (y la sugerida) y los
@@ -18,7 +20,7 @@
 // servidor al publicar: el aviso llega al escribir, no a la hora de salir.
 // ============================================================
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "../Icon";
 import {
   revisarPublicacion, aplicarArreglo, REDES, AJUSTES, mediosDe, objetivoDe, necesitaAjuste, conMedios, destinoInstagram,
@@ -28,8 +30,10 @@ import { EditorMedios, CamposRedes } from "./editorPublicacion";
 import HistoriasDelPost from "./historiasPost";
 import VistaRed from "./vistaRed";
 import CuandoSale from "./cuandoSale";
+import { EstadoAprobacion } from "./aprobacionCliente";
+import DestinoRedes from "./destinoRedes";
 import { escribirDesdeContenido } from "../../api";
-import { rellenarDesdeContenido, tieneContenido } from "../../lib/subir";
+import { rellenarDesdeContenido, tieneContenido, formatoDeMedios } from "../../lib/subir";
 
 /**
  * Una imagen que Instagram no acepta tal cual (la de Flow, 3:4): en vez de
@@ -66,9 +70,17 @@ function AjusteImagen({ post, sf, medio, objetivo, color }) {
 
 const REDES_POR_DEFECTO = ["instagram"];
 
-export default function PestanaPublicar({ post, sf, setForm, client, clientId, day, cal = null, onError, publicacion = null, children, enlaceAMano = null }) {
+/**
+ * @param formatoAuto  true cuando la publicación se creó con «Subir
+ *                     contenido»: el formato sigue al archivo (una imagen,
+ *                     post; varias, carrusel; un video, reel) hasta que se
+ *                     escoja uno a mano.
+ * @param ancho        pantalla ancha: la vista previa va en su columna.
+ */
+export default function PestanaPublicar({ post, sf, setForm, client, clientId, day, cal = null, onError, publicacion = null, children, enlaceAMano = null, formatoAuto = false, ancho = false }) {
   const ids = useId();
   const entrada = useRef(null);
+  const auto = useRef(formatoAuto);
   const [escribiendo, setEscribiendo] = useState("");
   const [escrito, setEscrito] = useState("");
 
@@ -93,7 +105,17 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
   const { errores, avisos, arreglos } = revisarPublicacion(post, redes, { navegador: true });
   const objetivo = redes.includes("instagram") ? objetivoDe(post, "instagram") : null;
   const fuera = objetivo ? mediosDe(post).find((m) => necesitaAjuste(m, objetivo)) : null;
-  const alternar = (r) => sf("redes", redes.includes(r) ? redes.filter((x) => x !== r) : [...redes, r]);
+  const cuentas = useMemo(() => (publicacion?.estadoRedes
+    ? [...new Set((publicacion.estadoRedes.cuentas ?? []).filter((c) => c.clientId === clientId).map((c) => c.red))]
+    : null), [publicacion?.estadoRedes, clientId]);
+  const elegirFormato = (k) => { auto.current = false; sf("format", k); };
+  // `mediosCambiadosAt` deja saber si los archivos cambiaron DESPUÉS de
+  // que el cliente aprobara la pieza (lib/aprobacion.js). Convertir a JPEG
+  // al programar no pasa por aquí, así que no cuenta como cambio.
+  const alCambiarMedios = (medios) => setForm((p) => {
+    const siguiente = { ...conMedios(p, medios), mediosCambiadosAt: new Date().toISOString() };
+    return auto.current && medios.length ? { ...siguiente, format: formatoDeMedios(medios) ?? p.format } : siguiente;
+  });
   const esHistoria = post.format === "historia";
   const destino = destinoInstagram(post);
   const conImagen = mediosDe(post).some((m) => m.tipo === "imagen");
@@ -117,21 +139,44 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
     </li>
   );
 
+  const vista = <VistaRed post={{ ...post, redes }} redes={redes} client={client} />;
+  const revision = (
+    <section className="revision" aria-label="Revisión antes de publicar">
+      {errores.length > 0 && (
+        <ul className="revision-lista" data-tipo="error" aria-label="Lo que impide publicar">
+          {errores.map((e) => problema(e, "error"))}
+        </ul>
+      )}
+      {visibles.length > 0 && (
+        <ul className="revision-lista" data-tipo="aviso" aria-label="Avisos">
+          {visibles.map((a) => problema(a, "aviso"))}
+        </ul>
+      )}
+      {!errores.length && <p className="revision-ok"><Icon name="check" size={14} /> Lista para publicar en {redes.map((r) => REDES[r].nombre).join(" y ")}.</p>}
+    </section>
+  );
+
   return (
-    <div className="pestana-publicar">
-      <div className="redes-destino" role="group" aria-label="Dónde se publica">
-        {Object.entries(REDES).map(([id, r]) => (
-          <button key={id} type="button" className="filter-chip" aria-pressed={redes.includes(id)} onClick={() => alternar(id)}>
-            <Icon name={r.icono} size={14} /> {r.nombre}
-          </button>
-        ))}
-      </div>
+    <div className="pestana-publicar" data-ancho={ancho || undefined}>
+      <div className="pp-columnas">
+      <div className="pp-config">
+      <section className="pp-bloque" aria-labelledby={`${ids}-que`}>
+        <h3 id={`${ids}-que`} className="label">¿Qué sale y dónde?</h3>
+        <DestinoRedes
+          post={post}
+          redes={redes}
+          onRedes={(lista) => sf("redes", lista)}
+          cuentas={cuentas}
+          formato={post.format}
+          onFormato={elegirFormato}
+        />
+      </section>
 
       <EditorMedios
         post={post}
         clientId={clientId}
         driveFolder={client?.driveFolder}
-        onChange={(medios) => setForm((p) => conMedios(p, medios))}
+        onChange={alCambiarMedios}
         onError={onError}
         entradaRef={entrada}
       />
@@ -150,7 +195,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
 
       {fuera && <AjusteImagen post={post} sf={sf} medio={fuera} objetivo={objetivo} color={client?.primaryColor} />}
 
-      <VistaRed post={{ ...post, redes }} redes={redes} client={client} />
+      {!ancho && vista}
 
       {esHistoria ? (
         <p className="notice notice-warn pestana-publicar-nota">
@@ -192,21 +237,20 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
         <HistoriasDelPost post={post} sf={sf} clientId={clientId} colorMarca={client?.primaryColor} onError={onError} />
       )}
 
-      <section className="revision" aria-label="Revisión antes de publicar">
-        {errores.length > 0 && (
-          <ul className="revision-lista" data-tipo="error" aria-label="Lo que impide publicar">
-            {errores.map((e) => problema(e, "error"))}
-          </ul>
-        )}
-        {visibles.length > 0 && (
-          <ul className="revision-lista" data-tipo="aviso" aria-label="Avisos">
-            {visibles.map((a) => problema(a, "aviso"))}
-          </ul>
-        )}
-        {!errores.length && <p className="revision-ok"><Icon name="check" size={14} /> Lista para publicar en {redes.map((r) => REDES[r].nombre).join(" y ")}.</p>}
-      </section>
+      {!ancho && revision}
+      </div>
+
+      {ancho && (
+        <aside className="pp-vista" aria-label="Cómo se va a ver">
+          <h3 className="label">Así se va a ver</h3>
+          {vista}
+          {revision}
+        </aside>
+      )}
+      </div>
 
       <div className="barra-fija-publicar">
+        <EstadoAprobacion post={post} setForm={setForm} />
         <CuandoSale
           post={post}
           sf={sf}

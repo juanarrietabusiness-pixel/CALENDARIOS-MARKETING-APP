@@ -134,6 +134,8 @@ export async function fetchApprovals(calendarDbId) {
       timestamp: row.updated_at,
       suggestedDescripcion: row.suggested_descripcion || null,
       suggestedGuion: row.suggested_guion || null,
+      tipo: row.tipo || null,
+      huella: row.huella || null,
     };
   }
   return map;
@@ -531,6 +533,36 @@ export async function comentarComoAgencia(calId, postId, texto) {
 }
 
 // ------------------------------------------------------------
+// El equipo dentro de una publicación: hilo interno, historial, tareas
+// ------------------------------------------------------------
+
+const rutaCal = (calId, sub, postId) => `/calendarios/${encodeURIComponent(calId)}/${sub}${postId ? `?post=${encodeURIComponent(postId)}` : ""}`;
+
+/** Las respuestas del cliente de todo el espacio, por «calendario:publicación». */
+export async function aprobacionesDelEspacio() {
+  const filas = (await pedir("/aprobaciones")) ?? [];
+  return new Map(filas.map((a) => [`${a.calendar_id}:${a.post_id}`, {
+    estado: a.estado, tipo: a.tipo, huella: a.huella, timestamp: a.updated_at,
+  }]));
+}
+
+export async function listarNotas(calId, postId) {
+  return (await pedir(rutaCal(calId, "notas", postId))) ?? [];
+}
+
+export async function escribirNota(calId, postId, texto) {
+  return pedir(rutaCal(calId, "notas"), conCuerpo("POST", { postId, texto }));
+}
+
+export async function listarHistorial(calId, postId) {
+  return (await pedir(rutaCal(calId, "historial", postId))) ?? [];
+}
+
+export async function tareasDePublicacion(calId, postId) {
+  return (await pedir(rutaCal(calId, "tareas", postId))) ?? [];
+}
+
+// ------------------------------------------------------------
 // Redes: Meta, las cuentas de cada cliente y la cola de publicación
 //
 // El navegador no habla con Facebook: todo por /api/redes/* y
@@ -565,6 +597,14 @@ export async function listarPublicaciones({ calendario = "", cliente = "" } = {}
 /** Todo el espacio, para la página Programación: pendiente, fallido y lo publicado de los últimos `dias`. */
 export async function listarProgramacion(dias = 14) {
   return (await pedir(`/publicar?todo=1&dias=${dias}`)) ?? [];
+}
+
+/**
+ * Lo aprobado de todo el espacio que espera a la agencia:
+ * { porProgramar: [...], porProducir: [...] } (lib/aprobacion.js).
+ */
+export async function listarAprobadas() {
+  return (await pedir("/publicar/aprobadas")) ?? { porProgramar: [], porProducir: [] };
 }
 
 /** Sólo lo que no se pudo publicar (el aviso de la cabecera y Mi día). */

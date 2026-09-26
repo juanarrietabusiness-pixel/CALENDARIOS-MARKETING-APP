@@ -33,12 +33,24 @@
 .revision { display: flex; flex-direction: column; gap: var(--sp-2); }
 .revision-lista li { flex-wrap: wrap; justify-content: space-between; }
 .revision-lista li .btn { flex-shrink: 0; }
+/* Fija abajo SÓLO a lo ancho, y ahí en una fila. En el teléfono, fija,
+   tapaba más de la mitad de la pantalla: lo que se estaba configurando
+   quedaba en una rendija de 200 px. Ahí va al final, en su sitio. */
 .barra-fija-publicar {
-  position: sticky; bottom: 0; z-index: 1;
   display: flex; flex-direction: column; gap: var(--sp-2);
   margin: 0 calc(-1 * var(--sp-4)); padding: var(--sp-3) var(--sp-4);
-  background: var(--surface); border-top: 1px solid var(--border); box-shadow: var(--elev-2);
+  background: var(--surface); border-top: 1px solid var(--border);
 }
+.pestana-publicar[data-ancho] .barra-fija-publicar {
+  position: sticky; bottom: 0; z-index: 1; box-shadow: var(--elev-2);
+  flex-direction: row; flex-wrap: wrap; align-items: flex-start; column-gap: var(--sp-3);
+}
+.pestana-publicar[data-ancho] .cuando-sale { flex: 1 1 520px; min-width: 0; }
+.pestana-publicar[data-ancho] .cuando-elegir { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: var(--sp-3); row-gap: var(--sp-1); }
+.pestana-publicar[data-ancho] .cuando-elegir .segmented { width: auto; flex: 0 0 auto; }
+.pestana-publicar[data-ancho] .cuando-elegir > :not(.segmented):not(.cuando-fecha):not(.cuando-botones) { flex-basis: 100%; order: 2; }
+.pestana-publicar[data-ancho] .cuando-botones { order: 1; margin-left: auto; }
+.pestana-publicar[data-ancho] .cuando-principal { flex: 0 1 auto; padding-left: var(--sp-5); padding-right: var(--sp-5); }
 .bfp-cuando { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-2xs); }
 .bfp-dia { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; text-transform: capitalize; }
 .hora-sugerida {
@@ -149,3 +161,93 @@
 .cuando-redes { list-style: none; display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-2xs); color: var(--text-dim); }
 .cuando-redes li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .cuando-aviso { color: var(--accent-alt); }
+
+/* «¿Qué sale y dónde?»: cada red con su casilla y lo que sale en ella */
+.destino { display: flex; flex-direction: column; gap: var(--sp-2); }
+.destino-fila { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.destino-fila .filter-chip { display: inline-flex; align-items: center; gap: 4px; }
+.destino-redes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-2); }
+.destino-red {
+  display: flex; align-items: center; gap: var(--sp-2); min-height: var(--tap); padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--text-dim); text-align: left; cursor: pointer; transition: border-color .15s, background .15s;
+}
+.destino-red:hover:not(:disabled) { border-color: var(--accent); }
+.destino-red[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.destino-red:disabled { cursor: not-allowed; }
+.destino-red[data-sin-cuenta]:not([aria-pressed="true"]) { opacity: .55; }
+.destino-casilla {
+  flex: 0 0 auto; width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--border-strong);
+  display: inline-flex; align-items: center; justify-content: center; color: #fff;
+}
+.destino-red[aria-pressed="true"] .destino-casilla { background: var(--accent); border-color: var(--accent); }
+.destino-red-texto { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.destino-red-texto strong { font-size: var(--fs-xs); }
+.destino-red-texto span { font-size: var(--fs-3xs); color: var(--text-dim); }
+.destino-red[aria-pressed="true"] .destino-red-texto span { color: var(--accent); font-weight: 600; }
+.destino-resumen { display: flex; align-items: flex-start; gap: var(--sp-1); margin: 0; font-size: var(--fs-2xs); font-weight: 600; color: var(--text-muted); }
+.destino-resumen .icon, .destino-resumen svg { flex-shrink: 0; margin-top: 2px; }
+
+/* ---- El panel a lo ancho (desde 1024 px) ----
+   Una ventana grande en el centro en vez de 440 px pegados a la derecha:
+   en Subir, configurar a la izquierda y la vista previa a la derecha,
+   siempre a la vista; en Idea, lo que se escribe y lo que se habla con el
+   cliente, lado a lado. */
+.panel-right.panel-ancho {
+  top: var(--sp-4); bottom: var(--sp-4);
+  left: max(var(--sp-4), calc(50vw - 640px)); right: max(var(--sp-4), calc(50vw - 640px));
+  width: auto;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-lg); overflow: hidden;
+  animation: popIn .2s cubic-bezier(.22,.61,.36,1);
+}
+.pp-columnas { display: flex; flex-direction: column; gap: var(--sp-3); }
+.pp-config { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+.pp-bloque { display: flex; flex-direction: column; gap: var(--sp-2); }
+.pp-bloque > h3 { margin: 0; }
+.pestana-publicar[data-ancho] .pp-columnas { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); gap: var(--sp-5); align-items: start; }
+.pp-vista {
+  position: sticky; top: 0; display: flex; flex-direction: column; gap: var(--sp-3);
+  max-height: calc(100dvh - 260px); overflow-y: auto; padding: var(--sp-3); border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border);
+}
+.pp-vista > h3 { margin: 0; }
+.pp-vista .vista-red-telefono { max-width: 100%; }
+.idea-columnas, .idea-escribir, .idea-lado { display: flex; flex-direction: column; min-width: 0; }
+.idea-columnas[data-ancho] { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr); gap: var(--sp-5); align-items: start; }
+.idea-columnas[data-ancho] .idea-escribir .textarea { min-height: 140px; }
+.idea-columnas[data-ancho] .idea-lado { position: sticky; top: 0; padding: var(--sp-3); border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border); }
+.cuando-destino { display: flex; align-items: flex-start; gap: var(--sp-1); margin: 0; font-size: var(--fs-3xs); font-weight: 600; color: var(--text-muted); }
+.cuando-destino svg { flex-shrink: 0; margin-top: 2px; }
+
+/* Qué aprueba el cliente y en qué quedó (aprobacionCliente.jsx). */
+.que-aprueba { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-3); }
+.aprobacion-estado { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); margin: 0; }
+.aprobacion-estado p { margin: 0; display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.aprobacion-estado .hint { display: block; }
+
+/* El equipo dentro de la publicación (equipoPublicacion.jsx). */
+.persona-mini { border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: var(--fs-3xs); font-weight: 700; flex-shrink: 0; }
+.lo-lleva-fila { display: flex; align-items: center; gap: var(--sp-2); }
+.lo-lleva-fila .input { flex: 1; min-width: 0; }
+.etapas { list-style: none; display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 var(--sp-2); padding: 0; }
+.etapas li button, .etapas li span { display: inline-flex; align-items: center; gap: 4px; min-height: var(--tap-sm); padding: 0 var(--sp-2); border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--bg); color: var(--text-dim); font-size: var(--fs-3xs); font-weight: 600; }
+.etapas li button { cursor: pointer; }
+.etapas li span { border-style: dashed; }
+.etapas li[data-actual] button, .etapas li[data-actual] span { background: var(--accent-soft); border-color: var(--accent); border-style: solid; color: var(--accent); }
+.etapa-revision { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border-radius: var(--radius); background: var(--surface-2); }
+.etapa-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.hilo-anterior { font-size: var(--fs-2xs); color: var(--text-dim); padding: var(--sp-2) var(--sp-3); border-left: 3px solid var(--border-strong); white-space: pre-wrap; margin: 0 0 var(--sp-2); }
+.hilo-anterior span { font-weight: 700; }
+.hilo-lista { list-style: none; display: flex; flex-direction: column; gap: var(--sp-2); margin: 0 0 var(--sp-2); padding: 0; }
+.hilo-lista li { display: flex; gap: var(--sp-2); align-items: flex-start; }
+.hilo-quien { font-size: var(--fs-3xs); color: var(--text-dim); margin: 0; }
+.hilo-texto { font-size: var(--fs-xs); margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.hilo-form { display: flex; flex-direction: column; gap: var(--sp-2); }
+.hilo-acciones { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.hilo-menciones { display: flex; flex-wrap: wrap; gap: 4px; }
+.tareas-publicacion-lista { list-style: none; display: flex; flex-direction: column; gap: 2px; margin: 0 0 var(--sp-2); padding: 0; }
+.tareas-publicacion-lista li { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-xs); }
+.tareas-publicacion-lista li[data-hecha] span:first-of-type { text-decoration: line-through; color: var(--text-dim); }
+.tareas-publicacion-form { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
+.tareas-publicacion-form .input:first-of-type { grid-column: 1 / -1; }
+.historial-publicacion summary { cursor: pointer; font-size: var(--fs-xs); font-weight: 700; min-height: var(--tap-sm); display: flex; align-items: center; gap: var(--sp-2); }
+.historial-publicacion ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-2xs); }
