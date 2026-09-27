@@ -28,10 +28,16 @@ export const COOKIE_META = "__Host-meta-oauth";
  * Lo que se pide al conectar. Publicar, leer métricas y comentar el
  * primer comentario; `business_management` para ver las páginas que
  * llegan por un portafolio comercial (el acceso de socio de un cliente).
+ * `pages_read_user_content` es el que deja leer las reacciones y los
+ * comentarios de las publicaciones de Facebook: sin él, `/posts` con
+ * reacciones falla con un (#10). Activarlo en la app de Meta no basta:
+ * tiene que estar en la configuración (o en esta lista) y hay que volver a
+ * conectar, porque el token que ya se tiene no lo lleva.
  */
 export const PERMISOS_META = [
   "pages_show_list",
   "pages_read_engagement",
+  "pages_read_user_content",
   "pages_manage_posts",
   "read_insights",
   "business_management",

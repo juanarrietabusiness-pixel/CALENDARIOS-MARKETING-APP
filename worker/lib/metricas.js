@@ -183,7 +183,9 @@ async function publicacionesFB(env, token, pagina, desde) {
       interacciones: reacciones + comentarios + compartidos,
     };
   });
-  return { lista, fallos, recibidas: r?.data?.length ?? 0 };
+  // Parcial: se leyeron, pero con menos campos (sin reacciones). No es lo
+  // mismo que no poder leer nada, y la pantalla lo dice distinto.
+  return { lista, fallos, parcial: Boolean(r) && fallos.length > 0, recibidas: r?.data?.length ?? 0 };
 }
 
 // ------------------------------------------------------------
@@ -215,7 +217,7 @@ export async function fotografiarCuenta(env, acceso, cuenta, fecha = fechaDeFoto
     publicaciones = fb.lista;
     // Por qué no llegaron publicaciones, si no llegaron: sin esto, un
     // permiso que falta se ve igual que una página que no publica.
-    if (fb.fallos.length) datos = { ...datos, avisos: { publicaciones: fb.fallos } };
+    if (fb.fallos.length) datos = { ...datos, avisos: { publicaciones: fb.fallos, ...(fb.parcial ? { parcial: true } : {}) } };
     else datos = { ...datos, recibidas: fb.recibidas };
   } else if (cuenta.red === "tiktok") {
     // TikTok no da métricas por día de la cuenta: seguidores y totales,

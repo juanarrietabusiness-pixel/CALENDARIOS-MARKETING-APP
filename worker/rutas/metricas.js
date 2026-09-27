@@ -31,6 +31,7 @@ const salidaSerie = (f) => {
     alcance: f.alcance, vistas: f.vistas, interacciones: f.interacciones, visitas: f.visitas_perfil,
     ...(datos.error ? { error: datos.error } : {}),
     ...(datos.avisos?.publicaciones?.length ? { avisoPublicaciones: datos.avisos.publicaciones.at(-1) } : {}),
+    ...(datos.avisos?.parcial ? { publicacionesParciales: true } : {}),
   };
 };
 
