@@ -47,6 +47,23 @@ export const PERMISOS_META = [
   "instagram_manage_comments",
 ];
 
+/**
+ * Los permisos que el token lleva DE VERDAD (`/me/permissions`). Lo que se
+ * marca en la app no llega al token si no está en la configuración del
+ * inicio de sesión: esto es lo que lo dice. null si Meta no contesta.
+ */
+export async function permisosConcedidos(env, token) {
+  try {
+    const r = await graph(env, token, "/me/permissions");
+    return (r?.data ?? []).filter((p) => p.status === "granted").map((p) => p.permission);
+  } catch {
+    return null;
+  }
+}
+
+/** Los de PERMISOS_META que no están en lo concedido (vacío si no se sabe). */
+export const permisosQueFaltan = (concedidos) => (Array.isArray(concedidos) ? PERMISOS_META.filter((p) => !concedidos.includes(p)) : []);
+
 export const metaConfigurado = (env) => Boolean(env.META_APP_ID && env.META_APP_SECRET);
 const version = (env) => env.META_GRAPH_VERSION || VERSION_GRAPH;
 export const urlGraph = (env) => `https://graph.facebook.com/${version(env)}`;

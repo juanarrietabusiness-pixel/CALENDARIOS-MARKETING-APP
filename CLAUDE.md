@@ -235,7 +235,7 @@ worker/
     mcp.js                El servidor MCP (/mcp), su OAuth (/oauth/*, /.well-known/*) y
                           el permiso y las conexiones (/api/mcp/*)
     avisos.js             /api/avisos: la bandeja de quien pregunta y marcar leídos
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1246,6 +1246,16 @@ son del servidor.
   del cliente sólo enseña lo que está en «Con el cliente» (o ya
   respondido) — `visibleParaCliente()`. Encenderla esconde todo lo
   pendiente sin etapa: es a propósito.
+- **Reconectar Meta no borra el aviso de la última medición.** Los avisos
+  de Resultados salen de la FOTO guardada (`metricas_cuenta.datos.avisos`),
+  y reconectar no vuelve a medir: sigue saliendo hasta «Actualizar ahora»
+  o la foto del día siguiente. Por eso al conectar (y con «Actualizar
+  cuentas») se guarda lo que Meta concedió DE VERDAD
+  (`integracion_meta.permisos`, `/me/permissions`): Ajustes dice qué falta
+  y Resultados distingue «el token ya lo tiene, vuelve a medir» de «sigue
+  sin él». Con `META_CONFIG_ID` los permisos salen de la CONFIGURACIÓN del
+  inicio de sesión para empresas, no de `PERMISOS_META` ni de lo que se
+  active en la app.
 - **`tests/utils/d1Memoria.js` es una D1 de verdad** (SQLite de Node con
   todas las migraciones). Para lo que un doble a mano no ve: que las
   consultas de la capa de acceso existen en el esquema. La cola de

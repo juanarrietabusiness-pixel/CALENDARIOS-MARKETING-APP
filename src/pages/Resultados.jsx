@@ -153,9 +153,17 @@ export default function Resultados({ client, pulso = 0, onPersistClient }) {
     // Se leyeron sin reacciones: las cifras de cada publicación salen bajas,
     // no a cero. Casi siempre es el permiso que no lleva el token de ahora.
     if (f.publicacionesParciales && /pages_read_user_content/.test(f.avisoPublicaciones)) {
+      // ¿El token de AHORA ya lo lleva? Entonces el aviso es de una medición
+      // anterior a reconectar: reconectar no vuelve a medir, hay que medir.
+      if (datos.metaPermisos?.includes("pages_read_user_content")) {
+        return {
+          id: f.cuentaId,
+          texto: `${nombre}: la última medición (${fechaLarga(f.fecha)}) se hizo antes de que el token tuviera el permiso pages_read_user_content. Ya lo tiene: pulsa «Actualizar ahora» y este aviso desaparece.`,
+        };
+      }
       return {
         id: f.cuentaId,
-        texto: `${nombre}: sus publicaciones se leen, pero sin reacciones ni comentarios. Falta el permiso pages_read_user_content en el token: márcalo en la configuración de «Inicio de sesión con Facebook para empresas» de tu app de Meta, vuelve a conectar Meta en Ajustes → Integraciones y pulsa «Actualizar ahora».`,
+        texto: `${nombre}: sus publicaciones se leen, pero sin reacciones ni comentarios. El token de Meta no tiene el permiso pages_read_user_content${datos.metaPermisos ? " (comprobado después de conectar)" : ""}. Activarlo en la app no basta: márcalo en la CONFIGURACIÓN de «Inicio de sesión con Facebook para empresas» (la del ID de META_CONFIG_ID), vuelve a conectar Meta en Ajustes → Integraciones y pulsa «Actualizar ahora». En Ajustes → Integraciones se ve qué permisos trae el token.`,
       };
     }
     return { id: f.cuentaId, texto: `${nombre}: Meta no dejó leer sus publicaciones (${f.avisoPublicaciones})` };

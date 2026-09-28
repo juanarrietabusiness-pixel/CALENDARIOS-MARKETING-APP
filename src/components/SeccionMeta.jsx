@@ -178,6 +178,25 @@ export default function SeccionMeta({ esAdmin, clients = [], pulso = 0 }) {
               </>
             )}
           </div>
+          {/* Lo que el token lleva DE VERDAD (/me/permissions). Marcar un
+              permiso en la app no lo mete en el token: tiene que estar en la
+              configuración del inicio de sesión y hay que volver a conectar. */}
+          {meta.permisos === null ? (
+            <p className="hint">Pulsa «Actualizar cuentas» para comprobar qué permisos trae el token.</p>
+          ) : meta.faltan?.length ? (
+            <div className="notice notice-warn" role="status" style={{ display: "block" }}>
+              <p style={{ margin: 0 }}>
+                <Icon name="alert" size={14} /> Al token le falta{meta.faltan.length > 1 ? "n" : ""}: <strong>{meta.faltan.join(", ")}</strong>.
+              </p>
+              <p className="hint" style={{ margin: "var(--sp-1) 0 0" }}>
+                Márcalo{meta.faltan.length > 1 ? "s" : ""} en la <strong>configuración</strong> de «Inicio de sesión con Facebook para
+                empresas» de tu app de Meta (la del ID que pusiste en META_CONFIG_ID) —activarlo en «Permisos y funciones» no
+                basta— y pulsa «Volver a conectar».
+              </p>
+            </div>
+          ) : (
+            <p className="hint"><Icon name="check" size={14} /> El token trae todos los permisos que usa la app.</p>
+          )}
 
           {cuentas.length === 0 ? (
             <p className="hint">
