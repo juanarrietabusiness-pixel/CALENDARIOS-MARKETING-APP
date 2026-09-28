@@ -30,7 +30,12 @@ const salidaSerie = (f) => {
     cuentaId: f.cuenta_id, red: f.red, fecha: f.fecha, seguidores: f.seguidores, publicaciones: f.publicaciones,
     alcance: f.alcance, vistas: f.vistas, interacciones: f.interacciones, visitas: f.visitas_perfil,
     ...(datos.error ? { error: datos.error } : {}),
-    ...(datos.avisos?.publicaciones?.length ? { avisoPublicaciones: datos.avisos.publicaciones.at(-1) } : {}),
+    ...(datos.avisos?.publicaciones?.length ? {
+      avisoPublicaciones: datos.avisos.publicaciones.at(-1),
+      // Se leyeron, pero sin reacciones. Las fotos de antes no traen la
+      // marca: si sólo falló el intento con reacciones, el siguiente valió.
+      publicacionesParciales: datos.avisos.parcial ?? (datos.avisos.publicaciones.length === 1 && datos.avisos.publicaciones[0].startsWith("/posts (con reacciones)")),
+    } : {}),
   };
 };
 
@@ -70,12 +75,13 @@ export async function rutasMetricas(req, env, { acceso, usuario, partes, metodo 
     const desdeComparar = sumarDias(hoy, -2 * dias);
     const desde = sumarDias(hoy, -dias);
 
-    const [cuentas, serie, publicaciones, competencia, publicadas] = await Promise.all([
+    const [cuentas, serie, publicaciones, competencia, publicadas, meta] = await Promise.all([
       acceso.leer("cuentas_sociales", { client_id: id }, "red asc"),
       acceso.leer("metricas_cuenta", { client_id: id }, "fecha asc"),
       acceso.leer("metricas_publicacion", { client_id: id }, "publicada_at desc"),
       acceso.leer("metricas_competencia", { client_id: id }, "fecha asc"),
       acceso.leer("publicaciones_programadas", { client_id: id, estado: "publicada" }),
+      acceso.leerUno("integracion_meta", { id: acceso.ownerId }),
     ]);
     const porExterno = new Map(publicadas.filter((f) => f.externo_id).map((f) => [f.externo_id, f]));
 
@@ -103,6 +109,9 @@ export async function rutasMetricas(req, env, { acceso, usuario, partes, metodo 
       })),
       competidores: leerJSON(cliente.competidores ?? "[]", []),
       ultimaFoto: serie.at(-1)?.fecha ?? null,
+      // Para decir si un aviso de permisos es de ANTES de reconectar Meta.
+      metaPermisos: meta?.permisos ? JSON.parse(meta.permisos) : null,
+      metaConectadaEn: meta?.updated_at ?? null,
     });
   }
 

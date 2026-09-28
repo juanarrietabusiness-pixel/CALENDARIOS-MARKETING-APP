@@ -324,6 +324,25 @@ describe("por la puerta del Worker", () => {
     ...opciones, headers: { Cookie: `${COOKIE}=${TESTIGO}`, "Content-Type": "application/json", ...(opciones.headers ?? {}) },
   });
 
+  it("el estado dice qué permisos le faltan al token (lo que Meta concedió de verdad)", async () => {
+    await sembrar();
+    let r = await (await worker.fetch(conSesion("/api/redes/estado"), env, {})).json();
+    expect(r.meta.permisos).toBeNull();
+    db.sqlite.prepare("update integracion_meta set permisos = ?").run(JSON.stringify(["pages_show_list", "pages_read_engagement"]));
+    r = await (await worker.fetch(conSesion("/api/redes/estado"), env, {})).json();
+    expect(r.meta.faltan).toContain("pages_read_user_content");
+    expect(r.meta.faltan).not.toContain("pages_show_list");
+  });
+
+  it("«Actualizar cuentas» vuelve a leer los permisos del token", async () => {
+    await sembrar();
+    respuestas["GET /me/accounts"] = { data: [] };
+    respuestas["GET /me/permissions"] = { data: [{ permission: "pages_read_user_content", status: "granted" }, { permission: "read_insights", status: "declined" }] };
+    const res = await worker.fetch(conSesion("/api/redes/meta/sincronizar", { method: "POST" }), env, {});
+    expect(res.status).toBe(200);
+    expect(JSON.parse(db.sqlite.prepare("select permisos from integracion_meta").get().permisos)).toEqual(["pages_read_user_content"]);
+  });
+
   it("el estado enseña las cuentas sin un solo token", async () => {
     await sembrar();
     const res = await worker.fetch(conSesion("/api/redes/estado"), env, {});

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import worker from "../../worker/index.js";
 import { d1EnMemoria } from "../utils/d1Memoria.js";
 import { crearAcceso } from "../../worker/lib/acceso.js";
-import { cifrarMeta } from "../../worker/lib/meta.js";
+import { cifrarMeta, PERMISOS_META } from "../../worker/lib/meta.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
 import { fotografiarCuenta, fotoPendiente, fechaDeFoto } from "../../worker/lib/metricas.js";
@@ -119,6 +119,12 @@ describe("la foto de una cuenta", () => {
     expect(db.sqlite.prepare("select count(*) n from metricas_publicacion where cuenta_id = 'fb'").get().n).toBe(1);
     const datos = JSON.parse(db.sqlite.prepare("select datos from metricas_cuenta where cuenta_id = 'fb'").get().datos);
     expect(datos.avisos.publicaciones[0]).toMatch(/pages_read_user_content/);
+    // Se leyeron sin reacciones: no es lo mismo que no poder leer nada.
+    expect(datos.avisos.parcial).toBe(true);
+  });
+
+  it("al conectar Meta se pide pages_read_user_content (sin él, las reacciones de Facebook fallan)", () => {
+    expect(PERMISOS_META).toContain("pages_read_user_content");
   });
 
   it("repetir la foto del mismo día la reescribe, no la duplica", async () => {

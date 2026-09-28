@@ -28,10 +28,16 @@ export const COOKIE_META = "__Host-meta-oauth";
  * Lo que se pide al conectar. Publicar, leer métricas y comentar el
  * primer comentario; `business_management` para ver las páginas que
  * llegan por un portafolio comercial (el acceso de socio de un cliente).
+ * `pages_read_user_content` es el que deja leer las reacciones y los
+ * comentarios de las publicaciones de Facebook: sin él, `/posts` con
+ * reacciones falla con un (#10). Activarlo en la app de Meta no basta:
+ * tiene que estar en la configuración (o en esta lista) y hay que volver a
+ * conectar, porque el token que ya se tiene no lo lleva.
  */
 export const PERMISOS_META = [
   "pages_show_list",
   "pages_read_engagement",
+  "pages_read_user_content",
   "pages_manage_posts",
   "read_insights",
   "business_management",
@@ -40,6 +46,23 @@ export const PERMISOS_META = [
   "instagram_manage_insights",
   "instagram_manage_comments",
 ];
+
+/**
+ * Los permisos que el token lleva DE VERDAD (`/me/permissions`). Lo que se
+ * marca en la app no llega al token si no está en la configuración del
+ * inicio de sesión: esto es lo que lo dice. null si Meta no contesta.
+ */
+export async function permisosConcedidos(env, token) {
+  try {
+    const r = await graph(env, token, "/me/permissions");
+    return (r?.data ?? []).filter((p) => p.status === "granted").map((p) => p.permission);
+  } catch {
+    return null;
+  }
+}
+
+/** Los de PERMISOS_META que no están en lo concedido (vacío si no se sabe). */
+export const permisosQueFaltan = (concedidos) => (Array.isArray(concedidos) ? PERMISOS_META.filter((p) => !concedidos.includes(p)) : []);
 
 export const metaConfigurado = (env) => Boolean(env.META_APP_ID && env.META_APP_SECRET);
 const version = (env) => env.META_GRAPH_VERSION || VERSION_GRAPH;

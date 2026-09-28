@@ -156,10 +156,15 @@ Una vez, con el Facebook de la AGENCIA (el que administra las páginas):
    app en **Ajustes → Integraciones** (`https://<dominio>/api/redes/meta/callback`).
 4. **Configuraciones → Crear configuración**: token de acceso de
    **usuario**, y los permisos `pages_show_list`, `pages_read_engagement`,
-   `pages_manage_posts`, `read_insights`, `business_management`,
-   `instagram_basic`, `instagram_content_publish`,
+   `pages_read_user_content`, `pages_manage_posts`, `read_insights`,
+   `business_management`, `instagram_basic`, `instagram_content_publish`,
    `instagram_manage_insights`, `instagram_manage_comments`. Copiar el
    **ID de configuración**.
+
+   Un permiso que se añada DESPUÉS (como `pages_read_user_content`, que
+   deja leer reacciones y comentarios de Facebook) hay que marcarlo en
+   ESTA configuración —activarlo en la app no basta— y luego volver a
+   pulsar **Conectar con Facebook**: el token que ya había no lo lleva.
 5. **Configuración de la app → Básica**: copiar el identificador y la clave
    secreta; poner `https://<dominio>/privacidad` como política de
    privacidad.

@@ -24,6 +24,7 @@ import { ahora, testigo } from "../lib/ids.js";
 import {
   COOKIE_META, metaConfigurado, urlVueltaMeta, firmarEstadoMeta, leerEstadoMeta, urlConsentimientoMeta,
   canjearCodigoMeta, cifrarMeta, descifrarMeta, graph, sincronizarCuentasMeta, mensajeMeta, claveDeMedioPublico,
+  permisosConcedidos, permisosQueFaltan,
 } from "../lib/meta.js";
 import { aprobadasDelEspacio } from "../../src/lib/aprobacion.js";
 import { programar, programarLote, procesarPublicacion, filaPublica, filaConResumen, ErrorPublicar } from "../lib/publicador.js";
@@ -156,6 +157,7 @@ export async function rutaMetaCallback(req, env) {
   try {
     const { token, expira } = await canjearCodigoMeta(env, req, url.searchParams.get("code") ?? "");
     const yo = await graph(env, token, "/me", { params: { fields: "id,name" } });
+    const permisos = await permisosConcedidos(env, token);
     const previa = await acceso.leerUno("integracion_meta", { id: estado.ownerId });
     await acceso.guardar("integracion_meta", {
       id: estado.ownerId,
@@ -167,6 +169,7 @@ export async function rutaMetaCallback(req, env) {
       // dirección están los medios que Meta tiene que descargar.
       origen: url.origin,
       conectado_por: estado.userId ?? null,
+      permisos: permisos ? JSON.stringify(permisos) : null,
       created_at: previa?.created_at ?? ahora(),
       updated_at: ahora(),
     });
@@ -223,6 +226,10 @@ export async function rutasRedes(req, env, { acceso, usuario, partes, metodo }) 
         expira: fila?.expira ?? null,
         desde: fila?.updated_at ?? null,
         redireccion: urlVueltaMeta(req),
+        // Lo que el token lleva de verdad, y lo que falta (null = no se sabe:
+        // conectado antes de apuntarlo; «Actualizar cuentas» lo averigua).
+        permisos: fila?.permisos ? JSON.parse(fila.permisos) : null,
+        faltan: fila?.permisos ? permisosQueFaltan(JSON.parse(fila.permisos)) : null,
       },
       tiktok: { configurado: tiktokConfigurado(env), redireccion: urlVueltaTikTok(new URL(req.url).origin) },
       cuentas: cuentas.map(cuentaPublica),
@@ -249,8 +256,12 @@ export async function rutasRedes(req, env, { acceso, usuario, partes, metodo }) 
     const fila = await acceso.leerUno("integracion_meta", { id: acceso.ownerId });
     if (!fila) return error("Meta no está conectado", 409);
     try {
-      const total = await sincronizarCuentasMeta(env, acceso, await descifrarMeta(env, fila.token_cifrado));
-      await acceso.actualizar("integracion_meta", { id: acceso.ownerId }, { origen: new URL(req.url).origin, updated_at: ahora() });
+      const token = await descifrarMeta(env, fila.token_cifrado);
+      const total = await sincronizarCuentasMeta(env, acceso, token);
+      const permisos = await permisosConcedidos(env, token);
+      await acceso.actualizar("integracion_meta", { id: acceso.ownerId }, {
+        origen: new URL(req.url).origin, updated_at: ahora(), ...(permisos ? { permisos: JSON.stringify(permisos) } : {}),
+      });
       difundir(env, acceso.ownerId, { tipo: "ajustes", por: firma(usuario, req) });
       return json({ ok: true, total });
     } catch (e) {
