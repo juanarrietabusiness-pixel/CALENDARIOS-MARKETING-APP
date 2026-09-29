@@ -50,6 +50,9 @@ async function cambiando(clienteId, hacer) {
 /** Las notas (sin su texto entero) y el estado del cerebro. */
 export const listarCerebro = (clienteId) => llamar(base(clienteId));
 
+/** El mapa: las notas sin su texto y sus conexiones ({ notas, enlaces, menciones }; las conexiones son índices de `notas`). */
+export const leerGrafo = (clienteId) => llamar(`${base(clienteId)}/grafo`);
+
 /** Una nota entera. */
 export const leerNota = (clienteId, notaId) => llamar(`${base(clienteId)}/nota/${encodeURIComponent(notaId)}`);
 

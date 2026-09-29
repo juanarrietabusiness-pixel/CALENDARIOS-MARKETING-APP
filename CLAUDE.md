@@ -110,6 +110,10 @@ src/
     cerebro.js            Cliente de /api/cerebro (notas, buscar, importar, preparar ficha)
     cerebroVista.js       La pestaña Cerebro: tipos, filtros, frases de resultado, documentos (puro)
     cerebroCliente.js     La generación con cerebro: texto estable, qué buscar por tanda (puro)
+    cerebroGrafo.js       El mapa 3D: modelo, colores por tipo, filtros, búsqueda, vecinas (puro)
+    cerebroLayout.js      Dónde queda cada nota dentro del cerebro (lóbulos, hemisferios; puro;
+                          portado de layout3D de Agents Office)
+    camara3d.js           Cámara de órbita y proyección a pantalla (puro; sustituye a OrbitControls)
     vivo.js               WebSocket: reconexión, latido, presencia
     horas.js              «9am» → «09:00» y vuelta (puro)
     lote.js               Editar muchas publicaciones de una vez (puro)
@@ -176,6 +180,8 @@ src/
     BancoSelector.jsx     Escoger de Drive (o del banco anterior); forma única
     PestanaContenido.jsx  La pestaña Contenido: Drive + migrar el banco anterior
     Cerebro.jsx           La pestaña Cerebro: las notas de un cliente, filtros, buscar, añadir, subir
+    CerebroGrafo.jsx      «Mapa 3D» de la pestaña: explorar, elegir una nota, ver sus vecinas (lazy)
+    cerebro3d/escena.js   El lienzo del mapa: dibuja, gira, elige; sin librerías (canvas 2D)
     NavPrincipal.jsx / MenuCuenta.jsx / BarraInferior.jsx / Buscador.jsx
                           Armazón: secciones, cuenta, barra del móvil, Ctrl+K
     ClientModal.jsx       Alta y edición de cliente (5 pestañas)
@@ -251,7 +257,7 @@ worker/
     metricas.js           Resultados de un cliente, de la agencia y la miniatura de Meta
     informes.js           Informes: listar, generar, compartir; el público va en index.js
     auditorias.js         Auditorías: listar, generar, compartir; la pública va en index.js
-    cerebro.js            /api/cerebro/<cliente>: notas, buscar, contexto, importar, preparar
+    cerebro.js            /api/cerebro/<cliente>: notas, buscar, contexto, grafo, importar, preparar
     mcp.js                El servidor MCP (/mcp), su OAuth (/oauth/*, /.well-known/*) y
                           el permiso y las conexiones (/api/mcp/*)
     avisos.js             /api/avisos: la bandeja de quien pregunta y marcar leídos
@@ -1042,6 +1048,37 @@ son del servidor.
   chat usa `{ maquetacion: true }` porque alguien puede pedirle el prompt
   para Meta AI; en la Fase 0 se le quitó sin querer (`buildChatSystemPrompt`
   también pasa por `buildClientContext`) y este mismo archivo decía que no.
+- **El mapa 3D se dibuja en un lienzo 2D, sin three.js, y eso es una
+  decisión.** La oficina de agentes usa three.js (144 kB comprimidos, más que
+  toda esta aplicación) porque dibuja miles de notas; un cliente de esta
+  agencia son decenas o cientos. `cerebro3d/escena.js` proyecta cada nota con
+  la cámara de `lib/camara3d.js`, dibuja el brillo sumando luz (`lighter`) y
+  guarda la interfaz de `initBrain3D`, así que si algún día hicieran falta
+  miles de notas se cambia ese archivo y nada más. Un caso de
+  `rendimiento.bundle.test.js` falla si el chunk pasa de 30 kB o si aparece
+  `WebGLRenderer` dentro. Cosas que se aprendieron al portarlo:
+  · **El lienzo es SIEMPRE oscuro,** con el tema que sea: el brillo es luz que
+  se suma y sobre un fondo claro desaparece. Sus colores viven en `--cg-*`
+  dentro de `.cg-escenario` y no salen de ahí; los de cada tipo, en
+  `COLOR_TIPO`.
+  · **Un sitio guardado que no es un número contagiaba a sus vecinas.** En el
+  `layout3D` original, una nota nueva «nace junto a una vecina que ya tenga
+  sitio» sin comprobar que el sitio fuera un número: con uno roto, la nota
+  nacía en NaN y se quedaba fuera del cerebro. `colocar()` lo valida.
+  · **Sólo se mueven la nota nueva y las que toca:** el resto conserva su
+  sitio, y con `clave` (el cliente) se recuerda entre visitas en
+  `localStorage`; si `VERSION_LAYOUT` sube, lo guardado deja de valer.
+  · **Los toques se buscan en coordenadas del lienzo** (`clientX − rect.left`),
+  con 16 px de tolerancia con ratón y 26 con el dedo; un movimiento de más de
+  5 px (10 con el dedo) es un arrastre y gira el cerebro. El lienzo lleva
+  `touch-action: none`.
+  · **El lienzo no es accesible por sí mismo:** es `aria-hidden`. La lista de
+  notas de la izquierda hace lo mismo que tocar un punto, y con el foco en el
+  lienzo las flechas giran, +/− acercan y 0 lo devuelve a su sitio.
+  · **A lo ancho la nota elegida flota sobre el lienzo** y el cerebro se centra
+  en el hueco que queda (`setInsets`); en el teléfono va debajo y no tapa nada.
+  · **`prefers-reduced-motion`:** ni gira solo, ni lanza señales, ni vuela
+  (el vuelo es un salto).
 - **El repositorio ya no manda: el cerebro sí.** El repo Workspace queda
   como copia de seguridad. Lo que hoy lee de él —las sesiones de Claude
   Code que trabajan ese repo, `verificar.mjs`, los tests de recetas de

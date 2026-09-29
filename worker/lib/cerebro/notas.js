@@ -128,6 +128,18 @@ export function clasificarArchivo(ruta) {
   return { tipo: "documento", interna: 0, forma: "texto" };
 }
 
+/**
+ * En qué «lóbulo» del cerebro cae una nota: lo que las notas de un mismo archivo comparten. En el mapa 3D cada lóbulo
+ * es una región propia; el color, en cambio, sale del tipo. La ficha y las cifras van juntas: son el centro.
+ */
+export function grupoDe(nota) {
+  if (nota.tipo === "ficha" || nota.tipo === "cifras") return "Ficha y cifras";
+  // Los informes de otros sistemas se llaman por su fecha («2026-09.md»): un lóbulo por cada uno sería un lóbulo de una nota.
+  if (nota.tipo === "borrador") return "Informes de otros sistemas";
+  if (nota.fuente) return tituloDeArchivo(nota.fuente);
+  return nota.origen === "ia" ? "Escritas por la IA" : "Escritas a mano";
+}
+
 /** El nombre de un archivo como título: `01_brand_guidelines.md` → «Brand guidelines». */
 export function tituloDeArchivo(ruta) {
   const nombre = String(ruta).split("/").pop().replace(/\.[a-z]+$/i, "").replace(/^\d+[_-]/, "").replace(/[_-]+/g, " ").trim();

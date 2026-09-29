@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import {
-  slug, rutaUnica, limpiarNota, clasificarArchivo, tituloDeArchivo, seccionesDe, dividirEnNotas, derivados,
+  slug, rutaUnica, limpiarNota, clasificarArchivo, tituloDeArchivo, seccionesDe, dividirEnNotas, derivados, grupoDe,
   MAX_TEXTO, AUTORIDAD, SIEMPRE, TIPOS,
 } from "../../worker/lib/cerebro/notas.js";
 import { RAIZ, hayWorkspace } from "../../src/lib/workspace.test-helper.js";
@@ -186,6 +186,28 @@ describe("dividirEnNotas", () => {
   it("todo tipo que sale existe", () => {
     const n = dividirEnNotas("X/01_ADN_y_Memoria/05_prompt_maestro_meta_ai.md", PROMPT);
     expect(n.every((x) => TIPOS.includes(x.tipo))).toBe(true);
+  });
+});
+
+describe("el lóbulo de una nota (grupoDe)", () => {
+  it("la ficha y las cifras comparten el suyo, sea cual sea su origen", () => {
+    expect(grupoDe({ tipo: "ficha", origen: "ia" })).toBe("Ficha y cifras");
+    expect(grupoDe({ tipo: "cifras", origen: "manual", fuente: "x/otra.md" })).toBe("Ficha y cifras");
+  });
+
+  it("las notas de un archivo comparten el suyo, con el nombre del archivo", () => {
+    expect(grupoDe({ tipo: "marca", origen: "repositorio", fuente: "Dcasa/01_ADN_y_Memoria/01_brand_guidelines.md" })).toBe("Brand guidelines");
+    expect(grupoDe({ tipo: "documento", origen: "documento", fuente: "garantia.md" })).toBe("Garantia");
+  });
+
+  it("los informes de otros sistemas van juntos: se llaman por su fecha y un lóbulo cada uno sería un lóbulo de una nota", () => {
+    expect(grupoDe({ tipo: "borrador", origen: "repositorio", fuente: "X/Auditorias/2026-09-26.md" })).toBe("Informes de otros sistemas");
+    expect(grupoDe({ tipo: "borrador", origen: "repositorio", fuente: "X/Auditorias/2026-10-01.md" })).toBe("Informes de otros sistemas");
+  });
+
+  it("lo escrito aquí, sin archivo, se agrupa por quién lo escribió", () => {
+    expect(grupoDe({ tipo: "nota", origen: "manual", fuente: "" })).toBe("Escritas a mano");
+    expect(grupoDe({ tipo: "marca", origen: "ia", fuente: "" })).toBe("Escritas por la IA");
   });
 });
 

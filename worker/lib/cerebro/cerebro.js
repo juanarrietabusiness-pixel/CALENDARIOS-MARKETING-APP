@@ -27,7 +27,7 @@
 
 import { buildIndex, reemplazarNota, serializar, cargar, search, staleness } from "./conocimiento.js";
 import { linkGraph, expand, pack, summary } from "./memoria.js";
-import { AUTORIDAD, SIEMPRE } from "./notas.js";
+import { AUTORIDAD, SIEMPRE, grupoDe } from "./notas.js";
 
 const ID_CLIENTE = /^[\w-]{1,80}$/;
 const VERSION = 1;
@@ -261,4 +261,42 @@ export async function contexto(env, acceso, clientId, consulta, { para = "texto"
  */
 export function notasViejas(notas, ahora = Date.now()) {
   return notas.filter((n) => n.tipo !== "borrador" && staleness(n.texto ?? "", Date.parse(n.updated_at) || ahora, ahora).stale).length;
+}
+
+// ------------------------------------------------------------
+// El mapa: las notas como puntos y sus conexiones como líneas
+// ------------------------------------------------------------
+
+/**
+ * El grafo de un cliente para dibujarlo: sus notas SIN el texto (sólo lo que hace falta para pintar y para leer un
+ * resumen) y dos clases de conexión, que son índices de `notas`:
+ *   enlaces    una nota escribió [[la otra]]: alguien las conectó a propósito.
+ *   menciones  una nota nombra a la otra sin enlazarla: más tenue, y hay muchas más.
+ * Sale del mismo índice que usa `contexto()` para las vecinas, así que el mapa enseña lo que la IA de verdad recorre.
+ * `d` es cuántas conexiones toca una nota: lo que decide su tamaño y qué tan al centro queda.
+ */
+export async function grafo(env, acceso, clientId) {
+  const { aristas } = await cargarIndice(env, acceso, clientId, { conGrafo: true });
+  const filas = await leerNotasLigeras(acceso, clientId);
+  const posicion = new Map(filas.map((n, i) => [n.ruta, i]));
+  const enlaces = [];
+  const menciones = [];
+  const grado = new Array(filas.length).fill(0);
+  for (const [a, b, peso] of aristas ?? []) {
+    const i = posicion.get(a);
+    const j = posicion.get(b);
+    // Una arista de una nota que ya no está (se borró entre la lectura del índice y la de las notas): se salta.
+    if (i === undefined || j === undefined || i === j) continue;
+    (peso >= 1 ? enlaces : menciones).push([i, j]);
+    grado[i]++;
+    grado[j]++;
+  }
+  return {
+    notas: filas.map((n, i) => ({
+      id: n.id, ruta: n.ruta, titulo: n.titulo, tipo: n.tipo, origen: n.origen, fuente: n.fuente, grupo: grupoDe(n),
+      interna: Boolean(n.interna), caracteres: n.caracteres, resumen: n.resumen, actualizada: n.updated_at, d: grado[i],
+    })),
+    enlaces,
+    menciones,
+  };
 }

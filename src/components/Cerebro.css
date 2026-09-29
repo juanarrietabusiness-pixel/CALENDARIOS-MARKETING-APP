@@ -77,6 +77,9 @@
 .cerebro-buscar-fila { display: flex; gap: var(--sp-2); }
 .cerebro-buscar-fila .input { flex: 1; min-width: 0; }
 
+.cerebro-vistas { display: flex; gap: var(--sp-2); }
+.cerebro-vistas .filter-chip { display: inline-flex; align-items: center; gap: var(--sp-2); }
+
 .cerebro-filtros { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .cerebro-cuenta { color: var(--text-dim); font-variant-numeric: tabular-nums; margin-left: var(--sp-1); }
 

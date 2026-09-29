@@ -468,3 +468,91 @@ describe("borrar un cliente borra su índice", () => {
     expect([...env.MEDIA.objetos.keys()]).toEqual(["cerebro/c2/indice.json"]);
   });
 });
+
+describe("el mapa del cerebro (/grafo)", () => {
+  const grafoDe = async (quien = JEFE, cliente = "c1") => (await pedir(quien, `/api/cerebro/${cliente}/grafo`)).json();
+
+  it("un cliente sin notas devuelve un mapa vacío, no un error", async () => {
+    expect(await grafoDe(JEFE, "c2")).toEqual({ notas: [], enlaces: [], menciones: [] });
+  });
+
+  it("las notas vienen SIN texto, con su grupo, su tipo y su candado", async () => {
+    await poner(JEFE, "c1", nota("Costos", "El costo del pañal es nueve dólares. Margen alto.", { interna: true, tipo: "documento" }));
+    await poner(JEFE, "c1", nota("Tono y voz", "# Tono\n\nCercano, de tú.", { tipo: "marca" }));
+    const g = await grafoDe();
+    expect(g.notas).toHaveLength(2);
+    for (const n of g.notas) {
+      expect(n).not.toHaveProperty("texto");
+      expect(n).toMatchObject({ id: expect.any(String), ruta: expect.any(String), grupo: "Escritas a mano", d: 0 });
+    }
+    const costos = g.notas.find((n) => n.ruta === "costos");
+    expect(costos).toMatchObject({ interna: true, tipo: "documento", caracteres: expect.any(Number) });
+    expect(JSON.stringify(g), "el texto entero no viaja: sólo el resumen").not.toContain("Margen alto.");
+  });
+
+  it("un [[enlace]] es un enlace y un nombre sin enlazar es una mención; cada nota cuenta las conexiones que toca", async () => {
+    await poner(JEFE, "c1", nota("Ficha técnica", "Dcasa vende muebles. Ver [[sofas]] y [[comedores]].", { tipo: "ficha" }));
+    await poner(JEFE, "c1", nota("Sofás", "Sofás seccionales. Combinan con la garantía extendida."));
+    await poner(JEFE, "c1", nota("Comedores", "Roble macizo."));
+    await poner(JEFE, "c1", nota("Garantía extendida", "Cinco años."));
+    const g = await grafoDe();
+    const i = (ruta) => g.notas.findIndex((n) => n.ruta === ruta);
+    const par = (a, b) => ([x, y]) => (x === i(a) && y === i(b)) || (x === i(b) && y === i(a));
+    expect(g.enlaces.some(par("ficha-tecnica", "sofas"))).toBe(true);
+    expect(g.enlaces.some(par("ficha-tecnica", "comedores"))).toBe(true);
+    expect(g.menciones.some(par("sofas", "garantia-extendida"))).toBe(true);
+    expect(g.enlaces).toHaveLength(2);
+    expect(g.notas[i("ficha-tecnica")].d, "dos enlaces").toBe(2);
+    expect(g.notas[i("sofas")].d, "un enlace y una mención").toBe(2);
+    expect(g.notas[i("comedores")].d).toBe(1);
+  });
+
+  it("la ficha y las cifras van juntas en su lóbulo; las importadas, por archivo", async () => {
+    await poner(JEFE, "c1", nota("Ficha técnica", "Quién es.", { tipo: "ficha" }));
+    await poner(JEFE, "c1", nota("Cifras vigentes", "- Envío gratis.", { tipo: "cifras" }));
+    await poner(JEFE, "c1", { ...nota("Tono", "Cercano.", { tipo: "marca" }), fuente: "Dcasa/01_ADN_y_Memoria/01_brand_guidelines.md", origen: "repositorio" });
+    const g = await grafoDe();
+    const grupo = (ruta) => g.notas.find((n) => n.ruta === ruta).grupo;
+    expect(grupo("ficha-tecnica")).toBe("Ficha y cifras");
+    expect(grupo("cifras-vigentes")).toBe("Ficha y cifras");
+    expect(grupo("tono")).toBe("Brand guidelines");
+  });
+
+  it("las conexiones de una nota borrada desaparecen; los índices siguen apuntando a notas que existen", async () => {
+    const a = await (await poner(JEFE, "c1", nota("Ficha técnica", "Ver [[sofas]] y [[comedores]].", { tipo: "ficha" }))).json();
+    await poner(JEFE, "c1", nota("Sofás", "Sofás."));
+    await poner(JEFE, "c1", nota("Comedores", "Comedores."));
+    const s = (await grafoDe()).notas.find((n) => n.ruta === "sofas");
+    await pedir(JEFE, `/api/cerebro/c1/nota/${s.id}`, { method: "DELETE" });
+    const g = await grafoDe();
+    expect(g.notas.map((n) => n.ruta).sort()).toEqual(["comedores", "ficha-tecnica"]);
+    expect(g.enlaces).toHaveLength(1);
+    for (const [x, y] of [...g.enlaces, ...g.menciones]) expect(g.notas[x] && g.notas[y]).toBeTruthy();
+    expect(a.ruta).toBe("ficha-tecnica");
+  });
+
+  it("si el índice se quedó atrás, se reconstruye y el mapa sale bien igual", async () => {
+    await poner(JEFE, "c1", nota("Ficha técnica", "Ver [[sofas]].", { tipo: "ficha" }));
+    await poner(JEFE, "c1", nota("Sofás", "Sofás."));
+    env.MEDIA.objetos.set("cerebro/c1/indice.json", "{roto");
+    expect((await grafoDe()).enlaces).toHaveLength(1);
+  });
+
+  it("el grafo de un cliente de otro espacio, o de otro colaborador, es «no encontrado»; sin sesión, 401; sólo lectura puede mirar", async () => {
+    await poner(OTRA, "c9", nota("Secreto", "Cosa de la otra agencia."));
+    await poner(JEFE, "c2", nota("De c2", "Un cliente que el colaborador no lleva."));
+    expect((await pedir(JEFE, "/api/cerebro/c9/grafo")).status).toBe(404);
+    expect((await pedir(COLAB, "/api/cerebro/c2/grafo")).status).toBe(404);
+    expect((await pedir(COLAB, "/api/cerebro/c1/grafo")).status).toBe(200);
+    expect((await worker.fetch(new Request("https://calendarios.test/api/cerebro/c1/grafo"), env)).status).toBe(401);
+    db.sqlite.prepare("update memberships set solo_lectura = 1, rol = 'editor' where user_id = ?").run(COLAB);
+    expect((await pedir(COLAB, "/api/cerebro/c1/grafo")).status).toBe(200);
+  });
+
+  it("no mezcla las notas de un cliente con las de otro del mismo espacio", async () => {
+    await poner(JEFE, "c1", nota("Sofás", "Sofás de Dcasa."));
+    await poner(JEFE, "c2", nota("Pañales", "Pañales de Baby Caleb."));
+    expect((await grafoDe(JEFE, "c1")).notas.map((n) => n.ruta)).toEqual(["sofas"]);
+    expect((await grafoDe(JEFE, "c2")).notas.map((n) => n.ruta)).toEqual(["panales"]);
+  });
+});

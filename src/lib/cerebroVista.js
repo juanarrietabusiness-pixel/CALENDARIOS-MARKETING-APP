@@ -29,7 +29,7 @@ export function ordenarNotas(notas) {
   return [...notas].sort((a, b) => (PESO[a.tipo] ?? 9) - (PESO[b.tipo] ?? 9) || a.titulo.localeCompare(b.titulo, "es"));
 }
 
-const sinTildes = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+export const sinTildes = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
 /** Filtra por tipo, por «sólo internas» y por lo que se escriba en el cuadro (título o resumen). */
 export function filtrarNotas(notas, { tipo = "todas", soloInternas = false, texto = "" } = {}) {

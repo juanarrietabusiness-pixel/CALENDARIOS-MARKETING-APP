@@ -2,6 +2,7 @@
 // /api/cerebro — el cerebro de cada cliente
 //
 //   GET    /<cliente>                    Las notas (sin su texto entero) y el estado
+//   GET    /<cliente>/grafo              El mapa: las notas sin texto y sus conexiones (enlaces y menciones)
 //   GET    /<cliente>/nota/<id>          Una nota entera
 //   PUT    /<cliente>/nota               Crear o editar una nota { id?, titulo, texto, tipo, interna }
 //   DELETE /<cliente>/nota/<id>          Borrar una nota
@@ -23,7 +24,7 @@ import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { uuid, ahora } from "../lib/ids.js";
 import { limpiarNota, derivados, slug, rutaUnica, MAX_NOTAS_POR_CLIENTE } from "../lib/cerebro/notas.js";
 import {
-  USOS, leerNotasLigeras, reindexar, actualizarIndice, buscar, contexto, notasViejas,
+  USOS, leerNotasLigeras, reindexar, actualizarIndice, buscar, contexto, notasViejas, grafo,
 } from "../lib/cerebro/cerebro.js";
 import { importarDelRepositorio } from "../lib/cerebro/importar.js";
 import { ErrorRepositorio } from "../lib/cerebro/repositorio.js";
@@ -74,6 +75,8 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
       },
     });
   }
+
+  if (sub === "grafo" && metodo === "GET") return json(await grafo(env, acceso, clienteId));
 
   if (sub === "nota" && notaId && metodo === "GET") {
     const nota = await acceso.leerUno("cerebro_notas", { id: notaId, client_id: clienteId });

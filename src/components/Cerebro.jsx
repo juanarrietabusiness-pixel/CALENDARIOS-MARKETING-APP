@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { soloLectura } from "../lib/sesionActual";
@@ -10,6 +10,13 @@ import {
   formatoCaracteres, describirImportacion, describirFicha, avisoSinFicha, leerDocumento,
 } from "../lib/cerebroVista";
 import "./Cerebro.css";
+
+// El mapa 3D se descarga sólo si se abre: la lista es lo que se ve al entrar.
+const CerebroGrafo = lazy(() => import("./CerebroGrafo"));
+
+const CLAVE_VISTA = "cerebro.vista";
+const leerVista = () => { try { return localStorage.getItem(CLAVE_VISTA) === "mapa" ? "mapa" : "lista"; } catch { return "lista"; } };
+const guardarVista = (v) => { try { localStorage.setItem(CLAVE_VISTA, v); } catch { /* sin almacenamiento: se olvida al recargar, nada más */ } };
 
 // ============================================================
 // La pestaña Cerebro de un cliente
@@ -38,7 +45,9 @@ export default function Cerebro({ client }) {
   const [buscando, setBuscando] = useState(false);
   const [editor, setEditor] = useState(null);         // la nota que se edita (con su texto) o una nueva
   const [borrando, setBorrando] = useState(null);
+  const [vista, setVista] = useState(leerVista);      // "lista" | "mapa"
   const entrada = useRef(null);
+  const cambiarVista = (v) => { setVista(v); guardarVista(v); };
 
   const cargar = useCallback(async () => {
     try {
@@ -255,39 +264,56 @@ export default function Cerebro({ client }) {
         </div>
       ) : (
         <>
-          <form className="cerebro-buscar" role="search" onSubmit={buscar}>
-            <label className="label" htmlFor={`${ids}-q`}>Buscar en el cerebro</label>
-            <div className="cerebro-buscar-fila">
-              <input id={`${ids}-q`} className="input" type="search" placeholder="Ej.: garantía, precio del envío, tono de voz"
-                value={filtro.texto} onChange={(e) => { setFiltro((f) => ({ ...f, texto: e.target.value })); if (!e.target.value) setBusqueda(null); }} />
-              <button type="submit" className="btn btn-secondary" disabled={buscando || !filtro.texto.trim()}>
-                <Icon name="search" size={18} /> {buscando ? "Buscando…" : "Buscar"}
-              </button>
-            </div>
-          </form>
-
-          <div className="cerebro-filtros" role="group" aria-label="Filtrar las notas">
-            {FILTROS_TIPO.filter((t) => t === "todas" || cuentas[t]).map((t) => (
-              <button key={t} type="button" className="filter-chip" aria-pressed={filtro.tipo === t} onClick={() => setFiltro((f) => ({ ...f, tipo: t }))}>
-                {t === "todas" ? "Todas" : nombreDeTipo(t)} <span className="cerebro-cuenta">{cuentas[t] ?? 0}</span>
-              </button>
-            ))}
-            {estado.internas > 0 && (
-              <button type="button" className="filter-chip" aria-pressed={filtro.soloInternas} onClick={() => setFiltro((f) => ({ ...f, soloInternas: !f.soloInternas }))}>
-                <Icon name="lock" size={14} /> Internas <span className="cerebro-cuenta">{estado.internas}</span>
-              </button>
-            )}
+          <div className="cerebro-vistas" role="group" aria-label="Cómo ver las notas">
+            <button type="button" className="filter-chip" aria-pressed={vista === "lista"} onClick={() => cambiarVista("lista")}>
+              <Icon name="list" size={16} /> Lista
+            </button>
+            <button type="button" className="filter-chip" aria-pressed={vista === "mapa"} onClick={() => cambiarVista("mapa")}>
+              <Icon name="brain" size={16} /> Mapa 3D
+            </button>
           </div>
 
-          {busqueda ? (
-            <Resultados busqueda={busqueda} onCerrar={() => setBusqueda(null)} onAbrir={(r) => { const n = notas.find((x) => x.ruta === r.ruta); if (n) abrir(n); }} />
+          {vista === "mapa" ? (
+            <Suspense fallback={<p role="status" className="cerebro-vacio">Preparando el mapa…</p>}>
+              <CerebroGrafo client={client} version={`${estado.notas}|${estado.ultima}`} onAbrir={abrir} />
+            </Suspense>
           ) : (
-            <ul className="cerebro-lista" aria-label={`${visibles.length} notas`}>
-              {visibles.map((n) => (
-                <NotaFila key={n.id} nota={n} lectura={lectura} onAbrir={() => abrir(n)} onInterna={() => alternarInterna(n)} onBorrar={() => setBorrando(n)} />
-              ))}
-              {!visibles.length && <li className="cerebro-vacio">Ninguna nota coincide con ese filtro.</li>}
-            </ul>
+            <>
+              <form className="cerebro-buscar" role="search" onSubmit={buscar}>
+                <label className="label" htmlFor={`${ids}-q`}>Buscar en el cerebro</label>
+                <div className="cerebro-buscar-fila">
+                  <input id={`${ids}-q`} className="input" type="search" placeholder="Ej.: garantía, precio del envío, tono de voz"
+                    value={filtro.texto} onChange={(e) => { setFiltro((f) => ({ ...f, texto: e.target.value })); if (!e.target.value) setBusqueda(null); }} />
+                  <button type="submit" className="btn btn-secondary" disabled={buscando || !filtro.texto.trim()}>
+                    <Icon name="search" size={18} /> {buscando ? "Buscando…" : "Buscar"}
+                  </button>
+                </div>
+              </form>
+
+              <div className="cerebro-filtros" role="group" aria-label="Filtrar las notas">
+                {FILTROS_TIPO.filter((t) => t === "todas" || cuentas[t]).map((t) => (
+                  <button key={t} type="button" className="filter-chip" aria-pressed={filtro.tipo === t} onClick={() => setFiltro((f) => ({ ...f, tipo: t }))}>
+                    {t === "todas" ? "Todas" : nombreDeTipo(t)} <span className="cerebro-cuenta">{cuentas[t] ?? 0}</span>
+                  </button>
+                ))}
+                {estado.internas > 0 && (
+                  <button type="button" className="filter-chip" aria-pressed={filtro.soloInternas} onClick={() => setFiltro((f) => ({ ...f, soloInternas: !f.soloInternas }))}>
+                    <Icon name="lock" size={14} /> Internas <span className="cerebro-cuenta">{estado.internas}</span>
+                  </button>
+                )}
+              </div>
+
+              {busqueda ? (
+                <Resultados busqueda={busqueda} onCerrar={() => setBusqueda(null)} onAbrir={(r) => { const n = notas.find((x) => x.ruta === r.ruta); if (n) abrir(n); }} />
+              ) : (
+                <ul className="cerebro-lista" aria-label={`${visibles.length} notas`}>
+                  {visibles.map((n) => (
+                    <NotaFila key={n.id} nota={n} lectura={lectura} onAbrir={() => abrir(n)} onInterna={() => alternarInterna(n)} onBorrar={() => setBorrando(n)} />
+                  ))}
+                  {!visibles.length && <li className="cerebro-vacio">Ninguna nota coincide con ese filtro.</li>}
+                </ul>
+              )}
+            </>
           )}
         </>
       )}

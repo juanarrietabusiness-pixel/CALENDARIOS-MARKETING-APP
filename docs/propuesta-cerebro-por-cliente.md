@@ -1,7 +1,7 @@
 # Un cerebro por cliente
 
-Estado a 2026-09-29. Fases 0 y 1 **implementadas**; lo demás, pendiente y con las
-decisiones que hacen falta.
+Estado a 2026-09-29. Fases 0 y 1 y la **visualización 3D** implementadas; lo demás,
+pendiente y con las decisiones que hacen falta.
 
 ---
 
@@ -97,6 +97,7 @@ Indexar un cliente entero cuesta 9–30 ms y el índice pesa 150–210 KB.
 | **1D** | La generación usa el cerebro (con vuelta al ADN de la ficha si no hay); la IA escribe la ficha y las cifras. |
 | **1E** | La pestaña **Cerebro** (`/cliente/<slug>/cerebro`). |
 | **1F** | `buscar_cerebro` para el asistente y para Claude por MCP; el chat recibe ficha + cifras en vez del volcado. |
+| **2ª entrega** | El **mapa 3D** del cerebro (pestaña Cerebro → «Mapa 3D»): cada nota una neurona, cada conexión una sinapsis, dentro de un cerebro con lóbulos y hemisferios. Filtra por región, busca (título y texto), enseña internas, vuela a la nota elegida y lanza señales por sus sinapsis. |
 
 ## Lo que se aprendió construyéndolo
 
@@ -140,11 +141,16 @@ corregidos, con su caso de prueba:
    cambios pedidos resta, rechazado = 0. El **silencio no cuenta como éxito**
    (en Agents Office sí, y vale 0,75). Decidir: ¿qué señales cuentan, y desde
    cuándo?
-2. **Visualización (segunda entrega).** El cerebro 3D de Agents Office pesa 144 KB
-   comprimidos (three.js) y el presupuesto de la aplicación permite 110 por bloque:
-   habría que subir ese tope **a propósito** para un bloque que sólo se descarga al
-   abrir la pestaña. Hoy el grafo saldría casi vacío (1–3 aristas por cliente); con
-   las fichas citando `[[notas]]` mejora.
+2. **Visualización: hecha, con dos cosas que decidir después.** Se dibuja en un lienzo
+   2D propio y no con three.js: 144 kB comprimidos habrían obligado a subir el tope de
+   peso, para dibujar decenas de notas. El chunk pesa unos 12 kB y un caso del test de
+   bundle vigila que siga así. Lo que **no** está: las **sinapsis que aprenden** (el
+   dorado de Agents Office) dependen de la memoria de decisiones (punto 1), y la
+   **vista de miles de notas** (WebGL) no hace falta con los clientes de hoy: el mapa
+   corre a unos 50 cuadros por segundo con 300 notas y 900 enlaces incluso en un
+   navegador sin GPU. Y una observación: el ADN de las agencias trae 0 `[[enlaces]]`, así
+   que el mapa depende de que la ficha técnica que escribe la IA cite las notas; sin
+   ella se ve casi como una lista, y la pantalla lo avisa.
 3. **PDF, Word y Excel.** Agents Office los convierte con librerías de su PC que no
    corren en un Worker. Opciones: convertir en el navegador (carga perezosa) o
    aceptar sólo texto. Hoy sólo se sube `.md`, `.txt`, `.csv` y `.json`, y lo demás se
