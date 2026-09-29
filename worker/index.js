@@ -45,6 +45,7 @@ import { rutasMetricas } from "./rutas/metricas.js";
 import { fotoPendiente } from "./lib/metricas.js";
 import { rutasInformes } from "./rutas/informes.js";
 import { rutasAuditorias } from "./rutas/auditorias.js";
+import { rutasCerebro } from "./rutas/cerebro.js";
 import { rutasMCP, rutasMCPPublicas } from "./rutas/mcp.js";
 import { informePendiente } from "./lib/informes.js";
 
@@ -347,6 +348,8 @@ export default {
       if (partes[0] === "informes") return await rutasInformes(req, env, { acceso, usuario, partes, metodo });
       if (partes[0] === "auditorias") return await rutasAuditorias(req, env, { acceso, usuario, partes, metodo });
       if (partes[0] === "mcp") return await rutasMCP(req, env, { acceso, usuario, partes, metodo });
+      // El cerebro de cada cliente: sus notas y lo que se le da a la IA.
+      if (partes[0] === "cerebro") return await rutasCerebro(req, env, { acceso, usuario, partes, metodo });
 
       // ---------- Medios ----------
       //

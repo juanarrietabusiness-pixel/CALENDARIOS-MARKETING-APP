@@ -67,6 +67,8 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "avisos",
   "notas_equipo",
   "historial",
+  // El cerebro de cada cliente: sus notas (worker/lib/cerebro/).
+  "cerebro_notas",
   // Del equipo. Tienen dueño como las demás: la lista de miembros de un
   // espacio es un dato del espacio, y pedirla sin acotar devolvería la
   // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué
@@ -97,6 +99,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "calendars", "chat_messages", "chat_resumenes", "client_memories", "client_tasks", "content_bank",
   "consumo_ia", "cuentas_sociales", "image_references", "image_templates", "informes", "auditorias",
   "metricas_competencia", "metricas_cuenta", "metricas_publicacion", "publicaciones_programadas",
+  "cerebro_notas",
 ]);
 
 /** Las que cuelgan de un calendario sin llevar el cliente: se acotan por el calendario. */

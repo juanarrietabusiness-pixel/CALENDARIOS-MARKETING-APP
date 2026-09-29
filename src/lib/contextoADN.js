@@ -45,7 +45,7 @@ const ENCABEZADO = /\n--- (.+?\.(?:md|txt|json|ya?ml))( \(recortado\))? ---\n/g;
  * semana», «Las reglas duras» y «Lo que no se le pide nunca» hablan de
  * qué se escribe y a qué no se puede llegar.
  */
-const SECCION_DE_MAQUETACION =
+export const SECCION_DE_MAQUETACION =
   /reparto del trabajo|plantilla|color y tipograf|sistema visual|bloque de estilo|negativos|\blogo\b|\bfirma\b|contrato del html|verificaci[oó]n (?:antes|propia|dependiente)|qu[eé] revisar cuando/i;
 
 /**
@@ -53,7 +53,7 @@ const SECCION_DE_MAQUETACION =
  * emojis, la llamada a la acción, las cifras permitidas y las reglas
  * duras. El resto son medidas de lienzo, fuentes y colores.
  */
-const CLAVES_DE_TEXTO_DE_LA_RECETA = [
+export const CLAVES_DE_TEXTO_DE_LA_RECETA = [
   "marca", "slug", "productoFisico", "fotoReal", "tildes",
   "hashtags", "emojis", "cta", "cifrasPermitidas", "reglasDuras",
 ];
