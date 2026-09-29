@@ -193,6 +193,9 @@ export async function contexto(env, acceso, clientId, consulta, { para = "texto"
     cifras: unida("cifras"),
     pasajes: pack(bloques, presupuesto),
     fuentes: [...hits.map((h) => h.note), ...vecinas.map((v) => v.note)],
+    // Cuántas notas tiene el cerebro: 0 quiere decir que aún no se llenó, y quien pide el contexto
+    // (la generación) vuelve entonces al ADN de la ficha del cliente.
+    notas: Object.keys(meta).length,
   };
 }
 

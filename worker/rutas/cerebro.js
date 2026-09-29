@@ -9,6 +9,7 @@
 //   POST   /<cliente>/contexto           Lo que se le da a la IA para una tarea
 //   POST   /<cliente>/reindexar          Reconstruir el índice desde las notas
 //   POST   /<cliente>/importar           Llenar el cerebro desde el repositorio { carpeta?, actualizar? }
+//   POST   /<cliente>/preparar           La IA escribe la ficha técnica y las cifras { forzar? }
 //
 // Todo pasa por `clienteDe()`: el cliente tiene que ser de este espacio y,
 // si quien pregunta es un colaborador, de los suyos. Un cliente ajeno da
@@ -27,6 +28,7 @@ import {
 } from "../lib/cerebro/cerebro.js";
 import { importarDelRepositorio } from "../lib/cerebro/importar.js";
 import { ErrorRepositorio } from "../lib/cerebro/repositorio.js";
+import { prepararFicha, ErrorPreparar } from "../lib/cerebro/preparar.js";
 
 const ID = /^[\w-]{1,80}$/;
 const MAX_CONSULTA = 4000;
@@ -148,6 +150,17 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
       return json(await importarDelRepositorio(env, acceso, cliente, { carpeta: String(b.carpeta ?? ""), actualizar: Boolean(b.actualizar) }));
     } catch (e) {
       if (e instanceof ErrorRepositorio) return error(e.message, 502, e.cause);
+      throw e;
+    }
+  }
+
+  // ---------- La ficha técnica y las cifras, escritas por la IA ----------
+  if (sub === "preparar" && metodo === "POST") {
+    const b = (await cuerpo(req)) ?? {};
+    try {
+      return json(await prepararFicha(env, acceso, cliente, { forzar: Boolean(b.forzar) }));
+    } catch (e) {
+      if (e instanceof ErrorPreparar) return error(e.message, e.estado, e.cause);
       throw e;
     }
   }

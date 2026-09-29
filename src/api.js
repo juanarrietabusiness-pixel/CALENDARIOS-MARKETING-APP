@@ -9,6 +9,7 @@ import { analizarVideo } from "./lib/db";
 import { PROPIEDADES_FECHA_TAREA } from "./lib/agenda";
 import { partirSSE } from "../worker/lib/flujoAnthropic.js";
 import { sinCapaMaquetacion, prepararContenidoIA, TITULO_FICHA } from "./lib/contextoADN";
+import { textoEstableDelCerebro, consultaDeTanda, consultaDePublicacion } from "./lib/cerebroCliente";
 
 // Se reexportan porque media aplicación las importa desde aquí. Viven en
 // `lib/parse.js` para poder probarlas sin arrastrar el cliente de Supabase.
@@ -109,8 +110,8 @@ export async function callAI(content, { maxTokens, tier, tolerarCorte = false, f
   return data?.text ?? "";
 }
 
-export function buildScriptPrompt(client, calendar, posts, adnExtra = "", memories = []) {
-  const ctx = buildClientContext(client, calendar, adnExtra);
+export function buildScriptPrompt(client, calendar, posts, adnExtra = "", memories = [], cerebro = null) {
+  const ctx = buildClientContext(client, calendar, adnExtra, cerebro);
   const memBlock = memories.length
     ? `\nMEMORIAS DEL ASISTENTE:\n${memories.map((m) => `· ${typeof m === "string" ? m : m.content}`).join("\n")}\n`
     : "";
@@ -183,8 +184,8 @@ ${postsList}`;
  * El contrato de salida es el mismo `<<<PUBLICACION_ID:…>>>` de siempre,
  * para poder leerlo con `parseAIResponse` sin un segundo parser.
  */
-export function buildDescripcionesPrompt(client, calendar, posts, adnExtra = "", memories = []) {
-  const ctx = buildClientContext(client, calendar, adnExtra);
+export function buildDescripcionesPrompt(client, calendar, posts, adnExtra = "", memories = [], cerebro = null) {
+  const ctx = buildClientContext(client, calendar, adnExtra, cerebro);
   const memBlock = memories.length
     ? `\nMEMORIAS DEL ASISTENTE:\n${memories.map((m) => `· ${typeof m === "string" ? m : m.content}`).join("\n")}\n`
     : "";
@@ -269,8 +270,10 @@ export async function fetchGitHubADN(repoUrl, folder = "") {
 
 export async function generateSinglePost(client, post, day, calendar) {
   const isPost = post.format === "post";
-  const adnExtra = (await loadADN(client)).content;
-  const ctx = buildClientContext(client, calendar, adnExtra);
+  const adn = await loadADN(client);
+  const adnExtra = adn.content;
+  const pasajes = await pasajesDeLaPublicacion(client, adn, calendar, post, day);
+  const ctx = buildClientContext(client, calendar, adnExtra, adn.cerebro ? { pasajes } : null);
 
   const formatRules = {
     post: `DESCRIPCION: caption completo con emojis, CTA a WhatsApp (${client.whatsapp || "N/A"}) y hashtags al final (${client.hashtags || "#Panama"})`,
@@ -318,8 +321,10 @@ Escribe directamente el contenido, sin preambulos.`;
 }
 
 export async function generateFieldForPost(client, post, day, calendar, field) {
-  const adnExtra = (await loadADN(client)).content;
-  const ctx = buildClientContext(client, calendar, adnExtra);
+  const adn = await loadADN(client);
+  const adnExtra = adn.content;
+  const pasajes = await pasajesDeLaPublicacion(client, adn, calendar, post, day);
+  const ctx = buildClientContext(client, calendar, adnExtra, adn.cerebro ? { pasajes } : null);
   let promptText = "";
 
   if (field === "idea") {
@@ -409,8 +414,10 @@ export async function escribirDesdeContenido(client, post, { calendar = null, fe
   if (!bloques.length && !notas.length) throw new Error("No pude leer el archivo para enseñárselo a la IA.");
 
   alProgresar("Escribiendo…");
-  const adnExtra = (await loadADN(client).catch(() => ({ content: "" }))).content;
-  const ctx = buildClientContext(client, calendar, adnExtra);
+  const adn = await loadADN(client).catch(() => ({ content: "" }));
+  const adnExtra = adn.content;
+  const pasajes = await pasajesDeLaPublicacion(client, adn, calendar, post, { concept: "" });
+  const ctx = buildClientContext(client, calendar, adnExtra, adn.cerebro ? { pasajes } : null);
   const formato = post.format || "post";
   const pedido = `${ctx}
 
@@ -521,32 +528,41 @@ export async function imagenDelADN(repoUrl, path) {
  * Ahora el ADN va primero, dice de qué archivo sale cada trozo, y la
  * ficha queda debajo declarada como lo que es: un índice, no una fuente.
  */
-export function buildClientContext(client, calendar, adnCompleto = "") {
+export function buildClientContext(client, calendar, adnCompleto = "", cerebro = null) {
   // Todo lo que llama a esto ESCRIBE texto —ideas, guiones, captions—: la
   // capa de maquetación para Meta AI no le sirve y son ~41 000 caracteres
   // en Dcasa. El chat arma su propio contexto y sigue viéndola entera.
-  const adnExtra = sinCapaMaquetacion(adnCompleto);
+  //
+  // `cerebro` ({ pasajes }) es el modo del cerebro del cliente: `adnCompleto`
+  // trae su ficha técnica y sus cifras, y los pasajes que esta tarea necesita
+  // van DESPUÉS del título de la ficha de la aplicación —es donde se parte
+  // la caché—, porque cambian con cada tanda.
+  const conCerebro = Boolean(cerebro);
+  const adnExtra = conCerebro ? adnCompleto : sinCapaMaquetacion(adnCompleto);
+  const pasajes = String(cerebro?.pasajes ?? "").trim();
   if (adnExtra) {
     return `Escribes para ${client.name}, cliente de la agencia Juancito Ads.
 
 ═══════════════════════════════════════════════════════════
 QUÉ MANDA, CUANDO DOS COSAS SE CONTRADIGAN
 ═══════════════════════════════════════════════════════════
-1. El ADN del repositorio que viene abajo. Es la fuente de verdad.
+1. ${conCerebro
+    ? "El cerebro del cliente que viene abajo —su ficha técnica, sus cifras y los pasajes de sus notas—. Es la fuente de verdad."
+    : "El ADN del repositorio que viene abajo. Es la fuente de verdad."}
 2. La campaña y las ofertas de este calendario.
 3. La ficha de la aplicación. Es un índice de contacto, no una fuente:
-   si dice algo distinto del ADN, gana el ADN.
+   si dice algo distinto de ${conCerebro ? "el cerebro, gana el cerebro" : "el ADN, gana el ADN"}.
 
 Tres reglas del orquestador de la agencia, que aquí no se negocian:
 · No mezcles memoria, tono ni assets con los de otro cliente, aunque
   compartan nicho.
 · No inventes identidad de marca, ofertas ni precios. Toda cifra, precio,
-  plazo, testimonio y caso sale del ADN y sólo de ahí. Si un dato no está,
+  plazo, testimonio y caso sale de ${conCerebro ? "las cifras vigentes y los pasajes de abajo" : "el ADN"} y sólo de ahí. Si un dato no está,
   no se usa: se deja fuera y se dice qué falta.
 · Escribe en español de Panamá, con tildes y con signos de apertura.
 
 ═══════════════════════════════════════════════════════════
-ADN DE ${(client.name || "").toUpperCase()} — leído de su repositorio
+${conCerebro ? "CEREBRO" : "ADN"} DE ${(client.name || "").toUpperCase()} — ${conCerebro ? "su ficha técnica y sus cifras" : "leído de su repositorio"}
 ═══════════════════════════════════════════════════════════
 ${adnExtra}
 
@@ -562,6 +578,7 @@ ESTILO DE LOCUCIÓN: ${client.estiloLocucion || "N/A"}
 HASHTAGS: ${client.hashtags || "#Panama"}
 COMPETENCIA: ${client.competencia || "N/A"}
 ${calendar?.campaign ? `CAMPAÑA DEL MES: ${calendar.campaign}` : ""}
+${pasajes ? `\n═══════════════════════════════════════════════════════════\nPASAJES DEL CEREBRO — lo más relevante para esta tarea\n═══════════════════════════════════════════════════════════\n${pasajes}` : ""}
 ${client.aiInstructions ? `\n═══════════════════════════════════════════════════════════\nINSTRUCCIONES OBLIGATORIAS DEL CLIENTE\n═══════════════════════════════════════════════════════════\n${client.aiInstructions}` : ""}`;
   }
 
@@ -592,6 +609,52 @@ ${client.aiInstructions ? `\nINSTRUCCIONES OBLIGATORIAS DEL CLIENTE:\n${client.a
 }
 
 // ============================================================
+// El cerebro del cliente
+// ============================================================
+
+/**
+ * Lo que el cerebro del cliente le da a una tarea: su ficha técnica, sus
+ * cifras y los pasajes de sus notas que responden a `consulta`. `null` si
+ * el cliente aún no tiene cerebro o si falla: la generación vuelve entonces
+ * al ADN de la ficha, como antes, en vez de romperse.
+ */
+export async function contextoDelCerebro(clienteId, consulta = "", { presupuesto = 9000, para = "texto" } = {}) {
+  if (!clienteId) return null;
+  try {
+    const res = await fetch(`/api/cerebro/${encodeURIComponent(clienteId)}/contexto`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ consulta, para, presupuesto }),
+    });
+    if (!res.ok) return null;
+    const c = await res.json();
+    return c?.notas > 0 ? c : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Lo que va detrás de la marca de caché en el contexto: los pasajes que
+ * esta tanda necesita. Vacío si el cliente no usa el cerebro. Los pasajes
+ * de la tanda de sofás no son los de la de hashtags, y por eso se piden
+ * por tanda y no una vez para toda la generación.
+ */
+export async function pasajesDeLaTanda(client, adn, calendar, posts) {
+  if (!adn?.cerebro) return "";
+  const c = await contextoDelCerebro(client?.dbId || client?.id, consultaDeTanda(calendar, posts), { presupuesto: 6000 });
+  return c?.pasajes ?? "";
+}
+
+/** Lo mismo para UNA publicación. */
+export async function pasajesDeLaPublicacion(client, adn, calendar, post, day) {
+  if (!adn?.cerebro) return "";
+  const c = await contextoDelCerebro(client?.dbId || client?.id, consultaDePublicacion(calendar, post, day), { presupuesto: 6000 });
+  return c?.pasajes ?? "";
+}
+
+// ============================================================
 // El ADN del cliente
 // ============================================================
 
@@ -604,6 +667,13 @@ ${client.aiInstructions ? `\nINSTRUCCIONES OBLIGATORIAS DEL CLIENTE:\n${client.a
  * releerlo cuando el repositorio ha cambiado.
  */
 export async function loadADN(client, { forzar = false } = {}) {
+  // Si el cliente tiene cerebro, manda él: su ficha y sus cifras, sin releer
+  // el repositorio. Con `forzar` se sigue leyendo GitHub, que es lo que
+  // hace la ficha del cliente para probar la conexión.
+  if (!forzar) {
+    const cerebro = await contextoDelCerebro(client?.dbId || client?.id);
+    if (cerebro) return { content: textoEstableDelCerebro(cerebro), sections: {}, cacheado: false, cerebro: true, notas: cerebro.notas };
+  }
   if (!forzar && client.githubContext) {
     return { content: client.githubContext, sections: {}, cacheado: true };
   }

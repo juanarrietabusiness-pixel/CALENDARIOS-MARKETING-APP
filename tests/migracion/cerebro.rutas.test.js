@@ -262,7 +262,7 @@ describe("el contexto de una tarea", () => {
 
   it("un cliente sin notas devuelve un contexto vacío, no un error", async () => {
     const c = await (await pedir(JEFE, "/api/cerebro/c2/contexto", { method: "POST", body: { consulta: "lo que sea" } })).json();
-    expect(c).toEqual({ ficha: "", cifras: "", pasajes: "", fuentes: [] });
+    expect(c).toEqual({ ficha: "", cifras: "", pasajes: "", fuentes: [], notas: 0 });
   });
 });
 
