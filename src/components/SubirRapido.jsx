@@ -12,14 +12,13 @@ import VistaRed from "./calendario/vistaRed";
 import { TimePicker } from "./calendario/primitivas";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { useAnchoAmplio } from "../hooks/useAnchoAmplio";
-import { estadoRedes as leerEstadoRedes, saveCalendar, publicar, subirImagenPublicacion } from "../lib/db";
+import { estadoRedes as leerEstadoRedes, saveCalendar, publicar, subirImagenPublicacion, mesDeCalendario } from "../lib/db";
 import { escribirDesdeContenido } from "../api";
 import { prepararParaRedes } from "../lib/medios";
 import { REDES, conMedios, revisarPublicacion, momentoPublicacion, mediosDe, objetivoDe, necesitaAjuste, historiasDe } from "../lib/publicacion";
 import { formatoDeMedios, redesPorDefecto, rellenarDesdeContenido, ponerEnDia, resumenDestino } from "../lib/subir";
 import { fechaEnZona } from "../lib/agenda";
 import { fechaHora } from "../lib/cola";
-import { MONTHS } from "../constants";
 import { uid } from "../utils";
 import { esAdmin } from "../lib/sesionActual";
 
@@ -155,8 +154,10 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
       const [a, m] = dia.split("-").map(Number);
       let cal = (cliente.calendars ?? []).find((k) => k.year === a && k.month === m - 1);
       if (!cal) {
-        setTrabajando("Creando el calendario del mes…");
-        cal = await saveCalendar({ name: `${MONTHS[m - 1]} ${a}`, month: m - 1, year: a, campaign: "", weekConcepts: [], days: [] }, clienteDb);
+        // El cajón del mes lo busca o lo crea el servidor: uno por cliente y
+        // mes (si otra persona lo creó a la vez, devuelve el suyo).
+        setTrabajando("Preparando el mes…");
+        cal = await mesDeCalendario(clienteDb, a, m - 1);
         onCalendarioGuardado(cliente.id, cal);
       }
       // Lo que se estuviera guardando de ese calendario va DENTRO de éste:

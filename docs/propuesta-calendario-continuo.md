@@ -9,10 +9,15 @@ Tres preguntas de la agencia:
 2. ¿Qué configuraciones u opciones sobran?
 3. ¿Qué más mejorar en el móvil?
 
-Esto es una propuesta: nada de lo de aquí está hecho todavía. Lo que sí
-salió en el mismo cambio (Haiku, ampliar a 4:5 con IA, el panel de subir
-al estilo Metricool, la portada del video, el video en el iPhone y el mes
-del móvil de borde a borde) está en el historial de git.
+**Estado:** la agencia aprobó la fase 1 y la limpieza, y están hechas:
+calendario siempre activo con sus reglas, fuera categorías, Groq,
+renombrar y duplicar calendario, exportar a HTML, imprimir en PDF y el
+prompt maestro; juntos «La publico yo» con «Ya la publiqué» y los
+resúmenes del cliente. Se quedan, por decisión de la agencia, la ficha del
+cliente, «Programar al aprobar» y «Copia de seguridad». El banco de
+contenido anterior sigue porque aún guarda archivos (6 al revisar
+producción): se quita cuando «Pasar todo a Drive» lo deje vacío. Las fases
+2 a 4 siguen pendientes.
 
 ---
 

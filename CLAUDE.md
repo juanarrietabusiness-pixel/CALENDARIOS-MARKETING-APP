@@ -94,7 +94,6 @@ src/
   constants.js            Formatos, estados, planes, meses, categorías
   utils.js                Fechas, IDs, compresión de imágenes, escapado, iniciales
   api.js                  Llama a las funciones del servidor (IA y ADN)
-  export.js               Genera el HTML autónomo que se envía al cliente
   index.css               Sistema de diseño: tokens y clases base
   hooks/useDialogA11y.js  Foco atrapado, Escape y bloqueo de scroll en diálogos
   hooks/useConfigIA.js    El modelo y el razonamiento del espacio, releídos con `pulso`
@@ -139,6 +138,8 @@ src/
     sesionActual.js       Quién está dentro (papel), para las piezas que no reciben `yo`
     auditoria.js          Auditoría de perfil: cifras, usuario, límites de Instagram (puro;
                           también lo importa el Worker)
+    meses.js              Calendario siempre activo: mes virtual (sin cajón), recorrer meses,
+                          fusionar lo escrito en un mes vacío, días de los meses vecinos (puro)
   components/
     Icon.jsx              Set de iconos SVG monocromos (rejilla 24, trazo 1.75)
     Presencia.jsx         Avatares, estado de la conexión, «X está editando»
@@ -172,7 +173,9 @@ src/
     NavPrincipal.jsx / MenuCuenta.jsx / BarraInferior.jsx / Buscador.jsx
                           Armazón: secciones, cuenta, barra del móvil, Ctrl+K
     ClientModal.jsx       Alta y edición de cliente (5 pestañas)
-    PlanWizard.jsx        Asistente de 7 pasos para crear un calendario
+    PlanWizard.jsx        «Planificar mes»: 6 pasos que escriben en el mes elegido (lo AÑADEN
+                          si ya tenía publicaciones)
+    calendario/navegadorMes.jsx ‹ Octubre 2026 › Hoy: recorrer el calendario siempre activo
     CalendarView.jsx      Vista de lista y de rejilla, filtros, generación, envío
   pages/
     Login.jsx             Acceso
@@ -197,6 +200,8 @@ worker/
     sesion.js             PBKDF2, cookie __Host-, espacio de trabajo e invitaciones
     vivo.js               Difundir un cambio al espacio; la firma de quién lo hizo
     publico.js            El enlace de aprobación, sin sesión
+    meses.js              Calendario siempre activo: obtener o crear el mes; mover una
+                          publicación a otro mes (todo o nada, con las seis tablas)
     respuesta.js          Cabeceras y errores de la API
     flujoAnthropic.js     El SSE de Anthropic, reconstruido en mensaje (puro)
     anthropic.js          La llamada a Anthropic: streaming, reintento, rechazo con motivo
@@ -219,7 +224,7 @@ worker/
   rutas/
     datos.js              CRUD: clientes, calendarios, chat, tareas, banco
     equipo.js             Miembros e invitaciones; la ruta pública del enlace
-    ia.js                 Generación del calendario (Anthropic/Groq)
+    ia.js                 Generación del calendario (Anthropic)
     iaEspacio.js          Modelos de la cuenta y consumo del mes
     chat.js               El asistente: streaming, bucle de herramientas de
                           servidor y resumen de conversaciones largas
@@ -237,7 +242,7 @@ worker/
     mcp.js                El servidor MCP (/mcp), su OAuth (/oauth/*, /.well-known/*) y
                           el permiso y las conexiones (/api/mcp/*)
     avisos.js             /api/avisos: la bandeja de quien pregunta y marcar leídos
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -255,7 +260,7 @@ tests/
 |---|---|
 | `/` | Panel, sin cliente elegido |
 | `/cliente/<slug>` | Un cliente |
-| `/cliente/<slug>/<slug-del-mes>` | Un calendario de ese cliente |
+| `/cliente/<slug>/<mes>-<año>` | Un mes del calendario de ese cliente (`octubre-2026`), exista o no su cajón. Los enlaces viejos con el nombre o el id del calendario siguen abriendo su mes |
 | `/cliente/<slug>/tareas` · `/contenido` · `/ideas` · `/resultados` · `/ficha` | Las otras pestañas del cliente |
 | `/tareas` | Mi día |
 | `/ajustes` | IA, presupuesto, integraciones, tareas, copia de seguridad |
@@ -1298,6 +1303,34 @@ son del servidor.
   `cover_url` de Instagram y `poster` de la página de aprobación) y como
   milisegundo (`portadaMs`: `thumb_offset` de Instagram si no hay imagen y
   `video_cover_timestamp_ms` de TikTok, que no acepta imagen).
+- **El calendario es UNO por cliente; el mes, un cajón que no se ve.**
+  Las publicaciones siguen guardadas por meses (`calendars`, una fila por
+  cliente y mes) porque cada guardado reescribe la fila entera, dos
+  personas en meses distintos no deben pisarse y D1 corta a 2 MB. Pero el
+  mes ya no se crea ni se nombra: la dirección dice qué mes se mira
+  (`mesDeSlug`), un mes sin cajón se enseña con `calendarioVirtual()` y el
+  cajón se crea al ESCRIBIR (`POST /api/calendarios/mes`, nunca al mirar).
+  Lo escrito sobre el virtual se lleva al cajón con `fusionarEnMes()`, que
+  AÑADE: si otra persona lo creó a la vez, lo suyo se queda.
+- **Un mes por cliente lo garantiza la base** (0023, índice único). Antes
+  «Duplicar calendario» creaba «Octubre 2026 (copia)» del mismo mes. Crear
+  con el PUT un mes que ya existe devuelve 409 con el que hay (no un 500 del
+  índice); el asistente de planificar lo trata AÑADIENDO a lo que hay.
+- **Mover a otro mes es del servidor, y todo o nada**
+  (`moverDeMes`, worker/lib/meses.js). Seis tablas señalan cada publicación
+  por «calendario + publicación» (approvals, comentarios_aprobacion,
+  publicaciones_programadas, client_tasks, notas_equipo, historial): mover
+  sólo el JSON las dejaría apuntando al mes viejo. D1 no aborta un lote por
+  una sentencia que no toca filas, así que `trasladarPublicacion()` encadena
+  condiciones: el origen se escribe sólo si ni él ni el destino cambiaron,
+  el destino sólo si el origen lleva la marca nueva, y las seis tablas sólo
+  si el destino la lleva. No se mueve lo publicado, lo que se está
+  publicando, ni lo programado a un momento pasado. El navegador guarda YA
+  lo pendiente del mes antes de pedirlo (`guardarYa`): un guardado agrupado
+  que saliera después devolvería la publicación a su sitio.
+- **Una vista de calendario por mes** (`key` por mes en App.jsx): pasar de
+  mes no arrastra el panel abierto del anterior, que al cerrarse guardaría
+  en el mes equivocado.
 - **`tests/utils/d1Memoria.js` es una D1 de verdad** (SQLite de Node con
   todas las migraciones). Para lo que un doble a mano no ve: que las
   consultas de la capa de acceso existen en el esquema. La cola de
@@ -1320,6 +1353,6 @@ son del servidor.
   Implementada.
 - `docs/propuesta-calendario-continuo.md` — un calendario siempre activo (sin crear
   uno por mes), capas de planificación, fuera categorías; qué limpiar; el móvil.
-  Propuesta, sin implementar.
+  Fase 1 y la limpieza, implementadas; fases 2 a 4, pendientes.
 - `docs/hub-cloudflare.md` — plan del hub donde este calendario pasa a ser una
   herramienta más, junto al bot y la tienda que ya están en Cloudflare.

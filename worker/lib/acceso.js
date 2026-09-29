@@ -309,6 +309,48 @@ export function crearAcceso(db, ownerId, { clientes = null } = {}) {
       return filas.length;
     },
 
+    /**
+     * Mueve una publicación de un calendario (mes) a otro, TODO O NADA.
+     *
+     * Con ella viajan las seis tablas que la señalan por «calendario +
+     * publicación»: la respuesta del cliente, su conversación, la cola,
+     * sus tareas, el hilo interno y el historial. Si sólo se moviera el
+     * JSON, esas seis se quedarían apuntando al mes viejo.
+     *
+     * D1 ejecuta el lote en una transacción, pero una sentencia que no
+     * toca ninguna fila no la aborta. Así que cada paso se CONDICIONA al
+     * anterior con una marca (`marca`, el `updated_at` nuevo):
+     *   1. el origen se escribe sólo si ni él ni el destino cambiaron
+     *      desde que se leyeron;
+     *   2. el destino, sólo si el origen ya lleva la marca;
+     *   3. las seis tablas, sólo si el destino ya la lleva.
+     * Si alguien guardó cualquiera de los dos meses entre la lectura y el
+     * lote, no se escribe nada y devuelve false.
+     */
+    async trasladarPublicacion({ origen, destino, postId, diasOrigen, diasDestino, marca }) {
+      if (!origen?.id || !destino?.id || origen.id === destino.id) throw new Error("trasladar: origen y destino distintos");
+      const sentencias = [
+        db.prepare(
+          "update calendars set days = ?, updated_at = ? where id = ? and owner_id = ? and updated_at = ? " +
+            "and (select updated_at from calendars where id = ? and owner_id = ?) = ?",
+        ).bind(JSON.stringify(diasOrigen), marca, origen.id, ownerId, origen.updated_at, destino.id, ownerId, destino.updated_at),
+        db.prepare(
+          "update calendars set days = ?, updated_at = ? where id = ? and owner_id = ? and updated_at = ? " +
+            "and (select updated_at from calendars where id = ? and owner_id = ?) = ?",
+        ).bind(JSON.stringify(diasDestino), marca, destino.id, ownerId, destino.updated_at, origen.id, ownerId, marca),
+      ];
+      const hecho = "(select updated_at from calendars where id = ? and owner_id = ?) = ?";
+      for (const tabla of ["approvals", "comentarios_aprobacion", "publicaciones_programadas", "client_tasks", "notas_equipo", "historial"]) {
+        const dueno = CON_DUENO.has(tabla) ? " and owner_id = ?" : "";
+        sentencias.push(
+          db.prepare(`update ${tabla} set calendar_id = ? where calendar_id = ? and post_id = ?${dueno} and ${hecho}`)
+            .bind(destino.id, origen.id, postId, ...(dueno ? [ownerId] : []), destino.id, ownerId, marca),
+        );
+      }
+      const resultados = db.batch ? await db.batch(sentencias) : await Promise.all(sentencias.map((x) => x.run()));
+      return Number(resultados[0]?.meta?.changes ?? 0) === 1 && Number(resultados[1]?.meta?.changes ?? 0) === 1;
+    },
+
     async borrar(tabla, where) {
       const { sql, valores } = acotar(tabla, where);
       const { meta } = await db.prepare(`delete from ${tabla} where ${sql}`).bind(...valores).run();

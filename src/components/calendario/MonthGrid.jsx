@@ -13,10 +13,17 @@ import { FORMATS, FORMAT_ICONS, STATUSES } from "../../constants";
 import { fmtDate } from "../../utils";
 import { completitud, resumenCompletitud } from "../../lib/completitud";
 import Icon from "../Icon";
-import { categoryHue, fmt12h } from "./formato";
+import { fmt12h } from "./formato";
 import { resumenCola } from "../../lib/cola";
 
-export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, onAddPost, onDropFromBank, ideasBank, dayLabels, onUpdateDayLabel }) {
+/**
+ * `vecinos`: los días de los meses de al lado que asoman en la rejilla
+ * (fecha → { dia, cal }). Con el calendario siempre activo, la semana del
+ * 29 de septiembre al 5 de octubre se ve ENTERA: lo de septiembre sale en
+ * sus días, un toque lo abre en su mes, y soltar ahí una publicación de
+ * este mes la lleva a ese día (a otro mes: lo hace el servidor).
+ */
+export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, onAddPost, onDropFromBank, ideasBank, dayLabels, onUpdateDayLabel, vecinos = null, onVecina }) {
   const [drag, setDrag] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const [editingHeader, setEditingHeader] = useState(null);
@@ -77,8 +84,9 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
       })}
       {allCells.map((date) => {
         const d = new Date(date + "T12:00:00");
-        const dd = cal.days?.find((dd) => dd.date === date);
         const cur = d.getMonth() === cal.month;
+        const vecina = cur ? null : vecinos?.get(date) ?? null;
+        const dd = cur ? cal.days?.find((dd) => dd.date === date) : vecina?.dia;
         const isToday = date === today;
         const isDrop = dropTarget === date;
 
@@ -122,10 +130,10 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
               const f = FORMATS[post.format] || FORMATS.post;
               const st = STATUSES[post.status || "pending"];
               const isPublished = post.status === "published";
-              const cat = post.category || dd?.category || "";
-              const hue = cat ? categoryHue(cat) : 0;
+              // Sin categorías: el chip se colorea por formato y estado, que es
+              // lo que se mira. El campo sigue en los datos viejos, sin enseñarse.
               const briefIdea = (post.title || post.idea || "").split(/[.\n]/)[0].slice(0, 24);
-              const chipLabel = post.title || cat || f.label;
+              const chipLabel = post.title || briefIdea || f.label;
               // Cuánto le falta a esta publicación. Va en la barra de abajo
               // y, en palabras, en el nombre accesible y en el `title`: un
               // color no se lee con lector de pantalla.
@@ -137,19 +145,15 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
                 <button
                   key={post.id}
                   type="button"
-                  draggable
+                  draggable={!vecina}
+                  data-vecina={vecina ? true : undefined}
                   title={resumen}
-                  className={`cal-post${isPublished ? " is-published" : ""}${cat ? " has-cat" : ""}`}
-                  aria-label={`${f.label}${cat ? ` — ${cat}` : ""}${briefIdea ? `: ${briefIdea}` : ""} — ${porProducir(post) ? "Idea aprobada, por producir" : st.label}${post.publishTime ? `, ${fmt12h(post.publishTime)}` : ""}${enCola ? `. ${enCola.texto}` : ""}${lleva ? `. Lo lleva ${lleva.nombre}` : ""}. ${resumen}`}
-                  onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", JSON.stringify({ postId: post.id, sourceDate: date })); setDrag({ postId: post.id, sourceDate: date }); }}
+                  className={`cal-post${isPublished ? " is-published" : ""}`}
+                  aria-label={`${vecina ? "Del mes de al lado. " : ""}${f.label}${briefIdea ? `: ${briefIdea}` : ""} — ${porProducir(post) ? "Idea aprobada, por producir" : st.label}${post.publishTime ? `, ${fmt12h(post.publishTime)}` : ""}${enCola ? `. ${enCola.texto}` : ""}${lleva ? `. Lo lleva ${lleva.nombre}` : ""}. ${resumen}`}
+                  onDragStart={(e) => { if (vecina) return; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", JSON.stringify({ postId: post.id, sourceDate: date })); setDrag({ postId: post.id, sourceDate: date }); }}
                   onDragEnd={() => { setDrag(null); setDropTarget(null); }}
-                  onClick={() => onPostClick(post, dd)}
-                  style={cat ? {
-                    background: isPublished ? st.bg : `hsl(${hue} 60% 25% / .35)`,
-                    borderColor: isPublished ? st.border : `hsl(${hue} 55% 50% / .5)`,
-                    borderWidth: isPublished ? 2 : 1,
-                    color: isPublished ? st.text : `hsl(${hue} 70% 75%)`,
-                  } : {
+                  onClick={() => (vecina ? onVecina?.(vecina.cal, post) : onPostClick(post, dd))}
+                  style={{
                     background: isPublished ? st.bg : f.color + "22",
                     borderColor: isPublished ? st.border : st.border + "88",
                     borderWidth: isPublished ? 2 : 1,

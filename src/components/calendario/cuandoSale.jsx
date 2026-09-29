@@ -96,7 +96,7 @@ export default function CuandoSale({
     : modo === "mano" ? "Guardar para publicar a mano"
       : cuando ? `Programar para ${fechaHora(cuando)}` : "Programar";
   const deshabilitado = !!trabajando || (modo !== "mano" && (!!bloqueo || !estadoRedes || errores.length > 0 || !pendientes.length))
-    || (modo === "programar" && (!mismoMes || !cuando || yaPaso));
+    || (modo === "programar" && (!cuando || yaPaso));
 
   // Ya en la cola (o publicada): la tarjeta de estado en vez del selector.
   const tarjeta = vivas.length > 0 && !cambiando && !post.asistida;
@@ -166,7 +166,7 @@ export default function CuandoSale({
             </div>
           )}
           {modo === "programar" && !mismoMes && (
-            <p className="hint" role="alert">Ese día es de otro mes: para otro mes, créala en ese calendario (o con «Subir»).</p>
+            <p className="hint">Es de otro mes: al programarla se lleva allí, con su aprobación y su conversación.</p>
           )}
           {modo === "programar" && mismoMes && fecha !== day.date && (
             <p className="hint">Al programarla se mueve al {Number(fecha.slice(8))} en el calendario.</p>
@@ -181,10 +181,22 @@ export default function CuandoSale({
               </p>
               <label className="sr-only" htmlFor={`${ids}-nota`}>Qué hay que poner a mano</label>
               <input id={`${ids}-nota`} className="input" maxLength={300} value={post.notaAsistida || ""} onChange={(e) => sf("notaAsistida", e.target.value)} placeholder="Ej.: canción «…» desde el minuto 0:15; sticker de encuesta" />
-              {post.asistida && enlaceAMano && (
+              {post.asistida && enlaceAMano && post.status !== "published" && (
                 <a className="btn btn-secondary btn-sm" href={enlaceAMano} onClick={(e) => { e.preventDefault(); navegar(enlaceAMano); }}>
                   <Icon name="photo" size={14} /> Abrir la pantalla para publicarla
                 </a>
+              )}
+              {/* «La publico yo» y «Ya la publiqué» son la misma cosa en dos
+                  momentos: antes eran dos botones en sitios distintos. */}
+              {post.status === "published" ? (
+                <p className="cuando-hecha">
+                  <Icon name="check" size={14} /> Publicada a mano.{" "}
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => sf("status", "approved")}>Deshacer</button>
+                </p>
+              ) : (
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => { sf("asistida", true); sf("status", "published"); sf("publicadaAMano", new Date().toISOString()); }}>
+                  <Icon name="check" size={14} /> Ya la publiqué
+                </button>
               )}
             </>
           )}

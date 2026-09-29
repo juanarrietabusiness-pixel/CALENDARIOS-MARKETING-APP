@@ -30,6 +30,7 @@ import { fechaEnZona, debeReabrirse, esFecha } from "../../src/lib/agenda.js";
 import { leerConfigIA, MODELOS_ELEGIBLES, RAZONAMIENTOS, ACCIONES_LIMITE } from "../lib/configIA.js";
 import { resincronizarCalendario } from "../lib/publicador.js";
 import { asignarTarea, alGuardarCalendario, avisarNota, avisar, enlacePublicacion } from "../lib/equipo.js";
+import { obtenerOCrearMes, moverDeMes, ErrorMes } from "../lib/meses.js";
 
 /**
  * Lo que va después de responder (avisos, historial): con el `waitUntil`
@@ -394,6 +395,45 @@ export async function rutasDatos(req, env, ctx) {
 
   // ---- /api/calendarios ----
   if (seccion === "calendarios") {
+    // El cajón de un mes (calendario siempre activo): el que hay, o uno
+    // vacío si todavía no existe. Se pide al ESCRIBIR, no al mirar.
+    if (id === "mes" && !sub && metodo === "POST") {
+      const { clientId, year, month } = (await cuerpo(req)) ?? {};
+      try {
+        const { fila, creado } = await obtenerOCrearMes(acceso, clientId, year, month);
+        const guardado = salidaCalendario(fila);
+        if (creado) difundir(env, acceso.ownerId, { tipo: "calendario", calendario: guardado, por: firma(ctx.usuario, req) });
+        return json(guardado, creado ? 201 : 200);
+      } catch (e) {
+        if (e instanceof ErrorMes) return error(e.message, e.estado);
+        throw e;
+      }
+    }
+
+    // Llevar una publicación a otro mes, con su aprobación, su
+    // conversación, la cola, sus tareas, su hilo y su historial.
+    if (sub === "mover" && metodo === "POST") {
+      const { postId, fecha } = (await cuerpo(req)) ?? {};
+      try {
+        const r = await moverDeMes(acceso, { calId: id, postId, fecha });
+        const origen = salidaCalendario(r.origen);
+        const destino = salidaCalendario(r.destino);
+        // La cola sigue a la publicación: su hora nueva sale del mes nuevo.
+        try { await resincronizarCalendario(env, acceso, r.destino, firma(ctx.usuario, req)); } catch (e) { console.error("resincronizar cola:", e); }
+        for (const cal of [origen, destino]) {
+          difundir(
+            env, acceso.ownerId,
+            { tipo: "calendario", calendario: cal, por: firma(ctx.usuario, req) },
+            { tipo: "calendario:recargar", id: cal.id, clientId: cal.client_id, por: firma(ctx.usuario, req) },
+          );
+        }
+        return json({ origen, destino });
+      } catch (e) {
+        if (e instanceof ErrorMes) return error(e.message, e.estado);
+        throw e;
+      }
+    }
+
     if (!sub && metodo === "PUT") {
       const datos = await cuerpo(req);
       if (!datos) return error("Cuerpo inválido");
@@ -411,6 +451,15 @@ export async function rutasDatos(req, env, ctx) {
       fila.updated_at = ahora();
       // Lo de antes, para el historial y los avisos (a quién se asignó qué).
       const previo = await acceso.leerUno("calendars", { id: fila.id });
+      // Un mes por cliente (0023): crear uno que ya existe con otro id
+      // devuelve el que hay, para que el navegador escriba en ése. Sin
+      // esto el índice único respondería un 500 sin explicación.
+      if (!previo && fila.client_id && Number.isInteger(Number(fila.year)) && Number.isInteger(Number(fila.month))) {
+        const mismoMes = await acceso.leerUno("calendars", { client_id: String(fila.client_id), year: Number(fila.year), month: Number(fila.month) });
+        if (mismoMes) {
+          return json({ error: "Ese mes ya existe para este cliente.", calendario: salidaCalendario(mismoMes) }, 409);
+        }
+      }
       await acceso.guardar("calendars", fila);
       const crudo = await acceso.leerUno("calendars", { id: fila.id });
       const guardado = salidaCalendario(crudo);

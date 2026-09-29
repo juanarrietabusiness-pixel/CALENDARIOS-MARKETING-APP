@@ -32,25 +32,6 @@ export async function base64DeImagen(image, lado = 800) {
   return null;
 }
 
-/**
- * El HTML exportado se abre como archivo local: ahí `/api/media/…` no
- * resuelve contra nada. Se incrustan las imágenes antes de construirlo.
- */
-export async function conImagenesIncrustadas(calendario) {
-  const days = await Promise.all((calendario.days || []).map(async (d) => ({
-    ...d,
-    posts: await Promise.all((d.posts || []).map(async (p) => {
-      if (typeof p.image !== "string" || !p.image.startsWith("/api/media/")) return p;
-      try {
-        return { ...p, image: `data:image/jpeg;base64,${await imagenParaModelo(p.image, 900)}` };
-      } catch {
-        return { ...p, image: null };
-      }
-    })),
-  })));
-  return { ...calendario, days };
-}
-
 function esperar(el, evento) {
   return new Promise((ok, mal) => {
     const limpiar = () => { el.removeEventListener(evento, bien); el.removeEventListener("error", fallo); };

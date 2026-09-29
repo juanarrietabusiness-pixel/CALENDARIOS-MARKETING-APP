@@ -94,6 +94,30 @@ export const PESTANAS_CLIENTE = Object.freeze(["tareas", "contenido", "ideas", "
 export const slugsDeClientes = (clientes = []) => slugsUnicos(clientes, "cliente");
 export const slugsDeCalendarios = (cals = []) => slugsUnicos(cals, "calendario", PESTANAS_CLIENTE);
 
+// ------------------------------------------------------------
+// El mes en la dirección (calendario siempre activo)
+// ------------------------------------------------------------
+//
+// El calendario ya no es un documento que se abre: es un solo
+// calendario por cliente que se recorre por meses. La dirección dice QUÉ
+// MES se está mirando —`/cliente/dcasa-pty/octubre-2026`—, exista o no su
+// cajón en la base. Por eso sale del mes y del año, no del nombre del
+// calendario: un mes vacío también tiene dirección. Los enlaces viejos
+// que traen el nombre (o el id) siguen resolviendo en App.jsx.
+
+const MESES_SLUG = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+
+/** «octubre-2026». `month` va de 0 a 11, como en `calendars`. */
+export const slugDeMes = (year, month) => `${MESES_SLUG[month]}-${year}`;
+
+/** El inverso: «octubre-2026» → { year: 2026, month: 9 }, o null. */
+export function mesDeSlug(trozo) {
+  const m = /^([a-z]+)-(\d{4})$/.exec(String(trozo ?? ""));
+  if (!m) return null;
+  const month = MESES_SLUG.indexOf(m[1]);
+  return month < 0 ? null : { year: Number(m[2]), month };
+}
+
 /**
  * De un trozo de dirección al elemento que nombra.
  *

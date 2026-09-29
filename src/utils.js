@@ -51,12 +51,6 @@ export const lsSet = (key, value) => {
   try { localStorage.setItem(key, value); } catch { /* */ }
 };
 
-export const escapeHTML = (s) => {
-  if (!s) return "";
-  const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
-  return String(s).replace(/[&<>"']/g, (c) => map[c]);
-};
-
 export async function compressImage(file, maxSize = 400) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

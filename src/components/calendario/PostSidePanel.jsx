@@ -254,17 +254,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => { save(); onClose(); }}>Guardar y cerrar</button>
               </>
             ) : null}
-          >
-            {form.status === "published" ? (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => sf("status", "approved")}>
-                Quitar «publicada a mano»
-              </button>
-            ) : (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => sf("status", "published")}>
-                Ya la publiqué a mano
-              </button>
-            )}
-          </PestanaPublicar>
+          />
         ) : (<div className="idea-columnas" data-ancho={ancho || undefined}>
         <div className="idea-escribir">
 
