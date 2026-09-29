@@ -23,6 +23,12 @@
 // que nadie tocó tiene `created_at` = `updated_at`, y por eso se REEMPLAZA
 // borrando e insertando —`insertar` no toca las fechas—, no con `guardar`,
 // que pone `updated_at` al día y la haría pasar por editada.
+//
+// Y LO QUE NO ES SUYO NO SE TOCA. Sólo se reemplaza una nota que la propia IA
+// escribió (`origen: "ia"`). Una nota que alguien llamó «Ficha técnica» a
+// mano, o una sección importada que se llama igual, tiene la misma ruta y no
+// por eso es suya: la ficha nueva toma otra ruta libre (`ficha-tecnica-2`) y
+// la de la persona sigue donde estaba.
 // ============================================================
 
 import { abrirFlujo, leerFlujo, textoDe, esRechazoDeModelo, mensajeDeRechazo, RechazoAnthropic } from "../anthropic.js";
@@ -30,6 +36,7 @@ import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET } from
 import { uuid } from "../ids.js";
 import { parseBloques } from "../../../src/lib/parse.js";
 import { leerNotas, reindexar } from "./cerebro.js";
+import { derivados, rutaUnica } from "./notas.js";
 
 const MAX_TOKENS_CAP = 64_000;
 const PRESUPUESTO_MS = 290_000;
@@ -103,7 +110,7 @@ export function leerRespuesta(texto) {
 
 /** Una nota escrita por la IA, sin fechas: las pone la base, iguales, y así consta que nadie la ha tocado. */
 const filaIA = (clientId, ruta, titulo, tipo, texto) => ({
-  id: uuid(), client_id: clientId, ruta, titulo, texto, tipo, origen: "ia", fuente: "", fuente_sha: "", interna: 0,
+  id: uuid(), client_id: clientId, ruta, titulo, texto, ...derivados(texto), tipo, origen: "ia", fuente: "", fuente_sha: "", interna: 0,
 });
 
 /**
@@ -119,12 +126,14 @@ export async function prepararFicha(env, acceso, cliente, { forzar = false } = {
     throw new ErrorPreparar("Este cliente no tiene notas de marca de las que escribir la ficha. Llena el cerebro desde el repositorio o añade notas primero.", 400);
   }
 
-  const editada = (ruta) => {
-    const n = notas.find((x) => x.ruta === ruta && x.origen !== "repositorio");
+  // La ficha y las cifras que escribió la IA antes, si las hay: lo único que esta llamada puede reemplazar.
+  const propia = (tipo) => notas.find((n) => n.origen === "ia" && n.tipo === tipo) ?? null;
+  const editada = (tipo) => {
+    const n = propia(tipo);
     return n && n.updated_at !== n.created_at ? n : null;
   };
-  const conservaFicha = !forzar && editada(RUTA_FICHA);
-  const conservaCifras = !forzar && editada(RUTA_CIFRAS);
+  const conservaFicha = !forzar && editada("ficha");
+  const conservaCifras = !forzar && editada("cifras");
   if (conservaFicha && conservaCifras) {
     return { ficha: "conservada", cifras: "conservada", modelo: "", aviso: null, leidas: 0, fuera: [], segundos: 0 };
   }
@@ -178,11 +187,16 @@ export async function prepararFicha(env, acceso, cliente, { forzar = false } = {
   const respuesta = leerRespuesta(textoDe(m));
   if (!respuesta) throw new ErrorPreparar("La IA no devolvió la ficha con el formato esperado. Inténtalo otra vez.", 502);
 
-  const reemplazar = async (ruta, titulo, tipo, texto, conserva) => {
+  const usadas = new Set(notas.map((n) => n.ruta));
+  const reemplazar = async (rutaBase, titulo, tipo, texto, conserva) => {
     if (conserva) return "conservada";
     if (!texto) return "vacia";
-    const previa = notas.find((n) => n.ruta === ruta);
+    const previa = propia(tipo);
     if (previa) await acceso.borrar("cerebro_notas", { id: previa.id, client_id: cliente.id });
+    // La ficha de antes conserva su ruta (los `[[enlaces]]` de otras notas dependen de ella); una nueva toma la
+    // que esté libre, que no es la de una nota ajena que ya se llame igual.
+    const ruta = previa?.ruta ?? rutaUnica(rutaBase, usadas);
+    usadas.add(ruta);
     await acceso.insertar("cerebro_notas", filaIA(cliente.id, ruta, titulo, tipo, texto));
     return previa ? "reemplazada" : "creada";
   };

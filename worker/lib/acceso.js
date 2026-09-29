@@ -219,6 +219,23 @@ export function crearAcceso(db, ownerId, { clientes = null } = {}) {
       return results ?? [];
     },
 
+    /**
+     * Sólo algunas columnas, acotado igual que `leer`. Para lo que no necesita
+     * el texto entero de cada fila: la lista de notas del cerebro, sus rutas,
+     * sus versiones. `select *` de 400 notas de 200 000 caracteres no cabe
+     * en una petición.
+     */
+    async leerColumnas(tabla, columnas, where = {}, orden = "created_at asc") {
+      const cols = exigirColumnas(columnas);
+      if (!cols.length) throw new Error("leerColumnas sin columnas");
+      const { sql, valores } = acotar(tabla, where);
+      const { results } = await db
+        .prepare(`select ${cols.join(", ")} from ${tabla} where ${sql} order by ${orden}`)
+        .bind(...valores)
+        .all();
+      return results ?? [];
+    },
+
     async leerUno(tabla, where = {}) {
       const { sql, valores } = acotar(tabla, where);
       return db.prepare(`select * from ${tabla} where ${sql} limit 1`).bind(...valores).first();

@@ -7,6 +7,8 @@
 // enseña tal cual.
 // ============================================================
 
+import { contextoDelChat } from "./cerebroCliente";
+
 const base = (clienteId) => `/api/cerebro/${encodeURIComponent(clienteId)}`;
 
 async function llamar(ruta, { metodo = "GET", cuerpo } = {}) {
@@ -33,6 +35,18 @@ async function llamar(ruta, { metodo = "GET", cuerpo } = {}) {
   return datos;
 }
 
+/**
+ * Toda llamada que cambia el cerebro suelta lo que el asistente recordaba de él: si no, quien corrige la ficha y
+ * abre el chat un momento después le seguiría hablando con la de antes.
+ */
+async function cambiando(clienteId, hacer) {
+  try {
+    return await hacer();
+  } finally {
+    contextoDelChat.olvidar(clienteId);
+  }
+}
+
 /** Las notas (sin su texto entero) y el estado del cerebro. */
 export const listarCerebro = (clienteId) => llamar(base(clienteId));
 
@@ -40,9 +54,10 @@ export const listarCerebro = (clienteId) => llamar(base(clienteId));
 export const leerNota = (clienteId, notaId) => llamar(`${base(clienteId)}/nota/${encodeURIComponent(notaId)}`);
 
 /** Crear (sin `id`) o editar (con `id`) una nota. */
-export const guardarNota = (clienteId, nota) => llamar(`${base(clienteId)}/nota`, { metodo: "PUT", cuerpo: nota });
+export const guardarNota = (clienteId, nota) => cambiando(clienteId, () => llamar(`${base(clienteId)}/nota`, { metodo: "PUT", cuerpo: nota }));
 
-export const borrarNota = (clienteId, notaId) => llamar(`${base(clienteId)}/nota/${encodeURIComponent(notaId)}`, { metodo: "DELETE" });
+export const borrarNota = (clienteId, notaId) =>
+  cambiando(clienteId, () => llamar(`${base(clienteId)}/nota/${encodeURIComponent(notaId)}`, { metodo: "DELETE" }));
 
 /** Buscar por pasajes. `para: "chat"` incluye lo interno: es el equipo quien mira. */
 export const buscarEnCerebro = (clienteId, q, { para = "chat", n = 8 } = {}) =>
@@ -50,12 +65,12 @@ export const buscarEnCerebro = (clienteId, q, { para = "chat", n = 8 } = {}) =>
 
 /** Llenar el cerebro desde el repositorio del cliente. */
 export const importarAlCerebro = (clienteId, { actualizar = false } = {}) =>
-  llamar(`${base(clienteId)}/importar`, { metodo: "POST", cuerpo: { actualizar } });
+  cambiando(clienteId, () => llamar(`${base(clienteId)}/importar`, { metodo: "POST", cuerpo: { actualizar } }));
 
 /** La IA escribe la ficha técnica y las cifras. Gasta: se releé el medidor de la cabecera al terminar. */
 export async function prepararFicha(clienteId, { forzar = false } = {}) {
   try {
-    return await llamar(`${base(clienteId)}/preparar`, { metodo: "POST", cuerpo: { forzar } });
+    return await cambiando(clienteId, () => llamar(`${base(clienteId)}/preparar`, { metodo: "POST", cuerpo: { forzar } }));
   } finally {
     // Haya ido bien o mal: una llamada que falla a medias también cuesta.
     window.dispatchEvent(new Event("ia:gasto"));

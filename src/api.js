@@ -9,7 +9,7 @@ import { analizarVideo } from "./lib/db";
 import { PROPIEDADES_FECHA_TAREA } from "./lib/agenda";
 import { partirSSE } from "../worker/lib/flujoAnthropic.js";
 import { sinCapaMaquetacion, prepararContenidoIA, TITULO_FICHA } from "./lib/contextoADN";
-import { textoEstableDelCerebro, consultaDeTanda, consultaDePublicacion } from "./lib/cerebroCliente";
+import { textoEstableDelCerebro, consultaDeTanda, consultaDePublicacion, usaElCerebro, contextoDelChat } from "./lib/cerebroCliente";
 
 // Se reexportan porque media aplicación las importa desde aquí. Viven en
 // `lib/parse.js` para poder probarlas sin arrastrar el cliente de Supabase.
@@ -674,7 +674,9 @@ export async function loadADN(client, { forzar = false } = {}) {
   // hace la ficha del cliente para probar la conexión.
   if (!forzar) {
     const cerebro = await contextoDelCerebro(client?.dbId || client?.id);
-    if (cerebro) return { content: textoEstableDelCerebro(cerebro), sections: {}, cacheado: false, cerebro: true, notas: cerebro.notas };
+    if (cerebro && usaElCerebro(cerebro, client)) {
+      return { content: textoEstableDelCerebro(cerebro), sections: {}, cacheado: false, cerebro: true, notas: cerebro.notas };
+    }
   }
   if (!forzar && client.githubContext) {
     return { content: client.githubContext, sections: {}, cacheado: true };
@@ -682,6 +684,23 @@ export async function loadADN(client, { forzar = false } = {}) {
   if (!client.githubRepo) return { content: "", sections: {}, cacheado: false };
   const result = await fetchGitHubADN(client.githubRepo, client.githubFolder);
   return { ...result, cacheado: false };
+}
+
+/**
+ * El ADN que recibe el asistente de UN cliente. No es `loadADN`: el chat lo pide en cada mensaje, y `loadADN`
+ * puede releer el repositorio de GitHub (decenas de peticiones) cuando el cliente no tiene ADN guardado. Aquí sólo
+ * se mira el cerebro —y su respuesta se recuerda un minuto: la ficha no cambia de un mensaje a otro—; sin cerebro,
+ * lo que el cliente ya lleva en su ficha, que es lo que el chat usaba antes.
+ */
+export async function adnParaElChat(client) {
+  const id = client?.dbId || client?.id;
+  let cerebro = contextoDelChat.leer(id);
+  if (cerebro === undefined) {
+    cerebro = await contextoDelCerebro(id);
+    contextoDelChat.poner(id, cerebro);
+  }
+  if (cerebro && usaElCerebro(cerebro, client)) return { content: textoEstableDelCerebro(cerebro), cerebro: true };
+  return { content: client?.githubContext || "", cerebro: false };
 }
 
 // ============================================================

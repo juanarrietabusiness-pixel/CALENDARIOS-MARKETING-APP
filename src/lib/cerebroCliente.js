@@ -24,6 +24,40 @@ export const TEXTO_SIN_FICHA =
   "(La ficha técnica de este cliente aún no está preparada. Abajo van los pasajes de su cerebro más relevantes para esta tarea; " +
   "lo que no esté ahí no lo sabes: no lo inventes.)";
 
+/**
+ * ¿Esta tarea se hace con el cerebro? Hace falta que tenga notas para ella y que pueda dar una base: su ficha
+ * técnica o, si aún no la tiene, que el cliente no tenga otro ADN al que volver. Con notas pero sin ficha y con un
+ * ADN de la ficha del cliente (`githubContext`), ese ADN sigue siendo mejor que unos pasajes sueltos: se genera
+ * como siempre hasta que alguien pulse «Preparar ficha con IA».
+ */
+export function usaElCerebro(contexto, cliente) {
+  if (!(contexto?.notas > 0)) return false;
+  return Boolean(String(contexto.ficha ?? "").trim()) || !String(cliente?.githubContext ?? "").trim();
+}
+
+/**
+ * Una memoria corta: guarda un valor `vidaMs` y lo suelta. El asistente pide el contexto del cerebro en cada
+ * mensaje y la ficha no cambia de un mensaje a otro; sin esto, cada «hola» costaría una vuelta al servidor.
+ * `ahora` se inyecta para poder probarla sin esperar.
+ */
+export function crearMemoriaCorta(vidaMs = 60_000, ahora = () => Date.now()) {
+  const guardado = new Map();
+  return {
+    /** El valor guardado, o `undefined` si no hay o caducó (un `null` guardado sí cuenta como valor). */
+    leer(clave) {
+      const e = guardado.get(clave);
+      if (!e) return undefined;
+      if (ahora() >= e.hasta) { guardado.delete(clave); return undefined; }
+      return e.valor;
+    },
+    poner(clave, valor) { guardado.set(clave, { valor, hasta: ahora() + vidaMs }); },
+    olvidar(clave) { guardado.delete(clave); },
+  };
+}
+
+/** El contexto del cerebro que usa el asistente, por cliente. La pestaña Cerebro lo suelta al cambiar algo. */
+export const contextoDelChat = crearMemoriaCorta();
+
 /** Lo que va en el bloque cacheado: la ficha y las cifras, con su título. */
 export function textoEstableDelCerebro({ ficha = "", cifras = "" } = {}) {
   const partes = [];

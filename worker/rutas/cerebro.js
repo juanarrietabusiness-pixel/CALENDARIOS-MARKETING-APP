@@ -21,10 +21,9 @@
 
 import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { uuid, ahora } from "../lib/ids.js";
-import { summary } from "../lib/cerebro/memoria.js";
-import { limpiarNota, slug, rutaUnica, MAX_NOTAS_POR_CLIENTE } from "../lib/cerebro/notas.js";
+import { limpiarNota, derivados, slug, rutaUnica, MAX_NOTAS_POR_CLIENTE } from "../lib/cerebro/notas.js";
 import {
-  USOS, leerNotas, reindexar, actualizarIndice, buscar, contexto, notasViejas,
+  USOS, leerNotasLigeras, reindexar, actualizarIndice, buscar, contexto, notasViejas,
 } from "../lib/cerebro/cerebro.js";
 import { importarDelRepositorio } from "../lib/cerebro/importar.js";
 import { ErrorRepositorio } from "../lib/cerebro/repositorio.js";
@@ -39,11 +38,14 @@ async function clienteDe(acceso, id) {
   return acceso.leerUno("clients", { id });
 }
 
-/** Una nota como la ve el navegador: sin `owner_id`. */
+/**
+ * Una nota como la ve el navegador: sin `owner_id`. La lista trae filas LIGERAS —sin el texto—, con su resumen y su
+ * tamaño ya calculados al escribirla; la nota abierta trae el texto y de él sale el tamaño.
+ */
 const publica = (n, { conTexto = false } = {}) => ({
   id: n.id, ruta: n.ruta, titulo: n.titulo, tipo: n.tipo, origen: n.origen, fuente: n.fuente,
-  interna: Boolean(n.interna), caracteres: n.texto.length, actualizada: n.updated_at, creada: n.created_at,
-  ...(conTexto ? { texto: n.texto } : { resumen: summary(n.texto, 200) }),
+  interna: Boolean(n.interna), caracteres: conTexto ? n.texto.length : n.caracteres, actualizada: n.updated_at, creada: n.created_at,
+  ...(conTexto ? { texto: n.texto } : { resumen: n.resumen }),
 });
 
 const uso = (v) => (USOS.includes(v) ? v : "texto");
@@ -56,12 +58,12 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
 
   // ---------- Las notas y el estado ----------
   if (!sub && metodo === "GET") {
-    const notas = await leerNotas(acceso, clienteId);
+    const notas = await leerNotasLigeras(acceso, clienteId);
     return json({
       notas: notas.map((n) => publica(n)),
       estado: {
         notas: notas.length,
-        caracteres: notas.reduce((s, n) => s + n.texto.length, 0),
+        caracteres: notas.reduce((s, n) => s + n.caracteres, 0),
         conFicha: notas.some((n) => n.tipo === "ficha"),
         conCifras: notas.some((n) => n.tipo === "cifras"),
         internas: notas.filter((n) => n.interna).length,
@@ -90,7 +92,8 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
       if (!previa) return noEncontrado("Nota");
       ruta = previa.ruta; // los [[enlaces]] de otras notas dependen de ella: no cambia al editar
     } else {
-      const existentes = await leerNotas(acceso, clienteId);
+      // Sólo las rutas: para repartir una libre y contar. El texto de cada nota no hace falta para eso.
+      const existentes = await acceso.leerColumnas("cerebro_notas", ["ruta"], { client_id: clienteId });
       if (existentes.length >= MAX_NOTAS_POR_CLIENTE) {
         return error(`Este cliente ya tiene ${MAX_NOTAS_POR_CLIENTE} notas. Borra las que no sirvan antes de añadir más.`, 409);
       }
@@ -99,7 +102,7 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
 
     const t = ahora();
     const fila = {
-      id: previa?.id ?? uuid(), client_id: clienteId, ruta, ...nota,
+      id: previa?.id ?? uuid(), client_id: clienteId, ruta, ...nota, ...derivados(nota.texto),
       // De dónde salió una nota no lo cambia quien la edita: sin esto, corregir una nota importada le borraba el
       // origen y el archivo, y una nueva importación ya no la reconocía como suya.
       origen: previa?.origen ?? nota.origen,
@@ -109,9 +112,11 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
       fuente_sha: previa?.fuente_sha ?? "",
       created_at: previa?.created_at ?? t, updated_at: t,
     };
-    await acceso.guardar("cerebro_notas", fila);
-    await actualizarIndice(env, acceso, clienteId, ruta, { ...fila, tipo: nota.tipo, interna: nota.interna });
-    return json(publica(fila, { conTexto: true }), previa ? 200 : 201);
+    // Lo que devuelve `guardar` es lo que quedó en D1: su `updated_at` NO es `t` (la capa lo pone al día al
+    // escribir), y es con ese con el que el índice comprueba después que sigue diciendo lo mismo que las notas.
+    const guardada = await acceso.guardar("cerebro_notas", fila);
+    await actualizarIndice(env, acceso, clienteId, ruta, guardada);
+    return json(publica(guardada, { conTexto: true }), previa ? 200 : 201);
   }
 
   if (sub === "nota" && notaId && metodo === "DELETE") {

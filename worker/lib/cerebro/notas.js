@@ -34,6 +34,7 @@
 
 import { SECCION_DE_MAQUETACION, CLAVES_DE_TEXTO_DE_LA_RECETA } from "../../../src/lib/contextoADN.js";
 import { fold } from "./conocimiento.js";
+import { summary } from "./memoria.js";
 
 export const TIPOS = Object.freeze(["ficha", "cifras", "marca", "maquetacion", "documento", "nota", "decision", "borrador"]);
 export const ORIGENES = Object.freeze(["repositorio", "documento", "manual", "ia", "app"]);
@@ -66,6 +67,16 @@ export function rutaUnica(base, usadas) {
   }
 }
 
+/**
+ * Lo que se calcula al ESCRIBIR una nota y se guarda aparte (`resumen`, `caracteres`): la lista del cerebro y su
+ * estado los leen sin traer el texto entero de cada una, que en un cliente con 400 notas de 200 000 caracteres
+ * no cabe en una respuesta de D1. Todo lugar que escriba una nota los calcula con esto.
+ */
+export function derivados(texto) {
+  const t = String(texto ?? "");
+  return { resumen: summary(t, 200), caracteres: t.length };
+}
+
 /** Lo que llega del navegador, validado. Devuelve `{ error }` si no vale. */
 export function limpiarNota(entrada = {}) {
   const titulo = String(entrada.titulo ?? "").trim().slice(0, MAX_TITULO);
@@ -90,9 +101,18 @@ export function limpiarNota(entrada = {}) {
 // De un archivo del repositorio a notas
 // ------------------------------------------------------------
 
-/** Encabezados de sección donde suele estar lo que la agencia no cuenta al cliente. Sólo para avisar. */
-const SECCION_INTERNA = /econom[ií]a unitaria|\bcostos?\b|\bmargen(?:es)?\b|proveedores?|\blanded\b|roadmap|operativ[ao]s?|inversi[oó]n|inversionista|importaci[oó]n|aduana/i;
-const MENCION_INTERNA = /nunca se dicen? al cliente|uso interno|solo interno|sólo interno|confidencial|memoria interna/i;
+/**
+ * Encabezados de sección donde está lo que la agencia no cuenta al cliente. Sólo para avisar.
+ *
+ * Es ESTRECHA a propósito. Una nota marcada interna sale de todo lo que se escribe para publicar, y ocultar de más
+ * es un fallo mudo: «Costo de envío» o «Horario operativo» son datos públicos, y una IA que no los ve no los puede
+ * decir. Por eso sólo entran las expresiones que casi siempre son del negocio por dentro —economía unitaria,
+ * márgenes, proveedores, «landed cost», roadmap, inversionistas, «reglas operativas», lo llamado «interno»—; una
+ * palabra suelta como «costo», «importación» u «operativo» no basta. Lo demás que huela a interno lo dice
+ * `MENCION_INTERNA` en el cuerpo, y sólo AVISA (`revisar`): la persona decide.
+ */
+const SECCION_INTERNA = /econom[ií]a unitaria|\bm[aá]rgen(?:es)?\b|proveedor(?:es)?|\blanded\b|roadmap|inversionista|reglas operativas|\bintern[oa]s?\b/i;
+const MENCION_INTERNA = /nunca se dicen? al cliente|uso interno|solo interno|sólo interno|confidencial|memoria interna|landed cost/i;
 
 /**
  * Qué es un archivo del repositorio del cliente, por dónde está y cómo

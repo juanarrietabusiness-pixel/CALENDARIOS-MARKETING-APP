@@ -10,17 +10,17 @@
 //
 //   · Un archivo cuyo SHA no cambió, no se descarga ni se toca.
 //   · Un archivo nuevo entra como notas nuevas.
-//   · Un archivo que CAMBIÓ en el repositorio se cuenta pero no se pisa,
-//     salvo con `actualizar`: alguien pudo corregir a mano esas notas, y
+//   · Un archivo que CAMBIÓ en el repositorio se cuenta pero ni se descarga
+//     ni se pisa, salvo con `actualizar`: alguien pudo corregir a mano esas notas, y
 //     una importación no puede deshacerlo. Con `actualizar`, se reemplazan
 //     las notas que nadie tocó (su `updated_at` sigue siendo el de su
 //     creación) y las nuevas reciben las mismas rutas que las que se van,
 //     para que los `[[enlaces]]` de otras notas sigan valiendo.
 // ============================================================
 
-import { dividirEnNotas } from "./notas.js";
+import { dividirEnNotas, derivados } from "./notas.js";
 import { leerRepositorio } from "./repositorio.js";
-import { leerNotas, reindexar } from "./cerebro.js";
+import { leerNotasLigeras, reindexar } from "./cerebro.js";
 import { uuid } from "../ids.js";
 
 const POR_LOTE = 40;
@@ -31,7 +31,8 @@ const POR_LOTE = 40;
  */
 export async function importarDelRepositorio(env, acceso, cliente, { carpeta = "", actualizar = false } = {}) {
   const clientId = cliente.id;
-  const existentes = await leerNotas(acceso, clientId);
+  // Sin el texto: aquí sólo hacen falta las fechas, el archivo de origen y su versión.
+  const existentes = await leerNotasLigeras(acceso, clientId);
 
   const delRepositorio = existentes.filter((n) => n.origen === "repositorio" && n.fuente);
   const importadas = new Set(delRepositorio.map((n) => n.fuente));
@@ -41,18 +42,21 @@ export async function importarDelRepositorio(env, acceso, cliente, { carpeta = "
   const leido = await leerRepositorio(env, {
     repoUrl: cliente.github_repo,
     carpeta: carpeta || cliente.github_folder,
-  }, conocidos);
+  }, conocidos, { actualizar });
 
   const usadas = new Set(existentes.map((n) => n.ruta));
-  const cuenta = { nuevos: 0, cambiados: 0, actualizados: 0 };
+  const cuenta = { nuevos: 0, actualizados: 0 };
   const notas = { creadas: 0, reemplazadas: 0, conservadas: 0 };
   const internas = [];
   const revisar = [];
   const filas = [];
+  const porBorrar = [];
 
   for (const archivo of leido.archivos) {
     const yaEstaba = importadas.has(archivo.ruta);
-    if (yaEstaba && !actualizar) { cuenta.cambiados++; continue; }
+    // Sin `actualizar` sólo entran archivos nuevos: el lector ya no baja los cambiados, y esto guarda contra el
+    // que llegara igual (un archivo con notas nuestras pero sin versión anotada).
+    if (yaEstaba && !actualizar) continue;
 
     // Las secciones que alguien corrigió a mano en una importación anterior: su versión gana.
     let corregidas = new Set();
@@ -64,7 +68,7 @@ export async function importarDelRepositorio(env, acceso, cliente, { carpeta = "
       corregidas = new Set(propias.filter((n) => n.updated_at !== n.created_at).map((n) => n.ruta));
       notas.conservadas += corregidas.size;
       notas.reemplazadas += sinTocar.length;
-      await acceso.borrarVarios("cerebro_notas", sinTocar.map((n) => n.id));
+      porBorrar.push(...sinTocar.map((n) => n.id));
       // Sus rutas quedan libres: las nuevas las heredan y los enlaces siguen valiendo.
       for (const n of sinTocar) usadas.delete(n.ruta);
       cuenta.actualizados++;
@@ -79,7 +83,7 @@ export async function importarDelRepositorio(env, acceso, cliente, { carpeta = "
       if (corregidas.has(n.ruta)) continue;
       usadas.add(n.ruta);
       filas.push({
-        id: uuid(), client_id: clientId, ruta: n.ruta, titulo: n.titulo, texto: n.texto, tipo: n.tipo,
+        id: uuid(), client_id: clientId, ruta: n.ruta, titulo: n.titulo, texto: n.texto, ...derivados(n.texto), tipo: n.tipo,
         origen: "repositorio", fuente: archivo.ruta, fuente_sha: archivo.sha, interna: n.interna ? 1 : 0,
         // Sin `created_at` ni `updated_at`: los pone la base, con el mismo instante en las dos. Si los
         // pusiera esto, `guardarVarios` cambiaría `updated_at` por su cuenta y toda nota importada
@@ -91,11 +95,14 @@ export async function importarDelRepositorio(env, acceso, cliente, { carpeta = "
     }
   }
 
+  // Un solo borrado para todos los archivos (van de 50 en 50 ids), no uno por archivo: el plan gratuito cuenta las
+  // consultas por invocación.
+  if (porBorrar.length) await acceso.borrarVarios("cerebro_notas", porBorrar);
   for (let i = 0; i < filas.length; i += POR_LOTE) await acceso.guardarVarios("cerebro_notas", filas.slice(i, i + POR_LOTE));
   if (filas.length || cuenta.actualizados) await reindexar(env, acceso, clientId);
 
   return {
-    archivos: { ...cuenta, iguales: leido.iguales, omitidos: leido.omitidos, fallidos: leido.fallidos },
+    archivos: { ...cuenta, cambiados: leido.cambiados, iguales: leido.iguales, omitidos: leido.omitidos, fallidos: leido.fallidos },
     notas, internas, revisar, truncado: leido.truncado,
   };
 }

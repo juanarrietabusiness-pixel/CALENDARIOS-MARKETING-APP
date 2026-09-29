@@ -31,6 +31,7 @@ import { leerConfigIA, MODELOS_ELEGIBLES, RAZONAMIENTOS, ACCIONES_LIMITE } from 
 import { resincronizarCalendario } from "../lib/publicador.js";
 import { asignarTarea, alGuardarCalendario, avisarNota, avisar, enlacePublicacion } from "../lib/equipo.js";
 import { obtenerOCrearMes, moverDeMes, ErrorMes } from "../lib/meses.js";
+import { olvidarIndice } from "../lib/cerebro/cerebro.js";
 
 /**
  * Lo que va después de responder (avisos, historial): con el `waitUntil`
@@ -267,6 +268,14 @@ export async function rutasDatos(req, env, ctx) {
       if (prohibido) return prohibido;
       const n = await acceso.borrar("clients", { id });
       if (!n) return noEncontrado("Cliente");
+      // Las notas se van con el cliente (cascada de D1), pero el índice de su cerebro vive en R2 y lleva el texto de
+      // todas —también las internas—: no puede quedarse ahí sin dueño. Ya está borrado de la base: si R2 falla, la
+      // respuesta no debe fallar por eso, y `id` no vuelve a existir para nadie.
+      try {
+        await olvidarIndice(env, id);
+      } catch (e) {
+        console.error("cerebro: no se pudo borrar el índice del cliente", id, e);
+      }
       difundir(env, acceso.ownerId, { tipo: "cliente:fuera", id, por: firma(ctx.usuario, req) });
       return sinContenido();
     }

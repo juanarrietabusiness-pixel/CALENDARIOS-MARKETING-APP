@@ -307,3 +307,164 @@ describe("papeles", () => {
     expect((await poner(COLAB, "c1", nota("Nueva", "x"))).status).toBe(403);
   });
 });
+
+// ============================================================
+// Lo que salió de la revisión
+// ============================================================
+
+const paquete = () => JSON.parse(env.MEDIA.objetos.get("cerebro/c1/indice.json"));
+
+describe("la lista no lee el texto de las notas", () => {
+  it("listar y crear pasan por columnas concretas, nunca por «select *» de las notas", async () => {
+    await poner(JEFE, "c1", nota("Sofás", "# Sofás\n\nSeccionales de espuma de alta densidad."));
+    const sqls = [];
+    const original = db.prepare.bind(db);
+    db.prepare = (sql) => { sqls.push(sql); return original(sql); };
+    await pedir(JEFE, "/api/cerebro/c1");
+    await poner(JEFE, "c1", nota("Comedores", "Roble macizo."));
+    const deNotas = sqls.filter((q) => /cerebro_notas/.test(q) && /^select/.test(q));
+    expect(deNotas.length).toBeGreaterThan(0);
+    expect(deNotas.filter((q) => /^select \*/.test(q)), "listar o crear no necesita el texto de las demás").toEqual([]);
+  });
+
+  it("aun así la lista trae el resumen y el tamaño de cada nota, guardados al escribirla", async () => {
+    await poner(JEFE, "c1", nota("Sofás", "# Sofás\n\nSeccionales de espuma de alta densidad. Precio: $450."));
+    const fila = db.sqlite.prepare("select resumen, caracteres, texto from cerebro_notas").get();
+    expect(fila.caracteres).toBe(fila.texto.length);
+    expect(fila.resumen).toMatch(/Sofás/);
+    const lista = await (await pedir(JEFE, "/api/cerebro/c1")).json();
+    expect(lista.notas[0]).toMatchObject({ caracteres: fila.texto.length, resumen: fila.resumen });
+    expect(lista.estado.caracteres).toBe(fila.texto.length);
+  });
+
+  it("editar recalcula el resumen y el tamaño", async () => {
+    const a = await (await poner(JEFE, "c1", nota("Garantía", "Un año."))).json();
+    await poner(JEFE, "c1", { ...nota("Garantía", "# Garantía\n\nDos años en toda la mueblería, sin letra chica."), id: a.id });
+    const fila = db.sqlite.prepare("select resumen, caracteres, texto from cerebro_notas").get();
+    expect(fila.caracteres).toBe(fila.texto.length);
+    expect(fila.resumen).toMatch(/Dos años/);
+  });
+});
+
+describe("buscar encuentra también la ficha y las cifras", () => {
+  beforeEach(async () => {
+    await poner(JEFE, "c1", nota("Ficha técnica", "Dcasa: muebles y hogar en Panamá. Atiende por WhatsApp.", { tipo: "ficha" }));
+    await poner(JEFE, "c1", nota("Cifras vigentes", "- Envío gratis desde 300 dólares.\n- Garantía: 2 años.", { tipo: "cifras" }));
+  });
+
+  it("quien busca (el buscador, el asistente, Claude por MCP) no las recibe de ningún otro lado", async () => {
+    const r = await (await pedir(JEFE, "/api/cerebro/c1/buscar?q=envío gratis garantía&para=chat")).json();
+    expect(r.resultados.map((x) => x.tipo)).toContain("cifras");
+    const f = await (await pedir(JEFE, "/api/cerebro/c1/buscar?q=whatsapp panamá&para=texto")).json();
+    expect(f.resultados.map((x) => x.tipo)).toContain("ficha");
+  });
+
+  it("el contexto sigue poniéndolas aparte y no las repite entre los pasajes", async () => {
+    const c = await (await pedir(JEFE, "/api/cerebro/c1/contexto", { method: "POST", body: { consulta: "envío gratis garantía whatsapp" } })).json();
+    expect(c.cifras).toContain("Envío gratis");
+    expect(c.ficha).toContain("muebles y hogar");
+    expect(c.fuentes).not.toContain("cifras-vigentes");
+    expect(c.fuentes).not.toContain("ficha-tecnica");
+  });
+});
+
+describe("«notas» del contexto cuenta lo que le sirve a ese uso", () => {
+  it("un cerebro con todo interno no sirve para escribir textos, y sí para el equipo", async () => {
+    await poner(JEFE, "c1", nota("Costos", "El costo del pañal es de nueve dólares.", { interna: true }));
+    const cuerpo = (para) => ({ method: "POST", body: { consulta: "costo", para } });
+    expect((await (await pedir(JEFE, "/api/cerebro/c1/contexto", cuerpo("texto"))).json()).notas).toBe(0);
+    expect((await (await pedir(JEFE, "/api/cerebro/c1/contexto", cuerpo("chat"))).json()).notas).toBe(1);
+  });
+});
+
+describe("el índice detecta que se quedó atrás", () => {
+  it("una nota que el índice perdió (dos escrituras a la vez) reaparece en la siguiente lectura", async () => {
+    await poner(JEFE, "c1", nota("Sofás", "Sofás seccionales de espuma."));
+    const conUna = env.MEDIA.objetos.get("cerebro/c1/indice.json");
+    await poner(JEFE, "c1", nota("Comedores", "Comedores de roble macizo."));
+    // La otra escritura leyó el índice antes de que entrara «Comedores» y lo escribió después: se lo lleva por delante.
+    env.MEDIA.objetos.set("cerebro/c1/indice.json", conUna);
+    const r = await (await pedir(JEFE, "/api/cerebro/c1/buscar?q=roble macizo")).json();
+    expect(r.resultados[0]?.ruta).toBe("comedores");
+    expect(Object.keys(paquete().meta).sort()).toEqual(["comedores", "sofas"]);
+  });
+
+  it("una nota editada cuyo índice conserva el texto de antes también se corrige", async () => {
+    const a = await (await poner(JEFE, "c1", nota("Garantía", "Un año de garantía."))).json();
+    const viejo = env.MEDIA.objetos.get("cerebro/c1/indice.json");
+    await poner(JEFE, "c1", { ...nota("Garantía", "Cinco años de garantía extendida."), id: a.id });
+    env.MEDIA.objetos.set("cerebro/c1/indice.json", viejo);
+    const r = await (await pedir(JEFE, "/api/cerebro/c1/buscar?q=extendida")).json();
+    expect(r.resultados[0]?.pasajes[0]).toContain("extendida");
+  });
+
+  it("marcar una nota como interna también es un cambio que el índice tiene que ver", async () => {
+    const a = await (await poner(JEFE, "c1", nota("Costos", "El costo del pañal es nueve dólares."))).json();
+    const antes = env.MEDIA.objetos.get("cerebro/c1/indice.json");
+    await poner(JEFE, "c1", { ...nota("Costos", "El costo del pañal es nueve dólares.", { interna: true }), id: a.id });
+    // Aunque el índice volviera a decir «no interna», la lectura lo detecta y no lo cuela en un texto.
+    env.MEDIA.objetos.set("cerebro/c1/indice.json", antes);
+    const r = await (await pedir(JEFE, "/api/cerebro/c1/buscar?q=costo pañal&para=texto")).json();
+    expect(r.resultados).toEqual([]);
+  });
+
+  it("un índice sin cambios no se reconstruye en cada lectura", async () => {
+    await poner(JEFE, "c1", nota("Sofás", "Sofás seccionales de espuma."));
+    const escrituras = [];
+    const put = env.MEDIA.put.bind(env.MEDIA);
+    env.MEDIA.put = async (...a) => { escrituras.push(a[0]); return put(...a); };
+    await pedir(JEFE, "/api/cerebro/c1/buscar?q=sofás");
+    await pedir(JEFE, "/api/cerebro/c1/buscar?q=espuma");
+    expect(escrituras).toEqual([]);
+  });
+});
+
+describe("el grafo se calcula al usarlo, no en cada edición", () => {
+  it("editar deja el grafo pendiente; el primer contexto lo calcula y lo guarda", async () => {
+    await poner(JEFE, "c1", nota("Sofás", "Sobre los sofás: ver [[comedores]] para combinar."));
+    await poner(JEFE, "c1", nota("Comedores", "Los comedores combinan con los sofás."));
+    expect(paquete().aristas, "una edición no recalcula el grafo entero").toBeNull();
+    await pedir(JEFE, "/api/cerebro/c1/contexto", { method: "POST", body: { consulta: "sofás" } });
+    expect(paquete().aristas.length).toBeGreaterThan(0);
+  });
+
+  it("el grafo guardado al usarlo es el mismo que deja reindexar", async () => {
+    await poner(JEFE, "c1", nota("Sofás", "Sobre los sofás: ver [[comedores]] para combinar."));
+    await poner(JEFE, "c1", nota("Comedores", "Los comedores combinan con los sofás."));
+    await pedir(JEFE, "/api/cerebro/c1/contexto", { method: "POST", body: { consulta: "sofás" } });
+    const perezoso = paquete().aristas;
+    await pedir(JEFE, "/api/cerebro/c1/reindexar", { method: "POST", body: {} });
+    expect(paquete().aristas).toEqual(perezoso);
+  });
+
+  it("la vecina de la mejor nota llega al contexto gracias al grafo calculado", async () => {
+    await poner(JEFE, "c1", nota("Sofás", "Los sofás seccionales llevan espuma. Combinan con los [[comedores]]."));
+    await poner(JEFE, "c1", nota("Comedores", "Roble macizo, entregados armados."));
+    const c = await (await pedir(JEFE, "/api/cerebro/c1/contexto", { method: "POST", body: { consulta: "espuma seccionales" } })).json();
+    expect(c.fuentes).toEqual(expect.arrayContaining(["sofas", "comedores"]));
+  });
+});
+
+describe("borrar un cliente borra su índice", () => {
+  it("el índice del cerebro no se queda en R2 con las notas internas dentro", async () => {
+    await poner(JEFE, "c1", nota("Costos", "El costo del pañal es nueve dólares.", { interna: true }));
+    expect(env.MEDIA.objetos.has("cerebro/c1/indice.json")).toBe(true);
+    const res = await pedir(JEFE, "/api/clientes/c1", { method: "DELETE" });
+    expect(res.status).toBe(204);
+    expect(env.MEDIA.objetos.has("cerebro/c1/indice.json")).toBe(false);
+    expect(db.sqlite.prepare("select count(*) as n from cerebro_notas").get()).toEqual({ n: 0 });
+  });
+
+  it("un fallo de R2 no impide borrar al cliente", async () => {
+    await poner(JEFE, "c1", nota("Sofás", "Sofás."));
+    env.MEDIA.delete = async () => { throw new Error("R2 caído"); };
+    expect((await pedir(JEFE, "/api/clientes/c1", { method: "DELETE" })).status).toBe(204);
+  });
+
+  it("el índice de OTRO cliente no se toca", async () => {
+    await poner(JEFE, "c1", nota("Sofás", "Sofás."));
+    await poner(JEFE, "c2", nota("Pañales", "Pañales."));
+    await pedir(JEFE, "/api/clientes/c1", { method: "DELETE" });
+    expect([...env.MEDIA.objetos.keys()]).toEqual(["cerebro/c2/indice.json"]);
+  });
+});

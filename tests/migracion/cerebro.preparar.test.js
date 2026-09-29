@@ -204,6 +204,57 @@ describe("escribir la ficha", () => {
   });
 });
 
+describe("lo que no escribió la IA no se toca", () => {
+  it("una nota llamada «Ficha técnica» a mano NO se reemplaza: la de la IA toma otra ruta", async () => {
+    const mia = await (await poner({ titulo: "Ficha técnica", texto: "La ficha que escribió la agencia a mano.", tipo: "ficha" })).json();
+    expect(mia.ruta).toBe("ficha-tecnica");
+    anthropic([flujo(RESPUESTA)]);
+    const r = await (await preparar()).json();
+    expect(r.ficha).toBe("creada");
+    expect(de("ficha-tecnica").texto, "la de la persona sigue donde estaba").toBe("La ficha que escribió la agencia a mano.");
+    expect(de("ficha-tecnica").origen).toBe("manual");
+    expect(de("ficha-tecnica-2")).toMatchObject({ origen: "ia", tipo: "ficha" });
+  });
+
+  it("aunque nadie la haya editado después: una nota manual sin tocar tampoco cuenta como de la IA", async () => {
+    await poner({ titulo: "Cifras vigentes", texto: "- Envío: gratis.", tipo: "cifras" });
+    expect(de("cifras-vigentes").created_at).toBe(de("cifras-vigentes").updated_at);
+    anthropic([flujo(RESPUESTA)]);
+    await preparar();
+    expect(de("cifras-vigentes").texto).toBe("- Envío: gratis.");
+    expect(de("cifras-vigentes-2")).toMatchObject({ origen: "ia" });
+  });
+
+  it("una sección importada del repositorio que se llama igual tampoco se borra", async () => {
+    db.sqlite.prepare("insert into cerebro_notas (id, owner_id, client_id, ruta, titulo, texto, tipo, origen, fuente, fuente_sha) values (?,?,?,?,?,?,?,?,?,?)")
+      .run("n-repo", JEFE, "c1", "ficha-tecnica", "Ficha técnica", "Sección del repositorio.", "documento", "repositorio", "x/ficha.md", "sha1");
+    anthropic([flujo(RESPUESTA)]);
+    await preparar();
+    expect(de("ficha-tecnica")).toMatchObject({ id: "n-repo", origen: "repositorio", texto: "Sección del repositorio." });
+    expect(de("ficha-tecnica-2")).toMatchObject({ origen: "ia" });
+  });
+
+  it("la siguiente vez reemplaza la SUYA, en su ruta, sin crear una tercera", async () => {
+    await poner({ titulo: "Ficha técnica", texto: "A mano.", tipo: "ficha" });
+    anthropic([flujo(RESPUESTA), flujo("FICHA:\nOtra ficha.\nCIFRAS:\n- Otra")]);
+    await preparar();
+    const antes = notas().length;
+    const r = await (await preparar()).json();
+    expect(r.ficha).toBe("reemplazada");
+    expect(notas()).toHaveLength(antes);
+    expect(de("ficha-tecnica").texto).toBe("A mano.");
+    expect(de("ficha-tecnica-2").texto).toBe("Otra ficha.");
+  });
+
+  it("guarda su resumen y su tamaño como cualquier otra nota", async () => {
+    anthropic([flujo(RESPUESTA)]);
+    await preparar();
+    const f = de("ficha-tecnica");
+    expect(f.caracteres).toBe(f.texto.length);
+    expect(f.resumen).toMatch(/Quién es|Dcasa/);
+  });
+});
+
 describe("el gasto y los fallos", () => {
   it("apunta el consumo como «cerebro», del cliente", async () => {
     anthropic([flujo(RESPUESTA, { uso: { input_tokens: 12_000 } })]);

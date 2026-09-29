@@ -73,26 +73,61 @@ function aristasDe(ix) {
   return salida;
 }
 
-async function guardarPaquete(env, clientId, ix, meta) {
-  const paquete = { v: VERSION, generado: new Date().toISOString(), indice: serializar(ix), meta, aristas: aristasDe(ix) };
+/**
+ * `aristas`: el grafo ya calculado, o `null` si todavía no. Editar una nota lo deja en `null` en vez de
+ * recalcularlo: el grafo entero cuesta entre 3 y 9 ms de CPU, sólo lo usa `contexto()` (las vecinas), y varias
+ * ediciones seguidas lo pagarían cada una. Lo calcula quien primero lo pide (`cargarIndice`) y lo deja guardado.
+ */
+async function guardarPaquete(env, clientId, ix, meta, aristas) {
+  const paquete = { v: VERSION, generado: new Date().toISOString(), indice: serializar(ix), meta, aristas };
   await env.MEDIA.put(claveIndice(clientId), JSON.stringify(paquete), { httpMetadata: { contentType: "application/json" } });
   return paquete;
 }
 
-const metaDe = (n) => ({ t: n.tipo, i: n.interna ? 1 : 0, ti: n.titulo });
+/**
+ * Lo que el índice sabe de cada nota además de su texto. `u` es su `updated_at` en D1 y `c` su tamaño: con los dos
+ * se comprueba que el índice y las notas siguen diciendo lo mismo (`hayDeriva`). El tamaño está por si dos ediciones
+ * caen en el mismo milisegundo, que la fecha no distinguiría.
+ */
+const metaDe = (n) => ({ t: n.tipo, i: n.interna ? 1 : 0, ti: n.titulo, u: n.updated_at, c: n.caracteres });
 
 /** Las notas del cliente (con su texto), por título. */
 export const leerNotas = (acceso, clientId) => acceso.leer("cerebro_notas", { client_id: clientId }, "titulo asc");
 
+/** Las notas del cliente SIN su texto: lo que hace falta para listarlas, compararlas o repartir rutas. */
+export const COLUMNAS_LIGERAS = Object.freeze([
+  "id", "ruta", "titulo", "tipo", "origen", "fuente", "fuente_sha", "interna", "resumen", "caracteres", "created_at", "updated_at",
+]);
+export const leerNotasLigeras = (acceso, clientId) =>
+  acceso.leerColumnas("cerebro_notas", COLUMNAS_LIGERAS, { client_id: clientId }, "titulo asc");
+
+/**
+ * ¿El índice guardado ya no dice lo mismo que las notas? Hay dos escritores concurrentes —dos ediciones a la vez,
+ * o un guardado que se cruza con una importación— y cada uno lee el índice, lo parcha y lo escribe entero: el que
+ * escribe último se lleva por delante lo del otro. R2 no tiene condiciones de escritura que lo impidan, así que se
+ * detecta al leer: una nota que falta, una de más, o una cuya versión (`updated_at`), tipo, título o candado no
+ * coincide con la de D1. Puro: recibe el `meta` del índice y las filas ligeras de D1.
+ */
+export function hayDeriva(meta, filas) {
+  const claves = Object.keys(meta ?? {});
+  if (claves.length !== filas.length) return true;
+  for (const f of filas) {
+    const m = meta[f.ruta];
+    if (!m || m.u !== f.updated_at || m.c !== f.caracteres || m.t !== f.tipo || m.ti !== f.titulo || m.i !== (f.interna ? 1 : 0)) return true;
+  }
+  return false;
+}
+
 /**
  * Reconstruye el índice de un cliente desde D1. Se llama al importar, al
- * pedirlo a mano y cuando el índice guardado falta o es de otra versión.
+ * pedirlo a mano y cuando el índice guardado falta, es de otra versión o
+ * ya no coincide con las notas.
  */
 export async function reindexar(env, acceso, clientId) {
   const notas = await leerNotas(acceso, clientId);
   const ix = buildIndex(new Map(notas.map((n) => [n.ruta, n.texto])));
   const meta = Object.fromEntries(notas.map((n) => [n.ruta, metaDe(n)]));
-  const paquete = await guardarPaquete(env, clientId, ix, meta);
+  const paquete = await guardarPaquete(env, clientId, ix, meta, aristasDe(ix));
   return { ix, meta, aristas: paquete.aristas, generado: paquete.generado, reconstruido: true };
 }
 
@@ -102,19 +137,35 @@ async function leerPaquete(env, clientId) {
   try {
     const p = JSON.parse(await objeto.text());
     const ix = p?.v === VERSION ? cargar(p.indice) : null;
-    return ix && p.meta ? { ix, meta: p.meta, aristas: p.aristas ?? [], generado: p.generado } : null;
+    return ix && p.meta ? { ix, meta: p.meta, aristas: Array.isArray(p.aristas) ? p.aristas : null, generado: p.generado, crudo: p } : null;
   } catch {
     return null;
   }
 }
 
-/** El índice del cliente, listo para consultar. Si no hay uno bueno, lo construye. */
-export async function cargarIndice(env, acceso, clientId) {
-  return (await leerPaquete(env, clientId)) ?? (await reindexar(env, acceso, clientId));
+/**
+ * El índice del cliente, listo para consultar. Si no hay uno bueno, o no coincide con las notas, lo construye.
+ * Con `conGrafo`, si el índice está bien pero su grafo quedó pendiente de una edición, lo calcula y lo deja guardado.
+ */
+export async function cargarIndice(env, acceso, clientId, { conGrafo = false } = {}) {
+  const actual = await leerPaquete(env, clientId);
+  if (!actual) return reindexar(env, acceso, clientId);
+  const filas = await acceso.leerColumnas("cerebro_notas", ["ruta", "titulo", "tipo", "interna", "caracteres", "updated_at"], { client_id: clientId });
+  if (hayDeriva(actual.meta, filas)) return reindexar(env, acceso, clientId);
+  if (conGrafo && !actual.aristas) {
+    actual.aristas = aristasDe(actual.ix);
+    // Guardarlo es un favor a la siguiente lectura: si falla, ésta ya tiene lo que necesita.
+    try {
+      await env.MEDIA.put(claveIndice(clientId), JSON.stringify({ ...actual.crudo, aristas: actual.aristas }), { httpMetadata: { contentType: "application/json" } });
+    } catch (e) {
+      console.error("cerebro: no se pudo guardar el grafo", e);
+    }
+  }
+  return actual;
 }
 
 /**
- * Una nota cambió (`nota`) o se borró (`null`): se parcha el índice sin
+ * Una nota cambió (`nota`, con su `updated_at` tal como quedó en D1) o se borró (`null`): se parcha el índice sin
  * volver a leer las demás. Si el índice no estaba, se construye entero.
  */
 export async function actualizarIndice(env, acceso, clientId, ruta, nota) {
@@ -124,8 +175,8 @@ export async function actualizarIndice(env, acceso, clientId, ruta, nota) {
   const meta = { ...actual.meta };
   if (nota) meta[ruta] = metaDe(nota);
   else delete meta[ruta];
-  const paquete = await guardarPaquete(env, clientId, ix, meta);
-  return { ix, meta, aristas: paquete.aristas, generado: paquete.generado };
+  const paquete = await guardarPaquete(env, clientId, ix, meta, null);
+  return { ix, meta, aristas: null, generado: paquete.generado };
 }
 
 /** Borra el índice (el cerebro del cliente se vació). */
@@ -147,15 +198,18 @@ function pesos(meta, aprendido) {
 
 /**
  * Buscar en el cerebro de un cliente. → [{ ruta, titulo, tipo, interna,
- * pasajes, puntos }]. La ficha y las cifras no compiten: `contexto()` las
- * pone siempre. `aprendido(ruta)` es un factor (0,8–1,2) de lo aprendido.
+ * pasajes, puntos }]. Aquí la ficha y las cifras SÍ compiten como cualquier
+ * nota: quien busca (el buscador de la pestaña, el asistente, Claude por MCP)
+ * no las recibe de ningún otro lado. Sólo `contexto()` las pone aparte, siempre,
+ * y por eso allí no entran en los pasajes. `aprendido(ruta)` es un factor
+ * (0,8–1,2) de lo aprendido.
  */
 export async function buscar(env, acceso, clientId, consulta, { para = "texto", n = 5, per = 2, aprendido = null } = {}) {
   const { ix, meta } = await cargarIndice(env, acceso, clientId);
   const hits = search(ix, consulta, {
     n, per,
     boost: pesos(meta, aprendido),
-    excluir: (ruta) => SIEMPRE.includes(meta[ruta]?.t) || fueraDeUso(meta[ruta], para),
+    excluir: (ruta) => fueraDeUso(meta[ruta], para),
   });
   return hits.map((h) => ({
     ruta: h.note, titulo: meta[h.note]?.ti ?? h.note, tipo: meta[h.note]?.t ?? "nota", interna: Boolean(meta[h.note]?.i),
@@ -165,7 +219,7 @@ export async function buscar(env, acceso, clientId, consulta, { para = "texto", 
 
 /** Lo que se le da a la IA para una tarea: la ficha, las cifras y los pasajes que esa tarea necesita. */
 export async function contexto(env, acceso, clientId, consulta, { para = "texto", n = 5, per = 2, presupuesto = 9000, aprendido = null } = {}) {
-  const { ix, meta, aristas } = await cargarIndice(env, acceso, clientId);
+  const { ix, meta, aristas } = await cargarIndice(env, acceso, clientId, { conGrafo: true });
   const vale = (ruta) => !fueraDeUso(meta[ruta], para);
   const fija = (tipo) => Object.keys(meta).filter((r) => meta[r].t === tipo && vale(r)).sort();
   const unida = (tipo) => fija(tipo).map((r) => textoDe(ix, r)).filter(Boolean).join("\n\n");
@@ -193,13 +247,18 @@ export async function contexto(env, acceso, clientId, consulta, { para = "texto"
     cifras: unida("cifras"),
     pasajes: pack(bloques, presupuesto),
     fuentes: [...hits.map((h) => h.note), ...vecinas.map((v) => v.note)],
-    // Cuántas notas tiene el cerebro: 0 quiere decir que aún no se llenó, y quien pide el contexto
-    // (la generación) vuelve entonces al ADN de la ficha del cliente.
-    notas: Object.keys(meta).length,
+    // Cuántas notas le sirven a ESTE uso: 0 quiere decir que el cerebro aún no se llenó —o que todo lo que tiene
+    // queda fuera de este uso, por interno—, y quien pide el contexto (la generación) vuelve entonces al ADN de
+    // la ficha del cliente.
+    notas: Object.keys(meta).filter(vale).length,
   };
 }
 
-/** Cuántas notas hay «sin revisar» según sus fechas y cuándo se tocaron por última vez. */
+/**
+ * Cuántas notas hay «sin revisar» según cuándo se tocaron por última vez. Si la fila trae el texto, también cuenta la
+ * fecha que el propio texto declare (`revisar:`, `actualizado:`); la lista ligera no lo trae, y el ADN de las
+ * agencias no lleva ninguna de las dos.
+ */
 export function notasViejas(notas, ahora = Date.now()) {
-  return notas.filter((n) => n.tipo !== "borrador" && staleness(n.texto, Date.parse(n.updated_at) || ahora, ahora).stale).length;
+  return notas.filter((n) => n.tipo !== "borrador" && staleness(n.texto ?? "", Date.parse(n.updated_at) || ahora, ahora).stale).length;
 }

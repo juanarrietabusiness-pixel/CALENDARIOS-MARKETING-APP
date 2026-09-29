@@ -21,6 +21,12 @@
 -- SQLite es reconstruir la tabla (0022), y los tipos van a crecer. Se
 -- validan en código (worker/lib/cerebro/notas.js).
 --
+-- `resumen` y `caracteres` se calculan al ESCRIBIR la nota (notas.js →
+-- `derivados()`) y se guardan aparte: la lista del cerebro y su estado los
+-- leen sin traer el texto entero de cada nota, que en un cliente con 400
+-- notas de 200 000 caracteres no cabe en una respuesta de D1. Quien escriba
+-- una nota tiene que llenarlos.
+--
 -- `interna` (0/1): la nota la ve el equipo y el asistente, pero NUNCA
 -- entra en lo que se escribe para publicar. `fuente_sha` es el SHA del
 -- archivo del repositorio de donde salió: al importar de nuevo, lo que no
@@ -36,6 +42,8 @@ create table if not exists cerebro_notas (
   ruta        text not null,
   titulo      text not null default '',
   texto       text not null default '',
+  resumen     text not null default '',
+  caracteres  integer not null default 0,
   tipo        text not null default 'nota',
   origen      text not null default 'manual',
   fuente      text not null default '',

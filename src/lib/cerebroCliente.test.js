@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   textoEstableDelCerebro, consultaDeTanda, consultaDePublicacion, TEXTO_SIN_FICHA,
+  usaElCerebro, crearMemoriaCorta, contextoDelChat,
 } from "./cerebroCliente";
+import { guardarNota, borrarNota, importarAlCerebro, listarCerebro } from "./cerebro";
 import { contextoEnBloques, MIN_CARACTERES_CACHE } from "./contextoADN";
-import { buildClientContext, buildScriptPrompt, loadADN, contextoDelCerebro, pasajesDeLaTanda } from "../api";
+import { buildClientContext, buildScriptPrompt, loadADN, contextoDelCerebro, pasajesDeLaTanda, adnParaElChat } from "../api";
 
 // ============================================================
 // La generación con el cerebro del cliente
@@ -17,7 +19,10 @@ import { buildClientContext, buildScriptPrompt, loadADN, contextoDelCerebro, pas
 //   3. Sin `forzar`, manda el cerebro; con `forzar`, se relee GitHub.
 // ============================================================
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  contextoDelChat.olvidar("c1");
+});
 
 const cliente = { id: "c1", dbId: "c1", name: "Dcasa", industry: "Muebles", githubRepo: "https://github.com/x/y", githubContext: "ADN VIEJO DE LA FICHA" };
 // Una ficha de verdad mide unos 3 500 caracteres (la pasada de IA la pide así): con menos, el bloque cacheado
@@ -155,6 +160,144 @@ describe("loadADN", () => {
     const pedidos = cerebroFalso();
     expect(await contextoDelCerebro(undefined)).toBeNull();
     expect(pedidos).toHaveLength(0);
+  });
+});
+
+describe("cuándo se usa el cerebro", () => {
+  it("con notas y con ficha, siempre", () => {
+    expect(usaElCerebro({ notas: 5, ficha: "Quién es…" }, { githubContext: "ADN VIEJO" })).toBe(true);
+    expect(usaElCerebro({ notas: 5, ficha: "Quién es…" }, {})).toBe(true);
+  });
+
+  it("sin notas para este uso, nunca", () => {
+    expect(usaElCerebro({ notas: 0, ficha: "algo" }, {})).toBe(false);
+    expect(usaElCerebro(null, {})).toBe(false);
+    expect(usaElCerebro({}, {})).toBe(false);
+  });
+
+  it("con notas pero SIN ficha, sólo si no hay un ADN de la ficha al que volver", () => {
+    expect(usaElCerebro({ notas: 5, ficha: "  ", cifras: "x" }, { githubContext: "ADN VIEJO" })).toBe(false);
+    expect(usaElCerebro({ notas: 5, ficha: "" }, { githubContext: "" })).toBe(true);
+    expect(usaElCerebro({ notas: 5, ficha: "" }, undefined)).toBe(true);
+  });
+});
+
+describe("loadADN cuando el cerebro aún no tiene ficha", () => {
+  it("con un ADN guardado en la ficha del cliente, sigue con ese ADN (el cerebro no lo sustituye por unos pasajes sueltos)", async () => {
+    cerebroFalso({ ficha: "", cifras: "" });
+    expect(await loadADN(cliente)).toEqual({ content: "ADN VIEJO DE LA FICHA", sections: {}, cacheado: true });
+  });
+
+  it("sin ADN guardado, usa el cerebro aunque no tenga ficha, y lo dice", async () => {
+    cerebroFalso({ ficha: "", cifras: "" });
+    const r = await loadADN({ ...cliente, githubContext: "" });
+    expect(r).toMatchObject({ cerebro: true, content: TEXTO_SIN_FICHA });
+  });
+
+  it("y con los pasajes de la tanda pasa lo mismo: no se piden si el cliente no usa el cerebro", async () => {
+    const pedidos = cerebroFalso({ ficha: "" });
+    const adn = await loadADN(cliente);
+    pedidos.length = 0;
+    expect(await pasajesDeLaTanda(cliente, adn, {}, [{ idea: "x" }])).toBe("");
+    expect(pedidos).toHaveLength(0);
+  });
+});
+
+describe("una memoria corta", () => {
+  it("guarda un valor un rato y luego lo suelta", () => {
+    let ahora = 1000;
+    const m = crearMemoriaCorta(60_000, () => ahora);
+    m.poner("c1", { notas: 3 });
+    expect(m.leer("c1")).toEqual({ notas: 3 });
+    ahora += 59_999;
+    expect(m.leer("c1")).toEqual({ notas: 3 });
+    ahora += 1;
+    expect(m.leer("c1")).toBeUndefined();
+  });
+
+  it("un «null» guardado cuenta como valor: un cliente sin cerebro no vuelve a preguntarse en cada mensaje", () => {
+    const m = crearMemoriaCorta();
+    m.poner("c1", null);
+    expect(m.leer("c1")).toBeNull();
+    expect(m.leer("c2")).toBeUndefined();
+  });
+
+  it("olvidar suelta sólo ese cliente", () => {
+    const m = crearMemoriaCorta();
+    m.poner("c1", 1);
+    m.poner("c2", 2);
+    m.olvidar("c1");
+    expect(m.leer("c1")).toBeUndefined();
+    expect(m.leer("c2")).toBe(2);
+  });
+});
+
+describe("el ADN del asistente", () => {
+  it("con cerebro y ficha, la ficha y las cifras; y sólo una petición por minuto y cliente", async () => {
+    const pedidos = cerebroFalso();
+    const a = await adnParaElChat(cliente);
+    const b = await adnParaElChat(cliente);
+    expect(a).toMatchObject({ cerebro: true });
+    expect(a.content).toContain("Envío gratis");
+    expect(b).toEqual(a);
+    expect(pedidos, "el chat pregunta en cada mensaje: sin memoria sería una vuelta al servidor cada vez").toHaveLength(1);
+  });
+
+  it("sin cerebro, lo que el cliente ya lleva en su ficha —como antes—, sin releer GitHub", async () => {
+    const pedidos = cerebroFalso({ notas: 0 });
+    const r = await adnParaElChat({ ...cliente, githubRepo: "https://github.com/x/y" });
+    expect(r).toEqual({ content: "ADN VIEJO DE LA FICHA", cerebro: false });
+    expect(pedidos.every((p) => p.url.startsWith("/api/cerebro/")), "el chat no debe disparar la lectura del repositorio").toBe(true);
+    await adnParaElChat(cliente);
+    expect(pedidos, "tampoco repite la pregunta: el «no hay cerebro» también se recuerda").toHaveLength(1);
+  });
+
+  it("sin cerebro y sin ADN guardado, vacío: nunca lanza ni lee GitHub", async () => {
+    cerebroFalso({ falla: true });
+    expect(await adnParaElChat({ id: "c1", name: "Dcasa", githubRepo: "https://github.com/x/y" })).toEqual({ content: "", cerebro: false });
+  });
+
+  it("con cerebro pero sin ficha y con un ADN guardado, el ADN guardado", async () => {
+    cerebroFalso({ ficha: "" });
+    expect(await adnParaElChat(cliente)).toEqual({ content: "ADN VIEJO DE LA FICHA", cerebro: false });
+  });
+
+  it("cambiar el cerebro desde la pestaña suelta lo recordado: la ficha corregida llega al chat en el acto", async () => {
+    const respuestas = [];
+    vi.stubGlobal("fetch", async (url, init) => {
+      respuestas.push({ url: String(url), metodo: init?.method ?? "GET" });
+      if (String(url).endsWith("/contexto")) return Response.json({ ficha: FICHA, cifras: CIFRAS, pasajes: "", fuentes: [], notas: 3 });
+      return Response.json({ ok: true });
+    });
+    await adnParaElChat(cliente);
+    await adnParaElChat(cliente);
+    expect(respuestas.filter((r) => r.url.endsWith("/contexto"))).toHaveLength(1);
+
+    await guardarNota("c1", { titulo: "Ficha técnica", texto: "corregida", tipo: "ficha" });
+    await adnParaElChat(cliente);
+    expect(respuestas.filter((r) => r.url.endsWith("/contexto")), "guardar una nota lo suelta").toHaveLength(2);
+
+    await borrarNota("c1", "n1");
+    await adnParaElChat(cliente);
+    expect(respuestas.filter((r) => r.url.endsWith("/contexto")), "borrarla también").toHaveLength(3);
+
+    await importarAlCerebro("c1");
+    await adnParaElChat(cliente);
+    expect(respuestas.filter((r) => r.url.endsWith("/contexto")), "e importar también").toHaveLength(4);
+
+    await listarCerebro("c1");
+    await adnParaElChat(cliente);
+    expect(respuestas.filter((r) => r.url.endsWith("/contexto")), "mirar no lo suelta").toHaveLength(4);
+  });
+
+  it("aunque el cambio falle, se suelta: pudo quedar a medias", async () => {
+    vi.stubGlobal("fetch", async (url) => (String(url).endsWith("/contexto")
+      ? Response.json({ ficha: FICHA, cifras: "", pasajes: "", fuentes: [], notas: 3 })
+      : new Response(JSON.stringify({ error: "no" }), { status: 500 })));
+    await adnParaElChat(cliente);
+    expect(contextoDelChat.leer("c1")).toBeDefined();
+    await expect(guardarNota("c1", { titulo: "x", texto: "y" })).rejects.toThrow();
+    expect(contextoDelChat.leer("c1")).toBeUndefined();
   });
 });
 

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import * as K from "../../worker/lib/cerebro/conocimiento.js";
 import * as M from "../../worker/lib/cerebro/memoria.js";
+import { hayDeriva, notasViejas } from "../../worker/lib/cerebro/cerebro.js";
 
 // ============================================================
 // El motor del cerebro de un cliente: buscar por pasajes y recordar.
@@ -221,5 +222,52 @@ describe("sinapsis que aprenden", () => {
     expect(M.outcome({ revisions: 9 })).toBe(0.25);
     expect(M.outcome({ approved: true, vote: "down" })).toBe(0);
     expect(M.outcome({ revisions: 2, vote: "up" })).toBe(1);
+  });
+});
+
+describe("¿el índice sigue diciendo lo mismo que las notas?", () => {
+  const fila = (ruta, extra = {}) => ({ ruta, titulo: ruta.toUpperCase(), tipo: "nota", interna: 0, caracteres: 10, updated_at: "2026-09-29T10:00:00.000Z", ...extra });
+  const meta = (rutas, extra = {}) => Object.fromEntries(rutas.map((r) => [r, { t: "nota", i: 0, ti: r.toUpperCase(), u: "2026-09-29T10:00:00.000Z", c: 10, ...extra }]));
+
+  it("igual, no hay deriva", () => {
+    expect(hayDeriva(meta(["a", "b"]), [fila("a"), fila("b")])).toBe(false);
+    expect(hayDeriva({}, [])).toBe(false);
+  });
+
+  it("una nota de más o de menos en el índice", () => {
+    expect(hayDeriva(meta(["a"]), [fila("a"), fila("b")])).toBe(true);
+    expect(hayDeriva(meta(["a", "b"]), [fila("a")])).toBe(true);
+    expect(hayDeriva(meta(["a", "x"]), [fila("a"), fila("b")]), "mismo número, otra ruta").toBe(true);
+  });
+
+  it("una nota cuya versión, tamaño, tipo, título o candado cambió", () => {
+    for (const cambio of [
+      { updated_at: "2026-09-29T10:00:01.000Z" }, { caracteres: 11 }, { tipo: "marca" }, { titulo: "OTRO" }, { interna: 1 },
+    ]) {
+      expect(hayDeriva(meta(["a"]), [fila("a", cambio)]), JSON.stringify(cambio)).toBe(true);
+    }
+  });
+
+  it("un índice de antes de estas señales (sin «u» ni «c») se reconstruye una vez", () => {
+    expect(hayDeriva({ a: { t: "nota", i: 0, ti: "A" } }, [fila("a")])).toBe(true);
+  });
+
+  it("interna llega de D1 como 0/1 y del índice como 0/1: no se confunde con un booleano", () => {
+    expect(hayDeriva(meta(["a"], { i: 1 }), [fila("a", { interna: 1 })])).toBe(false);
+    expect(hayDeriva(meta(["a"], { i: 1 }), [fila("a", { interna: true })])).toBe(false);
+  });
+});
+
+describe("notas por revisar sin leer el texto", () => {
+  const hace = (dias) => new Date(Date.now() - dias * 864e5).toISOString();
+
+  it("cuenta por cuándo se tocaron, sin necesidad del texto", () => {
+    expect(notasViejas([
+      { tipo: "marca", updated_at: hace(400) }, { tipo: "marca", updated_at: hace(10) }, { tipo: "borrador", updated_at: hace(400) },
+    ])).toBe(1);
+  });
+
+  it("si la fila trae el texto, también vale la fecha que el texto declare", () => {
+    expect(notasViejas([{ tipo: "marca", updated_at: hace(1), texto: "---\nrevisar: 2020-01-01\n---\n# Precios" }])).toBe(1);
   });
 });

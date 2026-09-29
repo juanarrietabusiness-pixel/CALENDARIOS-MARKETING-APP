@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   TIPOS_VISTA, FILTROS_TIPO, nombreDeTipo, ordenarNotas, filtrarNotas, contarPorTipo, formatoCaracteres,
-  describirImportacion, describirFicha, tituloDeDocumento, validarDocumento, leerDocumento,
+  describirImportacion, describirFicha, avisoSinFicha, tituloDeDocumento, validarDocumento, leerDocumento,
 } from "./cerebroVista";
 import { TIPOS } from "../../worker/lib/cerebro/notas.js";
 import { analizarRuta, construirRuta, PESTANAS_CLIENTE, slugsDeCalendarios } from "./rutas";
@@ -94,7 +94,7 @@ describe("contar lo que hizo una importación", () => {
   it("enseña las notas marcadas internas solas y las que hay que revisar", () => {
     const d = describirImportacion({ archivos: { nuevos: 1 }, notas: { creadas: 3 }, internas: ["Economía unitaria"], revisar: ["Precios"] });
     expect(d.detalles.map((x) => x.titulo)).toEqual([
-      "Marcadas como internas (no salen en los textos que se publican)",
+      "Marcadas como internas (no salen en los textos que se publican): si alguna es pública, quítale el candado",
       "Mencionan algo interno: revisa si alguna debe marcarse",
     ]);
     expect(d.detalles[0].lista).toEqual(["Economía unitaria"]);
@@ -119,6 +119,22 @@ describe("contar lo que hizo la IA", () => {
   });
   it("incluye el aviso del servidor (p. ej. que la cuenta rechazó un modelo)", () => {
     expect(describirFicha({ ficha: "creada", cifras: "vacia", aviso: "Se usó Sonnet 5." })).toMatch(/Se usó Sonnet 5\./);
+  });
+});
+
+describe("el aviso de que falta la ficha", () => {
+  it("sin ficha y con ADN en la ficha del cliente, dice que los textos siguen con ese ADN", () => {
+    expect(avisoSinFicha({ notas: 10, conFicha: false }, { githubContext: "ADN" })).toMatch(/se siguen escribiendo con el ADN guardado/);
+  });
+
+  it("sin ficha y sin ADN guardado, dice que sólo hay pasajes", () => {
+    expect(avisoSinFicha({ notas: 10, conFicha: false }, {})).toMatch(/sólo tiene los pasajes/);
+  });
+
+  it("con ficha, o sin notas todavía, no dice nada", () => {
+    expect(avisoSinFicha({ notas: 10, conFicha: true }, {})).toBe("");
+    expect(avisoSinFicha({ notas: 0, conFicha: false }, {})).toBe("");
+    expect(avisoSinFicha(undefined, {})).toBe("");
   });
 });
 

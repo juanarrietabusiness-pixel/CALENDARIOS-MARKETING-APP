@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import {
-  slug, rutaUnica, limpiarNota, clasificarArchivo, tituloDeArchivo, seccionesDe, dividirEnNotas,
+  slug, rutaUnica, limpiarNota, clasificarArchivo, tituloDeArchivo, seccionesDe, dividirEnNotas, derivados,
   MAX_TEXTO, AUTORIDAD, SIEMPRE, TIPOS,
 } from "../../worker/lib/cerebro/notas.js";
 import { RAIZ, hayWorkspace } from "../../src/lib/workspace.test-helper.js";
@@ -152,6 +152,31 @@ describe("dividirEnNotas", () => {
     expect(por["Tono"].revisar).toBeUndefined();
   });
 
+  it("«interna» es un candado estrecho: un dato público con la palabra «costo» u «operativo» NO se oculta", () => {
+    const titulos = ["Costo de envío", "Horario operativo", "Importación de sofás a Panamá", "Inversión en publicidad del mes", "Aduana y entrega", "Costos de la landing"];
+    const md = `# M\n\n${titulos.map((t) => `## ${t}\n\nTexto público de ${t}.\n`).join("\n")}`;
+    const n = dividirEnNotas("X/01_ADN_y_Memoria/doc.md", md);
+    for (const t of titulos) {
+      const nota = n.find((x) => x.titulo.endsWith(t));
+      expect(nota, t).toBeDefined();
+      expect(nota.interna, `«${t}» es de cara al cliente: no debe ocultarse de los textos`).toBe(0);
+    }
+  });
+
+  it("y sí lo son las secciones que casi siempre son del negocio por dentro", () => {
+    const titulos = ["Economía unitaria", "Márgenes por producto", "Roadmap de proveedores", "Análisis de propuesta a inversionista", "Reglas operativas transversales", "Sistemas internos de la agencia", "Landed cost por SKU", "Nota interna del equipo"];
+    const md = `# M\n\n${titulos.map((t) => `## ${t}\n\nAlgo de ${t}.\n`).join("\n")}`;
+    const n = dividirEnNotas("X/01_ADN_y_Memoria/doc.md", md);
+    for (const t of titulos) expect(n.find((x) => x.titulo.endsWith(t))?.interna, t).toBe(1);
+  });
+
+  it("un «landed cost» en el cuerpo de otra sección se avisa para revisar, no se oculta sola", () => {
+    const md = "# M\n\n## Precios\n\nEl pañal vale $50. Landed cost = producto + flete.\n\n## Tono\n\nCercano.\n";
+    const por = Object.fromEntries(dividirEnNotas("X/01_ADN_y_Memoria/doc.md", md).map((x) => [x.titulo.replace(/^.* — /, ""), x]));
+    expect(por.Precios.interna).toBe(0);
+    expect(por.Precios.revisar).toBe(true);
+  });
+
   it("un archivo corto sin secciones es una nota con el título de su encabezado", () => {
     const n = dividirEnNotas("X/02_Web_y_SEO/brief.md", "# Brief del sitio\n\nUn párrafo.");
     expect(n).toHaveLength(1);
@@ -161,6 +186,21 @@ describe("dividirEnNotas", () => {
   it("todo tipo que sale existe", () => {
     const n = dividirEnNotas("X/01_ADN_y_Memoria/05_prompt_maestro_meta_ai.md", PROMPT);
     expect(n.every((x) => TIPOS.includes(x.tipo))).toBe(true);
+  });
+});
+
+describe("derivados de una nota", () => {
+  it("el tamaño es el del texto y el resumen cabe en 200 caracteres", () => {
+    const texto = "# Garantía\n\nDos años en toda la mueblería. " + "Más detalles de la garantía. ".repeat(50);
+    const d = derivados(texto);
+    expect(d.caracteres).toBe(texto.length);
+    expect(d.resumen).toMatch(/Garantía/);
+    expect(d.resumen.length).toBeLessThanOrEqual(200);
+  });
+
+  it("aguanta lo que no es texto sin lanzar", () => {
+    expect(derivados(undefined)).toEqual({ resumen: "", caracteres: 0 });
+    expect(derivados("")).toEqual({ resumen: "", caracteres: 0 });
   });
 });
 

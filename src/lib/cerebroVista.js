@@ -76,9 +76,21 @@ export function describirImportacion(r) {
   if (a.omitidos) partes.push(`${plural(a.omitidos, "archivo quedó", "archivos quedaron")} para la siguiente vuelta: vuelve a pulsar el botón`);
   if (a.fallidos) partes.push(`${plural(a.fallidos, "archivo no se pudo leer", "archivos no se pudieron leer")}`);
   const detalles = [];
-  if (r?.internas?.length) detalles.push({ titulo: "Marcadas como internas (no salen en los textos que se publican)", lista: r.internas });
+  if (r?.internas?.length) detalles.push({ titulo: "Marcadas como internas (no salen en los textos que se publican): si alguna es pública, quítale el candado", lista: r.internas });
   if (r?.revisar?.length) detalles.push({ titulo: "Mencionan algo interno: revisa si alguna debe marcarse", lista: r.revisar });
   return { texto: partes.length ? `${partes.join(". ")}.` : "No había nada nuevo que traer.", detalles };
+}
+
+/**
+ * Qué le pasa a quien todavía no tiene ficha técnica, para que no crea que el cerebro ya trabaja: mientras falte, la
+ * generación sigue con el ADN guardado en la ficha del cliente (si lo hay) y el cerebro sólo se consulta a mano.
+ * Sin ADN guardado, la IA tiene lo que el cerebro encuentre para cada tarea y nada más.
+ */
+export function avisoSinFicha(estado, cliente) {
+  if (!estado || estado.conFicha || !estado.notas) return "";
+  return String(cliente?.githubContext ?? "").trim()
+    ? "Todavía no hay ficha técnica: hasta que la prepares, los textos se siguen escribiendo con el ADN guardado en la ficha del cliente. La IA empieza a usar este cerebro cuando la ficha exista."
+    : "Todavía no hay ficha técnica: la IA sólo tiene los pasajes que encuentra en las notas para cada tarea. Prepárala para que conozca al cliente de entrada.";
 }
 
 /** Lo que hizo la pasada de IA, en una frase. */

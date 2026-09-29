@@ -73,6 +73,16 @@ describe("toda consulta sobre una tabla con dueño lleva el dueño", () => {
       expect(db.ultima().binds).toEqual(["t", "x", "u1"]);
     });
 
+    it(`${tabla}: leerColumnas sólo trae esas columnas y acota por owner_id`, async () => {
+      const db = d1Falsa();
+      const a = crearAcceso(db, "u1");
+      await a.leerColumnas(tabla, ["id", "ruta"], { client_id: "c1" });
+      expect(db.ultima().sql).toMatch(/^select id, ruta from .* where client_id = \? and owner_id = \?/);
+      expect(db.ultima().binds).toEqual(["c1", "u1"]);
+      await expect(a.leerColumnas(tabla, ["id; drop table x"])).rejects.toThrow(/Columna no permitida/);
+      await expect(a.leerColumnas(tabla, [])).rejects.toThrow(/sin columnas/);
+    });
+
     it(`${tabla}: borrarVarios acota por owner_id y parte los ids en trozos de 50`, async () => {
       // D1 admite 100 parámetros por sentencia: más ids que eso no caben en una.
       const db = d1Falsa();

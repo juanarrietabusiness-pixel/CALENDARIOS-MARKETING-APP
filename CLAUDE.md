@@ -984,11 +984,18 @@ son del servidor.
   fuera, y también las notas de maquetación. La IA no puede filtrar lo que
   no ve: el ADN de Baby Caleb lleva costos y márgenes «que no se dicen al
   cliente» y antes viajaban en cada prompt. Al importar se marcan solas las
-  secciones cuyo TÍTULO habla de costos, proveedores, importación o
-  inversionistas; las que sólo lo mencionan en el cuerpo se devuelven en
+  secciones cuyo TÍTULO habla de economía unitaria, márgenes, proveedores,
+  «landed cost», roadmap, inversionistas, «reglas operativas» o lo llama
+  «interno»; las que sólo lo mencionan en el cuerpo se devuelven en
   `revisar`, porque un precio de venta puede vivir junto a un costo y
-  ocultarla dejaría al modelo sin precio. Un valor de `para` inventado se
-  trata como `texto`, el más estricto.
+  ocultarla dejaría al modelo sin precio. **La lista de títulos es
+  estrecha a propósito:** ocultar de más es un fallo mudo —«Costo de
+  envío» u «Horario operativo» son datos públicos, y una IA que no los ve
+  no los puede decir—, y la primera versión, con «costo», «operativo» o
+  «importación» sueltos, los habría escondido. Un valor de `para`
+  inventado se trata como `texto`, el más estricto. `buscar()` SÍ devuelve
+  la ficha y las cifras (quien busca no las recibe de ningún otro lado);
+  sólo `contexto()` las pone aparte y las quita de los pasajes.
 - **«Editada a mano» se sabe por las fechas, y `guardar` las estropea.** Una
   nota que nadie tocó tiene `created_at` = `updated_at`, y es lo que mira
   una nueva importación (`importar.js`) y la pasada de IA (`preparar.js`)
@@ -998,10 +1005,38 @@ son del servidor.
   pone la base, iguales) y la ficha se reemplaza borrando e insertando. Y
   el `PUT` de una nota conserva su `origen` y su `fuente`: los tests con el
   ADN real cazaron que editar una nota importada se los borraba y la
-  siguiente importación ya no la reconocía.
+  siguiente importación ya no la reconocía. La pasada de IA sólo
+  reemplaza notas suyas (`origen: "ia"`): una nota que alguien llamó «Ficha
+  técnica» a mano, o una sección importada que se llama igual, tiene la
+  misma ruta y no es suya —la ficha nueva toma `ficha-tecnica-2`—.
+- **El índice de R2 puede quedarse atrás, y se nota al leerlo.** Cada
+  escritura lee el índice, lo parcha y lo escribe entero, y R2 no tiene
+  condiciones de escritura: dos ediciones a la vez, o un guardado que se
+  cruza con una importación, y la que escribe última se lleva por delante
+  lo de la otra. Cada nota lleva en el índice su `updated_at` y su tamaño
+  (`meta.u`, `meta.c`); `cargarIndice()` los compara con una lectura ligera
+  de D1 (`hayDeriva()`) y reconstruye si no coinciden. D1 es la verdad; el
+  índice es un derivado que se cura solo. Y el grafo (las aristas) NO se
+  recalcula en cada edición —cuesta 3–9 ms de CPU y sólo lo usa
+  `contexto()`—: una edición lo deja en `null` y el primero que lo pide lo
+  calcula y lo guarda.
+- **La lista del cerebro no lee el texto de las notas.** Una nota lleva
+  `resumen` y `caracteres` calculados al escribirla (`derivados()`, en
+  `notas.js`); la lista, el estado y las rutas libres salen de
+  `acceso.leerColumnas()`, que trae columnas concretas acotadas igual que
+  `leer()`. `select *` de 400 notas de 200 000 caracteres no cabe en una
+  respuesta de D1. **Todo sitio que escriba una nota tiene que calcularlos**
+  (la ruta PUT, la importación, la pasada de IA): una nota sin ellos sale
+  con el resumen vacío y «0 car.».
 - **Sin cerebro, todo sigue como antes.** `loadADN` pide el contexto al
   Worker y, si el cliente no tiene notas (o falla), vuelve al ADN de su
-  ficha. Los pasajes de cada TANDA se piden aparte (`pasajesDeLaTanda`) y
+  ficha; y con notas pero SIN ficha técnica también, mientras el cliente
+  tenga un ADN guardado al que volver (`usaElCerebro()`): unos pasajes
+  sueltos son peor que el ADN entero hasta que alguien pulse «Preparar
+  ficha con IA». El chat NO usa `loadADN` sino `adnParaElChat()`: pregunta
+  en cada mensaje, y `loadADN` puede releer GitHub (decenas de peticiones)
+  si el cliente no tiene ADN guardado; el chat sólo mira el cerebro, recuerda
+  la respuesta un minuto y la pestaña Cerebro la suelta al cambiar algo. Los pasajes de cada TANDA se piden aparte (`pasajesDeLaTanda`) y
   van detrás de la marca de caché: si un pasaje se colara en el bloque
   cacheado, cada tanda escribiría la caché entera y nunca la leería. El
   chat usa `{ maquetacion: true }` porque alguien puede pedirle el prompt
@@ -1016,6 +1051,11 @@ son del servidor.
   importación es el árbol de GitHub más un archivo por petición: 40 por
   llamada, y lo que no cabe se cuenta en `omitidos` y entra en la
   siguiente, que ya no repite lo hecho (compara el SHA de cada archivo).
+  Un archivo que CAMBIÓ en el repositorio no se descarga sin «Actualizar lo
+  que cambió»: bajarlo para tirarlo gastaría una de las 50 peticiones. Y al
+  borrar lo viejo de varios archivos va una sola tanda, no una consulta por
+  archivo. Borrar un cliente borra también su índice de R2, que lleva las
+  notas internas.
 - **El saldo agotado llega como un 400 cualquiera.** «Your credit balance
   is too low…» se traduce en `mensajeDeRechazo()` a qué hacer.
 - **Google Drive: tres trampas.** (1) Con la app de Google «en prueba»,

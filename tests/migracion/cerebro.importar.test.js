@@ -160,6 +160,33 @@ describe("volver a importar", () => {
     const r = await (await importar()).json();
     expect(r.archivos).toMatchObject({ cambiados: 1, actualizados: 0 });
     expect(notas().find((n) => n.titulo === "Brand guidelines — Tono").texto).toContain("Cercano, de tú.");
+    // No se baja lo que se va a tirar: cada archivo es una de las 50 peticiones del plan gratuito.
+    expect(blobs()).toBe(0);
+  });
+
+  it("un archivo que cambió SÍ se descarga cuando se pide «actualizar»", async () => {
+    github({ ...repo, "Dcasa/01_ADN_y_Memoria/01_brand_guidelines.md": GUIAS.replace("Cercano, de tú.", "Formal, de usted.") });
+    await importar({ actualizar: true });
+    expect(blobs()).toBe(1);
+  });
+
+  it("actualizar varios archivos borra lo viejo en una sola tanda, no una consulta por archivo", async () => {
+    github({
+      "Dcasa/01_ADN_y_Memoria/01_brand_guidelines.md": GUIAS.replace("Cercano", "Muy cercano"),
+      "Dcasa/01_ADN_y_Memoria/02_buyer_personas.md": PERSONAS.replace("suave", "hipoalergénico"),
+    });
+    const sqls = [];
+    const original = db.prepare.bind(db);
+    db.prepare = (sql) => { sqls.push(sql); return original(sql); };
+    const r = await (await importar({ actualizar: true })).json();
+    expect(r.archivos.actualizados).toBe(2);
+    expect(sqls.filter((q) => /^delete from cerebro_notas/.test(q)), "8 notas caben en un solo borrado de 50 ids").toHaveLength(1);
+  });
+
+  it("guarda con cada nota su resumen y su tamaño, para listarlas sin leer el texto", async () => {
+    const n = notas().find((x) => x.titulo === "Brand guidelines — Tono");
+    expect(n.caracteres).toBe(n.texto.length);
+    expect(n.resumen).toMatch(/Tono/);
   });
 
   it("con «actualizar» reemplaza las notas que nadie tocó, con las MISMAS rutas", async () => {

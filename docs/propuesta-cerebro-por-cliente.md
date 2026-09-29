@@ -53,8 +53,8 @@ resumir mal ni perder una regla. Tipos: `ficha`, `cifras`, `marca`,
 
 **Interna.** Un candado aparte del tipo: la ve el equipo y el asistente, pero
 **nunca** entra en lo que se escribe para publicar. Al importar se marcan solas
-las secciones cuyo título habla de costos, proveedores, importación o
-inversionistas; las que sólo lo mencionan en el cuerpo se devuelven en `revisar`
+las secciones cuyo título habla de economía unitaria, márgenes, proveedores,
+«landed cost», roadmap, inversionistas o «reglas operativas»; las que sólo lo mencionan en el cuerpo se devuelven en `revisar`
 (un precio de venta puede vivir junto a un costo, y ocultarlo dejaría al modelo
 sin precio).
 
@@ -102,8 +102,10 @@ Indexar un cliente entero cuesta 9–30 ms y el índice pesa 150–210 KB.
 
 - **Fuga real cazada por un test con datos reales:** una sección de reglas
   operativas de importación de Baby Caleb («Landed cost = producto + flete…») entraba
-  a los textos como si fuera marca. Ahora sus títulos («operativas», «importación»,
-  «inversionista») la marcan interna.
+  a los textos como si fuera marca. Ahora el título «Reglas operativas» la marca
+  interna. (La primera versión marcaba por «operativo», «importación» o «costo»
+  sueltos; la revisión vio que escondía datos públicos como «Costo de envío» y
+  la lista se estrechó: ocultar de más es un fallo mudo.)
 - **Un bug propio:** editar una nota importada le borraba el origen y el archivo, y
   la siguiente importación ya no la reconocía. Ahora el `PUT` los conserva.
 - **Una regresión propia de la Fase 0:** el chat perdió la maquetación
@@ -111,6 +113,24 @@ Indexar un cliente entero cuesta 9–30 ms y el índice pesa 150–210 KB.
 - **Los informes `[MOCK]` del agente diario** salían entre los primeros resultados de
   una búsqueda de precios. Ahora son `borrador` internos, pesan un 0,4 y nunca llegan
   a un texto.
+
+## Lo que encontró la revisión, y cómo se corrigió
+
+Una revisión independiente del código encontró diez problemas reales. Todos
+corregidos, con su caso de prueba:
+
+| Problema | Arreglo |
+|---|---|
+| `buscar` no devolvía la ficha ni las cifras, y para Claude por MCP y el buscador de la pestaña no hay otro camino | Sólo `contexto()` las aparta; `buscar()` las trata como cualquier nota |
+| El chat pedía `loadADN` en cada mensaje: con un cliente sin ADN guardado, releía GitHub cada vez | `adnParaElChat()`: sólo mira el cerebro, lo recuerda un minuto y la pestaña Cerebro lo suelta al cambiar algo |
+| Dos escrituras a la vez dejaban el índice de R2 sin una nota, en silencio | El índice guarda la versión de cada nota y `cargarIndice()` la compara con D1: si no coincide, reconstruye |
+| Un cerebro con notas pero sin ficha sustituía el ADN de la ficha por unos pasajes sueltos | `usaElCerebro()`: sin ficha se sigue con el ADN guardado; la pestaña lo dice |
+| La importación descargaba los archivos cambiados aunque no fuera a pisarlos, y borraba con una consulta por archivo | No se descargan sin «Actualizar»; un solo borrado por tanda |
+| Cada edición recalculaba el grafo entero (3–9 ms de CPU) | Se deja pendiente y lo calcula, una vez, quien lo pide |
+| «Preparar ficha» reemplazaba una nota ajena que se llamara igual | Sólo reemplaza las suyas (`origen: "ia"`); la nueva toma otra ruta |
+| «Interna» por título era demasiado ancha: escondía «Costo de envío» | Lista estrecha; lo demás se avisa en `revisar` |
+| Borrar un cliente dejaba su índice —con las notas internas— en R2 | Se borra con el cliente |
+| Listar y crear leían el texto de las 400 notas | `resumen` y `caracteres` se guardan al escribir; la lista usa columnas concretas |
 
 ## Pendiente, y lo que hay que decidir
 
@@ -150,8 +170,8 @@ Indexar un cliente entero cuesta 9–30 ms y el índice pesa 150–210 KB.
   edita en la pestaña, y lo editado manda.
 - **Cada tanda hace una petición más** (los pasajes). Es una lectura de R2 y unos
   milisegundos de búsqueda; si molestara, se puede pedir una vez por generación.
-- **Importar no es atómico:** al actualizar, se borran las notas sin tocar y luego
-  se insertan las nuevas. Un fallo entre las dos deja el archivo a medias; volver a
+- **Importar no es atómico:** al actualizar, se borran las notas sin tocar (una sola
+  tanda para todos los archivos) y luego se insertan las nuevas. Un fallo entre las dos deja el archivo a medias; volver a
   pulsar «Actualizar» lo repara. D1 no ofrece una transacción entre `borrarVarios` y
   `guardarVarios`.
 - **Plan gratuito de Workers.** Una importación son 41 peticiones de salida (el árbol

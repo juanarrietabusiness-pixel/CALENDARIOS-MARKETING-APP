@@ -33,9 +33,11 @@ export class ErrorRepositorio extends Error {}
 /**
  * Los archivos de texto de la carpeta de un cliente, enteros.
  * `conocidos`: Map fuente → sha de lo que ya está en el cerebro.
- * → { archivos: [{ ruta, sha, texto }], iguales: n, omitidos: n, truncado }
+ * Se descargan los NUEVOS y, sólo con `actualizar`, también los que cambiaron: sin `actualizar` un archivo cambiado
+ * ni se lee ni se pisa, así que bajarlo gastaría una de las 50 peticiones del plan gratuito para tirarlo.
+ * → { archivos: [{ ruta, sha, texto }], iguales, cambiados (los que hay y no se bajaron), omitidos, fallidos, truncado }
  */
-export async function leerRepositorio(env, { repoUrl, carpeta = "" }, conocidos = new Map()) {
+export async function leerRepositorio(env, { repoUrl, carpeta = "" }, conocidos = new Map(), { actualizar = false } = {}) {
   const parsed = parseGitHubUrl(String(repoUrl ?? ""));
   if (!parsed) throw new ErrorRepositorio("Este cliente no tiene un repositorio de GitHub en su ficha.");
   const { owner, repo } = parsed;
@@ -71,9 +73,11 @@ export async function leerRepositorio(env, { repoUrl, carpeta = "" }, conocidos 
       && profundidad(n.path, base) <= MAX_PROFUNDIDAD && (n.size ?? 0) > 0 && (n.size ?? 0) < MAX_BYTES)
     .sort((a, b) => a.path.localeCompare(b.path));
 
-  const nuevos = candidatos.filter((n) => conocidos.get(n.path) !== n.sha);
-  const iguales = candidatos.length - nuevos.length;
-  const aLeer = nuevos.slice(0, MAX_ARCHIVOS);
+  const distintos = candidatos.filter((n) => conocidos.get(n.path) !== n.sha);
+  const iguales = candidatos.length - distintos.length;
+  const cambiados = distintos.filter((n) => conocidos.has(n.path));
+  const pendientes = actualizar ? distintos : distintos.filter((n) => !conocidos.has(n.path));
+  const aLeer = pendientes.slice(0, MAX_ARCHIVOS);
 
   const archivos = [];
   for (let i = 0; i < aLeer.length; i += EN_PARALELO) {
@@ -96,8 +100,9 @@ export async function leerRepositorio(env, { repoUrl, carpeta = "" }, conocidos 
   return {
     archivos,
     iguales,
+    cambiados: actualizar ? 0 : cambiados.length,
     // Lo que no cupo en esta llamada: se importa en la siguiente, que ya no repite lo hecho.
-    omitidos: nuevos.length - aLeer.length,
+    omitidos: pendientes.length - aLeer.length,
     fallidos: aLeer.length - archivos.length,
     truncado: Boolean(datos?.truncated),
   };

@@ -7,7 +7,7 @@ import {
 } from "../lib/cerebro";
 import {
   TIPOS_VISTA, FILTROS_TIPO, nombreDeTipo, ordenarNotas, filtrarNotas, contarPorTipo,
-  formatoCaracteres, describirImportacion, describirFicha, leerDocumento,
+  formatoCaracteres, describirImportacion, describirFicha, avisoSinFicha, leerDocumento,
 } from "../lib/cerebroVista";
 import "./Cerebro.css";
 
@@ -198,6 +198,8 @@ export default function Cerebro({ client }) {
           {estado.viejas > 0 && <div><dt>Por revisar</dt><dd>{estado.viejas}</dd></div>}
         </dl>
       )}
+
+      {avisoSinFicha(estado, client) && <p className="cerebro-aviso" role="note">{avisoSinFicha(estado, client)}</p>}
 
       {!lectura && (
         <div className="cerebro-acciones" role="group" aria-label="Acciones del cerebro">
