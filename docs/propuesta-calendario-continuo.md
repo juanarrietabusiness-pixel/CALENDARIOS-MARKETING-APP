@@ -92,6 +92,88 @@ es mejor a largo plazo, pero toca la cola, las aprobaciones, el
 historial, la exportación, el MCP y el asistente a la vez. Con la fase 1
 se consigue lo que se ve sin esa migración, y deja la puerta abierta.
 
+### La fase 1 en detalle: «sin tocar la base»
+
+**Qué quiere decir.** Ninguna tabla nueva, ninguna columna nueva y ninguna
+migración que reescriba datos que ya existen. Cada publicación sigue
+guardada donde está hoy: en la fila de su mes. Lo que cambia es **la
+pantalla**. Hoy el mes es un documento que se crea, se nombra y se abre.
+En la fase 1 pasa a ser un cajón interno que nadie ve, igual que nadie ve
+en qué carpeta guarda Metricool sus publicaciones.
+
+**Por qué no un solo calendario de verdad en la base.** Hay tres motivos,
+y el tamaño es el menos importante:
+
+1. **El tamaño.** D1 no admite filas de más de 2 MB. Un mes ronda las
+   decenas de kilobytes (las imágenes están en R2). Si todo el historial de
+   un cliente viviera en una sola fila, esa fila crecería cada mes hasta
+   llegar al tope.
+2. **Cada guardado reescribe la fila entera.** Hoy, cambiar una hora
+   reescribe un mes. En una sola fila reescribiría años de publicaciones, y
+   el aviso de tiempo real mandaría esos años a cada compañera conectada.
+3. **Los choques.** Hoy, dos personas que editan meses distintos no se
+   pisan: son filas distintas. Con una sola fila por cliente, cualquier
+   edición simultánea sobre ese cliente choca. `App.jsx` avisaría de
+   conflictos que ahora no existen.
+
+Así que el mes, como forma de guardar, es sano. Lo que molesta es tener
+que crearlo y verlo.
+
+**Qué cambia para la agencia**
+
+| Hoy | En la fase 1 |
+|---|---|
+| «+ Calendario» y el asistente antes de poder poner nada | Se abre el cliente y sale el calendario en **hoy**. Se toca un día y se crea la publicación. Si ese mes aún no tenía cajón, se crea solo, en silencio (como ya hace «Subir»). |
+| Un selector de meses («Octubre 2026», «Noviembre 2026»…) | **‹ Hoy ›** para pasar de mes. Un mes que no existe se ve igual, vacío, con el plan semanal pintado. |
+| La semana del 29 de septiembre al 5 de octubre partida en dos | La vista de semana y la de lista leen **los dos cajones** y la enseñan entera. |
+| «Ese día es de otro mes: créala en ese calendario» | Se **mueve** a otro mes, arrastrando o desde «¿Cuándo sale?». |
+| Renombrar, duplicar, eliminar calendario | Fuera del menú: no hay nada que nombrar. |
+| La dirección `/cliente/dcasa-pty/octubre-2026` | Se queda, pero ahora dice **dónde estás mirando**, no qué documento abriste. Los enlaces que ya se hayan pegado siguen abriendo. |
+
+**Lo único delicado: mover una publicación de mes.** Una publicación no
+vive sola. Seis tablas la señalan por «calendario + publicación»:
+
+- `approvals`: lo que respondió el cliente.
+- `comentarios_aprobacion`: la conversación con el cliente.
+- `publicaciones_programadas`: la cola de publicación.
+- `client_tasks`: sus tareas.
+- `notas_equipo`: el hilo interno.
+- `historial`: qué cambió.
+
+Si al cambiar de mes sólo se moviera la publicación, esas seis quedarían
+apuntando al cajón viejo. La aprobación dejaría de verse, el hilo se
+perdería y la cola publicaría desde una fila en la que la publicación ya
+no está. Así que hace falta **una operación nueva en el servidor**, «mover
+de mes», que en un solo lote de D1:
+
+1. saca la publicación de un cajón y la mete en el otro;
+2. cambia el calendario en esas seis tablas;
+3. vuelve a sincronizar la cola con la hora nueva.
+
+O entra todo o no entra nada. Tiene que ir con su prueba sobre la D1 en
+memoria (`tests/utils/d1Memoria.js`). Esa operación es el grueso del
+trabajo de la fase 1. Lo demás es interfaz.
+
+**Qué NO cambia en la fase 1.** Siguen igual:
+
+- la cola de publicación;
+- la página de aprobación del cliente, con su enlace por mes;
+- el MCP de Claude;
+- el asistente y sus herramientas;
+- los informes;
+- «Exportar»;
+- «Mi día», Programación y el tablero.
+
+Todos leen los meses como hasta ahora, porque los meses siguen estando.
+El concepto semanal, las ofertas y las fechas especiales siguen guardados
+en su mes, pero ya se editan sobre el propio calendario. Pasarlos a sus
+propias tablas es la fase 2.
+
+**Qué se descarta con esto.** Nada. Si más adelante se quiere una fila
+por publicación, porque la agencia crece o porque se quieren búsquedas y
+cifras que crucen todos los meses, la fase 1 no estorba: la pantalla ya
+no depende de que el mes exista, y el cambio se haría sólo por dentro.
+
 ---
 
 ## 2. Qué quitaría
