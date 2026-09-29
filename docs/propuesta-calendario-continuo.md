@@ -169,6 +169,77 @@ El concepto semanal, las ofertas y las fechas especiales siguen guardados
 en su mes, pero ya se editan sobre el propio calendario. Pasarlos a sus
 propias tablas es la fase 2.
 
+### Recomendación final
+
+**Ni dejarlo como está ni hacerlo todo de golpe: la fase 1 sola, con las
+reglas de abajo.** Después, unas semanas de uso real, y sólo entonces se
+decide la siguiente fase.
+
+**Por qué no dejarlo como está.** El modelo por meses ya tiene grietas, y
+ninguna avisa:
+
+- «Subir» crea meses a escondidas.
+- Una publicación no se puede cambiar de mes.
+- La semana que cruza de un mes a otro sale partida.
+- La base **no impide dos calendarios del mismo mes para un cliente**.
+  «Duplicar calendario» crea «Octubre 2026 (copia)» con el mismo mes y el
+  mismo año. Y si «Subir» trabaja con una lista desactualizada, puede crear
+  un segundo octubre.
+
+Quedarse quieto también tiene riesgo; lo que pasa es que no se ve.
+
+**Por qué no hacerlo todo de golpe.** La fase 3 cambia lo que ve el
+cliente final, y la migración a una fila por publicación reescribe todos
+los datos de producción. Son los dos cambios con los que un error llega al
+cliente o hace perder datos. La fase 1 no toca ninguna de las dos cosas.
+
+**Reglas para la fase 1**
+
+1. **Un solo mes por cliente, y lo garantiza el servidor.**
+   - El cajón de un mes lo busca o lo crea el servidor, nunca el
+     navegador.
+   - «Duplicar calendario» desaparece.
+   - Antes de empezar, una consulta de sólo lectura en producción dice si
+     ya hay meses repetidos. Si los hay, se juntan a mano con la agencia,
+     viendo cuál es cuál.
+   - Después, un índice único (cliente, año, mes) hace que la base rechace
+     el segundo. Es la única migración de la fase, y no reescribe datos.
+2. **El mes se crea al escribir, nunca al mirar.** Pasar por diciembre con
+   ‹ › no deja una fila vacía.
+3. **Mover de mes, sólo con la operación del servidor, y todo o nada.** Si
+   alguno de los dos meses cambió desde que se leyó, porque alguien lo
+   estaba editando, no escribe nada. Responde «Alguien acaba de cambiar
+   este mes: vuelve a intentarlo». Nunca pisa.
+4. **Lo que NO se puede mover:**
+   - lo publicado o lo que se está publicando;
+   - lo programado, a un día u hora que ya pasó;
+   - una publicación a otro cliente.
+5. **Lo que está con el cliente se mueve con aviso.** Hasta que exista el
+   enlace permanente (fase 3), mover una publicación pendiente de aprobar
+   la saca del enlace de su mes. Por eso pide confirmación: «Tu cliente
+   la verá en el enlace de noviembre, no en el de octubre». Su aprobación
+   y su conversación viajan con ella.
+6. **No se borran meses enteros desde el calendario.** Se borran
+   publicaciones. Borrar un mes (lo que hoy hace «Eliminar calendario»)
+   queda para quien administra, con confirmación.
+7. **Volver atrás no toca los datos.** Aparte del índice único, no cambia
+   la forma de nada. Si algo sale mal, se despliega la versión anterior y
+   todo sigue donde estaba.
+8. **No entra sin probarse en tres sitios:**
+   - «mover de mes» sobre la D1 en memoria, comprobando las seis tablas;
+   - el test en vivo con dos personas, una moviendo y la otra editando el
+     mismo mes a la vez;
+   - la pantalla de verdad, en Chromium y en el teléfono, antes de mergear.
+
+**Fuera de la fase 1.** Quitar las categorías no depende de nada de esto:
+sólo deja de enseñarlas y pedirlas, y los datos se quedan. Puede ir antes,
+o junto con la fase 1.
+
+**Lo que no propongo, ni ahora ni con esta agencia:** guardar un cliente
+entero en una sola fila, o pasar a una fila por publicación. La primera
+tiene los tres problemas de arriba. La segunda es una migración grande
+cuyo beneficio sólo se nota con mucho más volumen.
+
 **Qué se descarta con esto.** Nada. Si más adelante se quiere una fila
 por publicación, porque la agencia crece o porque se quieren búsquedas y
 cifras que crucen todos los meses, la fase 1 no estorba: la pantalla ya
