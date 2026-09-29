@@ -73,6 +73,21 @@ describe("toda consulta sobre una tabla con dueño lleva el dueño", () => {
       expect(db.ultima().binds).toEqual(["t", "x", "u1"]);
     });
 
+    it(`${tabla}: borrarVarios acota por owner_id y parte los ids en trozos de 50`, async () => {
+      // D1 admite 100 parámetros por sentencia: más ids que eso no caben en una.
+      const db = d1Falsa();
+      const a = crearAcceso(db, "u1");
+      await a.borrarVarios(tabla, ["x", "y", "x"]);
+      expect(db.ultima().sql).toMatch(/^delete from .* where owner_id = \?.* and id in \(\?,\?\)$/);
+      expect(db.ultima().binds).toEqual(["u1", "x", "y"]);
+
+      const ids = Array.from({ length: 120 }, (_, i) => `i${i}`);
+      const antes = db.llamadas.length;
+      await a.borrarVarios(tabla, ids);
+      expect(db.llamadas.length - antes).toBe(3);
+      expect(db.llamadas.slice(antes).every((c) => c.sql.includes("owner_id = ?") && c.binds[0] === "u1")).toBe(true);
+    });
+
     it(`${tabla}: insertar impone el dueño y no deja que lo fije el cuerpo`, async () => {
       // Si el cuerpo de una petición pudiera traer su propio owner_id,
       // cualquiera escribiría en nombre de otro. Se pisa, no se confía.

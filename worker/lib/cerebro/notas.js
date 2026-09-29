@@ -91,7 +91,7 @@ export function limpiarNota(entrada = {}) {
 // ------------------------------------------------------------
 
 /** Encabezados de sección donde suele estar lo que la agencia no cuenta al cliente. Sólo para avisar. */
-const SECCION_INTERNA = /econom[ií]a unitaria|\bcostos?\b|\bmargen(?:es)?\b|proveedores?|\blanded\b|roadmap/i;
+const SECCION_INTERNA = /econom[ií]a unitaria|\bcostos?\b|\bmargen(?:es)?\b|proveedores?|\blanded\b|roadmap|operativ[ao]s?|inversi[oó]n|inversionista|importaci[oó]n|aduana/i;
 const MENCION_INTERNA = /nunca se dicen? al cliente|uso interno|solo interno|sólo interno|confidencial|memoria interna/i;
 
 /**

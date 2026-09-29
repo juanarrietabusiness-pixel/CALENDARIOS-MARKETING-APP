@@ -8,6 +8,7 @@
 //   GET    /<cliente>/buscar?q=&para=    Buscar por pasajes (para: texto | piezas | chat)
 //   POST   /<cliente>/contexto           Lo que se le da a la IA para una tarea
 //   POST   /<cliente>/reindexar          Reconstruir el índice desde las notas
+//   POST   /<cliente>/importar           Llenar el cerebro desde el repositorio { carpeta?, actualizar? }
 //
 // Todo pasa por `clienteDe()`: el cliente tiene que ser de este espacio y,
 // si quien pregunta es un colaborador, de los suyos. Un cliente ajeno da
@@ -24,6 +25,8 @@ import { limpiarNota, slug, rutaUnica, MAX_NOTAS_POR_CLIENTE } from "../lib/cere
 import {
   USOS, leerNotas, reindexar, actualizarIndice, buscar, contexto, notasViejas,
 } from "../lib/cerebro/cerebro.js";
+import { importarDelRepositorio } from "../lib/cerebro/importar.js";
+import { ErrorRepositorio } from "../lib/cerebro/repositorio.js";
 
 const ID = /^[\w-]{1,80}$/;
 const MAX_CONSULTA = 4000;
@@ -95,8 +98,13 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
     const t = ahora();
     const fila = {
       id: previa?.id ?? uuid(), client_id: clienteId, ruta, ...nota,
-      // Al editar a mano lo que vino del repositorio, la nota deja de ser «el archivo»: el SHA ya no lo describe.
-      fuente_sha: previa && nota.texto === previa.texto ? previa.fuente_sha : "",
+      // De dónde salió una nota no lo cambia quien la edita: sin esto, corregir una nota importada le borraba el
+      // origen y el archivo, y una nueva importación ya no la reconocía como suya.
+      origen: previa?.origen ?? nota.origen,
+      fuente: previa?.fuente ?? nota.fuente,
+      // De qué versión del archivo salió (si salió de uno): no cambia al editar. Que la nota se tocó lo dice
+      // su `updated_at`, y es lo que mira una nueva importación para no pisarla.
+      fuente_sha: previa?.fuente_sha ?? "",
       created_at: previa?.created_at ?? t, updated_at: t,
     };
     await acceso.guardar("cerebro_notas", fila);
@@ -130,6 +138,18 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
   if (sub === "reindexar" && metodo === "POST") {
     const r = await reindexar(env, acceso, clienteId);
     return json({ ok: true, pasajes: r.ix.N, generado: r.generado });
+  }
+
+  // ---------- Llenarlo desde el repositorio ----------
+  if (sub === "importar" && metodo === "POST") {
+    if (!cliente.github_repo) return error("Este cliente no tiene un repositorio de GitHub en su ficha.");
+    const b = (await cuerpo(req)) ?? {};
+    try {
+      return json(await importarDelRepositorio(env, acceso, cliente, { carpeta: String(b.carpeta ?? ""), actualizar: Boolean(b.actualizar) }));
+    } catch (e) {
+      if (e instanceof ErrorRepositorio) return error(e.message, 502, e.cause);
+      throw e;
+    }
   }
 
   return noEncontrado("Ruta");

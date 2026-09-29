@@ -359,6 +359,26 @@ export function crearAcceso(db, ownerId, { clientes = null } = {}) {
       const { meta } = await db.prepare(`delete from ${tabla} where ${sql}`).bind(...valores).run();
       return meta?.changes ?? 0;
     },
+
+    /**
+     * Borra varias filas por su id, acotadas igual que `borrar`. D1 admite
+     * 100 parámetros por sentencia, así que van en trozos de 50: una
+     * sentencia por trozo, no una por fila.
+     */
+    async borrarVarios(tabla, ids) {
+      const lista = [...new Set(ids.map(String))];
+      let borradas = 0;
+      for (let i = 0; i < lista.length; i += 50) {
+        const trozo = lista.slice(i, i + 50);
+        const { sql, valores } = acotar(tabla, {});
+        const { meta } = await db
+          .prepare(`delete from ${tabla} where ${sql} and id in (${trozo.map(() => "?").join(",")})`)
+          .bind(...valores, ...trozo)
+          .run();
+        borradas += meta?.changes ?? 0;
+      }
+      return borradas;
+    },
   };
 }
 
