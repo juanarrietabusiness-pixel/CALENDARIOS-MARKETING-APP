@@ -885,7 +885,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
   };
 
   return (
-    <div style={{ paddingBottom: sidePanel ? 0 : 80 }}>
+    <div className={viewMode === "grid" ? "cal-vista-mes" : undefined} style={{ paddingBottom: sidePanel ? 0 : 80 }}>
       {/* Rename inline */}
       {renaming && (
         <div className="field">
@@ -950,7 +950,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
       {/* Identidad del calendario: una línea, no un banner de 90px.
           El mes y el año sólo se muestran si el nombre del calendario no
           los dice ya; si no, se leía «Agosto 2026 · Agosto 2026». */}
-      <div style={{ display: "flex", alignItems: "baseline", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-3)" }}>
+      <div className="cal-identidad" style={{ display: "flex", alignItems: "baseline", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-3)" }}>
         <h2 style={{ fontSize: "var(--fs-lg)", fontWeight: 700, letterSpacing: "-.01em" }}>{calName}</h2>
         {calSubtitle && (
           <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)" }}>{calSubtitle}</span>

@@ -36,7 +36,7 @@ const irAIntegraciones = (e) => {
 
 export default function CuandoSale({
   post, sf, day, clientId, filas = [], estadoRedes, errores = [], enlaceAMano = null,
-  onPublicar, onCancelar, onReintentar,
+  onPublicar, onCancelar, onReintentar, inicio = null,
 }) {
   const ids = useId();
   const [modo, setModo] = useState(post.asistida ? "mano" : "programar");
@@ -122,8 +122,10 @@ export default function CuandoSale({
               </li>
             ))}
           </ul>
-          {!todasPublicadas && (
+          {(inicio || !todasPublicadas) && (
             <div className="cuando-botones">
+              {inicio && <div className="cuando-inicio">{inicio}</div>}
+              {!todasPublicadas && <>
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setModo("programar"); setCambiando(true); }}>
                 <Icon name="pencil" size={14} /> Cambiar
               </button>
@@ -138,6 +140,7 @@ export default function CuandoSale({
               >
                 Cancelar
               </button>
+              </>}
             </div>
           )}
         </div>
@@ -200,6 +203,7 @@ export default function CuandoSale({
           {/* Al lado del botón, dónde sale: arriba se eligió, aquí se confirma. */}
           <p className="cuando-destino"><Icon name="send" size={13} /> {resumenDestino(post, redes)}</p>
           <div className="cuando-botones">
+            {inicio && <div className="cuando-inicio">{inicio}</div>}
             <button type="button" className="btn btn-primary cuando-principal" disabled={deshabilitado} onClick={confirmar}>
               <Icon name={MODOS.find(([k]) => k === modo)[2]} size={16} />
               {trabajando ? "Un momento…" : etiqueta}

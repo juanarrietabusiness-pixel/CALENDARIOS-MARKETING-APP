@@ -23,7 +23,7 @@
 // que genera el código del Worker.
 // ============================================================
 
-import { json, error, noAutenticado, noEncontrado, cuerpo, CABECERAS_API } from "./lib/respuesta.js";
+import { json, error, noAutenticado, noEncontrado, cuerpo, CABECERAS_API, rangoServido } from "./lib/respuesta.js";
 import { crearAcceso } from "./lib/acceso.js";
 import { usuarioDeLaPeticion, iniciarSesion, cerrarSesion, cookieSesion, cookieBorrada } from "./lib/sesion.js";
 import { calendarioPorTestigo, enviarAprobacion, actualizarContenido, mediaPermitida, comentarCliente, enviarRevision, informePorTestigo, auditoriaPorTestigo } from "./lib/publico.js";
@@ -62,18 +62,39 @@ function comoRespuesta(e) {
   return error(codigo === 500 ? "No se pudo completar la operación" : msg, codigo);
 }
 
-async function sirveMedia(env, clave, cacheable) {
-  const objeto = await env.MEDIA.get(clave);
+/**
+ * Un archivo de R2. Admite `Range`: Safari en el iPhone NO reproduce un
+ * video si el servidor no contesta 206 a sus peticiones por trozos —pide
+ * `bytes=0-1` antes de nada—. Sin esto el video del panel y de «Subir»
+ * pintaba su primer fotograma y al darle a reproducir no hacía nada; en
+ * el ordenador funcionaba, porque Chrome se conforma con un 200.
+ */
+async function sirveMedia(env, clave, cacheable, req = null) {
+  const rango = req?.headers?.get?.("Range") ?? "";
+  let objeto;
+  try {
+    objeto = await env.MEDIA.get(clave, /^bytes=/.test(rango) ? { range: req.headers } : undefined);
+  } catch {
+    // Un rango que no existe (más allá del final): R2 lanza.
+    return new Response(null, { status: 416, headers: { "Content-Range": "bytes */*" } });
+  }
   if (!objeto) return noEncontrado("Archivo");
   const cabeceras = new Headers();
   objeto.writeHttpMetadata(cabeceras);
   cabeceras.set("etag", objeto.httpEtag);
+  cabeceras.set("Accept-Ranges", "bytes");
   // `private`: son imágenes de clientes. Que una caché compartida las
   // guarde es exactamente lo que no se quiere.
   cabeceras.set("Cache-Control", cacheable ? "private, max-age=3600" : "no-store");
   cabeceras.set("X-Content-Type-Options", "nosniff");
+  const trozo = rango && objeto.range ? rangoServido(objeto.range, objeto.size) : null;
+  if (trozo) {
+    cabeceras.set("Content-Range", `bytes ${trozo.inicio}-${trozo.fin}/${objeto.size}`);
+    return new Response(objeto.body, { status: 206, headers: cabeceras });
+  }
   return new Response(objeto.body, { headers: cabeceras });
 }
+
 
 export default {
   async fetch(req, env, ctx) {
@@ -179,7 +200,7 @@ export default {
         if (partes[2] === "media" && metodo === "GET") {
           const clave = partes.slice(3).join("/");
           if (!(await mediaPermitida(env.DB, testigo, clave))) return noEncontrado("Archivo");
-          return sirveMedia(env, clave, true);
+          return sirveMedia(env, clave, true, req);
         }
 
         return noEncontrado("Ruta");
@@ -373,7 +394,7 @@ export default {
         const m = /^clientes\/([^/]+)\//.exec(clave);
         if (!m) return noEncontrado("Archivo");
         if (!(await acceso.leerUno("clients", { id: m[1] }))) return noEncontrado("Archivo");
-        if (metodo === "GET") return sirveMedia(env, clave, true);
+        if (metodo === "GET") return sirveMedia(env, clave, true, req);
         if (metodo === "DELETE") { await env.MEDIA.delete(clave); return json({ ok: true }); }
         return error(`Método ${metodo} no permitido aquí`, 405);
       }

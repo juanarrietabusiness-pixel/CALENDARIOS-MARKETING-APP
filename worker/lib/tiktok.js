@@ -182,7 +182,7 @@ export function trozosDe(tamano) {
  * directo pregunta antes qué privacidades admite la cuenta: sin auditar,
  * sólo «solo yo».
  */
-export async function iniciarSubida(token, { modo, tamano, titulo }) {
+export async function iniciarSubida(token, { modo, tamano, titulo, portadaMs = null }) {
   const source_info = { source: "FILE_UPLOAD", video_size: tamano, ...trozosDe(tamano) };
   if (modo !== "directo") {
     const r = await api("/v2/post/publish/inbox/video/init/", { token, cuerpo: { source_info } });
@@ -194,7 +194,12 @@ export async function iniciarSubida(token, { modo, tamano, titulo }) {
   const r = await api("/v2/post/publish/video/init/", {
     token,
     cuerpo: {
-      post_info: { title: String(titulo ?? "").slice(0, 2200), privacy_level: privacidad, disable_duet: false, disable_comment: false, disable_stitch: false },
+      post_info: {
+        title: String(titulo ?? "").slice(0, 2200), privacy_level: privacidad, disable_duet: false, disable_comment: false, disable_stitch: false,
+        // El fotograma elegido como portada en el panel. En borrador no
+        // aplica: la portada la escoge el cliente al publicar desde su app.
+        ...(Number.isFinite(portadaMs) && portadaMs >= 0 ? { video_cover_timestamp_ms: Math.round(portadaMs) } : {}),
+      },
       source_info,
     },
   });

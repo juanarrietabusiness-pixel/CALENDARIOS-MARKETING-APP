@@ -8,7 +8,7 @@
 
 import { compressImage } from "../utils";
 import {
-  mediosDe, historiasDe, piezasDe, publicacionDeVariante, objetivoDe, necesitaAjuste, claveAdaptado, medidasAjuste,
+  mediosDe, historiasDe, piezasDe, publicacionDeVariante, objetivoDe, necesitaAjuste, claveAdaptado, medidasAjuste, proporcionParaIA,
 } from "./publicacion";
 
 /** Una imagen del banco, reducida y en base64 para mandarla al modelo. */
@@ -236,7 +236,8 @@ export async function vistaAjuste(src, objetivo, modo, color) {
   const img = await bitmapDe(src);
   const m = medidasAjuste(img.width, img.height, objetivo);
   const escala = 360 / m.ancho;
-  const lienzo = encajar(img, { ancho: Math.round(m.ancho * escala), alto: Math.round(m.alto * escala) }, modo, color);
+  // «ia» sin copia todavía: se enseña lo que saldría, que es el difuminado.
+  const lienzo = encajar(img, { ancho: Math.round(m.ancho * escala), alto: Math.round(m.alto * escala) }, modo === "ia" ? "difuminado" : modo, color);
   img.close?.();
   return lienzo.toDataURL("image/jpeg", 0.75);
 }
@@ -248,6 +249,31 @@ export async function historiaDesdeImagen(src, subir, modo = "difuminado", color
   img.close?.();
   const nuevo = await subir(new File([await aBlob(lienzo)], "historia.jpg", { type: "image/jpeg" }));
   return { src: nuevo, tipo: "imagen", nombre: "historia.jpg", ancho: 1080, alto: 1920 };
+}
+
+/**
+ * La imagen AMPLIADA con IA hasta su objetivo (4:5 para el feed, 9:16
+ * para la historia): Nano Banana dibuja el fondo que falta y aquí se
+ * recorta al tamaño exacto —Gemini da 4:5 en 896×1152, que Instagram no
+ * admite— y se sube en JPEG. Lo que devuelve va a `post.adaptados`.
+ *
+ * `generar(proporcion)` pide la imagen al servidor y devuelve
+ * `{ src, clave }`; `descartar(clave)` borra el bruto de R2.
+ */
+export async function ampliarConIA(src, objetivo, { generar, subir, descartar }) {
+  const img = await bitmapDe(src);
+  const medidas = medidasAjuste(img.width, img.height, objetivo);
+  const proporcion = proporcionParaIA(img.width, img.height, objetivo);
+  img.close?.();
+  const bruto = await generar(proporcion);
+  const gen = await bitmapDe(bruto.src);
+  const lienzo = encajar(gen, medidas, "recorte");
+  gen.close?.();
+  const nombre = `${objetivo}-ia.jpg`;
+  const nuevo = await subir(new File([await aBlob(lienzo, 0.92)], nombre, { type: "image/jpeg" }));
+  // El bruto no sirve para nada más: no debe llenar la carpeta del cliente.
+  if (bruto.clave) descartar?.(bruto.clave);
+  return { src: nuevo, ancho: medidas.ancho, alto: medidas.alto, modo: "ia" };
 }
 
 /**
@@ -282,14 +308,17 @@ export async function prepararParaRedes(post, redes, { subir, colorMarca } = {})
     for (const m of mediosDe(pieza)) {
       if (!necesitaAjuste(m, objetivo)) continue;
       const clave = claveAdaptado(objetivo, m.src);
-      if (adaptados[clave]?.modo === modo) continue;
+      // La ampliación con IA se pide con su botón, no aquí: si falta la
+      // copia de ESTA imagen, sale difuminada.
+      const efectivo = modo === "ia" && adaptados[clave]?.modo !== "ia" ? "difuminado" : modo;
+      if (adaptados[clave]?.modo === efectivo) continue;
       const img = await bitmapDe(m.src);
       const medidas = medidasAjuste(img.width, img.height, objetivo);
-      const lienzo = encajar(img, medidas, modo, colorMarca);
+      const lienzo = encajar(img, medidas, efectivo, colorMarca);
       img.close?.();
       const nombre = `${(m.nombre || "imagen").replace(/\.[a-z0-9]+$/i, "")}-${objetivo}.jpg`;
       const src = await subir(new File([await aBlob(lienzo)], nombre, { type: "image/jpeg" }));
-      adaptados[clave] = { src, ancho: medidas.ancho, alto: medidas.alto, modo };
+      adaptados[clave] = { src, ancho: medidas.ancho, alto: medidas.alto, modo: efectivo };
       cambio = true;
     }
   }

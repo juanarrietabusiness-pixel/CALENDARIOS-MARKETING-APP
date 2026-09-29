@@ -14,7 +14,7 @@
 
 import { useEffect, useState } from "react";
 import Icon from "../Icon";
-import { REDES, mediosDe, historiasDe, conHistoria, textoPara, primerComentario, destinoInstagram, objetivoDe } from "../../lib/publicacion";
+import { REDES, mediosDe, historiasDe, conHistoria, textoPara, primerComentario, destinoInstagram, objetivoDe, claveAdaptado } from "../../lib/publicacion";
 import { vistaAjuste } from "../../lib/medios";
 
 // Lo ya dibujado, por imagen, objetivo y ajuste: cambiar de pestaña no
@@ -52,10 +52,37 @@ function piezasVista(post, redes) {
   return piezas;
 }
 
-function Medio({ medio, objetivo, vertical, modo, color }) {
-  const ajustada = useAjustada(medio.tipo === "imagen" ? medio.src : null, medio.tipo === "imagen" ? objetivo : null, modo, color);
-  if (medio.tipo === "video") return <video src={`${medio.src}#t=0.5`} muted playsInline controls preload="metadata" data-vertical={vertical || undefined} />;
+function Medio({ medio, objetivo, vertical, modo, color, adaptados, portada }) {
+  // Ampliada con IA: la copia ya tiene la forma de la red, se enseña tal cual.
+  const copia = modo === "ia" && objetivo ? adaptados?.[claveAdaptado(objetivo, medio.src)] : null;
+  const ajustada = useAjustada(medio.tipo === "imagen" && copia?.modo !== "ia" ? medio.src : null, medio.tipo === "imagen" ? objetivo : null, modo, color);
+  if (medio.tipo === "video") return <VideoVista src={medio.src} portada={portada} vertical={vertical} />;
+  if (copia?.modo === "ia") return <img src={copia.src} alt="" />;
   return ajustada ? <img src={ajustada} alt="" /> : <span className="vr-cargando">Preparando…</span>;
+}
+
+/**
+ * El video de la vista previa. En el iPhone, `src="…#t=0.5"` con
+ * `preload="metadata"` pintaba un fotograma y al darle a reproducir se
+ * quedaba en negro o arrancaba a pantalla completa y volvía cortado:
+ * Safari trata el fragmento como un rango y no siempre lo suelta. Ahora
+ * va sin fragmento, con la portada como `poster`, `playsInline` y el
+ * fotograma inicial buscado a mano sólo si no hay portada.
+ */
+function VideoVista({ src, portada, vertical }) {
+  return (
+    <video
+      key={src}
+      src={src}
+      poster={portada || undefined}
+      muted
+      playsInline
+      controls
+      preload={portada ? "none" : "metadata"}
+      data-vertical={vertical || undefined}
+      onLoadedMetadata={(e) => { if (!portada && e.currentTarget.currentTime === 0) e.currentTarget.currentTime = 0.1; }}
+    />
+  );
 }
 
 export default function VistaRed({ post, redes, client }) {
@@ -96,7 +123,7 @@ export default function VistaRed({ post, redes, client }) {
           </div>
         )}
         <div className="vista-red-medio" data-vertical={vertical || undefined} data-libre={!vertical && !objetivo ? true : undefined}>
-          {m ? <Medio medio={m} objetivo={objetivo} vertical={vertical} modo={post.ajusteIG || "difuminado"} color={client?.primaryColor} /> : <span>Sin imagen ni video</span>}
+          {m ? <Medio medio={m} objetivo={objetivo} vertical={vertical} modo={post.ajusteIG || "difuminado"} color={client?.primaryColor} adaptados={post.adaptados} portada={post.portada} /> : <span>Sin imagen ni video</span>}
           {vertical && m && (
             <>
               <span className="vista-red-zona" data-lado="arriba" aria-hidden="true">{esHistoria ? usuario : ""}</span>

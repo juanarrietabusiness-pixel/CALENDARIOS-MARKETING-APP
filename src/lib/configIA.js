@@ -3,13 +3,14 @@
 //
 // El navegador no elige el modelo: muestra lo que eligió el
 // administrador y le deja cambiarlo en Ajustes. Lo que se manda al
-// servidor es «sonnet»/«opus» y un nivel; el id del modelo lo decide el
+// servidor es «sonnet»/«opus»/«haiku» y un nivel; el id del modelo lo decide el
 // servidor, que es quien sabe qué tiene la cuenta.
 // ============================================================
 
 export const MODELOS_IA = Object.freeze([
   { id: "sonnet", nombre: "Sonnet 5", nota: "Recomendado. Excelente para guiones y copies." },
   { id: "opus", nombre: "Opus", nota: "El más potente de tu cuenta. Más lento y unas 2,5 veces más caro." },
+  { id: "haiku", nombre: "Haiku 4.5", nota: "El más barato: la mitad que Sonnet y muy rápido. Para ideas y textos cortos; en guiones largos y en el asistente se nota la diferencia." },
 ]);
 
 export const NIVELES_IA = Object.freeze([

@@ -2,14 +2,72 @@
    vista previa e historias. Se carga con el panel (trozo aparte), no con
    la aplicación: el CSS inicial tiene su presupuesto. */
 .editor-medios-cuenta { font-weight: 400; color: var(--text-faint); margin-left: var(--sp-1); }
-.editor-medios { list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--sp-2); margin-bottom: var(--sp-2); }
-.editor-medios li { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+/* Las miniaturas: pequeñas, como en Metricool, con BORRAR a la vista (un
+   círculo oscuro arriba a la derecha, de 32 px) y la portada del video. */
+.editor-medios { list-style: none; display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: 0 0 var(--sp-2); padding: 0; }
+.editor-medios li { width: 104px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; display: flex; flex-direction: column; }
 .editor-medios-vista { position: relative; aspect-ratio: 4 / 5; background: var(--bg); }
 .editor-medios-vista img, .editor-medios-vista video { width: 100%; height: 100%; object-fit: cover; display: block; }
-.editor-medios-portada { position: absolute; left: 4px; top: 4px; font-size: var(--fs-3xs); font-weight: 700; padding: 1px 6px; border-radius: var(--radius-pill); background: var(--accent); color: #fff; }
-.editor-medios-tipo { position: absolute; right: 4px; top: 4px; padding: 3px; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; display: flex; }
-.editor-medios-acciones { display: flex; justify-content: space-between; }
+.editor-medios-orden { position: absolute; left: 4px; top: 4px; min-width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-3xs); font-weight: 700; border-radius: var(--radius-pill); background: rgba(0,0,0,.6); color: #fff; }
+.editor-medios-tipo { position: absolute; left: 4px; bottom: 4px; padding: 3px; border-radius: 50%; background: rgba(0,0,0,.6); color: #fff; display: flex; }
+.editor-medios-quitar {
+  position: absolute; right: 4px; top: 4px; width: 32px; height: 32px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  border: 1px solid rgba(255,255,255,.35); background: rgba(11,18,32,.78); color: #fff;
+}
+.editor-medios-quitar:hover, .editor-medios-quitar:focus-visible { background: var(--danger); border-color: var(--danger); }
+.editor-medios-acciones { display: flex; align-items: center; justify-content: space-between; gap: 2px; min-height: var(--tap-sm); }
+.editor-medios-acciones:empty { display: none; }
 .editor-medios-acciones .btn-icon { min-width: 30px; min-height: var(--tap-sm); }
+.editor-medios-portada-btn {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-height: var(--tap-sm);
+  border: none; background: none; color: var(--accent); font-size: var(--fs-3xs); font-weight: 700; cursor: pointer;
+}
+.editor-medios-portada-btn[aria-expanded="true"] { background: var(--accent-soft); }
+.editor-medios li.editor-medios-mas { border-style: dashed; background: none; }
+.editor-medios-mas button {
+  flex: 1; width: 100%; min-height: 130px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  border: none; background: none; color: var(--text-dim); font-size: var(--fs-3xs); font-weight: 600; cursor: pointer;
+}
+.editor-medios-mas button:hover:not(:disabled) { color: var(--accent); background: var(--accent-soft); }
+
+/* La portada del video: el fotograma con una barra, o una imagen aparte. */
+.portada-video { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); margin-bottom: var(--sp-2); border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--accent-line); }
+.portada-video-cabecera { display: flex; align-items: center; justify-content: space-between; }
+.portada-video-cabecera h4 { margin: 0; }
+.portada-video-cuerpo { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: flex-start; }
+.portada-video-cuerpo video { width: 140px; aspect-ratio: 9 / 16; object-fit: cover; border-radius: var(--radius-sm); background: #000; }
+.portada-video-opciones { flex: 1 1 200px; display: flex; flex-direction: column; gap: var(--sp-2); align-items: flex-start; }
+.portada-video-opciones input[type="range"] { width: 100%; min-height: var(--tap-sm); accent-color: var(--accent); }
+.portada-video-opciones .hint { margin: 0; }
+
+/* El compositor: archivos + texto en una tarjeta. */
+.compositor { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.compositor .field { margin: 0; }
+.compositor-texto { display: flex; flex-direction: column; gap: var(--sp-1); }
+.compositor-texto-cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.compositor-texto .notice { margin: 0; }
+
+/* Secciones plegables («Configuración de Instagram», «1 error»…). */
+.plegables { display: flex; flex-direction: column; gap: var(--sp-2); }
+.plegable { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.plegable > summary {
+  display: flex; align-items: center; gap: var(--sp-2); min-height: var(--tap); padding: 0 var(--sp-3);
+  cursor: pointer; list-style: none; font-size: var(--fs-xs); font-weight: 600; color: var(--text);
+}
+.plegable > summary::-webkit-details-marker { display: none; }
+.plegable-titulo { flex: 0 1 auto; }
+.plegable-resumen { flex: 1; min-width: 0; text-align: right; font-size: var(--fs-3xs); font-weight: 500; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plegable-flecha { margin-left: auto; flex-shrink: 0; transition: transform .15s; color: var(--text-dim); }
+.plegable-resumen + .plegable-flecha { margin-left: 0; }
+.plegable[open] > summary .plegable-flecha { transform: rotate(180deg); }
+.plegable-cuerpo { display: flex; flex-direction: column; gap: var(--sp-3); padding: 0 var(--sp-3) var(--sp-3); }
+.plegable-cuerpo > .field { margin: 0; }
+.plegable[data-tono="error"] { border-color: var(--danger); background: var(--danger-soft); }
+.plegable[data-tono="error"] > summary { color: var(--danger); }
+/* Dentro de su plegable, la historia no repite título ni marco. */
+.plegable .historias-post { border: none; padding: 0; }
+.plegable .historias-post-cabecera h3 { display: none; }
 .editor-medios-botones { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 .contadores { font-size: var(--fs-3xs); color: var(--text-faint); margin: 0; }
 .contador { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--text-dim); }
@@ -31,6 +89,7 @@
 .pestana-publicar { display: flex; flex-direction: column; gap: var(--sp-3); }
 .pestana-publicar-nota { display: block; margin: 0; }
 .revision { display: flex; flex-direction: column; gap: var(--sp-2); }
+.revision .plegable-cuerpo { padding-top: 0; }
 .revision-lista li { flex-wrap: wrap; justify-content: space-between; }
 .revision-lista li .btn { flex-shrink: 0; }
 /* Fija abajo SÓLO a lo ancho, y ahí en una fila. En el teléfono, fija,
@@ -41,16 +100,34 @@
   margin: 0 calc(-1 * var(--sp-4)); padding: var(--sp-3) var(--sp-4);
   background: var(--surface); border-top: 1px solid var(--border);
 }
+/* A lo ancho, como Metricool: dos columnas a toda la altura. La izquierda
+   desplaza su contenido y lleva la barra pegada debajo; la derecha es la
+   vista previa, con su propio desplazamiento. Nada tapa a nada. */
+.pestana-publicar[data-ancho] {
+  flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 420px); gap: 0;
+}
+.pp-izquierda { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+.pestana-publicar[data-ancho] .pp-izquierda { min-height: 0; gap: 0; }
+.pestana-publicar[data-ancho] .pp-config { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-4); }
 .pestana-publicar[data-ancho] .barra-fija-publicar {
-  position: sticky; bottom: 0; z-index: 1; box-shadow: var(--elev-2);
+  margin: 0; box-shadow: var(--elev-1);
   flex-direction: row; flex-wrap: wrap; align-items: flex-start; column-gap: var(--sp-3);
 }
-.pestana-publicar[data-ancho] .cuando-sale { flex: 1 1 520px; min-width: 0; }
+.pestana-publicar[data-ancho] .barra-fija-publicar > .revision { flex-basis: 100%; }
+/* La barra, compacta: arriba cuándo (Ahora/Programar/A mano, día y hora),
+   debajo las acciones a la izquierda y el botón a la derecha. El título
+   «¿Cuándo sale?» y el «Sale en…» ya están arriba (en «¿Qué sale y
+   dónde?»): aquí sobraban dos líneas. */
+.pestana-publicar[data-ancho] .barra-fija-publicar { padding: var(--sp-2) var(--sp-4); row-gap: var(--sp-2); }
+.pestana-publicar[data-ancho] .cuando-sale { flex: 1 1 100%; min-width: 0; gap: var(--sp-1); }
 .pestana-publicar[data-ancho] .cuando-elegir { flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: var(--sp-3); row-gap: var(--sp-1); }
+.pestana-publicar[data-ancho] .cuando-elegir > legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .pestana-publicar[data-ancho] .cuando-elegir .segmented { width: auto; flex: 0 0 auto; }
 .pestana-publicar[data-ancho] .cuando-elegir > :not(.segmented):not(.cuando-fecha):not(.cuando-botones) { flex-basis: 100%; order: 2; }
-.pestana-publicar[data-ancho] .cuando-botones { order: 1; margin-left: auto; }
-.pestana-publicar[data-ancho] .cuando-principal { flex: 0 1 auto; padding-left: var(--sp-5); padding-right: var(--sp-5); }
+.pestana-publicar[data-ancho] .cuando-elegir > .cuando-destino { display: none; }
+.pestana-publicar[data-ancho] .cuando-botones { order: 3; flex-basis: 100%; }
+.pestana-publicar[data-ancho] .cuando-principal { flex: 0 1 auto; margin-left: auto; padding-left: var(--sp-5); padding-right: var(--sp-5); }
+.cuando-inicio { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-right: auto; }
 .bfp-cuando { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-2xs); }
 .bfp-dia { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; text-transform: capitalize; }
 .hora-sugerida {
@@ -200,17 +277,15 @@
   border: 1px solid var(--border-strong); border-radius: var(--radius-lg); overflow: hidden;
   animation: popIn .2s cubic-bezier(.22,.61,.36,1);
 }
-.pp-columnas { display: flex; flex-direction: column; gap: var(--sp-3); }
 .pp-config { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
 .pp-bloque { display: flex; flex-direction: column; gap: var(--sp-2); }
 .pp-bloque > h3 { margin: 0; }
-.pestana-publicar[data-ancho] .pp-columnas { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); gap: var(--sp-5); align-items: start; }
 .pp-vista {
-  position: sticky; top: 0; display: flex; flex-direction: column; gap: var(--sp-3);
-  max-height: calc(100dvh - 260px); overflow-y: auto; padding: var(--sp-3); border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border);
+  min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-3);
+  padding: var(--sp-4); background: var(--surface-2); border-left: 1px solid var(--border);
 }
 .pp-vista > h3 { margin: 0; }
-.pp-vista .vista-red-telefono { max-width: 100%; }
+.pp-vista .vista-red-telefono { max-width: 340px; }
 .idea-columnas, .idea-escribir, .idea-lado { display: flex; flex-direction: column; min-width: 0; }
 .idea-columnas[data-ancho] { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr); gap: var(--sp-5); align-items: start; }
 .idea-columnas[data-ancho] .idea-escribir .textarea { min-height: 140px; }

@@ -18,6 +18,7 @@
 // ============================================================
 
 import { partirSSE, crearAcumulador } from "./flujoAnthropic.js";
+import { MARGEN_RAZONAMIENTO } from "./configIA.js";
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -59,6 +60,39 @@ export function mensajeDeRechazo(e) {
   return `Anthropic rechazó la petición (${e.estado}): ${String(e.message).slice(0, 300)}`;
 }
 
+// ------------------------------------------------------------
+// Haiku 4.5 no habla el idioma de los modelos 5
+// ------------------------------------------------------------
+//
+// Todas las rutas piden `thinking: adaptive` + `output_config.effort` y
+// las herramientas web de 2026. Haiku 4.5 rechaza las tres con un 400:
+// razona con un presupuesto fijo (`budget_tokens`, ≥ 1.024 y menor que
+// `max_tokens`), no acepta `effort` y sólo tiene la web básica. Y su
+// salida acaba en 64.000 tokens. Se traduce AQUÍ, por donde pasa toda
+// llamada, para que una ruta nueva no tenga que acordarse.
+
+const TOPE_SALIDA_HAIKU = 64_000;
+const WEB_BASICA = Object.freeze({ web_search_20260209: "web_search_20250305", web_fetch_20260209: "web_fetch_20250910" });
+
+/** La petición tal como la acepta ese modelo. Pura. */
+export function adaptarAlModelo(peticion) {
+  if (!/^claude-haiku-4/.test(String(peticion?.model ?? ""))) return peticion;
+  const { thinking, output_config: config, ...resto } = peticion;
+  const { effort, ...otros } = config ?? {};
+  const salida = { ...resto, max_tokens: Math.min(Number(peticion.max_tokens) || 8_000, TOPE_SALIDA_HAIKU) };
+  if (Object.keys(otros).length) salida.output_config = otros;
+  // «Bajo» es responder casi directo: en Haiku, sin razonar. El resto
+  // razona con lo que su nivel reserva, dejando sitio para el texto.
+  if (thinking && effort !== "low") {
+    const presupuesto = Math.min(MARGEN_RAZONAMIENTO[effort] ?? MARGEN_RAZONAMIENTO.high, salida.max_tokens - 2_000);
+    if (presupuesto >= 1_024) salida.thinking = { type: "enabled", budget_tokens: presupuesto };
+  }
+  if (Array.isArray(resto.tools)) {
+    salida.tools = resto.tools.map((t) => (WEB_BASICA[t?.type] ? { ...t, type: WEB_BASICA[t.type] } : t));
+  }
+  return salida;
+}
+
 /**
  * Abre una llamada en streaming. Reintenta UNA vez si falla antes de
  * empezar a llegar nada (429, 5xx, red); a mitad del flujo no se
@@ -76,7 +110,7 @@ export async function abrirFlujo(env, peticion, { signal } = {}) {
           "x-api-key": env.ANTHROPIC_API_KEY,
           "anthropic-version": "2023-06-01",
         },
-        body: JSON.stringify({ ...peticion, stream: true }),
+        body: JSON.stringify({ ...adaptarAlModelo(peticion), stream: true }),
       });
     } catch (e) {
       if (signal?.aborted) throw e;

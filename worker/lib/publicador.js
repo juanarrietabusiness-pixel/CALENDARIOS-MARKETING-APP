@@ -613,7 +613,9 @@ async function pasoInstagram(env, { cuenta, token, origen, carga, guardar, fila:
     params = {
       media_type: "REELS", video_url: await url(video.src), caption: texto, share_to_feed: true, ...conColab,
       ...(post.audioNombre?.trim() ? { audio_name: post.audioNombre.trim().slice(0, 100) } : {}),
-      ...(post.portada && !/\.(mp4|mov|m4v|webm)/i.test(post.portada) ? { cover_url: await url(post.portada) } : {}),
+      ...(post.portada && !/\.(mp4|mov|m4v|webm)/i.test(post.portada) ? { cover_url: await url(post.portada) }
+        // Sin imagen de portada, el fotograma elegido (en milisegundos).
+        : Number.isFinite(post.portadaMs) && post.portadaMs >= 0 ? { thumb_offset: Math.round(post.portadaMs) } : {}),
     };
   } else {
     params = { image_url: await url(primero.src), caption: texto, ...conColab, ...conAlt };
@@ -716,7 +718,7 @@ async function pasoTikTok(env, { cuenta, token, carga, guardar, fila: actual }) 
     const cabeza = await env.MEDIA.head(clave);
     if (!cabeza) throw new ErrorPublicar("El video ya no está en el almacenamiento: vuelve a añadirlo a la publicación.");
     const modo = leerJSON(cuenta.datos, {})?.modo === "directo" ? "directo" : "borrador";
-    const { publishId, uploadUrl, privacidad } = await iniciarSubida(token, { modo, tamano: cabeza.size, titulo: textoPara(post, "tiktok") });
+    const { publishId, uploadUrl, privacidad } = await iniciarSubida(token, { modo, tamano: cabeza.size, titulo: textoPara(post, "tiktok"), portadaMs: Number.isFinite(post.portadaMs) ? post.portadaMs : null });
     await subirTrozos(env, clave, uploadUrl, cabeza.size);
     carga.modo = modo;
     carga.privacidad = privacidad;

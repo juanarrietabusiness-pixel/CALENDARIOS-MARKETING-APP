@@ -1234,14 +1234,39 @@ input[type="radio"] {
    icono de formato: en el teléfono no había forma de saber qué era
    ninguna publicación sin abrirla. Una línea recortada dice bastante
    más que ninguna. */
+/* Y el mes del teléfono NO son 35 cajitas sueltas con margen: se veía
+   pequeño y arrinconado, con un «+» ocupando media celda y la rejilla
+   empezando a mil píxeles de la parte de arriba. Ahora es una hoja de
+   borde a borde —como el calendario del teléfono—: sin hueco entre
+   celdas, sin el margen de la página, y el «+» es el hueco libre de la
+   celda (tocar lo vacío de un día añade ahí). */
 @media (max-width: 599px) {
-  .cal-grid { gap: 2px; }
-  .cal-cell { min-height: 72px; padding: 2px; }
-  .cal-post-label {
-    -webkit-line-clamp: 1;
-    line-clamp: 1;
-    font-size: var(--fs-3xs);
+  .cal-grid {
+    gap: 1px;
+    margin-inline: calc(-1 * var(--sp-3));
+    background: var(--border-light);
+    border-block: 1px solid var(--border-light);
   }
+  .cal-header-cell { border: none; border-radius: 0; padding: var(--sp-1) 0; }
+  .cal-cell { min-height: 92px; padding: 2px; border: none; border-radius: 0; }
+  .cal-cell.outside { background: var(--bg); }
+  .cal-cell.today { box-shadow: inset 0 0 0 2px var(--accent); }
+  .cal-daynum { text-align: center; }
+  .cal-add { flex: 1; min-height: 20px; font-size: 0; color: transparent; }
+  .cal-add:active { background: var(--accent-soft); }
+  .cal-post-label {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    font-size: var(--fs-3xs);
+    line-height: 1.15;
+    /* «Carru-sel», no «Carruse / l»: parte por sílabas (html lang="es"). */
+    hyphens: auto;
+  }
+  /* El nombre del mes ya lo dice el selector de arriba, y el «N de M
+     aprobadas» la cabecera del cliente: aquí sólo empujaban la rejilla
+     hacia abajo. El título sigue para el lector de pantalla. */
+  .cal-identidad { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .cal-vista-mes .stat-strip { display: none; }
   /* El padding inferior se mantiene: debajo va la barra de completado. */
   .cal-post {
     gap: 1px 2px;
