@@ -8,6 +8,7 @@ import { mediosDe } from "./lib/publicacion";
 import { analizarVideo } from "./lib/db";
 import { PROPIEDADES_FECHA_TAREA } from "./lib/agenda";
 import { partirSSE } from "../worker/lib/flujoAnthropic.js";
+import { sinCapaMaquetacion, prepararContenidoIA, TITULO_FICHA } from "./lib/contextoADN";
 
 // Se reexportan porque media aplicación las importa desde aquí. Viven en
 // `lib/parse.js` para poder probarlas sin arrastrar el cliente de Supabase.
@@ -85,7 +86,9 @@ async function invokeFunction(name, body) {
  * qué se fue cada dólar y de qué cliente. El `tier` ya no elige nada.
  */
 export async function callAI(content, { maxTokens, tier, tolerarCorte = false, funcion, clienteId } = {}) {
-  const data = await invokeFunction("ai", { content, maxTokens, tier, funcion, clienteId });
+  // El ADN va en su propio bloque con caché: es lo mismo en cada tanda de
+  // una generación y sólo cambian las publicaciones (`lib/contextoADN.js`).
+  const data = await invokeFunction("ai", { content: prepararContenidoIA(content), maxTokens, tier, funcion, clienteId });
 
   // El servidor avisa si el modelo se quedó sin tokens a media respuesta.
   // Sin esto, un texto cortado a la mitad se trataría como completo.
@@ -518,7 +521,11 @@ export async function imagenDelADN(repoUrl, path) {
  * Ahora el ADN va primero, dice de qué archivo sale cada trozo, y la
  * ficha queda debajo declarada como lo que es: un índice, no una fuente.
  */
-export function buildClientContext(client, calendar, adnExtra = "") {
+export function buildClientContext(client, calendar, adnCompleto = "") {
+  // Todo lo que llama a esto ESCRIBE texto —ideas, guiones, captions—: la
+  // capa de maquetación para Meta AI no le sirve y son ~41 000 caracteres
+  // en Dcasa. El chat arma su propio contexto y sigue viéndola entera.
+  const adnExtra = sinCapaMaquetacion(adnCompleto);
   if (adnExtra) {
     return `Escribes para ${client.name}, cliente de la agencia Juancito Ads.
 
@@ -544,7 +551,7 @@ ADN DE ${(client.name || "").toUpperCase()} — leído de su repositorio
 ${adnExtra}
 
 ═══════════════════════════════════════════════════════════
-FICHA EN LA APLICACIÓN — datos de contacto y preferencias
+${TITULO_FICHA}
 ═══════════════════════════════════════════════════════════
 INDUSTRIA: ${client.industry || "N/A"}
 DESCRIPCIÓN: ${client.descripcion || "N/A"}
@@ -558,11 +565,20 @@ ${calendar?.campaign ? `CAMPAÑA DEL MES: ${calendar.campaign}` : ""}
 ${client.aiInstructions ? `\n═══════════════════════════════════════════════════════════\nINSTRUCCIONES OBLIGATORIAS DEL CLIENTE\n═══════════════════════════════════════════════════════════\n${client.aiInstructions}` : ""}`;
   }
 
-  // Sin ADN del repositorio, la ficha es lo único que hay. Se dice, para
-  // que el modelo no rellene los huecos como si supiera.
+  // Sin ADN en esta llamada, la ficha es lo único que hay. Se dice, para
+  // que el modelo no rellene los huecos como si supiera. Y se dice la
+  // verdad: los pasos de sugerencias del asistente de planificación
+  // llaman aquí a propósito, sin gastar el ADN entero, con clientes que SÍ
+  // lo tienen; decirles «no tiene ADN conectado» hacía que el modelo
+  // desconfiara de una marca perfectamente documentada.
+  const conectado = Boolean(client.githubContext || client.githubRepo);
   return `CLIENTE: ${client.name}
-AVISO: este cliente no tiene ADN conectado desde su repositorio. Trabaja
-sólo con lo que hay aquí abajo y no inventes lo que falte.
+${conectado
+    ? `AVISO: en esta consulta no viaja el ADN completo del cliente, sólo su ficha.
+Trabaja con lo que hay aquí abajo y no inventes cifras, precios ni ofertas
+que no estén escritos.`
+    : `AVISO: este cliente no tiene ADN conectado desde su repositorio. Trabaja
+sólo con lo que hay aquí abajo y no inventes lo que falte.`}
 INDUSTRIA: ${client.industry || "N/A"}
 DESCRIPCIÓN: ${client.descripcion || "N/A"}
 VALORES: ${client.valores || "N/A"}

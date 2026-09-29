@@ -105,6 +105,8 @@ src/
     db.js                 Llama a /api/*; conserva todas sus firmas
     equipo.js             Miembros, invitaciones y perfil propio
     rutas.js              Slugs, análisis y construcción de direcciones (puro)
+    contextoADN.js        Qué del ADN viaja a la IA al escribir (sin la maquetación de Meta AI)
+                          y cómo se parte el contexto para la caché de prompt (puro)
     vivo.js               WebSocket: reconexión, latido, presencia
     horas.js              «9am» → «09:00» y vuelta (puro)
     lote.js               Editar muchas publicaciones de una vez (puro)
@@ -936,6 +938,21 @@ son del servidor.
   minutos. El navegador manda `seguido` (menos de 4,5 min desde la
   anterior) y el Worker sólo marca caché entonces o desde la segunda
   vuelta del bucle, que sí la lee.
+- **La generación mandaba el ADN entero, sin caché, y con la maquetación
+  dentro.** `docs/auditoria-conexion-adn.md` decía que el ADN iba marcado
+  con `cache_control`; no iba: `cachedBlock()` existía desde la migración
+  y nadie lo llamaba, así que cada tanda de seis publicaciones pagaba el
+  contexto entero (~25.000 tokens en Dcasa). Además de la marca, ese ADN
+  lleva la capa de MAQUETACIÓN para Meta AI (plantillas, escala, bloque de
+  estilo, negativos, contrato del HTML), que escribir un caption no
+  necesita: ~40 % del total en los clientes con receta. Ahora
+  `buildClientContext` la quita (`sinCapaMaquetacion`) y `callAI` parte el
+  contexto en «ADN» —con `cache_control`— y «lo que cambia»
+  (`prepararContenidoIA`). Dos cosas para no romperlo: el título «FICHA EN
+  LA APLICACIÓN» de `buildClientContext` es donde se parte, y una
+  petición cuyo PRIMER bloque es una imagen no se cachea (la caché es por
+  prefijo). Las dos fallan abiertas: si no reconocen la forma, mandan
+  todo. El chat arma su propio contexto y aún manda el ADN íntegro.
 - **El saldo agotado llega como un 400 cualquiera.** «Your credit balance
   is too low…» se traduce en `mensajeDeRechazo()` a qué hacer.
 - **Google Drive: tres trampas.** (1) Con la app de Google «en prueba»,
