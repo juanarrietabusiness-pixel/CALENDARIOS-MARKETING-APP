@@ -61,3 +61,15 @@ export async function cuerpo(req) {
     return null;
   }
 }
+
+/** El trozo que devolvió R2, en bytes de principio a fin. Puro. */
+export function rangoServido(r, tamano) {
+  if (!r || !(tamano > 0)) return null;
+  if (Number.isFinite(r.suffix)) {
+    const largo = Math.min(r.suffix, tamano);
+    return { inicio: tamano - largo, fin: tamano - 1 };
+  }
+  const inicio = Number(r.offset ?? 0);
+  const largo = Number.isFinite(r.length) ? r.length : tamano - inicio;
+  return { inicio, fin: Math.min(tamano, inicio + largo) - 1 };
+}

@@ -98,7 +98,6 @@ Ahora que el Worker existe, ya tiene dónde guardarlas.
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Tu clave de Anthropic | console.anthropic.com → API Keys |
 | `GITHUB_TOKEN` | Un token de **sólo lectura** | GitHub → Settings → Developer settings → Personal access tokens |
-| `GROQ_API_KEY` | Opcional | console.groq.com |
 | `GOOGLE_CLIENT_ID` | El ID de cliente OAuth de Google | Ver «Google Drive» abajo |
 | `GOOGLE_CLIENT_SECRET` | Su secreto | Ver «Google Drive» abajo |
 | `META_APP_ID` | El identificador de la app de Meta | Ver «Instagram y Facebook» abajo |
@@ -368,7 +367,6 @@ despliegue (`EspacioHub`, migración `v1` de `wrangler.jsonc`).
 | `SITIO_URL` | GitHub | Lo lee la comprobación diaria |
 | `ANTHROPIC_API_KEY` | **Cloudflare** | La usa el Worker en cada petición |
 | `GITHUB_TOKEN` | **Cloudflare** | Idem |
-| `GROQ_API_KEY` | **Cloudflare** | Idem |
 
 La regla: **en GitHub, lo que necesita el workflow. En Cloudflare, lo que
 necesita el Worker mientras corre.** Ninguna de las dos listas llega

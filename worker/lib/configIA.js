@@ -9,7 +9,7 @@
 // Ahora hay UNA configuración, en `ajustes_espacio`, que cambia sólo el
 // administrador:
 //
-//   · ia_modelo: «sonnet» (por defecto) u «opus».
+//   · ia_modelo: «sonnet» (por defecto), «opus» o «haiku» (el barato).
 //   · ia_razonamiento: «bajo», «medio», «alto» (por defecto) o «maximo».
 //
 // y la usan todas las llamadas de texto: chat, calendario, publicaciones
@@ -30,6 +30,14 @@ import { fechaEnZona } from "../../src/lib/agenda.js";
 
 export const MODELO_SONNET = "claude-sonnet-5";
 
+/**
+ * El barato: la mitad que Sonnet. NO habla el mismo idioma que los
+ * demás —ni razonamiento adaptativo ni `effort`, y las herramientas web
+ * en su versión básica—: lo traduce `adaptarAlModelo()` en anthropic.js,
+ * por donde pasa toda llamada, para que ninguna ruta tenga que saberlo.
+ */
+export const MODELO_HAIKU = "claude-haiku-4-5";
+
 /** Del más reciente al más antiguo: el primero que tenga la cuenta. */
 export const OPUS_PREFERIDOS = Object.freeze([
   "claude-opus-5-5",
@@ -40,7 +48,7 @@ export const OPUS_PREFERIDOS = Object.freeze([
 ]);
 
 export const RAZONAMIENTOS = Object.freeze({ bajo: "low", medio: "medium", alto: "high", maximo: "max" });
-export const MODELOS_ELEGIBLES = Object.freeze(["sonnet", "opus"]);
+export const MODELOS_ELEGIBLES = Object.freeze(["sonnet", "opus", "haiku"]);
 export const ACCIONES_LIMITE = Object.freeze(["avisar", "bajar", "detener"]);
 export const POR_DEFECTO = Object.freeze({
   ia_modelo: "sonnet",
@@ -61,6 +69,7 @@ export const MARGEN_RAZONAMIENTO = Object.freeze({ low: 4_000, medium: 8_000, hi
 /** US$ por millón de tokens. La caché se lee a 0,1× y se escribe a 1,25×. */
 export const PRECIOS = Object.freeze({
   "claude-sonnet-5": { entrada: 2, salida: 10 },
+  "claude-haiku-4-5": { entrada: 1, salida: 5 },
   "claude-opus-5-5": { entrada: 4, salida: 20 },
   "claude-opus-5": { entrada: 5, salida: 25 },
   "claude-opus-4-8": { entrada: 5, salida: 25 },
@@ -232,6 +241,9 @@ export function olvidarModelos() {
  */
 export async function resolverIA(env, config) {
   const esfuerzo = RAZONAMIENTOS[config.ia_razonamiento] ?? "high";
+  // Haiku no se pregunta a la cuenta: si no lo tiene, la llamada lo
+  // rechaza y vuelve sola a Sonnet, como con Opus.
+  if (config.ia_modelo === "haiku") return { modelo: MODELO_HAIKU, esfuerzo, aviso: "" };
   if (config.ia_modelo !== "opus") return { modelo: MODELO_SONNET, esfuerzo, aviso: "" };
 
   const ids = await modelosDeLaCuenta(env);

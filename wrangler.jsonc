@@ -75,12 +75,11 @@
   ],
 
   // Los secretos NO van aquí. Se ponen con `wrangler secret put`:
-  //   ANTHROPIC_API_KEY, GROQ_API_KEY, GITHUB_TOKEN,
+  //   ANTHROPIC_API_KEY, GITHUB_TOKEN,
   //   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, META_APP_ID, META_APP_SECRET
   // Estas variables sí son públicas en el sentido de que no abren nada:
   // son nombres de modelo y políticas.
   "vars": {
-    "AI_PROVIDER": "anthropic",
     "AI_PENSAR": "no"
   },
 

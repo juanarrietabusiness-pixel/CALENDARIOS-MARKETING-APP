@@ -46,8 +46,15 @@ const MODULOS_CON_ACCESO = [
 function tablasDelEsquema() {
   const sql = migraciones().map((abs) => leer(rel(abs))).join("\n");
   const tablas = {};
-  for (const m of sql.matchAll(/create table (?:if not exists )?(\w+) \(([\s\S]*?)\n\);/g)) {
-    tablas[m[1]] = [...m[2].matchAll(/^\s{2}(\w+)\s/gm)].map((c) => c[1]);
+  // En orden, y siguiendo lo que las migraciones hacen DESPUÉS de crear:
+  // para cambiar un CHECK hay que reconstruir la tabla (crear otra,
+  // copiar, soltar la vieja y renombrar), y lo que queda en la base es
+  // el nombre final, no el provisional (0022).
+  const sentencias = /create table (?:if not exists )?(\w+) \(([\s\S]*?)\n\);|^drop table (?:if exists )?(\w+);|^alter table (\w+) rename to (\w+);/gm;
+  for (const m of sql.matchAll(sentencias)) {
+    if (m[1]) tablas[m[1]] = [...m[2].matchAll(/^\s{2}(\w+)\s/gm)].map((c) => c[1]);
+    else if (m[3]) delete tablas[m[3]];
+    else if (m[4]) { tablas[m[5]] = tablas[m[4]]; delete tablas[m[4]]; }
   }
   return tablas;
 }

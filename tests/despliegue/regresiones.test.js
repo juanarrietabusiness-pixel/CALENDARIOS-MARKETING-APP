@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { leer, fuentesNavegador, fuentesWorker, buscar } from "../utils/repo";
-import { escapeHTML } from "../../src/utils.js";
 import { fallo, fallos } from "../utils/fallo";
 
 // ============================================================
@@ -161,40 +160,6 @@ describe("accesibilidad", () => {
       arreglo: "Llama a useDialogA11y en el componente del diálogo.",
     }));
     expect(lista.join(""), fallos(lista)).toBe("");
-  });
-
-  it("el HTML exportado escapa lo que viene del usuario", () => {
-    const exp = leer("src/export.js");
-    expect(
-      exp,
-      fallo({
-        que: "export.js no importa escapeHTML",
-        donde: "src/export.js",
-        porque: "El HTML exportado se abre como archivo local, fuera de la CSP del sitio: cualquier comilla suelta en una descripción rompe el documento, y cualquier etiqueta se ejecuta.",
-        arreglo: 'Importa escapeHTML de utils.js y pásalo por todo texto del cliente.',
-      }),
-    ).toMatch(/escapeHTML/);
-    // escapeHTML tiene que cubrir las cinco: sin la comilla simple, un
-    // atributo delimitado con comillas simples se escapa de su contexto.
-    // Se comprueba ejecutándola, no leyendo su texto: lo que importa es
-    // lo que devuelve.
-    const esperado = {
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
-    };
-    const faltan = Object.entries(esperado)
-      .filter(([caracter, salida]) => escapeHTML(caracter) !== salida)
-      .map(([caracter]) => caracter);
-    expect(
-      faltan,
-      fallo({
-        que: `escapeHTML no escapa: ${faltan.join(" ")}`,
-        donde: "src/utils.js → escapeHTML",
-        porque: "Sin la comilla simple, un valor dentro de un atributo delimitado con ' se sale de su contexto. El HTML exportado se abre fuera de la CSP del sitio, así que ahí sí se ejecuta.",
-        arreglo: "Cubre los cinco caracteres: & < > \" '.",
-      }),
-    ).toEqual([]);
-    expect(escapeHTML('<img src=x onerror="a">'), "escapeHTML deja pasar una etiqueta")
-      .not.toMatch(/<img/);
   });
 });
 

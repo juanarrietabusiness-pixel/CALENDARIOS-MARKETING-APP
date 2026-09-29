@@ -3,8 +3,7 @@ import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid } from "../utils";
 import { marcarActualizada } from "../lib/publicacion";
 import { callAI, loadADN, parseAIResponse, buildScriptPrompt, buildDescripcionesPrompt, buildClientContext, generateSinglePost } from "../api";
-import { buildExportHTML } from "../export";
-import { base64DeImagen, conImagenesIncrustadas, prepararParaRedes } from "../lib/medios";
+import { base64DeImagen, prepararParaRedes } from "../lib/medios";
 import {
   shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals, loadClientMemories,
   listarPublicaciones, publicar, cancelarPublicacion, reintentarPublicacion, estadoRedes as leerEstadoRedes,
@@ -19,14 +18,17 @@ import { programarAprobadasDe } from "../lib/programarAprobadas";
 import { useEquipo } from "../hooks/useEquipo";
 import { yoActual, esAdmin } from "../lib/sesionActual";
 import { fechaEnZona } from "../lib/agenda";
+import { esVirtual } from "../lib/meses";
 import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO, CAMPOS_EXPORTABLES } from "../lib/exportarContenido";
-import MetaPromptModal from "./MetaPromptModal";
 import Icon from "./Icon";
 import { useConfigIA } from "../hooks/useConfigIA";
 import { etiquetaIA } from "../lib/configIA";
 import { ContentDisplay, OverflowMenu } from "./calendario/primitivas";
 // El panel de una publicación se carga al abrirlo: medios, publicar,
 // historias y vista previa son mucho código que el mes no necesita.
+// La vista (mes o lista) se recuerda al pasar de un mes a otro.
+let vistaRecordada = "grid";
+
 const PostSidePanel = lazy(() => import("./calendario/PostSidePanel").then((m) => ({ default: m.PostSidePanel })));
 const ProgramarAprobadas = lazy(() => import("./calendario/programarAprobadas"));
 import { MonthGrid } from "./calendario/MonthGrid";
@@ -35,7 +37,7 @@ import {
   ExportContenidoDialog, ElegirNuevaPublicacion,
   EditMetaDialog, ApprovalDialog, AddPostDialog,
 } from "./calendario/dialogos";
-import { categoryHue, fmt12h } from "./calendario/formato";
+import { fmt12h } from "./calendario/formato";
 
 export default function CalendarView({
   client,
@@ -46,16 +48,23 @@ export default function CalendarView({
   onUpdateCal,
   onUpdateCalLocal,
   onDeleteCal,
-  onDuplicateCal,
+  onMoverAOtroMes,
+  vecinos = null,
+  onAbrirVecina,
   onUpdateClient,
-  onPersistClient,
   onMoveBankToCal,
   abrirPublicacion = null,
   onPublicacionAbierta,
 }) {
   // Mes por defecto, también en el móvil: es la vista que se usa. La lista
-  // (por semanas) queda a un toque.
-  const [viewMode, setViewMode] = useState("grid");
+  // (por semanas) queda a un toque. Se recuerda al pasar de mes: la vista
+  // se monta de nuevo en cada uno (App le da `key` por mes).
+  const [viewMode, setViewModeEstado] = useState(() => vistaRecordada);
+  const setViewMode = (v) => { vistaRecordada = v; setViewModeEstado(v); };
+  // Un mes sin cajón todavía (calendario siempre activo): se ve vacío y se
+  // escribe en él; lo que necesita el cajón en la base espera a que exista.
+  const virtual = esVirtual(cal);
+  const mesDelCal = `${cal.year}-${String(cal.month + 1).padStart(2, "0")}`;
   const configIA = useConfigIA();
   const [expandedDay, setExpandedDay] = useState(null);
   const [sidePanel, setSidePanel] = useState(null);
@@ -78,9 +87,9 @@ export default function CalendarView({
   const calDb = cal?.dbId || cal?.id;
   const clienteDb = client?.dbId || client?.id;
   const recargarCola = useCallback(() => {
-    if (!calDb) return;
+    if (!calDb || virtual) return;
     listarPublicaciones({ calendario: calDb }).then(setCola).catch(() => {});
-  }, [calDb]);
+  }, [calDb, virtual]);
   useEffect(() => { recargarCola(); }, [recargarCola, pulso]);
   useEffect(() => {
     leerEstadoRedes().then(setRedes).catch(() => setRedes({ meta: {}, cuentas: [] }));
@@ -92,6 +101,23 @@ export default function CalendarView({
    * guardado INMEDIATO, sin esperar al agrupado de 600 ms.
    */
   const publicarDesdePanel = async (form, setForm, { ahora, redes: destino, fecha = null, cambios = null }) => {
+    // A OTRO mes: se guarda aquí, se lleva al mes nuevo (con todo lo suyo)
+    // y se programa allí. Después se abre en su mes.
+    if (!ahora && fecha && fecha.slice(0, 7) !== mesDelCal) {
+      let post = cambios ? { ...form, ...cambios } : form;
+      const preparada = await prepararParaRedes(post, destino, { subir: (f) => subirImagenPublicacion(clienteDb, f), colorMarca: client?.primaryColor });
+      if (preparada.cambio) post = preparada.post;
+      setForm(post);
+      const ahoraISO = new Date().toISOString();
+      const aqui = { ...cal, days: (cal.days || []).map((d) => ({ ...d, posts: (d.posts || []).map((p) => (p.id === post.id ? marcarActualizada(p, post, ahoraISO) : p)) })) };
+      onUpdateCal(calId, aqui);
+      const calDestino = await onMoverAOtroMes?.(post.id, fecha);
+      if (!calDestino) throw new Error("No se movió: sigue en este mes.");
+      await publicar({ calendarId: calDestino.dbId || calDestino.id, postId: post.id, redes: destino, ahora: false });
+      setSidePanel(null);
+      onAbrirVecina?.(calDestino, post.id);
+      return;
+    }
     // Lo que cambia al elegir el «cuándo» (deja de ser «a mano») va con ella.
     let post = cambios ? { ...form, ...cambios } : form;
     if (cambios) setForm(post);
@@ -167,8 +193,6 @@ export default function CalendarView({
   useEffect(() => { setSemanasAbiertas(null); }, [calId]);
   const [filterDOW, setFilterDOW] = useState("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [renaming, setRenaming] = useState(false);
-  const [nameVal, setNameVal] = useState(cal.name || (MONTHS[cal.month] + " " + cal.year));
   const [genLoading, setGenLoading] = useState(false);
   const [genStatus, setGenStatus] = useState("");
   const [genProgress, setGenProgress] = useState(0);
@@ -321,17 +345,10 @@ export default function CalendarView({
     ? `${window.location.origin}/aprobar?t=${encodeURIComponent(cal.shareToken)}`
     : "";
   const totalPosts = (cal.days || []).reduce((a, d) => a + (d.posts || []).length, 0);
-  const approvedPosts = (cal.days || []).reduce((a, d) => a + (d.posts || []).filter((p) => p.status === "approved" || p.status === "published").length, 0);
-  const publishedPosts = (cal.days || []).reduce((a, d) => a + (d.posts || []).filter((p) => p.status === "published").length, 0);
 
   const weeks = [...new Set((cal.days || []).map((d) => d.weekNumber || 1))].sort((a, b) => a - b);
   const activeFilterCount = [filterStatus, filterFormat, filterWeek, filterDOW, filterPersona].filter((f) => f !== "all").length;
   const personaFiltrada = filterPersona === "mias" ? yoActual()?.id : filterPersona;
-  const approvalPct = totalPosts > 0 ? Math.round((approvedPosts / totalPosts) * 100) : 0;
-  const monthLabel = `${MONTHS[cal.month]} ${cal.year}`;
-  const calSubtitle = [calName === monthLabel ? null : monthLabel, cal.campaign]
-    .filter(Boolean)
-    .join(" · ");
 
   const filteredDays = (cal.days || []).map((day) => ({
     ...day,
@@ -589,6 +606,11 @@ export default function CalendarView({
   };
 
   const movePost = (postId, sourceDate, targetDate) => {
+    // A otro mes lo mueve el servidor, con su aprobación, su cola y lo demás.
+    if (targetDate.slice(0, 7) !== mesDelCal) {
+      void onMoverAOtroMes?.(postId, targetDate);
+      return;
+    }
     let days = [...(cal.days || [])];
     const sourceDay = days.find((d) => d.date === sourceDate);
     const post = sourceDay?.posts.find((p) => p.id === postId);
@@ -611,18 +633,12 @@ export default function CalendarView({
 
   const saveMetaEdit = () => {
     const updatedConcepts = metaForm.weekConcepts;
-    const cats = metaForm.dayCategories || {};
-    const newDays = (cal.days || []).map((d) => {
-      const dow = new Date(d.date + "T12:00:00").getDay();
-      return {
-        ...d,
-        concept: updatedConcepts[(d.weekNumber || 1) - 1] || d.concept || "",
-        category: cats[dow] !== undefined ? cats[dow] : d.category || "",
-      };
-    });
+    const newDays = (cal.days || []).map((d) => ({
+      ...d,
+      concept: updatedConcepts[(d.weekNumber || 1) - 1] || d.concept || "",
+    }));
     onUpdateCal(calId, {
       ...cal,
-      name: metaForm.name || calName,
       campaign: metaForm.campaign,
       weekConcepts: updatedConcepts,
       offers: metaForm.offers || "",
@@ -685,7 +701,7 @@ IDEA:
 idea aqui
 
 PUBLICACIONES:
-${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p._date} (${p._dayName || ""})\nCATEGORIA: ${p.category || "N/A"}\nSEMANA: ${p._weekNumber || ""} — ${p._concept || "libre"}`).join("\n\n")}`;
+${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p._date} (${p._dayName || ""})\nSEMANA: ${p._weekNumber || ""} — ${p._concept || "libre"}`).join("\n\n")}`;
 
           const res = await callAI([{ type: "text", text: prompt }], { maxTokens: 4000, tolerarCorte: true, funcion: "guiones", clienteId: client?.id });
           const txt = typeof res === "string" ? res : res.texto;
@@ -812,19 +828,6 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
     }
   };
 
-  const exportHTML = async () => {
-    const html = buildExportHTML(client, await conImagenesIncrustadas(cal));
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = (calName).replace(/\s+/g, "-") + "-" + client.name.replace(/\s+/g, "-") + ".html";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
   // La construcción del texto vive en `lib/exportarContenido.js`: es pura
   // y allí se puede probar sin montar el componente entero.
   const [formatosExport, setFormatosExport] = useState(FORMATOS_EXPORTABLES_POR_DEFECTO);
@@ -875,51 +878,10 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
     URL.revokeObjectURL(url);
   };
 
-  const exportPDF = () => {
-    const s = document.createElement("style");
-    s.id = "print-style";
-    s.textContent = "@media print{header,button,.no-print{display:none!important}body,html{background:var(--bg)!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}}";
-    document.head.appendChild(s);
-    window.print();
-    setTimeout(() => document.getElementById("print-style")?.remove(), 2000);
-  };
-
   return (
-    <div style={{ paddingBottom: sidePanel ? 0 : 80 }}>
-      {/* Rename inline */}
-      {renaming && (
-        <div className="field">
-          <label className="label" htmlFor="cal-rename">Nombre del calendario</label>
-          <input
-            id="cal-rename"
-            className="input"
-            style={{ fontWeight: 700 }}
-            value={nameVal}
-            onChange={(e) => setNameVal(e.target.value)}
-            autoFocus
-            onBlur={() => { onUpdateCal(calId, { ...cal, name: nameVal }); setRenaming(false); }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") { onUpdateCal(calId, { ...cal, name: nameVal }); setRenaming(false); }
-              if (e.key === "Escape") { setNameVal(calName); setRenaming(false); }
-            }}
-          />
-        </div>
-      )}
-
+    <div className={viewMode === "grid" ? "cal-vista-mes" : undefined} style={{ paddingBottom: sidePanel ? 0 : 80 }}>
       {/* Edit calendar meta modal */}
       {capa === "meta" && <EditMetaDialog metaForm={metaForm} setMetaForm={setMetaForm} onSave={saveMetaEdit} onClose={cerrarCapa} />}
-
-      {capa === "promptMeta" && (
-        <MetaPromptModal
-          client={client}
-          cal={cal}
-          onClose={cerrarCapa}
-          onPersistClient={(actualizado) => {
-            onUpdateClient?.(actualizado);
-            onPersistClient?.(actualizado);
-          }}
-        />
-      )}
 
       {capa === "programarAprobadas" && (
         <Suspense fallback={null}>
@@ -947,60 +909,18 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
         />
       )}
 
-      {/* Identidad del calendario: una línea, no un banner de 90px.
-          El mes y el año sólo se muestran si el nombre del calendario no
-          los dice ya; si no, se leía «Agosto 2026 · Agosto 2026». */}
-      <div style={{ display: "flex", alignItems: "baseline", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-3)" }}>
-        <h2 style={{ fontSize: "var(--fs-lg)", fontWeight: 700, letterSpacing: "-.01em" }}>{calName}</h2>
-        {calSubtitle && (
-          <span style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)" }}>{calSubtitle}</span>
-        )}
-      </div>
-
-      {/* Estadísticas: una tira de una línea. Antes eran cuatro cajas de
-          490×110px con bordes de cuatro colores sin significado. */}
-      <div className="stat-strip">
-        <div className="stat-item">
-          <span className="stat-num">{totalPosts}</span>
-          <span className="stat-name">publicaciones</span>
-        </div>
-        <span className="stat-divider" aria-hidden="true" />
-        <div className="stat-item">
-          <span className="stat-num" style={{ color: "var(--success)" }}>{approvedPosts}</span>
-          <span className="stat-name">aprobadas</span>
-        </div>
-        {publishedPosts > 0 && (
-          <>
-            <span className="stat-divider" aria-hidden="true" />
-            <div className="stat-item">
-              <span className="stat-num" style={{ color: "var(--purple)" }}>{publishedPosts}</span>
-              <span className="stat-name">publicadas</span>
-            </div>
-          </>
-        )}
-        {totalPosts > 0 && (
-          <div className="stat-progress">
-            <div
-              className="progress-bar"
-              style={{ flex: 1 }}
-              role="progressbar"
-              aria-label="Progreso de aprobación"
-              aria-valuenow={approvalPct}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            >
-              <div className="progress-fill" style={{ width: `${approvalPct}%` }} />
-            </div>
-            <span className="stat-name" style={{ fontVariantNumeric: "tabular-nums" }}>{approvalPct}%</span>
-          </div>
-        )}
-      </div>
+      {/* El mes ya lo dice el navegador de arriba (‹ Octubre 2026 ›), y las
+          cifras —aprobadas, por aprobar, a medias— la cabecera del cliente:
+          aquí se repetían justo debajo. Sólo queda la campaña, si la hay. */}
+      {cal.campaign && (
+        <p className="cal-campana"><Icon name="sparkles" size={14} /> {cal.campaign}</p>
+      )}
 
       {/* Barra de herramientas: acción primaria, conmutador de vista y el
           resto agrupado. Antes eran siete botones idénticos que mezclaban
           la acción principal con un visor de registros de desarrollo. */}
       <div className="toolbar">
-        <button className="btn btn-accent" onClick={generateScripts} disabled={genLoading}>
+        <button className="btn btn-accent" onClick={generateScripts} disabled={genLoading || !totalPosts} title={!totalPosts ? "Este mes todavía no tiene publicaciones: planifícalo o añade alguna" : undefined}>
           <Icon name="sparkles" size={18} />
           {genLoading ? genStatus : "Generar contenido"}
         </button>
@@ -1050,34 +970,23 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           )}
         </button>
 
-        <button className="btn btn-primary" onClick={sendToClient}>
+        <button className="btn btn-primary" onClick={sendToClient} disabled={virtual} title={virtual ? "Añade alguna publicación a este mes primero" : undefined}>
           <Icon name="send" size={18} /> Enviar al cliente
         </button>
 
         <OverflowMenu
           items={[
-            { icon: "pencil", label: "Editar calendario", onClick: () => {
-              const cats = {};
-              for (const day of cal.days || []) {
-                if (!day.category) continue;
-                const dow = new Date(day.date + "T12:00:00").getDay();
-                if (!cats[dow]) cats[dow] = day.category;
-              }
-              setMetaForm({ name: cal.name || "", campaign: cal.campaign || "", weekConcepts: [...(cal.weekConcepts || [])], dayCategories: cats, offers: cal.offers || "", promoCode: cal.promoCode || "", visualReferences: (cal.visualReferences || []).map((r) => r.format ? r : { ...r, format: "post" }) });
+            !virtual && { icon: "pencil", label: "Editar el mes", onClick: () => {
+              setMetaForm({ campaign: cal.campaign || "", weekConcepts: [...(cal.weekConcepts || [])], offers: cal.offers || "", promoCode: cal.promoCode || "", visualReferences: (cal.visualReferences || []).map((r) => r.format ? r : { ...r, format: "post" }) });
               abrirCapa("meta");
             } },
-            { icon: "file", label: "Renombrar calendario", onClick: () => setRenaming(true) },
-            { icon: "copy", label: "Duplicar calendario", onClick: () => onDuplicateCal(calId) },
-            { sep: true },
-            { icon: "download", label: "Exportar a HTML", onClick: exportHTML },
-            { icon: "file", label: "Imprimir o guardar en PDF", onClick: exportPDF },
             { icon: "copy", label: "Exportar ideas y descripciones", onClick: () => abrirCapa("exportar") },
-            { icon: "sparkles", label: "Prompt maestro para Meta AI", onClick: () => abrirCapa("promptMeta") },
             { sep: true },
             { icon: "terminal", label: capa === "diagnostico" ? "Ocultar diagnóstico" : "Ver diagnóstico", onClick: () => setCapa((c) => (c === "diagnostico" ? null : "diagnostico")) },
-            // Borrar un calendario entero es de quien administra (el servidor lo exige).
-            esAdmin() && { icon: "trash", label: "Eliminar calendario", danger: true, onClick: () => {
-              if (window.confirm("¿Eliminar este calendario? Esta acción no se puede deshacer.")) onDeleteCal(calId);
+            // Borrar un mes entero es de quien administra (el servidor lo
+            // exige). Desde el calendario se borran publicaciones, no meses.
+            esAdmin() && !virtual && { icon: "trash", label: "Borrar el mes entero", danger: true, onClick: () => {
+              if (window.confirm(`¿Borrar ${MONTHS[cal.month].toLowerCase()} ${cal.year} entero, con todas sus publicaciones, aprobaciones y conversaciones? Esta acción no se puede deshacer.`)) onDeleteCal(calId);
             } },
           ].filter(Boolean)}
         />
@@ -1318,6 +1227,8 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
             const updated = { ...(cal.dayLabels || {}), [dow]: value };
             onUpdateCal(calId, { ...cal, dayLabels: updated });
           }}
+          vecinos={vecinos}
+          onVecina={(calVecino, post) => onAbrirVecina?.(calVecino, post.id)}
         />
       ) : (
         /* List view: por semanas plegables (lib/semanas.js). Antes eran los
@@ -1356,7 +1267,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
 
                     <span className="day-info">
                       <span className="day-title">
-                        {day.category || day.dayName}
+                        {day.dayName}
                         {day.specialDate && <span style={{ color: "var(--accent-alt)", marginLeft: "var(--sp-2)", fontSize: "var(--fs-2xs)" }}>{day.specialDate}</span>}
                       </span>
                       {day.concept && <span className="day-concept">{day.concept}</span>}
@@ -1371,24 +1282,16 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
                         sortedPosts(day.posts).map((p) => {
                           const f = FORMATS[p.format] || FORMATS.post;
                           const st = STATUSES[p.status || "pending"];
-                          const pCat = p.category || day.category || "";
-                          const pHue = pCat ? categoryHue(pCat) : 0;
                           return (
                             <span
                               key={p.id}
                               className="badge"
-                              style={pCat ? {
-                                background: `hsl(${pHue} 60% 25% / .35)`,
-                                color: `hsl(${pHue} 70% 75%)`,
-                                border: `1px solid hsl(${pHue} 55% 50% / .5)`,
-                              } : {
-                                background: f.color + "1F", color: f.color, border: `1px solid ${f.color}55`,
-                              }}
+                              style={{ background: f.color + "1F", color: f.color, border: `1px solid ${f.color}55` }}
                             >
                               <span style={{ width: 6, height: 6, borderRadius: "50%", background: st.text, flexShrink: 0 }} aria-hidden="true" />
                               <Icon name={FORMAT_ICONS[p.format] || "formatPost"} size={13} />
                               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {p.title || pCat || f.label}
+                                {p.title || f.label}
                               </span>
                             </span>
                           );
@@ -1405,7 +1308,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
                         const st = STATUSES[post.status || "pending"];
                         const isPublished = post.status === "published";
                         const isSelected = selectedPosts.has(post.id);
-                        const postTitle = post.title || post.idea || post.category || f.label;
+                        const postTitle = post.title || post.idea || f.label;
                         const imgName = post.image && typeof post.image === "string" && post.image.startsWith("/api/media/")
                           ? decodeURIComponent(post.image.split("/").pop().replace(/\.[^.]+$/, ""))
                           : null;
@@ -1459,7 +1362,6 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
                               </button>
                             </div>
 
-                            {post.category && <p style={{ fontSize: "var(--fs-2xs)", color: "var(--accent-alt)", fontWeight: 600, marginBottom: "var(--sp-1)" }}>{post.category}</p>}
                             {post.title && <p style={{ fontSize: "var(--fs-sm)", fontWeight: 700, marginBottom: "var(--sp-1)" }}>{post.title}</p>}
                             {post.image && !post.title && !post.idea && !post.guion && !post.descripcion && !post.script && (
                               <span className="badge" style={{ background: "#2a1a0a", color: "var(--accent-alt)", border: "1px solid var(--alt-line)" }}>Solo imagen</span>

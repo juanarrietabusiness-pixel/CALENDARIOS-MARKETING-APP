@@ -573,35 +573,6 @@ input[type="radio"] {
   .page-title { font-size: var(--fs-2xl); }
 }
 
-/* Selector de calendario: fila desplazable de píldoras */
-.cal-tabs {
-  display: flex;
-  gap: var(--sp-2);
-  overflow-x: auto;
-  padding-bottom: var(--sp-1);
-  scrollbar-width: thin;
-}
-.cal-tab {
-  flex-shrink: 0;
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--radius-pill);
-  font-size: var(--fs-2xs);
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  background: var(--surface-2);
-  color: var(--text-dim);
-  border: 1px solid var(--border);
-  min-height: var(--tap-sm);
-  transition: background .18s, color .18s, border-color .18s;
-}
-.cal-tab:hover { border-color: var(--border-strong); color: var(--text); }
-.cal-tab[aria-current="true"] {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
 /* ============================================================
    Barra de herramientas
    Grupos separados por función en lugar de siete botones iguales.
@@ -651,29 +622,6 @@ input[type="radio"] {
 .menu-item:hover { background: var(--surface-2); }
 .menu-item[data-danger="true"] { color: var(--danger); }
 .menu-sep { height: 1px; background: var(--border); margin: var(--sp-1) 0; }
-
-/* ============================================================
-   Tira de estadísticas
-   Antes: cuatro cajas de 490×110px con bordes de cuatro colores
-   distintos para mostrar cuatro números de una o dos cifras.
-   ============================================================ */
-
-.stat-strip {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-4);
-  flex-wrap: wrap;
-  padding: var(--sp-3) var(--sp-4);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  margin-bottom: var(--sp-4);
-}
-.stat-item { display: flex; align-items: baseline; gap: var(--sp-2); }
-.stat-num { font-size: var(--fs-lg); font-weight: 800; line-height: 1; }
-.stat-name { font-size: var(--fs-2xs); color: var(--text-dim); }
-.stat-divider { width: 1px; height: 20px; background: var(--border); }
-.stat-progress { flex: 1; min-width: 140px; display: flex; align-items: center; gap: var(--sp-3); }
 
 /* ============================================================
    Contenedores
@@ -1030,6 +978,18 @@ input[type="radio"] {
    Usamos un color de texto atenuado en su lugar. */
 .cal-cell.outside { background: var(--bg); border-color: transparent; }
 .cal-cell.outside .cal-daynum { color: var(--text-faint); }
+/* Lo del mes de al lado (calendario siempre activo): se ve, más apagado. */
+.cal-post[data-vecina] { opacity: .55; }
+.cal-post[data-vecina]:hover, .cal-post[data-vecina]:focus-visible { opacity: 1; }
+
+/* ‹ Octubre 2026 › Hoy — el calendario es uno y se recorre por meses. */
+.navegador-mes { display: flex; align-items: center; gap: var(--sp-1); margin-bottom: var(--sp-3); }
+.navegador-mes-titulo { font-size: var(--fs-lg); font-weight: 700; letter-spacing: -.01em; min-width: 11ch; text-align: center; margin: 0; }
+.navegador-mes-flecha { position: relative; }
+.navegador-mes-punto { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.navegador-mes-hoy { margin-left: var(--sp-2); }
+.cuando-hecha { display: flex; align-items: center; gap: var(--sp-1); margin: 0; font-size: var(--fs-2xs); color: var(--success); font-weight: 600; }
+.cal-campana { display: flex; align-items: center; gap: var(--sp-1); margin: 0 0 var(--sp-3); font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); }
 .cal-cell.today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .cal-cell.drop-target { border: 2px dashed var(--accent); background: var(--accent-soft); }
 
@@ -1234,14 +1194,35 @@ input[type="radio"] {
    icono de formato: en el teléfono no había forma de saber qué era
    ninguna publicación sin abrirla. Una línea recortada dice bastante
    más que ninguna. */
+/* Y el mes del teléfono NO son 35 cajitas sueltas con margen: se veía
+   pequeño y arrinconado, con un «+» ocupando media celda y la rejilla
+   empezando a mil píxeles de la parte de arriba. Ahora es una hoja de
+   borde a borde —como el calendario del teléfono—: sin hueco entre
+   celdas, sin el margen de la página, y el «+» es el hueco libre de la
+   celda (tocar lo vacío de un día añade ahí). */
 @media (max-width: 599px) {
-  .cal-grid { gap: 2px; }
-  .cal-cell { min-height: 72px; padding: 2px; }
-  .cal-post-label {
-    -webkit-line-clamp: 1;
-    line-clamp: 1;
-    font-size: var(--fs-3xs);
+  .cal-grid {
+    gap: 1px;
+    margin-inline: calc(-1 * var(--sp-3));
+    background: var(--border-light);
+    border-block: 1px solid var(--border-light);
   }
+  .cal-header-cell { border: none; border-radius: 0; padding: var(--sp-1) 0; }
+  .cal-cell { min-height: 92px; padding: 2px; border: none; border-radius: 0; }
+  .cal-cell.outside { background: var(--bg); }
+  .cal-cell.today { box-shadow: inset 0 0 0 2px var(--accent); }
+  .cal-daynum { text-align: center; }
+  .cal-add { flex: 1; min-height: 20px; font-size: 0; color: transparent; }
+  .cal-add:active { background: var(--accent-soft); }
+  .cal-post-label {
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    font-size: var(--fs-3xs);
+    line-height: 1.15;
+    /* «Carru-sel», no «Carruse / l»: parte por sílabas (html lang="es"). */
+    hyphens: auto;
+  }
+  .navegador-mes-titulo { font-size: var(--fs-md); min-width: 0; flex: 1; }
   /* El padding inferior se mantiene: debajo va la barra de completado. */
   .cal-post {
     gap: 1px 2px;

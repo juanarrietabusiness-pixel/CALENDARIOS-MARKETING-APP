@@ -10,7 +10,7 @@
 // ============================================================
 
 import { useId, useState, useRef } from "react";
-import { FORMATS, FORMAT_ICONS, DAYS } from "../../constants";
+import { FORMATS, FORMAT_ICONS } from "../../constants";
 import { uid, compressImage } from "../../utils";
 import { CAMPOS_EXPORTABLES } from "../../lib/exportarContenido";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
@@ -336,7 +336,7 @@ export function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
     <div className="overlay overlay-sheet">
       <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet" style={{ maxWidth: 560 }}>
         <div className="sheet-header">
-          <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)" }}>Editar calendario</h2>
+          <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)" }}>Editar el mes</h2>
           <button className="btn-icon" onClick={onClose} aria-label="Cerrar"><Icon name="close" /></button>
         </div>
 
@@ -346,9 +346,6 @@ export function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
           </button>
           <button type="button" className={`segmented-btn ${activeTab === "weeks" ? "active" : ""}`} aria-pressed={activeTab === "weeks"} onClick={() => setActiveTab("weeks")}>
             Semanas
-          </button>
-          <button type="button" className={`segmented-btn ${activeTab === "categories" ? "active" : ""}`} aria-pressed={activeTab === "categories"} onClick={() => setActiveTab("categories")}>
-            Categorías
           </button>
           <button type="button" className={`segmented-btn ${activeTab === "offers" ? "active" : ""}`} aria-pressed={activeTab === "offers"} onClick={() => setActiveTab("offers")}>
             Ofertas
@@ -361,10 +358,6 @@ export function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
         <div className="sheet-body">
           {activeTab === "general" && (
             <>
-              <div className="field">
-                <label className="label" htmlFor={`${ids}-name`}>Nombre</label>
-                <input id={`${ids}-name`} className="input" value={metaForm.name} onChange={(e) => setMetaForm((p) => ({ ...p, name: e.target.value }))} />
-              </div>
               <div className="field">
                 <label className="label" htmlFor={`${ids}-camp`}>Campaña</label>
                 <input id={`${ids}-camp`} className="input" value={metaForm.campaign} onChange={(e) => setMetaForm((p) => ({ ...p, campaign: e.target.value }))} />
@@ -395,29 +388,6 @@ export function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
             </fieldset>
           )}
 
-          {activeTab === "categories" && (
-            <fieldset style={{ border: "none" }}>
-              <legend className="label">Categoría por día de la semana</legend>
-              <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
-                Edita las categorías asignadas a cada día. Se aplicarán a las publicaciones del calendario.
-              </p>
-              {[1, 2, 3, 4, 5, 6, 0].map((dow) => (
-                <div key={dow} style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", marginBottom: "var(--sp-2)" }}>
-                  <label style={{ fontWeight: 700, minWidth: 84, fontSize: "var(--fs-xs)", flexShrink: 0 }} htmlFor={`${ids}-ecat-${dow}`}>
-                    {DAYS[dow]}
-                  </label>
-                  <input
-                    id={`${ids}-ecat-${dow}`}
-                    className="input"
-                    style={{ flex: 1 }}
-                    value={(metaForm.dayCategories || {})[dow] || ""}
-                    onChange={(e) => setMetaForm((p) => ({ ...p, dayCategories: { ...(p.dayCategories || {}), [dow]: e.target.value } }))}
-                    placeholder="Categoría…"
-                  />
-                </div>
-              ))}
-            </fieldset>
-          )}
 
           {activeTab === "offers" && (
             <>

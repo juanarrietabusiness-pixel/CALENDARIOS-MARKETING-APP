@@ -179,7 +179,6 @@ export function BankPostCard({ post, isEditing, onToggleEdit, onSave, onRemove, 
           <span style={{ display: "block", fontSize: "var(--fs-2xs)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {title}
           </span>
-          {form.category && <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{form.category}</span>}
           {form.publishTime && <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}><Icon name="clock" size={10} /> {form.publishTime}</span>}
         </button>
         <button type="button" draggable={false} className="btn-remove" aria-label={`Quitar del banco: ${title}`} onClick={onRemove}>
@@ -226,11 +225,6 @@ export function BankPostCard({ post, isEditing, onToggleEdit, onSave, onRemove, 
           </button>
         </div>
         <textarea id={`${cardId}-idea`} className="textarea" style={{ minHeight: 56, fontSize: "var(--fs-2xs)" }} value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Idea…" />
-      </div>
-
-      <div style={{ marginBottom: "var(--sp-2)" }}>
-        <label className="label" style={{ fontSize: "var(--fs-3xs)" }} htmlFor={`${cardId}-cat`}>Categoría</label>
-        <input id={`${cardId}-cat`} className="input" style={{ fontSize: "var(--fs-2xs)" }} value={form.category || ""} onChange={(e) => sf("category", e.target.value)} placeholder="Categoría…" />
       </div>
 
       <div style={{ marginBottom: "var(--sp-2)" }}>

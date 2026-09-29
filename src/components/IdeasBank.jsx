@@ -6,7 +6,6 @@ import Icon from "./Icon";
 export default function IdeasBank({ client, onUpdateClient, calDays, onRemoveFromCal }) {
   const [newIdeaOpen, setNewIdeaOpen] = useState(false);
   const [newIdea, setNewIdea] = useState("");
-  const [newCategory, setNewCategory] = useState("");
   const [newFormat, setNewFormat] = useState("post");
 
   const ideasBank = client.ideasBank || [];
@@ -17,7 +16,6 @@ export default function IdeasBank({ client, onUpdateClient, calDays, onRemoveFro
       id: uid(),
       format: newFormat,
       idea: newIdea.trim(),
-      category: newCategory.trim(),
       guion: "",
       descripcion: "",
       hashtagsFinales: "",
@@ -30,7 +28,6 @@ export default function IdeasBank({ client, onUpdateClient, calDays, onRemoveFro
     };
     onUpdateClient({ ...client, ideasBank: [...ideasBank, idea] });
     setNewIdea("");
-    setNewCategory("");
     setNewFormat("post");
     setNewIdeaOpen(false);
   };
@@ -118,13 +115,6 @@ export default function IdeasBank({ client, onUpdateClient, calDays, onRemoveFro
             autoFocus
             onKeyDown={(e) => { if (e.key === "Enter" && newIdea.trim()) addNewIdea(); }}
           />
-          <input
-            className="input"
-            style={{ fontSize: "var(--fs-2xs)", marginBottom: "var(--sp-2)" }}
-            value={newCategory}
-            onChange={(e) => setNewCategory(e.target.value)}
-            placeholder="Categoria (opcional)"
-          />
           <div style={{ display: "flex", gap: "var(--sp-2)" }}>
             <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={addNewIdea} disabled={!newIdea.trim()}>
               Agregar
@@ -168,7 +158,6 @@ export default function IdeasBank({ client, onUpdateClient, calDays, onRemoveFro
                   <span style={{ display: "block", fontSize: "var(--fs-2xs)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {title}
                   </span>
-                  {post.category && <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{post.category}</span>}
                 </span>
                 {post.publishTime && <span style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{post.publishTime}</span>}
                 <button

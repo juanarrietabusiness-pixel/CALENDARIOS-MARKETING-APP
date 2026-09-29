@@ -216,10 +216,15 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         role="tabpanel"
         aria-labelledby={`${ids}-tab-${pestana}`}
         className="panel-cuerpo"
-        style={{ flex: 1, overflowY: "auto", padding: "var(--sp-4)", paddingBottom: pestana === "publicar" ? 0 : "var(--sp-4)" }}
+        data-columnas={pestana === "publicar" && ancho ? true : undefined}
+        style={pestana === "publicar" && ancho
+          // A lo ancho cada columna desplaza por su cuenta (publicar.css):
+          // la vista previa, entera y a la vista; la barra, bajo la izquierda.
+          ? { flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }
+          : { flex: 1, overflowY: "auto", padding: "var(--sp-4)", paddingBottom: pestana === "publicar" ? 0 : "var(--sp-4)" }}
       >
         {fieldError && (
-          <p role="alert" className="notice notice-error">{fieldError}</p>
+          <p role="alert" className="notice notice-error" style={pestana === "publicar" && ancho ? { margin: "var(--sp-3) var(--sp-4) 0" } : undefined}>{fieldError}</p>
         )}
 
         {pestana === "publicar" ? (
@@ -236,17 +241,20 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
             enlaceAMano={`/a-mano/${encodeURIComponent(cal?.dbId || cal?.id || "")}/${encodeURIComponent(post.id)}`}
             formatoAuto={nueva && pestanaInicial === "publicar"}
             ancho={ancho}
-          >
-            {form.status === "published" ? (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => sf("status", "approved")}>
-                Quitar «publicada a mano»
-              </button>
-            ) : (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => sf("status", "published")}>
-                Ya la publiqué a mano
-              </button>
-            )}
-          </PestanaPublicar>
+            acciones={ancho ? (
+              <>
+                <button type="button" className="btn btn-danger btn-sm" aria-label="Eliminar publicación" title="Eliminar publicación"
+                  onClick={() => { save(); yaEscrito.current = true; if (onDelete) onDelete(day.date, post.id); onClose(); }}>
+                  <Icon name="trash" size={16} />
+                </button>
+                <button type="button" className="btn btn-secondary btn-sm" aria-label="Enviar al banco de ideas" title="Enviar al banco de ideas"
+                  onClick={() => { save(); yaEscrito.current = true; onSendToBank?.(form, day.date); onClose(); }}>
+                  <Icon name="bulb" size={16} />
+                </button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => { save(); onClose(); }}>Guardar y cerrar</button>
+              </>
+            ) : null}
+          />
         ) : (<div className="idea-columnas" data-ancho={ancho || undefined}>
         <div className="idea-escribir">
 
@@ -437,7 +445,8 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         </div>)}
       </div>
 
-      <div style={{ padding: "var(--sp-3) var(--sp-4)", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
+      {/* A lo ancho, en Subir, estas acciones van en la barra de «¿Cuándo sale?». */}
+      {!(pestana === "publicar" && ancho) && <div style={{ padding: "var(--sp-3) var(--sp-4)", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
         {moveDateOpen && (
           <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "flex-end" }}>
             <div style={{ flex: 1 }}>
@@ -480,7 +489,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
             Guardar cambios
           </button>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

@@ -118,6 +118,28 @@ function construirPromptHistoria(variante, { clientName, visualStyle }) {
   ].filter(Boolean).join("\n");
 }
 
+/**
+ * La MISMA imagen llevada a otra proporción, ampliando el fondo: lo que
+ * hace Metricool con «expandir». Para la de Flow (3:4), que el feed de
+ * Instagram no acepta: en vez de bandas difuminadas, fondo de verdad.
+ * El navegador decide la proporción (sabe las medidas) y recorta el
+ * resultado al tamaño exacto: Gemini entrega 4:5 en 896×1152, un pelo
+ * más alto de lo que Instagram admite.
+ */
+const PROPORCIONES_ADAPTAR = Object.freeze({ "4:5": "vertical", "16:9": "horizontal", "9:16": "story" });
+
+function construirPromptAdaptar(proporcion, { clientName }) {
+  const destino = proporcion === "9:16" ? "una historia vertical 9:16" : proporcion === "16:9" ? "una imagen horizontal 16:9" : "una publicación vertical 4:5 del feed de Instagram";
+  return [
+    `Amplía ESTA imagen para que sea ${destino}.`,
+    clientName ? `Marca: ${clientName}.` : "",
+    "Conserva exactamente el mismo contenido, producto, personas, colores, luz, estilo y cualquier texto o logo que ya tenga, sin cambiarlo, moverlo ni traducirlo.",
+    "Sólo AÑADE lienzo por los lados que falten, continuando el fondo de forma natural y coherente: sin franjas, sin bordes, sin desenfoque, sin repetir el motivo.",
+    "El motivo principal debe verse entero, del mismo tamaño relativo, centrado.",
+    "Genera SOLO la imagen, sin explicación.",
+  ].filter(Boolean).join("\n");
+}
+
 /** La imagen del post, de R2, siempre de ESTE cliente. */
 async function imagenDelPost(env, clientId, src) {
   const clave = String(src ?? "").replace(/^\/api\/media\//, "");
@@ -173,7 +195,8 @@ export async function rutaGenerarImagen(req, env, ctx) {
 
   // Historia a partir de la imagen de un post: otra petición, otra base.
   const historia = body.historiaDe && typeof body.historiaDe === "object" ? body.historiaDe : null;
-  const portada = !historia && body.portada && typeof body.portada === "object" && body.portada.titulo ? body.portada : null;
+  const adaptar = !historia && body.adaptarDe && typeof body.adaptarDe === "object" && PROPORCIONES_ADAPTAR[body.adaptarDe.proporcion] ? body.adaptarDe : null;
+  const portada = !historia && !adaptar && body.portada && typeof body.portada === "object" && body.portada.titulo ? body.portada : null;
   let formatoFinal = imageFormat || "square";
   let parts;
   if (historia) {
@@ -183,6 +206,15 @@ export async function rutaGenerarImagen(req, env, ctx) {
     parts = [
       { text: construirPromptHistoria(historia.variante, { clientName: cliente.name, visualStyle: cliente.visual_style || "" }) },
       { text: "\nIMAGEN DE LA PUBLICACIÓN (la base):" },
+      base,
+    ];
+  } else if (adaptar) {
+    const base = await imagenDelPost(env, clientId, adaptar.src);
+    if (!base) return error("No encontré la imagen: tiene que estar subida a la publicación.", 404);
+    formatoFinal = PROPORCIONES_ADAPTAR[adaptar.proporcion];
+    parts = [
+      { text: construirPromptAdaptar(adaptar.proporcion, { clientName: cliente.name }) },
+      { text: "\nLA IMAGEN QUE HAY QUE AMPLIAR:" },
       base,
     ];
   } else if (portada) {
@@ -255,7 +287,7 @@ export async function rutaGenerarImagen(req, env, ctx) {
   }
 
   const data = await res.json();
-  await registrarConsumoGemini(acceso, { funcion: historia ? "historia" : portada ? "portada" : "imagen", modelo, meta: data?.usageMetadata, clienteId: clientId });
+  await registrarConsumoGemini(acceso, { funcion: historia ? "historia" : adaptar ? "ampliar" : portada ? "portada" : "imagen", modelo, meta: data?.usageMetadata, clienteId: clientId });
   const candidates = data?.candidates ?? [];
   const partesRespuesta = candidates[0]?.content?.parts ?? [];
 

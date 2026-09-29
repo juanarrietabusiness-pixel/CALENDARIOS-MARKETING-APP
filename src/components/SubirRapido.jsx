@@ -4,20 +4,21 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import SelectorFecha from "./SelectorFecha";
 import HoraSugerida from "./calendario/horaSugerida";
-import { EditorMedios } from "./calendario/editorPublicacion";
+import { EditorMedios, Plegable } from "./calendario/editorPublicacion";
+import AjusteImagen from "./calendario/ajusteImagen";
+import HistoriasDelPost from "./calendario/historiasPost";
 import DestinoRedes from "./calendario/destinoRedes";
 import VistaRed from "./calendario/vistaRed";
 import { TimePicker } from "./calendario/primitivas";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { useAnchoAmplio } from "../hooks/useAnchoAmplio";
-import { estadoRedes as leerEstadoRedes, saveCalendar, publicar, subirImagenPublicacion } from "../lib/db";
+import { estadoRedes as leerEstadoRedes, saveCalendar, publicar, subirImagenPublicacion, mesDeCalendario } from "../lib/db";
 import { escribirDesdeContenido } from "../api";
 import { prepararParaRedes } from "../lib/medios";
-import { REDES, conMedios, revisarPublicacion, momentoPublicacion, mediosDe } from "../lib/publicacion";
+import { REDES, conMedios, revisarPublicacion, momentoPublicacion, mediosDe, objetivoDe, necesitaAjuste, historiasDe } from "../lib/publicacion";
 import { formatoDeMedios, redesPorDefecto, rellenarDesdeContenido, ponerEnDia, resumenDestino } from "../lib/subir";
 import { fechaEnZona } from "../lib/agenda";
 import { fechaHora } from "../lib/cola";
-import { MONTHS } from "../constants";
 import { uid } from "../utils";
 import { esAdmin } from "../lib/sesionActual";
 
@@ -34,8 +35,12 @@ import { esAdmin } from "../lib/sesionActual";
 //   4. La IA mira el archivo y escribe el texto; se retoca.
 //   5. ¿Cuándo sale? Ahora, programada, o a mano desde el teléfono.
 //
-// En pantalla ancha es una ventana grande: a la izquierda se configura y
-// a la derecha se ve cómo queda en cada red, con su texto. Qué sale y
+// En pantalla ancha es una ventana grande, como el «Crear publicación» de
+// Metricool: a la izquierda se configura —y es lo único que desplaza, con
+// el botón pegado debajo— y a la derecha se ve cómo queda en cada red, a
+// toda la altura. Tiene lo mismo que el panel: ampliar a 4:5 con IA la
+// imagen que no cabe, la historia que acompaña al post y la portada del
+// video. Antes no estaba nada de eso aquí, y era justo donde se sube. Qué sale y
 // dónde lo dice la misma pieza que el panel (`DestinoRedes`): cada red
 // marcada o no, y la frase de dónde sale y dónde NO.
 //
@@ -90,6 +95,10 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
   const yaPaso = modo === "programar" && cuando && Date.parse(cuando) < Date.now() - 60_000;
   const sinCuenta = destino.filter((r) => !redesDelCliente.includes(r));
   const hayMedios = mediosDe(post).length > 0;
+  const objetivo = destino.includes("instagram") ? objetivoDe(completo, "instagram") : null;
+  const fuera = objetivo ? mediosDe(completo).some((m) => necesitaAjuste(m, objetivo)) : false;
+  const sf = (k, v) => setPost((p) => ({ ...p, [k]: v }));
+  const historias = historiasDe(post);
 
   // Cambiar de cliente vacía lo subido: los archivos viven en SU carpeta.
   const cambiarCliente = (id) => {
@@ -145,8 +154,10 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
       const [a, m] = dia.split("-").map(Number);
       let cal = (cliente.calendars ?? []).find((k) => k.year === a && k.month === m - 1);
       if (!cal) {
-        setTrabajando("Creando el calendario del mes…");
-        cal = await saveCalendar({ name: `${MONTHS[m - 1]} ${a}`, month: m - 1, year: a, campaign: "", weekConcepts: [], days: [] }, clienteDb);
+        // El cajón del mes lo busca o lo crea el servidor: uno por cliente y
+        // mes (si otra persona lo creó a la vez, devuelve el suyo).
+        setTrabajando("Preparando el mes…");
+        cal = await mesDeCalendario(clienteDb, a, m - 1);
         onCalendarioGuardado(cliente.id, cal);
       }
       // Lo que se estuviera guardando de ese calendario va DENTRO de éste:
@@ -198,6 +209,7 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
           </div>
         ) : (
           <div className="subir-columnas">
+          <div className="subir-izquierda">
           <div className="subir-config">
             <div className="field">
               <label className="label" htmlFor={`${ids}-c`}>Cliente</label>
@@ -207,7 +219,15 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
             </div>
 
             {cliente && (
-              <EditorMedios post={post} clientId={clienteDb} driveFolder={cliente.driveFolder} onChange={alCambiarMedios} onError={setFallo} entradaRef={entrada} />
+              <EditorMedios
+                post={post}
+                clientId={clienteDb}
+                driveFolder={cliente.driveFolder}
+                onChange={alCambiarMedios}
+                onError={setFallo}
+                entradaRef={entrada}
+                onPortada={mediosDe(post).some((m) => m.tipo === "video") ? (c) => setPost((p) => ({ ...p, ...c })) : null}
+              />
             )}
 
             {hayMedios && (
@@ -237,7 +257,13 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
                   </div>
                 )}
                 {formato === "historia" && escribiendo && <p className="hint" role="status">{escribiendo}</p>}
+                {fuera && <AjusteImagen post={completo} alCambiar={setPost} clientId={clienteDb} objetivo={objetivo} color={cliente?.primaryColor} onError={setFallo} />}
                 {!ancho && vista}
+                {!["historia", "live"].includes(formato) && destino.some((r) => r !== "tiktok") && (
+                  <Plegable titulo="También en historias" icono="formatHistoria" resumen={post.historiaTambien && historias.length ? `${historias.length} ${historias.length === 1 ? "historia" : "historias"}` : null}>
+                    <HistoriasDelPost post={completo} sf={sf} clientId={clienteDb} colorMarca={cliente?.primaryColor} onError={setFallo} />
+                  </Plegable>
+                )}
               </>
             )}
 
@@ -278,8 +304,10 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
             )}
 
             {fallo && <p role="alert" className="notice notice-error">{fallo}</p>}
-            <div role="status" aria-live="polite" className={trabajando ? "hint" : "sr-only"}>{trabajando}</div>
+          </div>
 
+          <div className="subir-pie">
+            <div role="status" aria-live="polite" className={trabajando ? "hint" : "sr-only"}>{trabajando}</div>
             {hayMedios && <p className="cuando-destino"><Icon name="send" size={13} /> {resumenDestino(completo, destino)}</p>}
             <div className="subir-botones">
               <button type="button" className="btn btn-secondary" onClick={onClose} disabled={!!trabajando}>Cancelar</button>
@@ -287,6 +315,7 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
                 <Icon name={MODOS.find(([k]) => k === modo)[2]} size={16} /> {trabajando ? "Un momento…" : hayMedios ? etiqueta : "Sube un archivo para seguir"}
               </button>
             </div>
+          </div>
           </div>
           {ancho && (
             <aside className="subir-vista" aria-label="Cómo se va a ver">

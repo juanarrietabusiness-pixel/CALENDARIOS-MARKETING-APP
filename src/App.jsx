@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { MONTHS } from "./constants";
-import { uid } from "./utils";
 import { useDialogA11y } from "./hooks/useDialogA11y";
 import { useAnchoAmplio } from "./hooks/useAnchoAmplio";
 import Icon from "./components/Icon";
@@ -8,6 +7,8 @@ import Icon from "./components/Icon";
 // base del despliegue: el sitio también se publica bajo un subdirectorio.
 import logoMark from "./assets/logo-mark.png";
 import CalendarView from "./components/CalendarView";
+import NavegadorMes from "./components/calendario/navegadorMes";
+import { diasVecinos } from "./lib/meses";
 import QuickTasksPanel from "./components/QuickTasksPanel";
 import ResumenCliente from "./components/ResumenCliente";
 import NavPrincipal from "./components/NavPrincipal";
@@ -25,10 +26,11 @@ import { vivo } from "./lib/vivo";
 import { fijarYo, esAdmin } from "./lib/sesionActual";
 import { leerFoco, guardarFoco } from "./lib/foco";
 import { fechaEnZona } from "./lib/agenda";
-import { calendarioPorDefecto, resumenCalendario } from "./lib/resumenCliente";
+import { resumenCalendario } from "./lib/resumenCliente";
+import { calendarioVirtual, esVirtual, fusionarEnMes, mesDeFecha, mismoMes as esMismoMes } from "./lib/meses";
 import {
   analizarRuta, construirRuta, navegar,
-  porRuta, slugsDeCalendarios, slugsDeClientes,
+  porRuta, slugsDeCalendarios, slugsDeClientes, slugDeMes, mesDeSlug,
 } from "./lib/rutas";
 
 // El asistente sólo se descarga al abrirlo: es la pantalla más pesada y
@@ -83,6 +85,14 @@ const PESTANAS = [
  * NO lo lanza solo, y sin ese aviso la barra de direcciones cambiaría y
  * la pantalla no.
  */
+
+/** Cuántas publicaciones tiene el cliente en el mes de hoy (Panamá). */
+function publicacionesDelMes(cliente) {
+  const hoy = mesDeFecha(fechaEnZona());
+  const cal = (cliente.calendars ?? []).find((k) => esMismoMes(k, hoy));
+  return (cal?.days ?? []).reduce((n, d) => n + (d.posts?.length ?? 0), 0);
+}
+
 function useRuta() {
   const [ruta, setRuta] = useState(analizarRuta);
   useEffect(() => {
@@ -182,7 +192,8 @@ function ClientList({ clients, selectedClientId, onSelect, onNew, presentes = []
                     {c.name}
                   </span>
                   <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "var(--text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {c.industry || "Sin industria"} · {(c.calendars || []).length} calendario{(c.calendars || []).length === 1 ? "" : "s"}
+                    {/* Un solo calendario por cliente: contar «N calendarios» ya no dice nada. */}
+                    {c.industry || "Sin industria"}{publicacionesDelMes(c) > 0 && ` · ${publicacionesDelMes(c)} este mes`}
                   </span>
                 </span>
                 {/* Quién del equipo está dentro de este cliente ahora
@@ -284,7 +295,8 @@ function Inicio({ yo, clients, pulso, presentes, onAbrir, onNuevo }) {
 
       <ul className="inicio-clientes" aria-label="Clientes">
         {clients.map((c) => {
-          const cal = calendarioPorDefecto(c.calendars ?? [], hoy);
+          // Lo de ESTE mes: el calendario es uno y se abre en hoy.
+          const cal = (c.calendars ?? []).find((k) => esMismoMes(k, mesDeFecha(hoy))) ?? null;
           const r = resumenCalendario(cal);
           return (
             <li key={c.id}>
@@ -295,7 +307,7 @@ function Inicio({ yo, clients, pulso, presentes, onAbrir, onNuevo }) {
                 <span className="inicio-cliente-texto">
                   <span className="inicio-cliente-nombre">{c.name}</span>
                   <span className="inicio-cliente-meta">
-                    {cal ? (cal.name || `${MONTHS[cal.month]} ${cal.year}`) : "Sin calendarios"}
+                    {cal ? `${MONTHS[cal.month]} ${cal.year}` : "Nada este mes"}
                     {cal && r.publicaciones > 0 && ` · ${r.aprobadas + r.publicadas}/${r.publicaciones} aprobadas`}
                   </span>
                   {cal && (r.porAprobar > 0 || r.conCambios > 0) && (
@@ -327,6 +339,10 @@ function Workspace({ session, ruta }) {
   fijarYo(yo);
 
   const [clients, setClients] = useState([]);
+  // Lo último del estado, para lo que se lee DESPUÉS de esperar a la red
+  // (crear un mes, mover de mes): el cierre de ese momento ya es viejo.
+  const clientsRef = useRef(clients);
+  clientsRef.current = clients;
   // Qué cliente y qué calendario se están mirando NO son estado: son la
   // dirección. Guardarlos en `useState` era justo lo que hacía que
   // recargar te devolviera al principio y que no se pudiera pasar un
@@ -644,13 +660,22 @@ function Workspace({ session, ruta }) {
   const selectedClientId = client?.id ?? null;
 
   const slugsCal = useMemo(() => slugsDeCalendarios(client?.calendars ?? []), [client]);
-  // Sin mes en la dirección, se abre el del mes en curso (o el más
-  // reciente): antes salía «Selecciona un calendario» y había que buscarlo.
-  const calendar = useMemo(
-    () => porRuta(client?.calendars ?? [], slugsCal, ruta.calendario)
-      ?? (!ruta.calendario ? calendarioPorDefecto(client?.calendars ?? [], fechaEnZona()) : null),
-    [client, slugsCal, ruta.calendario],
-  );
+  // Calendario siempre activo: la dirección dice QUÉ MES se mira
+  // («octubre-2026»), tenga cajón o no. Sin mes, el de hoy. Los enlaces
+  // de antes, con el nombre o el id del calendario, siguen valiendo: se
+  // traducen al mes de ese calendario.
+  const mesVisto = useMemo(() => {
+    const porSlug = mesDeSlug(ruta.calendario);
+    if (porSlug) return porSlug;
+    const viejo = porRuta(client?.calendars ?? [], slugsCal, ruta.calendario);
+    if (viejo) return { year: viejo.year, month: viejo.month };
+    return mesDeFecha(fechaEnZona());
+  }, [client, slugsCal, ruta.calendario]);
+  // Sin cajón en la base, el mes se ve igual: vacío. Se crea al escribir.
+  const calendar = useMemo(() => {
+    if (!client) return null;
+    return (client.calendars ?? []).find((k) => esMismoMes(k, mesVisto)) ?? calendarioVirtual(mesVisto.year, mesVisto.month);
+  }, [client, mesVisto]);
   const selectedCalId = calendar?.id ?? null;
 
   /**
@@ -665,10 +690,16 @@ function Workspace({ session, ruta }) {
     if (!clienteId) { navegar("/"); return; }
     const cliente = lista.find((c) => c.id === clienteId);
     const slug = slugsDeClientes(lista).get(clienteId) ?? clienteId;
-    const calSlug = calId
-      ? (slugsDeCalendarios(cliente?.calendars ?? []).get(calId) ?? calId)
-      : null;
+    // El mes de ese calendario, no su nombre: la dirección dice qué mes se mira.
+    const cal = calId ? (cliente?.calendars ?? []).find((k) => k.id === calId) : null;
+    const calSlug = cal ? slugDeMes(cal.year, cal.month) : calId;
     navegar(construirRuta({ cliente: slug, calendario: calSlug }));
+  }, [clients]);
+
+  /** A un mes concreto del cliente, tenga cajón o no. */
+  const irAMes = useCallback((clienteId, { year, month }) => {
+    const slug = slugsDeClientes(clients).get(clienteId) ?? clienteId;
+    navegar(construirRuta({ cliente: slug, calendario: slugDeMes(year, month) }));
   }, [clients]);
 
   // Una dirección que no resuelve —cliente borrado, enlace viejo, un
@@ -690,8 +721,8 @@ function Workspace({ session, ruta }) {
   // Contarle al equipo dónde estoy. Es lo que dibuja los avatares sobre
   // el cliente en la lista de al lado.
   useEffect(() => {
-    vivo.mirar(selectedClientId, selectedCalId);
-  }, [selectedClientId, selectedCalId]);
+    vivo.mirar(selectedClientId, esVirtual(calendar) ? null : selectedCalId);
+  }, [selectedClientId, selectedCalId, calendar]);
 
   // La empresa en la que trabajo hoy. Se lee al entrar —la de ayer ya
   // no vale— y se le cuenta al equipo por la presencia.
@@ -827,62 +858,119 @@ function Workspace({ session, ruta }) {
     }
   };
 
-  const duplicateCalendar = async (calId) => {
-    const original = client?.calendars?.find((cal) => cal.id === calId);
-    if (!original) return;
+  /**
+   * El cajón de un mes, creándolo si todavía no existe (calendario
+   * siempre activo). Dos llamadas seguidas al mismo mes comparten la
+   * misma petición, y el servidor garantiza un solo mes por cliente.
+   */
+  const creandoMes = useRef(new Map());
+  const asegurarMes = useCallback(async (clienteId, { year, month }) => {
+    const cliente = clientsRef.current.find((c) => c.id === clienteId);
+    const existente = (cliente?.calendars ?? []).find((k) => k.year === year && k.month === month);
+    if (existente) return existente;
+    const clave = `${clienteId}|${year}|${month}`;
+    if (!creandoMes.current.has(clave)) {
+      const promesa = db.mesDeCalendario(cliente?.dbId || clienteId, year, month)
+        .then((cal) => { calendarioGuardado(clienteId, cal); return cal; })
+        .finally(() => creandoMes.current.delete(clave));
+      creandoMes.current.set(clave, promesa);
+    }
+    return creandoMes.current.get(clave);
+  }, []);
 
-    const copy = JSON.parse(JSON.stringify(original));
-    // La copia es un calendario nuevo: ni id ni enlace se heredan.
-    delete copy.id;
-    delete copy.dbId;
-    delete copy.shareToken;
-    copy.name = (copy.name || MONTHS[copy.month] + " " + copy.year) + " (copia)";
-    copy.days = (copy.days || []).map((d) => ({
-      ...d,
-      posts: (d.posts || []).map((p) => ({ ...p, id: uid(), status: "pending", script: "" })),
-    }));
-
+  /**
+   * Escribir en un mes que aún no tiene cajón: se crea y lo escrito se
+   * lleva a él. Si alguien lo creó a la vez, lo suyo se queda y lo mío se
+   * añade (`fusionarEnMes`).
+   */
+  const escribirEnMesVacio = async (virtual, cambiado) => {
     try {
-      const creado = await db.saveCalendar(copy, selectedClientId, ownerId);
-      setClients((prev) =>
-        prev.map((c) => (c.id !== selectedClientId ? c : { ...c, calendars: [...c.calendars, creado] }))
-      );
+      const real = await asegurarMes(selectedClientId, virtual);
+      // Lo último que ya se escribió en ese mes (si otra edición llegó
+      // antes a este punto) va por delante de lo que devolvió el servidor.
+      const base = pendingSaves.current.get(real.id)?.cal ?? real;
+      updateCalendar(real.id, fusionarEnMes(base, cambiado));
     } catch (e) {
-      fallo("duplicar el calendario")(e);
+      fallo("crear el mes")(e);
     }
   };
 
+  /** Guarda YA lo pendiente de un calendario (sin esperar al agrupado). */
+  const guardarYa = async (calId) => {
+    const entry = pendingSaves.current.get(calId);
+    clearTimeout(saveTimers.current.get(calId));
+    saveTimers.current.delete(calId);
+    pendingSaves.current.delete(calId);
+    if (entry) await db.saveCalendar(entry.cal, entry.clientDbId, entry.ownerId);
+  };
+
+  /**
+   * Llevar una publicación a otro mes. Antes se guarda lo pendiente de
+   * este mes: el servidor mueve lo que hay en D1, y un guardado agrupado
+   * que saliera después devolvería la publicación a su sitio. Si está
+   * con el cliente, se avisa de que la verá en el enlace del otro mes.
+   * Devuelve el calendario de destino, o null si no se movió.
+   */
+  const moverAOtroMes = async (origenCal, postId, fecha, { abrir = false, sinPreguntar = false } = {}) => {
+    const destino = mesDeFecha(fecha);
+    if (!origenCal || esVirtual(origenCal) || !destino) return null;
+    const post = (origenCal.days ?? []).flatMap((d) => d.posts ?? []).find((p) => p.id === postId);
+    if (!post) return null;
+    const nombreDestino = `${MONTHS[destino.month].toLowerCase()} ${destino.year}`;
+    if (!sinPreguntar && origenCal.shareToken && post.status !== "published"
+      && !window.confirm(`Tu cliente la verá en el enlace de ${nombreDestino}, no en el de ${MONTHS[origenCal.month].toLowerCase()}. Su aprobación y su conversación van con ella. ¿Moverla?`)) {
+      return null;
+    }
+    try {
+      await guardarYa(origenCal.id);
+      const { origen, destino: calDestino } = await db.moverDeMes(origenCal.dbId || origenCal.id, postId, fecha);
+      calendarioGuardado(selectedClientId, origen);
+      calendarioGuardado(selectedClientId, calDestino);
+      setToast(`Movida al ${Number(fecha.slice(8))} de ${MONTHS[destino.month].toLowerCase()} de ${destino.year}.`);
+      if (abrir) {
+        setPostPedido({ calId: calDestino.id, postId });
+        irAMes(selectedClientId, destino);
+      }
+      return calDestino;
+    } catch (e) {
+      fallo("mover la publicación")(e);
+      return null;
+    }
+  };
+
+  /**
+   * El asistente escribe en el mes que se eligió. Si ese mes ya tiene
+   * cajón —un solo mes por cliente—, lo generado se AÑADE a lo que hay:
+   * antes creaba un calendario nuevo aunque ya existiera otro del mismo mes.
+   */
   const handleWizardGenerate = async (calendarData) => {
-    const nuevo = {
-      name: calendarData.campaign || MONTHS[calendarData.month] + " " + calendarData.year,
-      month: calendarData.month,
-      year: calendarData.year,
+    const generado = {
       campaign: calendarData.campaign,
       weekConcepts: calendarData.weekConcepts,
       offers: calendarData.offers || "",
       promoCode: calendarData.promoCode || "",
-      generatedAt: new Date().toISOString(),
       days: calendarData.days,
     };
-
+    const mes = { year: calendarData.year, month: calendarData.month };
     try {
-      // Se inserta primero para que el id sea el de la base de datos: el
-      // enlace de aprobación se pide con él.
-      const creado = await db.saveCalendar(nuevo, selectedClientId, ownerId);
-      setClients((prev) =>
-        prev.map((c) =>
-          c.id !== selectedClientId ? c : { ...c, calendars: [...(c.calendars || []), creado] }
-        )
-      );
-      // La lista con el calendario nuevo ya dentro, por lo mismo que en
-      // saveClient: el slug del mes tiene que existir para navegar a él.
-      irA(
-        selectedClientId, creado.id,
-        clients.map((c) => (c.id !== selectedClientId ? c : { ...c, calendars: [...(c.calendars || []), creado] })),
-      );
+      const real = await asegurarMes(selectedClientId, mes);
+      await guardarYa(real.id);
+      const base = clientsRef.current.find((c) => c.id === selectedClientId)?.calendars?.find((k) => k.id === real.id) ?? real;
+      const fusion = {
+        ...fusionarEnMes(base, generado),
+        // Lo que el asistente decide del mes sí manda: es para eso.
+        ...(generado.campaign ? { campaign: generado.campaign } : {}),
+        ...(generado.weekConcepts?.length ? { weekConcepts: generado.weekConcepts } : {}),
+        ...(generado.offers ? { offers: generado.offers } : {}),
+        ...(generado.promoCode ? { promoCode: generado.promoCode } : {}),
+        generatedAt: new Date().toISOString(),
+      };
+      const guardado = await db.saveCalendar(fusion, selectedClientId, ownerId);
+      calendarioGuardado(selectedClientId, guardado);
+      irAMes(selectedClientId, mes);
       setShowWizard(false);
     } catch (e) {
-      fallo("crear el calendario")(e);
+      fallo("planificar el mes")(e);
     }
   };
 
@@ -1259,8 +1347,10 @@ function Workspace({ session, ruta }) {
                       >
                         <Icon name="pencil" />
                       </button>
+                      {/* Ya no se crea un calendario por mes: el asistente
+                          PLANIFICA el mes que se elija, dentro del mismo calendario. */}
                       <button className="btn btn-primary" onClick={() => setShowWizard(true)}>
-                        <Icon name="plus" size={18} /> Calendario
+                        <Icon name="sparkles" size={18} /> Planificar mes
                       </button>
                     </div>
                   </div>
@@ -1314,23 +1404,19 @@ function Workspace({ session, ruta }) {
                 )}
                 </Suspense>
 
-                {pestana === "calendario" && client.calendars?.length > 0 && (
-                  <nav className="cal-tabs" aria-label="Calendarios del cliente">
-                    {client.calendars.map((c) => (
-                      <button
-                        key={c.id}
-                        className="cal-tab"
-                        onClick={() => irA(selectedClientId, c.id)}
-                        aria-current={selectedCalId === c.id ? "true" : undefined}
-                      >
-                        {c.name || MONTHS[c.month] + " " + c.year}
-                      </button>
-                    ))}
-                  </nav>
+                {pestana === "calendario" && (
+                  <NavegadorMes
+                    mes={mesVisto}
+                    onIr={(m) => irAMes(client.id, m)}
+                    conContenido={(client.calendars ?? []).filter((k) => (k.days ?? []).some((d) => d.posts?.length))}
+                  />
                 )}
 
                 {pestana === "calendario" && (calendar ? (
                   <CalendarView
+                    // Una vista por mes: al pasar de mes no se arrastra el
+                    // panel abierto ni la semana desplegada del anterior.
+                    key={`${client.id}-${mesVisto.year}-${mesVisto.month}`}
                     client={client}
                     cal={calendar}
                     calId={selectedCalId}
@@ -1338,12 +1424,13 @@ function Workspace({ session, ruta }) {
                     editandoOtros={editandoOtros}
                     abrirPublicacion={postPedido?.calId === selectedCalId ? postPedido.postId : null}
                     onPublicacionAbierta={publicacionAbierta}
-                    onUpdateCal={updateCalendar}
+                    onUpdateCal={esVirtual(calendar) ? (_id, cambiado) => escribirEnMesVacio(calendar, cambiado) : updateCalendar}
                     onUpdateCalLocal={updateCalendarLocal}
                     onDeleteCal={deleteCalendar}
-                    onDuplicateCal={duplicateCalendar}
+                    onMoverAOtroMes={(postId, fecha, opciones) => moverAOtroMes(calendar, postId, fecha, opciones)}
+                    vecinos={diasVecinos(client.calendars ?? [], mesVisto)}
+                    onAbrirVecina={(calVecino, postId) => { setPostPedido({ calId: calVecino.id, postId }); irAMes(client.id, calVecino); }}
                     onUpdateClient={(updated) => setClients((prev) => prev.map((c) => c.id === updated.id ? updated : c))}
-                    onPersistClient={persistClient}
                     onMoveBankToCal={(bankPost, targetDate) => {
                       setClients((prev) => prev.map((c) => {
                         if (c.id !== selectedClientId) return c;
@@ -1374,16 +1461,7 @@ function Workspace({ session, ruta }) {
                       }, 600));
                     }}
                   />
-                ) : (
-                  <div className="empty-state">
-                    <Icon name="calendar" size={36} className="empty-state-icon" style={{ margin: "0 auto var(--sp-3)" }} />
-                    <p className="empty-state-title">Sin calendarios</p>
-                    <p className="empty-state-text" style={{ marginBottom: "var(--sp-4)" }}>Crea el primer calendario de este cliente.</p>
-                    <button className="btn btn-primary" onClick={() => setShowWizard(true)}>
-                      <Icon name="plus" size={18} /> Crear calendario
-                    </button>
-                  </div>
-                ))}
+                ) : null)}
               </>
             ) : (
               <Inicio
@@ -1449,6 +1527,7 @@ function Workspace({ session, ruta }) {
         {showWizard && client && (
           <PlanWizard
             client={client}
+            mesInicial={mesVisto}
             onGenerate={handleWizardGenerate}
             onClose={() => setShowWizard(false)}
           />
@@ -1486,7 +1565,8 @@ function Workspace({ session, ruta }) {
             calId={selectedCalId}
             clients={clients}
             acoplado={chatAcoplado}
-            onUpdateCal={updateCalendar}
+            // Un mes sin cajón se escribe igual que desde el calendario.
+            onUpdateCal={esVirtual(calendar) ? (_id, cambiado) => escribirEnMesVacio(calendar, cambiado) : updateCalendar}
             onClose={() => setShowChat(false)}
             onAddIdea={handleAddIdea}
             onSelectClient={(id) => {

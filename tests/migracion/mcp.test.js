@@ -175,7 +175,13 @@ describe("el protocolo y las herramientas", () => {
 
     await llamar(tk, "mover_publicacion", { publicacion_id: nueva.id, fecha: "2026-10-09" });
     expect(dias().find((d) => d.date === "2026-10-09").posts.map((p) => p.id)).toEqual([nueva.id]);
-    expect((await llamar(tk, "mover_publicacion", { publicacion_id: nueva.id, fecha: "2026-11-01" })).isError).toBe(true);
+    // Calendario siempre activo: a otro mes también se mueve, y el mes
+    // de destino se crea si no existía.
+    expect((await llamar(tk, "mover_publicacion", { publicacion_id: nueva.id, fecha: "2026-11-01" })).isError).toBeUndefined();
+    const nov = db.sqlite.prepare("select days from calendars where client_id = 'c1' and year = 2026 and month = 10").get();
+    expect(JSON.parse(nov.days).find((d) => d.date === "2026-11-01").posts.map((p) => p.id)).toEqual([nueva.id]);
+    expect(dias().flatMap((d) => d.posts).map((p) => p.id)).toEqual(["p1"]);
+    await llamar(tk, "mover_publicacion", { publicacion_id: nueva.id, fecha: "2026-10-09" });
 
     await llamar(tk, "eliminar_publicacion", { publicacion_id: nueva.id });
     expect(dias().flatMap((d) => d.posts).map((p) => p.id)).toEqual(["p1"]);

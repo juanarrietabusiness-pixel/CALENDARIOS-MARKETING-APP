@@ -1,12 +1,14 @@
 import { useId, useState, useRef } from "react";
-import { PLANS, FORMATS, FORMAT_ICONS, DEFAULT_CATEGORIES, MONTHS, DAYS, DAYS_SHORT } from "../constants";
+import { PLANS, FORMATS, FORMAT_ICONS, MONTHS, DAYS, DAYS_SHORT } from "../constants";
 import { uid, daysInMonth, fmtDate, getWeekNumber, dayName } from "../utils";
 import { callAI, buildClientContext, buildDescripcionesPrompt, loadADN, parseAIResponse } from "../api";
 import { loadClientMemories } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
 
-const STEP_LABELS = ["Plan", "Fechas", "Campaña", "Conceptos", "Categorías", "Ofertas", "Ideas"];
+// Sin paso de categorías: se quitaron del calendario. Las que haya en la
+// ficha del cliente (Semanal) siguen informando a la IA sin preguntarse aquí.
+const STEP_LABELS = ["Plan", "Fechas", "Campaña", "Conceptos", "Ofertas", "Ideas"];
 
 const TEMPLATES_KEY = "jads-templates";
 function loadTemplates() {
@@ -35,10 +37,10 @@ function StepBar({ step, setStep }) {
   );
 }
 
-export default function PlanWizard({ client, onGenerate, onClose }) {
+export default function PlanWizard({ client, onGenerate, onClose, mesInicial = null }) {
   const [step, setStep] = useState(0);
-  const [month, setMonth] = useState(new Date().getMonth());
-  const [year, setYear] = useState(new Date().getFullYear());
+  const [month, setMonth] = useState(mesInicial?.month ?? new Date().getMonth());
+  const [year, setYear] = useState(mesInicial?.year ?? new Date().getFullYear());
   const [plan, setPlan] = useState("standard");
   const [formatConfig, setFormatConfig] = useState(() => {
     const cfg = {};
@@ -802,83 +804,7 @@ ${daysDesc}`;
             </div>
           )}
 
-          {/* Step 4: Daily categories */}
           {step === 4 && (
-            <div>
-              <h3 className="label">Categoría por día de la semana</h3>
-              <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", flexWrap: "wrap", marginBottom: "var(--sp-3)" }}>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setTplPicker(tplPicker === "categories" ? null : "categories")}>
-                  <Icon name="calendar" size={14} /> Plantillas de categorías
-                </button>
-              </div>
-              {tplPicker === "categories" && (
-                <div style={{ background: "var(--surface)", borderRadius: "var(--radius-sm)", padding: "var(--sp-3)", marginBottom: "var(--sp-3)", border: "1px solid var(--border)" }}>
-                  <p style={{ fontSize: "var(--fs-xs)", fontWeight: 700, marginBottom: "var(--sp-2)" }}>Plantillas guardadas</p>
-                  {templates.filter((t) => t.type === "categories" || t.type === "full").length === 0 && (
-                    <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", marginBottom: "var(--sp-2)" }}>Sin plantillas de categorías.</p>
-                  )}
-                  {templates.filter((t) => t.type === "categories" || t.type === "full").map((t) => (
-                    <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "var(--sp-2)", background: "var(--bg)", borderRadius: "var(--radius-xs)", marginBottom: "var(--sp-1)" }}>
-                      <span style={{ fontSize: "var(--fs-2xs)", fontWeight: 600 }}>{t.name} <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>({t.type})</span></span>
-                      <div style={{ display: "flex", gap: "var(--sp-1)" }}>
-                        <button type="button" className="btn btn-primary btn-sm" style={{ fontSize: "var(--fs-3xs)" }} onClick={() => applyTemplate(t)}>Aplicar</button>
-                        <button type="button" className="btn-remove" aria-label={`Eliminar plantilla ${t.name}`} onClick={() => deleteTemplate(t.id)}><Icon name="close" size={14} /></button>
-                      </div>
-                    </div>
-                  ))}
-                  <div style={{ display: "flex", gap: "var(--sp-2)", marginTop: "var(--sp-2)" }}>
-                    <input className="input" style={{ flex: 1, fontSize: "var(--fs-2xs)" }} placeholder="Nombre de la plantilla…" value={tplName} onChange={(e) => setTplName(e.target.value)} />
-                    <button type="button" className="btn btn-accent btn-sm" style={{ fontSize: "var(--fs-3xs)" }} disabled={!tplName.trim()} onClick={() => saveTemplate("categories")}>Guardar categorías</button>
-                  </div>
-                </div>
-              )}
-              <div className="filter-bar" role="group" aria-label="Categorías sugeridas: al pulsar se asignan al primer día libre">
-                {DEFAULT_CATEGORIES.map((cat) => (
-                  <button
-                    key={cat}
-                    type="button"
-                    className="filter-chip"
-                    onClick={() => {
-                      const emptyDow = Object.entries(dayCategories).find(([, v]) => !v);
-                      if (emptyDow) setDayCategories((prev) => ({ ...prev, [emptyDow[0]]: cat }));
-                    }}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)", marginTop: "var(--sp-3)" }}>
-                {[1, 2, 3, 4, 5, 6, 0].map((dow) => (
-                  <div key={dow} style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", padding: "var(--sp-2) var(--sp-3)", background: "var(--bg)", borderRadius: "var(--radius-sm)" }}>
-                    <label style={{ fontWeight: 700, minWidth: 84, fontSize: "var(--fs-xs)", flexShrink: 0 }} htmlFor={`${ids}-cat-${dow}`}>
-                      {DAYS[dow]}
-                    </label>
-                    <input
-                      id={`${ids}-cat-${dow}`}
-                      className="input"
-                      style={{ flex: 1 }}
-                      value={dayCategories[dow] || ""}
-                      onChange={(e) => setDayCategories((prev) => ({ ...prev, [dow]: e.target.value }))}
-                      placeholder="Categoría…"
-                    />
-                    {dayCategories[dow] && (
-                      <button
-                        type="button"
-                        className="btn-remove"
-                        aria-label={`Borrar categoría de ${DAYS[dow]}`}
-                        onClick={() => setDayCategories((prev) => ({ ...prev, [dow]: "" }))}
-                      >
-                        <Icon name="close" size={16} />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Step 5: Offers / discounts */}
-          {step === 5 && (
             <div>
               <h3 className="label">Descuentos y ofertas del mes</h3>
               <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
@@ -910,7 +836,7 @@ ${daysDesc}`;
           )}
 
           {/* Step 6: Ideas review */}
-          {step === 6 && (
+          {step === 5 && (
             <div>
               <h3 className="label" style={{ marginBottom: "var(--sp-3)" }}>Ideas por día</h3>
 

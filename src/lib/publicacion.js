@@ -31,12 +31,25 @@ export const PROPORCION_FEED = Object.freeze({ min: 0.795, max: 1.915 });
 /** Una historia es 9:16 (0,5625). Lo que se aleje se encaja para que Instagram no la amplíe y corte. */
 export const PROPORCION_HISTORIA = Object.freeze({ min: 0.55, max: 0.575 });
 
-/** Cómo se adapta una imagen que no cabe: la imagen entera sobre fondo difuminado, sobre el color de la marca, o recortada. */
+/**
+ * Cómo se adapta una imagen que no cabe: la imagen entera sobre fondo
+ * difuminado, sobre el color de la marca, recortada, o AMPLIADA con IA
+ * (Nano Banana dibuja el fondo que falta). «ia» es la única que no se
+ * hace sola al programar: cuesta dinero y se pide con un botón; si falta
+ * la copia, sale difuminada.
+ */
 export const AJUSTES = Object.freeze({
   difuminado: "Completa, con fondo difuminado",
   color: "Completa, con el color de la marca",
   recorte: "Recortada al centro",
+  ia: "Ampliada con IA (Nano Banana)",
 });
+
+/** La proporción que se le pide a la IA para llevar una imagen a su objetivo. */
+export function proporcionParaIA(ancho, alto, objetivo) {
+  if (objetivo === "historia") return "9:16";
+  return ancho / alto > PROPORCION_FEED.max ? "16:9" : "4:5";
+}
 
 /** Minutos entre el post y su historia, por defecto. */
 export const RETRASO_HISTORIA_MIN = 15;

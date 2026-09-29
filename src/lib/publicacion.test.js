@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   mediosDe, conMedios, textoPara, primerComentario, destinoInstagram, revisarPublicacion,
   publicacionParaCliente, marcarActualizada, contarHashtags, rutasDeMedios, momentoPublicacion, esJPEG,
-  aplicarArreglo,
+  aplicarArreglo, proporcionParaIA, AJUSTES,
 } from "./publicacion.js";
 
 describe("medios", () => {
@@ -221,5 +221,17 @@ describe("cada problema trae su arreglo", () => {
     const a = arreglar({ format: "post", descripcion: "x" }, ["instagram"]);
     expect(a.codigo).toBe("medios");
     expect(a.despues).toEqual({ format: "post", descripcion: "x" });
+  });
+});
+
+describe("ampliar con IA", () => {
+  it("pide 4:5 a la imagen alta, 16:9 a la demasiado ancha y 9:16 a la historia", () => {
+    expect(proporcionParaIA(900, 1200, "feed")).toBe("4:5");   // Flow, 3:4
+    expect(proporcionParaIA(3000, 1000, "feed")).toBe("16:9");
+    expect(proporcionParaIA(1080, 1080, "historia")).toBe("9:16");
+  });
+
+  it("es un ajuste más para elegir", () => {
+    expect(Object.keys(AJUSTES)).toContain("ia");
   });
 });

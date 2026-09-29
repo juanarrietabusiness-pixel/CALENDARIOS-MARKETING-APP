@@ -69,10 +69,17 @@ function r2Falso(inicial = {}) {
   const objetos = new Map(Object.entries(inicial));
   return {
     objetos,
-    async get(clave) {
+    async get(clave, opciones) {
       if (!objetos.has(clave)) return null;
+      const cuerpo = objetos.get(clave);
+      // Como R2: `range` puede ser las cabeceras de la petición.
+      const cabecera = opciones?.range?.get?.("Range") ?? "";
+      const m = /^bytes=(\d+)-(\d*)$/.exec(cabecera);
+      const range = m ? { offset: Number(m[1]), length: (m[2] ? Number(m[2]) : cuerpo.length - 1) - Number(m[1]) + 1 } : undefined;
       return {
-        body: objetos.get(clave),
+        body: range ? cuerpo.slice(range.offset, range.offset + range.length) : cuerpo,
+        size: cuerpo.length,
+        range,
         httpEtag: '"abc"',
         writeHttpMetadata: (h) => h.set("content-type", "image/jpeg"),
       };
@@ -187,6 +194,15 @@ describe("leer y borrar un archivo", () => {
     // `private`: son imágenes de clientes, y una caché compartida que las
     // guarde es justo lo que no se quiere.
     expect(res.headers.get("Cache-Control")).toContain("private");
+  });
+
+  it("responde por trozos (206): sin eso Safari del iPhone no reproduce un video", async () => {
+    const env = await entorno({ r2: { [CLAVE]: "0123456789" } });
+    const res = await worker.fetch(conSesion(`/api/media/${CLAVE}`, { headers: { Range: "bytes=0-1" } }), env);
+    expect(res.status).toBe(206);
+    expect(res.headers.get("Content-Range")).toBe("bytes 0-1/10");
+    expect(res.headers.get("Accept-Ranges")).toBe("bytes");
+    expect(await res.text()).toBe("01");
   });
 
   it("el de otro espacio no existe, aunque el objeto esté en R2", async () => {
@@ -660,6 +676,16 @@ describe("la IA del espacio: modelo, razonamiento y respaldo", () => {
     expect(peticiones[0].output_config).toEqual({ effort: "max" });
   });
 
+  it("con Haiku elegido la petición sale en su idioma: presupuesto fijo y sin effort", async () => {
+    const peticiones = anthropic({ respuestas: [texto("ok")] });
+    const env = { ...(await entorno({ ajustes: { ia_modelo: "haiku", ia_razonamiento: "medio" } })), ANTHROPIC_API_KEY: "k" };
+    const cuerpo = await (await worker.fetch(generar(4000), env)).json();
+    expect(cuerpo.model).toBe("claude-haiku-4-5");
+    expect(peticiones[0].model).toBe("claude-haiku-4-5");
+    expect(peticiones[0].output_config).toBeUndefined();
+    expect(peticiones[0].thinking).toEqual({ type: "enabled", budget_tokens: 8_000 });
+  });
+
   it("si la cuenta rechaza el Opus, escribe con Sonnet 5 y lo dice", async () => {
     const peticiones = anthropic({
       respuestas: [
@@ -713,6 +739,7 @@ describe("la IA del espacio: modelo, razonamiento y respaldo", () => {
 
   it("un modelo o un nivel que no existen son 400", async () => {
     expect((await worker.fetch(guardarAjustes({ ia_modelo: "gpt" }), await entorno())).status).toBe(400);
+    expect((await worker.fetch(guardarAjustes({ ia_modelo: "haiku" }), await entorno())).status).toBe(200);
     expect((await worker.fetch(guardarAjustes({ ia_razonamiento: "altisimo" }), await entorno())).status).toBe(400);
   });
 });

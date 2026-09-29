@@ -56,7 +56,12 @@ export async function pedir(ruta, opciones = {}) {
   try { datos = await res.json(); } catch { /* 502 del borde: no es JSON */ }
 
   if (!res.ok) {
-    throw new Error(datos?.error || `La petición falló con estado ${res.status}.`);
+    const e = new Error(datos?.error || `La petición falló con estado ${res.status}.`);
+    // Quien llama a veces necesita más que el texto: un 409 al crear un
+    // mes que ya existe trae el que hay (calendario siempre activo).
+    e.estado = res.status;
+    e.datos = datos;
+    throw e;
   }
   return datos;
 }
@@ -95,6 +100,24 @@ export async function saveCalendar(cal, clientDbId, _ownerId) {
   const row = calendarToRow(cal, clientDbId);
   const id = cal.dbId || "nuevo";
   return rowToCalendar(await pedir(`/calendarios/${id}`, conCuerpo("PUT", row)));
+}
+
+/**
+ * El cajón de un mes (calendario siempre activo): el que hay o uno vacío.
+ * Se pide al ESCRIBIR la primera publicación del mes, nunca al mirarlo.
+ */
+export async function mesDeCalendario(clientDbId, year, month) {
+  return rowToCalendar(await pedir("/calendarios/mes", conCuerpo("POST", { clientId: clientDbId, year, month })));
+}
+
+/**
+ * Lleva una publicación a una fecha de OTRO mes, con su aprobación, su
+ * conversación, la cola, sus tareas, su hilo y su historial. Todo o nada:
+ * si alguien acababa de guardar uno de los dos meses, no mueve nada.
+ */
+export async function moverDeMes(calendarDbId, postId, fecha) {
+  const { origen, destino } = await pedir(`/calendarios/${calendarDbId}/mover`, conCuerpo("POST", { postId, fecha }));
+  return { origen: rowToCalendar(origen), destino: rowToCalendar(destino) };
 }
 
 export async function deleteCalendar(calendarDbId) {

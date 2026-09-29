@@ -394,7 +394,6 @@ CÓMO DEBES RESPONDER:
           formato: { type: "string", enum: ["post", "reel", "carrusel", "historia", "live"] },
           descripcion: { type: "string", description: "Caption sugerida (opcional)." },
           guion: { type: "string", description: "Guion sugerido (opcional)." },
-          categoria: { type: "string", description: "Categoría temática (opcional)." },
         },
         required: ["cliente", "idea"],
       },

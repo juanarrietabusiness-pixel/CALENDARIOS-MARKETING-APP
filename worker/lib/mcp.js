@@ -23,6 +23,7 @@ import { programar, programarLote, cancelarPendientes, resincronizarCalendario, 
 import { normalizarHora } from "../../src/lib/horas.js";
 import { aprobadasSinProgramar, fechaHora } from "../../src/lib/cola.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
+import { obtenerOCrearMes, moverDeMes, ErrorMes } from "./meses.js";
 
 // Las columnas JSON de `clients`, como las devuelve la API (datos.js).
 const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe", "competidores"];
@@ -82,7 +83,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
     },
     annotations: escribe(),
   },
-  { name: "mover_publicacion", description: "Cambia una publicación de día (dentro del mismo mes). Si estaba programada, la cola se mueve con ella.", inputSchema: { type: "object", properties: { ...pubParam, fecha: { type: "string", description: "AAAA-MM-DD" } }, required: ["publicacion_id", "fecha"] }, annotations: escribe() },
+  { name: "mover_publicacion", description: "Cambia una publicación de día, también a otro mes. Si estaba programada, la cola se mueve con ella; lo publicado no se mueve.", inputSchema: { type: "object", properties: { ...pubParam, fecha: { type: "string", description: "AAAA-MM-DD" } }, required: ["publicacion_id", "fecha"] }, annotations: escribe() },
   { name: "eliminar_publicacion", description: "Borra una publicación del calendario. No se puede deshacer.", inputSchema: { type: "object", properties: { ...pubParam }, required: ["publicacion_id"] }, annotations: escribe(true) },
   { name: "programar_publicacion", description: "Pone una publicación en la cola para que salga sola a su día y hora en sus redes (y su historia, si la tiene). Las imágenes que Instagram no acepte tal cual hay que prepararlas desde la aplicación.", inputSchema: { type: "object", properties: { ...pubParam, redes: { type: "array", items: { type: "string", enum: REDES } } }, required: ["publicacion_id"] }, annotations: escribe() },
   { name: "programar_lo_aprobado", description: "Programa de una vez todo lo que el cliente aprobó en un mes y aún no está en la cola. Devuelve lo que no se pudo y por qué.", inputSchema: { type: "object", properties: { ...clienteParam, mes: { type: "string", description: "AAAA-MM. Si se omite, el más reciente." } }, required: ["cliente"] }, annotations: escribe() },
@@ -185,7 +186,15 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       const c = await resolverCliente(cliente);
       fechaValida(fecha);
       if (!FORMATOS.includes(formato)) throw new ErrorHerramienta(`Formato no válido: ${formato}.`);
-      const cal = await calendarioDe(c, fecha.slice(0, 7));
+      // Calendario siempre activo: si el mes aún no tenía cajón, se crea.
+      const [anio, mesNum] = fecha.split("-").map(Number);
+      let cal;
+      try {
+        cal = (await obtenerOCrearMes(acceso, c.id, anio, mesNum - 1)).fila;
+      } catch (e) {
+        if (e instanceof ErrorMes) throw new ErrorHerramienta(e.message);
+        throw e;
+      }
       const days = leerJSON(cal.days, []);
       let dia = days.find((d) => d.date === fecha);
       if (!dia) {
@@ -220,7 +229,18 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
     async mover_publicacion({ publicacion_id: id, fecha }) {
       fechaValida(fecha);
       const { cal, days, dia, indice, post } = await buscar(id);
-      if (fecha.slice(0, 7) !== dia.date.slice(0, 7)) throw new ErrorHerramienta("Sólo se puede mover dentro del mismo mes: para otro mes, créala en ese calendario y borra ésta.");
+      if (fecha.slice(0, 7) !== dia.date.slice(0, 7)) {
+        // A otro mes: la misma operación que la aplicación, todo o nada.
+        try {
+          const r = await moverDeMes(acceso, { calId: cal.id, postId: id, fecha });
+          try { await resincronizarCalendario(env, acceso, r.destino, por); } catch (e) { console.error("mcp resincronizar:", e); }
+          for (const k of [r.origen, r.destino]) difundir(env, acceso.ownerId, { tipo: "calendario:recargar", id: k.id, clientId: k.client_id, por });
+          return `Movida al ${fecha} (otro mes): ${describir(post, fecha)}.`;
+        } catch (e) {
+          if (e instanceof ErrorMes) throw new ErrorHerramienta(e.message);
+          throw e;
+        }
+      }
       dia.posts.splice(indice, 1);
       let destino = days.find((d) => d.date === fecha);
       if (!destino) {

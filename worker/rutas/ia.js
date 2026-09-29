@@ -36,31 +36,6 @@ const MAX_BODY_BYTES = 5 * 1024 * 1024;   // las publicaciones llevan imágenes
 const MAX_TOKENS_CAP = 64_000;            // texto pedido + margen del razonamiento
 const PRESUPUESTO_MS = 290_000;
 
-const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
-
-/** Bloques de texto solamente: Groq no acepta imágenes en este modelo. */
-function soloTexto(content) {
-  if (!Array.isArray(content)) return content;
-  return content
-    .filter((b) => b && typeof b === "object" && b.type === "text")
-    .map((b) => ({ type: "text", text: b.text ?? "" }));
-}
-
-async function llamarGroq(env, content, maxTokens, signal) {
-  return fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    signal,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${env.GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: env.GROQ_MODEL || "llama-3.3-70b-versatile",
-      max_tokens: maxTokens,
-      messages: [{ role: "user", content: soloTexto(content) }],
-    }),
-  });
-}
 
 export async function rutaIA(req, env, { acceso } = {}) {
   const declarado = Number(req.headers.get("content-length") ?? 0);
@@ -76,15 +51,10 @@ export async function rutaIA(req, env, { acceso } = {}) {
 
   const pedido = Math.min(Math.max(Number(body.maxTokens) || 2048, 256), MAX_TOKENS_CAP);
 
-  const proveedor = (env.AI_PROVIDER ?? "").trim().toLowerCase();
-  const usarGroq = proveedor === "groq"
-    ? true
-    : proveedor === "anthropic"
-      ? false
-      : !env.ANTHROPIC_API_KEY && Boolean(env.GROQ_API_KEY);
-
-  if (usarGroq && !env.GROQ_API_KEY) return error("El servidor no tiene configurada la clave de Groq", 503);
-  if (!usarGroq && !env.ANTHROPIC_API_KEY) return error("El servidor no tiene configurada la clave de Anthropic", 503);
+  // Un solo proveedor de texto: Anthropic. Groq se quitó cuando Haiku
+  // pasó a ser elegible en Ajustes: la opción barata ya cuenta en el mismo
+  // presupuesto y habla el mismo idioma que el resto.
+  if (!env.ANTHROPIC_API_KEY) return error("El servidor no tiene configurada la clave de Anthropic", 503);
 
   const arranque = Date.now();
   const restante = () => PRESUPUESTO_MS - (Date.now() - arranque);
@@ -93,8 +63,6 @@ export async function rutaIA(req, env, { acceso } = {}) {
     `La IA no respondió en ${transcurrido()} s y se agotó el margen. ` +
     "Prueba con menos publicaciones por tanda.", 504,
   );
-
-  if (usarGroq) return rutaGroq(env, content, pedido, { restante, transcurrido, seAgoto });
 
   const ia = await prepararIA(env, acceso);
   if (ia.bloqueo) return error(ia.bloqueo, 402);
@@ -174,50 +142,4 @@ export async function rutaIA(req, env, { acceso } = {}) {
       cacheEscrito: u.cache_creation_input_tokens ?? 0,
     },
   });
-}
-
-/** Groq, sin cambios: no tiene razonamiento que configurar. */
-async function rutaGroq(env, content, maxTokens, { restante, transcurrido, seAgoto }) {
-  const reintentos = 2;
-  for (let intento = 0; intento <= reintentos; intento++) {
-    const ms = restante();
-    if (ms <= 5_000) return seAgoto();
-
-    const abortar = new AbortController();
-    const reloj = setTimeout(() => abortar.abort(), ms);
-    let res;
-    try {
-      res = await llamarGroq(env, content, maxTokens, abortar.signal);
-    } catch (e) {
-      clearTimeout(reloj);
-      if (abortar.signal.aborted) return seAgoto();
-      if (intento < reintentos && restante() > 30_000) {
-        await dormir(2 ** (intento + 1) * 1000);
-        continue;
-      }
-      return error("No se pudo contactar con el proveedor de IA", 502, e);
-    }
-    clearTimeout(reloj);
-
-    if ((res.status === 429 || res.status >= 500) && intento < reintentos && restante() > 30_000) {
-      await dormir(2 ** (intento + 1) * 1000);
-      continue;
-    }
-    if (!res.ok) {
-      console.error("ia: Groq respondió", res.status, await res.text().catch(() => ""));
-      return error(res.status === 429
-        ? "El proveedor de IA está saturado. Inténtalo en unos segundos."
-        : "Groq devolvió un error.", res.status === 429 ? 429 : 502);
-    }
-    const data = await res.json();
-    return json({
-      text: data?.choices?.[0]?.message?.content ?? "",
-      provider: "groq",
-      model: env.GROQ_MODEL || "llama-3.3-70b-versatile",
-      truncated: false,
-      segundos: transcurrido(),
-      diagnostico: null,
-    });
-  }
-  return error("No se pudo generar el contenido", 502);
 }
