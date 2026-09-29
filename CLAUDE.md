@@ -107,6 +107,9 @@ src/
     rutas.js              Slugs, análisis y construcción de direcciones (puro)
     contextoADN.js        Qué del ADN viaja a la IA al escribir (sin la maquetación de Meta AI)
                           y cómo se parte el contexto para la caché de prompt (puro)
+    cerebro.js            Cliente de /api/cerebro (notas, buscar, importar, preparar ficha)
+    cerebroVista.js       La pestaña Cerebro: tipos, filtros, frases de resultado, documentos (puro)
+    cerebroCliente.js     La generación con cerebro: texto estable, qué buscar por tanda (puro)
     vivo.js               WebSocket: reconexión, latido, presencia
     horas.js              «9am» → «09:00» y vuelta (puro)
     lote.js               Editar muchas publicaciones de una vez (puro)
@@ -172,6 +175,7 @@ src/
     ExploradorDrive.jsx   La carpeta de Drive de un cliente: gestionar o escoger
     BancoSelector.jsx     Escoger de Drive (o del banco anterior); forma única
     PestanaContenido.jsx  La pestaña Contenido: Drive + migrar el banco anterior
+    Cerebro.jsx           La pestaña Cerebro: las notas de un cliente, filtros, buscar, añadir, subir
     NavPrincipal.jsx / MenuCuenta.jsx / BarraInferior.jsx / Buscador.jsx
                           Armazón: secciones, cuenta, barra del móvil, Ctrl+K
     ClientModal.jsx       Alta y edición de cliente (5 pestañas)
@@ -219,6 +223,12 @@ worker/
     informes.js           Cifras del mes (congeladas) + análisis de la IA; el del día 1
     auditorias.js         Leer un perfil (cuenta propia o business_discovery) y auditarlo
     mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
+    cerebro/              El cerebro de un cliente: conocimiento.js (BM25 por pasajes) y
+                          memoria.js (grafo, presupuesto, sinapsis) portados de Agents
+                          Office; notas.js (tipos, partir un archivo en notas);
+                          cerebro.js (índice en R2, buscar, contexto); repositorio.js e
+                          importar.js (llenarlo desde GitHub); preparar.js (la IA escribe
+                          la ficha y las cifras)
     herramientasServidor.js  Lo que el asistente consulta sin el navegador:
                           web, repositorio de GitHub, calendarios, tareas, ideas
     equipo.js             Avisos (guardar y anunciar), historial y asignaciones
@@ -241,10 +251,11 @@ worker/
     metricas.js           Resultados de un cliente, de la agencia y la miniatura de Meta
     informes.js           Informes: listar, generar, compartir; el público va en index.js
     auditorias.js         Auditorías: listar, generar, compartir; la pública va en index.js
+    cerebro.js            /api/cerebro/<cliente>: notas, buscar, contexto, importar, preparar
     mcp.js                El servidor MCP (/mcp), su OAuth (/oauth/*, /.well-known/*) y
                           el permiso y las conexiones (/api/mcp/*)
     avisos.js             /api/avisos: la bandeja de quien pregunta y marcar leídos
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -263,7 +274,7 @@ tests/
 | `/` | Panel, sin cliente elegido |
 | `/cliente/<slug>` | Un cliente |
 | `/cliente/<slug>/<mes>-<año>` | Un mes del calendario de ese cliente (`octubre-2026`), exista o no su cajón. Los enlaces viejos con el nombre o el id del calendario siguen abriendo su mes |
-| `/cliente/<slug>/tareas` · `/contenido` · `/ideas` · `/resultados` · `/ficha` | Las otras pestañas del cliente |
+| `/cliente/<slug>/tareas` · `/contenido` · `/ideas` · `/resultados` · `/cerebro` · `/ficha` | Las otras pestañas del cliente |
 | `/tareas` | Mi día |
 | `/ajustes` | IA, presupuesto, integraciones, tareas, copia de seguridad |
 | `/resultados` | Todos los clientes, últimos 30 días |
@@ -952,7 +963,59 @@ son del servidor.
   LA APLICACIÓN» de `buildClientContext` es donde se parte, y una
   petición cuyo PRIMER bloque es una imagen no se cachea (la caché es por
   prefijo). Las dos fallan abiertas: si no reconocen la forma, mandan
-  todo. El chat arma su propio contexto y aún manda el ADN íntegro.
+  todo. El asistente pide `{ maquetacion: true }` y sigue viendo el ADN íntegro.
+- **El cerebro de un cliente es SUYO: un índice por cliente, nunca uno para
+  todos.** El algoritmo viene de Agents Office, que indexa por nombre de
+  archivo: los nueve clientes tienen un `01_brand_guidelines.md`, y en un
+  índice compartido sobrevive uno y los otros ocho desaparecen en silencio,
+  además de mezclarse (regla de oro del orquestador). Aquí cada cliente
+  tiene sus notas en `cerebro_notas` (D1, acotadas por dueño y por cliente
+  en la capa de acceso) y su índice en R2 bajo `cerebro/<cliente>/`, y
+  `conocimiento.js` no sabe qué es un cliente: recibe UN mapa de notas.
+  `tests/migracion/cerebro.rutas.test.js` comprueba que un cliente de otro
+  espacio, o de otro colaborador, da «no encontrado» en todas las rutas.
+- **El índice del cerebro NO va bajo `clientes/`.** `/api/media/*` sirve y
+  BORRA cualquier clave `clientes/<id>/…` de un cliente del espacio, y el
+  índice lleva también las notas internas. Con el prefijo `cerebro/` esa
+  ruta no lo alcanza; hay un test que lo pide por las dos vías.
+- **«Interna» es un candado, no una etiqueta.** Una nota interna la ve el
+  equipo y el asistente (`para: "chat"`), pero `contexto()` y `buscar()`
+  con `para: "texto"` —lo que escribe captions, guiones e ideas— la dejan
+  fuera, y también las notas de maquetación. La IA no puede filtrar lo que
+  no ve: el ADN de Baby Caleb lleva costos y márgenes «que no se dicen al
+  cliente» y antes viajaban en cada prompt. Al importar se marcan solas las
+  secciones cuyo TÍTULO habla de costos, proveedores, importación o
+  inversionistas; las que sólo lo mencionan en el cuerpo se devuelven en
+  `revisar`, porque un precio de venta puede vivir junto a un costo y
+  ocultarla dejaría al modelo sin precio. Un valor de `para` inventado se
+  trata como `texto`, el más estricto.
+- **«Editada a mano» se sabe por las fechas, y `guardar` las estropea.** Una
+  nota que nadie tocó tiene `created_at` = `updated_at`, y es lo que mira
+  una nueva importación (`importar.js`) y la pasada de IA (`preparar.js`)
+  para no pisar lo corregido. Pero `acceso.guardar()` pone `updated_at` al
+  día por su cuenta: una nota importada o escrita por la IA con `guardar`
+  nacería «editada». Por eso las importadas se insertan SIN fechas (las
+  pone la base, iguales) y la ficha se reemplaza borrando e insertando. Y
+  el `PUT` de una nota conserva su `origen` y su `fuente`: los tests con el
+  ADN real cazaron que editar una nota importada se los borraba y la
+  siguiente importación ya no la reconocía.
+- **Sin cerebro, todo sigue como antes.** `loadADN` pide el contexto al
+  Worker y, si el cliente no tiene notas (o falla), vuelve al ADN de su
+  ficha. Los pasajes de cada TANDA se piden aparte (`pasajesDeLaTanda`) y
+  van detrás de la marca de caché: si un pasaje se colara en el bloque
+  cacheado, cada tanda escribiría la caché entera y nunca la leería. El
+  chat usa `{ maquetacion: true }` porque alguien puede pedirle el prompt
+  para Meta AI; en la Fase 0 se le quitó sin querer (`buildChatSystemPrompt`
+  también pasa por `buildClientContext`) y este mismo archivo decía que no.
+- **El repositorio ya no manda: el cerebro sí.** El repo Workspace queda
+  como copia de seguridad. Lo que hoy lee de él —las sesiones de Claude
+  Code que trabajan ese repo, `verificar.mjs`, los tests de recetas de
+  `src/lib/componer.test.js`— seguirá viendo lo que allí haya; lo que se
+  corrija en el cerebro no vuelve solo al repo.
+- **Llenar el cerebro cabe en las 50 peticiones del plan gratuito.** Una
+  importación es el árbol de GitHub más un archivo por petición: 40 por
+  llamada, y lo que no cabe se cuenta en `omitidos` y entra en la
+  siguiente, que ya no repite lo hecho (compara el SHA de cada archivo).
 - **El saldo agotado llega como un 400 cualquiera.** «Your credit balance
   is too low…» se traduce en `mensajeDeRechazo()` a qué hacer.
 - **Google Drive: tres trampas.** (1) Con la app de Google «en prueba»,
@@ -1373,3 +1436,7 @@ son del servidor.
   Fase 1 y la limpieza, implementadas; fases 2 a 4, pendientes.
 - `docs/hub-cloudflare.md` — plan del hub donde este calendario pasa a ser una
   herramienta más, junto al bot y la tienda que ya están en Cloudflare.
+- `docs/propuesta-cerebro-por-cliente.md` — un cerebro por cliente (notas en D1, índice
+  en R2, ficha técnica y cifras, búsqueda por pasajes) en lugar de volcar el ADN entero
+  en cada llamada. Fases 0 y 1 implementadas; memoria de decisiones, visualización,
+  PDF/Word/Excel, Estudio, Meta y el puente con Agents Office, pendientes.

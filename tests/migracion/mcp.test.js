@@ -151,6 +151,36 @@ describe("el protocolo y las herramientas", () => {
     expect(result.tools.every((x) => x.inputSchema?.type === "object")).toBe(true);
   });
 
+  it("buscar_cerebro: Claude encuentra lo que el cliente tiene en su cerebro, sólo el de su espacio", async () => {
+    const { access_token: tk } = await conectar("u-ana");
+    // El índice del cerebro vive en R2.
+    const objetos = new Map();
+    env.MEDIA = {
+      async get(k) { return objetos.has(k) ? { text: async () => objetos.get(k) } : null; },
+      async put(k, v) { objetos.set(k, String(v)); },
+      async delete(k) { objetos.delete(k); },
+    };
+    const nota = (id, cliente, dueno, ruta, titulo, texto, interna = 0) => db.sqlite.prepare(
+      "insert into cerebro_notas (id, owner_id, client_id, ruta, titulo, texto, tipo, interna) values (?,?,?,?,?,?, 'marca', ?)",
+    ).run(id, dueno, cliente, ruta, titulo, texto, interna);
+    nota("n1", "c1", "u-ana", "horario", "Horario", "El café abre de lunes a sábado de siete a cinco.");
+    nota("n2", "c1", "u-ana", "costos", "Costos", "El costo del kilo de café es de cinco dólares.", 1);
+    nota("n9", "c9", "u-otro", "secreto", "Secreto", "El café del cliente ajeno se vende a domicilio.");
+    const { result } = await (await mcp(tk, "tools/list")).json();
+    expect(result.tools.find((x) => x.name === "buscar_cerebro").annotations.readOnlyHint).toBe(true);
+
+    const r = await llamar(tk, "buscar_cerebro", { cliente: "Café Luna", consulta: "horario del café" });
+    expect(r.isError).toBeUndefined();
+    expect(r.content[0].text).toContain("de lunes a sábado");
+    const costos = await llamar(tk, "buscar_cerebro", { cliente: "Café Luna", consulta: "costo del kilo de café" });
+    expect(costos.content[0].text, "las internas salen —es para el equipo— pero avisan de que no van en textos").toMatch(/INTERNA/);
+
+    const ajeno = await llamar(tk, "buscar_cerebro", { cliente: "Cliente Ajeno", consulta: "café" });
+    expect(ajeno.isError).toBe(true);
+    expect(ajeno.content[0].text).not.toContain("a domicilio");
+    expect((await llamar(tk, "buscar_cerebro", { cliente: "Café Luna", consulta: "  " })).isError).toBe(true);
+  });
+
   it("cada token ve SÓLO su espacio", async () => {
     const { access_token: tk } = await conectar("u-ana");
     const r = await llamar(tk, "listar_clientes");

@@ -528,17 +528,19 @@ export async function imagenDelADN(repoUrl, path) {
  * Ahora el ADN va primero, dice de qué archivo sale cada trozo, y la
  * ficha queda debajo declarada como lo que es: un índice, no una fuente.
  */
-export function buildClientContext(client, calendar, adnCompleto = "", cerebro = null) {
-  // Todo lo que llama a esto ESCRIBE texto —ideas, guiones, captions—: la
-  // capa de maquetación para Meta AI no le sirve y son ~41 000 caracteres
-  // en Dcasa. El chat arma su propio contexto y sigue viéndola entera.
+export function buildClientContext(client, calendar, adnCompleto = "", cerebro = null, { maquetacion = false } = {}) {
+  // Quien llama a esto ESCRIBE texto —ideas, guiones, captions—: la capa de
+  // maquetación para Meta AI no le sirve y son ~41 000 caracteres en Dcasa.
+  // El asistente también pasa por aquí, pero pide `{ maquetacion: true }`.
   //
   // `cerebro` ({ pasajes }) es el modo del cerebro del cliente: `adnCompleto`
   // trae su ficha técnica y sus cifras, y los pasajes que esta tarea necesita
   // van DESPUÉS del título de la ficha de la aplicación —es donde se parte
   // la caché—, porque cambian con cada tanda.
   const conCerebro = Boolean(cerebro);
-  const adnExtra = conCerebro ? adnCompleto : sinCapaMaquetacion(adnCompleto);
+  // `maquetacion` es del asistente: alguien puede pedirle «arma el prompt para Meta AI», y para eso
+  // necesita la receta y el prompt maestro, que un caption no.
+  const adnExtra = conCerebro || maquetacion ? adnCompleto : sinCapaMaquetacion(adnCompleto);
   const pasajes = String(cerebro?.pasajes ?? "").trim();
   if (adnExtra) {
     return `Escribes para ${client.name}, cliente de la agencia Juancito Ads.
@@ -766,8 +768,11 @@ export async function resumirChat(clienteId) {
   return res.json();
 }
 
-export function buildChatSystemPrompt(client, calendar, adnExtra = "", memories = []) {
-  const ctx = buildClientContext(client, calendar, adnExtra);
+export function buildChatSystemPrompt(client, calendar, adnExtra = "", memories = [], cerebro = null) {
+  // Con cerebro, el asistente recibe la ficha y las cifras —lo estable— y busca el resto con
+  // `buscar_cerebro`: volcarle todo el ADN en cada mensaje era lo que más gastaba.
+  const ctx = buildClientContext(client, calendar, adnExtra, cerebro, { maquetacion: true }) +
+    (cerebro ? "\n\nPARA MÁS DETALLE de este cliente (precios, personas, límites, lo que se le ha subido) usa la herramienta buscar_cerebro: lo de arriba es sólo su ficha técnica y sus cifras. No digas que no sabes algo sin buscarlo antes." : "");
 
   let calendarInfo = "";
   if (calendar) {

@@ -175,3 +175,31 @@ describe("los pasajes de una tanda", () => {
     expect(await pasajesDeLaTanda(cliente, adn, {}, [{ idea: "x" }])).toBe("");
   });
 });
+
+describe("el asistente", () => {
+  const legacy = "\n--- X/01_ADN_y_Memoria/05_prompt_maestro_meta_ai.md ---\n# Sistema\n\n## 1 · Las plantillas\nPlantilla A: fondo azul.\n\n## 2 · Las reglas duras\nNunca versículos.\n";
+  const cli = { id: "c1", name: "Dcasa", githubRepo: "x" };
+
+  it("sin cerebro sigue viendo el ADN ENTERO, maquetación incluida: alguien puede pedirle el prompt para Meta AI", async () => {
+    const { buildChatSystemPrompt } = await import("../api");
+    const chat = buildChatSystemPrompt(cli, null, legacy, []);
+    const texto = buildClientContext(cli, null, legacy);
+    expect(chat).toContain("Plantilla A: fondo azul.");
+    expect(texto, "lo que escribe captions no la necesita").not.toContain("Plantilla A: fondo azul.");
+    expect(chat).toContain("Nunca versículos.");
+  });
+
+  it("con cerebro recibe la ficha y las cifras, y sabe que el resto lo busca con buscar_cerebro", async () => {
+    const { buildChatSystemPrompt } = await import("../api");
+    const chat = buildChatSystemPrompt(cli, null, textoEstableDelCerebro({ ficha: FICHA, cifras: CIFRAS }), [], { pasajes: "" });
+    expect(chat).toContain("CEREBRO DE DCASA");
+    expect(chat).toContain("Envío gratis");
+    expect(chat).toMatch(/buscar_cerebro/);
+    expect(chat).toMatch(/No digas que no sabes algo sin buscarlo/);
+  });
+
+  it("sin cerebro no le habla de una herramienta que no aplica", async () => {
+    const { buildChatSystemPrompt } = await import("../api");
+    expect(buildChatSystemPrompt(cli, null, legacy, [])).not.toMatch(/buscar_cerebro/);
+  });
+});
