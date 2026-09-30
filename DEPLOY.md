@@ -97,6 +97,7 @@ Ahora que el Worker existe, ya tiene dónde guardarlas.
 | Nombre | Qué pegar | Dónde se saca |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Tu clave de Anthropic | console.anthropic.com → API Keys |
+| `GOOGLE_AI_KEY` | Tu clave de Google AI (Gemini) | aistudio.google.com → Get API key. Genera las imágenes (Nano Banana) y **lee** los videos para el asistente. Sin ella, las imágenes con IA dan «El servidor no tiene configurada la clave de Google AI» |
 | `GITHUB_TOKEN` | Un token de **sólo lectura** | GitHub → Settings → Developer settings → Personal access tokens |
 | `GOOGLE_CLIENT_ID` | El ID de cliente OAuth de Google | Ver «Google Drive» abajo |
 | `GOOGLE_CLIENT_SECRET` | Su secreto | Ver «Google Drive» abajo |
@@ -107,8 +108,10 @@ Ahora que el Worker existe, ya tiene dónde guardarlas.
 | `TIKTOK_CLIENT_SECRET` | Su Client secret | Ver «TikTok» abajo |
 
 El `GITHUB_TOKEN` es para leer el ADN de marca de los repositorios de los
-clientes. Con permiso de lectura de repositorios basta; no necesita
-escritura.
+clientes —lo usa «Llenar desde el repositorio» de la pestaña Cerebro—. Con
+permiso de lectura de repositorios basta (en un token de acceso fino:
+**Contents → Read-only** sobre `Agencia_Workspace` y sobre cada repositorio
+de ADN que uses); no necesita escritura.
 
 > Ese nombre sólo vale aquí. GitHub no deja crear un secreto de
 > repositorio que empiece por `GITHUB_`, pero esto vive en Cloudflare.
@@ -367,6 +370,10 @@ despliegue (`EspacioHub`, migración `v1` de `wrangler.jsonc`).
 | `SITIO_URL` | GitHub | Lo lee la comprobación diaria |
 | `ANTHROPIC_API_KEY` | **Cloudflare** | La usa el Worker en cada petición |
 | `GITHUB_TOKEN` | **Cloudflare** | Idem |
+| `GOOGLE_AI_KEY` | **Cloudflare** | Idem (imágenes y lectura de video) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | **Cloudflare** | Google Drive |
+| `META_APP_ID` / `META_APP_SECRET` / `META_CONFIG_ID` | **Cloudflare** | Instagram y Facebook |
+| `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` | **Cloudflare** | TikTok |
 
 La regla: **en GitHub, lo que necesita el workflow. En Cloudflare, lo que
 necesita el Worker mientras corre.** Ninguna de las dos listas llega

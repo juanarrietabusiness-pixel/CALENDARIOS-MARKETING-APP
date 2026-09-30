@@ -60,6 +60,7 @@ const IdeasBank = lazy(() => import("./components/IdeasBank"));
 const TaskPanel = lazy(() => import("./components/TaskPanel"));
 const PestanaContenido = lazy(() => import("./components/PestanaContenido"));
 const FichaCliente = lazy(() => import("./components/FichaCliente"));
+const Cerebro = lazy(() => import("./components/Cerebro"));
 const Buscador = lazy(() => import("./components/Buscador"));
 const SubirRapido = lazy(() => import("./components/SubirRapido"));
 
@@ -74,6 +75,7 @@ const PESTANAS = [
   ["contenido", "Contenido", "cloud"],
   ["ideas", "Ideas", "bulb"],
   ["resultados", "Resultados", "chart"],
+  ["cerebro", "Cerebro", "brain"],
   ["ficha", "Ficha", "building"],
 ];
 
@@ -1395,6 +1397,8 @@ function Workspace({ session, ruta }) {
                 {pestana === "resultados" && (
                   <Resultados client={client} pulso={pulso} onPersistClient={persistClient} />
                 )}
+
+                {pestana === "cerebro" && <Cerebro client={client} />}
 
                 {pestana === "ficha" && (
                   <FichaCliente

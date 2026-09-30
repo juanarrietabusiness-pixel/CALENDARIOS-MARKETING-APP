@@ -14,6 +14,9 @@
 //     siempre por la capa de acceso —el espacio de la sesión—.
 //   · ver_resultados: cómo le fue en redes (las fotos diarias de
 //     métricas), con las MISMAS cuentas que la pestaña Resultados.
+//   · buscar_cerebro: las notas del cerebro del cliente (su ficha, sus
+//     documentos, lo que se le ha ido añadiendo), buscadas por pasajes.
+//     Es la herramienta que sustituye a volcar el ADN entero en el prompt.
 //
 // Son de LECTURA a propósito. Lo que escribe se queda en el navegador,
 // que es quien tiene el estado abierto y sabe no pisar lo que la
@@ -22,6 +25,8 @@
 
 import { parseGitHubUrl, decodeRuta, decodificarBlob } from "../rutas/adn.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
+import { buscar as buscarCerebro } from "./cerebro/cerebro.js";
+import { pack } from "./cerebro/memoria.js";
 import {
   kpis, porFormato, mejoresMomentos, mejoresPublicaciones, resumenCompetencia, numeroCorto, DIAS_SEMANA, BLOQUES_HORA,
 } from "../../src/lib/resultados.js";
@@ -103,6 +108,21 @@ export const DEFINICIONES = Object.freeze([
     name: "ver_banco_ideas",
     description: "Lista las ideas guardadas en el banco de ideas de un cliente.",
     input_schema: { type: "object", properties: { ...clienteOpcional } },
+  },
+  {
+    name: "buscar_cerebro",
+    description:
+      "Busca en el CEREBRO del cliente —sus notas: marca, precios, personas, límites, documentos que se le subieron— y devuelve " +
+      "los pasajes que responden. Úsala ANTES de decir que no sabes algo de un cliente: la ficha que tienes es sólo un resumen. " +
+      "Con varias palabras clave (precio del envío, garantía, tono para historias). Incluye las notas internas: es para el equipo.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteOpcional,
+        consulta: { type: "string", description: "Qué buscar, en palabras del tema." },
+      },
+      required: ["consulta"],
+    },
   },
   {
     name: "ver_resultados",
@@ -283,6 +303,19 @@ export function crearEjecutor({ env, acceso, clienteActual = null }) {
     },
   };
 
+  acciones.buscar_cerebro = async ({ cliente, consulta }) => {
+    const c = await resolverCliente(cliente);
+    const q = String(consulta ?? "").trim().slice(0, 500);
+    if (!q) throw new Error("Falta lo que buscar.");
+    const hits = await buscarCerebro(env, acceso, c.id, q, { para: "chat", n: 6 });
+    if (!hits.length) return `El cerebro de ${c.name} no tiene nada sobre «${q}». Si es algo que debería saberse, se puede añadir como nota en la pestaña Cerebro del cliente.`;
+    const bloques = hits.map((h) => ({
+      head: `--- ${h.titulo} [${h.tipo}${h.interna ? " · INTERNA: no la uses en textos que se publican" : ""}] ---`,
+      body: h.pasajes.join("\n…\n"),
+    }));
+    return `Del cerebro de ${c.name}, sobre «${q}»:\n\n${pack(bloques, 9000)}`;
+  };
+
   acciones.ver_resultados = async ({ cliente, dias = 30 }) => {
     const c = await resolverCliente(cliente);
     const n = Math.min(90, Math.max(7, Number(dias) || 30));
@@ -359,6 +392,7 @@ export function describirUso(nombre, entrada = {}) {
     case "ver_calendario": return `Consultó el calendario${entrada.cliente ? ` de ${entrada.cliente}` : ""}${entrada.mes ? ` (${entrada.mes})` : ""}`;
     case "ver_tareas": return `Consultó las tareas${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "ver_banco_ideas": return `Consultó el banco de ideas${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
+    case "buscar_cerebro": return `Buscó en el cerebro${entrada.cliente ? ` de ${entrada.cliente}` : ""}: «${entrada.consulta ?? ""}»`;
     case "ver_resultados": return `Consultó los resultados${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     default: return nombre;
   }

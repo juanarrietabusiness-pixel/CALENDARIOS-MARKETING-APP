@@ -1,0 +1,143 @@
+/* ============================================================
+   El mapa del cerebro (pestaña Cerebro → «Mapa»)
+
+   Sólo tokens del sistema de diseño, salvo el lienzo: es SIEMPRE oscuro,
+   con el tema que tenga la aplicación, porque el brillo de las neuronas
+   es luz que se suma y sobre un fondo claro desaparecería. Sus colores
+   viven en `--cg-*`, dentro de `.cg-escenario`, y no salen de ahí.
+   ============================================================ */
+
+.cg { display: flex; flex-direction: column; gap: var(--sp-3); }
+.cg-cabecera { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
+.cg-titulo { margin: 0; font-size: var(--fs-md); }
+.cg-cifras { margin: 0; color: var(--text-dim); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+
+/* A lo ancho: explorar a la izquierda y el lienzo a la derecha, con la nota elegida flotando sobre el lienzo (el cerebro se
+   centra en el hueco que queda). Por debajo de 1024 px: el lienzo primero, la nota pegada debajo y lo demás al final. */
+.cg-cuerpo { display: grid; grid-template-columns: 1fr; gap: var(--sp-3); align-items: start; }
+.cg-centro { --cg-alto: clamp(360px, 62dvh, 640px); order: 1; min-width: 0; position: relative; display: flex; flex-direction: column; gap: var(--sp-2); }
+.cg-explorar { order: 2; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-4); }
+.cg-ficha { position: sticky; bottom: var(--sp-2); z-index: 2; }
+@media (min-width: 1024px) {
+  .cg-cuerpo { grid-template-columns: minmax(230px, 270px) minmax(0, 1fr); }
+  .cg-explorar { order: 1; }
+  .cg-centro { order: 2; }
+  .cg-ficha { position: absolute; top: var(--sp-2); right: var(--sp-2); width: min(320px, 44%); max-height: calc(var(--cg-alto) - var(--sp-4)); z-index: 3; }
+  .cg-ficha .cg-tarjeta { max-height: calc(var(--cg-alto) - var(--sp-4)); }
+  .cg-pista { display: none; }
+}
+
+/* ---------- El lienzo ---------- */
+.cg-escenario {
+  --cg-fondo-centro: #171c30;
+  --cg-fondo-borde: #0a0c12;
+  --cg-texto: #e8ebf5;
+  --cg-texto-tenue: #aab2c8;
+  --cg-cristal: rgba(14, 16, 24, 0.86);
+  --cg-cristal-borde: rgba(255, 255, 255, 0.16);
+  position: relative;
+  height: var(--cg-alto);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: radial-gradient(ellipse at 50% 42%, var(--cg-fondo-centro), var(--cg-fondo-borde) 78%);
+  color: var(--cg-texto);
+  overflow: hidden;
+  touch-action: none; /* arrastrar gira el cerebro; la página no debe desplazarse debajo del dedo */
+}
+.cg-escenario:focus-visible { outline: 2px solid var(--focus, var(--accent)); outline-offset: 2px; }
+.cg-lienzo-host { position: absolute; inset: 0; }
+.cg-lienzo { position: absolute; inset: 0; display: block; }
+
+.cg-cargando {
+  position: absolute; inset: 0; margin: 0; display: grid; place-items: center;
+  color: var(--cg-texto-tenue); font-size: var(--fs-sm); pointer-events: none;
+}
+
+/* Los nombres de las notas: HTML sobre el lienzo, pulsables y nítidos. */
+.cg-etiquetas { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.cg-etiqueta {
+  position: absolute; left: 0; top: 0;
+  pointer-events: auto;
+  max-width: 240px;
+  min-height: var(--tap-sm);
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--cg-cristal-borde);
+  border-left: 3px solid var(--c, var(--accent));
+  background: var(--cg-cristal);
+  color: var(--cg-texto);
+  font: inherit;
+  font-size: var(--fs-2xs);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: pointer;
+  will-change: transform;
+}
+.cg-etiqueta:hover { border-color: var(--c, var(--accent)); }
+.cg-etiqueta.foc { border-color: var(--c, var(--accent)); }
+.cg-etiqueta.sel { background: #fff; color: #10131c; font-weight: 700; }
+
+.cg-controles { position: absolute; left: var(--sp-2); top: var(--sp-2); display: flex; flex-direction: column; gap: var(--sp-1); }
+.cg-ayuda {
+  position: absolute; left: var(--sp-3); bottom: var(--sp-2); right: var(--sp-3); margin: 0;
+  color: var(--cg-texto-tenue); font-size: var(--fs-2xs); pointer-events: none;
+}
+
+/* La vista previa al pasar el ratón por una neurona. */
+.cg-vista {
+  position: absolute; z-index: 3; max-width: 280px; pointer-events: none;
+  display: flex; flex-direction: column; gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-sm);
+  background: var(--cg-cristal); border: 1px solid var(--cg-cristal-borde);
+  font-size: var(--fs-2xs); line-height: var(--lh-tight);
+}
+.cg-vista strong { font-size: var(--fs-xs); }
+.cg-vista span { color: var(--cg-texto-tenue); }
+.cg-vista em { font-style: normal; color: var(--cg-texto); }
+
+/* ---------- La leyenda ---------- */
+.cg-leyenda { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); color: var(--text-dim); font-size: var(--fs-2xs); }
+.cg-leyenda li { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.cg-punto { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.cg-linea { display: inline-block; width: 18px; height: 2px; border-radius: 1px; flex-shrink: 0; }
+
+/* ---------- Explorar ---------- */
+.cg-grupo { display: flex; flex-direction: column; gap: var(--sp-2); }
+.cg-etiqueta-grupo { margin: 0; font-size: var(--fs-2xs); font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.cg-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.cg-chip { display: inline-flex; align-items: center; gap: var(--sp-2); }
+
+.cg-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow-y: auto; }
+.cg-fila {
+  width: 100%; min-height: var(--tap-sm);
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: 0 var(--sp-2);
+  background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm);
+  color: var(--text); font: inherit; font-size: var(--fs-xs); text-align: left; cursor: pointer;
+}
+.cg-fila:hover { background: var(--surface-2); }
+.cg-fila[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); }
+.cg-fila[data-apagada] { color: var(--text-faint); }
+.cg-fila-titulo { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cg-clase { color: var(--text-dim); font-size: var(--fs-3xs); flex-shrink: 0; }
+
+/* ---------- La nota elegida ---------- */
+.cg-tarjeta { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); max-height: 60dvh; overflow-y: auto; }
+.cg-tarjeta-cabeza { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-2); }
+.cg-tarjeta-titulo { margin: 0; font-size: var(--fs-md); line-height: var(--lh-tight); padding-top: var(--sp-2); }
+.cg-grupo-de { margin: 0; color: var(--text-dim); font-size: var(--fs-2xs); }
+.cg-tarjeta .btn { align-self: flex-start; }
+.cg-vecinas { display: flex; flex-direction: column; gap: var(--sp-1); margin-top: var(--sp-2); }
+.cg-pista { margin: 0; }
+.cg-tarjeta .cerebro-resumen { -webkit-line-clamp: 6; }
+
+@media (max-width: 599px) {
+  .cg-centro { --cg-alto: clamp(320px, 56dvh, 520px); }
+  .cg-ayuda { display: none; }
+  .cg-tarjeta { max-height: 44dvh; }
+}
+
+/* Sin movimiento que marear: los brillos se quedan quietos (el lienzo ya no gira ni lanza señales). */
+@media (prefers-reduced-motion: reduce) {
+  .cg-etiqueta { will-change: auto; }
+}

@@ -89,7 +89,7 @@ export function slugsUnicos(items = [], porDefecto = "sin-nombre", reservados = 
  * sitio de la dirección que el mes —`/cliente/baby-caleb/contenido`—, así
  * que sus nombres quedan reservados para los slugs de los calendarios.
  */
-export const PESTANAS_CLIENTE = Object.freeze(["tareas", "contenido", "ideas", "resultados", "ficha"]);
+export const PESTANAS_CLIENTE = Object.freeze(["tareas", "contenido", "ideas", "resultados", "cerebro", "ficha"]);
 
 export const slugsDeClientes = (clientes = []) => slugsUnicos(clientes, "cliente");
 export const slugsDeCalendarios = (cals = []) => slugsUnicos(cals, "calendario", PESTANAS_CLIENTE);

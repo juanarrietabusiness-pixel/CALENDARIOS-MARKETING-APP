@@ -67,6 +67,13 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "avisos",
   "notas_equipo",
   "historial",
+  // El cerebro de cada cliente: sus notas y lo que aprende de lo que pasa
+  // después de escribir (worker/lib/cerebro/).
+  "cerebro_notas",
+  "cerebro_senales",
+  "cerebro_usos",
+  "cerebro_memoria",
+  "cerebro_propuestas",
   // Del equipo. Tienen dueño como las demás: la lista de miembros de un
   // espacio es un dato del espacio, y pedirla sin acotar devolvería la
   // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué
@@ -97,6 +104,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "calendars", "chat_messages", "chat_resumenes", "client_memories", "client_tasks", "content_bank",
   "consumo_ia", "cuentas_sociales", "image_references", "image_templates", "informes", "auditorias",
   "metricas_competencia", "metricas_cuenta", "metricas_publicacion", "publicaciones_programadas",
+  "cerebro_notas", "cerebro_senales", "cerebro_usos", "cerebro_memoria", "cerebro_propuestas",
 ]);
 
 /** Las que cuelgan de un calendario sin llevar el cliente: se acotan por el calendario. */
@@ -214,6 +222,45 @@ export function crearAcceso(db, ownerId, { clientes = null } = {}) {
         .bind(...valores)
         .all();
       return results ?? [];
+    },
+
+    /**
+     * Sólo algunas columnas, acotado igual que `leer`. Para lo que no necesita
+     * el texto entero de cada fila: la lista de notas del cerebro, sus rutas,
+     * sus versiones. `select *` de 400 notas de 200 000 caracteres no cabe
+     * en una petición.
+     */
+    async leerColumnas(tabla, columnas, where = {}, orden = "created_at asc") {
+      const cols = exigirColumnas(columnas);
+      if (!cols.length) throw new Error("leerColumnas sin columnas");
+      const { sql, valores } = acotar(tabla, where);
+      const { results } = await db
+        .prepare(`select ${cols.join(", ")} from ${tabla} where ${sql} order by ${orden}`)
+        .bind(...valores)
+        .all();
+      return results ?? [];
+    },
+
+    /**
+     * Las filas cuya `columna` es una de `valores`, acotadas igual que `leer`. D1 admite 100 parámetros por sentencia, así
+     * que van en trozos de 50 ids: una sentencia por trozo, no una por valor. Sólo las columnas que se piden.
+     */
+    async leerVarios(tabla, columnas, columna, valores, where = {}) {
+      const cols = exigirColumnas(columnas);
+      if (!cols.length) throw new Error("leerVarios sin columnas");
+      exigirColumnas([columna]);
+      const lista = [...new Set(valores.map(String))];
+      const salida = [];
+      for (let i = 0; i < lista.length; i += 50) {
+        const trozo = lista.slice(i, i + 50);
+        const { sql, valores: v } = acotar(tabla, where);
+        const { results } = await db
+          .prepare(`select ${cols.join(", ")} from ${tabla} where ${sql} and ${columna} in (${trozo.map(() => "?").join(",")})`)
+          .bind(...v, ...trozo)
+          .all();
+        salida.push(...(results ?? []));
+      }
+      return salida;
     },
 
     async leerUno(tabla, where = {}) {
@@ -355,6 +402,26 @@ export function crearAcceso(db, ownerId, { clientes = null } = {}) {
       const { sql, valores } = acotar(tabla, where);
       const { meta } = await db.prepare(`delete from ${tabla} where ${sql}`).bind(...valores).run();
       return meta?.changes ?? 0;
+    },
+
+    /**
+     * Borra varias filas por su id, acotadas igual que `borrar`. D1 admite
+     * 100 parámetros por sentencia, así que van en trozos de 50: una
+     * sentencia por trozo, no una por fila.
+     */
+    async borrarVarios(tabla, ids) {
+      const lista = [...new Set(ids.map(String))];
+      let borradas = 0;
+      for (let i = 0; i < lista.length; i += 50) {
+        const trozo = lista.slice(i, i + 50);
+        const { sql, valores } = acotar(tabla, {});
+        const { meta } = await db
+          .prepare(`delete from ${tabla} where ${sql} and id in (${trozo.map(() => "?").join(",")})`)
+          .bind(...valores, ...trozo)
+          .run();
+        borradas += meta?.changes ?? 0;
+      }
+      return borradas;
     },
   };
 }

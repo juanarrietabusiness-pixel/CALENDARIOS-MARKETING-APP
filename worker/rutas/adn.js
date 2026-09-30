@@ -32,7 +32,7 @@ const MAX_FILE_BYTES = 400_000;   // más que eso no es ADN, es un volcado
 const MAX_FILES = 40;
 const MAX_DEPTH = 3;
 
-const TEXT_RE = /\.(md|txt|json|ya?ml)$/i;
+export const TEXT_RE = /\.(md|txt|json|ya?ml)$/i;
 const IMAGE_RE = /\.(png|jpe?g|svg|webp|gif)$/i;
 
 /**
@@ -52,7 +52,7 @@ const PRIORIDAD = [
 const POR_DEFECTO = { rank: 5, budget: 8_000, role: "otro" };
 
 /** Carpetas que nunca aportan contexto y sí pesan. */
-const SALTAR = /(^|\/)(06_Assets_Brutos_Solo_Lectura|node_modules|\.git|dist|build)(\/|$)/i;
+export const SALTAR = /(^|\/)(06_Assets_Brutos_Solo_Lectura|node_modules|\.git|dist|build)(\/|$)/i;
 
 export function decodeRuta(ruta) {
   if (!ruta) return "";

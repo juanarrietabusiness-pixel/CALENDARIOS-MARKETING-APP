@@ -73,6 +73,45 @@ describe("toda consulta sobre una tabla con dueño lleva el dueño", () => {
       expect(db.ultima().binds).toEqual(["t", "x", "u1"]);
     });
 
+    it(`${tabla}: leerColumnas sólo trae esas columnas y acota por owner_id`, async () => {
+      const db = d1Falsa();
+      const a = crearAcceso(db, "u1");
+      await a.leerColumnas(tabla, ["id", "ruta"], { client_id: "c1" });
+      expect(db.ultima().sql).toMatch(/^select id, ruta from .* where client_id = \? and owner_id = \?/);
+      expect(db.ultima().binds).toEqual(["c1", "u1"]);
+      await expect(a.leerColumnas(tabla, ["id; drop table x"])).rejects.toThrow(/Columna no permitida/);
+      await expect(a.leerColumnas(tabla, [])).rejects.toThrow(/sin columnas/);
+    });
+
+    it(`${tabla}: leerVarios acota igual, sólo trae esas columnas y parte los valores en trozos de 50`, async () => {
+      const db = d1Falsa();
+      const a = crearAcceso(db, "u1");
+      await a.leerVarios(tabla, ["id", "ruta"], "id", Array.from({ length: 120 }, (_, i) => `x${i}`), { client_id: "c1" });
+      const consultas = db.llamadas.filter((c) => /^select id, ruta from/.test(c.sql));
+      expect(consultas).toHaveLength(3);
+      expect(consultas[0].sql).toMatch(/where client_id = \? and owner_id = \?.* and id in \(/);
+      expect(consultas[0].binds.slice(0, 2)).toEqual(["c1", "u1"]);
+      expect(consultas.map((c) => c.binds.length - 2)).toEqual([50, 50, 20]);
+      await expect(a.leerVarios(tabla, ["id; drop table x"], "id", ["a"])).rejects.toThrow(/Columna no permitida/);
+      await expect(a.leerVarios(tabla, ["id"], "id) or (1=1", ["a"])).rejects.toThrow(/Columna no permitida/);
+      await expect(a.leerVarios(tabla, [], "id", ["a"])).rejects.toThrow(/sin columnas/);
+    });
+
+    it(`${tabla}: borrarVarios acota por owner_id y parte los ids en trozos de 50`, async () => {
+      // D1 admite 100 parámetros por sentencia: más ids que eso no caben en una.
+      const db = d1Falsa();
+      const a = crearAcceso(db, "u1");
+      await a.borrarVarios(tabla, ["x", "y", "x"]);
+      expect(db.ultima().sql).toMatch(/^delete from .* where owner_id = \?.* and id in \(\?,\?\)$/);
+      expect(db.ultima().binds).toEqual(["u1", "x", "y"]);
+
+      const ids = Array.from({ length: 120 }, (_, i) => `i${i}`);
+      const antes = db.llamadas.length;
+      await a.borrarVarios(tabla, ids);
+      expect(db.llamadas.length - antes).toBe(3);
+      expect(db.llamadas.slice(antes).every((c) => c.sql.includes("owner_id = ?") && c.binds[0] === "u1")).toBe(true);
+    });
+
     it(`${tabla}: insertar impone el dueño y no deja que lo fije el cuerpo`, async () => {
       // Si el cuerpo de una petición pudiera traer su propio owner_id,
       // cualquiera escribiría en nombre de otro. Se pisa, no se confía.

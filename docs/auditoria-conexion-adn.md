@@ -104,3 +104,27 @@ sin que el navegador pudiera distinguirlo de una respuesta terminada.
   archivo, el HTML de Meta AI se entrega igual y el humano lo carga al
   abrirlo; con archivo en la ficha del cliente, la aplicación ofrece la línea
   en base64 para pegarla y que salga ya compuesto.
+
+---
+
+## Corrección · 2026-09-29
+
+Dos filas de la tabla «Qué se cambió» de arriba **no eran ciertas** cuando se
+escribieron, y se comprobó leyendo el código:
+
+| Lo que decía | Lo que había |
+|---|---|
+| «El ADN va marcado con `cache_control`: se paga una vez por tanda» | No iba marcado en la generación. `cachedBlock()` existía y nadie lo llamaba. Sólo el chat cacheaba, y sólo si el mensaje llegaba «seguido». |
+| «`loadADN(client, { forzar })` y recompilación por SHA del archivo de origen» | `forzar` existe y nadie lo pasa; `recipeSha` se devuelve y nadie lo compara. El ADN sigue congelado en la primera lectura de la ficha del cliente. |
+
+Lo primero **ya está corregido**: la generación parte el contexto en «ADN» y
+«lo que cambia», y el ADN lleva `cache_control` (`src/lib/contextoADN.js`).
+Además, al ESCRIBIR texto ya no viaja la capa de maquetación para Meta AI
+—`05_prompt_maestro_meta_ai.md` salvo sus reglas de copy, la receta salvo
+hashtags, emojis, CTA, cifras y reglas duras, y los prompts semanales ya
+enviados—: entre un 31 % y un 48 % menos de contexto en los clientes con
+receta, medido sobre el ADN real de `Agencia_Workspace`.
+
+Lo segundo **sigue pendiente**, y es el motivo del «cerebro por cliente»:
+mientras el ADN viva como una foto en la ficha, un precio que cambie en el
+repositorio no llega a la generación.

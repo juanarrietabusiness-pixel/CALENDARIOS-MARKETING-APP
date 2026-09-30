@@ -193,6 +193,8 @@ describe("enviarAprobacion", () => {
       calendarId: "cal1", ownerId: "dueno1", postId: "p1",
       // Qué se le pedía: con archivo y sin elegir, la pieza final.
       tipo: "pieza", clientId: "c1",
+      // De qué publicación habla: lo que el cerebro necesita para aprender de la respuesta.
+      publicacion: expect.objectContaining({ titulo: expect.any(String), formato: expect.any(String) }),
     });
     expect(db.escrituras).toHaveLength(1);
   });

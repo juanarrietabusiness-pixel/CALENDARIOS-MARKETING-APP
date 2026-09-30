@@ -105,6 +105,17 @@ src/
     db.js                 Llama a /api/*; conserva todas sus firmas
     equipo.js             Miembros, invitaciones y perfil propio
     rutas.js              Slugs, análisis y construcción de direcciones (puro)
+    contextoADN.js        Qué del ADN viaja a la IA al escribir (sin la maquetación de Meta AI)
+                          y cómo se parte el contexto para la caché de prompt (puro)
+    cerebro.js            Cliente de /api/cerebro (notas, buscar, importar, preparar ficha)
+    cerebroVista.js       La pestaña Cerebro: tipos, filtros, frases de resultado, documentos (puro)
+    cerebroCliente.js     La generación con cerebro: texto estable, qué buscar por tanda (puro)
+    cerebroGrafo.js       El mapa 3D: modelo, colores por tipo, filtros, búsqueda, vecinas (puro)
+    cerebroLayout.js      Dónde queda cada nota dentro del cerebro (lóbulos, hemisferios; puro;
+                          portado de layout3D de Agents Office)
+    cerebroAprendizaje.js Lo que aprende el cerebro de lo que pasa después de escribir: cuántas
+                          señales, qué frase decir tras cada botón (puro)
+    camara3d.js           Cámara de órbita y proyección a pantalla (puro; sustituye a OrbitControls)
     vivo.js               WebSocket: reconexión, latido, presencia
     horas.js              «9am» → «09:00» y vuelta (puro)
     lote.js               Editar muchas publicaciones de una vez (puro)
@@ -170,6 +181,11 @@ src/
     ExploradorDrive.jsx   La carpeta de Drive de un cliente: gestionar o escoger
     BancoSelector.jsx     Escoger de Drive (o del banco anterior); forma única
     PestanaContenido.jsx  La pestaña Contenido: Drive + migrar el banco anterior
+    Cerebro.jsx           La pestaña Cerebro: las notas de un cliente, filtros, buscar, añadir, subir
+    CerebroAprendizaje.jsx  «Lo que aprende»: señales, aprender del historial y de los resultados,
+                          y las reglas que la IA propone para que una persona las acepte
+    CerebroGrafo.jsx      «Mapa 3D» de la pestaña: explorar, elegir una nota, ver sus vecinas (lazy)
+    cerebro3d/escena.js   El lienzo del mapa: dibuja, gira, elige; sin librerías (canvas 2D)
     NavPrincipal.jsx / MenuCuenta.jsx / BarraInferior.jsx / Buscador.jsx
                           Armazón: secciones, cuenta, barra del móvil, Ctrl+K
     ClientModal.jsx       Alta y edición de cliente (5 pestañas)
@@ -217,6 +233,18 @@ worker/
     informes.js           Cifras del mes (congeladas) + análisis de la IA; el del día 1
     auditorias.js         Leer un perfil (cuenta propia o business_discovery) y auditarlo
     mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
+    cerebro/              El cerebro de un cliente: conocimiento.js (BM25 por pasajes) y
+                          memoria.js (grafo, presupuesto, sinapsis) portados de Agents
+                          Office; notas.js (tipos, partir un archivo en notas);
+                          cerebro.js (índice en R2, buscar, contexto); repositorio.js e
+                          importar.js (llenarlo desde GitHub); preparar.js (la IA escribe
+                          la ficha y las cifras); ia.js (la llamada a Anthropic que
+                          comparten preparar y proponer); senales.js (qué resultado tiene
+                          una respuesta, un rendimiento en redes o una corrección; puro);
+                          pesos.js (los pesos que se leen en cada búsqueda); aprender.js
+                          (lo que TOCA la base: usos, señales, refuerzo, notas automáticas,
+                          historial, resultados y correcciones); proponer.js (la IA propone
+                          reglas y una persona las decide)
     herramientasServidor.js  Lo que el asistente consulta sin el navegador:
                           web, repositorio de GitHub, calendarios, tareas, ideas
     equipo.js             Avisos (guardar y anunciar), historial y asignaciones
@@ -239,10 +267,12 @@ worker/
     metricas.js           Resultados de un cliente, de la agencia y la miniatura de Meta
     informes.js           Informes: listar, generar, compartir; el público va en index.js
     auditorias.js         Auditorías: listar, generar, compartir; la pública va en index.js
+    cerebro.js            /api/cerebro/<cliente>: notas, buscar, contexto, grafo, señales, aprender,
+                          propuestas, importar, preparar
     mcp.js                El servidor MCP (/mcp), su OAuth (/oauth/*, /.well-known/*) y
                           el permiso y las conexiones (/api/mcp/*)
     avisos.js             /api/avisos: la bandeja de quien pregunta y marcar leídos
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -261,7 +291,7 @@ tests/
 | `/` | Panel, sin cliente elegido |
 | `/cliente/<slug>` | Un cliente |
 | `/cliente/<slug>/<mes>-<año>` | Un mes del calendario de ese cliente (`octubre-2026`), exista o no su cajón. Los enlaces viejos con el nombre o el id del calendario siguen abriendo su mes |
-| `/cliente/<slug>/tareas` · `/contenido` · `/ideas` · `/resultados` · `/ficha` | Las otras pestañas del cliente |
+| `/cliente/<slug>/tareas` · `/contenido` · `/ideas` · `/resultados` · `/cerebro` · `/ficha` | Las otras pestañas del cliente |
 | `/tareas` | Mi día |
 | `/ajustes` | IA, presupuesto, integraciones, tareas, copia de seguridad |
 | `/resultados` | Todos los clientes, últimos 30 días |
@@ -936,6 +966,204 @@ son del servidor.
   minutos. El navegador manda `seguido` (menos de 4,5 min desde la
   anterior) y el Worker sólo marca caché entonces o desde la segunda
   vuelta del bucle, que sí la lee.
+- **La generación mandaba el ADN entero, sin caché, y con la maquetación
+  dentro.** `docs/auditoria-conexion-adn.md` decía que el ADN iba marcado
+  con `cache_control`; no iba: `cachedBlock()` existía desde la migración
+  y nadie lo llamaba, así que cada tanda de seis publicaciones pagaba el
+  contexto entero (~25.000 tokens en Dcasa). Además de la marca, ese ADN
+  lleva la capa de MAQUETACIÓN para Meta AI (plantillas, escala, bloque de
+  estilo, negativos, contrato del HTML), que escribir un caption no
+  necesita: ~40 % del total en los clientes con receta. Ahora
+  `buildClientContext` la quita (`sinCapaMaquetacion`) y `callAI` parte el
+  contexto en «ADN» —con `cache_control`— y «lo que cambia»
+  (`prepararContenidoIA`). Dos cosas para no romperlo: el título «FICHA EN
+  LA APLICACIÓN» de `buildClientContext` es donde se parte, y una
+  petición cuyo PRIMER bloque es una imagen no se cachea (la caché es por
+  prefijo). Las dos fallan abiertas: si no reconocen la forma, mandan
+  todo. El asistente pide `{ maquetacion: true }` y sigue viendo el ADN íntegro.
+- **El cerebro de un cliente es SUYO: un índice por cliente, nunca uno para
+  todos.** El algoritmo viene de Agents Office, que indexa por nombre de
+  archivo: los nueve clientes tienen un `01_brand_guidelines.md`, y en un
+  índice compartido sobrevive uno y los otros ocho desaparecen en silencio,
+  además de mezclarse (regla de oro del orquestador). Aquí cada cliente
+  tiene sus notas en `cerebro_notas` (D1, acotadas por dueño y por cliente
+  en la capa de acceso) y su índice en R2 bajo `cerebro/<cliente>/`, y
+  `conocimiento.js` no sabe qué es un cliente: recibe UN mapa de notas.
+  `tests/migracion/cerebro.rutas.test.js` comprueba que un cliente de otro
+  espacio, o de otro colaborador, da «no encontrado» en todas las rutas.
+- **El índice del cerebro NO va bajo `clientes/`.** `/api/media/*` sirve y
+  BORRA cualquier clave `clientes/<id>/…` de un cliente del espacio, y el
+  índice lleva también las notas internas. Con el prefijo `cerebro/` esa
+  ruta no lo alcanza; hay un test que lo pide por las dos vías.
+- **«Interna» es un candado, no una etiqueta.** Una nota interna la ve el
+  equipo y el asistente (`para: "chat"`), pero `contexto()` y `buscar()`
+  con `para: "texto"` —lo que escribe captions, guiones e ideas— la dejan
+  fuera, y también las notas de maquetación. La IA no puede filtrar lo que
+  no ve: el ADN de Baby Caleb lleva costos y márgenes «que no se dicen al
+  cliente» y antes viajaban en cada prompt. Al importar se marcan solas las
+  secciones cuyo TÍTULO habla de economía unitaria, márgenes, proveedores,
+  «landed cost», roadmap, inversionistas, «reglas operativas» o lo llama
+  «interno»; las que sólo lo mencionan en el cuerpo se devuelven en
+  `revisar`, porque un precio de venta puede vivir junto a un costo y
+  ocultarla dejaría al modelo sin precio. **La lista de títulos es
+  estrecha a propósito:** ocultar de más es un fallo mudo —«Costo de
+  envío» u «Horario operativo» son datos públicos, y una IA que no los ve
+  no los puede decir—, y la primera versión, con «costo», «operativo» o
+  «importación» sueltos, los habría escondido. Un valor de `para`
+  inventado se trata como `texto`, el más estricto. `buscar()` SÍ devuelve
+  la ficha y las cifras (quien busca no las recibe de ningún otro lado);
+  sólo `contexto()` las pone aparte y las quita de los pasajes.
+- **«Editada a mano» se sabe por las fechas, y `guardar` las estropea.** Una
+  nota que nadie tocó tiene `created_at` = `updated_at`, y es lo que mira
+  una nueva importación (`importar.js`) y la pasada de IA (`preparar.js`)
+  para no pisar lo corregido. Pero `acceso.guardar()` pone `updated_at` al
+  día por su cuenta: una nota importada o escrita por la IA con `guardar`
+  nacería «editada». Por eso las importadas se insertan SIN fechas (las
+  pone la base, iguales) y la ficha se reemplaza borrando e insertando. Una
+  nota nueva escrita a mano entra con `insertar`, que respeta las dos fechas:
+  con `guardar`, `updated_at` salía un milisegundo después de `created_at` y una
+  prueba fallaba una de cada seis veces —el mismo error, en pequeño—. Y
+  el `PUT` de una nota conserva su `origen` y su `fuente`: los tests con el
+  ADN real cazaron que editar una nota importada se los borraba y la
+  siguiente importación ya no la reconocía. La pasada de IA sólo
+  reemplaza notas suyas (`origen: "ia"`): una nota que alguien llamó «Ficha
+  técnica» a mano, o una sección importada que se llama igual, tiene la
+  misma ruta y no es suya —la ficha nueva toma `ficha-tecnica-2`—.
+- **El índice de R2 puede quedarse atrás, y se nota al leerlo.** Cada
+  escritura lee el índice, lo parcha y lo escribe entero, y R2 no tiene
+  condiciones de escritura: dos ediciones a la vez, o un guardado que se
+  cruza con una importación, y la que escribe última se lleva por delante
+  lo de la otra. Cada nota lleva en el índice su `updated_at` y su tamaño
+  (`meta.u`, `meta.c`); `cargarIndice()` los compara con una lectura ligera
+  de D1 (`hayDeriva()`) y reconstruye si no coinciden. D1 es la verdad; el
+  índice es un derivado que se cura solo. Y el grafo (las aristas) NO se
+  recalcula en cada edición —cuesta 3–9 ms de CPU y sólo lo usa
+  `contexto()`—: una edición lo deja en `null` y el primero que lo pide lo
+  calcula y lo guarda.
+- **La lista del cerebro no lee el texto de las notas.** Una nota lleva
+  `resumen` y `caracteres` calculados al escribirla (`derivados()`, en
+  `notas.js`); la lista, el estado y las rutas libres salen de
+  `acceso.leerColumnas()`, que trae columnas concretas acotadas igual que
+  `leer()`. `select *` de 400 notas de 200 000 caracteres no cabe en una
+  respuesta de D1. **Todo sitio que escriba una nota tiene que calcularlos**
+  (la ruta PUT, la importación, la pasada de IA): una nota sin ellos sale
+  con el resumen vacío y «0 car.».
+- **Sin cerebro, todo sigue como antes.** `loadADN` pide el contexto al
+  Worker y, si el cliente no tiene notas (o falla), vuelve al ADN de su
+  ficha; y con notas pero SIN ficha técnica también, mientras el cliente
+  tenga un ADN guardado al que volver (`usaElCerebro()`): unos pasajes
+  sueltos son peor que el ADN entero hasta que alguien pulse «Preparar
+  ficha con IA». El chat NO usa `loadADN` sino `adnParaElChat()`: pregunta
+  en cada mensaje, y `loadADN` puede releer GitHub (decenas de peticiones)
+  si el cliente no tiene ADN guardado; el chat sólo mira el cerebro, recuerda
+  la respuesta un minuto y la pestaña Cerebro la suelta al cambiar algo. Los pasajes de cada TANDA se piden aparte (`pasajesDeLaTanda`) y
+  van detrás de la marca de caché: si un pasaje se colara en el bloque
+  cacheado, cada tanda escribiría la caché entera y nunca la leería. El
+  chat usa `{ maquetacion: true }` porque alguien puede pedirle el prompt
+  para Meta AI; en la Fase 0 se le quitó sin querer (`buildChatSystemPrompt`
+  también pasa por `buildClientContext`) y este mismo archivo decía que no.
+- **El mapa 3D se dibuja en un lienzo 2D, sin three.js, y eso es una
+  decisión.** La oficina de agentes usa three.js (144 kB comprimidos, más que
+  toda esta aplicación) porque dibuja miles de notas; un cliente de esta
+  agencia son decenas o cientos. `cerebro3d/escena.js` proyecta cada nota con
+  la cámara de `lib/camara3d.js`, dibuja el brillo sumando luz (`lighter`) y
+  guarda la interfaz de `initBrain3D`, así que si algún día hicieran falta
+  miles de notas se cambia ese archivo y nada más. Un caso de
+  `rendimiento.bundle.test.js` falla si el chunk pasa de 30 kB o si aparece
+  `WebGLRenderer` dentro. Cosas que se aprendieron al portarlo:
+  · **El lienzo es SIEMPRE oscuro,** con el tema que sea: el brillo es luz que
+  se suma y sobre un fondo claro desaparece. Sus colores viven en `--cg-*`
+  dentro de `.cg-escenario` y no salen de ahí; los de cada tipo, en
+  `COLOR_TIPO`.
+  · **Un sitio guardado que no es un número contagiaba a sus vecinas.** En el
+  `layout3D` original, una nota nueva «nace junto a una vecina que ya tenga
+  sitio» sin comprobar que el sitio fuera un número: con uno roto, la nota
+  nacía en NaN y se quedaba fuera del cerebro. `colocar()` lo valida.
+  · **Sólo se mueven la nota nueva y las que toca:** el resto conserva su
+  sitio, y con `clave` (el cliente) se recuerda entre visitas en
+  `localStorage`; si `VERSION_LAYOUT` sube, lo guardado deja de valer.
+  · **Los toques se buscan en coordenadas del lienzo** (`clientX − rect.left`),
+  con 16 px de tolerancia con ratón y 26 con el dedo; un movimiento de más de
+  5 px (10 con el dedo) es un arrastre y gira el cerebro. El lienzo lleva
+  `touch-action: none`.
+  · **El lienzo no es accesible por sí mismo:** es `aria-hidden`. La lista de
+  notas de la izquierda hace lo mismo que tocar un punto, y con el foco en el
+  lienzo las flechas giran, +/− acercan y 0 lo devuelve a su sitio.
+  · **A lo ancho la nota elegida flota sobre el lienzo** y el cerebro se centra
+  en el hueco que queda (`setInsets`); en el teléfono va debajo y no tapa nada.
+  · **`prefers-reduced-motion`:** ni gira solo, ni lanza señales, ni vuela
+  (el vuelo es un salto).
+- **El repositorio ya no manda: el cerebro sí.** El repo Workspace queda
+  como copia de seguridad. Lo que hoy lee de él —las sesiones de Claude
+  Code que trabajan ese repo, `verificar.mjs`, los tests de recetas de
+  `src/lib/componer.test.js`— seguirá viendo lo que allí haya; lo que se
+  corrija en el cerebro no vuelve solo al repo.
+- **El cerebro aprende de lo que pasa DESPUÉS de escribir, y cada parte de eso
+  puede mentir si se toca sin saber por qué está así** (todo en
+  `worker/lib/cerebro/aprender.js`, con `senales.js` y `proponer.js`; el porqué
+  entero, en `docs/propuesta-cerebro-por-cliente.md`).
+  · **Una señal se REEMPLAZA, no se suma.** Su clave es «tipo:publicación»
+  (`respuesta:p3`): si el cliente pide cambios y luego aprueba, cuenta una vez, y
+  `reinforce()` deshace lo que hizo la anterior antes de aplicar la nueva. Sumar
+  haría que quien vuelve a responder pese doble.
+  · **El silencio no es un sí.** En Agents Office «usado tal cual» vale 0,75 porque
+  lo usa alguien de la casa; aquí muchos clientes no responden nunca, y sin
+  respuesta no hay señal.
+  · **Lo de antes no puede mover pesos.** De una respuesta vieja no se sabe qué
+  notas se usaron para escribirla (`cerebro_usos` no existía): «aprender del
+  historial» deja señales y notas, pero `reforzar()` sólo cuenta las
+  publicaciones con usos apuntados. Atribuirle el resultado a las notas de HOY
+  sería inventar.
+  · **Aprender no puede tumbar lo que lo provoca.** `registrarRespuesta`,
+  `registrarCorrecciones` y las notas automáticas corren detrás de la respuesta
+  del cliente o del guardado del calendario (`ctx.waitUntil` o `despues()`) y
+  atrapan sus errores: un fallo aquí es un apunte perdido, no un calendario que
+  no se guardó ni una aprobación que el cliente no pudo enviar. Hay un caso que
+  rompe D1 a propósito y comprueba que el calendario se guarda igual.
+  · **Nada propuesto por la IA entra sin una persona, y el respaldo lo comprueba
+  el CÓDIGO.** La IA dice «RESPALDO: R2, R5»; `respaldoSuficiente()` exige dos
+  casos, o uno solo si es una orden expresa del cliente con sus palabras. Una
+  corrección del equipo o un resultado en redes no son nunca, solos, una orden.
+  Si la IA se inventa un número de caso, se descarta; si no hay nada nuevo desde
+  la última vez, ni se llama (cuesta dinero); con diez esperando no se piden más.
+  · **Las notas automáticas no pisan lo corregido a mano** y tienen tope
+  (`MAX_AUTOMATICAS`, 60): se sabe que alguien las tocó porque `updated_at` ya
+  no es el de su creación, así que se insertan SIN fechas. La misma trampa que la
+  ficha: `guardar()` fecha lo que lleva `updated_at`.
+  · **`cerebro_usos.texto` (la línea base de lo que escribió la IA) se escribe
+  SIN `updated_at`.** Ese campo de `cerebro_usos` dice cuándo se le pidió texto a
+  la IA por última vez; si apuntar la base lo pusiera al día, cada base parecería
+  «se le pidió otra vez» y la siguiente corrección se leería como una
+  regeneración. `evaluarEdicion()` las compara.
+  · **El texto de la IA se reconoce porque llega DE GOLPE** (60 caracteres o más
+  en un solo guardado) **y sólo si se pidió con el cerebro** (hay fila en
+  `cerebro_usos`). Lo que teclea una persona entra de a poco; el asistente del
+  chat y Claude por MCP no pasan por `/contexto` con ids, así que sus textos no
+  dejan base ni señal. Si se le pide texto otra vez, la base se cambia: si no, un
+  texto regenerado se leería como una corrección enorme del anterior.
+  · **Un retoque no enseña nada** (`MIN_CAMBIO`, 0,15) **y los guardados llegan
+  con cada pausa al teclear:** la señal sólo se reescribe si cambió al menos
+  `SALTO_MINIMO` (0,08); si no, escribir una frase sería un `guardarSenales` y un
+  `reforzar` por pausa. Un guardado que no toca el texto no consulta nada del
+  cerebro (un caso lo cuenta).
+  · **Los resultados en redes se comparan con el MISMO cliente, dentro de su
+  formato y sólo cuando maduraron** (`DIAS_DE_MADURACION`, 5: hasta entonces las
+  cifras siguen subiendo) y hay `MIN_MEDIDAS` (8) de esa red. Un reel y una foto no
+  se miden con la misma vara, y tres publicaciones no son una distribución. Sólo dejan
+  señal las que salieron desde la aplicación (`publicaciones_programadas.externo_id`
+  las une con `metricas_publicacion`): las demás son parte de cómo rinde esa
+  cuenta, no de qué notas se usaron. Se mide como la pantalla de Resultados
+  —por interacciones—, y va a pedido: el cron ya está en el límite del plan
+  gratuito.
+- **Llenar el cerebro cabe en las 50 peticiones del plan gratuito.** Una
+  importación es el árbol de GitHub más un archivo por petición: 40 por
+  llamada, y lo que no cabe se cuenta en `omitidos` y entra en la
+  siguiente, que ya no repite lo hecho (compara el SHA de cada archivo).
+  Un archivo que CAMBIÓ en el repositorio no se descarga sin «Actualizar lo
+  que cambió»: bajarlo para tirarlo gastaría una de las 50 peticiones. Y al
+  borrar lo viejo de varios archivos va una sola tanda, no una consulta por
+  archivo. Borrar un cliente borra también su índice de R2, que lleva las
+  notas internas.
 - **El saldo agotado llega como un 400 cualquiera.** «Your credit balance
   is too low…» se traduce en `mensajeDeRechazo()` a qué hacer.
 - **Google Drive: tres trampas.** (1) Con la app de Google «en prueba»,
@@ -1338,6 +1566,9 @@ son del servidor.
 
 ## Documentos relacionados
 
+- `docs/propuesta-estudio-y-meta.md` — plan (sin implementar) para portar el Estudio de
+  Agents Office —imagen y video por trabajos, por cliente— y para tener Meta (Muse Spark) como
+  proveedor de la IA de texto. Con las decisiones que esperan respuesta.
 - `DEPLOY.md` — puesta en producción en Cloudflare: Worker, D1, R2 y el corte.
 - `docs/auditoria-ux-ui.md` — auditoría de UX, UI, responsive y accesibilidad,
   con lo corregido y lo pendiente.
@@ -1356,3 +1587,7 @@ son del servidor.
   Fase 1 y la limpieza, implementadas; fases 2 a 4, pendientes.
 - `docs/hub-cloudflare.md` — plan del hub donde este calendario pasa a ser una
   herramienta más, junto al bot y la tienda que ya están en Cloudflare.
+- `docs/propuesta-cerebro-por-cliente.md` — un cerebro por cliente (notas en D1, índice
+  en R2, ficha técnica y cifras, búsqueda por pasajes) en lugar de volcar el ADN entero
+  en cada llamada. Fases 0 y 1 implementadas; memoria de decisiones, visualización,
+  PDF/Word/Excel, Estudio, Meta y el puente con Agents Office, pendientes.

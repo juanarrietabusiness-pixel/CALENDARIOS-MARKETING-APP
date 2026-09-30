@@ -1,7 +1,7 @@
 import { useId, useState, useRef } from "react";
 import { PLANS, FORMATS, FORMAT_ICONS, MONTHS, DAYS, DAYS_SHORT } from "../constants";
 import { uid, daysInMonth, fmtDate, getWeekNumber, dayName } from "../utils";
-import { callAI, buildClientContext, buildDescripcionesPrompt, loadADN, parseAIResponse } from "../api";
+import { callAI, buildClientContext, buildDescripcionesPrompt, loadADN, parseAIResponse, pasajesDeLaTanda } from "../api";
 import { loadClientMemories } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
@@ -256,8 +256,8 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
     setAiStatus("Generando ideas...");
     try {
       if (!client.githubContext && client.githubRepo) setAiStatus("Cargando ADN desde GitHub...");
-      const adnExtra = (await loadADN(client)).content;
-      const ctx = buildClientContext(client, { campaign }, adnExtra);
+      const adn = await loadADN(client);
+      const adnExtra = adn.content;
       const daysList = enAlcance(estructuraDelMes());
 
       const BATCH = 7;
@@ -276,6 +276,14 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
           })
           .join("\n");
 
+        // Lo estable (ADN o ficha y cifras) se cachea; los pasajes son de ESTA tanda de días.
+        const pasajes = await pasajesDeLaTanda(client, adn, { campaign }, batch.map((d) => ({
+          idea: (d.existingIdeas || []).map((e) => e.idea).filter(Boolean).join(" "),
+          category: d.cat,
+          format: d.formats.map((f) => f.format).join(" "),
+          _concept: weekConcepts[d.wk - 1] || "",
+        })));
+        const ctx = buildClientContext(client, { campaign }, adnExtra, adn.cerebro ? { pasajes } : null);
         const prompt = `${ctx}
 
 CAMPANA: ${campaign || "N/A"}
@@ -370,10 +378,11 @@ ${daysDesc}`;
     setAiStatus("Preparando descripciones…");
     try {
       if (!client.githubContext && client.githubRepo) setAiStatus("Cargando ADN desde GitHub…");
-      const [{ content: adnExtra }, wizMems] = await Promise.all([
+      const [adn, wizMems] = await Promise.all([
         loadADN(client),
         loadClientMemories(client.dbId || client.id).catch(() => []),
       ]);
+      const adnExtra = adn.content;
 
       // Se aplana a lista de publicaciones: la tanda se mide en
       // publicaciones, no en días, porque un día premium lleva tres.
@@ -408,7 +417,8 @@ ${daysDesc}`;
         const tanda = pendientes.slice(i, i + BATCH);
         setAiStatus(`Descripciones ${i + 1}-${Math.min(i + BATCH, pendientes.length)} de ${pendientes.length}…`);
 
-        const prompt = buildDescripcionesPrompt(client, calendarioParcial, tanda, adnExtra, wizMems);
+        const pasajes = await pasajesDeLaTanda(client, adn, calendarioParcial, tanda);
+        const prompt = buildDescripcionesPrompt(client, calendarioParcial, tanda, adnExtra, wizMems, adn.cerebro ? { pasajes } : null);
         // `tolerarCorte` porque una tanda que se corta en la última
         // publicación trae las cinco anteriores enteras: rechazarla entera
         // obligaba a repetir el mes por una descripción.

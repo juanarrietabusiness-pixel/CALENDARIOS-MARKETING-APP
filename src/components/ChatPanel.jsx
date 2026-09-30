@@ -5,7 +5,7 @@ import { idDeCarpeta } from "../lib/drive";
 import { CopyButton } from "./calendario/primitivas";
 import { stripMarkdown } from "./calendario/formato";
 import { useDialogA11y } from "../hooks/useDialogA11y";
-import { conversarIA, leerResumenChat, resumirChat, buildChatSystemPrompt, getChatTools } from "../api";
+import { conversarIA, leerResumenChat, resumirChat, buildChatSystemPrompt, getChatTools, adnParaElChat } from "../api";
 import { uid, compressImage } from "../utils";
 import { leerHora, MAL, aplicarLote } from "../lib/lote";
 import { partirMensaje, marcarImagen, marcarContexto, FORMATOS_IMAGEN, INSTRUCCION_PIEZAS, INSTRUCCION_ADJUNTOS } from "../lib/mensajeChat";
@@ -657,8 +657,11 @@ CÓMO DEBES RESPONDER:
         }
       }
 
+      // Con cerebro, el asistente recibe la ficha y las cifras del cliente y busca el resto con `buscar_cerebro`;
+      // sin él, el ADN de la ficha como siempre.
+      const adn = chatMode === "client" && client ? await adnParaElChat(client) : null;
       let system = chatMode === "client" && client
-        ? buildChatSystemPrompt(client, calRef.current, client.githubContext || "", memories)
+        ? buildChatSystemPrompt(client, calRef.current, adn.content, memories, adn.cerebro ? { pasajes: "" } : null)
         : buildGlobalSystemPrompt();
       if (res.resumen) {
         system += `\n\nRESUMEN DE LA CONVERSACIÓN ANTERIOR (lo más antiguo, ya plegado; lo reciente va entero en los mensajes):\n${res.resumen}`;

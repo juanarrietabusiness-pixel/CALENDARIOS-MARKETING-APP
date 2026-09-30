@@ -183,6 +183,33 @@ describe("presupuesto de descarga", () => {
   });
 });
 
+describe("el mapa 3D del cerebro", () => {
+  // Es la pantalla que más tentaría a meter una librería (three.js son 144 kB comprimidos, más que toda la aplicación).
+  // Se dibuja en un lienzo 2D, sin dependencias, y este caso es lo que impide que eso cambie sin que nadie lo decida.
+  const mapa = () => js().find((a) => a.nombre.startsWith("CerebroGrafo-"));
+
+  it("va en su propio chunk y no se descarga hasta que se abre", () => {
+    expect(mapa(), "no hay chunk «CerebroGrafo»: el mapa se metió en otro o dejó de existir").toBeDefined();
+    expect(jsInicial().map((a) => a.nombre)).not.toContain(mapa().nombre);
+  });
+
+  it("cabe en 30 kB comprimidos: si pasa de ahí, se coló una librería", () => {
+    expect(
+      Math.round(mapa().gzip / 1024),
+      fallo({
+        que: `el mapa 3D del cerebro pesa ${kb(mapa().gzip)} kB comprimidos, por encima de 30`,
+        donde: `dist/assets/${mapa().nombre}`,
+        porque: "El lienzo, la cámara y la colocación de las notas son código propio y pesan unos 12 kB. Más que eso quiere decir que se importó una librería (three.js, d3…) a una pantalla que se dibuja perfectamente sin ella.",
+        arreglo: "Quita la importación. Si de verdad hace falta WebGL —miles de notas por cliente—, súbelo aquí a conciencia y di por qué en docs/propuesta-cerebro-por-cliente.md.",
+      }),
+    ).toBeLessThanOrEqual(30);
+  });
+
+  it("no lleva three.js dentro", () => {
+    expect(mapa().buf.toString("utf8")).not.toMatch(/WebGLRenderer|THREE\./);
+  });
+});
+
 describe("la caché puede hacer su trabajo", () => {
   it("todo recurso lleva hash de contenido en el nombre", () => {
     const sinHash = archivos.filter((a) => !/-[A-Za-z0-9_-]{8,}\.(js|css|png|jpg|svg|woff2?)$/.test(a.nombre));

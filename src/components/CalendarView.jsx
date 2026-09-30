@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useRef } fro
 import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid } from "../utils";
 import { marcarActualizada } from "../lib/publicacion";
-import { callAI, loadADN, parseAIResponse, buildScriptPrompt, buildDescripcionesPrompt, buildClientContext, generateSinglePost } from "../api";
+import { callAI, loadADN, parseAIResponse, buildScriptPrompt, buildDescripcionesPrompt, buildClientContext, generateSinglePost, pasajesDeLaTanda } from "../api";
 import { base64DeImagen, prepararParaRedes } from "../lib/medios";
 import {
   shareCalendar, setShareEnabled, fetchApprovals, subscribeApprovals, loadClientMemories,
@@ -536,7 +536,8 @@ export default function CalendarView({
         setGenStatus(`Reintentando ${i + 1}-${Math.min(i + BATCH, postsToGen.length)}/${postsToGen.length}...`);
         setGenProgress(Math.round((i / postsToGen.length) * 90));
 
-        const promptText = buildScriptPrompt(client, cal, batch, adnExtra, mems2);
+        const pasajes = await pasajesDeLaTanda(client, adn2, cal, batch);
+        const promptText = buildScriptPrompt(client, cal, batch, adnExtra, mems2, adn2.cerebro ? { pasajes } : null);
         const content = [{ type: "text", text: promptText }];
         for (const p of batch) {
           const data = await base64DeImagen(p.image).catch(() => null);
@@ -680,7 +681,6 @@ export default function CalendarView({
 
       if (sinIdea.length) {
         addDebug(`Fase 1: ${sinIdea.length} posts sin idea`);
-        const ctx = buildClientContext(client, cal, adnExtra);
         let ideasResults = {};
 
         for (let i = 0; i < sinIdea.length; i += BATCH) {
@@ -688,6 +688,9 @@ export default function CalendarView({
           setGenStatus(`Fase 1 — Ideas ${i + 1}-${Math.min(i + BATCH, sinIdea.length)} de ${sinIdea.length}…`);
           setGenProgress(Math.round((i / sinIdea.length) * 25));
 
+          // Lo estable (ADN o ficha y cifras) se cachea; los pasajes son de ESTA tanda.
+          const pasajes = await pasajesDeLaTanda(client, adn, cal, batch);
+          const ctx = buildClientContext(client, cal, adnExtra, adn.cerebro ? { pasajes } : null);
           const prompt = `${ctx}
 
 CAMPAÑA: ${cal.campaign || "N/A"}
@@ -738,7 +741,8 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           setGenStatus(`Fase 2 — Guiones ${i + 1}-${Math.min(i + BATCH, sinGuion.length)} de ${sinGuion.length}…`);
           setGenProgress(25 + Math.round((i / sinGuion.length) * 30));
 
-          const promptText = buildScriptPrompt(client, cal, batch, adnExtra, memories);
+          const pasajes = await pasajesDeLaTanda(client, adn, cal, batch);
+          const promptText = buildScriptPrompt(client, cal, batch, adnExtra, memories, adn.cerebro ? { pasajes } : null);
           const content = [{ type: "text", text: promptText }];
           const res2 = await callAI(content, { maxTokens: 8000, tolerarCorte: true, funcion: "guiones", clienteId: client?.id });
           const txt2 = typeof res2 === "string" ? res2 : res2.texto;
@@ -780,7 +784,8 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           setGenStatus(`Fase 3 — Descripciones ${i + 1}-${Math.min(i + BATCH, sinDesc.length)} de ${sinDesc.length}…`);
           setGenProgress(55 + Math.round((i / sinDesc.length) * 40));
 
-          const promptText = buildDescripcionesPrompt(client, cal, batch, adnExtra, memories);
+          const pasajes = await pasajesDeLaTanda(client, adn, cal, batch);
+          const promptText = buildDescripcionesPrompt(client, cal, batch, adnExtra, memories, adn.cerebro ? { pasajes } : null);
           const { texto } = await callAI([{ type: "text", text: promptText }], { maxTokens: 8000, tolerarCorte: true, funcion: "guiones", clienteId: client?.id });
           const parsed = parseAIResponse(texto);
           addDebug(`Fase 3 batch: ${Object.keys(parsed).length} descripciones`);

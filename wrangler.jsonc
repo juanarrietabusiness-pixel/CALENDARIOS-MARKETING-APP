@@ -75,8 +75,10 @@
   ],
 
   // Los secretos NO van aquí. Se ponen con `wrangler secret put`:
-  //   ANTHROPIC_API_KEY, GITHUB_TOKEN,
-  //   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, META_APP_ID, META_APP_SECRET
+  //   ANTHROPIC_API_KEY, GITHUB_TOKEN, GOOGLE_AI_KEY,
+  //   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+  //   META_APP_ID, META_APP_SECRET, META_CONFIG_ID,
+  //   TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET
   // Estas variables sí son públicas en el sentido de que no abren nada:
   // son nombres de modelo y políticas.
   "vars": {

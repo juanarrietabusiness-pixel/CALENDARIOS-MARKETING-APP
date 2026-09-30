@@ -50,6 +50,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   { name: "ver_cola", description: "La cola de publicación: qué sale en los próximos días, qué falló (con el motivo) y qué salió. De todos los clientes o de uno.", inputSchema: { type: "object", properties: { ...clienteParam, dias: { type: "integer", description: "Días hacia delante. Por defecto 7." } } }, annotations: soloLectura },
   { name: "ver_tareas", description: "Las tareas de un cliente, o todas si no se indica cliente.", inputSchema: { type: "object", properties: { ...clienteParam, estado: { type: "string", enum: ["pendientes", "terminadas", "todas"] } } }, annotations: soloLectura },
   { name: "ver_banco_ideas", description: "Las ideas guardadas de un cliente.", inputSchema: { type: "object", properties: { ...clienteParam }, required: ["cliente"] }, annotations: soloLectura },
+  { name: "buscar_cerebro", description: "Busca en el cerebro de un cliente —su ficha técnica, marca, precios, personas, límites y los documentos que se le subieron— y devuelve los pasajes que responden. Úsala antes de escribir para un cliente o de decir que no sabes algo de él. Incluye notas internas: es para el equipo, no las uses en textos que se publican.", inputSchema: { type: "object", properties: { ...clienteParam, consulta: { type: "string", description: "Qué buscar, en palabras del tema." } }, required: ["cliente", "consulta"] }, annotations: soloLectura },
   { name: "ver_resultados", description: "Cómo le va en redes a un cliente: seguidores, alcance, interacción, mejores publicaciones, formatos, horarios y competencia.", inputSchema: { type: "object", properties: { ...clienteParam, dias: { type: "integer", description: "7 a 90. Por defecto 30." } }, required: ["cliente"] }, annotations: soloLectura },
   {
     name: "crear_publicacion",
@@ -340,7 +341,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
   async function llamar(nombre, entrada = {}) {
     try {
       if (acciones[nombre]) return { content: [{ type: "text", text: await acciones[nombre](entrada ?? {}) }] };
-      if (["ver_calendario", "ver_tareas", "ver_banco_ideas", "ver_resultados"].includes(nombre)) {
+      if (["ver_calendario", "ver_tareas", "ver_banco_ideas", "ver_resultados", "buscar_cerebro"].includes(nombre)) {
         const r = await consultas.ejecutar({ id: "mcp", name: nombre, input: entrada ?? {} });
         return { content: [{ type: "text", text: String(r.content) }], ...(r.is_error ? { isError: true } : {}) };
       }

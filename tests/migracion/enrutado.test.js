@@ -668,6 +668,27 @@ describe("la IA del espacio: modelo, razonamiento y respaldo", () => {
     expect(p.max_tokens).toBe(4000 + 16_000);
   });
 
+  it("el bloque del ADN con cache_control llega a Anthropic tal cual, con cualquier modelo", async () => {
+    // El navegador parte el contexto en «ADN» y «lo que cambia» (lib/contextoADN.js):
+    // si el Worker reescribiera esos bloques, la generación pagaría el ADN
+    // entero en cada tanda sin que nada fallara. Sonnet y Haiku, que pasa por adaptarAlModelo.
+    const bloques = [
+      { type: "text", text: "ADN del cliente", cache_control: { type: "ephemeral" } },
+      { type: "text", text: "las publicaciones de esta tanda" },
+    ];
+    for (const ia_modelo of ["sonnet", "haiku"]) {
+      const peticiones = anthropic({ respuestas: [texto("ok")] });
+      const env = { ...(await entorno({ ajustes: { ia_modelo, ia_razonamiento: "medio" } })), ANTHROPIC_API_KEY: "k" };
+      const res = await worker.fetch(conSesion("/api/ia", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: bloques, maxTokens: 2000 }),
+      }), env);
+      expect(res.status).toBe(200);
+      expect(peticiones[0].messages).toEqual([{ role: "user", content: bloques }]);
+    }
+  });
+
   it("con Opus elegido usa el Opus más reciente que tenga la cuenta", async () => {
     const peticiones = anthropic({ modelos: ["claude-sonnet-5", "claude-opus-4-8", "claude-opus-5"], respuestas: [texto("ok")] });
     const env = { ...(await entorno({ ajustes: { ia_modelo: "opus", ia_razonamiento: "maximo" } })), ANTHROPIC_API_KEY: "k" };
