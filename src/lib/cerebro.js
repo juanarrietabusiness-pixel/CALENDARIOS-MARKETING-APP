@@ -63,6 +63,26 @@ export const leerSenales = (clienteId, { tipo = "" } = {}) => llamar(`${base(cli
 export const aprenderDelHistorial = (clienteId, desde = 0) =>
   cambiando(clienteId, () => llamar(`${base(clienteId)}/aprender/historial`, { metodo: "POST", cuerpo: { desde } }));
 
+/** Las reglas que la IA propuso y esperan una decisión. */
+export const leerPropuestas = (clienteId) => llamar(`${base(clienteId)}/propuestas`);
+
+/** La IA propone reglas a partir de lo que pasó después de escribir. Gasta: se relee el medidor de la cabecera al terminar. */
+export async function proponerReglas(clienteId, { forzar = false } = {}) {
+  try {
+    return await llamar(`${base(clienteId)}/aprender/reglas`, { metodo: "POST", cuerpo: { forzar } });
+  } finally {
+    window.dispatchEvent(new Event("ia:gasto"));
+  }
+}
+
+/** Acepta una regla, con los cambios que la persona le haya hecho: queda como nota de tipo Decisión. */
+export const aceptarPropuesta = (clienteId, id, cambios = {}) =>
+  cambiando(clienteId, () => llamar(`${base(clienteId)}/propuestas/${encodeURIComponent(id)}/aceptar`, { metodo: "POST", cuerpo: cambios }));
+
+/** Descarta una regla: no se vuelve a proponer. */
+export const descartarPropuesta = (clienteId, id) =>
+  llamar(`${base(clienteId)}/propuestas/${encodeURIComponent(id)}/descartar`, { metodo: "POST", cuerpo: {} });
+
 /** Una nota entera. */
 export const leerNota = (clienteId, notaId) => llamar(`${base(clienteId)}/nota/${encodeURIComponent(notaId)}`);
 

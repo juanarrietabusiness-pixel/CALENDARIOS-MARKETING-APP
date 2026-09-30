@@ -31,15 +31,12 @@
 // la de la persona sigue donde estaba.
 // ============================================================
 
-import { abrirFlujo, leerFlujo, textoDe, esRechazoDeModelo, mensajeDeRechazo, RechazoAnthropic } from "../anthropic.js";
-import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET } from "../configIA.js";
 import { uuid } from "../ids.js";
+import { ErrorIA, llamarIA } from "./ia.js";
 import { parseBloques } from "../../../src/lib/parse.js";
 import { leerNotas, reindexar } from "./cerebro.js";
 import { derivados, rutaUnica } from "./notas.js";
 
-const MAX_TOKENS_CAP = 64_000;
-const PRESUPUESTO_MS = 290_000;
 const SALIDA = 6000;               // lo que se pide para escribir; el razonamiento va aparte
 const PRESUPUESTO_NOTAS = 60_000;  // caracteres de notas que entran en la llamada
 const MAX_POR_NOTA = 6000;
@@ -50,12 +47,7 @@ const MAX_FICHA = 6000;
 const MAX_CIFRAS = 3000;
 
 /** Un fallo de esta llamada que se le puede decir a la persona, con el estado que le toca. */
-export class ErrorPreparar extends Error {
-  constructor(mensaje, estado = 502, causa) {
-    super(mensaje, causa ? { cause: causa } : undefined);
-    this.estado = estado;
-  }
-}
+export const ErrorPreparar = ErrorIA;
 
 /** Lo que se le enseña a la IA, por orden: primero el canon. Lo que no cabe se nombra, no se manda. */
 export function notasParaLaFicha(notas, { presupuesto = PRESUPUESTO_NOTAS, maxPorNota = MAX_POR_NOTA } = {}) {
@@ -138,53 +130,8 @@ export async function prepararFicha(env, acceso, cliente, { forzar = false } = {
     return { ficha: "conservada", cifras: "conservada", modelo: "", aviso: null, leidas: 0, fuera: [], segundos: 0 };
   }
 
-  const ia = await prepararIA(env, acceso);
-  if (ia.bloqueo) throw new ErrorPreparar(ia.bloqueo, 402);
-  const maxTokens = Math.min(SALIDA + (MARGEN_RAZONAMIENTO[ia.esfuerzo] ?? 16_000), MAX_TOKENS_CAP);
-  let modelo = ia.modelo;
-  let aviso = ia.aviso ?? null;
-
-  const arranque = Date.now();
-  const abortar = new AbortController();
-  const reloj = setTimeout(() => abortar.abort(), PRESUPUESTO_MS);
-  let m;
-  try {
-    for (;;) {
-      try {
-        const res = await abrirFlujo(env, {
-          model: modelo,
-          max_tokens: maxTokens,
-          thinking: { type: "adaptive" },
-          output_config: { effort: ia.esfuerzo },
-          messages: [{ role: "user", content: promptDeLaFicha(cliente, paraLaIA) }],
-        }, { signal: abortar.signal });
-        m = await leerFlujo(res);
-        break;
-      } catch (e) {
-        // La cuenta no tiene el Opus elegido: se escribe con Sonnet 5 y se dice.
-        if (esRechazoDeModelo(e) && modelo !== MODELO_SONNET) {
-          aviso = `Tu cuenta de Anthropic rechazó ${modelo}: se usó Sonnet 5.`;
-          modelo = MODELO_SONNET;
-          continue;
-        }
-        throw e;
-      }
-    }
-  } catch (e) {
-    if (abortar.signal.aborted) throw new ErrorPreparar("La IA no respondió a tiempo. Inténtalo otra vez.", 504);
-    throw new ErrorPreparar(mensajeDeRechazo(e), e instanceof RechazoAnthropic && e.estado === 429 ? 429 : 502, e);
-  } finally {
-    clearTimeout(reloj);
-  }
-
-  // Lo que se gastó se apunta aunque la respuesta no sirva: costó igual.
-  await registrarConsumo(acceso, { funcion: "cerebro", modelo, uso: m.usage, clienteId: cliente.id });
-
-  if (m.error) {
-    throw new ErrorPreparar(m.error.type === "overloaded_error" ? "La IA está saturada. Inténtalo en unos segundos." : `La IA cortó la respuesta: ${m.error.message ?? "sin motivo"}`, 502);
-  }
-  if (m.stop_reason === "max_tokens") throw new ErrorPreparar("La respuesta se cortó por longitud. Inténtalo otra vez.", 502);
-  const respuesta = leerRespuesta(textoDe(m));
+  const { texto, modelo, aviso, segundos } = await llamarIA(env, acceso, cliente, { prompt: promptDeLaFicha(cliente, paraLaIA), salida: SALIDA });
+  const respuesta = leerRespuesta(texto);
   if (!respuesta) throw new ErrorPreparar("La IA no devolvió la ficha con el formato esperado. Inténtalo otra vez.", 502);
 
   const usadas = new Set(notas.map((n) => n.ruta));
@@ -207,6 +154,6 @@ export async function prepararFicha(env, acceso, cliente, { forzar = false } = {
   return {
     ficha, cifras, modelo, aviso,
     leidas: paraLaIA.dentro.length, fuera: paraLaIA.fuera,
-    segundos: Math.round((Date.now() - arranque) / 1000),
+    segundos,
   };
 }

@@ -95,6 +95,12 @@
 .cerebro-senal-texto { min-width: 0; overflow-wrap: anywhere; }
 .cerebro-senal-meta { grid-column: 2; color: var(--text-dim); font-size: var(--fs-2xs); }
 
+.cerebro-reglas { display: flex; flex-direction: column; gap: var(--sp-2); }
+.cerebro-reglas-titulo { margin: 0; font-size: var(--fs-sm); }
+.cerebro-regla { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
+.cerebro-respaldo summary { cursor: pointer; min-height: var(--tap-sm); display: flex; align-items: center; color: var(--text-muted); font-size: var(--fs-xs); }
+.cerebro-respaldo ul { margin: 0; padding-left: var(--sp-5); color: var(--text-dim); font-size: var(--fs-xs); display: flex; flex-direction: column; gap: var(--sp-1); }
+
 .cerebro-vistas { display: flex; gap: var(--sp-2); }
 .cerebro-vistas .filter-chip { display: inline-flex; align-items: center; gap: var(--sp-2); }
 

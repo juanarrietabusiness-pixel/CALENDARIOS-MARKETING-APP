@@ -73,3 +73,20 @@ export function describirHistorial(a) {
   if (a.quitadas) partes.push(`${plural(a.quitadas, "vieja se quitó", "viejas se quitaron")} para no pasar del tope`);
   return `${partes.join("; ")}.`;
 }
+
+/** Lo que se le dice a la persona cuando la IA acaba de proponer reglas. */
+export function describirPropuestas(r) {
+  if (r?.sinNovedades) return "No hay respuestas nuevas desde la última vez: no se gastó nada.";
+  if (!r) return "";
+  const partes = [];
+  if (r.propuestas) partes.push(`Propuso ${plural(r.propuestas, "regla nueva", "reglas nuevas")}: ${r.propuestas === 1 ? "revísala abajo y decide" : "revísalas abajo y acepta las que valgan"}`);
+  else if (r.sinReglas) partes.push("La IA no vio ninguna regla que valga la pena guardar con lo que hay");
+  else partes.push("No quedó ninguna regla nueva");
+  if (r.sinRespaldo) partes.push(`${plural(r.sinRespaldo, "quedó fuera por no tener el respaldo suficiente", "quedaron fuera por no tener el respaldo suficiente")}`);
+  if (r.repetidas) partes.push(`${plural(r.repetidas, "ya estaba decidida o descartada", "ya estaban decididas o descartadas")}`);
+  if (r.aviso) partes.push(r.aviso);
+  return `${partes.join(". ")}.`;
+}
+
+/** «Se apoya en 2 respuestas» para el resumen desplegable de una regla. */
+export const textoDeRespaldo = (n) => (n === 1 ? "Se apoya en 1 respuesta" : `Se apoya en ${n} respuestas`);

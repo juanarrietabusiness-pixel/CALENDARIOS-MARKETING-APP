@@ -10,6 +10,10 @@
 //   POST   /<cliente>/contexto           Lo que se le da a la IA para una tarea
 //   GET    /<cliente>/senales            Lo que ha pasado después de escribir (respuestas, resultados, correcciones)
 //   POST   /<cliente>/aprender/historial Aprender de las respuestas que el cliente ya dio { desde? }
+//   POST   /<cliente>/aprender/reglas    La IA propone reglas a partir de lo que pasó { forzar? } (gasta)
+//   GET    /<cliente>/propuestas         Las reglas que esperan una decisión
+//   POST   /<cliente>/propuestas/<id>/aceptar   Aceptarla, con los cambios { titulo?, texto?, interna? }
+//   POST   /<cliente>/propuestas/<id>/descartar Descartarla: no se vuelve a proponer
 //   POST   /<cliente>/reindexar          Reconstruir el índice desde las notas
 //   POST   /<cliente>/importar           Llenar el cerebro desde el repositorio { carpeta?, actualizar? }
 //   POST   /<cliente>/preparar           La IA escribe la ficha técnica y las cifras { forzar? }
@@ -30,6 +34,8 @@ import {
 } from "../lib/cerebro/cerebro.js";
 import { importarDelRepositorio } from "../lib/cerebro/importar.js";
 import { registrarUsos, leerSenales, aprenderDelHistorial } from "../lib/cerebro/aprender.js";
+import { proponerReglas, propuestasPendientes, aceptarPropuesta, descartarPropuesta } from "../lib/cerebro/proponer.js";
+import { ErrorIA } from "../lib/cerebro/ia.js";
 import { ErrorRepositorio } from "../lib/cerebro/repositorio.js";
 import { prepararFicha, ErrorPreparar } from "../lib/cerebro/preparar.js";
 
@@ -162,6 +168,31 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
     const tipo = String(url.searchParams.get("tipo") ?? "");
     const senales = await leerSenales(acceso, clienteId, { tipo: tipo || null, limite: 60 });
     return json({ senales: senales.map((s) => ({ id: s.id, tipo: s.tipo, postId: s.post_id, resultado: s.resultado, resumen: s.resumen, fecha: s.detalle?.fecha || String(s.updated_at).slice(0, 10) })) });
+  }
+
+  if (sub === "propuestas" && !notaId && metodo === "GET") {
+    return json({ propuestas: await propuestasPendientes(acceso, clienteId) });
+  }
+
+  if (sub === "aprender" && notaId === "reglas" && metodo === "POST") {
+    const b = (await cuerpo(req)) ?? {};
+    try {
+      return json(await proponerReglas(env, acceso, cliente, { forzar: Boolean(b.forzar) }));
+    } catch (e) {
+      if (e instanceof ErrorIA) return error(e.message, e.estado, e.cause);
+      throw e;
+    }
+  }
+
+  if (sub === "propuestas" && notaId && partes[4] === "aceptar" && metodo === "POST") {
+    const b = (await cuerpo(req)) ?? {};
+    const r = await aceptarPropuesta(env, acceso, clienteId, notaId, { titulo: b.titulo, texto: b.texto, interna: b.interna });
+    return r.error ? error(r.error, r.estado) : json(r, 201);
+  }
+
+  if (sub === "propuestas" && notaId && partes[4] === "descartar" && metodo === "POST") {
+    const r = await descartarPropuesta(acceso, clienteId, notaId);
+    return r.error ? error(r.error, r.estado) : json({ ok: true });
   }
 
   if (sub === "aprender" && notaId === "historial" && metodo === "POST") {

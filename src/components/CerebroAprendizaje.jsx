@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import Icon from "./Icon";
-import { leerSenales, aprenderDelHistorial } from "../lib/cerebro";
 import {
-  NOMBRE_SENAL, etiquetaDeResultado, describirSenales, acumularHistorial, describirHistorial,
+  leerSenales, aprenderDelHistorial, leerPropuestas, proponerReglas, aceptarPropuesta, descartarPropuesta,
+} from "../lib/cerebro";
+import {
+  NOMBRE_SENAL, etiquetaDeResultado, describirSenales, acumularHistorial, describirHistorial, describirPropuestas, textoDeRespaldo,
 } from "../lib/cerebroAprendizaje";
 
 // ============================================================
@@ -24,10 +26,15 @@ export default function CerebroAprendizaje({ client, lectura, version, onCambio 
   const [error, setError] = useState("");
   const [trabajando, setTrabajando] = useState("");
   const [aviso, setAviso] = useState(null); // { ok, texto }
+  const [reglas, setReglas] = useState([]);       // las que esperan una decisión
+  const [borradores, setBorradores] = useState({}); // id → { titulo, texto }: lo que la persona va corrigiendo
+  const [resolviendo, setResolviendo] = useState(""); // id de la regla que se está aceptando o descartando
 
   const cargar = useCallback(async () => {
     try {
-      setSenales((await leerSenales(client.id)).senales);
+      const [s, p] = await Promise.all([leerSenales(client.id), leerPropuestas(client.id)]);
+      setSenales(s.senales);
+      setReglas(p.propuestas);
       setError("");
     } catch (e) {
       setError(e.message);
@@ -54,6 +61,43 @@ export default function CerebroAprendizaje({ client, lectura, version, onCambio 
       setTrabajando("");
       await cargar();
       if (onCambio) await onCambio();
+    }
+  };
+
+  const proponer = async (forzar = false) => {
+    setAviso(null);
+    setTrabajando("reglas");
+    try {
+      setAviso({ ok: true, texto: describirPropuestas(await proponerReglas(client.id, { forzar })) });
+    } catch (e) {
+      setAviso({ ok: false, texto: e.message });
+    } finally {
+      setTrabajando("");
+      await cargar();
+    }
+  };
+
+  const editar = (regla, campo, valor) => setBorradores((b) => ({ ...b, [regla.id]: { titulo: regla.titulo, texto: regla.texto, ...b[regla.id], [campo]: valor } }));
+
+  const resolver = async (regla, aceptar) => {
+    setResolviendo(regla.id);
+    setAviso(null);
+    try {
+      if (aceptar) {
+        await aceptarPropuesta(client.id, regla.id, borradores[regla.id] ?? {});
+        setAviso({ ok: true, texto: `«${borradores[regla.id]?.titulo ?? regla.titulo}» quedó como una nota de tipo Decisión: la IA ya la lee.` });
+      } else {
+        await descartarPropuesta(client.id, regla.id);
+        setAviso({ ok: true, texto: `«${regla.titulo}» descartada: no se volverá a proponer.` });
+      }
+      setBorradores(({ [regla.id]: _quitada, ...resto }) => resto);
+      await cargar();
+      if (aceptar && onCambio) await onCambio();
+    } catch (e) {
+      setAviso({ ok: false, texto: e.message });
+      await cargar();
+    } finally {
+      setResolviendo("");
     }
   };
 
@@ -94,14 +138,58 @@ export default function CerebroAprendizaje({ client, lectura, version, onCambio 
         {!lectura && (
           <div className="cerebro-acciones" role="group" aria-label="Aprender">
             <button type="button" className="btn btn-secondary" disabled={Boolean(trabajando)} onClick={aprenderHistorial} aria-describedby={`${ids}-h`}>
-              <Icon name="refresh" size={18} /> {trabajando || "Aprender de lo que ya respondió"}
+              <Icon name="refresh" size={18} /> {trabajando === "reglas" ? "Aprender de lo que ya respondió" : trabajando || "Aprender de lo que ya respondió"}
+            </button>
+            <button type="button" className="btn btn-accent" disabled={Boolean(trabajando)} onClick={() => proponer(false)} aria-describedby={`${ids}-r`}>
+              <Icon name="sparkles" size={18} /> {trabajando === "reglas" ? "La IA está leyendo las respuestas…" : "Proponer reglas con IA"}
             </button>
           </div>
         )}
         <p id={`${ids}-h`} className="hint">
           Lee las respuestas que el cliente ya dio en sus calendarios y las apunta. No mueve lo que sube o baja en la búsqueda —de lo de antes no se sabe qué notas se usaron—: eso empieza con lo que se escriba desde ahora.
         </p>
+        <p id={`${ids}-r`} className="hint">
+          Una llamada a la IA lee lo que dijo el cliente y propone unas pocas reglas. Ninguna entra al cerebro hasta que tú la aceptes.
+        </p>
         {aviso && <p role={aviso.ok ? "status" : "alert"} className={aviso.ok ? "cerebro-aviso" : "cerebro-error"}>{aviso.texto}</p>}
+
+        {reglas.length > 0 && (
+          <section className="cerebro-reglas" aria-labelledby={`${ids}-rt`}>
+            <h4 id={`${ids}-rt`} className="cerebro-reglas-titulo">Reglas propuestas <span className="cerebro-cuenta">{reglas.length}</span></h4>
+            <ul className="cerebro-lista">
+              {reglas.map((r) => {
+                const b = { titulo: r.titulo, texto: r.texto, ...borradores[r.id] };
+                const ocupada = resolviendo === r.id;
+                return (
+                  <li key={r.id} className="cerebro-regla card">
+                    <div className="field">
+                      <label className="label" htmlFor={`${ids}-t-${r.id}`}>Regla</label>
+                      <input id={`${ids}-t-${r.id}`} className="input" value={b.titulo} maxLength={140} readOnly={lectura} onChange={(e) => editar(r, "titulo", e.target.value)} />
+                    </div>
+                    <div className="field">
+                      <label className="label" htmlFor={`${ids}-x-${r.id}`}>Qué dice</label>
+                      <textarea id={`${ids}-x-${r.id}`} className="input" rows={3} value={b.texto} readOnly={lectura} onChange={(e) => editar(r, "texto", e.target.value)} />
+                    </div>
+                    {r.respaldo.length > 0 && (
+                      <details className="cerebro-respaldo">
+                        <summary>{textoDeRespaldo(r.respaldo.length)}</summary>
+                        <ul>{r.respaldo.map((t, i) => <li key={i}>{t}</li>)}</ul>
+                      </details>
+                    )}
+                    {!lectura && (
+                      <div className="cerebro-editor-pie">
+                        <button type="button" className="btn btn-secondary" disabled={ocupada || Boolean(resolviendo)} onClick={() => resolver(r, false)}>Descartar</button>
+                        <button type="button" className="btn btn-primary" disabled={ocupada || Boolean(resolviendo) || !b.titulo.trim() || !b.texto.trim()} onClick={() => resolver(r, true)}>
+                          <Icon name="check" size={18} /> {ocupada ? "Guardando…" : "Aceptar"}
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
       </div>
     </details>
   );
