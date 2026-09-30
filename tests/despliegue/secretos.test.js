@@ -117,6 +117,7 @@ describe("el navegador sólo ve lo que puede ver", () => {
     const prohibidos = [
       "SUPABASE_SERVICE_ROLE_KEY", "SERVICE_ROLE_KEY", "ANTHROPIC_API_KEY",
       "GROQ_API_KEY", "GITHUB_TOKEN", "ADMIN_PASSWORD", "ADMIN_SEED_TOKEN",
+      "GOOGLE_AI_KEY", "FAL_KEY", "HF_KEY", "HF_API_KEY", "HF_API_SECRET",
     ].join("|");
     const acceso = new RegExp(
       `(process\\.env|import\\.meta\\.env)\\.(${prohibidos})` +
@@ -136,7 +137,7 @@ describe("el navegador sólo ve lo que puede ver", () => {
   });
 
   it("no llama directamente a ningún proveedor de IA ni a GitHub", () => {
-    const hits = buscar(fuentes, /api\.anthropic\.com|api\.groq\.com|api\.github\.com|api\.openai\.com/);
+    const hits = buscar(fuentes, /api\.anthropic\.com|api\.groq\.com|api\.github\.com|api\.openai\.com|generativelanguage\.googleapis\.com|(queue\.)?fal\.run|api\.higgsfield\.ai/);
     expect(
       hits.map((h) => `${h.archivo}:${h.linea}`),
       fallo({

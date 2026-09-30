@@ -1,6 +1,6 @@
 # El Estudio y Meta como proveedor de IA
 
-Estado a 2026-09-30: **plan, nada implementado.** Se investigó Agents Office
+Estado a 2026-09-30: **el Estudio está implementado entero** (entregas A0 a F): imágenes y video por Google, fal.ai y Higgsfield, con «Crear con IA» y «Animar» dentro del panel de la publicación y de «Subir», las herramientas del asistente y del MCP, el cerebro para imagen y la lista de modelos ordenable (ver `worker/lib/estudio/`, `src/components/Estudio*.jsx`). **Pendiente:** toda la parte de Meta (B), y **probar fal.ai y Higgsfield con una llave real**: se construyeron contra su documentación y contra un `fetch` de mentira, no contra el servicio. Se investigó Agents Office
 (`media.mjs`, `estudio-mcp.mjs`, `src/studio.js`), la app (`worker/rutas/imagen.js`,
 `video.js`, `lib/anthropic.js`, `lib/configIA.js`, el cron) y lo publicado sobre Meta.
 Lo que **no** se pudo comprobar está marcado como tal: hace falta la llave de Meta.
@@ -351,6 +351,8 @@ comprimidos). Se comprueba también que **no** entra en la carga inicial.
 | **D** | Herramientas del chat y del MCP; nuevo uso `para: "imagen"` del cerebro | Claude pide una imagen por MCP y queda en la galería del cliente, con costo apuntado |
 | **E** | **Higgsfield**: esquema como dato, `hfRoute`/`hfBody`, las 53 líneas del catálogo, sus pruebas de combinaciones y su cola (créditos, `nsfw`, cancelar sólo lo que sigue en cola) | Toda ruta documentada alcanzable, ningún cuerpo con campos ajenos, y un pedido real barato (una imagen) con tu llave |
 | **F** | Ordenar y filtrar modelos por creador/calidad/precio, «Variar»; OpenAI y Grok si se usan | Sólo lo que se use de verdad |
+
+**Estado real de E y F (30 sep 2026).** Hecho: fal.ai (5 imágenes, 4 videos), Higgsfield (27 modelos: los que se pueden pedir sin subir un video, generados desde su esquema, con un test que recorre cada combinación), la cola para imágenes, la lista ordenable con la ficha de cada modelo y «Variar». **No se hizo:** los modelos de Higgsfield que exigen un video (copiar movimiento, editar, alargar), Cinema Studio, OpenAI y Grok (no se usan). **Sin verificar con llave:** todo lo de fal.ai y Higgsfield; el primer pedido con ella ha de ser uno barato.
 
 ---
 

@@ -116,6 +116,13 @@ src/
     cerebroAprendizaje.js Lo que aprende el cerebro de lo que pasa después de escribir: cuántas
                           señales, qué frase decir tras cada botón (puro)
     camara3d.js           Cámara de órbita y proyección a pantalla (puro; sustituye a OrbitControls)
+    estudioCatalogo.js    El Estudio: modelos (Google, fal.ai, Higgsfield), ajustes, costo estimado,
+                          validar un pedido, ordenar/filtrar la lista, papelera (puro; también lo
+                          importa el Worker)
+    estudioHiggsfield.json  Los modelos de Higgsfield, GENERADOS de su esquema: no se edita a mano
+                          (`node scripts/estudio/generar-higgsfield.mjs`)
+    estudio.js            Cliente de /api/estudio y lo puro de la pantalla: filtros, trabajos en curso,
+                          de una publicación al Estudio y del Estudio a una publicación
     vivo.js               WebSocket: reconexión, latido, presencia
     horas.js              «9am» → «09:00» y vuelta (puro)
     lote.js               Editar muchas publicaciones de una vez (puro)
@@ -181,6 +188,12 @@ src/
     ExploradorDrive.jsx   La carpeta de Drive de un cliente: gestionar o escoger
     BancoSelector.jsx     Escoger de Drive (o del banco anterior); forma única
     PestanaContenido.jsx  La pestaña Contenido: Drive + migrar el banco anterior
+    Estudio.jsx           La pestaña Estudio y el diálogo «Crear con IA»: pedir imágenes o videos,
+                          verlos aparecer, galería, carpetas y papelera (lazy)
+    EstudioCompositor.jsx Qué crear: tipo, prompt, modelo (ordenar/filtrar), ajustes, imágenes de apoyo
+    EstudioVisor.jsx      La pieza grande (imagen o video) con todo lo que se sabe de ella
+    calendario/crearConIA.jsx  El Estudio en un diálogo dentro del panel de una publicación y de «Subir»
+                          (el hook que lo abre, en hooks/useCrearConIA.jsx)
     Cerebro.jsx           La pestaña Cerebro: las notas de un cliente, filtros, buscar, añadir, subir
     CerebroAprendizaje.jsx  «Lo que aprende»: señales, aprender del historial y de los resultados,
                           y las reglas que la IA propone para que una persona las acepte
@@ -233,6 +246,14 @@ worker/
     informes.js           Cifras del mes (congeladas) + análisis de la IA; el del día 1
     auditorias.js         Leer un perfil (cuenta propia o business_discovery) y auditarlo
     mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
+    estudio/              El Estudio: trabajos.js (pedir, avanzar por pasos, cancelar; el permiso de
+                          un paso a la vez y el cron), motores.js (prueba y Gemini, mismo contrato;
+                          fal.js y higgsfield.js son los otros dos), gemini.js (la llamada,
+                          compartida con /api/generar-imagen), galeria.js (archivos, carpetas,
+                          papelera), archivos.js (claves de R2, tipo por bytes), descarga.js (bajar un
+                          resultado a R2 por flujo, con topes), herramientas.js (ver_estudio,
+                          crear_en_estudio y estado_trabajo: las mismas para el asistente y el MCP),
+                          higgsfield-schemas.json (SU documentación: campos, valores, obligatorios)
     cerebro/              El cerebro de un cliente: conocimiento.js (BM25 por pasajes) y
                           memoria.js (grafo, presupuesto, sinapsis) portados de Agents
                           Office; notas.js (tipos, partir un archivo en notas);
@@ -269,10 +290,12 @@ worker/
     auditorias.js         Auditorías: listar, generar, compartir; la pública va en index.js
     cerebro.js            /api/cerebro/<cliente>: notas, buscar, contexto, grafo, señales, aprender,
                           propuestas, importar, preparar
+    estudio.js            /api/estudio/<cliente>: galería, trabajos (pedir, avanzar, cancelar,
+                          reintentar), archivos, papelera y carpetas
     mcp.js                El servidor MCP (/mcp), su OAuth (/oauth/*, /.well-known/*) y
                           el permiso y las conexiones (/api/mcp/*)
     avisos.js             /api/avisos: la bandeja de quien pregunta y marcar leídos
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -291,7 +314,7 @@ tests/
 | `/` | Panel, sin cliente elegido |
 | `/cliente/<slug>` | Un cliente |
 | `/cliente/<slug>/<mes>-<año>` | Un mes del calendario de ese cliente (`octubre-2026`), exista o no su cajón. Los enlaces viejos con el nombre o el id del calendario siguen abriendo su mes |
-| `/cliente/<slug>/tareas` · `/contenido` · `/ideas` · `/resultados` · `/cerebro` · `/ficha` | Las otras pestañas del cliente |
+| `/cliente/<slug>/tareas` · `/contenido` · `/ideas` · `/resultados` · `/estudio` · `/cerebro` · `/ficha` | Las otras pestañas del cliente |
 | `/tareas` | Mi día |
 | `/ajustes` | IA, presupuesto, integraciones, tareas, copia de seguridad |
 | `/resultados` | Todos los clientes, últimos 30 días |
@@ -981,6 +1004,75 @@ son del servidor.
   petición cuyo PRIMER bloque es una imagen no se cachea (la caché es por
   prefijo). Las dos fallan abiertas: si no reconocen la forma, mandan
   todo. El asistente pide `{ maquetacion: true }` y sigue viendo el ADN íntegro.
+- **El Estudio: una imagen es un TRABAJO, y el Worker no puede esperar.** Pedir crea
+  una fila (`estudio_trabajos`) y cada `POST …/avanzar` da UN paso —una imagen—, que
+  guarda su avance; lo avanza el navegador mientras se mira la pantalla y el cron
+  (`avanzarPendientes`, el último paso de la vuelta, sólo si no hubo nada que publicar,
+  medir ni informar) para lo que nadie mira. Cosas que no se ven mirando la pantalla:
+  · **Un paso a la vez, y no es un detalle:** dos que avancen el mismo trabajo generan y
+  COBRAN la imagen dos veces. El permiso es `bloqueado_hasta`, reservado con el valor que
+  se leyó como condición del UPDATE (el segundo no cambia ninguna fila) y soltado al
+  terminar; si el Worker muere a medias, caduca solo. `updated_at` NO sirve de permiso:
+  se pone al día en cada escritura y dos pasos seguidos parecerían el mismo.
+  · **El archivo se guarda en R2 y en la galería ANTES de tocar el trabajo,** y el trabajo
+  apunta su id: un paso repetido tras un fallo a medias no cuenta dos veces lo mismo. Un
+  fallo pasajero (saturación, red) se reintenta solo `MAX_INTENTOS` veces; un trabajo con
+  parte entregada que falla termina `hecho` con la nota «Llegaron 1 de 3: …» y cuesta sólo
+  lo entregado. Nada se queda «en marcha»: tiene plazo (30 min) y acaba `fallido` con el motivo.
+  · **Lo que llega del motor se reconoce por sus primeros bytes** (`tipoPorBytes`), no por el
+  tipo que declare: un HTML disfrazado de PNG se rechaza. La tarjeta de prueba es un SVG
+  y sólo la fabrica el propio Worker; `sirveMedia` pone `Content-Security-Policy: sandbox`
+  a todo SVG, porque abierto suelto ejecutaría sus scripts con la sesión de la agencia.
+  · **Las referencias las manda el navegador y no se creen:** `claveDelCliente()` exige
+  `clientes/<este cliente>/` sin `..`, y se comprueba que existan al pedir (no a la mitad).
+  · **El costo es una estimación y se rotula así** (`estimado` en el catálogo, «precio
+  aproximado» en la pantalla). Un modelo con tarifa por tokens conocida (`PRECIOS_GEMINI`)
+  cuenta tokens; el resto, el precio del catálogo. Desde `CONFIRMAR_DESDE` (0,50 $) el
+  SERVIDOR exige `confirmado: true` (409 `confirmar`), no sólo la pantalla: un asistente o
+  Claude por MCP tampoco se salta el segundo toque. Con el presupuesto agotado y «detener»
+  se rechaza antes de crear, y otra vez antes de cada imagen.
+  · **`/api/generar-imagen` sigue con su contrato** (`{ clave, mimeType }`) pero llama a la
+  misma `llamarGemini()` y apunta la imagen en la galería (`origen: "app"`). De esas la
+  papelera quita la FILA y nunca el objeto de R2: lo puede estar usando una publicación
+  sin que el Estudio lo sepa. Sólo se borra de R2 lo que el Estudio creó o lo que se subió.
+  Lo que una publicación usa (`usado_en`, `POST …/uso`) no se purga.
+  · **Un id de modelo de Google es una apuesta sobre la cuenta.** El único que ya usa la
+  aplicación es `gemini-2.5-flash-image` (Nano Banana); los demás salen de la documentación
+  de Google y un 404 dice «tu cuenta no tiene el modelo …» en vez de un error genérico.
+  · **Los eventos del Estudio los emite `trabajos.js` y `rutas/estudio.js`,** que el test de
+  tiempo real lee sólo por sus llamadas a `difundir()`: sus columnas también se llaman `tipo`.
+  · **Hay dos formas de motor y las dos las escribe cada proveedor** (contrato en `motores.js`):
+  IMAGEN que contesta en el acto (`generar`) y COLA (`enviar` + `sondear`). Van por la cola todo
+  video y las imágenes de Higgsfield (`enCola(modelo)`, no `tipo === "video"`: se rompió al meter
+  Higgsfield). **Enviar es lo único que no se repite:** el id del motor se guarda antes que nada, y
+  con él sus direcciones de seguimiento (`datos`). Un video se cobra al ENTREGARLO, por segundo.
+  · **Un video sin ajuste de duración cuesta 0 si nadie lo cubre:** `por: "s"` × 0 s no pide
+  confirmar. Lo evitan `segundos` (duración fija) y un test que recorre todo el catálogo.
+  · **Las direcciones que devuelve un proveedor no se creen.** `status_url` de fal y de Higgsfield
+  reciben la llave, así que sólo se siguen si son de SU origen (`esDeLaCola`, `esDeHiggsfield`);
+  si no, se reconstruye la de la documentación. El archivo del resultado se baja SIN la llave.
+  · **Higgsfield sale de su esquema, no de la memoria.** `higgsfield-schemas.json` dice, por ruta,
+  qué campos hay, qué valores admite y cuáles son obligatorios; de ahí salen el catálogo
+  (`scripts/estudio/generar-higgsfield.mjs` → `estudioHiggsfield.json`, que un test regenera y
+  compara), la ruta de cada pedido (según las imágenes que lleve) y el cuerpo (sólo campos de esa
+  ruta, cada valor uno que acepta). Sólo entran los modelos que se pueden pedir SIN subir un video.
+  Cuando Higgsfield cambie su documentación: bajar el nuevo `llms-full.txt`, regenerar el
+  esquema como hizo Agents Office (`scripts/higgsfield-schemas.mjs`), copiar el JSON y correr el
+  generador. **Nada de fal.ai ni de Higgsfield se ha probado contra el servicio real**: los tests
+  usan un `fetch` de mentira que habla como ellos. Lo primero con una llave es un pedido barato
+  (Z-Image Turbo, Flux Schnell) y luego uno de video corto.
+  · **Las imágenes de apoyo de fal van como data URI y las de Higgsfield a su almacén**
+  (`/files/generate-upload-url` + PUT, sin la llave). Los formatos de fal por `image_size` son
+  sólo los exactos (`FORMATOS_FAL`): con «4:5» la imagen saldría 3:4 aunque la pantalla dijera 4:5.
+  · **El asistente y Claude (MCP) piden por la MISMA puerta** (`estudio/herramientas.js`): la
+  confirmación de 0,50 $ no la da la herramienta (`confirmado` sólo vale si es el booleano `true`,
+  y la descripción le dice al modelo que no lo ponga por su cuenta), topes más cortos que los de
+  la pantalla, imágenes de apoyo por id de la GALERÍA de ese cliente (nunca una clave de R2), y un
+  ejecutor sin `estudio` no puede gastar. La guía visual de la marca sale del cerebro con
+  `para: "imagen"` (sin notas internas) y se le ENSEÑA al modelo; no se pega al prompt, porque
+  lo que sale al proveedor tiene que ser lo que quedó escrito en la galería.
+  · **Lo creado desde «Subir» apunta su uso al guardar** (`delEstudio` en `SubirRapido`): la
+  publicación aún no existe al crear, y sin `usado_en` la papelera podría llevarse el archivo.
 - **El cerebro de un cliente es SUYO: un índice por cliente, nunca uno para
   todos.** El algoritmo viene de Agents Office, que indexa por nombre de
   archivo: los nueve clientes tienen un `01_brand_guidelines.md`, y en un
@@ -1566,9 +1658,12 @@ son del servidor.
 
 ## Documentos relacionados
 
-- `docs/propuesta-estudio-y-meta.md` — plan (sin implementar) para portar el Estudio de
-  Agents Office —imagen y video por trabajos, por cliente— y para tener Meta (Muse Spark) como
-  proveedor de la IA de texto. Con las decisiones que esperan respuesta.
+- `docs/propuesta-estudio-y-meta.md` — el Estudio de Agents Office —imagen y video por trabajos,
+  por cliente— y Meta (Muse Spark) como proveedor de la IA de texto. Implementado: el Estudio
+  entero (imágenes y video por Google, fal.ai y Higgsfield; «Crear con IA» y «Animar» en el panel
+  de la publicación y en «Subir»; las herramientas del asistente y del MCP; el cerebro para imagen;
+  la lista de modelos ordenable). Pendiente: toda la parte de Meta como proveedor de texto, y
+  probar fal.ai y Higgsfield con una llave real.
 - `DEPLOY.md` — puesta en producción en Cloudflare: Worker, D1, R2 y el corte.
 - `docs/auditoria-ux-ui.md` — auditoría de UX, UI, responsive y accesibilidad,
   con lo corregido y lo pendiente.

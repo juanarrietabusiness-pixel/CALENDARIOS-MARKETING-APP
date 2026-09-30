@@ -127,6 +127,14 @@
 .pestana-publicar[data-ancho] .cuando-elegir > .cuando-destino { display: none; }
 .pestana-publicar[data-ancho] .cuando-botones { order: 3; flex-basis: 100%; }
 .pestana-publicar[data-ancho] .cuando-principal { flex: 0 1 auto; margin-left: auto; padding-left: var(--sp-5); padding-right: var(--sp-5); }
+.pestana-publicar[data-ancho] .cuando-principal-detalle { display: none; }
+/* La barra, aún más compacta: el aviso de la revisión y el «lista para publicar» comparten fila, el selector
+   de cuándo pierde relleno, y la fecha, la hora y la hora sugerida caben junto a los modos. */
+.pestana-publicar[data-ancho] .barra-fija-publicar > .revision { flex-basis: 100%; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-3); }
+.pestana-publicar[data-ancho] .barra-fija-publicar > .revision > .plegable { flex: 1 1 200px; min-width: 0; }
+.pestana-publicar[data-ancho] .cuando-elegir .segmented-btn { padding-left: var(--sp-2); padding-right: var(--sp-2); }
+.pestana-publicar[data-ancho] .cuando-fecha { flex: 1 1 auto; flex-wrap: nowrap; min-width: 0; }
+.pestana-publicar[data-ancho] .cuando-botones { justify-content: flex-end; }
 .cuando-inicio { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-right: auto; }
 .bfp-cuando { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-2xs); }
 .bfp-dia { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; text-transform: capitalize; }
@@ -326,3 +334,6 @@
 .tareas-publicacion-form .input:first-of-type { grid-column: 1 / -1; }
 .historial-publicacion summary { cursor: pointer; font-size: var(--fs-xs); font-weight: 700; min-height: var(--tap-sm); display: flex; align-items: center; gap: var(--sp-2); }
 .historial-publicacion ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-2xs); }
+
+/* «Crear con IA»: el Estudio del cliente en un diálogo. Desplaza por dentro, y por encima del panel. */
+.sheet-estudio { max-width: 1040px; overflow-y: auto; overscroll-behavior: contain; }

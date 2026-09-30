@@ -210,6 +210,33 @@ describe("el mapa 3D del cerebro", () => {
   });
 });
 
+describe("el Estudio", () => {
+  // Se descarga sólo al abrir su pestaña: no forma parte del primer pintado.
+  const estudio = () => js().find((a) => a.nombre.startsWith("Estudio-"));
+
+  it("va en su propio chunk y no se descarga hasta que se abre", () => {
+    expect(estudio(), "no hay chunk «Estudio»: la pestaña se metió en otro o dejó de existir").toBeDefined();
+    expect(jsInicial().map((a) => a.nombre)).not.toContain(estudio().nombre);
+  });
+
+  it("cabe en 20 kB comprimidos", () => {
+    expect(
+      Math.round(estudio().gzip / 1024),
+      fallo({
+        que: `la pestaña Estudio pesa ${kb(estudio().gzip)} kB comprimidos, por encima de 20`,
+        donde: `dist/assets/${estudio().nombre}`,
+        porque: "Es un compositor, una galería y un visor, sin librerías: el catálogo, la pantalla y el cliente de la API pesan unos 9 kB. Más que eso quiere decir que se coló una dependencia.",
+        arreglo: "Quita la importación. Los motores y los precios viven en el Worker y en src/lib/estudioCatalogo.js, no en una librería.",
+      }),
+    ).toBeLessThanOrEqual(20);
+  });
+
+  it("no lleva ninguna llave ni habla con ningún motor desde el navegador", () => {
+    const texto = estudio().buf.toString("utf8");
+    expect(texto).not.toMatch(/generativelanguage\.googleapis|fal\.run|api\.higgsfield|x-goog-api-key/);
+  });
+});
+
 describe("la caché puede hacer su trabajo", () => {
   it("todo recurso lleva hash de contenido en el nombre", () => {
     const sinHash = archivos.filter((a) => !/-[A-Za-z0-9_-]{8,}\.(js|css|png|jpg|svg|woff2?)$/.test(a.nombre));

@@ -1,0 +1,1378 @@
+[
+ {
+  "id": "soul-2",
+  "motor": "higgsfield",
+  "tipo": "imagen",
+  "nombre": "Soul 2",
+  "creador": "Higgsfield",
+  "calidad": 3,
+  "velocidad": "normal",
+  "costo": 0.03,
+  "estimado": true,
+  "referencias": 0,
+  "cola": true,
+  "nota": "Fotos con estética de moda y redes, la firma de Higgsfield. Precio aproximado.",
+  "para": [
+   "moda",
+   "redes",
+   "retrato"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "9:16",
+     "16:9",
+     "4:3",
+     "3:4",
+     "1:1",
+     "2:3",
+     "3:2"
+    ],
+    "defecto": "1:1"
+   },
+   "resolution": {
+    "valores": [
+     "720p",
+     "1080p"
+    ],
+    "defecto": "720p"
+   }
+  },
+  "rutas": {
+   "text": "higgsfield-ai/soul/v2/standard"
+  }
+ },
+ {
+  "id": "soul",
+  "motor": "higgsfield",
+  "tipo": "imagen",
+  "nombre": "Soul",
+  "creador": "Higgsfield",
+  "calidad": 3,
+  "velocidad": "normal",
+  "costo": 0.03,
+  "estimado": true,
+  "referencias": 1,
+  "cola": true,
+  "nota": "El Soul original; acepta una imagen de referencia. Precio aproximado.",
+  "para": [
+   "moda",
+   "redes",
+   "retrato"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "9:16",
+     "16:9",
+     "4:3",
+     "3:4",
+     "1:1",
+     "2:3",
+     "3:2"
+    ],
+    "defecto": "1:1"
+   },
+   "resolution": {
+    "valores": [
+     "720p",
+     "1080p"
+    ],
+    "defecto": "720p"
+   }
+  },
+  "rutas": {
+   "text": "higgsfield-ai/soul/standard"
+  }
+ },
+ {
+  "id": "soul-cinema",
+  "motor": "higgsfield",
+  "tipo": "imagen",
+  "nombre": "Soul Cinema",
+  "creador": "Higgsfield",
+  "calidad": 3,
+  "velocidad": "normal",
+  "costo": 0.05,
+  "estimado": true,
+  "referencias": 0,
+  "cola": true,
+  "nota": "Fotogramas de cine: luz y encuadre de película. Precio aproximado.",
+  "para": [
+   "cine",
+   "fotogramas",
+   "retrato"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "9:16",
+     "16:9",
+     "4:3",
+     "3:4",
+     "1:1",
+     "2:3",
+     "3:2"
+    ],
+    "defecto": "1:1"
+   },
+   "resolution": {
+    "valores": [
+     "720p",
+     "1080p"
+    ],
+    "defecto": "720p"
+   }
+  },
+  "rutas": {
+   "text": "higgsfield-ai/soul/cinema"
+  }
+ },
+ {
+  "id": "marketing-studio",
+  "motor": "higgsfield",
+  "tipo": "imagen",
+  "nombre": "Marketing Studio",
+  "creador": "Higgsfield",
+  "calidad": 3,
+  "velocidad": "normal",
+  "costo": 0.05,
+  "estimado": true,
+  "referencias": 16,
+  "cola": true,
+  "nota": "Piezas de marketing con tu producto: hasta 16 referencias. Precio aproximado.",
+  "para": [
+   "producto",
+   "publicidad",
+   "muchas referencias"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "1:1",
+     "3:2",
+     "2:3",
+     "4:3",
+     "3:4",
+     "16:9",
+     "9:16",
+     "21:9"
+    ],
+    "defecto": "1:1"
+   },
+   "resolution": {
+    "valores": [
+     "1k",
+     "2k",
+     "4k"
+    ],
+    "defecto": "2k"
+   },
+   "quality": {
+    "valores": [
+     "low",
+     "medium",
+     "high"
+    ],
+    "defecto": "high"
+   }
+  },
+  "rutas": {
+   "text": "marketing-studio/image"
+  }
+ },
+ {
+  "id": "ideogram-4",
+  "motor": "higgsfield",
+  "tipo": "imagen",
+  "nombre": "Ideogram 4",
+  "creador": "Ideogram",
+  "calidad": 4,
+  "velocidad": "normal",
+  "costo": 0.06,
+  "estimado": true,
+  "referencias": 1,
+  "cola": true,
+  "nota": "El mejor para TEXTO legible dentro de la imagen (carteles, posts con título); con una referencia, la rehace. Precio aproximado.",
+  "para": [
+   "texto legible",
+   "carteles",
+   "posts con título"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "1:1",
+     "2:3",
+     "3:2",
+     "4:5",
+     "5:4",
+     "9:16",
+     "16:9",
+     "3:4",
+     "4:3"
+    ],
+    "defecto": "1:1"
+   },
+   "renderingSpeed": {
+    "valores": [
+     "TURBO",
+     "DEFAULT",
+     "QUALITY"
+    ],
+    "defecto": "DEFAULT"
+   }
+  },
+  "rutas": {
+   "text": "ideogram/v4.0"
+  }
+ },
+ {
+  "id": "recraft-4.1",
+  "motor": "higgsfield",
+  "tipo": "imagen",
+  "nombre": "Recraft 4.1",
+  "creador": "Recraft",
+  "calidad": 3,
+  "velocidad": "normal",
+  "costo": 0.04,
+  "estimado": true,
+  "referencias": 0,
+  "cola": true,
+  "nota": "Diseño gráfico, ilustración y vector. Precio aproximado.",
+  "para": [
+   "diseño gráfico",
+   "ilustración",
+   "vector"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "1:1",
+     "3:2",
+     "2:3",
+     "4:3",
+     "3:4",
+     "5:4",
+     "4:5",
+     "16:9",
+     "9:16"
+    ],
+    "defecto": "1:1"
+   },
+   "resolution": {
+    "valores": [
+     "1k"
+    ],
+    "defecto": "1k"
+   }
+  },
+  "rutas": {
+   "text": "recraft/v4.1/text-to-image"
+  }
+ },
+ {
+  "id": "recraft-4.1-pro",
+  "motor": "higgsfield",
+  "tipo": "imagen",
+  "nombre": "Recraft 4.1 Pro",
+  "creador": "Recraft",
+  "calidad": 4,
+  "velocidad": "normal",
+  "costo": 0.08,
+  "estimado": true,
+  "referencias": 0,
+  "cola": true,
+  "nota": "Recraft en 2K. Precio aproximado.",
+  "para": [
+   "diseño gráfico",
+   "2K"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "1:1",
+     "3:2",
+     "2:3",
+     "4:3",
+     "3:4",
+     "5:4",
+     "4:5",
+     "16:9",
+     "9:16"
+    ],
+    "defecto": "1:1"
+   },
+   "resolution": {
+    "valores": [
+     "2k"
+    ],
+    "defecto": "2k"
+   }
+  },
+  "rutas": {
+   "text": "recraft/v4.1/pro/text-to-image"
+  }
+ },
+ {
+  "id": "grok-imagine-2",
+  "motor": "higgsfield",
+  "tipo": "imagen",
+  "nombre": "Grok Imagine 2",
+  "creador": "xAI",
+  "calidad": 3,
+  "velocidad": "rápido",
+  "costo": 0.04,
+  "estimado": true,
+  "referencias": 10,
+  "cola": true,
+  "nota": "Crea o edita con hasta 10 referencias. Precio aproximado.",
+  "para": [
+   "editar fotos",
+   "hasta 10 referencias"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "1:1",
+     "3:2",
+     "2:3",
+     "4:3",
+     "3:4",
+     "16:9",
+     "9:16"
+    ],
+    "defecto": "1:1"
+   },
+   "resolution": {
+    "valores": [
+     "1k",
+     "2k"
+    ],
+    "defecto": "1k"
+   },
+   "quality": {
+    "valores": [
+     "low",
+     "medium"
+    ],
+    "defecto": "medium"
+   }
+  },
+  "rutas": {
+   "text": "xai/grok-imagine-image-2.0"
+  }
+ },
+ {
+  "id": "qwen-image-3",
+  "motor": "higgsfield",
+  "tipo": "imagen",
+  "nombre": "Qwen Image 3",
+  "creador": "Alibaba",
+  "calidad": 3,
+  "velocidad": "normal",
+  "costo": 0.03,
+  "estimado": true,
+  "referencias": 3,
+  "cola": true,
+  "nota": "Con referencias, edita tus imágenes (hasta 3). Precio aproximado.",
+  "para": [
+   "texto en imagen",
+   "editar fotos"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "1:1",
+     "2:3",
+     "3:2",
+     "3:4",
+     "4:3",
+     "9:16",
+     "16:9",
+     "21:9"
+    ],
+    "defecto": "1:1"
+   },
+   "resolution": {
+    "valores": [
+     "1k",
+     "2k"
+    ],
+    "defecto": "1k"
+   }
+  },
+  "rutas": {
+   "text": "alibaba/qwen-image-3/text-to-image",
+   "reference": "alibaba/qwen-image-3/edit"
+  }
+ },
+ {
+  "id": "z-image-turbo",
+  "motor": "higgsfield",
+  "tipo": "imagen",
+  "nombre": "Z-Image Turbo",
+  "creador": "Alibaba",
+  "calidad": 2,
+  "velocidad": "muy rápido",
+  "costo": 0.01,
+  "estimado": true,
+  "referencias": 0,
+  "cola": true,
+  "nota": "Rapidísimo y barato: para bocetos y lotes grandes. Precio aproximado.",
+  "para": [
+   "bocetos",
+   "lotes",
+   "barato"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "1:1",
+     "2:3",
+     "3:2",
+     "3:4",
+     "4:3",
+     "9:16",
+     "16:9",
+     "21:9"
+    ],
+    "defecto": "1:1"
+   },
+   "resolution": {
+    "valores": [
+     "1k",
+     "2k"
+    ],
+    "defecto": "1k"
+   }
+  },
+  "rutas": {
+   "text": "z-image/turbo"
+  }
+ },
+ {
+  "id": "kling-3-std",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "Kling 3.0",
+  "creador": "Kling (Kuaishou)",
+  "calidad": 3,
+  "velocidad": "normal",
+  "costo": 0.08,
+  "por": "s",
+  "estimado": true,
+  "referencias": 0,
+  "inicial": 1,
+  "final": 1,
+  "cola": true,
+  "nota": "El equilibrio: buena calidad, sonido, imagen inicial y final. Precio aproximado.",
+  "para": [
+   "con sonido",
+   "imagen inicial y final",
+   "todo uso"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "16:9",
+     "9:16",
+     "1:1"
+    ],
+    "defecto": "9:16"
+   },
+   "duration": {
+    "valores": [
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15"
+    ],
+    "defecto": "5"
+   }
+  },
+  "rutas": {
+   "text": "kling-video/v3.0/std/text-to-video",
+   "image": "kling-video/v3.0/std/image-to-video"
+  }
+ },
+ {
+  "id": "kling-3-pro",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "Kling 3.0 Pro",
+  "creador": "Kling (Kuaishou)",
+  "calidad": 4,
+  "velocidad": "lento",
+  "costo": 0.11,
+  "por": "s",
+  "estimado": true,
+  "referencias": 0,
+  "inicial": 1,
+  "final": 1,
+  "cola": true,
+  "nota": "Precio aproximado.",
+  "para": [
+   "con sonido",
+   "calidad alta"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "16:9",
+     "9:16",
+     "1:1"
+    ],
+    "defecto": "9:16"
+   },
+   "duration": {
+    "valores": [
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15"
+    ],
+    "defecto": "5"
+   }
+  },
+  "rutas": {
+   "text": "kling-video/v3.0/pro/text-to-video",
+   "image": "kling-video/v3.0/pro/image-to-video"
+  }
+ },
+ {
+  "id": "kling-3-4k",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "Kling 3.0 4K",
+  "creador": "Kling (Kuaishou)",
+  "calidad": 4,
+  "velocidad": "lento",
+  "costo": 0.2,
+  "por": "s",
+  "estimado": true,
+  "referencias": 0,
+  "inicial": 1,
+  "final": 1,
+  "cola": true,
+  "nota": "Precio aproximado.",
+  "para": [
+   "4K",
+   "con sonido"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "16:9",
+     "9:16",
+     "1:1"
+    ],
+    "defecto": "9:16"
+   },
+   "duration": {
+    "valores": [
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15"
+    ],
+    "defecto": "5"
+   }
+  },
+  "rutas": {
+   "text": "kling-video/v3.0/4k/text-to-video",
+   "image": "kling-video/v3.0/4k/image-to-video"
+  }
+ },
+ {
+  "id": "kling-3-turbo",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "Kling 3.0 Turbo",
+  "creador": "Kling (Kuaishou)",
+  "calidad": 2,
+  "velocidad": "rápido",
+  "costo": 0.06,
+  "por": "s",
+  "estimado": true,
+  "referencias": 0,
+  "inicial": 1,
+  "final": 0,
+  "cola": true,
+  "nota": "El más rápido de Kling 3. Precio aproximado.",
+  "para": [
+   "rápido",
+   "redes"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "16:9",
+     "9:16",
+     "1:1"
+    ],
+    "defecto": "9:16"
+   },
+   "resolution": {
+    "valores": [
+     "720p",
+     "1080p"
+    ],
+    "defecto": "720p"
+   },
+   "duration": {
+    "valores": [
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15"
+    ],
+    "defecto": "5"
+   }
+  },
+  "rutas": {
+   "text": "kling-video/v3.0-turbo/text-to-video",
+   "image": "kling-video/v3.0-turbo/image-to-video"
+  }
+ },
+ {
+  "id": "kling-2.6",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "Kling 2.6 Pro",
+  "creador": "Kling (Kuaishou)",
+  "calidad": 3,
+  "velocidad": "normal",
+  "costo": 0.07,
+  "por": "s",
+  "estimado": true,
+  "referencias": 0,
+  "inicial": 1,
+  "final": 0,
+  "cola": true,
+  "nota": "Precio aproximado.",
+  "para": [
+   "con sonido"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "16:9",
+     "9:16",
+     "1:1"
+    ],
+    "defecto": "9:16"
+   },
+   "duration": {
+    "valores": [
+     "5",
+     "10"
+    ],
+    "defecto": "5"
+   }
+  },
+  "rutas": {
+   "text": "kling-video/v2.6/pro/text-to-video",
+   "image": "kling-video/v2.6/pro/image-to-video"
+  }
+ },
+ {
+  "id": "kling-2.5",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "Kling 2.5 Turbo · Anima una foto",
+  "creador": "Kling (Kuaishou)",
+  "calidad": 2,
+  "velocidad": "rápido",
+  "costo": 0.05,
+  "por": "s",
+  "estimado": true,
+  "referencias": 0,
+  "inicial": 1,
+  "final": 0,
+  "necesitaImagen": true,
+  "cola": true,
+  "nota": "Barato y rápido para animar una imagen. Precio aproximado.",
+  "para": [
+   "animar una foto",
+   "barato"
+  ],
+  "ajustes": {
+   "duration": {
+    "valores": [
+     "5",
+     "10"
+    ],
+    "defecto": "5"
+   }
+  },
+  "rutas": {
+   "image": "kling-video/v2.5-turbo/standard/image-to-video"
+  }
+ },
+ {
+  "id": "kling-2.5-pro",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "Kling 2.5 Turbo Pro",
+  "creador": "Kling (Kuaishou)",
+  "calidad": 3,
+  "velocidad": "normal",
+  "costo": 0.07,
+  "por": "s",
+  "estimado": true,
+  "referencias": 0,
+  "inicial": 1,
+  "final": 0,
+  "cola": true,
+  "nota": "Precio aproximado.",
+  "para": [
+   "texto o foto"
+  ],
+  "ajustes": {
+   "duration": {
+    "valores": [
+     "5",
+     "10"
+    ],
+    "defecto": "5"
+   }
+  },
+  "rutas": {
+   "text": "kling-video/v2.5-turbo/pro/text-to-video",
+   "image": "kling-video/v2.5-turbo/pro/image-to-video"
+  }
+ },
+ {
+  "id": "seedance-2",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "Seedance 2.0",
+  "creador": "ByteDance",
+  "calidad": 3,
+  "velocidad": "normal",
+  "costo": 0.1,
+  "por": "s",
+  "estimado": true,
+  "referencias": 9,
+  "inicial": 1,
+  "final": 1,
+  "cola": true,
+  "nota": "Hasta 9 referencias (personaje, producto, estilo) y audio. Precio aproximado.",
+  "para": [
+   "referencias",
+   "con audio",
+   "personajes"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "16:9",
+     "4:3",
+     "1:1",
+     "3:4",
+     "9:16",
+     "21:9"
+    ],
+    "defecto": "9:16"
+   },
+   "resolution": {
+    "valores": [
+     "480p",
+     "720p",
+     "1080p",
+     "4k"
+    ],
+    "defecto": "720p"
+   },
+   "duration": {
+    "valores": [
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15"
+    ],
+    "defecto": "5"
+   }
+  },
+  "rutas": {
+   "text": "bytedance/seedance-2.0/text-to-video",
+   "image": "bytedance/seedance-2.0/image-to-video",
+   "reference": "bytedance/seedance-2.0/reference-to-video"
+  }
+ },
+ {
+  "id": "seedance-2.5",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "Seedance 2.5",
+  "creador": "ByteDance",
+  "calidad": 4,
+  "velocidad": "lento",
+  "costo": 0.1,
+  "por": "s",
+  "estimado": true,
+  "referencias": 30,
+  "inicial": 1,
+  "final": 1,
+  "cola": true,
+  "nota": "Hasta 30 s, audio, muchas referencias. Precio aproximado.",
+  "para": [
+   "hasta 30 s",
+   "con audio",
+   "muchas referencias"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "16:9",
+     "4:3",
+     "1:1",
+     "3:4",
+     "9:16",
+     "21:9"
+    ],
+    "defecto": "9:16"
+   },
+   "resolution": {
+    "valores": [
+     "480p",
+     "720p"
+    ],
+    "defecto": "720p"
+   },
+   "duration": {
+    "valores": [
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "21",
+     "22",
+     "23",
+     "24",
+     "25",
+     "26",
+     "27",
+     "28",
+     "29",
+     "30"
+    ],
+    "defecto": "5"
+   }
+  },
+  "rutas": {
+   "text": "bytedance/seedance-2.5/text-to-video",
+   "image": "bytedance/seedance-2.5/image-to-video",
+   "reference": "bytedance/seedance-2.5/reference-to-video"
+  }
+ },
+ {
+  "id": "minimax-hailuo-2.3",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "MiniMax Hailuo 2.3",
+  "creador": "MiniMax",
+  "calidad": 3,
+  "velocidad": "normal",
+  "costo": 0.045,
+  "por": "s",
+  "estimado": true,
+  "referencias": 0,
+  "inicial": 1,
+  "final": 0,
+  "cola": true,
+  "nota": "Videos de 6 o 10 s. Precio aproximado.",
+  "para": [
+   "movimiento natural",
+   "6 o 10 s"
+  ],
+  "ajustes": {
+   "duration": {
+    "valores": [
+     "6",
+     "10"
+    ],
+    "defecto": "6"
+   }
+  },
+  "rutas": {
+   "text": "minimax/hailuo-2.3/standard/text-to-video",
+   "image": "minimax/hailuo-2.3/standard/image-to-video"
+  }
+ },
+ {
+  "id": "minimax-h3",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "MiniMax H3",
+  "creador": "MiniMax",
+  "calidad": 4,
+  "velocidad": "lento",
+  "costo": 0.06,
+  "por": "s",
+  "estimado": true,
+  "referencias": 9,
+  "inicial": 1,
+  "final": 1,
+  "cola": true,
+  "nota": "En 2K; texto, una imagen inicial o referencias. Precio aproximado.",
+  "para": [
+   "2K",
+   "referencias"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "21:9",
+     "16:9",
+     "4:3",
+     "1:1",
+     "3:4",
+     "9:16"
+    ],
+    "defecto": "9:16"
+   },
+   "resolution": {
+    "valores": [
+     "2K"
+    ],
+    "defecto": "2K"
+   },
+   "duration": {
+    "valores": [
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15"
+    ],
+    "defecto": "5"
+   }
+  },
+  "rutas": {
+   "text": "minimax/h3/text-to-video",
+   "image": "minimax/h3/image-to-video",
+   "reference": "minimax/h3/reference-to-video"
+  }
+ },
+ {
+  "id": "wan-2.7",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "Wan 2.7",
+  "creador": "Alibaba",
+  "calidad": 3,
+  "velocidad": "normal",
+  "costo": 0.045,
+  "por": "s",
+  "estimado": true,
+  "referencias": 8,
+  "inicial": 1,
+  "final": 1,
+  "cola": true,
+  "nota": "Texto, imagen o referencias. Precio aproximado.",
+  "para": [
+   "referencias",
+   "imagen inicial y final"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "16:9",
+     "9:16",
+     "1:1",
+     "4:3",
+     "3:4"
+    ],
+    "defecto": "9:16"
+   },
+   "resolution": {
+    "valores": [
+     "720p",
+     "1080p"
+    ],
+    "defecto": "720p"
+   },
+   "duration": {
+    "valores": [
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15"
+    ],
+    "defecto": "5"
+   }
+  },
+  "rutas": {
+   "text": "wan/v2.7/text-to-video",
+   "image": "wan/v2.7/image-to-video",
+   "reference": "wan/v2.7/reference-to-video"
+  }
+ },
+ {
+  "id": "wan-3",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "Wan 3.0",
+  "creador": "Alibaba",
+  "calidad": 3,
+  "velocidad": "normal",
+  "costo": 0.05,
+  "por": "s",
+  "estimado": true,
+  "referencias": 10,
+  "inicial": 1,
+  "final": 1,
+  "cola": true,
+  "nota": "Hasta 30 s, audio, referencias. Precio aproximado.",
+  "para": [
+   "hasta 30 s",
+   "con audio",
+   "referencias"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "16:9",
+     "4:3",
+     "1:1",
+     "3:4",
+     "9:16"
+    ],
+    "defecto": "9:16"
+   },
+   "resolution": {
+    "valores": [
+     "480p",
+     "720p",
+     "1080p"
+    ],
+    "defecto": "1080p"
+   },
+   "duration": {
+    "valores": [
+     "2",
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "16",
+     "17",
+     "18",
+     "19",
+     "20",
+     "21",
+     "22",
+     "23",
+     "24",
+     "25",
+     "26",
+     "27",
+     "28",
+     "29",
+     "30"
+    ],
+    "defecto": "5"
+   }
+  },
+  "rutas": {
+   "text": "alibaba/wan-3.0/text-to-video",
+   "image": "alibaba/wan-3.0/image-to-video",
+   "reference": "alibaba/wan-3.0/reference-to-video"
+  }
+ },
+ {
+  "id": "ltx-2.5-pro",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "LTX 2.5 Pro",
+  "creador": "Lightricks",
+  "calidad": 3,
+  "velocidad": "normal",
+  "costo": 0.06,
+  "por": "s",
+  "estimado": true,
+  "referencias": 0,
+  "inicial": 1,
+  "final": 1,
+  "cola": true,
+  "nota": "Con movimientos de cámara; 6, 8 o 10 s, vertical u horizontal. Precio aproximado.",
+  "para": [
+   "movimientos de cámara",
+   "con audio"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "16:9",
+     "9:16"
+    ],
+    "defecto": "9:16"
+   },
+   "resolution": {
+    "valores": [
+     "720p",
+     "1080p"
+    ],
+    "defecto": "720p"
+   },
+   "duration": {
+    "valores": [
+     "6",
+     "8",
+     "10"
+    ],
+    "defecto": "6"
+   }
+  },
+  "rutas": {
+   "text": "lightricks/ltx-2.5/text-to-video/pro",
+   "image": "lightricks/ltx-2.5/image-to-video/pro"
+  }
+ },
+ {
+  "id": "ltx-2.5-fast",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "LTX 2.5 Fast",
+  "creador": "Lightricks",
+  "calidad": 2,
+  "velocidad": "rápido",
+  "costo": 0.03,
+  "por": "s",
+  "estimado": true,
+  "referencias": 0,
+  "inicial": 1,
+  "final": 1,
+  "cola": true,
+  "nota": "Rápido y barato; hasta 4K. Precio aproximado.",
+  "para": [
+   "hasta 4K",
+   "barato"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "16:9",
+     "9:16"
+    ],
+    "defecto": "9:16"
+   },
+   "resolution": {
+    "valores": [
+     "720p",
+     "1080p",
+     "2k",
+     "4k"
+    ],
+    "defecto": "720p"
+   },
+   "duration": {
+    "valores": [
+     "6",
+     "8",
+     "10"
+    ],
+    "defecto": "6"
+   }
+  },
+  "rutas": {
+   "text": "lightricks/ltx-2.5/text-to-video/fast",
+   "image": "lightricks/ltx-2.5/image-to-video/fast"
+  }
+ },
+ {
+  "id": "pixverse-6",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "PixVerse 6",
+  "creador": "PixVerse",
+  "calidad": 3,
+  "velocidad": "rápido",
+  "costo": 0.05,
+  "por": "s",
+  "estimado": true,
+  "referencias": 0,
+  "inicial": 1,
+  "final": 1,
+  "segundos": 5,
+  "cola": true,
+  "nota": "Precio aproximado.",
+  "para": [
+   "redes",
+   "con audio"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "16:9",
+     "4:3",
+     "1:1",
+     "3:4",
+     "9:16"
+    ],
+    "defecto": "9:16"
+   },
+   "resolution": {
+    "valores": [
+     "360p",
+     "540p",
+     "720p",
+     "1080p"
+    ],
+    "defecto": "720p"
+   }
+  },
+  "rutas": {
+   "text": "pixverse/v6/text-to-video",
+   "image": "pixverse/v6/image-to-video"
+  }
+ },
+ {
+  "id": "happy-horse-1.1",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "Happy Horse 1.1",
+  "creador": "Alibaba",
+  "calidad": 3,
+  "velocidad": "normal",
+  "costo": 0.045,
+  "por": "s",
+  "estimado": true,
+  "referencias": 8,
+  "inicial": 1,
+  "final": 0,
+  "cola": true,
+  "nota": "De Alibaba; texto, imagen o referencias. Precio aproximado.",
+  "para": [
+   "referencias",
+   "1080p"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "16:9",
+     "9:16",
+     "1:1",
+     "4:3",
+     "3:4"
+    ],
+    "defecto": "9:16"
+   },
+   "resolution": {
+    "valores": [
+     "720p",
+     "1080p"
+    ],
+    "defecto": "1080p"
+   },
+   "duration": {
+    "valores": [
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10",
+     "11",
+     "12",
+     "13",
+     "14",
+     "15",
+     "2"
+    ],
+    "defecto": "5"
+   }
+  },
+  "rutas": {
+   "text": "alibaba/happy-horse/v1.1/text-to-video",
+   "image": "alibaba/happy-horse/v1.1/image-to-video",
+   "reference": "alibaba/happy-horse/v1.1/reference-to-video"
+  }
+ }
+]

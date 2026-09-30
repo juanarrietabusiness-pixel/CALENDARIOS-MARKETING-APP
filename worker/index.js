@@ -47,6 +47,8 @@ import { fotoPendiente } from "./lib/metricas.js";
 import { rutasInformes } from "./rutas/informes.js";
 import { rutasAuditorias } from "./rutas/auditorias.js";
 import { rutasCerebro } from "./rutas/cerebro.js";
+import { rutasEstudio } from "./rutas/estudio.js";
+import { avanzarPendientes } from "./lib/estudio/trabajos.js";
 import { rutasMCP, rutasMCPPublicas } from "./rutas/mcp.js";
 import { informePendiente } from "./lib/informes.js";
 
@@ -89,6 +91,10 @@ async function sirveMedia(env, clave, cacheable, req = null) {
   // guarde es exactamente lo que no se quiere.
   cabeceras.set("Cache-Control", cacheable ? "private, max-age=3600" : "no-store");
   cabeceras.set("X-Content-Type-Options", "nosniff");
+  // Un SVG abierto como página ejecutaría sus scripts con la sesión de la
+  // agencia. Las tarjetas de prueba del Estudio son SVG: en un <img> no
+  // ejecutan nada, y abiertas sueltas quedan en una caja sin permisos.
+  if (/svg/i.test(cabeceras.get("content-type") ?? "")) cabeceras.set("Content-Security-Policy", "sandbox; default-src 'none'; style-src 'unsafe-inline'");
   const trozo = rango && objeto.range ? rangoServido(objeto.range, objeto.size) : null;
   if (trozo) {
     cabeceras.set("Content-Range", `bytes ${trozo.inicio}-${trozo.fin}/${objeto.size}`);
@@ -343,7 +349,7 @@ export default {
         return await rutaResumenChat(req, env, { acceso, metodo });
       }
       if (partes[0] === "ia" && partes[1] === "chat" && !partes[2] && metodo === "POST") {
-        return await rutaChat(req, env, { acceso, ctx });
+        return await rutaChat(req, env, { acceso, ctx, usuario });
       }
       // La generación del calendario, también después del acceso: el
       // modelo y el razonamiento salen de la configuración del espacio.
@@ -366,6 +372,8 @@ export default {
       if (partes[0] === "mcp") return await rutasMCP(req, env, { acceso, usuario, partes, metodo });
       // El cerebro de cada cliente: sus notas y lo que se le da a la IA.
       if (partes[0] === "cerebro") return await rutasCerebro(req, env, { acceso, usuario, partes, metodo });
+      // El Estudio: imágenes por trabajos, con su galería por cliente.
+      if (partes[0] === "estudio") return await rutasEstudio(req, env, { acceso, usuario, partes, metodo });
 
       // ---------- Medios ----------
       //
@@ -446,7 +454,10 @@ export default {
       if (publicadas) return;
       const fotos = await fotoPendiente(env, cuando).catch((e) => { console.error("cron métricas:", e); return 1; });
       if (fotos) return;
-      await informePendiente(env, cuando).catch((e) => console.error("cron informes:", e));
+      const informes = await informePendiente(env, cuando).catch((e) => { console.error("cron informes:", e); return 1; });
+      if (informes) return;
+      // Y por último el Estudio: lo que nadie está mirando (cerró la pestaña).
+      await avanzarPendientes(env, cuando).catch((e) => console.error("cron estudio:", e));
     })());
   },
 };

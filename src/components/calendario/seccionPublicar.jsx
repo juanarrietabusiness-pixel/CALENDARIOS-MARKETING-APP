@@ -29,7 +29,7 @@ import { useId, useMemo, useRef, useState } from "react";
 import Icon from "../Icon";
 import {
   revisarPublicacion, aplicarArreglo, REDES, mediosDe, objetivoDe, necesitaAjuste, conMedios, destinoInstagram,
-  historiasDe, contarHashtags, colaboradoresDe,
+  historiasDe, contarHashtags, colaboradoresDe, LIMITES,
 } from "../../lib/publicacion";
 import { EditorMedios, CamposRedes, Plegable } from "./editorPublicacion";
 import AjusteImagen from "./ajusteImagen";
@@ -40,6 +40,8 @@ import { EstadoAprobacion } from "./aprobacionCliente";
 import DestinoRedes from "./destinoRedes";
 import { escribirDesdeContenido } from "../../api";
 import { rellenarDesdeContenido, tieneContenido, formatoDeMedios } from "../../lib/subir";
+import { medioDeArchivo } from "../../lib/estudio";
+import { useCrearConIA } from "../../hooks/useCrearConIA";
 
 const REDES_POR_DEFECTO = ["instagram"];
 
@@ -88,6 +90,22 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
   const alCambiarMedios = (medios) => setForm((p) => {
     const siguiente = { ...conMedios(p, medios), mediosCambiadosAt: new Date().toISOString() };
     return auto.current && medios.length ? { ...siguiente, format: formatoDeMedios(medios) ?? p.format } : siguiente;
+  });
+
+  // «Crear con IA»: el Estudio del cliente en un diálogo. Lo creado se AÑADE a los medios (nunca reemplaza),
+  // y con un cambio funcional: el diálogo puede tardar y `post` se habría quedado atrás.
+  const { abrir: abrirCreacion, dialogo: dialogoCreacion } = useCrearConIA({
+    client, clientId, post, onError,
+    uso: cal && post.id ? { calendarId: cal.dbId || cal.id, postId: post.id } : null,
+    onUsar: (archivo) => {
+      setForm((p) => {
+        const actuales = mediosDe(p);
+        if (actuales.length >= LIMITES.instagram.carruselMax) return p;
+        const siguiente = { ...conMedios(p, [...actuales, medioDeArchivo(archivo)]), mediosCambiadosAt: new Date().toISOString() };
+        return auto.current ? { ...siguiente, format: formatoDeMedios(mediosDe(siguiente)) ?? p.format } : siguiente;
+      });
+      setEscrito("Añadido a la publicación. Puedes escribir el texto con IA cuando quieras.");
+    },
   });
   const esHistoria = post.format === "historia";
   const destino = destinoInstagram(post);
@@ -172,6 +190,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           onError={onError}
           entradaRef={entrada}
           onPortada={conPortada ? (c) => setForm((p) => ({ ...p, ...c })) : null}
+          onCrearConIA={abrirCreacion}
         />
 
         {esHistoria ? (
@@ -269,6 +288,8 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           {vista}
         </aside>
       )}
+
+      {dialogoCreacion}
     </div>
   );
 }

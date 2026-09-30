@@ -21,6 +21,8 @@ import { fechaEnZona } from "../lib/agenda";
 import { fechaHora } from "../lib/cola";
 import { uid } from "../utils";
 import { esAdmin } from "../lib/sesionActual";
+import { medioDeArchivo, apuntarUso } from "../lib/estudio";
+import { useCrearConIA } from "../hooks/useCrearConIA";
 
 // ============================================================
 // «Subir»: el archivo primero, todo lo demás después
@@ -79,6 +81,7 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
   const [fallo, setFallo] = useState("");
   const [hecho, setHecho] = useState(null);
   const yaEscribio = useRef(false);
+  const delEstudio = useRef(new Map()); // src → id del archivo del Estudio: al guardar, se apunta que la publicación lo usa
 
   const cliente = clients.find((c) => c.id === clienteId) ?? null;
   const clienteDb = cliente?.dbId || cliente?.id;
@@ -107,6 +110,7 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
     setRedes(null);
     setFormatoElegido(null);
     yaEscribio.current = false;
+    delEstudio.current.clear();
   };
 
   const escribir = async (p = completo) => {
@@ -130,6 +134,16 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
       void escribir({ ...siguiente, format: formatoElegido ?? formatoDeMedios(medios) ?? "post" });
     }
   };
+
+  // «Crear con IA»: sale con el cliente y el formato de ahora. La publicación aún no existe, así que lo
+  // creado se añade a los medios y su uso se apunta al guardar (ver `confirmar`).
+  const { abrir: abrirCreacion, dialogo: dialogoCreacion } = useCrearConIA({
+    client: cliente, clientId: clienteDb, post: completo, onError: setFallo,
+    onUsar: (archivo) => {
+      delEstudio.current.set(archivo.src, archivo.id);
+      alCambiarMedios([...mediosDe(post), medioDeArchivo(archivo)]);
+    },
+  });
 
   const confirmar = async () => {
     setFallo("");
@@ -166,6 +180,11 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
       setTrabajando("Guardando…");
       const guardado = await saveCalendar(ponerEnDia(cal, dia, nuevo), clienteDb);
       onCalendarioGuardado(cliente.id, guardado);
+      // Lo que se creó en el Estudio y sigue en la publicación: que la papelera del Estudio sepa que se usa.
+      // Si falla no importa aquí (la publicación ya está guardada): se pierde la protección, no la subida.
+      await Promise.all(mediosDe(nuevo)
+        .filter((m) => delEstudio.current.has(m.src))
+        .map((m) => apuntarUso(clienteDb, delEstudio.current.get(m.src), { calendarId: guardado.dbId || guardado.id, postId: nuevo.id }).catch(() => null)));
       if (modo !== "mano") {
         setTrabajando(modo === "ahora" ? "Publicando…" : "Programando…");
         await publicar({ calendarId: guardado.dbId || guardado.id, postId: nuevo.id, redes: destino, ahora: modo === "ahora" });
@@ -191,7 +210,7 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
 
   return (
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget && !trabajando) onClose(); }}>
-      <div ref={ref} className={`dialog subir-rapido${ancho ? " subir-ancho" : ""}`} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`}>
+      <div ref={ref} className={`dialog subir-rapido${ancho && hayMedios ? " subir-ancho" : ""}`} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`}>
         <div className="subir-cabecera">
           <h2 id={`${ids}-t`}><Icon name="upload" size={20} /> Subir contenido</h2>
           <button type="button" className="btn-icon" onClick={onClose} aria-label="Cerrar" disabled={!!trabajando}><Icon name="close" /></button>
@@ -227,6 +246,7 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
                 onError={setFallo}
                 entradaRef={entrada}
                 onPortada={mediosDe(post).some((m) => m.tipo === "video") ? (c) => setPost((p) => ({ ...p, ...c })) : null}
+                onCrearConIA={abrirCreacion}
               />
             )}
 
@@ -258,7 +278,7 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
                 )}
                 {formato === "historia" && escribiendo && <p className="hint" role="status">{escribiendo}</p>}
                 {fuera && <AjusteImagen post={completo} alCambiar={setPost} clientId={clienteDb} objetivo={objetivo} color={cliente?.primaryColor} onError={setFallo} />}
-                {!ancho && vista}
+                {!(ancho && hayMedios) && vista}
                 {!["historia", "live"].includes(formato) && destino.some((r) => r !== "tiktok") && (
                   <Plegable titulo="También en historias" icono="formatHistoria" resumen={post.historiaTambien && historias.length ? `${historias.length} ${historias.length === 1 ? "historia" : "historias"}` : null}>
                     <HistoriasDelPost post={completo} sf={sf} clientId={clienteDb} colorMarca={cliente?.primaryColor} onError={setFallo} />
@@ -317,14 +337,15 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
             </div>
           </div>
           </div>
-          {ancho && (
+          {ancho && hayMedios && (
             <aside className="subir-vista" aria-label="Cómo se va a ver">
               <h3 className="label">Así se va a ver</h3>
-              {hayMedios ? vista : <p className="hint">Sube una imagen o un video y aquí verás cómo queda en cada red, con su texto.</p>}
+              {vista}
             </aside>
           )}
           </div>
         )}
+        {dialogoCreacion}
       </div>
     </div>
   );

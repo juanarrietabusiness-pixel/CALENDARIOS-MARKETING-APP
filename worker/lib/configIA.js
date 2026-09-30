@@ -311,3 +311,33 @@ export async function registrarConsumoGemini(acceso, { funcion, modelo, meta, cl
     console.error("consumo: no se pudo apuntar", e);
   }
 }
+
+/**
+ * Apunta una llamada de la que se conoce el costo pero no los tokens: una
+ * imagen del Estudio, cuyo precio es fijo por pieza. Igual que las otras,
+ * no se espera ni puede tumbar la respuesta.
+ */
+export async function registrarConsumoFijo(acceso, { proveedor, funcion, modelo, costo, clienteId = null }) {
+  if (!acceso || !(costo > 0)) return;
+  const dia = fechaEnZona();
+  try {
+    await acceso.insertar("consumo_ia", {
+      id: crypto.randomUUID(),
+      mes: dia.slice(0, 7),
+      dia,
+      proveedor: String(proveedor ?? "otro").slice(0, 20),
+      client_id: clienteId ? String(clienteId) : null,
+      funcion: String(funcion ?? "otro").slice(0, 40),
+      modelo: String(modelo ?? ""),
+      entrada: 0,
+      salida: 0,
+      cache_leido: 0,
+      cache_escrito: 0,
+      busquedas: 0,
+      costo_usd: Number(costo),
+      created_at: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error("consumo: no se pudo apuntar", e);
+  }
+}

@@ -15,8 +15,10 @@
 import { json, error, cuerpo } from "../lib/respuesta.js";
 import { uuid } from "../lib/ids.js";
 import { bloqueoPorPresupuesto, registrarConsumoGemini } from "../lib/configIA.js";
+import { llamarGemini, aBase64, ErrorMotor } from "../lib/estudio/gemini.js";
+import { registrarImagenGenerada } from "../lib/estudio/galeria.js";
+import { medidasDe } from "../lib/estudio/archivos.js";
 
-const PRESUPUESTO_MS = 120_000;
 const MAX_REFS = 5;
 
 // `ratio` es lo que Gemini entiende. 1200×630 no tiene proporción
@@ -27,20 +29,6 @@ const FORMATOS = {
   story:      { w: 1080, h: 1920, ratio: "9:16", label: "Historia/Reel 1080×1920" },
   horizontal: { w: 1200, h: 630,  ratio: "16:9", label: "Horizontal 1200×630" },
 };
-
-/**
- * A trozos: `String.fromCharCode(...bytes)` con una imagen de más de
- * ~100 KB pasa del máximo de argumentos, lanza, y el `catch` de abajo
- * descartaba la referencia sin decir nada.
- */
-function aBase64(buf) {
-  const bytes = new Uint8Array(buf);
-  let bin = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(bin);
-}
 
 function construirPrompt(datos) {
   const { idea, descripcion, guion, format, category, title, clientName,
@@ -238,73 +226,37 @@ export async function rutaGenerarImagen(req, env, ctx) {
   }
 
   const modelo = env.GEMINI_MODEL || "gemini-2.5-flash-image";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${env.GOOGLE_AI_KEY}`;
+  const funcion = historia ? "historia" : adaptar ? "ampliar" : portada ? "portada" : "imagen";
 
-  const abortar = new AbortController();
-  const reloj = setTimeout(() => abortar.abort(), PRESUPUESTO_MS);
-
-  let res;
+  // La llamada vive en lib/estudio/gemini.js: la comparte el Estudio. Sus
+  // mensajes de error son los de siempre, palabra por palabra.
+  let resultado;
   try {
-    res = await fetch(url, {
-      method: "POST",
-      signal: abortar.signal,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts }],
-        generationConfig: {
-          responseModalities: ["TEXT", "IMAGE"],
-          imageConfig: { aspectRatio: (FORMATOS[formatoFinal] ?? FORMATOS.square).ratio },
-        },
-      }),
+    resultado = await llamarGemini(env, {
+      gid: modelo,
+      partes: parts,
+      ratio: (FORMATOS[formatoFinal] ?? FORMATOS.square).ratio,
     });
-  } catch {
-    clearTimeout(reloj);
-    if (abortar.signal.aborted) {
-      return error("La generación de la imagen tardó demasiado. Inténtalo de nuevo.", 504);
-    }
-    return error("No se pudo contactar con Google AI", 502);
-  }
-  clearTimeout(reloj);
-
-  if (!res.ok) {
-    const texto = await res.text().catch(() => "");
-    console.error("imagen: Google AI respondió", res.status, texto);
-    if (res.status === 429) {
-      return error("Google AI está saturado. Inténtalo en unos segundos.", 429);
-    }
-    if (res.status === 401 || res.status === 403) {
-      return error("La clave de Google AI no es válida. Revísala en los secretos del Worker.", 502);
-    }
-    let detalle = "";
-    try {
-      const obj = JSON.parse(texto);
-      detalle = obj?.error?.message || "";
-    } catch { /* no es JSON */ }
-    return error(
-      `Google AI devolvió un error (${res.status})${detalle ? ": " + detalle.slice(0, 200) : ". Inténtalo de nuevo."}`,
-      502,
-    );
+  } catch (e) {
+    if (e instanceof ErrorMotor) return error(e.message, e.estado);
+    throw e;
   }
 
-  const data = await res.json();
-  await registrarConsumoGemini(acceso, { funcion: historia ? "historia" : adaptar ? "ampliar" : portada ? "portada" : "imagen", modelo, meta: data?.usageMetadata, clienteId: clientId });
-  const candidates = data?.candidates ?? [];
-  const partesRespuesta = candidates[0]?.content?.parts ?? [];
+  await registrarConsumoGemini(acceso, { funcion, modelo, meta: resultado.meta, clienteId: clientId });
 
-  const imagePart = partesRespuesta.find((p) => p.inlineData);
-  if (!imagePart) {
-    const textPart = partesRespuesta.find((p) => p.text);
-    const motivo = textPart?.text || "No se generó ninguna imagen";
-    return error(`No se pudo generar la imagen: ${motivo.slice(0, 200)}`, 422);
-  }
-
-  const { mimeType, data: base64Data } = imagePart.inlineData;
+  const { mime: mimeType, bytes } = resultado;
   const ext = mimeType === "image/png" ? "png" : "jpg";
   const clave = `clientes/${clientId}/generadas/${uuid()}.${ext}`;
-
-  const bytes = Uint8Array.from(atob(base64Data), (c) => c.charCodeAt(0));
   await env.MEDIA.put(clave, bytes, {
     httpMetadata: { contentType: mimeType || "image/png" },
+  });
+
+  // Y a la galería del Estudio, para que se vea junto a las demás. Sin
+  // esperarlo ni poder tumbar la respuesta: la imagen ya existe.
+  const { ancho, alto } = medidasDe(bytes, mimeType);
+  await registrarImagenGenerada(acceso, {
+    clientId, clave, mime: mimeType, prompt: idea || title || funcion, modelo, ancho, alto, bytes: bytes.byteLength,
+    ajustes: { aspectRatio: (FORMATOS[formatoFinal] ?? FORMATOS.square).ratio, origen: funcion },
   });
 
   return json({ clave, mimeType }, 201);

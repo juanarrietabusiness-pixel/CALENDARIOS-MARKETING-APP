@@ -178,6 +178,7 @@ export function aprobadasDelEspacio({ calendarios = [], aprobaciones = [], filas
           postId: post.id, titulo: post.title || post.idea || String(post.descripcion || "").slice(0, 60) || "Publicación",
           formato: post.format, redes: Array.isArray(post.redes) ? post.redes : [],
           tieneArchivo: mediosDe(post).length > 0, subidaRapida: Boolean(post.subidaRapida),
+          miniatura: mediosDe(post).find((m) => m.tipo === "imagen")?.src ?? null,
           cambios: cambiosTrasAprobar(post),
         };
         if (porProducir(post)) aProducir.push(item);

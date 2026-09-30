@@ -92,9 +92,11 @@ export default function CuandoSale({
     return hacer("programar", () => onPublicar({ ahora: false, redes: pendientes, fecha, cambios: { asistida: false } }), `Programada para ${fechaHora(cuando)}.`);
   };
 
+  // A lo ancho la fecha y la hora ya están a la vista en la misma barra: el botón
+  // se queda en «Programar» (`cuando-principal-detalle` se oculta) y cabe junto a las acciones.
   const etiqueta = modo === "ahora" ? "Publicar ahora"
     : modo === "mano" ? "Guardar para publicar a mano"
-      : cuando ? `Programar para ${fechaHora(cuando)}` : "Programar";
+      : cuando ? <>Programar<span className="cuando-principal-detalle"> para {fechaHora(cuando)}</span></> : "Programar";
   const deshabilitado = !!trabajando || (modo !== "mano" && (!!bloqueo || !estadoRedes || errores.length > 0 || !pendientes.length))
     || (modo === "programar" && (!cuando || yaPaso));
 
