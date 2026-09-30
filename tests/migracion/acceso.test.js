@@ -83,6 +83,20 @@ describe("toda consulta sobre una tabla con dueño lleva el dueño", () => {
       await expect(a.leerColumnas(tabla, [])).rejects.toThrow(/sin columnas/);
     });
 
+    it(`${tabla}: leerVarios acota igual, sólo trae esas columnas y parte los valores en trozos de 50`, async () => {
+      const db = d1Falsa();
+      const a = crearAcceso(db, "u1");
+      await a.leerVarios(tabla, ["id", "ruta"], "id", Array.from({ length: 120 }, (_, i) => `x${i}`), { client_id: "c1" });
+      const consultas = db.llamadas.filter((c) => /^select id, ruta from/.test(c.sql));
+      expect(consultas).toHaveLength(3);
+      expect(consultas[0].sql).toMatch(/where client_id = \? and owner_id = \?.* and id in \(/);
+      expect(consultas[0].binds.slice(0, 2)).toEqual(["c1", "u1"]);
+      expect(consultas.map((c) => c.binds.length - 2)).toEqual([50, 50, 20]);
+      await expect(a.leerVarios(tabla, ["id; drop table x"], "id", ["a"])).rejects.toThrow(/Columna no permitida/);
+      await expect(a.leerVarios(tabla, ["id"], "id) or (1=1", ["a"])).rejects.toThrow(/Columna no permitida/);
+      await expect(a.leerVarios(tabla, [], "id", ["a"])).rejects.toThrow(/sin columnas/);
+    });
+
     it(`${tabla}: borrarVarios acota por owner_id y parte los ids en trozos de 50`, async () => {
       // D1 admite 100 parámetros por sentencia: más ids que eso no caben en una.
       const db = d1Falsa();

@@ -620,14 +620,16 @@ ${client.aiInstructions ? `\nINSTRUCCIONES OBLIGATORIAS DEL CLIENTE:\n${client.a
  * el cliente aún no tiene cerebro o si falla: la generación vuelve entonces
  * al ADN de la ficha, como antes, en vez de romperse.
  */
-export async function contextoDelCerebro(clienteId, consulta = "", { presupuesto = 9000, para = "texto" } = {}) {
+export async function contextoDelCerebro(clienteId, consulta = "", { presupuesto = 9000, para = "texto", postIds = null } = {}) {
   if (!clienteId) return null;
   try {
     const res = await fetch(`/api/cerebro/${encodeURIComponent(clienteId)}/contexto`, {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ consulta, para, presupuesto }),
+      // `postIds`: para qué publicaciones se pide. Con ellos el servidor apunta qué notas se le dieron a la IA para
+      // escribirlas, y así sabe después a qué notas atribuirle un sí o un no del cliente.
+      body: JSON.stringify(postIds?.length ? { consulta, para, presupuesto, postIds } : { consulta, para, presupuesto }),
     });
     if (!res.ok) return null;
     const c = await res.json();
@@ -645,14 +647,18 @@ export async function contextoDelCerebro(clienteId, consulta = "", { presupuesto
  */
 export async function pasajesDeLaTanda(client, adn, calendar, posts) {
   if (!adn?.cerebro) return "";
-  const c = await contextoDelCerebro(client?.dbId || client?.id, consultaDeTanda(calendar, posts), { presupuesto: 6000 });
+  const c = await contextoDelCerebro(client?.dbId || client?.id, consultaDeTanda(calendar, posts), {
+    presupuesto: 6000, postIds: (posts ?? []).map((p) => p?.id).filter(Boolean),
+  });
   return c?.pasajes ?? "";
 }
 
 /** Lo mismo para UNA publicación. */
 export async function pasajesDeLaPublicacion(client, adn, calendar, post, day) {
   if (!adn?.cerebro) return "";
-  const c = await contextoDelCerebro(client?.dbId || client?.id, consultaDePublicacion(calendar, post, day), { presupuesto: 6000 });
+  const c = await contextoDelCerebro(client?.dbId || client?.id, consultaDePublicacion(calendar, post, day), {
+    presupuesto: 6000, postIds: post?.id ? [post.id] : null,
+  });
   return c?.pasajes ?? "";
 }
 

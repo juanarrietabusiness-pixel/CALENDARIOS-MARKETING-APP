@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   armarGrafo, colorDeNota, esVisible, coincidencias, vecinas, etiquetasPara, regiones, resumenDelMapa, pocasConexiones,
-  COLOR_TIPO, FILTROS_INICIALES,
+  COLOR_TIPO, COLOR_APRENDIDA, FILTROS_INICIALES,
 } from "./cerebroGrafo";
 import { TIPOS } from "../../worker/lib/cerebro/notas.js";
 import { TIPOS_VISTA } from "./cerebroVista";
@@ -42,13 +42,43 @@ describe("armarGrafo", () => {
 
   it("una respuesta rota o vacía da un mapa vacío, no un error", () => {
     for (const r of [undefined, null, {}, { notas: null }, { notas: [] }]) {
-      expect(armarGrafo(r)).toEqual({ nodos: [], enlaces: [], menciones: [] });
+      expect(armarGrafo(r)).toEqual({ nodos: [], enlaces: [], menciones: [], aprendidas: [] });
     }
   });
 
   it("una nota sin grupo o con un grado que no es número no rompe nada", () => {
     const g = armarGrafo({ notas: [{ id: "a", ruta: "a", titulo: "A", tipo: "nota", d: "x" }], enlaces: [], menciones: [] });
     expect(g.nodos[0]).toMatchObject({ g: "Sin grupo", d: 0 });
+  });
+});
+
+describe("lo aprendido", () => {
+  it("las sinapsis aprendidas llevan su peso; las que no lo tienen, o apuntan a otra parte, se descartan", () => {
+    const r = respuesta();
+    r.aprendidas = [[0, 1, 0.7], [1, 2, 0.3], [0, 99, 0.5], [2, 2, 0.5], [0, 3, "x"], [0, 3]];
+    expect(armarGrafo(r).aprendidas).toEqual([[0, 1, 0.7], [1, 2, 0.3]]);
+  });
+
+  it("el peso de una nota, si es un número; si no, nada aprendido", () => {
+    const r = respuesta();
+    r.notas[0].peso = 0.8; r.notas[1].peso = null; r.notas[2].peso = "x";
+    const g = armarGrafo(r);
+    expect(g.nodos.map((n) => n.peso)).toEqual([0.8, null, null, null]);
+  });
+
+  it("la línea de cifras cuenta las aprendidas sólo si las hay", () => {
+    const r = respuesta();
+    expect(resumenDelMapa(armarGrafo(r))).toBe("4 notas · 2 enlaces · 1 mención");
+    r.aprendidas = [[0, 1, 0.7]];
+    expect(resumenDelMapa(armarGrafo(r))).toBe("4 notas · 2 enlaces · 1 mención · 1 aprendida");
+    r.aprendidas.push([1, 2, 0.4]);
+    expect(resumenDelMapa(armarGrafo(r))).toMatch(/2 aprendidas$/);
+  });
+
+  it("los filtros de partida enseñan lo aprendido", () => {
+    expect(FILTROS_INICIALES.aprendidas).toBe(true);
+    expect(COLOR_APRENDIDA).toMatch(/^#[0-9A-F]{6}$/i);
+    expect(COLOR_APRENDIDA).toBe(COLOR_TIPO.ficha);
   });
 });
 

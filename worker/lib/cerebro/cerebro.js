@@ -28,6 +28,7 @@
 import { buildIndex, reemplazarNota, serializar, cargar, search, staleness } from "./conocimiento.js";
 import { linkGraph, expand, pack, summary } from "./memoria.js";
 import { AUTORIDAD, SIEMPRE, grupoDe } from "./notas.js";
+import { cargarBoost, leerPesos, pesoDe, enlacesAprendidos } from "./pesos.js";
 
 const ID_CLIENTE = /^[\w-]{1,80}$/;
 const VERSION = 1;
@@ -204,8 +205,10 @@ function pesos(meta, aprendido) {
  * y por eso allí no entran en los pasajes. `aprendido(ruta)` es un factor
  * (0,8–1,2) de lo aprendido.
  */
-export async function buscar(env, acceso, clientId, consulta, { para = "texto", n = 5, per = 2, aprendido = null } = {}) {
+export async function buscar(env, acceso, clientId, consulta, { para = "texto", n = 5, per = 2, aprendido } = {}) {
   const { ix, meta } = await cargarIndice(env, acceso, clientId);
+  // Lo aprendido de lo que pasó con las publicaciones (pesos.js): quien no lo pide lo recibe igual.
+  if (aprendido === undefined) aprendido = await cargarBoost(acceso, clientId);
   const hits = search(ix, consulta, {
     n, per,
     boost: pesos(meta, aprendido),
@@ -218,8 +221,9 @@ export async function buscar(env, acceso, clientId, consulta, { para = "texto", 
 }
 
 /** Lo que se le da a la IA para una tarea: la ficha, las cifras y los pasajes que esa tarea necesita. */
-export async function contexto(env, acceso, clientId, consulta, { para = "texto", n = 5, per = 2, presupuesto = 9000, aprendido = null } = {}) {
+export async function contexto(env, acceso, clientId, consulta, { para = "texto", n = 5, per = 2, presupuesto = 9000, aprendido } = {}) {
   const { ix, meta, aristas } = await cargarIndice(env, acceso, clientId, { conGrafo: true });
+  if (aprendido === undefined) aprendido = await cargarBoost(acceso, clientId);
   const vale = (ruta) => !fueraDeUso(meta[ruta], para);
   const fija = (tipo) => Object.keys(meta).filter((r) => meta[r].t === tipo && vale(r)).sort();
   const unida = (tipo) => fija(tipo).map((r) => textoDe(ix, r)).filter(Boolean).join("\n\n");
@@ -272,6 +276,8 @@ export function notasViejas(notas, ahora = Date.now()) {
  * resumen) y dos clases de conexión, que son índices de `notas`:
  *   enlaces    una nota escribió [[la otra]]: alguien las conectó a propósito.
  *   menciones  una nota nombra a la otra sin enlazarla: más tenue, y hay muchas más.
+ *   aprendidas [i, j, peso]: dos notas que se usaron juntas en algo que salió bien; nacen de lo que pasa después de
+ *              escribir (aprender.js), no de lo que dice ninguna nota.
  * Sale del mismo índice que usa `contexto()` para las vecinas, así que el mapa enseña lo que la IA de verdad recorre.
  * `d` es cuántas conexiones toca una nota: lo que decide su tamaño y qué tan al centro queda.
  */
@@ -281,7 +287,9 @@ export async function grafo(env, acceso, clientId) {
   const posicion = new Map(filas.map((n, i) => [n.ruta, i]));
   const enlaces = [];
   const menciones = [];
+  const aprendidas = [];
   const grado = new Array(filas.length).fill(0);
+  const pesos = await leerPesos(acceso, clientId);
   for (const [a, b, peso] of aristas ?? []) {
     const i = posicion.get(a);
     const j = posicion.get(b);
@@ -291,12 +299,21 @@ export async function grafo(env, acceso, clientId) {
     grado[i]++;
     grado[j]++;
   }
+  // Los enlaces que se aprendieron de lo que salió bien (dos notas usadas juntas en algo que el cliente aprobó).
+  for (const [a, b, w] of enlacesAprendidos(pesos)) {
+    const i = posicion.get(a);
+    const j = posicion.get(b);
+    if (i !== undefined && j !== undefined && i !== j) aprendidas.push([i, j, w]);
+  }
   return {
     notas: filas.map((n, i) => ({
       id: n.id, ruta: n.ruta, titulo: n.titulo, tipo: n.tipo, origen: n.origen, fuente: n.fuente, grupo: grupoDe(n),
       interna: Boolean(n.interna), caracteres: n.caracteres, resumen: n.resumen, actualizada: n.updated_at, d: grado[i],
+      // Cuánto pesa hoy por lo aprendido (0–1, 0,5 neutro), o null si nunca se aprendió nada de ella.
+      peso: pesoDe(pesos, n.ruta),
     })),
     enlaces,
     menciones,
+    aprendidas,
   };
 }

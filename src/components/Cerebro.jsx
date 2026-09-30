@@ -9,6 +9,7 @@ import {
   TIPOS_VISTA, FILTROS_TIPO, nombreDeTipo, ordenarNotas, filtrarNotas, contarPorTipo,
   formatoCaracteres, describirImportacion, describirFicha, avisoSinFicha, leerDocumento,
 } from "../lib/cerebroVista";
+import CerebroAprendizaje from "./CerebroAprendizaje";
 import "./Cerebro.css";
 
 // El mapa 3D se descarga sólo si se abre: la lista es lo que se ve al entrar.
@@ -264,6 +265,8 @@ export default function Cerebro({ client }) {
         </div>
       ) : (
         <>
+          <CerebroAprendizaje client={client} lectura={lectura} version={`${estado.notas}|${estado.ultima}`} onCambio={cargar} />
+
           <div className="cerebro-vistas" role="group" aria-label="Cómo ver las notas">
             <button type="button" className="filter-chip" aria-pressed={vista === "lista"} onClick={() => cambiarVista("lista")}>
               <Icon name="list" size={16} /> Lista

@@ -26,7 +26,7 @@
 
 import { colocar, corteza, RADIOS } from "../../lib/cerebroLayout";
 import * as Cam from "../../lib/camara3d";
-import { COLOR_MENCION, COLOR_INTERNA } from "../../lib/cerebroGrafo";
+import { COLOR_MENCION, COLOR_INTERNA, COLOR_APRENDIDA } from "../../lib/cerebroGrafo";
 
 const VERSION_LAYOUT = 1; // si cambia la receta de colocar, sube: los sitios guardados dejan de valer
 const claveDeSitios = (clave) => `cerebro3d.sitios.${clave}`;
@@ -71,9 +71,9 @@ export function iniciarCerebro3D(ctx) {
   });
 
   // ---------- Los datos ----------
-  let nodos = []; let enlaces = []; let menciones = []; let ids = [];
+  let nodos = []; let enlaces = []; let menciones = []; let aprendidas = []; let ids = [];
   let P = new Float32Array(0); let posDe = new Map(); let colores = []; let visibles = [];
-  let elegida = null; let enfoque = null; let vecindad = null; let coinciden = null; let verMenciones = true;
+  let elegida = null; let enfoque = null; let vecindad = null; let coinciden = null; let verMenciones = true; let verAprendidas = true;
   const cortezaPts = corteza(1500);
   const nCorteza = cortezaPts.length / 3;
   const cX = new Float32Array(nCorteza); const cY = new Float32Array(nCorteza); const cZ = new Float32Array(nCorteza);
@@ -171,6 +171,14 @@ export function iniciarCerebro3D(ctx) {
         dibujarLinea(a, b, azul, azul, filtrando ? (activa(a, b) ? 0.26 : 0.02) : 0.13);
       }
     }
+    if (verAprendidas && aprendidas.length) { // lo que salió bien: dos notas usadas juntas en algo que el cliente aprobó, en dorado
+      const oro = rgbDe(COLOR_APRENDIDA);
+      for (const [a, b, w] of aprendidas) {
+        if (!visibles[a] || !visibles[b]) continue;
+        const base = 0.18 + 0.5 * w;
+        dibujarLinea(a, b, oro, oro, filtrando ? (activa(a, b) ? Math.min(1, base * 2.2) : 0.02) : base, 1 + w);
+      }
+    }
     if (enfoque) {
       for (const [a, b] of enlaces) if ((a === enfoque.i || b === enfoque.i) && visibles[a] && visibles[b]) dibujarLinea(a, b, BLANCO, BLANCO, 0.85, 1.5);
     }
@@ -179,8 +187,10 @@ export function iniciarCerebro3D(ctx) {
     for (let i = 0; i < nodos.length; i++) {
       if (!visibles[i] || !SZ[i]) continue;
       const { n, encendida, color } = sombra(i);
-      const tam = radioDe(n) * (encendida ? (elegida === n ? 5.6 : enfoque === n ? 5.4 : 4.6) : 2.6);
-      g.globalAlpha = (encendida ? (elegida === n ? 0.7 : 0.55) : 0.1) * Cam.niebla(SZ[i]);
+      // Lo que el cerebro aprendió: una nota que suele salir bien brilla un poco más, una que suele salir mal, un poco menos.
+      const lw = n.peso == null ? 1 : 0.7 + 0.6 * n.peso;
+      const tam = radioDe(n) * lw * (encendida ? (elegida === n ? 5.6 : enfoque === n ? 5.4 : 4.6) : 2.6);
+      g.globalAlpha = Math.min(1, (encendida ? (elegida === n ? 0.7 : 0.55) : 0.1) * lw) * Cam.niebla(SZ[i]);
       const px = Math.max(4, Cam.pixeles(tam, SZ[i], foco));
       g.drawImage(brillo(elegida === n ? BLANCO : color), SX[i] - px / 2, SY[i] - px / 2, px, px);
     }
@@ -409,6 +419,7 @@ export function iniciarCerebro3D(ctx) {
       ids = nodos.map((n) => n.id);
       enlaces = ls.filter(([a, b]) => ns[a] && ns[b]);
       menciones = (mas.menciones ?? []).filter(([a, b]) => ns[a] && ns[b]);
+      aprendidas = (mas.aprendidas ?? []).filter(([a, b]) => ns[a] && ns[b]);
       P = colocar(nodos, enlaces, prev, menciones);
       posDe = new Map(nodos.map((n, i) => [n.id, i]));
       colores = nodos.map((n) => rgbDe(colorDe(n)));
@@ -422,12 +433,12 @@ export function iniciarCerebro3D(ctx) {
     setFocus(sel, sobre, coincidencias) {
       elegida = sel; enfoque = sobre || sel; coinciden = coincidencias;
       vecindad = enfoque
-        ? new Set([enfoque.i, ...[...enlaces, ...(verMenciones ? menciones : [])].filter(([a, b]) => a === enfoque.i || b === enfoque.i).map(([a, b]) => (a === enfoque.i ? b : a))])
+        ? new Set([enfoque.i, ...[...enlaces, ...(verMenciones ? menciones : []), ...(verAprendidas ? aprendidas : [])].filter(([a, b]) => a === enfoque.i || b === enfoque.i).map(([a, b]) => (a === enfoque.i ? b : a))])
         : null;
       if (elegida) auto = false;
       else if (reposoHasta === Infinity && girando) reposoHasta = performance.now() + 3000; // se cerró la ficha: vuelve a girar un momento después
     },
-    setLayers(m) { verMenciones = Boolean(m); },
+    setLayers(menc, aprend = true) { verMenciones = Boolean(menc); verAprendidas = Boolean(aprend); },
     /** Cuánto tapan por la izquierda y por la derecha las tarjetas sobre el lienzo (píxeles): el cerebro queda en el hueco. */
     setInsets(izq, der) {
       const l = Math.max(0, Math.round(izq)); const d = Math.max(0, Math.round(der));

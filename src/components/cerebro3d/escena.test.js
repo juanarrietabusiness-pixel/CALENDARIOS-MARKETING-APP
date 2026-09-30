@@ -339,6 +339,75 @@ describe("el dibujo", () => {
   });
 });
 
+describe("lo aprendido", () => {
+  const conAprendidas = () => {
+    const host = elemento("div");
+    const escena = iniciarCerebro3D({ host, colorDe: colorDeNota, visible: () => true });
+    const g = armarGrafo({ ...respuesta(), aprendidas: [[1, 2, 0.8]] });
+    escena.setData(g.nodos, g.enlaces, { menciones: [], aprendidas: g.aprendidas });
+    escena.start();
+    return { escena, g };
+  };
+  const lineas = () => dibujos.filter(([k]) => k === "stroke").length;
+
+  it("una sinapsis aprendida se dibuja (dos medias líneas más) y se puede apagar", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    const sin = montar();
+    dibujos.length = 0; avanzar(16);
+    const base = lineas();
+    sin.escena.destroy();
+
+    const { escena } = conAprendidas();
+    dibujos.length = 0; avanzar(16);
+    expect(lineas()).toBe(base + 2);
+    escena.setLayers(true, false);
+    dibujos.length = 0; avanzar(16);
+    expect(lineas()).toBe(base);
+    escena.setLayers(true, true);
+    dibujos.length = 0; avanzar(16);
+    expect(lineas()).toBe(base + 2);
+    escena.destroy();
+  });
+
+  it("una sinapsis aprendida entre notas que se ven es la que la dibuja: si una se esconde, desaparece", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    let ver = () => true;
+    const host = elemento("div");
+    const escena = iniciarCerebro3D({ host, colorDe: colorDeNota, visible: (n) => ver(n) });
+    const g = armarGrafo({ ...respuesta(), aprendidas: [[1, 2, 0.8]] });
+    escena.setData(g.nodos, g.enlaces, { aprendidas: g.aprendidas });
+    escena.start();
+    dibujos.length = 0; avanzar(16);
+    const con = lineas();
+    ver = (n) => n.id !== "c";
+    escena.refresh();
+    dibujos.length = 0; avanzar(16);
+    expect(lineas()).toBeLessThan(con);
+    escena.destroy();
+  });
+
+  it("una nota con peso brilla distinto de una sin él", () => {
+    const hosts = [];
+    const brillos = (peso) => {
+      const host = elemento("div"); hosts.push(host);
+      const escena = iniciarCerebro3D({ host, colorDe: colorDeNota, visible: () => true });
+      const r = respuesta(); r.notas[1].peso = peso;
+      const g = armarGrafo(r);
+      escena.setData(g.nodos, g.enlaces, {});
+      escena.start();
+      dibujos.length = 0; avanzar(16);
+      const tamanos = dibujos.filter(([k]) => k === "drawImage").map((d) => d[4]);
+      escena.destroy();
+      return tamanos;
+    };
+    const neutro = brillos(null);
+    const alto = brillos(1);
+    const bajo = brillos(0);
+    expect(alto.reduce((a, b) => a + b, 0)).toBeGreaterThan(neutro.reduce((a, b) => a + b, 0));
+    expect(bajo.reduce((a, b) => a + b, 0)).toBeLessThan(neutro.reduce((a, b) => a + b, 0));
+  });
+});
+
 describe("las etiquetas", () => {
   it("una por cada nota que se pide, colocada con un translate; las que sobran, ocultas", () => {
     let quieren = ["a", "b"];

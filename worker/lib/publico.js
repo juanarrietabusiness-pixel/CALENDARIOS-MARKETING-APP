@@ -22,6 +22,7 @@ import { uuid, ahora } from "./ids.js";
 import { diaParaCliente, rutasDeMedios } from "../../src/lib/publicacion.js";
 import { aprobacionVigente, tipoAprobacion, huellaPieza } from "../../src/lib/aprobacion.js";
 import { visibleParaCliente } from "../../src/lib/trabajo.js";
+import { resumenDePublicacion } from "./cerebro/senales.js";
 
 const MIN_TESTIGO = 24;
 const corta = (s, n) => (s == null ? null : String(s).slice(0, n));
@@ -163,7 +164,12 @@ export async function comentarCliente(db, { token, postId, texto, nombre }) {
     .prepare("insert into comentarios_aprobacion (id, calendar_id, post_id, autor, nombre, texto, created_at) values (?,?,?,?,?,?,?)")
     .bind(fila.id, cal.id, fila.post_id, "cliente", fila.nombre, fila.texto, fila.created_at)
     .run();
-  return { ok: true, comentario: { id: fila.id, postId, autor: "cliente", nombre: fila.nombre, texto: fila.texto, fecha: fila.created_at }, calendarId: cal.id, ownerId: cal.owner_id };
+  const encontrada = buscarConDia(cal, postId);
+  return {
+    ok: true, comentario: { id: fila.id, postId, autor: "cliente", nombre: fila.nombre, texto: fila.texto, fecha: fila.created_at },
+    calendarId: cal.id, ownerId: cal.owner_id, clientId: cal.client_id,
+    publicacion: encontrada ? resumenDePublicacion(encontrada.post, encontrada.dia) : null,
+  };
 }
 
 /** «Enviar mi revisión»: el cliente terminó. Se guarda quién y cuándo. */
@@ -198,10 +204,10 @@ export function perteneceAlCalendario(cal, postId) {
   return refs.some((r) => r?.id === postId);
 }
 
-/** La publicación con ese id dentro del calendario, o null (una referencia visual no lo es). */
-function buscarPublicacion(cal, postId) {
+/** La publicación con ese id dentro del calendario, con su día, o null (una referencia visual no lo es). */
+function buscarConDia(cal, postId) {
   for (const dia of JSON.parse(cal.days || "[]")) {
-    for (const post of dia?.posts ?? []) if (post?.id === postId) return post;
+    for (const post of dia?.posts ?? []) if (post?.id === postId) return { post, dia };
   }
   return null;
 }
@@ -229,7 +235,8 @@ export async function enviarAprobacion(db, datos) {
   // saber después si está «por producir» o «por programar», y si la
   // agencia cambió algo tras el sí. Lo calcula el servidor sobre lo
   // guardado, no lo que diga el navegador del cliente.
-  const post = buscarPublicacion(cal, postId);
+  const encontrada = buscarConDia(cal, postId);
+  const post = encontrada?.post ?? null;
   const tipo = post ? tipoAprobacion(post) : null;
   const huella = post ? huellaPieza(post) : null;
 
@@ -264,7 +271,10 @@ export async function enviarAprobacion(db, datos) {
   // Los ids salen para que el Worker pueda avisar al espacio: la agencia
   // ve la respuesta del cliente final en el momento, sin esperar a la
   // siguiente vuelta del sondeo.
-  return { ok: true, estado, tipo, calendarId: cal.id, ownerId: cal.owner_id, clientId: cal.client_id, postId };
+  // De qué publicación habla, para que el cerebro pueda aprender de la respuesta (worker/lib/cerebro/aprender.js).
+  // null si lo aprobado no es una publicación sino una referencia visual: de eso no hay nada que aprender.
+  const publicacion = encontrada ? resumenDePublicacion(encontrada.post, encontrada.dia) : null;
+  return { ok: true, estado, tipo, calendarId: cal.id, ownerId: cal.owner_id, clientId: cal.client_id, postId, publicacion };
 }
 
 /**

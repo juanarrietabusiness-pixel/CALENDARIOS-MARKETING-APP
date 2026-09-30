@@ -473,7 +473,7 @@ describe("el mapa del cerebro (/grafo)", () => {
   const grafoDe = async (quien = JEFE, cliente = "c1") => (await pedir(quien, `/api/cerebro/${cliente}/grafo`)).json();
 
   it("un cliente sin notas devuelve un mapa vacío, no un error", async () => {
-    expect(await grafoDe(JEFE, "c2")).toEqual({ notas: [], enlaces: [], menciones: [] });
+    expect(await grafoDe(JEFE, "c2")).toEqual({ notas: [], enlaces: [], menciones: [], aprendidas: [] });
   });
 
   it("las notas vienen SIN texto, con su grupo, su tipo y su candado", async () => {

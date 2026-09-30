@@ -77,6 +77,24 @@
 .cerebro-buscar-fila { display: flex; gap: var(--sp-2); }
 .cerebro-buscar-fila .input { flex: 1; min-width: 0; }
 
+/* Lo que aprende de lo que pasa después de escribir */
+.cerebro-aprende { padding: 0; }
+.cerebro-aprende > summary {
+  display: flex; align-items: center; gap: var(--sp-2);
+  min-height: var(--tap); padding: 0 var(--sp-4);
+  cursor: pointer; font-size: var(--fs-sm); font-weight: 600;
+}
+.cerebro-aprende-cuerpo { display: flex; flex-direction: column; gap: var(--sp-3); padding: 0 var(--sp-4) var(--sp-4); }
+.cerebro-aprende-resumen { margin: 0; font-size: var(--fs-sm); font-weight: 600; }
+.cerebro-senales { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.cerebro-senal { display: grid; grid-template-columns: 10px 1fr; gap: var(--sp-1) var(--sp-3); align-items: start; font-size: var(--fs-sm); }
+.cerebro-senal-marca { width: 10px; height: 10px; border-radius: 50%; margin-top: 6px; background: var(--text-faint); }
+.cerebro-senal-bien { background: var(--success); }
+.cerebro-senal-mal { background: var(--danger); }
+.cerebro-senal-medio { background: var(--accent-alt); }
+.cerebro-senal-texto { min-width: 0; overflow-wrap: anywhere; }
+.cerebro-senal-meta { grid-column: 2; color: var(--text-dim); font-size: var(--fs-2xs); }
+
 .cerebro-vistas { display: flex; gap: var(--sp-2); }
 .cerebro-vistas .filter-chip { display: inline-flex; align-items: center; gap: var(--sp-2); }
 

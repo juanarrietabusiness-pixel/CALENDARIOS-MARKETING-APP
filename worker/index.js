@@ -26,6 +26,7 @@
 import { json, error, noAutenticado, noEncontrado, cuerpo, CABECERAS_API, rangoServido } from "./lib/respuesta.js";
 import { crearAcceso } from "./lib/acceso.js";
 import { usuarioDeLaPeticion, iniciarSesion, cerrarSesion, cookieSesion, cookieBorrada } from "./lib/sesion.js";
+import { registrarRespuesta, registrarComentario } from "./lib/cerebro/aprender.js";
 import { calendarioPorTestigo, enviarAprobacion, actualizarContenido, mediaPermitida, comentarCliente, enviarRevision, informePorTestigo, auditoriaPorTestigo } from "./lib/publico.js";
 import { difundir } from "./lib/vivo.js";
 import { rutasDatos } from "./rutas/datos.js";
@@ -153,6 +154,15 @@ export default {
             });
             if (ctx?.waitUntil) ctx.waitUntil(aviso.catch((e) => console.error("aviso al aprobar:", e)));
             else await aviso.catch(() => {});
+            // Y al cerebro del cliente: la señal, lo que se refuerza y sus palabras. En segundo plano; nunca tumba la respuesta.
+            if (r.publicacion && r.clientId) {
+              const aprende = registrarRespuesta(env, crearAcceso(env.DB, r.ownerId), {
+                clientId: r.clientId, calendarId: r.calendarId, postId: r.postId, publicacion: r.publicacion, estado: r.estado,
+                comentario: b.comentario, sugeridaDescripcion: b.sugeridaDescripcion, sugeridoGuion: b.sugeridoGuion, revisor: b.revisor,
+                fecha: new Date().toISOString().slice(0, 10),
+              });
+              if (ctx?.waitUntil) ctx.waitUntil(aprende); else await aprende;
+            }
             return json({ ok: r.ok, estado: r.estado });
           } catch (e) { return comoRespuesta(e); }
         }
@@ -180,6 +190,12 @@ export default {
               tipo: "comentario", calId: r.calendarId, postId: r.comentario.postId,
               por: { userId: "cliente", nombre: r.comentario.nombre, color: "#F5A623" },
             });
+            if (r.publicacion && r.clientId) {
+              const aprende = registrarComentario(env, crearAcceso(env.DB, r.ownerId), {
+                clientId: r.clientId, calendarId: r.calendarId, postId: r.comentario.postId, publicacion: r.publicacion, revisor: r.comentario.nombre,
+              });
+              if (ctx?.waitUntil) ctx.waitUntil(aprende); else await aprende;
+            }
             return json({ ok: true, comentario: r.comentario });
           } catch (e) { return comoRespuesta(e); }
         }

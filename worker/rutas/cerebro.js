@@ -8,6 +8,8 @@
 //   DELETE /<cliente>/nota/<id>          Borrar una nota
 //   GET    /<cliente>/buscar?q=&para=    Buscar por pasajes (para: texto | piezas | chat)
 //   POST   /<cliente>/contexto           Lo que se le da a la IA para una tarea
+//   GET    /<cliente>/senales            Lo que ha pasado después de escribir (respuestas, resultados, correcciones)
+//   POST   /<cliente>/aprender/historial Aprender de las respuestas que el cliente ya dio { desde? }
 //   POST   /<cliente>/reindexar          Reconstruir el índice desde las notas
 //   POST   /<cliente>/importar           Llenar el cerebro desde el repositorio { carpeta?, actualizar? }
 //   POST   /<cliente>/preparar           La IA escribe la ficha técnica y las cifras { forzar? }
@@ -27,6 +29,7 @@ import {
   USOS, leerNotasLigeras, reindexar, actualizarIndice, buscar, contexto, notasViejas, grafo,
 } from "../lib/cerebro/cerebro.js";
 import { importarDelRepositorio } from "../lib/cerebro/importar.js";
+import { registrarUsos, leerSenales, aprenderDelHistorial } from "../lib/cerebro/aprender.js";
 import { ErrorRepositorio } from "../lib/cerebro/repositorio.js";
 import { prepararFicha, ErrorPreparar } from "../lib/cerebro/preparar.js";
 
@@ -142,7 +145,28 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
     const b = (await cuerpo(req)) ?? {};
     const consulta = String(b.consulta ?? "").slice(0, MAX_CONSULTA);
     const presupuesto = Math.min(Math.max(Number(b.presupuesto) || 9000, 1000), 20_000);
-    return json(await contexto(env, acceso, clienteId, consulta, { para: uso(b.para), presupuesto }));
+    const c = await contexto(env, acceso, clienteId, consulta, { para: uso(b.para), presupuesto });
+    // La generación dice para qué publicaciones pide esto: se apunta qué notas se le dieron, para saber después a qué
+    // nota atribuirle un sí o un no del cliente. Es un apunte: si falla, el contexto sale igual.
+    if (Array.isArray(b.postIds) && b.postIds.length && uso(b.para) === "texto") {
+      try {
+        await registrarUsos(acceso, clienteId, b.postIds, c.fuentes);
+      } catch (e) {
+        console.error("cerebro: no se pudo apuntar qué notas usó cada publicación", e);
+      }
+    }
+    return json(c);
+  }
+
+  if (sub === "senales" && metodo === "GET") {
+    const tipo = String(url.searchParams.get("tipo") ?? "");
+    const senales = await leerSenales(acceso, clienteId, { tipo: tipo || null, limite: 60 });
+    return json({ senales: senales.map((s) => ({ id: s.id, tipo: s.tipo, postId: s.post_id, resultado: s.resultado, resumen: s.resumen, fecha: s.detalle?.fecha || String(s.updated_at).slice(0, 10) })) });
+  }
+
+  if (sub === "aprender" && notaId === "historial" && metodo === "POST") {
+    const b = (await cuerpo(req)) ?? {};
+    return json(await aprenderDelHistorial(env, acceso, cliente, { desde: b.desde }));
   }
 
   if (sub === "reindexar" && metodo === "POST") {

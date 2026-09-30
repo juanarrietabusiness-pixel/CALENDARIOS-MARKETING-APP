@@ -30,6 +30,8 @@ export const COLOR_TIPO = Object.freeze({
 /** Las menciones (una nota nombra a otra sin enlazarla) son tenues y frías; las internas llevan un anillo cálido. */
 export const COLOR_MENCION = "#8FA8FF";
 export const COLOR_INTERNA = "#FF9F5A";
+/** Lo aprendido de lo que pasó después de escribir: dos notas usadas juntas en algo que salió bien. Dorado, como la ficha. */
+export const COLOR_APRENDIDA = "#FFC46B";
 
 export const colorDeNota = (nota) => COLOR_TIPO[nota?.tipo] ?? COLOR_TIPO.nota;
 
@@ -45,6 +47,7 @@ export function armarGrafo(respuesta) {
     i,
     g: n.grupo || "Sin grupo",
     d: Number(n.d) || 0,
+    peso: Number.isFinite(n.peso) ? n.peso : null,
     buscable: sinTildes(`${n.titulo} ${n.resumen ?? ""} ${n.ruta ?? ""} ${n.grupo ?? ""}`),
   }));
   const valida = ([a, b]) => Number.isInteger(a) && Number.isInteger(b) && a !== b && nodos[a] && nodos[b];
@@ -52,11 +55,13 @@ export function armarGrafo(respuesta) {
     nodos,
     enlaces: (respuesta?.enlaces ?? []).filter(valida),
     menciones: (respuesta?.menciones ?? []).filter(valida),
+    // Las aprendidas llevan además su peso (0–1): un peso que no es número no dibuja una línea.
+    aprendidas: (respuesta?.aprendidas ?? []).filter((x) => valida(x) && Number.isFinite(x[2])),
   };
 }
 
 /** Los filtros de partida: se ve todo. */
-export const FILTROS_INICIALES = Object.freeze({ tiposOcultos: new Set(), soloInternas: false, menciones: true });
+export const FILTROS_INICIALES = Object.freeze({ tiposOcultos: new Set(), soloInternas: false, menciones: true, aprendidas: true });
 
 /** ¿Esta nota se dibuja con estos filtros? */
 export function esVisible(nota, filtros = FILTROS_INICIALES) {
@@ -121,7 +126,8 @@ export function regiones(nodos) {
 /** La línea de cifras de arriba del mapa. */
 export function resumenDelMapa(grafo) {
   const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
-  return `${plural(grafo.nodos.length, "nota", "notas")} · ${plural(grafo.enlaces.length, "enlace", "enlaces")} · ${plural(grafo.menciones.length, "mención", "menciones")}`;
+  const base = `${plural(grafo.nodos.length, "nota", "notas")} · ${plural(grafo.enlaces.length, "enlace", "enlaces")} · ${plural(grafo.menciones.length, "mención", "menciones")}`;
+  return grafo.aprendidas?.length ? `${base} · ${plural(grafo.aprendidas.length, "aprendida", "aprendidas")}` : base;
 }
 
 /**

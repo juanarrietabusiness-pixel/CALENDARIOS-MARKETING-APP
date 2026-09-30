@@ -53,6 +53,16 @@ export const listarCerebro = (clienteId) => llamar(base(clienteId));
 /** El mapa: las notas sin su texto y sus conexiones ({ notas, enlaces, menciones }; las conexiones son índices de `notas`). */
 export const leerGrafo = (clienteId) => llamar(`${base(clienteId)}/grafo`);
 
+/** Lo que ha pasado después de escribir: respuestas del cliente, resultados en redes, correcciones del equipo. */
+export const leerSenales = (clienteId, { tipo = "" } = {}) => llamar(`${base(clienteId)}/senales${tipo ? `?tipo=${encodeURIComponent(tipo)}` : ""}`);
+
+/**
+ * Aprender de las respuestas que el cliente ya dio. Va de a unos pocos calendarios por vez: el que llama repite con
+ * `siguiente` hasta que sea null. Deja señales y notas con las palabras del cliente.
+ */
+export const aprenderDelHistorial = (clienteId, desde = 0) =>
+  cambiando(clienteId, () => llamar(`${base(clienteId)}/aprender/historial`, { metodo: "POST", cuerpo: { desde } }));
+
 /** Una nota entera. */
 export const leerNota = (clienteId, notaId) => llamar(`${base(clienteId)}/nota/${encodeURIComponent(notaId)}`);
 

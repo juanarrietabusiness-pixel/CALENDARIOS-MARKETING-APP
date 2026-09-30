@@ -4,7 +4,7 @@ import { iniciarCerebro3D } from "./cerebro3d/escena";
 import { leerGrafo, buscarEnCerebro } from "../lib/cerebro";
 import {
   armarGrafo, colorDeNota, esVisible, coincidencias, vecinas, etiquetasPara, regiones, resumenDelMapa, pocasConexiones,
-  FILTROS_INICIALES, COLOR_MENCION, COLOR_INTERNA,
+  FILTROS_INICIALES, COLOR_MENCION, COLOR_INTERNA, COLOR_APRENDIDA,
 } from "../lib/cerebroGrafo";
 import { nombreDeTipo, TIPOS_VISTA, formatoCaracteres } from "../lib/cerebroVista";
 import "./CerebroGrafo.css";
@@ -91,7 +91,7 @@ export default function CerebroGrafo({ client, version, onAbrir }) {
   // Un mapa nuevo (o el primero): se coloca. Lo elegido ya no existe.
   useEffect(() => {
     if (!escena.current || !grafo) return;
-    escena.current.setData(grafo.nodos, grafo.enlaces, { menciones: grafo.menciones, clave: client.id });
+    escena.current.setData(grafo.nodos, grafo.enlaces, { menciones: grafo.menciones, aprendidas: grafo.aprendidas, clave: client.id });
     setElegida(null);
     setSobre(null);
   }, [grafo, client.id]);
@@ -100,7 +100,7 @@ export default function CerebroGrafo({ client, version, onAbrir }) {
   useEffect(() => {
     const e = escena.current;
     if (!e || !grafo) return;
-    e.setLayers(filtros.menciones);
+    e.setLayers(filtros.menciones, filtros.aprendidas);
     e.refresh();
     e.setFocus(elegida, sobre?.n ?? null, coinciden);
   }, [grafo, filtros, elegida, sobre, coinciden]);
@@ -218,6 +218,12 @@ export default function CerebroGrafo({ client, version, onAbrir }) {
               <input id={`${ids}-m`} type="checkbox" checked={filtros.menciones} onChange={(e) => setFiltros((f) => ({ ...f, menciones: e.target.checked }))} />
               <span>Menciones <span className="hint">(una nota nombra a otra sin enlazarla)</span></span>
             </label>
+            {grafo?.aprendidas.length > 0 && (
+              <label className="cerebro-casilla" htmlFor={`${ids}-a`}>
+                <input id={`${ids}-a`} type="checkbox" checked={filtros.aprendidas} onChange={(e) => setFiltros((f) => ({ ...f, aprendidas: e.target.checked }))} />
+                <span>Aprendidas <span className="hint">(notas que se usaron juntas en algo que salió bien)</span></span>
+              </label>
+            )}
             {nInternas > 0 && (
               <label className="cerebro-casilla" htmlFor={`${ids}-i`}>
                 <input id={`${ids}-i`} type="checkbox" checked={filtros.soloInternas} onChange={(e) => setFiltros((f) => ({ ...f, soloInternas: e.target.checked }))} />
@@ -275,6 +281,7 @@ export default function CerebroGrafo({ client, version, onAbrir }) {
             <li><span className="cg-punto" style={{ background: COLOR_INTERNA }} aria-hidden="true" /> Anillo naranja: nota interna</li>
             <li><span className="cg-linea" style={{ background: "#fff" }} aria-hidden="true" /> Línea clara: un [[enlace]]</li>
             <li><span className="cg-linea" style={{ background: COLOR_MENCION }} aria-hidden="true" /> Línea azul: una mención</li>
+            {grafo?.aprendidas.length > 0 && <li><span className="cg-linea" style={{ background: COLOR_APRENDIDA }} aria-hidden="true" /> Línea dorada: lo aprendido de lo que salió bien</li>}
             <li>Más grande y más al centro: más conexiones</li>
           </ul>
 
