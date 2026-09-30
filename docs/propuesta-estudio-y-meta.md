@@ -19,9 +19,10 @@ Lo que **no** se pudo comprobar está marcado como tal: hace falta la llave de M
    peticiones por invocación) y una regla: el navegador no habla con nadie más que con el
    Worker. Se portan **las ideas y los contratos** (catálogo por modelo, cola con reanudación,
    presupuesto, «Animar», papelera), no el código.
-3. **Se empieza por lo que ya hay:** Gemini (Nano Banana y Veo) con la llave que el Worker ya
-   tiene. Después **fal.ai** (una sola llave da Kling, Seedance, Flux, Hailuo…). Higgsfield,
-   OpenAI y Grok van al final y sólo si se usan.
+3. **Motores, en este orden (decidido):** Gemini (Nano Banana y Veo, con la llave que el Worker
+   ya tiene) → **fal.ai** (una sola llave da Kling, Seedance, Flux, Hailuo…) → **Higgsfield**
+   (Kling 3, Seedance 2, Soul…, con su esquema propio). OpenAI y Grok quedan como extras si algún
+   día se usan.
 4. **Lo que más valor tiene para una agencia** no es la lista de 50 modelos: es **«Animar»** una
    imagen aprobada para sacar un reel 9:16, generar con la guía visual **del cliente** (que ya
    está en su cerebro) y no salir de la publicación para hacerlo.
@@ -78,7 +79,7 @@ tarjetas y visor, y `estudio-mcp.mjs`, la herramienta que usan sus agentes. 327 
 | **Presupuesto con estimación previa** y aviso de costo | El presupuesto **separado** del Estudio (ver §7, decisión 4) |
 | El motor **«prueba»** (gratis, sin llave) para probar todo el flujo | Llaves del entorno de Windows: son secretos del Worker |
 | **Animar** una imagen, **Variar**, papelera con plazo, carpetas como etiquetas | La interfaz: es JS de DOM a mano; se reescribe en React con los tokens de aquí |
-| La herramienta de agentes (`generar_imagen`, `generar_video`, `estado_trabajo`) | Los 53 modelos de Higgsfield con su `higgsfield-schemas.json` (62 KB): sólo si hay llave |
+| La herramienta de agentes (`generar_imagen`, `generar_video`, `estado_trabajo`) | Las rutas de Higgsfield **escritas a mano** (así se equivocaron 37 tipos de petición): salen del esquema `higgsfield-schemas.json`, entrega E |
 
 ---
 
@@ -191,9 +192,37 @@ si un ajuste no tiene su valor por defecto entre los permitidos, o si un modelo 
 | **fal.ai** (llave nueva) | Flux Schnell · Kontext · Seedream 4 · Ideogram 3 · **Kling 2.5 Turbo** · Seedance 1 · Hailuo 02 | 0,003 $/img · 0,045–0,12 $/s |
 | **prueba** | Tarjeta SVG y «video» animado: **gratis, sin llave** | 0 |
 
-**Después, y sólo si se usan:** OpenAI (`gpt-image-1`, texto legible en la imagen), Grok, y
-**Higgsfield** con su esquema de 62 KB (Kling 3, Seedance 2, Soul…): es el motor más grande de
-portar y el que exige una llave de pago propia.
+**Higgsfield (decidido: entra, en su propia entrega).** Es el motor más grande de portar y el que
+más se parece a lo que Agents Office ya resolvió, así que se porta **su método**, no sus líneas:
+
+- **El esquema manda, no el código escrito a mano.** `higgsfield-schemas.json` (62 KB: 81 rutas
+  con sus campos, valores permitidos, límites y obligatorios, generado con
+  `scripts/higgsfield-schemas.mjs` desde la documentación de Higgsfield) es un **archivo de datos**
+  del Worker. De él salen, sin escribir nada a mano: los ajustes que enseña la pantalla, qué medios
+  acepta cada modelo (fotograma inicial/final, referencias, un video), a qué **ruta** va una
+  petición según lo que lleva, y un cuerpo con **sólo** campos que esa ruta conoce, cada valor uno
+  que acepta. Antes de ese método, 37 tipos de petición llevaban un campo o un valor que Higgsfield
+  rechaza (Hailuo a 5 s, LTX a 1:1…).
+- **Cada modelo es una línea** (`hfm(id, nombre, tipo, { text, image, firstLast, reference, videoRef,
+  edit }, costo, nota)`): sus rutas y su precio estimado. 53 modelos; los cinco cuya ruta ya no está en
+  la documentación se marcan `legacy` con su aviso.
+- **La prueba que lo sostiene se porta entera:** cada combinación posible de medios se pasa por
+  el esquema y se comprueba que **toda ruta documentada es alcanzable** y que **ningún cuerpo lleva un
+  campo que su ruta no conoce**. Si Higgsfield añade un modelo: se baja la documentación, se corre el
+  script, se añade **una** línea, y la prueba dice si algo quedó mal.
+- **Lo que cambia respecto a la oficina:** Higgsfield pide las imágenes de referencia por URL y
+  Agents Office las sube a su almacén (`files/generate-upload-url`). Aquí se prueba **primero con el
+  enlace firmado de la app** (§3.5) y sólo si Higgsfield lo rechaza se usa su subida. **No verificado
+  hasta tener la llave.**
+- **Reglas de su cola que se respetan:** `queued → in_progress → completed | failed | nsfw | canceled`;
+  **sólo se cancela lo que sigue en cola**; un 401/403/404 al sondear **no se reintenta**; y **un 403
+  significa «sin créditos»**, no «llave mala» (lo dice su propio cliente): el mensaje lo explica.
+- **Llave:** `HF_KEY` con la forma `id:secreto`, como secreto del Worker.
+- **Trae un riesgo de dinero:** varios de sus video (Kling 3 4K, Seedance 2, Cinema Studio) son de los
+  más caros; sus precios en el catálogo son **estimaciones** y así se rotulan.
+
+**OpenAI** (`gpt-image-1`, texto legible dentro de la imagen) y **Grok** quedan como extras: cada uno
+es una llamada síncrona sencilla, se añaden sólo si se usan.
 
 **Un video de Veo cuesta hasta 3,20 $** (8 s a 0,40). Por eso la estimación previa no es un lujo (§3.7).
 
@@ -314,11 +343,12 @@ comprimidos). Se comprueba también que **no** entra en la carga inicial.
 | | Qué | «Hecho» cuando |
 |---|---|---|
 | **A0** | Migración 0026, tablas declaradas en `acceso.js`, catálogo y motor **prueba**, `avanzarTrabajo`, rutas `/api/estudio/*`, eventos | El flujo completo corre con «prueba»: crear, avanzar, reanudar, cancelar, presupuesto; con sus pruebas |
-| **A1** | Motor **Gemini imagen** con referencias por enlace firmado; `/api/generar-imagen` pasa por él sin cambiar de contrato; consumo y estimación | Las cuatro pantallas que hoy generan imágenes siguen igual **y** aparecen en `estudio_archivos` |
+| **A1** | Motores **Gemini imagen** y **fal imagen** (respuesta inmediata) con referencias por enlace firmado; `/api/generar-imagen` pasa por el motor sin cambiar de contrato; consumo y estimación | Las cuatro pantallas que hoy generan imágenes siguen igual **y** aparecen en `estudio_archivos` |
 | **B** | Pestaña **Estudio** y botones en el panel: compositor, galería, «Usar en la publicación», carpetas, papelera | Recorrido completo en Chromium a 390 y 1280 px |
 | **C** | **Video**: Veo (Gemini) y fal (cola), **Animar**, avance por navegador **y por cron**, evento por el socket | Un video de «prueba» cruza el cron sin nadie mirando; uno real (Veo Lite, 4 s) llega a R2 |
 | **D** | Herramientas del chat y del MCP; nuevo uso `para: "imagen"` del cerebro | Claude pide una imagen por MCP y queda en la galería del cliente, con costo apuntado |
-| **E** | Motores adicionales (OpenAI, Grok, **Higgsfield** con su esquema), ordenar/filtrar modelos, «Variar» | Sólo lo que se use de verdad |
+| **E** | **Higgsfield**: esquema como dato, `hfRoute`/`hfBody`, las 53 líneas del catálogo, sus pruebas de combinaciones y su cola (créditos, `nsfw`, cancelar sólo lo que sigue en cola) | Toda ruta documentada alcanzable, ningún cuerpo con campos ajenos, y un pedido real barato (una imagen) con tu llave |
+| **F** | Ordenar y filtrar modelos por creador/calidad/precio, «Variar»; OpenAI y Grok si se usan | Sólo lo que se use de verdad |
 
 ---
 
@@ -498,7 +528,7 @@ siendo Anthropic**.
 ## 5. El orden y por qué
 
 ```
-B0 ensayo Meta ─┬─► A0 motor + trabajos ─► A1 Gemini ─► B (pantalla) ─► C (video) ─► D (agentes) ─► E
+B0 ensayo Meta ─┬─► A0 motor + trabajos ─► A1 Gemini+fal ─► B (pantalla) ─► C (video) ─► D (agentes) ─► E (Higgsfield) ─► F
                 └─► B1 proveedores ─► B2 ajustes ─► B3 calidad
 ```
 
@@ -527,29 +557,30 @@ B0 ensayo Meta ─┬─► A0 motor + trabajos ─► A1 Gemini ─► B (panta
 | **Un archivo generado publicado sin que nadie lo vea** | No hay camino automático: el archivo entra por aprobación y por el paso final de programar, como todo |
 | **Dependencia de más llaves** | Cada motor es opcional y apagado por defecto: sin llave, el modelo aparece atenuado con cómo activarlo, nada se rompe |
 
-## 7. Decisiones pendientes
+## 7. Decisiones
 
-Cada una con lo que recomiendo. **Ninguna se implementa hasta que la respondas.**
+**Tomadas por ti el 2026-09-30:**
 
-1. **¿Qué motores?** Recomiendo **Gemini + fal.ai** (una llave que ya tienes y una que da
-   Kling, Seedance, Flux, Hailuo y Veo con el mismo contrato). Higgsfield, OpenAI y Grok, sólo si
-   los usas.
-2. **¿Dónde vive?** Recomiendo **pestaña por cliente + botones dentro de la publicación**; no
-   una galería global de toda la agencia (el resto de la app es por cliente).
-3. **¿Cómo entra Meta?** Recomiendo **proveedor elegible por el administrador + respaldo
-   opcional**, sólo nivel **estándar**, y por defecto **Anthropic** hasta que la rúbrica diga
-   otra cosa.
-4. **¿Un presupuesto o dos?** Recomiendo **uno solo** (el de IA del espacio, que ya tiene medidor
-   y avisos) con la estimación y el segundo toque; un tope propio del Estudio se puede añadir
-   si el gasto en video lo pide.
-5. **¿Quién avanza los trabajos?** (§3.2) Recomiendo **navegador + cron**; la alarma del Durable
-   Object queda para después.
-6. **Orden.** Recomiendo el de §5, empezando por B0 —y para eso necesito la llave estándar de Meta.
+1. **Motores: Gemini + fal.ai + Higgsfield**, en ese orden. (Recomendaba dejar Higgsfield para
+   después; al entrar pasa a la entrega E y necesita **su llave** para probarse.)
+2. **Dónde vive: pestaña por cliente + botones dentro de la publicación.**
+3. **Meta: proveedor elegible por el administrador + respaldo opcional, sólo nivel estándar,** y
+   por defecto sigue Anthropic hasta que la evaluación de calidad diga otra cosa.
+4. **Un solo presupuesto de IA** (el del espacio), con estimación previa y segundo toque desde
+   0,50 $.
+
+**Siguen mis recomendaciones salvo que digas otra cosa** (no las preguntaba porque no cambian lo
+que ve la agencia):
+
+5. **Quién avanza los trabajos: navegador + cron** (§3.2). La alarma del Durable Object queda
+   para después, si el uso la pide.
+6. **Orden:** el de §5, empezando por B0. Para B0 hace falta **tu llave de Meta de nivel
+   estándar**; para la entrega E, **tu llave de Higgsfield**; para C, la de **fal.ai**.
 
 ## 8. Lo que NO se hace
 
 - **Generar imágenes o video con Meta.** Muse Spark es texto aquí.
-- **Copiar el Estudio entero** (los 53 modelos de Higgsfield, su esquema, la galería global).
+- **Copiar el Estudio entero:** la galería global, la interfaz de DOM a mano, el sistema de agentes y los archivos en carpetas del disco.
 - **Publicar algo generado sin pasar por aprobación.**
 - **Llamar a ningún motor desde el navegador.**
 - **Aceptar el nivel «contributor»** para datos de clientes.
