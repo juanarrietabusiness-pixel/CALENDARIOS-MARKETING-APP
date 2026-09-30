@@ -116,9 +116,13 @@ src/
     cerebroAprendizaje.js Lo que aprende el cerebro de lo que pasa después de escribir: cuántas
                           señales, qué frase decir tras cada botón (puro)
     camara3d.js           Cámara de órbita y proyección a pantalla (puro; sustituye a OrbitControls)
-    estudioCatalogo.js    El Estudio: modelos, ajustes, costo estimado, validar un pedido, papelera
-                          (puro; también lo importa el Worker)
-    estudio.js            Cliente de /api/estudio y lo puro de la pantalla: filtros, trabajos en curso
+    estudioCatalogo.js    El Estudio: modelos (Google, fal.ai, Higgsfield), ajustes, costo estimado,
+                          validar un pedido, ordenar/filtrar la lista, papelera (puro; también lo
+                          importa el Worker)
+    estudioHiggsfield.json  Los modelos de Higgsfield, GENERADOS de su esquema: no se edita a mano
+                          (`node scripts/estudio/generar-higgsfield.mjs`)
+    estudio.js            Cliente de /api/estudio y lo puro de la pantalla: filtros, trabajos en curso,
+                          de una publicación al Estudio y del Estudio a una publicación
     vivo.js               WebSocket: reconexión, latido, presencia
     horas.js              «9am» → «09:00» y vuelta (puro)
     lote.js               Editar muchas publicaciones de una vez (puro)
@@ -184,8 +188,12 @@ src/
     ExploradorDrive.jsx   La carpeta de Drive de un cliente: gestionar o escoger
     BancoSelector.jsx     Escoger de Drive (o del banco anterior); forma única
     PestanaContenido.jsx  La pestaña Contenido: Drive + migrar el banco anterior
-    Estudio.jsx           La pestaña Estudio: pedir imágenes, verlas aparecer, galería, visor, carpetas
-                          y papelera (lazy)
+    Estudio.jsx           La pestaña Estudio y el diálogo «Crear con IA»: pedir imágenes o videos,
+                          verlos aparecer, galería, carpetas y papelera (lazy)
+    EstudioCompositor.jsx Qué crear: tipo, prompt, modelo (ordenar/filtrar), ajustes, imágenes de apoyo
+    EstudioVisor.jsx      La pieza grande (imagen o video) con todo lo que se sabe de ella
+    calendario/crearConIA.jsx  El Estudio en un diálogo dentro del panel de una publicación y de «Subir»
+                          (el hook que lo abre, en hooks/useCrearConIA.jsx)
     Cerebro.jsx           La pestaña Cerebro: las notas de un cliente, filtros, buscar, añadir, subir
     CerebroAprendizaje.jsx  «Lo que aprende»: señales, aprender del historial y de los resultados,
                           y las reglas que la IA propone para que una persona las acepte
@@ -239,9 +247,13 @@ worker/
     auditorias.js         Leer un perfil (cuenta propia o business_discovery) y auditarlo
     mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
     estudio/              El Estudio: trabajos.js (pedir, avanzar por pasos, cancelar; el permiso de
-                          un paso a la vez y el cron), motores.js (prueba y Gemini, mismo contrato),
-                          gemini.js (la llamada, compartida con /api/generar-imagen), galeria.js
-                          (archivos, carpetas, papelera), archivos.js (claves de R2, tipo por bytes)
+                          un paso a la vez y el cron), motores.js (prueba y Gemini, mismo contrato;
+                          fal.js y higgsfield.js son los otros dos), gemini.js (la llamada,
+                          compartida con /api/generar-imagen), galeria.js (archivos, carpetas,
+                          papelera), archivos.js (claves de R2, tipo por bytes), descarga.js (bajar un
+                          resultado a R2 por flujo, con topes), herramientas.js (ver_estudio,
+                          crear_en_estudio y estado_trabajo: las mismas para el asistente y el MCP),
+                          higgsfield-schemas.json (SU documentación: campos, valores, obligatorios)
     cerebro/              El cerebro de un cliente: conocimiento.js (BM25 por pasajes) y
                           memoria.js (grafo, presupuesto, sinapsis) portados de Agents
                           Office; notas.js (tipos, partir un archivo en notas);
@@ -1029,6 +1041,38 @@ son del servidor.
   de Google y un 404 dice «tu cuenta no tiene el modelo …» en vez de un error genérico.
   · **Los eventos del Estudio los emite `trabajos.js` y `rutas/estudio.js`,** que el test de
   tiempo real lee sólo por sus llamadas a `difundir()`: sus columnas también se llaman `tipo`.
+  · **Hay dos formas de motor y las dos las escribe cada proveedor** (contrato en `motores.js`):
+  IMAGEN que contesta en el acto (`generar`) y COLA (`enviar` + `sondear`). Van por la cola todo
+  video y las imágenes de Higgsfield (`enCola(modelo)`, no `tipo === "video"`: se rompió al meter
+  Higgsfield). **Enviar es lo único que no se repite:** el id del motor se guarda antes que nada, y
+  con él sus direcciones de seguimiento (`datos`). Un video se cobra al ENTREGARLO, por segundo.
+  · **Un video sin ajuste de duración cuesta 0 si nadie lo cubre:** `por: "s"` × 0 s no pide
+  confirmar. Lo evitan `segundos` (duración fija) y un test que recorre todo el catálogo.
+  · **Las direcciones que devuelve un proveedor no se creen.** `status_url` de fal y de Higgsfield
+  reciben la llave, así que sólo se siguen si son de SU origen (`esDeLaCola`, `esDeHiggsfield`);
+  si no, se reconstruye la de la documentación. El archivo del resultado se baja SIN la llave.
+  · **Higgsfield sale de su esquema, no de la memoria.** `higgsfield-schemas.json` dice, por ruta,
+  qué campos hay, qué valores admite y cuáles son obligatorios; de ahí salen el catálogo
+  (`scripts/estudio/generar-higgsfield.mjs` → `estudioHiggsfield.json`, que un test regenera y
+  compara), la ruta de cada pedido (según las imágenes que lleve) y el cuerpo (sólo campos de esa
+  ruta, cada valor uno que acepta). Sólo entran los modelos que se pueden pedir SIN subir un video.
+  Cuando Higgsfield cambie su documentación: bajar el nuevo `llms-full.txt`, regenerar el
+  esquema como hizo Agents Office (`scripts/higgsfield-schemas.mjs`), copiar el JSON y correr el
+  generador. **Nada de fal.ai ni de Higgsfield se ha probado contra el servicio real**: los tests
+  usan un `fetch` de mentira que habla como ellos. Lo primero con una llave es un pedido barato
+  (Z-Image Turbo, Flux Schnell) y luego uno de video corto.
+  · **Las imágenes de apoyo de fal van como data URI y las de Higgsfield a su almacén**
+  (`/files/generate-upload-url` + PUT, sin la llave). Los formatos de fal por `image_size` son
+  sólo los exactos (`FORMATOS_FAL`): con «4:5» la imagen saldría 3:4 aunque la pantalla dijera 4:5.
+  · **El asistente y Claude (MCP) piden por la MISMA puerta** (`estudio/herramientas.js`): la
+  confirmación de 0,50 $ no la da la herramienta (`confirmado` sólo vale si es el booleano `true`,
+  y la descripción le dice al modelo que no lo ponga por su cuenta), topes más cortos que los de
+  la pantalla, imágenes de apoyo por id de la GALERÍA de ese cliente (nunca una clave de R2), y un
+  ejecutor sin `estudio` no puede gastar. La guía visual de la marca sale del cerebro con
+  `para: "imagen"` (sin notas internas) y se le ENSEÑA al modelo; no se pega al prompt, porque
+  lo que sale al proveedor tiene que ser lo que quedó escrito en la galería.
+  · **Lo creado desde «Subir» apunta su uso al guardar** (`delEstudio` en `SubirRapido`): la
+  publicación aún no existe al crear, y sin `usado_en` la papelera podría llevarse el archivo.
 - **El cerebro de un cliente es SUYO: un índice por cliente, nunca uno para
   todos.** El algoritmo viene de Agents Office, que indexa por nombre de
   archivo: los nueve clientes tienen un `01_brand_guidelines.md`, y en un
@@ -1615,9 +1659,11 @@ son del servidor.
 ## Documentos relacionados
 
 - `docs/propuesta-estudio-y-meta.md` — el Estudio de Agents Office —imagen y video por trabajos,
-  por cliente— y Meta (Muse Spark) como proveedor de la IA de texto. Implementado: el Estudio de
-  IMÁGENES (A0, A1 y la pestaña); pendientes: los botones dentro del panel de la publicación, video,
-  fal.ai, Higgsfield, las herramientas del chat y del MCP, y toda la parte de Meta.
+  por cliente— y Meta (Muse Spark) como proveedor de la IA de texto. Implementado: el Estudio
+  entero (imágenes y video por Google, fal.ai y Higgsfield; «Crear con IA» y «Animar» en el panel
+  de la publicación y en «Subir»; las herramientas del asistente y del MCP; el cerebro para imagen;
+  la lista de modelos ordenable). Pendiente: toda la parte de Meta como proveedor de texto, y
+  probar fal.ai y Higgsfield con una llave real.
 - `DEPLOY.md` — puesta en producción en Cloudflare: Worker, D1, R2 y el corte.
 - `docs/auditoria-ux-ui.md` — auditoría de UX, UI, responsive y accesibilidad,
   con lo corregido y lo pendiente.
