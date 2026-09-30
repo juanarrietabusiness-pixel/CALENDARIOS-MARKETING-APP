@@ -75,7 +75,7 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       if (d === "avanzar" && metodo === "POST") {
         const r = await avanzarTrabajo(env, acceso, c, { por });
         if (!r) return noEncontrado("Trabajo");
-        return json({ trabajo: trabajoPublico(r.trabajo), ocupado: r.ocupado });
+        return json({ trabajo: trabajoPublico(r.trabajo), ocupado: r.ocupado, espera: r.espera ?? 0 });
       }
       if (d === "cancelar" && metodo === "POST") return json({ trabajo: trabajoPublico(await cancelarTrabajo(env, acceso, c, { por })) });
       if (d === "reintentar" && metodo === "POST") return json({ trabajo: trabajoPublico(await reintentarTrabajo(env, acceso, c, { por })) });

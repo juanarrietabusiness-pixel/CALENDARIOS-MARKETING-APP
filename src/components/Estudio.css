@@ -12,7 +12,7 @@
   gap: var(--sp-4);
 }
 
-.est-cabecera { display: flex; flex-direction: column; gap: var(--sp-1); }
+.est-cabecera { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
 .est-titulo { font-size: var(--fs-xl); font-weight: 700; line-height: var(--lh-tight); margin: 0; }
 .est-sub { margin: 0; color: var(--text-dim); font-size: var(--fs-sm); }
 .est-nota { color: var(--text-dim); font-size: var(--fs-sm); }
@@ -43,6 +43,8 @@
 .est-aviso code, .estudio code { font-size: var(--fs-xs); }
 
 /* Pedir */
+.est-tipos { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-4); }
+.est-tipos .filter-chip { display: inline-flex; align-items: center; gap: var(--sp-1); }
 .est-compositor { display: flex; flex-direction: column; gap: 0; padding: var(--sp-5); }
 .est-prompt-campo { resize: vertical; min-height: 96px; line-height: var(--lh-normal); }
 .est-fila { display: grid; grid-template-columns: 1fr; gap: 0 var(--sp-4); }
@@ -94,27 +96,33 @@
 }
 .est-tarjeta {
   display: flex; flex-direction: column;
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
 }
+/* Sin `overflow: hidden` en la tarjeta: el menú «⋯» se despliega hacia abajo y quedaría recortado. El radio de arriba lo lleva la imagen. */
 .est-img {
   position: relative; display: block; width: 100%; aspect-ratio: 1 / 1; padding: 0; border: none; cursor: pointer;
-  background: var(--surface-3); overflow: hidden;
+  background: var(--surface-3); overflow: hidden; border-radius: var(--radius) var(--radius) 0 0;
 }
 div.est-img { cursor: default; }
-.est-img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.est-img img, .est-img video { width: 100%; height: 100%; object-fit: contain; display: block; }
 .est-img:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.est-marca-ref {
-  position: absolute; left: var(--sp-2); top: var(--sp-2);
+.est-marca-ref,
+.est-marca-video {
+  position: absolute; top: var(--sp-2);
+  display: inline-flex; align-items: center; gap: var(--sp-1);
   padding: var(--sp-1) var(--sp-2); border-radius: var(--radius-pill);
-  background: var(--accent); color: #fff; font-size: var(--fs-3xs); font-weight: 700;
+  font-size: var(--fs-3xs); font-weight: 700;
 }
+.est-marca-ref { left: var(--sp-2); background: var(--accent); color: #fff; }
+/* Sobre una miniatura cualquiera: placa oscura con texto claro, que se lee con cualquier imagen debajo. */
+.est-marca-video { right: var(--sp-2); background: rgba(0, 0, 0, 0.72); color: #fff; }
 .est-pie { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-3); flex: 1; }
 .est-prompt { margin: 0; font-size: var(--fs-xs); line-height: var(--lh-normal); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .est-meta { margin: 0; font-size: var(--fs-2xs); color: var(--text-dim); }
 .est-acciones { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: auto; padding-top: var(--sp-2); }
 .est-acciones .btn-icon { width: var(--tap-sm); height: var(--tap-sm); }
 .est-acciones .btn-icon[aria-pressed="true"] { color: var(--accent-alt); border-color: var(--alt-line); background: var(--alt-soft); }
-.est-tarjeta-papelera .est-img img { opacity: 1; }
+.est-usar { width: 100%; justify-content: center; margin-top: var(--sp-1); }
 .est-confirmar-borrar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-xs); }
 .est-confirmar-borrar p { margin: 0; flex: 1 1 100%; }
 
@@ -125,7 +133,7 @@ div.est-img { cursor: default; }
 /* El visor */
 .est-visor { max-width: 980px; padding: 0; display: grid; grid-template-columns: 1fr; overflow: hidden; }
 .est-visor-imagen { background: var(--surface-3); display: flex; align-items: center; justify-content: center; max-height: 55dvh; overflow: hidden; }
-.est-visor-imagen img { max-width: 100%; max-height: 55dvh; object-fit: contain; display: block; }
+.est-visor-imagen img, .est-visor-imagen video { max-width: 100%; max-height: 55dvh; object-fit: contain; display: block; }
 .est-visor-panel { padding: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3); overflow-y: auto; max-height: 40dvh; }
 .est-visor-cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
 .est-visor-cabecera h3 { margin: 0; font-size: var(--fs-md); }
@@ -144,9 +152,13 @@ div.est-img { cursor: default; }
   .est-fila { grid-template-columns: 2fr 1.4fr 1fr 0.8fr; }
   .est-visor { grid-template-columns: minmax(0, 1.25fr) minmax(300px, 1fr); max-height: 88dvh; }
   .est-visor-imagen { max-height: none; }
-  .est-visor-imagen img { max-height: 88dvh; }
+  .est-visor-imagen img, .est-visor-imagen video { max-height: 88dvh; }
   .est-visor-panel { max-height: 88dvh; }
 }
+
+/* «Crear con IA» dentro del panel de una publicación: el mismo contenido, en un diálogo que desplaza por dentro. */
+.estudio-dialogo { padding: var(--sp-5); }
+.estudio-dialogo .est-titulo { font-size: var(--fs-lg); }
 
 /* Teléfono: los botones grandes ocupan el ancho, y los cuatro iconos de cada tarjeta van en 2×2 en vez de partirse en 3+1. */
 @media (max-width: 599px) {

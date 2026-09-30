@@ -1,23 +1,32 @@
 // ============================================================
 // Los motores del Estudio
 //
-// Un motor es una función con el MISMO contrato para todos:
+// Un motor tiene el MISMO contrato para todos, en una de dos formas:
 //
-//   motor.generar(env, { modelo, prompt, ajustes, referencias })
-//     → { bytes, mime, costo, meta? }        o lanza ErrorMotor
+//   IMAGEN, que responde en el acto:
+//     motor.generar(env, { modelo, prompt, ajustes, referencias, medios })
+//       → { bytes, mime, costo, meta? }        o lanza ErrorMotor
 //
-// «Una imagen por paso»: el Worker no puede esperar, así que un pedido de
-// tres imágenes son tres pasos y cada uno guarda su avance (trabajos.js).
-// Los motores de cola —un video que tarda minutos— tendrán además
-// `enviar`/`sondear`; los de imagen que responden en el acto, como estos,
-// sólo `generar`.
+//   VIDEO, que tarda de uno a diez minutos (una COLA):
+//     motor.enviar(env, { modelo, prompt, ajustes, medios })
+//       → { id, cada? }                        el id del motor: se guarda al instante
+//     motor.sondear(env, { modelo, item, ajustes })
+//       → { estado: "pendiente", nota?, cada? }
+//       | { estado: "fallido", error }
+//       | { estado: "listo", url, headers?, mime? } | { estado: "listo", bytes, mime }
+//
+// «Una cosa por paso»: el Worker no puede esperar, así que un pedido de tres
+// imágenes son tres pasos, y un video son un paso para ENVIAR y otros para
+// mirar cómo va; cada uno guarda su avance (trabajos.js). Enviar es lo único
+// que no se repite —igual que publicar—: el id que devuelve el motor se guarda
+// antes que nada.
 //
 // CADA MOTOR DICE SI TIENE LLAVE. Las llaves son secretos del Worker
 // (`wrangler secret put`); el navegador no recibe ninguna. Un modelo cuyo
 // motor no tiene llave se ve en la lista, atenuado y con cómo activarlo.
 // ============================================================
 
-import { llamarGemini, aBase64 } from "./gemini.js";
+import { llamarGemini, aBase64, ErrorMotor } from "./gemini.js";
 import { MEDIDAS, proporcionDe } from "../../../src/lib/estudioCatalogo.js";
 import { PRECIOS_GEMINI, costoGemini } from "../configIA.js";
 
@@ -72,6 +81,44 @@ export function costoDeGemini(modelo, meta) {
   return PRECIOS_GEMINI[modelo.gid] ? costoGemini(modelo.gid, meta) : modelo.costo;
 }
 
+/**
+ * La «cámara» del video de prueba: una tarjeta ANIMADA (SVG con SMIL, que corre dentro de un <img>) en
+ * lugar de un video, porque el Worker no puede codificar MP4. Prueba el recorrido entero —animar una
+ * imagen, esperar en la cola, verlo— sin gastar.
+ */
+export function tarjetaDeVideoDePrueba({ prompt, ajustes, medios = {} }) {
+  const [w, h] = MEDIDAS[proporcionDe(ajustes)];
+  const segundos = Math.max(1, Number(ajustes?.duration) || 5);
+  const { svg } = tarjetaDePrueba({ prompt, ajustes, referencias: (medios.reference ?? []).length });
+  const animacion =
+    `<circle r="${Math.round(w / 5)}" cy="${Math.round(h / 2)}" fill="#fff" opacity=".12"><animate attributeName="cx" values="${-Math.round(w / 5)};${Math.round(w * 1.2)}" dur="${segundos}s" repeatCount="indefinite"/></circle>` +
+    `<rect x="0" y="${h - Math.round(h / 40)}" height="${Math.round(h / 40)}" fill="#fff" opacity=".85"><animate attributeName="width" values="0;${w}" dur="${segundos}s" repeatCount="indefinite"/></rect>` +
+    `<text x="96%" y="${h - Math.round(h / 20)}" fill="#fff" opacity=".8" font-family="Georgia,serif" font-size="${Math.round(w / 34)}" text-anchor="end">muestra animada · ${segundos} s</text>`;
+  return { svg: svg.replace("</svg>", `${animacion}</svg>`).replace("PRUEBA · ESTUDIO", "PRUEBA · VIDEO"), ancho: w, alto: h };
+}
+
+/** La petición de Veo, como la envía el SDK de Google. Pura (las imágenes ya vienen en base64). */
+export function peticionVeo(modelo, { prompt, ajustes, medios = {} }) {
+  const imagen = (f) => ({ bytesBase64Encoded: f.base64, mimeType: f.mime });
+  const instancia = { prompt };
+  const inicial = medios.start?.[0];
+  const final = medios.end?.[0];
+  const referencias = (medios.reference ?? []).slice(0, modelo.referencias ?? 0);
+  if (inicial) instancia.image = imagen(inicial);
+  if (final && inicial) instancia.lastFrame = imagen(final); // un fotograma final sólo va con uno inicial
+  if (referencias.length && !inicial) instancia.referenceImages = referencias.map((f) => ({ image: imagen(f), referenceType: "asset" }));
+  return {
+    instances: [instancia],
+    parameters: {
+      aspectRatio: ajustes.aspectRatio || "9:16",
+      resolution: ajustes.resolution || "720p",
+      durationSeconds: Number(ajustes.duration) || 8,
+    },
+  };
+}
+
+const BASE_GEMINI = "https://generativelanguage.googleapis.com/v1beta";
+
 export const MOTORES = Object.freeze({
   prueba: {
     nombre: "Prueba (gratis)",
@@ -80,6 +127,13 @@ export const MOTORES = Object.freeze({
     async generar(_env, { prompt, ajustes, referencias = [], indice = 0, total = 1 }) {
       const { svg, ancho, alto } = tarjetaDePrueba({ prompt, ajustes, indice, total, referencias: referencias.length });
       return { bytes: new TextEncoder().encode(svg), mime: "image/svg+xml", costo: 0, ancho, alto };
+    },
+    // El «video» de prueba pasa por la cola de verdad: la primera vez que se mira, aún no está.
+    async enviar() { return { id: `prueba-${crypto.randomUUID()}`, cada: 1000 }; },
+    async sondear(_env, { modelo, item, prompt, ajustes, medios }) {
+      if ((item?.sondeos ?? 0) < 1) return { estado: "pendiente", nota: "Generando…", cada: 1000 };
+      const { svg, ancho, alto } = tarjetaDeVideoDePrueba({ prompt: prompt ?? "", ajustes: ajustes ?? modelo?.ajustes ?? {}, medios });
+      return { estado: "listo", bytes: new TextEncoder().encode(svg), mime: "image/svg+xml", ancho, alto };
     },
   },
 
@@ -96,8 +150,59 @@ export const MOTORES = Object.freeze({
       });
       return { bytes, mime, costo: costoDeGemini(modelo, meta), meta };
     },
+
+    // ---- Video (Veo): predictLongRunning → sondear la operación → bajar el archivo con la llave.
+    async enviar(env, { modelo, prompt, ajustes, medios }) {
+      const res = await fetch(`${BASE_GEMINI}/models/${encodeURIComponent(modelo.gid)}:predictLongRunning`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": env.GOOGLE_AI_KEY },
+        body: JSON.stringify(peticionVeo(modelo, { prompt, ajustes, medios })),
+      }).catch(() => { throw new ErrorMotor("No se pudo contactar con Google AI", 502, { reintentable: true }); });
+      const texto = await res.text().catch(() => "");
+      if (!res.ok) throw errorDeGoogle(res.status, texto, modelo.gid);
+      let op = null;
+      try { op = JSON.parse(texto); } catch { /* respuesta rara */ }
+      if (!op?.name) throw new ErrorMotor("Google no devolvió el número de la operación del video.", 502);
+      return { id: op.name, cada: 8000 };
+    },
+    async sondear(env, { modelo, item }) {
+      const ruta = String(item.id).split("/").map(encodeURIComponent).join("/");
+      const res = await fetch(`${BASE_GEMINI}/${ruta}`, { headers: { "x-goog-api-key": env.GOOGLE_AI_KEY } })
+        .catch(() => { throw new ErrorMotor("No se pudo contactar con Google AI", 502, { reintentable: true }); });
+      const texto = await res.text().catch(() => "");
+      if (!res.ok) {
+        // Un 4xx al sondear no se reintenta: la operación no existe o la llave dejó de valer.
+        if (res.status >= 400 && res.status < 500 && res.status !== 429) return { estado: "fallido", error: errorDeGoogle(res.status, texto, modelo.gid).message };
+        throw errorDeGoogle(res.status, texto, modelo.gid);
+      }
+      let op = {};
+      try { op = JSON.parse(texto); } catch { /* respuesta rara */ }
+      if (!op.done) return { estado: "pendiente", nota: "Generando en Google…", cada: 8000 };
+      if (op.error) return { estado: "fallido", error: `${modelo.nombre}: ${String(op.error.message || "falló").slice(0, 200)}` };
+      const r = op.response?.generateVideoResponse ?? op.response ?? {};
+      const video = (r.generatedSamples ?? r.generatedVideos ?? []).map((x) => x.video).find(Boolean);
+      if (!video?.uri) {
+        const razones = r.raiMediaFilteredReasons?.length ? ` ${r.raiMediaFilteredReasons.join(" ")}` : "";
+        return { estado: "fallido", error: r.raiMediaFilteredCount || razones
+          ? `El filtro de contenido de Google no dejó crear ese video.${razones} Cambia el prompt.`
+          : `${modelo.nombre} no devolvió ningún video.` };
+      }
+      return { estado: "listo", url: video.uri, headers: { "x-goog-api-key": env.GOOGLE_AI_KEY }, mime: "video/mp4" };
+    },
   },
 });
+
+/** El rechazo de Google en palabras. Un 404 dice qué modelo falta. */
+function errorDeGoogle(estado, texto, gid) {
+  let detalle = "";
+  try { detalle = JSON.parse(texto)?.error?.message || ""; } catch { /* no es JSON */ }
+  if (estado === 429) return new ErrorMotor("Google AI está saturado. Inténtalo en unos segundos.", 429, { reintentable: true });
+  if (estado === 401 || estado === 403) {
+    return new ErrorMotor(`Google AI no dejó usar «${gid}» con la clave del servidor${detalle ? `: ${detalle.slice(0, 200)}` : ""}. Los videos de Veo exigen que el proyecto de Google tenga facturación.`, 502);
+  }
+  if (estado === 404) return new ErrorMotor(`Tu cuenta de Google AI no tiene el modelo «${gid}»${detalle ? ` (${detalle.slice(0, 160)})` : ""}. Prueba con otro modelo.`, 502);
+  return new ErrorMotor(`Google AI devolvió un error (${estado})${detalle ? `: ${detalle.slice(0, 200)}` : "."}`, 502, { reintentable: estado >= 500 });
+}
 
 /** Qué motores tienen llave, para la pantalla. Nunca la llave. */
 export function estadoMotores(env) {

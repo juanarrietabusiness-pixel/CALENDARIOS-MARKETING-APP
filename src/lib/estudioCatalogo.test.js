@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  MODELOS, PRECIOS_AL, CONFIRMAR_DESDE, MAX_POR_PEDIDO, modeloPorId, modeloPorDefecto, estimar, textoCosto,
+  MODELOS, PRECIOS_AL, CONFIRMAR_DESDE, MAX_POR_PEDIDO, MAX_VIDEOS_POR_PEDIDO, ajustesDe, duracionDe, modeloPorId, modeloPorDefecto, estimar, textoCosto,
   pideConfirmar, normalizarAjustes, validarPedido, diasQueQuedan, DIAS_PAPELERA, proporcionDe, MEDIDAS,
 } from "./estudioCatalogo.js";
 import { claveDeArchivo, claveDelCliente, slugCorto, medidasDe, tipoPorBytes, extensionDe, esDelEstudio } from "../../worker/lib/estudio/archivos.js";
@@ -39,7 +39,7 @@ describe("el catálogo cumple sus propias reglas", () => {
   it("todo modelo con proporción tiene sus medidas, y los gemini llevan el id que espera Google", () => {
     for (const m of MODELOS) {
       for (const p of m.ajustes.aspectRatio?.valores ?? []) expect(MEDIDAS[p], `${m.id} ${p}`).toBeTruthy();
-      if (m.motor === "gemini") expect(m.gid, m.id).toMatch(/^gemini-/);
+      if (m.motor === "gemini") expect(m.gid, m.id).toMatch(/^(gemini|veo)-/);
     }
   });
 
@@ -111,6 +111,9 @@ describe("validar un pedido", () => {
   it("el modelo por defecto es uno real si su motor tiene llave, y la prueba si no", () => {
     expect(modeloPorDefecto({ gemini: true }).id).toBe("nano-banana");
     expect(modeloPorDefecto({}).id).toBe("prueba");
+    // Y lo mismo para video: Veo Lite (el más barato) con llave, la prueba sin ella.
+    expect(modeloPorDefecto({ gemini: true }, "video").id).toBe("veo-3.1-lite");
+    expect(modeloPorDefecto({}, "video").id).toBe("prueba-video");
     expect(modeloPorId("nano-banana").motor).toBe("gemini");
   });
 });
@@ -171,5 +174,54 @@ describe("claves y archivos", () => {
     const jpg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, ...new Array(14).fill(0), 0xff, 0xc0, 0x00, 0x11, 0x08, 0x05, 0x46, 0x04, 0x38, 0x03]);
     expect(medidasDe(jpg, "image/jpeg")).toEqual({ ancho: 1080, alto: 1350 });
     expect(medidasDe(new Uint8Array(4), "image/png")).toEqual({ ancho: 0, alto: 0 });
+  });
+});
+
+describe("el video", () => {
+  const videos = MODELOS.filter((m) => m.tipo === "video");
+
+  it("hay modelos de video, cobran por segundo y declaran su duración", () => {
+    expect(videos.length).toBeGreaterThan(2);
+    for (const m of videos) {
+      expect(m.por, m.id).toBe("s");
+      expect(m.ajustes.duration, m.id).toBeDefined();
+      expect(m.ajustes.duration.valores.map(Number).every((n) => n > 0), m.id).toBe(true);
+    }
+  });
+
+  it("un modelo de imagen no lleva imagen inicial ni final; uno de video sí puede", () => {
+    for (const m of MODELOS.filter((x) => x.tipo === "imagen")) { expect(m.inicial ?? 0, m.id).toBe(0); expect(m.final ?? 0, m.id).toBe(0); }
+    expect(videos.some((m) => m.inicial)).toBe(true);
+  });
+
+  it("estima por segundo: 4 s de Veo Fast son 0,60 $ y 8 s de Lite, 0,40 $", () => {
+    expect(estimar("veo-3.1-fast", 1, { duration: "4" })).toBe(0.6);
+    expect(estimar("veo-3.1-lite", 1, { duration: "8" })).toBe(0.4);
+    expect(estimar("veo-3.1-lite", 2, { duration: "8" })).toBe(0.8);
+    // Sin ajustes, la duración por defecto del modelo.
+    expect(estimar("veo-3.1-lite")).toBe(estimar("veo-3.1-lite", 1, { duration: "8" }));
+    expect(duracionDe(modeloPorId("veo-3.1"), { duration: "6" })).toBe(6);
+    expect(estimar("prueba-video", 2, { duration: "5" })).toBe(0);
+  });
+
+  it("un pedido de video pasa de 2 a rechazarse", () => {
+    expect(validarPedido({ modelo: "veo-3.1-lite", prompt: "a", n: MAX_VIDEOS_POR_PEDIDO }).ok).toBe(true);
+    expect(validarPedido({ modelo: "veo-3.1-lite", prompt: "a", n: MAX_VIDEOS_POR_PEDIDO + 1 })).toMatchObject({ ok: false, error: expect.stringMatching(/videos/) });
+  });
+
+  it("las reglas de Veo: 1080p sólo en 8 s, y con referencias, 720p horizontal", () => {
+    expect(ajustesDe("veo-3.1", { resolution: "1080p", duration: "4" })).toMatchObject({ resolution: "1080p", duration: "8" });
+    expect(ajustesDe("veo-3.1", { aspectRatio: "9:16", resolution: "1080p" }, { reference: ["a"] })).toMatchObject({ aspectRatio: "16:9", resolution: "720p" });
+    const r = validarPedido({ modelo: "veo-3.1", prompt: "a", medios: { reference: ["a", "b"] }, ajustes: { aspectRatio: "9:16" } });
+    expect(r.pedido.ajustes).toMatchObject({ aspectRatio: "16:9", resolution: "720p" });
+  });
+
+  it("la imagen inicial y la final: una de cada, la final necesita la inicial y Lite no lleva final", () => {
+    expect(validarPedido({ modelo: "veo-3.1-fast", prompt: "a", medios: { start: ["a"], end: ["b"] } }).ok).toBe(true);
+    expect(validarPedido({ modelo: "veo-3.1-fast", prompt: "a", medios: { end: ["b"] } })).toMatchObject({ ok: false, error: expect.stringMatching(/inicial/) });
+    expect(validarPedido({ modelo: "veo-3.1-fast", prompt: "a", medios: { start: ["a", "b"] } }).ok).toBe(false);
+    expect(validarPedido({ modelo: "veo-3.1-lite", prompt: "a", medios: { start: ["a"], end: ["b"] } })).toMatchObject({ ok: false, error: expect.stringMatching(/no admite imagen final/) });
+    expect(validarPedido({ modelo: "nano-banana", prompt: "a", medios: { start: ["a"] } })).toMatchObject({ ok: false, error: expect.stringMatching(/no admite imagen inicial/) });
+    expect(validarPedido({ modelo: "veo-3.1", prompt: "a", medios: { start: ["a"], reference: ["b"] } }).ok).toBe(false);
   });
 });

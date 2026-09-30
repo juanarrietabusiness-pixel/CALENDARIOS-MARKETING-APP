@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga } from "./estudio.js";
+import { filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga, archivoDesdeSrc } from "./estudio.js";
 
 const A = (o) => ({ id: "a", prompt: "una taza", modelo: "nano-banana", favorito: false, subido: false, carpetaId: null, ...o });
 
@@ -49,6 +49,10 @@ describe("las frases", () => {
     expect(fraseDeTrabajo({ estado: "en_cola", n: 1, archivos: [] })).toBe("En cola…");
     expect(fraseDeTrabajo({ estado: "en_marcha", n: 3, archivos: ["a"] })).toBe("Creando la 2 de 3…");
     expect(fraseDeTrabajo({ estado: "en_marcha", n: 1, archivos: [] })).toBe("Creando la imagen…");
+    expect(fraseDeTrabajo({ estado: "en_marcha", tipo: "video", n: 1, archivos: [] })).toBe("Creando el video…");
+    expect(fraseDeTrabajo({ estado: "en_marcha", tipo: "video", n: 2, archivos: ["a"] })).toBe("Creando el 2 de 2…");
+    // Lo que el servidor cuenta de un video en espera es más útil que un «Creando».
+    expect(fraseDeTrabajo({ estado: "en_marcha", tipo: "video", n: 1, archivos: [], nota: "Enviado: el video tarda unos minutos." })).toBe("Enviado: el video tarda unos minutos.");
     expect(fraseDeTrabajo({ estado: "fallido", error: "Sin saldo." })).toBe("Sin saldo.");
     expect(fraseDeTrabajo({ estado: "cancelado", n: 3, archivos: ["a"] })).toBe("Cancelado. Llegaron 1 de 3.");
   });
@@ -69,5 +73,47 @@ describe("las frases", () => {
   it("el nombre de descarga sale del prompt", () => {
     expect(nombreDeDescarga({ prompt: "Una taza de café ☕!", mime: "image/png" })).toBe("una-taza-de-cafe.png");
     expect(nombreDeDescarga({ prompt: "", mime: "image/jpeg" })).toBe("imagen.jpg");
+  });
+});
+
+describe("de una publicación al Estudio", () => {
+  it("la proporción sigue al formato", async () => {
+    const { proporcionParaFormato } = await import("./estudio.js");
+    expect(proporcionParaFormato("reel")).toBe("9:16");
+    expect(proporcionParaFormato("historia")).toBe("9:16");
+    expect(proporcionParaFormato("post")).toBe("4:5");
+    expect(proporcionParaFormato("carrusel")).toBe("4:5");
+    expect(proporcionParaFormato("live")).toBe("16:9");
+    expect(proporcionParaFormato("post", "video")).toBe("9:16");
+  });
+
+  it("el prompt sale de la idea, con el texto como contexto", async () => {
+    const { promptDePublicacion } = await import("./estudio.js");
+    expect(promptDePublicacion({ idea: "Un sofá gris", descripcion: "Espuma de alta densidad." })).toBe("Un sofá gris\n\nContexto de la publicación: Espuma de alta densidad.");
+    expect(promptDePublicacion({ title: "Sofá", descripcion: "Texto largo" })).toBe("Sofá");
+    expect(promptDePublicacion({})).toBe("");
+    expect(promptDePublicacion({ idea: "x".repeat(3000) }).length).toBe(1500);
+  });
+
+  it("reconoce un video de verdad y la proporción de unas medidas", async () => {
+    const { esVideoReal, proporcionDeMedidas, medioDeArchivo } = await import("./estudio.js");
+    expect(esVideoReal({ mime: "video/mp4" })).toBe(true);
+    expect(esVideoReal({ mime: "image/svg+xml" })).toBe(false);
+    expect(proporcionDeMedidas(1080, 1920)).toBe("9:16");
+    expect(proporcionDeMedidas(896, 1152)).toBe("4:5");
+    expect(proporcionDeMedidas(1000, 1000)).toBe("1:1");
+    expect(proporcionDeMedidas(1920, 1080)).toBe("16:9");
+    expect(proporcionDeMedidas(0, 0)).toBeNull();
+    expect(medioDeArchivo({ src: "/api/media/x.png", mime: "image/png", prompt: "Un sofá", ancho: 896, alto: 1152 })).toEqual({ src: "/api/media/x.png", tipo: "imagen", nombre: "Un sofá", ancho: 896, alto: 1152 });
+    expect(medioDeArchivo({ src: "/api/media/x.mp4", mime: "video/mp4", prompt: "", ancho: 0, alto: 0 })).toEqual({ src: "/api/media/x.mp4", tipo: "video", nombre: "" });
+  });
+  it("una imagen de la publicación se puede usar de inicial sólo si es del propio cliente", () => {
+    const a = archivoDesdeSrc("/api/media/clientes/c1/2026/foto%20uno.jpg?v=3", "c1", "Foto uno");
+    expect(a).toEqual({ id: "ext:clientes/c1/2026/foto uno.jpg", src: "/api/media/clientes/c1/2026/foto%20uno.jpg?v=3", clave: "clientes/c1/2026/foto uno.jpg", prompt: "Foto uno" });
+    expect(archivoDesdeSrc("/api/media/clientes/c2/foto.jpg", "c1")).toBeNull();
+    expect(archivoDesdeSrc("/api/media/clientes/c1/../c2/foto.jpg", "c1")).toBeNull();
+    expect(archivoDesdeSrc("data:image/png;base64,AAAA", "c1")).toBeNull();
+    expect(archivoDesdeSrc("https://x.test/a.png", "c1")).toBeNull();
+    expect(archivoDesdeSrc("", "c1")).toBeNull();
   });
 });

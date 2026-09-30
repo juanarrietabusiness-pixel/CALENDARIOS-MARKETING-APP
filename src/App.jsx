@@ -82,6 +82,33 @@ const PESTANAS = [
 ];
 
 /**
+ * Las pestañas de un cliente. En el teléfono no caben todas: la barra desplaza, la
+ * pestaña activa se trae a la vista al entrar (si no, «Estudio» o «Cerebro» quedaban
+ * fuera y no se sabía que existían) y un degradado a la derecha avisa de que hay más.
+ */
+function PestanasCliente({ nombre, pestana, onElegir }) {
+  const barra = useRef(null);
+  useEffect(() => {
+    barra.current?.querySelector('[aria-current="page"]')?.scrollIntoView?.({ inline: "center", block: "nearest" });
+  }, [pestana]);
+  return (
+    <nav ref={barra} className="pestanas-cliente" aria-label={`Secciones de ${nombre}`}>
+      {PESTANAS.map(([id, texto, icono]) => (
+        <button
+          key={id}
+          type="button"
+          className="pestana-cliente"
+          aria-current={pestana === id ? "page" : undefined}
+          onClick={() => onElegir(id)}
+        >
+          <Icon name={icono} size={16} /> {texto}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+/**
  * La dirección actual, y se vuelve a pintar cuando cambia.
  *
  * `popstate` lo dispara el navegador al pulsar atrás y lo dispara
@@ -1369,19 +1396,7 @@ function Workspace({ session, ruta }) {
                       todo esto iba apilado ENCIMA del calendario, que es
                       lo que se usa todo el día, y había que bajar para
                       llegar a él. */}
-                  <nav className="pestanas-cliente" aria-label={`Secciones de ${client.name}`}>
-                    {PESTANAS.map(([id, nombre, icono]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        className="pestana-cliente"
-                        aria-current={pestana === id ? "page" : undefined}
-                        onClick={() => (id === "calendario" ? irA(client.id, selectedCalId) : irAPestana(id))}
-                      >
-                        <Icon name={icono} size={16} /> {nombre}
-                      </button>
-                    ))}
-                  </nav>
+                  <PestanasCliente nombre={client.name} pestana={pestana} onElegir={(id) => (id === "calendario" ? irA(client.id, selectedCalId) : irAPestana(id))} />
                 </div>
 
                 <Suspense fallback={<Cargando />}>

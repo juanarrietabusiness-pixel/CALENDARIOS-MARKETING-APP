@@ -84,3 +84,12 @@ export function tipoPorBytes(bytes) {
   if (b.length > 4 && b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return "video/webm";
   return null;
 }
+
+/** Ancho y alto de un video según lo pedido (el motor no los dice). Pura. */
+export function medidasDeVideo({ aspectRatio = "9:16", resolution = "720p" } = {}) {
+  const lado = resolution === "1080p" ? 1080 : 720;
+  const largo = Math.round((lado * 16) / 9);
+  if (aspectRatio === "16:9") return { ancho: largo, alto: lado };
+  if (aspectRatio === "1:1") return { ancho: lado, alto: lado };
+  return { ancho: lado, alto: largo };
+}

@@ -352,7 +352,7 @@ describe("Gemini, con un fetch falso", () => {
     const { trabajo } = await (await pedirTrabajo(JEFE, "c1", { modelo: "nano-banana", medios: { reference: ["clientes/c1/estudio/2026-09/tarjeta.svg"] } })).json();
     const fin = await hastaElFinal(JEFE, "c1", trabajo.id);
     expect(fin.estado).toBe("fallido");
-    expect(fin.error).toMatch(/no sirve de referencia/);
+    expect(fin.error).toMatch(/no sirve de imagen para un motor real/);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });
@@ -593,5 +593,287 @@ describe("subir a mano, carpetas y papelera", () => {
     const clave = await pedir(JEFE, "/api/generar-imagen", { method: "POST", body: { clientId: "c1", idea: "x" } });
     expect(clave.status).toBe(502);
     expect((await clave.json()).error).toMatch(/clave de Google AI no es válida/);
+  });
+});
+
+// ============================================================
+// Video: la cola de los motores
+// ============================================================
+
+/** Un MP4 mínimo para el reconocimiento por bytes: «ftyp» en el byte 4. */
+const MP4 = Uint8Array.from([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8]);
+const OPERACION = "models/veo-3.1-fast-generate-preview/operations/abc123";
+
+/** Google entero, con las direcciones que usa: enviar, sondear y el archivo. */
+function googleConVideo({ hecho = true, respuesta = null, archivo = null, error = null } = {}) {
+  const llamadas = [];
+  const enrutador = vi.fn(async (url, init = {}) => {
+    const u = String(url);
+    llamadas.push({ url: u, init });
+    if (u.includes(":predictLongRunning")) return new Response(JSON.stringify({ name: OPERACION }), { status: 200 });
+    if (u.includes("/operations/")) {
+      if (error) return new Response(JSON.stringify(error.cuerpo ?? {}), { status: error.estado });
+      return new Response(JSON.stringify(hecho
+        ? { done: true, response: respuesta ?? { generateVideoResponse: { generatedSamples: [{ video: { uri: "https://storage.googleapis.com/videos/v1.mp4" } }] } } }
+        : { done: false }), { status: 200 });
+    }
+    if (u.startsWith("https://storage.googleapis.com/")) {
+      const a = archivo ?? { bytes: MP4 };
+      return new Response(a.bytes, { status: a.estado ?? 200, headers: a.sinLargo ? {} : { "content-length": String(a.largo ?? a.bytes.length) } });
+    }
+    return new Response("{}", { status: 404 });
+  });
+  globalThis.fetch = enrutador;
+  return { llamadas, enrutador };
+}
+
+/** Adelanta el reloj del motor: la próxima revisión de cada video ya toca. */
+function yaToca(id) {
+  const fila = db.sqlite.prepare("select remoto from estudio_trabajos where id = ?").get(id);
+  const remoto = JSON.parse(fila.remoto).map((r) => ({ ...r, proximo: new Date(Date.now() - 1000).toISOString() }));
+  db.sqlite.prepare("update estudio_trabajos set remoto = ? where id = ?").run(JSON.stringify(remoto), id);
+}
+
+const pedirVideo = (quien, cliente, datos) => pedirTrabajo(quien, cliente, { modelo: "veo-3.1-fast", ajustes: { duration: "4" }, confirmado: true, ...datos });
+
+describe("un video, por la cola", () => {
+  beforeEach(() => { env.GOOGLE_AI_KEY = "clave-de-prueba"; });
+
+  it("un paso ENVÍA, otros MIRAN, y al estar listo se baja a R2; sólo entonces se cobra", async () => {
+    const { llamadas } = googleConVideo();
+    const { trabajo } = await (await pedirVideo(JEFE, "c1", { prompt: "Un sofá que gira", ajustes: { duration: "4", aspectRatio: "9:16" } })).json();
+    expect(trabajo).toMatchObject({ tipo: "video", estado: "en_cola", costoEstimado: 0.6 });
+
+    const enviado = (await avanzar(JEFE, "c1", trabajo.id)).trabajo;
+    expect(enviado.estado).toBe("en_marcha");
+    expect(enviado.nota).toMatch(/Enviado/);
+    const envio = llamadas.find((l) => l.url.includes(":predictLongRunning"));
+    expect(envio.url).toContain("veo-3.1-fast-generate-preview");
+    expect(envio.init.headers["x-goog-api-key"]).toBe("clave-de-prueba");
+    expect(JSON.parse(envio.init.body)).toEqual({
+      instances: [{ prompt: "Un sofá que gira" }],
+      parameters: { aspectRatio: "9:16", resolution: "720p", durationSeconds: 4 },
+    });
+    // Enviar no cuesta todavía.
+    expect(consumo()).toHaveLength(0);
+    // El id del motor está guardado.
+    expect(JSON.parse(db.sqlite.prepare("select remoto from estudio_trabajos where id = ?").get(trabajo.id).remoto)[0].id).toBe(OPERACION);
+
+    yaToca(trabajo.id);
+    const fin = (await avanzar(JEFE, "c1", trabajo.id)).trabajo;
+    expect(fin.estado).toBe("hecho");
+    expect(fin.archivos).toHaveLength(1);
+
+    const { archivos } = await galeria(JEFE, "c1");
+    expect(archivos[0]).toMatchObject({ tipo: "video", mime: "video/mp4", ancho: 720, alto: 1280, modelo: "veo-3.1-fast", origen: "estudio" });
+    expect(archivos[0].clave).toMatch(/\.mp4$/);
+    expect(env.MEDIA.objetos.get(archivos[0].clave).bytes).toEqual(MP4);
+    expect(consumo()).toHaveLength(1);
+    expect(consumo()[0]).toMatchObject({ proveedor: "gemini", funcion: "estudio-video", modelo: "veo-3.1-fast-generate-preview", costo_usd: 0.6, client_id: "c1" });
+    expect(fin.costo).toBeCloseTo(0.6, 6);
+    // La llave viaja al bajar el archivo de Google.
+    expect(llamadas.find((l) => l.url.startsWith("https://storage.googleapis.com/")).init.headers["x-goog-api-key"]).toBe("clave-de-prueba");
+  });
+
+  it("mientras el motor trabaja no se le pregunta antes de tiempo: el paso devuelve cuánto esperar y no toma el permiso", async () => {
+    const { llamadas } = googleConVideo({ hecho: false });
+    const { trabajo } = await (await pedirVideo(JEFE, "c1")).json();
+    await avanzar(JEFE, "c1", trabajo.id); // enviar
+    const antes = llamadas.length;
+    const r = await avanzar(JEFE, "c1", trabajo.id);
+    expect(r.espera).toBeGreaterThan(0);
+    expect(r.ocupado).toBe(false);
+    expect(llamadas.length).toBe(antes); // nada que preguntarle a Google
+    expect(db.sqlite.prepare("select bloqueado_hasta from estudio_trabajos where id = ?").get(trabajo.id).bloqueado_hasta).toBe("");
+
+    yaToca(trabajo.id);
+    const otra = await avanzar(JEFE, "c1", trabajo.id);
+    expect(otra.trabajo.estado).toBe("en_marcha");
+    expect(otra.trabajo.nota).toMatch(/Generando/);
+    expect(llamadas.length).toBe(antes + 1);
+  });
+
+  it("dos videos son dos envíos, uno por paso, y se entregan uno a uno", async () => {
+    const { llamadas } = googleConVideo();
+    const { trabajo } = await (await pedirVideo(JEFE, "c1", { n: 2 })).json();
+    expect(trabajo.costoEstimado).toBe(1.2);
+    await avanzar(JEFE, "c1", trabajo.id);
+    await avanzar(JEFE, "c1", trabajo.id);
+    expect(llamadas.filter((l) => l.url.includes(":predictLongRunning"))).toHaveLength(2);
+    yaToca(trabajo.id);
+    const uno = (await avanzar(JEFE, "c1", trabajo.id)).trabajo;
+    expect(uno).toMatchObject({ estado: "en_marcha" });
+    expect(uno.archivos).toHaveLength(1);
+    yaToca(trabajo.id);
+    const dos = (await avanzar(JEFE, "c1", trabajo.id)).trabajo;
+    expect(dos).toMatchObject({ estado: "hecho" });
+    expect(dos.archivos).toHaveLength(2);
+    expect(consumo()).toHaveLength(2);
+  });
+
+  it("la imagen inicial y la final van en base64 dentro de la petición; una referencia de otro cliente no", async () => {
+    const { llamadas } = googleConVideo();
+    env.MEDIA.objetos.set("clientes/c1/estudio/2026-09/ini.png", { bytes: PNG, tipo: "image/png" });
+    env.MEDIA.objetos.set("clientes/c1/estudio/2026-09/fin.png", { bytes: PNG, tipo: "image/png" });
+    env.MEDIA.objetos.set("clientes/c2/estudio/2026-09/otro.png", { bytes: PNG, tipo: "image/png" });
+    const mala = await pedirVideo(JEFE, "c1", { medios: { start: ["clientes/c2/estudio/2026-09/otro.png"] } });
+    expect(mala.status).toBe(400);
+    const { trabajo } = await (await pedirVideo(JEFE, "c1", { medios: { start: ["/api/media/clientes/c1/estudio/2026-09/ini.png"], end: ["clientes/c1/estudio/2026-09/fin.png"] } })).json();
+    await avanzar(JEFE, "c1", trabajo.id);
+    const instancia = JSON.parse(llamadas.find((l) => l.url.includes(":predictLongRunning")).init.body).instances[0];
+    expect(instancia.image).toEqual({ bytesBase64Encoded: PNG_B64, mimeType: "image/png" });
+    expect(instancia.lastFrame).toEqual({ bytesBase64Encoded: PNG_B64, mimeType: "image/png" });
+    expect(instancia).not.toHaveProperty("referenceImages");
+  });
+
+  it("con referencias, Veo 3.1 sale a 720p horizontal, diga lo que diga el pedido", async () => {
+    const { llamadas } = googleConVideo();
+    env.MEDIA.objetos.set("clientes/c1/estudio/2026-09/r.png", { bytes: PNG, tipo: "image/png" });
+    const { trabajo } = await (await pedirTrabajo(JEFE, "c1", {
+      modelo: "veo-3.1", confirmado: true, ajustes: { aspectRatio: "9:16", resolution: "1080p", duration: "4" }, medios: { reference: ["clientes/c1/estudio/2026-09/r.png"] },
+    })).json();
+    expect(trabajo.ajustes).toMatchObject({ aspectRatio: "16:9", resolution: "720p" });
+    await avanzar(JEFE, "c1", trabajo.id);
+    const cuerpoVeo = JSON.parse(llamadas.find((l) => l.url.includes(":predictLongRunning")).init.body);
+    expect(cuerpoVeo.parameters).toMatchObject({ aspectRatio: "16:9", resolution: "720p" });
+    expect(cuerpoVeo.instances[0].referenceImages[0]).toMatchObject({ referenceType: "asset" });
+  });
+
+  it("el filtro de contenido de Google se dice, y un video que no salió no se cobra", async () => {
+    googleConVideo({ respuesta: { generateVideoResponse: { raiMediaFilteredCount: 1, raiMediaFilteredReasons: ["Contenido sensible."] } } });
+    const { trabajo } = await (await pedirVideo(JEFE, "c1")).json();
+    await avanzar(JEFE, "c1", trabajo.id);
+    yaToca(trabajo.id);
+    const fin = (await avanzar(JEFE, "c1", trabajo.id)).trabajo;
+    expect(fin.estado).toBe("fallido");
+    expect(fin.error).toMatch(/filtro de contenido de Google/);
+    expect(consumo()).toHaveLength(0);
+    expect((await galeria(JEFE, "c1")).archivos).toHaveLength(0);
+  });
+
+  it("Google sin facturación dice qué hacer, en vez de un error genérico", async () => {
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ error: { message: "Billing is required" } }), { status: 403 }));
+    const { trabajo } = await (await pedirVideo(JEFE, "c1")).json();
+    const fin = (await avanzar(JEFE, "c1", trabajo.id)).trabajo;
+    expect(fin.estado).toBe("fallido");
+    expect(fin.error).toMatch(/facturación/);
+    expect(consumo()).toHaveLength(0);
+  });
+
+  it("lo que baja de Google se comprueba: no https, sin tamaño, demasiado grande o un HTML disfrazado de video", async () => {
+    const casos = [
+      [{ respuesta: { generateVideoResponse: { generatedSamples: [{ video: { uri: "http://storage.googleapis.com/v.mp4" } }] } } }, /no es https/],
+      [{ archivo: { bytes: MP4, sinLargo: true } }, /no dijo cuánto pesa/],
+      [{ archivo: { bytes: MP4, largo: 300 * 1024 * 1024 } }, /pesa más de 200 MB/],
+      [{ archivo: { bytes: new TextEncoder().encode("<html><script>alert(1)</script></html>") } }, /no es un archivo de los que el Estudio guarda/],
+    ];
+    for (const [config, esperado] of casos) {
+      const { llamadas } = googleConVideo(config);
+      const { trabajo } = await (await pedirVideo(JEFE, "c1")).json();
+      await avanzar(JEFE, "c1", trabajo.id);
+      yaToca(trabajo.id);
+      const fin = (await avanzar(JEFE, "c1", trabajo.id)).trabajo;
+      expect(fin.estado, String(esperado)).toBe("fallido");
+      expect(fin.error).toMatch(esperado);
+      expect(consumo()).toHaveLength(0);
+      expect(llamadas.length).toBeGreaterThan(1);
+      expect([...env.MEDIA.objetos.keys()].filter((k) => k.endsWith(".mp4"))).toEqual([]);
+    }
+  });
+
+  it("una redirección a otro sitio no lleva la llave, y una a http se rechaza", async () => {
+    const vistas = [];
+    globalThis.fetch = vi.fn(async (url, init = {}) => {
+      const u = String(url);
+      vistas.push({ u, llave: init.headers?.["x-goog-api-key"] });
+      if (u.includes(":predictLongRunning")) return new Response(JSON.stringify({ name: OPERACION }), { status: 200 });
+      if (u.includes("/operations/")) return new Response(JSON.stringify({ done: true, response: { generateVideoResponse: { generatedSamples: [{ video: { uri: "https://storage.googleapis.com/v.mp4" } }] } } }), { status: 200 });
+      if (u === "https://storage.googleapis.com/v.mp4") return new Response(null, { status: 302, headers: { location: "https://cdn.otro-sitio.test/v.mp4" } });
+      if (u === "https://cdn.otro-sitio.test/v.mp4") return new Response(MP4, { status: 200, headers: { "content-length": String(MP4.length) } });
+      return new Response("{}", { status: 404 });
+    });
+    const { trabajo } = await (await pedirVideo(JEFE, "c1")).json();
+    await avanzar(JEFE, "c1", trabajo.id);
+    yaToca(trabajo.id);
+    expect((await avanzar(JEFE, "c1", trabajo.id)).trabajo.estado).toBe("hecho");
+    expect(vistas.find((v) => v.u.startsWith("https://cdn.otro-sitio.test")).llave).toBeUndefined();
+
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes(":predictLongRunning")) return new Response(JSON.stringify({ name: OPERACION }), { status: 200 });
+      if (u.includes("/operations/")) return new Response(JSON.stringify({ done: true, response: { generateVideoResponse: { generatedSamples: [{ video: { uri: "https://storage.googleapis.com/v.mp4" } }] } } }), { status: 200 });
+      return new Response(null, { status: 302, headers: { location: "http://interno.local/secreto" } });
+    });
+    const otro = await (await pedirVideo(JEFE, "c1")).json();
+    await avanzar(JEFE, "c1", otro.trabajo.id);
+    yaToca(otro.trabajo.id);
+    const malo = (await avanzar(JEFE, "c1", otro.trabajo.id)).trabajo;
+    expect(malo.estado).toBe("fallido");
+    expect(malo.error).toMatch(/no es https/);
+  });
+
+  it("si el Worker muere después de enviar, el id ya estaba guardado y el trabajo lo encuentra al volver", async () => {
+    googleConVideo();
+    const { trabajo } = await (await pedirVideo(JEFE, "c1")).json();
+    await avanzar(JEFE, "c1", trabajo.id);
+    // Simula la muerte a medias: el permiso quedó puesto y expira.
+    db.sqlite.prepare("update estudio_trabajos set bloqueado_hasta = ? where id = ?").run(new Date(Date.now() - 1000).toISOString(), trabajo.id);
+    yaToca(trabajo.id);
+    const fin = (await avanzar(JEFE, "c1", trabajo.id)).trabajo;
+    expect(fin.estado).toBe("hecho");
+    expect(fin.archivos).toHaveLength(1);
+  });
+
+  it("el presupuesto agotado frena antes de ENVIAR, y no manda nada a Google", async () => {
+    const { llamadas } = googleConVideo();
+    db.sqlite.prepare("insert into ajustes_espacio (id, owner_id, presupuesto_usd, al_limite) values (?,?,?,?)").run(JEFE, JEFE, 1, "detener");
+    db.sqlite.prepare("insert into consumo_ia (id, owner_id, mes, funcion, modelo, costo_usd) values (?,?,?,?,?,?)")
+      .run("g1", JEFE, new Date().toISOString().slice(0, 7), "x", "claude-sonnet-5", 5);
+    const res = await pedirVideo(JEFE, "c1");
+    expect(res.status).toBe(402);
+    expect(llamadas).toHaveLength(0);
+  });
+
+  it("un video de más de 0,50 $ pide confirmar", async () => {
+    const res = await pedirTrabajo(JEFE, "c1", { modelo: "veo-3.1", ajustes: { duration: "8" } });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ codigo: "confirmar", costo: 3.2 });
+  });
+
+  it("el video de prueba recorre la cola sin gastar ni tener llave, y es un archivo animado", async () => {
+    const { trabajo } = await (await pedirTrabajo(JEFE, "c1", { modelo: "prueba-video", ajustes: { duration: "3", aspectRatio: "16:9" } })).json();
+    expect(trabajo).toMatchObject({ tipo: "video", costoEstimado: 0 });
+    await avanzar(JEFE, "c1", trabajo.id); // enviar
+    yaToca(trabajo.id);
+    const mirando = (await avanzar(JEFE, "c1", trabajo.id)).trabajo; // aún no está
+    expect(mirando.estado).toBe("en_marcha");
+    yaToca(trabajo.id);
+    const fin = (await avanzar(JEFE, "c1", trabajo.id)).trabajo;
+    expect(fin.estado).toBe("hecho");
+    const { archivos } = await galeria(JEFE, "c1");
+    expect(archivos[0]).toMatchObject({ tipo: "video", mime: "image/svg+xml", ancho: 1792, alto: 1024 });
+    const svg = new TextDecoder().decode(env.MEDIA.objetos.get(archivos[0].clave).bytes);
+    expect(svg).toContain("<animate");
+    expect(consumo()).toHaveLength(0);
+  });
+
+  it("cancelar un video en la cola lo deja cancelado, y el cron no lo retoma", async () => {
+    googleConVideo({ hecho: false });
+    const { trabajo } = await (await pedirVideo(JEFE, "c1")).json();
+    await avanzar(JEFE, "c1", trabajo.id);
+    const cancelado = await (await pedir(JEFE, `/api/estudio/c1/trabajos/${trabajo.id}/cancelar`, { method: "POST" })).json();
+    expect(cancelado.trabajo.estado).toBe("cancelado");
+    yaToca(trabajo.id);
+    expect(await avanzarPendientes(env, new Date(Date.now() + 60_000))).toBe(0);
+  });
+
+  it("el cron mira los videos que nadie está mirando", async () => {
+    googleConVideo();
+    const { trabajo } = await (await pedirVideo(JEFE, "c1")).json();
+    await avanzar(JEFE, "c1", trabajo.id);
+    yaToca(trabajo.id);
+    db.sqlite.prepare("update estudio_trabajos set updated_at = ? where id = ?").run(new Date(Date.now() - 30_000).toISOString(), trabajo.id);
+    expect(await avanzarPendientes(env, new Date())).toBe(1);
+    expect((await galeria(JEFE, "c1")).trabajos[0]).toMatchObject({ estado: "hecho", tipo: "video" });
   });
 });

@@ -1,51 +1,74 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
-import { useDialogA11y } from "../hooks/useDialogA11y";
+import Compositor from "./EstudioCompositor";
+import Visor, { Pieza } from "./EstudioVisor";
+import { OverflowMenu } from "./calendario/primitivas";
 import { soloLectura } from "../lib/sesionActual";
 import * as api from "../lib/estudio";
 import {
-  MODELOS, modeloPorId, modeloPorDefecto, estimar, textoCosto, pideConfirmar, normalizarAjustes,
-  NOMBRE_PROPORCION, MAX_POR_PEDIDO, MAX_PROMPT, estaVivo, PRECIOS_AL,
+  modeloPorId, modeloPorDefecto, estimar, textoCosto, pideConfirmar, ajustesDe, estaVivo, PRECIOS_AL, MAX_PROMPT,
 } from "../lib/estudioCatalogo";
 import {
   filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga,
+  proporcionDeMedidas,
 } from "../lib/estudio";
 import "./Estudio.css";
 
 // ============================================================
-// La pestaña Estudio de un cliente
+// El Estudio de un cliente: la pestaña y el diálogo «Crear con IA»
 //
-// Se pide una imagen, se ve aparecer y queda en la galería del cliente con
-// su prompt, su modelo y lo que costó. De ahí se descarga, se usa de
-// referencia para la siguiente, se guarda en una carpeta o se manda a la
-// papelera (30 días).
+// Se pide una imagen o un video, se ve aparecer y queda en la galería del cliente
+// con su prompt, su modelo y lo que costó. De ahí se descarga, se usa de referencia
+// (o de imagen inicial de un video: «Animar»), se guarda en una carpeta o se manda
+// a la papelera (30 días).
 //
-// LO QUE PASA AL PEDIR. El servidor crea un TRABAJO y esta pantalla lo va
-// avanzando un paso a la vez —una imagen por paso—, porque el Worker no
-// puede esperar. Si se cierra la pestaña a medias, el servidor sigue solo
-// (el cron del minuto). Cada modelo dice cuánto cuesta ANTES de pedir, y
+// DOS PUERTAS AL MISMO SERVICIO:
+//   · la PESTAÑA del cliente (`modo="pestana"`);
+//   · el DIÁLOGO del panel de una publicación (`modo="dialogo"`): el compositor sale ya
+//     preparado con el formato y la idea de la publicación, y cada pieza tiene «Usar en
+//     la publicación», que la pone ahí sin pasar por la galería.
+//
+// LO QUE PASA AL PEDIR. El servidor crea un TRABAJO y esta pantalla lo va avanzando un
+// paso a la vez —una imagen por paso; un video se envía y después se mira cómo va—,
+// porque el Worker no puede esperar. Si se cierra la pestaña a medias, el servidor
+// sigue solo (el cron del minuto). Cada modelo dice cuánto cuesta ANTES de pedir, y
 // desde 0,50 $ pide un segundo toque.
 //
 // Ningún motor se llama desde el navegador: todo va por /api/estudio.
 // ============================================================
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
-const CANTIDADES = [1, 2, 3, 4, 6, MAX_POR_PEDIDO];
-const MODELOS_DE_IMAGEN = MODELOS.filter((m) => m.tipo === "imagen");
+const MEDIOS_VACIOS = () => ({ reference: [], start: [], end: [] });
+const FILTROS_FIJOS = ["todas", "favoritas", "subidas", "sin-carpeta"];
 
 const reemplazar = (lista = [], t) => (lista.some((x) => x.id === t.id) ? lista.map((x) => (x.id === t.id ? t : x)) : [t, ...lista]);
 const nombreDeModelo = (id) => modeloPorId(id)?.nombre ?? (id ? id : "Aplicación");
+const clavesDe = (medios) => Object.fromEntries(Object.entries(medios).map(([rol, lista]) => [rol, lista.map((a) => a.clave)]));
 
-export default function Estudio({ client, pulso = 0 }) {
+/** El formulario con que arranca el compositor. */
+function formularioInicial(motores, inicial) {
+  const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
+  const tipo = inicial?.tipo ?? "imagen";
+  const m = modeloPorDefecto(activos, tipo);
+  const medios = MEDIOS_VACIOS();
+  if (inicial?.inicio) medios.start = [inicial.inicio];
+  return {
+    tipo, modelo: m.id, prompt: inicial?.prompt ?? "", n: 1, medios,
+    ajustes: ajustesDe(m, inicial?.proporcion ? { aspectRatio: inicial.proporcion } : {}, clavesDe(medios)),
+  };
+}
+
+export default function Estudio({ client, pulso = 0, modo = "pestana", inicial = null, uso = null, onUsar = null, onCerrar = null }) {
   const ids = useId();
   const lectura = soloLectura();
+  const dialogo = modo === "dialogo";
   const [datos, setDatos] = useState(null);
   const [motores, setMotores] = useState(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState(null); // { ok, texto }
 
-  const [form, setForm] = useState({ modelo: "", prompt: "", n: 1, ajustes: {}, referencias: [] });
+  const [form, setForm] = useState(null);
   const [confirmando, setConfirmando] = useState(null); // el costo a confirmar, o null
   const [enviando, setEnviando] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
@@ -55,13 +78,12 @@ export default function Estudio({ client, pulso = 0 }) {
   const [enPapelera, setEnPapelera] = useState(false);
   const [visor, setVisor] = useState(null);
   const [descartados, setDescartados] = useState(() => new Set());
-  const [carpetaNueva, setCarpetaNueva] = useState(null); // null = cerrado; texto = escribiendo
+  const [carpetaNueva, setCarpetaNueva] = useState(null);
   const [renombrando, setRenombrando] = useState(null);
-  const [borrando, setBorrando] = useState(null); // { id, usos } — pidiendo confirmación para borrar del todo
+  const [borrando, setBorrando] = useState(null);
 
   const siguiendo = useRef(new Set());
   const montado = useRef(true);
-  const entradaArchivo = useRef(null);
   const promptRef = useRef(null);
 
   useEffect(() => {
@@ -86,20 +108,15 @@ export default function Estudio({ client, pulso = 0 }) {
 
   useEffect(() => { cargar(); }, [cargar, pulso]);
 
-  // El modelo de partida: uno real si su motor tiene llave, y si no, la prueba.
+  // El formulario de partida, una vez que se sabe qué motores tienen llave.
   useEffect(() => {
-    if (!motores) return;
-    setForm((f) => {
-      if (f.modelo && modeloPorId(f.modelo)) return f;
-      const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
-      const m = modeloPorDefecto(activos);
-      return { ...f, modelo: m.id, ajustes: normalizarAjustes(m, f.ajustes) };
-    });
-  }, [motores]);
+    if (motores && !form) setForm(formularioInicial(motores, inicial));
+  }, [motores, form, inicial]);
 
-  const modelo = modeloPorId(form.modelo);
+  const modelo = form ? modeloPorId(form.modelo) : null;
   const motorActivo = (m) => Boolean(motores?.[m.motor]?.activo);
-  const costo = modelo ? estimar(modelo, form.n) : 0;
+  const ajustes = form && modelo ? ajustesDe(modelo, form.ajustes, clavesDe(form.medios)) : {};
+  const costo = form && modelo ? estimar(modelo, form.n, ajustes) : 0;
 
   // ---------- Seguir un trabajo: un paso, y otro, hasta que termine ----------
   const seguir = useCallback(async (id) => {
@@ -119,10 +136,11 @@ export default function Estudio({ client, pulso = 0 }) {
         const t = r.trabajo;
         setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, t) } : d));
         const hechas = t.archivos?.length ?? 0;
-        if (hechas !== vistas) { vistas = hechas; cargar(); } // las imágenes van apareciendo
+        if (hechas !== vistas) { vistas = hechas; cargar(); } // las piezas van apareciendo
         if (!estaVivo(t.estado)) break;
-        // Otro tiene el paso, o el motor pidió esperar (saturación): sin prisa. Si no, el siguiente ya.
-        await dormir(r.ocupado ? 2500 : t.nota ? 3000 : 200);
+        // Otro tiene el paso, el motor pidió esperar (saturación) o el video aún se hace: sin prisa.
+        // Si no, el siguiente ya. Nunca más de 15 s: por si acaso se cierra el diálogo y hay que enterarse.
+        await dormir(Math.min(15_000, Math.max(r.espera ?? 0, r.ocupado ? 2500 : t.nota ? 3000 : 200)));
       }
     } finally {
       siguiendo.current.delete(id);
@@ -135,17 +153,37 @@ export default function Estudio({ client, pulso = 0 }) {
     for (const t of datos.trabajos) if (estaVivo(t.estado)) seguir(t.id);
   }, [datos, lectura, seguir]);
 
-  // ---------- Pedir ----------
+  // ---------- El compositor ----------
+  const avisar = (ok, textoAviso) => setAviso({ ok, texto: textoAviso });
+  const enfocarPrompt = () => {
+    promptRef.current?.focus();
+    promptRef.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+  };
+
+  const cambiarTipo = (tipo) => {
+    if (!motores || tipo === form.tipo) return;
+    const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
+    const m = modeloPorDefecto(activos, tipo);
+    setConfirmando(null);
+    setForm((f) => {
+      const medios = { reference: f.medios.reference.slice(0, m.referencias || 0), start: f.medios.start.slice(0, m.inicial || 0), end: f.medios.end.slice(0, m.final || 0) };
+      return { ...f, tipo, modelo: m.id, n: 1, medios, ajustes: ajustesDe(m, { aspectRatio: f.ajustes.aspectRatio }, clavesDe(medios)) };
+    });
+  };
+
   const cambiarModelo = (id) => {
     const m = modeloPorId(id);
     setConfirmando(null);
-    setForm((f) => ({ ...f, modelo: id, ajustes: normalizarAjustes(m, f.ajustes), referencias: f.referencias.slice(0, m.referencias) }));
+    setForm((f) => {
+      const medios = { reference: f.medios.reference.slice(0, m.referencias || 0), start: f.medios.start.slice(0, m.inicial || 0), end: f.medios.end.slice(0, m.final || 0) };
+      return { ...f, modelo: id, n: Math.min(f.n, m.tipo === "video" ? 2 : 8), medios, ajustes: ajustesDe(m, f.ajustes, clavesDe(medios)) };
+    });
   };
 
   const enviar = async (confirmado = false) => {
-    if (!modelo || enviando) return;
+    if (!form || !modelo || enviando) return;
     if (!form.prompt.trim()) {
-      setAviso({ ok: false, texto: "Escribe qué quieres crear." });
+      avisar(false, "Escribe qué quieres crear.");
       promptRef.current?.focus();
       return;
     }
@@ -153,59 +191,104 @@ export default function Estudio({ client, pulso = 0 }) {
     setConfirmando(null);
     setEnviando(true);
     setAviso(null);
+    setEnPapelera(false); // lo que se pide aparece en la galería: que se vea
     try {
       const { trabajo } = await api.pedirImagenes(client.id, {
-        modelo: form.modelo, prompt: form.prompt, n: form.n, ajustes: form.ajustes,
-        medios: form.referencias.length ? { reference: form.referencias.map((r) => r.clave) } : {},
-        confirmado: true,
+        modelo: form.modelo, prompt: form.prompt, n: form.n, ajustes,
+        medios: clavesDe(form.medios), confirmado: true,
+        ...(uso ? { calendarId: uso.calendarId, postId: uso.postId } : {}),
       });
       setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, trabajo) } : d));
       seguir(trabajo.id);
     } catch (e) {
       if (e.datos?.codigo === "confirmar") setConfirmando(e.datos.costo);
-      else setAviso({ ok: false, texto: e.message });
+      else avisar(false, e.message);
     } finally {
       setEnviando(false);
     }
   };
 
-  // ---------- Referencias y subidas ----------
-  const limiteRefs = modelo?.referencias ?? 0;
-  const alternarReferencia = (a) => {
+  // ---------- Imágenes de apoyo: referencias, inicial y final ----------
+  const quitarMedio = (rol, a) => {
     setConfirmando(null);
-    setForm((f) => {
-      if (f.referencias.some((r) => r.id === a.id)) return { ...f, referencias: f.referencias.filter((r) => r.id !== a.id) };
-      if (f.referencias.length >= limiteRefs) return f;
-      return { ...f, referencias: [...f.referencias, a] };
-    });
-  };
-  const esReferencia = (a) => form.referencias.some((r) => r.id === a.id);
-  const usarDeReferencia = (a) => {
-    if (!limiteRefs) { setAviso({ ok: false, texto: `${modelo?.nombre ?? "Este modelo"} no admite imágenes de referencia. Escoge otro modelo.` }); return; }
-    if (!esReferencia(a) && form.referencias.length >= limiteRefs) { setAviso({ ok: false, texto: `${modelo.nombre} admite hasta ${limiteRefs} referencias.` }); return; }
-    if (!esReferencia(a)) alternarReferencia(a);
-    setAviso({ ok: true, texto: "Lista como referencia. Escribe qué quieres hacer con ella." });
-    promptRef.current?.focus();
-    promptRef.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    setForm((f) => ({ ...f, medios: { ...f.medios, [rol]: f.medios[rol].filter((x) => x.id !== a.id) } }));
   };
 
-  const subir = async (e) => {
-    // Copiar ANTES de resetear: vaciar el campo vacía también su lista de archivos.
-    const archivos = [...e.target.files];
-    e.target.value = "";
-    if (!archivos.length) return;
+  /** Dónde cabe una imagen en el modelo elegido: inicial, final o referencia. `null` si no cabe en ninguna. */
+  const ranuraPara = (f, m, a) => {
+    const puesta = (lista) => lista.some((x) => x.id === a.id);
+    if (m.inicial && !f.medios.start.length) return "start";
+    if (m.final && f.medios.start.length && !f.medios.end.length && !puesta(f.medios.start)) return "end";
+    if (m.referencias && f.medios.reference.length < m.referencias) return "reference";
+    return null;
+  };
+  const NOMBRE_RANURA = { start: "imagen inicial", end: "imagen final", reference: "referencia" };
+
+  const usarComoMedio = (a) => {
+    if (!form || !modelo) return;
+    if (Object.values(form.medios).some((l) => l.some((x) => x.id === a.id))) { avisar(true, "Ya está puesta."); return; }
+    const rol = ranuraPara(form, modelo, a);
+    if (!rol) {
+      avisar(false, modelo.inicial || modelo.referencias
+        ? `${modelo.nombre} no admite más imágenes de apoyo. Quita alguna o escoge otro modelo.`
+        : `${modelo.nombre} no admite imágenes de referencia. Escoge otro modelo.`);
+      return;
+    }
+    setConfirmando(null);
+    setForm((f) => ({ ...f, medios: { ...f.medios, [rol]: [...f.medios[rol], a] } }));
+    avisar(true, `Puesta como ${NOMBRE_RANURA[rol]}. Escribe qué quieres hacer con ella.`);
+    enfocarPrompt();
+  };
+
+  /** «Animar»: la imagen pasa a ser el primer fotograma de un video. */
+  const animar = (a) => {
+    if (!motores) return;
+    const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
+    const m = modeloPorId(form.modelo)?.tipo === "video" ? modeloPorId(form.modelo) : modeloPorDefecto(activos, "video");
+    const proporcion = proporcionDeMedidas(a.ancho, a.alto);
+    const medios = { reference: [], start: [a], end: [] };
+    setConfirmando(null);
+    setVisor(null);
+    setEnPapelera(false);
+    setForm({
+      tipo: "video", modelo: m.id, n: 1, medios,
+      prompt: `Anima esta imagen con un movimiento suave y natural: ${a.prompt}`.slice(0, MAX_PROMPT),
+      ajustes: ajustesDe(m, { aspectRatio: proporcion === "16:9" || proporcion === "1:1" ? proporcion : "9:16" }, clavesDe(medios)),
+    });
+    avisar(true, "Lista para animar. Ajusta el texto (qué se mueve) y pulsa «Crear video».");
+    enfocarPrompt();
+  };
+
+  const repetir = (a, conReferencia = false) => {
+    const m = modeloPorId(a.modelo);
+    const usable = m && motorActivo(m);
+    const destino = usable ? m : modeloPorId(form.modelo);
+    const medios = MEDIOS_VACIOS();
+    if (conReferencia && destino.referencias) medios.reference = [a];
+    setConfirmando(null);
+    setForm({ tipo: destino.tipo, modelo: destino.id, prompt: a.prompt, n: 1, medios, ajustes: ajustesDe(destino, a.ajustes, clavesDe(medios)) });
+    setVisor(null);
+    setEnPapelera(false);
+    setAviso(usable || !m ? null : { ok: false, texto: `${m.nombre} no está disponible en este servidor: se usó ${destino.nombre}.` });
+    enfocarPrompt();
+  };
+
+  const subirArchivos = async (archivos, rol) => {
+    if (!form || !modelo) return;
     setSubiendo(true);
     setAviso(null);
     try {
-      let ultimo = null;
+      let ultima = null;
+      const enCarpeta = !FILTROS_FIJOS.includes(filtro) ? filtro : null;
       for (const f of archivos.slice(0, 6)) {
-        ultimo = (await api.subirImagen(client.id, f, { carpetaId: !["todas", "favoritas", "subidas", "sin-carpeta"].includes(filtro) ? filtro : null })).archivo;
-        if (limiteRefs) setForm((fm) => (fm.referencias.length < limiteRefs ? { ...fm, referencias: [...fm.referencias, ultimo] } : fm));
+        ultima = (await api.subirImagen(client.id, f, { carpetaId: enCarpeta })).archivo;
+        const limite = rol === "reference" ? modelo.referencias : rol === "start" ? modelo.inicial : modelo.final;
+        setForm((fm) => (fm.medios[rol].length < (limite || 0) ? { ...fm, medios: { ...fm.medios, [rol]: [...fm.medios[rol], ultima] } } : fm));
       }
-      setAviso({ ok: true, texto: archivos.length === 1 ? "Imagen subida a la galería." : `${Math.min(archivos.length, 6)} imágenes subidas.` });
+      avisar(true, archivos.length === 1 ? "Imagen subida a la galería." : `${Math.min(archivos.length, 6)} imágenes subidas.`);
       await cargar();
     } catch (err) {
-      setAviso({ ok: false, texto: err.message });
+      avisar(false, err.message);
     } finally {
       setSubiendo(false);
     }
@@ -215,10 +298,10 @@ export default function Estudio({ client, pulso = 0 }) {
   const accion = async (hacer, exito) => {
     try {
       await hacer();
-      if (exito) setAviso({ ok: true, texto: exito });
+      if (exito) avisar(true, exito);
       await cargar();
     } catch (e) {
-      setAviso({ ok: false, texto: e.message });
+      avisar(false, e.message);
     }
   };
   const alternarFavorito = (a) => accion(async () => {
@@ -235,32 +318,32 @@ export default function Estudio({ client, pulso = 0 }) {
     try {
       await api.borrarDelTodo(client.id, a.id, { forzar });
       setBorrando(null);
-      setAviso({ ok: true, texto: "Borrada del todo." });
+      avisar(true, "Borrada del todo.");
       await cargar();
     } catch (e) {
       if (e.datos?.codigo === "en_uso") setBorrando({ id: a.id, usos: e.datos.usos });
-      else setAviso({ ok: false, texto: e.message });
+      else avisar(false, e.message);
     }
   };
   const vaciar = () => accion(async () => {
     const r = await api.vaciarPapelera(client.id);
-    setAviso({ ok: true, texto: r.borrados ? `${r.borrados} borrada${r.borrados === 1 ? "" : "s"} del todo.` : "No había nada que borrar (lo que usa una publicación se queda)." });
+    avisar(true, r.borrados ? `${r.borrados} borrada${r.borrados === 1 ? "" : "s"} del todo.` : "No había nada que borrar (lo que usa una publicación se queda).");
   });
-  const repetir = (a, conReferencia = false) => {
-    const m = modeloPorId(a.modelo);
-    const usable = m && motorActivo(m);
-    const destino = usable ? m : modelo;
-    setConfirmando(null);
-    setForm({
-      modelo: destino.id, prompt: a.prompt, n: 1,
-      ajustes: normalizarAjustes(destino, a.ajustes),
-      referencias: conReferencia && destino.referencias ? [a] : [],
-    });
-    setVisor(null);
-    setEnPapelera(false);
-    setAviso(usable || !m ? null : { ok: false, texto: `${m.nombre} no está disponible en este servidor: se usó ${destino.nombre}.` });
-    promptRef.current?.focus();
-    promptRef.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+  const descargar = (a) => {
+    const enlace = document.createElement("a");
+    enlace.href = a.src;
+    enlace.download = nombreDeDescarga(a);
+    enlace.click();
+  };
+
+  /** Ponerla en la publicación: se apunta el uso (para que la papelera no se la lleve) y se la pasa a quien abrió el diálogo. */
+  const usarEnLaPublicacion = async (a) => {
+    try {
+      if (uso) await api.apuntarUso(client.id, a.id, uso);
+      onUsar?.(a);
+    } catch (e) {
+      avisar(false, e.message);
+    }
   };
 
   // ---------- Carpetas ----------
@@ -273,7 +356,7 @@ export default function Estudio({ client, pulso = 0 }) {
       setFiltro(carpeta.id);
       await cargar();
     } catch (err) {
-      setAviso({ ok: false, texto: err.message });
+      avisar(false, err.message);
     }
   };
   const guardarNombre = async (e) => {
@@ -283,10 +366,10 @@ export default function Estudio({ client, pulso = 0 }) {
       setRenombrando(null);
       await cargar();
     } catch (err) {
-      setAviso({ ok: false, texto: err.message });
+      avisar(false, err.message);
     }
   };
-  const quitarCarpeta = (c) => accion(async () => { await api.borrarCarpeta(client.id, c.id); setFiltro("todas"); }, `Carpeta «${c.nombre}» quitada. Sus imágenes siguen en la galería.`);
+  const quitarCarpeta = (c) => accion(async () => { await api.borrarCarpeta(client.id, c.id); setFiltro("todas"); }, `Carpeta «${c.nombre}» quitada. Sus archivos siguen en la galería.`);
 
   // ---------- Derivados ----------
   const archivos = useMemo(() => datos?.archivos ?? [], [datos]);
@@ -297,15 +380,25 @@ export default function Estudio({ client, pulso = 0 }) {
   const enCurso = useMemo(() => trabajosVisibles(datos?.trabajos ?? [], { descartados }), [datos, descartados]);
   const carpetaActiva = carpetas.find((c) => c.id === filtro) ?? null;
   const soloPrueba = motores && !Object.entries(motores).some(([id, m]) => id !== "prueba" && m.activo);
+  const enMedios = (a) => form && Object.values(form.medios).some((l) => l.some((x) => x.id === a.id));
 
-  if (cargando) return <p role="status" className="est-nota">Cargando el Estudio…</p>;
+  if (cargando || (!form && !error)) return <p role="status" className="est-nota">Cargando el Estudio…</p>;
   if (error && !datos) return <div className="est-error" role="alert"><p>{error}</p><button type="button" className="btn btn-secondary btn-sm" onClick={cargar}>Reintentar</button></div>;
 
+  const TituloH = dialogo ? "h3" : "h2";
+
   return (
-    <section className="estudio" aria-labelledby={`${ids}-h`}>
+    <section className={`estudio${dialogo ? " estudio-dialogo" : ""}`} aria-labelledby={`${ids}-h`}>
       <header className="est-cabecera">
-        <h2 id={`${ids}-h`} className="est-titulo">Estudio</h2>
-        <p className="est-sub">Crea imágenes para {client.name}. Cada una queda aquí, con su prompt y lo que costó.</p>
+        <div>
+          <TituloH id={`${ids}-h`} className="est-titulo">{dialogo ? "Crear con IA" : "Estudio"}</TituloH>
+          <p className="est-sub">
+            {dialogo
+              ? "Crea una imagen o un video para esta publicación, o escoge uno que ya hayas hecho."
+              : `Crea imágenes y videos para ${client.name}. Cada uno queda aquí, con su prompt y lo que costó.`}
+          </p>
+        </div>
+        {dialogo && onCerrar && <button type="button" className="btn-icon" aria-label="Cerrar" onClick={onCerrar}><Icon name="close" size={18} /></button>}
       </header>
 
       <div className="est-aviso-region" role="status" aria-live="polite">
@@ -319,100 +412,19 @@ export default function Estudio({ client, pulso = 0 }) {
 
       {soloPrueba && (
         <p className="est-aviso est-aviso-info">
-          Ahora mismo sólo está activo el motor de <strong>prueba</strong> (gratis): saca una tarjeta con tu texto, no una imagen real.
-          Para imágenes de verdad, el administrador tiene que poner la llave <code>GOOGLE_AI_KEY</code> como secreto del Worker.
+          Ahora mismo sólo está activo el motor de <strong>prueba</strong> (gratis): saca una tarjeta con tu texto, no una imagen ni un video reales.
+          Para eso de verdad, el administrador tiene que poner la llave <code>GOOGLE_AI_KEY</code> como secreto del Worker.
         </p>
       )}
 
       {/* ---------- Pedir ---------- */}
-      {!lectura && modelo && (
-        <form className="card est-compositor" onSubmit={(e) => { e.preventDefault(); enviar(false); }}>
-          <div className="field">
-            <label className="label" htmlFor={`${ids}-p`}>¿Qué quieres crear?</label>
-            <textarea
-              id={`${ids}-p`} ref={promptRef} className="input est-prompt-campo" rows={4} maxLength={MAX_PROMPT}
-              placeholder="Una taza de café humeante sobre una mesa de madera, luz de la mañana, estilo fotografía de producto…"
-              value={form.prompt}
-              onChange={(e) => { setConfirmando(null); setForm({ ...form, prompt: e.target.value }); }}
-            />
-            <p className="hint">Sin texto dentro de la imagen, salvo que lo pidas. {form.prompt.length > 3500 ? `${form.prompt.length} de ${MAX_PROMPT} caracteres.` : ""}</p>
-          </div>
-
-          <div className="est-fila">
-            <div className="field">
-              <label className="label" htmlFor={`${ids}-m`}>Modelo</label>
-              <select id={`${ids}-m`} className="input" value={form.modelo} onChange={(e) => cambiarModelo(e.target.value)}>
-                {MODELOS_DE_IMAGEN.map((m) => (
-                  <option key={m.id} value={m.id} disabled={!motorActivo(m)}>
-                    {m.nombre} · {textoCosto(m.costo)}{motorActivo(m) ? "" : " · sin llave"}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label className="label" htmlFor={`${ids}-f`}>Formato</label>
-              <select id={`${ids}-f`} className="input" value={form.ajustes.aspectRatio} onChange={(e) => setForm({ ...form, ajustes: { ...form.ajustes, aspectRatio: e.target.value } })}>
-                {modelo.ajustes.aspectRatio.valores.map((v) => <option key={v} value={v}>{NOMBRE_PROPORCION[v] ?? v} ({v})</option>)}
-              </select>
-            </div>
-            {modelo.ajustes.imageSize && (
-              <div className="field">
-                <label className="label" htmlFor={`${ids}-t`}>Tamaño</label>
-                <select id={`${ids}-t`} className="input" value={form.ajustes.imageSize} onChange={(e) => setForm({ ...form, ajustes: { ...form.ajustes, imageSize: e.target.value } })}>
-                  {modelo.ajustes.imageSize.valores.map((v) => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </div>
-            )}
-            <div className="field">
-              <label className="label" htmlFor={`${ids}-n`}>Cuántas</label>
-              <select id={`${ids}-n`} className="input" value={form.n} onChange={(e) => { setConfirmando(null); setForm({ ...form, n: Number(e.target.value) }); }}>
-                {CANTIDADES.map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </div>
-          </div>
-
-          <p className="hint est-modelo-nota">{modelo.nota}</p>
-
-          {/* Referencias */}
-          <div className="field">
-            <span className="label" id={`${ids}-r`}>Imágenes de referencia</span>
-            {limiteRefs === 0 ? (
-              <p className="hint">{modelo.nombre} no admite referencias.</p>
-            ) : (
-              <div className="est-refs" role="group" aria-labelledby={`${ids}-r`}>
-                {form.referencias.map((r) => (
-                  <span key={r.id} className="est-ref">
-                    <img src={r.src} alt="" />
-                    <span className="est-ref-nombre">{r.prompt || "Imagen"}</span>
-                    <button type="button" className="btn-icon est-ref-quitar" aria-label={`Quitar la referencia: ${r.prompt || "imagen"}`} onClick={() => alternarReferencia(r)}><Icon name="close" size={14} /></button>
-                  </span>
-                ))}
-                <button type="button" className="btn btn-secondary btn-sm" disabled={subiendo || form.referencias.length >= limiteRefs} onClick={() => entradaArchivo.current?.click()}>
-                  <Icon name="upload" size={16} /> {subiendo ? "Subiendo…" : "Subir una imagen"}
-                </button>
-                <input ref={entradaArchivo} type="file" accept="image/png,image/jpeg,image/webp" multiple className="est-archivo" tabIndex={-1} aria-hidden="true" onChange={subir} />
-                <span className="hint">{form.referencias.length} de {limiteRefs}. También puedes usar cualquiera de la galería con «Usar de referencia».</span>
-              </div>
-            )}
-          </div>
-
-          <div className="est-pie-compositor">
-            <p className="est-costo">
-              Costo: <strong>{textoCosto(costo)}</strong>{modelo.estimado && costo > 0 ? " · precio aproximado" : ""}
-            </p>
-            {confirmando != null ? (
-              <div className="est-confirmar" role="alert">
-                <span>Este pedido cuesta <strong>{textoCosto(confirmando)}</strong>. ¿Seguimos?</span>
-                <button type="button" className="btn btn-primary" disabled={enviando} onClick={() => enviar(true)}>Sí, crear</button>
-                <button type="button" className="btn btn-ghost" onClick={() => setConfirmando(null)}>No</button>
-              </div>
-            ) : (
-              <button type="submit" className="btn btn-primary" disabled={enviando || !motorActivo(modelo)}>
-                <Icon name="sparkles" size={18} /> {enviando ? "Pidiendo…" : `Crear ${form.n > 1 ? `${form.n} imágenes` : "imagen"}`}
-              </button>
-            )}
-          </div>
-        </form>
+      {!lectura && form && modelo && (
+        <Compositor
+          ids={ids} form={{ ...form, ajustes }} setForm={setForm} modelo={modelo} motores={motores} costo={costo}
+          confirmando={confirmando} enviando={enviando} subiendo={subiendo} promptRef={promptRef}
+          onEnviar={enviar} onConfirmar={() => enviar(true)} onNo={() => setConfirmando(null)}
+          onModelo={cambiarModelo} onTipo={cambiarTipo} onQuitarMedio={quitarMedio} onSubirArchivos={subirArchivos}
+        />
       )}
 
       {/* ---------- En curso ---------- */}
@@ -426,8 +438,9 @@ export default function Estudio({ client, pulso = 0 }) {
                   {nombreDeModelo(t.modelo)} · {fraseDeTrabajo(t)}
                 </p>
                 {estaVivo(t.estado) && t.n > 1 && (
-                  <progress className="est-progreso" max={t.n} value={t.archivos?.length ?? 0} aria-label={`${t.archivos?.length ?? 0} de ${t.n} imágenes`} />
+                  <progress className="est-progreso" max={t.n} value={t.archivos?.length ?? 0} aria-label={`${t.archivos?.length ?? 0} de ${t.n}`} />
                 )}
+                {estaVivo(t.estado) && t.tipo === "video" && <p className="hint">Un video tarda de uno a diez minutos. Puedes cerrar esta pantalla: sigue solo.</p>}
               </div>
               {!lectura && (
                 <div className="est-trabajo-acciones">
@@ -505,7 +518,7 @@ export default function Estudio({ client, pulso = 0 }) {
             <ul className="est-rejilla">
               {papelera.map((a) => (
                 <li key={a.id} className="est-tarjeta est-tarjeta-papelera">
-                  <div className="est-img"><img src={a.src} alt={a.prompt} loading="lazy" /></div>
+                  <div className="est-img"><Pieza archivo={a} /></div>
                   <div className="est-pie">
                     <p className="est-prompt">{a.prompt}</p>
                     <p className="est-meta">{textoPapelera(a.borradoAt)}{a.usadoEn.length ? ` · en ${a.usadoEn.length} publicación${a.usadoEn.length === 1 ? "" : "es"}` : ""}</p>
@@ -531,37 +544,50 @@ export default function Estudio({ client, pulso = 0 }) {
         </>
       ) : archivos.length === 0 ? (
         <div className="card est-vacio-grande">
-          <h3>Todavía no hay imágenes de {client.name}</h3>
-          <p>Escribe qué quieres arriba y pulsa «Crear imagen». Cada una que salga queda aquí, y puedes usarla de referencia para la siguiente.</p>
+          <h3>Todavía no hay nada de {client.name}</h3>
+          <p>Escribe qué quieres arriba y pulsa «Crear». Cada pieza que salga queda aquí, y puedes usarla de referencia para la siguiente o animarla para sacar un video.</p>
         </div>
       ) : visibles.length === 0 ? (
-        <p className="est-vacio">No hay imágenes con ese filtro.</p>
+        <p className="est-vacio">No hay nada con ese filtro.</p>
       ) : (
         <ul className="est-rejilla">
           {visibles.map((a) => (
             <li key={a.id} className="est-tarjeta">
               <button type="button" className="est-img" aria-label={`Abrir: ${a.prompt}`} onClick={() => setVisor(a)}>
-                <img src={a.src} alt={a.prompt} loading="lazy" />
-                {esReferencia(a) && <span className="est-marca-ref">Referencia</span>}
+                <Pieza archivo={a} />
+                {a.tipo === "video" && <span className="est-marca-video"><Icon name="video" size={12} /> Video</span>}
+                {enMedios(a) && <span className="est-marca-ref">En el pedido</span>}
               </button>
               <div className="est-pie">
                 <p className="est-prompt">{a.prompt}</p>
                 <p className="est-meta">{a.subido ? "Subida" : nombreDeModelo(a.modelo)}{a.costo > 0 ? ` · ${textoCosto(a.costo)}` : ""} · {hace(a.creado)}</p>
+                {onUsar && (
+                  <button type="button" className="btn btn-primary btn-sm est-usar" onClick={() => usarEnLaPublicacion(a)}>
+                    <Icon name="check" size={14} /> Usar en la publicación
+                  </button>
+                )}
                 <div className="est-acciones">
                   {!lectura && (
                     <>
                       <button type="button" className="btn-icon" aria-pressed={a.favorito} aria-label={a.favorito ? "Quitar de favoritas" : "Marcar como favorita"} onClick={() => alternarFavorito(a)}>
                         <Icon name="star" size={18} />
                       </button>
-                      <button type="button" className="btn-icon" aria-pressed={esReferencia(a)} aria-label={esReferencia(a) ? "Quitar de las referencias" : "Usar de referencia"} onClick={() => (esReferencia(a) ? alternarReferencia(a) : usarDeReferencia(a))}>
-                        <Icon name="paperclip" size={18} />
-                      </button>
+                      {a.tipo !== "video" && (
+                        <>
+                          <button type="button" className="btn-icon" aria-pressed={enMedios(a)} aria-label={enMedios(a) ? "Quitar del pedido" : "Usar de referencia"} title="Usar de referencia" onClick={() => (enMedios(a) ? quitarMedio(Object.keys(form.medios).find((rol) => form.medios[rol].some((x) => x.id === a.id)), a) : usarComoMedio(a))}>
+                            <Icon name="paperclip" size={18} />
+                          </button>
+                          <button type="button" className="btn-icon" aria-label="Animar: convertirla en video" title="Animar: convertirla en video" onClick={() => animar(a)}>
+                            <Icon name="video" size={18} />
+                          </button>
+                        </>
+                      )}
                     </>
                   )}
-                  <a className="btn-icon" href={a.src} download={nombreDeDescarga(a)} aria-label="Descargar"><Icon name="download" size={18} /></a>
-                  {!lectura && (
-                    <button type="button" className="btn-icon" aria-label="Mandar a la papelera" onClick={() => aPapelera(a)}><Icon name="trash" size={18} /></button>
-                  )}
+                  <OverflowMenu items={[
+                    { icon: "download", label: "Descargar", onClick: () => descargar(a) },
+                    ...(!lectura ? [{ icon: "trash", label: "A la papelera", danger: true, onClick: () => aPapelera(a) }] : []),
+                  ]} />
                 </div>
               </div>
             </li>
@@ -580,56 +606,11 @@ export default function Estudio({ client, pulso = 0 }) {
           onMover={(c) => moverA(visor, c)}
           onRepetir={() => repetir(visor)}
           onVariar={() => repetir(visor, true)}
-          onReferencia={() => { usarDeReferencia(visor); setVisor(null); }}
-          motorActivo={(m) => motorActivo(m)}
+          onReferencia={() => { const a = visor; setVisor(null); usarComoMedio(a); }}
+          onAnimar={() => animar(visor)}
+          onUsar={onUsar ? () => usarEnLaPublicacion(visor) : null}
         />
       )}
     </section>
-  );
-}
-
-/** La imagen grande y todo lo que se sabe de ella. */
-function Visor({ archivo: a, carpetas, lectura, onCerrar, onFavorito, onPapelera, onMover, onRepetir, onVariar, onReferencia }) {
-  const ref = useDialogA11y(onCerrar);
-  const id = useId();
-  const m = modeloPorId(a.modelo);
-  return (
-    <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) onCerrar(); }}>
-      <div ref={ref} className="dialog est-visor" role="dialog" aria-modal="true" aria-labelledby={`${id}-t`}>
-        <div className="est-visor-imagen"><img src={a.src} alt={a.prompt} /></div>
-        <div className="est-visor-panel">
-          <div className="est-visor-cabecera">
-            <h3 id={`${id}-t`}>{a.subido ? "Imagen subida" : "Imagen creada"}</h3>
-            <button type="button" className="btn-icon" aria-label="Cerrar" onClick={onCerrar}><Icon name="close" size={18} /></button>
-          </div>
-          <p className="est-visor-prompt">{a.prompt}</p>
-          <dl className="est-detalles">
-            <div><dt>Modelo</dt><dd>{a.subido ? "Subida a mano" : m?.nombre ?? a.modelo ?? "Aplicación"}</dd></div>
-            {a.ajustes?.aspectRatio && <div><dt>Formato</dt><dd>{NOMBRE_PROPORCION[a.ajustes.aspectRatio] ?? a.ajustes.aspectRatio} ({a.ajustes.aspectRatio})</dd></div>}
-            {a.ancho > 0 && <div><dt>Tamaño</dt><dd>{a.ancho}×{a.alto}</dd></div>}
-            {a.costo > 0 && <div><dt>Costo</dt><dd>{textoCosto(a.costo)}{m?.estimado ? " (aprox.)" : ""}</dd></div>}
-            <div><dt>Creada</dt><dd>{hace(a.creado)}</dd></div>
-            {a.usadoEn.length > 0 && <div><dt>En uso</dt><dd>{a.usadoEn.length} publicación{a.usadoEn.length === 1 ? "" : "es"}</dd></div>}
-          </dl>
-          {!lectura && (
-            <div className="field">
-              <label className="label" htmlFor={`${id}-c`}>Carpeta</label>
-              <select id={`${id}-c`} className="input" value={a.carpetaId ?? ""} onChange={(e) => onMover(e.target.value)}>
-                <option value="">Sin carpeta</option>
-                {carpetas.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-              </select>
-            </div>
-          )}
-          <div className="est-visor-acciones">
-            {!lectura && !a.subido && <button type="button" className="btn btn-primary" onClick={onRepetir}><Icon name="refresh" size={16} /> Repetir</button>}
-            {!lectura && !a.subido && <button type="button" className="btn btn-secondary" onClick={onVariar}><Icon name="sparkles" size={16} /> Variar</button>}
-            {!lectura && <button type="button" className="btn btn-secondary" onClick={onReferencia}><Icon name="paperclip" size={16} /> Usar de referencia</button>}
-            {!lectura && <button type="button" className="btn btn-secondary" aria-pressed={a.favorito} onClick={onFavorito}><Icon name="star" size={16} /> {a.favorito ? "Es favorita" : "Favorita"}</button>}
-            <a className="btn btn-secondary" href={a.src} download={nombreDeDescarga(a)}><Icon name="download" size={16} /> Descargar</a>
-            {!lectura && <button type="button" className="btn btn-ghost" onClick={onPapelera}><Icon name="trash" size={16} /> A la papelera</button>}
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }

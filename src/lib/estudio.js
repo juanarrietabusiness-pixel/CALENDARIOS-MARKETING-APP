@@ -100,7 +100,12 @@ export function trabajosVisibles(trabajos = [], { descartados = new Set(), ahora
 export function fraseDeTrabajo(t) {
   const hechos = t.archivos?.length ?? 0;
   if (t.estado === "en_cola") return t.nota || (hechos ? `Van ${hechos} de ${t.n}. Sigue en cola…` : "En cola…");
-  if (t.estado === "en_marcha") return t.n > 1 ? `Creando la ${hechos + 1} de ${t.n}…` : "Creando la imagen…";
+  if (t.estado === "en_marcha") {
+    // Un video se envía y luego se espera: lo que el servidor dice («Enviado…», «Generando…») es más útil que un «Creando».
+    if (t.nota) return t.nota;
+    const cosa = t.tipo === "video" ? "el video" : "la imagen";
+    return t.n > 1 ? `Creando ${t.tipo === "video" ? "el" : "la"} ${hechos + 1} de ${t.n}…` : `Creando ${cosa}…`;
+  }
   if (t.estado === "fallido") return t.error || "No salió.";
   if (t.estado === "cancelado") return hechos ? `Cancelado. Llegaron ${hechos} de ${t.n}.` : "Cancelado.";
   return t.nota || "";
@@ -126,7 +131,68 @@ export function textoPapelera(borradoAt, ahora = Date.now()) {
 
 /** Nombre del archivo al descargar: el prompt, corto y sin símbolos. */
 export function nombreDeDescarga(archivo) {
-  const ext = archivo.mime === "image/jpeg" ? "jpg" : archivo.mime === "image/webp" ? "webp" : archivo.mime === "image/svg+xml" ? "svg" : "png";
+  const ext = { "image/jpeg": "jpg", "image/webp": "webp", "image/svg+xml": "svg", "video/mp4": "mp4", "video/webm": "webm" }[archivo.mime] ?? "png";
   const base = String(archivo.prompt || "imagen").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "imagen";
   return `${base}.${ext}`;
+}
+
+// ------------------------------------------------------------
+// Puro: de una publicación al Estudio y del Estudio a una publicación
+// ------------------------------------------------------------
+
+/** La proporción con que conviene crear la imagen o el video de una publicación. */
+export function proporcionParaFormato(formato, tipo = "imagen") {
+  if (formato === "reel" || formato === "historia") return "9:16";
+  if (formato === "live") return "16:9";
+  // Un post o un carrusel: 4:5 es lo más alto que admite el feed de Instagram. Un video de post, cuadrado no lo hacen los motores: vertical.
+  return tipo === "video" ? "9:16" : "4:5";
+}
+
+/** El texto con que arranca el compositor desde una publicación: su idea y, si hay, lo que dice. */
+export function promptDePublicacion(post = {}) {
+  const idea = String(post.idea ?? "").trim();
+  const titulo = String(post.title ?? "").trim();
+  const texto = String(post.descripcion ?? post.script ?? "").trim();
+  const partes = [idea || titulo, idea && texto ? `Contexto de la publicación: ${texto.slice(0, 300)}` : ""].filter(Boolean);
+  return partes.join("\n\n").slice(0, 1500);
+}
+
+/** ¿Es un video de verdad (que se reproduce con <video>) y no una tarjeta animada de prueba? */
+export const esVideoReal = (archivo) => String(archivo?.mime ?? "").startsWith("video/");
+
+/** La proporción más cercana, entre las que ofrecen los modelos, a unas medidas. `null` si no se sabe. */
+export function proporcionDeMedidas(ancho, alto) {
+  if (!(ancho > 0 && alto > 0)) return null;
+  const r = ancho / alto;
+  const candidatas = [["9:16", 9 / 16], ["4:5", 4 / 5], ["1:1", 1], ["16:9", 16 / 9]];
+  return candidatas.reduce((mejor, c) => (Math.abs(c[1] - r) < Math.abs(mejor[1] - r) ? c : mejor))[0];
+}
+
+/** Lo que se añade a una publicación al usar un archivo del Estudio. */
+export const medioDeArchivo = (a) => ({
+  src: a.src, tipo: esVideoReal(a) ? "video" : "imagen", nombre: String(a.prompt ?? "").slice(0, 60),
+  ...(a.ancho > 0 && a.alto > 0 ? { ancho: a.ancho, alto: a.alto } : {}),
+});
+
+/**
+ * Una imagen que ya está en una publicación (`/api/media/clientes/<cliente>/…`) vista como
+ * un archivo del Estudio, para usarla de imagen inicial sin pasar por la galería. `null` si
+ * no es una ruta del propio cliente: el servidor tampoco la aceptaría.
+ */
+export function archivoDesdeSrc(src, clienteId, prompt = "") {
+  const ruta = String(src ?? "");
+  const prefijo = "/api/media/";
+  if (!ruta.startsWith(prefijo)) return null;
+  let clave;
+  try { clave = decodeURIComponent(ruta.slice(prefijo.length).split("?")[0]); } catch { return null; }
+  if (!clave.startsWith(`clientes/${clienteId}/`) || clave.includes("..")) return null;
+  return { id: `ext:${clave}`, src: ruta, clave, prompt: String(prompt ?? "").slice(0, 200) };
+}
+
+/** El nombre de cada ajuste en la pantalla. */
+export const ETIQUETA_AJUSTE = Object.freeze({ aspectRatio: "Formato", imageSize: "Tamaño", resolution: "Resolución", duration: "Duración" });
+
+/** «4 s», «720p», «1K» según el ajuste. */
+export function valorDeAjuste(nombre, valor) {
+  return nombre === "duration" ? `${valor} s` : valor;
 }

@@ -190,7 +190,23 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
             )}
           </div>
         </div>
-        <button className="btn-icon" onClick={() => { save(); onClose(); }} aria-label="Guardar y cerrar"><Icon name="close" /></button>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", flexShrink: 0 }}>
+          {/* A lo ancho, en Subir, borrar y mandar al banco viven aquí: en la barra de abajo
+              le quitaban una fila entera a lo que se está configurando. */}
+          {pestana === "publicar" && ancho && (
+            <>
+              <button type="button" className="btn btn-danger btn-sm" aria-label="Eliminar publicación" title="Eliminar publicación"
+                onClick={() => { save(); yaEscrito.current = true; if (onDelete) onDelete(day.date, post.id); onClose(); }}>
+                <Icon name="trash" size={16} />
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" aria-label="Enviar al banco de ideas" title="Enviar al banco de ideas"
+                onClick={() => { save(); yaEscrito.current = true; onSendToBank?.(form, day.date); onClose(); }}>
+                <Icon name="bulb" size={16} />
+              </button>
+            </>
+          )}
+          <button className="btn-icon" onClick={() => { save(); onClose(); }} aria-label="Guardar y cerrar" title="Guardar y cerrar"><Icon name="close" /></button>
+        </div>
       </div>
 
       <div className="panel-pestanas" role="tablist" aria-label="Secciones de la publicación">
@@ -241,19 +257,6 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
             enlaceAMano={`/a-mano/${encodeURIComponent(cal?.dbId || cal?.id || "")}/${encodeURIComponent(post.id)}`}
             formatoAuto={nueva && pestanaInicial === "publicar"}
             ancho={ancho}
-            acciones={ancho ? (
-              <>
-                <button type="button" className="btn btn-danger btn-sm" aria-label="Eliminar publicación" title="Eliminar publicación"
-                  onClick={() => { save(); yaEscrito.current = true; if (onDelete) onDelete(day.date, post.id); onClose(); }}>
-                  <Icon name="trash" size={16} />
-                </button>
-                <button type="button" className="btn btn-secondary btn-sm" aria-label="Enviar al banco de ideas" title="Enviar al banco de ideas"
-                  onClick={() => { save(); yaEscrito.current = true; onSendToBank?.(form, day.date); onClose(); }}>
-                  <Icon name="bulb" size={16} />
-                </button>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => { save(); onClose(); }}>Guardar y cerrar</button>
-              </>
-            ) : null}
           />
         ) : (<div className="idea-columnas" data-ancho={ancho || undefined}>
         <div className="idea-escribir">

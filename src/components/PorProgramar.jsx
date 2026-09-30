@@ -124,7 +124,9 @@ export default function PorProgramar({ clients = [], pulso = 0, onAbrir, onCalen
                   aria-label={`Marcar ${f.item.titulo} de ${f.item.cliente}`}
                 />
                 <span className="prog-miniatura" data-formato={f.item.formato}>
-                  <Icon name={FORMAT_ICONS[f.item.formato] || "formatPost"} size={18} />
+                  {f.item.miniatura
+                    ? <img src={f.item.miniatura} alt="" loading="lazy" />
+                    : <Icon name={FORMAT_ICONS[f.item.formato] || "formatPost"} size={18} />}
                 </span>
                 <span className="prog-cuerpo">
                   <span className="prog-pieza">
