@@ -7,13 +7,17 @@
 //     motor.generar(env, { modelo, prompt, ajustes, referencias, medios })
 //       → { bytes, mime, costo, meta? }        o lanza ErrorMotor
 //
-//   VIDEO, que tarda de uno a diez minutos (una COLA):
+//   COLA (todo video, y las imágenes de los motores que sólo contestan así):
 //     motor.enviar(env, { modelo, prompt, ajustes, medios })
-//       → { id, cada? }                        el id del motor: se guarda al instante
+//       → { id, cada?, datos? }                el id del motor: se guarda al instante; `datos` son sus
+//                                              direcciones de seguimiento, que vuelven en `item.datos`
 //     motor.sondear(env, { modelo, item, ajustes })
 //       → { estado: "pendiente", nota?, cada? }
 //       | { estado: "fallido", error }
 //       | { estado: "listo", url, headers?, mime? } | { estado: "listo", bytes, mime }
+//
+//   Opcional en cualquiera: motor.validar(modelo, pedido) → motivo | null, para rechazar al PEDIR una
+//   combinación que el motor no admite (Higgsfield: una ruta para esas imágenes), antes de crear nada.
 //
 // «Una cosa por paso»: el Worker no puede esperar, así que un pedido de tres
 // imágenes son tres pasos, y un video son un paso para ENVIAR y otros para
@@ -29,6 +33,8 @@
 import { llamarGemini, aBase64, ErrorMotor } from "./gemini.js";
 import { MEDIDAS, proporcionDe } from "../../../src/lib/estudioCatalogo.js";
 import { PRECIOS_GEMINI, costoGemini } from "../configIA.js";
+import { MOTOR_FAL } from "./fal.js";
+import { MOTOR_HIGGSFIELD } from "./higgsfield.js";
 
 const escapar = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -190,6 +196,10 @@ export const MOTORES = Object.freeze({
       return { estado: "listo", url: video.uri, headers: { "x-goog-api-key": env.GOOGLE_AI_KEY }, mime: "video/mp4" };
     },
   },
+
+  // Los otros dos viven en su archivo: rutas, cuerpos y direcciones de seguimiento son de cada proveedor.
+  fal: MOTOR_FAL,
+  higgsfield: MOTOR_HIGGSFIELD,
 });
 
 /** El rechazo de Google en palabras. Un 404 dice qué modelo falta. */

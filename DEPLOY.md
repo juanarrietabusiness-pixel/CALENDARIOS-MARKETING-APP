@@ -98,6 +98,8 @@ Ahora que el Worker existe, ya tiene dónde guardarlas.
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Tu clave de Anthropic | console.anthropic.com → API Keys |
 | `GOOGLE_AI_KEY` | Tu clave de Google AI (Gemini) | aistudio.google.com → Get API key. Genera las imágenes (Nano Banana) y **lee** los videos para el asistente. Sin ella, las imágenes con IA dan «El servidor no tiene configurada la clave de Google AI» |
+| `FAL_KEY` | Tu llave de fal.ai *(opcional)* | fal.ai → Dashboard → Keys. Activa en el Estudio los modelos de fal (Seedream, Flux, Kling, Seedance, Hailuo, Veo 3). Sin ella se ven apagados, con «sin llave» |
+| `HF_KEY` | Tu llave de Higgsfield, `id:secreto` *(opcional)* | cloud.higgsfield.ai → API Keys. Activa en el Estudio los modelos de Higgsfield (Soul, Kling 3, Seedance, Wan, Ideogram…). También vale `HF_API_KEY` + `HF_API_SECRET` por separado. Sin ella se ven apagados |
 | `GITHUB_TOKEN` | Un token de **sólo lectura** | GitHub → Settings → Developer settings → Personal access tokens |
 | `GOOGLE_CLIENT_ID` | El ID de cliente OAuth de Google | Ver «Google Drive» abajo |
 | `GOOGLE_CLIENT_SECRET` | Su secreto | Ver «Google Drive» abajo |
@@ -371,6 +373,7 @@ despliegue (`EspacioHub`, migración `v1` de `wrangler.jsonc`).
 | `ANTHROPIC_API_KEY` | **Cloudflare** | La usa el Worker en cada petición |
 | `GITHUB_TOKEN` | **Cloudflare** | Idem |
 | `GOOGLE_AI_KEY` | **Cloudflare** | Idem (imágenes y lectura de video) |
+| `FAL_KEY` / `HF_KEY` | **Cloudflare** | El Estudio: fal.ai y Higgsfield (opcionales, cada una activa sus modelos) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | **Cloudflare** | Google Drive |
 | `META_APP_ID` / `META_APP_SECRET` / `META_CONFIG_ID` | **Cloudflare** | Instagram y Facebook |
 | `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` | **Cloudflare** | TikTok |

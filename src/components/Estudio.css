@@ -48,7 +48,19 @@
 .est-compositor { display: flex; flex-direction: column; gap: 0; padding: var(--sp-5); }
 .est-prompt-campo { resize: vertical; min-height: 96px; line-height: var(--lh-normal); }
 .est-fila { display: grid; grid-template-columns: 1fr; gap: 0 var(--sp-4); }
-.est-modelo-nota { margin: calc(var(--sp-2) * -1) 0 var(--sp-4); }
+.est-modelo-nota { margin: 0 0 var(--sp-2); }
+.est-ficha { margin: calc(var(--sp-2) * -1) 0 var(--sp-4); }
+.est-ficha-datos { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); font-size: var(--fs-xs); color: var(--text-dim); }
+.est-ficha-datos li { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.est-dato-t { color: var(--text-faint); font-weight: 600; }
+.est-puntos { display: inline-flex; gap: 3px; }
+.est-punto { width: 10px; height: 10px; border-radius: var(--radius-pill); background: var(--surface-3); border: 1px solid var(--border-strong); }
+.est-punto[data-lleno] { background: var(--accent); border-color: var(--accent); }
+.est-lista-opciones { margin: 0 0 var(--sp-3); }
+.est-lista-opciones > summary { cursor: pointer; font-size: var(--fs-xs); color: var(--accent); font-weight: 600; min-height: var(--tap-sm); display: flex; align-items: center; }
+.est-lista-opciones > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-sm); }
+.est-fila-lista { padding-top: var(--sp-2); }
+.est-necesita { margin: 0 0 var(--sp-3); }
 .est-refs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .est-ref {
   display: inline-flex; align-items: center; gap: var(--sp-2);

@@ -1,7 +1,7 @@
-import { useRef } from "react";
+import { useId, useRef, useState } from "react";
 import Icon from "./Icon";
 import {
-  MODELOS, textoCosto, NOMBRE_PROPORCION, MAX_PROMPT, maxPorPedido, duracionDe,
+  textoCosto, NOMBRE_PROPORCION, MAX_PROMPT, maxPorPedido, duracionDe, modelosParaLista, creadoresDe, CRITERIOS_ORDEN, NOMBRE_CALIDAD, NOMBRE_MOTOR,
 } from "../lib/estudioCatalogo";
 import { ETIQUETA_AJUSTE, valorDeAjuste } from "../lib/estudio";
 
@@ -44,13 +44,38 @@ function Ranura({ titulo, ayuda, archivos, max, rol, subiendo, onQuitar, onSubir
   );
 }
 
+/** Lo que se sabe del modelo escogido: quién lo hace, qué tan bueno es, cuánto tarda y para qué sirve. */
+function FichaDelModelo({ modelo }) {
+  const calidad = modelo.calidad ?? 2;
+  return (
+    <div className="est-ficha">
+      <p className="hint est-modelo-nota">{modelo.nota}</p>
+      <ul className="est-ficha-datos" aria-label="Sobre este modelo">
+        {modelo.creador && <li><span className="est-dato-t">Lo hace</span> {modelo.creador}</li>}
+        <li>
+          <span className="est-dato-t">Calidad</span>{" "}
+          <span className="est-puntos" role="img" aria-label={`${calidad} de 4: ${NOMBRE_CALIDAD[calidad]}`}>
+            {[1, 2, 3, 4].map((n) => <span key={n} className="est-punto" data-lleno={n <= calidad || undefined} />)}
+          </span>
+        </li>
+        {modelo.velocidad && <li><span className="est-dato-t">Velocidad</span> {modelo.velocidad}</li>}
+        {modelo.para?.length > 0 && <li><span className="est-dato-t">Sirve para</span> {modelo.para.join(", ")}</li>}
+      </ul>
+    </div>
+  );
+}
+
 export default function Compositor({
   ids, form, setForm, modelo, motores, costo, confirmando, enviando, subiendo,
   onEnviar, onConfirmar, onNo, onModelo, onTipo, onQuitarMedio, onSubirArchivos, promptRef, etiquetaPrompt = "¿Qué quieres crear?",
 }) {
   const entrada = useRef(null);
   const rolSubida = useRef("reference");
+  const [orden, setOrden] = useState("recomendado");
+  const [creador, setCreador] = useState("");
+  const idsLista = useId();
   const activo = (m) => Boolean(motores?.[m.motor]?.activo);
+  const activos = Object.fromEntries(Object.entries(motores ?? {}).map(([k, v]) => [k, Boolean(v.activo)]));
   const esVideo = form.tipo === "video";
   const medios = form.medios;
   const conInicial = Boolean(modelo.inicial);
@@ -95,9 +120,9 @@ export default function Compositor({
         <div className="field">
           <label className="label" htmlFor={`${ids}-m`}>Modelo</label>
           <select id={`${ids}-m`} className="input" value={form.modelo} onChange={(e) => onModelo(e.target.value)}>
-            {MODELOS.filter((m) => m.tipo === form.tipo).map((m) => (
+            {modelosParaLista(form.tipo, { orden, creador, activos, seleccionado: form.modelo }).map((m) => (
               <option key={m.id} value={m.id} disabled={!activo(m)}>
-                {m.nombre} · {textoCosto(m.costo)}{m.por === "s" && m.costo > 0 ? " por segundo" : ""}{activo(m) ? "" : " · sin llave"}
+                {m.nombre}{m.motor === "prueba" ? "" : ` · ${NOMBRE_MOTOR[m.motor] ?? m.motor}`} · {textoCosto(m.costo)}{m.por === "s" && m.costo > 0 ? " por segundo" : ""}{activo(m) ? "" : " · sin llave"}
               </option>
             ))}
           </select>
@@ -120,8 +145,32 @@ export default function Compositor({
         </div>
       </div>
 
-      <p className="hint est-modelo-nota">{modelo.nota}</p>
+      <details className="est-lista-opciones">
+        <summary>Ordenar y filtrar la lista de modelos</summary>
+        <div className="est-fila est-fila-lista">
+          <div className="field">
+            <label className="label" htmlFor={`${idsLista}-o`}>Ordenar por</label>
+            <select id={`${idsLista}-o`} className="input" value={orden} onChange={(e) => setOrden(e.target.value)}>
+              {CRITERIOS_ORDEN.map(([valor, nombre]) => <option key={valor} value={valor}>{nombre}</option>)}
+            </select>
+          </div>
+          <div className="field">
+            <label className="label" htmlFor={`${idsLista}-c`}>Creador</label>
+            <select id={`${idsLista}-c`} className="input" value={creador} onChange={(e) => setCreador(e.target.value)}>
+              <option value="">Todos</option>
+              {creadoresDe(form.tipo).map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+        </div>
+      </details>
 
+      <FichaDelModelo modelo={modelo} />
+
+      {modelo.necesitaImagen && (
+        <p className="notice notice-warn est-necesita" role="note">
+          {modelo.nombre} no crea desde texto solo: necesita {conInicial ? "una imagen inicial" : "al menos una imagen de referencia"}.
+        </p>
+      )}
       {conInicial && (
         <Ranura ids={ids} rol="start" titulo="Imagen inicial" max={1} archivos={medios.start} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida}
           ayuda="El video arranca de esta imagen. También puedes usar «Animar» en cualquiera de la galería." />

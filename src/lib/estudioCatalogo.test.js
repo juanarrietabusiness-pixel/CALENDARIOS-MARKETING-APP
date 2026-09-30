@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  MODELOS, PRECIOS_AL, CONFIRMAR_DESDE, MAX_POR_PEDIDO, MAX_VIDEOS_POR_PEDIDO, ajustesDe, duracionDe, modeloPorId, modeloPorDefecto, estimar, textoCosto,
+  modelosParaLista, creadoresDe, CRITERIOS_ORDEN,
+  MODELOS, PRECIOS_AL, CONFIRMAR_DESDE, MAX_POR_PEDIDO, MAX_VIDEOS_POR_PEDIDO, ajustesDe, duracionDe, enCola, modeloPorId, modeloPorDefecto, estimar, textoCosto,
   pideConfirmar, normalizarAjustes, validarPedido, diasQueQuedan, DIAS_PAPELERA, proporcionDe, MEDIDAS,
 } from "./estudioCatalogo.js";
 import { claveDeArchivo, claveDelCliente, slugCorto, medidasDe, tipoPorBytes, extensionDe, esDelEstudio } from "../../worker/lib/estudio/archivos.js";
@@ -184,8 +185,11 @@ describe("el video", () => {
     expect(videos.length).toBeGreaterThan(2);
     for (const m of videos) {
       expect(m.por, m.id).toBe("s");
-      expect(m.ajustes.duration, m.id).toBeDefined();
-      expect(m.ajustes.duration.valores.map(Number).every((n) => n > 0), m.id).toBe(true);
+      // O el modelo deja escoger la duración, o trae la fija (`segundos`): sin ninguna, el costo por segundo daría 0 y el pedido nunca pediría confirmar.
+      expect(m.ajustes.duration || m.segundos, m.id).toBeTruthy();
+      if (m.ajustes.duration) expect(m.ajustes.duration.valores.map(Number).every((n) => n > 0), m.id).toBe(true);
+      expect(duracionDe(m, {}), m.id).toBeGreaterThan(0);
+      expect(estimar(m, 1, {}), `${m.id} sale gratis sin serlo`).toBeGreaterThan(m.costo > 0 ? 0 : -1);
     }
   });
 
@@ -223,5 +227,118 @@ describe("el video", () => {
     expect(validarPedido({ modelo: "veo-3.1-lite", prompt: "a", medios: { start: ["a"], end: ["b"] } })).toMatchObject({ ok: false, error: expect.stringMatching(/no admite imagen final/) });
     expect(validarPedido({ modelo: "nano-banana", prompt: "a", medios: { start: ["a"] } })).toMatchObject({ ok: false, error: expect.stringMatching(/no admite imagen inicial/) });
     expect(validarPedido({ modelo: "veo-3.1", prompt: "a", medios: { start: ["a"], reference: ["b"] } }).ok).toBe(false);
+  });
+});
+
+describe("fal.ai y Higgsfield en el catálogo", () => {
+  const externos = MODELOS.filter((m) => ["fal", "higgsfield"].includes(m.motor));
+
+  it("hay modelos de los dos, con sus precios rotulados como aproximados", () => {
+    expect(externos.filter((m) => m.motor === "fal").length).toBeGreaterThanOrEqual(9);
+    expect(externos.filter((m) => m.motor === "higgsfield").length).toBeGreaterThanOrEqual(20);
+    for (const m of externos) {
+      expect(m.estimado, m.id).toBe(true);
+      expect(m.nota, m.id).toMatch(/aproximado/i);
+      expect(m.creador, m.id).toBeTruthy();
+      expect([1, 2, 3, 4], m.id).toContain(m.calidad);
+    }
+  });
+
+  it("enCola: todo video, y las imágenes que sólo contestan por cola; el resto no", () => {
+    for (const m of MODELOS) {
+      expect(enCola(m), m.id).toBe(m.tipo === "video" || m.motor === "higgsfield");
+    }
+    expect(enCola(modeloPorId("nano-banana"))).toBe(false);
+    expect(enCola(modeloPorId("seedream-4"))).toBe(false);
+    expect(enCola(modeloPorId("soul-2"))).toBe(true);
+  });
+
+  it("un video con duración fija (o sin ajuste de duración) cuesta por esos segundos, y pide confirmar cuando toca", () => {
+    expect(duracionDe(modeloPorId("pixverse-6"), {})).toBe(5);
+    expect(estimar("pixverse-6", 1, {})).toBe(0.25);
+    expect(duracionDe(modeloPorId("veo-3-fast-fal"), {})).toBe(8);
+    expect(estimar("veo-3-fast-fal", 1, {})).toBe(3.2);
+    expect(pideConfirmar(estimar("veo-3-fast-fal", 1, {}))).toBe(true);
+  });
+
+  it("un modelo que no crea desde texto solo lo dice antes de pedir", () => {
+    const m = modeloPorId("kling-2.5");
+    expect(m.necesitaImagen).toBe(true);
+    const sin = validarPedido({ modelo: "kling-2.5", prompt: "el sofá gira" });
+    expect(sin.ok).toBe(false);
+    expect(sin.error).toMatch(/necesita una imagen inicial/);
+    expect(validarPedido({ modelo: "kling-2.5", prompt: "el sofá gira", medios: { start: ["clientes/c1/a.png"] } }).ok).toBe(true);
+    // Uno que sí crea desde texto no lo exige.
+    expect(validarPedido({ modelo: "kling-3-std", prompt: "el sofá gira" }).ok).toBe(true);
+  });
+
+  it("las imágenes de fal.ai sólo ofrecen los formatos que traen exactos (con otros la imagen no saldría como dice la pantalla)", () => {
+    for (const id of ["seedream-4", "flux-schnell", "ideogram-3-fal"]) {
+      expect(modeloPorId(id).ajustes.aspectRatio.valores, id).toEqual(["1:1", "3:4", "9:16", "4:3", "16:9"]);
+    }
+  });
+});
+
+describe("la lista de modelos: ordenar y filtrar", () => {
+  const activos = { gemini: true, fal: true, higgsfield: true, prueba: true };
+  const ids = (lista) => lista.map((m) => m.id);
+
+  it("sólo trae modelos del tipo pedido, sin perder ni repetir ninguno", () => {
+    for (const tipo of ["imagen", "video"]) {
+      for (const [orden] of CRITERIOS_ORDEN) {
+        const lista = modelosParaLista(tipo, { orden, activos });
+        expect(lista.every((m) => m.tipo === tipo), `${tipo} ${orden}`).toBe(true);
+        expect(new Set(ids(lista)).size).toBe(lista.length);
+        expect(lista.length).toBe(MODELOS.filter((m) => m.tipo === tipo).length);
+      }
+    }
+  });
+
+  it("los que no tienen llave van SIEMPRE al final, sea cual sea el criterio", () => {
+    const sinHiggsfield = { gemini: true, fal: true, higgsfield: false, prueba: true };
+    for (const [orden] of CRITERIOS_ORDEN) {
+      const lista = modelosParaLista("imagen", { orden, activos: sinHiggsfield });
+      const primerSinLlave = lista.findIndex((m) => !sinHiggsfield[m.motor]);
+      expect(lista.slice(primerSinLlave).every((m) => !sinHiggsfield[m.motor]), orden).toBe(true);
+    }
+  });
+
+  it("recomendado abre con el predeterminado; calidad, con la mejor; barato, con el más barato; caro, con el más caro", () => {
+    expect(modelosParaLista("imagen", { orden: "recomendado", activos })[0].id).toBe("nano-banana");
+    expect(modelosParaLista("video", { orden: "recomendado", activos })[0].id).toBe("veo-3.1-lite");
+    expect(modelosParaLista("imagen", { orden: "calidad", activos })[0].calidad).toBe(4);
+    const baratos = modelosParaLista("imagen", { orden: "barato", activos });
+    expect(baratos[0].costo).toBe(0); // la prueba, que es gratis
+    expect(baratos[1].id).toBe("flux-schnell");
+    const caros = modelosParaLista("video", { orden: "caro", activos });
+    expect(caros[0].costo).toBe(Math.max(...MODELOS.filter((m) => m.tipo === "video").map((m) => m.costo)));
+  });
+
+  it("por creador agrupa: cada creador aparece en un solo tramo seguido", () => {
+    const lista = modelosParaLista("video", { orden: "creador", activos });
+    const vistos = [];
+    for (const m of lista) if (vistos[vistos.length - 1] !== m.creador) vistos.push(m.creador);
+    expect(vistos.length).toBe(new Set(vistos).size);
+  });
+
+  it("filtrar por creador deja sólo los suyos, más el escogido aunque sea de otro", () => {
+    const lista = modelosParaLista("imagen", { creador: "Recraft", activos });
+    expect(ids(lista)).toEqual(expect.arrayContaining(["recraft-4.1", "recraft-4.1-pro"]));
+    expect(lista.every((m) => m.creador === "Recraft")).toBe(true);
+    const conEscogido = modelosParaLista("imagen", { creador: "Recraft", activos, seleccionado: "nano-banana" });
+    expect(ids(conEscogido)).toContain("nano-banana");
+  });
+
+  it("el orden es estable: a igual criterio manda el del catálogo", () => {
+    const a = ids(modelosParaLista("video", { orden: "calidad", activos }));
+    const b = ids(modelosParaLista("video", { orden: "calidad", activos }));
+    expect(a).toEqual(b);
+  });
+
+  it("los creadores salen sin repetir y en orden", () => {
+    const c = creadoresDe("imagen");
+    expect(new Set(c).size).toBe(c.length);
+    expect([...c].sort((x, y) => x.localeCompare(y, "es"))).toEqual(c);
+    expect(c).toEqual(expect.arrayContaining(["Google", "Recraft", "Ideogram"]));
   });
 });

@@ -31,11 +31,11 @@ import { difundir } from "../vivo.js";
 import { bloqueoPorPresupuesto, registrarConsumoFijo } from "../configIA.js";
 import { MOTORES } from "./motores.js";
 import { ErrorMotor, aBase64 } from "./gemini.js";
-import { abrirDescarga, guardarDescarga, TOPE_VIDEO } from "./descarga.js";
+import { abrirDescarga, guardarDescarga, TOPE_VIDEO, TOPE_IMAGEN } from "./descarga.js";
 import { claveDeArchivo, claveDelCliente, medidasDe, medidasDeVideo, tipoPorBytes } from "./archivos.js";
 import { crearAcceso, estudioPendiente } from "../acceso.js";
 import {
-  modeloPorId, validarPedido, pideConfirmar, textoCosto, estaVivo, MEDIDAS, proporcionDe, estimar,
+  modeloPorId, validarPedido, pideConfirmar, textoCosto, estaVivo, MEDIDAS, proporcionDe, estimar, enCola,
 } from "../../../src/lib/estudioCatalogo.js";
 
 /** Cuánto vale un permiso de paso: lo que tarda Gemini en darse por vencido, más margen. */
@@ -102,6 +102,10 @@ export async function crearTrabajo(env, acceso, cliente, datos, { usuario = null
       503, { codigo: "sin_llave" },
     );
   }
+
+  // Lo que el motor no admite se dice AHORA, no a mitad del trabajo.
+  const motivo = motor.validar?.(modelo, v.pedido);
+  if (motivo) throw new ErrorEstudio(motivo, 400);
 
   // Los medios (referencias, imagen inicial y final) son del MISMO cliente y existen: el id llega del navegador y no se cree.
   const guardados = {};
@@ -268,7 +272,7 @@ async function paso(env, acceso, fila) {
     ? { intentos: fila.intentos + 1, nota: `${e.message} Se reintenta.`, estado: hechos.length ? "en_marcha" : fila.estado }
     : termina(e.message));
 
-  if (modelo.tipo === "video") return pasoDeCola(env, acceso, fila, { modelo, motor, hechos, termina, falloDelMotor });
+  if (enCola(modelo)) return pasoDeCola(env, acceso, fila, { modelo, motor, hechos, termina, falloDelMotor });
 
   if (modelo.costo > 0) {
     const bloqueo = await bloqueoPorPresupuesto(acceso);
@@ -328,9 +332,22 @@ async function guardarArchivo(acceso, fila, modelo, { clave, mime, tipo, ancho, 
   return id;
 }
 
+/** Las medidas de una imagen que ya está en R2: de sus primeros bytes; si no se leen, las de la proporción pedida. */
+async function medidasDeImagenGuardada(env, clave, mime, ajustes) {
+  const [ancho, alto] = MEDIDAS[proporcionDe(ajustes)];
+  try {
+    const obj = await env.MEDIA.get(clave, { range: { offset: 0, length: 65_536 } });
+    if (obj) {
+      const m = medidasDe(new Uint8Array(await obj.arrayBuffer()), mime);
+      if (m?.ancho > 0 && m?.alto > 0) return m;
+    }
+  } catch { /* sin medidas: las de la proporción pedida */ }
+  return { ancho, alto };
+}
+
 /**
- * Un paso de un trabajo de COLA (un video): primero se ENVÍA cada pedido al motor, uno por paso, y después se MIRA
- * cómo va el primero que falta hasta que está listo y se baja a R2.
+ * Un paso de un trabajo de COLA (un video, o una imagen de un motor que sólo contesta así): primero se ENVÍA cada
+ * pedido al motor, uno por paso, y después se MIRA cómo va el primero que falta hasta que está listo y se baja a R2.
  *
  * Enviar es lo único que no se repite —dos envíos son dos videos cobrados—, así que el id que devuelve el motor
  * se guarda ANTES que nada y no espera a que el paso se suelte: si el Worker muere entre una cosa y la otra, ese
@@ -343,6 +360,8 @@ async function pasoDeCola(env, acceso, fila, { modelo, motor, hechos, termina, f
   const ahoraMs = Date.now();
   const en = (ms) => new Date(ahoraMs + ms).toISOString();
   const escribirRemoto = () => JSON.stringify(remoto);
+  const esVideo = modelo.tipo === "video";
+  const cosa = esVideo ? "video" : "imagen";
 
   // ---- 1. Enviar lo que falta.
   if (remoto.length < fila.n) {
@@ -362,11 +381,15 @@ async function pasoDeCola(env, acceso, fila, { modelo, motor, hechos, termina, f
       if (!(e instanceof ErrorMotor)) throw e;
       return remoto.length && !(e.reintentable && fila.intentos < MAX_INTENTOS) ? detener(e.message) : falloDelMotor(e);
     }
-    remoto.push({ id: enviado.id, enviado: new Date(ahoraMs).toISOString(), proximo: en(enviado.cada ?? CADA_POR_DEFECTO), sondeos: 0, hecho: false });
+    // `datos` son las direcciones de seguimiento del motor (fal, Higgsfield): se guardan tal cual y vuelven en `item.datos`.
+    remoto.push({
+      id: enviado.id, ...(enviado.datos ? { datos: enviado.datos } : {}),
+      enviado: new Date(ahoraMs).toISOString(), proximo: en(enviado.cada ?? CADA_POR_DEFECTO), sondeos: 0, hecho: false,
+    });
     await acceso.actualizar("estudio_trabajos", { id: fila.id }, { remoto: escribirRemoto() });
     return {
       remoto: escribirRemoto(), estado: "en_marcha", intentos: 0, error: "",
-      nota: fila.n > 1 ? `Enviado ${remoto.length} de ${fila.n}` : "Enviado: el video tarda unos minutos.",
+      nota: fila.n > 1 ? `Enviado ${remoto.length} de ${fila.n}` : `Enviado: ${esVideo ? "el video tarda unos minutos" : "la imagen tarda un momento"}.`,
     };
   }
 
@@ -375,7 +398,7 @@ async function pasoDeCola(env, acceso, fila, { modelo, motor, hechos, termina, f
   if (i < 0) {
     return hechos.length
       ? cerrada("hecho", { nota: hechos.length < fila.n ? `Llegaron ${hechos.length} de ${fila.n}.` : "" })
-      : cerrada("fallido", { error: remoto.map((r) => r.error).find(Boolean) || "No llegó ningún video." });
+      : cerrada("fallido", { error: remoto.map((r) => r.error).find(Boolean) || `No llegó ninguna ${cosa}.`.replace("ninguna video", "ningún video") });
   }
   const r = remoto[i];
   // Un video perdido no tumba a los demás: se apunta y se sigue con el resto.
@@ -383,7 +406,7 @@ async function pasoDeCola(env, acceso, fila, { modelo, motor, hechos, termina, f
     r.perdido = true;
     r.error = motivo;
     const quedan = remoto.some((x) => !x.hecho && !x.perdido);
-    if (quedan) return { remoto: escribirRemoto(), nota: `Un video no salió: ${motivo}`, intentos: 0 };
+    if (quedan) return { remoto: escribirRemoto(), nota: `${esVideo ? "Un video" : "Una imagen"} no salió: ${motivo}`, intentos: 0 };
     return hechos.length
       ? { remoto: escribirRemoto(), ...cerrada("hecho", { nota: `Llegaron ${hechos.length} de ${fila.n}: ${motivo}` }) }
       : { remoto: escribirRemoto(), ...cerrada("fallido", { error: motivo }) };
@@ -401,7 +424,7 @@ async function pasoDeCola(env, acceso, fila, { modelo, motor, hechos, termina, f
     r.proximo = en(listo.cada ?? CADA_POR_DEFECTO);
     return { remoto: escribirRemoto(), nota: listo.nota ?? "Generando…", intentos: 0 };
   }
-  if (listo.estado === "fallido") return perder(listo.error || `${modelo.nombre} no pudo hacer el video.`);
+  if (listo.estado === "fallido") return perder(listo.error || `${modelo.nombre} no pudo hacer ${esVideo ? "el video" : "la imagen"}.`);
 
   // Listo: se baja a R2 por flujo, sin cargarlo en memoria.
   const mimeVideo = listo.bytes && motor === MOTORES.prueba ? "image/svg+xml" : null;
@@ -412,7 +435,10 @@ async function pasoDeCola(env, acceso, fila, { modelo, motor, hechos, termina, f
       await env.MEDIA.put(clave, listo.bytes, { httpMetadata: { contentType: mimeVideo } });
       guardado = { bytes: listo.bytes.byteLength, mime: mimeVideo };
     } else {
-      const descarga = await abrirDescarga(listo.url, { headers: listo.headers, tope: TOPE_VIDEO, tipos: ["video/mp4", "video/webm"], nombre: modelo.nombre });
+      const descarga = await abrirDescarga(listo.url, {
+        headers: listo.headers, nombre: modelo.nombre,
+        ...(esVideo ? { tope: TOPE_VIDEO, tipos: ["video/mp4", "video/webm"] } : { tope: TOPE_IMAGEN, tipos: TIPOS_REALES }),
+      });
       // La extensión sale del tipo que se reconoció, no del que declaró el motor.
       const claveFinal = claveDeArchivo(fila.client_id, fila.prompt, descarga.mime);
       guardado = { ...(await guardarDescarga(env, claveFinal, descarga)), clave: claveFinal };
@@ -423,9 +449,12 @@ async function pasoDeCola(env, acceso, fila, { modelo, motor, hechos, termina, f
   }
 
   const costo = estimar(modelo, 1, ajustes);
-  const medidas = listo.ancho ? { ancho: listo.ancho, alto: listo.alto } : medidasDeVideo(ajustes);
+  const claveGuardada = guardado.clave ?? clave;
+  const medidas = listo.ancho ? { ancho: listo.ancho, alto: listo.alto }
+    : esVideo ? medidasDeVideo(ajustes)
+      : await medidasDeImagenGuardada(env, claveGuardada, guardado.mime, ajustes);
   const archivoId = await guardarArchivo(acceso, fila, modelo, {
-    clave: guardado.clave ?? clave, mime: guardado.mime, tipo: "video", ancho: medidas.ancho, alto: medidas.alto, bytes: guardado.bytes, costo,
+    clave: claveGuardada, mime: guardado.mime, tipo: esVideo ? "video" : "imagen", ancho: medidas.ancho, alto: medidas.alto, bytes: guardado.bytes, costo,
   });
   r.hecho = true;
   r.archivo = archivoId;

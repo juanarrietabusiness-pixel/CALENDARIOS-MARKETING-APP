@@ -6,7 +6,7 @@ import { OverflowMenu } from "./calendario/primitivas";
 import { soloLectura } from "../lib/sesionActual";
 import * as api from "../lib/estudio";
 import {
-  modeloPorId, modeloPorDefecto, estimar, textoCosto, pideConfirmar, ajustesDe, estaVivo, PRECIOS_AL, MAX_PROMPT,
+  modeloPorId, modeloPorDefecto, estimar, textoCosto, pideConfirmar, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
 } from "../lib/estudioCatalogo";
 import {
   filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga,
@@ -176,7 +176,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setConfirmando(null);
     setForm((f) => {
       const medios = { reference: f.medios.reference.slice(0, m.referencias || 0), start: f.medios.start.slice(0, m.inicial || 0), end: f.medios.end.slice(0, m.final || 0) };
-      return { ...f, modelo: id, n: Math.min(f.n, m.tipo === "video" ? 2 : 8), medios, ajustes: ajustesDe(m, f.ajustes, clavesDe(medios)) };
+      return { ...f, modelo: id, n: Math.min(f.n, maxPorPedido(m)), medios, ajustes: ajustesDe(m, f.ajustes, clavesDe(medios)) };
     });
   };
 
@@ -380,6 +380,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const enCurso = useMemo(() => trabajosVisibles(datos?.trabajos ?? [], { descartados }), [datos, descartados]);
   const carpetaActiva = carpetas.find((c) => c.id === filtro) ?? null;
   const soloPrueba = motores && !Object.entries(motores).some(([id, m]) => id !== "prueba" && m.activo);
+  const llavesQueFaltan = Object.values(motores ?? {}).map((m) => m.llave).filter(Boolean);
   const enMedios = (a) => form && Object.values(form.medios).some((l) => l.some((x) => x.id === a.id));
 
   if (cargando || (!form && !error)) return <p role="status" className="est-nota">Cargando el Estudio…</p>;
@@ -413,7 +414,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       {soloPrueba && (
         <p className="est-aviso est-aviso-info">
           Ahora mismo sólo está activo el motor de <strong>prueba</strong> (gratis): saca una tarjeta con tu texto, no una imagen ni un video reales.
-          Para eso de verdad, el administrador tiene que poner la llave <code>GOOGLE_AI_KEY</code> como secreto del Worker.
+          Para eso de verdad, el administrador tiene que poner la llave de un proveedor como secreto del Worker:{" "}
+          {llavesQueFaltan.map((l, i) => <span key={l}>{i > 0 ? (i === llavesQueFaltan.length - 1 ? " o " : ", ") : ""}<code>{l}</code></span>)}.
         </p>
       )}
 

@@ -76,6 +76,7 @@
 
   // Los secretos NO van aquí. Se ponen con `wrangler secret put`:
   //   ANTHROPIC_API_KEY, GITHUB_TOKEN, GOOGLE_AI_KEY,
+  //   FAL_KEY, HF_KEY (o HF_API_KEY + HF_API_SECRET)   —el Estudio; cada una es opcional—,
   //   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
   //   META_APP_ID, META_APP_SECRET, META_CONFIG_ID,
   //   TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET

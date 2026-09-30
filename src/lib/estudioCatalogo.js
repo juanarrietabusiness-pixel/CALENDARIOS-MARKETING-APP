@@ -19,6 +19,8 @@
 // `PRECIOS_AL` dice de cuándo son: un test avisa cuando pasan de 90 días.
 // ============================================================
 
+import MODELOS_HIGGSFIELD from "./estudioHiggsfield.json";
+
 /** De cuándo son los precios de abajo (AAAA-MM-DD). */
 export const PRECIOS_AL = "2026-09-30";
 
@@ -66,6 +68,15 @@ function ajustarVeo(ajustes, medios = {}) {
   if (r.resolution === "1080p") r.duration = "8";
   return r;
 }
+
+/** Los formatos que fal.ai trae con nombre exacto (`image_size`): con otro, la imagen no saldría en la proporción que dice la pantalla. */
+const FORMATOS_FAL = ["1:1", "3:4", "9:16", "4:3", "16:9"];
+
+/** Un modelo del JSON generado, con sus ajustes en la forma del catálogo. */
+const desdeJson = (m) => ({
+  ...m,
+  ajustes: Object.fromEntries(Object.entries(m.ajustes).map(([nombre, def]) => [nombre, enumerado(def.valores, def.defecto)])),
+});
 
 /**
  * Los modelos. `costo` es dólares por imagen (o por segundo de video: `por: "s"`). `referencias` es cuántas
@@ -125,6 +136,76 @@ export const MODELOS = Object.freeze([
     para: ["lotes", "pruebas", "barato"],
     ajustes: AJUSTES_VEO, ajustar: ajustarVeo,
   },
+  // ---- fal.ai. Las imágenes contestan en el acto; el video va por su cola. Los precios son aproximados.
+  {
+    id: "nano-banana-fal", motor: "fal", tipo: "imagen", nombre: "Nano Banana (fal)",
+    creador: "Google", calidad: 3, velocidad: "rápido", costo: 0.039, referencias: 3, estimado: true,
+    nota: "Nano Banana a través de tu llave de fal.ai. Edita y mezcla fotos: hasta 3 referencias. Precio aproximado.",
+    para: ["editar fotos", "mezclar referencias"],
+    ajustes: { aspectRatio: enumerado(["1:1", "4:5", "3:4", "9:16", "16:9", "4:3", "3:2", "2:3", "5:4", "21:9"], "1:1") },
+  },
+  {
+    id: "seedream-4", motor: "fal", tipo: "imagen", nombre: "Seedream 4",
+    creador: "ByteDance", calidad: 3, velocidad: "normal", costo: 0.03, referencias: 4, estimado: true,
+    nota: "ByteDance: alta resolución; edita con hasta 4 referencias. Sólo los formatos que fal.ai trae exactos. Precio aproximado.",
+    para: ["alta resolución", "editar fotos"],
+    ajustes: { aspectRatio: enumerado(FORMATOS_FAL, "1:1") },
+  },
+  {
+    id: "flux-kontext", motor: "fal", tipo: "imagen", nombre: "Flux Kontext",
+    creador: "Black Forest Labs", calidad: 3, velocidad: "normal", costo: 0.04, referencias: 1, estimado: true,
+    nota: "Cambia una imagen con una frase («ponle fondo de playa»): con una referencia, la edita. Precio aproximado.",
+    para: ["editar con una frase"],
+    ajustes: { aspectRatio: enumerado(["1:1", "3:4", "2:3", "9:16", "4:3", "3:2", "16:9", "21:9"], "1:1") },
+  },
+  {
+    id: "flux-schnell", motor: "fal", tipo: "imagen", nombre: "Flux Schnell",
+    creador: "Black Forest Labs", calidad: 1, velocidad: "muy rápido", costo: 0.003, referencias: 0, estimado: true,
+    nota: "El más barato: para probar ideas en lote. Sólo los formatos que fal.ai trae exactos. Precio aproximado.",
+    para: ["bocetos", "lotes", "el más barato"],
+    ajustes: { aspectRatio: enumerado(FORMATOS_FAL, "1:1") },
+  },
+  {
+    id: "ideogram-3-fal", motor: "fal", tipo: "imagen", nombre: "Ideogram 3 (fal)",
+    creador: "Ideogram", calidad: 3, velocidad: "normal", costo: 0.06, referencias: 0, estimado: true,
+    nota: "Texto legible dentro de la imagen. Sólo los formatos que fal.ai trae exactos. Precio aproximado.",
+    para: ["texto legible", "carteles"],
+    ajustes: { aspectRatio: enumerado(FORMATOS_FAL, "1:1") },
+  },
+  {
+    id: "kling-2.5-fal", motor: "fal", tipo: "video", nombre: "Kling 2.5 Turbo (fal)", cola: true,
+    creador: "Kling (Kuaishou)", calidad: 2, velocidad: "rápido", costo: 0.07, por: "s", referencias: 0, inicial: 1, final: 1, estimado: true,
+    nota: "Anima una foto (con imagen final opcional) o crea desde texto. 5 o 10 s. Precio aproximado.",
+    para: ["animar una foto"],
+    ajustes: { aspectRatio: enumerado(["9:16", "16:9", "1:1"], "9:16"), duration: enumerado(["5", "10"], "5") },
+  },
+  {
+    id: "seedance-1-fal", motor: "fal", tipo: "video", nombre: "Seedance 1 Pro (fal)", cola: true,
+    creador: "ByteDance", calidad: 2, velocidad: "normal", costo: 0.12, por: "s", referencias: 0, inicial: 1, final: 1, estimado: true,
+    nota: "Anima una foto (con imagen final opcional) o crea desde texto; hasta 1080p. Precio aproximado, el de 1080p.",
+    para: ["animar una foto"],
+    ajustes: {
+      aspectRatio: enumerado(["9:16", "16:9", "1:1", "4:3", "3:4", "21:9"], "9:16"),
+      resolution: enumerado(["480p", "720p", "1080p"], "720p"),
+      duration: enumerado(["5", "10"], "5"),
+    },
+  },
+  {
+    id: "hailuo-02-fal", motor: "fal", tipo: "video", nombre: "MiniMax Hailuo 02 (fal)", cola: true,
+    creador: "MiniMax", calidad: 2, velocidad: "normal", costo: 0.045, por: "s", referencias: 0, inicial: 1, final: 1, estimado: true,
+    nota: "Anima una foto (con imagen final opcional) o crea desde texto; 6 o 10 s. El formato lo decide el modelo. Precio aproximado.",
+    para: ["animar una foto"],
+    ajustes: { duration: enumerado(["6", "10"], "6") },
+  },
+  {
+    id: "veo-3-fast-fal", motor: "fal", tipo: "video", nombre: "Veo 3 Fast (fal)", cola: true,
+    creador: "Google", calidad: 3, velocidad: "normal", costo: 0.4, por: "s", referencias: 0, inicial: 1, final: 0, estimado: true,
+    nota: "Google Veo con voz y sonido, siempre de 8 s. Caro: cada video sale cerca de 3 $. Precio aproximado.",
+    para: ["con sonido", "anuncios"],
+    ajustes: { aspectRatio: enumerado(["9:16", "16:9"], "9:16"), duration: enumerado(["8"], "8") },
+  },
+  // ---- Higgsfield: sale de su documentación (scripts/estudio/generar-higgsfield.mjs), no se escribe a mano.
+  ...MODELOS_HIGGSFIELD.map(desdeJson),
   {
     id: "prueba-video", motor: "prueba", tipo: "video", nombre: "Prueba de video (gratis)",
     creador: "Estudio", calidad: 1, velocidad: "muy rápido", costo: 0, por: "s", referencias: 8, inicial: 1, final: 1,
@@ -156,7 +237,64 @@ export function modeloPorDefecto(motoresActivos = {}, tipo = "imagen") {
 }
 
 /** Segundos de un video pedido (su ajuste `duration`, o el que traiga el modelo por defecto). */
-export const duracionDe = (modelo, ajustes = {}) => Number(ajustes?.duration ?? modelo?.ajustes?.duration?.defecto ?? 0) || 0;
+export const duracionDe = (modelo, ajustes = {}) =>
+  Number(ajustes?.duration ?? modelo?.ajustes?.duration?.defecto ?? modelo?.segundos ?? 0) || 0;
+
+/**
+ * ¿Este modelo se pide por la COLA (se envía, se espera, se mira cómo va)? Todos los de video, y las imágenes de los
+ * motores que sólo contestan así (Higgsfield). Las demás imágenes contestan en el acto.
+ */
+export const enCola = (modelo) => modelo?.tipo === "video" || modelo?.cola === true;
+
+/** Cómo se ordena la lista de modelos. */
+export const CRITERIOS_ORDEN = Object.freeze([
+  ["recomendado", "Recomendado"], ["calidad", "Mejor calidad"], ["barato", "Más barato"], ["caro", "Más caro"], ["rapido", "Más rápido"], ["creador", "Por creador"],
+]);
+
+export const NOMBRE_CALIDAD = Object.freeze({ 1: "básica", 2: "buena", 3: "alta", 4: "la mejor" });
+const RAPIDEZ = Object.freeze({ "muy rápido": 4, rápido: 3, normal: 2, lento: 1 });
+
+/**
+ * Los modelos de un tipo, ordenados y filtrados para la lista. Pura.
+ *
+ *   · Los que tienen llave van SIEMPRE primero (`activos` = { motor: bool }): un modelo atenuado no se puede pedir.
+ *   · `recomendado`: el predeterminado, luego la mejor calidad y, a igual calidad, el más barato.
+ *   · `creador` filtra por quién hace el modelo (Google, Kling…); `seleccionado` se mantiene aunque el filtro lo
+ *     deje fuera, para que la lista nunca esconda lo que está escogido.
+ *   · A igualdad de criterio manda el orden del catálogo: la lista no salta de sitio entre una visita y otra.
+ */
+export function modelosParaLista(tipo, { orden = "recomendado", creador = "", activos = {}, seleccionado = "" } = {}) {
+  const base = MODELOS.map((m, i) => ({ m, i })).filter(({ m }) => m.tipo === tipo);
+  const filtrados = base.filter(({ m }) => !creador || m.creador === creador || m.id === seleccionado);
+  const activo = ({ m }) => (activos[m.motor] ? 0 : 1);
+  const costoPorUnidad = ({ m }) => (m.costo ?? 0);
+  const clave = {
+    recomendado: (x) => [activo(x), x.m.predeterminado ? 0 : 1, -(x.m.calidad ?? 2), costoPorUnidad(x)],
+    calidad: (x) => [activo(x), -(x.m.calidad ?? 2), costoPorUnidad(x)],
+    barato: (x) => [activo(x), costoPorUnidad(x), -(x.m.calidad ?? 2)],
+    caro: (x) => [activo(x), -costoPorUnidad(x), -(x.m.calidad ?? 2)],
+    rapido: (x) => [activo(x), -(RAPIDEZ[x.m.velocidad] ?? 2), costoPorUnidad(x)],
+    creador: (x) => [activo(x), String(x.m.creador ?? "").toLocaleLowerCase("es"), -(x.m.calidad ?? 2), costoPorUnidad(x)],
+  }[orden] ?? ((x) => [activo(x)]);
+  const comparar = (a, b) => {
+    const ka = clave(a);
+    const kb = clave(b);
+    for (let n = 0; n < ka.length; n++) {
+      if (ka[n] < kb[n]) return -1;
+      if (ka[n] > kb[n]) return 1;
+    }
+    return a.i - b.i;
+  };
+  return filtrados.sort(comparar).map(({ m }) => m);
+}
+
+/** Quién hace los modelos de un tipo, sin repetir y en orden alfabético. */
+export function creadoresDe(tipo) {
+  return [...new Set(MODELOS.filter((m) => m.tipo === tipo).map((m) => m.creador).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
+}
+
+/** Quién pone el modelo, para la lista. */
+export const NOMBRE_MOTOR = Object.freeze({ gemini: "Google", fal: "fal.ai", higgsfield: "Higgsfield", prueba: "Prueba" });
 
 /** Cuánto cuesta un pedido, en dólares, redondeado a la milésima. Un video cuesta por segundo. */
 export function estimar(modelo, cantidad = 1, ajustes = {}) {
@@ -242,6 +380,9 @@ export function validarPedido(entrada = {}) {
     return { ok: false, error: modelo.final ? `${modelo.nombre} lleva una sola imagen final.` : `${modelo.nombre} no admite imagen final.` };
   }
   if (final.length && !inicial.length) return { ok: false, error: "La imagen final necesita también una inicial." };
+  if (modelo.necesitaImagen && !inicial.length && !referencias.length) {
+    return { ok: false, error: `${modelo.nombre} no crea desde texto solo: necesita ${modelo.inicial ? "una imagen inicial" : "al menos una imagen de referencia"}.` };
+  }
   if (inicial.length && referencias.length && modelo.motor === "gemini" && modelo.tipo === "video") {
     return { ok: false, error: "Ese modelo no mezcla imagen inicial con referencias: usa una cosa o la otra." };
   }
