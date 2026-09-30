@@ -30,10 +30,12 @@ Lo que **no** se pudo comprobar está marcado como tal: hace falta la llave de M
    compatible con Anthropic** (`api.meta.ai/v1/messages`) para la IA de **texto** del espacio.
    No genera imágenes para este proyecto, y «Meta AI» —donde la agencia monta el HTML— sigue
    siendo un paso manual.
-6. **Hallazgo que hay que decidir antes de nada:** el modelo que usa el lanzador de Agents Office
-   (`muse-spark-1.3-contributor`) es el nivel **«contributor»: cuesta 10–20 veces menos a cambio de
-   que Meta entrene con lo que se le manda.** Con el ADN de los clientes —costos, márgenes— eso no
-   entra. El plan lo **prohíbe** para datos de clientes.
+6. **Decisión de nivel (tomada por ti, contra mi recomendación):** se usa
+   **`muse-spark-1.3-contributor`**, el nivel que cuesta 10–20 veces menos **a cambio de que Meta
+   entrene con lo que se le manda** —el ADN, las notas internas, las cifras y los comentarios de
+   los clientes—. Se implementa **con dos salvaguardas que no cambian tu decisión**: el
+   administrador tiene que **confirmarla por escrito en Ajustes** (queda registrada, con quién y
+   cuándo) y **una advertencia permanente** lo recuerda mientras esté activo. Ver §4.2.
 7. **No se sabe cuánto de la API de Anthropic acepta Meta** (razonamiento, caché, herramientas,
    imágenes): las fuentes dicen «puede ignorar o rechazar». Por eso lo primero de Meta es un
    **ensayo de compatibilidad contra la llave real**, no código.
@@ -374,19 +376,40 @@ Es decir: ~40 % menos en entrada y ~57 % menos en salida que Sonnet, y una cach�
 mismo. **No es un cambio de orden de magnitud**; la razón para tenerlo es sobre todo
 **redundancia**: el saldo de Anthropic ya se agotó una vez sin que nadie lo viera.
 
-### 4.2 Lo que hay que decidir primero: el nivel «contributor»
+### 4.2 El nivel «contributor»: decidido, con salvaguardas
 
-El lanzador de Agents Office usa `muse-spark-1.3-contributor`. **Ese modelo es el barato *porque
-Meta entrena con lo que se le manda.*** Para Agents Office puede ser una decisión razonable
-(prompts propios, tareas de la casa); **aquí el ADN de un cliente lleva costos, márgenes y
-proveedores «que no se dicen al cliente»,** y el cerebro existe justo para que esos datos no
-salgan. Regla de este plan:
+`muse-spark-1.3-contributor` es barato **porque Meta entrena con lo que se le manda** (según las
+fuentes que pude leer; los términos oficiales están detrás de un bloqueo de red y **no los he
+visto**: si los tienes, hay que guardarlos en `docs/`). Recomendé el nivel estándar; **la decisión
+fue tuya (2026-09-30): contributor para todo.** Es una decisión de negocio legítima y este plan la
+implementa. Lo que se manda a Meta con ese nivel, para que la advertencia diga la verdad:
 
-> **El nivel «contributor» no se admite en esta aplicación.** El código rechaza cualquier id de modelo
-> que lo lleve y lo dice, y la configuración sólo ofrece el estándar. Un test lo comprueba.
+| Función | Lo que viaja |
+|---|---|
+| Asistente (chat) | El ADN completo del cliente **con costos, márgenes y notas internas**, y lo que se hable |
+| Redacción de publicaciones | Ficha y pasajes del cerebro (sin notas internas); **sin cerebro, el ADN entero de la ficha**, márgenes incluidos |
+| Informes | Las cifras del cliente |
+| Reglas del cerebro | Los comentarios del cliente, textuales |
+| Auditorías | El perfil de un cliente o de un **prospecto**, con sus imágenes |
 
-(Y una observación para Agents Office: si su oficina de PanaClaw también trabaja con datos de
-clientes, conviene mirar qué elige su opción 2.)
+**Salvaguardas (no limitan lo que decidiste; hacen que sea una decisión informada y visible):**
+
+1. **Confirmación escrita del administrador.** Elegir Meta como proveedor exige marcar, en Ajustes → IA,
+   *«Entiendo que Meta entrena con lo que se le envía y que eso incluye los datos de mis clientes»*. Sólo
+   `admin` puede. Se guarda **quién, cuándo y con qué texto exacto** (`ia_meta_acuerdo`); sin ese
+   registro, el servidor **rechaza** el proveedor Meta aunque alguien llame a la ruta a mano.
+2. **Advertencia permanente** mientras esté activo: en Ajustes → IA y en el medidor de la cabecera
+   («IA: Meta · entrena con tus datos»). No se puede cerrar.
+3. **El nivel es un dato, no una suposición del código:** `ia_meta_modelo` es
+   `muse-spark-1.3-contributor` (lo decidido) o `muse-spark-1.3` (estándar), y cambiar de uno a otro
+   es **un clic**, sin volver a confirmar cuando se pasa al estándar.
+4. **Cada apunte de consumo lleva el modelo** (`consumo_ia.modelo`), así que el desglose por cliente
+   dice **qué cliente pasó por el nivel que entrena**.
+5. **El candado de «interna» no se toca:** las notas internas siguen fuera de lo que escribe
+   publicaciones. Lo que cambia es que ahora **el asistente y el ADN de reserva** también van a Meta.
+
+(Y una observación para Agents Office: su lanzador usa este mismo nivel; lo dicho arriba vale igual
+para lo que PanaClaw le mande.)
 
 ### 4.3 Lo que se sabe y lo que no
 
@@ -438,6 +461,8 @@ guarda, no se supone.
 | `ajustes_espacio.ia_proveedor` | `anthropic` (por defecto), `meta` | Quién contesta la IA de texto |
 | `ajustes_espacio.ia_respaldo` | `no` (por defecto), `si` | Si el elegido falla por **saldo agotado, 5xx o saturación**, se prueba con el otro **una vez**, se avisa, y el gasto se apunta al que contestó |
 | `ajustes_espacio.ia_capacidades` | json | Resultado del último ensayo de compatibilidad, por proveedor |
+| `ajustes_espacio.ia_meta_modelo` | `muse-spark-1.3-contributor` (lo decidido), `muse-spark-1.3` | Qué nivel de Meta se llama |
+| `ajustes_espacio.ia_meta_acuerdo` | json `{ por, cuando, texto }` | La confirmación del administrador (§4.2). **Sin ella no se admite `ia_proveedor = 'meta'`** |
 
 **Secreto:** `META_MODEL_API_KEY` (Agents Office lo llama `MODEL_API_KEY`).
 
@@ -446,7 +471,7 @@ ensayo **desde el Worker** (con la llave del servidor) y enseña qué acepta cad
 carencia se dice en palabras: «Meta no tiene razonamiento: las fichas se escribirán sin
 pensar» / «Meta no tiene búsqueda web con esta forma: el asistente no podrá buscar en internet».
 
-**Modelos:** Meta tiene, hasta donde se sabe, **un solo modelo estándar por versión**. Los
+**Modelos:** Meta tiene, hasta donde se sabe, **un modelo por versión y nivel** (estándar y contributor). Los
 niveles «Sonnet / Opus / Haiku» del espacio dejan de tener sentido con Meta: la pantalla lo dice
 y el selector de nivel de razonamiento se deshabilita si `razonamiento` no está en las
 capacidades.
@@ -483,8 +508,10 @@ detrás del botón «Probar la conexión». Diez casos, cada uno con su veredict
 7. Un documento PDF/`document`: ¿se acepta?
 8. `max_tokens` grande (64 000): ¿lo acepta?
 9. Errores: llave inválida, modelo inexistente, saldo agotado: ¿qué códigos y textos vuelven?
-10. **El id de modelo del nivel estándar** frente al `-contributor`, y que el primero **no**
-    diga que entrena con lo que se manda (se guarda la respuesta oficial, no una suposición).
+10. **Los ids de modelo:** que `muse-spark-1.3-contributor` y el estándar (`muse-spark-1.3`, por
+    confirmar) los acepte **la misma llave**, y qué dice la respuesta o la documentación oficial sobre
+    entrenar con lo enviado (se guarda tal cual, no una suposición). Los prompts del ensayo son
+    inventados: **nada de un cliente sale en el ensayo.**
 
 El resultado va a `ia_capacidades` y **manda sobre el diseño**: si la caché falla, el plan cambia
 (Meta sólo para tareas cortas); si `tools` falla, el asistente queda fuera; si todo va bien, se
@@ -507,7 +534,7 @@ siendo Anthropic**.
 
 | Nivel | Qué |
 |---|---|
-| **Puro** | `adaptar` por proveedor (quita lo que no habla, recalcula `max_tokens`), `costoUSD` por proveedor, rechazo del nivel contributor, elegir proveedor y respaldo |
+| **Puro** | `adaptar` por proveedor (quita lo que no habla, recalcula `max_tokens`), `costoUSD` por proveedor, **el servidor rechaza `ia_proveedor = meta` sin `ia_meta_acuerdo` y sólo `admin` puede escribirlo**, el id de modelo sale de `ia_meta_modelo`, elegir proveedor y respaldo |
 | **Contrato** | Un doble de `fetch` que **habla como Meta** —lo que salga del ensayo, con sus carencias— contra `leerFlujo` y contra las cinco rutas de texto |
 | **Respaldo** | Anthropic devuelve 400 «credit balance is too low» → contesta Meta, se avisa y se apunta a Meta; Meta cae → no hay bucle (una sola vez) |
 | **Despliegue** | El nombre del secreto en su lista; `META_MODEL_API_KEY` nunca en `wrangler.jsonc`; `connect-src` intacto |
@@ -520,7 +547,7 @@ siendo Anthropic**.
 |---|---|---|
 | **B0** | Ensayo de compatibilidad contra la llave real | Informe con los diez veredictos, guardado en `docs/` |
 | **B1** | `proveedoresIA.js`, `abrirFlujo`/`prepararIA`/`registrarConsumo` generalizados, migración 0027, **sin** cambiar el comportamiento de Anthropic | `npm run verificar` verde y **ni un solo test de Anthropic modificado** |
-| **B2** | Ajustes → IA con selector, «Probar la conexión» y avisos de carencias; respaldo opcional | Se ve y se prueba en Chromium; el respaldo se prueba con un saldo agotado simulado |
+| **B2** | Ajustes → IA con selector, **confirmación escrita del administrador y advertencia permanente (§4.2)**, «Probar la conexión» y avisos de carencias; respaldo opcional | Se ve y se prueba en Chromium; el respaldo se prueba con un saldo agotado simulado |
 | **B3** | Evaluación de calidad (§4.7) y activar **por función** lo que la rúbrica apruebe | Decisión escrita, función por función |
 
 ---
@@ -533,7 +560,8 @@ B0 ensayo Meta ─┬─► A0 motor + trabajos ─► A1 Gemini+fal ─► B (p
 ```
 
 - **B0 primero** porque es corto, no toca producción y **decide** cuánto de la Parte B vale la
-  pena. Necesita **tu llave de Meta de nivel estándar**.
+  pena. Necesita **tu llave de Meta** (`META_MODEL_API_KEY`), en GitHub para que el ensayo corra como
+  workflow manual y yo lea el resultado.
 - **A0 antes que la pantalla:** con el motor «prueba» se puede probar y **enseñar** todo el flujo sin
   gastar un centavo, y el resto se construye sobre lo ya comprobado.
 - **B1 y A0 son independientes:** tocan archivos distintos (`anthropic.js`/`configIA.js` contra
@@ -551,7 +579,7 @@ B0 ensayo Meta ─┬─► A0 motor + trabajos ─► A1 Gemini+fal ─► B (p
 | **R2 se llena de video** | Papelera de 30 días, «lo que no usa ninguna publicación» visible y con tamaño total por cliente; los archivos de una publicación no se purgan |
 | **Precios que envejecen** | Tabla con fecha y test que avisa a los 90 días; y siempre «estimado» en pantalla |
 | **Un motor cambia su API** | Todo detrás del contrato de §3.4; el test con llave (`test:motores`) lo detecta a mano antes que un cliente |
-| **Enviar el ADN de un cliente a un tercero que entrena con él** | §4.2: `-contributor` prohibido, en código y en test; y el selector no lo ofrece |
+| **Datos de clientes a un tercero que entrena con ellos** | Decisión tuya, con salvaguardas (§4.2): confirmación escrita del administrador, advertencia permanente, el nivel visible en cada apunte de consumo, y el estándar a un clic. El riesgo que queda —contractual o de confianza con un cliente— es de la agencia, no del código |
 | **Un texto peor con Meta que nadie nota** | §4.7: rúbrica antes de activar, por función; por defecto sigue Anthropic |
 | **Perder el ahorro de caché** | El ensayo lo mide **antes** de decidir; si no cachea, Meta se queda fuera de las tareas grandes |
 | **Un archivo generado publicado sin que nadie lo vea** | No hay camino automático: el archivo entra por aprobación y por el paso final de programar, como todo |
@@ -564,8 +592,9 @@ B0 ensayo Meta ─┬─► A0 motor + trabajos ─► A1 Gemini+fal ─► B (p
 1. **Motores: Gemini + fal.ai + Higgsfield**, en ese orden. (Recomendaba dejar Higgsfield para
    después; al entrar pasa a la entrega E y necesita **su llave** para probarse.)
 2. **Dónde vive: pestaña por cliente + botones dentro de la publicación.**
-3. **Meta: proveedor elegible por el administrador + respaldo opcional, sólo nivel estándar,** y
-   por defecto sigue Anthropic hasta que la evaluación de calidad diga otra cosa.
+3. **Meta: proveedor elegible por el administrador + respaldo opcional,** y por defecto sigue
+   Anthropic hasta que la evaluación de calidad diga otra cosa. **Nivel: `muse-spark-1.3-contributor`
+   para todo** (recomendaba sólo el estándar; queda decidido, con las salvaguardas de §4.2).
 4. **Un solo presupuesto de IA** (el del espacio), con estimación previa y segundo toque desde
    0,50 $.
 
@@ -574,8 +603,10 @@ que ve la agencia):
 
 5. **Quién avanza los trabajos: navegador + cron** (§3.2). La alarma del Durable Object queda
    para después, si el uso la pide.
-6. **Orden:** el de §5, empezando por B0. Para B0 hace falta **tu llave de Meta de nivel
-   estándar**; para la entrega E, **tu llave de Higgsfield**; para C, la de **fal.ai**.
+6. **Orden:** el de §5, empezando por B0. Las llaves las pones **tú** como secretos:
+   `META_MODEL_API_KEY`, `FAL_KEY` y `HF_KEY` (forma `id:secreto`) en **Cloudflare** (Worker →
+   Settings → Variables and Secrets, tipo *Secret*), y en **GitHub** (Actions) las mismas sólo para los
+   ensayos manuales con llave. Nunca en el chat ni en el repositorio.
 
 ## 8. Lo que NO se hace
 
@@ -583,7 +614,6 @@ que ve la agencia):
 - **Copiar el Estudio entero:** la galería global, la interfaz de DOM a mano, el sistema de agentes y los archivos en carpetas del disco.
 - **Publicar algo generado sin pasar por aprobación.**
 - **Llamar a ningún motor desde el navegador.**
-- **Aceptar el nivel «contributor»** para datos de clientes.
 - **Cambiar el proveedor por defecto** sin la evaluación de §4.7.
 - **Traer el sistema de agentes de Agents Office** (aquí el «agente» es Claude por MCP y el
   asistente del chat, que ya existen).
