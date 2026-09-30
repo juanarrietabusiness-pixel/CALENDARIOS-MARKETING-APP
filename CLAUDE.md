@@ -113,6 +113,8 @@ src/
     cerebroGrafo.js       El mapa 3D: modelo, colores por tipo, filtros, búsqueda, vecinas (puro)
     cerebroLayout.js      Dónde queda cada nota dentro del cerebro (lóbulos, hemisferios; puro;
                           portado de layout3D de Agents Office)
+    cerebroAprendizaje.js Lo que aprende el cerebro de lo que pasa después de escribir: cuántas
+                          señales, qué frase decir tras cada botón (puro)
     camara3d.js           Cámara de órbita y proyección a pantalla (puro; sustituye a OrbitControls)
     vivo.js               WebSocket: reconexión, latido, presencia
     horas.js              «9am» → «09:00» y vuelta (puro)
@@ -180,6 +182,8 @@ src/
     BancoSelector.jsx     Escoger de Drive (o del banco anterior); forma única
     PestanaContenido.jsx  La pestaña Contenido: Drive + migrar el banco anterior
     Cerebro.jsx           La pestaña Cerebro: las notas de un cliente, filtros, buscar, añadir, subir
+    CerebroAprendizaje.jsx  «Lo que aprende»: señales, aprender del historial y de los resultados,
+                          y las reglas que la IA propone para que una persona las acepte
     CerebroGrafo.jsx      «Mapa 3D» de la pestaña: explorar, elegir una nota, ver sus vecinas (lazy)
     cerebro3d/escena.js   El lienzo del mapa: dibuja, gira, elige; sin librerías (canvas 2D)
     NavPrincipal.jsx / MenuCuenta.jsx / BarraInferior.jsx / Buscador.jsx
@@ -234,7 +238,13 @@ worker/
                           Office; notas.js (tipos, partir un archivo en notas);
                           cerebro.js (índice en R2, buscar, contexto); repositorio.js e
                           importar.js (llenarlo desde GitHub); preparar.js (la IA escribe
-                          la ficha y las cifras)
+                          la ficha y las cifras); ia.js (la llamada a Anthropic que
+                          comparten preparar y proponer); senales.js (qué resultado tiene
+                          una respuesta, un rendimiento en redes o una corrección; puro);
+                          pesos.js (los pesos que se leen en cada búsqueda); aprender.js
+                          (lo que TOCA la base: usos, señales, refuerzo, notas automáticas,
+                          historial, resultados y correcciones); proponer.js (la IA propone
+                          reglas y una persona las decide)
     herramientasServidor.js  Lo que el asistente consulta sin el navegador:
                           web, repositorio de GitHub, calendarios, tareas, ideas
     equipo.js             Avisos (guardar y anunciar), historial y asignaciones
@@ -257,11 +267,12 @@ worker/
     metricas.js           Resultados de un cliente, de la agencia y la miniatura de Meta
     informes.js           Informes: listar, generar, compartir; el público va en index.js
     auditorias.js         Auditorías: listar, generar, compartir; la pública va en index.js
-    cerebro.js            /api/cerebro/<cliente>: notas, buscar, contexto, grafo, importar, preparar
+    cerebro.js            /api/cerebro/<cliente>: notas, buscar, contexto, grafo, señales, aprender,
+                          propuestas, importar, preparar
     mcp.js                El servidor MCP (/mcp), su OAuth (/oauth/*, /.well-known/*) y
                           el permiso y las conexiones (/api/mcp/*)
     avisos.js             /api/avisos: la bandeja de quien pregunta y marcar leídos
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1008,7 +1019,10 @@ son del servidor.
   para no pisar lo corregido. Pero `acceso.guardar()` pone `updated_at` al
   día por su cuenta: una nota importada o escrita por la IA con `guardar`
   nacería «editada». Por eso las importadas se insertan SIN fechas (las
-  pone la base, iguales) y la ficha se reemplaza borrando e insertando. Y
+  pone la base, iguales) y la ficha se reemplaza borrando e insertando. Una
+  nota nueva escrita a mano entra con `insertar`, que respeta las dos fechas:
+  con `guardar`, `updated_at` salía un milisegundo después de `created_at` y una
+  prueba fallaba una de cada seis veces —el mismo error, en pequeño—. Y
   el `PUT` de una nota conserva su `origen` y su `fuente`: los tests con el
   ADN real cazaron que editar una nota importada se los borraba y la
   siguiente importación ya no la reconocía. La pasada de IA sólo
@@ -1084,6 +1098,63 @@ son del servidor.
   Code que trabajan ese repo, `verificar.mjs`, los tests de recetas de
   `src/lib/componer.test.js`— seguirá viendo lo que allí haya; lo que se
   corrija en el cerebro no vuelve solo al repo.
+- **El cerebro aprende de lo que pasa DESPUÉS de escribir, y cada parte de eso
+  puede mentir si se toca sin saber por qué está así** (todo en
+  `worker/lib/cerebro/aprender.js`, con `senales.js` y `proponer.js`; el porqué
+  entero, en `docs/propuesta-cerebro-por-cliente.md`).
+  · **Una señal se REEMPLAZA, no se suma.** Su clave es «tipo:publicación»
+  (`respuesta:p3`): si el cliente pide cambios y luego aprueba, cuenta una vez, y
+  `reinforce()` deshace lo que hizo la anterior antes de aplicar la nueva. Sumar
+  haría que quien vuelve a responder pese doble.
+  · **El silencio no es un sí.** En Agents Office «usado tal cual» vale 0,75 porque
+  lo usa alguien de la casa; aquí muchos clientes no responden nunca, y sin
+  respuesta no hay señal.
+  · **Lo de antes no puede mover pesos.** De una respuesta vieja no se sabe qué
+  notas se usaron para escribirla (`cerebro_usos` no existía): «aprender del
+  historial» deja señales y notas, pero `reforzar()` sólo cuenta las
+  publicaciones con usos apuntados. Atribuirle el resultado a las notas de HOY
+  sería inventar.
+  · **Aprender no puede tumbar lo que lo provoca.** `registrarRespuesta`,
+  `registrarCorrecciones` y las notas automáticas corren detrás de la respuesta
+  del cliente o del guardado del calendario (`ctx.waitUntil` o `despues()`) y
+  atrapan sus errores: un fallo aquí es un apunte perdido, no un calendario que
+  no se guardó ni una aprobación que el cliente no pudo enviar. Hay un caso que
+  rompe D1 a propósito y comprueba que el calendario se guarda igual.
+  · **Nada propuesto por la IA entra sin una persona, y el respaldo lo comprueba
+  el CÓDIGO.** La IA dice «RESPALDO: R2, R5»; `respaldoSuficiente()` exige dos
+  casos, o uno solo si es una orden expresa del cliente con sus palabras. Una
+  corrección del equipo o un resultado en redes no son nunca, solos, una orden.
+  Si la IA se inventa un número de caso, se descarta; si no hay nada nuevo desde
+  la última vez, ni se llama (cuesta dinero); con diez esperando no se piden más.
+  · **Las notas automáticas no pisan lo corregido a mano** y tienen tope
+  (`MAX_AUTOMATICAS`, 60): se sabe que alguien las tocó porque `updated_at` ya
+  no es el de su creación, así que se insertan SIN fechas. La misma trampa que la
+  ficha: `guardar()` fecha lo que lleva `updated_at`.
+  · **`cerebro_usos.texto` (la línea base de lo que escribió la IA) se escribe
+  SIN `updated_at`.** Ese campo de `cerebro_usos` dice cuándo se le pidió texto a
+  la IA por última vez; si apuntar la base lo pusiera al día, cada base parecería
+  «se le pidió otra vez» y la siguiente corrección se leería como una
+  regeneración. `evaluarEdicion()` las compara.
+  · **El texto de la IA se reconoce porque llega DE GOLPE** (60 caracteres o más
+  en un solo guardado) **y sólo si se pidió con el cerebro** (hay fila en
+  `cerebro_usos`). Lo que teclea una persona entra de a poco; el asistente del
+  chat y Claude por MCP no pasan por `/contexto` con ids, así que sus textos no
+  dejan base ni señal. Si se le pide texto otra vez, la base se cambia: si no, un
+  texto regenerado se leería como una corrección enorme del anterior.
+  · **Un retoque no enseña nada** (`MIN_CAMBIO`, 0,15) **y los guardados llegan
+  con cada pausa al teclear:** la señal sólo se reescribe si cambió al menos
+  `SALTO_MINIMO` (0,08); si no, escribir una frase sería un `guardarSenales` y un
+  `reforzar` por pausa. Un guardado que no toca el texto no consulta nada del
+  cerebro (un caso lo cuenta).
+  · **Los resultados en redes se comparan con el MISMO cliente, dentro de su
+  formato y sólo cuando maduraron** (`DIAS_DE_MADURACION`, 5: hasta entonces las
+  cifras siguen subiendo) y hay `MIN_MEDIDAS` (8) de esa red. Un reel y una foto no
+  se miden con la misma vara, y tres publicaciones no son una distribución. Sólo dejan
+  señal las que salieron desde la aplicación (`publicaciones_programadas.externo_id`
+  las une con `metricas_publicacion`): las demás son parte de cómo rinde esa
+  cuenta, no de qué notas se usaron. Se mide como la pantalla de Resultados
+  —por interacciones—, y va a pedido: el cron ya está en el límite del plan
+  gratuito.
 - **Llenar el cerebro cabe en las 50 peticiones del plan gratuito.** Una
   importación es el árbol de GitHub más un archivo por petición: 40 por
   llamada, y lo que no cabe se cuenta en `omitidos` y entra en la

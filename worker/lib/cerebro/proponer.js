@@ -44,10 +44,18 @@ const recorta = (t, max) => {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 };
 
-/** ¿La señal trae palabras de alguien, o datos que decir? Una aprobación a secas no enseña nada por sí sola. */
+/**
+ * ¿La señal enseña algo por sí sola? Una respuesta, si trae palabras de alguien; un resultado en redes, si fue de los
+ * muy buenos o de los muy malos (uno del montón no dice nada); una corrección del equipo, si fue algo más que un
+ * retoque. Una aprobación a secas no enseña nada por sí sola.
+ */
 export function conPalabras(s) {
-  if (s.tipo !== "respuesta") return true;
   const d = s.detalle ?? {};
+  if (s.tipo === "metricas") {
+    const p = Number(d.percentil);
+    return Number.isFinite(p) && (p >= 75 || p <= 25);
+  }
+  if (s.tipo === "correccion") return Number(d.intensidad) >= 0.3;
   return Boolean(String(d.comentario ?? "").trim() || String(d.sugeridaDescripcion ?? "").trim() || String(d.sugeridoGuion ?? "").trim());
 }
 
@@ -86,7 +94,8 @@ export function bloqueDeSenal(s, n) {
  */
 export function elegirEvidencia(senales, { maxCaracteres = MAX_CARACTERES_EVIDENCIA } = {}) {
   const con = senales.filter(conPalabras);
-  const sin = senales.filter((s) => !conPalabras(s));
+  // Sólo una RESPUESTA sin palabras es «aprobó y ya»; un resultado del montón o un retoque no se cuentan como nada.
+  const sin = senales.filter((s) => s.tipo === "respuesta" && !conPalabras(s));
   const orden = [...con].sort((a, b) => (a.resultado - b.resultado) || String(b.updated_at).localeCompare(String(a.updated_at)));
   const bloques = [];
   let usados = 0;
@@ -116,6 +125,7 @@ export function promptDeReglas(cliente, evidencia, { decididas = [], descartadas
   return `Eres el archivista de la agencia Juancito Ads. Vas a proponer REGLAS para el cerebro de ${cliente.name}: preferencias y límites que el cliente ha mostrado, para que la próxima vez la IA escriba mejor a la primera.
 
 Lees lo que pasó DESPUÉS de escribir. Cada bloque [R#] es una respuesta del cliente, un resultado en redes o una corrección del equipo, con lo que se dijo tal cual.
+· Las «Respuesta del cliente» son lo que el cliente quiere. Las «Corrección del equipo» son lo que la agencia cambió de lo que escribió la IA: sirven para ver QUÉ se repite, no para inventar gustos. Los «Resultado en redes» dependen de la hora, el día y la suerte: son apoyo, nunca la única razón de una regla.
 
 REGLAS DE ESTA TAREA (no se negocian):
 · Sólo lo que las respuestas respaldan. Una regla general necesita al menos DOS respuestas que la respalden, salvo que el cliente la diga como una orden expresa («nunca…», «siempre…», «no quiero…»).
@@ -224,7 +234,7 @@ export async function proponerReglas(env, acceso, cliente, { forzar = false } = 
   const senales = await leerSenales(acceso, cliente.id, { limite: 200 });
   const { ok, n } = hayEvidencia(senales);
   if (!ok) {
-    throw new ErrorIA(`Hacen falta al menos ${MIN_SENALES} respuestas con comentarios (o resultados) de las que aprender; hoy hay ${n}. Cuando el cliente responda, o con «Aprender de lo que ya respondió», habrá de dónde.`, 400);
+    throw new ErrorIA(`Hacen falta al menos ${MIN_SENALES} casos de los que aprender —respuestas del cliente con comentarios, resultados muy buenos o muy malos, o textos que el equipo reescribió—; hoy hay ${n}. Cuando el cliente responda, o con «Aprender de lo que ya respondió» y «Aprender de los resultados en redes», habrá de dónde.`, 400);
   }
 
   const previas = await acceso.leerColumnas("cerebro_propuestas", ["titulo", "estado", "created_at"], { client_id: cliente.id }, "created_at desc");
@@ -261,7 +271,7 @@ export async function proponerReglas(env, acceso, cliente, { forzar = false } = 
     const claves = r.apoyo.map((num) => evidencia.bloques.find((b) => b.n === num)?.senal.clave).filter(Boolean);
     return {
       id: uuid(), client_id: cliente.id, titulo: r.titulo, texto: r.texto, senales: JSON.stringify(claves),
-      motivo: `Se apoya en ${claves.length === 1 ? "1 respuesta" : `${claves.length} respuestas`}.`, estado: "pendiente",
+      motivo: `Se apoya en ${claves.length === 1 ? "1 caso" : `${claves.length} casos`}.`, estado: "pendiente",
     };
   });
   if (filas.length) await acceso.guardarVarios("cerebro_propuestas", filas);

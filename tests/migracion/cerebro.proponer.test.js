@@ -31,14 +31,31 @@ const senal = (extra = {}) => ({
 const conDetalle = (clave, detalle, extra = {}) => senal({ clave, post_id: clave.split(":")[1], detalle: { estado: "cambios", publicacion: { titulo: `Pub ${clave}`, formato: "reel" }, fecha: "2026-09-29", ...detalle }, ...extra });
 
 describe("qué señales enseñan algo", () => {
-  it("una respuesta con palabras sí; una aprobación a secas, no; lo que no es una respuesta trae datos", () => {
+  it("una respuesta con palabras sí; una aprobación a secas, no; un resultado o una corrección, sólo si fue claro", () => {
     expect(conPalabras(senal())).toBe(true);
     expect(conPalabras(senal({ detalle: { estado: "aprobado" } }))).toBe(false);
     expect(conPalabras(senal({ detalle: { estado: "cambios", sugeridaDescripcion: "otra cosa" } }))).toBe(true);
     expect(conPalabras(senal({ detalle: { estado: "cambios", sugeridoGuion: "otro" } }))).toBe(true);
     expect(conPalabras(senal({ detalle: { estado: "cambios", comentario: "   " } }))).toBe(false);
-    expect(conPalabras(senal({ tipo: "metricas", detalle: {} }))).toBe(true);
-    expect(conPalabras(senal({ tipo: "correccion", detalle: {} }))).toBe(true);
+    // Un resultado en redes enseña si fue de los muy buenos o de los muy malos; uno del montón, no.
+    expect(conPalabras(senal({ tipo: "metricas", detalle: { percentil: 90 } }))).toBe(true);
+    expect(conPalabras(senal({ tipo: "metricas", detalle: { percentil: 10 } }))).toBe(true);
+    expect(conPalabras(senal({ tipo: "metricas", detalle: { percentil: 50 } }))).toBe(false);
+    expect(conPalabras(senal({ tipo: "metricas", detalle: {} }))).toBe(false);
+    // Una corrección enseña si fue más que un retoque.
+    expect(conPalabras(senal({ tipo: "correccion", detalle: { intensidad: 0.5 } }))).toBe(true);
+    expect(conPalabras(senal({ tipo: "correccion", detalle: { intensidad: 0.2 } }))).toBe(false);
+    expect(conPalabras(senal({ tipo: "correccion", detalle: {} }))).toBe(false);
+  });
+
+  it("un resultado del montón o un retoque no se cuentan como «aprobó sin comentarios»", () => {
+    const ev = elegirEvidencia([
+      senal({ clave: "respuesta:a", detalle: { estado: "aprobado" } }),
+      senal({ clave: "metricas:b", tipo: "metricas", detalle: { percentil: 50 } }),
+      senal({ clave: "correccion:c", tipo: "correccion", detalle: { intensidad: 0.1 } }),
+    ]);
+    expect(ev.bloques).toEqual([]);
+    expect(ev.aprobadasSinPalabras.total).toBe(1);
   });
 
   it("hace falta un mínimo para aprender, y se dice cuánto hay", () => {
@@ -384,7 +401,7 @@ describe("no gastar sin motivo", () => {
     anthropic([]);
     const res = await reglas();
     expect(res.status).toBe(400);
-    expect((await res.json()).error).toMatch(/al menos 3 respuestas/);
+    expect((await res.json()).error).toMatch(/al menos 3 casos/);
     expect(peticiones).toHaveLength(0);
   });
 

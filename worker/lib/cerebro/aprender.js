@@ -29,7 +29,9 @@ import {
 } from "./notas.js";
 import { leerNotasLigeras, reindexar } from "./cerebro.js";
 import {
-  atenuar, senalDeRespuesta, notaDeRespuesta, fuenteDeRespuesta, resumenDePublicacion,
+  atenuar, senalDeRespuesta, notaDeRespuesta, fuenteDeRespuesta, resumenDePublicacion, claveDeSenal,
+  puntuarPublicaciones, senalDeMetricas, textoDe, cambioElTexto, evaluarEdicion, senalDeCorreccion, MIN_CAMBIO, SALTO_MINIMO,
+  MIN_MEDIDAS, DIAS_DE_MADURACION,
 } from "./senales.js";
 
 /** Cuántas notas automáticas se guardan por cliente: las más viejas sin tocar a mano se van. */
@@ -266,13 +268,18 @@ export async function registrarComentario(env, acceso, r) {
 /** Cuántos calendarios se leen por llamada: cada uno trae sus publicaciones enteras, y una invocación no da para todos. */
 const CALENDARIOS_POR_LLAMADA = 3;
 
-/** Las publicaciones de un calendario por su id, cada una con su día. */
-function publicacionesDe(fila) {
+/** Las publicaciones de unos días por su id, cada una con su día. */
+function mapaDeDias(dias) {
   const mapa = new Map();
+  for (const dia of Array.isArray(dias) ? dias : []) for (const post of dia?.posts ?? []) if (post?.id) mapa.set(post.id, { post, dia });
+  return mapa;
+}
+
+/** Las publicaciones de un calendario (fila de D1, con `days` en texto) por su id, cada una con su día. */
+function publicacionesDe(fila) {
   let dias = [];
   try { dias = JSON.parse(fila?.days || "[]"); } catch { dias = []; }
-  for (const dia of dias) for (const post of dia?.posts ?? []) if (post?.id) mapa.set(post.id, { post, dia });
-  return mapa;
+  return mapaDeDias(dias);
 }
 
 /**
@@ -316,4 +323,123 @@ export async function aprenderDelHistorial(env, acceso, cliente, { desde = 0 } =
     calendarios: lote.length, total: calendarios.length, siguiente: fin < calendarios.length ? fin : null,
     senales: senales.length, senalesNuevas: guardadas.nuevas, notas: cuenta,
   };
+}
+
+// ------------------------------------------------------------
+// Lo que rindió en redes
+// ------------------------------------------------------------
+
+/** Cuántas señales de resultados se escriben por vez: las más recientes. Cada una es una fila y un refuerzo. */
+const MAX_SENALES_DE_METRICAS = 80;
+
+/**
+ * Compara lo que rindió cada publicación con las demás de ese cliente y lo apunta como señal. A pedido —no en el
+ * cron: las cifras de una publicación siguen subiendo unos días y esto gasta consultas—.
+ *
+ * Sólo cuentan las publicaciones que salieron DESDE la aplicación (`publicaciones_programadas` guarda el id que
+ * les dio Meta): son las únicas de las que se sabe qué publicación del calendario fue, y por tanto qué notas
+ * se usaron para escribirla. Las demás entran en la comparación —son parte de cómo rinde esa cuenta— pero no
+ * dejan señal.
+ * → { medidas, comparadas, madurando, pocas: { red: n }, sinPublicacion, senales, senalesNuevas, reforzadas, minimo, dias }
+ *   (`minimo` y `dias` son lo que hace falta para comparar, para que la pantalla lo diga sin repetirlo)
+ */
+export async function aprenderDeLasMetricas(acceso, cliente, { ahora = Date.now() } = {}) {
+  const filas = await acceso.leerColumnas(
+    "metricas_publicacion", ["red", "tipo", "externo_id", "interacciones", "alcance", "texto", "enlace", "publicada_at"],
+    { client_id: cliente.id }, "publicada_at desc",
+  );
+  const { puntuadas, madurando, pocas } = puntuarPublicaciones(filas, { ahora });
+  const salida = {
+    medidas: filas.length, comparadas: puntuadas.length, madurando, pocas, sinPublicacion: 0, senales: 0, senalesNuevas: 0, reforzadas: 0,
+    minimo: MIN_MEDIDAS, dias: DIAS_DE_MADURACION,
+  };
+  if (!puntuadas.length) return salida;
+
+  const salidas = await acceso.leerColumnas(
+    "publicaciones_programadas", ["post_id", "externo_id", "red", "variante"], { client_id: cliente.id, estado: "publicada" },
+  );
+  const postDe = new Map(salidas.filter((f) => f.externo_id && f.variante !== "historia").map((f) => [`${f.red}:${f.externo_id}`, f.post_id]));
+
+  const porPost = new Map(); // el orden de `puntuadas` es el de más reciente a más vieja
+  for (const f of puntuadas) {
+    const postId = postDe.get(`${f.red}:${f.externo_id}`);
+    if (!postId) { salida.sinPublicacion++; continue; }
+    porPost.set(postId, [...(porPost.get(postId) ?? []), f]);
+  }
+  const senales = [...porPost].slice(0, MAX_SENALES_DE_METRICAS).map(([postId, lista]) => senalDeMetricas(postId, lista));
+  if (!senales.length) return salida;
+
+  const guardadas = await guardarSenales(acceso, cliente.id, senales);
+  salida.senales = senales.length;
+  salida.senalesNuevas = guardadas.nuevas;
+  salida.reforzadas = await reforzar(acceso, cliente.id, senales, ahora);
+  return salida;
+}
+
+// ------------------------------------------------------------
+// Lo que el equipo corrigió de lo que escribió la IA
+// ------------------------------------------------------------
+
+/** Cuántas publicaciones se miran por guardado: uno corriente toca una o dos. */
+const MAX_CORRECCIONES_POR_GUARDADO = 6;
+
+/**
+ * Tras guardar un calendario: para cada publicación cuyo texto cambió y que se escribió con el cerebro
+ * (`cerebro_usos`), apunta lo que la IA escribió la primera vez que llegó —la línea base— y, si el equipo lo ha
+ * alejado de eso, deja la señal con cuánto. Reemplaza la anterior de esa publicación, y sólo cuando la corrección
+ * cambió de verdad: los guardados llegan cada vez que la persona hace una pausa al teclear.
+ *
+ * `antes` y `despues` son los `days` del calendario antes y después de guardar. Nunca lanza: es un apunte.
+ * → { evaluadas, bases, senales, reforzadas, error }
+ */
+export async function registrarCorrecciones(acceso, { antes, despues, clientId, usuario = {}, ahora = new Date() }) {
+  const salida = { evaluadas: 0, bases: 0, senales: 0, reforzadas: 0, error: null };
+  try {
+    const previos = mapaDeDias(antes);
+    const cambiadas = [];
+    for (const [id, { post, dia }] of mapaDeDias(despues)) {
+      const previo = previos.get(id);
+      if (!previo) continue;
+      const a = textoDe(previo.post);
+      const d = textoDe(post);
+      if (cambioElTexto(a, d)) cambiadas.push({ id, a, d, post, dia });
+      if (cambiadas.length >= MAX_CORRECCIONES_POR_GUARDADO) break;
+    }
+    if (!cambiadas.length) return salida;
+
+    const usos = await acceso.leerVarios("cerebro_usos", ["id", "post_id", "texto", "updated_at"], "post_id", cambiadas.map((c) => c.id), { client_id: clientId });
+    if (!usos.length) return salida; // ninguna se escribió con el cerebro: no hay línea base que tener
+    const usoDe = new Map(usos.map((u) => [u.post_id, u]));
+    const claves = cambiadas.filter((c) => usoDe.has(c.id)).map((c) => claveDeSenal("correccion", c.id));
+    const previas = await acceso.leerVarios("cerebro_senales", ["clave", "detalle"], "clave", claves, { client_id: clientId });
+    const previaDe = new Map(previas.map((p) => [p.clave, parsear(p.detalle)]));
+
+    const iso = ahora.toJSON();
+    const bases = [];
+    const senales = [];
+    for (const c of cambiadas) {
+      const uso = usoDe.get(c.id);
+      if (!uso) continue;
+      salida.evaluadas++;
+      const ev = evaluarEdicion(parsear(uso.texto), c.a, c.d, { pedidoAt: String(uso.updated_at ?? ""), ahora: iso });
+      // Sin `updated_at`: fecharla al día la haría pasar por «se le pidió texto a la IA otra vez».
+      if (ev.fijada) bases.push({ id: uso.id, client_id: clientId, post_id: c.id, texto: JSON.stringify(ev.base) });
+      const k = ev.correccion;
+      if (!k) continue;
+      const previa = previaDe.get(claveDeSenal("correccion", c.id));
+      if (!previa && k.intensidad < MIN_CAMBIO) continue; // un retoque no enseña nada
+      if (previa && Math.abs(Number(previa.intensidad ?? 0) - k.intensidad) < SALTO_MINIMO) continue; // nada nuevo que decir
+      senales.push(senalDeCorreccion({ postId: c.id, publicacion: resumenDePublicacion(c.post, c.dia), ...k, quien: usuario.nombre, fecha: iso.slice(0, 10) }));
+    }
+    if (bases.length) { await acceso.guardarVarios("cerebro_usos", bases); salida.bases = bases.length; }
+    if (senales.length) {
+      await guardarSenales(acceso, clientId, senales);
+      salida.senales = senales.length;
+      salida.reforzadas = await reforzar(acceso, clientId, senales, ahora.getTime());
+    }
+  } catch (e) {
+    console.error("cerebro: no se pudo aprender de lo que corrigió el equipo", e);
+    salida.error = String(e?.message ?? e);
+  }
+  return salida;
 }

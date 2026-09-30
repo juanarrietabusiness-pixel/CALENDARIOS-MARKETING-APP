@@ -30,6 +30,7 @@ import { fechaEnZona, debeReabrirse, esFecha } from "../../src/lib/agenda.js";
 import { leerConfigIA, MODELOS_ELEGIBLES, RAZONAMIENTOS, ACCIONES_LIMITE } from "../lib/configIA.js";
 import { resincronizarCalendario } from "../lib/publicador.js";
 import { asignarTarea, alGuardarCalendario, avisarNota, avisar, enlacePublicacion } from "../lib/equipo.js";
+import { registrarCorrecciones } from "../lib/cerebro/aprender.js";
 import { obtenerOCrearMes, moverDeMes, ErrorMes } from "../lib/meses.js";
 import { olvidarIndice } from "../lib/cerebro/cerebro.js";
 
@@ -475,9 +476,14 @@ export async function rutasDatos(req, env, ctx) {
       if (previo) {
         await despues(ctx, (async () => {
           const cliente = await acceso.leerUno("clients", { id: crudo.client_id });
+          const diasAntes = salidaCalendario(previo).days;
           await alGuardarCalendario(env, acceso, {
-            antes: salidaCalendario(previo).days, despues: guardado.days, usuario: ctx.usuario ?? {},
+            antes: diasAntes, despues: guardado.days, usuario: ctx.usuario ?? {},
             calId: fila.id, clientId: crudo.client_id, clienteNombre: cliente?.name ?? "",
+          });
+          // Lo que el equipo cambió de lo que escribió la IA le enseña al cerebro. No lanza: es un apunte.
+          await registrarCorrecciones(acceso, {
+            antes: diasAntes, despues: guardado.days, clientId: crudo.client_id, usuario: ctx.usuario ?? {},
           });
         })());
       }

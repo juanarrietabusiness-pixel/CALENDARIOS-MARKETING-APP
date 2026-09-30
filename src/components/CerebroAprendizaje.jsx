@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import Icon from "./Icon";
 import {
-  leerSenales, aprenderDelHistorial, leerPropuestas, proponerReglas, aceptarPropuesta, descartarPropuesta,
+  leerSenales, aprenderDelHistorial, aprenderDeMetricas, leerPropuestas, proponerReglas, aceptarPropuesta, descartarPropuesta,
 } from "../lib/cerebro";
 import {
-  NOMBRE_SENAL, etiquetaDeResultado, describirSenales, acumularHistorial, describirHistorial, describirPropuestas, textoDeRespaldo,
+  NOMBRE_SENAL, etiquetaDeResultado, senalesParaMostrar, describirSenales, acumularHistorial, describirHistorial, describirMetricas, describirPropuestas, textoDeRespaldo,
 } from "../lib/cerebroAprendizaje";
 
 // ============================================================
@@ -13,8 +13,9 @@ import {
 // Cuando el cliente aprueba o pide cambios, el cerebro lo apunta: las
 // notas que se usaron al escribir esa publicación suben o bajan en la
 // búsqueda, y lo que el cliente dijo con sus palabras queda como una nota
-// de tipo Decisión. Aquí se ve qué ha aprendido y se le puede pedir que
-// aprenda también de lo que el cliente ya respondió antes.
+// de tipo Decisión. Lo mismo pasa con lo que rinde en redes y con lo que el
+// equipo reescribe de lo que escribió la IA. Aquí se ve qué ha aprendido, se
+// le puede pedir que aprenda también de lo de antes, y que proponga reglas.
 // ============================================================
 
 const fecha = (iso) => (iso ? new Date(`${iso}T12:00:00`).toLocaleDateString("es-PA", { day: "numeric", month: "short" }) : "");
@@ -64,6 +65,20 @@ export default function CerebroAprendizaje({ client, lectura, version, onCambio 
     }
   };
 
+  const aprenderMetricas = async () => {
+    setAviso(null);
+    setTrabajando("metricas");
+    try {
+      setAviso({ ok: true, texto: describirMetricas(await aprenderDeMetricas(client.id)) });
+    } catch (e) {
+      setAviso({ ok: false, texto: e.message });
+    } finally {
+      setTrabajando("");
+      await cargar();
+      if (onCambio) await onCambio();
+    }
+  };
+
   const proponer = async (forzar = false) => {
     setAviso(null);
     setTrabajando("reglas");
@@ -102,6 +117,7 @@ export default function CerebroAprendizaje({ client, lectura, version, onCambio 
   };
 
   const lista = senales ?? [];
+  const mostradas = senalesParaMostrar(lista, MOSTRAR);
   return (
     <details className="cerebro-aprende card">
       <summary>
@@ -112,14 +128,15 @@ export default function CerebroAprendizaje({ client, lectura, version, onCambio 
       <div className="cerebro-aprende-cuerpo">
         <p className="hint">
           Cuando el cliente aprueba o pide cambios, las notas que se usaron para escribir esa publicación suben o bajan en la búsqueda,
-          y lo que dijo con sus palabras queda como una nota de tipo Decisión. El silencio no cuenta: sin respuesta, no se aprende nada.
+          y lo que dijo con sus palabras queda como una nota de tipo Decisión. Lo mismo pasa con lo que rinde en redes y con lo que el equipo
+          reescribe de lo que escribió la IA. El silencio no cuenta: sin respuesta, no se aprende nada.
         </p>
         {error && <p role="alert" className="cerebro-error">{error}</p>}
         {senales && <p className="cerebro-aprende-resumen" role="status">{describirSenales(lista)}</p>}
 
         {lista.length > 0 && (
           <ul className="cerebro-senales" aria-label="Lo último que ha aprendido">
-            {lista.slice(0, MOSTRAR).map((s) => {
+            {mostradas.map((s) => {
               const e = etiquetaDeResultado(s.resultado);
               return (
                 <li key={s.id} className="cerebro-senal">
@@ -131,25 +148,31 @@ export default function CerebroAprendizaje({ client, lectura, version, onCambio 
                 </li>
               );
             })}
-            {lista.length > MOSTRAR && <li className="hint">Y {lista.length - MOSTRAR} más.</li>}
+            {lista.length > mostradas.length && <li className="hint">Y {lista.length - mostradas.length} más.</li>}
           </ul>
         )}
 
         {!lectura && (
           <div className="cerebro-acciones" role="group" aria-label="Aprender">
             <button type="button" className="btn btn-secondary" disabled={Boolean(trabajando)} onClick={aprenderHistorial} aria-describedby={`${ids}-h`}>
-              <Icon name="refresh" size={18} /> {trabajando === "reglas" ? "Aprender de lo que ya respondió" : trabajando || "Aprender de lo que ya respondió"}
+              <Icon name="refresh" size={18} /> {trabajando && trabajando !== "reglas" && trabajando !== "metricas" ? trabajando : "Aprender de lo que ya respondió"}
+            </button>
+            <button type="button" className="btn btn-secondary" disabled={Boolean(trabajando)} onClick={aprenderMetricas} aria-describedby={`${ids}-m`}>
+              <Icon name="chart" size={18} /> {trabajando === "metricas" ? "Comparando publicaciones…" : "Aprender de los resultados en redes"}
             </button>
             <button type="button" className="btn btn-accent" disabled={Boolean(trabajando)} onClick={() => proponer(false)} aria-describedby={`${ids}-r`}>
-              <Icon name="sparkles" size={18} /> {trabajando === "reglas" ? "La IA está leyendo las respuestas…" : "Proponer reglas con IA"}
+              <Icon name="sparkles" size={18} /> {trabajando === "reglas" ? "La IA está leyendo lo que pasó…" : "Proponer reglas con IA"}
             </button>
           </div>
         )}
         <p id={`${ids}-h`} className="hint">
           Lee las respuestas que el cliente ya dio en sus calendarios y las apunta. No mueve lo que sube o baja en la búsqueda —de lo de antes no se sabe qué notas se usaron—: eso empieza con lo que se escriba desde ahora.
         </p>
+        <p id={`${ids}-m`} className="hint">
+          Compara lo que rindió cada publicación con las demás de este cliente, cuando ya han tenido unos días para rendir. Sólo aprende de las que salieron desde la aplicación. No gasta IA.
+        </p>
         <p id={`${ids}-r`} className="hint">
-          Una llamada a la IA lee lo que dijo el cliente y propone unas pocas reglas. Ninguna entra al cerebro hasta que tú la aceptes.
+          Una llamada a la IA lee lo que dijo el cliente, lo que rindió y lo que el equipo corrigió, y propone unas pocas reglas. Ninguna entra al cerebro hasta que tú la aceptes.
         </p>
         {aviso && <p role={aviso.ok ? "status" : "alert"} className={aviso.ok ? "cerebro-aviso" : "cerebro-error"}>{aviso.texto}</p>}
 

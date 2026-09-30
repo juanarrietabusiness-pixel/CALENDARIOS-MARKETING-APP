@@ -1,7 +1,7 @@
 # Un cerebro por cliente
 
-Estado a 2026-09-29. Fases 0 y 1 y la **visualización 3D** implementadas; lo demás,
-pendiente y con las decisiones que hacen falta.
+Estado a 2026-09-30. Fases 0 y 1, la **visualización 3D** y la **memoria de
+decisiones** implementadas; lo demás, pendiente y con las decisiones que hacen falta.
 
 ---
 
@@ -98,6 +98,52 @@ Indexar un cliente entero cuesta 9–30 ms y el índice pesa 150–210 KB.
 | **1E** | La pestaña **Cerebro** (`/cliente/<slug>/cerebro`). |
 | **1F** | `buscar_cerebro` para el asistente y para Claude por MCP; el chat recibe ficha + cifras en vez del volcado. |
 | **2ª entrega** | El **mapa 3D** del cerebro (pestaña Cerebro → «Mapa 3D»): cada nota una neurona, cada conexión una sinapsis, dentro de un cerebro con lóbulos y hemisferios. Filtra por región, busca (título y texto), enseña internas, vuela a la nota elegida y lanza señales por sus sinapsis. |
+| **3ª entrega** | La **memoria de decisiones** (migración 0025), en tres mecanismos y tres señales; ver la sección siguiente. |
+
+## La memoria de decisiones
+
+Hasta ahora el cerebro sabía lo que la agencia **escribió** de un cliente; no sabía
+qué pasó **después**. Ahora lo apunta, y de tres maneras:
+
+| Mecanismo | Qué hace | Quién decide |
+|---|---|---|
+| **Pesos que aprenden** | Las notas que se le dieron a la IA para escribir una publicación suben en la búsqueda si salió bien y bajan si salió mal (`reinforce()` de Agents Office: factor de 0,8 a 1,2, vida media de 90 días). Las sinapsis entre notas citadas juntas se ven doradas en el mapa. | Nadie: es automático y nunca sube una nota a más de un 20 % |
+| **Notas con sus palabras** | Lo que el cliente escribe al aprobar o pedir cambios queda como una nota de tipo `decision`, entre comillas y con su nombre. Tope de 60 automáticas por cliente. | Nadie; lo que una persona edita a mano no se vuelve a pisar |
+| **Reglas propuestas** | Una llamada a la IA lee las señales y propone hasta seis reglas («sin emojis», «no mostrar precios en el video»). Ninguna entra al cerebro hasta que una persona la acepta —corrigiéndola si quiere— o la descarta, y una descartada no se vuelve a proponer. | **Una persona**, siempre |
+
+| Señal | De dónde sale | Cuánto pesa | Cuándo se apunta |
+|---|---|---|---|
+| **Respuesta del cliente** | Aprobó (1) o pidió cambios (0,2) por su enlace | 1 | Al responder o comentar; y con «Aprender de lo que ya respondió» sobre el historial |
+| **Resultado en redes** | Las interacciones de la publicación frente a las demás **del mismo cliente** (percentil, dentro de su formato si hay cinco o más; 0,1 a 0,9) | 0,6 | A pedido: «Aprender de los resultados en redes» |
+| **Corrección del equipo** | Cuánto se alejó el texto de lo que escribió la IA: 0,75 si se dejó casi igual, 0,15 si se reescribió entero | 0,6 | Al guardar el calendario |
+
+**Lo que NO cuenta, a propósito:**
+- **El silencio.** En Agents Office «usado tal cual» vale 0,75, pero allí lo usa alguien de la
+  casa; aquí muchos clientes no responden nunca. Sin respuesta, sin señal.
+- **Lo de antes, para los pesos.** De las respuestas viejas no se sabe qué notas se usaron para
+  escribirlas, así que «aprender del historial» deja señales y notas —lo que lee la IA al proponer
+  reglas— pero **no mueve pesos**. Los pesos empiezan con lo que se escriba desde ahora.
+- **Las publicaciones que no salieron de la aplicación,** para los pesos: entran en la comparación
+  (son parte de cómo rinde esa cuenta) pero no dejan señal.
+- **Las cifras que aún suben:** una publicación tarda unos cinco días en tener sus números; hasta
+  entonces ni se compara ni sirve de vara.
+- **Con menos de ocho publicaciones medidas de una red,** no se compara: una comparación entre tres
+  no es un percentil.
+- **Los retoques:** un cambio de menos de un 15 % del texto no deja señal.
+
+**Cómo se sabe qué escribió la IA.** Al pedir el contexto para escribir unas publicaciones, el
+navegador manda sus ids y el Worker apunta qué notas se dieron (`cerebro_usos`). Cuando el texto
+llega **de golpe** (60 caracteres o más en un solo guardado: lo que se teclea entra de a poco), esa
+primera versión se apunta como la línea base de cada campo (`cerebro_usos.texto`); después, cada
+guardado se mide contra ella. Si se le pide texto a la IA otra vez, la base se cambia por la nueva
+en vez de leerse como una corrección enorme de la anterior. Lo que la IA escribió sin pasar por el
+cerebro (el asistente, Claude por MCP) no deja línea base: no hay forma fiable de saber que fue suya.
+
+**Lo que cuidan las reglas propuestas.** El código —no la IA— exige que cada regla tenga el respaldo
+de **dos** casos, o de uno solo si es una orden expresa del cliente con sus propias palabras («nunca
+pongan precios»). Un resultado en redes o una corrección del equipo nunca son, solos, una orden. Si
+no hay nada nuevo desde la última vez no se llama a la IA; con diez reglas esperando, no se piden más;
+y toda llamada pasa por el presupuesto del espacio.
 
 ## Lo que se aprendió construyéndolo
 
@@ -135,18 +181,19 @@ corregidos, con su caso de prueba:
 
 ## Pendiente, y lo que hay que decidir
 
-1. **Memoria de decisiones (Fase 2).** Lo que el cliente aprueba, rechaza (con
-   motivo) o comenta, y lo que el equipo corrige, debería volver al cerebro como
-   notas de tipo `decision` y alimentar `reinforce()` (ya portado): aprobado = 1,
-   cambios pedidos resta, rechazado = 0. El **silencio no cuenta como éxito**
-   (en Agents Office sí, y vale 0,75). Decidir: ¿qué señales cuentan, y desde
-   cuándo?
-2. **Visualización: hecha, con dos cosas que decidir después.** Se dibuja en un lienzo
+1. **Memoria de decisiones: hecha, con límites que conviene saber.** Ver la sección de
+   arriba. Lo que **no** hace todavía: aprende de los resultados sólo a pedido (no hay una
+   pasada diaria: las cifras de Meta se reescriben cada día y el cron del plan gratuito no da
+   para más); no distingue el texto que escribió el asistente del chat o Claude por MCP del que
+   escribió una persona; y una publicación que salió en Instagram y en Facebook cuenta una vez,
+   con el percentil medio. Si con los meses hiciera falta, lo natural es una pasada
+   semanal con el informe mensual.
+2. **Visualización: hecha, con una cosa que decidir después.** Se dibuja en un lienzo
    2D propio y no con three.js: 144 kB comprimidos habrían obligado a subir el tope de
    peso, para dibujar decenas de notas. El chunk pesa unos 12 kB y un caso del test de
-   bundle vigila que siga así. Lo que **no** está: las **sinapsis que aprenden** (el
-   dorado de Agents Office) dependen de la memoria de decisiones (punto 1), y la
-   **vista de miles de notas** (WebGL) no hace falta con los clientes de hoy: el mapa
+   bundle vigila que siga así. Las **sinapsis que aprenden** (el dorado de Agents Office)
+   ya se ven. Lo que **no** está: la **vista de miles de notas** (WebGL), que no hace
+   falta con los clientes de hoy: el mapa
    corre a unos 50 cuadros por segundo con 300 notas y 900 enlaces incluso en un
    navegador sin GPU. Y una observación: el ADN de las agencias trae 0 `[[enlaces]]`, así
    que el mapa depende de que la ficha técnica que escribe la IA cite las notas; sin

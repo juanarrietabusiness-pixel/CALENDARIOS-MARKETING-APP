@@ -10,6 +10,7 @@
 //   POST   /<cliente>/contexto           Lo que se le da a la IA para una tarea
 //   GET    /<cliente>/senales            Lo que ha pasado después de escribir (respuestas, resultados, correcciones)
 //   POST   /<cliente>/aprender/historial Aprender de las respuestas que el cliente ya dio { desde? }
+//   POST   /<cliente>/aprender/metricas  Comparar lo que rindió cada publicación en redes con las demás
 //   POST   /<cliente>/aprender/reglas    La IA propone reglas a partir de lo que pasó { forzar? } (gasta)
 //   GET    /<cliente>/propuestas         Las reglas que esperan una decisión
 //   POST   /<cliente>/propuestas/<id>/aceptar   Aceptarla, con los cambios { titulo?, texto?, interna? }
@@ -33,7 +34,7 @@ import {
   USOS, leerNotasLigeras, reindexar, actualizarIndice, buscar, contexto, notasViejas, grafo,
 } from "../lib/cerebro/cerebro.js";
 import { importarDelRepositorio } from "../lib/cerebro/importar.js";
-import { registrarUsos, leerSenales, aprenderDelHistorial } from "../lib/cerebro/aprender.js";
+import { registrarUsos, leerSenales, aprenderDelHistorial, aprenderDeLasMetricas } from "../lib/cerebro/aprender.js";
 import { proponerReglas, propuestasPendientes, aceptarPropuesta, descartarPropuesta } from "../lib/cerebro/proponer.js";
 import { ErrorIA } from "../lib/cerebro/ia.js";
 import { ErrorRepositorio } from "../lib/cerebro/repositorio.js";
@@ -124,9 +125,11 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
       fuente_sha: previa?.fuente_sha ?? "",
       created_at: previa?.created_at ?? t, updated_at: t,
     };
-    // Lo que devuelve `guardar` es lo que quedó en D1: su `updated_at` NO es `t` (la capa lo pone al día al
-    // escribir), y es con ese con el que el índice comprueba después que sigue diciendo lo mismo que las notas.
-    const guardada = await acceso.guardar("cerebro_notas", fila);
+    // Una nota NUEVA entra con `insertar`, que respeta las dos fechas: iguales, y así consta que nadie la ha tocado.
+    // `guardar` pone `updated_at` al día por su cuenta —un milisegundo después— y una nota sin editar parecía editada.
+    // Lo que devuelve `guardar` es lo que quedó en D1: su `updated_at` NO es `t`, y es con ese con el que el índice
+    // comprueba después que sigue diciendo lo mismo que las notas.
+    const guardada = previa ? await acceso.guardar("cerebro_notas", fila) : await acceso.insertar("cerebro_notas", fila);
     await actualizarIndice(env, acceso, clienteId, ruta, guardada);
     return json(publica(guardada, { conTexto: true }), previa ? 200 : 201);
   }
@@ -193,6 +196,10 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
   if (sub === "propuestas" && notaId && partes[4] === "descartar" && metodo === "POST") {
     const r = await descartarPropuesta(acceso, clienteId, notaId);
     return r.error ? error(r.error, r.estado) : json({ ok: true });
+  }
+
+  if (sub === "aprender" && notaId === "metricas" && metodo === "POST") {
+    return json(await aprenderDeLasMetricas(acceso, cliente));
   }
 
   if (sub === "aprender" && notaId === "historial" && metodo === "POST") {

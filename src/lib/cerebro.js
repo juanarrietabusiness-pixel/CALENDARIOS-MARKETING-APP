@@ -63,6 +63,13 @@ export const leerSenales = (clienteId, { tipo = "" } = {}) => llamar(`${base(cli
 export const aprenderDelHistorial = (clienteId, desde = 0) =>
   cambiando(clienteId, () => llamar(`${base(clienteId)}/aprender/historial`, { metodo: "POST", cuerpo: { desde } }));
 
+/**
+ * Comparar lo que rindió cada publicación en redes con las demás de este cliente. Deja señales, y las notas que se
+ * usaron para escribir cada una suben o bajan en la búsqueda. No gasta IA.
+ */
+export const aprenderDeMetricas = (clienteId) =>
+  cambiando(clienteId, () => llamar(`${base(clienteId)}/aprender/metricas`, { metodo: "POST", cuerpo: {} }));
+
 /** Las reglas que la IA propuso y esperan una decisión. */
 export const leerPropuestas = (clienteId) => llamar(`${base(clienteId)}/propuestas`);
 

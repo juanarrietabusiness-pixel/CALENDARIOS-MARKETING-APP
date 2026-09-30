@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   NOMBRE_SENAL, etiquetaDeResultado, contarSenales, describirSenales, acumularHistorial, describirHistorial, describirPropuestas, textoDeRespaldo,
+  describirMetricas, senalesParaMostrar,
 } from "./cerebroAprendizaje";
 
 describe("cómo salió", () => {
@@ -66,7 +67,7 @@ describe("lo que pasó al proponer reglas", () => {
   });
 
   it("sin nada nuevo, no se gastó; sin reglas, se dice sin dramatismo", () => {
-    expect(describirPropuestas({ sinNovedades: true })).toBe("No hay respuestas nuevas desde la última vez: no se gastó nada.");
+    expect(describirPropuestas({ sinNovedades: true })).toBe("No ha pasado nada nuevo desde la última vez —ninguna respuesta, resultado ni corrección—: no se gastó nada.");
     expect(describirPropuestas({ propuestas: 0, sinReglas: true })).toBe("La IA no vio ninguna regla que valga la pena guardar con lo que hay.");
     expect(describirPropuestas({ propuestas: 0, sinReglas: false, sinRespaldo: 2, repetidas: 0 })).toBe("No quedó ninguna regla nueva. 2 quedaron fuera por no tener el respaldo suficiente.");
     expect(describirPropuestas(undefined)).toBe("");
@@ -77,7 +78,74 @@ describe("lo que pasó al proponer reglas", () => {
   });
 
   it("el respaldo, en singular o plural", () => {
-    expect(textoDeRespaldo(1)).toBe("Se apoya en 1 respuesta");
-    expect(textoDeRespaldo(3)).toBe("Se apoya en 3 respuestas");
+    expect(textoDeRespaldo(1)).toBe("Se apoya en 1 caso");
+    expect(textoDeRespaldo(3)).toBe("Se apoya en 3 casos");
+  });
+});
+
+describe("qué señales se enseñan de entrada", () => {
+  const s = (tipo, n, resultado = 0.5) => ({ id: `${tipo}${n}`, tipo, resultado, updated_at: `2026-10-${String(30 - n).padStart(2, "0")}T10:00:00.000Z` });
+  const ids = (l) => l.map((x) => x.id);
+
+  it("las decenas que deja un botón de resultados no tapan las respuestas ni las correcciones", () => {
+    const respuestas = Array.from({ length: 10 }, (_, i) => s("respuesta", i));
+    const metricas = Array.from({ length: 80 }, (_, i) => s("metricas", i, i === 5 ? 0.9 : i === 6 ? 0.1 : 0.5));
+    const v = senalesParaMostrar([...metricas, ...respuestas], 8);
+    expect(v).toHaveLength(8);
+    expect(v.filter((x) => x.tipo === "metricas")).toHaveLength(3);
+    // De los resultados, las más claras: la mejor y la peor.
+    expect(ids(v)).toEqual(expect.arrayContaining(["metricas5", "metricas6"]));
+  });
+
+  it("si hay pocas de las otras, los resultados llenan lo que sobra", () => {
+    const v = senalesParaMostrar([s("respuesta", 1), ...Array.from({ length: 20 }, (_, i) => s("metricas", i, i / 20))], 8);
+    expect(v).toHaveLength(8);
+    expect(v.filter((x) => x.tipo === "respuesta")).toHaveLength(1);
+  });
+
+  it("van de la más reciente a la más vieja, y lo que cabe se enseña entero", () => {
+    const v = senalesParaMostrar([s("respuesta", 3), s("correccion", 1), s("metricas", 2, 0.9)], 8);
+    expect(ids(v)).toEqual(["correccion1", "metricas2", "respuesta3"]);
+    expect(senalesParaMostrar([], 8)).toEqual([]);
+    expect(senalesParaMostrar(undefined, 8)).toEqual([]);
+  });
+});
+
+describe("lo que se dice al comparar los resultados en redes", () => {
+  const base = { medidas: 12, comparadas: 12, madurando: 0, pocas: {}, sinPublicacion: 0, senales: 0, senalesNuevas: 0, reforzadas: 0, minimo: 8, dias: 5 };
+
+  it("sin nada medido, dice qué falta", () => {
+    expect(describirMetricas({ ...base, medidas: 0, comparadas: 0 })).toMatch(/todavía no tiene publicaciones medidas/);
+    expect(describirMetricas(undefined)).toMatch(/todavía no tiene publicaciones medidas/);
+  });
+
+  it("con pocas, dice cuántas hay y cuántas hacen falta", () => {
+    expect(describirMetricas({ ...base, medidas: 5, comparadas: 0, pocas: { instagram: 5 } }))
+      .toBe("Con menos de 8 publicaciones medidas no se puede saber cuáles rinden más: hay 5 de Instagram.");
+    expect(describirMetricas({ ...base, medidas: 9, comparadas: 0, pocas: { instagram: 5, facebook: 3 }, madurando: 1 }))
+      .toBe("Con menos de 8 publicaciones medidas no se puede saber cuáles rinden más: hay 5 de Instagram y 3 de Facebook. 1 publicación más es de hace menos de 5 días y sus cifras todavía suben.");
+  });
+
+  it("si todas son de esta semana, que vuelva", () => {
+    expect(describirMetricas({ ...base, medidas: 6, comparadas: 0, madurando: 6 })).toBe("Las 6 publicaciones medidas son de hace menos de 5 días: sus cifras todavía suben. Vuelve en unos días.");
+  });
+
+  it("si ninguna salió de la aplicación, no se sabe qué notas se usaron", () => {
+    expect(describirMetricas(base)).toBe("Comparó 12 publicaciones entre sí; ninguna salió desde la aplicación, así que no se sabe qué notas se usaron para escribirlas.");
+  });
+
+  it("con señales dice cuántas, cuántas son nuevas y si movió la búsqueda", () => {
+    expect(describirMetricas({ ...base, senales: 4, senalesNuevas: 4, reforzadas: 3, sinPublicacion: 8 }))
+      .toBe("Comparó 12 publicaciones entre sí; 4 salieron desde la aplicación y quedaron apuntadas (4 nuevas); las notas usadas para escribir 3 de ellas subieron o bajaron en la búsqueda; 8 no salieron desde la aplicación y sólo sirvieron para comparar.");
+    expect(describirMetricas({ ...base, senales: 1, senalesNuevas: 0, reforzadas: 1 }))
+      .toBe("Comparó 12 publicaciones entre sí; 1 salió desde la aplicación y quedó apuntada; las notas usadas para escribir esa publicación subieron o bajaron en la búsqueda.");
+  });
+
+  it("si no se sabe qué notas se usaron, dice que la búsqueda no se movió", () => {
+    expect(describirMetricas({ ...base, senales: 2, senalesNuevas: 2, reforzadas: 0 })).toMatch(/la búsqueda no se movió\.$/);
+  });
+
+  it("y avisa de las que todavía maduran", () => {
+    expect(describirMetricas({ ...base, senales: 2, senalesNuevas: 2, reforzadas: 2, madurando: 3 })).toMatch(/3 publicaciones más son de hace menos de 5 días y sus cifras todavía suben\.$/);
   });
 });

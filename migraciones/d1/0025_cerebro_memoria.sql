@@ -14,7 +14,10 @@
 --                       los pesos.
 --   cerebro_usos        Qué notas del cerebro se le dieron a la IA al
 --                       escribir cada publicación. Sin esto no se sabe a
---                       qué nota atribuirle un sí o un no.
+--                       qué nota atribuirle un sí o un no. `texto` es lo
+--                       que la IA escribió (descripción y guion) la primera
+--                       vez que llegó: la línea base contra la que se mide
+--                       cuánto lo corrigió el equipo. `{}` = todavía nada.
 --   cerebro_memoria     Los pesos que se aprenden: cuánto sube o baja cada
 --                       nota en la búsqueda y qué pares de notas se
 --                       refuerzan (las sinapsis doradas del mapa). Un
@@ -57,6 +60,7 @@ create table if not exists cerebro_usos (
   client_id   text not null references clients(id) on delete cascade,
   post_id     text not null,
   rutas       text not null default '[]' check (json_valid(rutas)),
+  texto       text not null default '{}' check (json_valid(texto)),
   created_at  text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   updated_at  text not null default (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
