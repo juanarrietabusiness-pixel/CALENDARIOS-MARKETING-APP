@@ -24,6 +24,7 @@ import { normalizarHora } from "../../src/lib/horas.js";
 import { aprobadasSinProgramar, fechaHora } from "../../src/lib/cola.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 import { obtenerOCrearMes, moverDeMes, ErrorMes } from "./meses.js";
+import { DEFINICIONES_ESTUDIO, crearHerramientasEstudio, ErrorHerramientaEstudio } from "./estudio/herramientas.js";
 
 // Las columnas JSON de `clients`, como las devuelve la API (datos.js).
 const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe", "competidores"];
@@ -92,6 +93,13 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   { name: "crear_tarea", description: "Crea una tarea para un cliente (o una tarea rápida sin cliente).", inputSchema: { type: "object", properties: { ...clienteParam, titulo: { type: "string" }, fecha_limite: { type: "string", description: "AAAA-MM-DD" }, para_hoy: { type: "boolean" } }, required: ["titulo"] }, annotations: escribe() },
   { name: "completar_tarea", description: "Marca una tarea como hecha. El id sale de ver_tareas.", inputSchema: { type: "object", properties: { tarea_id: { type: "string" } }, required: ["tarea_id"] }, annotations: escribe() },
   { name: "anadir_idea", description: "Guarda una idea en el banco de ideas del cliente.", inputSchema: { type: "object", properties: { ...clienteParam, idea: { type: "string" }, formato: { type: "string", enum: FORMATOS }, descripcion: { type: "string" } }, required: ["cliente", "idea"] }, annotations: escribe() },
+  // El Estudio: las mismas tres herramientas que el asistente (worker/lib/estudio/herramientas.js). Aquí el cliente siempre se indica.
+  ...DEFINICIONES_ESTUDIO.map(({ name, description, input_schema: inputSchema }) => ({
+    name,
+    description,
+    inputSchema: { ...inputSchema, required: [...new Set([...(inputSchema.required ?? []), ...(name === "estado_trabajo" ? [] : ["cliente"])])] },
+    annotations: name === "crear_en_estudio" ? escribe() : soloLectura,
+  })),
 ]);
 
 /** Un error de lo pedido: vuelve a Claude como resultado con `isError`, no como fallo del servidor. */
@@ -347,10 +355,14 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       }
       return { content: [{ type: "text", text: `Herramienta desconocida: ${nombre}` }], isError: true };
     } catch (e) {
-      if (!(e instanceof ErrorHerramienta)) console.error("mcp:", nombre, e);
-      return { content: [{ type: "text", text: e instanceof ErrorHerramienta ? e.message : `No se pudo: ${e?.message ?? e}` }], isError: true };
+      const delPedido = e instanceof ErrorHerramienta || e instanceof ErrorHerramientaEstudio;
+      if (!delPedido) console.error("mcp:", nombre, e);
+      return { content: [{ type: "text", text: delPedido ? e.message : `No se pudo: ${e?.message ?? e}` }], isError: true };
     }
   }
+
+  const estudio = crearHerramientasEstudio({ env, acceso, resolverCliente, usuario, por, origen: "claude" });
+  Object.assign(acciones, estudio);
 
   return { llamar };
 }

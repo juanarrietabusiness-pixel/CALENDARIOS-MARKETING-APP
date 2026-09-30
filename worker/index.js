@@ -349,7 +349,7 @@ export default {
         return await rutaResumenChat(req, env, { acceso, metodo });
       }
       if (partes[0] === "ia" && partes[1] === "chat" && !partes[2] && metodo === "POST") {
-        return await rutaChat(req, env, { acceso, ctx });
+        return await rutaChat(req, env, { acceso, ctx, usuario });
       }
       // La generación del calendario, también después del acceso: el
       // modelo y el razonamiento salen de la configuración del espacio.

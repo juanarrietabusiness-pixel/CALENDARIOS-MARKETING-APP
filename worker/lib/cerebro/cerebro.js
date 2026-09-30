@@ -43,9 +43,12 @@ export const claveIndice = (clientId) => {
  *   texto   escribir lo que se PUBLICA (ideas, guiones, captions): sin notas
  *           internas y sin la capa de maquetación de Meta AI.
  *   piezas  pedirle las piezas a Meta AI: con la maquetación, sin internas.
+ *   imagen  crear una imagen o un video: la identidad visual (marca, maquetación), sin internas.
+ *           Un prompt de imagen sale hacia un proveedor externo y queda en la galería del cliente:
+ *           lo que el equipo se dice a sí mismo (costos, márgenes) no tiene nada que hacer ahí.
  *   chat    el equipo hablando con el asistente: todo.
  */
-export const USOS = Object.freeze(["texto", "piezas", "chat"]);
+export const USOS = Object.freeze(["texto", "piezas", "imagen", "chat"]);
 
 /** ¿Esta nota queda fuera de este uso? */
 export function fueraDeUso(meta, para) {

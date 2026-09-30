@@ -59,6 +59,7 @@ import { abrirFlujo, leerFlujo, esRechazoDeModelo, esRechazoDeWeb, mensajeDeRech
 import { prepararIA, registrarConsumo, MODELO_SONNET, etiquetaModelo } from "../lib/configIA.js";
 import { crearEjecutor, DEFINICIONES, HERRAMIENTAS_WEB, NOMBRES, describirUso } from "../lib/herramientasServidor.js";
 import { ahora, uuid } from "../lib/ids.js";
+import { firma } from "../lib/vivo.js";
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_TOKENS = 32_000;
@@ -74,6 +75,12 @@ const INSTRUCCION_SERVIDOR = `HERRAMIENTAS QUE TIENES ADEMÁS DE LAS DEL CALENDA
 · ver_resultados: cómo le fue en redes —seguidores, alcance, interacciones, las publicaciones que mejor
   funcionaron, el formato y la hora que rinden más, la competencia—. Míralo antes de proponer contenido
   y apóyate en lo que de verdad funciona.
+· ver_estudio, crear_en_estudio y estado_trabajo: el Estudio de imágenes y videos con IA del cliente.
+  Primero ver_estudio (modelos disponibles, guía visual de la marca, galería). Un video, varias variantes,
+  un modelo concreto o partir de imágenes de la galería se piden con crear_en_estudio: NO espera, queda
+  en la galería del cliente y tú dices el ID del pedido. Cuesta dinero: si la respuesta trae un costo y
+  dice que no se creó nada, díselo al usuario con la cifra y sólo con su «sí» repites con confirmado=true.
+  Para una imagen suelta que deba verse aquí mismo, sigue usando generar_imagen.
 Antes de decir que no tienes un dato, mira si alguna de estas herramientas lo trae.`;
 
 const NOMBRES_WEB = new Set(HERRAMIENTAS_WEB.map((h) => h.name));
@@ -98,7 +105,7 @@ function herramientasDelNavegador(tools) {
     .map(({ name, description, input_schema }) => ({ name, description, input_schema }));
 }
 
-export async function rutaChat(req, env, { acceso, ctx } = {}) {
+export async function rutaChat(req, env, { acceso, ctx, usuario = null } = {}) {
   const declarado = Number(req.headers.get("content-length") ?? 0);
   if (declarado > MAX_BODY_BYTES) return error("La petición es demasiado grande", 413);
 
@@ -115,7 +122,11 @@ export async function rutaChat(req, env, { acceso, ctx } = {}) {
   }
   const ia = await prepararIA(env, acceso, { para: "chat" });
   if (ia.bloqueo) return error(ia.bloqueo, 402);
-  const ejecutor = crearEjecutor({ env, acceso, clienteActual });
+  // Con la persona que firma, el asistente también sabe pedir al Estudio (y queda dicho quién lo pidió).
+  const ejecutor = crearEjecutor({
+    env, acceso, clienteActual,
+    estudio: usuario ? { usuario, por: firma(usuario, req), origen: "asistente" } : null,
+  });
 
   const cachear = body.seguido === true;
   const system = [{ type: "text", text: INSTRUCCION_SERVIDOR }];

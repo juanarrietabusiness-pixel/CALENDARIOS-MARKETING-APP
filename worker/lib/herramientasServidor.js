@@ -18,15 +18,22 @@
 //     documentos, lo que se le ha ido añadiendo), buscadas por pasajes.
 //     Es la herramienta que sustituye a volcar el ADN entero en el prompt.
 //
-// Son de LECTURA a propósito. Lo que escribe se queda en el navegador,
-// que es quien tiene el estado abierto y sabe no pisar lo que la
-// persona está editando.
+// Son de LECTURA a propósito. Lo que escribe en el calendario se queda en
+// el navegador, que es quien tiene el estado abierto y sabe no pisar lo
+// que la persona está editando.
+//
+// LA ÚNICA EXCEPCIÓN ES EL ESTUDIO (`estudio/herramientas.js`): pedir una
+// imagen o un video crea un pedido en la cola del Estudio, que no toca el
+// calendario abierto ni espera nada. Sólo existe si quien llama pasa
+// `estudio` (con la persona que firma): un ejecutor sin ella —el de las
+// consultas del MCP— no puede gastar.
 // ============================================================
 
 import { parseGitHubUrl, decodeRuta, decodificarBlob } from "../rutas/adn.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 import { buscar as buscarCerebro } from "./cerebro/cerebro.js";
 import { pack } from "./cerebro/memoria.js";
+import { DEFINICIONES_ESTUDIO, crearHerramientasEstudio } from "./estudio/herramientas.js";
 import {
   kpis, porFormato, mejoresMomentos, mejoresPublicaciones, resumenCompetencia, numeroCorto, DIAS_SEMANA, BLOQUES_HORA,
 } from "../../src/lib/resultados.js";
@@ -52,7 +59,7 @@ const clienteOpcional = {
   },
 };
 
-export const DEFINICIONES = Object.freeze([
+export const DEFINICIONES_DE_LECTURA = Object.freeze([
   {
     name: "listar_repositorio",
     description:
@@ -137,6 +144,9 @@ export const DEFINICIONES = Object.freeze([
   },
 ]);
 
+/** Todas las herramientas de servidor del asistente: las de lectura y las del Estudio. */
+export const DEFINICIONES = Object.freeze([...DEFINICIONES_DE_LECTURA, ...DEFINICIONES_ESTUDIO]);
+
 export const NOMBRES = new Set([...DEFINICIONES.map((d) => d.name), ...HERRAMIENTAS_WEB.map((d) => d.name)]);
 
 const normalizar = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
@@ -150,8 +160,12 @@ const JSON_SEGURO = (v, porDefecto) => {
  * El contexto de UNA petición: la capa de acceso, el cliente abierto (si
  * lo hay) y una caché del árbol de GitHub, que se pide una vez aunque el
  * modelo liste y lea varias veces seguidas.
+ *
+ * `estudio` = { usuario, por, origen }: con ella el ejecutor también sabe
+ * pedir al Estudio (ver_estudio, crear_en_estudio, estado_trabajo). Sin ella,
+ * no: esas herramientas gastan y necesitan saber quién firma.
  */
-export function crearEjecutor({ env, acceso, clienteActual = null }) {
+export function crearEjecutor({ env, acceso, clienteActual = null, estudio = null }) {
   const arboles = new Map();
   let clientes = null;
 
@@ -367,6 +381,8 @@ export function crearEjecutor({ env, acceso, clienteActual = null }) {
     return lineas.join("\n");
   };
 
+  if (estudio) Object.assign(acciones, crearHerramientasEstudio({ env, acceso, resolverCliente, ...estudio }));
+
   /** Ejecuta una herramienta y devuelve SIEMPRE un tool_result. */
   async function ejecutar(bloque) {
     const accion = acciones[bloque.name];
@@ -394,6 +410,9 @@ export function describirUso(nombre, entrada = {}) {
     case "ver_banco_ideas": return `Consultó el banco de ideas${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "buscar_cerebro": return `Buscó en el cerebro${entrada.cliente ? ` de ${entrada.cliente}` : ""}: «${entrada.consulta ?? ""}»`;
     case "ver_resultados": return `Consultó los resultados${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
+    case "ver_estudio": return `Miró el Estudio${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
+    case "crear_en_estudio": return `Pidió al Estudio ${entrada.tipo === "video" ? "un video" : "una imagen"}: «${String(entrada.prompt ?? "").slice(0, 80)}»`;
+    case "estado_trabajo": return "Miró cómo va un pedido del Estudio";
     default: return nombre;
   }
 }
