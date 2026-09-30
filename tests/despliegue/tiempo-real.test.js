@@ -24,7 +24,10 @@ const VIVO_CLIENTE = leer("src/lib/vivo.js");
 const DATOS = leer("worker/rutas/datos.js");
 const EQUIPO = leer("worker/rutas/equipo.js");
 const INDEX = leer("worker/index.js");
-const FUENTES_WORKER = [DATOS, EQUIPO, INDEX, HUB].join("\n");
+// Del Estudio sólo cuentan las llamadas a difundir(): tiene columnas que también se llaman `tipo` («imagen»), y no son eventos.
+const soloDifusiones = (texto) => (texto.match(/difundir\([^;]*;/g) ?? []).join("\n");
+const ESTUDIO = [leer("worker/rutas/estudio.js"), leer("worker/lib/estudio/trabajos.js")].map(soloDifusiones).join("\n");
+const FUENTES_WORKER = [DATOS, EQUIPO, INDEX, HUB, ESTUDIO].join("\n");
 
 /** Los `tipo: "x"` que el servidor puede llegar a mandar. */
 function tiposQueEmiteElServidor() {

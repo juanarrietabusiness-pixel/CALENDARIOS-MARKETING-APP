@@ -1,6 +1,6 @@
 # El Estudio y Meta como proveedor de IA
 
-Estado a 2026-09-30: **plan, nada implementado.** Se investigó Agents Office
+Estado a 2026-09-30: **plan, con el Estudio de imágenes ya implementado** (entregas A0, A1 y la pestaña de B: motor «prueba» y Gemini, trabajos por pasos, galería, visor, carpetas y papelera; ver `worker/lib/estudio/` y `src/components/Estudio.jsx`). **Pendiente:** los botones dentro del panel de la publicación, video (C), herramientas del chat y del MCP (D), Higgsfield (E), fal.ai, y toda la parte de Meta. Se investigó Agents Office
 (`media.mjs`, `estudio-mcp.mjs`, `src/studio.js`), la app (`worker/rutas/imagen.js`,
 `video.js`, `lib/anthropic.js`, `lib/configIA.js`, el cron) y lo publicado sobre Meta.
 Lo que **no** se pudo comprobar está marcado como tal: hace falta la llave de Meta.

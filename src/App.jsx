@@ -61,6 +61,7 @@ const TaskPanel = lazy(() => import("./components/TaskPanel"));
 const PestanaContenido = lazy(() => import("./components/PestanaContenido"));
 const FichaCliente = lazy(() => import("./components/FichaCliente"));
 const Cerebro = lazy(() => import("./components/Cerebro"));
+const Estudio = lazy(() => import("./components/Estudio"));
 const Buscador = lazy(() => import("./components/Buscador"));
 const SubirRapido = lazy(() => import("./components/SubirRapido"));
 
@@ -75,6 +76,7 @@ const PESTANAS = [
   ["contenido", "Contenido", "cloud"],
   ["ideas", "Ideas", "bulb"],
   ["resultados", "Resultados", "chart"],
+  ["estudio", "Estudio", "imageAi"],
   ["cerebro", "Cerebro", "brain"],
   ["ficha", "Ficha", "building"],
 ];
@@ -547,6 +549,8 @@ function Workspace({ session, ruta }) {
         // La bandeja de avisos y el hilo interno: la campana y el panel
         // se releen solos con el pulso.
         case "avisos":
+        // El Estudio: un trabajo avanzó o la galería cambió. La pestaña se relee sola con el pulso.
+        case "estudio":
         case "nota":
         case "miembro":
         case "miembro:fuera":
@@ -1397,6 +1401,8 @@ function Workspace({ session, ruta }) {
                 {pestana === "resultados" && (
                   <Resultados client={client} pulso={pulso} onPersistClient={persistClient} />
                 )}
+
+                {pestana === "estudio" && <Estudio key={client.id} client={client} pulso={pulso} />}
 
                 {pestana === "cerebro" && <Cerebro client={client} />}
 

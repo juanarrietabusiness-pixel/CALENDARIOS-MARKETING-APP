@@ -74,6 +74,11 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "cerebro_usos",
   "cerebro_memoria",
   "cerebro_propuestas",
+  // El Estudio: lo que se pide (trabajos), lo que sale (archivos) y sus
+  // etiquetas (carpetas). Worker/lib/estudio/.
+  "estudio_trabajos",
+  "estudio_archivos",
+  "estudio_carpetas",
   // Del equipo. Tienen dueño como las demás: la lista de miembros de un
   // espacio es un dato del espacio, y pedirla sin acotar devolvería la
   // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué
@@ -105,6 +110,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "consumo_ia", "cuentas_sociales", "image_references", "image_templates", "informes", "auditorias",
   "metricas_competencia", "metricas_cuenta", "metricas_publicacion", "publicaciones_programadas",
   "cerebro_notas", "cerebro_senales", "cerebro_usos", "cerebro_memoria", "cerebro_propuestas",
+  "estudio_trabajos", "estudio_archivos", "estudio_carpetas",
 ]);
 
 /** Las que cuelgan de un calendario sin llevar el cliente: se acotan por el calendario. */
@@ -480,6 +486,27 @@ export async function clientesSinInforme(db, mes, limite = 1) {
         limit ?`,
     )
     .bind(mes, limite)
+    .all();
+  return results ?? [];
+}
+
+/**
+ * Los trabajos del Estudio que alguien tiene que seguir avanzando, de
+ * TODOS los espacios: los que nadie está mirando (cerró la pestaña). Igual
+ * que `colaPendiente`: sólo ids y dueño; cada uno se avanza después con
+ * `crearAcceso(db, owner_id)`. `antesDe` deja pasar a quien sí lo está
+ * mirando: el navegador avanza cada pocos segundos y el cron no debe
+ * pisarle el paso.
+ */
+export async function estudioPendiente(db, ahoraISO, antesDe, limite = 1) {
+  const { results } = await db
+    .prepare(
+      `select id, owner_id, client_id from estudio_trabajos
+        where estado in ('en_cola','en_marcha') and updated_at <= ? and bloqueado_hasta <= ?
+        order by updated_at asc
+        limit ?`,
+    )
+    .bind(antesDe, ahoraISO, limite)
     .all();
   return results ?? [];
 }
