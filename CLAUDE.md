@@ -1566,6 +1566,9 @@ son del servidor.
 
 ## Documentos relacionados
 
+- `docs/propuesta-estudio-y-meta.md` — plan (sin implementar) para portar el Estudio de
+  Agents Office —imagen y video por trabajos, por cliente— y para tener Meta (Muse Spark) como
+  proveedor de la IA de texto. Con las decisiones que esperan respuesta.
 - `DEPLOY.md` — puesta en producción en Cloudflare: Worker, D1, R2 y el corte.
 - `docs/auditoria-ux-ui.md` — auditoría de UX, UI, responsive y accesibilidad,
   con lo corregido y lo pendiente.
