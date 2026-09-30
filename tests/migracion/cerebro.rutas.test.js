@@ -104,6 +104,19 @@ describe("crear, leer, editar y borrar notas", () => {
     expect(lista.notas).toHaveLength(1);
   });
 
+  it("una nota nueva nace SIN tocar (las dos fechas iguales) y corregirla, aunque sea en el mismo milisegundo, la deja tocada", async () => {
+    const a = await (await poner(JEFE, "c1", nota("Tono", "Cercano, de tú."))).json();
+    expect(a.actualizada).toBe(a.creada);
+    // Sin esperar: en el mismo milisegundo en que se creó. «Editada a mano» se sabe por las fechas, y de ello depende
+    // que una nueva importación, la pasada de IA y las notas automáticas no la pisen.
+    const b = await (await poner(JEFE, "c1", { ...nota("Tono", "Cercano, de tú, y sin emojis."), id: a.id })).json();
+    expect(b.creada).toBe(a.creada);
+    expect(Date.parse(b.actualizada)).toBeGreaterThan(Date.parse(a.creada));
+    const fila = db.sqlite.prepare("select created_at, updated_at from cerebro_notas where id = ?").get(a.id);
+    expect(fila.updated_at).toBe(b.actualizada);
+    expect(fila.updated_at > fila.created_at).toBe(true);
+  });
+
   it("borrar quita la nota y su rastro del índice", async () => {
     const a = await (await poner(JEFE, "c1", nota("Garantía", "Dos años en toda la mueblería."))).json();
     const antes = await (await pedir(JEFE, "/api/cerebro/c1/buscar?q=garantía mueblería")).json();

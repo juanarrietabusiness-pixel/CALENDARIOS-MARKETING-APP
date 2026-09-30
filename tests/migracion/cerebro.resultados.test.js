@@ -319,6 +319,9 @@ describe("aprender de lo que el equipo corrigió", () => {
 
   it("si se le pide texto otra vez y llega uno nuevo, es la IA regenerando: la base cambia y no cuenta como corrección", async () => {
     await generar("p1", CON_EMOJIS);
+    // «Se le pidió DESPUÉS de la base» se sabe por los milisegundos: entre una generación y otra pasan segundos, pero
+    // el test las hace seguidas y a veces caían en el mismo.
+    await new Promise((r) => setTimeout(r, 5));
     await generar("p1", OTRO, "garantía estructura");
     expect(usoDe("p1").texto.descripcion).toBe(OTRO);
     expect(senales("c1", "correccion")).toEqual([]);

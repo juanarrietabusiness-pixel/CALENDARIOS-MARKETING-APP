@@ -125,11 +125,23 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
       fuente_sha: previa?.fuente_sha ?? "",
       created_at: previa?.created_at ?? t, updated_at: t,
     };
-    // Una nota NUEVA entra con `insertar`, que respeta las dos fechas: iguales, y así consta que nadie la ha tocado.
-    // `guardar` pone `updated_at` al día por su cuenta —un milisegundo después— y una nota sin editar parecía editada.
-    // Lo que devuelve `guardar` es lo que quedó en D1: su `updated_at` NO es `t`, y es con ese con el que el índice
-    // comprueba después que sigue diciendo lo mismo que las notas.
-    const guardada = previa ? await acceso.guardar("cerebro_notas", fila) : await acceso.insertar("cerebro_notas", fila);
+    // Que una nota está «editada a mano» se sabe porque su `updated_at` ya no es su `created_at` (importar.js, preparar.js
+    // y las notas automáticas lo miran para no pisarla). Por eso:
+    //   · una nota NUEVA entra con `insertar`, que respeta las dos fechas, iguales: con `guardar`, `updated_at` salía un
+    //     milisegundo después y una nota sin tocar parecía editada;
+    //   · una EDICIÓN queda siempre ESTRICTAMENTE después de la creación, aunque caiga en el mismo milisegundo: sin eso,
+    //     corregir una nota recién escrita la dejaba «sin tocar» y la siguiente importación la pisaba. Se escribe con
+    //     `actualizar`, que no vuelve a fechar (`guardar` sí).
+    // Lo que se indexa es lo que quedó en D1: por eso `guardada` lleva la fecha que se escribió, no `t`.
+    let guardada;
+    if (previa) {
+      const editada = new Date(Math.max(Date.now(), Date.parse(previa.created_at) + 1)).toJSON();
+      const { id: _id, client_id: _cliente, created_at: _creada, ...cambios } = { ...fila, updated_at: editada };
+      await acceso.actualizar("cerebro_notas", { id: previa.id, client_id: clienteId }, cambios);
+      guardada = { ...fila, updated_at: editada };
+    } else {
+      guardada = await acceso.insertar("cerebro_notas", fila);
+    }
     await actualizarIndice(env, acceso, clienteId, ruta, guardada);
     return json(publica(guardada, { conTexto: true }), previa ? 200 : 201);
   }
