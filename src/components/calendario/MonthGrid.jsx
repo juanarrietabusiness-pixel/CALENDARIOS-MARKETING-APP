@@ -7,7 +7,6 @@
 // acababa siempre en puntos suspensivos—. Ver `.cal-post` en index.css.
 // ============================================================
 
-import { porProducir } from "../../lib/aprobacion";
 import { useState } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES } from "../../constants";
 import { fmtDate } from "../../utils";
@@ -15,6 +14,7 @@ import { completitud, resumenCompletitud } from "../../lib/completitud";
 import Icon from "../Icon";
 import { fmt12h } from "./formato";
 import { resumenCola } from "../../lib/cola";
+import { estadoDelChip, miniaturaDe, ESTADOS_CHIP } from "../../lib/estadoChip";
 
 /**
  * `vecinos`: los días de los meses de al lado que asoman en la rejilla
@@ -50,6 +50,7 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
   const FULL_DOW = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 
   return (
+    <>
     <div className="cal-grid">
       {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((n, i) => {
         const label = (dayLabels || {})[i] || "";
@@ -129,17 +130,18 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
             {(dd?.posts || []).map((post) => {
               const f = FORMATS[post.format] || FORMATS.post;
               const st = STATUSES[post.status || "pending"];
-              const isPublished = post.status === "published";
-              // Sin categorías: el chip se colorea por formato y estado, que es
-              // lo que se mira. El campo sigue en los datos viejos, sin enseñarse.
+              // Sin categorías: el chip se colorea por formato, y el estado lo
+              // dice su icono. El campo sigue en los datos viejos, sin enseñarse.
               const briefIdea = (post.title || post.idea || "").split(/[.\n]/)[0].slice(0, 24);
               const chipLabel = post.title || briefIdea || f.label;
-              // Cuánto le falta a esta publicación. Va en la barra de abajo
-              // y, en palabras, en el nombre accesible y en el `title`: un
-              // color no se lee con lector de pantalla.
-              const avance = completitud(post, dd);
-              const resumen = resumenCompletitud(post, dd);
               const enCola = resumenCola(cola, post.id);
+              const estado = estadoDelChip(post, enCola);
+              const { etiqueta: textoEstado, icono: iconoEstado } = ESTADOS_CHIP[estado];
+              // Con contenido subido, su miniatura; sin él es una idea: borde
+              // punteado y la barrita de lo que le falta, que ahí sí dice algo.
+              const mini = miniaturaDe(post);
+              const avance = mini ? null : completitud(post, dd);
+              const resumen = resumenCompletitud(post, dd);
               const lleva = post.responsableId ? miembros.find((m) => m.userId === post.responsableId) : null;
               return (
                 <button
@@ -147,40 +149,36 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
                   type="button"
                   draggable={!vecina}
                   data-vecina={vecina ? true : undefined}
-                  title={resumen}
-                  className={`cal-post${isPublished ? " is-published" : ""}`}
-                  aria-label={`${vecina ? "Del mes de al lado. " : ""}${f.label}${briefIdea ? `: ${briefIdea}` : ""} — ${porProducir(post) ? "Idea aprobada, por producir" : st.label}${post.publishTime ? `, ${fmt12h(post.publishTime)}` : ""}${enCola ? `. ${enCola.texto}` : ""}${lleva ? `. Lo lleva ${lleva.nombre}` : ""}. ${resumen}`}
+                  data-estado={estado}
+                  data-idea={mini ? undefined : true}
+                  title={`${textoEstado}. ${resumen}`}
+                  className={`cal-post${mini ? " con-mini" : ""}`}
+                  aria-label={`${vecina ? "Del mes de al lado. " : ""}${f.label}${briefIdea ? `: ${briefIdea}` : ""} — ${estado === "programada" && enCola ? enCola.texto : textoEstado}${mini ? ", con contenido" : ", sin contenido todavía"}${post.publishTime ? `, ${fmt12h(post.publishTime)}` : ""}${lleva ? `. Lo lleva ${lleva.nombre}` : ""}. ${resumen}`}
                   onDragStart={(e) => { if (vecina) return; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", JSON.stringify({ postId: post.id, sourceDate: date })); setDrag({ postId: post.id, sourceDate: date }); }}
                   onDragEnd={() => { setDrag(null); setDropTarget(null); }}
                   onClick={() => (vecina ? onVecina?.(vecina.cal, post) : onPostClick(post, dd))}
-                  style={{
-                    background: isPublished ? st.bg : f.color + "22",
-                    borderColor: isPublished ? st.border : st.border + "88",
-                    borderWidth: isPublished ? 2 : 1,
-                    color: isPublished ? st.text : f.color,
-                  }}
+                  style={{ background: f.color + "22", borderColor: st.border, color: f.color }}
                 >
-                  {/* Idea aprobada: un punto hueco, porque falta la pieza. */}
                   {/* Quién la lleva: una franja con su color (el nombre va en la etiqueta accesible). */}
                   {lleva && <span className="cal-post-quien" style={{ background: lleva.color }} aria-hidden="true" />}
-                  <span className={`cal-post-dot${porProducir(post) ? " es-idea" : ""}`} style={{ background: porProducir(post) ? "transparent" : st.text, borderColor: st.text }} aria-hidden="true" />
+                  {mini && (
+                    <span className="cal-post-mini" aria-hidden="true">
+                      {mini.src ? <img src={mini.src} alt="" loading="lazy" decoding="async" /> : <Icon name="play" size={14} />}
+                    </span>
+                  )}
                   <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={13} />
-                  {enCola && (
-                    <span className="cal-post-cola" data-estado={enCola.estado} aria-hidden="true">
-                      <Icon name={enCola.icono} size={11} />
+                  {iconoEstado && (
+                    <span className="cal-post-estado" data-estado={estado} aria-hidden="true">
+                      <Icon name={iconoEstado} size={12} />
                     </span>
                   )}
                   <span className="cal-post-label" aria-hidden="true">{chipLabel}</span>
                   {post.publishTime && <span className="cal-post-time" aria-hidden="true">{fmt12h(post.publishTime)}</span>}
-                  {/* La pista se dibuja siempre, aunque esté a cero: si sólo
-                      apareciera al haber algo escrito, un chip sin barra se
-                      leería como «este formato no la lleva». */}
-                  <span className="cal-post-avance" aria-hidden="true">
-                    <span
-                      className={`cal-post-avance-fill${avance.porcentaje === 100 ? " is-full" : ""}`}
-                      style={{ width: `${avance.porcentaje}%` }}
-                    />
-                  </span>
+                  {avance && (
+                    <span className="cal-post-avance" aria-hidden="true">
+                      <span className={`cal-post-avance-fill${avance.porcentaje === 100 ? " is-full" : ""}`} style={{ width: `${avance.porcentaje}%` }} />
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -198,6 +196,24 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
         );
       })}
     </div>
+    <LeyendaMes />
+    </>
   );
 }
 
+/** Qué significa cada marca del chip. Plegada: se aprende una vez. */
+function LeyendaMes() {
+  return (
+    <details className="cal-leyenda">
+      <summary>¿Qué significa cada marca?</summary>
+      <ul>
+        <li><span className="cal-leyenda-mini" aria-hidden="true" /> Con miniatura: tiene su imagen o video subido</li>
+        <li><span className="cal-leyenda-idea" aria-hidden="true" /> Borde punteado: es una idea, aún sin contenido (la barra dice cuánto le falta)</li>
+        {Object.entries(ESTADOS_CHIP).filter(([, e]) => e.icono).map(([k, e]) => (
+          <li key={k}><span className="cal-post-estado" data-estado={k} aria-hidden="true"><Icon name={e.icono} size={12} /></span> {e.etiqueta}</li>
+        ))}
+        <li><span className="cal-leyenda-vacio" aria-hidden="true" /> Sin icono: pendiente de aprobar</li>
+      </ul>
+    </details>
+  );
+}

@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
+import { redesDe } from "./publicacion.js";
 import {
   formatoDeMedios, redesPorDefecto, rellenarDesdeContenido, ponerEnDia, moverEnCalendario, tieneContenido,
-  queSaleEn, resumenDestino, publicacionVacia,
+  queSaleEn, resumenDestino, publicacionVacia, deIdeaAPublicacion,
 } from "./subir.js";
 
 const img = (n) => ({ src: `/api/media/clientes/c/${n}.jpg`, tipo: "imagen" });
@@ -15,10 +16,23 @@ describe("subir contenido", () => {
     expect(formatoDeMedios([vid])).toBe("reel");
   });
 
-  it("las redes, las que el cliente tiene", () => {
-    expect(redesPorDefecto(["facebook", "instagram", "tiktok"])).toEqual(["instagram", "facebook"]);
-    expect(redesPorDefecto(["tiktok"])).toEqual(["tiktok"]);
-    expect(redesPorDefecto([])).toEqual(["instagram"]);
+  it("las redes: TODAS las que el cliente tiene y pueden llevarla", () => {
+    const reel = { format: "reel", medios: [vid] };
+    expect(redesPorDefecto(["facebook", "instagram", "tiktok"], reel)).toEqual(["instagram", "facebook", "tiktok"]);
+    // Una imagen no sale en TikTok: no se marca sola.
+    expect(redesPorDefecto(["facebook", "instagram", "tiktok"], { format: "post", medios: [img(1)] })).toEqual(["instagram", "facebook"]);
+    // Un reel aún sin archivo sí: lo tendrá.
+    expect(redesPorDefecto(["instagram", "tiktok"], { format: "reel" })).toEqual(["instagram", "tiktok"]);
+    // Ni historias ni directos en las redes de video.
+    expect(redesPorDefecto(["instagram", "tiktok"], { format: "historia", medios: [vid] })).toEqual(["instagram"]);
+    expect(redesPorDefecto(["tiktok"], reel)).toEqual(["tiktok"]);
+    expect(redesPorDefecto([], reel)).toEqual(["instagram"]);
+  });
+
+  it("lo elegido gana sobre lo de por defecto", () => {
+    expect(redesDe({ redes: ["facebook"] }, ["instagram", "facebook"])).toEqual(["facebook"]);
+    expect(redesDe({ redes: [] }, ["instagram", "facebook"])).toEqual(["instagram", "facebook"]);
+    expect(redesDe({}, [])).toEqual(["instagram"]);
   });
 
   it("la IA rellena lo vacío y no pisa lo escrito", () => {
@@ -78,5 +92,16 @@ describe("subir contenido", () => {
     expect(publicacionVacia({ idea: "Latte de otoño" })).toBe(false);
     expect(publicacionVacia({ medios: [img(1)] })).toBe(false);
     expect(publicacionVacia({ comment: "  " })).toBe(true);
+  });
+
+  it("una idea del banco entra pendiente, con id nuevo y sin sus marcas", () => {
+    const idea = { id: "banco-1", idea: "Visita de obra", format: "reel", status: "approved", _originDate: "2026-10-01", _originCal: "c", _addedAt: "x" };
+    const post = deIdeaAPublicacion(idea, "nuevo");
+    expect(post).toEqual({ id: "nuevo", idea: "Visita de obra", format: "reel", status: "pending" });
+    expect(idea._originDate).toBe("2026-10-01"); // no toca la idea del banco
+    // Y entra aunque el día no exista todavía en el mes (el mes sin cajón no tiene días).
+    const cal = ponerEnDia({ days: [] }, "2026-11-12", post);
+    expect(cal.days).toHaveLength(1);
+    expect(cal.days[0].posts[0].id).toBe("nuevo");
   });
 });

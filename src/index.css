@@ -1054,10 +1054,10 @@ input[type="radio"] {
      de temporada alta» se quedaba en «Promoción de…» incluso con dos
      líneas. Abajo, con el ancho entero, cabe el doble. */
   display: grid;
-  grid-template-columns: auto auto auto 1fr;
+  grid-template-columns: auto auto 1fr;
   grid-template-areas:
-    "dot icon cola hora"
-    "texto texto texto texto";
+    "icon estado hora"
+    "texto texto texto";
   align-items: center;
   gap: 2px var(--sp-1);
   min-height: var(--tap-sm);
@@ -1065,17 +1065,55 @@ input[type="radio"] {
   width: 100%;
   border: 1px solid;
 }
-.cal-post > .cal-post-dot { grid-area: dot; }
 .cal-post > svg { grid-area: icon; }
 .cal-post-label { grid-area: texto; }
 .cal-post-time { grid-area: hora; justify-self: end; }
-.cal-post-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.cal-post-dot.es-idea { border: 1.5px solid; width: 7px; height: 7px; }
 .cal-post-quien { position: absolute; left: 0; top: 0; bottom: 0; width: 3px; }
-/* En la cola de publicación: reloj, visto o alerta. */
-.cal-post-cola { grid-area: cola; display: inline-flex; }
-.cal-post-cola[data-estado="error"], .badge-cola[data-estado="error"] { color: var(--danger); }
-.cal-post-cola[data-estado="publicada"], .badge-cola[data-estado="publicada"] { color: var(--success); }
+/* Con contenido subido, su miniatura a la izquierda, en las dos filas: es
+   lo que deja ver de un vistazo qué tiene pieza y qué es sólo una idea. */
+.cal-post.con-mini {
+  grid-template-columns: 30px auto auto 1fr;
+  grid-template-areas:
+    "mini icon estado hora"
+    "mini texto texto texto";
+}
+.cal-post-mini {
+  grid-area: mini;
+  align-self: start;
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-3);
+  color: var(--text-dim);
+}
+.cal-post-mini img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* Sin contenido es una idea: borde punteado. */
+.cal-post[data-idea] { border-style: dashed; }
+/* UN icono de estado (lib/estadoChip.js), en una pastilla de su color. */
+.cal-post-estado {
+  grid-area: estado;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  color: var(--bg);
+}
+.cal-post-estado[data-estado="fallo"] { background: var(--danger); }
+.cal-post-estado[data-estado="publicada"] { background: var(--purple); }
+.cal-post-estado[data-estado="programada"] { background: var(--accent); }
+.cal-post-estado[data-estado="cambios"] { background: var(--accent-alt); }
+.cal-post-estado[data-estado="aprobada"] { background: var(--success); }
+.cal-post-estado[data-estado="idea-aprobada"] { background: transparent; color: var(--success); box-shadow: inset 0 0 0 1.5px var(--success); }
+.cal-post[data-estado="publicada"] { opacity: .8; }
+.cal-post[data-estado="fallo"] { box-shadow: inset 0 0 0 1px var(--danger); }
+.badge-cola[data-estado="error"] { color: var(--danger); }
+.badge-cola[data-estado="publicada"] { color: var(--success); }
 .badge-cola { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); }
 
 /* Barra de contenido completado.
@@ -1114,8 +1152,17 @@ input[type="radio"] {
   overflow-wrap: anywhere;
 }
 .cal-post-time { font-size: var(--fs-3xs); opacity: .85; white-space: nowrap; }
-.cal-post.has-cat .cal-post-label { font-weight: 600; }
-.cal-post.is-published { opacity: .75; text-decoration: line-through; }
+
+/* La leyenda del mes, plegada debajo de la rejilla. */
+.cal-leyenda { margin-top: var(--sp-2); font-size: var(--fs-2xs); color: var(--text-dim); }
+.cal-leyenda summary { cursor: pointer; min-height: var(--tap-sm); display: inline-flex; align-items: center; }
+.cal-leyenda ul { list-style: none; margin: var(--sp-1) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); }
+.cal-leyenda li { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.cal-leyenda .cal-post-estado { flex: none; }
+.cal-leyenda-mini, .cal-leyenda-idea, .cal-leyenda-vacio { flex: none; width: 16px; height: 16px; border-radius: 4px; }
+.cal-leyenda-mini { background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%); }
+.cal-leyenda-idea { border: 1.5px dashed var(--text-dim); }
+.cal-leyenda-vacio { border: 1px solid var(--border); border-radius: 50%; }
 
 .cal-add {
   width: 100%;
@@ -1132,74 +1179,63 @@ input[type="radio"] {
 }
 .cal-add:hover { background: var(--accent-soft); color: var(--accent); }
 
-/* Selector de hora digital */
-.time-picker-btn { font-family: inherit; }
-.time-picker-drop {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: var(--z-desplegable);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--sp-3);
-  box-shadow: var(--elev-2);
-  min-width: 220px;
-  margin-top: var(--sp-1);
-}
-.time-picker-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--sp-1);
-}
-.time-picker-arrow {
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
-  color: var(--text-dim);
-  cursor: pointer;
-  padding: var(--sp-1);
-  min-width: var(--tap-sm);
-  min-height: var(--tap-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background .15s, border-color .15s;
-}
-.time-picker-arrow:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
-.time-picker-digit {
-  font-size: var(--fs-xl);
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  color: var(--accent);
-  min-width: 52px;
-  text-align: center;
-  line-height: 1;
-  padding: var(--sp-1) 0;
-}
-.time-picker-sep {
-  font-size: var(--fs-xl);
-  font-weight: 800;
-  color: var(--accent);
-  line-height: 1;
-  padding-top: 2px;
-}
-.time-picker-preset {
+/* La hora: se toca y se escribe (TimePicker, en calendario/primitivas.jsx).
+   Nada flota: todo cabe en el ancho de su columna. */
+.campo-hora { display: grid; gap: var(--sp-2); min-width: 0; max-width: 100%; }
+.campo-hora-fila { display: flex; flex-wrap: wrap; align-items: stretch; gap: var(--sp-2); min-width: 0; }
+.campo-hora-caja {
+  display: flex; align-items: center; gap: var(--sp-2);
+  padding: 0 var(--sp-3);
+  min-height: var(--tap);
   background: var(--bg);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   color: var(--text-dim);
-  cursor: pointer;
-  font-size: var(--fs-2xs);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  padding: var(--sp-1);
-  min-height: 28px;
-  transition: background .15s, border-color .15s;
+  flex: 0 1 auto;
+  min-width: 0;
 }
-.time-picker-preset:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
-.time-picker-preset.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.campo-hora-caja:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.campo-hora-caja.es-malo { border-color: var(--danger); }
+.campo-hora-input {
+  width: 6.5ch;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  padding: 0;
+}
+.campo-hora-periodo {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  flex: none;
+}
+.campo-hora-periodo button {
+  min-width: 56px;
+  min-height: var(--tap);
+  border: 0;
+  background: var(--bg);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.campo-hora-periodo button + button { border-left: 1px solid var(--border); }
+.campo-hora-periodo button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.campo-hora-atajos { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.campo-hora-atajos .filter-chip { min-height: var(--tap-sm); font-variant-numeric: tabular-nums; }
+.campo-hora-error { margin: 0; color: var(--danger); font-size: var(--fs-2xs); }
+@media (max-width: 599px) {
+  /* 16 px: por debajo, iOS Safari hace zoom al enfocar. */
+  .campo-hora-input { font-size: 16px; }
+}
 
 /* En pantallas estrechas una celda mide ~46px: el texto de la idea
    es ilegible, así que aquí la etiqueta va a UNA línea y la hora se cae.
@@ -1223,7 +1259,12 @@ input[type="radio"] {
     border-block: 1px solid var(--border-light);
   }
   .cal-header-cell { border: none; border-radius: 0; padding: var(--sp-1) 0; }
-  .cal-cell { min-height: 92px; padding: 2px; border: none; border-radius: 0; }
+  /* Cada semana mide lo mismo y el mes llena la pantalla: con 92 px fijos
+     y filas que crecían con su chip más alto, el mes quedaba como una
+     franja irregular arrinconada abajo («pequeño y estirado»). Seis filas
+     caben en lo que deja la cabecera y la barra de abajo; el mínimo de
+     92 px se queda para los teléfonos bajos. */
+  .cal-cell { min-height: max(92px, calc((100dvh - 150px - var(--safe-bottom)) / 6)); padding: 2px; border: none; border-radius: 0; }
   .cal-cell.outside { background: var(--bg); }
   .cal-cell.today { box-shadow: inset 0 0 0 2px var(--accent); }
   .cal-daynum { text-align: center; }
@@ -1245,6 +1286,22 @@ input[type="radio"] {
     min-height: 32px;
   }
   .cal-post-time { display: none; }
+  /* En el teléfono la celda mide ~46 px: la miniatura va arriba, a lo ancho. */
+  .cal-post.con-mini {
+    grid-template-columns: auto auto 1fr;
+    grid-template-areas:
+      "mini mini mini"
+      "icon estado hora"
+      "texto texto texto";
+  }
+  .cal-post-mini { width: 100%; height: 28px; }
+  .cal-post-estado { width: 14px; height: 14px; }
+  /* Encima del mes, lo justo: las dos acciones grandes a media altura, para
+     que la rejilla empiece en la primera pantalla. */
+  .cal-vista-mes .toolbar .btn-accent,
+  .cal-vista-mes .toolbar .btn-primary { min-height: var(--tap); padding-block: var(--sp-2); font-size: var(--fs-sm); }
+  .cal-vista-mes .filters-panel { margin-bottom: var(--sp-2); }
+  .cal-vista-mes .filters-summary { padding-block: var(--sp-2); }
   .cal-header-idea { display: none; }
   .cal-header-label { display: none; }
   .cal-header-input { display: none; }

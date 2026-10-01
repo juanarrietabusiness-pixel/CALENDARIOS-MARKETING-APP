@@ -38,3 +38,19 @@ export function tamanoLegible(bytes) {
 
 /** El enlace para abrir una carpeta en Drive. */
 export const enlaceCarpeta = (id) => `https://drive.google.com/drive/folders/${encodeURIComponent(id)}`;
+
+/**
+ * Qué archivos de una publicación hay que copiar en Drive al programarla:
+ * los suyos y los de su historia que viven en la aplicación (subidos desde
+ * el equipo, del Estudio o generados con IA). Lo que vino de Drive
+ * (`clientes/<id>/drive/…`) ya está allí, y lo ya copiado (`copiasDrive`)
+ * no se copia dos veces.
+ */
+export function mediosParaCopiar(post) {
+  const lista = [...(Array.isArray(post?.medios) ? post.medios : []), ...(Array.isArray(post?.historias) ? post.historias : [])]
+    .map((m) => (typeof m === "string" ? m : m?.src))
+    .filter((src) => typeof src === "string" && src.startsWith("/api/media/clientes/"));
+  if (!lista.length && typeof post?.image === "string" && post.image.startsWith("/api/media/clientes/")) lista.push(post.image);
+  const hechas = new Set(Object.keys(post?.copiasDrive ?? {}));
+  return [...new Set(lista)].filter((src) => !/^\/api\/media\/clientes\/[^/]+\/drive\//.test(src) && !hechas.has(src));
+}

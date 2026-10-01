@@ -76,7 +76,10 @@ describe("revisar lo aprobado antes de programarlo", () => {
   const ahora = Date.parse("2026-10-05T12:00:00Z");
   it("lista si tiene lo que pide la red y su hora no pasó", () => {
     const [r] = revisarAprobadas([{ post: post(), fecha: "2026-10-06" }], ["instagram", "facebook"], ahora);
-    expect(r).toMatchObject({ lista: true, redes: ["instagram"], errores: [] });
+    // Sin redes elegidas: todas las del cliente, no sólo Instagram.
+    expect(r).toMatchObject({ lista: true, redes: ["instagram", "facebook"], errores: [] });
+    const [elegida] = revisarAprobadas([{ post: post({ redes: ["instagram"] }), fecha: "2026-10-06" }], ["instagram", "facebook"], ahora);
+    expect(elegida.redes).toEqual(["instagram"]);
   });
   it("sin medios, con la hora pasada o sin cuenta: no, y dice por qué", () => {
     const [a, b, c] = revisarAprobadas([

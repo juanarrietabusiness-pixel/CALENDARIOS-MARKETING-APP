@@ -9,6 +9,7 @@ import logoMark from "./assets/logo-mark.png";
 import CalendarView from "./components/CalendarView";
 import NavegadorMes from "./components/calendario/navegadorMes";
 import { diasVecinos } from "./lib/meses";
+import { ponerEnDia, deIdeaAPublicacion } from "./lib/subir";
 import QuickTasksPanel from "./components/QuickTasksPanel";
 import ResumenCliente from "./components/ResumenCliente";
 import NavPrincipal from "./components/NavPrincipal";
@@ -30,7 +31,7 @@ import { resumenCalendario } from "./lib/resumenCliente";
 import { calendarioVirtual, esVirtual, fusionarEnMes, mesDeFecha, mismoMes as esMismoMes } from "./lib/meses";
 import {
   analizarRuta, construirRuta, navegar,
-  porRuta, slugsDeCalendarios, slugsDeClientes, slugDeMes, mesDeSlug,
+  porRuta, slugsDeCalendarios, slugsDeClientes, slugDeMes, mesDeSlug, rutaDeOtroCliente,
 } from "./lib/rutas";
 
 // El asistente sólo se descarga al abrirlo: es la pantalla más pesada y
@@ -838,6 +839,47 @@ function Workspace({ session, ruta }) {
     }
   };
 
+  /**
+   * El banco de ideas: estado ya y guardado agrupado. Antes sólo cambiaba
+   * el estado —añadir, editar o borrar una idea no llegaba a la base y al
+   * recargar volvía lo de antes—. Se fusiona SOLO `ideasBank`: pasar el
+   * cliente entero pisaría los calendarios que acaban de cambiar.
+   */
+  const bancoTimers = useRef(new Map());
+  const alCambiarBanco = (actualizado) => {
+    const id = actualizado.id;
+    setClients((prev) => prev.map((c) => (c.id === id ? { ...c, ideasBank: actualizado.ideasBank ?? [] } : c)));
+    clearTimeout(bancoTimers.current.get(id));
+    bancoTimers.current.set(id, setTimeout(() => {
+      bancoTimers.current.delete(id);
+      const cliente = clientsRef.current.find((c) => c.id === id);
+      if (cliente) db.saveClient(cliente, ownerId).catch(fallo("guardar el banco de ideas"));
+    }, 600));
+  };
+
+  /**
+   * Del banco de ideas a un día del calendario. La idea SÓLO sale del banco
+   * si entró en el calendario: antes se borraba del banco aunque el día no
+   * estuviera en el mes —siempre en un mes sin cajón—, y se esfumaba.
+   */
+  const ideaAlCalendario = async (bankPost, fecha) => {
+    const clienteId = selectedClientId;
+    const mes = mesDeFecha(fecha);
+    if (!clienteId || !mes) return;
+    try {
+      const real = await asegurarMes(clienteId, mes);
+      const base = pendingSaves.current.get(real.id)?.cal
+        ?? clientsRef.current.find((c) => c.id === clienteId)?.calendars?.find((k) => k.id === real.id)
+        ?? real;
+      updateCalendar(real.id, ponerEnDia(base, fecha, deIdeaAPublicacion(bankPost)));
+    } catch (e) {
+      fallo("llevar la idea al calendario")(e);
+      return;
+    }
+    const cliente = clientsRef.current.find((c) => c.id === clienteId);
+    if (cliente) alCambiarBanco({ ...cliente, ideasBank: (cliente.ideasBank ?? []).filter((p) => p.id !== bankPost.id) });
+  };
+
   /** Sólo estado: lo usan las aprobaciones en vivo, que no deben persistirse. */
   const updateCalendarLocal = (calId, updatedCal) => {
     setClients((prev) =>
@@ -1098,8 +1140,11 @@ function Workspace({ session, ruta }) {
     setShowDrawer(false);
   };
 
+  // Escoger otro cliente desde la barra lateral o el cajón: a su misma
+  // pestaña (y en el calendario, al mismo mes), no siempre al calendario.
   const selectClient = (id) => {
-    irA(id);
+    const slug = slugsDeClientes(clients).get(id) ?? id;
+    navegar(rutaDeOtroCliente(ruta, slug));
     setShowDrawer(false);
   };
 
@@ -1409,7 +1454,7 @@ function Workspace({ session, ruta }) {
                 {pestana === "ideas" && (
                   <IdeasBank
                     client={client}
-                    onUpdateClient={(updated) => setClients((prev) => prev.map((c) => c.id === updated.id ? updated : c))}
+                    onUpdateClient={alCambiarBanco}
                   />
                 )}
 
@@ -1455,36 +1500,8 @@ function Workspace({ session, ruta }) {
                     onMoverAOtroMes={(postId, fecha, opciones) => moverAOtroMes(calendar, postId, fecha, opciones)}
                     vecinos={diasVecinos(client.calendars ?? [], mesVisto)}
                     onAbrirVecina={(calVecino, postId) => { setPostPedido({ calId: calVecino.id, postId }); irAMes(client.id, calVecino); }}
-                    onUpdateClient={(updated) => setClients((prev) => prev.map((c) => c.id === updated.id ? updated : c))}
-                    onMoveBankToCal={(bankPost, targetDate) => {
-                      setClients((prev) => prev.map((c) => {
-                        if (c.id !== selectedClientId) return c;
-                        const newPost = { ...bankPost, id: crypto.randomUUID().slice(0, 8), status: "pending" };
-                        delete newPost._originDate;
-                        delete newPost._originCal;
-                        delete newPost._addedAt;
-                        const cals = c.calendars.map((cal) => {
-                          if (cal.id !== selectedCalId) return cal;
-                          const days = (cal.days || []).map((d) =>
-                            d.date !== targetDate ? d : { ...d, posts: [...(d.posts || []), newPost] }
-                          );
-                          return { ...cal, days };
-                        });
-                        const bank = (c.ideasBank || []).filter((p) => p.id !== bankPost.id);
-                        return { ...c, calendars: cals, ideasBank: bank };
-                      }));
-                      clearTimeout(saveTimers.current.get(selectedCalId));
-                      saveTimers.current.set(selectedCalId, setTimeout(() => {
-                        saveTimers.current.delete(selectedCalId);
-                        setClients((cur) => {
-                          const cl = cur.find((c) => c.id === selectedClientId);
-                          const cal = cl?.calendars?.find((c) => c.id === selectedCalId);
-                          if (cal) db.saveCalendar(cal, selectedClientId, ownerId).catch(fallo("guardar el calendario"));
-                          if (cl) db.saveClient(cl, ownerId).catch(fallo("guardar el cliente"));
-                          return cur;
-                        });
-                      }, 600));
-                    }}
+                    onUpdateClient={alCambiarBanco}
+                    onMoveBankToCal={ideaAlCalendario}
                   />
                 ) : null)}
               </>

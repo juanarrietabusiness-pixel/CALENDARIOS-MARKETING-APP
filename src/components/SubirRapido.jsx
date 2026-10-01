@@ -10,6 +10,7 @@ import HistoriasDelPost from "./calendario/historiasPost";
 import DestinoRedes from "./calendario/destinoRedes";
 import VistaRed from "./calendario/vistaRed";
 import { TimePicker } from "./calendario/primitivas";
+import { useCopiaDrive, prefijoCopia } from "./calendario/copiaDrive";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { useAnchoAmplio } from "../hooks/useAnchoAmplio";
 import { estadoRedes as leerEstadoRedes, saveCalendar, publicar, subirImagenPublicacion, mesDeCalendario } from "../lib/db";
@@ -90,8 +91,8 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
     () => [...new Set((estado?.cuentas ?? []).filter((c) => c.clientId === clienteDb).map((c) => c.red))],
     [estado, clienteDb],
   );
-  const destino = redes ?? redesPorDefecto(redesDelCliente);
   const formato = formatoElegido ?? formatoDeMedios(mediosDe(post)) ?? "post";
+  const destino = redes ?? redesPorDefecto(redesDelCliente, { ...post, format: formato });
   const completo = { ...post, format: formato, redes: destino, publishTime: modo === "ahora" ? horaAhora() : hora };
   const { errores } = revisarPublicacion(completo, destino, { navegador: true });
   const cuando = modo === "ahora" ? null : momentoPublicacion(fecha, hora);
@@ -102,6 +103,7 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
   const fuera = objetivo ? mediosDe(completo).some((m) => necesitaAjuste(m, objetivo)) : false;
   const sf = (k, v) => setPost((p) => ({ ...p, [k]: v }));
   const historias = historiasDe(post);
+  const { casilla: casillaDrive, copiar: copiarADrive } = useCopiaDrive(clienteDb, Boolean(cliente?.driveFolder));
 
   // Cambiar de cliente vacía lo subido: los archivos viven en SU carpeta.
   const cambiarCliente = (id) => {
@@ -164,6 +166,11 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
         setTrabajando("Preparando las imágenes…");
         nuevo = (await prepararParaRedes(nuevo, destino, { subir: (f) => subirImagenPublicacion(clienteDb, f), colorMarca: cliente?.primaryColor })).post;
       }
+      // La copia en Drive va antes de guardar, para que la publicación
+      // apunte lo copiado (`copiasDrive`) y no se copie dos veces. No lanza:
+      // si falla, se dice y la publicación sale igual.
+      const copia = await copiarADrive(completo, prefijoCopia(dia, nuevo));
+      if (copia && Object.keys(copia.copias).length) nuevo = { ...nuevo, copiasDrive: copia.copias };
       // El calendario de ese mes; si no existe, se crea.
       const [a, m] = dia.split("-").map(Number);
       let cal = (cliente.calendars ?? []).find((k) => k.year === a && k.month === m - 1);
@@ -190,6 +197,7 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
         await publicar({ calendarId: guardado.dbId || guardado.id, postId: nuevo.id, redes: destino, ahora: modo === "ahora" });
       }
       setHecho({
+        nota: copia?.texto ?? "",
         texto: modo === "ahora" ? "Publicando: en unos segundos sale." : modo === "mano"
           ? `Guardada para publicarla a mano el ${fechaHora(momentoPublicacion(dia, hora))}: te sale en Mi día.`
           : `Programada para ${fechaHora(cuando)}.`,
@@ -218,7 +226,7 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
 
         {hecho ? (
           <div className="subir-hecho">
-            <p className="notice notice-ok"><Icon name="check" size={16} /> {hecho.texto}</p>
+            <p className="notice notice-ok"><Icon name="check" size={16} /> {hecho.texto}{hecho.nota ? ` ${hecho.nota}` : ""}</p>
             <div className="subir-botones">
               <button type="button" className="btn btn-secondary" onClick={() => { onAbrir?.(hecho); onClose(); }}>Ver en el calendario</button>
               <button type="button" className="btn btn-primary" onClick={() => { setHecho(null); cambiarCliente(clienteId); }}>
@@ -319,6 +327,7 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
                 {modo !== "mano" && errores.length > 0 && (
                   <ul className="revision-lista" data-tipo="error">{errores.map((e) => <li key={e}><Icon name="alert" size={14} /> {e}</li>)}</ul>
                 )}
+                {casillaDrive}
                 <p className="hint">Sale directo: queda aprobada, sin pasar por el cliente.</p>
               </fieldset>
             )}

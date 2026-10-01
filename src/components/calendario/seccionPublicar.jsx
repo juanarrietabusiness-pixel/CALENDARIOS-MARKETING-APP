@@ -29,7 +29,7 @@ import { useId, useMemo, useRef, useState } from "react";
 import Icon from "../Icon";
 import {
   revisarPublicacion, aplicarArreglo, REDES, mediosDe, objetivoDe, necesitaAjuste, conMedios, destinoInstagram,
-  historiasDe, contarHashtags, colaboradoresDe, LIMITES,
+  historiasDe, contarHashtags, colaboradoresDe, LIMITES, redesDe,
 } from "../../lib/publicacion";
 import { EditorMedios, CamposRedes, Plegable } from "./editorPublicacion";
 import AjusteImagen from "./ajusteImagen";
@@ -42,8 +42,6 @@ import { escribirDesdeContenido } from "../../api";
 import { rellenarDesdeContenido, tieneContenido, formatoDeMedios } from "../../lib/subir";
 import { medioDeArchivo } from "../../lib/estudio";
 import { useCrearConIA } from "../../hooks/useCrearConIA";
-
-const REDES_POR_DEFECTO = ["instagram"];
 
 /**
  * @param formatoAuto  true cuando la publicación se creó con «Subir
@@ -76,13 +74,14 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
     }
     setEscribiendo("");
   };
-  const redes = Array.isArray(post.redes) && post.redes.length ? post.redes : REDES_POR_DEFECTO;
-  const { errores, avisos, arreglos } = revisarPublicacion(post, redes, { navegador: true });
-  const objetivo = redes.includes("instagram") ? objetivoDe(post, "instagram") : null;
-  const fuera = objetivo ? mediosDe(post).find((m) => necesitaAjuste(m, objetivo)) : null;
   const cuentas = useMemo(() => (publicacion?.estadoRedes
     ? [...new Set((publicacion.estadoRedes.cuentas ?? []).filter((c) => c.clientId === clientId).map((c) => c.red))]
     : null), [publicacion?.estadoRedes, clientId]);
+  // Sin redes elegidas, todas las que el cliente tiene conectadas (y pueden llevarla).
+  const redes = redesDe(post, cuentas ?? []);
+  const { errores, avisos, arreglos } = revisarPublicacion(post, redes, { navegador: true });
+  const objetivo = redes.includes("instagram") ? objetivoDe(post, "instagram") : null;
+  const fuera = objetivo ? mediosDe(post).find((m) => necesitaAjuste(m, objetivo)) : null;
   const elegirFormato = (k) => { auto.current = false; sf("format", k); };
   // `mediosCambiadosAt` deja saber si los archivos cambiaron DESPUÉS de
   // que el cliente aprobara la pieza (lib/aprobacion.js). Convertir a JPEG
@@ -277,6 +276,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           onCancelar={publicacion?.onCancelar}
           onReintentar={publicacion?.onReintentar}
           inicio={ancho ? <>{acciones}{children}</> : null}
+          conDrive={Boolean(client?.driveFolder)}
         />
         {!ancho && children}
       </div>

@@ -124,7 +124,9 @@ src/
     estudio.js            Cliente de /api/estudio y lo puro de la pantalla: filtros, trabajos en curso,
                           de una publicación al Estudio y del Estudio a una publicación
     vivo.js               WebSocket: reconexión, latido, presencia
-    horas.js              «9am» → «09:00» y vuelta (puro)
+    horas.js              «9am» → «09:00» y vuelta; la hora que se TECLEA («930», «21:30») (puro)
+    idioma.js             La regla del español latino neutro, puesta en toda llamada de texto (puro)
+    estadoChip.js         Qué dice el chip del mes: miniatura, icono de estado, idea (puro)
     lote.js               Editar muchas publicaciones de una vez (puro)
     exportarContenido.js  Texto de «Exportar ideas y descripciones» (puro)
     completitud.js        Cuánto le falta a una publicación (puro)
@@ -184,7 +186,8 @@ src/
     calendario/destinoRedes.jsx «¿Qué sale y dónde?»: formato y cada red con su casilla y
                           lo que sale en ella; la usan el panel y «Subir»
     calendario/ajusteImagen.jsx La imagen que no cabe: difuminado, color, recorte o
-                          AMPLIADA con IA (Nano Banana); la usan el panel y «Subir»
+                          GENERADA de nuevo con IA en 4:5/9:16 (Nano Banana); la usan el panel y «Subir»
+    calendario/copiaDrive.jsx «Guardar copia en Drive» al programar (panel y «Subir»)
     ExploradorDrive.jsx   La carpeta de Drive de un cliente: gestionar o escoger
     BancoSelector.jsx     Escoger de Drive (o del banco anterior); forma única
     PestanaContenido.jsx  La pestaña Contenido: Drive + migrar el banco anterior
@@ -1655,6 +1658,55 @@ son del servidor.
   todas las migraciones). Para lo que un doble a mano no ve: que las
   consultas de la capa de acceso existen en el esquema. La cola de
   publicación se prueba ahí (`tests/migracion/publicar.test.js`).
+
+- **Las redes por defecto son TODAS las del cliente.** Una publicación sin
+  `redes` elegidas salía sólo en Instagram (o Instagram y Facebook), y el
+  TikTok conectado del cliente se quedaba fuera sin que nadie lo decidiera.
+  `redesDe()` / `redesPorDefecto()` (lib/publicacion.js) dan las conectadas
+  que pueden llevarla —TikTok y YouTube sólo video, ni historias ni
+  directos—, y es la MISMA regla en el panel, «Subir», «Programar lo
+  aprobado» y `planificar()` del servidor.
+- **El banco de ideas no se guardaba.** Añadir, editar o borrar una idea
+  sólo cambiaba el estado (`onUpdateClient` era un `setClients`), y al
+  recargar volvía lo de antes. Peor: llevar una idea a un día de un mes SIN
+  cajón la borraba del banco y no la metía en ningún sitio —el día no
+  existía en `days`—. Ahora `alCambiarBanco` guarda agrupado (sólo
+  `ideasBank`: pasar el cliente entero pisaría los calendarios recién
+  cambiados) e `ideaAlCalendario` crea el mes, la mete con `ponerEnDia` y
+  SÓLO entonces la saca del banco. Lo vigila `regresiones.test.js`.
+- **Español latino neutro, en un sitio.** El modelo imita lo que tiene
+  delante: con un ADN o un ejemplo con voseo escribía «vení» y «tenés».
+  `REGLA_IDIOMA` (src/lib/idioma.js) va delante del sistema en
+  `abrirFlujo()`, por donde pasa TODA llamada a Anthropic, y en el análisis
+  de video de Gemini. Delante y fija: la caché es por prefijo. Un test
+  falla si alguien llama a `/v1/messages` desde otro sitio.
+- **«Ampliar» a 4:5 con Nano Banana hacía zoom.** Pedirle que ampliara la
+  imagen la redibujaba más cerca. Ahora se le pide una imagen NUEVA en la
+  proporción de destino, con la original de referencia y un plano igual o
+  más abierto (`construirPromptAdaptar`, worker/rutas/imagen.js).
+- **La hora se escribe.** El desplegable de flechas se salía de su caja en
+  el panel estrecho. `TimePicker` es ahora un campo que entiende «9»,
+  «930», «21:30» o «9:30 pm» (`leerHoraEscrita`, lib/horas.js) con a. m. /
+  p. m. al lado; lo que no entiende no se guarda: se dice.
+- **Copia en Drive al programar.** La copia la hace el Worker de R2 a Drive
+  en flujo (`/api/drive/clientes/<id>/desde-publicacion`, carpeta
+  «Publicaciones de la app»), salta lo que vino de Drive y lo ya copiado
+  (`post.copiasDrive`), y nunca tumba lo programado: si falla, se dice.
+- **Los tests del presupuesto fallaban el último día de cada mes por la
+  noche.** Apuntaban el gasto con `new Date().toISOString().slice(0, 7)` —el
+  mes en UTC— y el Worker lo suma con `mesActual()`, el de Panamá: de las
+  19:00 del último día en adelante son meses distintos, el gasto «no
+  existía» y seis casos daban 201 en vez de 402. Los tests usan ahora
+  `mesActual()`. La misma trampa de `toISOString()` de siempre, en los tests.
+- **Cambiar de cliente no cambia de pestaña** (`rutaDeOtroCliente`): en
+  Resultados, Estudio, Contenido… se va a la misma pestaña del otro
+  cliente; en el calendario, al mismo mes.
+- **El chip del mes dice qué tiene.** Miniatura si hay contenido subido;
+  si no, borde punteado (es una idea) y la barrita de lo que le falta; y UN
+  icono de estado (`estadoDelChip`: lo que falló manda, luego publicada,
+  programada, cambios, aprobada, idea aprobada). La leyenda sale de
+  `ESTADOS_CHIP`. En el teléfono cada semana mide lo mismo y el mes llena
+  la altura de la pantalla.
 
 ## Documentos relacionados
 

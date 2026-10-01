@@ -53,3 +53,6 @@ informe-despliegue.md
 
 # Volcado de la migración: datos de clientes reales, fuera del historial
 scripts/migracion/datos/
+
+# Los worktrees de los agentes de Claude Code: cada uno es un clon aparte.
+.claude/worktrees/

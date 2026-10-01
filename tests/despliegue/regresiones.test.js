@@ -194,6 +194,27 @@ describe("el guardado del panel lateral", () => {
   });
 });
 
+describe("el banco de ideas", () => {
+  it("lo que se cambia en el banco se GUARDA, no sólo se pinta", () => {
+    // Añadir, editar o borrar una idea sólo cambiaba el estado: al recargar
+    // volvía lo de antes. Y llevar una idea a un mes sin cajón la borraba
+    // del banco sin meterla en el calendario: se esfumaba.
+    const app = leer("src/App.jsx");
+    const soloEstado = [...app.matchAll(/onUpdateClient=\{([^}]*setClients[^}]*)\}/g)].map((m) => m[1]);
+    expect(
+      soloEstado,
+      fallo({
+        que: "un onUpdateClient de App.jsx sólo actualiza el estado",
+        donde: "src/App.jsx → onUpdateClient",
+        porque: "Lo que se cambia en el banco de ideas no llega a la base y se pierde al recargar.",
+        arreglo: "Pásale `alCambiarBanco`, que guarda agrupado.",
+      }),
+    ).toEqual([]);
+    expect(app).toMatch(/onMoveBankToCal=\{ideaAlCalendario\}/);
+    expect(app).toMatch(/ponerEnDia\(base, fecha, deIdeaAPublicacion\(bankPost\)\)/);
+  });
+});
+
 describe("el aislamiento de las aprobaciones en vivo", () => {
   it("lo que llega por Realtime no se vuelve a escribir en la base", () => {
     // Persistirlo dispararía una escritura por respuesta, y esa escritura

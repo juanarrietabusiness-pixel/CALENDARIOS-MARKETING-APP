@@ -13,7 +13,8 @@
 
 import { useEffect, useState, useRef } from "react";
 import Icon from "../Icon";
-import { fieldHeaderStyle, fmt12h, stripMarkdown } from "./formato";
+import { fieldHeaderStyle, stripMarkdown } from "./formato";
+import { leerHoraEscrita, partesDeHora, hora12 } from "../../lib/horas";
 
 export function CopyButton({ text, label, describes }) {
   const [copied, setCopied] = useState(false);
@@ -51,108 +52,79 @@ const fieldBodyStyle = {
   whiteSpace: "pre-wrap",
 };
 
-export function TimePicker({ value, onChange, id }) {
-  const [open, setOpen] = useState(false);
-  const parts = (value || "").split(":");
-  const hour = parts[0] || "";
-  const minute = parts[1] || "";
-  const wrapRef = useRef(null);
+/** Atajos de la hora: las que más se usan para publicar. */
+const ATAJOS_HORA = ["09:00", "12:00", "18:00", "20:00"];
 
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e) => {
-      if (!wrapRef.current?.contains(e.target)) setOpen(false);
-    };
-    const onKeyDown = (e) => { if (e.key === "Escape") setOpen(false); };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
+/**
+ * La hora de publicación: se toca y se escribe. Antes era un botón que
+ * abría un desplegable de flechas y dieciséis botones, que se salía de su
+ * caja en el panel estrecho y obligaba a subir de cinco en cinco minutos.
+ * Ahora: «9», «930», «21:30» o «9:30 pm», con a. m. / p. m. al lado y unos
+ * atajos debajo. Lo que no se entiende no se guarda: se dice.
+ */
+export function TimePicker({ value, onChange, id, atajos = true }) {
+  const actual = partesDeHora(value);
+  const [editando, setEditando] = useState(null);
+  const [periodoSinHora, setPeriodoSinHora] = useState("am");
+  const [malo, setMalo] = useState(false);
+  const periodo = actual.periodo ?? periodoSinHora;
+  const ayuda = `${id}-ayuda`;
 
-  const setTime = (h, m) => {
-    onChange(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+  const confirmar = (texto = editando) => {
+    setEditando(null);
+    if (texto === null) return;
+    if (!texto.trim()) { setMalo(false); if (value) onChange(""); return; }
+    const hhmm = leerHoraEscrita(texto, periodo);
+    setMalo(!hhmm);
+    if (hhmm && hhmm !== value) onChange(hhmm);
+  };
+
+  const cambiarPeriodo = (p) => {
+    if (!value) { setPeriodoSinHora(p); return; }
+    if (p === actual.periodo) return;
+    const [h, m] = value.split(":").map(Number);
+    onChange(`${String((h + 12) % 24).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
   };
 
   return (
-    <div ref={wrapRef} style={{ position: "relative" }}>
-      <button
-        type="button"
-        id={id}
-        className="input time-picker-btn"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-haspopup="true"
-        style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", cursor: "pointer", minWidth: 120 }}
-      >
-        <Icon name="clock" size={16} />
-        <span style={{ fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
-          {fmt12h(value)}
-        </span>
-      </button>
-      {open && (
-        // Se anuncia como grupo, no como diálogo. Esto es un desplegable
-        // anclado al botón, no un modal: llamarlo diálogo le promete a un
-        // lector de pantalla un foco atrapado y un fondo inerte que aquí
-        // no existen —ni deben—. Se cierra con Escape y con un clic
-        // fuera, y el fondo sigue siendo navegable a propósito.
-        <div
-          role="group"
-          aria-label="Seleccionar hora"
-          className="time-picker-drop"
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", justifyContent: "center", marginBottom: "var(--sp-3)" }}>
-            <div className="time-picker-col">
-              <button type="button" className="time-picker-arrow" aria-label="Hora anterior" onClick={() => setTime((+hour + 23) % 24, +minute || 0)}>
-                <Icon name="chevronUp" size={18} />
-              </button>
-              <span className="time-picker-digit">{hour ? (hour === "00" ? "12" : +hour > 12 ? String(+hour - 12) : hour.replace(/^0/, "")) : "--"}</span>
-              <button type="button" className="time-picker-arrow" aria-label="Hora siguiente" onClick={() => setTime((+hour + 1) % 24, +minute || 0)}>
-                <Icon name="chevronDown" size={18} />
-              </button>
-            </div>
-            <span className="time-picker-sep">:</span>
-            <div className="time-picker-col">
-              <button type="button" className="time-picker-arrow" aria-label="Minuto anterior" onClick={() => setTime(+hour || 0, (+minute + 55) % 60)}>
-                <Icon name="chevronUp" size={18} />
-              </button>
-              <span className="time-picker-digit">{minute ? minute.padStart(2, "0") : "--"}</span>
-              <button type="button" className="time-picker-arrow" aria-label="Minuto siguiente" onClick={() => setTime(+hour || 0, (+minute + 5) % 60)}>
-                <Icon name="chevronDown" size={18} />
-              </button>
-            </div>
-            <span className="time-picker-sep" style={{ fontSize: "var(--fs-xs)", fontWeight: 700, color: "var(--text-muted)" }}>
-              {hour && +hour >= 12 ? "PM" : "AM"}
-            </span>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 4, marginBottom: "var(--sp-2)" }}>
-            {[6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].map((h) => {
-              const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-              const sfx = h >= 12 ? "PM" : "AM";
-              return (
-                <button
-                  key={h}
-                  type="button"
-                  className={`time-picker-preset${+hour === h ? " active" : ""}`}
-                  onClick={() => { setTime(h, +minute || 0); }}
-                >
-                  {h12} {sfx}
-                </button>
-              );
-            })}
-          </div>
-          <div style={{ display: "flex", gap: "var(--sp-2)" }}>
-            <button type="button" className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => setOpen(false)}>
-              Listo
+    <div className="campo-hora">
+      <div className="campo-hora-fila">
+        <div className={`campo-hora-caja${malo ? " es-malo" : ""}`}>
+          <Icon name="clock" size={16} />
+          <input
+            id={id}
+            className="campo-hora-input"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="9:00"
+            value={editando ?? actual.texto}
+            aria-describedby={ayuda}
+            aria-invalid={malo || undefined}
+            onFocus={(e) => { setEditando(actual.texto); e.target.select(); }}
+            onChange={(e) => setEditando(e.target.value)}
+            onBlur={() => confirmar()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
+              if (e.key === "Escape") { setEditando(null); setMalo(false); }
+            }}
+          />
+        </div>
+        <div className="campo-hora-periodo" role="group" aria-label="Mañana o tarde">
+          {[["am", "a. m."], ["pm", "p. m."]].map(([p, t]) => (
+            <button key={p} type="button" aria-pressed={periodo === p} onClick={() => cambiarPeriodo(p)}>{t}</button>
+          ))}
+        </div>
+      </div>
+      <p id={ayuda} className={malo ? "campo-hora-error" : "sr-only"} role={malo ? "alert" : undefined}>
+        {malo ? "No entiendo esa hora: escribe 9, 9:30 o 21:30." : "Escribe la hora: 9, 930, 9:30 o 21:30."}
+      </p>
+      {atajos && (
+        <div className="campo-hora-atajos" role="group" aria-label="Horas frecuentes">
+          {ATAJOS_HORA.map((h) => (
+            <button key={h} type="button" className="filter-chip" aria-pressed={value === h} onClick={() => { setMalo(false); onChange(h); }}>
+              {hora12(h).replace(" AM", " a. m.").replace(" PM", " p. m.")}
             </button>
-            {value && (
-              <button type="button" className="btn btn-ghost btn-sm" style={{ color: "var(--danger)" }} onClick={() => { onChange(""); setOpen(false); }}>
-                Quitar
-              </button>
-            )}
-          </div>
+          ))}
         </div>
       )}
     </div>

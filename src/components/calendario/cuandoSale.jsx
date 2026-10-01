@@ -21,11 +21,12 @@ import Icon from "../Icon";
 import SelectorFecha from "../SelectorFecha";
 import HoraSugerida from "./horaSugerida";
 import { TimePicker } from "./primitivas";
-import { REDES, momentoPublicacion, piezasDe } from "../../lib/publicacion";
+import { REDES, momentoPublicacion, piezasDe, redesDe } from "../../lib/publicacion";
 import { colaDe, clavePieza, fechaHora, TEXTO_ESTADO } from "../../lib/cola";
 import { resumenDestino } from "../../lib/subir";
 import { navegar } from "../../lib/rutas";
 import { esAdmin } from "../../lib/sesionActual";
+import { useCopiaDrive, prefijoCopia } from "./copiaDrive";
 
 const MODOS = [["ahora", "Ahora", "send"], ["programar", "Programar", "clock"], ["mano", "La publico yo", "photo"]];
 
@@ -36,7 +37,7 @@ const irAIntegraciones = (e) => {
 
 export default function CuandoSale({
   post, sf, day, clientId, filas = [], estadoRedes, errores = [], enlaceAMano = null,
-  onPublicar, onCancelar, onReintentar, inicio = null,
+  onPublicar, onCancelar, onReintentar, inicio = null, conDrive = false,
 }) {
   const ids = useId();
   const [modo, setModo] = useState(post.asistida ? "mano" : "programar");
@@ -45,8 +46,10 @@ export default function CuandoSale({
   const [trabajando, setTrabajando] = useState("");
   const [mensaje, setMensaje] = useState(null);
   useEffect(() => { setFecha(day.date); }, [day.date]);
+  const { casilla: casillaDrive, copiar: copiarADrive } = useCopiaDrive(clientId, conDrive);
 
-  const redes = Array.isArray(post.redes) && post.redes.length ? post.redes : ["instagram"];
+  const conectadas = (estadoRedes?.cuentas ?? []).filter((c) => c.clientId === clientId).map((c) => c.red);
+  const redes = redesDe(post, conectadas);
   const cola = colaDe(filas, post.id);
   const filasCola = Object.values(cola);
   const vivas = filasCola.filter((f) => ["programada", "procesando", "publicada"].includes(f.estado));
@@ -69,7 +72,11 @@ export default function CuandoSale({
     setMensaje(null);
     try {
       await accion();
-      if (ok) setMensaje({ tipo: "ok", texto: ok });
+      // Con la casilla marcada, la copia en Drive va detrás: si falla, lo
+      // programado sigue programado y se dice en el mismo mensaje.
+      const copia = clave === "cancelar" || clave.startsWith("r-") ? null : await copiarADrive(post, prefijoCopia(fecha, post));
+      if (copia && Object.keys(copia.copias).length) sf("copiasDrive", { ...(post.copiasDrive ?? {}), ...copia.copias });
+      if (ok || copia) setMensaje({ tipo: "ok", texto: [ok, copia?.texto].filter(Boolean).join(" ") });
       setCambiando(false);
     } catch (e) {
       setMensaje({ tipo: "error", texto: e.message });
@@ -214,6 +221,7 @@ export default function CuandoSale({
           )}
           {modo !== "mano" && errores.length > 0 && <p className="hint">Arregla lo que falta (arriba) para poder publicarla.</p>}
 
+          {casillaDrive}
           {/* Al lado del botón, dónde sale: arriba se eligió, aquí se confirma. */}
           <p className="cuando-destino"><Icon name="send" size={13} /> {resumenDestino(post, redes)}</p>
           <div className="cuando-botones">

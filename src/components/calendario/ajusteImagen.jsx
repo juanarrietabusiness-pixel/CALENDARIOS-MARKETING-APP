@@ -3,9 +3,11 @@
 //
 // En vez de un error sin salida: cómo se va a ajustar y cómo queda. Tres
 // ajustes se hacen solos al programar (difuminado, color, recorte) y el
-// cuarto —AMPLIAR con IA, lo que Metricool llama «expandir»— se pide con
-// su botón, porque cuesta dinero: Nano Banana dibuja el fondo que falta
-// y la copia se guarda en `post.adaptados`, como las otras. El original
+// cuarto —GENERARLA de nuevo con IA en 4:5 o 9:16— se pide con su botón,
+// porque cuesta dinero. Antes se le pedía a Nano Banana que la «ampliara»
+// y la redibujaba más cerca, como un zoom; ahora recrea la escena en la
+// proporción nueva con la original de referencia. La copia va en
+// `post.adaptados`, como las otras. El original
 // no se toca: Facebook, el cliente y la página de aprobación lo ven tal
 // cual.
 //
@@ -44,7 +46,7 @@ export default function AjusteImagen({ post, alCambiar, clientId, objetivo, colo
     onError?.("");
     const hechas = {};
     for (const [i, m] of lista.entries()) {
-      setAmpliando(lista.length > 1 ? `Ampliando ${i + 1} de ${lista.length}…` : "Ampliando con IA…");
+      setAmpliando(lista.length > 1 ? `Generando ${i + 1} de ${lista.length}…` : "Generando con IA…");
       try {
         hechas[claveAdaptado(objetivo, m.src)] = await ampliarConIA(m.src, objetivo, {
           generar: async (proporcion) => {
@@ -55,7 +57,7 @@ export default function AjusteImagen({ post, alCambiar, clientId, objetivo, colo
           descartar: (clave) => feedbackImage(clientId, clave, false).catch(() => {}),
         });
       } catch (e) {
-        onError?.(`No se pudo ampliar la imagen con IA: ${e.message}`);
+        onError?.(`No se pudo generar la imagen con IA: ${e.message}`);
         break;
       }
     }
@@ -82,14 +84,14 @@ export default function AjusteImagen({ post, alCambiar, clientId, objetivo, colo
           {Object.entries(AJUSTES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <button type="button" className="btn btn-accent btn-sm" disabled={!!ampliando || !clientId} onClick={() => ampliar(faltan.length ? faltan : fuera)}>
-          <Icon name="sparkles" size={14} /> {ampliando || (conIA && !faltan.length ? "Volver a ampliar con IA" : `Ampliar a ${destino} con IA`)}
+          <Icon name="sparkles" size={14} /> {ampliando || (conIA && !faltan.length ? "Volver a generar con IA" : `Generar en ${destino} con IA`)}
         </button>
         <p className="hint">
           {modo === "ia"
             ? faltan.length
-              ? `Falta ampliar ${faltan.length === 1 ? "esta imagen" : `${faltan.length} imágenes`}: sin la copia, sale con fondo difuminado. Unos 4 céntimos por imagen.`
-              : "La IA completó el fondo. Si no te convence, vuelve a ampliarla o elige otro ajuste."
-            : `La IA dibuja el fondo que falta hasta ${destino}, sin bandas. Unos 4 céntimos por imagen. Los otros ajustes se hacen solos al programar.`}
+              ? `Falta generar ${faltan.length === 1 ? "esta imagen" : `${faltan.length} imágenes`}: sin la copia, sale con fondo difuminado. Unos 4 céntimos por imagen.`
+              : "La IA la recreó en la proporción nueva, sin acercarla. Si no te convence, vuelve a generarla o elige otro ajuste."
+            : `La IA recrea la misma escena en ${destino}, con un plano igual o más abierto: sin zoom ni bandas. Unos 4 céntimos por imagen. Los otros ajustes se hacen solos al programar.`}
         </p>
       </div>
     </div>

@@ -40,6 +40,11 @@ const MAX_VIDEO_PUBLICACION = 300 * 1024 * 1024;
 const PROFUNDIDAD_MAX = 12;
 const CARPETA_MIGRACION = "Banco de la app";
 const POR_TANDA_MIGRACION = 4;
+// La copia en Drive de lo programado: una publicación son, como mucho, los
+// diez de un carrusel. Cada uno son dos llamadas a Google; con la carpeta y
+// el token caben en las 50 de una invocación.
+const MAX_COPIAS_DRIVE = 10;
+const CARPETA_PUBLICACIONES = "Publicaciones de la app";
 
 /** «image/svg+xml» es una imagen que ejecuta código: fuera. */
 const SE_VE_EN_LINEA = (mime = "") => (mime.startsWith("image/") && !mime.includes("svg")) || mime.startsWith("video/");
@@ -347,13 +352,47 @@ async function rutasConSesion(req, env, { acceso, usuario, partes, metodo }) {
     return json({ clave, nombre: meta.name, tipo: esVideo ? "video" : "imagen" }, 201);
   }
 
+  // Copia en Drive de lo que se programa: lo subido desde el equipo, lo del
+  // Estudio o lo generado con IA vive en R2, y la agencia lo quiere también
+  // en la carpeta del cliente. De R2 a Drive en flujo, sin pasar por el
+  // navegador. Lo que vino de Drive (`clientes/<id>/drive/…`) ya está allí.
+  if (sub === "desde-publicacion" && metodo === "POST") {
+    const { medios, prefijo } = (await cuerpo(req)) ?? {};
+    const claves = [...new Set((Array.isArray(medios) ? medios : [])
+      .map((src) => String(src ?? "").replace(/^\/api\/media\//, ""))
+      .filter((k) => k.startsWith(`clientes/${clienteId}/`) && !k.includes("..")))];
+    const aCopiar = claves.filter((k) => !k.startsWith(`clientes/${clienteId}/drive/`)).slice(0, MAX_COPIAS_DRIVE);
+    if (!aCopiar.length) return json({ copiados: [], fallos: [] });
+    const destino = await carpetaDeLaApp(env, acceso, raiz, CARPETA_PUBLICACIONES);
+    const nombreBase = String(prefijo ?? "").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 80);
+    const copiados = [];
+    const fallos = [];
+    for (const clave of aCopiar) {
+      const objeto = await env.MEDIA.get(clave);
+      if (!objeto) { fallos.push(clave.split("/").pop()); continue; }
+      const nombre = [nombreBase, clave.split("/").pop()].filter(Boolean).join(" · ");
+      try {
+        const f = await subirADrive(env, acceso, {
+          carpeta: destino, nombre, mime: objeto.httpMetadata?.contentType || "application/octet-stream",
+          largo: objeto.size, cuerpo: objeto.body,
+        });
+        copiados.push({ src: `/api/media/${clave}`, id: f.id });
+      } catch (e) {
+        if (e instanceof DriveDesconectado) throw e;
+        fallos.push(nombre);
+      }
+    }
+    if (copiados.length) difundir(env, acceso.ownerId, { tipo: "banco", clientId: clienteId, por: firma(usuario, req) });
+    return json({ copiados, fallos, carpeta: destino }, 201);
+  }
+
   // Pasar el banco de antes (R2) a Drive, por tandas: el navegador repite
   // hasta que `quedan` sea 0. Por tandas porque cada archivo son varias
   // llamadas a Google y un Worker tiene un tope de subpeticiones.
   if (sub === "migrar-banco" && metodo === "POST") {
     const pendientes = await acceso.leer("content_bank", { client_id: clienteId }, "created_at asc");
     if (!pendientes.length) return json({ migrados: 0, quedan: 0 });
-    const destino = await carpetaDeMigracion(env, acceso, raiz);
+    const destino = await carpetaDeLaApp(env, acceso, raiz);
     let migrados = 0;
     const fallos = [];
     for (const item of pendientes.slice(0, POR_TANDA_MIGRACION)) {
@@ -390,10 +429,10 @@ async function rutasConSesion(req, env, { acceso, usuario, partes, metodo }) {
 }
 
 /** La subcarpeta «Banco de la app» dentro de la del cliente; se crea si falta. */
-async function carpetaDeMigracion(env, acceso, raiz) {
+async function carpetaDeLaApp(env, acceso, raiz, nombre = CARPETA_MIGRACION) {
   const r = await drive(env, acceso, "/drive/v3/files", {
     query: {
-      q: `'${escaparQ(raiz)}' in parents and name = '${CARPETA_MIGRACION}' and mimeType = '${MIME_CARPETA}' and trashed = false`,
+      q: `'${escaparQ(raiz)}' in parents and name = '${escaparQ(nombre)}' and mimeType = '${MIME_CARPETA}' and trashed = false`,
       fields: "files(id)",
       includeItemsFromAllDrives: "true",
     },
@@ -401,7 +440,7 @@ async function carpetaDeMigracion(env, acceso, raiz) {
   if (r.files?.[0]?.id) return r.files[0].id;
   const f = await drive(env, acceso, "/drive/v3/files", {
     metodo: "POST", query: { fields: "id" },
-    cuerpo: { name: CARPETA_MIGRACION, mimeType: MIME_CARPETA, parents: [raiz] },
+    cuerpo: { name: nombre, mimeType: MIME_CARPETA, parents: [raiz] },
   });
   return f.id;
 }

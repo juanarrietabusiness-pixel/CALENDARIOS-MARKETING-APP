@@ -18,6 +18,7 @@
 // ============================================================
 
 import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
+import { REGLA_IDIOMA } from "../../src/lib/idioma.js";
 import { bloqueoPorPresupuesto, registrarConsumoGemini } from "../lib/configIA.js";
 import { leerDeDrive, respuestaDeFallo as respuestaDeFalloDrive } from "../lib/google.js";
 
@@ -38,7 +39,9 @@ Responde en español, con estas secciones y en este orden:
 5. ESTILO: duración, ritmo de edición, música o sonido, tono y tipo de pieza (tutorial, testimonio, tendencia…).
 6. POR QUÉ FUNCIONA: los recursos que lo hacen atractivo y que se podrían reutilizar.
 
-Sé fiel a lo que hay: no inventes nada que no se vea o no se oiga.`;
+Sé fiel a lo que hay: no inventes nada que no se vea o no se oiga. La transcripción es literal: se copia como se dice.
+
+${REGLA_IDIOMA}`;
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 

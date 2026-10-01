@@ -533,6 +533,15 @@ export async function medioDeDrive(clienteId, fileId) {
   return { src: getContentBankUrl(clave), tipo: tipo === "video" ? "video" : "imagen", nombre: nombre ?? "" };
 }
 
+/**
+ * Copia en la carpeta de Drive del cliente lo que va en una publicación
+ * (lo que vino de Drive se salta: ya está allí). Devuelve
+ * `{ copiados: [{ src, id }], fallos }`.
+ */
+export async function copiarADrive(clienteId, medios, prefijo = "") {
+  return pedir(rutaDrive(clienteId, "desde-publicacion"), conCuerpo("POST", { medios, prefijo }));
+}
+
 /** Una tanda de la migración del banco de antes a Drive. */
 export async function migrarBancoADrive(clienteId) {
   return pedir(rutaDrive(clienteId, "migrar-banco"), { method: "POST" });

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { mesActual } from "../../worker/lib/configIA.js";
 import { d1EnMemoria } from "../utils/d1Memoria.js";
 import { crearAcceso } from "../../worker/lib/acceso.js";
 import { LIMITES, DEFINICIONES_ESTUDIO } from "../../worker/lib/estudio/herramientas.js";
@@ -188,7 +189,7 @@ describe("crear_en_estudio", () => {
 
   it("con el presupuesto agotado y «detener», no se crea aunque esté confirmado", async () => {
     db.sqlite.prepare("insert into ajustes_espacio (id, owner_id, presupuesto_usd, al_limite) values (?,?,?,?)").run(ANA, ANA, 1, "detener");
-    db.sqlite.prepare("insert into consumo_ia (id, owner_id, mes, funcion, modelo, costo_usd) values (?,?,?,?,?,?)").run("k1", ANA, new Date().toISOString().slice(0, 7), "x", "claude-sonnet-5", 5);
+    db.sqlite.prepare("insert into consumo_ia (id, owner_id, mes, funcion, modelo, costo_usd) values (?,?,?,?,?,?)").run("k1", ANA, mesActual(), "x", "claude-sonnet-5", 5);
     const r = await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", tipo: "video", modelo: CARO.id, prompt: "el sofá gira", duracion: 8, confirmado: true });
     expect(r.error).toBe(true);
     expect(trabajos()).toHaveLength(0);

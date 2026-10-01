@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   aSlug, slugsUnicos, slugsDeClientes, slugsDeCalendarios,
-  porRuta, analizarRuta, construirRuta,
+  porRuta, analizarRuta, construirRuta, rutaDeOtroCliente,
 } from "./rutas.js";
 
 // ============================================================
@@ -170,6 +170,24 @@ describe("analizar y construir son inversas", () => {
       }
       if (caso.vista === "invitacion") expect(leido.testigo).toBe(caso.testigo);
     }
+  });
+});
+
+describe("cambiar de cliente", () => {
+  const en = (pathname) => analizarRuta({ pathname, hash: "" });
+  it("se queda en la misma pestaña", () => {
+    for (const p of ["resultados", "estudio", "contenido", "tareas", "ideas", "cerebro", "ficha"]) {
+      expect(rutaDeOtroCliente(en(`/cliente/dcasa/${p}`), "baby-caleb")).toBe(`/cliente/baby-caleb/${p}`);
+    }
+  });
+  it("en el calendario, el mismo mes", () => {
+    expect(rutaDeOtroCliente(en("/cliente/dcasa/octubre-2026"), "baby-caleb")).toBe("/cliente/baby-caleb/octubre-2026");
+    expect(rutaDeOtroCliente(en("/cliente/dcasa"), "baby-caleb")).toBe("/cliente/baby-caleb");
+  });
+  it("un enlace viejo por nombre, o fuera de un cliente: al calendario de hoy", () => {
+    expect(rutaDeOtroCliente(en("/cliente/dcasa/campana-de-obra"), "baby-caleb")).toBe("/cliente/baby-caleb");
+    expect(rutaDeOtroCliente(en("/tareas"), "baby-caleb")).toBe("/cliente/baby-caleb");
+    expect(rutaDeOtroCliente(en("/"), "baby-caleb")).toBe("/cliente/baby-caleb");
   });
 });
 
