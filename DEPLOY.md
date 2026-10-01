@@ -246,6 +246,26 @@ Meta sólo deja responder un mensaje privado **dentro de las 24 horas**
 siguientes al último mensaje de la persona. Pasado ese plazo, el campo se
 desactiva y lo explica.
 
+### Biblioteca de anuncios (`/biblioteca`)
+
+**Ningún secreto ni permiso nuevo**, ni revisión de Meta: usa la misma app y
+el token de quien pulsó **Conectar con Facebook**. Lo que pide Meta es de
+ESA persona, una vez:
+
+1. Confirmar su identidad en **facebook.com/ID** (documento oficial; puede
+   tardar días). Sin eso, cada búsqueda contesta «Verifica tu identidad en
+   facebook.com/ID y vuelve a intentar».
+2. Abrir **facebook.com/ads/library/api** con esa misma cuenta y aceptar
+   las condiciones de la API de la Biblioteca.
+
+Si quien conectó Meta no puede verificarse, que conecte otra persona del
+equipo que sí (Ajustes → Integraciones → Conectar con Facebook).
+
+Lo que NO va a salir, haga lo que haga la agencia: fuera de la UE y el
+Reino Unido, la API sólo devuelve anuncios de temas sociales, elecciones o
+política. Los anuncios comerciales de Panamá se ven en la web de la
+Biblioteca; la pantalla lleva un enlace con la búsqueda ya rellena.
+
 ### TikTok
 
 Una vez, con la cuenta de TikTok de la AGENCIA:

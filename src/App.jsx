@@ -56,6 +56,7 @@ const Aprobar = lazy(() => import("./pages/Aprobar"));
 const Informe = lazy(() => import("./pages/Informe"));
 const AuditoriaPublica = lazy(() => import("./pages/AuditoriaPublica"));
 const Auditorias = lazy(() => import("./pages/Auditorias"));
+const Biblioteca = lazy(() => import("./pages/Biblioteca"));
 const ConectarClaude = lazy(() => import("./pages/ConectarClaude"));
 const PublicarAMano = lazy(() => import("./pages/PublicarAMano"));
 const IdeasBank = lazy(() => import("./components/IdeasBank"));
@@ -623,6 +624,10 @@ function Workspace({ session, ruta }) {
         case "auditoria":
           setPulso((n) => n + 1);
           if (ev.estado === "error" && ev.por?.userId === "sistema") setToast("La auditoría no se pudo terminar: el motivo está en Auditorías.");
+          break;
+
+        case "biblioteca":
+          setPulso((n) => n + 1);
           break;
 
         case "informe":
@@ -1383,6 +1388,10 @@ function Workspace({ session, ruta }) {
             ) : ruta.vista === "auditorias" ? (
               <Suspense fallback={<Cargando />}>
                 <Auditorias clients={clients} pulso={pulso} />
+              </Suspense>
+            ) : ruta.vista === "biblioteca" ? (
+              <Suspense fallback={<Cargando />}>
+                <Biblioteca clients={clients} pulso={pulso} />
               </Suspense>
             ) : ruta.vista === "resultados" ? (
               <Suspense fallback={<Cargando />}>

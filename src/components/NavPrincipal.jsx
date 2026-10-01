@@ -20,6 +20,7 @@ const SECCIONES = [
   { vista: "tablero", ruta: "/tablero", nombre: "Tablero", icono: "grid" },
   { vista: "resultados", ruta: "/resultados", nombre: "Resultados", icono: "chart" },
   { vista: "auditorias", ruta: "/auditorias", nombre: "Auditorías", icono: "search" },
+  { vista: "biblioteca", ruta: "/biblioteca", nombre: "Biblioteca de anuncios", icono: "megaphone" },
   { vista: "equipo", ruta: "/equipo", nombre: "Equipo", icono: "users" },
   { vista: "ajustes", ruta: "/ajustes", nombre: "Ajustes", icono: "settings" },
 ];

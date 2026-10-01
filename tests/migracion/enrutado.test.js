@@ -5,6 +5,7 @@ import { sha256 } from "../../worker/lib/ids.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 import { cifrar, firmarEstado, olvidarToken } from "../../worker/lib/google.js";
 import { firmar as firmarComoMeta } from "../../worker/lib/bandeja/webhook.js";
+import { cifrarMeta } from "../../worker/lib/meta.js";
 
 // ============================================================
 // La puerta del Worker, pedida de verdad
@@ -1078,5 +1079,83 @@ describe("la bandeja: el webhook de Meta y /api/bandeja", () => {
     expect(conBandeja.searchParams.get("config_id")).toBe("cfg-bandeja");
     const normal = new URL((await worker.fetch(conSesion("/api/redes/meta/conectar"), env)).headers.get("Location"));
     expect(normal.searchParams.get("config_id")).toBe("cfg-base");
+  });
+});
+
+describe("la Biblioteca de anuncios de Meta", () => {
+  // Las rutas de /api/biblioteca, pedidas por la puerta. El acotado de los
+  // filtros por espacio y colaborador va contra una D1 de verdad en
+  // tests/migracion/biblioteca.test.js; aquí, que se llega a cada rama.
+  const TOKEN_META = "EAAG-token";
+  async function conMeta(conectado = true) {
+    const env = { ...(await entorno()), META_APP_ID: "app", META_APP_SECRET: "secreto-meta" };
+    const fila = conectado ? { id: "u-jefe", owner_id: "u-jefe", nombre: "Juan", token_cifrado: await cifrarMeta(env, TOKEN_META) } : null;
+    const base = env.DB;
+    env.DB = {
+      prepare(sql) {
+        if (/^select \* from integracion_meta where id = \? and owner_id = \?/.test(sql)) {
+          return { bind() { return this; }, first: async () => fila, all: async () => ({ results: [] }), run: async () => ({ meta: { changes: 0 } }) };
+        }
+        return base.prepare(sql);
+      },
+    };
+    return env;
+  }
+  const buscarPor = (consulta) => conSesion(`/api/biblioteca/buscar?c=${encodeURIComponent(JSON.stringify(consulta))}`);
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("GET /api/biblioteca dice si Meta está conectado y trae los filtros", async () => {
+    const res = await worker.fetch(conSesion("/api/biblioteca"), await conMeta());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ meta: { configurado: true, conectado: true }, filtros: [] });
+  });
+
+  it("GET /api/biblioteca/buscar llega a Meta UNA vez y no devuelve el token", async () => {
+    const pedidas = [];
+    vi.stubGlobal("fetch", vi.fn(async (url) => {
+      pedidas.push(new URL(String(url)));
+      return new Response(JSON.stringify({ data: [{ id: "99999", page_name: "P", ad_snapshot_url: `https://www.facebook.com/ads/archive/render_ad/?id=99999&access_token=${TOKEN_META}` }] }));
+    }));
+    const res = await worker.fetch(buscarPor({ texto: "vacunación" }), await conMeta());
+    expect(res.status).toBe(200);
+    expect(pedidas).toHaveLength(1);
+    expect(pedidas[0].pathname).toMatch(/\/ads_archive$/);
+    const texto = await res.text();
+    expect(texto).not.toContain(TOKEN_META);
+    expect(JSON.parse(texto).anuncios[0].enlace).toBe("https://www.facebook.com/ads/library/?id=99999");
+  });
+
+  it("buscar sin Meta conectado es un 409 que manda a Ajustes", async () => {
+    const res = await worker.fetch(buscarPor({ texto: "x" }), await conMeta(false));
+    expect(res.status).toBe(409);
+  });
+
+  it("una búsqueda que no es JSON es un 400, no un 500", async () => {
+    const res = await worker.fetch(conSesion("/api/biblioteca/buscar?c=%7Bno"), await conMeta());
+    expect(res.status).toBe(400);
+  });
+
+  it("POST, PATCH y DELETE de filtros llegan a su rama", async () => {
+    const env = await conMeta();
+    const post = await worker.fetch(conSesion("/api/biblioteca/filtros", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nombre: "Competencia", clientId: "cliente-1", consulta: { texto: "muebles" } }),
+    }), env);
+    expect(post.status).toBe(201);
+    // La D1 de mentira no guarda: el filtro no existe al pedirlo, y eso es el 404 de ESA rama, no el de «Ruta».
+    for (const method of ["PATCH", "DELETE"]) {
+      const res = await worker.fetch(conSesion("/api/biblioteca/filtros/f1", {
+        method, headers: { "Content-Type": "application/json" }, body: method === "PATCH" ? "{}" : undefined,
+      }), env);
+      expect(res.status).toBe(404);
+      expect((await res.json()).error).toMatch(/Filtro/);
+    }
+  });
+
+  it("una ruta de la biblioteca que no existe es 404 «Ruta»", async () => {
+    const res = await worker.fetch(conSesion("/api/biblioteca/otra", { method: "POST" }), await conMeta());
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toMatch(/Ruta/);
   });
 });
