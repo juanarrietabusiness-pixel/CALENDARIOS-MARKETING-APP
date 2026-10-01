@@ -12,13 +12,24 @@ export const LIMITES = Object.freeze({
   instagram: { caracteres: 2200, hashtags: 30, menciones: 20, carruselMin: 2, carruselMax: 10, reelMaxSeg: 900, historiaMaxSeg: 60 },
   facebook: { caracteres: 63206 },
   tiktok: { caracteres: 2200, videoMaxSeg: 600 },
+  // El título, en caracteres; la descripción, en BYTES (YouTube cuenta
+  // bytes: una tilde o un emoji ocupan más de uno); las etiquetas, 500
+  // caracteres entre todas. Un Short, vertical y de hasta 60 s.
+  youtube: { titulo: 100, descripcionBytes: 5000, etiquetas: 500, shortMaxSeg: 60 },
 });
 
 export const REDES = Object.freeze({
   instagram: { nombre: "Instagram", icono: "photo" },
   facebook: { nombre: "Facebook", icono: "globe" },
   tiktok: { nombre: "TikTok", icono: "video" },
+  youtube: { nombre: "YouTube", icono: "play" },
 });
+
+/** Las redes que publican historias por API: TikTok y YouTube no. */
+export const conHistorias = (red) => red === "instagram" || red === "facebook";
+
+/** Las redes que publican con la conexión de Meta (las demás, con la cuenta de cada cliente). */
+export const esDeMeta = (red) => red === "instagram" || red === "facebook";
 
 const esVideo = (src = "", tipo = "") => tipo === "video" || /\.(mp4|mov|m4v|webm)(\?|$)/i.test(src);
 
@@ -90,6 +101,9 @@ export function mediosDe(post) {
       .map((m) => ({
         src: m.src, tipo: esVideo(m.src, m.tipo) ? "video" : "imagen", nombre: m.nombre ?? "",
         ...(m.ancho && m.alto ? { ancho: m.ancho, alto: m.alto } : {}),
+        // Los segundos de un video, medidos en el navegador al programar
+        // (YouTube decide con ellos si sale como Short).
+        ...(Number(m.duracion) > 0 ? { duracion: Number(m.duracion) } : {}),
       }));
   }
   if (typeof post?.image === "string" && post.image) {
@@ -151,13 +165,13 @@ export const conHistoria = (post) =>
 
 /**
  * Lo que se publica de una publicación en cada red: la publicación y, si
- * se pidió, su historia. TikTok no tiene historias por API.
+ * se pidió, su historia. TikTok y YouTube no tienen historias por API.
  */
 export function piezasDe(post, redes = post?.redes ?? ["instagram"]) {
   const salida = [];
   for (const red of redes) {
     salida.push({ red, variante: "post" });
-    if (red !== "tiktok" && conHistoria(post)) salida.push({ red, variante: "historia" });
+    if (conHistorias(red) && conHistoria(post)) salida.push({ red, variante: "historia" });
   }
   return salida;
 }
@@ -257,6 +271,69 @@ export function primerComentario(post) {
   return partes.join("\n\n");
 }
 
+// ------------------------------------------------------------
+// YouTube
+// ------------------------------------------------------------
+
+/** YouTube rechaza «<» y «>» en el título y la descripción: se cambian por comillas angulares. */
+const sinAngulos = (t) => String(t ?? "").replace(/</g, "‹").replace(/>/g, "›");
+
+/** Los bytes de un texto en UTF-8: es como cuenta YouTube la descripción. */
+export const bytesDe = (texto) => new TextEncoder().encode(String(texto ?? "")).length;
+
+/**
+ * ¿Sale como Short? Un reel o una historia, vertical (o cuadrado) y de 60
+ * segundos o menos. Lo que no se sabe no lo impide: un reel es vertical
+ * por definición, y la duración sólo se conoce si el navegador la midió
+ * al programar. YouTube decide al final; `#Shorts` es la pista.
+ */
+export function esShortYouTube(post) {
+  if (!["reel", "historia"].includes(post?.format)) return false;
+  const video = mediosDe(post).find((m) => m.tipo === "video");
+  if (!video) return false;
+  if (video.ancho && video.alto && video.ancho > video.alto) return false;
+  return !(video.duracion > LIMITES.youtube.shortMaxSeg);
+}
+
+/**
+ * El título del video: la primera línea del texto (lo que engancha), o el
+ * título de la publicación, o la idea. Hasta 100 caracteres, cortado en
+ * una palabra entera, y sin «<» ni «>».
+ */
+export function tituloYouTube(post) {
+  const primera = String(post?.descripcion || post?.script || "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+  const base = sinAngulos(primera || post?.title || post?.idea || "").replace(/\s+/g, " ").trim();
+  const max = LIMITES.youtube.titulo;
+  if (base.length <= max) return base;
+  const corte = base.slice(0, max - 1);
+  const espacio = corte.lastIndexOf(" ");
+  return `${(espacio > max * 0.6 ? corte.slice(0, espacio) : corte).trim()}…`;
+}
+
+/** La descripción: el texto con sus hashtags y, si es un Short, `#Shorts` si no lo lleva ya. */
+export function descripcionYouTube(post) {
+  const texto = sinAngulos(textoPara(post, "youtube"));
+  if (!esShortYouTube(post) || /#shorts\b/i.test(`${texto} ${tituloYouTube(post)}`)) return texto;
+  return `${texto}\n\n#Shorts`.trim();
+}
+
+/**
+ * Las etiquetas del video: los hashtags, sin «#», sin repetir, hasta 500
+ * caracteres entre todas (YouTube cuenta la coma que las separa).
+ */
+export function etiquetasYouTube(post) {
+  const tags = [...new Set((String(post?.hashtagsFinales ?? "").match(/#[\p{L}\p{N}_]+/gu) ?? []).map((t) => t.slice(1)))];
+  const salida = [];
+  let total = 0;
+  for (const t of tags) {
+    const costo = t.length + (salida.length ? 1 : 0);
+    if (total + costo > LIMITES.youtube.etiquetas) break;
+    salida.push(t);
+    total += costo;
+  }
+  return salida;
+}
+
 /** Qué se publica en Instagram según el formato: feed, carrusel, reel o historia. */
 export function destinoInstagram(post) {
   const medios = mediosDe(post);
@@ -350,6 +427,24 @@ export function revisarPublicacion(post, redes = post?.redes ?? ["instagram"], {
     if (texto.length > LIMITES.tiktok.caracteres) errores.push(`El texto de TikTok tiene ${texto.length} caracteres; el máximo es ${LIMITES.tiktok.caracteres}.`);
   }
 
+  if (redes.includes("youtube")) {
+    const L = LIMITES.youtube;
+    if (!videos.length) con(errores, "YouTube sólo publica video: esta publicación no tiene ninguno.", quitarRed(redes, "youtube"));
+    else {
+      if (medios.length > 1) avisos.push("YouTube publica un solo video: sale el primero.");
+      if (!tituloYouTube(post)) errores.push("YouTube necesita un título: escribe el texto de la publicación (su primera línea es el título).");
+      const bytes = bytesDe(descripcionYouTube(post));
+      if (bytes > L.descripcionBytes) {
+        errores.push(`La descripción de YouTube ocupa ${bytes} bytes; el máximo es ${L.descripcionBytes} (cada tilde o emoji cuenta más de uno).`);
+      }
+      const primera = String(post?.descripcion || post?.script || "").split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+      if (primera.length > L.titulo) avisos.push(`La primera línea tiene ${primera.length} caracteres: el título de YouTube se corta a ${L.titulo}.`);
+      if (/[<>]/.test(`${post?.descripcion ?? ""}${post?.hashtagsFinales ?? ""}`)) avisos.push("YouTube no admite «<» ni «>»: se cambian por ‹ y ›.");
+      if (esShortYouTube(post)) avisos.push("En YouTube sale como Short (vertical y de hasta 60 s): se le añade #Shorts si no lo lleva.");
+      else if (["reel", "historia"].includes(post?.format)) avisos.push("En YouTube sale como video normal, no como Short: es horizontal o dura más de 60 s.");
+    }
+  }
+
   // La historia que acompaña al post.
   if (post?.historiaTambien && !["historia", "live"].includes(post?.format)) {
     const hs = historiasDe(post);
@@ -357,7 +452,7 @@ export function revisarPublicacion(post, redes = post?.redes ?? ["instagram"], {
       con(errores, "Marcaste «también como historia», pero no hay ninguna imagen de historia: créala con IA o usa la del post.", { codigo: "sin-historia", etiqueta: "No publicar historia" });
     }
     else if (hs.length > LIMITES.instagram.carruselMax) errores.push(`Como mucho ${LIMITES.instagram.carruselMax} historias por publicación.`);
-    else if (redes.every((r) => r === "tiktok")) avisos.push("TikTok no tiene historias por API: la historia saldrá sólo en Instagram y Facebook.");
+    else if (redes.every((r) => !conHistorias(r))) avisos.push(`${redes.map((r) => REDES[r]?.nombre ?? r).join(" y ")} no ${redes.length > 1 ? "tienen" : "tiene"} historias por API: la historia saldrá sólo en Instagram y Facebook.`);
   }
 
   return { errores, avisos, arreglos };

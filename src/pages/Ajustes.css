@@ -184,6 +184,11 @@
 .tiktok-fila { grid-template-columns: 1fr auto auto; }
 .tiktok-acciones { display: flex; gap: var(--sp-1); flex-wrap: wrap; justify-content: flex-end; grid-column: 2 / -1; }
 @media (max-width: 599px) { .tiktok-fila { grid-template-columns: 1fr; } .tiktok-acciones { grid-column: 1; justify-content: flex-start; } }
+/* YouTube: canal, privacidad (o el canal por elegir) y desconectar. */
+.youtube-fila { grid-template-columns: 1fr minmax(160px, 240px) auto; }
+.youtube-acciones { display: flex; gap: var(--sp-1); flex-wrap: wrap; justify-content: flex-end; grid-column: 2 / -1; }
+.integracion details.integracion-pasos summary { color: var(--text-dim); min-height: var(--tap-sm); display: flex; align-items: center; }
+@media (max-width: 599px) { .youtube-fila { grid-template-columns: 1fr; } .youtube-acciones { grid-column: 1; justify-content: flex-start; } }
 
 /* Claude en cualquier chat */
 .ajustes-pasos { padding-left: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-2); font-size: var(--fs-xs); }

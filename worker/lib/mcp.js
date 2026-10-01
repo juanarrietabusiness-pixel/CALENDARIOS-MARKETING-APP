@@ -29,7 +29,7 @@ import { DEFINICIONES_ESTUDIO, crearHerramientasEstudio, ErrorHerramientaEstudio
 // Las columnas JSON de `clients`, como las devuelve la API (datos.js).
 const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe", "competidores"];
 const FORMATOS = ["post", "reel", "carrusel", "historia", "live"];
-const REDES = ["instagram", "facebook", "tiktok"];
+const REDES = ["instagram", "facebook", "tiktok", "youtube"];
 
 const leerJSON = (t, d) => {
   if (t && typeof t === "object") return t;

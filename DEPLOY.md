@@ -103,7 +103,7 @@ Ahora que el Worker existe, ya tiene dónde guardarlas.
 | `META_API_KEY` | Tu llave de la API de Meta (Muse) *(opcional)* | dev.meta.ai → API keys (la documentación de Meta la llama `MODEL_API_KEY`; vale cualquiera de los dos nombres). Activa **Muse Spark** como modelo de texto en Ajustes → IA —y en cuanto está, **redacción y guiones pasan a Muse Spark 1.2 Contributor**, salvo que elijas otro— y **Muse Image** en el Estudio y para adaptar a 4:5. Ojo: con el modelo *Contributor*, Meta puede usar lo que se le manda para entrenar sus modelos |
 | `GITHUB_TOKEN` | Un token de **sólo lectura** | GitHub → Settings → Developer settings → Personal access tokens |
 | `GOOGLE_CLIENT_ID` | El ID de cliente OAuth de Google | Ver «Google Drive» abajo |
-| `GOOGLE_CLIENT_SECRET` | Su secreto | Ver «Google Drive» abajo |
+| `GOOGLE_CLIENT_SECRET` | Su secreto | Ver «Google Drive» abajo. Los mismos dos sirven para **YouTube** (ver «YouTube») |
 | `META_APP_ID` | El identificador de la app de Meta | Ver «Instagram y Facebook» abajo |
 | `META_APP_SECRET` | Su clave secreta | Ver «Instagram y Facebook» abajo |
 | `META_CONFIG_ID` | El ID de configuración del inicio de sesión | Ver «Instagram y Facebook» abajo |
@@ -209,6 +209,48 @@ el cliente**, que el cliente abre en su teléfono (vale una semana).
 Por defecto los videos van a la **bandeja de TikTok del cliente** (modo
 Borrador) y se publican desde la app con un toque. En modo **Directo**
 salen publicados, pero **en privado** hasta que TikTok audite la app.
+
+### YouTube
+
+**No hay secretos nuevos:** usa el mismo proyecto y el mismo cliente OAuth
+de Google Drive (`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`). Una vez, en
+console.cloud.google.com, en ESE proyecto:
+
+1. **APIs y servicios → Biblioteca**: habilitar **YouTube Data API v3** y
+   **YouTube Analytics API**.
+2. **Pantalla de consentimiento → Acceso a los datos → Agregar o quitar
+   permisos**: `https://www.googleapis.com/auth/youtube.upload`,
+   `https://www.googleapis.com/auth/youtube.readonly` y
+   `https://www.googleapis.com/auth/yt-analytics.readonly`.
+3. **Clientes → el cliente web de Drive → URI de redireccionamiento
+   autorizados**: añadir la que enseña la app en **Ajustes → Integraciones →
+   YouTube** (`https://<dominio>/api/redes/youtube/callback`), sin quitar
+   la de Drive.
+4. La app tiene que estar **«En producción»** (si no, el permiso caduca a los
+   7 días y sólo entran los usuarios de prueba). Política de privacidad:
+   `https://<dominio>/privacidad`; términos: `https://<dominio>/terminos`
+   (ya nombran YouTube, como pide Google).
+
+Cada cliente se conecta aparte, como en TikTok: **Conectar aquí** (entrando
+con la cuenta de Google que administra SU canal) o **Enlace para el
+cliente** (vale una semana). Si esa cuenta tiene varios canales, la app
+pide elegir cuál. La privacidad (público, oculto o privado) se elige por
+canal en la misma pantalla.
+
+Lo que impone Google, y que la app no puede saltarse:
+
+- **Mientras el proyecto no pase la auditoría de la API de YouTube, TODO
+  video subido por la API queda en PRIVADO**, se elija lo que se elija. Se
+  cambia a mano en YouTube Studio. Para quitarlo: pedir la auditoría
+  («YouTube API Services — Audit and Quota Extension Form»).
+- Los alcances `youtube.upload`/`youtube.readonly` son **sensibles**: con la
+  app «En producción», Google pide **verificar la app** (pantalla de
+  consentimiento) para que deje de salir el aviso de «app no verificada».
+- **Cupo:** la subida tiene su propio tope diario por proyecto, y poner la
+  portada gasta del cupo general (10.000 unidades al día). Las métricas
+  diarias gastan muy poco (5 peticiones por canal y día, sin `search`).
+- **La portada propia** sólo se pone si el canal está **verificado**
+  (youtube.com/verify). Si no, el video sale igual, con un aviso.
 
 **La programación la cumple el cron** (`triggers` en `wrangler.jsonc`,
 cada minuto): la app no tiene que estar abierta. Instagram admite 50
@@ -376,7 +418,7 @@ despliegue (`EspacioHub`, migración `v1` de `wrangler.jsonc`).
 | `GOOGLE_AI_KEY` | **Cloudflare** | Idem (imágenes y lectura de video) |
 | `FAL_KEY` / `HF_KEY` | **Cloudflare** | El Estudio: fal.ai y Higgsfield (opcionales, cada una activa sus modelos) |
 | `META_API_KEY` | **Cloudflare** | Muse Spark (texto) y Muse Image (Estudio, adaptar a 4:5); opcional |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | **Cloudflare** | Google Drive |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | **Cloudflare** | Google Drive y YouTube |
 | `META_APP_ID` / `META_APP_SECRET` / `META_CONFIG_ID` | **Cloudflare** | Instagram y Facebook |
 | `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` | **Cloudflare** | TikTok |
 

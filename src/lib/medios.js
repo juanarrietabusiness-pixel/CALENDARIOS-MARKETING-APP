@@ -9,6 +9,7 @@
 import { compressImage } from "../utils";
 import {
   mediosDe, historiasDe, piezasDe, publicacionDeVariante, objetivoDe, necesitaAjuste, claveAdaptado, medidasAjuste, proporcionParaIA,
+  esDeMeta,
 } from "./publicacion";
 
 /** Una imagen del banco, reducida y en base64 para mandarla al modelo. */
@@ -257,6 +258,34 @@ export async function ampliarConIA(src, objetivo, { generar, subir, descartar })
   return { src: nuevo, ancho: medidas.ancho, alto: medidas.alto, modo: "ia" };
 }
 
+/** Ancho, alto y segundos de un video, leyendo sólo sus metadatos. null si el navegador no puede. */
+function medidasDeVideo(src) {
+  return new Promise((ok) => {
+    const video = document.createElement("video");
+    const fin = (v) => { clearTimeout(reloj); video.removeAttribute("src"); video.load(); ok(v); };
+    const reloj = setTimeout(() => fin(null), 15_000);
+    video.preload = "metadata";
+    video.muted = true;
+    video.onloadedmetadata = () => fin(Number.isFinite(video.duration)
+      ? { ancho: video.videoWidth, alto: video.videoHeight, duracion: Math.round(video.duration * 10) / 10 }
+      : null);
+    video.onerror = () => fin(null);
+    video.src = src;
+  });
+}
+
+/** Los videos sin medir, medidos (`ancho`, `alto`, `duracion`). Lo que no se puede medir se queda como está. */
+export async function medirVideos(medios) {
+  let cambio = false;
+  const salida = [];
+  for (const m of medios) {
+    if (m.tipo !== "video" || m.duracion) { salida.push(m); continue; }
+    const medidas = await medidasDeVideo(m.src);
+    if (medidas) { salida.push({ ...m, ...medidas }); cambio = true; } else salida.push(m);
+  }
+  return { medios: salida, cambio };
+}
+
 /**
  * Todo lo que necesita una publicación para salir en esas redes, hecho en
  * el navegador (el Worker no puede tocar imágenes):
@@ -267,10 +296,16 @@ export async function ampliarConIA(src, objetivo, { generar, subir, descartar })
  * Devuelve la publicación nueva y si cambió algo (para guardarla).
  */
 export async function prepararParaRedes(post, redes, { subir, colorMarca } = {}) {
-  const meta = redes.some((r) => r === "instagram" || r === "facebook");
-  if (!meta) return { post, cambio: false };
   let cambio = false;
   let nuevo = { ...post };
+  // YouTube decide si es un Short por la forma y la duración del video, y
+  // eso sólo lo sabe el navegador: se miden al programar.
+  if (redes.includes("youtube")) {
+    const r0 = await medirVideos(mediosDe(nuevo));
+    if (r0.cambio) { nuevo = { ...nuevo, medios: r0.medios }; cambio = true; }
+  }
+  const meta = redes.some(esDeMeta);
+  if (!meta) return { post: nuevo, cambio };
 
   const r1 = await prepararMediosParaMeta(mediosDe(nuevo), subir);
   if (r1.cambio) { nuevo = { ...nuevo, medios: r1.medios, image: r1.medios.find((m) => m.tipo !== "video")?.src ?? null }; cambio = true; }
@@ -282,7 +317,7 @@ export async function prepararParaRedes(post, redes, { subir, colorMarca } = {})
   const modo = nuevo.ajusteIG || "difuminado";
   const adaptados = { ...(nuevo.adaptados ?? {}) };
   for (const { red, variante } of piezasDe(nuevo, redes)) {
-    if (red === "tiktok") continue;
+    if (!esDeMeta(red)) continue;
     const pieza = publicacionDeVariante(nuevo, variante);
     const objetivo = objetivoDe(pieza, red);
     if (!objetivo) continue;

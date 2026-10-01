@@ -32,6 +32,7 @@ import {
   COOKIE_TIKTOK, tiktokConfigurado, urlVueltaTikTok, firmarEstadoTikTok, leerEstadoTikTok, firmarEnlaceTikTok, leerEnlaceTikTok,
   urlConsentimientoTikTok, canjearCodigoTikTok, revocarTikTok, filaDeTokens, tokenTikTok, usuarioTikTok, mensajeTikTok,
 } from "../lib/tiktok.js";
+import { youtubeConfigurado, urlVueltaYouTube, extraCuentaYouTube } from "../lib/youtube.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 
@@ -39,6 +40,7 @@ const cuentaPublica = (c) => ({
   id: c.id, red: c.red, externoId: c.externo_id, nombre: c.nombre, usuario: c.usuario,
   avatar: c.avatar, paginaId: c.pagina_id, clientId: c.client_id, actualizada: c.updated_at,
   ...(c.red === "tiktok" ? { modo: leerJSON(c.datos, {})?.modo === "directo" ? "directo" : "borrador" } : {}),
+  ...(c.red === "youtube" ? extraCuentaYouTube(c) : {}),
 });
 
 /** La redirección a TikTok, con la cookie que ata la vuelta a ESTE navegador. */
@@ -232,6 +234,7 @@ export async function rutasRedes(req, env, { acceso, usuario, partes, metodo }) 
         faltan: fila?.permisos ? permisosQueFaltan(JSON.parse(fila.permisos)) : null,
       },
       tiktok: { configurado: tiktokConfigurado(env), redireccion: urlVueltaTikTok(new URL(req.url).origin) },
+      youtube: { configurado: youtubeConfigurado(env), redireccion: urlVueltaYouTube(new URL(req.url).origin) },
       cuentas: cuentas.map(cuentaPublica),
     });
   }

@@ -93,7 +93,7 @@ export function kpis({ serie = [], publicaciones = [] }, { desde, hasta, red = "
   };
 }
 
-export const NOMBRE_FORMATO = { imagen: "Imagen", carrusel: "Carrusel", reel: "Reel", video: "Video", texto: "Texto", historia: "Historia" };
+export const NOMBRE_FORMATO = { imagen: "Imagen", carrusel: "Carrusel", reel: "Reel", video: "Video", short: "Short", texto: "Texto", historia: "Historia" };
 
 /** Qué formato rinde más: publicaciones, interacciones y alcance medios. */
 export function porFormato(publicaciones = []) {

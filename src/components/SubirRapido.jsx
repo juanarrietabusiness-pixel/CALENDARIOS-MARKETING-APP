@@ -16,7 +16,7 @@ import { useAnchoAmplio } from "../hooks/useAnchoAmplio";
 import { estadoRedes as leerEstadoRedes, saveCalendar, publicar, subirImagenPublicacion, mesDeCalendario } from "../lib/db";
 import { escribirDesdeContenido } from "../api";
 import { prepararParaRedes } from "../lib/medios";
-import { REDES, conMedios, revisarPublicacion, momentoPublicacion, mediosDe, objetivoDe, necesitaAjuste, historiasDe } from "../lib/publicacion";
+import { REDES, conMedios, revisarPublicacion, momentoPublicacion, mediosDe, objetivoDe, necesitaAjuste, historiasDe, esDeMeta, conHistorias } from "../lib/publicacion";
 import { formatoDeMedios, redesPorDefecto, rellenarDesdeContenido, ponerEnDia, resumenDestino } from "../lib/subir";
 import { fechaEnZona } from "../lib/agenda";
 import { fechaHora } from "../lib/cola";
@@ -213,7 +213,7 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
 
   const etiqueta = modo === "ahora" ? "Publicar ahora" : modo === "mano" ? "Guardar para publicar a mano" : cuando ? `Programar para ${fechaHora(cuando)}` : "Programar";
   const bloqueado = !!trabajando || !!escribiendo || !cliente || !hayMedios
-    || (modo !== "mano" && (errores.length > 0 || sinCuenta.length > 0 || !estado?.meta?.conectado && destino.some((r) => r !== "tiktok")))
+    || (modo !== "mano" && (errores.length > 0 || sinCuenta.length > 0 || !estado?.meta?.conectado && destino.some(esDeMeta)))
     || (modo === "programar" && (!cuando || yaPaso));
 
   return (
@@ -287,7 +287,7 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
                 {formato === "historia" && escribiendo && <p className="hint" role="status">{escribiendo}</p>}
                 {fuera && <AjusteImagen post={completo} alCambiar={setPost} clientId={clienteDb} objetivo={objetivo} color={cliente?.primaryColor} onError={setFallo} />}
                 {!(ancho && hayMedios) && vista}
-                {!["historia", "live"].includes(formato) && destino.some((r) => r !== "tiktok") && (
+                {!["historia", "live"].includes(formato) && destino.some(conHistorias) && (
                   <Plegable titulo="También en historias" icono="formatHistoria" resumen={post.historiaTambien && historias.length ? `${historias.length} ${historias.length === 1 ? "historia" : "historias"}` : null}>
                     <HistoriasDelPost post={completo} sf={sf} clientId={clienteDb} colorMarca={cliente?.primaryColor} onError={setFallo} />
                   </Plegable>

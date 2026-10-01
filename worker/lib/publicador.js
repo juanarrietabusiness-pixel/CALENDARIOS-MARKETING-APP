@@ -34,8 +34,13 @@ import { uuid, ahora } from "./ids.js";
 import { ErrorMeta, graph, mensajeMeta, descifrarMeta, urlMedioPublico, urlGraphVideo } from "./meta.js";
 import { ErrorTikTok, mensajeTikTok, tokenTikTok, iniciarSubida, subirTrozos, estadoSubida } from "./tiktok.js";
 import {
+  ErrorYouTube, mensajeYouTube, tokenYouTube, privacidadDe, recursoDeVideo, abrirSubidaYouTube, subirTrozoYouTube,
+  consultarSubidaYouTube, ponerPortadaYouTube, enlaceYouTube, PRIVACIDADES_YOUTUBE,
+} from "./youtube.js";
+import {
   REDES, revisarPublicacion, mediosDe, textoPara, primerComentario, destinoInstagram,
   esJPEG, piezasDe, publicacionDeVariante, momentoDeVariante, mediosParaRed, colaboradoresDe, conHistoria, redesDe,
+  tituloYouTube, descripcionYouTube, etiquetasYouTube, esShortYouTube,
 } from "../../src/lib/publicacion.js";
 import { tipoAprobacion } from "../../src/lib/aprobacion.js";
 import { avisarFallo } from "./equipo.js";
@@ -206,8 +211,10 @@ function planificar({ post, fecha, cal, cuentas: todas, hayMeta, previas, redes 
     mediosParaRed(post, "instagram", p.variante).some((m) => m.tipo === "imagen" && !esJPEG(m.src)))) {
     throw new ErrorPublicar("Instagram sólo acepta imágenes JPEG. Programa desde el panel de la publicación: allí se convierten solas.");
   }
-  if (lista.includes("tiktok") && !mediosDe(post).some((m) => m.tipo === "video" && m.src.startsWith("/api/media/clientes/"))) {
-    throw new ErrorPublicar("Para TikTok, el video tiene que estar subido a la publicación (desde el equipo o desde Drive).");
+  for (const red of ["tiktok", "youtube"]) {
+    if (lista.includes(red) && !mediosDe(post).some((m) => m.tipo === "video" && m.src.startsWith("/api/media/clientes/"))) {
+      throw new ErrorPublicar(`Para ${REDES[red].nombre}, el video tiene que estar subido a la publicación (desde el equipo o desde Drive).`);
+    }
   }
   if ((lista.includes("instagram") || lista.includes("facebook")) && !hayMeta) {
     throw new ErrorPublicar("Meta no está conectado. Conéctalo en Ajustes → Integraciones.");
@@ -404,13 +411,15 @@ export async function procesarPublicacion(env, { id, owner_id: ownerId }) {
     let origen = "";
     if (fila.red === "tiktok") {
       token = await tokenTikTok(env, acceso, cuenta);
+    } else if (fila.red === "youtube") {
+      token = await tokenYouTube(env, acceso, cuenta);
     } else {
       const meta = await acceso.leerUno("integracion_meta", { id: ownerId });
       if (!meta) throw new ErrorPublicar("Meta no está conectado. Conéctalo en Ajustes → Integraciones.");
       token = await descifrarMeta(env, cuenta.token_cifrado);
       origen = meta.origen;
     }
-    const paso = { instagram: pasoInstagram, facebook: pasoFacebook, tiktok: pasoTikTok }[fila.red];
+    const paso = { instagram: pasoInstagram, facebook: pasoFacebook, tiktok: pasoTikTok, youtube: pasoYouTube }[fila.red];
     if (!paso) throw new ErrorPublicar(`Publicar en ${REDES[fila.red]?.nombre ?? fila.red} todavía no está disponible.`);
 
     const contexto = { cuenta, token, origen, carga, guardar, fila: () => fila };
@@ -430,18 +439,19 @@ export async function procesarPublicacion(env, { id, owner_id: ownerId }) {
     }
   } catch (e) {
     const intentos = (fila.intentos ?? 0) + 1;
-    const mensaje = e instanceof ErrorPublicar ? e.message : e instanceof ErrorTikTok ? mensajeTikTok(e) : mensajeMeta(e);
+    const mensaje = e instanceof ErrorPublicar ? e.message : e instanceof ErrorTikTok ? mensajeTikTok(e) : e instanceof ErrorYouTube ? mensajeYouTube(e) : mensajeMeta(e);
+    const transitorio = (e instanceof ErrorMeta || e instanceof ErrorTikTok || e instanceof ErrorYouTube) && e.transitorio;
     const parcial = carga.tanda?.ids?.length ?? 0;
     if (fila.externo_id) {
       // Ya salió. Lo que falló es lo de después: no se vuelve a publicar.
       carga.aviso = `Se publicó, pero después: ${mensaje}`;
       await guardar({ estado: "publicada", siguiente_intento: null, publicada_at: fila.publicada_at ?? ahora() });
-    } else if (parcial && !((e instanceof ErrorMeta || e instanceof ErrorTikTok) && e.transitorio && intentos < MAX_INTENTOS)) {
+    } else if (parcial && !(transitorio && intentos < MAX_INTENTOS)) {
       // Una tanda de historias a medias: las que salieron, salieron. No se
       // repiten; se dice cuántas faltaron.
       carga.aviso = `Salieron ${parcial} de ${carga.tanda.total} historias; el resto falló: ${mensaje}`;
       await guardar({ estado: "publicada", externo_id: carga.tanda.ids[0], siguiente_intento: null, publicada_at: ahora() });
-    } else if ((e instanceof ErrorMeta || e instanceof ErrorTikTok) && e.transitorio && intentos < MAX_INTENTOS) {
+    } else if (transitorio && intentos < MAX_INTENTOS) {
       await guardar({
         intentos, error: mensaje,
         estado: fila.contenedor_id || carga.hijos || carga.tanda ? "procesando" : "programada",
@@ -748,4 +758,104 @@ async function pasoTikTok(env, { cuenta, token, carga, guardar, fila: actual }) 
     throw new ErrorTikTok({ code: estado.fail_reason ?? "failed", message: `TikTok no pudo procesar el video (${estado.fail_reason ?? "sin motivo"}).` }, 400);
   }
   return { esperar: 20_000 };
+}
+
+// ------------------------------------------------------------
+// YouTube
+// ------------------------------------------------------------
+
+/**
+ * Trozos por vuelta del cron: cada uno es una petición de salida, y el
+ * plan gratuito admite 50 por invocación para todo lo de esa vuelta.
+ * Cuatro de 16 MiB son 64 MiB por minuto y por video.
+ */
+const TROZOS_POR_VUELTA = 4;
+
+/**
+ * 1. Abrir la sesión de subida y GUARDARLA antes de mandar nada: con ella
+ *    guardada, un fallo se reanuda en la misma sesión en vez de abrir
+ *    otra (que, si la primera llegó a terminar, sería un segundo video).
+ * 2. Un trozo por paso, con lo que Google dice que ya tiene. Tras un fallo
+ *    a medias, primero se le pregunta dónde iba.
+ * 3. Al terminar, el id del video se guarda lo primero; después, la
+ *    portada, que si falla sólo deja un aviso.
+ */
+async function pasoYouTube(env, contexto) {
+  const { cuenta, token, carga, guardar, fila: actual } = contexto;
+  const fila = actual();
+  const post = publicacionDeVariante(carga.post ?? {}, fila.variante);
+  const yt = (carga.youtube ??= {});
+
+  // 3. Ya salió: la portada, sin volver a subir nada.
+  if (fila.externo_id) {
+    const portada = String(post.portada ?? "");
+    if (!yt.portadaHecha && portada.startsWith("/api/media/clientes/") && !/\.(mp4|mov|m4v|webm)/i.test(portada)) {
+      yt.portadaHecha = true;
+      try {
+        await ponerPortadaYouTube(env, token, fila.externo_id, portada.replace(/^\/api\/media\//, ""));
+      } catch (e) {
+        carga.aviso = [carga.aviso, `Se publicó, pero sin la portada: ${mensajeYouTube(e)}`].filter(Boolean).join(" ");
+      }
+      await guardar({});
+    }
+    return { hecho: true };
+  }
+
+  // 1. La sesión.
+  if (!fila.contenedor_id) {
+    const video = mediosDe(post).find((m) => m.tipo === "video");
+    const clave = String(video?.src ?? "").replace(/^\/api\/media\//, "");
+    if (!/^clientes\/[^/]+\//.test(clave)) throw new ErrorPublicar("Para YouTube, el video tiene que estar subido a la publicación.");
+    const cabeza = await env.MEDIA.head(clave);
+    if (!cabeza) throw new ErrorPublicar("El video ya no está en el almacenamiento: vuelve a añadirlo a la publicación.");
+    const privacidad = privacidadDe(cuenta);
+    const tipo = cabeza.httpMetadata?.contentType || "video/mp4";
+    const sesion = await abrirSubidaYouTube(token, {
+      tamano: cabeza.size, tipo,
+      recurso: recursoDeVideo({ titulo: tituloYouTube(post), descripcion: descripcionYouTube(post), etiquetas: etiquetasYouTube(post), privacidad }),
+    });
+    carga.youtube = { clave, tamano: cabeza.size, tipo, enviados: 0, privacidad, short: esShortYouTube(post) };
+    await guardar({ contenedor_id: sesion });
+    return { esperar: 0 };
+  }
+
+  // 2. Un trozo, o la pregunta de dónde iba.
+  if (!yt.tamano) throw new ErrorPublicar("Se perdió el avance de la subida. Reintenta la publicación.");
+  contexto.trozos = contexto.trozos ?? 0;
+  if (contexto.trozos >= TROZOS_POR_VUELTA) return { esperar: 30_000 };
+  let r;
+  try {
+    r = yt.consultar
+      ? await consultarSubidaYouTube(token, fila.contenedor_id, yt.tamano)
+      : await subirTrozoYouTube(env, token, { sesion: fila.contenedor_id, clave: yt.clave, desde: yt.enviados, tamano: yt.tamano, tipo: yt.tipo });
+  } catch (e) {
+    // No se sabe cuánto llegó: la próxima vez, se pregunta antes.
+    yt.consultar = true;
+    await guardar({});
+    throw e;
+  }
+  if (!yt.consultar) contexto.trozos += 1;
+  yt.consultar = false;
+
+  if (r.caducada) {
+    // La sesión caducó sin terminar (dura una semana): no llegó a crear
+    // ningún video, así que se abre otra en el siguiente intento.
+    carga.youtube = {};
+    await guardar({ contenedor_id: null });
+    throw new ErrorYouTube({ estado: 503, razon: "backendError", mensaje: "La sesión de subida caducó; se vuelve a empezar." });
+  }
+  if (r.hecho) {
+    const id = String(r.video?.id ?? "");
+    if (!id) throw new ErrorYouTube({ estado: 502, razon: "sinId", mensaje: "YouTube terminó la subida sin devolver el video." });
+    const salio = r.video?.status?.privacyStatus;
+    if (salio && salio !== yt.privacidad) {
+      carga.aviso = `YouTube la dejó en «${PRIVACIDADES_YOUTUBE[salio] ?? salio}» y no en «${PRIVACIDADES_YOUTUBE[yt.privacidad]}»: mientras Google no audite el proyecto, lo subido por la API queda privado. Cámbialo desde YouTube Studio.`;
+    }
+    // Lo primero: a partir de aquí un fallo ya no vuelve a subir nada.
+    await guardar({ externo_id: id, enlace: enlaceYouTube(id, yt.short), publicada_at: ahora() });
+    return { esperar: 0 };
+  }
+  yt.enviados = r.enviados;
+  await guardar({});
+  return { esperar: 0 };
 }

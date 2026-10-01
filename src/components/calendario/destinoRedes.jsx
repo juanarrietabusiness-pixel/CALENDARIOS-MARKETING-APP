@@ -13,7 +13,7 @@
 // ============================================================
 
 import Icon from "../Icon";
-import { REDES, conHistoria } from "../../lib/publicacion";
+import { REDES, conHistoria, conHistorias } from "../../lib/publicacion";
 import { queSaleEn, resumenDestino } from "../../lib/subir";
 import { FORMATS, FORMAT_ICONS } from "../../constants";
 
@@ -29,6 +29,9 @@ const FORMATOS_SUBIDA = ["post", "carrusel", "reel", "historia"];
 export default function DestinoRedes({ post, redes, onRedes, cuentas = null, formato = null, onFormato = null }) {
   const alternar = (r) => onRedes(redes.includes(r) ? redes.filter((x) => x !== r) : [...redes, r]);
   const conSuHistoria = conHistoria(post);
+  // YouTube sólo se ofrece si el cliente tiene su canal conectado (o si ya
+  // venía marcada): para la mayoría de clientes sería una tarjeta muerta.
+  const visibles = Object.keys(REDES).filter((id) => id !== "youtube" || redes.includes(id) || (cuentas ?? []).includes(id));
 
   return (
     <div className="destino">
@@ -43,13 +46,14 @@ export default function DestinoRedes({ post, redes, onRedes, cuentas = null, for
       )}
 
       <div className="destino-redes" role="group" aria-label="Dónde se publica">
-        {Object.entries(REDES).map(([id, r]) => {
+        {visibles.map((id) => {
+          const r = REDES[id];
           const activa = redes.includes(id);
           const sinCuenta = cuentas !== null && !cuentas.includes(id);
           // La última no se desmarca: sin ninguna, el servidor volvería a
           // Instagram por su cuenta, que es justo lo que no se quiere.
           const ultima = activa && redes.length === 1;
-          const que = queSaleEn(post, id) + (activa && id !== "tiktok" && conSuHistoria ? " + historia" : "");
+          const que = queSaleEn(post, id) + (activa && conHistorias(id) && conSuHistoria ? " + historia" : "");
           return (
             <button
               key={id}
@@ -73,7 +77,7 @@ export default function DestinoRedes({ post, redes, onRedes, cuentas = null, for
       </div>
 
       <p className="destino-resumen" aria-live="polite">
-        <Icon name="send" size={14} /> {resumenDestino(post, redes)}
+        <Icon name="send" size={14} /> {resumenDestino(post, redes, visibles)}
       </p>
     </div>
   );

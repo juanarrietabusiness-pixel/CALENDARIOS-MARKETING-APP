@@ -16,7 +16,7 @@ import logoMark from "../assets/logo-mark.png";
 // navegador ya hace.
 // ============================================================
 
-const REDES = { instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok" };
+const REDES = { instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube" };
 
 function Cambio({ valor }) {
   if (valor == null || !Number.isFinite(valor)) return null;

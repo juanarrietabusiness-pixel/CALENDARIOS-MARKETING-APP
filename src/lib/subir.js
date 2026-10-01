@@ -8,7 +8,7 @@
 // deduce, para que el diálogo rápido y el panel decidan igual.
 // ============================================================
 
-import { mediosDe, destinoInstagram, conHistoria, REDES } from "./publicacion.js";
+import { mediosDe, destinoInstagram, conHistoria, conHistorias, esShortYouTube, REDES } from "./publicacion.js";
 
 export { redesPorDefecto } from "./publicacion.js";
 import { semanaDelMes } from "./semanas.js";
@@ -37,6 +37,7 @@ const PIEZA_INSTAGRAM = { imagen: "post en el feed", carrusel: "carrusel", reel:
 export function queSaleEn(post, red) {
   if (red === "instagram") return PIEZA_INSTAGRAM[destinoInstagram(post)];
   if (red === "tiktok") return "video";
+  if (red === "youtube") return esShortYouTube(post) ? "Short" : "video";
   return post?.format === "historia" ? "historia" : "publicación";
 }
 
@@ -46,13 +47,16 @@ const unir = (lista) => (lista.length < 2 ? lista.join("") : `${lista.slice(0, -
  * La frase de dónde sale y dónde NO: «Sale en Instagram (reel + historia)
  * y Facebook (publicación). No sale en TikTok.» Lo que queda fuera se
  * dice también: callarlo es lo que hacía creer que no saldría.
+ *
+ * `posibles`: las redes que se enseñan. YouTube sólo aparece si el cliente
+ * lo tiene conectado; si no, tampoco se nombra en «No sale en…».
  */
-export function resumenDestino(post, redes = []) {
+export function resumenDestino(post, redes = [], posibles = Object.keys(REDES).filter((r) => r !== "youtube")) {
   const dentro = redes.filter((r) => REDES[r]).map((r) => {
-    const extra = r !== "tiktok" && conHistoria(post) ? " + historia" : "";
+    const extra = conHistorias(r) && conHistoria(post) ? " + historia" : "";
     return `${REDES[r].nombre} (${queSaleEn(post, r)}${extra})`;
   });
-  const fuera = Object.keys(REDES).filter((r) => !redes.includes(r)).map((r) => REDES[r].nombre);
+  const fuera = posibles.filter((r) => REDES[r] && !redes.includes(r)).map((r) => REDES[r].nombre);
   if (!dentro.length) return "No sale en ninguna red: elige al menos una.";
   return `Sale en ${unir(dentro)}.${fuera.length ? ` No sale en ${unir(fuera)}.` : ""}`;
 }
