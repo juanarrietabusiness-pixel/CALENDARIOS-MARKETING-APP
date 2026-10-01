@@ -1,8 +1,8 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { modeloPorId, textoCosto, NOMBRE_PROPORCION } from "../lib/estudioCatalogo";
-import { hace, nombreDeDescarga, esVideoReal, valorDeAjuste } from "../lib/estudio";
+import { hace, nombreDeDescarga, esVideoReal, valorDeAjuste, ATAJOS_EDICION } from "../lib/estudio";
 
 // ============================================================
 // El visor: la imagen (o el video) grande y todo lo que se sabe de ella
@@ -26,9 +26,12 @@ export function Pieza({ archivo: a, grande = false }) {
 
 export default function Visor({
   archivo: a, carpetas, lectura, onCerrar, onFavorito, onPapelera, onMover, onRepetir, onVariar, onReferencia, onAnimar, onUsar, etiquetaUsar,
+  onEditar = null, original = null, onVerOriginal = null,
 }) {
   const ref = useDialogA11y(onCerrar);
   const id = useId();
+  const [editando, setEditando] = useState(false);
+  const [cambio, setCambio] = useState("");
   const m = modeloPorId(a.modelo);
   const video = a.tipo === "video";
   return (
@@ -41,6 +44,12 @@ export default function Visor({
             <button type="button" className="btn-icon" aria-label="Cerrar" onClick={onCerrar}><Icon name="close" size={18} /></button>
           </div>
           <p className="est-visor-prompt">{a.prompt}</p>
+          {original && (
+            <p className="hint est-visor-original">
+              <Icon name="refresh" size={14} /> Editada a partir de{" "}
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => onVerOriginal?.(original)}>la imagen original</button>, que no se tocó.
+            </p>
+          )}
           <dl className="est-detalles">
             <div><dt>Modelo</dt><dd>{a.subido ? "Subida a mano" : m?.nombre ?? a.modelo ?? "Aplicación"}</dd></div>
             {a.ajustes?.aspectRatio && <div><dt>Formato</dt><dd>{NOMBRE_PROPORCION[a.ajustes.aspectRatio] ?? a.ajustes.aspectRatio} ({a.ajustes.aspectRatio})</dd></div>}
@@ -59,7 +68,25 @@ export default function Visor({
               </select>
             </div>
           )}
+          {editando && (
+            <form className="est-editar" onSubmit={(e) => { e.preventDefault(); if (cambio.trim()) onEditar(cambio); }}>
+              <label className="label" htmlFor={`${id}-e`}>¿Qué cambio?</label>
+              <input id={`${id}-e`} className="input" value={cambio} maxLength={500}
+                placeholder="Ej.: quita el texto de arriba y pon el fondo blanco" onChange={(e) => setCambio(e.target.value)} />
+              <div className="est-editar-atajos" role="group" aria-label="Cambios frecuentes">
+                {ATAJOS_EDICION.map((t) => (
+                  <button key={t} type="button" className="filter-chip" onClick={() => setCambio((c) => (c.trim() ? `${c.trim().replace(/[.\s]+$/, "")}; ${t.toLowerCase()}` : t))}>{t}</button>
+                ))}
+              </div>
+              <div className="est-editar-botones">
+                <button type="submit" className="btn btn-primary btn-sm" disabled={!cambio.trim()}><Icon name="wand" size={14} /> Editar con IA</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditando(false); setCambio(""); }}>Cancelar</button>
+              </div>
+              <p className="hint" style={{ margin: 0 }}>Sale una imagen NUEVA en la galería; esta se queda como está.</p>
+            </form>
+          )}
           <div className="est-visor-acciones">
+            {!lectura && !video && onEditar && !editando && <button type="button" className="btn btn-secondary" onClick={() => setEditando(true)}><Icon name="pencil" size={16} /> Editar</button>}
             {onUsar && <button type="button" className="btn btn-primary" onClick={onUsar}><Icon name="check" size={16} /> {etiquetaUsar ?? "Usar en la publicación"}</button>}
             {!lectura && !a.subido && <button type="button" className={`btn ${onUsar ? "btn-secondary" : "btn-primary"}`} onClick={onRepetir}><Icon name="refresh" size={16} /> Repetir</button>}
             {!lectura && !a.subido && !video && <button type="button" className="btn btn-secondary" onClick={onVariar}><Icon name="sparkles" size={16} /> Variar</button>}

@@ -75,6 +75,7 @@ export const FUNCIONES_IA = Object.freeze({
   guiones: ["guiones"],
   lectura: ["lectura de contenido"],
   asistente: ["asistente", "resumen del chat"],
+  prompts: ["prompt de imagen"],
   analisis: ["informe", "auditoria", "cerebro", "ADN de marca"],
 });
 /** Lo que escribe Muse Spark Contributor por defecto en cuanto hay llave de Meta (decisión de la agencia). */

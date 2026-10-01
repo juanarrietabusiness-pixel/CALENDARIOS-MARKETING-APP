@@ -249,7 +249,8 @@ worker/
     informes.js           Cifras del mes (congeladas) + análisis de la IA; el del día 1
     auditorias.js         Leer un perfil (cuenta propia o business_discovery) y auditarlo
     mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
-    estudio/              El Estudio: meta.js (Muse Image: generar y editar, 0,01 $), trabajos.js (pedir, avanzar por pasos, cancelar; el permiso de
+    estudio/              El Estudio: meta.js (Muse Image: generar y editar, 0,01 $), prompt.js («Escribir el
+                          prompt»: la IA lee la idea y MIRA las referencias; memoria y apego en %, carruseles), trabajos.js (pedir, avanzar por pasos, cancelar; el permiso de
                           un paso a la vez y el cron), motores.js (prueba y Gemini, mismo contrato;
                           fal.js y higgsfield.js son los otros dos), gemini.js (la llamada,
                           compartida con /api/generar-imagen), galeria.js (archivos, carpetas,
@@ -1727,6 +1728,21 @@ son del servidor.
   escriben con **Muse Spark 1.2 Contributor**, que entrena con lo que recibe:
   la advertencia de Ajustes no se puede cerrar mientras lo use alguna
   función. Las notas internas no viajan a la redacción; al asistente, sí.
+
+- **«Escribir el prompt» es TEXTO y no gasta en el motor.** La IA (función
+  «prompt de imagen», con su modelo en Ajustes) lee la idea, MIRA las
+  referencias —van como bloques de imagen; un SVG de prueba no se le enseña—
+  y escribe el prompt, que la persona revisa antes de crear. La memoria sale
+  de `contexto()` con `para: "imagen"` (ficha, pasajes y el resumen de sus
+  vecinas en el grafo, sin notas internas) y el deslizador escala su
+  presupuesto; 0 % es «nada de la marca». Un carrusel trae un bloque de
+  estilo y un prompt COMPLETO por diapositiva —cada una va a su trabajo y el
+  motor no ve las demás— y se crea en una carpeta propia.
+- **Editar una imagen no la toca: hace otra.** Es un trabajo con la imagen de
+  referencia y `promptDeEdicion()` (la indicación + «conserva todo lo
+  demás»), con Muse Image si hay llave de Meta y si no Nano Banana
+  (`modeloParaEditar`). De qué original sale se sabe por su trabajo
+  (`originalDe`): no hizo falta ninguna columna.
 
 ## Documentos relacionados
 

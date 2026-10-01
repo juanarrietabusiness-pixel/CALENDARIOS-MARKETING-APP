@@ -11,7 +11,7 @@
 // ============================================================
 
 import { pedir } from "./db";
-import { estaVivo, diasQueQuedan } from "./estudioCatalogo";
+import { estaVivo, diasQueQuedan, MODELOS, MAX_PROMPT } from "./estudioCatalogo";
 
 const base = (clienteId) => `/estudio/${encodeURIComponent(clienteId)}`;
 const post = (cuerpo) => ({ method: "POST", body: JSON.stringify(cuerpo ?? {}) });
@@ -29,6 +29,13 @@ export const pedirImagenes = (clienteId, datos) => pedir(`${base(clienteId)}/tra
 export const avanzarTrabajo = (clienteId, id) => pedir(`${base(clienteId)}/trabajos/${encodeURIComponent(id)}/avanzar`, post());
 export const cancelarTrabajo = (clienteId, id) => pedir(`${base(clienteId)}/trabajos/${encodeURIComponent(id)}/cancelar`, post());
 export const reintentarTrabajo = (clienteId, id) => pedir(`${base(clienteId)}/trabajos/${encodeURIComponent(id)}/reintentar`, post());
+
+/**
+ * «Escribir el prompt»: la IA lee la idea y MIRA las referencias. Devuelve
+ * `{ prompts: [...], estilo, modelo, aviso, conMemoria }`; un carrusel trae
+ * un prompt por diapositiva. Es texto: no pide nada al motor de imagen.
+ */
+export const escribirPrompt = (clienteId, datos) => pedir(`${base(clienteId)}/prompt`, post(datos));
 
 /** Sube una imagen a mano (la foto del producto, el logo) a la galería del cliente. */
 export function subirImagen(clienteId, archivo, { carpetaId = null } = {}) {
@@ -198,4 +205,50 @@ const VALORES = Object.freeze({ calidad: { high: "Alta (pule en varias pasadas)"
 export function valorDeAjuste(nombre, valor) {
   if (nombre === "duration") return `${valor} s`;
   return VALORES[nombre]?.[valor] ?? valor;
+}
+
+// ------------------------------------------------------------
+// Editar una imagen con una indicación sencilla
+// ------------------------------------------------------------
+
+/** Atajos de «¿Qué cambio?»: lo que más se pide. */
+export const ATAJOS_EDICION = Object.freeze([
+  "Quita el texto",
+  "Cambia el fondo por uno liso y claro",
+  "Más luz, más brillante",
+  "Acerca más el producto",
+  "Quita los objetos que distraen",
+  "Hazla más cálida",
+]);
+
+/**
+ * El prompt de una edición: lo que la persona pide y la orden de no tocar
+ * lo demás. Va tal cual al motor y queda en la galería: lo que se mandó es
+ * lo que se ve.
+ */
+export function promptDeEdicion(instruccion) {
+  const pedido = String(instruccion ?? "").trim().replace(/[.\s]+$/, "");
+  if (!pedido) return "";
+  return `Edita la imagen de referencia: ${pedido}. Conserva todo lo demás exactamente igual: la composición, el encuadre, las personas, el producto, los colores, la luz y cualquier texto o logo que no se pida cambiar.`.slice(0, MAX_PROMPT);
+}
+
+/**
+ * Con qué modelo se edita: Muse Image si hay llave de Meta (edita y cuesta
+ * 0,01 $), si no Nano Banana, si no el primero de imagen con referencias que
+ * tenga llave; sin ninguno, la prueba. `activos`: { motor: bool }.
+ */
+export function modeloParaEditar(activos = {}) {
+  const preferidos = ["muse-image", "nano-banana"];
+  const con = (m) => m.tipo === "imagen" && m.referencias > 0 && activos[m.motor];
+  return preferidos.map((id) => MODELOS.find((m) => m.id === id)).find((m) => m && con(m))
+    ?? MODELOS.find((m) => con(m) && m.motor !== "prueba")
+    ?? MODELOS.find((m) => m.id === "prueba");
+}
+
+/** ¿De qué imagen sale esta edición? El id del archivo original, si se sabe por su trabajo. Pura. */
+export function originalDe(archivo, trabajos = [], archivos = []) {
+  const t = trabajos.find((x) => x.id === archivo?.trabajoId);
+  const clave = t?.medios?.reference?.[0];
+  if (!clave || !/^Edita la imagen de referencia:/.test(t.prompt ?? "")) return null;
+  return archivos.find((a) => a.clave === clave) ?? null;
 }
