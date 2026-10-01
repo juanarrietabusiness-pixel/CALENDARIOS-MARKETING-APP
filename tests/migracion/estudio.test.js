@@ -606,21 +606,18 @@ describe("subir a mano, carpetas y papelera", () => {
     let cuerpoMeta = null;
     globalThis.fetch = vi.fn(async (url, init) => {
       urls.push(String(url));
-      if (String(url).startsWith("https://api.meta.ai/v1/responses")) {
+      if (String(url).startsWith("https://api.meta.ai/v1/images/edits")) {
         cuerpoMeta = JSON.parse(init.body);
-        return Response.json({ status: "completed", output: [{ type: "image_generation_call", result: PNG_B64 }] });
+        return Response.json({ data: [{ b64_json: PNG_B64 }] });
       }
       return respuestaGemini();
     });
     const pedirAdaptar = () => pedir(JEFE, "/api/generar-imagen", { method: "POST", body: { clientId: "c1", adaptarDe: { src: "/api/media/clientes/c1/posts/flow.png", proporcion: "4:5" } } });
     expect((await pedirAdaptar()).status).toBe(201);
-    expect(urls).toEqual(["https://api.meta.ai/v1/responses"]);
-    // 4:5 no está entre los tamaños de Meta: se pide vertical y el navegador recorta al exacto.
-    expect(cuerpoMeta).toMatchObject({ model: "muse-image-1.0", store: false, tools: [{ type: "image_generation", size: "1024x1536", output_format: "jpeg" }] });
-    const [texto, imagen] = cuerpoMeta.input[0].content;
-    expect(cuerpoMeta.input[0].role).toBe("user");
-    expect(texto.text).toMatch(/Genera una imagen NUEVA/);
-    expect(imagen.image_url).toMatch(/^data:image\/png;base64,/);
+    expect(urls).toEqual(["https://api.meta.ai/v1/images/edits"]);
+    expect(cuerpoMeta).toMatchObject({ model: "muse-image-1.0", size: "1024x1280" });
+    expect(cuerpoMeta.prompt).toMatch(/Genera una imagen NUEVA/);
+    expect(cuerpoMeta.images[0].image_url).toMatch(/^data:image\/png;base64,/);
     const apunte = db.sqlite.prepare("select proveedor, modelo, costo_usd from consumo_ia order by created_at desc").get();
     expect({ ...apunte }).toEqual({ proveedor: "meta", modelo: "muse-image-1.0", costo_usd: 0.01 });
 

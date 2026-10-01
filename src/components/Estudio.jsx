@@ -72,10 +72,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const [confirmando, setConfirmando] = useState(null); // el costo a confirmar, o null
   const [enviando, setEnviando] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
-  // «Escribir el prompt»: cuánto pesan la memoria de la marca y las referencias, y si es un carrusel.
-  const [escritura, setEscritura] = useState({ memoria: 60, apego: 50, diapositivas: 1 });
-  const [escribiendo, setEscribiendo] = useState(false);
-  const [serie, setSerie] = useState(null); // { estilo, prompts: [] }: un carrusel ya escrito
+  // «Mejorar idea»: mientras la IA la reescribe, y lo que había antes para poder volver.
+  const [mejorando, setMejorando] = useState(false);
+  const [ideaAnterior, setIdeaAnterior] = useState(null);
 
   const [filtro, setFiltro] = useState("todas");
   const [texto, setTexto] = useState("");
@@ -120,8 +119,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const modelo = form ? modeloPorId(form.modelo) : null;
   const motorActivo = (m) => Boolean(motores?.[m.motor]?.activo);
   const ajustes = form && modelo ? ajustesDe(modelo, form.ajustes, clavesDe(form.medios)) : {};
-  // Un carrusel escrito son N pedidos de una imagen: el costo es el de las N.
-  const costo = form && modelo ? estimar(modelo, serie ? serie.prompts.length : form.n, ajustes) : 0;
+  const costo = form && modelo ? estimar(modelo, form.n, ajustes) : 0;
 
   // ---------- Seguir un trabajo: un paso, y otro, hasta que termine ----------
   const seguir = useCallback(async (id) => {
@@ -185,61 +183,33 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     });
   };
 
-  /** La IA lee la idea, mira las referencias y escribe el prompt (o uno por diapositiva). No gasta en el motor. */
-  const escribirConIA = async () => {
-    if (!form || escribiendo) return;
+  /** La IA devuelve la idea más clara y sencilla, en el mismo campo. No gasta en el motor. */
+  const mejorarConIA = async () => {
+    if (!form || mejorando) return;
     if (!form.prompt.trim()) { avisar(false, "Escribe primero la idea, con tus palabras."); promptRef.current?.focus(); return; }
-    setEscribiendo(true);
+    setMejorando(true);
     setAviso(null);
+    const antes = form.prompt;
     try {
-      const r = await api.escribirPrompt(client.id, {
-        idea: form.prompt, tipo: form.tipo, diapositivas: form.tipo === "imagen" ? escritura.diapositivas : 1,
-        apego: escritura.apego, memoria: escritura.memoria,
-        referencias: [...form.medios.reference, ...form.medios.start].map((a) => a.src),
-      });
-      const prompts = r.prompts.map((p) => p.slice(0, MAX_PROMPT));
+      const r = await api.mejorarIdea(client.id, { idea: antes, tipo: form.tipo });
       setConfirmando(null);
-      // Una imagen: el prompt escrito ocupa el campo. Un carrusel: la idea se queda y las diapositivas salen debajo.
-      if (prompts.length === 1) setForm((f) => ({ ...f, prompt: prompts[0] }));
-      setSerie(prompts.length > 1 ? { estilo: r.estilo, prompts } : null);
-      avisar(true, [
-        prompts.length > 1 ? `Listo: ${prompts.length} diapositivas de la misma serie. Revísalas antes de crear.` : "Listo: revisa el prompt antes de crear.",
-        r.conMemoria ? "" : escritura.memoria > 0 ? "El cerebro del cliente aún no tiene su identidad visual: se escribió sin ella." : "",
-        r.aviso ?? "",
-      ].filter(Boolean).join(" "));
+      setIdeaAnterior(antes);
+      setForm((f) => ({ ...f, prompt: r.idea.slice(0, MAX_PROMPT) }));
+      avisar(true, ["Listo: revisa la idea antes de crear.", r.aviso ?? ""].filter(Boolean).join(" "));
       enfocarPrompt();
     } catch (e) {
       avisar(false, e.message);
     } finally {
-      setEscribiendo(false);
+      setMejorando(false);
     }
   };
 
-  /** Un carrusel: una carpeta para la serie y un pedido por diapositiva, con el mismo modelo y los mismos ajustes. */
-  const enviarSerie = async () => {
-    setEnviando(true);
-    setAviso(null);
-    setEnPapelera(false);
-    try {
-      const fecha = new Date().toLocaleString("es-PA", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-      const { carpeta } = await api.crearCarpeta(client.id, `Carrusel · ${fecha}`).catch(() => ({ carpeta: null }));
-      for (const [i, prompt] of serie.prompts.entries()) {
-        const { trabajo } = await api.pedirImagenes(client.id, {
-          modelo: form.modelo, prompt, n: 1, ajustes, medios: clavesDe(form.medios), confirmado: true,
-          ...(carpeta?.id ? { carpetaId: carpeta.id } : {}),
-          ...(uso ? { calendarId: uso.calendarId, postId: uso.postId } : {}),
-        });
-        setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, trabajo) } : d));
-        seguir(trabajo.id);
-        if (i === 0) avisar(true, `Creando ${serie.prompts.length} diapositivas${carpeta ? ` en la carpeta «${carpeta.nombre}»` : ""}…`);
-      }
-      setSerie(null);
-      if (carpeta?.id) cargar();
-    } catch (e) {
-      avisar(false, e.message);
-    } finally {
-      setEnviando(false);
-    }
+  /** Deshace la mejora: vuelve lo que la persona había escrito. */
+  const volverAMiIdea = () => {
+    if (ideaAnterior == null) return;
+    setForm((f) => ({ ...f, prompt: ideaAnterior }));
+    setIdeaAnterior(null);
+    enfocarPrompt();
   };
 
   /** «Editar»: la imagen va de referencia a un modelo que edita, con la indicación y la orden de no tocar lo demás. */
@@ -267,12 +237,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
   const enviar = async (confirmado = false) => {
     if (!form || !modelo || enviando) return;
-    if (serie) {
-      if (!confirmado && pideConfirmar(costo)) { setConfirmando(costo); return; }
-      setConfirmando(null);
-      await enviarSerie();
-      return;
-    }
     if (!form.prompt.trim()) {
       avisar(false, "Escribe qué quieres crear.");
       promptRef.current?.focus();
@@ -291,6 +255,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       });
       setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, trabajo) } : d));
       seguir(trabajo.id);
+      setIdeaAnterior(null);
     } catch (e) {
       if (e.datos?.codigo === "confirmar") setConfirmando(e.datos.costo);
       else avisar(false, e.message);
@@ -517,8 +482,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           confirmando={confirmando} enviando={enviando} subiendo={subiendo} promptRef={promptRef}
           onEnviar={enviar} onConfirmar={() => enviar(true)} onNo={() => setConfirmando(null)}
           onModelo={cambiarModelo} onTipo={cambiarTipo} onQuitarMedio={quitarMedio} onSubirArchivos={subirArchivos}
-          escritura={escritura} setEscritura={setEscritura} escribiendo={escribiendo} onEscribir={escribirConIA}
-          serie={serie} setSerie={setSerie}
+          mejorando={mejorando} onMejorar={mejorarConIA} onVolverIdea={ideaAnterior != null ? volverAMiIdea : null}
         />
       )}
 

@@ -4,51 +4,37 @@ import { d1EnMemoria } from "../utils/d1Memoria.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
 import { olvidarModelos } from "../../worker/lib/configIA.js";
-import { instruccionApego, presupuestoMemoria, pedidoDePrompt, leerPrompts, MAX_DIAPOSITIVAS } from "../../worker/lib/estudio/prompt.js";
+import { pedidoDeMejora, leerIdea, MAX_PALABRAS } from "../../worker/lib/estudio/prompt.js";
 
 // ============================================================
-// «Escribir el prompt»: la IA lee la idea, MIRA las referencias y escribe
+// «Mejorar idea»: la idea de la persona, más clara, y nada más
 //
 // Lo que importa:
-//   1. Las referencias van como IMÁGENES y son del mismo cliente.
-//   2. La memoria de la marca entra según el deslizador, y nunca lo interno.
-//   3. Un carrusel trae un prompt por diapositiva, con el estilo común dentro.
-//   4. Es texto: no crea ningún trabajo ni llama a ningún motor de imagen.
+//   1. Sale UNA idea sencilla en texto: ni JSON, ni listas, ni párrafos de
+//      dirección de arte (eso es lo que hacía «Escribir el prompt» y el
+//      motor, con tanto texto, sacaba cualquier cosa).
+//   2. No mete la marca por detrás: ni la memoria del cerebro, ni lo interno.
+//   3. Es texto: no crea ningún trabajo ni llama a ningún motor de imagen.
 // ============================================================
 
 describe("lo puro", () => {
-  it("el apego a las referencias, en tres tramos", () => {
-    expect(instruccionApego(0)).toMatch(/sólo como inspiración/);
-    expect(instruccionApego(50)).toMatch(/estilo, su paleta/);
-    expect(instruccionApego(100)).toMatch(/Replica su composición/);
-    expect(instruccionApego(500)).toMatch(/100 %/);
+  it("pide una o dos frases sencillas, sin inventar y sin listas", () => {
+    const p = pedidoDeMejora({ idea: "un sofá en una sala bonita", cliente: { name: "Dcasa" } });
+    expect(p).toMatch(/una imagen de la marca Dcasa/);
+    expect(p).toMatch(new RegExp(`${MAX_PALABRAS} palabras como mucho`));
+    expect(p).toMatch(/No inventes/);
+    expect(p).toMatch(/Nada de listas/);
+    expect(p).toMatch(/LA IDEA:\nun sofá en una sala bonita/);
+    expect(p).not.toMatch(/JSON|CARRUSEL|director de arte/i);
+    expect(pedidoDeMejora({ idea: "x", tipo: "video" })).toMatch(/un video corto/);
   });
 
-  it("la memoria: 0 es nada; más, más presupuesto y más notas", () => {
-    expect(presupuestoMemoria(0)).toBeNull();
-    const poca = presupuestoMemoria(10);
-    const mucha = presupuestoMemoria(100);
-    expect(mucha.presupuesto).toBeGreaterThan(poca.presupuesto);
-    expect(mucha.n).toBeGreaterThan(poca.n);
-  });
-
-  it("un carrusel pide el estilo común y un prompt COMPLETO por diapositiva", () => {
-    const p = pedidoDePrompt({ idea: "5 consejos para elegir pisos", diapositivas: 5, referencias: 0 });
-    expect(p).toMatch(/CARRUSEL DE 5 DIAPOSITIVAS/);
-    expect(p).toMatch(/"estilo"/);
-    expect(pedidoDePrompt({ idea: "x", diapositivas: 99 })).toMatch(new RegExp(`CARRUSEL DE ${MAX_DIAPOSITIVAS} `));
-    expect(pedidoDePrompt({ idea: "x" })).not.toMatch(/CARRUSEL/);
-  });
-
-  it("sin memoria se le dice que no use la marca", () => {
-    expect(pedidoDePrompt({ idea: "x", guia: null })).toMatch(/No uses nada de la identidad de la marca/);
-    expect(pedidoDePrompt({ idea: "x", guia: "Azul marino", memoria: 70 })).toMatch(/APEGO A LA MEMORIA DE LA MARCA: 70 %[\s\S]*Azul marino/);
-  });
-
-  it("lee la respuesta aunque traiga texto alrededor; sin JSON, el texto vale de prompt", () => {
-    expect(leerPrompts('Aquí va:\n{"estilo": "azul", "prompts": ["uno", "dos", "tres"]}\nListo', 2)).toEqual({ estilo: "azul", prompts: ["uno", "dos"] });
-    expect(leerPrompts("Una taza de café sobre madera", 1)).toEqual({ estilo: "", prompts: ["Una taza de café sobre madera"] });
-    expect(leerPrompts("", 1).prompts).toEqual([]);
+  it("lee la idea limpia: sin etiqueta, sin comillas que la envuelven, en una línea", () => {
+    expect(leerIdea("Idea mejorada: Un sofá color arena en una sala luminosa.")).toBe("Un sofá color arena en una sala luminosa.");
+    expect(leerIdea("«Un sofá color arena junto a la ventana.»")).toBe("Un sofá color arena junto a la ventana.");
+    expect(leerIdea("Una taza con el texto \"Buenos días\" sobre la mesa.")).toBe("Una taza con el texto \"Buenos días\" sobre la mesa.");
+    expect(leerIdea("```\nUna taza\nsobre la mesa\n```")).toBe("Una taza sobre la mesa");
+    expect(leerIdea("")).toBe("");
   });
 });
 
@@ -58,8 +44,6 @@ describe("lo puro", () => {
 
 const JEFE = "u-jefe";
 const TESTIGO = "t-jefe";
-const PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
-const PNG = Uint8Array.from(atob(PNG_B64), (c) => c.charCodeAt(0));
 let db;
 let env;
 let peticiones;
@@ -108,8 +92,11 @@ const pedir = (ruta, opciones = {}) =>
     headers: { Cookie: `${COOKIE}=${TESTIGO}`, "Content-Type": "application/json" },
     body: opciones.body === undefined ? undefined : JSON.stringify(opciones.body),
   }), env);
-const escribir = (datos) => pedir("/api/estudio/c1/prompt", { method: "POST", body: datos });
-const textoDe = (p) => p.messages[0].content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+const mejorar = (datos) => pedir("/api/estudio/c1/mejorar", { method: "POST", body: datos });
+const textoDe = (p) => {
+  const c = p.messages[0].content;
+  return typeof c === "string" ? c : c.filter((b) => b.type === "text").map((b) => b.text).join("\n");
+};
 
 beforeEach(async () => {
   db = d1EnMemoria();
@@ -121,61 +108,37 @@ beforeEach(async () => {
     .run(await sha256(TESTIGO), JEFE, "2026-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z");
   s.prepare("insert into clients (id, owner_id, name) values (?,?,?)").run("c1", JEFE, "Dcasa");
   s.prepare("insert into clients (id, owner_id, name) values (?,?,?)").run("c2", JEFE, "Otro");
-  env.MEDIA.objetos.set("clientes/c1/estudio/2026-09/ref.png", { bytes: PNG, tipo: "image/png" });
-  env.MEDIA.objetos.set("clientes/c1/estudio/2026-09/prueba.svg", { bytes: "<svg/>", tipo: "image/svg+xml" });
-  env.MEDIA.objetos.set("clientes/c2/estudio/2026-09/ajena.png", { bytes: PNG, tipo: "image/png" });
   // El cerebro: su identidad visual y una nota interna que no puede salir.
   await pedir("/api/cerebro/c1/nota", { method: "PUT", body: { titulo: "Identidad visual", texto: "Paleta azul marino y arena; fotografía cálida con luz natural; nunca fondos negros.", tipo: "marca" } });
   await pedir("/api/cerebro/c1/nota", { method: "PUT", body: { titulo: "Costos", texto: "El costo del sofá es de 200 dólares y el margen del 40 %.", tipo: "documento", interna: true } });
 });
 afterEach(() => { vi.unstubAllGlobals(); olvidarModelos(); });
 
-describe("POST /api/estudio/<cliente>/prompt", () => {
-  it("mira las referencias (como imágenes) y devuelve el prompt; no crea ningún trabajo", async () => {
-    anthropic('{"prompts": ["Sofá color arena en una sala con luz natural, encuadre amplio"]}');
-    const res = await escribir({ idea: "un sofá en una sala bonita", referencias: ["/api/media/clientes/c1/estudio/2026-09/ref.png"], apego: 80, memoria: 60 });
+describe("POST /api/estudio/<cliente>/mejorar", () => {
+  it("devuelve la idea más clara, en texto; no crea ningún trabajo y apunta el gasto", async () => {
+    anthropic("Un sofá color arena en una sala con luz natural de la tarde, foto realista.");
+    const res = await mejorar({ idea: "un sofá en una sala bonita" });
     expect(res.status).toBe(200);
     const r = await res.json();
-    expect(r.prompts).toEqual(["Sofá color arena en una sala con luz natural, encuadre amplio"]);
-    expect(r.referencias).toBe(1);
-    const p = peticiones[0];
-    expect(p.messages[0].content[0]).toMatchObject({ type: "image", source: { type: "base64", media_type: "image/png" } });
-    expect(textoDe(p)).toMatch(/APEGO A LAS REFERENCIAS: 80 %/);
+    expect(r.idea).toBe("Un sofá color arena en una sala con luz natural de la tarde, foto realista.");
+    expect(textoDe(peticiones[0])).toMatch(/LA IDEA:\nun sofá en una sala bonita/);
+    // Ni imágenes ni nada más: sólo el texto del pedido.
+    expect(typeof peticiones[0].messages[0].content).toBe("string");
     expect(db.sqlite.prepare("select count(*) as n from estudio_trabajos").get().n).toBe(0);
     const apunte = db.sqlite.prepare("select funcion, client_id from consumo_ia").get();
     expect({ ...apunte }).toEqual({ funcion: "prompt de imagen", client_id: "c1" });
   });
 
-  it("con memoria entra la identidad visual y NUNCA lo interno; con 0 %, nada de la marca", async () => {
-    anthropic('{"prompts": ["x"]}');
-    await escribir({ idea: "un sofá", memoria: 100 });
-    expect(textoDe(peticiones[0])).toMatch(/azul marino/);
-    expect(textoDe(peticiones[0])).not.toMatch(/margen|200 dólares/);
-    anthropic('{"prompts": ["x"]}');
-    await escribir({ idea: "un sofá", memoria: 0 });
-    expect(textoDe(peticiones[0])).not.toMatch(/azul marino/);
-    expect(textoDe(peticiones[0])).toMatch(/No uses nada de la identidad/);
+  it("no mete la marca por detrás: ni la memoria del cerebro, ni lo interno", async () => {
+    anthropic("Un sofá en una sala.");
+    await mejorar({ idea: "un sofá" });
+    expect(textoDe(peticiones[0])).not.toMatch(/azul marino|margen|200 dólares/);
   });
 
-  it("un carrusel trae un prompt por diapositiva y el estilo común", async () => {
-    anthropic('{"estilo": "fondo arena, tipografía serif", "prompts": ["Portada…", "Consejo 1…", "Consejo 2…"]}');
-    const r = await (await escribir({ idea: "3 consejos para elegir pisos", diapositivas: 3 })).json();
-    expect(r).toMatchObject({ estilo: "fondo arena, tipografía serif", prompts: ["Portada…", "Consejo 1…", "Consejo 2…"] });
-    expect(textoDe(peticiones[0])).toMatch(/CARRUSEL DE 3 DIAPOSITIVAS/);
-  });
-
-  it("una referencia de otro cliente es 400; una tarjeta de prueba (SVG) no se le enseña a la IA", async () => {
-    anthropic('{"prompts": ["x"]}');
-    expect((await escribir({ idea: "x", referencias: ["/api/media/clientes/c2/estudio/2026-09/ajena.png"] })).status).toBe(400);
+  it("sin idea no se llama a nadie; y la ruta vieja de «Escribir el prompt» ya no existe", async () => {
+    anthropic("x");
+    expect((await mejorar({ idea: "  " })).status).toBe(400);
     expect(peticiones).toHaveLength(0);
-    await escribir({ idea: "x", referencias: ["/api/media/clientes/c1/estudio/2026-09/prueba.svg"] });
-    expect(peticiones[0].messages[0].content.some((b) => b.type === "image")).toBe(false);
-  });
-
-  it("sin idea no se llama a nadie", async () => {
-    anthropic('{"prompts": ["x"]}');
-    const res = await escribir({ idea: "  " });
-    expect(res.status).toBe(400);
-    expect(peticiones).toHaveLength(0);
+    expect((await pedir("/api/estudio/c1/prompt", { method: "POST", body: { idea: "x" } })).status).toBe(404);
   });
 });
