@@ -87,6 +87,11 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "bandeja_mensajes",
   // La Biblioteca de anuncios de Meta: las búsquedas guardadas (worker/rutas/biblioteca.js).
   "biblioteca_filtros",
+  // Anuncios de Meta: cuentas publicitarias, campañas creadas desde la app
+  // y quién activó o pausó qué (worker/lib/anuncios.js).
+  "cuentas_anuncios",
+  "campanas_anuncios",
+  "historial_anuncios",
   // Del equipo. Tienen dueño como las demás: la lista de miembros de un
   // espacio es un dato del espacio, y pedirla sin acotar devolvería la
   // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué
@@ -121,6 +126,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "estudio_trabajos", "estudio_archivos", "estudio_carpetas",
   "bandeja_clientes", "bandeja_comentarios", "bandeja_hilos", "bandeja_mensajes",
   "biblioteca_filtros",
+  "cuentas_anuncios", "campanas_anuncios", "historial_anuncios",
 ]);
 
 /** Las que cuelgan de un calendario sin llevar el cliente: se acotan por el calendario. */
