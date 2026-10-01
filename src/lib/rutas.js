@@ -160,6 +160,7 @@ export function analizarRuta(url = window.location) {
   if (partes[0] === "resultados") return { vista: "resultados" };
   if (partes[0] === "programacion") return { vista: "programacion" };
   if (partes[0] === "tablero") return { vista: "tablero" };
+  if (partes[0] === "bandeja") return { vista: "bandeja" };
 
   if (partes[0] === "cliente" && partes[1]) {
     const pestana = PESTANAS_CLIENTE.includes(partes[2]) ? partes[2] : "calendario";
@@ -182,6 +183,7 @@ export function construirRuta({ vista = "panel", cliente = null, calendario = nu
   if (vista === "resultados") return "/resultados";
   if (vista === "programacion") return "/programacion";
   if (vista === "tablero") return "/tablero";
+  if (vista === "bandeja") return "/bandeja";
   if (vista === "auditorias") return "/auditorias";
   if (vista === "a-mano") return `/a-mano/${encodeURIComponent(calendario ?? "")}/${encodeURIComponent(publicacion ?? "")}`;
   if (vista === "invitacion") return `/invitacion/${encodeURIComponent(testigo)}`;

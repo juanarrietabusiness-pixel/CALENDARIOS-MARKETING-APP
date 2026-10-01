@@ -107,6 +107,8 @@ Ahora que el Worker existe, ya tiene dónde guardarlas.
 | `META_APP_ID` | El identificador de la app de Meta | Ver «Instagram y Facebook» abajo |
 | `META_APP_SECRET` | Su clave secreta | Ver «Instagram y Facebook» abajo |
 | `META_CONFIG_ID` | El ID de configuración del inicio de sesión | Ver «Instagram y Facebook» abajo |
+| `META_CONFIG_ID_BANDEJA` | El ID de la configuración CON los permisos de la bandeja *(opcional)* | Ver «La bandeja: comentarios y mensajes» abajo |
+| `META_WEBHOOK_VERIFY_TOKEN` | Un testigo que inventas tú, para verificar el webhook *(opcional)* | Ver «La bandeja: comentarios y mensajes» abajo |
 | `TIKTOK_CLIENT_KEY` | La Client key de la app de TikTok | Ver «TikTok» abajo |
 | `TIKTOK_CLIENT_SECRET` | Su Client secret | Ver «TikTok» abajo |
 
@@ -183,6 +185,66 @@ Una vez, con el Facebook de la AGENCIA (el que administra las páginas):
 Cada Instagram tiene que ser **profesional** (empresa o creador) y estar
 vinculado a su página de Facebook. Un cliente nuevo da acceso a la agencia
 como **socio** desde su Business Suite; después, **Actualizar cuentas**.
+
+### La bandeja: comentarios y mensajes
+
+La página **Bandeja** (`/bandeja`) junta los comentarios y los mensajes
+privados de Facebook e Instagram de los clientes que la tienen ENCENDIDA
+(el interruptor está en la ficha del cliente, pestaña «Básico», y en la
+propia Bandeja). Apagada, no se lee ni se guarda nada de ese cliente.
+
+**Esto sí pasa por la revisión de Meta (App Review).** Los permisos que
+usa no van en «Conectar con Facebook» —lo romperían mientras la app no
+los tenga aprobados— y se piden aparte con el botón **Conceder permisos de
+comentarios y mensajes** de la Bandeja (sólo el administrador):
+
+| Permiso | Para qué |
+|---|---|
+| `pages_manage_metadata` | Suscribir la página a la app (sin esto Meta no avisa de nada) |
+| `pages_manage_engagement` | Responder, ocultar y borrar comentarios de Facebook |
+| `pages_messaging` | Leer y responder Messenger |
+| `instagram_manage_messages` | Leer y responder los mensajes directos de Instagram |
+| `instagram_manage_comments` | Responder, ocultar y borrar en Instagram (ya se pedía) |
+
+Hasta que Meta los apruebe funcionan con las personas que tienen un rol en
+la app (modo de desarrollo / acceso estándar), que es lo que hay que usar
+para grabar el video que pide la revisión.
+
+Una vez, en developers.facebook.com, con la app de antes:
+
+1. **Inicio de sesión con Facebook para empresas → Configuraciones → Crear
+   configuración** (una segunda, aparte de la de siempre): token de
+   **usuario**, con TODOS los permisos de la configuración normal MÁS los
+   cuatro de la tabla. Tiene que llevarlos todos: el token que sale de ella
+   sustituye al anterior. Copiar su **ID de configuración** y pegarlo en
+   Cloudflare como `META_CONFIG_ID_BANDEJA` (Secret). Sin él, si la app usa
+   configuraciones, el botón no aparece y la Bandeja lo dice.
+2. **Productos → Webhooks** (o «Casos de uso → Personalizar → Webhooks»):
+   - Objeto **Page**: URL de devolución de llamada
+     `https://<dominio>/api/webhooks/meta`, y como *token de verificación*
+     un texto largo que inventes. Ese mismo texto va en Cloudflare como
+     `META_WEBHOOK_VERIFY_TOKEN` (Secret) — ponlo ANTES de pulsar
+     «Verificar y guardar», porque Meta lo comprueba en ese momento.
+     Suscribir los campos **feed** y **messages**.
+   - Objeto **Instagram**: la misma URL y el mismo token. Suscribir
+     **comments** y **messages** (y `live_comments` si se quiere).
+   Meta firma cada aviso con la clave secreta de la app
+   (`META_APP_SECRET`, que ya está puesta): lo que no venga firmado se
+   rechaza.
+3. En la app del calendario: **Bandeja → Conceder permisos de comentarios y
+   mensajes**, entrar con el Facebook de la agencia y aceptar.
+4. Encender la bandeja de cada cliente. Al encenderla, el Worker suscribe
+   su página a la app (`/{page-id}/subscribed_apps` con `feed,messages`);
+   si Meta no lo acepta, el interruptor lo dice y la Bandeja sigue
+   funcionando con **Actualizar**.
+
+Sin el webhook (sin `META_WEBHOOK_VERIFY_TOKEN` o sin el paso 2), la
+Bandeja funciona igual con el botón **Actualizar**, que lee los últimos
+comentarios de las publicaciones recientes y las últimas conversaciones.
+
+Meta sólo deja responder un mensaje privado **dentro de las 24 horas**
+siguientes al último mensaje de la persona. Pasado ese plazo, el campo se
+desactiva y lo explica.
 
 ### TikTok
 
@@ -420,6 +482,7 @@ despliegue (`EspacioHub`, migración `v1` de `wrangler.jsonc`).
 | `META_API_KEY` | **Cloudflare** | Muse Spark (texto) y Muse Image (Estudio, adaptar a 4:5); opcional |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | **Cloudflare** | Google Drive y YouTube |
 | `META_APP_ID` / `META_APP_SECRET` / `META_CONFIG_ID` | **Cloudflare** | Instagram y Facebook |
+| `META_CONFIG_ID_BANDEJA` / `META_WEBHOOK_VERIFY_TOKEN` | **Cloudflare** | La Bandeja (opcionales) |
 | `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` | **Cloudflare** | TikTok |
 
 La regla: **en GitHub, lo que necesita el workflow. En Cloudflare, lo que

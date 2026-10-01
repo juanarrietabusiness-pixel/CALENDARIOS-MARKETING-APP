@@ -52,6 +52,7 @@ import { rutasEstudio } from "./rutas/estudio.js";
 import { avanzarPendientes } from "./lib/estudio/trabajos.js";
 import { rutasMCP, rutasMCPPublicas } from "./rutas/mcp.js";
 import { informePendiente } from "./lib/informes.js";
+import { rutasBandeja, rutaWebhookMeta } from "./rutas/bandeja.js";
 
 // El Durable Object del espacio. Se reexporta desde aquí porque
 // `wrangler.jsonc` apunta su `class_name` al módulo de entrada: si se
@@ -274,6 +275,11 @@ export default {
       if (partes[0] === "medio-publico" && metodo === "GET") {
         return rutaMedioPublico(env, partes);
       }
+      // Los comentarios y mensajes que manda Meta: sin sesión, firmados con
+      // META_APP_SECRET. Ver worker/rutas/bandeja.js.
+      if (partes[0] === "webhooks" && partes[1] === "meta" && partes.length === 2) {
+        return await rutaWebhookMeta(req, env, ctx);
+      }
 
       // ---------- 2. Acceso ----------
       if (partes[0] === "acceso" && metodo === "POST") {
@@ -380,6 +386,8 @@ export default {
       if (partes[0] === "cerebro") return await rutasCerebro(req, env, { acceso, usuario, partes, metodo });
       // El Estudio: imágenes por trabajos, con su galería por cliente.
       if (partes[0] === "estudio") return await rutasEstudio(req, env, { acceso, usuario, partes, metodo });
+      // La bandeja: comentarios y mensajes de Facebook e Instagram.
+      if (partes[0] === "bandeja") return await rutasBandeja(req, env, { acceso, usuario, partes, metodo });
 
       // ---------- Medios ----------
       //

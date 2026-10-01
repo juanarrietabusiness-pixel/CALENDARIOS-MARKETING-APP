@@ -161,6 +161,9 @@ src/
                           también lo importa el Worker)
     meses.js              Calendario siempre activo: mes virtual (sin cajón), recorrer meses,
                           fusionar lo escrito en un mes vacío, días de los meses vecinos (puro)
+    bandeja.js            Cliente de /api/bandeja (comentarios, hilos, interruptor, acciones)
+    bandejaVista.js       La Bandeja: ventana de 24 h de los mensajes, filtros, conversaciones,
+                          permisos que faltan (puro; también lo importa el Worker)
   components/
     Icon.jsx              Set de iconos SVG monocromos (rejilla 24, trazo 1.75)
     Presencia.jsx         Avatares, estado de la conexión, «X está editando»
@@ -203,6 +206,8 @@ src/
     CerebroAprendizaje.jsx  «Lo que aprende»: señales, aprender del historial y de los resultados,
                           y las reglas que la IA propone para que una persona las acepte
     CerebroGrafo.jsx      «Mapa 3D» de la pestaña: explorar, elegir una nota, ver sus vecinas (lazy)
+    InterruptorBandeja.jsx  El interruptor de la bandeja de un cliente: en la ficha y en la Bandeja
+    ContadorBandeja.jsx   El número de pendientes sobre «Bandeja» en la navegación
     cerebro3d/escena.js   El lienzo del mapa: dibuja, gira, elige; sin librerías (canvas 2D)
     NavPrincipal.jsx / MenuCuenta.jsx / BarraInferior.jsx / Buscador.jsx
                           Armazón: secciones, cuenta, barra del móvil, Ctrl+K
@@ -220,6 +225,7 @@ src/
     Resultados.jsx        La pestaña Resultados de un cliente y /resultados (la agencia)
     Programacion.jsx      /programacion: lo aprobado por programar, lo que falló y lo que sale
     Tablero.jsx           /tablero: las publicaciones de todos los clientes por etapa
+    Bandeja.jsx           /bandeja: comentarios y mensajes de Facebook e Instagram (lazy)
     Auditorias.jsx        /auditorias: auditar el perfil de un cliente o de un prospecto
     AuditoriaPublica.jsx  Lo que abre el cliente o el prospecto con el enlace (sin sesión)
     ConectarClaude.jsx    /conectar-claude: el permiso que pide Claude (OAuth)
@@ -278,6 +284,10 @@ worker/
                           web, repositorio de GitHub, calendarios, tareas, ideas
     equipo.js             Avisos (guardar y anunciar), historial y asignaciones
     ids.js                UUID, testigos, huellas
+    bandeja/              La Bandeja: webhook.js (la firma del webhook de Meta y qué dice un aviso;
+                          puro), almacen.js (de quién es cada aviso y guardarlo fundiendo lo que
+                          había), graph.js (suscribir la página, «Actualizar», responder, ocultar,
+                          borrar y el mensaje privado)
   rutas/
     datos.js              CRUD: clientes, calendarios, chat, tareas, banco
     equipo.js             Miembros e invitaciones; la ruta pública del enlace
@@ -305,7 +315,9 @@ worker/
     mcp.js                El servidor MCP (/mcp), su OAuth (/oauth/*, /.well-known/*) y
                           el permiso y las conexiones (/api/mcp/*)
     avisos.js             /api/avisos: la bandeja de quien pregunta y marcar leídos
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube)
+    bandeja.js            /api/bandeja (comentarios y mensajes) y el webhook de Meta
+                          (/api/webhooks/meta, sin sesión)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -330,6 +342,7 @@ tests/
 | `/resultados` | Todos los clientes, últimos 30 días |
 | `/programacion` | Lo aprobado por programar y la cola de todos los clientes: lo que falló, lo que sale, lo que salió |
 | `/tablero` | Las publicaciones de todos los clientes por etapa (Idea → Publicada) |
+| `/bandeja` | Comentarios y mensajes de Facebook e Instagram de los clientes con la bandeja encendida |
 | `/auditorias` | Auditorías de perfil de clientes y prospectos |
 | `/auditoria?t=<testigo>` | Auditoría compartida (sin sesión) |
 | `/conectar-claude?…` | El permiso de Claude (OAuth: `authorization_endpoint`) |
@@ -1712,6 +1725,51 @@ son del servidor.
   todas las migraciones). Para lo que un doble a mano no ve: que las
   consultas de la capa de acceso existen en el esquema. La cola de
   publicación se prueba ahí (`tests/migracion/publicar.test.js`).
+- **La Bandeja: lo que llega de Meta sin sesión, y de quién es.**
+  (`worker/lib/bandeja/`, `worker/rutas/bandeja.js`, migración 0029.)
+  · **El webhook se firma sobre el CUERPO CRUDO.** `X-Hub-Signature-256` es
+  el HMAC-SHA256 de los BYTES que llegaron con `META_APP_SECRET`; Meta
+  escapa los no ASCII («\u00bf»), así que `JSON.stringify(JSON.parse(…))`
+  da otra cadena y otra firma: se lee `arrayBuffer()` y se firma eso. La
+  comparación va con `igualSeguro`. Sin firma, con otra o con el cuerpo
+  tocado: 403 y no se lee nada. Va ANTES de la sesión en `worker/index.js`.
+  · **De quién es un aviso lo dice la CUENTA, no el aviso.** `entry.id`
+  (página o Instagram) se busca en `cuentas_sociales` con
+  `cuentasPorExterno()` —la única lectura sin dueño, en `acceso.js` como
+  `colaPendiente`— y sólo cuentas CON cliente; luego todo va por
+  `crearAcceso(db, owner_id)`. La misma página puede estar en dos espacios:
+  cada uno recibe su copia, si su cliente tiene la bandeja encendida.
+  · **El interruptor es la verdad** (`bandeja_clientes.activa`). Apagado,
+  el webhook descarta, «Actualizar» no pregunta a Meta y las listas y el
+  número de pendientes no lo enseñan. Lo guardado antes de apagar se queda
+  en D1 (no se ve); apagar también da de baja la página en Meta.
+  · **Un comentario es UNA fila** (`espacio:red:id de Meta`), llegue por el
+  webhook, por «Actualizar» o como «edited»: se funde con lo que había y
+  lo de la agencia (atendido, respondido) no lo pisa Meta. Lo propio (la
+  página o la cuenta respondiendo) nace atendido. `remove` borra la fila;
+  `hide`/`unhide` sólo cambian `oculto`.
+  · **La ventana de 24 horas se comprueba en el SERVIDOR**
+  (`ventanaMensajes()` de `src/lib/bandejaVista.js`, la misma que pinta la
+  pantalla). Cuenta desde `ultimo_usuario_at` —el último mensaje DE LA
+  PERSONA—, no desde el último del hilo: una respuesta de la agencia no
+  reabre nada. Fuera de plazo, 409 sin llamar a Meta.
+  · **Los permisos con revisión de Meta no van en `PERMISOS_META`.**
+  `pages_manage_metadata` (sin él no hay `subscribed_apps` ni avisos),
+  `pages_manage_engagement`, `pages_messaging` e
+  `instagram_manage_messages` se piden aparte con
+  `/api/redes/meta/conectar?para=bandeja` (`PERMISOS_EXTRA_META`), que con
+  inicio de sesión para empresas usa SU configuración
+  (`META_CONFIG_ID_BANDEJA`, con todos los permisos: el token nuevo
+  sustituye al anterior). La vuelta del OAuth regresa a `/bandeja`.
+  · **«Actualizar» cabe en cuatro llamadas**: las publicaciones traen sus
+  comentarios por expansión de campos y las conversaciones sus mensajes;
+  una por cuenta y tipo. El webhook completa miniaturas y nombres con tope
+  (`TOPE_CONSULTAS_AVISO`) y primero mira lo que ya hay en D1. No está en
+  el cron: no le hace falta.
+  · **Nada de esto se ha probado contra Meta.** `tests/migracion/bandeja.test.js`
+  habla con un `fetch` de mentira con la forma de la documentación (Graph
+  v23, webhooks de Page e Instagram). Lo primero con la app de verdad:
+  verificar el webhook, encender un cliente y comentar desde otra cuenta.
 
 - **Las redes por defecto son TODAS las del cliente.** Una publicación sin
   `redes` elegidas salía sólo en Instagram (o Instagram y Facebook), y el

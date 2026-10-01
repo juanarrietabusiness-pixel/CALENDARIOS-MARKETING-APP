@@ -101,6 +101,9 @@ const paths = {
   formatCarrusel: <><rect x="7" y="4" width="10" height="16" rx="2" /><path d="M3.5 7.5v9" /><path d="M20.5 7.5v9" /></>,
   formatHistoria: <><circle cx="12" cy="12" r="9" strokeDasharray="3.2 2.4" /><circle cx="12" cy="12" r="4" /></>,
   formatLive: <><circle cx="12" cy="12" r="3" /><path d="M7.5 7.5a6.4 6.4 0 0 0 0 9" /><path d="M16.5 16.5a6.4 6.4 0 0 0 0-9" /><path d="M4.7 4.7a10.3 10.3 0 0 0 0 14.6" /><path d="M19.3 19.3a10.3 10.3 0 0 0 0-14.6" /></>,
+  // La bandeja: mostrar y ocultar un comentario.
+  eye: <><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></>,
+  eyeOff: <><path d="M9.9 5.2A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.6 3.5" /><path d="M6.6 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6" /><path d="M14.1 14.1a3 3 0 0 1-4.2-4.2" /><path d="m3 3 18 18" /></>,
 };
 
 export default function Icon({ name, size = 20, strokeWidth = 1.75, className, style }) {

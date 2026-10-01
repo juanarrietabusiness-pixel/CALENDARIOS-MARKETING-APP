@@ -79,6 +79,12 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "estudio_trabajos",
   "estudio_archivos",
   "estudio_carpetas",
+  // La bandeja: comentarios y mensajes de Facebook e Instagram, y el
+  // interruptor de cada cliente (worker/lib/bandeja.js).
+  "bandeja_clientes",
+  "bandeja_comentarios",
+  "bandeja_hilos",
+  "bandeja_mensajes",
   // Del equipo. Tienen dueño como las demás: la lista de miembros de un
   // espacio es un dato del espacio, y pedirla sin acotar devolvería la
   // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué
@@ -111,6 +117,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "metricas_competencia", "metricas_cuenta", "metricas_publicacion", "publicaciones_programadas",
   "cerebro_notas", "cerebro_senales", "cerebro_usos", "cerebro_memoria", "cerebro_propuestas",
   "estudio_trabajos", "estudio_archivos", "estudio_carpetas",
+  "bandeja_clientes", "bandeja_comentarios", "bandeja_hilos", "bandeja_mensajes",
 ]);
 
 /** Las que cuelgan de un calendario sin llevar el cliente: se acotan por el calendario. */
@@ -507,6 +514,27 @@ export async function estudioPendiente(db, ahoraISO, antesDe, limite = 1) {
         limit ?`,
     )
     .bind(antesDe, ahoraISO, limite)
+    .all();
+  return results ?? [];
+}
+
+/**
+ * Las cuentas de Meta con cliente que casan con los ids que trae un aviso
+ * del webhook (`/api/webhooks/meta`), de TODOS los espacios: el aviso no
+ * tiene sesión y sólo dice «la página 123». Igual que `colaPendiente`:
+ * sólo ids, dueño y cliente; lo demás se lee y se escribe después con
+ * `crearAcceso(db, owner_id)`. Una cuenta sin cliente no sale: lo que
+ * llega de ella no es de nadie y se descarta.
+ */
+export async function cuentasPorExterno(db, red, externos) {
+  const lista = [...new Set(externos.map(String))].slice(0, 50);
+  if (!lista.length || !["instagram", "facebook"].includes(red)) return [];
+  const { results } = await db
+    .prepare(
+      `select id, owner_id, client_id, externo_id, pagina_id from cuentas_sociales
+        where red = ? and client_id is not null and externo_id in (${lista.map(() => "?").join(",")})`,
+    )
+    .bind(red, ...lista)
     .all();
   return results ?? [];
 }
