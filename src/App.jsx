@@ -68,7 +68,7 @@ const SubirRapido = lazy(() => import("./components/SubirRapido"));
 
 const Cargando = () => <p role="status" style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando…</p>;
 
-const NOMBRE_RED = { instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok" };
+const NOMBRE_RED = { instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube" };
 
 /** Las pestañas de un cliente: [id, nombre, icono]. El id va en la dirección. */
 const PESTANAS = [

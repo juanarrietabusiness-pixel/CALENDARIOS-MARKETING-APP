@@ -106,7 +106,7 @@ export function describirPropuestas(r) {
 /** «Se apoya en 2 casos» para el resumen desplegable de una regla: cada caso es una respuesta, un resultado o una corrección. */
 export const textoDeRespaldo = (n) => (n === 1 ? "Se apoya en 1 caso" : `Se apoya en ${n} casos`);
 
-const NOMBRE_RED = { instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok" };
+const NOMBRE_RED = { instagram: "Instagram", facebook: "Facebook", tiktok: "TikTok", youtube: "YouTube" };
 
 /** Lo que se le dice a la persona cuando se compararon los resultados en redes. */
 export function describirMetricas(r) {

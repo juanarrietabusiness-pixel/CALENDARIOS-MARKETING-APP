@@ -127,6 +127,7 @@ src/
     horas.js              «9am» → «09:00» y vuelta; la hora que se TECLEA («930», «21:30») (puro)
     idioma.js             La regla del español latino neutro, puesta en toda llamada de texto (puro)
     estadoChip.js         Qué dice el chip del mes: miniatura, icono de estado, idea (puro)
+    youtube.js            Cliente de /api/redes/youtube (conectar, enlace, elegir canal, privacidad)
     lote.js               Editar muchas publicaciones de una vez (puro)
     exportarContenido.js  Texto de «Exportar ideas y descripciones» (puro)
     completitud.js        Cuánto le falta a una publicación (puro)
@@ -169,6 +170,7 @@ src/
     SeccionDrive.jsx      Ajustes → Integraciones: conectar Google Drive
     SeccionMeta.jsx       Ajustes → Integraciones: conectar Meta y asignar cuentas
     SeccionTikTok.jsx     Ajustes → Integraciones: TikTok de cada cliente y su modo
+    SeccionYouTube.jsx    Ajustes → Integraciones: el canal de YouTube de cada cliente y su privacidad
     SeccionInformes.jsx   Resultados → informes mensuales: generar, revisar, compartir
     InformeVista.jsx      El informe como documento (claro, con la marca, imprimible)
     AuditoriaVista.jsx    La auditoría de perfil como documento, con copiar y portadas
@@ -245,6 +247,8 @@ worker/
     meta.js               OAuth de Meta, cliente de la Graph API, cuentas, medios firmados
     publicador.js         La cola: programar, procesar (Instagram/Facebook/TikTok), reintentos
     tiktok.js             OAuth de TikTok por cliente, tokens que se renuevan, subida en trozos
+    youtube.js            OAuth de Google por cliente (YouTube), subida reanudable por trozos,
+                          portada, cifras del canal (Data API + Analytics)
     metricas.js           La foto diaria de métricas de cada cuenta y de la competencia
     informes.js           Cifras del mes (congeladas) + análisis de la IA; el del día 1
     auditorias.js         Leer un perfil (cuenta propia o business_discovery) y auditarlo
@@ -289,6 +293,8 @@ worker/
     iaEspacio.js          Modelos de la cuenta, consumo del mes y el medidor (/ia/gasto)
     redes.js              Conectar Meta, asignar cuentas, la cola (/api/publicar) y el
                           medio público firmado que descarga Meta
+    youtube.js            /api/redes/youtube: conectar, la vuelta y el enlace del cliente (sin
+                          sesión), elegir canal, privacidad, desconectar
     metricas.js           Resultados de un cliente, de la agencia y la miniatura de Meta
     informes.js           Informes: listar, generar, compartir; el público va en index.js
     auditorias.js         Auditorías: listar, generar, compartir; la pública va en index.js
@@ -299,7 +305,7 @@ worker/
     mcp.js                El servidor MCP (/mcp), su OAuth (/oauth/*, /.well-known/*) y
                           el permiso y las conexiones (/api/mcp/*)
     avisos.js             /api/avisos: la bandeja de quien pregunta y marcar leídos
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1383,6 +1389,53 @@ son del servidor.
   un `<header>` y la vista previa de la agencia vive en un diálogo: sin
   las excepciones de `InformeVista.css`, el PDF salía sin portada, o en
   blanco desde la vista previa.
+- **YouTube es una red más, por cliente, y su migración reconstruye CUATRO
+  tablas.** `red` tenía `check (red in ('instagram','facebook','tiktok'))`
+  en `cuentas_sociales` y en `publicaciones_programadas`, y un CHECK no se
+  cambia: hay que reconstruir (0022). Pero `cuentas_sociales` tiene hijas, y
+  `drop table` hace un `delete` implícito que DISPARA sus cascadas: soltarla
+  tal cual borraba toda `metricas_cuenta` y `metricas_publicacion` y dejaba
+  la cola sin cuenta. `defer_foreign_keys` no lo evita (aplaza la
+  comprobación, no las acciones). 0028 crea las cuatro en `_v2` con las
+  hijas apuntando ya a la madre nueva, suelta las viejas hijas primero y la
+  madre después, y renombra (SQLite reescribe las claves ajenas al
+  renombrar). `tests/migracion/youtube.test.js` siembra las cuatro, la aplica
+  dos veces y comprueba que no se pierde nada y que la cascada sigue viva.
+  **Otra red con CHECK nuevo tiene que hacer lo mismo** (o quitar el CHECK).
+  Lo demás de YouTube (todo en `worker/lib/youtube.js` y el `pasoYouTube` de
+  `publicador.js`):
+  · **Mismo proyecto de Google que Drive, otro permiso por cliente.** El
+  `state` y el enlace del cliente van firmados con `GOOGLE_CLIENT_SECRET`
+  pero con usos propios (un `state` de Drive no abre una vuelta de YouTube),
+  y SIN `include_granted_scopes`: si entra la cuenta de la agencia, el token
+  del canal no debe arrastrar su Drive. Si llegan varios canales, ninguno se
+  asigna solo (`datos.elegirPara`); comparten permiso (`datos.permiso`) y
+  desconectar uno no revoca el de los otros.
+  · **La sesión de subida se guarda ANTES de mandar un byte** (`contenedor_id`).
+  Una sesión sin terminar no crea video, así que reanudarla es seguro y
+  abrir otra también; lo peligroso sería abrir otra cuando la primera SÍ
+  terminó y se perdió la respuesta. Por eso tras un fallo a medias se
+  PREGUNTA a Google (`bytes */total`) en vez de reenviar: si ya tenía todo,
+  devuelve el video. Lo que manda es el `Range` del 308, no la cuenta propia.
+  · **Un trozo por paso, cuatro por vuelta del cron** (`TROZOS_POR_VUELTA`, 16
+  MiB cada uno, múltiplo de 256 KiB como exige Google): cada trozo es una
+  petición de salida y el plan gratuito da 50 por invocación para todo.
+  · **Short = reel o historia, vertical y de hasta 60 s.** La forma y la
+  duración las mide el NAVEGADOR al programar (`medirVideos` en
+  `lib/medios.js`, va en `medios[].duracion`); sin medir, un reel cuenta como
+  Short. Se le añade `#Shorts` a la descripción si no lo lleva.
+  · **Sin auditar, Google deja PRIVADO todo lo subido por la API.** Ajustes lo
+  dice siempre, y la fila publicada avisa si la privacidad que devolvió
+  YouTube no es la pedida. La portada (`thumbnails.set`) va después del id y
+  si falla (canal sin verificar) sólo deja aviso.
+  · **«¿Qué sale y dónde?» sólo enseña YouTube si el cliente tiene canal**
+  (o ya venía marcada); `resumenDestino` tampoco lo nombra en «No sale en…».
+  · **Las métricas:** Analytics tarda dos o tres días en cerrar un día, así
+  que un día sin filas queda en blanco (no ceros). Los videos se leen por la
+  lista de subidas (`playlistItems` + `videos`), no por `search`, que gasta
+  cien veces más cupo. Las miniaturas pasan por el proxy (`ytimg.com`).
+  · **Nada de esto se ha probado contra Google:** los tests usan un `fetch`
+  de mentira que contesta como su documentación.
 - **Una publicación puede salir DOS veces por red: el post y su
   historia.** Cada salida es una fila de la cola con su `variante`
   (`post` | `historia`); `piezasDe()` dice cuáles tocan y

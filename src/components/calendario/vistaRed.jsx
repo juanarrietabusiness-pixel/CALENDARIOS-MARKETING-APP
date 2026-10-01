@@ -14,7 +14,10 @@
 
 import { useEffect, useState } from "react";
 import Icon from "../Icon";
-import { REDES, mediosDe, historiasDe, conHistoria, textoPara, primerComentario, destinoInstagram, objetivoDe, claveAdaptado } from "../../lib/publicacion";
+import {
+  REDES, mediosDe, historiasDe, conHistoria, textoPara, primerComentario, destinoInstagram, objetivoDe, claveAdaptado,
+  conHistorias, esShortYouTube, tituloYouTube, descripcionYouTube,
+} from "../../lib/publicacion";
 import { vistaAjuste } from "../../lib/medios";
 
 // Lo ya dibujado, por imagen, objetivo y ajuste: cambiar de pestaña no
@@ -44,11 +47,13 @@ function piezasVista(post, redes) {
     if (red === "instagram") {
       const d = destinoInstagram(post);
       piezas.push({ clave: "instagram", red, nombre: `Instagram · ${{ imagen: "feed", carrusel: "carrusel", reel: "reel", historia: "historia" }[d]}` });
+    } else if (red === "youtube") {
+      piezas.push({ clave: red, red, nombre: `YouTube · ${esShortYouTube(post) ? "Short" : "video"}` });
     } else {
       piezas.push({ clave: red, red, nombre: post.format === "historia" && red === "facebook" ? "Facebook · historia" : REDES[red].nombre });
     }
   }
-  if (conHistoria(post) && redes.some((r) => r !== "tiktok")) piezas.push({ clave: "historia", red: "instagram", nombre: "Su historia", historia: true });
+  if (conHistoria(post) && redes.some(conHistorias)) piezas.push({ clave: "historia", red: "instagram", nombre: "Su historia", historia: true });
   return piezas;
 }
 
@@ -98,9 +103,11 @@ export default function VistaRed({ post, redes, client }) {
   const m = medios[Math.min(i, medios.length - 1)];
   // Qué forma tiene el marco: la de lo que sale en esa red.
   const objetivo = pieza.historia ? "historia" : objetivoDe(post, pieza.red);
-  const vertical = esHistoria || pieza.red === "tiktok" || (pieza.red === "instagram" && destinoInstagram(post) === "reel");
+  const vertical = esHistoria || pieza.red === "tiktok" || (pieza.red === "instagram" && destinoInstagram(post) === "reel")
+    || (pieza.red === "youtube" && esShortYouTube(post));
   const usuario = (client?.instagram || client?.name || "cuenta").replace(/^@/, "");
-  const texto = esHistoria ? "" : textoPara(post, pieza.red);
+  // En YouTube, el título (la primera línea) y debajo la descripción entera.
+  const texto = esHistoria && pieza.red !== "youtube" ? "" : pieza.red === "youtube" ? descripcionYouTube(post) : textoPara(post, pieza.red);
   const corto = pieza.red === "instagram" && texto.length > 125 ? `${texto.slice(0, 125).trimEnd()}… más` : texto;
   const comentario = pieza.red === "instagram" && !esHistoria ? primerComentario(post) : "";
 
@@ -141,6 +148,7 @@ export default function VistaRed({ post, redes, client }) {
         {!esHistoria && (
           <p className="vista-previa-texto">
             {pieza.red === "instagram" && <strong>{usuario} </strong>}
+            {pieza.red === "youtube" && <strong className="vista-previa-titulo">{tituloYouTube(post) || "Sin título"}</strong>}
             {corto || <em>Sin texto</em>}
           </p>
         )}

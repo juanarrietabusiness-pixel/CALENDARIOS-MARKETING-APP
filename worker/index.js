@@ -41,6 +41,7 @@ import { rutaGenerarImagen } from "./rutas/imagen.js";
 import { rutaAnalizarVideo } from "./rutas/video.js";
 import { rutasDrive, rutaDriveCallback } from "./rutas/drive.js";
 import { rutasRedes, rutasPublicar, rutaMetaCallback, rutaMedioPublico, rutaTikTokPublica } from "./rutas/redes.js";
+import { rutasYouTube, rutaYouTubePublica } from "./rutas/youtube.js";
 import { procesarCola, programarAlAprobar, cancelarPendientes } from "./lib/publicador.js";
 import { rutasMetricas } from "./rutas/metricas.js";
 import { fotoPendiente } from "./lib/metricas.js";
@@ -264,6 +265,10 @@ export default {
       if (partes[0] === "redes" && partes[1] === "tiktok" && (partes[2] === "callback" || partes[2] === "inicio") && metodo === "GET") {
         return rutaTikTokPublica(req, env, partes);
       }
+      // YouTube, igual que TikTok: la vuelta de Google y el enlace del cliente.
+      if (partes[0] === "redes" && partes[1] === "youtube" && (partes[2] === "callback" || partes[2] === "inicio") && metodo === "GET") {
+        return rutaYouTubePublica(req, env, partes);
+      }
       // Lo que Meta descarga al publicar: Meta no tiene sesión. Abre sólo
       // el archivo que dice el testigo firmado. Ver worker/rutas/redes.js.
       if (partes[0] === "medio-publico" && metodo === "GET") {
@@ -364,6 +369,7 @@ export default {
       if (partes[0] === "drive") return await rutasDrive(req, env, { acceso, usuario, partes, metodo });
 
       // ---------- Redes: Meta, cuentas y la cola de publicación ----------
+      if (partes[0] === "redes" && partes[1] === "youtube") return await rutasYouTube(req, env, { acceso, usuario, partes, metodo });
       if (partes[0] === "redes") return await rutasRedes(req, env, { acceso, usuario, partes, metodo });
       if (partes[0] === "publicar") return await rutasPublicar(req, env, { acceso, usuario, partes, metodo, ctx });
       if (partes[0] === "metricas") return await rutasMetricas(req, env, { acceso, usuario, partes, metodo });

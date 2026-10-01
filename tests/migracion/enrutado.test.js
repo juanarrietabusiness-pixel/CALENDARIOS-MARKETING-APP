@@ -970,3 +970,34 @@ describe("Google Drive como banco de contenido", () => {
     expect(env.MEDIA.objetos.has(clave)).toBe(true);
   });
 });
+
+describe("YouTube: el canal de cada cliente", () => {
+  const GOOGLE = { GOOGLE_CLIENT_ID: "id-cliente", GOOGLE_CLIENT_SECRET: "secreto-de-prueba" };
+
+  it("conectar llega a su ruta y manda a Google con la cookie que ata la vuelta", async () => {
+    const env = { ...(await entorno()), ...GOOGLE };
+    const res = await worker.fetch(conSesion("/api/redes/youtube/conectar?cliente=cliente-1"), env);
+    expect(res.status).toBe(302);
+    expect(new URL(res.headers.get("Location")).host).toBe("accounts.google.com");
+    expect(res.headers.get("Set-Cookie")).toMatch(/^__Host-youtube-oauth=.*HttpOnly/);
+  });
+
+  it("la vuelta y el enlace del cliente se atienden SIN sesión (y sin state, vuelven con error)", async () => {
+    const env = { ...(await entorno()), ...GOOGLE };
+    const vuelta = await worker.fetch(new Request("https://calendarios.test/api/redes/youtube/callback?code=x"), env);
+    expect(vuelta.status).toBe(302);
+    expect(vuelta.headers.get("Location")).toMatch(/\/ajustes\?youtube=error/);
+    const enlace = await worker.fetch(new Request("https://calendarios.test/api/redes/youtube/inicio/no.vale"), env);
+    expect(enlace.headers.get("Location")).toMatch(/\/youtube-error\.html/);
+  });
+
+  it("sin las claves de Google, el enlace del cliente es 503 y no 404", async () => {
+    const res = await worker.fetch(conSesion("/api/redes/youtube/enlace", { method: "POST", body: JSON.stringify({ clientId: "cliente-1" }) }), await entorno());
+    expect(res.status).toBe(503);
+  });
+
+  it("una acción de YouTube que no existe es 404, no cae en las rutas de Meta", async () => {
+    const res = await worker.fetch(conSesion("/api/redes/youtube/no-existe", { method: "POST" }), { ...(await entorno()), ...GOOGLE });
+    expect(res.status).toBe(404);
+  });
+});

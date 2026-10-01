@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import SeccionDrive from "../components/SeccionDrive";
 import SeccionMeta from "../components/SeccionMeta";
 import SeccionTikTok from "../components/SeccionTikTok";
+import SeccionYouTube from "../components/SeccionYouTube";
 import SeccionClaude from "../components/SeccionClaude";
 import LimpiezaTerminadas from "../components/LimpiezaTerminadas";
 import { TaskTemplatesManager } from "../components/TaskPanel";
@@ -71,6 +72,7 @@ export default function Ajustes({ yo, clients = [], pulso = 0, onVolver, onExpor
         <SeccionDrive esAdmin={esAdmin} pulso={pulso}>
           <SeccionMeta esAdmin={esAdmin} clients={clients} pulso={pulso} />
           <SeccionTikTok clients={clients} pulso={pulso} />
+          <SeccionYouTube clients={clients} pulso={pulso} />
         </SeccionDrive>
         <SeccionClaude pulso={pulso} />
 

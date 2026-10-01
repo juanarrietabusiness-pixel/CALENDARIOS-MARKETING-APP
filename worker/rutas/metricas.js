@@ -21,8 +21,8 @@ import { fotografiarCuenta, fechaDeFoto } from "../lib/metricas.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
-// Los CDN de Meta y de TikTok (las portadas de los videos).
-const CDN_META = /(^|\.)(cdninstagram\.com|fbcdn\.net|tiktokcdn\.com|tiktokcdn-us\.com)$/;
+// Los CDN de Meta, de TikTok y de YouTube (las portadas de los videos).
+const CDN_META = /(^|\.)(cdninstagram\.com|fbcdn\.net|tiktokcdn\.com|tiktokcdn-us\.com|ytimg\.com)$/;
 
 const salidaSerie = (f) => {
   const datos = leerJSON(f.datos, {});
@@ -95,7 +95,7 @@ export async function rutasMetricas(req, env, { acceso, usuario, partes, metodo 
     return json({
       dias,
       desde,
-      cuentas: cuentas.filter((c) => c.red !== "tiktok" || c.token_cifrado).map((c) => ({
+      cuentas: cuentas.filter((c) => !["tiktok", "youtube"].includes(c.red) || c.token_cifrado).map((c) => ({
         id: c.id, red: c.red, nombre: c.nombre, usuario: c.usuario,
       })),
       serie: serie.filter((f) => f.fecha >= desdeComparar).map(salidaSerie),

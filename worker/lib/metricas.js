@@ -24,6 +24,7 @@
 import { crearAcceso, cuentasSinFoto } from "./acceso.js";
 import { graph, descifrarMeta } from "./meta.js";
 import { tokenTikTok, usuarioTikTok, videosTikTok } from "./tiktok.js";
+import { tokenYouTube, canalesYouTube, diaDelCanal, videosRecientesYouTube } from "./youtube.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 
 const DIAS_PUBLICACIONES = 45;
@@ -198,7 +199,9 @@ async function publicacionesFB(env, token, pagina, desde) {
  * cliente. Devuelve la fila de la cuenta.
  */
 export async function fotografiarCuenta(env, acceso, cuenta, fecha = fechaDeFoto()) {
-  const token = cuenta.red === "tiktok" ? await tokenTikTok(env, acceso, cuenta) : await descifrarMeta(env, cuenta.token_cifrado);
+  const token = cuenta.red === "tiktok" ? await tokenTikTok(env, acceso, cuenta)
+    : cuenta.red === "youtube" ? await tokenYouTube(env, acceso, cuenta)
+      : await descifrarMeta(env, cuenta.token_cifrado);
   const desde = Date.now() - DIAS_PUBLICACIONES * 86400_000;
   let base = {};
   let dia = {};
@@ -239,12 +242,28 @@ export async function fotografiarCuenta(env, acceso, cuenta, fecha = fechaDeFoto
           interacciones: meGusta + comentarios + compartidos,
         };
       });
+  } else if (cuenta.red === "youtube") {
+    // Del canal: suscriptores, videos y vistas de siempre (Data API). Del
+    // día: vistas e interacciones (Analytics, que tarda en cerrarlas: un
+    // día aún abierto queda en blanco). Cinco peticiones, contando el token.
+    const canal = ((await intentar(() => canalesYouTube(token))) ?? []).find((c) => c.id === cuenta.externo_id);
+    if (!canal) throw new Error(`YouTube no devolvió el canal ${cuenta.nombre || cuenta.externo_id}: vuelve a conectarlo.`);
+    const e = canal.statistics ?? {};
+    base = { followers_count: e.hiddenSubscriberCount ? null : e.subscriberCount, media_count: e.videoCount };
+    const d = await intentar(() => diaDelCanal(token, fecha));
+    dia = d ? { views: d.vistas, total_interactions: d.interacciones } : {};
+    datos = {
+      vistasTotales: num(e.viewCount),
+      ...(e.hiddenSubscriberCount ? { suscriptoresOcultos: true } : {}),
+      ...(d ? { suscriptoresGanados: d.ganados, suscriptoresPerdidos: d.perdidos } : {}),
+    };
+    publicaciones = (await intentar(() => videosRecientesYouTube(token, canal.contentDetails?.relatedPlaylists?.uploads, desde, MAX_PUBLICACIONES))) ?? [];
   }
 
   // Si ni siquiera llegaron los seguidores, el token no vale: se deja sin
   // foto para que el cron lo vuelva a intentar, en vez de guardar ceros.
   const seguidores = num(base.followers_count ?? base.fan_count);
-  if (seguidores === null && !publicaciones.length) throw new Error(`Meta no devolvió datos de ${cuenta.nombre || cuenta.externo_id}.`);
+  if (seguidores === null && !publicaciones.length && cuenta.red !== "youtube") throw new Error(`Meta no devolvió datos de ${cuenta.nombre || cuenta.externo_id}.`);
 
   const fila = {
     id: `${cuenta.id}:${fecha}`,

@@ -115,12 +115,31 @@
       agencia.
     </p>
 
+    <h2>YouTube</h2>
+    <p>
+      Cada cliente conecta su propio canal de YouTube, y sólo si quiere, mediante los servicios de las API de
+      YouTube. Con ese permiso la aplicación:
+    </p>
+    <ul>
+      <li>sube a su canal los videos preparados, con el título, la descripción, la portada y la privacidad que
+        se configuraron;</li>
+      <li>lee los datos de su canal y las estadísticas del canal y de sus videos (suscriptores, vistas, me gusta
+        y comentarios) para los resultados y los informes.</li>
+    </ul>
+    <p>
+      Los permisos se guardan cifrados en el servidor. El cliente puede retirarlos en cualquier momento desde
+      la página de seguridad de su cuenta de Google,
+      <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>, o pidiéndolo a la
+      agencia. El tratamiento de esos datos por parte de Google se rige por la
+      <a href="https://policies.google.com/privacy">Política de privacidad de Google</a>.
+    </p>
+
     <h2>Inteligencia artificial</h2>
     <p>
       Para redactar contenido, la aplicación envía a Anthropic (Claude) el texto necesario de cada
       petición —también las cifras de un mes para escribir el análisis del informe—. Para generar imágenes
       y analizar videos usa Google Gemini, y sólo le envía el archivo o la descripción de esa petición.
-      Ninguno de los dos recibe el acceso a Drive, a Meta o a TikTok, ni los datos de acceso de nadie.
+      Ninguno de los dos recibe el acceso a Drive, a Meta, a TikTok o a YouTube, ni los datos de acceso de nadie.
     </p>
 
     <h2>Qué NO se hace</h2>
