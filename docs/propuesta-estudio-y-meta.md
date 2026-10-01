@@ -1,6 +1,6 @@
 # El Estudio y Meta como proveedor de IA
 
-Estado a 2026-09-30: **el Estudio está implementado entero** (entregas A0 a F): imágenes y video por Google, fal.ai y Higgsfield, con «Crear con IA» y «Animar» dentro del panel de la publicación y de «Subir», las herramientas del asistente y del MCP, el cerebro para imagen y la lista de modelos ordenable (ver `worker/lib/estudio/`, `src/components/Estudio*.jsx`). **Pendiente:** toda la parte de Meta (B), y **probar fal.ai y Higgsfield con una llave real**: se construyeron contra su documentación y contra un `fetch` de mentira, no contra el servicio. Se investigó Agents Office
+Estado a 2026-09-30: **el Estudio está implementado entero** (entregas A0 a F): imágenes y video por Google, fal.ai y Higgsfield, con «Crear con IA» y «Animar» dentro del panel de la publicación y de «Subir», las herramientas del asistente y del MCP, el cerebro para imagen y la lista de modelos ordenable (ver `worker/lib/estudio/`, `src/components/Estudio*.jsx`). **Meta (B), implementado el 2026-10-01** —ver «4.0 Lo que se hizo» abajo—. **Pendiente:** probar Meta, fal.ai y Higgsfield con una llave real: se construyeron contra su documentación y contra un `fetch` de mentira, no contra el servicio. Se investigó Agents Office
 (`media.mjs`, `estudio-mcp.mjs`, `src/studio.js`), la app (`worker/rutas/imagen.js`,
 `video.js`, `lib/anthropic.js`, `lib/configIA.js`, el cron) y lo publicado sobre Meta.
 Lo que **no** se pudo comprobar está marcado como tal: hace falta la llave de Meta.
@@ -357,6 +357,24 @@ comprimidos). Se comprueba también que **no** entra en la carga inicial.
 ---
 
 ## 4. Parte B — Meta como proveedor de IA
+
+### 4.0 Lo que se hizo (2026-10-01)
+
+- **Muse Spark** escribe por la puerta compatible con Anthropic (`api.meta.ai/v1/messages`): lo decide
+  `abrirFlujo()` por el id del modelo (`muse-*`), y `adaptarAlModelo()` le quita lo que Meta puede no
+  aceptar (razonamiento adaptativo, `effort`, marcas de caché, herramientas web de Anthropic).
+- **Un modelo por función** en Ajustes → IA (`ajustes_espacio.ia_modelos`, 0027): redacción, guiones,
+  escribir mirando el contenido, asistente y análisis. **La agencia decidió** que, en cuanto haya llave,
+  redacción y guiones escriben con **`muse-spark-1.2-contributor`** (el nivel barato que entrena con lo
+  que recibe; el 1.3 no tiene variante *contributor* publicada). No hay casilla de confirmación: la
+  advertencia es permanente en Ajustes mientras alguna función lo use, y cada apunte de consumo lleva
+  el modelo y `proveedor: "meta"`.
+- **Si Meta rechaza** (llave, región, modelo), escribe Sonnet y se dice.
+- **Muse Image** es un motor del Estudio (`worker/lib/estudio/meta.js`, 0,01 $) y, con «auto», el que
+  adapta a 4:5 o 9:16; si falla, lo hace Nano Banana.
+- **Leer video con Muse Spark queda pendiente**: el formato del bloque de video en `/v1/messages` no está
+  publicado. El video lo sigue leyendo Gemini.
+
 
 ### 4.1 Qué es, exactamente
 

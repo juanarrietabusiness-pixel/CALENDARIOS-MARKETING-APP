@@ -171,7 +171,7 @@ export async function generarInforme(env, acceso, { clientId, mes, usuarioId = n
 
   try {
     const cifras = await cifrasDelMes(acceso, clientId, mes);
-    const ia = await prepararIA(env, acceso);
+    const ia = await prepararIA(env, acceso, { funcion: "informe" });
     if (ia.bloqueo) throw new Error(ia.bloqueo);
     let modelo = ia.modelo;
     let m;

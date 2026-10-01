@@ -35,6 +35,7 @@ import { MEDIDAS, proporcionDe } from "../../../src/lib/estudioCatalogo.js";
 import { PRECIOS_GEMINI, costoGemini } from "../configIA.js";
 import { MOTOR_FAL } from "./fal.js";
 import { MOTOR_HIGGSFIELD } from "./higgsfield.js";
+import { MOTOR_META } from "./meta.js";
 
 const escapar = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -200,6 +201,7 @@ export const MOTORES = Object.freeze({
   // Los otros dos viven en su archivo: rutas, cuerpos y direcciones de seguimiento son de cada proveedor.
   fal: MOTOR_FAL,
   higgsfield: MOTOR_HIGGSFIELD,
+  meta: MOTOR_META,
 });
 
 /** El rechazo de Google en palabras. Un 404 dice qué modelo falta. */

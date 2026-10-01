@@ -27,7 +27,7 @@ import { uuid, testigo, ahora } from "../lib/ids.js";
 import { difundir, firma } from "../lib/vivo.js";
 import { tareasParaPurgar, terminadasBorrables, MODOS_PURGA } from "../lib/tareas.js";
 import { fechaEnZona, debeReabrirse, esFecha } from "../../src/lib/agenda.js";
-import { leerConfigIA, MODELOS_ELEGIBLES, RAZONAMIENTOS, ACCIONES_LIMITE } from "../lib/configIA.js";
+import { leerConfigIA, MODELOS_ELEGIBLES, RAZONAMIENTOS, ACCIONES_LIMITE, FUNCIONES_IA, MODELOS_POR_FUNCION, MOTORES_IMAGEN } from "../lib/configIA.js";
 import { resincronizarCalendario } from "../lib/publicador.js";
 import { asignarTarea, alGuardarCalendario, avisarNota, avisar, enlacePublicacion } from "../lib/equipo.js";
 import { registrarCorrecciones } from "../lib/cerebro/aprender.js";
@@ -181,13 +181,28 @@ export async function rutasDatos(req, env, ctx) {
         if (!(datos.purga_tareas in MODOS_PURGA)) return error("Modo de borrado inválido");
         cambios.purga_tareas = datos.purga_tareas;
       }
-      const CAMPOS_ADMIN = ["ia_modelo", "ia_razonamiento", "ia_razonamiento_chat", "presupuesto_usd", "al_limite"];
+      const CAMPOS_ADMIN = ["ia_modelo", "ia_razonamiento", "ia_razonamiento_chat", "ia_modelos", "presupuesto_usd", "al_limite"];
       if (CAMPOS_ADMIN.some((c) => c in datos)) {
         if (ctx.usuario?.rol !== "admin") return error("Sólo el administrador cambia la configuración de la IA", 403);
         if ("ia_razonamiento_chat" in datos) {
           const v = datos.ia_razonamiento_chat;
           if (v !== null && !(v in RAZONAMIENTOS)) return error("Nivel del asistente inválido");
           cambios.ia_razonamiento_chat = v;
+        }
+        // Un modelo por función: se fusiona con lo que había; `null` vuelve
+        // a «el general». Lo que no sea una función o un modelo conocido, 400.
+        if ("ia_modelos" in datos) {
+          const pedidos = datos.ia_modelos;
+          if (!pedidos || typeof pedidos !== "object" || Array.isArray(pedidos)) return error("Modelos por función inválidos");
+          const actuales = (await leerConfigIA(acceso)).ia_modelos;
+          const juntos = { ...actuales };
+          for (const [hueco, modelo] of Object.entries(pedidos)) {
+            if (modelo === null) { delete juntos[hueco]; continue; }
+            const valido = hueco === "imagen" ? MOTORES_IMAGEN.includes(modelo) : hueco in FUNCIONES_IA && MODELOS_POR_FUNCION.includes(modelo);
+            if (!valido) return error(`Modelo inválido para «${hueco}»`);
+            juntos[hueco] = modelo;
+          }
+          cambios.ia_modelos = JSON.stringify(juntos);
         }
         if ("presupuesto_usd" in datos) {
           const v = Number(datos.presupuesto_usd);

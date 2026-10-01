@@ -436,8 +436,8 @@ Devuelve SOLO un objeto JSON, sin texto antes ni después:
   "primerComentario": "${formato === "historia" ? "" : "opcional: una línea útil para el primer comentario, o vacío"}",
   "altTexto": "texto alternativo: qué se ve, en una frase, para quien no puede verlo"
 }
-En español de Panamá, con el tono de la marca.`;
-  const texto = await callAI([...bloques, { type: "text", text: pedido }], { funcion: "publicación", clienteId: client?.id });
+En español latino neutro, con el tono de la marca.`;
+  const texto = await callAI([...bloques, { type: "text", text: pedido }], { funcion: "lectura de contenido", clienteId: client?.id });
   const bruto = parseJSONLoose(texto);
   const limpio = (x, max) => String(x ?? "").trim().slice(0, max);
   return {

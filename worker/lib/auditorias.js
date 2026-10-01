@@ -179,7 +179,7 @@ export async function generarAuditoria(env, acceso, { clientId = null, usuario =
   if (clientId && !cliente) throw new ErrorAuditoria("Ese cliente no existe.");
   const imagenesCaptura = (Array.isArray(capturas) ? capturas : []).slice(0, MAX_CAPTURAS).map(captura).filter(Boolean);
 
-  const ia = await prepararIA(env, acceso);
+  const ia = await prepararIA(env, acceso, { funcion: "auditoria" });
   if (ia.bloqueo) throw new ErrorAuditoria(ia.bloqueo);
 
   // El perfil primero: si no se puede leer y no hay capturas, no hay nada

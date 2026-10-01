@@ -2643,3 +2643,12 @@ a.btn, a.btn-icon { text-decoration: none; }
   .resumen-cliente { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: calc(-1 * var(--sp-3)); padding-inline: var(--sp-3); }
   .resumen-cliente > * { flex-shrink: 0; white-space: nowrap; }
 }
+
+/* Ajustes → IA: un modelo por función (SeccionIA.jsx). */
+.ia-funciones { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--sp-3); display: grid; gap: var(--sp-3); min-width: 0; }
+.ia-funciones legend { padding: 0 var(--sp-1); }
+.ia-funcion { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 260px); gap: var(--sp-1) var(--sp-3); align-items: center; }
+.ia-funcion label { display: grid; gap: 2px; font-size: var(--fs-sm); }
+.ia-funcion label span { font-size: var(--fs-2xs); color: var(--text-dim); }
+.ia-funcion > .notice, .ia-funcion > p { grid-column: 1 / -1; }
+@media (max-width: 599px) { .ia-funcion { grid-template-columns: 1fr; } }

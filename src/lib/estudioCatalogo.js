@@ -112,6 +112,17 @@ export const MODELOS = Object.freeze([
     para: ["texto legible", "composición compleja", "4K"],
     ajustes: { aspectRatio: enumerado(PROPORCIONES, "1:1"), imageSize: enumerado(TAMANOS, "1K") },
   },
+  {
+    id: "muse-image", motor: "meta", tipo: "imagen", gid: "muse-image-1.0", nombre: "Muse Image",
+    creador: "Meta", calidad: 3, velocidad: "normal", costo: 0.01, referencias: 10,
+    nota: "De Meta: genera y edita, y busca por su cuenta referencias reales (marcas, lugares, datos actuales) antes de dibujar. Texto legible e infografías. Muy barato.",
+    para: ["texto legible", "editar y componer", "barato"],
+    ajustes: {
+      aspectRatio: enumerado(PROPORCIONES, "1:1"),
+      calidad: enumerado(["high", "low"], "high"),
+      formato: enumerado(["webp", "png", "jpeg"], "webp"),
+    },
+  },
   // ---- Video. Cuestan por SEGUNDO (`por: "s"`) y tardan de uno a diez minutos: van por la cola de
   // los motores (`enviar` + `sondear`), no en una sola llamada. Las reglas de Veo salen de su API:
   // con referencias sólo sale a 720p horizontal, 1080p sólo viene en 8 s y un fotograma final necesita el inicial.
@@ -294,7 +305,7 @@ export function creadoresDe(tipo) {
 }
 
 /** Quién pone el modelo, para la lista. */
-export const NOMBRE_MOTOR = Object.freeze({ gemini: "Google", fal: "fal.ai", higgsfield: "Higgsfield", prueba: "Prueba" });
+export const NOMBRE_MOTOR = Object.freeze({ gemini: "Google", fal: "fal.ai", higgsfield: "Higgsfield", meta: "Meta", prueba: "Prueba" });
 
 /** Cuánto cuesta un pedido, en dólares, redondeado a la milésima. Un video cuesta por segundo. */
 export function estimar(modelo, cantidad = 1, ajustes = {}) {

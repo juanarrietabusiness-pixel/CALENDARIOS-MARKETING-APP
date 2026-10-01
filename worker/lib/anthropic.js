@@ -18,24 +18,32 @@
 // ============================================================
 
 import { partirSSE, crearAcumulador } from "./flujoAnthropic.js";
-import { MARGEN_RAZONAMIENTO } from "./configIA.js";
+import { MARGEN_RAZONAMIENTO, esMuse, llaveMeta } from "./configIA.js";
 import { conReglaIdioma } from "../../src/lib/idioma.js";
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Un rechazo de Anthropic con su código y su motivo. */
 export class RechazoAnthropic extends Error {
-  constructor(estado, tipo, mensaje) {
-    super(mensaje || `Anthropic respondió ${estado}`);
+  constructor(estado, tipo, mensaje, proveedor = "anthropic") {
+    super(mensaje || `${proveedor === "meta" ? "Meta" : "Anthropic"} respondió ${estado}`);
     this.estado = estado;
     this.tipo = tipo;
+    this.proveedor = proveedor;
   }
 }
 
-/** ¿El rechazo es porque la cuenta no tiene ese modelo? */
+/**
+ * ¿El rechazo es porque la cuenta no tiene ese modelo? Las rutas, entonces,
+ * vuelven a escribir con Sonnet 5. De Meta cuenta además la llave que no
+ * vale o el modelo que no se puede usar desde aquí (el Contributor no está
+ * en todas las regiones): mejor un texto de Sonnet que ninguno.
+ */
 export const esRechazoDeModelo = (e) =>
   e instanceof RechazoAnthropic &&
-  (e.tipo === "not_found_error" || (e.estado === 400 && /\bmodel\b/i.test(e.message) && !/tool/i.test(e.message)));
+  (e.tipo === "not_found_error" ||
+    (e.proveedor === "meta" && [401, 403, 404].includes(e.estado)) ||
+    (e.estado === 400 && /\bmodel\b/i.test(e.message) && !/tool/i.test(e.message)));
 
 /** ¿El rechazo es por la búsqueda o la lectura web? */
 export const esRechazoDeWeb = (e) =>
@@ -49,6 +57,11 @@ export const esSaldoAgotado = (e) =>
 
 export function mensajeDeRechazo(e) {
   if (!(e instanceof RechazoAnthropic)) return e?.message || "No se pudo generar la respuesta.";
+  if (e.proveedor === "meta") {
+    if (e.estado === 429) return "Meta está saturado. Inténtalo en unos segundos.";
+    if (e.estado === 401) return "La llave de Meta del servidor (META_API_KEY) no es válida.";
+    return `Meta rechazó la petición (${e.estado}): ${String(e.message).slice(0, 300)}`;
+  }
   // El saldo agotado llega como un 400 más, con el motivo en inglés. Es
   // justo el caso en que hace falta saber qué hacer, no qué pasó.
   if (esSaldoAgotado(e)) {
@@ -75,8 +88,43 @@ export function mensajeDeRechazo(e) {
 const TOPE_SALIDA_HAIKU = 64_000;
 const WEB_BASICA = Object.freeze({ web_search_20260209: "web_search_20250305", web_fetch_20260209: "web_fetch_20250910" });
 
+// ------------------------------------------------------------
+// Muse Spark (Meta) por su puerta compatible con Anthropic
+// ------------------------------------------------------------
+//
+// La API de Meta acepta el formato de mensajes de Anthropic en
+// `api.meta.ai/v1/messages`, pero no se sabe que acepte lo propio de los
+// modelos de Anthropic: el razonamiento adaptativo, `effort`, las marcas de
+// caché y las herramientas web que ejecuta Anthropic. Se quitan: Muse
+// razona solo, y lo que le falta es la búsqueda web del asistente.
+
+const SOLO_ANTHROPIC = /^(web_search|web_fetch|code_execution|bash|text_editor|computer|memory)_/;
+
+const sinCache = (bloques) => (Array.isArray(bloques)
+  ? bloques.map((b) => {
+    if (!b || typeof b !== "object" || !("cache_control" in b)) return b;
+    const { cache_control: _quitada, ...resto } = b;
+    return resto;
+  })
+  : bloques);
+
+function adaptarAMeta(peticion) {
+  const { thinking: _t, output_config: _o, ...resto } = peticion;
+  const salida = { ...resto };
+  if (Array.isArray(resto.system)) salida.system = sinCache(resto.system);
+  if (Array.isArray(resto.messages)) {
+    salida.messages = resto.messages.map((m) => (Array.isArray(m?.content) ? { ...m, content: sinCache(m.content) } : m));
+  }
+  if (Array.isArray(resto.tools)) {
+    const tools = sinCache(resto.tools).filter((t) => !SOLO_ANTHROPIC.test(String(t?.type ?? "")));
+    if (tools.length) salida.tools = tools; else { delete salida.tools; delete salida.tool_choice; }
+  }
+  return salida;
+}
+
 /** La petición tal como la acepta ese modelo. Pura. */
 export function adaptarAlModelo(peticion) {
+  if (esMuse(peticion?.model)) return adaptarAMeta(peticion);
   if (!/^claude-haiku-4/.test(String(peticion?.model ?? ""))) return peticion;
   const { thinking, output_config: config, ...resto } = peticion;
   const { effort, ...otros } = config ?? {};
@@ -100,32 +148,41 @@ export function adaptarAlModelo(peticion) {
  * reintenta. Un rechazo se lanza como RechazoAnthropic, con su motivo.
  */
 export async function abrirFlujo(env, peticion, { signal } = {}) {
+  const meta = esMuse(peticion?.model);
+  const proveedor = meta ? "meta" : "anthropic";
+  const nombre = meta ? "Meta" : "Anthropic";
+  const url = meta ? `${(env.META_BASE || "https://api.meta.ai/v1").replace(/\/$/, "")}/messages` : "https://api.anthropic.com/v1/messages";
+  const llave = meta ? llaveMeta(env) : env.ANTHROPIC_API_KEY;
+  // Meta toma la llave como «auth token» (Bearer); se manda también como
+  // x-api-key, que es lo que pone el SDK de Anthropic.
+  const cabeceras = {
+    "Content-Type": "application/json",
+    "x-api-key": llave,
+    "anthropic-version": "2023-06-01",
+    ...(meta ? { Authorization: `Bearer ${llave}` } : {}),
+  };
   for (let intento = 0; intento <= 1; intento++) {
     let res;
     try {
-      res = await fetch("https://api.anthropic.com/v1/messages", {
+      res = await fetch(url, {
         method: "POST",
         signal,
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": env.ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-        },
+        headers: cabeceras,
         // Toda llamada de texto lleva la regla del español neutro (src/lib/idioma.js).
         body: JSON.stringify({ ...adaptarAlModelo(conReglaIdioma(peticion)), stream: true }),
       });
     } catch (e) {
       if (signal?.aborted) throw e;
       if (intento < 1) { await dormir(2000); continue; }
-      throw new Error("No se pudo contactar con Anthropic.", { cause: e });
+      throw new Error(`No se pudo contactar con ${nombre}.`, { cause: e });
     }
     if ((res.status === 429 || res.status >= 500) && intento < 1) { await dormir(2000); continue; }
     if (!res.ok) {
       const cuerpoError = await res.text().catch(() => "");
-      console.error("anthropic: rechazo", res.status, cuerpoError);
+      console.error(`${proveedor}: rechazo`, res.status, cuerpoError);
       let detalle = {};
       try { detalle = JSON.parse(cuerpoError)?.error ?? {}; } catch { /* no era JSON */ }
-      throw new RechazoAnthropic(res.status, detalle.type ?? "", detalle.message ?? "");
+      throw new RechazoAnthropic(res.status, detalle.type ?? "", detalle.message ?? "", proveedor);
     }
     return res;
   }

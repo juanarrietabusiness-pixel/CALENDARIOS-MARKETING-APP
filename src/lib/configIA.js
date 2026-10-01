@@ -13,6 +13,29 @@ export const MODELOS_IA = Object.freeze([
   { id: "haiku", nombre: "Haiku 4.5", nota: "El más barato: la mitad que Sonnet y muy rápido. Para ideas y textos cortos; en guiones largos y en el asistente se nota la diferencia." },
 ]);
 
+/** Lo que se elige por función: los de Anthropic y los dos de Meta. */
+export const MODELOS_FUNCION = Object.freeze([
+  ...MODELOS_IA,
+  { id: "muse-contribuidor", nombre: "Muse Spark Contributor (Meta)", nota: "El más barato con diferencia (≈ 0,10 $ / 0,20 $ por millón de tokens). A cambio, Meta puede usar lo que se le manda para entrenar sus modelos, y no está en todas las regiones: si Meta lo rechaza, escribe Sonnet." },
+  { id: "muse", nombre: "Muse Spark 1.3 (Meta)", nota: "El de Meta sin entrenar con tus datos. Lee imagen, video y PDF; ≈ 1,25 $ / 4,25 $ por millón de tokens." },
+]);
+
+/** Cada función de la IA de texto, con lo que abarca. Las claves son las del servidor (FUNCIONES_IA). */
+export const FUNCIONES_IA = Object.freeze([
+  { id: "redaccion", nombre: "Redacción", nota: "Ideas del mes, descripciones y captions" },
+  { id: "guiones", nombre: "Guiones", nota: "Guiones de reels y videos" },
+  { id: "lectura", nombre: "Escribir mirando el contenido", nota: "Lo que la IA escribe a partir de las imágenes subidas" },
+  { id: "asistente", nombre: "Asistente", nota: "El chat (con Meta no hay búsqueda web)" },
+  { id: "analisis", nombre: "Análisis", nota: "Informes, auditorías, cerebro y ADN de marca" },
+]);
+
+/** Quién hace las imágenes de la aplicación (adaptar a 4:5 o 9:16). */
+export const MOTORES_IMAGEN = Object.freeze([
+  { id: "auto", nombre: "Automático", nota: "Muse Image si hay llave de Meta (≈ 0,01 $); si no, Nano Banana (≈ 0,04 $)." },
+  { id: "meta", nombre: "Muse Image (Meta)", nota: "≈ 0,01 $ por imagen. Si Meta falla, la hace Nano Banana." },
+  { id: "gemini", nombre: "Nano Banana (Google)", nota: "≈ 0,04 $ por imagen." },
+]);
+
 export const NIVELES_IA = Object.freeze([
   { id: "bajo", nombre: "Bajo", nota: "Responde casi directo. El más rápido y barato." },
   { id: "medio", nombre: "Medio", nota: "Planifica la estructura antes de escribir." },
@@ -24,6 +47,7 @@ export const CONFIG_IA_POR_DEFECTO = Object.freeze({
   ia_modelo: "sonnet",
   ia_razonamiento: "alto",
   ia_razonamiento_chat: null,
+  ia_modelos: {},
   presupuesto_usd: 30,
   al_limite: "avisar",
 });

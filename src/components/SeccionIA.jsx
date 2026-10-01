@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useId } from "react";
 import Icon from "./Icon";
 import * as db from "../lib/db";
-import { MODELOS_IA, NIVELES_IA, CONFIG_IA_POR_DEFECTO } from "../lib/configIA";
+import { MODELOS_IA, NIVELES_IA, CONFIG_IA_POR_DEFECTO, MODELOS_FUNCION, FUNCIONES_IA, MOTORES_IMAGEN } from "../lib/configIA";
 
 // ============================================================
 // Ajustes → Inteligencia artificial
@@ -55,7 +55,7 @@ export default function SeccionIA({ esAdmin, pulso = 0 }) {
   useEffect(() => { void cargar(); }, [cargar, pulso]);
 
   const cambiar = async (campo, valor) => {
-    if (!esAdmin || config[campo] === valor) return;
+    if (!esAdmin || (campo !== "ia_modelos" && config[campo] === valor)) return;
     setGuardando(true);
     setFallo("");
     setMensaje("");
@@ -87,7 +87,9 @@ export default function SeccionIA({ esAdmin, pulso = 0 }) {
 
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-4)" }}>
         <div>
-          <p className="label" id={`${ids}-modelo`} style={{ marginBottom: "var(--sp-1)" }}>Modelo</p>
+          <p className="label" id={`${ids}-modelo`} style={{ marginBottom: "var(--sp-1)" }}>
+            Modelo general <span style={{ fontWeight: 400, textTransform: "none" }}>· lo que no tenga uno propio abajo</span>
+          </p>
           <Segmentado
             etiquetaId={`${ids}-modelo`}
             opciones={MODELOS_IA.map((m) => ({ id: m.id, nombre: m.id === "sonnet" ? `${m.nombre} (recomendado)` : m.nombre }))}
@@ -97,6 +99,50 @@ export default function SeccionIA({ esAdmin, pulso = 0 }) {
           />
           <p style={nota}>{modelo.nota}</p>
         </div>
+
+        <fieldset className="ia-funciones">
+          <legend className="label">Un modelo por función</legend>
+          <p style={{ ...nota, marginTop: 0 }}>
+            {modelos?.meta?.conectado
+              ? "Meta está conectado: redacción y guiones escriben con Muse Spark Contributor salvo que elijas otro."
+              : "Para usar Muse Spark (Meta), pon la llave META_API_KEY en el servidor (ver DEPLOY.md)."}
+          </p>
+          {FUNCIONES_IA.map((f) => {
+            const propio = config.ia_modelos?.[f.id] ?? "";
+            const ahora = modelos?.funciones?.[f.id];
+            return (
+              <div key={f.id} className="ia-funcion">
+                <label htmlFor={`${ids}-f-${f.id}`}>
+                  <strong>{f.nombre}</strong>
+                  <span>{f.nota}</span>
+                </label>
+                <select id={`${ids}-f-${f.id}`} className="input" value={propio} disabled={!esAdmin || guardando}
+                  onChange={(e) => cambiar("ia_modelos", { [f.id]: e.target.value || null })}>
+                  <option value="">Por defecto{ahora && !ahora.propio ? ` (${ahora.nombre})` : ""}</option>
+                  {MODELOS_FUNCION.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                </select>
+                {ahora?.aviso && <p className="notice notice-warn" style={{ margin: 0 }}>{ahora.aviso}</p>}
+              </div>
+            );
+          })}
+          {Object.values(modelos?.funciones ?? {}).some((x) => x.id === "muse-spark-1.2-contributor") && (
+            <p className="notice notice-warn" style={{ margin: 0 }}>
+              Con Muse Spark Contributor, Meta puede usar lo que se le manda (ADN de marca, ideas, textos) para entrenar sus modelos.
+              Las notas internas del cerebro no viajan a la redacción ni a los guiones; al asistente, sí. Si no te conviene, elige otro modelo en esa función.
+            </p>
+          )}
+          <div className="ia-funcion">
+            <label htmlFor={`${ids}-img`}>
+              <strong>Imágenes</strong>
+              <span>Adaptar a 4:5 o 9:16 con IA</span>
+            </label>
+            <select id={`${ids}-img`} className="input" value={config.ia_modelos?.imagen ?? "auto"} disabled={!esAdmin || guardando}
+              onChange={(e) => cambiar("ia_modelos", { imagen: e.target.value })}>
+              {MOTORES_IMAGEN.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+            </select>
+            <p style={{ ...nota, margin: 0 }}>{MOTORES_IMAGEN.find((m) => m.id === (config.ia_modelos?.imagen ?? "auto"))?.nota}</p>
+          </div>
+        </fieldset>
 
         <div>
           <p className="label" id={`${ids}-nivel`} style={{ marginBottom: "var(--sp-1)" }}>
