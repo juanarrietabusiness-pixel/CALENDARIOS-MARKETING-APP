@@ -1159,3 +1159,40 @@ describe("la Biblioteca de anuncios de Meta", () => {
     expect((await res.json()).error).toMatch(/Ruta/);
   });
 });
+
+describe("anuncios de Meta (/api/anuncios)", () => {
+  // La lógica entera, contra una D1 de verdad, está en anuncios.test.js.
+  // Aquí sólo que la puerta llega a sus ramas y que activar no se cuela.
+  it("el estado llega a su rama: sin Meta configurado lo dice, con 200", async () => {
+    const env = await entorno();
+    const res = await worker.fetch(conSesion("/api/anuncios/estado"), env);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ configurado: false, conectado: false, cuentas: [] });
+  });
+
+  it("activar siendo editor es 403 antes de mirar nada más", async () => {
+    const env = await entorno({ rol: "editor" });
+    const res = await worker.fetch(conSesion("/api/anuncios/clientes/cliente-1/campanas/123/activar", {
+      method: "POST", body: JSON.stringify({ confirmado: true }), headers: { "Content-Type": "application/json" },
+    }), env);
+    expect(res.status).toBe(403);
+  });
+
+  it("un cliente sin cuenta publicitaria es 409 con motivo, no un 500", async () => {
+    const env = await entorno();
+    const res = await worker.fetch(conSesion("/api/anuncios/clientes/cliente-1/campanas"), env);
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/cuenta publicitaria/);
+  });
+
+  it("un cliente de otro espacio es 404", async () => {
+    const env = await entorno();
+    expect((await worker.fetch(conSesion("/api/anuncios/clientes/cliente-de-otro/campanas"), env)).status).toBe(404);
+  });
+
+  it("una ruta que no existe es 404, y sin sesión 401", async () => {
+    const env = await entorno();
+    expect((await worker.fetch(conSesion("/api/anuncios/no-existe"), env)).status).toBe(404);
+    expect((await worker.fetch(new Request("https://calendarios.test/api/anuncios/estado"), env)).status).toBe(401);
+  });
+});

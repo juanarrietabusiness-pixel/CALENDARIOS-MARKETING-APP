@@ -21,6 +21,7 @@
 
 import { cifrarCon, descifrarCon, firmarCon, leerFirmado } from "./firmas.js";
 import { PERMISOS_BANDEJA } from "../../src/lib/bandejaVista.js";
+import { PERMISOS_ANUNCIOS } from "../../src/lib/anuncios.js";
 
 export const VERSION_GRAPH = "v23.0";
 export const COOKIE_META = "__Host-meta-oauth";
@@ -59,6 +60,7 @@ export const PERMISOS_META = [
  */
 export const PERMISOS_EXTRA_META = Object.freeze({
   bandeja: { permisos: PERMISOS_BANDEJA, config: "META_CONFIG_ID_BANDEJA", vuelta: "/bandeja" },
+  anuncios: { permisos: PERMISOS_ANUNCIOS, config: "META_CONFIG_ID_ANUNCIOS", vuelta: "/campanas" },
 });
 
 /**

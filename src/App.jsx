@@ -57,6 +57,7 @@ const Informe = lazy(() => import("./pages/Informe"));
 const AuditoriaPublica = lazy(() => import("./pages/AuditoriaPublica"));
 const Auditorias = lazy(() => import("./pages/Auditorias"));
 const Biblioteca = lazy(() => import("./pages/Biblioteca"));
+const Campanas = lazy(() => import("./pages/Campanas"));
 const ConectarClaude = lazy(() => import("./pages/ConectarClaude"));
 const PublicarAMano = lazy(() => import("./pages/PublicarAMano"));
 const IdeasBank = lazy(() => import("./components/IdeasBank"));
@@ -583,6 +584,8 @@ function Workspace({ session, ruta }) {
         case "estudio":
         // La bandeja: el webhook de Meta (o alguien del equipo) guardó comentarios o mensajes.
         case "bandeja":
+        // Anuncios: se creó, activó o pausó una campaña. /campanas se relee con el pulso.
+        case "anuncios":
         case "nota":
         case "miembro":
         case "miembro:fuera":
@@ -1392,6 +1395,10 @@ function Workspace({ session, ruta }) {
             ) : ruta.vista === "biblioteca" ? (
               <Suspense fallback={<Cargando />}>
                 <Biblioteca clients={clients} pulso={pulso} />
+              </Suspense>
+            ) : ruta.vista === "campanas" ? (
+              <Suspense fallback={<Cargando />}>
+                <Campanas clients={clients} pulso={pulso} yo={yo} />
               </Suspense>
             ) : ruta.vista === "resultados" ? (
               <Suspense fallback={<Cargando />}>

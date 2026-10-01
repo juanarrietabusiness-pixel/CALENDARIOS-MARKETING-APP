@@ -245,9 +245,13 @@ export async function rutasRedes(req, env, { acceso, usuario, partes, metodo }) 
     if (!esAdmin) return error("Sólo el administrador conecta Meta", 403);
     if (!metaConfigurado(env)) return error("Falta configurar META_APP_ID y META_APP_SECRET en el Worker", 503);
     const nonce = testigo(16);
-    // `?para=bandeja`: además de lo de siempre, los permisos con revisión de esa función.
+    // `?para=bandeja` o `?para=anuncios`: además de lo de siempre, los permisos con revisión de esa función.
     const para = new URL(req.url).searchParams.get("para");
     const extra = Object.hasOwn(PERMISOS_EXTRA_META, para ?? "") ? PERMISOS_EXTRA_META[para] : null;
+    // Con el inicio de sesión para empresas los permisos salen de una CONFIGURACIÓN: la de esa función.
+    if (extra && env.META_CONFIG_ID && !env[extra.config]) {
+      return error(`Falta ${extra.config} en el Worker: con el inicio de sesión para empresas, estos permisos van en su propia configuración (ver DEPLOY.md).`, 503);
+    }
     const state = await firmarEstadoMeta(env, { ownerId: acceso.ownerId, userId: usuario.id, nonce, ...(extra ? { para } : {}) });
     return new Response(null, {
       status: 302,

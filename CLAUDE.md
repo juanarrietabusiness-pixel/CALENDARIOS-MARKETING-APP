@@ -168,6 +168,10 @@ src/
     bandeja.js            Cliente de /api/bandeja (comentarios, hilos, interruptor, acciones)
     bandejaVista.js       La Bandeja: ventana de 24 h de los mensajes, filtros, conversaciones,
                           permisos que faltan (puro; también lo importa el Worker)
+    anuncios.js           Meta Ads: objetivos ODAX, dinero en unidades menores, validar el asistente,
+                          el cuerpo de cada llamada (TODO en PAUSED), resultados por objetivo (puro;
+                          también lo importa el Worker)
+    anunciosApi.js        Cliente de /api/anuncios
   components/
     Icon.jsx              Set de iconos SVG monocromos (rejilla 24, trazo 1.75)
     Presencia.jsx         Avatares, estado de la conexión, «X está editando»
@@ -220,6 +224,8 @@ src/
                           si ya tenía publicaciones)
     calendario/navegadorMes.jsx ‹ Octubre 2026 › Hoy: recorrer el calendario siempre activo
     CalendarView.jsx      Vista de lista y de rejilla, filtros, generación, envío
+    anuncios/AsistenteCampana.jsx  «Nueva campaña»: objetivo, presupuesto, público, anuncio, revisar
+    anuncios/DialogoActivar.jsx    Activar: el presupuesto y las fechas, y escribir ACTIVAR
   pages/
     Login.jsx             Acceso
     Equipo.jsx            Quién entra en el espacio; invitar y sacar
@@ -238,6 +244,7 @@ src/
     PublicarAMano.jsx     /a-mano/…: publicar desde el teléfono (música, stickers…)
     Informe.jsx           Lo que ve el cliente al abrir su informe mensual (sin sesión)
     Ajustes.jsx           IA, presupuesto y consumo, integraciones, tareas, copia
+    Campanas.jsx          /campanas («Anuncios»): cuenta publicitaria, cifras, campañas, crear (lazy)
 worker/
   index.js                Enrutado, sesión y cabeceras de /api/*
   hub.js                  Durable Object: un espacio, sus sockets y su presencia
@@ -265,6 +272,8 @@ worker/
     informes.js           Cifras del mes (congeladas) + análisis de la IA; el del día 1
     auditorias.js         Leer un perfil (cuenta propia o business_discovery) y auditarlo
     biblioteca.js         Una búsqueda en /ads_archive (una llamada, con topes) y sus errores
+    anuncios.js           Meta Ads: cuentas publicitarias, campañas e /insights, subir el medio
+                          (/adimages, /advideos por file_url), crear en pausa, activar y pausar
     mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
     estudio/              El Estudio: meta.js (Muse Image: generar y editar, 0,01 $), prompt.js («Escribir el
                           prompt»: la IA lee la idea y MIRA las referencias; memoria y apego en %, carruseles), trabajos.js (pedir, avanzar por pasos, cancelar; el permiso de
@@ -325,7 +334,9 @@ worker/
     avisos.js             /api/avisos: la bandeja de quien pregunta y marcar leídos
     bandeja.js            /api/bandeja (comentarios y mensajes) y el webhook de Meta
                           (/api/webhooks/meta, sin sesión)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios)
+    anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0031 anuncios)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -353,6 +364,7 @@ tests/
 | `/bandeja` | Comentarios y mensajes de Facebook e Instagram de los clientes con la bandeja encendida |
 | `/auditorias` | Auditorías de perfil de clientes y prospectos |
 | `/biblioteca` | Biblioteca de anuncios de Meta: buscar, filtros guardados, CSV |
+| `/campanas` | Anuncios de Meta: campañas, cifras y crear (en pausa) |
 | `/auditoria?t=<testigo>` | Auditoría compartida (sin sesión) |
 | `/conectar-claude?…` | El permiso de Claude (OAuth: `authorization_endpoint`) |
 | `/a-mano/<calendario>/<publicación>` | Publicar a mano desde el teléfono |
@@ -1897,6 +1909,48 @@ son del servidor.
   demás»), con Muse Image si hay llave de Meta y si no Nano Banana
   (`modeloParaEditar`). De qué original sale se sabe por su trabajo
   (`originalDe`): no hizo falta ninguna columna.
+- **Anuncios de Meta: nada nace activo, y activar es del SERVIDOR.** Los
+  cuerpos de campaña, conjunto y anuncio salen de `src/lib/anuncios.js` y
+  fijan `status: PAUSED` sin aceptar otro valor (`ESTADO_AL_CREAR`); activar
+  exige papel de administrador (403, comprobado ANTES de leer nada) y
+  `confirmado: true` —el booleano— (409 con el presupuesto y las fechas, que
+  es lo que enseña el diálogo). Un asistente o una petición a mano no se lo
+  saltan. Activar enciende anuncio y conjunto creados desde la app y la
+  campaña la ÚLTIMA (es el interruptor); pausar sólo toca la campaña. Cosas
+  que no se ven en la pantalla:
+  · **Los permisos de anuncios (`ads_read`, `ads_management`) tienen App
+  Review y NO van en `PERMISOS_META`:** romperían «Conectar Meta» si Meta no
+  los aprueba. Se piden con `?para=anuncios` en el mismo OAuth
+  (`PERMISOS_EXTRA_META` (meta.js)), que vuelve a /campanas; con el inicio de sesión para
+  empresas hace falta su propia configuración, `META_CONFIG_ID_ANUNCIOS`.
+  · **El presupuesto va en unidades MENORES de la moneda de la cuenta**, y
+  las monedas sin decimales (COP, CLP, JPY…) no se multiplican por cien:
+  `aMenores()`. El gasto de /insights, en cambio, ya llega en unidades mayores.
+  · **Obligatorios de la API actual:** `special_ad_categories` (vacío si no
+  se declara), `is_adset_budget_sharing_enabled: false` (el presupuesto va en
+  el conjunto; sin el campo, 100/4834011), `bid_strategy` en el conjunto y
+  `targeting_automation.advantage_audience: 0` (desde la v23; con 0 el público
+  es exactamente el escogido). El creativo usa `instagram_user_id`, no
+  `instagram_actor_id`. Con categoría especial, Meta exige todas las edades,
+  los dos sexos y radios de 25 km o más: lo valida `validarBorrador()`, la
+  MISMA función en el asistente y antes de crear.
+  · **El medio se sube al ESCOGERLO, no al crear:** imagen a /adimages por
+  partes desde R2 (hash); video a /advideos con `file_url`, la dirección
+  firmada de siempre, así Meta lo descarga y el Worker no lo carga ni lo
+  trocea. Meta lo procesa después: el asistente pregunta cada 4 s y no deja
+  crear hasta que esté listo, y el servidor lo comprueba otra vez (409).
+  · **Si la creación falla a medias se borra la campaña** (con sus hijos):
+  en pausa no gasta, pero una campaña huérfana en la cuenta del cliente
+  confunde. Si el Worker muere entre medias, queda en pausa —lo seguro—.
+  · **Una campaña sólo se lee o se toca si es de la cuenta del cliente**
+  (`account_id`): el id lo manda el navegador.
+  · **Las cifras del total no son la suma de los días:** el alcance no se
+  suma, así que /insights se pide dos veces (total y `time_increment=1`).
+  · **Nada de esto se ha probado contra la Marketing API real** (sin cuenta
+  publicitaria de pruebas): los tests hablan con un `fetch` de mentira que
+  contesta como la documentación. Lo primero con una cuenta real es una
+  campaña de Tráfico de 1 $ al día, mirada en el Administrador de anuncios
+  antes de activarla.
 
 ## Documentos relacionados
 

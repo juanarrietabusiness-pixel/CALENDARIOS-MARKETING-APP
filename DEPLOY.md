@@ -109,6 +109,8 @@ Ahora que el Worker existe, ya tiene dónde guardarlas.
 | `META_CONFIG_ID` | El ID de configuración del inicio de sesión | Ver «Instagram y Facebook» abajo |
 | `META_CONFIG_ID_BANDEJA` | El ID de la configuración CON los permisos de la bandeja *(opcional)* | Ver «La bandeja: comentarios y mensajes» abajo |
 | `META_WEBHOOK_VERIFY_TOKEN` | Un testigo que inventas tú, para verificar el webhook *(opcional)* | Ver «La bandeja: comentarios y mensajes» abajo |
+
+| `META_CONFIG_ID_ANUNCIOS` | El ID de la configuración CON los permisos de anuncios *(opcional)* | Ver «Anuncios de Meta» abajo. Sólo hace falta si se usa `META_CONFIG_ID` |
 | `TIKTOK_CLIENT_KEY` | La Client key de la app de TikTok | Ver «TikTok» abajo |
 | `TIKTOK_CLIENT_SECRET` | Su Client secret | Ver «TikTok» abajo |
 
@@ -265,6 +267,36 @@ Lo que NO va a salir, haga lo que haga la agencia: fuera de la UE y el
 Reino Unido, la API sólo devuelve anuncios de temas sociales, elecciones o
 política. Los anuncios comerciales de Panamá se ven en la web de la
 Biblioteca; la pantalla lleva un enlace con la búsqueda ya rellena.
+
+### Anuncios de Meta (/campanas)
+
+Ver, crear y activar campañas usa el MISMO Facebook conectado, con dos
+permisos más: `ads_read` y `ads_management`. **Esos dos sí pasan por la
+revisión de Meta (App Review)** si los usan personas sin rol en la app; con
+acceso estándar valen para quien tenga rol en la app y en la cuenta
+publicitaria. No van en la configuración de siempre a propósito: si Meta
+no los aprueba, «Conectar con Facebook» seguiría funcionando.
+
+1. En la app de Meta, **Casos de uso → Crear y administrar anuncios** (o
+   añadir el producto **Marketing API**).
+2. **Inicio de sesión con Facebook para empresas → Configuraciones → Crear
+   configuración**: token de **usuario**, con TODOS los permisos de la
+   configuración de siempre **más** `ads_read` y `ads_management`. Copiar su
+   ID y pegarlo aquí como `META_CONFIG_ID_ANUNCIOS` (tipo *Secret*). (Con la
+   app clásica, sin `META_CONFIG_ID`, no hace falta: se piden por lista.)
+3. Quien conecta tiene que tener un papel en cada **cuenta publicitaria**
+   del cliente (Business Suite → Configuración → Cuentas publicitarias →
+   asignar personas), y la página del cliente tiene que estar asignada a su
+   cliente en **Ajustes → Integraciones**: los anuncios salen a nombre de
+   esa página.
+4. En la app del calendario: **Anuncios → Conceder permisos de anuncios**
+   (administrador), y después **Actualizar cuentas** y escoger la cuenta
+   publicitaria de cada cliente.
+
+Todo lo que se crea desde la app nace **en pausa**. Activar es del
+administrador y pide escribir ACTIVAR. **Nada de esto se ha probado contra
+la Marketing API real:** lo primero, una campaña de Tráfico de 1 $ al día
+mirada en el Administrador de anuncios antes de activarla.
 
 ### TikTok
 
@@ -503,6 +535,8 @@ despliegue (`EspacioHub`, migración `v1` de `wrangler.jsonc`).
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | **Cloudflare** | Google Drive y YouTube |
 | `META_APP_ID` / `META_APP_SECRET` / `META_CONFIG_ID` | **Cloudflare** | Instagram y Facebook |
 | `META_CONFIG_ID_BANDEJA` / `META_WEBHOOK_VERIFY_TOKEN` | **Cloudflare** | La Bandeja (opcionales) |
+
+| `META_CONFIG_ID_ANUNCIOS` | **Cloudflare** | Anuncios de Meta (opcional) |
 | `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` | **Cloudflare** | TikTok |
 
 La regla: **en GitHub, lo que necesita el workflow. En Cloudflare, lo que

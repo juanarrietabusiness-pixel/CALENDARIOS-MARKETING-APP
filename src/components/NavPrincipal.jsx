@@ -19,6 +19,7 @@ const SECCIONES = [
   { vista: "bandeja", ruta: "/bandeja", nombre: "Bandeja", icono: "inbox", bandeja: true },
   { vista: "tablero", ruta: "/tablero", nombre: "Tablero", icono: "grid" },
   { vista: "resultados", ruta: "/resultados", nombre: "Resultados", icono: "chart" },
+  { vista: "campanas", ruta: "/campanas", nombre: "Anuncios", icono: "megaphone" },
   { vista: "auditorias", ruta: "/auditorias", nombre: "Auditorías", icono: "search" },
   { vista: "biblioteca", ruta: "/biblioteca", nombre: "Biblioteca de anuncios", icono: "megaphone" },
   { vista: "equipo", ruta: "/equipo", nombre: "Equipo", icono: "users" },

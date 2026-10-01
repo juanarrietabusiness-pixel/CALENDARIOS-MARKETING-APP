@@ -132,6 +132,8 @@ describe("analizar y construir son inversas", () => {
     expect(construirRuta({ vista: "bandeja" })).toBe("/bandeja");
     expect(analizarRuta(url("/biblioteca"))).toEqual({ vista: "biblioteca" });
     expect(construirRuta({ vista: "biblioteca" })).toBe("/biblioteca");
+    expect(analizarRuta(url("/campanas"))).toEqual({ vista: "campanas" });
+    expect(construirRuta({ vista: "campanas" })).toBe("/campanas");
     expect(analizarRuta(url("/auditoria"))).toEqual({ vista: "auditoria" });
     expect(analizarRuta(url("/conectar-claude"))).toEqual({ vista: "conectar-claude" });
     expect(analizarRuta(url("/a-mano/cal-1/p9"))).toEqual({ vista: "a-mano", calendario: "cal-1", publicacion: "p9" });
