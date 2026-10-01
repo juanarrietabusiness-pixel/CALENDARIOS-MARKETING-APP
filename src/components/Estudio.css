@@ -181,19 +181,9 @@ div.est-img { cursor: default; }
   .est-visor-acciones .btn { flex: 1 1 calc(50% - var(--sp-2)); }
 }
 
-/* «Escribir el prompt con IA» y el carrusel (EstudioCompositor.jsx). */
-.est-escribir { display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1px dashed var(--accent-line); border-radius: var(--radius-sm); background: var(--accent-soft); }
-.est-escribir > .btn { justify-self: start; }
-.est-escribir .hint { margin: 0; }
-.est-deslizadores { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--sp-3); }
-.est-deslizadores label { display: grid; gap: var(--sp-1); font-size: var(--fs-xs); color: var(--text-dim); }
-.est-deslizadores label > span { display: flex; justify-content: space-between; gap: var(--sp-2); color: var(--text); }
-.est-deslizadores input[type="range"] { width: 100%; min-height: var(--tap-sm); accent-color: var(--accent); }
-.est-deslizadores small { font-size: var(--fs-3xs); }
-.est-serie { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--sp-3); display: grid; gap: var(--sp-2); min-width: 0; }
-.est-serie ol { margin: 0; padding-left: var(--sp-5); display: grid; gap: var(--sp-2); }
-.est-serie-estilo { margin: 0; }
-.est-serie .btn { justify-self: start; }
+/* «Mejorar idea» (EstudioCompositor.jsx). */
+.est-mejorar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-3); border: 1px dashed var(--accent-line); border-radius: var(--radius-sm); background: var(--accent-soft); }
+.est-mejorar .hint { flex-basis: 100%; margin: 0; }
 
 /* «Editar» en el visor. */
 .est-editar { display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--accent-line); border-radius: var(--radius-sm); background: var(--accent-soft); }

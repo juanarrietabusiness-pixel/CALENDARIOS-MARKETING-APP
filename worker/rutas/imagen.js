@@ -244,7 +244,7 @@ export async function rutaGenerarImagen(req, env, ctx) {
     try {
       resultado = await llamarMuseImage(env, {
         prompt: construirPromptAdaptar(adaptar.proporcion, { clientName: cliente.name }),
-        ajustes: { aspectRatio: adaptar.proporcion, formato: "jpeg" },
+        ajustes: { aspectRatio: adaptar.proporcion, calidad: "high", formato: "jpeg" },
         referencias: base ? [{ mime: base.mimeType, base64: base.data }] : [],
       });
       modelo = "muse-image-1.0";

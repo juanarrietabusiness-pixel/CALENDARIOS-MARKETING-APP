@@ -31,11 +31,10 @@ export const cancelarTrabajo = (clienteId, id) => pedir(`${base(clienteId)}/trab
 export const reintentarTrabajo = (clienteId, id) => pedir(`${base(clienteId)}/trabajos/${encodeURIComponent(id)}/reintentar`, post());
 
 /**
- * «Escribir el prompt»: la IA lee la idea y MIRA las referencias. Devuelve
- * `{ prompts: [...], estilo, modelo, aviso, conMemoria }`; un carrusel trae
- * un prompt por diapositiva. Es texto: no pide nada al motor de imagen.
+ * «Mejorar idea»: la IA devuelve la idea más clara y sencilla, para que el
+ * motor la entienda. `{ idea, modelo, aviso }`. Es texto: no pide nada al motor.
  */
-export const escribirPrompt = (clienteId, datos) => pedir(`${base(clienteId)}/prompt`, post(datos));
+export const mejorarIdea = (clienteId, datos) => pedir(`${base(clienteId)}/mejorar`, post(datos));
 
 /** Sube una imagen a mano (la foto del producto, el logo) a la galería del cliente. */
 export function subirImagen(clienteId, archivo, { carpetaId = null } = {}) {
@@ -197,10 +196,10 @@ export function archivoDesdeSrc(src, clienteId, prompt = "") {
 }
 
 /** El nombre de cada ajuste en la pantalla. */
-export const ETIQUETA_AJUSTE = Object.freeze({ aspectRatio: "Formato", imageSize: "Tamaño", resolution: "Resolución", duration: "Duración", formato: "Archivo" });
+export const ETIQUETA_AJUSTE = Object.freeze({ aspectRatio: "Formato", imageSize: "Tamaño", resolution: "Resolución", duration: "Duración", calidad: "Calidad", formato: "Archivo" });
 
 /** «4 s», «720p», «1K» según el ajuste. */
-const VALORES = Object.freeze({ formato: { webp: "WebP (ligero)", png: "PNG", jpeg: "JPEG" } });
+const VALORES = Object.freeze({ calidad: { high: "Alta (pule en varias pasadas)", low: "Rápida" }, formato: { webp: "WebP (ligero)", png: "PNG", jpeg: "JPEG" } });
 
 export function valorDeAjuste(nombre, valor) {
   if (nombre === "duration") return `${valor} s`;

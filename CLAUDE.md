@@ -275,8 +275,8 @@ worker/
     anuncios.js           Meta Ads: cuentas publicitarias, campañas e /insights, subir el medio
                           (/adimages, /advideos por file_url), crear en pausa, activar y pausar
     mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
-    estudio/              El Estudio: meta.js (Muse Image: generar y editar, 0,01 $), prompt.js («Escribir el
-                          prompt»: la IA lee la idea y MIRA las referencias; memoria y apego en %, carruseles), trabajos.js (pedir, avanzar por pasos, cancelar; el permiso de
+    estudio/              El Estudio: meta.js (Muse Image: generar y editar, 0,01 $), prompt.js («Mejorar
+                          idea»: la idea más clara, en una o dos frases), trabajos.js (pedir, avanzar por pasos, cancelar; el permiso de
                           un paso a la vez y el cron), motores.js (prueba y Gemini, mismo contrato;
                           fal.js y higgsfield.js son los otros dos), gemini.js (la llamada,
                           compartida con /api/generar-imagen), galeria.js (archivos, carpetas,
@@ -1895,36 +1895,33 @@ son del servidor.
   la advertencia de Ajustes no se puede cerrar mientras lo use alguna
   función. Las notas internas no viajan a la redacción; al asistente, sí.
 
-- **«Escribir el prompt» es TEXTO y no gasta en el motor.** La IA (función
-  «prompt de imagen», con su modelo en Ajustes) lee la idea, MIRA las
-  referencias —van como bloques de imagen; un SVG de prueba no se le enseña—
-  y escribe el prompt, que la persona revisa antes de crear. La memoria sale
-  de `contexto()` con `para: "imagen"` (ficha, pasajes y el resumen de sus
-  vecinas en el grafo, sin notas internas) y el deslizador escala su
-  presupuesto; 0 % es «nada de la marca». Un carrusel trae un bloque de
-  estilo y un prompt COMPLETO por diapositiva —cada una va a su trabajo y el
-  motor no ve las demás— y se crea en una carpeta propia.
+- **«Mejorar idea», no «Escribir el prompt».** Lo que había (memoria de la
+  marca, apego a las referencias, carruseles) escribía párrafos de dirección
+  de arte y el motor, con tanto texto, sacaba cualquier cosa; la agencia lo
+  quitó. Ahora `mejorarIdea()` (worker/lib/estudio/prompt.js, `POST
+  /api/estudio/<cliente>/mejorar`) devuelve la idea en una o dos frases
+  sencillas (`MAX_PALABRAS`, 60), sin JSON, sin listas y sin meter la marca
+  por detrás, en el MISMO campo; «Volver a mi idea» la deshace. Es texto (función
+  «prompt de imagen», con su modelo en Ajustes): no gasta en el motor.
 - **Editar una imagen no la toca: hace otra.** Es un trabajo con la imagen de
   referencia y `promptDeEdicion()` (la indicación + «conserva todo lo
   demás»), con Muse Image si hay llave de Meta y si no Nano Banana
   (`modeloParaEditar`). De qué original sale se sabe por su trabajo
   (`originalDe`): no hizo falta ninguna columna.
-- **Muse Image va por la API de Responses, y se supo con la llave puesta.**
-  La primera versión salió de páginas de terceros: `/images/generations` y
-  `/images/edits`, medidas propias («1024x1280» para 4:5) y
-  `reasoning_strength`. Los tests pasaban —el `fetch` de mentira hablaba como
-  esas páginas— y Meta contestó 400 a todo, sin motivo legible porque sólo se
-  leía `error.message`. Ahora es lo del recetario OFICIAL
-  (github.com/meta-models/meta-model-cookbook, `05_muse_image`): `POST
-  /responses` con `tools: [{ type: "image_generation", size, output_format }]`
-  y `store: false`; las referencias, partes `input_image` DENTRO de un mensaje
-  `{ role: "user", content }` (una lista suelta es un 400); la imagen, el
-  `result` del `image_generation_call`. `size` sólo admite 1024x1024,
-  1024x1536 y 1536x1024 (`tamanoMuse()`), así que el Estudio sólo ofrece 1:1,
-  2:3 y 3:2, y adaptar a 4:5 o 9:16 pide la vertical y recorta en el
-  navegador. **La lección:** con un proveedor sin probar, la fuente es su
-  documentación o su recetario, nunca un agregador; y el error enseña el
-  cuerpo que devolvió (`motivoDe()`), sea JSON o texto.
+- **Muse Image: dos vías, y el error dice lo que contestó Meta en cada una.**
+  Con la llave puesta, Meta contestaba 400 y la pantalla decía «Meta rechazó
+  el pedido.» sin motivo: sólo se leía `error.message`. Ahora
+  `llamarMuseImage()` (worker/lib/estudio/meta.js) pide primero por la API de
+  imágenes con el tamaño EXACTO de la proporción (1024x1280 para 4:5; ya sin
+  `response_format`, que las API compatibles con OpenAI rechazan para los
+  modelos nuevos) y, si Meta la RECHAZA (400/404/405/415/422), por la API de
+  Responses del recetario oficial (github.com/meta-models/meta-model-cookbook,
+  `05_muse_image`: referencias como `input_image` dentro de un mensaje de
+  usuario; `size` sólo 1024x1024, 1024x1536 o 1536x1024). Si las dos fallan,
+  el error lleva «ruta → código: lo que dijo» de cada una (`motivoDe()`, sea
+  JSON o texto) y queda en `estudio_trabajos.error`: es lo primero que hay que
+  leer. Las proporciones del Estudio NO se recortan a las tres de Responses:
+  la agencia ya genera con Muse en otros tamaños.
 - **Anuncios de Meta: nada nace activo, y activar es del SERVIDOR.** Los
   cuerpos de campaña, conjunto y anuncio salen de `src/lib/anuncios.js` y
   fijan `status: PAUSED` sin aceptar otro valor (`ESTADO_AL_CREAR`); activar

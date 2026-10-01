@@ -8,7 +8,7 @@
 //   POST   /<cliente>/trabajos/<id>/avanzar        UN paso: una imagen
 //   POST   /<cliente>/trabajos/<id>/cancelar
 //   POST   /<cliente>/trabajos/<id>/reintentar
-//   POST   /<cliente>/prompt                       { idea, tipo, diapositivas, apego, memoria, referencias }: la IA escribe el prompt
+//   POST   /<cliente>/mejorar                      { idea, tipo }: la IA devuelve la idea más clara (texto)
 //   POST   /<cliente>/archivos                     Subir a mano (multipart: archivo, carpetaId?)
 //   POST   /<cliente>/archivos/<id>/cambiar        { favorito?, carpetaId? }
 //   POST   /<cliente>/archivos/<id>/uso            { calendarId, postId }: lo usa una publicación
@@ -32,7 +32,7 @@
 import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { firma, difundir } from "../lib/vivo.js";
 import { estadoMotores } from "../lib/estudio/motores.js";
-import { escribirPrompt } from "../lib/estudio/prompt.js";
+import { mejorarIdea } from "../lib/estudio/prompt.js";
 import {
   crearTrabajo, avanzarTrabajo, cancelarTrabajo, reintentarTrabajo, trabajoPublico, ErrorEstudio,
 } from "../lib/estudio/trabajos.js";
@@ -84,12 +84,12 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       return error(`Método ${metodo} no permitido aquí`, 405);
     }
 
-    // ---------- Escribir el prompt (texto: no pide nada al motor) ----------
-    if (b === "prompt" && !c && metodo === "POST") {
+    // ---------- Mejorar la idea (texto: no pide nada al motor) ----------
+    if (b === "mejorar" && !c && metodo === "POST") {
       const datos = await cuerpo(req);
       if (!datos) return error("JSON inválido");
       try {
-        return json(await escribirPrompt(env, acceso, cliente, datos));
+        return json(await mejorarIdea(env, acceso, cliente, datos));
       } catch (e) {
         if (e?.estado) return error(e.message, e.estado);
         throw e;
