@@ -114,12 +114,13 @@ export const MODELOS = Object.freeze([
   },
   {
     id: "muse-image", motor: "meta", tipo: "imagen", gid: "muse-image-1.0", nombre: "Muse Image",
-    creador: "Meta", calidad: 3, velocidad: "normal", costo: 0.01, referencias: 10,
-    nota: "De Meta: genera y edita, y busca por su cuenta referencias reales (marcas, lugares, datos actuales) antes de dibujar. Texto legible e infografías. Muy barato.",
+    creador: "Meta", calidad: 3, velocidad: "normal", costo: 0.01, referencias: 10, aproximaProporcion: true,
+    nota: "De Meta: genera y edita, y busca por su cuenta referencias reales (marcas, lugares, datos actuales) antes de dibujar. Texto legible e infografías. Muy barato. Sale cuadrada, vertical 2:3 u horizontal 3:2: para el feed (4:5) o una historia (9:16) se recorta al ponerla en la publicación.",
     para: ["texto legible", "editar y componer", "barato"],
+    // Los tres tamaños que admite Meta (`TAMANOS_MUSE` en worker/lib/estudio/meta.js): ofrecer 4:5 sería
+    // prometer una proporción que no sale.
     ajustes: {
-      aspectRatio: enumerado(PROPORCIONES, "1:1"),
-      calidad: enumerado(["high", "low"], "high"),
+      aspectRatio: enumerado(["1:1", "2:3", "3:2"], "1:1"),
       formato: enumerado(["webp", "png", "jpeg"], "webp"),
     },
   },
@@ -336,9 +337,26 @@ export function normalizarAjustes(modelo, entrada = {}) {
   const salida = {};
   for (const [nombre, def] of Object.entries(m?.ajustes ?? {})) {
     const valor = entrada?.[nombre];
-    salida[nombre] = def.valores.includes(valor) ? valor : def.defecto;
+    salida[nombre] = def.valores.includes(valor)
+      ? valor
+      : (nombre === "aspectRatio" && m.aproximaProporcion && proporcionCercana(valor, def.valores)) || def.defecto;
   }
   return salida;
+}
+
+/**
+ * La proporción admitida más parecida a la pedida, sin cambiar de orientación (una vertical nunca sale
+ * horizontal). Para los modelos que sólo dan unas pocas (Muse Image): una publicación 4:5 pide 2:3, no
+ * el cuadrado por defecto. null si la pedida no es ninguna conocida. Pura.
+ */
+export function proporcionCercana(pedida, admitidas) {
+  const [w, h] = MEDIDAS[pedida] ?? [];
+  if (!w) return null;
+  const orientacion = (a, b) => Math.sign(b - a);
+  const candidatas = admitidas.filter((r) => MEDIDAS[r] && orientacion(...MEDIDAS[r]) === orientacion(w, h));
+  if (!candidatas.length) return null;
+  const distancia = (r) => Math.abs(Math.log((MEDIDAS[r][0] / MEDIDAS[r][1]) / (w / h)));
+  return candidatas.reduce((mejor, r) => (distancia(r) < distancia(mejor) ? r : mejor));
 }
 
 /**
