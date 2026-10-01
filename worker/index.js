@@ -49,6 +49,7 @@ import { rutasInformes } from "./rutas/informes.js";
 import { rutasAuditorias } from "./rutas/auditorias.js";
 import { rutasCerebro } from "./rutas/cerebro.js";
 import { rutasEstudio } from "./rutas/estudio.js";
+import { rutasBiblioteca } from "./rutas/biblioteca.js";
 import { avanzarPendientes } from "./lib/estudio/trabajos.js";
 import { rutasMCP, rutasMCPPublicas } from "./rutas/mcp.js";
 import { informePendiente } from "./lib/informes.js";
@@ -388,6 +389,8 @@ export default {
       if (partes[0] === "estudio") return await rutasEstudio(req, env, { acceso, usuario, partes, metodo });
       // La bandeja: comentarios y mensajes de Facebook e Instagram.
       if (partes[0] === "bandeja") return await rutasBandeja(req, env, { acceso, usuario, partes, metodo });
+      // La Biblioteca de anuncios de Meta: buscar y los filtros guardados.
+      if (partes[0] === "biblioteca") return await rutasBiblioteca(req, env, { acceso, usuario, partes, metodo });
 
       // ---------- Medios ----------
       //

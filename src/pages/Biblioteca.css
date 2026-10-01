@@ -1,0 +1,81 @@
+/* Biblioteca de anuncios: se carga con la página. */
+.biblioteca { display: flex; flex-direction: column; gap: var(--sp-4); }
+.biblioteca .notice { margin-bottom: 0; }
+
+.bib-cobertura { display: flex; flex-direction: column; gap: var(--sp-3); align-items: flex-start; }
+.bib-cobertura p { margin: 0; }
+.bib-cobertura .btn { white-space: normal; text-align: left; }
+
+.bib-rejilla { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: var(--sp-4); align-items: start; }
+.bib-lateral { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
+
+.bib-form, .bib-filtros, .bib-resultados {
+  padding: var(--sp-4); border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0;
+}
+.bib-form h2, .bib-filtros h2, .bib-resultados h2 { font-size: var(--fs-md); margin: 0; }
+.bib-filtros h3 { font-size: var(--fs-sm); margin: 0; }
+.bib-form .field, .bib-guardar .field { margin: 0; }
+.bib-segmented { margin-top: var(--sp-2); }
+.bib-segmented .segmented-btn { min-width: 0; }
+
+.bib-chips { list-style: none; display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: 0 0 var(--sp-2); padding: 0; }
+.bib-quitar { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.bib-pais {
+  display: inline-flex; align-items: center; min-height: var(--tap-sm); padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-pill); background: var(--accent-soft); border: 1px solid var(--accent-line);
+  font-size: var(--fs-2xs); font-weight: 600; color: var(--text);
+}
+.bib-fechas { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+.bib-filtros ul { list-style: none; display: flex; flex-direction: column; gap: var(--sp-1); margin: 0; padding: 0; }
+.bib-filtro { display: flex; align-items: center; gap: var(--sp-1); }
+.bib-filtro-lanzar {
+  flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left;
+  padding: var(--sp-2) var(--sp-3); min-height: var(--tap); border-radius: var(--radius-sm);
+  background: var(--surface-2); border: 1px solid transparent; color: var(--text); cursor: pointer;
+}
+.bib-filtro-lanzar:hover { border-color: var(--border-strong); }
+.bib-filtro-nombre { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bib-filtro-meta { font-size: var(--fs-3xs); color: var(--text-dim); overflow-wrap: anywhere; }
+.bib-filtro-renombrar { flex: 1; display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.bib-filtro-renombrar .input { flex: 1 1 160px; }
+.bib-guardar { display: flex; flex-direction: column; gap: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--border-light); }
+.bib-guardar .btn { align-self: flex-start; }
+
+.bib-barra { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.bib-tarjetas {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-3);
+}
+.bib-tarjeta {
+  display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0;
+  padding: var(--sp-3); border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border-light);
+}
+.bib-tarjeta p { margin: 0; }
+.bib-tarjeta-cabecera { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-2); }
+.bib-tarjeta-pagina { font-weight: 700; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.bib-estado {
+  flex-shrink: 0; font-size: var(--fs-3xs); font-weight: 700; padding: 2px var(--sp-2); border-radius: var(--radius-pill);
+  background: var(--surface-3); color: var(--text-dim);
+}
+.bib-estado[data-activo="true"] { background: var(--accent-soft); color: var(--text-muted); }
+.bib-tarjeta-fechas { font-size: var(--fs-2xs); color: var(--text-dim); }
+.bib-tarjeta-titulo { font-weight: 600; font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.bib-tarjeta-texto {
+  font-size: var(--fs-xs); line-height: var(--lh-normal); white-space: pre-line; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 8; -webkit-box-orient: vertical; overflow: hidden;
+}
+.bib-tarjeta-pie { margin-top: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.bib-plataformas { list-style: none; display: flex; flex-wrap: wrap; gap: var(--sp-1); margin: 0; padding: 0; }
+.bib-plataformas li {
+  font-size: var(--fs-3xs); padding: 2px var(--sp-2); border-radius: var(--radius-pill);
+  border: 1px solid var(--border); color: var(--text-dim);
+}
+.bib-resultados > .btn { align-self: center; }
+/* Al buscar en el teléfono se baja a los resultados: que la cabecera fija no tape su título. */
+.bib-resultados { scroll-margin-top: calc(var(--header-h) + var(--safe-top) + var(--sp-3)); }
+
+@media (max-width: 1023px) {
+  .bib-rejilla { grid-template-columns: 1fr; }
+}

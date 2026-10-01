@@ -159,6 +159,10 @@ src/
     sesionActual.js       Quién está dentro (papel), para las piezas que no reciben `yo`
     auditoria.js          Auditoría de perfil: cifras, usuario, límites de Instagram (puro;
                           también lo importa el Worker)
+    biblioteca.js         Biblioteca de anuncios de Meta: la consulta (topes), los parámetros de
+                          /ads_archive, el enlace a la web, la tarjeta sin token y el CSV (puro;
+                          también lo importa el Worker)
+    bibliotecaApi.js      Cliente de /api/biblioteca (buscar y filtros guardados)
     meses.js              Calendario siempre activo: mes virtual (sin cajón), recorrer meses,
                           fusionar lo escrito en un mes vacío, días de los meses vecinos (puro)
     bandeja.js            Cliente de /api/bandeja (comentarios, hilos, interruptor, acciones)
@@ -227,6 +231,8 @@ src/
     Tablero.jsx           /tablero: las publicaciones de todos los clientes por etapa
     Bandeja.jsx           /bandeja: comentarios y mensajes de Facebook e Instagram (lazy)
     Auditorias.jsx        /auditorias: auditar el perfil de un cliente o de un prospecto
+    Biblioteca.jsx        /biblioteca: buscar en la Biblioteca de anuncios de Meta, filtros
+                          guardados (la competencia de un cliente), exportar CSV (lazy)
     AuditoriaPublica.jsx  Lo que abre el cliente o el prospecto con el enlace (sin sesión)
     ConectarClaude.jsx    /conectar-claude: el permiso que pide Claude (OAuth)
     PublicarAMano.jsx     /a-mano/…: publicar desde el teléfono (música, stickers…)
@@ -258,6 +264,7 @@ worker/
     metricas.js           La foto diaria de métricas de cada cuenta y de la competencia
     informes.js           Cifras del mes (congeladas) + análisis de la IA; el del día 1
     auditorias.js         Leer un perfil (cuenta propia o business_discovery) y auditarlo
+    biblioteca.js         Una búsqueda en /ads_archive (una llamada, con topes) y sus errores
     mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
     estudio/              El Estudio: meta.js (Muse Image: generar y editar, 0,01 $), prompt.js («Escribir el
                           prompt»: la IA lee la idea y MIRA las referencias; memoria y apego en %, carruseles), trabajos.js (pedir, avanzar por pasos, cancelar; el permiso de
@@ -308,6 +315,7 @@ worker/
     metricas.js           Resultados de un cliente, de la agencia y la miniatura de Meta
     informes.js           Informes: listar, generar, compartir; el público va en index.js
     auditorias.js         Auditorías: listar, generar, compartir; la pública va en index.js
+    biblioteca.js         /api/biblioteca: buscar (GET) y los filtros guardados
     cerebro.js            /api/cerebro/<cliente>: notas, buscar, contexto, grafo, señales, aprender,
                           propuestas, importar, preparar
     estudio.js            /api/estudio/<cliente>: galería, trabajos (pedir, avanzar, cancelar,
@@ -317,7 +325,7 @@ worker/
     avisos.js             /api/avisos: la bandeja de quien pregunta y marcar leídos
     bandeja.js            /api/bandeja (comentarios y mensajes) y el webhook de Meta
                           (/api/webhooks/meta, sin sesión)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -344,6 +352,7 @@ tests/
 | `/tablero` | Las publicaciones de todos los clientes por etapa (Idea → Publicada) |
 | `/bandeja` | Comentarios y mensajes de Facebook e Instagram de los clientes con la bandeja encendida |
 | `/auditorias` | Auditorías de perfil de clientes y prospectos |
+| `/biblioteca` | Biblioteca de anuncios de Meta: buscar, filtros guardados, CSV |
 | `/auditoria?t=<testigo>` | Auditoría compartida (sin sesión) |
 | `/conectar-claude?…` | El permiso de Claude (OAuth: `authorization_endpoint`) |
 | `/a-mano/<calendario>/<publicación>` | Publicar a mano desde el teléfono |
@@ -1520,6 +1529,40 @@ son del servidor.
   la biografía que pase de 150 caracteres: una que no entra en Instagram
   no sirve para copiar y pegar. La foto se guarda incrustada porque el
   enlace público no tiene sesión para pasar por el proxy de miniaturas.
+- **La Biblioteca de anuncios NO enseña la competencia comercial de
+  Panamá, y la pantalla lo dice arriba.** Fuera de la UE y el Reino
+  Unido, `/ads_archive` sólo devuelve anuncios de temas sociales,
+  elecciones o política; lo comercial sólo sale si se entregó allí. Una
+  búsqueda de «zapatos» en PA no falla: vuelve VACÍA, y eso parece «no
+  tienen anuncios». Por eso `normalizarConsulta()` cambia «todos» a
+  política fuera de la UE (y lo avisa), el aviso es fijo y no se puede
+  cerrar, y cada búsqueda lleva el enlace a la web de la Biblioteca con
+  lo mismo rellenado (`urlBibliotecaWeb()`, con sus casos). Esos
+  parámetros son los de la web, no una API con contrato.
+- **`ad_snapshot_url` lleva el token de quien buscó** (`…/render_ad/?id=
+  …&access_token=…`), y `paging.next` también. Enseñar cualquiera de los
+  dos —o meterlo en el CSV, que se manda por correo— regala el acceso a
+  Meta de la agencia. El enlace de la tarjeta es `?id=<anuncio>` de la
+  Biblioteca (`enlaceDelAnuncio()`), del cursor sólo viaja `after`, y los
+  tests buscan el token en la respuesta entera. El CSV además antepone
+  `'` a lo que empieza por `= + - @`: el texto de un anuncio es de un
+  tercero y en una hoja de cálculo sería una fórmula.
+- **Buscar en la Biblioteca es un GET** (`/api/biblioteca/buscar?c=<json>`):
+  no cambia nada, así que quien es de sólo lectura también busca (la
+  puerta corta todo lo que no es GET). Cada petición es UNA llamada a
+  Meta, `limit` ≤ 50 y como mucho `MAX_PAGINAS` (10) por búsqueda; no hay
+  IA ni consumo que apuntar. El error de identidad —(#10) con subcódigo
+  2332002— se traduce a «Verifica tu identidad en facebook.com/ID y vuelve
+  a intentar»: lo tiene que hacer quien conectó Meta, no quien busca.
+- **Guardar un filtro y no verlo en la lista: el eco propio se descarta.**
+  El evento `biblioteca` vuelve con la pestaña de quien guardó y App.jsx
+  lo ignora (es la guarda contra el eco). La lista de filtros se relee a
+  mano tras cada cambio propio; el pulso sólo trae los de los demás. Lo
+  cazó abrir la pantalla, no los tests.
+- **Nada de la Biblioteca se ha probado contra Meta.** Los tests hablan
+  con un `fetch` de mentira que contesta como la documentación. Lo
+  primero con una cuenta verificada: una búsqueda de política en PA y una
+  comercial en ES (`ad_type=ALL`).
 - **El MCP vive FUERA de `/api`, y eso obliga a tocar `run_worker_first`.**
   `/mcp`, `/oauth/*` y `/.well-known/oauth-*` los fija el estándar o se
   pegan en claude.ai; sin estar en `run_worker_first` de wrangler.jsonc,
