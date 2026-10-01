@@ -249,7 +249,7 @@ worker/
     informes.js           Cifras del mes (congeladas) + análisis de la IA; el del día 1
     auditorias.js         Leer un perfil (cuenta propia o business_discovery) y auditarlo
     mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
-    estudio/              El Estudio: trabajos.js (pedir, avanzar por pasos, cancelar; el permiso de
+    estudio/              El Estudio: meta.js (Muse Image: generar y editar, 0,01 $), trabajos.js (pedir, avanzar por pasos, cancelar; el permiso de
                           un paso a la vez y el cron), motores.js (prueba y Gemini, mismo contrato;
                           fal.js y higgsfield.js son los otros dos), gemini.js (la llamada,
                           compartida con /api/generar-imagen), galeria.js (archivos, carpetas,
@@ -298,7 +298,7 @@ worker/
     mcp.js                El servidor MCP (/mcp), su OAuth (/oauth/*, /.well-known/*) y
                           el permiso y las conexiones (/api/mcp/*)
     avisos.js             /api/avisos: la bandeja de quien pregunta y marcar leídos
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1707,6 +1707,26 @@ son del servidor.
   programada, cambios, aprobada, idea aprobada). La leyenda sale de
   `ESTADOS_CHIP`. En el teléfono cada semana mide lo mismo y el mes llena
   la altura de la pantalla.
+
+- **Meta (Muse Spark) entra por la MISMA puerta que Anthropic.** Su API habla
+  el formato de mensajes de Anthropic en `api.meta.ai/v1/messages`, así que
+  `abrirFlujo()` decide por el id (`muse-*`) a dónde va y con qué llave
+  (`META_API_KEY`, o `MODEL_API_KEY`), y `adaptarAlModelo()` le quita lo que
+  puede no aceptar: `thinking`, `output_config`, las marcas de caché y las
+  herramientas que ejecuta Anthropic (web). Ninguna ruta sabe de Meta.
+  `esRechazoDeModelo()` trata un 401/403/404 de Meta como «ese modelo no»: la
+  ruta vuelve a Sonnet y avisa —el Contributor no está en todas las regiones—.
+  **Nada de Meta se ha probado contra el servicio real.**
+- **Un modelo por función, y el de redacción cambia solo al poner la llave.**
+  `ajustes_espacio.ia_modelos` (JSON, 0027: no `ia_modelo`, cuyo CHECK
+  obligaría a reconstruir la tabla) guarda el de cada hueco —redacción,
+  guiones, lectura, asistente, análisis— y el motor de imagen. Cada
+  `funcion` del contador cae en un hueco (`FUNCIONES_IA`, `huecoDe()`): una
+  ruta nueva tiene que pasar su `funcion` a `prepararIA()` o cae en
+  «análisis». Sin elección propia y con llave de Meta, redacción y guiones
+  escriben con **Muse Spark 1.2 Contributor**, que entrena con lo que recibe:
+  la advertencia de Ajustes no se puede cerrar mientras lo use alguna
+  función. Las notas internas no viajan a la redacción; al asistente, sí.
 
 ## Documentos relacionados
 

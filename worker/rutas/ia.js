@@ -30,7 +30,7 @@
 
 import { json, error, cuerpo } from "../lib/respuesta.js";
 import { abrirFlujo, leerFlujo, textoDe, esRechazoDeModelo, mensajeDeRechazo, RechazoAnthropic } from "../lib/anthropic.js";
-import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET } from "../lib/configIA.js";
+import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET, etiquetaModelo, esMuse } from "../lib/configIA.js";
 
 const MAX_BODY_BYTES = 5 * 1024 * 1024;   // las publicaciones llevan imágenes
 const MAX_TOKENS_CAP = 64_000;            // texto pedido + margen del razonamiento
@@ -64,7 +64,7 @@ export async function rutaIA(req, env, { acceso } = {}) {
     "Prueba con menos publicaciones por tanda.", 504,
   );
 
-  const ia = await prepararIA(env, acceso);
+  const ia = await prepararIA(env, acceso, { funcion: typeof body.funcion === "string" ? body.funcion : "calendario" });
   if (ia.bloqueo) return error(ia.bloqueo, 402);
   // El presupuesto del navegador es para ESCRIBIR; el razonamiento va aparte.
   const maxTokens = Math.min(pedido + (MARGEN_RAZONAMIENTO[ia.esfuerzo] ?? 16_000), MAX_TOKENS_CAP);
@@ -89,7 +89,7 @@ export async function rutaIA(req, env, { acceso } = {}) {
       } catch (e) {
         // La cuenta no tiene el Opus elegido: se escribe con Sonnet 5 y se dice.
         if (esRechazoDeModelo(e) && modelo !== MODELO_SONNET) {
-          aviso = `Tu cuenta de Anthropic rechazó ${modelo}: se usó Sonnet 5.`;
+          aviso = `${etiquetaModelo(modelo)} no aceptó la petición: se usó Sonnet 5.`;
           modelo = MODELO_SONNET;
           continue;
         }
@@ -120,7 +120,7 @@ export async function rutaIA(req, env, { acceso } = {}) {
   const bloques = m.content ?? [];
   return json({
     text: textoDe(m),
-    provider: "anthropic",
+    provider: esMuse(modelo) ? "meta" : "anthropic",
     model: modelo,
     aviso,
     // La diferencia entre un prompt maestro entero y uno cortado a

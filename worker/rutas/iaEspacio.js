@@ -14,6 +14,7 @@ import { json, error } from "../lib/respuesta.js";
 import {
   modelosDeLaCuenta, leerConfigIA, resolverIA, etiquetaModelo,
   gastoDelMes, estadoPresupuesto, mesActual,
+  FUNCIONES_IA, modeloParaHueco, llaveMeta, motorDeImagen,
 } from "../lib/configIA.js";
 
 export async function rutaGasto(req, env, { acceso }) {
@@ -34,10 +35,23 @@ export async function rutaModelos(req, env, { acceso }) {
   const ids = await modelosDeLaCuenta(env);
   const config = await leerConfigIA(acceso);
   const ia = await resolverIA(env, config);
+  // Lo que escribe CADA función de verdad: su modelo, el de por defecto
+  // (Muse Spark Contributor en redacción y guiones si hay llave de Meta)
+  // o el general, ya resuelto contra la cuenta.
+  const hayMeta = Boolean(llaveMeta(env));
+  const funciones = {};
+  for (const hueco of Object.keys(FUNCIONES_IA)) {
+    const elegido = modeloParaHueco(config, hueco, { hayMeta });
+    const r = await resolverIA(env, { ia_modelo: elegido, ia_razonamiento: config.ia_razonamiento });
+    funciones[hueco] = { elegido, propio: Boolean(config.ia_modelos[hueco]), id: r.modelo, nombre: etiquetaModelo(r.modelo), aviso: r.aviso };
+  }
   return json({
     disponibles: (ids ?? []).map((id) => ({ id, nombre: etiquetaModelo(id) })),
     listaCompleta: Boolean(ids),
     enUso: { id: ia.modelo, nombre: etiquetaModelo(ia.modelo), esfuerzo: ia.esfuerzo, aviso: ia.aviso },
+    funciones,
+    meta: { conectado: hayMeta },
+    imagen: { elegido: config.ia_modelos.imagen ?? "auto", enUso: motorDeImagen(config, { hayMeta }) },
   });
 }
 

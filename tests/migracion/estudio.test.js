@@ -598,6 +598,39 @@ describe("subir a mano, carpetas y papelera", () => {
     expect(pedido.generationConfig.imageConfig.aspectRatio).toBe("4:5");
   });
 
+  it("con llave de Meta, adaptar a 4:5 lo hace Muse Image (0,01 $); si Meta falla, Nano Banana", async () => {
+    env.GOOGLE_AI_KEY = "k";
+    env.META_API_KEY = "m";
+    env.MEDIA.objetos.set("clientes/c1/posts/flow.png", { bytes: PNG, tipo: "image/png" });
+    const urls = [];
+    let cuerpoMeta = null;
+    globalThis.fetch = vi.fn(async (url, init) => {
+      urls.push(String(url));
+      if (String(url).startsWith("https://api.meta.ai/v1/images/edits")) {
+        cuerpoMeta = JSON.parse(init.body);
+        return Response.json({ data: [{ b64_json: PNG_B64 }], output_format: "png" });
+      }
+      return respuestaGemini();
+    });
+    const pedirAdaptar = () => pedir(JEFE, "/api/generar-imagen", { method: "POST", body: { clientId: "c1", adaptarDe: { src: "/api/media/clientes/c1/posts/flow.png", proporcion: "4:5" } } });
+    expect((await pedirAdaptar()).status).toBe(201);
+    expect(urls).toEqual(["https://api.meta.ai/v1/images/edits"]);
+    expect(cuerpoMeta).toMatchObject({ model: "muse-image-1.0", size: "1024x1280" });
+    expect(cuerpoMeta.prompt).toMatch(/Genera una imagen NUEVA/);
+    expect(cuerpoMeta.images[0].image_url).toMatch(/^data:image\/png;base64,/);
+    const apunte = db.sqlite.prepare("select proveedor, modelo, costo_usd from consumo_ia order by created_at desc").get();
+    expect({ ...apunte }).toEqual({ proveedor: "meta", modelo: "muse-image-1.0", costo_usd: 0.01 });
+
+    urls.length = 0;
+    globalThis.fetch = vi.fn(async (url) => {
+      urls.push(String(url));
+      return String(url).includes("api.meta.ai") ? new Response("{}", { status: 403 }) : respuestaGemini();
+    });
+    expect((await pedirAdaptar()).status).toBe(201);
+    expect(urls[0]).toMatch(/api\.meta\.ai/);
+    expect(urls[1]).toMatch(/generativelanguage/);
+  });
+
   it("/api/generar-imagen conserva sus mensajes de siempre", async () => {
     env.GOOGLE_AI_KEY = "k";
     globalThis.fetch = vi.fn(async () => new Response("{}", { status: 429 }));

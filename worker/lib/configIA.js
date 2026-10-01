@@ -47,13 +47,48 @@ export const OPUS_PREFERIDOS = Object.freeze([
   "claude-opus-4-6",
 ]);
 
+/**
+ * Muse Spark, de Meta, por la API de Meta (api.meta.ai), que habla el
+ * formato de mensajes de Anthropic: la llamada es la misma, cambia la
+ * puerta (`abrirFlujo`). El «contributor» cuesta 12 veces menos a cambio
+ * de que Meta pueda usar lo que se le manda para entrenar sus modelos.
+ */
+export const MODELO_MUSE = "muse-spark-1.3";
+export const MODELO_MUSE_CONTRIBUIDOR = "muse-spark-1.2-contributor";
+export const esMuse = (id) => String(id ?? "").startsWith("muse-");
+/** La llave de Meta: `META_API_KEY`, o `MODEL_API_KEY`, que es como la llama su documentación. */
+export const llaveMeta = (env) => env?.META_API_KEY || env?.MODEL_API_KEY || "";
+
 export const RAZONAMIENTOS = Object.freeze({ bajo: "low", medio: "medium", alto: "high", maximo: "max" });
+/** Lo que se elige para TODO (columna `ia_modelo`, con su CHECK): sólo Anthropic. */
 export const MODELOS_ELEGIBLES = Object.freeze(["sonnet", "opus", "haiku"]);
+/** Lo que se elige por función (`ia_modelos`, JSON): también Meta. */
+export const MODELOS_POR_FUNCION = Object.freeze(["sonnet", "opus", "haiku", "muse", "muse-contribuidor"]);
+
+/**
+ * Cada llamada de texto pertenece a una de estas funciones, y cada una
+ * puede llevar su modelo. Las claves de `funcion` (lo que se apunta en
+ * `consumo_ia`) se reparten así; lo que no esté, va a «analisis».
+ */
+export const FUNCIONES_IA = Object.freeze({
+  redaccion: ["calendario", "descripciones", "publicación"],
+  guiones: ["guiones"],
+  lectura: ["lectura de contenido"],
+  asistente: ["asistente", "resumen del chat"],
+  analisis: ["informe", "auditoria", "cerebro", "ADN de marca"],
+});
+/** Lo que escribe Muse Spark Contributor por defecto en cuanto hay llave de Meta (decisión de la agencia). */
+export const MUSE_POR_DEFECTO_EN = Object.freeze(["redaccion", "guiones"]);
+/** Qué motor hace las imágenes de la aplicación (adaptar a 4:5, /api/generar-imagen): «auto» es Meta si hay llave. */
+export const MOTORES_IMAGEN = Object.freeze(["auto", "gemini", "meta"]);
+export const huecoDe = (funcion) =>
+  Object.keys(FUNCIONES_IA).find((h) => FUNCIONES_IA[h].includes(String(funcion ?? ""))) ?? "analisis";
 export const ACCIONES_LIMITE = Object.freeze(["avisar", "bajar", "detener"]);
 export const POR_DEFECTO = Object.freeze({
   ia_modelo: "sonnet",
   ia_razonamiento: "alto",
   ia_razonamiento_chat: null,
+  ia_modelos: {},
   presupuesto_usd: 30,
   al_limite: "avisar",
 });
@@ -75,6 +110,8 @@ export const PRECIOS = Object.freeze({
   "claude-opus-4-8": { entrada: 5, salida: 25 },
   "claude-opus-4-7": { entrada: 5, salida: 25 },
   "claude-opus-4-6": { entrada: 5, salida: 25 },
+  "muse-spark-1.3": { entrada: 1.25, salida: 4.25 },
+  "muse-spark-1.2-contributor": { entrada: 0.1, salida: 0.2 },
 });
 
 /** La búsqueda web se cobra aparte del texto: US$10 por cada 1.000. */
@@ -92,6 +129,8 @@ export const PRECIOS_GEMINI = Object.freeze({
 export function etiquetaModelo(id) {
   if (!id) return "";
   // «gemini-2.5-flash-image» → «Gemini 2.5 Flash Image».
+  if (id === MODELO_MUSE_CONTRIBUIDOR) return "Muse Spark 1.2 Contributor";
+  if (id.startsWith("muse-spark-")) return `Muse Spark ${id.slice("muse-spark-".length)}`;
   if (id.startsWith("gemini-")) {
     return id.split("-").map((p) => (/^\d/.test(p) ? p : p[0].toUpperCase() + p.slice(1))).join(" ");
   }
@@ -139,9 +178,41 @@ export async function leerConfigIA(acceso) {
     ia_modelo: modelo,
     ia_razonamiento: razonamiento,
     ia_razonamiento_chat: fila?.ia_razonamiento_chat in RAZONAMIENTOS ? fila.ia_razonamiento_chat : null,
+    ia_modelos: limpiarModelos(fila?.ia_modelos),
     presupuesto_usd: Number.isFinite(presupuesto) && presupuesto >= 0 && fila?.presupuesto_usd != null ? presupuesto : POR_DEFECTO.presupuesto_usd,
     al_limite: ACCIONES_LIMITE.includes(fila?.al_limite) ? fila.al_limite : POR_DEFECTO.al_limite,
   };
+}
+
+/** `ia_modelos` como se guarda (texto JSON) → sólo funciones y modelos que existen. */
+export function limpiarModelos(valor) {
+  let obj = valor;
+  if (typeof valor === "string") { try { obj = JSON.parse(valor); } catch { obj = {}; } }
+  const salida = {};
+  for (const [hueco, modelo] of Object.entries(obj && typeof obj === "object" ? obj : {})) {
+    if (hueco in FUNCIONES_IA && MODELOS_POR_FUNCION.includes(modelo)) salida[hueco] = modelo;
+    if (hueco === "imagen" && MOTORES_IMAGEN.includes(modelo)) salida.imagen = modelo;
+  }
+  return salida;
+}
+
+/**
+ * El modelo elegido para una función: el suyo, o —en redacción y guiones,
+ * si hay llave de Meta— Muse Spark Contributor, o el general. Pura.
+ */
+export function modeloParaHueco(config, hueco, { hayMeta = false } = {}) {
+  const propio = config?.ia_modelos?.[hueco];
+  if (propio) return propio;
+  if (hayMeta && MUSE_POR_DEFECTO_EN.includes(hueco)) return "muse-contribuidor";
+  return config?.ia_modelo ?? POR_DEFECTO.ia_modelo;
+}
+
+/** El motor de imagen que toca: el elegido, o con «auto», Meta si hay llave y si no Gemini. Pura. */
+export function motorDeImagen(config, { hayMeta = false } = {}) {
+  const elegido = config?.ia_modelos?.imagen ?? "auto";
+  if (elegido === "meta") return hayMeta ? "meta" : "gemini";
+  if (elegido === "gemini") return "gemini";
+  return hayMeta ? "meta" : "gemini";
 }
 
 /** El mes en curso en Panamá, AAAA-MM: es el mes de las facturas de la agencia. */
@@ -187,7 +258,7 @@ export async function bloqueoPorPresupuesto(acceso) {
  *     y el espacio eligió «detener». Quien llama NO debe llamar a nadie.
  *   · Con «bajar», la llamada sale con Sonnet en nivel Bajo y un aviso.
  */
-export async function prepararIA(env, acceso, { para = "texto" } = {}) {
+export async function prepararIA(env, acceso, { para = "texto", funcion = null } = {}) {
   const config = acceso ? await leerConfigIA(acceso) : { ...POR_DEFECTO };
   const gasto = acceso ? await gastoDelMes(acceso) : 0;
   const { estado } = estadoPresupuesto(gasto, config.presupuesto_usd);
@@ -201,8 +272,10 @@ export async function prepararIA(env, acceso, { para = "texto" } = {}) {
     const ia = await resolverIA(env, { ia_modelo: "sonnet", ia_razonamiento: "bajo" });
     return { ...ia, aviso: `Presupuesto del mes alcanzado (${tope}): la IA trabaja con Sonnet en nivel Bajo.`, config, gasto, bloqueo: null };
   }
-  const ia = await resolverIA(env, { ia_modelo: config.ia_modelo, ia_razonamiento: nivel });
-  return { ...ia, config, gasto, bloqueo: null };
+  const hueco = para === "chat" ? "asistente" : huecoDe(funcion);
+  const elegido = modeloParaHueco(config, hueco, { hayMeta: Boolean(llaveMeta(env)) });
+  const ia = await resolverIA(env, { ia_modelo: elegido, ia_razonamiento: nivel });
+  return { ...ia, hueco, config, gasto, bloqueo: null };
 }
 
 // La lista de modelos cambia poco: se pide una vez cada diez minutos por
@@ -241,6 +314,11 @@ export function olvidarModelos() {
  */
 export async function resolverIA(env, config) {
   const esfuerzo = RAZONAMIENTOS[config.ia_razonamiento] ?? "high";
+  if (config.ia_modelo === "muse" || config.ia_modelo === "muse-contribuidor") {
+    // Sin llave de Meta no se intenta: se escribe con Sonnet y se dice.
+    if (!llaveMeta(env)) return { modelo: MODELO_SONNET, esfuerzo, aviso: "Falta la llave de Meta (META_API_KEY): se usó Sonnet 5." };
+    return { modelo: config.ia_modelo === "muse" ? MODELO_MUSE : MODELO_MUSE_CONTRIBUIDOR, esfuerzo, aviso: "" };
+  }
   // Haiku no se pregunta a la cuenta: si no lo tiene, la llamada lo
   // rechaza y vuelve sola a Sonnet, como con Opus.
   if (config.ia_modelo === "haiku") return { modelo: MODELO_HAIKU, esfuerzo, aviso: "" };
@@ -268,7 +346,7 @@ export async function registrarConsumo(acceso, { funcion, modelo, uso, clienteId
       id: crypto.randomUUID(),
       mes: dia.slice(0, 7),
       dia,
-      proveedor: "anthropic",
+      proveedor: esMuse(modelo) ? "meta" : "anthropic",
       client_id: clienteId ? String(clienteId) : null,
       funcion: String(funcion ?? "otro").slice(0, 40),
       modelo: String(modelo ?? ""),

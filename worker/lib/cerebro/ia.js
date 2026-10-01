@@ -15,7 +15,7 @@
 // ============================================================
 
 import { abrirFlujo, leerFlujo, textoDe, esRechazoDeModelo, mensajeDeRechazo, RechazoAnthropic } from "../anthropic.js";
-import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET } from "../configIA.js";
+import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET, etiquetaModelo } from "../configIA.js";
 
 const MAX_TOKENS_CAP = 64_000;
 const PRESUPUESTO_MS = 290_000;
@@ -34,7 +34,7 @@ export class ErrorIA extends Error {
  */
 export async function llamarIA(env, acceso, cliente, { prompt, salida = 6000 }) {
   if (!env.ANTHROPIC_API_KEY) throw new ErrorIA("El servidor no tiene configurada la clave de Anthropic", 503);
-  const ia = await prepararIA(env, acceso);
+  const ia = await prepararIA(env, acceso, { funcion: "cerebro" });
   if (ia.bloqueo) throw new ErrorIA(ia.bloqueo, 402);
   const maxTokens = Math.min(salida + (MARGEN_RAZONAMIENTO[ia.esfuerzo] ?? 16_000), MAX_TOKENS_CAP);
   let modelo = ia.modelo;
@@ -59,7 +59,7 @@ export async function llamarIA(env, acceso, cliente, { prompt, salida = 6000 }) 
       } catch (e) {
         // La cuenta no tiene el Opus elegido: se escribe con Sonnet 5 y se dice.
         if (esRechazoDeModelo(e) && modelo !== MODELO_SONNET) {
-          aviso = `Tu cuenta de Anthropic rechazó ${modelo}: se usó Sonnet 5.`;
+          aviso = `${etiquetaModelo(modelo)} no aceptó la petición: se usó Sonnet 5.`;
           modelo = MODELO_SONNET;
           continue;
         }

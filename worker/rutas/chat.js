@@ -179,7 +179,7 @@ export async function rutaChat(req, env, { acceso, ctx, usuario = null } = {}) {
       } catch (e) {
         if (esRechazoDeModelo(e) && base.model !== MODELO_SONNET) {
           console.warn(`chat: la cuenta no acepta ${base.model}; se usa ${MODELO_SONNET}`);
-          await emitir({ t: "aviso", texto: `Tu cuenta de Anthropic rechazó ${etiquetaModelo(base.model)}: responde Sonnet 5` });
+          await emitir({ t: "aviso", texto: `${etiquetaModelo(base.model)} no aceptó la petición: responde Sonnet 5` });
           base.model = MODELO_SONNET;
           peticion = { ...peticion, model: MODELO_SONNET };
           continue;
@@ -325,7 +325,7 @@ export async function rutaResumenChat(req, env, { acceso, metodo }) {
     .map((m) => `${m.role === "user" ? "USUARIO" : "ASISTENTE"}: ${m.content}`)
     .join("\n\n");
 
-  const ia = await prepararIA(env, acceso);
+  const ia = await prepararIA(env, acceso, { funcion: "resumen del chat" });
   if (ia.bloqueo) return error(ia.bloqueo, 402);
   const peticion = {
       model: ia.modelo,

@@ -14,7 +14,8 @@
 
 import { json, error, cuerpo } from "../lib/respuesta.js";
 import { uuid } from "../lib/ids.js";
-import { bloqueoPorPresupuesto, registrarConsumoGemini } from "../lib/configIA.js";
+import { bloqueoPorPresupuesto, registrarConsumoGemini, registrarConsumoFijo, leerConfigIA, llaveMeta, motorDeImagen } from "../lib/configIA.js";
+import { llamarMuseImage } from "../lib/estudio/meta.js";
 import { llamarGemini, aBase64, ErrorMotor } from "../lib/estudio/gemini.js";
 import { registrarImagenGenerada } from "../lib/estudio/galeria.js";
 import { medidasDe } from "../lib/estudio/archivos.js";
@@ -230,27 +231,49 @@ export async function rutaGenerarImagen(req, env, ctx) {
     }
   }
 
-  const modelo = env.GEMINI_MODEL || "gemini-2.5-flash-image";
+  let modelo = env.GEMINI_MODEL || "gemini-2.5-flash-image";
   const funcion = historia ? "historia" : adaptar ? "ampliar" : portada ? "portada" : "imagen";
+
+  // Adaptar a 4:5 o 9:16: con Muse Image si el espacio lo eligió (o «auto»
+  // y hay llave de Meta) —0,01 $ frente a ~0,04 $—, con la original de
+  // referencia. Si Meta falla, se hace con Nano Banana como siempre: la
+  // persona pidió una imagen, no un proveedor.
+  let resultado = null;
+  if (adaptar && motorDeImagen(await leerConfigIA(acceso), { hayMeta: Boolean(llaveMeta(env)) }) === "meta") {
+    const base = parts.find((p) => p.inlineData)?.inlineData;
+    try {
+      resultado = await llamarMuseImage(env, {
+        prompt: construirPromptAdaptar(adaptar.proporcion, { clientName: cliente.name }),
+        ajustes: { aspectRatio: adaptar.proporcion, calidad: "high", formato: "jpeg" },
+        referencias: base ? [{ mime: base.mimeType, base64: base.data }] : [],
+      });
+      modelo = "muse-image-1.0";
+      await registrarConsumoFijo(acceso, { proveedor: "meta", funcion, modelo, costo: 0.01, clienteId: clientId });
+    } catch (e) {
+      if (!(e instanceof ErrorMotor)) throw e;
+      console.warn("imagen: Muse Image falló, se usa Nano Banana:", e.message);
+      resultado = null;
+    }
+  }
 
   // La llamada vive en lib/estudio/gemini.js: la comparte el Estudio. Sus
   // mensajes de error son los de siempre, palabra por palabra.
-  let resultado;
-  try {
-    resultado = await llamarGemini(env, {
-      gid: modelo,
-      partes: parts,
-      ratio: (FORMATOS[formatoFinal] ?? FORMATOS.square).ratio,
-    });
-  } catch (e) {
-    if (e instanceof ErrorMotor) return error(e.message, e.estado);
-    throw e;
+  if (!resultado) {
+    try {
+      resultado = await llamarGemini(env, {
+        gid: modelo,
+        partes: parts,
+        ratio: (FORMATOS[formatoFinal] ?? FORMATOS.square).ratio,
+      });
+    } catch (e) {
+      if (e instanceof ErrorMotor) return error(e.message, e.estado);
+      throw e;
+    }
+    await registrarConsumoGemini(acceso, { funcion, modelo, meta: resultado.meta, clienteId: clientId });
   }
 
-  await registrarConsumoGemini(acceso, { funcion, modelo, meta: resultado.meta, clienteId: clientId });
-
   const { mime: mimeType, bytes } = resultado;
-  const ext = mimeType === "image/png" ? "png" : "jpg";
+  const ext = mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
   const clave = `clientes/${clientId}/generadas/${uuid()}.${ext}`;
   await env.MEDIA.put(clave, bytes, {
     httpMetadata: { contentType: mimeType || "image/png" },

@@ -43,7 +43,7 @@ export const AJUSTES = Object.freeze({
   difuminado: "Completa, con fondo difuminado",
   color: "Completa, con el color de la marca",
   recorte: "Recortada al centro",
-  ia: "Generada de nuevo con IA (Nano Banana)",
+  ia: "Generada de nuevo con IA",
 });
 
 /** La proporción que se le pide a la IA para llevar una imagen a su objetivo. */

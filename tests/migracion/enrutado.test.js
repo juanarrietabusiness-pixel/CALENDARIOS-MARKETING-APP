@@ -373,7 +373,7 @@ describe("tareas terminadas, responsables y ajustes", () => {
     // Y la IA en sus valores por defecto: Sonnet 5 con razonamiento alto.
     expect(await res.json()).toEqual({
       purga_tareas: "nunca", ia_modelo: "sonnet", ia_razonamiento: "alto",
-      ia_razonamiento_chat: null, presupuesto_usd: 30, al_limite: "avisar",
+      ia_razonamiento_chat: null, ia_modelos: {}, presupuesto_usd: 30, al_limite: "avisar",
     });
   });
 
