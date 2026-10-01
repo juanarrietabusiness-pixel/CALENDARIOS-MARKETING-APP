@@ -24,7 +24,7 @@ import { ahora, testigo } from "../lib/ids.js";
 import {
   COOKIE_META, metaConfigurado, urlVueltaMeta, firmarEstadoMeta, leerEstadoMeta, urlConsentimientoMeta,
   canjearCodigoMeta, cifrarMeta, descifrarMeta, graph, sincronizarCuentasMeta, mensajeMeta, claveDeMedioPublico,
-  permisosConcedidos, permisosQueFaltan,
+  permisosConcedidos, permisosQueFaltan, PERMISOS_EXTRA_META,
 } from "../lib/meta.js";
 import { aprobadasDelEspacio } from "../../src/lib/aprobacion.js";
 import { programar, programarLote, procesarPublicacion, filaPublica, filaConResumen, ErrorPublicar } from "../lib/publicador.js";
@@ -128,11 +128,12 @@ export async function rutaTikTokPublica(req, env, partes) {
 /** GET /api/redes/meta/callback */
 export async function rutaMetaCallback(req, env) {
   const url = new URL(req.url);
+  let vuelta = null; // la de PERMISOS_EXTRA_META, si se pidieron permisos de una función
   const volver = (resultado, motivo = "") => {
-    const destino = new URL("/ajustes", url.origin);
+    const destino = new URL(vuelta ?? "/ajustes", url.origin);
     destino.searchParams.set("meta", resultado);
     if (motivo) destino.searchParams.set("motivo", motivo.slice(0, 200));
-    destino.hash = "integraciones";
+    if (!vuelta) destino.hash = "integraciones";
     return new Response(null, {
       status: 302,
       headers: {
@@ -149,6 +150,7 @@ export async function rutaMetaCallback(req, env) {
   }
 
   const estado = await leerEstadoMeta(env, url.searchParams.get("state"));
+  vuelta = PERMISOS_EXTRA_META[estado?.para]?.vuelta ?? null;
   const cookie = new RegExp(`(?:^|;\\s*)${COOKIE_META}=([^;]+)`).exec(req.headers.get("Cookie") ?? "")?.[1];
   if (!estado || !cookie || cookie !== estado.nonce) {
     return volver("error", "El enlace de conexión caducó o no salió de esta pestaña. Vuelve a pulsar «Conectar».");
@@ -243,11 +245,14 @@ export async function rutasRedes(req, env, { acceso, usuario, partes, metodo }) 
     if (!esAdmin) return error("Sólo el administrador conecta Meta", 403);
     if (!metaConfigurado(env)) return error("Falta configurar META_APP_ID y META_APP_SECRET en el Worker", 503);
     const nonce = testigo(16);
-    const state = await firmarEstadoMeta(env, { ownerId: acceso.ownerId, userId: usuario.id, nonce });
+    // `?para=bandeja`: además de lo de siempre, los permisos con revisión de esa función.
+    const para = new URL(req.url).searchParams.get("para");
+    const extra = Object.hasOwn(PERMISOS_EXTRA_META, para ?? "") ? PERMISOS_EXTRA_META[para] : null;
+    const state = await firmarEstadoMeta(env, { ownerId: acceso.ownerId, userId: usuario.id, nonce, ...(extra ? { para } : {}) });
     return new Response(null, {
       status: 302,
       headers: {
-        Location: urlConsentimientoMeta(env, req, state),
+        Location: urlConsentimientoMeta(env, req, state, extra),
         "Set-Cookie": `${COOKIE_META}=${nonce}; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=600`,
         "Cache-Control": "no-store",
       },

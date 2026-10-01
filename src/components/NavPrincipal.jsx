@@ -1,6 +1,7 @@
 import Icon from "./Icon";
 import ContadorAtrasadas from "./ContadorAtrasadas";
 import ContadorFallidas from "./ContadorFallidas";
+import ContadorBandeja from "./ContadorBandeja";
 import { navegar } from "../lib/rutas";
 
 // ============================================================
@@ -15,6 +16,7 @@ const SECCIONES = [
   { vista: "panel", ruta: "/", nombre: "Inicio", icono: "home" },
   { vista: "tareas", ruta: "/tareas", nombre: "Mi día", icono: "clipboardCheck", contador: true },
   { vista: "programacion", ruta: "/programacion", nombre: "Programación", icono: "clock", fallidas: true },
+  { vista: "bandeja", ruta: "/bandeja", nombre: "Bandeja", icono: "inbox", bandeja: true },
   { vista: "tablero", ruta: "/tablero", nombre: "Tablero", icono: "grid" },
   { vista: "resultados", ruta: "/resultados", nombre: "Resultados", icono: "chart" },
   { vista: "auditorias", ruta: "/auditorias", nombre: "Auditorías", icono: "search" },
@@ -39,6 +41,7 @@ export default function NavPrincipal({ ruta, pulso = 0, onIr }) {
               <span>{s.nombre}</span>
               {s.contador && <ContadorAtrasadas pulso={pulso} />}
               {s.fallidas && <ContadorFallidas pulso={pulso} />}
+              {s.bandeja && <ContadorBandeja pulso={pulso} />}
             </button>
           </li>
         ))}

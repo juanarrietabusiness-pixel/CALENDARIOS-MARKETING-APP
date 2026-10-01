@@ -45,6 +45,7 @@ const Ajustes = lazy(() => import("./pages/Ajustes"));
 const Resultados = lazy(() => import("./pages/Resultados"));
 const Programacion = lazy(() => import("./pages/Programacion"));
 const Tablero = lazy(() => import("./pages/Tablero"));
+const Bandeja = lazy(() => import("./pages/Bandeja"));
 const ResumenAgencia = lazy(() => import("./pages/Resultados").then((m) => ({ default: m.ResumenAgencia })));
 // Lo que sólo se abre a demanda —diálogos, pestañas que no son el
 // calendario, la página del cliente final— tampoco va en la primera
@@ -579,6 +580,8 @@ function Workspace({ session, ruta }) {
         case "avisos":
         // El Estudio: un trabajo avanzó o la galería cambió. La pestaña se relee sola con el pulso.
         case "estudio":
+        // La bandeja: el webhook de Meta (o alguien del equipo) guardó comentarios o mensajes.
+        case "bandeja":
         case "nota":
         case "miembro":
         case "miembro:fuera":
@@ -1353,6 +1356,10 @@ function Workspace({ session, ruta }) {
                   onCalendarioGuardado={calendarioGuardado}
                   soltarPendiente={soltarPendiente}
                 />
+              </Suspense>
+            ) : ruta.vista === "bandeja" ? (
+              <Suspense fallback={<Cargando />}>
+                <Bandeja clients={clients} pulso={pulso} yo={yo} />
               </Suspense>
             ) : ruta.vista === "programacion" ? (
               <Suspense fallback={<Cargando />}>

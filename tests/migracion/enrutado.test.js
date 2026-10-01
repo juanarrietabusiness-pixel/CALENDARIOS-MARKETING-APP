@@ -4,6 +4,7 @@ import { olvidarModelos } from "../../worker/lib/configIA.js";
 import { sha256 } from "../../worker/lib/ids.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 import { cifrar, firmarEstado, olvidarToken } from "../../worker/lib/google.js";
+import { firmar as firmarComoMeta } from "../../worker/lib/bandeja/webhook.js";
 
 // ============================================================
 // La puerta del Worker, pedida de verdad
@@ -999,5 +1000,83 @@ describe("YouTube: el canal de cada cliente", () => {
   it("una acción de YouTube que no existe es 404, no cae en las rutas de Meta", async () => {
     const res = await worker.fetch(conSesion("/api/redes/youtube/no-existe", { method: "POST" }), { ...(await entorno()), ...GOOGLE });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("la bandeja: el webhook de Meta y /api/bandeja", () => {
+  const SECRETO = "secreto-de-la-app";
+  const conMeta = async () => ({ ...(await entorno()), META_APP_ID: "app", META_APP_SECRET: SECRETO, META_WEBHOOK_VERIFY_TOKEN: "testigo-verificar" });
+
+  it("la verificación de la suscripción llega SIN sesión y devuelve el reto tal cual", async () => {
+    const res = await worker.fetch(new Request(
+      "https://calendarios.test/api/webhooks/meta?hub.mode=subscribe&hub.verify_token=testigo-verificar&hub.challenge=1158201444",
+    ), await conMeta());
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/plain");
+    expect(await res.text()).toBe("1158201444");
+  });
+
+  it("con otro testigo, 403 (y no el 401 de la sesión)", async () => {
+    const res = await worker.fetch(new Request(
+      "https://calendarios.test/api/webhooks/meta?hub.mode=subscribe&hub.verify_token=otro&hub.challenge=1",
+    ), await conMeta());
+    expect(res.status).toBe(403);
+  });
+
+  it("un aviso sin firma llega a la ruta y se rechaza con 403", async () => {
+    const res = await worker.fetch(new Request("https://calendarios.test/api/webhooks/meta", {
+      method: "POST", body: JSON.stringify({ object: "page", entry: [] }),
+    }), await conMeta());
+    expect(res.status).toBe(403);
+  });
+
+  it("un aviso bien firmado contesta 200 aunque no sea de nadie", async () => {
+    const cuerpo = JSON.stringify({ object: "page", entry: [] });
+    const res = await worker.fetch(new Request("https://calendarios.test/api/webhooks/meta", {
+      method: "POST", body: cuerpo, headers: { "X-Hub-Signature-256": await firmarComoMeta(SECRETO, cuerpo) },
+    }), await conMeta());
+    expect(res.status).toBe(200);
+  });
+
+  it("sin META_APP_SECRET el webhook no acepta nada (503)", async () => {
+    const res = await worker.fetch(new Request("https://calendarios.test/api/webhooks/meta", {
+      method: "POST", body: "{}", headers: { "X-Hub-Signature-256": "sha256=" + "0".repeat(64) },
+    }), await entorno());
+    expect(res.status).toBe(503);
+  });
+
+  it("/api/bandeja exige sesión", async () => {
+    const res = await worker.fetch(new Request("https://calendarios.test/api/bandeja/pendientes"), await conMeta());
+    expect(res.status).toBe(401);
+  });
+
+  it("/api/bandeja con sesión llega a su ruta (no al 404 de datos)", async () => {
+    const res = await worker.fetch(conSesion("/api/bandeja/pendientes"), await conMeta());
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ comentarios: 0, mensajes: 0 });
+  });
+
+  it("«Conceder permisos de comentarios y mensajes» abre el OAuth con los permisos extra", async () => {
+    const res = await worker.fetch(conSesion("/api/redes/meta/conectar?para=bandeja"), await conMeta());
+    expect(res.status).toBe(302);
+    const scope = new URL(res.headers.get("Location")).searchParams.get("scope").split(",");
+    expect(scope).toEqual(expect.arrayContaining([
+      "pages_manage_engagement", "pages_messaging", "instagram_manage_messages", "pages_manage_metadata", "instagram_basic",
+    ]));
+  });
+
+  it("«Conectar» a secas NO pide los permisos con revisión", async () => {
+    const res = await worker.fetch(conSesion("/api/redes/meta/conectar"), await conMeta());
+    const scope = new URL(res.headers.get("Location")).searchParams.get("scope").split(",");
+    expect(scope).not.toContain("pages_messaging");
+    expect(scope).not.toContain("pages_manage_engagement");
+  });
+
+  it("con inicio de sesión para empresas, los permisos extra van por SU configuración", async () => {
+    const env = { ...(await conMeta()), META_CONFIG_ID: "cfg-base", META_CONFIG_ID_BANDEJA: "cfg-bandeja" };
+    const conBandeja = new URL((await worker.fetch(conSesion("/api/redes/meta/conectar?para=bandeja"), env)).headers.get("Location"));
+    expect(conBandeja.searchParams.get("config_id")).toBe("cfg-bandeja");
+    const normal = new URL((await worker.fetch(conSesion("/api/redes/meta/conectar"), env)).headers.get("Location"));
+    expect(normal.searchParams.get("config_id")).toBe("cfg-base");
   });
 });

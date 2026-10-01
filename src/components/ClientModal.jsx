@@ -6,6 +6,7 @@ import { elegirLogo, tresColores } from "../lib/colores";
 import { loadImageTemplates, saveImageTemplate, deleteImageTemplate, loadImageReferences, uploadImageReference, deleteImageReference } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
+import InterruptorBandeja from "./InterruptorBandeja";
 import { idDeCarpeta } from "../lib/drive";
 
 const DAYS_ORDERED = [
@@ -511,6 +512,10 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
                 <span className="toggle-thumb" />
               </button>
             </div>
+
+            {/* La bandeja de comentarios y mensajes de sus redes. Guarda al
+                pulsarlo: encenderla suscribe su página en Meta. */}
+            <InterruptorBandeja clientId={initial?.dbId} />
           </div>
         )}
 

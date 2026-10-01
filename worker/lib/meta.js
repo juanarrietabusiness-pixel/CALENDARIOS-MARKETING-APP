@@ -20,6 +20,7 @@
 // ============================================================
 
 import { cifrarCon, descifrarCon, firmarCon, leerFirmado } from "./firmas.js";
+import { PERMISOS_BANDEJA } from "../../src/lib/bandejaVista.js";
 
 export const VERSION_GRAPH = "v23.0";
 export const COOKIE_META = "__Host-meta-oauth";
@@ -46,6 +47,19 @@ export const PERMISOS_META = [
   "instagram_manage_insights",
   "instagram_manage_comments",
 ];
+
+/**
+ * Permisos con REVISIÓN de Meta (App Review) que no van en PERMISOS_META:
+ * meterlos ahí rompería «Conectar» mientras la app no los tenga aprobados.
+ * Se piden aparte, cuando alguien activa la función que los usa
+ * (`/api/redes/meta/conectar?para=<clave>`). Con «Inicio de sesión para
+ * empresas» los permisos salen de una CONFIGURACIÓN, así que cada función
+ * nombra el secreto con el ID de la suya (que lleva también los de
+ * PERMISOS_META: el token nuevo sustituye al anterior).
+ */
+export const PERMISOS_EXTRA_META = Object.freeze({
+  bandeja: { permisos: PERMISOS_BANDEJA, config: "META_CONFIG_ID_BANDEJA", vuelta: "/bandeja" },
+});
 
 /**
  * Los permisos que el token lleva DE VERDAD (`/me/permissions`). Lo que se
@@ -142,7 +156,7 @@ export async function leerEstadoMeta(env, state) {
   return leerFirmado(env.META_APP_SECRET, "oauth-state", state);
 }
 
-export function urlConsentimientoMeta(env, req, state) {
+export function urlConsentimientoMeta(env, req, state, extra = null) {
   const u = new URL(`https://www.facebook.com/${version(env)}/dialog/oauth`);
   u.searchParams.set("client_id", env.META_APP_ID);
   u.searchParams.set("redirect_uri", urlVueltaMeta(req));
@@ -151,8 +165,10 @@ export function urlConsentimientoMeta(env, req, state) {
   // Una app de tipo Empresa usa «Inicio de sesión con Facebook para
   // empresas», que pide los permisos por CONFIGURACIÓN (config_id) en vez
   // de por lista. Con la clásica, la lista.
-  if (env.META_CONFIG_ID) u.searchParams.set("config_id", env.META_CONFIG_ID);
-  else u.searchParams.set("scope", PERMISOS_META.join(","));
+  // `extra` (una entrada de PERMISOS_EXTRA_META) pide además sus permisos.
+  const configId = extra ? env[extra.config] : env.META_CONFIG_ID;
+  if (configId) u.searchParams.set("config_id", configId);
+  else u.searchParams.set("scope", [...PERMISOS_META, ...(extra?.permisos ?? [])].join(","));
   return u.toString();
 }
 
