@@ -1909,6 +1909,22 @@ son del servidor.
   demás»), con Muse Image si hay llave de Meta y si no Nano Banana
   (`modeloParaEditar`). De qué original sale se sabe por su trabajo
   (`originalDe`): no hizo falta ninguna columna.
+- **Muse Image va por la API de Responses, y se supo con la llave puesta.**
+  La primera versión salió de páginas de terceros: `/images/generations` y
+  `/images/edits`, medidas propias («1024x1280» para 4:5) y
+  `reasoning_strength`. Los tests pasaban —el `fetch` de mentira hablaba como
+  esas páginas— y Meta contestó 400 a todo, sin motivo legible porque sólo se
+  leía `error.message`. Ahora es lo del recetario OFICIAL
+  (github.com/meta-models/meta-model-cookbook, `05_muse_image`): `POST
+  /responses` con `tools: [{ type: "image_generation", size, output_format }]`
+  y `store: false`; las referencias, partes `input_image` DENTRO de un mensaje
+  `{ role: "user", content }` (una lista suelta es un 400); la imagen, el
+  `result` del `image_generation_call`. `size` sólo admite 1024x1024,
+  1024x1536 y 1536x1024 (`tamanoMuse()`), así que el Estudio sólo ofrece 1:1,
+  2:3 y 3:2, y adaptar a 4:5 o 9:16 pide la vertical y recorta en el
+  navegador. **La lección:** con un proveedor sin probar, la fuente es su
+  documentación o su recetario, nunca un agregador; y el error enseña el
+  cuerpo que devolvió (`motivoDe()`), sea JSON o texto.
 - **Anuncios de Meta: nada nace activo, y activar es del SERVIDOR.** Los
   cuerpos de campaña, conjunto y anuncio salen de `src/lib/anuncios.js` y
   fijan `status: PAUSED` sin aceptar otro valor (`ESTADO_AL_CREAR`); activar

@@ -8,8 +8,11 @@ import {
   MODELO_MUSE_CONTRIBUIDOR, FUNCIONES_IA,
 } from "../../worker/lib/configIA.js";
 import { adaptarAlModelo, esRechazoDeModelo, RechazoAnthropic } from "../../worker/lib/anthropic.js";
-import { peticionMuse } from "../../worker/lib/estudio/meta.js";
-import { MODELOS } from "../../src/lib/estudioCatalogo.js";
+import { peticionMuse, tamanoMuse, TAMANOS_MUSE, llamarMuseImage } from "../../worker/lib/estudio/meta.js";
+
+// Un PNG de 1×1: los bytes que reconoce `tipoPorBytes`.
+const PNG_MINI = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+import { MODELOS, normalizarAjustes, proporcionCercana } from "../../src/lib/estudioCatalogo.js";
 import { MOTORES } from "../../worker/lib/estudio/motores.js";
 
 // ============================================================
@@ -113,13 +116,66 @@ describe("Muse Image en el Estudio", () => {
     expect(MOTORES.meta.activo({ META_API_KEY: "m" })).toBe(true);
   });
 
-  it("sin referencias genera; con referencias edita, con las imágenes en el cuerpo JSON de Meta", () => {
-    const sin = peticionMuse(muse, { prompt: "una taza", ajustes: { aspectRatio: "4:5", calidad: "low" } });
-    expect(sin.ruta).toBe("/images/generations");
-    expect(sin.cuerpo).toMatchObject({ model: "muse-image-1.0", n: 1, size: "1024x1280", output_format: "webp", response_format: "b64_json", reasoning_strength: "low" });
-    const con = peticionMuse(muse, { prompt: "x", ajustes: {}, referencias: [{ mime: "image/png", base64: "QUJD" }] });
-    expect(con.ruta).toBe("/images/edits");
-    expect(con.cuerpo.images).toEqual([{ image_url: "data:image/png;base64,QUJD" }]);
+  it("va por la API de Responses, como el recetario de Meta: sin referencias, el prompt; con ellas, un mensaje de usuario", () => {
+    const sin = peticionMuse(muse, { prompt: "una taza", ajustes: { aspectRatio: "2:3" } });
+    expect(sin.ruta).toBe("/responses");
+    expect(sin.cuerpo).toEqual({
+      model: "muse-image-1.0",
+      input: "una taza",
+      tools: [{ type: "image_generation", size: "1024x1536", output_format: "webp" }],
+      store: false,
+    });
+    const con = peticionMuse(muse, { prompt: "x", ajustes: { formato: "png" }, referencias: [{ mime: "image/png", base64: "QUJD" }] });
+    expect(con.ruta).toBe("/responses");
+    // Una lista suelta de partes es un 400: van DENTRO de { role: "user", content }.
+    expect(con.cuerpo.input).toEqual([{ role: "user", content: [{ type: "input_text", text: "x" }, { type: "input_image", image_url: "data:image/png;base64,QUJD" }] }]);
+    expect(con.cuerpo.tools[0]).toEqual({ type: "image_generation", size: "1024x1024", output_format: "png" });
+    // Nada de lo que la primera versión mandaba sin que Meta lo documentara.
+    for (const campo of ["prompt", "size", "n", "response_format", "reasoning_strength", "images"]) expect(con.cuerpo).not.toHaveProperty(campo);
+  });
+
+  it("sólo pide los tres tamaños de Meta: la proporción que no está va a la de su orientación", () => {
+    expect(Object.values(TAMANOS_MUSE)).toEqual(["1024x1024", "1024x1536", "1536x1024"]);
+    expect(tamanoMuse("1:1")).toBe("1024x1024");
+    for (const r of ["4:5", "3:4", "2:3", "9:16"]) expect(tamanoMuse(r)).toBe("1024x1536");
+    for (const r of ["16:9", "4:3", "3:2", "5:4", "21:9"]) expect(tamanoMuse(r)).toBe("1536x1024");
+    expect(tamanoMuse(undefined)).toBe("1024x1024");
+    // El Estudio no ofrece proporciones que Meta no da.
+    expect(muse.ajustes.aspectRatio.valores).toEqual(["1:1", "2:3", "3:2"]);
+    expect(muse.ajustes).not.toHaveProperty("calidad");
+    // Una publicación 4:5 o una historia 9:16 pide la vertical, no el cuadrado por defecto.
+    expect(normalizarAjustes(muse, { aspectRatio: "4:5" }).aspectRatio).toBe("2:3");
+    expect(normalizarAjustes(muse, { aspectRatio: "9:16" }).aspectRatio).toBe("2:3");
+    expect(normalizarAjustes(muse, { aspectRatio: "16:9" }).aspectRatio).toBe("3:2");
+    expect(normalizarAjustes(muse, { aspectRatio: "raro" }).aspectRatio).toBe("1:1");
+    expect(proporcionCercana("4:5", ["1:1"])).toBeNull();
+  });
+
+  it("lee la imagen del `image_generation_call` y dice el motivo de Meta cuando rechaza", async () => {
+    const env = { META_API_KEY: "m" };
+    const original = globalThis.fetch;
+    try {
+      globalThis.fetch = vi.fn(async () => Response.json({
+        id: "resp_1", status: "completed",
+        output: [{ type: "reasoning", id: "rs_1" }, { type: "message", id: "msg_1", content: [] }, { type: "image_generation_call", id: "ig_1", status: "completed", result: PNG_MINI }],
+        error: null,
+      }));
+      const ok = await llamarMuseImage(env, { prompt: "una taza", ajustes: { aspectRatio: "1:1" } });
+      expect(ok.mime).toBe("image/png");
+      expect(ok.bytes[0]).toBe(0x89);
+      expect(String(globalThis.fetch.mock.calls[0][0])).toBe("https://api.meta.ai/v1/responses");
+
+      globalThis.fetch = vi.fn(async () => Response.json({ error: { message: "Invalid value for size" } }, { status: 400 }));
+      await expect(llamarMuseImage(env, { prompt: "x" })).rejects.toThrow("Meta rechazó el pedido: Invalid value for size");
+      globalThis.fetch = vi.fn(async () => new Response("Bad Request: input must be a message", { status: 400 }));
+      await expect(llamarMuseImage(env, { prompt: "x" })).rejects.toThrow("Meta rechazó el pedido: Bad Request: input must be a message");
+      globalThis.fetch = vi.fn(async () => Response.json({ status: "completed", output: [{ type: "message", content: [] }] }));
+      await expect(llamarMuseImage(env, { prompt: "x" })).rejects.toThrow(/no devolvió ninguna imagen/);
+      globalThis.fetch = vi.fn(async () => { throw new TypeError("Network connection lost."); });
+      await expect(llamarMuseImage(env, { prompt: "x" })).rejects.toThrow("No se pudo contactar con Meta (Network connection lost.).");
+    } finally {
+      globalThis.fetch = original;
+    }
   });
 });
 

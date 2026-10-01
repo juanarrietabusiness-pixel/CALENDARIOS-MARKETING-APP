@@ -197,10 +197,10 @@ export function archivoDesdeSrc(src, clienteId, prompt = "") {
 }
 
 /** El nombre de cada ajuste en la pantalla. */
-export const ETIQUETA_AJUSTE = Object.freeze({ aspectRatio: "Formato", imageSize: "Tamaño", resolution: "Resolución", duration: "Duración", calidad: "Calidad", formato: "Archivo" });
+export const ETIQUETA_AJUSTE = Object.freeze({ aspectRatio: "Formato", imageSize: "Tamaño", resolution: "Resolución", duration: "Duración", formato: "Archivo" });
 
 /** «4 s», «720p», «1K» según el ajuste. */
-const VALORES = Object.freeze({ calidad: { high: "Alta (pule en varias pasadas)", low: "Rápida" }, formato: { webp: "WebP (ligero)", png: "PNG", jpeg: "JPEG" } });
+const VALORES = Object.freeze({ formato: { webp: "WebP (ligero)", png: "PNG", jpeg: "JPEG" } });
 
 export function valorDeAjuste(nombre, valor) {
   if (nombre === "duration") return `${valor} s`;
