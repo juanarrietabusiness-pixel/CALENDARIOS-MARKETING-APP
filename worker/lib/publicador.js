@@ -35,7 +35,7 @@ import { ErrorMeta, graph, mensajeMeta, descifrarMeta, urlMedioPublico, urlGraph
 import { ErrorTikTok, mensajeTikTok, tokenTikTok, iniciarSubida, subirTrozos, estadoSubida } from "./tiktok.js";
 import {
   REDES, revisarPublicacion, mediosDe, textoPara, primerComentario, destinoInstagram,
-  esJPEG, piezasDe, publicacionDeVariante, momentoDeVariante, mediosParaRed, colaboradoresDe, conHistoria,
+  esJPEG, piezasDe, publicacionDeVariante, momentoDeVariante, mediosParaRed, colaboradoresDe, conHistoria, redesDe,
 } from "../../src/lib/publicacion.js";
 import { tipoAprobacion } from "../../src/lib/aprobacion.js";
 import { avisarFallo } from "./equipo.js";
@@ -186,7 +186,8 @@ function planificar({ post, fecha, cal, cuentas: todas, hayMeta, previas, redes 
   // Marcada para publicarla a mano (música, stickers…): si saliera sola,
   // saldría sin lo que sólo se pone desde el teléfono.
   if (post.asistida) throw new ErrorPublicar("Está marcada para publicarla a mano desde el teléfono: no se programa sola.");
-  let lista = [...new Set(redes?.length ? redes : post.redes?.length ? post.redes : ["instagram"])].filter((r) => r in REDES);
+  // Sin redes pedidas ni elegidas: las del cliente que puedan llevarla (la misma regla que el panel).
+  let lista = [...new Set(redes?.length ? redes : redesDe(post, todas.map((c) => c.red)))].filter((r) => r in REDES);
   const cuentas = {};
   for (const red of lista) {
     const cuenta = todas.find((c) => c.red === red);

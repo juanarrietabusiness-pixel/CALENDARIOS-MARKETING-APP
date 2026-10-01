@@ -6,7 +6,7 @@
 // ============================================================
 
 import { fechaEnZona, sumarDias } from "./agenda.js";
-import { revisarPublicacion, momentoPublicacion, REDES } from "./publicacion.js";
+import { revisarPublicacion, momentoPublicacion, REDES, redesDe } from "./publicacion.js";
 import { listaParaProgramar } from "./aprobacion.js";
 
 const ZONA = "America/Panama";
@@ -141,7 +141,7 @@ export function aprobadasSinProgramar(days = [], filas = [], hoy = fechaEnZona(n
  */
 export function revisarAprobadas(candidatas = [], redesDelCliente = [], ahora = Date.now()) {
   return candidatas.map(({ post, fecha }) => {
-    const pedidas = Array.isArray(post.redes) && post.redes.length ? post.redes : ["instagram"];
+    const pedidas = redesDe(post, redesDelCliente);
     const redes = pedidas.filter((r) => redesDelCliente.includes(r));
     const errores = [];
     if (!redes.length) {

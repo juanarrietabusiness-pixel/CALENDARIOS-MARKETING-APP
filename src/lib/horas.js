@@ -70,3 +70,53 @@ export function hora12(valor) {
   const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
   return `${h12}:${String(m).padStart(2, "0")} ${sufijo}`;
 }
+
+// ------------------------------------------------------------
+// La hora que TECLEA una persona en el campo de la hora
+// ------------------------------------------------------------
+//
+// El campo se toca y se escribe: «9», «930», «0930», «21:30», «9.30»,
+// «9:30 pm». Lo que no lleve a. m. o p. m. y quepa en un reloj de 12 horas
+// toma el periodo que esté marcado al lado; lo de 24 horas («21:30»,
+// «0:15») se entiende solo.
+
+/** «21:30» → { texto: "9:30", periodo: "pm" }; vacío si no hay hora. */
+export function partesDeHora(valor) {
+  const hhmm = normalizarHora(valor ?? "");
+  if (!hhmm) return { texto: "", periodo: null };
+  const [h, m] = hhmm.split(":").map(Number);
+  return { texto: `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, "0")}`, periodo: h >= 12 ? "pm" : "am" };
+}
+
+/**
+ * Lo escrito → «HH:MM», con `periodo` («am» | «pm») para lo que no diga
+ * cuál es. null si no se entiende (o si está vacío).
+ */
+export function leerHoraEscrita(texto, periodo = "am") {
+  let t = String(texto ?? "").trim().toLowerCase().replace(/\s+/g, "");
+  if (!t) return null;
+  let sufijo = null;
+  const suf = t.match(/(a|p)\.?m?\.?$/);
+  if (suf && /\d/.test(t.slice(0, suf.index))) {
+    sufijo = suf[1] === "a" ? "am" : "pm";
+    t = t.slice(0, suf.index);
+  }
+  t = t.replace(/[.h]/g, ":");
+  let h;
+  let m;
+  const conSeparador = t.match(/^(\d{1,2}):(\d{1,2})$/);
+  if (conSeparador) {
+    h = Number(conSeparador[1]);
+    m = Number(conSeparador[2]);
+  } else if (/^\d{1,4}$/.test(t)) {
+    // «9» → 9:00 · «930» → 9:30 · «0930» / «2130» → 09:30 / 21:30
+    if (t.length <= 2) { h = Number(t); m = 0; } else { h = Number(t.slice(0, -2)); m = Number(t.slice(-2)); }
+  } else {
+    return null;
+  }
+  if (m > 59) return null;
+  // Con más de 12 (o las 0) es de 24 horas: el periodo no pinta nada, y
+  // escribirlo («21 pm») es una contradicción.
+  if (h > 12 || h === 0) return sufijo || h > 23 ? null : aTexto(h, m);
+  return normalizarHora(`${h}:${String(m).padStart(2, "0")}${sufijo ?? periodo}`);
+}

@@ -9,6 +9,8 @@
 // ============================================================
 
 import { mediosDe, destinoInstagram, conHistoria, REDES } from "./publicacion.js";
+
+export { redesPorDefecto } from "./publicacion.js";
 import { semanaDelMes } from "./semanas.js";
 
 const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
@@ -22,12 +24,6 @@ export function formatoDeMedios(medios = []) {
   if (!lista.length) return null;
   if (lista.length > 1) return "carrusel";
   return lista[0].tipo === "video" ? "reel" : "post";
-}
-
-/** Las redes por defecto: las que el cliente tiene conectadas (Instagram y Facebook primero). */
-export function redesPorDefecto(redesDelCliente = []) {
-  const orden = ["instagram", "facebook"].filter((r) => redesDelCliente.includes(r));
-  return orden.length ? orden : redesDelCliente.length ? [redesDelCliente[0]] : ["instagram"];
 }
 
 const PIEZA_INSTAGRAM = { imagen: "post en el feed", carrusel: "carrusel", reel: "reel", historia: "historia" };
@@ -124,6 +120,16 @@ export function ponerEnDia(cal, fecha, post) {
     days.sort((a, b) => (a.date < b.date ? -1 : 1));
   }
   return { ...cal, days };
+}
+
+/**
+ * Una idea del banco, lista para entrar en el calendario: id nuevo,
+ * pendiente, y sin las marcas de dónde vino.
+ */
+export function deIdeaAPublicacion(idea, id = crypto.randomUUID().slice(0, 8)) {
+  const post = { ...idea, id, status: "pending" };
+  for (const marca of ["_originDate", "_originCal", "_addedAt"]) delete post[marca];
+  return post;
 }
 
 /** Saca una publicación de su día y la mete en otro del mismo calendario (programar con otro día). */

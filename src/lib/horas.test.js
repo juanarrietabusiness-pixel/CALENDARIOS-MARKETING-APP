@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizarHora, hora12 } from "./horas.js";
+import { normalizarHora, hora12, leerHoraEscrita, partesDeHora } from "./horas.js";
 
 describe("lo que escribe el modelo se guarda como lo espera el campo", () => {
   it("acepta lo que ya está bien", () => {
@@ -60,5 +60,38 @@ describe("y se le cuenta a la IA en el formato en que se lee", () => {
     expect(hora12("")).toBe("");
     expect(hora12(null)).toBe("");
     expect(hora12("no es una hora")).toBe("");
+  });
+});
+
+describe("la hora que teclea una persona", () => {
+  it("entiende lo que se escribe rápido", () => {
+    expect(leerHoraEscrita("9", "am")).toBe("09:00");
+    expect(leerHoraEscrita("9", "pm")).toBe("21:00");
+    expect(leerHoraEscrita("930", "am")).toBe("09:30");
+    expect(leerHoraEscrita("0930", "pm")).toBe("21:30");
+    expect(leerHoraEscrita("9:30", "pm")).toBe("21:30");
+    expect(leerHoraEscrita("9.30", "am")).toBe("09:30");
+    expect(leerHoraEscrita("9h15", "am")).toBe("09:15");
+  });
+  it("lo de 24 horas no necesita periodo", () => {
+    expect(leerHoraEscrita("21:30", "am")).toBe("21:30");
+    expect(leerHoraEscrita("2130", "am")).toBe("21:30");
+    expect(leerHoraEscrita("0:15", "pm")).toBe("00:15");
+    expect(leerHoraEscrita("13", "am")).toBe("13:00");
+  });
+  it("lo que dice a. m. o p. m. gana sobre lo marcado", () => {
+    expect(leerHoraEscrita("9pm", "am")).toBe("21:00");
+    expect(leerHoraEscrita("9:30 a. m.", "pm")).toBe("09:30");
+    expect(leerHoraEscrita("12am", "pm")).toBe("00:00");
+    expect(leerHoraEscrita("12", "pm")).toBe("12:00");
+  });
+  it("lo que no es una hora se rechaza", () => {
+    for (const t of ["", "25", "9:75", "21pm", "mañana", "12345", "::"]) expect(leerHoraEscrita(t, "am")).toBeNull();
+  });
+  it("y se enseña como se lee", () => {
+    expect(partesDeHora("21:30")).toEqual({ texto: "9:30", periodo: "pm" });
+    expect(partesDeHora("00:05")).toEqual({ texto: "12:05", periodo: "am" });
+    expect(partesDeHora("12:00")).toEqual({ texto: "12:00", periodo: "pm" });
+    expect(partesDeHora("")).toEqual({ texto: "", periodo: null });
   });
 });

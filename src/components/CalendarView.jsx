@@ -324,21 +324,7 @@ export default function CalendarView({
     onUpdateClient({ ...client, ideasBank: [...ideasBank, bankPost] });
   };
 
-  const moveBankToCalendar = (bankPost, targetDate) => {
-    if (onMoveBankToCal) {
-      onMoveBankToCal(bankPost, targetDate);
-      return;
-    }
-    const newPost = { ...bankPost, id: uid(), status: "pending" };
-    delete newPost._originDate;
-    delete newPost._originCal;
-    delete newPost._addedAt;
-    const newDays = (cal.days || []).map((d) =>
-      d.date !== targetDate ? d : { ...d, posts: [...(d.posts || []), newPost] }
-    );
-    onUpdateCal(calId, { ...cal, days: newDays });
-    onUpdateClient({ ...client, ideasBank: ideasBank.filter((p) => p.id !== bankPost.id) });
-  };
+  const moveBankToCalendar = (bankPost, targetDate) => onMoveBankToCal?.(bankPost, targetDate);
 
   const calName = cal.name || (MONTHS[cal.month] + " " + cal.year);
   const approvalUrl = cal.shareToken
@@ -1522,8 +1508,6 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           onRemoveFromCal={removePostFromDay}
           onClose={cerrarCapa}
           cal={cal}
-          calId={calId}
-          onUpdateCal={onUpdateCal}
           onMoveBankToCal={onMoveBankToCal}
         />
       )}

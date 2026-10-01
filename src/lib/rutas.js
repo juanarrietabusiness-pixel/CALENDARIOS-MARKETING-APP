@@ -192,6 +192,20 @@ export function construirRuta({ vista = "panel", cliente = null, calendario = nu
 }
 
 /**
+ * A dónde se va al escoger OTRO cliente estando dentro de uno: a la misma
+ * pestaña (Resultados, Estudio, Contenido…) y, en el calendario, al mismo
+ * mes. Antes siempre se volvía al calendario, y para comparar los
+ * resultados de dos clientes había que volver a buscar la pestaña cada vez.
+ * Un calendario viejo nombrado por su nombre no vale para otro cliente: ahí,
+ * a su mes de hoy.
+ */
+export function rutaDeOtroCliente(ruta, slugCliente) {
+  if (ruta?.vista !== "panel" || !ruta.cliente) return construirRuta({ cliente: slugCliente });
+  if (PESTANAS_CLIENTE.includes(ruta.pestana)) return construirRuta({ cliente: slugCliente, pestana: ruta.pestana });
+  return construirRuta({ cliente: slugCliente, calendario: mesDeSlug(ruta.calendario) ? ruta.calendario : null });
+}
+
+/**
  * Cambia de dirección sin recargar.
  *
  * `reemplazar` es para cuando la dirección se corrige sola —al entrar

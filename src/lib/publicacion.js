@@ -33,8 +33,9 @@ export const PROPORCION_HISTORIA = Object.freeze({ min: 0.55, max: 0.575 });
 
 /**
  * Cómo se adapta una imagen que no cabe: la imagen entera sobre fondo
- * difuminado, sobre el color de la marca, recortada, o AMPLIADA con IA
- * (Nano Banana dibuja el fondo que falta). «ia» es la única que no se
+ * difuminado, sobre el color de la marca, recortada, o GENERADA de nuevo
+ * con IA en la proporción de destino, con la original de referencia
+ * (ampliarla hacía que Nano Banana la acercara: parecía un zoom). «ia» es la única que no se
  * hace sola al programar: cuesta dinero y se pide con un botón; si falta
  * la copia, sale difuminada.
  */
@@ -42,7 +43,7 @@ export const AJUSTES = Object.freeze({
   difuminado: "Completa, con fondo difuminado",
   color: "Completa, con el color de la marca",
   recorte: "Recortada al centro",
-  ia: "Ampliada con IA (Nano Banana)",
+  ia: "Generada de nuevo con IA (Nano Banana)",
 });
 
 /** La proporción que se le pide a la IA para llevar una imagen a su objetivo. */
@@ -106,6 +107,37 @@ export function conMedios(post, medios) {
   const lista = (medios ?? []).filter((m) => m?.src);
   const primeraImagen = lista.find((m) => m.tipo !== "video")?.src ?? null;
   return { ...post, medios: lista, image: primeraImagen };
+}
+
+/** Las redes que sólo publican video: una imagen ahí no sale. */
+const SOLO_VIDEO = new Set(["tiktok", "youtube"]);
+
+/**
+ * ¿Puede salir esta publicación en esa red? Las de video necesitan un
+ * video (o, si aún no se subió nada, un reel, que lo tendrá), y no
+ * tienen historias ni directos.
+ */
+export function redAdmite(post, red) {
+  if (!SOLO_VIDEO.has(red)) return true;
+  if (["historia", "live"].includes(post?.format)) return false;
+  const medios = mediosDe(post);
+  return medios.length ? medios.some((m) => m.tipo === "video") : post?.format === "reel";
+}
+
+/**
+ * Las redes por defecto: TODAS las que el cliente tiene conectadas y
+ * pueden llevar la publicación. Antes eran Instagram y Facebook, o sólo
+ * Instagram si la publicación no decía nada, y el TikTok conectado del
+ * cliente se quedaba fuera sin que nadie lo decidiera.
+ */
+export function redesPorDefecto(conectadas = [], post = {}) {
+  const lista = Object.keys(REDES).filter((r) => conectadas.includes(r) && redAdmite(post, r));
+  return lista.length ? lista : ["instagram"];
+}
+
+/** Las redes de una publicación: las elegidas o, si nadie eligió, las de por defecto. */
+export function redesDe(post, conectadas = []) {
+  return Array.isArray(post?.redes) && post.redes.length ? post.redes : redesPorDefecto(conectadas, post);
 }
 
 /** Las imágenes o videos de la historia que acompaña al post, con la forma de `mediosDe`. */

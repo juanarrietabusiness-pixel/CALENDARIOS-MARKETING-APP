@@ -926,6 +926,38 @@ describe("Google Drive como banco de contenido", () => {
     }
   });
 
+  it("la copia en Drive de lo programado sube lo de la aplicación, en su carpeta, y salta lo que vino de Drive o es de otro cliente", async () => {
+    const subidas = [];
+    let carpetaCreada = null;
+    vi.stubGlobal("fetch", async (url, opciones = {}) => {
+      const u = new URL(String(url));
+      if (u.host === "oauth2.googleapis.com") return Response.json({ access_token: "token-acceso", expires_in: 3600 });
+      if (u.pathname === "/drive/v3/files" && (opciones.method ?? "GET") === "GET") return Response.json({ files: [] });
+      if (u.pathname === "/drive/v3/files" && opciones.method === "POST") {
+        carpetaCreada = JSON.parse(opciones.body);
+        return Response.json({ id: "carpetaPublicaciones" });
+      }
+      if (u.pathname === "/upload/drive/v3/files") {
+        subidas.push(JSON.parse(opciones.body));
+        return new Response(null, { headers: { Location: `https://subida.test/s/${subidas.length}` } });
+      }
+      if (u.host === "subida.test") return Response.json({ id: `drive-${u.pathname.split("/").pop()}`, name: "x", mimeType: "image/jpeg" });
+      return new Response("no esperado", { status: 500 });
+    });
+    const env = await conDrive({ r2: {
+      "clientes/cliente-1/posts/a.jpg": "JPG", "clientes/cliente-1/drive/b.jpg": "JPG", "clientes/otro/posts/c.jpg": "JPG",
+    } });
+    const res = await worker.fetch(conSesion("/api/drive/clientes/cliente-1/desde-publicacion", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ medios: ["/api/media/clientes/cliente-1/posts/a.jpg", "/api/media/clientes/cliente-1/drive/b.jpg", "/api/media/clientes/otro/posts/c.jpg"], prefijo: "2026-10-06 Obra" }),
+    }), env);
+    expect(res.status).toBe(201);
+    const r = await res.json();
+    expect(r.copiados).toEqual([{ src: "/api/media/clientes/cliente-1/posts/a.jpg", id: "drive-1" }]);
+    expect(carpetaCreada).toMatchObject({ name: "Publicaciones de la app", parents: [RAIZ] });
+    expect(subidas).toEqual([expect.objectContaining({ name: "2026-10-06 Obra · a.jpg", parents: ["carpetaPublicaciones"] })]);
+  });
+
   it("una imagen de Drive en una publicación se COPIA a R2 y devuelve su clave", async () => {
     googleFalso({ foto: { mimeType: "image/png", parents: [RAIZ], contenido: "PNG" } });
     const env = await conDrive();

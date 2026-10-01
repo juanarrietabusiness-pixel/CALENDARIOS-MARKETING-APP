@@ -117,13 +117,18 @@ function construirPromptHistoria(variante, { clientName, visualStyle }) {
 const PROPORCIONES_ADAPTAR = Object.freeze({ "4:5": "vertical", "16:9": "horizontal", "9:16": "story" });
 
 function construirPromptAdaptar(proporcion, { clientName }) {
+  // GENERAR, no ampliar: pedirle a Nano Banana que «amplíe» la imagen hacía
+  // que la redibujara más cerca —el motivo crecía y los bordes se perdían—,
+  // justo lo contrario de lo que se quería. Ahora se le pide una imagen NUEVA
+  // en la proporción de destino, con la original como referencia, y que el
+  // encuadre sea más abierto, nunca más cerrado.
   const destino = proporcion === "9:16" ? "una historia vertical 9:16" : proporcion === "16:9" ? "una imagen horizontal 16:9" : "una publicación vertical 4:5 del feed de Instagram";
   return [
-    `Amplía ESTA imagen para que sea ${destino}.`,
+    `Genera una imagen NUEVA para ${destino}, tomando la imagen adjunta como referencia exacta.`,
     clientName ? `Marca: ${clientName}.` : "",
-    "Conserva exactamente el mismo contenido, producto, personas, colores, luz, estilo y cualquier texto o logo que ya tenga, sin cambiarlo, moverlo ni traducirlo.",
-    "Sólo AÑADE lienzo por los lados que falten, continuando el fondo de forma natural y coherente: sin franjas, sin bordes, sin desenfoque, sin repetir el motivo.",
-    "El motivo principal debe verse entero, del mismo tamaño relativo, centrado.",
+    "Recrea la misma escena: el mismo producto, las mismas personas, los mismos colores, la misma luz y el mismo estilo, y cualquier texto o logo que ya tenga, sin cambiarlo ni traducirlo.",
+    "Recompón el encuadre para la nueva proporción con un plano IGUAL O MÁS ABIERTO que el original: nada de acercar, recortar ni cortar el motivo. Todo lo que se ve en la original tiene que verse entero, con aire alrededor.",
+    "Lo que falte a los lados, arriba o abajo se completa con el mismo entorno, de forma natural: sin franjas, sin bordes, sin desenfoque, sin repetir el motivo.",
     "Genera SOLO la imagen, sin explicación.",
   ].filter(Boolean).join("\n");
 }
@@ -202,7 +207,7 @@ export async function rutaGenerarImagen(req, env, ctx) {
     formatoFinal = PROPORCIONES_ADAPTAR[adaptar.proporcion];
     parts = [
       { text: construirPromptAdaptar(adaptar.proporcion, { clientName: cliente.name }) },
-      { text: "\nLA IMAGEN QUE HAY QUE AMPLIAR:" },
+      { text: "\nLA IMAGEN DE REFERENCIA (la original):" },
       base,
     ];
   } else if (portada) {

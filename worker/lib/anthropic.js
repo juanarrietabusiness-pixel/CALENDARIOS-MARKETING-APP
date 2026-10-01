@@ -19,6 +19,7 @@
 
 import { partirSSE, crearAcumulador } from "./flujoAnthropic.js";
 import { MARGEN_RAZONAMIENTO } from "./configIA.js";
+import { conReglaIdioma } from "../../src/lib/idioma.js";
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -110,7 +111,8 @@ export async function abrirFlujo(env, peticion, { signal } = {}) {
           "x-api-key": env.ANTHROPIC_API_KEY,
           "anthropic-version": "2023-06-01",
         },
-        body: JSON.stringify({ ...adaptarAlModelo(peticion), stream: true }),
+        // Toda llamada de texto lleva la regla del español neutro (src/lib/idioma.js).
+        body: JSON.stringify({ ...adaptarAlModelo(conReglaIdioma(peticion)), stream: true }),
       });
     } catch (e) {
       if (signal?.aborted) throw e;

@@ -14,7 +14,7 @@ import { generateFieldForPost } from "../../api";
 import Icon from "../Icon";
 import { TimePicker } from "./primitivas";
 
-export function BankPanel({ client, onUpdateClient, calDays, onRemoveFromCal, onClose, cal, calId, onUpdateCal, onMoveBankToCal }) {
+export function BankPanel({ client, onUpdateClient, calDays, onRemoveFromCal, onClose, cal, onMoveBankToCal }) {
   const [editingId, setEditingId] = useState(null);
   const [dropHover, setDropHover] = useState(false);
 
@@ -42,20 +42,7 @@ export function BankPanel({ client, onUpdateClient, calDays, onRemoveFromCal, on
   };
 
   const moveBankToCalendar = (bankPost, targetDate) => {
-    if (onMoveBankToCal) {
-      onMoveBankToCal(bankPost, targetDate);
-      if (editingId === bankPost.id) setEditingId(null);
-      return;
-    }
-    const newPost = { ...bankPost, id: uid(), status: "pending" };
-    delete newPost._originDate;
-    delete newPost._originCal;
-    delete newPost._addedAt;
-    const newDays = (cal.days || []).map((d) =>
-      d.date !== targetDate ? d : { ...d, posts: [...(d.posts || []), newPost] }
-    );
-    onUpdateCal(calId, { ...cal, days: newDays });
-    saveBankList(ideasBank.filter((p) => p.id !== bankPost.id));
+    onMoveBankToCal?.(bankPost, targetDate);
     if (editingId === bankPost.id) setEditingId(null);
   };
 

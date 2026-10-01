@@ -3,7 +3,7 @@ import worker from "../../worker/index.js";
 import { d1EnMemoria } from "../utils/d1Memoria.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
-import { olvidarModelos } from "../../worker/lib/configIA.js";
+import { olvidarModelos, mesActual } from "../../worker/lib/configIA.js";
 import { notasParaLaFicha, promptDeLaFicha, leerRespuesta } from "../../worker/lib/cerebro/preparar.js";
 
 // ============================================================
@@ -267,7 +267,7 @@ describe("el gasto y los fallos", () => {
   it("con el presupuesto agotado y «detener», no llama a la IA", async () => {
     db.sqlite.prepare("insert into ajustes_espacio (id, owner_id, presupuesto_usd, al_limite) values (?,?,?,?)").run(JEFE, JEFE, 1, "detener");
     db.sqlite.prepare("insert into consumo_ia (id, owner_id, mes, funcion, modelo, costo_usd) values (?,?,?,?,?,?)")
-      .run("g1", JEFE, new Date().toISOString().slice(0, 7), "x", "claude-sonnet-5", 5);
+      .run("g1", JEFE, mesActual(), "x", "claude-sonnet-5", 5);
     anthropic([]);
     const res = await preparar();
     expect(res.status).toBe(402);

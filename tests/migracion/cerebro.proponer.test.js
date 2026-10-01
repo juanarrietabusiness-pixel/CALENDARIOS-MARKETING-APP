@@ -3,7 +3,7 @@ import worker from "../../worker/index.js";
 import { d1EnMemoria } from "../utils/d1Memoria.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
-import { olvidarModelos } from "../../worker/lib/configIA.js";
+import { olvidarModelos, mesActual } from "../../worker/lib/configIA.js";
 import { crearAcceso } from "../../worker/lib/acceso.js";
 import { buscar } from "../../worker/lib/cerebro/cerebro.js";
 import {
@@ -437,7 +437,7 @@ describe("no gastar sin motivo", () => {
 
   it("con el presupuesto agotado y «detener», no llama a la IA", async () => {
     db.sqlite.prepare("insert into ajustes_espacio (id, owner_id, presupuesto_usd, al_limite) values (?,?,?,?)").run(JEFE, JEFE, 1, "detener");
-    db.sqlite.prepare("insert into consumo_ia (id, owner_id, mes, funcion, modelo, costo_usd) values (?,?,?,?,?,?)").run("g1", JEFE, new Date().toISOString().slice(0, 7), "x", "claude-sonnet-5", 5);
+    db.sqlite.prepare("insert into consumo_ia (id, owner_id, mes, funcion, modelo, costo_usd) values (?,?,?,?,?,?)").run("g1", JEFE, mesActual(), "x", "claude-sonnet-5", 5);
     anthropic([]);
     expect((await reglas()).status).toBe(402);
     expect(peticiones).toHaveLength(0);

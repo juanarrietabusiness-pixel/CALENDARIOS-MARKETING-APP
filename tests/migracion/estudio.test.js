@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { mesActual } from "../../worker/lib/configIA.js";
 import worker from "../../worker/index.js";
 import { d1EnMemoria } from "../utils/d1Memoria.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
@@ -211,7 +212,7 @@ describe("lo que se rechaza antes de gastar", () => {
     env.GOOGLE_AI_KEY = "k";
     db.sqlite.prepare("insert into ajustes_espacio (id, owner_id, presupuesto_usd, al_limite) values (?,?,?,?)").run(JEFE, JEFE, 1, "detener");
     db.sqlite.prepare("insert into consumo_ia (id, owner_id, mes, funcion, modelo, costo_usd) values (?,?,?,?,?,?)")
-      .run("g1", JEFE, new Date().toISOString().slice(0, 7), "x", "claude-sonnet-5", 5);
+      .run("g1", JEFE, mesActual(), "x", "claude-sonnet-5", 5);
     const res = await pedirTrabajo(JEFE, "c1", { modelo: "nano-banana" });
     expect(res.status).toBe(402);
     expect((await res.json()).codigo).toBe("presupuesto");
@@ -316,7 +317,7 @@ describe("Gemini, con un fetch falso", () => {
     globalThis.fetch = vi.fn(async () => respuestaGemini());
     db.sqlite.prepare("insert into ajustes_espacio (id, owner_id, presupuesto_usd, al_limite) values (?,?,?,?)").run(JEFE, JEFE, 1, "detener");
     db.sqlite.prepare("insert into consumo_ia (id, owner_id, mes, funcion, modelo, costo_usd) values (?,?,?,?,?,?)")
-      .run("g1", JEFE, new Date().toISOString().slice(0, 7), "x", "claude-sonnet-5", 0.95);
+      .run("g1", JEFE, mesActual(), "x", "claude-sonnet-5", 0.95);
     const { trabajo } = await (await pedirTrabajo(JEFE, "c1", { modelo: "nano-banana", n: 3 })).json();
     const fin = await hastaElFinal(JEFE, "c1", trabajo.id);
     expect(fin.estado).toBe("hecho");
@@ -582,6 +583,21 @@ describe("subir a mano, carpetas y papelera", () => {
     expect(env.MEDIA.objetos.has(clave)).toBe(true);
   });
 
+  it("adaptar a 4:5 GENERA una imagen nueva con la original de referencia, sin acercarla", async () => {
+    env.GOOGLE_AI_KEY = "k";
+    env.MEDIA.objetos.set("clientes/c1/posts/flow.png", { bytes: PNG, tipo: "image/png" });
+    let pedido = null;
+    globalThis.fetch = vi.fn(async (_url, init) => { pedido = JSON.parse(init.body); return respuestaGemini(); });
+    const res = await pedir(JEFE, "/api/generar-imagen", { method: "POST", body: { clientId: "c1", adaptarDe: { src: "/api/media/clientes/c1/posts/flow.png", proporcion: "4:5" } } });
+    expect(res.status).toBe(201);
+    const texto = pedido.contents[0].parts.filter((x) => x.text).map((x) => x.text).join("\n");
+    expect(texto).toMatch(/Genera una imagen NUEVA/);
+    expect(texto).toMatch(/IGUAL O MÁS ABIERTO/);
+    expect(texto).not.toMatch(/Amplía/);
+    expect(pedido.contents[0].parts.some((x) => x.inlineData)).toBe(true);
+    expect(pedido.generationConfig.imageConfig.aspectRatio).toBe("4:5");
+  });
+
   it("/api/generar-imagen conserva sus mensajes de siempre", async () => {
     env.GOOGLE_AI_KEY = "k";
     globalThis.fetch = vi.fn(async () => new Response("{}", { status: 429 }));
@@ -828,7 +844,7 @@ describe("un video, por la cola", () => {
     const { llamadas } = googleConVideo();
     db.sqlite.prepare("insert into ajustes_espacio (id, owner_id, presupuesto_usd, al_limite) values (?,?,?,?)").run(JEFE, JEFE, 1, "detener");
     db.sqlite.prepare("insert into consumo_ia (id, owner_id, mes, funcion, modelo, costo_usd) values (?,?,?,?,?,?)")
-      .run("g1", JEFE, new Date().toISOString().slice(0, 7), "x", "claude-sonnet-5", 5);
+      .run("g1", JEFE, mesActual(), "x", "claude-sonnet-5", 5);
     const res = await pedirVideo(JEFE, "c1");
     expect(res.status).toBe(402);
     expect(llamadas).toHaveLength(0);
