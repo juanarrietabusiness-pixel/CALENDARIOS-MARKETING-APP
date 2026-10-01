@@ -65,9 +65,49 @@ function FichaDelModelo({ modelo }) {
   );
 }
 
+/**
+ * «Escribir el prompt con IA»: dos deslizadores (memoria de la marca y apego a las
+ * referencias) y, en imagen, cuántas diapositivas tiene el carrusel.
+ */
+function EscribirPrompt({ ids, escritura, setEscritura, escribiendo, onEscribir, esVideo, referencias }) {
+  const cambiar = (k, v) => setEscritura((e) => ({ ...e, [k]: v }));
+  const tramo = (a) => (a < 34 ? "sólo inspiración" : a < 67 ? "estilo y composición" : "replicar");
+  return (
+    <div className="est-escribir">
+      <button type="button" className="btn btn-accent btn-sm" disabled={escribiendo} onClick={onEscribir}>
+        <Icon name="wand" size={16} /> {escribiendo ? "Escribiendo el prompt…" : "Escribir el prompt con IA"}
+      </button>
+      <p className="hint">Lee tu idea{referencias ? ` y mira ${referencias === 1 ? "la referencia" : `las ${referencias} referencias`}` : ""} y escribe el prompt final en español neutro. No crea nada todavía.</p>
+      <div className="est-deslizadores">
+        <label htmlFor={`${ids}-mem`}>
+          <span>Memoria de la marca <strong>{escritura.memoria} %</strong></span>
+          <input id={`${ids}-mem`} type="range" min="0" max="100" step="10" value={escritura.memoria}
+            aria-valuetext={`${escritura.memoria} %`} onChange={(e) => cambiar("memoria", Number(e.target.value))} />
+          <small>{escritura.memoria ? "Lo que el cerebro sabe de su identidad visual" : "Nada de la marca: sólo tu idea"}</small>
+        </label>
+        <label htmlFor={`${ids}-ref`}>
+          <span>Apego a las referencias <strong>{escritura.apego} %</strong></span>
+          <input id={`${ids}-ref`} type="range" min="0" max="100" step="10" value={escritura.apego} disabled={!referencias}
+            aria-valuetext={`${escritura.apego} %, ${tramo(escritura.apego)}`} onChange={(e) => cambiar("apego", Number(e.target.value))} />
+          <small>{referencias ? `De «sólo inspiración» a «replicar»: ahora, ${tramo(escritura.apego)}` : "Pon alguna referencia para usarlo"}</small>
+        </label>
+        {!esVideo && (
+          <label htmlFor={`${ids}-dia`}>
+            <span>Diapositivas</span>
+            <select id={`${ids}-dia`} className="input" value={escritura.diapositivas} onChange={(e) => cambiar("diapositivas", Number(e.target.value))}>
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => <option key={n} value={n}>{n === 1 ? "Una imagen" : `Carrusel de ${n}`}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Compositor({
   ids, form, setForm, modelo, motores, costo, confirmando, enviando, subiendo,
   onEnviar, onConfirmar, onNo, onModelo, onTipo, onQuitarMedio, onSubirArchivos, promptRef, etiquetaPrompt = "¿Qué quieres crear?",
+  escritura = null, setEscritura = null, escribiendo = false, onEscribir = null, serie = null, setSerie = null,
 }) {
   const entrada = useRef(null);
   const rolSubida = useRef("reference");
@@ -116,6 +156,31 @@ export default function Compositor({
         <p className="hint">Sin texto dentro de {esVideo ? "el video" : "la imagen"}, salvo que lo pidas. {form.prompt.length > 3500 ? `${form.prompt.length} de ${MAX_PROMPT} caracteres.` : ""}</p>
       </div>
 
+      {onEscribir && escritura && (
+        <EscribirPrompt
+          ids={ids} escritura={escritura} setEscritura={setEscritura} escribiendo={escribiendo} onEscribir={onEscribir}
+          esVideo={esVideo} referencias={medios.reference.length + medios.start.length}
+        />
+      )}
+      {serie && (
+        <fieldset className="est-serie">
+          <legend className="label">Carrusel: {serie.prompts.length} diapositivas de la misma serie</legend>
+          {serie.estilo && <p className="hint est-serie-estilo"><strong>Estilo común:</strong> {serie.estilo}</p>}
+          <ol>
+            {serie.prompts.map((p, i) => (
+              <li key={i}>
+                <label className="sr-only" htmlFor={`${ids}-d${i}`}>Diapositiva {i + 1}</label>
+                <textarea id={`${ids}-d${i}`} className="input" rows={3} maxLength={MAX_PROMPT} value={p}
+                  onChange={(e) => { onNo(); setSerie({ ...serie, prompts: serie.prompts.map((x, j) => (j === i ? e.target.value : x)) }); }} />
+              </li>
+            ))}
+          </ol>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { onNo(); setSerie(null); }}>
+            <Icon name="close" size={14} /> No es un carrusel: volver a una sola
+          </button>
+        </fieldset>
+      )}
+
       <div className="est-fila">
         <div className="field">
           <label className="label" htmlFor={`${ids}-m`}>Modelo</label>
@@ -137,12 +202,12 @@ export default function Compositor({
             </select>
           </div>
         ))}
-        <div className="field">
+        {!serie && <div className="field">
           <label className="label" htmlFor={`${ids}-n`}>Cuántos</label>
           <select id={`${ids}-n`} className="input" value={form.n} onChange={(e) => { onNo(); setForm({ ...form, n: Number(e.target.value) }); }}>
             {cantidades.map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
-        </div>
+        </div>}
       </div>
 
       <details className="est-lista-opciones">
@@ -201,7 +266,7 @@ export default function Compositor({
           </div>
         ) : (
           <button type="submit" className="btn btn-primary" disabled={enviando || !activo(modelo)}>
-            <Icon name={esVideo ? "video" : "sparkles"} size={18} /> {enviando ? "Pidiendo…" : `Crear ${nombreDeTipo}`}
+            <Icon name={esVideo ? "video" : "sparkles"} size={18} /> {enviando ? "Pidiendo…" : serie ? `Crear las ${serie.prompts.length} diapositivas` : `Crear ${nombreDeTipo}`}
           </button>
         )}
       </div>

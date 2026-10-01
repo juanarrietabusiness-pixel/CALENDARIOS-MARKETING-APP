@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga, archivoDesdeSrc } from "./estudio.js";
+import { filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga, archivoDesdeSrc, promptDeEdicion, modeloParaEditar, originalDe } from "./estudio.js";
 
 const A = (o) => ({ id: "a", prompt: "una taza", modelo: "nano-banana", favorito: false, subido: false, carpetaId: null, ...o });
 
@@ -115,5 +115,30 @@ describe("de una publicación al Estudio", () => {
     expect(archivoDesdeSrc("data:image/png;base64,AAAA", "c1")).toBeNull();
     expect(archivoDesdeSrc("https://x.test/a.png", "c1")).toBeNull();
     expect(archivoDesdeSrc("", "c1")).toBeNull();
+  });
+});
+
+describe("editar una imagen con una indicación", () => {
+  it("el prompt pide el cambio y que no se toque lo demás", () => {
+    const p = promptDeEdicion("Quita el texto.  ");
+    expect(p).toMatch(/^Edita la imagen de referencia: Quita el texto\. Conserva todo lo demás/);
+    expect(promptDeEdicion("   ")).toBe("");
+  });
+
+  it("edita con Muse Image si hay llave de Meta; si no, Nano Banana; sin nada, la prueba", () => {
+    expect(modeloParaEditar({ meta: true, gemini: true }).id).toBe("muse-image");
+    expect(modeloParaEditar({ gemini: true }).id).toBe("nano-banana");
+    expect(modeloParaEditar({ fal: true }).motor).toBe("fal");
+    expect(modeloParaEditar({ prueba: true }).id).toBe("prueba");
+  });
+
+  it("la versión editada sabe de qué imagen sale, por su trabajo", () => {
+    const original = { id: "a1", clave: "clientes/c/estudio/o.png" };
+    const editada = { id: "a2", trabajoId: "t2" };
+    const trabajos = [{ id: "t2", prompt: promptDeEdicion("más luz"), medios: { reference: [original.clave] } }];
+    expect(originalDe(editada, trabajos, [original, editada])).toBe(original);
+    // Una variación (referencia sin «Edita…») no es una edición.
+    expect(originalDe(editada, [{ ...trabajos[0], prompt: "otra cosa" }], [original])).toBeNull();
+    expect(originalDe({ id: "x" }, trabajos, [original])).toBeNull();
   });
 });
