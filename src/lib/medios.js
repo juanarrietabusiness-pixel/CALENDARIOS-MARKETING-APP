@@ -211,6 +211,45 @@ export function encajar(img, { ancho, alto }, modo = "difuminado", color = "#fff
   return lienzo;
 }
 
+/**
+ * La ventana 3:4 que enseña el perfil de Instagram de una portada vertical:
+ * Instagram la saca SIEMPRE del centro y la API no deja elegir otra. Por eso
+ * «deslizar» aquí es mover la imagen dentro de la portada: lo que se quiere
+ * en el perfil queda en el centro. `encuadre` va de -1 (lo de arriba) a 1
+ * (lo de abajo); 0 es el centro, sin tocar nada. Devuelve cuánto se mueve
+ * (en píxeles de la imagen) y la ventana, en fracciones del alto. Pura.
+ */
+export function ventanaCuadricula(ancho, alto, encuadre = 0) {
+  const e = Math.max(-1, Math.min(1, Number(encuadre) || 0));
+  const ventana = Math.min(alto, Math.round((ancho * 4) / 3));
+  const libre = alto - ventana;
+  const desplazamiento = Math.round((e * libre) / 2) || 0; // sin -0
+  return { desplazamiento, arriba: (libre / 2 + desplazamiento) / alto, alto: ventana / alto };
+}
+
+/**
+ * La portada con lo elegido en el centro: la imagen sube o baja `desplazamiento`
+ * y el hueco que deja se rellena con ella misma desenfocada (como `encajar`).
+ * En la pestaña de reels se ve esa franja; en la cuadrícula, justo lo elegido.
+ */
+export function encuadrarParaCuadricula(img, encuadre = 0) {
+  const { desplazamiento } = ventanaCuadricula(img.width, img.height, encuadre);
+  const lienzo = document.createElement("canvas");
+  lienzo.width = img.width;
+  lienzo.height = img.height;
+  const ctx = lienzo.getContext("2d");
+  ctx.imageSmoothingQuality = "high";
+  if (desplazamiento) {
+    const chico = document.createElement("canvas");
+    chico.width = Math.max(8, Math.round(img.width / 28));
+    chico.height = Math.max(8, Math.round(img.height / 28));
+    cubrir(chico.getContext("2d"), img, chico.width, chico.height);
+    ctx.drawImage(chico, 0, 0, img.width, img.height);
+  }
+  ctx.drawImage(img, 0, -desplazamiento, img.width, img.height);
+  return lienzo;
+}
+
 const aBlob = (lienzo, calidad = 0.9) => new Promise((ok) => lienzo.toBlob(ok, "image/jpeg", calidad));
 
 /** Cómo quedará: una vista pequeña (data: URL) sin subir nada. */
@@ -256,6 +295,25 @@ export async function ampliarConIA(src, objetivo, { generar, subir, descartar })
   // El bruto no sirve para nada más: no debe llenar la carpeta del cliente.
   if (bruto.clave) descartar?.(bruto.clave);
   return { src: nuevo, ancho: medidas.ancho, alto: medidas.alto, modo: "ia" };
+}
+
+/**
+ * Ancho y alto de una imagen ya subida (`/api/media/…`). Lo que llega de
+ * Drive o del banco entraba SIN medidas, y sin medidas no hay aviso de
+ * «no cabe en el feed» ni la opción de pasarla a 4:5: la misma imagen
+ * avisaba subida desde el PC y no desde Drive. null si no se puede.
+ */
+export async function medirImagen(src) {
+  try {
+    const r = await fetch(src, { credentials: "same-origin" });
+    if (!r.ok) return null;
+    const b = await createImageBitmap(await r.blob());
+    const medidas = { ancho: b.width, alto: b.height };
+    b.close?.();
+    return medidas.ancho > 0 && medidas.alto > 0 ? medidas : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Ancho, alto y segundos de un video, leyendo sólo sus metadatos. null si el navegador no puede. */

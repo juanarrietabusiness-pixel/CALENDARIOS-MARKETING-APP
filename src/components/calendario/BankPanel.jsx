@@ -13,6 +13,22 @@ import { uid, compressImage } from "../../utils";
 import { generateFieldForPost } from "../../api";
 import Icon from "../Icon";
 import { TimePicker } from "./primitivas";
+import { nombreDelDia } from "../../lib/meses";
+
+/**
+ * Los días a los que se puede llevar una idea: TODOS los del mes, tengan
+ * publicaciones o no. `calDays` sólo trae los días con algo dentro (el
+ * calendario es siempre activo), así que un día vacío no salía en la lista.
+ */
+function diasDelMes(cal, calDays) {
+  if (!Number.isInteger(cal?.month) || !cal?.year) return (calDays ?? []).map((d) => ({ date: d.date, nombre: d.dayName }));
+  const total = new Date(Date.UTC(cal.year, cal.month + 1, 0)).getUTCDate();
+  const mm = String(cal.month + 1).padStart(2, "0");
+  return Array.from({ length: total }, (_, i) => {
+    const date = `${cal.year}-${mm}-${String(i + 1).padStart(2, "0")}`;
+    return { date, nombre: nombreDelDia(date) };
+  });
+}
 
 export function BankPanel({ client, onUpdateClient, calDays, onRemoveFromCal, onClose, cal, onMoveBankToCal }) {
   const [editingId, setEditingId] = useState(null);
@@ -211,7 +227,15 @@ export function BankPostCard({ post, isEditing, onToggleEdit, onSave, onRemove, 
             {fieldLoading.idea ? "…" : <><Icon name="sparkles" size={11} /> IA</>}
           </button>
         </div>
-        <textarea id={`${cardId}-idea`} className="textarea" style={{ minHeight: 56, fontSize: "var(--fs-2xs)" }} value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Idea…" />
+        <textarea
+          id={`${cardId}-idea`} className="textarea" style={{ minHeight: 56, fontSize: "var(--fs-2xs)" }}
+          value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Idea…"
+          aria-describedby={`${cardId}-idea-ayuda`}
+          // Enter guarda y cierra; Mayús+Enter, salto de línea. Antes no había
+          // forma de cerrar la idea: parecía que sólo se guardaba al crear otra.
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); onToggleEdit(); } }}
+        />
+        <p id={`${cardId}-idea-ayuda`} className="hint" style={{ margin: "2px 0 0", fontSize: "var(--fs-3xs)" }}>Enter guarda · Mayús + Enter, otra línea</p>
       </div>
 
       <div style={{ marginBottom: "var(--sp-2)" }}>
@@ -256,7 +280,7 @@ export function BankPostCard({ post, isEditing, onToggleEdit, onSave, onRemove, 
             <label className="label" style={{ fontSize: "var(--fs-3xs)" }} htmlFor={`${cardId}-move`}>Mover al calendario</label>
             <select id={`${cardId}-move`} className="input" style={{ fontSize: "var(--fs-2xs)" }} value={moveDate} onChange={(e) => setMoveDate(e.target.value)}>
               <option value="">Elegir fecha…</option>
-              {calDays.map((d) => <option key={d.date} value={d.date}>{d.date.split("-")[2]} {d.dayName}</option>)}
+              {diasDelMes(cal, calDays).map((d) => <option key={d.date} value={d.date}>{d.date.split("-")[2]} {d.nombre}</option>)}
             </select>
           </div>
           <button className="btn btn-accent btn-sm" style={{ fontSize: "var(--fs-3xs)" }} disabled={!moveDate} onClick={() => onMoveToCalendar(moveDate)}>
@@ -265,6 +289,9 @@ export function BankPostCard({ post, isEditing, onToggleEdit, onSave, onRemove, 
         </div>
       )}
 
+      <button type="button" className="btn btn-primary btn-sm" style={{ width: "100%", marginBottom: "var(--sp-1)" }} onClick={onToggleEdit}>
+        <Icon name="check" size={14} /> Guardar idea
+      </button>
       <button className="btn btn-ghost btn-sm" style={{ width: "100%", color: "var(--danger)", fontSize: "var(--fs-3xs)" }} onClick={onRemove}>
         <Icon name="trash" size={14} /> Eliminar del banco
       </button>

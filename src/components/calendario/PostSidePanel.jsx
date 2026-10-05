@@ -155,13 +155,14 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
 
   const clientId = client?.dbId || client?.id;
 
-  const AiButton = ({ field, label }) => (
+  const AiButton = ({ field, label, accion = "Generar" }) => (
     <button
       type="button"
       className="btn-ai"
       onClick={() => generateField(field)}
       disabled={fieldLoading[field]}
-      aria-label={`Generar ${label} con IA`}
+      aria-label={`${accion} ${label} con IA`}
+      title={`${accion} ${label} con IA`}
     >
       {fieldLoading[field] ? "Generando…" : <><Icon name="sparkles" size={14} /> IA</>}
     </button>
@@ -296,7 +297,8 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         <div className="field">
           <div style={fieldHeaderStyle}>
             <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-idea`}>Idea / Brief</label>
-            <AiButton field="idea" label="la idea" />
+            {/* Con algo escrito, la IA la completa o la mejora (instruccionIdea en api.js); vacía, la genera. */}
+            <AiButton field="idea" label="la idea" accion={String(form.idea ?? "").trim() ? "Completar" : "Generar"} />
           </div>
           <textarea id={`${ids}-idea`} className="textarea" value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Explicación o prompt para la generación con IA…" />
         </div>

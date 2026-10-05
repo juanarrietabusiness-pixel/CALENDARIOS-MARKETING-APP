@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useId, useRef } from "react";
+import { useState, useEffect, useCallback, useId, useRef, lazy, Suspense } from "react";
 import Icon from "./Icon";
 import * as db from "../lib/db";
 import { tamanoLegible, enlaceCarpeta } from "../lib/drive";
@@ -15,7 +15,12 @@ import { tamanoLegible, enlaceCarpeta } from "../lib/drive";
 //
 // Las miniaturas las sirve el Worker desde Drive: el navegador nunca
 // habla con Google (ver worker/rutas/drive.js).
+//
+// En «gestionar», tocar una imagen o un video lo abre en el visor grande
+// (VisorDrive), que pasa al anterior o al siguiente sin cerrar.
 // ============================================================
+
+const VisorDrive = lazy(() => import("./VisorDrive"));
 
 const FILTROS = [
   ["", "Todo"],
@@ -47,6 +52,7 @@ export default function ExploradorDrive({
   const [subiendo, setSubiendo] = useState("");
   const [nuevaCarpeta, setNuevaCarpeta] = useState(null);
   const [confirmando, setConfirmando] = useState(null);
+  const [viendo, setViendo] = useState(null); // el id del archivo abierto en el visor
   const entrada = useRef(null);
   const escoger = modo === "escoger";
 
@@ -137,6 +143,9 @@ export default function ExploradorDrive({
   };
 
   const visibles = (datos?.archivos ?? []).filter((a) => a.tipo === "carpeta" || tipos.includes(a.tipo) || !escoger);
+  // Lo que se pasa en el visor: las imágenes y los videos de la carpeta, en el orden de la rejilla.
+  const paraVer = visibles.filter((a) => a.tipo === "imagen" || a.tipo === "video");
+  const indiceVisto = viendo ? paraVer.findIndex((a) => a.id === viendo) : -1;
 
   return (
     <div className="drive">
@@ -247,7 +256,8 @@ export default function ExploradorDrive({
         <ul className="drive-rejilla" aria-busy={cargando}>
           {visibles.map((a) => {
             const marcado = marcados.some((m) => m.id === a.id);
-            const pulsable = a.tipo === "carpeta" || escoger;
+            const visible = !escoger && (a.tipo === "imagen" || a.tipo === "video");
+            const pulsable = a.tipo === "carpeta" || escoger || visible;
             const contenido = (
               <>
                 <span className="drive-vista">
@@ -281,9 +291,9 @@ export default function ExploradorDrive({
                   <button
                     type="button"
                     className="drive-tarjeta"
-                    onClick={() => tocar(a)}
+                    onClick={() => (visible ? setViendo(a.id) : tocar(a))}
                     aria-pressed={escoger && maximo > 1 && a.tipo !== "carpeta" ? marcado : undefined}
-                    aria-label={a.tipo === "carpeta" ? `Abrir la carpeta ${a.nombre}` : `${a.tipo === "video" ? "Video" : "Imagen"}: ${a.nombre}`}
+                    aria-label={a.tipo === "carpeta" ? `Abrir la carpeta ${a.nombre}` : `${visible ? "Ver en grande: " : ""}${a.tipo === "video" ? "Video" : "Imagen"}: ${a.nombre}`}
                   >
                     {contenido}
                   </button>
@@ -324,6 +334,18 @@ export default function ExploradorDrive({
         <button type="button" className="btn btn-secondary" onClick={() => cargar(datos.siguiente)} disabled={cargando} style={{ alignSelf: "center" }}>
           {cargando ? "Cargando…" : "Ver más"}
         </button>
+      )}
+
+      {indiceVisto >= 0 && (
+        <Suspense fallback={null}>
+          <VisorDrive
+            clienteId={clienteId}
+            archivos={paraVer}
+            indice={indiceVisto}
+            onCambiar={(i) => setViendo(paraVer[i]?.id ?? null)}
+            onCerrar={() => setViendo(null)}
+          />
+        </Suspense>
       )}
 
       {escoger && maximo > 1 && (

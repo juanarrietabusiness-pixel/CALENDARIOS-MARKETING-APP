@@ -44,6 +44,24 @@ export function mesDeFecha(fecha) {
   return Number.isInteger(a) && Number.isInteger(m) ? { year: a, month: m - 1 } : null;
 }
 
+const NOMBRES_DIA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+
+/**
+ * Qué días del mes cae cada día de la semana, para el asistente: «lunes: 5,
+ * 12, 19, 26». Sin esto el modelo deduce el día de la semana de la fecha y
+ * se equivoca («el domingo 4 no cae en octubre de 2026», cuando sí). Pura.
+ */
+export function diasPorSemanaDelMes({ year, month }) {
+  const total = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const porDia = NOMBRES_DIA.map(() => []);
+  for (let d = 1; d <= total; d++) porDia[new Date(Date.UTC(year, month, d)).getUTCDay()].push(d);
+  // De lunes a domingo, que es como se lee una semana aquí.
+  return [1, 2, 3, 4, 5, 6, 0].map((i) => `${NOMBRES_DIA[i]}: ${porDia[i].join(", ")}`).join("\n");
+}
+
+/** El nombre del día de la semana de una fecha AAAA-MM-DD. Pura. */
+export const nombreDelDia = (fecha) => NOMBRES_DIA[new Date(`${fecha}T12:00:00Z`).getUTCDay()];
+
 export const mismoMes = (a, b) => Boolean(a && b) && a.year === b.year && a.month === b.month;
 
 const vacio = (v) => v == null || v === "" || (Array.isArray(v) && !v.length) || (typeof v === "object" && !Array.isArray(v) && !Object.keys(v).length);

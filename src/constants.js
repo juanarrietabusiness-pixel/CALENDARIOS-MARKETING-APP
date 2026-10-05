@@ -20,9 +20,11 @@ export const FORMAT_ICONS = Object.fromEntries(
 
 export const STATUSES = {
   pending:   { label: "Pendiente",    bg: "#0d1f3c", text: "#64B5F6", border: "#1E3A6B" },
-  approved:  { label: "✓ Aprobado",   bg: "#0d2a0d", text: "#66BB6A", border: "#388E3C" },
+  // Aprobado en rosa y publicado en verde: con el verde en «aprobado», la agencia lo
+  // confundía con lo ya publicado (el verde destaca más). Igual que el chip del mes.
+  approved:  { label: "Aprobado",     bg: "#2a0d1c", text: "#F06292", border: "#C2185B" },
   rejected:  { label: "✗ Cambios",    bg: "#2a0d0d", text: "#EF5350", border: "#C62828" },
-  published: { label: "🚀 Publicado", bg: "#200a3a", text: "#CE93D8", border: "#7B1FA2" },
+  published: { label: "✓ Publicado", bg: "#0d2a0d", text: "#66BB6A", border: "#388E3C" },
 };
 
 export const PLANS = {

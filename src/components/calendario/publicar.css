@@ -36,7 +36,15 @@
 .portada-video-cabecera { display: flex; align-items: center; justify-content: space-between; }
 .portada-video-cabecera h4 { margin: 0; }
 .portada-video-cuerpo { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: flex-start; }
-.portada-video-cuerpo video { width: 140px; aspect-ratio: 9 / 16; object-fit: cover; border-radius: var(--radius-sm); background: #000; }
+.portada-video-marco { position: relative; width: 140px; flex-shrink: 0; border-radius: var(--radius-sm); overflow: hidden; }
+.portada-video-cuerpo video { width: 140px; aspect-ratio: 9 / 16; object-fit: cover; border-radius: var(--radius-sm); background: #000; display: block; }
+/* El cuadro del perfil (3:4) sobre el fotograma: lo de fuera, oscurecido. */
+.portada-cuadricula {
+  position: absolute; left: 0; right: 0;
+  border: 2px solid #fff; border-radius: 2px;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, .55);
+  pointer-events: none;
+}
 .portada-video-opciones { flex: 1 1 200px; display: flex; flex-direction: column; gap: var(--sp-2); align-items: flex-start; }
 .portada-video-opciones input[type="range"] { width: 100%; min-height: var(--tap-sm); accent-color: var(--accent); }
 .portada-video-opciones .hint { margin: 0; }
@@ -135,6 +143,18 @@
 .pestana-publicar[data-ancho] .cuando-elegir .segmented-btn { padding-left: var(--sp-2); padding-right: var(--sp-2); }
 .pestana-publicar[data-ancho] .cuando-fecha { flex: 1 1 auto; flex-wrap: nowrap; min-width: 0; }
 .pestana-publicar[data-ancho] .cuando-botones { justify-content: flex-end; }
+/* Al elegir «Programar» la barra crecía de ~200 a ~320 px en un portátil de 768 de alto: los atajos de
+   hora bajaban a otra fila, el campo de hora iba a tamaño grande, los avisos ocupaban una línea cada uno y
+   la casilla de Drive otra más. Lo de configurar quedaba en una rendija. A lo ancho: sin atajos (la hora se
+   escribe y la hora sugerida sigue al lado), campo de hora compacto, avisos pequeños y la casilla de Drive
+   en la misma fila que el botón. */
+.pestana-publicar[data-ancho] .cuando-fecha .campo-hora-atajos { display: none; }
+.pestana-publicar[data-ancho] .cuando-fecha .campo-hora-caja { min-height: var(--tap-sm); }
+.pestana-publicar[data-ancho] .cuando-fecha .campo-hora-input { font-size: var(--fs-md); }
+.pestana-publicar[data-ancho] .cuando-fecha .campo-hora-periodo button { min-height: var(--tap-sm); }
+.pestana-publicar[data-ancho] .cuando-elegir > .hint { font-size: var(--fs-3xs); line-height: 1.35; }
+.pestana-publicar[data-ancho] .cuando-elegir > .copia-drive:not(.segmented):not(.cuando-fecha):not(.cuando-botones) { order: 3; flex: 0 1 auto; flex-basis: auto; margin: 0; }
+.pestana-publicar[data-ancho] .cuando-elegir > .cuando-botones { flex: 1 1 auto; flex-basis: auto; }
 .cuando-inicio { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-right: auto; }
 .bfp-cuando { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-2xs); }
 .bfp-dia { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; text-transform: capitalize; }

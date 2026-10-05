@@ -16,6 +16,8 @@ import { etiquetaIA, NIVELES_IA } from "../lib/configIA";
 
 const NIVEL_DE_ESFUERZO = { low: "bajo", medium: "medio", high: "alto", max: "maximo" };
 import { tareaDesdeIA, fechaEnZona, PROPIEDADES_FECHA_TAREA } from "../lib/agenda";
+import { ponerEnDia } from "../lib/subir";
+import { mesDeFecha, mismoMes } from "../lib/meses";
 
 const MAX_ADJUNTOS = 6;
 // Vueltas del navegador con herramientas propias. Las del servidor
@@ -40,6 +42,7 @@ export default function ChatPanel({
   calId,
   clients = [],
   onUpdateCal,
+  onCrearEnOtroMes = null,
   onClose,
   onAddIdea,
   onSelectClient,
@@ -533,8 +536,17 @@ CÓMO DEBES RESPONDER:
     }
 
     if (toolName === "crear_publicacion") {
-      const day = (cal.days || []).find((d) => d.date === toolInput.fecha);
-      if (!day) return { ok: false, mensaje: `No existe el día ${toolInput.fecha} en este calendario.` };
+      // Calendario siempre activo: un día sin publicaciones no está en `days`
+      // y un mes sin ninguna es virtual. Ninguno de los dos es «no existe»:
+      // el día se crea aquí (`ponerEnDia`) y el mes, al guardar (App.jsx).
+      const destino = mesDeFecha(toolInput.fecha);
+      if (!destino || !/^\d{4}-\d{2}-\d{2}$/.test(String(toolInput.fecha))) {
+        return { ok: false, mensaje: `La fecha «${toolInput.fecha}» no es válida: escríbela como AAAA-MM-DD.` };
+      }
+      const otroMes = Number.isInteger(cal.month) && cal.year && !mismoMes(destino, { year: cal.year, month: cal.month });
+      if (otroMes && !onCrearEnOtroMes) {
+        return { ok: false, mensaje: `El ${toolInput.fecha} es de otro mes. Este chat escribe en ${String(cal.month + 1).padStart(2, "0")}/${cal.year}: pide a la persona que abra ese mes en el calendario.` };
+      }
       const hora = leerHora(toolInput.hora);
       if (hora === MAL) return { ok: false, mensaje: `No entendí la hora «${toolInput.hora}». Escríbela como «9am», «21:30» o «6 pm».` };
       const newPost = {
@@ -548,10 +560,16 @@ CÓMO DEBES RESPONDER:
         hashtagsFinales: "",
         publishTime: hora ?? "",
       };
-      const newDays = cal.days.map((d) =>
-        d.date !== toolInput.fecha ? d : { ...d, posts: [...(d.posts || []), newPost] },
-      );
-      const updated = { ...cal, days: newDays };
+      if (otroMes) {
+        // Otro mes: se escribe en SU cajón (creado si hacía falta), no en el que se mira.
+        try {
+          await onCrearEnOtroMes(toolInput.fecha, newPost);
+        } catch (e) {
+          return { ok: false, mensaje: `No pude crearla en ese mes: ${e?.message || "error"}.` };
+        }
+        return { ok: true, mensaje: `Publicación creada: ${newPost.format} el ${toolInput.fecha} (en el calendario de ese mes, no en el que está abierto).` };
+      }
+      const updated = ponerEnDia(cal, toolInput.fecha, newPost);
       calRef.current = updated;
       onUpdateCal(calId, updated);
       return { ok: true, mensaje: `Publicación creada: ${newPost.format} el ${toolInput.fecha}.` };
@@ -609,7 +627,7 @@ CÓMO DEBES RESPONDER:
     }
 
     return { ok: false, mensaje: `Herramienta desconocida: ${toolName}` };
-  }, [chatMode, clientId, calId, onUpdateCal, memories, resolveClient, onSelectClient]);
+  }, [chatMode, clientId, calId, onUpdateCal, onCrearEnOtroMes, memories, resolveClient, onSelectClient]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();

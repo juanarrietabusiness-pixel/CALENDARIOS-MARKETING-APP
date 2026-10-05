@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calendarioVirtual, esVirtual, mesMas, mesDeFecha, fusionarEnMes, diasVecinos } from "./meses.js";
+import { calendarioVirtual, esVirtual, mesMas, mesDeFecha, fusionarEnMes, diasVecinos, diasPorSemanaDelMes, nombreDelDia } from "./meses.js";
 import { slugDeMes, mesDeSlug } from "./rutas.js";
 
 describe("el mes en la dirección", () => {
@@ -61,5 +61,19 @@ describe("los días de los meses vecinos", () => {
     const v = diasVecinos(cals, { year: 2026, month: 9 });
     expect([...v.keys()]).toEqual(["2026-09-29"]);
     expect(v.get("2026-09-29").cal.id).toBe("sep");
+  });
+});
+
+describe("los días de la semana del mes, para el asistente", () => {
+  it("octubre de 2026: el domingo 4 sí existe (el asistente decía que no)", () => {
+    const texto = diasPorSemanaDelMes({ year: 2026, month: 9 });
+    expect(texto.split("\n")[0]).toBe("lunes: 5, 12, 19, 26");
+    expect(texto).toMatch(/^domingo: 4, 11, 18, 25$/m);
+    expect(texto).toMatch(/^jueves: 1, 8, 15, 22, 29$/m);
+    expect(nombreDelDia("2026-10-04")).toBe("domingo");
+  });
+
+  it("febrero bisiesto tiene 29 días", () => {
+    expect(diasPorSemanaDelMes({ year: 2028, month: 1 })).toMatch(/29/);
   });
 });

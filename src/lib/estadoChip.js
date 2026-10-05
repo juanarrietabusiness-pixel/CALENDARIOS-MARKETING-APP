@@ -17,10 +17,10 @@ import { porProducir } from "./aprobacion.js";
 /** Cada estado, con su icono (de Icon.jsx) y su nombre. En orden de la leyenda. */
 export const ESTADOS_CHIP = Object.freeze({
   fallo: { etiqueta: "No se publicó", icono: "alert" },
-  publicada: { etiqueta: "Publicada", icono: "rocket" },
+  publicada: { etiqueta: "Publicada", icono: "check" },
   programada: { etiqueta: "Programada", icono: "clock" },
   cambios: { etiqueta: "El cliente pidió cambios", icono: "pencil" },
-  aprobada: { etiqueta: "Aprobada", icono: "check" },
+  aprobada: { etiqueta: "Aprobada", icono: "thumbsUp" },
   "idea-aprobada": { etiqueta: "Idea aprobada, falta la pieza", icono: "bulb" },
   pendiente: { etiqueta: "Pendiente de aprobar", icono: null },
 });
