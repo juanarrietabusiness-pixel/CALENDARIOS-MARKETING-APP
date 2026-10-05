@@ -6,7 +6,8 @@ import { INSTRUCCION_PIEZAS, INSTRUCCION_ADJUNTOS } from "./lib/mensajeChat";
 import { base64DeImagen, fotogramasDeVideo } from "./lib/medios";
 import { mediosDe } from "./lib/publicacion";
 import { analizarVideo } from "./lib/db";
-import { PROPIEDADES_FECHA_TAREA } from "./lib/agenda";
+import { PROPIEDADES_FECHA_TAREA, fechaEnZona } from "./lib/agenda";
+import { diasPorSemanaDelMes, nombreDelDia } from "./lib/meses";
 import { partirSSE } from "../worker/lib/flujoAnthropic.js";
 import { sinCapaMaquetacion, prepararContenidoIA, TITULO_FICHA } from "./lib/contextoADN";
 import { textoEstableDelCerebro, consultaDeTanda, consultaDePublicacion, usaElCerebro, contextoDelChat } from "./lib/cerebroCliente";
@@ -320,6 +321,25 @@ Escribe directamente el contenido, sin preambulos.`;
   };
 }
 
+/**
+ * Qué se le pide al botón de la idea. Vacía, una idea nueva como siempre.
+ * Con algo escrito, la COMPLETA o la mejora sin cambiarla por otra: antes
+ * la reemplazaba y se perdía lo que el equipo había pensado. Pura.
+ */
+export function instruccionIdea(post = {}) {
+  const escrita = String(post.idea ?? "").trim();
+  if (!escrita) {
+    return `Genera UNA idea creativa y concreta para una publicacion de ${post.format} para este cliente.
+La idea debe ser especifica, accionable y alineada con la marca, la categoria y el concepto semanal.
+Responde SOLO con la idea, sin preambulos ni explicaciones. Maximo 2 oraciones.`;
+  }
+  return `IDEA QUE YA ESCRIBIÓ EL EQUIPO:
+«${escrita.slice(0, 2000)}»
+
+Mejora y completa ESTA idea para una publicación de ${post.format}. Respeta lo que dice: el tema, el producto, la oferta y el enfoque son los suyos; no la cambies por otra idea. Si está a medias, termínala; si ya está completa, hazla más clara y concreta, alineada con la marca.
+Responde SOLO con la idea mejorada, sin preámbulos ni explicaciones. Máximo 3 oraciones.`;
+}
+
 export async function generateFieldForPost(client, post, day, calendar, field) {
   const adn = await loadADN(client);
   const adnExtra = adn.content;
@@ -336,9 +356,7 @@ FORMATO: ${post.format}
 FECHA: ${day.date} (${day.dayName || ""})
 
 
-Genera UNA idea creativa y concreta para una publicacion de ${post.format} para este cliente.
-La idea debe ser especifica, accionable y alineada con la marca, la categoria y el concepto semanal.
-Responde SOLO con la idea, sin preambulos ni explicaciones. Maximo 2 oraciones.`;
+${instruccionIdea(post)}`;
   } else if (field === "guion") {
     promptText = `${ctx}
 CAMPANA: ${calendar?.campaign || "N/A"}
@@ -825,8 +843,13 @@ export function buildChatSystemPrompt(client, calendar, adnExtra = "", memories 
         postLines.push("  · " + parts.join(" | "));
       }
     }
-    calendarInfo = `\nCALENDARIO SELECCIONADO: ${calendar.name || "Sin nombre"}
-MES: ${(calendar.month ?? 0) + 1}/${calendar.year}
+    const hoy = fechaEnZona();
+    calendarInfo = `\nHOY: ${hoy} (${nombreDelDia(hoy)}), hora de Panamá.
+CALENDARIO SELECCIONADO: ${calendar.name || "Sin nombre"}
+MES: ${(calendar.month ?? 0) + 1}/${calendar.year}${Number.isInteger(calendar.month) && calendar.year ? `
+DÍAS DE ESTE MES POR DÍA DE LA SEMANA (úsalo tal cual; no calcules el día de la semana de una fecha):
+${diasPorSemanaDelMes({ year: calendar.year, month: calendar.month })}
+Puedes crear publicaciones en CUALQUIER día de este mes, tenga ya publicaciones o no.` : ""}
 CAMPAÑA: ${calendar.campaign || "N/A"}
 CONCEPTOS SEMANALES: ${(calendar.weekConcepts || []).join(", ") || "N/A"}${
   calendar.offers ? `\nOFERTAS: ${calendar.offers}` : ""
@@ -960,7 +983,7 @@ export function getChatTools(hasCalendar) {
     tools.push(
       {
         name: "crear_publicacion",
-        description: "Crea una nueva publicación en un día del calendario. El usuario debe indicar la fecha y el formato.",
+        description: "Crea una nueva publicación en un día del calendario (AAAA-MM-DD). El día NO tiene que tener publicaciones ya: cualquier día del mes vale. Si la fecha es de otro mes, se crea en el calendario de ese mes. Para varias, llámala una vez por publicación.",
         input_schema: {
           type: "object",
           properties: {

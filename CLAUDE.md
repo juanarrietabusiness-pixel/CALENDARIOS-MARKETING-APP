@@ -1873,7 +1873,9 @@ son del servidor.
   icono de estado (`estadoDelChip`: lo que falló manda, luego publicada,
   programada, cambios, aprobada, idea aprobada). La leyenda sale de
   `ESTADOS_CHIP`. En el teléfono cada semana mide lo mismo y el mes llena
-  la altura de la pantalla.
+  la altura de la pantalla. **Aprobada va en ROSA con la mano (`thumbsUp`) y
+  programada/publicada en VERDE (reloj / ✓)** —también en `STATUSES`—: con el
+  verde en «aprobada», la agencia la confundía con lo ya publicado.
 
 - **Meta (Muse Spark) entra por la MISMA puerta que Anthropic.** Su API habla
   el formato de mensajes de Anthropic en `api.meta.ai/v1/messages`, así que
@@ -1922,6 +1924,39 @@ son del servidor.
   JSON o texto) y queda en `estudio_trabajos.error`: es lo primero que hay que
   leer. Las proporciones del Estudio NO se recortan a las tres de Responses:
   la agencia ya genera con Muse en otros tamaños.
+- **Con el calendario siempre activo, «el día no existe» casi nunca es verdad.**
+  `days` sólo trae los días con algo dentro y un mes sin nada es virtual. El
+  asistente contestaba «Falló: No existe el día 2026-10-04 en este calendario»
+  y el banco de ideas sólo ofrecía llevar una idea a días ya ocupados. Ahora
+  `crear_publicacion` (ChatPanel.jsx) mete con `ponerEnDia()`, una fecha de
+  OTRO mes va a su cajón (`crearEnOtroMes` en App.jsx) y el «Mover al
+  calendario» del banco lista todos los días del mes. El prompt del asistente
+  lleva además HOY y los días del mes por día de la semana
+  (`diasPorSemanaDelMes`): sin eso, el modelo calculaba el día de la semana y
+  decía que el domingo 4 de octubre de 2026 no existía.
+- **El micrófono del asistente necesita `microphone=(self)` en
+  `Permissions-Policy`** (`public/_headers`). Con `microphone=()` Chrome ni
+  siquiera pregunta y el dictado falla en la web; en el iPhone funcionaba
+  porque Safari no aplica esa cabecera. Cámara y geolocalización siguen
+  cerradas, y `tests/despliegue/plantillas.test.js` lo vigila.
+- **La espera de TikTok tiene plazo** (`PLAZO_TIKTOK_MS`, 30 min en
+  `pasoTikTok`): sin él, un estado que TikTok no terminaba dejaba la fila en
+  «Publicando…» para siempre. Al vencer queda en error con el último estado y
+  NO se reintenta (el video ya subió: otra subida serían dos en la bandeja).
+  En modo Borrador, «publicada» quiere decir «en la bandeja de TikTok del
+  cliente», y el aviso viaja ahora con el evento para que el mensaje lo diga.
+- **El cuadro del perfil de un reel NO se elige por la API**: Instagram saca
+  siempre la ventana 3:4 del CENTRO de la portada. «Encuadre en el perfil»
+  (PortadaVideo) mueve la imagen dentro de la portada para que lo elegido
+  quede en el centro y rellena el hueco desenfocado (`ventanaCuadricula`,
+  `encuadrarParaCuadricula` en lib/medios.js); el hueco sólo se ve en la
+  pestaña de reels.
+- **Lo que llega de Drive se mide** (`medirImagen`): entraba sin ancho ni alto
+  y entonces no salía el aviso de «no cabe en el feed» ni la opción de 4:5 —la
+  misma imagen avisaba subida desde el PC y no desde Drive—. Las de antes se
+  miden al abrir el panel. Y tocar una imagen o un video de la carpeta abre
+  `VisorDrive` (anterior/siguiente con flechas, teclado o deslizando); antes
+  se abría en otra pestaña y el video no se reproducía.
 - **Anuncios de Meta: nada nace activo, y activar es del SERVIDOR.** Los
   cuerpos de campaña, conjunto y anuncio salen de `src/lib/anuncios.js` y
   fijan `status: PAUSED` sin aceptar otro valor (`ESTADO_AL_CREAR`); activar

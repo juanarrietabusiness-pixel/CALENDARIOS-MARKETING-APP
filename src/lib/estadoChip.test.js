@@ -31,6 +31,12 @@ describe("el estado del chip del mes", () => {
     ];
     expect(Object.keys(ESTADOS_CHIP).sort()).toEqual([...new Set(posibles)].sort());
   });
+
+  it("los iconos que pidió la agencia: aprobada con la mano, programada con el reloj, publicada con ✓", () => {
+    expect(ESTADOS_CHIP.aprobada.icono).toBe("thumbsUp");
+    expect(ESTADOS_CHIP.programada.icono).toBe("clock");
+    expect(ESTADOS_CHIP.publicada.icono).toBe("check");
+  });
 });
 
 describe("la miniatura del chip", () => {

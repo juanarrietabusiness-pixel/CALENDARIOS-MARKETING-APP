@@ -381,7 +381,9 @@ export async function procesarPublicacion(env, { id, owner_id: ownerId }) {
   };
   const avisar = () => difundir(env, ownerId, {
     tipo: "publicacion", calId: fila.calendar_id, postId: fila.post_id, red: fila.red, variante: fila.variante ?? "post",
-    estado: fila.estado, por: FIRMA_SISTEMA,
+    // El aviso viaja con el evento: «Publicada en TikTok» mentía cuando lo
+    // que pasó es que quedó en la bandeja del cliente, por terminar.
+    estado: fila.estado, ...(fila.estado === "publicada" && carga.aviso ? { aviso: carga.aviso } : {}), por: FIRMA_SISTEMA,
   });
 
   try {
@@ -733,6 +735,7 @@ async function pasoTikTok(env, { cuenta, token, carga, guardar, fila: actual }) 
     await subirTrozos(env, clave, uploadUrl, cabeza.size);
     carga.modo = modo;
     carga.privacidad = privacidad;
+    carga.tiktokDesde = ahora();
     await guardar({ contenedor_id: publishId });
     return { esperar: 15_000 };
   }
@@ -757,8 +760,22 @@ async function pasoTikTok(env, { cuenta, token, carga, guardar, fila: actual }) 
     await guardar({ contenedor_id: null });
     throw new ErrorTikTok({ code: estado.fail_reason ?? "failed", message: `TikTok no pudo procesar el video (${estado.fail_reason ?? "sin motivo"}).` }, 400);
   }
+  // Una espera sin plazo dejaba la fila en «Publicando…» para siempre si
+  // TikTok no llegaba nunca a un estado conocido. Pasado el plazo termina
+  // con el motivo a la vista, y NO se reintenta: el video ya se subió, y
+  // abrir otra subida podría dejar dos en la bandeja del cliente.
+  const desde = Date.parse(carga.tiktokDesde ?? fila.updated_at ?? "");
+  if (Number.isFinite(desde) && Date.now() - desde > PLAZO_TIKTOK_MS) {
+    throw new ErrorPublicar(
+      `TikTok lleva más de ${PLAZO_TIKTOK_MS / 60_000} minutos sin terminar de procesar el video (último estado: ${estado.status ?? "desconocido"}). ` +
+      "Mira la bandeja o los borradores de la cuenta en la app de TikTok antes de volver a intentarlo, para no subirlo dos veces.",
+    );
+  }
   return { esperar: 20_000 };
 }
+
+/** Cuánto se espera a que TikTok termine de procesar un video antes de darlo por fallido. */
+export const PLAZO_TIKTOK_MS = 30 * 60_000;
 
 // ------------------------------------------------------------
 // YouTube

@@ -170,6 +170,20 @@ describe("publicar en TikTok", () => {
     await expect(programar(env, acceso(), { calendarId: "cal1", postId: "p1" })).rejects.toThrow(/subido a la publicación/);
   });
 
+  it("si TikTok nunca termina de procesar, a los 30 minutos queda en error con el motivo y sin abrir otra subida", async () => {
+    await sembrar();
+    respuestas["POST /v2/post/publish/status/fetch/"] = { data: { status: "PROCESSING_UPLOAD" }, error: { code: "ok" } };
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
+    await procesarCola(env);
+    vi.setSystemTime(new Date("2026-10-01T12:10:00.000Z"));
+    await procesarCola(env);
+    expect(filas()[0].estado).toBe("procesando");
+    vi.setSystemTime(new Date("2026-10-01T12:31:00.000Z"));
+    await procesarCola(env);
+    expect(filas()[0]).toMatchObject({ estado: "error", error: expect.stringMatching(/más de 30 minutos.*PROCESSING_UPLOAD/s) });
+    expect(rutas().filter((r) => r.endsWith("/init/"))).toHaveLength(1);
+  });
+
   it("si TikTok lo rechaza, queda en error con el motivo y sin reintentar", async () => {
     await sembrar();
     respuestas["POST /v2/post/publish/inbox/video/init/"] = { __estado: 403, cuerpo: { error: { code: "spam_risk_too_many_posts", message: "x" } } };

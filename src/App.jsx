@@ -981,6 +981,19 @@ function Workspace({ session, ruta }) {
     }
   };
 
+  /**
+   * El asistente crea una publicación en OTRO mes que el que se mira: se
+   * obtiene (o se crea) ese mes y se mete en su día. Devuelve el mes.
+   */
+  const crearEnOtroMes = async (fecha, post) => {
+    const mes = mesDeFecha(fecha);
+    if (!mes || !selectedClientId) throw new Error("Fecha no válida.");
+    const real = await asegurarMes(selectedClientId, mes);
+    const base = pendingSaves.current.get(real.id)?.cal ?? real;
+    updateCalendar(real.id, ponerEnDia(base, fecha, post));
+    return mes;
+  };
+
   /** Guarda YA lo pendiente de un calendario (sin esperar al agrupado). */
   const guardarYa = async (calId) => {
     const entry = pendingSaves.current.get(calId);
@@ -1632,6 +1645,7 @@ function Workspace({ session, ruta }) {
             acoplado={chatAcoplado}
             // Un mes sin cajón se escribe igual que desde el calendario.
             onUpdateCal={esVirtual(calendar) ? (_id, cambiado) => escribirEnMesVacio(calendar, cambiado) : updateCalendar}
+            onCrearEnOtroMes={crearEnOtroMes}
             onClose={() => setShowChat(false)}
             onAddIdea={handleAddIdea}
             onSelectClient={(id) => {

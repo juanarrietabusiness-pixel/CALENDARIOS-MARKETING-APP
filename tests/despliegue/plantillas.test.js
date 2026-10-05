@@ -179,11 +179,14 @@ describe("cabeceras de seguridad — en LOS DOS sitios", () => {
     ).toBeGreaterThanOrEqual(31_536_000);
   });
 
-  it("cierra cámara, micrófono y geolocalización", () => {
+  it("cierra cámara y geolocalización, y el micrófono sólo lo abre al propio sitio", () => {
     const p = cabecerasDe("/index.html")["Permissions-Policy"] ?? "";
-    for (const permiso of ["camera", "microphone", "geolocation"]) {
+    for (const permiso of ["camera", "geolocation"]) {
       expect(p, `Permissions-Policy no cierra ${permiso}`).toMatch(new RegExp(`${permiso}=\\(\\)`));
     }
+    // El dictado del asistente necesita el micrófono: con «microphone=()» Chrome ni pregunta.
+    // Sólo `self`: un iframe o un tercero no lo heredan.
+    expect(p, "Permissions-Policy debe permitir el micrófono sólo a self").toMatch(/microphone=\(self\)/);
   });
 });
 

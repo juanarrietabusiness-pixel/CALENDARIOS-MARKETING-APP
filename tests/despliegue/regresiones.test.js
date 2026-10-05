@@ -215,6 +215,26 @@ describe("el banco de ideas", () => {
   });
 });
 
+describe("el asistente y el calendario siempre activo", () => {
+  it("crear una publicación en un día sin publicaciones no falla: el día se crea", () => {
+    // «Falló: No existe el día 2026-10-04 en este calendario.» Con el
+    // calendario siempre activo, un día vacío no está en `days` y un mes sin
+    // nada es virtual; el asistente se negaba a escribir en ellos.
+    const chat = leer("src/components/ChatPanel.jsx");
+    expect(
+      chat,
+      fallo({
+        que: "el asistente vuelve a exigir que el día exista en `days`",
+        donde: "src/components/ChatPanel.jsx → crear_publicacion",
+        porque: "Con el calendario siempre activo, los días sin publicaciones no están en `days`: el asistente no podría crear nada en ellos.",
+        arreglo: "Mete la publicación con `ponerEnDia()` (lib/subir.js), que crea el día si falta.",
+      }),
+    ).not.toMatch(/No existe el día/);
+    expect(chat).toMatch(/ponerEnDia\(cal, toolInput\.fecha, newPost\)/);
+    expect(leer("src/App.jsx")).toMatch(/onCrearEnOtroMes=\{crearEnOtroMes\}/);
+  });
+});
+
 describe("el aislamiento de las aprobaciones en vivo", () => {
   it("lo que llega por Realtime no se vuelve a escribir en la base", () => {
     // Persistirlo dispararía una escritura por respuesta, y esa escritura

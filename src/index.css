@@ -39,6 +39,9 @@
   --danger: #EF5350;
   --success: #66BB6A;
   --purple: #CE93D8;
+  /* El rosa de «aprobada» en el chip del mes: el de la marca (#E91E63), un
+     punto más claro para que el icono oscuro se lea encima. */
+  --pink: #F06292;
 
   /* Superficies translúcidas (evitan concatenar var() + "44",
      que producía CSS inválido y se descartaba en silencio). */
@@ -1105,11 +1108,12 @@ input[type="radio"] {
   color: var(--bg);
 }
 .cal-post-estado[data-estado="fallo"] { background: var(--danger); }
-.cal-post-estado[data-estado="publicada"] { background: var(--purple); }
-.cal-post-estado[data-estado="programada"] { background: var(--accent); }
+/* Programada y publicada comparten el verde: las separa el icono (reloj / ✓). */
+.cal-post-estado[data-estado="publicada"] { background: var(--success); }
+.cal-post-estado[data-estado="programada"] { background: var(--success); }
 .cal-post-estado[data-estado="cambios"] { background: var(--accent-alt); }
-.cal-post-estado[data-estado="aprobada"] { background: var(--success); }
-.cal-post-estado[data-estado="idea-aprobada"] { background: transparent; color: var(--success); box-shadow: inset 0 0 0 1.5px var(--success); }
+.cal-post-estado[data-estado="aprobada"] { background: var(--pink); }
+.cal-post-estado[data-estado="idea-aprobada"] { background: transparent; color: var(--pink); box-shadow: inset 0 0 0 1.5px var(--pink); }
 .cal-post[data-estado="publicada"] { opacity: .8; }
 .cal-post[data-estado="fallo"] { box-shadow: inset 0 0 0 1px var(--danger); }
 .badge-cola[data-estado="error"] { color: var(--danger); }
@@ -2356,6 +2360,39 @@ input[type="radio"] {
    ============================================================ */
 
 .drive { display: flex; flex-direction: column; gap: var(--sp-3); }
+/* El visor grande de Drive (VisorDrive.jsx): el archivo a toda la pantalla, con anterior y siguiente. */
+.visor-drive {
+  width: min(1100px, 100%); height: min(92dvh, 100%);
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  box-shadow: var(--elev-2); padding: var(--sp-3); min-height: 0;
+}
+.visor-drive-cabecera { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.visor-drive-titulo { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: var(--sp-2); }
+.visor-drive-titulo h3 { margin: 0; font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.visor-drive-cuenta { flex-shrink: 0; font-size: var(--fs-2xs); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.visor-drive-escenario {
+  position: relative; flex: 1; min-height: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg); border-radius: var(--radius); overflow: hidden;
+  touch-action: pan-y;
+}
+.visor-drive-medio { max-width: 100%; max-height: 100%; object-fit: contain; display: block; user-select: none; }
+.visor-drive-flecha {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  width: var(--tap); height: var(--tap); border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text);
+  cursor: pointer; box-shadow: var(--elev-1);
+}
+.visor-drive-flecha[data-lado="izq"] { left: var(--sp-2); }
+.visor-drive-flecha[data-lado="der"] { right: var(--sp-2); }
+.visor-drive-flecha:disabled { opacity: .3; cursor: default; }
+.visor-drive-flecha:not(:disabled):hover { background: var(--surface-3); }
+.visor-drive-ayuda { margin: 0; text-align: center; font-size: var(--fs-3xs); color: var(--text-faint); }
+@media (max-width: 599px) {
+  .visor-drive { height: 100dvh; width: 100vw; border-radius: 0; border: 0; }
+}
 .drive-barra { display: flex; flex-direction: column; gap: var(--sp-2); }
 .drive-migas { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; font-size: var(--fs-2xs); min-width: 0; }
 .drive-miga {

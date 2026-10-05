@@ -22,6 +22,7 @@ import Icon from "../Icon";
 import BancoSelector from "../BancoSelector";
 import { subirImagenPublicacion, getContentBankUrl, medioDeDrive, loadComentarios, comentarComoAgencia } from "../../lib/db";
 import { mediosDe, textoPara, contarHashtags, LIMITES } from "../../lib/publicacion";
+import { medirImagen, ventanaCuadricula, encuadrarParaCuadricula } from "../../lib/medios";
 
 const esVideoArchivo = (f) => f?.type?.startsWith("video/");
 
@@ -42,6 +43,35 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError, e
   const maximo = LIMITES.instagram.carruselMax;
 
   const poner = (lista) => onChange(lista.slice(0, maximo));
+
+  // Las imágenes que ya estaban en la publicación sin medir (traídas de
+  // Drive antes de que se midieran): se miden una vez al abrir, para que
+  // salga el aviso de «no cabe» y la opción de pasarla a 4:5.
+  const medidas = useRef(new Set());
+  const montado = useRef(true);
+  // El último valor de la publicación y de onChange: la medida llega tarde y
+  // tiene que aplicarse sobre lo que haya ENTONCES, no sobre lo de antes.
+  const ultimo = useRef({ post, onChange });
+  ultimo.current = { post, onChange };
+  useEffect(() => {
+    montado.current = true;
+    return () => { montado.current = false; };
+  }, []);
+  useEffect(() => {
+    const sinMedir = medios.filter((m) => m.tipo !== "video" && !(m.ancho && m.alto) && !medidas.current.has(m.src));
+    if (!sinMedir.length) return;
+    for (const m of sinMedir) medidas.current.add(m.src);
+    (async () => {
+      const halladas = new Map();
+      for (const m of sinMedir) {
+        const md = await medirImagen(m.src);
+        if (md) halladas.set(m.src, md);
+      }
+      if (!montado.current || !halladas.size) return;
+      const { post: ahora, onChange: cambiar } = ultimo.current;
+      cambiar(mediosDe(ahora).map((m) => (halladas.has(m.src) && !(m.ancho && m.alto) ? { ...m, ...halladas.get(m.src) } : m)));
+    })();
+  });
 
   const subir = async (archivos) => {
     const lista = [...archivos].slice(0, maximo - medios.length);
@@ -74,12 +104,20 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError, e
     let nuevos = [...medios];
     for (const it of items) {
       try {
+        let medio;
         if (it.fuente === "drive") {
           setSubiendo(`Trayendo «${it.nombre}» de Drive…`);
-          nuevos = [...nuevos, await medioDeDrive(clientId, it.fileId)];
+          medio = await medioDeDrive(clientId, it.fileId);
         } else {
-          nuevos = [...nuevos, { src: getContentBankUrl(it.clave), tipo: it.tipo, nombre: it.nombre }];
+          medio = { src: getContentBankUrl(it.clave), tipo: it.tipo, nombre: it.nombre };
         }
+        // Medida igual que lo subido desde el PC: sin ancho y alto no sale el
+        // aviso de «no cabe en el feed» ni la opción de regenerarla a 4:5.
+        if (medio.tipo !== "video" && !(medio.ancho && medio.alto)) {
+          const medidas = await medirImagen(medio.src);
+          if (medidas) medio = { ...medio, ...medidas };
+        }
+        nuevos = [...nuevos, medio];
         poner(nuevos);
       } catch (e) {
         onError?.(`No se pudo traer «${it.nombre}»: ${e.message}`);
@@ -275,13 +313,18 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError, e
 // barra —se guarda como imagen Y como milisegundo, para que valga en las
 // dos redes y en la página del cliente— o se sube una imagen aparte.
 
-/** El fotograma actual del video, en JPEG de 1080 px de ancho como mucho. */
-async function fotogramaDe(video) {
+/**
+ * El fotograma actual del video, en JPEG de 1080 px de ancho como mucho. Con
+ * `encuadre`, lo elegido para el perfil queda en el centro (ver
+ * `encuadrarParaCuadricula`).
+ */
+async function fotogramaDe(video, encuadre = 0) {
   const escala = Math.min(1, 1080 / (video.videoWidth || 1080));
-  const lienzo = document.createElement("canvas");
+  let lienzo = document.createElement("canvas");
   lienzo.width = Math.round((video.videoWidth || 1080) * escala);
   lienzo.height = Math.round((video.videoHeight || 1920) * escala);
   lienzo.getContext("2d").drawImage(video, 0, 0, lienzo.width, lienzo.height);
+  if (encuadre) lienzo = encuadrarParaCuadricula(lienzo, encuadre);
   const blob = await new Promise((ok) => lienzo.toBlob(ok, "image/jpeg", 0.9));
   if (!blob) throw new Error("No se pudo sacar el fotograma.");
   return new File([blob], "portada.jpg", { type: "image/jpeg" });
@@ -294,6 +337,12 @@ export function PortadaVideo({ id, video, post, clientId, onPortada, onError, on
   const [duracion, setDuracion] = useState(0);
   const [segundo, setSegundo] = useState(Number.isFinite(post.portadaMs) ? post.portadaMs / 1000 : 0);
   const [guardando, setGuardando] = useState("");
+  // Qué parte se ve en el cuadro del perfil (-1 arriba, 0 centro, 1 abajo). Sólo
+  // tiene sentido en un video vertical: en uno cuadrado la ventana 3:4 no se mueve.
+  const [encuadre, setEncuadre] = useState(Number.isFinite(post.portadaEncuadre) ? post.portadaEncuadre : 0);
+  const [medidas, setMedidas] = useState(null);
+  const ventana = medidas ? ventanaCuadricula(medidas.ancho, medidas.alto, encuadre) : null;
+  const sePuedeEncuadrar = Boolean(medidas && medidas.alto > Math.round((medidas.ancho * 4) / 3));
 
   const ir = (t) => {
     setSegundo(t);
@@ -303,8 +352,8 @@ export function PortadaVideo({ id, video, post, clientId, onPortada, onError, on
   const usarFotograma = async () => {
     setGuardando("Guardando la portada…");
     try {
-      const src = await subirImagenPublicacion(clientId, await fotogramaDe(ref.current));
-      onPortada({ portada: src, portadaMs: Math.round(segundo * 1000) });
+      const src = await subirImagenPublicacion(clientId, await fotogramaDe(ref.current, sePuedeEncuadrar ? encuadre : 0));
+      onPortada({ portada: src, portadaMs: Math.round(segundo * 1000), portadaEncuadre: sePuedeEncuadrar ? encuadre : 0 });
       onCerrar();
     } catch (e) {
       onError?.(`No se pudo guardar la portada: ${e.message}`);
@@ -315,7 +364,7 @@ export function PortadaVideo({ id, video, post, clientId, onPortada, onError, on
   const subirImagen = async (f) => {
     setGuardando("Subiendo la portada…");
     try {
-      onPortada({ portada: await subirImagenPublicacion(clientId, f), portadaMs: null });
+      onPortada({ portada: await subirImagenPublicacion(clientId, f), portadaMs: null, portadaEncuadre: 0 });
       onCerrar();
     } catch (e) {
       onError?.(`No se pudo subir la portada: ${e.message}`);
@@ -330,14 +379,25 @@ export function PortadaVideo({ id, video, post, clientId, onPortada, onError, on
         <button type="button" className="btn-icon" onClick={onCerrar} aria-label="Cerrar la portada"><Icon name="close" size={16} /></button>
       </div>
       <div className="portada-video-cuerpo">
-        <video
-          ref={ref}
-          src={video.src}
-          muted
-          playsInline
-          preload="auto"
-          onLoadedMetadata={(e) => { setDuracion(e.currentTarget.duration || 0); e.currentTarget.currentTime = segundo || 0.1; }}
-        />
+        <div className="portada-video-marco">
+          <video
+            ref={ref}
+            src={video.src}
+            muted
+            playsInline
+            preload="auto"
+            onLoadedMetadata={(e) => {
+              const v = e.currentTarget;
+              setDuracion(v.duration || 0);
+              if (v.videoWidth && v.videoHeight) setMedidas({ ancho: v.videoWidth, alto: v.videoHeight });
+              v.currentTime = segundo || 0.1;
+            }}
+          />
+          {sePuedeEncuadrar && ventana && (
+            // Lo que se verá en el cuadro del perfil: la ventana 3:4 sobre el fotograma.
+            <span className="portada-cuadricula" aria-hidden="true" style={{ top: `${ventana.arriba * 100}%`, height: `${ventana.alto * 100}%` }} />
+          )}
+        </div>
         <div className="portada-video-opciones">
           <label className="label" htmlFor={`${ids}-s`}>Elige el fotograma · {segundo.toFixed(1)} s</label>
           <input
@@ -350,6 +410,28 @@ export function PortadaVideo({ id, video, post, clientId, onPortada, onError, on
             onChange={(e) => ir(Number(e.target.value))}
             disabled={!duracion || !!guardando}
           />
+          {sePuedeEncuadrar && (
+            <>
+              <label className="label" htmlFor={`${ids}-e`}>
+                Encuadre en el perfil · {encuadre === 0 ? "centro" : encuadre < 0 ? "más arriba" : "más abajo"}
+              </label>
+              <input
+                id={`${ids}-e`}
+                type="range"
+                min={-1}
+                max={1}
+                step={0.05}
+                value={encuadre}
+                onChange={(e) => setEncuadre(Number(e.target.value))}
+                disabled={!!guardando}
+                aria-describedby={`${ids}-e-ayuda`}
+              />
+              <p id={`${ids}-e-ayuda`} className="hint">
+                El recuadro es lo que se verá en el cuadro del perfil. Instagram no deja elegirlo por la API: la app mueve la
+                imagen dentro de la portada para que eso quede en el centro, y el hueco se rellena desenfocado (se ve sólo en la pestaña de reels).
+              </p>
+            </>
+          )}
           <button type="button" className="btn btn-primary btn-sm" onClick={usarFotograma} disabled={!duracion || !!guardando}>
             <Icon name="check" size={14} /> {guardando || "Usar este fotograma"}
           </button>
