@@ -17,6 +17,9 @@
 
 export const ZONA_AGENDA = "America/Panama";
 
+/** Lo que se lanza en `window` cuando esta pestaña cambia una tarea (useTareas). */
+export const EVENTO_CAMBIO = "tareas:cambio";
+
 const DIA_MS = 86_400_000;
 
 /** «Hoy» en la zona de la agencia, como AAAA-MM-DD. */
@@ -137,16 +140,28 @@ const hecha = (t) => t?.status === "completed" || t?.status === "done";
 /**
  * El día en que le toca a una tarea pendiente, o null si no tiene.
  *
- * Gana la fecha MÁS TEMPRANA de las que tenga: si vence mañana y la
- * marcaste para hoy, es de hoy; si vencía ayer, está atrasada aunque la
- * hayas marcado para hoy —que no deje de verse el retraso—.
+ * `today_date` es el día en que alguien PLANEÓ hacerla («Hoy», «Mover
+ * a…»), y el plan manda mientras no haya pasado: una tarea que vencía
+ * ayer y se pasó a hoy es de HOY. Antes ganaba la fecha más temprana, así
+ * que marcar «Hoy» una atrasada no la sacaba de Atrasadas y no había forma
+ * de reagendarla. Dentro del plan sigue ganando lo más temprano que no
+ * haya pasado: si vence mañana y la planeaste para el viernes, es de mañana.
+ *
+ * Sin plan vigente gana la más temprana de todas: un plan de ayer que no
+ * se hizo deja la tarea atrasada, que no deje de verse el retraso.
+ *
+ * El plan de una recurrente vale sólo dentro de su periodo: el «Hoy» que
+ * se le puso la semana pasada no la deja atrasada esta semana.
  */
 export function fechaObjetivo(tarea, hoy) {
-  const candidatas = [];
-  if (esFecha(tarea?.today_date)) candidatas.push(tarea.today_date);
-  if (esFecha(tarea?.due_date)) candidatas.push(tarea.due_date);
   const p = periodoVigente(tarea, hoy);
-  if (p) candidatas.push(p.vence);
+  let plan = esFecha(tarea?.today_date) ? tarea.today_date : null;
+  if (plan && p && plan < p.inicio) plan = null;
+  const otras = [];
+  if (esFecha(tarea?.due_date)) otras.push(tarea.due_date);
+  if (p) otras.push(p.vence);
+  if (plan && plan >= hoy) return [plan, ...otras.filter((f) => f >= hoy)].sort()[0];
+  const candidatas = plan ? [plan, ...otras] : otras;
   if (!candidatas.length) return null;
   return candidatas.sort()[0];
 }
@@ -187,6 +202,43 @@ export function clasificar(tareas, hoy, { foco = null, zona = ZONA_AGENDA } = {}
   bloques.hoy.sort(porPosicion);
   bloques.sinFecha.sort(porPosicion);
   return bloques;
+}
+
+/**
+ * Las notas de una tarea partidas en tareas: cada línea que empieza por
+ * «-», «•», «*», «–» o «1.» es una tarea; lo demás se queda en las notas.
+ *
+ * Es la forma en que la agencia apunta hoy en Google Tasks —una tarea
+ * «TAREAS JUAN» con cinco cosas debajo—: cómoda para anotar, pero no se
+ * puede marcar una sola ni ver cuál se atrasó. Pura.
+ */
+export function partirNotas(notas) {
+  const tareas = [];
+  const resto = [];
+  for (const linea of String(notas ?? "").split(/\r?\n/)) {
+    const m = linea.match(/^\s*(?:[-•*–—]|\d{1,2}[.)])\s+(.+)$/);
+    const titulo = m?.[1]?.trim();
+    if (titulo) tareas.push(titulo.slice(0, 300));
+    else resto.push(linea);
+  }
+  return { tareas, resto: resto.join("\n").trim() };
+}
+
+const normal = (t) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
+/**
+ * «Dcasa: revisar los copys» → la empresa Dcasa y el título sin prefijo.
+ * Sólo si lo de antes de los dos puntos es el nombre de una empresa (sin
+ * tildes ni mayúsculas); si no, el texto entero es el título. Pura.
+ */
+export function empresaDelPrefijo(texto, clientes = []) {
+  const t = String(texto ?? "").trim();
+  const m = t.match(/^([^:]{2,60}):\s*(.+)$/s);
+  if (!m) return { clienteId: null, titulo: t };
+  const quien = normal(m[1]);
+  const c = clientes.find((x) => normal(x.name) === quien)
+    ?? clientes.find((x) => quien.length >= 3 && normal(x.name).startsWith(quien));
+  return c ? { clienteId: c.dbId || c.id, titulo: m[2].trim() } : { clienteId: null, titulo: t };
 }
 
 /** Cuántas están atrasadas, para el contador de la cabecera. */

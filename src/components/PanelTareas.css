@@ -1,0 +1,211 @@
+/* ============================================================
+   El panel de tareas (PanelTareas.jsx)
+
+   Acoplado desde 1280 px en el mismo sitio que el asistente (el
+   contenido se aparta con `.app-shell[data-lateral="acoplado"]`); por
+   debajo, un cajón a la derecha dentro de `.overlay`.
+   ============================================================ */
+
+.panel-tareas-acoplado {
+  position: fixed;
+  top: calc(var(--header-h) + var(--safe-top));
+  right: 0;
+  bottom: 0;
+  width: var(--chat-w);
+  z-index: var(--z-acoplado);
+  display: flex;
+}
+
+.panel-tareas {
+  width: min(420px, 100vw);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--elev-2);
+  animation: slideIn .24s cubic-bezier(.22,.61,.36,1);
+}
+.panel-tareas-acoplado .panel-tareas { width: 100%; box-shadow: none; animation: none; }
+
+.panel-tareas-cabecera {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-3) var(--sp-3) var(--sp-2) var(--sp-4);
+  padding-top: calc(var(--sp-3) + var(--safe-top));
+}
+.panel-tareas-acoplado .panel-tareas-cabecera { padding-top: var(--sp-3); }
+.panel-tareas-antetitulo {
+  font-size: var(--fs-3xs);
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.panel-tareas-titulo { font-size: var(--fs-md); font-weight: 700; }
+
+.panel-tareas-filtro { padding: 0 var(--sp-4) var(--sp-2); }
+.panel-tareas-input { min-height: var(--tap-sm); padding: 6px var(--sp-2); font-size: var(--fs-xs); }
+@media (max-width: 767px) { .panel-tareas-input { font-size: 16px; } }
+
+.panel-tareas-cuerpo {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 var(--sp-3) calc(var(--sp-5) + var(--safe-bottom));
+}
+
+/* «Agregar una tarea»: una línea, como en Google Tasks. */
+.panel-tareas-agregar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
+  margin-bottom: var(--sp-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+}
+.panel-tareas-agregar:focus-within { border-color: var(--accent-line); background: var(--surface-2); }
+.panel-tareas-agregar-icono { color: var(--accent); flex-shrink: 0; }
+.panel-tareas-agregar-texto {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--tap);
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+}
+.panel-tareas-agregar-texto:focus { outline: none; }
+.panel-tareas-agregar-texto::placeholder { color: var(--accent-hover); }
+.panel-tareas-agregar-empresa {
+  max-width: 120px;
+  min-height: var(--tap-sm);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  font-size: var(--fs-3xs);
+  padding: 0 var(--sp-2);
+}
+@media (max-width: 767px) {
+  .panel-tareas-agregar-texto, .panel-tareas-agregar-empresa { font-size: 16px; }
+}
+
+.panel-tareas-aviso { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); align-items: center; margin: var(--sp-2) 0; font-size: var(--fs-2xs); }
+
+.panel-tareas-bloque + .panel-tareas-bloque { margin-top: var(--sp-2); }
+.panel-tareas-vacio { font-size: var(--fs-2xs); color: var(--text-faint); padding: var(--sp-2); }
+.panel-tareas-lista { list-style: none; margin: 0; padding: 0; }
+
+.panel-tareas-plegable {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: var(--tap-sm);
+  padding: 0 var(--sp-2);
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+.panel-tareas-numero {
+  margin-left: auto;
+  font-size: var(--fs-3xs);
+  padding: 1px var(--sp-2);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+}
+.panel-tareas-numero[data-peligro="true"] { background: var(--danger-soft); color: var(--danger); }
+
+/* Una tarea: círculo, título, notas y lo demás debajo. */
+.panel-tarea {
+  display: flex;
+  gap: var(--sp-1);
+  padding: var(--sp-1) 0;
+  border-radius: var(--radius-sm);
+}
+.panel-tarea:hover { background: var(--surface-2); }
+.panel-tarea-check {
+  flex-shrink: 0;
+  width: var(--tap-sm);
+  height: var(--tap-sm);
+  display: grid;
+  place-items: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius-pill);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.panel-tarea-check:hover { color: var(--accent); }
+.panel-tarea[data-hecha="true"] .panel-tarea-check { color: var(--accent); }
+.panel-tarea-texto { flex: 1; min-width: 0; padding-right: var(--sp-2); }
+.panel-tarea-titulo {
+  display: block;
+  width: 100%;
+  min-height: var(--tap-sm);
+  padding: 8px 0 2px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.panel-tarea[data-hecha="true"] .panel-tarea-titulo { text-decoration: line-through; color: var(--text-dim); }
+.panel-tarea-notas {
+  font-size: var(--fs-2xs);
+  color: var(--text-dim);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.panel-tarea-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: 4px;
+  font-size: var(--fs-3xs);
+  color: var(--text-dim);
+}
+.panel-tarea-meta:empty { display: none; }
+
+/* Pasar a hoy / Mover a…: a la vista con el ratón encima o con el foco
+   dentro; en el teléfono (sin ratón), siempre. */
+.panel-tarea-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  margin-top: 4px;
+}
+@media (hover: hover) {
+  .panel-tarea-acciones { display: none; }
+  .panel-tarea:hover .panel-tarea-acciones,
+  .panel-tarea:focus-within .panel-tarea-acciones,
+  .panel-tarea[data-atrasada="true"] .panel-tarea-acciones { display: flex; }
+}
+
+.panel-tarea-detalle {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0;
+}
+.panel-tarea-detalle textarea { font-size: var(--fs-xs); resize: vertical; }
+.panel-tarea-detalle-fila { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.panel-tarea-etiqueta { font-size: var(--fs-3xs); color: var(--text-dim); font-weight: 600; }

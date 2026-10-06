@@ -1,8 +1,11 @@
-import { useState, useEffect, useCallback, useId, useMemo } from "react";
+import { useState, useEffect, useId, useMemo } from "react";
 import Icon from "../components/Icon";
 import { Avatar } from "../components/Presencia";
 import SelectorFecha from "../components/SelectorFecha";
+import RepasoAtrasadas from "../components/RepasoAtrasadas";
+import { useRepaso } from "../hooks/useRepaso";
 import * as db from "../lib/db";
+import { useTareas, hecha, claveTarea as claveDe, esDe } from "../hooks/useTareas";
 import { navegar } from "../lib/rutas";
 import { clasificar, fechaEnZona, textoAtraso, textoFecha } from "../lib/agenda";
 import { filtrarCola, ordenarProgramacion, horaDe, asistidasPendientes } from "../lib/cola";
@@ -16,31 +19,28 @@ import { REDES } from "../lib/publicacion";
 // su empresa, y las tareas rápidas entran como tareas «sin empresa».
 //
 // Tres cosas que llevan a una tarea a «Hoy» sin que nadie la arrastre:
-//   · el botón «Hoy», que la marca para ESTA fecha —si no se hace,
-//     mañana está en Atrasadas sola—;
+//   · el botón «Hoy» (o «Pasar a hoy» en una atrasada), que la planea
+//     para ESTA fecha y manda sobre la fecha límite —si no se hace,
+//     mañana está en Atrasadas sola—; «Mover a…» la planea otro día;
 //   · su fecha límite;
 //   · su recurrencia: la diaria está aquí cada mañana.
 //
 // La vista «Por empresa» es la de antes, para quien quiera revisar
-// una empresa entera.
+// una empresa entera. Lo mismo, a mano desde cualquier pantalla, está en
+// el panel lateral (PanelTareas); las acciones son de `useTareas`.
 // ============================================================
 
 const RECURRENCIA = { daily: "Diaria", weekly: "Semanal", monthly: "Mensual" };
 
-const hecha = (t) => t.status === "completed" || t.status === "done";
-const claveDe = (t) => `${t._rapida ? "r" : "c"}:${t.id}`;
-
 export default function Tareas({
   clients = [], pulso = 0, onSelectClient, yo = null, presentes = [], foco = null, onFoco,
 }) {
-  const [clientTasks, setClientTasks] = useState([]);
-  const [quickTasks, setQuickTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const { todas, loading, error, alternarHecha, actualizar, alternarHoy, moverA, crear: crearTarea } = useTareas(pulso);
   const [vista, setVista] = useState("dia");
   const [soloMias, setSoloMias] = useState(false);
   const [verHechas, setVerHechas] = useState(false);
   const hoy = fechaEnZona();
+  const repaso = useRepaso(yo?.id, hoy);
 
   const nombreDe = useMemo(() => {
     const m = new Map();
@@ -51,74 +51,13 @@ export default function Tareas({
     return (id) => m.get(id) ?? "";
   }, [clients]);
 
-  const cargar = useCallback(async () => {
-    try {
-      const { clientTasks: ct, quickTasks: qt } = await db.loadAllTasks();
-      setClientTasks(ct || []);
-      setQuickTasks(qt || []);
-      setError("");
-    } catch {
-      setError("No se pudieron cargar las tareas.");
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { void cargar(); }, [cargar, pulso]);
-
-  const todas = useMemo(() => [
-    ...clientTasks.map((t) => ({ ...t, _rapida: false })),
-    ...quickTasks.map((t) => ({ ...t, client_id: "", _rapida: true })),
-  ], [clientTasks, quickTasks]);
-
   // «Mías» es por PERSONA (`asignado_id`), no por nombre: cambiarse el
   // nombre ya no deja las tareas sin dueño. Las de antes sin persona
   // casada se siguen comparando por nombre.
-  const mias = (t) => {
-    if (t.asignado_id) return t.asignado_id === yo?.id;
-    const yoNombre = (yo?.nombre ?? "").trim().toLowerCase();
-    return !yoNombre || (t.assigned_to ?? "").trim().toLowerCase() === yoNombre;
-  };
-  const visibles = soloMias ? todas.filter(mias) : todas;
+  const visibles = soloMias && yo?.nombre ? todas.filter((t) => esDe(t, yo)) : todas;
   const bloques = clasificar(visibles, hoy, { foco });
 
-  // Aplica la fila que devuelve el servidor en su lista.
-  const reemplazar = (t, fila) => {
-    if (!fila) return;
-    const set = t._rapida ? setQuickTasks : setClientTasks;
-    set((prev) => prev.map((x) => (x.id === fila.id ? fila : x)));
-  };
-
-  const accion = (fn) => async (...args) => {
-    try {
-      await fn(...args);
-    } catch (e) {
-      setError(e?.message || "No se pudo guardar el cambio.");
-    }
-  };
-
-  const alternarHecha = accion(async (t) => {
-    const fila = hecha(t)
-      ? await (t._rapida ? db.reopenQuickTask(t.id) : db.reopenClientTask(t.id))
-      : await (t._rapida ? db.completeQuickTask(t.id) : db.completeClientTask(t.id));
-    reemplazar(t, fila);
-  });
-
-  const actualizar = accion(async (t, datos) => {
-    const fila = t._rapida ? await db.updateQuickTask(t.id, datos) : await db.updateClientTask(t.id, datos);
-    reemplazar(t, fila);
-  });
-
-  const alternarHoy = (t) => actualizar(t, { today_date: t.today_date === hoy ? null : hoy });
-
-  const crear = accion(async ({ titulo, empresa }) => {
-    if (empresa) {
-      const fila = await db.saveClientTask({ client_id: empresa, title: titulo, today_date: hoy, recurrence: "none" });
-      setClientTasks((prev) => [...prev, fila]);
-    } else {
-      const fila = await db.saveQuickTask({ title: titulo, today_date: hoy });
-      setQuickTasks((prev) => [...prev, fila]);
-    }
-  });
+  const crear = ({ titulo, empresa }) => crearTarea({ titulo, empresa, today_date: hoy });
 
   const filaProps = (item) => ({
     item,
@@ -127,6 +66,7 @@ export default function Tareas({
     enFoco: Boolean(foco) && item.tarea.client_id === foco,
     onToggle: () => alternarHecha(item.tarea),
     onHoy: () => alternarHoy(item.tarea),
+    onMover: (f) => moverA(item.tarea, f),
     onFecha: (f) => actualizar(item.tarea, { due_date: f || null }),
     onEmpresa: () => onSelectClient?.(item.tarea.client_id),
   });
@@ -180,6 +120,17 @@ export default function Tareas({
             )}
           </div>
 
+          {repaso.pendiente && (
+            <RepasoAtrasadas
+              items={bloques.atrasadas}
+              hoy={hoy}
+              nombreDe={nombreDe}
+              onMover={moverA}
+              onHecha={alternarHecha}
+              onCerrar={repaso.cerrar}
+            />
+          )}
+
           <PublicacionesDeHoy pulso={pulso} nombreDe={nombreDe} clients={clients} />
 
           <Bloque titulo="Atrasadas" icono="alert" color="var(--danger)" items={bloques.atrasadas} filaProps={filaProps} />
@@ -189,7 +140,7 @@ export default function Tareas({
             color="var(--accent)"
             items={bloques.hoy}
             filaProps={filaProps}
-            vacio="Nada marcado para hoy. Pulsa «Hoy» en cualquier tarea para traerla aquí."
+            vacio="Nada para hoy. Pulsa «Hoy» o «Pasar a hoy» en cualquier tarea para traerla aquí."
           />
           <Bloque titulo="Próximas" icono="calendar" color="var(--text-dim)" items={bloques.proximas} filaProps={filaProps} />
           <Bloque titulo="Sin fecha" icono="list" color="var(--text-dim)" items={bloques.sinFecha} filaProps={filaProps} />
@@ -238,7 +189,7 @@ function Bloque({ titulo, icono, color, items, filaProps, vacio }) {
   );
 }
 
-function FilaDia({ item, hoy, empresa, enFoco, onToggle, onHoy, onFecha, onEmpresa }) {
+function FilaDia({ item, hoy, empresa, enFoco, onToggle, onHoy, onMover, onFecha, onEmpresa }) {
   const { tarea: t, fecha, atraso } = item;
   const esHecha = hecha(t);
   const marcadaHoy = t.today_date === hoy;
@@ -281,9 +232,18 @@ function FilaDia({ item, hoy, empresa, enFoco, onToggle, onHoy, onFecha, onEmpre
       {!esHecha && (
         <>
           <SelectorFecha value={t.due_date} onChange={onFecha} etiqueta={`Fecha límite de ${t.title}`} vacio="Fecha límite" />
-          <button type="button" className="dia-hoy" aria-pressed={marcadaHoy} onClick={onHoy} title={marcadaHoy ? "Quitar de hoy" : "Hacerla hoy"}>
-            Hoy
-          </button>
+          {fecha !== hoy && (
+            <SelectorFecha value={null} onChange={(f) => f && onMover(f)} etiqueta={`Mover «${t.title}» a otro día`} vacio="Mover a…" prefijo="Para" />
+          )}
+          {atraso > 0 ? (
+            <button type="button" className="dia-hoy" onClick={() => onMover(hoy)} title="Pasarla a hoy: sale de Atrasadas">
+              Pasar a hoy
+            </button>
+          ) : (
+            <button type="button" className="dia-hoy" aria-pressed={marcadaHoy} onClick={onHoy} title={marcadaHoy ? "Quitar de hoy" : "Hacerla hoy"}>
+              Hoy
+            </button>
+          )}
         </>
       )}
     </div>
