@@ -31,8 +31,11 @@
 import { crearAcceso, colaPendiente } from "./acceso.js";
 import { difundir } from "./vivo.js";
 import { uuid, ahora } from "./ids.js";
-import { ErrorMeta, graph, mensajeMeta, descifrarMeta, urlMedioPublico, urlGraphVideo } from "./meta.js";
-import { ErrorTikTok, mensajeTikTok, tokenTikTok, iniciarSubida, subirTrozos, estadoSubida } from "./tiktok.js";
+import { ErrorMeta, graph, mensajeMeta, descifrarMeta, urlMedioPublico, rutaMedioPublico, urlGraphVideo } from "./meta.js";
+import {
+  ErrorTikTok, mensajeTikTok, tokenTikTok, iniciarSubida, subirTrozos, estadoSubida,
+  iniciarFotos, fotosTikTokConfiguradas, urlFotoTikTok, MAX_FOTOS_TIKTOK, FORMATOS_FOTO_TIKTOK,
+} from "./tiktok.js";
 import {
   ErrorYouTube, mensajeYouTube, tokenYouTube, privacidadDe, recursoDeVideo, abrirSubidaYouTube, subirTrozoYouTube,
   consultarSubidaYouTube, ponerPortadaYouTube, enlaceYouTube, PRIVACIDADES_YOUTUBE,
@@ -212,7 +215,17 @@ function planificar({ post, fecha, cal, cuentas: todas, hayMeta, previas, redes 
     throw new ErrorPublicar("Instagram sólo acepta imágenes JPEG. Programa desde el panel de la publicación: allí se convierten solas.");
   }
   for (const red of ["tiktok", "youtube"]) {
-    if (lista.includes(red) && !mediosDe(post).some((m) => m.tipo === "video" && m.src.startsWith("/api/media/clientes/"))) {
+    if (!lista.includes(red)) continue;
+    const medios = mediosDe(post);
+    // TikTok sin video publica las fotos (carrusel): también tienen que estar en la app.
+    const fotosTikTok = red === "tiktok" && medios.length && !medios.some((m) => m.tipo === "video");
+    if (fotosTikTok) {
+      if (!medios.every((m) => m.src.startsWith("/api/media/clientes/"))) {
+        throw new ErrorPublicar("Para TikTok, las fotos tienen que estar subidas a la publicación (desde el equipo o desde Drive).");
+      }
+      continue;
+    }
+    if (!medios.some((m) => m.tipo === "video" && m.src.startsWith("/api/media/clientes/"))) {
       throw new ErrorPublicar(`Para ${REDES[red].nombre}, el video tiene que estar subido a la publicación (desde el equipo o desde Drive).`);
     }
   }
@@ -726,6 +739,8 @@ async function pasoTikTok(env, { cuenta, token, carga, guardar, fila: actual }) 
 
   if (!fila.contenedor_id) {
     const video = mediosDe(post).find((m) => m.tipo === "video");
+    // Sin video, un carrusel de fotos: TikTok las descarga del dominio verificado.
+    if (!video) return iniciarFotosTikTok(env, { cuenta, token, carga, guardar, post });
     const clave = String(video?.src ?? "").replace(/^\/api\/media\//, "");
     if (!/^clientes\/[^/]+\//.test(clave)) throw new ErrorPublicar("Para TikTok, el video tiene que estar subido a la publicación.");
     const cabeza = await env.MEDIA.head(clave);
@@ -751,7 +766,7 @@ async function pasoTikTok(env, { cuenta, token, carga, guardar, fila: actual }) 
     if (carga.privacidad === "SELF_ONLY") carga.aviso = "Publicada en privado: hasta que TikTok revise la app, sólo la ve la cuenta. Cámbiala a pública desde la app.";
     await guardar({
       externo_id: String(id ?? fila.contenedor_id),
-      enlace: id && cuenta.usuario ? `https://www.tiktok.com/@${cuenta.usuario}/video/${id}` : "",
+      enlace: id && cuenta.usuario ? `https://www.tiktok.com/@${cuenta.usuario}/${carga.fotos ? "photo" : "video"}/${id}` : "",
       publicada_at: ahora(),
     });
     return { hecho: true };
@@ -772,6 +787,36 @@ async function pasoTikTok(env, { cuenta, token, carga, guardar, fila: actual }) 
     );
   }
   return { esperar: 20_000 };
+}
+
+/**
+ * Un carrusel de fotos a TikTok. No se suben: TikTok las DESCARGA de
+ * direcciones firmadas en el dominio verificado (`TIKTOK_MEDIOS_BASE`), y
+ * sólo admite JPG o WEBP (el panel convierte a JPEG al programar). Como en
+ * el video, el `publish_id` se guarda antes de seguir: a partir de ahí no
+ * se pide otra publicación.
+ */
+async function iniciarFotosTikTok(env, { cuenta, token, carga, guardar, post }) {
+  const fotos = mediosDe(post).filter((m) => m.tipo !== "video");
+  if (!fotos.length) throw new ErrorPublicar("Para TikTok, la publicación necesita un video o fotos.");
+  if (!fotosTikTokConfiguradas(env)) {
+    throw new ErrorPublicar("TikTok sólo publica fotos desde un dominio verificado, y todavía no hay uno configurado (TIKTOK_MEDIOS_BASE). Mientras tanto, sube un video o publícalas a mano.");
+  }
+  if (fotos.length > MAX_FOTOS_TIKTOK) throw new ErrorPublicar(`TikTok admite hasta ${MAX_FOTOS_TIKTOK} fotos y hay ${fotos.length}.`);
+  const malas = fotos.filter((m) => !FORMATOS_FOTO_TIKTOK.test(m.src));
+  if (malas.length) throw new ErrorPublicar("TikTok sólo publica fotos JPG o WEBP. Vuelve a programar desde el panel, que las convierte.");
+  const urls = [];
+  for (const f of fotos) urls.push(urlFotoTikTok(env, await rutaMedioPublico(env, f.src)));
+  const modo = leerJSON(cuenta.datos, {})?.modo === "directo" ? "directo" : "borrador";
+  const texto = textoPara(post, "tiktok");
+  const titulo = (post.title || texto.split("\n").map((l) => l.trim()).find(Boolean) || "").slice(0, 90);
+  const { publishId, privacidad } = await iniciarFotos(token, { modo, titulo, descripcion: texto, urls });
+  carga.modo = modo;
+  carga.privacidad = privacidad;
+  carga.fotos = urls.length;
+  carga.tiktokDesde = ahora();
+  await guardar({ contenedor_id: publishId });
+  return { esperar: 15_000 };
 }
 
 /** Cuánto se espera a que TikTok termine de procesar un video antes de darlo por fallido. */
@@ -821,6 +866,8 @@ async function pasoYouTube(env, contexto) {
   // 1. La sesión.
   if (!fila.contenedor_id) {
     const video = mediosDe(post).find((m) => m.tipo === "video");
+    // Sin video, un carrusel de fotos: TikTok las descarga del dominio verificado.
+    if (!video) return iniciarFotosTikTok(env, { cuenta, token, carga, guardar, post });
     const clave = String(video?.src ?? "").replace(/^\/api\/media\//, "");
     if (!/^clientes\/[^/]+\//.test(clave)) throw new ErrorPublicar("Para YouTube, el video tiene que estar subido a la publicación.");
     const cabeza = await env.MEDIA.head(clave);

@@ -1445,6 +1445,19 @@ son del servidor.
   Cada trozo es un rango de R2 que pasa tal cual (sin cargarlo en
   memoria). El `publish_id` se guarda sólo cuando la subida terminó: a
   partir de ahí nunca se abre otra, que sería un segundo video.
+- **Las FOTOS de TikTok no se suben: TikTok las descarga, y sólo de un
+  dominio verificado.** Un carrusel de fotos (sin video) va por
+  `/v2/post/publish/content/init/` con `PULL_FROM_URL`, `media_type: PHOTO`
+  y `post_mode` DIRECT_POST o MEDIA_UPLOAD (Borrador). Como `workers.dev` no
+  se puede verificar en TikTok, las direcciones son
+  `TIKTOK_MEDIOS_BASE/<testigo>/<nombre>` —`juancitoads.com/calendario-medios`,
+  que Netlify reenvía con un 200 a `/api/medio-publico/` de este Worker—, la
+  MISMA firma que descarga Meta (`rutaMedioPublico()`). Sin la variable, la
+  cola falla diciendo qué falta: el navegador no lo sabe, así que
+  `revisarPublicacion()` sólo avisa. Sólo JPG o WEBP (el panel convierte a
+  JPEG también cuando la única red de fotos es TikTok), hasta 35. TikTok NO
+  entra por defecto en una publicación de fotos (`redAdmite` sigue siendo
+  «sólo video»): se elige a mano. **No se ha probado contra TikTok real.**
 - **Las cifras del informe NO las escribe la IA.** Las calcula
   `src/lib/resultados.js` —el mismo código que la pestaña Resultados— y
   se CONGELAN en `informes.contenido`; la IA sólo escribe el análisis con

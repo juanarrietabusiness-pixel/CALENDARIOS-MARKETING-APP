@@ -363,10 +363,13 @@ export async function prepararParaRedes(post, redes, { subir, colorMarca } = {})
     if (r0.cambio) { nuevo = { ...nuevo, medios: r0.medios }; cambio = true; }
   }
   const meta = redes.some(esDeMeta);
-  if (!meta) return { post: nuevo, cambio };
+  // TikTok publica fotos (carrusel) sólo en JPG o WEBP: se convierten igual que para Meta.
+  const fotosTikTok = redes.includes("tiktok") && mediosDe(nuevo).length > 0 && !mediosDe(nuevo).some((m) => m.tipo === "video");
+  if (!meta && !fotosTikTok) return { post: nuevo, cambio };
 
   const r1 = await prepararMediosParaMeta(mediosDe(nuevo), subir);
   if (r1.cambio) { nuevo = { ...nuevo, medios: r1.medios, image: r1.medios.find((m) => m.tipo !== "video")?.src ?? null }; cambio = true; }
+  if (!meta) return { post: nuevo, cambio };
   if (historiasDe(nuevo).length) {
     const r2 = await prepararMediosParaMeta(historiasDe(nuevo), subir);
     if (r2.cambio) { nuevo = { ...nuevo, historias: r2.medios }; cambio = true; }

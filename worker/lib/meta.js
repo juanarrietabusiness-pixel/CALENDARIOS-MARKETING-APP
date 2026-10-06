@@ -262,11 +262,19 @@ export async function sincronizarCuentasMeta(env, acceso, tokenUsuario) {
  * sólo abre ESE archivo y caduca en tres días.
  */
 export async function urlMedioPublico(env, origen, src) {
+  return `${origen}/api/medio-publico/${await rutaMedioPublico(env, src)}`;
+}
+
+/**
+ * «<testigo>/<nombre>» de un medio de R2: lo que va detrás de
+ * `/api/medio-publico/`. TikTok lo pide por otro dominio (el verificado,
+ * que reenvía a esta misma ruta), así que la firma es la misma.
+ */
+export async function rutaMedioPublico(env, src) {
   const clave = String(src ?? "").replace(/^\/api\/media\//, "");
   if (!/^clientes\/[^/]+\//.test(clave) || clave.includes("..")) throw new Error(`Medio no válido: ${src}`);
   const testigo = await firmarCon(env.META_APP_SECRET, "medio-publico", { c: clave }, 3 * 24 * 3600_000);
-  const nombre = clave.split("/").pop();
-  return `${origen}/api/medio-publico/${testigo}/${encodeURIComponent(nombre)}`;
+  return `${testigo}/${encodeURIComponent(clave.split("/").pop())}`;
 }
 
 /** La clave de R2 de una dirección firmada, o null si no vale o caducó. */

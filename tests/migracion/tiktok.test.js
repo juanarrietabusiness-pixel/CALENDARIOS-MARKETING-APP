@@ -193,6 +193,68 @@ describe("publicar en TikTok", () => {
   });
 });
 
+describe("carrusel de fotos en TikTok", () => {
+  const FOTOS = [{ src: "/api/media/clientes/c1/posts/a.jpg" }, { src: "/api/media/clientes/c1/posts/b.webp" }];
+  const conFotos = (extra = {}) => db.sqlite.prepare("update calendars set days = ?")
+    .run(JSON.stringify([{ date: "2026-10-05", posts: [post({ format: "carrusel", medios: FOTOS, ...extra })] }]));
+  beforeEach(() => {
+    respuestas["POST /v2/post/publish/content/init/"] = { data: { publish_id: "pub-f" }, error: { code: "ok" } };
+  });
+
+  it("sin el dominio verificado no se pide nada a TikTok y el error dice qué falta", async () => {
+    env.META_APP_SECRET = "meta";
+    await sembrar();
+    conFotos();
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
+    await procesarCola(env);
+    expect(filas()[0]).toMatchObject({ estado: "error", error: expect.stringMatching(/dominio verificado.*TIKTOK_MEDIOS_BASE/s) });
+    expect(rutas().some((r) => r.includes("/content/init/"))).toBe(false);
+  });
+
+  it("borrador: TikTok descarga las fotos del dominio verificado, firmadas, y quedan en la bandeja", async () => {
+    Object.assign(env, { META_APP_SECRET: "meta", TIKTOK_MEDIOS_BASE: "https://juancitoads.com/calendario-medios/" });
+    await sembrar();
+    conFotos();
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
+    await procesarCola(env);
+    const init = llamadas.find((l) => l.ruta === "/v2/post/publish/content/init/");
+    expect(init.cuerpo).toMatchObject({ media_type: "PHOTO", post_mode: "MEDIA_UPLOAD", source_info: { source: "PULL_FROM_URL", photo_cover_index: 0 } });
+    expect(init.cuerpo.source_info.photo_images).toHaveLength(2);
+    for (const u of init.cuerpo.source_info.photo_images) expect(u).toMatch(/^https:\/\/juancitoads\.com\/calendario-medios\/[^/]+\/[ab]\.(jpg|webp)$/);
+    expect(init.cuerpo.post_info).toMatchObject({ title: "Receta de otoño", description: "Receta de otoño\n\n#cafe" });
+    expect(init.cuerpo.post_info.privacy_level).toBeUndefined();
+    expect(filas()[0]).toMatchObject({ estado: "procesando", contenedor_id: "pub-f" });
+
+    vi.setSystemTime(new Date("2026-10-01T12:01:00.000Z"));
+    await procesarCola(env);
+    expect(filas()[0].estado).toBe("publicada");
+    expect(rutas().filter((r) => r.endsWith("/init/"))).toHaveLength(1);
+  });
+
+  it("directo: pregunta la privacidad, publica y enlaza a la foto", async () => {
+    Object.assign(env, { META_APP_SECRET: "meta", TIKTOK_MEDIOS_BASE: "https://juancitoads.com/calendario-medios" });
+    await sembrar({ modo: "directo" });
+    conFotos();
+    respuestas["POST /v2/post/publish/status/fetch/"] = { data: { status: "PUBLISH_COMPLETE", publicaly_available_post_id: [777] }, error: { code: "ok" } };
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
+    await procesarCola(env);
+    const init = llamadas.find((l) => l.ruta === "/v2/post/publish/content/init/");
+    expect(init.cuerpo).toMatchObject({ post_mode: "DIRECT_POST", post_info: { privacy_level: "SELF_ONLY", auto_add_music: true } });
+    vi.setSystemTime(new Date("2026-10-01T12:01:00.000Z"));
+    await procesarCola(env);
+    expect(filas()[0]).toMatchObject({ estado: "publicada", enlace: "https://www.tiktok.com/@cafeluna/photo/777" });
+  });
+
+  it("una foto PNG no se manda: TikTok sólo admite JPG o WEBP", async () => {
+    Object.assign(env, { META_APP_SECRET: "meta", TIKTOK_MEDIOS_BASE: "https://juancitoads.com/calendario-medios" });
+    await sembrar();
+    conFotos({ medios: [{ src: "/api/media/clientes/c1/posts/a.png" }] });
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
+    await procesarCola(env);
+    expect(filas()[0]).toMatchObject({ estado: "error", error: expect.stringMatching(/JPG o WEBP/) });
+  });
+});
+
 describe("conectar", () => {
   const conSesion = (ruta, opciones = {}) => new Request(`https://calendarios.test${ruta}`, {
     ...opciones, headers: { Cookie: `${COOKIE}=${TESTIGO}`, "Content-Type": "application/json", ...(opciones.headers ?? {}) },

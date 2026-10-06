@@ -57,8 +57,16 @@ describe("revisarPublicacion", () => {
     expect(errores).toEqual([]);
     expect(avisos.join(" ")).toMatch(/no muestra el texto/);
   });
-  it("TikTok exige video", () => {
-    expect(revisarPublicacion({ format: "post", image: "/a.jpg" }, ["tiktok"]).errores.join(" ")).toMatch(/TikTok necesita un video/);
+  it("TikTok: video, o fotos como carrusel (hasta 35); ni historias ni nada", () => {
+    expect(revisarPublicacion({ format: "post", descripcion: "x" }, ["tiktok"]).errores.join(" ")).toMatch(/TikTok necesita un video o fotos/);
+    const fotos = revisarPublicacion({ format: "carrusel", descripcion: "x", medios: [{ src: "/a.jpg" }, { src: "/b.jpg" }] }, ["tiktok"]);
+    expect(fotos.errores).toEqual([]);
+    expect(fotos.avisos.join(" ")).toMatch(/carrusel de fotos/);
+    const muchas = Array.from({ length: 36 }, (_, i) => ({ src: `/${i}.jpg` }));
+    expect(revisarPublicacion({ format: "carrusel", descripcion: "x", medios: muchas }, ["tiktok"]).errores.join(" ")).toMatch(/hasta 35 fotos/);
+    expect(revisarPublicacion({ format: "historia", medios: [{ src: "/a.jpg" }] }, ["tiktok"]).errores.join(" ")).toMatch(/no publica historias/);
+    const mezcla = revisarPublicacion({ format: "reel", descripcion: "x", medios: [{ src: "/a.mp4", tipo: "video" }, { src: "/b.jpg" }] }, ["tiktok"]);
+    expect(mezcla.avisos.join(" ")).toMatch(/sólo el video/);
   });
 });
 
@@ -203,11 +211,11 @@ describe("cada problema trae su arreglo", () => {
     expect(contarHashtags(a.despues.hashtagsFinales)).toBe(28);
     expect(revisarPublicacion(a.despues, ["instagram"]).errores).toEqual([]);
   });
-  it("TikTok sin video: se quita TikTok, pero no si es la única red", () => {
-    const a = arreglar({ format: "post", descripcion: "x", medios: [img(1)] }, ["instagram", "tiktok"]);
+  it("TikTok con una historia: se quita TikTok, pero no si es la única red", () => {
+    const a = arreglar({ format: "historia", descripcion: "x", medios: [img(1)] }, ["instagram", "tiktok"]);
     expect(a).toMatchObject({ codigo: "quitar-red:tiktok", etiqueta: "Quitar TikTok" });
     expect(a.despues.redes).toEqual(["instagram"]);
-    expect(arreglar({ format: "post", descripcion: "x", medios: [img(1)] }, ["tiktok"])).toBeNull();
+    expect(arreglar({ format: "historia", descripcion: "x", medios: [img(1)] }, ["tiktok"])).toBeNull();
   });
   it("once imágenes, cuatro colaboradores y una historia sin imagen", () => {
     const once = arreglar({ format: "carrusel", descripcion: "x", medios: Array.from({ length: 11 }, (_, i) => img(i)) }, ["instagram"]);
