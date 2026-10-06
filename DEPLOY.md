@@ -113,6 +113,7 @@ Ahora que el Worker existe, ya tiene dónde guardarlas.
 | `META_CONFIG_ID_ANUNCIOS` | El ID de la configuración CON los permisos de anuncios *(opcional)* | Ver «Anuncios de Meta» abajo. Sólo hace falta si se usa `META_CONFIG_ID` |
 | `TIKTOK_CLIENT_KEY` | La Client key de la app de TikTok | Ver «TikTok» abajo |
 | `TIKTOK_CLIENT_SECRET` | Su Client secret | Ver «TikTok» abajo |
+| `TIKTOK_MEDIOS_BASE` | `https://juancitoads.com/calendario-medios` (carruseles de fotos) | Ver «Carruseles de fotos en TikTok» abajo |
 
 El `GITHUB_TOKEN` es para leer el ADN de marca de los repositorios de los
 clientes —lo usa «Llenar desde el repositorio» de la pestaña Cerebro—. Con
@@ -323,6 +324,37 @@ el cliente**, que el cliente abre en su teléfono (vale una semana).
 Por defecto los videos van a la **bandeja de TikTok del cliente** (modo
 Borrador) y se publican desde la app con un toque. En modo **Directo**
 salen publicados, pero **en privado** hasta que TikTok audite la app.
+
+#### Carruseles de fotos en TikTok (una vez)
+
+Los videos se SUBEN; las fotos no se pueden subir: TikTok las **descarga** de
+una dirección, y sólo de un dominio **verificado** en su portal.
+`workers.dev` no se puede verificar, así que las fotos salen por
+`juancitoads.com`, que reenvía a la aplicación (la web sigue igual):
+
+1. **La web** (repositorio PAGINA-JUANCITO-ADS, Netlify): añadir al final de
+   `public/_redirects` esta línea y publicar.
+
+   ```
+   /calendario-medios/*   https://calendarios.juanarrietabusiness.workers.dev/api/medio-publico/:splat   200!
+   ```
+
+   Comprobar: `https://juancitoads.com/calendario-medios/x/y.jpg` tiene que
+   contestar el 404 de la aplicación, `{"error":"Archivo no encontrado"}` (no la página 404 de la web).
+2. **TikTok:** developers.tiktok.com → la app → **URL properties** →
+   añadir el **dominio** `juancitoads.com` → verificar por DNS: copiar el
+   registro TXT que da TikTok y crearlo en Netlify → **Domains →
+   juancitoads.com → DNS settings → Add new record** (tipo TXT, nombre `@`).
+   Volver a TikTok y pulsar **Verify**.
+3. **Cloudflare:** en el Worker, añadir `TIKTOK_MEDIOS_BASE` =
+   `https://juancitoads.com/calendario-medios` (tipo *Secret*, como las
+   demás: así ningún despliegue la borra).
+
+Sin el paso 3, una publicación de fotos a TikTok falla diciendo qué falta.
+Las fotos van firmadas (abren ESE archivo y caducan en tres días), igual que
+las que descarga Meta; TikTok sólo admite JPG o WEBP y hasta 35, y el panel
+las convierte a JPEG al programar. La música la pone TikTok
+(`auto_add_music`); en Borrador el cliente la cambia antes de publicar.
 
 ### YouTube
 

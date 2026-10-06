@@ -20,6 +20,14 @@
 // Los videos se SUBEN (FILE_UPLOAD) desde R2 en trozos: la otra forma,
 // que TikTok los descargue de una URL, exige verificar el dominio.
 //
+// LAS FOTOS (carrusel de fotos) NO SE PUEDEN SUBIR: TikTok sólo las acepta
+// por URL (PULL_FROM_URL) y de un dominio VERIFICADO en su portal, y
+// workers.dev no se puede verificar. Por eso van por `TIKTOK_MEDIOS_BASE`
+// (p. ej. https://juancitoads.com/calendario-medios), un dominio propio
+// que reenvía a /api/medio-publico/ de este Worker —la misma dirección
+// firmada que descarga Meta—. Sin esa variable, una publicación de fotos
+// a TikTok falla diciendo qué falta.
+//
 // LOS TOKENS
 //
 // El de acceso dura 24 horas y el de renovación, un año. Los dos se
@@ -63,7 +71,9 @@ export function mensajeTikTok(e) {
     spam_risk_user_banned_from_posting: "TikTok no deja publicar a esta cuenta ahora mismo.",
     unaudited_client_can_only_post_to_private_accounts: "Hasta que TikTok revise la app, sólo se publica en privado. Usa el modo Borrador.",
     privacy_level_option_mismatch: "Esa privacidad no está permitida para esta cuenta.",
-    url_ownership_unverified: "TikTok no pudo descargar el video.",
+    url_ownership_unverified: "TikTok no reconoce el dominio de las fotos: hay que verificarlo en el portal de desarrolladores de TikTok (ver TIKTOK_MEDIOS_BASE en DEPLOY.md).",
+    file_format_check_failed: "TikTok no aceptó el formato: las fotos tienen que ser JPG o WEBP.",
+    picture_size_check_failed: "TikTok no aceptó el tamaño de alguna foto (máximo 1080 px de ancho recomendado, 20 MB).",
     rate_limit_exceeded: "TikTok limitó las peticiones. Se reintentará en unos minutos.",
   };
   return porCodigo[e.codigo] ?? `TikTok respondió: ${e.message}`;
@@ -230,6 +240,50 @@ export async function subirTrozos(env, clave, uploadUrl, tamano) {
       throw new ErrorTikTok({ code: res.status >= 500 ? "internal_error" : "upload_failed", message: `La subida del trozo ${i + 1} falló (${res.status}).` }, res.status);
     }
   }
+}
+
+/** Fotos que TikTok admite en una publicación, y en qué formato. */
+export const MAX_FOTOS_TIKTOK = 35;
+export const FORMATOS_FOTO_TIKTOK = /\.(jpe?g|webp)(\?|$)/i;
+
+/** ¿Está el dominio verificado para que TikTok descargue fotos? */
+export const fotosTikTokConfiguradas = (env) => Boolean(env?.TIKTOK_MEDIOS_BASE && env?.META_APP_SECRET);
+
+/** La dirección del dominio verificado para una ruta firmada de /api/medio-publico/. */
+export const urlFotoTikTok = (env, ruta) => `${String(env.TIKTOK_MEDIOS_BASE).replace(/\/$/, "")}/${ruta}`;
+
+/** El cuerpo de /v2/post/publish/content/init/ para un carrusel de fotos. Pura. */
+export function cuerpoFotos({ modo, privacidad = "SELF_ONLY", titulo = "", descripcion = "", urls = [], portada = 0 }) {
+  const directo = modo === "directo";
+  return {
+    post_info: {
+      title: String(titulo).slice(0, 90),
+      description: String(descripcion).slice(0, 4000),
+      ...(directo ? { privacy_level: privacidad, disable_comment: false, auto_add_music: true } : {}),
+    },
+    source_info: {
+      source: "PULL_FROM_URL",
+      photo_cover_index: Math.min(Math.max(0, portada | 0), Math.max(0, urls.length - 1)),
+      photo_images: urls.slice(0, MAX_FOTOS_TIKTOK),
+    },
+    post_mode: directo ? "DIRECT_POST" : "MEDIA_UPLOAD",
+    media_type: "PHOTO",
+  };
+}
+
+/**
+ * Publica (o deja en la bandeja) un carrusel de fotos. TikTok las DESCARGA
+ * de `urls`; contesta con el `publish_id` y se sigue con `estadoSubida`.
+ */
+export async function iniciarFotos(token, { modo, titulo, descripcion, urls }) {
+  let privacidad = "borrador";
+  if (modo === "directo") {
+    const info = await api("/v2/post/publish/creator_info/query/", { token });
+    const opciones = info?.data?.privacy_level_options ?? [];
+    privacidad = opciones.includes("PUBLIC_TO_EVERYONE") ? "PUBLIC_TO_EVERYONE" : opciones[0] ?? "SELF_ONLY";
+  }
+  const r = await api("/v2/post/publish/content/init/", { token, cuerpo: cuerpoFotos({ modo, privacidad, titulo, descripcion, urls }) });
+  return { publishId: r.data.publish_id, privacidad };
 }
 
 /** En qué va una subida. */
