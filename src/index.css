@@ -1007,7 +1007,6 @@ input[type="radio"] {
 .navegador-mes-punto { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 .navegador-mes-hoy { margin-left: var(--sp-2); }
 .cuando-hecha { display: flex; align-items: center; gap: var(--sp-1); margin: 0; font-size: var(--fs-2xs); color: var(--success); font-weight: 600; }
-.cal-campana { display: flex; align-items: center; gap: var(--sp-1); margin: 0 0 var(--sp-3); font-size: var(--fs-xs); font-weight: 600; color: var(--text-muted); }
 .cal-cell.today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .cal-cell.drop-target { border: 2px dashed var(--accent); background: var(--accent-soft); }
 
@@ -1020,15 +1019,148 @@ input[type="radio"] {
 }
 .cal-daynum.is-today { color: var(--accent); }
 
-.cal-week-tag {
-  font-size: var(--fs-3xs);
-  color: var(--accent);
-  font-style: italic;
+/* El nombre de la campaña de cada semana: una franja encima de su fila
+   (CampanaMes y MonthGrid). Antes era «S1: …» en cursiva dentro del
+   primer día, y casi nadie lo veía. */
+.cal-semana-franja {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-1) 0 0;
+  padding: 4px var(--sp-3);
+  min-height: 28px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  text-align: left;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
-  margin-bottom: 2px;
+  text-overflow: ellipsis;
 }
+button.cal-semana-franja { cursor: pointer; }
+button.cal-semana-franja:hover { border-color: var(--accent); }
+.cal-semana-franja-num {
+  flex-shrink: 0;
+  font-size: var(--fs-3xs);
+  font-weight: 800;
+  color: var(--accent);
+  letter-spacing: .04em;
+}
+
+/* Una fecha especial dentro de su día. */
+.cal-fecha {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 2px;
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-3xs);
+  line-height: 1.25;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  min-width: 0;
+}
+.cal-fecha[data-destacada] { color: var(--accent-alt); background: var(--alt-soft); font-weight: 700; }
+.cal-fecha[data-delicada] { font-style: italic; }
+.cal-fecha-texto { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cal-fecha-mas { flex-shrink: 0; font-weight: 700; }
+
+/* La tarjeta de la campaña del mes (calendario/campanaMes.jsx). */
+.campana-mes {
+  margin-bottom: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: linear-gradient(135deg, var(--accent-soft), var(--surface) 70%);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-lg);
+}
+.campana-mes[data-vacia] { background: var(--surface); border-style: dashed; border-color: var(--border-light); }
+.campana-mes-cabecera { display: flex; align-items: flex-start; gap: var(--sp-3); flex-wrap: wrap; }
+.campana-mes-icono {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
+}
+.campana-mes[data-vacia] .campana-mes-icono { background: var(--surface-2); color: var(--text-dim); }
+.campana-mes-texto { flex: 1 1 220px; min-width: 0; }
+.campana-mes-ante { font-size: var(--fs-3xs); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.campana-mes[data-vacia] .campana-mes-ante { color: var(--text-dim); }
+.campana-mes-nombre { font-size: var(--fs-xl); font-weight: 800; line-height: 1.15; overflow-wrap: anywhere; }
+.campana-mes[data-vacia] .campana-mes-nombre { font-size: var(--fs-md); font-weight: 600; color: var(--text-dim); }
+.campana-mes-ofertas { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-1); font-size: var(--fs-2xs); color: var(--text-muted); }
+.campana-mes-ofertas > span { display: inline-flex; align-items: center; gap: 4px; }
+.campana-mes-codigo { padding: 1px var(--sp-2); border: 1px dashed var(--accent-line); border-radius: var(--radius-pill); }
+.campana-mes-acciones { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+
+.campana-semanas {
+  list-style: none;
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: var(--sp-2);
+}
+.campana-semana-boton {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-height: var(--tap);
+  padding: var(--sp-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+button.campana-semana-boton { cursor: pointer; }
+button.campana-semana-boton:hover { border-color: var(--accent-line); }
+.campana-semana[data-actual] .campana-semana-boton { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.campana-semana-cuando { font-size: var(--fs-3xs); color: var(--text-dim); font-weight: 600; }
+.campana-semana[data-actual] .campana-semana-cuando { color: var(--accent); }
+.campana-semana-nombre { font-size: var(--fs-xs); font-weight: 700; overflow-wrap: anywhere; }
+.campana-semana-nombre[data-vacio] { color: var(--text-faint); font-weight: 500; }
+
+.campana-fechas { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); margin-top: var(--sp-3); }
+.campana-fechas-titulo { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-3xs); font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; }
+.campana-fechas-vacio { font-size: var(--fs-2xs); color: var(--text-faint); }
+.campana-fecha {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-3xs);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.campana-fecha[data-destacada] { background: var(--alt-soft); border-color: var(--accent-alt); color: var(--accent-alt); font-weight: 700; }
+.campana-fecha[data-delicada] { font-style: italic; }
+
+/* El diálogo de las fechas especiales (calendario/fechasEspeciales.jsx). */
+.fechas-ia { display: flex; gap: var(--sp-3); align-items: flex-start; flex-wrap: wrap; margin-bottom: var(--sp-2); }
+.fechas-titulo { font-size: var(--fs-xs); font-weight: 700; margin: var(--sp-4) 0 var(--sp-2); }
+.fechas-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.fechas-fila { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; padding: var(--sp-2); background: var(--bg); border-radius: var(--radius-sm); }
+.fechas-fila[data-oculta] { opacity: .55; }
+.fechas-fila .filter-chip { display: inline-flex; align-items: center; gap: 4px; min-height: var(--tap-sm); }
+.fechas-fila-dia { flex: 0 0 52px; font-size: var(--fs-xs); font-weight: 700; }
+.fechas-fila-texto { flex: 1 1 180px; display: flex; flex-direction: column; min-width: 0; font-size: var(--fs-xs); }
+.fechas-fila-tipo { font-size: var(--fs-3xs); color: var(--text-dim); }
+.fechas-nueva { display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap; margin-top: var(--sp-3); }
+.fechas-cada-anio { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-2xs); min-height: var(--tap-sm); }
 
 /* El chip de una publicación en la rejilla del mes.
    ES UN BOTÓN, y además arrastrable: medía 24px de alto, por debajo de
@@ -1309,7 +1441,20 @@ input[type="radio"] {
   .cal-header-idea { display: none; }
   .cal-header-label { display: none; }
   .cal-header-input { display: none; }
-  .cal-week-tag { display: none; }
+  .cal-semana-franja { margin: 0; border-radius: 0; border-inline: none; min-height: 22px; padding: 2px var(--sp-2); }
+  .cal-fecha { justify-content: center; padding: 0 2px; }
+  .cal-fecha-mas { display: none; }
+  /* En el teléfono la rejilla tiene que empezar en la primera pantalla:
+     la tarjeta se queda en nombre, semanas y el botón de fechas (las
+     fechas ya se ven dentro de cada día). */
+  .campana-mes { padding: var(--sp-2) var(--sp-3); }
+  .campana-mes-icono { display: none; }
+  .campana-mes-nombre { font-size: var(--fs-md); }
+  .campana-mes-ofertas, .campana-fecha, .campana-fechas-vacio, .campana-fechas-titulo { display: none; }
+  .campana-mes-acciones .btn { min-height: var(--tap-sm); }
+  .campana-semanas { margin-top: var(--sp-2); }
+  .campana-fechas { margin-top: var(--sp-1); }
+  .campana-semanas { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(140px, 1fr); overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: 2px; }
 }
 
 /* ============================================================

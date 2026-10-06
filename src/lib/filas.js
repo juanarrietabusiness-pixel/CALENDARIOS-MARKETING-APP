@@ -54,6 +54,7 @@ export function clientToRow(client) {
     ideas_bank: client.ideasBank || [],
     saved_categories: client.savedCategories || [],
     weekly_structure: client.weeklyStructure || [],
+    fechas_especiales: client.fechasEspeciales || null,
   };
 }
 
@@ -95,6 +96,7 @@ export function rowToClient(row) {
     ideasBank: row.ideas_bank || [],
     savedCategories: row.saved_categories || [],
     weeklyStructure: row.weekly_structure || [],
+    fechasEspeciales: row.fechas_especiales || null,
     savedPlans: [],
     calendars: [],
   };

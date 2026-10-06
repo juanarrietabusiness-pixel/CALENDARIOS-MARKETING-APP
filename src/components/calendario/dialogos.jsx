@@ -13,6 +13,7 @@ import { useId, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS } from "../../constants";
 import { uid, compressImage } from "../../utils";
 import { CAMPOS_EXPORTABLES } from "../../lib/exportarContenido";
+import { rangoSemana } from "../../lib/semanas";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import Icon from "../Icon";
 import SelectorFecha from "../SelectorFecha";
@@ -300,10 +301,20 @@ export function VisualRefSection({ formatKey, label, icon, color, refs, onAdd, o
   );
 }
 
-export function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
+/**
+ * «Editar el mes»: campaña, semanas, ofertas y referencias. `semanas` son
+ * las del mes tal como las pinta la rejilla (lib/campanas.js): cada una
+ * tiene su campo aunque todavía no tenga nombre —antes sólo salían las que
+ * ya lo tenían, y un mes sin planificar no tenía dónde escribirlos—.
+ * `aviso`: lo que dijo la IA al proponer los nombres.
+ */
+export function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose, tabInicial = "general", semanas = [], aviso = "" }) {
   const ref = useDialogA11y(onClose);
   const ids = useId();
-  const [activeTab, setActiveTab] = useState("general");
+  const [activeTab, setActiveTab] = useState(tabInicial);
+  const filasSemanas = semanas.length
+    ? semanas.map((s, i) => ({ i, etiqueta: `Semana ${s.numero} · ${rangoSemana(s.desde, s.hasta)}` }))
+    : (metaForm.weekConcepts || []).map((_, i) => ({ i, etiqueta: `Semana ${i + 1}` }));
 
   const addVisualRef = async (file, format) => {
     try {
@@ -356,11 +367,13 @@ export function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
         </div>
 
         <div className="sheet-body">
+          {aviso && <p role="status" className="notice" style={{ marginBottom: "var(--sp-3)" }}>{aviso}</p>}
           {activeTab === "general" && (
             <>
               <div className="field">
-                <label className="label" htmlFor={`${ids}-camp`}>Campaña</label>
-                <input id={`${ids}-camp`} className="input" value={metaForm.campaign} onChange={(e) => setMetaForm((p) => ({ ...p, campaign: e.target.value }))} />
+                <label className="label" htmlFor={`${ids}-camp`}>Campaña del mes</label>
+                <input id={`${ids}-camp`} className="input" value={metaForm.campaign} placeholder="Ej: Otoño en una taza" onChange={(e) => setMetaForm((p) => ({ ...p, campaign: e.target.value }))} />
+                <p className="hint">El nombre que agrupa todo el mes. Las semanas, en la pestaña Semanas.</p>
               </div>
             </>
           )}
@@ -368,17 +381,21 @@ export function EditMetaDialog({ metaForm, setMetaForm, onSave, onClose }) {
           {activeTab === "weeks" && (
             <fieldset style={{ border: "none" }}>
               <legend className="label">Conceptos semanales</legend>
-              {(metaForm.weekConcepts || []).map((c, i) => (
+              <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
+                El nombre de la campaña de cada semana: sale en el calendario encima de su fila y la IA lo usa al escribir.
+              </p>
+              {filasSemanas.map(({ i, etiqueta }) => (
                 <div key={i} className="field">
                   <label className="label" style={{ textTransform: "none", color: "var(--text-dim)" }} htmlFor={`${ids}-wk-${i}`}>
-                    Semana {i + 1}
+                    {etiqueta}
                   </label>
                   <input
                     id={`${ids}-wk-${i}`}
                     className="input"
-                    value={c}
+                    value={(metaForm.weekConcepts || [])[i] || ""}
+                    placeholder="Ej: Semana del café de otoño"
                     onChange={(e) => setMetaForm((p) => {
-                      const wc = [...p.weekConcepts];
+                      const wc = [...(p.weekConcepts || [])];
                       wc[i] = e.target.value;
                       return { ...p, weekConcepts: wc };
                     })}

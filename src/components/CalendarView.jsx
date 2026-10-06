@@ -18,6 +18,9 @@ import { programarAprobadasDe } from "../lib/programarAprobadas";
 import { useEquipo } from "../hooks/useEquipo";
 import { yoActual, esAdmin } from "../lib/sesionActual";
 import { fechaEnZona } from "../lib/agenda";
+import { fechasDelMes, fechasPorDia } from "../lib/fechasEspeciales";
+import { semanasDelMes, conceptosDelMes, pedidoDeNombres, leerNombres } from "../lib/campanas";
+import { semanaDelMes } from "../lib/semanas";
 import { esVirtual } from "../lib/meses";
 import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO, CAMPOS_EXPORTABLES } from "../lib/exportarContenido";
 import Icon from "./Icon";
@@ -32,6 +35,8 @@ let vistaRecordada = "grid";
 const PostSidePanel = lazy(() => import("./calendario/PostSidePanel").then((m) => ({ default: m.PostSidePanel })));
 const ProgramarAprobadas = lazy(() => import("./calendario/programarAprobadas"));
 import { MonthGrid } from "./calendario/MonthGrid";
+import { CampanaMes } from "./calendario/campanaMes";
+const FechasEspecialesDialog = lazy(() => import("./calendario/fechasEspeciales").then((m) => ({ default: m.FechasEspecialesDialog })));
 import { BankPanel } from "./calendario/BankPanel";
 import {
   ExportContenidoDialog, ElegirNuevaPublicacion,
@@ -53,6 +58,7 @@ export default function CalendarView({
   onAbrirVecina,
   onUpdateClient,
   onMoveBankToCal,
+  onGuardarFechas,
   abrirPublicacion = null,
   onPublicacionAbierta,
 }) {
@@ -241,6 +247,51 @@ export default function CalendarView({
       visualReferences: (cal.visualReferences || []).map((r) => r.format ? r : { ...r, format: "post" }),
     };
   });
+  // La campaña del mes y de cada semana, y las fechas especiales del mes
+  // (las del catálogo más lo que decidió este cliente).
+  const semanasMes = useMemo(() => semanasDelMes(cal.year, cal.month), [cal.year, cal.month]);
+  const conceptos = conceptosDelMes(cal);
+  const fechasMes = useMemo(() => fechasDelMes(cal.year, cal.month, client?.fechasEspeciales), [cal.year, cal.month, client?.fechasEspeciales]);
+  const fechasDia = useMemo(() => fechasPorDia(fechasMes), [fechasMes]);
+  const [metaTab, setMetaTab] = useState("general");
+  const [metaAviso, setMetaAviso] = useState("");
+  const [nombrando, setNombrando] = useState(false);
+  const [errorNombres, setErrorNombres] = useState("");
+
+  const formDelMes = (extra = {}) => ({
+    campaign: cal.campaign || "",
+    weekConcepts: semanasMes.map((_, i) => conceptos[i] || ""),
+    offers: cal.offers || "",
+    promoCode: cal.promoCode || "",
+    visualReferences: (cal.visualReferences || []).map((r) => r.format ? r : { ...r, format: "post" }),
+    ...extra,
+  });
+  const abrirMeta = (tab = "general", extra = {}, aviso = "") => {
+    setMetaForm(formDelMes(extra));
+    setMetaTab(tab);
+    setMetaAviso(aviso);
+    abrirCapa("meta");
+  };
+
+  /** La IA propone el nombre del mes y el de las semanas que no lo tienen; se revisa antes de guardar. */
+  const sugerirNombres = async () => {
+    if (nombrando) return;
+    setNombrando(true);
+    setErrorNombres("");
+    try {
+      const pedido = pedidoDeNombres({
+        contexto: buildClientContext(client), year: cal.year, month: cal.month,
+        fechas: fechasMes, ofertas: cal.offers || "", campana: cal.campaign || "", semanas: conceptos,
+      });
+      const txt = await callAI(pedido, { funcion: "calendario", clienteId: client?.id });
+      const r = leerNombres(txt, semanasMes.length, { campana: cal.campaign || "", semanas: conceptos });
+      if (!r) throw new Error("La IA no devolvió nombres que se puedan leer. Inténtalo otra vez.");
+      abrirMeta(cal.campaign ? "weeks" : "general", { campaign: r.campana, weekConcepts: r.semanas }, "Propuesta de la IA: cambia lo que quieras y pulsa Guardar.");
+    } catch (e) {
+      setErrorNombres(e?.message || "No se pudo consultar a la IA.");
+    }
+    setNombrando(false);
+  };
 
   // ----------------------------------------------------------
   // Respuestas del cliente final, en vivo
@@ -620,9 +671,12 @@ export default function CalendarView({
 
   const saveMetaEdit = () => {
     const updatedConcepts = metaForm.weekConcepts;
+    // El nombre de cada semana se copia a sus días por la FILA de la rejilla
+    // (lunes a domingo): un día añadido a mano llevaba `weekNumber: 1`
+    // fuera cual fuera su semana.
     const newDays = (cal.days || []).map((d) => ({
       ...d,
-      concept: updatedConcepts[(d.weekNumber || 1) - 1] || d.concept || "",
+      concept: updatedConcepts[semanaDelMes(d.date) - 1] || "",
     }));
     onUpdateCal(calId, {
       ...cal,
@@ -872,7 +926,13 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
   return (
     <div className={viewMode === "grid" ? "cal-vista-mes" : undefined} style={{ paddingBottom: sidePanel ? 0 : 80 }}>
       {/* Edit calendar meta modal */}
-      {capa === "meta" && <EditMetaDialog metaForm={metaForm} setMetaForm={setMetaForm} onSave={saveMetaEdit} onClose={cerrarCapa} />}
+      {capa === "meta" && <EditMetaDialog metaForm={metaForm} setMetaForm={setMetaForm} onSave={saveMetaEdit} onClose={cerrarCapa} tabInicial={metaTab} semanas={semanasMes} aviso={metaAviso} />}
+
+      {capa === "fechas" && (
+        <Suspense fallback={null}>
+          <FechasEspecialesDialog client={client} year={cal.year} month={cal.month} onGuardar={onGuardarFechas} onClose={cerrarCapa} />
+        </Suspense>
+      )}
 
       {capa === "programarAprobadas" && (
         <Suspense fallback={null}>
@@ -901,11 +961,20 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
       )}
 
       {/* El mes ya lo dice el navegador de arriba (‹ Octubre 2026 ›), y las
-          cifras —aprobadas, por aprobar, a medias— la cabecera del cliente:
-          aquí se repetían justo debajo. Sólo queda la campaña, si la hay. */}
-      {cal.campaign && (
-        <p className="cal-campana"><Icon name="sparkles" size={14} /> {cal.campaign}</p>
-      )}
+          cifras —aprobadas, por aprobar, a medias— la cabecera del cliente.
+          Aquí va la campaña: la del mes, la de cada semana y las fechas. */}
+      <CampanaMes
+        cal={cal}
+        conceptos={conceptos}
+        fechas={fechasMes}
+        hoy={fechaEnZona()}
+        soloLectura={Boolean(yoActual()?.soloLectura)}
+        sugiriendo={nombrando}
+        error={errorNombres}
+        onEditar={(tab) => abrirMeta(tab)}
+        onSugerir={sugerirNombres}
+        onFechas={() => abrirCapa("fechas")}
+      />
 
       {/* Barra de herramientas: acción primaria, conmutador de vista y el
           resto agrupado. Antes eran siete botones idénticos que mezclaban
@@ -967,10 +1036,8 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
 
         <OverflowMenu
           items={[
-            !virtual && { icon: "pencil", label: "Editar el mes", onClick: () => {
-              setMetaForm({ campaign: cal.campaign || "", weekConcepts: [...(cal.weekConcepts || [])], offers: cal.offers || "", promoCode: cal.promoCode || "", visualReferences: (cal.visualReferences || []).map((r) => r.format ? r : { ...r, format: "post" }) });
-              abrirCapa("meta");
-            } },
+            { icon: "pencil", label: "Editar el mes", onClick: () => abrirMeta("general") },
+            { icon: "calendar", label: "Fechas especiales", onClick: () => abrirCapa("fechas") },
             { icon: "copy", label: "Exportar ideas y descripciones", onClick: () => abrirCapa("exportar") },
             { sep: true },
             { icon: "terminal", label: capa === "diagnostico" ? "Ocultar diagnóstico" : "Ver diagnóstico", onClick: () => setCapa((c) => (c === "diagnostico" ? null : "diagnostico")) },
@@ -1220,6 +1287,9 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           }}
           vecinos={vecinos}
           onVecina={(calVecino, post) => onAbrirVecina?.(calVecino, post.id)}
+          fechas={fechasDia}
+          conceptos={conceptos}
+          onEditarSemana={yoActual()?.soloLectura ? undefined : () => abrirMeta("weeks")}
         />
       ) : (
         /* List view: por semanas plegables (lib/semanas.js). Antes eran los
@@ -1259,7 +1329,9 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
                     <span className="day-info">
                       <span className="day-title">
                         {day.dayName}
-                        {day.specialDate && <span style={{ color: "var(--accent-alt)", marginLeft: "var(--sp-2)", fontSize: "var(--fs-2xs)" }}>{day.specialDate}</span>}
+                        {(fechasDia.get(day.date) ?? (day.specialDate ? [{ nombre: day.specialDate }] : [])).map((f) => (
+                          <span key={f.nombre} style={{ color: "var(--accent-alt)", marginLeft: "var(--sp-2)", fontSize: "var(--fs-2xs)" }}>{f.nombre}</span>
+                        ))}
                       </span>
                       {day.concept && <span className="day-concept">{day.concept}</span>}
                     </span>

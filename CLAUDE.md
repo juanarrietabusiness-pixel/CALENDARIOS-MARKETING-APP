@@ -151,6 +151,10 @@ src/
     resultados.js         De las filas de métricas a cifras, formatos, horarios (puro)
     colores.js            Colores y logo de la marca a partir del ADN (puro)
     semanas.js            La vista de lista por semanas: agrupar, resumen, cuál se abre (puro)
+    campanas.js           La campaña del mes y de cada semana: semanas de la rejilla, el pedido a la IA
+                          y su lectura (puro)
+    fechasEspeciales.js   Feriados de Panamá, comerciales e internacionales (Pascua y Carnaval
+                          calculados) + lo que elige cada cliente; el pedido a la IA (puro)
     subir.js              «Subir»: formato deducido, redes por defecto, rellenar lo vacío con
                           la propuesta de la IA, poner o mover una publicación de día (puro)
     aprobacion.js         Qué aprueba el cliente (idea o pieza final), qué cuenta de su respuesta,
@@ -228,6 +232,8 @@ src/
     PlanWizard.jsx        «Planificar mes»: 6 pasos que escriben en el mes elegido (lo AÑADEN
                           si ya tenía publicaciones)
     calendario/navegadorMes.jsx ‹ Octubre 2026 › Hoy: recorrer el calendario siempre activo
+    calendario/campanaMes.jsx   La tarjeta de la campaña: nombre del mes, semanas, ofertas, fechas
+    calendario/fechasEspeciales.jsx  Escoger las fechas de un cliente (importante, ocultar, propias, IA)
     CalendarView.jsx      Vista de lista y de rejilla, filtros, generación, envío
     anuncios/AsistenteCampana.jsx  «Nueva campaña»: objetivo, presupuesto, público, anuncio, revisar
     anuncios/DialogoActivar.jsx    Activar: el presupuesto y las fechas, y escribir ACTIVAR
@@ -339,9 +345,8 @@ worker/
     avisos.js             /api/avisos: la bandeja de quien pregunta y marcar leídos
     bandeja.js            /api/bandeja (comentarios y mensajes) y el webhook de Meta
                           (/api/webhooks/meta, sin sesión)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios)
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0031 anuncios)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1907,6 +1912,30 @@ son del servidor.
   programada/publicada en VERDE (reloj / ✓)** —también en `STATUSES`—: con el
   verde en «aprobada», la agencia la confundía con lo ya publicado.
 
+- **La campaña del mes se VE, y cada semana tiene la suya.** `campaign` y
+  `weekConcepts` existían desde «Planificar mes», pero eran una línea gris y
+  un «S1:» diminuto dentro del primer día. Ahora `CampanaMes` las enseña en
+  una tarjeta (con «Sugerir con IA», que propone y deja revisar antes de
+  guardar) y la rejilla pone una franja con el nombre encima de cada fila.
+  **La semana es la FILA de la rejilla** (lunes a domingo, `semanasDelMes()`),
+  la misma que `semanaDelMes()` de la lista: al guardar, el nombre se copia
+  a los días por su fecha, no por `day.weekNumber`, que en los días añadidos
+  a mano valía 1 fuera cual fuera su semana. «Editar el mes» ya sale también
+  en un mes sin cajón (`fusionarEnMes` copia la campaña al crearlo).
+- **Las fechas especiales: catálogo en el código, decisión en el cliente.**
+  Feriados de Panamá, comerciales y días internacionales viven en
+  `lib/fechasEspeciales.js` (Pascua, Carnaval, Día del Padre y Black Friday
+  se CALCULAN: escribirlos a mano caducaría al año). Lo que decide cada
+  cliente (`clients.fechas_especiales`, 0032: importantes, ocultas y propias
+  que se repiten cada año) es del cliente y no del mes: se escoge una vez.
+  Sin elegir nada se ven feriados y comerciales; los internacionales sólo
+  si se eligen. Las fechas DELICADAS (duelo, Semana Santa, cáncer) viajan a
+  la IA marcadas «sin promociones». Van a la IA en la generación de textos,
+  en el asistente y como valor inicial de «Planificar mes». «Elegir con IA»
+  no busca en internet (la búsqueda de Anthropic está apagada en la
+  cuenta): escoge ids del catálogo —los que no existen se descartan— y lo
+  que propone de su rubro queda `verificar` hasta que alguien lo confirma.
+  `clientToRow` lleva la columna: sin ella, guardar la ficha la borraría.
 - **Meta (Muse Spark) entra por la MISMA puerta que Anthropic.** Su API habla
   el formato de mensajes de Anthropic en `api.meta.ai/v1/messages`, así que
   `abrirFlujo()` decide por el id (`muse-*`) a dónde va y con qué llave

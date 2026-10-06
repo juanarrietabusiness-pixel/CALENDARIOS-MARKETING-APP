@@ -7,7 +7,7 @@
 // acababa siempre en puntos suspensivos—. Ver `.cal-post` en index.css.
 // ============================================================
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES } from "../../constants";
 import { fmtDate } from "../../utils";
 import { completitud, resumenCompletitud } from "../../lib/completitud";
@@ -23,7 +23,7 @@ import { estadoDelChip, miniaturaDe, ESTADOS_CHIP } from "../../lib/estadoChip";
  * sus días, un toque lo abre en su mes, y soltar ahí una publicación de
  * este mes la lleva a ese día (a otro mes: lo hace el servidor).
  */
-export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, onAddPost, onDropFromBank, ideasBank, dayLabels, onUpdateDayLabel, vecinos = null, onVecina }) {
+export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, onAddPost, onDropFromBank, ideasBank, dayLabels, onUpdateDayLabel, vecinos = null, onVecina, fechas = null, conceptos = [], onEditarSemana }) {
   const [drag, setDrag] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const [editingHeader, setEditingHeader] = useState(null);
@@ -45,7 +45,6 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
   };
 
   const allCells = cells();
-  let lastWeek = null;
 
   const FULL_DOW = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
 
@@ -83,7 +82,7 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
           </div>
         );
       })}
-      {allCells.map((date) => {
+      {allCells.map((date, indice) => {
         const d = new Date(date + "T12:00:00");
         const cur = d.getMonth() === cal.month;
         const vecina = cur ? null : vecinos?.get(date) ?? null;
@@ -91,17 +90,25 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
         const isToday = date === today;
         const isDrop = dropTarget === date;
 
-        const weekNum = dd?.weekNumber;
-        const concept = dd?.concept;
-        let showWeekSep = false;
-        if (weekNum && weekNum !== lastWeek && cur) {
-          showWeekSep = true;
-          lastWeek = weekNum;
-        }
+        // Cada fila es una semana del mes (la fila 1, la semana 1, como la
+        // lista por semanas): si tiene nombre de campaña, va en una franja
+        // encima, a lo ancho de la fila. Antes era «S1: …» dentro del primer día.
+        const fila = indice / 7;
+        const concepto = indice % 7 === 0 ? conceptos[fila] : "";
+        const especiales = cur ? fechas?.get(date) ?? [] : [];
 
         return (
+          <Fragment key={date}>
+          {concepto && (
+            onEditarSemana
+              ? (
+                <button type="button" className="cal-semana-franja" onClick={() => onEditarSemana(fila + 1)} aria-label={`Semana ${fila + 1}: ${concepto}. Editar`}>
+                  <span className="cal-semana-franja-num">S{fila + 1}</span> {concepto}
+                </button>
+              )
+              : <p className="cal-semana-franja"><span className="cal-semana-franja-num">S{fila + 1}</span> {concepto}</p>
+          )}
           <div
-            key={date}
             className={`cal-cell ${!cur ? "outside" : ""} ${isToday ? "today" : ""} ${isDrop ? "drop-target" : ""}`}
             onDragOver={(e) => { e.preventDefault(); setDropTarget(date); }}
             onDragLeave={() => setDropTarget(null)}
@@ -124,8 +131,17 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
               {isToday && <span className="sr-only">Hoy, </span>}
               {d.getDate()}
             </div>
-            {showWeekSep && concept && (
-              <div className="cal-week-tag">S{weekNum}: {concept}</div>
+            {especiales.length > 0 && (
+              <span
+                className="cal-fecha"
+                data-destacada={especiales[0].destacada || undefined}
+                data-delicada={especiales[0].delicada || undefined}
+                title={especiales.map((f) => f.nombre).join(" · ")}
+              >
+                {especiales[0].destacada && <Icon name="star" size={10} />}
+                <span className="cal-fecha-texto">{especiales[0].nombre}</span>
+                {especiales.length > 1 && <span className="cal-fecha-mas">+{especiales.length - 1}</span>}
+              </span>
             )}
             {(dd?.posts || []).map((post) => {
               const f = FORMATS[post.format] || FORMATS.post;
@@ -193,6 +209,7 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
               </button>
             )}
           </div>
+          </Fragment>
         );
       })}
     </div>
