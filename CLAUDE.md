@@ -124,6 +124,9 @@ src/
                           importa el Worker)
     estudioHiggsfield.json  Los modelos de Higgsfield, GENERADOS de su esquema: no se edita a mano
                           (`node scripts/estudio/generar-higgsfield.mjs`)
+    kitMarca.js           El kit de marca del Estudio: paleta, presets (producto, anuncio, corporativo,
+                          creativo), componer el pedido, el logo de referencia, pedidos a la IA (puro;
+                          también lo importa el Worker)
     estudio.js            Cliente de /api/estudio y lo puro de la pantalla: filtros, trabajos en curso,
                           de una publicación al Estudio y del Estudio a una publicación
     vivo.js               WebSocket: reconexión, latido, presencia
@@ -216,7 +219,9 @@ src/
     Estudio.jsx           La pestaña Estudio y el diálogo «Crear con IA»: pedir imágenes o videos,
                           verlos aparecer, galería, carpetas y papelera (lazy)
     EstudioCompositor.jsx Qué crear: tipo, prompt, modelo (ordenar/filtrar), ajustes, imágenes de apoyo
-    EstudioVisor.jsx      La pieza grande (imagen o video) con todo lo que se sabe de ella
+    EstudioVisor.jsx      La pieza grande (imagen o video) con todo lo que se sabe de ella, «Usar como logo»
+                          y «Revisar marca»
+    EstudioKit.jsx        El kit de marca: prepararlo con IA desde el cerebro, revisarlo, guardarlo
     calendario/crearConIA.jsx  El Estudio en un diálogo dentro del panel de una publicación y de «Subir»
                           (el hook que lo abre, en hooks/useCrearConIA.jsx)
     Cerebro.jsx           La pestaña Cerebro: las notas de un cliente, filtros, buscar, añadir, subir
@@ -346,7 +351,7 @@ worker/
     bandeja.js            /api/bandeja (comentarios y mensajes) y el webhook de Meta
                           (/api/webhooks/meta, sin sesión)
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1152,6 +1157,30 @@ son del servidor.
   lo que sale al proveedor tiene que ser lo que quedó escrito en la galería.
   · **Lo creado desde «Subir» apunta su uso al guardar** (`delEstudio` en `SubirRapido`): la
   publicación aún no existe al crear, y sin `usado_en` la papelera podría llevarse el archivo.
+- **El kit de marca del Estudio: lo que la agencia hacía en Flow con un texto
+  por marca, por cliente y SALIDO DEL CEREBRO** (`clients.kit_marca`, 0033;
+  lo puro en `src/lib/kitMarca.js`, lo que toca base/R2/IA en
+  `worker/lib/estudio/kit.js`).
+  · **«Preparar con IA» PROPONE, no guarda.** Lee el cerebro con `para:
+  "imagen"` (nunca lo interno) más la ficha, y la IA escribe paleta (sólo
+  colores que aparezcan, con su papel), tipografía, estilo, luz, «nunca» y
+  los cuatro presets en el tono de los de la agencia (los de Baby Caleb y
+  ROFER van como EJEMPLO del tono, no se copian). Una persona lo revisa y
+  guarda; «Corregir antes» abre el formulario.
+  · **El pedido es corto:** `componerPedido()` = preset + «Escena: idea» (+ la
+  línea de movimiento en video). Lo que sale al motor es lo que queda en la
+  galería; `ideaDelPedido()` recupera la escena para «Pedirla corregida».
+  · **El logo va de referencia sólo en imágenes** (`ponerLogo()`): en un video
+  la imagen de apoyo es el primer fotograma y el video empezaría en el logo.
+  Tiene que ser PNG/JPG/WEBP de ESE cliente (lo comprueba el servidor: un SVG
+  no le sirve a ningún motor). `clientToRow` NO lleva `kit_marca`: sólo lo
+  escribe el Estudio, así una ficha abierta desde antes no lo pisa.
+  · **«Revisar marca» MIRA la imagen** (va como bloque de imagen, ≤ 3,5 MB) con
+  el kit delante y devuelve puntaje, qué cumple, qué falla y una sugerencia.
+  Funciones «kit de marca» y «revisión de marca» en el hueco «análisis».
+  · **El asistente y Claude (MCP) usan el mismo kit:** `crear_en_estudio` con
+  `estilo` compone igual que la pantalla y pone el logo; `ver_estudio` dice si
+  el kit está preparado.
 - **El cerebro de un cliente es SUYO: un índice por cliente, nunca uno para
   todos.** El algoritmo viene de Agents Office, que indexa por nombre de
   archivo: los nueve clientes tienen un `01_brand_guidelines.md`, y en un

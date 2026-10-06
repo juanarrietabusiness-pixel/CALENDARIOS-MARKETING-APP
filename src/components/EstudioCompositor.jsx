@@ -4,6 +4,7 @@ import {
   textoCosto, NOMBRE_PROPORCION, MAX_PROMPT, maxPorPedido, duracionDe, modelosParaLista, creadoresDe, CRITERIOS_ORDEN, NOMBRE_CALIDAD, NOMBRE_MOTOR,
 } from "../lib/estudioCatalogo";
 import { ETIQUETA_AJUSTE, valorDeAjuste } from "../lib/estudio";
+import { TIPOS_PRESET } from "../lib/kitMarca";
 
 // ============================================================
 // El compositor del Estudio: qué se quiere crear
@@ -40,6 +41,37 @@ function Ranura({ titulo, ayuda, archivos, max, rol, subiendo, onQuitar, onSubir
         )}
         <span className="hint">{archivos.length} de {max}. {ayuda}</span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * El agente diseñador: el estilo de la marca que va delante de la idea
+ * (producto, anuncio, corporativo, creativo) y el logo de referencia. Lo
+ * que se manda al motor es el preset + la escena: se ve antes de pedir.
+ */
+function EstiloDeMarca({ ids, preset, onPreset, kitListo, textoPreset, conLogo, onConLogo, puedeLogo, esVideo }) {
+  return (
+    <div className="field est-estilo">
+      <span className="label" id={`${ids}-estilo`}>Estilo de la marca</span>
+      <div className="est-tipos" role="group" aria-labelledby={`${ids}-estilo`}>
+        <button type="button" className="filter-chip" aria-pressed={!preset} onClick={() => onPreset("")}>Sin preset</button>
+        {Object.entries(TIPOS_PRESET).map(([tipo, def]) => (
+          <button key={tipo} type="button" className="filter-chip" aria-pressed={preset === tipo} onClick={() => onPreset(tipo)} title={def.ayuda}>{def.nombre}</button>
+        ))}
+      </div>
+      {preset && (
+        <details className="est-preset-vista">
+          <summary>Lo que va delante de tu idea{kitListo ? "" : " (sin kit: prepáralo arriba para que lleve la paleta)"}</summary>
+          <p>{textoPreset}</p>
+        </details>
+      )}
+      {preset && puedeLogo && (
+        <label className="est-logo-casilla">
+          <input type="checkbox" checked={conLogo} onChange={(e) => onConLogo(e.target.checked)} /> Poner el logo de la marca como referencia
+        </label>
+      )}
+      {preset && esVideo && <p className="hint">En video el logo no va de referencia: el video empezaría en él.</p>}
     </div>
   );
 }
@@ -89,6 +121,7 @@ export default function Compositor({
   ids, form, setForm, modelo, motores, costo, confirmando, enviando, subiendo,
   onEnviar, onConfirmar, onNo, onModelo, onTipo, onQuitarMedio, onSubirArchivos, promptRef, etiquetaPrompt = "¿Qué quieres crear?",
   mejorando = false, onMejorar = null, onVolverIdea = null,
+  estilo = null,
 }) {
   const entrada = useRef(null);
   const rolSubida = useRef("reference");
@@ -138,6 +171,8 @@ export default function Compositor({
       </div>
 
       {onMejorar && <MejorarIdea mejorando={mejorando} onMejorar={onMejorar} onVolverIdea={onVolverIdea} />}
+
+      {estilo && <EstiloDeMarca ids={ids} esVideo={esVideo} {...estilo} />}
 
       <div className="est-fila">
         <div className="field">
