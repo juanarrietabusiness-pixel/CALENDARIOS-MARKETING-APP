@@ -48,6 +48,7 @@ import { fotoPendiente } from "./lib/metricas.js";
 import { rutasInformes } from "./rutas/informes.js";
 import { rutasAuditorias } from "./rutas/auditorias.js";
 import { rutasCerebro } from "./rutas/cerebro.js";
+import { rutasMercado } from "./rutas/mercado.js";
 import { rutasEstudio } from "./rutas/estudio.js";
 import { rutasBiblioteca } from "./rutas/biblioteca.js";
 import { rutasAnuncios } from "./rutas/anuncios.js";
@@ -386,6 +387,8 @@ export default {
       if (partes[0] === "mcp") return await rutasMCP(req, env, { acceso, usuario, partes, metodo });
       // El cerebro de cada cliente: sus notas y lo que se le da a la IA.
       if (partes[0] === "cerebro") return await rutasCerebro(req, env, { acceso, usuario, partes, metodo });
+      // El estudio de mercado: catálogo, estudio por pasos, referencias de la competencia.
+      if (partes[0] === "mercado") return await rutasMercado(req, env, { acceso, usuario, partes, metodo });
       // El Estudio: imágenes por trabajos, con su galería por cliente.
       if (partes[0] === "estudio") return await rutasEstudio(req, env, { acceso, usuario, partes, metodo });
       // La bandeja: comentarios y mensajes de Facebook e Instagram.

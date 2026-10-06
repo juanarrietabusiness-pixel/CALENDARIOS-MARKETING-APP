@@ -14,6 +14,8 @@ import "./Cerebro.css";
 
 // El mapa 3D se descarga sólo si se abre: la lista es lo que se ve al entrar.
 const CerebroGrafo = lazy(() => import("./CerebroGrafo"));
+// El estudio de mercado va aparte: su diálogo pesa y no todos los que miran el cerebro lo abren.
+const EstudioMercado = lazy(() => import("./EstudioMercado"));
 
 const CLAVE_VISTA = "cerebro.vista";
 const leerVista = () => { try { return localStorage.getItem(CLAVE_VISTA) === "mapa" ? "mapa" : "lista"; } catch { return "lista"; } };
@@ -254,6 +256,10 @@ export default function Cerebro({ client }) {
         )}
       </div>
 
+      <Suspense fallback={null}>
+        <EstudioMercado client={client} onCambio={cargar} />
+      </Suspense>
+
       {vacio ? (
         <div className="cerebro-vacio card">
           <h3>Este cerebro está vacío</h3>
@@ -342,7 +348,7 @@ function NotaFila({ nota, lectura, onAbrir, onInterna, onBorrar }) {
           <span className={`badge cerebro-tipo cerebro-tipo-${nota.tipo}`} title={tipo?.ayuda}>{nombreDeTipo(nota.tipo)}</span>
           {nota.interna && <span className="badge cerebro-interna" title="La ve el equipo, pero no sale en los textos que se publican"><Icon name="lock" size={12} /> Interna</span>}
           <span>{formatoCaracteres(nota.caracteres)} car.</span>
-          <span>{nota.origen === "repositorio" ? "Del repositorio" : nota.origen === "ia" ? "Escrita por la IA" : nota.origen === "documento" ? "Documento" : "A mano"}</span>
+          <span>{nota.origen === "repositorio" ? "Del repositorio" : nota.origen === "ia" ? "Escrita por la IA" : nota.origen === "mercado" ? "Del estudio de mercado" : nota.origen === "documento" ? "Documento" : "A mano"}</span>
           <span>{fecha(nota.actualizada)}</span>
         </p>
       </div>

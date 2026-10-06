@@ -76,7 +76,7 @@ export const FUNCIONES_IA = Object.freeze({
   lectura: ["lectura de contenido"],
   asistente: ["asistente", "resumen del chat"],
   prompts: ["prompt de imagen"],
-  analisis: ["informe", "auditoria", "cerebro", "ADN de marca", "kit de marca", "revisión de marca"],
+  analisis: ["informe", "auditoria", "cerebro", "ADN de marca", "kit de marca", "revisión de marca", "estudio de mercado", "catálogo", "referencia de competencia"],
 });
 /** Lo que escribe Muse Spark Contributor por defecto en cuanto hay llave de Meta (decisión de la agencia). */
 export const MUSE_POR_DEFECTO_EN = Object.freeze(["redaccion", "guiones"]);

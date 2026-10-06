@@ -124,6 +124,11 @@ src/
                           importa el Worker)
     estudioHiggsfield.json  Los modelos de Higgsfield, GENERADOS de su esquema: no se edita a mano
                           (`node scripts/estudio/generar-higgsfield.mjs`)
+    estudioMercado.js     El estudio de mercado: catálogo (productos y precios), lo general (perfiles, deseos de
+                          Reiss, nivel de consciencia), los 7 elementos por producto, ganchos por nivel, textos de
+                          anuncio, referencias de la competencia; pedidos a la IA, notas y documento (puro; también
+                          lo importa el Worker)
+    mercado.js            Cliente de /api/mercado
     kitMarca.js           El kit de marca del Estudio: paleta, presets (producto, anuncio, corporativo,
                           creativo), componer el pedido, el logo de referencia, pedidos a la IA (puro;
                           también lo importa el Worker)
@@ -221,6 +226,8 @@ src/
     EstudioCompositor.jsx Qué crear: tipo, prompt, modelo (ordenar/filtrar), ajustes, imágenes de apoyo
     EstudioVisor.jsx      La pieza grande (imagen o video) con todo lo que se sabe de ella, «Usar como logo»
                           y «Revisar marca»
+    EstudioMercado.jsx    El estudio de mercado en la pestaña Cerebro: catálogo, «Realizar estudio de mercado» por
+                          pasos con revisión, y las referencias de la competencia (lazy)
     EstudioKit.jsx        El kit de marca: prepararlo con IA desde el cerebro, revisarlo, guardarlo
     calendario/crearConIA.jsx  El Estudio en un diálogo dentro del panel de una publicación y de «Subir»
                           (el hook que lo abre, en hooks/useCrearConIA.jsx)
@@ -291,6 +298,8 @@ worker/
     anuncios.js           Meta Ads: cuentas publicitarias, campañas e /insights, subir el medio
                           (/adimages, /advideos por file_url), crear en pausa, activar y pausar
     mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
+    mercado.js            El estudio de mercado: catálogo (y su nota de cifras), el estudio por pasos con búsqueda
+                          web, aprobar (notas del cerebro + documento en Drive), referencias de la competencia
     estudio/              El Estudio: meta.js (Muse Image: generar y editar, 0,01 $), prompt.js («Mejorar
                           idea»: la idea más clara, en una o dos frases), trabajos.js (pedir, avanzar por pasos, cancelar; el permiso de
                           un paso a la vez y el cron), motores.js (prueba y Gemini, mismo contrato;
@@ -341,6 +350,7 @@ worker/
     informes.js           Informes: listar, generar, compartir; el público va en index.js
     auditorias.js         Auditorías: listar, generar, compartir; la pública va en index.js
     biblioteca.js         /api/biblioteca: buscar (GET) y los filtros guardados
+    mercado.js            /api/mercado/<cliente>: catálogo, estudio por pasos, borrador, aprobar, referencias
     cerebro.js            /api/cerebro/<cliente>: notas, buscar, contexto, grafo, señales, aprender,
                           propuestas, importar, preparar
     estudio.js            /api/estudio/<cliente>: galería, trabajos (pedir, avanzar, cancelar,
@@ -351,7 +361,7 @@ worker/
     bandeja.js            /api/bandeja (comentarios y mensajes) y el webhook de Meta
                           (/api/webhooks/meta, sin sesión)
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1181,6 +1191,28 @@ son del servidor.
   · **El asistente y Claude (MCP) usan el mismo kit:** `crear_en_estudio` con
   `estilo` compone igual que la pantalla y pone el logo; `ver_estudio` dice si
   el kit está preparado.
+- **El estudio de mercado: catálogo, estudio y competencia, por cliente** (`mercado_clientes`, 0034; lo puro
+  en `src/lib/estudioMercado.js`, lo que toca base/IA/Drive en `worker/lib/mercado.js`). Va en su TABLA y no
+  en `clients`: pesa decenas de miles de caracteres y `clients` viaja entero en cada carga y cada aviso.
+  · **Un precio sale del CATÁLOGO.** Se guarda además como nota de CIFRAS del cerebro («Productos y
+  servicios», `origen: "mercado"`), que la IA lee SIEMPRE que escribe. Con `origen: "ia"` la renovación de
+  la ficha técnica la borraría: `prepararFicha` reemplaza las cifras que son suyas.
+  · **El estudio va POR PASOS** —lo general y luego un producto por llamada— y cada paso se guarda en el
+  BORRADOR: con búsqueda web y razonamiento una llamada tarda minutos, y diez servicios no caben en una.
+  Cerrar la pestaña a mitad no pierde nada; «Continuar» sigue. Nada pasa a vigente sin «Aprobar».
+  · **La búsqueda web va por `llamarIA(…, { herramientas })`** (worker/lib/cerebro/ia.js): reanuda los
+  `pause_turn`, junta el texto de todos los turnos, suma las búsquedas al consumo y, si la cuenta no la tiene
+  activada, sigue sin ella con aviso. Cualquier llamada nueva con búsqueda debe ir por ahí.
+  · **La competencia es INTERNA** en el cerebro (la nota «competencia» del estudio y cada referencia): la ven
+  el equipo y el asistente; un caption que nombre a la competencia sería un error.
+  · **Aprobar escribe primero el cerebro y la fila; Drive, después y sin poder tumbar nada** (sin carpeta o sin
+  Drive conectado, se aprueba igual y se avisa). El documento es un HTML que Drive convierte en Google Docs.
+  · **Las referencias se suben a la galería del Estudio** (carpeta «Competencia») y la IA MIRA la captura. La
+  API de Meta no da los anuncios comerciales de Panamá: la pantalla abre la Biblioteca web con la búsqueda.
+  · **El Estudio ofrece los ganchos del estudio** con el preset de anuncio (`angulos` en GET /api/estudio):
+  la idea pide el gancho y el precio EXACTOS del catálogo. El kit de marca lee el estudio aprobado.
+  · **Los siete elementos** son genéricos (`ELEMENTOS_MERCADO`); si la agencia usa otros nombres, se cambian
+  ahí. Los marcos (niveles de Schwartz, deseos de Reiss) son públicos.
 - **El cerebro de un cliente es SUYO: un índice por cliente, nunca uno para
   todos.** El algoritmo viene de Agents Office, que indexa por nombre de
   archivo: los nueve clientes tienen un `01_brand_guidelines.md`, y en un

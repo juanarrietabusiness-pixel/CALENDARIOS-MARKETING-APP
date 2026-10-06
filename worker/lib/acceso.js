@@ -74,6 +74,9 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "cerebro_usos",
   "cerebro_memoria",
   "cerebro_propuestas",
+  // El estudio de mercado de cada cliente: catálogo, estudio, borrador y
+  // referencias de la competencia (worker/lib/mercado.js).
+  "mercado_clientes",
   // El Estudio: lo que se pide (trabajos), lo que sale (archivos) y sus
   // etiquetas (carpetas). Worker/lib/estudio/.
   "estudio_trabajos",
@@ -123,6 +126,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "consumo_ia", "cuentas_sociales", "image_references", "image_templates", "informes", "auditorias",
   "metricas_competencia", "metricas_cuenta", "metricas_publicacion", "publicaciones_programadas",
   "cerebro_notas", "cerebro_senales", "cerebro_usos", "cerebro_memoria", "cerebro_propuestas",
+  "mercado_clientes",
   "estudio_trabajos", "estudio_archivos", "estudio_carpetas",
   "bandeja_clientes", "bandeja_comentarios", "bandeja_hilos", "bandeja_mensajes",
   "biblioteca_filtros",

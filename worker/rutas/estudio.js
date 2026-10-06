@@ -37,6 +37,8 @@ import { firma, difundir } from "../lib/vivo.js";
 import { estadoMotores } from "../lib/estudio/motores.js";
 import { mejorarIdea } from "../lib/estudio/prompt.js";
 import { kitDe, guardarKit, prepararKit, revisarPieza } from "../lib/estudio/kit.js";
+import { leerMercado } from "../lib/mercado.js";
+import { angulosDeAnuncio } from "../../src/lib/estudioMercado.js";
 import {
   crearTrabajo, avanzarTrabajo, cancelarTrabajo, reintentarTrabajo, trabajoPublico, ErrorEstudio,
 } from "../lib/estudio/trabajos.js";
@@ -63,7 +65,14 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
 
   try {
     // ---------- La galería ----------
-    if (!b && metodo === "GET") return json({ ...(await leerGaleria(env, acceso, cliente.id)), kit: kitDe(cliente) });
+    if (!b && metodo === "GET") {
+      // Los ganchos del estudio de mercado aprobado, para escoger uno con el preset de anuncio (con su precio).
+      const mercado = await leerMercado(acceso, cliente.id).catch(() => null);
+      return json({
+        ...(await leerGaleria(env, acceso, cliente.id)), kit: kitDe(cliente),
+        angulos: mercado ? angulosDeAnuncio(mercado.estudio, mercado.catalogo) : [],
+      });
+    }
 
     // ---------- El kit de marca ----------
     if (b === "kit") {

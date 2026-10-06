@@ -22,12 +22,23 @@ import { claveDelCliente } from "./archivos.js";
 import { ErrorEstudio } from "./trabajos.js";
 import { aBase64 } from "./gemini.js";
 import { limpiarKit, pedidoDeKit, leerKit, pedidoDeRevision, leerRevision } from "../../../src/lib/kitMarca.js";
+import { estudioParaElKit } from "../../../src/lib/estudioMercado.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 const CONSULTA_VISUAL = "estilo visual identidad paleta colores hex fotografía iluminación composición tipografía logo evitar negativos";
 const MAX_GUIA = 4_000;
 /** Lo que Anthropic admite por imagen (5 MB en base64): con margen. */
 const MAX_BYTES_REVISION = 3_600_000;
+
+/** Lo que el kit necesita del estudio de mercado aprobado (vacío si no hay). No puede tumbar la preparación. */
+async function estudioAprobado(acceso, clienteId) {
+  try {
+    const f = await acceso.leerUno("mercado_clientes", { client_id: clienteId });
+    return estudioParaElKit(leerJSON(f?.estudio, null));
+  } catch {
+    return "";
+  }
+}
 
 /** El kit guardado de un cliente (fila de `clients`). */
 export const kitDe = (cliente) => limpiarKit(leerJSON(cliente?.kit_marca, {}));
@@ -66,6 +77,8 @@ export async function prepararKit(env, acceso, cliente) {
     cliente.visual_style && `Estilo visual de la ficha: ${String(cliente.visual_style).slice(0, 800)}`,
     [cliente.primary_color, cliente.secondary_color, cliente.accent_color].some(Boolean) &&
       `Colores de la ficha: principal ${cliente.primary_color ?? "—"}, secundario ${cliente.secondary_color ?? "—"}, acento ${cliente.accent_color ?? "—"}`,
+    // El estudio de mercado aprobado: a quién le habla y qué la mueve, para el preset de anuncio.
+    await estudioAprobado(acceso, cliente.id),
   ].filter(Boolean).join("\n");
   const r = await llamarIA(env, acceso, cliente, {
     prompt: pedidoDeKit({ marca: cliente.name, rubro: cliente.industry ?? "", guia, ficha }),

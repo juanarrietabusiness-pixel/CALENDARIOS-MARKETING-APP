@@ -50,7 +50,7 @@ function Ranura({ titulo, ayuda, archivos, max, rol, subiendo, onQuitar, onSubir
  * (producto, anuncio, corporativo, creativo) y el logo de referencia. Lo
  * que se manda al motor es el preset + la escena: se ve antes de pedir.
  */
-function EstiloDeMarca({ ids, preset, onPreset, kitListo, textoPreset, conLogo, onConLogo, puedeLogo, esVideo }) {
+function EstiloDeMarca({ ids, preset, onPreset, kitListo, textoPreset, conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo }) {
   return (
     <div className="field est-estilo">
       <span className="label" id={`${ids}-estilo`}>Estilo de la marca</span>
@@ -65,6 +65,20 @@ function EstiloDeMarca({ ids, preset, onPreset, kitListo, textoPreset, conLogo, 
           <summary>Lo que va delante de tu idea{kitListo ? "" : " (sin kit: prepáralo arriba para que lleve la paleta)"}</summary>
           <p>{textoPreset}</p>
         </details>
+      )}
+      {preset === "anuncio" && !esVideo && angulos.length > 0 && onAngulo && (
+        <div className="field">
+          <label className="label" htmlFor={`${ids}-angulo`}>Desde el estudio de mercado</label>
+          <select id={`${ids}-angulo`} className="input" defaultValue="" onChange={(e) => { const a = angulos.find((x) => x.id === e.target.value); if (a) onAngulo(a); e.target.value = ""; }}>
+            <option value="">Escoge un producto y un gancho…</option>
+            {[...new Set(angulos.map((a) => a.producto))].map((producto) => (
+              <optgroup key={producto} label={`${producto}${angulos.find((a) => a.producto === producto)?.precio ? ` · ${angulos.find((a) => a.producto === producto).precio}` : ""}`}>
+                {angulos.filter((a) => a.producto === producto).map((a) => <option key={a.id} value={a.id}>{a.nombreNivel}: {a.gancho}</option>)}
+              </optgroup>
+            ))}
+          </select>
+          <p className="hint">Escribe la idea con el gancho y el precio exactos del catálogo; la escena la ajustas tú.</p>
+        </div>
       )}
       {preset && puedeLogo && (
         <label className="est-logo-casilla">

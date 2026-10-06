@@ -23,6 +23,8 @@
 //   documento    Lo que se subió o se importó y no es canon.
 //   nota         Escrita a mano.
 //   decision     Lo que el cliente aprobó o rechazó, con su motivo.
+//   mercado      El estudio de mercado (general y por producto) y las
+//                referencias de la competencia: lo escribe worker/lib/mercado.js.
 //   borrador     Lo que produjo otro sistema (informes del agente diario,
 //                prompts semanales ya enviados). Pesa poco y es interno.
 //
@@ -36,8 +38,10 @@ import { SECCION_DE_MAQUETACION, CLAVES_DE_TEXTO_DE_LA_RECETA } from "../../../s
 import { fold } from "./conocimiento.js";
 import { summary } from "./memoria.js";
 
-export const TIPOS = Object.freeze(["ficha", "cifras", "marca", "maquetacion", "documento", "nota", "decision", "borrador"]);
-export const ORIGENES = Object.freeze(["repositorio", "documento", "manual", "ia", "app"]);
+export const TIPOS = Object.freeze(["ficha", "cifras", "marca", "maquetacion", "documento", "nota", "decision", "borrador", "mercado"]);
+// «mercado»: lo escribió el estudio de mercado (worker/lib/mercado.js). Aparte de «ia» a propósito: la ficha
+// técnica reemplaza las notas `origen: "ia"` de tipo cifras, y el catálogo es una nota de cifras que no es suya.
+export const ORIGENES = Object.freeze(["repositorio", "documento", "manual", "ia", "app", "mercado"]);
 
 /** Los tipos que entran SIEMPRE en el contexto, sin competir en la búsqueda. */
 export const SIEMPRE = Object.freeze(["ficha", "cifras"]);
@@ -47,7 +51,7 @@ export const SIEMPRE = Object.freeze(["ficha", "cifras"]);
  * suelto, y un informe de otro sistema casi nunca gana a nada. Sin esto,
  * una pregunta por precios podía citar un borrador antes que la fuente.
  */
-export const AUTORIDAD = Object.freeze({ marca: 1.15, decision: 1.05, documento: 1, nota: 1, maquetacion: 0.9, borrador: 0.4 });
+export const AUTORIDAD = Object.freeze({ marca: 1.15, mercado: 1.1, decision: 1.05, documento: 1, nota: 1, maquetacion: 0.9, borrador: 0.4 });
 
 export const MAX_TEXTO = 200_000;
 export const MAX_TITULO = 140;

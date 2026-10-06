@@ -30,15 +30,15 @@ import {
   dentroDelCliente, marcarVerificado, olvidarVerificado, respuestaDeFallo,
   urlConsentimiento, urlRedireccion, firmarEstado, leerEstado, canjearCodigo, cifrar, descifrar,
   revocar, olvidarToken, tokenDeAcceso, idDeCarpeta,
+  CAMPOS_ARCHIVO, escaparQ, carpetaDeLaApp, subirADrive,
 } from "../lib/google.js";
 import { MIME_CARPETA, tipoDeArchivo } from "../../src/lib/drive.js";
 
-const CAMPOS_ARCHIVO = "id,name,mimeType,size,modifiedTime,thumbnailLink,imageMediaMetadata(width,height),videoMediaMetadata(durationMillis)";
+
 const MAX_SUBIDA = 100 * 1024 * 1024; // lo que un Worker acepta de cuerpo
 const MAX_A_PUBLICACION = 20 * 1024 * 1024;
 const MAX_VIDEO_PUBLICACION = 300 * 1024 * 1024;
 const PROFUNDIDAD_MAX = 12;
-const CARPETA_MIGRACION = "Banco de la app";
 const POR_TANDA_MIGRACION = 4;
 // La copia en Drive de lo programado: una publicación son, como mucho, los
 // diez de un carrusel. Cada uno son dos llamadas a Google; con la carpeta y
@@ -49,7 +49,6 @@ const CARPETA_PUBLICACIONES = "Publicaciones de la app";
 /** «image/svg+xml» es una imagen que ejecuta código: fuera. */
 const SE_VE_EN_LINEA = (mime = "") => (mime.startsWith("image/") && !mime.includes("svg")) || mime.startsWith("video/");
 
-const escaparQ = (t) => String(t).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 
 /** La cadena de carpetas desde la raíz del cliente hasta `id`, con nombres. */
 async function migas(env, acceso, raiz, id) {
@@ -427,63 +426,6 @@ async function rutasConSesion(req, env, { acceso, usuario, partes, metodo }) {
 
   return noEncontrado("Ruta");
 }
-
-/** La subcarpeta «Banco de la app» dentro de la del cliente; se crea si falta. */
-async function carpetaDeLaApp(env, acceso, raiz, nombre = CARPETA_MIGRACION) {
-  const r = await drive(env, acceso, "/drive/v3/files", {
-    query: {
-      q: `'${escaparQ(raiz)}' in parents and name = '${escaparQ(nombre)}' and mimeType = '${MIME_CARPETA}' and trashed = false`,
-      fields: "files(id)",
-      includeItemsFromAllDrives: "true",
-    },
-  });
-  if (r.files?.[0]?.id) return r.files[0].id;
-  const f = await drive(env, acceso, "/drive/v3/files", {
-    metodo: "POST", query: { fields: "id" },
-    cuerpo: { name: nombre, mimeType: MIME_CARPETA, parents: [raiz] },
-  });
-  return f.id;
-}
-
-/**
- * Subida reanudable: se abre una sesión con los metadatos y se manda el
- * cuerpo de una vez. El cuerpo puede ser un stream (lo que llega del
- * navegador, sin copiarlo en memoria) o bytes.
- */
-async function subirADrive(env, acceso, { carpeta, nombre, mime, largo, cuerpo: datos, descripcion = "" }) {
-  const inicio = await drive(env, acceso, "/upload/drive/v3/files", {
-    metodo: "POST",
-    query: { uploadType: "resumable", fields: CAMPOS_ARCHIVO },
-    cuerpo: { name: nombre, parents: [carpeta], ...(descripcion ? { description: descripcion.slice(0, 1000) } : {}) },
-    cabeceras: { "X-Upload-Content-Type": mime, "X-Upload-Content-Length": String(largo) },
-    crudo: true,
-  });
-  const sesion = inicio.headers.get("Location");
-  if (!inicio.ok || !sesion) throw await errorDe(inicio);
-
-  // Un stream con largo conocido: FixedLengthStream en Workers. Sin él
-  // (pruebas en Node), se lee entero.
-  let cuerpoFinal = datos;
-  if (datos instanceof ReadableStream) {
-    const Fijo = globalThis.FixedLengthStream;
-    if (typeof Fijo === "function") {
-      const { readable, writable } = new Fijo(largo);
-      datos.pipeTo(writable).catch(() => {});
-      cuerpoFinal = readable;
-    } else {
-      cuerpoFinal = await new Response(datos).arrayBuffer();
-    }
-  }
-  const res = await fetch(sesion, {
-    method: "PUT",
-    headers: { "Content-Type": mime, "Content-Length": String(largo) },
-    body: cuerpoFinal,
-  });
-  if (!res.ok) throw await errorDe(res);
-  return res.json();
-}
-
-
 
 function servir(cuerpoRes, tipo, { cache = 0, estado = 200, nombre = "", descargar = false, extra = {} } = {}) {
   const cabeceras = new Headers({

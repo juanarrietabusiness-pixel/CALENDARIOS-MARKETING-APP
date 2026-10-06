@@ -1,0 +1,147 @@
+import { describe, it, expect } from "vitest";
+import {
+  limpiarCatalogo, catalogoATexto, leerCatalogo, fundirCatalogo, pedidoGeneral, leerGeneral, pedidoDeProducto,
+  leerDeProducto, limpiarEstudio, pasosDelEstudio, notasDelEstudio, estudioADocumento, angulosDeAnuncio, ideaDesdeAngulo,
+  leerReferencia, notaDeReferencia, fraseActivo, diasActivo, estudioParaElKit, LIMITES_ANUNCIO, MAX_PRODUCTOS,
+} from "./estudioMercado";
+
+const CATALOGO = [
+  { id: "p-lavado", nombre: "Lavado de muebles", tipo: "servicio", precio: "Desde $45", oferta: "", paraQuien: "Hogares con niños o mascotas", beneficios: "Quita manchas; seca en 4 horas" },
+  { id: "p-alfombras", nombre: "Lavado de alfombras", tipo: "servicio", precio: "$25 el m²", activo: false },
+];
+
+const GENERAL = {
+  rubro: "Limpieza a domicilio",
+  resumen: "Mercado con mucha oferta informal y poca confianza.",
+  competidores: [{ nombre: "LimpiaYa", queHacen: "Promos agresivas", fuerte: "Precio", debil: "Puntualidad" }],
+  perfiles: [{ nombre: "Mamá ocupada", quien: "Madre que trabaja", dolor: "Manchas de los niños", aspiracion: "Casa limpia sin esfuerzo" }, { nombre: "Dueño de mascota", quien: "Vive con perros", dolor: "Olores", aspiracion: "Sofá como nuevo" }],
+  deseos: [{ deseo: "tranquilidad", porque: "Quiere que alguien de confianza entre a su casa" }, { deseo: "Inventado", porque: "x" }, { deseo: "Familia", porque: "Salud de los niños" }],
+  nivel: { dominante: "problema", porque: "Saben que el sofá está sucio" },
+  propuestaValor: "Muebles como nuevos en un día, en tu casa.",
+  fuentes: ["https://ejemplo.com/a", "javascript:alert(1)"],
+};
+
+const PRODUCTO = {
+  elementos: { cliente: "Familias", dolor: "Manchas", deseo: "Sofá limpio", objeciones: "¿Daña la tela?", alternativas: "Hacerlo uno mismo", diferenciador: "Secado rápido", confianza: "Garantía de satisfacción" },
+  objeciones: [{ objecion: "Es caro", respuesta: "Cuesta menos que un sofá nuevo" }],
+  pruebas: ["Garantía de satisfacción"],
+  ganchos: { inconsciente: "¿Sabes lo que vive en tu sofá?", producto: "Tu sofá como nuevo en 4 horas", decision: "Agenda hoy y paga después" },
+  anuncio: { titulo: "Tu sofá como nuevo en 4 horas, garantizado y a domicilio", textoPrincipal: "x".repeat(400), descripcion: "Agenda hoy" },
+};
+
+describe("el catálogo", () => {
+  it("limpia: sin nombre fuera, ids repetidos cambian, con tope", () => {
+    const c = limpiarCatalogo([{ nombre: "" }, { id: "a", nombre: "Uno" }, { id: "a", nombre: "Dos" }, ...Array.from({ length: 40 }, (_, i) => ({ nombre: `P${i}` }))]);
+    expect(c[0].id).toBe("a");
+    expect(c[1].id).toBe("a-2");
+    expect(c).toHaveLength(MAX_PRODUCTOS);
+  });
+
+  it("la nota de cifras sólo nombra lo activo y lleva los precios tal cual", () => {
+    const t = catalogoATexto(CATALOGO);
+    expect(t).toContain("Lavado de muebles (servicio) · precio: Desde $45");
+    expect(t).not.toContain("alfombras");
+    expect(catalogoATexto([{ nombre: "x", activo: false }])).toBe("");
+  });
+
+  it("lee lo que propone la IA y lo funde sin pisar lo escrito a mano", () => {
+    const propuesto = leerCatalogo('Aquí va: {"productos":[{"nombre":"Lavado de muebles","precio":"$99","oferta":"2x1"},{"nombre":"Impermeabilizado","tipo":"servicio","precio":""}]}');
+    expect(propuesto).toHaveLength(2);
+    const f = fundirCatalogo(CATALOGO, propuesto);
+    const lavado = f.find((p) => p.nombre === "Lavado de muebles");
+    expect(lavado.precio).toBe("Desde $45");     // lo de la persona manda
+    expect(lavado.oferta).toBe("2x1");           // lo vacío se rellena
+    expect(lavado.id).toBe("p-lavado");          // conserva su id
+    expect(f.map((p) => p.nombre)).toContain("Impermeabilizado");
+    expect(leerCatalogo("no hay JSON")).toBeNull();
+  });
+});
+
+describe("lo general", () => {
+  it("el pedido lleva el catálogo, el material y dice si hay búsqueda web", () => {
+    const p = pedidoGeneral({ marca: "Dcasa", contexto: "FICHA: x", catalogo: CATALOGO, material: "«Llegaron puntuales»", conWeb: true });
+    expect(p).toContain("Tienes búsqueda en internet");
+    expect(p).toContain("Lavado de muebles");
+    expect(p).not.toContain("alfombras");
+    expect(p).toContain("«Llegaron puntuales»");
+    expect(pedidoGeneral({ marca: "Dcasa" })).toContain("No tienes búsqueda en internet");
+  });
+
+  it("lee: deseos sólo de la lista de Reiss, nivel válido, fuentes sólo http", () => {
+    const g = leerGeneral(JSON.stringify(GENERAL));
+    expect(g.deseos.map((d) => d.deseo)).toEqual(["Tranquilidad", "Familia"]);
+    expect(g.nivel.dominante).toBe("problema");
+    expect(g.fuentes).toEqual(["https://ejemplo.com/a"]);
+    expect(leerGeneral('{"nada":1}')).toBeNull();
+  });
+});
+
+describe("cada producto", () => {
+  it("el pedido lleva el resumen general y la regla de los ganchos", () => {
+    const p = pedidoDeProducto({ marca: "Dcasa", producto: CATALOGO[0], general: GENERAL });
+    expect(p).toContain("Lavado de muebles");
+    expect(p).toContain("Mamá ocupada");
+    expect(p).toContain("por el DOLOR");
+  });
+
+  it("lee y recorta los textos de anuncio a lo que admite Meta", () => {
+    const e = leerDeProducto(JSON.stringify(PRODUCTO));
+    expect(e.anuncio.titulo.length).toBeLessThanOrEqual(LIMITES_ANUNCIO.titulo);
+    expect(e.anuncio.textoPrincipal.length).toBeLessThanOrEqual(LIMITES_ANUNCIO.textoPrincipal);
+    expect(Object.keys(e.ganchos)).toEqual(["inconsciente", "producto", "decision"]);
+    expect(leerDeProducto('{"elementos":{"cliente":"x"}}')).toBeNull();
+  });
+});
+
+describe("el estudio entero", () => {
+  const estudio = limpiarEstudio({ general: GENERAL, productos: { "p-lavado": PRODUCTO, "../malo": PRODUCTO }, conWeb: true });
+
+  it("limpia ids raros y dice qué pasos faltan", () => {
+    expect(Object.keys(estudio.productos)).toEqual(["p-lavado"]);
+    expect(pasosDelEstudio(CATALOGO, null).map((p) => [p.clave, p.hecho])).toEqual([["general", false], ["p-lavado", false]]);
+    expect(pasosDelEstudio(CATALOGO, estudio).every((p) => p.hecho)).toBe(true);
+  });
+
+  it("las notas: general, competencia INTERNA y una por producto; la competencia no va en la general", () => {
+    const notas = notasDelEstudio(estudio, CATALOGO, { marca: "Dcasa" });
+    expect(notas.map((n) => [n.ruta, n.interna])).toEqual([["estudio-de-mercado", false], ["estudio-competencia", true], ["estudio-lavado-de-muebles", false]]);
+    expect(notas[0].texto).not.toContain("LimpiaYa");
+    expect(notas[1].texto).toContain("LimpiaYa");
+    expect(notas[2].texto).toContain("Desde $45");
+    expect(notas[2].texto).toContain("## Ganchos por nivel de consciencia");
+  });
+
+  it("el documento de Drive escapa lo que viene de la IA", () => {
+    const html = estudioADocumento(limpiarEstudio({ ...estudio, general: { ...GENERAL, resumen: "<script>x</script>" } }), CATALOGO, { marca: "Dcasa", fecha: new Date(2026, 9, 6) });
+    expect(html).toContain("6 de octubre de 2026");
+    expect(html).not.toContain("<script>");
+    expect(html).toContain("&lt;script&gt;");
+  });
+
+  it("los ángulos para el Estudio llevan el precio exacto, y la idea lo pide tal cual", () => {
+    const a = angulosDeAnuncio(estudio, CATALOGO);
+    expect(a.map((x) => x.nivel)).toEqual(["inconsciente", "producto", "decision"]);
+    const idea = ideaDesdeAngulo(a[1]);
+    expect(idea).toContain("«Tu sofá como nuevo en 4 horas»");
+    expect(idea).toContain("escrito exactamente así: Desde $45");
+    expect(estudioParaElKit(estudio)).toContain("Propuesta de valor");
+  });
+});
+
+describe("las referencias de la competencia", () => {
+  it("cuánto lleva activo un anuncio", () => {
+    expect(diasActivo("2026-07-01", new Date("2026-10-06T12:00:00Z"))).toBe(97);
+    expect(fraseActivo("2026-07-01", new Date("2026-10-06T12:00:00Z"))).toContain("3 meses");
+    expect(fraseActivo("2026-10-01", new Date("2026-10-06T12:00:00Z"))).toContain("aún no dice mucho");
+    expect(fraseActivo("ayer")).toBe("");
+  });
+
+  it("lee el análisis y lo convierte en nota", () => {
+    const a = leerReferencia('{"gancho":"50% hoy","nivel":"decision","deseo":"ahorro","porQueFunciona":"Urgencia","ideaParaNosotros":"Usar la garantía"}');
+    expect(a.deseo).toBe("Ahorro");
+    const nota = notaDeReferencia({ id: "r1", competidor: "LimpiaYa", desde: "2026-07-01", analisis: a });
+    expect(nota).toContain("# Referencia de la competencia: LimpiaYa");
+    expect(nota).toContain("- Nivel de consciencia: Listo para comprar");
+    expect(leerReferencia("nada")).toBeNull();
+  });
+});
