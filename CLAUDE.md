@@ -132,6 +132,7 @@ src/
     consciencia.js        Niveles de consciencia (Schwartz) y deseos de Reiss: pequeño, para el bundle principal
     videoCorto.js         Guiones de video de 8 s (Veo) o 10 s (Kling Omni): gancho, beneficio y cierre; el pedido
                           al modelo sin texto largo ni logo (puro; también lo importa el Worker)
+    portadas.js           Las piezas del perfil por plantilla: estilos de portada, colores del kit, medidas (puro)
     pilares.js            Los 6 tipos de contenido de la agencia, el ritmo semanal por cliente, las sugerencias de
                           temporada y la matriz (tipo × producto × nivel × deseo × perfil) (puro)
     kitMarca.js           El kit de marca del Estudio: paleta, presets (producto, anuncio, corporativo,
@@ -204,7 +205,9 @@ src/
     SeccionYouTube.jsx    Ajustes → Integraciones: el canal de YouTube de cada cliente y su privacidad
     SeccionInformes.jsx   Resultados → informes mensuales: generar, revisar, compartir
     InformeVista.jsx      El informe como documento (claro, con la marca, imprimible)
-    AuditoriaVista.jsx    La auditoría de perfil como documento, con copiar y portadas
+    AuditoriaVista.jsx    La auditoría de perfil como documento, con copiar y portadas, referentes, fijados y
+                          «Aplicar en el perfil» (lista que se vuelve tarea)
+    PiezasPerfil.jsx      Portadas de destacados (6 estilos) y foto de perfil con el logo, dibujadas en un lienzo (lazy)
     Graficas.jsx          Línea y barras en SVG, sin librería
     MedidorIA.jsx         El gasto del mes contra el presupuesto, en la cabecera
     Avisos.jsx            La campana: la bandeja de avisos de cada persona (y las del sistema)
@@ -1240,6 +1243,15 @@ son del servidor.
   guion se pone su duración en el ajuste. El guion lleva como mucho CUATRO palabras en pantalla —los modelos de
   video escriben mal— y lo demás va en «textoEdicion»; el logo tampoco se le pide al modelo. Desde una
   publicación viajan su tipo y su producto (con el precio del catálogo). Es texto: no gasta en el motor.
+- **El perfil: comparar con referentes y piezas por plantilla.** La auditoría lee hasta tres perfiles de
+  referencia por `business_discovery` (sólo empresa o creador; el que no se lee, avisa y no tumba nada) y la IA
+  dice qué adaptar de ellos; propone además tres publicaciones FIJADAS y un icono por destacado (sólo de
+  `ICONOS_DESTACADO`). Las portadas se DIBUJAN (`PiezasPerfil.jsx`): 1080 × 1920 con lo importante dentro del
+  círculo central (`RADIO_SEGURO`), seis estilos con la paleta del kit, y el icono se toma del SVG de `Icon.jsx`
+  pintado oculto en el diálogo —renderizar con `createRoot`+`flushSync` dentro de un efecto no pinta nada y la
+  imagen sale vacía—. La foto de perfil lleva el logo del kit al 62 % del diámetro. Instagram no deja cambiar
+  foto, biografía, destacados ni fijados por la API: «Aplicar en el perfil» deja la lista y la convierte en
+  tarea del cliente (una línea por cambio, que «Convertir en tareas» puede partir).
 - **El cerebro de un cliente es SUYO: un índice por cliente, nunca uno para
   todos.** El algoritmo viene de Agents Office, que indexa por nombre de
   archivo: los nueve clientes tienen un `01_brand_guidelines.md`, y en un

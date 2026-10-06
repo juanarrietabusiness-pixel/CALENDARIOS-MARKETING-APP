@@ -28,7 +28,7 @@ import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET } from
 import { graph, descifrarMeta, mensajeMeta, ErrorMeta } from "./meta.js";
 import { difundir } from "./vivo.js";
 import { uuid, ahora } from "./ids.js";
-import { cifrasPerfil, limpiarAnalisis, extraerJSON, usuarioInstagram, LIMITES_PERFIL } from "../../src/lib/auditoria.js";
+import { cifrasPerfil, limpiarAnalisis, extraerJSON, usuarioInstagram, referentesDe, LIMITES_PERFIL, ICONOS_DESTACADO } from "../../src/lib/auditoria.js";
 
 const FIRMA = { userId: "sistema", nombre: "Auditoría", color: "#1E90FF" };
 const CDN = /(^|\.)(cdninstagram\.com|fbcdn\.net)$/;
@@ -125,7 +125,31 @@ function captura(dataUrl) {
   return { type: "image", source: { type: "base64", media_type: m[1], data: m[2] } };
 }
 
-function pedido({ perfil, cifras, cliente, nota, hayCapturas, hayRejilla }) {
+/**
+ * Los perfiles de referencia (los mejores del rubro), leídos por `business_discovery`. Lo que no se puede leer
+ * se dice en `avisos` y no tumba la auditoría. De cada uno, lo que sirve para comparar: textos, cifras y las
+ * publicaciones que más interacción tuvieron.
+ */
+async function leerReferentes(env, acceso, usuarios) {
+  const leidos = [];
+  const avisos = [];
+  for (const u of usuarios) {
+    try {
+      const p = await leerPerfil(env, acceso, { usuario: u });
+      const cifras = cifrasPerfil(p);
+      const mejores = [...p.medios]
+        .sort((a, b) => ((b.meGusta ?? 0) + (b.comentarios ?? 0)) - ((a.meGusta ?? 0) + (a.comentarios ?? 0)))
+        .slice(0, 3)
+        .map((m) => ({ formato: m.formato, texto: m.texto.slice(0, 160), interaccion: (m.meGusta ?? 0) + (m.comentarios ?? 0) }));
+      leidos.push({ usuario: p.usuario, nombre: p.nombre, bio: p.bio, enlace: p.enlace, fotoUrl: p.fotoUrl, cifras, mejores });
+    } catch (e) {
+      avisos.push(`@${u}: ${e instanceof ErrorAuditoria ? e.message : "no se pudo leer."}`);
+    }
+  }
+  return { leidos, avisos };
+}
+
+function pedido({ perfil, cifras, cliente, nota, hayCapturas, hayRejilla, referentes = [], fotosReferentes = 0 }) {
   const ficha = cliente
     ? [`Es cliente de la agencia: ${cliente.name}.`, cliente.industry && `Rubro: ${cliente.industry}.`, cliente.descripcion && `Descripción: ${String(cliente.descripcion).slice(0, 600)}`]
       .filter(Boolean).join("\n")
@@ -144,7 +168,10 @@ ${JSON.stringify(cifras)}
 ÚLTIMAS PUBLICACIONES (texto y reacciones; las imágenes de la rejilla van adjuntas en el mismo orden):
 ${JSON.stringify(medios.slice(0, 12).map(({ imagen: _imagen, ...m }) => m))}
 
-Imágenes adjuntas: primero la foto de perfil${hayRejilla ? "; después las últimas publicaciones de la rejilla, de la más reciente a la más antigua" : ""}${hayCapturas ? "; al final, capturas de pantalla del perfil (ahí se ven los destacados, que la API no da)" : ""}.
+${referentes.length ? `PERFILES DE REFERENCIA (los mejores del rubro, para comparar y aprender; no se copian):
+${JSON.stringify(referentes.map(({ fotoUrl: _f, ...r }) => r))}
+` : ""}
+Imágenes adjuntas: primero la foto de perfil${hayRejilla ? "; después las últimas publicaciones de la rejilla, de la más reciente a la más antigua" : ""}${hayCapturas ? "; después, capturas de pantalla del perfil (ahí se ven los destacados, que la API no da)" : ""}${fotosReferentes ? `; al final, las fotos de perfil de los ${fotosReferentes} primeros perfiles de referencia, en su orden` : ""}.
 
 Límites de Instagram que tus propuestas DEBEN respetar: biografía ≤ ${LIMITES_PERFIL.bio} caracteres (cuenta emojis y saltos), nombre ≤ ${LIMITES_PERFIL.nombre}, título de destacado ≤ ${LIMITES_PERFIL.tituloDestacado}.
 
@@ -157,7 +184,9 @@ Devuelve SOLO un objeto JSON, sin texto antes ni después, con esta forma. «est
   "nombre": {"estado": "", "comentario": "el campo nombre es buscable: ¿lleva la palabra clave del negocio?", "recomendacion": "", "propuesta": "Nombre | palabra clave"},
   "bio": {"estado": "", "comentario": "", "opciones": ["3 biografías listas para copiar: qué hace, para quién, prueba social o diferencia, y llamada a la acción"]},
   "enlace": {"estado": "", "comentario": "", "recomendacion": ""},
-  "destacados": {"estado": "", "comentario": "${hayCapturas ? "según las capturas" : "no hay capturas: di que no se pudieron ver y propón la estructura igualmente"}", "propuesta": [{"titulo": "", "contenido": "qué va dentro"}]},
+  "destacados": {"estado": "", "comentario": "${hayCapturas ? "según las capturas" : "no hay capturas: di que no se pudieron ver y propón la estructura igualmente"}", "propuesta": [{"titulo": "", "contenido": "qué va dentro", "icono": "uno de: ${ICONOS_DESTACADO.join(", ")}"}]},
+  "fijados": {"comentario": "qué fijar arriba del perfil y por qué", "propuesta": [{"titulo": "las 3 publicaciones que conviene fijar", "idea": "qué muestra cada una (presentación, prueba social, oferta…), para crearla si no existe"}]},
+  "referentes": {"comentario": "${referentes.length ? "qué hacen mejor los perfiles de referencia, con sus cifras" : "no hay perfiles de referencia: deja vacío"}", "aprender": ["${referentes.length ? "lo que conviene adaptar de ellos a esta marca, concreto (sin copiar)" : ""}"]},
   "rejilla": {"estado": "", "comentario": "coherencia visual, colores, portadas, legibilidad en miniatura", "recomendaciones": [""]},
   "contenido": {"estado": "", "comentario": "temas, formatos, ritmo e interacción, con las cifras", "recomendaciones": [""]},
   "prioridades": ["las 5 acciones en orden de impacto, cada una concreta y hacible esta semana"]
@@ -173,7 +202,7 @@ const vacio = JSON.stringify({});
  * trabaja (la pantalla lo enseña en vivo) y en «error» con su motivo si
  * algo falla: nunca desaparece sin decir por qué.
  */
-export async function generarAuditoria(env, acceso, { clientId = null, usuario = "", capturas = [], nota = "", usuarioId = null }) {
+export async function generarAuditoria(env, acceso, { clientId = null, usuario = "", capturas = [], nota = "", usuarioId = null, referentes: pedidos = [] }) {
   if (!env.ANTHROPIC_API_KEY) throw new ErrorAuditoria("El servidor no tiene configurada la clave de Anthropic.");
   const cliente = clientId ? await acceso.leerUno("clients", { id: clientId }) : null;
   if (clientId && !cliente) throw new ErrorAuditoria("Ese cliente no existe.");
@@ -192,6 +221,7 @@ export async function generarAuditoria(env, acceso, { clientId = null, usuario =
     perfil = { fuente: "capturas", usuario: usuarioInstagram(usuario) ?? "", nombre: "", bio: "", enlace: "", fotoUrl: "", seguidores: null, siguiendo: null, publicaciones: null, medios: [], aviso: e.message };
   }
   const cifras = cifrasPerfil(perfil);
+  const referentes = await leerReferentes(env, acceso, referentesDe((Array.isArray(pedidos) ? pedidos : [pedidos]).join(" "), perfil.usuario));
 
   const base = {
     id: uuid(), client_id: clientId, usuario: perfil.usuario || usuarioInstagram(usuario) || "perfil",
@@ -203,11 +233,19 @@ export async function generarAuditoria(env, acceso, { clientId = null, usuario =
   try {
     const foto = perfil.fotoUrl ? await imagenDelCDN(perfil.fotoUrl) : null;
     const rejilla = (await Promise.all(perfil.medios.slice(0, 9).map((m) => (m.imagen ? imagenDelCDN(m.imagen) : null)))).filter(Boolean);
+    // Las fotos de perfil de los referentes, en su orden; si una falla, las siguientes no se mandan (el orden manda).
+    const fotosReferentes = [];
+    for (const r of referentes.leidos) {
+      const f = r.fotoUrl ? await imagenDelCDN(r.fotoUrl) : null;
+      if (!f) break;
+      fotosReferentes.push(f);
+    }
     const contenido = [
       ...(foto ? [foto] : []),
       ...rejilla,
       ...imagenesCaptura,
-      { type: "text", text: pedido({ perfil, cifras, cliente, nota, hayCapturas: imagenesCaptura.length > 0, hayRejilla: rejilla.length > 0 }) },
+      ...fotosReferentes,
+      { type: "text", text: pedido({ perfil, cifras, cliente, nota, hayCapturas: imagenesCaptura.length > 0, hayRejilla: rejilla.length > 0, referentes: referentes.leidos, fotosReferentes: fotosReferentes.length }) },
     ];
 
     let modelo = ia.modelo;
@@ -239,7 +277,11 @@ export async function generarAuditoria(env, acceso, { clientId = null, usuario =
     const fila = {
       ...base,
       estado: "listo",
-      datos: JSON.stringify({ perfil: { ...sinUrl, foto: fotoIncrustada }, cifras, capturas: imagenesCaptura.length, modelo, auditadoEl: ahora() }),
+      datos: JSON.stringify({
+        perfil: { ...sinUrl, foto: fotoIncrustada }, cifras, capturas: imagenesCaptura.length, modelo, auditadoEl: ahora(),
+        // Lo que se comparó: los referentes (sin la dirección de su foto, que caduca) y los que no se pudieron leer.
+        referentes: referentes.leidos.map(({ fotoUrl: _f, ...r }) => r), avisosReferentes: referentes.avisos,
+      }),
       analisis: JSON.stringify(limpiarAnalisis(bruto)),
       error: null,
       updated_at: ahora(),

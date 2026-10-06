@@ -198,3 +198,36 @@ describe("por la puerta del Worker", () => {
     expect((await res.json()).error).toMatch(/capturas/);
   });
 });
+
+describe("los perfiles de referencia", () => {
+  it("se leen por business_discovery, van a la IA (texto y foto) y quedan en los datos; el que no se lee, avisa", async () => {
+    await sembrar();
+    const fila = await generarAuditoria(env, acceso(), { clientId: "c1", referentes: ["@lider.cafe", "privada", "cafeluna", "lider.cafe"] });
+    // El propio perfil y el repetido se descartan: dos referentes pedidos a Meta.
+    expect(llamadas.filter((l) => /business_discovery/.test(l.fields)).map((l) => /username\(([^)]+)\)/.exec(l.fields)[1])).toEqual(["lider.cafe", "privada"]);
+    const contenido = pedidosIA[0].messages[0].content;
+    const texto = contenido.find((b) => b.type === "text").text;
+    expect(texto).toContain("PERFILES DE REFERENCIA");
+    expect(texto).toContain("lider.cafe");
+    expect(texto).toContain("las fotos de perfil de los 1 primeros perfiles de referencia");
+    const datos = JSON.parse(fila.datos);
+    expect(datos.referentes.map((r) => r.usuario)).toEqual(["lider.cafe"]);
+    expect(datos.referentes[0].fotoUrl).toBeUndefined();
+    expect(datos.avisosReferentes[0]).toMatch(/^@privada:/);
+  });
+
+  it("fijados, referentes e icono de cada destacado salen limpios", async () => {
+    await sembrar();
+    respuestaIA = () => flujo(JSON.stringify({
+      ...ANALISIS,
+      destacados: { estado: "mal", comentario: "", propuesta: [{ titulo: "Menú", contenido: "Carta", icono: "inventado" }, { titulo: "Reseñas", contenido: "", icono: "message" }] },
+      fijados: { comentario: "Fija lo que convence", propuesta: [{ titulo: "Quiénes somos", idea: "Video del local" }, {}, { titulo: "x" }, { titulo: "y" }] },
+      referentes: { comentario: "Publican más reels", aprender: ["Reels de proceso"] },
+    }));
+    const fila = await generarAuditoria(env, acceso(), { clientId: "c1" });
+    const a = JSON.parse(fila.analisis);
+    expect(a.destacados.propuesta.map((d) => d.icono)).toEqual(["star", "message"]);
+    expect(a.fijados.propuesta).toHaveLength(3);
+    expect(a.referentes.aprender).toEqual(["Reels de proceso"]);
+  });
+});

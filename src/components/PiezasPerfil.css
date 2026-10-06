@@ -1,0 +1,34 @@
+/* ============================================================
+   Las piezas del perfil (portadas de destacados y foto), por plantilla
+   ============================================================ */
+
+.piezas-dialogo { max-width: 860px; }
+.piezas-colores { border: none; padding: 0; margin: 0 0 var(--sp-3); display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); }
+.piezas-color { display: flex; flex-direction: column; gap: var(--sp-1); }
+.piezas-muestras { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.piezas-muestra {
+  width: var(--tap-sm);
+  height: var(--tap-sm);
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--border-strong);
+  cursor: pointer;
+}
+.piezas-muestra[aria-pressed="true"] { outline: 3px solid var(--accent); outline-offset: 2px; }
+.piezas-estilos { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-1); }
+.piezas-lista { list-style: none; margin: var(--sp-3) 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--sp-3); }
+.piezas-item { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); padding: var(--sp-3); background: var(--surface-2); border-radius: var(--radius); }
+.piezas-pieza { margin: 0; display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); }
+/* Como la enseña Instagram: el círculo del centro de la portada. */
+.piezas-circulo {
+  width: 120px;
+  height: 120px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--surface-3);
+  border: 3px solid var(--border-strong);
+}
+.piezas-circulo img { display: block; width: 120px; height: 120px; max-width: none; object-fit: cover; object-position: center; }
+.piezas-campos { width: 100%; display: flex; flex-direction: column; gap: var(--sp-1); }
+.piezas-campos .label { margin: 0; }

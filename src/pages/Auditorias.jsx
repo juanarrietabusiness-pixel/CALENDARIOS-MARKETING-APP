@@ -1,9 +1,13 @@
 import "./Auditorias.css";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from "react";
 import Icon from "../components/Icon";
 import AuditoriaVista from "../components/AuditoriaVista";
 import * as db from "../lib/db";
-import { usuarioInstagram } from "../lib/auditoria";
+import { usuarioInstagram, referentesDe, MAX_REFERENTES } from "../lib/auditoria";
+import { fmtDate } from "../utils";
+
+// Las piezas del perfil (portadas y foto, por plantilla) se descargan sólo si se abren.
+const PiezasPerfil = lazy(() => import("../components/PiezasPerfil"));
 import { capturaReducida } from "../lib/medios";
 
 // ============================================================
@@ -16,7 +20,10 @@ import { capturaReducida } from "../lib/medios";
 //
 // Lo que sale se comparte con un enlace (sin sesión, como el informe) o
 // se descarga como PDF. Las portadas de los destacados se crean con Nano
-// Banana en los colores del cliente.
+// Banana en los colores del cliente o, mejor, por PLANTILLA («Diseñar
+// portadas», components/PiezasPerfil.jsx): un juego uniforme y sin gastar.
+// Se comparan hasta tres perfiles de referencia, y «Aplicar en el perfil»
+// deja la lista de cambios (que se hacen a mano) como tarea del cliente.
 // ============================================================
 
 const MAX_CAPTURAS = 4;
@@ -29,6 +36,7 @@ function NuevaAuditoria({ clients, onCreada }) {
   const [usuario, setUsuario] = useState("");
   const [capturas, setCapturas] = useState([]);
   const [nota, setNota] = useState("");
+  const [referentes, setReferentes] = useState("");
   const [trabajando, setTrabajando] = useState(false);
   const [fallo, setFallo] = useState("");
 
@@ -54,6 +62,7 @@ function NuevaAuditoria({ clients, onCreada }) {
         usuario: usuarioLimpio ?? "",
         capturas,
         nota,
+        referentes: referentesDe(referentes, usuarioLimpio ?? ""),
       });
       setCapturas([]);
       setNota("");
@@ -98,6 +107,13 @@ function NuevaAuditoria({ clients, onCreada }) {
           autoComplete="off"
         />
         {usuario && !usuarioInstagram(usuario) && <p className="hint" role="alert">Eso no parece un usuario de Instagram.</p>}
+      </div>
+
+      <div className="field">
+        <label className="label" htmlFor={`${ids}-r`}>Perfiles de referencia (opcional, hasta {MAX_REFERENTES})</label>
+        <input id={`${ids}-r`} className="input" value={referentes} onChange={(e) => setReferentes(e.target.value)}
+          placeholder="@lider1, @lider2, @lider3" autoComplete="off" />
+        <p className="hint">Los mejores perfiles del rubro: la IA compara y dice qué adaptar de ellos (sólo cuentas de empresa o creador).</p>
       </div>
 
       <div className="field">
@@ -151,6 +167,7 @@ export default function Auditorias({ clients = [], pulso = 0 }) {
   const [abierta, setAbierta] = useState(null);
   const [aviso, setAviso] = useState("");
   const [portadas, setPortadas] = useState({});
+  const [piezas, setPiezas] = useState(null); // "destacados" | "foto" | null
   const nombreCliente = (id) => clients.find((c) => c.id === id)?.name ?? "";
 
   const cargar = useCallback(() => db.listarAuditorias().then(setLista).catch((e) => setAviso(e.message)), []);
@@ -195,6 +212,14 @@ export default function Auditorias({ clients = [], pulso = 0 }) {
 
   const clienteDe = (a) => clients.find((c) => c.id === a?.clientId);
 
+  /** «Aplicar en el perfil» → una tarea del cliente para hoy, con una línea por cambio. */
+  const crearTarea = async (lineas) => {
+    await db.saveClientTask({
+      client_id: abierta.clientId, title: `Aplicar los cambios del perfil de @${abierta.usuario}`,
+      description: lineas, recurrence: "none", today_date: fmtDate(new Date()),
+    });
+  };
+
   return (
     <div className="auditorias">
       <div className="page-header">
@@ -224,11 +249,18 @@ export default function Auditorias({ clients = [], pulso = 0 }) {
           {abierta.estado === "generando" && <p role="status" className="hint">Todavía se está escribiendo…</p>}
           {abierta.estado === "listo" && (
             <AuditoriaVista
-              auditoria={{ ...abierta.datos, analisis: abierta.analisis, usuario: abierta.usuario, actualizada: abierta.actualizada }}
+              auditoria={{ ...abierta.datos, id: abierta.id, analisis: abierta.analisis, usuario: abierta.usuario, actualizada: abierta.actualizada }}
               cliente={clienteDe(abierta) ? { name: clienteDe(abierta).name, primaryColor: clienteDe(abierta).primaryColor } : null}
               onPortada={abierta.clientId ? portada : null}
               portadas={portadas}
+              onPiezas={abierta.clientId ? setPiezas : null}
+              onCrearTarea={abierta.clientId ? crearTarea : undefined}
             />
+          )}
+          {piezas && abierta?.clientId && (
+            <Suspense fallback={null}>
+              <PiezasPerfil key={piezas} inicial={piezas} clientId={abierta.clientId} destacados={abierta.analisis?.destacados?.propuesta ?? []} onCerrar={() => setPiezas(null)} />
+            </Suspense>
           )}
         </>
       ) : (

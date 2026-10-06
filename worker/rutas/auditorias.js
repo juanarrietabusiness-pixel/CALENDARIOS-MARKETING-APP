@@ -3,7 +3,7 @@
 //
 //   GET    /api/auditorias               Todas las del espacio (sin el análisis)
 //   GET    /api/auditorias/:id           Una entera
-//   POST   /api/auditorias               { clientId?, usuario?, capturas?, nota? }
+//   POST   /api/auditorias               { clientId?, usuario?, capturas?, nota?, referentes? }
 //   POST   /api/auditorias/:id/enlace    Compartir (testigo)
 //   PATCH  /api/auditorias/:id/enlace    Dejar de compartir / volver
 //   DELETE /api/auditorias/:id
@@ -41,6 +41,7 @@ export async function rutasAuditorias(req, env, { acceso, usuario, partes, metod
       const fila = await generarAuditoria(env, acceso, {
         clientId: b.clientId ? String(b.clientId) : null, usuario: String(b.usuario ?? ""),
         capturas: b.capturas, nota: String(b.nota ?? ""), usuarioId: usuario.id,
+        referentes: Array.isArray(b.referentes) ? b.referentes.map(String) : String(b.referentes ?? ""),
       });
       return json(entera(fila), 201);
     } catch (e) {

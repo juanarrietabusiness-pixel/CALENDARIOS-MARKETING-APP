@@ -12,6 +12,31 @@ const DIA_MS = 86_400_000;
 /** Los límites de Instagram que la auditoría tiene que respetar al proponer. */
 export const LIMITES_PERFIL = Object.freeze({ bio: 150, nombre: 64, tituloDestacado: 15 });
 
+/** Cuántos perfiles de referencia (los mejores del rubro) se comparan como mucho. */
+export const MAX_REFERENTES = 3;
+
+/**
+ * Los iconos que la IA puede proponer para la portada de un destacado: nombres de `Icon.jsx`. Lo que no esté aquí
+ * se cambia por «star» al limpiar: la portada se dibuja con plantilla y un icono que no existe no se ve.
+ */
+export const ICONOS_DESTACADO = Object.freeze([
+  "star", "message", "info", "calendar", "image", "photo", "video", "megaphone", "users", "user", "bolt", "thumbsUp",
+  "clipboardCheck", "checkCircle", "home", "building", "clock", "globe", "bell", "palette", "bulb", "chart", "rocket",
+  "sparkles", "link", "search", "inbox", "file", "brain", "sun",
+]);
+
+/** «@a, @b c» → ["a", "b", "c"], sin repetir ni pasar del tope. Pura. */
+export function referentesDe(texto, propio = "") {
+  const yo = usuarioInstagram(propio);
+  const salida = [];
+  for (const parte of String(texto ?? "").split(/[\s,;]+/)) {
+    const u = usuarioInstagram(parte);
+    if (u && u !== yo && !salida.includes(u)) salida.push(u);
+    if (salida.length >= MAX_REFERENTES) break;
+  }
+  return salida;
+}
+
 export const ESTADOS = Object.freeze({
   bien: { texto: "Bien", tono: "bien" },
   mejorable: { texto: "Mejorable", tono: "medio" },
@@ -96,7 +121,19 @@ export function limpiarAnalisis(bruto = {}) {
       propuesta: (Array.isArray(b.destacados?.propuesta) ? b.destacados.propuesta : []).slice(0, 8).map((d) => ({
         titulo: texto(d?.titulo, 40).slice(0, LIMITES_PERFIL.tituloDestacado),
         contenido: texto(d?.contenido, 300),
+        icono: ICONOS_DESTACADO.includes(d?.icono) ? d.icono : "star",
       })).filter((d) => d.titulo),
+    },
+    fijados: {
+      comentario: texto(b.fijados?.comentario, 600),
+      propuesta: (Array.isArray(b.fijados?.propuesta) ? b.fijados.propuesta : []).map((f) => ({
+        titulo: texto(f?.titulo, 80),
+        idea: texto(f?.idea, 500),
+      })).filter((f) => f.titulo || f.idea).slice(0, 3),
+    },
+    referentes: {
+      comentario: texto(b.referentes?.comentario, 800),
+      aprender: listaDe(b.referentes?.aprender, 6),
     },
     rejilla: bloque(b.rejilla, true),
     contenido: bloque(b.contenido, true),
