@@ -25,6 +25,7 @@ export const COLOR_TIPO = Object.freeze({
   documento: "#5FD6E8",
   nota: "#F2F4F8",
   decision: "#FF8FB1",
+  mercado: "#FF7A6B",
   borrador: "#8791A8",
 });
 /** Las menciones (una nota nombra a otra sin enlazarla) son tenues y frías; las internas llevan un anillo cálido. */

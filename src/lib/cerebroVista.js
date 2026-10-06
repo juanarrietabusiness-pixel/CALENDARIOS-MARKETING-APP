@@ -15,16 +15,17 @@ export const TIPOS_VISTA = Object.freeze({
   documento: { nombre: "Documento", ayuda: "Lo importado o subido que no es canon" },
   nota: { nombre: "Nota", ayuda: "Escrita a mano" },
   decision: { nombre: "Decisión", ayuda: "Lo que el cliente aprobó o rechazó, y por qué" },
+  mercado: { nombre: "Estudio de mercado", ayuda: "El estudio de mercado y las referencias de la competencia" },
   borrador: { nombre: "Borrador", ayuda: "Informes de otros sistemas: pesan poco y no salen en los textos" },
 });
 
 /** Los filtros por tipo, en el orden en que se ofrecen. */
-export const FILTROS_TIPO = Object.freeze(["todas", "ficha", "cifras", "marca", "documento", "nota", "maquetacion", "borrador"]);
+export const FILTROS_TIPO = Object.freeze(["todas", "ficha", "cifras", "marca", "mercado", "documento", "nota", "maquetacion", "borrador"]);
 
 export const nombreDeTipo = (tipo) => TIPOS_VISTA[tipo]?.nombre ?? "Nota";
 
 /** Orden de las notas: la ficha y las cifras primero, luego por tipo y por título. */
-const PESO = { ficha: 0, cifras: 1, marca: 2, decision: 3, documento: 4, nota: 5, maquetacion: 6, borrador: 7 };
+const PESO = { ficha: 0, cifras: 1, marca: 2, mercado: 3, decision: 4, documento: 5, nota: 6, maquetacion: 7, borrador: 8 };
 export function ordenarNotas(notas) {
   return [...notas].sort((a, b) => (PESO[a.tipo] ?? 9) - (PESO[b.tipo] ?? 9) || a.titulo.localeCompare(b.titulo, "es"));
 }

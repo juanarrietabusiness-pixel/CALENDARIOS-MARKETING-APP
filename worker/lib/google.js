@@ -28,7 +28,7 @@
 // espacio de quien lo generó.
 // ============================================================
 
-import { idDeCarpeta } from "../../src/lib/drive.js";
+import { idDeCarpeta, MIME_CARPETA } from "../../src/lib/drive.js";
 import { error } from "./respuesta.js";
 
 export { idDeCarpeta };
@@ -318,4 +318,74 @@ export async function leerDeDrive(env, acceso, clienteId, fileId, { maxBytes }) 
   const res = await drive(env, acceso, `/drive/v3/files/${encodeURIComponent(fileId)}`, { query: { alt: "media" }, crudo: true });
   if (!res.ok) throw await errorDe(res);
   return { bytes: await res.arrayBuffer(), nombre: meta.name, mime: meta.mimeType };
+}
+
+// ------------------------------------------------------------
+// Subir a la carpeta del cliente
+//
+// Lo usan la ruta de Drive (banco, copias de lo programado) y el estudio de
+// mercado (su documento). Viven aquí y no en worker/rutas/drive.js porque un
+// fichero de rutas sólo exporta rutas.
+// ------------------------------------------------------------
+
+/** Los campos de un archivo que se piden a Drive. */
+export const CAMPOS_ARCHIVO = "id,name,mimeType,size,modifiedTime,thumbnailLink,imageMediaMetadata(width,height),videoMediaMetadata(durationMillis)";
+
+/** Una cadena dentro de una consulta `q` de Drive. */
+export const escaparQ = (t) => String(t).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+
+/** La subcarpeta «Banco de la app» (u otra) dentro de la del cliente; se crea si falta. */
+export async function carpetaDeLaApp(env, acceso, raiz, nombre = "Banco de la app") {
+  const r = await drive(env, acceso, "/drive/v3/files", {
+    query: {
+      q: `'${escaparQ(raiz)}' in parents and name = '${escaparQ(nombre)}' and mimeType = '${MIME_CARPETA}' and trashed = false`,
+      fields: "files(id)",
+      includeItemsFromAllDrives: "true",
+    },
+  });
+  if (r.files?.[0]?.id) return r.files[0].id;
+  const f = await drive(env, acceso, "/drive/v3/files", {
+    metodo: "POST", query: { fields: "id" },
+    cuerpo: { name: nombre, mimeType: MIME_CARPETA, parents: [raiz] },
+  });
+  return f.id;
+}
+
+/**
+ * Subida reanudable: se abre una sesión con los metadatos y se manda el
+ * cuerpo de una vez. El cuerpo puede ser un stream (lo que llega del
+ * navegador, sin copiarlo en memoria) o bytes.
+ */
+export async function subirADrive(env, acceso, { carpeta, nombre, mime, largo, cuerpo: datos, descripcion = "", convertirA = "" }) {
+  const inicio = await drive(env, acceso, "/upload/drive/v3/files", {
+    metodo: "POST",
+    query: { uploadType: "resumable", fields: CAMPOS_ARCHIVO },
+    // `convertirA`: el tipo de Google en que Drive convierte lo subido (un HTML → un documento de Google).
+    cuerpo: { name: nombre, parents: [carpeta], ...(convertirA ? { mimeType: convertirA } : {}), ...(descripcion ? { description: descripcion.slice(0, 1000) } : {}) },
+    cabeceras: { "X-Upload-Content-Type": mime, "X-Upload-Content-Length": String(largo) },
+    crudo: true,
+  });
+  const sesion = inicio.headers.get("Location");
+  if (!inicio.ok || !sesion) throw await errorDe(inicio);
+
+  // Un stream con largo conocido: FixedLengthStream en Workers. Sin él
+  // (pruebas en Node), se lee entero.
+  let cuerpoFinal = datos;
+  if (datos instanceof ReadableStream) {
+    const Fijo = globalThis.FixedLengthStream;
+    if (typeof Fijo === "function") {
+      const { readable, writable } = new Fijo(largo);
+      datos.pipeTo(writable).catch(() => {});
+      cuerpoFinal = readable;
+    } else {
+      cuerpoFinal = await new Response(datos).arrayBuffer();
+    }
+  }
+  const res = await fetch(sesion, {
+    method: "PUT",
+    headers: { "Content-Type": mime, "Content-Length": String(largo) },
+    body: cuerpoFinal,
+  });
+  if (!res.ok) throw await errorDe(res);
+  return res.json();
 }

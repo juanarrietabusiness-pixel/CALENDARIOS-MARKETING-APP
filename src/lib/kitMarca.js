@@ -159,6 +159,7 @@ export function pedidoDeKit({ marca, rubro = "", guia = "", ficha = "" }) {
     "- La tipografía, sólo si aparece; si no, vacía.",
     "- Cuatro presets: producto, anuncio, corporativo y creativo. Cada uno es UN párrafo de 60 a 110 palabras, en el estilo de los ejemplos: qué tipo de pieza es, la paleta estricta con hex y papeles, el estilo, la luz, la composición, la tipografía y lo que no debe salir. Sin listas.",
     "- No describas una escena concreta: el preset va delante de cualquier idea.",
+    "- Si hay ESTUDIO DE MERCADO, el preset de anuncio tiene que hablarle a esos perfiles y a esos deseos (el tono de la imagen, la gente que sale, la emoción), sin escribir textos ni precios: esos van en cada pieza.",
     "",
     "EJEMPLOS DE CÓMO ESCRIBE LA AGENCIA SUS PRESETS (son de otras marcas: no copies sus colores):",
     EJEMPLOS,

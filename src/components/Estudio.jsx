@@ -4,6 +4,7 @@ import Compositor from "./EstudioCompositor";
 import Visor, { Pieza } from "./EstudioVisor";
 import EstudioKit from "./EstudioKit";
 import { kitVacio, textoPreset, componerPedido, ponerLogo, ideaDelPedido } from "../lib/kitMarca";
+import { ideaDesdeAngulo } from "../lib/estudioMercado";
 import { OverflowMenu } from "./calendario/primitivas";
 import { soloLectura } from "../lib/sesionActual";
 import * as api from "../lib/estudio";
@@ -541,6 +542,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           estilo={{
             preset, onPreset: setPreset, kitListo: !kitVacio(kit), textoPreset: textoDelPreset,
             conLogo, onConLogo: setConLogo, puedeLogo,
+            angulos: datos?.angulos ?? [],
+            onAngulo: (a) => { setConfirmando(null); setForm((f) => ({ ...f, prompt: ideaDesdeAngulo(a) })); },
           }}
         />
       )}

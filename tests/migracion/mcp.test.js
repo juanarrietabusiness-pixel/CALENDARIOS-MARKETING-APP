@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import worker from "../../worker/index.js";
 import { d1EnMemoria } from "../utils/d1Memoria.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
@@ -229,12 +229,19 @@ describe("el protocolo y las herramientas", () => {
   });
 
   it("programar sin Meta conectado devuelve el motivo, no un fallo del servidor", async () => {
-    const { access_token: tk } = await conectar();
-    const r = await llamar(tk, "programar_lo_aprobado", { cliente: "Café Luna" });
-    expect(r.content[0].text).toMatch(/No se pudo|cuenta/);
-    const una = await llamar(tk, "programar_publicacion", { publicacion_id: "p1" });
-    expect(una.isError).toBe(true);
-    expect(una.content[0].text).toMatch(/cuenta|Meta/);
+    // La publicación aprobada es del 5 de octubre de 2026: desde ese día ya «pasó» y no hay nada que programar.
+    // El reloj se fija antes, para que el caso no dependa del día en que corre.
+    vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-01T12:00:00Z") });
+    try {
+      const { access_token: tk } = await conectar();
+      const r = await llamar(tk, "programar_lo_aprobado", { cliente: "Café Luna" });
+      expect(r.content[0].text).toMatch(/No se pudo|cuenta/);
+      const una = await llamar(tk, "programar_publicacion", { publicacion_id: "p1" });
+      expect(una.isError).toBe(true);
+      expect(una.content[0].text).toMatch(/cuenta|Meta/);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("una herramienta que no existe es un error de JSON-RPC", async () => {
