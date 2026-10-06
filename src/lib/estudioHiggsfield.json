@@ -612,6 +612,63 @@
   }
  },
  {
+  "id": "kling-omni",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "Kling Omni · hasta 10 s",
+  "creador": "Kling (Kuaishou)",
+  "calidad": 4,
+  "velocidad": "lento",
+  "costo": 0.1,
+  "por": "s",
+  "estimado": true,
+  "referencias": 8,
+  "inicial": 1,
+  "final": 1,
+  "cola": true,
+  "nota": "De 3 a 10 s, con hasta 4 referencias (el logo, el producto) o imagen inicial y final. Para reels cortos con la marca. Precio aproximado.",
+  "para": [
+   "hasta 10 s",
+   "referencias de la marca",
+   "imagen inicial y final"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "16:9",
+     "9:16",
+     "1:1"
+    ],
+    "defecto": "9:16"
+   },
+   "duration": {
+    "valores": [
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10"
+    ],
+    "defecto": "5"
+   },
+   "mode": {
+    "valores": [
+     "std",
+     "pro"
+    ],
+    "defecto": "pro"
+   }
+  },
+  "rutas": {
+   "text": "kling-video/omni/image-reference",
+   "reference": "kling-video/omni/image-reference",
+   "image": "kling-video/omni/first-last-frame"
+  }
+ },
+ {
   "id": "kling-3-turbo",
   "motor": "higgsfield",
   "tipo": "video",

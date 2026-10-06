@@ -130,6 +130,8 @@ src/
                           lo importa el Worker)
     mercado.js            Cliente de /api/mercado
     consciencia.js        Niveles de consciencia (Schwartz) y deseos de Reiss: pequeño, para el bundle principal
+    videoCorto.js         Guiones de video de 8 s (Veo) o 10 s (Kling Omni): gancho, beneficio y cierre; el pedido
+                          al modelo sin texto largo ni logo (puro; también lo importa el Worker)
     pilares.js            Los 6 tipos de contenido de la agencia, el ritmo semanal por cliente, las sugerencias de
                           temporada y la matriz (tipo × producto × nivel × deseo × perfil) (puro)
     kitMarca.js           El kit de marca del Estudio: paleta, presets (producto, anuncio, corporativo,
@@ -1232,6 +1234,12 @@ son del servidor.
   · **La IA lo lee en todas partes** por `lineasDeContenido()` (api.js): ideas del mes, guiones, descripciones y
   los botones de IA del panel. `pilares.js` NO importa `estudioMercado.js` —que es grande— porque api.js va en
   el bundle principal: lo que necesita de los marcos está en `consciencia.js`.
+- **Videos cortos: una idea en tres tiempos** (`src/lib/videoCorto.js`, `worker/lib/estudio/guionCorto.js`,
+  `POST /api/estudio/<cliente>/guion-corto`). Los modelos de la agencia hacen 8 s (Veo) o 10 s (Kling Omni, por
+  Higgsfield, `kling-omni` en el generador): la duración la decide el MODELO (`segundosParaModelo`), y al usar el
+  guion se pone su duración en el ajuste. El guion lleva como mucho CUATRO palabras en pantalla —los modelos de
+  video escriben mal— y lo demás va en «textoEdicion»; el logo tampoco se le pide al modelo. Desde una
+  publicación viajan su tipo y su producto (con el precio del catálogo). Es texto: no gasta en el motor.
 - **El cerebro de un cliente es SUYO: un índice por cliente, nunca uno para
   todos.** El algoritmo viene de Agents Office, que indexa por nombre de
   archivo: los nueve clientes tienen un `01_brand_guidelines.md`, y en un

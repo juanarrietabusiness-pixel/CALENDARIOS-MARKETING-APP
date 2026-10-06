@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from "react";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { promptDePublicacion, proporcionParaFormato } from "../../lib/estudio";
-import { presetDePilar } from "../../lib/pilares";
+import { presetDePilar, CAMPOS_MATRIZ } from "../../lib/pilares";
 
 // ============================================================
 // «Crear con IA» dentro del panel de una publicación
@@ -32,6 +32,8 @@ export default function CrearConIA({ client, post, tipo = "imagen", inicio = nul
     proporcion: proporcionParaFormato(post.format, tipo),
     // El estilo de la marca que le va a su tipo de contenido (Anuncio, Producto, Corporativo, Creativo).
     preset: presetDePilar(post.pilar),
+    // Su tipo de contenido y su producto, para el guion de un video corto.
+    post: Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, post[k] ?? ""])),
     prompt: inicio
       ? `Anima esta imagen con un movimiento suave y natural: ${promptDePublicacion(post)}`.slice(0, 1500)
       : promptDePublicacion(post),

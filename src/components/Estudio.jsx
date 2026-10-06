@@ -5,6 +5,7 @@ import Visor, { Pieza } from "./EstudioVisor";
 import EstudioKit from "./EstudioKit";
 import { kitVacio, textoPreset, componerPedido, ponerLogo, ideaDelPedido } from "../lib/kitMarca";
 import { ideaDesdeAngulo } from "../lib/estudioMercado";
+import { segundosParaModelo, ajusteDeDuracion } from "../lib/videoCorto";
 import { OverflowMenu } from "./calendario/primitivas";
 import { soloLectura } from "../lib/sesionActual";
 import * as api from "../lib/estudio";
@@ -220,6 +221,37 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     } finally {
       setMejorando(false);
     }
+  };
+
+  // ---------- El guion de un video corto (8 o 10 s según el modelo) ----------
+  const [guion, setGuion] = useState(null);
+  const [escribiendoGuion, setEscribiendoGuion] = useState(false);
+  const segundosGuion = modelo?.tipo === "video" ? segundosParaModelo(modelo) : 8;
+  const escribirGuion = async () => {
+    if (!form || escribiendoGuion) return;
+    setEscribiendoGuion(true);
+    setAviso(null);
+    try {
+      // Desde una publicación viaja su tipo de contenido y su producto (inicial.post).
+      const r = await api.escribirGuionCorto(client.id, { idea: form.prompt, segundos: segundosGuion, post: inicial?.post ?? null });
+      setGuion(r);
+      if (r.aviso) avisar(true, r.aviso);
+    } catch (e) {
+      avisar(false, e.message);
+    } finally {
+      setEscribiendoGuion(false);
+      window.dispatchEvent(new Event("ia:gasto"));
+    }
+  };
+  /** El guion pasa a ser el pedido, y la duración del modelo, la del guion. */
+  const usarGuion = () => {
+    if (!guion) return;
+    const dur = ajusteDeDuracion(modelo, guion.guion.segundos);
+    setConfirmando(null);
+    setIdeaAnterior(form.prompt);
+    setForm((f) => ({ ...f, prompt: guion.prompt.slice(0, MAX_PROMPT), ajustes: dur ? { ...f.ajustes, duration: dur } : f.ajustes }));
+    setGuion(null);
+    enfocarPrompt();
   };
 
   /** Deshace la mejora: vuelve lo que la persona había escrito. */
@@ -548,6 +580,10 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             conLogo, onConLogo: setConLogo, puedeLogo,
             angulos: datos?.angulos ?? [],
             onAngulo: (a) => { setConfirmando(null); setForm((f) => ({ ...f, prompt: ideaDesdeAngulo(a) })); },
+          }}
+          guionCorto={{
+            segundos: segundosGuion, escribiendo: escribiendoGuion, resultado: guion,
+            onEscribir: escribirGuion, onUsar: usarGuion, onDescartar: () => setGuion(null),
           }}
         />
       )}
