@@ -55,6 +55,7 @@ export function clientToRow(client) {
     saved_categories: client.savedCategories || [],
     weekly_structure: client.weeklyStructure || [],
     fechas_especiales: client.fechasEspeciales || null,
+    ritmo_contenido: client.ritmoContenido || null,
   };
 }
 
@@ -97,6 +98,7 @@ export function rowToClient(row) {
     savedCategories: row.saved_categories || [],
     weeklyStructure: row.weekly_structure || [],
     fechasEspeciales: row.fechas_especiales || null,
+    ritmoContenido: row.ritmo_contenido || null,
     // Sólo de lectura aquí: lo escribe el Estudio (/api/estudio/<cliente>/kit), no la ficha.
     kitMarca: row.kit_marca || null,
     savedPlans: [],

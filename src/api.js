@@ -1,4 +1,5 @@
 import { parseJSONLoose, parseGitHubUrl } from "./lib/parse";
+import { lineasDeContenido } from "./lib/pilares";
 import { normalizarColor, coloresDelTexto, tresColores } from "./lib/colores";
 import { hora12 } from "./lib/horas";
 import { getWeekNumber, dayName } from "./utils";
@@ -140,6 +141,7 @@ export function buildScriptPrompt(client, calendar, posts, adnExtra = "", memori
     return `<<<PUBLICACION_ID:${p.id}>>>
 FORMATO: ${p.format}
 CATEGORIA: ${p.category || "N/A"}
+${lineasDeContenido(p)}
 DIA: ${p._date} (${p._dayName || ""})
 SEMANA: ${p._weekNumber || ""}
 CONCEPTO_SEMANAL: ${p._concept || "N/A"}
@@ -216,6 +218,7 @@ export function buildDescripcionesPrompt(client, calendar, posts, adnExtra = "",
   const lista = posts.map((p) => `<<<PUBLICACION_ID:${p.id}>>>
 FORMATO: ${p.format}
 CATEGORIA: ${p.category || "N/A"}
+${lineasDeContenido(p)}
 DIA: ${p._date} (${p._dayName || ""})
 SEMANA: ${p._weekNumber || ""} — ${p._concept || "libre"}
 IDEA: ${p.idea}
@@ -304,6 +307,7 @@ export async function generateSinglePost(client, post, day, calendar) {
 CAMPANA: ${calendar?.campaign || "N/A"}
 SEMANA: ${day.concept || "N/A"}
 CATEGORIA: ${day.category || "N/A"}
+${lineasDeContenido(post)}
 FORMATO: ${post.format}
 FECHA: ${day.date} (${day.dayName || ""})
 
@@ -367,6 +371,7 @@ export async function generateFieldForPost(client, post, day, calendar, field) {
 CAMPANA: ${calendar?.campaign || "N/A"}
 SEMANA: ${day.concept || "N/A"}
 CATEGORIA: ${day.category || post.category || "N/A"}
+${lineasDeContenido(post)}
 FORMATO: ${post.format}
 FECHA: ${day.date} (${day.dayName || ""})
 
@@ -377,6 +382,7 @@ ${instruccionIdea(post)}`;
 CAMPANA: ${calendar?.campaign || "N/A"}
 SEMANA: ${day.concept || "N/A"}
 CATEGORIA: ${day.category || post.category || "N/A"}
+${lineasDeContenido(post)}
 FORMATO: ${post.format}
 FECHA: ${day.date} (${day.dayName || ""})
 
@@ -393,6 +399,7 @@ Responde SOLO con el guion, sin preambulos.`;
 CAMPANA: ${calendar?.campaign || "N/A"}
 SEMANA: ${day.concept || "N/A"}
 CATEGORIA: ${day.category || post.category || "N/A"}
+${lineasDeContenido(post)}
 FORMATO: ${post.format}
 FECHA: ${day.date} (${day.dayName || ""})
 

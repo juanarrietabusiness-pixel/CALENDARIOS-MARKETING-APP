@@ -357,3 +357,7 @@
 
 /* «Crear con IA»: el Estudio del cliente en un diálogo. Desplaza por dentro, y por encima del panel. */
 .sheet-estudio { max-width: 1040px; overflow-y: auto; overscroll-behavior: contain; }
+
+/* «Tipo de contenido» (calendario/tipoContenido.jsx): los selectores en rejilla que envuelve. */
+.tipo-contenido { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--sp-2) var(--sp-3); }
+.tipo-contenido .field { margin: 0; }
