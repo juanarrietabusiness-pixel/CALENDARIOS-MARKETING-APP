@@ -24,9 +24,49 @@ export function Pieza({ archivo: a, grande = false }) {
   return <img src={a.src} alt={a.prompt} loading={grande ? "eager" : "lazy"} />;
 }
 
+/**
+ * «Revisar marca»: la IA mira la imagen con el kit delante y dice qué
+ * respeta y qué no. «Corregir» lleva su sugerencia al compositor, junto a la
+ * idea original, para pedirla otra vez.
+ */
+function RevisionDeMarca({ revision, onRevisar, onCorregir }) {
+  if (revision?.cargando) return <p role="status" className="hint est-revision">La IA está revisando la imagen contra el kit…</p>;
+  if (revision?.error) {
+    return (
+      <div className="est-revision" role="alert">
+        <p className="notice notice-error">{revision.error}</p>
+        {onRevisar && <button type="button" className="btn btn-ghost btn-sm" onClick={onRevisar}>Reintentar</button>}
+      </div>
+    );
+  }
+  const r = revision?.datos;
+  if (!r) {
+    return (
+      <button type="button" className="btn btn-secondary btn-sm est-revisar" onClick={onRevisar}>
+        <Icon name="eye" size={16} /> Revisar marca
+      </button>
+    );
+  }
+  const tono = r.puntaje >= 8 ? "bien" : r.puntaje >= 5 ? "medio" : "mal";
+  return (
+    <section className="est-revision" aria-label="Revisión de marca">
+      <p className="est-revision-puntaje" data-tono={tono}><strong>{r.puntaje}/10</strong> con la marca</p>
+      {r.cumple.length > 0 && <ul className="est-revision-lista">{r.cumple.map((t) => <li key={t}><Icon name="check" size={14} /> {t}</li>)}</ul>}
+      {r.falla.length > 0 && <ul className="est-revision-lista" data-falla>{r.falla.map((t) => <li key={t}><Icon name="alert" size={14} /> {t}</li>)}</ul>}
+      {r.sugerencia && (
+        <p className="hint">
+          Sugerencia: {r.sugerencia}{" "}
+          {onCorregir && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onCorregir(r.sugerencia)}><Icon name="refresh" size={14} /> Pedirla corregida</button>}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export default function Visor({
   archivo: a, carpetas, lectura, onCerrar, onFavorito, onPapelera, onMover, onRepetir, onVariar, onReferencia, onAnimar, onUsar, etiquetaUsar,
   onEditar = null, original = null, onVerOriginal = null,
+  esLogo = false, onLogo = null, revision = null, onRevisar = null, onCorregir = null,
 }) {
   const ref = useDialogA11y(onCerrar);
   const id = useId();
@@ -85,6 +125,7 @@ export default function Visor({
               <p className="hint" style={{ margin: 0 }}>Sale una imagen NUEVA en la galería; esta se queda como está.</p>
             </form>
           )}
+          {!video && (onRevisar || revision) && <RevisionDeMarca revision={revision} onRevisar={onRevisar} onCorregir={lectura ? null : onCorregir} />}
           <div className="est-visor-acciones">
             {!lectura && !video && onEditar && !editando && <button type="button" className="btn btn-secondary" onClick={() => setEditando(true)}><Icon name="pencil" size={16} /> Editar</button>}
             {onUsar && <button type="button" className="btn btn-primary" onClick={onUsar}><Icon name="check" size={16} /> {etiquetaUsar ?? "Usar en la publicación"}</button>}
@@ -92,6 +133,11 @@ export default function Visor({
             {!lectura && !a.subido && !video && <button type="button" className="btn btn-secondary" onClick={onVariar}><Icon name="sparkles" size={16} /> Variar</button>}
             {!lectura && !video && <button type="button" className="btn btn-secondary" onClick={onAnimar}><Icon name="video" size={16} /> Animar</button>}
             {!lectura && !video && <button type="button" className="btn btn-secondary" onClick={onReferencia}><Icon name="paperclip" size={16} /> Usar de referencia</button>}
+            {!lectura && !video && onLogo && (
+              <button type="button" className="btn btn-secondary" aria-pressed={esLogo} onClick={onLogo} disabled={esLogo}>
+                <Icon name="star" size={16} /> {esLogo ? "Es el logo de la marca" : "Usar como logo"}
+              </button>
+            )}
             {!lectura && <button type="button" className="btn btn-secondary" aria-pressed={a.favorito} onClick={onFavorito}><Icon name="star" size={16} /> {a.favorito ? "Es favorita" : "Favorita"}</button>}
             <a className="btn btn-secondary" href={a.src} download={nombreDeDescarga(a)}><Icon name="download" size={16} /> Descargar</a>
             {!lectura && <button type="button" className="btn btn-ghost" onClick={onPapelera}><Icon name="trash" size={16} /> A la papelera</button>}

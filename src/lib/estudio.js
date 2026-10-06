@@ -36,6 +36,15 @@ export const reintentarTrabajo = (clienteId, id) => pedir(`${base(clienteId)}/tr
  */
 export const mejorarIdea = (clienteId, datos) => pedir(`${base(clienteId)}/mejorar`, post(datos));
 
+/** Guarda el kit de marca (paleta, tipografía, estilo, presets, logo). Devuelve `{ kit }`. */
+export const guardarKit = (clienteId, kit) => pedir(`${base(clienteId)}/kit`, { method: "PUT", body: JSON.stringify({ kit }) });
+
+/** La IA PROPONE el kit desde el cerebro del cliente: `{ kit, dudas, conCerebro }`. No guarda. */
+export const prepararKit = (clienteId) => pedir(`${base(clienteId)}/kit/preparar`, post());
+
+/** La IA mira una imagen de la galería contra el kit: `{ puntaje, cumple, falla, sugerencia }`. */
+export const revisarMarca = (clienteId, archivoId) => pedir(`${base(clienteId)}/revisar`, post({ archivoId }));
+
 /** Sube una imagen a mano (la foto del producto, el logo) a la galería del cliente. */
 export function subirImagen(clienteId, archivo, { carpetaId = null } = {}) {
   const form = new FormData();

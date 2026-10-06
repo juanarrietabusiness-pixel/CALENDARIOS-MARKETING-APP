@@ -9,6 +9,9 @@
 //   POST   /<cliente>/trabajos/<id>/cancelar
 //   POST   /<cliente>/trabajos/<id>/reintentar
 //   POST   /<cliente>/mejorar                      { idea, tipo }: la IA devuelve la idea más clara (texto)
+//   PUT    /<cliente>/kit                          { kit }: guarda el kit de marca (paleta, presets, logo…)
+//   POST   /<cliente>/kit/preparar                 La IA PROPONE el kit desde el cerebro (no guarda)
+//   POST   /<cliente>/revisar                      { archivoId }: la IA mira la imagen contra el kit
 //   POST   /<cliente>/archivos                     Subir a mano (multipart: archivo, carpetaId?)
 //   POST   /<cliente>/archivos/<id>/cambiar        { favorito?, carpetaId? }
 //   POST   /<cliente>/archivos/<id>/uso            { calendarId, postId }: lo usa una publicación
@@ -33,6 +36,7 @@ import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { firma, difundir } from "../lib/vivo.js";
 import { estadoMotores } from "../lib/estudio/motores.js";
 import { mejorarIdea } from "../lib/estudio/prompt.js";
+import { kitDe, guardarKit, prepararKit, revisarPieza } from "../lib/estudio/kit.js";
 import {
   crearTrabajo, avanzarTrabajo, cancelarTrabajo, reintentarTrabajo, trabajoPublico, ErrorEstudio,
 } from "../lib/estudio/trabajos.js";
@@ -59,7 +63,23 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
 
   try {
     // ---------- La galería ----------
-    if (!b && metodo === "GET") return json(await leerGaleria(env, acceso, cliente.id));
+    if (!b && metodo === "GET") return json({ ...(await leerGaleria(env, acceso, cliente.id)), kit: kitDe(cliente) });
+
+    // ---------- El kit de marca ----------
+    if (b === "kit") {
+      if (!c && metodo === "PUT") {
+        const datos = await cuerpo(req);
+        if (!datos?.kit) return error("Falta el kit");
+        const kit = await guardarKit(env, acceso, cliente, datos.kit);
+        avisar();
+        return json({ kit });
+      }
+      if (c === "preparar" && metodo === "POST") return json(await prepararKit(env, acceso, cliente));
+    }
+    if (b === "revisar" && !c && metodo === "POST") {
+      const datos = await cuerpo(req);
+      return json(await revisarPieza(env, acceso, cliente, datos?.archivoId));
+    }
 
     // ---------- Los trabajos ----------
     if (b === "trabajos") {
@@ -180,6 +200,8 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
     return noEncontrado("Ruta");
   } catch (e) {
     if (e instanceof ErrorEstudio) return fallo(e);
+    // Los de la IA (kit, revisión) traen su estado: sin cuota, sin respuesta a tiempo…
+    if (e?.estado) return error(e.message, e.estado);
     throw e;
   }
 }

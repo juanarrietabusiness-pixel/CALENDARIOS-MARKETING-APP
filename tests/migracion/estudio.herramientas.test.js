@@ -158,6 +158,20 @@ describe("crear_en_estudio", () => {
     expect(texto).toMatch(/no hace falta esperar/);
   });
 
+  it("con estilo, el preset del kit va delante de la escena y el logo de referencia", async () => {
+    objetos.set("clientes/c1/estudio/logo.png", { bytes: new Uint8Array([1]), tipo: "image/png" });
+    db.sqlite.prepare("update clients set kit_marca = ? where id = 'c1'").run(JSON.stringify({
+      paleta: [{ hex: "#1E2A5A", nombre: "azul", rol: "dominante" }], estilo: "cálido", logo: "clientes/c1/estudio/logo.png",
+    }));
+    const { error } = await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "un sofá junto a la ventana", modelo: "prueba", estilo: "producto" });
+    expect(error).toBe(false);
+    const [t] = trabajos();
+    expect(t.prompt).toMatch(/^Fotografía publicitaria de producto para Dcasa\./);
+    expect(t.prompt).toContain("Paleta estrictamente limitada a: azul #1E2A5A (dominante).");
+    expect(t.prompt).toMatch(/\n\nEscena: un sofá junto a la ventana$/);
+    expect(JSON.parse(t.medios).reference).toEqual(["clientes/c1/estudio/logo.png"]);
+  });
+
   it("en el asistente de un cliente, el cliente se puede omitir", async () => {
     const c1 = await acceso.leerUno("clients", { id: "c1" });
     const { error } = await usar(asistente({}, c1), "crear_en_estudio", { prompt: "una cuna", modelo: "prueba" });

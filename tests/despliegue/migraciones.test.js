@@ -118,7 +118,7 @@ describe("restricciones que sostienen el comportamiento", () => {
       const COLUMNAS_JSON = new Set([
         "days", "week_concepts", "visual_references", "day_labels",
         "ideas_bank", "saved_categories", "weekly_structure", "meta_recipe",
-        "fechas_especiales",
+        "fechas_especiales", "kit_marca",
       ]);
     const lista = [];
     for (const [tabla, def] of Object.entries(T)) {

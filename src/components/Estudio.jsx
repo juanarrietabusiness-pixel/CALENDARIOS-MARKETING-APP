@@ -2,6 +2,8 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import Icon from "./Icon";
 import Compositor from "./EstudioCompositor";
 import Visor, { Pieza } from "./EstudioVisor";
+import EstudioKit from "./EstudioKit";
+import { kitVacio, textoPreset, componerPedido, ponerLogo, ideaDelPedido } from "../lib/kitMarca";
 import { OverflowMenu } from "./calendario/primitivas";
 import { soloLectura } from "../lib/sesionActual";
 import * as api from "../lib/estudio";
@@ -75,6 +77,14 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   // «Mejorar idea»: mientras la IA la reescribe, y lo que había antes para poder volver.
   const [mejorando, setMejorando] = useState(false);
   const [ideaAnterior, setIdeaAnterior] = useState(null);
+  // El agente diseñador: qué preset de la marca va delante de la idea (se
+  // recuerda por cliente) y si el logo va de referencia.
+  const clavePreset = `estudio-preset:${client.id}`;
+  const [preset, setPresetEstado] = useState(() => { try { return localStorage.getItem(clavePreset) ?? ""; } catch { return ""; } });
+  const setPreset = (v) => { setPresetEstado(v); try { localStorage.setItem(clavePreset, v); } catch { /* sin almacenamiento */ } };
+  const [conLogo, setConLogo] = useState(true);
+  // La revisión de marca de cada imagen: id → { cargando } | { datos } | { error }.
+  const [revisiones, setRevisiones] = useState({});
 
   const [filtro, setFiltro] = useState("todas");
   const [texto, setTexto] = useState("");
@@ -120,6 +130,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const motorActivo = (m) => Boolean(motores?.[m.motor]?.activo);
   const ajustes = form && modelo ? ajustesDe(modelo, form.ajustes, clavesDe(form.medios)) : {};
   const costo = form && modelo ? estimar(modelo, form.n, ajustes) : 0;
+  const kit = datos?.kit ?? null;
+  const textoDelPreset = preset ? textoPreset(kit, preset, { marca: client.name, rubro: client.industry ?? "" }) : "";
+  const puedeLogo = Boolean(preset && form && modelo && ponerLogo({ kit, tipo: form.tipo, modelo, referencias: clavesDe(form.medios).reference }));
 
   // ---------- Seguir un trabajo: un paso, y otro, hasta que termine ----------
   const seguir = useCallback(async (id) => {
@@ -248,9 +261,14 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setAviso(null);
     setEnPapelera(false); // lo que se pide aparece en la galería: que se vea
     try {
+      // El preset de la marca va delante de la escena, y el logo de
+      // referencia si se pidió: lo que se manda es lo que queda escrito.
+      const medios = clavesDe(form.medios);
+      if (puedeLogo && conLogo) medios.reference = [...medios.reference, kit.logo];
       const { trabajo } = await api.pedirImagenes(client.id, {
-        modelo: form.modelo, prompt: form.prompt, n: form.n, ajustes,
-        medios: clavesDe(form.medios), confirmado: true,
+        modelo: form.modelo, prompt: componerPedido({ idea: form.prompt, preset: textoDelPreset, video: form.tipo === "video" }).slice(0, MAX_PROMPT),
+        n: form.n, ajustes: ajustesDe(modelo, form.ajustes, medios),
+        medios, confirmado: true,
         ...(uso ? { calendarId: uso.calendarId, postId: uso.postId } : {}),
       });
       setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, trabajo) } : d));
@@ -402,6 +420,31 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     }
   };
 
+  // ---------- El kit de marca ----------
+  const guardarKitDeMarca = async (nuevo) => {
+    const r = await api.guardarKit(client.id, nuevo);
+    setDatos((d) => (d ? { ...d, kit: r.kit } : d));
+    avisar(true, "Kit de marca guardado: los presets ya lo usan.");
+    return r.kit;
+  };
+  const usarComoLogo = async (a) => {
+    try {
+      await guardarKitDeMarca({ ...(kit ?? {}), logo: a.clave });
+      avisar(true, "Logo guardado: irá de referencia en cada imagen con preset.");
+    } catch (e) {
+      avisar(false, e.message);
+    }
+  };
+  const revisar = async (a) => {
+    setRevisiones((r) => ({ ...r, [a.id]: { cargando: true } }));
+    try {
+      const datosRevision = await api.revisarMarca(client.id, a.id);
+      setRevisiones((r) => ({ ...r, [a.id]: { datos: datosRevision } }));
+    } catch (e) {
+      setRevisiones((r) => ({ ...r, [a.id]: { error: e.message } }));
+    }
+  };
+
   // ---------- Carpetas ----------
   const crearCarpeta = async (e) => {
     e.preventDefault();
@@ -475,6 +518,18 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         </p>
       )}
 
+      {/* ---------- El kit de marca ---------- */}
+      {!dialogo && datos && (
+        <EstudioKit
+          client={client}
+          kit={kit}
+          archivos={archivos}
+          lectura={lectura}
+          onPreparar={() => api.prepararKit(client.id)}
+          onGuardar={guardarKitDeMarca}
+        />
+      )}
+
       {/* ---------- Pedir ---------- */}
       {!lectura && form && modelo && (
         <Compositor
@@ -483,6 +538,10 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           onEnviar={enviar} onConfirmar={() => enviar(true)} onNo={() => setConfirmando(null)}
           onModelo={cambiarModelo} onTipo={cambiarTipo} onQuitarMedio={quitarMedio} onSubirArchivos={subirArchivos}
           mejorando={mejorando} onMejorar={mejorarConIA} onVolverIdea={ideaAnterior != null ? volverAMiIdea : null}
+          estilo={{
+            preset, onPreset: setPreset, kitListo: !kitVacio(kit), textoPreset: textoDelPreset,
+            conLogo, onConLogo: setConLogo, puedeLogo,
+          }}
         />
       )}
 
@@ -671,6 +730,16 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           original={originalDe(visor, datos?.trabajos ?? [], datos?.archivos ?? [])}
           onVerOriginal={(o) => setVisor(o)}
           onUsar={onUsar ? () => usarEnLaPublicacion(visor) : null}
+          esLogo={Boolean(kit?.logo) && kit.logo === visor.clave}
+          onLogo={/^image\/(png|jpeg|webp)$/.test(visor.mime ?? "") ? () => usarComoLogo(visor) : null}
+          revision={revisiones[visor.id] ?? null}
+          onRevisar={kitVacio(kit) || !/^image\/(png|jpeg|webp|gif)$/.test(visor.mime ?? "") ? null : () => revisar(visor)}
+          onCorregir={(sugerencia) => {
+            const a = visor;
+            setVisor(null);
+            setForm((f) => ({ ...f, prompt: `${ideaDelPedido(a.prompt)} ${sugerencia}`.trim().slice(0, MAX_PROMPT) }));
+            enfocarPrompt();
+          }}
         />
       )}
     </section>

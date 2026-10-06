@@ -27,7 +27,7 @@ import { obtenerOCrearMes, moverDeMes, ErrorMes } from "./meses.js";
 import { DEFINICIONES_ESTUDIO, crearHerramientasEstudio, ErrorHerramientaEstudio } from "./estudio/herramientas.js";
 
 // Las columnas JSON de `clients`, como las devuelve la API (datos.js).
-const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe", "competidores", "fechas_especiales"];
+const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe", "competidores", "fechas_especiales", "kit_marca"];
 const FORMATOS = ["post", "reel", "carrusel", "historia", "live"];
 const REDES = ["instagram", "facebook", "tiktok", "youtube"];
 
