@@ -39,12 +39,21 @@ describe("la auditoría de un perfil", () => {
     expect(a.puntuacion).toBe(100);
     expect(a.nombre.propuesta).toHaveLength(LIMITES_PERFIL.nombre);
     expect(a.bio.opciones).toEqual(["Corta y buena", "Otra buena"]);
-    expect(a.destacados.propuesta).toEqual([{ titulo: "Preguntas frecu", contenido: "…" }]);
+    expect(a.destacados.propuesta).toEqual([{ titulo: "Preguntas frecu", contenido: "…", icono: "star" }]);
     expect(a.rejilla).toEqual({ estado: "mejorable", comentario: "", recomendaciones: ["a", "b"] });
   });
 
   it("encuentra el JSON aunque venga con texto alrededor", () => {
     expect(extraerJSON('Aquí va:\n{"puntuacion": 70}\nListo.')).toEqual({ puntuacion: 70 });
     expect(extraerJSON("nada")).toBeNull();
+  });
+});
+
+describe("los perfiles de referencia", () => {
+  it("se leen del texto, sin el propio, sin repetir y con tope", async () => {
+    const { referentesDe, MAX_REFERENTES } = await import("./auditoria");
+    expect(referentesDe("@Lider.Cafe, https://instagram.com/otro/ ; lider.cafe @yo nada!! cuarto quinto", "@yo")).toEqual(["lider.cafe", "otro", "cuarto"]);
+    expect(referentesDe("", "")).toEqual([]);
+    expect(MAX_REFERENTES).toBe(3);
   });
 });

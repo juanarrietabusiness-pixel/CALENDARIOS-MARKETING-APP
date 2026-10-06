@@ -97,3 +97,13 @@
 .auditoria-pagina > .notice, .auditoria-pagina > .hint { max-width: 880px; margin: var(--sp-6) auto; padding: var(--sp-4); }
 .auditoria-acciones { max-width: 880px; margin: 0 auto var(--sp-3); display: flex; justify-content: flex-end; padding: 0 var(--sp-4); }
 @media print { .auditoria-pagina { background: #fff; padding: 0; } }
+
+/* Los perfiles de referencia y «Aplicar en el perfil». */
+.aud-referentes { list-style: none; margin: 0 0 var(--sp-2); padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.aud-referentes li { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: baseline; }
+.aud-aplicar-lista { list-style: none; margin: var(--sp-2) 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.aud-aplicar-lista li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.aud-aplicar-lista label { display: flex; align-items: flex-start; gap: var(--sp-2); cursor: pointer; flex: 1 1 260px; min-height: var(--tap-sm); }
+.aud-aplicar-lista input { margin-top: 3px; width: 18px; height: 18px; flex-shrink: 0; }
+.aud-aplicar-lista span[data-hecho] { text-decoration: line-through; opacity: .6; }
+.aud-aplicar-pie { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }

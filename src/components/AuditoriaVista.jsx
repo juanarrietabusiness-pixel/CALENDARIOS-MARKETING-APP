@@ -55,7 +55,67 @@ const Cifra = ({ nombre, valor }) => (valor === null || valor === undefined ? nu
   <div className="aud-cifra"><span>{nombre}</span><strong>{valor}</strong></div>
 ));
 
-export default function AuditoriaVista({ auditoria, cliente = null, onPortada = null, portadas = {} }) {
+/**
+ * «Aplicar en el perfil»: lo que hay que cambiar a mano en Instagram (la API no deja cambiar la foto, la
+ * biografía, los destacados ni los fijados), con lo que ya está listo para copiar o diseñar. Lo marcado se
+ * recuerda en este navegador; «Crear tarea» lo deja como tarea del cliente, una línea por cambio.
+ */
+function AplicarEnPerfil({ id, a, perfil, onPiezas, onCrearTarea }) {
+  const clave = `aplicar-perfil:${id}`;
+  const [hechos, setHechos] = useState(() => { try { return JSON.parse(localStorage.getItem(clave) ?? "[]"); } catch { return []; } });
+  const [tarea, setTarea] = useState("");
+  const alternar = (k) => setHechos((h) => {
+    const n = h.includes(k) ? h.filter((x) => x !== k) : [...h, k];
+    try { localStorage.setItem(clave, JSON.stringify(n)); } catch { /* sin almacenamiento: se olvida al recargar */ }
+    return n;
+  });
+  const items = [
+    a.foto?.estado !== "bien" && { k: "foto", texto: "Cambiar la foto de perfil", accion: onPiezas && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onPiezas("foto")}><Icon name="palette" size={14} /> Diseñar</button> },
+    a.nombre?.propuesta && a.nombre.propuesta !== perfil?.nombre && { k: "nombre", texto: `Nombre: «${a.nombre.propuesta}»`, accion: <Copiar texto={a.nombre.propuesta} que="el nombre" /> },
+    a.bio?.opciones?.length > 0 && { k: "bio", texto: "Biografía: pegar una de las opciones de arriba" },
+    a.enlace?.recomendacion && a.enlace.estado !== "bien" && { k: "enlace", texto: `Enlace: ${a.enlace.recomendacion}` },
+    a.destacados?.propuesta?.length > 0 && { k: "destacados", texto: `Destacados: ${a.destacados.propuesta.map((d) => d.titulo).join(", ")}`, accion: onPiezas && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onPiezas("destacados")}><Icon name="palette" size={14} /> Diseñar portadas</button> },
+    ...(a.fijados?.propuesta ?? []).map((f, i) => ({ k: `fijado-${i}`, texto: `Fijar: ${f.titulo || f.idea}` })),
+  ].filter(Boolean);
+  if (!items.length) return null;
+  const crear = async () => {
+    setTarea("Creando…");
+    try {
+      await onCrearTarea(items.map((x) => `- ${x.texto}`).join("\n"));
+      setTarea("Tarea creada: está en Mi día y en las tareas del cliente.");
+    } catch (e) {
+      setTarea(e.message);
+    }
+  };
+  return (
+    <section className="aud-bloque aud-aplicar no-imprimir" aria-labelledby={`aplicar-${id}`}>
+      <header className="aud-bloque-cabecera">
+        <h3 id={`aplicar-${id}`}><Icon name="clipboardCheck" size={18} /> Aplicar en el perfil</h3>
+        <span className="hint">{hechos.filter((h) => items.some((x) => x.k === h)).length} de {items.length}</span>
+      </header>
+      <p className="hint">Instagram no deja cambiar esto por la API: se sube a mano. Lo de cada línea ya está listo.</p>
+      <ul className="aud-aplicar-lista">
+        {items.map((x) => (
+          <li key={x.k}>
+            <label>
+              <input type="checkbox" checked={hechos.includes(x.k)} onChange={() => alternar(x.k)} />
+              <span data-hecho={hechos.includes(x.k) || undefined}>{x.texto}</span>
+            </label>
+            {x.accion}
+          </li>
+        ))}
+      </ul>
+      {onCrearTarea && (
+        <div className="aud-aplicar-pie">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={crear} disabled={tarea === "Creando…"}><Icon name="checkSquare" size={14} /> Crear tarea con esta lista</button>
+          {tarea && <span role="status" className="hint">{tarea}</span>}
+        </div>
+      )}
+    </section>
+  );
+}
+
+export default function AuditoriaVista({ auditoria, cliente = null, onPortada = null, portadas = {}, onPiezas = null, onCrearTarea = null }) {
   const { perfil = {}, cifras = {}, analisis: a = {} } = auditoria ?? {};
   const usuario = perfil?.usuario || auditoria?.usuario || "";
   const fecha = auditoria?.auditadoEl || auditoria?.actualizada;
@@ -144,7 +204,7 @@ export default function AuditoriaVista({ auditoria, cliente = null, onPortada = 
             {a.destacados.propuesta.map((d) => (
               <li key={d.titulo}>
                 <span className="aud-destacado-circulo">
-                  {portadas[d.titulo] ? <img src={portadas[d.titulo]} alt={`Portada de «${d.titulo}»`} /> : <Icon name="image" size={18} />}
+                  {portadas[d.titulo] ? <img src={portadas[d.titulo]} alt={`Portada de «${d.titulo}»`} /> : <Icon name={d.icono || "image"} size={18} />}
                 </span>
                 <strong>{d.titulo}</strong>
                 <span>{d.contenido}</span>
@@ -162,8 +222,47 @@ export default function AuditoriaVista({ auditoria, cliente = null, onPortada = 
         )}
       </Bloque>
 
+      {onPiezas && a.destacados?.propuesta?.length > 0 && (
+        <p className="no-imprimir">
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => onPiezas("destacados")}>
+            <Icon name="palette" size={14} /> Diseñar portadas con la marca (plantilla, sin IA)
+          </button>
+        </p>
+      )}
+
+      {a.fijados?.propuesta?.length > 0 && (
+        <section className="aud-bloque">
+          <h3><Icon name="star" size={18} /> Publicaciones fijadas</h3>
+          {a.fijados.comentario && <p>{a.fijados.comentario}</p>}
+          <ol className="aud-lista">
+            {a.fijados.propuesta.map((f) => <li key={f.titulo + f.idea}><strong>{f.titulo}</strong>{f.idea ? `: ${f.idea}` : ""}</li>)}
+          </ol>
+        </section>
+      )}
+
+      {(auditoria?.referentes?.length > 0 || a.referentes?.aprender?.length > 0) && (
+        <section className="aud-bloque">
+          <h3><Icon name="users" size={18} /> Comparado con los referentes</h3>
+          {auditoria?.referentes?.length > 0 && (
+            <ul className="aud-referentes">
+              {auditoria.referentes.map((r) => (
+                <li key={r.usuario}>
+                  <strong>@{r.usuario}</strong>
+                  <span>{r.cifras?.seguidores != null ? `${numeroCorto(r.cifras.seguidores)} seguidores` : ""}{r.cifras?.tasaInteraccion != null ? ` · ${r.cifras.tasaInteraccion.toLocaleString("es")} % de interacción` : ""}{r.cifras?.porSemana != null ? ` · ${r.cifras.porSemana.toLocaleString("es")} a la semana` : ""}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {a.referentes?.comentario && <p>{a.referentes.comentario}</p>}
+          {a.referentes?.aprender?.length > 0 && <ul className="aud-lista">{a.referentes.aprender.map((x) => <li key={x}>{x}</li>)}</ul>}
+          {auditoria?.avisosReferentes?.length > 0 && <p className="hint no-imprimir">No se pudieron leer: {auditoria.avisosReferentes.join(" · ")}</p>}
+        </section>
+      )}
+
       <Bloque titulo="La rejilla" icono="grid" b={a.rejilla} />
       <Bloque titulo="El contenido" icono="chart" b={a.contenido} />
+
+      {onCrearTarea !== null && <AplicarEnPerfil id={auditoria?.id ?? usuario} a={a} perfil={perfil} onPiezas={onPiezas} onCrearTarea={onCrearTarea} />}
 
       <footer className="aud-pie">
         Auditoría preparada por Juancito Ads{cliente?.name ? ` para ${cliente.name}` : ""}. Las cifras son las que da Instagram el día de la auditoría.
