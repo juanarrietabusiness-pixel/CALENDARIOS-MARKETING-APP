@@ -21,6 +21,7 @@
 // ============================================================
 
 import { MONTHS } from "../constants";
+import { DESEOS_REISS, NIVELES_CONSCIENCIA, nombreDeNivel } from "./consciencia";
 
 /** Los siete elementos del estudio («las 7 maletas»), por producto o servicio. */
 export const ELEMENTOS_MERCADO = Object.freeze([
@@ -33,22 +34,8 @@ export const ELEMENTOS_MERCADO = Object.freeze([
   { clave: "confianza", titulo: "Prueba y confianza", ayuda: "Garantías, testimonios y datos que lo respaldan" },
 ]);
 
-/** Los dieciséis deseos básicos (Steven Reiss). */
-export const DESEOS_REISS = Object.freeze([
-  "Aceptación", "Curiosidad", "Alimentación", "Familia", "Honor", "Idealismo", "Independencia", "Orden",
-  "Actividad física", "Poder", "Romance", "Ahorro", "Contacto social", "Estatus social", "Tranquilidad", "Competencia",
-]);
-
-/** Los cinco niveles de consciencia (Eugene Schwartz). Los dos primeros se tocan por el dolor; los demás, por la ganancia. */
-export const NIVELES_CONSCIENCIA = Object.freeze([
-  { clave: "inconsciente", nombre: "Inconsciente", ayuda: "No sabe que tiene el problema", angulo: "dolor" },
-  { clave: "problema", nombre: "Consciente del problema", ayuda: "Sabe que algo va mal, no conoce soluciones", angulo: "dolor" },
-  { clave: "solucion", nombre: "Consciente de la solución", ayuda: "Busca soluciones, no conoce tu producto", angulo: "ganancia" },
-  { clave: "producto", nombre: "Consciente del producto", ayuda: "Conoce tu producto, no está convencido", angulo: "ganancia" },
-  { clave: "decision", nombre: "Listo para comprar", ayuda: "Sólo necesita el empujón final", angulo: "ganancia" },
-]);
+export { DESEOS_REISS, NIVELES_CONSCIENCIA, nombreDeNivel };
 const CLAVES_NIVEL = NIVELES_CONSCIENCIA.map((n) => n.clave);
-export const nombreDeNivel = (clave) => NIVELES_CONSCIENCIA.find((n) => n.clave === clave)?.nombre ?? "";
 
 /** Lo que admite Meta en un anuncio (lo que no se ve recortado en el feed). */
 export const LIMITES_ANUNCIO = Object.freeze({ titulo: 40, textoPrincipal: 300, descripcion: 30 });

@@ -77,7 +77,7 @@ const unir = (partes) => partes.map((p) => String(p ?? "").trim()).filter(Boolea
  */
 export function consultaDeTanda(calendario, publicaciones = []) {
   const partes = [calendario?.campaign, calendario?.offers];
-  for (const p of publicaciones) partes.push(unir([p?.idea, p?.category, p?.format, p?._concept]));
+  for (const p of publicaciones) partes.push(unir([p?.idea, p?.category, p?.producto, p?.format, p?._concept]));
   return unir(partes).slice(0, MAX_CONSULTA);
 }
 
@@ -85,6 +85,6 @@ export function consultaDeTanda(calendario, publicaciones = []) {
 export function consultaDePublicacion(calendario, publicacion, dia) {
   return unir([
     calendario?.campaign, calendario?.offers,
-    publicacion?.idea, publicacion?.title, publicacion?.category ?? dia?.category, publicacion?.format, dia?.concept,
+    publicacion?.idea, publicacion?.title, publicacion?.category ?? dia?.category, publicacion?.producto, publicacion?.format, dia?.concept,
   ]).slice(0, MAX_CONSULTA);
 }

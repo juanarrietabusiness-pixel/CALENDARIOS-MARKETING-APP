@@ -168,7 +168,10 @@ export function promptDePublicacion(post = {}) {
   const idea = String(post.idea ?? "").trim();
   const titulo = String(post.title ?? "").trim();
   const texto = String(post.descripcion ?? post.script ?? "").trim();
-  const partes = [idea || titulo, idea && texto ? `Contexto de la publicación: ${texto.slice(0, 300)}` : ""].filter(Boolean);
+  // El producto de la publicación (tipo de contenido), si la idea no lo nombra.
+  const producto = String(post.producto ?? "").trim();
+  const conProducto = producto && !idea.toLowerCase().includes(producto.toLowerCase()) ? `Producto: ${producto}.` : "";
+  const partes = [[idea || titulo, conProducto].filter(Boolean).join(" "), idea && texto ? `Contexto de la publicación: ${texto.slice(0, 300)}` : ""].filter(Boolean);
   return partes.join("\n\n").slice(0, 1500);
 }
 

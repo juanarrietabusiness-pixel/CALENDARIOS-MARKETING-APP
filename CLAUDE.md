@@ -129,6 +129,9 @@ src/
                           anuncio, referencias de la competencia; pedidos a la IA, notas y documento (puro; también
                           lo importa el Worker)
     mercado.js            Cliente de /api/mercado
+    consciencia.js        Niveles de consciencia (Schwartz) y deseos de Reiss: pequeño, para el bundle principal
+    pilares.js            Los 6 tipos de contenido de la agencia, el ritmo semanal por cliente, las sugerencias de
+                          temporada y la matriz (tipo × producto × nivel × deseo × perfil) (puro)
     kitMarca.js           El kit de marca del Estudio: paleta, presets (producto, anuncio, corporativo,
                           creativo), componer el pedido, el logo de referencia, pedidos a la IA (puro;
                           también lo importa el Worker)
@@ -244,6 +247,7 @@ src/
     PlanWizard.jsx        «Planificar mes»: 6 pasos que escriben en el mes elegido (lo AÑADEN
                           si ya tenía publicaciones)
     calendario/navegadorMes.jsx ‹ Octubre 2026 › Hoy: recorrer el calendario siempre activo
+    calendario/tipoContenido.jsx  «Tipo de contenido» del panel: tipo, producto, nivel, perfil y deseo
     calendario/campanaMes.jsx   La tarjeta de la campaña: nombre del mes, semanas, ofertas, fechas
     calendario/fechasEspeciales.jsx  Escoger las fechas de un cliente (importante, ocultar, propias, IA)
     CalendarView.jsx      Vista de lista y de rejilla, filtros, generación, envío
@@ -361,7 +365,7 @@ worker/
     bandeja.js            /api/bandeja (comentarios y mensajes) y el webhook de Meta
                           (/api/webhooks/meta, sin sesión)
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1213,6 +1217,21 @@ son del servidor.
   la idea pide el gancho y el precio EXACTOS del catálogo. El kit de marca lee el estudio aprobado.
   · **Los siete elementos** son genéricos (`ELEMENTOS_MERCADO`); si la agencia usa otros nombres, se cambian
   ahí. Los marcos (niveles de Schwartz, deseos de Reiss) son públicos.
+- **Los tipos de contenido y el ritmo semanal** (`src/lib/pilares.js`, `clients.ritmo_contenido`, 0035). La
+  agencia hace un tipo por día (lunes Anuncio, martes Beneficios/Promociones, miércoles Servicios/Productos,
+  jueves Educativo, viernes Diferenciador, sábado 7 maletas rotando garantía → testimonio → solución →
+  objeciones). El TIPO es la información; el ESTILO, el preset del kit (`presetDePilar`, lo usa «Crear con IA»).
+  · **La temporada AJUSTA, no reescribe:** `sugerenciasDeTemporada` propone como mucho dos cambios por semana
+  (un día delicado deja de vender; una fecha comercial y su víspera pasan a promoción) y una persona los marca
+  en «Planificar mes» → «Fechas y ritmo». Es una regla, no una llamada a la IA: no cuesta nada.
+  · **La matriz** (`asignarMatriz`) se calcula sobre el MES ENTERO aunque se genere una semana: la rotación de
+  productos, niveles, maletas, deseos y perfiles no empieza de cero en cada tanda. Lo que ya trae una
+  publicación se respeta. Cada publicación guarda `pilar`, `pilarSub`, `productoId`, `producto` (el nombre),
+  `nivel`, `deseo` y `perfil`; el PRECIO no se copia: la IA lo lee del catálogo (nota de cifras), así un cambio
+  de precio no deja publicaciones con el viejo.
+  · **La IA lo lee en todas partes** por `lineasDeContenido()` (api.js): ideas del mes, guiones, descripciones y
+  los botones de IA del panel. `pilares.js` NO importa `estudioMercado.js` —que es grande— porque api.js va en
+  el bundle principal: lo que necesita de los marcos está en `consciencia.js`.
 - **El cerebro de un cliente es SUYO: un índice por cliente, nunca uno para
   todos.** El algoritmo viene de Agents Office, que indexa por nombre de
   archivo: los nueve clientes tienen un `01_brand_guidelines.md`, y en un

@@ -39,6 +39,7 @@ import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { AvisoEditando } from "../Presencia";
 import Icon from "../Icon";
 import { ConversacionCliente } from "./editorPublicacion";
+import { TipoContenido } from "./tipoContenido";
 import PestanaPublicar from "./seccionPublicar";
 import { QueAprueba } from "./aprobacionCliente";
 import { LoLleva, EtapaPublicacion, HiloEquipo, TareasDePublicacion, HistorialPublicacion } from "./equipoPublicacion";
@@ -293,6 +294,8 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           <label className="label" htmlFor={`${ids}-titulo`}>Título <span style={{ fontWeight: 400, textTransform: "none" }}>· opcional</span></label>
           <input id={`${ids}-titulo`} className="input" value={form.title || ""} onChange={(e) => sf("title", e.target.value)} placeholder="Nombre corto de la publicación" />
         </div>
+
+        <TipoContenido form={form} sf={sf} clienteId={client?.dbId || client?.id} />
 
         <div className="field">
           <div style={fieldHeaderStyle}>

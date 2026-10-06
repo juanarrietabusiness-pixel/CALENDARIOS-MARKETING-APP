@@ -81,7 +81,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   // El agente diseñador: qué preset de la marca va delante de la idea (se
   // recuerda por cliente) y si el logo va de referencia.
   const clavePreset = `estudio-preset:${client.id}`;
-  const [preset, setPresetEstado] = useState(() => { try { return localStorage.getItem(clavePreset) ?? ""; } catch { return ""; } });
+  // Desde una publicación, el estilo que le va a su tipo de contenido (`inicial.preset`) manda sobre el recordado.
+  const [preset, setPresetEstado] = useState(() => {
+    if (inicial?.preset) return inicial.preset;
+    try { return localStorage.getItem(clavePreset) ?? ""; } catch { return ""; }
+  });
   const setPreset = (v) => { setPresetEstado(v); try { localStorage.setItem(clavePreset, v); } catch { /* sin almacenamiento */ } };
   const [conLogo, setConLogo] = useState(true);
   // La revisión de marca de cada imagen: id → { cargando } | { datos } | { error }.

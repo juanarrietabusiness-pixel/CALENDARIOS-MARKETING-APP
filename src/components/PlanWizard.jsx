@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, useRef } from "react";
+import { useEffect, useId, useMemo, useState, useRef } from "react";
 import { PLANS, FORMATS, FORMAT_ICONS, MONTHS, DAYS, DAYS_SHORT } from "../constants";
 import { uid, daysInMonth, fmtDate, getWeekNumber, dayName } from "../utils";
 import { callAI, buildClientContext, buildDescripcionesPrompt, loadADN, parseAIResponse, pasajesDeLaTanda } from "../api";
@@ -6,10 +6,16 @@ import { loadClientMemories } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
 import { fechasDelMes } from "../lib/fechasEspeciales";
+import { leerMercado } from "../lib/mercado";
+import { productosActivos, limpiarEstudio } from "../lib/estudioMercado";
+import {
+  limpiarRitmo, ritmoDelMes, sugerenciasDeTemporada, asignarMatriz, lineasDeContenido, reglasDeLosTipos,
+  nombreDePilar, resumenRitmo, fechaCorta, CAMPOS_MATRIZ, pilarDe,
+} from "../lib/pilares";
 
 // Sin paso de categorías: se quitaron del calendario. Las que haya en la
 // ficha del cliente (Semanal) siguen informando a la IA sin preguntarse aquí.
-const STEP_LABELS = ["Plan", "Fechas", "Campaña", "Conceptos", "Ofertas", "Ideas"];
+const STEP_LABELS = ["Plan", "Fechas y ritmo", "Campaña", "Conceptos", "Ofertas", "Ideas"];
 
 const TEMPLATES_KEY = "jads-templates";
 function loadTemplates() {
@@ -61,6 +67,22 @@ export default function PlanWizard({ client, onGenerate, onClose, mesInicial = n
       .map((f) => ({ date: f.fecha, name: f.delicada ? `${f.nombre} (fecha delicada: sin promociones)` : f.nombre, auto: true }));
     setImportantDates((prev) => [...prev.filter((d) => !d.auto && d.date.startsWith(prefijo)), ...auto]);
   }, [year, month, client?.fechasEspeciales]);
+  // El ritmo de contenido del cliente (lunes Anuncio … sábado 7 maletas) y los cambios de temporada aceptados.
+  const ritmo = limpiarRitmo(client?.ritmoContenido);
+  const [aceptadas, setAceptadas] = useState([]);
+  const sugerencias = useMemo(
+    () => sugerenciasDeTemporada({ year, month, ritmo: client?.ritmoContenido, fechas: fechasDelMes(year, month, client?.fechasEspeciales) }),
+    [year, month, client?.ritmoContenido, client?.fechasEspeciales],
+  );
+  useEffect(() => { setAceptadas([]); }, [year, month]);
+  const ritmoMes = ritmoDelMes(year, month, ritmo, aceptadas);
+  // El catálogo y el estudio de mercado: de ahí salen el producto, el deseo y el perfil de cada publicación.
+  const [mercado, setMercado] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    if (client?.id) leerMercado(client.dbId || client.id).then((m) => { if (vivo) setMercado(m); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [client?.id, client?.dbId]);
   const [campaign, setCampaign] = useState("");
   const [weekConcepts, setWeekConcepts] = useState(["", "", "", "", ""]);
   const [dayCategories, setDayCategories] = useState(() => {
@@ -232,12 +254,34 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
       const date = fmtDate(d);
       const dow = d.getDay();
       const wk = getWeekNumber(date, fmtDate(allDays[0]));
-      const cat = dayCategories[dow] || "";
+      const pilar = ritmoMes[date] || "";
+      const cat = nombreDePilar(pilar) || dayCategories[dow] || "";
       const impDate = importantDates.find((id) => id.date === date);
       const formats = isCustom ? (formatConfig[dow] || []) : (formatConfig[dow] || []).slice(0, postsPerDay);
       const existingIdeas = ideas[date] || [];
-      return { date, dow, wk, cat, impDate, formats, existingIdeas };
+      return { date, dow, wk, cat, pilar, impDate, formats, existingIdeas };
     });
+
+  /**
+   * La matriz del mes: a cada publicación su tipo, producto, nivel, deseo y perfil («fecha|índice» → campos). Se
+   * calcula sobre el mes ENTERO aunque se genere una semana, para que la rotación de productos no empiece de cero.
+   * Lo que ya trae una idea (elegido a mano o de una vuelta anterior) se respeta.
+   */
+  const matrizDelMes = () => {
+    const general = limpiarEstudio(mercado?.estudio)?.general;
+    const lista = [];
+    for (const d of estructuraDelMes()) {
+      d.formats.forEach((_, j) => {
+        const previa = (ideas[d.date] || [])[j] || {};
+        const propia = Object.fromEntries(CAMPOS_MATRIZ.filter((k) => previa[k]).map((k) => [k, previa[k]]));
+        lista.push({ clave: `${d.date}|${j}`, pilar: d.pilar, ...propia });
+      });
+    }
+    const asignada = asignarMatriz(lista, {
+      productos: productosActivos(mercado?.catalogo ?? []), deseos: general?.deseos ?? [], perfiles: general?.perfiles ?? [],
+    });
+    return new Map(asignada.map(({ clave, ...m }) => [clave, Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, m[k] ?? ""]))]));
+  };
 
   /** Las semanas que tiene este mes, para poblar el selector. */
   const semanas = [...new Set(estructuraDelMes().map((d) => d.wk))].sort((a, b) => a - b);
@@ -270,6 +314,8 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
       const adn = await loadADN(client);
       const adnExtra = adn.content;
       const daysList = enAlcance(estructuraDelMes());
+      const matriz = matrizDelMes();
+      const conTipos = daysList.some((d) => d.pilar);
 
       const BATCH = 7;
       const newIdeas = { ...ideas };
@@ -283,7 +329,11 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
               .filter((e) => e.idea)
               .map((e, j) => `  Post ${j + 1}: ${e.idea}`)
               .join("\n");
-            return `${d.date} (${DAYS[d.dow]}) | Cat: ${d.cat || "libre"} | Semana ${d.wk}: ${weekConcepts[d.wk - 1] || "libre"} | Formatos: ${fmts}${d.impDate ? ` | FECHA ESPECIAL: ${d.impDate.name}` : ""}${existing ? `\n  Ideas existentes:\n${existing}` : ""}`;
+            // Por publicación, su tipo de contenido, producto, nivel y a quién le habla (la matriz del mes).
+            const porPost = d.formats
+              .map((f, j) => { const m = lineasDeContenido(matriz.get(`${d.date}|${j}`)); return m ? `  Post ${j + 1} (${f.format}): ${m.replace(/\n/g, " | ")}` : ""; })
+              .filter(Boolean).join("\n");
+            return `${d.date} (${DAYS[d.dow]}) | Cat: ${d.cat || "libre"} | Semana ${d.wk}: ${weekConcepts[d.wk - 1] || "libre"} | Formatos: ${fmts}${d.impDate ? ` | FECHA ESPECIAL: ${d.impDate.name}` : ""}${porPost ? `\n${porPost}` : ""}${existing ? `\n  Ideas existentes:\n${existing}` : ""}`;
           })
           .join("\n");
 
@@ -301,6 +351,7 @@ CAMPANA: ${campaign || "N/A"}
 
 Genera ideas UNICAS para cada publicacion de estos dias.
 IMPORTANTE: Cada idea debe ser DIFERENTE incluso si el dia de la semana es el mismo.
+${conTipos ? `Cada publicación dice su TIPO DE CONTENIDO, su PRODUCTO, su NIVEL DE CONSCIENCIA y a quién le habla: la idea los cumple, con ojo de marketing profesional (un gancho claro y una razón para actuar).\n\n${reglasDeLosTipos()}\n` : ""}
 Si ya hay idea existente, mejorala. Si no, genera una nueva.
 Cada idea: 1-2 oraciones claras y accionables.
 
@@ -342,6 +393,7 @@ ${daysDesc}`;
               const existing = (newIdeas[date] || [])[j];
               const aiIdea = posts[j];
               return {
+                ...matriz.get(`${date}|${j}`),
                 id: existing?.id || uid(),
                 format: f.format,
                 idea: existing?.idea || aiIdea?.idea || "",
@@ -398,10 +450,12 @@ ${daysDesc}`;
       // Se aplana a lista de publicaciones: la tanda se mide en
       // publicaciones, no en días, porque un día premium lleva tres.
       const pendientes = [];
+      const matriz = matrizDelMes();
       for (const d of enAlcance(estructuraDelMes())) {
         (ideas[d.date] || []).forEach((p, j) => {
           if (!p?.idea?.trim() || p.descripcion?.trim()) return;
           pendientes.push({
+            ...matriz.get(`${d.date}|${j}`),
             ...p,
             _date: d.date,
             _dayName: DAYS[d.dow],
@@ -469,18 +523,21 @@ ${daysDesc}`;
   };
 
   const handleGenerate = () => {
+    const matriz = matrizDelMes();
     const calDays = allDays.map((d) => {
       const date = fmtDate(d);
       const dow = d.getDay();
       const wk = getWeekNumber(date, fmtDate(allDays[0]));
-      const cat = dayCategories[dow] || "";
+      const cat = nombreDePilar(ritmoMes[date]) || dayCategories[dow] || "";
       const impDate = importantDates.find((id) => id.date === date);
       const formats = isCustom ? (formatConfig[dow] || []) : (formatConfig[dow] || []).slice(0, postsPerDay);
       const dayIdeas = ideas[date] || [];
 
       const posts = formats.map((f, j) => {
         const idea = dayIdeas[j];
+        const m = matriz.get(`${date}|${j}`) ?? {};
         return {
+          ...Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, idea?.[k] || m[k] || ""])),
           id: idea?.id || uid(),
           format: f.format,
           idea: idea?.idea || "",
@@ -774,6 +831,35 @@ ${daysDesc}`;
                   ))}
                 </ul>
               )}
+
+              {/* El ritmo de contenido y lo que la temporada sugiere cambiar. */}
+              <section className="wizard-ritmo" aria-labelledby={`${ids}-ritmo`}>
+                <h3 id={`${ids}-ritmo`} className="label" style={{ margin: "var(--sp-5) 0 var(--sp-1)" }}>Ritmo de contenido</h3>
+                <p className="hint" style={{ margin: "0 0 var(--sp-2)" }}>
+                  {resumenRitmo(ritmo) || "Este cliente no tiene ritmo: las ideas salen libres."} Se cambia en la ficha del cliente (Semanal).
+                </p>
+                {sugerencias.length > 0 ? (
+                  <>
+                    <p className="hint" style={{ margin: "0 0 var(--sp-2)" }}>La temporada sugiere estos cambios (como mucho dos por semana). Marca los que quieras:</p>
+                    <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
+                      {sugerencias.map((c) => {
+                        const activa = aceptadas.some((a) => a.id === c.id);
+                        return (
+                          <li key={c.id}>
+                            <button type="button" className="filter-chip" aria-pressed={activa} style={{ width: "100%", justifyContent: "flex-start", textAlign: "left", whiteSpace: "normal", minHeight: "var(--tap)" }}
+                              onClick={() => setAceptadas((xs) => (activa ? xs.filter((a) => a.id !== c.id) : [...xs, c]))}>
+                              <Icon name={activa ? "checkSquare" : "square"} size={16} />
+                              <span><strong>{DAYS[new Date(`${c.fecha}T12:00:00Z`).getUTCDay()]} {fechaCorta(c.fecha)}</strong>: {pilarDe(c.de)?.nombre} → {pilarDe(c.a)?.nombre}. <span style={{ color: "var(--text-dim)" }}>{c.motivo}.</span></span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </>
+                ) : (
+                  <p className="hint" style={{ margin: 0 }}>Este mes la temporada no pide cambios: se sigue el ritmo tal cual.</p>
+                )}
+              </section>
             </div>
           )}
 
@@ -1027,6 +1113,7 @@ ${daysDesc}`;
                               htmlFor={`${ids}-idea-${date}-${j}`}
                             >
                               <Icon name={FORMAT_ICONS[p.format] || "formatPost"} size={14} style={{ display: "inline-block", verticalAlign: "-2px" }} /> {FORMATS[p.format]?.label || "Publicación"} {j + 1}
+                              {p.pilar && <span style={{ color: "var(--text-dim)", fontWeight: 500 }}> · {nombreDePilar(p.pilar, p.pilarSub)}{p.producto ? ` · ${p.producto}` : ""}</span>}
                             </label>
                             <input
                               id={`${ids}-idea-${date}-${j}`}

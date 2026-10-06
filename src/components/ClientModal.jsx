@@ -8,6 +8,7 @@ import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
 import InterruptorBandeja from "./InterruptorBandeja";
 import { idDeCarpeta } from "../lib/drive";
+import { PILARES, limpiarRitmo, RITMO_POR_DEFECTO } from "../lib/pilares";
 
 const DAYS_ORDERED = [
   { dow: 1, name: "Lunes" },
@@ -18,6 +19,40 @@ const DAYS_ORDERED = [
   { dow: 6, name: "Sabado" },
   { dow: 0, name: "Domingo" },
 ];
+
+/**
+ * El ritmo de contenido: qué tipo toca cada día. Por defecto el de la agencia (lunes Anuncio … sábado 7 maletas);
+ * «Planificar mes» lo usa y sugiere los cambios de temporada.
+ */
+function RitmoContenido({ valor, onChange }) {
+  const ids = useId();
+  const ritmo = limpiarRitmo(valor);
+  const esElDeLaAgencia = DAYS_ORDERED.every(({ dow }) => ritmo[dow] === RITMO_POR_DEFECTO[dow]);
+  return (
+    <fieldset className="ritmo-contenido" style={{ border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "var(--sp-3)", margin: "0 0 var(--sp-4)" }}>
+      <legend className="label" style={{ padding: "0 var(--sp-1)" }}>Ritmo de contenido</legend>
+      <p className="hint" style={{ margin: "0 0 var(--sp-2)" }}>
+        Qué tipo de contenido toca cada día. «Planificar mes» lo sigue y sólo sugiere cambios en las semanas con fechas importantes.
+      </p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "var(--sp-2)" }}>
+        {DAYS_ORDERED.map(({ dow, name }) => (
+          <div key={dow} className="field" style={{ margin: 0 }}>
+            <label className="label" htmlFor={`${ids}-${dow}`}>{name}</label>
+            <select id={`${ids}-${dow}`} className="input" value={ritmo[dow]} onChange={(e) => onChange({ ...ritmo, [dow]: e.target.value })}>
+              <option value="">Libre</option>
+              {PILARES.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select>
+          </div>
+        ))}
+      </div>
+      {!esElDeLaAgencia && (
+        <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: "var(--sp-2)" }} onClick={() => onChange({ ...RITMO_POR_DEFECTO })}>
+          Volver al ritmo de la agencia
+        </button>
+      )}
+    </fieldset>
+  );
+}
 
 function FormatPicker({ value, onChange, label }) {
   return (
@@ -1090,6 +1125,8 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
 
         {tab === "semanal" && (
           <div role="tabpanel" id={`${ids}-panel-semanal`} aria-labelledby={`${ids}-tab-semanal`}>
+            <RitmoContenido valor={form.ritmoContenido} onChange={(r) => sf("ritmoContenido", r)} />
+
             <p style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)", margin: "0 0 var(--sp-3)" }}>
               Define los formatos y categorías que se repiten cada semana.
             </p>

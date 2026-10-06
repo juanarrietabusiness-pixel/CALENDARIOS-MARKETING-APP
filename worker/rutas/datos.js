@@ -48,7 +48,7 @@ function despues(ctx, promesa) {
 /** Borrar un cliente o un calendario entero, sólo quien administra. */
 const soloAdmin = (ctx) => (ctx.usuario?.rol === "admin" ? null : error("Sólo quien administra el espacio puede borrar clientes o calendarios enteros.", 403));
 
-const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe", "competidores", "fechas_especiales", "kit_marca"];
+const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe", "competidores", "fechas_especiales", "kit_marca", "ritmo_contenido"];
 const JSON_CALENDARIOS = ["week_concepts", "days", "visual_references", "day_labels", "opciones"];
 const BOOL_CALENDARIOS = ["share_enabled", "allow_editing"];
 
