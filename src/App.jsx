@@ -16,6 +16,7 @@ import NavPrincipal from "./components/NavPrincipal";
 import MenuCuenta from "./components/MenuCuenta";
 import MedidorIA from "./components/MedidorIA";
 import Avisos from "./components/Avisos";
+import ContadorAtrasadas from "./components/ContadorAtrasadas";
 import BarraInferior from "./components/BarraInferior";
 import Login from "./pages/Login";
 import Invitacion from "./pages/Invitacion";
@@ -37,6 +38,7 @@ import {
 // El asistente sólo se descarga al abrirlo: es la pantalla más pesada y
 // la mayoría de las visitas no la abren.
 const ChatPanel = lazy(() => import("./components/ChatPanel"));
+const PanelTareas = lazy(() => import("./components/PanelTareas"));
 // «Mi día» es una página aparte: no tiene por qué venir en la primera descarga.
 const Tareas = lazy(() => import("./pages/Tareas"));
 // Igual Equipo y Ajustes, que no se abren en cada visita.
@@ -387,11 +389,26 @@ function Workspace({ session, ruta }) {
   const [editingClient, setEditingClient] = useState(null);
   const [showWizard, setShowWizard] = useState(false);
   const [showChat, setShowChat] = useState(false);
+  // El panel de tareas, como Google Tasks. A lo ancho se recuerda si se
+  // dejó abierto (por navegador); en el teléfono es un cajón y no se abre solo.
+  const [showTareas, setShowTareas] = useState(() => {
+    try { return Boolean(window.matchMedia?.("(min-width: 1280px)").matches) && localStorage.getItem("panel-tareas") === "1"; } catch { return false; }
+  });
   const [showBuscador, setShowBuscador] = useState(false);
   const [showSubir, setShowSubir] = useState(false);
   // Una publicación que el buscador pidió abrir al llegar a su calendario.
   const [postPedido, setPostPedido] = useState(null);
   const anchoAmplio = useAnchoAmplio();
+  useEffect(() => {
+    if (!anchoAmplio) return;
+    try { localStorage.setItem("panel-tareas", showTareas ? "1" : "0"); } catch { /* sin almacenamiento */ }
+  }, [showTareas, anchoAmplio]);
+  // El asistente y las tareas comparten el sitio de la derecha: uno a la vez.
+  useEffect(() => { if (showChat) setShowTareas(false); }, [showChat]);
+  const alternarTareas = () => {
+    if (!showTareas) setShowChat(false);
+    setShowTareas(!showTareas);
+  };
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
@@ -1241,9 +1258,10 @@ function Workspace({ session, ruta }) {
   // En pantalla ancha el asistente se acopla a la derecha y el contenido
   // se aparta: se trabaja con el calendario a la vista, sin fondo oscuro.
   const chatAcoplado = showChat && anchoAmplio;
+  const tareasAcopladas = showTareas && anchoAmplio;
 
   return (
-    <div className="app-shell" data-chat={chatAcoplado ? "acoplado" : undefined}>
+    <div className="app-shell" data-lateral={chatAcoplado || tareasAcopladas ? "acoplado" : undefined}>
       <a className="skip-link" href="#contenido">Saltar al contenido</a>
 
       <header className="app-header">
@@ -1275,6 +1293,17 @@ function Workspace({ session, ruta }) {
             </button>
           )}
           <MedidorIA pulso={pulso} />
+          <button
+            type="button"
+            className="btn-icon boton-tareas"
+            onClick={alternarTareas}
+            aria-pressed={showTareas}
+            aria-label="Tareas de hoy"
+            title="Tareas"
+          >
+            <Icon name="clipboardCheck" size={20} />
+            <ContadorAtrasadas pulso={pulso} />
+          </button>
           <Avisos pulso={pulso} onAbrirPublicacion={abrirPublicacionDeCola} />
           {/* Quién más está dentro, y si mi propia conexión está viva.
               Lo segundo importa tanto como lo primero: cuando el socket
@@ -1633,6 +1662,23 @@ function Workspace({ session, ruta }) {
         >
           <Icon name="messageCircle" size={24} />
         </button>
+      )}
+
+      {showTareas && (
+        <Suspense fallback={null}>
+          <PanelTareas
+            clients={clients}
+            pulso={pulso}
+            yo={yo}
+            clienteActual={client ? client.dbId || client.id : null}
+            acoplado={tareasAcopladas}
+            onCerrar={() => setShowTareas(false)}
+            onSelectClient={(id) => {
+              irA(id);
+              if (!tareasAcopladas) setShowTareas(false);
+            }}
+          />
+        </Suspense>
       )}
 
       {showChat && (

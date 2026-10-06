@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { loadAllTasks } from "../lib/db";
-import { contarAtrasadas, fechaEnZona } from "../lib/agenda";
+import { contarAtrasadas, fechaEnZona, EVENTO_CAMBIO } from "../lib/agenda";
 
 // ============================================================
 // El número rojo sobre el botón de «Mi día»
@@ -14,6 +14,13 @@ import { contarAtrasadas, fechaEnZona } from "../lib/agenda";
 
 export default function ContadorAtrasadas({ pulso = 0 }) {
   const [n, setN] = useState(0);
+  // Los cambios de esta misma pestaña no suben el pulso (su eco se descarta).
+  const [propio, setPropio] = useState(0);
+  useEffect(() => {
+    const alCambiar = () => setPropio((v) => v + 1);
+    window.addEventListener(EVENTO_CAMBIO, alCambiar);
+    return () => window.removeEventListener(EVENTO_CAMBIO, alCambiar);
+  }, []);
 
   useEffect(() => {
     let vivo = true;
@@ -23,7 +30,7 @@ export default function ContadorAtrasadas({ pulso = 0 }) {
       })
       .catch(() => {});
     return () => { vivo = false; };
-  }, [pulso]);
+  }, [pulso, propio]);
 
   if (!n) return null;
   return (

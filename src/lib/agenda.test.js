@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   fechaEnZona, sumarDias, diasEntre, diaSemana, periodoVigente, debeReabrirse,
   fechaObjetivo, clasificar, textoAtraso, textoFecha, tareaDesdeIA,
+  partirNotas, empresaDelPrefijo,
 } from "./agenda";
 
 // Jueves 24 de septiembre de 2026.
@@ -91,8 +92,25 @@ describe("debeReabrirse", () => {
 });
 
 describe("fechaObjetivo", () => {
-  it("gana la más temprana: vencía ayer aunque la marcaste para hoy", () => {
-    expect(fechaObjetivo({ due_date: "2026-09-23", today_date: HOY }, HOY)).toBe("2026-09-23");
+  it("el plan manda: vencía ayer y la pasaste a hoy, es de hoy", () => {
+    expect(fechaObjetivo({ due_date: "2026-09-23", today_date: HOY }, HOY)).toBe(HOY);
+  });
+
+  it("una atrasada movida al viernes es del viernes", () => {
+    expect(fechaObjetivo({ due_date: "2026-09-20", today_date: "2026-09-26" }, HOY)).toBe("2026-09-26");
+  });
+
+  it("dentro del plan gana lo más temprano que no haya pasado", () => {
+    expect(fechaObjetivo({ due_date: "2026-09-25", today_date: "2026-09-27" }, HOY)).toBe("2026-09-25");
+  });
+
+  it("un plan de ayer que no se hizo la deja atrasada", () => {
+    expect(fechaObjetivo({ due_date: "2026-10-01", today_date: "2026-09-23" }, HOY)).toBe("2026-09-23");
+  });
+
+  it("el «Hoy» de la semana pasada no deja atrasada a una semanal", () => {
+    const t = { recurrence: "weekly", recurrence_day: diaSemana(HOY), today_date: sumarDias(HOY, -7) };
+    expect(fechaObjetivo(t, HOY)).toBe(HOY);
   });
 
   it("marcada para hoy y vence la semana que viene: es de hoy", () => {
@@ -165,5 +183,37 @@ describe("tareaDesdeIA", () => {
 
   it("una fecha mal escrita se rechaza con motivo, no se guarda", () => {
     expect(tareaDesdeIA({ fecha_limite: "el viernes" }, HOY).error).toMatch(/AAAA-MM-DD/);
+  });
+});
+
+describe("partirNotas", () => {
+  it("cada viñeta es una tarea y lo demás se queda en las notas", () => {
+    const r = partirNotas("Para esta semana:\n- Revisar atención al cliente (Juan)\n• Propuesta de marketing\n2) Llamar a Rofer\n\nOjo con el lunes");
+    expect(r.tareas).toEqual(["Revisar atención al cliente (Juan)", "Propuesta de marketing", "Llamar a Rofer"]);
+    expect(r.resto).toBe("Para esta semana:\n\nOjo con el lunes");
+  });
+
+  it("sin viñetas no parte nada", () => {
+    expect(partirNotas("una nota cualquiera")).toEqual({ tareas: [], resto: "una nota cualquiera" });
+    expect(partirNotas(null)).toEqual({ tareas: [], resto: "" });
+  });
+
+  it("un guion sin texto detrás no es una tarea", () => {
+    expect(partirNotas("-\n- \n-x").tareas).toEqual([]);
+  });
+});
+
+describe("empresaDelPrefijo", () => {
+  const clientes = [{ id: "a", dbId: "A", name: "Dcasa" }, { id: "b", name: "Baby Caleb" }];
+
+  it("«Empresa: tarea» la asigna, sin importar tildes ni mayúsculas", () => {
+    expect(empresaDelPrefijo("dcasa: revisar copys", clientes)).toEqual({ clienteId: "A", titulo: "revisar copys" });
+    expect(empresaDelPrefijo("Baby: fotos del producto", clientes)).toEqual({ clienteId: "b", titulo: "fotos del producto" });
+  });
+
+  it("si lo de antes de los dos puntos no es una empresa, es parte del título", () => {
+    expect(empresaDelPrefijo("Reunión: 9:30 con Feria del lente", clientes))
+      .toEqual({ clienteId: null, titulo: "Reunión: 9:30 con Feria del lente" });
+    expect(empresaDelPrefijo("comprar café", clientes)).toEqual({ clienteId: null, titulo: "comprar café" });
   });
 });

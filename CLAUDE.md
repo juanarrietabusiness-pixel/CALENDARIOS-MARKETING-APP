@@ -99,6 +99,9 @@ src/
   hooks/useConfigIA.js    El modelo y el razonamiento del espacio, releídos con `pulso`
   hooks/useAnchoAmplio.js ¿Pantalla ancha? (asistente acoplado, panel a dos columnas)
   hooks/useEquipo.js      Los miembros del espacio (para «Lo lleva», menciones, carga)
+  hooks/useTareas.js      Todas las tareas y sus acciones (marcar, pasar a hoy, mover, convertir notas):
+                          las comparten Mi día y el panel lateral
+  hooks/useRepaso.js      ¿Toca el repaso de la mañana? (una vez al día por persona)
   lib/
     filas.js              Conversores fila ⇄ aplicación
     auth.js               Sesión, inicio y cierre
@@ -190,6 +193,8 @@ src/
     Avisos.jsx            La campana: la bandeja de avisos de cada persona (y las del sistema)
     PorProgramar.jsx      «Aprobadas, por programar» (el paso final) e «Ideas por producir»
     CargaEquipo.jsx       Qué tiene cada persona los próximos 7 días
+    PanelTareas.jsx       Las tareas al lado, como Google Tasks: «Hoy» fijo, lo demás plegable (lazy)
+    RepasoAtrasadas.jsx   El repaso de la mañana: qué se hace con cada atrasada
     calendario/aprobacionCliente.jsx  «¿Qué aprueba el cliente?» y en qué quedó
     calendario/equipoPublicacion.jsx  Lo lleva, etapa, hilo del equipo, tareas de la
                           publicación e historial
@@ -1006,6 +1011,31 @@ son del servidor.
   MISMO módulo que usa «Mi día»: dos copias de «qué semana es» acaban
   discrepando, y entonces la tarea sale atrasada en pantalla y cerrada en
   la base. El «hoy» es el de Panamá (`fechaEnZona`), nunca `toISOString()`.
+- **Marcar «Hoy» una atrasada no la sacaba de Atrasadas.** `fechaObjetivo()`
+  tomaba la fecha MÁS TEMPRANA entre `today_date`, `due_date` y el periodo,
+  así que una tarea que vencía ayer seguía atrasada aunque se pasara a hoy, y
+  no había forma de reagendarla. Ahora `today_date` es el día PLANEADO
+  («Hoy», «Pasar a hoy», «Mover a…») y manda mientras no haya pasado; dentro
+  del plan gana lo más temprano que no haya pasado (vence mañana y la
+  planeaste el viernes: es de mañana). Un plan que ya pasó la deja atrasada,
+  y el plan de una recurrente sólo vale dentro de su periodo: el «Hoy» de la
+  semana pasada no la deja atrasada esta. La fecha límite no se toca al mover.
+- **El panel de tareas es el asistente con otro contenido:** acoplado desde
+  1280 px en el mismo sitio (`.app-shell[data-lateral="acoplado"]`, antes
+  `data-chat`) y cajón por debajo. Uno a la vez: abrir uno cierra el otro.
+  «Hoy» no se pliega; lo demás sí y se recuerda por navegador, igual que si se
+  dejó abierto. «Mías» incluye lo SIN ASIGNAR: en un equipo pequeño eso es de
+  todos, y escondido no lo vería nadie. Las acciones viven en `useTareas`, que
+  usa también Mi día: dos copias de «pasar a hoy» acabarían discrepando. Tras
+  cada cambio propio lanza `tareas:cambio` en `window` para que el contador de
+  atrasadas relea: el eco de la propia pestaña se descarta y el `pulso` no sube.
+- **«Convertir en tareas»** parte las notas por viñetas (`partirNotas()`): es
+  como la agencia apuntaba en Google Tasks («TAREAS JUAN» con cinco cosas
+  debajo), cómodo para anotar pero sin poder marcar una sola. Las nuevas
+  heredan empresa, persona y fechas; la de origen se queda y se ofrece
+  borrarla. «Dcasa: revisar copys» en «Agregar una tarea» la deja en Dcasa
+  (`empresaDelPrefijo()`, sólo si es el nombre de una empresa: «Reunión: 9:30»
+  sigue siendo un título).
 - **Las fechas de las tareas se escogen en un calendario, no se teclean.**
   El `<input type="date">` pedía día, mes y año a mano y cada navegador lo
   pintaba distinto. `SelectorFecha` abre el mes y se toca el día. Va en un

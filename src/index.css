@@ -2283,8 +2283,15 @@ input[type="radio"] {
   z-index: var(--z-acoplado);
   display: flex;
 }
+/* El botón de tareas de la cabecera, con el número de atrasadas encima.
+   En el teléfono no va: la barra inferior ya lleva «Mi día». */
+.boton-tareas { position: relative; }
+@media (max-width: 599px) { .boton-tareas { display: none; } }
+
 @media (min-width: 1280px) {
-  .app-shell[data-chat="acoplado"] .app-body { margin-right: var(--chat-w); }
+  .app-shell[data-lateral="acoplado"] .app-body { margin-right: var(--chat-w); }
+  /* El botón del asistente no se queda encima del panel de tareas. */
+  .app-shell[data-lateral="acoplado"] .chat-fab { right: calc(var(--chat-w) + var(--sp-5)); }
 }
 
 /* ============================================================
@@ -2580,7 +2587,7 @@ input[type="radio"] {
 .ficha-lista dd { font-size: var(--fs-xs); white-space: pre-wrap; overflow-wrap: anywhere; }
 
 @media print {
-  .barra-inferior, .medidor-ia, .buscador-disparador, .menu-cuenta, .chat-acoplado { display: none !important; }
+  .barra-inferior, .medidor-ia, .buscador-disparador, .menu-cuenta, .chat-acoplado, .panel-tareas-acoplado, .boton-tareas { display: none !important; }
 }
 
 /* Enlaces de texto: el azul por defecto del navegador casi no se leía

@@ -1,0 +1,18 @@
+/* El repaso de la mañana (RepasoAtrasadas.jsx), en el panel de tareas y en Mi día. */
+.repaso {
+  border: 1px solid var(--danger-line);
+  background: var(--danger-soft);
+  border-radius: var(--radius);
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.repaso-cabecera { display: flex; gap: var(--sp-2); align-items: flex-start; color: var(--text-muted); }
+.repaso-titulo { font-size: var(--fs-xs); font-weight: 700; color: var(--text); }
+.repaso-ayuda { font-size: var(--fs-2xs); color: var(--text-dim); }
+.repaso-lista { list-style: none; margin: var(--sp-2) 0 0; padding: 0; }
+.repaso-fila { padding: var(--sp-2) 0; border-top: 1px solid var(--danger-line); }
+.repaso-fila-texto { display: flex; flex-direction: column; min-width: 0; }
+.repaso-fila-titulo { font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.repaso-fila-meta { font-size: var(--fs-3xs); color: var(--text-dim); }
+.repaso-acciones { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: var(--sp-1); }
+.repaso-pie { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-top: var(--sp-2); }
