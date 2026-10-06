@@ -254,6 +254,23 @@ describe("las referencias de la competencia", () => {
   });
 });
 
+describe("el guion de un video corto", () => {
+  it("lleva el producto con su precio del catálogo y el tipo de contenido, no lo interno, y arma el pedido", async () => {
+    await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: CATALOGO } });
+    anthropic(flujo('{"escena":"Sala","camara":"acercamiento","tramos":[{"clave":"gancho","accion":"Jugo sobre el sofá"},{"clave":"beneficio","accion":"Limpieza"},{"clave":"cierre","accion":"Familia feliz"}],"textoPantalla":"Como nuevo","sonido":"alegre","descripcion":"Escríbenos"}'));
+    const r = await pedir("/api/estudio/c1/guion-corto", { method: "POST", body: { idea: "Sofá limpio", segundos: 10, post: { pilar: "anuncio", productoId: "p-lavado", producto: "Lavado de muebles" } } });
+    expect(r.status).toBe(200);
+    const d = await r.json();
+    expect(d.guion.segundos).toBe(10);
+    expect(d.prompt).toContain("7–10 s: Familia feliz.");
+    const t = textoDe(peticiones[0]);
+    expect(t).toContain("Desde $45");
+    expect(t).toContain("TIPO DE CONTENIDO: Anuncio");
+    expect(t).not.toContain("margen");
+    expect(db.sqlite.prepare("select funcion from consumo_ia").all().map((x) => x.funcion)).toContain("guion de video");
+  });
+});
+
 describe("de quién es", () => {
   it("un cliente de otro espacio no existe", async () => {
     expect((await pedir("/api/mercado/ajeno")).status).toBe(404);

@@ -72,7 +72,7 @@ export const MODELOS_POR_FUNCION = Object.freeze(["sonnet", "opus", "haiku", "mu
  */
 export const FUNCIONES_IA = Object.freeze({
   redaccion: ["calendario", "descripciones", "publicación"],
-  guiones: ["guiones"],
+  guiones: ["guiones", "guion de video"],
   lectura: ["lectura de contenido"],
   asistente: ["asistente", "resumen del chat"],
   prompts: ["prompt de imagen"],

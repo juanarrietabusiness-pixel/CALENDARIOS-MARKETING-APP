@@ -253,3 +253,12 @@ div.est-img { cursor: default; }
 .est-revision-lista { list-style: none; margin: 0; padding: 0; font-size: var(--fs-2xs); display: flex; flex-direction: column; gap: 2px; }
 .est-revision-lista li { display: flex; gap: var(--sp-1); align-items: flex-start; }
 .est-revision-lista[data-falla] { color: var(--danger); }
+
+/* El guion de un video corto (EstudioCompositor.jsx → GuionCorto). */
+.est-guion { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); }
+.est-acciones-idea { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.est-guion-tarjeta { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); background: var(--surface-2); border-radius: var(--radius-sm); font-size: var(--fs-sm); }
+.est-guion-tarjeta p { margin: 0; }
+.est-guion-tramos { margin: 0; padding-left: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-1); }
+.est-guion-desc { display: flex; flex-direction: column; gap: var(--sp-1); align-items: flex-start; }
+.est-guion-caption { white-space: pre-wrap; color: var(--text-muted); }

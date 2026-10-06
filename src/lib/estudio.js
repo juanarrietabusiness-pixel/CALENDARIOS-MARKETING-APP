@@ -35,6 +35,8 @@ export const reintentarTrabajo = (clienteId, id) => pedir(`${base(clienteId)}/tr
  * motor la entienda. `{ idea, modelo, aviso }`. Es texto: no pide nada al motor.
  */
 export const mejorarIdea = (clienteId, datos) => pedir(`${base(clienteId)}/mejorar`, post(datos));
+/** El guion de un video corto (8 o 10 s): `{ guion, prompt }`. Texto: no pide nada al motor. */
+export const escribirGuionCorto = (clienteId, datos) => pedir(`${base(clienteId)}/guion-corto`, post(datos));
 
 /** Guarda el kit de marca (paleta, tipografía, estilo, presets, logo). Devuelve `{ kit }`. */
 export const guardarKit = (clienteId, kit) => pedir(`${base(clienteId)}/kit`, { method: "PUT", body: JSON.stringify({ kit }) });
