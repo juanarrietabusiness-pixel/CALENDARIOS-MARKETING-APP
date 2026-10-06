@@ -9,6 +9,10 @@
 //   2. El análisis: resumen, destacados, aprendizajes, recomendaciones e
 //      ideas para el mes siguiente. Lo escribe la IA con las cifras
 //      delante y la instrucción de NO inventar ninguna.
+//   3. Si el cliente tiene cuenta publicitaria asignada, los ANUNCIOS del
+//      mes: todas las campañas de la cuenta (también las del Administrador
+//      de anuncios), con su gasto y su costo por resultado, y el análisis
+//      de la IA con recomendaciones de pauta. Sólo lee de Meta.
 //
 // Las cifras se CONGELAN en el informe: si Meta corrige un número
 // mañana, lo que se le mandó al cliente no cambia sin que nadie lo sepa.
@@ -22,6 +26,8 @@ import { abrirFlujo, leerFlujo, textoDe, esRechazoDeModelo, mensajeDeRechazo } f
 import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET } from "./configIA.js";
 import { difundir } from "./vivo.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
+import { conexionMeta, estadisticasCuenta, listarCampanas, mensajeAnuncios } from "./anuncios.js";
+import { rangoInsights, resumenAnunciosDelMes } from "../../src/lib/anuncios.js";
 import {
   kpis, serieDiaria, porFormato, mejoresMomentos, mejoresPublicaciones, resumenCompetencia, DIAS_SEMANA, BLOQUES_HORA,
 } from "../../src/lib/resultados.js";
@@ -117,6 +123,34 @@ export async function cifrasDelMes(acceso, clientId, mes) {
   };
 }
 
+/**
+ * Los anuncios del mes, leídos de la cuenta publicitaria del cliente: TODAS
+ * sus campañas, también las creadas en el Administrador de anuncios. Son
+ * tres llamadas a Meta (el total, el día a día y las campañas). Sólo lee.
+ *
+ * Nunca tumba el informe: sin cuenta asignada es null (no hay sección), y
+ * sin permiso o con un error de Meta queda `{ aviso }` para la agencia.
+ */
+export async function anunciosDelMes(env, acceso, clientId, mes) {
+  const cuenta = await acceso.leerUno("cuentas_anuncios", { client_id: clientId });
+  if (!cuenta) return null;
+  try {
+    const conexion = await conexionMeta(env, acceso);
+    if (conexion.faltan.includes("ads_read")) return { aviso: "Falta el permiso de anuncios de Meta (ads_read): conéctalo en Anuncios." };
+    const token = await conexion.token();
+    const { desde, hasta } = limitesDelMes(mes);
+    const rango = rangoInsights({ desde, hasta });
+    const [{ total }, campanas, registros] = await Promise.all([
+      estadisticasCuenta(env, token, cuenta, rango),
+      listarCampanas(env, token, cuenta, rango),
+      acceso.leer("campanas_anuncios", { client_id: clientId }),
+    ]);
+    return resumenAnunciosDelMes({ cuenta, total, campanas, desdeApp: registros.map((r) => r.campana_id) });
+  } catch (e) {
+    return { aviso: `No se pudieron leer los anuncios: ${mensajeAnuncios(e)}` };
+  }
+}
+
 /** Lo que se le pide a la IA. Las cifras van en JSON y no se pueden inventar otras. */
 function pedido(cifras, cliente) {
   const ficha = [cliente.industry && `Rubro: ${cliente.industry}`, cliente.descripcion && `Descripción: ${String(cliente.descripcion).slice(0, 600)}`]
@@ -135,9 +169,15 @@ Devuelve SOLO un objeto JSON, sin texto antes ni después, con esta forma:
   "destacados": ["3 a 5 logros concretos, cada uno con su cifra"],
   "aprendizajes": ["3 a 4 cosas que enseñan los datos: qué formato, qué tema, qué horario funcionó y cuál no"],
   "recomendaciones": ["3 a 5 acciones concretas para el mes siguiente, que se puedan poner en el calendario"],
-  "ideas": [{"formato": "reel|carrusel|imagen|historia", "idea": "una idea de publicación concreta para el mes siguiente"}]
+  "ideas": [{"formato": "reel|carrusel|imagen|historia", "idea": "una idea de publicación concreta para el mes siguiente"}]${cifras.anuncios?.campanas?.length ? `,
+  "anuncios": {
+    "resumen": "2 o 3 frases sobre la publicidad pagada del mes: cuánto se invirtió, qué consiguió y qué campaña rindió mejor (por costo por resultado)",
+    "recomendaciones": ["3 a 4 recomendaciones concretas de anuncios para el mes siguiente: qué campaña mantener, pausar o escalar, qué público u objetivo probar, cuánto invertir"]
+  }` : ""}
 }
-
+${cifras.anuncios?.campanas?.length ? `
+Sobre los anuncios: «anuncios» trae TODAS las campañas de la cuenta publicitaria del mes (también las creadas fuera de esta aplicación); el gasto va en ${cifras.anuncios.moneda}. Compara campañas por su costo por resultado dentro del mismo objetivo, no entre objetivos distintos. No recomiendes subir presupuesto sin decir por qué con una cifra.
+` : ""}
 Tono: cercano y profesional, en español de Panamá, de tú. Sin tecnicismos: «personas alcanzadas» mejor que «reach». Si el mes fue flojo, dilo con honestidad y en positivo: qué se va a hacer para mejorarlo.`;
 }
 
@@ -171,6 +211,11 @@ export async function generarInforme(env, acceso, { clientId, mes, usuarioId = n
 
   try {
     const cifras = await cifrasDelMes(acceso, clientId, mes);
+    // El aviso (sin permiso, error de Meta) es para la agencia: no va en
+    // las cifras, que también ve el cliente.
+    const anuncios = await anunciosDelMes(env, acceso, clientId, mes);
+    const avisos = anuncios?.aviso ? [anuncios.aviso] : [];
+    if (anuncios && !anuncios.aviso) cifras.anuncios = anuncios;
     const ia = await prepararIA(env, acceso, { funcion: "informe" });
     if (ia.bloqueo) throw new Error(ia.bloqueo);
     let modelo = ia.modelo;
@@ -201,10 +246,13 @@ export async function generarInforme(env, acceso, { clientId, mes, usuarioId = n
           aprendizajes: lista(bruto.aprendizajes, 5),
           recomendaciones: lista(bruto.recomendaciones, 6),
           ideas: lista(bruto.ideas, 5).map((i) => (typeof i === "string" ? { formato: "", idea: i } : { formato: String(i.formato ?? ""), idea: String(i.idea ?? "") })),
+          ...(cifras.anuncios?.campanas?.length && bruto.anuncios
+            ? { anuncios: { resumen: String(bruto.anuncios.resumen ?? ""), recomendaciones: lista(bruto.anuncios.recomendaciones, 5) } }
+            : {}),
         }
       : { resumen: texto.trim().slice(0, 3000), destacados: [], aprendizajes: [], recomendaciones: [], ideas: [] };
 
-    const fila = { ...base, estado: "listo", contenido: JSON.stringify({ cifras, analisis, modelo }), error: null, updated_at: "" };
+    const fila = { ...base, estado: "listo", contenido: JSON.stringify({ cifras, analisis, modelo, ...(avisos.length ? { avisos } : {}) }), error: null, updated_at: "" };
     await acceso.guardar("informes", fila);
     difundir(env, acceso.ownerId, { tipo: "informe", clientId, mes, estado: "listo", por: { userId: "sistema", nombre: "Informes", color: "#1E90FF" } });
     return fila;

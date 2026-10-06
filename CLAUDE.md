@@ -1466,6 +1466,18 @@ son del servidor.
   Regenerar conserva el testigo: el enlace que el cliente ya tiene sigue
   valiendo. El automático sale del día 1 al 5, desde las 9:00, después de
   la cola y de las fotos (ver `scheduled`).
+- **El informe lleva los anuncios del mes, TODOS** (`anunciosDelMes` en
+  `worker/lib/informes.js`): si el cliente tiene cuenta publicitaria
+  asignada, lee el total y las campañas de esa cuenta en el mes —también
+  las creadas en el Administrador de anuncios, que la app no conoce—, tres
+  llamadas a Meta, sólo lectura. Las cifras salen de Meta
+  (`resumenAnunciosDelMes()`, pura) y se congelan como las demás; la IA
+  escribe `analisis.anuncios` (resumen y recomendaciones de pauta) y se le
+  pide comparar costo por resultado DENTRO del mismo objetivo. Nunca tumba el
+  informe: sin cuenta no hay sección; sin `ads_read` o con un error de Meta
+  queda `contenido.avisos`, que ve la agencia en la vista previa y NO el
+  cliente (`informePorTestigo` sólo devuelve cifras y análisis). El mes en
+  curso también se puede generar a mano, para ver cómo van los anuncios.
 - **La impresión general oculta todo `<header>` y los `.overlay`**
   (`index.css`, para imprimir un calendario). El informe tiene portada en
   un `<header>` y la vista previa de la agencia vive en un diálogo: sin

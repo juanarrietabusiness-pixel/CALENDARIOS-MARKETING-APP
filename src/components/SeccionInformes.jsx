@@ -16,9 +16,12 @@ import { fechaEnZona, sumarDias } from "../lib/agenda";
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 const nombreMes = (mes) => { const [a, m] = mes.split("-").map(Number); return `${MESES[m - 1]} ${a}`; };
 
-/** Los últimos seis meses cerrados, del más reciente al más viejo. */
+/**
+ * El mes en curso (para ver cómo va, p. ej. los anuncios a mitad de mes) y
+ * los últimos seis cerrados, del más reciente al más viejo.
+ */
 function mesesCerrados() {
-  const salida = [];
+  const salida = [fechaEnZona().slice(0, 7)];
   let dia = `${fechaEnZona().slice(0, 7)}-01`;
   for (let i = 0; i < 6; i++) {
     dia = sumarDias(dia, -1);
@@ -41,6 +44,7 @@ function DialogoInforme({ informe, client, onClose }) {
           </button>
           <button type="button" className="btn-icon" onClick={onClose} aria-label="Cerrar el informe"><Icon name="close" /></button>
         </div>
+        {informe.contenido?.avisos?.map((a) => <p key={a} className="notice no-imprimir" role="status" style={{ margin: "var(--sp-3)" }}>{a}</p>)}
         <InformeVista informe={informe.contenido} cliente={client} />
       </div>
     </div>
@@ -52,7 +56,7 @@ export default function SeccionInformes({ client, pulso = 0 }) {
   const clientId = client?.dbId || client?.id;
   const meses = mesesCerrados();
   const [informes, setInformes] = useState([]);
-  const [mes, setMes] = useState(meses[0]);
+  const [mes, setMes] = useState(meses[1]);
   const [trabajando, setTrabajando] = useState("");
   const [fallo, setFallo] = useState("");
   const [aviso, setAviso] = useState("");
@@ -97,7 +101,7 @@ export default function SeccionInformes({ client, pulso = 0 }) {
       <div className="informes-generar">
         <label htmlFor={`${ids}-m`} className="sr-only">Mes del informe</label>
         <select id={`${ids}-m`} className="input" value={mes} onChange={(e) => setMes(e.target.value)} disabled={!!trabajando}>
-          {meses.map((m) => <option key={m} value={m}>{nombreMes(m)}</option>)}
+          {meses.map((m, i) => <option key={m} value={m}>{nombreMes(m)}{i === 0 ? " (en curso)" : ""}</option>)}
         </select>
         <button
           type="button"
