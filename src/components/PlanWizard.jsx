@@ -1,10 +1,11 @@
-import { useId, useState, useRef } from "react";
+import { useEffect, useId, useState, useRef } from "react";
 import { PLANS, FORMATS, FORMAT_ICONS, MONTHS, DAYS, DAYS_SHORT } from "../constants";
 import { uid, daysInMonth, fmtDate, getWeekNumber, dayName } from "../utils";
 import { callAI, buildClientContext, buildDescripcionesPrompt, loadADN, parseAIResponse, pasajesDeLaTanda } from "../api";
 import { loadClientMemories } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
+import { fechasDelMes } from "../lib/fechasEspeciales";
 
 // Sin paso de categorías: se quitaron del calendario. Las que haya en la
 // ficha del cliente (Semanal) siguen informando a la IA sin preguntarse aquí.
@@ -50,6 +51,16 @@ export default function PlanWizard({ client, onGenerate, onClose, mesInicial = n
     return cfg;
   });
   const [importantDates, setImportantDates] = useState([]);
+  // Las fechas especiales del mes entran solas (feriados, comerciales y lo
+  // que eligió este cliente, lib/fechasEspeciales.js); las añadidas a mano
+  // se quedan al cambiar de mes si son de ese mes.
+  useEffect(() => {
+    const prefijo = `${year}-${String(month + 1).padStart(2, "0")}`;
+    const auto = fechasDelMes(year, month, client?.fechasEspeciales)
+      .filter((f) => f.destacada || f.tipo !== "internacional")
+      .map((f) => ({ date: f.fecha, name: f.delicada ? `${f.nombre} (fecha delicada: sin promociones)` : f.nombre, auto: true }));
+    setImportantDates((prev) => [...prev.filter((d) => !d.auto && d.date.startsWith(prefijo)), ...auto]);
+  }, [year, month, client?.fechasEspeciales]);
   const [campaign, setCampaign] = useState("");
   const [weekConcepts, setWeekConcepts] = useState(["", "", "", "", ""]);
   const [dayCategories, setDayCategories] = useState(() => {

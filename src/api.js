@@ -8,6 +8,19 @@ import { mediosDe } from "./lib/publicacion";
 import { analizarVideo } from "./lib/db";
 import { PROPIEDADES_FECHA_TAREA, fechaEnZona } from "./lib/agenda";
 import { diasPorSemanaDelMes, nombreDelDia } from "./lib/meses";
+import { fechasDelMes, fechasParaLaIA } from "./lib/fechasEspeciales";
+import { semanasDelMes, conceptosDelMes } from "./lib/campanas";
+
+/**
+ * Las fechas especiales del mes del calendario, como bloque para la IA
+ * (vacío si no hay): las del catálogo más las que eligió el cliente, con
+ * las delicadas marcadas para que no haga promociones ahí.
+ */
+export function bloqueFechasEspeciales(client, calendar) {
+  if (!Number.isInteger(calendar?.month) || !calendar?.year) return "";
+  const txt = fechasParaLaIA(fechasDelMes(calendar.year, calendar.month, client?.fechasEspeciales));
+  return txt ? `FECHAS ESPECIALES DEL MES:\n${txt}` : "";
+}
 import { partirSSE } from "../worker/lib/flujoAnthropic.js";
 import { sinCapaMaquetacion, prepararContenidoIA, TITULO_FICHA } from "./lib/contextoADN";
 import { textoEstableDelCerebro, consultaDeTanda, consultaDePublicacion, usaElCerebro, contextoDelChat } from "./lib/cerebroCliente";
@@ -143,6 +156,7 @@ HASHTAGS BASE: ${client.hashtags || "#Panama"}
 CAMPAÑA: ${calendar?.campaign || "N/A"}
 ${calendar?.offers ? `OFERTAS Y DESCUENTOS DEL MES: ${calendar.offers}` : ""}
 ${calendar?.promoCode ? `CÓDIGO PROMOCIONAL: ${calendar.promoCode}` : ""}
+${bloqueFechasEspeciales(client, calendar)}
 
 ---
 
@@ -215,6 +229,7 @@ HASHTAGS BASE: ${client.hashtags || "#Panama"}
 CAMPAÑA: ${calendar?.campaign || "N/A"}
 ${calendar?.offers ? `OFERTAS Y DESCUENTOS DEL MES: ${calendar.offers}` : ""}
 ${calendar?.promoCode ? `CÓDIGO PROMOCIONAL: ${calendar.promoCode}` : ""}
+${bloqueFechasEspeciales(client, calendar)}
 
 ---
 
@@ -851,9 +866,13 @@ DÍAS DE ESTE MES POR DÍA DE LA SEMANA (úsalo tal cual; no calcules el día de
 ${diasPorSemanaDelMes({ year: calendar.year, month: calendar.month })}
 Puedes crear publicaciones en CUALQUIER día de este mes, tenga ya publicaciones o no.` : ""}
 CAMPAÑA: ${calendar.campaign || "N/A"}
-CONCEPTOS SEMANALES: ${(calendar.weekConcepts || []).join(", ") || "N/A"}${
+CAMPAÑA DE CADA SEMANA: ${Number.isInteger(calendar.month) && calendar.year
+  ? semanasDelMes(calendar.year, calendar.month).map((x, i) => `S${x.numero} (${+x.desde.slice(8)}–${+x.hasta.slice(8)}): ${conceptosDelMes(calendar)[i] || "sin nombre"}`).join(" · ")
+  : (calendar.weekConcepts || []).join(", ") || "N/A"}${
   calendar.offers ? `\nOFERTAS: ${calendar.offers}` : ""
-}${calendar.promoCode ? `\nCÓDIGO PROMOCIONAL: ${calendar.promoCode}` : ""}
+}${calendar.promoCode ? `\nCÓDIGO PROMOCIONAL: ${calendar.promoCode}` : ""}${
+  bloqueFechasEspeciales(client, calendar) ? `\n${bloqueFechasEspeciales(client, calendar)}` : ""
+}
 PUBLICACIONES (${postLines.length}):
 ${postLines.length ? postLines.join("\n") : "  (vacío)"}`;
   }

@@ -885,6 +885,15 @@ function Workspace({ session, ruta }) {
     }, 600));
   };
 
+  /** Las fechas especiales de un cliente (lib/fechasEspeciales.js): se guardan con el cliente. */
+  const guardarFechasCliente = async (fechas) => {
+    const id = selectedClientId;
+    const cliente = clientsRef.current.find((c) => c.id === id);
+    if (!cliente) return;
+    setClients((prev) => prev.map((c) => (c.id === id ? { ...c, fechasEspeciales: fechas } : c)));
+    await db.saveClient({ ...cliente, fechasEspeciales: fechas }, ownerId);
+  };
+
   /**
    * Del banco de ideas a un día del calendario. La idea SÓLO sale del banco
    * si entró en el calendario: antes se borraba del banco aunque el día no
@@ -1567,6 +1576,7 @@ function Workspace({ session, ruta }) {
                     onAbrirVecina={(calVecino, postId) => { setPostPedido({ calId: calVecino.id, postId }); irAMes(client.id, calVecino); }}
                     onUpdateClient={alCambiarBanco}
                     onMoveBankToCal={ideaAlCalendario}
+                    onGuardarFechas={guardarFechasCliente}
                   />
                 ) : null)}
               </>
