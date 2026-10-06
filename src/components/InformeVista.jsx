@@ -3,6 +3,7 @@ import Icon from "./Icon";
 import { GraficaLinea, GraficaBarras } from "./Graficas";
 import { numeroCorto, NOMBRE_FORMATO } from "../lib/resultados";
 import { normalizarColor, textoSobre, conAlfa } from "../lib/colores";
+import { formatoMoneda } from "../lib/anuncios";
 import logoMark from "../assets/logo-mark.png";
 
 // ============================================================
@@ -47,6 +48,57 @@ function Lista({ titulo, items, icono }) {
       <ul className="informe-lista">
         {items.map((t) => <li key={t}><Icon name={icono} size={16} /> <span>{t}</span></li>)}
       </ul>
+    </section>
+  );
+}
+
+const porcentaje = (v) => (v == null ? "—" : `${v.toLocaleString("es", { maximumFractionDigits: 2 })} %`);
+
+/**
+ * La publicidad pagada del mes: la cuenta entera y cada campaña que gastó
+ * algo —también las creadas en el Administrador de anuncios—, con su costo
+ * por resultado, y lo que dice la IA. Sin cuenta publicitaria, no sale.
+ */
+function Anuncios({ datos, analisis }) {
+  if (!datos?.total || (!datos.total.gasto && !datos.campanas?.length)) return null;
+  const t = datos.total;
+  const dinero = (v) => (v == null ? "—" : formatoMoneda(v, datos.moneda));
+  return (
+    <section className="informe-bloque">
+      <h2>Publicidad pagada</h2>
+      {analisis?.resumen && <p>{analisis.resumen}</p>}
+      <div className="informe-cifras">
+        <div className="informe-cifra"><p className="informe-cifra-titulo">Inversión</p><p className="informe-cifra-valor">{dinero(t.gasto)}</p></div>
+        <div className="informe-cifra"><p className="informe-cifra-titulo">Personas alcanzadas</p><p className="informe-cifra-valor">{numeroCorto(t.alcance)}</p></div>
+        <div className="informe-cifra"><p className="informe-cifra-titulo">Impresiones</p><p className="informe-cifra-valor">{numeroCorto(t.impresiones)}</p></div>
+        <div className="informe-cifra"><p className="informe-cifra-titulo">Clics</p><p className="informe-cifra-valor">{numeroCorto(t.clics)}</p></div>
+        <div className="informe-cifra"><p className="informe-cifra-titulo">CTR</p><p className="informe-cifra-valor">{porcentaje(t.ctr)}</p></div>
+        <div className="informe-cifra"><p className="informe-cifra-titulo">Costo por clic</p><p className="informe-cifra-valor">{dinero(t.cpc)}</p></div>
+      </div>
+      {datos.campanas?.length > 0 && (
+        <table className="informe-tabla">
+          <thead>
+            <tr><th scope="col">Campaña</th><th scope="col">Objetivo</th><th scope="col">Inversión</th><th scope="col">Resultados</th><th scope="col">Costo por resultado</th></tr>
+          </thead>
+          <tbody>
+            {datos.campanas.map((c) => (
+              <tr key={c.id}>
+                <th scope="row">{c.nombre || "Sin nombre"}</th>
+                <td>{c.objetivo}</td>
+                <td>{dinero(c.gasto)}</td>
+                <td>{c.resultados == null ? "—" : numeroCorto(c.resultados)}</td>
+                <td>{dinero(c.costoPorResultado)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {datos.otras > 0 && <p className="informe-nota">Y {datos.otras} {datos.otras === 1 ? "campaña más" : "campañas más"} con menos inversión.</p>}
+      {analisis?.recomendaciones?.length > 0 && (
+        <ul className="informe-lista" aria-label="Recomendaciones de publicidad">
+          {analisis.recomendaciones.map((r) => <li key={r}><Icon name="megaphone" size={16} /> <span>{r}</span></li>)}
+        </ul>
+      )}
     </section>
   );
 }
@@ -178,6 +230,8 @@ export default function InformeVista({ informe, cliente }) {
           </table>
         </section>
       )}
+
+      <Anuncios datos={cifras.anuncios} analisis={analisis?.anuncios} />
 
       <Lista titulo="Lo que aprendimos" items={analisis?.aprendizajes} icono="bulb" />
       <Lista titulo="Lo que vamos a hacer el próximo mes" items={analisis?.recomendaciones} icono="check" />

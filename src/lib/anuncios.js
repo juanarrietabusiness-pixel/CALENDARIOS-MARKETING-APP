@@ -485,6 +485,34 @@ export function serieDiaria(filas = [], campo = "spend", { desde = "", hasta = "
   return salida;
 }
 
+/**
+ * Los anuncios del mes para el informe: la cuenta entera y cada campaña
+ * que gastó algo, TODAS —las creadas en la app y las del Administrador de
+ * anuncios—, de mayor a menor gasto (hasta `max`). `desdeApp`: ids de las
+ * campañas que se crearon aquí. Pura.
+ */
+export function resumenAnunciosDelMes({ cuenta, total, campanas = [], desdeApp = [] }, { max = 10 } = {}) {
+  const deAqui = new Set(desdeApp.map(String));
+  const lista = campanas
+    .map((c) => ({
+      id: String(c.id),
+      nombre: c.name ?? "",
+      objetivo: nombreObjetivo(c.objective),
+      estado: estadoAnuncio(c.effective_status ?? c.status).texto,
+      desdeApp: deAqui.has(String(c.id)),
+      ...resumenInsights(c.insights, c.objective),
+    }))
+    .filter((c) => c.gasto > 0 || c.impresiones > 0)
+    .sort((a, b) => b.gasto - a.gasto);
+  return {
+    cuenta: cuenta?.nombre ?? "",
+    moneda: cuenta?.moneda ?? "USD",
+    total: resumenInsights(total),
+    campanas: lista.slice(0, max),
+    otras: Math.max(0, lista.length - max),
+  };
+}
+
 /** Cómo se dice el estado de algo de Meta (`effective_status`). */
 export function estadoAnuncio(status) {
   const s = String(status ?? "").toUpperCase();

@@ -6,6 +6,7 @@ import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
 import { cifrasDelMes, generarInforme, informePendiente, limitesDelMes, mesAnterior } from "../../worker/lib/informes.js";
 import { crearEjecutor } from "../../worker/lib/herramientasServidor.js";
+import { cifrarMeta } from "../../worker/lib/meta.js";
 
 // ============================================================
 // El informe mensual, contra una D1 de verdad y una Anthropic de mentira
@@ -168,5 +169,69 @@ describe("el asistente", () => {
     expect(r.is_error).toBeUndefined();
     expect(r.content).toMatch(/Seguidores: 1060/);
     expect(r.content).toMatch(/reel del 2026-09-10: 165 interacciones/);
+  });
+});
+
+describe("los anuncios en el informe", () => {
+  // Una campaña creada en el Administrador de anuncios (no en la app) y otra
+  // que no gastó: la primera tiene que salir, la segunda no.
+  const insights = { spend: "120.50", impressions: "40000", reach: "18000", clicks: "900", cpc: "0.13", ctr: "2.25", cpm: "3.01", actions: [{ action_type: "link_click", value: "800" }] };
+  async function conCuenta(permisos = ["ads_read", "ads_management"]) {
+    env.META_APP_SECRET = "secreto-meta";
+    db.sqlite.prepare("insert into integracion_meta (id, owner_id, nombre, token_cifrado, origen, permisos) values (?,?,?,?,?,?)")
+      .run(DUENO, DUENO, "Juan", await cifrarMeta(env, "token-meta"), "https://calendarios.test", JSON.stringify(permisos));
+    db.sqlite.prepare("insert into cuentas_anuncios (id, owner_id, externo_id, nombre, moneda, client_id) values (?,?,?,?,?,?)")
+      .run(`${DUENO}:act_111`, DUENO, "act_111", "Café Luna Ads", "USD", "c1");
+  }
+  let graph;
+  beforeEach(() => {
+    graph = [];
+    const anterior = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (url, init) => {
+      const u = new URL(String(url));
+      if (u.hostname === "graph.facebook.com") {
+        graph.push(u.pathname + u.search);
+        if (u.pathname.endsWith("/act_111/insights")) return new Response(JSON.stringify({ data: [insights] }));
+        if (u.pathname.endsWith("/act_111/campaigns")) {
+          return new Response(JSON.stringify({ data: [
+            { id: "900", name: "Septiembre · Tráfico", status: "ACTIVE", effective_status: "ACTIVE", objective: "OUTCOME_TRAFFIC", insights: { data: [insights] } },
+            { id: "901", name: "Borrador viejo", status: "PAUSED", effective_status: "PAUSED", objective: "OUTCOME_ENGAGEMENT" },
+          ] }));
+        }
+        return new Response(JSON.stringify({ error: { message: "no simulado", code: 100 } }), { status: 400 });
+      }
+      return anterior(url, init);
+    }));
+  });
+
+  it("todas las campañas de la cuenta del mes, también las de fuera de la app, y la IA las analiza", async () => {
+    await conCuenta();
+    respuestaIA = () => flujo(JSON.stringify({ ...ANALISIS, anuncios: { resumen: "Se invirtieron 120,50 $.", recomendaciones: ["Mantener la de tráfico"] } }));
+    const fila = await generarInforme({ ...env }, acceso(), { clientId: "c1", mes: "2026-09" });
+    const { cifras, analisis, avisos } = JSON.parse(fila.contenido);
+    expect(cifras.anuncios.total).toMatchObject({ gasto: 120.5, alcance: 18000, clics: 900 });
+    expect(cifras.anuncios.campanas).toHaveLength(1);
+    expect(cifras.anuncios.campanas[0]).toMatchObject({ nombre: "Septiembre · Tráfico", desdeApp: false, resultados: 800 });
+    expect(graph.some((g) => /time_range/.test(decodeURIComponent(g)) && decodeURIComponent(g).includes('"since":"2026-09-01"'))).toBe(true);
+    expect(pedidos[0].messages[0].content).toMatch(/TODAS las campañas de la cuenta publicitaria/);
+    expect(analisis.anuncios).toEqual({ resumen: "Se invirtieron 120,50 $.", recomendaciones: ["Mantener la de tráfico"] });
+    expect(avisos).toBeUndefined();
+  });
+
+  it("sin el permiso de anuncios el informe sale igual, con un aviso para la agencia que el cliente no ve", async () => {
+    await conCuenta(["pages_show_list"]);
+    const fila = await generarInforme({ ...env }, acceso(), { clientId: "c1", mes: "2026-09" });
+    const contenido = JSON.parse(fila.contenido);
+    expect(fila.estado).toBe("listo");
+    expect(contenido.cifras.anuncios).toBeUndefined();
+    expect(contenido.avisos[0]).toMatch(/ads_read/);
+    expect(graph).toEqual([]);
+  });
+
+  it("sin cuenta publicitaria no hay sección ni llamada a Meta", async () => {
+    const fila = await generarInforme({ ...env }, acceso(), { clientId: "c1", mes: "2026-09" });
+    expect(JSON.parse(fila.contenido).cifras.anuncios).toBeUndefined();
+    expect(pedidos[0].messages[0].content).not.toMatch(/"anuncios"/);
+    expect(graph).toEqual([]);
   });
 });
