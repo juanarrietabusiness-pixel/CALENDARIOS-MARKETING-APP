@@ -166,7 +166,9 @@ const materialDe = (m) => String(m ?? "").slice(0, MAX_MATERIAL);
  * cliente; sin pasarlo, se queda como estaba. → { catalogo, inventario }.
  */
 export async function guardarCatalogo(env, acceso, cliente, entrada, { inventario } = {}) {
-  const catalogo = limpiarCatalogo(entrada);
+  // Las fotos sólo pueden ser de ESTE cliente: la clave la manda el navegador.
+  const propias = `clientes/${cliente.id}/`;
+  const catalogo = limpiarCatalogo(entrada).map((p) => ({ ...p, fotos: p.fotos.filter((k) => k.startsWith(propias)) }));
   const conInventario = typeof inventario === "boolean" ? inventario : (await leerMercado(acceso, cliente.id)).inventario;
   await escribir(acceso, cliente.id, { catalogo: JSON.stringify(catalogo), inventario: conInventario ? 1 : 0 });
   const texto = catalogoATexto(catalogo, { inventario: conInventario });

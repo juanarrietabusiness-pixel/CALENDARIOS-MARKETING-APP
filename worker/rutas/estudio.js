@@ -40,7 +40,7 @@ import { mejorarIdea } from "../lib/estudio/prompt.js";
 import { guionCorto } from "../lib/estudio/guionCorto.js";
 import { kitDe, guardarKit, prepararKit, revisarPieza } from "../lib/estudio/kit.js";
 import { leerMercado } from "../lib/mercado.js";
-import { angulosDeAnuncio } from "../../src/lib/estudioMercado.js";
+import { angulosDeAnuncio, fotosDelCatalogo } from "../../src/lib/estudioMercado.js";
 import {
   crearTrabajo, avanzarTrabajo, cancelarTrabajo, reintentarTrabajo, trabajoPublico, ErrorEstudio,
 } from "../lib/estudio/trabajos.js";
@@ -73,6 +73,8 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       return json({
         ...(await leerGaleria(env, acceso, cliente.id)), kit: kitDe(cliente),
         angulos: mercado ? angulosDeAnuncio(mercado.estudio, mercado.catalogo) : [],
+        // Las fotos de cada producto, para ponerlas de referencia (las de una publicación de ese producto, solas).
+        productos: mercado ? fotosDelCatalogo(mercado.catalogo) : [],
       });
     }
 

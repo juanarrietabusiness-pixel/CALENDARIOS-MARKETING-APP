@@ -452,6 +452,7 @@ ${daysDesc}`;
                 // al modelo por nada.
                 descripcion: existing?.descripcion || "",
                 hashtagsFinales: existing?.hashtagsFinales || "",
+                textoPieza: existing?.textoPieza || "",
                 script: "",
                 status: "pending",
                 category: dayData.cat,
@@ -561,6 +562,7 @@ ${daysDesc}`;
               guion: actual.guion?.trim() || !conGuiones ? (actual.guion || "") : (r.guion || ""),
               descripcion: actual.descripcion?.trim() ? actual.descripcion : (r.descripcion || ""),
               hashtagsFinales: r.hashtagsFinales || actual.hashtagsFinales || "",
+              textoPieza: actual.textoPieza?.trim() ? actual.textoPieza : (r.textoPieza || ""),
             };
             escritas[p._date] = dia;
           }
@@ -668,6 +670,7 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci√
           ...(idea?.estructuraRef ? { estructuraRef: idea.estructuraRef } : {}),
           descripcion: idea?.descripcion || "",
           hashtagsFinales: idea?.hashtagsFinales || "",
+          ...(idea?.textoPieza ? { textoPieza: idea.textoPieza } : {}),
           script: idea?.descripcion || idea?.script || "",
           status: idea?.status || "pending",
           category: nombreDePilar(idea?.pilar || m.pilar) || cat,

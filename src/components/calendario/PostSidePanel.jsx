@@ -326,6 +326,25 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           </div>
         )}
 
+        {/* Lo que va ESCRITO encima del diseño (no el caption). En un carrusel va lámina por lámina en el guion. */}
+        {form.format !== "carrusel" && (
+          <div className="field">
+            <div style={fieldHeaderStyle}>
+              <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-pieza`}>Texto en la pieza</label>
+              <div style={{ display: "flex", gap: "var(--sp-2)" }}>
+                <CopyButton text={form.textoPieza} describes="el texto de la pieza" />
+                <AiButton field="textoPieza" label="el texto de la pieza" />
+              </div>
+            </div>
+            <textarea id={`${ids}-pieza`} className="textarea" style={{ minHeight: 72 }} maxLength={400} value={form.textoPieza || ""}
+              onChange={(e) => sf("textoPieza", e.target.value)} aria-describedby={`${ids}-pieza-ayuda`}
+              placeholder={"Titular corto\nFrase de apoyo\nPrecio (si va)"} />
+            <p id={`${ids}-pieza-ayuda`} className="hint" style={{ margin: 0 }}>
+              Lo que va escrito sobre la imagen{form.format === "reel" ? " (la portada)" : ""}. «Crear con IA» y «Producir el mes» lo ponen tal cual.
+            </p>
+          </div>
+        )}
+
         {/* Lo que abre el cliente mientras no hay contenido: un video o una imagen de ejemplo. */}
         <div className="field">
           <label className="label" htmlFor={`${ids}-referencia`}>Referencia para el cliente <span style={{ fontWeight: 400, textTransform: "none" }}>· enlace</span></label>

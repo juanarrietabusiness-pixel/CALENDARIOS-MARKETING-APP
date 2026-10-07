@@ -159,6 +159,9 @@
 .aprobar-tipo svg { flex-shrink: 0; margin-top: 2px; color: var(--accent-alt); }
 .aprobar-comentario1 { font-size: var(--fs-xs); color: var(--text-dim); padding: var(--sp-2) var(--sp-3); border-left: 3px solid var(--border-strong); white-space: pre-wrap; }
 .aprobar-comentario1 span { font-weight: 700; }
+.aprobar-pieza { padding: var(--sp-2) var(--sp-3); background: var(--surface-2); border-radius: var(--radius-sm); }
+.aprobar-pieza span { font-size: var(--fs-3xs); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-dim); }
+.aprobar-pieza p { margin: var(--sp-1) 0 0; font-weight: 600; white-space: pre-wrap; }
 .aprobar-guion { background: var(--surface-2); border-radius: var(--radius); padding: var(--sp-2) var(--sp-3); }
 .aprobar-guion summary { cursor: pointer; font-size: var(--fs-xs); font-weight: 700; min-height: var(--tap-sm); display: flex; align-items: center; }
 .aprobar-guion p { white-space: pre-wrap; font-size: var(--fs-xs); line-height: var(--lh-normal); padding-bottom: var(--sp-2); }

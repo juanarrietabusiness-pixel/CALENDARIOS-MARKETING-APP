@@ -526,6 +526,7 @@ export default function CalendarView({
               guion: result.guion || p.guion,
               descripcion: result.descripcion || p.descripcion,
               hashtagsFinales: result.hashtagsFinales || p.hashtagsFinales,
+              textoPieza: p.textoPieza || result.textoPieza || "",
               script: result.descripcion || result.guion || p.script,
             }
           ),
@@ -595,7 +596,7 @@ export default function CalendarView({
         posts: (d.posts || []).map((p) => {
           const result = allResults[p.id];
           if (!result) return p;
-          return { ...p, guion: result.guion || p.guion, descripcion: result.descripcion || p.descripcion, hashtagsFinales: result.hashtagsFinales || p.hashtagsFinales, script: result.descripcion || result.guion || p.script };
+          return { ...p, guion: result.guion || p.guion, descripcion: result.descripcion || p.descripcion, hashtagsFinales: result.hashtagsFinales || p.hashtagsFinales, textoPieza: p.textoPieza || result.textoPieza || "", script: result.descripcion || result.guion || p.script };
         }),
       }));
       onUpdateCal(calId, { ...cal, days: newDays });
@@ -803,6 +804,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
                 guion: p.guion || r.guion || "",
                 descripcion: p.descripcion || r.descripcion || "",
                 hashtagsFinales: p.hashtagsFinales || r.hashtagsFinales || "",
+                textoPieza: p.textoPieza || r.textoPieza || "",
                 script: p.script || r.descripcion || r.guion || "",
               };
             }),
@@ -843,6 +845,7 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
                 ...p,
                 descripcion: p.descripcion || r.descripcion,
                 hashtagsFinales: p.hashtagsFinales || r.hashtagsFinales || "",
+                textoPieza: p.textoPieza || r.textoPieza || "",
                 script: p.script || r.descripcion,
               };
             }),

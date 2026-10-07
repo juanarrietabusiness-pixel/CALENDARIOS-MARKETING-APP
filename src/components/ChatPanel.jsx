@@ -588,6 +588,7 @@ CÓMO DEBES RESPONDER:
           if (toolInput.idea !== undefined) upd.idea = toolInput.idea;
           if (toolInput.descripcion !== undefined) upd.descripcion = toolInput.descripcion;
           if (toolInput.guion !== undefined) upd.guion = toolInput.guion;
+          if (toolInput.texto_pieza !== undefined) upd.textoPieza = toolInput.texto_pieza;
           if (toolInput.categoria !== undefined) upd.category = toolInput.categoria;
           if (toolInput.formato !== undefined) upd.format = toolInput.formato;
           if (hora !== undefined) upd.publishTime = hora;

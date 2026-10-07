@@ -83,6 +83,8 @@ export function jsonDe(texto) {
 // El catálogo
 // ------------------------------------------------------------
 
+export const MAX_FOTOS_PRODUCTO = 4;
+
 /** Un producto o servicio, limpio. Null si no tiene nombre. */
 export function limpiarProducto(p) {
   const nombre = corto(p?.nombre, 80);
@@ -100,7 +102,20 @@ export function limpiarProducto(p) {
     stockNota: corto(p?.stockNota, 120),
     ofertaHasta: FECHA.test(String(p?.ofertaHasta ?? "")) ? p.ofertaHasta : "",
     diferenciador: corto(p?.diferenciador, 240),
+    // Fotos del producto (claves de R2 del cliente): el Estudio las usa de referencia para que salga el producto REAL.
+    fotos: fotosDeProducto(p?.fotos),
   };
+}
+
+/** Las fotos de un producto: claves `clientes/<cliente>/…` sin `..`, sin repetir, hasta MAX_FOTOS_PRODUCTO. Pura. */
+export function fotosDeProducto(fotos) {
+  const salida = [];
+  for (const f of Array.isArray(fotos) ? fotos : []) {
+    const k = String(f ?? "");
+    if (/^clientes\/[^/]+\/.+/.test(k) && !k.includes("..") && k.length <= 300 && !salida.includes(k)) salida.push(k);
+    if (salida.length >= MAX_FOTOS_PRODUCTO) break;
+  }
+  return salida;
 }
 
 /** El catálogo guardado, limpio: sin repetidos (el id manda; uno repetido toma otro) y con tope. Pura. */
@@ -120,6 +135,10 @@ export function limpiarCatalogo(entrada) {
 }
 
 export const productosActivos = (catalogo) => limpiarCatalogo(catalogo).filter((p) => p.activo);
+
+/** Los productos activos que tienen fotos → [{ id, nombre, fotos }] (lo que el Estudio pone de referencia). Pura. */
+export const fotosDelCatalogo = (catalogo) =>
+  productosActivos(catalogo).filter((p) => p.fotos.length).map((p) => ({ id: p.id, nombre: p.nombre, fotos: p.fotos }));
 
 /** Sin el inventario encendido, lo del inventario no existe: se borra de cada producto. Pura. */
 const sinInventario = (p) => ({ ...p, stock: "", stockNota: "", ofertaHasta: "", diferenciador: "" });
@@ -232,7 +251,7 @@ export function pedidoDeCatalogo({ marca, rubro = "", contexto = "" }) {
 export function leerCatalogo(texto) {
   const d = jsonDe(texto);
   if (!d || !Array.isArray(d.productos)) return null;
-  return limpiarCatalogo(d.productos.map((p) => ({ ...p, id: undefined, activo: true })));
+  return limpiarCatalogo(d.productos.map((p) => ({ ...p, id: undefined, activo: true, fotos: [] })));
 }
 
 /** Junta lo propuesto con lo que había: lo que ya existía (mismo nombre) conserva su id y lo escrito a mano manda. Pura. */

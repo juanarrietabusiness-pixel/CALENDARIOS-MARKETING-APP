@@ -125,6 +125,12 @@ export async function callAI(content, { maxTokens, tier, tolerarCorte = false, f
   return data?.text ?? "";
 }
 
+/**
+ * Las frases que van ENCIMA del diseño (`post.textoPieza`): las escribe la IA con el estudio delante, junto con la
+ * descripción, y una persona las puede cambiar. Las usan el Estudio y «Producir el mes» al pedir la imagen.
+ */
+const REGLA_TEXTO_PIEZA = `TEXTO_PIEZA (lo que va escrito ENCIMA del diseño, no el caption): un titular de hasta 6 palabras y, en otra línea, una frase de apoyo de hasta 10; si el tipo lleva precio u oferta, el precio EXACTO del catálogo en una tercera línea. Frases de marketing, sacadas del gancho y del deseo de la publicación. En carrusel, vacío (el texto va lámina por lámina en el guion); en reel, el texto de la portada.`;
+
 export function buildScriptPrompt(client, calendar, posts, adnExtra = "", memories = [], cerebro = null) {
   const ctx = buildClientContext(client, calendar, adnExtra, cerebro);
   const memBlock = memories.length
@@ -176,12 +182,16 @@ REGLAS POR FORMATO:
 
 IMPORTANTE: Los hashtags deben ir DENTRO de la DESCRIPCION, al final del caption. NO uses un campo HASHTAGS_FINALES separado.
 
+${REGLA_TEXTO_PIEZA}
+
 FORMATO DE RESPUESTA OBLIGATORIO:
 <<<PUBLICACION_ID:id_del_post>>>
 GUION:
 (contenido del guión aquí, o vacío si es post)
 DESCRIPCION:
 (caption/descripción aquí, con hashtags al final)
+TEXTO_PIEZA:
+(el texto que va encima del diseño, o vacío)
 
 ---
 
@@ -238,8 +248,10 @@ ${bloqueFechasEspeciales(client, calendar)}
 
 INSTRUCCIONES:
 Escribe la DESCRIPCION (el caption que se publica) de CADA publicación de
-la lista, partiendo de su idea. No escribas guion, ni títulos, ni notas de
-producción: sólo el caption.
+la lista, partiendo de su idea, y su TEXTO_PIEZA. No escribas guion, ni
+títulos, ni notas de producción.
+
+${REGLA_TEXTO_PIEZA}
 
 Cada caption lleva emojis con medida, una llamada a la acción hacia
 WhatsApp (${client.whatsapp || "N/A"}) y los hashtags al final del propio
@@ -249,6 +261,8 @@ FORMATO DE RESPUESTA OBLIGATORIO, sin nada más:
 <<<PUBLICACION_ID:id_de_la_publicacion>>>
 DESCRIPCION:
 (caption completo, con los hashtags al final)
+TEXTO_PIEZA:
+(el texto que va encima del diseño, o vacío)
 
 ---
 
@@ -409,6 +423,18 @@ ${post.guion ? `GUION: ${post.guion}` : ""}
 Basandote en la idea${post.guion ? ", el guion" : ""} y el contexto del cliente, genera la DESCRIPCION (caption) para esta publicacion.
 Incluye emojis, CTA a WhatsApp (${client.whatsapp || "N/A"}) y hashtags relevantes al final del texto (${client.hashtags || "#Panama"}).
 Responde SOLO con la descripcion/caption completa incluyendo los hashtags, sin preambulos.`;
+  } else if (field === "textoPieza") {
+    promptText = `${ctx}
+CAMPANA: ${calendar?.campaign || "N/A"}
+${lineasDeContenido(post)}
+FORMATO: ${post.format}
+FECHA: ${day.date} (${day.dayName || ""})
+
+IDEA: ${post.idea || "N/A"}
+${post.descripcion ? `DESCRIPCION: ${String(post.descripcion).slice(0, 800)}` : ""}
+
+${REGLA_TEXTO_PIEZA.replace(/^TEXTO_PIEZA /, "Escribe el TEXTO DE LA PIEZA ")}
+Responde SOLO con ese texto (una frase por línea), sin comillas ni preambulos.`;
   }
 
   const content = [{ type: "text", text: promptText }];
@@ -1038,6 +1064,7 @@ export function getChatTools(hasCalendar) {
             idea: { type: "string", description: "Nueva idea." },
             descripcion: { type: "string", description: "Nueva descripción/caption." },
             guion: { type: "string", description: "Nuevo guion." },
+            texto_pieza: { type: "string", description: "Lo que va ESCRITO encima del diseño (no el caption): titular, frase de apoyo y precio del catálogo, una línea cada uno." },
             formato: { type: "string", enum: ["post", "reel", "carrusel", "historia", "live"], description: "Nuevo formato." },
             hora: { type: "string", description: "Hora de publicación. Se entiende «9am», «9:00», «21:30» o «6 pm». Escribe «quitar» para dejarla sin asignar." },
           },

@@ -515,6 +515,8 @@ const CAMPOS_PUBLICOS = [
   "historias", "historiaTambien",
   // El ejemplo que abre el cliente mientras no hay contenido (sólo se enseña si es un enlace http).
   "referenceLink",
+  // Lo que irá escrito sobre la pieza: con sólo la idea, ayuda al cliente a imaginarla.
+  "textoPieza",
 ];
 
 export function publicacionParaCliente(post) {

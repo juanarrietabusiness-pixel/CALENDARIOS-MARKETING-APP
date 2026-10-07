@@ -669,6 +669,14 @@ function TarjetaPublicacion({
           </details>
         )}
 
+        {/* Sin contenido todavía: lo que irá escrito sobre la pieza ayuda a imaginarla. */}
+        {!mediosDe(post).length && String(post.textoPieza ?? "").trim() && (
+          <div className="aprobar-pieza">
+            <span>Texto en la pieza</span>
+            <p>{post.textoPieza}</p>
+          </div>
+        )}
+
         {/* Mientras no hay contenido, el ejemplo de lo que va (un video, una imagen, una carpeta). */}
         {!mediosDe(post).length && /^https?:\/\//i.test(String(post.referenceLink ?? "")) && (
           <p className="aprobar-referencia">

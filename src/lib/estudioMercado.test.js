@@ -5,7 +5,7 @@ import {
   leerReferencia, notaDeReferencia, fraseActivo, diasActivo, estudioParaElKit, LIMITES_ANUNCIO, MAX_PRODUCTOS,
   productosParaPlan, mensajePedirDatos, lineaDeProducto, fechaLarga,
   pedidoDeReferenciaVideo, limpiarEstructura, estructuraATexto, pedidoDeAdaptacion, leerAdaptacion, ideaParaRecrear, ideaParaSeguirVideo,
-  limpiarReferencia,
+  limpiarReferencia, limpiarProducto, fotosDeProducto, fotosDelCatalogo,
 } from "./estudioMercado";
 
 const CATALOGO = [
@@ -233,5 +233,24 @@ describe("las referencias de video", () => {
     const v = ideaParaSeguirVideo(ref, null);
     expect(v).toContain("con nuestro producto");
     expect(v).toContain("Estructura: Dura 9 s.");
+  });
+});
+
+describe("las fotos de un producto", () => {
+  it("sólo claves de R2 de un cliente, sin `..`, sin repetir y con tope", () => {
+    const fotos = ["clientes/c1/a.jpg", "clientes/c1/a.jpg", "/api/media/clientes/c1/b.jpg", "clientes/c1/../x.jpg", "clientes/c1/c.jpg", "clientes/c1/d.jpg", "clientes/c1/e.jpg", "clientes/c1/f.jpg"];
+    expect(fotosDeProducto(fotos)).toEqual(["clientes/c1/a.jpg", "clientes/c1/c.jpg", "clientes/c1/d.jpg", "clientes/c1/e.jpg"]);
+    expect(fotosDeProducto("clientes/c1/a.jpg")).toEqual([]);
+    expect(limpiarProducto({ nombre: "Sofá" }).fotos).toEqual([]);
+  });
+
+  it("la IA no trae fotos, y sólo se ofrecen las de lo activo", () => {
+    expect(leerCatalogo('{"productos":[{"nombre":"Sofá","fotos":["clientes/c1/a.jpg"]}]}')[0].fotos).toEqual([]);
+    const catalogo = [
+      { id: "p-a", nombre: "A", fotos: ["clientes/c1/a.jpg"] },
+      { id: "p-b", nombre: "B", fotos: [] },
+      { id: "p-c", nombre: "C", activo: false, fotos: ["clientes/c1/c.jpg"] },
+    ];
+    expect(fotosDelCatalogo(catalogo)).toEqual([{ id: "p-a", nombre: "A", fotos: ["clientes/c1/a.jpg"] }]);
   });
 });

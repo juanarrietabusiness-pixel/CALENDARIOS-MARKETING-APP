@@ -10,7 +10,7 @@ import {
 import { subirImagen } from "../lib/estudio";
 import { urlBibliotecaWeb } from "../lib/biblioteca";
 import {
-  ELEMENTOS_MERCADO, DESEOS_REISS, NIVELES_CONSCIENCIA, LIMITES_ANUNCIO, MAX_MATERIAL, MAX_PRODUCTOS, NIVELES_STOCK,
+  ELEMENTOS_MERCADO, DESEOS_REISS, NIVELES_CONSCIENCIA, LIMITES_ANUNCIO, MAX_MATERIAL, MAX_PRODUCTOS, MAX_FOTOS_PRODUCTO, NIVELES_STOCK,
   limpiarCatalogo, productosActivos, pasosDelEstudio, nombreDeNivel, fraseActivo, mensajePedirDatos,
   ideaParaRecrear, ideaParaSeguirVideo,
 } from "../lib/estudioMercado";
@@ -176,8 +176,59 @@ function Mensaje({ aviso }) {
 
 const PRODUCTO_VACIO = () => ({
   id: `p-nuevo-${Date.now().toString(36)}`, nombre: "", tipo: "producto", precio: "", oferta: "", paraQuien: "", beneficios: "", activo: true,
-  stock: "", stockNota: "", ofertaHasta: "", diferenciador: "",
+  stock: "", stockNota: "", ofertaHasta: "", diferenciador: "", fotos: [],
 });
+
+/**
+ * Las fotos de un producto: el Estudio las pone de referencia cuando crea una pieza de ese producto, para
+ * que salga el producto REAL y no uno parecido. Se suben a la galería del Estudio al escogerlas.
+ */
+function FotosProducto({ client, producto, lectura, onCambiar }) {
+  const ids = useId();
+  const [subiendo, setSubiendo] = useState(false);
+  const [error, setError] = useState("");
+  const fotos = producto.fotos ?? [];
+  const elegir = async (e) => {
+    // Se copia ANTES de vaciar el campo: vaciarlo deja la lista vacía.
+    const archivos = [...e.target.files].slice(0, MAX_FOTOS_PRODUCTO - fotos.length);
+    e.target.value = "";
+    if (!archivos.length) return;
+    setSubiendo(true);
+    setError("");
+    const nuevas = [];
+    try {
+      for (const a of archivos) nuevas.push((await subirImagen(client.id, a)).archivo.clave);
+    } catch (err) {
+      setError(err.message);
+    }
+    if (nuevas.length) onCambiar([...fotos, ...nuevas]);
+    setSubiendo(false);
+  };
+  return (
+    <div className="field">
+      <span className="label" id={`${ids}-t`}>Fotos del producto <span style={{ fontWeight: 400, textTransform: "none" }}>· el Estudio las usa de referencia</span></span>
+      <div className="mercado-fotos" role="group" aria-labelledby={`${ids}-t`}>
+        {fotos.map((k, i) => (
+          <div key={k} className="mercado-foto">
+            <img src={`/api/media/${k}`} alt={`Foto ${i + 1} de ${producto.nombre || "el producto"}`} loading="lazy" />
+            {!lectura && (
+              <button type="button" className="btn-icon btn-sm" aria-label={`Quitar la foto ${i + 1}`} onClick={() => onCambiar(fotos.filter((x) => x !== k))}>
+                <Icon name="close" size={14} />
+              </button>
+            )}
+          </div>
+        ))}
+        {!lectura && fotos.length < MAX_FOTOS_PRODUCTO && (
+          <label className="btn btn-secondary btn-sm mercado-foto-subir">
+            <Icon name="plus" size={14} /> {subiendo ? "Subiendo…" : "Añadir foto"}
+            <input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden disabled={subiendo} onChange={elegir} />
+          </label>
+        )}
+      </div>
+      {error && <p role="alert" className="cerebro-error" style={{ margin: 0 }}>{error}</p>}
+    </div>
+  );
+}
 
 function PanelCatalogo({ client, catalogo, inventario: inventarioGuardado, estudio, lectura, onOcupado, onGuardado, onSeguir }) {
   const ids = useId();
@@ -328,6 +379,9 @@ function PanelCatalogo({ client, catalogo, inventario: inventarioGuardado, estud
                   </div>
                 </div>
               </>
+            )}
+            {(!lectura || p.fotos?.length > 0) && (
+              <FotosProducto client={client} producto={p} lectura={lectura} onCambiar={(fotos) => cambiar(p.id, "fotos", fotos)} />
             )}
             {!lectura && (
               <div className="mercado-producto-pie">
