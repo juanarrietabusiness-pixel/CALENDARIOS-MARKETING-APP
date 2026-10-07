@@ -206,6 +206,8 @@ src/
     estratega.js          El estratega de campañas: las cuentas (costo máximo por resultado, tres escenarios), el
                           manual de la agencia, la nomenclatura, el pedido a la IA, leer el plan, pasarlo a «Nueva
                           campaña» y a texto (puro; también lo importa el Worker)
+    diagnostico.js        El diagnóstico de las campañas activas: las reglas (apagar, revisar, renovar, vigilar,
+                          escalar, duplicar) sobre 7 días frente a 30 y al costo aceptable (puro; también el Worker)
     anunciosApi.js        Cliente de /api/anuncios
   components/
     Icon.jsx              Set de iconos SVG monocromos (rejilla 24, trazo 1.75)
@@ -280,6 +282,7 @@ src/
     anuncios/Estratega.jsx         El estratega: para un cliente o alguien de fuera, el plan, ajustarlo, guardarlo y llevarlo
                           a «Nueva campaña» (lazy)
     SeccionManualCampanas.jsx      Ajustes → Manual de campañas de la agencia
+    anuncios/Diagnostico.jsx       El diagnóstico: lo que dicen las reglas, «Apagar» y «Subir a…» (con confirmación) (lazy)
   pages/
     Login.jsx             Acceso
     Equipo.jsx            Quién entra en el espacio; invitar y sacar
@@ -393,7 +396,7 @@ worker/
                           (/api/webhooks/meta, sin sesión)
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
     plantillas.js         /api/plantillas-plan: listar, guardar (cambiar una de arranque o crear) y borrar/restaurar
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -2343,6 +2346,21 @@ son del servidor.
   `planes_campana` (0039; `client_id` vacío para alguien de fuera, como las auditorías).
   · No toca Meta: no hace falta cuenta publicitaria para planear. Lo de fuera se puede «Guardar como cliente» (con su
   producto en el catálogo) o copiar como texto.
+
+- **El diagnóstico de las campañas activas son REGLAS, no la IA** (`src/lib/diagnostico.js`, `POST
+  /api/anuncios/clientes/<c>/diagnostico`). Últimos 7 días frente a 30 y al costo aceptable por resultado (el del
+  estratega; vacío, el promedio del mes de cada campaña): apagar (el doble de lo aceptable gastado sin resultados, o
+  cada resultado a más de 1,5 veces), revisar (activo sin gastar), renovar (un anuncio con frecuencia ≥ 3 o el CTR
+  un 30 % abajo), vigilar (el costo sube un 30 %), escalar (≤ 70 % de lo aceptable: +20 %, más reinicia el
+  aprendizaje) y duplicar (funciona pero la frecuencia pasa de 2,5: otro público). La IA sólo lo explica si se marca
+  (función «diagnóstico de campañas»), con la orden de no inventar cifras; si falla, las reglas siguen.
+  · **Leer cuesta 2 + 4 llamadas por campaña activa** (hasta seis): Meta no da dos rangos en un mismo campo, así que
+  conjuntos y anuncios se piden con 30 días y otra vez sólo con el id y 7 días. Pide `frequency` (`CAMPOS_DIAGNOSTICO`).
+  · **Nada cambia solo:** «Apagar» pausa ESE conjunto o anuncio (cualquiera que escriba); «Subir a…» cambia el
+  `daily_budget` de un conjunto y es como activar: administrador (403 antes de leer nada) y `confirmado: true` (409
+  con «De X a Y al día»). Un conjunto sin presupuesto propio (lo lleva la campaña) no se toca desde aquí. Todo id se
+  comprueba de la cuenta del cliente (`objetoDeLaCuenta`). Se apunta en el historial: 0040 reconstruye
+  `historial_anuncios` para admitir «presupuesto» y «publico» (el CHECK no se cambia en SQLite).
 
 ## Documentos relacionados
 

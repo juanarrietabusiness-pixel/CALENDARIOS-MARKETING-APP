@@ -134,3 +134,22 @@
 .anu-revision-anuncios p { margin: var(--sp-1) 0 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .anu-chips .filter-chip { display: inline-flex; align-items: center; gap: var(--sp-1); }
 .anu-sugeridos { display: flex; flex-direction: column; gap: var(--sp-1); }
+
+/* El diagnóstico de las campañas activas */
+.anu-diagnostico { max-width: 820px; }
+.anu-diagnostico .sheet-body { display: flex; flex-direction: column; gap: var(--sp-3); }
+.anu-diagnostico .sheet-body > * { flex-shrink: 0; }
+.anu-diag-opciones { display: flex; flex-direction: column; gap: var(--sp-2); align-items: flex-start; }
+.anu-diag-opciones .input { max-width: 220px; }
+.anu-diag-resumen { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: var(--sp-2); }
+.anu-diag-resumen div { display: flex; flex-direction: column; padding: var(--sp-2); background: var(--surface-2); border-radius: var(--radius-sm); }
+.anu-diag-explicacion { margin: 0; padding: var(--sp-3); background: var(--surface-2); border-radius: var(--radius); white-space: pre-wrap; }
+.anu-diag-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.anu-diag-lista li { padding: var(--sp-3); background: var(--surface-2); border-radius: var(--radius-sm); border-left: 3px solid var(--border-strong); display: flex; flex-direction: column; gap: var(--sp-1); }
+.anu-diag-lista li[data-tono="mal"] { border-left-color: var(--danger, #e5484d); }
+.anu-diag-lista li[data-tono="espera"] { border-left-color: var(--warning, var(--accent-alt)); }
+.anu-diag-lista li[data-tono="ok"] { border-left-color: var(--success, var(--accent)); }
+.anu-diag-lista p { margin: 0; font-size: var(--fs-xs); }
+.anu-diag-cabeza { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-2); }
+.anu-diag-accion { font-size: var(--fs-3xs); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.anu-diag-botones { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }

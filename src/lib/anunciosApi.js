@@ -46,3 +46,10 @@ export const armarPlan = (datos) => pedir("/anuncios/estratega", post(datos));
 export const planes = (clienteId = "") => pedir(`/anuncios/planes${clienteId ? `?cliente=${encodeURIComponent(clienteId)}` : ""}`);
 export const guardarPlan = (datos) => pedir("/anuncios/planes", post(datos));
 export const borrarPlan = (id) => pedir(`/anuncios/planes/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+// El diagnóstico de las campañas activas y lo que propone.
+export const diagnostico = (clientId, { costoMax = 0, conIA = false } = {}) => pedir(deCliente(clientId, "/diagnostico"), post({ costoMax, conIA }));
+export const pausarObjeto = (clientId, id) => pedir(deCliente(clientId, `/objetos/${encodeURIComponent(id)}/pausar`), post());
+/** Sin `confirmado`, el servidor contesta 409 con el resumen («De 10 a 12 al día»). */
+export const presupuestoConjunto = (clientId, id, diario, confirmado = false) =>
+  pedir(deCliente(clientId, `/conjuntos/${encodeURIComponent(id)}/presupuesto`), post({ diario, ...(confirmado ? { confirmado: true } : {}) }));

@@ -566,3 +566,64 @@ describe("una campaña con varios públicos y anuncios, a WhatsApp", () => {
     expect((await pedir(EDITOR, "/clientes/c1/similares", { method: "POST", body: { origenId: "999" } })).status).toBe(404);
   });
 });
+
+describe("el diagnóstico de las campañas activas", () => {
+  const ins = (gasto, res, extra = {}) => ({ data: [{ spend: String(gasto), impressions: "4000", reach: "2000", ctr: "2", clicks: "80", actions: [{ action_type: "link_click", value: String(res) }], ...extra }] });
+  // La campaña 800 (activa, de tráfico): un conjunto que funciona (901) y uno caro (9012); un anuncio cansado (9031).
+  async function conDiagnostico() {
+    await conCuenta();
+    const original = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (e, init = {}) => {
+      const u = new URL(String(e));
+      const ruta = u.pathname.replace(/^\/v[\d.]+/, "");
+      const de7 = (u.searchParams.get("fields") ?? "").includes("last_7d");
+      const metodo = init.method ?? "GET";
+      if (ruta === "/800/adsets" && metodo === "GET") {
+        llamadas.push({ metodo, ruta, params: Object.fromEntries(u.searchParams), cuerpo: {} });
+        return respuesta({ data: [
+          { id: "901", name: "Intereses", effective_status: "ACTIVE", daily_budget: "1000", insights: de7 ? ins(15, 12, { frequency: "1.4" }) : ins(60, 40) },
+          { id: "9012", name: "Abierto", effective_status: "ACTIVE", daily_budget: "1000", insights: de7 ? ins(20, 2) : ins(60, 30) },
+        ] });
+      }
+      if (ruta === "/800/ads" && metodo === "GET") {
+        llamadas.push({ metodo, ruta, params: Object.fromEntries(u.searchParams), cuerpo: {} });
+        return respuesta({ data: [{ id: "9031", name: "Reel", effective_status: "ACTIVE", adset_id: "901", insights: de7 ? ins(10, 8, { frequency: "3.6" }) : ins(40, 30) }] });
+      }
+      if (ruta === "/9012" && metodo === "GET") return respuesta({ id: "9012", name: "Abierto", account_id: "111", daily_budget: "1000" });
+      if (ruta === "/7777" && metodo === "GET") return respuesta({ id: "7777", name: "Ajeno", account_id: "999", daily_budget: "1000" });
+      return original(e, init);
+    }));
+  }
+
+  it("dice qué apagar, qué escalar y qué renovar, sin tocar nada", async () => {
+    await conDiagnostico();
+    const res = await pedir(EDITOR, "/clientes/c1/diagnostico", { method: "POST", body: { costoMax: 2 } });
+    expect(res.status).toBe(200);
+    const d = await res.json();
+    expect(d.hallazgos.map((h) => [h.accion, h.nombre])).toEqual([["apagar", "Abierto"], ["renovar", "Reel"], ["escalar", "Intereses"]]);
+    expect(d.hallazgos.find((h) => h.accion === "escalar").sugerencia).toEqual({ diarioActual: 10, diarioNuevo: 12 });
+    expect(d.moneda).toBe("USD");
+    // Sólo lecturas: dos de la lista y cuatro de la campaña activa.
+    expect(llamadas.filter((l) => l.metodo !== "GET")).toHaveLength(0);
+  });
+
+  it("pausar un conjunto de la cuenta, sí; uno de otra cuenta, no existe", async () => {
+    await conDiagnostico();
+    expect((await pedir(EDITOR, "/clientes/c1/objetos/9012/pausar", { method: "POST" })).status).toBe(200);
+    expect(llamadas.filter((l) => l.metodo === "POST").map((l) => [l.ruta, l.cuerpo.status])).toEqual([["/9012", "PAUSED"]]);
+    expect((await pedir(EDITOR, "/clientes/c1/objetos/7777/pausar", { method: "POST" })).status).toBe(404);
+  });
+
+  it("subir el presupuesto: sólo el administrador, y confirmando", async () => {
+    await conDiagnostico();
+    expect((await pedir(EDITOR, "/clientes/c1/conjuntos/9012/presupuesto", { method: "POST", body: { diario: 12, confirmado: true } })).status).toBe(403);
+    const sin = await pedir(JEFE, "/clientes/c1/conjuntos/9012/presupuesto", { method: "POST", body: { diario: 12 } });
+    expect(sin.status).toBe(409);
+    expect((await sin.json()).confirmar.resumen).toMatch(/De 10,00.*a 12,00.*al día/);
+    expect(llamadas.filter((l) => l.metodo === "POST")).toHaveLength(0);
+    expect((await pedir(JEFE, "/clientes/c1/conjuntos/9012/presupuesto", { method: "POST", body: { diario: 12, confirmado: true } })).status).toBe(200);
+    expect(llamadas.filter((l) => l.metodo === "POST").map((l) => [l.ruta, l.cuerpo.daily_budget])).toEqual([["/9012", "1200"]]);
+    const h = await (await pedir(JEFE, "/clientes/c1/historial")).json();
+    expect(h[0]).toMatchObject({ accion: "presupuesto" });
+  });
+});
