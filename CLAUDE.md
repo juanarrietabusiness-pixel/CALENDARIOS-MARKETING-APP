@@ -370,7 +370,7 @@ worker/
     bandeja.js            /api/bandeja (comentarios y mensajes) y el webhook de Meta
                           (/api/webhooks/meta, sin sesión)
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1222,6 +1222,19 @@ son del servidor.
   la idea pide el gancho y el precio EXACTOS del catálogo. El kit de marca lee el estudio aprobado.
   · **Los siete elementos** son genéricos (`ELEMENTOS_MERCADO`); si la agencia usa otros nombres, se cambian
   ahí. Los marcos (niveles de Schwartz, deseos de Reiss) son públicos.
+- **El inventario del catálogo es un interruptor POR CLIENTE, apagado** (`mercado_clientes.inventario`, 0036; los
+  campos `stock`, `stockNota`, `ofertaHasta` y `diferenciador` van dentro del JSON del catálogo). Apagado no existe
+  para nadie: `productosParaPlan(catalogo, false)` los borra y `catalogoATexto` no los nombra. Encendido: lo agotado
+  no entra al plan y la nota de cifras lo nombra APARTE con «no se anuncia» (otra nota del cerebro puede hablar de
+  él); la oferta lleva «válida hasta…»; a la IA sólo le llega la escasez («poca», sin cifras) — `stockNota` es de la
+  agencia. La rotación de la matriz es `ordenDeProductos()` (pilares.js): reparto ponderado (mucho 3, normal y poco
+  2) y lo que tiene POCO sólo en la primera mitad del mes. Con todo sin indicar es la rotación de siempre, en el
+  orden del catálogo. El PUT sin `inventario` booleano deja el interruptor como estaba.
+- **«Mejorar» no pisa lo que escribió una persona.** En «Planificar mes» el prompt pedía «si ya hay idea, mejórala»
+  y el código se quedaba con la de la persona: la mejora se pagaba y se tiraba. Ahora la de la IA queda en
+  `sugerencia` al lado («Usar esta» / «Quedarme con la mía»); `sugerencia` no viaja al calendario. «Escribir guiones
+  y descripciones» manda reel, carrusel, historia y directo sin guion por `buildScriptPrompt` y lo demás por
+  `buildDescripcionesPrompt`, y sólo rellena.
 - **Los tipos de contenido y el ritmo semanal** (`src/lib/pilares.js`, `clients.ritmo_contenido`, 0035). La
   agencia hace un tipo por día (lunes Anuncio, martes Beneficios/Promociones, miércoles Servicios/Productos,
   jueves Educativo, viernes Diferenciador, sábado 7 maletas rotando garantía → testimonio → solución →

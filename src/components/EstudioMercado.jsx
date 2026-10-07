@@ -10,8 +10,8 @@ import {
 import { subirImagen } from "../lib/estudio";
 import { urlBibliotecaWeb } from "../lib/biblioteca";
 import {
-  ELEMENTOS_MERCADO, DESEOS_REISS, NIVELES_CONSCIENCIA, LIMITES_ANUNCIO, MAX_MATERIAL, MAX_PRODUCTOS,
-  limpiarCatalogo, productosActivos, pasosDelEstudio, nombreDeNivel, fraseActivo,
+  ELEMENTOS_MERCADO, DESEOS_REISS, NIVELES_CONSCIENCIA, LIMITES_ANUNCIO, MAX_MATERIAL, MAX_PRODUCTOS, NIVELES_STOCK,
+  limpiarCatalogo, productosActivos, pasosDelEstudio, nombreDeNivel, fraseActivo, mensajePedirDatos,
 } from "../lib/estudioMercado";
 import "./EstudioMercado.css";
 
@@ -23,6 +23,10 @@ import "./EstudioMercado.css";
 //
 //   Catálogo     Los productos y servicios con su precio. «Proponer con IA»
 //                los saca del cerebro; nada se guarda sin pulsar Guardar.
+//                El inventario (disponibilidad, vigencia de la oferta,
+//                diferenciador) es un interruptor POR CLIENTE, apagado: sólo
+//                algunos lo necesitan y a los demás no les debe hacer ruido.
+//                «Pedir datos al cliente» arma el mensaje de WhatsApp.
 //   Estudio      «Realizar estudio de mercado»: lo general y luego un
 //                producto por llamada, cada paso guardado en el borrador.
 //                Se revisa (y se corrige) antes de aprobar; aprobar lo
@@ -133,8 +137,9 @@ function DialogoMercado({ client, datos, inicial, onDatos, onCambioCerebro, onCe
           </div>
           <div role="tabpanel" id={`${ids}-panel-${tab}`} aria-labelledby={`${ids}-tab-${tab}`}>
             {tab === "catalogo" && (
-              <PanelCatalogo client={client} catalogo={datos.catalogo} lectura={lectura} onOcupado={setOcupado}
-                onGuardado={(catalogo) => { onDatos({ catalogo }); onCambioCerebro?.(); }} onSeguir={() => setTab("estudio")} />
+              <PanelCatalogo client={client} catalogo={datos.catalogo} inventario={datos.inventario} estudio={datos.borrador ?? datos.estudio}
+                lectura={lectura} onOcupado={setOcupado}
+                onGuardado={(r) => { onDatos(r); onCambioCerebro?.(); }} onSeguir={() => setTab("estudio")} />
             )}
             {tab === "estudio" && (
               <PanelEstudio client={client} datos={datos} lectura={lectura} onOcupado={setOcupado}
@@ -165,14 +170,19 @@ function Mensaje({ aviso }) {
 // Catálogo
 // ------------------------------------------------------------
 
-const PRODUCTO_VACIO = () => ({ id: `p-nuevo-${Date.now().toString(36)}`, nombre: "", tipo: "producto", precio: "", oferta: "", paraQuien: "", beneficios: "", activo: true });
+const PRODUCTO_VACIO = () => ({
+  id: `p-nuevo-${Date.now().toString(36)}`, nombre: "", tipo: "producto", precio: "", oferta: "", paraQuien: "", beneficios: "", activo: true,
+  stock: "", stockNota: "", ofertaHasta: "", diferenciador: "",
+});
 
-function PanelCatalogo({ client, catalogo, lectura, onOcupado, onGuardado, onSeguir }) {
+function PanelCatalogo({ client, catalogo, inventario: inventarioGuardado, estudio, lectura, onOcupado, onGuardado, onSeguir }) {
   const ids = useId();
   const [lista, setLista] = useState(() => (catalogo.length ? catalogo : []));
+  const [inventario, setInventario] = useState(Boolean(inventarioGuardado));
   const [trabajando, setTrabajando] = useState("");
   const [aviso, setAviso] = useState(null);
   const [cambiado, setCambiado] = useState(false);
+  const [pedir, setPedir] = useState(null); // el texto del mensaje para el cliente, mientras se ve
   const ocupar = (t) => { setTrabajando(t); onOcupado(Boolean(t)); };
 
   const cambiar = (id, campo, valor) => { setLista((l) => l.map((p) => (p.id === id ? { ...p, [campo]: valor } : p))); setCambiado(true); };
@@ -195,10 +205,11 @@ function PanelCatalogo({ client, catalogo, lectura, onOcupado, onGuardado, onSeg
     ocupar("guardar");
     setAviso(null);
     try {
-      const r = await guardarCatalogo(client.id, limpiarCatalogo(lista));
+      const r = await guardarCatalogo(client.id, limpiarCatalogo(lista), inventario);
       setLista(r.catalogo);
+      setInventario(r.inventario);
       setCambiado(false);
-      onGuardado(r.catalogo);
+      onGuardado({ catalogo: r.catalogo, inventario: r.inventario });
       setAviso({ ok: true, texto: "Catálogo guardado. La IA ya usa estos precios en todo lo que escribe." });
     } catch (e) {
       setAviso({ ok: false, texto: e.message });
@@ -219,6 +230,28 @@ function PanelCatalogo({ client, catalogo, lectura, onOcupado, onGuardado, onSeg
           <button type="button" className="btn btn-secondary" onClick={() => { setLista((l) => [...l, PRODUCTO_VACIO()]); setCambiado(true); }}
             disabled={Boolean(trabajando) || lista.length >= MAX_PRODUCTOS}>
             <Icon name="plus" size={16} /> Añadir producto o servicio
+          </button>
+          <button type="button" className="btn btn-secondary" aria-expanded={Boolean(pedir)} aria-controls={`${ids}-pedir`}
+            onClick={() => setPedir((x) => (x ? null : mensajePedirDatos({ marca: client.name, catalogo: limpiarCatalogo(lista), inventario, estudio })))}>
+            <Icon name="send" size={16} /> Pedir datos al cliente
+          </button>
+        </div>
+      )}
+      {pedir !== null && <PedirDatos id={`${ids}-pedir`} texto={pedir} onTexto={setPedir} onCerrar={() => setPedir(null)} />}
+
+      {!lectura && (
+        <div className="interruptor-fila mercado-inventario">
+          <div>
+            <span id={`${ids}-inv`} style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Inventario y detalles</span>
+            <p className="hint" style={{ margin: 0 }}>
+              Para los clientes que lo necesitan: cuánto hay de cada producto, hasta cuándo vale la oferta y qué lo hace
+              distinto. Lo agotado no sale en el plan del mes, lo que tiene poco va al principio y lo que tiene mucho, más veces.
+            </p>
+          </div>
+          <button type="button" role="switch" aria-labelledby={`${ids}-inv`} aria-checked={inventario}
+            className={`toggle${inventario ? " is-on" : ""}`} disabled={Boolean(trabajando)}
+            onClick={() => { setInventario((x) => !x); setCambiado(true); }}>
+            <span className="toggle-thumb" />
           </button>
         </div>
       )}
@@ -259,6 +292,39 @@ function PanelCatalogo({ client, catalogo, lectura, onOcupado, onGuardado, onSeg
               <label className="label" htmlFor={`${ids}-${i}-b`}>Beneficios principales</label>
               <textarea id={`${ids}-${i}-b`} className="input" rows={2} value={p.beneficios} maxLength={700} readOnly={lectura} onChange={(e) => cambiar(p.id, "beneficios", e.target.value)} />
             </div>
+            {inventario && (
+              <>
+                <div className="mercado-producto-fila">
+                  <div className="field" style={{ flex: "1 1 150px" }}>
+                    <label className="label" htmlFor={`${ids}-${i}-s`}>Disponibilidad</label>
+                    <select id={`${ids}-${i}-s`} className="input" value={p.stock ?? ""} disabled={lectura} onChange={(e) => cambiar(p.id, "stock", e.target.value)}
+                      aria-describedby={p.stock ? `${ids}-${i}-sh` : undefined}>
+                      <option value="">Sin indicar</option>
+                      {NIVELES_STOCK.map((n) => <option key={n.id} value={n.id}>{n.nombre}</option>)}
+                    </select>
+                    {p.stock && <p id={`${ids}-${i}-sh`} className="hint" style={{ margin: 0 }}>{NIVELES_STOCK.find((n) => n.id === p.stock)?.ayuda}</p>}
+                  </div>
+                  <div className="field" style={{ flex: "2 1 220px" }}>
+                    <label className="label" htmlFor={`${ids}-${i}-sn`}>Nota del inventario (sólo para la agencia)</label>
+                    <input id={`${ids}-${i}-sn`} className="input" value={p.stockNota ?? ""} maxLength={120} placeholder="Ej.: 40 unidades · llegan más el 20 · 8 cupos por semana"
+                      readOnly={lectura} onChange={(e) => cambiar(p.id, "stockNota", e.target.value)} />
+                  </div>
+                </div>
+                <div className="mercado-producto-fila">
+                  {p.oferta && (
+                    <div className="field" style={{ flex: "1 1 180px" }}>
+                      <span className="label">La oferta vale hasta</span>
+                      <SelectorFecha value={p.ofertaHasta ?? ""} onChange={(d) => cambiar(p.id, "ofertaHasta", d || "")} etiqueta={`Fin de la oferta de ${p.nombre || "este producto"}`} vacio="Sin fecha de fin" prefijo="Hasta" />
+                    </div>
+                  )}
+                  <div className="field" style={{ flex: "2 1 220px" }}>
+                    <label className="label" htmlFor={`${ids}-${i}-d`}>Lo que lo hace distinto</label>
+                    <input id={`${ids}-${i}-d`} className="input" value={p.diferenciador ?? ""} maxLength={240} placeholder="Ej.: el único con garantía de 2 años en la ciudad"
+                      readOnly={lectura} onChange={(e) => cambiar(p.id, "diferenciador", e.target.value)} />
+                  </div>
+                </div>
+              </>
+            )}
             {!lectura && (
               <div className="mercado-producto-pie">
                 <label className="cerebro-casilla">
@@ -284,6 +350,32 @@ function PanelCatalogo({ client, catalogo, lectura, onOcupado, onGuardado, onSeg
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** El mensaje para el cliente: se puede retocar, copiar o abrir en WhatsApp. */
+function PedirDatos({ id, texto, onTexto, onCerrar }) {
+  const [copiado, setCopiado] = useState(false);
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2500);
+    } catch { /* sin portapapeles: el texto está a la vista para copiarlo a mano */ }
+  };
+  return (
+    <div id={id} className="mercado-pedir">
+      <label className="label" htmlFor={`${id}-t`}>Mensaje para el cliente (puedes cambiarlo antes de enviarlo)</label>
+      <textarea id={`${id}-t`} className="input" rows={9} value={texto} onChange={(e) => onTexto(e.target.value)} />
+      <div className="mercado-acciones">
+        <button type="button" className="btn btn-primary btn-sm" onClick={copiar}><Icon name="copy" size={14} /> {copiado ? "Copiado" : "Copiar"}</button>
+        <a className="btn btn-secondary btn-sm" href={`https://wa.me/?text=${encodeURIComponent(texto)}`} target="_blank" rel="noreferrer">
+          <Icon name="external" size={14} /> Abrir en WhatsApp
+        </a>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onCerrar}>Cerrar</button>
+      </div>
+      <span role="status" className="sr-only">{copiado ? "Mensaje copiado" : ""}</span>
     </div>
   );
 }

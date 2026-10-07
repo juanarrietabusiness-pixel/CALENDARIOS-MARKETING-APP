@@ -31,11 +31,12 @@ async function cambiandoCerebro(clienteId, hacer) {
   }
 }
 
-/** { catalogo, estudio, borrador, referencias, actualizado }. */
+/** { catalogo, estudio, borrador, referencias, inventario, actualizado }. */
 export const leerMercado = (clienteId) => pedir(base(clienteId));
 
-export const guardarCatalogo = (clienteId, catalogo) =>
-  cambiandoCerebro(clienteId, () => pedir(`${base(clienteId)}/catalogo`, put({ catalogo })));
+/** → { catalogo, inventario }. `inventario` sin pasar deja el interruptor como estaba. */
+export const guardarCatalogo = (clienteId, catalogo, inventario) =>
+  cambiandoCerebro(clienteId, () => pedir(`${base(clienteId)}/catalogo`, put({ catalogo, ...(typeof inventario === "boolean" ? { inventario } : {}) })));
 
 /** La IA propone el catálogo desde el cerebro; no guarda. */
 export const proponerCatalogo = (clienteId) => gastando(() => pedir(`${base(clienteId)}/catalogo/proponer`, post()));

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   limpiarRitmo, RITMO_POR_DEFECTO, sugerenciasDeTemporada, ritmoDelMes, asignarMatriz, lineasDeContenido,
-  nombreDePilar, presetDePilar, mezclaDeTipos, resumenRitmo, reglasDeLosTipos, MAX_CAMBIOS_POR_SEMANA,
+  nombreDePilar, presetDePilar, mezclaDeTipos, resumenRitmo, reglasDeLosTipos, MAX_CAMBIOS_POR_SEMANA, ordenDeProductos,
 } from "./pilares";
 import { fechasDelMes } from "./fechasEspeciales";
 
@@ -87,5 +87,36 @@ describe("lo que lee la IA", () => {
     expect(mezclaDeTipos([{ pilar: "anuncio" }, { pilar: "anuncio" }, { pilar: "educativo" }, {}])).toEqual([
       { id: "anuncio", nombre: "Anuncio", n: 2 }, { id: "educativo", nombre: "Educativo / Informativo", n: 1 },
     ]);
+  });
+});
+
+describe("los productos según su disponibilidad", () => {
+  const P = (id, stock = "") => ({ id, nombre: id.toUpperCase(), stock });
+
+  it("sin disponibilidad, rotan en el orden del catálogo", () => {
+    expect(ordenDeProductos([P("a"), P("b"), P("c")], 7).map((p) => p.id)).toEqual(["a", "b", "c", "a", "b", "c", "a"]);
+  });
+
+  it("mucho sale más; poco, sólo en la primera mitad; agotado, nunca", () => {
+    const orden = ordenDeProductos([P("mucho", "alto"), P("poco", "bajo"), P("normal", "medio"), P("fuera", "agotado")], 14).map((p) => p.id);
+    const cuenta = (id) => orden.filter((x) => x === id).length;
+    expect(cuenta("fuera")).toBe(0);
+    expect(cuenta("mucho")).toBeGreaterThan(cuenta("normal"));
+    expect(orden.slice(7)).not.toContain("poco");
+    expect(orden.slice(0, 7)).toContain("poco");
+    // Repartido: el que más sale no se amontona (nunca tres seguidos).
+    expect(orden.join(",")).not.toMatch(/mucho,mucho,mucho/);
+  });
+
+  it("si sólo queda lo que tiene poco, sale igual", () => {
+    expect(ordenDeProductos([P("poco", "bajo")], 4).map((p) => p.id)).toEqual(["poco", "poco", "poco", "poco"]);
+    expect(ordenDeProductos([P("x", "agotado")], 3)).toEqual([]);
+  });
+
+  it("la matriz usa ese orden", () => {
+    const pubs = Array.from({ length: 6 }, (_, i) => ({ fecha: `2026-10-0${i + 1}`, pilar: "anuncio" }));
+    const m = asignarMatriz(pubs, { productos: [P("a", "alto"), P("b", "agotado"), P("c", "bajo")] });
+    expect(m.map((x) => x.productoId)).not.toContain("b");
+    expect(m.slice(3).map((x) => x.productoId)).not.toContain("c");
   });
 });
