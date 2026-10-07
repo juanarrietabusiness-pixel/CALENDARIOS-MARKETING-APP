@@ -1,8 +1,9 @@
 // ============================================================
 // Videos cortos: guiones de 8 y 10 segundos (puro)
 //
-// Los modelos de video de la agencia hacen piezas de 8 s (Veo) o 10 s (Kling
-// Omni). En ese tiempo no cabe una historia: cabe UNA idea, en tres tiempos:
+// Los modelos de video de la agencia hacen piezas de 8 s (Veo) o 10 s (Gemini
+// Omni Flash, el «Omni» de Flow; o Kling Omni por Higgsfield). En ese tiempo no
+// cabe una historia: cabe UNA idea, en tres tiempos:
 //
 //   gancho     una acción que para el dedo (los dos primeros segundos);
 //   beneficio  el producto o el resultado en acción, con un solo movimiento

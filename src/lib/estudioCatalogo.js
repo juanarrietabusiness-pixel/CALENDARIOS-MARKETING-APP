@@ -147,6 +147,15 @@ export const MODELOS = Object.freeze([
     para: ["lotes", "pruebas", "barato"],
     ajustes: AJUSTES_VEO, ajustar: ajustarVeo,
   },
+  {
+    // El «Omni» de Flow. Va por la Interactions API de Gemini, no por predictLongRunning como Veo: la duración no es
+    // un parámetro (se dice en el prompt, con los tiempos marcados) y la misma llave de Google sirve.
+    id: "gemini-omni-flash", motor: "gemini", api: "interactions", tipo: "video", gid: "gemini-omni-1.1-flash", nombre: "Gemini Omni Flash · hasta 10 s",
+    creador: "Google", calidad: 4, velocidad: "normal", costo: 0.1, por: "s", referencias: 0, inicial: 1, final: 1, estimado: true,
+    nota: "El Omni de Flow: de 3 a 10 s con sonido, desde texto o con imagen inicial y final. Los tiempos van en el prompt ([0-2 s] …): el guion de 10 s ya los escribe. No acepta fotos con personas reconocibles. Sin probar todavía contra Google. Precio aproximado (720p).",
+    para: ["hasta 10 s", "reels", "con sonido"],
+    ajustes: { aspectRatio: enumerado(["9:16", "16:9"], "9:16"), resolution: enumerado(["720p", "1080p", "360p"], "720p"), duration: enumerado(["4", "6", "8", "10"], "10") },
+  },
   // ---- fal.ai. Las imágenes contestan en el acto; el video va por su cola. Los precios son aproximados.
   {
     id: "nano-banana-fal", motor: "fal", tipo: "imagen", nombre: "Nano Banana (fal)",
