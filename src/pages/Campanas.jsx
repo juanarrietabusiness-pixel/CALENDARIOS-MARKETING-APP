@@ -12,6 +12,7 @@ import { numeroCorto } from "../lib/resultados";
 const AsistenteCampana = lazy(() => import("../components/anuncios/AsistenteCampana"));
 const DialogoActivar = lazy(() => import("../components/anuncios/DialogoActivar"));
 const Estratega = lazy(() => import("../components/anuncios/Estratega"));
+const Diagnostico = lazy(() => import("../components/anuncios/Diagnostico"));
 
 // ============================================================
 // /campanas — los anuncios de Meta de cada cliente
@@ -193,6 +194,7 @@ export default function Campanas({ clients = [], pulso = 0, yo = {}, onClienteNu
   const [fallo, setFallo] = useState("");
   const [asistente, setAsistente] = useState(false); // false | true | { inicial } (el borrador del estratega)
   const [estratega, setEstratega] = useState(false);
+  const [diagnostico, setDiagnostico] = useState(false);
   const [confirmar, setConfirmar] = useState(null);
   const [sincronizando, setSincronizando] = useState(false);
 
@@ -304,6 +306,9 @@ export default function Campanas({ clients = [], pulso = 0, yo = {}, onClienteNu
                 <Icon name="refresh" size={16} /> {sincronizando ? "Leyendo…" : "Actualizar cuentas"}
               </button>
             )}
+            <button type="button" className="btn btn-secondary" onClick={() => setDiagnostico(true)} disabled={!listo}>
+              <Icon name="chart" size={16} /> Diagnóstico
+            </button>
             {!soloLectura && (
               <button type="button" className="btn btn-secondary" onClick={() => setEstratega(true)}>
                 <Icon name="sparkles" size={16} /> Estratega
@@ -424,6 +429,10 @@ export default function Campanas({ clients = [], pulso = 0, yo = {}, onClienteNu
             onClienteNuevo={onClienteNuevo}
             onCrear={(borrador) => { setEstratega(false); setAsistente({ inicial: borrador }); }}
             onCerrar={() => setEstratega(false)} />
+        )}
+        {diagnostico && (
+          <Diagnostico clientId={clienteId} moneda={moneda} esAdmin={esAdmin} soloLectura={soloLectura}
+            onCambio={() => void cargar()} onCerrar={() => setDiagnostico(false)} />
         )}
         {confirmar && <DialogoActivar confirmar={confirmar} onConfirmar={activar} onClose={() => setConfirmar(null)} />}
       </Suspense>

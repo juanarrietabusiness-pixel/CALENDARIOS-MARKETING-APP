@@ -15,6 +15,9 @@
 //   GET  /clientes/:c/intereses?q=                 Buscar intereses de Meta (conjuntos por intereses)
 //   GET  /clientes/:c/publicos                     Públicos de la cuenta (personalizados y similares)
 //   POST /clientes/:c/similares { origenId, pais, porcentaje }  Crear un público similar (no gasta)
+//   POST /clientes/:c/diagnostico { costoMax?, conIA? }   Qué apagar, escalar o renovar (reglas; la IA lo explica)
+//   POST /clientes/:c/objetos/:id/pausar           Pausar un conjunto o un anuncio de la cuenta del cliente
+//   POST /clientes/:c/conjuntos/:id/presupuesto { diario, confirmado }  Subir o bajar (admin, confirmando)
 //   GET  /manual · PUT /manual                     El «Manual de campañas de la agencia» (el estratega lo lee)
 //   POST /estratega { clientId?, externo?, … }     El plan de una campaña (IA; no toca Meta)
 //   GET  /planes?cliente= · POST /planes · DELETE /planes/:id   Los planes guardados
@@ -38,10 +41,11 @@ import {
   ErrorAnuncios, mensajeAnuncios, conexionMeta, cuentaPublica, sincronizarCuentasAnuncios, clienteYCuenta,
   listarCampanas, campanaDeLaCuenta, detalleCampana, estadisticasCuenta, buscarCiudades, pixelesDeLaCuenta,
   mediosDelCliente, prepararMedio, estadoVideo, crearCampana, apuntar, presupuestoDe, fechasDe, cambiarEstado,
-  buscarIntereses, publicosDeLaCuenta, crearSimilar,
+  buscarIntereses, publicosDeLaCuenta, crearSimilar, datosDiagnostico, objetoDeLaCuenta, pausarObjeto, presupuestoDeConjunto,
 } from "../lib/anuncios.js";
-import { rangoInsights, RANGOS, deMenores, resumenPresupuesto, permisosAnunciosQueFaltan } from "../../src/lib/anuncios.js";
-import { ErrorIA } from "../lib/cerebro/ia.js";
+import { diagnosticar, pedidoDiagnosticoIA } from "../../src/lib/diagnostico.js";
+import { rangoInsights, RANGOS, deMenores, aMenores, formatoMoneda, resumenPresupuesto, permisosAnunciosQueFaltan } from "../../src/lib/anuncios.js";
+import { ErrorIA, llamarIA } from "../lib/cerebro/ia.js";
 import { ErrorEstratega, leerManual, guardarManual, armarPlan, listarPlanes, guardarPlan, borrarPlan } from "../lib/estratega.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 
@@ -174,6 +178,9 @@ async function atender(req, env, { acceso, usuario, partes, metodo }) {
   if (sub === "campanas" && accion === "activar" && metodo === "POST" && !esAdmin) {
     return error("Sólo el administrador activa campañas: activar empieza a gastar dinero del cliente.", 403);
   }
+  if (sub === "conjuntos" && accion === "presupuesto" && metodo === "POST" && !esAdmin) {
+    return error("Sólo el administrador cambia el presupuesto: es dinero del cliente.", 403);
+  }
 
   // ---- De un cliente ----
   const { cliente, cuenta } = await clienteYCuenta(acceso, id, { exigirCuenta: sub !== "historial" && sub !== "medios" });
@@ -264,6 +271,54 @@ async function atender(req, env, { acceso, usuario, partes, metodo }) {
     await apuntar(acceso, { clientId: cliente.id, campanaId: c.id, accion, usuario, detalle: { nombre: c.name ?? "", resumen } });
     difundir(env, acceso.ownerId, { tipo: "anuncios", clientId: cliente.id, por: firma(usuario, req) });
     return json({ ok: true, estado: status });
+  }
+
+  // ---- El diagnóstico y lo que propone ----
+  if (sub === "diagnostico" && metodo === "POST") {
+    const datos = (await cuerpo(req)) ?? {};
+    const costoMax = Number(datos.costoMax) > 0 ? Number(datos.costoMax) : 0;
+    const d = diagnosticar(await datosDiagnostico(env, token, cuenta), { costoMax, moneda: cuenta.moneda });
+    let explicacion = "";
+    let avisoIA = null;
+    if (datos.conIA === true) {
+      try {
+        const r = await llamarIA(env, acceso, cliente, { prompt: pedidoDiagnosticoIA({ marca: cliente.name, diagnostico: d, moneda: cuenta.moneda, costoMax }), salida: 1500, funcion: "diagnóstico de campañas" });
+        explicacion = String(r.texto ?? "").trim().slice(0, 3000);
+      } catch (e) {
+        // La explicación es un extra: sin ella, las reglas siguen valiendo.
+        avisoIA = e.message;
+      }
+    }
+    return json({ ...d, moneda: cuenta.moneda, costoMax, explicacion, avisoIA });
+  }
+
+  if (sub === "objetos" && subId && accion === "pausar" && metodo === "POST") {
+    const o = await objetoDeLaCuenta(env, token, cuenta, subId);
+    if (!o) return noEncontrado("Conjunto o anuncio");
+    await pausarObjeto(env, token, o.id);
+    await apuntar(acceso, { clientId: cliente.id, campanaId: o.id, accion: "pausar", usuario, detalle: { nombre: o.name ?? "" } });
+    difundir(env, acceso.ownerId, { tipo: "anuncios", clientId: cliente.id, por: firma(usuario, req) });
+    return json({ ok: true });
+  }
+
+  if (sub === "conjuntos" && subId && accion === "presupuesto" && metodo === "POST") {
+    const o = await objetoDeLaCuenta(env, token, cuenta, subId);
+    if (!o) return noEncontrado("Conjunto");
+    if (!o.daily_budget) return error("Ese conjunto no tiene presupuesto diario propio (lo lleva la campaña o es un total): cámbialo en el Administrador de anuncios.", 409);
+    const b = (await cuerpo(req)) ?? {};
+    const nuevo = Number(b.diario);
+    const antes = deMenores(o.daily_budget, cuenta.moneda);
+    if (!(nuevo > 0)) return error("Escribe el presupuesto diario nuevo.");
+    const menores = aMenores(nuevo, cuenta.moneda);
+    if (cuenta.minimo_diario && menores < cuenta.minimo_diario) return error(`El mínimo diario de la cuenta es ${formatoMoneda(deMenores(cuenta.minimo_diario, cuenta.moneda), cuenta.moneda)}.`);
+    const resumen = `De ${formatoMoneda(antes, cuenta.moneda)} a ${formatoMoneda(nuevo, cuenta.moneda)} al día`;
+    if (b.confirmado !== true) {
+      return json({ error: "Cambiar el presupuesto es dinero: confírmalo.", confirmar: { conjunto: o.name ?? "", resumen, moneda: cuenta.moneda } }, 409);
+    }
+    await presupuestoDeConjunto(env, token, o.id, menores);
+    await apuntar(acceso, { clientId: cliente.id, campanaId: o.id, accion: "presupuesto", usuario, detalle: { nombre: o.name ?? "", resumen } });
+    difundir(env, acceso.ownerId, { tipo: "anuncios", clientId: cliente.id, por: firma(usuario, req) });
+    return json({ ok: true, resumen });
   }
 
   if (sub === "ciudades" && metodo === "GET") {
