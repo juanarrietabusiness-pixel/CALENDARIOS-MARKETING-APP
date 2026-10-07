@@ -13,3 +13,5 @@ export const fijarYo = (u) => { actual = u ?? null; };
 export const yoActual = () => actual;
 export const esAdmin = () => actual?.rol === "admin";
 export const soloLectura = () => Boolean(actual?.soloLectura);
+/** Puede cambiar lo que vale para toda la agencia (las plantillas de plan): quien administra o un editor que no es colaborador. */
+export const editaLaAgencia = () => !soloLectura() && (actual?.rol === "admin" || (actual?.rol === "editor" && !Array.isArray(actual?.clientes)));

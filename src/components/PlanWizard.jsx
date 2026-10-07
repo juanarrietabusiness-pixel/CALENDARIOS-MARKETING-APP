@@ -8,8 +8,10 @@ import Icon from "./Icon";
 import { fechasDelMes } from "../lib/fechasEspeciales";
 import { leerMercado } from "../lib/mercado";
 import { productosParaPlan, limpiarEstudio } from "../lib/estudioMercado";
+import { leerPlantillas } from "../lib/plantillasApi";
+import { plantillaDelCliente, configDeFormatos, resumenPlantilla, OBJETIVOS_PLAN } from "../lib/plantillasPlan";
 import {
-  limpiarRitmo, ritmoDelMes, sugerenciasDeTemporada, asignarMatriz, lineasDeContenido, reglasDeLosTipos,
+  PILARES, limpiarRitmo, ritmoDelMes, sugerenciasDeTemporada, asignarMatriz, lineasDeContenido, reglasDeLosTipos,
   nombreDePilar, resumenRitmo, fechaCorta, CAMPOS_MATRIZ, pilarDe,
 } from "../lib/pilares";
 
@@ -115,6 +117,37 @@ export default function PlanWizard({ client, onGenerate, onClose, mesInicial = n
   const [tplPicker, setTplPicker] = useState(null);
 
   const allDays = daysInMonth(year, month);
+  // Las plantillas de plan de la agencia: «Planificar mes» abre con la del cliente (la personalizada si la tiene).
+  const [plantillas, setPlantillas] = useState(null);
+  const [plantillaElegida, setPlantillaElegida] = useState("");
+  const aplicarPlantilla = (t) => {
+    setPlan("custom");
+    const cfg = configDeFormatos(t);
+    setFormatConfig(Object.fromEntries(Object.entries(cfg).map(([dow, lista]) => [dow, lista.map((h) => ({ ...h, publishTime: "" }))])));
+  };
+  useEffect(() => {
+    let vivo = true;
+    leerPlantillas().then((lista) => {
+      if (!vivo) return;
+      setPlantillas(lista);
+      const delCliente = plantillaDelCliente(client?.planContenido, lista);
+      if (delCliente) {
+        setPlantillaElegida(delCliente.personalizada ? "cliente" : delCliente.id);
+        aplicarPlantilla(delCliente);
+      }
+    }).catch(() => { if (vivo) setPlantillas([]); });
+    return () => { vivo = false; };
+    // Sólo al abrir: elegir otra plantilla o tocar los formatos después no debe volver a la del cliente.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const plantillaDelClienteActual = plantillas ? plantillaDelCliente(client?.planContenido, plantillas) : null;
+  const elegirPlantilla = (id) => {
+    setPlantillaElegida(id);
+    const t = id === "cliente" ? plantillaDelClienteActual : (plantillas ?? []).find((p) => p.id === id);
+    if (t) aplicarPlantilla(t);
+  };
+  const plantillaActual = plantillaElegida === "cliente" ? plantillaDelClienteActual : (plantillas ?? []).find((p) => p.id === plantillaElegida);
+
   const isCustom = plan === "custom";
   const postsPerDay = PLANS[plan]?.posts || 2;
 
@@ -274,10 +307,11 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
     const general = limpiarEstudio(mercado?.estudio)?.general;
     const lista = [];
     for (const d of estructuraDelMes()) {
-      d.formats.forEach((_, j) => {
+      d.formats.forEach((f, j) => {
         const previa = (ideas[d.date] || [])[j] || {};
         const propia = Object.fromEntries(CAMPOS_MATRIZ.filter((k) => previa[k]).map((k) => [k, previa[k]]));
-        lista.push({ clave: `${d.date}|${j}`, pilar: d.pilar, ...propia });
+        // El tipo de la publicación: el que diga la plantilla (un reel viral, la comunidad) o el del ritmo del día.
+        lista.push({ clave: `${d.date}|${j}`, pilar: f.pilar || d.pilar, ...propia });
       });
     }
     const asignada = asignarMatriz(lista, {
@@ -630,7 +664,7 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
           hashtagsFinales: idea?.hashtagsFinales || "",
           script: idea?.descripcion || idea?.script || "",
           status: idea?.status || "pending",
-          category: cat,
+          category: nombreDePilar(idea?.pilar || m.pilar) || cat,
           comment: "",
           publishTime: f.publishTime || "",
         };
@@ -687,6 +721,25 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
                   </select>
                 </div>
               </div>
+              {plantillas?.length > 0 && (
+                <div className="field" style={{ marginBottom: "var(--sp-4)" }}>
+                  <label className="label" htmlFor={`${ids}-plantilla`}>Plantilla del plan</label>
+                  <select id={`${ids}-plantilla`} className="input" value={plantillaElegida} onChange={(e) => elegirPlantilla(e.target.value)}>
+                    <option value="">Ninguna (elegir abajo)</option>
+                    {plantillaDelClienteActual?.personalizada && <option value="cliente">La de {client?.name || "este cliente"} (personalizada)</option>}
+                    {OBJETIVOS_PLAN.map((o) => (
+                      <optgroup key={o.id} label={o.nombre}>
+                        {plantillas.filter((t) => t.objetivo === o.id).map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <p className="hint" style={{ margin: "var(--sp-1) 0 0" }}>
+                    {plantillaActual
+                      ? `${resumenPlantilla(plantillaActual)}. Puedes ajustar los formatos de este mes abajo sin cambiar la plantilla.`
+                      : "Elige una plantilla de la agencia o arma el plan a mano. La del cliente se fija en su ficha (pestaña Semanal)."}
+                  </p>
+                </div>
+              )}
               <fieldset style={{ border: "none", marginBottom: "var(--sp-4)" }}>
                 <legend className="label">Plan de publicaciones</legend>
               <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
@@ -728,7 +781,7 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
 
               <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", flexWrap: "wrap", marginBottom: "var(--sp-3)" }}>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => setTplPicker(tplPicker === "formats" ? null : "formats")}>
-                  <Icon name="calendar" size={14} /> Plantillas de formatos
+                  <Icon name="calendar" size={14} /> Formatos guardados en este navegador
                 </button>
               </div>
               {tplPicker === "formats" && (
@@ -832,6 +885,21 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
                             }
                             style={{ width: 100, fontSize: "var(--fs-3xs)", padding: "var(--sp-1)" }}
                           />
+                          <select
+                            className="input"
+                            aria-label={`Tipo de contenido, ${DAYS[dow]} publicación ${si + 1}`}
+                            value={slot.pilar || ""}
+                            onChange={(e) =>
+                              setFormatConfig((prev) => ({
+                                ...prev,
+                                [dow]: prev[dow].map((s, j) => (j === si ? { ...s, pilar: e.target.value } : s)),
+                              }))
+                            }
+                            style={{ width: "auto", maxWidth: 190, fontSize: "var(--fs-2xs)", padding: "var(--sp-1) var(--sp-2)" }}
+                          >
+                            <option value="">Tipo: del ritmo</option>
+                            {PILARES.map((pl) => <option key={pl.id} value={pl.id}>{pl.nombre}</option>)}
+                          </select>
                         </div>
                       ))}
                     </div>
