@@ -56,6 +56,7 @@ const ClientModal = lazy(() => import("./components/ClientModal"));
 const PlanWizard = lazy(() => import("./components/PlanWizard"));
 const Aprobar = lazy(() => import("./pages/Aprobar"));
 const Informe = lazy(() => import("./pages/Informe"));
+const InformeAnuncios = lazy(() => import("./pages/InformeAnuncios"));
 const AuditoriaPublica = lazy(() => import("./pages/AuditoriaPublica"));
 const Auditorias = lazy(() => import("./pages/Auditorias"));
 const Biblioteca = lazy(() => import("./pages/Biblioteca"));
@@ -155,6 +156,8 @@ function App() {
   if (ruta.vista === "aprobar") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><Aprobar /></Suspense>;
   // El informe mensual que abre el cliente, igual: sin sesión.
   if (ruta.vista === "informe") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><Informe /></Suspense>;
+  // Y el de anuncios.
+  if (ruta.vista === "informe-anuncios") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><InformeAnuncios /></Suspense>;
   // Y la auditoría de perfil que se le manda a un cliente o a un prospecto.
   if (ruta.vista === "auditoria") return <Suspense fallback={<Aviso>Cargando…</Aviso>}><AuditoriaPublica /></Suspense>;
   return <Panel ruta={ruta} />;

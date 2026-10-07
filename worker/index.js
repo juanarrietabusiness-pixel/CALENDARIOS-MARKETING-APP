@@ -27,7 +27,7 @@ import { json, error, noAutenticado, noEncontrado, cuerpo, CABECERAS_API, rangoS
 import { crearAcceso } from "./lib/acceso.js";
 import { usuarioDeLaPeticion, iniciarSesion, cerrarSesion, cookieSesion, cookieBorrada } from "./lib/sesion.js";
 import { registrarRespuesta, registrarComentario } from "./lib/cerebro/aprender.js";
-import { calendarioPorTestigo, enviarAprobacion, actualizarContenido, mediaPermitida, comentarCliente, enviarRevision, informePorTestigo, auditoriaPorTestigo } from "./lib/publico.js";
+import { calendarioPorTestigo, enviarAprobacion, actualizarContenido, mediaPermitida, comentarCliente, enviarRevision, informePorTestigo, informeAnunciosPorTestigo, auditoriaPorTestigo } from "./lib/publico.js";
 import { difundir } from "./lib/vivo.js";
 import { rutasDatos } from "./rutas/datos.js";
 import { rutasAvisos } from "./rutas/avisos.js";
@@ -56,6 +56,7 @@ import { rutasAnuncios } from "./rutas/anuncios.js";
 import { avanzarPendientes } from "./lib/estudio/trabajos.js";
 import { rutasMCP, rutasMCPPublicas } from "./rutas/mcp.js";
 import { informePendiente } from "./lib/informes.js";
+import { informeAnunciosPendiente } from "./lib/informeAnuncios.js";
 import { rutasBandeja, rutaWebhookMeta } from "./rutas/bandeja.js";
 
 // El Durable Object del espacio. Se reexporta desde aquí porque
@@ -239,6 +240,13 @@ export default {
       // que el calendario. Sólo lectura, y sólo si se compartió.
       if (partes[0] === "publico-informe" && partes.length === 2 && metodo === "GET") {
         const datos = await informePorTestigo(env.DB, partes[1]);
+        return datos ? json(datos) : noEncontrado("Informe");
+      }
+
+      // El informe de anuncios: igual, y sin el costo por resultado si la
+      // agencia decidió no enseñarlo (se quita, no se esconde).
+      if (partes[0] === "publico-informe-anuncios" && partes.length === 2 && metodo === "GET") {
+        const datos = await informeAnunciosPorTestigo(env.DB, partes[1]);
         return datos ? json(datos) : noEncontrado("Informe");
       }
 
@@ -482,6 +490,9 @@ export default {
       if (fotos) return;
       const informes = await informePendiente(env, cuando).catch((e) => { console.error("cron informes:", e); return 1; });
       if (informes) return;
+      // El de anuncios, a la misma hora y con la misma regla: uno por vuelta.
+      const deAnuncios = await informeAnunciosPendiente(env, cuando).catch((e) => { console.error("cron informe de anuncios:", e); return 1; });
+      if (deAnuncios) return;
       // Y por último el Estudio: lo que nadie está mirando (cerró la pestaña).
       await avanzarPendientes(env, cuando).catch((e) => console.error("cron estudio:", e));
     })());

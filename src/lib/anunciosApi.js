@@ -53,3 +53,14 @@ export const pausarObjeto = (clientId, id) => pedir(deCliente(clientId, `/objeto
 /** Sin `confirmado`, el servidor contesta 409 con el resumen («De 10 a 12 al día»). */
 export const presupuestoConjunto = (clientId, id, diario, confirmado = false) =>
   pedir(deCliente(clientId, `/conjuntos/${encodeURIComponent(id)}/presupuesto`), post({ diario, ...(confirmado ? { confirmado: true } : {}) }));
+
+// El informe de anuncios (aparte del de redes).
+export const informesAnuncios = (clientId) => pedir(deCliente(clientId, "/informes"));
+export const ajustesInformeAnuncios = (clientId, ajustes) => pedir(deCliente(clientId, "/ajustes-informe"), { method: "PUT", body: JSON.stringify(ajustes) });
+export const generarInformeAnuncios = (clientId, mes, mostrarCosto) => pedir(deCliente(clientId, "/informes"), post({ mes, mostrarCosto }));
+export const leerInformeAnuncios = (clientId, mes) => pedir(deCliente(clientId, `/informes/${encodeURIComponent(mes)}`));
+/** `{ compartido?, mostrarCosto? }`: compartir crea el enlace (o reusa el que había). */
+export const compartirInformeAnuncios = (clientId, mes, cambios) => pedir(deCliente(clientId, `/informes/${encodeURIComponent(mes)}/compartir`), post(cambios));
+export const borrarInformeAnuncios = (clientId, mes) => pedir(deCliente(clientId, `/informes/${encodeURIComponent(mes)}`), { method: "DELETE" });
+/** El enlace que abre el cliente sin cuenta. */
+export const enlaceInformeAnuncios = (testigo) => `${window.location.origin}/informe-anuncios?t=${testigo}`;

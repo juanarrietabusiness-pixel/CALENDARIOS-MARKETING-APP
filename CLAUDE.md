@@ -208,6 +208,8 @@ src/
                           campaña» y a texto (puro; también lo importa el Worker)
     diagnostico.js        El diagnóstico de las campañas activas: las reglas (apagar, revisar, renovar, vigilar,
                           escalar, duplicar) sobre 7 días frente a 30 y al costo aceptable (puro; también el Worker)
+    informeAnuncios.js    El informe de anuncios: las cifras (4 grandes con el mes anterior, el día a día, los mejores
+                          anuncios, las campañas), quitar el costo, el pedido a la IA y su lectura (puro; también el Worker)
     anunciosApi.js        Cliente de /api/anuncios
   components/
     Icon.jsx              Set de iconos SVG monocromos (rejilla 24, trazo 1.75)
@@ -283,6 +285,8 @@ src/
                           a «Nueva campaña» (lazy)
     SeccionManualCampanas.jsx      Ajustes → Manual de campañas de la agencia
     anuncios/Diagnostico.jsx       El diagnóstico: lo que dicen las reglas, «Apagar» y «Subir a…» (con confirmación) (lazy)
+    anuncios/InformesAnuncios.jsx  «Informe» en Anuncios: generar, automático el día 1, el costo sí o no, compartir (lazy)
+    anuncios/InformeAnunciosVista.jsx  El informe de anuncios como documento (lo usan el diálogo y la página pública)
   pages/
     Login.jsx             Acceso
     Equipo.jsx            Quién entra en el espacio; invitar y sacar
@@ -300,6 +304,7 @@ src/
     ConectarClaude.jsx    /conectar-claude: el permiso que pide Claude (OAuth)
     PublicarAMano.jsx     /a-mano/…: publicar desde el teléfono (música, stickers…)
     Informe.jsx           Lo que ve el cliente al abrir su informe mensual (sin sesión)
+    InformeAnuncios.jsx   Lo que ve el cliente al abrir su informe de anuncios (sin sesión)
     Ajustes.jsx           IA, presupuesto y consumo, integraciones, tareas, copia
     Campanas.jsx          /campanas («Anuncios»): cuenta publicitaria, cifras, campañas, crear (lazy)
 worker/
@@ -327,6 +332,7 @@ worker/
                           portada, cifras del canal (Data API + Analytics)
     metricas.js           La foto diaria de métricas de cada cuenta y de la competencia
     informes.js           Cifras del mes (congeladas) + análisis de la IA; el del día 1
+    informeAnuncios.js    El informe de anuncios: leer el mes de Meta, incrustar las imágenes, generar, el del día 1
     auditorias.js         Leer un perfil (cuenta propia o business_discovery) y auditarlo
     biblioteca.js         Una búsqueda en /ads_archive (una llamada, con topes) y sus errores
     anuncios.js           Meta Ads: cuentas publicitarias, campañas e /insights, subir el medio
@@ -396,7 +402,7 @@ worker/
                           (/api/webhooks/meta, sin sesión)
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
     plantillas.js         /api/plantillas-plan: listar, guardar (cambiar una de arranque o crear) y borrar/restaurar
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -433,6 +439,7 @@ tests/
 | `/invitacion/<testigo>` | Enlace de invitación (sin sesión) |
 | `/aprobar?t=<testigo>` | Página del cliente final (sin sesión) |
 | `/informe?t=<testigo>` | Informe mensual del cliente final (sin sesión) |
+| `/informe-anuncios?t=<testigo>` | Informe de anuncios del cliente final (sin sesión) |
 
 El slug sale del nombre normalizado, y `slugsUnicos()` garantiza que dos
 clientes que normalicen igual no compartan dirección. Los nombres de las
@@ -2361,6 +2368,29 @@ son del servidor.
   con «De X a Y al día»). Un conjunto sin presupuesto propio (lo lleva la campaña) no se toca desde aquí. Todo id se
   comprueba de la cuenta del cliente (`objetoDeLaCuenta`). Se apunta en el historial: 0040 reconstruye
   `historial_anuncios` para admitir «presupuesto» y «publico» (el CHECK no se cambia en SQLite).
+
+- **El informe de anuncios va APARTE del de redes** (`src/lib/informeAnuncios.js`, `worker/lib/informeAnuncios.js`,
+  `informes_anuncios` y `anuncios_clientes`, 0041). El de redes conserva su resumen de la pauta; éste es el que se le
+  manda al cliente de su publicidad: cuatro cifras grandes con el mes anterior, «Lo que logramos», el día a día, los
+  tres mejores anuncios con su imagen, cada campaña —también las del Administrador de anuncios— y lo del mes que viene.
+  · **Las cifras las calcula el código y se congelan;** la IA (función «informe de anuncios») sólo escribe con ellas
+  delante. Si falla, el informe sale igual con `avisos` (los ve la agencia, nunca el cliente).
+  · **Los resultados grandes son los del objetivo que más invirtió** (`otrosObjetivos` lo dice): sumar conversaciones
+  de WhatsApp con clics bajo una sola etiqueta sería mentir. Un test lo cazó: la primera versión sumaba todo.
+  · **«Enseñar el costo por resultado»:** por cliente (el valor de partida) y por informe (el que vale). Apagado,
+  `informeAnunciosPorTestigo` lo QUITA con `sinCosto()`: esconderlo en la pantalla dejaría la cifra en el JSON del
+  enlace. A la IA se le pide no nombrarlo; si se apaga DESPUÉS de generar, el diálogo avisa de que el texto pudo
+  nombrarlo (`costoEnAnalisis`) y conviene regenerar.
+  · **Las imágenes de los mejores se incrustan** (data:, ≤ 250 kB cada una, sólo de `fbcdn.net`/`cdninstagram.com`):
+  el enlace del cliente no tiene sesión para el proxy de miniaturas y lo del CDN de Meta caduca.
+  · **Nueve llamadas a Meta como mucho**, sólo lectura: cabe en una vuelta del cron.
+  · **El automático** (interruptor por cliente, apagado) sale del día 1 al 5 desde las 9:00, uno por vuelta, detrás del
+  informe de redes, y como BORRADOR: no se comparte solo. La fila se escribe ANTES de nada que pueda fallar: un fallo
+  sin fila (Meta desconectado) lo reintentaría cada minuto cinco días seguidos.
+  · **Imprimir desde un diálogo:** el `backdrop-filter` del `.overlay` lo convierte en el bloque contenedor del
+  informe absoluto, y el PDF empezaba debajo de toda la página. `InformeVista.css` lo quita al imprimir (también
+  arregla el informe de redes, que tenía lo mismo).
+  · **Nada de esto se ha probado contra Meta:** los tests hablan con un `fetch` de mentira.
 
 ## Documentos relacionados
 

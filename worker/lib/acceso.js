@@ -99,6 +99,9 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "historial_anuncios",
   // Los planes del estratega de campañas (worker/lib/estratega.js); el de alguien que no es cliente, sin cliente.
   "planes_campana",
+  // El informe de anuncios del mes y lo que se decide por cliente (worker/lib/informeAnuncios.js).
+  "informes_anuncios",
+  "anuncios_clientes",
   // Del equipo. Tienen dueño como las demás: la lista de miembros de un
   // espacio es un dato del espacio, y pedirla sin acotar devolvería la
   // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué
@@ -135,7 +138,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "bandeja_clientes", "bandeja_comentarios", "bandeja_hilos", "bandeja_mensajes",
   "biblioteca_filtros",
   "cuentas_anuncios", "campanas_anuncios", "historial_anuncios",
-  "planes_campana",
+  "planes_campana", "informes_anuncios", "anuncios_clientes",
 ]);
 
 /** Las que cuelgan de un calendario sin llevar el cliente: se acotan por el calendario. */
@@ -508,6 +511,25 @@ export async function clientesSinInforme(db, mes, limite = 1) {
       `select distinct c.client_id, c.owner_id from cuentas_sociales c
         where c.client_id is not null
           and not exists (select 1 from informes i where i.client_id = c.client_id and i.mes = ?)
+        limit ?`,
+    )
+    .bind(mes, limite)
+    .all();
+  return results ?? [];
+}
+
+/**
+ * Los clientes que piden el informe de anuncios automático (`anuncios_clientes.informe_automatico`), con su cuenta
+ * publicitaria asignada y sin informe de ese mes. Como `clientesSinInforme`: de TODOS los espacios, sólo ids y dueño;
+ * cada uno se genera después con `crearAcceso(db, owner_id)`.
+ */
+export async function clientesSinInformeAnuncios(db, mes, limite = 1) {
+  const { results } = await db
+    .prepare(
+      `select a.client_id, a.owner_id from anuncios_clientes a
+        where a.informe_automatico = 1
+          and exists (select 1 from cuentas_anuncios c where c.client_id = a.client_id and c.owner_id = a.owner_id)
+          and not exists (select 1 from informes_anuncios i where i.client_id = a.client_id and i.mes = ?)
         limit ?`,
     )
     .bind(mes, limite)

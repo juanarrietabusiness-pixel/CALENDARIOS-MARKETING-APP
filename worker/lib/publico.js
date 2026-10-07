@@ -23,6 +23,7 @@ import { diaParaCliente, rutasDeMedios } from "../../src/lib/publicacion.js";
 import { aprobacionVigente, tipoAprobacion, huellaPieza } from "../../src/lib/aprobacion.js";
 import { visibleParaCliente } from "../../src/lib/trabajo.js";
 import { resumenDePublicacion } from "./cerebro/senales.js";
+import { sinCosto } from "../../src/lib/informeAnuncios.js";
 
 const MIN_TESTIGO = 24;
 const corta = (s, n) => (s == null ? null : String(s).slice(0, n));
@@ -373,6 +374,40 @@ export async function informePorTestigo(db, token) {
       name: cliente.name, instagram: cliente.instagram,
       primaryColor: cliente.primary_color, secondaryColor: cliente.secondary_color, accentColor: cliente.accent_color,
       // Sólo un logo incrustado: una ruta de R2 necesitaría sesión.
+      logo: typeof cliente.logo === "string" && cliente.logo.startsWith("data:image/") ? cliente.logo : null,
+    },
+  };
+}
+
+/**
+ * El informe de anuncios compartido: las cifras y el análisis, nada de la
+ * agencia (ni avisos ni modelo). Sin el costo por resultado si la agencia
+ * decidió no enseñarlo: se QUITA de lo que sale, no basta con no pintarlo.
+ */
+export async function informeAnunciosPorTestigo(db, token) {
+  if (!testigoValido(token)) return null;
+  const inf = await db
+    .prepare("select client_id, mes, contenido, mostrar_costo, updated_at from informes_anuncios where testigo = ? and compartido = 1 and estado = 'listo'")
+    .bind(token)
+    .first();
+  if (!inf) return null;
+  const cliente = await db
+    .prepare("select name, primary_color, secondary_color, accent_color, logo from clients where id = ?")
+    .bind(inf.client_id)
+    .first();
+  if (!cliente) return null;
+  let contenido = {};
+  try { contenido = JSON.parse(inf.contenido); } catch { /* vacío */ }
+  const mostrarCosto = inf.mostrar_costo === 1;
+  return {
+    mes: inf.mes,
+    actualizado: inf.updated_at,
+    mostrarCosto,
+    cifras: mostrarCosto ? contenido.cifras ?? null : sinCosto(contenido.cifras ?? null),
+    analisis: contenido.analisis ?? null,
+    cliente: {
+      name: cliente.name,
+      primaryColor: cliente.primary_color, secondaryColor: cliente.secondary_color, accentColor: cliente.accent_color,
       logo: typeof cliente.logo === "string" && cliente.logo.startsWith("data:image/") ? cliente.logo : null,
     },
   };

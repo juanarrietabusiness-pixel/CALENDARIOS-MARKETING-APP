@@ -25,6 +25,13 @@
 //   POST /clientes/:c/medio { clave }              Subirlo a Meta (imagen: hash; video: id)
 //   GET  /clientes/:c/video/:id                    ¿Terminó Meta de procesar el video?
 //   GET  /clientes/:c/historial                    Quién creó, activó o pausó qué
+//   GET  /clientes/:c/informes                     Los informes de anuncios y lo que decide la agencia del cliente
+//   PUT  /clientes/:c/ajustes-informe { automatico, mostrarCosto }   Automático el día 1 y el costo por defecto
+//   POST /clientes/:c/informes { mes, mostrarCosto }   Generar o regenerar (lee Meta + IA)
+//   GET  /clientes/:c/informes/:mes                Uno entero
+//   POST /clientes/:c/informes/:mes/compartir { compartido, mostrarCosto }   El enlace del cliente
+//   DELETE /clientes/:c/informes/:mes
+//   (y sin sesión, en worker/index.js: GET /api/publico-informe-anuncios/:testigo)
 //
 // ACTIVAR ES DEL SERVIDOR, NO DE LA PANTALLA. La pantalla enseña un
 // diálogo con el presupuesto y las fechas y pide escribir ACTIVAR; aquí
@@ -48,6 +55,10 @@ import { rangoInsights, RANGOS, deMenores, aMenores, formatoMoneda, resumenPresu
 import { ErrorIA, llamarIA } from "../lib/cerebro/ia.js";
 import { ErrorEstratega, leerManual, guardarManual, armarPlan, listarPlanes, guardarPlan, borrarPlan } from "../lib/estratega.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
+import {
+  generarInformeAnuncios, ajustesInforme, guardarAjustesInforme, resumenInformeAnuncios, contenidoInforme,
+} from "../lib/informeAnuncios.js";
+import { testigo as nuevoTestigo } from "../lib/ids.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 const miniatura = (u) => (u ? `/api/metricas/miniatura?u=${encodeURIComponent(u)}` : "");
@@ -181,6 +192,9 @@ async function atender(req, env, { acceso, usuario, partes, metodo }) {
   if (sub === "conjuntos" && accion === "presupuesto" && metodo === "POST" && !esAdmin) {
     return error("Sólo el administrador cambia el presupuesto: es dinero del cliente.", 403);
   }
+
+  // ---- El informe de anuncios: se puede abrir (y ajustar) sin cuenta asignada todavía ----
+  if (sub === "informes" || sub === "ajustes-informe") return await rutasInforme(req, env, { acceso, usuario, clientId: id, sub, mes: subId, accion, metodo });
 
   // ---- De un cliente ----
   const { cliente, cuenta } = await clienteYCuenta(acceso, id, { exigirCuenta: sub !== "historial" && sub !== "medios" });
@@ -345,6 +359,65 @@ async function atender(req, env, { acceso, usuario, partes, metodo }) {
   }
 
   if (sub === "video" && subId && metodo === "GET") return json(await estadoVideo(env, token, subId));
+
+  return noEncontrado("Ruta");
+}
+
+/** El informe de anuncios de un cliente: lista, ajustes, generar, ver, compartir y borrar. */
+async function rutasInforme(req, env, { acceso, usuario, clientId, sub, mes, accion, metodo }) {
+  const { cliente, cuenta } = await clienteYCuenta(acceso, clientId, { exigirCuenta: false });
+
+  if (sub === "ajustes-informe" && metodo === "PUT") {
+    const ajustes = await guardarAjustesInforme(acceso, cliente.id, (await cuerpo(req)) ?? {});
+    difundir(env, acceso.ownerId, { tipo: "anuncios", clientId: cliente.id, por: firma(usuario, req) });
+    return json(ajustes);
+  }
+  if (sub !== "informes") return noEncontrado("Ruta");
+
+  if (!mes && metodo === "GET") {
+    const [ajustes, filas] = await Promise.all([
+      ajustesInforme(acceso, cliente.id),
+      acceso.leer("informes_anuncios", { client_id: cliente.id }, "mes desc"),
+    ]);
+    return json({ ajustes, tieneCuenta: Boolean(cuenta), moneda: cuenta?.moneda ?? null, informes: filas.map(resumenInformeAnuncios) });
+  }
+
+  if (!mes && metodo === "POST") {
+    const b = (await cuerpo(req)) ?? {};
+    if (!/^\d{4}-\d{2}$/.test(String(b.mes ?? ""))) return error("Escoge el mes.");
+    if (b.mes > fechaEnZona(new Date()).slice(0, 7)) return error("Ese mes todavía no empieza.");
+    const fila = await generarInformeAnuncios(env, acceso, {
+      clientId: cliente.id, mes: b.mes, usuarioId: usuario.id, mostrarCosto: typeof b.mostrarCosto === "boolean" ? b.mostrarCosto : undefined,
+    });
+    return json({ ...resumenInformeAnuncios(fila), contenido: contenidoInforme(fila) }, 201);
+  }
+
+  if (!/^\d{4}-\d{2}$/.test(mes ?? "")) return noEncontrado("Informe");
+  const fila = await acceso.leerUno("informes_anuncios", { client_id: cliente.id, mes });
+  if (!fila) return noEncontrado("Informe");
+
+  if (!accion && metodo === "GET") return json({ ...resumenInformeAnuncios(fila), contenido: contenidoInforme(fila) });
+
+  if (!accion && metodo === "DELETE") {
+    await acceso.borrar("informes_anuncios", { id: fila.id });
+    difundir(env, acceso.ownerId, { tipo: "anuncios", clientId: cliente.id, por: firma(usuario, req) });
+    return json({ ok: true });
+  }
+
+  // El testigo se reutiliza: regenerarlo mataría el enlace que el cliente ya tiene.
+  if (accion === "compartir" && metodo === "POST") {
+    const b = (await cuerpo(req)) ?? {};
+    const cambios = { updated_at: ahora() };
+    if (typeof b.mostrarCosto === "boolean") cambios.mostrar_costo = b.mostrarCosto ? 1 : 0;
+    if (typeof b.compartido === "boolean") {
+      if (b.compartido && fila.estado !== "listo") return error("El informe todavía no está listo.", 409);
+      cambios.compartido = b.compartido ? 1 : 0;
+      if (b.compartido && !fila.testigo) cambios.testigo = nuevoTestigo(24);
+    }
+    await acceso.actualizar("informes_anuncios", { id: fila.id }, cambios);
+    difundir(env, acceso.ownerId, { tipo: "anuncios", clientId: cliente.id, por: firma(usuario, req) });
+    return json(resumenInformeAnuncios({ ...fila, ...cambios }));
+  }
 
   return noEncontrado("Ruta");
 }
