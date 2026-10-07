@@ -172,6 +172,8 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
     if (!vivo.current) return;
     setPiezas(salida);
     setPaso("listo");
+    // El botón de crear desaparece: el foco vuelve al diálogo (si no, Escape ya no lo cierra).
+    ref.current?.focus({ preventScroll: true });
     window.dispatchEvent(new Event("ia:gasto"));
     const n = Object.keys(salida).length;
     setAviso({ ok: n > 0, texto: n ? `Listas ${n} de ${creados.length}. Revisa cada una y ponla en su publicación.` : "No llegó ninguna pieza: mira el motivo de cada una." });
@@ -195,7 +197,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
 
   return (
     <div className="overlay overlay-sheet">
-      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet revision-mes">
+      <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet revision-mes" tabIndex={-1}>
         <div className="sheet-header">
           <div>
             <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)", margin: 0 }}>Producir el mes con IA</h2>

@@ -361,3 +361,6 @@
 /* «Tipo de contenido» (calendario/tipoContenido.jsx): los selectores en rejilla que envuelve. */
 .tipo-contenido { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--sp-2) var(--sp-3); }
 .tipo-contenido .field { margin: 0; }
+/* «Guardar en Drive» de la publicación: el botón y dónde queda. */
+.guardar-drive { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); margin-top: var(--sp-2); }
+.guardar-drive [role="status"]:not(.sr-only) { flex-basis: 100%; margin: 0; }

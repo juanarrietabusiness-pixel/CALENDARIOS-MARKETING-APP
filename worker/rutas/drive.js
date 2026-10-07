@@ -40,11 +40,11 @@ const MAX_A_PUBLICACION = 20 * 1024 * 1024;
 const MAX_VIDEO_PUBLICACION = 300 * 1024 * 1024;
 const PROFUNDIDAD_MAX = 12;
 const POR_TANDA_MIGRACION = 4;
-// La copia en Drive de lo programado: una publicación son, como mucho, los
-// diez de un carrusel. Cada uno son dos llamadas a Google; con la carpeta y
-// el token caben en las 50 de una invocación.
-const MAX_COPIAS_DRIVE = 10;
-const CARPETA_PUBLICACIONES = "Publicaciones de la app";
+// Guardar en Drive por mes y semana: cada pieza son dos llamadas a Google (subir) y cada papelera hasta cuatro
+// (comprobar que es del cliente, subiendo por sus padres, y mandarla). Con las carpetas y el token, cuatro piezas que
+// reemplazan a otras y tres papeleras más caben en las 50 de una invocación; el navegador manda por tandas.
+const MAX_GUARDAR_DRIVE = 4;
+const MAX_QUITAR_DRIVE = 3;
 
 /** «image/svg+xml» es una imagen que ejecuta código: fuera. */
 const SE_VE_EN_LINEA = (mime = "") => (mime.startsWith("image/") && !mime.includes("svg")) || mime.startsWith("video/");
@@ -351,38 +351,62 @@ async function rutasConSesion(req, env, { acceso, usuario, partes, metodo }) {
     return json({ clave, nombre: meta.name, tipo: esVideo ? "video" : "imagen" }, 201);
   }
 
-  // Copia en Drive de lo que se programa: lo subido desde el equipo, lo del
-  // Estudio o lo generado con IA vive en R2, y la agencia lo quiere también
-  // en la carpeta del cliente. De R2 a Drive en flujo, sin pasar por el
-  // navegador. Lo que vino de Drive (`clientes/<id>/drive/…`) ya está allí.
-  if (sub === "desde-publicacion" && metodo === "POST") {
-    const { medios, prefijo } = (await cuerpo(req)) ?? {};
-    const claves = [...new Set((Array.isArray(medios) ? medios : [])
-      .map((src) => String(src ?? "").replace(/^\/api\/media\//, ""))
-      .filter((k) => k.startsWith(`clientes/${clienteId}/`) && !k.includes("..")))];
-    const aCopiar = claves.filter((k) => !k.startsWith(`clientes/${clienteId}/drive/`)).slice(0, MAX_COPIAS_DRIVE);
-    if (!aCopiar.length) return json({ copiados: [], fallos: [] });
-    const destino = await carpetaDeLaApp(env, acceso, raiz, CARPETA_PUBLICACIONES);
-    const nombreBase = String(prefijo ?? "").replace(/[\\/:*?"<>|]+/g, " ").trim().slice(0, 80);
-    const copiados = [];
+  // Guardar las piezas de una publicación en Drive, por mes y semana: `Octubre 2026 / Semana 2 / Martes 6 - Semana 2 -
+  // 8 am.jpg` (los nombres los arma el navegador con `planDrive`, y aquí se limpian). De R2 a Drive en flujo. La copia
+  // vieja de una pieza que cambió (`reemplaza`) va a la papelera sólo si la nueva subió; `quitar`, las de archivos que
+  // la publicación ya no tiene. Todo id que llega se comprueba dentro de la carpeta del cliente antes de tocarlo.
+  if (sub === "guardar" && metodo === "POST") {
+    const datos = (await cuerpo(req)) ?? {};
+    const limpio = (t, max) => String(t ?? "").replace(/[\\/:*?"<>|\p{Cc}]+/gu, " ").replace(/\s+/g, " ").trim().slice(0, max);
+    const ID_DRIVE = /^[A-Za-z0-9_-]{10,}$/;
+    const piezas = (Array.isArray(datos.piezas) ? datos.piezas : []).map((p) => ({
+      clave: String(p?.src ?? "").replace(/^\/api\/media\//, ""),
+      carpetas: (Array.isArray(p?.carpetas) ? p.carpetas : []).map((c) => limpio(c, 60)).filter(Boolean).slice(0, 3),
+      nombre: limpio(p?.nombre, 120),
+      reemplaza: ID_DRIVE.test(String(p?.reemplaza ?? "")) ? p.reemplaza : null,
+    })).filter((p) => p.clave.startsWith(`clientes/${clienteId}/`) && !p.clave.includes("..") && p.nombre && p.carpetas.length)
+      .slice(0, MAX_GUARDAR_DRIVE);
+    const quitar = (Array.isArray(datos.quitar) ? datos.quitar : []).filter((id) => ID_DRIVE.test(String(id)) && id !== raiz).slice(0, MAX_QUITAR_DRIVE);
+
+    const carpetasHechas = new Map();
+    const carpetaDe = async (nombres) => {
+      let padre = raiz;
+      for (const [i, nombre] of nombres.entries()) {
+        const k = nombres.slice(0, i + 1).join("/");
+        if (!carpetasHechas.has(k)) carpetasHechas.set(k, await carpetaDeLaApp(env, acceso, padre, nombre));
+        padre = carpetasHechas.get(k);
+      }
+      return padre;
+    };
+    const aLaPapelera = async (id) => {
+      if (!(await dentroDelCliente(env, acceso, raiz, id))) return false;
+      await drive(env, acceso, `/drive/v3/files/${encodeURIComponent(id)}`, { metodo: "PATCH", query: { fields: "id" }, cuerpo: { trashed: true } });
+      olvidarVerificado(acceso.ownerId, raiz, id);
+      return true;
+    };
+
+    const guardados = [];
     const fallos = [];
-    for (const clave of aCopiar) {
-      const objeto = await env.MEDIA.get(clave);
-      if (!objeto) { fallos.push(clave.split("/").pop()); continue; }
-      const nombre = [nombreBase, clave.split("/").pop()].filter(Boolean).join(" · ");
+    const quitados = [];
+    let carpeta = null;
+    for (const p of piezas) {
+      const objeto = await env.MEDIA.get(p.clave);
+      if (!objeto) { fallos.push(p.nombre); continue; }
       try {
+        carpeta = await carpetaDe(p.carpetas);
         const f = await subirADrive(env, acceso, {
-          carpeta: destino, nombre, mime: objeto.httpMetadata?.contentType || "application/octet-stream",
-          largo: objeto.size, cuerpo: objeto.body,
+          carpeta, nombre: p.nombre, mime: objeto.httpMetadata?.contentType || "application/octet-stream", largo: objeto.size, cuerpo: objeto.body,
         });
-        copiados.push({ src: `/api/media/${clave}`, id: f.id });
+        guardados.push({ src: `/api/media/${p.clave}`, id: f.id, ruta: [...p.carpetas, p.nombre].join("/") });
+        if (p.reemplaza && (await aLaPapelera(p.reemplaza).catch(() => false))) quitados.push(p.reemplaza);
       } catch (e) {
         if (e instanceof DriveDesconectado) throw e;
-        fallos.push(nombre);
+        fallos.push(p.nombre);
       }
     }
-    if (copiados.length) difundir(env, acceso.ownerId, { tipo: "banco", clientId: clienteId, por: firma(usuario, req) });
-    return json({ copiados, fallos, carpeta: destino }, 201);
+    for (const id of quitar) if (await aLaPapelera(id).catch(() => false)) quitados.push(id);
+    if (guardados.length || quitados.length) difundir(env, acceso.ownerId, { tipo: "banco", clientId: clienteId, por: firma(usuario, req) });
+    return json({ guardados, fallos, quitados, carpeta }, 201);
   }
 
   // Pasar el banco de antes (R2) a Drive, por tandas: el navegador repite

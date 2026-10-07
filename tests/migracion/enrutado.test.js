@@ -928,16 +928,27 @@ describe("Google Drive como banco de contenido", () => {
     }
   });
 
-  it("la copia en Drive de lo programado sube lo de la aplicación, en su carpeta, y salta lo que vino de Drive o es de otro cliente", async () => {
+  it("guardar en Drive crea Mes / Semana, sube lo del cliente con su nombre y reemplaza la copia vieja sólo si es suya", async () => {
     const subidas = [];
-    let carpetaCreada = null;
+    const carpetas = [];
+    const papelera = [];
     vi.stubGlobal("fetch", async (url, opciones = {}) => {
       const u = new URL(String(url));
+      const metodo = opciones.method ?? "GET";
       if (u.host === "oauth2.googleapis.com") return Response.json({ access_token: "token-acceso", expires_in: 3600 });
-      if (u.pathname === "/drive/v3/files" && (opciones.method ?? "GET") === "GET") return Response.json({ files: [] });
-      if (u.pathname === "/drive/v3/files" && opciones.method === "POST") {
-        carpetaCreada = JSON.parse(opciones.body);
-        return Response.json({ id: "carpetaPublicaciones" });
+      if (u.pathname === "/drive/v3/files" && metodo === "GET") return Response.json({ files: [] });
+      if (u.pathname === "/drive/v3/files" && metodo === "POST") {
+        const c = JSON.parse(opciones.body);
+        carpetas.push(c);
+        return Response.json({ id: `carpeta-${carpetas.length}` });
+      }
+      if (u.pathname.startsWith("/drive/v3/files/") && metodo === "GET") {
+        const id = decodeURIComponent(u.pathname.split("/").pop());
+        return id === "vieja-del-cliente-0001" ? Response.json({ id, parents: [RAIZ] }) : new Response("{}", { status: 404 });
+      }
+      if (u.pathname.startsWith("/drive/v3/files/") && metodo === "PATCH") {
+        papelera.push(decodeURIComponent(u.pathname.split("/").pop()));
+        return Response.json({ id: "x" });
       }
       if (u.pathname === "/upload/drive/v3/files") {
         subidas.push(JSON.parse(opciones.body));
@@ -949,15 +960,30 @@ describe("Google Drive como banco de contenido", () => {
     const env = await conDrive({ r2: {
       "clientes/cliente-1/posts/a.jpg": "JPG", "clientes/cliente-1/drive/b.jpg": "JPG", "clientes/otro/posts/c.jpg": "JPG",
     } });
-    const res = await worker.fetch(conSesion("/api/drive/clientes/cliente-1/desde-publicacion", {
+    const carpetasPieza = ["Octubre 2026", "Semana 2"];
+    const res = await worker.fetch(conSesion("/api/drive/clientes/cliente-1/guardar", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ medios: ["/api/media/clientes/cliente-1/posts/a.jpg", "/api/media/clientes/cliente-1/drive/b.jpg", "/api/media/clientes/otro/posts/c.jpg"], prefijo: "2026-10-06 Obra" }),
+      body: JSON.stringify({
+        piezas: [
+          { src: "/api/media/clientes/cliente-1/posts/a.jpg", carpetas: carpetasPieza, nombre: "Martes 6 - Semana 2 - 8 am - 1.jpg", reemplaza: "vieja-del-cliente-0001" },
+          { src: "/api/media/clientes/cliente-1/drive/b.jpg", carpetas: carpetasPieza, nombre: "Martes 6 - Semana 2 - 8 am - 2.jpg" },
+          { src: "/api/media/clientes/otro/posts/c.jpg", carpetas: carpetasPieza, nombre: "ajena.jpg" },
+        ],
+        quitar: ["de-otro-cliente-0002"],
+      }),
     }), env);
     expect(res.status).toBe(201);
     const r = await res.json();
-    expect(r.copiados).toEqual([{ src: "/api/media/clientes/cliente-1/posts/a.jpg", id: "drive-1" }]);
-    expect(carpetaCreada).toMatchObject({ name: "Publicaciones de la app", parents: [RAIZ] });
-    expect(subidas).toEqual([expect.objectContaining({ name: "2026-10-06 Obra · a.jpg", parents: ["carpetaPublicaciones"] })]);
+    expect(r.guardados.map((g) => g.ruta)).toEqual(["Octubre 2026/Semana 2/Martes 6 - Semana 2 - 8 am - 1.jpg", "Octubre 2026/Semana 2/Martes 6 - Semana 2 - 8 am - 2.jpg"]);
+    // Las carpetas se crean una vez, la semana dentro del mes.
+    expect(carpetas).toEqual([
+      expect.objectContaining({ name: "Octubre 2026", parents: [RAIZ] }),
+      expect.objectContaining({ name: "Semana 2", parents: ["carpeta-1"] }),
+    ]);
+    expect(subidas.map((x) => [x.name, x.parents[0]])).toEqual([["Martes 6 - Semana 2 - 8 am - 1.jpg", "carpeta-2"], ["Martes 6 - Semana 2 - 8 am - 2.jpg", "carpeta-2"]]);
+    // La vieja es del cliente: a la papelera. La de otro (no está bajo su carpeta): no se toca.
+    expect(papelera).toEqual(["vieja-del-cliente-0001"]);
+    expect(r.quitados).toEqual(["vieja-del-cliente-0001"]);
   });
 
   it("una imagen de Drive en una publicación se COPIA a R2 y devuelve su clave", async () => {

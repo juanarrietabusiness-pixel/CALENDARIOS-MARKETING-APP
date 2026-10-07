@@ -534,12 +534,11 @@ export async function medioDeDrive(clienteId, fileId) {
 }
 
 /**
- * Copia en la carpeta de Drive del cliente lo que va en una publicación
- * (lo que vino de Drive se salta: ya está allí). Devuelve
- * `{ copiados: [{ src, id }], fallos }`.
+ * Una tanda de «Guardar en Drive»: las piezas (`planDrive` en lib/drive.js) en sus carpetas de mes y semana, y las
+ * copias viejas a la papelera. Devuelve `{ guardados: [{ src, id, ruta }], fallos, quitados, carpeta }`.
  */
-export async function copiarADrive(clienteId, medios, prefijo = "") {
-  return pedir(rutaDrive(clienteId, "desde-publicacion"), conCuerpo("POST", { medios, prefijo }));
+export async function guardarEnDrive(clienteId, { piezas = [], quitar = [] }) {
+  return pedir(rutaDrive(clienteId, "guardar"), conCuerpo("POST", { piezas, quitar }));
 }
 
 /** Una tanda de la migración del banco de antes a Drive. */
