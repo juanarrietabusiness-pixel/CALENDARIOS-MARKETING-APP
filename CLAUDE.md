@@ -151,6 +151,10 @@ src/
     lote.js               Editar muchas publicaciones de una vez (puro)
     exportarContenido.js  Texto de «Exportar ideas y descripciones» (puro)
     completitud.js        Cuánto le falta a una publicación; qué le falta a una SIN contenido para ir al cliente (puro)
+    carrusel.js           El carrusel por láminas: partir el guion, el pedido de cada lámina, sus referencias, los
+                          colores y las líneas de la plantilla de texto (puro)
+    carruselEstudio.js    Crear las láminas en el Estudio una a una (la anterior y la portada de referencia)
+    textoSobreImagen.js   La plantilla: el texto exacto encima de la lámina, con los colores del kit (lienzo)
     produccion.js         «Producir el mes»: qué semanas y qué días, de lunes a domingo o por fecha (puro)
     revisionMes.js        «Revisar el mes»: reglas (precio fuera del catálogo, competencia, fecha delicada, voseo,
                           sin llamado a la acción, hashtags), arreglar el voseo, el pedido de la revisión con IA (puro)
@@ -244,6 +248,7 @@ src/
                           pasos con revisión, y las referencias de la competencia (lazy)
     EstudioKit.jsx        El kit de marca: prepararlo con IA desde el cerebro, revisarlo, guardarlo
     calendario/RevisionMes.jsx  «Revisar el mes» antes de enviarlo: reglas, IA opcional e imágenes contra el kit (lazy)
+    calendario/CarruselIA.jsx   «Crear carrusel con IA»: el guion en láminas, el texto por IA o por plantilla, rehacer una (lazy)
     calendario/ProducirMes.jsx  «Producir el mes con IA»: las piezas que faltan en lote, con costo y confirmación (lazy)
     calendario/crearConIA.jsx  El Estudio en un diálogo dentro del panel de una publicación y de «Subir»
                           (el hook que lo abre, en hooks/useCrearConIA.jsx)
@@ -1284,6 +1289,20 @@ son del servidor.
   hay `usado_en` para el catálogo.
   · **«Producir el mes» va por semanas y días, de lunes a domingo** (`lib/produccion.js`): el tipo de contenido va
   por día, así que todos los lunes salen juntos con el mismo estilo. Sólo cuenta lo que se ve con el filtro.
+- **El carrusel se crea lámina a lámina, y EN ORDEN** (`lib/carrusel.js`, `lib/carruselEstudio.js`,
+  `calendario/CarruselIA.jsx`; también lo usa «Producir el mes»). Pedir las láminas a la vez salía con cada una de un
+  estilo. Cada lámina es un trabajo del Estudio con la ANTERIOR y la PORTADA de referencia (más las fotos del producto
+  y el logo si caben: `referenciasDeLamina`, por importancia), así que no se pueden pedir en paralelo.
+  · **Dos modos de texto.** «ia»: el modelo lo escribe EXACTO (Nano Banana lo hace bien; puede fallar una letra, por
+  eso «Rehacer esta»). «plantilla»: se le pide NO escribir nada y dejar el hueco, y `componerLamina` pone el texto con
+  los colores del kit (`coloresPlantilla`: dominante de fondo, texto con contraste) y se sube como imagen nueva. En ese
+  modo, lo que va de referencia a la siguiente lámina es la CRUDA, sin texto: con él puesto, el modelo lo copiaría.
+  · **El guion se parte con `partirGuion`:** «Portada:/Slide N:/CTA:» (lo que escribe la IA), «---», numeradas o
+  párrafos. Se pueden editar, quitar y añadir láminas antes de pedir; hasta 10 (Instagram).
+  · **Nada se pone solo:** «Poner las N» (o «Añadir al final» / «Reemplazar lo que hay» si ya tenía) y entonces se
+  apunta el uso de cada lámina. Todo queda en la galería, también las crudas.
+  · Lo orquesta el NAVEGADOR (cada lámina espera a la anterior): cerrar a la mitad deja hechas las que salieron, en
+  la galería. El cron no encadena láminas.
 - **Las plantillas de plan: las de arranque en el código, lo cambiado en D1, la del cliente en su ficha**
   (`src/lib/plantillasPlan.js`, `plantillas_plan` y `clients.plan_contenido`, 0037). Tres objetivos (Centrado en
   ventas, Ventas y seguidores, Marketing 360) × productos/servicios/marca personal. Por día, cada publicación lleva

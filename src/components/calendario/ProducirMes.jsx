@@ -7,6 +7,8 @@ import { presetDePilar, nombreDePilar } from "../../lib/pilares";
 import { textoPreset, componerPedido, ponerLogo, limpiarKit } from "../../lib/kitMarca";
 import { modeloPorDefecto, validarPedido, ajustesDe, textoCosto, CONFIRMAR_DESDE } from "../../lib/estudioCatalogo";
 import * as api from "../../lib/estudio";
+import { partirGuion, costoCarrusel, coloresPlantilla, MODOS_TEXTO, PLANTILLAS_TEXTO } from "../../lib/carrusel";
+import { crearCarrusel, modeloParaCarrusel } from "../../lib/carruselEstudio";
 import { DIAS_SEMANA, diaDeLaSemana, semanasDe, diasDe, filtrarProduccion, ordenarProduccion } from "../../lib/produccion";
 import "./RevisionMes.css";
 
@@ -27,6 +29,10 @@ import "./RevisionMes.css";
 // Se escogen las SEMANAS y los DÍAS (lunes, martes…) a producir, y la
 // lista va de lunes a domingo: el tipo de contenido va por día, así que
 // todos los lunes salen juntos con el mismo estilo (lib/produccion.js).
+//
+// Un carrusel con guion se produce lámina a lámina (lib/carruselEstudio.js):
+// después de las piezas sueltas, uno detrás de otro, con el texto de la IA
+// o con la plantilla del kit, según se escoja aquí.
 // ============================================================
 
 const TERMINADO = new Set(["hecho", "fallido", "cancelado"]);
@@ -49,6 +55,8 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
   const [semanas, setSemanas] = useState(() => new Set()); // vacío = todas
   const [dias, setDias] = useState(() => new Set());
   const [orden, setOrden] = useState("dia");
+  const [modoTexto, setModoTexto] = useState("ia");
+  const [plantilla, setPlantilla] = useState("banda");
   const vivo = useRef(true);
   const creando = paso === "creando";
   // Mientras se piden y avanzan los trabajos, cerrar los dejaría a medias (el cron los termina igual, pero sin ponerlos).
@@ -71,6 +79,12 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
     return [...(cal.days ?? [])].sort((a, b) => (a.date < b.date ? -1 : 1)).flatMap((d) => (d.posts ?? [])
       .filter((p) => p.status !== "published" && !mediosDe(p).length && String(p.idea || p.title || p.descripcion || "").trim())
       .map((post) => {
+        // Un carrusel con guion de dos láminas o más: lámina a lámina.
+        const laminas = post.format === "carrusel" ? partirGuion(post.guion) : [];
+        if (laminas.length >= 2) {
+          const modelo = modeloParaCarrusel(activos);
+          return { date: d.date, post, tipo: "carrusel", modelo, laminas, costo: costoCarrusel(laminas, modelo.costo), error: "" };
+        }
         const tipo = tipoDe(post.format);
         const modelo = modeloPorDefecto(activos, tipo);
         const preset = textoPreset(estudio.kit, presetDePilar(post.pilar) || "producto", { marca: client.name, rubro: client.industry ?? "" });
@@ -87,7 +101,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
   }, [estudio, cal.days, activos, client.name, client.industry]);
 
   useEffect(() => {
-    if (estudio && marcadas === null) setMarcadas(new Set(candidatas.filter((c) => c.tipo === "imagen" && !c.error).map((c) => c.post.id)));
+    if (estudio && marcadas === null) setMarcadas(new Set(candidatas.filter((c) => c.tipo !== "video" && !c.error).map((c) => c.post.id)));
   }, [estudio, candidatas, marcadas]);
 
   const alternar = (set, valor) => { const n = new Set(set); if (n.has(valor)) n.delete(valor); else n.add(valor); return n; };
@@ -101,7 +115,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
     setPaso("creando");
     setAviso(null);
     const creados = [];
-    for (const c of elegidas) {
+    for (const c of elegidas.filter((x) => x.tipo !== "carrusel")) {
       if (!vivo.current) return;
       try {
         const { trabajo } = await api.pedirImagenes(clienteId, { ...c.pedido, confirmado: true, calendarId: cal.dbId || cal.id, postId: c.post.id });
@@ -132,6 +146,30 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
     const porTrabajo = new Map((g?.archivos ?? []).map((a) => [a.trabajoId, a]));
     const salida = {};
     for (const t of creados) if (t.id && porTrabajo.has(t.id)) salida[t.postId] = porTrabajo.get(t.id);
+
+    // Los carruseles, después y uno a uno: cada lámina espera a la anterior.
+    const comunes = {
+      clienteId, modo: modoTexto, plantilla, logo: estudio.kit.logo, colores: coloresPlantilla(estudio.kit), familia: estudio.kit.tipografia,
+      calendarId: cal.dbId || cal.id, seguir: () => vivo.current,
+    };
+    for (const c of elegidas.filter((x) => x.tipo === "carrusel")) {
+      if (!vivo.current) return;
+      const t = { postId: c.post.id, date: c.date, format: c.post.format, titulo: c.post.title || c.post.idea || "", id: null, estado: "en marcha", error: "", laminas: c.laminas.length, hechas: 0 };
+      creados.push(t);
+      setTrabajos([...creados]);
+      const hechas = await crearCarrusel({
+        ...comunes, modelo: c.modelo, laminas: c.laminas, postId: c.post.id, idea: c.post.idea || c.post.title || "",
+        preset: textoPreset(estudio.kit, presetDePilar(c.post.pilar) || "producto", { marca: client.name, rubro: client.industry ?? "" }),
+        fotos: api.fotosDelProducto(estudio.productos, c.post.productoId).map((f) => f.clave),
+        alAvanzar: () => { t.hechas += 1; setTrabajos([...creados]); },
+      });
+      const finales = hechas.map((r) => r?.final).filter(Boolean);
+      t.estado = finales.length ? "hecho" : "fallido";
+      t.error = hechas.find((r) => r?.error)?.error ?? "";
+      if (finales.length) salida[c.post.id] = finales;
+      setTrabajos([...creados]);
+    }
+    if (!vivo.current) return;
     setPiezas(salida);
     setPaso("listo");
     window.dispatchEvent(new Event("ia:gasto"));
@@ -139,15 +177,19 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
     setAviso({ ok: n > 0, texto: n ? `Listas ${n} de ${creados.length}. Revisa cada una y ponla en su publicación.` : "No llegó ninguna pieza: mira el motivo de cada una." });
   };
 
+  // Una pieza suelta es un archivo; un carrusel, sus láminas en orden.
+  const archivosDe = (postId) => [piezas[postId]].flat().filter(Boolean);
   const poner = (lista) => {
-    const porPost = new Map(lista.map(({ postId }) => [postId, piezas[postId]]));
+    const porPost = new Map(lista.map(({ postId }) => [postId, archivosDe(postId)]));
     const ahora = new Date().toISOString();
     // `onPoner` recibe cómo cambiar cada publicación: la que tiene pieza nueva la suma a sus medios.
     onPoner((p) => (porPost.has(p.id)
-      ? { ...conMedios(p, [...mediosDe(p), api.medioDeArchivo(porPost.get(p.id))]), mediosCambiadosAt: ahora }
+      ? { ...conMedios(p, [...mediosDe(p), ...porPost.get(p.id).map(api.medioDeArchivo)]), mediosCambiadosAt: ahora }
       : p));
     setPuestas((s) => new Set([...s, ...lista.map((x) => x.postId)]));
-    for (const { postId } of lista) api.apuntarUso(clienteId, piezas[postId].id, { calendarId: cal.dbId || cal.id, postId }).catch(() => {});
+    for (const { postId } of lista) {
+      for (const a of archivosDe(postId)) api.apuntarUso(clienteId, a.id, { calendarId: cal.dbId || cal.id, postId }).catch(() => {});
+    }
   };
   const porPoner = trabajos.filter((t) => piezas[t.postId] && !puestas.has(t.postId));
 
@@ -185,6 +227,19 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
                   <button key={d.n} type="button" className="filter-chip" aria-pressed={dias.has(d.n)} onClick={() => setDias((x) => alternar(x, d.n))} aria-label={d.nombre}>{d.corto}</button>
                 ))}
               </div>
+              {visibles.some((c) => c.tipo === "carrusel") && (
+                <div className="produccion-filtro" role="group" aria-label="Texto de los carruseles">
+                  <span className="hint">Carruseles</span>
+                  {Object.entries(MODOS_TEXTO).map(([k, v]) => (
+                    <button key={k} type="button" className="filter-chip" aria-pressed={modoTexto === k} onClick={() => setModoTexto(k)} title={v.ayuda}>{v.nombre}</button>
+                  ))}
+                  {modoTexto === "plantilla" && (
+                    <select className="input produccion-plantilla" aria-label="Dónde va el texto" value={plantilla} onChange={(e) => setPlantilla(e.target.value)}>
+                      {Object.entries(PLANTILLAS_TEXTO).map(([k, v]) => <option key={k} value={k}>{v.nombre}</option>)}
+                    </select>
+                  )}
+                </div>
+              )}
               <div className="produccion-filtro" role="group" aria-label="Orden">
                 <span className="hint">Orden</span>
                 <button type="button" className="filter-chip" aria-pressed={orden === "dia"} onClick={() => setOrden("dia")}>De lunes a domingo</button>
@@ -211,8 +266,8 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
                       <span className="hint">{[nombreDePilar(c.post.pilar, c.post.pilarSub), String(c.post.title || c.post.idea || "").slice(0, 60)].filter(Boolean).join(" · ")}</span>
                     </label>
                     <p className="revision-problema">
-                      {c.error ? c.error : `${c.tipo === "video" ? "Video" : "Imagen"} con ${c.modelo.nombre} · ${textoCosto(c.costo)}`}
-                      {t && ` · ${t.estado === "hecho" ? "lista" : t.estado === "fallido" ? `falló: ${t.error}` : "creando…"}`}
+                      {c.error ? c.error : `${c.tipo === "carrusel" ? `Carrusel de ${c.laminas.length} láminas` : c.tipo === "video" ? "Video" : "Imagen"} con ${c.modelo.nombre} · ${textoCosto(c.costo)}`}
+                      {t && ` · ${t.estado === "hecho" ? "lista" : t.estado === "fallido" ? `falló: ${t.error}` : t.laminas ? `lámina ${Math.min(t.hechas + 1, t.laminas)} de ${t.laminas}…` : "creando…"}`}
                     </p>
                   </li>
                 );
@@ -224,7 +279,8 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
             <ul className="revision-lista">
               {trabajos.map((t) => {
                 // Lo que se apuntó al pedirla: al ponerla, la publicación deja de estar entre las candidatas.
-                const a = piezas[t.postId];
+                const todas = archivosDe(t.postId);
+                const a = todas[0];
                 return (
                   <li key={t.postId} className="revision-item produccion-item">
                     {a && (a.tipo === "video"
@@ -232,7 +288,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
                       : <img src={a.src} alt={`Pieza para el ${fechaCorta(t.date)}`} loading="lazy" />)}
                     <div className="produccion-texto">
                       <strong>{fechaCorta(t.date)} · {FORMATS[t.format]?.label ?? t.format}</strong>
-                      <span className="hint">{String(t.titulo).slice(0, 90)}</span>
+                      <span className="hint">{String(t.titulo).slice(0, 90)}{todas.length > 1 ? ` · ${todas.length} láminas` : ""}{t.laminas && todas.length < t.laminas ? ` (faltaron ${t.laminas - todas.length})` : ""}</span>
                       {a ? (
                         puestas.has(t.postId)
                           ? <span className="hint"><Icon name="check" size={12} /> Puesta en la publicación</span>

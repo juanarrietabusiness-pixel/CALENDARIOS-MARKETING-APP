@@ -25,7 +25,7 @@
 // servidor al publicar: el aviso llega al escribir, no a la hora de salir.
 // ============================================================
 
-import { useId, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useId, useMemo, useRef, useState } from "react";
 import Icon from "../Icon";
 import {
   revisarPublicacion, aplicarArreglo, REDES, mediosDe, objetivoDe, necesitaAjuste, conMedios, destinoInstagram,
@@ -40,8 +40,11 @@ import { EstadoAprobacion } from "./aprobacionCliente";
 import DestinoRedes from "./destinoRedes";
 import { escribirDesdeContenido } from "../../api";
 import { rellenarDesdeContenido, tieneContenido, formatoDeMedios } from "../../lib/subir";
-import { medioDeArchivo } from "../../lib/estudio";
+import { medioDeArchivo, apuntarUso } from "../../lib/estudio";
 import { useCrearConIA } from "../../hooks/useCrearConIA";
+
+// «Crear carrusel con IA»: sólo se descarga al abrirlo.
+const CarruselIA = lazy(() => import("./CarruselIA"));
 
 /**
  * @param formatoAuto  true cuando la publicación se creó con «Subir
@@ -106,6 +109,17 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
       setEscrito("Añadido a la publicación. Puedes escribir el texto con IA cuando quieras.");
     },
   });
+  // El carrusel por láminas: lo creado se pone EN ORDEN, al final o en lugar de lo que había.
+  const [carrusel, setCarrusel] = useState(false);
+  const ponerCarrusel = (archivos, { reemplazar }) => {
+    setForm((p) => {
+      const nuevos = archivos.map(medioDeArchivo);
+      const medios = (reemplazar ? nuevos : [...mediosDe(p), ...nuevos]).slice(0, LIMITES.instagram.carruselMax);
+      return { ...conMedios(p, medios), mediosCambiadosAt: new Date().toISOString() };
+    });
+    if (cal && post.id) for (const a of archivos) apuntarUso(clientId, a.id, { calendarId: cal.dbId || cal.id, postId: post.id }).catch(() => {});
+    setEscrito(`Puestas ${archivos.length} láminas en la publicación, en orden.`);
+  };
   const esHistoria = post.format === "historia";
   const destino = destinoInstagram(post);
   const conImagen = mediosDe(post).some((m) => m.tipo === "imagen");
@@ -190,7 +204,13 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           entradaRef={entrada}
           onPortada={conPortada ? (c) => setForm((p) => ({ ...p, ...c })) : null}
           onCrearConIA={abrirCreacion}
+          onCrearCarrusel={post.format === "carrusel" && clientId ? () => setCarrusel(true) : null}
         />
+        {carrusel && (
+          <Suspense fallback={null}>
+            <CarruselIA client={client} post={post} cal={cal} onPoner={ponerCarrusel} onCerrar={() => setCarrusel(false)} />
+          </Suspense>
+        )}
 
         {esHistoria ? (
           <p className="notice notice-warn pestana-publicar-nota">
