@@ -685,6 +685,68 @@ function yaToca(id) {
 
 const pedirVideo = (quien, cliente, datos) => pedirTrabajo(quien, cliente, { modelo: "veo-3.1-fast", ajustes: { duration: "4" }, confirmado: true, ...datos });
 
+describe("Gemini Omni Flash: la Interactions API, con la misma llave de Google", () => {
+  beforeEach(() => { env.GOOGLE_AI_KEY = "clave-de-prueba"; });
+
+  function googleOmni({ yaListo = false, estado = "completed", video = { type: "video", uri: "files/omni1", mime_type: "video/mp4" } } = {}) {
+    const llamadas = [];
+    globalThis.fetch = vi.fn(async (url, init = {}) => {
+      const u = String(url);
+      llamadas.push({ url: u, init });
+      if (u.endsWith("/v1beta/interactions") && init.method === "POST") {
+        return Response.json(yaListo ? { id: "int-1", status: "completed", steps: [{ type: "model_output", content: [video] }] } : { id: "int-1", status: "in_progress" });
+      }
+      if (u.endsWith("/v1beta/interactions/int-1")) {
+        return Response.json(estado === "completed" ? { id: "int-1", status: "completed", steps: [{ type: "user_input" }, { type: "model_output", content: [{ type: "text", text: "listo" }, video] }] } : { id: "int-1", status: estado, error: estado === "failed" ? { message: "filtro" } : undefined });
+      }
+      if (u.includes("/v1beta/files/omni1:download")) return new Response(MP4, { headers: { "content-length": String(MP4.length) } });
+      return new Response("{}", { status: 404 });
+    });
+    return llamadas;
+  }
+
+  it("envía a /interactions con el formato pedido y la duración en el prompt; al terminar, baja el archivo con la llave", async () => {
+    const llamadas = googleOmni();
+    const { trabajo } = await (await pedirTrabajo(JEFE, "c1", { modelo: "gemini-omni-flash", prompt: "Un sofá que gira", ajustes: { duration: "10", aspectRatio: "9:16" }, confirmado: true })).json();
+    expect((await avanzar(JEFE, "c1", trabajo.id)).trabajo.estado).toBe("en_marcha");
+    const envio = llamadas.find((l) => l.url.endsWith("/interactions"));
+    expect(envio.init.headers["x-goog-api-key"]).toBe("clave-de-prueba");
+    expect(JSON.parse(envio.init.body)).toEqual({
+      model: "gemini-omni-1.1-flash",
+      input: "Un sofá que gira\n\nDuración total: 10 segundos.",
+      response_format: { type: "video", aspect_ratio: "9:16", resolution: "720p", delivery: "uri" },
+    });
+    yaToca(trabajo.id);
+    const fin = (await avanzar(JEFE, "c1", trabajo.id)).trabajo;
+    expect(fin.estado).toBe("hecho");
+    expect(llamadas.find((l) => l.url.includes(":download")).init.headers["x-goog-api-key"]).toBe("clave-de-prueba");
+    const { archivos } = await galeria(JEFE, "c1");
+    expect(archivos[0]).toMatchObject({ tipo: "video", modelo: "gemini-omni-flash" });
+    expect(consumo()[0]).toMatchObject({ proveedor: "gemini", modelo: "gemini-omni-1.1-flash", costo_usd: 1 });
+  });
+
+  it("si contesta ya con el video, el primer vistazo lo da por listo sin volver a preguntar", async () => {
+    const llamadas = googleOmni({ yaListo: true });
+    const { trabajo } = await (await pedirTrabajo(JEFE, "c1", { modelo: "gemini-omni-flash", prompt: "0–2 s: cae el jugo. 2–7 s: limpian.", ajustes: { duration: "8" }, confirmado: true })).json();
+    await avanzar(JEFE, "c1", trabajo.id);
+    // Los tiempos ya van en el prompt: no se le añade la duración otra vez.
+    expect(JSON.parse(llamadas[0].init.body).input).toBe("0–2 s: cae el jugo. 2–7 s: limpian.");
+    yaToca(trabajo.id);
+    expect((await avanzar(JEFE, "c1", trabajo.id)).trabajo.estado).toBe("hecho");
+    expect(llamadas.some((l) => l.url.endsWith("/interactions/int-1"))).toBe(false);
+  });
+
+  it("si Google dice que falló, el trabajo falla con el motivo", async () => {
+    googleOmni({ estado: "failed" });
+    const { trabajo } = await (await pedirTrabajo(JEFE, "c1", { modelo: "gemini-omni-flash", prompt: "x", confirmado: true })).json();
+    await avanzar(JEFE, "c1", trabajo.id);
+    yaToca(trabajo.id);
+    const fin = (await avanzar(JEFE, "c1", trabajo.id)).trabajo;
+    expect(fin.estado).toBe("fallido");
+    expect(fin.error).toMatch(/Google no pudo hacerlo \(filtro\)/);
+  });
+});
+
 describe("un video, por la cola", () => {
   beforeEach(() => { env.GOOGLE_AI_KEY = "clave-de-prueba"; });
 

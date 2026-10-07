@@ -126,6 +126,88 @@ export function peticionVeo(modelo, { prompt, ajustes, medios = {} }) {
 
 const BASE_GEMINI = "https://generativelanguage.googleapis.com/v1beta";
 
+/**
+ * La petición de Gemini Omni Flash (Interactions API). Pura. Con imágenes, `input` es una lista: la primera es el
+ * fotograma inicial y la segunda el final; sin ellas, el texto solo. La duración no es un parámetro de la API: se
+ * dice en el prompt (los tiempos marcados del guion de 10 s ya la dicen). El video se pide por dirección
+ * (`delivery: "uri"`): en línea, uno de más de 4 MB no cabe.
+ */
+export function peticionOmni(modelo, { prompt, ajustes = {}, medios = {} }) {
+  const segundos = Number(ajustes.duration) || 10;
+  const texto = /\bsegundos?\b|\d+\s?s\b/.test(prompt) ? prompt : `${prompt}\n\nDuración total: ${segundos} segundos.`;
+  const imagenes = [medios.start?.[0], medios.start?.[0] ? medios.end?.[0] : null].filter(Boolean);
+  return {
+    model: modelo.gid,
+    input: imagenes.length
+      ? [...imagenes.map((f) => ({ type: "image", data: f.base64, mime_type: f.mime })), { type: "text", text: texto }]
+      : texto,
+    response_format: {
+      type: "video",
+      aspect_ratio: ajustes.aspectRatio === "16:9" ? "16:9" : "9:16",
+      resolution: ["360p", "720p", "1080p", "4k"].includes(ajustes.resolution) ? ajustes.resolution : "720p",
+      delivery: "uri",
+    },
+  };
+}
+
+/**
+ * El video de una interacción terminada: por REST va en `steps[]` (type "model_output") → `content[]` (type
+ * "video"), con `uri` o `data`. → { uri } | { data, mime } | null. Pura.
+ */
+export function videoDeInteraccion(j) {
+  for (const paso of Array.isArray(j?.steps) ? j.steps : []) {
+    for (const c of Array.isArray(paso?.content) ? paso.content : []) {
+      if (c?.type === "video" && (c.uri || c.data)) return c.uri ? { uri: String(c.uri), mime: c.mime_type || "video/mp4" } : { data: c.data, mime: c.mime_type || "video/mp4" };
+    }
+  }
+  const v = j?.output_video;
+  if (v?.uri || v?.data) return v.uri ? { uri: String(v.uri), mime: v.mime_type || "video/mp4" } : { data: v.data, mime: v.mime_type || "video/mp4" };
+  return null;
+}
+
+/**
+ * «files/abc» o la dirección completa → la de descarga del archivo (con la llave, como el video de Veo). Null si no
+ * es https de Google: la llave sólo viaja a `*.googleapis.com`.
+ */
+export function descargaDeArchivoGemini(uri) {
+  const u = String(uri ?? "");
+  if (/^files\/[\w-]+$/.test(u)) return `${BASE_GEMINI}/${u}:download?alt=media`;
+  try {
+    const url = new URL(u);
+    return url.protocol === "https:" && (url.hostname === "googleapis.com" || url.hostname.endsWith(".googleapis.com")) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+const deBase64 = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+
+async function pedirGoogle(env, url, opciones = {}, gid) {
+  const res = await fetch(url, { ...opciones, headers: { "Content-Type": "application/json", "x-goog-api-key": env.GOOGLE_AI_KEY, ...(opciones.headers ?? {}) } })
+    .catch(() => { throw new ErrorMotor("No se pudo contactar con Google AI", 502, { reintentable: true }); });
+  const texto = await res.text().catch(() => "");
+  if (!res.ok) throw errorDeGoogle(res.status, texto, gid);
+  try { return JSON.parse(texto); } catch { throw new ErrorMotor("Google devolvió algo que no se entiende.", 502); }
+}
+
+/** Lo que dice una interacción en cada vuelta: listo (con el video), fallido o pendiente. */
+function estadoDeOmni(env, modelo, j) {
+  const video = videoDeInteraccion(j);
+  if (video?.data) return { estado: "listo", bytes: deBase64(video.data), mime: video.mime };
+  if (video?.uri) {
+    const url = descargaDeArchivoGemini(video.uri);
+    if (!url) return { estado: "fallido", error: `${modelo.nombre}: Google devolvió el video en una dirección que no es suya.` };
+    return { estado: "listo", url, headers: { "x-goog-api-key": env.GOOGLE_AI_KEY }, mime: video.mime };
+  }
+  const estado = String(j?.status ?? j?.state ?? "").toLowerCase();
+  if (/fail|error|cancel/.test(estado) || j?.error) {
+    const motivo = j?.error?.message || j?.error || estado;
+    return { estado: "fallido", error: `${modelo.nombre}: Google no pudo hacerlo (${String(motivo).slice(0, 180)}).` };
+  }
+  if (estado === "completed" || estado === "succeeded") return { estado: "fallido", error: `${modelo.nombre} terminó sin ningún video. Si la imagen lleva una persona reconocible, Omni no la acepta.` };
+  return { estado: "pendiente", nota: "Generando en Google (Omni)…", cada: 8000 };
+}
+
 export const MOTORES = Object.freeze({
   prueba: {
     nombre: "Prueba (gratis)",
@@ -159,7 +241,15 @@ export const MOTORES = Object.freeze({
     },
 
     // ---- Video (Veo): predictLongRunning → sondear la operación → bajar el archivo con la llave.
+    //      Omni: la Interactions API; puede contestar ya con el video o seguir en marcha (se mira su id).
     async enviar(env, { modelo, prompt, ajustes, medios }) {
+      if (modelo.api === "interactions") {
+        const j = await pedirGoogle(env, `${BASE_GEMINI}/interactions`, { method: "POST", body: JSON.stringify(peticionOmni(modelo, { prompt, ajustes, medios })) }, modelo.gid);
+        const ya = videoDeInteraccion(j);
+        if (!j?.id && !ya?.uri) throw new ErrorMotor("Google no devolvió la interacción del video.", 502);
+        // Sólo se guarda la DIRECCIÓN (el video en línea no cabe en la fila): con ella, el primer sondeo lo da por listo.
+        return { id: String(j.id ?? `omni-${crypto.randomUUID()}`), cada: ya ? 1000 : 8000, datos: { api: "interactions", ...(ya?.uri ? { uri: ya.uri, mime: ya.mime } : {}) } };
+      }
       const res = await fetch(`${BASE_GEMINI}/models/${encodeURIComponent(modelo.gid)}:predictLongRunning`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-goog-api-key": env.GOOGLE_AI_KEY },
@@ -173,6 +263,15 @@ export const MOTORES = Object.freeze({
       return { id: op.name, cada: 8000 };
     },
     async sondear(env, { modelo, item }) {
+      if (modelo.api === "interactions" || item?.datos?.api === "interactions") {
+        if (item?.datos?.uri) return estadoDeOmni(env, modelo, { steps: [{ content: [{ type: "video", uri: item.datos.uri, mime_type: item.datos.mime }] }] });
+        try {
+          return estadoDeOmni(env, modelo, await pedirGoogle(env, `${BASE_GEMINI}/interactions/${encodeURIComponent(item.id)}`, {}, modelo.gid));
+        } catch (e) {
+          if (e instanceof ErrorMotor && !e.reintentable) return { estado: "fallido", error: e.message };
+          throw e;
+        }
+      }
       const ruta = String(item.id).split("/").map(encodeURIComponent).join("/");
       const res = await fetch(`${BASE_GEMINI}/${ruta}`, { headers: { "x-goog-api-key": env.GOOGLE_AI_KEY } })
         .catch(() => { throw new ErrorMotor("No se pudo contactar con Google AI", 502, { reintentable: true }); });

@@ -1295,8 +1295,8 @@ son del servidor.
   los botones de IA del panel. `pilares.js` NO importa `estudioMercado.js` —que es grande— porque api.js va en
   el bundle principal: lo que necesita de los marcos está en `consciencia.js`.
 - **Videos cortos: una idea en tres tiempos** (`src/lib/videoCorto.js`, `worker/lib/estudio/guionCorto.js`,
-  `POST /api/estudio/<cliente>/guion-corto`). Los modelos de la agencia hacen 8 s (Veo) o 10 s (Kling Omni, por
-  Higgsfield, `kling-omni` en el generador): la duración la decide el MODELO (`segundosParaModelo`), y al usar el
+  `POST /api/estudio/<cliente>/guion-corto`). Los modelos de la agencia hacen 8 s (Veo) o 10 s (Gemini Omni Flash —el
+  «Omni» de Flow, con la llave de Google— o Kling Omni, por Higgsfield, `kling-omni` en el generador): la duración la decide el MODELO (`segundosParaModelo`), y al usar el
   guion se pone su duración en el ajuste. El guion lleva como mucho CUATRO palabras en pantalla —los modelos de
   video escriben mal— y lo demás va en «textoEdicion»; el logo tampoco se le pide al modelo. Desde una
   publicación viajan su tipo y su producto (con el precio del catálogo). Es texto: no gasta en el motor.
@@ -2118,6 +2118,15 @@ son del servidor.
   cuenta): escoge ids del catálogo —los que no existen se descartan— y lo
   que propone de su rubro queda `verificar` hasta que alguien lo confirma.
   `clientToRow` lleva la columna: sin ella, guardar la ficha la borraría.
+- **Gemini Omni Flash no es Veo** (`gemini-omni-flash`, `api: "interactions"` en el catálogo; `peticionOmni`,
+  `videoDeInteraccion` en worker/lib/estudio/motores.js). Va por `POST /v1beta/interactions` con la MISMA llave de
+  Google, pide el video por dirección (`delivery: "uri"`: en línea no cabe uno de más de 4 MB) y puede contestar ya
+  con él o seguir en marcha (se mira `GET /interactions/<id>`). La duración NO es un parámetro de la API: va en el
+  prompt; si el prompt no la trae (los tiempos del guion de 10 s ya la traen), se le añade «Duración total: N
+  segundos». Por REST el video está en `steps[]` → `content[]` de tipo «video» (`output_video` es del SDK). La
+  dirección se baja con la llave sólo si es de `*.googleapis.com`. No acepta fotos con personas reconocibles.
+  **Nada de Omni se ha probado contra Google**: la forma sale de su documentación y los tests usan un `fetch` de
+  mentira.
 - **Meta (Muse Spark) entra por la MISMA puerta que Anthropic.** Su API habla
   el formato de mensajes de Anthropic en `api.meta.ai/v1/messages`, así que
   `abrirFlujo()` decide por el id (`muse-*`) a dónde va y con qué llave
