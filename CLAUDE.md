@@ -272,7 +272,7 @@ src/
     calendario/campanaMes.jsx   La tarjeta de la campaña: nombre del mes, semanas, ofertas, fechas
     calendario/fechasEspeciales.jsx  Escoger las fechas de un cliente (importante, ocultar, propias, IA)
     CalendarView.jsx      Vista de lista y de rejilla, filtros, generación, envío
-    anuncios/AsistenteCampana.jsx  «Nueva campaña»: objetivo, presupuesto, público, anuncio, revisar
+    anuncios/AsistenteCampana.jsx  «Nueva campaña»: objetivo y destino (web o WhatsApp), públicos (1–3), anuncios (1–6, carrusel), revisar
     anuncios/DialogoActivar.jsx    Activar: el presupuesto y las fechas, y escribir ACTIVAR
   pages/
     Login.jsx             Acceso
@@ -387,7 +387,7 @@ worker/
                           (/api/webhooks/meta, sin sesión)
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
     plantillas.js         /api/plantillas-plan: listar, guardar (cambiar una de arranque o crear) y borrar/restaurar
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -2294,11 +2294,29 @@ son del servidor.
   (`account_id`): el id lo manda el navegador.
   · **Las cifras del total no son la suma de los días:** el alcance no se
   suma, así que /insights se pide dos veces (total y `time_increment=1`).
+  · **Una campaña son hasta 3 CONJUNTOS (públicos) y hasta 6 ANUNCIOS, que van en todos** (`normalizarBorrador`,
+  `MAX_CONJUNTOS`, `MAX_ANUNCIOS`): la receta de la agencia para ventas es intereses + Advantage+ + similares, con
+  4 a 6 piezas. Cada conjunto lleva su presupuesto; las fechas son de la campaña. Se crea UN creativo por anuncio y se
+  REUSA en cada conjunto (conjuntos × anuncios = anuncios de Meta, hasta 18; 28 llamadas en el peor caso, dentro de
+  las 50). Todos los ids van en `campanas_anuncios.ids` (0038): activar enciende todos los anuncios, todos los
+  conjuntos y la campaña la ÚLTIMA. Un borrador con la forma de antes (`presupuesto`, `publico`, `anuncio`) se lee
+  como un conjunto y un anuncio: lo guardado y los tests de antes siguen valiendo.
+  · **A WhatsApp** (`destino: "whatsapp"`, sólo con Ventas, Interacción o Tráfico): el conjunto va con
+  `destination_type: WHATSAPP` y `optimization_goal: CONVERSATIONS` (tráfico: `LINK_CLICKS`) y `promoted_object:
+  { page_id }` —el número es el que la página tiene conectado, eso se hace UNA vez en el Administrador—; el creativo,
+  con el botón `WHATSAPP_MESSAGE` y `ENLACE_WHATSAPP`. Sin píxel. El resultado en /insights es
+  `ACCION_MENSAJE` (conversación empezada), que cuenta en Interacción y en Ventas (detrás de las compras).
+  · **Los públicos:** intereses → `flexible_spec` (buscados en `/search?type=adinterest`); Advantage+ →
+  `advantage_audience: 1`, edad mínima ≤ 25 y máxima 65, los intereses como sugerencia; similares →
+  `custom_audiences` (de `/act/customaudiences`; «Crear similar» hace un LOOKALIKE del 1 % de un público de la cuenta,
+  que no gasta nada). Con categoría especial, nada de similares.
+  · **El carrusel** es `link_data.child_attachments`: de 2 a 10 tarjetas, SÓLO imágenes, cada una con su título y
+  descripción (y su enlace en la web; si no, el del anuncio).
   · **Nada de esto se ha probado contra la Marketing API real** (sin cuenta
   publicitaria de pruebas): los tests hablan con un `fetch` de mentira que
   contesta como la documentación. Lo primero con una cuenta real es una
   campaña de Tráfico de 1 $ al día, mirada en el Administrador de anuncios
-  antes de activarla.
+  antes de activarla; luego una de Ventas a WhatsApp con dos públicos.
 
 ## Documentos relacionados
 

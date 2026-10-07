@@ -4,15 +4,18 @@ import {
   cuerpoCampana, cuerpoConjunto, cuerpoCreativo, cuerpoAnuncio, segmentacion, ESTADO_AL_CREAR,
   aMenores, deMenores, factorMoneda, rangoInsights, modificadorInsights, resultadosDe, resumenInsights,
   serieDiaria, desfaseZona, momentoEnZona, estadoAnuncio, resumenPresupuesto, objetivoODAX, diasEntre,
+  normalizarBorrador, conjuntoVacio, anuncioVacio, tarjetaVacia, presupuestoDelBorrador, ACCION_MENSAJE, ENLACE_WHATSAPP, MAX_CONJUNTOS,
 } from "./anuncios";
 import { PERMISOS_META } from "../../worker/lib/meta.js";
 
-// Un borrador que pasa la validación entera.
+// Un borrador que pasa la validación entera, con la forma DE ANTES (un presupuesto, un público, un anuncio): sigue
+// valiendo, se lee como un conjunto y un anuncio (`normalizarBorrador`). Los casos de varios van más abajo.
 const HOY = "2026-10-01";
 const bueno = (cambios = {}) => {
-  const b = borradorVacio(HOY);
+  const { conjuntos: _c, anuncios: _a, ...b } = borradorVacio(HOY);
   return {
     ...b,
+    publico: { paises: ["PA"], ciudades: [], edadMin: 18, edadMax: 65, sexo: "todos" },
     nombre: "Octubre · Tráfico",
     presupuesto: { tipo: "diario", monto: "10" },
     anuncio: { medio: { clave: "clientes/c1/estudio/a.png", tipo: "imagen", hash: "abc123" }, texto: "Ven a probar", titulo: "2x1", enlace: "https://cafe.pa", boton: "LEARN_MORE" },
@@ -160,7 +163,7 @@ describe("la validación del asistente", () => {
     const e = val(borradorVacio(HOY));
     expect(erroresDelPaso(e, 1).map((x) => x.campo)).toContain("nombre");
     expect(erroresDelPaso(e, 2).map((x) => x.campo)).toContain("monto");
-    expect(erroresDelPaso(e, 4).map((x) => x.campo)).toEqual(expect.arrayContaining(["medio", "texto", "enlace"]));
+    expect(erroresDelPaso(e, 3).map((x) => x.campo)).toEqual(expect.arrayContaining(["medio", "texto", "enlace"]));
   });
 
   it("ventas sin píxel no pasa del primer paso", () => {
@@ -192,7 +195,7 @@ describe("la validación del asistente", () => {
   it("con categoría especial: todas las edades, los dos sexos y radios de 25 km o más", () => {
     const b = bueno({ categorias: ["EMPLOYMENT"] });
     b.publico = { paises: [], ciudades: [{ key: "1", nombre: "David", pais: "PA", radio: 10 }], edadMin: 25, edadMax: 40, sexo: "mujeres" };
-    const campos = erroresDelPaso(val(b), 3).map((x) => x.campo);
+    const campos = erroresDelPaso(val(b), 2).map((x) => x.campo);
     expect(campos).toEqual(expect.arrayContaining(["edad", "sexo", "ciudades"]));
   });
 
@@ -291,5 +294,119 @@ describe("fechas en la zona de la cuenta", () => {
     expect(t).toMatch(/al día/);
     expect(t).toMatch(/15 oct/);
     expect(t).not.toMatch(/16 oct/);
+  });
+});
+
+describe("varios conjuntos y anuncios, WhatsApp y carrusel", () => {
+  const img = (n) => ({ clave: `clientes/c1/estudio/${n}.png`, tipo: "imagen", hash: `H${n}` });
+  const publico = { paises: ["PA"], ciudades: [], edadMin: 18, edadMax: 65, sexo: "todos", intereses: [], similares: [] };
+  const campana = (cambios = {}) => ({
+    ...borradorVacio(HOY),
+    nombre: "Sofá · Ventas",
+    objetivo: "OUTCOME_SALES",
+    destino: "whatsapp",
+    conjuntos: [
+      { ...conjuntoVacio("intereses"), nombre: "Intereses", presupuesto: { tipo: "diario", monto: "5" }, publico: { ...publico, intereses: [{ id: "6003", nombre: "Muebles" }] } },
+      { ...conjuntoVacio("advantage"), nombre: "Advantage+", presupuesto: { tipo: "diario", monto: "5" }, publico: { ...publico, edadMin: 25 } },
+      { ...conjuntoVacio("similares"), nombre: "Similares", presupuesto: { tipo: "diario", monto: "4" }, publico: { ...publico, similares: [{ id: "777", nombre: "Similar 1 %" }] } },
+    ],
+    anuncios: [
+      { ...anuncioVacio(), nombre: "Foto", medio: img(1), texto: "Tu sofá nuevo", titulo: "Desde $400" },
+      { ...anuncioVacio(), nombre: "Carrusel", formato: "carrusel", texto: "Escoge el tuyo", tarjetas: [
+        { ...tarjetaVacia(), medio: img(2), titulo: "Gris" }, { ...tarjetaVacia(), medio: img(3), titulo: "Azul", descripcion: "Entrega gratis" },
+      ] },
+    ],
+    ...cambios,
+  });
+  const val = (b) => validarBorrador(b, { moneda: "USD", hoy: HOY });
+
+  it("una campaña de ventas a WhatsApp con tres públicos y dos anuncios pasa, sin píxel ni enlace", () => {
+    expect(val(campana())).toEqual([]);
+  });
+
+  it("los conjuntos: conversaciones a WhatsApp con la página, y cada público a su manera", () => {
+    const opciones = { campanaId: "c", hoy: HOY, paginaId: "PAG" };
+    const [a, b, c] = [0, 1, 2].map((indice) => cuerpoConjunto(campana(), { ...opciones, indice }));
+    for (const x of [a, b, c]) {
+      expect(x).toMatchObject({ status: "PAUSED", optimization_goal: "CONVERSATIONS", destination_type: "WHATSAPP", daily_budget: expect.any(String) });
+      expect(JSON.parse(x.promoted_object)).toEqual({ page_id: "PAG" });
+    }
+    expect(a.name).toBe("Sofá · Ventas · Intereses");
+    const ta = JSON.parse(a.targeting);
+    expect(ta.flexible_spec).toEqual([{ interests: [{ id: "6003", name: "Muebles" }] }]);
+    expect(ta.targeting_automation).toEqual({ advantage_audience: 0 });
+    const tb = JSON.parse(b.targeting);
+    expect(tb.targeting_automation).toEqual({ advantage_audience: 1 });
+    expect(tb.age_max).toBe(65);
+    const tc = JSON.parse(c.targeting);
+    expect(tc.custom_audiences).toEqual([{ id: "777" }]);
+    expect(tc).not.toHaveProperty("flexible_spec");
+    expect(c.daily_budget).toBe("400");
+  });
+
+  it("tráfico a WhatsApp optimiza por clics; a la web con píxel, el de siempre", () => {
+    const t = cuerpoConjunto(campana({ objetivo: "OUTCOME_TRAFFIC" }), { campanaId: "c", hoy: HOY, paginaId: "PAG" });
+    expect(t).toMatchObject({ optimization_goal: "LINK_CLICKS", destination_type: "WHATSAPP" });
+    expect(t).not.toHaveProperty("promoted_object");
+    // Clientes potenciales no va a WhatsApp: se queda en la web y pide el píxel.
+    const errores = val(campana({ objetivo: "OUTCOME_LEADS" }));
+    expect(errores.map((x) => x.campo)).toEqual(expect.arrayContaining(["destino", "pixelId", "enlace"]));
+  });
+
+  it("el creativo a WhatsApp: botón de WhatsApp y su enlace; el carrusel, una tarjeta por imagen", () => {
+    const foto = JSON.parse(cuerpoCreativo(campana(), { paginaId: "PAG", indice: 0 }).object_story_spec);
+    expect(foto.link_data).toMatchObject({
+      image_hash: "H1", link: ENLACE_WHATSAPP, name: "Desde $400",
+      call_to_action: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } },
+    });
+    const c = cuerpoCreativo(campana(), { paginaId: "PAG", indice: 1 });
+    expect(c.name).toBe("Sofá · Ventas · Carrusel");
+    const car = JSON.parse(c.object_story_spec).link_data;
+    expect(car.child_attachments).toEqual([
+      { link: ENLACE_WHATSAPP, image_hash: "H2", name: "Gris", call_to_action: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } } },
+      { link: ENLACE_WHATSAPP, image_hash: "H3", name: "Azul", description: "Entrega gratis", call_to_action: { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } } },
+    ]);
+    expect(car).toMatchObject({ multi_share_end_card: false, message: "Escoge el tuyo" });
+  });
+
+  it("un carrusel a la web: cada tarjeta con su enlace o el del anuncio", () => {
+    const b = campana({ destino: "web", objetivo: "OUTCOME_TRAFFIC" });
+    b.anuncios[1] = { ...b.anuncios[1], enlace: "https://tienda.pa", boton: "SHOP_NOW" };
+    b.anuncios[1].tarjetas[1] = { ...b.anuncios[1].tarjetas[1], enlace: "https://tienda.pa/azul" };
+    const car = JSON.parse(cuerpoCreativo(b, { paginaId: "P", indice: 1 }).object_story_spec).link_data;
+    expect(car.child_attachments.map((t) => t.link)).toEqual(["https://tienda.pa", "https://tienda.pa/azul"]);
+    expect(car.child_attachments[1].call_to_action).toEqual({ type: "SHOP_NOW", value: { link: "https://tienda.pa/azul" } });
+  });
+
+  it("lo que no vale: carrusel de una tarjeta o con un video, intereses vacíos, similares con categoría especial, demasiados conjuntos", () => {
+    const b = campana();
+    b.anuncios[1].tarjetas = [b.anuncios[1].tarjetas[0]];
+    b.conjuntos[0].publico.intereses = [];
+    expect(val(b).map((x) => [x.paso, x.campo, x.indice])).toEqual(expect.arrayContaining([[2, "intereses", 0], [3, "tarjetas", 1]]));
+    const v = campana();
+    v.anuncios[1].tarjetas[0].medio = { clave: "clientes/c1/x.mp4", tipo: "video", videoId: "5", listo: true };
+    expect(val(v).find((x) => x.campo === "tarjetas").mensaje).toMatch(/Anuncio 2: tarjeta 1: en un carrusel, cada tarjeta es una imagen/);
+    const especial = campana({ categorias: ["HOUSING"] });
+    especial.conjuntos.forEach((c) => { c.publico.edadMin = 18; });
+    expect(val(especial).map((x) => x.campo)).toContain("similares");
+    const muchos = campana({ conjuntos: Array.from({ length: MAX_CONJUNTOS + 1 }, () => campana().conjuntos[0]) });
+    expect(val(muchos).map((x) => x.campo)).toContain("conjuntos");
+  });
+
+  it("el presupuesto suma los conjuntos; y lo de antes se lee como un conjunto y un anuncio", () => {
+    expect(presupuestoDelBorrador(campana())).toEqual({ diario: 14, total: null });
+    const viejo = { nombre: "x", objetivo: "OUTCOME_TRAFFIC", presupuesto: { tipo: "diario", monto: "10" }, publico: { paises: ["PA"] }, anuncio: { texto: "t" } };
+    const n = normalizarBorrador(viejo);
+    expect(n.conjuntos).toHaveLength(1);
+    expect(n.conjuntos[0]).toMatchObject({ tipo: "abierto", presupuesto: { tipo: "diario", monto: "10" } });
+    expect(n.anuncios[0]).toMatchObject({ formato: "unico", texto: "t" });
+    expect(n.destino).toBe("web");
+  });
+
+  it("una conversación de WhatsApp cuenta como resultado de interacción y de ventas", () => {
+    const fila = { actions: [{ action_type: ACCION_MENSAJE, value: "12" }] };
+    expect(resultadosDe(fila, "OUTCOME_ENGAGEMENT")).toBe(12);
+    expect(resultadosDe(fila, "OUTCOME_SALES")).toBe(12);
+    expect(resultadosDe({ actions: [{ action_type: "purchase", value: "3" }, { action_type: ACCION_MENSAJE, value: "9" }] }, "OUTCOME_SALES")).toBe(3);
   });
 });
