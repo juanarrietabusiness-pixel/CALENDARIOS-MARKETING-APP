@@ -90,6 +90,8 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "bandeja_mensajes",
   // La Biblioteca de anuncios de Meta: las búsquedas guardadas (worker/rutas/biblioteca.js).
   "biblioteca_filtros",
+  // Las plantillas de plan que la agencia cambió o creó (worker/rutas/plantillas.js).
+  "plantillas_plan",
   // Anuncios de Meta: cuentas publicitarias, campañas creadas desde la app
   // y quién activó o pausó qué (worker/lib/anuncios.js).
   "cuentas_anuncios",

@@ -7,6 +7,7 @@ import { loadImageTemplates, saveImageTemplate, deleteImageTemplate, loadImageRe
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
 import InterruptorBandeja from "./InterruptorBandeja";
+import PlanDelCliente from "./PlanDelCliente";
 import { idDeCarpeta } from "../lib/drive";
 import { PILARES, limpiarRitmo, RITMO_POR_DEFECTO } from "../lib/pilares";
 
@@ -1125,6 +1126,7 @@ export default function ClientModal({ initial, onSave, onDelete, onClose }) {
 
         {tab === "semanal" && (
           <div role="tabpanel" id={`${ids}-panel-semanal`} aria-labelledby={`${ids}-tab-semanal`}>
+            <PlanDelCliente valor={form.planContenido} onChange={(p) => sf("planContenido", p)} nombreCliente={form.name} />
             <RitmoContenido valor={form.ritmoContenido} onChange={(r) => sf("ritmoContenido", r)} />
 
             <p style={{ fontSize: "var(--fs-xs)", color: "var(--text-dim)", margin: "0 0 var(--sp-3)" }}>

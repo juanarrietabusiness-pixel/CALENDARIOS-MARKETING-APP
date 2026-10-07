@@ -568,6 +568,9 @@ export async function imagenDelADN(repoUrl, path) {
  * Ahora el ADN va primero, dice de qué archivo sale cada trozo, y la
  * ficha queda debajo declarada como lo que es: un índice, no una fuente.
  */
+/** El plan de contenido del cliente, como lo guardó su ficha (plantillasPlan.js, `lineaDelPlan`). */
+const lineaDelPlanDe = (client) => String(client?.planContenido?.linea ?? "").slice(0, 400);
+
 export function buildClientContext(client, calendar, adnCompleto = "", cerebro = null, { maquetacion = false } = {}) {
   // Quien llama a esto ESCRIBE texto —ideas, guiones, captions—: la capa de
   // maquetación para Meta AI no le sirve y son ~41 000 caracteres en Dcasa.
@@ -619,6 +622,7 @@ ESTILO DE GUIONES: ${client.estiloGuion || "Cercano, persuasivo, con emojis y CT
 ESTILO DE LOCUCIÓN: ${client.estiloLocucion || "N/A"}
 HASHTAGS: ${client.hashtags || "#Panama"}
 COMPETENCIA: ${client.competencia || "N/A"}
+${lineaDelPlanDe(client)}
 ${calendar?.campaign ? `CAMPAÑA DEL MES: ${calendar.campaign}` : ""}
 ${pasajes ? `\n═══════════════════════════════════════════════════════════\nPASAJES DEL CEREBRO — lo más relevante para esta tarea\n═══════════════════════════════════════════════════════════\n${pasajes}` : ""}
 ${client.aiInstructions ? `\n═══════════════════════════════════════════════════════════\nINSTRUCCIONES OBLIGATORIAS DEL CLIENTE\n═══════════════════════════════════════════════════════════\n${client.aiInstructions}` : ""}`;
@@ -646,6 +650,7 @@ ESTILO DE GUIONES: ${client.estiloGuion || "Cercano, persuasivo, con emojis y CT
 ESTILO DE LOCUCIÓN: ${client.estiloLocucion || "N/A"}
 HASHTAGS: ${client.hashtags || "#Panama"}
 COMPETENCIA: ${client.competencia || "N/A"}
+${lineaDelPlanDe(client)}
 ${calendar?.campaign ? `CAMPAÑA DEL MES: ${calendar.campaign}` : ""}
 ${client.aiInstructions ? `\nINSTRUCCIONES OBLIGATORIAS DEL CLIENTE:\n${client.aiInstructions}` : ""}`;
 }

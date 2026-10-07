@@ -133,8 +133,11 @@ src/
     videoCorto.js         Guiones de video de 8 s (Veo) o 10 s (Kling Omni): gancho, beneficio y cierre; el pedido
                           al modelo sin texto largo ni logo (puro; también lo importa el Worker)
     portadas.js           Las piezas del perfil por plantilla: estilos de portada, colores del kit, medidas (puro)
-    pilares.js            Los 6 tipos de contenido de la agencia, el ritmo semanal por cliente, las sugerencias de
-                          temporada y la matriz (tipo × producto × nivel × deseo × perfil) (puro)
+    pilares.js            Los 6 tipos de contenido de la agencia (+ Viral / alcance y Comunidad), el ritmo semanal por
+                          cliente, las sugerencias de temporada y la matriz (tipo × producto × nivel × deseo × perfil) (puro)
+    plantillasPlan.js     Las plantillas de plan: 3 objetivos × 3 negocios de arranque, juntar con lo guardado, la del
+                          cliente, la línea que lee la IA (puro; también lo importa el Worker)
+    plantillasApi.js      Cliente de /api/plantillas-plan
     kitMarca.js           El kit de marca del Estudio: paleta, presets (producto, anuncio, corporativo,
                           creativo), componer el pedido, el logo de referencia, pedidos a la IA (puro;
                           también lo importa el Worker)
@@ -370,7 +373,8 @@ worker/
     bandeja.js            /api/bandeja (comentarios y mensajes) y el webhook de Meta
                           (/api/webhooks/meta, sin sesión)
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario)
+    plantillas.js         /api/plantillas-plan: listar, guardar (cambiar una de arranque o crear) y borrar/restaurar
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1235,6 +1239,17 @@ son del servidor.
   `sugerencia` al lado («Usar esta» / «Quedarme con la mía»); `sugerencia` no viaja al calendario. «Escribir guiones
   y descripciones» manda reel, carrusel, historia y directo sin guion por `buildScriptPrompt` y lo demás por
   `buildDescripcionesPrompt`, y sólo rellena.
+- **Las plantillas de plan: las de arranque en el código, lo cambiado en D1, la del cliente en su ficha**
+  (`src/lib/plantillasPlan.js`, `plantillas_plan` y `clients.plan_contenido`, 0037). Tres objetivos (Centrado en
+  ventas, Ventas y seguidores, Marketing 360) × productos/servicios/marca personal. Por día, cada publicación lleva
+  formato y tipo; un tipo vacío es «el del ritmo del cliente ese día», así el ritmo y la temporada siguen mandando y
+  la plantilla sólo AÑADE (los reels «Viral / alcance», la «Comunidad»). Una fila con el id de una de arranque la
+  sustituye y borrarla la restaura; `plantilla_id` es único POR ESPACIO (el `id` de la fila es un uuid: dos agencias
+  tienen su «ventas-productos»). Las cambian admin y editores, no un colaborador (un editor con `clientes`). La del
+  cliente puede ser una copia personalizada entera, y guarda `linea` (`lineaDelPlan`) al guardar la ficha: así
+  `buildClientContext` (api.js, bundle principal) dice el objetivo sin pedir la lista. «Planificar mes» abre con
+  ella; los formatos del mes se ajustan sin tocar la plantilla. `clientToRow` lleva la columna: sin ella, guardar la
+  ficha la borraría.
 - **Los tipos de contenido y el ritmo semanal** (`src/lib/pilares.js`, `clients.ritmo_contenido`, 0035). La
   agencia hace un tipo por día (lunes Anuncio, martes Beneficios/Promociones, miércoles Servicios/Productos,
   jueves Educativo, viernes Diferenciador, sábado 7 maletas rotando garantía → testimonio → solución →

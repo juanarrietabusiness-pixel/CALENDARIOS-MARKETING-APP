@@ -2,7 +2,8 @@
 // Los tipos de contenido de la agencia y el ritmo semanal (puro)
 //
 // La agencia trabaja TODAS sus marcas con seis tipos de contenido, uno por
-// día de la semana, para no pensar cada vez qué toca:
+// día de la semana, para no pensar cada vez qué toca (y dos más, «Viral /
+// alcance» y «Comunidad», que añaden las plantillas de plan con más volumen):
 //
 //   lunes Anuncio · martes Beneficios/Promociones · miércoles Servicios/
 //   Productos · jueves Educativo · viernes Diferenciador · sábado 7 maletas
@@ -37,7 +38,7 @@ export const SUBTIPOS_MALETAS = Object.freeze([
 ]);
 
 /**
- * Los seis tipos. `niveles`: los niveles de consciencia a los que le habla (se van turnando); `producto`: si lleva
+ * Los tipos. `niveles`: los niveles de consciencia a los que le habla (se van turnando); `producto`: si lleva
  * un producto del catálogo; `preset`: el estilo del kit que le va en el Estudio.
  */
 export const PILARES = Object.freeze([
@@ -59,6 +60,14 @@ export const PILARES = Object.freeze([
   { id: "maletas", nombre: "7 maletas", niveles: [], producto: true, preset: "anuncio", subtipos: SUBTIPOS_MALETAS,
     datos: "garantía, testimonio, solución a un problema o respuesta a una objeción",
     regla: "Contenido de confianza: una de las maletas (garantía, testimonio, solución a un problema, respuesta a objeciones), con datos REALES." },
+  // Los dos de las plantillas «Ventas y seguidores» y «Marketing 360» (plantillasPlan.js): no van en el ritmo de la
+  // agencia, pero se pueden poner en el de un cliente.
+  { id: "viral", nombre: "Viral / alcance", niveles: ["inconsciente"], producto: false, preset: "creativo",
+    datos: "una tendencia, un dato curioso o una situación con la que el cliente ideal se identifique",
+    regla: "Pensado para que lo compartan y lleguen seguidores nuevos: tendencia, humor, dato curioso o una situación con la que el cliente ideal se identifique, del mundo de la marca. NO vende ni da precios; como mucho invita a seguir la cuenta." },
+  { id: "comunidad", nombre: "Comunidad", niveles: ["solucion", "producto"], producto: false, preset: "corporativo",
+    datos: "el equipo, el proceso, detrás de cámaras o un cliente real",
+    regla: "Acerca la marca: detrás de cámaras, el equipo, el proceso o clientes REALES (sólo lo que esté en el cerebro; nunca se inventan personas ni testimonios). Sin precios." },
 ]);
 
 const IDS_PILAR = PILARES.map((p) => p.id);

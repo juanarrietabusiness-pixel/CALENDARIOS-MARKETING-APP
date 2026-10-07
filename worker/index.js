@@ -51,6 +51,7 @@ import { rutasCerebro } from "./rutas/cerebro.js";
 import { rutasMercado } from "./rutas/mercado.js";
 import { rutasEstudio } from "./rutas/estudio.js";
 import { rutasBiblioteca } from "./rutas/biblioteca.js";
+import { rutasPlantillas } from "./rutas/plantillas.js";
 import { rutasAnuncios } from "./rutas/anuncios.js";
 import { avanzarPendientes } from "./lib/estudio/trabajos.js";
 import { rutasMCP, rutasMCPPublicas } from "./rutas/mcp.js";
@@ -395,6 +396,8 @@ export default {
       if (partes[0] === "bandeja") return await rutasBandeja(req, env, { acceso, usuario, partes, metodo });
       // La Biblioteca de anuncios de Meta: buscar y los filtros guardados.
       if (partes[0] === "biblioteca") return await rutasBiblioteca(req, env, { acceso, usuario, partes, metodo });
+      // Las plantillas de plan de la agencia (qué se publica cada día según el plan del cliente).
+      if (partes[0] === "plantillas-plan") return await rutasPlantillas(req, env, { acceso, usuario, partes, metodo });
       // Meta Ads: cuentas publicitarias, campañas y estadísticas. Activar es de admin y con confirmación.
       if (partes[0] === "anuncios") return await rutasAnuncios(req, env, { acceso, usuario, partes, metodo });
 

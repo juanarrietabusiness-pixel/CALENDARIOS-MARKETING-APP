@@ -1,0 +1,16 @@
+/* El editor de una plantilla de plan (Ajustes y la ficha del cliente). */
+.editor-plantilla { display: flex; flex-direction: column; gap: var(--sp-3); }
+.editor-plantilla-fila { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); }
+.editor-plantilla-fila .field { margin: 0; }
+.editor-plantilla-resumen { margin: 0; }
+.editor-plantilla-dias { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
+@media (min-width: 900px) { .editor-plantilla-dias { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.editor-plantilla-dia {
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  padding: var(--sp-3); background: var(--surface-2); border-radius: var(--radius-sm);
+}
+.editor-plantilla-dia-cabeza { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); }
+.editor-plantilla-dia-nombre { font-weight: 700; font-size: var(--fs-xs); }
+.editor-plantilla-hueco { display: flex; align-items: center; gap: var(--sp-2); }
+.editor-plantilla-hueco .input { min-width: 0; flex: 1 1 0; }
+.editor-plantilla-dia > .btn { align-self: flex-start; }
