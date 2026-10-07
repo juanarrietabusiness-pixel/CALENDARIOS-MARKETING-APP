@@ -14,6 +14,7 @@ import { navegar } from "../lib/rutas";
 import { agruparPorSemana, semanaInicial, rangoSemana } from "../lib/semanas";
 import { moverEnCalendario, ponerEnDia } from "../lib/subir";
 import { conAprobacion, resumenEnvio } from "../lib/aprobacion";
+import { sinLoNecesario } from "../lib/completitud";
 import { programarAprobadasDe } from "../lib/programarAprobadas";
 import { useEquipo } from "../hooks/useEquipo";
 import { yoActual, esAdmin } from "../lib/sesionActual";
@@ -36,6 +37,9 @@ const PostSidePanel = lazy(() => import("./calendario/PostSidePanel").then((m) =
 const ProgramarAprobadas = lazy(() => import("./calendario/programarAprobadas"));
 import { MonthGrid } from "./calendario/MonthGrid";
 import { CampanaMes } from "./calendario/campanaMes";
+// «Revisar el mes» antes de enviarlo: reglas, IA y marca (se carga al abrirlo).
+const RevisionMes = lazy(() => import("./calendario/RevisionMes"));
+const ProducirMes = lazy(() => import("./calendario/ProducirMes"));
 const FechasEspecialesDialog = lazy(() => import("./calendario/fechasEspeciales").then((m) => ({ default: m.FechasEspecialesDialog })));
 import { BankPanel } from "./calendario/BankPanel";
 import {
@@ -1038,6 +1042,8 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           items={[
             { icon: "pencil", label: "Editar el mes", onClick: () => abrirMeta("general") },
             { icon: "calendar", label: "Fechas especiales", onClick: () => abrirCapa("fechas") },
+            { icon: "checkSquare", label: "Revisar el mes", onClick: () => abrirCapa("revision") },
+            { icon: "imageAi", label: "Producir el mes con IA", onClick: () => abrirCapa("producir") },
             { icon: "copy", label: "Exportar ideas y descripciones", onClick: () => abrirCapa("exportar") },
             { sep: true },
             { icon: "terminal", label: capa === "diagnostico" ? "Ocultar diagnóstico" : "Ver diagnóstico", onClick: () => setCapa((c) => (c === "diagnostico" ? null : "diagnostico")) },
@@ -1603,8 +1609,41 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           revisionEnviada={cal.revisionEnviada}
           revisionRevisor={cal.revisionRevisor}
           resumen={resumenEnvio(cal.days)}
+          sinLoNecesario={sinLoNecesario(cal.days)}
+          onRevisar={() => abrirCapa("revision")}
           onClose={cerrarCapa}
         />
+      )}
+
+      {capa === "revision" && (
+        <Suspense fallback={<div className="panel-cargando" role="status">Abriendo la revisión…</div>}>
+          <RevisionMes
+            client={client}
+            cal={cal}
+            onAbrir={(postId) => {
+              for (const day of cal.days ?? []) {
+                const post = (day.posts ?? []).find((p) => p.id === postId);
+                if (post) { cerrarCapa(); setSidePanel({ post, day }); break; }
+              }
+            }}
+            onArreglar={(date, post) => updatePost(date, post)}
+            onClose={cerrarCapa}
+          />
+        </Suspense>
+      )}
+
+      {capa === "producir" && (
+        <Suspense fallback={<div className="panel-cargando" role="status">Abriendo…</div>}>
+          <ProducirMes
+            client={client}
+            cal={cal}
+            onPoner={(cambiar) => {
+              // Todas de una vez: poner una a una con `updatePost` partiría cada vez del calendario de antes.
+              onUpdateCal(calId, { ...cal, days: (cal.days || []).map((d) => ({ ...d, posts: (d.posts || []).map(cambiar) })) });
+            }}
+            onClose={cerrarCapa}
+          />
+        </Suspense>
       )}
 
       {/* Side panel */}

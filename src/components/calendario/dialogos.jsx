@@ -473,6 +473,7 @@ export function ApprovalDialog({
   approvalUrl, whatsappMessage, onClose, onGenerate, onRevoke, onReopen,
   hasLink, shareEnabled, working, allowEditing, onToggleEditing,
   opciones = {}, onCambiarOpciones, revisionEnviada = null, revisionRevisor = "", resumen = null,
+  sinLoNecesario = 0, onRevisar = null,
 }) {
   const ref = useDialogA11y(onClose);
   const ids = useId();
@@ -536,6 +537,24 @@ export function ApprovalDialog({
             <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
               Las respuestas de tu cliente aparecen aquí al instante, sin recargar.
             </p>
+
+            {/* La regla de la agencia: lo que va sin contenido (un reel que se graba, algo que no se pudo
+                hacer) lleva la idea en el texto, su guion y una referencia que el cliente pueda abrir. */}
+            {(sinLoNecesario > 0 || onRevisar) && (
+              <div className={`notice ${sinLoNecesario ? "notice-warn" : ""}`} style={{ display: "block", marginBottom: "var(--sp-3)" }}>
+                {sinLoNecesario > 0 && (
+                  <p style={{ margin: 0 }}>
+                    {sinLoNecesario === 1 ? "1 publicación va" : `${sinLoNecesario} publicaciones van`} sin contenido y sin lo que el cliente
+                    necesita para {sinLoNecesario === 1 ? "entenderla" : "entenderlas"} (texto, guion o una referencia).
+                  </p>
+                )}
+                {onRevisar && (
+                  <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: sinLoNecesario ? "var(--sp-1)" : 0 }} onClick={onRevisar}>
+                    <Icon name="checkSquare" size={14} /> Revisar el mes antes de enviarlo
+                  </button>
+                )}
+              </div>
+            )}
 
             {resumen && resumen.idea + resumen.pieza > 0 && (
               <div className="notice envio-resumen" style={{ display: "block", marginBottom: "var(--sp-3)" }}>

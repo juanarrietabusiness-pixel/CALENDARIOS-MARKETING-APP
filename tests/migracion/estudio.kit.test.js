@@ -162,6 +162,18 @@ describe("revisar una pieza", () => {
     expect(textoDe(peticiones[0])).toContain("Lo que se pidió: Un sofá en la sala");
   });
 
+  it("la imagen de una publicación se revisa por su ruta, aunque no esté en la galería; la de otro cliente, no", async () => {
+    env.MEDIA.objetos.set("clientes/c1/banco/post.png", { bytes: PNG, tipo: "image/png" });
+    await pedir("/api/estudio/c1/kit", { method: "PUT", body: { kit: { paleta: [{ hex: "#1E2A5A", nombre: "azul", rol: "dominante" }] } } });
+    anthropic('{"puntaje":9,"cumple":["paleta"],"falla":[],"sugerencia":""}');
+    const res = await pedir("/api/estudio/c1/revisar", { method: "POST", body: { clave: "/api/media/clientes/c1/banco/post.png" } });
+    expect(res.status).toBe(200);
+    expect((await res.json()).puntaje).toBe(9);
+    expect((await pedir("/api/estudio/c1/revisar", { method: "POST", body: { clave: "clientes/c2/banco/post.png" } })).status).toBe(400);
+    expect((await pedir("/api/estudio/c1/revisar", { method: "POST", body: { clave: "clientes/c1/../c2/x.png" } })).status).toBe(400);
+    expect((await pedir("/api/estudio/c1/revisar", { method: "POST", body: { clave: "clientes/c1/no-existe.png" } })).status).toBe(404);
+  });
+
   it("una imagen de otro cliente no se revisa", async () => {
     await conImagen();
     const res = await pedir("/api/estudio/c2/revisar", { method: "POST", body: { archivoId: "a1" } });

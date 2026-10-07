@@ -1,0 +1,18 @@
+/* «Revisar el mes» (se carga aparte, con su diálogo). */
+.revision-mes { max-width: 820px; }
+.revision-acciones { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-3); }
+.revision-vacio { display: flex; align-items: center; gap: var(--sp-2); color: var(--success, var(--accent)); font-weight: 600; }
+.revision-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.revision-item {
+  display: flex; flex-direction: column; gap: var(--sp-1);
+  padding: var(--sp-3); background: var(--surface-2); border-radius: var(--radius-sm);
+}
+.revision-cabeza { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.revision-cabeza .hint { flex: 1 1 160px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 0; }
+.revision-falta, .revision-problema { margin: 0; font-size: var(--fs-2xs); display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); }
+.revision-falta { color: var(--warning, var(--accent-alt)); }
+.revision-ia { color: var(--text-dim); }
+.revision-ok { color: var(--text-dim); }
+.produccion-item { flex-direction: row; align-items: flex-start; gap: var(--sp-3); }
+.produccion-item img, .produccion-item video { width: 96px; height: 120px; object-fit: cover; border-radius: var(--radius-sm); background: var(--surface-3); flex-shrink: 0; }
+.produccion-texto { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; align-items: flex-start; }

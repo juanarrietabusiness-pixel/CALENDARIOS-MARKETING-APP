@@ -326,6 +326,16 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           </div>
         )}
 
+        {/* Lo que abre el cliente mientras no hay contenido: un video o una imagen de ejemplo. */}
+        <div className="field">
+          <label className="label" htmlFor={`${ids}-referencia`}>Referencia para el cliente <span style={{ fontWeight: 400, textTransform: "none" }}>· enlace</span></label>
+          <input id={`${ids}-referencia`} className="input" type="url" inputMode="url" maxLength={500} value={form.referenceLink || ""}
+            onChange={(e) => sf("referenceLink", e.target.value)} placeholder="https://… (un video de TikTok, Instagram o una carpeta de Drive)" aria-describedby={`${ids}-referencia-ayuda`} />
+          <p id={`${ids}-referencia-ayuda`} className="hint" style={{ margin: 0 }}>
+            Mientras no haya contenido, el cliente la ve junto a la idea y el guion para entender qué va.
+          </p>
+        </div>
+
         <div className="field">
           <div style={fieldHeaderStyle}>
             <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-desc`}>Descripción</label>

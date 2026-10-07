@@ -90,9 +90,20 @@ export async function prepararKit(env, acceso, cliente) {
   return { ...leido, conCerebro: Boolean(guia), modelo: r.modelo, aviso: r.aviso };
 }
 
-/** La IA mira una imagen de la galería con el kit delante. */
-export async function revisarPieza(env, acceso, cliente, archivoId) {
-  const archivo = await acceso.leerUno("estudio_archivos", { id: String(archivoId ?? ""), client_id: cliente.id });
+/**
+ * La IA mira una imagen con el kit delante: una de la galería (`archivoId`) o, por su clave de R2, la imagen de una
+ * publicación de ESTE cliente (`clave`, o la ruta `/api/media/…`), que no siempre está en la galería.
+ */
+export async function revisarPieza(env, acceso, cliente, archivoId, { clave = null } = {}) {
+  let archivo = archivoId ? await acceso.leerUno("estudio_archivos", { id: String(archivoId), client_id: cliente.id }) : null;
+  if (!archivo && clave) {
+    const limpia = claveDelCliente(clave, cliente.id);
+    if (!limpia) throw new ErrorEstudio("Esa imagen no es de este cliente.", 400);
+    const obj = await env.MEDIA.get(limpia);
+    if (!obj) throw new ErrorEstudio("La imagen ya no está en el almacenamiento.", 404);
+    const mime = obj.httpMetadata?.contentType || "";
+    archivo = { clave: limpia, mime, tipo: mime.startsWith("image/") ? "imagen" : "otro", prompt: "" };
+  }
   if (!archivo) throw new ErrorEstudio("Esa imagen no está en la galería de este cliente.", 404);
   if (archivo.tipo !== "imagen" || !/^image\/(png|jpeg|webp|gif)$/.test(archivo.mime)) {
     throw new ErrorEstudio("Por ahora sólo se revisan imágenes (no videos ni SVG).", 400);
