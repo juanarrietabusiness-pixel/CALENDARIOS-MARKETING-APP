@@ -15,6 +15,9 @@
 //   GET  /clientes/:c/intereses?q=                 Buscar intereses de Meta (conjuntos por intereses)
 //   GET  /clientes/:c/publicos                     Públicos de la cuenta (personalizados y similares)
 //   POST /clientes/:c/similares { origenId, pais, porcentaje }  Crear un público similar (no gasta)
+//   GET  /manual · PUT /manual                     El «Manual de campañas de la agencia» (el estratega lo lee)
+//   POST /estratega { clientId?, externo?, … }     El plan de una campaña (IA; no toca Meta)
+//   GET  /planes?cliente= · POST /planes · DELETE /planes/:id   Los planes guardados
 //   GET  /clientes/:c/medios                       Estudio + publicaciones del cliente
 //   POST /clientes/:c/medio { clave }              Subirlo a Meta (imagen: hash; video: id)
 //   GET  /clientes/:c/video/:id                    ¿Terminó Meta de procesar el video?
@@ -38,6 +41,8 @@ import {
   buscarIntereses, publicosDeLaCuenta, crearSimilar,
 } from "../lib/anuncios.js";
 import { rangoInsights, RANGOS, deMenores, resumenPresupuesto, permisosAnunciosQueFaltan } from "../../src/lib/anuncios.js";
+import { ErrorIA } from "../lib/cerebro/ia.js";
+import { ErrorEstratega, leerManual, guardarManual, armarPlan, listarPlanes, guardarPlan, borrarPlan } from "../lib/estratega.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
@@ -84,6 +89,7 @@ export async function rutasAnuncios(req, env, { acceso, usuario, partes, metodo 
     return await atender(req, env, { acceso, usuario, partes, metodo });
   } catch (e) {
     if (e instanceof ErrorAnuncios) return json({ error: e.message, ...(e.datos ?? {}) }, e.estado);
+    if (e instanceof ErrorEstratega || e instanceof ErrorIA) return error(e.message, e.estado ?? 502);
     if (e instanceof ErrorMeta) return error(mensajeAnuncios(e), e.transitorio ? 503 : 502, e);
     throw e;
   }
@@ -131,6 +137,36 @@ async function atender(req, env, { acceso, usuario, partes, metodo }) {
     difundir(env, acceso.ownerId, { tipo: "ajustes", por: firma(usuario, req) });
     return json(cuentaPublica({ ...cuenta, client_id: clientId || null }));
   }
+
+  // ---- El estratega: no toca Meta (no hace falta cuenta publicitaria) ----
+  // El manual lo escriben quienes ven toda la agencia (admin, o editor sin clientes asignados).
+  const editaAgencia = esAdmin || (usuario?.rol === "editor" && !Array.isArray(usuario?.clientes));
+  if (grupo === "manual" && metodo === "GET") return json(await leerManual(acceso));
+  if (grupo === "manual" && metodo === "PUT") {
+    if (!editaAgencia) return error("El manual de campañas lo cambian el administrador y los editores de la agencia.", 403);
+    const manual = await guardarManual(acceso, (await cuerpo(req)) ?? {});
+    difundir(env, acceso.ownerId, { tipo: "ajustes", por: firma(usuario, req) });
+    return json(manual);
+  }
+  if (grupo === "estratega" && metodo === "POST") {
+    const datos = (await cuerpo(req)) ?? {};
+    let cliente = null;
+    if (datos.clientId) {
+      cliente = await acceso.leerUno("clients", { id: datos.clientId });
+      if (!cliente) return noEncontrado("Cliente");
+    } else if (Array.isArray(usuario?.clientes)) {
+      // Un colaborador sólo trabaja con sus clientes.
+      return error("Escoge uno de tus clientes.", 403);
+    }
+    return json(await armarPlan(env, acceso, cliente, datos));
+  }
+  if (grupo === "planes" && metodo === "GET") return json(await listarPlanes(acceso, url.searchParams.get("cliente") || null));
+  if (grupo === "planes" && !id && metodo === "POST") {
+    const datos = (await cuerpo(req)) ?? {};
+    if (datos.clienteId && !(await acceso.leerUno("clients", { id: datos.clienteId }))) return noEncontrado("Cliente");
+    return json(await guardarPlan(acceso, datos, usuario), 201);
+  }
+  if (grupo === "planes" && id && metodo === "DELETE") return (await borrarPlan(acceso, id)) ? json({ ok: true }) : noEncontrado("Plan");
 
   if (grupo !== "clientes" || !id) return noEncontrado("Ruta");
 

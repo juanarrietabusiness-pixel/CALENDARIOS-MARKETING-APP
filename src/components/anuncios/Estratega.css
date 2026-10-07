@@ -1,0 +1,35 @@
+/* El estratega de campañas (se carga aparte, con su diálogo). */
+.est-estratega { max-width: 960px; }
+.est-estratega .sheet-body { display: flex; flex-direction: column; gap: var(--sp-3); }
+/* En una columna que desplaza, los hijos no deben encoger: el selector «Para quién» quedaba en una raya. */
+.est-estratega .sheet-body > * { flex-shrink: 0; }
+.est-titulo { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-md); margin: 0; }
+.est-estratega .field { margin: 0; }
+.est-fila { display: grid; gap: var(--sp-2) var(--sp-3); grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); }
+.est-ancho { grid-column: 1 / -1; }
+.est-casillas { display: flex; flex-direction: column; gap: var(--sp-1); }
+.est-pie { flex-wrap: wrap; gap: var(--sp-2); }
+.est-plan { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-3); background: var(--surface-2); border-radius: var(--radius); }
+.est-plan h3 { font-size: var(--fs-sm); margin: 0 0 var(--sp-1); }
+.est-resumen { margin: 0; font-weight: 600; }
+.est-embudo, .est-lista { margin: 0; padding-left: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-xs); }
+.est-riesgos { list-style: none; padding-left: 0; color: var(--warning, var(--accent-alt)); }
+.est-cuentas { margin: 0 0 var(--sp-2); display: grid; gap: var(--sp-2); grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr)); }
+.est-cuentas div { padding: var(--sp-2); background: var(--surface-3); border-radius: var(--radius-sm); }
+.est-cuentas dt { font-size: var(--fs-2xs); color: var(--text-dim); }
+.est-cuentas dd { margin: 0; font-size: var(--fs-sm); }
+.est-tabla-envoltura { overflow-x: auto; }
+.est-tabla { width: 100%; border-collapse: collapse; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.est-tabla th, .est-tabla td { text-align: right; padding: var(--sp-1) var(--sp-2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+.est-tabla th:first-child { text-align: left; }
+.est-tabla td[data-signo="-"] { color: var(--danger, #e5484d); }
+.est-anuncios { margin: var(--sp-2) 0 0; padding: 0; list-style: none; display: grid; gap: var(--sp-2); grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
+.est-anuncios li { padding: var(--sp-2) var(--sp-3); background: var(--surface-3); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.est-anuncios .hint { margin: 0; }
+.est-anuncio-cabeza { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); }
+.est-anuncio-cabeza .btn { margin-left: auto; }
+.est-texto { margin: 0; white-space: pre-wrap; font-size: var(--fs-xs); }
+.est-maletas summary { cursor: pointer; font-weight: 700; font-size: var(--fs-sm); min-height: var(--tap-sm); display: flex; align-items: center; }
+.est-maletas dl { margin: 0; display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-xs); }
+.est-maletas dt { font-weight: 700; }
+.est-maletas dd { margin: 0 0 var(--sp-1); }

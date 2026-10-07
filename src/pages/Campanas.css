@@ -133,3 +133,4 @@
 .anu-revision-anuncios div { display: flex; flex-direction: column; min-width: 0; font-size: var(--fs-xs); }
 .anu-revision-anuncios p { margin: var(--sp-1) 0 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .anu-chips .filter-chip { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.anu-sugeridos { display: flex; flex-direction: column; gap: var(--sp-1); }

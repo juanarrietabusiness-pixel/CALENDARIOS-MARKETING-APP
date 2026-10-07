@@ -1449,7 +1449,12 @@ function Workspace({ session, ruta }) {
               </Suspense>
             ) : ruta.vista === "campanas" ? (
               <Suspense fallback={<Cargando />}>
-                <Campanas clients={clients} pulso={pulso} yo={yo} />
+                <Campanas clients={clients} pulso={pulso} yo={yo} onClienteNuevo={async (datos) => {
+                  // El estratega guarda como cliente a alguien de fuera: se crea y se mete en la lista (el eco propio se ignora).
+                  const guardado = await db.saveClient({ ...datos, calendars: [] }, ownerId);
+                  setClients((prev) => (prev.some((x) => x.id === guardado.id) ? prev : [...prev, guardado]));
+                  return guardado;
+                }} />
               </Suspense>
             ) : ruta.vista === "resultados" ? (
               <Suspense fallback={<Cargando />}>
