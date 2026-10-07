@@ -109,11 +109,11 @@ export async function crearTrabajo(env, acceso, cliente, datos, { usuario = null
 
   // Los medios (referencias, imagen inicial y final) son del MISMO cliente y existen: el id llega del navegador y no se cree.
   const guardados = {};
-  for (const rol of ["reference", "start", "end"]) {
+  for (const rol of ["reference", "start", "end", "video"]) {
     for (const valor of medios[rol] ?? []) {
       const clave = claveDelCliente(valor, cliente.id);
-      if (!clave) throw new ErrorEstudio("Una de las imágenes no es de este cliente.", 400);
-      if (!(await env.MEDIA.head(clave))) throw new ErrorEstudio("Una de las imágenes ya no existe.", 404);
+      if (!clave) throw new ErrorEstudio(rol === "video" ? "El video no es de este cliente." : "Una de las imágenes no es de este cliente.", 400);
+      if (!(await env.MEDIA.head(clave))) throw new ErrorEstudio(rol === "video" ? "El video ya no existe." : "Una de las imágenes ya no existe.", 404);
       (guardados[rol] ??= []).push(clave);
     }
   }
@@ -148,18 +148,29 @@ export async function crearTrabajo(env, acceso, cliente, datos, { usuario = null
 // Avanzar
 // ------------------------------------------------------------
 
+const MAX_VIDEO_REFERENCIA = 50 * 1024 * 1024;
+
 /**
- * Las imágenes que lleva un trabajo (referencias, inicial, final), de R2. Una que falta corta el paso: seguir sin
- * ella cambiaría lo que se pidió. Con `base64` cada una trae además su texto en base64 (lo pide Veo).
+ * Las imágenes que lleva un trabajo (referencias, inicial, final) y su video de referencia, de R2. Una que falta
+ * corta el paso: seguir sin ella cambiaría lo que se pidió. Con `base64` cada imagen trae además su texto en base64
+ * (lo pide Veo).
  */
 async function cargarMedios(env, fila, modelo, { base64 = false } = {}) {
   const guardados = leerJSON(fila.medios, {});
-  const limite = { reference: modelo.referencias || 0, start: modelo.inicial || 0, end: modelo.final || 0 };
-  const salida = { reference: [], start: [], end: [] };
+  const limite = { reference: modelo.referencias || 0, start: modelo.inicial || 0, end: modelo.final || 0, video: modelo.video || 0 };
+  const salida = { reference: [], start: [], end: [], video: [] };
   for (const rol of Object.keys(salida)) {
     for (const clave of (guardados[rol] ?? []).slice(0, limite[rol])) {
       const obj = await env.MEDIA.get(clave);
-      if (!obj) throw new ErrorMotor("Una de las imágenes ya no existe.", 422);
+      if (!obj) throw new ErrorMotor(rol === "video" ? "El video de referencia ya no existe." : "Una de las imágenes ya no existe.", 422);
+      if (rol === "video") {
+        // El video va tal cual al almacén del motor: sólo MP4 o WebM y con tope (el Worker lo tiene en memoria al subirlo).
+        const mime = obj.httpMetadata?.contentType || "";
+        if (!/^video\/(mp4|webm)$/.test(mime)) throw new ErrorMotor("El video de referencia tiene que ser MP4 o WebM.", 422);
+        if (obj.size > MAX_VIDEO_REFERENCIA) throw new ErrorMotor("El video de referencia pesa más de 50 MB.", 422);
+        salida.video.push({ mime, bytes: await obj.arrayBuffer() });
+        continue;
+      }
       const mime = obj.httpMetadata?.contentType || "image/jpeg";
       if (modelo.motor !== "prueba" && !TIPOS_REALES.includes(mime)) {
         throw new ErrorMotor("Una tarjeta de prueba o un archivo que no es PNG, JPEG o WebP no sirve de imagen para un motor real.", 422);

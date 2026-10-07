@@ -31,14 +31,14 @@ function Ranura({ titulo, ayuda, archivos, max, rol, subiendo, onQuitar, onSubir
       <div className="est-refs" role="group" aria-labelledby={`${ids}-${rol}`}>
         {archivos.map((r) => (
           <span key={r.id} className="est-ref">
-            <img src={r.src} alt="" />
-            <span className="est-ref-nombre">{r.prompt || "Imagen"}</span>
-            <button type="button" className="btn-icon est-ref-quitar" aria-label={`Quitar: ${r.prompt || "imagen"}`} onClick={() => onQuitar(rol, r)}><Icon name="close" size={14} /></button>
+            {r.tipo === "video" ? <video src={r.src} muted playsInline preload="metadata" aria-hidden="true" /> : <img src={r.src} alt="" />}
+            <span className="est-ref-nombre">{r.prompt || (r.tipo === "video" ? "Video" : "Imagen")}</span>
+            <button type="button" className="btn-icon est-ref-quitar" aria-label={`Quitar: ${r.prompt || (r.tipo === "video" ? "video" : "imagen")}`} onClick={() => onQuitar(rol, r)}><Icon name="close" size={14} /></button>
           </span>
         ))}
         {archivos.length < max && (
           <button type="button" className="btn btn-secondary btn-sm" disabled={subiendo} onClick={() => onSubir(rol)}>
-            <Icon name="upload" size={16} /> {subiendo ? "Subiendo…" : "Subir una imagen"}
+            <Icon name="upload" size={16} /> {subiendo ? "Subiendo…" : rol === "video" ? "Subir un video" : "Subir una imagen"}
           </button>
         )}
         <span className="hint">{archivos.length} de {max}. {ayuda}</span>
@@ -196,7 +196,11 @@ export default function Compositor({
   const cantidades = esVideo ? [1, 2] : [1, 2, 3, 4, 6, 8].filter((n) => n <= maxPorPedido(modelo));
   const segundos = esVideo ? duracionDe(modelo, form.ajustes) : 0;
 
-  const abrirSubida = (rol) => { rolSubida.current = rol; entrada.current?.click(); };
+  const abrirSubida = (rol) => {
+    rolSubida.current = rol;
+    if (entrada.current) entrada.current.accept = rol === "video" ? "video/mp4,video/quicktime,video/webm" : "image/png,image/jpeg,image/webp";
+    entrada.current?.click();
+  };
   const alElegir = (e) => {
     // Copiar ANTES de resetear: vaciar el campo vacía también su lista de archivos.
     const archivos = [...e.target.files];
@@ -284,6 +288,12 @@ export default function Compositor({
 
       <FichaDelModelo modelo={modelo} />
 
+      {modelo.video > 0 && (
+        <Ranura ids={ids} rol="video" titulo="Video de referencia" max={1} archivos={medios.video ?? []} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida}
+          ayuda={modelo.inicial
+            ? "El movimiento de este video pasa a tu imagen inicial (MP4, MOV o WebM, hasta 50 MB)."
+            : "El modelo sigue sus planos, su ritmo y su movimiento con tu marca (MP4, MOV o WebM, hasta 50 MB). Puede ser el de la competencia."} />
+      )}
       {modelo.necesitaImagen && (
         <p className="notice notice-warn est-necesita" role="note">
           {modelo.nombre} no crea desde texto solo: necesita {conInicial ? "una imagen inicial" : "al menos una imagen de referencia"}.

@@ -122,7 +122,7 @@ src/
     estudioCatalogo.js    El Estudio: modelos (Google, fal.ai, Higgsfield), ajustes, costo estimado,
                           validar un pedido, ordenar/filtrar la lista, papelera (puro; también lo
                           importa el Worker)
-    estudioHiggsfield.json  Los modelos de Higgsfield, GENERADOS de su esquema: no se edita a mano
+    estudioHiggsfield.json  Los modelos de Higgsfield (también los que siguen un video), GENERADOS de su esquema: no se edita a mano
                           (`node scripts/estudio/generar-higgsfield.mjs`)
     estudioMercado.js     El estudio de mercado: catálogo (productos y precios), lo general (perfiles, deseos de
                           Reiss, nivel de consciencia), los 7 elementos por producto, ganchos por nivel, textos de
@@ -1168,6 +1168,10 @@ son del servidor.
   generador. **Nada de fal.ai ni de Higgsfield se ha probado contra el servicio real**: los tests
   usan un `fetch` de mentira que habla como ellos. Lo primero con una llave es un pedido barato
   (Z-Image Turbo, Flux Schnell) y luego uno de video corto.
+  · **El VIDEO de referencia es un cuarto papel de los medios** (`medios.video`, junto a start/end/reference). Sólo
+  lo admiten los modelos de Higgsfield marcados `conVideo` en el generador (Kling Omni · sigue un video, Kling 3.0
+  · copia el movimiento): `video: 1` y `necesitaVideo` salen del esquema. Va a SU almacén como las imágenes, desde
+  R2 y con tope de 50 MB (el Worker lo tiene en memoria al subirlo).
   · **Las imágenes de apoyo de fal van como data URI y las de Higgsfield a su almacén**
   (`/files/generate-upload-url` + PUT, sin la llave). Los formatos de fal por `image_size` son
   sólo los exactos (`FORMATOS_FAL`): con «4:5» la imagen saldría 3:4 aunque la pantalla dijera 4:5.
@@ -1222,6 +1226,16 @@ son del servidor.
   Drive conectado, se aprueba igual y se avisa). El documento es un HTML que Drive convierte en Google Docs.
   · **Las referencias se suben a la galería del Estudio** (carpeta «Competencia») y la IA MIRA la captura. La
   API de Meta no da los anuncios comerciales de Panamá: la pantalla abre la Biblioteca web con la búsqueda.
+  · **Una referencia puede ser un VIDEO** (anuncio u orgánico de TikTok o Reels, `medio`/`origen`): la galería
+  acepta videos MP4/MOV/WebM hasta 50 MB, y lo ve GEMINI (Claude no recibe video) por `worker/lib/geminiVideo.js`,
+  la misma subida a su Files API que usa el análisis del asistente (`worker/rutas/video.js`). Devuelve además la
+  ESTRUCTURA tramo a tramo (`limpiarEstructura`, `estructuraATexto`). Descargar de TikTok lo hace la persona: no
+  hay API para eso y rastrearlo va contra sus reglas.
+  · **De una referencia a algo nuestro:** «Adaptar a la marca» (`POST …/referencias/<id>/adaptar`, no guarda)
+  escribe un guion con la misma forma para un producto del catálogo; «Recrear con mi marca» (captura) y «Seguir
+  este video con mi marca» abren el Estudio con la referencia puesta y un pedido armado SIN IA
+  (`ideaParaRecrear`, `ideaParaSeguirVideo`). En «Planificar mes», un reel o carrusel puede llevar «Estructura del
+  guion: como el video de…» (`post.estructuraRef`, el texto; `buildScriptPrompt` lo lee).
   · **El Estudio ofrece los ganchos del estudio** con el preset de anuncio (`angulos` en GET /api/estudio):
   la idea pide el gancho y el precio EXACTOS del catálogo. El kit de marca lee el estudio aprobado.
   · **Los siete elementos** son genéricos (`ELEMENTOS_MERCADO`); si la agencia usa otros nombres, se cambian

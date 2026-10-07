@@ -376,6 +376,13 @@ export function validarPedido(entrada = {}) {
   const referencias = unicos(entrada.medios?.reference);
   const inicial = unicos(entrada.medios?.start);
   const final = unicos(entrada.medios?.end);
+  const videos = unicos(entrada.medios?.video);
+  if (videos.length > (modelo.video ?? 0)) {
+    return { ok: false, error: modelo.video ? `${modelo.nombre} lleva un solo video de referencia.` : `${modelo.nombre} no admite un video de referencia.` };
+  }
+  if (modelo.necesitaVideo && !videos.length) {
+    return { ok: false, error: `${modelo.nombre} necesita un video de referencia (súbelo a la galería y ponlo en el pedido).` };
+  }
   if (referencias.length > (modelo.referencias ?? 0)) {
     return {
       ok: false,
@@ -400,6 +407,7 @@ export function validarPedido(entrada = {}) {
   if (referencias.length) medios.reference = referencias;
   if (inicial.length) medios.start = inicial;
   if (final.length) medios.end = final;
+  if (videos.length) medios.video = videos;
   let ajustes = normalizarAjustes(modelo, entrada.ajustes);
   if (modelo.ajustar) ajustes = modelo.ajustar(ajustes, medios);
   return { ok: true, pedido: { modelo, prompt, n, ajustes, medios, costoEstimado: estimar(modelo, n, ajustes) } };

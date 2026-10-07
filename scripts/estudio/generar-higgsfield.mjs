@@ -15,8 +15,9 @@
 // Aquí sólo se escribe LO QUE NO ESTÁ EN LA DOCUMENTACIÓN: cómo se llama cada modelo, qué rutas lo
 // forman, cuánto cuesta (aproximado: Higgsfield no publica precios por llamada) y para qué sirve.
 //
-// SÓLO ENTRAN LOS MODELOS QUE SE PUEDEN PEDIR DESDE ESTA APLICACIÓN. Esta sólo sube imágenes, así que
-// una ruta que exige un video (copiar movimiento, editar, alargar, cambiar un objeto) queda fuera.
+// SÓLO ENTRAN LOS MODELOS QUE SE PUEDEN PEDIR DESDE ESTA APLICACIÓN. Una ruta que exige un video queda
+// fuera, salvo en los modelos marcados `conVideo`: los que siguen o copian un VIDEO DE REFERENCIA (el de la
+// competencia, subido a la galería). Editar, alargar o cambiar un objeto de un video siguen fuera.
 //
 // El resultado se guarda en el repositorio y lo importan las dos puntas: la pantalla (catálogo) y el
 // Worker (rutas). Un test lo vuelve a generar y compara: si alguien lo edita a mano, falla.
@@ -46,7 +47,7 @@ export function papelDe(tipo, campo) {
   return "reference";
 }
 
-const hfm = (id, nombre, tipo, rutas, costo, creador, calidad, velocidad, para, nota = "") => ({ id, nombre, tipo, rutas, costo, creador, calidad, velocidad, para, nota });
+const hfm = (id, nombre, tipo, rutas, costo, creador, calidad, velocidad, para, nota = "", conVideo = false) => ({ id, nombre, tipo, rutas, costo, creador, calidad, velocidad, para, nota, conVideo });
 const HFV = (prefijo) => ({ text: `${prefijo}/text-to-video`, image: `${prefijo}/image-to-video`, reference: `${prefijo}/reference-to-video` });
 const HF = "Higgsfield", K = "Kling (Kuaishou)", AL = "Alibaba";
 
@@ -71,6 +72,10 @@ export const MODELOS_HF = [
   hfm("kling-3-pro", "Kling 3.0 Pro", "video", { text: "kling-video/v3.0/pro/text-to-video", image: "kling-video/v3.0/pro/image-to-video" }, 0.11, K, 4, "lento", ["con sonido", "calidad alta"]),
   hfm("kling-3-4k", "Kling 3.0 4K", "video", { text: "kling-video/v3.0/4k/text-to-video", image: "kling-video/v3.0/4k/image-to-video" }, 0.2, K, 4, "lento", ["4K", "con sonido"]),
   hfm("kling-omni", "Kling Omni · hasta 10 s", "video", { text: "kling-video/omni/image-reference", reference: "kling-video/omni/image-reference", image: "kling-video/omni/first-last-frame" }, 0.1, K, 4, "lento", ["hasta 10 s", "referencias de la marca", "imagen inicial y final"], "De 3 a 10 s, con hasta 4 referencias (el logo, el producto) o imagen inicial y final. Para reels cortos con la marca."),
+  // Con un VIDEO de referencia: la estructura y el movimiento de un video de la competencia, con la marca.
+  hfm("kling-omni-video", "Kling Omni · sigue un video", "video", { videoRef: "kling-video/omni/video-reference" }, 0.1, K, 4, "lento", ["seguir un video de referencia", "hasta 10 s", "referencias de la marca"], "Sigue los planos, el ritmo y el movimiento de un video de referencia (el de la competencia) con tu marca y tu producto: de 3 a 10 s y hasta 4 imágenes de referencia.", true),
+  hfm("kling-motion", "Kling 3.0 · copia el movimiento", "video", { videoRef: "kling-video/v3/motion-control/std" }, 0.08, K, 3, "normal", ["copiar el movimiento", "persona o producto"], "Lleva el movimiento de un video (un gesto, un baile, cómo se enseña un producto) a tu imagen: una imagen inicial y el video.", true),
+  hfm("kling-motion-pro", "Kling 3.0 Pro · copia el movimiento", "video", { videoRef: "kling-video/v3/motion-control/pro" }, 0.12, K, 4, "lento", ["copiar el movimiento", "calidad alta"], "Lo mismo, con más calidad.", true),
   hfm("kling-3-turbo", "Kling 3.0 Turbo", "video", { text: "kling-video/v3.0-turbo/text-to-video", image: "kling-video/v3.0-turbo/image-to-video" }, 0.06, K, 2, "rápido", ["rápido", "redes"], "El más rápido de Kling 3."),
   hfm("kling-2.6", "Kling 2.6 Pro", "video", { text: "kling-video/v2.6/pro/text-to-video", image: "kling-video/v2.6/pro/image-to-video" }, 0.07, K, 3, "normal", ["con sonido"]),
   hfm("kling-2.5", "Kling 2.5 Turbo · Anima una foto", "video", { image: "kling-video/v2.5-turbo/standard/image-to-video" }, 0.05, K, 2, "rápido", ["animar una foto", "barato"], "Barato y rápido para animar una imagen."),
@@ -103,8 +108,9 @@ function rango(min, max) {
 export function construir(def, esquemas = ESQUEMAS()) {
   const todas = Object.entries(def.rutas);
   for (const [, eid] of todas) if (!esquemas[eid]) throw new Error(`${def.id}: la ruta «${eid}» no está en el esquema de Higgsfield.`);
-  // Una ruta que exige un video no se puede pedir desde aquí.
-  const rutas = Object.fromEntries(todas.filter(([, eid]) => !esquemas[eid].req.some((c) => CAMPOS_DE_VIDEO.includes(c))));
+  // Una ruta que exige un video sólo entra en los modelos de video de referencia (`conVideo`).
+  const exigeVideo = (eid) => esquemas[eid].req.some((c) => CAMPOS_DE_VIDEO.includes(c));
+  const rutas = Object.fromEntries(todas.filter(([, eid]) => def.conVideo || !exigeVideo(eid)));
   if (!Object.keys(rutas).length) throw new Error(`${def.id}: todas sus rutas exigen un video.`);
   const ids = Object.values(rutas);
 
@@ -119,8 +125,10 @@ export function construir(def, esquemas = ESQUEMAS()) {
       roles[papel] = Math.max(roles[papel], n);
     }
   }
-  // ¿Se puede pedir sin ninguna imagen? Sólo si alguna ruta no exige ninguna.
-  const sinImagen = ids.some((eid) => !esquemas[eid].req.some((c) => CAMPOS_DE_MEDIO.includes(c)));
+  // ¿Se puede pedir sin ninguna imagen? Sólo si alguna ruta no exige ninguna (el video de referencia va aparte).
+  const sinImagen = ids.some((eid) => !esquemas[eid].req.some((c) => CAMPOS_DE_MEDIO.includes(c) && !CAMPOS_DE_VIDEO.includes(c)));
+  const conVideo = Boolean(def.conVideo) && ids.some((eid) => CAMPOS_DE_VIDEO.some((c) => esquemas[eid].p[c]));
+  const necesitaVideo = conVideo && ids.every(exigeVideo);
 
   // Los ajustes: la unión de lo que admiten sus rutas.
   const acumulado = {};
@@ -150,6 +158,7 @@ export function construir(def, esquemas = ESQUEMAS()) {
     costo: def.costo, ...(def.tipo === "video" ? { por: "s" } : {}), estimado: true,
     referencias: roles.reference, ...(def.tipo === "video" ? { inicial: roles.start, final: roles.end } : {}),
     ...(sinImagen ? {} : { necesitaImagen: true }),
+    ...(conVideo ? { video: 1 } : {}), ...(necesitaVideo ? { necesitaVideo: true } : {}),
     ...(def.tipo === "video" && !ajustes.duration ? { segundos: 5 } : {}),
     cola: true,
     nota: `${def.nota ? `${def.nota} ` : ""}Precio aproximado.`.trim(),

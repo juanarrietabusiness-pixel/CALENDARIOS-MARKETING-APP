@@ -16,9 +16,12 @@
 //     (una general y una por producto, tipo «mercado») y deja el documento
 //     en la carpeta de Drive del cliente. Drive nunca tumba la aprobación:
 //     si falla, se dice.
-//   · las REFERENCIAS de la competencia: la captura se sube a la galería
-//     del Estudio (carpeta «Competencia»), la IA la MIRA y su análisis va a
-//     la lista y al cerebro.
+//   · las REFERENCIAS de la competencia: la captura (o el VIDEO: un anuncio
+//     o un orgánico de TikTok o Reels) se sube a la galería del Estudio
+//     (carpeta «Competencia»), la IA la MIRA —un video lo ve Gemini, con
+//     audio— y su análisis va a la lista y al cerebro. De un video sale
+//     además su ESTRUCTURA tramo a tramo, y «Adaptar» escribe un guion
+//     para la marca con la misma forma.
 //
 // Nada interno del cliente viaja a la IA: el contexto sale del cerebro con
 // `para: "texto"`, que deja fuera las notas internas.
@@ -32,10 +35,15 @@ import { HERRAMIENTAS_WEB } from "./herramientasServidor.js";
 import { idDeCarpeta, carpetaDeLaApp, subirADrive, DriveDesconectado, ErrorDrive } from "./google.js";
 import { crearCarpeta, cambiarArchivo } from "./estudio/galeria.js";
 import { aBase64 } from "./estudio/gemini.js";
+import { kitDe } from "./estudio/kit.js";
+import { verVideo, ErrorVideo, MAX_BYTES_VIDEO } from "./geminiVideo.js";
+import { bloqueoPorPresupuesto } from "./configIA.js";
+import { textoPaleta } from "../../src/lib/kitMarca.js";
 import {
   limpiarCatalogo, catalogoATexto, pedidoDeCatalogo, leerCatalogo, fundirCatalogo, productosActivos,
   pedidoGeneral, leerGeneral, pedidoDeProducto, leerDeProducto, limpiarEstudio, notasDelEstudio,
-  estudioADocumento, limpiarReferencias, pedidoDeReferencia, leerReferencia, notaDeReferencia,
+  estudioADocumento, limpiarReferencias, pedidoDeReferencia, pedidoDeReferenciaVideo, leerReferencia, notaDeReferencia,
+  pedidoDeAdaptacion, leerAdaptacion, lineaDeProducto,
   MAX_MATERIAL, MAX_REFERENCIAS, slugProducto,
 } from "../../src/lib/estudioMercado.js";
 
@@ -302,10 +310,33 @@ async function carpetaCompetencia(acceso, clienteId) {
   }
 }
 
-/** La IA mira la captura con lo que sabemos del mercado delante. */
+/** Un video de la competencia lo VE Gemini (imagen y audio): su análisis y su estructura tramo a tramo. */
+async function analizarVideo(env, acceso, cliente, archivo, datos, estudio) {
+  const bloqueo = await bloqueoPorPresupuesto(acceso);
+  if (bloqueo) throw new ErrorMercado(bloqueo, 402);
+  const obj = await env.MEDIA.get(archivo.clave);
+  if (!obj) throw new ErrorMercado("El video ya no está en el almacenamiento.", 404);
+  if (obj.size > MAX_BYTES_VIDEO) throw new ErrorMercado("El video es demasiado grande para analizarlo.", 413);
+  let texto;
+  try {
+    texto = await verVideo(env, acceso, {
+      bytes: await obj.arrayBuffer(), mime: archivo.mime, nombre: archivo.clave.split("/").pop(), clienteId: cliente.id,
+      prompt: pedidoDeReferenciaVideo({ marca: cliente.name, ...datos, estudio }), funcion: "referencia de competencia", json: true,
+    });
+  } catch (e) {
+    if (e instanceof ErrorVideo) throw new ErrorMercado(e.message, e.estado);
+    throw e;
+  }
+  const analisis = leerReferencia(texto);
+  if (!analisis) throw new ErrorMercado("Google AI no devolvió un análisis del video que se pueda leer. Inténtalo otra vez.", 502);
+  return analisis;
+}
+
+/** La IA mira la captura (o el video) con lo que sabemos del mercado delante. */
 async function analizar(env, acceso, cliente, archivo, datos, estudio) {
+  if (archivo.tipo === "video" && /^video\//.test(archivo.mime ?? "")) return analizarVideo(env, acceso, cliente, archivo, datos, estudio);
   if (archivo.tipo !== "imagen" || !/^image\/(png|jpeg|webp|gif)$/.test(archivo.mime)) {
-    throw new ErrorMercado("Sólo se analizan imágenes (capturas). Sube una captura del anuncio.", 400);
+    throw new ErrorMercado("Sólo se analizan capturas (PNG, JPEG o WebP) o videos.", 400);
   }
   const obj = await env.MEDIA.get(archivo.clave);
   if (!obj) throw new ErrorMercado("La captura ya no está en el almacenamiento.", 404);
@@ -330,14 +361,16 @@ export async function agregarReferencia(env, acceso, cliente, entrada = {}) {
   if (referencias.length >= MAX_REFERENCIAS) throw new ErrorMercado(`Ya hay ${MAX_REFERENCIAS} referencias: borra las que ya no sirvan.`, 409);
   const archivo = await acceso.leerUno("estudio_archivos", { id: String(entrada.archivoId ?? ""), client_id: cliente.id });
   if (!archivo || archivo.borrado_at) throw new ErrorMercado("Esa captura no está en la galería de este cliente.", 404);
-  const base = limpiarReferencias([{ ...entrada, id: uuid(), archivoId: archivo.id, clave: archivo.clave, creadaAt: ahora() }])[0];
+  const base = limpiarReferencias([{
+    ...entrada, id: uuid(), archivoId: archivo.id, clave: archivo.clave, medio: archivo.tipo === "video" ? "video" : "imagen", creadaAt: ahora(),
+  }])[0];
   const carpeta = await carpetaCompetencia(acceso, cliente.id);
   if (carpeta) await cambiarArchivo(acceso, cliente.id, archivo.id, { carpetaId: carpeta }).catch(() => {});
 
   let analisis = null;
   let aviso = null;
   try {
-    analisis = await analizar(env, acceso, cliente, archivo, { competidor: base.competidor, desde: base.desde, nota: base.nota }, estudio ?? borrador);
+    analisis = await analizar(env, acceso, cliente, archivo, { competidor: base.competidor, desde: base.desde, nota: base.nota, origen: base.origen }, estudio ?? borrador);
   } catch (e) {
     // La referencia se guarda igual: se puede volver a analizar.
     if (!(e instanceof ErrorMercado || e instanceof ErrorIA)) throw e;
@@ -389,4 +422,31 @@ export async function borrarReferencia(env, acceso, cliente, id) {
   }
   await escribir(acceso, cliente.id, { referencias: JSON.stringify(referencias.filter((r) => r.id !== id)) });
   return true;
+}
+
+/**
+ * «Adaptar a la marca»: un guion con la misma estructura que la referencia, para un producto del catálogo. No guarda
+ * nada: devuelve el guion para revisarlo, copiarlo o llevarlo al planificador.
+ */
+export async function adaptarReferencia(env, acceso, cliente, id, { productoId = "", formato = "reel" } = {}) {
+  const { referencias, catalogo, inventario } = await leerMercado(acceso, cliente.id);
+  const ref = referencias.find((r) => r.id === id);
+  if (!ref) throw new ErrorMercado("Esa referencia no existe.", 404);
+  if (!ref.analisis) throw new ErrorMercado("Primero hay que analizar la referencia («Volver a analizar»).", 409);
+  const producto = productosActivos(catalogo).find((p) => p.id === productoId) ?? null;
+  const kit = kitDe(cliente);
+  const textoKit = [kit.paleta.length && `Paleta: ${textoPaleta(kit.paleta)}`, kit.estilo && `Estilo: ${kit.estilo}`].filter(Boolean).join("\n");
+  const r = await llamarIA(env, acceso, cliente, {
+    prompt: pedidoDeAdaptacion({
+      marca: cliente.name, referencia: ref, formato: ["reel", "carrusel", "post"].includes(formato) ? formato : "reel",
+      productoLinea: producto ? lineaDeProducto(producto, { inventario }).slice(2) : "",
+      kit: textoKit,
+      contexto: await contextoDeMarca(env, acceso, cliente, `${producto?.nombre ?? ""} ${ref.analisis.gancho} ${ref.analisis.angulo}`),
+    }),
+    salida: 2500,
+    funcion: "guion de video",
+  });
+  const adaptacion = leerAdaptacion(r.texto);
+  if (!adaptacion) throw new ErrorMercado("La IA no devolvió un guion que se pueda leer. Inténtalo otra vez.", 502);
+  return { adaptacion, modelo: r.modelo, aviso: r.aviso };
 }

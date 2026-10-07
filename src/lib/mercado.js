@@ -62,5 +62,9 @@ export const agregarReferencia = (clienteId, datos) =>
 export const reanalizarReferencia = (clienteId, id) =>
   cambiandoCerebro(clienteId, () => gastando(() => pedir(`${base(clienteId)}/referencias/${encodeURIComponent(id)}/analizar`, post())));
 
+/** Un guion con la misma estructura que la referencia, para un producto: `{ adaptacion, aviso }`. No guarda. */
+export const adaptarReferencia = (clienteId, id, { productoId = "", formato = "reel" } = {}) =>
+  gastando(() => pedir(`${base(clienteId)}/referencias/${encodeURIComponent(id)}/adaptar`, post({ productoId, formato })));
+
 export const borrarReferencia = (clienteId, id) =>
   cambiandoCerebro(clienteId, () => pedir(`${base(clienteId)}/referencias/${encodeURIComponent(id)}`, { method: "DELETE" }));

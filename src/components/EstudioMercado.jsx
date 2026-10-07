@@ -1,18 +1,22 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import SelectorFecha from "./SelectorFecha";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { soloLectura } from "../lib/sesionActual";
 import {
   leerMercado, guardarCatalogo, proponerCatalogo, estudiarGeneral, estudiarProducto, guardarBorrador, aprobarEstudio,
-  agregarReferencia, reanalizarReferencia, borrarReferencia,
+  agregarReferencia, reanalizarReferencia, borrarReferencia, adaptarReferencia,
 } from "../lib/mercado";
 import { subirImagen } from "../lib/estudio";
 import { urlBibliotecaWeb } from "../lib/biblioteca";
 import {
   ELEMENTOS_MERCADO, DESEOS_REISS, NIVELES_CONSCIENCIA, LIMITES_ANUNCIO, MAX_MATERIAL, MAX_PRODUCTOS, NIVELES_STOCK,
   limpiarCatalogo, productosActivos, pasosDelEstudio, nombreDeNivel, fraseActivo, mensajePedirDatos,
+  ideaParaRecrear, ideaParaSeguirVideo,
 } from "../lib/estudioMercado";
+
+// El Estudio en un diálogo, para «Recrear con mi marca» y «Seguir este video»: sólo se descarga al abrirlo.
+const Estudio = lazy(() => import("./Estudio"));
 import "./EstudioMercado.css";
 
 // ============================================================
@@ -718,7 +722,9 @@ function PanelCompetencia({ client, datos, lectura, onOcupado, onDatos, onCambio
   const ids = useId();
   const entrada = useRef(null);
   const [archivo, setArchivo] = useState(null);
-  const [f, setF] = useState({ competidor: "", enlace: "", desde: null, nota: "" });
+  const [f, setF] = useState({ competidor: "", enlace: "", desde: null, nota: "", origen: "anuncio" });
+  const [creando, setCreando] = useState(null); // el Estudio abierto con una referencia: { inicial }
+  const esVideo = Boolean(archivo?.type?.startsWith("video/"));
   const [trabajando, setTrabajando] = useState("");
   const [aviso, setAviso] = useState(null);
   const vista = useMemo(() => (archivo ? URL.createObjectURL(archivo) : ""), [archivo]);
@@ -740,12 +746,14 @@ function PanelCompetencia({ client, datos, lectura, onOcupado, onDatos, onCambio
     setAviso(null);
     try {
       const { archivo: subido } = await subirImagen(client.id, archivo);
-      const r = await agregarReferencia(client.id, { archivoId: subido.id, competidor: f.competidor, enlace: f.enlace, desde: f.desde ?? "", nota: f.nota });
+      const r = await agregarReferencia(client.id, { archivoId: subido.id, competidor: f.competidor, enlace: f.enlace, desde: f.desde ?? "", nota: f.nota, origen: f.origen });
       onDatos({ referencias: [r.referencia, ...datos.referencias] });
       onCambioCerebro?.();
       setArchivo(null);
-      setF({ competidor: "", enlace: "", desde: null, nota: "" });
-      setAviso(r.aviso ? { ok: false, texto: `Guardada, pero sin analizar: ${r.aviso}` } : { ok: true, texto: "Referencia analizada y guardada en el cerebro (como nota interna) y en la carpeta «Competencia» del Estudio." });
+      setF({ competidor: "", enlace: "", desde: null, nota: "", origen: "anuncio" });
+      setAviso(r.aviso
+        ? { ok: false, texto: `Guardada, pero sin analizar: ${r.aviso}` }
+        : { ok: true, texto: `Referencia analizada${r.referencia?.medio === "video" ? " (con su estructura tramo a tramo)" : ""} y guardada en el cerebro (como nota interna) y en la carpeta «Competencia» del Estudio.` });
     } catch (err) {
       setAviso({ ok: false, texto: err.message });
     }
@@ -781,7 +789,8 @@ function PanelCompetencia({ client, datos, lectura, onOcupado, onDatos, onCambio
     <div className="mercado-panel">
       <p className="hint" style={{ marginTop: 0 }}>
         La API de Meta no enseña los anuncios comerciales de Panamá: se miran en la web de la Biblioteca. Un anuncio que lleva
-        meses activo casi siempre le está funcionando a quien lo paga. Guarda la captura y súbela aquí.
+        meses activo casi siempre le está funcionando a quien lo paga. Guarda la captura —o descarga el video, también los
+        orgánicos de TikTok o Reels— y súbelo aquí: de un video la IA saca su estructura para escribir guiones con la misma forma.
       </p>
       <div className="mercado-acciones">
         {competidores.slice(0, 6).map((c) => (
@@ -798,11 +807,11 @@ function PanelCompetencia({ client, datos, lectura, onOcupado, onDatos, onCambio
         <form className="mercado-referencia-form card" onSubmit={enviar}>
           <div className="mercado-producto-fila">
             <div className="mercado-captura">
-              {vista ? <img src={vista} alt="Captura elegida" /> : <span className="hint">Sin captura</span>}
+              {vista ? (esVideo ? <video src={vista} muted controls playsInline aria-label="Video elegido" /> : <img src={vista} alt="Captura elegida" />) : <span className="hint">Sin captura ni video</span>}
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => entrada.current?.click()} disabled={Boolean(trabajando)}>
-                <Icon name="upload" size={14} /> {archivo ? "Cambiar captura" : "Elegir captura"}
+                <Icon name="upload" size={14} /> {archivo ? "Cambiar" : "Elegir captura o video"}
               </button>
-              <input ref={entrada} type="file" accept="image/png,image/jpeg,image/webp" onChange={elegir} className="cerebro-archivo" aria-label="Elegir la captura del anuncio" tabIndex={-1} />
+              <input ref={entrada} type="file" accept="image/png,image/jpeg,image/webp,video/mp4,video/quicktime,video/webm" onChange={elegir} className="cerebro-archivo" aria-label="Elegir la captura o el video" tabIndex={-1} />
             </div>
             <div style={{ flex: "1 1 260px", display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
               <div className="field">
@@ -811,7 +820,14 @@ function PanelCompetencia({ client, datos, lectura, onOcupado, onDatos, onCambio
                 <datalist id={`${ids}-cl`}>{competidores.map((c) => <option key={c.nombre} value={c.nombre} />)}</datalist>
               </div>
               <div className="field">
-                <label className="label" htmlFor={`${ids}-e`}>Enlace del anuncio (opcional)</label>
+                <label className="label" htmlFor={`${ids}-o`}>Qué es</label>
+                <select id={`${ids}-o`} className="input" value={f.origen} onChange={(e) => setF({ ...f, origen: e.target.value })}>
+                  <option value="anuncio">Un anuncio (pagado)</option>
+                  <option value="organico">Contenido orgánico (TikTok, Reels…)</option>
+                </select>
+              </div>
+              <div className="field">
+                <label className="label" htmlFor={`${ids}-e`}>Enlace (opcional)</label>
                 <input id={`${ids}-e`} className="input" type="url" maxLength={300} placeholder="https://www.facebook.com/ads/library/?id=…" value={f.enlace} onChange={(e) => setF({ ...f, enlace: e.target.value })} />
               </div>
               <div className="field">
@@ -826,7 +842,7 @@ function PanelCompetencia({ client, datos, lectura, onOcupado, onDatos, onCambio
             </div>
           </div>
           <button type="submit" className="btn btn-primary" disabled={!archivo || Boolean(trabajando)}>
-            <Icon name="sparkles" size={16} /> {trabajando === "subir" ? "Subiendo y analizando…" : "Subir y analizar"}
+            <Icon name="sparkles" size={16} /> {trabajando === "subir" ? (esVideo ? "Subiendo y viendo el video…" : "Subiendo y analizando…") : "Subir y analizar"}
           </button>
         </form>
       )}
@@ -836,10 +852,13 @@ function PanelCompetencia({ client, datos, lectura, onOcupado, onDatos, onCambio
       <ul className="mercado-referencias">
         {datos.referencias.map((r) => (
           <li key={r.id} className="mercado-referencia card">
-            {r.clave && <img src={`/api/media/${r.clave}`} alt={`Anuncio de ${r.competidor || "la competencia"}`} loading="lazy" />}
+            {r.clave && (r.medio === "video"
+              ? <video src={`/api/media/${r.clave}`} controls playsInline preload="metadata" aria-label={`Video de ${r.competidor || "la competencia"}`} />
+              : <img src={`/api/media/${r.clave}`} alt={`Anuncio de ${r.competidor || "la competencia"}`} loading="lazy" />)}
             <div className="mercado-referencia-texto">
               <p className="mercado-referencia-titulo">
                 <strong>{r.competidor || "Competencia"}</strong>
+                <span className="hint"> · {r.medio === "video" ? "Video" : "Imagen"} {r.origen === "organico" ? "orgánico" : "de anuncio"}</span>
                 {r.desde && <span className="hint"> · {fraseActivo(r.desde)}</span>}
                 {r.enlace && <> · <a href={r.enlace} target="_blank" rel="noreferrer">Ver anuncio <Icon name="external" size={12} /></a></>}
               </p>
@@ -850,8 +869,24 @@ function PanelCompetencia({ client, datos, lectura, onOcupado, onDatos, onCambio
                     ["Cómo adaptarlo", r.analisis.ideaParaNosotros]].filter(([, v]) => v).map(([k, v]) => (
                     <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
                   ))}
+                  {r.analisis.estructura && (
+                    <div>
+                      <dt>Estructura</dt>
+                      <dd>
+                        <ol className="mercado-tramos">
+                          {r.analisis.estructura.tramos.map((t, i) => <li key={i}><strong>{t.desde}–{t.hasta} s</strong> {t.que}</li>)}
+                        </ol>
+                        {[r.analisis.estructura.camara && `Cámara: ${r.analisis.estructura.camara}`, r.analisis.estructura.ritmo && `Ritmo: ${r.analisis.estructura.ritmo}`, r.analisis.estructura.sonido && `Sonido: ${r.analisis.estructura.sonido}`]
+                          .filter(Boolean).map((x) => <p key={x} className="hint" style={{ margin: 0 }}>{x}</p>)}
+                      </dd>
+                    </div>
+                  )}
                 </dl>
               ) : <p className="hint">Sin analizar.</p>}
+              {!lectura && r.analisis && (
+                <AccionesReferencia client={client} referencia={r} productos={productosActivos(datos.catalogo)} ocupado={Boolean(trabajando)} onOcupado={ocupar}
+                  onCrear={(inicial) => setCreando({ inicial })} onError={(texto) => setAviso({ ok: false, texto })} />
+              )}
               {!lectura && (
                 <div className="mercado-acciones">
                   <button type="button" className="btn btn-ghost btn-sm" disabled={Boolean(trabajando)} onClick={() => reanalizar(r)}>
@@ -866,6 +901,102 @@ function PanelCompetencia({ client, datos, lectura, onOcupado, onDatos, onCambio
           </li>
         ))}
       </ul>
+      {creando && <EstudioConReferencia client={client} inicial={creando.inicial} onCerrar={() => setCreando(null)} />}
+    </div>
+  );
+}
+
+/**
+ * Lo que se hace con una referencia ya analizada: «Adaptar a la marca» (un guion con su misma estructura, para un
+ * producto) y llevarla al Estudio: una captura se RECREA con la marca (va de imagen de referencia) y un video se
+ * SIGUE con Kling Omni (va de video de referencia).
+ */
+function AccionesReferencia({ client, referencia: r, productos, ocupado, onOcupado, onCrear, onError }) {
+  const ids = useId();
+  const [productoId, setProductoId] = useState("");
+  const [formato, setFormato] = useState(r.medio === "video" ? "reel" : "post");
+  const [adaptacion, setAdaptacion] = useState(null);
+  const [trabajando, setTrabajando] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+  const producto = productos.find((p) => p.id === productoId) ?? null;
+  const archivo = { id: r.archivoId, clave: r.clave, src: `/api/media/${r.clave}`, tipo: r.medio === "video" ? "video" : "imagen", prompt: `Referencia: ${r.competidor || "competencia"}` };
+
+  const adaptar = async () => {
+    setTrabajando(true);
+    onOcupado(`adaptar-${r.id}`);
+    try {
+      setAdaptacion((await adaptarReferencia(client.id, r.id, { productoId, formato })).adaptacion);
+    } catch (e) {
+      onError(e.message);
+    }
+    setTrabajando(false);
+    onOcupado("");
+  };
+  const texto = adaptacion ? [adaptacion.titulo, adaptacion.idea, "", adaptacion.guion, adaptacion.textoPantalla && `Texto en pantalla: ${adaptacion.textoPantalla}`, "", adaptacion.descripcion].filter((x) => x !== undefined && x !== false).join("\n").trim() : "";
+  const copiar = async () => {
+    try { await navigator.clipboard.writeText(texto); setCopiado(true); setTimeout(() => setCopiado(false), 2500); } catch { /* el texto está a la vista */ }
+  };
+
+  return (
+    <div className="mercado-adaptar">
+      <div className="mercado-producto-fila">
+        <div className="field" style={{ flex: "2 1 180px" }}>
+          <label className="label" htmlFor={`${ids}-p`}>Para qué producto</label>
+          <select id={`${ids}-p`} className="input" value={productoId} onChange={(e) => setProductoId(e.target.value)}>
+            <option value="">El producto que mejor encaje</option>
+            {productos.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+          </select>
+        </div>
+        <div className="field" style={{ flex: "1 1 120px" }}>
+          <label className="label" htmlFor={`${ids}-f`}>Formato</label>
+          <select id={`${ids}-f`} className="input" value={formato} onChange={(e) => setFormato(e.target.value)}>
+            <option value="reel">Reel</option>
+            <option value="carrusel">Carrusel</option>
+            <option value="post">Post</option>
+          </select>
+        </div>
+      </div>
+      <div className="mercado-acciones">
+        <button type="button" className="btn btn-secondary btn-sm" disabled={ocupado} onClick={adaptar}>
+          <Icon name="sparkles" size={14} /> {trabajando ? "Escribiendo…" : `Adaptar a ${client.name}`}
+        </button>
+        {r.medio === "video" ? (
+          <button type="button" className="btn btn-secondary btn-sm" disabled={ocupado}
+            onClick={() => onCrear({ tipo: "video", modelo: "kling-omni-video", video: archivo, proporcion: "9:16", preset: "anuncio", prompt: ideaParaSeguirVideo(r, producto) })}>
+            <Icon name="video" size={14} /> Seguir este video con mi marca
+          </button>
+        ) : (
+          <button type="button" className="btn btn-secondary btn-sm" disabled={ocupado}
+            onClick={() => onCrear({ tipo: "imagen", referencias: [archivo], proporcion: "4:5", preset: "anuncio", prompt: ideaParaRecrear(r, producto) })}>
+            <Icon name="imageAi" size={14} /> Recrear con mi marca
+          </button>
+        )}
+      </div>
+      {adaptacion && (
+        <div className="mercado-pedir" role="group" aria-label="Guion adaptado">
+          <label className="label" htmlFor={`${ids}-t`}>Guion adaptado (revísalo antes de usarlo)</label>
+          <textarea id={`${ids}-t`} className="input" rows={10} readOnly value={texto} />
+          <div className="mercado-acciones">
+            <button type="button" className="btn btn-primary btn-sm" onClick={copiar}><Icon name="copy" size={14} /> {copiado ? "Copiado" : "Copiar"}</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAdaptacion(null)}>Cerrar</button>
+          </div>
+          <span role="status" className="sr-only">{copiado ? "Guion copiado" : ""}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** El Estudio del cliente en un diálogo, arrancando con la referencia puesta. Lo creado queda en su galería. */
+function EstudioConReferencia({ client, inicial, onCerrar }) {
+  const ref = useDialogA11y(onCerrar);
+  return (
+    <div className="overlay overlay-sheet">
+      <div ref={ref} role="dialog" aria-modal="true" aria-label="Crear con la referencia" className="sheet mercado-estudio">
+        <Suspense fallback={<p role="status" className="est-nota" style={{ padding: "var(--sp-5)" }}>Abriendo el Estudio…</p>}>
+          <Estudio client={client} modo="dialogo" inicial={inicial} onCerrar={onCerrar} />
+        </Suspense>
+      </div>
     </div>
   );
 }

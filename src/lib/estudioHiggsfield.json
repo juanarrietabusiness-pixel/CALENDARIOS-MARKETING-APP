@@ -669,6 +669,121 @@
   }
  },
  {
+  "id": "kling-omni-video",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "Kling Omni · sigue un video",
+  "creador": "Kling (Kuaishou)",
+  "calidad": 4,
+  "velocidad": "lento",
+  "costo": 0.1,
+  "por": "s",
+  "estimado": true,
+  "referencias": 4,
+  "inicial": 0,
+  "final": 0,
+  "video": 1,
+  "necesitaVideo": true,
+  "cola": true,
+  "nota": "Sigue los planos, el ritmo y el movimiento de un video de referencia (el de la competencia) con tu marca y tu producto: de 3 a 10 s y hasta 4 imágenes de referencia. Precio aproximado.",
+  "para": [
+   "seguir un video de referencia",
+   "hasta 10 s",
+   "referencias de la marca"
+  ],
+  "ajustes": {
+   "aspectRatio": {
+    "valores": [
+     "16:9",
+     "9:16",
+     "1:1"
+    ],
+    "defecto": "9:16"
+   },
+   "duration": {
+    "valores": [
+     "3",
+     "4",
+     "5",
+     "6",
+     "7",
+     "8",
+     "9",
+     "10"
+    ],
+    "defecto": "5"
+   },
+   "mode": {
+    "valores": [
+     "std",
+     "pro"
+    ],
+    "defecto": "pro"
+   }
+  },
+  "rutas": {
+   "videoRef": "kling-video/omni/video-reference"
+  }
+ },
+ {
+  "id": "kling-motion",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "Kling 3.0 · copia el movimiento",
+  "creador": "Kling (Kuaishou)",
+  "calidad": 3,
+  "velocidad": "normal",
+  "costo": 0.08,
+  "por": "s",
+  "estimado": true,
+  "referencias": 0,
+  "inicial": 1,
+  "final": 0,
+  "necesitaImagen": true,
+  "video": 1,
+  "necesitaVideo": true,
+  "segundos": 5,
+  "cola": true,
+  "nota": "Lleva el movimiento de un video (un gesto, un baile, cómo se enseña un producto) a tu imagen: una imagen inicial y el video. Precio aproximado.",
+  "para": [
+   "copiar el movimiento",
+   "persona o producto"
+  ],
+  "ajustes": {},
+  "rutas": {
+   "videoRef": "kling-video/v3/motion-control/std"
+  }
+ },
+ {
+  "id": "kling-motion-pro",
+  "motor": "higgsfield",
+  "tipo": "video",
+  "nombre": "Kling 3.0 Pro · copia el movimiento",
+  "creador": "Kling (Kuaishou)",
+  "calidad": 4,
+  "velocidad": "lento",
+  "costo": 0.12,
+  "por": "s",
+  "estimado": true,
+  "referencias": 0,
+  "inicial": 1,
+  "final": 0,
+  "necesitaImagen": true,
+  "video": 1,
+  "necesitaVideo": true,
+  "segundos": 5,
+  "cola": true,
+  "nota": "Lo mismo, con más calidad. Precio aproximado.",
+  "para": [
+   "copiar el movimiento",
+   "calidad alta"
+  ],
+  "ajustes": {},
+  "rutas": {
+   "videoRef": "kling-video/v3/motion-control/pro"
+  }
+ },
+ {
   "id": "kling-3-turbo",
   "motor": "higgsfield",
   "tipo": "video",

@@ -7,7 +7,7 @@ import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
 import { fechasDelMes } from "../lib/fechasEspeciales";
 import { leerMercado } from "../lib/mercado";
-import { productosParaPlan, limpiarEstudio } from "../lib/estudioMercado";
+import { productosParaPlan, limpiarEstudio, estructuraATexto } from "../lib/estudioMercado";
 import { leerPlantillas } from "../lib/plantillasApi";
 import { plantillaDelCliente, configDeFormatos, resumenPlantilla, OBJETIVOS_PLAN } from "../lib/plantillasPlan";
 import {
@@ -147,6 +147,9 @@ export default function PlanWizard({ client, onGenerate, onClose, mesInicial = n
     if (t) aplicarPlantilla(t);
   };
   const plantillaActual = plantillaElegida === "cliente" ? plantillaDelClienteActual : (plantillas ?? []).find((p) => p.id === plantillaElegida);
+
+  // Las referencias de video de la competencia con su estructura: un guion puede seguir la misma forma.
+  const estructuras = (mercado?.referencias ?? []).filter((r) => r.analisis?.estructura?.tramos?.length);
 
   const isCustom = plan === "custom";
   const postsPerDay = PLANS[plan]?.posts || 2;
@@ -440,6 +443,8 @@ ${daysDesc}`;
                 idea: existing?.idea || aiIdea?.idea || "",
                 sugerencia: propuesta || existing?.sugerencia || "",
                 guion: existing?.guion || "",
+                referenciaId: existing?.referenciaId || "",
+                estructuraRef: existing?.estructuraRef || "",
                 referenceLink: existing?.referenceLink || "",
                 image: existing?.image || null,
                 // La descripción sobrevive a una regeneración de ideas: si
@@ -660,6 +665,7 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
           referenceLink: idea?.referenceLink || "",
           image: idea?.image || null,
           guion: idea?.guion || "",
+          ...(idea?.estructuraRef ? { estructuraRef: idea.estructuraRef } : {}),
           descripcion: idea?.descripcion || "",
           hashtagsFinales: idea?.hashtagsFinales || "",
           script: idea?.descripcion || idea?.script || "",
@@ -1286,6 +1292,20 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
                                 <Icon name="sparkles" size={14} /> {mejorando === `${date}|${j}` ? "Mejorando…" : "Mejorar"}
                               </button>
                             </div>
+                            {estructuras.length > 0 && FORMATOS_CON_GUION.has(p.format) && (
+                              <select className="input" style={{ marginTop: "var(--sp-1)", fontSize: "var(--fs-2xs)" }}
+                                aria-label={`Estructura para el guion del ${d.getDate()}, ${FORMATS[p.format]?.label || "publicación"} ${j + 1}`}
+                                value={p.referenciaId || ""}
+                                onChange={(e) => {
+                                  const ref = estructuras.find((x) => x.id === e.target.value);
+                                  const newDayIdeas = [...dayIdeas];
+                                  newDayIdeas[j] = { ...newDayIdeas[j], referenciaId: ref?.id ?? "", estructuraRef: ref ? estructuraATexto(ref.analisis.estructura) : "" };
+                                  setIdeas((prev) => ({ ...prev, [date]: newDayIdeas }));
+                                }}>
+                                <option value="">Estructura del guion: libre</option>
+                                {estructuras.map((x) => <option key={x.id} value={x.id}>Como el video de {x.competidor || "la competencia"}{x.analisis.gancho ? ` («${x.analisis.gancho.slice(0, 40)}»)` : ""}</option>)}
+                              </select>
+                            )}
                             {p.sugerencia && (
                               <div className="plan-sugerencia" role="group" aria-label="Propuesta de la IA">
                                 <p style={{ margin: 0 }}><strong>Propuesta de la IA:</strong> {p.sugerencia}</p>

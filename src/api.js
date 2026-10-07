@@ -146,7 +146,7 @@ DIA: ${p._date} (${p._dayName || ""})
 SEMANA: ${p._weekNumber || ""}
 CONCEPTO_SEMANAL: ${p._concept || "N/A"}
 IDEA: ${p.idea || "genera según contexto del cliente"}
-REGLAS_FORMATO: ${formatRules[p.format] || formatRules.post}`;
+${p.estructuraRef ? `ESTRUCTURA A SEGUIR (de una referencia de la competencia: la MISMA forma, tramos y ritmo; el contenido es de la marca y no se copia nada): ${String(p.estructuraRef).slice(0, 900)}\n` : ""}REGLAS_FORMATO: ${formatRules[p.format] || formatRules.post}`;
   }).join("\n\n");
 
   return `${ctx}

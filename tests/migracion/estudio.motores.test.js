@@ -4,7 +4,7 @@ import worker from "../../worker/index.js";
 import { d1EnMemoria } from "../utils/d1Memoria.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
-import { MODELOS, modeloPorId, MEDIDAS } from "../../src/lib/estudioCatalogo.js";
+import { MODELOS, modeloPorId, MEDIDAS, validarPedido } from "../../src/lib/estudioCatalogo.js";
 import { generar, texto, SALIDA, MODELOS_HF, PROPORCIONES_CONOCIDAS } from "../../scripts/estudio/generar-higgsfield.mjs";
 import ESQUEMAS_JSON from "../../worker/lib/estudio/higgsfield-schemas.json";
 import { pedidoHiggsfield, rutaDe, cuerpoDe, esDeHiggsfield } from "../../worker/lib/estudio/higgsfield.js";
@@ -51,14 +51,33 @@ describe("Higgsfield: cada pedido que el Estudio puede mandar cabe en su ruta", 
     expect(fs.readFileSync(SALIDA, "utf8")).toBe(texto());
   });
 
-  it("todos los modelos salen del esquema: sus rutas existen y ninguna exige un video", () => {
+  it("todos los modelos salen del esquema: sus rutas existen y sólo los de video de referencia exigen un video", () => {
     expect(hf).toHaveLength(MODELOS_HF.length);
     for (const m of hf) {
       for (const [, eid] of Object.entries(m.rutas)) {
         expect(ESQUEMAS[eid], `${m.id}: la ruta ${eid} no está en el esquema`).toBeTruthy();
-        expect(ESQUEMAS[eid].req.some((c) => /^video_urls?$/.test(c)), `${m.id}: ${eid} exige un video`).toBe(false);
+        const exige = ESQUEMAS[eid].req.some((c) => /^video_urls?$/.test(c));
+        if (exige) expect(m.video, `${m.id}: ${eid} exige un video y el modelo no lo declara`).toBe(1);
       }
     }
+    expect(hf.filter((m) => m.necesitaVideo).map((m) => m.id)).toEqual(["kling-omni-video", "kling-motion", "kling-motion-pro"]);
+  });
+
+  it("con video de referencia: la ruta lo exige, el cuerpo lo lleva, y sin él se rechaza con palabras", () => {
+    const omni = modeloPorId("kling-omni-video");
+    expect(rutaDe(omni, { video: 1 })).toBe("kling-video/omni/video-reference");
+    expect(rutaDe(omni, { video: 1, reference: 2 })).toBe("kling-video/omni/video-reference");
+    expect(() => rutaDe(omni, {})).toThrow(/necesita una imagen|no admite/);
+    const { cuerpo } = pedidoHiggsfield(omni, { prompt: "x", ajustes: { duration: "10", aspectRatio: "9:16" }, urls: { video: ["https://x.test/v.mp4"], reference: ["https://x.test/a.png"] } });
+    expect(cuerpo).toMatchObject({ prompt: "x", video_urls: ["https://x.test/v.mp4"], image_urls: ["https://x.test/a.png"], duration: 10, aspect_ratio: "9:16" });
+    const mov = modeloPorId("kling-motion");
+    expect(mov).toMatchObject({ inicial: 1, video: 1, necesitaImagen: true, necesitaVideo: true });
+    const c2 = pedidoHiggsfield(mov, { prompt: "", ajustes: {}, urls: { start: ["https://x.test/a.png"], video: ["https://x.test/v.mp4"] } }).cuerpo;
+    expect(c2).toMatchObject({ image_url: "https://x.test/a.png", video_url: "https://x.test/v.mp4" });
+    expect(() => rutaDe(modeloPorId("kling-3-std"), { video: 1 })).toThrow(/no admite un video/);
+    expect(validarPedido({ modelo: "kling-motion", prompt: "x", medios: { start: ["clientes/c/a.png"] } }).error).toMatch(/necesita un video de referencia/);
+    expect(validarPedido({ modelo: "kling-3-std", prompt: "x", medios: { video: ["clientes/c/v.mp4"] } }).error).toMatch(/no admite un video/);
+    expect(validarPedido({ modelo: "kling-omni-video", prompt: "x", medios: { video: ["clientes/c/v.mp4"] } }).pedido.medios.video).toEqual(["clientes/c/v.mp4"]);
   });
 
   it("las proporciones que ofrece son las que la pantalla sabe medir", () => {
