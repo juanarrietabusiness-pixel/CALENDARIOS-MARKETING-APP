@@ -513,6 +513,8 @@ const CAMPOS_PUBLICOS = [
   "id", "format", "title", "descripcion", "script", "guion", "hashtagsFinales", "hashtagsEnComentario",
   "primerComentario", "image", "medios", "portada", "publishTime", "redes", "actualizadaAt", "anterior",
   "historias", "historiaTambien",
+  // El ejemplo que abre el cliente mientras no hay contenido (sólo se enseña si es un enlace http).
+  "referenceLink",
 ];
 
 export function publicacionParaCliente(post) {

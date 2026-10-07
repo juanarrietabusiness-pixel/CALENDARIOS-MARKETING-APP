@@ -12,7 +12,7 @@
 //   POST   /<cliente>/guion-corto                  { idea, segundos, post? }: guion de un video de 8 o 10 s (texto)
 //   PUT    /<cliente>/kit                          { kit }: guarda el kit de marca (paleta, presets, logo…)
 //   POST   /<cliente>/kit/preparar                 La IA PROPONE el kit desde el cerebro (no guarda)
-//   POST   /<cliente>/revisar                      { archivoId }: la IA mira la imagen contra el kit
+//   POST   /<cliente>/revisar                      { archivoId } o { clave }: la IA mira la imagen contra el kit
 //   POST   /<cliente>/archivos                     Subir a mano (multipart: archivo, carpetaId?)
 //   POST   /<cliente>/archivos/<id>/cambiar        { favorito?, carpetaId? }
 //   POST   /<cliente>/archivos/<id>/uso            { calendarId, postId }: lo usa una publicación
@@ -89,7 +89,7 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
     }
     if (b === "revisar" && !c && metodo === "POST") {
       const datos = await cuerpo(req);
-      return json(await revisarPieza(env, acceso, cliente, datos?.archivoId));
+      return json(await revisarPieza(env, acceso, cliente, datos?.archivoId, { clave: typeof datos?.clave === "string" ? datos.clave : null }));
     }
 
     // ---------- Los trabajos ----------

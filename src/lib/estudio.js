@@ -46,6 +46,8 @@ export const prepararKit = (clienteId) => pedir(`${base(clienteId)}/kit/preparar
 
 /** La IA mira una imagen de la galería contra el kit: `{ puntaje, cumple, falla, sugerencia }`. */
 export const revisarMarca = (clienteId, archivoId) => pedir(`${base(clienteId)}/revisar`, post({ archivoId }));
+/** Lo mismo para la imagen de una publicación, por su ruta (`/api/media/…`): no hace falta que esté en la galería. */
+export const revisarMarcaDeRuta = (clienteId, clave) => pedir(`${base(clienteId)}/revisar`, post({ clave }));
 
 /** Sube una imagen a mano (la foto del producto, el logo) a la galería del cliente. */
 export function subirImagen(clienteId, archivo, { carpetaId = null } = {}) {

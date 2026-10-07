@@ -669,6 +669,15 @@ function TarjetaPublicacion({
           </details>
         )}
 
+        {/* Mientras no hay contenido, el ejemplo de lo que va (un video, una imagen, una carpeta). */}
+        {!mediosDe(post).length && /^https?:\/\//i.test(String(post.referenceLink ?? "")) && (
+          <p className="aprobar-referencia">
+            <a href={post.referenceLink} target="_blank" rel="noopener noreferrer">
+              <Icon name="external" size={14} /> Ver la referencia de cómo quedará
+            </a>
+          </p>
+        )}
+
         {comentarios.length > 0 && (
           <ul className="aprobar-hilo" aria-label="Conversación con la agencia">
             {comentarios.map((c) => (

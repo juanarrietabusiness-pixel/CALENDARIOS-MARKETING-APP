@@ -150,7 +150,9 @@ src/
     youtube.js            Cliente de /api/redes/youtube (conectar, enlace, elegir canal, privacidad)
     lote.js               Editar muchas publicaciones de una vez (puro)
     exportarContenido.js  Texto de «Exportar ideas y descripciones» (puro)
-    completitud.js        Cuánto le falta a una publicación (puro)
+    completitud.js        Cuánto le falta a una publicación; qué le falta a una SIN contenido para ir al cliente (puro)
+    revisionMes.js        «Revisar el mes»: reglas (precio fuera del catálogo, competencia, fecha delicada, voseo,
+                          sin llamado a la acción, hashtags), arreglar el voseo, el pedido de la revisión con IA (puro)
     agenda.js             «Mi día»: hoy, atrasos, periodos de las recurrentes (puro;
                           también lo importa el Worker)
     foco.js               La empresa en foco de cada persona, por día
@@ -240,6 +242,8 @@ src/
     EstudioMercado.jsx    El estudio de mercado en la pestaña Cerebro: catálogo, «Realizar estudio de mercado» por
                           pasos con revisión, y las referencias de la competencia (lazy)
     EstudioKit.jsx        El kit de marca: prepararlo con IA desde el cerebro, revisarlo, guardarlo
+    calendario/RevisionMes.jsx  «Revisar el mes» antes de enviarlo: reglas, IA opcional e imágenes contra el kit (lazy)
+    calendario/ProducirMes.jsx  «Producir el mes con IA»: las piezas que faltan en lote, con costo y confirmación (lazy)
     calendario/crearConIA.jsx  El Estudio en un diálogo dentro del panel de una publicación y de «Subir»
                           (el hook que lo abre, en hooks/useCrearConIA.jsx)
     Cerebro.jsx           La pestaña Cerebro: las notas de un cliente, filtros, buscar, añadir, subir
@@ -1253,6 +1257,17 @@ son del servidor.
   `sugerencia` al lado («Usar esta» / «Quedarme con la mía»); `sugerencia` no viaja al calendario. «Escribir guiones
   y descripciones» manda reel, carrusel, historia y directo sin guion por `buildScriptPrompt` y lo demás por
   `buildDescripcionesPrompt`, y sólo rellena.
+- **Antes de enviar al cliente: revisar y producir** (`lib/revisionMes.js`, `calendario/RevisionMes.jsx`,
+  `calendario/ProducirMes.jsx`). Las REGLAS no cuestan nada y salen al abrir; la IA (función «revisión de textos»)
+  y la revisión de las imágenes contra el kit (`POST /api/estudio/<c>/revisar` con `{ clave }`: la imagen de una
+  publicación no siempre está en la galería) son opcionales. Nada se cambia solo: el voseo se arregla con un botón.
+  La regla de la agencia —lo que va sin contenido lleva texto, guion (o láminas) y una referencia— la dice
+  `faltaParaEnviar()` (completitud.js, porque el aviso de «Enviar al cliente» va en el bundle principal), y la
+  referencia es `post.referenceLink`, que ahora sí se edita en el panel y está en `CAMPOS_PUBLICOS`. «Producir el
+  mes» pide al Estudio lo que falta con el preset del tipo de contenido, la proporción del formato y el logo; las
+  piezas se PONEN con un botón, y todas de una vez con una función de cambio (poner una a una con `updatePost`
+  partiría cada vez del calendario de antes). Lo de producir vive en su chunk: `lib/estudio.js` arrastra el
+  catálogo entero de modelos y no puede entrar en `CalendarView`.
 - **Las plantillas de plan: las de arranque en el código, lo cambiado en D1, la del cliente en su ficha**
   (`src/lib/plantillasPlan.js`, `plantillas_plan` y `clients.plan_contenido`, 0037). Tres objetivos (Centrado en
   ventas, Ventas y seguidores, Marketing 360) × productos/servicios/marca personal. Por día, cada publicación lleva

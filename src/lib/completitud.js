@@ -16,6 +16,7 @@
 // ============================================================
 
 import { hashtagsDe } from "./exportarContenido";
+import { mediosDe } from "./publicacion";
 
 /** Los formatos que se graban o se maquetan por partes llevan guion. */
 const FORMATOS_CON_GUION = ["reel", "carrusel", "historia", "live"];
@@ -95,3 +96,20 @@ function listar(items) {
   if (items.length === 1) return items[0];
   return `${items.slice(0, -1).join(", ")} y ${items[items.length - 1]}`;
 }
+
+/**
+ * Lo que le falta a una publicación SIN contenido para ir al cliente (revisión del mes y «Enviar al cliente»): el texto (lo que lee), el guion si es un
+ * reel, carrusel, historia o directo, y una referencia que pueda abrir. Vacío si tiene contenido o no le falta
+ * nada. Pura.
+ */
+export function faltaParaEnviar(post) {
+  if (!post || post.status === "published" || mediosDe(post).length) return [];
+  const falta = [];
+  if (!String(post.descripcion || post.script || "").trim() && !String(post.title || "").trim()) falta.push("la idea en el texto");
+  if (FORMATOS_CON_GUION.includes(post.format) && !String(post.guion || "").trim()) falta.push(post.format === "carrusel" ? "el texto de cada lámina" : "el guion");
+  if (!String(post.referenceLink || "").trim()) falta.push("una referencia");
+  return falta;
+}
+
+/** Cuántas publicaciones sin contenido van al cliente sin lo que necesitan para entenderse. Pura. */
+export const sinLoNecesario = (days = []) => (days ?? []).flatMap((d) => d?.posts ?? []).filter((p) => faltaParaEnviar(p).length).length;
