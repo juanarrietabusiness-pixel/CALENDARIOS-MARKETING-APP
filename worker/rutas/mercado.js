@@ -2,7 +2,7 @@
 // /api/mercado — el estudio de mercado de cada cliente
 //
 //   GET    /<cliente>                              Catálogo, estudio aprobado, borrador y referencias
-//   PUT    /<cliente>/catalogo                     { catalogo }: guardarlo (y su nota de cifras en el cerebro)
+//   PUT    /<cliente>/catalogo                     { catalogo, inventario? }: guardarlo (y su nota de cifras en el cerebro)
 //   POST   /<cliente>/catalogo/proponer            La IA lo PROPONE desde el cerebro (no guarda)
 //   POST   /<cliente>/estudio/general              { material }: paso 1, lo general del mercado (con búsqueda web)
 //   POST   /<cliente>/estudio/producto             { productoId, material }: un producto o servicio
@@ -44,7 +44,8 @@ export async function rutasMercado(req, env, { acceso, partes, metodo }) {
     if (a === "catalogo" && !b && metodo === "PUT") {
       const d = (await cuerpo(req)) ?? {};
       if (!Array.isArray(d.catalogo)) return error("Falta el catálogo.");
-      return json({ catalogo: await guardarCatalogo(env, acceso, cliente, d.catalogo) });
+      // `inventario` sólo cuenta si es el booleano: cualquier otra cosa deja el interruptor como estaba.
+      return json(await guardarCatalogo(env, acceso, cliente, d.catalogo, { inventario: typeof d.inventario === "boolean" ? d.inventario : undefined }));
     }
     if (a === "catalogo" && b === "proponer" && metodo === "POST") return json(await proponerCatalogo(env, acceso, cliente));
 

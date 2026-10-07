@@ -7,7 +7,10 @@
 //
 //   · el CATÁLOGO: sus productos y servicios con precio, oferta, para quién
 //     y beneficios. Un precio no se inventa: sale de aquí, y va al cerebro
-//     como nota de cifras, que la IA lee siempre;
+//     como nota de cifras, que la IA lee siempre. Con el INVENTARIO encendido
+//     (por cliente, apagado por defecto) cada uno lleva además disponibilidad,
+//     hasta cuándo vale la oferta y su diferenciador; apagado, eso no existe
+//     para nadie: ni la pantalla lo enseña ni la IA lo lee;
 //   · el ESTUDIO: lo general del mercado (rubro, competencia, dos perfiles
 //     de comprador, sus tres deseos principales, el nivel de consciencia) y,
 //     por cada producto, los siete elementos, las objeciones con su
@@ -41,6 +44,19 @@ const CLAVES_NIVEL = NIVELES_CONSCIENCIA.map((n) => n.clave);
 export const LIMITES_ANUNCIO = Object.freeze({ titulo: 40, textoPrincipal: 300, descripcion: 30 });
 
 export const MAX_PRODUCTOS = 30;
+
+/**
+ * La disponibilidad de un producto (sólo con el inventario encendido). `peso`: cuántas publicaciones le tocan
+ * frente a los demás en la rotación del mes; `alInicio`: sólo en la primera mitad del mes (se puede acabar).
+ */
+export const NIVELES_STOCK = Object.freeze([
+  { id: "alto", nombre: "Mucho", ayuda: "Hay de sobra: más publicaciones y puede ir en cualquier semana", peso: 3 },
+  { id: "medio", nombre: "Normal", ayuda: "Lo de siempre", peso: 2 },
+  { id: "bajo", nombre: "Poco", ayuda: "Se puede acabar: va en la primera mitad del mes", peso: 2, alInicio: true },
+  { id: "agotado", nombre: "Agotado", ayuda: "No se anuncia hasta que vuelva", peso: 0 },
+]);
+const STOCK_IDS = NIVELES_STOCK.map((n) => n.id);
+const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 export const MAX_MATERIAL = 20_000;
 export const MAX_REFERENCIAS = 60;
 
@@ -80,6 +96,10 @@ export function limpiarProducto(p) {
     paraQuien: corto(p?.paraQuien, 240),
     beneficios: largo(p?.beneficios, 700),
     activo: p?.activo !== false,
+    stock: STOCK_IDS.includes(p?.stock) ? p.stock : "",
+    stockNota: corto(p?.stockNota, 120),
+    ofertaHasta: FECHA.test(String(p?.ofertaHasta ?? "")) ? p.ofertaHasta : "",
+    diferenciador: corto(p?.diferenciador, 240),
   };
 }
 
@@ -101,27 +121,89 @@ export function limpiarCatalogo(entrada) {
 
 export const productosActivos = (catalogo) => limpiarCatalogo(catalogo).filter((p) => p.activo);
 
-/** Una línea por producto, como la lee la IA. */
-export function lineaDeProducto(p) {
+/** Sin el inventario encendido, lo del inventario no existe: se borra de cada producto. Pura. */
+const sinInventario = (p) => ({ ...p, stock: "", stockNota: "", ofertaHasta: "", diferenciador: "" });
+
+/**
+ * Los productos que pueden salir en el plan del mes: los activos y, con el inventario encendido, sin los agotados
+ * (con su disponibilidad, que usa la rotación de `asignarMatriz`). Pura.
+ */
+export function productosParaPlan(catalogo, inventario = false) {
+  const activos = productosActivos(catalogo);
+  return inventario ? activos.filter((p) => p.stock !== "agotado") : activos.map(sinInventario);
+}
+
+/** «2026-10-15» → «15 de octubre de 2026». */
+export function fechaLarga(iso) {
+  if (!FECHA.test(String(iso ?? ""))) return "";
+  const [a, m, d] = iso.split("-").map(Number);
+  return `${d} de ${String(MONTHS[m - 1] ?? "").toLowerCase()} de ${a}`;
+}
+
+/** Una línea por producto, como la lee la IA. `inventario`: con disponibilidad, vigencia de la oferta y diferenciador. */
+export function lineaDeProducto(p, { inventario = false } = {}) {
   const partes = [`${p.nombre} (${p.tipo})`];
   partes.push(p.precio ? `precio: ${p.precio}` : "precio: sin definir");
-  if (p.oferta) partes.push(`oferta: ${p.oferta}`);
+  if (p.oferta) {
+    const hasta = inventario && fechaLarga(p.ofertaHasta);
+    partes.push(hasta ? `oferta: ${p.oferta} (válida hasta el ${hasta}; en publicaciones posteriores NO se menciona)` : `oferta: ${p.oferta}`);
+  }
   if (p.paraQuien) partes.push(`para: ${p.paraQuien}`);
   if (p.beneficios) partes.push(`beneficios: ${p.beneficios.replace(/\n+/g, "; ")}`);
+  if (inventario && p.diferenciador) partes.push(`lo que lo hace distinto: ${p.diferenciador}`);
+  // Sólo la escasez se le dice a la IA, y sin cifras: la nota del stock es de la agencia.
+  if (inventario && p.stock === "bajo") partes.push("disponibilidad: poca (se puede decir «últimas unidades» o «cupos limitados», sin inventar cantidades)");
   return `- ${partes.join(" · ")}`;
 }
 
 /**
  * El catálogo como nota del cerebro (tipo cifras: la IA la lee SIEMPRE que escribe). Sólo lo activo; lo que no
- * está disponible no se nombra, para que nadie lo anuncie. Vacío si no hay nada activo. Pura.
+ * está disponible no se nombra, para que nadie lo anuncie. Con el inventario encendido, lo agotado se nombra
+ * aparte y con la orden de no anunciarlo: otra nota del cerebro puede hablar de él. Vacío si no hay nada. Pura.
  */
-export function catalogoATexto(catalogo) {
+export function catalogoATexto(catalogo, { inventario = false } = {}) {
   const activos = productosActivos(catalogo);
-  if (!activos.length) return "";
+  const vigentes = inventario ? activos.filter((p) => p.stock !== "agotado") : activos;
+  const agotados = inventario ? activos.filter((p) => p.stock === "agotado") : [];
+  if (!vigentes.length && !agotados.length) return "";
   return [
     "Productos y servicios vigentes. Los precios y ofertas son EXACTAMENTE estos: no se inventan otros ni se redondean.",
     "",
-    ...activos.map(lineaDeProducto),
+    ...vigentes.map((p) => lineaDeProducto(p, { inventario })),
+    ...(agotados.length ? ["", `Agotados ahora (NO se anuncian ni se ofrecen hasta que vuelvan): ${agotados.map((p) => p.nombre).join(", ")}.`] : []),
+  ].join("\n");
+}
+
+/**
+ * El mensaje para pedirle al cliente lo que falta (WhatsApp): por producto, el precio que no está y, con el
+ * inventario encendido, la disponibilidad y hasta cuándo va la oferta; luego lo que el estudio dejó por confirmar.
+ * Pura.
+ */
+export function mensajePedirDatos({ marca = "", catalogo = [], inventario = false, estudio = null } = {}) {
+  const activos = productosActivos(catalogo);
+  const porProducto = [];
+  for (const p of activos) {
+    const falta = [];
+    if (!p.precio) falta.push("precio");
+    if (inventario && !p.stock) falta.push("¿cuánto hay disponible?");
+    if (inventario && p.oferta && !p.ofertaHasta) falta.push(`¿la oferta «${p.oferta}» sigue? ¿hasta cuándo?`);
+    if (falta.length) porProducto.push(`• ${p.nombre}: ${falta.join(" · ")}`);
+  }
+  const e = limpiarEstudio(estudio);
+  const vistos = new Set();
+  const pendientes = [...(e?.general?.faltan ?? []), ...Object.values(e?.productos ?? {}).flatMap((x) => x.faltan ?? [])]
+    .filter((x) => { const k = x.toLowerCase(); if (vistos.has(k)) return false; vistos.add(k); return true; })
+    .slice(0, 8);
+  return [
+    `Hola${marca ? `, equipo de ${marca}` : ""}. Para preparar el contenido del mes necesitamos confirmar algunos datos:`,
+    "",
+    ...(porProducto.length ? ["*Productos y servicios*", ...porProducto, ""] : []),
+    ...(pendientes.length ? ["*Para el contenido*", ...pendientes.map((x) => `• ${x}`), ""] : []),
+    inventario
+      ? "¿Hay productos nuevos, alguno agotado o promociones para este mes? Si hay alguno con mucho inventario que quieran mover, también nos sirve saberlo."
+      : "¿Hay productos o servicios nuevos, o promociones para este mes?",
+    "",
+    "¡Gracias!",
   ].join("\n");
 }
 
@@ -163,7 +245,7 @@ export function fundirCatalogo(guardado, propuesto) {
     if (previo) {
       // Lo que tenía escrito una persona gana; la IA sólo rellena lo vacío.
       const fundido = { ...previo };
-      for (const k of ["precio", "oferta", "paraQuien", "beneficios"]) if (!fundido[k] && p[k]) fundido[k] = p[k];
+      for (const k of ["precio", "oferta", "paraQuien", "beneficios", "diferenciador"]) if (!fundido[k] && p[k]) fundido[k] = p[k];
       porNombre.set(slugProducto(p.nombre), fundido);
     } else {
       nuevos.push(p);

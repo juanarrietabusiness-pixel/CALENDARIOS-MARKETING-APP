@@ -68,6 +68,8 @@ export async function leerMercado(acceso, clienteId) {
     estudio: limpiarEstudio(leerJSON(f?.estudio, null)),
     borrador: limpiarEstudio(leerJSON(f?.borrador, null)),
     referencias: limpiarReferencias(leerJSON(f?.referencias, [])),
+    // En D1 el booleano es 0/1: se convierte aquí para que nadie lea un `0` como verdadero.
+    inventario: Number(f?.inventario) === 1,
     actualizado: f?.updated_at ?? null,
   };
 }
@@ -151,14 +153,18 @@ const materialDe = (m) => String(m ?? "").slice(0, MAX_MATERIAL);
 // El catálogo
 // ------------------------------------------------------------
 
-/** Guarda el catálogo y su nota de cifras en el cerebro. */
-export async function guardarCatalogo(env, acceso, cliente, entrada) {
+/**
+ * Guarda el catálogo y su nota de cifras en el cerebro. `inventario` (booleano) enciende o apaga el inventario del
+ * cliente; sin pasarlo, se queda como estaba. → { catalogo, inventario }.
+ */
+export async function guardarCatalogo(env, acceso, cliente, entrada, { inventario } = {}) {
   const catalogo = limpiarCatalogo(entrada);
-  await escribir(acceso, cliente.id, { catalogo: JSON.stringify(catalogo) });
-  const texto = catalogoATexto(catalogo);
+  const conInventario = typeof inventario === "boolean" ? inventario : (await leerMercado(acceso, cliente.id)).inventario;
+  await escribir(acceso, cliente.id, { catalogo: JSON.stringify(catalogo), inventario: conInventario ? 1 : 0 });
+  const texto = catalogoATexto(catalogo, { inventario: conInventario });
   await reemplazarNotas(env, acceso, cliente.id, (r) => r === RUTA_CATALOGO || r.startsWith(`${RUTA_CATALOGO}-`),
     texto ? [{ ruta: RUTA_CATALOGO, titulo: "Productos y servicios", texto, tipo: "cifras" }] : []);
-  return catalogo;
+  return { catalogo, inventario: conInventario };
 }
 
 /** La IA propone el catálogo a partir del cerebro. No guarda: devuelve lo propuesto fundido con lo que había. */

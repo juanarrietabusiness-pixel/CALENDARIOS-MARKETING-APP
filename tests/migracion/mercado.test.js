@@ -132,6 +132,28 @@ describe("el catálogo", () => {
     expect(n?.texto).toContain("Desde $50");
   });
 
+  it("el inventario es un interruptor del cliente: apagado por defecto, se guarda y se queda", async () => {
+    const conStock = [{ ...CATALOGO[0], stock: "bajo", stockNota: "sólo 2 técnicos", diferenciador: "Secado en 4 horas" }, { id: "p-sofa", nombre: "Sofá cama", precio: "$300", stock: "agotado" }];
+    let d = await (await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: conStock } })).json();
+    expect(d.inventario).toBe(false);
+    let n = notas().find((x) => x.ruta === "productos-y-servicios");
+    expect(n.texto).not.toMatch(/Agotados|disponibilidad|distinto/);
+
+    d = await (await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: conStock, inventario: true } })).json();
+    expect(d.inventario).toBe(true);
+    expect((await (await pedir("/api/mercado/c1")).json()).inventario).toBe(true);
+    n = notas().find((x) => x.ruta === "productos-y-servicios");
+    expect(n.texto).toContain("Agotados ahora (NO se anuncian ni se ofrecen hasta que vuelvan): Sofá cama.");
+    expect(n.texto).toContain("disponibilidad: poca");
+    expect(n.texto).not.toContain("2 técnicos"); // la nota del inventario es de la agencia
+
+    // Guardar sin decir nada del interruptor no lo apaga; algo que no es un booleano, tampoco.
+    d = await (await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: conStock, inventario: "no" } })).json();
+    expect(d.inventario).toBe(true);
+    d = await (await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: conStock, inventario: false } })).json();
+    expect(d.inventario).toBe(false);
+  });
+
   it("proponer no guarda y no le enseña a la IA lo interno", async () => {
     anthropic(flujo('{"productos":[{"nombre":"Lavado de muebles","precio":"Desde $45"},{"nombre":"Impermeabilizado","tipo":"servicio"}]}'));
     const r = await pedir("/api/mercado/c1/catalogo/proponer", { method: "POST", body: {} });

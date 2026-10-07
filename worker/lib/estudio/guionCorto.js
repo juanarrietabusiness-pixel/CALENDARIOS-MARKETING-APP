@@ -37,9 +37,9 @@ export async function guionCorto(env, acceso, cliente, datos = {}) {
 
   let productoLinea = "";
   try {
-    const { catalogo } = await leerMercado(acceso, cliente.id);
+    const { catalogo, inventario } = await leerMercado(acceso, cliente.id);
     const p = productosActivos(catalogo).find((x) => x.id === post.productoId || x.nombre === post.producto);
-    if (p) productoLinea = lineaDeProducto(p).slice(2);
+    if (p) productoLinea = lineaDeProducto(p, { inventario }).slice(2);
   } catch { /* sin catálogo, el guion sale igual */ }
 
   let contexto = "";

@@ -67,7 +67,11 @@ export function TipoContenido({ form, sf, clienteId, lectura = false }) {
           <label className="label" htmlFor={`${ids}-p`}>Producto o servicio</label>
           <select id={`${ids}-p`} className="input" value={productos.some((p) => p.id === form.productoId) ? form.productoId : ""} disabled={lectura} onChange={(e) => cambiarProducto(e.target.value)}>
             <option value="">{form.producto && !productos.some((p) => p.id === form.productoId) ? `${form.producto} (ya no está en el catálogo)` : "Ninguno"}</option>
-            {productos.map((p) => <option key={p.id} value={p.id}>{p.nombre}{p.precio ? ` · ${p.precio}` : ""}</option>)}
+            {productos.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nombre}{p.precio ? ` · ${p.precio}` : ""}{mercado?.inventario && p.stock === "agotado" ? " · agotado" : ""}
+              </option>
+            ))}
           </select>
           {!productos.length && <p className="hint">Este cliente no tiene catálogo todavía (Cerebro → Estudio de mercado).</p>}
         </div>

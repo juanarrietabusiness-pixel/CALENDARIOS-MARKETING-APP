@@ -3,6 +3,7 @@ import {
   limpiarCatalogo, catalogoATexto, leerCatalogo, fundirCatalogo, pedidoGeneral, leerGeneral, pedidoDeProducto,
   leerDeProducto, limpiarEstudio, pasosDelEstudio, notasDelEstudio, estudioADocumento, angulosDeAnuncio, ideaDesdeAngulo,
   leerReferencia, notaDeReferencia, fraseActivo, diasActivo, estudioParaElKit, LIMITES_ANUNCIO, MAX_PRODUCTOS,
+  productosParaPlan, mensajePedirDatos, lineaDeProducto, fechaLarga,
 } from "./estudioMercado";
 
 const CATALOGO = [
@@ -42,6 +43,48 @@ describe("el catálogo", () => {
     expect(t).toContain("Lavado de muebles (servicio) · precio: Desde $45");
     expect(t).not.toContain("alfombras");
     expect(catalogoATexto([{ nombre: "x", activo: false }])).toBe("");
+  });
+
+  it("el inventario: apagado no existe; encendido, agotado fuera del plan y aparte en la nota", () => {
+    const cat = [
+      { id: "a", nombre: "Sofá", precio: "$400", oferta: "10 % menos", ofertaHasta: "2026-10-15", stock: "bajo", stockNota: "quedan 3", diferenciador: "Tela antimanchas" },
+      { id: "b", nombre: "Mesa", precio: "$120", stock: "agotado" },
+      { id: "c", nombre: "Silla", precio: "$40", stock: "inventado", ofertaHasta: "mañana" },
+    ];
+    const limpio = limpiarCatalogo(cat);
+    expect(limpio[2]).toMatchObject({ stock: "", ofertaHasta: "" });
+
+    // Apagado: todo sale, sin nada del inventario (ni en el plan ni en lo que lee la IA).
+    expect(productosParaPlan(cat, false).map((p) => [p.id, p.stock])).toEqual([["a", ""], ["b", ""], ["c", ""]]);
+    const apagado = catalogoATexto(cat);
+    expect(apagado).toContain("Mesa");
+    expect(apagado).not.toMatch(/válida hasta|antimanchas|disponibilidad|Agotados/);
+
+    // Encendido: lo agotado no entra al plan y la IA sabe que no se anuncia; la nota del stock no viaja.
+    expect(productosParaPlan(cat, true).map((p) => p.id)).toEqual(["a", "c"]);
+    const t = catalogoATexto(cat, { inventario: true });
+    expect(t).toContain("oferta: 10 % menos (válida hasta el 15 de octubre de 2026; en publicaciones posteriores NO se menciona)");
+    expect(t).toContain("lo que lo hace distinto: Tela antimanchas");
+    expect(t).toContain("disponibilidad: poca");
+    expect(t).toContain("Agotados ahora (NO se anuncian ni se ofrecen hasta que vuelvan): Mesa.");
+    expect(t).not.toContain("quedan 3");
+    expect(lineaDeProducto(limpio[0])).not.toContain("válida hasta");
+    expect(fechaLarga("2026-01-05")).toBe("5 de enero de 2026");
+    expect(fechaLarga("x")).toBe("");
+  });
+
+  it("el mensaje para pedir datos al cliente dice lo que falta y nada más", () => {
+    const cat = [{ id: "a", nombre: "Sofá", precio: "", oferta: "2x1" }, { id: "b", nombre: "Mesa", precio: "$120", stock: "medio" }];
+    const estudio = { general: { ...GENERAL, faltan: ["Testimonios reales", "¿Hacen envíos?"] }, productos: { a: { ...PRODUCTO, faltan: ["testimonios reales"] } } };
+    const m = mensajePedirDatos({ marca: "Dcasa", catalogo: cat, inventario: true, estudio });
+    expect(m).toContain("Hola, equipo de Dcasa.");
+    expect(m).toContain("• Sofá: precio · ¿cuánto hay disponible? · ¿la oferta «2x1» sigue? ¿hasta cuándo?");
+    expect(m).not.toContain("• Mesa");
+    expect(m.match(/testimonios reales/gi)).toHaveLength(1);
+    expect(m).toContain("• ¿Hacen envíos?");
+    const sinInv = mensajePedirDatos({ catalogo: cat });
+    expect(sinInv).toContain("• Sofá: precio");
+    expect(sinInv).not.toMatch(/disponible|hasta cuándo|inventario/);
   });
 
   it("lee lo que propone la IA y lo funde sin pisar lo escrito a mano", () => {

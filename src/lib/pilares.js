@@ -163,16 +163,49 @@ export function ritmoDelMes(year, month, ritmo, aceptadas = []) {
 // La matriz
 // ------------------------------------------------------------
 
+/** Lo que pesa cada disponibilidad en la rotación (lo mismo que NIVELES_STOCK de estudioMercado.js, sin importarlo:
+ * pilares.js va en el bundle principal y estudioMercado.js no). */
+const PESO_STOCK = { alto: 3, medio: 2, bajo: 2, agotado: 0 };
+
 /**
- * A cada publicación (en orden de fecha) su tipo, subtipo, producto, nivel, deseo y perfil. Los productos rotan
- * entre los activos del catálogo; los niveles, dentro de los del tipo; los subtipos de «7 maletas», uno por vez;
- * los deseos y perfiles del estudio, cruzados (3 × 2 = 6 combinaciones antes de repetir). Lo que ya trae una
- * publicación (elegido a mano) se respeta. Pura.
+ * El orden en que salen los productos en `huecos` publicaciones: reparto ponderado y uniforme (cada uno según su
+ * disponibilidad: «mucho» sale más; sin disponibilidad, todos igual y en el orden del catálogo), y lo que tiene
+ * POCO sólo en la primera mitad del mes, mientras haya. Lo agotado no sale. Pura.
+ */
+export function ordenDeProductos(productos, huecos) {
+  const lista = (productos ?? []).filter((p) => p && p.stock !== "agotado");
+  if (!lista.length || huecos <= 0) return [];
+  const peso = (p) => PESO_STOCK[p.stock] ?? 2;
+  const actual = lista.map(() => 0);
+  const mitad = Math.ceil(huecos / 2);
+  const salida = [];
+  for (let s = 0; s < huecos; s++) {
+    let candidatos = lista.map((p, i) => i).filter((i) => !(lista[i].stock === "bajo" && s >= mitad));
+    if (!candidatos.length) candidatos = lista.map((p, i) => i);
+    const total = candidatos.reduce((t, i) => t + peso(lista[i]), 0);
+    let mejor = candidatos[0];
+    for (const i of candidatos) {
+      actual[i] += peso(lista[i]);
+      if (actual[i] > actual[mejor]) mejor = i;
+    }
+    actual[mejor] -= total;
+    salida.push(lista[mejor]);
+  }
+  return salida;
+}
+
+/**
+ * A cada publicación (en orden de fecha) su tipo, subtipo, producto, nivel, deseo y perfil. Los productos salen en
+ * el orden de `ordenDeProductos` (rotan entre los del plan; con inventario, según su disponibilidad); los niveles,
+ * dentro de los del tipo; los subtipos de «7 maletas», uno por vez; los deseos y perfiles del estudio, cruzados
+ * (3 × 2 = 6 combinaciones antes de repetir). Lo que ya trae una publicación (elegido a mano) se respeta. Pura.
  * @param publicaciones [{ fecha, pilar, ...lo que ya tenga }]
- * @param productos  los productos ACTIVOS del catálogo ({ id, nombre }), ya limpios (`productosActivos`).
+ * @param productos  los productos del plan ({ id, nombre, stock? }), ya limpios (`productosParaPlan`).
  * @param deseos     los del estudio aprobado ({ deseo }); `perfiles`, ({ nombre }).
  */
 export function asignarMatriz(publicaciones, { productos = [], deseos = [], perfiles = [] } = {}) {
+  const necesitan = publicaciones.filter((p) => pilarDe(p.pilar)?.producto && !productos.some((x) => x.id === p.productoId)).length;
+  const orden = ordenDeProductos(productos, necesitan);
   let iProducto = 0;
   let iMaleta = 0;
   let iCruce = 0;
@@ -187,8 +220,8 @@ export function asignarMatriz(publicaciones, { productos = [], deseos = [], perf
         : pilar.niveles[n % pilar.niveles.length];
     let productoId = p.productoId ?? "";
     let producto = p.producto ?? "";
-    if (pilar.producto && productos.length && !productos.some((x) => x.id === productoId)) {
-      const elegido = productos[iProducto++ % productos.length];
+    if (pilar.producto && orden.length && !productos.some((x) => x.id === productoId)) {
+      const elegido = orden[iProducto++ % orden.length];
       productoId = elegido.id;
       producto = elegido.nombre;
     }

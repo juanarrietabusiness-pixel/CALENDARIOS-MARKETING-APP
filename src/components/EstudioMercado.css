@@ -140,3 +140,12 @@
   .mercado-analisis { grid-template-columns: 1fr; }
   .mercado-analisis dt { margin-top: var(--sp-1); }
 }
+
+/* El interruptor del inventario y el mensaje para pedir datos al cliente. */
+.mercado-inventario { margin: var(--sp-3) 0; }
+.mercado-pedir {
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  margin: var(--sp-3) 0; padding: var(--sp-3);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.mercado-pedir textarea { font-family: inherit; }

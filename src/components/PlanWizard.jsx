@@ -1,13 +1,13 @@
 import { useEffect, useId, useMemo, useState, useRef } from "react";
 import { PLANS, FORMATS, FORMAT_ICONS, MONTHS, DAYS, DAYS_SHORT } from "../constants";
 import { uid, daysInMonth, fmtDate, getWeekNumber, dayName } from "../utils";
-import { callAI, buildClientContext, buildDescripcionesPrompt, loadADN, parseAIResponse, pasajesDeLaTanda } from "../api";
+import { callAI, buildClientContext, buildDescripcionesPrompt, buildScriptPrompt, loadADN, parseAIResponse, pasajesDeLaTanda } from "../api";
 import { loadClientMemories } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import Icon from "./Icon";
 import { fechasDelMes } from "../lib/fechasEspeciales";
 import { leerMercado } from "../lib/mercado";
-import { productosActivos, limpiarEstudio } from "../lib/estudioMercado";
+import { productosParaPlan, limpiarEstudio } from "../lib/estudioMercado";
 import {
   limpiarRitmo, ritmoDelMes, sugerenciasDeTemporada, asignarMatriz, lineasDeContenido, reglasDeLosTipos,
   nombreDePilar, resumenRitmo, fechaCorta, CAMPOS_MATRIZ, pilarDe,
@@ -16,6 +16,9 @@ import {
 // Sin paso de categorías: se quitaron del calendario. Las que haya en la
 // ficha del cliente (Semanal) siguen informando a la IA sin preguntarse aquí.
 const STEP_LABELS = ["Plan", "Fechas y ritmo", "Campaña", "Conceptos", "Ofertas", "Ideas"];
+
+/** Los formatos que llevan guion además de descripción (los demás, sólo caption). */
+const FORMATOS_CON_GUION = new Set(["reel", "carrusel", "historia", "live"]);
 
 const TEMPLATES_KEY = "jads-templates";
 function loadTemplates() {
@@ -278,7 +281,7 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
       });
     }
     const asignada = asignarMatriz(lista, {
-      productos: productosActivos(mercado?.catalogo ?? []), deseos: general?.deseos ?? [], perfiles: general?.perfiles ?? [],
+      productos: productosParaPlan(mercado?.catalogo ?? [], mercado?.inventario), deseos: general?.deseos ?? [], perfiles: general?.perfiles ?? [],
     });
     return new Map(asignada.map(({ clave, ...m }) => [clave, Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, m[k] ?? ""]))]));
   };
@@ -352,8 +355,8 @@ CAMPANA: ${campaign || "N/A"}
 Genera ideas UNICAS para cada publicacion de estos dias.
 IMPORTANTE: Cada idea debe ser DIFERENTE incluso si el dia de la semana es el mismo.
 ${conTipos ? `Cada publicación dice su TIPO DE CONTENIDO, su PRODUCTO, su NIVEL DE CONSCIENCIA y a quién le habla: la idea los cumple, con ojo de marketing profesional (un gancho claro y una razón para actuar).\n\n${reglasDeLosTipos()}\n` : ""}
-Si ya hay idea existente, mejorala. Si no, genera una nueva.
-Cada idea: 1-2 oraciones claras y accionables.
+Si ya hay idea existente, la escribió una persona (a veces con una breve explicación de lo que quiere): MEJÓRALA conservando su intención —el mismo tema, producto y enfoque—, más clara y con mejor gancho. Si no hay, genera una nueva.
+Cada idea: 1-2 oraciones claras y accionables, sin guion ni descripción.
 
 FORMATO DE RESPUESTA (respeta exactamente):
 ===DIA===
@@ -392,11 +395,17 @@ ${daysDesc}`;
             const merged = dayData.formats.map((f, j) => {
               const existing = (newIdeas[date] || [])[j];
               const aiIdea = posts[j];
+              // Lo escrito por una persona no se pisa: la versión de la IA queda AL LADO como propuesta
+              // («Usar esta» / «Quedarme con la mía»). Antes se pedía mejorarla y la mejora se tiraba.
+              const propia = existing?.idea?.trim();
+              const propuesta = propia && aiIdea?.idea && aiIdea.idea.trim() !== propia ? aiIdea.idea.trim() : "";
               return {
                 ...matriz.get(`${date}|${j}`),
                 id: existing?.id || uid(),
                 format: f.format,
                 idea: existing?.idea || aiIdea?.idea || "",
+                sugerencia: propuesta || existing?.sugerencia || "",
+                guion: existing?.guion || "",
                 referenceLink: existing?.referenceLink || "",
                 image: existing?.image || null,
                 // La descripción sobrevive a una regeneración de ideas: si
@@ -424,21 +433,23 @@ ${daysDesc}`;
   };
 
   /**
-   * Escribe los captions de las ideas que ya están definidas.
+   * Escribe los guiones y las descripciones de las ideas que ya están definidas.
    *
    * Es el segundo paso del asistente: primero se acuerdan las ideas —y se
    * revisan a mano, que para eso están en pantalla—, y sólo después se
-   * escriben las descripciones. Trabaja sobre el mismo alcance que las
-   * ideas: el mes entero o una semana.
+   * escribe. Un reel, carrusel, historia o directo sin guion pide guion Y
+   * descripción en la misma llamada (`buildScriptPrompt`); lo que sólo
+   * necesita caption va por `buildDescripcionesPrompt`, que gasta la mitad.
+   * Trabaja sobre el mismo alcance que las ideas: el mes entero o una semana.
    *
-   * Salta las publicaciones que ya tienen caption, para que volver a
-   * pulsar el botón complete lo que faltó en vez de reescribir el mes.
+   * Salta lo que ya está escrito, para que volver a pulsar el botón complete
+   * lo que faltó en vez de reescribir el mes: rellenar no es reescribir.
    */
   const generarDescripciones = async () => {
     if (generating.current) return;
     generating.current = true;
     setDescLoading(true);
-    setAiStatus("Preparando descripciones…");
+    setAiStatus("Preparando guiones y descripciones…");
     try {
       if (!client.githubContext && client.githubRepo) setAiStatus("Cargando ADN desde GitHub…");
       const [adn, wizMems] = await Promise.all([
@@ -449,12 +460,16 @@ ${daysDesc}`;
 
       // Se aplana a lista de publicaciones: la tanda se mide en
       // publicaciones, no en días, porque un día premium lleva tres.
-      const pendientes = [];
+      const conGuion = [];
+      const soloDescripcion = [];
       const matriz = matrizDelMes();
       for (const d of enAlcance(estructuraDelMes())) {
         (ideas[d.date] || []).forEach((p, j) => {
-          if (!p?.idea?.trim() || p.descripcion?.trim()) return;
-          pendientes.push({
+          if (!p?.idea?.trim()) return;
+          const format = p.format || d.formats[j]?.format || "post";
+          const faltaGuion = FORMATOS_CON_GUION.has(format) && !p.guion?.trim();
+          if (!faltaGuion && p.descripcion?.trim()) return;
+          (faltaGuion ? conGuion : soloDescripcion).push({
             ...matriz.get(`${d.date}|${j}`),
             ...p,
             _date: d.date,
@@ -462,14 +477,15 @@ ${daysDesc}`;
             _weekNumber: d.wk,
             _concept: weekConcepts[d.wk - 1] || "",
             _indice: j,
-            format: p.format || d.formats[j]?.format || "post",
+            format,
             category: p.category || d.cat,
           });
         });
       }
+      const total = conGuion.length + soloDescripcion.length;
 
-      if (!pendientes.length) {
-        setAiStatus(`No hay ideas sin descripción en ${etiquetaAlcance}.`);
+      if (!total) {
+        setAiStatus(`No hay nada sin escribir en ${etiquetaAlcance}.`);
         setTimeout(() => setAiStatus(""), 3000);
         return;
       }
@@ -477,38 +493,51 @@ ${daysDesc}`;
       const calendarioParcial = { campaign, offers, promoCode, weekConcepts };
       const BATCH = 6;
       const escritas = { ...ideas };
+      let hechas = 0;
 
-      for (let i = 0; i < pendientes.length; i += BATCH) {
-        const tanda = pendientes.slice(i, i + BATCH);
-        setAiStatus(`Descripciones ${i + 1}-${Math.min(i + BATCH, pendientes.length)} de ${pendientes.length}…`);
+      for (const [lista, conGuiones] of [[conGuion, true], [soloDescripcion, false]]) {
+        for (let i = 0; i < lista.length; i += BATCH) {
+          const tanda = lista.slice(i, i + BATCH);
+          setAiStatus(`${conGuiones ? "Guiones" : "Descripciones"} ${hechas + 1}-${hechas + tanda.length} de ${total}…`);
 
-        const pasajes = await pasajesDeLaTanda(client, adn, calendarioParcial, tanda);
-        const prompt = buildDescripcionesPrompt(client, calendarioParcial, tanda, adnExtra, wizMems, adn.cerebro ? { pasajes } : null);
-        // `tolerarCorte` porque una tanda que se corta en la última
-        // publicación trae las cinco anteriores enteras: rechazarla entera
-        // obligaba a repetir el mes por una descripción.
-        const { texto } = await callAI([{ type: "text", text: prompt }], { maxTokens: 8000, tolerarCorte: true, funcion: "descripciones", clienteId: client?.id });
-        const leidas = parseAIResponse(texto);
+          const pasajes = await pasajesDeLaTanda(client, adn, calendarioParcial, tanda);
+          const cerebro = adn.cerebro ? { pasajes } : null;
+          const prompt = conGuiones
+            ? buildScriptPrompt(client, calendarioParcial, tanda, adnExtra, wizMems, cerebro)
+            : buildDescripcionesPrompt(client, calendarioParcial, tanda, adnExtra, wizMems, cerebro);
+          // `tolerarCorte` porque una tanda que se corta en la última
+          // publicación trae las cinco anteriores enteras: rechazarla entera
+          // obligaba a repetir el mes por una descripción.
+          const { texto } = await callAI([{ type: "text", text: prompt }], { maxTokens: 8000, tolerarCorte: true, funcion: conGuiones ? "guiones" : "descripciones", clienteId: client?.id });
+          const leidas = parseAIResponse(texto);
 
-        for (const p of tanda) {
-          const r = leidas[p.id];
-          if (!r?.descripcion) continue;
-          const dia = [...(escritas[p._date] || [])];
-          dia[p._indice] = {
-            ...dia[p._indice],
-            descripcion: r.descripcion,
-            hashtagsFinales: r.hashtagsFinales || dia[p._indice]?.hashtagsFinales || "",
-          };
-          escritas[p._date] = dia;
+          for (const p of tanda) {
+            const r = leidas[p.id];
+            if (!r?.descripcion && !r?.guion) continue;
+            const dia = [...(escritas[p._date] || [])];
+            const actual = dia[p._indice] || {};
+            dia[p._indice] = {
+              ...actual,
+              // Lo que ya tenía texto gana sobre lo que devuelve el modelo.
+              guion: actual.guion?.trim() || !conGuiones ? (actual.guion || "") : (r.guion || ""),
+              descripcion: actual.descripcion?.trim() ? actual.descripcion : (r.descripcion || ""),
+              hashtagsFinales: r.hashtagsFinales || actual.hashtagsFinales || "",
+            };
+            escritas[p._date] = dia;
+          }
+          hechas += tanda.length;
+          setIdeas({ ...escritas });
         }
-        setIdeas({ ...escritas });
       }
 
-      const sinEscribir = pendientes.filter((p) => !escritas[p._date]?.[p._indice]?.descripcion?.trim());
+      const sinEscribir = [...conGuion, ...soloDescripcion].filter((p) => {
+        const x = escritas[p._date]?.[p._indice];
+        return !x?.descripcion?.trim() || (FORMATOS_CON_GUION.has(p.format) && !x?.guion?.trim());
+      });
       setAiStatus(
         sinEscribir.length
-          ? `Listo, pero ${sinEscribir.length} de ${pendientes.length} se quedaron sin descripción. Vuelve a pulsar para completarlas.`
-          : `Listo: ${pendientes.length} descripciones escritas.`
+          ? `Listo, pero ${sinEscribir.length} de ${total} se quedaron a medias. Vuelve a pulsar para completarlas.`
+          : `Listo: ${total} ${total === 1 ? "publicación escrita" : "publicaciones escritas"}${conGuion.length ? ` (${conGuion.length} con guion)` : ""}.`
       );
       setTimeout(() => setAiStatus(""), 4000);
     } catch (e) {
@@ -520,6 +549,59 @@ ${daysDesc}`;
       setDescLoading(false);
       generating.current = false;
     }
+  };
+
+  /**
+   * «Mejorar»: la IA propone una versión mejor de UNA idea escrita a mano —con su tipo de contenido, su producto y
+   * el estudio de mercado delante— y la deja al lado como propuesta; la persona elige cuál se queda.
+   */
+  const [mejorando, setMejorando] = useState("");
+  const mejorarUna = async (date, j) => {
+    const p = (ideas[date] || [])[j];
+    if (!p?.idea?.trim() || generating.current) return;
+    generating.current = true;
+    setMejorando(`${date}|${j}`);
+    try {
+      const adn = await loadADN(client);
+      const d = estructuraDelMes().find((x) => x.date === date);
+      const tipo = lineasDeContenido({ ...matrizDelMes().get(`${date}|${j}`), ...Object.fromEntries(CAMPOS_MATRIZ.filter((k) => p[k]).map((k) => [k, p[k]])) });
+      const pasajes = await pasajesDeLaTanda(client, adn, { campaign }, [{ idea: p.idea, category: d?.cat, format: p.format, _concept: weekConcepts[(d?.wk ?? 1) - 1] || "" }]);
+      const ctx = buildClientContext(client, { campaign }, adn.content, adn.cerebro ? { pasajes } : null);
+      const prompt = `${ctx}
+
+Una persona de la agencia escribió esta idea (a veces es una breve explicación de lo que quiere) para el ${date} (${DAYS[d?.dow ?? 0]}), formato ${p.format}:
+«${p.idea.trim()}»
+${tipo ? `\n${tipo}\n` : ""}${d?.impDate ? `FECHA ESPECIAL: ${d.impDate.name}\n` : ""}${weekConcepts[(d?.wk ?? 1) - 1] ? `CONCEPTO DE LA SEMANA: ${weekConcepts[(d?.wk ?? 1) - 1]}\n` : ""}
+Mejórala con ojo de marketing profesional: conserva su intención (el mismo tema, producto y enfoque), dale un gancho claro y una razón para actuar. Sin inventar precios, descuentos, garantías ni testimonios.
+Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicación.`;
+      const texto = String(await callAI(prompt, { funcion: "calendario", clienteId: client?.id }) ?? "").trim().replace(/^[«"]|[»"]$/g, "");
+      if (texto && texto !== p.idea.trim()) {
+        setIdeas((prev) => {
+          const dia = [...(prev[date] || [])];
+          dia[j] = { ...dia[j], sugerencia: texto };
+          return { ...prev, [date]: dia };
+        });
+      } else {
+        setAiStatus("La IA no encontró cómo mejorarla: tu idea se queda.");
+        setTimeout(() => setAiStatus(""), 3000);
+      }
+    } catch (e) {
+      setAiStatus("Error: " + e.message);
+      setTimeout(() => setAiStatus(""), 5000);
+    } finally {
+      setMejorando("");
+      generating.current = false;
+    }
+  };
+
+  /** «Usar esta» (la de la IA pasa a ser la idea) o «Quedarme con la mía» (se descarta la propuesta). */
+  const decidirSugerencia = (date, j, usar) => {
+    setIdeas((prev) => {
+      const dia = [...(prev[date] || [])];
+      const x = dia[j];
+      dia[j] = { ...x, idea: usar ? x.sugerencia : x.idea, sugerencia: "" };
+      return { ...prev, [date]: dia };
+    });
   };
 
   const handleGenerate = () => {
@@ -543,7 +625,7 @@ ${daysDesc}`;
           idea: idea?.idea || "",
           referenceLink: idea?.referenceLink || "",
           image: idea?.image || null,
-          guion: "",
+          guion: idea?.guion || "",
           descripcion: idea?.descripcion || "",
           hashtagsFinales: idea?.hashtagsFinales || "",
           script: idea?.descripcion || idea?.script || "",
@@ -978,12 +1060,14 @@ ${daysDesc}`;
                   disabled={ocupado || ideasEnAlcance === 0}
                   title={ideasEnAlcance === 0 ? "Primero hacen falta ideas" : undefined}
                 >
-                  {descLoading ? "Escribiendo…" : `Generar descripciones de ${etiquetaAlcance}`}
+                  {descLoading ? "Escribiendo…" : `Escribir guiones y descripciones de ${etiquetaAlcance}`}
                 </button>
               </div>
               <p className="hint" style={{ marginBottom: "var(--sp-2)" }}>
-                Las descripciones se escriben sobre las ideas ya definidas, respetando el formato de
-                cada publicación. Las que ya tengan caption no se reescriben.
+                Primero las ideas: escribe a mano las que tengas claras (basta una breve explicación) y pulsa «Mejorar»
+                o «Generar ideas»; la propuesta de la IA sale al lado de la tuya y tú eliges. Cuando estén revisadas,
+                «Escribir guiones y descripciones»: reels, carruseles, historias y directos llevan guion; los posts,
+                sólo caption. Lo que ya está escrito no se reescribe.
               </p>
               {aiStatus && <p role="status" style={{ fontSize: "var(--fs-2xs)", color: "var(--accent)", marginBottom: "var(--sp-2)" }}>{aiStatus}</p>}
 
@@ -1090,7 +1174,8 @@ ${daysDesc}`;
               <p role="status" className="hint" style={{ marginBottom: "var(--sp-4)" }}>
                 {Object.values(ideas).flat().filter((p) => p?.idea).length} ideas definidas de {isCustom ? allDays.reduce((t, d) => t + (formatConfig[d.getDay()] || []).length, 0) : allDays.length * postsPerDay} publicaciones
                 {" · "}
-                {Object.values(ideas).flat().filter((p) => p?.descripcion).length} con descripción escrita.
+                {Object.values(ideas).flat().filter((p) => p?.descripcion).length} con descripción escrita
+                {Object.values(ideas).flat().some((p) => p?.guion) ? ` · ${Object.values(ideas).flat().filter((p) => p?.guion).length} con guion` : ""}.
               </p>
 
               {/* Per-day idea list */}
@@ -1115,17 +1200,51 @@ ${daysDesc}`;
                               <Icon name={FORMAT_ICONS[p.format] || "formatPost"} size={14} style={{ display: "inline-block", verticalAlign: "-2px" }} /> {FORMATS[p.format]?.label || "Publicación"} {j + 1}
                               {p.pilar && <span style={{ color: "var(--text-dim)", fontWeight: 500 }}> · {nombreDePilar(p.pilar, p.pilarSub)}{p.producto ? ` · ${p.producto}` : ""}</span>}
                             </label>
-                            <input
-                              id={`${ids}-idea-${date}-${j}`}
-                              className="input"
-                              value={p.idea || ""}
-                              onChange={(e) => {
-                                const newDayIdeas = [...dayIdeas];
-                                newDayIdeas[j] = { ...newDayIdeas[j], idea: e.target.value };
-                                setIdeas((prev) => ({ ...prev, [date]: newDayIdeas }));
-                              }}
-                              placeholder="Idea…"
-                            />
+                            <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center" }}>
+                              <input
+                                id={`${ids}-idea-${date}-${j}`}
+                                className="input"
+                                style={{ flex: 1 }}
+                                value={p.idea || ""}
+                                onChange={(e) => {
+                                  const newDayIdeas = [...dayIdeas];
+                                  newDayIdeas[j] = { ...newDayIdeas[j], idea: e.target.value };
+                                  setIdeas((prev) => ({ ...prev, [date]: newDayIdeas }));
+                                }}
+                                placeholder="Idea, o una breve explicación de lo que quieres…"
+                              />
+                              <button type="button" className="btn btn-ghost btn-sm" disabled={ocupado || Boolean(mejorando) || !p.idea?.trim()}
+                                onClick={() => mejorarUna(date, j)} aria-label={`Mejorar con IA la idea del ${d.getDate()}, ${FORMATS[p.format]?.label || "publicación"} ${j + 1}`}>
+                                <Icon name="sparkles" size={14} /> {mejorando === `${date}|${j}` ? "Mejorando…" : "Mejorar"}
+                              </button>
+                            </div>
+                            {p.sugerencia && (
+                              <div className="plan-sugerencia" role="group" aria-label="Propuesta de la IA">
+                                <p style={{ margin: 0 }}><strong>Propuesta de la IA:</strong> {p.sugerencia}</p>
+                                <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }}>
+                                  <button type="button" className="btn btn-primary btn-sm" onClick={() => decidirSugerencia(date, j, true)}>Usar esta</button>
+                                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => decidirSugerencia(date, j, false)}>Quedarme con la mía</button>
+                                </div>
+                              </div>
+                            )}
+                            {p.guion && (
+                              <>
+                                <label className="label" style={{ textTransform: "none", marginTop: "var(--sp-2)", color: "var(--text-dim)" }} htmlFor={`${ids}-guion-${date}-${j}`}>
+                                  Guion
+                                </label>
+                                <textarea
+                                  id={`${ids}-guion-${date}-${j}`}
+                                  className="textarea"
+                                  style={{ minHeight: 90, fontSize: "var(--fs-2xs)" }}
+                                  value={p.guion}
+                                  onChange={(e) => {
+                                    const newDayIdeas = [...dayIdeas];
+                                    newDayIdeas[j] = { ...newDayIdeas[j], guion: e.target.value };
+                                    setIdeas((prev) => ({ ...prev, [date]: newDayIdeas }));
+                                  }}
+                                />
+                              </>
+                            )}
                             {/* El caption aparece cuando existe: enseñarlo
                                 vacío en todas las publicaciones del mes
                                 convertía este paso en un muro de cajas. */}
