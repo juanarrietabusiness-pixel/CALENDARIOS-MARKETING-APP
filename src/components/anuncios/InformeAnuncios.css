@@ -1,0 +1,44 @@
+/* El informe de anuncios: lo que añade al documento del informe de redes
+   (InformeVista.css). Sólo lo cargan Anuncios → Informes y
+   /informe-anuncios (chunks aparte). */
+
+/* Cuatro cifras grandes: cuatro en fila a lo ancho, dos y dos en el teléfono
+   (tres si la agencia no enseña el costo). */
+/* minmax(0, 1fr): con 1fr a secas, la palabra más larga del título («CONVERSACIONES») fija el ancho mínimo y en
+   el teléfono el informe se salía por la derecha. */
+.ia-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-2); }
+.ia-kpis[data-cuatro="no"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 719px) { .ia-kpis, .ia-kpis[data-cuatro="no"] { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 599px) { .ia-kpi-valor { font-size: var(--fs-xl); } .ia-kpi-titulo { letter-spacing: .02em; } }
+.ia-kpi { padding: var(--sp-3); border-radius: var(--radius-sm); background: var(--accent-soft); display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.ia-kpi-titulo { overflow-wrap: anywhere; display: flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-3xs); text-transform: uppercase; letter-spacing: .06em; color: var(--text-dim); font-weight: 600; }
+.ia-kpi-titulo svg { color: var(--accent); flex-shrink: 0; }
+.ia-kpi-valor { font-size: var(--fs-2xl); font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+.ia-mejores { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--sp-3); grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
+.ia-mejores li { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface); break-inside: avoid; }
+.ia-mejor-imagen { position: relative; aspect-ratio: 1; background: var(--surface-2); display: grid; place-items: center; color: var(--text-faint); }
+.ia-mejor-imagen img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ia-puesto {
+  position: absolute; top: var(--sp-2); left: var(--sp-2); width: 28px; height: 28px; border-radius: var(--radius-pill);
+  display: grid; place-items: center; font-weight: 800; font-size: var(--fs-xs);
+  background: var(--marca, #1E90FF); color: var(--marca-texto, #fff);
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.ia-mejor-texto { padding: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.ia-mejor-titulo { font-weight: 700; overflow-wrap: anywhere; }
+.ia-mejor-cuerpo { font-size: var(--fs-2xs); color: var(--text-dim); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+
+.ia-tabla-envoltura { overflow-x: auto; }
+.ia-campana { display: block; font-weight: 600; }
+.ia-campana-meta { display: block; font-size: var(--fs-3xs); color: var(--text-dim); font-weight: 400; }
+.ia-campana-comentario { display: block; font-size: var(--fs-2xs); color: var(--text); font-weight: 400; margin-top: 2px; max-width: 46ch; }
+.informe-anuncios .informe-tabla th[scope="row"] { min-width: 130px; }
+/* En el teléfono la tabla cabe sin desplazarse: las personas alcanzadas ya están arriba, en grande. */
+@media (max-width: 599px) { .informe-anuncios .ia-col-alcance { display: none; } }
+.informe-anuncios { min-width: 0; }
+
+@media print {
+  .ia-kpi { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .ia-mejor-cuerpo { -webkit-line-clamp: unset; display: block; }
+}

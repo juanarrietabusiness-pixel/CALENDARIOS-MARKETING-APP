@@ -712,6 +712,11 @@ export async function informePublico(testigo) {
   return pedir(`/publico-informe/${encodeURIComponent(testigo)}`);
 }
 
+/** El informe de anuncios compartido (sin sesión). */
+export async function informeAnunciosPublico(testigo) {
+  return pedir(`/publico-informe-anuncios/${encodeURIComponent(testigo)}`);
+}
+
 // ------------------------------------------------------------
 // TikTok: una conexión por cliente
 // ------------------------------------------------------------

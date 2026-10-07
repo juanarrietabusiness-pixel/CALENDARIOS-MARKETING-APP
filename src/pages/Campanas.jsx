@@ -13,6 +13,7 @@ const AsistenteCampana = lazy(() => import("../components/anuncios/AsistenteCamp
 const DialogoActivar = lazy(() => import("../components/anuncios/DialogoActivar"));
 const Estratega = lazy(() => import("../components/anuncios/Estratega"));
 const Diagnostico = lazy(() => import("../components/anuncios/Diagnostico"));
+const InformesAnuncios = lazy(() => import("../components/anuncios/InformesAnuncios"));
 
 // ============================================================
 // /campanas — los anuncios de Meta de cada cliente
@@ -23,7 +24,8 @@ const Diagnostico = lazy(() => import("../components/anuncios/Diagnostico"));
 // sus conjuntos y anuncios. «Nueva campaña» crea TODO en pausa; activar es
 // del administrador, con un diálogo que enseña lo que se va a gastar.
 // «Estratega» arma el plan (también para alguien de fuera) y lo lleva a
-// «Nueva campaña» con todo puesto.
+// «Nueva campaña» con todo puesto. «Informe» es el de publicidad del mes
+// para el cliente, aparte del de redes.
 //
 // Nada habla con Meta desde aquí: todo pasa por /api/anuncios.
 // ============================================================
@@ -195,6 +197,7 @@ export default function Campanas({ clients = [], pulso = 0, yo = {}, onClienteNu
   const [asistente, setAsistente] = useState(false); // false | true | { inicial } (el borrador del estratega)
   const [estratega, setEstratega] = useState(false);
   const [diagnostico, setDiagnostico] = useState(false);
+  const [informes, setInformes] = useState(false);
   const [confirmar, setConfirmar] = useState(null);
   const [sincronizando, setSincronizando] = useState(false);
 
@@ -308,6 +311,9 @@ export default function Campanas({ clients = [], pulso = 0, yo = {}, onClienteNu
             )}
             <button type="button" className="btn btn-secondary" onClick={() => setDiagnostico(true)} disabled={!listo}>
               <Icon name="chart" size={16} /> Diagnóstico
+            </button>
+            <button type="button" className="btn btn-secondary" onClick={() => setInformes(true)} disabled={!clienteId}>
+              <Icon name="file" size={16} /> Informe
             </button>
             {!soloLectura && (
               <button type="button" className="btn btn-secondary" onClick={() => setEstratega(true)}>
@@ -433,6 +439,10 @@ export default function Campanas({ clients = [], pulso = 0, yo = {}, onClienteNu
         {diagnostico && (
           <Diagnostico clientId={clienteId} moneda={moneda} esAdmin={esAdmin} soloLectura={soloLectura}
             onCambio={() => void cargar()} onCerrar={() => setDiagnostico(false)} />
+        )}
+        {informes && (
+          <InformesAnuncios clientId={clienteId} cliente={clients.find((c) => c.id === clienteId) ?? null} soloLectura={soloLectura}
+            onCerrar={() => setInformes(false)} />
         )}
         {confirmar && <DialogoActivar confirmar={confirmar} onConfirmar={activar} onClose={() => setConfirmar(null)} />}
       </Suspense>

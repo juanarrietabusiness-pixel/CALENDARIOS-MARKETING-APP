@@ -70,7 +70,7 @@
 .informe-lista li { display: flex; gap: var(--sp-2); align-items: flex-start; }
 .informe-lista li svg { color: var(--accent); flex-shrink: 0; margin-top: 3px; }
 
-.informe-graficas { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--sp-4); }
+.informe-graficas { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: var(--sp-4); }
 .informe .grafica-ejes line { stroke: var(--border); }
 .informe .grafica-ejes text { fill: var(--text-faint); font-size: 11px; }
 .informe .grafica-linea { fill: none; stroke: var(--accent); stroke-width: 2.25; }
@@ -116,6 +116,9 @@
      agencia vive dentro de un diálogo. */
   .informe .informe-portada { display: flex !important; }
   .overlay:has(.informe) { display: block !important; position: static; background: none; }
+  /* El desenfoque del fondo (`backdrop-filter`) convierte al .overlay en el bloque contenedor del informe
+     absoluto: sin quitarlo, el PDF empezaba debajo de todo lo que había en la página, con hojas en blanco. */
+  .overlay:has(.informe), .overlay:has(.informe) .sheet { backdrop-filter: none; animation: none; transform: none; }
 }
 
 /* La página pública que lo envuelve. */

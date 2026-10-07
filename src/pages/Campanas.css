@@ -153,3 +153,32 @@
 .anu-diag-cabeza { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-2); }
 .anu-diag-accion { font-size: var(--fs-3xs); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 .anu-diag-botones { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+
+/* El informe de anuncios (diálogo): la lista, los ajustes y la vista previa. */
+.anu-informes { max-width: 980px; }
+.anu-informes .sheet-body { display: flex; flex-direction: column; gap: var(--sp-3); }
+.anu-informes .sheet-body > * { flex-shrink: 0; }
+.anu-inf-ajustes { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--sp-2) var(--sp-3); margin: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.anu-inf-ajustes legend { padding: 0 var(--sp-1); }
+.anu-inf-generar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-2) var(--sp-3); }
+.anu-inf-generar .input { min-width: 200px; }
+.anu-inf-generar .anu-check { align-items: center; }
+.anu-informes .informes-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.anu-informes .informes-lista li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--surface-2); border-radius: var(--radius-sm); border: 1px solid transparent; }
+.anu-informes .informes-lista li[aria-current="true"] { border-color: var(--accent-line); }
+.anu-informes .informes-mes { font-weight: 600; min-width: 140px; }
+.anu-informes .informes-estado { color: var(--text-dim); font-size: var(--fs-xs); }
+.anu-informes .informes-estado[data-estado="error"] { color: var(--danger); }
+.anu-informes .informes-error { flex-basis: 100%; color: var(--text-dim); font-size: var(--fs-3xs); }
+.anu-informes .informes-acciones { margin-left: auto; display: flex; flex-wrap: wrap; gap: var(--sp-1); align-items: center; }
+.anu-inf-abierto { min-width: 0; display: flex; flex-direction: column; gap: var(--sp-2); scroll-margin-top: var(--sp-3); }
+/* El documento lleva `margin: 0 auto`, y en una columna flexible eso le quita el estirarse: medía lo que pedía su
+   tabla y en el teléfono se salía por la derecha. */
+.anu-inf-abierto > .informe { width: 100%; }
+.anu-inf-barra { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--surface-2); border-radius: var(--radius); }
+.anu-inf-barra .anu-check { margin-right: auto; align-items: center; }
+@media print {
+  .overlay:has(.anu-informes) .sheet { max-height: none !important; overflow: visible !important; box-shadow: none; background: none; }
+  /* El fondo oscuro de la aplicación también se imprimía detrás del informe. */
+  html:has(.anu-informes), body:has(.anu-informes) { background: #fff !important; }
+}
