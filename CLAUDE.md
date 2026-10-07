@@ -164,8 +164,9 @@ src/
     configIA.js           Nombres de modelos y niveles de razonamiento (puro)
     mensajeChat.js        Marcas del chat: piezas, imágenes, contexto (puro)
     medios.js             Fotogramas de video, imagen para la IA, descarga a tamaño
-    drive.js              Id de carpeta a partir del enlace, tipo y tamaño (puro;
-                          también lo importa el Worker)
+    drive.js              Id de carpeta a partir del enlace, tipo y tamaño; el plan de «Guardar en Drive»: carpetas
+                          Mes / Semana, nombres de pieza, qué subir y qué quitar (puro; también lo importa el Worker)
+    guardarDrive.js       Guardar una publicación en Drive por tandas (llama al Worker)
     buscar.js             Lo que encuentra el buscador Ctrl+K (puro)
     resumenCliente.js     Por aprobar / con cambios / a medias; mes por defecto (puro)
     publicacion.js        Qué se publica, límites de cada red, qué ve el cliente, a qué
@@ -235,7 +236,9 @@ src/
                           lo que sale en ella; la usan el panel y «Subir»
     calendario/ajusteImagen.jsx La imagen que no cabe: difuminado, color, recorte o
                           GENERADA de nuevo con IA en 4:5/9:16 (Nano Banana); la usan el panel y «Subir»
-    calendario/copiaDrive.jsx «Guardar copia en Drive» al programar (panel y «Subir»)
+    calendario/copiaDrive.jsx «Guardar en Drive» al programar (casilla del panel y de «Subir»)
+    calendario/botonGuardarDrive.jsx  «Guardar en Drive» de cada publicación (pestaña Subir)
+    calendario/GuardarMesDrive.jsx    «Guardar el mes en Drive» (lazy)
     ExploradorDrive.jsx   La carpeta de Drive de un cliente: gestionar o escoger
     BancoSelector.jsx     Escoger de Drive (o del banco anterior); forma única
     PestanaContenido.jsx  La pestaña Contenido: Drive + migrar el banco anterior
@@ -2107,10 +2110,22 @@ son del servidor.
   el panel estrecho. `TimePicker` es ahora un campo que entiende «9»,
   «930», «21:30» o «9:30 pm» (`leerHoraEscrita`, lib/horas.js) con a. m. /
   p. m. al lado; lo que no entiende no se guarda: se dice.
-- **Copia en Drive al programar.** La copia la hace el Worker de R2 a Drive
-  en flujo (`/api/drive/clientes/<id>/desde-publicacion`, carpeta
-  «Publicaciones de la app»), salta lo que vino de Drive y lo ya copiado
-  (`post.copiasDrive`), y nunca tumba lo programado: si falla, se dice.
+- **Guardar en Drive, por mes y semana** (`planDrive` en lib/drive.js, `POST /api/drive/clientes/<id>/guardar`):
+  `Octubre 2026 / Semana 2 / Martes 6 - Semana 2 - 8 am.jpg`, un carrusel con « - 1», « - 2» y las historias con
+  « - historia 1». La semana es la FILA de la rejilla. Tres puertas, la misma regla: el botón de cada publicación
+  (pestaña Subir), «Guardar el mes en Drive» (menú del calendario) y la casilla al programar (panel y «Subir»). Lo que
+  la sustituyó, «Publicaciones de la app» con `copiasDrive`, ya no existe.
+  · **Lo guardado se apunta en la publicación** (`guardadoDrive`: src → { id, ruta }). No se sube dos veces; si la
+  pieza cambió de archivo, de día o de hora, se sube la nueva y la copia vieja va a la PAPELERA de Drive sólo si la
+  nueva subió (`reemplaza`). Lo de archivos que la publicación ya no tiene, también a la papelera. Lo que vino de
+  Drive (`clientes/<id>/drive/…`) SÍ se guarda: el mes ordenado es lo que la agencia quiere tener.
+  · **Todo id que llega del navegador se comprueba dentro de la carpeta del cliente** (`dentroDelCliente`) antes de
+  mandarlo a la papelera: `guardadoDrive` viaja en el JSON del calendario y lo puede escribir cualquiera del equipo.
+  · **Por tandas:** cuatro piezas y tres papeleras por petición (`MAX_GUARDAR_DRIVE`, `MAX_QUITAR_DRIVE`): subir son
+  dos llamadas a Google y comprobar + papelera hasta cuatro; con las carpetas y el token caben en las 50.
+  · «Guardar el mes» apunta lo guardado en TODAS las publicaciones de una vez al terminar (como «Producir el mes»):
+  una a una partiría cada vez del calendario de antes. Por eso no se puede cerrar mientras guarda.
+  · **Nada de esto se ha probado contra Google:** los tests usan un `fetch` de mentira.
 - **Los tests del presupuesto fallaban el último día de cada mes por la
   noche.** Apuntaban el gasto con `new Date().toISOString().slice(0, 7)` —el
   mes en UTC— y el Worker lo suma con `mesActual()`, el de Panamá: de las

@@ -26,7 +26,7 @@ import { colaDe, clavePieza, fechaHora, TEXTO_ESTADO } from "../../lib/cola";
 import { resumenDestino } from "../../lib/subir";
 import { navegar } from "../../lib/rutas";
 import { esAdmin } from "../../lib/sesionActual";
-import { useCopiaDrive, prefijoCopia } from "./copiaDrive";
+import { useCopiaDrive } from "./copiaDrive";
 
 const MODOS = [["ahora", "Ahora", "send"], ["programar", "Programar", "clock"], ["mano", "La publico yo", "photo"]];
 
@@ -74,8 +74,8 @@ export default function CuandoSale({
       await accion();
       // Con la casilla marcada, la copia en Drive va detrás: si falla, lo
       // programado sigue programado y se dice en el mismo mensaje.
-      const copia = clave === "cancelar" || clave.startsWith("r-") ? null : await copiarADrive(post, prefijoCopia(fecha, post));
-      if (copia && Object.keys(copia.copias).length) sf("copiasDrive", { ...(post.copiasDrive ?? {}), ...copia.copias });
+      const copia = clave === "cancelar" || clave.startsWith("r-") ? null : await copiarADrive(post, fecha);
+      if (copia?.guardadoDrive) sf("guardadoDrive", copia.guardadoDrive);
       if (ok || copia) setMensaje({ tipo: "ok", texto: [ok, copia?.texto].filter(Boolean).join(" ") });
       setCambiando(false);
     } catch (e) {

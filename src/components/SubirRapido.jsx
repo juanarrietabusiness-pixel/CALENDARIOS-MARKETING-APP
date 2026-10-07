@@ -10,7 +10,7 @@ import HistoriasDelPost from "./calendario/historiasPost";
 import DestinoRedes from "./calendario/destinoRedes";
 import VistaRed from "./calendario/vistaRed";
 import { TimePicker } from "./calendario/primitivas";
-import { useCopiaDrive, prefijoCopia } from "./calendario/copiaDrive";
+import { useCopiaDrive } from "./calendario/copiaDrive";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { useAnchoAmplio } from "../hooks/useAnchoAmplio";
 import { estadoRedes as leerEstadoRedes, saveCalendar, publicar, subirImagenPublicacion, mesDeCalendario } from "../lib/db";
@@ -166,11 +166,11 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
         setTrabajando("Preparando las imágenes…");
         nuevo = (await prepararParaRedes(nuevo, destino, { subir: (f) => subirImagenPublicacion(clienteDb, f), colorMarca: cliente?.primaryColor })).post;
       }
-      // La copia en Drive va antes de guardar, para que la publicación
-      // apunte lo copiado (`copiasDrive`) y no se copie dos veces. No lanza:
-      // si falla, se dice y la publicación sale igual.
-      const copia = await copiarADrive(completo, prefijoCopia(dia, nuevo));
-      if (copia && Object.keys(copia.copias).length) nuevo = { ...nuevo, copiasDrive: copia.copias };
+      // La copia en Drive (por mes y semana) va antes de guardar, para que la publicación apunte lo guardado
+      // (`guardadoDrive`) y no se suba dos veces. Lo que se guarda es lo ya preparado para las redes, que es lo que
+      // sale. No lanza: si falla, se dice y la publicación sale igual.
+      const copia = await copiarADrive(nuevo, dia);
+      if (copia?.guardadoDrive) nuevo = { ...nuevo, guardadoDrive: copia.guardadoDrive };
       // El calendario de ese mes; si no existe, se crea.
       const [a, m] = dia.split("-").map(Number);
       let cal = (cliente.calendars ?? []).find((k) => k.year === a && k.month === m - 1);

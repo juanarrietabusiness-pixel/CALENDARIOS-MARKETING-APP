@@ -42,6 +42,7 @@ import { escribirDesdeContenido } from "../../api";
 import { rellenarDesdeContenido, tieneContenido, formatoDeMedios } from "../../lib/subir";
 import { medioDeArchivo, apuntarUso } from "../../lib/estudio";
 import { useCrearConIA } from "../../hooks/useCrearConIA";
+import BotonGuardarDrive from "./botonGuardarDrive";
 
 // «Crear carrusel con IA»: sólo se descarga al abrirlo.
 const CarruselIA = lazy(() => import("./CarruselIA"));
@@ -206,6 +207,10 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           onCrearConIA={abrirCreacion}
           onCrearCarrusel={post.format === "carrusel" && clientId ? () => setCarrusel(true) : null}
         />
+        {/* «Guardar en Drive»: en la carpeta del cliente, por mes y semana (sólo si tiene carpeta). */}
+        {client?.driveFolder && clientId && day?.date && (
+          <BotonGuardarDrive clientId={clientId} post={post} fecha={day.date} onGuardado={(g) => sf("guardadoDrive", g)} />
+        )}
         {carrusel && (
           <Suspense fallback={null}>
             <CarruselIA client={client} post={post} cal={cal} onPoner={ponerCarrusel} onCerrar={() => setCarrusel(false)} />

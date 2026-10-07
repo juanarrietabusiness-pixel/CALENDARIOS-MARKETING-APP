@@ -74,6 +74,8 @@ export default function CarruselIA({ client, post, cal = null, onPoner, onCerrar
     if (!vivo.current) return;
     setResultados(laminas.map((_, i) => salida[i] ?? { error: "No se pidió." }));
     setPaso("listo");
+    // El botón de crear desaparece: el foco vuelve al diálogo (si no, Escape ya no lo cierra).
+    ref.current?.focus({ preventScroll: true });
     window.dispatchEvent(new Event("ia:gasto"));
     const bien = salida.filter((r) => r?.final).length;
     setAviso({ ok: bien > 0, texto: bien === laminas.length ? "Listas. Revisa cada lámina; rehaz la que no te guste." : `Salieron ${bien} de ${laminas.length}. Rehaz las que fallaron.` });
