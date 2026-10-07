@@ -42,7 +42,12 @@ import "./Estudio.css";
 // ============================================================
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
-const MEDIOS_VACIOS = () => ({ reference: [], start: [], end: [] });
+const MEDIOS_VACIOS = () => ({ reference: [], start: [], end: [], video: [] });
+/** Lo que cabe de cada papel en un modelo (al cambiar de modelo o de tipo, lo que no cabe se cae). */
+const recortarMedios = (medios, m) => ({
+  reference: medios.reference.slice(0, m.referencias || 0), start: medios.start.slice(0, m.inicial || 0),
+  end: medios.end.slice(0, m.final || 0), video: (medios.video ?? []).slice(0, m.video || 0),
+});
 const FILTROS_FIJOS = ["todas", "favoritas", "subidas", "sin-carpeta"];
 
 const reemplazar = (lista = [], t) => (lista.some((x) => x.id === t.id) ? lista.map((x) => (x.id === t.id ? t : x)) : [t, ...lista]);
@@ -53,9 +58,14 @@ const clavesDe = (medios) => Object.fromEntries(Object.entries(medios).map(([rol
 function formularioInicial(motores, inicial) {
   const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
   const tipo = inicial?.tipo ?? "imagen";
-  const m = modeloPorDefecto(activos, tipo);
+  // Un modelo pedido de fuera (seguir un video de la competencia) se respeta aunque no tenga llave: la pantalla
+  // lo enseña «sin llave» en vez de cambiarlo por otro que no hace lo mismo.
+  const pedido = inicial?.modelo ? modeloPorId(inicial.modelo) : null;
+  const m = pedido?.tipo === tipo ? pedido : modeloPorDefecto(activos, tipo);
   const medios = MEDIOS_VACIOS();
   if (inicial?.inicio) medios.start = [inicial.inicio];
+  if (inicial?.referencias?.length) medios.reference = inicial.referencias.slice(0, m.referencias || 0);
+  if (inicial?.video && m.video) medios.video = [inicial.video];
   return {
     tipo, modelo: m.id, prompt: inicial?.prompt ?? "", n: 1, medios,
     ajustes: ajustesDe(m, inicial?.proporcion ? { aspectRatio: inicial.proporcion } : {}, clavesDe(medios)),
@@ -188,7 +198,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     const m = modeloPorDefecto(activos, tipo);
     setConfirmando(null);
     setForm((f) => {
-      const medios = { reference: f.medios.reference.slice(0, m.referencias || 0), start: f.medios.start.slice(0, m.inicial || 0), end: f.medios.end.slice(0, m.final || 0) };
+      const medios = recortarMedios(f.medios, m);
       return { ...f, tipo, modelo: m.id, n: 1, medios, ajustes: ajustesDe(m, { aspectRatio: f.ajustes.aspectRatio }, clavesDe(medios)) };
     });
   };
@@ -197,7 +207,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     const m = modeloPorId(id);
     setConfirmando(null);
     setForm((f) => {
-      const medios = { reference: f.medios.reference.slice(0, m.referencias || 0), start: f.medios.start.slice(0, m.inicial || 0), end: f.medios.end.slice(0, m.final || 0) };
+      const medios = recortarMedios(f.medios, m);
       return { ...f, modelo: id, n: Math.min(f.n, maxPorPedido(m)), medios, ajustes: ajustesDe(m, f.ajustes, clavesDe(medios)) };
     });
   };
@@ -325,20 +335,27 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setForm((f) => ({ ...f, medios: { ...f.medios, [rol]: f.medios[rol].filter((x) => x.id !== a.id) } }));
   };
 
-  /** Dónde cabe una imagen en el modelo elegido: inicial, final o referencia. `null` si no cabe en ninguna. */
+  /** Dónde cabe un archivo en el modelo elegido: inicial, final, referencia o (un video) video de referencia. `null` si no cabe. */
   const ranuraPara = (f, m, a) => {
+    if (a.tipo === "video") return m.video && !(f.medios.video ?? []).length ? "video" : null;
     const puesta = (lista) => lista.some((x) => x.id === a.id);
     if (m.inicial && !f.medios.start.length) return "start";
     if (m.final && f.medios.start.length && !f.medios.end.length && !puesta(f.medios.start)) return "end";
     if (m.referencias && f.medios.reference.length < m.referencias) return "reference";
     return null;
   };
-  const NOMBRE_RANURA = { start: "imagen inicial", end: "imagen final", reference: "referencia" };
+  const NOMBRE_RANURA = { start: "imagen inicial", end: "imagen final", reference: "referencia", video: "video de referencia" };
 
   const usarComoMedio = (a) => {
     if (!form || !modelo) return;
     if (Object.values(form.medios).some((l) => l.some((x) => x.id === a.id))) { avisar(true, "Ya está puesta."); return; }
     const rol = ranuraPara(form, modelo, a);
+    if (!rol && a.tipo === "video") {
+      avisar(false, modelo.video
+        ? "Ya hay un video de referencia en el pedido. Quítalo para poner otro."
+        : `${modelo.nombre} no sigue videos. Escoge «Kling Omni · sigue un video» o «Kling 3.0 · copia el movimiento».`);
+      return;
+    }
     if (!rol) {
       avisar(false, modelo.inicial || modelo.referencias
         ? `${modelo.nombre} no admite más imágenes de apoyo. Quita alguna o escoge otro modelo.`
@@ -357,7 +374,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
     const m = modeloPorId(form.modelo)?.tipo === "video" ? modeloPorId(form.modelo) : modeloPorDefecto(activos, "video");
     const proporcion = proporcionDeMedidas(a.ancho, a.alto);
-    const medios = { reference: [], start: [a], end: [] };
+    const medios = { ...MEDIOS_VACIOS(), start: [a] };
     setConfirmando(null);
     setVisor(null);
     setEnPapelera(false);
@@ -393,10 +410,10 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       const enCarpeta = !FILTROS_FIJOS.includes(filtro) ? filtro : null;
       for (const f of archivos.slice(0, 6)) {
         ultima = (await api.subirImagen(client.id, f, { carpetaId: enCarpeta })).archivo;
-        const limite = rol === "reference" ? modelo.referencias : rol === "start" ? modelo.inicial : modelo.final;
-        setForm((fm) => (fm.medios[rol].length < (limite || 0) ? { ...fm, medios: { ...fm.medios, [rol]: [...fm.medios[rol], ultima] } } : fm));
+        const limite = { reference: modelo.referencias, start: modelo.inicial, end: modelo.final, video: modelo.video }[rol];
+        setForm((fm) => ((fm.medios[rol] ?? []).length < (limite || 0) ? { ...fm, medios: { ...fm.medios, [rol]: [...(fm.medios[rol] ?? []), ultima] } } : fm));
       }
-      avisar(true, archivos.length === 1 ? "Imagen subida a la galería." : `${Math.min(archivos.length, 6)} imágenes subidas.`);
+      avisar(true, rol === "video" ? "Video subido a la galería." : archivos.length === 1 ? "Imagen subida a la galería." : `${Math.min(archivos.length, 6)} imágenes subidas.`);
       await cargar();
     } catch (err) {
       avisar(false, err.message);

@@ -24,6 +24,8 @@ import { ErrorEstudio, trabajoPublico } from "./trabajos.js";
 
 export const MAX_LISTADOS = 300;
 export const MAX_SUBIDA = 15 * 1024 * 1024;
+/** Un video subido a mano (el de la competencia, para copiar su estructura o su movimiento). */
+export const MAX_SUBIDA_VIDEO = 50 * 1024 * 1024;
 export const MAX_CARPETAS = 30;
 /** Objetos de R2 que una lectura borra como mucho: cada uno cuenta como petición. */
 const MAX_PURGA_POR_LECTURA = 20;
@@ -161,24 +163,28 @@ export async function marcarUso(acceso, clientId, id, { calendarId, postId }) {
 
 /**
  * Sube un archivo a mano (la foto del producto, el logo, una cara) para usarlo
- * de referencia. Se reconoce por sus primeros bytes, no por el nombre ni por
- * el tipo que declare el navegador; y va a R2 por flujo, sin cargarlo entero.
+ * de referencia, o un VIDEO (el de la competencia: para sacar su estructura o
+ * copiar su movimiento). Se reconoce por sus primeros bytes, no por el nombre
+ * ni por el tipo que declare el navegador; y va a R2 por flujo, sin cargarlo
+ * entero.
  */
 export async function subirArchivo(env, acceso, cliente, archivo, { carpetaId = null } = {}) {
   if (!archivo || typeof archivo === "string") throw new ErrorEstudio("Falta el archivo.", 400);
-  if (archivo.size > MAX_SUBIDA) throw new ErrorEstudio("El archivo pesa más de 15 MB.", 413);
+  if (archivo.size > MAX_SUBIDA_VIDEO) throw new ErrorEstudio("El archivo pesa más de 50 MB.", 413);
   const cabecera = new Uint8Array(await archivo.slice(0, 65_536).arrayBuffer());
   const mime = tipoPorBytes(cabecera);
-  if (!mime || !mime.startsWith("image/")) throw new ErrorEstudio("Sólo se pueden subir imágenes PNG, JPEG o WebP.", 415);
+  if (!mime) throw new ErrorEstudio("Sólo se pueden subir imágenes PNG, JPEG o WebP, o videos MP4, MOV o WebM.", 415);
+  const esVideo = mime.startsWith("video/");
+  if (!esVideo && archivo.size > MAX_SUBIDA) throw new ErrorEstudio("La imagen pesa más de 15 MB.", 413);
   if (carpetaId && !(await acceso.leerUno("estudio_carpetas", { id: String(carpetaId), client_id: cliente.id }))) {
     throw new ErrorEstudio("Esa carpeta no existe.", 404);
   }
   const clave = claveDeArchivo(cliente.id, archivo.name?.replace(/\.[^.]+$/, "") || "subida", mime);
   await env.MEDIA.put(clave, archivo.stream(), { httpMetadata: { contentType: mime } });
-  const { ancho, alto } = medidasDe(cabecera, mime);
+  const { ancho, alto } = esVideo ? { ancho: 0, alto: 0 } : medidasDe(cabecera, mime);
   const ahora = new Date().toISOString();
   const fila = await acceso.insertar("estudio_archivos", {
-    id: uuid(), client_id: cliente.id, clave, tipo: "imagen", mime, ancho, alto, bytes: archivo.size,
+    id: uuid(), client_id: cliente.id, clave, tipo: esVideo ? "video" : "imagen", mime, ancho, alto, bytes: archivo.size,
     prompt: String(archivo.name ?? "").slice(0, 200), modelo: "", ajustes: "{}", trabajo_id: null,
     carpeta_id: carpetaId ? String(carpetaId) : null, origen: "subida", costo: 0, favorito: 0, subido: 1, usado_en: "[]",
     borrado_at: null, created_at: ahora, updated_at: ahora,

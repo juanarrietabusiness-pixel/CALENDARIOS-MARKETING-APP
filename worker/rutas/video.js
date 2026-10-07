@@ -19,15 +19,11 @@
 
 import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { REGLA_IDIOMA } from "../../src/lib/idioma.js";
-import { bloqueoPorPresupuesto, registrarConsumoGemini } from "../lib/configIA.js";
+import { bloqueoPorPresupuesto } from "../lib/configIA.js";
+import { verVideo, ErrorVideo, MAX_BYTES_VIDEO } from "../lib/geminiVideo.js";
 import { leerDeDrive, respuestaDeFallo as respuestaDeFalloDrive } from "../lib/google.js";
 
-const API = "https://generativelanguage.googleapis.com";
-const MAX_BYTES = 80 * 1024 * 1024;
-const PRESUPUESTO_MS = 110_000;
-
-// Gemini no conoce `video/quicktime`, que es lo que manda un iPhone.
-const MIME = { "video/quicktime": "video/mov" };
+const MAX_BYTES = MAX_BYTES_VIDEO;
 
 const PROMPT = `Analiza este video de redes sociales para que un redactor pueda escribir guiones inspirados en él.
 Responde en español, con estas secciones y en este orden:
@@ -42,8 +38,6 @@ Responde en español, con estas secciones y en este orden:
 Sé fiel a lo que hay: no inventes nada que no se vea o no se oiga. La transcripción es literal: se copia como se dice.
 
 ${REGLA_IDIOMA}`;
-
-const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export async function rutaAnalizarVideo(req, env, { acceso }) {
   if (!env.GOOGLE_AI_KEY) {
@@ -91,89 +85,11 @@ export async function rutaAnalizarVideo(req, env, { acceso }) {
     bytes = await objeto.arrayBuffer();
   }
 
-  if (!tipo.startsWith("video/")) return error("Ese archivo no es un video");
-  const mime = MIME[tipo] ?? tipo;
-
-  const arranque = Date.now();
-  const restante = () => PRESUPUESTO_MS - (Date.now() - arranque);
-  const cabeceras = { "x-goog-api-key": env.GOOGLE_AI_KEY };
-
-  // 1. Abrir la subida y 2. mandar los bytes.
-  const inicio = await fetch(`${API}/upload/v1beta/files`, {
-    method: "POST",
-    headers: {
-      ...cabeceras,
-      "Content-Type": "application/json",
-      "X-Goog-Upload-Protocol": "resumable",
-      "X-Goog-Upload-Command": "start",
-      "X-Goog-Upload-Header-Content-Length": String(bytes.byteLength),
-      "X-Goog-Upload-Header-Content-Type": mime,
-    },
-    body: JSON.stringify({ file: { display_name: nombre } }),
-  });
-  const urlSubida = inicio.headers.get("x-goog-upload-url");
-  if (!inicio.ok || !urlSubida) return fallo("abrir la subida", inicio);
-
-  const subida = await fetch(urlSubida, {
-    method: "POST",
-    headers: { "X-Goog-Upload-Offset": "0", "X-Goog-Upload-Command": "upload, finalize" },
-    body: bytes,
-  });
-  if (!subida.ok) return fallo("subir el video", subida);
-  let archivo = (await subida.json())?.file;
-  if (!archivo?.name) return error("Google AI no devolvió el archivo subido", 502);
-
   try {
-    // 3. Gemini procesa el video antes de poder leerlo.
-    while (archivo.state === "PROCESSING") {
-      if (restante() < 20_000) return error("Google AI tardó demasiado en procesar el video. Prueba con uno más corto.", 504);
-      await dormir(2000);
-      const estado = await fetch(`${API}/v1beta/${archivo.name}`, { headers: cabeceras });
-      if (!estado.ok) return fallo("consultar el video", estado);
-      archivo = await estado.json();
-    }
-    if (archivo.state !== "ACTIVE") return error("Google AI no pudo procesar ese video.", 422);
-
-    // 4. Verlo.
-    const abortar = new AbortController();
-    const reloj = setTimeout(() => abortar.abort(), Math.max(restante(), 1000));
-    let res;
-    try {
-      res = await fetch(`${API}/v1beta/models/${env.GEMINI_VIDEO_MODEL || "gemini-2.5-flash"}:generateContent`, {
-        method: "POST",
-        signal: abortar.signal,
-        headers: { ...cabeceras, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ fileData: { mimeType: archivo.mimeType || mime, fileUri: archivo.uri } }, { text: PROMPT }] }],
-        }),
-      });
-    } catch {
-      return error(abortar.signal.aborted ? "El análisis del video tardó demasiado." : "No se pudo contactar con Google AI", 504);
-    } finally {
-      clearTimeout(reloj);
-    }
-    if (!res.ok) return fallo("analizar el video", res);
-
-    const data = await res.json();
-    await registrarConsumoGemini(acceso, {
-      funcion: "análisis de video", modelo: env.GEMINI_VIDEO_MODEL || "gemini-2.5-flash",
-      meta: data?.usageMetadata, clienteId,
-    });
-    const analisis = (data?.candidates?.[0]?.content?.parts ?? [])
-      .map((p) => p?.text ?? "").join("").trim();
-    if (!analisis) return error("Google AI no devolvió ningún análisis del video.", 422);
+    const analisis = await verVideo(env, acceso, { bytes, mime: tipo, nombre, clienteId, prompt: PROMPT, funcion: "análisis de video" });
     return json({ analisis });
-  } finally {
-    // Caducan solos a las 48 h; borrarlo ya es no dejar el video de un
-    // cliente en otro sitio más tiempo del necesario.
-    fetch(`${API}/v1beta/${archivo.name}`, { method: "DELETE", headers: cabeceras }).catch(() => {});
+  } catch (e) {
+    if (e instanceof ErrorVideo) return error(e.message, e.estado);
+    throw e;
   }
-}
-
-async function fallo(paso, res) {
-  const texto = await res.text().catch(() => "");
-  console.error(`video: al ${paso}, Google AI respondió`, res.status, texto.slice(0, 500));
-  if (res.status === 429) return error("Google AI está saturado. Inténtalo en unos segundos.", 429);
-  if (res.status === 401 || res.status === 403) return error("La clave de Google AI no es válida.", 502);
-  return error(`No se pudo ${paso} (Google AI respondió ${res.status}).`, 502);
 }

@@ -10,6 +10,7 @@
 //   POST   /<cliente>/estudio/aprobar              Pasa a vigente, va al cerebro y a Drive
 //   POST   /<cliente>/referencias                  { archivoId, competidor, enlace, desde, nota }: añadir y analizar
 //   POST   /<cliente>/referencias/<id>/analizar    Volver a analizar
+//   POST   /<cliente>/referencias/<id>/adaptar     { productoId, formato }: un guion con su misma estructura (no guarda)
 //   DELETE /<cliente>/referencias/<id>
 //
 // El cliente tiene que ser de este espacio (y, si es un colaborador, de los
@@ -21,7 +22,7 @@ import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { ErrorIA } from "../lib/cerebro/ia.js";
 import {
   leerMercado, guardarCatalogo, proponerCatalogo, estudiarGeneral, estudiarProducto, guardarBorrador,
-  aprobarEstudio, agregarReferencia, reanalizarReferencia, borrarReferencia, ErrorMercado,
+  aprobarEstudio, agregarReferencia, reanalizarReferencia, borrarReferencia, adaptarReferencia, ErrorMercado,
 } from "../lib/mercado.js";
 
 const ID = /^[\w-]{1,80}$/;
@@ -71,6 +72,10 @@ export async function rutasMercado(req, env, { acceso, partes, metodo }) {
     }
     if (a === "referencias" && ID.test(String(b ?? "")) && c === "analizar" && metodo === "POST") {
       return json({ referencia: await reanalizarReferencia(env, acceso, cliente, b) });
+    }
+    if (a === "referencias" && ID.test(String(b ?? "")) && c === "adaptar" && metodo === "POST") {
+      const d = (await cuerpo(req)) ?? {};
+      return json(await adaptarReferencia(env, acceso, cliente, b, { productoId: String(d.productoId ?? ""), formato: String(d.formato ?? "reel") }));
     }
     if (a === "referencias" && ID.test(String(b ?? "")) && !c && metodo === "DELETE") {
       return (await borrarReferencia(env, acceso, cliente, b)) ? json({ ok: true }) : noEncontrado("Referencia");

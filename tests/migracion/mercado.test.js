@@ -274,6 +274,53 @@ describe("las referencias de la competencia", () => {
     expect((await pedir(`/api/mercado/c1/referencias/${referencia.id}`, { method: "DELETE" })).status).toBe(200);
     expect(notas().find((x) => x.ruta.startsWith("referencia-"))).toBeUndefined();
   });
+
+  it("un video lo VE Gemini: su estructura tramo a tramo va a la referencia y al cerebro; «Adaptar» escribe con esa forma", async () => {
+    env.GOOGLE_AI_KEY = "g";
+    await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: CATALOGO } });
+    const MP4 = new Uint8Array([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 0, 0, 1, 2, 3, 4]);
+    const form = new FormData();
+    form.set("archivo", new File([MP4], "tiktok.mp4", { type: "video/mp4" }));
+    const subida = await pedir("/api/estudio/c1/archivos", { method: "POST", body: form });
+    expect(subida.status).toBe(201);
+    const { archivo } = await subida.json();
+    expect(archivo.tipo).toBe("video");
+
+    const analisis = {
+      gancho: "Derraman jugo en el sofá", angulo: "problema", nivel: "problema", deseo: "Tranquilidad", porQueFunciona: "Todos lo vivieron",
+      ideaParaNosotros: "Mostrar nuestro secado en 4 horas",
+      estructura: { duracion: 9, tramos: [{ desde: 0, hasta: 2, que: "Cae el jugo" }, { desde: 2, hasta: 7, que: "Limpian" }, { desde: 7, hasta: 9, que: "Sofá como nuevo" }], camara: "fija", ritmo: "rápido" },
+    };
+    const gemini = [];
+    vi.stubGlobal("fetch", async (url, op = {}) => {
+      const u = String(url);
+      if (u.includes("/upload/v1beta/files")) return new Response("{}", { headers: { "x-goog-upload-url": "https://generativelanguage.googleapis.com/subida/1" } });
+      if (u.endsWith("/subida/1")) return Response.json({ file: { name: "files/1", state: "ACTIVE", uri: "https://g/files/1", mimeType: "video/mp4" } });
+      if (u.includes(":generateContent")) { gemini.push(JSON.parse(op.body)); return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify(analisis) }] } }], usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 200 } }); }
+      if (op.method === "DELETE") return new Response("{}");
+      throw new Error(`fetch inesperado a ${u}`);
+    });
+    const r = await pedir("/api/mercado/c1/referencias", { method: "POST", body: { archivoId: archivo.id, competidor: "LimpiaYa", origen: "organico" } });
+    expect(r.status).toBe(201);
+    const { referencia, aviso } = await r.json();
+    expect(aviso).toBeNull();
+    expect(referencia).toMatchObject({ medio: "video", origen: "organico" });
+    expect(referencia.analisis.estructura.tramos).toHaveLength(3);
+    expect(gemini[0].contents[0].parts[1].text).toMatch(/^Este video es contenido orgánico \(no pagado\) de la competencia/);
+    expect(gemini[0].generationConfig.responseMimeType).toBe("application/json");
+    expect(notas().find((x) => x.ruta.startsWith("referencia-")).texto).toContain("2–7 s: Limpian");
+    expect(db.sqlite.prepare("select funcion from consumo_ia").all().map((x) => x.funcion)).toContain("referencia de competencia");
+
+    anthropic(flujo('{"titulo":"El jugo","idea":"Accidente y solución","guion":"0–2 s: cae café…","textoPantalla":"¿Manchas?","descripcion":"Escríbenos"}'));
+    const a = await pedir(`/api/mercado/c1/referencias/${referencia.id}/adaptar`, { method: "POST", body: { productoId: "p-lavado", formato: "reel" } });
+    expect(a.status).toBe(200);
+    expect((await a.json()).adaptacion).toMatchObject({ titulo: "El jugo", guion: "0–2 s: cae café…" });
+    const t = textoDe(peticiones[0]);
+    expect(t).toContain("Estructura: Dura 9 s. 0–2 s: Cae el jugo · 2–7 s: Limpian · 7–9 s: Sofá como nuevo");
+    expect(t).toContain("Desde $45");
+    expect(t).not.toContain("margen");
+    expect((await pedir("/api/mercado/c1/referencias/no-existe/adaptar", { method: "POST", body: {} })).status).toBe(404);
+  });
 });
 
 describe("el guion de un video corto", () => {

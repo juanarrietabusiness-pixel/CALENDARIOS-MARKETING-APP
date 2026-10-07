@@ -4,6 +4,8 @@ import {
   leerDeProducto, limpiarEstudio, pasosDelEstudio, notasDelEstudio, estudioADocumento, angulosDeAnuncio, ideaDesdeAngulo,
   leerReferencia, notaDeReferencia, fraseActivo, diasActivo, estudioParaElKit, LIMITES_ANUNCIO, MAX_PRODUCTOS,
   productosParaPlan, mensajePedirDatos, lineaDeProducto, fechaLarga,
+  pedidoDeReferenciaVideo, limpiarEstructura, estructuraATexto, pedidoDeAdaptacion, leerAdaptacion, ideaParaRecrear, ideaParaSeguirVideo,
+  limpiarReferencia,
 } from "./estudioMercado";
 
 const CATALOGO = [
@@ -186,5 +188,50 @@ describe("las referencias de la competencia", () => {
     expect(nota).toContain("# Referencia de la competencia: LimpiaYa");
     expect(nota).toContain("- Nivel de consciencia: Listo para comprar");
     expect(leerReferencia("nada")).toBeNull();
+  });
+});
+
+describe("las referencias de video", () => {
+  const ESTRUCTURA = { duracion: 9, tramos: [{ desde: 0, hasta: 2, que: "Cae el jugo" }, { desde: 2, hasta: 7, que: "Limpian" }, { desde: "x", hasta: 1, que: "roto" }, { desde: 7, hasta: 9, que: "" }], camara: "fija" };
+
+  it("el pedido a Gemini dice si es orgánico y pide la estructura", () => {
+    const t = pedidoDeReferenciaVideo({ marca: "Dcasa", competidor: "LimpiaYa", origen: "organico" });
+    expect(t).toMatch(/^Este video es contenido orgánico \(no pagado\) de la competencia \(LimpiaYa\) de Dcasa/);
+    expect(t).toContain('"estructura":{"duracion"');
+    expect(t.match(/\{"gancho"/g)).toHaveLength(1);
+  });
+
+  it("la estructura se limpia y se cuenta corta", () => {
+    const e = limpiarEstructura(ESTRUCTURA);
+    expect(e.tramos).toHaveLength(2);
+    expect(estructuraATexto(ESTRUCTURA)).toBe("Dura 9 s. 0–2 s: Cae el jugo · 2–7 s: Limpian. Cámara: fija");
+    expect(limpiarEstructura({ tramos: [] })).toBeNull();
+    expect(estructuraATexto(null)).toBe("");
+  });
+
+  it("una referencia guarda si es video y si es orgánica; lo raro, como imagen de anuncio", () => {
+    expect(limpiarReferencia({ id: "r1", medio: "video", origen: "organico", analisis: { gancho: "g", estructura: ESTRUCTURA } })).toMatchObject({ medio: "video", origen: "organico" });
+    expect(limpiarReferencia({ id: "r1", medio: "gif", origen: "x" })).toMatchObject({ medio: "imagen", origen: "anuncio" });
+    expect(limpiarReferencia({ id: "r1", analisis: { gancho: "g", estructura: ESTRUCTURA } }).analisis.estructura.tramos).toHaveLength(2);
+  });
+
+  it("adaptar pide la misma forma con el producto exacto, y se lee", () => {
+    const ref = { id: "r1", analisis: { gancho: "Derrame", estructura: ESTRUCTURA } };
+    const t = pedidoDeAdaptacion({ marca: "Dcasa", referencia: ref, productoLinea: "Sofá (producto) · precio: $400", formato: "carrusel" });
+    expect(t).toContain("Escribe un carrusel para Dcasa con la MISMA estructura");
+    expect(t).toContain("Estructura: Dura 9 s.");
+    expect(t).toContain("precio: $400");
+    expect(t).toContain("separado por ---");
+    expect(leerAdaptacion('{"titulo":"T","guion":"G","descripcion":"D"}')).toMatchObject({ titulo: "T", guion: "G" });
+    expect(leerAdaptacion("{}")).toBeNull();
+  });
+
+  it("recrear y seguir un video arman el pedido sin IA, con el producto y sin copiar", () => {
+    const ref = { id: "r1", analisis: { gancho: "50% hoy.", formato: "foto de producto con texto encima.", estructura: ESTRUCTURA } };
+    const r = ideaParaRecrear(ref, { nombre: "Sofá", precio: "$400" });
+    expect(r).toBe("Crea una pieza nueva con la misma composición y el mismo tipo de imagen que la de referencia (foto de producto con texto encima), con Sofá, en los colores de nuestra marca. No copies su texto, su logo ni su marca. El mensaje, con nuestras palabras: 50% hoy. Precio exacto: $400.");
+    const v = ideaParaSeguirVideo(ref, null);
+    expect(v).toContain("con nuestro producto");
+    expect(v).toContain("Estructura: Dura 9 s.");
   });
 });

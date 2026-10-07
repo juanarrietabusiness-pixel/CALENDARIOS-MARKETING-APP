@@ -628,10 +628,57 @@ export function pedidoDeReferencia({ marca, competidor = "", desde = "", nota = 
   ].filter((x) => x !== "").join("\n");
 }
 
+/**
+ * Lo que se le pide a Gemini al VER un video de la competencia (anuncio u orgánico): lo mismo que a una captura
+ * y además su ESTRUCTURA, tramo a tramo, que es lo que se reutiliza para escribir guiones con la misma forma. Pura.
+ */
+export function pedidoDeReferenciaVideo({ marca, competidor = "", desde = "", nota = "", estudio = null, origen = "anuncio" }) {
+  const base = pedidoDeReferencia({ marca, competidor, desde, nota, estudio })
+    .replace(/^Esta imagen es un anuncio de la competencia/, `Este video es ${origen === "organico" ? "contenido orgánico (no pagado)" : "un anuncio"} de la competencia`);
+  return [
+    base.replace(/\{"gancho"[\s\S]*$/, "").trimEnd(),
+    "Mira el video ENTERO (imagen y audio). Además de lo anterior, saca su ESTRUCTURA tramo a tramo con los segundos reales: qué se ve y qué se dice o se lee en cada momento. Sé fiel a lo que hay: no inventes nada que no se vea o no se oiga. Responde en español.",
+    '{"gancho":"…","angulo":"…","oferta":"…","formato":"…","nivel":"…","deseo":"…","porQueFunciona":"…","ideaParaNosotros":"…","estructura":{"duracion":12,"tramos":[{"desde":0,"hasta":2,"que":"qué pasa (el gancho)"}],"textoPantalla":"los textos que aparecen","sonido":"voz, música o sonido","camara":"planos y movimientos","ritmo":"cortes por segundo, lento o rápido"}}',
+  ].join("\n");
+}
+
+/** La estructura de un video de referencia, limpia. Null si no trae tramos. Pura. */
+export function limpiarEstructura(e) {
+  if (!e || typeof e !== "object") return null;
+  const num = (v, max = 600) => { const n = Number(v); return Number.isFinite(n) && n >= 0 ? Math.min(Math.round(n * 10) / 10, max) : null; };
+  const tramos = (Array.isArray(e.tramos) ? e.tramos : [])
+    .map((t) => ({ desde: num(t?.desde), hasta: num(t?.hasta), que: corto(t?.que, 300) }))
+    .filter((t) => t.que && t.desde !== null && t.hasta !== null && t.hasta >= t.desde)
+    .slice(0, 12);
+  if (!tramos.length) return null;
+  return {
+    duracion: num(e.duracion) ?? tramos.at(-1).hasta,
+    tramos,
+    textoPantalla: corto(e.textoPantalla, 300),
+    sonido: corto(e.sonido, 200),
+    camara: corto(e.camara, 200),
+    ritmo: corto(e.ritmo, 120),
+  };
+}
+
+/** «0–2 s: … · 2–6 s: …» y lo demás, corto: lo que viaja a un guion para que siga la misma forma. Pura. */
+export function estructuraATexto(estructura, max = 900) {
+  const e = limpiarEstructura(estructura);
+  if (!e) return "";
+  return [
+    `${e.duracion ? `Dura ${e.duracion} s. ` : ""}${e.tramos.map((t) => `${t.desde}–${t.hasta} s: ${t.que}`).join(" · ")}`,
+    e.camara && `Cámara: ${e.camara}`,
+    e.ritmo && `Ritmo: ${e.ritmo}`,
+    e.textoPantalla && `Texto en pantalla: ${e.textoPantalla}`,
+    e.sonido && `Sonido: ${e.sonido}`,
+  ].filter(Boolean).join(". ").slice(0, max);
+}
+
 /** El análisis de una referencia, limpio. Null si no se puede leer. Pura. */
 export function leerReferencia(texto) {
   const d = jsonDe(texto);
   if (!d || typeof d !== "object") return null;
+  const estructura = limpiarEstructura(d.estructura);
   const r = {
     gancho: corto(d.gancho, 240),
     angulo: corto(d.angulo, 160),
@@ -641,6 +688,7 @@ export function leerReferencia(texto) {
     deseo: DESEOS_REISS.find((x) => x.toLowerCase() === String(d.deseo ?? "").trim().toLowerCase()) ?? "",
     porQueFunciona: corto(d.porQueFunciona, 600),
     ideaParaNosotros: corto(d.ideaParaNosotros, 600),
+    ...(estructura ? { estructura } : {}),
   };
   return r.gancho || r.porQueFunciona ? r : null;
 }
@@ -653,6 +701,10 @@ export function limpiarReferencia(r) {
     archivoId: /^[\w-]{1,80}$/.test(String(r.archivoId ?? "")) ? String(r.archivoId) : "",
     clave: typeof r.clave === "string" && /^clientes\/[^/]+\/.+/.test(r.clave) && !r.clave.includes("..") ? r.clave : "",
     competidor: corto(r.competidor, 80),
+    // Un video (anuncio u orgánico de TikTok, Reels…) o una captura; anuncio u orgánico; para qué tipo de contenido sirve.
+    medio: r.medio === "video" ? "video" : "imagen",
+    origen: r.origen === "organico" ? "organico" : "anuncio",
+    pilar: /^[a-z]{1,20}$/.test(String(r.pilar ?? "")) ? r.pilar : "",
     enlace: enlaceValido(r.enlace),
     desde: /^\d{4}-\d{2}-\d{2}$/.test(String(r.desde ?? "")) ? r.desde : "",
     nota: corto(r.nota, 400),
@@ -673,6 +725,7 @@ export function notaDeReferencia(referencia) {
   return [
     `# Referencia de la competencia${r.competidor ? `: ${r.competidor}` : ""}`,
     "",
+    `${r.medio === "video" ? "Video" : "Imagen"} · ${r.origen === "organico" ? "contenido orgánico" : "anuncio"}`,
     r.desde ? `Activo desde ${r.desde}. ${fraseActivo(r.desde)}` : "",
     r.enlace ? `Enlace: ${r.enlace}` : "",
     r.nota ? `Nota: ${r.nota}` : "",
@@ -687,6 +740,90 @@ export function notaDeReferencia(referencia) {
       "",
       a.porQueFunciona && `## Por qué funciona\n${a.porQueFunciona}`,
       a.ideaParaNosotros && `\n## Cómo adaptarlo\n${a.ideaParaNosotros}`,
+      a.estructura && `\n## Estructura del video\n${estructuraATexto(a.estructura, 1500)}`,
     ] : ["", "(Sin analizar todavía.)"]),
   ].filter((x) => x !== false && x !== undefined && x !== "").join("\n").trim();
+}
+
+// ------------------------------------------------------------
+// De una referencia a algo nuestro
+// ------------------------------------------------------------
+
+/**
+ * «Adaptar a la marca»: un guion con la MISMA estructura que la referencia (sus tramos, su ritmo, su tipo de
+ * gancho) para un producto de la marca, con lo del estudio de mercado. Pura.
+ * @param productoLinea  el producto con su precio exacto (`lineaDeProducto`), o vacío.
+ */
+export function pedidoDeAdaptacion({ marca, referencia, productoLinea = "", formato = "reel", contexto = "", kit = "" }) {
+  const r = limpiarReferencia(referencia);
+  const a = r?.analisis ?? {};
+  const estructura = estructuraATexto(a.estructura, 1500);
+  return [
+    `Eres director creativo de una agencia en Panamá. Escribe ${formato === "carrusel" ? "un carrusel" : formato === "post" ? "un post" : "un video corto (reel)"} para ${marca} con la MISMA estructura que esta referencia de la competencia: misma forma, mismo tipo de gancho y mismo ritmo; el contenido es de ${marca}. Nunca copies sus frases, su marca ni sus datos.`,
+    "",
+    "LA REFERENCIA:",
+    a.gancho && `- Gancho: ${a.gancho}`,
+    a.angulo && `- Ángulo: ${a.angulo}`,
+    a.formato && `- Cómo está hecha: ${a.formato}`,
+    a.porQueFunciona && `- Por qué funciona: ${a.porQueFunciona}`,
+    estructura && `- Estructura: ${estructura}`,
+    a.ideaParaNosotros && `- Cómo adaptarla (lo que ya pensamos): ${a.ideaParaNosotros}`,
+    "",
+    productoLinea ? `EL PRODUCTO (precio y oferta EXACTOS): ${productoLinea}` : "EL PRODUCTO: el que mejor encaje con lo que sabemos de la marca (sin inventar precios).",
+    kit && `\nEL ESTILO DE LA MARCA:\n${corto(kit, 1200)}`,
+    contexto && `\nLO QUE SABEMOS DE LA MARCA:\n${largo(contexto, 5000)}`,
+    "",
+    "Reglas: español latino neutro; nada de precios, garantías ni testimonios inventados; la competencia no se nombra.",
+    formato === "carrusel"
+      ? "En «guion», el texto de cada lámina separado por ---."
+      : formato === "post" ? "En «guion», qué se ve en la pieza y el texto que lleva encima." : "En «guion», escena por escena con sus segundos (como los tramos de la referencia).",
+    "",
+    "Responde SOLO con JSON, sin texto alrededor:",
+    '{"titulo":"…","idea":"la idea en 1-2 frases","guion":"…","textoPantalla":"lo que se lee en pantalla (corto)","descripcion":"el caption, con llamada a la acción y hashtags al final"}',
+  ].filter((x) => x !== "" && x !== false && x !== undefined).join("\n");
+}
+
+/** La adaptación de la IA, limpia. Null si no se puede leer. Pura. */
+export function leerAdaptacion(texto) {
+  const d = jsonDe(texto);
+  if (!d || typeof d !== "object") return null;
+  const r = {
+    titulo: corto(d.titulo, 120),
+    idea: corto(d.idea, 400),
+    guion: largo(d.guion, 3000),
+    textoPantalla: corto(d.textoPantalla, 200),
+    descripcion: largo(d.descripcion, 2200),
+  };
+  return r.guion || r.idea ? r : null;
+}
+
+/**
+ * «Recrear con mi marca»: el pedido para el Estudio a partir de una captura de la competencia. La captura va de
+ * imagen de referencia; el texto pide su composición con el producto y los colores de la marca, sin su texto ni su
+ * logo. Sin IA: se puede pulir con «Mejorar idea» antes de crear. Pura.
+ */
+export function ideaParaRecrear(referencia, producto = null) {
+  const r = limpiarReferencia(referencia);
+  const a = r?.analisis ?? {};
+  return [
+    "Crea una pieza nueva con la misma composición y el mismo tipo de imagen que la de referencia",
+    a.formato ? ` (${a.formato.replace(/\.$/, "")})` : "",
+    producto ? `, con ${producto.nombre}` : ", con nuestro producto",
+    ", en los colores de nuestra marca. No copies su texto, su logo ni su marca.",
+    a.gancho ? ` El mensaje, con nuestras palabras: ${a.gancho.replace(/\.$/, "")}.` : "",
+    producto?.precio ? ` Precio exacto: ${producto.precio}.` : "",
+  ].join("").replace(/\s+/g, " ").trim().slice(0, 1500);
+}
+
+/** «Seguir este video con mi marca»: el pedido para un modelo que sigue un video de referencia (Kling Omni). Pura. */
+export function ideaParaSeguirVideo(referencia, producto = null) {
+  const r = limpiarReferencia(referencia);
+  const a = r?.analisis ?? {};
+  const estructura = estructuraATexto(a.estructura, 600);
+  return [
+    "Sigue los planos, el ritmo y el movimiento del video de referencia",
+    producto ? `, con ${producto.nombre}` : ", con nuestro producto",
+    " y los colores de nuestra marca. Sin su texto, su logo ni su marca; sin texto largo en pantalla.",
+    estructura ? ` Estructura: ${estructura}` : "",
+  ].join("").replace(/\s+/g, " ").trim().slice(0, 1500);
 }

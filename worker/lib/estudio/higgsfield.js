@@ -4,7 +4,8 @@
 //   POST https://api.higgsfield.ai/<ruta>          → { request_id, status_url, cancel_url }
 //   GET  <status_url>                              → queued | in_progress | completed | failed | nsfw | canceled
 //                                                    completed trae `images[].url` o `video.url`
-//   POST /files/generate-upload-url { content_type } + PUT     las imágenes de apoyo van a SU almacén
+//   POST /files/generate-upload-url { content_type } + PUT     las imágenes de apoyo (y el video de referencia)
+//                                                              van a SU almacén
 //
 // Auth: `Authorization: Key <id>:<secreto>` (`HF_KEY`, o `HF_API_KEY` + `HF_API_SECRET`).
 //
@@ -49,10 +50,11 @@ function papelDe(tipo, campo) {
   return "reference";
 }
 
-/** Los campos donde cabe una imagen de cada papel. */
+/** Los campos donde cabe una imagen (o el video) de cada papel. */
 function ranuras(tipo, papel) {
   if (papel === "start") return DE_INICIO;
   if (papel === "end") return DE_FINAL;
+  if (papel === "video") return ["video_urls", "video_url"];
   return tipo === "image" ? ["image_urls", "image_url", "image_reference_url"] : ["image_urls"];
 }
 
@@ -77,7 +79,7 @@ export function rutaDe(modelo, cuantas = {}) {
   if (elegida) return elegida;
   throw new ErrorMotor(
     hay.length
-      ? `${modelo.nombre} no admite esa combinación de imágenes.`
+      ? (hay.includes("video") && !modelo.video ? `${modelo.nombre} no admite un video de referencia.` : `${modelo.nombre} no admite esa combinación de imágenes.`)
       : `${modelo.nombre} no crea desde texto solo: necesita una imagen.`,
     400,
   );
@@ -97,6 +99,7 @@ export function cuerpoDe(modelo, eid, { prompt, ajustes = {}, urls = {} }) {
   if (urls.start?.[0]) poner(DE_INICIO, urls.start[0]);
   if (urls.end?.[0]) poner(DE_FINAL, urls.end[0]);
   if (urls.reference?.length) poner(ranuras(tipo, "reference"), urls.reference);
+  if (urls.video?.[0]) poner(ranuras(tipo, "video"), urls.video[0]);
 
   for (const [clave, campo] of Object.entries(CAMPO_DE)) {
     const f = P[campo];
@@ -126,7 +129,7 @@ export function cuerpoDe(modelo, eid, { prompt, ajustes = {}, urls = {} }) {
 
 /** El pedido completo: { ruta, cuerpo }. Pura. */
 export function pedidoHiggsfield(modelo, { prompt, ajustes, urls = {} }) {
-  const ruta = rutaDe(modelo, { start: urls.start?.length ?? 0, end: urls.end?.length ?? 0, reference: urls.reference?.length ?? 0 });
+  const ruta = rutaDe(modelo, { start: urls.start?.length ?? 0, end: urls.end?.length ?? 0, reference: urls.reference?.length ?? 0, video: urls.video?.length ?? 0 });
   if (!RUTA_VALIDA.test(ruta) || ruta.includes("..")) throw new ErrorMotor("Ruta de modelo no válida.", 500);
   return { ruta, cuerpo: cuerpoDe(modelo, ruta, { prompt, ajustes, urls }) };
 }
@@ -136,6 +139,7 @@ export function validarHiggsfield(modelo, pedido) {
   try {
     rutaDe(modelo, {
       start: pedido.medios?.start?.length ?? 0, end: pedido.medios?.end?.length ?? 0, reference: pedido.medios?.reference?.length ?? 0,
+      video: pedido.medios?.video?.length ?? 0,
     });
     return null;
   } catch (e) {
@@ -175,10 +179,10 @@ async function llamar(env, url, opciones = {}) {
   try { return JSON.parse(texto); } catch { throw new ErrorMotor("Higgsfield devolvió algo que no se entiende.", 502); }
 }
 
-/** Sube una imagen al almacén de Higgsfield y devuelve su dirección pública. */
+/** Sube una imagen (o el video de referencia) al almacén de Higgsfield y devuelve su dirección pública. */
 async function subir(env, f) {
   const up = await llamar(env, `${BASE(env)}/files/generate-upload-url`, { method: "POST", body: JSON.stringify({ content_type: f.mime }) });
-  if (!direccionValida(up?.upload_url) || !direccionValida(up?.public_url)) throw new ErrorMotor("Higgsfield no devolvió dónde subir la imagen de referencia.", 502);
+  if (!direccionValida(up?.upload_url) || !direccionValida(up?.public_url)) throw new ErrorMotor("Higgsfield no devolvió dónde subir el archivo de referencia.", 502);
   let res;
   try {
     // Esta dirección ya lleva su permiso: la llave de Higgsfield no viaja a ese almacén.
@@ -202,7 +206,7 @@ export const MOTOR_HIGGSFIELD = {
   validar: validarHiggsfield,
 
   async enviar(env, { modelo, prompt, ajustes, medios = {} }) {
-    const urls = { start: [], end: [], reference: [] };
+    const urls = { start: [], end: [], reference: [], video: [] };
     for (const papel of Object.keys(urls)) for (const f of medios[papel] ?? []) urls[papel].push(await subir(env, f));
     const { ruta, cuerpo } = pedidoHiggsfield(modelo, { prompt, ajustes, urls });
     const j = await llamar(env, `${BASE(env)}/${ruta}`, { method: "POST", body: JSON.stringify(cuerpo) });
