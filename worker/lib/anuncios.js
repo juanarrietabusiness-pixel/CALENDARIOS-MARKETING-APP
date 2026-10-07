@@ -20,9 +20,12 @@
 //
 // EL PLAN GRATUITO
 //
-// Crear son cinco llamadas (campaña, conjunto, creativo, anuncio y, antes,
-// el medio); la lista de campañas, una (las estadísticas van expandidas
-// dentro); el detalle, cuatro. Todo lejos de las 50 por invocación.
+// Crear es una campaña, un conjunto por público (hasta 3), un creativo por
+// anuncio (hasta 6, que se REUSAN en cada conjunto) y un anuncio por cada
+// conjunto × creativo (hasta 18): 28 llamadas en el peor caso, más una por
+// video para su miniatura. Los medios se suben antes, al escogerlos. La lista
+// de campañas es una llamada (las estadísticas van expandidas dentro); el
+// detalle, cuatro. Todo dentro de las 50 por invocación.
 //
 // LO QUE NO SE HA PROBADO CONTRA META: nada de esto ha hablado con la
 // Marketing API de verdad —no hay cuenta publicitaria de pruebas—. Los
@@ -32,7 +35,8 @@
 import { graph, urlGraph, urlGraphVideo, ErrorMeta, mensajeMeta, descifrarMeta, urlMedioPublico } from "./meta.js";
 import {
   permisosAnunciosQueFaltan, CAMPOS_INSIGHTS, modificadorInsights, validarBorrador,
-  cuerpoCampana, cuerpoConjunto, cuerpoCreativo, cuerpoAnuncio,
+  cuerpoCampana, cuerpoConjunto, cuerpoCreativo, cuerpoAnuncio, normalizarBorrador, presupuestoDelBorrador,
+  MAX_CONJUNTOS, MAX_ANUNCIOS,
 } from "../../src/lib/anuncios.js";
 import { fechaEnZona } from "../../src/lib/agenda.js";
 import { claveDelCliente } from "./estudio/archivos.js";
@@ -196,6 +200,50 @@ export async function buscarCiudades(env, token, texto, pais = "") {
   return (r?.data ?? []).map((c) => ({ key: String(c.key), nombre: c.name, region: c.region ?? "", pais: c.country_code ?? "" }));
 }
 
+/** Intereses de Meta por nombre, para los conjuntos «Intereses» y «Advantage+». */
+export async function buscarIntereses(env, token, texto) {
+  const q = String(texto ?? "").trim().slice(0, 80);
+  if (q.length < 2) return [];
+  const r = await graph(env, token, "/search", { params: { type: "adinterest", q, locale: "es_LA", limit: 25 } });
+  return (r?.data ?? []).map((x) => ({
+    id: String(x.id), nombre: x.name ?? "", tamano: Number(x.audience_size_upper_bound ?? x.audience_size ?? 0) || null,
+    ruta: Array.isArray(x.path) ? x.path.join(" › ") : "",
+  }));
+}
+
+/** Los públicos de la cuenta (personalizados y similares), para el conjunto «Similares». */
+export async function publicosDeLaCuenta(env, token, cuenta) {
+  const r = await graph(env, token, `/${cuenta.externo_id}/customaudiences`, {
+    params: { fields: "id,name,subtype,approximate_count_lower_bound,lookalike_spec", limit: 100 },
+  });
+  return (r?.data ?? []).map((x) => ({
+    id: String(x.id), nombre: x.name ?? "", tipo: x.subtype ?? "", similar: x.subtype === "LOOKALIKE",
+    tamano: Number(x.approximate_count_lower_bound ?? 0) > 0 ? Number(x.approximate_count_lower_bound) : null,
+  }));
+}
+
+/**
+ * Crea un público similar (LOOKALIKE) a partir de uno de la cuenta. No gasta nada: es un público, no una campaña.
+ * `porcentaje` va de 1 a 10 (el 1 % más parecido es lo más usado).
+ */
+export async function crearSimilar(env, token, cuenta, { origenId, pais = "PA", porcentaje = 1 }) {
+  if (!/^\d{1,30}$/.test(String(origenId ?? ""))) throw new ErrorAnuncios("Escoge el público de origen.", 400);
+  if (!/^[A-Z]{2}$/.test(String(pais))) throw new ErrorAnuncios("País no válido.", 400);
+  const ratio = Math.min(10, Math.max(1, Math.round(Number(porcentaje) || 1))) / 100;
+  const publicos = await publicosDeLaCuenta(env, token, cuenta);
+  const origen = publicos.find((x) => x.id === String(origenId));
+  if (!origen) throw new ErrorAnuncios("Ese público no es de esta cuenta publicitaria.", 404);
+  const r = await graph(env, token, `/${cuenta.externo_id}/customaudiences`, {
+    metodo: "POST",
+    params: {
+      name: `Similar ${Math.round(ratio * 100)} % ${pais} · ${origen.nombre}`.slice(0, 120), subtype: "LOOKALIKE",
+      origin_audience_id: origen.id, lookalike_spec: JSON.stringify({ country: pais, ratio }),
+    },
+  });
+  if (!r?.id) throw new ErrorAnuncios("Meta no devolvió el público.", 502);
+  return { id: String(r.id), nombre: `Similar ${Math.round(ratio * 100)} % ${pais} · ${origen.nombre}`, tipo: "LOOKALIKE", similar: true, tamano: null };
+}
+
 /** Los píxeles de la cuenta (clientes potenciales y ventas en la web). */
 export async function pixelesDeLaCuenta(env, token, cuenta) {
   const r = await graph(env, token, `/${cuenta.externo_id}/adspixels`, { params: { fields: "id,name", limit: 50 } });
@@ -301,14 +349,17 @@ export async function estadoVideo(env, token, videoId) {
 // ------------------------------------------------------------
 
 /**
- * Crea campaña → conjunto → creativo → anuncio, TODO en pausa, y apunta la
- * campaña y la acción en D1. Lo que valida la pantalla se valida otra vez
- * aquí: el borrador lo manda el navegador.
+ * Crea la campaña → sus conjuntos → un creativo por anuncio → un anuncio por conjunto y creativo, TODO en pausa, y
+ * apunta la campaña (con todos los ids, para activarla entera) y la acción en D1. Lo que valida la pantalla se valida
+ * otra vez aquí: el borrador lo manda el navegador.
  */
-export async function crearCampana(env, token, acceso, { cliente, cuenta, borrador, usuario }) {
+export async function crearCampana(env, token, acceso, { cliente, cuenta, borrador: entrada, usuario }) {
   const hoy = fechaEnZona(new Date(), cuenta.zona_horaria || "America/Panama");
-  const errores = validarBorrador(borrador, { moneda: cuenta.moneda, minimoDiario: cuenta.minimo_diario, hoy });
+  const errores = validarBorrador(entrada, { moneda: cuenta.moneda, minimoDiario: cuenta.minimo_diario, hoy });
   if (errores.length) throw new ErrorAnuncios(errores[0].mensaje, 400, { errores });
+  const borrador = normalizarBorrador(entrada);
+  const conjuntos = borrador.conjuntos.slice(0, MAX_CONJUNTOS);
+  const anuncios = borrador.anuncios.slice(0, MAX_ANUNCIOS);
 
   const pagina = await acceso.leerUno("cuentas_sociales", { client_id: cliente.id, red: "facebook" });
   if (!pagina?.externo_id) {
@@ -316,11 +367,14 @@ export async function crearCampana(env, token, acceso, { cliente, cuenta, borrad
   }
   const instagram = await acceso.leerUno("cuentas_sociales", { client_id: cliente.id, red: "instagram" });
 
-  let miniatura = "";
-  if (borrador.anuncio.medio.tipo === "video") {
-    const v = await estadoVideo(env, token, borrador.anuncio.medio.videoId);
-    if (!v.listo) throw new ErrorAnuncios("El video aún no está listo en Meta. Espera un poco y vuelve a intentarlo.", 409);
-    miniatura = v.miniatura;
+  // La miniatura de cada video (el creativo de video la exige), y que esté listo.
+  const miniaturas = [];
+  for (const [i, a] of anuncios.entries()) {
+    if (a.formato !== "carrusel" && a.medio?.tipo === "video") {
+      const v = await estadoVideo(env, token, a.medio.videoId);
+      if (!v.listo) throw new ErrorAnuncios(`${anuncios.length > 1 ? `Anuncio ${i + 1}: e` : "E"}l video aún no está listo en Meta. Espera un poco y vuelve a intentarlo.`, 409);
+      miniaturas[i] = v.miniatura;
+    }
   }
 
   const act = cuenta.externo_id;
@@ -328,26 +382,50 @@ export async function crearCampana(env, token, acceso, { cliente, cuenta, borrad
   try {
     const campana = await graph(env, token, `/${act}/campaigns`, { metodo: "POST", params: cuerpoCampana(borrador) });
     campanaId = String(campana.id);
-    const conjunto = await graph(env, token, `/${act}/adsets`, {
-      metodo: "POST", params: cuerpoConjunto(borrador, { campanaId, moneda: cuenta.moneda, zona: cuenta.zona_horaria, hoy }),
-    });
-    const creativo = await graph(env, token, `/${act}/adcreatives`, {
-      metodo: "POST", params: cuerpoCreativo(borrador, { paginaId: pagina.externo_id, instagramId: instagram?.externo_id ?? null, miniatura }),
-    });
-    const anuncio = await graph(env, token, `/${act}/ads`, {
-      metodo: "POST", params: cuerpoAnuncio(borrador, { conjuntoId: String(conjunto.id), creativoId: String(creativo.id) }),
-    });
+    const idsConjuntos = [];
+    for (const i of conjuntos.keys()) {
+      const c = await graph(env, token, `/${act}/adsets`, {
+        metodo: "POST", params: cuerpoConjunto(borrador, { campanaId, moneda: cuenta.moneda, zona: cuenta.zona_horaria, hoy, paginaId: pagina.externo_id, indice: i }),
+      });
+      idsConjuntos.push(String(c.id));
+    }
+    // Un creativo por anuncio, que se reusa en todos los conjuntos: así Meta compara la misma pieza en cada público.
+    const idsCreativos = [];
+    for (const i of anuncios.keys()) {
+      const c = await graph(env, token, `/${act}/adcreatives`, {
+        metodo: "POST", params: cuerpoCreativo(borrador, { paginaId: pagina.externo_id, instagramId: instagram?.externo_id ?? null, miniatura: miniaturas[i] ?? "", indice: i }),
+      });
+      idsCreativos.push(String(c.id));
+    }
+    const idsAnuncios = [];
+    const nombreBase = String(borrador.nombre).trim();
+    for (const [j, conjuntoId] of idsConjuntos.entries()) {
+      for (const [i, creativoId] of idsCreativos.entries()) {
+        const unico = idsConjuntos.length === 1 && idsCreativos.length === 1;
+        const nombre = unico ? "" : `${nombreBase} · ${String(conjuntos[j].nombre || `Conjunto ${j + 1}`).trim()} · ${String(anuncios[i].nombre || `Anuncio ${i + 1}`).trim()}`;
+        const a = await graph(env, token, `/${act}/ads`, { metodo: "POST", params: cuerpoAnuncio(borrador, { conjuntoId, creativoId, nombre }) });
+        idsAnuncios.push(String(a.id));
+      }
+    }
 
+    const p = presupuestoDelBorrador(borrador);
     const fila = {
-      id: uuid(), client_id: cliente.id, cuenta_id: act, campana_id: campanaId, conjunto_id: String(conjunto.id),
-      creativo_id: String(creativo.id), anuncio_id: String(anuncio.id), nombre: String(borrador.nombre).trim(),
+      id: uuid(), client_id: cliente.id, cuenta_id: act, campana_id: campanaId, conjunto_id: idsConjuntos[0],
+      creativo_id: idsCreativos[0], anuncio_id: idsAnuncios[0], nombre: nombreBase,
       objetivo: borrador.objetivo,
-      presupuesto: JSON.stringify({ tipo: borrador.presupuesto.tipo, monto: Number(borrador.presupuesto.monto), moneda: cuenta.moneda }),
+      presupuesto: JSON.stringify({
+        tipo: p.diario != null && p.total != null ? "mixto" : p.total != null ? "total" : "diario",
+        monto: (p.diario ?? 0) + (p.total ?? 0), diario: p.diario, total: p.total, moneda: cuenta.moneda,
+      }),
+      ids: JSON.stringify({ conjuntos: idsConjuntos, creativos: idsCreativos, anuncios: idsAnuncios }),
       inicio: borrador.inicio, fin: borrador.fin || null, estado: "PAUSED", borrador: JSON.stringify(borrador),
       creado_por: usuario.id, creado_nombre: usuario.nombre ?? "", created_at: ahora(), updated_at: ahora(),
     };
     await acceso.insertar("campanas_anuncios", fila);
-    await apuntar(acceso, { clientId: cliente.id, campanaId, accion: "crear", usuario, detalle: { nombre: fila.nombre, objetivo: fila.objetivo, presupuesto: JSON.parse(fila.presupuesto) } });
+    await apuntar(acceso, {
+      clientId: cliente.id, campanaId, accion: "crear", usuario,
+      detalle: { nombre: fila.nombre, objetivo: fila.objetivo, destino: borrador.destino, presupuesto: JSON.parse(fila.presupuesto), conjuntos: idsConjuntos.length, anuncios: idsAnuncios.length },
+    });
     return fila;
   } catch (e) {
     // En pausa no gasta, pero una campaña a medias en la cuenta del
@@ -388,14 +466,18 @@ export function fechasDe(c) {
 }
 
 /**
- * Cambia el estado. Activar enciende primero lo de dentro (anuncio y
- * conjunto que se crearon desde la app) y la campaña la ÚLTIMA: la
+ * Cambia el estado. Activar enciende primero lo de dentro (los anuncios y
+ * los conjuntos que se crearon desde la app) y la campaña la ÚLTIMA: la
  * campaña es el interruptor, y mientras esté en pausa nada gasta. Pausar
  * sólo toca la campaña: basta para que nada salga.
  */
 export async function cambiarEstado(env, token, { campanaId, registro, activar }) {
   const status = activar ? "ACTIVE" : "PAUSED";
-  const orden = activar ? [registro?.anuncio_id, registro?.conjunto_id, campanaId] : [campanaId];
+  // Los de una campaña con varios conjuntos y anuncios van en `ids`; las de antes, en sus columnas.
+  const ids = (() => { try { return JSON.parse(registro?.ids ?? "{}") ?? {}; } catch { return {}; } })();
+  const anuncios = Array.isArray(ids.anuncios) && ids.anuncios.length ? ids.anuncios : [registro?.anuncio_id];
+  const conjuntos = Array.isArray(ids.conjuntos) && ids.conjuntos.length ? ids.conjuntos : [registro?.conjunto_id];
+  const orden = activar ? [...anuncios, ...conjuntos, campanaId] : [campanaId];
   for (const id of orden.filter(Boolean)) {
     await graph(env, token, `/${id}`, { metodo: "POST", params: { status } });
   }

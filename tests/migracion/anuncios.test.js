@@ -90,9 +90,21 @@ async function meta(entrada, init = {}) {
     campanasMeta["900"] = { id: "900", name: cuerpo.name, status: cuerpo.status, effective_status: cuerpo.status, objective: cuerpo.objective, account_id: "111" };
     return respuesta({ id: "900" });
   }
-  if (ruta === "/act_111/adsets" && metodo === "POST") return respuesta({ id: "901" });
-  if (ruta === "/act_111/adcreatives" && metodo === "POST") return respuesta({ id: "902" });
-  if (ruta === "/act_111/ads" && metodo === "POST") return respuesta({ id: "903" });
+  // El primero de cada tipo con su id de siempre; los siguientes, «901-2», «901-3»… (varios conjuntos y anuncios).
+  const nuevoId = (base) => {
+    contadores[base] = (contadores[base] ?? 0) + 1;
+    return contadores[base] === 1 ? base : `${base}${contadores[base]}`;
+  };
+  if (ruta === "/act_111/adsets" && metodo === "POST") return respuesta({ id: nuevoId("901") });
+  if (ruta === "/act_111/adcreatives" && metodo === "POST") return respuesta({ id: nuevoId("902") });
+  if (ruta === "/act_111/ads" && metodo === "POST") return respuesta({ id: nuevoId("903") });
+  if (ruta === "/act_111/customaudiences" && metodo === "GET") {
+    return respuesta({ data: [{ id: "6100", name: "Clientes", subtype: "CUSTOM", approximate_count_lower_bound: 1200 }, { id: "6200", name: "Similar 1 %", subtype: "LOOKALIKE" }] });
+  }
+  if (ruta === "/act_111/customaudiences" && metodo === "POST") return respuesta({ id: "6300" });
+  if (ruta === "/search" && u.searchParams.get("type") === "adinterest") {
+    return respuesta({ data: [{ id: "6003139266461", name: "Muebles", audience_size_upper_bound: 90000000, path: ["Intereses", "Hogar", "Muebles"] }] });
+  }
   if (ruta === "/act_111/adimages" && metodo === "POST") return respuesta({ images: { "foto.png": { hash: "HASH123", url: "https://scontent.fbcdn.net/x.png" } } });
   if (ruta === "/act_111/advideos" && metodo === "POST") return respuesta({ id: "7001" });
   if (ruta === "/act_111/adspixels") return respuesta({ data: [{ id: "555", name: "Píxel web" }] });
@@ -149,15 +161,21 @@ async function conCuenta() {
   llamadas.length = 0;
 }
 
+// La forma DE ANTES (un presupuesto, un público, un anuncio): sigue valiendo. La de varios, más abajo.
+const { conjuntos: _c, anuncios: _a, ...vacio } = borradorVacio("2026-10-01");
 const borrador = (cambios = {}) => ({
-  ...borradorVacio("2026-10-01"),
+  ...vacio,
+  publico: { paises: ["PA"], ciudades: [], edadMin: 18, edadMax: 65, sexo: "todos" },
   nombre: "Octubre · Tráfico",
   presupuesto: { tipo: "diario", monto: "10" },
   anuncio: { medio: { clave: "clientes/c1/estudio/foto.png", tipo: "imagen", hash: "HASH123" }, texto: "Ven a probar", titulo: "2x1", enlace: "https://cafe.pa", boton: "LEARN_MORE" },
   ...cambios,
 });
 
+let contadores = {};
+
 beforeEach(async () => {
+  contadores = {};
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-10-01T15:00:00.000Z"));
   db = d1EnMemoria();
@@ -488,5 +506,63 @@ describe("«Conceder permisos de anuncios»", () => {
 
   it("es del administrador", async () => {
     expect((await conectar(EDITOR, "?para=anuncios")).status).toBe(403);
+  });
+});
+
+describe("una campaña con varios públicos y anuncios, a WhatsApp", () => {
+  const img = { clave: "clientes/c1/estudio/foto.png", tipo: "imagen", hash: "HASH123" };
+  const publico = { paises: ["PA"], ciudades: [], edadMin: 18, edadMax: 65, sexo: "todos", intereses: [], similares: [] };
+  const campana = () => ({
+    ...borradorVacio("2026-10-01"),
+    nombre: "Sofá · Ventas", objetivo: "OUTCOME_SALES", destino: "whatsapp",
+    conjuntos: [
+      { nombre: "Intereses", tipo: "intereses", presupuesto: { tipo: "diario", monto: "5" }, publico: { ...publico, intereses: [{ id: "6003139266461", nombre: "Muebles" }] } },
+      { nombre: "Advantage+", tipo: "advantage", presupuesto: { tipo: "diario", monto: "5" }, publico },
+    ],
+    anuncios: [
+      { nombre: "Foto", formato: "unico", medio: img, texto: "Tu sofá nuevo", titulo: "Desde $400", tarjetas: [] },
+      { nombre: "Carrusel", formato: "carrusel", texto: "Escoge", tarjetas: [{ medio: img, titulo: "Gris" }, { medio: img, titulo: "Azul" }] },
+    ],
+  });
+
+  it("crea 2 conjuntos, 2 creativos y 4 anuncios, todo en pausa, y guarda todos los ids", async () => {
+    await conCuenta();
+    const res = await pedir(EDITOR, "/clientes/c1/campanas", { method: "POST", body: { borrador: campana() } });
+    expect(res.status).toBe(201);
+    const posts = llamadas.filter((l) => l.metodo === "POST");
+    expect(posts.map((l) => l.ruta)).toEqual([
+      "/act_111/campaigns", "/act_111/adsets", "/act_111/adsets", "/act_111/adcreatives", "/act_111/adcreatives",
+      "/act_111/ads", "/act_111/ads", "/act_111/ads", "/act_111/ads",
+    ]);
+    for (const l of posts.filter((x) => x.ruta !== "/act_111/adcreatives")) expect(l.cuerpo.status).toBe("PAUSED");
+    expect(posts[1].cuerpo).toMatchObject({ optimization_goal: "CONVERSATIONS", destination_type: "WHATSAPP", promoted_object: '{"page_id":"PAGINA1"}' });
+    expect(JSON.parse(posts[2].cuerpo.targeting).targeting_automation).toEqual({ advantage_audience: 1 });
+    expect(posts.slice(5).map((l) => [l.cuerpo.adset_id, JSON.parse(l.cuerpo.creative).creative_id, l.cuerpo.name])).toEqual([
+      ["901", "902", "Sofá · Ventas · Intereses · Foto"], ["901", "9022", "Sofá · Ventas · Intereses · Carrusel"],
+      ["9012", "902", "Sofá · Ventas · Advantage+ · Foto"], ["9012", "9022", "Sofá · Ventas · Advantage+ · Carrusel"],
+    ]);
+    const fila = db.sqlite.prepare("select ids, presupuesto from campanas_anuncios").get();
+    expect(JSON.parse(fila.ids)).toEqual({ conjuntos: ["901", "9012"], creativos: ["902", "9022"], anuncios: ["903", "9032", "9033", "9034"] });
+    expect(JSON.parse(fila.presupuesto)).toMatchObject({ tipo: "diario", monto: 10, diario: 10 });
+
+    // Activar enciende los cuatro anuncios, los dos conjuntos y la campaña la última.
+    llamadas.length = 0;
+    expect((await pedir(JEFE, "/clientes/c1/campanas/900/activar", { method: "POST", body: { confirmado: true } })).status).toBe(200);
+    expect(llamadas.filter((l) => l.metodo === "POST").map((l) => l.ruta)).toEqual(["/903", "/9032", "/9033", "/9034", "/901", "/9012", "/900"]);
+  });
+
+  it("intereses, públicos de la cuenta y un similar nuevo", async () => {
+    await conCuenta();
+    const i = await (await pedir(EDITOR, "/clientes/c1/intereses?q=muebles")).json();
+    expect(i).toEqual([{ id: "6003139266461", nombre: "Muebles", tamano: 90000000, ruta: "Intereses › Hogar › Muebles" }]);
+    expect(llamadas.at(-1).params).toMatchObject({ type: "adinterest", q: "muebles", locale: "es_LA" });
+    const p = await (await pedir(EDITOR, "/clientes/c1/publicos")).json();
+    expect(p.map((x) => [x.id, x.similar])).toEqual([["6100", false], ["6200", true]]);
+    const r = await pedir(EDITOR, "/clientes/c1/similares", { method: "POST", body: { origenId: "6100", pais: "PA", porcentaje: 1 } });
+    expect(r.status).toBe(201);
+    const crear = llamadas.find((l) => l.metodo === "POST" && l.ruta === "/act_111/customaudiences");
+    expect(crear.cuerpo).toMatchObject({ subtype: "LOOKALIKE", origin_audience_id: "6100", lookalike_spec: '{"country":"PA","ratio":0.01}' });
+    // Un público que no es de la cuenta, no.
+    expect((await pedir(EDITOR, "/clientes/c1/similares", { method: "POST", body: { origenId: "999" } })).status).toBe(404);
   });
 });

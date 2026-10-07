@@ -12,6 +12,9 @@
 //   POST /clientes/:c/campanas/:id/pausar          Cualquiera que pueda escribir
 //   GET  /clientes/:c/ciudades?q=&pais=            Buscar ciudades para el público
 //   GET  /clientes/:c/pixeles                      Píxeles de la cuenta
+//   GET  /clientes/:c/intereses?q=                 Buscar intereses de Meta (conjuntos por intereses)
+//   GET  /clientes/:c/publicos                     Públicos de la cuenta (personalizados y similares)
+//   POST /clientes/:c/similares { origenId, pais, porcentaje }  Crear un público similar (no gasta)
 //   GET  /clientes/:c/medios                       Estudio + publicaciones del cliente
 //   POST /clientes/:c/medio { clave }              Subirlo a Meta (imagen: hash; video: id)
 //   GET  /clientes/:c/video/:id                    ¿Terminó Meta de procesar el video?
@@ -32,6 +35,7 @@ import {
   ErrorAnuncios, mensajeAnuncios, conexionMeta, cuentaPublica, sincronizarCuentasAnuncios, clienteYCuenta,
   listarCampanas, campanaDeLaCuenta, detalleCampana, estadisticasCuenta, buscarCiudades, pixelesDeLaCuenta,
   mediosDelCliente, prepararMedio, estadoVideo, crearCampana, apuntar, presupuestoDe, fechasDe, cambiarEstado,
+  buscarIntereses, publicosDeLaCuenta, crearSimilar,
 } from "../lib/anuncios.js";
 import { rangoInsights, RANGOS, deMenores, resumenPresupuesto, permisosAnunciosQueFaltan } from "../../src/lib/anuncios.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
@@ -231,6 +235,17 @@ async function atender(req, env, { acceso, usuario, partes, metodo }) {
   }
 
   if (sub === "pixeles" && metodo === "GET") return json(await pixelesDeLaCuenta(env, token, cuenta));
+
+  if (sub === "intereses" && metodo === "GET") return json(await buscarIntereses(env, token, url.searchParams.get("q")));
+
+  if (sub === "publicos" && metodo === "GET") return json(await publicosDeLaCuenta(env, token, cuenta));
+
+  if (sub === "similares" && metodo === "POST") {
+    const datos = (await cuerpo(req)) ?? {};
+    const publico = await crearSimilar(env, token, cuenta, { origenId: datos.origenId, pais: datos.pais, porcentaje: datos.porcentaje });
+    await apuntar(acceso, { clientId: cliente.id, campanaId: "", accion: "publico", usuario, detalle: { nombre: publico.nombre } });
+    return json(publico, 201);
+  }
 
   if (sub === "medio" && metodo === "POST") {
     const { clave } = (await cuerpo(req)) ?? {};

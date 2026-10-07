@@ -35,3 +35,6 @@ export const pixeles = (clientId) => pedir(deCliente(clientId, "/pixeles"));
 export const medios = (clientId) => pedir(deCliente(clientId, "/medios"));
 export const prepararMedio = (clientId, clave) => pedir(deCliente(clientId, "/medio"), post({ clave }));
 export const estadoVideo = (clientId, videoId) => pedir(deCliente(clientId, `/video/${encodeURIComponent(videoId)}`));
+export const buscarIntereses = (clientId, q) => pedir(deCliente(clientId, `/intereses?q=${encodeURIComponent(q)}`));
+export const publicos = (clientId) => pedir(deCliente(clientId, "/publicos"));
+export const crearSimilar = (clientId, { origenId, pais = "PA", porcentaje = 1 }) => pedir(deCliente(clientId, "/similares"), post({ origenId, pais, porcentaje }));

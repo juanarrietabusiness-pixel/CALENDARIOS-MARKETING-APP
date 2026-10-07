@@ -117,3 +117,19 @@
 .anu-activar { display: flex; flex-direction: column; gap: var(--sp-3); }
 .anu-activar-resumen { font-size: var(--fs-md); }
 .anu-activar-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); justify-content: flex-end; }
+
+/* El asistente con varios públicos y anuncios */
+.anu-selector { margin-bottom: var(--sp-3); }
+.anu-conjunto { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-3); background: var(--surface-2); border-radius: var(--radius); margin-bottom: var(--sp-2); }
+.anu-conjunto .field, .anu-conjunto .anu-fieldset { margin: 0; }
+.anu-monto { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.anu-monto .input { flex: 1 1 120px; min-width: 0; }
+.anu-similar-nuevo { margin-top: var(--sp-2); }
+.anu-revision-titulo { font-size: var(--fs-sm); margin: var(--sp-3) 0 var(--sp-1); }
+.anu-revision-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-xs); }
+.anu-revision-anuncios { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
+.anu-revision-anuncios li { display: flex; gap: var(--sp-2); align-items: flex-start; padding: var(--sp-2); background: var(--surface-2); border-radius: var(--radius-sm); min-width: 0; }
+.anu-revision-anuncios img, .anu-revision-anuncios .anu-medio-video { width: 56px; height: 70px; object-fit: cover; border-radius: var(--radius-sm); flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--surface-3); }
+.anu-revision-anuncios div { display: flex; flex-direction: column; min-width: 0; font-size: var(--fs-xs); }
+.anu-revision-anuncios p { margin: var(--sp-1) 0 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.anu-chips .filter-chip { display: inline-flex; align-items: center; gap: var(--sp-1); }
