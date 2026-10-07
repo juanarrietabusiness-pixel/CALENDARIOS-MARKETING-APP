@@ -210,6 +210,26 @@ function EditorConjunto({ c, i, especial, cuenta, ids, clientId, ponerC, publico
   const id = `${ids}-c${i}`;
   const [origen, setOrigen] = useState("");
   const [creando, setCreando] = useState(false);
+  const [resolviendo, setResolviendo] = useState(false);
+  const sugeridos = Array.isArray(c.sugeridos) ? c.sugeridos : [];
+
+  /** Los intereses que propuso el estratega (palabras) se buscan en Meta: se queda el primero que encuentre de cada uno. */
+  const resolver = async (palabras) => {
+    setResolviendo(true);
+    setFallo("");
+    const intereses = [...pub.intereses];
+    const sinEncontrar = [];
+    for (const w of palabras) {
+      try {
+        const x = (await api.buscarIntereses(clientId, w))[0];
+        if (x && !intereses.some((y) => y.id === x.id)) intereses.push({ id: x.id, nombre: x.nombre });
+        if (!x) sinEncontrar.push(w);
+      } catch (e) { setFallo(e.message); sinEncontrar.push(w); break; }
+    }
+    ponerC({ publico: { ...pub, intereses }, sugeridos: sugeridos.filter((w) => !palabras.includes(w) || sinEncontrar.includes(w)) });
+    if (sinEncontrar.length) setFallo(`Meta no tiene estos intereses: ${sinEncontrar.join(", ")}. Busca otros parecidos.`);
+    setResolviendo(false);
+  };
   const [fallo, setFallo] = useState("");
   const monto = Number(c.presupuesto.monto) || 0;
 
@@ -265,6 +285,18 @@ function EditorConjunto({ c, i, especial, cuenta, ids, clientId, ponerC, publico
             buscar={(q) => api.buscarIntereses(clientId, q)} yaEsta={(x) => pub.intereses.some((y) => y.id === x.id)}
             pintar={(x) => `${x.nombre}${millones(x.tamano)}${x.ruta ? ` · ${x.ruta}` : ""}`}
             onElegir={(x) => ponerPub({ intereses: [...pub.intereses, { id: x.id, nombre: x.nombre }] })} />
+          {sugeridos.length > 0 && (
+            <div className="anu-sugeridos">
+              <span className="hint">Sugeridos por el estratega:</span>
+              <div className="anu-chips" role="group" aria-label="Intereses sugeridos">
+                {sugeridos.map((w) => (
+                  <button key={w} type="button" className="filter-chip" disabled={resolviendo} onClick={() => resolver([w])}><Icon name="plus" size={12} /> {w}</button>
+                ))}
+                <button type="button" className="btn btn-secondary btn-sm" disabled={resolviendo} onClick={() => resolver(sugeridos)}>{resolviendo ? "Buscando en Meta…" : "Buscar todos en Meta"}</button>
+              </div>
+              {fallo && <p className="hint" role="alert">{fallo}</p>}
+            </div>
+          )}
           {pub.intereses.length > 0 && (
             <div className="anu-chips" role="group" aria-label="Intereses escogidos">
               {pub.intereses.map((x) => (
@@ -461,6 +493,7 @@ function EditorAnuncio({ a, i, ids, whatsapp, lista, subir, subiendo, ponerA }) 
         </div>
       </div>
 
+      {a.pieza && <p className="hint"><Icon name="image" size={12} /> Pieza sugerida por el estratega: {a.pieza}</p>}
       {a.formato === "carrusel" ? (
         <fieldset className="anu-fieldset">
           <legend className="label">Tarjetas del carrusel</legend>

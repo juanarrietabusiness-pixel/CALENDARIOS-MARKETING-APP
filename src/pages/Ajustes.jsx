@@ -9,6 +9,7 @@ import SeccionTikTok from "../components/SeccionTikTok";
 import SeccionYouTube from "../components/SeccionYouTube";
 import SeccionClaude from "../components/SeccionClaude";
 import SeccionPlantillas from "../components/SeccionPlantillas";
+import SeccionManualCampanas from "../components/SeccionManualCampanas";
 import LimpiezaTerminadas from "../components/LimpiezaTerminadas";
 import { TaskTemplatesManager } from "../components/TaskPanel";
 
@@ -28,6 +29,7 @@ const INDICE = [
   ["integraciones", "Integraciones"],
   ["claude", "Claude"],
   ["plantillas", "Plantillas de plan"],
+  ["manual-campanas", "Manual de campañas"],
   ["tareas", "Tareas"],
   ["copia", "Copia de seguridad"],
 ];
@@ -78,6 +80,7 @@ export default function Ajustes({ yo, clients = [], pulso = 0, onVolver, onExpor
         </SeccionDrive>
         <SeccionClaude pulso={pulso} />
         <SeccionPlantillas pulso={pulso} />
+        <SeccionManualCampanas pulso={pulso} />
 
         <section id="tareas" className="ajustes-seccion" aria-labelledby="ajustes-tareas">
           <h2 className="ajustes-titulo" id="ajustes-tareas">

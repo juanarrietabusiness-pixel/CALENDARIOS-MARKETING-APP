@@ -97,6 +97,8 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "cuentas_anuncios",
   "campanas_anuncios",
   "historial_anuncios",
+  // Los planes del estratega de campañas (worker/lib/estratega.js); el de alguien que no es cliente, sin cliente.
+  "planes_campana",
   // Del equipo. Tienen dueño como las demás: la lista de miembros de un
   // espacio es un dato del espacio, y pedirla sin acotar devolvería la
   // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué
@@ -133,6 +135,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "bandeja_clientes", "bandeja_comentarios", "bandeja_hilos", "bandeja_mensajes",
   "biblioteca_filtros",
   "cuentas_anuncios", "campanas_anuncios", "historial_anuncios",
+  "planes_campana",
 ]);
 
 /** Las que cuelgan de un calendario sin llevar el cliente: se acotan por el calendario. */

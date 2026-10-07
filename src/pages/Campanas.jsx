@@ -11,6 +11,7 @@ import { numeroCorto } from "../lib/resultados";
 
 const AsistenteCampana = lazy(() => import("../components/anuncios/AsistenteCampana"));
 const DialogoActivar = lazy(() => import("../components/anuncios/DialogoActivar"));
+const Estratega = lazy(() => import("../components/anuncios/Estratega"));
 
 // ============================================================
 // /campanas — los anuncios de Meta de cada cliente
@@ -20,6 +21,8 @@ const DialogoActivar = lazy(() => import("../components/anuncios/DialogoActivar"
 // objetivo, presupuesto, gasto y resultados, y cada una se abre para ver
 // sus conjuntos y anuncios. «Nueva campaña» crea TODO en pausa; activar es
 // del administrador, con un diálogo que enseña lo que se va a gastar.
+// «Estratega» arma el plan (también para alguien de fuera) y lo lleva a
+// «Nueva campaña» con todo puesto.
 //
 // Nada habla con Meta desde aquí: todo pasa por /api/anuncios.
 // ============================================================
@@ -173,7 +176,7 @@ function Campana({ c, clientId, rango, moneda, esAdmin, soloLectura, onPausar, o
 
 const ACCIONES = { crear: "creó", activar: "activó", pausar: "pausó" };
 
-export default function Campanas({ clients = [], pulso = 0, yo = {} }) {
+export default function Campanas({ clients = [], pulso = 0, yo = {}, onClienteNuevo = null }) {
   const ids = useId();
   const esAdmin = yo?.rol === "admin";
   const soloLectura = Boolean(yo?.soloLectura);
@@ -188,7 +191,8 @@ export default function Campanas({ clients = [], pulso = 0, yo = {} }) {
   const [historial, setHistorial] = useState([]);
   const [aviso, setAviso] = useState("");
   const [fallo, setFallo] = useState("");
-  const [asistente, setAsistente] = useState(false);
+  const [asistente, setAsistente] = useState(false); // false | true | { inicial } (el borrador del estratega)
+  const [estratega, setEstratega] = useState(false);
   const [confirmar, setConfirmar] = useState(null);
   const [sincronizando, setSincronizando] = useState(false);
 
@@ -301,6 +305,11 @@ export default function Campanas({ clients = [], pulso = 0, yo = {} }) {
               </button>
             )}
             {!soloLectura && (
+              <button type="button" className="btn btn-secondary" onClick={() => setEstratega(true)}>
+                <Icon name="sparkles" size={16} /> Estratega
+              </button>
+            )}
+            {!soloLectura && (
               <button type="button" className="btn btn-primary" onClick={() => setAsistente(true)} disabled={!listo}>
                 <Icon name="plus" size={16} /> Nueva campaña
               </button>
@@ -405,9 +414,16 @@ export default function Campanas({ clients = [], pulso = 0, yo = {} }) {
           <AsistenteCampana
             clientId={clienteId}
             cuenta={cuenta}
+            inicial={asistente?.inicial ?? null}
             onClose={() => setAsistente(false)}
             onCreada={(r) => { setAsistente(false); setAviso(`«${r.nombre}» se creó en pausa. No gasta nada hasta que el administrador la active.`); void cargar(); }}
           />
+        )}
+        {estratega && (
+          <Estratega clients={clients} clienteId={clienteId} cuentaLista={listo} moneda={moneda} zona={cuenta?.zona || "America/Panama"}
+            onClienteNuevo={onClienteNuevo}
+            onCrear={(borrador) => { setEstratega(false); setAsistente({ inicial: borrador }); }}
+            onCerrar={() => setEstratega(false)} />
         )}
         {confirmar && <DialogoActivar confirmar={confirmar} onConfirmar={activar} onClose={() => setConfirmar(null)} />}
       </Suspense>

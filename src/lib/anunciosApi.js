@@ -38,3 +38,11 @@ export const estadoVideo = (clientId, videoId) => pedir(deCliente(clientId, `/vi
 export const buscarIntereses = (clientId, q) => pedir(deCliente(clientId, `/intereses?q=${encodeURIComponent(q)}`));
 export const publicos = (clientId) => pedir(deCliente(clientId, "/publicos"));
 export const crearSimilar = (clientId, { origenId, pais = "PA", porcentaje = 1 }) => pedir(deCliente(clientId, "/similares"), post({ origenId, pais, porcentaje }));
+
+// El estratega de campañas (no toca Meta: no hace falta cuenta publicitaria).
+export const leerManual = () => pedir("/anuncios/manual");
+export const guardarManual = (manual) => pedir("/anuncios/manual", { method: "PUT", body: JSON.stringify(manual) });
+export const armarPlan = (datos) => pedir("/anuncios/estratega", post(datos));
+export const planes = (clienteId = "") => pedir(`/anuncios/planes${clienteId ? `?cliente=${encodeURIComponent(clienteId)}` : ""}`);
+export const guardarPlan = (datos) => pedir("/anuncios/planes", post(datos));
+export const borrarPlan = (id) => pedir(`/anuncios/planes/${encodeURIComponent(id)}`, { method: "DELETE" });

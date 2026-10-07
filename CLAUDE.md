@@ -203,6 +203,9 @@ src/
     anuncios.js           Meta Ads: objetivos ODAX, dinero en unidades menores, validar el asistente,
                           el cuerpo de cada llamada (TODO en PAUSED), resultados por objetivo (puro;
                           también lo importa el Worker)
+    estratega.js          El estratega de campañas: las cuentas (costo máximo por resultado, tres escenarios), el
+                          manual de la agencia, la nomenclatura, el pedido a la IA, leer el plan, pasarlo a «Nueva
+                          campaña» y a texto (puro; también lo importa el Worker)
     anunciosApi.js        Cliente de /api/anuncios
   components/
     Icon.jsx              Set de iconos SVG monocromos (rejilla 24, trazo 1.75)
@@ -274,6 +277,9 @@ src/
     CalendarView.jsx      Vista de lista y de rejilla, filtros, generación, envío
     anuncios/AsistenteCampana.jsx  «Nueva campaña»: objetivo y destino (web o WhatsApp), públicos (1–3), anuncios (1–6, carrusel), revisar
     anuncios/DialogoActivar.jsx    Activar: el presupuesto y las fechas, y escribir ACTIVAR
+    anuncios/Estratega.jsx         El estratega: para un cliente o alguien de fuera, el plan, ajustarlo, guardarlo y llevarlo
+                          a «Nueva campaña» (lazy)
+    SeccionManualCampanas.jsx      Ajustes → Manual de campañas de la agencia
   pages/
     Login.jsx             Acceso
     Equipo.jsx            Quién entra en el espacio; invitar y sacar
@@ -387,7 +393,7 @@ worker/
                           (/api/webhooks/meta, sin sesión)
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
     plantillas.js         /api/plantillas-plan: listar, guardar (cambiar una de arranque o crear) y borrar/restaurar
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -2317,6 +2323,26 @@ son del servidor.
   contesta como la documentación. Lo primero con una cuenta real es una
   campaña de Tráfico de 1 $ al día, mirada en el Administrador de anuncios
   antes de activarla; luego una de Ventas a WhatsApp con dos públicos.
+
+- **El estratega de campañas** (`src/lib/estratega.js`, `worker/lib/estratega.js`, `/api/anuncios/estratega`,
+  `anuncios/Estratega.jsx`). Lo que hacía el bot de Felipe, con lo que la aplicación ya sabe: el cerebro del cliente
+  CON lo interno (`para: "chat"`: los márgenes sirven para las cuentas y esto sólo lo ve la agencia), el catálogo, el
+  estudio de mercado (los 7 elementos del producto, si están) y las campañas ya creadas. Para un producto que no está
+  en el catálogo o alguien que no es cliente, con lo que se escriba, y saca las 7 maletas (los 7 elementos del estudio).
+  · **Las CUENTAS las hace el código, no la IA** (`economia`, `escenarios`): con precio, margen y cuántos de cada 100
+  compran sale el costo máximo por resultado (punto de equilibrio) y el que deja ganar (la mitad); la IA sólo estima
+  cuánto cuesta un resultado en ese rubro (conservador, esperado, optimista). Un número del plan no contradice a otro.
+  · **El manual de la agencia va DELANTE de todo** en el pedido (`ajustes_espacio.manual_campanas`, 0039): reglas,
+  nomenclatura (`{cliente} · {objetivo} · …`, la rellena `nombreConPlantilla` y quita lo vacío con su separador) y
+  la tasa de cierre por defecto. Lo cambian admin y editores sin clientes asignados; un colaborador no arma planes de
+  fuera.
+  · **Del plan a «Nueva campaña»:** `planABorrador` da la forma de varios conjuntos y anuncios SIN medios; los
+  intereses llegan como palabras (`sugeridos`) y se buscan en Meta desde el asistente («Buscar todos en Meta»: el
+  primero que encuentre de cada uno; los que no existen, se dicen). La pieza sugerida se ve en cada anuncio.
+  · **«Pegar el plan de otro bot»** lo pasa a esta forma conservando sus decisiones. Los planes se guardan en
+  `planes_campana` (0039; `client_id` vacío para alguien de fuera, como las auditorías).
+  · No toca Meta: no hace falta cuenta publicitaria para planear. Lo de fuera se puede «Guardar como cliente» (con su
+  producto en el catálogo) o copiar como texto.
 
 ## Documentos relacionados
 
