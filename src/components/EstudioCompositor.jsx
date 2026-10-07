@@ -52,7 +52,7 @@ function Ranura({ titulo, ayuda, archivos, max, rol, subiendo, onQuitar, onSubir
  * (producto, anuncio, corporativo, creativo) y el logo de referencia. Lo
  * que se manda al motor es el preset + la escena: se ve antes de pedir.
  */
-function EstiloDeMarca({ ids, preset, onPreset, kitListo, textoPreset, conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo }) {
+function EstiloDeMarca({ ids, preset, onPreset, kitListo, textoPreset, conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo, productos = [], onProducto }) {
   return (
     <div className="field est-estilo">
       <span className="label" id={`${ids}-estilo`}>Estilo de la marca</span>
@@ -80,6 +80,16 @@ function EstiloDeMarca({ ids, preset, onPreset, kitListo, textoPreset, conLogo, 
             ))}
           </select>
           <p className="hint">Escribe la idea con el gancho y el precio exactos del catálogo; la escena la ajustas tú.</p>
+        </div>
+      )}
+      {!esVideo && productos.length > 0 && onProducto && (
+        <div className="field">
+          <label className="label" htmlFor={`${ids}-producto`}>Fotos de un producto</label>
+          <select id={`${ids}-producto`} className="input" defaultValue="" onChange={(e) => { if (e.target.value) onProducto(e.target.value); e.target.value = ""; }}>
+            <option value="">Poner de referencia las fotos de…</option>
+            {productos.map((p) => <option key={p.id} value={p.id}>{p.nombre} ({p.fotos.length} {p.fotos.length === 1 ? "foto" : "fotos"})</option>)}
+          </select>
+          <p className="hint">Las del catálogo: así sale el producto real y no uno parecido.</p>
         </div>
       )}
       {preset && puedeLogo && (

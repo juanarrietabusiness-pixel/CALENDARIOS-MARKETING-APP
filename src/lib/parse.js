@@ -25,16 +25,19 @@ export function parseAIResponse(rawText) {
     const nextBlock = rest.indexOf("<<<PUBLICACION_ID:");
     if (nextBlock !== -1) rest = rest.slice(0, nextBlock);
 
-    const guionMatch = rest.match(/GUION:\s*([\s\S]*?)(?=DESCRIPCION:|HASHTAGS_FINALES:|<<<|$)/i);
-    const descMatch = rest.match(/DESCRIPCION:\s*([\s\S]*?)(?=GUION:|HASHTAGS_FINALES:|<<<|$)/i);
-    const hashMatch = rest.match(/HASHTAGS_FINALES:\s*([\s\S]*?)(?=GUION:|DESCRIPCION:|<<<|$)/i);
+    const guionMatch = rest.match(/GUION:\s*([\s\S]*?)(?=DESCRIPCION:|HASHTAGS_FINALES:|TEXTO_PIEZA:|<<<|$)/i);
+    const descMatch = rest.match(/DESCRIPCION:\s*([\s\S]*?)(?=GUION:|HASHTAGS_FINALES:|TEXTO_PIEZA:|<<<|$)/i);
+    const hashMatch = rest.match(/HASHTAGS_FINALES:\s*([\s\S]*?)(?=GUION:|DESCRIPCION:|TEXTO_PIEZA:|<<<|$)/i);
+    // Las frases que van ENCIMA del diseño (titular y frase de apoyo).
+    const piezaMatch = rest.match(/TEXTO_PIEZA:\s*([\s\S]*?)(?=GUION:|DESCRIPCION:|HASHTAGS_FINALES:|<<<|$)/i);
 
     const guion = guionMatch ? guionMatch[1].trim() : "";
     const descripcion = descMatch ? descMatch[1].trim() : "";
     const hashtagsFinales = hashMatch ? hashMatch[1].trim() : "";
+    const textoPieza = piezaMatch ? piezaMatch[1].trim().replace(/^\(?vac[ií]o\)?\.?$/i, "") : "";
 
-    if (guion || descripcion || hashtagsFinales) {
-      results[id] = { guion, descripcion, hashtagsFinales };
+    if (guion || descripcion || hashtagsFinales || textoPieza) {
+      results[id] = { guion, descripcion, hashtagsFinales, ...(textoPieza ? { textoPieza } : {}) };
     }
   }
   return results;

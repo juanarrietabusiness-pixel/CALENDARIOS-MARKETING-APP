@@ -167,15 +167,33 @@ export function proporcionParaFormato(formato, tipo = "imagen") {
   return tipo === "video" ? "9:16" : "4:5";
 }
 
+/** «Titular\nApoyo\n$45» → «"Titular" / "Apoyo" / "$45"»: las líneas del texto de la pieza, entre comillas. Pura. */
+export function textoDeLaPieza(texto) {
+  return String(texto ?? "").split(/\n+/).map((l) => l.replace(/["“”«»]/g, "").trim()).filter(Boolean).slice(0, 4).map((l) => `"${l.slice(0, 80)}"`).join(" / ");
+}
+
+/** Las fotos del catálogo de un producto (`productos` de GET /api/estudio) como archivos de apoyo. [] si no tiene. Pura. */
+export function fotosDelProducto(productos = [], productoId = "") {
+  const p = productoId ? (productos ?? []).find((x) => x.id === productoId) : null;
+  return (p?.fotos ?? []).map((clave) => ({ id: `ext:${clave}`, src: `/api/media/${clave}`, clave, prompt: p.nombre }));
+}
+
 /** El texto con que arranca el compositor desde una publicación: su idea y, si hay, lo que dice. */
-export function promptDePublicacion(post = {}) {
+export function promptDePublicacion(post = {}, { conTexto = true } = {}) {
   const idea = String(post.idea ?? "").trim();
   const titulo = String(post.title ?? "").trim();
   const texto = String(post.descripcion ?? post.script ?? "").trim();
   // El producto de la publicación (tipo de contenido), si la idea no lo nombra.
   const producto = String(post.producto ?? "").trim();
   const conProducto = producto && !idea.toLowerCase().includes(producto.toLowerCase()) ? `Producto: ${producto}.` : "";
-  const partes = [[idea || titulo, conProducto].filter(Boolean).join(" "), idea && texto ? `Contexto de la publicación: ${texto.slice(0, 300)}` : ""].filter(Boolean);
+  // Lo que va escrito encima (`textoPieza`): EXACTO, para que el motor no lo reescriba. En un carrusel va por
+  // lámina, y en un video no (los modelos de video escriben mal: `conTexto: false`).
+  const pieza = !conTexto || post.format === "carrusel" ? "" : textoDeLaPieza(post.textoPieza);
+  const partes = [
+    [idea || titulo, conProducto].filter(Boolean).join(" "),
+    pieza ? `Texto en la imagen, exacto y legible: ${pieza}` : "",
+    idea && texto ? `Contexto de la publicación: ${texto.slice(0, 300)}` : "",
+  ].filter(Boolean);
   return partes.join("\n\n").slice(0, 1500);
 }
 

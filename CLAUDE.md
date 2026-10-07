@@ -151,6 +151,7 @@ src/
     lote.js               Editar muchas publicaciones de una vez (puro)
     exportarContenido.js  Texto de «Exportar ideas y descripciones» (puro)
     completitud.js        Cuánto le falta a una publicación; qué le falta a una SIN contenido para ir al cliente (puro)
+    produccion.js         «Producir el mes»: qué semanas y qué días, de lunes a domingo o por fecha (puro)
     revisionMes.js        «Revisar el mes»: reglas (precio fuera del catálogo, competencia, fecha delicada, voseo,
                           sin llamado a la acción, hashtags), arreglar el voseo, el pedido de la revisión con IA (puro)
     agenda.js             «Mi día»: hoy, atrasos, periodos de las recurrentes (puro;
@@ -1268,6 +1269,21 @@ son del servidor.
   piezas se PONEN con un botón, y todas de una vez con una función de cambio (poner una a una con `updatePost`
   partiría cada vez del calendario de antes). Lo de producir vive en su chunk: `lib/estudio.js` arrastra el
   catálogo entero de modelos y no puede entrar en `CalendarView`.
+- **El texto en la pieza y las fotos del producto** (`post.textoPieza`, `fotos` de cada producto del catálogo).
+  · **`textoPieza` es lo que va ESCRITO encima del diseño, no el caption.** La IA lo escribe con el estudio delante
+  (`REGLA_TEXTO_PIEZA` en api.js: titular, apoyo y el precio EXACTO del catálogo) junto con guiones y descripciones,
+  y tiene su botón en el panel; se escribe a mano igual. Sólo RELLENA, como lo demás. En un carrusel no existe (va
+  lámina por lámina en el guion) y a un VIDEO no se le pide (`promptDePublicacion(post, { conTexto: false })`: los
+  modelos de video escriben mal). Al motor va entre comillas y «exacto» (`textoDeLaPieza`). El cliente lo ve en su
+  enlace mientras no hay contenido (está en `CAMPOS_PUBLICOS`).
+  · **Las fotos de un producto son claves de R2 de ESE cliente** (`fotosDeProducto` las limpia; `guardarCatalogo`
+  descarta las de otro cliente: la clave la manda el navegador). Se suben a la galería del Estudio al escogerlas. GET
+  /api/estudio las devuelve en `productos` (sólo lo activo) y van de referencia, DELANTE del logo, en «Crear con IA»
+  desde una publicación con `productoId`, en «Producir el mes» y con «Fotos de un producto» del compositor. La IA del
+  catálogo no trae fotos nunca (`leerCatalogo`). Una foto mandada a la papelera rompe el pedido con «no existe»: no
+  hay `usado_en` para el catálogo.
+  · **«Producir el mes» va por semanas y días, de lunes a domingo** (`lib/produccion.js`): el tipo de contenido va
+  por día, así que todos los lunes salen juntos con el mismo estilo. Sólo cuenta lo que se ve con el filtro.
 - **Las plantillas de plan: las de arranque en el código, lo cambiado en D1, la del cliente en su ficha**
   (`src/lib/plantillasPlan.js`, `plantillas_plan` y `clients.plan_contenido`, 0037). Tres objetivos (Centrado en
   ventas, Ventas y seguidores, Marketing 360) × productos/servicios/marca personal. Por día, cada publicación lleva

@@ -249,6 +249,30 @@ Sólo descripción`;
     expect(r.def456.descripcion).toBe("Sólo descripción");
     expect(r.def456.guion).toBe("");
   });
+
+  it("lee el TEXTO_PIEZA y deja fuera el que llega «vacío»", () => {
+    const raw = `<<<PUBLICACION_ID:a1>>>
+DESCRIPCION:
+Caption
+TEXTO_PIEZA:
+Tu sofá como nuevo
+Secado en 4 horas
+Desde $45
+HASHTAGS_FINALES:
+#Panama
+
+<<<PUBLICACION_ID:b2>>>
+GUION:
+Lámina 1
+TEXTO_PIEZA:
+(vacío)`;
+    const r = parseAIResponse(raw);
+    expect(r.a1.textoPieza).toBe("Tu sofá como nuevo\nSecado en 4 horas\nDesde $45");
+    expect(r.a1.descripcion).toBe("Caption");
+    expect(r.a1.hashtagsFinales).toBe("#Panama");
+    expect(r.b2.guion).toBe("Lámina 1");
+    expect(r.b2).not.toHaveProperty("textoPieza");
+  });
 });
 
 // ============================================================

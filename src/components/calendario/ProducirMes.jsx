@@ -7,6 +7,7 @@ import { presetDePilar, nombreDePilar } from "../../lib/pilares";
 import { textoPreset, componerPedido, ponerLogo, limpiarKit } from "../../lib/kitMarca";
 import { modeloPorDefecto, validarPedido, ajustesDe, textoCosto, CONFIRMAR_DESDE } from "../../lib/estudioCatalogo";
 import * as api from "../../lib/estudio";
+import { DIAS_SEMANA, diaDeLaSemana, semanasDe, diasDe, filtrarProduccion, ordenarProduccion } from "../../lib/produccion";
 import "./RevisionMes.css";
 
 // ============================================================
@@ -22,6 +23,10 @@ import "./RevisionMes.css";
 // con un botón (o «Poner todas»). Todo queda además en la galería del
 // cliente, como lo creado en el Estudio. Los reels van desmarcados: un
 // video cuesta mucho más que una imagen y muchos se graban.
+//
+// Se escogen las SEMANAS y los DÍAS (lunes, martes…) a producir, y la
+// lista va de lunes a domingo: el tipo de contenido va por día, así que
+// todos los lunes salen juntos con el mismo estilo (lib/produccion.js).
 // ============================================================
 
 const TERMINADO = new Set(["hecho", "fallido", "cancelado"]);
@@ -41,6 +46,9 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
   const [puestas, setPuestas] = useState(new Set());
   const [paso, setPaso] = useState("elegir"); // elegir | confirmar | creando | listo
   const [aviso, setAviso] = useState(null);
+  const [semanas, setSemanas] = useState(() => new Set()); // vacío = todas
+  const [dias, setDias] = useState(() => new Set());
+  const [orden, setOrden] = useState("dia");
   const vivo = useRef(true);
   const creando = paso === "creando";
   // Mientras se piden y avanzan los trabajos, cerrar los dejaría a medias (el cron los termina igual, pero sin ponerlos).
@@ -50,7 +58,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
   useEffect(() => {
     vivo.current = true;
     Promise.all([api.leerEstudio(clienteId), api.leerMotores()])
-      .then(([g, m]) => setEstudio({ kit: limpiarKit(g.kit), motores: m.motores ?? {} }))
+      .then(([g, m]) => setEstudio({ kit: limpiarKit(g.kit), motores: m.motores ?? {}, productos: g.productos ?? [] }))
       .catch((e) => setAviso({ ok: false, texto: e.message }));
     return () => { vivo.current = false; };
   }, [clienteId]);
@@ -66,8 +74,11 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
         const tipo = tipoDe(post.format);
         const modelo = modeloPorDefecto(activos, tipo);
         const preset = textoPreset(estudio.kit, presetDePilar(post.pilar) || "producto", { marca: client.name, rubro: client.industry ?? "" });
-        const prompt = componerPedido({ idea: api.promptDePublicacion(post), preset, video: tipo === "video" }).slice(0, 4000);
-        const referencia = ponerLogo({ kit: estudio.kit, tipo, modelo, referencias: [] }) ? [estudio.kit.logo] : [];
+        const prompt = componerPedido({ idea: api.promptDePublicacion(post, { conTexto: tipo !== "video" }), preset, video: tipo === "video" }).slice(0, 4000);
+        // Las fotos del producto (catálogo) primero: que salga el producto real. Luego el logo, si cabe.
+        const fotos = tipo === "imagen" ? api.fotosDelProducto(estudio.productos, post.productoId).map((f) => f.clave) : [];
+        const conLogo = ponerLogo({ kit: estudio.kit, tipo, modelo, referencias: fotos });
+        const referencia = [...fotos, ...(conLogo ? [estudio.kit.logo] : [])].slice(0, modelo.referencias || 0);
         const medios = referencia.length ? { reference: referencia } : {};
         const ajustes = ajustesDe(modelo, { aspectRatio: proporcionDe(post.format, tipo) }, medios);
         const v = validarPedido({ modelo: modelo.id, prompt, n: 1, ajustes, medios });
@@ -79,7 +90,10 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
     if (estudio && marcadas === null) setMarcadas(new Set(candidatas.filter((c) => c.tipo === "imagen" && !c.error).map((c) => c.post.id)));
   }, [estudio, candidatas, marcadas]);
 
-  const elegidas = candidatas.filter((c) => marcadas?.has(c.post.id));
+  const alternar = (set, valor) => { const n = new Set(set); if (n.has(valor)) n.delete(valor); else n.add(valor); return n; };
+  const visibles = useMemo(() => ordenarProduccion(filtrarProduccion(candidatas, { semanas, dias }), orden), [candidatas, semanas, dias, orden]);
+  // Sólo cuenta lo que se ve: escoger «semana 2» no pide lo marcado de las otras.
+  const elegidas = visibles.filter((c) => marcadas?.has(c.post.id));
   const total = elegidas.reduce((s, c) => s + c.costo, 0);
   const soloPrueba = elegidas.some((c) => c.modelo.motor === "prueba");
 
@@ -155,12 +169,41 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
             <p className="notice notice-warn" style={{ display: "block" }}>Este cliente no tiene kit de marca: las piezas saldrán sin su paleta ni su estilo. Prepáralo en el Estudio primero.</p>
           )}
 
-          {paso !== "listo" && candidatas.length > 0 && (
+          {paso === "elegir" && candidatas.length > 0 && (
+            <div className="produccion-filtros">
+              <div className="produccion-filtro" role="group" aria-label="Semanas a producir">
+                <span className="hint">Semanas</span>
+                <button type="button" className="filter-chip" aria-pressed={!semanas.size} onClick={() => setSemanas(new Set())}>Todas</button>
+                {semanasDe(candidatas).map((n) => (
+                  <button key={n} type="button" className="filter-chip" aria-pressed={semanas.has(n)} onClick={() => setSemanas((x) => alternar(x, n))}>Semana {n}</button>
+                ))}
+              </div>
+              <div className="produccion-filtro" role="group" aria-label="Días a producir">
+                <span className="hint">Días</span>
+                <button type="button" className="filter-chip" aria-pressed={!dias.size} onClick={() => setDias(new Set())}>Todos</button>
+                {diasDe(candidatas).map((d) => (
+                  <button key={d.n} type="button" className="filter-chip" aria-pressed={dias.has(d.n)} onClick={() => setDias((x) => alternar(x, d.n))} aria-label={d.nombre}>{d.corto}</button>
+                ))}
+              </div>
+              <div className="produccion-filtro" role="group" aria-label="Orden">
+                <span className="hint">Orden</span>
+                <button type="button" className="filter-chip" aria-pressed={orden === "dia"} onClick={() => setOrden("dia")}>De lunes a domingo</button>
+                <button type="button" className="filter-chip" aria-pressed={orden === "fecha"} onClick={() => setOrden("fecha")}>Por fecha</button>
+              </div>
+            </div>
+          )}
+          {paso !== "listo" && candidatas.length > 0 && !visibles.length && <p className="hint">Nada sin contenido en esas semanas y días.</p>}
+
+          {paso !== "listo" && visibles.length > 0 && (
             <ul className="revision-lista">
-              {candidatas.map((c) => {
+              {visibles.map((c, i) => {
                 const t = trabajos.find((x) => x.postId === c.post.id);
+                // De lunes a domingo, un título por día de la semana.
+                const dia = orden === "dia" && (i === 0 || diaDeLaSemana(visibles[i - 1].date) !== diaDeLaSemana(c.date))
+                  ? DIAS_SEMANA.find((d) => d.n === diaDeLaSemana(c.date)) : null;
                 return (
                   <li key={c.post.id} className="revision-item">
+                    {dia && <h3 className="produccion-dia">{dia.nombre}</h3>}
                     <label className="revision-cabeza cerebro-casilla">
                       <input type="checkbox" disabled={creando || Boolean(c.error)} checked={Boolean(marcadas?.has(c.post.id))}
                         onChange={(e) => setMarcadas((s) => { const n = new Set(s); if (e.target.checked) n.add(c.post.id); else n.delete(c.post.id); return n; })} />

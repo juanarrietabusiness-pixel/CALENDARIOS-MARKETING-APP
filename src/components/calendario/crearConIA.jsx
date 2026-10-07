@@ -35,8 +35,8 @@ export default function CrearConIA({ client, post, tipo = "imagen", inicio = nul
     // Su tipo de contenido y su producto, para el guion de un video corto.
     post: Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, post[k] ?? ""])),
     prompt: inicio
-      ? `Anima esta imagen con un movimiento suave y natural: ${promptDePublicacion(post)}`.slice(0, 1500)
-      : promptDePublicacion(post),
+      ? `Anima esta imagen con un movimiento suave y natural: ${promptDePublicacion(post, { conTexto: false })}`.slice(0, 1500)
+      : promptDePublicacion(post, { conTexto: tipo !== "video" }),
   }));
 
   return (

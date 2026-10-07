@@ -95,6 +95,25 @@ describe("de una publicación al Estudio", () => {
     expect(promptDePublicacion({ idea: "x".repeat(3000) }).length).toBe(1500);
   });
 
+  it("el texto de la pieza va EXACTO, salvo en un carrusel o en un video", async () => {
+    const { promptDePublicacion, textoDeLaPieza } = await import("./estudio.js");
+    expect(textoDeLaPieza("Tu sofá «como nuevo»\n\nDesde $45\n")).toBe('"Tu sofá como nuevo" / "Desde $45"');
+    expect(textoDeLaPieza("")).toBe("");
+    const post = { idea: "Un sofá gris", textoPieza: "Como nuevo\nDesde $45" };
+    expect(promptDePublicacion(post)).toBe('Un sofá gris\n\nTexto en la imagen, exacto y legible: "Como nuevo" / "Desde $45"');
+    expect(promptDePublicacion({ ...post, format: "carrusel" })).toBe("Un sofá gris");
+    expect(promptDePublicacion(post, { conTexto: false })).toBe("Un sofá gris");
+  });
+
+  it("las fotos de un producto del catálogo, como archivos de apoyo", async () => {
+    const { fotosDelProducto } = await import("./estudio.js");
+    const productos = [{ id: "p-sofa", nombre: "Sofá", fotos: ["clientes/c1/a.jpg"] }];
+    expect(fotosDelProducto(productos, "p-sofa")).toEqual([{ id: "ext:clientes/c1/a.jpg", src: "/api/media/clientes/c1/a.jpg", clave: "clientes/c1/a.jpg", prompt: "Sofá" }]);
+    expect(fotosDelProducto(productos, "p-otro")).toEqual([]);
+    expect(fotosDelProducto(productos, "")).toEqual([]);
+    expect(fotosDelProducto(undefined, "p-sofa")).toEqual([]);
+  });
+
   it("reconoce un video de verdad y la proporción de unas medidas", async () => {
     const { esVideoReal, proporcionDeMedidas, medioDeArchivo } = await import("./estudio.js");
     expect(esVideoReal({ mime: "video/mp4" })).toBe(true);

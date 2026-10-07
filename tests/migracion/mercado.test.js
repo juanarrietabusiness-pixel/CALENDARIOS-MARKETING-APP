@@ -154,6 +154,16 @@ describe("el catálogo", () => {
     expect(d.inventario).toBe(false);
   });
 
+  it("las fotos del producto: sólo de este cliente, y el Estudio las recibe", async () => {
+    const fotos = ["clientes/c1/estudio/a.jpg", "clientes/otro/estudio/b.jpg", "clientes/c1/../otro/x.jpg", "https://x.com/y.jpg"];
+    const d = await (await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: [{ ...CATALOGO[0], fotos }] } })).json();
+    expect(d.catalogo[0].fotos).toEqual(["clientes/c1/estudio/a.jpg"]);
+    const g = await (await pedir("/api/estudio/c1")).json();
+    expect(g.productos).toEqual([{ id: d.catalogo[0].id, nombre: CATALOGO[0].nombre, fotos: ["clientes/c1/estudio/a.jpg"] }]);
+    // La nota de cifras no habla de fotos.
+    expect(notas().find((x) => x.ruta === "productos-y-servicios").texto).not.toContain("clientes/");
+  });
+
   it("proponer no guarda y no le enseña a la IA lo interno", async () => {
     anthropic(flujo('{"productos":[{"nombre":"Lavado de muebles","precio":"Desde $45"},{"nombre":"Impermeabilizado","tipo":"servicio"}]}'));
     const r = await pedir("/api/mercado/c1/catalogo/proponer", { method: "POST", body: {} });

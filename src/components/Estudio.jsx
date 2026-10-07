@@ -55,7 +55,7 @@ const nombreDeModelo = (id) => modeloPorId(id)?.nombre ?? (id ? id : "Aplicació
 const clavesDe = (medios) => Object.fromEntries(Object.entries(medios).map(([rol, lista]) => [rol, lista.map((a) => a.clave)]));
 
 /** El formulario con que arranca el compositor. */
-function formularioInicial(motores, inicial) {
+function formularioInicial(motores, inicial, productos = []) {
   const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
   const tipo = inicial?.tipo ?? "imagen";
   // Un modelo pedido de fuera (seguir un video de la competencia) se respeta aunque no tenga llave: la pantalla
@@ -64,7 +64,10 @@ function formularioInicial(motores, inicial) {
   const m = pedido?.tipo === tipo ? pedido : modeloPorDefecto(activos, tipo);
   const medios = MEDIOS_VACIOS();
   if (inicial?.inicio) medios.start = [inicial.inicio];
-  if (inicial?.referencias?.length) medios.reference = inicial.referencias.slice(0, m.referencias || 0);
+  // Desde una publicación de un producto con fotos en el catálogo, sus fotos van de referencia: sale el producto REAL.
+  const delProducto = tipo === "imagen" && !inicial?.inicio ? api.fotosDelProducto(productos, inicial?.post?.productoId) : [];
+  const referencias = inicial?.referencias?.length ? inicial.referencias : delProducto;
+  if (referencias.length) medios.reference = referencias.slice(0, m.referencias || 0);
   if (inicial?.video && m.video) medios.video = [inicial.video];
   return {
     tipo, modelo: m.id, prompt: inicial?.prompt ?? "", n: 1, medios,
@@ -139,8 +142,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
   // El formulario de partida, una vez que se sabe qué motores tienen llave.
   useEffect(() => {
-    if (motores && !form) setForm(formularioInicial(motores, inicial));
-  }, [motores, form, inicial]);
+    if (motores && datos && !form) setForm(formularioInicial(motores, inicial, datos.productos ?? []));
+  }, [motores, datos, form, inicial]);
 
   const modelo = form ? modeloPorId(form.modelo) : null;
   const motorActivo = (m) => Boolean(motores?.[m.motor]?.activo);
@@ -333,6 +336,17 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const quitarMedio = (rol, a) => {
     setConfirmando(null);
     setForm((f) => ({ ...f, medios: { ...f.medios, [rol]: f.medios[rol].filter((x) => x.id !== a.id) } }));
+  };
+
+  /** «Fotos de un producto»: las suyas van de referencia, delante de las que ya hubiera, hasta lo que admita el modelo. */
+  const ponerFotosDeProducto = (productoId) => {
+    setConfirmando(null);
+    setForm((f) => {
+      const m = modeloPorId(f.modelo);
+      const nuevas = api.fotosDelProducto(datos?.productos ?? [], productoId);
+      const resto = f.medios.reference.filter((x) => !nuevas.some((n) => n.id === x.id));
+      return { ...f, medios: { ...f.medios, reference: [...nuevas, ...resto].slice(0, m?.referencias || 0) } };
+    });
   };
 
   /** Dónde cabe un archivo en el modelo elegido: inicial, final, referencia o (un video) video de referencia. `null` si no cabe. */
@@ -597,6 +611,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             conLogo, onConLogo: setConLogo, puedeLogo,
             angulos: datos?.angulos ?? [],
             onAngulo: (a) => { setConfirmando(null); setForm((f) => ({ ...f, prompt: ideaDesdeAngulo(a) })); },
+            productos: modelo.referencias > 0 ? datos?.productos ?? [] : [],
+            onProducto: ponerFotosDeProducto,
           }}
           guionCorto={{
             segundos: segundosGuion, escribiendo: escribiendoGuion, resultado: guion,

@@ -78,6 +78,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
       properties: {
         ...pubParam,
         titulo: { type: "string" }, idea: { type: "string" }, descripcion: { type: "string" }, guion: { type: "string" },
+        texto_pieza: { type: "string", description: "Lo que va escrito encima del diseño (no el caption): titular, apoyo y precio, una línea cada uno." },
         hashtags: { type: "string" }, hora: { type: "string" }, formato: { type: "string", enum: FORMATOS },
         redes: { type: "array", items: { type: "string", enum: REDES } }, nota_interna: { type: "string" },
       },
@@ -222,11 +223,11 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       return `Creada: ${describir(post, fecha)} en el calendario de ${c.name}.`;
     },
 
-    async editar_publicacion({ publicacion_id: id, titulo, idea, descripcion, guion, hashtags, hora: h, formato, redes, nota_interna: nota }) {
+    async editar_publicacion({ publicacion_id: id, titulo, idea, descripcion, guion, texto_pieza: textoPieza, hashtags, hora: h, formato, redes, nota_interna: nota }) {
       const { cal, days, dia, indice, post } = await buscar(id);
       if (formato !== undefined && !FORMATOS.includes(formato)) throw new ErrorHerramienta(`Formato no válido: ${formato}.`);
       const cambios = Object.fromEntries(Object.entries({
-        title: titulo, idea, descripcion, guion, hashtagsFinales: hashtags, publishTime: hora(h), format: formato,
+        title: titulo, idea, descripcion, guion, textoPieza, hashtagsFinales: hashtags, publishTime: hora(h), format: formato,
         redes: Array.isArray(redes) ? redes.filter((r) => REDES.includes(r)) : undefined, comment: nota,
       }).filter(([, v]) => v !== undefined));
       if (!Object.keys(cambios).length) throw new ErrorHerramienta("No indicaste nada que cambiar.");

@@ -16,3 +16,7 @@
 .produccion-item { flex-direction: row; align-items: flex-start; gap: var(--sp-3); }
 .produccion-item img, .produccion-item video { width: 96px; height: 120px; object-fit: cover; border-radius: var(--radius-sm); background: var(--surface-3); flex-shrink: 0; }
 .produccion-texto { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; align-items: flex-start; }
+.produccion-filtros { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.produccion-filtro { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); }
+.produccion-filtro > .hint { min-width: 64px; margin: 0; }
+.produccion-dia { margin: 0 0 var(--sp-1); font-size: var(--fs-xs); color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
