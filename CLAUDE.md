@@ -1575,6 +1575,17 @@ son del servidor.
   acopla a la derecha (`role="complementary"`, `useDialogA11y(…, {
   activo: false })`): sin foco atrapado ni fondo oscuro. Por debajo,
   diálogo como siempre.
+- **La aplicación vive en `calendario.juancitoads.com` Y en workers.dev.** El
+  subdominio es un dominio propio del Worker declarado en `wrangler.jsonc`
+  (`routes`, `custom_domain: true`): lo crea el despliegue, no el panel. Dos
+  trampas: con `routes` puesto, wrangler da `workers_dev` por `false` y APAGA
+  workers.dev en el siguiente despliegue —de él cuelgan el reenvío de fotos
+  a TikTok de la web en Netlify, las vueltas de OAuth registradas, el webhook
+  de la Bandeja y el conector de Claude—, así que `workers_dev: true` va
+  escrito y `tests/despliegue/plantillas.test.js` lo exige; y el token de
+  despliegue necesita *Zone → Workers Routes → Edit* sobre juancitoads.com, o
+  falla el despliegue ENTERO. El DNS de la zona está en Cloudflare con todo en
+  nube gris salvo este registro: la web sigue en Netlify.
 - **`connect-src 'self'` ya cubre el WebSocket.** En una página `https`,
   `'self'` casa con `wss:` del mismo host —lo dice la especificación de
   CSP—. Si alguien ve el socket caer y «lo arregla» metiendo un origen

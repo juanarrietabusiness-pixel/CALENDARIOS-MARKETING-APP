@@ -37,6 +37,17 @@ otro del que éste dependa: así no hay forma de saltárselo.
    | `Workers R2 Storage` | **Edit** |
    | `Account Settings` | **Read** |
 
+   Y una quinta de tipo **Zone** (no Account), para el dominio propio de la
+   parte 8:
+
+   | Permiso | Nivel |
+   |---|---|
+   | `Workers Routes` | **Edit** |
+
+   En **Zone Resources**: *Include* → *Specific zone* → `juancitoads.com`.
+   Sin esta fila, en cuanto `wrangler.jsonc` lleva `routes`, el despliegue
+   ENTERO falla (no sólo el dominio).
+
 7. En **Account Resources**: *Include* → tu cuenta.
 8. **Continue to summary** → **Create Token**.
 9. **Copia el token ahora.** Sólo se muestra una vez; si lo pierdes hay
@@ -474,18 +485,40 @@ Vuelve a **Settings** → **Secrets and variables** → **Actions** y borra:
 - `ADMIN_PASSWORD` — ya está aplicada. Dejarla guardada sólo añade un
   sitio más del que se puede filtrar.
 
-## Parte 8 · El dominio
+## Parte 8 · El dominio: calendario.juancitoads.com
 
-1. **Workers & Pages** → **calendarios** → **Settings** → **Domains &
-   Routes** → **Add** → **Custom domain**.
-2. Escribe el dominio. Si está en Cloudflare, el DNS se configura solo.
+La aplicación se abre en **`https://calendario.juancitoads.com`**. Está
+declarado en `wrangler.jsonc` (`routes`, con `custom_domain: true`), así que
+**no se añade a mano en el panel**: lo crea el despliegue, con su registro
+DNS (el único en nube naranja de la zona) y su certificado.
 
-Elige con calma: el dominio entra en la cookie de sesión, en la CSP y en
-los enlaces de aprobación que ya tienen tus clientes. Cambiarlo después
-cuesta.
+Hace falta, una vez:
 
-Cuando esté, añade `SITIO_URL` a los secretos de GitHub para que la
-comprobación diaria pueda mirar el sitio publicado.
+1. **El DNS de `juancitoads.com` en Cloudflare**, en la MISMA cuenta que el
+   Worker. Los registros de la web y el correo, en nube gris («Solo DNS»):
+   la web sigue en Netlify y no cambia.
+2. **El permiso del token**: la fila de *Zone → Workers Routes → Edit* de la
+   Parte 1. Si el token se creó antes, se edita (My Profile → API Tokens →
+   el token → *Edit*) y no hay que volver a pegarlo en GitHub.
+3. **Las vueltas de OAuth del dominio nuevo**, AÑADIDAS a las que ya hay
+   (las de workers.dev siguen en uso):
+   - Google Cloud → Credenciales → el cliente OAuth → URIs de redirección:
+     `https://calendario.juancitoads.com/api/drive/callback` y
+     `https://calendario.juancitoads.com/api/redes/youtube/callback`.
+   - Meta → Inicio de sesión con Facebook → URI de redireccionamiento de
+     OAuth válidos: `https://calendario.juancitoads.com/api/redes/meta/callback`;
+     y `juancitoads.com` en *Dominios de la app*.
+   - TikTok → Login Kit → Redirect URI:
+     `https://calendario.juancitoads.com/api/redes/tiktok/callback`.
+4. `SITIO_URL` = `https://calendario.juancitoads.com` en los secretos de
+   GitHub, para que la comprobación diaria mire el sitio publicado.
+
+**`calendarios.<cuenta>.workers.dev` NO se apaga** (`workers_dev: true`, y un
+test lo exige): de ella dependen el reenvío de fotos a TikTok de Netlify, las
+vueltas de OAuth ya registradas, el webhook de la Bandeja, el conector de
+Claude y los enlaces de aprobación que ya tienen los clientes. La sesión va
+por dirección (cookie `__Host-`): al entrar por el subdominio la primera vez,
+hay que volver a iniciar sesión.
 
 ---
 
