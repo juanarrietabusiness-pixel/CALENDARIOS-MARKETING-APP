@@ -70,7 +70,7 @@ Dos maneras de montarlo, y la elección tiene consecuencias que se pagan tarde:
 
 | | Subdominio por herramienta | **Rutas bajo un nombre** |
 |---|---|---|
-| Direcciones | `calendarios.juancitoads.com` | `juancitoads.com/calendarios` |
+| Direcciones | `calendario.juancitoads.com` | `juancitoads.com/calendarios` |
 | Cookie | Necesita `Domain=.juancitoads.com` | **`__Host-`**, atada a un origen |
 | CSP | Una por subdominio | Una sola |
 | CORS entre herramientas | Hace falta | No existe |

@@ -96,6 +96,27 @@
   // periódico —la foto diaria de métricas mira la hora dentro—: el plan
   // gratuito tiene pocos por cuenta.
   // ============================================================
+  // ============================================================
+  // Dónde se abre: calendario.juancitoads.com Y workers.dev.
+  //
+  // El subdominio es un «dominio propio» del Worker: el despliegue crea su
+  // registro DNS (el único en naranja de la zona) y su certificado. Necesita
+  // que el token de despliegue tenga Zona → Workers Routes → Edit sobre
+  // juancitoads.com (DEPLOY.md, Parte 1); sin ese permiso, el despliegue
+  // entero falla.
+  //
+  // `workers_dev: true` NO se puede quitar: con `routes` puesto y sin él,
+  // wrangler lo da por `false` y apaga calendarios.<cuenta>.workers.dev en el
+  // siguiente despliegue. De esa dirección dependen el reenvío de las fotos
+  // de TikTok (`_redirects` de la web en Netlify), las vueltas de OAuth ya
+  // registradas en Google, Meta y TikTok, el webhook de la Bandeja y el
+  // conector de Claude: todo dejaría de funcionar sin un solo error aquí.
+  // ============================================================
+  "routes": [
+    { "pattern": "calendario.juancitoads.com", "custom_domain": true }
+  ],
+  "workers_dev": true,
+
   "triggers": { "crons": ["* * * * *"] },
 
   "observability": { "enabled": true }

@@ -99,6 +99,24 @@ describe("wrangler.jsonc — qué se despliega", () => {
     expect(lista, fallos(lista)).toEqual([]);
   });
 
+  it("se abre en calendario.juancitoads.com SIN apagar workers.dev", () => {
+    const dominios = (W.routes ?? []).filter((r) => r.custom_domain).map((r) => r.pattern);
+    const lista = [];
+    if (!dominios.includes("calendario.juancitoads.com")) lista.push(fallo({
+      que: "calendario.juancitoads.com no está declarado como dominio del Worker",
+      donde: "wrangler.jsonc → routes",
+      porque: "Es la dirección de la aplicación. Si se pone a mano en el panel, no está en ningún commit (la trampa de ai-chat e image-gen).",
+      arreglo: 'Añade { "pattern": "calendario.juancitoads.com", "custom_domain": true } a routes.',
+    }));
+    if ((W.routes ?? []).length && W.workers_dev !== true) lista.push(fallo({
+      que: "hay routes y workers_dev no es true",
+      donde: "wrangler.jsonc → workers_dev",
+      porque: "Con routes, wrangler da workers_dev por false y apaga la dirección workers.dev al desplegar: se caen el reenvío de fotos a TikTok, las vueltas de OAuth registradas, el webhook de la Bandeja y el conector de Claude.",
+      arreglo: 'Pon "workers_dev": true.',
+    }));
+    expect(lista, fallos(lista)).toEqual([]);
+  });
+
   it("no lleva ningún secreto escrito", () => {
     // Las claves van con `wrangler secret put`. En wrangler.jsonc
     // quedarían versionadas, que es exactamente lo que no puede pasar.
