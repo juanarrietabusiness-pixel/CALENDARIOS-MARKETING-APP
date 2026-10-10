@@ -85,6 +85,9 @@ describe("subir contenido", () => {
     expect(resumenDestino(conSuHistoria, ["instagram", "facebook"]))
       .toBe("Sale en Instagram (post en el feed + historia) y Facebook (publicación + historia). No sale en TikTok.");
     expect(resumenDestino({ format: "reel", medios: [{ src: "/v.mp4", tipo: "video" }] }, ["tiktok"])).toMatch(/TikTok \(video\)/);
+    // Fotos en TikTok (elegido a mano): una foto o un carrusel de fotos.
+    expect(resumenDestino({ format: "carrusel", medios: [{ src: "/a.jpg" }, { src: "/b.jpg" }] }, ["tiktok"])).toMatch(/TikTok \(carrusel de fotos\)/);
+    expect(resumenDestino({ format: "post", medios: [{ src: "/a.jpg" }] }, ["tiktok"])).toMatch(/TikTok \(foto\)/);
     expect(resumenDestino(historia, [])).toMatch(/ninguna red/);
   });
 

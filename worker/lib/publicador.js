@@ -33,7 +33,7 @@ import { difundir } from "./vivo.js";
 import { uuid, ahora } from "./ids.js";
 import { ErrorMeta, graph, mensajeMeta, descifrarMeta, urlMedioPublico, urlGraphVideo } from "./meta.js";
 import {
-  ErrorPostPeer, mensajePostPeer, postpeerConfigurado, infoCreador, problemaConCreador, cuerpoPublicacion,
+  ErrorPostPeer, mensajePostPeer, postpeerConfigurado, infoCreador, problemaConCreador, cuerpoPublicacion, cuerpoFotos,
   crearPublicacion, consultarPublicacion, leerPublicacion, PRIVACIDAD_PUBLICA,
 } from "./postpeer.js";
 import {
@@ -43,7 +43,7 @@ import {
 import {
   REDES, revisarPublicacion, mediosDe, textoPara, primerComentario, destinoInstagram,
   esJPEG, piezasDe, publicacionDeVariante, momentoDeVariante, mediosParaRed, colaboradoresDe, conHistoria, redesDe,
-  tituloYouTube, descripcionYouTube, etiquetasYouTube, esShortYouTube,
+  tituloYouTube, descripcionYouTube, etiquetasYouTube, esShortYouTube, fotosTikTok, tituloTikTok,
 } from "../../src/lib/publicacion.js";
 import { tipoAprobacion } from "../../src/lib/aprobacion.js";
 import { avisarFallo } from "./equipo.js";
@@ -220,7 +220,13 @@ function planificar({ post, fecha, cal, cuentas: asignadas, hayMeta, previas, re
   }
   for (const red of ["tiktok", "youtube"]) {
     if (!lista.includes(red)) continue;
-    if (!mediosDe(post).some((m) => m.tipo === "video" && m.src.startsWith("/api/media/clientes/"))) {
+    // TikTok también lleva fotos (sin video): entonces son ellas las que tienen que estar subidas.
+    const fotos = red === "tiktok" ? fotosTikTok(post) : [];
+    if (fotos.length) {
+      if (!fotos.every((m) => m.src.startsWith("/api/media/clientes/"))) {
+        throw new ErrorPublicar("Para TikTok, las fotos tienen que estar subidas a la publicación (desde el equipo o desde Drive).");
+      }
+    } else if (!mediosDe(post).some((m) => m.tipo === "video" && m.src.startsWith("/api/media/clientes/"))) {
       throw new ErrorPublicar(`Para ${REDES[red].nombre}, el video tiene que estar subido a la publicación (desde el equipo o desde Drive).`);
     }
   }
@@ -759,18 +765,29 @@ async function pasoTikTok(env, { cuenta, origen, carga, guardar, fila: actual })
 
   const post = publicacionDeVariante(carga.post ?? {}, fila.variante);
   const video = mediosDe(post).find((m) => m.tipo === "video");
-  const clave = String(video?.src ?? "").replace(/^\/api\/media\//, "");
-  if (!/^clientes\/[^/]+\//.test(clave)) throw new ErrorPublicar("Para TikTok, el video tiene que estar subido a la publicación.");
-  if (!(await env.MEDIA.head(clave))) throw new ErrorPublicar("El video ya no está en el almacenamiento: vuelve a añadirlo a la publicación.");
-  if (!env.META_APP_SECRET) throw new ErrorPublicar("Falta META_APP_SECRET en el Worker: firma la dirección de la que PostPeer descarga el video.");
-  if (!origen) throw new ErrorPublicar("No se sabe en qué dirección está la aplicación para que PostPeer descargue el video: vuelve a vincular el TikTok del cliente en Ajustes → Integraciones.");
+  // Sin video, fotos: una o un carrusel (no se mezclan; con video, sale el video).
+  const fotos = video ? [] : fotosTikTok(post);
+  const medios = video ? [video] : fotos;
+  if (!medios.length) throw new ErrorPublicar("Para TikTok hace falta un video o al menos una foto subidos a la publicación.");
+  for (const m of medios) {
+    const clave = String(m.src ?? "").replace(/^\/api\/media\//, "");
+    if (!/^clientes\/[^/]+\//.test(clave)) throw new ErrorPublicar(`Para TikTok, ${video ? "el video tiene" : "las fotos tienen"} que estar subid${video ? "o" : "as"} a la publicación.`);
+    if (!(await env.MEDIA.head(clave))) throw new ErrorPublicar(`${video ? "El video ya no está" : "Una de las fotos ya no está"} en el almacenamiento: vuelve a añadirl${video ? "o" : "a"} a la publicación.`);
+  }
+  if (!env.META_APP_SECRET) throw new ErrorPublicar("Falta META_APP_SECRET en el Worker: firma la dirección de la que PostPeer descarga el archivo.");
+  if (!origen) throw new ErrorPublicar("No se sabe en qué dirección está la aplicación para que PostPeer descargue el archivo: vuelve a vincular el TikTok del cliente en Ajustes → Integraciones.");
 
   const info = await infoCreador(env, cuenta.externo_id);
-  const problema = problemaConCreador(info, { segundos: Number(video.duracion) });
+  const problema = problemaConCreador(info, { segundos: video ? Number(video.duracion) : null });
   if (problema) throw new ErrorPublicar(problema);
-  const cuerpo = cuerpoPublicacion({
-    texto: textoPara(post, "tiktok"), accountId: cuenta.externo_id, urlVideo: await urlMedioPublico(env, origen, video.src), info,
-  });
+  const cuerpo = video
+    ? cuerpoPublicacion({
+      texto: textoPara(post, "tiktok"), accountId: cuenta.externo_id, urlVideo: await urlMedioPublico(env, origen, video.src), info,
+    })
+    : cuerpoFotos({
+      titulo: tituloTikTok(post), descripcion: textoPara(post, "tiktok"), accountId: cuenta.externo_id, info,
+      urls: await Promise.all(fotos.map((f) => urlMedioPublico(env, origen, f.src))),
+    });
 
   pp.enviadoAt = ahora();
   await guardar({});

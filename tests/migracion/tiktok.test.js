@@ -5,7 +5,7 @@ import { crearAcceso, cuentasSinFoto } from "../../worker/lib/acceso.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
 import { programar, procesarCola } from "../../worker/lib/publicador.js";
-import { cuerpoPublicacion, leerPublicacion, firmaWebhook } from "../../worker/lib/postpeer.js";
+import { cuerpoPublicacion, cuerpoFotos, leerPublicacion, firmaWebhook } from "../../worker/lib/postpeer.js";
 
 // ============================================================
 // TikTok por PostPeer, contra una D1 de verdad y un PostPeer de mentira
@@ -62,7 +62,7 @@ beforeEach(() => {
   db = d1EnMemoria();
   env = {
     DB: db, POSTPEER_API_KEY: LLAVE, META_APP_SECRET: "meta",
-    MEDIA: { async head(clave) { return clave === "clientes/c1/posts/v.mp4" ? { size: 1000 } : null; } },
+    MEDIA: { async head(clave) { return ["clientes/c1/posts/v.mp4", "clientes/c1/posts/a.jpg", "clientes/c1/posts/b.jpg"].includes(clave) ? { size: 1000 } : null; } },
   };
   llamadas = [];
   respuestas = {
@@ -110,6 +110,21 @@ describe("el cuerpo que se manda", () => {
         platformSpecificData: { privacyLevel: "PUBLIC_TO_EVERYONE", disableComment: false, disableDuet: true, disableStitch: false, draft: false },
       }],
       mediaItems: [{ type: "video", url: "https://a.test/v.mp4" }],
+      publishNow: true,
+    });
+  });
+
+  it("fotos: el título en content, el texto en description, música de TikTok, portada la primera", () => {
+    expect(cuerpoFotos({ titulo: "Cinco paradas", descripcion: "Cinco paradas\n\n#viaje", accountId: "acc-1", urls: ["https://a.test/1.jpg", "https://a.test/2.jpg"] })).toEqual({
+      content: "Cinco paradas",
+      platforms: [{
+        platform: "tiktok", accountId: "acc-1",
+        platformSpecificData: {
+          description: "Cinco paradas\n\n#viaje", privacyLevel: "PUBLIC_TO_EVERYONE", disableComment: false,
+          autoAddMusic: true, photoCoverIndex: 0, draft: false,
+        },
+      }],
+      mediaItems: [{ type: "image", url: "https://a.test/1.jpg" }, { type: "image", url: "https://a.test/2.jpg" }],
       publishNow: true,
     });
   });
@@ -245,9 +260,50 @@ describe("publicar en TikTok por PostPeer", () => {
     expect(nuevas.map((f) => f.red)).toEqual(["instagram"]);
   });
 
-  it("sin video no se programa para TikTok", async () => {
-    await sembrar({ posts: [post({ format: "carrusel", medios: [{ src: "/api/media/clientes/c1/posts/a.jpg" }] })] });
-    await expect(programar(env, acceso(), { calendarId: "cal1", postId: "p1" })).rejects.toThrow(/TikTok necesita un video/);
+  it("un carrusel de fotos sale en TikTok: las dos firmadas, título y descripción, una sola vez", async () => {
+    const fotos = [
+      { src: "/api/media/clientes/c1/posts/a.jpg", ancho: 1080, alto: 1350 },
+      { src: "/api/media/clientes/c1/posts/b.jpg", ancho: 1080, alto: 1350 },
+    ];
+    await sembrar({ posts: [post({ format: "carrusel", descripcion: "Cinco paradas\nPara tu próximo viaje", medios: fotos })] });
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
+    await procesarCola(env);
+    expect(rutas()).toEqual(["GET /v1/tiktok/creator-info", "POST /v1/posts"]);
+    const [envio] = envios();
+    expect(envio.cuerpo).toMatchObject({
+      content: "Cinco paradas", publishNow: true,
+      platforms: [{ platform: "tiktok", accountId: "acc-1", platformSpecificData: {
+        description: "Cinco paradas\nPara tu próximo viaje\n\n#cafe", autoAddMusic: true, photoCoverIndex: 0, privacyLevel: "PUBLIC_TO_EVERYONE", draft: false,
+      } }],
+    });
+    expect(envio.cuerpo.mediaItems.map((m) => m.type)).toEqual(["image", "image"]);
+    expect(envio.cuerpo.mediaItems[0].url).toMatch(/^https:\/\/calendario\.test\/api\/medio-publico\/[^/]+\/a\.jpg$/);
+    expect(envio.cuerpo.mediaItems[1].url).toMatch(/\/b\.jpg$/);
+    vi.setSystemTime(new Date("2026-10-01T12:01:00.000Z"));
+    await procesarCola(env);
+    expect(filas()[0]).toMatchObject({ estado: "publicada", externo_id: "pp-1" });
+    expect(envios()).toHaveLength(1);
+  });
+
+  it("una foto que ya no está en el almacenamiento falla ANTES de gastar un crédito", async () => {
+    await sembrar({ posts: [post({ format: "post", medios: [{ src: "/api/media/clientes/c1/posts/borrada.jpg" }] })] });
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
+    await procesarCola(env);
+    expect(filas()[0].error).toMatch(/Una de las fotos ya no está/);
+    expect(envios()).toHaveLength(0);
+  });
+
+  it("fotos con proporciones distintas no se programan para TikTok", async () => {
+    await sembrar({ posts: [post({ format: "carrusel", medios: [
+      { src: "/api/media/clientes/c1/posts/a.jpg", ancho: 1080, alto: 1350 },
+      { src: "/api/media/clientes/c1/posts/b.jpg", ancho: 1080, alto: 1920 },
+    ] })] });
+    await expect(programar(env, acceso(), { calendarId: "cal1", postId: "p1" })).rejects.toThrow(/misma proporción/);
+  });
+
+  it("sin nada que publicar no se programa para TikTok", async () => {
+    await sembrar({ posts: [post({ format: "post", medios: [] })] });
+    await expect(programar(env, acceso(), { calendarId: "cal1", postId: "p1" })).rejects.toThrow(/TikTok necesita un video o al menos una foto/);
   });
 
   it("sin la llave en el Worker, error que dice qué falta", async () => {

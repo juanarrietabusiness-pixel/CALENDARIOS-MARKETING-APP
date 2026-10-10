@@ -8,7 +8,7 @@
 
 import { compressImage } from "../utils";
 import {
-  mediosDe, historiasDe, piezasDe, publicacionDeVariante, objetivoDe, necesitaAjuste, claveAdaptado, medidasAjuste, proporcionParaIA,
+  mediosDe, fotosTikTok, historiasDe, piezasDe, publicacionDeVariante, objetivoDe, necesitaAjuste, claveAdaptado, medidasAjuste, proporcionParaIA,
   esDeMeta,
 } from "./publicacion";
 
@@ -362,6 +362,16 @@ export async function prepararParaRedes(post, redes, { subir, colorMarca } = {})
   if (redes.includes("youtube") || redes.includes("tiktok")) {
     const r0 = await medirVideos(mediosDe(nuevo));
     if (r0.cambio) { nuevo = { ...nuevo, medios: r0.medios }; cambio = true; }
+  }
+  // Las fotos de TikTok tienen que tener todas la misma proporción: sin medidas no se puede comprobar al programar.
+  if (redes.includes("tiktok") && fotosTikTok(nuevo).some((m) => !m.ancho || !m.alto)) {
+    const medidos = [];
+    for (const m of mediosDe(nuevo)) {
+      const medidas = m.tipo === "imagen" && (!m.ancho || !m.alto) ? await medirImagen(m.src) : null;
+      medidos.push(medidas ? { ...m, ...medidas } : m);
+      if (medidas) cambio = true;
+    }
+    if (cambio) nuevo = { ...nuevo, medios: medidos };
   }
   const meta = redes.some(esDeMeta);
   if (!meta) return { post: nuevo, cambio };
