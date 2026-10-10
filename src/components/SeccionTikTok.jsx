@@ -86,7 +86,7 @@ export default function SeccionTikTok({ clients = [], pulso = 0 }) {
         <div style={{ flex: 1, minWidth: "min(200px, 100%)" }}>
           <p style={{ fontWeight: 600, fontSize: "var(--fs-sm)" }}>TikTok (PostPeer)</p>
           <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>
-            Publica los videos en el TikTok de cada cliente, en público, a la hora del calendario.
+            Publica videos, fotos y carruseles en el TikTok de cada cliente, en público, a la hora del calendario.
           </p>
         </div>
         {tk && (
@@ -202,7 +202,8 @@ export default function SeccionTikTok({ clients = [], pulso = 0 }) {
             })}
           </ul>
           <p style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)" }}>
-            Sólo video: TikTok no recibe fotos desde aquí. Cada publicación gasta créditos de PostPeer.
+            Video, o fotos: una sola o un carrusel de hasta 32, todas con la misma proporción (sale con música).
+            En las publicaciones de fotos TikTok se marca a mano. Cada publicación gasta créditos de PostPeer.
           </p>
         </>
       )}

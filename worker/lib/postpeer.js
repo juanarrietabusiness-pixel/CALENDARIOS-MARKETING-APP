@@ -26,8 +26,9 @@
 // de la cola, y una publicación programada DENTRO de PostPeer habría que
 // moverla o cancelarla también allí, o saldría igual.
 //
-// PostPeer DESCARGA el video de una dirección pública: la firmada de
-// `/api/medio-publico/`, la misma que descarga Meta.
+// PostPeer DESCARGA el video —o las fotos: una, o un carrusel de hasta 32—
+// de una dirección pública: la firmada de `/api/medio-publico/`, la misma
+// que descarga Meta.
 //
 // Todo lo que se lee de PostPeer se lee con tolerancia (`datosDe`,
 // `idDelPost`…): la documentación da los campos, no siempre el sobre en
@@ -194,6 +195,33 @@ export function cuerpoPublicacion({ texto, accountId, urlVideo, info = {} }) {
       },
     }],
     mediaItems: [{ type: "video", url: String(urlVideo) }],
+    publishNow: true,
+  };
+}
+
+/**
+ * El cuerpo de POST /posts para FOTOS en TikTok (una, o de 2 a 32 en
+ * carrusel), en el acto y en público. En fotos `content` es el TÍTULO (90
+ * caracteres) y el texto entero va en `description` (4.000). La música la
+ * pone TikTok (`autoAddMusic`) y la portada es la primera foto. PostPeer
+ * descarga cada imagen, la pasa a JPEG y la aloja él. Pura.
+ */
+export function cuerpoFotos({ titulo, descripcion, accountId, urls = [], info = {} }) {
+  return {
+    content: String(titulo ?? ""),
+    platforms: [{
+      platform: "tiktok",
+      accountId: String(accountId),
+      platformSpecificData: {
+        description: String(descripcion ?? ""),
+        privacyLevel: PRIVACIDAD_PUBLICA,
+        disableComment: Boolean(info.sinComentarios),
+        autoAddMusic: true,
+        photoCoverIndex: 0,
+        draft: false,
+      },
+    }],
+    mediaItems: urls.map((url) => ({ type: "image", url: String(url) })),
     publishNow: true,
   };
 }

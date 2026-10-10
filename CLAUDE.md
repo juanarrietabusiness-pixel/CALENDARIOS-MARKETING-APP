@@ -1675,7 +1675,12 @@ son del servidor.
   `colaPorPostPeer()`, la única lectura sin dueño que añade, en `acceso.js`.
   · **Lo que llega de PostPeer se lee con tolerancia** (`leerPublicacion`, `datosDe`): la documentación da los
   campos, no siempre el sobre. Si su forma real es otra, se arregla ahí y en nada más.
-  · **Sólo video.** TikTok ya no recibe fotos desde la app, ni portada (PostPeer no la recibe). **Nada se ha
+  · **Video, o fotos (una o un carrusel).** Las fotos van con `cuerpoFotos`: de 1 a 32 (`fotosTikTok`; con un
+  video en la publicación sale sólo el video), todas con la MISMA proporción y entre 1:2,13 y 2,13:1 —lo comprueba
+  `revisarPublicacion` con las medidas que apunta `prepararParaRedes` (`medirImagen`)—, el título es la primera
+  línea cortada a 90 (`tituloTikTok`) y la descripción el texto de TikTok (4.000), con música automática. Antes de
+  gastar un crédito se comprueba que cada foto siga en R2. TikTok NO se marca solo en una publicación de fotos
+  (`redAdmite` sigue en video): se elige a mano. Portada de video tampoco va (PostPeer no la recibe). **Nada se ha
   probado contra PostPeer real**; los tests hablan con un `fetch` de mentira.
 - **Las cifras del informe NO las escribe la IA.** Las calcula
   `src/lib/resultados.js` —el mismo código que la pestaña Resultados— y
@@ -2110,7 +2115,7 @@ son del servidor.
   TikTok conectado del cliente se quedaba fuera sin que nadie lo decidiera.
   `redesDe()` / `redesPorDefecto()` (lib/publicacion.js) dan las conectadas
   que pueden llevarla —TikTok y YouTube sólo video, ni historias ni
-  directos—, y es la MISMA regla en el panel, «Subir», «Programar lo
+  directos; las fotos a TikTok se marcan a mano—, y es la MISMA regla en el panel, «Subir», «Programar lo
   aprobado» y `planificar()` del servidor.
 - **El banco de ideas no se guardaba.** Añadir, editar o borrar una idea
   sólo cambiaba el estado (`onUpdateClient` era un `setClients`), y al

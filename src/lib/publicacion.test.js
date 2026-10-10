@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   mediosDe, conMedios, textoPara, primerComentario, destinoInstagram, revisarPublicacion,
   publicacionParaCliente, marcarActualizada, contarHashtags, rutasDeMedios, momentoPublicacion, esJPEG,
-  aplicarArreglo, proporcionParaIA, AJUSTES,
+  aplicarArreglo, proporcionParaIA, AJUSTES, fotosTikTok, tituloTikTok,
 } from "./publicacion.js";
 
 describe("medios", () => {
@@ -57,13 +57,48 @@ describe("revisarPublicacion", () => {
     expect(errores).toEqual([]);
     expect(avisos.join(" ")).toMatch(/no muestra el texto/);
   });
-  it("TikTok (por PostPeer): sólo video; ni fotos, ni historias", () => {
-    expect(revisarPublicacion({ format: "post", descripcion: "x" }, ["tiktok"]).errores.join(" ")).toMatch(/TikTok necesita un video/);
-    const fotos = revisarPublicacion({ format: "carrusel", descripcion: "x", medios: [{ src: "/a.jpg" }, { src: "/b.jpg" }] }, ["tiktok"]);
-    expect(fotos.errores.join(" ")).toMatch(/TikTok necesita un video/);
+  it("TikTok (por PostPeer): un video o fotos; ni historias, ni nada vacío", () => {
+    expect(revisarPublicacion({ format: "post", descripcion: "x" }, ["tiktok"]).errores.join(" ")).toMatch(/TikTok necesita un video o al menos una foto/);
     expect(revisarPublicacion({ format: "historia", medios: [{ src: "/a.jpg" }] }, ["tiktok"]).errores.join(" ")).toMatch(/no publica historias/);
     const mezcla = revisarPublicacion({ format: "reel", descripcion: "x", medios: [{ src: "/a.mp4", tipo: "video" }, { src: "/b.jpg" }] }, ["tiktok"]);
-    expect(mezcla.avisos.join(" ")).toMatch(/sólo el video/);
+    expect(mezcla.errores).toEqual([]);
+    expect(mezcla.avisos.join(" ")).toMatch(/no mezcla video y fotos: publica sólo el video/);
+  });
+
+  it("TikTok con fotos: una o un carrusel, todas con la misma proporción y dentro de 1:2.13–2.13:1", () => {
+    const foto = (n, ancho = 1080, alto = 1350) => ({ src: `/f${n}.jpg`, ancho, alto });
+    const carrusel = revisarPublicacion({ format: "carrusel", descripcion: "Cinco paradas", medios: [foto(1), foto(2)] }, ["tiktok"]);
+    expect(carrusel.errores).toEqual([]);
+    expect(carrusel.avisos.join(" ")).toMatch(/carrusel de 2 fotos, con música/);
+    const una = revisarPublicacion({ format: "post", descripcion: "x", medios: [foto(1)] }, ["tiktok"]);
+    expect(una.errores).toEqual([]);
+    expect(una.avisos.join(" ")).toMatch(/sale como foto/);
+    // Sin medidas no se puede saber: no se bloquea (el panel las mide al programar).
+    expect(revisarPublicacion({ format: "carrusel", descripcion: "x", medios: [{ src: "/a.jpg" }, { src: "/b.jpg" }] }, ["tiktok"]).errores).toEqual([]);
+    expect(revisarPublicacion({ format: "carrusel", descripcion: "x", medios: [foto(1), foto(2, 1080, 1920)] }, ["tiktok"]).errores.join(" "))
+      .toMatch(/misma proporción/);
+    expect(revisarPublicacion({ format: "post", descripcion: "x", medios: [foto(1, 500, 1200)] }, ["tiktok"]).errores.join(" "))
+      .toMatch(/1:2.13/);
+    const muchas = Array.from({ length: 33 }, (_, i) => foto(i));
+    expect(revisarPublicacion({ format: "carrusel", descripcion: "x", medios: muchas }, ["tiktok"]).errores.join(" ")).toMatch(/hasta 32 fotos/);
+    // Con fotos, el texto entero es la descripción (4.000) y la primera línea, el título (se corta a 90).
+    const largo = revisarPublicacion({ format: "post", descripcion: `${"Título muy largo ".repeat(8)}\n${"a".repeat(3000)}`, medios: [foto(1)] }, ["tiktok"]);
+    expect(largo.errores).toEqual([]);
+    expect(largo.avisos.join(" ")).toMatch(/se corta a 90/);
+  });
+
+  it("el título de unas fotos en TikTok: la primera línea, cortada por palabras", () => {
+    expect(tituloTikTok({ descripcion: "\nCinco paradas\nY más texto" })).toBe("Cinco paradas");
+    const t = tituloTikTok({ descripcion: "Una frase bastante larga ".repeat(6) });
+    expect(t.length).toBeLessThanOrEqual(90);
+    expect(t.endsWith("…")).toBe(true);
+    expect(t).not.toMatch(/\s…$/);
+    expect(tituloTikTok({})).toBe("");
+  });
+
+  it("las fotos de TikTok son las de la publicación si no lleva video", () => {
+    expect(fotosTikTok({ medios: [{ src: "/a.jpg" }, { src: "/b.jpg" }] }).map((m) => m.src)).toEqual(["/a.jpg", "/b.jpg"]);
+    expect(fotosTikTok({ medios: [{ src: "/a.jpg" }, { src: "/v.mp4", tipo: "video" }] })).toEqual([]);
   });
 });
 

@@ -8,7 +8,7 @@
 // deduce, para que el diálogo rápido y el panel decidan igual.
 // ============================================================
 
-import { mediosDe, destinoInstagram, conHistoria, conHistorias, esShortYouTube, REDES } from "./publicacion.js";
+import { mediosDe, destinoInstagram, conHistoria, conHistorias, esShortYouTube, fotosTikTok, REDES } from "./publicacion.js";
 
 export { redesPorDefecto } from "./publicacion.js";
 import { semanaDelMes } from "./semanas.js";
@@ -36,7 +36,10 @@ const PIEZA_INSTAGRAM = { imagen: "post en el feed", carrusel: "carrusel", reel:
  */
 export function queSaleEn(post, red) {
   if (red === "instagram") return PIEZA_INSTAGRAM[destinoInstagram(post)];
-  if (red === "tiktok") return "video";
+  if (red === "tiktok") {
+    const fotos = fotosTikTok(post);
+    return fotos.length > 1 ? "carrusel de fotos" : fotos.length ? "foto" : "video";
+  }
   if (red === "youtube") return esShortYouTube(post) ? "Short" : "video";
   return post?.format === "historia" ? "historia" : "publicación";
 }
