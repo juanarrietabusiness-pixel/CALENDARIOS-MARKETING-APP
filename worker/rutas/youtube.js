@@ -11,7 +11,7 @@
 //     PUT  /api/redes/youtube/privacidad  { cuentaId, privacidad } público, oculto o privado
 //     POST /api/redes/youtube/desconectar { cuentaId }
 //
-// LA VUELTA VA SIN SESIÓN, igual que Drive, Meta y TikTok: el `state` va
+// LA VUELTA VA SIN SESIÓN, igual que Drive y Meta: el `state` va
 // firmado con GOOGLE_CLIENT_SECRET y atado a la cookie `__Host-youtube-oauth`
 // del navegador que lo pidió. Sin la cookie, un enlace de conexión
 // reenviado conectaría el canal de otra persona al cliente de quien lo generó.

@@ -36,7 +36,7 @@ const PIEZA_INSTAGRAM = { imagen: "post en el feed", carrusel: "carrusel", reel:
  */
 export function queSaleEn(post, red) {
   if (red === "instagram") return PIEZA_INSTAGRAM[destinoInstagram(post)];
-  if (red === "tiktok") return mediosDe(post).length && !mediosDe(post).some((m) => m.tipo === "video") ? "carrusel de fotos" : "video";
+  if (red === "tiktok") return "video";
   if (red === "youtube") return esShortYouTube(post) ? "Short" : "video";
   return post?.format === "historia" ? "historia" : "publicación";
 }

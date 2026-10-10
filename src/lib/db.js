@@ -718,24 +718,26 @@ export async function informeAnunciosPublico(testigo) {
 }
 
 // ------------------------------------------------------------
-// TikTok: una conexión por cliente
+// TikTok, por PostPeer: una cuenta por cliente
 // ------------------------------------------------------------
 
-/** Conectar aquí es NAVEGAR a TikTok (con la cuenta del cliente). */
-export const urlConectarTikTok = (clientId) => `/api/redes/tiktok/conectar?cliente=${encodeURIComponent(clientId)}`;
+/** ¿Vale la llave de PostPeer del Worker? */
+export async function comprobarPostPeer() {
+  return pedir("/redes/postpeer/llave");
+}
 
-/** El enlace para que el cliente conecte su TikTok desde su teléfono (vale una semana). */
-export async function enlaceTikTok(clientId) {
-  return pedir("/redes/tiktok/enlace", conCuerpo("POST", { clientId }));
+/** El perfil del cliente en PostPeer y la dirección donde se autoriza su TikTok: `{ url, profileId }`. */
+export async function conectarPostPeer(clientId, profileId = null) {
+  return pedir("/redes/postpeer/conectar", conCuerpo("POST", { clientId, profileId }));
+}
+
+/** Ya autorizado en PostPeer: su cuenta pasa a ser la del cliente (por el perfil o por el id pegado). */
+export async function vincularPostPeer(clientId, { profileId = null, accountId = null } = {}) {
+  return pedir("/redes/postpeer/vincular", conCuerpo("POST", { clientId, profileId, accountId }));
 }
 
 export async function desconectarTikTok(cuentaId) {
   return pedir("/redes/tiktok/desconectar", conCuerpo("POST", { cuentaId }));
-}
-
-/** «borrador» (a la bandeja del cliente) o «directo». */
-export async function modoTikTok(cuentaId, modo) {
-  return pedir(`/redes/cuentas/${encodeURIComponent(cuentaId)}`, conCuerpo("PUT", { modo }));
 }
 
 // ------------------------------------------------------------

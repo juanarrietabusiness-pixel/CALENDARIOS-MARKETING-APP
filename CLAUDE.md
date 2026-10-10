@@ -219,7 +219,7 @@ src/
     SeccionPresupuesto.jsx  Ajustes → presupuesto, qué pasa al llegar, consumo por día/cliente
     SeccionDrive.jsx      Ajustes → Integraciones: conectar Google Drive
     SeccionMeta.jsx       Ajustes → Integraciones: conectar Meta y asignar cuentas
-    SeccionTikTok.jsx     Ajustes → Integraciones: TikTok de cada cliente y su modo
+    SeccionTikTok.jsx     Ajustes → Integraciones: TikTok de cada cliente, por PostPeer (conectar, pegar el id)
     SeccionYouTube.jsx    Ajustes → Integraciones: el canal de YouTube de cada cliente y su privacidad
     SeccionInformes.jsx   Resultados → informes mensuales: generar, revisar, compartir
     InformeVista.jsx      El informe como documento (claro, con la marca, imprimible)
@@ -326,8 +326,9 @@ worker/
                           «¿está dentro de la carpeta del cliente?»
     firmas.js             Cifrar y firmar con el secreto de una integración (HKDF)
     meta.js               OAuth de Meta, cliente de la Graph API, cuentas, medios firmados
-    publicador.js         La cola: programar, procesar (Instagram/Facebook/TikTok), reintentos
-    tiktok.js             OAuth de TikTok por cliente, tokens que se renuevan, subida en trozos
+    publicador.js         La cola: programar, procesar (Instagram/Facebook/TikTok/YouTube), reintentos
+    postpeer.js           TikTok por PostPeer: perfiles y cuentas, creator-info, el cuerpo de /posts, leer su
+                          estado y la firma del webhook
     youtube.js            OAuth de Google por cliente (YouTube), subida reanudable por trozos,
                           portada, cifras del canal (Data API + Analytics)
     metricas.js           La foto diaria de métricas de cada cuenta y de la competencia
@@ -1579,9 +1580,8 @@ son del servidor.
   subdominio es un dominio propio del Worker declarado en `wrangler.jsonc`
   (`routes`, `custom_domain: true`): lo crea el despliegue, no el panel. Dos
   trampas: con `routes` puesto, wrangler da `workers_dev` por `false` y APAGA
-  workers.dev en el siguiente despliegue —de él cuelgan el reenvío de fotos
-  a TikTok de la web en Netlify, las vueltas de OAuth registradas, el webhook
-  de la Bandeja y el conector de Claude—, así que `workers_dev: true` va
+  workers.dev en el siguiente despliegue —de él cuelgan las vueltas de OAuth
+  registradas, el webhook de la Bandeja y el conector de Claude—, así que `workers_dev: true` va
   escrito y `tests/despliegue/plantillas.test.js` lo exige; y el token de
   despliegue necesita *Zone → Workers Routes → Edit* sobre juancitoads.com, o
   falla el despliegue ENTERO. El DNS de la zona está en Cloudflare con todo en
@@ -1653,33 +1653,30 @@ son del servidor.
   `img-src 'self'`. Pasan por `/api/metricas/miniatura`, que sólo sirve
   imágenes de `*.cdninstagram.com` y `*.fbcdn.net`. Ampliar la CSP a esos
   dominios sería abrir la puerta a cualquier imagen de Meta.
-- **TikTok no es Meta: una conexión POR CLIENTE.** No hay un usuario de
-  agencia que vea todas las cuentas; cada una se conecta entrando con
-  ella. Por eso existe el enlace firmado para el cliente
-  (`/api/redes/tiktok/inicio/<firmado>`, sin sesión, una semana), que
-  abre el permiso en SU teléfono y deja la cuenta en SU ficha. El token
-  de acceso dura 24 horas: `tokenTikTok()` lo renueva y GUARDA el nuevo
-  (TikTok puede cambiar también el de renovación; perderlo obliga a
-  reconectar). Sin auditar, la publicación directa sale en privado: el
-  modo por defecto es Borrador, que llega a la bandeja del cliente.
-- **A TikTok el video se le SUBE, en trozos, desde R2.** Que lo descargue
-  de una URL exige verificar el dominio, y en workers.dev no se puede.
-  Cada trozo es un rango de R2 que pasa tal cual (sin cargarlo en
-  memoria). El `publish_id` se guarda sólo cuando la subida terminó: a
-  partir de ahí nunca se abre otra, que sería un segundo video.
-- **Las FOTOS de TikTok no se suben: TikTok las descarga, y sólo de un
-  dominio verificado.** Un carrusel de fotos (sin video) va por
-  `/v2/post/publish/content/init/` con `PULL_FROM_URL`, `media_type: PHOTO`
-  y `post_mode` DIRECT_POST o MEDIA_UPLOAD (Borrador). Como `workers.dev` no
-  se puede verificar en TikTok, las direcciones son
-  `TIKTOK_MEDIOS_BASE/<testigo>/<nombre>` —`juancitoads.com/calendario-medios`,
-  que Netlify reenvía con un 200 a `/api/medio-publico/` de este Worker—, la
-  MISMA firma que descarga Meta (`rutaMedioPublico()`). Sin la variable, la
-  cola falla diciendo qué falta: el navegador no lo sabe, así que
-  `revisarPublicacion()` sólo avisa. Sólo JPG o WEBP (el panel convierte a
-  JPEG también cuando la única red de fotos es TikTok), hasta 35. TikTok NO
-  entra por defecto en una publicación de fotos (`redAdmite` sigue siendo
-  «sólo video»): se elige a mano. **No se ha probado contra TikTok real.**
+- **TikTok se publica por PostPeer, no con una app propia** (`worker/lib/postpeer.js`, `pasoTikTok` en
+  `publicador.js`). La app de TikTok de la agencia nunca pasó la auditoría: en Sandbox todo caía en el BORRADOR
+  del cliente o salía en «solo yo». PostPeer publica con la suya, auditada. La integración anterior (OAuth propio,
+  subida por trozos, carrusel de fotos por `TIKTOK_MEDIOS_BASE`, métricas de TikTok) se QUITÓ. Lo que hay que saber:
+  · **La cuenta es una fila más de `cuentas_sociales`** (red «tiktok», `externo_id` = el `accountId` de PostPeer,
+  `datos.via: "postpeer"`, SIN token: la llave es una, `POSTPEER_API_KEY`). Así redes por defecto, «¿Qué sale y
+  dónde?» y la cola no saben nada de PostPeer. Una fila de la app anterior (sin `via`) NO publica: `planificar()`
+  y la cola lo dicen. `datos.origen` guarda el dominio para la dirección firmada del video (la cola no tiene
+  petición delante).
+  · **La hora la cumple el cron, con `publishNow`**, no `scheduledFor`: mover o cancelar en el calendario ya mueve
+  la fila de la cola; programado DENTRO de PostPeer, habría que moverlo también allí o saldría igual.
+  · **Mandar es lo único que no se repite** (gasta créditos y saldría dos veces): se apunta `carga.postpeer.enviadoAt`
+  ANTES de mandar, y si no llega respuesta (o un 5xx) queda en error SIN reintento automático. Con el id guardado en
+  `contenedor_id`, nunca se manda otra. «Reintentar» (una persona) suelta la guarda.
+  · **Antes de gastar, `creator-info`:** si la cuenta no admite `PUBLIC_TO_EVERYONE` (privada) o el video pasa de
+  `maxVideoPostDurationSec`, falla sin mandar. Por eso el panel mide la duración también para TikTok.
+  · **El webhook** (`/api/webhooks/postpeer`, sin sesión) firma «timestamp.cuerpo crudo» con
+  `POSTPEER_WEBHOOK_SECRET`; marca de más de 5 min, fuera; un evento repetido se descarta por su id. Sólo ADELANTA
+  lo que el cron ve preguntando (`GET /posts/{id}`): sin webhook también funciona. Busca la fila con
+  `colaPorPostPeer()`, la única lectura sin dueño que añade, en `acceso.js`.
+  · **Lo que llega de PostPeer se lee con tolerancia** (`leerPublicacion`, `datosDe`): la documentación da los
+  campos, no siempre el sobre. Si su forma real es otra, se arregla ahí y en nada más.
+  · **Sólo video.** TikTok ya no recibe fotos desde la app, ni portada (PostPeer no la recibe). **Nada se ha
+  probado contra PostPeer real**; los tests hablan con un `fetch` de mentira.
 - **Las cifras del informe NO las escribe la IA.** Las calcula
   `src/lib/resultados.js` —el mismo código que la pestaña Resultados— y
   se CONGELAN en `informes.contenido`; la IA sólo escribe el análisis con
@@ -2028,8 +2025,8 @@ son del servidor.
   apiladas, a 800 px de alto quedaba una rendija para configurar.
 - **La portada del video se guarda dos veces**: como imagen (`portada`,
   `cover_url` de Instagram y `poster` de la página de aprobación) y como
-  milisegundo (`portadaMs`: `thumb_offset` de Instagram si no hay imagen y
-  `video_cover_timestamp_ms` de TikTok, que no acepta imagen).
+  milisegundo (`portadaMs`: `thumb_offset` de Instagram si no hay imagen). A
+  TikTok no va: PostPeer no recibe portada.
 - **El calendario es UNO por cliente; el mes, un cajón que no se ve.**
   Las publicaciones siguen guardadas por meses (`calendars`, una fila por
   cliente y mes) porque cada guardado reescribe la fila entera, dos
@@ -2267,11 +2264,10 @@ son del servidor.
   porque Safari no aplica esa cabecera. Cámara y geolocalización siguen
   cerradas, y `tests/despliegue/plantillas.test.js` lo vigila.
 - **La espera de TikTok tiene plazo** (`PLAZO_TIKTOK_MS`, 30 min en
-  `pasoTikTok`): sin él, un estado que TikTok no terminaba dejaba la fila en
+  `seguirPostPeer`): sin él, un estado que no terminaba dejaba la fila en
   «Publicando…» para siempre. Al vencer queda en error con el último estado y
-  NO se reintenta (el video ya subió: otra subida serían dos en la bandeja).
-  En modo Borrador, «publicada» quiere decir «en la bandeja de TikTok del
-  cliente», y el aviso viaja ahora con el evento para que el mensaje lo diga.
+  NO se reintenta (ya se mandó: otra serían dos publicaciones y dos créditos).
+  El aviso viaja con el evento: si TikTok la dejó con otra privacidad, lo dice.
 - **El cuadro del perfil de un reel NO se elige por la API**: Instagram saca
   siempre la ventana 3:4 del CENTRO de la portada. «Encuadre en el perfil»
   (PortadaVideo) mueve la imagen dentro de la portada para que lo elegido

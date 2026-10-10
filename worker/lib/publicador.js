@@ -1,5 +1,5 @@
 // ============================================================
-// Publicar y programar en Instagram y Facebook
+// Publicar y programar en Instagram, Facebook, TikTok (por PostPeer) y YouTube
 //
 // LA COLA
 //
@@ -31,11 +31,11 @@
 import { crearAcceso, colaPendiente } from "./acceso.js";
 import { difundir } from "./vivo.js";
 import { uuid, ahora } from "./ids.js";
-import { ErrorMeta, graph, mensajeMeta, descifrarMeta, urlMedioPublico, rutaMedioPublico, urlGraphVideo } from "./meta.js";
+import { ErrorMeta, graph, mensajeMeta, descifrarMeta, urlMedioPublico, urlGraphVideo } from "./meta.js";
 import {
-  ErrorTikTok, mensajeTikTok, tokenTikTok, iniciarSubida, subirTrozos, estadoSubida,
-  iniciarFotos, fotosTikTokConfiguradas, urlFotoTikTok, MAX_FOTOS_TIKTOK, FORMATOS_FOTO_TIKTOK,
-} from "./tiktok.js";
+  ErrorPostPeer, mensajePostPeer, postpeerConfigurado, infoCreador, problemaConCreador, cuerpoPublicacion,
+  crearPublicacion, consultarPublicacion, leerPublicacion, PRIVACIDAD_PUBLICA,
+} from "./postpeer.js";
 import {
   ErrorYouTube, mensajeYouTube, tokenYouTube, privacidadDe, recursoDeVideo, abrirSubidaYouTube, subirTrozoYouTube,
   consultarSubidaYouTube, ponerPortadaYouTube, enlaceYouTube, PRIVACIDADES_YOUTUBE,
@@ -188,12 +188,15 @@ export async function programarLote(env, acceso, { calendarId, postIds = [], usu
  * que necesita se le da leído, para que programar una y programar muchas
  * apliquen exactamente las mismas reglas.
  */
-function planificar({ post, fecha, cal, cuentas: todas, hayMeta, previas, redes = null, ahoraMismo = false, usuarioId = null, soloPosibles = false }) {
+function planificar({ post, fecha, cal, cuentas: asignadas, hayMeta, previas, redes = null, ahoraMismo = false, usuarioId = null, soloPosibles = false }) {
   const postId = post.id;
   const calendarId = cal.id;
   // Marcada para publicarla a mano (música, stickers…): si saliera sola,
   // saldría sin lo que sólo se pone desde el teléfono.
   if (post.asistida) throw new ErrorPublicar("Está marcada para publicarla a mano desde el teléfono: no se programa sola.");
+  // Un TikTok de la app anterior no publica: cuenta como no tenerlo (y no bloquea las demás redes).
+  const tiktokAnterior = asignadas.some((c) => c.red === "tiktok" && !esDePostPeer(c));
+  const todas = asignadas.filter((c) => c.red !== "tiktok" || esDePostPeer(c));
   // Sin redes pedidas ni elegidas: las del cliente que puedan llevarla (la misma regla que el panel).
   let lista = [...new Set(redes?.length ? redes : redesDe(post, todas.map((c) => c.red)))].filter((r) => r in REDES);
   const cuentas = {};
@@ -201,6 +204,7 @@ function planificar({ post, fecha, cal, cuentas: todas, hayMeta, previas, redes 
     const cuenta = todas.find((c) => c.red === red);
     if (cuenta) cuentas[red] = cuenta;
     else if (!soloPosibles) {
+      if (red === "tiktok" && tiktokAnterior) throw new ErrorPublicar(ANTERIOR);
       throw new ErrorPublicar(`Este cliente no tiene una cuenta de ${REDES[red].nombre} asignada. Asígnala en Ajustes → Integraciones.`);
     }
   }
@@ -216,16 +220,7 @@ function planificar({ post, fecha, cal, cuentas: todas, hayMeta, previas, redes 
   }
   for (const red of ["tiktok", "youtube"]) {
     if (!lista.includes(red)) continue;
-    const medios = mediosDe(post);
-    // TikTok sin video publica las fotos (carrusel): también tienen que estar en la app.
-    const fotosTikTok = red === "tiktok" && medios.length && !medios.some((m) => m.tipo === "video");
-    if (fotosTikTok) {
-      if (!medios.every((m) => m.src.startsWith("/api/media/clientes/"))) {
-        throw new ErrorPublicar("Para TikTok, las fotos tienen que estar subidas a la publicación (desde el equipo o desde Drive).");
-      }
-      continue;
-    }
-    if (!medios.some((m) => m.tipo === "video" && m.src.startsWith("/api/media/clientes/"))) {
+    if (!mediosDe(post).some((m) => m.tipo === "video" && m.src.startsWith("/api/media/clientes/"))) {
       throw new ErrorPublicar(`Para ${REDES[red].nombre}, el video tiene que estar subido a la publicación (desde el equipo o desde Drive).`);
     }
   }
@@ -421,11 +416,14 @@ export async function procesarPublicacion(env, { id, owner_id: ownerId }) {
     }
 
     const cuenta = fila.cuenta_id ? await acceso.leerUno("cuentas_sociales", { id: fila.cuenta_id }) : null;
-    if (!cuenta?.token_cifrado) throw new ErrorPublicar("La cuenta de destino ya no está conectada. Revísala en Ajustes → Integraciones.");
+    if (!cuenta || (fila.red !== "tiktok" && !cuenta.token_cifrado)) throw new ErrorPublicar("La cuenta de destino ya no está conectada. Revísala en Ajustes → Integraciones.");
     let token;
     let origen = "";
     if (fila.red === "tiktok") {
-      token = await tokenTikTok(env, acceso, cuenta);
+      // Por PostPeer: sin token por cuenta, la llave es del Worker.
+      if (!esDePostPeer(cuenta)) throw new ErrorPublicar(ANTERIOR);
+      if (!postpeerConfigurado(env)) throw new ErrorPublicar("Falta POSTPEER_API_KEY en el Worker: sin ella no se publica en TikTok.");
+      origen = leerJSON(cuenta.datos, {}).origen || (await acceso.leerUno("integracion_meta", { id: ownerId }))?.origen || "";
     } else if (fila.red === "youtube") {
       token = await tokenYouTube(env, acceso, cuenta);
     } else {
@@ -454,8 +452,8 @@ export async function procesarPublicacion(env, { id, owner_id: ownerId }) {
     }
   } catch (e) {
     const intentos = (fila.intentos ?? 0) + 1;
-    const mensaje = e instanceof ErrorPublicar ? e.message : e instanceof ErrorTikTok ? mensajeTikTok(e) : e instanceof ErrorYouTube ? mensajeYouTube(e) : mensajeMeta(e);
-    const transitorio = (e instanceof ErrorMeta || e instanceof ErrorTikTok || e instanceof ErrorYouTube) && e.transitorio;
+    const mensaje = e instanceof ErrorPublicar ? e.message : e instanceof ErrorPostPeer ? mensajePostPeer(e) : e instanceof ErrorYouTube ? mensajeYouTube(e) : mensajeMeta(e);
+    const transitorio = (e instanceof ErrorMeta || e instanceof ErrorPostPeer || e instanceof ErrorYouTube) && e.transitorio;
     const parcial = carga.tanda?.ids?.length ?? 0;
     if (fila.externo_id) {
       // Ya salió. Lo que falló es lo de después: no se vuelve a publicar.
@@ -722,105 +720,157 @@ async function pasoFacebook(env, { cuenta, token, origen, carga, guardar, fila: 
 }
 
 // ------------------------------------------------------------
-// TikTok
+// TikTok, por PostPeer
 // ------------------------------------------------------------
 
+const ANTERIOR = "El TikTok de este cliente está conectado con la app anterior de TikTok, que ya no publica. Conéctalo con PostPeer en Ajustes → Integraciones.";
+
+/** ¿Es una cuenta de TikTok conectada por PostPeer? (Las de la app anterior no publican.) */
+export const esDePostPeer = (cuenta) => cuenta?.red === "tiktok" && leerJSON(cuenta.datos, {})?.via === "postpeer";
+
+/** Cuánto se espera a que PostPeer diga que salió antes de darlo por perdido. */
+export const PLAZO_TIKTOK_MS = 30 * 60_000;
+
 /**
- * 1. Abrir la subida (bandeja o directo) y subir el video en trozos desde
- *    R2. El `publish_id` se guarda SÓLO cuando la subida terminó: a partir
- *    de ahí no se vuelve a abrir otra, que sería un segundo video.
- * 2. Esperar a que TikTok lo procese: en la bandeja del cliente
- *    (borrador) o publicado.
+ * 1. Preguntar a PostPeer qué deja la cuenta (privacidad pública, duración)
+ *    y mandar la publicación: el video lo DESCARGA de la dirección firmada.
+ *    Mandarla es lo único que no se repite: antes de enviar se apunta
+ *    `carga.postpeer.enviadoAt`, y si no llega respuesta no se sabe si
+ *    PostPeer la recibió —otra petición podría publicarla dos veces y gasta
+ *    otro crédito—, así que queda en error para que una persona lo mire.
+ *    Con el id de PostPeer guardado, nunca se manda otra.
+ * 2. Preguntar en qué va (`GET /posts/{id}`) hasta que salga o falle. El
+ *    webhook (`/api/webhooks/postpeer`) adelanta lo mismo sin esperar al cron.
  */
-async function pasoTikTok(env, { cuenta, token, carga, guardar, fila: actual }) {
+async function pasoTikTok(env, { cuenta, origen, carga, guardar, fila: actual }) {
   const fila = actual();
-  const post = publicacionDeVariante(carga.post ?? {}, fila.variante);
   if (fila.externo_id) return { hecho: true };
+  const pp = (carga.postpeer ??= {});
 
-  if (!fila.contenedor_id) {
-    const video = mediosDe(post).find((m) => m.tipo === "video");
-    // Sin video, un carrusel de fotos: TikTok las descarga del dominio verificado.
-    if (!video) return iniciarFotosTikTok(env, { cuenta, token, carga, guardar, post });
-    const clave = String(video?.src ?? "").replace(/^\/api\/media\//, "");
-    if (!/^clientes\/[^/]+\//.test(clave)) throw new ErrorPublicar("Para TikTok, el video tiene que estar subido a la publicación.");
-    const cabeza = await env.MEDIA.head(clave);
-    if (!cabeza) throw new ErrorPublicar("El video ya no está en el almacenamiento: vuelve a añadirlo a la publicación.");
-    const modo = leerJSON(cuenta.datos, {})?.modo === "directo" ? "directo" : "borrador";
-    const { publishId, uploadUrl, privacidad } = await iniciarSubida(token, { modo, tamano: cabeza.size, titulo: textoPara(post, "tiktok"), portadaMs: Number.isFinite(post.portadaMs) ? post.portadaMs : null });
-    await subirTrozos(env, clave, uploadUrl, cabeza.size);
-    carga.modo = modo;
-    carga.privacidad = privacidad;
-    carga.tiktokDesde = ahora();
-    await guardar({ contenedor_id: publishId });
-    return { esperar: 15_000 };
+  if (fila.contenedor_id) {
+    return seguirPostPeer({ carga, guardar, fila }, leerPublicacion(await consultarPublicacion(env, fila.contenedor_id)));
   }
-
-  const estado = await estadoSubida(token, fila.contenedor_id);
-  if (estado.status === "SEND_TO_USER_INBOX") {
-    carga.aviso = "Está en la bandeja de TikTok del cliente: se publica desde la app, con un toque.";
-    await guardar({ externo_id: fila.contenedor_id, publicada_at: ahora() });
-    return { hecho: true };
-  }
-  if (estado.status === "PUBLISH_COMPLETE") {
-    const id = estado.publicaly_available_post_id?.[0];
-    if (carga.privacidad === "SELF_ONLY") carga.aviso = "Publicada en privado: hasta que TikTok revise la app, sólo la ve la cuenta. Cámbiala a pública desde la app.";
-    await guardar({
-      externo_id: String(id ?? fila.contenedor_id),
-      enlace: id && cuenta.usuario ? `https://www.tiktok.com/@${cuenta.usuario}/${carga.fotos ? "photo" : "video"}/${id}` : "",
-      publicada_at: ahora(),
-    });
-    return { hecho: true };
-  }
-  if (estado.status === "FAILED") {
-    await guardar({ contenedor_id: null });
-    throw new ErrorTikTok({ code: estado.fail_reason ?? "failed", message: `TikTok no pudo procesar el video (${estado.fail_reason ?? "sin motivo"}).` }, 400);
-  }
-  // Una espera sin plazo dejaba la fila en «Publicando…» para siempre si
-  // TikTok no llegaba nunca a un estado conocido. Pasado el plazo termina
-  // con el motivo a la vista, y NO se reintenta: el video ya se subió, y
-  // abrir otra subida podría dejar dos en la bandeja del cliente.
-  const desde = Date.parse(carga.tiktokDesde ?? fila.updated_at ?? "");
-  if (Number.isFinite(desde) && Date.now() - desde > PLAZO_TIKTOK_MS) {
+  if (pp.enviadoAt) {
     throw new ErrorPublicar(
-      `TikTok lleva más de ${PLAZO_TIKTOK_MS / 60_000} minutos sin terminar de procesar el video (último estado: ${estado.status ?? "desconocido"}). ` +
-      "Mira la bandeja o los borradores de la cuenta en la app de TikTok antes de volver a intentarlo, para no subirlo dos veces.",
+      "Se mandó a PostPeer y no llegó respuesta: no se sabe si la recibió. Mira el perfil de TikTok y el panel de PostPeer " +
+      "antes de reintentar, para no publicarla dos veces.",
     );
   }
+
+  const post = publicacionDeVariante(carga.post ?? {}, fila.variante);
+  const video = mediosDe(post).find((m) => m.tipo === "video");
+  const clave = String(video?.src ?? "").replace(/^\/api\/media\//, "");
+  if (!/^clientes\/[^/]+\//.test(clave)) throw new ErrorPublicar("Para TikTok, el video tiene que estar subido a la publicación.");
+  if (!(await env.MEDIA.head(clave))) throw new ErrorPublicar("El video ya no está en el almacenamiento: vuelve a añadirlo a la publicación.");
+  if (!env.META_APP_SECRET) throw new ErrorPublicar("Falta META_APP_SECRET en el Worker: firma la dirección de la que PostPeer descarga el video.");
+  if (!origen) throw new ErrorPublicar("No se sabe en qué dirección está la aplicación para que PostPeer descargue el video: vuelve a vincular el TikTok del cliente en Ajustes → Integraciones.");
+
+  const info = await infoCreador(env, cuenta.externo_id);
+  const problema = problemaConCreador(info, { segundos: Number(video.duracion) });
+  if (problema) throw new ErrorPublicar(problema);
+  const cuerpo = cuerpoPublicacion({
+    texto: textoPara(post, "tiktok"), accountId: cuenta.externo_id, urlVideo: await urlMedioPublico(env, origen, video.src), info,
+  });
+
+  pp.enviadoAt = ahora();
+  await guardar({});
+  let respuesta;
+  try {
+    respuesta = await crearPublicacion(env, cuerpo);
+  } catch (e) {
+    // Sin respuesta, o un fallo del servidor de PostPeer: pudo quedar creada.
+    if (e instanceof ErrorPostPeer && (e.sinRespuesta || e.estado >= 500)) {
+      throw new ErrorPublicar(
+        `PostPeer no contestó bien al mandarla (${mensajePostPeer(e)}) y no se sabe si la recibió. Mira el perfil de TikTok y el panel ` +
+        "de PostPeer antes de reintentar, para no publicarla dos veces.",
+      );
+    }
+    // Un rechazo claro (4xx): no se creó nada y se puede volver a mandar.
+    delete pp.enviadoAt;
+    await guardar({});
+    throw e;
+  }
+  const lectura = leerPublicacion(respuesta);
+  if (!lectura.postId) {
+    throw new ErrorPublicar("PostPeer aceptó la publicación pero no devolvió su id. Mira su panel antes de reintentar, para no publicarla dos veces.");
+  }
+  pp.desde = ahora();
+  // Lo primero con el id: a partir de aquí nunca se manda otra.
+  await guardar({ contenedor_id: lectura.postId });
+  return seguirPostPeer({ carga, guardar, fila: actual() }, lectura);
+}
+
+async function seguirPostPeer({ carga, guardar, fila }, lectura) {
+  const pp = (carga.postpeer ??= {});
+  pp.estado = lectura.estadoPostPeer;
+  if (lectura.privacidad) pp.privacidad = lectura.privacidad;
+  if (lectura.estado === "publicada") {
+    carga.aviso = avisoDePublicada(lectura);
+    await guardar({ externo_id: lectura.postId ?? fila.contenedor_id, enlace: lectura.enlace, publicada_at: ahora() });
+    return { hecho: true };
+  }
+  if (lectura.estado === "fallida") {
+    throw new ErrorPublicar(`TikTok no la publicó (PostPeer): ${lectura.error || lectura.estadoPostPeer || "sin motivo"}.`);
+  }
+  const desde = Date.parse(pp.desde ?? fila.updated_at ?? "");
+  if (Number.isFinite(desde) && Date.now() - desde > PLAZO_TIKTOK_MS) {
+    throw new ErrorPublicar(
+      `PostPeer lleva más de ${PLAZO_TIKTOK_MS / 60_000} minutos sin terminar (último estado: ${lectura.estadoPostPeer ?? "desconocido"}). ` +
+      "Mira el perfil de TikTok y el panel de PostPeer antes de reintentar, para no publicarla dos veces.",
+    );
+  }
+  await guardar({});
   return { esperar: 20_000 };
 }
 
-/**
- * Un carrusel de fotos a TikTok. No se suben: TikTok las DESCARGA de
- * direcciones firmadas en el dominio verificado (`TIKTOK_MEDIOS_BASE`), y
- * sólo admite JPG o WEBP (el panel convierte a JPEG al programar). Como en
- * el video, el `publish_id` se guarda antes de seguir: a partir de ahí no
- * se pide otra publicación.
- */
-async function iniciarFotosTikTok(env, { cuenta, token, carga, guardar, post }) {
-  const fotos = mediosDe(post).filter((m) => m.tipo !== "video");
-  if (!fotos.length) throw new ErrorPublicar("Para TikTok, la publicación necesita un video o fotos.");
-  if (!fotosTikTokConfiguradas(env)) {
-    throw new ErrorPublicar("TikTok sólo publica fotos desde un dominio verificado, y todavía no hay uno configurado (TIKTOK_MEDIOS_BASE). Mientras tanto, sube un video o publícalas a mano.");
+/** El aviso de una publicada: lo que diga PostPeer, y si la privacidad no fue la pública. */
+function avisoDePublicada(lectura) {
+  const avisos = [];
+  if (lectura.privacidad && lectura.privacidad !== PRIVACIDAD_PUBLICA) {
+    avisos.push(`TikTok la dejó con privacidad «${lectura.privacidad}», no pública: revísala en el perfil.`);
   }
-  if (fotos.length > MAX_FOTOS_TIKTOK) throw new ErrorPublicar(`TikTok admite hasta ${MAX_FOTOS_TIKTOK} fotos y hay ${fotos.length}.`);
-  const malas = fotos.filter((m) => !FORMATOS_FOTO_TIKTOK.test(m.src));
-  if (malas.length) throw new ErrorPublicar("TikTok sólo publica fotos JPG o WEBP. Vuelve a programar desde el panel, que las convierte.");
-  const urls = [];
-  for (const f of fotos) urls.push(urlFotoTikTok(env, await rutaMedioPublico(env, f.src)));
-  const modo = leerJSON(cuenta.datos, {})?.modo === "directo" ? "directo" : "borrador";
-  const texto = textoPara(post, "tiktok");
-  const titulo = (post.title || texto.split("\n").map((l) => l.trim()).find(Boolean) || "").slice(0, 90);
-  const { publishId, privacidad } = await iniciarFotos(token, { modo, titulo, descripcion: texto, urls });
-  carga.modo = modo;
-  carga.privacidad = privacidad;
-  carga.fotos = urls.length;
-  carga.tiktokDesde = ahora();
-  await guardar({ contenedor_id: publishId });
-  return { esperar: 15_000 };
+  if (lectura.aviso) avisos.push(`PostPeer: ${lectura.aviso}`);
+  return avisos.join(" ") || undefined;
 }
 
-/** Cuánto se espera a que TikTok termine de procesar un video antes de darlo por fallido. */
-export const PLAZO_TIKTOK_MS = 30 * 60_000;
+/**
+ * Un aviso del webhook de PostPeer sobre una fila de la cola. Adelanta lo
+ * que el cron vería al preguntar: si salió, la cierra publicada; si
+ * falló, en error. Sólo toca una fila que sigue esperando (sin
+ * `externo_id`) y con su `updated_at` como condición: si el cron la tiene
+ * entre manos, no se pisa —él mismo lo verá al preguntar—. Un aviso
+ * repetido (PostPeer reintenta hasta tres veces) se descarta por su id.
+ */
+export async function aplicarAvisoPostPeer(env, { id, owner_id: ownerId }, lectura, eventoId = null) {
+  const acceso = crearAcceso(env.DB, ownerId);
+  const fila = await acceso.leerUno("publicaciones_programadas", { id });
+  if (!fila || fila.red !== "tiktok" || fila.externo_id || !EN_COLA.includes(fila.estado)) return false;
+  const carga = leerJSON(fila.carga, {});
+  const pp = (carga.postpeer ??= {});
+  if (eventoId && (pp.eventos ?? []).includes(eventoId)) return false;
+  if (eventoId) pp.eventos = [...(pp.eventos ?? []), eventoId].slice(-20);
+  pp.estado = lectura.estadoPostPeer;
+  if (lectura.privacidad) pp.privacidad = lectura.privacidad;
+
+  let cambios = {};
+  if (lectura.estado === "publicada") {
+    carga.aviso = avisoDePublicada(lectura);
+    cambios = { estado: "publicada", externo_id: fila.contenedor_id, enlace: lectura.enlace, error: null, siguiente_intento: null, publicada_at: ahora() };
+  } else if (lectura.estado === "fallida") {
+    cambios = { estado: "error", error: `TikTok no la publicó (PostPeer): ${lectura.error || lectura.estadoPostPeer || "sin motivo"}.`, siguiente_intento: null };
+  }
+  const n = await acceso.actualizar("publicaciones_programadas", { id, updated_at: fila.updated_at }, {
+    ...cambios, carga: JSON.stringify(carga), updated_at: ahora(),
+  });
+  if (!n || !cambios.estado) return Boolean(n);
+  const final = { ...fila, ...cambios };
+  difundir(env, ownerId, {
+    tipo: "publicacion", calId: fila.calendar_id, postId: fila.post_id, red: fila.red, variante: fila.variante ?? "post",
+    estado: final.estado, ...(final.estado === "publicada" && carga.aviso ? { aviso: carga.aviso } : {}), por: FIRMA_SISTEMA,
+  });
+  if (final.estado === "error") await avisarFallo(env, acceso, final, final.error);
+  return true;
+}
 
 // ------------------------------------------------------------
 // YouTube
@@ -866,8 +916,6 @@ async function pasoYouTube(env, contexto) {
   // 1. La sesión.
   if (!fila.contenedor_id) {
     const video = mediosDe(post).find((m) => m.tipo === "video");
-    // Sin video, un carrusel de fotos: TikTok las descarga del dominio verificado.
-    if (!video) return iniciarFotosTikTok(env, { cuenta, token, carga, guardar, post });
     const clave = String(video?.src ?? "").replace(/^\/api\/media\//, "");
     if (!/^clientes\/[^/]+\//.test(clave)) throw new ErrorPublicar("Para YouTube, el video tiene que estar subido a la publicación.");
     const cabeza = await env.MEDIA.head(clave);

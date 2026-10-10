@@ -82,8 +82,8 @@ describe("subir contenido", () => {
     const historia = { format: "historia", medios: [img(1)] };
     expect(resumenDestino(historia, ["instagram"])).toBe("Sale en Instagram (historia). No sale en Facebook y TikTok.");
     const conSuHistoria = { format: "post", medios: [img(1)], historiaTambien: true, historias: [img(2)] };
-    expect(resumenDestino(conSuHistoria, ["instagram", "facebook", "tiktok"]))
-      .toBe("Sale en Instagram (post en el feed + historia), Facebook (publicación + historia) y TikTok (carrusel de fotos).");
+    expect(resumenDestino(conSuHistoria, ["instagram", "facebook"]))
+      .toBe("Sale en Instagram (post en el feed + historia) y Facebook (publicación + historia). No sale en TikTok.");
     expect(resumenDestino({ format: "reel", medios: [{ src: "/v.mp4", tipo: "video" }] }, ["tiktok"])).toMatch(/TikTok \(video\)/);
     expect(resumenDestino(historia, [])).toMatch(/ninguna red/);
   });

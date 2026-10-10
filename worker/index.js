@@ -40,7 +40,7 @@ import { rutaADN, rutaImagenADN } from "./rutas/adn.js";
 import { rutaGenerarImagen } from "./rutas/imagen.js";
 import { rutaAnalizarVideo } from "./rutas/video.js";
 import { rutasDrive, rutaDriveCallback } from "./rutas/drive.js";
-import { rutasRedes, rutasPublicar, rutaMetaCallback, rutaMedioPublico, rutaTikTokPublica } from "./rutas/redes.js";
+import { rutasRedes, rutasPublicar, rutaMetaCallback, rutaMedioPublico, rutaWebhookPostPeer } from "./rutas/redes.js";
 import { rutasYouTube, rutaYouTubePublica } from "./rutas/youtube.js";
 import { procesarCola, programarAlAprobar, cancelarPendientes } from "./lib/publicador.js";
 import { rutasMetricas } from "./rutas/metricas.js";
@@ -273,12 +273,8 @@ export default {
       if (partes[0] === "redes" && partes[1] === "meta" && partes[2] === "callback" && metodo === "GET") {
         return rutaMetaCallback(req, env);
       }
-      // TikTok: la vuelta, y el enlace con el que el CLIENTE conecta su
-      // cuenta desde su teléfono. Los dos sin sesión: la identidad va firmada.
-      if (partes[0] === "redes" && partes[1] === "tiktok" && (partes[2] === "callback" || partes[2] === "inicio") && metodo === "GET") {
-        return rutaTikTokPublica(req, env, partes);
-      }
-      // YouTube, igual que TikTok: la vuelta de Google y el enlace del cliente.
+      // YouTube: la vuelta de Google y el enlace con el que el CLIENTE
+      // conecta su canal. Los dos sin sesión: la identidad va firmada.
       if (partes[0] === "redes" && partes[1] === "youtube" && (partes[2] === "callback" || partes[2] === "inicio") && metodo === "GET") {
         return rutaYouTubePublica(req, env, partes);
       }
@@ -291,6 +287,11 @@ export default {
       // META_APP_SECRET. Ver worker/rutas/bandeja.js.
       if (partes[0] === "webhooks" && partes[1] === "meta" && partes.length === 2) {
         return await rutaWebhookMeta(req, env, ctx);
+      }
+      // Lo que avisa PostPeer de una publicación de TikTok: sin sesión,
+      // firmado con POSTPEER_WEBHOOK_SECRET. Ver worker/rutas/redes.js.
+      if (partes[0] === "webhooks" && partes[1] === "postpeer" && partes.length === 2) {
+        return await rutaWebhookPostPeer(req, env);
       }
 
       // ---------- 2. Acceso ----------

@@ -57,13 +57,10 @@ describe("revisarPublicacion", () => {
     expect(errores).toEqual([]);
     expect(avisos.join(" ")).toMatch(/no muestra el texto/);
   });
-  it("TikTok: video, o fotos como carrusel (hasta 35); ni historias ni nada", () => {
-    expect(revisarPublicacion({ format: "post", descripcion: "x" }, ["tiktok"]).errores.join(" ")).toMatch(/TikTok necesita un video o fotos/);
+  it("TikTok (por PostPeer): sólo video; ni fotos, ni historias", () => {
+    expect(revisarPublicacion({ format: "post", descripcion: "x" }, ["tiktok"]).errores.join(" ")).toMatch(/TikTok necesita un video/);
     const fotos = revisarPublicacion({ format: "carrusel", descripcion: "x", medios: [{ src: "/a.jpg" }, { src: "/b.jpg" }] }, ["tiktok"]);
-    expect(fotos.errores).toEqual([]);
-    expect(fotos.avisos.join(" ")).toMatch(/carrusel de fotos/);
-    const muchas = Array.from({ length: 36 }, (_, i) => ({ src: `/${i}.jpg` }));
-    expect(revisarPublicacion({ format: "carrusel", descripcion: "x", medios: muchas }, ["tiktok"]).errores.join(" ")).toMatch(/hasta 35 fotos/);
+    expect(fotos.errores.join(" ")).toMatch(/TikTok necesita un video/);
     expect(revisarPublicacion({ format: "historia", medios: [{ src: "/a.jpg" }] }, ["tiktok"]).errores.join(" ")).toMatch(/no publica historias/);
     const mezcla = revisarPublicacion({ format: "reel", descripcion: "x", medios: [{ src: "/a.mp4", tipo: "video" }, { src: "/b.jpg" }] }, ["tiktok"]);
     expect(mezcla.avisos.join(" ")).toMatch(/sólo el video/);
