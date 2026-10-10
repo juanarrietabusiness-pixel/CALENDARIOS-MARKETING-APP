@@ -122,9 +122,8 @@ Ahora que el Worker existe, ya tiene dónde guardarlas.
 | `META_WEBHOOK_VERIFY_TOKEN` | Un testigo que inventas tú, para verificar el webhook *(opcional)* | Ver «La bandeja: comentarios y mensajes» abajo |
 
 | `META_CONFIG_ID_ANUNCIOS` | El ID de la configuración CON los permisos de anuncios *(opcional)* | Ver «Anuncios de Meta» abajo. Sólo hace falta si se usa `META_CONFIG_ID` |
-| `TIKTOK_CLIENT_KEY` | La Client key de la app de TikTok | Ver «TikTok» abajo |
-| `TIKTOK_CLIENT_SECRET` | Su Client secret | Ver «TikTok» abajo |
-| `TIKTOK_MEDIOS_BASE` | `https://juancitoads.com/calendario-medios` (carruseles de fotos) | Ver «Carruseles de fotos en TikTok» abajo |
+| `POSTPEER_API_KEY` | La llave de PostPeer (publica en TikTok) | Ver «TikTok (por PostPeer)» abajo |
+| `POSTPEER_WEBHOOK_SECRET` | El secreto del webhook de PostPeer *(opcional)* | Ver «TikTok (por PostPeer)» abajo |
 
 El `GITHUB_TOKEN` es para leer el ADN de marca de los repositorios de los
 clientes —lo usa «Llenar desde el repositorio» de la pestaña Cerebro—. Con
@@ -310,62 +309,48 @@ administrador y pide escribir ACTIVAR. **Nada de esto se ha probado contra
 la Marketing API real:** lo primero, una campaña de Tráfico de 1 $ al día
 mirada en el Administrador de anuncios antes de activarla.
 
-### TikTok
+### TikTok (por PostPeer)
 
-Una vez, con la cuenta de TikTok de la AGENCIA:
+La app propia de TikTok nunca pasó la auditoría: en Sandbox sólo dejaba
+borradores. TikTok se publica ahora por **PostPeer** (postpeer.dev), que
+publica con su propia app ya auditada. La integración anterior (Login Kit,
+`TIKTOK_CLIENT_KEY`/`TIKTOK_CLIENT_SECRET`, `TIKTOK_MEDIOS_BASE`) se quitó:
+esos secretos ya no se leen y se pueden borrar de Cloudflare.
 
-1. developers.tiktok.com → **Manage apps → Connect an app**.
-2. Productos: **Login Kit** y **Content Posting API** (con «Direct Post» si
-   se quiere publicar sin pasar por la bandeja del cliente).
-3. En Login Kit, *Redirect URI*: la que enseña la app en **Ajustes →
-   Integraciones** (`https://<dominio>/api/redes/tiktok/callback`).
-4. Permisos: `user.info.basic`, `user.info.profile`, `user.info.stats`,
-   `video.list`, `video.upload`, `video.publish`. Política de privacidad:
-   `https://<dominio>/privacidad`; términos de servicio:
-   `https://<dominio>/terminos`.
-5. Pegar aquí `TIKTOK_CLIENT_KEY` y `TIKTOK_CLIENT_SECRET` (tipo *Secret*).
-6. Hasta que TikTok revise la app, funciona en **Sandbox**: añadir ahí las
-   cuentas de los clientes como usuarios de prueba (hasta 10). Para más,
-   enviarla a revisión desde el mismo panel.
+Una vez, con la cuenta de PostPeer de la AGENCIA:
 
-Cada cliente se conecta aparte (en TikTok no hay un usuario de agencia que
-vea todas): **Conectar aquí** si la agencia tiene su acceso, o **Enlace para
-el cliente**, que el cliente abre en su teléfono (vale una semana).
+1. postpeer.dev → **Claves de acceso** → crear una llave.
+2. Cloudflare → el Worker → **Settings → Variables and Secrets** → añadir
+   `POSTPEER_API_KEY` (tipo *Secret*). Comprobarla en la app: **Ajustes →
+   Integraciones → TikTok (PostPeer) → Comprobar la llave**.
+3. *(Opcional, para enterarse al momento)* Registrar el webhook en PostPeer
+   (`POST /v1/notifications/`) con la dirección que enseña Ajustes
+   (`https://<dominio>/api/webhooks/postpeer`) y los eventos
+   `post.scheduled`, `post.published`, `post.partial` y `post.failed`.
+   PostPeer devuelve `notification.webhook.secret`: guardarlo como
+   `POSTPEER_WEBHOOK_SECRET` (tipo *Secret*). Sin webhook también funciona:
+   la cola pregunta a PostPeer cada minuto.
 
-Por defecto los videos van a la **bandeja de TikTok del cliente** (modo
-Borrador) y se publican desde la app con un toque. En modo **Directo**
-salen publicados, pero **en privado** hasta que TikTok audite la app.
+Cada cliente se conecta aparte: **Conectar con PostPeer** crea su perfil en
+PostPeer y da el enlace del permiso, que se abre **entrando con la cuenta de
+TikTok del cliente**; al volver, **Ya la conecté**. Si no aparece, **Pegar
+el id** de la cuenta que enseña el panel de PostPeer.
 
-#### Carruseles de fotos en TikTok (una vez)
+Lo que hace al publicar: a la hora del calendario, el cron pregunta a
+PostPeer qué deja la cuenta (`/tiktok/creator-info`: que admita
+`PUBLIC_TO_EVERYONE` y la duración máxima) y manda la publicación con
+`publishNow`, `privacyLevel: PUBLIC_TO_EVERYONE` y `draft: false`. PostPeer
+**descarga** el video de la dirección firmada de `/api/medio-publico/` (la
+misma que Meta; necesita `META_APP_SECRET`). Sólo video: TikTok ya no recibe
+fotos desde la app. Cada publicación gasta créditos de PostPeer.
 
-Los videos se SUBEN; las fotos no se pueden subir: TikTok las **descarga** de
-una dirección, y sólo de un dominio **verificado** en su portal.
-`workers.dev` no se puede verificar, así que las fotos salen por
-`juancitoads.com`, que reenvía a la aplicación (la web sigue igual):
+**Para apagarlo:** borrar `POSTPEER_API_KEY` en Cloudflare. Lo programado a
+TikTok falla entonces con «Falta POSTPEER_API_KEY» y no se manda nada; las
+demás redes siguen igual.
 
-1. **La web** (repositorio PAGINA-JUANCITO-ADS, Netlify): añadir al final de
-   `public/_redirects` esta línea y publicar.
-
-   ```
-   /calendario-medios/*   https://calendarios.juanarrietabusiness.workers.dev/api/medio-publico/:splat   200!
-   ```
-
-   Comprobar: `https://juancitoads.com/calendario-medios/x/y.jpg` tiene que
-   contestar el 404 de la aplicación, `{"error":"Archivo no encontrado"}` (no la página 404 de la web).
-2. **TikTok:** developers.tiktok.com → la app → **URL properties** →
-   añadir el **dominio** `juancitoads.com` → verificar por DNS: copiar el
-   registro TXT que da TikTok y crearlo en Netlify → **Domains →
-   juancitoads.com → DNS settings → Add new record** (tipo TXT, nombre `@`).
-   Volver a TikTok y pulsar **Verify**.
-3. **Cloudflare:** en el Worker, añadir `TIKTOK_MEDIOS_BASE` =
-   `https://juancitoads.com/calendario-medios` (tipo *Secret*, como las
-   demás: así ningún despliegue la borra).
-
-Sin el paso 3, una publicación de fotos a TikTok falla diciendo qué falta.
-Las fotos van firmadas (abren ESE archivo y caducan en tres días), igual que
-las que descarga Meta; TikTok sólo admite JPG o WEBP y hasta 35, y el panel
-las convierte a JPEG al programar. La música la pone TikTok
-(`auto_add_music`); en Borrador el cliente la cambia antes de publicar.
+**Nada de esto se ha probado contra PostPeer real:** los tests usan un
+`fetch` de mentira con la forma de su documentación. La primera prueba: UN
+video de Dcasa, y mirar en el perfil que salió público.
 
 ### YouTube
 
@@ -388,7 +373,7 @@ console.cloud.google.com, en ESE proyecto:
    `https://<dominio>/privacidad`; términos: `https://<dominio>/terminos`
    (ya nombran YouTube, como pide Google).
 
-Cada cliente se conecta aparte, como en TikTok: **Conectar aquí** (entrando
+Cada cliente se conecta aparte: **Conectar aquí** (entrando
 con la cuenta de Google que administra SU canal) o **Enlace para el
 cliente** (vale una semana). Si esa cuenta tiene varios canales, la app
 pide elegir cuál. La privacidad (público, oculto o privado) se elige por
@@ -508,14 +493,11 @@ Hace falta, una vez:
    - Meta → Inicio de sesión con Facebook → URI de redireccionamiento de
      OAuth válidos: `https://calendario.juancitoads.com/api/redes/meta/callback`;
      y `juancitoads.com` en *Dominios de la app*.
-   - TikTok → Login Kit → Redirect URI:
-     `https://calendario.juancitoads.com/api/redes/tiktok/callback`.
 4. `SITIO_URL` = `https://calendario.juancitoads.com` en los secretos de
    GitHub, para que la comprobación diaria mire el sitio publicado.
 
 **`calendarios.<cuenta>.workers.dev` NO se apaga** (`workers_dev: true`, y un
-test lo exige): de ella dependen el reenvío de fotos a TikTok de Netlify, las
-vueltas de OAuth ya registradas, el webhook de la Bandeja, el conector de
+test lo exige): de ella dependen las vueltas de OAuth ya registradas, el webhook de la Bandeja, el conector de
 Claude y los enlaces de aprobación que ya tienen los clientes. La sesión va
 por dirección (cookie `__Host-`): al entrar por el subdominio la primera vez,
 hay que volver a iniciar sesión.
@@ -602,7 +584,7 @@ despliegue (`EspacioHub`, migración `v1` de `wrangler.jsonc`).
 | `META_CONFIG_ID_BANDEJA` / `META_WEBHOOK_VERIFY_TOKEN` | **Cloudflare** | La Bandeja (opcionales) |
 
 | `META_CONFIG_ID_ANUNCIOS` | **Cloudflare** | Anuncios de Meta (opcional) |
-| `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` | **Cloudflare** | TikTok |
+| `POSTPEER_API_KEY` / `POSTPEER_WEBHOOK_SECRET` | **Cloudflare** | TikTok, por PostPeer (el webhook, opcional) |
 
 La regla: **en GitHub, lo que necesita el workflow. En Cloudflare, lo que
 necesita el Worker mientras corre.** Ninguna de las dos listas llega

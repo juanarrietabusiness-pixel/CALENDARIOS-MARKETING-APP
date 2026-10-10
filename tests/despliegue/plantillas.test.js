@@ -111,7 +111,7 @@ describe("wrangler.jsonc — qué se despliega", () => {
     if ((W.routes ?? []).length && W.workers_dev !== true) lista.push(fallo({
       que: "hay routes y workers_dev no es true",
       donde: "wrangler.jsonc → workers_dev",
-      porque: "Con routes, wrangler da workers_dev por false y apaga la dirección workers.dev al desplegar: se caen el reenvío de fotos a TikTok, las vueltas de OAuth registradas, el webhook de la Bandeja y el conector de Claude.",
+      porque: "Con routes, wrangler da workers_dev por false y apaga la dirección workers.dev al desplegar: se caen las vueltas de OAuth registradas, el webhook de la Bandeja y el conector de Claude.",
       arreglo: 'Pon "workers_dev": true.',
     }));
     expect(lista, fallos(lista)).toEqual([]);

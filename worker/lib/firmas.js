@@ -2,8 +2,8 @@
 // Cifrar y firmar con el secreto de una integración
 //
 // Lo mismo que hace google.js para Drive, pero con la clave como
-// parámetro: Meta cifra sus tokens con META_APP_SECRET y TikTok con el
-// suyo. Cada uso deriva su propia clave (HKDF con `uso`), así que el
+// parámetro: Meta cifra sus tokens con META_APP_SECRET y YouTube con
+// GOOGLE_CLIENT_SECRET. Cada uso deriva su propia clave (HKDF con `uso`), así que el
 // mismo secreto nunca cifra y firma con la misma clave.
 // ============================================================
 

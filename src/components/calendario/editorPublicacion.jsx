@@ -309,14 +309,14 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError, e
 }
 
 // ------------------------------------------------------------
-// La portada del video (reel y TikTok)
+// La portada del video (reel)
 // ------------------------------------------------------------
 //
 // Instagram deja poner una imagen de portada (`cover_url`) o un
-// fotograma (`thumb_offset`); TikTok, sólo el fotograma
-// (`video_cover_timestamp_ms`). Aquí se escoge el fotograma con una
-// barra —se guarda como imagen Y como milisegundo, para que valga en las
-// dos redes y en la página del cliente— o se sube una imagen aparte.
+// fotograma (`thumb_offset`). TikTok se publica por PostPeer, que no
+// recibe portada: la elige TikTok. Aquí se escoge el fotograma con una
+// barra —se guarda como imagen Y como milisegundo, para que valga en
+// Instagram y en la página del cliente— o se sube una imagen aparte.
 
 /**
  * El fotograma actual del video, en JPEG de 1080 px de ancho como mucho. Con
@@ -456,7 +456,7 @@ export function PortadaVideo({ id, video, post, clientId, onPortada, onError, on
             aria-label="Imagen de portada"
             onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void subirImagen(f); }}
           />
-          <p className="hint">Instagram usa la imagen o el fotograma; TikTok, el fotograma (sólo al publicar directo).</p>
+          <p className="hint">Instagram usa la imagen o el fotograma; en TikTok la portada la elige TikTok.</p>
         </div>
       </div>
     </div>

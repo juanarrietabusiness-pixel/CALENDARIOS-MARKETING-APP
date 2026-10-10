@@ -123,14 +123,7 @@ export function conMedios(post, medios) {
   return { ...post, medios: lista, image: primeraImagen };
 }
 
-/** Fotos que admite un carrusel de TikTok. */
-export const MAX_FOTOS_TIKTOK = 35;
-
-/**
- * Las redes que, POR DEFECTO, sólo llevan video. TikTok también publica
- * carruseles de fotos, pero sólo si se elige a mano: necesita el dominio
- * verificado y no todas las fotos de Instagram tienen sentido en TikTok.
- */
+/** Las redes que sólo llevan video: TikTok (por PostPeer) y YouTube. */
 const SOLO_VIDEO = new Set(["tiktok", "youtube"]);
 
 /**
@@ -429,14 +422,10 @@ export function revisarPublicacion(post, redes = post?.redes ?? ["instagram"], {
   }
 
   if (redes.includes("tiktok")) {
-    // Sin video, TikTok publica las fotos como carrusel (hasta 35). Las
-    // DESCARGA de un dominio verificado: si no hay uno configurado, lo dice
-    // la cola al publicar (el navegador no sabe del servidor).
+    // Se publica por PostPeer, y sólo video: las fotos no salen ahí.
     const fotos = medios.filter((m) => m.tipo !== "video");
     if (["historia", "live"].includes(post?.format)) con(errores, "TikTok no publica historias ni directos desde la API.", quitarRed(redes, "tiktok"));
-    else if (!videos.length && !fotos.length) con(errores, "TikTok necesita un video o fotos.", quitarRed(redes, "tiktok"));
-    else if (!videos.length && fotos.length > MAX_FOTOS_TIKTOK) errores.push(`TikTok admite hasta ${MAX_FOTOS_TIKTOK} fotos y hay ${fotos.length}.`);
-    else if (!videos.length) avisos.push("En TikTok sale como carrusel de fotos, con música que TikTok elige; el cliente puede cambiarla desde la app.");
+    else if (!videos.length) con(errores, "TikTok necesita un video.", quitarRed(redes, "tiktok"));
     else if (fotos.length) avisos.push("TikTok publica sólo el video: las fotos no salen ahí.");
     const texto = textoPara(post, "tiktok");
     if (texto.length > LIMITES.tiktok.caracteres) errores.push(`El texto de TikTok tiene ${texto.length} caracteres; el máximo es ${LIMITES.tiktok.caracteres}.`);

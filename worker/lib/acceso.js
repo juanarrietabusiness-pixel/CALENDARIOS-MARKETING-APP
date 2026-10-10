@@ -486,12 +486,14 @@ export async function colaPendiente(db, ahoraISO, limite = 3) {
  * Las cuentas asignadas a un cliente que aún no tienen su foto de
  * métricas de `fecha`, de todos los espacios. Igual que `colaPendiente`:
  * sólo ids y dueño, y lo demás se lee después con `crearAcceso`.
+ * TikTok no entra: se publica por PostPeer, sin token propio con el que
+ * leer sus cifras.
  */
 export async function cuentasSinFoto(db, fecha, limite = 1) {
   const { results } = await db
     .prepare(
       `select c.id, c.owner_id from cuentas_sociales c
-        where c.client_id is not null and c.red in ('instagram','facebook','tiktok','youtube')
+        where c.client_id is not null and c.red in ('instagram','facebook','youtube')
           and not exists (select 1 from metricas_cuenta m where m.cuenta_id = c.id and m.fecha = ?)
         order by c.updated_at asc
         limit ?`,
@@ -575,6 +577,22 @@ export async function cuentasPorExterno(db, red, externos) {
         where red = ? and client_id is not null and externo_id in (${lista.map(() => "?").join(",")})`,
     )
     .bind(red, ...lista)
+    .all();
+  return results ?? [];
+}
+
+/**
+ * Las filas de la cola de TikTok que esperan a la publicación `postId` de
+ * PostPeer, de TODOS los espacios: el aviso de su webhook no tiene sesión y
+ * sólo dice «el post 123». Igual que `colaPendiente`: sólo id y dueño; la
+ * fila se lee y se escribe después con `crearAcceso(db, owner_id)`.
+ */
+export async function colaPorPostPeer(db, postId) {
+  const id = String(postId ?? "");
+  if (!id) return [];
+  const { results } = await db
+    .prepare(`select id, owner_id from publicaciones_programadas where red = 'tiktok' and contenedor_id = ? limit 5`)
+    .bind(id)
     .all();
   return results ?? [];
 }

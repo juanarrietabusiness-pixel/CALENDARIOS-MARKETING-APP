@@ -81,7 +81,7 @@
   //   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
   //   META_APP_ID, META_APP_SECRET, META_CONFIG_ID,
   //   META_CONFIG_ID_BANDEJA, META_WEBHOOK_VERIFY_TOKEN   —la Bandeja; opcionales—,
-  //   TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET
+  //   POSTPEER_API_KEY, POSTPEER_WEBHOOK_SECRET   —TikTok, por PostPeer; el webhook es opcional—
   // Estas variables sí son públicas en el sentido de que no abren nada:
   // son nombres de modelo y políticas.
   "vars": {
@@ -107,9 +107,8 @@
   //
   // `workers_dev: true` NO se puede quitar: con `routes` puesto y sin él,
   // wrangler lo da por `false` y apaga calendarios.<cuenta>.workers.dev en el
-  // siguiente despliegue. De esa dirección dependen el reenvío de las fotos
-  // de TikTok (`_redirects` de la web en Netlify), las vueltas de OAuth ya
-  // registradas en Google, Meta y TikTok, el webhook de la Bandeja y el
+  // siguiente despliegue. De esa dirección dependen las vueltas de OAuth ya
+  // registradas en Google y Meta, el webhook de la Bandeja y el
   // conector de Claude: todo dejaría de funcionar sin un solo error aquí.
   // ============================================================
   "routes": [

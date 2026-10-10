@@ -23,7 +23,6 @@
 
 import { crearAcceso, cuentasSinFoto } from "./acceso.js";
 import { graph, descifrarMeta } from "./meta.js";
-import { tokenTikTok, usuarioTikTok, videosTikTok } from "./tiktok.js";
 import { tokenYouTube, canalesYouTube, diaDelCanal, videosRecientesYouTube } from "./youtube.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 
@@ -199,8 +198,9 @@ async function publicacionesFB(env, token, pagina, desde) {
  * cliente. Devuelve la fila de la cuenta.
  */
 export async function fotografiarCuenta(env, acceso, cuenta, fecha = fechaDeFoto()) {
-  const token = cuenta.red === "tiktok" ? await tokenTikTok(env, acceso, cuenta)
-    : cuenta.red === "youtube" ? await tokenYouTube(env, acceso, cuenta)
+  // TikTok se publica por PostPeer: no hay token propio con el que leer sus cifras.
+  if (cuenta.red === "tiktok") throw new Error("Las cifras de TikTok no se leen desde la aplicación.");
+  const token = cuenta.red === "youtube" ? await tokenYouTube(env, acceso, cuenta)
       : await descifrarMeta(env, cuenta.token_cifrado);
   const desde = Date.now() - DIAS_PUBLICACIONES * 86400_000;
   let base = {};
@@ -222,26 +222,6 @@ export async function fotografiarCuenta(env, acceso, cuenta, fecha = fechaDeFoto
     // permiso que falta se ve igual que una página que no publica.
     if (fb.fallos.length) datos = { ...datos, avisos: { publicaciones: fb.fallos, ...(fb.parcial ? { parcial: true } : {}) } };
     else datos = { ...datos, recibidas: fb.recibidas };
-  } else if (cuenta.red === "tiktok") {
-    // TikTok no da métricas por día de la cuenta: seguidores y totales,
-    // y de cada video sus vistas, me gusta, comentarios y compartidos.
-    const u = (await intentar(() => usuarioTikTok(token))) ?? {};
-    base = { followers_count: u.follower_count, media_count: u.video_count };
-    datos = { meGustaTotales: num(u.likes_count) };
-    publicaciones = ((await intentar(() => videosTikTok(token, 20))) ?? [])
-      .filter((v) => Number(v.create_time) * 1000 >= desde)
-      .map((v) => {
-        const meGusta = num(v.like_count) ?? 0;
-        const comentarios = num(v.comment_count) ?? 0;
-        const compartidos = num(v.share_count) ?? 0;
-        return {
-          externo_id: String(v.id), tipo: "video", enlace: v.share_url ?? "",
-          texto: String(v.video_description || v.title || "").slice(0, 300), miniatura: v.cover_image_url ?? "",
-          publicada_at: new Date(Number(v.create_time) * 1000).toJSON(),
-          me_gusta: meGusta, comentarios, guardados: 0, compartidos, alcance: 0, vistas: num(v.view_count) ?? 0,
-          interacciones: meGusta + comentarios + compartidos,
-        };
-      });
   } else if (cuenta.red === "youtube") {
     // Del canal: suscriptores, videos y vistas de siempre (Data API). Del
     // día: vistas e interacciones (Analytics, que tarda en cerrarlas: un
