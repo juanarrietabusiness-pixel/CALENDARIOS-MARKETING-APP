@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
-import { modeloPorId, textoCosto, NOMBRE_PROPORCION } from "../lib/estudioCatalogo";
+import { modeloPorId, nombreDelModelo, textoCosto, NOMBRE_PROPORCION } from "../lib/estudioCatalogo";
 import { hace, nombreDeDescarga, esVideoReal, valorDeAjuste, ATAJOS_EDICION } from "../lib/estudio";
 
 // ============================================================
@@ -91,7 +91,7 @@ export default function Visor({
             </p>
           )}
           <dl className="est-detalles">
-            <div><dt>Modelo</dt><dd>{a.subido ? "Subida a mano" : m?.nombre ?? a.modelo ?? "Aplicación"}</dd></div>
+            <div><dt>Modelo</dt><dd>{a.subido ? "Subida a mano" : nombreDelModelo(a.modelo) || "Aplicación"}</dd></div>
             {a.ajustes?.aspectRatio && <div><dt>Formato</dt><dd>{NOMBRE_PROPORCION[a.ajustes.aspectRatio] ?? a.ajustes.aspectRatio} ({a.ajustes.aspectRatio})</dd></div>}
             {a.ajustes?.duration && <div><dt>Duración</dt><dd>{valorDeAjuste("duration", a.ajustes.duration)}</dd></div>}
             {a.ancho > 0 && <div><dt>Tamaño</dt><dd>{a.ancho}×{a.alto}</dd></div>}

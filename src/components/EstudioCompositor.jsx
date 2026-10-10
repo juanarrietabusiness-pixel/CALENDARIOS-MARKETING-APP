@@ -239,7 +239,7 @@ export default function Compositor({
           value={form.prompt}
           onChange={(e) => { onNo(); setForm({ ...form, prompt: e.target.value }); }}
         />
-        <p className="hint">Sin texto dentro de {esVideo ? "el video" : "la imagen"}, salvo que lo pidas. {form.prompt.length > 3500 ? `${form.prompt.length} de ${MAX_PROMPT} caracteres.` : ""}</p>
+        <p className="hint">Sin texto dentro {esVideo ? "del video" : "de la imagen"}, salvo que lo pidas. {form.prompt.length > 3500 ? `${form.prompt.length} de ${MAX_PROMPT} caracteres.` : ""}</p>
       </div>
 
       {onMejorar && <MejorarIdea mejorando={mejorando} onMejorar={onMejorar} onVolverIdea={onVolverIdea} />}

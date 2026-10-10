@@ -1,7 +1,7 @@
 // ============================================================
 // Videos cortos: guiones de 8 y 10 segundos (puro)
 //
-// Los modelos de video de la agencia hacen piezas de 8 s (Veo) o 10 s (Gemini
+// Los modelos de video de la agencia hacen piezas de 8 s (Veo por fal.ai) o 10 s (Gemini
 // Omni Flash, el «Omni» de Flow; o Kling Omni por Higgsfield). En ese tiempo no
 // cabe una historia: cabe UNA idea, en tres tiempos:
 //

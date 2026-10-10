@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  modelosParaLista, creadoresDe, CRITERIOS_ORDEN,
-  MODELOS, PRECIOS_AL, CONFIRMAR_DESDE, MAX_POR_PEDIDO, MAX_VIDEOS_POR_PEDIDO, ajustesDe, duracionDe, enCola, modeloPorId, modeloPorDefecto, estimar, textoCosto,
+  modelosParaLista, creadoresDe, CRITERIOS_ORDEN, MODELOS_RETIRADOS, nombreDelModelo,
+  MODELOS, PRECIOS_AL, CONFIRMAR_DESDE, MAX_POR_PEDIDO, MAX_VIDEOS_POR_PEDIDO, duracionDe, enCola, modeloPorId, modeloPorDefecto, estimar, textoCosto,
   pideConfirmar, normalizarAjustes, validarPedido, diasQueQuedan, DIAS_PAPELERA, proporcionDe, MEDIDAS,
 } from "./estudioCatalogo.js";
 import { claveDeArchivo, claveDelCliente, slugCorto, medidasDe, tipoPorBytes, extensionDe, esDelEstudio } from "../../worker/lib/estudio/archivos.js";
@@ -112,8 +112,8 @@ describe("validar un pedido", () => {
   it("el modelo por defecto es uno real si su motor tiene llave, y la prueba si no", () => {
     expect(modeloPorDefecto({ gemini: true }).id).toBe("nano-banana");
     expect(modeloPorDefecto({}).id).toBe("prueba");
-    // Y lo mismo para video: Veo Lite (el más barato) con llave, la prueba sin ella.
-    expect(modeloPorDefecto({ gemini: true }, "video").id).toBe("veo-3.1-lite");
+    // Y lo mismo para video: Gemini Omni Flash con llave (Veo 3.1 de Google se retiró), la prueba sin ella.
+    expect(modeloPorDefecto({ gemini: true }, "video").id).toBe("gemini-omni-flash");
     expect(modeloPorDefecto({}, "video").id).toBe("prueba-video");
     expect(modeloPorId("nano-banana").motor).toBe("gemini");
   });
@@ -198,35 +198,42 @@ describe("el video", () => {
     expect(videos.some((m) => m.inicial)).toBe(true);
   });
 
-  it("estima por segundo: 4 s de Veo Fast son 0,60 $ y 8 s de Lite, 0,40 $", () => {
-    expect(estimar("veo-3.1-fast", 1, { duration: "4" })).toBe(0.6);
-    expect(estimar("veo-3.1-lite", 1, { duration: "8" })).toBe(0.4);
-    expect(estimar("veo-3.1-lite", 2, { duration: "8" })).toBe(0.8);
+  it("estima por segundo: 4 s de Omni son 0,40 $ y 10 s, 1 $", () => {
+    expect(estimar("gemini-omni-flash", 1, { duration: "4" })).toBe(0.4);
+    expect(estimar("gemini-omni-flash", 1, { duration: "10" })).toBe(1);
+    expect(estimar("gemini-omni-flash", 2, { duration: "4" })).toBe(0.8);
     // Sin ajustes, la duración por defecto del modelo.
-    expect(estimar("veo-3.1-lite")).toBe(estimar("veo-3.1-lite", 1, { duration: "8" }));
-    expect(duracionDe(modeloPorId("veo-3.1"), { duration: "6" })).toBe(6);
+    expect(estimar("gemini-omni-flash")).toBe(estimar("gemini-omni-flash", 1, { duration: "10" }));
+    expect(duracionDe(modeloPorId("gemini-omni-flash"), { duration: "6" })).toBe(6);
     expect(estimar("prueba-video", 2, { duration: "5" })).toBe(0);
   });
 
   it("un pedido de video pasa de 2 a rechazarse", () => {
-    expect(validarPedido({ modelo: "veo-3.1-lite", prompt: "a", n: MAX_VIDEOS_POR_PEDIDO }).ok).toBe(true);
-    expect(validarPedido({ modelo: "veo-3.1-lite", prompt: "a", n: MAX_VIDEOS_POR_PEDIDO + 1 })).toMatchObject({ ok: false, error: expect.stringMatching(/videos/) });
+    expect(validarPedido({ modelo: "gemini-omni-flash", prompt: "a", n: MAX_VIDEOS_POR_PEDIDO }).ok).toBe(true);
+    expect(validarPedido({ modelo: "gemini-omni-flash", prompt: "a", n: MAX_VIDEOS_POR_PEDIDO + 1 })).toMatchObject({ ok: false, error: expect.stringMatching(/videos/) });
   });
 
-  it("las reglas de Veo: 1080p sólo en 8 s, y con referencias, 720p horizontal", () => {
-    expect(ajustesDe("veo-3.1", { resolution: "1080p", duration: "4" })).toMatchObject({ resolution: "1080p", duration: "8" });
-    expect(ajustesDe("veo-3.1", { aspectRatio: "9:16", resolution: "1080p" }, { reference: ["a"] })).toMatchObject({ aspectRatio: "16:9", resolution: "720p" });
-    const r = validarPedido({ modelo: "veo-3.1", prompt: "a", medios: { reference: ["a", "b"] }, ajustes: { aspectRatio: "9:16" } });
-    expect(r.pedido.ajustes).toMatchObject({ aspectRatio: "16:9", resolution: "720p" });
+  it("Veo 3.1 de Google ya no se pide, pero lo creado con él sigue teniendo nombre", () => {
+    for (const id of Object.keys(MODELOS_RETIRADOS)) {
+      expect(modeloPorId(id), id).toBeNull();
+      expect(validarPedido({ modelo: id, prompt: "a" })).toMatchObject({ ok: false, error: expect.stringMatching(/Google retiró .*Gemini Omni Flash/) });
+    }
+    expect(nombreDelModelo("veo-3.1-lite")).toBe("Veo 3.1 Lite (retirado)");
+    expect(nombreDelModelo("nano-banana")).toBe("Nano Banana");
+    expect(nombreDelModelo("otro")).toBe("otro");
+    expect(nombreDelModelo("")).toBe("");
+    // Ningún modelo vivo de Google usa ya un id «-preview» de video.
+    expect(MODELOS.filter((m) => m.motor === "gemini" && m.tipo === "video" && /preview/.test(m.gid ?? ""))).toEqual([]);
   });
 
-  it("la imagen inicial y la final: una de cada, la final necesita la inicial y Lite no lleva final", () => {
-    expect(validarPedido({ modelo: "veo-3.1-fast", prompt: "a", medios: { start: ["a"], end: ["b"] } }).ok).toBe(true);
-    expect(validarPedido({ modelo: "veo-3.1-fast", prompt: "a", medios: { end: ["b"] } })).toMatchObject({ ok: false, error: expect.stringMatching(/inicial/) });
-    expect(validarPedido({ modelo: "veo-3.1-fast", prompt: "a", medios: { start: ["a", "b"] } }).ok).toBe(false);
-    expect(validarPedido({ modelo: "veo-3.1-lite", prompt: "a", medios: { start: ["a"], end: ["b"] } })).toMatchObject({ ok: false, error: expect.stringMatching(/no admite imagen final/) });
+  it("la imagen inicial y la final: una de cada, la final necesita la inicial y un modelo sin final no la lleva", () => {
+    expect(validarPedido({ modelo: "gemini-omni-flash", prompt: "a", medios: { start: ["a"], end: ["b"] } }).ok).toBe(true);
+    expect(validarPedido({ modelo: "gemini-omni-flash", prompt: "a", medios: { end: ["b"] } })).toMatchObject({ ok: false, error: expect.stringMatching(/inicial/) });
+    expect(validarPedido({ modelo: "gemini-omni-flash", prompt: "a", medios: { start: ["a", "b"] } }).ok).toBe(false);
+    const sinFinal = MODELOS.find((m) => m.tipo === "video" && m.inicial && !m.final && m.motor !== "prueba").id;
+    expect(validarPedido({ modelo: sinFinal, prompt: "a", medios: { start: ["a"], end: ["b"] } })).toMatchObject({ ok: false, error: expect.stringMatching(/no admite imagen final/) });
     expect(validarPedido({ modelo: "nano-banana", prompt: "a", medios: { start: ["a"] } })).toMatchObject({ ok: false, error: expect.stringMatching(/no admite imagen inicial/) });
-    expect(validarPedido({ modelo: "veo-3.1", prompt: "a", medios: { start: ["a"], reference: ["b"] } }).ok).toBe(false);
+    expect(validarPedido({ modelo: "gemini-omni-flash", prompt: "a", medios: { start: ["a"], reference: ["b"] } }).ok).toBe(false);
   });
 });
 
@@ -305,7 +312,7 @@ describe("la lista de modelos: ordenar y filtrar", () => {
 
   it("recomendado abre con el predeterminado; calidad, con la mejor; barato, con el más barato; caro, con el más caro", () => {
     expect(modelosParaLista("imagen", { orden: "recomendado", activos })[0].id).toBe("nano-banana");
-    expect(modelosParaLista("video", { orden: "recomendado", activos })[0].id).toBe("veo-3.1-lite");
+    expect(modelosParaLista("video", { orden: "recomendado", activos })[0].id).toBe("gemini-omni-flash");
     expect(modelosParaLista("imagen", { orden: "calidad", activos })[0].calidad).toBe(4);
     const baratos = modelosParaLista("imagen", { orden: "barato", activos });
     expect(baratos[0].costo).toBe(0); // la prueba, que es gratis

@@ -104,26 +104,6 @@ export function tarjetaDeVideoDePrueba({ prompt, ajustes, medios = {} }) {
   return { svg: svg.replace("</svg>", `${animacion}</svg>`).replace("PRUEBA · ESTUDIO", "PRUEBA · VIDEO"), ancho: w, alto: h };
 }
 
-/** La petición de Veo, como la envía el SDK de Google. Pura (las imágenes ya vienen en base64). */
-export function peticionVeo(modelo, { prompt, ajustes, medios = {} }) {
-  const imagen = (f) => ({ bytesBase64Encoded: f.base64, mimeType: f.mime });
-  const instancia = { prompt };
-  const inicial = medios.start?.[0];
-  const final = medios.end?.[0];
-  const referencias = (medios.reference ?? []).slice(0, modelo.referencias ?? 0);
-  if (inicial) instancia.image = imagen(inicial);
-  if (final && inicial) instancia.lastFrame = imagen(final); // un fotograma final sólo va con uno inicial
-  if (referencias.length && !inicial) instancia.referenceImages = referencias.map((f) => ({ image: imagen(f), referenceType: "asset" }));
-  return {
-    instances: [instancia],
-    parameters: {
-      aspectRatio: ajustes.aspectRatio || "9:16",
-      resolution: ajustes.resolution || "720p",
-      durationSeconds: Number(ajustes.duration) || 8,
-    },
-  };
-}
-
 const BASE_GEMINI = "https://generativelanguage.googleapis.com/v1beta";
 
 /**
@@ -166,7 +146,7 @@ export function videoDeInteraccion(j) {
 }
 
 /**
- * «files/abc» o la dirección completa → la de descarga del archivo (con la llave, como el video de Veo). Null si no
+ * «files/abc» o la dirección completa → la de descarga del archivo (con la llave). Null si no
  * es https de Google: la llave sólo viaja a `*.googleapis.com`.
  */
 export function descargaDeArchivoGemini(uri) {
@@ -240,60 +220,24 @@ export const MOTORES = Object.freeze({
       return { bytes, mime, costo: costoDeGemini(modelo, meta), meta };
     },
 
-    // ---- Video (Veo): predictLongRunning → sondear la operación → bajar el archivo con la llave.
-    //      Omni: la Interactions API; puede contestar ya con el video o seguir en marcha (se mira su id).
+    // ---- Video: Omni, por la Interactions API; puede contestar ya con el video o seguir en marcha (se mira su id).
+    //      Veo 3.1 iba por predictLongRunning y Google lo retiró (ver MODELOS_RETIRADOS en el catálogo).
     async enviar(env, { modelo, prompt, ajustes, medios }) {
-      if (modelo.api === "interactions") {
-        const j = await pedirGoogle(env, `${BASE_GEMINI}/interactions`, { method: "POST", body: JSON.stringify(peticionOmni(modelo, { prompt, ajustes, medios })) }, modelo.gid);
-        const ya = videoDeInteraccion(j);
-        if (!j?.id && !ya?.uri) throw new ErrorMotor("Google no devolvió la interacción del video.", 502);
-        // Sólo se guarda la DIRECCIÓN (el video en línea no cabe en la fila): con ella, el primer sondeo lo da por listo.
-        return { id: String(j.id ?? `omni-${crypto.randomUUID()}`), cada: ya ? 1000 : 8000, datos: { api: "interactions", ...(ya?.uri ? { uri: ya.uri, mime: ya.mime } : {}) } };
-      }
-      const res = await fetch(`${BASE_GEMINI}/models/${encodeURIComponent(modelo.gid)}:predictLongRunning`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": env.GOOGLE_AI_KEY },
-        body: JSON.stringify(peticionVeo(modelo, { prompt, ajustes, medios })),
-      }).catch(() => { throw new ErrorMotor("No se pudo contactar con Google AI", 502, { reintentable: true }); });
-      const texto = await res.text().catch(() => "");
-      if (!res.ok) throw errorDeGoogle(res.status, texto, modelo.gid);
-      let op = null;
-      try { op = JSON.parse(texto); } catch { /* respuesta rara */ }
-      if (!op?.name) throw new ErrorMotor("Google no devolvió el número de la operación del video.", 502);
-      return { id: op.name, cada: 8000 };
+      if (modelo.api !== "interactions") throw new ErrorMotor(`${modelo.nombre} no es un video que Google haga por esta vía.`, 400);
+      const j = await pedirGoogle(env, `${BASE_GEMINI}/interactions`, { method: "POST", body: JSON.stringify(peticionOmni(modelo, { prompt, ajustes, medios })) }, modelo.gid);
+      const ya = videoDeInteraccion(j);
+      if (!j?.id && !ya?.uri) throw new ErrorMotor("Google no devolvió la interacción del video.", 502);
+      // Sólo se guarda la DIRECCIÓN (el video en línea no cabe en la fila): con ella, el primer sondeo lo da por listo.
+      return { id: String(j.id ?? `omni-${crypto.randomUUID()}`), cada: ya ? 1000 : 8000, datos: { api: "interactions", ...(ya?.uri ? { uri: ya.uri, mime: ya.mime } : {}) } };
     },
     async sondear(env, { modelo, item }) {
-      if (modelo.api === "interactions" || item?.datos?.api === "interactions") {
-        if (item?.datos?.uri) return estadoDeOmni(env, modelo, { steps: [{ content: [{ type: "video", uri: item.datos.uri, mime_type: item.datos.mime }] }] });
-        try {
-          return estadoDeOmni(env, modelo, await pedirGoogle(env, `${BASE_GEMINI}/interactions/${encodeURIComponent(item.id)}`, {}, modelo.gid));
-        } catch (e) {
-          if (e instanceof ErrorMotor && !e.reintentable) return { estado: "fallido", error: e.message };
-          throw e;
-        }
+      if (item?.datos?.uri) return estadoDeOmni(env, modelo, { steps: [{ content: [{ type: "video", uri: item.datos.uri, mime_type: item.datos.mime }] }] });
+      try {
+        return estadoDeOmni(env, modelo, await pedirGoogle(env, `${BASE_GEMINI}/interactions/${encodeURIComponent(item.id)}`, {}, modelo.gid));
+      } catch (e) {
+        if (e instanceof ErrorMotor && !e.reintentable) return { estado: "fallido", error: e.message };
+        throw e;
       }
-      const ruta = String(item.id).split("/").map(encodeURIComponent).join("/");
-      const res = await fetch(`${BASE_GEMINI}/${ruta}`, { headers: { "x-goog-api-key": env.GOOGLE_AI_KEY } })
-        .catch(() => { throw new ErrorMotor("No se pudo contactar con Google AI", 502, { reintentable: true }); });
-      const texto = await res.text().catch(() => "");
-      if (!res.ok) {
-        // Un 4xx al sondear no se reintenta: la operación no existe o la llave dejó de valer.
-        if (res.status >= 400 && res.status < 500 && res.status !== 429) return { estado: "fallido", error: errorDeGoogle(res.status, texto, modelo.gid).message };
-        throw errorDeGoogle(res.status, texto, modelo.gid);
-      }
-      let op = {};
-      try { op = JSON.parse(texto); } catch { /* respuesta rara */ }
-      if (!op.done) return { estado: "pendiente", nota: "Generando en Google…", cada: 8000 };
-      if (op.error) return { estado: "fallido", error: `${modelo.nombre}: ${String(op.error.message || "falló").slice(0, 200)}` };
-      const r = op.response?.generateVideoResponse ?? op.response ?? {};
-      const video = (r.generatedSamples ?? r.generatedVideos ?? []).map((x) => x.video).find(Boolean);
-      if (!video?.uri) {
-        const razones = r.raiMediaFilteredReasons?.length ? ` ${r.raiMediaFilteredReasons.join(" ")}` : "";
-        return { estado: "fallido", error: r.raiMediaFilteredCount || razones
-          ? `El filtro de contenido de Google no dejó crear ese video.${razones} Cambia el prompt.`
-          : `${modelo.nombre} no devolvió ningún video.` };
-      }
-      return { estado: "listo", url: video.uri, headers: { "x-goog-api-key": env.GOOGLE_AI_KEY }, mime: "video/mp4" };
     },
   },
 
@@ -309,7 +253,7 @@ function errorDeGoogle(estado, texto, gid) {
   try { detalle = JSON.parse(texto)?.error?.message || ""; } catch { /* no es JSON */ }
   if (estado === 429) return new ErrorMotor("Google AI está saturado. Inténtalo en unos segundos.", 429, { reintentable: true });
   if (estado === 401 || estado === 403) {
-    return new ErrorMotor(`Google AI no dejó usar «${gid}» con la clave del servidor${detalle ? `: ${detalle.slice(0, 200)}` : ""}. Los videos de Veo exigen que el proyecto de Google tenga facturación.`, 502);
+    return new ErrorMotor(`Google AI no dejó usar «${gid}» con la clave del servidor${detalle ? `: ${detalle.slice(0, 200)}` : ""}. Los videos de Google exigen que el proyecto tenga facturación.`, 502);
   }
   if (estado === 404) return new ErrorMotor(`Tu cuenta de Google AI no tiene el modelo «${gid}»${detalle ? ` (${detalle.slice(0, 160)})` : ""}. Prueba con otro modelo.`, 502);
   return new ErrorMotor(`Google AI devolvió un error (${estado})${detalle ? `: ${detalle.slice(0, 200)}` : "."}`, 502, { reintentable: estado >= 500 });

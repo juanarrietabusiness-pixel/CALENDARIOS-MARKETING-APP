@@ -3,12 +3,13 @@ import { segundosParaModelo, ajusteDeDuracion, pedidoDeGuionCorto, leerGuionCort
 import { modeloPorId } from "./estudioCatalogo";
 
 describe("la duración según el modelo", () => {
-  it("Veo hasta 8 s; Kling Omni hasta 10", () => {
-    expect(segundosParaModelo(modeloPorId("veo-3.1"))).toBe(8);
+  it("Veo (fal) hasta 8 s; Gemini Omni y Kling Omni hasta 10", () => {
+    expect(segundosParaModelo(modeloPorId("veo-3-fast-fal"))).toBe(8);
+    expect(segundosParaModelo(modeloPorId("gemini-omni-flash"))).toBe(10);
     expect(segundosParaModelo(modeloPorId("kling-omni"))).toBe(10);
-    expect(ajusteDeDuracion(modeloPorId("veo-3.1"), 8)).toBe("8");
+    expect(ajusteDeDuracion(modeloPorId("veo-3-fast-fal"), 8)).toBe("8");
     expect(ajusteDeDuracion(modeloPorId("kling-omni"), 10)).toBe("10");
-    expect(ajusteDeDuracion(modeloPorId("veo-3.1"), 10)).toBeNull();
+    expect(ajusteDeDuracion(modeloPorId("veo-3-fast-fal"), 10)).toBeNull();
   });
 });
 
