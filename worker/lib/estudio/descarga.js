@@ -1,7 +1,7 @@
 // ============================================================
 // Bajar un resultado de un motor a R2, sin cargarlo en memoria
 //
-// Un video de Veo pesa de 5 a 40 MB y el Worker tiene 128 MB en total: se pasa
+// Un video pesa de 5 a 40 MB y el Worker tiene 128 MB en total: se pasa
 // de la respuesta del motor a R2 por FLUJO (`FixedLengthStream`, que R2 exige
 // cuando el cuerpo no es un buffer), sin decodificar nada.
 //

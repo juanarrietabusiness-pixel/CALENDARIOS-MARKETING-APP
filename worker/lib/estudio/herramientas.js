@@ -33,7 +33,7 @@
 // ============================================================
 
 import {
-  MODELOS, modeloPorId, modeloPorDefecto, textoCosto, MAX_VIDEOS_POR_PEDIDO, NOMBRE_ESTADO, estaVivo,
+  MODELOS, modeloPorId, modeloPorDefecto, nombreDelModelo, textoCosto, MAX_VIDEOS_POR_PEDIDO, NOMBRE_ESTADO, estaVivo,
 } from "../../../src/lib/estudioCatalogo.js";
 import { estadoMotores } from "./motores.js";
 import { crearTrabajo, trabajoPublico, ErrorEstudio } from "./trabajos.js";
@@ -245,13 +245,12 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       const fila = await acceso.leerUno("estudio_trabajos", { id: String(id ?? "") });
       if (!fila) throw new ErrorHerramientaEstudio(`No encontré el pedido «${id}».`);
       const t = trabajoPublico(fila);
-      const modelo = modeloPorId(t.modelo);
       const archivos = t.archivos.length
         ? (await Promise.all(t.archivos.map((a) => acceso.leerUno("estudio_archivos", { id: String(a), client_id: fila.client_id }))))
           .filter(Boolean).map((f) => `· ${f.id} · ${f.tipo} · /api/media/${f.clave}`)
         : [];
       return [
-        `Pedido ${t.id}: ${NOMBRE_ESTADO[t.estado] ?? t.estado} — ${modelo?.nombre ?? t.modelo}, ${t.n} ${t.tipo === "video" ? "video" : "imagen"}${t.n > 1 ? "s" : ""}.`,
+        `Pedido ${t.id}: ${NOMBRE_ESTADO[t.estado] ?? t.estado} — ${nombreDelModelo(t.modelo)}, ${t.n} ${t.tipo === "video" ? "video" : "imagen"}${t.n > 1 ? "s" : ""}.`,
         t.error ? `Motivo: ${t.error}` : "",
         t.nota ? `Nota: ${t.nota}` : "",
         `Llevan ${t.archivos.length} de ${t.n}.`,

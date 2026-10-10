@@ -10,7 +10,7 @@ import { OverflowMenu } from "./calendario/primitivas";
 import { soloLectura } from "../lib/sesionActual";
 import * as api from "../lib/estudio";
 import {
-  modeloPorId, modeloPorDefecto, estimar, textoCosto, pideConfirmar, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
+  modeloPorId, modeloPorDefecto, nombreDelModelo, estimar, textoCosto, pideConfirmar, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
 } from "../lib/estudioCatalogo";
 import {
   filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga,
@@ -51,7 +51,7 @@ const recortarMedios = (medios, m) => ({
 const FILTROS_FIJOS = ["todas", "favoritas", "subidas", "sin-carpeta"];
 
 const reemplazar = (lista = [], t) => (lista.some((x) => x.id === t.id) ? lista.map((x) => (x.id === t.id ? t : x)) : [t, ...lista]);
-const nombreDeModelo = (id) => modeloPorId(id)?.nombre ?? (id ? id : "Aplicación");
+const nombreDeModelo = (id) => nombreDelModelo(id) || "Aplicación";
 const clavesDe = (medios) => Object.fromEntries(Object.entries(medios).map(([rol, lista]) => [rol, lista.map((a) => a.clave)]));
 
 /** El formulario con que arranca el compositor. */
@@ -404,14 +404,17 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const repetir = (a, conReferencia = false) => {
     const m = modeloPorId(a.modelo);
     const usable = m && motorActivo(m);
-    const destino = usable ? m : modeloPorId(form.modelo);
+    // Un modelo sin llave o retirado: el que esté escogido si es del mismo tipo; si no, el predeterminado de ese tipo.
+    const escogido = modeloPorId(form.modelo);
+    const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
+    const destino = usable ? m : escogido?.tipo === a.tipo ? escogido : modeloPorDefecto(activos, a.tipo);
     const medios = MEDIOS_VACIOS();
     if (conReferencia && destino.referencias) medios.reference = [a];
     setConfirmando(null);
     setForm({ tipo: destino.tipo, modelo: destino.id, prompt: a.prompt, n: 1, medios, ajustes: ajustesDe(destino, a.ajustes, clavesDe(medios)) });
     setVisor(null);
     setEnPapelera(false);
-    setAviso(usable || !m ? null : { ok: false, texto: `${m.nombre} no está disponible en este servidor: se usó ${destino.nombre}.` });
+    setAviso(usable || !a.modelo ? null : { ok: false, texto: `${nombreDelModelo(a.modelo)} no está disponible${m ? " en este servidor" : ""}: se usó ${destino.nombre}.` });
     enfocarPrompt();
   };
 

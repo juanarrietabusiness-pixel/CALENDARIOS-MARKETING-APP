@@ -130,7 +130,7 @@ src/
                           lo importa el Worker)
     mercado.js            Cliente de /api/mercado
     consciencia.js        Niveles de consciencia (Schwartz) y deseos de Reiss: pequeño, para el bundle principal
-    videoCorto.js         Guiones de video de 8 s (Veo) o 10 s (Kling Omni): gancho, beneficio y cierre; el pedido
+    videoCorto.js         Guiones de video de 8 s (Veo por fal) o 10 s (Omni): gancho, beneficio y cierre; el pedido
                           al modelo sin texto largo ni logo (puro; también lo importa el Worker)
     portadas.js           Las piezas del perfil por plantilla: estilos de portada, colores del kit, medidas (puro)
     pilares.js            Los 6 tipos de contenido de la agencia (+ Viral / alcance y Comunidad), el ritmo semanal por
@@ -1350,7 +1350,7 @@ son del servidor.
   los botones de IA del panel. `pilares.js` NO importa `estudioMercado.js` —que es grande— porque api.js va en
   el bundle principal: lo que necesita de los marcos está en `consciencia.js`.
 - **Videos cortos: una idea en tres tiempos** (`src/lib/videoCorto.js`, `worker/lib/estudio/guionCorto.js`,
-  `POST /api/estudio/<cliente>/guion-corto`). Los modelos de la agencia hacen 8 s (Veo) o 10 s (Gemini Omni Flash —el
+  `POST /api/estudio/<cliente>/guion-corto`). Los modelos de la agencia hacen 8 s (Veo por fal.ai) o 10 s (Gemini Omni Flash —el
   «Omni» de Flow, con la llave de Google— o Kling Omni, por Higgsfield, `kling-omni` en el generador): la duración la decide el MODELO (`segundosParaModelo`), y al usar el
   guion se pone su duración en el ajuste. El guion lleva como mucho CUATRO palabras en pantalla —los modelos de
   video escriben mal— y lo demás va en «textoEdicion»; el logo tampoco se le pide al modelo. Desde una
@@ -2197,6 +2197,12 @@ son del servidor.
   cuenta): escoge ids del catálogo —los que no existen se descartan— y lo
   que propone de su rubro queda `verificar` hasta que alguien lo confirma.
   `clientToRow` lleva la columna: sin ella, guardar la ficha la borraría.
+- **Veo 3.1 de Google ya no está: Google lo retiró de la API de Gemini el 22-10-2026** (`veo-3.1`, `-fast`, `-lite`,
+  todos `-preview`; su versión final sólo existe en la plataforma empresarial, con otra cuenta). El video de Google por
+  defecto es **Gemini Omni Flash** (`predeterminado`); Veo sigue por fal.ai. Los ids viejos viven en `MODELOS_RETIRADOS`:
+  la galería y el visor los nombran «(retirado)» (`nombreDelModelo`), `validarPedido` y un pedido que quedó a medias
+  dicen por qué y qué usar (`retirado()`), y «Pedir otra igual» cae en el predeterminado de su tipo. Un test falla si
+  vuelve un video de Google con id `-preview`. El motor de Google ya no habla `predictLongRunning`.
 - **Gemini Omni Flash no es Veo** (`gemini-omni-flash`, `api: "interactions"` en el catálogo; `peticionOmni`,
   `videoDeInteraccion` en worker/lib/estudio/motores.js). Va por `POST /v1beta/interactions` con la MISMA llave de
   Google, pide el video por dirección (`delivery: "uri"`: en línea no cabe uno de más de 4 MB) y puede contestar ya

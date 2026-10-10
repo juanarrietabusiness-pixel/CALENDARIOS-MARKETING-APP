@@ -56,19 +56,6 @@ export const MEDIDAS = Object.freeze({
   "16:9": [1792, 1024], "4:3": [1365, 1024], "3:2": [1536, 1024], "5:4": [1280, 1024], "21:9": [1792, 768],
 });
 
-const AJUSTES_VEO = {
-  aspectRatio: enumerado(["9:16", "16:9"], "9:16"),
-  resolution: enumerado(["720p", "1080p"], "720p"),
-  duration: enumerado(["4", "6", "8"], "8"),
-};
-/** Las reglas de Veo: con referencias, 720p horizontal; 1080p sólo en 8 s. */
-function ajustarVeo(ajustes, medios = {}) {
-  const r = { ...ajustes };
-  if (medios.reference?.length) { r.aspectRatio = "16:9"; r.resolution = "720p"; }
-  if (r.resolution === "1080p") r.duration = "8";
-  return r;
-}
-
 /** Los formatos que fal.ai trae con nombre exacto (`image_size`): con otro, la imagen no saldría en la proporción que dice la pantalla. */
 const FORMATOS_FAL = ["1:1", "3:4", "9:16", "4:3", "16:9"];
 
@@ -124,33 +111,14 @@ export const MODELOS = Object.freeze([
     },
   },
   // ---- Video. Cuestan por SEGUNDO (`por: "s"`) y tardan de uno a diez minutos: van por la cola de
-  // los motores (`enviar` + `sondear`), no en una sola llamada. Las reglas de Veo salen de su API:
-  // con referencias sólo sale a 720p horizontal, 1080p sólo viene en 8 s y un fotograma final necesita el inicial.
+  // los motores (`enviar` + `sondear`), no en una sola llamada. Los Veo 3.1 de Google (preview) estaban aquí y
+  // Google los retiró de la API de Gemini el 22-10-2026: sus versiones finales sólo existen en la plataforma
+  // empresarial, con otra cuenta. Veo sigue por fal.ai; lo que se creó con ellos sigue en la galería
+  // (`MODELOS_RETIRADOS` le pone nombre).
   {
-    id: "veo-3.1", motor: "gemini", tipo: "video", gid: "veo-3.1-generate-preview", nombre: "Veo 3.1",
-    creador: "Google", calidad: 4, velocidad: "lento", costo: 0.4, por: "s", referencias: 3, inicial: 1, final: 1, estimado: true,
-    nota: "El video de Google, con sonido y diálogo: imagen inicial y final, o hasta 3 referencias (con referencias sale a 720p horizontal). Exige facturación en el proyecto de Google. Precio aproximado.",
-    para: ["anuncios", "reels", "con sonido"],
-    ajustes: AJUSTES_VEO, ajustar: ajustarVeo,
-  },
-  {
-    id: "veo-3.1-fast", motor: "gemini", tipo: "video", gid: "veo-3.1-fast-generate-preview", nombre: "Veo 3.1 Fast",
-    creador: "Google", calidad: 3, velocidad: "normal", costo: 0.15, por: "s", referencias: 0, inicial: 1, final: 1, estimado: true,
-    nota: "Veo más rápido y barato, con sonido; imagen inicial y final. Precio aproximado.",
-    para: ["reels", "pruebas", "animar una imagen"],
-    ajustes: AJUSTES_VEO, ajustar: ajustarVeo,
-  },
-  {
-    id: "veo-3.1-lite", motor: "gemini", tipo: "video", gid: "veo-3.1-lite-generate-preview", nombre: "Veo 3.1 Lite", predeterminado: true,
-    creador: "Google", calidad: 2, velocidad: "rápido", costo: 0.05, por: "s", referencias: 0, inicial: 1, final: 0, estimado: true,
-    nota: "El Veo más económico: para probar y animar imágenes en lote. Precio aproximado.",
-    para: ["lotes", "pruebas", "barato"],
-    ajustes: AJUSTES_VEO, ajustar: ajustarVeo,
-  },
-  {
-    // El «Omni» de Flow. Va por la Interactions API de Gemini, no por predictLongRunning como Veo: la duración no es
+    // El «Omni» de Flow. Va por la Interactions API de Gemini: la duración no es
     // un parámetro (se dice en el prompt, con los tiempos marcados) y la misma llave de Google sirve.
-    id: "gemini-omni-flash", motor: "gemini", api: "interactions", tipo: "video", gid: "gemini-omni-1.1-flash", nombre: "Gemini Omni Flash · hasta 10 s",
+    id: "gemini-omni-flash", motor: "gemini", api: "interactions", tipo: "video", gid: "gemini-omni-1.1-flash", nombre: "Gemini Omni Flash · hasta 10 s", predeterminado: true,
     creador: "Google", calidad: 4, velocidad: "normal", costo: 0.1, por: "s", referencias: 0, inicial: 1, final: 1, estimado: true,
     nota: "El Omni de Flow: de 3 a 10 s con sonido, desde texto o con imagen inicial y final. Los tiempos van en el prompt ([0-2 s] …): el guion de 10 s ya los escribe. No acepta fotos con personas reconocibles. Sin probar todavía contra Google. Precio aproximado (720p).",
     para: ["hasta 10 s", "reels", "con sonido"],
@@ -246,9 +214,25 @@ export const MODELOS = Object.freeze([
 export const modeloPorId = (id) => MODELOS.find((m) => m.id === id) ?? null;
 
 /**
+ * Los que ya no se pueden pedir, con su nombre: la galería y los pedidos viejos los siguen nombrando. Que no estén
+ * en `MODELOS` es lo que impide pedirlos (`validarPedido`) y avanzar un pedido que quedó a medias (trabajos.js).
+ */
+export const MODELOS_RETIRADOS = Object.freeze({
+  "veo-3.1": "Veo 3.1",
+  "veo-3.1-fast": "Veo 3.1 Fast",
+  "veo-3.1-lite": "Veo 3.1 Lite",
+});
+
+/** Por qué ya no se puede pedir un modelo retirado, y qué usar. */
+export const retirado = (id) => `Google retiró ${MODELOS_RETIRADOS[id] ?? id} de su API el 22 de octubre de 2026. Pídelo con Gemini Omni Flash o con Veo 3 Fast (fal).`;
+
+/** El nombre de un modelo para la pantalla, también de uno retirado; si no se conoce, el id tal cual. */
+export const nombreDelModelo = (id) => modeloPorId(id)?.nombre ?? (MODELOS_RETIRADOS[id] ? `${MODELOS_RETIRADOS[id]} (retirado)` : id || "");
+
+/**
  * El modelo con que arranca el compositor: el marcado `predeterminado` de ese tipo si su motor tiene llave, luego
  * cualquier otro real, y si no hay ninguno, la prueba. El predeterminado es el más barato que ya se sabe que
- * funciona: para imagen, el que la aplicación ya usaba; para video, Veo Lite.
+ * funciona: para imagen, el que la aplicación ya usaba; para video, Gemini Omni Flash (la misma llave de Google).
  */
 export function modeloPorDefecto(motoresActivos = {}, tipo = "imagen") {
   const deEsteTipo = MODELOS.filter((m) => m.tipo === tipo && m.motor !== "prueba" && motoresActivos[m.motor]);
@@ -352,7 +336,7 @@ export function normalizarAjustes(modelo, entrada = {}) {
 
 /**
  * Los ajustes tal como quedan para este modelo y estos medios: normalizados, y con las reglas propias del
- * modelo aplicadas (Veo con referencias sale a 720p horizontal; 1080p sólo viene en 8 s). La pantalla los
+ * modelo aplicadas (`ajustar`, si el modelo trae reglas propias). La pantalla los
  * usa para no enseñar una combinación que el modelo va a cambiar, y `validarPedido` para lo que se envía.
  */
 export function ajustesDe(modelo, entrada = {}, medios = {}) {
@@ -371,7 +355,7 @@ export const proporcionDe = (ajustes) => (MEDIDAS[ajustes?.aspectRatio] ? ajuste
  */
 export function validarPedido(entrada = {}) {
   const modelo = modeloPorId(entrada.modelo);
-  if (!modelo) return { ok: false, error: "Ese modelo no existe en el Estudio." };
+  if (!modelo) return { ok: false, error: MODELOS_RETIRADOS[entrada.modelo] ? retirado(entrada.modelo) : "Ese modelo no existe en el Estudio." };
   const prompt = String(entrada.prompt ?? "").trim();
   if (!prompt) return { ok: false, error: "Escribe qué quieres crear." };
   if (prompt.length > MAX_PROMPT) return { ok: false, error: `El prompt es demasiado largo (máximo ${MAX_PROMPT} caracteres).` };

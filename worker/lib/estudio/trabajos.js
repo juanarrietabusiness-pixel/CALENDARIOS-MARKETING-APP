@@ -35,7 +35,7 @@ import { abrirDescarga, guardarDescarga, TOPE_VIDEO, TOPE_IMAGEN } from "./desca
 import { claveDeArchivo, claveDelCliente, medidasDe, medidasDeVideo, tipoPorBytes } from "./archivos.js";
 import { crearAcceso, estudioPendiente } from "../acceso.js";
 import {
-  modeloPorId, validarPedido, pideConfirmar, textoCosto, estaVivo, MEDIDAS, proporcionDe, estimar, enCola,
+  modeloPorId, MODELOS_RETIRADOS, retirado, validarPedido, pideConfirmar, textoCosto, estaVivo, MEDIDAS, proporcionDe, estimar, enCola,
 } from "../../../src/lib/estudioCatalogo.js";
 
 /** Cuánto vale un permiso de paso: lo que tarda Gemini en darse por vencido, más margen. */
@@ -153,7 +153,7 @@ const MAX_VIDEO_REFERENCIA = 50 * 1024 * 1024;
 /**
  * Las imágenes que lleva un trabajo (referencias, inicial, final) y su video de referencia, de R2. Una que falta
  * corta el paso: seguir sin ella cambiaría lo que se pidió. Con `base64` cada imagen trae además su texto en base64
- * (lo pide Veo).
+ * (lo piden Gemini y Omni).
  */
 async function cargarMedios(env, fila, modelo, { base64 = false } = {}) {
   const guardados = leerJSON(fila.medios, {});
@@ -266,7 +266,7 @@ export async function avanzarTrabajo(env, acceso, id, { por = null } = {}) {
 async function paso(env, acceso, fila) {
   const modelo = modeloPorId(fila.modelo);
   const motor = modelo ? MOTORES[modelo.motor] : null;
-  if (!modelo || !motor) return cerrada("fallido", { error: "Ese modelo ya no está en el Estudio." });
+  if (!modelo || !motor) return cerrada("fallido", { error: MODELOS_RETIRADOS[fila.modelo] ? retirado(fila.modelo) : "Ese modelo ya no está en el Estudio." });
   if (!motor.activo(env)) {
     return cerrada("fallido", { error: `${modelo.nombre} necesita la llave ${motor.llave}, que este servidor no tiene.` });
   }
