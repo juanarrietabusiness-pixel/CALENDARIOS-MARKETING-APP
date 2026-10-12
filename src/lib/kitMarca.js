@@ -209,14 +209,15 @@ export const LINEA_VIDEO = "Video corto: movimiento de cámara suave y natural, 
 export const LINEA_LOGO = "Una de las imágenes de referencia es el logo de la marca: si aparece en la pieza, cópialo tal cual (forma, colores y letras), sin redibujarlo ni inventar otro.";
 
 /**
- * El pedido que va al motor: el preset (qué pieza es), el acabado, la escena, la identidad de la marca, el logo y, en
- * video, cómo se mueve. Sin nada de eso, la idea tal cual. Lo que se manda es lo que queda escrito en la galería. Pura.
+ * El pedido que va al motor: el preset (qué pieza es), el acabado, la escena, qué se toma de cada referencia
+ * (referencias.js), la identidad de la marca, el logo y, en video, cómo se mueve. Sin nada de eso, la idea tal cual. Lo que se manda es lo que queda escrito en la galería. Pura.
  */
-export function componerPedido({ idea, preset = "", acabado = "", marca = "", logo = false, video = false }) {
+export function componerPedido({ idea, preset = "", acabado = "", referencias = "", marca = "", logo = false, video = false }) {
   const escena = String(idea ?? "").trim();
   const lineaAcabado = ACABADOS[acabado]?.linea ?? "";
-  if (!preset && !lineaAcabado && !marca && !logo) return escena;
-  return [String(preset).trim(), lineaAcabado, `Escena: ${escena}`, String(marca).trim(), logo ? LINEA_LOGO : "", video ? LINEA_VIDEO : ""]
+  const lineasRefs = String(referencias ?? "").trim();
+  if (!preset && !lineaAcabado && !lineasRefs && !marca && !logo) return escena;
+  return [String(preset).trim(), lineaAcabado, `Escena: ${escena}`, lineasRefs, String(marca).trim(), logo ? LINEA_LOGO : "", video ? LINEA_VIDEO : ""]
     .filter(Boolean).join("\n\n");
 }
 
@@ -228,14 +229,26 @@ export function ideaDelPedido(prompt) {
 }
 
 /**
+ * El mismo pedido con OTRA escena: el tipo de pieza, la marca, las referencias y el logo se quedan como estaban
+ * («Otra versión distinta»). Si el pedido no está compuesto, la escena nueva es todo el pedido. Pura.
+ */
+export function conOtraEscena(prompt, escena) {
+  const t = String(prompt ?? "");
+  const nueva = String(escena ?? "").trim();
+  if (!/(?:^|\n\n)Escena: /.test(t)) return nueva;
+  return t.replace(/((?:^|\n\n)Escena: )[\s\S]*?(?=\n\n|$)/, (_, inicio) => `${inicio}${nueva}`);
+}
+
+/**
  * Todo el pedido de una pieza para un cliente, con su kit: lo usan la pantalla, «Producir el mes» y el asistente, así
  * los tres piden igual. `usarKit: false` deja sólo el preset y la escena. Pura.
  */
-export function pedidoConMarca({ kit, idea, preset = "", acabado = "", marca = "la marca", rubro = "", video = false, logo = false, usarKit = true }) {
+export function pedidoConMarca({ kit, idea, preset = "", acabado = "", referencias = "", marca = "la marca", rubro = "", video = false, logo = false, usarKit = true }) {
   return componerPedido({
     idea,
     preset: preset ? textoPreset(kit, preset, { marca, rubro }) : "",
     acabado,
+    referencias,
     marca: usarKit ? bloqueDeMarca(kit) : "",
     logo: usarKit && logo && !video,
     video,

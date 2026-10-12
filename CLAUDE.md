@@ -141,6 +141,8 @@ src/
     kitMarca.js           El kit de marca del Estudio: paleta, el bloque de marca (va en toda pieza), un preset
                           por tipo de contenido + los propios, el acabado, componer el pedido, el logo de
                           referencia, pedidos a la IA (puro; también lo importa el Worker)
+    referencias.js        Qué se toma de cada imagen de referencia (estilo, composición, producto…), la foto
+                          REAL del producto (y si es de otra marca), el producto que nombra la idea (puro)
     estudio.js            Cliente de /api/estudio y lo puro de la pantalla: filtros, trabajos en curso,
                           de una publicación al Estudio y del Estudio a una publicación
     vivo.js               WebSocket: reconexión, latido, presencia
@@ -1252,6 +1254,25 @@ son del servidor.
   · **El asistente y Claude (MCP) usan el mismo kit:** `crear_en_estudio` pone
   la marca y el logo siempre que haya kit (con `estilo`, además el preset de ese
   tipo); `ver_estudio` dice si el kit está preparado.
+- **Una referencia sin más hace que el modelo copie de más** (`src/lib/referencias.js`). Cada imagen de referencia
+  dice QUÉ se toma de ella («¿Qué tomo de aquí?»: estilo, composición, producto, persona, fondo, tipografía o todo) y
+  un comentario; el pedido lo dice imagen por imagen, numeradas EN EL ORDEN en que se mandan (por eso las líneas van
+  en `componerPedido({ referencias })`, detrás de la escena, y el logo del kit va el último con su propia línea).
+  `toma` y `nota` viajan en el mismo archivo puesto en `form.medios.reference`; al servidor sólo llega la clave.
+  · **Las fotos del catálogo son el producto REAL**, no una referencia de estilo: llevan `producto` (`fotosDelProducto`)
+  y su línea dice «cópialo tal cual». Si el producto es de OTRA marca (`marca` en el catálogo: lo revenden), se respeta
+  su empaque y no se le pone el logo del cliente. «Producir el mes» manda las mismas líneas.
+  · **Si la idea nombra un producto del catálogo con fotos, sus fotos se suman al crear** (`productoNombrado`, sin
+  tildes, gana el nombre más largo) y el compositor lo dice ANTES de pedir. Sólo si caben en el modelo.
+- **«Otra igual» y «Otra versión distinta» salen ya, sin pasar por el compositor** (visor de la galería). «Otra igual»
+  repite el pedido de la pieza con las imágenes de SU trabajo. «Versión distinta» pide a la IA 1–3 escenas nuevas con la
+  misma información (`POST /api/estudio/<c>/versiones`, función «prompt de imagen», texto) y `conOtraEscena()` cambia
+  SÓLO la escena del pedido: tipo, acabado, referencias, marca y logo se quedan. El costo se enseña en el botón (es la
+  confirmación). En la imagen de una publicación, «Otra versión» abre «Crear con IA» con esa imagen de referencia y la
+  nota de qué hacer: la imagen de un post no siempre está en la galería.
+- **La galería tiene una pestaña Drive** (`ExploradorDrive` en modo «escoger»): lo tocado se baja (`archivoDeDrive`), se
+  sube a la galería y entra en el pedido. No le pases un `onError` en línea: está en las dependencias de su carga, y una
+  función nueva en cada render la relee en bucle (y le llega un `Error`, no un texto).
 - **Una ficha de la galería sin su archivo se veía rota.** «Ampliar con IA» pide por
   `/api/generar-imagen`, que apunta la imagen en la galería, y luego descarta la
   intermedia con `/api/feedback-imagen` (`liked: false`), que borraba el archivo de R2

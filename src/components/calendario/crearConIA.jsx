@@ -20,15 +20,17 @@ const Estudio = lazy(() => import("../Estudio"));
 /**
  * @param tipo    "imagen" | "video": con qué arranca el compositor.
  * @param inicio  un archivo del Estudio (`archivoDesdeSrc`) que será la imagen inicial del video («Animar»).
+ * @param referencias  archivos que van de referencia («Otra versión» de una imagen ya puesta, con su nota).
  * @param uso     { calendarId, postId }: para apuntar que esta publicación usa lo que se cree.
  * @param onUsar  recibe el archivo escogido.
  */
-export default function CrearConIA({ client, post, tipo = "imagen", inicio = null, uso = null, onUsar, onCerrar }) {
+export default function CrearConIA({ client, post, tipo = "imagen", inicio = null, referencias = null, uso = null, onUsar, onCerrar }) {
   const ref = useDialogA11y(onCerrar);
   // Sólo cuenta al abrir: el compositor no se reinicia si la publicación cambia detrás.
   const [inicial] = useState(() => ({
     tipo,
     inicio,
+    ...(referencias?.length ? { referencias } : {}),
     proporcion: proporcionParaFormato(post.format, tipo),
     // El preset de su tipo de contenido (Anuncio, Beneficios, Producto / Servicio…; en las 7 maletas, el de la suya).
     preset: presetDePilar(post.pilar, post.pilarSub),

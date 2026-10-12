@@ -220,6 +220,11 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError, e
                     <Icon name="video" size={13} /> Animar
                   </button>
                 )}
+                {m.tipo === "imagen" && onCrearConIA && (
+                  <button type="button" className="editor-medios-portada-btn" onClick={() => onCrearConIA({ tipo: "imagen", version: m })} title="Otra imagen con la misma información, pero distinta">
+                    <Icon name="sparkles" size={13} /> Otra versión
+                  </button>
+                )}
                 {m.tipo === "video" && i === 0 && onPortada && (
                   <button
                     type="button"

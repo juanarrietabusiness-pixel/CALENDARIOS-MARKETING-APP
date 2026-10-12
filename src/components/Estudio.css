@@ -308,3 +308,23 @@ div.est-img { cursor: default; }
   .est-kit-propio { grid-template-columns: minmax(0, 1fr) auto; }
   .est-kit-propio textarea { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* Referencias con intención: qué se toma de cada una */
+.est-refs-lista { list-style: none; margin: 0 0 var(--sp-2); padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.est-ref-fila { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--sp-2); }
+.est-ref-cabeza { display: flex; align-items: center; gap: var(--sp-2); }
+.est-ref-cabeza img, .est-ref-cabeza video { width: 48px; height: 48px; flex: none; object-fit: cover; border-radius: var(--radius-sm); background: var(--surface-3); }
+.est-ref-texto { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.est-ref-titulo { font-size: var(--fs-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.est-ref-texto .hint { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.est-ref-insignia { align-self: flex-start; font-size: var(--fs-3xs); font-weight: 600; padding: 1px var(--sp-2); border-radius: var(--radius-pill); background: var(--accent-soft); color: var(--accent); }
+.est-ref-que { margin-top: var(--sp-2); }
+.est-ref-que summary { cursor: pointer; font-size: var(--fs-sm); color: var(--accent); min-height: var(--tap-sm); display: flex; align-items: center; }
+.est-ref-que .est-tipos { margin: var(--sp-2) 0; }
+.est-nombrado { margin: 0 0 var(--sp-2); font-size: var(--fs-sm); }
+
+/* «Otra igual» y «Otra versión distinta» en el visor */
+.est-otra { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--surface-2); }
+.est-otra-fila { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.est-otra-versiones { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.est-otra-cuantas .input { width: auto; min-height: var(--tap-sm); padding-block: 0; }

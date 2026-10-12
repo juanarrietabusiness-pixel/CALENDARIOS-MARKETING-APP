@@ -35,6 +35,8 @@ export const reintentarTrabajo = (clienteId, id) => pedir(`${base(clienteId)}/tr
  * motor la entienda. `{ idea, modelo, aviso }`. Es texto: no pide nada al motor.
  */
 export const mejorarIdea = (clienteId, datos) => pedir(`${base(clienteId)}/mejorar`, post(datos));
+/** «Otra versión distinta»: { idea, n, tipo } → { versiones: [escena] } (texto: no gasta en el motor). */
+export const versionesDeIdea = (clienteId, datos) => pedir(`${base(clienteId)}/versiones`, post(datos));
 /** El guion de un video corto (8 o 10 s): `{ guion, prompt }`. Texto: no pide nada al motor. */
 export const escribirGuionCorto = (clienteId, datos) => pedir(`${base(clienteId)}/guion-corto`, post(datos));
 
@@ -173,10 +175,19 @@ export function textoDeLaPieza(texto) {
   return String(texto ?? "").split(/\n+/).map((l) => l.replace(/["“”«»]/g, "").trim()).filter(Boolean).slice(0, 4).map((l) => `"${l.slice(0, 80)}"`).join(" / ");
 }
 
+/** Un archivo escogido en Drive (BancoSelector) como `File`, para subirlo a la galería como cualquier otro. */
+export async function archivoDeDrive(it) {
+  const res = await fetch(it.url, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`No se pudo traer «${it.nombre}» de Drive.`);
+  const blob = await res.blob();
+  return new File([blob], it.nombre || (it.tipo === "video" ? "drive.mp4" : "drive.jpg"), { type: blob.type });
+}
+
 /** Las fotos del catálogo de un producto (`productos` de GET /api/estudio) como archivos de apoyo. [] si no tiene. Pura. */
 export function fotosDelProducto(productos = [], productoId = "") {
   const p = productoId ? (productos ?? []).find((x) => x.id === productoId) : null;
-  return (p?.fotos ?? []).map((clave) => ({ id: `ext:${clave}`, src: `/api/media/${clave}`, clave, prompt: p.nombre }));
+  // `producto`: el pedido las presenta como el producto REAL (referencias.js), y si es de otra marca, lo dice.
+  return (p?.fotos ?? []).map((clave) => ({ id: `ext:${clave}`, src: `/api/media/${clave}`, clave, prompt: p.nombre, producto: { nombre: p.nombre, marca: p.marca ?? "" } }));
 }
 
 /** El texto con que arranca el compositor desde una publicación: su idea y, si hay, lo que dice. */

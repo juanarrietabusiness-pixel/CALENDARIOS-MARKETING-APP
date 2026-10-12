@@ -9,6 +9,7 @@
 //   POST   /<cliente>/trabajos/<id>/cancelar
 //   POST   /<cliente>/trabajos/<id>/reintentar
 //   POST   /<cliente>/mejorar                      { idea, tipo }: la IA devuelve la idea más clara (texto)
+//   POST   /<cliente>/versiones                    { idea, n, tipo }: 1–3 escenas distintas con la misma información (texto)
 //   POST   /<cliente>/guion-corto                  { idea, segundos, post? }: guion de un video de 8 o 10 s (texto)
 //   PUT    /<cliente>/kit                          { kit }: guarda el kit de marca (paleta, presets, logo…)
 //   POST   /<cliente>/kit/preparar                 La IA PROPONE el kit desde el cerebro (no guarda)
@@ -37,7 +38,7 @@
 import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { firma, difundir } from "../lib/vivo.js";
 import { estadoMotores } from "../lib/estudio/motores.js";
-import { mejorarIdea } from "../lib/estudio/prompt.js";
+import { mejorarIdea, versionesDeIdea } from "../lib/estudio/prompt.js";
 import { guionCorto } from "../lib/estudio/guionCorto.js";
 import { kitDe, guardarKit, prepararKit, revisarPieza } from "../lib/estudio/kit.js";
 import { leerMercado } from "../lib/mercado.js";
@@ -124,6 +125,18 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       if (!datos) return error("JSON inválido");
       try {
         return json(await mejorarIdea(env, acceso, cliente, datos));
+      } catch (e) {
+        if (e?.estado) return error(e.message, e.estado);
+        throw e;
+      }
+    }
+
+    // ---------- «Otra versión distinta»: otras escenas (texto: no pide nada al motor) ----------
+    if (b === "versiones" && !c && metodo === "POST") {
+      const datos = await cuerpo(req);
+      if (!datos) return error("JSON inválido");
+      try {
+        return json(await versionesDeIdea(env, acceso, cliente, datos));
       } catch (e) {
         if (e?.estado) return error(e.message, e.estado);
         throw e;

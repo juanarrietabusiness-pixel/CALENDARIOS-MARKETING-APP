@@ -7,7 +7,8 @@ import {
   leerMercado, guardarCatalogo, proponerCatalogo, estudiarGeneral, estudiarProducto, guardarBorrador, aprobarEstudio,
   agregarReferencia, reanalizarReferencia, borrarReferencia, adaptarReferencia,
 } from "../lib/mercado";
-import { subirImagen } from "../lib/estudio";
+import { subirImagen, archivoDeDrive } from "../lib/estudio";
+import BancoSelector from "./BancoSelector";
 import { urlBibliotecaWeb } from "../lib/biblioteca";
 import {
   ELEMENTOS_MERCADO, DESEOS_REISS, NIVELES_CONSCIENCIA, LIMITES_ANUNCIO, MAX_MATERIAL, MAX_PRODUCTOS, MAX_FOTOS_PRODUCTO, NIVELES_STOCK,
@@ -176,7 +177,7 @@ function Mensaje({ aviso }) {
 
 const PRODUCTO_VACIO = () => ({
   id: `p-nuevo-${Date.now().toString(36)}`, nombre: "", tipo: "producto", precio: "", oferta: "", paraQuien: "", beneficios: "", activo: true,
-  stock: "", stockNota: "", ofertaHasta: "", diferenciador: "", fotos: [],
+  stock: "", stockNota: "", ofertaHasta: "", diferenciador: "", fotos: [], marca: "",
 });
 
 /**
@@ -187,22 +188,32 @@ function FotosProducto({ client, producto, lectura, onCambiar }) {
   const ids = useId();
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState("");
+  const [deDrive, setDeDrive] = useState(false);
   const fotos = producto.fotos ?? [];
-  const elegir = async (e) => {
-    // Se copia ANTES de vaciar el campo: vaciarlo deja la lista vacía.
-    const archivos = [...e.target.files].slice(0, MAX_FOTOS_PRODUCTO - fotos.length);
-    e.target.value = "";
+  const subir = async (lista, comoArchivo = (a) => a) => {
+    const archivos = lista.slice(0, MAX_FOTOS_PRODUCTO - fotos.length);
     if (!archivos.length) return;
     setSubiendo(true);
     setError("");
     const nuevas = [];
     try {
-      for (const a of archivos) nuevas.push((await subirImagen(client.id, a)).archivo.clave);
+      for (const a of archivos) nuevas.push((await subirImagen(client.id, await comoArchivo(a))).archivo.clave);
     } catch (err) {
       setError(err.message);
     }
     if (nuevas.length) onCambiar([...fotos, ...nuevas]);
     setSubiendo(false);
+  };
+  const elegir = (e) => {
+    // Se copia ANTES de vaciar el campo: vaciarlo deja la lista vacía.
+    const archivos = [...e.target.files];
+    e.target.value = "";
+    subir(archivos);
+  };
+  /** Desde la carpeta de Drive del cliente: se bajan y se suben a la galería del Estudio como las demás. */
+  const traerDeDrive = (elegidos) => {
+    setDeDrive(false);
+    if (elegidos?.length) subir(elegidos, archivoDeDrive);
   };
   return (
     <div className="field">
@@ -224,7 +235,19 @@ function FotosProducto({ client, producto, lectura, onCambiar }) {
             <input type="file" accept="image/jpeg,image/png,image/webp" multiple hidden disabled={subiendo} onChange={elegir} />
           </label>
         )}
+        {!lectura && fotos.length < MAX_FOTOS_PRODUCTO && client.driveFolder && (
+          <button type="button" className="btn btn-secondary btn-sm" disabled={subiendo} onClick={() => setDeDrive(true)}>
+            <Icon name="cloud" size={14} /> Desde Drive
+          </button>
+        )}
       </div>
+      {deDrive && (
+        <BancoSelector
+          clientId={client.dbId || client.id} driveFolder={client.driveFolder} tipos={["image"]}
+          maximo={MAX_FOTOS_PRODUCTO - fotos.length} titulo={`Fotos de ${producto.nombre || "el producto"} desde Drive`}
+          onSelect={traerDeDrive} onClose={() => setDeDrive(false)}
+        />
+      )}
       {error && <p role="alert" className="cerebro-error" style={{ margin: 0 }}>{error}</p>}
     </div>
   );
@@ -338,6 +361,14 @@ function PanelCatalogo({ client, catalogo, inventario: inventarioGuardado, estud
                 <label className="label" htmlFor={`${ids}-${i}-o`}>Oferta vigente (opcional)</label>
                 <input id={`${ids}-${i}-o`} className="input" value={p.oferta} maxLength={160} readOnly={lectura} onChange={(e) => cambiar(p.id, "oferta", e.target.value)} />
               </div>
+              {p.tipo === "producto" && (
+                <div className="field" style={{ flex: "1 1 180px" }}>
+                  <label className="label" htmlFor={`${ids}-${i}-m`}>Marca del producto</label>
+                  <input id={`${ids}-${i}-m`} className="input" value={p.marca ?? ""} maxLength={60} placeholder={`Vacío: es de ${client.name}`}
+                    aria-describedby={`${ids}-${i}-mh`} readOnly={lectura} onChange={(e) => cambiar(p.id, "marca", e.target.value)} />
+                  <p className="hint" id={`${ids}-${i}-mh`} style={{ margin: 0 }}>Si lo revenden (otra marca), la IA respeta su empaque y no le pone el logo del cliente.</p>
+                </div>
+              )}
               <div className="field" style={{ flex: "1 1 220px" }}>
                 <label className="label" htmlFor={`${ids}-${i}-q`}>Para quién</label>
                 <input id={`${ids}-${i}-q`} className="input" value={p.paraQuien} maxLength={240} readOnly={lectura} onChange={(e) => cambiar(p.id, "paraQuien", e.target.value)} />

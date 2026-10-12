@@ -93,6 +93,8 @@ export function limpiarProducto(p) {
     id: /^[\w-]{1,60}$/.test(String(p?.id ?? "")) ? String(p.id) : `p-${slugProducto(nombre)}`,
     nombre,
     tipo: p?.tipo === "servicio" ? "servicio" : "producto",
+    // La marca del producto si NO es del cliente (lo revende): la imagen respeta su empaque y no le pone el logo propio.
+    marca: corto(p?.marca, 60),
     precio: corto(p?.precio, 60),
     oferta: corto(p?.oferta, 160),
     paraQuien: corto(p?.paraQuien, 240),
@@ -136,9 +138,9 @@ export function limpiarCatalogo(entrada) {
 
 export const productosActivos = (catalogo) => limpiarCatalogo(catalogo).filter((p) => p.activo);
 
-/** Los productos activos que tienen fotos → [{ id, nombre, fotos }] (lo que el Estudio pone de referencia). Pura. */
+/** Los productos activos que tienen fotos → [{ id, nombre, marca, fotos }] (lo que el Estudio pone de referencia). Pura. */
 export const fotosDelCatalogo = (catalogo) =>
-  productosActivos(catalogo).filter((p) => p.fotos.length).map((p) => ({ id: p.id, nombre: p.nombre, fotos: p.fotos }));
+  productosActivos(catalogo).filter((p) => p.fotos.length).map((p) => ({ id: p.id, nombre: p.nombre, marca: p.marca, fotos: p.fotos }));
 
 /** Sin el inventario encendido, lo del inventario no existe: se borra de cada producto. Pura. */
 const sinInventario = (p) => ({ ...p, stock: "", stockNota: "", ofertaHasta: "", diferenciador: "" });
@@ -161,7 +163,7 @@ export function fechaLarga(iso) {
 
 /** Una línea por producto, como la lee la IA. `inventario`: con disponibilidad, vigencia de la oferta y diferenciador. */
 export function lineaDeProducto(p, { inventario = false } = {}) {
-  const partes = [`${p.nombre} (${p.tipo})`];
+  const partes = [`${p.nombre} (${p.tipo}${p.marca ? `, de la marca ${p.marca}` : ""})`];
   partes.push(p.precio ? `precio: ${p.precio}` : "precio: sin definir");
   if (p.oferta) {
     const hasta = inventario && fechaLarga(p.ofertaHasta);

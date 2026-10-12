@@ -4,6 +4,7 @@ import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { FORMATS } from "../../constants";
 import { mediosDe, conMedios } from "../../lib/publicacion";
 import { presetDePilar, nombreDePilar } from "../../lib/pilares";
+import { lineasDeReferencias } from "../../lib/referencias";
 import { pedidoConMarca, estiloDeMarca, ponerLogo, limpiarKit } from "../../lib/kitMarca";
 import { modeloPorDefecto, validarPedido, ajustesDe, textoCosto, CONFIRMAR_DESDE } from "../../lib/estudioCatalogo";
 import * as api from "../../lib/estudio";
@@ -88,13 +89,16 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
         const tipo = tipoDe(post.format);
         const modelo = modeloPorDefecto(activos, tipo);
         // Las fotos del producto (catálogo) primero: que salga el producto real. Luego el logo, si cabe.
-        const fotos = tipo === "imagen" ? api.fotosDelProducto(estudio.productos, post.productoId).map((f) => f.clave) : [];
+        const delProducto = tipo === "imagen" ? api.fotosDelProducto(estudio.productos, post.productoId) : [];
+        const fotos = delProducto.map((f) => f.clave);
         const conLogo = ponerLogo({ kit: estudio.kit, tipo, modelo, referencias: fotos });
         // El preset de su tipo (sin tipo, el de producto) y la identidad de la marca SIEMPRE: la paleta ya no depende del preset.
         const prompt = pedidoConMarca({
           kit: estudio.kit, idea: api.promptDePublicacion(post, { conTexto: tipo !== "video" }),
           preset: presetDePilar(post.pilar, post.pilarSub) || "servicios", marca: client.name, rubro: client.industry ?? "",
           video: tipo === "video", logo: conLogo,
+          // Las fotos van como el producto REAL (y si es de otra marca, sin el logo del cliente encima).
+          referencias: lineasDeReferencias(delProducto.slice(0, modelo.referencias || 0), { cliente: client.name }),
         }).slice(0, 4000);
         const referencia = [...fotos, ...(conLogo ? [estudio.kit.logo] : [])].slice(0, modelo.referencias || 0);
         const medios = referencia.length ? { reference: referencia } : {};

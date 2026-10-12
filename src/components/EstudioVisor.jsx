@@ -64,7 +64,8 @@ function RevisionDeMarca({ revision, onRevisar, onCorregir }) {
 }
 
 export default function Visor({
-  archivo: a, carpetas, lectura, onCerrar, onFavorito, onPapelera, onMover, onRepetir, onVariar, onReferencia, onAnimar, onUsar, etiquetaUsar,
+  archivo: a, carpetas, lectura, onCerrar, onFavorito, onPapelera, onMover, onRepetir, onReferencia, onAnimar, onUsar, etiquetaUsar,
+  costoOtra = null, onOtraIgual = null, onOtrasVersiones = null, versionando = false,
   onEditar = null, original = null, onVerOriginal = null,
   esLogo = false, onLogo = null, revision = null, onRevisar = null, onCorregir = null,
 }) {
@@ -72,7 +73,9 @@ export default function Visor({
   const id = useId();
   const [editando, setEditando] = useState(false);
   const [cambio, setCambio] = useState("");
+  const [cuantas, setCuantas] = useState(1);
   const m = modeloPorId(a.modelo);
+  const puedeOtra = !lectura && !a.subido && costoOtra != null && onOtraIgual;
   const video = a.tipo === "video";
   return (
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) onCerrar(); }}>
@@ -125,12 +128,36 @@ export default function Visor({
               <p className="hint" style={{ margin: 0 }}>Sale una imagen NUEVA en la galería; esta se queda como está.</p>
             </form>
           )}
+          {puedeOtra && (
+            <div className="est-otra" role="group" aria-labelledby={`${id}-otra`}>
+              <span className="label" id={`${id}-otra`}>¿Otra?</span>
+              <div className="est-otra-fila">
+                <button type="button" className="btn btn-secondary btn-sm" disabled={versionando} onClick={onOtraIgual}>
+                  <Icon name="refresh" size={14} /> Otra igual
+                </button>
+                <span className="est-otra-versiones">
+                  <label className="est-otra-cuantas">
+                    <span className="sr-only">Cuántas versiones</span>
+                    <select className="input" value={cuantas} disabled={versionando} onChange={(e) => setCuantas(Number(e.target.value))}>
+                      {[1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
+                    </select>
+                  </label>
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={versionando} onClick={() => onOtrasVersiones(cuantas)}>
+                    <Icon name="sparkles" size={14} /> {versionando ? "Escribiendo las versiones…" : cuantas === 1 ? "Otra versión distinta" : `${cuantas} versiones distintas`}
+                  </button>
+                </span>
+              </div>
+              <p className="hint" style={{ margin: 0 }}>
+                «Otra igual» repite el pedido. «Versión distinta»: la misma información con otra escena (la IA la escribe); se quedan el tipo, la marca y las referencias.
+                {" "}{textoCosto(costoOtra)} cada una{m?.estimado ? ", aprox." : ""}.
+              </p>
+            </div>
+          )}
           {!video && (onRevisar || revision) && <RevisionDeMarca revision={revision} onRevisar={onRevisar} onCorregir={lectura ? null : onCorregir} />}
           <div className="est-visor-acciones">
             {!lectura && !video && onEditar && !editando && <button type="button" className="btn btn-secondary" onClick={() => setEditando(true)}><Icon name="pencil" size={16} /> Editar</button>}
             {onUsar && <button type="button" className="btn btn-primary" onClick={onUsar}><Icon name="check" size={16} /> {etiquetaUsar ?? "Usar en la publicación"}</button>}
-            {!lectura && !a.subido && <button type="button" className={`btn ${onUsar ? "btn-secondary" : "btn-primary"}`} onClick={onRepetir}><Icon name="refresh" size={16} /> Repetir</button>}
-            {!lectura && !a.subido && !video && <button type="button" className="btn btn-secondary" onClick={onVariar}><Icon name="sparkles" size={16} /> Variar</button>}
+            {!lectura && !a.subido && <button type="button" className={`btn ${onUsar ? "btn-secondary" : "btn-primary"}`} onClick={onRepetir}><Icon name="pencil" size={16} /> Ajustar y pedir</button>}
             {!lectura && !video && <button type="button" className="btn btn-secondary" onClick={onAnimar}><Icon name="video" size={16} /> Animar</button>}
             {!lectura && !video && <button type="button" className="btn btn-secondary" onClick={onReferencia}><Icon name="paperclip" size={16} /> Usar de referencia</button>}
             {!lectura && !video && onLogo && (
