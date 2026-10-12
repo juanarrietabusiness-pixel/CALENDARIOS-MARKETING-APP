@@ -297,3 +297,6 @@ export function originalDe(archivo, trabajos = [], archivos = []) {
   if (!clave || !/^Edita la imagen de referencia:/.test(t.prompt ?? "")) return null;
   return archivos.find((a) => a.clave === clave) ?? null;
 }
+
+/** El lote de anuncios: la IA escribe las ideas por nivel → `{ ideas, producto, conEstudio }` (texto: no gasta en el motor). */
+export const ideasDeLote = (clienteId, datos) => pedir(`${base(clienteId)}/lote/ideas`, post(datos));

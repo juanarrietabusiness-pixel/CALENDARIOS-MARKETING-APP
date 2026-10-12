@@ -1023,6 +1023,20 @@ function Workspace({ session, ruta }) {
     return mes;
   };
 
+  /**
+   * Una pieza del Estudio (el lote de anuncios) al calendario del cliente que
+   * se mira: obtiene (o crea) su mes y la mete en su día. Devuelve el id del
+   * calendario, para apuntar que la pieza la usa una publicación.
+   */
+  const llevarAlCalendario = async (fecha, post) => {
+    const mes = mesDeFecha(fecha);
+    if (!mes || !selectedClientId) throw new Error("Fecha no válida.");
+    const real = await asegurarMes(selectedClientId, mes);
+    const base = pendingSaves.current.get(real.id)?.cal ?? real;
+    updateCalendar(real.id, ponerEnDia(base, fecha, post));
+    return real.id;
+  };
+
   /** Guarda YA lo pendiente de un calendario (sin esperar al agrupado). */
   const guardarYa = async (calId) => {
     const entry = pendingSaves.current.get(calId);
@@ -1544,7 +1558,7 @@ function Workspace({ session, ruta }) {
                   <Resultados client={client} pulso={pulso} onPersistClient={persistClient} />
                 )}
 
-                {pestana === "estudio" && <Estudio key={client.id} client={client} pulso={pulso} />}
+                {pestana === "estudio" && <Estudio key={client.id} client={client} pulso={pulso} onLlevarAlCalendario={llevarAlCalendario} />}
 
                 {pestana === "cerebro" && <Cerebro client={client} />}
 

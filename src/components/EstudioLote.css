@@ -1,0 +1,41 @@
+/* «Lote de anuncios»: un diálogo ancho de tres pasos */
+.dialog.lote-dialogo { width: 100%; max-width: 880px; max-height: min(92vh, 980px); display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.lote-cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-4) var(--sp-5) var(--sp-2); }
+.lote-cabecera h3 { margin: 0; font-size: var(--fs-lg); }
+.lote-pasos { list-style: none; display: flex; gap: var(--sp-2); margin: 0; padding: 0 var(--sp-5) var(--sp-3); border-bottom: 1px solid var(--border-light); font-size: var(--fs-sm); color: var(--text-dim); }
+.lote-pasos li { padding: var(--sp-1) var(--sp-3); border-radius: var(--radius-pill); }
+.lote-pasos li[aria-current="step"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.lote-pasos li[data-hecho] { color: var(--text); }
+.lote-cuerpo { flex: 1; overflow-y: auto; padding: var(--sp-4) var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-4); }
+.lote-pie { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--sp-3); padding: var(--sp-3) var(--sp-5); border-top: 1px solid var(--border-light); background: var(--surface); }
+.lote-costo { margin: 0 auto 0 0; font-size: var(--fs-sm); color: var(--text-dim); }
+.lote-costo strong { color: var(--text); }
+.lote-fila { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-3); }
+
+.lote-niveles { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.lote-nivel { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); background: var(--surface-2); border-radius: var(--radius-sm); }
+.lote-nivel label { font-size: var(--fs-sm); }
+.lote-numero { width: 5.5rem; flex: none; text-align: center; }
+
+.lote-ideas { display: flex; flex-direction: column; gap: var(--sp-4); }
+.lote-nivel-titulo { margin: 0 0 var(--sp-2); font-size: var(--fs-sm); }
+.lote-lista, .lote-resultados { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-3); }
+.lote-idea { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.lote-idea[data-quitada] { opacity: 0.55; }
+.lote-elegir { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); min-height: var(--tap-sm); }
+
+.lote-resultado { display: flex; gap: var(--sp-3); padding: var(--sp-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.lote-miniatura { width: 96px; flex: none; aspect-ratio: 4 / 5; display: grid; place-items: center; background: var(--surface-3); border-radius: var(--radius-sm); overflow: hidden; }
+.lote-miniatura img { width: 100%; height: 100%; object-fit: cover; }
+.lote-resultado-texto { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; font-size: var(--fs-sm); }
+.lote-insignia { align-self: flex-start; font-size: var(--fs-3xs); font-weight: 600; padding: 1px var(--sp-2); border-radius: var(--radius-pill); background: var(--accent-soft); color: var(--accent); }
+.lote-llevar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
+
+/* La entrada en la pestaña Estudio */
+.est-lote-entrada { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
+.est-lote-entrada .hint { margin: var(--sp-1) 0 0; }
+
+@media (max-width: 599px) {
+  .dialog.lote-dialogo { max-height: 100dvh; height: 100dvh; border-radius: 0; }
+  .lote-cabecera, .lote-pasos, .lote-cuerpo, .lote-pie { padding-inline: var(--sp-4); }
+}
