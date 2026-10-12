@@ -143,6 +143,9 @@ src/
                           referencia, pedidos a la IA (puro; también lo importa el Worker)
     aprendizajeVisual.js  Lo que el kit aprende de los «Me gusta» y la papelera del Estudio: el pedido a la IA, las
                           guardas de las reglas, `kit.aprendido` en el bloque de la marca (puro; también lo importa el Worker)
+    loteAnuncios.js       El lote de anuncios por nivel de consciencia: cuántas por nivel, el pedido de las ideas y su
+                          lectura, la escena de cada pieza (plantilla o texto de la IA), la publicación (puro; también el Worker)
+    loteEstudio.js        Crear las piezas del lote en el Estudio, de dos en dos, con kit, logo y fotos del producto
     referencias.js        Qué se toma de cada imagen de referencia (estilo, composición, producto…), la foto
                           REAL del producto (y si es de otra marca), el producto que nombra la idea (puro)
     estudio.js            Cliente de /api/estudio y lo puro de la pantalla: filtros, trabajos en curso,
@@ -260,6 +263,7 @@ src/
                           y «Revisar marca»
     EstudioMercado.jsx    El estudio de mercado en la pestaña Cerebro: catálogo, «Realizar estudio de mercado» por
                           pasos con revisión, y las referencias de la competencia (lazy)
+    EstudioLote.jsx       «Lote de anuncios»: qué, ideas (con costo) y crear; cada pieza «Llevar al calendario» (lazy)
     EstudioKit.jsx        El kit de marca: prepararlo con IA desde el cerebro, revisarlo, guardarlo
     calendario/RevisionMes.jsx  «Revisar el mes» antes de enviarlo: reglas, IA opcional e imágenes contra el kit (lazy)
     calendario/CarruselIA.jsx   «Crear carrusel con IA»: el guion en láminas, el texto por IA o por plantilla, rehacer una (lazy)
@@ -1281,6 +1285,15 @@ son del servidor.
   en la revisión de marca, y `fundirKit` lo conserva al volver a preparar el kit con IA: si no, «Volver a preparar» se
   llevaría lo aprendido sin avisar. «Usar mis Me gusta como referencia de estilo» (por cliente, apagado) suma las dos
   últimas que gustan con `toma: ["estilo"]`, en el hueco que dejan el producto y el logo.
+- **El lote de anuncios cobra sólo al final** (`EstudioLote.jsx`, `POST /api/estudio/<c>/lote/ideas`, función «ideas de
+  anuncios» en el hueco de redacción). La IA escribe titular, apoyo y escena por nivel con el catálogo (precio EXACTO),
+  el estudio de mercado aprobado del producto y el cerebro para texto (nunca lo interno): eso es texto. Las ideas se
+  revisan y se quitan, y el botón dice el costo total: ESA es la confirmación, así que cada trabajo va con `confirmado:
+  true`. Las piezas van a una carpeta «Lote <producto> · <día>», de dos en dos (`crearLote`), con las fotos del producto
+  y el logo si caben; en «plantilla» el texto se pone encima con `componerLamina` (en historia, al centro: abajo lo tapan
+  los botones de Instagram). «Llevar al calendario» llama a `llevarAlCalendario` de App.jsx (que obtiene o crea el mes y
+  mete la publicación por el guardado agrupado, como el asistente) y apunta el uso del archivo: sin `usado_en`, la
+  papelera se llevaría la imagen de una publicación.
 - **La galería tiene una pestaña Drive** (`ExploradorDrive` en modo «escoger»): lo tocado se baja (`archivoDeDrive`), se
   sube a la galería y entra en el pedido. No le pases un `onError` en línea: está en las dependencias de su carga, y una
   función nueva en cada render la relee en bucle (y le llega un `Error`, no un texto).

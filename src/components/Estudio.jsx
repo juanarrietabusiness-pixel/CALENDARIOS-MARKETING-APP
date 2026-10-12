@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import Compositor from "./EstudioCompositor";
 import Visor, { Pieza } from "./EstudioVisor";
@@ -22,6 +22,8 @@ import {
   proporcionDeMedidas, promptDeEdicion, modeloParaEditar, originalDe,
 } from "../lib/estudio";
 import "./Estudio.css";
+
+const EstudioLote = lazy(() => import("./EstudioLote"));
 
 // ============================================================
 // El Estudio de un cliente: la pestaña y el diálogo «Crear con IA»
@@ -81,7 +83,7 @@ function formularioInicial(motores, inicial, productos = []) {
   };
 }
 
-export default function Estudio({ client, pulso = 0, modo = "pestana", inicial = null, uso = null, onUsar = null, onCerrar = null }) {
+export default function Estudio({ client, pulso = 0, modo = "pestana", inicial = null, uso = null, onUsar = null, onCerrar = null, onLlevarAlCalendario = null }) {
   const ids = useId();
   const lectura = soloLectura();
   const dialogo = modo === "dialogo";
@@ -140,6 +142,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const setEnPapelera = (v) => { setEnPapeleraEstado(v); if (v) setEnDrive(false); };
   const [visor, setVisor] = useState(null);
   const [descartados, setDescartados] = useState(() => new Set());
+  const [loteAbierto, setLoteAbierto] = useState(false);
   const [carpetaNueva, setCarpetaNueva] = useState(null);
   const [renombrando, setRenombrando] = useState(null);
   const [borrando, setBorrando] = useState(null);
@@ -778,6 +781,25 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           onPreparar={() => api.prepararKit(client.id)}
           onGuardar={guardarKitDeMarca}
         />
+      )}
+
+      {/* ---------- Un lote de anuncios por nivel de consciencia ---------- */}
+      {!lectura && !dialogo && motores && (
+        <div className="card est-lote-entrada">
+          <div>
+            <strong>Lote de anuncios</strong>
+            <p className="hint">Varias piezas de un producto por cada nivel de consciencia: la IA escribe las ideas, tú las revisas y ves el costo antes de crear.</p>
+          </div>
+          <button type="button" className="btn btn-secondary" onClick={() => setLoteAbierto(true)}><Icon name="megaphone" size={16} /> Crear un lote</button>
+        </div>
+      )}
+      {loteAbierto && (
+        <Suspense fallback={null}>
+          <EstudioLote
+            client={client} motores={motores} productosConFotos={datos?.productos ?? []} kit={kit}
+            onCerrar={() => setLoteAbierto(false)} onHecho={cargar} onLlevar={onLlevarAlCalendario}
+          />
+        </Suspense>
       )}
 
       {/* ---------- Pedir ---------- */}

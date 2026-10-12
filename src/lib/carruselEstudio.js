@@ -36,7 +36,7 @@ export function modelosParaCarrusel(activos = {}) {
 }
 
 /** Espera a que un trabajo termine, avanzándolo. Devuelve el archivo creado o lanza el motivo. */
-async function esperarArchivo(clienteId, trabajo, { seguir = () => true } = {}) {
+export async function esperarArchivo(clienteId, trabajo, { seguir = () => true } = {}) {
   let t = trabajo;
   while (!TERMINADO.has(t.estado)) {
     if (!seguir()) throw new Error("Se detuvo.");
@@ -48,10 +48,10 @@ async function esperarArchivo(clienteId, trabajo, { seguir = () => true } = {}) 
     }
     if (!TERMINADO.has(t.estado)) await dormir(2000);
   }
-  if (t.estado !== "hecho") throw new Error(t.error || "La lámina no salió.");
+  if (t.estado !== "hecho") throw new Error(t.error || "La pieza no salió.");
   const g = await api.leerEstudio(clienteId);
   const archivo = (g?.archivos ?? []).find((a) => a.trabajoId === t.id);
-  if (!archivo) throw new Error("La lámina se creó pero no aparece en la galería.");
+  if (!archivo) throw new Error("La pieza se creó pero no aparece en la galería.");
   return archivo;
 }
 

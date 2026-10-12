@@ -195,3 +195,39 @@ describe("POST /api/estudio/<cliente>/versiones", () => {
     expect((await versiones({ idea: "Un sofá", n: 1 })).status).toBe(502);
   });
 });
+
+describe("POST /api/estudio/<cliente>/lote/ideas", () => {
+  const ideas = (datos) => pedir("/api/estudio/c1/lote/ideas", { method: "POST", body: datos });
+
+  it("escribe las ideas por nivel con el producto y su precio EXACTO; no crea trabajos ni lee lo interno", async () => {
+    await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: [{ id: "sofa", nombre: "Sofá cama", precio: "$399" }] } });
+    anthropic(JSON.stringify({ ideas: [
+      { nivel: "inconsciente", titular: "¿Duermes mal?", apoyo: "", escena: "Una persona cansada en un sofá viejo" },
+      { nivel: "decision", titular: "Llévatelo hoy", apoyo: "Desde $399", escena: "El sofá cama en una sala luminosa" },
+      { nivel: "decision", titular: "Sobra", escena: "Sobra" },
+    ] }));
+    const res = await ideas({ productoId: "sofa", cuantas: { inconsciente: 1, decision: 1 }, formato: "historia" });
+    expect(res.status).toBe(200);
+    const r = await res.json();
+    expect(r.ideas.map((i) => i.titular)).toEqual(["¿Duermes mal?", "Llévatelo hoy"]);
+    expect(r.producto).toEqual({ id: "sofa", nombre: "Sofá cama", precio: "$399" });
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/Sofá cama \(producto\) · precio: \$399/);
+    expect(t).toMatch(/Historia 9:16/);
+    expect(t).not.toMatch(/margen|200 dólares/);
+    expect(db.sqlite.prepare("select count(*) as n from estudio_trabajos").get().n).toBe(0);
+    expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("ideas de anuncios");
+  });
+
+  it("sin niveles o con un producto que no está activo no se llama a nadie", async () => {
+    anthropic("x");
+    expect((await ideas({ cuantas: {} })).status).toBe(400);
+    expect((await ideas({ productoId: "no-existe", cuantas: { problema: 2 } })).status).toBe(404);
+    expect(peticiones).toHaveLength(0);
+  });
+
+  it("sin producto escribe para la marca; si la IA no devuelve nada que sirva, lo dice", async () => {
+    anthropic("no sé");
+    expect((await ideas({ cuantas: { problema: 2 } })).status).toBe(502);
+  });
+});
