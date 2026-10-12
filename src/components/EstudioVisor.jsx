@@ -65,7 +65,7 @@ function RevisionDeMarca({ revision, onRevisar, onCorregir }) {
 
 export default function Visor({
   archivo: a, carpetas, lectura, onCerrar, onFavorito, onPapelera, onMover, onRepetir, onReferencia, onAnimar, onUsar, etiquetaUsar,
-  costoOtra = null, onOtraIgual = null, onOtrasVersiones = null, versionando = false,
+  costoOtra = null, onOtraIgual = null, onOtrasVersiones = null, versionando = false, onRecrear = null,
   onEditar = null, original = null, onVerOriginal = null,
   esLogo = false, onLogo = null, revision = null, onRevisar = null, onCorregir = null,
 }) {
@@ -160,6 +160,7 @@ export default function Visor({
             {!lectura && !a.subido && <button type="button" className={`btn ${onUsar ? "btn-secondary" : "btn-primary"}`} onClick={onRepetir}><Icon name="pencil" size={16} /> Ajustar y pedir</button>}
             {!lectura && !video && <button type="button" className="btn btn-secondary" onClick={onAnimar}><Icon name="video" size={16} /> Animar</button>}
             {!lectura && !video && <button type="button" className="btn btn-secondary" onClick={onReferencia}><Icon name="paperclip" size={16} /> Usar de referencia</button>}
+            {!lectura && onRecrear && <button type="button" className="btn btn-secondary" onClick={onRecrear} title="Analizarlo y hacer una versión con la marca"><Icon name="refresh" size={16} /> Recrear como anuncio</button>}
             {!lectura && !video && onLogo && (
               <button type="button" className="btn btn-secondary" aria-pressed={esLogo} onClick={onLogo} disabled={esLogo}>
                 <Icon name="star" size={16} /> {esLogo ? "Es el logo de la marca" : "Usar como logo"}

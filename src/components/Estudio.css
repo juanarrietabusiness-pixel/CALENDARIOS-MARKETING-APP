@@ -332,3 +332,4 @@ div.est-img { cursor: default; }
 /* «Me gusta»: el corazón se rellena al marcarlo (con el color de «marcado» del Estudio) */
 .est-me-gusta[aria-pressed="true"] svg path { fill: currentColor; }
 .est-gustos .hint { margin: var(--sp-1) 0 0; }
+.est-lote-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
