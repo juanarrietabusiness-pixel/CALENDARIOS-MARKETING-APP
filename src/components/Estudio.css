@@ -328,3 +328,7 @@ div.est-img { cursor: default; }
 .est-otra-fila { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .est-otra-versiones { display: inline-flex; align-items: center; gap: var(--sp-1); }
 .est-otra-cuantas .input { width: auto; min-height: var(--tap-sm); padding-block: 0; }
+
+/* «Me gusta»: el corazón se rellena al marcarlo (con el color de «marcado» del Estudio) */
+.est-me-gusta[aria-pressed="true"] svg path { fill: currentColor; }
+.est-gustos .hint { margin: var(--sp-1) 0 0; }

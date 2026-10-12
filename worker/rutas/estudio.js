@@ -13,6 +13,7 @@
 //   POST   /<cliente>/guion-corto                  { idea, segundos, post? }: guion de un video de 8 o 10 s (texto)
 //   PUT    /<cliente>/kit                          { kit }: guarda el kit de marca (paleta, presets, logo…)
 //   POST   /<cliente>/kit/preparar                 La IA PROPONE el kit desde el cerebro (no guarda)
+//   POST   /<cliente>/kit/aprender                 La IA MIRA los «Me gusta» y la papelera y PROPONE reglas visuales (no guarda)
 //   POST   /<cliente>/revisar                      { archivoId } o { clave }: la IA mira la imagen contra el kit
 //   POST   /<cliente>/archivos                     Subir a mano (multipart: archivo, carpetaId?)
 //   POST   /<cliente>/archivos/<id>/cambiar        { favorito?, carpetaId? }
@@ -41,6 +42,7 @@ import { estadoMotores } from "../lib/estudio/motores.js";
 import { mejorarIdea, versionesDeIdea } from "../lib/estudio/prompt.js";
 import { guionCorto } from "../lib/estudio/guionCorto.js";
 import { kitDe, guardarKit, prepararKit, revisarPieza } from "../lib/estudio/kit.js";
+import { aprenderDeLoVisual } from "../lib/estudio/aprender.js";
 import { leerMercado } from "../lib/mercado.js";
 import { angulosDeAnuncio, fotosDelCatalogo } from "../../src/lib/estudioMercado.js";
 import {
@@ -90,6 +92,7 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         return json({ kit });
       }
       if (c === "preparar" && metodo === "POST") return json(await prepararKit(env, acceso, cliente));
+      if (c === "aprender" && metodo === "POST") return json(await aprenderDeLoVisual(env, acceso, cliente));
     }
     if (b === "revisar" && !c && metodo === "POST") {
       const datos = await cuerpo(req);

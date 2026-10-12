@@ -165,7 +165,7 @@ export default function Visor({
                 <Icon name="star" size={16} /> {esLogo ? "Es el logo de la marca" : "Usar como logo"}
               </button>
             )}
-            {!lectura && <button type="button" className="btn btn-secondary" aria-pressed={a.favorito} onClick={onFavorito}><Icon name="star" size={16} /> {a.favorito ? "Es favorita" : "Favorita"}</button>}
+            {!lectura && <button type="button" className="btn btn-secondary est-me-gusta" aria-pressed={a.favorito} onClick={onFavorito} title="El cerebro aprende de lo que te gusta"><Icon name="heart" size={16} /> {a.favorito ? "Te gusta" : "Me gusta"}</button>}
             <a className="btn btn-secondary" href={a.src} download={nombreDeDescarga(a)}><Icon name="download" size={16} /> Descargar</a>
             {!lectura && <button type="button" className="btn btn-ghost" onClick={onPapelera}><Icon name="trash" size={16} /> A la papelera</button>}
           </div>

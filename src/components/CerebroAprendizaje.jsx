@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import Icon from "./Icon";
 import {
+  leerLoVisual, aprenderDeLoVisual, guardarKitAprendido,
   leerSenales, aprenderDelHistorial, aprenderDeMetricas, leerPropuestas, proponerReglas, aceptarPropuesta, descartarPropuesta,
 } from "../lib/cerebro";
 import {
   NOMBRE_SENAL, etiquetaDeResultado, senalesParaMostrar, describirSenales, acumularHistorial, describirHistorial, describirMetricas, describirPropuestas, textoDeRespaldo,
 } from "../lib/cerebroAprendizaje";
+import { limpiarAprendido, faltaParaAprender, textoDeRespaldoVisual, MAX_APRENDIDO, MAX_TEXTO_REGLA } from "../lib/aprendizajeVisual";
 
 // ============================================================
 // Lo que el cerebro aprende de lo que pasa después de escribir
@@ -213,7 +215,132 @@ export default function CerebroAprendizaje({ client, lectura, version, onCambio 
             </ul>
           </section>
         )}
+
+        <LoVisual client={client} lectura={lectura} version={version} />
       </div>
     </details>
+  );
+}
+
+/**
+ * Lo que el kit de marca aprende de lo que la agencia elige en el Estudio: los «Me gusta» y la papelera. La IA MIRA esas
+ * imágenes y propone reglas visuales; las que una persona acepta van al kit y salen en toda pieza.
+ */
+function LoVisual({ client, lectura, version }) {
+  const ids = useId();
+  const [estado, setEstado] = useState(null); // { kit, gustan, descartadas }
+  const [propuestas, setPropuestas] = useState([]); // [{ texto, tipo, respaldo }]
+  const [trabajando, setTrabajando] = useState("");
+  const [aviso, setAviso] = useState(null);
+
+  const cargar = useCallback(async () => {
+    try { setEstado(await leerLoVisual(client.id)); } catch (e) { setAviso({ ok: false, texto: e.message }); }
+  }, [client.id]);
+  useEffect(() => { cargar(); }, [cargar, version]);
+
+  const aprendido = limpiarAprendido(estado?.kit?.aprendido);
+  const falta = estado ? faltaParaAprender({ gustan: estado.gustan }) : "";
+
+  const proponer = async () => {
+    setAviso(null);
+    setTrabajando("proponer");
+    try {
+      const r = await aprenderDeLoVisual(client.id);
+      setPropuestas(r.reglas);
+      const vio = `Miró ${r.vistas.gustan} que te gustaron${r.vistas.descartadas ? ` y ${r.vistas.descartadas} descartadas` : ""}`;
+      setAviso({ ok: true, texto: r.reglas.length
+        ? `${vio}: propone ${r.reglas.length === 1 ? "una regla" : `${r.reglas.length} reglas`}. Ninguna entra al kit hasta que la aceptes.${r.aviso ? ` ${r.aviso}` : ""}`
+        : `${vio} y no encontró un patrón claro. Marca más con «Me gusta» y vuelve a probar.` });
+    } catch (e) {
+      setAviso({ ok: false, texto: e.message });
+    } finally {
+      setTrabajando("");
+    }
+  };
+
+  /** Guarda el kit con estas reglas aprendidas (el kit entero, como lo tiene el servidor). */
+  const guardar = async (lista, texto) => {
+    const { kit } = await guardarKitAprendido(client.id, { ...estado.kit, aprendido: lista });
+    setEstado((e) => ({ ...e, kit }));
+    setAviso({ ok: true, texto });
+  };
+  const aceptar = async (i) => {
+    const r = propuestas[i];
+    if (aprendido.length >= MAX_APRENDIDO) { setAviso({ ok: false, texto: `El kit ya tiene ${MAX_APRENDIDO} reglas aprendidas: quita alguna antes.` }); return; }
+    setTrabajando(`aceptar-${i}`);
+    try {
+      await guardar([...aprendido, { texto: r.texto, tipo: r.tipo }], `«${r.texto}» quedó en el kit de marca: va en toda pieza desde ahora.`);
+      setPropuestas((l) => l.filter((_, j) => j !== i));
+    } catch (e) {
+      setAviso({ ok: false, texto: e.message });
+    } finally {
+      setTrabajando("");
+    }
+  };
+  const quitar = async (regla) => {
+    setTrabajando(`quitar-${regla.texto}`);
+    try {
+      await guardar(aprendido.filter((x) => x.texto !== regla.texto), `«${regla.texto}» ya no está en el kit.`);
+    } catch (e) {
+      setAviso({ ok: false, texto: e.message });
+    } finally {
+      setTrabajando("");
+    }
+  };
+
+  return (
+    <section className="cerebro-visual" aria-labelledby={`${ids}-t`}>
+      <h4 id={`${ids}-t`} className="cerebro-reglas-titulo"><Icon name="heart" size={16} /> Lo visual: de tus «Me gusta» en el Estudio</h4>
+      <p className="hint">
+        Lo que marcas con «Me gusta» en el Estudio, y lo que mandas a la papelera, enseña cómo se ve bien esta marca. La IA mira esas
+        imágenes y propone reglas visuales; las que aceptes van al kit de marca y salen en toda pieza.
+        {estado ? ` Llevas ${estado.gustan} con «Me gusta» y ${estado.descartadas} descartadas.` : ""}
+      </p>
+      {aprendido.length > 0 && (
+        <ul className="cerebro-visual-reglas" aria-label="Reglas aprendidas en el kit">
+          {aprendido.map((r) => (
+            <li key={r.texto}>
+              <span className={`cerebro-visual-tipo cerebro-visual-${r.tipo}`}>{r.tipo === "evitar" ? "Evitar" : "Funciona"}</span>
+              <span className="cerebro-visual-texto">{r.texto}</span>
+              {!lectura && (
+                <button type="button" className="btn-icon" aria-label={`Quitar del kit: ${r.texto}`} disabled={Boolean(trabajando)} onClick={() => quitar(r)}>
+                  <Icon name="close" size={14} />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {!lectura && (
+        <div className="cerebro-acciones">
+          <button type="button" className="btn btn-accent" disabled={Boolean(trabajando) || !estado || Boolean(falta)} onClick={proponer} aria-describedby={falta ? `${ids}-f` : undefined}>
+            <Icon name="sparkles" size={18} /> {trabajando === "proponer" ? "La IA está mirando las imágenes…" : "Proponer reglas visuales"}
+          </button>
+        </div>
+      )}
+      {falta && <p id={`${ids}-f`} className="hint">{falta}</p>}
+      {aviso && <p role={aviso.ok ? "status" : "alert"} className={aviso.ok ? "cerebro-aviso" : "cerebro-error"}>{aviso.texto}</p>}
+      {propuestas.length > 0 && (
+        <ul className="cerebro-lista" aria-label="Reglas visuales propuestas">
+          {propuestas.map((r, i) => (
+            <li key={`${r.tipo}-${r.texto}`} className="cerebro-regla card">
+              <div className="field">
+                <label className="label" htmlFor={`${ids}-p-${i}`}>{r.tipo === "evitar" ? "Evitar" : "Funciona"} · {textoDeRespaldoVisual(r.respaldo)}</label>
+                <input id={`${ids}-p-${i}`} className="input" value={r.texto} maxLength={MAX_TEXTO_REGLA} readOnly={lectura}
+                  onChange={(e) => setPropuestas((l) => l.map((x, j) => (j === i ? { ...x, texto: e.target.value } : x)))} />
+              </div>
+              {!lectura && (
+                <div className="cerebro-editor-pie">
+                  <button type="button" className="btn btn-secondary" disabled={Boolean(trabajando)} onClick={() => setPropuestas((l) => l.filter((_, j) => j !== i))}>Descartar</button>
+                  <button type="button" className="btn btn-primary" disabled={Boolean(trabajando) || r.texto.trim().length < 4} onClick={() => aceptar(i)}>
+                    <Icon name="check" size={18} /> {trabajando === `aceptar-${i}` ? "Guardando…" : "Añadir al kit"}
+                  </button>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
