@@ -108,7 +108,7 @@ describe("de una publicación al Estudio", () => {
   it("las fotos de un producto del catálogo, como archivos de apoyo", async () => {
     const { fotosDelProducto } = await import("./estudio.js");
     const productos = [{ id: "p-sofa", nombre: "Sofá", fotos: ["clientes/c1/a.jpg"] }];
-    expect(fotosDelProducto(productos, "p-sofa")).toEqual([{ id: "ext:clientes/c1/a.jpg", src: "/api/media/clientes/c1/a.jpg", clave: "clientes/c1/a.jpg", prompt: "Sofá" }]);
+    expect(fotosDelProducto(productos, "p-sofa")).toEqual([{ id: "ext:clientes/c1/a.jpg", src: "/api/media/clientes/c1/a.jpg", clave: "clientes/c1/a.jpg", prompt: "Sofá", producto: { nombre: "Sofá", marca: "" } }]);
     expect(fotosDelProducto(productos, "p-otro")).toEqual([]);
     expect(fotosDelProducto(productos, "")).toEqual([]);
     expect(fotosDelProducto(undefined, "p-sofa")).toEqual([]);

@@ -4,7 +4,7 @@ import { d1EnMemoria } from "../utils/d1Memoria.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
 import { olvidarModelos } from "../../worker/lib/configIA.js";
-import { pedidoDeMejora, leerIdea, MAX_PALABRAS } from "../../worker/lib/estudio/prompt.js";
+import { pedidoDeMejora, leerIdea, MAX_PALABRAS, pedidoDeVersiones, leerVersiones, MAX_VERSIONES } from "../../worker/lib/estudio/prompt.js";
 
 // ============================================================
 // «Mejorar idea»: la idea de la persona, más clara, y nada más
@@ -35,6 +35,30 @@ describe("lo puro", () => {
     expect(leerIdea("Una taza con el texto \"Buenos días\" sobre la mesa.")).toBe("Una taza con el texto \"Buenos días\" sobre la mesa.");
     expect(leerIdea("```\nUna taza\nsobre la mesa\n```")).toBe("Una taza sobre la mesa");
     expect(leerIdea("")).toBe("");
+  });
+});
+
+describe("«Otra versión distinta», lo puro", () => {
+  it("pide la MISMA información con otra escena, una por línea", () => {
+    const p = pedidoDeVersiones({ idea: "Un sofá cama con el texto «Desde $399» en una sala", n: 2, cliente: { name: "Dcasa" } });
+    expect(p).toMatch(/Escribe 2 versiones distintas/);
+    expect(p).toMatch(/dice LO MISMO/);
+    expect(p).toMatch(/el mismo texto exacto/);
+    expect(p).toMatch(/No inventes/);
+    expect(p).toMatch(/LA ESCENA:\nUn sofá cama/);
+    expect(pedidoDeVersiones({ idea: "x", n: 1 })).toMatch(/1 versión distinta/);
+  });
+
+  it("lee las versiones: viñetas, números o «Versión N:», sin la frase de entrada, hasta n", () => {
+    const texto = "Aquí tienes las versiones:\n- Un sofá cama abierto en un estudio pequeño, de noche.\n2. El sofá cama visto desde arriba con dos cojines.\nVersión 3: Una familia sentada en el sofá cama, luz de tarde.";
+    expect(leerVersiones(texto, 3)).toEqual([
+      "Un sofá cama abierto en un estudio pequeño, de noche.",
+      "El sofá cama visto desde arriba con dos cojines.",
+      "Una familia sentada en el sofá cama, luz de tarde.",
+    ]);
+    expect(leerVersiones(texto, 1)).toHaveLength(1);
+    expect(leerVersiones("", 2)).toEqual([]);
+    expect(MAX_VERSIONES).toBe(3);
   });
 });
 
@@ -140,5 +164,34 @@ describe("POST /api/estudio/<cliente>/mejorar", () => {
     expect((await mejorar({ idea: "  " })).status).toBe(400);
     expect(peticiones).toHaveLength(0);
     expect((await pedir("/api/estudio/c1/prompt", { method: "POST", body: { idea: "x" } })).status).toBe(404);
+  });
+});
+
+describe("POST /api/estudio/<cliente>/versiones", () => {
+  const versiones = (datos) => pedir("/api/estudio/c1/versiones", { method: "POST", body: datos });
+
+  it("devuelve N escenas en texto; no crea ningún trabajo y apunta el gasto", async () => {
+    anthropic("- Un sofá cama abierto en un estudio pequeño.\n- El sofá cama visto desde arriba.");
+    const res = await versiones({ idea: "Un sofá cama en una sala", n: 2 });
+    expect(res.status).toBe(200);
+    const r = await res.json();
+    expect(r.versiones).toEqual(["Un sofá cama abierto en un estudio pequeño.", "El sofá cama visto desde arriba."]);
+    expect(textoDe(peticiones[0])).toMatch(/LA ESCENA:\nUn sofá cama en una sala/);
+    expect(textoDe(peticiones[0])).not.toMatch(/margen|200 dólares/);
+    expect(db.sqlite.prepare("select count(*) as n from estudio_trabajos").get().n).toBe(0);
+    expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("prompt de imagen");
+  });
+
+  it("de 1 a 3, y sin escena no se llama a nadie", async () => {
+    anthropic("- x");
+    expect((await versiones({ idea: "x", n: 4 })).status).toBe(400);
+    expect((await versiones({ idea: "x", n: 0 })).status).toBe(400);
+    expect((await versiones({ idea: " ", n: 1 })).status).toBe(400);
+    expect(peticiones).toHaveLength(0);
+  });
+
+  it("si la IA no devuelve nada que sirva, lo dice", async () => {
+    anthropic("Aquí tienes:");
+    expect((await versiones({ idea: "Un sofá", n: 1 })).status).toBe(502);
   });
 });

@@ -251,6 +251,15 @@ describe("las fotos de un producto", () => {
       { id: "p-b", nombre: "B", fotos: [] },
       { id: "p-c", nombre: "C", activo: false, fotos: ["clientes/c1/c.jpg"] },
     ];
-    expect(fotosDelCatalogo(catalogo)).toEqual([{ id: "p-a", nombre: "A", fotos: ["clientes/c1/a.jpg"] }]);
+    expect(fotosDelCatalogo(catalogo)).toEqual([{ id: "p-a", nombre: "A", marca: "", fotos: ["clientes/c1/a.jpg"] }]);
+  });
+});
+
+describe("la marca de un producto que no es del cliente", () => {
+  it("se guarda corta y la IA la lee junto al tipo", () => {
+    const [p] = limpiarCatalogo([{ nombre: "Crema hidratante", precio: "$12", marca: `  Nivea ${"x".repeat(100)}` }]);
+    expect(p.marca.length).toBeLessThanOrEqual(60);
+    expect(lineaDeProducto({ ...p, marca: "Nivea" })).toMatch(/^- Crema hidratante \(producto, de la marca Nivea\)/);
+    expect(lineaDeProducto({ ...p, marca: "" })).toMatch(/^- Crema hidratante \(producto\)/);
   });
 });

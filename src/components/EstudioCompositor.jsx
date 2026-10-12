@@ -7,6 +7,7 @@ import { ETIQUETA_AJUSTE, valorDeAjuste } from "../lib/estudio";
 import { TIPOS_PRESET, ACABADOS, LINEA_LOGO } from "../lib/kitMarca";
 import { NOMBRE_TRAMO } from "../lib/videoCorto";
 import { CopyButton } from "./calendario/primitivas";
+import { TOMAS, MAX_NOTA } from "../lib/referencias";
 
 // ============================================================
 // El compositor del Estudio: qué se quiere crear
@@ -47,6 +48,89 @@ function Ranura({ titulo, ayuda, archivos, max, rol, subiendo, onQuitar, onSubir
           </button>
         )}
         <span className="hint">{archivos.length} de {max}. {ayuda}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Las imágenes de referencia, cada una con QUÉ se toma de ella (estilo, composición, producto…) y una nota: sin
+ * decirlo, el modelo copia de más —el producto de otro, su texto, sus logos—. Las fotos del catálogo no se marcan:
+ * son el producto real y se copian tal cual (si es de otra marca, se dice y no lleva el logo del cliente).
+ */
+function Referencias({ ids, archivos, max, subiendo, onQuitar, onSubir, onDrive = null, onMarcar, nombrado = null }) {
+  const alternar = (r, id) => {
+    const actual = r.toma ?? [];
+    onMarcar(r, { toma: actual.includes(id) ? actual.filter((t) => t !== id) : [...actual, id] });
+  };
+  return (
+    <div className="field">
+      <span className="label" id={`${ids}-reference`}>Imágenes de referencia</span>
+      {archivos.length > 0 && (
+        <ul className="est-refs-lista" aria-labelledby={`${ids}-reference`}>
+          {archivos.map((r, i) => {
+            const nombre = r.prompt || (r.tipo === "video" ? "Video" : "Imagen");
+            const toma = r.toma ?? [];
+            const resumen = toma.length ? TOMAS.filter(([id]) => toma.includes(id)).map(([, n]) => n).join(", ") : "Todo";
+            return (
+              <li key={r.id} className="est-ref-fila">
+                <div className="est-ref-cabeza">
+                  {r.tipo === "video" ? <video src={r.src} muted playsInline preload="metadata" aria-hidden="true" /> : <img src={r.src} alt="" />}
+                  <div className="est-ref-texto">
+                    {r.producto ? (
+                      <>
+                        <span className="est-ref-insignia">Producto real</span>
+                        <span className="est-ref-titulo">{r.producto.nombre}{r.producto.marca ? ` · de ${r.producto.marca}` : ""}</span>
+                        <span className="hint">Se copia tal cual{r.producto.marca ? ", con su empaque y sin tu logo encima" : ""}.</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="est-ref-titulo">{i + 1}. {nombre}</span>
+                        <span className="hint">Se toma: {resumen}{r.nota ? ` · «${r.nota}»` : ""}</span>
+                      </>
+                    )}
+                  </div>
+                  <button type="button" className="btn-icon est-ref-quitar" aria-label={`Quitar: ${r.producto?.nombre ?? nombre}`} onClick={() => onQuitar("reference", r)}><Icon name="close" size={14} /></button>
+                </div>
+                {!r.producto && (
+                  <details className="est-ref-que">
+                    <summary>¿Qué tomo de aquí?</summary>
+                    <div className="est-tipos" role="group" aria-label={`Qué se toma de la referencia ${i + 1}`}>
+                      <button type="button" className="filter-chip" aria-pressed={!toma.length} onClick={() => onMarcar(r, { toma: [] })}>Todo</button>
+                      {TOMAS.map(([id, n]) => (
+                        <button key={id} type="button" className="filter-chip" aria-pressed={toma.includes(id)} onClick={() => alternar(r, id)}>{n}</button>
+                      ))}
+                    </div>
+                    <label className="label" htmlFor={`${ids}-nota-${r.id}`}>Comentario (opcional)</label>
+                    <input
+                      id={`${ids}-nota-${r.id}`} className="input" maxLength={MAX_NOTA} value={r.nota ?? ""}
+                      placeholder="Me gusta cómo cae la luz sobre la mesa…"
+                      onChange={(e) => onMarcar(r, { nota: e.target.value })}
+                    />
+                  </details>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {nombrado && (
+        <p className="notice est-nombrado" role="note">
+          Tu idea nombra «{nombrado.nombre}»: al crear se suma{nombrado.fotos.length === 1 ? " su foto" : `n sus ${nombrado.fotos.length} fotos`} del catálogo para que salga el producto real.
+        </p>
+      )}
+      <div className="est-refs">
+        {archivos.length < max && (
+          <button type="button" className="btn btn-secondary btn-sm" disabled={subiendo} onClick={() => onSubir("reference")}>
+            <Icon name="upload" size={16} /> {subiendo ? "Subiendo…" : "Subir una imagen"}
+          </button>
+        )}
+        {archivos.length < max && onDrive && (
+          <button type="button" className="btn btn-secondary btn-sm" disabled={subiendo} onClick={() => onDrive("reference")}>
+            <Icon name="cloud" size={16} /> Desde Drive
+          </button>
+        )}
+        <span className="hint">{archivos.length} de {max}. También puedes usar cualquiera de la galería con «Usar de referencia».</span>
       </div>
     </div>
   );
@@ -237,7 +321,8 @@ function MejorarIdea({ mejorando, onMejorar, onVolverIdea }) {
 
 export default function Compositor({
   ids, form, setForm, modelo, motores, costo, confirmando, enviando, subiendo,
-  onEnviar, onConfirmar, onNo, onModelo, onTipo, onQuitarMedio, onSubirArchivos, onDrive = null, promptRef, etiquetaPrompt = "¿Qué quieres crear?",
+  onEnviar, onConfirmar, onNo, onModelo, onTipo, onQuitarMedio, onMarcarReferencia, onSubirArchivos, onDrive = null, promptRef, etiquetaPrompt = "¿Qué quieres crear?",
+  nombrado = null,
   mejorando = false, onMejorar = null, onVolverIdea = null,
   estilo = null,
   guionCorto = null,
@@ -369,8 +454,8 @@ export default function Compositor({
           ayuda="Opcional: el video termina en esta imagen." />
       )}
       {modelo.referencias > 0 ? (
-        <Ranura ids={ids} rol="reference" titulo="Imágenes de referencia" max={modelo.referencias} archivos={medios.reference} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida} onDrive={onDrive}
-          ayuda="También puedes usar cualquiera de la galería con «Usar de referencia»." />
+        <Referencias ids={ids} max={modelo.referencias} archivos={medios.reference} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida} onDrive={onDrive}
+          onMarcar={onMarcarReferencia} nombrado={nombrado} />
       ) : !conInicial && (
         <p className="hint">{modelo.nombre} no admite imágenes de referencia.</p>
       )}

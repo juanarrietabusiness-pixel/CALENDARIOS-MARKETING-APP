@@ -63,3 +63,55 @@ export async function mejorarIdea(env, acceso, cliente, datos = {}) {
   if (!mejorada) throw Object.assign(new Error("La IA no devolvió nada. Inténtalo otra vez."), { estado: 502 });
   return { idea: mejorada, modelo: r.modelo, aviso: r.aviso };
 }
+
+// ------------------------------------------------------------
+// «Otra versión distinta»: la MISMA información, otra escena
+// ------------------------------------------------------------
+
+/** Cuántas versiones se piden de una vez, como mucho. */
+export const MAX_VERSIONES = 3;
+
+/** Lo que se le pide a la IA: N escenas distintas que digan lo mismo. Pura. */
+export function pedidoDeVersiones({ idea, n = 1, tipo = "imagen", cliente = {} }) {
+  const que = tipo === "video" ? "un video corto" : "una imagen";
+  return [
+    `Esta es la escena de ${que}${cliente.name ? ` de la marca ${cliente.name}` : ""}. Escribe ${n} ${n === 1 ? "versión distinta" : "versiones distintas"} de ella.`,
+    "",
+    "Reglas:",
+    "- Cada versión dice LO MISMO (el mismo producto, el mismo mensaje, el mismo texto exacto si lo hay, entre comillas) con OTRA forma de mostrarlo: otro encuadre, otro escenario, otra composición, otra acción.",
+    "- Las versiones son distintas entre sí, no variaciones mínimas.",
+    `- Cada una en una o dos frases sencillas, de ${MAX_PALABRAS} palabras como mucho.`,
+    "- No inventes productos, logos, colores de marca, precios ni textos que no estén en la escena.",
+    `- Responde con ${n === 1 ? "la versión" : `las ${n} versiones`}, una por línea, empezando cada línea por «- ». Nada más.`,
+    "",
+    `LA ESCENA:\n${String(idea).slice(0, MAX_IDEA)}`,
+  ].join("\n");
+}
+
+/** La respuesta de la IA → las versiones (como mucho `n`), cada una limpia. Pura. */
+export function leerVersiones(texto, n = 1) {
+  return String(texto ?? "")
+    .replace(/```[a-z]*|```/g, "")
+    .split(/\n+/)
+    .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)]|versi[oó]n\s*\d+\s*:)\s*/i, "").trim())
+    .filter((l) => l.length > 10 && !/^(aqu[ií] (tienes|est[aá]n)|versiones?\s*:)/i.test(l))
+    .map((l) => leerIdea(l))
+    .filter(Boolean)
+    .slice(0, n);
+}
+
+/** N escenas distintas con la misma información. `datos`: { idea, n, tipo }. Texto: no gasta en el motor. */
+export async function versionesDeIdea(env, acceso, cliente, datos = {}) {
+  const idea = String(datos.idea ?? "").trim();
+  if (!idea) throw Object.assign(new Error("Esta pieza no tiene escena de la que partir."), { estado: 400 });
+  const n = Number(datos.n ?? 1);
+  if (!(Number.isInteger(n) && n >= 1 && n <= MAX_VERSIONES)) throw Object.assign(new Error(`De 1 a ${MAX_VERSIONES} versiones.`), { estado: 400 });
+  const r = await llamarIA(env, acceso, cliente, {
+    prompt: pedidoDeVersiones({ idea, n, tipo: datos.tipo === "video" ? "video" : "imagen", cliente }),
+    salida: 400 * n + 200,
+    funcion: "prompt de imagen",
+  });
+  const versiones = leerVersiones(r.texto, n);
+  if (!versiones.length) throw Object.assign(new Error("La IA no devolvió ninguna versión. Inténtalo otra vez."), { estado: 502 });
+  return { versiones, modelo: r.modelo, aviso: r.aviso };
+}

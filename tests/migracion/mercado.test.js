@@ -159,7 +159,7 @@ describe("el catálogo", () => {
     const d = await (await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: [{ ...CATALOGO[0], fotos }] } })).json();
     expect(d.catalogo[0].fotos).toEqual(["clientes/c1/estudio/a.jpg"]);
     const g = await (await pedir("/api/estudio/c1")).json();
-    expect(g.productos).toEqual([{ id: d.catalogo[0].id, nombre: CATALOGO[0].nombre, fotos: ["clientes/c1/estudio/a.jpg"] }]);
+    expect(g.productos).toEqual([{ id: d.catalogo[0].id, nombre: CATALOGO[0].nombre, marca: "", fotos: ["clientes/c1/estudio/a.jpg"] }]);
     // La nota de cifras no habla de fotos.
     expect(notas().find((x) => x.ruta === "productos-y-servicios").texto).not.toContain("clientes/");
   });
