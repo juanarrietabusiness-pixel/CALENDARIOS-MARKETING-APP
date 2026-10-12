@@ -119,6 +119,24 @@ export async function borrarParaSiempre(env, acceso, clientId, id, { forzar = fa
   return true;
 }
 
+/**
+ * Quita de la galería una ficha cuyo archivo YA NO ESTÁ en R2 (la pantalla no pudo pintarla). Se comprueba aquí: con
+ * el archivo en su sitio no se quita nada, que la imagen pudo fallar por la red. Así se limpian las que dejó «Ampliar
+ * con IA», que apuntaba la imagen intermedia en la galería y luego borraba su archivo.
+ */
+export async function quitarPerdido(env, acceso, clientId, id) {
+  const f = await archivoDe(acceso, clientId, id);
+  if (!f) return false;
+  if (await env.MEDIA.head(f.clave)) throw new ErrorEstudio("El archivo sí está: recarga la página.", 409);
+  await acceso.borrar("estudio_archivos", { id, client_id: clientId });
+  return true;
+}
+
+/** La ficha de una imagen que se acaba de borrar de R2 por otra puerta (la intermedia de «Ampliar con IA»). */
+export async function olvidarClave(acceso, clientId, clave) {
+  await acceso.borrar("estudio_archivos", { client_id: clientId, clave: String(clave) });
+}
+
 /** Vacía la papelera: lo que no usa ninguna publicación. Devuelve cuántos. */
 export async function vaciarPapelera(env, acceso, clientId) {
   const filas = await acceso.leer("estudio_archivos", { client_id: clientId }, "created_at desc", MAX_LISTADOS);

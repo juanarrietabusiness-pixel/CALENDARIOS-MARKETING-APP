@@ -496,6 +496,25 @@ describe("subir a mano, carpetas y papelera", () => {
     expect(env.MEDIA.objetos.has(archivo.clave)).toBe(true);
   });
 
+  it("una ficha cuyo archivo ya no está se quita; con el archivo en su sitio, no", async () => {
+    const { archivo } = await (await subir(JEFE, "c1", PNG, "a.png", "image/png")).json();
+    expect((await pedir(JEFE, `/api/estudio/c1/archivos/${archivo.id}/perdido`, { method: "POST" })).status).toBe(409);
+    env.MEDIA.objetos.delete(archivo.clave);
+    expect((await pedir(JEFE, `/api/estudio/c2/archivos/${archivo.id}/perdido`, { method: "POST" })).status).toBe(404);
+    expect((await pedir(JEFE, `/api/estudio/c1/archivos/${archivo.id}/perdido`, { method: "POST" })).status).toBe(200);
+    expect((await galeria(JEFE, "c1")).archivos).toHaveLength(0);
+  });
+
+  it("«Ampliar con IA» descarta la imagen intermedia y con ella su ficha: no queda una rota en la galería", async () => {
+    const clave = "clientes/c1/generadas/bruto.png";
+    env.MEDIA.objetos.set(clave, { bytes: PNG, tipo: "image/png" });
+    db.sqlite.prepare("insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime) values (?,?,?,?,?,?)").run("a-bruto", JEFE, "c1", clave, "imagen", "image/png");
+    const res = await pedir(JEFE, "/api/feedback-imagen", { method: "POST", body: { clientId: "c1", clave, liked: false } });
+    expect(res.status).toBe(200);
+    expect(env.MEDIA.objetos.has(clave)).toBe(false);
+    expect(db.sqlite.prepare("select count(*) n from estudio_archivos where clave = ?").get(clave).n).toBe(0);
+  });
+
   it("rechaza lo que no es una imagen aunque diga serlo, y lo que pesa demasiado", async () => {
     expect((await subir(JEFE, "c1", new TextEncoder().encode("<svg onload=alert(1)/>"), "x.png", "image/png")).status).toBe(415);
     expect((await subir(JEFE, "c1", new TextEncoder().encode("hola"), "x.txt", "text/plain")).status).toBe(415);

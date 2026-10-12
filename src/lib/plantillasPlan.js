@@ -12,7 +12,7 @@
 // FORMATO y su TIPO de contenido (pilares.js). Un tipo vacío quiere decir
 // «el del ritmo del cliente ese día» (lunes Anuncio, martes Beneficios…):
 // así el ritmo y los ajustes de temporada siguen mandando, y la plantilla
-// sólo añade lo que su objetivo pide (los reels virales, la comunidad).
+// sólo añade lo que su objetivo pide (los reels de contenido humano).
 //
 // Dónde vive cada cosa:
 //   · las de arranque, aquí (`PLANTILLAS_BASE`);
@@ -26,7 +26,7 @@
 // (`lineaDelPlan`).
 // ============================================================
 
-import { pilarDe, nombreDePilar } from "./pilares";
+import { idDePilar, nombreDePilar } from "./pilares";
 
 export const FORMATOS_PLAN = Object.freeze(["post", "reel", "carrusel", "historia", "live"]);
 const NOMBRE_FORMATO = { post: "post", reel: "reel", carrusel: "carrusel", historia: "historia", live: "directo" };
@@ -35,10 +35,10 @@ const PLURAL_FORMATO = { post: "posts", reel: "reels", carrusel: "carruseles", h
 export const OBJETIVOS_PLAN = Object.freeze([
   { id: "ventas", nombre: "Centrado en ventas", ayuda: "El ritmo de la agencia: cada día un tipo de contenido que vende o prepara la venta.",
     ia: "El objetivo del plan es VENDER: cada publicación empuja a la compra o la prepara." },
-  { id: "seguidores", nombre: "Ventas y seguidores", ayuda: "Lo mismo, más reels virales pensados para que los compartan y lleguen seguidores nuevos.",
-    ia: "El plan tiene dos objetivos: vender y ganar seguidores. Las publicaciones «Viral / alcance» buscan que las compartan y no venden; las demás venden." },
-  { id: "360", nombre: "Marketing 360", ayuda: "Más intensivo: ventas, tres reels virales por semana y contenido de comunidad (equipo, proceso, clientes).",
-    ia: "Plan de presencia completa: vender, crecer (las virales) y construir confianza y comunidad (detrás de cámaras, equipo, clientes reales)." },
+  { id: "seguidores", nombre: "Ventas y seguidores", ayuda: "Lo mismo, más reels de contenido humano pensados para que los compartan y lleguen seguidores nuevos.",
+    ia: "El plan tiene dos objetivos: vender y ganar seguidores. Las publicaciones «Contenido humano» buscan que las compartan y no venden; las demás venden." },
+  { id: "360", nombre: "Marketing 360", ayuda: "Más intensivo: ventas y contenido humano casi a diario (equipo, proceso, clientes, situaciones del día a día).",
+    ia: "Plan de presencia completa: vender, crecer y construir confianza con contenido humano (detrás de cámaras, equipo, clientes reales, situaciones con las que el cliente ideal se identifique)." },
 ]);
 
 export const NEGOCIOS_PLAN = Object.freeze([
@@ -62,12 +62,12 @@ const FORMATO_DEL_RITMO = {
 /** Lo que cada objetivo AÑADE al ritmo: día → publicaciones de más. */
 const EXTRAS = {
   ventas: () => ({}),
-  seguidores: () => ({ 2: [{ format: "reel", pilar: "viral" }], 4: [{ format: "reel", pilar: "viral" }] }),
+  seguidores: () => ({ 2: [{ format: "reel", pilar: "humano" }], 4: [{ format: "reel", pilar: "humano" }] }),
   360: (negocio) => ({
-    1: [{ format: "reel", pilar: "viral" }],
-    3: [{ format: "reel", pilar: "viral" }, { format: negocio === "marca" ? "reel" : "carrusel", pilar: "comunidad" }],
-    5: [{ format: "reel", pilar: "viral" }],
-    6: [{ format: negocio === "marca" ? "reel" : "post", pilar: "comunidad" }],
+    1: [{ format: "reel", pilar: "humano" }],
+    3: [{ format: "reel", pilar: "humano" }, { format: negocio === "marca" ? "reel" : "carrusel", pilar: "humano" }],
+    5: [{ format: "reel", pilar: "humano" }],
+    6: [{ format: negocio === "marca" ? "reel" : "post", pilar: "humano" }],
   }),
 };
 
@@ -91,7 +91,7 @@ const ID = /^[\w-]{1,60}$/;
 function limpiarHueco(h) {
   const format = FORMATOS_PLAN.includes(h?.format) ? h.format : null;
   if (!format) return null;
-  return { format, pilar: pilarDe(h?.pilar) ? h.pilar : "" };
+  return { format, pilar: idDePilar(h?.pilar) };
 }
 
 /** Una plantilla, limpia. Null si no tiene id o nombre. Pura. */
@@ -168,7 +168,7 @@ export function plantillaDelCliente(planContenido, lista = []) {
  */
 export function configDeFormatos(plantilla) {
   const cfg = {};
-  for (let dow = 0; dow < 7; dow++) cfg[dow] = (plantilla?.dias?.[dow] ?? []).map((h) => ({ format: h.format, pilar: h.pilar || "" }));
+  for (let dow = 0; dow < 7; dow++) cfg[dow] = (plantilla?.dias?.[dow] ?? []).map((h) => ({ format: h.format, pilar: idDePilar(h.pilar) }));
   return cfg;
 }
 
@@ -181,13 +181,14 @@ export function conteoSemanal(plantilla) {
     for (const h of plantilla?.dias?.[dow] ?? []) {
       total++;
       formatos[h.format] = (formatos[h.format] ?? 0) + 1;
-      if (h.pilar) tipos[h.pilar] = (tipos[h.pilar] ?? 0) + 1;
+      const pilar = idDePilar(h.pilar);
+      if (pilar) tipos[pilar] = (tipos[pilar] ?? 0) + 1;
     }
   }
   return { total, formatos, tipos };
 }
 
-/** «11 por semana · 6 reels, 3 carruseles, 2 posts · 3 Viral / alcance, 2 Comunidad». Pura. */
+/** «11 por semana · 6 reels, 3 carruseles, 2 posts · 5 Contenido humano». Pura. */
 export function resumenPlantilla(plantilla) {
   const { total, formatos, tipos } = conteoSemanal(plantilla);
   if (!total) return "Sin publicaciones";

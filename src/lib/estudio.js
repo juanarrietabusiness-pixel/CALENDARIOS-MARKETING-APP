@@ -62,6 +62,7 @@ export const cambiarArchivo = (clienteId, id, cambios) => pedir(delArchivo(clien
 export const apuntarUso = (clienteId, id, { calendarId, postId }) => pedir(delArchivo(clienteId, id, "uso"), post({ calendarId, postId }));
 export const mandarAPapelera = (clienteId, id) => pedir(delArchivo(clienteId, id, "papelera"), post());
 export const recuperarArchivo = (clienteId, id) => pedir(delArchivo(clienteId, id, "recuperar"), post());
+export const quitarPerdido = (clienteId, id) => pedir(delArchivo(clienteId, id, "perdido"), post());
 export const borrarDelTodo = (clienteId, id, { forzar = false } = {}) =>
   pedir(`${base(clienteId)}/archivos/${encodeURIComponent(id)}${forzar ? "?forzar=1" : ""}`, { method: "DELETE" });
 export const vaciarPapelera = (clienteId) => pedir(`${base(clienteId)}/papelera/vaciar`, post());

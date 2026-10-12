@@ -12,16 +12,16 @@ import { hace, nombreDeDescarga, esVideoReal, valorDeAjuste, ATAJOS_EDICION } fr
 // ============================================================
 
 /** La pieza, como imagen o como video. Un video pide `preload` ligero: no baja 40 MB para enseñar un fotograma. */
-export function Pieza({ archivo: a, grande = false }) {
+export function Pieza({ archivo: a, grande = false, onError = undefined }) {
   if (esVideoReal(a)) {
     return (
       <video
         src={a.src} controls={grande} muted={!grande} playsInline preload="metadata" loop={!grande}
-        aria-label={grande ? undefined : a.prompt}
+        aria-label={grande ? undefined : a.prompt} onError={onError}
       />
     );
   }
-  return <img src={a.src} alt={a.prompt} loading={grande ? "eager" : "lazy"} />;
+  return <img src={a.src} alt={a.prompt} loading={grande ? "eager" : "lazy"} onError={onError} />;
 }
 
 /**

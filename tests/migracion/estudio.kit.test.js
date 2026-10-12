@@ -108,7 +108,7 @@ describe("guardar el kit", () => {
       paleta: [{ hex: "#1b3246", rol: "estructura" }, { hex: "azul" }], presets: { producto: "Mi preset." },
     } } });
     expect(res.status).toBe(200);
-    expect(kitGuardado()).toMatchObject({ logo: "clientes/c1/estudio/logo.png", tipografia: "Montserrat", paleta: [{ hex: "#1B3246", rol: "estructura" }], presets: { producto: "Mi preset." } });
+    expect(kitGuardado()).toMatchObject({ logo: "clientes/c1/estudio/logo.png", tipografia: "Montserrat", paleta: [{ hex: "#1B3246", rol: "estructura" }], presets: { servicios: "Mi preset." } });
     expect((await (await pedir("/api/estudio/c1")).json()).kit.logo).toBe("clientes/c1/estudio/logo.png");
   });
 
@@ -121,12 +121,12 @@ describe("guardar el kit", () => {
 
 describe("preparar con la IA", () => {
   it("lee el cerebro sin lo interno, propone y no guarda", async () => {
-    anthropic('Listo: {"paleta":[{"hex":"#1E2A5A","nombre":"azul marino","rol":"dominante"}],"tipografia":"","estilo":"cálido","luz":"natural","evitar":"nunca fondos negros","presets":{"producto":"P","anuncio":"A","corporativo":"C","creativo":"K"},"dudas":"no hay tipografía"}');
+    anthropic('Listo: {"paleta":[{"hex":"#1E2A5A","nombre":"azul marino","rol":"dominante"}],"tipografia":"","estilo":"cálido","luz":"natural","evitar":"nunca fondos negros","presets":{"anuncio":"A","beneficios":"B","servicios":"P","educativo":"E","diferenciador":"D","maletas":"M","humano":"H","corporativo":"no"},"dudas":"no hay tipografía"}');
     const res = await pedir("/api/estudio/c1/kit/preparar", { method: "POST" });
     expect(res.status).toBe(200);
     const r = await res.json();
     expect(r.kit.paleta[0]).toMatchObject({ hex: "#1E2A5A", rol: "dominante" });
-    expect(r.kit.presets).toEqual({ producto: "P", anuncio: "A", corporativo: "C", creativo: "K" });
+    expect(r.kit.presets).toEqual({ anuncio: "A", beneficios: "B", servicios: "P", educativo: "E", diferenciador: "D", maletas: "M", humano: "H" });
     expect(r.dudas).toBe("no hay tipografía");
     expect(r.conCerebro).toBe(true);
     const enviado = textoDe(peticiones[0]);

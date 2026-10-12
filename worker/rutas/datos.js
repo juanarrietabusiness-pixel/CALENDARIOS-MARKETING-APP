@@ -33,6 +33,7 @@ import { asignarTarea, alGuardarCalendario, avisarNota, avisar, enlacePublicacio
 import { registrarCorrecciones } from "../lib/cerebro/aprender.js";
 import { obtenerOCrearMes, moverDeMes, ErrorMes } from "../lib/meses.js";
 import { olvidarIndice } from "../lib/cerebro/cerebro.js";
+import { olvidarClave } from "../lib/estudio/galeria.js";
 
 /**
  * Lo que va después de responder (avisos, historial): con el `waitUntil`
@@ -897,6 +898,9 @@ export async function rutasDatos(req, env, ctx) {
     }
 
     await env.MEDIA.delete(clave);
+    // `/api/generar-imagen` la apuntó en la galería del Estudio: sin esto quedaba una ficha sin archivo, que se veía
+    // rota («Ampliar con IA» descarta así la imagen intermedia).
+    await olvidarClave(acceso, clientId, clave).catch((e) => console.warn("feedback-imagen: la ficha de la galería se quedó", e?.message));
     return json({ ok: true });
   }
 

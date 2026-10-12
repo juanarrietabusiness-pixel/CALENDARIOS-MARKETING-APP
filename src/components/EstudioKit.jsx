@@ -1,20 +1,22 @@
 import { useId, useState } from "react";
 import Icon from "./Icon";
-import { TIPOS_PRESET, limpiarKit, kitVacio, textoPreset, fundirKit } from "../lib/kitMarca";
+import { TIPOS_PRESET, MAX_PROPIOS, limpiarKit, kitVacio, textoPreset, fundirKit, bloqueDeMarca } from "../lib/kitMarca";
 
 // ============================================================
 // El kit de marca del cliente, en el Estudio
 //
 // Lo que en Flow era un texto por marca, aquí: la paleta con el papel de
 // cada color, la tipografía, el estilo, la luz, lo que nunca sale, el logo
-// original (va de referencia en cada imagen) y los cuatro presets que van
-// delante de cada idea.
+// original (va de referencia en cada imagen) —todo eso va en CADA pieza— y
+// un preset por tipo de contenido del calendario, más los propios del
+// cliente: qué clase de pieza es.
 //
 // «Preparar con IA» lee el CEREBRO del cliente y PROPONE: no se guarda
 // nada hasta pulsar «Guardar este kit». Cada campo se puede corregir a mano.
 // ============================================================
 
 const PALETA_VACIA = () => ({ hex: "#", nombre: "", rol: "" });
+const PROPIO_VACIO = () => ({ id: `propio-${Date.now().toString(36)}`, nombre: "", texto: "" });
 
 export default function EstudioKit({ client, kit: guardado, archivos = [], lectura = false, onGuardar, onPreparar }) {
   const ids = useId();
@@ -77,7 +79,7 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], lectu
               <Icon name="brain" size={14} /> {ocupado === "preparar" ? "Leyendo el cerebro…" : vacio ? "Preparar con IA" : "Volver a preparar"}
             </button>
             {!vacio && !editando && (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditando({ ...kit, paleta: [...kit.paleta] }); setAbierto(true); }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditando({ ...kit, paleta: [...kit.paleta], propios: [...kit.propios] }); setAbierto(true); }}>
                 <Icon name="pencil" size={14} /> Editar
               </button>
             )}
@@ -112,7 +114,7 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], lectu
           )}
 
           {!propuesta && !borrador && vacio && !lectura && (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditando({ ...kit, paleta: [PALETA_VACIA()] })}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditando({ ...kit, paleta: [PALETA_VACIA()], propios: [] })}>
               <Icon name="pencil" size={14} /> Escribirlo a mano
             </button>
           )}
@@ -141,6 +143,7 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], lectu
                   <input id={`${ids}-${campo}`} className="input" value={borrador[campo] ?? ""} onChange={(e) => cambiar(campo, e.target.value)} placeholder={ejemplo} />
                 </div>
               ))}
+              <p className="hint">Lo de arriba (colores, tipografía, estilo, luz, «nunca») va en TODA pieza. Los presets dicen qué clase de pieza es, según su tipo de contenido.</p>
               {Object.entries(TIPOS_PRESET).map(([tipo, def]) => (
                 <div key={tipo} className="field">
                   <label className="label" htmlFor={`${ids}-p-${tipo}`}>Preset «{def.nombre}»</label>
@@ -150,9 +153,29 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], lectu
                     onChange={(e) => cambiar("presets", { ...borrador.presets, [tipo]: e.target.value })}
                     placeholder={textoPreset({ ...borrador, presets: {} }, tipo, marca)}
                   />
-                  <p className="hint">{def.ayuda} Vacío: se arma con la paleta y el estilo de arriba.</p>
+                  <p className="hint">
+                    {def.ayuda} Vacío: se usa la plantilla del tipo.
+                    {def.subtipos ? ` Cada una (${Object.values(def.subtipos).map((x) => x.nombre).join(", ")}) le suma su línea.` : ""}
+                  </p>
                 </div>
               ))}
+              <fieldset className="est-kit-propios">
+                <legend className="label">Presets propios de {client.name}</legend>
+                {(borrador.propios ?? []).map((p, i) => (
+                  <div key={p.id} className="est-kit-propio">
+                    <input className="input" aria-label={`Nombre del preset propio ${i + 1}`} value={p.nombre} maxLength={40} placeholder="Corporativo"
+                      onChange={(e) => cambiar("propios", borrador.propios.map((x, j) => (j === i ? { ...x, nombre: e.target.value } : x)))} />
+                    <textarea className="input" rows={2} aria-label={`Qué clase de pieza es «${p.nombre || `preset ${i + 1}`}»`} value={p.texto}
+                      placeholder="Fotografía corporativa: personas reales, instalaciones u oficio, tono sobrio y confiable…"
+                      onChange={(e) => cambiar("propios", borrador.propios.map((x, j) => (j === i ? { ...x, texto: e.target.value } : x)))} />
+                    <button type="button" className="btn-icon" aria-label={`Quitar el preset ${p.nombre || i + 1}`} onClick={() => cambiar("propios", borrador.propios.filter((_, j) => j !== i))}><Icon name="close" size={14} /></button>
+                  </div>
+                ))}
+                {(borrador.propios ?? []).length < MAX_PROPIOS && (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => cambiar("propios", [...(borrador.propios ?? []), PROPIO_VACIO()])}><Icon name="plus" size={14} /> Añadir un preset propio</button>
+                )}
+                <p className="hint">Para lo que no encaje en los tipos del calendario. Uno sin nombre o sin texto no se guarda.</p>
+              </fieldset>
               <p className="hint">El logo se escoge en la galería: abre una imagen y pulsa «Usar como logo».</p>
               <div className="est-kit-botones">
                 <button type="submit" className="btn btn-primary btn-sm" disabled={Boolean(ocupado)}>{ocupado === "guardar" ? "Guardando…" : "Guardar el kit"}</button>
@@ -192,10 +215,12 @@ function VistaKit({ kit: k, marca, logo = null }) {
         </div>
       </dl>
       <details className="est-kit-presets">
-        <summary>Ver los cuatro presets</summary>
+        <summary>Ver lo que va en cada pieza y los presets</summary>
+        {bloqueDeMarca(kit) && <p><strong>En toda pieza:</strong> {bloqueDeMarca(kit)}</p>}
         {Object.entries(TIPOS_PRESET).map(([tipo, def]) => (
-          <p key={tipo}><strong>{def.nombre}:</strong> {textoPreset(kit, tipo, marca)}</p>
+          <p key={tipo}><strong>{def.nombre}:</strong> {textoPreset(kit, tipo, marca)}{kit.presets[tipo] ? "" : <span className="hint"> (plantilla)</span>}</p>
         ))}
+        {kit.propios.map((p) => <p key={p.id}><strong>{p.nombre} (propio):</strong> {p.texto}</p>)}
       </details>
     </div>
   );

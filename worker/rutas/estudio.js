@@ -18,6 +18,7 @@
 //   POST   /<cliente>/archivos/<id>/uso            { calendarId, postId }: lo usa una publicación
 //   POST   /<cliente>/archivos/<id>/papelera       A la papelera
 //   POST   /<cliente>/archivos/<id>/recuperar      De la papelera
+//   POST   /<cliente>/archivos/<id>/perdido        Quitar la ficha de un archivo que ya no está en R2
 //   DELETE /<cliente>/archivos/<id>?forzar=1       Borrar del todo (sólo desde la papelera)
 //   POST   /<cliente>/papelera/vaciar
 //   POST   /<cliente>/carpetas                     { nombre }
@@ -45,7 +46,7 @@ import {
   crearTrabajo, avanzarTrabajo, cancelarTrabajo, reintentarTrabajo, trabajoPublico, ErrorEstudio,
 } from "../lib/estudio/trabajos.js";
 import {
-  leerGaleria, subirArchivo, cambiarArchivo, marcarUso, enviarAPapelera, recuperar, borrarParaSiempre,
+  leerGaleria, subirArchivo, cambiarArchivo, marcarUso, enviarAPapelera, recuperar, borrarParaSiempre, quitarPerdido,
   vaciarPapelera, crearCarpeta, renombrarCarpeta, borrarCarpeta, archivoPublico,
 } from "../lib/estudio/galeria.js";
 
@@ -171,6 +172,12 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         if (!f) return noEncontrado("Archivo");
         avisar();
         return json({ archivo: f });
+      }
+      if (d === "perdido" && metodo === "POST") {
+        const hecho = await quitarPerdido(env, acceso, cliente.id, c);
+        if (!hecho) return noEncontrado("Archivo");
+        avisar();
+        return json({ ok: true });
       }
       if (d === "recuperar" && metodo === "POST") {
         const f = await recuperar(acceso, cliente.id, c);
