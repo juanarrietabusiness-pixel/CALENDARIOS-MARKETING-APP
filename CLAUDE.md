@@ -146,6 +146,8 @@ src/
     loteAnuncios.js       El lote de anuncios por nivel de consciencia: cuántas por nivel, el pedido de las ideas y su
                           lectura, la escena de cada pieza (plantilla o texto de la IA), la publicación (puro; también el Worker)
     loteEstudio.js        Crear las piezas del lote en el Estudio, de dos en dos, con kit, logo y fotos del producto
+    recrear.js            «Recrear un anuncio»: el análisis en pocas líneas, la versión de partida y lo que va al
+                          compositor (el anuncio sólo por su forma, las fotos del producto delante) (puro)
     referencias.js        Qué se toma de cada imagen de referencia (estilo, composición, producto…), la foto
                           REAL del producto (y si es de otra marca), el producto que nombra la idea (puro)
     estudio.js            Cliente de /api/estudio y lo puro de la pantalla: filtros, trabajos en curso,
@@ -264,6 +266,7 @@ src/
     EstudioMercado.jsx    El estudio de mercado en la pestaña Cerebro: catálogo, «Realizar estudio de mercado» por
                           pasos con revisión, y las referencias de la competencia (lazy)
     EstudioLote.jsx       «Lote de anuncios»: qué, ideas (con costo) y crear; cada pieza «Llevar al calendario» (lazy)
+    EstudioRecrear.jsx    «Recrear un anuncio»: el anuncio (subir, galería o Drive), el análisis y la versión editable (lazy)
     EstudioKit.jsx        El kit de marca: prepararlo con IA desde el cerebro, revisarlo, guardarlo
     calendario/RevisionMes.jsx  «Revisar el mes» antes de enviarlo: reglas, IA opcional e imágenes contra el kit (lazy)
     calendario/CarruselIA.jsx   «Crear carrusel con IA»: el guion en láminas, el texto por IA o por plantilla, rehacer una (lazy)
@@ -1294,6 +1297,13 @@ son del servidor.
   los botones de Instagram). «Llevar al calendario» llama a `llevarAlCalendario` de App.jsx (que obtiene o crea el mes y
   mete la publicación por el guardado agrupado, como el asistente) y apunta el uso del archivo: sin `usado_en`, la
   papelera se llevaría la imagen de una publicación.
+- **«Recrear un anuncio» no tiene ruta propia: es la referencia de la competencia** (`EstudioRecrear.jsx`, desde la
+  pestaña Estudio o «Recrear como anuncio» del visor). Analizar es `POST /api/mercado/<c>/referencias` (Claude mira la
+  imagen, Gemini ve el video; queda en el cerebro como nota INTERNA y en las referencias del estudio de mercado, y el
+  archivo pasa a la carpeta «Competencia»), y la versión es `…/referencias/<id>/adaptar` con el producto. «Crear con
+  mi marca» no crea nada: pone la versión en el compositor (`pedidoParaElCompositor`, src/lib/recrear.js) con las
+  fotos del producto delante y el anuncio con `toma: ["composicion", "estilo"]` y la nota de que es de otra marca; el
+  costo se ve allí. En video, el anuncio va como video de referencia con Kling Omni y sin texto en pantalla.
 - **La galería tiene una pestaña Drive** (`ExploradorDrive` en modo «escoger»): lo tocado se baja (`archivoDeDrive`), se
   sube a la galería y entra en el pedido. No le pases un `onError` en línea: está en las dependencias de su carga, y una
   función nueva en cada render la relee en bucle (y le llega un `Error`, no un texto).

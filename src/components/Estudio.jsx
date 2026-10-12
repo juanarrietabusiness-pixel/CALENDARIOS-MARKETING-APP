@@ -24,6 +24,7 @@ import {
 import "./Estudio.css";
 
 const EstudioLote = lazy(() => import("./EstudioLote"));
+const EstudioRecrear = lazy(() => import("./EstudioRecrear"));
 
 // ============================================================
 // El Estudio de un cliente: la pestaña y el diálogo «Crear con IA»
@@ -143,6 +144,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const [visor, setVisor] = useState(null);
   const [descartados, setDescartados] = useState(() => new Set());
   const [loteAbierto, setLoteAbierto] = useState(false);
+  const [recrear, setRecrear] = useState(null); // null, o { archivo }: «Recrear un anuncio» abierto (con uno ya escogido)
   const [carpetaNueva, setCarpetaNueva] = useState(null);
   const [renombrando, setRenombrando] = useState(null);
   const [borrando, setBorrando] = useState(null);
@@ -448,6 +450,23 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setConfirmando(null);
     setForm((f) => ({ ...f, medios: { ...f.medios, [rol]: [...f.medios[rol], a] } }));
     avisar(true, `Puesta como ${NOMBRE_RANURA[rol]}. Escribe qué quieres hacer con ella.`);
+    enfocarPrompt();
+  };
+
+  /** «Recrear un anuncio» terminado: la versión entra en el compositor (con el anuncio y las fotos del producto) para revisar y crear. */
+  const desdeRecrear = (pedido) => {
+    setRecrear(null);
+    cargar();
+    if (!motores) return;
+    setConfirmando(null);
+    setVisor(null);
+    setEnPapelera(false);
+    setForm(formularioInicial(motores, { ...pedido, ...(pedido.tipo === "video" ? { modelo: "kling-omni-video" } : {}) }));
+    setPreset(pedido.preset ?? "anuncio");
+    setIdeaAnterior(null);
+    avisar(true, pedido.tipo === "video"
+      ? "Lista para seguir el video con tu marca. Revisa el pedido y pulsa «Crear video»."
+      : "Lista para recrear con tu marca: el anuncio va de referencia sólo por su composición y su estilo, con las fotos del producto. Revisa y pulsa «Crear imagen».");
     enfocarPrompt();
   };
 
@@ -787,11 +806,22 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       {!lectura && !dialogo && motores && (
         <div className="card est-lote-entrada">
           <div>
-            <strong>Lote de anuncios</strong>
-            <p className="hint">Varias piezas de un producto por cada nivel de consciencia: la IA escribe las ideas, tú las revisas y ves el costo antes de crear.</p>
+            <strong>Anuncios</strong>
+            <p className="hint">Un lote por nivel de consciencia (la IA escribe las ideas, tú las revisas y ves el costo), o recrea con la marca un anuncio que te guste.</p>
           </div>
-          <button type="button" className="btn btn-secondary" onClick={() => setLoteAbierto(true)}><Icon name="megaphone" size={16} /> Crear un lote</button>
+          <div className="est-lote-botones">
+            <button type="button" className="btn btn-secondary" onClick={() => setLoteAbierto(true)}><Icon name="megaphone" size={16} /> Crear un lote</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setRecrear({ archivo: null })}><Icon name="refresh" size={16} /> Recrear un anuncio</button>
+          </div>
         </div>
+      )}
+      {recrear && (
+        <Suspense fallback={null}>
+          <EstudioRecrear
+            client={client} archivos={datos?.archivos ?? []} productosConFotos={datos?.productos ?? []} inicial={recrear.archivo}
+            onCerrar={() => { setRecrear(null); cargar(); }} onCrear={desdeRecrear}
+          />
+        </Suspense>
       )}
       {loteAbierto && (
         <Suspense fallback={null}>
@@ -1070,6 +1100,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           onPapelera={() => aPapelera(visor)}
           onMover={(c) => moverA(visor, c)}
           onRepetir={() => repetir(visor)}
+          onRecrear={dialogo ? null : () => { const a = visor; setVisor(null); setRecrear({ archivo: a }); }}
           costoOtra={costoDeOtra(visor)}
           onOtraIgual={() => otraIgual(visor)}
           onOtrasVersiones={(n) => otrasVersiones(visor, n)}
