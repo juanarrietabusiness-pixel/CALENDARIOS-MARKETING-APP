@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   limpiarRitmo, RITMO_POR_DEFECTO, sugerenciasDeTemporada, ritmoDelMes, asignarMatriz, lineasDeContenido,
-  nombreDePilar, presetDePilar, mezclaDeTipos, resumenRitmo, reglasDeLosTipos, MAX_CAMBIOS_POR_SEMANA, ordenDeProductos,
+  nombreDePilar, presetDePilar, mezclaDeTipos, resumenRitmo, reglasDeLosTipos, MAX_CAMBIOS_POR_SEMANA, ordenDeProductos, PILARES, idDePilar,
 } from "./pilares";
 import { fechasDelMes } from "./fechasEspeciales";
 
@@ -82,11 +82,24 @@ describe("lo que lee la IA", () => {
   it("nombres, preset y mezcla", () => {
     expect(nombreDePilar("maletas", "garantia")).toBe("7 maletas · Garantía");
     expect(nombreDePilar("nada")).toBe("");
-    expect(presetDePilar("educativo")).toBe("creativo");
-    expect(presetDePilar("diferenciador")).toBe("corporativo");
+    expect(presetDePilar("educativo")).toBe("educativo");
+    expect(presetDePilar("diferenciador")).toBe("diferenciador");
     expect(mezclaDeTipos([{ pilar: "anuncio" }, { pilar: "anuncio" }, { pilar: "educativo" }, {}])).toEqual([
       { id: "anuncio", nombre: "Anuncio", n: 2 }, { id: "educativo", nombre: "Educativo / Informativo", n: 1 },
     ]);
+  });
+
+  it("«Viral / alcance» y «Comunidad» ya no existen: lo etiquetado con ellos es Contenido humano", () => {
+    expect(PILARES.map((p) => p.id)).not.toContain("viral");
+    expect(PILARES.map((p) => p.id)).not.toContain("comunidad");
+    expect(idDePilar("viral")).toBe("humano");
+    expect(idDePilar("comunidad")).toBe("humano");
+    expect(idDePilar("inventado")).toBe("");
+    expect(nombreDePilar("viral")).toBe("Contenido humano");
+    expect(limpiarRitmo({ 1: "comunidad", 2: "anuncio" })).toMatchObject({ 1: "humano", 2: "anuncio" });
+    expect(mezclaDeTipos([{ pilar: "viral" }, { pilar: "comunidad" }, { pilar: "humano" }])).toEqual([{ id: "humano", nombre: "Contenido humano", n: 3 }]);
+    const [p] = asignarMatriz([{ fecha: "2026-10-12", pilar: "viral" }]);
+    expect(p.pilar).toBe("humano");
   });
 });
 

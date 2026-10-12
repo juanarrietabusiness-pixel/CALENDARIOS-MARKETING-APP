@@ -3,7 +3,7 @@ import Icon from "../Icon";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { mediosDe } from "../../lib/publicacion";
 import { presetDePilar } from "../../lib/pilares";
-import { textoPreset, limpiarKit } from "../../lib/kitMarca";
+import { estiloDeMarca, limpiarKit } from "../../lib/kitMarca";
 import { textoCosto, CONFIRMAR_DESDE } from "../../lib/estudioCatalogo";
 import * as api from "../../lib/estudio";
 import { partirGuion, MODOS_TEXTO, PLANTILLAS_TEXTO, MAX_LAMINAS, coloresPlantilla, costoCarrusel } from "../../lib/carrusel";
@@ -57,7 +57,7 @@ export default function CarruselIA({ client, post, cal = null, onPoner, onCerrar
   /** Lo común a todas las láminas: el estilo de la marca, las fotos del producto, el logo, los colores. */
   const comun = () => ({
     clienteId, modelo, modo, plantilla, idea: post.idea || post.title || "",
-    preset: textoPreset(estudio.kit, presetDePilar(post.pilar) || "producto", { marca: client.name, rubro: client.industry ?? "" }),
+    preset: estiloDeMarca(estudio.kit, presetDePilar(post.pilar, post.pilarSub) || "servicios", { marca: client.name, rubro: client.industry ?? "" }),
     fotos: api.fotosDelProducto(estudio.productos, post.productoId).map((f) => f.clave),
     logo: estudio.kit.logo, colores: coloresPlantilla(estudio.kit), familia: estudio.kit.tipografia,
     calendarId: cal ? cal.dbId || cal.id : null, postId: post.id ?? null, seguir: () => vivo.current,

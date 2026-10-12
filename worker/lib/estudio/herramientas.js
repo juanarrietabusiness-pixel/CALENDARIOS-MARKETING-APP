@@ -40,7 +40,7 @@ import { crearTrabajo, trabajoPublico, ErrorEstudio } from "./trabajos.js";
 import { buscar as buscarCerebro } from "../cerebro/cerebro.js";
 import { pack } from "../cerebro/memoria.js";
 import { kitDe } from "./kit.js";
-import { textoPreset, componerPedido, ponerLogo, kitVacio, TIPOS_PRESET } from "../../../src/lib/kitMarca.js";
+import { pedidoConMarca, ponerLogo, kitVacio, IDS_PRESET, TIPOS_PRESET } from "../../../src/lib/kitMarca.js";
 
 /** Lo más que puede pedir una IA de una vez. La pantalla admite más (8 imágenes, 2 videos): ahí lo ve una persona. */
 export const LIMITES = Object.freeze({ imagenes: 4, videos: MAX_VIDEOS_POR_PEDIDO, segundos: 10 });
@@ -89,8 +89,8 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
         imagen_final: { type: "string", description: "ID de una imagen de la galería en la que termina el video (necesita imagen_inicial; no todos los modelos la admiten)." },
         referencias: { type: "array", items: { type: "string" }, description: "IDs de imágenes de la galería que sirven de referencia (producto, estilo, persona). Cada modelo admite un número distinto." },
         estilo: {
-          type: "string", enum: Object.keys(TIPOS_PRESET),
-          description: "El preset del KIT DE MARCA del cliente (ver_estudio dice si lo tiene): va delante del prompt con su paleta, estilo y tipografía, y en imágenes pone el logo de referencia. Con estilo, el prompt es sólo la ESCENA en una o dos frases.",
+          type: "string", enum: [...IDS_PRESET],
+          description: `El preset del KIT DE MARCA según el TIPO DE CONTENIDO (${Object.entries(TIPOS_PRESET).map(([id, d]) => `${id}: ${d.nombre}`).join("; ")}; las 7 maletas también como maletas-garantia, maletas-testimonio, maletas-solucion o maletas-objeciones). La identidad de la marca (paleta, estilo, tipografía) y el logo de referencia van SIEMPRE que el cliente tenga kit, con estilo o sin él: el prompt es sólo la ESCENA en una o dos frases.`,
         },
         confirmado: { type: "boolean", description: "Sólo tras oír «sí» del usuario a la cifra exacta que le dijiste." },
       },
@@ -163,7 +163,7 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         `VIDEO:\n${porTipo("video").map(linea).join("\n") || "(ninguno)"}`,
         kitVacio(kitDe(c))
           ? "KIT DE MARCA: no está preparado (se prepara en la pestaña Estudio). Sin él, pon la guía visual en el prompt."
-          : `KIT DE MARCA: preparado${kitDe(c).logo ? ", con logo" : ""}. Usa estilo=${Object.keys(TIPOS_PRESET).join("|")} en crear_en_estudio y escribe en el prompt sólo la escena: la paleta, el estilo y el logo los pone el kit.`,
+          : `KIT DE MARCA: preparado${kitDe(c).logo ? ", con logo" : ""}. La paleta, el estilo y el logo los pone el kit en cada pieza. Usa estilo=<tipo de contenido> en crear_en_estudio (${Object.keys(TIPOS_PRESET).join("|")}) y escribe en el prompt sólo la escena.`,
         guia
           ? `GUÍA VISUAL DE LA MARCA (del cerebro; ponla en el prompt, con tus palabras):\n${guia}`
           : `GUÍA VISUAL: el cerebro de ${c.name} no tiene notas de identidad visual. Pregunta al usuario por colores, estilo y qué evitar, o pídele que las añada en la pestaña Cerebro.`,
@@ -207,14 +207,16 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         medios.reference = await Promise.all(entrada.referencias.map((id) => claveDeGaleria(c.id, id, "referencia")));
       }
 
-      // El agente diseñador: el preset de la marca delante de la escena y el logo de referencia (como en la pantalla).
-      let prompt = entrada.prompt;
-      if (entrada.estilo) {
-        if (!TIPOS_PRESET[entrada.estilo]) throw new ErrorHerramientaEstudio(`El estilo tiene que ser uno de: ${Object.keys(TIPOS_PRESET).join(", ")}.`);
-        const kit = kitDe(c);
-        prompt = componerPedido({ idea: entrada.prompt, preset: textoPreset(kit, entrada.estilo, { marca: c.name, rubro: c.industry ?? "" }), video: tipo === "video" });
-        if (ponerLogo({ kit, tipo, modelo, referencias: medios.reference ?? [] })) medios.reference = [...(medios.reference ?? []), kit.logo];
-      }
+      // Como en la pantalla: el preset de su tipo (si se pide), la identidad de la marca SIEMPRE que haya kit y, en
+      // imágenes, el logo de referencia.
+      if (entrada.estilo && !IDS_PRESET.includes(entrada.estilo)) throw new ErrorHerramientaEstudio(`El estilo tiene que ser uno de: ${IDS_PRESET.join(", ")}.`);
+      const kit = kitDe(c);
+      const conLogo = !kitVacio(kit) && ponerLogo({ kit, tipo, modelo, referencias: medios.reference ?? [] });
+      if (conLogo) medios.reference = [...(medios.reference ?? []), kit.logo];
+      const prompt = pedidoConMarca({
+        kit, idea: entrada.prompt, preset: entrada.estilo ?? "", marca: c.name, rubro: c.industry ?? "",
+        video: tipo === "video", logo: conLogo, usarKit: !kitVacio(kit),
+      });
 
       let fila;
       try {

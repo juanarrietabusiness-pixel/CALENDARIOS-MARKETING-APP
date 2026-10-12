@@ -313,7 +313,7 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
       d.formats.forEach((f, j) => {
         const previa = (ideas[d.date] || [])[j] || {};
         const propia = Object.fromEntries(CAMPOS_MATRIZ.filter((k) => previa[k]).map((k) => [k, previa[k]]));
-        // El tipo de la publicación: el que diga la plantilla (un reel viral, la comunidad) o el del ritmo del día.
+        // El tipo de la publicación: el que diga la plantilla (un reel de contenido humano) o el del ritmo del día.
         lista.push({ clave: `${d.date}|${j}`, pilar: f.pilar || d.pilar, ...propia });
       });
     }

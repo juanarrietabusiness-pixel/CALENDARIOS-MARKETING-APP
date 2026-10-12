@@ -4,7 +4,7 @@ import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { FORMATS } from "../../constants";
 import { mediosDe, conMedios } from "../../lib/publicacion";
 import { presetDePilar, nombreDePilar } from "../../lib/pilares";
-import { textoPreset, componerPedido, ponerLogo, limpiarKit } from "../../lib/kitMarca";
+import { pedidoConMarca, estiloDeMarca, ponerLogo, limpiarKit } from "../../lib/kitMarca";
 import { modeloPorDefecto, validarPedido, ajustesDe, textoCosto, CONFIRMAR_DESDE } from "../../lib/estudioCatalogo";
 import * as api from "../../lib/estudio";
 import { partirGuion, costoCarrusel, coloresPlantilla, MODOS_TEXTO, PLANTILLAS_TEXTO } from "../../lib/carrusel";
@@ -87,11 +87,15 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
         }
         const tipo = tipoDe(post.format);
         const modelo = modeloPorDefecto(activos, tipo);
-        const preset = textoPreset(estudio.kit, presetDePilar(post.pilar) || "producto", { marca: client.name, rubro: client.industry ?? "" });
-        const prompt = componerPedido({ idea: api.promptDePublicacion(post, { conTexto: tipo !== "video" }), preset, video: tipo === "video" }).slice(0, 4000);
         // Las fotos del producto (catálogo) primero: que salga el producto real. Luego el logo, si cabe.
         const fotos = tipo === "imagen" ? api.fotosDelProducto(estudio.productos, post.productoId).map((f) => f.clave) : [];
         const conLogo = ponerLogo({ kit: estudio.kit, tipo, modelo, referencias: fotos });
+        // El preset de su tipo (sin tipo, el de producto) y la identidad de la marca SIEMPRE: la paleta ya no depende del preset.
+        const prompt = pedidoConMarca({
+          kit: estudio.kit, idea: api.promptDePublicacion(post, { conTexto: tipo !== "video" }),
+          preset: presetDePilar(post.pilar, post.pilarSub) || "servicios", marca: client.name, rubro: client.industry ?? "",
+          video: tipo === "video", logo: conLogo,
+        }).slice(0, 4000);
         const referencia = [...fotos, ...(conLogo ? [estudio.kit.logo] : [])].slice(0, modelo.referencias || 0);
         const medios = referencia.length ? { reference: referencia } : {};
         const ajustes = ajustesDe(modelo, { aspectRatio: proporcionDe(post.format, tipo) }, medios);
@@ -159,7 +163,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
       setTrabajos([...creados]);
       const hechas = await crearCarrusel({
         ...comunes, modelo: c.modelo, laminas: c.laminas, postId: c.post.id, idea: c.post.idea || c.post.title || "",
-        preset: textoPreset(estudio.kit, presetDePilar(c.post.pilar) || "producto", { marca: client.name, rubro: client.industry ?? "" }),
+        preset: estiloDeMarca(estudio.kit, presetDePilar(c.post.pilar, c.post.pilarSub) || "servicios", { marca: client.name, rubro: client.industry ?? "" }),
         fotos: api.fotosDelProducto(estudio.productos, c.post.productoId).map((f) => f.clave),
         alAvanzar: () => { t.hechas += 1; setTrabajos([...creados]); },
       });

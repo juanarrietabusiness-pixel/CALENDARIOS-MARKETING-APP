@@ -21,7 +21,7 @@ import { pack } from "../cerebro/memoria.js";
 import { claveDelCliente } from "./archivos.js";
 import { ErrorEstudio } from "./trabajos.js";
 import { aBase64 } from "./gemini.js";
-import { limpiarKit, pedidoDeKit, leerKit, pedidoDeRevision, leerRevision } from "../../../src/lib/kitMarca.js";
+import { limpiarKit, kitVacio, pedidoDeKit, leerKit, pedidoDeRevision, leerRevision } from "../../../src/lib/kitMarca.js";
 import { estudioParaElKit } from "../../../src/lib/estudioMercado.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
@@ -60,7 +60,7 @@ export async function guardarKit(env, acceso, cliente, entrada) {
   return kit;
 }
 
-/** La IA propone el kit y los cuatro presets a partir del cerebro y la ficha. No guarda nada. */
+/** La IA propone el kit y un preset por tipo de contenido a partir del cerebro y la ficha. No guarda nada. */
 export async function prepararKit(env, acceso, cliente) {
   let guia = "";
   try {
@@ -82,7 +82,7 @@ export async function prepararKit(env, acceso, cliente) {
   ].filter(Boolean).join("\n");
   const r = await llamarIA(env, acceso, cliente, {
     prompt: pedidoDeKit({ marca: cliente.name, rubro: cliente.industry ?? "", guia, ficha }),
-    salida: 3000,
+    salida: 4000,
     funcion: "kit de marca",
   });
   const leido = leerKit(r.texto);
@@ -109,7 +109,7 @@ export async function revisarPieza(env, acceso, cliente, archivoId, { clave = nu
     throw new ErrorEstudio("Por ahora sólo se revisan imágenes (no videos ni SVG).", 400);
   }
   const kit = kitDe(cliente);
-  if (!kit.paleta.length && !kit.estilo && !Object.keys(kit.presets).length) {
+  if (kitVacio(kit)) {
     throw new ErrorEstudio("Este cliente todavía no tiene kit de marca: prepáralo primero.", 409);
   }
   const obj = await env.MEDIA.get(archivo.clave);

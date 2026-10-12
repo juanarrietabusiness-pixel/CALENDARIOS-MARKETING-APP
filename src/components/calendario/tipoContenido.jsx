@@ -47,7 +47,7 @@ export function TipoContenido({ form, sf, clienteId, lectura = false }) {
       <div className="tipo-contenido">
         <div className="field">
           <label className="label" htmlFor={`${ids}-t`}>Tipo</label>
-          <select id={`${ids}-t`} className="input" value={form.pilar || ""} disabled={lectura}
+          <select id={`${ids}-t`} className="input" value={pilar?.id ?? ""} disabled={lectura}
             onChange={(e) => { sf("pilar", e.target.value); if (e.target.value !== "maletas") sf("pilarSub", ""); }}>
             <option value="">Sin tipo</option>
             {PILARES.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}

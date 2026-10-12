@@ -4,7 +4,7 @@ import {
   textoCosto, NOMBRE_PROPORCION, MAX_PROMPT, maxPorPedido, duracionDe, modelosParaLista, creadoresDe, CRITERIOS_ORDEN, NOMBRE_CALIDAD, NOMBRE_MOTOR,
 } from "../lib/estudioCatalogo";
 import { ETIQUETA_AJUSTE, valorDeAjuste } from "../lib/estudio";
-import { TIPOS_PRESET } from "../lib/kitMarca";
+import { TIPOS_PRESET, ACABADOS, LINEA_LOGO } from "../lib/kitMarca";
 import { NOMBRE_TRAMO } from "../lib/videoCorto";
 import { CopyButton } from "./calendario/primitivas";
 
@@ -23,8 +23,8 @@ import { CopyButton } from "./calendario/primitivas";
 
 const TIPOS = [["imagen", "Imagen", "image"], ["video", "Video", "video"]];
 
-/** Una fila de imágenes puestas (miniatura + quitar) y el botón de subir una. */
-function Ranura({ titulo, ayuda, archivos, max, rol, subiendo, onQuitar, onSubir, ids }) {
+/** Una fila de imágenes puestas (miniatura + quitar), el botón de subir una y, con Drive, el de traerla de allí. */
+function Ranura({ titulo, ayuda, archivos, max, rol, subiendo, onQuitar, onSubir, onDrive = null, ids }) {
   return (
     <div className="field">
       <span className="label" id={`${ids}-${rol}`}>{titulo}</span>
@@ -41,6 +41,11 @@ function Ranura({ titulo, ayuda, archivos, max, rol, subiendo, onQuitar, onSubir
             <Icon name="upload" size={16} /> {subiendo ? "Subiendo…" : rol === "video" ? "Subir un video" : "Subir una imagen"}
           </button>
         )}
+        {archivos.length < max && onDrive && (
+          <button type="button" className="btn btn-secondary btn-sm" disabled={subiendo} onClick={() => onDrive(rol)}>
+            <Icon name="cloud" size={16} /> Desde Drive
+          </button>
+        )}
         <span className="hint">{archivos.length} de {max}. {ayuda}</span>
       </div>
     </div>
@@ -48,27 +53,73 @@ function Ranura({ titulo, ayuda, archivos, max, rol, subiendo, onQuitar, onSubir
 }
 
 /**
- * El agente diseñador: el estilo de la marca que va delante de la idea
- * (producto, anuncio, corporativo, creativo) y el logo de referencia. Lo
- * que se manda al motor es el preset + la escena: se ve antes de pedir.
+ * El agente diseñador. Arriba, el kit de la marca (sus colores) y si se usa: va en TODA pieza mientras esté encendido,
+ * con tipo o sin él. Luego qué clase de pieza es —un preset por tipo de contenido del calendario, y los propios del
+ * cliente—, un acabado opcional y el logo de referencia. Lo que se suma a la idea se ve antes de pedir.
  */
-function EstiloDeMarca({ ids, preset, onPreset, kitListo, textoPreset, conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo, productos = [], onProducto }) {
+function EstiloDeMarca({
+  ids, preset, onPreset, kitListo, kit, marca = "", textoPreset, bloqueMarca = "", usarKit = true, onUsarKit, acabado = "", onAcabado,
+  conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo, productos = [], onProducto,
+}) {
+  const [familia, sub] = String(preset ?? "").split("-");
+  const subtipos = TIPOS_PRESET[familia]?.subtipos ?? null;
+  const propios = kit?.propios ?? [];
+  const paleta = kit?.paleta ?? [];
+  const lineas = [textoPreset, ACABADOS[acabado]?.linea, bloqueMarca, puedeLogo && conLogo ? LINEA_LOGO : ""].filter(Boolean);
   return (
     <div className="field est-estilo">
-      <span className="label" id={`${ids}-estilo`}>Estilo de la marca</span>
+      <div className="est-marca-linea">
+        <span className="est-marca-nombre">
+          {kitListo ? <>Kit de marca{marca ? ` de ${marca}` : ""}</> : "Sin kit de marca"}
+          {kitListo && paleta.length > 0 && (
+            <span className="est-marca-colores" aria-label={`Colores: ${paleta.map((c) => c.nombre || c.hex).join(", ")}`}>
+              {paleta.map((c) => <span key={c.hex} className="est-marca-color" style={{ background: c.hex }} title={`${c.nombre ? `${c.nombre} ` : ""}${c.hex}${c.rol ? ` · ${c.rol}` : ""}`} />)}
+            </span>
+          )}
+        </span>
+        {kitListo ? (
+          <label className="est-marca-usar">
+            <input type="checkbox" checked={usarKit} onChange={(e) => onUsarKit(e.target.checked)} /> Usar el kit en esta pieza
+          </label>
+        ) : (
+          <span className="hint">Prepáralo en la pestaña Estudio del cliente: sin kit, la IA no conoce sus colores ni su estilo.</span>
+        )}
+      </div>
+
+      <span className="label" id={`${ids}-estilo`}>Tipo de pieza</span>
       <div className="est-tipos" role="group" aria-labelledby={`${ids}-estilo`}>
-        <button type="button" className="filter-chip" aria-pressed={!preset} onClick={() => onPreset("")}>Sin preset</button>
+        <button type="button" className="filter-chip" aria-pressed={!preset} onClick={() => onPreset("")}>Sin tipo</button>
         {Object.entries(TIPOS_PRESET).map(([tipo, def]) => (
-          <button key={tipo} type="button" className="filter-chip" aria-pressed={preset === tipo} onClick={() => onPreset(tipo)} title={def.ayuda}>{def.nombre}</button>
+          <button key={tipo} type="button" className="filter-chip" aria-pressed={familia === tipo} onClick={() => onPreset(tipo)} title={def.ayuda}>{def.nombre}</button>
+        ))}
+        {propios.map((p) => (
+          <button key={p.id} type="button" className="filter-chip" aria-pressed={preset === p.id} onClick={() => onPreset(p.id)}>{p.nombre}</button>
         ))}
       </div>
-      {preset && (
+      {subtipos && (
+        <div className="est-tipos est-subtipos" role="group" aria-label={`Cuál de ${TIPOS_PRESET[familia].nombre}`}>
+          <button type="button" className="filter-chip" aria-pressed={!sub} onClick={() => onPreset(familia)}>General</button>
+          {Object.entries(subtipos).map(([id, d]) => (
+            <button key={id} type="button" className="filter-chip" aria-pressed={sub === id} onClick={() => onPreset(`${familia}-${id}`)}>{d.nombre}</button>
+          ))}
+        </div>
+      )}
+
+      <span className="label" id={`${ids}-acabado`}>Acabado</span>
+      <div className="est-tipos" role="group" aria-labelledby={`${ids}-acabado`}>
+        <button type="button" className="filter-chip" aria-pressed={!acabado} onClick={() => onAcabado("")}>El del tipo</button>
+        {Object.entries(ACABADOS).map(([id, d]) => (
+          <button key={id} type="button" className="filter-chip" aria-pressed={acabado === id} onClick={() => onAcabado(id)}>{d.nombre}</button>
+        ))}
+      </div>
+
+      {lineas.length > 0 && (
         <details className="est-preset-vista">
-          <summary>Lo que va delante de tu idea{kitListo ? "" : " (sin kit: prepáralo arriba para que lleve la paleta)"}</summary>
-          <p>{textoPreset}</p>
+          <summary>Lo que se suma a tu idea</summary>
+          {lineas.map((l) => <p key={l}>{l}</p>)}
         </details>
       )}
-      {preset === "anuncio" && !esVideo && angulos.length > 0 && onAngulo && (
+      {(familia === "anuncio" || familia === "beneficios") && !esVideo && angulos.length > 0 && onAngulo && (
         <div className="field">
           <label className="label" htmlFor={`${ids}-angulo`}>Desde el estudio de mercado</label>
           <select id={`${ids}-angulo`} className="input" defaultValue="" onChange={(e) => { const a = angulos.find((x) => x.id === e.target.value); if (a) onAngulo(a); e.target.value = ""; }}>
@@ -92,12 +143,12 @@ function EstiloDeMarca({ ids, preset, onPreset, kitListo, textoPreset, conLogo, 
           <p className="hint">Las del catálogo: así sale el producto real y no uno parecido.</p>
         </div>
       )}
-      {preset && puedeLogo && (
+      {puedeLogo && (
         <label className="est-logo-casilla">
           <input type="checkbox" checked={conLogo} onChange={(e) => onConLogo(e.target.checked)} /> Poner el logo de la marca como referencia
         </label>
       )}
-      {preset && esVideo && <p className="hint">En video el logo no va de referencia: el video empezaría en él.</p>}
+      {usarKit && kitListo && esVideo && <p className="hint">En video el logo no va de referencia: el video empezaría en él.</p>}
     </div>
   );
 }
@@ -186,7 +237,7 @@ function MejorarIdea({ mejorando, onMejorar, onVolverIdea }) {
 
 export default function Compositor({
   ids, form, setForm, modelo, motores, costo, confirmando, enviando, subiendo,
-  onEnviar, onConfirmar, onNo, onModelo, onTipo, onQuitarMedio, onSubirArchivos, promptRef, etiquetaPrompt = "¿Qué quieres crear?",
+  onEnviar, onConfirmar, onNo, onModelo, onTipo, onQuitarMedio, onSubirArchivos, onDrive = null, promptRef, etiquetaPrompt = "¿Qué quieres crear?",
   mejorando = false, onMejorar = null, onVolverIdea = null,
   estilo = null,
   guionCorto = null,
@@ -299,7 +350,7 @@ export default function Compositor({
       <FichaDelModelo modelo={modelo} />
 
       {modelo.video > 0 && (
-        <Ranura ids={ids} rol="video" titulo="Video de referencia" max={1} archivos={medios.video ?? []} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida}
+        <Ranura ids={ids} rol="video" titulo="Video de referencia" max={1} archivos={medios.video ?? []} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida} onDrive={onDrive}
           ayuda={modelo.inicial
             ? "El movimiento de este video pasa a tu imagen inicial (MP4, MOV o WebM, hasta 50 MB)."
             : "El modelo sigue sus planos, su ritmo y su movimiento con tu marca (MP4, MOV o WebM, hasta 50 MB). Puede ser el de la competencia."} />
@@ -310,15 +361,15 @@ export default function Compositor({
         </p>
       )}
       {conInicial && (
-        <Ranura ids={ids} rol="start" titulo="Imagen inicial" max={1} archivos={medios.start} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida}
+        <Ranura ids={ids} rol="start" titulo="Imagen inicial" max={1} archivos={medios.start} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida} onDrive={onDrive}
           ayuda="El video arranca de esta imagen. También puedes usar «Animar» en cualquiera de la galería." />
       )}
       {conFinal && (
-        <Ranura ids={ids} rol="end" titulo="Imagen final" max={1} archivos={medios.end} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida}
+        <Ranura ids={ids} rol="end" titulo="Imagen final" max={1} archivos={medios.end} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida} onDrive={onDrive}
           ayuda="Opcional: el video termina en esta imagen." />
       )}
       {modelo.referencias > 0 ? (
-        <Ranura ids={ids} rol="reference" titulo="Imágenes de referencia" max={modelo.referencias} archivos={medios.reference} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida}
+        <Ranura ids={ids} rol="reference" titulo="Imágenes de referencia" max={modelo.referencias} archivos={medios.reference} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida} onDrive={onDrive}
           ayuda="También puedes usar cualquiera de la galería con «Usar de referencia»." />
       ) : !conInicial && (
         <p className="hint">{modelo.nombre} no admite imágenes de referencia.</p>

@@ -12,7 +12,7 @@ describe("las plantillas de arranque", () => {
     expect(PLANTILLAS_BASE.map((p) => p.id)).toContain("seguidores-servicios");
   });
 
-  it("ventas es el ritmo (lunes a sábado, uno por día); seguidores suma 2 reels virales; 360, 3 virales y comunidad", () => {
+  it("ventas es el ritmo (lunes a sábado, uno por día); seguidores suma 2 reels de contenido humano; 360, 5", () => {
     const v = conteoSemanal(de("ventas-productos"));
     expect(v.total).toBe(6);
     expect(v.tipos).toEqual({});
@@ -21,12 +21,12 @@ describe("las plantillas de arranque", () => {
 
     const s = conteoSemanal(de("seguidores-productos"));
     expect(s.total).toBe(8);
-    expect(s.tipos).toEqual({ viral: 2 });
+    expect(s.tipos).toEqual({ humano: 2 });
 
     const t = conteoSemanal(de("360-marca"));
-    expect(t.tipos).toEqual({ viral: 3, comunidad: 2 });
+    expect(t.tipos).toEqual({ humano: 5 });
     expect(t.formatos.historia).toBeUndefined(); // sin historias
-    expect(resumenPlantilla(de("360-productos"))).toBe("11 por semana · 5 reels, 3 posts, 3 carruseles · 3 Viral / alcance, 2 Comunidad");
+    expect(resumenPlantilla(de("360-productos"))).toBe("11 por semana · 5 reels, 3 posts, 3 carruseles · 5 Contenido humano");
   });
 });
 
@@ -75,7 +75,10 @@ describe("la del cliente", () => {
 
   it("la configuración del planificador lleva el tipo de cada publicación", () => {
     const cfg = configDeFormatos(de("seguidores-productos"));
-    expect(cfg[2]).toEqual([{ format: "carrusel", pilar: "" }, { format: "reel", pilar: "viral" }]);
+    expect(cfg[2]).toEqual([{ format: "carrusel", pilar: "" }, { format: "reel", pilar: "humano" }]);
+    // Una plantilla guardada antes, con los tipos que ya no existen, sale con el de ahora.
+    const vieja = configDeFormatos({ ...de("seguidores-productos"), dias: { ...de("seguidores-productos").dias, 2: [{ format: "reel", pilar: "viral" }] } });
+    expect(vieja[2]).toEqual([{ format: "reel", pilar: "humano" }]);
     expect(cfg[0]).toEqual([]);
   });
 

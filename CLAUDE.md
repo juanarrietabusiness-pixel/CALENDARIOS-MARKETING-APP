@@ -133,14 +133,14 @@ src/
     videoCorto.js         Guiones de video de 8 s (Veo por fal) o 10 s (Omni): gancho, beneficio y cierre; el pedido
                           al modelo sin texto largo ni logo (puro; también lo importa el Worker)
     portadas.js           Las piezas del perfil por plantilla: estilos de portada, colores del kit, medidas (puro)
-    pilares.js            Los 6 tipos de contenido de la agencia (+ Viral / alcance y Comunidad), el ritmo semanal por
+    pilares.js            Los 6 tipos de contenido de la agencia (+ Contenido humano), el ritmo semanal por
                           cliente, las sugerencias de temporada y la matriz (tipo × producto × nivel × deseo × perfil) (puro)
     plantillasPlan.js     Las plantillas de plan: 3 objetivos × 3 negocios de arranque, juntar con lo guardado, la del
                           cliente, la línea que lee la IA (puro; también lo importa el Worker)
     plantillasApi.js      Cliente de /api/plantillas-plan
-    kitMarca.js           El kit de marca del Estudio: paleta, presets (producto, anuncio, corporativo,
-                          creativo), componer el pedido, el logo de referencia, pedidos a la IA (puro;
-                          también lo importa el Worker)
+    kitMarca.js           El kit de marca del Estudio: paleta, el bloque de marca (va en toda pieza), un preset
+                          por tipo de contenido + los propios, el acabado, componer el pedido, el logo de
+                          referencia, pedidos a la IA (puro; también lo importa el Worker)
     estudio.js            Cliente de /api/estudio y lo puro de la pantalla: filtros, trabajos en curso,
                           de una publicación al Estudio y del Estudio a una publicación
     vivo.js               WebSocket: reconexión, latido, presencia
@@ -1221,12 +1221,26 @@ son del servidor.
   · **«Preparar con IA» PROPONE, no guarda.** Lee el cerebro con `para:
   "imagen"` (nunca lo interno) más la ficha, y la IA escribe paleta (sólo
   colores que aparezcan, con su papel), tipografía, estilo, luz, «nunca» y
-  los cuatro presets en el tono de los de la agencia (los de Baby Caleb y
-  ROFER van como EJEMPLO del tono, no se copian). Una persona lo revisa y
-  guarda; «Corregir antes» abre el formulario.
-  · **El pedido es corto:** `componerPedido()` = preset + «Escena: idea» (+ la
-  línea de movimiento en video). Lo que sale al motor es lo que queda en la
-  galería; `ideaDelPedido()` recupera la escena para «Pedirla corregida».
+  un preset por tipo de contenido (los de Baby Caleb y ROFER van como EJEMPLO
+  del tono, no se copian). Una persona lo revisa y guarda; «Corregir antes»
+  abre el formulario. Los presets PROPIOS (hasta 6) no los toca la IA.
+  · **La marca va en TODA pieza, no dentro del preset** (`bloqueDeMarca`: paleta,
+  estilo, luz, tipografía, «nunca»), mientras el kit tenga algo y no se apague
+  «Usar el kit en esta pieza». Antes sólo viajaba dentro del preset: con «Sin
+  preset» —lo que salía desde un post sin tipo— la imagen no sabía nada de la
+  marca, el logo tampoco iba, y «Revisar marca» daba 4 de 10.
+  · **Un preset por TIPO DE CONTENIDO** (`TIPOS_PRESET`, mismos ids que
+  `PILARES`; las 7 maletas también como `maletas-garantia`… que suman su línea):
+  qué clase de pieza es, SIN la paleta. Desde un post sale de su tipo
+  (`presetDePilar(pilar, sub)`); sin tipo, ninguno, y lo recordado de la pestaña
+  NO se hereda ni se pisa. Los de antes se traducen al leer (`limpiarKit`,
+  `presetActual`): producto → servicios; corporativo y creativo → propios.
+  · **El pedido:** `componerPedido()` = preset + acabado + «Escena: idea» + bloque
+  de marca + la línea del logo (si va) + el movimiento en video;
+  `pedidoConMarca()` lo arma con el kit para la pantalla, «Producir el mes» y el
+  asistente, y `estiloDeMarca()` (preset + marca en un texto) para el carrusel.
+  Lo que sale al motor es lo que queda en la galería; `ideaDelPedido()` recupera
+  la escena (empiece o no por ella) para «Pedirla corregida» y para la tarjeta.
   · **El logo va de referencia sólo en imágenes** (`ponerLogo()`): en un video
   la imagen de apoyo es el primer fotograma y el video empezaría en el logo.
   Tiene que ser PNG/JPG/WEBP de ESE cliente (lo comprueba el servidor: un SVG
@@ -1235,9 +1249,16 @@ son del servidor.
   · **«Revisar marca» MIRA la imagen** (va como bloque de imagen, ≤ 3,5 MB) con
   el kit delante y devuelve puntaje, qué cumple, qué falla y una sugerencia.
   Funciones «kit de marca» y «revisión de marca» en el hueco «análisis».
-  · **El asistente y Claude (MCP) usan el mismo kit:** `crear_en_estudio` con
-  `estilo` compone igual que la pantalla y pone el logo; `ver_estudio` dice si
-  el kit está preparado.
+  · **El asistente y Claude (MCP) usan el mismo kit:** `crear_en_estudio` pone
+  la marca y el logo siempre que haya kit (con `estilo`, además el preset de ese
+  tipo); `ver_estudio` dice si el kit está preparado.
+- **Una ficha de la galería sin su archivo se veía rota.** «Ampliar con IA» pide por
+  `/api/generar-imagen`, que apunta la imagen en la galería, y luego descarta la
+  intermedia con `/api/feedback-imagen` (`liked: false`), que borraba el archivo de R2
+  y dejaba la ficha. Ahora ese descarte quita también la ficha (`olvidarClave`); las
+  que ya estaban las detecta la pantalla (la imagen no carga) y «Quitarlas de la
+  galería» llama a `POST …/archivos/<id>/perdido`, que sólo borra la ficha si R2 dice
+  que el archivo NO está: una imagen que falló por la red no se pierde.
 - **El estudio de mercado: catálogo, estudio y competencia, por cliente** (`mercado_clientes`, 0034; lo puro
   en `src/lib/estudioMercado.js`, lo que toca base/IA/Drive en `worker/lib/mercado.js`). Va en su TABLA y no
   en `clients`: pesa decenas de miles de caracteres y `clients` viaja entero en cada carga y cada aviso.
@@ -1327,7 +1348,7 @@ son del servidor.
   (`src/lib/plantillasPlan.js`, `plantillas_plan` y `clients.plan_contenido`, 0037). Tres objetivos (Centrado en
   ventas, Ventas y seguidores, Marketing 360) × productos/servicios/marca personal. Por día, cada publicación lleva
   formato y tipo; un tipo vacío es «el del ritmo del cliente ese día», así el ritmo y la temporada siguen mandando y
-  la plantilla sólo AÑADE (los reels «Viral / alcance», la «Comunidad»). Una fila con el id de una de arranque la
+  la plantilla sólo AÑADE (los reels de «Contenido humano»). Una fila con el id de una de arranque la
   sustituye y borrarla la restaura; `plantilla_id` es único POR ESPACIO (el `id` de la fila es un uuid: dos agencias
   tienen su «ventas-productos»). Las cambian admin y editores, no un colaborador (un editor con `clientes`). La del
   cliente puede ser una copia personalizada entera, y guarda `linea` (`lineaDelPlan`) al guardar la ficha: así
@@ -1338,6 +1359,9 @@ son del servidor.
   agencia hace un tipo por día (lunes Anuncio, martes Beneficios/Promociones, miércoles Servicios/Productos,
   jueves Educativo, viernes Diferenciador, sábado 7 maletas rotando garantía → testimonio → solución →
   objeciones). El TIPO es la información; el ESTILO, el preset del kit (`presetDePilar`, lo usa «Crear con IA»).
+  · **«Viral / alcance» y «Comunidad» ya no existen: los dos son «Contenido humano»** (`humano`). Lo etiquetado con
+  ellos (publicaciones, ritmos, plantillas guardadas) se lee por `ALIAS_PILAR` / `idDePilar` sin tocar una fila:
+  `pilarDe` resuelve el alias, así que todo lo que pregunta por el tipo ve el de hoy.
   · **La temporada AJUSTA, no reescribe:** `sugerenciasDeTemporada` propone como mucho dos cambios por semana
   (un día delicado deja de vender; una fecha comercial y su víspera pasan a promoción) y una persona los marca
   en «Planificar mes» → «Fechas y ritmo». Es una regla, no una llamada a la IA: no cuesta nada.

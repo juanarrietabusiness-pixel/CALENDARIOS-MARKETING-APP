@@ -30,8 +30,8 @@ export default function CrearConIA({ client, post, tipo = "imagen", inicio = nul
     tipo,
     inicio,
     proporcion: proporcionParaFormato(post.format, tipo),
-    // El estilo de la marca que le va a su tipo de contenido (Anuncio, Producto, Corporativo, Creativo).
-    preset: presetDePilar(post.pilar),
+    // El preset de su tipo de contenido (Anuncio, Beneficios, Producto / Servicio…; en las 7 maletas, el de la suya).
+    preset: presetDePilar(post.pilar, post.pilarSub),
     // Su tipo de contenido y su producto, para el guion de un video corto.
     post: Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, post[k] ?? ""])),
     prompt: inicio

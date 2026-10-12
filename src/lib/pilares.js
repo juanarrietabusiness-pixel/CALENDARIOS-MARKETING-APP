@@ -2,8 +2,8 @@
 // Los tipos de contenido de la agencia y el ritmo semanal (puro)
 //
 // La agencia trabaja TODAS sus marcas con seis tipos de contenido, uno por
-// día de la semana, para no pensar cada vez qué toca (y dos más, «Viral /
-// alcance» y «Comunidad», que añaden las plantillas de plan con más volumen):
+// día de la semana, para no pensar cada vez qué toca (y uno más, «Contenido
+// humano», que añaden las plantillas de plan con más volumen):
 //
 //   lunes Anuncio · martes Beneficios/Promociones · miércoles Servicios/
 //   Productos · jueves Educativo · viernes Diferenciador · sábado 7 maletas
@@ -45,33 +45,36 @@ export const PILARES = Object.freeze([
   { id: "anuncio", nombre: "Anuncio", niveles: ["decision", "producto"], producto: true, preset: "anuncio",
     datos: "producto, precio, beneficio principal y llamado a la acción",
     regla: "Pieza de venta directa de un producto o servicio: el beneficio principal, el precio EXACTO del catálogo y un llamado a la acción claro (WhatsApp)." },
-  { id: "beneficios", nombre: "Beneficios / Promociones", niveles: ["decision"], producto: true, preset: "anuncio",
+  { id: "beneficios", nombre: "Beneficios / Promociones", niveles: ["decision"], producto: true, preset: "beneficios",
     datos: "oferta, precio, código y vigencia",
     regla: "La oferta del mes o del producto: qué gana, el precio (antes y después si lo hay), el código y hasta cuándo. Sin oferta escrita, un beneficio concreto: nunca se inventa un descuento." },
-  { id: "servicios", nombre: "Servicios / Productos", niveles: ["producto", "solucion"], producto: true, preset: "producto",
+  { id: "servicios", nombre: "Servicios / Productos", niveles: ["producto", "solucion"], producto: true, preset: "servicios",
     datos: "un producto del catálogo, sus beneficios y su precio",
     regla: "Presenta un producto o servicio del catálogo: qué es, para quién, sus beneficios y su precio." },
-  { id: "educativo", nombre: "Educativo / Informativo", niveles: ["inconsciente", "problema"], producto: false, preset: "creativo",
+  { id: "educativo", nombre: "Educativo / Informativo", niveles: ["inconsciente", "problema"], producto: false, preset: "educativo",
     datos: "un problema del cliente ideal y el dato que lo explica",
     regla: "Enseña algo útil sobre un problema del cliente ideal (del estudio de mercado): un dato, un consejo, un error común. Venta suave al final, sin precio." },
-  { id: "diferenciador", nombre: "Diferenciador", niveles: ["solucion", "producto"], producto: false, preset: "corporativo",
+  { id: "diferenciador", nombre: "Diferenciador", niveles: ["solucion", "producto"], producto: false, preset: "diferenciador",
     datos: "lo que hace única a la empresa",
     regla: "Por qué esta empresa y no otra: lo que el estudio de mercado señala como único (proceso, garantía, equipo, experiencia). Sin nombrar a la competencia." },
-  { id: "maletas", nombre: "7 maletas", niveles: [], producto: true, preset: "anuncio", subtipos: SUBTIPOS_MALETAS,
+  { id: "maletas", nombre: "7 maletas", niveles: [], producto: true, preset: "maletas", subtipos: SUBTIPOS_MALETAS,
     datos: "garantía, testimonio, solución a un problema o respuesta a una objeción",
     regla: "Contenido de confianza: una de las maletas (garantía, testimonio, solución a un problema, respuesta a objeciones), con datos REALES." },
-  // Los dos de las plantillas «Ventas y seguidores» y «Marketing 360» (plantillasPlan.js): no van en el ritmo de la
-  // agencia, pero se pueden poner en el de un cliente.
-  { id: "viral", nombre: "Viral / alcance", niveles: ["inconsciente"], producto: false, preset: "creativo",
-    datos: "una tendencia, un dato curioso o una situación con la que el cliente ideal se identifique",
-    regla: "Pensado para que lo compartan y lleguen seguidores nuevos: tendencia, humor, dato curioso o una situación con la que el cliente ideal se identifique, del mundo de la marca. NO vende ni da precios; como mucho invita a seguir la cuenta." },
-  { id: "comunidad", nombre: "Comunidad", niveles: ["solucion", "producto"], producto: false, preset: "corporativo",
-    datos: "el equipo, el proceso, detrás de cámaras o un cliente real",
-    regla: "Acerca la marca: detrás de cámaras, el equipo, el proceso o clientes REALES (sólo lo que esté en el cerebro; nunca se inventan personas ni testimonios). Sin precios." },
+  // Lo que acerca la marca. Sustituye a «Viral / alcance» y «Comunidad» (ver `ALIAS_PILAR`).
+  { id: "humano", nombre: "Contenido humano", niveles: ["inconsciente", "producto"], producto: false, preset: "humano",
+    datos: "el equipo, el proceso, detrás de cámaras, un cliente real o una situación con la que el cliente ideal se identifique",
+    regla: "Acerca la marca y se comparte: detrás de cámaras, el equipo, el proceso, clientes REALES (sólo lo que esté en el cerebro; nunca se inventan personas ni testimonios) o una situación del día a día con la que el cliente ideal se identifique. NO vende ni da precios; como mucho invita a seguir la cuenta." },
 ]);
 
 const IDS_PILAR = PILARES.map((p) => p.id);
-export const pilarDe = (id) => PILARES.find((p) => p.id === id) ?? null;
+/**
+ * Los tipos que ya no existen y en cuál quedan: lo planeado con ellos (publicaciones, ritmos, plantillas guardadas)
+ * sigue teniendo tipo sin tocar una fila.
+ */
+export const ALIAS_PILAR = Object.freeze({ viral: "humano", comunidad: "humano" });
+/** El id de hoy de un tipo (el de antes pasa por su alias); vacío si no existe. */
+export const idDePilar = (id) => (IDS_PILAR.includes(id) ? id : ALIAS_PILAR[id] ?? "");
+export const pilarDe = (id) => PILARES.find((p) => p.id === idDePilar(id)) ?? null;
 const subtipoDe = (id) => SUBTIPOS_MALETAS.find((s) => s.id === id) ?? null;
 
 /** «7 maletas · Testimonio». Vacío si no hay tipo. */
@@ -82,8 +85,12 @@ export function nombreDePilar(id, sub = "") {
   return s ? `${p.nombre} · ${s.nombre}` : p.nombre;
 }
 
-/** El preset del kit de marca que le va a un tipo (para «Crear con IA»). */
-export const presetDePilar = (id) => pilarDe(id)?.preset ?? "";
+/** El preset del kit de marca que le va a un tipo (para «Crear con IA»); en las 7 maletas, el de la suya. */
+export function presetDePilar(id, sub = "") {
+  const p = pilarDe(id);
+  if (!p) return "";
+  return p.id === "maletas" && subtipoDe(sub) ? `${p.preset}-${sub}` : p.preset;
+}
 
 /** El ritmo de la agencia: día de la semana (0 = domingo) → tipo. El domingo, libre. */
 export const RITMO_POR_DEFECTO = Object.freeze({ 0: "", 1: "anuncio", 2: "beneficios", 3: "servicios", 4: "educativo", 5: "diferenciador", 6: "maletas" });
@@ -94,7 +101,7 @@ export function limpiarRitmo(guardado) {
   const salida = {};
   for (let dow = 0; dow < 7; dow++) {
     const v = g ? g[dow] ?? g[String(dow)] : RITMO_POR_DEFECTO[dow];
-    salida[dow] = IDS_PILAR.includes(v) ? v : "";
+    salida[dow] = idDePilar(v);
   }
   return salida;
 }
@@ -280,7 +287,10 @@ export function reglasDeLosTipos() {
 /** Cuántas publicaciones de cada tipo hay → [{ id, nombre, n }] (los que tienen alguna). Pura. */
 export function mezclaDeTipos(posts = []) {
   const cuenta = {};
-  for (const p of posts) if (pilarDe(p?.pilar)) cuenta[p.pilar] = (cuenta[p.pilar] ?? 0) + 1;
+  for (const p of posts) {
+    const id = idDePilar(p?.pilar);
+    if (id) cuenta[id] = (cuenta[id] ?? 0) + 1;
+  }
   return PILARES.filter((p) => cuenta[p.id]).map((p) => ({ id: p.id, nombre: p.nombre, n: cuenta[p.id] }));
 }
 
