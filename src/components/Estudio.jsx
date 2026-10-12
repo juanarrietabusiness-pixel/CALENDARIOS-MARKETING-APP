@@ -6,6 +6,7 @@ import EstudioKit from "./EstudioKit";
 import { kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, componerPedido, ponerLogo, ideaDelPedido, conOtraEscena } from "../lib/kitMarca";
 import { ideaDesdeAngulo } from "../lib/estudioMercado";
 import { lineasDeReferencias, productoNombrado } from "../lib/referencias";
+import { deMisGustos } from "../lib/aprendizajeVisual";
 import { segundosParaModelo, ajusteDeDuracion } from "../lib/videoCorto";
 import BancoSelector from "./BancoSelector";
 import ExploradorDrive from "./ExploradorDrive";
@@ -112,6 +113,10 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (!desdePost) try { localStorage.setItem(clavePreset, v); } catch { /* sin almacenamiento */ }
   };
   const [conLogo, setConLogo] = useState(true);
+  // «Usar mis Me gusta como referencia de estilo» (se recuerda por cliente; apagado por defecto).
+  const claveGustos = `estudio-gustos:${client.id}`;
+  const [conGustos, setConGustosEstado] = useState(() => { try { return localStorage.getItem(claveGustos) === "1"; } catch { return false; } });
+  const setConGustos = (v) => { setConGustosEstado(v); try { localStorage.setItem(claveGustos, v ? "1" : "0"); } catch { /* sin almacenamiento */ } };
   // El kit va en TODA pieza mientras esto esté encendido (se recuerda por cliente), y un acabado opcional.
   const claveUsarKit = `estudio-usar-kit:${client.id}`;
   const [usarKit, setUsarKitEstado] = useState(() => { try { return localStorage.getItem(claveUsarKit) !== "0"; } catch { return true; } });
@@ -186,6 +191,14 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const nombrado = form && modelo && form.tipo === "imagen" && modelo.referencias > form.medios.reference.length
     ? productoNombrado(datos?.productos ?? [], form.prompt, clavesDe(form.medios).reference)
     : null;
+  // Las últimas que gustaron, sólo por su estilo, en el hueco que quede después del producto y del logo.
+  const hayGustos = (datos?.archivos ?? []).some((a) => a.favorito && a.tipo === "imagen");
+  const huecoGustos = form && modelo && form.tipo === "imagen"
+    ? (modelo.referencias || 0) - form.medios.reference.length - (nombrado?.fotos.length ?? 0) - (puedeLogo && conLogo ? 1 : 0)
+    : 0;
+  const gustos = conGustos && huecoGustos > 0
+    ? deMisGustos(datos?.archivos ?? [], { yaPuestas: clavesDe(form.medios).reference, perdidos, cuantas: Math.min(2, huecoGustos) })
+    : [];
 
   // ---------- Seguir un trabajo: un paso, y otro, hasta que termine ----------
   const seguir = useCallback(async (id) => {
@@ -350,7 +363,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       // Las fotos del producto que nombra la idea van DELANTE (cuanto cabe), y cada referencia dice qué se toma de ella.
       const libres = (modelo.referencias || 0) - form.medios.reference.length;
       const delNombrado = nombrado ? api.fotosDelProducto(datos?.productos ?? [], nombrado.id).slice(0, libres) : [];
-      const refs = [...delNombrado, ...form.medios.reference];
+      const refs = [...delNombrado, ...form.medios.reference, ...gustos];
       const medios = { ...clavesDe(form.medios), reference: refs.map((a) => a.clave) };
       const conElLogo = Boolean(conKit && conLogo && ponerLogo({ kit, tipo: form.tipo, modelo, referencias: medios.reference }));
       if (conElLogo) medios.reference = [...medios.reference, kit.logo];
@@ -783,6 +796,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             angulos: datos?.angulos ?? [],
             onAngulo: (a) => { setConfirmando(null); setForm((f) => ({ ...f, prompt: ideaDesdeAngulo(a) })); },
             productos: modelo.referencias > 0 ? datos?.productos ?? [] : [],
+            gustos: hayGustos && modelo.referencias > 0 ? { activo: conGustos, onCambiar: setConGustos, van: gustos.length } : null,
             onProducto: ponerFotosDeProducto,
           }}
           guionCorto={{
@@ -826,7 +840,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         <h3 className="est-subtitulo">{enPapelera ? "Papelera" : enDrive ? "Drive de " + client.name : "Galería"}</h3>
         <div className="est-filtros" role="group" aria-label="Filtrar la galería">
           <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "todas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("todas"); }}>Todas ({cuentas.todas})</button>
-          <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "favoritas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("favoritas"); }}>Favoritas ({cuentas.favoritas})</button>
+          <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "favoritas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("favoritas"); }}><Icon name="heart" size={13} /> Me gusta ({cuentas.favoritas})</button>
           <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "subidas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("subidas"); }}>Subidas ({cuentas.subidas})</button>
           {carpetas.map((c) => (
             <button key={c.id} type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === c.id} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro(c.id); }}>
@@ -985,8 +999,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
                 <div className="est-acciones">
                   {!lectura && (
                     <>
-                      <button type="button" className="btn-icon" aria-pressed={a.favorito} aria-label={a.favorito ? "Quitar de favoritas" : "Marcar como favorita"} onClick={() => alternarFavorito(a)}>
-                        <Icon name="star" size={18} />
+                      <button type="button" className="btn-icon est-me-gusta" aria-pressed={a.favorito} aria-label={a.favorito ? "Quitar «Me gusta»" : "Me gusta"} title="Me gusta: el cerebro aprende de lo que eliges" onClick={() => alternarFavorito(a)}>
+                        <Icon name="heart" size={18} />
                       </button>
                       {a.tipo !== "video" && (
                         <>

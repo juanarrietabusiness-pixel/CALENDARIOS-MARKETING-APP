@@ -209,6 +209,15 @@ function VistaKit({ kit: k, marca, logo = null }) {
         {kit.estilo && <div><dt>Estilo</dt><dd>{kit.estilo}</dd></div>}
         {kit.luz && <div><dt>Luz</dt><dd>{kit.luz}</dd></div>}
         {kit.evitar && <div><dt>Nunca</dt><dd>{kit.evitar}</dd></div>}
+        {kit.aprendido.length > 0 && (
+          <div>
+            <dt>Aprendido</dt>
+            <dd>
+              {kit.aprendido.map((r) => `${r.tipo === "evitar" ? "Evitar: " : ""}${r.texto}`).join(" · ")}
+              <span className="hint"> (de tus «Me gusta»; se cambia en Cerebro → Lo que aprende)</span>
+            </dd>
+          </div>
+        )}
         <div>
           <dt>Logo</dt>
           <dd>{logo ? <img src={logo.src} alt="Logo de la marca" className="est-kit-logo" /> : kit.logo ? "Guardado" : "Sin escoger: abre una imagen de la galería y pulsa «Usar como logo»."}</dd>

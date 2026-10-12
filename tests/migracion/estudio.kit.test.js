@@ -180,3 +180,67 @@ describe("revisar una pieza", () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ------------------------------------------------------------
+// Lo que el kit aprende de los «Me gusta» y la papelera
+// ------------------------------------------------------------
+
+describe("POST /api/estudio/<cliente>/kit/aprender", () => {
+  const archivo = (id, { favorito = 0, borrado = null, subido = 0, cliente = "c1", tipo = "imagen", mime = "image/png" } = {}) => {
+    const clave = `clientes/${cliente}/estudio/${id}.png`;
+    env.MEDIA.objetos.set(clave, { bytes: PNG, tipo: mime });
+    db.sqlite.prepare(`insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime, bytes, prompt, favorito, subido, borrado_at)
+      values (?,?,?,?,?,?,?,?,?,?,?)`).run(id, JEFE, cliente, clave, tipo, mime, PNG.length, `Escena: pieza ${id}`, favorito, subido, borrado);
+  };
+  const aprender = () => pedir("/api/estudio/c1/kit/aprender", { method: "POST", body: {} });
+  const imagenes = (p) => p.messages[0].content.filter((b) => b.type === "image").length;
+
+  it("con menos de tres «Me gusta» no llama a la IA y dice cuántas faltan", async () => {
+    anthropic("x");
+    archivo("a1", { favorito: 1 });
+    archivo("a2", { favorito: 1 });
+    archivo("x1", { favorito: 1, cliente: "c2" }); // de otro cliente: no cuenta
+    const res = await aprender();
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/al menos 3 .*llevas 2/);
+    expect(peticiones).toHaveLength(0);
+  });
+
+  it("MIRA lo que gustó y lo descartado, y propone sólo lo respaldado; no guarda nada", async () => {
+    anthropic([
+      "GUSTA | fondos claros con mucha luz natural | G1, G2, G3",
+      "GUSTA | una sola imagen no es regla | G1",
+      "EVITAR | texto grande en la parte de arriba | D1, G9",   // G9 no existe: sólo queda D1
+      "EVITAR | fondos oscuros y recargados | D1, G2",
+      "GUSTA | inventada | G7, G8",
+    ].join("\n"));
+    for (const id of ["g1", "g2", "g3"]) archivo(id, { favorito: 1 });
+    archivo("d1", { borrado: "2026-10-01T00:00:00.000Z" });
+    archivo("s1", { borrado: "2026-10-01T00:00:00.000Z", subido: 1 }); // subida a mano: no es del motor
+    archivo("v1", { favorito: 1, tipo: "video", mime: "video/mp4" }); // un video no se manda
+    await pedir("/api/estudio/c1/kit", { method: "PUT", body: { kit: { estilo: "cálido" } } });
+    const res = await aprender();
+    expect(res.status).toBe(200);
+    const r = await res.json();
+    expect(r.vistas).toEqual({ gustan: 3, descartadas: 1 });
+    expect(r.reglas).toEqual([
+      { texto: "fondos claros con mucha luz natural", tipo: "gusta", respaldo: ["G1", "G2", "G3"] },
+      { texto: "fondos oscuros y recargados", tipo: "evitar", respaldo: ["D1", "G2"] },
+    ]);
+    expect(imagenes(peticiones[0])).toBe(4);
+    expect(textoDe(peticiones[0])).toMatch(/EL KIT YA DICE:\n· estilo: cálido/);
+    expect(textoDe(peticiones[0])).toMatch(/G1: pieza /);
+    expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("aprendizaje visual");
+    expect(kitGuardado().aprendido).toEqual([]);
+  });
+
+  it("lo aceptado va al kit con PUT y sale en el bloque de la marca de toda pieza", async () => {
+    await pedir("/api/estudio/c1/kit", { method: "PUT", body: { kit: { estilo: "cálido", aprendido: [{ texto: "fondos claros", tipo: "gusta" }, { texto: "texto arriba", tipo: "evitar" }] } } });
+    expect(kitGuardado().aprendido).toEqual([{ texto: "fondos claros", tipo: "gusta" }, { texto: "texto arriba", tipo: "evitar" }]);
+    // Volver a preparar el kit con la IA no se lleva lo aprendido.
+    anthropic(JSON.stringify({ kit: { estilo: "otro estilo", paleta: [{ hex: "#112233" }] } }));
+    const prop = await (await pedir("/api/estudio/c1/kit/preparar", { method: "POST" })).json();
+    const { fundirKit } = await import("../../src/lib/kitMarca.js");
+    expect(fundirKit(kitGuardado(), prop.kit ?? {}).aprendido).toHaveLength(2);
+  });
+});

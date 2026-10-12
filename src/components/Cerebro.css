@@ -185,3 +185,14 @@
   .cerebro-buscar-fila { flex-direction: column; }
   .cerebro-editor-pie .btn { flex: 1 1 auto; }
 }
+
+/* Lo visual: reglas que el kit aprendió de los «Me gusta» del Estudio */
+.cerebro-visual { display: flex; flex-direction: column; gap: var(--sp-3); border-top: 1px solid var(--border-light); padding-top: var(--sp-4); margin-top: var(--sp-2); }
+.cerebro-visual .cerebro-reglas-titulo { display: flex; align-items: center; gap: var(--sp-2); }
+.cerebro-visual .hint { margin: 0; }
+.cerebro-visual-reglas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.cerebro-visual-reglas li { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--surface-2); border-radius: var(--radius-sm); }
+.cerebro-visual-texto { flex: 1; min-width: 0; font-size: var(--fs-sm); }
+.cerebro-visual-tipo { flex: none; font-size: var(--fs-3xs); font-weight: 600; padding: 1px var(--sp-2); border-radius: var(--radius-pill); }
+.cerebro-visual-gusta { background: var(--accent-soft); color: var(--accent); }
+.cerebro-visual-evitar { background: var(--danger-soft); color: var(--danger); }

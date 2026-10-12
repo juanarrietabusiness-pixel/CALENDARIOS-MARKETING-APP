@@ -141,6 +141,8 @@ src/
     kitMarca.js           El kit de marca del Estudio: paleta, el bloque de marca (va en toda pieza), un preset
                           por tipo de contenido + los propios, el acabado, componer el pedido, el logo de
                           referencia, pedidos a la IA (puro; también lo importa el Worker)
+    aprendizajeVisual.js  Lo que el kit aprende de los «Me gusta» y la papelera del Estudio: el pedido a la IA, las
+                          guardas de las reglas, `kit.aprendido` en el bloque de la marca (puro; también lo importa el Worker)
     referencias.js        Qué se toma de cada imagen de referencia (estilo, composición, producto…), la foto
                           REAL del producto (y si es de otra marca), el producto que nombra la idea (puro)
     estudio.js            Cliente de /api/estudio y lo puro de la pantalla: filtros, trabajos en curso,
@@ -1270,6 +1272,15 @@ son del servidor.
   SÓLO la escena del pedido: tipo, acabado, referencias, marca y logo se quedan. El costo se enseña en el botón (es la
   confirmación). En la imagen de una publicación, «Otra versión» abre «Crear con IA» con esa imagen de referencia y la
   nota de qué hacer: la imagen de un post no siempre está en la galería.
+- **«Me gusta» (la estrella de antes, `favorito`) y la papelera enseñan al kit** (`src/lib/aprendizajeVisual.js`,
+  `worker/lib/estudio/aprender.js`, `POST /api/estudio/<c>/kit/aprender`, en Cerebro → Lo que aprende → «Lo visual»).
+  La IA MIRA las imágenes (hasta 8 que gustan y 4 descartadas, función «aprendizaje visual») y PROPONE reglas; nada
+  se guarda hasta que una persona pulsa «Añadir al kit», que hace PUT del kit entero con `aprendido`. Las guardas las
+  pone el código: dos imágenes de respaldo y al menos una que guste, números que existan, nada que el kit ya diga; lo
+  subido a mano no cuenta como descartado (no lo hizo el motor). `kit.aprendido` va en `bloqueDeMarca` —toda pieza— y
+  en la revisión de marca, y `fundirKit` lo conserva al volver a preparar el kit con IA: si no, «Volver a preparar» se
+  llevaría lo aprendido sin avisar. «Usar mis Me gusta como referencia de estilo» (por cliente, apagado) suma las dos
+  últimas que gustan con `toma: ["estilo"]`, en el hueco que dejan el producto y el logo.
 - **La galería tiene una pestaña Drive** (`ExploradorDrive` en modo «escoger»): lo tocado se baja (`archivoDeDrive`), se
   sube a la galería y entra en el pedido. No le pases un `onError` en línea: está en las dependencias de su carga, y una
   función nueva en cada render la relee en bucle (y le llega un `Error`, no un texto).

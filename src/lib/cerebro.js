@@ -116,3 +116,33 @@ export async function prepararFicha(clienteId, { forzar = false } = {}) {
     window.dispatchEvent(new Event("ia:gasto"));
   }
 }
+
+// ------------------------------------------------------------
+// Lo visual: lo que el kit aprende de los «Me gusta» y la papelera del Estudio
+// (rutas de /api/estudio; aquí para no cargar el catálogo de modelos en la pestaña Cerebro)
+// ------------------------------------------------------------
+
+const baseEstudio = (clienteId) => `/api/estudio/${encodeURIComponent(clienteId)}`;
+
+/** El kit y cuántas imágenes gustan y se descartaron: `{ kit, gustan, descartadas }`. */
+export async function leerLoVisual(clienteId) {
+  const g = await llamar(baseEstudio(clienteId));
+  const imagen = (a) => a.tipo === "imagen";
+  return {
+    kit: g.kit ?? {},
+    gustan: (g.archivos ?? []).filter((a) => a.favorito && imagen(a)).length,
+    descartadas: (g.papelera ?? []).filter((a) => !a.favorito && !a.subido && imagen(a)).length,
+  };
+}
+
+/** La IA mira lo que gustó y lo descartado y PROPONE reglas visuales: `{ reglas, vistas }`. No guarda. */
+export async function aprenderDeLoVisual(clienteId) {
+  try {
+    return await llamar(`${baseEstudio(clienteId)}/kit/aprender`, { metodo: "POST", cuerpo: {} });
+  } finally {
+    window.dispatchEvent(new Event("ia:gasto"));
+  }
+}
+
+/** Guarda el kit con sus reglas aprendidas (el kit entero: PUT /kit lo reemplaza). */
+export const guardarKitAprendido = (clienteId, kit) => llamar(`${baseEstudio(clienteId)}/kit`, { metodo: "PUT", cuerpo: { kit } });

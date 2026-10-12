@@ -143,7 +143,7 @@ function Referencias({ ids, archivos, max, subiendo, onQuitar, onSubir, onDrive 
  */
 function EstiloDeMarca({
   ids, preset, onPreset, kitListo, kit, marca = "", textoPreset, bloqueMarca = "", usarKit = true, onUsarKit, acabado = "", onAcabado,
-  conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo, productos = [], onProducto,
+  conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo, productos = [], onProducto, gustos = null,
 }) {
   const [familia, sub] = String(preset ?? "").split("-");
   const subtipos = TIPOS_PRESET[familia]?.subtipos ?? null;
@@ -225,6 +225,18 @@ function EstiloDeMarca({
             {productos.map((p) => <option key={p.id} value={p.id}>{p.nombre} ({p.fotos.length} {p.fotos.length === 1 ? "foto" : "fotos"})</option>)}
           </select>
           <p className="hint">Las del catálogo: así sale el producto real y no uno parecido.</p>
+        </div>
+      )}
+      {gustos && !esVideo && (
+        <div className="est-gustos">
+          <label className="est-logo-casilla">
+            <input type="checkbox" checked={gustos.activo} onChange={(e) => gustos.onCambiar(e.target.checked)} /> Usar mis «Me gusta» como referencia de estilo
+          </label>
+          {gustos.activo && (
+            <p className="hint">
+              {gustos.van ? `Van ${gustos.van === 1 ? "la última" : `las ${gustos.van} últimas`} que te gustaron, sólo por su estilo.` : "No queda hueco de referencia en este modelo: quita alguna para que vayan."}
+            </p>
+          )}
         </div>
       )}
       {puedeLogo && (

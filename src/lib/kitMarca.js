@@ -22,6 +22,8 @@
 //
 // ============================================================
 
+import { limpiarAprendido, lineasAprendidas } from "./aprendizajeVisual.js";
+
 /** Los presets, uno por tipo de contenido (los ids de `PILARES`, en pilares.js). `base`: la plantilla sin escribir. */
 export const TIPOS_PRESET = Object.freeze({
   anuncio: {
@@ -124,6 +126,8 @@ export function limpiarKit(guardado) {
     logo: typeof g.logo === "string" && /^clientes\/[^/]+\/.+/.test(g.logo) && !g.logo.includes("..") ? g.logo : "",
     presets,
     propios: propios.slice(0, MAX_PROPIOS),
+    // Reglas visuales que la IA propuso de los «Me gusta» y la papelera, y una persona aceptó (aprendizajeVisual.js).
+    aprendido: limpiarAprendido(g.aprendido),
     ...(g.preparadoAt ? { preparadoAt: String(g.preparadoAt) } : {}),
   };
 }
@@ -131,7 +135,7 @@ export function limpiarKit(guardado) {
 /** ¿Tiene algo el kit? Pura. */
 export const kitVacio = (kit) => {
   const k = limpiarKit(kit);
-  return !k.paleta.length && !k.tipografia && !k.estilo && !k.luz && !k.evitar && !Object.keys(k.presets).length && !k.propios.length;
+  return !k.paleta.length && !k.tipografia && !k.estilo && !k.luz && !k.evitar && !Object.keys(k.presets).length && !k.propios.length && !k.aprendido.length;
 };
 
 /** «azul profundo #1B3246 (estructura/tipografía), verde suave #91C9A2 (acento)». Pura. */
@@ -153,6 +157,7 @@ export function bloqueDeMarca(kitGuardado) {
     kit.luz ? `Luz: ${sinPunto(kit.luz)}.` : "",
     kit.tipografia ? `Si lleva texto, tipografía únicamente ${sinPunto(kit.tipografia)}.` : "",
     kit.evitar ? `Nunca: ${sinPunto(kit.evitar)}.` : "",
+    lineasAprendidas(kit.aprendido),
   ].filter(Boolean);
   if (!partes.length) return "";
   return ["Identidad de la marca (obligatoria):", ...partes, "Sin texto inventado ni logos de otras marcas."].join(" ");
@@ -328,7 +333,8 @@ export function leerKit(texto) {
 /** Lo que propone la IA sobre lo guardado: conserva el logo y los presets propios (la IA no los escribe). Pura. */
 export function fundirKit(guardado, propuesto, ahora = new Date().toISOString()) {
   const antes = limpiarKit(guardado);
-  return limpiarKit({ ...propuesto, logo: antes.logo, propios: antes.propios, preparadoAt: ahora });
+  // Lo que la IA no escribe se queda: el logo, los presets propios y las reglas aprendidas de los «Me gusta».
+  return limpiarKit({ ...propuesto, logo: antes.logo, propios: antes.propios, aprendido: antes.aprendido, preparadoAt: ahora });
 }
 
 /** Lo que se le pide a la IA al revisar una pieza contra el kit. La imagen va aparte. Pura. */
@@ -343,6 +349,7 @@ export function pedidoDeRevision({ marca, kit: kitGuardado, prompt = "" }) {
     kit.estilo ? `Estilo: ${kit.estilo}` : "",
     kit.luz ? `Luz: ${kit.luz}` : "",
     kit.evitar ? `Nunca: ${kit.evitar}` : "",
+    lineasAprendidas(kit.aprendido),
     prompt ? `\nLo que se pidió: ${corto(prompt, 1500)}` : "",
     "",
     "Mira: colores fuera de la paleta (y si el dominante es el correcto), texto inventado o mal escrito, logos de otras marcas o un logo propio redibujado, estilo y luz, y si se parece a lo que se pidió.",
