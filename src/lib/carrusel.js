@@ -31,6 +31,7 @@ export const PLANTILLAS_TEXTO = Object.freeze({
   banda: { nombre: "Banda abajo", zona: "el tercio inferior" },
   arriba: { nombre: "Titular arriba", zona: "el tercio superior" },
   centro: { nombre: "Tarjeta al centro", zona: "el centro de la lámina" },
+  degradado: { nombre: "Texto sobre degradado", zona: "el cuarto inferior, con zonas tranquilas y sin objetos importantes" },
 });
 
 // «Portada:», «Slide 2:», «Lámina 3 —», «**Diapositiva 4.**», «CTA:», «Cierre (lámina 6):»…

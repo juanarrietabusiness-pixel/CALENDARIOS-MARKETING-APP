@@ -16,7 +16,7 @@
 //   POST   /<cliente>/kit/preparar                 La IA PROPONE el kit desde el cerebro (no guarda)
 //   POST   /<cliente>/kit/aprender                 La IA MIRA los «Me gusta» y la papelera y PROPONE reglas visuales (no guarda)
 //   POST   /<cliente>/revisar                      { archivoId } o { clave }: la IA mira la imagen contra el kit
-//   POST   /<cliente>/archivos                     Subir a mano (multipart: archivo, carpetaId?)
+//   POST   /<cliente>/archivos                     Subir a mano (multipart: archivo, carpetaId?, origenId?, plantilla?)
 //   POST   /<cliente>/archivos/<id>/cambiar        { favorito?, carpetaId? }
 //   POST   /<cliente>/archivos/<id>/uso            { calendarId, postId }: lo usa una publicación
 //   POST   /<cliente>/archivos/<id>/papelera       A la papelera
@@ -171,7 +171,9 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
     if (b === "archivos") {
       if (!c && metodo === "POST") {
         const form = await req.formData().catch(() => null);
-        const archivo = await subirArchivo(env, acceso, cliente, form?.get("archivo"), { carpetaId: form?.get("carpetaId") || null });
+        const archivo = await subirArchivo(env, acceso, cliente, form?.get("archivo"), {
+          carpetaId: form?.get("carpetaId") || null, origenId: form?.get("origenId") || null, plantilla: form?.get("plantilla") || null,
+        });
         avisar();
         return json({ archivo }, 201);
       }

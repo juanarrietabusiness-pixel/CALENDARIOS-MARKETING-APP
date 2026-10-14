@@ -13,9 +13,13 @@ import { llamarIA } from "../cerebro/ia.js";
 import { contexto as contextoCerebro } from "../cerebro/cerebro.js";
 import { leerMercado } from "../mercado.js";
 import { productosActivos, lineaDeProducto, notaDeProducto, resumenGeneral } from "../../../src/lib/estudioMercado.js";
-import { pedidoDeIdeasLote, leerIdeasLote, limpiarCuantas, totalDeCuantas, FORMATOS_LOTE } from "../../../src/lib/loteAnuncios.js";
+import { pedidoDeIdeasLote, leerIdeasLote, limpiarCuantas, totalDeCuantas, planDeLote, FORMATOS_LOTE } from "../../../src/lib/loteAnuncios.js";
 
-/** `datos`: { productoId?, cuantas: { nivel: n }, formato }. → { ideas, producto } */
+/**
+ * `datos`: { productoId?, cuantas: { nivel: n }, formato, semilla?, usados? }. → { ideas, producto }
+ * El PLAN (composición, fondo, puerta y producto de cada pieza) lo decide el código: con «la marca en general», los
+ * productos activos rotan —primero los que tienen fotos—, así cada pieza lleva las fotos reales de uno.
+ */
 export async function ideasDeLote(env, acceso, cliente, datos = {}) {
   const cuantas = limpiarCuantas(datos.cuantas);
   if (!totalDeCuantas(cuantas)) throw Object.assign(new Error("Escoge al menos un nivel con una idea."), { estado: 400 });
@@ -36,19 +40,27 @@ export async function ideasDeLote(env, acceso, cliente, datos = {}) {
     contexto = [c.ficha, c.pasajes].filter(Boolean).join("\n\n");
   } catch { /* sin cerebro, con el catálogo y el estudio */ }
 
+  const activos = productosActivos(catalogo);
+  const rotan = producto ? [producto] : [...activos.filter((p) => p.fotos?.length), ...activos.filter((p) => !p.fotos?.length)];
+  const plan = planDeLote(cuantas, { productos: rotan, semilla: datos.semilla, formato });
+  const lineas = Object.fromEntries(rotan.map((p) => [p.id, lineaDeProducto(p, { inventario }).slice(2)]));
+  const usados = (Array.isArray(datos.usados) ? datos.usados : []).map((t) => String(t ?? "").slice(0, 80)).filter(Boolean).slice(0, 30);
+
   const r = await llamarIA(env, acceso, cliente, {
     prompt: pedidoDeIdeasLote({
       marca: cliente.name, producto: producto ? lineaDeProducto(producto, { inventario }).slice(2) : "",
-      estudio: textoEstudio, contexto, cuantas, formato,
+      estudio: textoEstudio, contexto, cuantas, formato, plan, productos: producto ? {} : lineas, usados,
     }),
     salida: 200 * totalDeCuantas(cuantas) + 800,
     funcion: "ideas de anuncios",
   });
-  const ideas = leerIdeasLote(r.texto, cuantas);
+  const ideas = leerIdeasLote(r.texto, cuantas, plan);
   if (!ideas.length) throw Object.assign(new Error("La IA no devolvió ideas que se puedan leer. Inténtalo otra vez."), { estado: 502 });
   return {
     ideas,
     producto: producto ? { id: producto.id, nombre: producto.nombre, precio: producto.precio } : null,
+    // Los productos de las ideas (con «la marca en general» cada una puede ser de uno distinto).
+    productos: rotan.map((p) => ({ id: p.id, nombre: p.nombre })),
     conEstudio: Boolean(textoEstudio),
     modelo: r.modelo, aviso: r.aviso ?? null,
   };

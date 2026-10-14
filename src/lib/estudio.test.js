@@ -161,3 +161,26 @@ describe("editar una imagen con una indicación", () => {
     expect(originalDe({ id: "x" }, trabajos, [original])).toBeNull();
   });
 });
+
+describe("partirEscena (Otra versión no reescribe las órdenes del texto)", () => {
+  it("separa lo que se ve de lo que manda sobre el texto", async () => {
+    const { partirEscena } = await import("./estudio");
+    expect(partirEscena("Un sofá en la sala. Composición: cenital. NO escribas ningún texto, letra ni número en la imagen.")).toEqual({
+      escena: "Un sofá en la sala. Composición: cenital.", cola: "NO escribas ningún texto, letra ni número en la imagen.",
+    });
+    expect(partirEscena('Una taza. Texto en la imagen, EXACTO: "Hola"')).toEqual({ escena: "Una taza.", cola: 'Texto en la imagen, EXACTO: "Hola"' });
+    expect(partirEscena("Sólo una escena")).toEqual({ escena: "Sólo una escena", cola: "" });
+  });
+});
+
+describe("el modelo fijado", () => {
+  it("arranca con el fijado si existe, es de ese tipo y tiene llave; si no, el predeterminado", async () => {
+    const { modeloPreferido } = await import("./estudio");
+    const { modeloPorDefecto } = await import("./estudioCatalogo");
+    const activos = { gemini: true, fal: true };
+    expect(modeloPreferido(activos, "imagen", "seedream-4").id).toBe("seedream-4");
+    expect(modeloPreferido(activos, "imagen", "no-existe").id).toBe(modeloPorDefecto(activos, "imagen").id);
+    expect(modeloPreferido(activos, "video", "nano-banana").id).toBe(modeloPorDefecto(activos, "video").id);
+    expect(modeloPreferido({}, "imagen", "nano-banana").id).toBe(modeloPorDefecto({}, "imagen").id);
+  });
+});

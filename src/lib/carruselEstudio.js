@@ -50,7 +50,8 @@ export async function esperarArchivo(clienteId, trabajo, { seguir = () => true }
   }
   if (t.estado !== "hecho") throw new Error(t.error || "La pieza no salió.");
   const g = await api.leerEstudio(clienteId);
-  const archivo = (g?.archivos ?? []).find((a) => a.trabajoId === t.id);
+  // La cruda: una pieza con el texto de la plantilla encima hereda el trabajo de la suya (lib/loteEstudio.js).
+  const archivo = (g?.archivos ?? []).find((a) => a.trabajoId === t.id && !a.ajustes?.plantilla);
   if (!archivo) throw new Error("La pieza se creó pero no aparece en la galería.");
   return archivo;
 }

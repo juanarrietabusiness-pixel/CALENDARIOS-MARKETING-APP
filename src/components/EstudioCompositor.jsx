@@ -116,7 +116,8 @@ function Referencias({ ids, archivos, max, subiendo, onQuitar, onSubir, onDrive 
       )}
       {nombrado && (
         <p className="notice est-nombrado" role="note">
-          Tu idea nombra «{nombrado.nombre}»: al crear se suma{nombrado.fotos.length === 1 ? " su foto" : `n sus ${nombrado.fotos.length} fotos`} del catálogo para que salga el producto real.
+          Tu idea nombra {nombrado.nombres.map((n) => `«${n}»`).join(" y ")}: al crear se suma{nombrado.fotos === 1 ? " 1 foto" : `n ${nombrado.fotos} fotos`} del catálogo{nombrado.nombres.length > 1 ? " (una de cada uno primero)" : ""} para que salga el producto real.
+          {nombrado.sinHueco > 0 && ` ${nombrado.sinHueco === 1 ? "Otro producto nombrado no cabe" : `${nombrado.sinHueco} productos nombrados no caben`}: quita alguna referencia o usa un modelo que admita más.`}
         </p>
       )}
       <div className="est-refs">
@@ -219,12 +220,12 @@ function EstiloDeMarca({
       )}
       {!esVideo && productos.length > 0 && onProducto && (
         <div className="field">
-          <label className="label" htmlFor={`${ids}-producto`}>Fotos de un producto</label>
+          <label className="label" htmlFor={`${ids}-producto`}>Fotos de productos</label>
           <select id={`${ids}-producto`} className="input" defaultValue="" onChange={(e) => { if (e.target.value) onProducto(e.target.value); e.target.value = ""; }}>
             <option value="">Poner de referencia las fotos de…</option>
             {productos.map((p) => <option key={p.id} value={p.id}>{p.nombre} ({p.fotos.length} {p.fotos.length === 1 ? "foto" : "fotos"})</option>)}
           </select>
-          <p className="hint">Las del catálogo: así sale el producto real y no uno parecido.</p>
+          <p className="hint">Las del catálogo: así sale el producto real y no uno parecido. Escoge varios para una pieza con varios productos: se reparten los huecos.</p>
         </div>
       )}
       {gustos && !esVideo && (
@@ -338,6 +339,7 @@ export default function Compositor({
   mejorando = false, onMejorar = null, onVolverIdea = null,
   estilo = null,
   guionCorto = null,
+  fijado = "", onFijar = null,
 }) {
   const entrada = useRef(null);
   const rolSubida = useRef("reference");
@@ -443,6 +445,14 @@ export default function Compositor({
           </div>
         </div>
       </details>
+
+      {onFijar && (
+        <label className="est-logo-casilla est-fijar">
+          <input type="checkbox" checked={fijado === modelo.id} onChange={(e) => onFijar(e.target.checked ? modelo.id : "")} />
+          {" "}Usar siempre {modelo.nombre} para {esVideo ? "video" : "imagen"}
+          {fijado && fijado !== modelo.id && <span className="hint"> (ahora está fijado otro)</span>}
+        </label>
+      )}
 
       <FichaDelModelo modelo={modelo} />
 

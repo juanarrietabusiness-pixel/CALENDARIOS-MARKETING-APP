@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   limpiarCuantas, totalDeCuantas, cuantasPorDefecto, pedidoDeIdeasLote, leerIdeasLote, escenaDeAnuncio, textoDeIdea,
   publicacionDeAnuncio, nombreCarpetaLote, plantillaDeFormato, MAX_LOTE, MAX_POR_NIVEL, POR_NIVEL,
+  planDeLote, titularesUsados, COMPOSICIONES,
 } from "./loteAnuncios";
+import { PLANTILLAS_TEXTO } from "./carrusel";
 import { pedidoDeLote } from "./loteEstudio";
 import { modeloPorId } from "./estudioCatalogo";
 import { ideaDelPedido } from "./kitMarca";
@@ -77,5 +79,53 @@ describe("cada pieza", () => {
       medios: [{ src: "/api/media/clientes/c1/a.jpg", tipo: "imagen", ancho: 1080, alto: 1350 }],
     });
     expect(nombreCarpetaLote("Sofá cama", new Date("2026-10-12T15:00:00Z"))).toBe("Lote Sofá cama · 12 oct");
+  });
+});
+
+describe("que no salgan todas iguales (planDeLote)", () => {
+  it("cada pieza con su composición, su fondo, su puerta y su producto, sin dos seguidas iguales", () => {
+    const plan = planDeLote({ inconsciente: 4, decision: 4 }, { productos: [{ id: "a" }, { id: "b" }, { id: "c" }] });
+    expect(plan).toHaveLength(8);
+    for (let i = 1; i < plan.length; i++) {
+      expect(plan[i].composicion).not.toBe(plan[i - 1].composicion);
+      expect(plan[i].fondo).not.toBe(plan[i - 1].fondo);
+    }
+    // Ninguna puerta más de dos veces, y al menos cinco distintas en ocho piezas.
+    const puertas = plan.map((r) => r.puerta);
+    expect(Math.max(...Object.values(puertas.reduce((m, p) => ({ ...m, [p]: (m[p] ?? 0) + 1 }), {})))).toBeLessThanOrEqual(2);
+    expect(new Set(puertas).size).toBeGreaterThanOrEqual(5);
+    // Los productos rotan: con tres, cada uno sale en alguna.
+    expect(new Set(plan.map((r) => r.productoId))).toEqual(new Set(["a", "b", "c"]));
+    expect(new Set(plan.map((r) => r.composicion)).size).toBe(8);
+  });
+
+  it("en una historia el texto nunca va en la banda de abajo; la semilla cambia el punto de partida", () => {
+    const plan = planDeLote({ producto: 9 }, { formato: "historia" });
+    expect(plan.some((r) => r.plantilla === "banda")).toBe(false);
+    expect(planDeLote({ producto: 3 }, { semilla: 1 })[0].composicion).not.toBe(planDeLote({ producto: 3 })[0].composicion);
+    expect(planDeLote({ producto: 2 })[0].productoId).toBeUndefined();
+  });
+
+  it("el pedido da cada pieza resuelta, y la lectura le pone a cada idea lo que decidió el plan", () => {
+    const plan = planDeLote({ inconsciente: 1, decision: 1 }, { productos: [{ id: "sofa" }] });
+    const p = pedidoDeIdeasLote({ marca: "Dcasa", cuantas: { inconsciente: 1, decision: 1 }, plan, productos: { sofa: "Sofá cama · $399" }, usados: ["Duerme mejor"] });
+    expect(p).toMatch(/^1\. Inconsciente .*puerta: .*composición: .*producto: Sofá cama · \$399$/m);
+    expect(p).toMatch(/ya salieron: no repitas[\s\S]*· Duerme mejor/);
+    expect(p).toMatch(/"n":1/);
+    const ideas = leerIdeasLote(JSON.stringify({ ideas: [{ n: 2, titular: "Llévalo", escena: "El sofá" }, { n: 1, titular: "¿Mal dormir?", escena: "Cansancio" }] }), {}, plan);
+    expect(ideas.map((i) => [i.id, i.titular, i.productoId])).toEqual([["inconsciente-1", "¿Mal dormir?", "sofa"], ["decision-1", "Llévalo", "sofa"]]);
+    expect(ideas[0].composicion).toBe(plan[0].composicion);
+    const escena = escenaDeAnuncio(ideas[0], { modo: "plantilla" });
+    expect(escena).toContain(COMPOSICIONES.find((c) => c.id === plan[0].composicion).linea);
+    expect(escena).toContain(`Deja ${PLANTILLAS_TEXTO[plan[0].plantilla].zona} limpio`);
+  });
+
+  it("los titulares que ya salieron: del texto de la plantilla y del que se le pidió al motor", () => {
+    expect(titularesUsados([
+      { ajustes: { plantilla: { texto: "Duerme mejor\nDesde $399" } } },
+      { prompt: 'Escena… Texto en la imagen, EXACTO, legible: "Hoy sí" / "Ya"' },
+      { prompt: "nada" },
+      { ajustes: { plantilla: { texto: "Duerme mejor" } } },
+    ])).toEqual(["Duerme mejor", "Hoy sí"]);
   });
 });

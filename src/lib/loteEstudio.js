@@ -18,7 +18,7 @@ import { lineasDeReferencias } from "./referencias";
 import { coloresPlantilla } from "./carrusel";
 import { componerLamina } from "./textoSobreImagen";
 import { esperarArchivo } from "./carruselEstudio";
-import { escenaDeAnuncio, textoDeIdea, plantillaDeFormato, FORMATOS_LOTE } from "./loteAnuncios";
+import { escenaDeAnuncio, textoDeIdea, plantillaDeIdea, FORMATOS_LOTE } from "./loteAnuncios";
 
 /** El pedido de UNA pieza: lo que se manda al motor (y queda en la galería). Pura salvo por los imports. */
 export function pedidoDeLote({ idea, kit, preset = "anuncio", modo = "plantilla", formato = "post", modelo, fotos = [], marca = "", rubro = "" }) {
@@ -35,16 +35,28 @@ export function pedidoDeLote({ idea, kit, preset = "anuncio", modo = "plantilla"
   return { modelo: modelo.id, prompt, n: 1, medios, ajustes: ajustesDe(modelo, { aspectRatio: FORMATOS_LOTE[formato]?.aspectRatio ?? "4:5" }, medios) };
 }
 
+/**
+ * El texto de la plantilla encima de una pieza cruda, y la pieza compuesta a la galería. La compuesta RECUERDA de qué
+ * pieza salió y qué texto lleva (`origenId`, `plantilla`): así «Otra versión» funciona también sobre ella y la nueva
+ * sale con su texto puesto. → el archivo compuesto.
+ */
+export async function ponerTexto({ clienteId, crudo, texto, plantilla = "banda", kit, carpetaId = null, nombre = "anuncio" }) {
+  const k = limpiarKit(kit);
+  const blob = await componerLamina({ src: crudo.src, texto, plantilla, colores: coloresPlantilla(k), familia: k.tipografia });
+  const { archivo } = await api.subirImagen(clienteId, new File([blob], `${nombre}.jpg`, { type: "image/jpeg" }), {
+    carpetaId, origenId: crudo.id, plantilla: { texto, plantilla },
+  });
+  return archivo;
+}
+
 /** Crea UNA pieza y espera a que salga. → { crudo, final } (en el modo «ia», el mismo archivo). */
 export async function crearAnuncio({ clienteId, pedido, idea, modo, formato, kit, carpetaId = null, seguir = () => true }) {
   const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true, ...(carpetaId ? { carpetaId } : {}) });
   const crudo = await esperarArchivo(clienteId, trabajo, { seguir });
   if (modo !== "plantilla") return { crudo, final: crudo };
-  const k = limpiarKit(kit);
-  const blob = await componerLamina({
-    src: crudo.src, texto: textoDeIdea(idea), plantilla: plantillaDeFormato(formato), colores: coloresPlantilla(k), familia: k.tipografia,
+  const final = await ponerTexto({
+    clienteId, crudo, texto: textoDeIdea(idea), plantilla: plantillaDeIdea(idea, formato), kit, carpetaId, nombre: `anuncio-${idea.id}`,
   });
-  const { archivo: final } = await api.subirImagen(clienteId, new File([blob], `anuncio-${idea.id}.jpg`, { type: "image/jpeg" }), { carpetaId });
   return { crudo, final };
 }
 

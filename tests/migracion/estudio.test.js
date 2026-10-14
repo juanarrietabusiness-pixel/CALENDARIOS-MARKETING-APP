@@ -487,6 +487,25 @@ describe("subir a mano, carpetas y papelera", () => {
     return pedir(quien, `/api/estudio/${cliente}/archivos`, { method: "POST", body: form });
   };
 
+  it("una pieza con el texto de la plantilla encima hereda el pedido de su cruda (para «Otra versión»), y sólo de una de este cliente", async () => {
+    const t = (await (await pedirTrabajo(JEFE, "c1", { prompt: "Escena: un sofá" })).json()).trabajo;
+    await hastaElFinal(JEFE, "c1", t.id);
+    const [cruda] = (await galeria(JEFE, "c1")).archivos;
+    const form = new FormData();
+    form.set("archivo", new File([PNG], "anuncio-1.jpg", { type: "image/png" }));
+    form.set("origenId", cruda.id);
+    form.set("plantilla", JSON.stringify({ texto: "Duerme mejor\nDesde $399", plantilla: "degradado" }));
+    const { archivo } = await (await pedir(JEFE, "/api/estudio/c1/archivos", { method: "POST", body: form })).json();
+    expect(archivo).toMatchObject({ subido: false, origen: "estudio", modelo: "prueba", trabajoId: t.id, prompt: cruda.prompt });
+    expect(archivo.ajustes.plantilla).toEqual({ texto: "Duerme mejor\nDesde $399", plantilla: "degradado", origenId: cruda.id });
+    // De otro cliente no hereda nada: se sube como una más.
+    const otra = new FormData();
+    otra.set("archivo", new File([PNG], "x.png", { type: "image/png" }));
+    otra.set("origenId", cruda.id);
+    const { archivo: ajena } = await (await pedir(JEFE, "/api/estudio/c2/archivos", { method: "POST", body: otra })).json();
+    expect(ajena).toMatchObject({ subido: true, origen: "subida", modelo: "", trabajoId: null });
+  });
+
   it("sube un PNG, lo reconoce por sus bytes y lo deja en la galería como subido", async () => {
     const res = await subir(JEFE, "c1", PNG, "producto.png", "image/png");
     expect(res.status).toBe(201);

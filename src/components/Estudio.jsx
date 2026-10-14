@@ -5,7 +5,7 @@ import Visor, { Pieza } from "./EstudioVisor";
 import EstudioKit from "./EstudioKit";
 import { kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, componerPedido, ponerLogo, ideaDelPedido, conOtraEscena } from "../lib/kitMarca";
 import { ideaDesdeAngulo } from "../lib/estudioMercado";
-import { lineasDeReferencias, productoNombrado } from "../lib/referencias";
+import { lineasDeReferencias, productosNombrados } from "../lib/referencias";
 import { deMisGustos } from "../lib/aprendizajeVisual";
 import { segundosParaModelo, ajusteDeDuracion } from "../lib/videoCorto";
 import BancoSelector from "./BancoSelector";
@@ -14,8 +14,10 @@ import { idDeCarpeta } from "../lib/drive";
 import { OverflowMenu } from "./calendario/primitivas";
 import { soloLectura } from "../lib/sesionActual";
 import * as api from "../lib/estudio";
+import { ponerTexto } from "../lib/loteEstudio";
+import { esperarArchivo } from "../lib/carruselEstudio";
 import {
-  modeloPorId, modeloPorDefecto, nombreDelModelo, estimar, textoCosto, pideConfirmar, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
+  modeloPorId, nombreDelModelo, estimar, textoCosto, pideConfirmar, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
 } from "../lib/estudioCatalogo";
 import {
   filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga,
@@ -69,7 +71,7 @@ function formularioInicial(motores, inicial, productos = []) {
   // Un modelo pedido de fuera (seguir un video de la competencia) se respeta aunque no tenga llave: la pantalla
   // lo enseña «sin llave» en vez de cambiarlo por otro que no hace lo mismo.
   const pedido = inicial?.modelo ? modeloPorId(inicial.modelo) : null;
-  const m = pedido?.tipo === tipo ? pedido : modeloPorDefecto(activos, tipo);
+  const m = pedido?.tipo === tipo ? pedido : api.modeloPreferido(activos, tipo);
   const medios = MEDIOS_VACIOS();
   if (inicial?.inicio) medios.start = [inicial.inicio];
   // Desde una publicación de un producto con fotos en el catálogo, sus fotos van de referencia: sale el producto REAL.
@@ -116,6 +118,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (!desdePost) try { localStorage.setItem(clavePreset, v); } catch { /* sin almacenamiento */ }
   };
   const [conLogo, setConLogo] = useState(true);
+  // «Usar siempre este modelo»: el que se fija arranca el compositor, el lote y «Producir el mes» (en este navegador).
+  const [fijados, setFijados] = useState(() => ({ imagen: api.modeloFijado("imagen"), video: api.modeloFijado("video") }));
+  const fijar = (tipo, id) => { api.fijarModelo(tipo, id); setFijados((f) => ({ ...f, [tipo]: id })); };
   // «Usar mis Me gusta como referencia de estilo» (se recuerda por cliente; apagado por defecto).
   const claveGustos = `estudio-gustos:${client.id}`;
   const [conGustos, setConGustosEstado] = useState(() => { try { return localStorage.getItem(claveGustos) === "1"; } catch { return false; } });
@@ -192,14 +197,20 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const conKit = usarKit && kitListo;
   const bloqueMarca = conKit ? bloqueDeMarca(kit) : "";
   const puedeLogo = Boolean(conKit && form && modelo && ponerLogo({ kit, tipo: form.tipo, modelo, referencias: clavesDe(form.medios).reference }));
-  // El producto del catálogo que nombra la idea y cuyas fotos aún no van: al crear se suman (y se dice antes).
-  const nombrado = form && modelo && form.tipo === "imagen" && modelo.referencias > form.medios.reference.length
-    ? productoNombrado(datos?.productos ?? [], form.prompt, clavesDe(form.medios).reference)
+  // Los productos del catálogo que nombra la idea y cuyas fotos aún no van: al crear se suman (y se dice antes). Con
+  // varios, una foto de cada uno antes que la segunda de ninguno: una pieza con tres productos lleva a los tres.
+  const libresRefs = form && modelo ? (modelo.referencias || 0) - form.medios.reference.length : 0;
+  const nombrados = form && modelo && form.tipo === "imagen" && libresRefs > 0
+    ? productosNombrados(datos?.productos ?? [], form.prompt, clavesDe(form.medios).reference)
+    : [];
+  const fotosNombradas = nombrados.length ? api.fotosDeVariosProductos(datos?.productos ?? [], nombrados.map((p) => p.id), libresRefs) : [];
+  const nombrado = nombrados.length
+    ? { nombres: nombrados.filter((p) => fotosNombradas.some((f) => f.prompt === p.nombre)).map((p) => p.nombre), fotos: fotosNombradas.length, sinHueco: nombrados.length - new Set(fotosNombradas.map((f) => f.prompt)).size }
     : null;
   // Las últimas que gustaron, sólo por su estilo, en el hueco que quede después del producto y del logo.
   const hayGustos = (datos?.archivos ?? []).some((a) => a.favorito && a.tipo === "imagen");
   const huecoGustos = form && modelo && form.tipo === "imagen"
-    ? (modelo.referencias || 0) - form.medios.reference.length - (nombrado?.fotos.length ?? 0) - (puedeLogo && conLogo ? 1 : 0)
+    ? (modelo.referencias || 0) - form.medios.reference.length - fotosNombradas.length - (puedeLogo && conLogo ? 1 : 0)
     : 0;
   const gustos = conGustos && huecoGustos > 0
     ? deMisGustos(datos?.archivos ?? [], { yaPuestas: clavesDe(form.medios).reference, perdidos, cuantas: Math.min(2, huecoGustos) })
@@ -250,7 +261,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const cambiarTipo = (tipo) => {
     if (!motores || tipo === form.tipo) return;
     const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
-    const m = modeloPorDefecto(activos, tipo);
+    const m = api.modeloPreferido(activos, tipo);
     setConfirmando(null);
     setForm((f) => {
       const medios = recortarMedios(f.medios, m);
@@ -366,8 +377,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       // El tipo de pieza delante de la escena, la identidad de la marca detrás y el logo de referencia si se pidió:
       // lo que se manda es lo que queda escrito.
       // Las fotos del producto que nombra la idea van DELANTE (cuanto cabe), y cada referencia dice qué se toma de ella.
-      const libres = (modelo.referencias || 0) - form.medios.reference.length;
-      const delNombrado = nombrado ? api.fotosDelProducto(datos?.productos ?? [], nombrado.id).slice(0, libres) : [];
+      const delNombrado = fotosNombradas;
       const refs = [...delNombrado, ...form.medios.reference, ...gustos];
       const medios = { ...clavesDe(form.medios), reference: refs.map((a) => a.clave) };
       const conElLogo = Boolean(conKit && conLogo && ponerLogo({ kit, tipo: form.tipo, modelo, referencias: medios.reference }));
@@ -387,7 +397,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       setIdeaAnterior(null);
       if (delNombrado.length) {
         setForm((f) => ({ ...f, medios: { ...f.medios, reference: [...delNombrado, ...f.medios.reference.filter((x) => !delNombrado.some((n) => n.id === x.id))].slice(0, modelo.referencias || 0) } }));
-        avisar(true, `Van de referencia ${delNombrado.length === 1 ? "la foto" : `${delNombrado.length} fotos`} de «${nombrado.nombre}» del catálogo.`);
+        avisar(true, `Van de referencia ${delNombrado.length === 1 ? "la foto" : `${delNombrado.length} fotos`} del catálogo de ${nombrado.nombres.map((n) => `«${n}»`).join(" y ")}.`);
       }
     } catch (e) {
       if (e.datos?.codigo === "confirmar") setConfirmando(e.datos.costo);
@@ -409,14 +419,20 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setForm((f) => ({ ...f, medios: { ...f.medios, reference: f.medios.reference.map((x) => (x.id === a.id ? { ...x, ...cambios } : x)) } }));
   };
 
-  /** «Fotos de un producto»: las suyas van de referencia, delante de las que ya hubiera, hasta lo que admita el modelo. */
+  /**
+   * «Fotos de un producto»: las suyas van de referencia, delante de las demás. Si ya iban las de OTRO producto, se
+   * reparten los huecos (una de cada uno primero): una pieza general con varios productos los lleva a todos.
+   */
   const ponerFotosDeProducto = (productoId) => {
     setConfirmando(null);
     setForm((f) => {
       const m = modeloPorId(f.modelo);
-      const nuevas = api.fotosDelProducto(datos?.productos ?? [], productoId);
-      const resto = f.medios.reference.filter((x) => !nuevas.some((n) => n.id === x.id));
-      return { ...f, medios: { ...f.medios, reference: [...nuevas, ...resto].slice(0, m?.referencias || 0) } };
+      const productos = datos?.productos ?? [];
+      const yaVan = [...new Set(f.medios.reference.filter((x) => x.producto).map((x) => productos.find((p) => p.nombre === x.producto.nombre)?.id).filter(Boolean))];
+      const otras = f.medios.reference.filter((x) => !x.producto);
+      const huecos = Math.max(1, (m?.referencias || 0) - otras.length);
+      const fotos = api.fotosDeVariosProductos(productos, [...yaVan.filter((id) => id !== productoId), productoId], huecos);
+      return { ...f, medios: { ...f.medios, reference: [...fotos, ...otras].slice(0, m?.referencias || 0) } };
     });
   };
 
@@ -474,7 +490,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const animar = (a) => {
     if (!motores) return;
     const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
-    const m = modeloPorId(form.modelo)?.tipo === "video" ? modeloPorId(form.modelo) : modeloPorDefecto(activos, "video");
+    const m = modeloPorId(form.modelo)?.tipo === "video" ? modeloPorId(form.modelo) : api.modeloPreferido(activos, "video");
     const proporcion = proporcionDeMedidas(a.ancho, a.alto);
     const medios = { ...MEDIOS_VACIOS(), start: [a] };
     setConfirmando(null);
@@ -496,7 +512,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     // Un modelo sin llave o retirado: el que esté escogido si es del mismo tipo; si no, el predeterminado de ese tipo.
     const escogido = modeloPorId(form.modelo);
     const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
-    const destino = usable ? m : escogido?.tipo === a.tipo ? escogido : modeloPorDefecto(activos, a.tipo);
+    const destino = usable ? m : escogido?.tipo === a.tipo ? escogido : api.modeloPreferido(activos, a.tipo);
     const medios = MEDIOS_VACIOS();
     setConfirmando(null);
     setForm({ tipo: destino.tipo, modelo: destino.id, prompt: a.prompt, n: 1, medios, ajustes: ajustesDe(destino, a.ajustes, clavesDe(medios)) });
@@ -521,6 +537,20 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     return p.error ? null : estimar(p.modelo, 1, p.ajustes);
   };
   const [versionando, setVersionando] = useState(false);
+  /**
+   * Una pieza con el texto de la plantilla encima (del lote): la nueva sale cruda y aquí se le pone el MISMO texto, en
+   * el mismo sitio, con los colores del kit. Corre sola: la persona sigue trabajando mientras tanto.
+   */
+  const conTextoEncima = async (a, trabajo) => {
+    try {
+      const crudo = await esperarArchivo(client.id, trabajo, { seguir: () => montado.current });
+      const p = a.ajustes.plantilla;
+      await ponerTexto({ clienteId: client.id, crudo, texto: p.texto, plantilla: p.plantilla, kit, carpetaId: a.carpetaId ?? null, nombre: "version" });
+      if (montado.current) await cargar();
+    } catch (e) {
+      if (montado.current) avisar(false, `La nueva salió, pero sin el texto encima: ${e.message}`);
+    }
+  };
   const pedirOtras = async (a, prompts) => {
     const p = pedidoDe(a);
     if (p.error) { avisar(false, p.error); return; }
@@ -531,7 +561,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         ...(uso ? { calendarId: uso.calendarId, postId: uso.postId } : {}),
       });
       setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, trabajo) } : d));
-      seguir(trabajo.id);
+      if (a.ajustes?.plantilla?.texto) conTextoEncima(a, trabajo);
+      else seguir(trabajo.id);
     }
   };
   /** «Otra igual»: el mismo pedido otra vez (el motor no repite la imagen: sale otra con lo mismo). */
@@ -546,13 +577,19 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       avisar(false, e.message);
     }
   };
-  /** «Otra versión distinta»: la IA escribe 1–3 escenas nuevas con la misma información; el tipo, la marca y las referencias se quedan. */
+  /**
+   * «Otra versión distinta»: la IA escribe 1–3 escenas nuevas con la misma información; el tipo, la marca y las
+   * referencias se quedan. Sale YA, sin pasar por el compositor (también desde la tarjeta de la galería). Lo que la
+   * escena manda sobre el texto («NO escribas…», «Texto en la imagen…») no se le da a reescribir: se vuelve a poner.
+   */
   const otrasVersiones = async (a, n) => {
     if (versionando) return;
     setVersionando(true);
+    avisar(true, n === 1 ? "Escribiendo otra versión con la misma información…" : `Escribiendo ${n} versiones con la misma información…`);
     try {
-      const r = await api.versionesDeIdea(client.id, { idea: ideaDelPedido(a.prompt), n, tipo: a.tipo });
-      await pedirOtras(a, r.versiones.map((v) => conOtraEscena(a.prompt, v)));
+      const { escena, cola } = api.partirEscena(ideaDelPedido(a.prompt));
+      const r = await api.versionesDeIdea(client.id, { idea: escena, n, tipo: a.tipo });
+      await pedirOtras(a, r.versiones.map((v) => conOtraEscena(a.prompt, [v, cola].filter(Boolean).join(" "))));
       setVisor(null);
       setEnPapelera(false);
       avisar(true, [`${r.versiones.length === 1 ? "Pedida 1 versión distinta" : `Pedidas ${r.versiones.length} versiones distintas`}: aparecen en la galería.`, r.aviso ?? ""].filter(Boolean).join(" "));
@@ -826,7 +863,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       {loteAbierto && (
         <Suspense fallback={null}>
           <EstudioLote
-            client={client} motores={motores} productosConFotos={datos?.productos ?? []} kit={kit}
+            client={client} motores={motores} productosConFotos={datos?.productos ?? []} archivos={datos?.archivos ?? []} kit={kit}
             onCerrar={() => setLoteAbierto(false)} onHecho={cargar} onLlevar={onLlevarAlCalendario}
           />
         </Suspense>
@@ -851,6 +888,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             gustos: hayGustos && modelo.referencias > 0 ? { activo: conGustos, onCambiar: setConGustos, van: gustos.length } : null,
             onProducto: ponerFotosDeProducto,
           }}
+          fijado={fijados[form.tipo] ?? ""} onFijar={(id) => fijar(form.tipo, id)}
           guionCorto={{
             segundos: segundosGuion, escribiendo: escribiendoGuion, resultado: guion,
             onEscribir: escribirGuion, onUsar: usarGuion, onDescartar: () => setGuion(null),
@@ -1054,6 +1092,16 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
                       <button type="button" className="btn-icon est-me-gusta" aria-pressed={a.favorito} aria-label={a.favorito ? "Quitar «Me gusta»" : "Me gusta"} title="Me gusta: el cerebro aprende de lo que eliges" onClick={() => alternarFavorito(a)}>
                         <Icon name="heart" size={18} />
                       </button>
+                      {a.tipo !== "video" && !a.subido && a.modelo && (
+                        <button
+                          type="button" className="btn-icon" disabled={versionando}
+                          aria-label={`Otra versión: la misma información con otra escena${costoDeOtra(a) != null ? ` (${textoCosto(costoDeOtra(a))})` : ""}`}
+                          title={`Otra versión: la misma información con otra escena${costoDeOtra(a) != null ? ` · ${textoCosto(costoDeOtra(a))}` : ""}`}
+                          onClick={() => otrasVersiones(a, 1)}
+                        >
+                          <Icon name="sparkles" size={18} />
+                        </button>
+                      )}
                       {a.tipo !== "video" && (
                         <>
                           <button type="button" className="btn-icon" aria-pressed={enMedios(a)} aria-label={enMedios(a) ? "Quitar del pedido" : "Usar de referencia"} title="Usar de referencia" onClick={() => (enMedios(a) ? quitarMedio(Object.keys(form.medios).find((rol) => form.medios[rol].some((x) => x.id === a.id)), a) : usarComoMedio(a))}>
