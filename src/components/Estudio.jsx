@@ -24,7 +24,7 @@ import {
 } from "../lib/estudioCatalogo";
 import {
   filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga,
-  proporcionDeMedidas, promptDeEdicion, modeloParaEditar, originalDe,
+  proporcionDeMedidas, modeloParaEditar, originalDe,
 } from "../lib/estudio";
 import "./Estudio.css";
 
@@ -424,16 +424,17 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   };
 
   /** «Editar»: la imagen va de referencia a un modelo que edita, con la indicación y la orden de no tocar lo demás. */
-  const editar = async (a, instruccion) => {
-    const prompt = promptDeEdicion(instruccion);
-    if (!prompt || !motores) return;
+  const editar = async (a, instruccion, ejemplos = []) => {
+    if (!String(instruccion ?? "").trim() || !motores) return;
     const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
     const m = modeloParaEditar(activos);
+    // La imagen primero; los ejemplos de la galería detrás, los que quepan en el modelo.
+    const { prompt, medios } = api.pedidoDeCorreccion({ clave: a.clave, instruccion, ejemplos, modelo: m });
     const proporcion = a.ajustes?.aspectRatio ?? proporcionDeMedidas(a.ancho, a.alto);
     try {
       const { trabajo } = await api.pedirImagenes(client.id, {
-        modelo: m.id, prompt, n: 1, ajustes: ajustesDe(m, { aspectRatio: proporcion }, { reference: [a.clave] }),
-        medios: { reference: [a.clave] }, confirmado: true,
+        modelo: m.id, prompt, n: 1, ajustes: ajustesDe(m, { aspectRatio: proporcion }, medios),
+        medios, confirmado: true,
         ...(a.carpetaId ? { carpetaId: a.carpetaId } : {}),
       });
       setVisor(null);
@@ -1317,7 +1318,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           versionando={versionando}
           onReferencia={() => { const a = visor; setVisor(null); usarComoMedio(a); }}
           onAnimar={() => animar(visor)}
-          onEditar={(instruccion) => editar(visor, instruccion)}
+          onEditar={(instruccion, ejemplos) => editar(visor, instruccion, ejemplos)}
+          galeria={datos?.archivos ?? []}
           original={originalDe(visor, datos?.trabajos ?? [], datos?.archivos ?? [])}
           onVerOriginal={(o) => setVisor(o)}
           onUsar={onUsar ? () => usarEnLaPublicacion(visor) : null}

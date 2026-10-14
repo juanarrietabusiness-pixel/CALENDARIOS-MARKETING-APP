@@ -167,7 +167,7 @@ export async function crearReelDeIdea({ clienteId, idea, kit, preset = "", estil
   if (!fotogramas.length) throw new Error(salida.map((r) => r?.error).find(Boolean) || "No salió ningún fotograma.");
   alPaso("Video (tarda unos minutos)…");
   const lineaPersonajes = [...new Set(personajes.map((p) => `Personaje: ${p.nota}.`))].join(" ");
-  const pedido = pedidoDeVideo({ modelo: modeloVideo, planos: guion.planos, hilo: guion.hilo, sonido: guion.sonido, segundos: guion.segundos ?? 10, estilo: estiloTexto, personajes: lineaPersonajes, fotogramas });
+  const pedido = pedidoDeVideo({ modelo: modeloVideo, planos: guion.planos, hilo: guion.hilo, musica: guion.musica, locucion: guion.locucion, efectos: guion.efectos, segundos: guion.segundos ?? 10, estilo: estiloTexto, personajes: lineaPersonajes, fotogramas });
   const video = await crearVideo({ clienteId, pedido, carpetaId, seguir });
   return { archivos: [video], fotogramas, descripcion: guion.descripcion };
 }

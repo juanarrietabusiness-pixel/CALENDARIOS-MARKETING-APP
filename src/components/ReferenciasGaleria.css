@@ -1,0 +1,14 @@
+/* «+ Referencia de la galería»: las escogidas, con qué se toma de cada una, y el diálogo para escoger. */
+.ref-galeria { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.ref-galeria-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.ref-galeria-item { display: flex; align-items: center; gap: var(--sp-1); padding: var(--sp-1); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.ref-galeria-item img { width: 36px; height: 36px; object-fit: cover; border-radius: var(--radius-sm); }
+.ref-galeria-item .input { min-height: var(--tap-sm); padding-block: 0; width: auto; max-width: 190px; }
+.ref-galeria-dialogo { max-width: 640px; width: 100%; display: flex; flex-direction: column; gap: var(--sp-3); max-height: 85vh; }
+.ref-galeria-cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.ref-galeria-cabecera h3 { margin: 0; }
+.ref-galeria-rejilla { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--sp-2); overflow-y: auto; }
+.ref-galeria-opcion { width: 100%; aspect-ratio: 1; padding: 0; border: 2px solid transparent; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-3); cursor: pointer; }
+.ref-galeria-opcion img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ref-galeria-opcion:hover, .ref-galeria-opcion:focus-visible { border-color: var(--accent); }
+.ref-galeria-opcion:disabled { opacity: 0.4; cursor: default; }

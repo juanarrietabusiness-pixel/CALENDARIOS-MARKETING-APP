@@ -3,6 +3,7 @@ import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { modeloPorId, nombreDelModelo, textoCosto, NOMBRE_PROPORCION } from "../lib/estudioCatalogo";
 import { hace, nombreDeDescarga, esVideoReal, valorDeAjuste, ATAJOS_EDICION } from "../lib/estudio";
+import ReferenciasGaleria from "./ReferenciasGaleria";
 
 // ============================================================
 // El visor: la imagen (o el video) grande y todo lo que se sabe de ella
@@ -67,12 +68,13 @@ export default function Visor({
   archivo: a, carpetas, lectura, onCerrar, onFavorito, onPapelera, onMover, onRepetir, onReferencia, onAnimar, onUsar, etiquetaUsar,
   costoOtra = null, onOtraIgual = null, onOtrasVersiones = null, versionando = false, onRecrear = null,
   onEditar = null, original = null, onVerOriginal = null,
-  esLogo = false, onLogo = null, revision = null, onRevisar = null, onCorregir = null,
+  esLogo = false, onLogo = null, revision = null, onRevisar = null, onCorregir = null, galeria = [],
 }) {
   const ref = useDialogA11y(onCerrar);
   const id = useId();
   const [editando, setEditando] = useState(false);
   const [cambio, setCambio] = useState("");
+  const [ejemplos, setEjemplos] = useState([]);
   const [cuantas, setCuantas] = useState(1);
   const m = modeloPorId(a.modelo);
   const puedeOtra = !lectura && !a.subido && costoOtra != null && onOtraIgual;
@@ -112,7 +114,7 @@ export default function Visor({
             </div>
           )}
           {editando && (
-            <form className="est-editar" onSubmit={(e) => { e.preventDefault(); if (cambio.trim()) onEditar(cambio); }}>
+            <form className="est-editar" onSubmit={(e) => { e.preventDefault(); if (cambio.trim()) onEditar(cambio, ejemplos); }}>
               <label className="label" htmlFor={`${id}-e`}>¿Qué cambio?</label>
               <input id={`${id}-e`} className="input" value={cambio} maxLength={500}
                 placeholder="Ej.: quita el texto de arriba y pon el fondo blanco" onChange={(e) => setCambio(e.target.value)} />
@@ -121,6 +123,7 @@ export default function Visor({
                   <button key={t} type="button" className="filter-chip" onClick={() => setCambio((c) => (c.trim() ? `${c.trim().replace(/[.\s]+$/, "")}; ${t.toLowerCase()}` : t))}>{t}</button>
                 ))}
               </div>
+              <ReferenciasGaleria archivos={galeria} elegidas={ejemplos} onCambiar={setEjemplos} max={2} etiqueta="Ejemplo de la galería" />
               <div className="est-editar-botones">
                 <button type="submit" className="btn btn-primary btn-sm" disabled={!cambio.trim()}><Icon name="wand" size={14} /> Editar con IA</button>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditando(false); setCambio(""); }}>Cancelar</button>

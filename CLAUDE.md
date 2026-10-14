@@ -1539,6 +1539,20 @@ son del servidor.
   modelo que admita video: Gemini Omni o Kling Omni por Kie) y la versión nueva sale arriba, la anterior se queda.
   Todo va en la carpeta del reel. Los `character_ids` de Omni (personajes registrados) aún no se usan: los personajes
   van como imágenes de referencia en los fotogramas.
+- **El Reel IA: 10 s con Omni u 8 s con Veo, y el sonido en el MISMO pedido** (`DURACIONES_REEL`, `ajustarDuracion`,
+  `locucionQueCabe` en src/lib/reel.js). Cambiar la duración reparte los planos en el tiempo nuevo (cada uno conserva su
+  proporción) sin escribir el guion otra vez; Veo con fotogramas usa 3 de referencia. El guion trae `musica`,
+  `locucion` (como mucho 2,5 palabras por segundo) y `efectos` —uno de antes con todo en `sonido` se lee como música— y
+  `promptDeReel` los dice por separado: generar el audio aparte y montarlo después no casa la voz con los planos. La
+  VOZ de Omni por Kie es un ajuste del modelo (`voz`, `VOCES_OMNI`: 30 voces fijas, el idioma lo da el texto): `enviar`
+  la REGISTRA (`/api/v1/omni/audio/create`, gratis) y manda su id en `audio_ids`; con imagen inicial Kie no la admite
+  (`validarKie`). Un modelo sin voz pone la suya. La música de tendencia de Instagram no va por API.
+- **Corregir con un ejemplo de la galería** (`ReferenciasGaleria.jsx`, `pedidoDeCorreccion` en lib/estudio.js): en el
+  visor («Editar»), en cada lámina, en cada fotograma y en el tramo del video. La imagen que se corrige va PRIMERO y los
+  ejemplos detrás, sólo los que quepan en el modelo, cada uno con su línea («toma SÓLO…» o «es un EJEMPLO…»); en el
+  tramo, como mucho 5 (el video ocupa dos de los 7 huecos de Omni). El reel admite además referencias de la galería
+  para todos los fotogramas (`crearFotograma({ referencias })`), detrás del anterior, el primero, los personajes y el
+  producto.
 - **Los personajes de la marca** (`kit.personajes`, hasta 4: nombre, descripción, retrato y cuerpo de la galería): el
   bebé de Baby Caleb tiene que ser EL MISMO en cada lámina y cada pieza. Van de referencia con `toma: ["persona"]` y una
   nota de quién son (`referenciasDePersonajes`), en el compositor («Personajes de la marca») y en el carrusel; el

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga, archivoDesdeSrc, promptDeEdicion, modeloParaEditar, originalDe, ranurasLibres, RANURAS } from "./estudio.js";
+import { filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga, archivoDesdeSrc, promptDeEdicion, modeloParaEditar, originalDe, ranurasLibres, RANURAS, pedidoDeCorreccion } from "./estudio.js";
 
 const A = (o) => ({ id: "a", prompt: "una taza", modelo: "nano-banana", favorito: false, subido: false, carpetaId: null, ...o });
 
@@ -200,5 +200,22 @@ describe("¿dónde va una imagen de la galería?", () => {
     expect(ranurasLibres({ video: [{ id: "x" }] }, m, { id: "v", tipo: "video" })).toEqual([]);
     expect(ranurasLibres({}, { referencias: 3 }, a)).toEqual(["reference"]);
     expect(RANURAS.reference.nombre).toBe("Referencia");
+  });
+});
+
+describe("corregir con ejemplos de la galería", () => {
+  it("la imagen va primero; los ejemplos detrás, los que quepan, cada uno diciendo qué se toma", () => {
+    const m = { referencias: 3 };
+    const ej = [{ clave: "clientes/c1/a.png", toma: ["tipografia"] }, { clave: "clientes/c1/b.png" }, { clave: "clientes/c1/c.png" }];
+    const p = pedidoDeCorreccion({ clave: "clientes/c1/base.png", instruccion: "el titular más grande", ejemplos: ej, modelo: m });
+    expect(p.medios.reference).toEqual(["clientes/c1/base.png", "clientes/c1/a.png", "clientes/c1/b.png"]);
+    expect(p.prompt).toMatch(/^Edita la imagen de referencia 1: el titular más grande\./);
+    expect(p.prompt).toMatch(/Imagen de referencia 2: toma SÓLO/);
+    expect(p.prompt).toMatch(/Imagen de referencia 3: es un EJEMPLO/);
+    expect(p.prompt).not.toMatch(/referencia 4/);
+    // Sin ejemplos, el pedido de siempre.
+    expect(pedidoDeCorreccion({ clave: "k", instruccion: "x", modelo: m }).prompt).toBe(promptDeEdicion("x"));
+    // Un modelo de una sola referencia: sólo la imagen.
+    expect(pedidoDeCorreccion({ clave: "k", instruccion: "x", ejemplos: ej, modelo: { referencias: 1 } }).medios.reference).toEqual(["k"]);
   });
 });

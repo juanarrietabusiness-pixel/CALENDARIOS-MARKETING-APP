@@ -12,7 +12,7 @@
 // ============================================================
 
 import * as api from "./estudio";
-import { promptDeEdicion } from "./estudio";
+import { pedidoDeCorreccion } from "./estudio";
 import { ajustesDe, modeloPorId, MODELOS, porPrecio } from "./estudioCatalogo";
 import { pedidoDeLamina, referenciasDeLamina } from "./carrusel";
 import { componerLamina } from "./textoSobreImagen";
@@ -99,11 +99,12 @@ async function textoEncima({ clienteId, crudo, lamina, plantilla, colores, famil
  * conserva) con el mismo modelo, y sale una nueva; la de antes se queda en la galería. En el modo plantilla se corrige
  * la cruda y el texto se vuelve a poner encima. → { crudo, final }.
  */
-export async function corregirLamina({ clienteId, modelo, resultado, instruccion, lamina, modo = "ia", plantilla = "banda", colores, familia = "", carpetaId = null, seguir }) {
+export async function corregirLamina({ clienteId, modelo, resultado, instruccion, ejemplos = [], lamina, modo = "ia", plantilla = "banda", colores, familia = "", carpetaId = null, seguir }) {
   const base = modo === "plantilla" ? resultado.crudo : resultado.final;
-  const medios = { reference: [base.clave] };
+  // La lámina va primero; los ejemplos de la galería (si los hay) detrás, como guía de lo que se pide.
+  const { prompt, medios } = pedidoDeCorreccion({ clave: base.clave, instruccion, ejemplos, modelo });
   const { trabajo } = await api.pedirImagenes(clienteId, {
-    modelo: modelo.id, prompt: promptDeEdicion(instruccion), n: 1, ajustes: ajustesDe(modelo, { aspectRatio: "4:5", imageSize: "2K" }, medios), medios,
+    modelo: modelo.id, prompt, n: 1, ajustes: ajustesDe(modelo, { aspectRatio: "4:5", imageSize: "2K" }, medios), medios,
     confirmado: true, ...(carpetaId ? { carpetaId } : {}),
   });
   const crudo = await esperarArchivo(clienteId, trabajo, { seguir });

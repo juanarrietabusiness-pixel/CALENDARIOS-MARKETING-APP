@@ -11,7 +11,8 @@
 // ============================================================
 
 import { pedir } from "./db";
-import { estaVivo, diasQueQuedan, MODELOS, MAX_PROMPT, modeloPorId, modeloPorDefecto } from "./estudioCatalogo";
+import { estaVivo, diasQueQuedan, MODELOS, MAX_PROMPT, modeloPorId, modeloPorDefecto, VOCES_OMNI } from "./estudioCatalogo";
+import { lineaDeReferencia } from "./referencias";
 
 const base = (clienteId) => `/estudio/${encodeURIComponent(clienteId)}`;
 const post = (cuerpo) => ({ method: "POST", body: JSON.stringify(cuerpo ?? {}) });
@@ -305,13 +306,14 @@ export function archivoDesdeSrc(src, clienteId, prompt = "") {
 /** El nombre de cada ajuste en la pantalla. */
 export const ETIQUETA_AJUSTE = Object.freeze({
   aspectRatio: "Formato", imageSize: "Tamaño", resolution: "Resolución", duration: "Duración", calidad: "Calidad", formato: "Archivo",
-  modo: "Calidad del video", sonido: "Sonido",
+  modo: "Calidad del video", sonido: "Sonido", voz: "Voz de la locución",
 });
 
 /** «4 s», «720p», «1K» según el ajuste. */
 const VALORES = Object.freeze({
   calidad: { high: "Alta (pule en varias pasadas)", low: "Rápida" }, formato: { webp: "WebP (ligero)", png: "PNG", jpeg: "JPEG" },
   modo: { std: "Estándar (720p)", pro: "Pro (1080p)", "4K": "4K" }, sonido: { si: "Con sonido", no: "Sin sonido" },
+  voz: { "": "La que escoja el modelo", ...VOCES_OMNI },
 });
 
 export function valorDeAjuste(nombre, valor) {
@@ -338,10 +340,26 @@ export const ATAJOS_EDICION = Object.freeze([
  * lo demás. Va tal cual al motor y queda en la galería: lo que se mandó es
  * lo que se ve.
  */
-export function promptDeEdicion(instruccion) {
+export function promptDeEdicion(instruccion, { ejemplos = [] } = {}) {
   const pedido = String(instruccion ?? "").trim().replace(/[.\s]+$/, "");
   if (!pedido) return "";
-  return `Edita la imagen de referencia: ${pedido}. Conserva todo lo demás exactamente igual: la composición, el encuadre, las personas, el producto, los colores, la luz y cualquier texto o logo que no se pida cambiar.`.slice(0, MAX_PROMPT);
+  const conserva = "Conserva todo lo demás exactamente igual: la composición, el encuadre, las personas, el producto, los colores, la luz y cualquier texto o logo que no se pida cambiar.";
+  if (!ejemplos.length) return `Edita la imagen de referencia: ${pedido}. ${conserva}`.slice(0, MAX_PROMPT);
+  // Con ejemplos de la galería: la 1 es la que se edita; las demás, guía de lo que se pide (no se copian enteras).
+  const lineas = ejemplos.map((r, i) => lineaDeReferencia(r, i + 2)
+    || `Imagen de referencia ${i + 2}: es un EJEMPLO de lo que se pide; tómala como guía, no la copies entera.`);
+  return [`Edita la imagen de referencia 1: ${pedido}. ${conserva}`, ...lineas].join("\n").slice(0, MAX_PROMPT);
+}
+
+/**
+ * Corregir una imagen con una indicación y, si se quiere, ejemplos de la galería: la imagen va PRIMERO y los
+ * ejemplos detrás, los que quepan en el modelo (las líneas del pedido dicen sólo los que van). → { prompt, medios }. Pura.
+ */
+export function pedidoDeCorreccion({ clave, instruccion, ejemplos = [], modelo = null }) {
+  const caben = (ejemplos ?? []).filter((e) => e?.clave && e.clave !== clave)
+    .filter((e, i, l) => l.findIndex((x) => x.clave === e.clave) === i)
+    .slice(0, Math.max(0, (modelo?.referencias ?? 1) - 1));
+  return { prompt: promptDeEdicion(instruccion, { ejemplos: caben }), medios: { reference: [clave, ...caben.map((e) => e.clave)] }, ejemplos: caben };
 }
 
 /** Cómo se llama cada sitio de una imagen de apoyo, y qué hace ahí. */

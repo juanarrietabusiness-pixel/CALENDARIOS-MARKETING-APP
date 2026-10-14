@@ -30,3 +30,6 @@
 .reel-tramo-fila { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center; }
 .reel-tramo-fila label { display: inline-flex; align-items: center; gap: var(--sp-2); }
 .reel-tramo-fila .input { width: 84px; }
+/* El sonido del reel: música, locución y efectos, en el mismo pedido del video. */
+.reel-sonido { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--sp-3); margin: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.reel-sonido .field { margin: 0; }

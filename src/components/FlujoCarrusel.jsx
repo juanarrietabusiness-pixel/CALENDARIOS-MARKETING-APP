@@ -5,6 +5,7 @@ import * as api from "../lib/estudio";
 import { TIPOS_PRESET, ESTILOS_VISUALES, estiloDeMarca, limpiarKit, referenciasDePersonajes } from "../lib/kitMarca";
 import { partirGuion, MODOS_TEXTO, PLANTILLAS_TEXTO, MAX_LAMINAS, coloresPlantilla, costoCarrusel } from "../lib/carrusel";
 import { crearCarrusel, crearLamina, corregirLamina, modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
+import ReferenciasGaleria from "./ReferenciasGaleria";
 import "./calendario/RevisionMes.css";
 import "./calendario/CarruselIA.css";
 import "./EstudioLote.css";
@@ -51,6 +52,7 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
   const [proponiendo, setProponiendo] = useState(false);
   const [resultados, setResultados] = useState([]); // por lámina: { crudo, final } | { error } | { cargando }
   const [correcciones, setCorrecciones] = useState({}); // i → texto
+  const [ejemplos, setEjemplos] = useState({}); // i → ejemplos de la galería para corregir esa lámina
   const [aviso, setAviso] = useState(null);
   const carpeta = useRef(null);
   const vivo = useRef(true);
@@ -143,9 +145,12 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
     anterior: (i > 0 ? resultados[i - 1]?.crudo : resultados[1]?.crudo) ?? null, portada: i > 1 ? resultados[0]?.crudo ?? null : null,
   }));
   /** Corregir una sola con una indicación: se edita esa lámina, nada más. */
-  const corregir = (i) => una(i, () => corregirLamina({
-    ...comun(), resultado: resultados[i], instruccion: correcciones[i], lamina: laminas[i],
-  }));
+  const corregir = async (i) => {
+    await una(i, () => corregirLamina({
+      ...comun(), resultado: resultados[i], instruccion: correcciones[i], ejemplos: ejemplos[i] ?? [], lamina: laminas[i],
+    }));
+    setEjemplos((e) => ({ ...e, [i]: [] }));
+  };
 
   const finales = resultados.map((r) => r?.final).filter(Boolean);
   const cambiar = (i, campo, valor) => setLaminas((l) => l.map((x, j) => (j === i ? { ...x, [campo]: valor } : x)));
@@ -273,11 +278,15 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
                       {!creando && r && (
                         <div className="carrusel-lamina-acciones">
                           {r.final && (
-                            <form className="carrusel-corregir" onSubmit={(e) => { e.preventDefault(); if (correcciones[i]?.trim()) corregir(i); }}>
-                              <label className="sr-only" htmlFor={`${ids}-cor-${i}`}>Qué corregir en la lámina {l.n}</label>
-                              <input id={`${ids}-cor-${i}`} className="input" maxLength={300} value={correcciones[i] ?? ""} placeholder="Cambia «en ca» por «en»…" onChange={(e) => setCorrecciones((c) => ({ ...c, [i]: e.target.value }))} />
-                              <button type="submit" className="btn btn-secondary btn-sm" disabled={!correcciones[i]?.trim()}><Icon name="wand" size={14} /> Corregir esta</button>
-                            </form>
+                            <>
+                              <form className="carrusel-corregir" onSubmit={(e) => { e.preventDefault(); if (correcciones[i]?.trim()) corregir(i); }}>
+                                <label className="sr-only" htmlFor={`${ids}-cor-${i}`}>Qué corregir en la lámina {l.n}</label>
+                                <input id={`${ids}-cor-${i}`} className="input" maxLength={300} value={correcciones[i] ?? ""} placeholder="Cambia «en ca» por «en»…" onChange={(e) => setCorrecciones((c) => ({ ...c, [i]: e.target.value }))} />
+                                <button type="submit" className="btn btn-secondary btn-sm" disabled={!correcciones[i]?.trim()}><Icon name="wand" size={14} /> Corregir esta</button>
+                              </form>
+                              <ReferenciasGaleria compacto archivos={estudio?.archivos ?? []} elegidas={ejemplos[i] ?? []} onCambiar={(lista) => setEjemplos((e) => ({ ...e, [i]: lista }))}
+                                max={Math.max(1, (modelo?.referencias ?? 2) - 1)} etiqueta="Ejemplo de la galería" />
+                            </>
                           )}
                           <button type="button" className="btn btn-ghost btn-sm" onClick={() => rehacer(i)}>
                             <Icon name="refresh" size={14} /> {r.error && !r.final ? "Intentar otra vez" : "Rehacer esta"}

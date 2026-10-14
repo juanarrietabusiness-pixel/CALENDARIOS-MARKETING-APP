@@ -504,6 +504,7 @@ describe("Kie.ai: el recorrido de un pedido", () => {
         return json({ success: true, code: 200, msg: "ok", data: { downloadUrl: `https://tempfile.kie.test/ref.${video ? "mp4" : "png"}` } });
       }
       if (u === `${API}/api/v1/jobs/createTask`) return crear ?? json({ code: 200, msg: "success", data: { taskId: "t-1" } });
+      if (u === `${API}/api/v1/omni/audio/create`) return json({ code: 200, msg: "success", data: { audioId: "audio_kore_1" } });
       if (u.startsWith(`${API}/api/v1/jobs/recordInfo`)) {
         const state = estados[Math.min(i++, estados.length - 1)];
         return json({ code: 200, data: { taskId: "t-1", state, ...(state === "success" ? { resultJson: resultado ?? JSON.stringify({ resultUrls: ["https://tempfile.kie.test/out.png"] }) } : {}), ...(state === "fail" ? { failMsg: "contenido no permitido" } : {}) } });
@@ -604,6 +605,22 @@ describe("Kie.ai: el recorrido de un pedido", () => {
     const { archivos } = await galeria();
     expect(archivos[0]).toMatchObject({ tipo: "video", mime: "video/mp4", modelo: "seedance-2-kie" });
     expect(consumo()[0]).toMatchObject({ proveedor: "kie", costo_usd: 0.4 });
+  });
+
+  it("Omni con voz: registra la voz (gratis) y la manda en audio_ids; con imagen inicial no se admite", async () => {
+    const llamadas = kie({ resultado: JSON.stringify({ resultUrls: ["https://tempfile.kie.test/out.mp4"] }) });
+    env.MEDIA.objetos.set("clientes/c1/estudio/2026-09/f1.png", { bytes: PNG, tipo: "image/png" });
+    const { trabajo } = await (await pedirTrabajo({
+      modelo: "gemini-omni-kie", tipo: "video", prompt: "Locución: «Duerme mejor»", ajustes: { duration: "10", voz: "kore" },
+      medios: { reference: ["clientes/c1/estudio/2026-09/f1.png"] }, confirmado: true,
+    })).json();
+    await avanzar(trabajo.id);
+    const voz = llamadas.find((l) => l.url.endsWith("/omni/audio/create"));
+    expect(JSON.parse(voz.init.body)).toEqual({ audio_id: "kore", name: "Voz kore" });
+    const crear = JSON.parse(llamadas.find((l) => l.url.endsWith("/createTask")).init.body);
+    expect(crear.input).toMatchObject({ image_urls: ["https://tempfile.kie.test/ref.png"], audio_ids: ["audio_kore_1"], duration: "10" });
+    expect(validarKie(modeloPorId("gemini-omni-kie"), { medios: { start: ["a"] }, ajustes: { voz: "kore" } })).toMatch(/no admite una voz/);
+    expect(pedidoKie(modeloPorId("gemini-omni-kie"), { prompt: "p", inicio: ["https://i"], audios: ["x"] }).input.audio_ids).toBeUndefined();
   });
 
   it("el resultado: resultJson como texto o como objeto; el error va por `code` aunque el HTTP sea 200", () => {
