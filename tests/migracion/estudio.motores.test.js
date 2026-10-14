@@ -9,6 +9,7 @@ import { generar, texto, SALIDA, MODELOS_HF, PROPORCIONES_CONOCIDAS } from "../.
 import ESQUEMAS_JSON from "../../worker/lib/estudio/higgsfield-schemas.json";
 import { pedidoHiggsfield, rutaDe, cuerpoDe, esDeHiggsfield } from "../../worker/lib/estudio/higgsfield.js";
 import { MODELOS_FAL, pedidoFal, esDeLaCola } from "../../worker/lib/estudio/fal.js";
+import { MODELOS_KIE, pedidoKie, urlsDelResultado, datosDe } from "../../worker/lib/estudio/kie.js";
 
 // ============================================================
 // Los motores de fal.ai y Higgsfield
@@ -485,6 +486,99 @@ describe("fal.ai: el recorrido de un pedido", () => {
     expect(esDeLaCola({}, "https://queue.fal.run.malo.test/x")).toBe(false);
     expect(esDeLaCola({}, "https://fal.run/x")).toBe(false);
     expect(esDeLaCola({}, "nada")).toBe(false);
+  });
+});
+
+describe("Kie.ai: el recorrido de un pedido", () => {
+  const API = "https://api.kie.ai";
+  const SUBIDA = "https://kieai.redpandaai.co/api/file-stream-upload";
+
+  function kie({ estados = ["waiting", "generating", "success"], crear = null, resultado = null } = {}) {
+    const llamadas = [];
+    let i = 0;
+    globalThis.fetch = vi.fn(async (url, init = {}) => {
+      const u = String(url);
+      llamadas.push({ url: u, init });
+      if (u === SUBIDA) return json({ success: true, code: 200, msg: "ok", data: { downloadUrl: "https://tempfile.kie.test/ref.png" } });
+      if (u === `${API}/api/v1/jobs/createTask`) return crear ?? json({ code: 200, msg: "success", data: { taskId: "t-1" } });
+      if (u.startsWith(`${API}/api/v1/jobs/recordInfo`)) {
+        const state = estados[Math.min(i++, estados.length - 1)];
+        return json({ code: 200, data: { taskId: "t-1", state, ...(state === "success" ? { resultJson: resultado ?? JSON.stringify({ resultUrls: ["https://tempfile.kie.test/out.png"] }) } : {}), ...(state === "fail" ? { failMsg: "contenido no permitido" } : {}) } });
+      }
+      if (u.startsWith("https://tempfile.kie.test/out")) return archivo(PNG);
+      return new Response("{}", { status: 404 });
+    });
+    return llamadas;
+  }
+
+  beforeEach(() => { env.KIE_API_KEY = "kie-secreta"; });
+
+  it("cada modelo de Kie del catálogo tiene su pedido, y al revés", () => {
+    expect(Object.keys(MODELOS_KIE).sort()).toEqual(MODELOS.filter((m) => m.motor === "kie").map((m) => m.id).sort());
+  });
+
+  it("GPT Image 2: sin referencias, texto a imagen; con ellas, imagen a imagen; el 4:5 sale 3:4 y el 1:1 no pasa de 2K", () => {
+    const m = modeloPorId("gpt-image-2-kie");
+    expect(pedidoKie(m, { prompt: "p", ajustes: { aspectRatio: "9:16", imageSize: "2K" } })).toEqual({ model: "gpt-image-2-text-to-image", input: { prompt: "p", aspect_ratio: "9:16", resolution: "2K" } });
+    expect(pedidoKie(m, { prompt: "p", ajustes: { aspectRatio: "4:5", imageSize: "1K" }, refs: ["https://a"] })).toEqual({ model: "gpt-image-2-image-to-image", input: { prompt: "p", input_urls: ["https://a"], aspect_ratio: "3:4", resolution: "1K" } });
+    expect(pedidoKie(m, { prompt: "p", ajustes: { aspectRatio: "1:1", imageSize: "4K" } }).input.resolution).toBe("2K");
+    expect(pedidoKie(modeloPorId("nano-banana-pro-kie"), { prompt: "p", ajustes: { aspectRatio: "4:5", imageSize: "2K" }, refs: ["https://a"] }))
+      .toEqual({ model: "nano-banana-pro", input: { prompt: "p", image_input: ["https://a"], aspect_ratio: "4:5", resolution: "2K", output_format: "png" } });
+  });
+
+  it("el resultado: resultJson como texto o como objeto; el error va por `code` aunque el HTTP sea 200", () => {
+    expect(urlsDelResultado({ resultJson: JSON.stringify({ resultUrls: ["https://x/1.png"] }) })).toEqual(["https://x/1.png"]);
+    expect(urlsDelResultado({ resultJson: { resultUrls: ["https://x/2.png", "http://inseguro"] } })).toEqual(["https://x/2.png"]);
+    expect(urlsDelResultado({ resultJson: "no es json" })).toEqual([]);
+    expect(() => datosDe({ code: 402, msg: "Insufficient credits" })).toThrow(/no tiene créditos suficientes en la cuenta: Insufficient credits/);
+    expect(() => datosDe({ code: 401 })).toThrow(/KIE_API_KEY/);
+    expect(datosDe({ code: 200, data: { taskId: "x" } })).toEqual({ taskId: "x" });
+  });
+
+  it("una imagen con referencia: la sube a Kie, crea la tarea con su dirección, espera, la baja a R2 y la cobra al entregarla", async () => {
+    const llamadas = kie();
+    env.MEDIA.objetos.set("clientes/c1/estudio/2026-09/ref.png", { bytes: PNG, tipo: "image/png" });
+    const { trabajo } = await (await pedirTrabajo({ modelo: "gpt-image-2-kie", ajustes: { aspectRatio: "9:16" }, medios: { reference: ["clientes/c1/estudio/2026-09/ref.png"] } })).json();
+    expect(trabajo).toMatchObject({ motor: "kie", estado: "en_cola", costoEstimado: 0.05 });
+    const enviado = (await avanzar(trabajo.id)).trabajo;
+    expect(enviado.estado).toBe("en_marcha");
+    const subida = llamadas.find((l) => l.url === SUBIDA);
+    expect(subida.init.headers.Authorization).toBe("Bearer kie-secreta");
+    expect(subida.init.body.get("uploadPath")).toBe("images/estudio");
+    const crear = llamadas.find((l) => l.url.endsWith("/createTask"));
+    expect(JSON.parse(crear.init.body)).toEqual({
+      model: "gpt-image-2-image-to-image", input: { prompt: "una taza de café", input_urls: ["https://tempfile.kie.test/ref.png"], aspect_ratio: "9:16", resolution: "2K" },
+    });
+    expect(consumo()).toHaveLength(0);
+    expect(remoto(trabajo.id)[0]).toMatchObject({ id: "t-1" });
+
+    const fin = await hastaElFinal(trabajo.id);
+    expect(fin.estado).toBe("hecho");
+    const { archivos } = await galeria();
+    expect(archivos[0]).toMatchObject({ modelo: "gpt-image-2-kie", mime: "image/png" });
+    expect(consumo()[0]).toMatchObject({ proveedor: "kie", modelo: "gpt-image-2-kie", costo_usd: 0.05 });
+    // La llave viaja a Kie y NO al servidor del archivo.
+    expect(llamadas.find((l) => l.url.startsWith("https://tempfile.kie.test/out")).init.headers?.Authorization).toBeUndefined();
+  });
+
+  it("lo que Kie da por fallido dice por qué; sin créditos, lo dice sin llegar a crear nada más", async () => {
+    kie({ estados: ["fail"] });
+    const { trabajo } = await (await pedirTrabajo({ modelo: "nano-banana-2-kie" })).json();
+    const fin = await hastaElFinal(trabajo.id);
+    expect(fin.estado).toBe("fallido");
+    expect(fin.error).toMatch(/Kie.ai no pudo hacerlo \(contenido no permitido\)/);
+
+    kie({ crear: json({ code: 402, msg: "Credits insufficient" }) });
+    const otro = (await (await pedirTrabajo({ modelo: "nano-banana-2-kie" })).json()).trabajo;
+    const mal = await hastaElFinal(otro.id);
+    expect(mal.estado).toBe("fallido");
+    expect(mal.error).toMatch(/no tiene créditos suficientes/);
+  });
+
+  it("sin KIE_API_KEY el motor sale apagado", async () => {
+    delete env.KIE_API_KEY;
+    const { motores } = await (await pedir("/api/estudio/motores")).json();
+    expect(motores.kie).toEqual({ nombre: "Kie.ai", activo: false, llave: "KIE_API_KEY" });
   });
 });
 

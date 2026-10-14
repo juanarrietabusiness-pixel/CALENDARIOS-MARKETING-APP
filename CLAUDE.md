@@ -360,7 +360,7 @@ worker/
     estudio/              El Estudio: meta.js (Muse Image: generar y editar, 0,01 $), prompt.js («Mejorar
                           idea»: la idea más clara, en una o dos frases), trabajos.js (pedir, avanzar por pasos, cancelar; el permiso de
                           un paso a la vez y el cron), motores.js (prueba y Gemini, mismo contrato;
-                          fal.js y higgsfield.js son los otros dos), gemini.js (la llamada,
+                          fal.js, higgsfield.js y kie.js son los otros tres), gemini.js (la llamada,
                           compartida con /api/generar-imagen), galeria.js (archivos, carpetas,
                           papelera), archivos.js (claves de R2, tipo por bytes), descarga.js (bajar un
                           resultado a R2 por flujo, con topes), herramientas.js (ver_estudio,
@@ -1215,6 +1215,13 @@ son del servidor.
   generador. **Nada de fal.ai ni de Higgsfield se ha probado contra el servicio real**: los tests
   usan un `fetch` de mentira que habla como ellos. Lo primero con una llave es un pedido barato
   (Z-Image Turbo, Flux Schnell) y luego uno de video corto.
+  · **Kie.ai es un cuarto proveedor, todo por COLA** (`worker/lib/estudio/kie.js`, `KIE_API_KEY`): GPT Image 2, Nano
+  Banana Pro y Nano Banana 2. Kie contesta casi siempre HTTP 200 y pone el error en `code` (401 llave, 402 créditos,
+  422 datos, 429/455/5xx pasajeros): `datosDe` mira el `code`, no sólo el estado. `resultJson` llega como TEXTO JSON
+  (`urlsDelResultado`). Las imágenes de apoyo se suben a su almacén (`file-stream-upload`, caducan solas) y van por
+  dirección; el resultado se baja SIN la llave. GPT Image 2 no tiene 4:5 (sale 3:4 y se adapta al programar) y en
+  1:1 no pasa de 2K. Un test exige que cada modelo de Kie del catálogo tenga su pedido en `MODELOS_KIE`, y al revés.
+  **Nada de Kie se ha probado contra el servicio real**: la forma sale de su documentación pública.
   · **El VIDEO de referencia es un cuarto papel de los medios** (`medios.video`, junto a start/end/reference). Sólo
   lo admiten los modelos de Higgsfield marcados `conVideo` en el generador (Kling Omni · sigue un video, Kling 3.0
   · copia el movimiento): `video: 1` y `necesitaVideo` salen del esquema. Va a SU almacén como las imágenes, desde

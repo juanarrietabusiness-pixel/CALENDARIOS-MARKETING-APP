@@ -16,7 +16,7 @@ dist-ssr
 .env
 .env.*
 !.env.example
-# Los secretos de `wrangler dev` en local (GOOGLE_AI_KEY, FAL_KEY, HF_KEY…).
+# Los secretos de `wrangler dev` en local (GOOGLE_AI_KEY, FAL_KEY, HF_KEY, KIE_API_KEY…).
 .dev.vars
 .dev.vars.*
 
