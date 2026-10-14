@@ -108,15 +108,3 @@ export function leerIdeasEstudio(texto, plan = []) {
     return [{ id: `idea-${r.n}`, ...r, titulo: corto(x?.titulo, MAX_TITULO) || escena.slice(0, 40), escena, texto }];
   });
 }
-
-/**
- * Lo que entra al compositor con «Usar»: la escena y, si la idea trae texto, la orden de escribirlo EXACTO (igual que
- * desde una publicación, `textoDeLaPieza`). Pura.
- */
-export function ideaAlPedido(idea) {
-  const lineas = String(idea?.texto ?? "").split("\n").map((l) => l.replace(/["“”«»]/g, "").trim()).filter(Boolean);
-  return [
-    String(idea?.escena ?? "").trim(),
-    lineas.length ? `Texto en la imagen, exacto y legible: ${lineas.map((l) => `"${l}"`).join(" / ")}` : "",
-  ].filter(Boolean).join("\n\n");
-}

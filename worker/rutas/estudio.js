@@ -11,6 +11,7 @@
 //   POST   /<cliente>/mejorar                      { idea, tipo }: la IA devuelve la idea más clara (texto)
 //   POST   /<cliente>/versiones                    { idea, n, tipo }: 1–3 escenas distintas con la misma información (texto)
 //   POST   /<cliente>/lote/ideas                   { productoId?, cuantas, formato }: ideas de anuncios por nivel (texto)
+//   POST   /<cliente>/lote/mes                     { mes, dias, formato }: una pieza por día del mes, con el ritmo y la matriz (texto)
 //   POST   /<cliente>/ideas                        { tipo?, n?, video?, tema? }: «Dame ideas», variadas o de un tipo (texto)
 //   POST   /<cliente>/guion-corto                  { idea, segundos, post? }: guion de un video de 8 o 10 s (texto)
 //   PUT    /<cliente>/kit                          { kit }: guarda el kit de marca (paleta, presets, logo…)
@@ -47,6 +48,7 @@ import { kitDe, guardarKit, prepararKit, revisarPieza } from "../lib/estudio/kit
 import { aprenderDeLoVisual } from "../lib/estudio/aprender.js";
 import { ideasDeLote } from "../lib/estudio/lote.js";
 import { ideasDelEstudio } from "../lib/estudio/ideas.js";
+import { ideasDelMes } from "../lib/estudio/loteMes.js";
 import { leerMercado } from "../lib/mercado.js";
 import { angulosDeAnuncio, fotosDelCatalogo } from "../../src/lib/estudioMercado.js";
 import {
@@ -143,6 +145,13 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       const datos = await cuerpo(req);
       if (!datos) return error("JSON inválido");
       return json(await ideasDeLote(env, acceso, cliente, datos));
+    }
+
+    // ---------- El lote del mes completo: las ideas (texto: no pide nada al motor) ----------
+    if (b === "lote" && c === "mes" && metodo === "POST") {
+      const datos = await cuerpo(req);
+      if (!datos) return error("JSON inválido");
+      return json(await ideasDelMes(env, acceso, cliente, datos));
     }
 
     // ---------- «Dame ideas» (texto: no pide nada al motor) ----------

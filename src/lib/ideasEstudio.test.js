@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { planDeIdeas, pedidoDeIdeasEstudio, leerIdeasEstudio, ideaAlPedido, MAX_IDEAS } from "./ideasEstudio";
+import { planDeIdeas, pedidoDeIdeasEstudio, leerIdeasEstudio, MAX_IDEAS } from "./ideasEstudio";
+import { ideaAlPedido } from "./estudio";
 import { PILARES } from "./pilares";
 
 describe("«Dame ideas»", () => {

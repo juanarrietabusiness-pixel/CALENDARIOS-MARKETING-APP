@@ -257,3 +257,32 @@ describe("POST /api/estudio/<cliente>/ideas («Dame ideas»)", () => {
     expect((await ideas({ tipo: "educativo" })).status).toBe(502);
   });
 });
+
+describe("POST /api/estudio/<cliente>/lote/mes (el mes completo)", () => {
+  const delMes = (datos) => pedir("/api/estudio/c1/lote/mes", { method: "POST", body: datos });
+
+  it("una pieza por día escogido, con el tipo del ritmo, la matriz y el precio EXACTO; no crea trabajos", async () => {
+    await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: [{ id: "sofa", nombre: "Sofá cama", precio: "$399" }] } });
+    // Marzo de 2030: los lunes son 4, 11, 18 y 25.
+    anthropic(JSON.stringify({ ideas: [1, 2, 3, 4].map((n) => ({ n, titular: `Titular ${n}`, escena: `Escena ${n}`, descripcion: `Texto ${n}` })) }));
+    const res = await delMes({ mes: "2030-03", dias: [1], formato: "post" });
+    expect(res.status).toBe(200);
+    const r = await res.json();
+    expect(r.ideas.map((i) => [i.fecha, i.pilar, i.productoId])).toEqual([
+      ["2030-03-04", "anuncio", "sofa"], ["2030-03-11", "anuncio", "sofa"], ["2030-03-18", "anuncio", "sofa"], ["2030-03-25", "anuncio", "sofa"],
+    ]);
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/producto: Sofá cama \(producto\) · precio: \$399/);
+    expect(t).not.toMatch(/margen|200 dólares/);
+    expect(db.sqlite.prepare("select count(*) as n from estudio_trabajos").get().n).toBe(0);
+    expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("lote del mes");
+  });
+
+  it("un mes que ya pasó, o sin días con tipo, no llama a nadie", async () => {
+    anthropic("x");
+    expect((await delMes({ mes: "2020-01", dias: [1] })).status).toBe(400);
+    expect((await delMes({ mes: "2030-03", dias: [0] })).status).toBe(400);
+    expect((await delMes({ mes: "nada" })).status).toBe(400);
+    expect(peticiones).toHaveLength(0);
+  });
+});

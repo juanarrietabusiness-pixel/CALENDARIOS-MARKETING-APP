@@ -208,6 +208,15 @@ export function textoDeLaPieza(texto) {
   return String(texto ?? "").split(/\n+/).map((l) => l.replace(/["“”«»]/g, "").trim()).filter(Boolean).slice(0, 4).map((l) => `"${l.slice(0, 80)}"`).join(" / ");
 }
 
+/**
+ * Lo que entra al compositor con «Usar» una idea de «Dame ideas»: la escena y, si la idea trae texto, la orden de
+ * escribirlo EXACTO (igual que desde una publicación). Pura.
+ */
+export function ideaAlPedido(idea) {
+  const pieza = textoDeLaPieza(idea?.texto);
+  return [String(idea?.escena ?? "").trim(), pieza ? `Texto en la imagen, exacto y legible: ${pieza}` : ""].filter(Boolean).join("\n\n");
+}
+
 /** Un archivo escogido en Drive (BancoSelector) como `File`, para subirlo a la galería como cualquier otro. */
 export async function archivoDeDrive(it) {
   const res = await fetch(it.url, { credentials: "same-origin" });
@@ -361,3 +370,6 @@ export const ideasDeLote = (clienteId, datos) => pedir(`${base(clienteId)}/lote/
 
 /** «Dame ideas»: { tipo?, n?, video?, tema?, semilla? } → `{ ideas, productos }` (texto: no gasta en el motor). */
 export const ideasDelEstudio = (clienteId, datos) => pedir(`${base(clienteId)}/ideas`, post(datos));
+
+/** El lote del mes completo: { mes, dias, formato, semilla?, usados? } → `{ ideas, productos }` (texto). */
+export const ideasDelMes = (clienteId, datos) => pedir(`${base(clienteId)}/lote/mes`, post(datos));

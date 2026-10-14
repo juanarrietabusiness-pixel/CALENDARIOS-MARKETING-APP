@@ -145,7 +145,12 @@ src/
                           guardas de las reglas, `kit.aprendido` en el bloque de la marca (puro; también lo importa el Worker)
     loteAnuncios.js       El lote de anuncios por nivel de consciencia: cuántas por nivel, el pedido de las ideas y su
                           lectura, la escena de cada pieza (plantilla o texto de la IA), la publicación (puro; también el Worker)
-    loteEstudio.js        Crear las piezas del lote en el Estudio, de dos en dos, con kit, logo y fotos del producto
+    loteEstudio.js        Crear las piezas del lote en el Estudio, de dos en dos, con kit, logo y fotos del producto;
+                          `ponerTexto` (la compuesta recuerda su cruda: «Otra versión» sobre ella)
+    loteMes.js            El lote del MES completo: días por el ritmo y la temporada, la matriz, la forma de cada
+                          pieza, el pedido y su lectura, la publicación para aprobar (puro; también el Worker)
+    ideasEstudio.js       «Dame ideas» del Estudio: el plan (tipo, composición, producto), el pedido y su lectura
+                          (puro; también lo importa el Worker)
     recrear.js            «Recrear un anuncio»: el análisis en pocas líneas, la versión de partida y lo que va al
                           compositor (el anuncio sólo por su forma, las fotos del producto delante) (puro)
     referencias.js        Qué se toma de cada imagen de referencia (estilo, composición, producto…), la foto
@@ -360,7 +365,8 @@ worker/
                           papelera), archivos.js (claves de R2, tipo por bytes), descarga.js (bajar un
                           resultado a R2 por flujo, con topes), herramientas.js (ver_estudio,
                           crear_en_estudio y estado_trabajo: las mismas para el asistente y el MCP),
-                          higgsfield-schemas.json (SU documentación: campos, valores, obligatorios)
+                          higgsfield-schemas.json (SU documentación: campos, valores, obligatorios), ideas.js
+                          («Dame ideas») y loteMes.js (el lote del mes completo)
     cerebro/              El cerebro de un cliente: conocimiento.js (BM25 por pasajes) y
                           memoria.js (grafo, presupuesto, sinapsis) portados de Agents
                           Office; notas.js (tipos, partir un archivo en notas);
@@ -1288,6 +1294,47 @@ son del servidor.
   en la revisión de marca, y `fundirKit` lo conserva al volver a preparar el kit con IA: si no, «Volver a preparar» se
   llevaría lo aprendido sin avisar. «Usar mis Me gusta como referencia de estilo» (por cliente, apagado) suma las dos
   últimas que gustan con `toma: ["estilo"]`, en el hueco que dejan el producto y el logo.
+- **Un lote que no se parece a una plantilla: la forma la decide el CÓDIGO** (`planDeLote` en loteAnuncios.js,
+  `planDelMes` en loteMes.js, `planDeIdeas` en ideasEstudio.js). La primera versión dejaba la forma al modelo y la
+  plantilla ponía la misma banda abajo: veinte piezas que sólo cambiaban de foto y de texto. Lo que no se da resuelto,
+  el modelo lo resuelve IGUAL cada vez (la regla de la skill «prompt maestro»). Cada pieza lleva su composición
+  (`COMPOSICIONES`, en saltos de 4: dos seguidas nunca se parecen), su fondo, su PUERTA de entrada (ninguna más de dos
+  veces) y su producto: con «la marca en general» rotan los del catálogo —primero los que tienen fotos—, y cada pieza
+  lleva las fotos REALES del suyo. La plantilla de texto sigue a la composición (cuatro: banda, arriba, centro,
+  degradado; en historia nunca abajo). `titularesUsados()` lee de la galería lo que ya salió para no repetirlo.
+- **La pieza compuesta (texto de plantilla encima) RECUERDA su cruda** (`origenId` + `plantilla` al subir; el Worker
+  copia prompt, modelo y trabajo de la cruda si es de ESE cliente, `herenciaDe` en galeria.js). Sin eso salía «Subida»
+  y «Otra versión» no existía para ella. La nueva versión sale cruda y el navegador le pone el MISMO texto en el mismo
+  sitio (`conTextoEncima`). Ojo: comparte `trabajo_id` con la cruda; `esperarArchivo` busca la que NO lleva `plantilla`.
+- **La ESCENA va primero en el pedido y el tipo de pieza detrás** (`componerPedido`, `PREFIJO_TIPO`). Antes el tipo
+  era un párrafo DELANTE que fijaba la composición («el producto al centro, espacio para el titular y el botón»): el
+  motor le hacía caso a eso y no a la idea, y las piezas de «Sin tipo» salían mejor. Las bases (`TIPOS_PRESET.base`)
+  dicen para qué es la pieza y el tono, no cómo se encuadra, y lo mismo se le pide a la IA del kit. Cada tipo (y
+  cada propio) puede llevar hasta dos imágenes de la galería como referencia visual (`kit.referencias`,
+  `referenciasDePreset`; sólo claves de ESE cliente y sólo las que siguen en la galería: una borrada rompería el
+  pedido). En el lote van sólo por su estilo: la composición la decide el plan.
+- **«Mejorar idea» se lanza SOLA al abrir «Crear con IA» desde una publicación** (apagable, se recuerda por
+  navegador): la idea + el texto de la pieza + el contexto llegan juntos y largos, y el motor entiende mucho mejor
+  una o dos frases. El texto entre comillas se conserva EXACTO (lo dice el pedido de la mejora). «Volver a mi idea».
+- **«Usar siempre este modelo»** es del NAVEGADOR (`modeloFijado`/`modeloPreferido` en lib/estudio.js): lo usan el
+  compositor, el lote y «Producir el mes». Un fijado sin llave o retirado cae en el predeterminado.
+- **Quién VE los videos se escoge** (Ajustes → IA → «Ver videos», `ia_modelos.video`, `motorDeVideo`): Gemini con la
+  llave de siempre, Gemini con `GOOGLE_AI_KEY_GRATIS` (nivel gratuito: se apunta a costo 0; Google puede usar lo que
+  recibe y tiene topes, y el 429 lo dice así) o Meta. Meta NO recibe video: `verVideo` contesta 409
+  `codigo: "fotogramas"` y el navegador los saca (`conFotogramas` en db.js) y repite el pedido; sin audio, sin
+  transcripción. `agregarReferencia` NO guarda la referencia en ese 409 (si no, el reintento la guardaría dos veces).
+- **El lote del MES completo** (EstudioLote → «Mes completo», `POST /api/estudio/<c>/lote/mes`): el mes y los días de
+  la semana; cada día toma su tipo del RITMO del cliente con los ajustes de temporada (`sugerenciasDeTemporada`,
+  aplicados solos: son conservadores) y la matriz de «Planificar mes» (`asignarMatriz`). Las piezas van al calendario
+  como IDEAS PARA APROBAR, cada una en su día, una tras otra (`llevarAlCalendario`: el mismo calendario no se escribe a
+  la vez). Del mes en curso, sólo desde hoy (Panamá).
+- **«Dame ideas»** (`POST /api/estudio/<c>/ideas`): variadas (un tipo de contenido distinto cada una) o del tipo
+  escogido, sobre lo escrito si hay algo. «Usar» pone escena + texto exacto, el tipo y las fotos de su producto.
+- **Varios productos en una pieza**: `productosNombrados` encuentra TODOS los que nombra la idea («Sofá cama» no cuenta
+  también como «Sofá») y `fotosDeVariosProductos` reparte los huecos: una foto de cada uno antes que la segunda de
+  ninguno. «Fotos de productos» del compositor suma productos con la misma regla.
+- **El kit de marca va en su chunk** (lazy en Estudio.jsx): el del Estudio tiene tope de 20 kB comprimidos
+  (`rendimiento.bundle.test.js`) y lo pasó al sumar «Dame ideas» y la referencia por tipo.
 - **El lote de anuncios cobra sólo al final** (`EstudioLote.jsx`, `POST /api/estudio/<c>/lote/ideas`, función «ideas de
   anuncios» en el hueco de redacción). La IA escribe titular, apoyo y escena por nivel con el catálogo (precio EXACTO),
   el estudio de mercado aprobado del producto y el cerebro para texto (nunca lo interno): eso es texto. Las ideas se

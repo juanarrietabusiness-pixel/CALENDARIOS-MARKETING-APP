@@ -2,9 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useStat
 import Icon from "./Icon";
 import Compositor from "./EstudioCompositor";
 import Visor, { Pieza } from "./EstudioVisor";
-import EstudioKit from "./EstudioKit";
 import { kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, componerPedido, ponerLogo, ideaDelPedido, conOtraEscena, referenciasDePreset, nombreDePreset } from "../lib/kitMarca";
-import { ideaAlPedido } from "../lib/ideasEstudio";
 import { presetDePilar, nombreDePilar } from "../lib/pilares";
 import { ideaDesdeAngulo } from "../lib/estudioMercado";
 import { lineasDeReferencias, productosNombrados } from "../lib/referencias";
@@ -16,8 +14,6 @@ import { idDeCarpeta } from "../lib/drive";
 import { OverflowMenu } from "./calendario/primitivas";
 import { soloLectura } from "../lib/sesionActual";
 import * as api from "../lib/estudio";
-import { ponerTexto } from "../lib/loteEstudio";
-import { esperarArchivo } from "../lib/carruselEstudio";
 import {
   modeloPorId, nombreDelModelo, estimar, textoCosto, pideConfirmar, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
 } from "../lib/estudioCatalogo";
@@ -28,6 +24,8 @@ import {
 import "./Estudio.css";
 
 const EstudioLote = lazy(() => import("./EstudioLote"));
+// El kit va plegado y sólo en la pestaña: en su chunk (el del Estudio tiene tope, rendimiento.bundle.test.js).
+const EstudioKit = lazy(() => import("./EstudioKit"));
 const EstudioRecrear = lazy(() => import("./EstudioRecrear"));
 
 // ============================================================
@@ -374,7 +372,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const usarIdeaGenerada = (idea) => {
     setConfirmando(null);
     setIdeaAnterior(form.prompt || null);
-    setForm((f) => ({ ...f, prompt: (f.tipo === "video" ? idea.escena : ideaAlPedido(idea)).slice(0, MAX_PROMPT) }));
+    setForm((f) => ({ ...f, prompt: (f.tipo === "video" ? idea.escena : api.ideaAlPedido(idea)).slice(0, MAX_PROMPT) }));
     setPreset(presetDePilar(idea.tipo));
     if (form.tipo === "imagen" && idea.productoId) ponerFotosDeProducto(idea.productoId);
     avisar(true, "Idea puesta en el pedido. Revísala (o pulsa «Mejorar idea») y crea.");
@@ -594,6 +592,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
    */
   const conTextoEncima = async (a, trabajo) => {
     try {
+      // En diferido: el lienzo y el texto de la plantilla sólo hacen falta aquí, y el chunk del Estudio tiene tope.
+      const [{ esperarArchivo }, { ponerTexto }] = await Promise.all([import("../lib/carruselEstudio"), import("../lib/loteEstudio")]);
       const crudo = await esperarArchivo(client.id, trabajo, { seguir: () => montado.current });
       const p = a.ajustes.plantilla;
       await ponerTexto({ clienteId: client.id, crudo, texto: p.texto, plantilla: p.plantilla, kit, carpetaId: a.carpetaId ?? null, nombre: "version" });
@@ -880,22 +880,24 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
       {/* ---------- El kit de marca ---------- */}
       {!dialogo && datos && (
-        <EstudioKit
-          client={client}
-          kit={kit}
-          archivos={archivos}
-          lectura={lectura}
-          onPreparar={() => api.prepararKit(client.id)}
-          onGuardar={guardarKitDeMarca}
-        />
+        <Suspense fallback={null}>
+          <EstudioKit
+            client={client}
+            kit={kit}
+            archivos={archivos}
+            lectura={lectura}
+            onPreparar={() => api.prepararKit(client.id)}
+            onGuardar={guardarKitDeMarca}
+          />
+        </Suspense>
       )}
 
       {/* ---------- Un lote de anuncios por nivel de consciencia ---------- */}
       {!lectura && !dialogo && motores && (
         <div className="card est-lote-entrada">
           <div>
-            <strong>Anuncios</strong>
-            <p className="hint">Un lote por nivel de consciencia (la IA escribe las ideas, tú las revisas y ves el costo), o recrea con la marca un anuncio que te guste.</p>
+            <strong>En lote</strong>
+            <p className="hint">Anuncios por nivel de consciencia, o el MES completo con el ritmo del cliente (cada día su tipo, al calendario como ideas para aprobar). La IA escribe las ideas, tú las revisas y ves el costo. O recrea con la marca un anuncio que te guste.</p>
           </div>
           <div className="est-lote-botones">
             <button type="button" className="btn btn-secondary" onClick={() => setLoteAbierto(true)}><Icon name="megaphone" size={16} /> Crear un lote</button>

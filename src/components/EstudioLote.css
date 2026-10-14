@@ -22,6 +22,7 @@
 .lote-lista, .lote-resultados { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-3); }
 .lote-idea { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .lote-idea[data-quitada] { opacity: 0.55; }
+.lote-dia { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: 0; font-size: var(--fs-sm); }
 .lote-forma { display: flex; flex-direction: column; gap: var(--sp-1); }
 .lote-forma-campo { display: flex; flex-direction: column; gap: var(--sp-1); }
 .lote-forma .hint { margin: 0; }
