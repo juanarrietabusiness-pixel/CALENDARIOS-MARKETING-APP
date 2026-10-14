@@ -14,6 +14,8 @@
 //   POST   /<cliente>/lote/mes                     { mes, dias, formato, desde?, tamano? }: una pieza por día del mes, con el ritmo y la matriz (texto)
 //   POST   /<cliente>/ideas                        { tipo?, n?, video?, tema? }: «Dame ideas», variadas o de un tipo (texto)
 //   POST   /<cliente>/carrusel/propuesta           { guion?, tema?, preset?, estilo?, productoId?, personajes? }: el plan por láminas (texto)
+//   POST   /<cliente>/carrusel/ideas               { preset?, tema?, productoId?, n?, usados? }: ideas de carrusel con su guion (texto)
+//   POST   /<cliente>/reel/ideas                   { preset?, tema?, productoId?, n?, usados?, segundos? }: ideas de reel IA (texto)
 //   POST   /<cliente>/reel/guion                   { idea, segundos?, preset?, estilo?, productoId?, personajes? }: el guion por planos (texto)
 //   POST   /<cliente>/guion-corto                  { idea, segundos, post? }: guion de un video de 8 o 10 s (texto)
 //   PUT    /<cliente>/kit                          { kit }: guarda el kit de marca (paleta, presets, logo…)
@@ -52,6 +54,7 @@ import { produccionDeLote } from "../lib/estudio/lote.js";
 import { ideasDelEstudio } from "../lib/estudio/ideas.js";
 import { propuestaDeCarrusel } from "../lib/estudio/carrusel.js";
 import { guionDeReel } from "../lib/estudio/reel.js";
+import { ideasDeFormato } from "../lib/estudio/ideasFormato.js";
 import { leerMercado } from "../lib/mercado.js";
 import { angulosDeAnuncio, fotosDelCatalogo } from "../../src/lib/estudioMercado.js";
 import {
@@ -162,6 +165,18 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       const datos = await cuerpo(req);
       if (!datos) return error("JSON inválido");
       return json(await ideasDelEstudio(env, acceso, cliente, datos));
+    }
+
+    // ---------- «Dame ideas» de carrusel o de reel IA (texto: no pide nada al motor) ----------
+    if ((b === "carrusel" || b === "reel") && c === "ideas" && metodo === "POST") {
+      const datos = await cuerpo(req);
+      if (!datos) return error("JSON inválido");
+      try {
+        return json(await ideasDeFormato(env, acceso, cliente, b, datos));
+      } catch (e) {
+        if (e?.estado) return error(e.message, e.estado);
+        throw e;
+      }
     }
 
     // ---------- El carrusel: la contrapropuesta del director de arte (texto: no pide nada al motor) ----------

@@ -40,6 +40,9 @@ export const mejorarIdea = (clienteId, datos) => pedir(`${base(clienteId)}/mejor
 export const proponerCarrusel = (clienteId, datos) => pedir(`${base(clienteId)}/carrusel/propuesta`, post(datos));
 /** El reel: el guion por planos → { hilo, planos: [{ n, desde, hasta, escena, texto, camara }], sonido, descripcion } (texto). */
 export const guionDeReel = (clienteId, datos) => pedir(`${base(clienteId)}/reel/guion`, post(datos));
+
+/** «Dame ideas» de carrusel o de reel IA: { preset?, tema?, productoId?, n?, usados? } → `{ ideas }` (texto). */
+export const ideasDeFormato = (clienteId, formato, datos) => pedir(`${base(clienteId)}/${formato === "reel" ? "reel" : "carrusel"}/ideas`, post(datos));
 /** «Otra versión distinta»: { idea, n, tipo } → { versiones: [escena] } (texto: no gasta en el motor). */
 export const versionesDeIdea = (clienteId, datos) => pedir(`${base(clienteId)}/versiones`, post(datos));
 /** El guion de un video corto (8 o 10 s): `{ guion, prompt }`. Texto: no pide nada al motor. */

@@ -8,6 +8,7 @@ import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio"
 import { modelosParaReel, modeloRecomendadoParaReel, modeloParaTramo, crearFotogramas, crearFotograma, editarImagen, pedidoDeVideo, crearVideo, corregirTramo } from "../lib/reelEstudio";
 import { CopyButton } from "./calendario/primitivas";
 import ReferenciasGaleria from "./ReferenciasGaleria";
+import IdeasDeFormato from "./IdeasDeFormato";
 import "./calendario/RevisionMes.css";
 import "./calendario/CarruselIA.css";
 import "./EstudioLote.css";
@@ -232,6 +233,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
 
       {paso === "idea" && (
         <div className="carrusel-opciones">
+          <IdeasDeFormato clienteId={clienteId} formato="reel" preset={preset} productoId={productoId} segundos={duracion} onUsar={(i) => setIdea(i.idea)} />
           <div className="field">
             <label className="label" htmlFor={`${ids}-idea`}>La idea central</label>
             <textarea id={`${ids}-idea`} className="input" rows={3} maxLength={1500} value={idea} onChange={(e) => setIdea(e.target.value)}

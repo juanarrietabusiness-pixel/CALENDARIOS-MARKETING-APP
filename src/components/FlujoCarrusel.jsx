@@ -6,6 +6,7 @@ import { TIPOS_PRESET, ESTILOS_VISUALES, estiloDeMarca, limpiarKit, referenciasD
 import { partirGuion, MODOS_TEXTO, PLANTILLAS_TEXTO, MAX_LAMINAS, coloresPlantilla, costoCarrusel } from "../lib/carrusel";
 import { crearCarrusel, crearLamina, corregirLamina, modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
 import ReferenciasGaleria from "./ReferenciasGaleria";
+import IdeasDeFormato from "./IdeasDeFormato";
 import "./calendario/RevisionMes.css";
 import "./calendario/CarruselIA.css";
 import "./EstudioLote.css";
@@ -207,6 +208,8 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
               </div>
             </div>
           )}
+          <IdeasDeFormato clienteId={clienteId} formato="carrusel" preset={preset} productoId={productoId} tema={tema}
+            onUsar={(i) => { setTema(i.tema || i.titulo); setGuion(i.guion ?? ""); }} />
           <div className="field">
             <label className="label" htmlFor={`${ids}-tema`}>Tema o idea central</label>
             <input id={`${ids}-tema`} className="input" maxLength={300} value={tema} onChange={(e) => setTema(e.target.value)} placeholder="¿Por qué nos llamamos Baby Caleb?" />
