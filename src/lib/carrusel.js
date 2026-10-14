@@ -113,24 +113,85 @@ const comillas = (texto) => String(texto ?? "").split(/\n+/).map((l) => l.replac
   .map((l) => `"${l.slice(0, 120)}"`).join(" / ");
 
 /**
- * Lo que se le pide al motor para UNA lámina. `preset` es el estilo de la marca (kit), `conAnteriores` si van las
- * láminas anteriores de referencia, `conFotos` si va la foto del producto. Pura.
+ * Lo que se le pide al motor para UNA lámina. `preset` es el estilo de la marca (kit: tipo, estilo visual y marca),
+ * `conAnteriores` si van las láminas anteriores de referencia, `conFotos` si va la foto del producto. Con la
+ * PROPUESTA del director de arte, cada lámina trae además qué se ve (`escena`), su composición y el hilo que comparten
+ * todas (`hilo`); `personajes`, las líneas de quién es cada personaje que va de referencia. Pura.
  */
-export function pedidoDeLamina({ lamina, total, idea = "", preset = "", modo = "ia", plantilla = "banda", conAnteriores = false, conFotos = false }) {
+export function pedidoDeLamina({ lamina, total, idea = "", preset = "", modo = "ia", plantilla = "banda", conAnteriores = false, conFotos = false, hilo = "", personajes = "" }) {
   const rol = { portada: "la PORTADA: tiene que detener el scroll", cierre: "el CIERRE: invita a actuar", contenido: "una lámina de contenido" }[lamina.rol] ?? "una lámina";
   const zona = PLANTILLAS_TEXTO[plantilla]?.zona ?? PLANTILLAS_TEXTO.banda.zona;
   return [
     `Lámina ${lamina.n} de ${total} de un carrusel de Instagram, vertical 4:5. Es ${rol}.`,
+    lamina.escena ? `Qué se ve en esta lámina: ${String(lamina.escena).slice(0, MAX_ESCENA_LAMINA)}` : "",
+    lamina.composicion ? `Composición de esta lámina: ${String(lamina.composicion).slice(0, 200)}` : "",
     preset,
     idea ? `Tema del carrusel: ${String(idea).slice(0, 300)}` : "",
+    hilo ? `Lo que comparten TODAS las láminas: ${String(hilo).slice(0, 300)}` : "",
+    personajes,
     conAnteriores
-      ? "Las imágenes de referencia incluyen las láminas anteriores de este MISMO carrusel: conserva exactamente su estilo, fondo, paleta, tipografía, márgenes y composición base, como piezas de una misma serie. Cambia sólo el contenido de esta lámina."
+      ? "Las imágenes de referencia incluyen las láminas anteriores de este MISMO carrusel: conserva exactamente su estilo, fondo, paleta, tipografía, márgenes y personajes, como piezas de una misma serie. Cambia sólo el contenido de esta lámina."
       : "Define un estilo limpio y reconocible: las siguientes láminas lo van a repetir.",
     conFotos ? "Una de las referencias es la foto real del producto: si aparece, que sea ese producto, igual." : "",
     modo === "plantilla"
       ? `NO escribas ningún texto, letra ni número en la imagen: el texto se pone después. Deja ${zona} limpio y despejado, con buen contraste, para ese texto.\nLo que dice esta lámina (sólo para inspirar la imagen): ${String(lamina.texto).slice(0, 300)}`
       : `Escribe en la lámina este texto, EXACTO, legible y bien jerarquizado (lo primero grande, lo demás más pequeño): ${comillas(lamina.texto)}. Ningún otro texto.`,
   ].filter(Boolean).join("\n\n").slice(0, 3800);
+}
+
+// ------------------------------------------------------------
+// La contrapropuesta del director de arte (texto)
+// ------------------------------------------------------------
+
+export const MAX_ESCENA_LAMINA = 300;
+
+/**
+ * Lo que se le pide a la IA: el guion (o el tema) convertido en un plan lámina por lámina que entienda quien lo va a
+ * generar (como la contrapropuesta que hacía Flow): qué se ve, el texto EXACTO con su jerarquía y la composición, y
+ * el hilo visual que comparten todas. `laminas`: las del guion (`partirGuion`); sin guion, la IA escribe de 5 a 7 desde
+ * el tema. Pura.
+ */
+export function pedidoDePropuesta({ marca = "la marca", rubro = "", laminas = [], tema = "", tipo = "", estilo = "", producto = "", personajes = [], identidad = "" }) {
+  const conGuion = laminas.length >= 2;
+  return [
+    `Eres director de arte de una agencia. Prepara un carrusel de Instagram (4:5) de ${marca}${rubro ? ` (${rubro})` : ""} para un generador de imágenes que hará las láminas UNA a una, cada una con la anterior de referencia.`,
+    conGuion ? "Convierte este guion en un plan lámina por lámina. Respeta su orden y sus datos; puedes acortar un texto que no quepa en una lámina, sin cambiar precios ni cifras:" : `No hay guion: escribe de 5 a 7 láminas sobre este tema: ${String(tema).slice(0, 400)}`,
+    conGuion ? laminas.map((l) => `${l.n}. (${l.rol}) ${String(l.texto).replace(/\s+/g, " ").slice(0, 400)}`).join("\n") : "",
+    conGuion && tema ? `Tema: ${String(tema).slice(0, 300)}` : "",
+    tipo ? `Tipo de pieza: ${tipo}.` : "",
+    estilo ? `Estilo visual: ${estilo}` : "",
+    producto ? `Producto: ${producto}` : "",
+    personajes.length ? `Personajes de la marca (salen IGUAL en todas las láminas donde aparezcan): ${personajes.join("; ")}` : "",
+    identidad ? `Identidad de la marca: ${String(identidad).slice(0, 600)}` : "",
+    "",
+    "Para cada lámina:",
+    `- "escena": qué se VE, en una o dos frases concretas (sujeto, acción, lugar, luz, encuadre). Sin texto dentro. ${MAX_ESCENA_LAMINA} caracteres.`,
+    '- "texto": lo que va ESCRITO, como mucho tres líneas cortas separadas por «\\n»: la primera es el titular (grande); las demás, el apoyo. Corto: se tiene que leer en dos segundos.',
+    '- "composicion": dónde va el sujeto y dónde el texto, en una frase. Distinta en cada lámina, con el mismo hilo visual.',
+    "La portada detiene el scroll; las de en medio cuentan una idea cada una; el cierre invita a actuar.",
+    "",
+    'Responde SOLO con JSON: {"hilo":"lo que comparten todas (fondo, luz, paleta, personaje), en una frase","laminas":[{"n":1,"rol":"portada","escena":"…","texto":"…","composicion":"…"}]}',
+  ].filter((l) => l !== "").join("\n");
+}
+
+/** La respuesta → { hilo, laminas: [{ n, rol, escena, texto, composicion }] } (hasta MAX_LAMINAS), o null. Pura. */
+export function leerPropuesta(texto) {
+  const t = String(texto ?? "").replace(/```[a-z]*|```/g, "");
+  const i = t.indexOf("{");
+  const j = t.lastIndexOf("}");
+  if (i < 0 || j <= i) return null;
+  let d;
+  try { d = JSON.parse(t.slice(i, j + 1)); } catch { return null; }
+  const lista = (Array.isArray(d?.laminas) ? d.laminas : []).map((x) => ({
+    escena: String(x?.escena ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_ESCENA_LAMINA),
+    texto: String(x?.texto ?? "").split(/\n|\\n/).map((l) => l.trim()).filter(Boolean).slice(0, 3).join("\n").slice(0, MAX_TEXTO),
+    composicion: String(x?.composicion ?? "").replace(/\s+/g, " ").trim().slice(0, 200),
+  })).filter((x) => x.escena || x.texto).slice(0, MAX_LAMINAS);
+  if (lista.length < 2) return null;
+  return {
+    hilo: String(d?.hilo ?? "").replace(/\s+/g, " ").trim().slice(0, 300),
+    laminas: lista.map((x, k) => ({ n: k + 1, rol: k === 0 ? "portada" : k === lista.length - 1 && lista.length >= 3 ? "cierre" : "contenido", ...x })),
+  };
 }
 
 // ------------------------------------------------------------

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  partirGuion, titularYApoyo, referenciasDeLamina, pedidoDeLamina, coloresPlantilla, textoSobre, partirLineas, costoCarrusel, MAX_LAMINAS,
+  partirGuion, titularYApoyo, referenciasDeLamina, pedidoDeLamina, coloresPlantilla, textoSobre, partirLineas, costoCarrusel, MAX_LAMINAS, pedidoDePropuesta, leerPropuesta,
 } from "./carrusel.js";
 
 describe("partir el guion en láminas", () => {
@@ -77,5 +77,36 @@ describe("la plantilla", () => {
     expect(partirLineas("uno dos tres cuatro", 80, medir)).toEqual(["uno dos", "tres", "cuatro"]);
     expect(partirLineas("palabralarguísima", 50, medir)).toEqual(["palabralarguísima"]);
     expect(partirLineas("a b c d e", 10, medir, 2)).toEqual(["a", "b…"]);
+  });
+});
+
+describe("la contrapropuesta del director de arte", () => {
+  it("pide el plan lámina por lámina con el guion, el tipo, el estilo, el producto y los personajes", () => {
+    const laminas = partirGuion("Portada: ¿Por qué nos llamamos Baby Caleb?\nSlide 1: Caleb fue uno de los doce espías\nCTA: Escríbenos");
+    const p = pedidoDePropuesta({ marca: "Baby Caleb", laminas, tipo: "Diferenciador", estilo: "Acabado editorial.", producto: "Pañales · $25", personajes: ["Caleb: bebé pelirrojo"] });
+    expect(p).toMatch(/Convierte este guion en un plan lámina por lámina/);
+    expect(p).toMatch(/1\. \(portada\) ¿Por qué nos llamamos Baby Caleb\?/);
+    expect(p).toMatch(/Tipo de pieza: Diferenciador\./);
+    expect(p).toMatch(/Personajes de la marca \(salen IGUAL.*Caleb: bebé pelirrojo/);
+    expect(p).toMatch(/"escena".*"texto".*"composicion"/s);
+    // Sin guion, de 5 a 7 desde el tema.
+    expect(pedidoDePropuesta({ tema: "Pañales para bebés grandes" })).toMatch(/escribe de 5 a 7 láminas sobre este tema: Pañales para bebés grandes/);
+  });
+
+  it("lee la propuesta: hilo y láminas con rol, escena, texto en hasta tres líneas y composición", () => {
+    const r = leerPropuesta('Aquí va: {"hilo":"fondo crema","laminas":[{"escena":"Bebé con gorro","texto":"¿Por qué Caleb?\\\\nUna historia\\\\nde fe\\\\nsobra","composicion":"texto arriba"},{"escena":"b","texto":"x"},{"escena":"c","texto":"y"}]}');
+    expect(r.hilo).toBe("fondo crema");
+    expect(r.laminas.map((l) => l.rol)).toEqual(["portada", "contenido", "cierre"]);
+    expect(r.laminas[0]).toMatchObject({ n: 1, escena: "Bebé con gorro", texto: "¿Por qué Caleb?\nUna historia\nde fe", composicion: "texto arriba" });
+    expect(leerPropuesta("nada")).toBeNull();
+    expect(leerPropuesta('{"laminas":[{"escena":"sola"}]}')).toBeNull();
+  });
+
+  it("cada lámina lleva qué se ve, su composición, el hilo y quién es cada personaje", () => {
+    const p = pedidoDeLamina({ lamina: { n: 2, rol: "contenido", texto: "Hola", escena: "El bebé gatea", composicion: "texto arriba" }, total: 4, hilo: "fondo crema", personajes: "Una de las referencias es «Caleb»." });
+    expect(p).toMatch(/Qué se ve en esta lámina: El bebé gatea/);
+    expect(p).toMatch(/Composición de esta lámina: texto arriba/);
+    expect(p).toMatch(/Lo que comparten TODAS las láminas: fondo crema/);
+    expect(p).toMatch(/«Caleb»/);
   });
 });

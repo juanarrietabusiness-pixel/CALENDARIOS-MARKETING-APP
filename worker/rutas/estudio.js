@@ -13,6 +13,7 @@
 //   POST   /<cliente>/lote/ideas                   { modo: niveles|matriz|tipos, … }: la producción en lote (texto)
 //   POST   /<cliente>/lote/mes                     { mes, dias, formato }: una pieza por día del mes, con el ritmo y la matriz (texto)
 //   POST   /<cliente>/ideas                        { tipo?, n?, video?, tema? }: «Dame ideas», variadas o de un tipo (texto)
+//   POST   /<cliente>/carrusel/propuesta           { guion?, tema?, preset?, estilo?, productoId?, personajes? }: el plan por láminas (texto)
 //   POST   /<cliente>/guion-corto                  { idea, segundos, post? }: guion de un video de 8 o 10 s (texto)
 //   PUT    /<cliente>/kit                          { kit }: guarda el kit de marca (paleta, presets, logo…)
 //   POST   /<cliente>/kit/preparar                 La IA PROPONE el kit desde el cerebro (no guarda)
@@ -48,6 +49,7 @@ import { kitDe, guardarKit, prepararKit, revisarPieza } from "../lib/estudio/kit
 import { aprenderDeLoVisual } from "../lib/estudio/aprender.js";
 import { produccionDeLote } from "../lib/estudio/lote.js";
 import { ideasDelEstudio } from "../lib/estudio/ideas.js";
+import { propuestaDeCarrusel } from "../lib/estudio/carrusel.js";
 import { leerMercado } from "../lib/mercado.js";
 import { angulosDeAnuncio, fotosDelCatalogo } from "../../src/lib/estudioMercado.js";
 import {
@@ -158,6 +160,18 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       const datos = await cuerpo(req);
       if (!datos) return error("JSON inválido");
       return json(await ideasDelEstudio(env, acceso, cliente, datos));
+    }
+
+    // ---------- El carrusel: la contrapropuesta del director de arte (texto: no pide nada al motor) ----------
+    if (b === "carrusel" && c === "propuesta" && metodo === "POST") {
+      const datos = await cuerpo(req);
+      if (!datos) return error("JSON inválido");
+      try {
+        return json(await propuestaDeCarrusel(env, acceso, cliente, datos));
+      } catch (e) {
+        if (e?.estado) return error(e.message, e.estado);
+        throw e;
+      }
     }
 
     // ---------- «Otra versión distinta»: otras escenas (texto: no pide nada al motor) ----------

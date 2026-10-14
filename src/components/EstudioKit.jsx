@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import Icon from "./Icon";
 import {
-  TIPOS_PRESET, MAX_PROPIOS, MAX_ESTILOS, MAX_REFS_PRESET, ESTILOS_VISUALES, ESTILO_POR_TIPO, limpiarKit, kitVacio, textoPreset, fundirKit, bloqueDeMarca, nombreDeEstilo,
+  TIPOS_PRESET, MAX_PROPIOS, MAX_ESTILOS, MAX_PERSONAJES, MAX_REFS_PRESET, ESTILOS_VISUALES, ESTILO_POR_TIPO, limpiarKit, kitVacio, textoPreset, fundirKit, bloqueDeMarca, nombreDeEstilo,
 } from "../lib/kitMarca";
 
 // ============================================================
@@ -22,13 +22,13 @@ import {
 // ============================================================
 
 /** Hasta dos imágenes de la galería como referencia visual de un tipo de pieza. */
-function RefsDeTipo({ ids, id, nombre, claves = [], archivos = [], onCambiar }) {
+function RefsDeTipo({ ids, id, nombre, claves = [], archivos = [], onCambiar, titulo = "Referencia visual:" }) {
   const imagenes = archivos.filter((a) => a.tipo === "imagen").slice(0, 36);
   const puestas = claves.map((c) => archivos.find((a) => a.clave === c) ?? { clave: c, src: `/api/media/${c}`, id: c });
   const alternar = (clave) => onCambiar(claves.includes(clave) ? claves.filter((c) => c !== clave) : [...claves, clave].slice(-MAX_REFS_PRESET));
   return (
     <div className="est-kit-refs">
-      <span className="hint">Referencia visual:</span>
+      <span className="hint">{titulo}</span>
       {puestas.map((a) => (
         <span key={a.clave} className="est-ref">
           <img src={a.src} alt="" />
@@ -54,6 +54,7 @@ function RefsDeTipo({ ids, id, nombre, claves = [], archivos = [], onCambiar }) 
 const PALETA_VACIA = () => ({ hex: "#", nombre: "", rol: "" });
 const PROPIO_VACIO = () => ({ id: `propio-${Date.now().toString(36)}`, nombre: "", texto: "" });
 const ESTILO_VACIO = () => ({ id: `estilo-${Date.now().toString(36)}`, nombre: "", texto: "" });
+const PERSONAJE_VACIO = () => ({ id: `personaje-${Date.now().toString(36)}`, nombre: "", descripcion: "", imagenes: [] });
 
 export default function EstudioKit({ client, kit: guardado, archivos = [], lectura = false, onGuardar, onPreparar }) {
   const ids = useId();
@@ -116,7 +117,7 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], lectu
               <Icon name="brain" size={14} /> {ocupado === "preparar" ? "Leyendo el cerebro…" : vacio ? "Preparar con IA" : "Volver a preparar"}
             </button>
             {!vacio && !editando && (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditando({ ...kit, paleta: [...kit.paleta], propios: [...kit.propios], estilos: [...kit.estilos] }); setAbierto(true); }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditando({ ...kit, paleta: [...kit.paleta], propios: [...kit.propios], estilos: [...kit.estilos], personajes: [...kit.personajes] }); setAbierto(true); }}>
                 <Icon name="pencil" size={14} /> Editar
               </button>
             )}
@@ -151,7 +152,7 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], lectu
           )}
 
           {!propuesta && !borrador && vacio && !lectura && (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditando({ ...kit, paleta: [PALETA_VACIA()], propios: [], estilos: [] })}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditando({ ...kit, paleta: [PALETA_VACIA()], propios: [], estilos: [], personajes: [] })}>
               <Icon name="pencil" size={14} /> Escribirlo a mano
             </button>
           )}
@@ -245,6 +246,26 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], lectu
                 <p className="hint">Dice CÓMO se ve (luz, acabado, ambiente) en una o dos frases; la referencia lo enseña. Se escoge en «Estilo visual» junto a los de la casa.</p>
               </fieldset>
               <fieldset className="est-kit-propios">
+                <legend className="label">Personajes de {client.name}</legend>
+                {(borrador.personajes ?? []).map((p, i) => {
+                  const cambiarP = (campo, valor) => cambiar("personajes", borrador.personajes.map((x, j) => (j === i ? { ...x, [campo]: valor } : x)));
+                  return (
+                    <div key={p.id} className="est-kit-propio">
+                      <input className="input" aria-label={`Nombre del personaje ${i + 1}`} value={p.nombre} maxLength={40} placeholder="Caleb" onChange={(e) => cambiarP("nombre", e.target.value)} />
+                      <textarea className="input" rows={2} aria-label={`Cómo es «${p.nombre || `personaje ${i + 1}`}»`} value={p.descripcion} maxLength={300}
+                        placeholder="Bebé de un año, pelirrojo, ojos claros, con gorro marrón y traje verde salvia con bordados azules" onChange={(e) => cambiarP("descripcion", e.target.value)} />
+                      <button type="button" className="btn-icon" aria-label={`Quitar el personaje ${p.nombre || i + 1}`} onClick={() => cambiar("personajes", borrador.personajes.filter((_, j) => j !== i))}><Icon name="close" size={14} /></button>
+                      <RefsDeTipo ids={ids} id={p.id} nombre={p.nombre || `personaje ${i + 1}`} archivos={archivos} claves={p.imagenes ?? []} titulo="Retrato y cuerpo entero:"
+                        onCambiar={(l) => cambiarP("imagenes", l)} />
+                    </div>
+                  );
+                })}
+                {(borrador.personajes ?? []).length < MAX_PERSONAJES && (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => cambiar("personajes", [...(borrador.personajes ?? []), PERSONAJE_VACIO()])}><Icon name="plus" size={14} /> Añadir un personaje</button>
+                )}
+                <p className="hint">El que sale una y otra vez (la mascota, el bebé de la marca, la dueña): con su retrato y su cuerpo entero de la galería, sale IGUAL en cada imagen, carrusel y reel donde lo escojas. Sin imagen no se guarda.</p>
+              </fieldset>
+              <fieldset className="est-kit-propios">
                 <legend className="label">El estilo de cada tipo de pieza</legend>
                 {Object.entries(TIPOS_PRESET).map(([tipo, def]) => (
                   <div key={tipo} className="est-kit-estilo-tipo">
@@ -316,6 +337,7 @@ function VistaKit({ kit: k, marca, logo = null }) {
         ))}
         {kit.propios.map((p) => <p key={p.id}><strong>{p.nombre} (tipo propio):</strong> {p.texto}</p>)}
         {kit.estilos.map((p) => <p key={p.id}><strong>{p.nombre} (estilo propio):</strong> {p.texto}</p>)}
+        {kit.personajes.map((p) => <p key={p.id}><strong>{p.nombre} (personaje):</strong> {p.descripcion || "—"} · {p.imagenes.length === 1 ? "1 imagen" : `${p.imagenes.length} imágenes`}</p>)}
         {Object.keys(kit.estiloPorTipo).length > 0 && (
           <p><strong>Estilos fijados:</strong> {Object.entries(kit.estiloPorTipo).map(([t, id]) => `${TIPOS_PRESET[t]?.nombre} → ${nombreDeEstilo(kit, id)}`).join(" · ")}</p>
         )}

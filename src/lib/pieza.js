@@ -53,14 +53,15 @@ export const ideaSinMejorar = (datos) => ideaParaMejorar({ ...datos, contexto: "
 
 /**
  * Lo que va de referencia en una pieza, en orden de importancia y sin pasarse de lo que admite el modelo (dejando
- * sitio al logo): las fotos REALES del producto (si sale), lo puesto a mano, las referencias del tipo de pieza y del
+ * sitio al logo): las fotos REALES del producto (si sale), los personajes de la marca, lo puesto a mano, las referencias del tipo de pieza y del
  * estilo propio, y las últimas que gustaron (sólo por su estilo). Pura.
  */
-export function apoyosDePieza({ kit, preset = "", estilo = "", archivos = [], fotos = [], manuales = [], gustos = [], modelo, conProducto = true, tomaTipo = ["estilo", "composicion"], reservaLogo = true }) {
+export function apoyosDePieza({ kit, preset = "", estilo = "", archivos = [], fotos = [], manuales = [], personajes = [], gustos = [], modelo, conProducto = true, tomaTipo = ["estilo", "composicion"], reservaLogo = true }) {
   const max = Math.max(0, (modelo?.referencias ?? 0) - (reservaLogo && limpiarKit(kit).logo ? 1 : 0));
   const deEstilo = estiloDeLaPieza(kit, preset, estilo);
   const lista = [
     ...(conProducto === false ? [] : fotos),
+    ...personajes,
     ...manuales,
     ...referenciasDePreset(kit, preset, archivos, { toma: tomaTipo }),
     ...(deEstilo.startsWith("estilo-") ? referenciasDePreset(kit, deEstilo, archivos, { toma: ["estilo"] }) : []),

@@ -1503,6 +1503,18 @@ son del servidor.
   apunta el uso de cada lámina. Todo queda en la galería, también las crudas.
   · Lo orquesta el NAVEGADOR (cada lámina espera a la anterior): cerrar a la mitad deja hechas las que salieron, en
   la galería. El cron no encadena láminas.
+- **El carrusel con IA es un flujo de tres pasos, el mismo en la pestaña Estudio («Carrusel» en «Qué crear») y en
+  «Crear carrusel con IA» de la publicación** (`components/FlujoCarrusel.jsx`, lazy). Como en Flow: (1) guion o tema,
+  tipo de pieza, estilo visual, producto y PERSONAJES; (2) la CONTRAPROPUESTA del director de arte (`POST
+  /api/estudio/<c>/carrusel/propuesta`, `pedidoDePropuesta`/`leerPropuesta` en carrusel.js, texto): por lámina qué se
+  ve, el texto EXACTO con su jerarquía y la composición, más el `hilo` que comparten todas; se corrige antes de gastar
+  («Usar el guion tal cual» se la salta); (3) las láminas una a una (`crearCarrusel`) en una carpeta propia, con la
+  anterior, la portada y los personajes de referencia. «Corregir esta» (`corregirLamina`) EDITA sólo esa lámina con
+  una indicación —en plantilla, la cruda, y el texto se vuelve a poner encima—; «Rehacer esta» la pide otra vez.
+- **Los personajes de la marca** (`kit.personajes`, hasta 4: nombre, descripción, retrato y cuerpo de la galería): el
+  bebé de Baby Caleb tiene que ser EL MISMO en cada lámina y cada pieza. Van de referencia con `toma: ["persona"]` y una
+  nota de quién son (`referenciasDePersonajes`), en el compositor («Personajes de la marca») y en el carrusel; el
+  servidor sólo guarda imágenes de ESE cliente (`guardarKit`), y «Volver a preparar» no se los lleva (`fundirKit`).
 - **Las plantillas de plan: las de arranque en el código, lo cambiado en D1, la del cliente en su ficha**
   (`src/lib/plantillasPlan.js`, `plantillas_plan` y `clients.plan_contenido`, 0037). Tres objetivos (Centrado en
   ventas, Ventas y seguidores, Marketing 360) × productos/servicios/marca personal. Por día, cada publicación lleva
