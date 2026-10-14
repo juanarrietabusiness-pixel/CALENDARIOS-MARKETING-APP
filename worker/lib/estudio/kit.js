@@ -51,6 +51,10 @@ export async function guardarKit(env, acceso, cliente, entrada) {
   kit.referencias = Object.fromEntries(Object.entries(kit.referencias)
     .map(([id, claves]) => [id, claves.filter((c) => claveDelCliente(c, cliente.id))])
     .filter(([, claves]) => claves.length));
+  // Las imágenes de los personajes, igual: sólo de ESTE cliente; un personaje sin ninguna, fuera.
+  kit.personajes = kit.personajes
+    .map((p) => ({ ...p, imagenes: p.imagenes.filter((c) => claveDelCliente(c, cliente.id)) }))
+    .filter((p) => p.imagenes.length);
   // El modelo fijado del cliente: sólo uno que exista en el catálogo y sea de ese tipo.
   kit.modelos = Object.fromEntries(Object.entries(kit.modelos).filter(([tipo, id]) => modeloPorId(id)?.tipo === tipo));
   if (entrada?.logo) {

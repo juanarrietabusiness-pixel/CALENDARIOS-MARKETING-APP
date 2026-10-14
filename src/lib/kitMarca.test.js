@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   ideaDelPedido, PREFIJO_TIPO, referenciasDePreset, MAX_REFS_PRESET, limpiarKit, kitVacio, textoPaleta, textoPreset, componerPedido, ponerLogo, pedidoDeKit, leerKit, fundirKit,
   pedidoDeRevision, leerRevision, TIPOS_PRESET, IDS_PRESET, LINEA_VIDEO, LINEA_LOGO, ACABADOS, bloqueDeMarca, presetValido, presetActual,
-  nombreDePreset, pedidoConMarca, estiloDeMarca, ESTILOS_VISUALES, estiloDeLaPieza, lineaDeEstilo, nombreDeEstilo,
+  nombreDePreset, pedidoConMarca, estiloDeMarca, ESTILOS_VISUALES, estiloDeLaPieza, lineaDeEstilo, nombreDeEstilo, referenciasDePersonajes, MAX_PERSONAJES,
 } from "./kitMarca";
 import { PILARES, presetDePilar } from "./pilares";
 
@@ -234,3 +234,25 @@ describe("la referencia visual de cada tipo de pieza", () => {
     expect(referenciasDePreset(kit, "", archivos)).toEqual([]);
   });
 });
+
+describe("los personajes de la marca", () => {
+  it("se limpian (id, nombre, de 1 a 2 imágenes del cliente) y van de referencia diciendo QUIÉN son", () => {
+    const k = limpiarKit({ personajes: [
+      { id: "personaje-caleb", nombre: "Caleb", descripcion: "bebé pelirrojo, traje verde.", imagenes: ["clientes/c1/caleb.png", "clientes/c1/caleb-cuerpo.png", "clientes/c1/otra.png"] },
+      { id: "personaje-sin", nombre: "Sin foto", imagenes: [] },
+      { id: "malo", nombre: "X", imagenes: ["clientes/c1/x.png"] },
+    ] });
+    expect(k.personajes).toEqual([{ id: "personaje-caleb", nombre: "Caleb", descripcion: "bebé pelirrojo, traje verde.", imagenes: ["clientes/c1/caleb.png", "clientes/c1/caleb-cuerpo.png"] }]);
+    expect(kitVacio({ personajes: k.personajes })).toBe(false);
+    const archivos = [{ id: "a", clave: "clientes/c1/caleb.png" }];
+    const refs = referenciasDePersonajes(k, ["personaje-caleb"], archivos);
+    expect(refs).toHaveLength(1);
+    expect(refs[0].toma).toEqual(["persona"]);
+    expect(refs[0].nota).toMatch(/es «Caleb», el personaje de la marca \(bebé pelirrojo, traje verde\): que salga IGUAL/);
+    expect(referenciasDePersonajes(k, [], archivos)).toEqual([]);
+    expect(MAX_PERSONAJES).toBe(4);
+    // Volver a preparar el kit con IA no se los lleva.
+    expect(fundirKit(k, limpiarKit({})).personajes).toEqual(k.personajes);
+  });
+});
+

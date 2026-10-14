@@ -132,6 +132,9 @@ const PRESET_ANTIGUO = Object.freeze({ producto: "servicios" });
 const ESTILOS_ANTIGUOS = Object.freeze({ corporativo: "Corporativo", creativo: "Creativo" });
 export const MAX_PROPIOS = 6;
 export const MAX_ESTILOS = 6;
+/** Personajes de la marca (el bebé de Baby Caleb): hasta 4, cada uno con retrato y, si hay, cuerpo entero. */
+export const MAX_PERSONAJES = 4;
+const ID_PERSONAJE = /^personaje-[a-z0-9-]{1,40}$/;
 const ID_PROPIO = /^propio-[a-z0-9-]{1,40}$/;
 const ID_ESTILO = /^estilo-[a-z0-9-]{1,40}$/;
 
@@ -198,6 +201,8 @@ export function limpiarKit(guardado) {
     logo: typeof g.logo === "string" && /^clientes\/[^/]+\/.+/.test(g.logo) && !g.logo.includes("..") ? g.logo : "",
     presets,
     propios: propios.slice(0, MAX_PROPIOS),
+    // Los personajes de la marca: salen IGUAL en todas las láminas y todos los reels.
+    personajes: limpiarPersonajes(g.personajes),
     // Los estilos visuales propios del cliente (hasta 6) y el estilo que fijó para cada tipo de pieza.
     estilos: estilosFinal,
     estiloPorTipo: limpiarEstiloPorTipo(g.estiloPorTipo, estilosFinal),
@@ -209,6 +214,34 @@ export function limpiarKit(guardado) {
     modelos: limpiarModelosKit(g.modelos),
     ...(g.preparadoAt ? { preparadoAt: String(g.preparadoAt) } : {}),
   };
+}
+
+/** Los personajes: id con forma, nombre, una descripción corta y de 1 a 2 imágenes (retrato y cuerpo) del cliente. */
+function limpiarPersonajes(entrada) {
+  const fuera = [];
+  for (const p of Array.isArray(entrada) ? entrada : []) {
+    const id = String(p?.id ?? "");
+    const nombre = corto(p?.nombre, 40);
+    const imagenes = [...new Set((Array.isArray(p?.imagenes) ? p.imagenes : []).map(String))].filter((c) => CLAVE.test(c) && !c.includes("..")).slice(0, 2);
+    if (!ID_PERSONAJE.test(id) || !nombre || !imagenes.length || fuera.some((x) => x.id === id)) continue;
+    fuera.push({ id, nombre, descripcion: corto(p?.descripcion, 300), imagenes, ...(p?.omni && typeof p.omni === "string" ? { omni: corto(p.omni, 80) } : {}) });
+  }
+  return fuera.slice(0, MAX_PERSONAJES);
+}
+
+/**
+ * Las imágenes de los personajes escogidos como referencias, cada una diciendo QUIÉN es: el modelo tiene que sacarlo
+ * IGUAL (cara, pelo, ropa), no inspirarse. Sólo las que siguen en la galería. Pura.
+ */
+export function referenciasDePersonajes(kitGuardado, ids = [], archivos = []) {
+  const kit = limpiarKit(kitGuardado);
+  return kit.personajes.filter((p) => ids.includes(p.id)).flatMap((p) => p.imagenes
+    .map((clave) => (archivos ?? []).find((a) => a.clave === clave))
+    .filter(Boolean)
+    .map((a) => ({
+      ...a, toma: ["persona"],
+      nota: `es «${p.nombre}», el personaje de la marca${p.descripcion ? ` (${p.descripcion.replace(/[.\s]+$/, "")})` : ""}: que salga IGUAL, con su misma cara, pelo y ropa`,
+    })));
 }
 
 /** { tipo → id de estilo }: sólo tipos que existen y estilos que existen (de la casa o propios del cliente). */
@@ -256,7 +289,7 @@ export function referenciasDePreset(kitGuardado, id, archivos = [], { toma = ["e
 /** ¿Tiene algo el kit? Pura. */
 export const kitVacio = (kit) => {
   const k = limpiarKit(kit);
-  return !k.paleta.length && !k.tipografia && !k.estilo && !k.luz && !k.evitar && !Object.keys(k.presets).length && !k.propios.length && !k.estilos.length && !k.aprendido.length;
+  return !k.paleta.length && !k.tipografia && !k.estilo && !k.luz && !k.evitar && !Object.keys(k.presets).length && !k.propios.length && !k.estilos.length && !k.personajes.length && !k.aprendido.length;
 };
 
 /** «azul profundo #1B3246 (estructura/tipografía), verde suave #91C9A2 (acento)». Pura. */
@@ -489,7 +522,7 @@ export function fundirKit(guardado, propuesto, ahora = new Date().toISOString())
   const antes = limpiarKit(guardado);
   // Lo que la IA no escribe se queda: el logo, los presets propios, las reglas aprendidas y las referencias de cada tipo.
   return limpiarKit({
-    ...propuesto, logo: antes.logo, propios: antes.propios, estilos: antes.estilos, estiloPorTipo: antes.estiloPorTipo,
+    ...propuesto, logo: antes.logo, propios: antes.propios, estilos: antes.estilos, estiloPorTipo: antes.estiloPorTipo, personajes: antes.personajes,
     aprendido: antes.aprendido, referencias: antes.referencias, modelos: antes.modelos, preparadoAt: ahora,
   });
 }

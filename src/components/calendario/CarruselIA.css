@@ -11,3 +11,10 @@
 .carrusel-lamina-texto .textarea { min-height: 64px; }
 .carrusel-lamina-acciones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 @media (min-width: 900px) { .carrusel-lamina-vista { width: 120px; } }
+
+/* El flujo del carrusel (Estudio y publicación): corregir una lámina con una indicación */
+.carrusel-corregir { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; flex: 1 1 100%; }
+.carrusel-corregir .input { flex: 1 1 180px; min-width: 0; }
+.flujo-carrusel { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-5); }
+@media (max-width: 599px) { .flujo-carrusel { padding: var(--sp-3); } }
+.carrusel-ia .flujo-carrusel { box-shadow: none; border: none; padding: 0; background: transparent; }

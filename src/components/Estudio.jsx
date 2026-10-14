@@ -1,10 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
-import Compositor from "./EstudioCompositor";
+import Compositor, { QueCrear } from "./EstudioCompositor";
 import Visor, { Pieza } from "./EstudioVisor";
 import {
   kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, ponerLogo, ideaDelPedido, conOtraEscena, referenciasDePreset, nombreDePreset,
-  estiloDeLaPieza, lineaDeEstilo, nombreDeEstilo, estiloValido, TIPOS_PRESET,
+  estiloDeLaPieza, lineaDeEstilo, nombreDeEstilo, estiloValido, TIPOS_PRESET, referenciasDePersonajes,
 } from "../lib/kitMarca";
 import { presetDePilar, nombreDePilar } from "../lib/pilares";
 import { ideaDesdeAngulo } from "../lib/estudioMercado";
@@ -31,6 +31,9 @@ const EstudioLote = lazy(() => import("./EstudioLote"));
 // El kit va plegado y sólo en la pestaña: en su chunk (el del Estudio tiene tope, rendimiento.bundle.test.js).
 const EstudioKit = lazy(() => import("./EstudioKit"));
 const EstudioRecrear = lazy(() => import("./EstudioRecrear"));
+const FlujoCarrusel = lazy(() => import("./FlujoCarrusel"));
+/** Lo que se crea con pasos (no de una vez): el carrusel por láminas. */
+const GUIADOS = [["carrusel", "Carrusel", "formatCarrusel"]];
 
 // ============================================================
 // El Estudio de un cliente: la pestaña y el diálogo «Crear con IA»
@@ -122,6 +125,10 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (!desdePost) try { localStorage.setItem(clavePreset, v); } catch { /* sin almacenamiento */ }
   };
   const [conLogo, setConLogo] = useState(true);
+  // Un flujo guiado abierto en lugar del compositor ("" = el compositor de imagen o video).
+  const [guiado, setGuiado] = useState("");
+  // Los personajes de la marca que salen en esta pieza (sus imágenes van de referencia: que salgan IGUAL).
+  const [personajesSel, setPersonajesSel] = useState([]);
   // «Fijar para este cliente»: el modelo va en su kit (lo comparte el equipo) y arranca el compositor, el lote y
   // «Producir el mes». Se guarda con el kit; `fijar` se define abajo, con el guardado del kit.
 
@@ -225,8 +232,12 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     : null;
   // La referencia visual del tipo de pieza (kit → referencias), en el hueco que dejen el producto y lo puesto a mano,
   // guardando uno para el logo.
+  const deLosPersonajes = form && modelo && modelo.referencias > 0
+    ? referenciasDePersonajes(kit, personajesSel, datos?.archivos ?? []).filter((a) => !form.medios.reference.some((x) => x.clave === a.clave))
+      .slice(0, Math.max(0, (modelo.referencias || 0) - form.medios.reference.length - fotosNombradas.length - (puedeLogo && conLogo ? 1 : 0)))
+    : [];
   const huecoTipo = form && modelo && form.tipo === "imagen"
-    ? (modelo.referencias || 0) - form.medios.reference.length - fotosNombradas.length - (puedeLogo && conLogo ? 1 : 0)
+    ? (modelo.referencias || 0) - form.medios.reference.length - fotosNombradas.length - deLosPersonajes.length - (puedeLogo && conLogo ? 1 : 0)
     : 0;
   // Las del tipo de pieza y, si el estilo es propio del cliente, las de ese estilo.
   const refsTipo = huecoTipo > 0
@@ -465,7 +476,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       // lo que se manda es lo que queda escrito.
       // Las fotos del producto que nombra la idea van DELANTE (cuanto cabe), y cada referencia dice qué se toma de ella.
       const delNombrado = fotosNombradas;
-      const refs = [...delNombrado, ...form.medios.reference, ...refsTipo, ...gustos];
+      const refs = [...delNombrado, ...deLosPersonajes, ...form.medios.reference, ...refsTipo, ...gustos];
       // El MISMO camino que el lote y «Producir el mes» (lib/pieza.js); aquí la resolución la escoge la persona.
       const pieza = pedidoDePieza({
         kit, idea: form.prompt, preset: presetVigente, estilo: estiloVigente, apoyos: refs, modelo, marca: client.name, rubro: client.industry ?? "",
@@ -980,7 +991,18 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       )}
 
       {/* ---------- Pedir ---------- */}
-      {!lectura && form && modelo && (
+      {!lectura && form && modelo && guiado === "carrusel" && (
+        <Suspense fallback={<p className="hint">Cargando…</p>}>
+          <FlujoCarrusel
+            client={client}
+            estudio={{ kit, productos: datos?.productos ?? [], archivos: datos?.archivos ?? [], activos: Object.fromEntries(Object.entries(motores ?? {}).map(([k, v]) => [k, Boolean(v.activo)])) }}
+            inicial={{ preset: presetVigente }}
+            cabecera={<QueCrear actual="carrusel" guiados={GUIADOS} onCambiar={(t) => { if (t !== "carrusel") { setGuiado(""); cambiarTipo(t); } }} />}
+            onCreando={(si) => { if (!si) cargar(); }}
+          />
+        </Suspense>
+      )}
+      {!lectura && form && modelo && !guiado && (
         <Compositor
           ids={ids} form={{ ...form, ajustes }} setForm={setForm} modelo={modelo} motores={motores} costo={costo}
           confirmando={confirmando} enviando={enviando} subiendo={subiendo} promptRef={promptRef}
@@ -999,9 +1021,13 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             onAngulo: (a) => { setConfirmando(null); setForm((f) => ({ ...f, prompt: ideaDesdeAngulo(a) })); },
             productos: modelo.referencias > 0 ? datos?.productos ?? [] : [],
             gustos: hayGustos && modelo.referencias > 0 ? { activo: conGustos, onCambiar: setConGustos, van: gustos.length } : null,
+            personajes: modelo.referencias > 0 && limpiarKit(kit).personajes.length
+              ? { lista: limpiarKit(kit).personajes, escogidos: personajesSel, onCambiar: setPersonajesSel, van: deLosPersonajes.length }
+              : null,
             onProducto: ponerFotosDeProducto,
           }}
           fijado={fijados[form.tipo] ?? ""} onFijar={(id) => fijar(form.tipo, id)}
+          guiados={dialogo ? [] : GUIADOS} onGuiado={setGuiado}
           ideas={{
             generando: ideasGen.generando, lista: ideasGen.lista, conTema: Boolean(form.prompt.trim()),
             deTipo: presetVigente && !presetVigente.startsWith("propio-") ? presetVigente.split("-")[0] : "",

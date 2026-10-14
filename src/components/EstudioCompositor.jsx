@@ -24,6 +24,22 @@ import { TOMAS, MAX_NOTA } from "../lib/referencias";
 
 const TIPOS = [["imagen", "Imagen", "image"], ["video", "Video", "video"]];
 
+/**
+ * «Qué crear»: Imagen y Video (de una vez, el compositor) y los guiados (Carrusel, Reel IA), que cambian lo que se
+ * ve debajo por sus pasos. Lo comparten el compositor y los flujos guiados.
+ */
+export function QueCrear({ actual, onCambiar, guiados = [] }) {
+  return (
+    <div className="est-tipos" role="group" aria-label="Qué crear">
+      {[...TIPOS, ...guiados].map(([tipo, nombre, icono]) => (
+        <button key={tipo} type="button" className="filter-chip" aria-pressed={actual === tipo} onClick={() => onCambiar(tipo)}>
+          <Icon name={icono} size={14} /> {nombre}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Una fila de imágenes puestas (miniatura + quitar), el botón de subir una y, con Drive, el de traerla de allí. */
 function Ranura({ titulo, ayuda, archivos, max, rol, subiendo, onQuitar, onSubir, onDrive = null, ids }) {
   return (
@@ -181,7 +197,7 @@ function TipoDePieza({ ids, preset, onPreset, kit, sinIdea = false }) {
 function EstiloDeMarca({
   ids, preset, kitListo, kit, marca = "", textoPreset, bloqueMarca = "", usarKit = true, onUsarKit,
   estilo = "", estiloResuelto = "", nombreEstilo = "", lineaEstilo = "", onEstilo, fijadoTipo = "", onFijarEstilo = null,
-  conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo, productos = [], onProducto, gustos = null, refsTipo = [],
+  conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo, productos = [], onProducto, gustos = null, refsTipo = [], personajes = null,
 }) {
   const [familia] = String(preset ?? "").split("-");
   const esTipoBase = Boolean(TIPOS_PRESET[familia]);
@@ -262,6 +278,22 @@ function EstiloDeMarca({
             {productos.map((p) => <option key={p.id} value={p.id}>{p.nombre} ({p.fotos.length} {p.fotos.length === 1 ? "foto" : "fotos"})</option>)}
           </select>
           <p className="hint">Las del catálogo: así sale el producto real y no uno parecido. Escoge varios para una pieza con varios productos: se reparten los huecos.</p>
+        </div>
+      )}
+      {personajes && (
+        <div className="field">
+          <span className="label" id={`${ids}-pers`}>Personajes de la marca</span>
+          <div className="est-tipos" role="group" aria-labelledby={`${ids}-pers`}>
+            {personajes.lista.map((p) => (
+              <button key={p.id} type="button" className="filter-chip" aria-pressed={personajes.escogidos.includes(p.id)} title={p.descripcion}
+                onClick={() => personajes.onCambiar(personajes.escogidos.includes(p.id) ? personajes.escogidos.filter((x) => x !== p.id) : [...personajes.escogidos, p.id])}>
+                {p.nombre}
+              </button>
+            ))}
+          </div>
+          {personajes.escogidos.length > 0 && (
+            <p className="hint">{personajes.van ? `Van ${personajes.van === 1 ? "su imagen" : `${personajes.van} imágenes`} de referencia: sale igual (cara, pelo, ropa).` : "No queda hueco de referencia en este modelo: quita alguna."}</p>
+          )}
         </div>
       )}
       {gustos && !esVideo && (
@@ -427,7 +459,7 @@ export default function Compositor({
   estilo = null,
   guionCorto = null,
   fijado = "", onFijar = null,
-  ideas = null,
+  ideas = null, guiados = [], onGuiado = null,
 }) {
   const entrada = useRef(null);
   const rolSubida = useRef("reference");
@@ -459,13 +491,7 @@ export default function Compositor({
 
   return (
     <form className="card est-compositor" onSubmit={(e) => { e.preventDefault(); onEnviar(false); }}>
-      <div className="est-tipos" role="group" aria-label="Qué crear">
-        {TIPOS.map(([tipo, nombre, icono]) => (
-          <button key={tipo} type="button" className="filter-chip" aria-pressed={form.tipo === tipo} onClick={() => onTipo(tipo)}>
-            <Icon name={icono} size={14} /> {nombre}
-          </button>
-        ))}
-      </div>
+      <QueCrear actual={form.tipo} guiados={guiados} onCambiar={(t) => (TIPOS.some(([x]) => x === t) ? onTipo(t) : onGuiado?.(t))} />
 
       {estilo && <TipoDePieza ids={ids} preset={estilo.preset} onPreset={estilo.onPreset} kit={estilo.kit} sinIdea={estilo.sinIdea} />}
 

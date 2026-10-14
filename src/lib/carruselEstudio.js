@@ -12,6 +12,7 @@
 // ============================================================
 
 import * as api from "./estudio";
+import { promptDeEdicion } from "./estudio";
 import { ajustesDe, modeloPorId, MODELOS } from "./estudioCatalogo";
 import { pedidoDeLamina, referenciasDeLamina } from "./carrusel";
 import { componerLamina } from "./textoSobreImagen";
@@ -66,24 +67,50 @@ export async function esperarArchivos(clienteId, trabajo, { seguir = () => true 
  * → { crudo, final } (en el modo «ia», los dos son el mismo archivo).
  */
 export async function crearLamina({
-  clienteId, modelo, lamina, total, idea = "", preset = "", modo = "ia", plantilla = "banda",
-  anterior = null, portada = null, fotos = [], logo = "", colores, familia = "", calendarId = null, postId = null, seguir,
+  clienteId, modelo, lamina, total, idea = "", preset = "", modo = "ia", plantilla = "banda", hilo = "", personajes = [],
+  anterior = null, portada = null, fotos = [], logo = "", colores, familia = "", calendarId = null, postId = null, carpetaId = null, seguir,
 }) {
-  const reference = referenciasDeLamina({ anterior: anterior?.clave, portada: portada?.clave, fotos, logo, max: modelo.referencias || 0 });
+  // Los personajes van justo después de la serie (la anterior y la portada): que salgan IGUAL en cada lámina.
+  const clavesPersonajes = personajes.map((p) => p.clave);
+  const reference = referenciasDeLamina({ anterior: anterior?.clave, portada: portada?.clave, fotos: [...clavesPersonajes, ...fotos], logo, max: modelo.referencias || 0 });
+  const quienes = personajes.filter((p) => reference.includes(p.clave)).map((p) => p.nota).filter(Boolean);
   const prompt = pedidoDeLamina({
-    lamina, total, idea, preset, modo, plantilla,
+    lamina, total, idea, preset, modo, plantilla, hilo,
+    personajes: [...new Set(quienes)].map((n) => `Una de las referencias ${n}.`).join(" "),
     conAnteriores: Boolean(anterior || portada), conFotos: fotos.some((f) => reference.includes(f)),
   });
   const medios = reference.length ? { reference } : {};
   const { trabajo } = await api.pedirImagenes(clienteId, {
-    modelo: modelo.id, prompt, n: 1, ajustes: ajustesDe(modelo, { aspectRatio: "4:5" }, medios), medios,
-    confirmado: true, ...(calendarId && postId ? { calendarId, postId } : {}),
+    modelo: modelo.id, prompt, n: 1, ajustes: ajustesDe(modelo, { aspectRatio: "4:5", imageSize: "2K" }, medios), medios,
+    confirmado: true, ...(calendarId && postId ? { calendarId, postId } : {}), ...(carpetaId ? { carpetaId } : {}),
   });
   const crudo = await esperarArchivo(clienteId, trabajo, { seguir });
   if (modo !== "plantilla") return { crudo, final: crudo };
+  return { crudo, final: await textoEncima({ clienteId, crudo, lamina, plantilla, colores, familia, carpetaId }) };
+}
+
+/** En el modo plantilla: el texto exacto encima de la lámina cruda, subido como imagen nueva. */
+async function textoEncima({ clienteId, crudo, lamina, plantilla, colores, familia, carpetaId = null }) {
   const blob = await componerLamina({ src: crudo.src, texto: lamina.texto, plantilla, colores, familia });
-  const { archivo: final } = await api.subirImagen(clienteId, new File([blob], `lamina-${lamina.n}.jpg`, { type: "image/jpeg" }));
-  return { crudo, final };
+  const { archivo } = await api.subirImagen(clienteId, new File([blob], `lamina-${lamina.n}.jpg`, { type: "image/jpeg" }), { carpetaId, origenId: crudo.id, plantilla: { texto: lamina.texto, plantilla } });
+  return archivo;
+}
+
+/**
+ * «Corregir esta lámina» con una indicación («cambia "en ca" por "en"»): se EDITA la lámina (todo lo demás se
+ * conserva) con el mismo modelo, y sale una nueva; la de antes se queda en la galería. En el modo plantilla se corrige
+ * la cruda y el texto se vuelve a poner encima. → { crudo, final }.
+ */
+export async function corregirLamina({ clienteId, modelo, resultado, instruccion, lamina, modo = "ia", plantilla = "banda", colores, familia = "", carpetaId = null, seguir }) {
+  const base = modo === "plantilla" ? resultado.crudo : resultado.final;
+  const medios = { reference: [base.clave] };
+  const { trabajo } = await api.pedirImagenes(clienteId, {
+    modelo: modelo.id, prompt: promptDeEdicion(instruccion), n: 1, ajustes: ajustesDe(modelo, { aspectRatio: "4:5", imageSize: "2K" }, medios), medios,
+    confirmado: true, ...(carpetaId ? { carpetaId } : {}),
+  });
+  const crudo = await esperarArchivo(clienteId, trabajo, { seguir });
+  if (modo !== "plantilla") return { crudo, final: crudo };
+  return { crudo, final: await textoEncima({ clienteId, crudo, lamina, plantilla, colores, familia, carpetaId }) };
 }
 
 /**

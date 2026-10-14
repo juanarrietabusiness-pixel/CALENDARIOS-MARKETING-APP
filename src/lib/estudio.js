@@ -35,6 +35,8 @@ export const reintentarTrabajo = (clienteId, id) => pedir(`${base(clienteId)}/tr
  * motor la entienda. `{ idea, modelo, aviso }`. Es texto: no pide nada al motor.
  */
 export const mejorarIdea = (clienteId, datos) => pedir(`${base(clienteId)}/mejorar`, post(datos));
+/** El carrusel: la contrapropuesta del director de arte → { hilo, laminas: [{ n, rol, escena, texto, composicion }] } (texto). */
+export const proponerCarrusel = (clienteId, datos) => pedir(`${base(clienteId)}/carrusel/propuesta`, post(datos));
 /** «Otra versión distinta»: { idea, n, tipo } → { versiones: [escena] } (texto: no gasta en el motor). */
 export const versionesDeIdea = (clienteId, datos) => pedir(`${base(clienteId)}/versiones`, post(datos));
 /** El guion de un video corto (8 o 10 s): `{ guion, prompt }`. Texto: no pide nada al motor. */
