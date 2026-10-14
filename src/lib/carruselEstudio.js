@@ -12,10 +12,20 @@
 // ============================================================
 
 import * as api from "./estudio";
-import { promptDeEdicion } from "./estudio";
+import { pedidoDeCorreccion } from "./estudio";
 import { ajustesDe, modeloPorId, MODELOS, porPrecio } from "./estudioCatalogo";
 import { pedidoDeLamina, referenciasDeLamina } from "./carrusel";
 import { componerLamina } from "./textoSobreImagen";
+import { conLogoSiToca } from "./logoEstudio";
+
+/**
+ * Con el logo ESTAMPADO en el kit (`estampar`: el kit), la lámina final lleva el logo pegado encima; la cruda no (es la
+ * que va de referencia a la siguiente y la que se corrige). Sin kit, la misma.
+ */
+async function conSello({ crudo, final }, { clienteId, estampar, carpetaId }) {
+  if (!estampar) return { crudo, final };
+  return { crudo, final: await conLogoSiToca({ clienteId, archivo: final, kit: estampar, carpetaId }) };
+}
 
 const TERMINADO = new Set(["hecho", "fallido", "cancelado"]);
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -67,6 +77,7 @@ export async function esperarArchivos(clienteId, trabajo, { seguir = () => true 
 export async function crearLamina({
   clienteId, modelo, lamina, total, idea = "", preset = "", modo = "ia", plantilla = "banda", hilo = "", personajes = [],
   anterior = null, portada = null, fotos = [], logo = "", colores, familia = "", calendarId = null, postId = null, carpetaId = null, seguir,
+  estampar = null,
 }) {
   // Los personajes van justo después de la serie (la anterior y la portada): que salgan IGUAL en cada lámina.
   const clavesPersonajes = personajes.map((p) => p.clave);
@@ -83,8 +94,8 @@ export async function crearLamina({
     confirmado: true, ...(calendarId && postId ? { calendarId, postId } : {}), ...(carpetaId ? { carpetaId } : {}),
   });
   const crudo = await esperarArchivo(clienteId, trabajo, { seguir });
-  if (modo !== "plantilla") return { crudo, final: crudo };
-  return { crudo, final: await textoEncima({ clienteId, crudo, lamina, plantilla, colores, familia, carpetaId }) };
+  const final = modo === "plantilla" ? await textoEncima({ clienteId, crudo, lamina, plantilla, colores, familia, carpetaId }) : crudo;
+  return conSello({ crudo, final }, { clienteId, estampar, carpetaId });
 }
 
 /** En el modo plantilla: el texto exacto encima de la lámina cruda, subido como imagen nueva. */
@@ -99,16 +110,18 @@ async function textoEncima({ clienteId, crudo, lamina, plantilla, colores, famil
  * conserva) con el mismo modelo, y sale una nueva; la de antes se queda en la galería. En el modo plantilla se corrige
  * la cruda y el texto se vuelve a poner encima. → { crudo, final }.
  */
-export async function corregirLamina({ clienteId, modelo, resultado, instruccion, lamina, modo = "ia", plantilla = "banda", colores, familia = "", carpetaId = null, seguir }) {
-  const base = modo === "plantilla" ? resultado.crudo : resultado.final;
-  const medios = { reference: [base.clave] };
+export async function corregirLamina({ clienteId, modelo, resultado, instruccion, ejemplos = [], lamina, modo = "ia", plantilla = "banda", colores, familia = "", carpetaId = null, seguir, estampar = null }) {
+  // Se corrige la cruda (en «ia», la cruda ES la final, salvo que lleve el logo estampado encima: ése se vuelve a poner).
+  const base = resultado.crudo ?? resultado.final;
+  // La lámina va primero; los ejemplos de la galería (si los hay) detrás, como guía de lo que se pide.
+  const { prompt, medios } = pedidoDeCorreccion({ clave: base.clave, instruccion, ejemplos, modelo });
   const { trabajo } = await api.pedirImagenes(clienteId, {
-    modelo: modelo.id, prompt: promptDeEdicion(instruccion), n: 1, ajustes: ajustesDe(modelo, { aspectRatio: "4:5", imageSize: "2K" }, medios), medios,
+    modelo: modelo.id, prompt, n: 1, ajustes: ajustesDe(modelo, { aspectRatio: "4:5", imageSize: "2K" }, medios), medios,
     confirmado: true, ...(carpetaId ? { carpetaId } : {}),
   });
   const crudo = await esperarArchivo(clienteId, trabajo, { seguir });
-  if (modo !== "plantilla") return { crudo, final: crudo };
-  return { crudo, final: await textoEncima({ clienteId, crudo, lamina, plantilla, colores, familia, carpetaId }) };
+  const final = modo === "plantilla" ? await textoEncima({ clienteId, crudo, lamina, plantilla, colores, familia, carpetaId }) : crudo;
+  return conSello({ crudo, final }, { clienteId, estampar, carpetaId });
 }
 
 /**

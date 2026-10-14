@@ -45,7 +45,14 @@ export function archivoPublico(f) {
   };
 }
 
-const carpetaPublica = (c) => ({ id: c.id, nombre: c.nombre, creada: c.created_at });
+/** Una carpeta como la ve el navegador. `tipo` «carrusel» | «reel» la agrupa en UNA tarjeta; `orden`, sus piezas. */
+const carpetaPublica = (c) => ({ id: c.id, nombre: c.nombre, creada: c.created_at, tipo: c.tipo ?? "", orden: leerJSON(c.orden ?? "[]", []) });
+
+/** Los tipos de carpeta que la galería agrupa (los crea el flujo del carrusel o del reel IA). */
+export const TIPOS_CARPETA = ["carrusel", "reel"];
+/** Las agrupadas no cuentan en las 30 de la persona (sale una por carrusel), pero tienen su propio tope. */
+export const MAX_GRUPOS = 300;
+const MAX_ORDEN = 40;
 
 /** ¿El Estudio es dueño del objeto de R2 de este archivo? */
 const esDelEstudio = (f) => f.origen === "estudio" || Boolean(f.subido);
@@ -217,6 +224,16 @@ export async function subirArchivo(env, acceso, cliente, archivo, { carpetaId = 
     throw new ErrorEstudio("Esa carpeta no existe.", 404);
   }
   const herencia = esVideo ? null : await herenciaDe(acceso, cliente.id, origenId, plantilla);
+  // Una imagen subida a mano dos veces es la misma: se devuelve la ficha que ya había (y, si estaba en la papelera,
+  // vuelve). Las compuestas no se comparan (las crea el Estudio) y los videos tampoco (no se cargan enteros).
+  const huella = !esVideo && !herencia ? await huellaDe(archivo) : "";
+  if (huella) {
+    const igual = (await acceso.leer("estudio_archivos", { client_id: cliente.id, huella }, "created_at asc", 1))[0];
+    if (igual) {
+      if (igual.borrado_at) await acceso.actualizar("estudio_archivos", { id: igual.id, client_id: cliente.id }, { borrado_at: null, updated_at: new Date().toISOString() });
+      return { ...archivoPublico({ ...igual, borrado_at: null }), repetido: true };
+    }
+  }
   const clave = claveDeArchivo(cliente.id, archivo.name?.replace(/\.[^.]+$/, "") || "subida", mime);
   await env.MEDIA.put(clave, archivo.stream(), { httpMetadata: { contentType: mime } });
   const { ancho, alto } = esVideo ? { ancho: 0, alto: 0 } : medidasDe(cabecera, mime);
@@ -227,9 +244,15 @@ export async function subirArchivo(env, acceso, cliente, archivo, { carpetaId = 
     trabajo_id: herencia?.trabajo_id ?? null,
     // Una compuesta la crea el Estudio (el texto encima de su pieza): no es «subida a mano», y su objeto de R2 es suyo.
     carpeta_id: carpetaId ? String(carpetaId) : null, origen: herencia ? "estudio" : "subida", costo: 0, favorito: 0, subido: herencia ? 0 : 1, usado_en: "[]",
-    borrado_at: null, created_at: ahora, updated_at: ahora,
+    huella, borrado_at: null, created_at: ahora, updated_at: ahora,
   });
   return archivoPublico(fila);
+}
+
+/** El SHA-256 de los bytes, en hexadecimal: lo que dice que dos subidas son la misma imagen. */
+async function huellaDe(archivo) {
+  const h = new Uint8Array(await crypto.subtle.digest("SHA-256", await archivo.arrayBuffer()));
+  return Array.from(h, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
@@ -258,13 +281,30 @@ const nombreDeCarpeta = (nombre) => {
   return limpio;
 };
 
-export async function crearCarpeta(acceso, clientId, nombre) {
+export async function crearCarpeta(acceso, clientId, nombre, { tipo = "" } = {}) {
   const limpio = nombreDeCarpeta(nombre);
-  const existentes = await acceso.leerColumnas("estudio_carpetas", ["id", "nombre"], { client_id: clientId });
-  if (existentes.length >= MAX_CARPETAS) throw new ErrorEstudio(`Puedes tener hasta ${MAX_CARPETAS} carpetas.`, 409);
+  const t = TIPOS_CARPETA.includes(tipo) ? tipo : "";
+  const existentes = await acceso.leerColumnas("estudio_carpetas", ["id", "nombre", "tipo"], { client_id: clientId });
+  const mismas = existentes.filter((c) => (c.tipo ?? "") === "" ? !t : Boolean(t));
+  if (!t && mismas.length >= MAX_CARPETAS) throw new ErrorEstudio(`Puedes tener hasta ${MAX_CARPETAS} carpetas.`, 409);
+  if (t && mismas.length >= MAX_GRUPOS) throw new ErrorEstudio(`Hay ${MAX_GRUPOS} carruseles y reels en la galería: borra alguno viejo.`, 409);
   if (existentes.some((c) => c.nombre.toLowerCase() === limpio.toLowerCase())) throw new ErrorEstudio("Ya hay una carpeta con ese nombre.", 409);
   const ahora = new Date().toISOString();
-  return carpetaPublica(await acceso.insertar("estudio_carpetas", { id: uuid(), client_id: clientId, nombre: limpio, created_at: ahora, updated_at: ahora }));
+  return carpetaPublica(await acceso.insertar("estudio_carpetas", { id: uuid(), client_id: clientId, nombre: limpio, tipo: t, orden: "[]", created_at: ahora, updated_at: ahora }));
+}
+
+/**
+ * El orden de las piezas de un carrusel o un reel (las láminas finales, o los videos y los fotogramas). Sólo ids de
+ * archivos que están EN esa carpeta: la lista la manda el navegador.
+ */
+export async function ordenarCarpeta(acceso, clientId, id, orden) {
+  const c = await acceso.leerUno("estudio_carpetas", { id, client_id: clientId });
+  if (!c) return null;
+  if (!Array.isArray(orden)) throw new ErrorEstudio("El orden tiene que ser una lista.", 400);
+  const dentro = new Set((await acceso.leerColumnas("estudio_archivos", ["id"], { client_id: clientId, carpeta_id: id })).map((f) => f.id));
+  const limpio = [...new Set(orden.map((x) => String(x ?? "").slice(0, 80)))].filter((x) => dentro.has(x)).slice(0, MAX_ORDEN);
+  await acceso.actualizar("estudio_carpetas", { id, client_id: clientId }, { orden: JSON.stringify(limpio), updated_at: new Date().toISOString() });
+  return carpetaPublica(await acceso.leerUno("estudio_carpetas", { id, client_id: clientId }));
 }
 
 export async function renombrarCarpeta(acceso, clientId, id, nombre) {

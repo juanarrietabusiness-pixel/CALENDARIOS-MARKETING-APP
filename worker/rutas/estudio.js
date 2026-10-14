@@ -14,13 +14,16 @@
 //   POST   /<cliente>/lote/mes                     { mes, dias, formato, desde?, tamano? }: una pieza por día del mes, con el ritmo y la matriz (texto)
 //   POST   /<cliente>/ideas                        { tipo?, n?, video?, tema? }: «Dame ideas», variadas o de un tipo (texto)
 //   POST   /<cliente>/carrusel/propuesta           { guion?, tema?, preset?, estilo?, productoId?, personajes? }: el plan por láminas (texto)
+//   POST   /<cliente>/carrusel/ideas               { preset?, tema?, productoId?, n?, usados? }: ideas de carrusel con su guion (texto)
+//   POST   /<cliente>/reel/ideas                   { preset?, tema?, productoId?, n?, usados?, segundos? }: ideas de reel IA (texto)
 //   POST   /<cliente>/reel/guion                   { idea, segundos?, preset?, estilo?, productoId?, personajes? }: el guion por planos (texto)
 //   POST   /<cliente>/guion-corto                  { idea, segundos, post? }: guion de un video de 8 o 10 s (texto)
 //   PUT    /<cliente>/kit                          { kit }: guarda el kit de marca (paleta, presets, logo…)
 //   POST   /<cliente>/kit/preparar                 La IA PROPONE el kit desde el cerebro (no guarda)
 //   POST   /<cliente>/kit/aprender                 La IA MIRA los «Me gusta» y la papelera y PROPONE reglas visuales (no guarda)
 //   POST   /<cliente>/revisar                      { archivoId } o { clave }: la IA mira la imagen contra el kit
-//   POST   /<cliente>/archivos                     Subir a mano (multipart: archivo, carpetaId?, origenId?, plantilla?)
+//   POST   /<cliente>/archivos                     Subir a mano (multipart: archivo, carpetaId?, origenId?, plantilla?);
+//                                                   la misma imagen dos veces → 200 con la ficha que había y `repetido`
 //   POST   /<cliente>/archivos/<id>/cambiar        { favorito?, carpetaId? }
 //   POST   /<cliente>/archivos/<id>/uso            { calendarId, postId }: lo usa una publicación
 //   POST   /<cliente>/archivos/<id>/papelera       A la papelera
@@ -28,8 +31,9 @@
 //   POST   /<cliente>/archivos/<id>/perdido        Quitar la ficha de un archivo que ya no está en R2
 //   DELETE /<cliente>/archivos/<id>?forzar=1       Borrar del todo (sólo desde la papelera)
 //   POST   /<cliente>/papelera/vaciar
-//   POST   /<cliente>/carpetas                     { nombre }
-//   PUT    /<cliente>/carpetas/<id>                { nombre }
+//   POST   /<cliente>/kit/reglas                   { regla } → se suma a «Reglas que no se rompen» del kit
+//   POST   /<cliente>/carpetas                     { nombre, tipo? } (tipo «carrusel» | «reel»: la galería la agrupa)
+//   PUT    /<cliente>/carpetas/<id>                { nombre?, orden? } (orden: ids de sus piezas, en orden)
 //   DELETE /<cliente>/carpetas/<id>
 //
 // Todo pasa por `clienteDe()`: el cliente tiene que ser de este espacio y, si
@@ -52,14 +56,16 @@ import { produccionDeLote } from "../lib/estudio/lote.js";
 import { ideasDelEstudio } from "../lib/estudio/ideas.js";
 import { propuestaDeCarrusel } from "../lib/estudio/carrusel.js";
 import { guionDeReel } from "../lib/estudio/reel.js";
+import { ideasDeFormato } from "../lib/estudio/ideasFormato.js";
 import { leerMercado } from "../lib/mercado.js";
 import { angulosDeAnuncio, fotosDelCatalogo } from "../../src/lib/estudioMercado.js";
+import { MAX_REGLAS } from "../../src/lib/kitMarca.js";
 import {
   crearTrabajo, avanzarTrabajo, cancelarTrabajo, reintentarTrabajo, trabajoPublico, ErrorEstudio,
 } from "../lib/estudio/trabajos.js";
 import {
   leerGaleria, subirArchivo, cambiarArchivo, marcarUso, enviarAPapelera, recuperar, borrarParaSiempre, quitarPerdido,
-  vaciarPapelera, crearCarpeta, renombrarCarpeta, borrarCarpeta, archivoPublico,
+  vaciarPapelera, crearCarpeta, renombrarCarpeta, ordenarCarpeta, borrarCarpeta, archivoPublico,
 } from "../lib/estudio/galeria.js";
 
 const ID = /^[\w-]{1,80}$/;
@@ -97,6 +103,20 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         const datos = await cuerpo(req);
         if (!datos?.kit) return error("Falta el kit");
         const kit = await guardarKit(env, acceso, cliente, datos.kit);
+        avisar();
+        return json({ kit });
+      }
+      // «Guardar como regla»: una corrección que se repite pasa a las reglas del kit (sobre el kit GUARDADO, no el que
+      // tenga abierto la pantalla: así no pisa lo que otra persona cambió).
+      if (c === "reglas" && metodo === "POST") {
+        const datos = await cuerpo(req);
+        const regla = String(datos?.regla ?? "").replace(/\s+/g, " ").trim();
+        if (!regla) return error("Escribe la regla.");
+        const actual = kitDe(cliente);
+        if (actual.reglas.length >= MAX_REGLAS && !actual.reglas.some((r) => r.toLowerCase() === regla.toLowerCase().replace(/[.\s]+$/, ""))) {
+          return error(`El kit ya tiene ${MAX_REGLAS} reglas: quita alguna en el kit de marca.`, 409);
+        }
+        const kit = await guardarKit(env, acceso, cliente, { ...actual, reglas: [...actual.reglas, regla] });
         avisar();
         return json({ kit });
       }
@@ -164,6 +184,18 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       return json(await ideasDelEstudio(env, acceso, cliente, datos));
     }
 
+    // ---------- «Dame ideas» de carrusel o de reel IA (texto: no pide nada al motor) ----------
+    if ((b === "carrusel" || b === "reel") && c === "ideas" && metodo === "POST") {
+      const datos = await cuerpo(req);
+      if (!datos) return error("JSON inválido");
+      try {
+        return json(await ideasDeFormato(env, acceso, cliente, b, datos));
+      } catch (e) {
+        if (e?.estado) return error(e.message, e.estado);
+        throw e;
+      }
+    }
+
     // ---------- El carrusel: la contrapropuesta del director de arte (texto: no pide nada al motor) ----------
     if (b === "carrusel" && c === "propuesta" && metodo === "POST") {
       const datos = await cuerpo(req);
@@ -219,6 +251,12 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         const archivo = await subirArchivo(env, acceso, cliente, form?.get("archivo"), {
           carpetaId: form?.get("carpetaId") || null, origenId: form?.get("origenId") || null, plantilla: form?.get("plantilla") || null,
         });
+        if (archivo.repetido) {
+          // «Ya estaba en la galería»: no se guardó otra copia; se devuelve la que había.
+          const { repetido, ...esa } = archivo;
+          avisar();
+          return json({ archivo: esa, repetido }, 200);
+        }
         avisar();
         return json({ archivo }, 201);
       }
@@ -282,15 +320,17 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
     if (b === "carpetas") {
       if (!c && metodo === "POST") {
         const datos = (await cuerpo(req)) ?? {};
-        const carpeta = await crearCarpeta(acceso, cliente.id, datos.nombre);
+        const carpeta = await crearCarpeta(acceso, cliente.id, datos.nombre, { tipo: datos.tipo });
         avisar();
         return json({ carpeta }, 201);
       }
       if (!ID.test(String(c ?? ""))) return noEncontrado("Carpeta");
       if (metodo === "PUT") {
         const datos = (await cuerpo(req)) ?? {};
-        const carpeta = await renombrarCarpeta(acceso, cliente.id, c, datos.nombre);
-        if (!carpeta) return noEncontrado("Carpeta");
+        // { nombre } renombra; { orden } guarda las piezas de un carrusel o un reel, en orden.
+        let carpeta = datos.nombre !== undefined ? await renombrarCarpeta(acceso, cliente.id, c, datos.nombre) : true;
+        if (carpeta && datos.orden !== undefined) carpeta = await ordenarCarpeta(acceso, cliente.id, c, datos.orden);
+        if (!carpeta || carpeta === true) return noEncontrado("Carpeta");
         avisar();
         return json({ carpeta });
       }

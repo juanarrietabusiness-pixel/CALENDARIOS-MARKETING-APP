@@ -10,6 +10,7 @@ import { validarPedido, textoCosto, CONFIRMAR_DESDE } from "../../lib/estudioCat
 import * as api from "../../lib/estudio";
 import { partirGuion, costoCarrusel, coloresPlantilla, MODOS_TEXTO, PLANTILLAS_TEXTO } from "../../lib/carrusel";
 import { crearCarrusel, modeloParaCarrusel } from "../../lib/carruselEstudio";
+import { estampaSola, conLogoSiToca } from "../../lib/logoEstudio";
 import { DIAS_SEMANA, diaDeLaSemana, semanasDe, diasDe, filtrarProduccion, ordenarProduccion } from "../../lib/produccion";
 import "./RevisionMes.css";
 
@@ -161,10 +162,14 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
     const porTrabajo = new Map((g?.archivos ?? []).map((a) => [a.trabajoId, a]));
     const salida = {};
     for (const t of creados) if (t.id && porTrabajo.has(t.id)) salida[t.postId] = porTrabajo.get(t.id);
+    // Con el logo estampado (kit), la pieza que se pone es la que lo lleva encima.
+    if (estampaSola(estudio.kit)) {
+      for (const k of Object.keys(salida)) salida[k] = await conLogoSiToca({ clienteId, archivo: salida[k], kit: estudio.kit });
+    }
 
     // Los carruseles, después y uno a uno: cada lámina espera a la anterior.
     const comunes = {
-      clienteId, modo: modoTexto, plantilla, logo: estudio.kit.logo, colores: coloresPlantilla(estudio.kit), familia: estudio.kit.tipografia,
+      clienteId, modo: modoTexto, plantilla, logo: estampaSola(estudio.kit) ? "" : estudio.kit.logo, estampar: estampaSola(estudio.kit) ? estudio.kit : null, colores: coloresPlantilla(estudio.kit), familia: estudio.kit.tipografia,
       calendarId: cal.dbId || cal.id, seguir: () => vivo.current,
     };
     for (const c of elegidas.filter((x) => x.tipo === "carrusel")) {

@@ -17,7 +17,7 @@ import { productosActivos, lineaDeProducto } from "../../../src/lib/estudioMerca
 import { nombreDePreset, lineaDeEstilo, estiloDeLaPieza, bloqueDeMarca } from "../../../src/lib/kitMarca.js";
 import { pedidoDeReel, leerReel } from "../../../src/lib/reel.js";
 
-/** `datos`: { idea, segundos?, preset?, estilo?, productoId?, personajes?: [ids] } → { hilo, planos, sonido, descripcion } */
+/** `datos`: { idea, segundos?, preset?, estilo?, productoId?, personajes?: [ids], musica?, locucion? } → { hilo, planos, musica, locucion, efectos, descripcion } */
 export async function guionDeReel(env, acceso, cliente, datos = {}) {
   const idea = String(datos.idea ?? "").trim().slice(0, 1500);
   if (!idea) throw Object.assign(new Error("Escribe la idea central: la promoción, el beneficio o lo que quieres contar."), { estado: 400 });
@@ -45,6 +45,7 @@ export async function guionDeReel(env, acceso, cliente, datos = {}) {
       estilo: lineaDeEstilo(kit, estiloDeLaPieza(kit, preset, String(datos.estilo ?? ""))),
       personajes: kit.personajes.filter((p) => ids.includes(p.id)).map((p) => `${p.nombre}${p.descripcion ? `: ${p.descripcion}` : ""}`),
       identidad: bloqueDeMarca(kit),
+      musica: String(datos.musica ?? "").slice(0, 300), locucion: String(datos.locucion ?? "").slice(0, 500),
     }),
     salida: 2400,
     funcion: "guion de video",

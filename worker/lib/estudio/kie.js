@@ -114,7 +114,7 @@ export const MODELOS_KIE = Object.freeze({
   "seedance-2-5-kie": (p) => seedance("bytedance/seedance-2-5", 14, 10, p),
   "veo-3-1-fast-kie": (p) => veo("veo3_fast", p),
   "veo-3-1-kie": (p) => veo("veo3", p),
-  "gemini-omni-kie": ({ prompt, ajustes, refs, inicio, fin, videos }) => {
+  "gemini-omni-kie": ({ prompt, ajustes, refs, inicio, fin, videos, audios = [] }) => {
     const input = { prompt, aspect_ratio: ajustes.aspectRatio || "9:16", resolution: ajustes.resolution || "720p", duration: String(ajustes.duration || "10") };
     // Con imagen inicial, nada más (ni referencias ni video): así lo exige Kie.
     if (inicio.length) return { model: "google/gemini-omni-flash-1-1", input: { ...input, first_frame_url: inicio[0], ...(fin.length ? { last_frame_url: fin[0] } : {}) } };
@@ -127,6 +127,8 @@ export const MODELOS_KIE = Object.freeze({
         ...input,
         ...(refs.length ? { image_urls: refs.slice(0, videos.length ? 5 : 7) } : {}),
         ...(videos.length ? { video_list: [{ url: videos[0], start: desde, ends: hasta }] } : {}),
+        // La voz registrada para la locución (no va con la imagen inicial: lo excluye Kie).
+        ...(audios.length ? { audio_ids: audios.slice(0, 3) } : {}),
       },
     };
   },
@@ -167,10 +169,10 @@ function veo(nivel, { prompt, ajustes, refs, inicio, fin }) {
 }
 
 /** El pedido a Kie: { model, input } para ese modelo, o lanza si no lo conoce. Pura. */
-export function pedidoKie(modelo, { prompt, ajustes = {}, refs = [], inicio = [], fin = [], videos = [] }) {
+export function pedidoKie(modelo, { prompt, ajustes = {}, refs = [], inicio = [], fin = [], videos = [], audios = [] }) {
   const armar = MODELOS_KIE[modelo.id];
   if (!armar) throw new ErrorMotor(`El Estudio no sabe pedir «${modelo.nombre}» a Kie.ai.`, 500);
-  return armar({ prompt, ajustes, refs, inicio, fin, videos });
+  return armar({ prompt, ajustes, refs, inicio, fin, videos, audios });
 }
 
 /** Lo que Kie no admite se dice AL PEDIR (motor.validar): → motivo | null. Pura. */
@@ -181,6 +183,7 @@ export function validarKie(modelo, pedido = {}) {
     return "Gemini Omni no mezcla la imagen inicial con referencias o video: usa una cosa o la otra.";
   }
   if (modelo.id === "gemini-omni-kie" && n("video") && n("reference") > 5) return "Con un video, Gemini Omni admite hasta 5 imágenes de referencia.";
+  if (modelo.id === "gemini-omni-kie" && n("start") && pedido.ajustes?.voz) return "Con imagen inicial, Gemini Omni no admite una voz escogida: quita la voz o usa los fotogramas como referencias.";
   if (modelo.id === "veo-3-1-fast-kie" && n("reference") && n("start")) return "Veo 3.1 no mezcla referencias con imagen inicial: usa una cosa o la otra.";
   if (modelo.id === "kling-3-omni-kie" && n("start") && (n("reference") || n("video"))) return "Kling 3.0 Omni no mezcla la imagen inicial con referencias o video.";
   return null;
@@ -247,6 +250,16 @@ export function urlsDelResultado(data = {}) {
 
 const NOTAS = { waiting: "En espera en Kie.ai", queuing: "En cola en Kie.ai", generating: "Generando en Kie.ai…" };
 
+/** Registra una voz fija de Omni (`gemini-omni-audio`, gratis) → su `audioId` para `audio_ids`. */
+export async function registrarVoz(env, voz) {
+  const d = await llamar(env, `${BASE(env)}/api/v1/omni/audio/create`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ audio_id: String(voz), name: `Voz ${voz}` }),
+  });
+  const id = d?.audioId ?? d?.audio_id;
+  if (!id) throw new ErrorMotor("Kie.ai no devolvió el id de la voz de la locución.", 502);
+  return String(id);
+}
+
 export const MOTOR_KIE = {
   nombre: "Kie.ai",
   llave: "KIE_API_KEY",
@@ -266,7 +279,9 @@ export const MOTOR_KIE = {
     const inicio = esVideo ? await subirTodas(medios.start) : [];
     const fin = esVideo ? await subirTodas(medios.end) : [];
     const videos = esVideo ? await subirTodas(medios.video) : [];
-    const cuerpo = pedidoKie(modelo, { prompt, ajustes, refs, inicio, fin, videos });
+    // La voz de la locución de Omni: se REGISTRA (gratis, en el acto) y su id va en `audio_ids`.
+    const audios = modelo.id === "gemini-omni-kie" && ajustes?.voz && !inicio.length ? [await registrarVoz(env, ajustes.voz)] : [];
+    const cuerpo = pedidoKie(modelo, { prompt, ajustes, refs, inicio, fin, videos, audios });
     const d = await llamar(env, `${BASE(env)}/api/v1/jobs/createTask`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo),
     });

@@ -19,12 +19,13 @@ import { idDeCarpeta } from "../lib/drive";
 import { OverflowMenu } from "./calendario/primitivas";
 import { soloLectura } from "../lib/sesionActual";
 import * as api from "../lib/estudio";
+import { estampaSola, estamparTrabajo, estamparEnGaleria } from "../lib/logoEstudio";
 import {
   modeloPorId, nombreDelModelo, estimar, textoCosto, pideConfirmar, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
 } from "../lib/estudioCatalogo";
 import {
-  filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga,
-  proporcionDeMedidas, promptDeEdicion, modeloParaEditar, originalDe,
+  filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, nombreDeDescarga,
+  proporcionDeMedidas, modeloParaEditar, originalDe, FILTROS_GALERIA, agruparGaleria, esGrupo, estaUsado, textoDeGrupo,
 } from "../lib/estudio";
 import "./Estudio.css";
 
@@ -67,7 +68,11 @@ const recortarMedios = (medios, m) => ({
   reference: medios.reference.slice(0, m.referencias || 0), start: medios.start.slice(0, m.inicial || 0),
   end: medios.end.slice(0, m.final || 0), video: (medios.video ?? []).slice(0, m.video || 0),
 });
-const FILTROS_FIJOS = ["todas", "favoritas", "subidas", "sin-carpeta"];
+const FILTROS_FIJOS = FILTROS_GALERIA;
+// Un carrusel o un reel de la galería con todas sus piezas y la descarga en ZIP: sólo al abrirlo.
+const VisorGrupo = lazy(() => import("./VisorGrupo"));
+// La papelera, igual: sólo al abrirla (la pestaña tiene tope de 20 kB comprimidos).
+const EstudioPapelera = lazy(() => import("./EstudioPapelera"));
 
 const reemplazar = (lista = [], t) => (lista.some((x) => x.id === t.id) ? lista.map((x) => (x.id === t.id ? t : x)) : [t, ...lista]);
 const nombreDeModelo = (id) => nombreDelModelo(id) || "Aplicación";
@@ -172,6 +177,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const [enDrive, setEnDrive] = useState(false);
   const setEnPapelera = (v) => { setEnPapeleraEstado(v); if (v) setEnDrive(false); };
   const [visor, setVisor] = useState(null);
+  const [grupoAbierto, setGrupoAbierto] = useState(null);
   const [descartados, setDescartados] = useState(() => new Set());
   const [loteAbierto, setLoteAbierto] = useState(false);
   const [recrear, setRecrear] = useState(null); // null, o { archivo }: «Recrear un anuncio» abierto (con uno ya escogido)
@@ -180,6 +186,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const [borrando, setBorrando] = useState(null);
 
   const siguiendo = useRef(new Set());
+  // Los trabajos del compositor cuyas imágenes llevan el logo ESTAMPADO al terminar (kit.logoModo «estampado»).
+  const paraEstampar = useRef(new Set());
+  const kitRef = useRef(null);
   const montado = useRef(true);
   const promptRef = useRef(null);
 
@@ -227,6 +236,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const conKit = usarKit && kitListo;
   const bloqueMarca = conKit ? bloqueDeMarca(kit) : "";
   const puedeLogo = Boolean(conKit && form && modelo && ponerLogo({ kit, tipo: form.tipo, modelo, referencias: clavesDe(form.medios).reference }));
+  // Con el logo estampado (kit), el modelo no lo recibe: la aplicación lo pega encima al terminar.
+  const estampa = Boolean(conKit && form && form.tipo !== "video" && estampaSola(kit));
+  kitRef.current = kit;
   // Los productos del catálogo que nombra la idea y cuyas fotos aún no van: al crear se suman (y se dice antes). Con
   // varios, una foto de cada uno antes que la segunda de ninguno: una pieza con tres productos lleva a los tres.
   const libresRefs = form && modelo ? (modelo.referencias || 0) - form.medios.reference.length : 0;
@@ -263,6 +275,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (siguiendo.current.has(id)) return;
     siguiendo.current.add(id);
     let vistas = -1;
+    let ultimo = null;
     try {
       while (montado.current) {
         let r;
@@ -274,6 +287,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         }
         if (!montado.current) break;
         const t = r.trabajo;
+        ultimo = t;
         setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, t) } : d));
         const hechas = t.archivos?.length ?? 0;
         if (hechas !== vistas) { vistas = hechas; cargar(); } // las piezas van apareciendo
@@ -281,6 +295,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         // Otro tiene el paso, el motor pidió esperar (saturación) o el video aún se hace: sin prisa.
         // Si no, el siguiente ya. Nunca más de 15 s: por si acaso se cierra el diálogo y hay que enterarse.
         await dormir(Math.min(15_000, Math.max(r.espera ?? 0, r.ocupado ? 2500 : t.nota ? 3000 : 200)));
+      }
+      // Terminado: si se pidió con el logo estampado, cada imagen sale otra vez con el logo encima (la cruda se queda).
+      if (ultimo && !estaVivo(ultimo.estado) && paraEstampar.current.has(id)) {
+        paraEstampar.current.delete(id);
+        if (await estamparTrabajo({ clienteId: client.id, trabajo: ultimo, kit: kitRef.current })) cargar();
       }
     } finally {
       siguiendo.current.delete(id);
@@ -424,16 +443,17 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   };
 
   /** «Editar»: la imagen va de referencia a un modelo que edita, con la indicación y la orden de no tocar lo demás. */
-  const editar = async (a, instruccion) => {
-    const prompt = promptDeEdicion(instruccion);
-    if (!prompt || !motores) return;
+  const editar = async (a, instruccion, ejemplos = []) => {
+    if (!String(instruccion ?? "").trim() || !motores) return;
     const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
     const m = modeloParaEditar(activos);
+    // La imagen primero; los ejemplos de la galería detrás, los que quepan en el modelo.
+    const { prompt, medios } = api.pedidoDeCorreccion({ clave: a.clave, instruccion, ejemplos, modelo: m });
     const proporcion = a.ajustes?.aspectRatio ?? proporcionDeMedidas(a.ancho, a.alto);
     try {
       const { trabajo } = await api.pedirImagenes(client.id, {
-        modelo: m.id, prompt, n: 1, ajustes: ajustesDe(m, { aspectRatio: proporcion }, { reference: [a.clave] }),
-        medios: { reference: [a.clave] }, confirmado: true,
+        modelo: m.id, prompt, n: 1, ajustes: ajustesDe(m, { aspectRatio: proporcion }, medios),
+        medios, confirmado: true,
         ...(a.carpetaId ? { carpetaId: a.carpetaId } : {}),
       });
       setVisor(null);
@@ -477,6 +497,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         ...(uso ? { calendarId: uso.calendarId, postId: uso.postId } : {}),
       });
       setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, trabajo) } : d));
+      if (estampa && conLogo) paraEstampar.current.add(trabajo.id);
       seguir(trabajo.id);
       setIdeaAnterior(null);
       if (delNombrado.length) {
@@ -703,13 +724,16 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setAviso(null);
     try {
       let ultima = null;
+      let repetidas = 0;
       const enCarpeta = !FILTROS_FIJOS.includes(filtro) ? filtro : null;
       for (const f of archivos.slice(0, 6)) {
-        ultima = (await api.subirImagen(client.id, f, { carpetaId: enCarpeta })).archivo;
+        const subida = await api.subirImagen(client.id, f, { carpetaId: enCarpeta });
+        ultima = subida.archivo;
+        if (subida.repetido) repetidas += 1;
         const limite = { reference: modelo.referencias, start: modelo.inicial, end: modelo.final, video: modelo.video }[rol];
         setForm((fm) => ((fm.medios[rol] ?? []).length < (limite || 0) ? { ...fm, medios: { ...fm.medios, [rol]: [...(fm.medios[rol] ?? []), ultima] } } : fm));
       }
-      avisar(true, rol === "video" ? "Video subido a la galería." : archivos.length === 1 ? "Imagen subida a la galería." : `${Math.min(archivos.length, 6)} imágenes subidas.`);
+      avisar(true, api.fraseDeSubida(Math.min(archivos.length, 6), repetidas, rol === "video"));
       await cargar();
     } catch (err) {
       avisar(false, err.message);
@@ -762,6 +786,10 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     const { archivo } = await api.cambiarArchivo(client.id, a.id, { favorito: !a.favorito });
     setVisor((v) => (v?.id === a.id ? archivo : v));
   });
+  /** «Estampar el logo»: el original del kit encima, en su esquina; sale una pieza nueva y ésta se queda. */
+  const estampar = (a) => accion(async () => {
+    setVisor(await estamparEnGaleria({ clienteId: client.id, archivo: a, kit }));
+  }, "Listo: sale como una pieza nueva con el logo encima; la original se queda.");
   const aPapelera = (a) => accion(async () => { await api.mandarAPapelera(client.id, a.id); setVisor(null); }, "Movida a la papelera. Puedes recuperarla 30 días.");
   /** Varias de una vez: una por una (cada una es su fila), y se relee la galería una sola vez al terminar. */
   const variasAPapelera = async (lista) => {
@@ -899,6 +927,10 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const papelera = datos?.papelera ?? [];
   const cuentas = useMemo(() => contarFiltros(archivos, carpetas), [archivos, carpetas]);
   const visibles = useMemo(() => filtrarArchivos(archivos, { filtro, texto }), [archivos, filtro, texto]);
+  // En «Todas», cada carrusel y cada reel es UNA tarjeta; en sus filtros (o en el de su carpeta), pieza a pieza.
+  const vista = useMemo(() => (filtro === "todas" ? agruparGaleria(visibles, carpetas, archivos) : visibles), [visibles, carpetas, archivos, filtro]);
+  const carpetasPropias = useMemo(() => carpetas.filter((c) => !esGrupo(c)), [carpetas]);
+  const abrirPieza = (a) => (seleccion ? alternarSeleccion(a) : destinoGaleria ? usarComoMedio(a, destinoGaleria) : setVisor(a));
   const enCurso = useMemo(() => trabajosVisibles(datos?.trabajos ?? [], { descartados }), [datos, descartados]);
   const carpetaActiva = carpetas.find((c) => c.id === filtro) ?? null;
   const soloPrueba = motores && !Object.entries(motores).some(([id, m]) => id !== "prueba" && m.activo);
@@ -1019,7 +1051,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             bloqueMarca, usarKit, onUsarKit: setUsarKit,
             estilo: estiloVigente, estiloResuelto: estiloDeEsta, nombreEstilo: nombreDeEstilo(kit, estiloDeEsta), lineaEstilo: lineaDelEstilo, onEstilo: setEstilo,
             fijadoTipo: limpiarKit(kit).estiloPorTipo[presetVigente.split("-")[0]] ?? "", onFijarEstilo: lectura ? null : fijarEstilo,
-            conLogo, onConLogo: setConLogo, puedeLogo,
+            conLogo, onConLogo: setConLogo, puedeLogo, estampa,
             angulos: datos?.angulos ?? [],
             onAngulo: (a) => { setConfirmando(null); setForm((f) => ({ ...f, prompt: ideaDesdeAngulo(a) })); },
             productos: modelo.referencias > 0 ? datos?.productos ?? [] : [],
@@ -1087,9 +1119,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "todas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("todas"); }}>Todas ({cuentas.todas})</button>
           <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "favoritas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("favoritas"); }}><Icon name="heart" size={13} /> Me gusta ({cuentas.favoritas})</button>
           <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "subidas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("subidas"); }}>Subidas ({cuentas.subidas})</button>
-          {carpetas.map((c) => (
+          <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "usadas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("usadas"); }} title="Las que ya están en una publicación">Usadas ({cuentas.usadas})</button>
+          <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "sin-usar"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("sin-usar"); }}>Sin usar ({cuentas["sin-usar"]})</button>
+          {carpetas.filter((c) => !esGrupo(c) || filtro === c.id).map((c) => (
             <button key={c.id} type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === c.id} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro(c.id); }}>
-              <Icon name="folder" size={13} /> {c.nombre} ({cuentas[c.id] ?? 0})
+              <Icon name={esGrupo(c) ? (c.tipo === "reel" ? "video" : "copy") : "folder"} size={13} /> {c.nombre} ({cuentas[c.id] ?? 0})
             </button>
           ))}
           {!lectura && carpetaNueva === null && (
@@ -1162,43 +1196,12 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           />
         </div>
       ) : enPapelera ? (
-        <>
-          {papelera.length > 0 && !lectura && (
-            <p className="est-papelera-nota">
-              Lo que llevas 30 días aquí se borra solo (menos lo que usa una publicación).{" "}
-              <button type="button" className="btn btn-secondary btn-sm" onClick={vaciar}>Vaciar la papelera</button>
-            </p>
-          )}
-          {papelera.length === 0 ? (
-            <p className="est-vacio">La papelera está vacía.</p>
-          ) : (
-            <ul className="est-rejilla">
-              {papelera.map((a) => (
-                <li key={a.id} className="est-tarjeta est-tarjeta-papelera">
-                  <div className="est-img"><Pieza archivo={a} /></div>
-                  <div className="est-pie">
-                    <p className="est-prompt">{a.prompt}</p>
-                    <p className="est-meta">{textoPapelera(a.borradoAt)}{a.usadoEn.length ? ` · en ${a.usadoEn.length} publicación${a.usadoEn.length === 1 ? "" : "es"}` : ""}</p>
-                    {!lectura && (
-                      borrando?.id === a.id ? (
-                        <div className="est-confirmar-borrar" role="alert">
-                          <p>{borrando.usos ? `Está en ${borrando.usos} publicación${borrando.usos === 1 ? "" : "es"}: desaparecerá de ${borrando.usos === 1 ? "ella" : "ellas"}.` : "¿Borrarla del todo?"}</p>
-                          <button type="button" className="btn btn-danger btn-sm" onClick={() => borrarDeVerdad(a, true)}>Sí, borrar</button>
-                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBorrando(null)}>No</button>
-                        </div>
-                      ) : (
-                        <div className="est-acciones">
-                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => recuperar(a)}><Icon name="undo" size={14} /> Recuperar</button>
-                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => borrarDeVerdad(a)}>Borrar del todo</button>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
+        <Suspense fallback={<p className="est-vacio">Abriendo la papelera…</p>}>
+          <EstudioPapelera
+            papelera={papelera} lectura={lectura} borrando={borrando} onVaciar={vaciar}
+            onRecuperar={recuperar} onBorrar={borrarDeVerdad} onNoBorrar={() => setBorrando(null)}
+          />
+        </Suspense>
       ) : archivos.length === 0 ? (
         <div className="card est-vacio-grande">
           <h3>Todavía no hay nada de {client.name}</h3>
@@ -1208,7 +1211,24 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         <p className="est-vacio">No hay nada con ese filtro.</p>
       ) : (
         <ul className="est-rejilla">
-          {visibles.map((a) => {
+          {vista.map((a) => {
+            if (a.grupo) {
+              const { carpeta, piezas, portada } = a.grupo;
+              const nombre = textoDeGrupo(carpeta, piezas);
+              return (
+                <li key={a.id} className="est-tarjeta est-tarjeta-grupo">
+                  <button type="button" className="est-img" aria-label={`Abrir ${nombre}: ${carpeta.nombre}`} onClick={() => setGrupoAbierto(a.grupo)}>
+                    <Pieza archivo={portada} />
+                    <span className="est-marca-grupo"><Icon name={carpeta.tipo === "reel" ? "video" : "copy"} size={12} /> {nombre}</span>
+                    {piezas.some(estaUsado) && <span className="est-marca-usada">Usado</span>}
+                  </button>
+                  <div className="est-pie">
+                    <p className="est-prompt" title={carpeta.nombre}>{carpeta.nombre}</p>
+                    <p className="est-meta">{nombre} · {hace(portada.creado)}</p>
+                  </div>
+                </li>
+              );
+            }
             const escena = ideaDelPedido(a.prompt);
             const marcada = Boolean(seleccion?.has(a.id));
             const perdida = perdidos.has(a.id);
@@ -1218,7 +1238,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
                 type="button" className="est-img"
                 aria-label={seleccion ? `${marcada ? "Quitar de" : "Añadir a"} la selección: ${escena}` : destinoGaleria ? `Poner como ${NOMBRE_RANURA[destinoGaleria]}: ${escena}` : `Abrir: ${escena}`}
                 aria-pressed={seleccion ? marcada : undefined}
-                onClick={() => (seleccion ? alternarSeleccion(a) : destinoGaleria ? usarComoMedio(a, destinoGaleria) : setVisor(a))}
+                onClick={() => abrirPieza(a)}
               >
                 {perdida ? (
                   <span className="est-perdida"><Icon name="alert" size={20} /> Archivo perdido</span>
@@ -1227,6 +1247,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
                 )}
                 {a.tipo === "video" && <span className="est-marca-video"><Icon name="video" size={12} /> Video</span>}
                 {enMedios(a) && <span className="est-marca-ref">En el pedido</span>}
+                {estaUsado(a) && <span className="est-marca-usada" title={`En ${a.usadoEn.length} publicación${a.usadoEn.length === 1 ? "" : "es"}`}>Usada</span>}
                 {seleccion && <span className="est-marca-check" aria-hidden="true"><Icon name={marcada ? "checkSquare" : "square"} size={18} /></span>}
               </button>
               {!lectura && !seleccion && (
@@ -1302,9 +1323,18 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         />
       )}
 
+      {grupoAbierto && (
+        <Suspense fallback={null}>
+          <VisorGrupo
+            grupo={grupoAbierto} onCerrar={() => setGrupoAbierto(null)}
+            onAbrir={(a) => { setGrupoAbierto(null); abrirPieza(a); }}
+            onSueltas={() => { setFiltro(grupoAbierto.carpeta.id); setGrupoAbierto(null); }}
+          />
+        </Suspense>
+      )}
       {visor && (
         <Visor
-          archivo={visor} carpetas={carpetas} lectura={lectura}
+          archivo={visor} carpetas={carpetasPropias} lectura={lectura}
           onCerrar={() => setVisor(null)}
           onFavorito={() => alternarFavorito(visor)}
           onPapelera={() => aPapelera(visor)}
@@ -1317,7 +1347,10 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           versionando={versionando}
           onReferencia={() => { const a = visor; setVisor(null); usarComoMedio(a); }}
           onAnimar={() => animar(visor)}
-          onEditar={(instruccion) => editar(visor, instruccion)}
+          onEditar={(instruccion, ejemplos) => editar(visor, instruccion, ejemplos)}
+          galeria={datos?.archivos ?? []}
+          clienteId={client.id}
+          onEstampar={limpiarKit(kit).logo && visor.tipo !== "video" ? () => estampar(visor) : null}
           original={originalDe(visor, datos?.trabajos ?? [], datos?.archivos ?? [])}
           onVerOriginal={(o) => setVisor(o)}
           onUsar={onUsar ? () => usarEnLaPublicacion(visor) : null}

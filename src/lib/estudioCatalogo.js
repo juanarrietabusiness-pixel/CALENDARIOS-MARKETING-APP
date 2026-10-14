@@ -41,6 +41,23 @@ export const MAX_PROMPT = 4_000;
 
 const enumerado = (valores, defecto) => ({ tipo: "enum", valores: Object.freeze(valores), defecto });
 
+/**
+ * Las voces fijas de Gemini Omni (Kie, `gemini-omni-audio`): la voz se REGISTRA (gratis) y su id va en `audio_ids`
+ * del video. El timbre es de la voz; el idioma lo da el texto de la locución. Descripción en español para escoger.
+ */
+export const VOCES_OMNI = Object.freeze({
+  achernar: "Mujer · suave, aguda", achird: "Hombre · amigable, media", algenib: "Hombre · rasposa, grave",
+  algieba: "Hombre · relajada, media-grave", alnilam: "Hombre · firme, media-grave", aoede: "Mujer · enérgica, media",
+  autonoe: "Mujer · luminosa, media", callirrhoe: "Mujer · relajada, media", charon: "Hombre · intelectual, grave",
+  despina: "Mujer · suave, media", enceladus: "Hombre · susurrada, grave", erinome: "Mujer · clara, media",
+  fenrir: "Hombre · animada, joven", gacrux: "Mujer · madura, media", iapetus: "Hombre · clara, media-grave",
+  kore: "Mujer · segura, media", laomedeia: "Mujer · alegre, media-aguda", leda: "Mujer · joven, media-aguda",
+  orus: "Hombre · firme, media-grave", puck: "Hombre · alegre, media", pulcherrima: "Neutra · directa, media-aguda",
+  rasalgethi: "Hombre · intelectual, media", sadachbia: "Hombre · vivaz, grave", sadaltager: "Hombre · experta, media",
+  schedar: "Hombre · suave, media-grave", sulafat: "Mujer · cálida, media", umbriel: "Hombre · suave, grave",
+  vindemiatrix: "Mujer · amable, media", zephyr: "Mujer · luminosa, media-aguda", zubenelgenubi: "Hombre · casual, media-grave",
+});
+
 const PROPORCIONES = Object.freeze(["1:1", "4:5", "3:4", "2:3", "9:16", "16:9", "4:3", "3:2", "5:4", "21:9"]);
 const TAMANOS = Object.freeze(["1K", "2K", "4K"]);
 
@@ -262,6 +279,8 @@ export const MODELOS = Object.freeze([
     ajustes: {
       aspectRatio: enumerado(["9:16", "16:9"], "9:16"), duration: enumerado(["4", "6", "8", "10"], "10"),
       resolution: enumerado(["720p", "1080p", "4k", "360p"], "720p"),
+      // La voz de la locución (vacío: la que escoja el modelo). Lo que DICE va en el pedido.
+      voz: enumerado(["", ...Object.keys(VOCES_OMNI)], ""),
     },
   },
   {

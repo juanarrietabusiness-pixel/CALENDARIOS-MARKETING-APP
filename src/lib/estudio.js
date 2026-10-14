@@ -11,7 +11,8 @@
 // ============================================================
 
 import { pedir } from "./db";
-import { estaVivo, diasQueQuedan, MODELOS, MAX_PROMPT, modeloPorId, modeloPorDefecto } from "./estudioCatalogo";
+import { estaVivo, diasQueQuedan, MODELOS, MAX_PROMPT, modeloPorId, modeloPorDefecto, VOCES_OMNI } from "./estudioCatalogo";
+import { lineaDeReferencia } from "./referencias";
 
 const base = (clienteId) => `/estudio/${encodeURIComponent(clienteId)}`;
 const post = (cuerpo) => ({ method: "POST", body: JSON.stringify(cuerpo ?? {}) });
@@ -39,6 +40,9 @@ export const mejorarIdea = (clienteId, datos) => pedir(`${base(clienteId)}/mejor
 export const proponerCarrusel = (clienteId, datos) => pedir(`${base(clienteId)}/carrusel/propuesta`, post(datos));
 /** El reel: el guion por planos → { hilo, planos: [{ n, desde, hasta, escena, texto, camara }], sonido, descripcion } (texto). */
 export const guionDeReel = (clienteId, datos) => pedir(`${base(clienteId)}/reel/guion`, post(datos));
+
+/** «Dame ideas» de carrusel o de reel IA: { preset?, tema?, productoId?, n?, usados? } → `{ ideas }` (texto). */
+export const ideasDeFormato = (clienteId, formato, datos) => pedir(`${base(clienteId)}/${formato === "reel" ? "reel" : "carrusel"}/ideas`, post(datos));
 /** «Otra versión distinta»: { idea, n, tipo } → { versiones: [escena] } (texto: no gasta en el motor). */
 export const versionesDeIdea = (clienteId, datos) => pedir(`${base(clienteId)}/versiones`, post(datos));
 /** El guion de un video corto (8 o 10 s): `{ guion, prompt }`. Texto: no pide nada al motor. */
@@ -59,6 +63,7 @@ export const revisarMarcaDeRuta = (clienteId, clave) => pedir(`${base(clienteId)
  * Sube una imagen a mano (la foto del producto, el logo) a la galería del cliente. Una pieza con el texto de la
  * plantilla puesto encima sube con `origenId` (la cruda de la que sale) y `plantilla` ({ texto, plantilla }).
  */
+/** Devuelve `{ archivo, repetido? }`: con `repetido`, esa imagen ya estaba en la galería y no se guardó otra copia. */
 export function subirImagen(clienteId, archivo, { carpetaId = null, origenId = null, plantilla = null } = {}) {
   const form = new FormData();
   form.set("archivo", archivo);
@@ -78,7 +83,25 @@ export const borrarDelTodo = (clienteId, id, { forzar = false } = {}) =>
   pedir(`${base(clienteId)}/archivos/${encodeURIComponent(id)}${forzar ? "?forzar=1" : ""}`, { method: "DELETE" });
 export const vaciarPapelera = (clienteId) => pedir(`${base(clienteId)}/papelera/vaciar`, post());
 
-export const crearCarpeta = (clienteId, nombre) => pedir(`${base(clienteId)}/carpetas`, post({ nombre }));
+/** `tipo` «carrusel» | «reel»: la galería la enseña como UNA tarjeta con sus piezas en orden. */
+export const crearCarpeta = (clienteId, nombre, { tipo = "" } = {}) => pedir(`${base(clienteId)}/carpetas`, post({ nombre, ...(tipo ? { tipo } : {}) }));
+/** Las piezas de un carrusel o un reel, en orden (ids de la galería que están en esa carpeta). */
+export const ordenarCarpeta = (clienteId, id, orden) => pedir(`${base(clienteId)}/carpetas/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ orden }) });
+
+/**
+ * La carpeta propia de un carrusel o un reel («Carrusel · tema · 14 oct»). Si ya hay una con ese nombre, ésa. Sin
+ * carpeta (falla la red), las piezas van a la galería igual: devuelve null.
+ */
+export async function carpetaDeGrupo(clienteId, tipo, titulo) {
+  const dia = new Date().toLocaleDateString("es-PA", { day: "numeric", month: "short", timeZone: "America/Panama" }).replace(/\./g, "");
+  const nombre = `${tipo === "reel" ? "Reel" : "Carrusel"} · ${String(titulo ?? "").split("\n")[0].slice(0, 18).trim()} · ${dia}`.slice(0, 40);
+  try {
+    return (await crearCarpeta(clienteId, nombre, { tipo }))?.carpeta?.id ?? null;
+  } catch {
+    const g = await leerEstudio(clienteId).catch(() => null);
+    return (g?.carpetas ?? []).find((c) => c.nombre.toLowerCase() === nombre.toLowerCase())?.id ?? null;
+  }
+}
 export const renombrarCarpeta = (clienteId, id, nombre) => pedir(`${base(clienteId)}/carpetas/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ nombre }) });
 export const borrarCarpeta = (clienteId, id) => pedir(`${base(clienteId)}/carpetas/${encodeURIComponent(id)}`, { method: "DELETE" });
 
@@ -99,14 +122,28 @@ export function modeloPreferido(activos = {}, tipo = "imagen", fijado = "") {
 // Puro
 // ------------------------------------------------------------
 
-/** Filtros de la galería: `todas`, `favoritas`, `subidas`, `sin-carpeta` o el id de una carpeta. */
+/** Lo que se dice al subir `n` archivos de los que `repetidas` ya estaban en la galería. Pura. */
+export function fraseDeSubida(n, repetidas = 0, video = false) {
+  if (repetidas && repetidas >= n) return n === 1 ? "Ya estaba en la galería: se usa la que había, sin guardar otra copia." : "Ya estaban en la galería: se usan las que había.";
+  const subida = video ? "Video subido a la galería." : n === 1 ? "Imagen subida a la galería." : `${n} imágenes subidas.`;
+  return repetidas ? `${subida} ${repetidas} ya estaba${repetidas === 1 ? "" : "n"} en la galería (no se guardó otra copia).` : subida;
+}
+
+/** Los filtros que no son una carpeta. */
+export const FILTROS_GALERIA = ["todas", "favoritas", "subidas", "usadas", "sin-usar", "sin-carpeta"];
+/** ¿Lo usa alguna publicación? */
+export const estaUsado = (a) => (a?.usadoEn?.length ?? 0) > 0;
+
+/** Filtros de la galería: los de `FILTROS_GALERIA` o el id de una carpeta. */
 export function filtrarArchivos(archivos = [], { filtro = "todas", texto = "" } = {}) {
   const t = String(texto ?? "").trim().toLowerCase();
   return archivos.filter((a) => {
     if (filtro === "favoritas" && !a.favorito) return false;
     if (filtro === "subidas" && !a.subido) return false;
+    if (filtro === "usadas" && !estaUsado(a)) return false;
+    if (filtro === "sin-usar" && estaUsado(a)) return false;
     if (filtro === "sin-carpeta" && a.carpetaId) return false;
-    if (!["todas", "favoritas", "subidas", "sin-carpeta"].includes(filtro) && a.carpetaId !== filtro) return false;
+    if (!FILTROS_GALERIA.includes(filtro) && a.carpetaId !== filtro) return false;
     if (t && !`${a.prompt} ${a.modelo}`.toLowerCase().includes(t)) return false;
     return true;
   });
@@ -114,15 +151,84 @@ export function filtrarArchivos(archivos = [], { filtro = "todas", texto = "" } 
 
 /** Cuántos archivos hay en cada filtro, para los números de los chips. */
 export function contarFiltros(archivos = [], carpetas = []) {
-  const cuentas = { todas: archivos.length, favoritas: 0, subidas: 0, "sin-carpeta": 0 };
+  const cuentas = { todas: archivos.length, favoritas: 0, subidas: 0, usadas: 0, "sin-usar": 0, "sin-carpeta": 0 };
   for (const c of carpetas) cuentas[c.id] = 0;
   for (const a of archivos) {
     if (a.favorito) cuentas.favoritas++;
     if (a.subido) cuentas.subidas++;
+    cuentas[estaUsado(a) ? "usadas" : "sin-usar"]++;
     if (!a.carpetaId) cuentas["sin-carpeta"]++;
     else if (a.carpetaId in cuentas) cuentas[a.carpetaId]++;
   }
   return cuentas;
+}
+
+// ------------------------------------------------------------
+// Carruseles y reels: UNA tarjeta en la galería
+// ------------------------------------------------------------
+
+/** ¿Es la carpeta de un carrusel o un reel (la galería la agrupa)? */
+export const esGrupo = (c) => c?.tipo === "carrusel" || c?.tipo === "reel";
+
+/**
+ * Las piezas de un carrusel o un reel, en orden. Manda el `orden` que guardó el flujo (las láminas finales, o los
+ * videos y los fotogramas); sin él —se cerró a la mitad—, todo lo de la carpeta: en un carrusel, las láminas en el
+ * orden en que salieron y sin las crudas que ya tienen su versión con texto encima; en un reel, los videos (el último
+ * primero) y luego los fotogramas.
+ */
+export function piezasDeGrupo(carpeta, archivos = []) {
+  const dentro = archivos.filter((a) => a.carpetaId === carpeta?.id && !a.borradoAt);
+  const porId = new Map(dentro.map((a) => [a.id, a]));
+  const ordenadas = (carpeta?.orden ?? []).map((id) => porId.get(id)).filter(Boolean);
+  if (ordenadas.length) return ordenadas;
+  const viejas = [...dentro].sort((a, b) => String(a.creado).localeCompare(String(b.creado)));
+  if (carpeta?.tipo === "reel") return [...viejas.filter((a) => a.tipo === "video").reverse(), ...viejas.filter((a) => a.tipo !== "video")];
+  const conTexto = new Set(dentro.map((a) => a.ajustes?.plantilla?.origenId).filter(Boolean));
+  return viejas.filter((a) => !conTexto.has(a.id));
+}
+
+/** «Carrusel · 6 láminas» · «Reel · 1 video y 5 fotogramas». */
+export function textoDeGrupo(carpeta, piezas = []) {
+  if (carpeta?.tipo === "reel") {
+    const v = piezas.filter((a) => a.tipo === "video").length;
+    const f = piezas.length - v;
+    return `Reel · ${[v ? `${v} video${v === 1 ? "" : "s"}` : "", f ? `${f} fotograma${f === 1 ? "" : "s"}` : ""].filter(Boolean).join(" y ") || "vacío"}`;
+  }
+  return `Carrusel · ${piezas.length} lámina${piezas.length === 1 ? "" : "s"}`;
+}
+
+/**
+ * La galería con cada carrusel y cada reel en UNA tarjeta: `{ grupo: { carpeta, piezas, portada } }` donde aparece su
+ * pieza más reciente, y lo demás tal cual. `archivos` ya viene filtrado y del más nuevo al más viejo; `todos` es la
+ * galería entera (las piezas de un grupo salen de ahí, también las que el filtro dejó fuera).
+ */
+export function agruparGaleria(archivos = [], carpetas = [], todos = archivos) {
+  const grupos = new Map(carpetas.filter(esGrupo).map((c) => [c.id, c]));
+  if (!grupos.size) return archivos;
+  const puestos = new Set();
+  const salida = [];
+  for (const a of archivos) {
+    const c = a.carpetaId ? grupos.get(a.carpetaId) : null;
+    if (!c) { salida.push(a); continue; }
+    if (puestos.has(c.id)) continue;
+    puestos.add(c.id);
+    const piezas = piezasDeGrupo(c, todos);
+    if (!piezas.length) continue;
+    const portada = c.tipo === "reel" ? piezas.find((p) => p.tipo === "video") ?? piezas[0] : piezas[0];
+    salida.push({ id: `grupo-${c.id}`, grupo: { carpeta: c, piezas, portada } });
+  }
+  return salida;
+}
+
+/** El nombre de cada pieza dentro del ZIP: «01.png», «02.jpg»… (el reel: «video-1.mp4», «fotograma-01.png»). */
+export function nombresParaZip(carpeta, piezas = []) {
+  const ext = (a) => ({ "image/jpeg": "jpg", "image/webp": "webp", "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm" }[a.mime] ?? (a.tipo === "video" ? "mp4" : "png"));
+  let v = 0;
+  let f = 0;
+  return piezas.map((a) => {
+    if (carpeta?.tipo === "reel") return a.tipo === "video" ? `video-${++v}.${ext(a)}` : `fotograma-${String(++f).padStart(2, "0")}.${ext(a)}`;
+    return `${String(++f).padStart(2, "0")}.${ext(a)}`;
+  });
 }
 
 /**
@@ -305,13 +411,14 @@ export function archivoDesdeSrc(src, clienteId, prompt = "") {
 /** El nombre de cada ajuste en la pantalla. */
 export const ETIQUETA_AJUSTE = Object.freeze({
   aspectRatio: "Formato", imageSize: "Tamaño", resolution: "Resolución", duration: "Duración", calidad: "Calidad", formato: "Archivo",
-  modo: "Calidad del video", sonido: "Sonido",
+  modo: "Calidad del video", sonido: "Sonido", voz: "Voz de la locución",
 });
 
 /** «4 s», «720p», «1K» según el ajuste. */
 const VALORES = Object.freeze({
   calidad: { high: "Alta (pule en varias pasadas)", low: "Rápida" }, formato: { webp: "WebP (ligero)", png: "PNG", jpeg: "JPEG" },
   modo: { std: "Estándar (720p)", pro: "Pro (1080p)", "4K": "4K" }, sonido: { si: "Con sonido", no: "Sin sonido" },
+  voz: { "": "La que escoja el modelo", ...VOCES_OMNI },
 });
 
 export function valorDeAjuste(nombre, valor) {
@@ -338,10 +445,26 @@ export const ATAJOS_EDICION = Object.freeze([
  * lo demás. Va tal cual al motor y queda en la galería: lo que se mandó es
  * lo que se ve.
  */
-export function promptDeEdicion(instruccion) {
+export function promptDeEdicion(instruccion, { ejemplos = [] } = {}) {
   const pedido = String(instruccion ?? "").trim().replace(/[.\s]+$/, "");
   if (!pedido) return "";
-  return `Edita la imagen de referencia: ${pedido}. Conserva todo lo demás exactamente igual: la composición, el encuadre, las personas, el producto, los colores, la luz y cualquier texto o logo que no se pida cambiar.`.slice(0, MAX_PROMPT);
+  const conserva = "Conserva todo lo demás exactamente igual: la composición, el encuadre, las personas, el producto, los colores, la luz y cualquier texto o logo que no se pida cambiar.";
+  if (!ejemplos.length) return `Edita la imagen de referencia: ${pedido}. ${conserva}`.slice(0, MAX_PROMPT);
+  // Con ejemplos de la galería: la 1 es la que se edita; las demás, guía de lo que se pide (no se copian enteras).
+  const lineas = ejemplos.map((r, i) => lineaDeReferencia(r, i + 2)
+    || `Imagen de referencia ${i + 2}: es un EJEMPLO de lo que se pide; tómala como guía, no la copies entera.`);
+  return [`Edita la imagen de referencia 1: ${pedido}. ${conserva}`, ...lineas].join("\n").slice(0, MAX_PROMPT);
+}
+
+/**
+ * Corregir una imagen con una indicación y, si se quiere, ejemplos de la galería: la imagen va PRIMERO y los
+ * ejemplos detrás, los que quepan en el modelo (las líneas del pedido dicen sólo los que van). → { prompt, medios }. Pura.
+ */
+export function pedidoDeCorreccion({ clave, instruccion, ejemplos = [], modelo = null }) {
+  const caben = (ejemplos ?? []).filter((e) => e?.clave && e.clave !== clave)
+    .filter((e, i, l) => l.findIndex((x) => x.clave === e.clave) === i)
+    .slice(0, Math.max(0, (modelo?.referencias ?? 1) - 1));
+  return { prompt: promptDeEdicion(instruccion, { ejemplos: caben }), medios: { reference: [clave, ...caben.map((e) => e.clave)] }, ejemplos: caben };
 }
 
 /** Cómo se llama cada sitio de una imagen de apoyo, y qué hace ahí. */
@@ -397,3 +520,6 @@ export const ideasDelEstudio = (clienteId, datos) => pedir(`${base(clienteId)}/i
 
 /** El lote del mes completo: { mes, dias, formato, semilla?, usados? } → `{ ideas, productos }` (texto). */
 export const ideasDelMes = (clienteId, datos) => pedir(`${base(clienteId)}/lote/mes`, post(datos));
+
+/** «Guardar como regla»: suma una frase a las reglas que no se rompen del kit del cliente. Devuelve `{ kit }`. */
+export const guardarRegla = (clienteId, regla) => pedir(`${base(clienteId)}/kit/reglas`, post({ regla }));

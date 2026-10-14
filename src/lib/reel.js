@@ -24,12 +24,19 @@ export const MAX_PLANOS = 8;
 export const MAX_STORYBOARD = 7;
 const MAX_ESCENA = 300;
 const MAX_TEXTO = 60;
+/** Lo que se dice cómodo en voz en off: unas 2,5 palabras por segundo. */
+export const PALABRAS_POR_SEGUNDO = 2.5;
+/** Las duraciones del reel: 10 s con Omni, 8 s con Veo (cuesta la mitad). */
+export const DURACIONES_REEL = Object.freeze([
+  { segundos: 10, nombre: "10 s · Gemini Omni", modelos: ["gemini-omni-kie", "kling-3-omni-kie", "seedance-2-kie", "gemini-omni-flash"] },
+  { segundos: 8, nombre: "8 s · Veo 3.1 Fast", modelos: ["veo-3-1-fast-kie"] },
+]);
 
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 const comillas = (t) => String(t ?? "").split(/\n+/).map((l) => l.replace(/["“”«»]/g, "").trim()).filter(Boolean).map((l) => `"${l}"`).join(" / ");
 
 /** Lo que se le pide a la IA para el guion por planos. Pura. */
-export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segundos = 10, tipo = "", estilo = "", producto = "", personajes = [], identidad = "", contexto = "" }) {
+export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segundos = 10, tipo = "", estilo = "", producto = "", personajes = [], identidad = "", contexto = "", musica = "", locucion = "" }) {
   return [
     `Eres director creativo de reels. Escribe el guion de UN reel vertical (9:16) de ${segundos} segundos para ${marca}${rubro ? ` (${rubro})` : ""}, para generarlo con un modelo de video con IA que hace varios planos con cortes en una sola pieza.`,
     `LA IDEA CENTRAL: ${corto(idea, 1200) || "propón una a partir de lo que sabemos de la marca"}`,
@@ -39,10 +46,12 @@ export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segund
     personajes.length ? `Personajes de la marca (salen IGUAL en cada plano donde aparezcan): ${personajes.join("; ")}` : "",
     identidad ? `Identidad de la marca: ${corto(identidad, 600)}` : "",
     contexto ? `Lo que se sabe de la marca:\n${String(contexto).slice(0, 3000)}` : "",
+    musica ? `Música que se quiere: ${corto(musica, 300)}` : "",
+    locucion ? `Locución que se quiere (respétala si cabe): ${corto(locucion, 500)}` : "",
     "",
-    `Reglas: de ${MIN_PLANOS + 1} a ${MAX_PLANOS} planos que sumen ${segundos} s exactos, contiguos desde 0. El primero detiene el scroll (gancho); el del medio muestra el producto o el resultado; el último cierra con el logo de la marca y el llamado a la acción (WhatsApp si lo hay en lo que se sabe). Texto en pantalla corto: como mucho 5 palabras por plano (o vacío), sin errores; un precio, EXACTO como en el catálogo. Nada de reseñas, cifras ni urgencias inventadas.`,
+    `Reglas: de ${MIN_PLANOS + 1} a ${MAX_PLANOS} planos que sumen ${segundos} s exactos, contiguos desde 0. El primero detiene el scroll (gancho); el del medio muestra el producto o el resultado; el último cierra con el logo de la marca y el llamado a la acción (WhatsApp si lo hay en lo que se sabe). Texto en pantalla corto: como mucho 5 palabras por plano (o vacío), sin errores; un precio, EXACTO como en el catálogo. Nada de reseñas, cifras ni urgencias inventadas. La locución (voz en off) dura lo que el video: como mucho ${Math.floor(segundos * PALABRAS_POR_SEGUNDO)} palabras, en español latino neutro, o vacía si el reel va sólo con música.`,
     "",
-    'Responde SOLO con JSON: {"hilo":"lo que comparten todos los planos (personaje, luz, paleta, lugar), en una frase","planos":[{"desde":0,"hasta":2,"escena":"qué se ve (sujeto, acción, lugar, luz)","texto":"texto en pantalla o vacío","camara":"movimiento de cámara"}],"sonido":"música, sonido ambiente o voz (y qué dice, si habla)","descripcion":"el texto del post, de 2 a 4 frases, sin hashtags"}',
+    'Responde SOLO con JSON: {"hilo":"lo que comparten todos los planos (personaje, luz, paleta, lugar), en una frase","planos":[{"desde":0,"hasta":2,"escena":"qué se ve (sujeto, acción, lugar, luz)","texto":"texto en pantalla o vacío","camara":"movimiento de cámara"}],"musica":"estilo, ritmo y ánimo de la música","locucion":"lo que dice la voz en off, o vacío","efectos":"sonido ambiente o efectos, o vacío","descripcion":"el texto del post, de 2 a 4 frases, sin hashtags"}',
   ].filter((l) => l !== "").join("\n");
 }
 
@@ -66,9 +75,28 @@ export function leerReel(texto, segundos = 10) {
   return {
     hilo: corto(d?.hilo, 300),
     planos: repartirTiempos(lista, segundos),
-    sonido: corto(d?.sonido, 300),
+    // El sonido por partes: música, lo que dice la voz y los efectos (un guion de antes traía todo en «sonido»).
+    musica: corto(d?.musica ?? (d?.locucion || d?.efectos ? "" : d?.sonido), 300),
+    locucion: corto(d?.locucion, 500),
+    efectos: corto(d?.efectos, 300),
     descripcion: String(d?.descripcion ?? "").trim().slice(0, 1000),
   };
+}
+
+/**
+ * Los planos llevados a otra duración (10 → 8 s): cada uno conserva su proporción del total y quedan contiguos.
+ * Así cambiar a Veo de 8 s no obliga a escribir el guion otra vez. Pura.
+ */
+export function ajustarDuracion(planos = [], segundos = 10) {
+  const total = planos.at(-1)?.hasta || planos.length || 1;
+  return repartirTiempos(planos.map((p) => ({ ...p, desde: Math.round(((Number(p.desde) || 0) * segundos) / total) })), segundos);
+}
+
+/** La locución cortada a lo que cabe en `segundos` (por palabras). Pura. */
+export function locucionQueCabe(texto = "", segundos = 10) {
+  const palabras = String(texto ?? "").trim().split(/\s+/).filter(Boolean);
+  const max = Math.floor(segundos * PALABRAS_POR_SEGUNDO);
+  return palabras.length <= max ? palabras.join(" ") : `${palabras.slice(0, max).join(" ").replace(/[,;:]$/, "")}…`;
 }
 
 /** Los tiempos de los planos: contiguos desde 0, cada uno de al menos 1 s, el último termina en `segundos`. Pura. */
@@ -120,7 +148,7 @@ export function fotogramasParaVideo(fotogramas = [], max = MAX_STORYBOARD) {
  * El pedido del VIDEO: los planos con sus tiempos, el hilo, el sonido y el estilo; con storyboard, que las imágenes
  * de referencia son los fotogramas EN ORDEN. Pura.
  */
-export function promptDeReel({ planos = [], hilo = "", sonido = "", segundos = 10, estilo = "", conStoryboard = false, personajes = "" }) {
+export function promptDeReel({ planos = [], hilo = "", sonido = "", musica = "", locucion = "", efectos = "", segundos = 10, estilo = "", conStoryboard = false, personajes = "" }) {
   return [
     `Reel vertical 9:16 de ${segundos} segundos, con varios planos y cortes limpios, calidad de anuncio profesional.`,
     conStoryboard ? "Las imágenes de referencia son el STORYBOARD, en orden: cada una es un plano. Respeta sus personajes, su lugar, su luz, su paleta y su texto." : "",
@@ -128,6 +156,9 @@ export function promptDeReel({ planos = [], hilo = "", sonido = "", segundos = 1
     hilo ? `Lo que comparten todos los planos: ${hilo}` : "",
     ...planos.map((p) => `${tramo(p)} ${p.escena}${p.camara ? ` Cámara: ${p.camara}.` : ""}${p.texto ? ` Texto en pantalla, exacto: ${comillas(p.texto)}.` : ""}`),
     sonido ? `Sonido: ${sonido}` : "",
+    musica ? `Música de fondo: ${corto(musica, 300)}.` : "",
+    locucion ? `Locución en off, en español latino neutro, clara y a tiempo con los planos: «${corto(locucion, 500)}».` : "",
+    efectos ? `Efectos de sonido: ${corto(efectos, 300)}.` : "",
     estilo,
   ].filter(Boolean).join("\n").slice(0, 4000);
 }

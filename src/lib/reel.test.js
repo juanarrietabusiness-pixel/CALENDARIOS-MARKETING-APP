@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pedidoDeReel, leerReel, repartirTiempos, pedidoDeFotograma, fotogramasParaVideo, promptDeReel, promptDeTramo, tramo } from "./reel";
+import { pedidoDeReel, leerReel, repartirTiempos, pedidoDeFotograma, fotogramasParaVideo, promptDeReel, promptDeTramo, tramo, ajustarDuracion, locucionQueCabe, DURACIONES_REEL } from "./reel";
 import { modelosParaReel, modeloRecomendadoParaReel, pedidoDeVideo, modeloParaTramo } from "./reelEstudio";
 import { modeloPorId, costoDePieza } from "./estudioCatalogo";
 
@@ -17,7 +17,8 @@ describe("el reel con IA: el guion por planos", () => {
   it("lee el guion y deja los tiempos contiguos desde 0 hasta los segundos", () => {
     const r = leerReel(`Listo: ${JSON.stringify({ hilo: "luz cálida", planos: [{ desde: 5, escena: "c" }, { desde: 0, escena: "a", texto: "¿Piel sensible?" }, { desde: 2, escena: "b" }, { desde: 8, escena: "d", camara: "fija" }], sonido: "música suave", descripcion: "Escríbenos." })}`, 10);
     expect(r.planos.map((p) => [p.n, p.desde, p.hasta, p.escena])).toEqual([[1, 0, 2, "a"], [2, 2, 5, "b"], [3, 5, 8, "c"], [4, 8, 10, "d"]]);
-    expect(r).toMatchObject({ hilo: "luz cálida", sonido: "música suave", descripcion: "Escríbenos." });
+    // Un guion de antes, con todo en «sonido», lo trae como música.
+    expect(r).toMatchObject({ hilo: "luz cálida", musica: "música suave", locucion: "", descripcion: "Escríbenos." });
     expect(leerReel('{"planos":[{"escena":"sola"}]}')).toBeNull();
     expect(repartirTiempos([{}, {}, {}], 10).map((p) => [p.desde, p.hasta])).toEqual([[0, 3], [3, 7], [7, 10]]);
     expect(tramo({ desde: 2, hasta: 5 })).toBe("[2–5 s]");
@@ -57,5 +58,36 @@ describe("el reel con IA: el guion por planos", () => {
     const google = pedidoDeVideo({ modelo: modeloPorId("gemini-omni-flash"), planos, fotogramas });
     expect(google.medios).toEqual({ start: ["clientes/c1/f0.png"] });
     expect(google.prompt).not.toMatch(/STORYBOARD/);
+  });
+});
+
+describe("el reel: música, locución, 8 s con Veo y la voz de Omni", () => {
+  it("lee música, locución y efectos aparte, y el pedido del video los dice", () => {
+    const r = leerReel(JSON.stringify({ hilo: "h", planos: [{ desde: 0, escena: "a" }, { desde: 3, escena: "b" }, { desde: 6, escena: "c" }], musica: "pop alegre", locucion: "Duerme mejor desde hoy", efectos: "risas" }), 10);
+    expect(r).toMatchObject({ musica: "pop alegre", locucion: "Duerme mejor desde hoy", efectos: "risas" });
+    const v = promptDeReel({ planos: r.planos, musica: r.musica, locucion: r.locucion, efectos: r.efectos });
+    expect(v).toMatch(/Música de fondo: pop alegre\./);
+    expect(v).toMatch(/Locución en off, en español latino neutro.*«Duerme mejor desde hoy»/);
+    expect(v).toMatch(/Efectos de sonido: risas\./);
+    const p = pedidoDeReel({ idea: "x", segundos: 8, musica: "jazz", locucion: "Hola" });
+    expect(p).toMatch(/como mucho 20 palabras/);
+    expect(p).toMatch(/Música que se quiere: jazz/);
+    expect(p).toMatch(/Locución que se quiere \(respétala si cabe\): Hola/);
+  });
+
+  it("de 10 a 8 s: los planos conservan su proporción y quedan contiguos; la locución se corta a lo que cabe", () => {
+    const planos = repartirTiempos([{ desde: 0, escena: "a" }, { desde: 5, escena: "b" }], 10);
+    expect(ajustarDuracion(planos, 8).map((p) => [p.desde, p.hasta])).toEqual([[0, 4], [4, 8]]);
+    expect(locucionQueCabe("una dos tres cuatro cinco", 1)).toBe("una dos…");
+    expect(locucionQueCabe("una dos", 10)).toBe("una dos");
+    expect(DURACIONES_REEL.map((d) => d.segundos)).toEqual([10, 8]);
+  });
+
+  it("la voz escogida va sólo al modelo que la tiene (Omni por Kie), y no con imagen inicial", () => {
+    const planos = [{ desde: 0, hasta: 10, escena: "a" }];
+    const fotogramas = [{ clave: "clientes/c1/f1.png" }, { clave: "clientes/c1/f2.png" }];
+    expect(pedidoDeVideo({ modelo: modeloPorId("gemini-omni-kie"), planos, fotogramas, voz: "kore" }).ajustes.voz).toBe("kore");
+    expect(pedidoDeVideo({ modelo: modeloPorId("veo-3-1-fast-kie"), planos, fotogramas, voz: "kore", segundos: 8 }).ajustes.voz).toBeUndefined();
+    expect(pedidoDeVideo({ modelo: modeloPorId("veo-3-1-fast-kie"), planos, fotogramas, segundos: 8 }).ajustes.duration).toBe("8");
   });
 });

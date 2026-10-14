@@ -5,6 +5,10 @@ import * as api from "../lib/estudio";
 import { TIPOS_PRESET, ESTILOS_VISUALES, estiloDeMarca, limpiarKit, referenciasDePersonajes } from "../lib/kitMarca";
 import { partirGuion, MODOS_TEXTO, PLANTILLAS_TEXTO, MAX_LAMINAS, coloresPlantilla, costoCarrusel } from "../lib/carrusel";
 import { crearCarrusel, crearLamina, corregirLamina, modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
+import ReferenciasGaleria from "./ReferenciasGaleria";
+import IdeasDeFormato from "./IdeasDeFormato";
+import GuardarRegla from "./GuardarRegla";
+import { estampaSola } from "../lib/logoEstudio";
 import "./calendario/RevisionMes.css";
 import "./calendario/CarruselIA.css";
 import "./EstudioLote.css";
@@ -21,7 +25,8 @@ import "./EstudioLote.css";
 //   3. Láminas: una a una, cada una con la anterior, la portada y los
 //      personajes de referencia (lib/carruselEstudio.js). «Corregir esta»
 //      edita sólo esa lámina con una indicación; «Rehacer esta» la vuelve a
-//      pedir. Todas quedan en la galería, en la carpeta del carrusel.
+//      pedir. Todas quedan en la galería, en la carpeta del carrusel, que la
+//      galería enseña como UNA tarjeta con las láminas en orden (y el ZIP).
 //
 // Lo usan la pestaña Estudio («Carrusel») y «Crear carrusel con IA» del
 // panel de una publicación (que además lo pone en la publicación).
@@ -51,6 +56,7 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
   const [proponiendo, setProponiendo] = useState(false);
   const [resultados, setResultados] = useState([]); // por lámina: { crudo, final } | { error } | { cargando }
   const [correcciones, setCorrecciones] = useState({}); // i → texto
+  const [ejemplos, setEjemplos] = useState({}); // i → ejemplos de la galería para corregir esa lámina
   const [aviso, setAviso] = useState(null);
   const carpeta = useRef(null);
   const vivo = useRef(true);
@@ -70,7 +76,8 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
     preset: estiloDeMarca(kit, preset, { marca: client.name, rubro: client.industry ?? "", estilo }),
     fotos: api.fotosDelProducto(productos, productoId).map((f) => f.clave),
     personajes: referenciasDePersonajes(kit, personajes, estudio?.archivos ?? []),
-    logo: kit.logo, colores: coloresPlantilla(kit), familia: kit.tipografia, carpetaId: carpeta.current,
+    // Con el logo estampado (kit), el modelo no lo recibe: se pega encima de cada lámina final.
+    logo: estampaSola(kit) ? "" : kit.logo, estampar: estampaSola(kit) ? kit : null, colores: coloresPlantilla(kit), familia: kit.tipografia, carpetaId: carpeta.current,
     calendarId: inicial.calendarId ?? null, postId: inicial.postId ?? null, seguir: () => vivo.current,
   });
 
@@ -96,16 +103,15 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
     setPaso("propuesta");
   };
 
+  /** La carpeta del carrusel: la galería la enseña como UNA tarjeta, con las láminas finales en orden. */
   const prepararCarpeta = async () => {
-    const dia = new Date().toLocaleDateString("es-PA", { day: "numeric", month: "short", timeZone: "America/Panama" }).replace(/\./g, "");
-    const nombre = `Carrusel · ${(tema || laminas[0]?.texto || "").split("\n")[0].slice(0, 18).trim()} · ${dia}`.slice(0, 40);
-    try {
-      carpeta.current = (await api.crearCarpeta(clienteId, nombre))?.carpeta?.id ?? null;
-    } catch {
-      const g = await api.leerEstudio(clienteId).catch(() => null);
-      carpeta.current = (g?.carpetas ?? []).find((c) => c.nombre.toLowerCase() === nombre.toLowerCase())?.id ?? null;
-    }
+    if (!carpeta.current) carpeta.current = await api.carpetaDeGrupo(clienteId, "carrusel", tema || laminas[0]?.texto || "");
   };
+  const ordenFinal = resultados.map((r) => r?.final?.id).filter(Boolean).join(",");
+  useEffect(() => {
+    if (!carpeta.current || creando || !ordenFinal) return;
+    api.ordenarCarpeta(clienteId, carpeta.current, ordenFinal.split(",")).catch(() => { /* sin orden, la galería lo deduce */ });
+  }, [ordenFinal, creando, clienteId]);
 
   const crear = async () => {
     setConfirmar(false);
@@ -143,9 +149,12 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
     anterior: (i > 0 ? resultados[i - 1]?.crudo : resultados[1]?.crudo) ?? null, portada: i > 1 ? resultados[0]?.crudo ?? null : null,
   }));
   /** Corregir una sola con una indicación: se edita esa lámina, nada más. */
-  const corregir = (i) => una(i, () => corregirLamina({
-    ...comun(), resultado: resultados[i], instruccion: correcciones[i], lamina: laminas[i],
-  }));
+  const corregir = async (i) => {
+    await una(i, () => corregirLamina({
+      ...comun(), resultado: resultados[i], instruccion: correcciones[i], ejemplos: ejemplos[i] ?? [], lamina: laminas[i],
+    }));
+    setEjemplos((e) => ({ ...e, [i]: [] }));
+  };
 
   const finales = resultados.map((r) => r?.final).filter(Boolean);
   const cambiar = (i, campo, valor) => setLaminas((l) => l.map((x, j) => (j === i ? { ...x, [campo]: valor } : x)));
@@ -202,6 +211,8 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
               </div>
             </div>
           )}
+          <IdeasDeFormato clienteId={clienteId} formato="carrusel" preset={preset} productoId={productoId} tema={tema}
+            onUsar={(i) => { setTema(i.tema || i.titulo); setGuion(i.guion ?? ""); }} />
           <div className="field">
             <label className="label" htmlFor={`${ids}-tema`}>Tema o idea central</label>
             <input id={`${ids}-tema`} className="input" maxLength={300} value={tema} onChange={(e) => setTema(e.target.value)} placeholder="¿Por qué nos llamamos Baby Caleb?" />
@@ -273,11 +284,16 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
                       {!creando && r && (
                         <div className="carrusel-lamina-acciones">
                           {r.final && (
-                            <form className="carrusel-corregir" onSubmit={(e) => { e.preventDefault(); if (correcciones[i]?.trim()) corregir(i); }}>
-                              <label className="sr-only" htmlFor={`${ids}-cor-${i}`}>Qué corregir en la lámina {l.n}</label>
-                              <input id={`${ids}-cor-${i}`} className="input" maxLength={300} value={correcciones[i] ?? ""} placeholder="Cambia «en ca» por «en»…" onChange={(e) => setCorrecciones((c) => ({ ...c, [i]: e.target.value }))} />
-                              <button type="submit" className="btn btn-secondary btn-sm" disabled={!correcciones[i]?.trim()}><Icon name="wand" size={14} /> Corregir esta</button>
-                            </form>
+                            <>
+                              <form className="carrusel-corregir" onSubmit={(e) => { e.preventDefault(); if (correcciones[i]?.trim()) corregir(i); }}>
+                                <label className="sr-only" htmlFor={`${ids}-cor-${i}`}>Qué corregir en la lámina {l.n}</label>
+                                <input id={`${ids}-cor-${i}`} className="input" maxLength={300} value={correcciones[i] ?? ""} placeholder="Cambia «en ca» por «en»…" onChange={(e) => setCorrecciones((c) => ({ ...c, [i]: e.target.value }))} />
+                                <button type="submit" className="btn btn-secondary btn-sm" disabled={!correcciones[i]?.trim()}><Icon name="wand" size={14} /> Corregir esta</button>
+                              </form>
+                              <ReferenciasGaleria compacto archivos={estudio?.archivos ?? []} elegidas={ejemplos[i] ?? []} onCambiar={(lista) => setEjemplos((e) => ({ ...e, [i]: lista }))}
+                                max={Math.max(1, (modelo?.referencias ?? 2) - 1)} etiqueta="Ejemplo de la galería" />
+                              <GuardarRegla clienteId={clienteId} texto={correcciones[i]} />
+                            </>
                           )}
                           <button type="button" className="btn btn-ghost btn-sm" onClick={() => rehacer(i)}>
                             <Icon name="refresh" size={14} /> {r.error && !r.final ? "Intentar otra vez" : "Rehacer esta"}

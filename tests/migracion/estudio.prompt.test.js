@@ -358,3 +358,26 @@ describe("POST /api/estudio/<cliente>/lote/ideas: la matriz y por tipos", () => 
     expect(peticiones).toHaveLength(0);
   });
 });
+
+describe("POST /api/estudio/<cliente>/carrusel/ideas y /reel/ideas", () => {
+  it("carrusel: ideas con su guion por láminas, con lo que se sabe de la marca y sin lo interno; no crea trabajos", async () => {
+    anthropic(JSON.stringify({ ideas: [{ titulo: "Mitos", tema: "Tres mitos del sofá", guion: "Portada: ¿Mito?\nSlide 2: No\nCTA: Escríbenos" }] }));
+    const res = await pedir("/api/estudio/c1/carrusel/ideas", { method: "POST", body: { n: 3 } });
+    expect(res.status).toBe(200);
+    const r = await res.json();
+    expect(r.ideas[0]).toMatchObject({ titulo: "Mitos", guion: expect.stringMatching(/^Portada: ¿Mito\?/) });
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/ideas de CARRUSEL/);
+    expect(t).not.toMatch(/margen del 40/);
+    expect(db.sqlite.prepare("select count(*) n from estudio_trabajos").get().n).toBe(0);
+  });
+
+  it("reel: la idea central con su duración; si la IA no devuelve nada que sirva, lo dice", async () => {
+    anthropic(JSON.stringify({ ideas: [{ titulo: "Gancho", idea: "Una pareja abre el sofá cama" }] }));
+    const r = await (await pedir("/api/estudio/c1/reel/ideas", { method: "POST", body: { segundos: 8 } })).json();
+    expect(r.ideas).toEqual([{ id: "idea-1", titulo: "Gancho", idea: "Una pareja abre el sofá cama" }]);
+    expect(textoDe(peticiones[0])).toMatch(/REEL vertical de 8 segundos/);
+    anthropic("nada");
+    expect((await pedir("/api/estudio/c1/reel/ideas", { method: "POST", body: {} })).status).toBe(502);
+  });
+});

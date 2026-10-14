@@ -481,11 +481,52 @@ describe("cada espacio y cada colaborador ve sólo lo suyo", () => {
 });
 
 describe("subir a mano, carpetas y papelera", () => {
-  const subir = (quien, cliente, bytes, nombre, tipo) => {
+  const subir = (quien, cliente, bytes, nombre, tipo, extra = {}) => {
     const form = new FormData();
     form.set("archivo", new File([bytes], nombre, { type: tipo }));
+    for (const [k, v] of Object.entries(extra)) form.set(k, v);
     return pedir(quien, `/api/estudio/${cliente}/archivos`, { method: "POST", body: form });
   };
+  // El mismo PNG con un byte de más al final: sigue siendo PNG por sus primeros bytes, pero es otra imagen.
+  const pngDistinto = (n) => Uint8Array.from([...PNG, n]);
+
+  it("la misma imagen subida dos veces es UNA: devuelve la que había (y la saca de la papelera)", async () => {
+    const primera = await subir(JEFE, "c1", PNG, "logo.png", "image/png");
+    expect(primera.status).toBe(201);
+    const { archivo } = await primera.json();
+    await pedir(JEFE, `/api/estudio/c1/archivos/${archivo.id}/papelera`, { method: "POST" });
+    const otra = await subir(JEFE, "c1", PNG, "logo-copia.png", "image/png");
+    expect(otra.status).toBe(200);
+    const r = await otra.json();
+    expect(r).toMatchObject({ repetido: true, archivo: { id: archivo.id, clave: archivo.clave } });
+    const g = await galeria(JEFE, "c1");
+    expect(g.archivos.map((x) => x.id)).toEqual([archivo.id]);
+    expect(g.papelera).toEqual([]);
+    expect(env.MEDIA.objetos.size).toBe(1);
+    // Otra imagen sí entra, y en OTRO cliente la misma también (cada galería es suya).
+    expect((await subir(JEFE, "c1", pngDistinto(7), "otra.png", "image/png")).status).toBe(201);
+    expect((await subir(JEFE, "c2", PNG, "logo.png", "image/png")).status).toBe(201);
+  });
+
+  it("un carrusel o un reel es una carpeta con tipo y orden: sólo con piezas suyas, y no cuenta en las 30", async () => {
+    const car = (await (await pedir(JEFE, "/api/estudio/c1/carpetas", { method: "POST", body: { nombre: "Carrusel · Caleb · 14 oct", tipo: "carrusel" } })).json()).carpeta;
+    expect(car).toMatchObject({ tipo: "carrusel", orden: [] });
+    const rara = (await (await pedir(JEFE, "/api/estudio/c1/carpetas", { method: "POST", body: { nombre: "Rara", tipo: "otra" } })).json()).carpeta;
+    expect(rara.tipo).toBe("");
+    const a = (await (await subir(JEFE, "c1", pngDistinto(1), "1.png", "image/png", { carpetaId: car.id })).json()).archivo;
+    const b = (await (await subir(JEFE, "c1", pngDistinto(2), "2.png", "image/png", { carpetaId: car.id })).json()).archivo;
+    const fuera = (await (await subir(JEFE, "c1", pngDistinto(3), "3.png", "image/png")).json()).archivo;
+    const res = await pedir(JEFE, `/api/estudio/c1/carpetas/${car.id}`, { method: "PUT", body: { orden: [b.id, fuera.id, a.id, b.id, "inventado"] } });
+    expect(res.status).toBe(200);
+    expect((await res.json()).carpeta.orden).toEqual([b.id, a.id]);
+    // Otro cliente no la ordena.
+    expect((await pedir(JEFE, `/api/estudio/c2/carpetas/${car.id}`, { method: "PUT", body: { orden: [a.id] } })).status).toBe(404);
+    expect((await galeria(JEFE, "c1")).carpetas.find((c) => c.id === car.id)).toMatchObject({ tipo: "carrusel", orden: [b.id, a.id] });
+    // Las de los carruseles no gastan las 30 carpetas de la persona.
+    for (let i = 0; i < 29; i++) await pedir(JEFE, "/api/estudio/c1/carpetas", { method: "POST", body: { nombre: `C${i}` } });
+    expect((await pedir(JEFE, "/api/estudio/c1/carpetas", { method: "POST", body: { nombre: "Una más" } })).status).toBe(409);
+    expect((await pedir(JEFE, "/api/estudio/c1/carpetas", { method: "POST", body: { nombre: "Reel · x", tipo: "reel" } })).status).toBe(201);
+  });
 
   it("una pieza con el texto de la plantilla encima hereda el pedido de su cruda (para «Otra versión»), y sólo de una de este cliente", async () => {
     const t = (await (await pedirTrabajo(JEFE, "c1", { prompt: "Escena: un sofá" })).json()).trabajo;
@@ -585,9 +626,10 @@ describe("subir a mano, carpetas y papelera", () => {
   });
 
   it("a los 30 días la papelera se vacía sola al leer, salvo lo que usa una publicación", async () => {
-    const a = (await (await subir(JEFE, "c1", PNG, "a.png", "image/png")).json()).archivo;
-    const b = (await (await subir(JEFE, "c1", PNG, "b.png", "image/png")).json()).archivo;
-    const c = (await (await subir(JEFE, "c1", PNG, "c.png", "image/png")).json()).archivo;
+    // Tres imágenes DISTINTAS (la misma tres veces sería una sola: la galería no guarda copias).
+    const a = (await (await subir(JEFE, "c1", pngDistinto(1), "a.png", "image/png")).json()).archivo;
+    const b = (await (await subir(JEFE, "c1", pngDistinto(2), "b.png", "image/png")).json()).archivo;
+    const c = (await (await subir(JEFE, "c1", pngDistinto(3), "c.png", "image/png")).json()).archivo;
     await pedir(JEFE, `/api/estudio/c1/archivos/${b.id}/uso`, { method: "POST", body: { calendarId: "cal1", postId: "p1" } });
     const viejo = new Date(Date.now() - 31 * 86_400_000).toISOString();
     const reciente = new Date(Date.now() - 5 * 86_400_000).toISOString();

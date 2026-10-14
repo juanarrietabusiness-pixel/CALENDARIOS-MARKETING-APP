@@ -1,12 +1,15 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
-import { textoCosto, estimar, costoDePieza, etiquetaDeCosto, CONFIRMAR_DESDE, MODELOS } from "../lib/estudioCatalogo";
+import { textoCosto, estimar, costoDePieza, etiquetaDeCosto, CONFIRMAR_DESDE, MODELOS, VOCES_OMNI } from "../lib/estudioCatalogo";
 import * as api from "../lib/estudio";
 import { TIPOS_PRESET, ESTILOS_VISUALES, limpiarKit, referenciasDePersonajes, estiloDeMarca } from "../lib/kitMarca";
-import { repartirTiempos, tramo, MAX_PLANOS, MIN_PLANOS } from "../lib/reel";
+import { repartirTiempos, tramo, MAX_PLANOS, MIN_PLANOS, DURACIONES_REEL, ajustarDuracion, locucionQueCabe, PALABRAS_POR_SEGUNDO } from "../lib/reel";
 import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
 import { modelosParaReel, modeloRecomendadoParaReel, modeloParaTramo, crearFotogramas, crearFotograma, editarImagen, pedidoDeVideo, crearVideo, corregirTramo } from "../lib/reelEstudio";
 import { CopyButton } from "./calendario/primitivas";
+import ReferenciasGaleria from "./ReferenciasGaleria";
+import GuardarRegla from "./GuardarRegla";
+import IdeasDeFormato from "./IdeasDeFormato";
 import "./calendario/RevisionMes.css";
 import "./calendario/CarruselIA.css";
 import "./EstudioLote.css";
@@ -22,6 +25,12 @@ import "./EstudioLote.css";
 //      e historia ANTES de pagar el video. Cada uno se corrige o se rehace.
 //   4. Video: con los fotogramas como storyboard. «Corregir un tramo» (del
 //      segundo X al Y) saca una versión nueva sin tocar lo demás.
+//
+// 10 s con Gemini Omni o 8 s con Veo 3.1 Fast (la mitad de precio): cambiar la
+// duración reparte los planos en el tiempo nuevo sin reescribir el guion. El
+// sonido va en el MISMO pedido del video —música, locución con una voz
+// escogida (Omni) y efectos—: así la voz cae en el plano que toca. Al corregir
+// un fotograma o un tramo se pueden poner ejemplos de la galería.
 //
 // Lo usan la pestaña Estudio («Reel IA») y «Crear reel con IA» de una
 // publicación (que además lo pone en ella).
@@ -40,7 +49,12 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
   const [estilo, setEstilo] = useState("");
   const [productoId, setProductoId] = useState(inicial.productoId ?? "");
   const [personajes, setPersonajes] = useState([]);
-  const [guion, setGuion] = useState(null); // { hilo, planos, sonido, descripcion, segundos }
+  const [refsMano, setRefsMano] = useState([]); // de la galería, para los fotogramas
+  const [duracion, setDuracion] = useState(10);
+  const [voz, setVoz] = useState("");
+  const [ejemplosFoto, setEjemplosFoto] = useState({}); // i → [ejemplos de la galería]
+  const [ejemplosTramo, setEjemplosTramo] = useState([]);
+  const [guion, setGuion] = useState(null); // { hilo, planos, musica, locucion, efectos, descripcion, segundos }
   const [fotos, setFotos] = useState([]); // por plano: { archivo } | { error } | { cargando }
   const [correccion, setCorreccion] = useState({}); // i → texto
   const [videos, setVideos] = useState([]); // versiones, la última primero
@@ -61,34 +75,59 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
   const modelosVideo = useMemo(() => modelosParaReel(estudio?.activos ?? {}), [estudio]);
   const modeloVideo = modelosVideo.find((m) => m.id === modeloVideoId) ?? modeloRecomendadoParaReel(estudio?.activos ?? {}) ?? MODELOS.find((m) => m.id === "prueba-video");
   const paraTramo = modeloParaTramo(activos);
-  const segundos = guion?.segundos ?? 10;
+  const segundos = guion?.segundos ?? duracion;
   const planos = guion?.planos ?? [];
   const listos = fotos.map((f) => f?.archivo).filter(Boolean);
   const estiloTexto = estiloDeMarca(kit, preset, { marca: client.name, rubro: client.industry ?? "", estilo });
   const deLosPersonajes = referenciasDePersonajes(kit, personajes, estudio?.archivos ?? []);
   const lineaPersonajes = deLosPersonajes.map((p) => `Personaje: ${p.nota}.`).filter((v, i, l) => l.indexOf(v) === i).join(" ");
   const costoFotos = modeloImagen ? Math.round(planos.length * estimar(modeloImagen, 1, { imageSize: "2K" }) * 1000) / 1000 : 0;
-  const pedidoVideo = modeloVideo && guion ? pedidoDeVideo({ modelo: modeloVideo, planos, hilo: guion.hilo, sonido: guion.sonido, segundos, estilo: estiloTexto, personajes: lineaPersonajes, fotogramas: listos }) : null;
+  const pedidoVideo = modeloVideo && guion ? pedidoDeVideo({
+    modelo: modeloVideo, planos, hilo: guion.hilo, musica: guion.musica, locucion: guion.locucion, efectos: guion.efectos, voz,
+    segundos, estilo: estiloTexto, personajes: lineaPersonajes, fotogramas: listos,
+  }) : null;
+  const conVoz = Boolean(modeloVideo?.ajustes?.voz);
+  const maxPalabras = Math.floor(segundos * PALABRAS_POR_SEGUNDO);
+  const palabras = String(guion?.locucion ?? "").trim().split(/\s+/).filter(Boolean).length;
   const costoVideo = pedidoVideo ? estimar(modeloVideo, 1, pedidoVideo.ajustes) : 0;
   const ocupar = (q) => { setOcupado(q); onCreando(Boolean(q)); };
 
-  const prepararCarpeta = async () => {
-    if (carpeta.current) return;
-    const dia = new Date().toLocaleDateString("es-PA", { day: "numeric", month: "short", timeZone: "America/Panama" }).replace(/\./g, "");
-    const nombre = `Reel · ${idea.slice(0, 20).trim()} · ${dia}`.slice(0, 40);
-    try {
-      carpeta.current = (await api.crearCarpeta(clienteId, nombre))?.carpeta?.id ?? null;
-    } catch {
-      const g = await api.leerEstudio(clienteId).catch(() => null);
-      carpeta.current = (g?.carpetas ?? []).find((c) => c.nombre.toLowerCase() === nombre.toLowerCase())?.id ?? null;
-    }
+  /** 10 s (Omni) u 8 s (Veo, la mitad): los planos se reparten en el tiempo nuevo y el modelo del video sigue. */
+  const cambiarDuracion = (d) => {
+    setDuracion(d);
+    setGuion((g) => (g ? { ...g, segundos: d, planos: ajustarDuracion(g.planos, d), locucion: locucionQueCabe(g.locucion, d) } : g));
+    const opcion = DURACIONES_REEL.find((x) => x.segundos === d);
+    const m = opcion?.modelos.map((id) => modelosVideo.find((x) => x.id === id)).find(Boolean);
+    if (m) setModeloVideoId(m.id);
+    setTramoCambio((t) => ({ ...t, desde: Math.min(t.desde, d - 1), hasta: Math.min(t.hasta, d) }));
   };
+  const selectorDuracion = (
+    <div className="field">
+      <span className="label" id={`${ids}-dur`}>Duración</span>
+      <div className="est-tipos" role="group" aria-labelledby={`${ids}-dur`}>
+        {DURACIONES_REEL.map((d) => (
+          <button key={d.segundos} type="button" className="filter-chip" aria-pressed={segundos === d.segundos} onClick={() => cambiarDuracion(d.segundos)}>{d.nombre}</button>
+        ))}
+      </div>
+      {segundos === 8 && <p className="hint">Veo 3.1 Fast cuesta más o menos la mitad. Con fotogramas usa hasta 3 de referencia (el primero, uno del medio y el último).</p>}
+    </div>
+  );
+
+  /** La carpeta del reel: la galería la enseña como UNA tarjeta (los videos, el último primero, y los fotogramas). */
+  const prepararCarpeta = async () => {
+    if (!carpeta.current) carpeta.current = await api.carpetaDeGrupo(clienteId, "reel", idea);
+  };
+  const ordenFinal = [...videos.map((v) => v?.id), ...fotos.map((f) => f?.archivo?.id)].filter(Boolean).join(",");
+  useEffect(() => {
+    if (!carpeta.current || ocupado || !ordenFinal) return;
+    api.ordenarCarpeta(clienteId, carpeta.current, ordenFinal.split(",")).catch(() => { /* sin orden, la galería lo deduce */ });
+  }, [ordenFinal, ocupado, clienteId]);
 
   const escribir = async () => {
     ocupar("guion");
     setAviso(null);
     try {
-      const r = await api.guionDeReel(clienteId, { idea, segundos: 10, preset, estilo, productoId: productoId || undefined, personajes });
+      const r = await api.guionDeReel(clienteId, { idea, segundos: duracion, preset, estilo, productoId: productoId || undefined, personajes });
       setGuion(r);
       setPaso("planos");
       setAviso({ ok: true, texto: ["Revisa los planos: qué se ve, el texto en pantalla y la cámara.", r.aviso ?? ""].filter(Boolean).join(" ") });
@@ -106,7 +145,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
 
   const comunFotos = () => ({
     clienteId, modelo: modeloImagen, hilo: guion.hilo, estilo: estiloTexto, personajes: deLosPersonajes,
-    fotos: api.fotosDelProducto(productos, productoId).map((f) => f.clave), carpetaId: carpeta.current, seguir: () => vivo.current,
+    fotos: api.fotosDelProducto(productos, productoId).map((f) => f.clave), referencias: refsMano, carpetaId: carpeta.current, seguir: () => vivo.current,
   });
   const crearLosFotogramas = async () => {
     setConfirmar(null);
@@ -136,7 +175,10 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
   const rehacerFotograma = (i) => unFotograma(i, () => crearFotograma({
     ...comunFotos(), plano: planos[i], total: planos.length, anterior: fotos[i - 1]?.archivo ?? fotos[1]?.archivo ?? null, primero: i > 1 ? fotos[0]?.archivo ?? null : null,
   }));
-  const corregirFotograma = (i) => unFotograma(i, () => editarImagen({ clienteId, modelo: modeloImagen, archivo: fotos[i].archivo, instruccion: correccion[i], carpetaId: carpeta.current, seguir: () => vivo.current }));
+  const corregirFotograma = async (i) => {
+    await unFotograma(i, () => editarImagen({ clienteId, modelo: modeloImagen, archivo: fotos[i].archivo, instruccion: correccion[i], ejemplos: ejemplosFoto[i] ?? [], carpetaId: carpeta.current, seguir: () => vivo.current }));
+    setEjemplosFoto((e) => ({ ...e, [i]: [] }));
+  };
 
   const crearElVideo = async () => {
     setConfirmar(null);
@@ -162,10 +204,11 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
     ocupar("tramo");
     setAviso({ ok: true, texto: `Corrigiendo del segundo ${tramoCambio.desde} al ${tramoCambio.hasta}…` });
     try {
-      const nuevo = await corregirTramo({ clienteId, modelo: paraTramo, video, ...tramoCambio, segundos, carpetaId: carpeta.current, seguir: () => vivo.current });
+      const nuevo = await corregirTramo({ clienteId, modelo: paraTramo, video, ...tramoCambio, ejemplos: ejemplosTramo, segundos, carpetaId: carpeta.current, seguir: () => vivo.current });
       if (!vivo.current) return;
       setVideos((v) => [nuevo, ...v]);
       setTramoCambio((t) => ({ ...t, cambio: "" }));
+      setEjemplosTramo([]);
       setAviso({ ok: true, texto: "Versión nueva arriba; la anterior se queda abajo y en la galería." });
     } catch (e) {
       setAviso({ ok: false, texto: e.message });
@@ -189,12 +232,14 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
 
       {paso === "idea" && (
         <div className="carrusel-opciones">
+          <IdeasDeFormato clienteId={clienteId} formato="reel" preset={preset} productoId={productoId} segundos={duracion} onUsar={(i) => setIdea(i.idea)} />
           <div className="field">
             <label className="label" htmlFor={`${ids}-idea`}>La idea central</label>
             <textarea id={`${ids}-idea`} className="input" rows={3} maxLength={1500} value={idea} onChange={(e) => setIdea(e.target.value)}
               placeholder="Caja grande de wipes Nateen: 960 por $45. Piel sensible protegida desde el primer uso." />
-            <p className="hint">La promoción, el beneficio o lo que quieres contar. La IA propone el guion de 10 s por planos.</p>
+            <p className="hint">La promoción, el beneficio o lo que quieres contar. La IA propone el guion de {duracion} s por planos, con la música y la locución.</p>
           </div>
+          {selectorDuracion}
           <div className="lote-fila">
             <div className="field">
               <label className="label" htmlFor={`${ids}-tipo`}>Tipo de pieza</label>
@@ -221,6 +266,11 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
                 </select>
               </div>
             )}
+          </div>
+          <div className="field">
+            <span className="label">Referencias para los fotogramas</span>
+            <ReferenciasGaleria archivos={estudio?.archivos ?? []} elegidas={refsMano} onCambiar={setRefsMano} max={3} etiqueta="Añadir referencia de la galería" />
+            <p className="hint">Un ambiente, un estilo, el producto o una persona: dile qué tomar de cada una. Van en todos los fotogramas.</p>
           </div>
           {kit.personajes.length > 0 && (
             <div className="field">
@@ -259,10 +309,27 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
             ))}
           </ol>
           {planos.length < MAX_PLANOS && <button type="button" className="btn btn-ghost btn-sm" onClick={anadirPlano}><Icon name="plus" size={14} /> Añadir plano</button>}
-          <div className="field">
-            <label className="label" htmlFor={`${ids}-son`}>Sonido</label>
-            <input id={`${ids}-son`} className="input" maxLength={300} value={guion.sonido} onChange={(e) => setGuion((g) => ({ ...g, sonido: e.target.value }))} />
-          </div>
+          {selectorDuracion}
+          <fieldset className="reel-sonido">
+            <legend className="label">El sonido (va en el mismo pedido del video)</legend>
+            <div className="field">
+              <label className="label" htmlFor={`${ids}-mus`}>Música</label>
+              <input id={`${ids}-mus`} className="input" maxLength={300} value={guion.musica ?? ""} placeholder="Pop suave y alegre, ritmo medio, sube en el cierre"
+                onChange={(e) => setGuion((g) => ({ ...g, musica: e.target.value }))} />
+            </div>
+            <div className="field">
+              <label className="label" htmlFor={`${ids}-loc`}>Locución (lo que dice la voz) <span className="hint">({palabras}/{maxPalabras} palabras)</span></label>
+              <textarea id={`${ids}-loc`} className="input" rows={2} maxLength={500} value={guion.locucion ?? ""} placeholder="Vacío si va sólo con música"
+                onChange={(e) => setGuion((g) => ({ ...g, locucion: e.target.value }))} />
+              {palabras > maxPalabras && <p className="revision-problema">No cabe en {segundos} s: quita {palabras - maxPalabras} palabra{palabras - maxPalabras === 1 ? "" : "s"}.</p>}
+            </div>
+            <div className="field">
+              <label className="label" htmlFor={`${ids}-efe`}>Efectos de sonido</label>
+              <input id={`${ids}-efe`} className="input" maxLength={300} value={guion.efectos ?? ""} placeholder="Risas de bebé, ambiente de casa"
+                onChange={(e) => setGuion((g) => ({ ...g, efectos: e.target.value }))} />
+            </div>
+            <p className="hint">La música de tendencia de Instagram no se puede poner por la API: si la quieres, deja la música vacía y añádela al publicar («La publico yo»).</p>
+          </fieldset>
           {guion.descripcion && (
             <div className="field">
               <span className="label">Descripción del post</span>
@@ -295,11 +362,16 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
                   {paso === "fotogramas" && !ocupado && f && !f.cargando && (
                     <div className="carrusel-lamina-acciones">
                       {f.archivo && (
-                        <form className="carrusel-corregir" onSubmit={(e) => { e.preventDefault(); if (correccion[i]?.trim()) corregirFotograma(i); }}>
-                          <label className="sr-only" htmlFor={`${ids}-fc-${i}`}>Qué corregir en el fotograma {p.n}</label>
-                          <input id={`${ids}-fc-${i}`} className="input" maxLength={300} value={correccion[i] ?? ""} placeholder="Que la mamá sonría…" onChange={(e) => setCorreccion((c) => ({ ...c, [i]: e.target.value }))} />
-                          <button type="submit" className="btn btn-secondary btn-sm" disabled={!correccion[i]?.trim()}><Icon name="wand" size={14} /> Corregir</button>
-                        </form>
+                        <>
+                          <form className="carrusel-corregir" onSubmit={(e) => { e.preventDefault(); if (correccion[i]?.trim()) corregirFotograma(i); }}>
+                            <label className="sr-only" htmlFor={`${ids}-fc-${i}`}>Qué corregir en el fotograma {p.n}</label>
+                            <input id={`${ids}-fc-${i}`} className="input" maxLength={300} value={correccion[i] ?? ""} placeholder="Que la mamá sonría…" onChange={(e) => setCorreccion((c) => ({ ...c, [i]: e.target.value }))} />
+                            <button type="submit" className="btn btn-secondary btn-sm" disabled={!correccion[i]?.trim()}><Icon name="wand" size={14} /> Corregir</button>
+                          </form>
+                          <ReferenciasGaleria compacto archivos={estudio?.archivos ?? []} elegidas={ejemplosFoto[i] ?? []} onCambiar={(l) => setEjemplosFoto((e) => ({ ...e, [i]: l }))}
+                            max={Math.max(1, (modeloImagen?.referencias ?? 2) - 1)} etiqueta="Ejemplo de la galería" />
+                          <GuardarRegla clienteId={clienteId} texto={correccion[i]} />
+                        </>
                       )}
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => rehacerFotograma(i)}><Icon name="refresh" size={14} /> Rehacer</button>
                     </div>
@@ -317,6 +389,17 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
           <select id={`${ids}-mv`} className="input" value={modeloVideo?.id ?? ""} onChange={(e) => setModeloVideoId(e.target.value)}>
             {modelosVideo.map((m) => <option key={m.id} value={m.id}>{m.nombre}{m.motor === "prueba" ? "" : ` · ${etiquetaDeCosto(m)}`} · {m.referencias >= 2 ? "con el storyboard" : "desde el primer fotograma"}</option>)}
           </select>
+          {conVoz && guion?.locucion?.trim() && (
+            <>
+              <label className="label" htmlFor={`${ids}-voz`} style={{ marginTop: "var(--sp-2)" }}>Voz de la locución</label>
+              <select id={`${ids}-voz`} className="input" value={voz} onChange={(e) => setVoz(e.target.value)}>
+                <option value="">La que escoja el modelo</option>
+                {Object.entries(VOCES_OMNI).map(([id, n]) => <option key={id} value={id}>{n}</option>)}
+              </select>
+              <p className="hint">Voces fijas de Google: el idioma lo da el texto. Registrar la voz no cuesta nada.</p>
+            </>
+          )}
+          {!conVoz && guion?.locucion?.trim() && <p className="hint">{modeloVideo?.nombre} no deja escoger la voz: pone la suya. Para escogerla, Gemini Omni Flash (Kie).</p>}
         </div>
       )}
 
@@ -338,6 +421,8 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
               </div>
               <label className="sr-only" htmlFor={`${ids}-tc`}>Qué cambiar en ese tramo</label>
               <input id={`${ids}-tc`} className="input" maxLength={500} value={tramoCambio.cambio} placeholder="Que la mamá sonría y mire al bebé" onChange={(e) => setTramoCambio((t) => ({ ...t, cambio: e.target.value }))} />
+              <ReferenciasGaleria compacto archivos={estudio?.archivos ?? []} elegidas={ejemplosTramo} onCambiar={setEjemplosTramo} max={3} etiqueta="Ejemplo de la galería" />
+              <p className="hint">Al corregir un tramo, el modelo puede rehacer también el sonido de esos segundos.</p>
               <button type="submit" className="btn btn-secondary btn-sm" disabled={Boolean(ocupado) || !tramoCambio.cambio.trim()}>
                 <Icon name="wand" size={14} /> {ocupado === "tramo" ? "Corrigiendo…" : `Corregir con ${paraTramo.nombre}`}
               </button>
@@ -359,7 +444,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
           <>
             {paso === "idea" && (
               <button type="button" className="btn btn-primary" disabled={Boolean(ocupado) || !idea.trim()} onClick={escribir}>
-                <Icon name="sparkles" size={18} /> {ocupado === "guion" ? "Escribiendo el guion…" : "Proponer el guion de 10 s"}
+                <Icon name="sparkles" size={18} /> {ocupado === "guion" ? "Escribiendo el guion…" : `Proponer el guion de ${duracion} s`}
               </button>
             )}
             {paso === "planos" && (
