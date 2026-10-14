@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga, archivoDesdeSrc, promptDeEdicion, modeloParaEditar, originalDe, ranurasLibres, RANURAS, pedidoDeCorreccion } from "./estudio.js";
+import { filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga, archivoDesdeSrc, promptDeEdicion, modeloParaEditar, originalDe, ranurasLibres, RANURAS, pedidoDeCorreccion, agruparGaleria, piezasDeGrupo, textoDeGrupo, nombresParaZip, estaUsado } from "./estudio.js";
 
 const A = (o) => ({ id: "a", prompt: "una taza", modelo: "nano-banana", favorito: false, subido: false, carpetaId: null, ...o });
 
@@ -22,7 +22,7 @@ describe("filtrar la galería", () => {
     expect(filtrarArchivos(lista, { texto: "  " })).toHaveLength(3);
   });
   it("cuenta cada filtro", () => {
-    expect(contarFiltros(lista, [{ id: "f1" }, { id: "f2" }])).toEqual({ todas: 3, favoritas: 1, subidas: 1, "sin-carpeta": 1, f1: 2, f2: 0 });
+    expect(contarFiltros(lista, [{ id: "f1" }, { id: "f2" }])).toEqual({ todas: 3, favoritas: 1, subidas: 1, usadas: 0, "sin-usar": 3, "sin-carpeta": 1, f1: 2, f2: 0 });
   });
 });
 
@@ -217,5 +217,53 @@ describe("corregir con ejemplos de la galería", () => {
     expect(pedidoDeCorreccion({ clave: "k", instruccion: "x", modelo: m }).prompt).toBe(promptDeEdicion("x"));
     // Un modelo de una sola referencia: sólo la imagen.
     expect(pedidoDeCorreccion({ clave: "k", instruccion: "x", ejemplos: ej, modelo: { referencias: 1 } }).medios.reference).toEqual(["k"]);
+  });
+});
+
+describe("carruseles y reels agrupados en la galería", () => {
+  const car = { id: "c1", nombre: "Carrusel · x", tipo: "carrusel", orden: [] };
+  const reel = { id: "r1", nombre: "Reel · y", tipo: "reel", orden: [] };
+  const a = (id, extra = {}) => ({ id, tipo: "imagen", mime: "image/png", usadoEn: [], creado: `2026-10-14T10:0${id.slice(-1)}:00Z`, ...extra });
+  const archivos = [
+    a("s9"),
+    a("f3", { carpetaId: "c1", ajustes: { plantilla: { origenId: "f2", texto: "Hola" } }, mime: "image/jpeg" }),
+    a("f2", { carpetaId: "c1" }),
+    a("f1", { carpetaId: "c1" }),
+    a("v5", { carpetaId: "r1", tipo: "video", mime: "video/mp4" }),
+    a("g4", { carpetaId: "r1" }),
+    a("s0", { usadoEn: [{ clave: "c:p" }] }),
+  ];
+
+  it("cada carrusel y cada reel es UNA tarjeta, donde está su pieza más nueva", () => {
+    const vista = agruparGaleria(archivos, [car, reel]);
+    expect(vista.map((x) => x.grupo ? x.grupo.carpeta.id : x.id)).toEqual(["s9", "c1", "r1", "s0"]);
+  });
+
+  it("sin orden guardado: las láminas en orden y sin la cruda que ya tiene texto encima", () => {
+    expect(piezasDeGrupo(car, archivos).map((x) => x.id)).toEqual(["f1", "f3"]);
+    expect(piezasDeGrupo(reel, archivos).map((x) => x.id)).toEqual(["v5", "g4"]);
+  });
+
+  it("con orden guardado manda el orden, y lo que ya no está se salta", () => {
+    expect(piezasDeGrupo({ ...car, orden: ["f3", "f1", "borrada"] }, archivos).map((x) => x.id)).toEqual(["f3", "f1"]);
+  });
+
+  it("dice qué es y nombra las piezas del ZIP", () => {
+    expect(textoDeGrupo(car, piezasDeGrupo(car, archivos))).toBe("Carrusel · 2 láminas");
+    expect(textoDeGrupo(reel, piezasDeGrupo(reel, archivos))).toBe("Reel · 1 video y 1 fotograma");
+    expect(nombresParaZip(car, piezasDeGrupo(car, archivos))).toEqual(["01.png", "02.jpg"]);
+    expect(nombresParaZip(reel, piezasDeGrupo(reel, archivos))).toEqual(["video-1.mp4", "fotograma-01.png"]);
+  });
+
+  it("una carpeta normal no se agrupa", () => {
+    expect(agruparGaleria(archivos, [{ id: "c1", nombre: "Mía", tipo: "", orden: [] }])).toHaveLength(archivos.length);
+  });
+
+  it("usadas y sin usar", () => {
+    expect(estaUsado(archivos[6])).toBe(true);
+    expect(filtrarArchivos(archivos, { filtro: "usadas" }).map((x) => x.id)).toEqual(["s0"]);
+    expect(filtrarArchivos(archivos, { filtro: "sin-usar" })).toHaveLength(6);
+    const c = contarFiltros(archivos, []);
+    expect([c.usadas, c["sin-usar"]]).toEqual([1, 6]);
   });
 });

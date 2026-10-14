@@ -132,6 +132,8 @@ export const temaDeIdea = (idea) => [idea?.titulo || idea?.titular, idea?.brief,
  */
 export async function crearCarruselDeIdea({ clienteId, idea, kit, preset = "", estilo = "", modelo, fotos = [], personajes = [], personajesIds = [], marca = "", rubro = "", carpetaId = null, seguir = () => true, alPaso = () => {} }) {
   alPaso("Propuesta de las láminas…");
+  // Cada carrusel en SU carpeta (la galería lo enseña como una tarjeta); si no se puede crear, en la del lote.
+  carpetaId = (await api.carpetaDeGrupo(clienteId, "carrusel", idea.titulo || idea.titular || temaDeIdea(idea))) ?? carpetaId;
   const propuesta = await api.proponerCarrusel(clienteId, { guion: idea.guion ?? "", tema: temaDeIdea(idea), preset, estilo, productoId: idea.productoId || undefined, personajes: personajesIds });
   const k = limpiarKit(kit);
   let hechas = 0;
@@ -142,6 +144,7 @@ export async function crearCarruselDeIdea({ clienteId, idea, kit, preset = "", e
   });
   const archivos = salida.map((r) => r?.final).filter(Boolean);
   if (!archivos.length) throw new Error(salida.map((r) => r?.error).find(Boolean) || "No salió ninguna lámina.");
+  if (carpetaId) await api.ordenarCarpeta(clienteId, carpetaId, archivos.map((a) => a.id)).catch(() => {});
   return { archivos, laminas: propuesta.laminas.length };
 }
 
@@ -152,6 +155,7 @@ export async function crearCarruselDeIdea({ clienteId, idea, kit, preset = "", e
  */
 export async function crearReelDeIdea({ clienteId, idea, kit, preset = "", estilo = "", modeloImagen, modeloVideo, fotos = [], personajes = [], personajesIds = [], marca = "", rubro = "", carpetaId = null, seguir = () => true, alPaso = () => {} }) {
   alPaso("Guion por planos…");
+  carpetaId = (await api.carpetaDeGrupo(clienteId, "reel", idea.titulo || idea.titular || temaDeIdea(idea))) ?? carpetaId;
   const guion = await api.guionDeReel(clienteId, {
     idea: [temaDeIdea(idea), idea.guion ? `Guion propuesto:\n${idea.guion}` : "", idea.escena ? `Qué se ve: ${idea.escena}` : ""].filter(Boolean).join("\n"),
     segundos: 10, preset, estilo, productoId: idea.productoId || undefined, personajes: personajesIds,
@@ -169,5 +173,6 @@ export async function crearReelDeIdea({ clienteId, idea, kit, preset = "", estil
   const lineaPersonajes = [...new Set(personajes.map((p) => `Personaje: ${p.nota}.`))].join(" ");
   const pedido = pedidoDeVideo({ modelo: modeloVideo, planos: guion.planos, hilo: guion.hilo, musica: guion.musica, locucion: guion.locucion, efectos: guion.efectos, segundos: guion.segundos ?? 10, estilo: estiloTexto, personajes: lineaPersonajes, fotogramas });
   const video = await crearVideo({ clienteId, pedido, carpetaId, seguir });
+  if (carpetaId) await api.ordenarCarpeta(clienteId, carpetaId, [video?.id, ...fotogramas.map((f) => f.id)].filter(Boolean)).catch(() => {});
   return { archivos: [video], fotogramas, descripcion: guion.descripcion };
 }

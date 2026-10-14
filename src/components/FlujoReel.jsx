@@ -112,17 +112,15 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
     </div>
   );
 
+  /** La carpeta del reel: la galería la enseña como UNA tarjeta (los videos, el último primero, y los fotogramas). */
   const prepararCarpeta = async () => {
-    if (carpeta.current) return;
-    const dia = new Date().toLocaleDateString("es-PA", { day: "numeric", month: "short", timeZone: "America/Panama" }).replace(/\./g, "");
-    const nombre = `Reel · ${idea.slice(0, 20).trim()} · ${dia}`.slice(0, 40);
-    try {
-      carpeta.current = (await api.crearCarpeta(clienteId, nombre))?.carpeta?.id ?? null;
-    } catch {
-      const g = await api.leerEstudio(clienteId).catch(() => null);
-      carpeta.current = (g?.carpetas ?? []).find((c) => c.nombre.toLowerCase() === nombre.toLowerCase())?.id ?? null;
-    }
+    if (!carpeta.current) carpeta.current = await api.carpetaDeGrupo(clienteId, "reel", idea);
   };
+  const ordenFinal = [...videos.map((v) => v?.id), ...fotos.map((f) => f?.archivo?.id)].filter(Boolean).join(",");
+  useEffect(() => {
+    if (!carpeta.current || ocupado || !ordenFinal) return;
+    api.ordenarCarpeta(clienteId, carpeta.current, ordenFinal.split(",")).catch(() => { /* sin orden, la galería lo deduce */ });
+  }, [ordenFinal, ocupado, clienteId]);
 
   const escribir = async () => {
     ocupar("guion");

@@ -22,7 +22,8 @@
 //   POST   /<cliente>/kit/preparar                 La IA PROPONE el kit desde el cerebro (no guarda)
 //   POST   /<cliente>/kit/aprender                 La IA MIRA los «Me gusta» y la papelera y PROPONE reglas visuales (no guarda)
 //   POST   /<cliente>/revisar                      { archivoId } o { clave }: la IA mira la imagen contra el kit
-//   POST   /<cliente>/archivos                     Subir a mano (multipart: archivo, carpetaId?, origenId?, plantilla?)
+//   POST   /<cliente>/archivos                     Subir a mano (multipart: archivo, carpetaId?, origenId?, plantilla?);
+//                                                   la misma imagen dos veces → 200 con la ficha que había y `repetido`
 //   POST   /<cliente>/archivos/<id>/cambiar        { favorito?, carpetaId? }
 //   POST   /<cliente>/archivos/<id>/uso            { calendarId, postId }: lo usa una publicación
 //   POST   /<cliente>/archivos/<id>/papelera       A la papelera
@@ -30,8 +31,8 @@
 //   POST   /<cliente>/archivos/<id>/perdido        Quitar la ficha de un archivo que ya no está en R2
 //   DELETE /<cliente>/archivos/<id>?forzar=1       Borrar del todo (sólo desde la papelera)
 //   POST   /<cliente>/papelera/vaciar
-//   POST   /<cliente>/carpetas                     { nombre }
-//   PUT    /<cliente>/carpetas/<id>                { nombre }
+//   POST   /<cliente>/carpetas                     { nombre, tipo? } (tipo «carrusel» | «reel»: la galería la agrupa)
+//   PUT    /<cliente>/carpetas/<id>                { nombre?, orden? } (orden: ids de sus piezas, en orden)
 //   DELETE /<cliente>/carpetas/<id>
 //
 // Todo pasa por `clienteDe()`: el cliente tiene que ser de este espacio y, si
@@ -62,7 +63,7 @@ import {
 } from "../lib/estudio/trabajos.js";
 import {
   leerGaleria, subirArchivo, cambiarArchivo, marcarUso, enviarAPapelera, recuperar, borrarParaSiempre, quitarPerdido,
-  vaciarPapelera, crearCarpeta, renombrarCarpeta, borrarCarpeta, archivoPublico,
+  vaciarPapelera, crearCarpeta, renombrarCarpeta, ordenarCarpeta, borrarCarpeta, archivoPublico,
 } from "../lib/estudio/galeria.js";
 
 const ID = /^[\w-]{1,80}$/;
@@ -234,6 +235,12 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         const archivo = await subirArchivo(env, acceso, cliente, form?.get("archivo"), {
           carpetaId: form?.get("carpetaId") || null, origenId: form?.get("origenId") || null, plantilla: form?.get("plantilla") || null,
         });
+        if (archivo.repetido) {
+          // «Ya estaba en la galería»: no se guardó otra copia; se devuelve la que había.
+          const { repetido, ...esa } = archivo;
+          avisar();
+          return json({ archivo: esa, repetido }, 200);
+        }
         avisar();
         return json({ archivo }, 201);
       }
@@ -297,15 +304,17 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
     if (b === "carpetas") {
       if (!c && metodo === "POST") {
         const datos = (await cuerpo(req)) ?? {};
-        const carpeta = await crearCarpeta(acceso, cliente.id, datos.nombre);
+        const carpeta = await crearCarpeta(acceso, cliente.id, datos.nombre, { tipo: datos.tipo });
         avisar();
         return json({ carpeta }, 201);
       }
       if (!ID.test(String(c ?? ""))) return noEncontrado("Carpeta");
       if (metodo === "PUT") {
         const datos = (await cuerpo(req)) ?? {};
-        const carpeta = await renombrarCarpeta(acceso, cliente.id, c, datos.nombre);
-        if (!carpeta) return noEncontrado("Carpeta");
+        // { nombre } renombra; { orden } guarda las piezas de un carrusel o un reel, en orden.
+        let carpeta = datos.nombre !== undefined ? await renombrarCarpeta(acceso, cliente.id, c, datos.nombre) : true;
+        if (carpeta && datos.orden !== undefined) carpeta = await ordenarCarpeta(acceso, cliente.id, c, datos.orden);
+        if (!carpeta || carpeta === true) return noEncontrado("Carpeta");
         avisar();
         return json({ carpeta });
       }

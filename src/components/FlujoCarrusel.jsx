@@ -23,7 +23,8 @@ import "./EstudioLote.css";
 //   3. Láminas: una a una, cada una con la anterior, la portada y los
 //      personajes de referencia (lib/carruselEstudio.js). «Corregir esta»
 //      edita sólo esa lámina con una indicación; «Rehacer esta» la vuelve a
-//      pedir. Todas quedan en la galería, en la carpeta del carrusel.
+//      pedir. Todas quedan en la galería, en la carpeta del carrusel, que la
+//      galería enseña como UNA tarjeta con las láminas en orden (y el ZIP).
 //
 // Lo usan la pestaña Estudio («Carrusel») y «Crear carrusel con IA» del
 // panel de una publicación (que además lo pone en la publicación).
@@ -99,16 +100,15 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
     setPaso("propuesta");
   };
 
+  /** La carpeta del carrusel: la galería la enseña como UNA tarjeta, con las láminas finales en orden. */
   const prepararCarpeta = async () => {
-    const dia = new Date().toLocaleDateString("es-PA", { day: "numeric", month: "short", timeZone: "America/Panama" }).replace(/\./g, "");
-    const nombre = `Carrusel · ${(tema || laminas[0]?.texto || "").split("\n")[0].slice(0, 18).trim()} · ${dia}`.slice(0, 40);
-    try {
-      carpeta.current = (await api.crearCarpeta(clienteId, nombre))?.carpeta?.id ?? null;
-    } catch {
-      const g = await api.leerEstudio(clienteId).catch(() => null);
-      carpeta.current = (g?.carpetas ?? []).find((c) => c.nombre.toLowerCase() === nombre.toLowerCase())?.id ?? null;
-    }
+    if (!carpeta.current) carpeta.current = await api.carpetaDeGrupo(clienteId, "carrusel", tema || laminas[0]?.texto || "");
   };
+  const ordenFinal = resultados.map((r) => r?.final?.id).filter(Boolean).join(",");
+  useEffect(() => {
+    if (!carpeta.current || creando || !ordenFinal) return;
+    api.ordenarCarpeta(clienteId, carpeta.current, ordenFinal.split(",")).catch(() => { /* sin orden, la galería lo deduce */ });
+  }, [ordenFinal, creando, clienteId]);
 
   const crear = async () => {
     setConfirmar(false);

@@ -24,7 +24,7 @@ import {
 } from "../lib/estudioCatalogo";
 import {
   filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga,
-  proporcionDeMedidas, modeloParaEditar, originalDe,
+  proporcionDeMedidas, modeloParaEditar, originalDe, FILTROS_GALERIA, agruparGaleria, esGrupo, estaUsado, textoDeGrupo,
 } from "../lib/estudio";
 import "./Estudio.css";
 
@@ -67,7 +67,9 @@ const recortarMedios = (medios, m) => ({
   reference: medios.reference.slice(0, m.referencias || 0), start: medios.start.slice(0, m.inicial || 0),
   end: medios.end.slice(0, m.final || 0), video: (medios.video ?? []).slice(0, m.video || 0),
 });
-const FILTROS_FIJOS = ["todas", "favoritas", "subidas", "sin-carpeta"];
+const FILTROS_FIJOS = FILTROS_GALERIA;
+// Un carrusel o un reel de la galería con todas sus piezas y la descarga en ZIP: sólo al abrirlo.
+const VisorGrupo = lazy(() => import("./VisorGrupo"));
 
 const reemplazar = (lista = [], t) => (lista.some((x) => x.id === t.id) ? lista.map((x) => (x.id === t.id ? t : x)) : [t, ...lista]);
 const nombreDeModelo = (id) => nombreDelModelo(id) || "Aplicación";
@@ -172,6 +174,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const [enDrive, setEnDrive] = useState(false);
   const setEnPapelera = (v) => { setEnPapeleraEstado(v); if (v) setEnDrive(false); };
   const [visor, setVisor] = useState(null);
+  const [grupoAbierto, setGrupoAbierto] = useState(null);
   const [descartados, setDescartados] = useState(() => new Set());
   const [loteAbierto, setLoteAbierto] = useState(false);
   const [recrear, setRecrear] = useState(null); // null, o { archivo }: «Recrear un anuncio» abierto (con uno ya escogido)
@@ -704,13 +707,19 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setAviso(null);
     try {
       let ultima = null;
+      let repetidas = 0;
       const enCarpeta = !FILTROS_FIJOS.includes(filtro) ? filtro : null;
       for (const f of archivos.slice(0, 6)) {
-        ultima = (await api.subirImagen(client.id, f, { carpetaId: enCarpeta })).archivo;
+        const subida = await api.subirImagen(client.id, f, { carpetaId: enCarpeta });
+        ultima = subida.archivo;
+        if (subida.repetido) repetidas += 1;
         const limite = { reference: modelo.referencias, start: modelo.inicial, end: modelo.final, video: modelo.video }[rol];
         setForm((fm) => ((fm.medios[rol] ?? []).length < (limite || 0) ? { ...fm, medios: { ...fm.medios, [rol]: [...(fm.medios[rol] ?? []), ultima] } } : fm));
       }
-      avisar(true, rol === "video" ? "Video subido a la galería." : archivos.length === 1 ? "Imagen subida a la galería." : `${Math.min(archivos.length, 6)} imágenes subidas.`);
+      avisar(true, repetidas && repetidas === Math.min(archivos.length, 6)
+        ? (repetidas === 1 ? "Ya estaba en la galería: se usa la que había, sin guardar otra copia." : "Ya estaban en la galería: se usan las que había.")
+        : [rol === "video" ? "Video subido a la galería." : archivos.length === 1 ? "Imagen subida a la galería." : `${Math.min(archivos.length, 6)} imágenes subidas.`,
+          repetidas ? `${repetidas} ya estaba${repetidas === 1 ? "" : "n"} en la galería (no se guardó otra copia).` : ""].filter(Boolean).join(" "));
       await cargar();
     } catch (err) {
       avisar(false, err.message);
@@ -900,6 +909,10 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const papelera = datos?.papelera ?? [];
   const cuentas = useMemo(() => contarFiltros(archivos, carpetas), [archivos, carpetas]);
   const visibles = useMemo(() => filtrarArchivos(archivos, { filtro, texto }), [archivos, filtro, texto]);
+  // En «Todas», cada carrusel y cada reel es UNA tarjeta; en sus filtros (o en el de su carpeta), pieza a pieza.
+  const vista = useMemo(() => (filtro === "todas" ? agruparGaleria(visibles, carpetas, archivos) : visibles), [visibles, carpetas, archivos, filtro]);
+  const carpetasPropias = useMemo(() => carpetas.filter((c) => !esGrupo(c)), [carpetas]);
+  const abrirPieza = (a) => (seleccion ? alternarSeleccion(a) : destinoGaleria ? usarComoMedio(a, destinoGaleria) : setVisor(a));
   const enCurso = useMemo(() => trabajosVisibles(datos?.trabajos ?? [], { descartados }), [datos, descartados]);
   const carpetaActiva = carpetas.find((c) => c.id === filtro) ?? null;
   const soloPrueba = motores && !Object.entries(motores).some(([id, m]) => id !== "prueba" && m.activo);
@@ -1088,9 +1101,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "todas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("todas"); }}>Todas ({cuentas.todas})</button>
           <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "favoritas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("favoritas"); }}><Icon name="heart" size={13} /> Me gusta ({cuentas.favoritas})</button>
           <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "subidas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("subidas"); }}>Subidas ({cuentas.subidas})</button>
-          {carpetas.map((c) => (
+          <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "usadas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("usadas"); }} title="Las que ya están en una publicación">Usadas ({cuentas.usadas})</button>
+          <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "sin-usar"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("sin-usar"); }}>Sin usar ({cuentas["sin-usar"]})</button>
+          {carpetas.filter((c) => !esGrupo(c) || filtro === c.id).map((c) => (
             <button key={c.id} type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === c.id} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro(c.id); }}>
-              <Icon name="folder" size={13} /> {c.nombre} ({cuentas[c.id] ?? 0})
+              <Icon name={esGrupo(c) ? (c.tipo === "reel" ? "video" : "copy") : "folder"} size={13} /> {c.nombre} ({cuentas[c.id] ?? 0})
             </button>
           ))}
           {!lectura && carpetaNueva === null && (
@@ -1209,7 +1224,24 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         <p className="est-vacio">No hay nada con ese filtro.</p>
       ) : (
         <ul className="est-rejilla">
-          {visibles.map((a) => {
+          {vista.map((a) => {
+            if (a.grupo) {
+              const { carpeta, piezas, portada } = a.grupo;
+              const nombre = textoDeGrupo(carpeta, piezas);
+              return (
+                <li key={a.id} className="est-tarjeta est-tarjeta-grupo">
+                  <button type="button" className="est-img" aria-label={`Abrir ${nombre}: ${carpeta.nombre}`} onClick={() => setGrupoAbierto(a.grupo)}>
+                    <Pieza archivo={portada} />
+                    <span className="est-marca-grupo"><Icon name={carpeta.tipo === "reel" ? "video" : "copy"} size={12} /> {nombre}</span>
+                    {piezas.some(estaUsado) && <span className="est-marca-usada">Usado</span>}
+                  </button>
+                  <div className="est-pie">
+                    <p className="est-prompt" title={carpeta.nombre}>{carpeta.nombre}</p>
+                    <p className="est-meta">{nombre} · {hace(portada.creado)}</p>
+                  </div>
+                </li>
+              );
+            }
             const escena = ideaDelPedido(a.prompt);
             const marcada = Boolean(seleccion?.has(a.id));
             const perdida = perdidos.has(a.id);
@@ -1219,7 +1251,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
                 type="button" className="est-img"
                 aria-label={seleccion ? `${marcada ? "Quitar de" : "Añadir a"} la selección: ${escena}` : destinoGaleria ? `Poner como ${NOMBRE_RANURA[destinoGaleria]}: ${escena}` : `Abrir: ${escena}`}
                 aria-pressed={seleccion ? marcada : undefined}
-                onClick={() => (seleccion ? alternarSeleccion(a) : destinoGaleria ? usarComoMedio(a, destinoGaleria) : setVisor(a))}
+                onClick={() => abrirPieza(a)}
               >
                 {perdida ? (
                   <span className="est-perdida"><Icon name="alert" size={20} /> Archivo perdido</span>
@@ -1228,6 +1260,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
                 )}
                 {a.tipo === "video" && <span className="est-marca-video"><Icon name="video" size={12} /> Video</span>}
                 {enMedios(a) && <span className="est-marca-ref">En el pedido</span>}
+                {estaUsado(a) && <span className="est-marca-usada" title={`En ${a.usadoEn.length} publicación${a.usadoEn.length === 1 ? "" : "es"}`}>Usada</span>}
                 {seleccion && <span className="est-marca-check" aria-hidden="true"><Icon name={marcada ? "checkSquare" : "square"} size={18} /></span>}
               </button>
               {!lectura && !seleccion && (
@@ -1303,9 +1336,18 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         />
       )}
 
+      {grupoAbierto && (
+        <Suspense fallback={null}>
+          <VisorGrupo
+            grupo={grupoAbierto} onCerrar={() => setGrupoAbierto(null)}
+            onAbrir={(a) => { setGrupoAbierto(null); abrirPieza(a); }}
+            onSueltas={() => { setFiltro(grupoAbierto.carpeta.id); setGrupoAbierto(null); }}
+          />
+        </Suspense>
+      )}
       {visor && (
         <Visor
-          archivo={visor} carpetas={carpetas} lectura={lectura}
+          archivo={visor} carpetas={carpetasPropias} lectura={lectura}
           onCerrar={() => setVisor(null)}
           onFavorito={() => alternarFavorito(visor)}
           onPapelera={() => aPapelera(visor)}
