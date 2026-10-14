@@ -15,7 +15,7 @@ import { OverflowMenu } from "./calendario/primitivas";
 import { soloLectura } from "../lib/sesionActual";
 import * as api from "../lib/estudio";
 import {
-  modeloPorId, nombreDelModelo, estimar, textoCosto, pideConfirmar, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
+  MODELOS, modeloPorId, nombreDelModelo, estimar, textoCosto, pideConfirmar, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
 } from "../lib/estudioCatalogo";
 import {
   filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga,
@@ -406,6 +406,26 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, trabajo) } : d));
       seguir(trabajo.id);
       avisar(true, `Editando con ${m.nombre}: sale como una imagen NUEVA y la original no se toca.`);
+    } catch (e) {
+      avisar(false, e.message);
+    }
+  };
+
+  /** «Pulir»: ampliar y limpiar (o quitar el fondo) con un modelo de Kie. La imagen va de única referencia. */
+  const pulir = async (a, modeloId) => {
+    const m = modeloPorId(modeloId);
+    if (!m) return;
+    try {
+      const { trabajo } = await api.pedirImagenes(client.id, {
+        modelo: m.id, prompt: (a.prompt || "Imagen pulida").slice(0, MAX_PROMPT), n: 1, ajustes: ajustesDe(m, {}, { reference: [a.clave] }),
+        medios: { reference: [a.clave] }, confirmado: true,
+        ...(a.carpetaId ? { carpetaId: a.carpetaId } : {}),
+      });
+      setVisor(null);
+      setEnPapelera(false);
+      setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, trabajo) } : d));
+      seguir(trabajo.id);
+      avisar(true, `${m.nombre}: sale como una imagen NUEVA y la original no se toca.`);
     } catch (e) {
       avisar(false, e.message);
     }
@@ -1227,6 +1247,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           onReferencia={() => { const a = visor; setVisor(null); usarComoMedio(a); }}
           onAnimar={() => animar(visor)}
           onEditar={(instruccion) => editar(visor, instruccion)}
+          pulidos={MODELOS.filter((m) => m.pulir && motores?.[m.motor]?.activo).map((m) => ({ id: m.id, nombre: m.nombre, costo: estimar(m, 1) }))}
+          onPulir={/^image\/(png|jpeg|webp)$/.test(visor.mime ?? "") ? (id) => pulir(visor, id) : null}
           original={originalDe(visor, datos?.trabajos ?? [], datos?.archivos ?? [])}
           onVerOriginal={(o) => setVisor(o)}
           onUsar={onUsar ? () => usarEnLaPublicacion(visor) : null}

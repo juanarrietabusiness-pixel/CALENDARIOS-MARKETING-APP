@@ -214,6 +214,151 @@ export const MODELOS = Object.freeze([
     para: ["todo uso", "muchas referencias", "lotes"],
     ajustes: { aspectRatio: enumerado(PROPORCIONES, "4:5"), imageSize: enumerado(TAMANOS, "1K") },
   },
+  {
+    id: "nano-banana-2-1-kie", motor: "kie", tipo: "imagen", nombre: "Nano Banana 2.1 (Kie)", cola: true,
+    creador: "Google", calidad: 4, velocidad: "rápido", costo: 0.06, referencias: 10, estimado: true,
+    costoSegun: { ajuste: "imageSize", valores: { "1K": 0.04, "2K": 0.06, "4K": 0.1 } },
+    nota: "La versión más nueva de Nano Banana por Kie.ai: hasta 10 referencias, 4:5 exacto y hasta 4K. Muy fiel al producto y al personaje. Precio aproximado.",
+    para: ["fiel al producto", "personajes", "4K"],
+    ajustes: { aspectRatio: enumerado(PROPORCIONES, "4:5"), imageSize: enumerado(TAMANOS, "2K") },
+  },
+  {
+    id: "gpt-image-2-5-kie", motor: "kie", tipo: "imagen", nombre: "GPT Image 2.5 (Kie)", cola: true,
+    creador: "OpenAI", calidad: 4, velocidad: "normal", costo: 0.07, referencias: 16, estimado: true,
+    costoSegun: { ajuste: "imageSize", valores: { "1K": 0.04, "2K": 0.07, "4K": 0.12 } },
+    nota: "El más nuevo de OpenAI por Kie.ai: diseña piezas con el texto bien jerarquizado y sigue muy bien las referencias. Sin 4:5: el del feed sale 3:4. Precio aproximado.",
+    para: ["texto legible", "diseño de anuncio", "fiel a la referencia"],
+    ajustes: { aspectRatio: enumerado(["3:4", "1:1", "9:16", "4:3", "16:9"], "3:4"), imageSize: enumerado(TAMANOS, "2K") },
+  },
+  {
+    id: "ideogram-3-kie", motor: "kie", tipo: "imagen", nombre: "Ideogram 3 (Kie)", cola: true,
+    creador: "Ideogram", calidad: 4, velocidad: "normal", costo: 0.06, referencias: 0, estimado: true,
+    costoSegun: { ajuste: "calidad", valores: { high: 0.09, low: 0.06 } },
+    nota: "El que mejor escribe: titulares, precios y carteles tipográficos sin errores. No lleva referencias (ni el producto real): para piezas de texto y diseño gráfico. Sin 4:5: sale 3:4. Precio aproximado.",
+    para: ["texto perfecto", "diseño gráfico", "promociones"],
+    ajustes: { aspectRatio: enumerado(["3:4", "1:1", "9:16", "4:3", "16:9"], "3:4"), calidad: enumerado(["high", "low"], "high") },
+  },
+  {
+    id: "seedream-5-pro-kie", motor: "kie", tipo: "imagen", nombre: "Seedream 5 Pro (Kie)", cola: true,
+    creador: "ByteDance", calidad: 4, velocidad: "normal", costo: 0.04, referencias: 10, estimado: true,
+    nota: "Fotografía realista de alta gama, con hasta 10 referencias. Sin 4:5: el del feed sale 3:4. Precio aproximado.",
+    para: ["fotografía realista", "producto", "alta resolución"],
+    ajustes: { aspectRatio: enumerado(["3:4", "1:1", "4:3", "9:16", "16:9", "2:3", "3:2", "21:9"], "3:4"), calidad: enumerado(["high", "low"], "high") },
+  },
+  {
+    id: "imagen-4-ultra-kie", motor: "kie", tipo: "imagen", nombre: "Imagen 4 Ultra (Kie)", cola: true,
+    creador: "Google", calidad: 4, velocidad: "normal", costo: 0.06, referencias: 0, estimado: true,
+    nota: "El fotográfico de Google: luz y texturas muy reales. Sin referencias (no copia el producto real). Sin 4:5: sale 3:4. Precio aproximado.",
+    para: ["fotografía realista", "ambientes", "personas"],
+    ajustes: { aspectRatio: enumerado(["3:4", "1:1", "9:16", "4:3", "16:9"], "3:4") },
+  },
+  // ---- Pulir (Kie): no crean, mejoran una imagen de la galería. No salen en la lista del compositor: se piden
+  // desde el visor («Pulir»). La imagen va como única referencia y el texto no se usa.
+  {
+    id: "topaz-ampliar-kie", motor: "kie", tipo: "imagen", nombre: "Ampliar y limpiar (Topaz)", cola: true, pulir: true, necesitaImagen: true,
+    creador: "Topaz", calidad: 4, velocidad: "normal", costo: 0.05, referencias: 1, estimado: true,
+    nota: "Amplía la imagen al doble (o 4 veces) y limpia el ruido y los bordes: lo que más se nota en la nitidez final. Precio aproximado.",
+    para: ["acabado final", "nitidez"],
+    ajustes: { factor: enumerado(["2", "4"], "2") },
+  },
+  {
+    id: "recraft-nitidez-kie", motor: "kie", tipo: "imagen", nombre: "Nitidez (Recraft)", cola: true, pulir: true, necesitaImagen: true,
+    creador: "Recraft", calidad: 3, velocidad: "rápido", costo: 0.01, referencias: 1, estimado: true,
+    nota: "Amplía y afila detalles y letras sin cambiar nada más. Muy barato. Precio aproximado.",
+    para: ["acabado final", "texto nítido"],
+    ajustes: {},
+  },
+  {
+    id: "recraft-sin-fondo-kie", motor: "kie", tipo: "imagen", nombre: "Quitar el fondo (Recraft)", cola: true, pulir: true, necesitaImagen: true,
+    creador: "Recraft", calidad: 3, velocidad: "rápido", costo: 0.01, referencias: 1, estimado: true,
+    nota: "Deja el producto o la persona sobre fondo transparente (PNG): para fotos del catálogo. Precio aproximado.",
+    para: ["foto de producto", "fondo transparente"],
+    ajustes: {},
+  },
+  // ---- Video por Kie.ai. Por SEGUNDO; el precio cambia con la calidad (`costoSegun`).
+  {
+    id: "gemini-omni-kie", motor: "kie", tipo: "video", nombre: "Gemini Omni Flash (Kie) · hasta 10 s", cola: true,
+    creador: "Google", calidad: 4, velocidad: "normal", costo: 0.08, por: "s", referencias: 7, inicial: 1, final: 1, video: 1, estimado: true,
+    costoSegun: { ajuste: "resolution", valores: { "360p": 0.05, "720p": 0.08, "1080p": 0.12, "4k": 0.25 } },
+    nota: "El Omni de Flow por Kie.ai: varios planos en 10 s con sonido; hasta 7 imágenes de referencia (fotogramas del storyboard, personajes, estilo), o imagen inicial y final, o un video para corregirlo. Precio aproximado.",
+    para: ["reels de 10 s", "storyboard", "corregir un video"],
+    ajustes: {
+      aspectRatio: enumerado(["9:16", "16:9"], "9:16"), duration: enumerado(["4", "6", "8", "10"], "10"),
+      resolution: enumerado(["720p", "1080p", "4k", "360p"], "720p"),
+    },
+  },
+  {
+    id: "kling-3-kie", motor: "kie", tipo: "video", nombre: "Kling 3.0 (Kie)", cola: true,
+    creador: "Kling (Kuaishou)", calidad: 4, velocidad: "normal", costo: 0.07, por: "s", referencias: 0, inicial: 1, final: 1, estimado: true,
+    costoSegun: { ajuste: "modo", valores: { std: 0.07, pro: 0.1, "4K": 0.2 } },
+    nota: "Kling 3.0 por Kie.ai: de 3 a 15 s, con sonido, desde texto o desde una imagen inicial (y final). Precio aproximado.",
+    para: ["reels", "animar una foto", "con sonido"],
+    ajustes: {
+      aspectRatio: enumerado(["9:16", "16:9", "1:1"], "9:16"), duration: enumerado(["5", "6", "7", "8", "9", "10", "12", "15"], "10"),
+      modo: enumerado(["std", "pro", "4K"], "std"), sonido: enumerado(["si", "no"], "si"),
+    },
+  },
+  {
+    id: "kling-3-omni-kie", motor: "kie", tipo: "video", nombre: "Kling 3.0 Omni (Kie)", cola: true,
+    creador: "Kling (Kuaishou)", calidad: 4, velocidad: "lento", costo: 0.1, por: "s", referencias: 7, inicial: 1, final: 1, video: 1, estimado: true,
+    costoSegun: { ajuste: "resolution", valores: { "720p": 0.1, "1080p": 0.14, "4k": 0.28 } },
+    nota: "Kling 3.0 Omni por Kie.ai: hasta 7 imágenes de referencia (personajes, producto, escena) o un video que seguir; de 3 a 15 s con sonido. Precio aproximado.",
+    para: ["personajes", "referencias", "seguir un video"],
+    ajustes: {
+      aspectRatio: enumerado(["9:16", "16:9", "1:1"], "9:16"), duration: enumerado(["5", "6", "7", "8", "9", "10", "12", "15"], "10"),
+      resolution: enumerado(["720p", "1080p", "4k"], "720p"), sonido: enumerado(["si", "no"], "si"),
+    },
+  },
+  {
+    id: "seedance-2-kie", motor: "kie", tipo: "video", nombre: "Seedance 2.0 (Kie)", cola: true,
+    creador: "ByteDance", calidad: 4, velocidad: "normal", costo: 0.08, por: "s", referencias: 9, inicial: 1, final: 1, video: 1, estimado: true,
+    costoSegun: { ajuste: "resolution", valores: { "480p": 0.05, "720p": 0.08, "1080p": 0.14, "4k": 0.3 } },
+    nota: "Seedance 2.0 por Kie.ai: varios planos con sonido, hasta 9 referencias y un video de referencia; de 4 a 15 s. Precio aproximado.",
+    para: ["reels", "referencias", "con sonido"],
+    ajustes: {
+      aspectRatio: enumerado(["9:16", "16:9", "1:1", "3:4", "4:3"], "9:16"), duration: enumerado(["5", "6", "8", "10", "12", "15"], "10"),
+      resolution: enumerado(["720p", "1080p", "480p", "4k"], "720p"), sonido: enumerado(["si", "no"], "si"),
+    },
+  },
+  {
+    id: "seedance-2-5-kie", motor: "kie", tipo: "video", nombre: "Seedance 2.5 (Kie)", cola: true,
+    creador: "ByteDance", calidad: 4, velocidad: "normal", costo: 0.1, por: "s", referencias: 14, inicial: 1, final: 1, video: 1, estimado: true,
+    costoSegun: { ajuste: "resolution", valores: { "480p": 0.06, "720p": 0.1, "1080p": 0.16 } },
+    nota: "Seedance 2.5 por Kie.ai: hasta 14 referencias y videos de referencia, de 4 a 30 s, con sonido. Precio aproximado.",
+    para: ["muchas referencias", "videos largos"],
+    ajustes: {
+      aspectRatio: enumerado(["9:16", "16:9", "1:1", "3:4", "4:3"], "9:16"), duration: enumerado(["5", "6", "8", "10", "12", "15", "20", "30"], "10"),
+      resolution: enumerado(["720p", "1080p", "480p"], "720p"), sonido: enumerado(["si", "no"], "si"),
+    },
+  },
+  {
+    id: "veo-3-1-fast-kie", motor: "kie", tipo: "video", nombre: "Veo 3.1 Fast (Kie)", cola: true,
+    creador: "Google", calidad: 4, velocidad: "normal", costo: 0.05, por: "s", referencias: 3, inicial: 1, final: 1, estimado: true,
+    nota: "Veo 3.1 de Google por Kie.ai, con voz y sonido: 4, 6 u 8 s; imagen inicial y final, o hasta 3 referencias (entonces siempre 8 s). Precio aproximado.",
+    para: ["con voz", "anuncios", "8 s"],
+    ajustes: { aspectRatio: enumerado(["9:16", "16:9"], "9:16"), duration: enumerado(["8", "6", "4"], "8"), resolution: enumerado(["720p", "1080p", "4k"], "720p") },
+  },
+  {
+    id: "veo-3-1-kie", motor: "kie", tipo: "video", nombre: "Veo 3.1 Quality (Kie)", cola: true,
+    creador: "Google", calidad: 4, velocidad: "lento", costo: 0.25, por: "s", referencias: 0, inicial: 1, final: 1, estimado: true,
+    nota: "Veo 3.1 en su mejor calidad, con voz y sonido: 4, 6 u 8 s, con imagen inicial y final. Caro. Precio aproximado.",
+    para: ["la mejor calidad", "con voz"],
+    ajustes: { aspectRatio: enumerado(["9:16", "16:9"], "9:16"), duration: enumerado(["8", "6", "4"], "8"), resolution: enumerado(["720p", "1080p", "4k"], "720p") },
+  },
+  {
+    id: "hailuo-2-3-kie", motor: "kie", tipo: "video", nombre: "Hailuo 2.3 Pro (Kie)", cola: true, necesitaImagen: true,
+    creador: "MiniMax", calidad: 3, velocidad: "normal", costo: 0.05, por: "s", referencias: 0, inicial: 1, final: 0, estimado: true,
+    nota: "Anima una foto con movimiento muy natural; 6 o 10 s, sin sonido. Barato. Precio aproximado.",
+    para: ["animar una foto", "barato"],
+    ajustes: { duration: enumerado(["6", "10"], "10"), resolution: enumerado(["768P", "1080P"], "768P") },
+  },
+  {
+    id: "wan-2-7-kie", motor: "kie", tipo: "video", nombre: "Wan 2.7 (Kie)", cola: true,
+    creador: "Alibaba", calidad: 3, velocidad: "normal", costo: 0.06, por: "s", referencias: 0, inicial: 1, final: 1, estimado: true,
+    nota: "Desde texto o con imagen inicial y final, de 2 a 15 s en 1080p. Para probar ideas barato. Precio aproximado.",
+    para: ["barato", "pruebas"],
+    ajustes: { aspectRatio: enumerado(["9:16", "16:9", "1:1", "3:4", "4:3"], "9:16"), duration: enumerado(["5", "8", "10", "15"], "10"), resolution: enumerado(["1080p", "720p"], "1080p") },
+  },
   // ---- Higgsfield: sale de su documentación (scripts/estudio/generar-higgsfield.mjs), no se escribe a mano.
   ...MODELOS_HIGGSFIELD.map(desdeJson),
   {
@@ -257,7 +402,7 @@ export const nombreDelModelo = (id) => modeloPorId(id)?.nombre ?? (MODELOS_RETIR
  * funciona: para imagen, el que la aplicación ya usaba; para video, Gemini Omni Flash (la misma llave de Google).
  */
 export function modeloPorDefecto(motoresActivos = {}, tipo = "imagen") {
-  const deEsteTipo = MODELOS.filter((m) => m.tipo === tipo && m.motor !== "prueba" && motoresActivos[m.motor]);
+  const deEsteTipo = MODELOS.filter((m) => m.tipo === tipo && m.motor !== "prueba" && !m.pulir && motoresActivos[m.motor]);
   return deEsteTipo.find((m) => m.predeterminado) ?? deEsteTipo[0]
     ?? MODELOS.find((m) => m.tipo === tipo && m.motor === "prueba");
 }
@@ -290,7 +435,8 @@ const RAPIDEZ = Object.freeze({ "muy rápido": 4, rápido: 3, normal: 2, lento: 
  *   · A igualdad de criterio manda el orden del catálogo: la lista no salta de sitio entre una visita y otra.
  */
 export function modelosParaLista(tipo, { orden = "recomendado", creador = "", activos = {}, seleccionado = "" } = {}) {
-  const base = MODELOS.map((m, i) => ({ m, i })).filter(({ m }) => m.tipo === tipo);
+  // Los de «pulir» no crean: se piden desde el visor, no desde la lista (salvo que sea el escogido).
+  const base = MODELOS.map((m, i) => ({ m, i })).filter(({ m }) => m.tipo === tipo && (!m.pulir || m.id === seleccionado));
   const filtrados = base.filter(({ m }) => !creador || m.creador === creador || m.id === seleccionado);
   const activo = ({ m }) => (activos[m.motor] ? 0 : 1);
   const costoPorUnidad = ({ m }) => (m.costo ?? 0);
@@ -316,11 +462,24 @@ export function modelosParaLista(tipo, { orden = "recomendado", creador = "", ac
 
 /** Quién hace los modelos de un tipo, sin repetir y en orden alfabético. */
 export function creadoresDe(tipo) {
-  return [...new Set(MODELOS.filter((m) => m.tipo === tipo).map((m) => m.creador).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
+  return [...new Set(MODELOS.filter((m) => m.tipo === tipo && !m.pulir).map((m) => m.creador).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
 }
 
 /** Quién pone el modelo, para la lista. */
 export const NOMBRE_MOTOR = Object.freeze({ gemini: "Google", fal: "fal.ai", higgsfield: "Higgsfield", kie: "Kie.ai", meta: "Meta", prueba: "Prueba" });
+
+/**
+ * El precio por unidad con estos ajustes: `costoSegun` (si el modelo lo trae) dice cuánto cuesta con cada valor de un
+ * ajuste —la resolución, el modo—; sin ese ajuste, el de su valor por defecto. Si no, `costo`. Pura.
+ */
+export function costoUnitario(modelo, ajustes = {}) {
+  const m = typeof modelo === "string" ? modeloPorId(modelo) : modelo;
+  if (!m) return 0;
+  const segun = m.costoSegun;
+  if (!segun) return m.costo ?? 0;
+  const valor = ajustes?.[segun.ajuste] ?? m.ajustes?.[segun.ajuste]?.defecto;
+  return segun.valores[valor] ?? m.costo ?? 0;
+}
 
 /** Cuánto cuesta un pedido, en dólares, redondeado a la milésima. Un video cuesta por segundo. */
 export function estimar(modelo, cantidad = 1, ajustes = {}) {
@@ -328,7 +487,7 @@ export function estimar(modelo, cantidad = 1, ajustes = {}) {
   if (!m) return 0;
   const n = Math.max(1, Math.min(maxPorPedido(m), Math.trunc(Number(cantidad)) || 1));
   const unidades = m.por === "s" ? duracionDe(m, ajustes) : 1;
-  return Math.round(m.costo * n * unidades * 1000) / 1000;
+  return Math.round(costoUnitario(m, ajustes) * n * unidades * 1000) / 1000;
 }
 
 /** «≈ 0,07 $», «gratis». */
