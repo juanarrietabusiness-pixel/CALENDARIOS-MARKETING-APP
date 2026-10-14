@@ -50,12 +50,13 @@ export class ErrorIA extends Error {
  * (y decide el modelo: ver FUNCIONES_IA). `salida` es lo que se pide para escribir; el razonamiento va aparte.
  * @returns {{ texto: string, modelo: string, aviso: string|null, segundos: number, busquedas: number, conWeb: boolean, fuentes: string[] }}
  */
-export async function llamarIA(env, acceso, cliente, { prompt, salida = 6000, funcion = "cerebro", herramientas = null }) {
+export async function llamarIA(env, acceso, cliente, { prompt, salida = 6000, funcion = "cerebro", herramientas = null, modelo: forzado = null }) {
   if (!env.ANTHROPIC_API_KEY) throw new ErrorIA("El servidor no tiene configurada la clave de Anthropic", 503);
   const ia = await prepararIA(env, acceso, { funcion });
   if (ia.bloqueo) throw new ErrorIA(ia.bloqueo, 402);
   const maxTokens = Math.min(salida + (MARGEN_RAZONAMIENTO[ia.esfuerzo] ?? 16_000), MAX_TOKENS_CAP);
-  let modelo = ia.modelo;
+  // `modelo`: quien llama ya sabe con cuál (el análisis de video con Meta); el presupuesto se respeta igual.
+  let modelo = forzado || ia.modelo;
   let aviso = ia.aviso ?? null;
 
   const arranque = Date.now();
@@ -113,7 +114,7 @@ export async function llamarIA(env, acceso, cliente, { prompt, salida = 6000, fu
   }
 
   // Lo que se gastó se apunta aunque la respuesta no sirva: costó igual.
-  await registrarConsumo(acceso, { funcion, modelo, uso: { ...uso, server_tool_use: { web_search_requests: busquedas } }, clienteId: cliente.id });
+  await registrarConsumo(acceso, { funcion, modelo, uso: { ...uso, server_tool_use: { web_search_requests: busquedas } }, clienteId: cliente?.id ?? null });
 
   if (m.error) {
     throw new ErrorIA(m.error.type === "overloaded_error" ? "La IA está saturada. Inténtalo en unos segundos." : `La IA cortó la respuesta: ${m.error.message ?? "sin motivo"}`, 502);

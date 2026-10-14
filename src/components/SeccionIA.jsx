@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useId } from "react";
 import Icon from "./Icon";
 import * as db from "../lib/db";
-import { MODELOS_IA, NIVELES_IA, CONFIG_IA_POR_DEFECTO, MODELOS_FUNCION, FUNCIONES_IA, MOTORES_IMAGEN } from "../lib/configIA";
+import { MODELOS_IA, NIVELES_IA, CONFIG_IA_POR_DEFECTO, MODELOS_FUNCION, FUNCIONES_IA, MOTORES_IMAGEN, MOTORES_VIDEO } from "../lib/configIA";
 
 // ============================================================
 // Ajustes → Inteligencia artificial
@@ -141,6 +141,25 @@ export default function SeccionIA({ esAdmin, pulso = 0 }) {
               {MOTORES_IMAGEN.map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
             </select>
             <p style={{ ...nota, margin: 0 }}>{MOTORES_IMAGEN.find((m) => m.id === (config.ia_modelos?.imagen ?? "auto"))?.nota}</p>
+          </div>
+          <div className="ia-funcion">
+            <label htmlFor={`${ids}-vid`}>
+              <strong>Ver videos</strong>
+              <span>El asistente y las referencias de la competencia</span>
+            </label>
+            <select id={`${ids}-vid`} className="input" value={config.ia_modelos?.video ?? "gemini"} disabled={!esAdmin || guardando}
+              onChange={(e) => cambiar("ia_modelos", { video: e.target.value })}>
+              {MOTORES_VIDEO.map((m) => (
+                <option key={m.id} value={m.id}>{m.nombre}{modelos?.video?.llaves && !modelos.video.llaves[m.id] ? " · sin llave" : ""}</option>
+              ))}
+            </select>
+            <p style={{ ...nota, margin: 0 }}>
+              {MOTORES_VIDEO.find((m) => m.id === (config.ia_modelos?.video ?? "gemini"))?.nota}
+              {modelos?.video?.llaves && !modelos.video.llaves[config.ia_modelos?.video ?? "gemini"] && (
+                <> Falta el secreto <code>{MOTORES_VIDEO.find((m) => m.id === (config.ia_modelos?.video ?? "gemini"))?.llave}</code> del Worker.</>
+              )}
+            </p>
+            {modelos?.video?.aviso && <p className="notice notice-warn" style={{ margin: 0 }}>{modelos.video.aviso}</p>}
           </div>
         </fieldset>
 

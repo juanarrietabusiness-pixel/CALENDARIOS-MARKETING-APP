@@ -87,3 +87,23 @@ export function productoNombrado(productos = [], idea = "", claves = []) {
     .sort((a, b) => normal(b.nombre).length - normal(a.nombre).length);
   return candidatos[0] ?? null;
 }
+
+/**
+ * TODOS los productos del catálogo con fotos que nombra la idea («el kit con Dany Baby y Nateen»), del nombre más largo
+ * al más corto; un nombre ya encontrado se quita del texto, así «Sofá cama» no cuenta también como «Sofá». Los que ya
+ * van de referencia (`claves`) no se devuelven. Pura.
+ */
+export function productosNombrados(productos = [], idea = "", claves = []) {
+  let texto = normal(idea);
+  const fuera = [];
+  const ordenados = (productos ?? [])
+    .filter((p) => p?.fotos?.length && normal(p.nombre).length >= 3)
+    .sort((a, b) => normal(b.nombre).length - normal(a.nombre).length);
+  for (const p of ordenados) {
+    const nombre = normal(p.nombre);
+    if (!texto.includes(nombre)) continue;
+    texto = texto.split(nombre).join(" ");
+    if (!p.fotos.some((f) => claves.includes(f))) fuera.push(p);
+  }
+  return fuera;
+}

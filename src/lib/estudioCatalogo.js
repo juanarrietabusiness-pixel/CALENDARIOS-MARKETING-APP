@@ -192,6 +192,28 @@ export const MODELOS = Object.freeze([
     para: ["con sonido", "anuncios"],
     ajustes: { aspectRatio: enumerado(["9:16", "16:9"], "9:16"), duration: enumerado(["8"], "8") },
   },
+  // ---- Kie.ai: todo por su cola (tarea + consulta), también las imágenes; las de apoyo se suben a su almacén.
+  {
+    id: "gpt-image-2-kie", motor: "kie", tipo: "imagen", nombre: "GPT Image 2 (Kie)", cola: true,
+    creador: "OpenAI", calidad: 4, velocidad: "normal", costo: 0.05, referencias: 8, estimado: true,
+    nota: "El de OpenAI por tu llave de Kie.ai: muy bueno con el texto dentro de la imagen y con fotos de referencia. Proporciones 1:1, 3:4, 9:16, 4:3 y 16:9: el 4:5 del feed sale 3:4. Precio aproximado (2K).",
+    para: ["texto legible", "anuncios", "fiel a la referencia"],
+    ajustes: { aspectRatio: enumerado(["3:4", "1:1", "9:16", "4:3", "16:9"], "3:4"), imageSize: enumerado(TAMANOS, "2K") },
+  },
+  {
+    id: "nano-banana-pro-kie", motor: "kie", tipo: "imagen", nombre: "Nano Banana Pro (Kie)", cola: true,
+    creador: "Google", calidad: 4, velocidad: "normal", costo: 0.09, referencias: 8, estimado: true,
+    nota: "Nano Banana Pro por Kie.ai, más barato que por Google: compone bien, escribe texto legible y es muy fiel a la foto del producto. Hasta 8 referencias. Precio aproximado (1K–2K).",
+    para: ["fiel al producto", "texto legible", "4K"],
+    ajustes: { aspectRatio: enumerado(PROPORCIONES, "4:5"), imageSize: enumerado(TAMANOS, "2K") },
+  },
+  {
+    id: "nano-banana-2-kie", motor: "kie", tipo: "imagen", nombre: "Nano Banana 2 (Kie)", cola: true,
+    creador: "Google", calidad: 3, velocidad: "rápido", costo: 0.04, referencias: 14, estimado: true,
+    nota: "Nano Banana 2 por Kie.ai: el todoterreno, hasta 14 referencias. Precio aproximado (1K).",
+    para: ["todo uso", "muchas referencias", "lotes"],
+    ajustes: { aspectRatio: enumerado(PROPORCIONES, "4:5"), imageSize: enumerado(TAMANOS, "1K") },
+  },
   // ---- Higgsfield: sale de su documentación (scripts/estudio/generar-higgsfield.mjs), no se escribe a mano.
   ...MODELOS_HIGGSFIELD.map(desdeJson),
   {
@@ -298,7 +320,7 @@ export function creadoresDe(tipo) {
 }
 
 /** Quién pone el modelo, para la lista. */
-export const NOMBRE_MOTOR = Object.freeze({ gemini: "Google", fal: "fal.ai", higgsfield: "Higgsfield", meta: "Meta", prueba: "Prueba" });
+export const NOMBRE_MOTOR = Object.freeze({ gemini: "Google", fal: "fal.ai", higgsfield: "Higgsfield", kie: "Kie.ai", meta: "Meta", prueba: "Prueba" });
 
 /** Cuánto cuesta un pedido, en dólares, redondeado a la milésima. Un video cuesta por segundo. */
 export function estimar(modelo, cantidad = 1, ajustes = {}) {

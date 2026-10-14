@@ -109,8 +109,10 @@ Ahora que el Worker existe, ya tiene dónde guardarlas.
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Tu clave de Anthropic | console.anthropic.com → API Keys |
 | `GOOGLE_AI_KEY` | Tu clave de Google AI (Gemini) | aistudio.google.com → Get API key. Genera las imágenes (Nano Banana) y **lee** los videos para el asistente. Sin ella, las imágenes con IA dan «El servidor no tiene configurada la clave de Google AI» |
+| `GOOGLE_AI_KEY_GRATIS` | Otra clave de Google AI, de un proyecto **sin facturación** *(opcional)* | aistudio.google.com → Get API key, en un proyecto sin cuenta de facturación. Sirve para **ver videos gratis** (Ajustes → IA → «Ver videos» → «Gemini (llave gratuita)»): el asistente y las referencias de la competencia. Ojo: en el nivel gratuito Google puede usar lo que se le manda para mejorar sus productos, y hay topes por minuto y por día. «Ver videos» también puede ir por **Meta** (fotogramas, sin audio) si no queda crédito |
 | `FAL_KEY` | Tu llave de fal.ai *(opcional)* | fal.ai → Dashboard → Keys. Activa en el Estudio los modelos de fal (Seedream, Flux, Kling, Seedance, Hailuo, Veo 3). Sin ella se ven apagados, con «sin llave» |
 | `HF_KEY` | Tu llave de Higgsfield, `id:secreto` *(opcional)* | cloud.higgsfield.ai → API Keys. Activa en el Estudio los modelos de Higgsfield (Soul, Kling 3, Seedance, Wan, Ideogram…). También vale `HF_API_KEY` + `HF_API_SECRET` por separado. Sin ella se ven apagados |
+| `KIE_API_KEY` | Tu llave de Kie.ai *(opcional)* | kie.ai → API Key. Activa en el Estudio GPT Image 2, Nano Banana Pro y Nano Banana 2 por Kie (más baratos que directos; las imágenes de apoyo se suben a su almacén). Sin ella se ven apagados |
 | `META_API_KEY` | Tu llave de la API de Meta (Muse) *(opcional)* | dev.meta.ai → API keys (la documentación de Meta la llama `MODEL_API_KEY`; vale cualquiera de los dos nombres). Activa **Muse Spark** como modelo de texto en Ajustes → IA —y en cuanto está, **redacción y guiones pasan a Muse Spark 1.2 Contributor**, salvo que elijas otro— y **Muse Image** en el Estudio y para adaptar a 4:5. Ojo: con el modelo *Contributor*, Meta puede usar lo que se le manda para entrenar sus modelos |
 | `GITHUB_TOKEN` | Un token de **sólo lectura** | GitHub → Settings → Developer settings → Personal access tokens |
 | `GOOGLE_CLIENT_ID` | El ID de cliente OAuth de Google | Ver «Google Drive» abajo |
@@ -577,7 +579,8 @@ despliegue (`EspacioHub`, migración `v1` de `wrangler.jsonc`).
 | `ANTHROPIC_API_KEY` | **Cloudflare** | La usa el Worker en cada petición |
 | `GITHUB_TOKEN` | **Cloudflare** | Idem |
 | `GOOGLE_AI_KEY` | **Cloudflare** | Idem (imágenes y lectura de video) |
-| `FAL_KEY` / `HF_KEY` | **Cloudflare** | El Estudio: fal.ai y Higgsfield (opcionales, cada una activa sus modelos) |
+| `GOOGLE_AI_KEY_GRATIS` | **Cloudflare** | Ver videos con el nivel gratuito de Gemini (opcional) |
+| `FAL_KEY` / `HF_KEY` / `KIE_API_KEY` | **Cloudflare** | El Estudio: fal.ai, Higgsfield y Kie.ai (opcionales, cada una activa sus modelos) |
 | `META_API_KEY` | **Cloudflare** | Muse Spark (texto) y Muse Image (Estudio, adaptar a 4:5); opcional |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | **Cloudflare** | Google Drive y YouTube |
 | `META_APP_ID` / `META_APP_SECRET` / `META_CONFIG_ID` | **Cloudflare** | Instagram y Facebook |

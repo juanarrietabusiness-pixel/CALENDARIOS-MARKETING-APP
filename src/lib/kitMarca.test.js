@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  ideaDelPedido, limpiarKit, kitVacio, textoPaleta, textoPreset, componerPedido, ponerLogo, pedidoDeKit, leerKit, fundirKit,
+  ideaDelPedido, PREFIJO_TIPO, referenciasDePreset, MAX_REFS_PRESET, limpiarKit, kitVacio, textoPaleta, textoPreset, componerPedido, ponerLogo, pedidoDeKit, leerKit, fundirKit,
   pedidoDeRevision, leerRevision, TIPOS_PRESET, IDS_PRESET, LINEA_VIDEO, LINEA_LOGO, ACABADOS, bloqueDeMarca, presetValido, presetActual,
   nombreDePreset, pedidoConMarca, estiloDeMarca,
 } from "./kitMarca";
@@ -69,10 +69,10 @@ describe("los presets", () => {
 
   it("sin preset escrito, la plantilla del tipo SIN la paleta (la paleta va en el bloque de marca)", () => {
     const t = textoPreset(KIT, "servicios", { marca: "Rofer Service", rubro: "maquinaria pesada" });
-    expect(t).toMatch(/^Fotografía de producto o servicio para Rofer Service \(maquinaria pesada\)/);
+    expect(t).toMatch(/^Pieza de producto o servicio de Rofer Service \(maquinaria pesada\)/);
     expect(t).not.toContain("#152473");
     const m = textoPreset(KIT, "maletas-garantia", { marca: "Rofer" });
-    expect(m).toMatch(/^Pieza de confianza para Rofer/);
+    expect(m).toMatch(/^Pieza de confianza de Rofer/);
     expect(m).toContain(TIPOS_PRESET.maletas.subtipos.garantia.linea);
     expect(textoPreset(KIT, "inventado")).toBe("");
   });
@@ -109,11 +109,12 @@ describe("los presets", () => {
 
 describe("el pedido", () => {
   it("tipo de pieza + acabado + escena + marca + logo, y en video el movimiento; sin nada, la idea tal cual", () => {
-    expect(componerPedido({ idea: "Una excavadora al atardecer", preset: "PRESET." })).toBe("PRESET.\n\nEscena: Una excavadora al atardecer");
-    expect(componerPedido({ idea: "x", preset: "P.", video: true })).toBe(`P.\n\nEscena: x\n\n${LINEA_VIDEO}`);
+    // La escena PRIMERO: con el tipo delante fijando la composición, el motor le hacía caso a él y no a la idea.
+    expect(componerPedido({ idea: "Una excavadora al atardecer", preset: "PRESET." })).toBe(`Escena: Una excavadora al atardecer\n\n${PREFIJO_TIPO} PRESET.`);
+    expect(componerPedido({ idea: "x", preset: "P.", video: true })).toBe(`Escena: x\n\n${PREFIJO_TIPO} P.\n\n${LINEA_VIDEO}`);
     expect(componerPedido({ idea: " sola " })).toBe("sola");
     expect(componerPedido({ idea: "x", preset: "P.", acabado: "grafico", marca: "MARCA.", logo: true }))
-      .toBe(`P.\n\n${ACABADOS.grafico.linea}\n\nEscena: x\n\nMARCA.\n\n${LINEA_LOGO}`);
+      .toBe(`Escena: x\n\n${PREFIJO_TIPO} P.\n\n${ACABADOS.grafico.linea}\n\nMARCA.\n\n${LINEA_LOGO}`);
   });
 
   it("SIN tipo, la marca va igual: era lo que faltaba desde un post sin tipo", () => {
@@ -128,7 +129,7 @@ describe("el pedido", () => {
 
   it("el estilo entero para el carrusel: el preset y la marca en un texto", () => {
     const e = estiloDeMarca(KIT, "anuncio", { marca: "Rofer" });
-    expect(e).toMatch(/^Pieza publicitaria de venta directa para Rofer/);
+    expect(e).toMatch(/^Anuncio de venta directa de Rofer/);
     expect(e).toContain("Identidad de la marca");
     expect(estiloDeMarca(null, "")).toBe("");
   });
@@ -186,5 +187,25 @@ describe("la IA", () => {
     expect(leerRevision('{"puntaje":14,"cumple":["paleta"],"falla":["texto inventado"],"sugerencia":"sin texto"}'))
       .toEqual({ puntaje: 10, cumple: ["paleta"], falla: ["texto inventado"], sugerencia: "sin texto" });
     expect(leerRevision("no")).toBeNull();
+  });
+});
+
+describe("la referencia visual de cada tipo de pieza", () => {
+  it("se guardan como mucho dos claves de clientes/ por tipo que exista (o por propio)", () => {
+    const k = limpiarKit({
+      propios: [{ id: "propio-a", nombre: "Navidad", texto: "t" }],
+      referencias: { anuncio: ["clientes/c1/a.jpg", "clientes/c1/a.jpg", "clientes/c1/b.jpg", "clientes/c1/c.jpg"], inventado: ["clientes/c1/x.jpg"], "propio-a": ["clientes/c1/n.jpg", "otra/cosa.jpg", "clientes/c1/../c2/x.jpg"] },
+    });
+    expect(k.referencias).toEqual({ anuncio: ["clientes/c1/a.jpg", "clientes/c1/b.jpg"], "propio-a": ["clientes/c1/n.jpg"] });
+    expect(MAX_REFS_PRESET).toBe(2);
+  });
+  it("van sólo las que siguen en la galería, con qué se toma y la nota; una maleta usa las de las maletas", () => {
+    const kit = { referencias: { anuncio: ["clientes/c1/a.jpg", "clientes/c1/borrada.jpg"], maletas: ["clientes/c1/m.jpg"] } };
+    const archivos = [{ id: "1", clave: "clientes/c1/a.jpg", src: "/api/media/clientes/c1/a.jpg" }, { id: "2", clave: "clientes/c1/m.jpg" }];
+    const refs = referenciasDePreset(kit, "anuncio", archivos);
+    expect(refs).toHaveLength(1);
+    expect(refs[0]).toMatchObject({ clave: "clientes/c1/a.jpg", toma: ["estilo", "composicion"], nota: "es la referencia visual de las piezas «Anuncio»" });
+    expect(referenciasDePreset(kit, "maletas-garantia", archivos, { toma: ["estilo"] })[0]).toMatchObject({ clave: "clientes/c1/m.jpg", toma: ["estilo"] });
+    expect(referenciasDePreset(kit, "", archivos)).toEqual([]);
   });
 });

@@ -4,7 +4,7 @@
 // El modo «plantilla» del carrusel: la IA dejó el hueco limpio y aquí se
 // escribe el texto EXACTO con los colores del kit. Tres plantillas
 // (lib/carrusel.js → PLANTILLAS_TEXTO): banda abajo, titular arriba,
-// tarjeta al centro. La letra es la del kit si el navegador la tiene; si
+// tarjeta al centro y texto sobre un degradado (sin caja: el más editorial). La letra es la del kit si el navegador la tiene; si
 // no, la del sistema, en negrita: nunca una que no se pueda leer.
 // ============================================================
 
@@ -33,7 +33,7 @@ const radio = (ctx, x, y, w, h, r) => {
  * Dibuja la lámina con su texto y devuelve un JPEG (Blob).
  * @param src        la imagen de la IA (`/api/media/…`)
  * @param texto      el de la lámina («Titular\nApoyo…»)
- * @param plantilla  banda | arriba | centro
+ * @param plantilla  banda | arriba | centro | degradado
  * @param colores    { fondo, texto, acento } (coloresPlantilla)
  * @param familia    la tipografía del kit, si la hay
  */
@@ -85,6 +85,18 @@ export async function componerLamina({ src, texto, plantilla = "banda", colores,
     ctx.globalAlpha = 1;
     x = margen + relleno * 0.75;
     y = top + relleno;
+  } else if (plantilla === "degradado") {
+    // Sin caja ni raya: la imagen se funde con el color de fondo hacia abajo y el texto queda encima.
+    const h = bloque + relleno * 4;
+    const g = ctx.createLinearGradient(0, alto - h, 0, alto);
+    g.addColorStop(0, "rgba(0,0,0,0)");
+    g.addColorStop(0.45, colores.fondo);
+    g.addColorStop(1, colores.fondo);
+    ctx.globalAlpha = 0.88;
+    ctx.fillStyle = g;
+    ctx.fillRect(0, alto - h, ancho, h);
+    ctx.globalAlpha = 1;
+    y = alto - bloque - relleno * 1.3;
   } else {
     const h = bloque + relleno * 2;
     ctx.globalAlpha = 0.92;

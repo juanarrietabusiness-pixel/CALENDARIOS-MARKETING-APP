@@ -20,6 +20,15 @@
 //     cerebro y se corrigen a mano; sin escribir, una plantilla por tipo. Más
 //     los PROPIOS de cada cliente (hasta 6) y un ACABADO opcional.
 //
+// QUÉ HACE DE VERDAD EL TIPO DE PIEZA. Al principio cada tipo era un párrafo
+// que iba DELANTE de la escena y fijaba la composición («el producto ocupa el
+// centro, espacio limpio para el titular y el botón»): el motor obedecía eso
+// antes que la idea, todas las piezas de un tipo salían con la misma forma, y
+// las que salían mejor eran las de «Sin tipo». Ahora la ESCENA va primero y
+// manda, el tipo dice para qué es la pieza (qué comunica y con qué tono, no
+// cómo se encuadra), y cada tipo puede llevar hasta dos IMÁGENES de
+// referencia (`referencias`) que enseñan el estilo en vez de describirlo.
+//
 // ============================================================
 
 import { limpiarAprendido, lineasAprendidas } from "./aprendizajeVisual.js";
@@ -28,33 +37,33 @@ import { limpiarAprendido, lineasAprendidas } from "./aprendizajeVisual.js";
 export const TIPOS_PRESET = Object.freeze({
   anuncio: {
     nombre: "Anuncio",
-    ayuda: "Venta directa: el producto al centro, un mensaje y espacio para el titular y el botón.",
-    base: (m) => `Pieza publicitaria de venta directa para ${m}: el producto es el protagonista y ocupa el centro, un solo mensaje, jerarquía visual clara, buen contraste y espacio limpio para un titular grande y un llamado a la acción.`,
+    ayuda: "Venta directa (Meta): un solo mensaje y el producto bien reconocible.",
+    base: (m) => `Anuncio de venta directa de ${m}: un solo mensaje que se entiende en un segundo y el producto bien reconocible.`,
   },
   beneficios: {
     nombre: "Beneficios / Promoción",
-    ayuda: "El beneficio o la oferta es lo primero que se ve.",
-    base: (m) => `Pieza de oferta para ${m}: el beneficio o la promoción es lo primero que se ve, junto al producto y su resultado; composición con energía y sensación de oportunidad, con un espacio destacado para el precio o el descuento.`,
+    ayuda: "Lo que gana quien compra, o la oferta, se nota a primera vista.",
+    base: (m) => `Pieza de beneficio u oferta de ${m}: lo que gana quien compra se nota a primera vista, con sensación de oportunidad.`,
   },
   servicios: {
     nombre: "Producto / Servicio",
-    ayuda: "Tipo catálogo: el producto en detalle o en uso; el servicio, en acción.",
-    base: (m) => `Fotografía de producto o servicio para ${m}, tipo catálogo: el producto en detalle o en uso real, fondo neutro, luz suave y pareja, composición sencilla y aireada. Si es un servicio, se ve en acción o con su resultado.`,
+    ayuda: "El producto real y bien visto; el servicio, con su resultado.",
+    base: (m) => `Pieza de producto o servicio de ${m}: el producto real, bien visto y creíble; si es un servicio, se ve su resultado.`,
   },
   educativo: {
     nombre: "Educativo / Informativo",
-    ayuda: "Tipo infografía: limpio, jerarquía clara, poco producto.",
-    base: (m) => `Pieza informativa para ${m}, estilo infografía editorial: diseño limpio, jerarquía clara, iconos sencillos, mucho espacio libre y poca presencia de producto; transmite que la marca sabe del tema.`,
+    ayuda: "Educa o informa: una sola idea, ordenada y fácil de leer.",
+    base: (m) => `Pieza educativa de ${m}: enseña una sola idea, ordenada y fácil de leer; transmite que la marca sabe del tema.`,
   },
   diferenciador: {
     nombre: "Diferenciador",
-    ayuda: "Lo que hace única a la marca, destacado con claridad.",
-    base: (m) => `Pieza que muestra lo que hace única a ${m}: el rasgo distintivo destacado con claridad, una composición que contrasta lo propio frente a lo común (sin nombrar a nadie), tono seguro y de autoridad.`,
+    ayuda: "Lo que hace única a la empresa, claro.",
+    base: (m) => `Pieza que muestra lo que hace única a ${m}: ese rasgo se ve claro, con un tono seguro y sin nombrar a nadie.`,
   },
   maletas: {
     nombre: "7 maletas",
     ayuda: "Confianza: garantía, testimonio, solución u objeciones.",
-    base: (m) => `Pieza de confianza para ${m}: tono cercano y creíble, composición sobria, sin exageraciones publicitarias.`,
+    base: (m) => `Pieza de confianza de ${m}: cercana y creíble, sin exageraciones publicitarias.`,
     subtipos: {
       garantia: { nombre: "Garantía", linea: "Transmite seguridad: un sello o distintivo de garantía visible, composición estable y ordenada, sensación de respaldo." },
       testimonio: { nombre: "Testimonio", linea: "Aspecto real y humano: una persona en un entorno cotidiano, luz natural y espacio para una cita corta; nada de pose de estudio." },
@@ -86,6 +95,9 @@ export const MAX_PROPIOS = 6;
 const ID_PROPIO = /^propio-[a-z0-9-]{1,40}$/;
 
 const HEX = /^#[0-9a-f]{6}$/i;
+/** Imágenes de referencia por tipo de pieza: como mucho dos (los motores admiten pocas y van también el producto y el logo). */
+export const MAX_REFS_PRESET = 2;
+const CLAVE = /^clientes\/[^/]+\/.+/;
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
 /** Lo guardado, limpio: lo que no se entiende se descarta. Pura. */
@@ -128,8 +140,47 @@ export function limpiarKit(guardado) {
     propios: propios.slice(0, MAX_PROPIOS),
     // Reglas visuales que la IA propuso de los «Me gusta» y la papelera, y una persona aceptó (aprendizajeVisual.js).
     aprendido: limpiarAprendido(g.aprendido),
+    // La referencia visual de cada tipo de pieza (y de cada propio): claves de la galería de este cliente.
+    referencias: limpiarRefsPreset(g.referencias, propios.slice(0, MAX_PROPIOS)),
+    // El modelo FIJADO de este cliente, por tipo («Fijar para este cliente»): un id del catálogo del Estudio.
+    modelos: limpiarModelosKit(g.modelos),
     ...(g.preparadoAt ? { preparadoAt: String(g.preparadoAt) } : {}),
   };
+}
+
+const ID_MODELO = /^[a-z0-9][a-z0-9.-]{1,60}$/;
+/** { imagen?, video? } con ids que parecen de modelo; si el modelo ya no existe, el Estudio cae en el predeterminado. */
+function limpiarModelosKit(entrada) {
+  const e = entrada && typeof entrada === "object" ? entrada : {};
+  return Object.fromEntries(["imagen", "video"].filter((t) => ID_MODELO.test(String(e[t] ?? ""))).map((t) => [t, String(e[t])]));
+}
+
+/** Las referencias por tipo, limpias: ids que existen, claves de `clientes/`, sin repetir y como mucho dos. Pura. */
+function limpiarRefsPreset(entrada, propios = []) {
+  const e = entrada && typeof entrada === "object" ? entrada : {};
+  const fuera = {};
+  for (const [id, lista] of Object.entries(e)) {
+    if (!IDS_PRESET.includes(id) && !propios.some((p) => p.id === id)) continue;
+    const claves = [...new Set((Array.isArray(lista) ? lista : []).map(String))].filter((c) => CLAVE.test(c) && !c.includes("..")).slice(0, MAX_REFS_PRESET);
+    if (claves.length) fuera[id] = claves;
+  }
+  return fuera;
+}
+
+/**
+ * Las imágenes de referencia del tipo de pieza escogido, como archivos de apoyo (sólo las que siguen en la galería: una
+ * borrada rompería el pedido). Una de las 7 maletas usa las suyas o, si no tiene, las de las maletas. `toma`: qué se
+ * toma de ellas (en el lote, sólo el estilo: la composición la decide el plan). Pura.
+ */
+export function referenciasDePreset(kitGuardado, id, archivos = [], { toma = ["estilo", "composicion"] } = {}) {
+  if (!id) return [];
+  const refs = limpiarKit(kitGuardado).referencias;
+  const claves = refs[id] ?? refs[String(id).split("-")[0]] ?? [];
+  const nombre = nombreDePreset(id, kitGuardado);
+  return claves
+    .map((clave) => (archivos ?? []).find((a) => a.clave === clave))
+    .filter(Boolean)
+    .map((a) => ({ ...a, toma, nota: `es la referencia visual de las piezas «${nombre}»` }));
 }
 
 /** ¿Tiene algo el kit? Pura. */
@@ -207,6 +258,9 @@ export function textoPreset(kitGuardado, id, { marca = "la marca", rubro = "" } 
   return sub && def.subtipos?.[sub] ? `${base} ${def.subtipos[sub].linea}` : base;
 }
 
+/** Cómo se presenta el tipo de pieza en el pedido: orienta, pero la escena manda. */
+export const PREFIJO_TIPO = "Tipo de pieza (orienta el propósito y el tono; la escena y su composición mandan):";
+
 /** Lo que se añade en un video: el movimiento, corto. */
 export const LINEA_VIDEO = "Video corto: movimiento de cámara suave y natural, sin cortes bruscos, ritmo tranquilo.";
 
@@ -214,15 +268,17 @@ export const LINEA_VIDEO = "Video corto: movimiento de cámara suave y natural, 
 export const LINEA_LOGO = "Una de las imágenes de referencia es el logo de la marca: si aparece en la pieza, cópialo tal cual (forma, colores y letras), sin redibujarlo ni inventar otro.";
 
 /**
- * El pedido que va al motor: el preset (qué pieza es), el acabado, la escena, qué se toma de cada referencia
- * (referencias.js), la identidad de la marca, el logo y, en video, cómo se mueve. Sin nada de eso, la idea tal cual. Lo que se manda es lo que queda escrito en la galería. Pura.
+ * El pedido que va al motor: la ESCENA primero (es lo que manda), el tipo de pieza (para qué es), el acabado, qué se
+ * toma de cada referencia (referencias.js), la identidad de la marca, el logo y, en video, cómo se mueve. Sin nada de
+ * eso, la idea tal cual. Lo que se manda es lo que queda escrito en la galería. Pura.
  */
 export function componerPedido({ idea, preset = "", acabado = "", referencias = "", marca = "", logo = false, video = false }) {
   const escena = String(idea ?? "").trim();
   const lineaAcabado = ACABADOS[acabado]?.linea ?? "";
   const lineasRefs = String(referencias ?? "").trim();
   if (!preset && !lineaAcabado && !lineasRefs && !marca && !logo) return escena;
-  return [String(preset).trim(), lineaAcabado, `Escena: ${escena}`, lineasRefs, String(marca).trim(), logo ? LINEA_LOGO : "", video ? LINEA_VIDEO : ""]
+  const tipo = String(preset ?? "").trim();
+  return [`Escena: ${escena}`, tipo ? `${PREFIJO_TIPO} ${tipo}` : "", lineaAcabado, lineasRefs, String(marca).trim(), logo ? LINEA_LOGO : "", video ? LINEA_VIDEO : ""]
     .filter(Boolean).join("\n\n");
 }
 
@@ -306,7 +362,8 @@ export function pedidoDeKit({ marca, rubro = "", guia = "", ficha = "" }) {
     "- El estilo, la luz y «evitar» describen la marca en CUALQUIER pieza: van en todo pedido, junto con la paleta.",
     "- Un preset por TIPO DE CONTENIDO del calendario de la agencia:",
     ...PRESETS_DE_LA_IA.map((id) => `  · ${id} (${TIPOS_PRESET[id].nombre}): ${TIPOS_PRESET[id].ayuda}`),
-    "  Cada uno es UN párrafo de 40 a 90 palabras para ESTA marca: qué clase de pieza es, la composición, la gente que sale (si sale), la emoción y el tono. Sin listas.",
+    "  Cada uno es UNA o DOS frases (de 20 a 45 palabras) para ESTA marca: para qué sirve la pieza, qué comunica, la emoción, el tono y la gente que sale (si sale). Sin listas.",
+    "  NO describas la composición, el encuadre ni dónde va el producto o el texto: eso lo decide cada escena, y fijarlo hace que todas las piezas de un tipo salgan iguales.",
     "- En los presets NO repitas la paleta, la tipografía ni lo que no debe salir: eso va aparte, en todo pedido. Tampoco describas una escena concreta: el preset va delante de cualquier idea.",
     "- Si hay ESTUDIO DE MERCADO, los presets de anuncio y beneficios le hablan a esos perfiles y a esos deseos (el tono de la imagen, la gente que sale, la emoción), sin escribir textos ni precios: esos van en cada pieza.",
     "",
@@ -333,8 +390,8 @@ export function leerKit(texto) {
 /** Lo que propone la IA sobre lo guardado: conserva el logo y los presets propios (la IA no los escribe). Pura. */
 export function fundirKit(guardado, propuesto, ahora = new Date().toISOString()) {
   const antes = limpiarKit(guardado);
-  // Lo que la IA no escribe se queda: el logo, los presets propios y las reglas aprendidas de los «Me gusta».
-  return limpiarKit({ ...propuesto, logo: antes.logo, propios: antes.propios, aprendido: antes.aprendido, preparadoAt: ahora });
+  // Lo que la IA no escribe se queda: el logo, los presets propios, las reglas aprendidas y las referencias de cada tipo.
+  return limpiarKit({ ...propuesto, logo: antes.logo, propios: antes.propios, aprendido: antes.aprendido, referencias: antes.referencias, modelos: antes.modelos, preparadoAt: ahora });
 }
 
 /** Lo que se le pide a la IA al revisar una pieza contra el kit. La imagen va aparte. Pura. */

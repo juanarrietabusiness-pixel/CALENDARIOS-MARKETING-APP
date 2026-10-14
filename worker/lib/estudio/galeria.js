@@ -186,7 +186,26 @@ export async function marcarUso(acceso, clientId, id, { calendarId, postId }) {
  * ni por el tipo que declare el navegador; y va a R2 por flujo, sin cargarlo
  * entero.
  */
-export async function subirArchivo(env, acceso, cliente, archivo, { carpetaId = null } = {}) {
+/**
+ * Lo que una pieza COMPUESTA (el texto de la plantilla encima de una cruda del Estudio) hereda de su cruda: el pedido,
+ * el modelo y el trabajo —para que «Otra igual» y «Otra versión» sepan repetirla— y el texto que lleva encima. Sólo de
+ * una cruda de ESTE cliente; si no, nada (y se sube como una más). Pura salvo la lectura.
+ */
+async function herenciaDe(acceso, clientId, origenId, plantilla) {
+  if (!origenId) return null;
+  const o = await acceso.leerUno("estudio_archivos", { id: String(origenId).slice(0, 80), client_id: clientId });
+  if (!o || o.subido || o.tipo !== "imagen") return null;
+  let p = null;
+  try { p = typeof plantilla === "string" ? JSON.parse(plantilla) : plantilla; } catch { p = null; }
+  const texto = String(p?.texto ?? "").slice(0, 400);
+  const donde = ["banda", "arriba", "centro", "degradado"].includes(p?.plantilla) ? p.plantilla : "banda";
+  return {
+    prompt: o.prompt, modelo: o.modelo, trabajo_id: o.trabajo_id,
+    ajustes: JSON.stringify({ ...leerJSON(o.ajustes, {}), ...(texto ? { plantilla: { texto, plantilla: donde, origenId: o.id } } : {}) }),
+  };
+}
+
+export async function subirArchivo(env, acceso, cliente, archivo, { carpetaId = null, origenId = null, plantilla = null } = {}) {
   if (!archivo || typeof archivo === "string") throw new ErrorEstudio("Falta el archivo.", 400);
   if (archivo.size > MAX_SUBIDA_VIDEO) throw new ErrorEstudio("El archivo pesa más de 50 MB.", 413);
   const cabecera = new Uint8Array(await archivo.slice(0, 65_536).arrayBuffer());
@@ -197,14 +216,17 @@ export async function subirArchivo(env, acceso, cliente, archivo, { carpetaId = 
   if (carpetaId && !(await acceso.leerUno("estudio_carpetas", { id: String(carpetaId), client_id: cliente.id }))) {
     throw new ErrorEstudio("Esa carpeta no existe.", 404);
   }
+  const herencia = esVideo ? null : await herenciaDe(acceso, cliente.id, origenId, plantilla);
   const clave = claveDeArchivo(cliente.id, archivo.name?.replace(/\.[^.]+$/, "") || "subida", mime);
   await env.MEDIA.put(clave, archivo.stream(), { httpMetadata: { contentType: mime } });
   const { ancho, alto } = esVideo ? { ancho: 0, alto: 0 } : medidasDe(cabecera, mime);
   const ahora = new Date().toISOString();
   const fila = await acceso.insertar("estudio_archivos", {
     id: uuid(), client_id: cliente.id, clave, tipo: esVideo ? "video" : "imagen", mime, ancho, alto, bytes: archivo.size,
-    prompt: String(archivo.name ?? "").slice(0, 200), modelo: "", ajustes: "{}", trabajo_id: null,
-    carpeta_id: carpetaId ? String(carpetaId) : null, origen: "subida", costo: 0, favorito: 0, subido: 1, usado_en: "[]",
+    prompt: herencia?.prompt ?? String(archivo.name ?? "").slice(0, 200), modelo: herencia?.modelo ?? "", ajustes: herencia?.ajustes ?? "{}",
+    trabajo_id: herencia?.trabajo_id ?? null,
+    // Una compuesta la crea el Estudio (el texto encima de su pieza): no es «subida a mano», y su objeto de R2 es suyo.
+    carpeta_id: carpetaId ? String(carpetaId) : null, origen: herencia ? "estudio" : "subida", costo: 0, favorito: 0, subido: herencia ? 0 : 1, usado_en: "[]",
     borrado_at: null, created_at: ahora, updated_at: ahora,
   });
   return archivoPublico(fila);

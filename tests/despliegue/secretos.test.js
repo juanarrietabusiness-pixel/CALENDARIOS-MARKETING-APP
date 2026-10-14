@@ -117,7 +117,7 @@ describe("el navegador sólo ve lo que puede ver", () => {
     const prohibidos = [
       "SUPABASE_SERVICE_ROLE_KEY", "SERVICE_ROLE_KEY", "ANTHROPIC_API_KEY",
       "GROQ_API_KEY", "GITHUB_TOKEN", "ADMIN_PASSWORD", "ADMIN_SEED_TOKEN",
-      "GOOGLE_AI_KEY", "FAL_KEY", "HF_KEY", "HF_API_KEY", "HF_API_SECRET",
+      "GOOGLE_AI_KEY", "GOOGLE_AI_KEY_GRATIS", "FAL_KEY", "HF_KEY", "HF_API_KEY", "HF_API_SECRET", "KIE_API_KEY",
       "META_API_KEY", "MODEL_API_KEY",
     ].join("|");
     const acceso = new RegExp(

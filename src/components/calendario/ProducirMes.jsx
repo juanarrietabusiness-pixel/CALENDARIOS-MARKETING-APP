@@ -6,7 +6,7 @@ import { mediosDe, conMedios } from "../../lib/publicacion";
 import { presetDePilar, nombreDePilar } from "../../lib/pilares";
 import { lineasDeReferencias } from "../../lib/referencias";
 import { pedidoConMarca, estiloDeMarca, ponerLogo, limpiarKit } from "../../lib/kitMarca";
-import { modeloPorDefecto, validarPedido, ajustesDe, textoCosto, CONFIRMAR_DESDE } from "../../lib/estudioCatalogo";
+import { validarPedido, ajustesDe, textoCosto, CONFIRMAR_DESDE } from "../../lib/estudioCatalogo";
 import * as api from "../../lib/estudio";
 import { partirGuion, costoCarrusel, coloresPlantilla, MODOS_TEXTO, PLANTILLAS_TEXTO } from "../../lib/carrusel";
 import { crearCarrusel, modeloParaCarrusel } from "../../lib/carruselEstudio";
@@ -87,7 +87,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
           return { date: d.date, post, tipo: "carrusel", modelo, laminas, costo: costoCarrusel(laminas, modelo.costo), error: "" };
         }
         const tipo = tipoDe(post.format);
-        const modelo = modeloPorDefecto(activos, tipo);
+        const modelo = api.modeloPreferido(activos, tipo, estudio.kit?.modelos?.[tipo]);
         // Las fotos del producto (catálogo) primero: que salga el producto real. Luego el logo, si cabe.
         const delProducto = tipo === "imagen" ? api.fotosDelProducto(estudio.productos, post.productoId) : [];
         const fotos = delProducto.map((f) => f.clave);

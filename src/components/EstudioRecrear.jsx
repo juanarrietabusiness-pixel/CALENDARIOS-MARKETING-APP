@@ -70,7 +70,8 @@ export default function EstudioRecrear({ client, archivos = [], productosConFoto
     setTrabajando("analizar");
     setAviso(null);
     try {
-      const r = await agregarReferencia(clienteId, { archivoId: archivo.id, competidor, nota, origen: "anuncio" });
+      // Un video lo puede ver Meta por fotogramas: se le da de dónde sacarlos.
+      const r = await agregarReferencia(clienteId, { archivoId: archivo.id, competidor, nota, origen: "anuncio" }, archivo.tipo === "video" ? archivo.src : "");
       setReferencia(r.referencia);
       setPaso(1);
       if (!r.referencia?.analisis) {

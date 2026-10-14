@@ -27,7 +27,7 @@ import { uuid, testigo, ahora } from "../lib/ids.js";
 import { difundir, firma } from "../lib/vivo.js";
 import { tareasParaPurgar, terminadasBorrables, MODOS_PURGA } from "../lib/tareas.js";
 import { fechaEnZona, debeReabrirse, esFecha } from "../../src/lib/agenda.js";
-import { leerConfigIA, MODELOS_ELEGIBLES, RAZONAMIENTOS, ACCIONES_LIMITE, FUNCIONES_IA, MODELOS_POR_FUNCION, MOTORES_IMAGEN } from "../lib/configIA.js";
+import { leerConfigIA, MODELOS_ELEGIBLES, RAZONAMIENTOS, ACCIONES_LIMITE, FUNCIONES_IA, MODELOS_POR_FUNCION, MOTORES_IMAGEN, MOTORES_VIDEO } from "../lib/configIA.js";
 import { resincronizarCalendario } from "../lib/publicador.js";
 import { asignarTarea, alGuardarCalendario, avisarNota, avisar, enlacePublicacion } from "../lib/equipo.js";
 import { registrarCorrecciones } from "../lib/cerebro/aprender.js";
@@ -199,7 +199,9 @@ export async function rutasDatos(req, env, ctx) {
           const juntos = { ...actuales };
           for (const [hueco, modelo] of Object.entries(pedidos)) {
             if (modelo === null) { delete juntos[hueco]; continue; }
-            const valido = hueco === "imagen" ? MOTORES_IMAGEN.includes(modelo) : hueco in FUNCIONES_IA && MODELOS_POR_FUNCION.includes(modelo);
+            const valido = hueco === "imagen" ? MOTORES_IMAGEN.includes(modelo)
+              : hueco === "video" ? MOTORES_VIDEO.includes(modelo)
+              : hueco in FUNCIONES_IA && MODELOS_POR_FUNCION.includes(modelo);
             if (!valido) return error(`Modelo inválido para «${hueco}»`);
             juntos[hueco] = modelo;
           }

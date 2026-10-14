@@ -11,7 +11,7 @@
 // ============================================================
 
 import { pedir } from "./db";
-import { estaVivo, diasQueQuedan, MODELOS, MAX_PROMPT } from "./estudioCatalogo";
+import { estaVivo, diasQueQuedan, MODELOS, MAX_PROMPT, modeloPorId, modeloPorDefecto } from "./estudioCatalogo";
 
 const base = (clienteId) => `/estudio/${encodeURIComponent(clienteId)}`;
 const post = (cuerpo) => ({ method: "POST", body: JSON.stringify(cuerpo ?? {}) });
@@ -51,11 +51,16 @@ export const revisarMarca = (clienteId, archivoId) => pedir(`${base(clienteId)}/
 /** Lo mismo para la imagen de una publicación, por su ruta (`/api/media/…`): no hace falta que esté en la galería. */
 export const revisarMarcaDeRuta = (clienteId, clave) => pedir(`${base(clienteId)}/revisar`, post({ clave }));
 
-/** Sube una imagen a mano (la foto del producto, el logo) a la galería del cliente. */
-export function subirImagen(clienteId, archivo, { carpetaId = null } = {}) {
+/**
+ * Sube una imagen a mano (la foto del producto, el logo) a la galería del cliente. Una pieza con el texto de la
+ * plantilla puesto encima sube con `origenId` (la cruda de la que sale) y `plantilla` ({ texto, plantilla }).
+ */
+export function subirImagen(clienteId, archivo, { carpetaId = null, origenId = null, plantilla = null } = {}) {
   const form = new FormData();
   form.set("archivo", archivo);
   if (carpetaId) form.set("carpetaId", carpetaId);
+  if (origenId) form.set("origenId", origenId);
+  if (plantilla) form.set("plantilla", JSON.stringify(plantilla));
   return pedir(`${base(clienteId)}/archivos`, { method: "POST", body: form });
 }
 
@@ -72,6 +77,19 @@ export const vaciarPapelera = (clienteId) => pedir(`${base(clienteId)}/papelera/
 export const crearCarpeta = (clienteId, nombre) => pedir(`${base(clienteId)}/carpetas`, post({ nombre }));
 export const renombrarCarpeta = (clienteId, id, nombre) => pedir(`${base(clienteId)}/carpetas/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ nombre }) });
 export const borrarCarpeta = (clienteId, id) => pedir(`${base(clienteId)}/carpetas/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+// ------------------------------------------------------------
+// El modelo FIJADO de un cliente: el que se usa casi siempre con él
+// ------------------------------------------------------------
+
+/**
+ * El modelo con que se arranca: el fijado del CLIENTE (`kit.modelos`, lo comparte el equipo) si existe, es de ese tipo
+ * y su motor tiene llave; si no, el predeterminado del catálogo. Lo usan el compositor, el lote y «Producir el mes».
+ */
+export function modeloPreferido(activos = {}, tipo = "imagen", fijado = "") {
+  const m = fijado ? modeloPorId(fijado) : null;
+  return m && m.tipo === tipo && (m.motor === "prueba" || activos[m.motor]) ? m : modeloPorDefecto(activos, tipo);
+}
 
 // ------------------------------------------------------------
 // Puro
@@ -175,6 +193,15 @@ export function textoDeLaPieza(texto) {
   return String(texto ?? "").split(/\n+/).map((l) => l.replace(/["“”«»]/g, "").trim()).filter(Boolean).slice(0, 4).map((l) => `"${l.slice(0, 80)}"`).join(" / ");
 }
 
+/**
+ * Lo que entra al compositor con «Usar» una idea de «Dame ideas»: la escena y, si la idea trae texto, la orden de
+ * escribirlo EXACTO (igual que desde una publicación). Pura.
+ */
+export function ideaAlPedido(idea) {
+  const pieza = textoDeLaPieza(idea?.texto);
+  return [String(idea?.escena ?? "").trim(), pieza ? `Texto en la imagen, exacto y legible: ${pieza}` : ""].filter(Boolean).join("\n\n");
+}
+
 /** Un archivo escogido en Drive (BancoSelector) como `File`, para subirlo a la galería como cualquier otro. */
 export async function archivoDeDrive(it) {
   const res = await fetch(it.url, { credentials: "same-origin" });
@@ -188,6 +215,31 @@ export function fotosDelProducto(productos = [], productoId = "") {
   const p = productoId ? (productos ?? []).find((x) => x.id === productoId) : null;
   // `producto`: el pedido las presenta como el producto REAL (referencias.js), y si es de otra marca, lo dice.
   return (p?.fotos ?? []).map((clave) => ({ id: `ext:${clave}`, src: `/api/media/${clave}`, clave, prompt: p.nombre, producto: { nombre: p.nombre, marca: p.marca ?? "" } }));
+}
+
+/**
+ * La escena de una pieza partida en lo que se VE y lo que manda sobre el texto («NO escribas ningún texto…», «Texto en
+ * la imagen, EXACTO…»): a «Otra versión» sólo se le da a reescribir lo primero, y lo segundo se vuelve a poner tal cual.
+ * Pura.
+ */
+export function partirEscena(escena) {
+  const t = String(escena ?? "").trim();
+  const m = t.match(/\s*(NO escribas ningún texto|Texto en la imagen)/);
+  if (!m || m.index === 0) return { escena: t, cola: "" };
+  return { escena: t.slice(0, m.index).trim(), cola: t.slice(m.index).trim() };
+}
+
+/**
+ * Las fotos de VARIOS productos en los huecos que haya: primero una de cada uno, luego la segunda de cada uno… Así una
+ * pieza con dos o tres productos lleva a todos, en vez de llenar los huecos con las cuatro fotos del primero. Pura.
+ */
+export function fotosDeVariosProductos(productos = [], ids = [], huecos = 0) {
+  const listas = [...new Set(ids)].map((id) => fotosDelProducto(productos, id)).filter((l) => l.length);
+  const fuera = [];
+  for (let vuelta = 0; fuera.length < huecos && listas.some((l) => l.length > vuelta); vuelta++) {
+    for (const l of listas) if (l[vuelta] && fuera.length < huecos) fuera.push(l[vuelta]);
+  }
+  return fuera;
 }
 
 /** El texto con que arranca el compositor desde una publicación: su idea y, si hay, lo que dice. */
@@ -300,3 +352,9 @@ export function originalDe(archivo, trabajos = [], archivos = []) {
 
 /** El lote de anuncios: la IA escribe las ideas por nivel → `{ ideas, producto, conEstudio }` (texto: no gasta en el motor). */
 export const ideasDeLote = (clienteId, datos) => pedir(`${base(clienteId)}/lote/ideas`, post(datos));
+
+/** «Dame ideas»: { tipo?, n?, video?, tema?, semilla? } → `{ ideas, productos }` (texto: no gasta en el motor). */
+export const ideasDelEstudio = (clienteId, datos) => pedir(`${base(clienteId)}/ideas`, post(datos));
+
+/** El lote del mes completo: { mes, dias, formato, semilla?, usados? } → `{ ideas, productos }` (texto). */
+export const ideasDelMes = (clienteId, datos) => pedir(`${base(clienteId)}/lote/mes`, post(datos));

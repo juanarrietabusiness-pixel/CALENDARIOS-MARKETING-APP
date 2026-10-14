@@ -1,7 +1,7 @@
 import { useId, useRef, useState } from "react";
 import Icon from "./Icon";
 import {
-  textoCosto, NOMBRE_PROPORCION, MAX_PROMPT, maxPorPedido, duracionDe, modelosParaLista, creadoresDe, CRITERIOS_ORDEN, NOMBRE_CALIDAD, NOMBRE_MOTOR,
+  textoCosto, nombreDelModelo, NOMBRE_PROPORCION, MAX_PROMPT, maxPorPedido, duracionDe, modelosParaLista, creadoresDe, CRITERIOS_ORDEN, NOMBRE_CALIDAD, NOMBRE_MOTOR,
 } from "../lib/estudioCatalogo";
 import { ETIQUETA_AJUSTE, valorDeAjuste } from "../lib/estudio";
 import { TIPOS_PRESET, ACABADOS, LINEA_LOGO } from "../lib/kitMarca";
@@ -116,7 +116,8 @@ function Referencias({ ids, archivos, max, subiendo, onQuitar, onSubir, onDrive 
       )}
       {nombrado && (
         <p className="notice est-nombrado" role="note">
-          Tu idea nombra «{nombrado.nombre}»: al crear se suma{nombrado.fotos.length === 1 ? " su foto" : `n sus ${nombrado.fotos.length} fotos`} del catálogo para que salga el producto real.
+          Tu idea nombra {nombrado.nombres.map((n) => `«${n}»`).join(" y ")}: al crear se suma{nombrado.fotos === 1 ? " 1 foto" : `n ${nombrado.fotos} fotos`} del catálogo{nombrado.nombres.length > 1 ? " (una de cada uno primero)" : ""} para que salga el producto real.
+          {nombrado.sinHueco > 0 && ` ${nombrado.sinHueco === 1 ? "Otro producto nombrado no cabe" : `${nombrado.sinHueco} productos nombrados no caben`}: quita alguna referencia o usa un modelo que admita más.`}
         </p>
       )}
       <div className="est-refs">
@@ -143,7 +144,7 @@ function Referencias({ ids, archivos, max, subiendo, onQuitar, onSubir, onDrive 
  */
 function EstiloDeMarca({
   ids, preset, onPreset, kitListo, kit, marca = "", textoPreset, bloqueMarca = "", usarKit = true, onUsarKit, acabado = "", onAcabado,
-  conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo, productos = [], onProducto, gustos = null,
+  conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo, productos = [], onProducto, gustos = null, refsTipo = [], sinIdea = false,
 }) {
   const [familia, sub] = String(preset ?? "").split("-");
   const subtipos = TIPOS_PRESET[familia]?.subtipos ?? null;
@@ -189,6 +190,19 @@ function EstiloDeMarca({
         </div>
       )}
 
+      {preset && sinIdea && (
+        <p className="hint est-sin-idea" role="note">
+          El tipo de pieza no inventa el contenido: dice para qué es la pieza y con qué tono. La idea (qué se ve y qué dice) la escribes arriba,
+          o pídela con «Dame ideas» marcando «Sólo de este tipo».
+        </p>
+      )}
+      {refsTipo.length > 0 && !esVideo && (
+        <p className="hint est-refs-tipo">
+          {refsTipo.map((a) => <img key={a.id} src={a.src} alt="" className="est-refs-tipo-img" />)}
+          Va{refsTipo.length === 1 ? " la imagen" : `n las ${refsTipo.length} imágenes`} de referencia de este tipo (su estilo y su composición).
+        </p>
+      )}
+
       <span className="label" id={`${ids}-acabado`}>Acabado</span>
       <div className="est-tipos" role="group" aria-labelledby={`${ids}-acabado`}>
         <button type="button" className="filter-chip" aria-pressed={!acabado} onClick={() => onAcabado("")}>El del tipo</button>
@@ -219,12 +233,12 @@ function EstiloDeMarca({
       )}
       {!esVideo && productos.length > 0 && onProducto && (
         <div className="field">
-          <label className="label" htmlFor={`${ids}-producto`}>Fotos de un producto</label>
+          <label className="label" htmlFor={`${ids}-producto`}>Fotos de productos</label>
           <select id={`${ids}-producto`} className="input" defaultValue="" onChange={(e) => { if (e.target.value) onProducto(e.target.value); e.target.value = ""; }}>
             <option value="">Poner de referencia las fotos de…</option>
             {productos.map((p) => <option key={p.id} value={p.id}>{p.nombre} ({p.fotos.length} {p.fotos.length === 1 ? "foto" : "fotos"})</option>)}
           </select>
-          <p className="hint">Las del catálogo: así sale el producto real y no uno parecido.</p>
+          <p className="hint">Las del catálogo: así sale el producto real y no uno parecido. Escoge varios para una pieza con varios productos: se reparten los huecos.</p>
         </div>
       )}
       {gustos && !esVideo && (
@@ -312,10 +326,54 @@ function FichaDelModelo({ modelo }) {
 }
 
 /**
+ * «Dame ideas»: para cuando la mente está en blanco. Variadas (un tipo de contenido distinto cada una) o del tipo de
+ * pieza escogido; si ya hay algo escrito, sobre eso. Cada una con «Usar», que la pone en el pedido con su tipo y las
+ * fotos de su producto. Es texto: no gasta en el motor.
+ */
+function DameIdeas({ ids, generando, lista = [], deTipo = "", conTema = false, onGenerar, onUsar, onCerrar, nombreDeTipo, nombreDeProducto }) {
+  const [soloTipo, setSoloTipo] = useState(false);
+  return (
+    <div className="est-ideas">
+      <div className="est-acciones-idea">
+        <button type="button" className="btn btn-secondary btn-sm" disabled={generando} onClick={() => onGenerar(soloTipo && deTipo ? deTipo : "")}>
+          <Icon name="sparkles" size={14} /> {generando ? "Pensando ideas…" : lista.length ? "Otras ideas" : "Dame ideas"}
+        </button>
+        {deTipo && (
+          <label className="est-logo-casilla">
+            <input type="checkbox" checked={soloTipo} onChange={(e) => setSoloTipo(e.target.checked)} /> Sólo de «{nombreDeTipo(deTipo)}»
+          </label>
+        )}
+        {lista.length > 0 && <button type="button" className="btn btn-ghost btn-sm" onClick={onCerrar}>Cerrar las ideas</button>}
+        <p className="hint" style={{ margin: 0, flexBasis: "100%" }}>
+          {conTema ? "Sobre lo que escribiste arriba. " : ""}{soloTipo && deTipo ? "Todas de ese tipo de pieza" : "Variadas: cada una de un tipo de contenido distinto"}, con el catálogo y el cerebro. No crea nada todavía.
+        </p>
+      </div>
+      {lista.length > 0 && (
+        <ul className="est-ideas-lista" aria-label="Ideas propuestas">
+          {lista.map((i) => (
+            <li key={i.id} className="est-idea-tarjeta">
+              <span className="est-ref-insignia">{nombreDeTipo(i.tipo)}</span>
+              <strong>{i.titulo}</strong>
+              <p>{i.escena}</p>
+              {i.texto && <p className="est-idea-texto">«{i.texto.split("\n").join(" · ")}»</p>}
+              {i.productoId && nombreDeProducto(i.productoId) && <p className="hint" style={{ margin: 0 }}>Producto: {nombreDeProducto(i.productoId)}</p>}
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => onUsar(i)} aria-describedby={`${ids}-ideas-usar`}>
+                <Icon name="check" size={14} /> Usar
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <span id={`${ids}-ideas-usar`} className="sr-only">La pone en el pedido con su tipo de pieza y las fotos de su producto.</span>
+    </div>
+  );
+}
+
+/**
  * «Mejorar idea»: la IA devuelve la idea más clara y sencilla en el mismo campo, y
  * «Volver a mi idea» la deshace.
  */
-function MejorarIdea({ mejorando, onMejorar, onVolverIdea }) {
+function MejorarIdea({ mejorando, onMejorar, onVolverIdea, mejorarSolo = null }) {
   return (
     <div className="est-mejorar">
       <button type="button" className="btn btn-accent btn-sm" disabled={mejorando} onClick={onMejorar}>
@@ -327,6 +385,11 @@ function MejorarIdea({ mejorando, onMejorar, onVolverIdea }) {
         </button>
       )}
       <p className="hint">La reescribe más clara y sencilla para que la IA la entienda. No crea nada todavía.</p>
+      {mejorarSolo && (
+        <label className="est-logo-casilla">
+          <input type="checkbox" checked={mejorarSolo.activo} onChange={(e) => mejorarSolo.onCambiar(e.target.checked)} /> Mejorarla sola al abrir desde una publicación
+        </label>
+      )}
     </div>
   );
 }
@@ -335,9 +398,11 @@ export default function Compositor({
   ids, form, setForm, modelo, motores, costo, confirmando, enviando, subiendo,
   onEnviar, onConfirmar, onNo, onModelo, onTipo, onQuitarMedio, onMarcarReferencia, onSubirArchivos, onDrive = null, promptRef, etiquetaPrompt = "¿Qué quieres crear?",
   nombrado = null,
-  mejorando = false, onMejorar = null, onVolverIdea = null,
+  mejorando = false, onMejorar = null, onVolverIdea = null, mejorarSolo = null,
   estilo = null,
   guionCorto = null,
+  fijado = "", onFijar = null,
+  ideas = null,
 }) {
   const entrada = useRef(null);
   const rolSubida = useRef("reference");
@@ -390,7 +455,9 @@ export default function Compositor({
         <p className="hint">Sin texto dentro {esVideo ? "del video" : "de la imagen"}, salvo que lo pidas. {form.prompt.length > 3500 ? `${form.prompt.length} de ${MAX_PROMPT} caracteres.` : ""}</p>
       </div>
 
-      {onMejorar && <MejorarIdea mejorando={mejorando} onMejorar={onMejorar} onVolverIdea={onVolverIdea} />}
+      {ideas && <DameIdeas ids={ids} {...ideas} />}
+
+      {onMejorar && <MejorarIdea mejorando={mejorando} onMejorar={onMejorar} onVolverIdea={onVolverIdea} mejorarSolo={mejorarSolo} />}
 
       {esVideo && guionCorto && <GuionCorto {...guionCorto} />}
 
@@ -443,6 +510,14 @@ export default function Compositor({
           </div>
         </div>
       </details>
+
+      {onFijar && (
+        <label className="est-logo-casilla est-fijar">
+          <input type="checkbox" checked={fijado === modelo.id} onChange={(e) => onFijar(e.target.checked ? modelo.id : "")} />
+          {" "}Fijar {modelo.nombre} para {esVideo ? "los videos" : "las imágenes"} de este cliente
+          {fijado && fijado !== modelo.id && <span className="hint"> (ahora está fijado {nombreDelModelo(fijado) || "otro"})</span>}
+        </label>
+      )}
 
       <FichaDelModelo modelo={modelo} />
 

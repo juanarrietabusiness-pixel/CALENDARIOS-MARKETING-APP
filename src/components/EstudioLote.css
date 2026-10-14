@@ -22,6 +22,10 @@
 .lote-lista, .lote-resultados { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-3); }
 .lote-idea { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .lote-idea[data-quitada] { opacity: 0.55; }
+.lote-dia { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: 0; font-size: var(--fs-sm); }
+.lote-forma { display: flex; flex-direction: column; gap: var(--sp-1); }
+.lote-forma-campo { display: flex; flex-direction: column; gap: var(--sp-1); }
+.lote-forma .hint { margin: 0; }
 .lote-elegir { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); min-height: var(--tap-sm); }
 
 .lote-resultado { display: flex; gap: var(--sp-3); padding: var(--sp-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
@@ -29,6 +33,10 @@
 .lote-miniatura img { width: 100%; height: 100%; object-fit: cover; }
 .lote-resultado-texto { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; font-size: var(--fs-sm); }
 .lote-insignia { align-self: flex-start; font-size: var(--fs-3xs); font-weight: 600; padding: 1px var(--sp-2); border-radius: var(--radius-pill); background: var(--accent-soft); color: var(--accent); }
+.lote-opciones { display: flex; gap: var(--sp-2); margin: var(--sp-1) 0; }
+.lote-opcion { width: 56px; aspect-ratio: 4 / 5; padding: 0; border: 2px solid transparent; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-3); cursor: pointer; min-height: var(--tap-sm); }
+.lote-opcion img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lote-opcion[aria-pressed="true"] { border-color: var(--accent); }
 .lote-llevar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
 
 /* La entrada en la pestaña Estudio */

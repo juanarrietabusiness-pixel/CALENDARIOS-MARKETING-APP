@@ -37,6 +37,13 @@ export const MOTORES_IMAGEN = Object.freeze([
   { id: "gemini", nombre: "Nano Banana (Google)", nota: "≈ 0,04 $ por imagen." },
 ]);
 
+/** Quién VE los videos: el análisis del asistente y las referencias de la competencia. */
+export const MOTORES_VIDEO = Object.freeze([
+  { id: "gemini", nombre: "Gemini (Google, de pago)", llave: "GOOGLE_AI_KEY", nota: "Ve y oye el video entero: transcripción, escenas y estructura. Se cobra por tokens (unos céntimos por video)." },
+  { id: "gemini-gratis", nombre: "Gemini (llave gratuita)", llave: "GOOGLE_AI_KEY_GRATIS", nota: "Lo mismo, con una llave de Google AI Studio SIN facturación: no se cobra. A cambio, Google puede usar lo que se le manda para mejorar sus productos, y tiene topes por minuto y por día: si se pasa, avisa." },
+  { id: "meta", nombre: "Muse Spark (Meta)", llave: "META_API_KEY", nota: "Por si no queda crédito en Google: mira fotogramas del video (los saca tu navegador), sin el audio. Sirve para la estructura y lo que se ve; no transcribe." },
+]);
+
 export const NIVELES_IA = Object.freeze([
   { id: "bajo", nombre: "Bajo", nota: "Responde casi directo. El más rápido y barato." },
   { id: "medio", nombre: "Medio", nota: "Planifica la estructura antes de escribir." },

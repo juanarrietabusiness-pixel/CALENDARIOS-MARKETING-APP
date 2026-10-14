@@ -10,13 +10,15 @@
 //   POST   /<cliente>/trabajos/<id>/reintentar
 //   POST   /<cliente>/mejorar                      { idea, tipo }: la IA devuelve la idea más clara (texto)
 //   POST   /<cliente>/versiones                    { idea, n, tipo }: 1–3 escenas distintas con la misma información (texto)
-//   POST   /<cliente>/lote/ideas                   { productoId?, cuantas, formato }: ideas de anuncios por nivel (texto)
+//   POST   /<cliente>/lote/ideas                   { modo: niveles|matriz|tipos, … }: la producción en lote (texto)
+//   POST   /<cliente>/lote/mes                     { mes, dias, formato }: una pieza por día del mes, con el ritmo y la matriz (texto)
+//   POST   /<cliente>/ideas                        { tipo?, n?, video?, tema? }: «Dame ideas», variadas o de un tipo (texto)
 //   POST   /<cliente>/guion-corto                  { idea, segundos, post? }: guion de un video de 8 o 10 s (texto)
 //   PUT    /<cliente>/kit                          { kit }: guarda el kit de marca (paleta, presets, logo…)
 //   POST   /<cliente>/kit/preparar                 La IA PROPONE el kit desde el cerebro (no guarda)
 //   POST   /<cliente>/kit/aprender                 La IA MIRA los «Me gusta» y la papelera y PROPONE reglas visuales (no guarda)
 //   POST   /<cliente>/revisar                      { archivoId } o { clave }: la IA mira la imagen contra el kit
-//   POST   /<cliente>/archivos                     Subir a mano (multipart: archivo, carpetaId?)
+//   POST   /<cliente>/archivos                     Subir a mano (multipart: archivo, carpetaId?, origenId?, plantilla?)
 //   POST   /<cliente>/archivos/<id>/cambiar        { favorito?, carpetaId? }
 //   POST   /<cliente>/archivos/<id>/uso            { calendarId, postId }: lo usa una publicación
 //   POST   /<cliente>/archivos/<id>/papelera       A la papelera
@@ -44,7 +46,8 @@ import { mejorarIdea, versionesDeIdea } from "../lib/estudio/prompt.js";
 import { guionCorto } from "../lib/estudio/guionCorto.js";
 import { kitDe, guardarKit, prepararKit, revisarPieza } from "../lib/estudio/kit.js";
 import { aprenderDeLoVisual } from "../lib/estudio/aprender.js";
-import { ideasDeLote } from "../lib/estudio/lote.js";
+import { produccionDeLote } from "../lib/estudio/lote.js";
+import { ideasDelEstudio } from "../lib/estudio/ideas.js";
 import { leerMercado } from "../lib/mercado.js";
 import { angulosDeAnuncio, fotosDelCatalogo } from "../../src/lib/estudioMercado.js";
 import {
@@ -140,7 +143,21 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
     if (b === "lote" && c === "ideas" && metodo === "POST") {
       const datos = await cuerpo(req);
       if (!datos) return error("JSON inválido");
-      return json(await ideasDeLote(env, acceso, cliente, datos));
+      return json(await produccionDeLote(env, acceso, cliente, datos));
+    }
+
+    // ---------- El lote del mes completo: las ideas (texto: no pide nada al motor) ----------
+    if (b === "lote" && c === "mes" && metodo === "POST") {
+      const datos = await cuerpo(req);
+      if (!datos) return error("JSON inválido");
+      return json(await produccionDeLote(env, acceso, cliente, { ...datos, modo: "mes" }));
+    }
+
+    // ---------- «Dame ideas» (texto: no pide nada al motor) ----------
+    if (b === "ideas" && !c && metodo === "POST") {
+      const datos = await cuerpo(req);
+      if (!datos) return error("JSON inválido");
+      return json(await ideasDelEstudio(env, acceso, cliente, datos));
     }
 
     // ---------- «Otra versión distinta»: otras escenas (texto: no pide nada al motor) ----------
@@ -171,7 +188,9 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
     if (b === "archivos") {
       if (!c && metodo === "POST") {
         const form = await req.formData().catch(() => null);
-        const archivo = await subirArchivo(env, acceso, cliente, form?.get("archivo"), { carpetaId: form?.get("carpetaId") || null });
+        const archivo = await subirArchivo(env, acceso, cliente, form?.get("archivo"), {
+          carpetaId: form?.get("carpetaId") || null, origenId: form?.get("origenId") || null, plantilla: form?.get("plantilla") || null,
+        });
         avisar();
         return json({ archivo }, 201);
       }

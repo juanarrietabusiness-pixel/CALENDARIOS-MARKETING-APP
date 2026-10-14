@@ -1,33 +1,61 @@
 // ============================================================
-// El lote de anuncios por nivel de consciencia (puro)
+// La PRODUCCIÓN EN LOTE del Estudio (puro)
 //
-// Lo que la agencia hacía a mano: para un producto, varias piezas por cada
-// nivel de consciencia (Schwartz) —del que no sabe que tiene el problema al
-// que sólo necesita el empujón—, con su gancho, el precio EXACTO del
-// catálogo y el producto real.
+// La versión de la agencia de una matriz de producción de anuncios, pero
+// para TODOS los tipos de pieza del calendario. Tres formas de llenar el
+// lote, el mismo camino después:
 //
-//   1. Se escoge el producto, cuántas por nivel, el formato, el tipo de pieza,
-//      el modelo y cómo va el texto (plantilla, por defecto, o lo escribe la IA).
-//   2. La IA escribe las IDEAS (titular, apoyo y escena) con el estudio de
-//      mercado y el cerebro delante: texto, no gasta en el motor.
-//   3. Una persona las revisa, quita las que no y ve el costo total ANTES de
-//      pedir nada. Sólo entonces se crean, en cola, en una carpeta del lote.
-//   4. Cada pieza se lleva al calendario con un botón.
+//   · ANUNCIOS EN MATRIZ: los 3 deseos (Reiss) × los 2 perfiles del estudio
+//     de mercado aprobado × los niveles de consciencia (Schwartz) que se
+//     marquen: hasta 30 piezas, una por casilla, cada una con su gancho. Sin
+//     estudio aprobado, por niveles (cuántas por cada uno).
+//   · POR TIPO DE PIEZA: cuántas de cada tipo (educativo, diferenciador, 7
+//     maletas…); la matriz del mes (`asignarMatriz`) les da producto, nivel,
+//     deseo, perfil y la maleta que toca.
+//   · EL MES COMPLETO (loteMes.js): un día, una pieza, con el ritmo.
 //
-// Lo usan la pantalla (EstudioLote.jsx) y el Worker (worker/lib/estudio/lote.js).
+// Después, igual para las tres:
+//   1. El CÓDIGO decide la forma de cada pieza (`darForma`): composición,
+//      fondo, táctica del gancho, producto y si el producto SE VE. Lo que no
+//      se da resuelto el modelo lo resuelve igual cada vez, y salían veinte
+//      piezas que sólo cambiaban de foto y de texto.
+//   2. La IA escribe cada pieza: título, brief (qué comunica), titular,
+//      apoyo, escena y descripción. Es texto: no gasta en el motor.
+//   3. Una persona revisa, quita y corrige, y ve el costo. Se crea (con la
+//      escena mejorada sola y 1–3 imágenes por idea), se escoge una y la
+//      publicación va al calendario lista para revisión.
+//
+// Reglas de oficio que van en el código o en el pedido:
+//   · El producto se VE sólo de «consciente de la solución» en adelante: a
+//     quien no sabe que tiene el problema se le habla del problema.
+//   · Sin producto en la imagen (o una marca de servicio), nada de
+//     composiciones que necesitan un objeto: una «macro de textura» sin
+//     objeto se rellena con cualquier cosa.
+//   · Al menos un tercio de las piezas con producto lo enseñan EN USO o en
+//     su lugar, y entran el selfie con el celular y la macro de textura.
+//   · Titular corto (40 caracteres, 8 palabras), sin «·» (sale como «¿»),
+//     sin cifras, reseñas ni urgencias inventadas, y sin marcas en lo que no
+//     es el producto real.
+//
+// Lo usan la pantalla (EstudioLote.jsx) y el Worker (worker/lib/estudio/).
 // ============================================================
 
 import { NIVELES_CONSCIENCIA, CLAVES_NIVEL, nombreDeNivel } from "./consciencia.js";
 import { PLANTILLAS_TEXTO } from "./carrusel.js";
+import { PILARES, pilarDe, nombreDePilar } from "./pilares.js";
 
 export const POR_NIVEL = 5;
 export const MAX_POR_NIVEL = 10;
 export const MAX_LOTE = 30;
-export const MAX_TITULAR = 60;
-export const MAX_APOYO = 110;
+/** El titular: los que funcionan miden unos 32 caracteres; de 40 en adelante se parte en tres o cuatro líneas. */
+export const MAX_TITULAR = 40;
+export const MAX_APOYO = 90;
 export const MAX_ESCENA = 400;
+export const MAX_BRIEF = 300;
+export const MAX_DESCRIPCION = 600;
+export const MAX_TITULO = 60;
 
-/** Los formatos de un anuncio: la proporción de la imagen y el formato de la publicación. */
+/** Los formatos: la proporción de la imagen y el formato de la publicación. */
 export const FORMATOS_LOTE = Object.freeze({
   post: { nombre: "Post 4:5", aspectRatio: "4:5", format: "post" },
   historia: { nombre: "Historia 9:16", aspectRatio: "9:16", format: "historia" },
@@ -37,7 +65,57 @@ export const FORMATOS_LOTE = Object.freeze({
 /** Dónde va el texto en la plantilla, según el formato (en una historia, abajo tapa los botones de Instagram). */
 export const plantillaDeFormato = (formato) => (formato === "historia" ? "centro" : "banda");
 
+/**
+ * Las composiciones: CÓMO se ve cada pieza. `objeto`: necesita un producto físico en cuadro (sin él, no se usa);
+ * `uso`: lo enseña en uso o en su lugar; `plantilla`: dónde va el texto si lo pone la plantilla.
+ */
+export const COMPOSICIONES = Object.freeze([
+  { id: "heroe", nombre: "Producto héroe", objeto: true, linea: "Composición: el producto como protagonista absoluto, en primer plano y ligeramente en ángulo, sobre un fondo limpio; plano cerrado.", plantilla: "banda" },
+  { id: "uso", nombre: "En uso", uso: true, linea: "Composición: una persona real usando el producto o el servicio en un momento cotidiano, plano medio, gesto natural.", plantilla: "arriba" },
+  { id: "ugc", nombre: "Selfie con el celular", uso: true, linea: "Composición: foto tomada con el celular por una persona real que lo prueba (estilo contenido de cliente): luz de casa, encuadre imperfecto, nada de estudio.", plantilla: "degradado" },
+  { id: "cenital", nombre: "Vista cenital", objeto: true, linea: "Composición: vista cenital (desde arriba) ordenada, el producto con pocos objetos de su entorno alrededor, mucho espacio libre.", plantilla: "degradado" },
+  { id: "macro", nombre: "Macro de textura", objeto: true, linea: "Composición: primerísimo plano de la textura o un detalle del producto (grano, tejido, brillo), fondo desenfocado, sensación táctil.", plantilla: "arriba" },
+  { id: "tipografica", nombre: "Tipográfica", linea: "Composición de diseño gráfico: un gran bloque de color de la paleta domina la pieza y la imagen ocupa sólo un tercio, recortada limpia a un lado.", plantilla: "centro" },
+  { id: "ambiente", nombre: "En su lugar", uso: true, linea: "Composición: la escena en su ambiente real (el lugar donde se usa), plano abierto, luz que entra de lado, mucho aire alrededor.", plantilla: "degradado" },
+  { id: "dividida", nombre: "Antes y después", linea: "Composición dividida en dos mitades: a un lado el problema, al otro el resultado; el cambio se entiende de un vistazo.", plantilla: "banda" },
+  { id: "emocion", nombre: "Emoción", linea: "Composición: primer plano de una cara con una emoción clara (alivio, alegría, tranquilidad, frustración según el mensaje).", plantilla: "arriba" },
+  { id: "oficio", nombre: "El oficio", uso: true, linea: "Composición: el trabajo hecho o en proceso (las manos, la herramienta, el resultado), plano medio, luz de taller u oficina real.", plantilla: "banda" },
+  { id: "unboxing", nombre: "Recién llegado", objeto: true, linea: "Composición: el producto recién sacado de su empaque sobre una mesa, manos que lo abren, sensación de estreno.", plantilla: "arriba" },
+  { id: "serie", nombre: "Serie", objeto: true, linea: "Composición editorial en cuadrícula: dos o tres tomas del producto (o de varios) en paneles ordenados, como una página de revista.", plantilla: "centro" },
+]);
+
+/** La táctica del gancho: el ángulo con que se escribe el titular. Ninguna se inventa datos. */
+export const TACTICAS = Object.freeze([
+  ["curiosidad", "curiosidad: abre una pregunta que sólo la pieza responde"],
+  ["pregunta", "pregunta directa a quien lo lee"],
+  ["identidad", "identidad: «esto es para ti si…»"],
+  ["comparacion", "comparación: lo de siempre frente a esto (sin nombrar a nadie)"],
+  ["precio", "el precio o la oferta EXACTOS del catálogo como gancho"],
+  ["autoridad", "autoridad: lo que la marca sabe o lleva haciendo (sólo lo que esté escrito)"],
+  ["prueba", "prueba: un dato o una cifra REAL (sólo si está escrita; si no, otra táctica)"],
+  ["urgencia", "urgencia: sólo con una fecha o un cupo REAL; si no hay, otra táctica"],
+]);
+
+/** El fondo: la tercera cosa que, igual en todas, hace que un lote parezca una plantilla. */
+export const FONDOS = Object.freeze([
+  ["claro", "Fondo claro y luminoso, de los tonos de fondo de la paleta."],
+  ["color", "Fondo de color pleno con el color dominante de la paleta."],
+  ["real", "Fondo de un lugar real, fotográfico, con la paleta presente en los objetos."],
+]);
+
+/** Los niveles donde el producto NO se ve: a quien no sabe que tiene el problema se le habla del problema. */
+const SIN_PRODUCTO_EN = new Set(["inconsciente", "problema"]);
+
 const corto = (t, max) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, max).trim();
+const lineaDe = (lista, id) => lista.find(([x]) => x === id)?.[1] ?? "";
+export const composicionDe = (id) => COMPOSICIONES.find((x) => x.id === id) ?? null;
+const mcd = (a, b) => (b ? mcd(b, a % b) : a);
+/** Un salto que recorre la lista entera antes de repetir y no deja dos vecinas seguidas. */
+const saltoPara = (n) => [5, 3, 7, 1].find((k) => k < n && mcd(k, n) === 1) ?? 1;
+
+// ------------------------------------------------------------
+// Las casillas del lote
+// ------------------------------------------------------------
 
 /** Cuántas por nivel, limpio: sólo niveles que existen, de 0 a MAX_POR_NIVEL, y el total con tope. Pura. */
 export function limpiarCuantas(entrada = {}) {
@@ -56,35 +134,144 @@ export const totalDeCuantas = (cuantas) => Object.values(limpiarCuantas(cuantas)
 /** Las cuántas por defecto: POR_NIVEL en cada nivel. */
 export const cuantasPorDefecto = () => Object.fromEntries(CLAVES_NIVEL.map((c) => [c, POR_NIVEL]));
 
-/**
- * Lo que se le pide a la IA para escribir las ideas. `producto`: la línea del catálogo (con su precio); `estudio`: el
- * estudio de ese producto y lo general (texto); `contexto`: el cerebro para escribir (sin lo interno). Pura.
- */
-export function pedidoDeIdeasLote({ marca = "la marca", producto = "", estudio = "", contexto = "", cuantas = {}, formato = "post" }) {
+/** Anuncios por nivel: [{ tipo: "anuncio", nivel }]. Pura. */
+export function celdasPorNiveles(cuantas = {}) {
   const c = limpiarCuantas(cuantas);
-  const niveles = NIVELES_CONSCIENCIA.filter((n) => c[n.clave]);
+  return CLAVES_NIVEL.flatMap((nivel) => Array.from({ length: c[nivel] ?? 0 }, () => ({ tipo: "anuncio", nivel })));
+}
+
+/**
+ * Anuncios en MATRIZ: cada deseo × cada perfil × cada nivel marcado, en orden de embudo (inconsciente → listo para
+ * comprar) dentro de cada deseo y perfil. Con tope de MAX_LOTE. Pura.
+ */
+export function celdasMatriz({ deseos = [], perfiles = [], niveles = CLAVES_NIVEL } = {}) {
+  const ns = CLAVES_NIVEL.filter((n) => niveles.includes(n));
+  const ds = deseos.filter(Boolean).slice(0, 3);
+  const ps = perfiles.filter(Boolean).slice(0, 2);
+  const fuera = [];
+  for (const deseo of ds.length ? ds : [""]) {
+    for (const perfil of ps.length ? ps : [""]) {
+      for (const nivel of ns) fuera.push({ tipo: "anuncio", nivel, ...(deseo ? { deseo } : {}), ...(perfil ? { perfil } : {}) });
+    }
+  }
+  return fuera.slice(0, MAX_LOTE);
+}
+
+/** Por tipo de pieza: { educativo: 3, maletas: 4 } → [{ tipo }], en el orden de los tipos, con tope. Pura. */
+export function celdasPorTipos(cuantas = {}) {
+  const fuera = [];
+  for (const p of PILARES) {
+    const n = Math.max(0, Math.min(MAX_POR_NIVEL, Math.floor(Number(cuantas?.[p.id]) || 0)));
+    for (let i = 0; i < n && fuera.length < MAX_LOTE; i++) fuera.push({ tipo: p.id });
+  }
+  return fuera;
+}
+
+/** ¿Se VE el producto en esta casilla? Si su tipo lleva producto y su nivel no es de los fríos. Pura. */
+export function seVeElProducto(celda, hayProductos = true) {
+  if (!hayProductos) return false;
+  const p = pilarDe(celda?.tipo ?? celda?.pilar);
+  if (p && !p.producto) return false;
+  return !SIN_PRODUCTO_EN.has(celda?.nivel);
+}
+
+/**
+ * La FORMA de cada pieza: producto (si se ve y no lo trae), composición (sin las que necesitan objeto cuando no hay
+ * producto en cuadro; en el orden `orden` si se aprendió cuáles funcionan), fondo, táctica y dónde va el texto. Dos
+ * vecinas nunca comparten composición. `semilla` mueve el punto de partida. Pura.
+ */
+export function darForma(celdas = [], { productos = [], semilla = 0, formato = "post", orden = null } = {}) {
+  const s = Math.abs(Math.floor(Number(semilla) || 0));
+  // `orden` (aprenderComposiciones): sólo las que funcionan, las mejores repetidas para que salgan más. Si se queda
+  // corta (menos de 3 sin objeto), todas: un lote sin producto en cuadro no puede quedarse sin opciones.
+  const aprendidas = (Array.isArray(orden) ? orden : []).map(composicionDe).filter(Boolean);
+  const conObjeto = aprendidas.length >= 4 ? aprendidas : [...COMPOSICIONES];
+  const sinObjeto = conObjeto.filter((c) => !c.objeto).length >= 3 ? conObjeto.filter((c) => !c.objeto) : COMPOSICIONES.filter((c) => !c.objeto);
+  let iProd = 0;
+  let iCon = 0;
+  let iSin = 0;
+  let previa = "";
+  return celdas.map((c, i) => {
+    const ve = seVeElProducto(c, productos.length > 0);
+    let productoId = c.productoId ?? "";
+    if (ve && !productos.some((p) => p.id === productoId)) productoId = productos[(s + iProd++) % productos.length].id;
+    const lista = ve ? conObjeto : sinObjeto;
+    const salto = saltoPara(lista.length);
+    let comp = ve ? lista[(s + salto * iCon++) % lista.length] : lista[(s + salto * iSin++) % lista.length];
+    if (comp.id === previa && lista.length > 1) comp = lista[(lista.indexOf(comp) + 1) % lista.length];
+    previa = comp.id;
+    return {
+      n: i + 1,
+      ...c,
+      ...(productoId ? { productoId } : {}),
+      conProducto: ve,
+      composicion: comp.id,
+      plantilla: formato === "historia" && comp.plantilla === "banda" ? "centro" : comp.plantilla,
+      fondo: FONDOS[(s + i) % FONDOS.length][0],
+      tactica: TACTICAS[(s + i * 3) % TACTICAS.length][0],
+    };
+  });
+}
+
+/** Compatibilidad: anuncios por nivel ya con forma. Pura. */
+export const planDeLote = (cuantas, opciones = {}) => darForma(celdasPorNiveles(cuantas), opciones);
+
+// ------------------------------------------------------------
+// Lo que se le pide a la IA y cómo se lee
+// ------------------------------------------------------------
+
+const fechaLegible = (fecha) => new Date(`${fecha}T12:00:00Z`).toLocaleDateString("es-PA", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+
+/** La línea de una pieza en el pedido: todo lo que ya está decidido. Pura. */
+function lineaDePieza(r, productos = {}) {
+  const p = pilarDe(r.tipo ?? r.pilar);
+  const nv = NIVELES_CONSCIENCIA.find((n) => n.clave === r.nivel);
+  const prod = r.productoId && productos[r.productoId] ? productos[r.productoId] : "";
   return [
-    `Escribe ideas de ANUNCIOS de una sola imagen (${FORMATOS_LOTE[formato]?.nombre ?? "post"}) para ${marca}, para este producto:`,
-    producto || "(sin producto concreto: la marca)",
+    `${r.n}. ${r.fecha ? `${fechaLegible(r.fecha)} · ` : ""}${nombreDePilar(r.tipo ?? r.pilar, r.pilarSub)}: ${p?.regla ?? ""}`,
+    `   ${nv ? `nivel: ${nv.nombre} (${nv.ayuda}; por ${nv.angulo === "dolor" ? "el DOLOR, lo que quiere evitar" : "la GANANCIA, lo que quiere lograr"})` : "nivel: —"} · gancho: ${lineaDe(TACTICAS, r.tactica)} · composición: ${composicionDe(r.composicion)?.nombre ?? ""}`,
+    r.deseo || r.perfil ? `   le habla a: ${[r.perfil, r.deseo && `deseo de ${r.deseo}`].filter(Boolean).join(", ")}` : "",
+    prod ? `   producto: ${prod}${r.conProducto ? "" : " (NO aparece en la imagen: se habla del problema)"}` : "",
+    r.cambio ? `   ojo: ${r.cambio}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+/**
+ * Lo que se le pide a la IA: una pieza por casilla del plan, con todo ya decidido. `productos`: { id → línea del
+ * catálogo (precio EXACTO) }; `estudio`: el estudio de mercado; `contexto`: el cerebro para escribir (sin lo interno);
+ * `perfiles`: { nombre → quién es y su dolor }; `fechasEspeciales`: las del mes. Pura.
+ */
+export function pedidoDeProduccion({
+  marca = "la marca", plan = [], productos = {}, perfiles = {}, estudio = "", contexto = "", usados = [], formato = "post", fechasEspeciales = [], mes = false,
+}) {
+  const perfilesUsados = [...new Set(plan.map((r) => r.perfil).filter(Boolean))].filter((n) => perfiles[n]);
+  return [
+    `Escribe ${plan.length} publicaciones de una imagen (${FORMATOS_LOTE[formato]?.nombre ?? "post"}) para ${marca}${mes ? ", una por día del mes" : ""}. Cada una tiene YA decidido su tipo de contenido (lo que comunica), su nivel de consciencia, su gancho y su composición: respétalos.`,
+    perfilesUsados.length ? `Los perfiles:\n${perfilesUsados.map((n) => `- ${n}: ${perfiles[n]}`).join("\n")}` : "",
+    fechasEspeciales.length ? `Fechas especiales:\n${fechasEspeciales.map((f) => `- ${f}`).join("\n")}` : "",
     "",
-    "Cuántas por nivel de consciencia del público:",
-    ...niveles.map((n) => `- ${n.clave} (${n.nombre}: ${n.ayuda}; se toca por ${n.angulo === "dolor" ? "el dolor" : "la ganancia"}): ${c[n.clave]}`),
+    ...plan.map((r) => lineaDePieza(r, productos)),
     "",
-    "Cada idea tiene:",
-    `- "titular": el texto grande de la pieza, de 8 palabras como mucho (${MAX_TITULAR} caracteres).`,
-    `- "apoyo": una línea corta debajo (${MAX_APOYO} caracteres como mucho). Puede ir vacía.`,
-    `- "escena": qué se VE en la imagen, en una o dos frases, SIN texto (el texto va aparte). Con el producto real si aparece.`,
+    "Cada publicación tiene:",
+    `- "titulo": cómo la llamarías en el calendario, en pocas palabras (${MAX_TITULO} caracteres).`,
+    `- "brief": qué comunica la pieza y por qué funciona para ese nivel y ese perfil, en una o dos frases (${MAX_BRIEF} caracteres).`,
+    `- "titular": el texto grande de la pieza: ${MAX_TITULAR} caracteres y 8 palabras como mucho. Empieza por un verbo o una pregunta, nunca por el nombre de la marca. Sin el signo «·».`,
+    `- "apoyo": una línea corta debajo (${MAX_APOYO} caracteres), o vacía. Si el titular ya lo dice todo, vacía.`,
+    `- "escena": qué se VE, en una o dos frases sencillas (sujeto, acción, lugar, luz), con su composición. SIN texto dentro. Si sale una persona, descríbela distinta de las de las demás piezas (edad, rasgos, ropa, lugar).`,
+    `- "descripcion": el texto de la publicación (caption), de 2 a 4 frases, con un llamado a la acción si el tipo lo pide; sin hashtags (${MAX_DESCRIPCION} caracteres).`,
     "",
     "Reglas:",
-    "- Cada idea con un ángulo distinto: ni dos titulares parecidos dentro del mismo nivel.",
-    "- Inconsciente y problema: habla del dolor o la situación, el producto puede no aparecer todavía. Producto y listo para comprar: el producto, la prueba y la oferta.",
-    "- El precio y la oferta, sólo si están en el catálogo y EXACTOS como allí. No inventes precios, descuentos, garantías ni cifras.",
-    "- No nombres a la competencia.",
+    "- Que todo el lote se sienta variado: ni dos titulares parecidos, ni dos escenas en el mismo lugar con la misma acción, ni la misma persona dos veces.",
+    "- Niveles por el dolor: activa la tensión de lo que quiere evitar. Niveles por la ganancia: lo que logra, en positivo.",
+    "- Precios, ofertas, garantías y cifras: sólo los del catálogo y EXACTOS como allí. No inventes reseñas, testimonios, seguidores, porcentajes ni plazos; una urgencia sólo con una fecha real.",
+    "- En la escena, lo que no es el producto real va LISO y sin marca (ropa, empaques, pantallas sin números), y nada de logos ni carteles de otros negocios.",
+    "- Un día marcado «sin promociones» no vende ni da precios. No nombres a la competencia.",
+    usados.length ? `- Estos titulares ya salieron: no repitas ninguno ni su idea:\n${usados.slice(0, 30).map((t) => `  · ${corto(t, 80)}`).join("\n")}` : "",
     "",
-    estudio ? `ESTUDIO DE MERCADO:\n${String(estudio).slice(0, 9000)}\n` : "",
+    estudio ? `ESTUDIO DE MERCADO:\n${String(estudio).slice(0, 8000)}\n` : "",
     contexto ? `LO QUE SE SABE DE LA MARCA:\n${String(contexto).slice(0, 6000)}\n` : "",
-    'Responde SOLO con JSON, así: {"ideas":[{"nivel":"inconsciente","titular":"…","apoyo":"…","escena":"…"}]}',
-  ].filter((l) => l !== null).join("\n");
+    'Responde SOLO con JSON, una por número, así: {"ideas":[{"n":1,"titulo":"…","brief":"…","titular":"…","apoyo":"…","escena":"…","descripcion":"…"}]}',
+  ].join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
 const deJSON = (texto) => {
@@ -95,38 +282,62 @@ const deJSON = (texto) => {
   try { return JSON.parse(t.slice(i, j + 1)); } catch { return null; }
 };
 
-/** La respuesta de la IA → las ideas, como mucho las pedidas por nivel, en el orden de los niveles. Pura. */
-export function leerIdeasLote(texto, cuantas = {}) {
-  const c = limpiarCuantas(cuantas);
+/** Un titular limpio: sin comillas alrededor, sin «·» (los motores lo dibujan como «¿») y con tope. Pura. */
+export const limpiarTitular = (t) => corto(String(t ?? "").replace(/\s*·\s*/g, ". "), 80).replace(/^["«“]|["»”]$/g, "").slice(0, 60).trim();
+
+/** La respuesta de la IA → una idea por casilla del plan (por su número; si no lo trae, por orden). Pura. */
+export function leerProduccion(texto, plan = []) {
   const d = deJSON(texto);
   const lista = Array.isArray(d?.ideas) ? d.ideas : Array.isArray(d) ? d : [];
-  const porNivel = Object.fromEntries(CLAVES_NIVEL.map((k) => [k, []]));
-  for (const x of lista) {
-    const nivel = String(x?.nivel ?? "").toLowerCase().trim();
-    if (!porNivel[nivel] || porNivel[nivel].length >= (c[nivel] ?? 0)) continue;
-    const titular = corto(x?.titular, MAX_TITULAR).replace(/^["«“]|["»”]$/g, "");
+  const porNumero = new Map();
+  lista.forEach((x, i) => {
+    const n = Number(x?.n) || i + 1;
+    if (!porNumero.has(n)) porNumero.set(n, x);
+  });
+  const vistos = {};
+  return plan.flatMap((r) => {
+    const x = porNumero.get(r.n);
+    const titular = limpiarTitular(x?.titular);
     const escena = corto(x?.escena, MAX_ESCENA);
-    if (!titular || !escena) continue;
-    porNivel[nivel].push({ id: `${nivel}-${porNivel[nivel].length + 1}`, nivel, titular, apoyo: corto(x?.apoyo, MAX_APOYO), escena, elegida: true });
-  }
-  return CLAVES_NIVEL.flatMap((k) => porNivel[k]);
+    if (!titular || !escena) return [];
+    const grupo = r.fecha ? `mes-${r.fecha}` : r.tipo === "anuncio" ? r.nivel : r.tipo;
+    vistos[grupo] = (vistos[grupo] ?? 0) + 1;
+    return [{
+      id: `${grupo}-${vistos[grupo]}`, ...r, titular, escena,
+      titulo: corto(x?.titulo, MAX_TITULO) || titular,
+      brief: corto(x?.brief, MAX_BRIEF),
+      apoyo: corto(x?.apoyo, MAX_APOYO).replace(/\s*·\s*/g, ". "),
+      descripcion: String(x?.descripcion ?? "").trim().slice(0, MAX_DESCRIPCION),
+      elegida: true,
+    }];
+  });
 }
 
+// ------------------------------------------------------------
+// Cada pieza
+// ------------------------------------------------------------
+
 /** «Titular\nApoyo»: lo que va escrito en la pieza (y en `textoPieza` de la publicación). Pura. */
-export const textoDeIdea = (idea) => [corto(idea?.titular, MAX_TITULAR), corto(idea?.apoyo, MAX_APOYO)].filter(Boolean).join("\n");
+export const textoDeIdea = (idea) => [limpiarTitular(idea?.titular), corto(idea?.apoyo, MAX_APOYO)].filter(Boolean).join("\n");
+
+/** Dónde va el texto de una idea en la plantilla: el de su composición, o el del formato si no trae. Pura. */
+export const plantillaDeIdea = (idea, formato = "post") => (PLANTILLAS_TEXTO[idea?.plantilla] ? idea.plantilla : plantillaDeFormato(formato));
 
 /**
- * La escena del pedido de UNA pieza del lote: lo que se ve, el nivel (en palabras que entiende un motor) y el texto.
- * Con `modo: "ia"` el motor escribe el texto EXACTO; con «plantilla», deja el hueco y el texto se pone encima después.
- * Lo demás (tipo de pieza, referencias, marca, logo) lo añade `pedidoConMarca`. Pura.
+ * La escena del pedido de UNA pieza: lo que se ve, su composición, su fondo, si el producto no sale, y el texto. Con
+ * `modo: "ia"` el motor escribe el texto EXACTO, apoyado en una superficie real del encuadre; con «plantilla», deja
+ * el hueco y el texto se pone encima después. Lo demás (tipo, referencias, marca, logo) lo añade `pedidoConMarca`. Pura.
  */
 export function escenaDeAnuncio(idea, { modo = "plantilla", formato = "post" } = {}) {
-  const zona = PLANTILLAS_TEXTO[plantillaDeFormato(formato)]?.zona ?? PLANTILLAS_TEXTO.banda.zona;
+  const zona = PLANTILLAS_TEXTO[plantillaDeIdea(idea, formato)]?.zona ?? PLANTILLAS_TEXTO.banda.zona;
   const lineas = textoDeIdea(idea).split("\n").map((l) => `"${l.replace(/["“”«»]/g, "")}"`);
   return [
     corto(idea?.escena, MAX_ESCENA),
+    composicionDe(idea?.composicion)?.linea ?? "",
+    lineaDe(FONDOS, idea?.fondo),
+    idea?.conProducto === false ? "El producto NO aparece en esta imagen." : "",
     modo === "ia"
-      ? `Texto en la imagen, EXACTO, legible y bien jerarquizado (lo primero grande): ${lineas.join(" / ")}. Ningún otro texto.`
+      ? `Texto en la imagen, EXACTO, legible y bien jerarquizado (lo primero grande): ${lineas.join(" / ")}. Ningún otro texto. El texto se apoya sobre una superficie real del encuadre (pared, cielo, mesa, tela) o directo sobre la imagen con buen contraste, nunca sobre un velo pintado.`
       : `NO escribas ningún texto, letra ni número en la imagen: el texto se pone después. Deja ${zona} limpio y despejado, con buen contraste.`,
   ].filter(Boolean).join(" ");
 }
@@ -138,23 +349,84 @@ export function nombreCarpetaLote(producto = "", fecha = new Date()) {
 }
 
 /**
- * La publicación que sale de una pieza del lote, lista para meterla en un día: un anuncio (tipo de contenido), con su
- * nivel, su producto, el texto de la pieza y la imagen. Pendiente: la ve el cliente. Pura.
+ * La publicación que sale de una pieza: título, brief (la idea), el texto de la pieza, la descripción, su tipo y su
+ * matriz, y la imagen escogida. Pendiente: la revisa el equipo y la aprueba el cliente. Pura.
  */
-export function publicacionDeAnuncio({ id, idea, archivo, formato = "post", producto = null }) {
+export function publicacionDePieza({ id, idea, archivo, formato = "post", producto = null }) {
+  const prod = producto ?? (idea.productoId ? { id: idea.productoId, nombre: idea.producto ?? "" } : null);
   return {
     id,
     format: FORMATOS_LOTE[formato]?.format ?? "post",
-    title: idea.titular,
-    idea: idea.escena,
+    title: idea.titulo || idea.titular,
+    idea: idea.brief || idea.escena,
     textoPieza: textoDeIdea(idea),
-    pilar: "anuncio",
-    nivel: idea.nivel,
-    ...(producto ? { productoId: producto.id, producto: producto.nombre } : {}),
+    ...(idea.descripcion ? { descripcion: idea.descripcion } : {}),
+    pilar: idea.tipo ?? idea.pilar ?? "anuncio",
+    ...(idea.pilarSub ? { pilarSub: idea.pilarSub } : {}),
+    ...(idea.nivel ? { nivel: idea.nivel } : {}),
+    ...(prod?.id ? { productoId: prod.id, producto: prod.nombre ?? "" } : {}),
+    ...(idea.deseo ? { deseo: idea.deseo } : {}),
+    ...(idea.perfil ? { perfil: idea.perfil } : {}),
     status: "pending",
     medios: [{ src: archivo.src, tipo: "imagen", ...(archivo.ancho && archivo.alto ? { ancho: archivo.ancho, alto: archivo.alto } : {}) }],
   };
 }
+export const publicacionDeAnuncio = publicacionDePieza;
 
 /** «Inconsciente · 5», para los títulos de cada grupo. Pura. */
 export const tituloDeNivel = (clave, n) => `${nombreDeNivel(clave)} · ${n}`;
+
+/**
+ * Los titulares que ya salieron en la galería de este cliente (el texto de las piezas compuestas y el que se le pidió
+ * escribir al motor), para que el lote siguiente no los repita. Pura.
+ */
+export function titularesUsados(archivos = [], max = 30) {
+  const fuera = [];
+  for (const a of archivos ?? []) {
+    const deTexto = String(a?.ajustes?.plantilla?.texto ?? "").split("\n")[0];
+    const delPedido = String(a?.prompt ?? "").match(/Texto en la imagen[^:]*:\s*"([^"]+)"/)?.[1] ?? "";
+    const t = corto(deTexto || delPedido, 80);
+    if (t && !fuera.includes(t)) fuera.push(t);
+    if (fuera.length >= max) break;
+  }
+  return fuera;
+}
+
+// ------------------------------------------------------------
+// Lo que el cliente ha dicho que le gusta: qué composiciones funcionan
+// ------------------------------------------------------------
+
+/** Lo mínimo para fiarse: con menos piezas marcadas, el orden de siempre. */
+export const MIN_SENALES_COMPOSICION = 6;
+
+/**
+ * Qué composiciones funcionan con ESTE cliente, por lo que pasó con sus piezas: «Me gusta» +2, usada en una
+ * publicación +1, a la papelera −1 (lo subido a mano no cuenta: no lo hizo el motor). La composición de una pieza se
+ * reconoce por su línea en el pedido. → { orden: [ids, de la que más gusta a la que menos], puntos: { id → n },
+ * senales }. Con pocas señales, `orden` vacío: no se aprende de tres piezas. Pura.
+ */
+export function aprenderComposiciones(archivos = [], papelera = []) {
+  const puntos = Object.fromEntries(COMPOSICIONES.map((c) => [c.id, 0]));
+  let senales = 0;
+  const de = (a) => COMPOSICIONES.find((c) => String(a?.prompt ?? "").includes(c.linea));
+  for (const a of archivos ?? []) {
+    const c = de(a);
+    if (!c || a.subido) continue;
+    const p = (a.favorito ? 2 : 0) + ((a.usadoEn ?? []).length ? 1 : 0);
+    if (p) { puntos[c.id] += p; senales += 1; }
+  }
+  for (const a of papelera ?? []) {
+    const c = de(a);
+    if (!c || a.subido) continue;
+    puntos[c.id] -= 1;
+    senales += 1;
+  }
+  if (senales < MIN_SENALES_COMPOSICION) return { orden: [], puntos, senales };
+  // Fuera las que restan. Las que suman (hasta tres) se INTERCALAN entre las neutras: una de cada dos piezas sale con
+  // una que gusta, sin que dos seguidas se repitan. `darForma` repone todas si quedan pocas.
+  const buenas = COMPOSICIONES.map((c, i) => ({ id: c.id, p: puntos[c.id], i })).filter((x) => x.p >= 0).sort((a, b) => b.p - a.p || a.i - b.i);
+  const gustan = buenas.filter((x) => x.p > 0).slice(0, 3).map((x) => x.id);
+  const neutras = buenas.map((x) => x.id).filter((id) => !gustan.includes(id));
+  const orden = gustan.length ? neutras.flatMap((id, k) => [gustan[k % gustan.length], id]) : neutras;
+  return { orden: orden.length ? orden : gustan, puntos, senales };
+}

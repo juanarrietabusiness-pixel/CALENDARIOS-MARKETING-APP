@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { lineaDeReferencia, lineasDeReferencias, productoNombrado, TOMAS, MAX_NOTA } from "./referencias";
-import { componerPedido, conOtraEscena, ideaDelPedido } from "./kitMarca";
+import { componerPedido, conOtraEscena, ideaDelPedido, PREFIJO_TIPO } from "./kitMarca";
 import { fotosDelProducto } from "./estudio";
 
 describe("qué se toma de cada referencia", () => {
@@ -67,9 +67,9 @@ describe("el producto que nombra la idea", () => {
 });
 
 describe("el pedido con las referencias y otra escena", () => {
-  it("las líneas de las referencias van detrás de la escena y delante de la marca", () => {
+  it("las líneas de las referencias van detrás de la escena (y del tipo) y delante de la marca", () => {
     const p = componerPedido({ idea: "Un sofá", preset: "PRESET", referencias: "Imagen de referencia 1: X", marca: "MARCA" });
-    expect(p).toBe("PRESET\n\nEscena: Un sofá\n\nImagen de referencia 1: X\n\nMARCA");
+    expect(p).toBe(`Escena: Un sofá\n\n${PREFIJO_TIPO} PRESET\n\nImagen de referencia 1: X\n\nMARCA`);
     expect(ideaDelPedido(p)).toBe("Un sofá");
     // Sólo con referencias ya se compone (si no, el modelo no sabría de qué imagen habla).
     expect(componerPedido({ idea: "Un sofá", referencias: "Imagen de referencia 1: X" })).toBe("Escena: Un sofá\n\nImagen de referencia 1: X");
@@ -84,5 +84,26 @@ describe("el pedido con las referencias y otra escena", () => {
     expect(conOtraEscena("PRESET\n\nEscena: Un sofá", "Otra")).toBe("PRESET\n\nEscena: Otra");
     // Un pedido sin componer: la escena nueva es todo.
     expect(conOtraEscena("Un sofá en la sala", "Otra cosa")).toBe("Otra cosa");
+  });
+});
+
+describe("varios productos en una pieza", () => {
+  const productos = [
+    { id: "p1", nombre: "Sofá", fotos: ["s1", "s2"] },
+    { id: "p2", nombre: "Sofá cama", fotos: ["c1", "c2", "c3"] },
+    { id: "p3", nombre: "Nateen", fotos: ["n1"] },
+    { id: "p4", nombre: "Mesa", fotos: [] },
+  ];
+  it("encuentra todos los que nombra la idea, sin contar «Sofá» dentro de «Sofá cama»", async () => {
+    const { productosNombrados } = await import("./referencias");
+    expect(productosNombrados(productos, "El sofá cama y los wipes Nateen").map((p) => p.id)).toEqual(["p2", "p3"]);
+    expect(productosNombrados(productos, "Un sofá, un sofá cama y una mesa").map((p) => p.id)).toEqual(["p2", "p1"]);
+    expect(productosNombrados(productos, "Nateen y sofá cama", ["c2"]).map((p) => p.id)).toEqual(["p3"]);
+  });
+  it("reparte los huecos: una foto de cada uno antes de la segunda de ninguno", async () => {
+    const { fotosDeVariosProductos } = await import("./estudio");
+    expect(fotosDeVariosProductos(productos, ["p2", "p3", "p1"], 3).map((f) => f.clave)).toEqual(["c1", "n1", "s1"]);
+    expect(fotosDeVariosProductos(productos, ["p2", "p1"], 3).map((f) => f.clave)).toEqual(["c1", "s1", "c2"]);
+    expect(fotosDeVariosProductos(productos, ["p4"], 3)).toEqual([]);
   });
 });

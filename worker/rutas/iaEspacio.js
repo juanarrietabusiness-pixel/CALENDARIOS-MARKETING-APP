@@ -14,7 +14,7 @@ import { json, error } from "../lib/respuesta.js";
 import {
   modelosDeLaCuenta, leerConfigIA, resolverIA, etiquetaModelo,
   gastoDelMes, estadoPresupuesto, mesActual,
-  FUNCIONES_IA, modeloParaHueco, llaveMeta, motorDeImagen,
+  FUNCIONES_IA, modeloParaHueco, llaveMeta, motorDeImagen, motorDeVideo,
 } from "../lib/configIA.js";
 
 export async function rutaGasto(req, env, { acceso }) {
@@ -52,6 +52,11 @@ export async function rutaModelos(req, env, { acceso }) {
     funciones,
     meta: { conectado: hayMeta },
     imagen: { elegido: config.ia_modelos.imagen ?? "auto", enUso: motorDeImagen(config, { hayMeta }) },
+    // Quién VE los videos, y qué llaves hay (nunca la llave).
+    video: {
+      elegido: config.ia_modelos.video ?? "gemini", enUso: motorDeVideo(config, env).motor, aviso: motorDeVideo(config, env).aviso,
+      llaves: { gemini: Boolean(env.GOOGLE_AI_KEY), "gemini-gratis": Boolean(env.GOOGLE_AI_KEY_GRATIS), meta: hayMeta },
+    },
   });
 }
 

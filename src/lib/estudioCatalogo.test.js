@@ -253,7 +253,7 @@ describe("fal.ai y Higgsfield en el catálogo", () => {
 
   it("enCola: todo video, y las imágenes que sólo contestan por cola; el resto no", () => {
     for (const m of MODELOS) {
-      expect(enCola(m), m.id).toBe(m.tipo === "video" || m.motor === "higgsfield");
+      expect(enCola(m), m.id).toBe(m.tipo === "video" || m.motor === "higgsfield" || m.motor === "kie");
     }
     expect(enCola(modeloPorId("nano-banana"))).toBe(false);
     expect(enCola(modeloPorId("seedream-4"))).toBe(false);
