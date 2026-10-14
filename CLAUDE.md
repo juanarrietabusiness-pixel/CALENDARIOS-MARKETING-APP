@@ -1220,10 +1220,9 @@ son del servidor.
   parte que se usa, en `docs/kie/`). Imagen: GPT Image 2 y 2.5, Nano Banana Pro, 2 y 2.1, Ideogram 3, Seedream 5 Pro,
   Imagen 4 Ultra. Video: Gemini Omni Flash (el de Flow: hasta 7 referencias —fotogramas del storyboard, personajes—,
   o imagen inicial y final, o un video para corregir un tramo), Kling 3.0 y 3.0 Omni, Seedance 2.0 y 2.5, Veo 3.1 Fast
-  y Quality (también por `createTask`, con `model: "veo-3-1"` y el nivel en `input.model`), Hailuo 2.3 y Wan 2.7. Y
-  «pulir» (`pulir: true`: Topaz, Recraft nitidez y quitar fondo), que no crea: se pide desde el visor con la imagen de
-  única referencia y NO sale en las listas del compositor ni como predeterminado (`modelosParaLista`,
-  `modeloPorDefecto`, `modeloParaEditar`, las herramientas del asistente).
+  y Quality (también por `createTask`, con `model: "veo-3-1"` y el nivel en `input.model`), Hailuo 2.3 y Wan 2.7. «Pulir
+  el acabado» (Topaz, Recraft) se QUITÓ: la agencia no le encontró uso. Sus ids viven en `MODELOS_RETIRADOS` para que
+  lo ya pulido siga teniendo nombre.
   Kie contesta casi siempre HTTP 200 y pone el error en `code` (401 llave, 402 créditos, 422 datos, 429/455/5xx
   pasajeros): `datosDe` mira el `code`, no sólo el estado. `resultJson` llega como TEXTO JSON (`urlsDelResultado`).
   Las imágenes y el video de apoyo se suben a su almacén (`file-stream-upload`, `images/estudio` o `videos/estudio`,
@@ -1338,6 +1337,14 @@ son del servidor.
   · Al crear (`crearPieza`, loteEstudio.js): la escena se MEJORA sola (apagable), se piden 1–3 imágenes por idea en un
   solo trabajo, se escoge una y la publicación llega al calendario con título, brief (`idea`), texto de la pieza,
   descripción, tipo y matriz, PENDIENTE: lista para revisión.
+- **Toda lista de modelos va del más barato al más caro** (`porPrecio`, `costoDePieza` en estudioCatalogo.js; el
+  compositor arranca en «Más barato»): se compara lo que cuesta UNA pieza —un video, con su duración por defecto—,
+  no el precio por segundo contra el de una imagen; los que no tienen llave y la prueba, al final. El PREDETERMINADO
+  no es el primero de la lista: el carrusel y los fotogramas arrancan en `modeloParaCarrusel`, el video del reel en
+  `modeloRecomendadoParaReel` (Omni por Kie, el que admite storyboard).
+- **Una imagen de la galería no va siempre al primer sitio libre** (`ranurasLibres` en lib/estudio.js): en video
+  ese sitio era la imagen inicial y una referencia nunca llegaba a referencias. Con más de un sitio libre se pregunta
+  (`EleccionRanura.jsx`), y cada sitio del compositor tiene «De la galería»: la siguiente imagen que se toque va ahí.
 - **El modelo se fija POR CLIENTE** (`kit.modelos`, «Fijar … para este cliente» en el compositor; el servidor sólo guarda
   un id del catálogo de ese tipo): lo comparte el equipo y arranca el compositor, la producción en lote y «Producir el
   mes» (`modeloPreferido(activos, tipo, kit.modelos[tipo])`). Sin llave o retirado, el predeterminado.
@@ -1361,8 +1368,7 @@ son del servidor.
   `ideaParaMejorar` (escena, composición SUGERIDA, texto exacto y el brief como contexto) y detrás de la escena sólo
   va «Composición: <nombre>.» (así `aprenderComposiciones` la reconoce) y, con plantilla, la zona libre. El texto lo
   escribe el motor por defecto. «Producir el mes» también mejora cada idea (como «Crear con IA» desde una
-  publicación). Un test exige que la misma idea dé el mismo pedido por el lote y a mano. «Pulir antes de llevar al
-  calendario» (lote) amplía la escogida con un modelo de pulir (`pulirArchivo`).
+  publicación). Un test exige que la misma idea dé el mismo pedido por el lote y a mano.
 - **Tipo de pieza (QUÉ comunica) y estilo visual (CÓMO se ve) son dos cosas** (`ESTILOS_VISUALES` en kitMarca.js). En
   el compositor el tipo va ANTES de la idea (cambia «Dame ideas» —de ese tipo, salvo «Variadas»— y «Mejorar idea»,
   que recibe `pieza` como propósito) y el estilo va después, con el kit y las referencias. Cada estilo lleva UNA

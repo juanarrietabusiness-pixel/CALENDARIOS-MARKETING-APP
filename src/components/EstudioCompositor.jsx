@@ -1,7 +1,7 @@
 import { useId, useRef, useState } from "react";
 import Icon from "./Icon";
 import {
-  textoCosto, costoUnitario, nombreDelModelo, NOMBRE_PROPORCION, MAX_PROMPT, maxPorPedido, duracionDe, modelosParaLista, creadoresDe, CRITERIOS_ORDEN, NOMBRE_CALIDAD, NOMBRE_MOTOR,
+  textoCosto, etiquetaDeCosto, costoUnitario, nombreDelModelo, NOMBRE_PROPORCION, MAX_PROMPT, maxPorPedido, duracionDe, modelosParaLista, creadoresDe, CRITERIOS_ORDEN, NOMBRE_CALIDAD, NOMBRE_MOTOR,
 } from "../lib/estudioCatalogo";
 import { ETIQUETA_AJUSTE, valorDeAjuste } from "../lib/estudio";
 import { TIPOS_PRESET, ESTILOS_VISUALES, LINEA_LOGO } from "../lib/kitMarca";
@@ -41,7 +41,7 @@ export function QueCrear({ actual, onCambiar, guiados = [] }) {
 }
 
 /** Una fila de imágenes puestas (miniatura + quitar), el botón de subir una y, con Drive, el de traerla de allí. */
-function Ranura({ titulo, ayuda, archivos, max, rol, subiendo, onQuitar, onSubir, onDrive = null, ids }) {
+function Ranura({ titulo, ayuda, archivos, max, rol, subiendo, onQuitar, onSubir, onDrive = null, onGaleria = null, ids }) {
   return (
     <div className="field">
       <span className="label" id={`${ids}-${rol}`}>{titulo}</span>
@@ -56,6 +56,11 @@ function Ranura({ titulo, ayuda, archivos, max, rol, subiendo, onQuitar, onSubir
         {archivos.length < max && (
           <button type="button" className="btn btn-secondary btn-sm" disabled={subiendo} onClick={() => onSubir(rol)}>
             <Icon name="upload" size={16} /> {subiendo ? "Subiendo…" : rol === "video" ? "Subir un video" : "Subir una imagen"}
+          </button>
+        )}
+        {archivos.length < max && onGaleria && rol !== "video" && (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => onGaleria(rol)}>
+            <Icon name="image" size={16} /> De la galería
           </button>
         )}
         {archivos.length < max && onDrive && (
@@ -74,7 +79,7 @@ function Ranura({ titulo, ayuda, archivos, max, rol, subiendo, onQuitar, onSubir
  * decirlo, el modelo copia de más —el producto de otro, su texto, sus logos—. Las fotos del catálogo no se marcan:
  * son el producto real y se copian tal cual (si es de otra marca, se dice y no lleva el logo del cliente).
  */
-function Referencias({ ids, archivos, max, subiendo, onQuitar, onSubir, onDrive = null, onMarcar, nombrado = null }) {
+function Referencias({ ids, archivos, max, subiendo, onQuitar, onSubir, onDrive = null, onGaleria = null, onMarcar, nombrado = null }) {
   const alternar = (r, id) => {
     const actual = r.toma ?? [];
     onMarcar(r, { toma: actual.includes(id) ? actual.filter((t) => t !== id) : [...actual, id] });
@@ -142,12 +147,17 @@ function Referencias({ ids, archivos, max, subiendo, onQuitar, onSubir, onDrive 
             <Icon name="upload" size={16} /> {subiendo ? "Subiendo…" : "Subir una imagen"}
           </button>
         )}
+        {archivos.length < max && onGaleria && (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => onGaleria("reference")}>
+            <Icon name="image" size={16} /> De la galería
+          </button>
+        )}
         {archivos.length < max && onDrive && (
           <button type="button" className="btn btn-secondary btn-sm" disabled={subiendo} onClick={() => onDrive("reference")}>
             <Icon name="cloud" size={16} /> Desde Drive
           </button>
         )}
-        <span className="hint">{archivos.length} de {max}. También puedes usar cualquiera de la galería con «Usar de referencia».</span>
+        <span className="hint">{archivos.length} de {max}.</span>
       </div>
     </div>
   );
@@ -453,7 +463,7 @@ function MejorarIdea({ mejorando, onMejorar, onVolverIdea, mejorarSolo = null })
 
 export default function Compositor({
   ids, form, setForm, modelo, motores, costo, confirmando, enviando, subiendo,
-  onEnviar, onConfirmar, onNo, onModelo, onTipo, onQuitarMedio, onMarcarReferencia, onSubirArchivos, onDrive = null, promptRef, etiquetaPrompt = "¿Qué quieres crear?",
+  onEnviar, onConfirmar, onNo, onModelo, onTipo, onQuitarMedio, onMarcarReferencia, onSubirArchivos, onDrive = null, onGaleria = null, promptRef, etiquetaPrompt = "¿Qué quieres crear?",
   nombrado = null,
   mejorando = false, onMejorar = null, onVolverIdea = null, mejorarSolo = null,
   estilo = null,
@@ -463,7 +473,8 @@ export default function Compositor({
 }) {
   const entrada = useRef(null);
   const rolSubida = useRef("reference");
-  const [orden, setOrden] = useState("recomendado");
+  // Del más barato al más caro, como todas las listas del Estudio (se puede cambiar).
+  const [orden, setOrden] = useState("barato");
   const [creador, setCreador] = useState("");
   const idsLista = useId();
   const activo = (m) => Boolean(motores?.[m.motor]?.activo);
@@ -522,7 +533,7 @@ export default function Compositor({
           <select id={`${ids}-m`} className="input" value={form.modelo} onChange={(e) => onModelo(e.target.value)}>
             {modelosParaLista(form.tipo, { orden, creador, activos, seleccionado: form.modelo }).map((m) => (
               <option key={m.id} value={m.id} disabled={!activo(m)}>
-                {m.nombre}{m.motor === "prueba" ? "" : ` · ${NOMBRE_MOTOR[m.motor] ?? m.motor}`} · {textoCosto(m.costo)}{m.por === "s" && m.costo > 0 ? " por segundo" : ""}{activo(m) ? "" : " · sin llave"}
+                {m.nombre}{m.motor === "prueba" ? "" : ` · ${NOMBRE_MOTOR[m.motor] ?? m.motor}`} · {etiquetaDeCosto(m)}{activo(m) ? "" : " · sin llave"}
               </option>
             ))}
           </select>
@@ -575,7 +586,7 @@ export default function Compositor({
       <FichaDelModelo modelo={modelo} />
 
       {modelo.video > 0 && (
-        <Ranura ids={ids} rol="video" titulo="Video de referencia" max={1} archivos={medios.video ?? []} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida} onDrive={onDrive}
+        <Ranura ids={ids} rol="video" titulo="Video de referencia" max={1} archivos={medios.video ?? []} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida} onDrive={onDrive} onGaleria={onGaleria}
           ayuda={modelo.inicial
             ? "El movimiento de este video pasa a tu imagen inicial (MP4, MOV o WebM, hasta 50 MB)."
             : "El modelo sigue sus planos, su ritmo y su movimiento con tu marca (MP4, MOV o WebM, hasta 50 MB). Puede ser el de la competencia."} />
@@ -586,15 +597,15 @@ export default function Compositor({
         </p>
       )}
       {conInicial && (
-        <Ranura ids={ids} rol="start" titulo="Imagen inicial" max={1} archivos={medios.start} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida} onDrive={onDrive}
+        <Ranura ids={ids} rol="start" titulo="Imagen inicial" max={1} archivos={medios.start} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida} onDrive={onDrive} onGaleria={onGaleria}
           ayuda="El video arranca de esta imagen. También puedes usar «Animar» en cualquiera de la galería." />
       )}
       {conFinal && (
-        <Ranura ids={ids} rol="end" titulo="Imagen final" max={1} archivos={medios.end} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida} onDrive={onDrive}
+        <Ranura ids={ids} rol="end" titulo="Imagen final" max={1} archivos={medios.end} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida} onDrive={onDrive} onGaleria={onGaleria}
           ayuda="Opcional: el video termina en esta imagen." />
       )}
       {modelo.referencias > 0 ? (
-        <Referencias ids={ids} max={modelo.referencias} archivos={medios.reference} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida} onDrive={onDrive}
+        <Referencias ids={ids} max={modelo.referencias} archivos={medios.reference} subiendo={subiendo} onQuitar={onQuitarMedio} onSubir={abrirSubida} onDrive={onDrive} onGaleria={onGaleria}
           onMarcar={onMarcarReferencia} nombrado={nombrado} />
       ) : !conInicial && (
         <p className="hint">{modelo.nombre} no admite imágenes de referencia.</p>

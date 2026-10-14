@@ -13,7 +13,6 @@
 // ============================================================
 
 import * as api from "./estudio";
-import { ajustesDe, MAX_PROMPT } from "./estudioCatalogo";
 import { limpiarKit, estiloDeMarca } from "./kitMarca";
 import { coloresPlantilla, PLANTILLAS_TEXTO } from "./carrusel";
 import { componerLamina } from "./textoSobreImagen";
@@ -117,20 +116,6 @@ export async function crearLote({ ideas, alAvanzar = () => {}, seguir = () => tr
     }
   };
   await Promise.all(Array.from({ length: Math.max(1, paralelo) }, trabajador));
-}
-
-/**
- * «Pulir» una pieza antes de llevarla al calendario: ampliar y limpiar (o sólo nitidez) con un modelo de pulir. Sale
- * una imagen NUEVA en la misma carpeta; la original se queda. → el archivo pulido.
- */
-export async function pulirArchivo({ clienteId, archivo, modelo, carpetaId = null, seguir = () => true }) {
-  const medios = { reference: [archivo.clave] };
-  const { trabajo } = await api.pedirImagenes(clienteId, {
-    modelo: modelo.id, prompt: String(archivo.prompt || "Imagen pulida").slice(0, MAX_PROMPT), n: 1,
-    ajustes: ajustesDe(modelo, {}, medios), medios, confirmado: true, ...(carpetaId ? { carpetaId } : {}),
-  });
-  const [pulido] = await esperarArchivos(clienteId, trabajo, { seguir });
-  return pulido;
 }
 
 // ------------------------------------------------------------

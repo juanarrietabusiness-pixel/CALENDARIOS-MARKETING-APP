@@ -1,11 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
-import { textoCosto, estimar, CONFIRMAR_DESDE, MODELOS } from "../lib/estudioCatalogo";
+import { textoCosto, estimar, costoDePieza, etiquetaDeCosto, CONFIRMAR_DESDE, MODELOS } from "../lib/estudioCatalogo";
 import * as api from "../lib/estudio";
 import { TIPOS_PRESET, ESTILOS_VISUALES, limpiarKit, referenciasDePersonajes, estiloDeMarca } from "../lib/kitMarca";
 import { repartirTiempos, tramo, MAX_PLANOS, MIN_PLANOS } from "../lib/reel";
-import { modelosParaCarrusel } from "../lib/carruselEstudio";
-import { modelosParaReel, modeloParaTramo, crearFotogramas, crearFotograma, editarImagen, pedidoDeVideo, crearVideo, corregirTramo } from "../lib/reelEstudio";
+import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
+import { modelosParaReel, modeloRecomendadoParaReel, modeloParaTramo, crearFotogramas, crearFotograma, editarImagen, pedidoDeVideo, crearVideo, corregirTramo } from "../lib/reelEstudio";
 import { CopyButton } from "./calendario/primitivas";
 import "./calendario/RevisionMes.css";
 import "./calendario/CarruselIA.css";
@@ -29,7 +29,7 @@ import "./EstudioLote.css";
 
 const PASOS = [["idea", "Idea"], ["planos", "Planos"], ["fotogramas", "Fotogramas"], ["video", "Video"]];
 
-export default function FlujoReel({ client, estudio, inicial = {}, onPoner = null, cabecera = null, onCreando = () => {} }) {
+export default function FlujoReel({ client, estudio, inicial = {}, onPoner = null, onListo = null, cabecera = null, onCreando = () => {} }) {
   const ids = useId();
   const clienteId = client?.dbId || client?.id;
   const kit = limpiarKit(estudio?.kit);
@@ -56,9 +56,10 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
 
   const productos = estudio?.productos ?? [];
   const modelosImagen = useMemo(() => modelosParaCarrusel(estudio?.activos ?? {}), [estudio]);
-  const modeloImagen = modelosImagen.find((m) => m.id === modeloImagenId) ?? modelosImagen[0] ?? null;
+  // Las listas van del más barato al más caro; si nadie escoge, el recomendado.
+  const modeloImagen = modelosImagen.find((m) => m.id === modeloImagenId) ?? modelosImagen.find((m) => m.id === modeloParaCarrusel(estudio?.activos ?? {}).id) ?? modelosImagen[0] ?? null;
   const modelosVideo = useMemo(() => modelosParaReel(estudio?.activos ?? {}), [estudio]);
-  const modeloVideo = modelosVideo.find((m) => m.id === modeloVideoId) ?? modelosVideo[0] ?? MODELOS.find((m) => m.id === "prueba-video");
+  const modeloVideo = modelosVideo.find((m) => m.id === modeloVideoId) ?? modeloRecomendadoParaReel(estudio?.activos ?? {}) ?? MODELOS.find((m) => m.id === "prueba-video");
   const paraTramo = modeloParaTramo(activos);
   const segundos = guion?.segundos ?? 10;
   const planos = guion?.planos ?? [];
@@ -272,7 +273,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
           <div className="field" style={{ margin: 0 }}>
             <label className="label" htmlFor={`${ids}-mi`}>Modelo de los fotogramas</label>
             <select id={`${ids}-mi`} className="input" value={modeloImagen?.id ?? ""} onChange={(e) => setModeloImagenId(e.target.value)}>
-              {modelosImagen.map((m) => <option key={m.id} value={m.id}>{m.nombre}{m.motor === "prueba" ? "" : ` · ${textoCosto(m.costo)} cada uno`}</option>)}
+              {modelosImagen.map((m) => <option key={m.id} value={m.id}>{m.nombre}{m.motor === "prueba" ? "" : ` · ${textoCosto(costoDePieza(m))} cada uno`}</option>)}
             </select>
           </div>
         </div>
@@ -314,7 +315,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
         <div className="field" style={{ margin: 0 }}>
           <label className="label" htmlFor={`${ids}-mv`}>Modelo del video</label>
           <select id={`${ids}-mv`} className="input" value={modeloVideo?.id ?? ""} onChange={(e) => setModeloVideoId(e.target.value)}>
-            {modelosVideo.map((m) => <option key={m.id} value={m.id}>{m.nombre} · {m.referencias >= 2 ? "con el storyboard" : "desde el primer fotograma"}</option>)}
+            {modelosVideo.map((m) => <option key={m.id} value={m.id}>{m.nombre}{m.motor === "prueba" ? "" : ` · ${etiquetaDeCosto(m)}`} · {m.referencias >= 2 ? "con el storyboard" : "desde el primer fotograma"}</option>)}
           </select>
         </div>
       )}
@@ -387,6 +388,11 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
                 {onPoner && videos[0] && (
                   <button type="button" className="btn btn-primary" onClick={() => onPoner([videos[0]], { reemplazar: true })}>
                     <Icon name="check" size={18} /> Poner en la publicación
+                  </button>
+                )}
+                {onListo && videos[0] && (
+                  <button type="button" className={`btn ${onPoner ? "btn-secondary" : "btn-primary"}`} onClick={onListo}>
+                    <Icon name="check" size={18} /> Listo
                   </button>
                 )}
               </>

@@ -65,6 +65,7 @@ export default function CarruselIA({ client, post, cal = null, onPoner, onCerrar
                   productoId: post.productoId ?? "", postId: post.id ?? null, calendarId: cal ? cal.dbId || cal.id : null,
                 }}
                 onPoner={(finales, opciones) => { onPoner(finales, opciones); onCerrar(); }}
+                onListo={onCerrar}
               />
             </Suspense>
           )}

@@ -66,7 +66,7 @@ function RevisionDeMarca({ revision, onRevisar, onCorregir }) {
 export default function Visor({
   archivo: a, carpetas, lectura, onCerrar, onFavorito, onPapelera, onMover, onRepetir, onReferencia, onAnimar, onUsar, etiquetaUsar,
   costoOtra = null, onOtraIgual = null, onOtrasVersiones = null, versionando = false, onRecrear = null,
-  onEditar = null, original = null, onVerOriginal = null, pulidos = [], onPulir = null,
+  onEditar = null, original = null, onVerOriginal = null,
   esLogo = false, onLogo = null, revision = null, onRevisar = null, onCorregir = null,
 }) {
   const ref = useDialogA11y(onCerrar);
@@ -74,10 +74,8 @@ export default function Visor({
   const [editando, setEditando] = useState(false);
   const [cambio, setCambio] = useState("");
   const [cuantas, setCuantas] = useState(1);
-  const [pulido, setPulido] = useState(pulidos[0]?.id ?? "");
   const m = modeloPorId(a.modelo);
-  // Una imagen pulida no se repite ni se ajusta: repetir sería pulir otra vez la misma.
-  const puedeOtra = !lectura && !a.subido && !m?.pulir && costoOtra != null && onOtraIgual;
+  const puedeOtra = !lectura && !a.subido && costoOtra != null && onOtraIgual;
   const video = a.tipo === "video";
   return (
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) onCerrar(); }}>
@@ -155,28 +153,11 @@ export default function Visor({
               </p>
             </div>
           )}
-          {!lectura && !video && onPulir && pulidos.length > 0 && (
-            <div className="est-otra" role="group" aria-labelledby={`${id}-pulir`}>
-              <span className="label" id={`${id}-pulir`}>Pulir el acabado</span>
-              <div className="est-otra-fila">
-                <label className="est-otra-cuantas">
-                  <span className="sr-only">Cómo se pule</span>
-                  <select className="input" value={pulido} onChange={(e) => setPulido(e.target.value)}>
-                    {pulidos.map((p) => <option key={p.id} value={p.id}>{p.nombre} · {textoCosto(p.costo)}</option>)}
-                  </select>
-                </label>
-                <button type="button" className="btn btn-secondary btn-sm" disabled={!pulido} onClick={() => onPulir(pulido)}>
-                  <Icon name="sparkles" size={14} /> Pulir
-                </button>
-              </div>
-              <p className="hint" style={{ margin: 0 }}>Sale una imagen NUEVA más nítida (o sin fondo); esta se queda como está. Úsala antes de llevarla al calendario.</p>
-            </div>
-          )}
           {!video && (onRevisar || revision) && <RevisionDeMarca revision={revision} onRevisar={onRevisar} onCorregir={lectura ? null : onCorregir} />}
           <div className="est-visor-acciones">
             {!lectura && !video && onEditar && !editando && <button type="button" className="btn btn-secondary" onClick={() => setEditando(true)}><Icon name="pencil" size={16} /> Editar</button>}
             {onUsar && <button type="button" className="btn btn-primary" onClick={onUsar}><Icon name="check" size={16} /> {etiquetaUsar ?? "Usar en la publicación"}</button>}
-            {!lectura && !a.subido && !m?.pulir && <button type="button" className={`btn ${onUsar ? "btn-secondary" : "btn-primary"}`} onClick={onRepetir}><Icon name="pencil" size={16} /> Ajustar y pedir</button>}
+            {!lectura && !a.subido && <button type="button" className={`btn ${onUsar ? "btn-secondary" : "btn-primary"}`} onClick={onRepetir}><Icon name="pencil" size={16} /> Ajustar y pedir</button>}
             {!lectura && !video && <button type="button" className="btn btn-secondary" onClick={onAnimar}><Icon name="video" size={16} /> Animar</button>}
             {!lectura && !video && <button type="button" className="btn btn-secondary" onClick={onReferencia}><Icon name="paperclip" size={16} /> Usar de referencia</button>}
             {!lectura && onRecrear && <button type="button" className="btn btn-secondary" onClick={onRecrear} title="Analizarlo y hacer una versión con la marca"><Icon name="refresh" size={16} /> Recrear como anuncio</button>}

@@ -252,29 +252,6 @@ export const MODELOS = Object.freeze([
     para: ["fotografía realista", "ambientes", "personas"],
     ajustes: { aspectRatio: enumerado(["3:4", "1:1", "9:16", "4:3", "16:9"], "3:4") },
   },
-  // ---- Pulir (Kie): no crean, mejoran una imagen de la galería. No salen en la lista del compositor: se piden
-  // desde el visor («Pulir»). La imagen va como única referencia y el texto no se usa.
-  {
-    id: "topaz-ampliar-kie", motor: "kie", tipo: "imagen", nombre: "Ampliar y limpiar (Topaz)", cola: true, pulir: true, necesitaImagen: true,
-    creador: "Topaz", calidad: 4, velocidad: "normal", costo: 0.05, referencias: 1, estimado: true,
-    nota: "Amplía la imagen al doble (o 4 veces) y limpia el ruido y los bordes: lo que más se nota en la nitidez final. Precio aproximado.",
-    para: ["acabado final", "nitidez"],
-    ajustes: { factor: enumerado(["2", "4"], "2") },
-  },
-  {
-    id: "recraft-nitidez-kie", motor: "kie", tipo: "imagen", nombre: "Nitidez (Recraft)", cola: true, pulir: true, necesitaImagen: true,
-    creador: "Recraft", calidad: 3, velocidad: "rápido", costo: 0.01, referencias: 1, estimado: true,
-    nota: "Amplía y afila detalles y letras sin cambiar nada más. Muy barato. Precio aproximado.",
-    para: ["acabado final", "texto nítido"],
-    ajustes: {},
-  },
-  {
-    id: "recraft-sin-fondo-kie", motor: "kie", tipo: "imagen", nombre: "Quitar el fondo (Recraft)", cola: true, pulir: true, necesitaImagen: true,
-    creador: "Recraft", calidad: 3, velocidad: "rápido", costo: 0.01, referencias: 1, estimado: true,
-    nota: "Deja el producto o la persona sobre fondo transparente (PNG): para fotos del catálogo. Precio aproximado.",
-    para: ["foto de producto", "fondo transparente"],
-    ajustes: {},
-  },
   // ---- Video por Kie.ai. Por SEGUNDO; el precio cambia con la calidad (`costoSegun`).
   {
     id: "gemini-omni-kie", motor: "kie", tipo: "video", nombre: "Gemini Omni Flash (Kie) · hasta 10 s", cola: true,
@@ -388,10 +365,17 @@ export const MODELOS_RETIRADOS = Object.freeze({
   "veo-3.1": "Veo 3.1",
   "veo-3.1-fast": "Veo 3.1 Fast",
   "veo-3.1-lite": "Veo 3.1 Lite",
+  // «Pulir el acabado» (Kie): la agencia no le encontró uso y se quitó. Lo que ya se pulió sigue en la galería.
+  "topaz-ampliar-kie": "Ampliar y limpiar (Topaz)",
+  "recraft-nitidez-kie": "Nitidez (Recraft)",
+  "recraft-sin-fondo-kie": "Quitar el fondo (Recraft)",
 });
+const DE_GOOGLE = new Set(["veo-3.1", "veo-3.1-fast", "veo-3.1-lite"]);
 
 /** Por qué ya no se puede pedir un modelo retirado, y qué usar. */
-export const retirado = (id) => `Google retiró ${MODELOS_RETIRADOS[id] ?? id} de su API el 22 de octubre de 2026. Pídelo con Gemini Omni Flash o con Veo 3 Fast (fal).`;
+export const retirado = (id) => (DE_GOOGLE.has(id)
+  ? `Google retiró ${MODELOS_RETIRADOS[id] ?? id} de su API el 22 de octubre de 2026. Pídelo con Gemini Omni Flash o con Veo 3 Fast (fal).`
+  : `«${MODELOS_RETIRADOS[id] ?? id}» ya no se ofrece en el Estudio.`);
 
 /** El nombre de un modelo para la pantalla, también de uno retirado; si no se conoce, el id tal cual. */
 export const nombreDelModelo = (id) => modeloPorId(id)?.nombre ?? (MODELOS_RETIRADOS[id] ? `${MODELOS_RETIRADOS[id]} (retirado)` : id || "");
@@ -402,7 +386,7 @@ export const nombreDelModelo = (id) => modeloPorId(id)?.nombre ?? (MODELOS_RETIR
  * funciona: para imagen, el que la aplicación ya usaba; para video, Gemini Omni Flash (la misma llave de Google).
  */
 export function modeloPorDefecto(motoresActivos = {}, tipo = "imagen") {
-  const deEsteTipo = MODELOS.filter((m) => m.tipo === tipo && m.motor !== "prueba" && !m.pulir && motoresActivos[m.motor]);
+  const deEsteTipo = MODELOS.filter((m) => m.tipo === tipo && m.motor !== "prueba" && motoresActivos[m.motor]);
   return deEsteTipo.find((m) => m.predeterminado) ?? deEsteTipo[0]
     ?? MODELOS.find((m) => m.tipo === tipo && m.motor === "prueba");
 }
@@ -435,15 +419,15 @@ const RAPIDEZ = Object.freeze({ "muy rápido": 4, rápido: 3, normal: 2, lento: 
  *   · A igualdad de criterio manda el orden del catálogo: la lista no salta de sitio entre una visita y otra.
  */
 export function modelosParaLista(tipo, { orden = "recomendado", creador = "", activos = {}, seleccionado = "" } = {}) {
-  // Los de «pulir» no crean: se piden desde el visor, no desde la lista (salvo que sea el escogido).
-  const base = MODELOS.map((m, i) => ({ m, i })).filter(({ m }) => m.tipo === tipo && (!m.pulir || m.id === seleccionado));
+  const base = MODELOS.map((m, i) => ({ m, i })).filter(({ m }) => m.tipo === tipo);
   const filtrados = base.filter(({ m }) => !creador || m.creador === creador || m.id === seleccionado);
   const activo = ({ m }) => (activos[m.motor] ? 0 : 1);
-  const costoPorUnidad = ({ m }) => (m.costo ?? 0);
+  // Lo que cuesta UNA pieza (un video, con su duración por defecto): por segundo y por imagen no se comparan.
+  const costoPorUnidad = ({ m }) => costoDePieza(m);
   const clave = {
     recomendado: (x) => [activo(x), x.m.predeterminado ? 0 : 1, -(x.m.calidad ?? 2), costoPorUnidad(x)],
     calidad: (x) => [activo(x), -(x.m.calidad ?? 2), costoPorUnidad(x)],
-    barato: (x) => [activo(x), costoPorUnidad(x), -(x.m.calidad ?? 2)],
+    barato: (x) => [activo(x), x.m.motor === "prueba" ? 1 : 0, costoPorUnidad(x), -(x.m.calidad ?? 2)],
     caro: (x) => [activo(x), -costoPorUnidad(x), -(x.m.calidad ?? 2)],
     rapido: (x) => [activo(x), -(RAPIDEZ[x.m.velocidad] ?? 2), costoPorUnidad(x)],
     creador: (x) => [activo(x), String(x.m.creador ?? "").toLocaleLowerCase("es"), -(x.m.calidad ?? 2), costoPorUnidad(x)],
@@ -460,9 +444,26 @@ export function modelosParaLista(tipo, { orden = "recomendado", creador = "", ac
   return filtrados.sort(comparar).map(({ m }) => m);
 }
 
+/** Lo que cuesta UNA pieza con los ajustes por defecto: una imagen, o un video con su duración por defecto. */
+export const costoDePieza = (m) => estimar(m, 1);
+
+/** «≈ 0,04 $» o, en un video, «≈ 0,80 $ (10 s)»: lo que cuesta una pieza, para las listas. */
+export const etiquetaDeCosto = (m) => (m?.tipo === "video" ? `${textoCosto(costoDePieza(m))} (${duracionDe(m)} s)` : textoCosto(costoDePieza(m)));
+
+/**
+ * Del más barato al más caro (por pieza): los que no tienen llave y la prueba, al final; a igual precio, la mejor
+ * calidad primero y luego el orden del catálogo. La lista de cualquier pantalla del Estudio. Pura.
+ */
+export function porPrecio(modelos = [], activos = {}) {
+  const rango = (m) => (m.motor === "prueba" ? 1 : activos[m.motor] ? 0 : 2);
+  return modelos.map((m, i) => ({ m, i }))
+    .sort((a, b) => rango(a.m) - rango(b.m) || costoDePieza(a.m) - costoDePieza(b.m) || (b.m.calidad ?? 2) - (a.m.calidad ?? 2) || a.i - b.i)
+    .map(({ m }) => m);
+}
+
 /** Quién hace los modelos de un tipo, sin repetir y en orden alfabético. */
 export function creadoresDe(tipo) {
-  return [...new Set(MODELOS.filter((m) => m.tipo === tipo && !m.pulir).map((m) => m.creador).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
+  return [...new Set(MODELOS.filter((m) => m.tipo === tipo).map((m) => m.creador).filter(Boolean))].sort((a, b) => a.localeCompare(b, "es"));
 }
 
 /** Quién pone el modelo, para la lista. */

@@ -62,6 +62,7 @@ export default function ReelIA({ client, post, cal = null, onPoner, onCerrar }) 
                 client={client} estudio={estudio} onCreando={setCreando}
                 inicial={{ idea, preset: presetDePilar(post.pilar, post.pilarSub) || "", productoId: post.productoId ?? "", postId: post.id ?? null, calendarId: cal ? cal.dbId || cal.id : null }}
                 onPoner={(archivos, opciones) => { onPoner(archivos, opciones); onCerrar(); }}
+                onListo={onCerrar}
               />
             </Suspense>
           )}

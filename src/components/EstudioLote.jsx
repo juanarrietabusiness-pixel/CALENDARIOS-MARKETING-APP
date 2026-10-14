@@ -6,7 +6,7 @@ import * as api from "../lib/estudio";
 import { leerMercado } from "../lib/mercado";
 import { productosActivos, limpiarEstudio } from "../lib/estudioMercado";
 import { NIVELES_CONSCIENCIA, CLAVES_NIVEL, nombreDeNivel } from "../lib/consciencia";
-import { MODELOS, modeloPorId, estimar, textoCosto } from "../lib/estudioCatalogo";
+import { MODELOS, modeloPorId, estimar, textoCosto, porPrecio, costoDePieza, etiquetaDeCosto } from "../lib/estudioCatalogo";
 import { TIPOS_PRESET, ESTILOS_VISUALES, limpiarKit, kitVacio, nombreDePreset, referenciasDePersonajes } from "../lib/kitMarca";
 import { deMisGustos } from "../lib/aprendizajeVisual";
 import { MODOS_TEXTO } from "../lib/carrusel";
@@ -14,9 +14,9 @@ import {
   FORMATOS_LOTE, MAX_POR_NIVEL, MAX_LOTE, MAX_TITULAR, MAX_APOYO, MAX_ESCENA, MAX_BRIEF, MAX_DESCRIPCION, MAX_GUION, cuantasPorDefecto, limpiarCuantas,
   totalDeCuantas, nombreCarpetaLote, publicacionDePieza, COMPOSICIONES, TACTICAS, titularesUsados, aprenderComposiciones, celdasMatriz, celdasPorTipos,
 } from "../lib/loteAnuncios";
-import { pedidoDeLote, crearLote, pulirArchivo, crearCarruselDeIdea, crearReelDeIdea } from "../lib/loteEstudio";
-import { modelosParaCarrusel } from "../lib/carruselEstudio";
-import { modelosParaReel } from "../lib/reelEstudio";
+import { pedidoDeLote, crearLote, crearCarruselDeIdea, crearReelDeIdea } from "../lib/loteEstudio";
+import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
+import { modelosParaReel, modeloRecomendadoParaReel } from "../lib/reelEstudio";
 import { DIAS_LOTE, diasDelLote, diasConTipo, carpetaDelMes, fechaCortaLote, mesDe, textoMes } from "../lib/loteMes";
 import { PILARES, presetDePilar, nombreDePilar } from "../lib/pilares";
 import { fechasDelMes } from "../lib/fechasEspeciales";
@@ -69,7 +69,8 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const ids = useId();
   const clienteId = client.dbId || client.id;
   const activos = useMemo(() => Object.fromEntries(Object.entries(motores ?? {}).map(([k, v]) => [k, Boolean(v.activo)])), [motores]);
-  const modelos = useMemo(() => MODELOS.filter((m) => m.tipo === "imagen" && !m.necesitaImagen && (m.motor === "prueba" || activos[m.motor])), [activos]);
+  // Del más barato al más caro (la prueba al final).
+  const modelos = useMemo(() => porPrecio(MODELOS.filter((m) => m.tipo === "imagen" && !m.necesitaImagen && (m.motor === "prueba" || activos[m.motor])), activos), [activos]);
   const hoy = fechaEnZona();
 
   const [paso, setPaso] = useState(0);
@@ -98,9 +99,6 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const [estilo, setEstilo] = useState("");
   const claveGustos = `estudio-gustos:${clienteId}`;
   const [conGustos, setConGustos] = useState(() => { try { return localStorage.getItem(claveGustos) === "1"; } catch { return false; } });
-  // Pulir cada pieza escogida antes de llevarla al calendario (un modelo de «pulir», si hay llave).
-  const pulidores = useMemo(() => MODELOS.filter((m) => m.pulir && m.id !== "recraft-sin-fondo-kie" && activos[m.motor]), [activos]);
-  const [pulirCon, setPulirCon] = useState("");
   const [variantes, setVariantes] = useState(1);
   const [mejorar, setMejorar] = useState(true);
   // Los personajes de la marca que salen en el lote (van de referencia: salen iguales).
@@ -117,7 +115,6 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const [llevandoTodas, setLlevandoTodas] = useState(false);
   const [aviso, setAviso] = useState(null);
   const vivo = useRef(true);
-  const carpetaLote = useRef(null);
   const creando = Object.values(resultados).some((r) => r.cargando);
   const ref = useDialogA11y(() => { if (!creando) onCerrar(); });
 
@@ -140,9 +137,9 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const guiado = Boolean(FORMATOS_LOTE[formato]?.guiado);
   // Un carrusel o un reel necesitan un modelo de imagen que admita referencias (la lámina o el fotograma anterior).
   const modelosDelFormato = guiado ? modelosParaCarrusel(activos) : modelos;
-  const modelo = modelosDelFormato.find((m) => m.id === modeloId) ?? modelosDelFormato[0];
+  const modelo = modelosDelFormato.find((m) => m.id === modeloId) ?? (guiado ? modelosDelFormato.find((m) => m.id === modeloParaCarrusel(activos).id) : null) ?? modelosDelFormato[0];
   const modelosVideo = useMemo(() => modelosParaReel(activos), [activos]);
-  const modeloVideo = modelosVideo.find((m) => m.id === modeloVideoId) ?? modelosVideo[0] ?? modeloPorId("prueba-video");
+  const modeloVideo = modelosVideo.find((m) => m.id === modeloVideoId) ?? modeloRecomendadoParaReel(activos) ?? modeloPorId("prueba-video");
   const producto = catalogo?.find((p) => p.id === productoId) ?? null;
   const fotos = api.fotosDelProducto(productosConFotos, productoId);
   // Lo que se aprendió de este cliente: qué composiciones le gustan (y cuáles manda a la papelera).
@@ -302,7 +299,6 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
       });
     }
     if (!vivo.current) return;
-    carpetaLote.current = carpetaId;
     onHecho?.();
     setAviso({ ok: true, texto: [
       "Listo. Están en la galería, en la carpeta del lote.",
@@ -313,22 +309,16 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
 
   const elegida = (id) => {
     const r = resultados[id];
-    return r?.pulido ?? r?.opciones?.[r.elegida ?? 0]?.final ?? null;
+    return r?.opciones?.[r.elegida ?? 0]?.final ?? null;
   };
 
   const llevar = async (idea) => {
     // En el lote del mes, cada una va a SU día; en los demás, al que se escoja.
     const fecha = idea.fecha ?? fechas[idea.id];
-    let archivo = elegida(idea.id);
+    const archivo = elegida(idea.id);
     if (!fecha || !archivo || !onLlevar) return;
     try {
-      const pulidor = guiado ? null : pulidores.find((m) => m.id === pulirCon);
-      if (pulidor) {
-        setResultados((m) => ({ ...m, [idea.id]: { ...m[idea.id], puliendo: true } }));
-        archivo = await pulirArchivo({ clienteId, archivo, modelo: pulidor, carpetaId: carpetaLote.current, seguir: () => vivo.current });
-        setResultados((m) => ({ ...m, [idea.id]: { ...m[idea.id], puliendo: false, pulido: archivo } }));
-      }
-      // Un carrusel lleva todas sus láminas; un reel, su video; lo demás, la imagen escogida (o pulida).
+      // Un carrusel lleva todas sus láminas; un reel, su video; lo demás, la imagen escogida.
       const r = resultados[idea.id];
       const lista = guiado ? (r?.opciones?.[0]?.archivos ?? [archivo]) : [archivo];
       const post = publicacionDePieza({ id: uid(), idea, archivos: lista, formato, producto: productoDe(idea) });
@@ -337,7 +327,6 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
       // Apuntar que la usa una publicación: así la papelera no se lleva el archivo. Si falla, la pieza ya está.
       if (calendarId) for (const a of lista) await api.apuntarUso(clienteId, a.id, { calendarId, postId: post.id }).catch(() => {});
     } catch (e) {
-      setResultados((m) => ({ ...m, [idea.id]: { ...m[idea.id], puliendo: false } }));
       setAviso({ ok: false, texto: e.message });
     }
   };
@@ -489,14 +478,14 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                 <div className="field">
                   <label className="label" htmlFor={`${ids}-m`}>{formato === "reel" ? "Modelo de los fotogramas" : formato === "carrusel" ? "Modelo de las láminas" : "Modelo"}</label>
                   <select id={`${ids}-m`} className="input" value={modelo?.id ?? ""} onChange={(e) => setModeloId(e.target.value)}>
-                    {modelosDelFormato.map((m) => <option key={m.id} value={m.id}>{m.nombre} · {textoCosto(m.costo)}</option>)}
+                    {modelosDelFormato.map((m) => <option key={m.id} value={m.id}>{m.nombre} · {textoCosto(costoDePieza(m))}</option>)}
                   </select>
                 </div>
                 {formato === "reel" && (
                   <div className="field">
                     <label className="label" htmlFor={`${ids}-mv`}>Modelo del video</label>
                     <select id={`${ids}-mv`} className="input" value={modeloVideo?.id ?? ""} onChange={(e) => setModeloVideoId(e.target.value)}>
-                      {modelosVideo.map((m) => <option key={m.id} value={m.id}>{m.nombre} · {textoCosto(m.costo)}</option>)}
+                      {modelosVideo.map((m) => <option key={m.id} value={m.id}>{m.nombre} · {etiquetaDeCosto(m)}</option>)}
                     </select>
                   </div>
                 )}
@@ -554,16 +543,6 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                   <input type="checkbox" checked={conGustos} onChange={(e) => { setConGustos(e.target.checked); try { localStorage.setItem(claveGustos, e.target.checked ? "1" : "0"); } catch { /* sin almacenamiento */ } }} />
                   {" "}Usar mis «Me gusta» como referencia de estilo (las dos últimas)
                 </label>
-              )}
-              {pulidores.length > 0 && !guiado && (
-                <div className="field">
-                  <label className="label" htmlFor={`${ids}-pul`}>Pulir antes de llevar al calendario</label>
-                  <select id={`${ids}-pul`} className="input" value={pulirCon} onChange={(e) => setPulirCon(e.target.value)}>
-                    <option value="">No pulir</option>
-                    {pulidores.map((m) => <option key={m.id} value={m.id}>{m.nombre} · {textoCosto(m.costo)} cada una</option>)}
-                  </select>
-                  <p className="hint">Amplía y limpia la imagen escogida justo antes de llevarla: lo que más se nota en la nitidez final.</p>
-                </div>
               )}
               {sinReferencias && <p className="notice notice-warn">{modelo.nombre} no admite imágenes de referencia: las fotos del catálogo no irán y la IA imaginará el producto. Escoge un modelo que las admita (Nano Banana, por ejemplo).</p>}
               <p className="hint">
@@ -661,9 +640,6 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                         : final ? <img src={final.src} alt={`Pieza: ${i.titulo || i.titular}`} /> : (
                           <span className="hint">{r?.error ? "No salió" : r?.cargando ? (r.paso || "Creando…") : "En cola"}</span>
                         )}
-                      {r?.puliendo && (
-                        <span className="hint lote-puliendo">Puliendo…</span>
-                      )}
                     </div>
                     <div className="lote-resultado-texto">
                       <span className="lote-insignia">{[i.fecha && fechaCortaLote(i.fecha), etiquetaDe(i)].filter(Boolean).join(" · ")}</span>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga, archivoDesdeSrc, promptDeEdicion, modeloParaEditar, originalDe } from "./estudio.js";
+import { filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga, archivoDesdeSrc, promptDeEdicion, modeloParaEditar, originalDe, ranurasLibres, RANURAS } from "./estudio.js";
 
 const A = (o) => ({ id: "a", prompt: "una taza", modelo: "nano-banana", favorito: false, subido: false, carpetaId: null, ...o });
 
@@ -185,5 +185,20 @@ describe("el modelo fijado", () => {
     expect(modeloPreferido(activos, "imagen", "no-existe").id).toBe(modeloPorDefecto(activos, "imagen").id);
     expect(modeloPreferido(activos, "video", "nano-banana").id).toBe(modeloPorDefecto(activos, "video").id);
     expect(modeloPreferido({}, "imagen", "nano-banana").id).toBe(modeloPorDefecto({}, "imagen").id);
+  });
+});
+
+describe("¿dónde va una imagen de la galería?", () => {
+  it("con un modelo de video que tiene inicial, final y referencias, se ofrecen los sitios libres (y se pregunta)", () => {
+    const m = { inicial: 1, final: 1, referencias: 7, video: 1 };
+    const a = { id: "a", tipo: "imagen" };
+    expect(ranurasLibres({ start: [], end: [], reference: [] }, m, a)).toEqual(["start", "reference"]);
+    expect(ranurasLibres({ start: [{ id: "b" }], end: [], reference: [] }, m, a)).toEqual(["end", "reference"]);
+    expect(ranurasLibres({ start: [{ id: "a" }], end: [], reference: [] }, m, a)).toEqual(["reference"]);
+    expect(ranurasLibres({ start: [], reference: Array.from({ length: 7 }, (_, i) => ({ id: `r${i}` })) }, m, a)).toEqual(["start"]);
+    expect(ranurasLibres({}, m, { id: "v", tipo: "video" })).toEqual(["video"]);
+    expect(ranurasLibres({ video: [{ id: "x" }] }, m, { id: "v", tipo: "video" })).toEqual([]);
+    expect(ranurasLibres({}, { referencias: 3 }, a)).toEqual(["reference"]);
+    expect(RANURAS.reference.nombre).toBe("Referencia");
   });
 });
