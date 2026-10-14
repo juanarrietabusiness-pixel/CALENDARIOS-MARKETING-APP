@@ -27,6 +27,9 @@ describe("lo puro", () => {
     expect(p).toMatch(/LA IDEA:\nun sofá en una sala bonita/);
     expect(p).not.toMatch(/JSON|CARRUSEL|director de arte/i);
     expect(pedidoDeMejora({ idea: "x", tipo: "video" })).toMatch(/un video corto/);
+    // El tipo de pieza (escogido ANTES de la idea) va como propósito, sin cambiar lo que pide la persona.
+    expect(pedidoDeMejora({ idea: "x", pieza: "Educativo / Informativo" })).toMatch(/Es una pieza de tipo «Educativo \/ Informativo»: que la idea cumpla ese propósito/);
+    expect(p).not.toMatch(/Es una pieza de tipo/);
   });
 
   it("lee la idea limpia: sin etiqueta, sin comillas que la envuelven, en una línea", () => {

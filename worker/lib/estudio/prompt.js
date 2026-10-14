@@ -22,10 +22,12 @@ const MAX_IDEA = 2_000;
 export const MAX_PALABRAS = 60;
 
 /** Lo que se le pide a la IA, en texto. Pura. */
-export function pedidoDeMejora({ idea, tipo = "imagen", cliente = {} }) {
+export function pedidoDeMejora({ idea, tipo = "imagen", cliente = {}, pieza = "" }) {
   const que = tipo === "video" ? "un video corto" : "una imagen";
+  const clase = String(pieza ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
   return [
     `Mejora esta idea para ${que}${cliente.name ? ` de la marca ${cliente.name}` : ""}, para que un generador de ${tipo === "video" ? "video" : "imágenes"} con IA la entienda bien.`,
+    ...(clase ? [`Es una pieza de tipo «${clase}»: que la idea cumpla ese propósito, sin cambiar lo que pide la persona.`] : []),
     "",
     "Reglas:",
     `- Devuelve SOLO la idea mejorada: una o dos frases sencillas, de ${MAX_PALABRAS} palabras como mucho (sin contar el texto entre comillas).`,
@@ -51,12 +53,12 @@ export function leerIdea(texto) {
   return limpio.replace(/\s*\n+\s*/g, " ");
 }
 
-/** Mejora la idea. `datos`: { idea, tipo }. */
+/** Mejora la idea. `datos`: { idea, tipo, pieza? } (`pieza`: el nombre del tipo de pieza, como contexto). */
 export async function mejorarIdea(env, acceso, cliente, datos = {}) {
   const idea = String(datos.idea ?? "").trim();
   if (!idea) throw Object.assign(new Error("Escribe primero la idea, con tus palabras."), { estado: 400 });
   const r = await llamarIA(env, acceso, cliente, {
-    prompt: pedidoDeMejora({ idea, tipo: datos.tipo === "video" ? "video" : "imagen", cliente }),
+    prompt: pedidoDeMejora({ idea, tipo: datos.tipo === "video" ? "video" : "imagen", cliente, pieza: datos.pieza }),
     salida: 600,
     funcion: "prompt de imagen",
   });

@@ -4,7 +4,7 @@ import {
   textoCosto, costoUnitario, nombreDelModelo, NOMBRE_PROPORCION, MAX_PROMPT, maxPorPedido, duracionDe, modelosParaLista, creadoresDe, CRITERIOS_ORDEN, NOMBRE_CALIDAD, NOMBRE_MOTOR,
 } from "../lib/estudioCatalogo";
 import { ETIQUETA_AJUSTE, valorDeAjuste } from "../lib/estudio";
-import { TIPOS_PRESET, ACABADOS, LINEA_LOGO } from "../lib/kitMarca";
+import { TIPOS_PRESET, ESTILOS_VISUALES, LINEA_LOGO } from "../lib/kitMarca";
 import { NOMBRE_TRAMO } from "../lib/videoCorto";
 import { CopyButton } from "./calendario/primitivas";
 import { TOMAS, MAX_NOTA } from "../lib/referencias";
@@ -138,21 +138,59 @@ function Referencias({ ids, archivos, max, subiendo, onQuitar, onSubir, onDrive 
 }
 
 /**
- * El agente diseñador. Arriba, el kit de la marca (sus colores) y si se usa: va en TODA pieza mientras esté encendido,
- * con tipo o sin él. Luego qué clase de pieza es —un preset por tipo de contenido del calendario, y los propios del
- * cliente—, un acabado opcional y el logo de referencia. Lo que se suma a la idea se ve antes de pedir.
+ * QUÉ clase de pieza es —un tipo de contenido del calendario, o uno propio del cliente—. Va ANTES de la idea: cambia lo
+ * que propone «Dame ideas» y cómo se mejora la idea. No dice cómo se ve: eso es el estilo visual, más abajo.
  */
-function EstiloDeMarca({
-  ids, preset, onPreset, kitListo, kit, marca = "", textoPreset, bloqueMarca = "", usarKit = true, onUsarKit, acabado = "", onAcabado,
-  conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo, productos = [], onProducto, gustos = null, refsTipo = [], sinIdea = false,
-}) {
+function TipoDePieza({ ids, preset, onPreset, kit, sinIdea = false }) {
   const [familia, sub] = String(preset ?? "").split("-");
   const subtipos = TIPOS_PRESET[familia]?.subtipos ?? null;
   const propios = kit?.propios ?? [];
+  return (
+    <div className="field est-tipo-pieza">
+      <span className="label" id={`${ids}-tipo`}>Tipo de pieza</span>
+      <div className="est-tipos" role="group" aria-labelledby={`${ids}-tipo`}>
+        <button type="button" className="filter-chip" aria-pressed={!preset} onClick={() => onPreset("")}>Sin tipo</button>
+        {Object.entries(TIPOS_PRESET).map(([tipo, def]) => (
+          <button key={tipo} type="button" className="filter-chip" aria-pressed={familia === tipo} onClick={() => onPreset(tipo)} title={def.ayuda}>{def.nombre}</button>
+        ))}
+        {propios.map((p) => (
+          <button key={p.id} type="button" className="filter-chip" aria-pressed={preset === p.id} onClick={() => onPreset(p.id)}>{p.nombre}</button>
+        ))}
+      </div>
+      {subtipos && (
+        <div className="est-tipos est-subtipos" role="group" aria-label={`Cuál de ${TIPOS_PRESET[familia].nombre}`}>
+          <button type="button" className="filter-chip" aria-pressed={!sub} onClick={() => onPreset(familia)}>General</button>
+          {Object.entries(subtipos).map(([id, d]) => (
+            <button key={id} type="button" className="filter-chip" aria-pressed={sub === id} onClick={() => onPreset(`${familia}-${id}`)}>{d.nombre}</button>
+          ))}
+        </div>
+      )}
+      <p className="hint" style={{ margin: 0 }}>
+        {preset && TIPOS_PRESET[familia] ? `${TIPOS_PRESET[familia].ayuda} ` : ""}
+        {preset && sinIdea ? "El tipo no inventa el contenido: escribe la idea abajo o pídela con «Dame ideas»." : "Dice QUÉ comunica la pieza; cómo se ve lo decide el estilo visual."}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * CÓMO se ve: el kit de la marca (sus colores, en toda pieza mientras esté encendido), el ESTILO VISUAL —con su línea
+ * de acabado profesional; por defecto el del tipo de pieza— y lo que se pone de referencia (las del tipo, los «Me
+ * gusta», el logo, las fotos de productos). Lo que se suma a la idea se ve antes de pedir.
+ */
+function EstiloDeMarca({
+  ids, preset, kitListo, kit, marca = "", textoPreset, bloqueMarca = "", usarKit = true, onUsarKit,
+  estilo = "", estiloResuelto = "", nombreEstilo = "", lineaEstilo = "", onEstilo, fijadoTipo = "", onFijarEstilo = null,
+  conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo, productos = [], onProducto, gustos = null, refsTipo = [],
+}) {
+  const [familia] = String(preset ?? "").split("-");
+  const esTipoBase = Boolean(TIPOS_PRESET[familia]);
+  const estilos = kit?.estilos ?? [];
   const paleta = kit?.paleta ?? [];
-  const lineas = [textoPreset, ACABADOS[acabado]?.linea, bloqueMarca, puedeLogo && conLogo ? LINEA_LOGO : ""].filter(Boolean);
+  const lineas = [textoPreset, lineaEstilo, bloqueMarca, puedeLogo && conLogo ? LINEA_LOGO : ""].filter(Boolean);
   return (
     <div className="field est-estilo">
+      <span className="label est-estilo-titulo" id={`${ids}-estilo`}>Estilo visual</span>
       <div className="est-marca-linea">
         <span className="est-marca-nombre">
           {kitListo ? <>Kit de marca{marca ? ` de ${marca}` : ""}</> : "Sin kit de marca"}
@@ -171,45 +209,30 @@ function EstiloDeMarca({
         )}
       </div>
 
-      <span className="label" id={`${ids}-estilo`}>Tipo de pieza</span>
       <div className="est-tipos" role="group" aria-labelledby={`${ids}-estilo`}>
-        <button type="button" className="filter-chip" aria-pressed={!preset} onClick={() => onPreset("")}>Sin tipo</button>
-        {Object.entries(TIPOS_PRESET).map(([tipo, def]) => (
-          <button key={tipo} type="button" className="filter-chip" aria-pressed={familia === tipo} onClick={() => onPreset(tipo)} title={def.ayuda}>{def.nombre}</button>
+        <button type="button" className="filter-chip" aria-pressed={!estilo} onClick={() => onEstilo("")}>
+          {esTipoBase ? `El del tipo${nombreEstilo && !estilo ? ` (${nombreEstilo})` : ""}` : "Ninguno"}
+        </button>
+        {Object.entries(ESTILOS_VISUALES).map(([id, d]) => (
+          <button key={id} type="button" className="filter-chip" aria-pressed={estilo === id} onClick={() => onEstilo(id)} title={d.ayuda}>{d.nombre}</button>
         ))}
-        {propios.map((p) => (
-          <button key={p.id} type="button" className="filter-chip" aria-pressed={preset === p.id} onClick={() => onPreset(p.id)}>{p.nombre}</button>
+        {estilos.map((e) => (
+          <button key={e.id} type="button" className="filter-chip" aria-pressed={estilo === e.id} onClick={() => onEstilo(e.id)} title={e.texto}>{e.nombre} (propio)</button>
         ))}
       </div>
-      {subtipos && (
-        <div className="est-tipos est-subtipos" role="group" aria-label={`Cuál de ${TIPOS_PRESET[familia].nombre}`}>
-          <button type="button" className="filter-chip" aria-pressed={!sub} onClick={() => onPreset(familia)}>General</button>
-          {Object.entries(subtipos).map(([id, d]) => (
-            <button key={id} type="button" className="filter-chip" aria-pressed={sub === id} onClick={() => onPreset(`${familia}-${id}`)}>{d.nombre}</button>
-          ))}
-        </div>
+      {onFijarEstilo && esTipoBase && estilo && (
+        <label className="est-logo-casilla">
+          <input type="checkbox" checked={fijadoTipo === estilo} onChange={(e) => onFijarEstilo(familia, e.target.checked ? estilo : "")} />
+          {" "}Usar siempre {nombreEstilo} en «{TIPOS_PRESET[familia].nombre}» de este cliente
+        </label>
       )}
-
-      {preset && sinIdea && (
-        <p className="hint est-sin-idea" role="note">
-          El tipo de pieza no inventa el contenido: dice para qué es la pieza y con qué tono. La idea (qué se ve y qué dice) la escribes arriba,
-          o pídela con «Dame ideas» marcando «Sólo de este tipo».
-        </p>
-      )}
+      {estiloResuelto && lineaEstilo && <p className="hint est-estilo-linea">{lineaEstilo}</p>}
       {refsTipo.length > 0 && !esVideo && (
         <p className="hint est-refs-tipo">
           {refsTipo.map((a) => <img key={a.id} src={a.src} alt="" className="est-refs-tipo-img" />)}
-          Va{refsTipo.length === 1 ? " la imagen" : `n las ${refsTipo.length} imágenes`} de referencia de este tipo (su estilo y su composición).
+          Va{refsTipo.length === 1 ? " la imagen" : `n las ${refsTipo.length} imágenes`} de referencia de este tipo o estilo (su estilo y su composición).
         </p>
       )}
-
-      <span className="label" id={`${ids}-acabado`}>Acabado</span>
-      <div className="est-tipos" role="group" aria-labelledby={`${ids}-acabado`}>
-        <button type="button" className="filter-chip" aria-pressed={!acabado} onClick={() => onAcabado("")}>El del tipo</button>
-        {Object.entries(ACABADOS).map(([id, d]) => (
-          <button key={id} type="button" className="filter-chip" aria-pressed={acabado === id} onClick={() => onAcabado(id)}>{d.nombre}</button>
-        ))}
-      </div>
 
       {lineas.length > 0 && (
         <details className="est-preset-vista">
@@ -331,7 +354,9 @@ function FichaDelModelo({ modelo }) {
  * fotos de su producto. Es texto: no gasta en el motor.
  */
 function DameIdeas({ ids, generando, lista = [], deTipo = "", conTema = false, onGenerar, onUsar, onCerrar, nombreDeTipo, nombreDeProducto }) {
-  const [soloTipo, setSoloTipo] = useState(false);
+  // Con un tipo escogido arriba, las ideas son de ese tipo salvo que se pidan variadas.
+  const [variadas, setVariadas] = useState(false);
+  const soloTipo = Boolean(deTipo) && !variadas;
   return (
     <div className="est-ideas">
       <div className="est-acciones-idea">
@@ -340,7 +365,7 @@ function DameIdeas({ ids, generando, lista = [], deTipo = "", conTema = false, o
         </button>
         {deTipo && (
           <label className="est-logo-casilla">
-            <input type="checkbox" checked={soloTipo} onChange={(e) => setSoloTipo(e.target.checked)} /> Sólo de «{nombreDeTipo(deTipo)}»
+            <input type="checkbox" checked={variadas} onChange={(e) => setVariadas(e.target.checked)} /> Variadas (no sólo «{nombreDeTipo(deTipo)}»)
           </label>
         )}
         {lista.length > 0 && <button type="button" className="btn btn-ghost btn-sm" onClick={onCerrar}>Cerrar las ideas</button>}
@@ -441,6 +466,8 @@ export default function Compositor({
           </button>
         ))}
       </div>
+
+      {estilo && <TipoDePieza ids={ids} preset={estilo.preset} onPreset={estilo.onPreset} kit={estilo.kit} sinIdea={estilo.sinIdea} />}
 
       <div className="field">
         <label className="label" htmlFor={`${ids}-p`}>{etiquetaPrompt}</label>

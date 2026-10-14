@@ -8,7 +8,7 @@
 //   POST   /<cliente>/trabajos/<id>/avanzar        UN paso: una imagen
 //   POST   /<cliente>/trabajos/<id>/cancelar
 //   POST   /<cliente>/trabajos/<id>/reintentar
-//   POST   /<cliente>/mejorar                      { idea, tipo }: la IA devuelve la idea más clara (texto)
+//   POST   /<cliente>/mejorar                      { idea, tipo, pieza? }: la IA devuelve la idea más clara (texto)
 //   POST   /<cliente>/versiones                    { idea, n, tipo }: 1–3 escenas distintas con la misma información (texto)
 //   POST   /<cliente>/lote/ideas                   { modo: niveles|matriz|tipos, … }: la producción en lote (texto)
 //   POST   /<cliente>/lote/mes                     { mes, dias, formato }: una pieza por día del mes, con el ritmo y la matriz (texto)

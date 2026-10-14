@@ -65,10 +65,10 @@ export const TIPOS_PRESET = Object.freeze({
     ayuda: "Confianza: garantía, testimonio, solución u objeciones.",
     base: (m) => `Pieza de confianza de ${m}: cercana y creíble, sin exageraciones publicitarias.`,
     subtipos: {
-      garantia: { nombre: "Garantía", linea: "Transmite seguridad: un sello o distintivo de garantía visible, composición estable y ordenada, sensación de respaldo." },
-      testimonio: { nombre: "Testimonio", linea: "Aspecto real y humano: una persona en un entorno cotidiano, luz natural y espacio para una cita corta; nada de pose de estudio." },
-      solucion: { nombre: "Solución", linea: "Antes y después: el problema y su solución en la misma pieza, composición dividida o en secuencia; el cambio se entiende de un vistazo." },
-      objeciones: { nombre: "Objeciones", linea: "Una pregunta frecuente en grande y su respuesta clara, composición limpia tipo tarjeta, tono tranquilo y directo." },
+      garantia: { nombre: "Garantía", linea: "Transmite seguridad y respaldo. Composición sugerida (si la escena no dice otra): un sello o distintivo de garantía visible, orden y estabilidad." },
+      testimonio: { nombre: "Testimonio", linea: "Real y humano, nada de pose. Composición sugerida (si la escena no dice otra): una persona en su entorno cotidiano, con espacio para una cita corta." },
+      solucion: { nombre: "Solución", linea: "El cambio se entiende de un vistazo. Composición sugerida (si la escena no dice otra): antes y después, el problema y su solución en la misma pieza." },
+      objeciones: { nombre: "Objeciones", linea: "Tono tranquilo y directo: una pregunta frecuente y su respuesta clara. Composición sugerida (si la escena no dice otra): limpia, tipo tarjeta." },
     },
   },
   humano: {
@@ -81,18 +81,59 @@ export const TIPOS_PRESET = Object.freeze({
 /** Los ids de preset que existen: los tipos y, de las 7 maletas, cada una («maletas-garantia»). */
 export const IDS_PRESET = Object.freeze(Object.entries(TIPOS_PRESET).flatMap(([id, def]) => [id, ...Object.keys(def.subtipos ?? {}).map((s) => `${id}-${s}`)]));
 
-/** Un acabado, opcional: cambia cómo se ve sin crear más presets. */
-export const ACABADOS = Object.freeze({
-  fotografico: { nombre: "Fotográfico", linea: "Acabado fotográfico realista, como una foto profesional." },
-  grafico: { nombre: "Diseño gráfico", linea: "Acabado de diseño gráfico: formas limpias, bloques de color de la paleta y composición de pieza publicitaria." },
-  natural: { nombre: "Natural (celular)", linea: "Acabado natural, como tomada con un celular: luz real, sin retoque, sensación espontánea." },
+/**
+ * Los ESTILOS VISUALES: CÓMO se ve la pieza, aparte de QUÉ comunica (el tipo). Cada uno lleva una línea de acabado
+ * profesional —luz, lente, color, tipografía— en una o dos frases: lo que pediría un director de arte. Párrafos más
+ * largos empeoran el resultado (el motor deja de hacerle caso a la escena). Corporativo y Creativo eran «presets»:
+ * describían el aspecto, no el mensaje, y por eso son estilos.
+ */
+export const ESTILOS_VISUALES = Object.freeze({
+  fotografico: {
+    nombre: "Fotográfico", ayuda: "Fotografía publicitaria profesional.",
+    linea: "Acabado de fotografía publicitaria profesional: luz suave y direccional con un contraluz sutil, lente de 50 a 85 mm, profundidad de campo corta, color gradado limpio y natural, texturas nítidas.",
+  },
+  grafico: {
+    nombre: "Diseño gráfico", ayuda: "Pieza de diseño: bloques de color y texto bien jerarquizado.",
+    linea: "Acabado de diseño gráfico publicitario: composición en retícula, bloques de color de la paleta, formas limpias y mucho aire; si lleva texto, jerarquía tipográfica clara (titular grande, apoyo pequeño) y alineación precisa.",
+  },
+  natural: {
+    nombre: "Natural (celular)", ayuda: "Como tomada por una persona real: cercana y creíble.",
+    linea: "Acabado natural, como tomada con un buen celular por una persona real: luz de ventana, encuadre espontáneo, sin retoque visible; cercana y creíble.",
+  },
+  editorial: {
+    nombre: "Editorial premium", ayuda: "Como una revista de estilo de vida.",
+    linea: "Acabado editorial premium, como una revista de estilo de vida: luz natural cálida y envolvente, tonos suaves y armónicos, mucho espacio negativo, composición elegante y asimétrica, textura fina.",
+  },
+  estudio: {
+    nombre: "Producto en estudio", ayuda: "El producto nítido y protagonista, sin distracciones.",
+    linea: "Acabado de producto en estudio: fondo liso o superficie limpia, iluminación de estudio con sombras suaves, el producto nítido y protagonista, reflejos controlados, sin distracciones.",
+  },
+  corporativo: {
+    nombre: "Corporativo", ayuda: "Sobrio y confiable: personas e instalaciones reales.",
+    linea: "Acabado corporativo: sobrio y confiable, encuadres ordenados, luz pareja y limpia, personas en un entorno profesional real, los colores de la paleta en superficies y detalles.",
+  },
+  creativo: {
+    nombre: "Creativo", ayuda: "Una idea visual que sorprende.",
+    linea: "Acabado creativo de campaña: una idea visual que sorprende (escala, perspectiva o una metáfora visual), color audaz de la paleta, composición dinámica y un acabado pulido de alto nivel.",
+  },
+});
+
+/** Compatibilidad: el «acabado» de antes es el estilo visual de ahora (mismos ids). */
+export const ACABADOS = ESTILOS_VISUALES;
+
+/** El estilo que trae cada tipo de pieza si el cliente no fijó otro (`kit.estiloPorTipo`). */
+export const ESTILO_POR_TIPO = Object.freeze({
+  anuncio: "fotografico", beneficios: "grafico", servicios: "estudio", educativo: "grafico", diferenciador: "editorial", maletas: "natural", humano: "natural",
 });
 
 /** Los presets de antes (producto, anuncio, corporativo, creativo) → los de ahora. Lo que no tiene equivalente pasa a propio. */
 const PRESET_ANTIGUO = Object.freeze({ producto: "servicios" });
-const PROPIOS_ANTIGUOS = Object.freeze({ corporativo: "Corporativo", creativo: "Creativo" });
+/** Los presets de antes que describían un ASPECTO: pasan a estilos propios con su texto. */
+const ESTILOS_ANTIGUOS = Object.freeze({ corporativo: "Corporativo", creativo: "Creativo" });
 export const MAX_PROPIOS = 6;
+export const MAX_ESTILOS = 6;
 const ID_PROPIO = /^propio-[a-z0-9-]{1,40}$/;
+const ID_ESTILO = /^estilo-[a-z0-9-]{1,40}$/;
 
 const HEX = /^#[0-9a-f]{6}$/i;
 /** Imágenes de referencia por tipo de pieza: como mucho dos (los motores admiten pocas y van también el producto y el logo). */
@@ -118,16 +159,35 @@ export function limpiarKit(guardado) {
     if (t && !presets[nuevo]) presets[nuevo] = t;
   }
   const propios = [];
+  const estilos = [];
+  // Un propio que vino de un preset viejo de aspecto (propio-corporativo, propio-creativo) es un estilo.
+  const aEstilo = (id) => /^propio-(corporativo|creativo)$/.test(id);
   for (const p of Array.isArray(g.propios) ? g.propios : []) {
     const id = String(p?.id ?? "");
     const nombre = corto(p?.nombre, 40);
     const texto = corto(p?.texto, 1500);
-    if (ID_PROPIO.test(id) && nombre && texto && !propios.some((x) => x.id === id)) propios.push({ id, nombre, texto });
+    if (!(ID_PROPIO.test(id) && nombre && texto)) continue;
+    if (aEstilo(id)) {
+      const idEstilo = id.replace(/^propio-/, "estilo-");
+      if (!estilos.some((x) => x.id === idEstilo)) estilos.push({ id: idEstilo, nombre, texto });
+    } else if (!propios.some((x) => x.id === id)) propios.push({ id, nombre, texto });
   }
-  for (const [viejo, nombre] of Object.entries(PROPIOS_ANTIGUOS)) {
+  for (const e of Array.isArray(g.estilos) ? g.estilos : []) {
+    const id = String(e?.id ?? "");
+    const nombre = corto(e?.nombre, 40);
+    const texto = corto(e?.texto, 1500);
+    if (ID_ESTILO.test(id) && nombre && texto && !estilos.some((x) => x.id === id)) estilos.push({ id, nombre, texto });
+  }
+  for (const [viejo, nombre] of Object.entries(ESTILOS_ANTIGUOS)) {
     const texto = corto(guardados[viejo], 1500);
-    const id = `propio-${viejo}`;
-    if (texto && !propios.some((x) => x.id === id)) propios.push({ id, nombre, texto });
+    const id = `estilo-${viejo}`;
+    if (texto && !estilos.some((x) => x.id === id)) estilos.push({ id, nombre, texto });
+  }
+  const estilosFinal = estilos.slice(0, MAX_ESTILOS);
+  // Las referencias de un propio que pasó a estilo se van con él.
+  const refsEntrada = { ...(g.referencias && typeof g.referencias === "object" ? g.referencias : {}) };
+  for (const k of Object.keys(refsEntrada)) {
+    if (aEstilo(k) && !refsEntrada[k.replace(/^propio-/, "estilo-")]) refsEntrada[k.replace(/^propio-/, "estilo-")] = refsEntrada[k];
   }
   return {
     paleta,
@@ -138,14 +198,24 @@ export function limpiarKit(guardado) {
     logo: typeof g.logo === "string" && /^clientes\/[^/]+\/.+/.test(g.logo) && !g.logo.includes("..") ? g.logo : "",
     presets,
     propios: propios.slice(0, MAX_PROPIOS),
+    // Los estilos visuales propios del cliente (hasta 6) y el estilo que fijó para cada tipo de pieza.
+    estilos: estilosFinal,
+    estiloPorTipo: limpiarEstiloPorTipo(g.estiloPorTipo, estilosFinal),
     // Reglas visuales que la IA propuso de los «Me gusta» y la papelera, y una persona aceptó (aprendizajeVisual.js).
     aprendido: limpiarAprendido(g.aprendido),
     // La referencia visual de cada tipo de pieza (y de cada propio): claves de la galería de este cliente.
-    referencias: limpiarRefsPreset(g.referencias, propios.slice(0, MAX_PROPIOS)),
+    referencias: limpiarRefsPreset(refsEntrada, [...propios.slice(0, MAX_PROPIOS), ...estilosFinal]),
     // El modelo FIJADO de este cliente, por tipo («Fijar para este cliente»): un id del catálogo del Estudio.
     modelos: limpiarModelosKit(g.modelos),
     ...(g.preparadoAt ? { preparadoAt: String(g.preparadoAt) } : {}),
   };
+}
+
+/** { tipo → id de estilo }: sólo tipos que existen y estilos que existen (de la casa o propios del cliente). */
+function limpiarEstiloPorTipo(entrada, estilos = []) {
+  const e = entrada && typeof entrada === "object" ? entrada : {};
+  return Object.fromEntries(Object.entries(e)
+    .filter(([tipo, id]) => TIPOS_PRESET[tipo] && (ESTILOS_VISUALES[id] || estilos.some((x) => x.id === id))));
 }
 
 const ID_MODELO = /^[a-z0-9][a-z0-9.-]{1,60}$/;
@@ -186,7 +256,7 @@ export function referenciasDePreset(kitGuardado, id, archivos = [], { toma = ["e
 /** ¿Tiene algo el kit? Pura. */
 export const kitVacio = (kit) => {
   const k = limpiarKit(kit);
-  return !k.paleta.length && !k.tipografia && !k.estilo && !k.luz && !k.evitar && !Object.keys(k.presets).length && !k.propios.length && !k.aprendido.length;
+  return !k.paleta.length && !k.tipografia && !k.estilo && !k.luz && !k.evitar && !Object.keys(k.presets).length && !k.propios.length && !k.estilos.length && !k.aprendido.length;
 };
 
 /** «azul profundo #1B3246 (estructura/tipografía), verde suave #91C9A2 (acento)». Pura. */
@@ -225,7 +295,6 @@ export function presetValido(id, kitGuardado) {
 export function presetActual(id, kitGuardado) {
   if (presetValido(id, kitGuardado)) return id;
   if (PRESET_ANTIGUO[id]) return PRESET_ANTIGUO[id];
-  if (PROPIOS_ANTIGUOS[id] && presetValido(`propio-${id}`, kitGuardado)) return `propio-${id}`;
   return "";
 }
 
@@ -267,18 +336,45 @@ export const LINEA_VIDEO = "Video corto: movimiento de cámara suave y natural, 
 /** Lo que se dice del logo cuando va de referencia: que no lo redibuje. */
 export const LINEA_LOGO = "Una de las imágenes de referencia es el logo de la marca: si aparece en la pieza, cópialo tal cual (forma, colores y letras), sin redibujarlo ni inventar otro.";
 
+/** ¿Existe ese estilo para este kit? (uno de la casa o un propio del cliente). Pura. */
+export const estiloValido = (id, kitGuardado) => Boolean(id) && (Boolean(ESTILOS_VISUALES[id]) || limpiarKit(kitGuardado).estilos.some((e) => e.id === id));
+
 /**
- * El pedido que va al motor: la ESCENA primero (es lo que manda), el tipo de pieza (para qué es), el acabado, qué se
- * toma de cada referencia (referencias.js), la identidad de la marca, el logo y, en video, cómo se mueve. Sin nada de
- * eso, la idea tal cual. Lo que se manda es lo que queda escrito en la galería. Pura.
+ * El estilo de UNA pieza: el escogido si existe; si no («el del tipo»), el que el cliente fijó para ese tipo, o el de
+ * la casa para ese tipo. Sin tipo y sin escoger, ninguno. Pura.
  */
-export function componerPedido({ idea, preset = "", acabado = "", referencias = "", marca = "", logo = false, video = false }) {
+export function estiloDeLaPieza(kitGuardado, preset = "", escogido = "") {
+  if (estiloValido(escogido, kitGuardado)) return escogido;
+  const tipo = String(preset ?? "").split("-")[0];
+  if (!TIPOS_PRESET[tipo]) return "";
+  const fijado = limpiarKit(kitGuardado).estiloPorTipo[tipo];
+  return estiloValido(fijado, kitGuardado) ? fijado : ESTILO_POR_TIPO[tipo] ?? "";
+}
+
+/** La línea de acabado de un estilo (de la casa o propio), o vacío. Pura. */
+export function lineaDeEstilo(kitGuardado, id) {
+  if (ESTILOS_VISUALES[id]) return ESTILOS_VISUALES[id].linea;
+  return limpiarKit(kitGuardado).estilos.find((e) => e.id === id)?.texto ?? "";
+}
+
+/** «Fotográfico», o el nombre de un estilo propio. Pura. */
+export function nombreDeEstilo(kitGuardado, id) {
+  return ESTILOS_VISUALES[id]?.nombre ?? limpiarKit(kitGuardado).estilos.find((e) => e.id === id)?.nombre ?? "";
+}
+
+/**
+ * El pedido que va al motor: la ESCENA primero (es lo que manda), el tipo de pieza (para qué es), el estilo visual
+ * (su línea de acabado), qué se toma de cada referencia (referencias.js), la identidad de la marca, el logo y, en
+ * video, cómo se mueve. Sin nada de eso, la idea tal cual. Lo que se manda es lo que queda escrito en la galería.
+ * `estilo` es la LÍNEA ya resuelta; `acabado` (el id de antes) se acepta por compatibilidad. Pura.
+ */
+export function componerPedido({ idea, preset = "", estilo = "", acabado = "", referencias = "", marca = "", logo = false, video = false }) {
   const escena = String(idea ?? "").trim();
-  const lineaAcabado = ACABADOS[acabado]?.linea ?? "";
+  const lineaEstilo = String(estilo || ACABADOS[acabado]?.linea || "").trim();
   const lineasRefs = String(referencias ?? "").trim();
-  if (!preset && !lineaAcabado && !lineasRefs && !marca && !logo) return escena;
+  if (!preset && !lineaEstilo && !lineasRefs && !marca && !logo) return escena;
   const tipo = String(preset ?? "").trim();
-  return [`Escena: ${escena}`, tipo ? `${PREFIJO_TIPO} ${tipo}` : "", lineaAcabado, lineasRefs, String(marca).trim(), logo ? LINEA_LOGO : "", video ? LINEA_VIDEO : ""]
+  return [`Escena: ${escena}`, tipo ? `${PREFIJO_TIPO} ${tipo}` : "", lineaEstilo, lineasRefs, String(marca).trim(), logo ? LINEA_LOGO : "", video ? LINEA_VIDEO : ""]
     .filter(Boolean).join("\n\n");
 }
 
@@ -301,14 +397,15 @@ export function conOtraEscena(prompt, escena) {
 }
 
 /**
- * Todo el pedido de una pieza para un cliente, con su kit: lo usan la pantalla, «Producir el mes» y el asistente, así
- * los tres piden igual. `usarKit: false` deja sólo el preset y la escena. Pura.
+ * Todo el pedido de una pieza para un cliente, con su kit: lo usan la pantalla, «Producir el mes», el lote y el
+ * asistente, así todos piden igual. `estilo`: el id escogido ("" = el del tipo; `acabado` es su nombre de antes).
+ * `usarKit: false` deja sólo el preset, el estilo y la escena. Pura.
  */
-export function pedidoConMarca({ kit, idea, preset = "", acabado = "", referencias = "", marca = "la marca", rubro = "", video = false, logo = false, usarKit = true }) {
+export function pedidoConMarca({ kit, idea, preset = "", estilo = "", acabado = "", referencias = "", marca = "la marca", rubro = "", video = false, logo = false, usarKit = true }) {
   return componerPedido({
     idea,
     preset: preset ? textoPreset(kit, preset, { marca, rubro }) : "",
-    acabado,
+    estilo: lineaDeEstilo(kit, estiloDeLaPieza(kit, preset, estilo || acabado)),
     referencias,
     marca: usarKit ? bloqueDeMarca(kit) : "",
     logo: usarKit && logo && !video,
@@ -317,11 +414,11 @@ export function pedidoConMarca({ kit, idea, preset = "", acabado = "", referenci
 }
 
 /**
- * El estilo entero para quien pide por su cuenta (el carrusel, lámina a lámina): el preset y la identidad de la marca
- * juntos, en un solo texto. Pura.
+ * El estilo entero para quien pide por su cuenta (el carrusel, lámina a lámina): el preset, el estilo visual y la
+ * identidad de la marca juntos, en un solo texto. Pura.
  */
-export function estiloDeMarca(kit, preset, { marca = "la marca", rubro = "" } = {}) {
-  return [preset ? textoPreset(kit, preset, { marca, rubro }) : "", bloqueDeMarca(kit)].filter(Boolean).join("\n\n");
+export function estiloDeMarca(kit, preset, { marca = "la marca", rubro = "", estilo = "" } = {}) {
+  return [preset ? textoPreset(kit, preset, { marca, rubro }) : "", lineaDeEstilo(kit, estiloDeLaPieza(kit, preset, estilo)), bloqueDeMarca(kit)].filter(Boolean).join("\n\n");
 }
 
 /**
@@ -391,7 +488,10 @@ export function leerKit(texto) {
 export function fundirKit(guardado, propuesto, ahora = new Date().toISOString()) {
   const antes = limpiarKit(guardado);
   // Lo que la IA no escribe se queda: el logo, los presets propios, las reglas aprendidas y las referencias de cada tipo.
-  return limpiarKit({ ...propuesto, logo: antes.logo, propios: antes.propios, aprendido: antes.aprendido, referencias: antes.referencias, modelos: antes.modelos, preparadoAt: ahora });
+  return limpiarKit({
+    ...propuesto, logo: antes.logo, propios: antes.propios, estilos: antes.estilos, estiloPorTipo: antes.estiloPorTipo,
+    aprendido: antes.aprendido, referencias: antes.referencias, modelos: antes.modelos, preparadoAt: ahora,
+  });
 }
 
 /** Lo que se le pide a la IA al revisar una pieza contra el kit. La imagen va aparte. Pura. */
