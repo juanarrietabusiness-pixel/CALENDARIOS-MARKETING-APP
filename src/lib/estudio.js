@@ -358,3 +358,6 @@ export function originalDe(archivo, trabajos = [], archivos = []) {
 
 /** El lote de anuncios: la IA escribe las ideas por nivel → `{ ideas, producto, conEstudio }` (texto: no gasta en el motor). */
 export const ideasDeLote = (clienteId, datos) => pedir(`${base(clienteId)}/lote/ideas`, post(datos));
+
+/** «Dame ideas»: { tipo?, n?, video?, tema?, semilla? } → `{ ideas, productos }` (texto: no gasta en el motor). */
+export const ideasDelEstudio = (clienteId, datos) => pedir(`${base(clienteId)}/ideas`, post(datos));

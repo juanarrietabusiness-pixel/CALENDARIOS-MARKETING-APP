@@ -344,3 +344,11 @@ div.est-img { cursor: default; }
 .est-kit-refs-opcion { padding: 0; border: 2px solid transparent; border-radius: var(--radius-sm); background: var(--surface-2); aspect-ratio: 1; overflow: hidden; cursor: pointer; min-height: var(--tap-sm); }
 .est-kit-refs-opcion img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .est-kit-refs-opcion[aria-pressed="true"] { border-color: var(--accent); }
+
+/* «Dame ideas» */
+.est-ideas { display: flex; flex-direction: column; gap: var(--sp-2); }
+.est-ideas-lista { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--sp-2); }
+.est-idea-tarjeta { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: var(--fs-sm); }
+.est-idea-tarjeta p { margin: 0; }
+.est-idea-tarjeta .btn { align-self: flex-start; margin-top: auto; }
+.est-idea-texto { font-weight: 600; }

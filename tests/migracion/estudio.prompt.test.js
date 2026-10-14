@@ -231,3 +231,29 @@ describe("POST /api/estudio/<cliente>/lote/ideas", () => {
     expect((await ideas({ cuantas: { problema: 2 } })).status).toBe(502);
   });
 });
+
+describe("POST /api/estudio/<cliente>/ideas («Dame ideas»)", () => {
+  const ideas = (datos) => pedir("/api/estudio/c1/ideas", { method: "POST", body: datos });
+
+  it("ideas variadas con el catálogo y su precio EXACTO, cada una con su tipo; no crea trabajos", async () => {
+    await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: [{ id: "sofa", nombre: "Sofá cama", precio: "$399" }] } });
+    anthropic(JSON.stringify({ ideas: [
+      { n: 1, titulo: "Llévatelo", escena: "El sofá cama en una sala luminosa", texto: "Desde $399" },
+      { n: 2, titulo: "Oferta", escena: "El sofá abierto con una manta" },
+    ] }));
+    const res = await ideas({ n: 2, tema: "regreso a clases" });
+    expect(res.status).toBe(200);
+    const r = await res.json();
+    expect(r.ideas.map((i) => [i.tipo, i.productoId, i.titulo])).toEqual([["anuncio", "sofa", "Llévatelo"], ["beneficios", "sofa", "Oferta"]]);
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/producto: Sofá cama \(producto\) · precio: \$399/);
+    expect(t).toMatch(/Tema que pide la persona: regreso a clases/);
+    expect(db.sqlite.prepare("select count(*) as n from estudio_trabajos").get().n).toBe(0);
+    expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("ideas del estudio");
+  });
+
+  it("si la IA no devuelve nada que sirva, lo dice", async () => {
+    anthropic("no sé");
+    expect((await ideas({ tipo: "educativo" })).status).toBe(502);
+  });
+});

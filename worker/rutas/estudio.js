@@ -11,6 +11,7 @@
 //   POST   /<cliente>/mejorar                      { idea, tipo }: la IA devuelve la idea más clara (texto)
 //   POST   /<cliente>/versiones                    { idea, n, tipo }: 1–3 escenas distintas con la misma información (texto)
 //   POST   /<cliente>/lote/ideas                   { productoId?, cuantas, formato }: ideas de anuncios por nivel (texto)
+//   POST   /<cliente>/ideas                        { tipo?, n?, video?, tema? }: «Dame ideas», variadas o de un tipo (texto)
 //   POST   /<cliente>/guion-corto                  { idea, segundos, post? }: guion de un video de 8 o 10 s (texto)
 //   PUT    /<cliente>/kit                          { kit }: guarda el kit de marca (paleta, presets, logo…)
 //   POST   /<cliente>/kit/preparar                 La IA PROPONE el kit desde el cerebro (no guarda)
@@ -45,6 +46,7 @@ import { guionCorto } from "../lib/estudio/guionCorto.js";
 import { kitDe, guardarKit, prepararKit, revisarPieza } from "../lib/estudio/kit.js";
 import { aprenderDeLoVisual } from "../lib/estudio/aprender.js";
 import { ideasDeLote } from "../lib/estudio/lote.js";
+import { ideasDelEstudio } from "../lib/estudio/ideas.js";
 import { leerMercado } from "../lib/mercado.js";
 import { angulosDeAnuncio, fotosDelCatalogo } from "../../src/lib/estudioMercado.js";
 import {
@@ -141,6 +143,13 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       const datos = await cuerpo(req);
       if (!datos) return error("JSON inválido");
       return json(await ideasDeLote(env, acceso, cliente, datos));
+    }
+
+    // ---------- «Dame ideas» (texto: no pide nada al motor) ----------
+    if (b === "ideas" && !c && metodo === "POST") {
+      const datos = await cuerpo(req);
+      if (!datos) return error("JSON inválido");
+      return json(await ideasDelEstudio(env, acceso, cliente, datos));
     }
 
     // ---------- «Otra versión distinta»: otras escenas (texto: no pide nada al motor) ----------

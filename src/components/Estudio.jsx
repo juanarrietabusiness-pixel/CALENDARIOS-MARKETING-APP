@@ -3,7 +3,9 @@ import Icon from "./Icon";
 import Compositor from "./EstudioCompositor";
 import Visor, { Pieza } from "./EstudioVisor";
 import EstudioKit from "./EstudioKit";
-import { kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, componerPedido, ponerLogo, ideaDelPedido, conOtraEscena, referenciasDePreset } from "../lib/kitMarca";
+import { kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, componerPedido, ponerLogo, ideaDelPedido, conOtraEscena, referenciasDePreset, nombreDePreset } from "../lib/kitMarca";
+import { ideaAlPedido } from "../lib/ideasEstudio";
+import { presetDePilar, nombreDePilar } from "../lib/pilares";
 import { ideaDesdeAngulo } from "../lib/estudioMercado";
 import { lineasDeReferencias, productosNombrados } from "../lib/referencias";
 import { deMisGustos } from "../lib/aprendizajeVisual";
@@ -348,6 +350,36 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     yaMejorado.current = true;
     mejorarConIA();
   });
+
+  // ---------- «Dame ideas» ----------
+  const [ideasGen, setIdeasGen] = useState({ generando: false, lista: [], productos: [] });
+  const generarIdeas = async (tipo) => {
+    if (!form || ideasGen.generando) return;
+    setIdeasGen((x) => ({ ...x, generando: true }));
+    setAviso(null);
+    try {
+      const r = await api.ideasDelEstudio(client.id, {
+        tipo, n: 6, video: form.tipo === "video", tema: form.prompt.trim().slice(0, 300), semilla: Math.floor(Math.random() * 1000),
+      });
+      setIdeasGen({ generando: false, lista: r.ideas, productos: r.productos ?? [] });
+      if (r.aviso) avisar(true, r.aviso);
+    } catch (e) {
+      setIdeasGen((x) => ({ ...x, generando: false }));
+      avisar(false, e.message);
+    } finally {
+      window.dispatchEvent(new Event("ia:gasto"));
+    }
+  };
+  /** «Usar»: la idea al pedido, su tipo de pieza y, en una imagen, las fotos de su producto. */
+  const usarIdeaGenerada = (idea) => {
+    setConfirmando(null);
+    setIdeaAnterior(form.prompt || null);
+    setForm((f) => ({ ...f, prompt: (f.tipo === "video" ? idea.escena : ideaAlPedido(idea)).slice(0, MAX_PROMPT) }));
+    setPreset(presetDePilar(idea.tipo));
+    if (form.tipo === "imagen" && idea.productoId) ponerFotosDeProducto(idea.productoId);
+    avisar(true, "Idea puesta en el pedido. Revísala (o pulsa «Mejorar idea») y crea.");
+    enfocarPrompt();
+  };
 
   /** Deshace la mejora: vuelve lo que la persona había escrito. */
   const volverAMiIdea = () => {
@@ -909,6 +941,13 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             onProducto: ponerFotosDeProducto,
           }}
           fijado={fijados[form.tipo] ?? ""} onFijar={(id) => fijar(form.tipo, id)}
+          ideas={{
+            generando: ideasGen.generando, lista: ideasGen.lista, conTema: Boolean(form.prompt.trim()),
+            deTipo: presetVigente && !presetVigente.startsWith("propio-") ? presetVigente.split("-")[0] : "",
+            onGenerar: generarIdeas, onUsar: usarIdeaGenerada, onCerrar: () => setIdeasGen((x) => ({ ...x, lista: [] })),
+            nombreDeTipo: (id) => nombreDePilar(id) || nombreDePreset(id, kit),
+            nombreDeProducto: (id) => ideasGen.productos.find((p) => p.id === id)?.nombre ?? "",
+          }}
           guionCorto={{
             segundos: segundosGuion, escribiendo: escribiendoGuion, resultado: guion,
             onEscribir: escribirGuion, onUsar: usarGuion, onDescartar: () => setGuion(null),

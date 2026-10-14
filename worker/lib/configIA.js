@@ -71,7 +71,7 @@ export const MODELOS_POR_FUNCION = Object.freeze(["sonnet", "opus", "haiku", "mu
  * `consumo_ia`) se reparten así; lo que no esté, va a «analisis».
  */
 export const FUNCIONES_IA = Object.freeze({
-  redaccion: ["calendario", "descripciones", "publicación", "ideas de anuncios"],
+  redaccion: ["calendario", "descripciones", "publicación", "ideas de anuncios", "ideas del estudio", "lote del mes"],
   guiones: ["guiones", "guion de video"],
   lectura: ["lectura de contenido"],
   asistente: ["asistente", "resumen del chat"],

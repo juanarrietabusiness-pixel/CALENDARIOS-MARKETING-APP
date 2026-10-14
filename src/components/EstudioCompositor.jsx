@@ -320,6 +320,51 @@ function FichaDelModelo({ modelo }) {
 }
 
 /**
+ * «Dame ideas»: para cuando la mente está en blanco. Variadas (un tipo de contenido distinto cada una) o del tipo de
+ * pieza escogido; si ya hay algo escrito, sobre eso. Cada una con «Usar», que la pone en el pedido con su tipo y las
+ * fotos de su producto. Es texto: no gasta en el motor.
+ */
+function DameIdeas({ ids, generando, lista = [], deTipo = "", conTema = false, onGenerar, onUsar, onCerrar, nombreDeTipo, nombreDeProducto }) {
+  const [soloTipo, setSoloTipo] = useState(false);
+  return (
+    <div className="est-ideas">
+      <div className="est-acciones-idea">
+        <button type="button" className="btn btn-secondary btn-sm" disabled={generando} onClick={() => onGenerar(soloTipo && deTipo ? deTipo : "")}>
+          <Icon name="sparkles" size={14} /> {generando ? "Pensando ideas…" : lista.length ? "Otras ideas" : "Dame ideas"}
+        </button>
+        {deTipo && (
+          <label className="est-logo-casilla">
+            <input type="checkbox" checked={soloTipo} onChange={(e) => setSoloTipo(e.target.checked)} /> Sólo de «{nombreDeTipo(deTipo)}»
+          </label>
+        )}
+        {lista.length > 0 && <button type="button" className="btn btn-ghost btn-sm" onClick={onCerrar}>Cerrar las ideas</button>}
+        <p className="hint" style={{ margin: 0, flexBasis: "100%" }}>
+          {conTema ? "Sobre lo que escribiste arriba. " : ""}{soloTipo && deTipo ? "Todas de ese tipo de pieza" : "Variadas: cada una de un tipo de contenido distinto"}, con el catálogo y el cerebro. No crea nada todavía.
+        </p>
+      </div>
+      {lista.length > 0 && (
+        <ul className="est-ideas-lista" aria-label="Ideas propuestas">
+          {lista.map((i) => (
+            <li key={i.id} className="est-idea-tarjeta">
+              <span className="est-ref-insignia">{nombreDeTipo(i.tipo)}</span>
+              <strong>{i.titulo}</strong>
+              <p>{i.escena}</p>
+              {i.texto && <p className="est-idea-texto">«{i.texto.replace(/
+/g, " · ")}»</p>}
+              {i.productoId && nombreDeProducto(i.productoId) && <p className="hint" style={{ margin: 0 }}>Producto: {nombreDeProducto(i.productoId)}</p>}
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => onUsar(i)} aria-describedby={`${ids}-ideas-usar`}>
+                <Icon name="check" size={14} /> Usar
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <span id={`${ids}-ideas-usar`} className="sr-only">La pone en el pedido con su tipo de pieza y las fotos de su producto.</span>
+    </div>
+  );
+}
+
+/**
  * «Mejorar idea»: la IA devuelve la idea más clara y sencilla en el mismo campo, y
  * «Volver a mi idea» la deshace.
  */
@@ -352,6 +397,7 @@ export default function Compositor({
   estilo = null,
   guionCorto = null,
   fijado = "", onFijar = null,
+  ideas = null,
 }) {
   const entrada = useRef(null);
   const rolSubida = useRef("reference");
@@ -403,6 +449,8 @@ export default function Compositor({
         />
         <p className="hint">Sin texto dentro {esVideo ? "del video" : "de la imagen"}, salvo que lo pidas. {form.prompt.length > 3500 ? `${form.prompt.length} de ${MAX_PROMPT} caracteres.` : ""}</p>
       </div>
+
+      {ideas && <DameIdeas ids={ids} {...ideas} />}
 
       {onMejorar && <MejorarIdea mejorando={mejorando} onMejorar={onMejorar} onVolverIdea={onVolverIdea} mejorarSolo={mejorarSolo} />}
 
