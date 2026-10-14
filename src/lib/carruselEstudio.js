@@ -35,8 +35,13 @@ export function modelosParaCarrusel(activos = {}) {
   return [rec, ...lista.filter((m) => m.id !== rec.id)];
 }
 
-/** Espera a que un trabajo termine, avanzándolo. Devuelve el archivo creado o lanza el motivo. */
-export async function esperarArchivo(clienteId, trabajo, { seguir = () => true } = {}) {
+/** Espera a que un trabajo termine, avanzándolo. Devuelve el (primer) archivo creado o lanza el motivo. */
+export async function esperarArchivo(clienteId, trabajo, opciones = {}) {
+  return (await esperarArchivos(clienteId, trabajo, opciones))[0];
+}
+
+/** Lo mismo, con TODOS los archivos del trabajo (un pedido de 2 o 3 variantes), en el orden en que salieron. */
+export async function esperarArchivos(clienteId, trabajo, { seguir = () => true } = {}) {
   let t = trabajo;
   while (!TERMINADO.has(t.estado)) {
     if (!seguir()) throw new Error("Se detuvo.");
@@ -51,9 +56,9 @@ export async function esperarArchivo(clienteId, trabajo, { seguir = () => true }
   if (t.estado !== "hecho") throw new Error(t.error || "La pieza no salió.");
   const g = await api.leerEstudio(clienteId);
   // La cruda: una pieza con el texto de la plantilla encima hereda el trabajo de la suya (lib/loteEstudio.js).
-  const archivo = (g?.archivos ?? []).find((a) => a.trabajoId === t.id && !a.ajustes?.plantilla);
-  if (!archivo) throw new Error("La pieza se creó pero no aparece en la galería.");
-  return archivo;
+  const archivos = (g?.archivos ?? []).filter((a) => a.trabajoId === t.id && !a.ajustes?.plantilla).reverse();
+  if (!archivos.length) throw new Error("La pieza se creó pero no aparece en la galería.");
+  return archivos;
 }
 
 /**

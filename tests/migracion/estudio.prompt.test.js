@@ -286,3 +286,49 @@ describe("POST /api/estudio/<cliente>/lote/mes (el mes completo)", () => {
     expect(peticiones).toHaveLength(0);
   });
 });
+
+describe("POST /api/estudio/<cliente>/lote/ideas: la matriz y por tipos", () => {
+  const lote = (datos) => pedir("/api/estudio/c1/lote/ideas", { method: "POST", body: datos });
+  const conEstudio = async () => {
+    await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: [{ id: "sofa", nombre: "Sofá cama", precio: "$399" }] } });
+    db.sqlite.prepare("update mercado_clientes set estudio = ? where client_id = 'c1'").run(JSON.stringify({
+      general: {
+        resumen: "Mercado de muebles.", perfiles: [{ nombre: "Pareja joven", quien: "primer apartamento" }, { nombre: "Familia", quien: "con niños" }],
+        deseos: [{ deseo: "Tranquilidad" }, { deseo: "Ahorro" }],
+      },
+      productos: {},
+    }));
+  };
+
+  it("la matriz: una pieza por deseo × perfil × nivel, sólo de los del estudio; el producto no sale en los niveles fríos", async () => {
+    await conEstudio();
+    anthropic(JSON.stringify({ ideas: [1, 2, 3, 4].map((n) => ({ n, titulo: `T${n}`, brief: `B${n}`, titular: `Titular ${n}`, escena: `Escena ${n}` })) }));
+    const res = await lote({ modo: "matriz", productoId: "sofa", deseos: ["Tranquilidad", "Inventado"], perfiles: ["Pareja joven", "Familia"], niveles: ["problema", "decision"] });
+    expect(res.status).toBe(200);
+    const r = await res.json();
+    expect(r.ideas.map((i) => [i.deseo, i.perfil, i.nivel, i.conProducto])).toEqual([
+      ["Tranquilidad", "Pareja joven", "problema", false], ["Tranquilidad", "Pareja joven", "decision", true],
+      ["Tranquilidad", "Familia", "problema", false], ["Tranquilidad", "Familia", "decision", true],
+    ]);
+    expect(r.ideas[1]).toMatchObject({ productoId: "sofa", producto: "Sofá cama", titulo: "T2", brief: "B2" });
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/Los perfiles:\n- Pareja joven: primer apartamento/);
+    expect(t).toMatch(/NO aparece en la imagen/);
+  });
+
+  it("la matriz sin estudio aprobado no llama a nadie", async () => {
+    anthropic("x");
+    expect((await lote({ modo: "matriz", deseos: ["Tranquilidad"], perfiles: ["Familia"], niveles: ["problema"] })).status).toBe(400);
+    expect(peticiones).toHaveLength(0);
+  });
+
+  it("por tipos: cuántas de cada tipo, con la matriz del mes (la maleta que toca) y sin composiciones de objeto donde no hay producto", async () => {
+    await conEstudio();
+    anthropic(JSON.stringify({ ideas: [1, 2, 3].map((n) => ({ n, titular: `Titular ${n}`, escena: `Escena ${n}` })) }));
+    const r = await (await lote({ modo: "tipos", tipos: { educativo: 2, maletas: 1 } })).json();
+    expect(r.ideas.map((i) => i.tipo)).toEqual(["educativo", "educativo", "maletas"]);
+    expect(r.ideas[2].pilarSub).toBeTruthy();
+    expect(r.ideas.filter((i) => i.tipo === "educativo").every((i) => i.conProducto === false)).toBe(true);
+    expect((await lote({ modo: "tipos", tipos: {} })).status).toBe(400);
+  });
+});

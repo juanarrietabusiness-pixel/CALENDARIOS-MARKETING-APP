@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { diasDelLote, diasConTipo, planDelMes, pedidoDelMes, leerIdeasDelMes, publicacionDelMes, carpetaDelMes, mesDe } from "./loteMes";
+import { diasDelLote, diasConTipo, planDelMes, carpetaDelMes, mesDe } from "./loteMes";
+import { pedidoDeProduccion, leerProduccion, publicacionDePieza } from "./loteAnuncios";
 
 // Octubre 2026: el 1 es jueves. El ritmo de la agencia: lun Anuncio, mar Beneficios, mié Servicios, jue Educativo,
 // vie Diferenciador, sáb 7 maletas, dom libre.
@@ -29,14 +30,14 @@ describe("el lote del mes completo", () => {
 
   it("el pedido lleva cada día con su tipo y su regla; la lectura, una idea por día con su descripción", () => {
     const plan = planDelMes(diasDelLote({ year: 2026, month: 9, dias: [1] }).slice(0, 2), { productos: [{ id: "a", nombre: "Sofá" }] });
-    const p = pedidoDelMes({ marca: "Dcasa", plan, productos: { a: "Sofá · $399" }, fechasEspeciales: ["2026-10-12 · Día de la Raza"] });
+    const p = pedidoDeProduccion({ marca: "Dcasa", plan, mes: true, productos: { a: "Sofá · $399" }, fechasEspeciales: ["2026-10-12 · Día de la Raza"] });
     expect(p).toMatch(/^1\. lunes, 5 de octubre · Anuncio: Pieza de venta directa/m);
     expect(p).toMatch(/producto: Sofá · \$399/);
-    expect(p).toMatch(/Fechas especiales del mes:\n- 2026-10-12 · Día de la Raza/);
-    const ideas = leerIdeasDelMes(JSON.stringify({ ideas: [{ n: 1, titular: "Tu sala, hoy", apoyo: "Desde $399", escena: "Un sofá", descripcion: "Escríbenos." }, { n: 2, titular: "", escena: "x" }] }), plan);
+    expect(p).toMatch(/Fechas especiales:\n- 2026-10-12 · Día de la Raza/);
+    const ideas = leerProduccion(JSON.stringify({ ideas: [{ n: 1, titular: "Tu sala, hoy", apoyo: "Desde $399", escena: "Un sofá", descripcion: "Escríbenos." }, { n: 2, titular: "", escena: "x" }] }), plan);
     expect(ideas).toHaveLength(1);
     expect(ideas[0]).toMatchObject({ fecha: "2026-10-05", pilar: "anuncio", productoId: "a", titular: "Tu sala, hoy", descripcion: "Escríbenos.", elegida: true });
-    const post = publicacionDelMes({ id: "p1", idea: ideas[0], archivo: { src: "/api/media/clientes/c1/x.jpg" } });
+    const post = publicacionDePieza({ id: "p1", idea: ideas[0], archivo: { src: "/api/media/clientes/c1/x.jpg" } });
     expect(post).toMatchObject({ id: "p1", format: "post", pilar: "anuncio", productoId: "a", producto: "Sofá", status: "pending", textoPieza: "Tu sala, hoy\nDesde $399", descripcion: "Escríbenos." });
   });
 

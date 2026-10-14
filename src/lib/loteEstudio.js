@@ -8,7 +8,8 @@
 // (como en el carrusel); la pieza cruda también queda en la galería.
 //
 // Lo orquesta el navegador, de dos en dos: cerrar a la mitad deja hechas
-// las que salieron. Un error de presupuesto para todo.
+// las que salieron. Un error de presupuesto para todo. Cada pieza puede
+// salir en 2 o 3 variantes para escoger, con la escena mejorada antes.
 // ============================================================
 
 import * as api from "./estudio";
@@ -17,14 +18,15 @@ import { pedidoConMarca, ponerLogo, limpiarKit, referenciasDePreset } from "./ki
 import { lineasDeReferencias } from "./referencias";
 import { coloresPlantilla } from "./carrusel";
 import { componerLamina } from "./textoSobreImagen";
-import { esperarArchivo } from "./carruselEstudio";
+import { esperarArchivos } from "./carruselEstudio";
 import { escenaDeAnuncio, textoDeIdea, plantillaDeIdea, FORMATOS_LOTE } from "./loteAnuncios";
 
 /** El pedido de UNA pieza: lo que se manda al motor (y queda en la galería). Pura salvo por los imports. */
-export function pedidoDeLote({ idea, kit, preset = "anuncio", modo = "plantilla", formato = "post", modelo, fotos = [], archivos = [], marca = "", rubro = "" }) {
+export function pedidoDeLote({ idea, kit, preset = "anuncio", modo = "plantilla", formato = "post", modelo, fotos = [], archivos = [], marca = "", rubro = "", n = 1 }) {
   const k = limpiarKit(kit);
   const max = modelo.referencias || 0;
-  const deProducto = fotos.slice(0, max);
+  // En los niveles fríos el producto NO sale (se habla del problema): sus fotos no van.
+  const deProducto = idea?.conProducto === false ? [] : fotos.slice(0, max);
   // La referencia visual del tipo, sólo por su ESTILO (la composición la decide el plan), dejando sitio al logo.
   const delTipo = referenciasDePreset(k, preset, archivos, { toma: ["estilo"] }).slice(0, Math.max(0, max - deProducto.length - (k.logo ? 1 : 0)));
   const apoyos = [...deProducto, ...delTipo];
@@ -36,7 +38,7 @@ export function pedidoDeLote({ idea, kit, preset = "anuncio", modo = "plantilla"
     referencias: lineasDeReferencias(apoyos, { cliente: marca }),
   });
   const medios = reference.length ? { reference } : {};
-  return { modelo: modelo.id, prompt, n: 1, medios, ajustes: ajustesDe(modelo, { aspectRatio: FORMATOS_LOTE[formato]?.aspectRatio ?? "4:5" }, medios) };
+  return { modelo: modelo.id, prompt, n: Math.max(1, Math.min(3, Math.floor(n) || 1)), medios, ajustes: ajustesDe(modelo, { aspectRatio: FORMATOS_LOTE[formato]?.aspectRatio ?? "4:5" }, medios) };
 }
 
 /**
@@ -53,15 +55,30 @@ export async function ponerTexto({ clienteId, crudo, texto, plantilla = "banda",
   return archivo;
 }
 
-/** Crea UNA pieza y espera a que salga. → { crudo, final } (en el modo «ia», el mismo archivo). */
-export async function crearAnuncio({ clienteId, pedido, idea, modo, formato, kit, carpetaId = null, seguir = () => true }) {
+/**
+ * Crea UNA pieza con sus variantes. Primero, si se pide, MEJORA la escena (lo que la agencia hacía a mano con
+ * «Mejorar idea»: la idea en una o dos frases claras; texto, céntimos); luego pide `n` imágenes (1–3) y, en el modo
+ * «plantilla», le pone el texto encima a cada una. → { opciones: [{ crudo, final }], escena }.
+ */
+export async function crearPieza({ clienteId, idea, pedidoDe, mejorar = true, modo, formato, kit, n = 1, carpetaId = null, seguir = () => true }) {
+  let escena = idea.escena;
+  if (mejorar) {
+    try {
+      const r = await api.mejorarIdea(clienteId, { idea: [idea.escena, idea.brief ? `Contexto de la publicación: ${idea.brief}` : ""].filter(Boolean).join("\n\n"), tipo: "imagen" });
+      if (r?.idea) escena = r.idea;
+    } catch { /* sin mejora, con la escena de la idea */ }
+  }
+  const pedido = pedidoDe({ ...idea, escena }, n);
   const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true, ...(carpetaId ? { carpetaId } : {}) });
-  const crudo = await esperarArchivo(clienteId, trabajo, { seguir });
-  if (modo !== "plantilla") return { crudo, final: crudo };
-  const final = await ponerTexto({
-    clienteId, crudo, texto: textoDeIdea(idea), plantilla: plantillaDeIdea(idea, formato), kit, carpetaId, nombre: `anuncio-${idea.id}`,
-  });
-  return { crudo, final };
+  const crudos = await esperarArchivos(clienteId, trabajo, { seguir });
+  const opciones = [];
+  for (const crudo of crudos) {
+    const final = modo === "plantilla"
+      ? await ponerTexto({ clienteId, crudo, texto: textoDeIdea(idea), plantilla: plantillaDeIdea(idea, formato), kit, carpetaId, nombre: `pieza-${idea.id}` })
+      : crudo;
+    opciones.push({ crudo, final });
+  }
+  return { opciones, escena };
 }
 
 /**
@@ -76,7 +93,7 @@ export async function crearLote({ ideas, alAvanzar = () => {}, seguir = () => tr
       const idea = cola.shift();
       alAvanzar(idea.id, { cargando: true });
       try {
-        alAvanzar(idea.id, await crearAnuncio({ ...comun, idea, pedido: comun.pedidoDe(idea), seguir }));
+        alAvanzar(idea.id, await crearPieza({ ...comun, idea, seguir }));
       } catch (e) {
         alAvanzar(idea.id, { error: e.message });
         if (e.datos?.codigo === "presupuesto") parar = true;

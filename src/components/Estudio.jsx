@@ -907,10 +907,10 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         <div className="card est-lote-entrada">
           <div>
             <strong>En lote</strong>
-            <p className="hint">Anuncios por nivel de consciencia, o el MES completo con el ritmo del cliente (cada día su tipo, al calendario como ideas para aprobar). La IA escribe las ideas, tú las revisas y ves el costo. O recrea con la marca un anuncio que te guste.</p>
+            <p className="hint">De la idea a la imagen: anuncios en matriz (deseos × perfiles × niveles), por tipo de pieza o el MES completo con el ritmo del cliente. La IA escribe título, brief y texto de cada pieza, tú revisas y ves el costo, y cada una llega al calendario lista para revisión. O recrea con la marca un anuncio que te guste.</p>
           </div>
           <div className="est-lote-botones">
-            <button type="button" className="btn btn-secondary" onClick={() => setLoteAbierto(true)}><Icon name="megaphone" size={16} /> Crear un lote</button>
+            <button type="button" className="btn btn-secondary" onClick={() => setLoteAbierto(true)}><Icon name="megaphone" size={16} /> Producir en lote</button>
             <button type="button" className="btn btn-secondary" onClick={() => setRecrear({ archivo: null })}><Icon name="refresh" size={16} /> Recrear un anuncio</button>
           </div>
         </div>
@@ -926,7 +926,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       {loteAbierto && (
         <Suspense fallback={null}>
           <EstudioLote
-            client={client} motores={motores} productosConFotos={datos?.productos ?? []} archivos={datos?.archivos ?? []} kit={kit}
+            client={client} motores={motores} productosConFotos={datos?.productos ?? []} archivos={datos?.archivos ?? []} papelera={datos?.papelera ?? []} kit={kit}
             onCerrar={() => setLoteAbierto(false)} onHecho={cargar} onLlevar={onLlevarAlCalendario}
           />
         </Suspense>
@@ -943,7 +943,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           mejorando={mejorando} onMejorar={mejorarConIA} onVolverIdea={ideaAnterior != null ? volverAMiIdea : null}
           mejorarSolo={desdePost ? { activo: mejorarSolo, onCambiar: setMejorarSolo } : null}
           estilo={{
-            preset: presetVigente, onPreset: setPreset, kitListo, kit: limpiarKit(kit), marca: client.name, textoPreset: textoDelPreset, refsTipo,
+            preset: presetVigente, onPreset: setPreset, kitListo, kit: limpiarKit(kit), marca: client.name, textoPreset: textoDelPreset, refsTipo, sinIdea: !form.prompt.trim(),
             bloqueMarca, usarKit, onUsarKit: setUsarKit, acabado, onAcabado: setAcabado,
             conLogo, onConLogo: setConLogo, puedeLogo,
             angulos: datos?.angulos ?? [],

@@ -144,7 +144,7 @@ function Referencias({ ids, archivos, max, subiendo, onQuitar, onSubir, onDrive 
  */
 function EstiloDeMarca({
   ids, preset, onPreset, kitListo, kit, marca = "", textoPreset, bloqueMarca = "", usarKit = true, onUsarKit, acabado = "", onAcabado,
-  conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo, productos = [], onProducto, gustos = null, refsTipo = [],
+  conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo, productos = [], onProducto, gustos = null, refsTipo = [], sinIdea = false,
 }) {
   const [familia, sub] = String(preset ?? "").split("-");
   const subtipos = TIPOS_PRESET[familia]?.subtipos ?? null;
@@ -190,6 +190,12 @@ function EstiloDeMarca({
         </div>
       )}
 
+      {preset && sinIdea && (
+        <p className="hint est-sin-idea" role="note">
+          El tipo de pieza no inventa el contenido: dice para qué es la pieza y con qué tono. La idea (qué se ve y qué dice) la escribes arriba,
+          o pídela con «Dame ideas» marcando «Sólo de este tipo».
+        </p>
+      )}
       {refsTipo.length > 0 && !esVideo && (
         <p className="hint est-refs-tipo">
           {refsTipo.map((a) => <img key={a.id} src={a.src} alt="" className="est-refs-tipo-img" />)}

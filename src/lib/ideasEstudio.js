@@ -17,7 +17,7 @@
 // ============================================================
 
 import { PILARES } from "./pilares.js";
-import { COMPOSICIONES } from "./loteAnuncios.js";
+import { COMPOSICIONES, darForma } from "./loteAnuncios.js";
 
 export const IDEAS_POR_DEFECTO = 6;
 export const MAX_IDEAS = 8;
@@ -29,26 +29,16 @@ const corto = (t, max) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, m
 const pilar = (id) => PILARES.find((p) => p.id === id) ?? null;
 
 /**
- * Qué idea va en cada hueco: el tipo (el pedido, o todos rotando), la composición (rotando en saltos de 4: dos
- * seguidas nunca se parecen) y, si el tipo lleva producto, uno del catálogo. `semilla` cambia el punto de partida. Pura.
+ * Qué idea va en cada hueco: el tipo (el pedido, o todos rotando) y, con `darForma`, la composición (sin las que
+ * necesitan un objeto si el producto no sale), el gancho y, si el tipo lleva producto, uno del catálogo que rota.
+ * `semilla` cambia el punto de partida. Pura.
  */
 export function planDeIdeas({ n = IDEAS_POR_DEFECTO, tipo = "", productos = [], semilla = 0 } = {}) {
   const total = Math.max(1, Math.min(MAX_IDEAS, Math.floor(Number(n) || IDEAS_POR_DEFECTO)));
   const s = Math.abs(Math.floor(Number(semilla) || 0));
   const tipos = pilar(tipo) ? [tipo] : PILARES.map((p) => p.id);
-  let k = 0;
-  return Array.from({ length: total }, (_, i) => {
-    const t = tipos[(s + i) % tipos.length];
-    const lleva = pilar(t)?.producto && productos.length;
-    const r = {
-      n: i + 1,
-      tipo: t,
-      composicion: COMPOSICIONES[(s + i * 4) % COMPOSICIONES.length].id,
-      ...(lleva ? { productoId: productos[(s + k) % productos.length].id } : {}),
-    };
-    if (lleva) k += 1;
-    return r;
-  });
+  const celdas = Array.from({ length: total }, (_, i) => ({ tipo: tipos[(s + i) % tipos.length] }));
+  return darForma(celdas, { productos, semilla: s }).map(({ conProducto: _c, plantilla: _p, fondo: _f, ...r }) => r);
 }
 
 /**
