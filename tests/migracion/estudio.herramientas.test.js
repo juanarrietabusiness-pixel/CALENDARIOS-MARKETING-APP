@@ -158,7 +158,7 @@ describe("crear_en_estudio", () => {
     expect(texto).toMatch(/no hace falta esperar/);
   });
 
-  it("con estilo, el preset de su tipo va delante de la escena, la marca detrás y el logo de referencia", async () => {
+  it("con estilo, la escena primero, el preset de su tipo detrás, luego la marca y el logo de referencia", async () => {
     objetos.set("clientes/c1/estudio/logo.png", { bytes: new Uint8Array([1]), tipo: "image/png" });
     db.sqlite.prepare("update clients set kit_marca = ? where id = 'c1'").run(JSON.stringify({
       paleta: [{ hex: "#1E2A5A", nombre: "azul", rol: "dominante" }], estilo: "cálido", logo: "clientes/c1/estudio/logo.png",
@@ -166,8 +166,7 @@ describe("crear_en_estudio", () => {
     const { error } = await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "un sofá junto a la ventana", modelo: "prueba", estilo: "servicios" });
     expect(error).toBe(false);
     const [t] = trabajos();
-    expect(t.prompt).toMatch(/^Fotografía de producto o servicio para Dcasa/);
-    expect(t.prompt).toContain("\n\nEscena: un sofá junto a la ventana\n\n");
+    expect(t.prompt).toMatch(/^Escena: un sofá junto a la ventana\n\nTipo de pieza .*: Pieza de producto o servicio de Dcasa/);
     expect(t.prompt).toContain("Paleta estrictamente limitada a: azul #1E2A5A (dominante)");
     expect(t.prompt).toContain("es el logo de la marca: si aparece en la pieza, cópialo tal cual");
     expect(JSON.parse(t.medios).reference).toEqual(["clientes/c1/estudio/logo.png"]);

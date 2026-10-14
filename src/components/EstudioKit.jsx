@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import Icon from "./Icon";
-import { TIPOS_PRESET, MAX_PROPIOS, limpiarKit, kitVacio, textoPreset, fundirKit, bloqueDeMarca } from "../lib/kitMarca";
+import { TIPOS_PRESET, MAX_PROPIOS, MAX_REFS_PRESET, limpiarKit, kitVacio, textoPreset, fundirKit, bloqueDeMarca } from "../lib/kitMarca";
 
 // ============================================================
 // El kit de marca del cliente, en el Estudio
@@ -13,7 +13,41 @@ import { TIPOS_PRESET, MAX_PROPIOS, limpiarKit, kitVacio, textoPreset, fundirKit
 //
 // «Preparar con IA» lee el CEREBRO del cliente y PROPONE: no se guarda
 // nada hasta pulsar «Guardar este kit». Cada campo se puede corregir a mano.
+//
+// Cada tipo (y cada propio) puede llevar hasta dos imágenes de la galería
+// como REFERENCIA VISUAL: enseñan el estilo de ese tipo de pieza mejor que
+// cualquier párrafo, y van con cada pedido de ese tipo.
 // ============================================================
+
+/** Hasta dos imágenes de la galería como referencia visual de un tipo de pieza. */
+function RefsDeTipo({ ids, id, nombre, claves = [], archivos = [], onCambiar }) {
+  const imagenes = archivos.filter((a) => a.tipo === "imagen").slice(0, 36);
+  const puestas = claves.map((c) => archivos.find((a) => a.clave === c) ?? { clave: c, src: `/api/media/${c}`, id: c });
+  const alternar = (clave) => onCambiar(claves.includes(clave) ? claves.filter((c) => c !== clave) : [...claves, clave].slice(-MAX_REFS_PRESET));
+  return (
+    <div className="est-kit-refs">
+      <span className="hint">Referencia visual:</span>
+      {puestas.map((a) => (
+        <span key={a.clave} className="est-ref">
+          <img src={a.src} alt="" />
+          <button type="button" className="btn-icon est-ref-quitar" aria-label={`Quitar la referencia de «${nombre}»`} onClick={() => alternar(a.clave)}><Icon name="close" size={14} /></button>
+        </span>
+      ))}
+      {imagenes.length > 0 ? (
+        <details className="est-kit-refs-escoger">
+          <summary>{puestas.length ? "Cambiar" : "Escoger de la galería"} (hasta {MAX_REFS_PRESET})</summary>
+          <div className="est-kit-refs-rejilla" role="group" aria-label={`Referencias de «${nombre}»`}>
+            {imagenes.map((a) => (
+              <button key={a.id} type="button" className="est-kit-refs-opcion" aria-pressed={claves.includes(a.clave)} aria-label={`${claves.includes(a.clave) ? "Quitar" : "Usar"}: ${a.prompt || "imagen"}`} onClick={() => alternar(a.clave)} id={`${ids}-r-${id}-${a.id}`}>
+                <img src={a.src} alt="" loading="lazy" />
+              </button>
+            ))}
+          </div>
+        </details>
+      ) : !puestas.length && <span className="hint">Sube o crea imágenes en la galería para usarlas aquí.</span>}
+    </div>
+  );
+}
 
 const PALETA_VACIA = () => ({ hex: "#", nombre: "", rol: "" });
 const PROPIO_VACIO = () => ({ id: `propio-${Date.now().toString(36)}`, nombre: "", texto: "" });
@@ -154,13 +188,15 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], lectu
                     placeholder={textoPreset({ ...borrador, presets: {} }, tipo, marca)}
                   />
                   <p className="hint">
-                    {def.ayuda} Vacío: se usa la plantilla del tipo.
+                    {def.ayuda} Vacío: se usa la plantilla del tipo. Di para qué es y el tono, no la composición: eso lo decide cada escena.
                     {def.subtipos ? ` Cada una (${Object.values(def.subtipos).map((x) => x.nombre).join(", ")}) le suma su línea.` : ""}
                   </p>
+                  <RefsDeTipo ids={ids} id={tipo} nombre={def.nombre} archivos={archivos} claves={borrador.referencias?.[tipo] ?? []}
+                    onCambiar={(l) => cambiar("referencias", { ...(borrador.referencias ?? {}), [tipo]: l })} />
                 </div>
               ))}
               <fieldset className="est-kit-propios">
-                <legend className="label">Presets propios de {client.name}</legend>
+                <legend className="label">Presets y estilos propios de {client.name}</legend>
                 {(borrador.propios ?? []).map((p, i) => (
                   <div key={p.id} className="est-kit-propio">
                     <input className="input" aria-label={`Nombre del preset propio ${i + 1}`} value={p.nombre} maxLength={40} placeholder="Corporativo"
@@ -169,12 +205,14 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], lectu
                       placeholder="Fotografía corporativa: personas reales, instalaciones u oficio, tono sobrio y confiable…"
                       onChange={(e) => cambiar("propios", borrador.propios.map((x, j) => (j === i ? { ...x, texto: e.target.value } : x)))} />
                     <button type="button" className="btn-icon" aria-label={`Quitar el preset ${p.nombre || i + 1}`} onClick={() => cambiar("propios", borrador.propios.filter((_, j) => j !== i))}><Icon name="close" size={14} /></button>
+                    <RefsDeTipo ids={ids} id={p.id} nombre={p.nombre || `preset ${i + 1}`} archivos={archivos} claves={borrador.referencias?.[p.id] ?? []}
+                      onCambiar={(l) => cambiar("referencias", { ...(borrador.referencias ?? {}), [p.id]: l })} />
                   </div>
                 ))}
                 {(borrador.propios ?? []).length < MAX_PROPIOS && (
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => cambiar("propios", [...(borrador.propios ?? []), PROPIO_VACIO()])}><Icon name="plus" size={14} /> Añadir un preset propio</button>
                 )}
-                <p className="hint">Para lo que no encaje en los tipos del calendario. Uno sin nombre o sin texto no se guarda.</p>
+                <p className="hint">Para lo que no encaje en los tipos del calendario, o para ESTILOS propios (Navidad, minimalista, foto de estudio…): el texto dice el estilo y la referencia lo enseña. Uno sin nombre o sin texto no se guarda.</p>
               </fieldset>
               <p className="hint">El logo se escoge en la galería: abre una imagen y pulsa «Usar como logo».</p>
               <div className="est-kit-botones">
@@ -227,7 +265,10 @@ function VistaKit({ kit: k, marca, logo = null }) {
         <summary>Ver lo que va en cada pieza y los presets</summary>
         {bloqueDeMarca(kit) && <p><strong>En toda pieza:</strong> {bloqueDeMarca(kit)}</p>}
         {Object.entries(TIPOS_PRESET).map(([tipo, def]) => (
-          <p key={tipo}><strong>{def.nombre}:</strong> {textoPreset(kit, tipo, marca)}{kit.presets[tipo] ? "" : <span className="hint"> (plantilla)</span>}</p>
+          <p key={tipo}>
+            <strong>{def.nombre}:</strong> {textoPreset(kit, tipo, marca)}{kit.presets[tipo] ? "" : <span className="hint"> (plantilla)</span>}
+            {kit.referencias[tipo] && <span className="hint"> · con {kit.referencias[tipo].length === 1 ? "1 imagen" : `${kit.referencias[tipo].length} imágenes`} de referencia</span>}
+          </p>
         ))}
         {kit.propios.map((p) => <p key={p.id}><strong>{p.nombre} (propio):</strong> {p.texto}</p>)}
       </details>

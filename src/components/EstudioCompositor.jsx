@@ -144,7 +144,7 @@ function Referencias({ ids, archivos, max, subiendo, onQuitar, onSubir, onDrive 
  */
 function EstiloDeMarca({
   ids, preset, onPreset, kitListo, kit, marca = "", textoPreset, bloqueMarca = "", usarKit = true, onUsarKit, acabado = "", onAcabado,
-  conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo, productos = [], onProducto, gustos = null,
+  conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo, productos = [], onProducto, gustos = null, refsTipo = [],
 }) {
   const [familia, sub] = String(preset ?? "").split("-");
   const subtipos = TIPOS_PRESET[familia]?.subtipos ?? null;
@@ -188,6 +188,13 @@ function EstiloDeMarca({
             <button key={id} type="button" className="filter-chip" aria-pressed={sub === id} onClick={() => onPreset(`${familia}-${id}`)}>{d.nombre}</button>
           ))}
         </div>
+      )}
+
+      {refsTipo.length > 0 && !esVideo && (
+        <p className="hint est-refs-tipo">
+          {refsTipo.map((a) => <img key={a.id} src={a.src} alt="" className="est-refs-tipo-img" />)}
+          Va{refsTipo.length === 1 ? " la imagen" : `n las ${refsTipo.length} imágenes`} de referencia de este tipo (su estilo y su composición).
+        </p>
       )}
 
       <span className="label" id={`${ids}-acabado`}>Acabado</span>
@@ -316,7 +323,7 @@ function FichaDelModelo({ modelo }) {
  * «Mejorar idea»: la IA devuelve la idea más clara y sencilla en el mismo campo, y
  * «Volver a mi idea» la deshace.
  */
-function MejorarIdea({ mejorando, onMejorar, onVolverIdea }) {
+function MejorarIdea({ mejorando, onMejorar, onVolverIdea, mejorarSolo = null }) {
   return (
     <div className="est-mejorar">
       <button type="button" className="btn btn-accent btn-sm" disabled={mejorando} onClick={onMejorar}>
@@ -328,6 +335,11 @@ function MejorarIdea({ mejorando, onMejorar, onVolverIdea }) {
         </button>
       )}
       <p className="hint">La reescribe más clara y sencilla para que la IA la entienda. No crea nada todavía.</p>
+      {mejorarSolo && (
+        <label className="est-logo-casilla">
+          <input type="checkbox" checked={mejorarSolo.activo} onChange={(e) => mejorarSolo.onCambiar(e.target.checked)} /> Mejorarla sola al abrir desde una publicación
+        </label>
+      )}
     </div>
   );
 }
@@ -336,7 +348,7 @@ export default function Compositor({
   ids, form, setForm, modelo, motores, costo, confirmando, enviando, subiendo,
   onEnviar, onConfirmar, onNo, onModelo, onTipo, onQuitarMedio, onMarcarReferencia, onSubirArchivos, onDrive = null, promptRef, etiquetaPrompt = "¿Qué quieres crear?",
   nombrado = null,
-  mejorando = false, onMejorar = null, onVolverIdea = null,
+  mejorando = false, onMejorar = null, onVolverIdea = null, mejorarSolo = null,
   estilo = null,
   guionCorto = null,
   fijado = "", onFijar = null,
@@ -392,7 +404,7 @@ export default function Compositor({
         <p className="hint">Sin texto dentro {esVideo ? "del video" : "de la imagen"}, salvo que lo pidas. {form.prompt.length > 3500 ? `${form.prompt.length} de ${MAX_PROMPT} caracteres.` : ""}</p>
       </div>
 
-      {onMejorar && <MejorarIdea mejorando={mejorando} onMejorar={onMejorar} onVolverIdea={onVolverIdea} />}
+      {onMejorar && <MejorarIdea mejorando={mejorando} onMejorar={onMejorar} onVolverIdea={onVolverIdea} mejorarSolo={mejorarSolo} />}
 
       {esVideo && guionCorto && <GuionCorto {...guionCorto} />}
 

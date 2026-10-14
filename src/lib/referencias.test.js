@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { lineaDeReferencia, lineasDeReferencias, productoNombrado, TOMAS, MAX_NOTA } from "./referencias";
-import { componerPedido, conOtraEscena, ideaDelPedido } from "./kitMarca";
+import { componerPedido, conOtraEscena, ideaDelPedido, PREFIJO_TIPO } from "./kitMarca";
 import { fotosDelProducto } from "./estudio";
 
 describe("qué se toma de cada referencia", () => {
@@ -67,9 +67,9 @@ describe("el producto que nombra la idea", () => {
 });
 
 describe("el pedido con las referencias y otra escena", () => {
-  it("las líneas de las referencias van detrás de la escena y delante de la marca", () => {
+  it("las líneas de las referencias van detrás de la escena (y del tipo) y delante de la marca", () => {
     const p = componerPedido({ idea: "Un sofá", preset: "PRESET", referencias: "Imagen de referencia 1: X", marca: "MARCA" });
-    expect(p).toBe("PRESET\n\nEscena: Un sofá\n\nImagen de referencia 1: X\n\nMARCA");
+    expect(p).toBe(`Escena: Un sofá\n\n${PREFIJO_TIPO} PRESET\n\nImagen de referencia 1: X\n\nMARCA`);
     expect(ideaDelPedido(p)).toBe("Un sofá");
     // Sólo con referencias ya se compone (si no, el modelo no sabría de qué imagen habla).
     expect(componerPedido({ idea: "Un sofá", referencias: "Imagen de referencia 1: X" })).toBe("Escena: Un sofá\n\nImagen de referencia 1: X");

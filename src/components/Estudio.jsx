@@ -3,7 +3,7 @@ import Icon from "./Icon";
 import Compositor from "./EstudioCompositor";
 import Visor, { Pieza } from "./EstudioVisor";
 import EstudioKit from "./EstudioKit";
-import { kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, componerPedido, ponerLogo, ideaDelPedido, conOtraEscena } from "../lib/kitMarca";
+import { kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, componerPedido, ponerLogo, ideaDelPedido, conOtraEscena, referenciasDePreset } from "../lib/kitMarca";
 import { ideaDesdeAngulo } from "../lib/estudioMercado";
 import { lineasDeReferencias, productosNombrados } from "../lib/referencias";
 import { deMisGustos } from "../lib/aprendizajeVisual";
@@ -207,11 +207,17 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const nombrado = nombrados.length
     ? { nombres: nombrados.filter((p) => fotosNombradas.some((f) => f.prompt === p.nombre)).map((p) => p.nombre), fotos: fotosNombradas.length, sinHueco: nombrados.length - new Set(fotosNombradas.map((f) => f.prompt)).size }
     : null;
-  // Las últimas que gustaron, sólo por su estilo, en el hueco que quede después del producto y del logo.
-  const hayGustos = (datos?.archivos ?? []).some((a) => a.favorito && a.tipo === "imagen");
-  const huecoGustos = form && modelo && form.tipo === "imagen"
+  // La referencia visual del tipo de pieza (kit → referencias), en el hueco que dejen el producto y lo puesto a mano,
+  // guardando uno para el logo.
+  const huecoTipo = form && modelo && form.tipo === "imagen"
     ? (modelo.referencias || 0) - form.medios.reference.length - fotosNombradas.length - (puedeLogo && conLogo ? 1 : 0)
     : 0;
+  const refsTipo = huecoTipo > 0
+    ? referenciasDePreset(kit, presetVigente, datos?.archivos ?? []).filter((a) => !form.medios.reference.some((x) => x.clave === a.clave)).slice(0, huecoTipo)
+    : [];
+  // Las últimas que gustaron, sólo por su estilo, en el hueco que quede después del producto, del tipo y del logo.
+  const hayGustos = (datos?.archivos ?? []).some((a) => a.favorito && a.tipo === "imagen");
+  const huecoGustos = huecoTipo - refsTipo.length;
   const gustos = conGustos && huecoGustos > 0
     ? deMisGustos(datos?.archivos ?? [], { yaPuestas: clavesDe(form.medios).reference, perdidos, cuantas: Math.min(2, huecoGustos) })
     : [];
@@ -330,6 +336,19 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     enfocarPrompt();
   };
 
+  // «Mejorar idea» SOLO al abrir desde una publicación: su idea + el texto de la pieza + el contexto llegan juntos y
+  // largos, y el motor los entiende mucho mejor resumidos en una o dos frases (el texto exacto entre comillas se
+  // conserva). Una vez por apertura, apagable, y «Volver a mi idea» lo deshace. Es texto: no gasta en el motor.
+  const claveAuto = "estudio-mejorar-solo";
+  const [mejorarSolo, setMejorarSoloEstado] = useState(() => { try { return localStorage.getItem(claveAuto) !== "0"; } catch { return true; } });
+  const setMejorarSolo = (v) => { setMejorarSoloEstado(v); try { localStorage.setItem(claveAuto, v ? "1" : "0"); } catch { /* sin almacenamiento */ } };
+  const yaMejorado = useRef(false);
+  useEffect(() => {
+    if (yaMejorado.current || !desdePost || !mejorarSolo || lectura || !form?.prompt?.trim()) return;
+    yaMejorado.current = true;
+    mejorarConIA();
+  });
+
   /** Deshace la mejora: vuelve lo que la persona había escrito. */
   const volverAMiIdea = () => {
     if (ideaAnterior == null) return;
@@ -378,7 +397,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       // lo que se manda es lo que queda escrito.
       // Las fotos del producto que nombra la idea van DELANTE (cuanto cabe), y cada referencia dice qué se toma de ella.
       const delNombrado = fotosNombradas;
-      const refs = [...delNombrado, ...form.medios.reference, ...gustos];
+      const refs = [...delNombrado, ...form.medios.reference, ...refsTipo, ...gustos];
       const medios = { ...clavesDe(form.medios), reference: refs.map((a) => a.clave) };
       const conElLogo = Boolean(conKit && conLogo && ponerLogo({ kit, tipo: form.tipo, modelo, referencias: medios.reference }));
       if (conElLogo) medios.reference = [...medios.reference, kit.logo];
@@ -878,8 +897,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           onModelo={cambiarModelo} onTipo={cambiarTipo} onQuitarMedio={quitarMedio} onMarcarReferencia={marcarReferencia} nombrado={nombrado} onSubirArchivos={subirArchivos}
           onDrive={client.driveFolder ? (rol) => setDriveRol(rol) : null}
           mejorando={mejorando} onMejorar={mejorarConIA} onVolverIdea={ideaAnterior != null ? volverAMiIdea : null}
+          mejorarSolo={desdePost ? { activo: mejorarSolo, onCambiar: setMejorarSolo } : null}
           estilo={{
-            preset: presetVigente, onPreset: setPreset, kitListo, kit: limpiarKit(kit), marca: client.name, textoPreset: textoDelPreset,
+            preset: presetVigente, onPreset: setPreset, kitListo, kit: limpiarKit(kit), marca: client.name, textoPreset: textoDelPreset, refsTipo,
             bloqueMarca, usarKit, onUsarKit: setUsarKit, acabado, onAcabado: setAcabado,
             conLogo, onConLogo: setConLogo, puedeLogo,
             angulos: datos?.angulos ?? [],

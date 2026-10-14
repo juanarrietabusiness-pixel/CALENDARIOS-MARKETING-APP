@@ -46,6 +46,10 @@ export const kitDe = (cliente) => limpiarKit(leerJSON(cliente?.kit_marca, {}));
 /** Guarda el kit. El logo, si viene, tiene que ser una imagen de este cliente que exista. */
 export async function guardarKit(env, acceso, cliente, entrada) {
   const kit = limpiarKit(entrada);
+  // Las referencias de cada tipo las manda el navegador: sólo claves de ESTE cliente (una ajena no llega a un motor).
+  kit.referencias = Object.fromEntries(Object.entries(kit.referencias)
+    .map(([id, claves]) => [id, claves.filter((c) => claveDelCliente(c, cliente.id))])
+    .filter(([, claves]) => claves.length));
   if (entrada?.logo) {
     const clave = claveDelCliente(entrada.logo, cliente.id);
     if (!clave) throw new ErrorEstudio("El logo tiene que ser una imagen de este cliente.", 400);

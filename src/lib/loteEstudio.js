@@ -13,7 +13,7 @@
 
 import * as api from "./estudio";
 import { ajustesDe } from "./estudioCatalogo";
-import { pedidoConMarca, ponerLogo, limpiarKit } from "./kitMarca";
+import { pedidoConMarca, ponerLogo, limpiarKit, referenciasDePreset } from "./kitMarca";
 import { lineasDeReferencias } from "./referencias";
 import { coloresPlantilla } from "./carrusel";
 import { componerLamina } from "./textoSobreImagen";
@@ -21,15 +21,19 @@ import { esperarArchivo } from "./carruselEstudio";
 import { escenaDeAnuncio, textoDeIdea, plantillaDeIdea, FORMATOS_LOTE } from "./loteAnuncios";
 
 /** El pedido de UNA pieza: lo que se manda al motor (y queda en la galería). Pura salvo por los imports. */
-export function pedidoDeLote({ idea, kit, preset = "anuncio", modo = "plantilla", formato = "post", modelo, fotos = [], marca = "", rubro = "" }) {
+export function pedidoDeLote({ idea, kit, preset = "anuncio", modo = "plantilla", formato = "post", modelo, fotos = [], archivos = [], marca = "", rubro = "" }) {
   const k = limpiarKit(kit);
-  const deProducto = fotos.slice(0, modelo.referencias || 0);
-  const claves = deProducto.map((f) => f.clave);
+  const max = modelo.referencias || 0;
+  const deProducto = fotos.slice(0, max);
+  // La referencia visual del tipo, sólo por su ESTILO (la composición la decide el plan), dejando sitio al logo.
+  const delTipo = referenciasDePreset(k, preset, archivos, { toma: ["estilo"] }).slice(0, Math.max(0, max - deProducto.length - (k.logo ? 1 : 0)));
+  const apoyos = [...deProducto, ...delTipo];
+  const claves = apoyos.map((f) => f.clave);
   const conLogo = ponerLogo({ kit: k, tipo: "imagen", modelo, referencias: claves });
   const reference = [...claves, ...(conLogo ? [k.logo] : [])];
   const prompt = pedidoConMarca({
     kit: k, idea: escenaDeAnuncio(idea, { modo, formato }), preset, marca, rubro, logo: conLogo,
-    referencias: lineasDeReferencias(deProducto, { cliente: marca }),
+    referencias: lineasDeReferencias(apoyos, { cliente: marca }),
   });
   const medios = reference.length ? { reference } : {};
   return { modelo: modelo.id, prompt, n: 1, medios, ajustes: ajustesDe(modelo, { aspectRatio: FORMATOS_LOTE[formato]?.aspectRatio ?? "4:5" }, medios) };

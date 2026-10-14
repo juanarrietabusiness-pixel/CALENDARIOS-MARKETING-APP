@@ -333,3 +333,14 @@ div.est-img { cursor: default; }
 .est-me-gusta[aria-pressed="true"] svg path { fill: currentColor; }
 .est-gustos .hint { margin: var(--sp-1) 0 0; }
 .est-lote-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+/* La referencia visual del tipo de pieza (y la del kit) */
+.est-refs-tipo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: 0; }
+.est-refs-tipo-img { width: 36px; height: 36px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+.est-kit-refs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
+.est-kit-refs-escoger { flex-basis: 100%; }
+.est-kit-refs-escoger summary { cursor: pointer; font-size: var(--fs-sm); min-height: var(--tap-sm); display: flex; align-items: center; }
+.est-kit-refs-rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: var(--sp-2); margin-top: var(--sp-2); max-height: 220px; overflow-y: auto; }
+.est-kit-refs-opcion { padding: 0; border: 2px solid transparent; border-radius: var(--radius-sm); background: var(--surface-2); aspect-ratio: 1; overflow: hidden; cursor: pointer; min-height: var(--tap-sm); }
+.est-kit-refs-opcion img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.est-kit-refs-opcion[aria-pressed="true"] { border-color: var(--accent); }

@@ -76,7 +76,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const elegidas = ideas.filter((i) => i.elegida);
   // Cada pieza con las fotos de SU producto (con «la marca en general» rotan por el catálogo).
   const fotosDe = (idea) => api.fotosDelProducto(productosConFotos, idea.productoId || productoId);
-  const pedidoDe = (idea) => pedidoDeLote({ idea, kit, preset, modo, formato, modelo, fotos: fotosDe(idea), marca: client.name, rubro: client.industry ?? "" });
+  const pedidoDe = (idea) => pedidoDeLote({ idea, kit, preset, modo, formato, modelo, fotos: fotosDe(idea), archivos, marca: client.name, rubro: client.industry ?? "" });
   const hayFotos = productoId ? fotos.length > 0 : productosConFotos.length > 0;
   const sinReferencias = hayFotos && !(modelo?.referencias > 0);
   const productoDe = (idea) => (catalogo ?? []).find((p) => p.id === (idea.productoId || productoId)) ?? productosIdeas.find((p) => p.id === idea.productoId) ?? null;

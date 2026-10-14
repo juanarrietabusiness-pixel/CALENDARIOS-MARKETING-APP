@@ -65,7 +65,8 @@ describe("cada pieza", () => {
     const p = pedidoDeLote({ idea, kit, preset: "anuncio", modo: "plantilla", formato: "historia", modelo: modeloPorId("nano-banana"), fotos, marca: "Dcasa" });
     expect(p.medios.reference).toEqual(["clientes/c1/sofa.jpg", "clientes/c1/logo.png"]);
     expect(p.ajustes.aspectRatio).toBe("9:16");
-    expect(p.prompt).toMatch(/^Pieza publicitaria de venta directa para Dcasa/);
+    expect(p.prompt).toMatch(/^Escena: Un sofá cama abierto en un estudio/);
+    expect(p.prompt).toMatch(/Tipo de pieza .*: Anuncio de venta directa de Dcasa/);
     expect(p.prompt).toMatch(/Imagen de referencia 1: es la foto REAL del producto «Sofá cama»/);
     expect(p.prompt).toMatch(/Paleta estrictamente limitada a: azul #112233/);
     expect(ideaDelPedido(p.prompt)).toMatch(/^Un sofá cama abierto en un estudio NO escribas/);
