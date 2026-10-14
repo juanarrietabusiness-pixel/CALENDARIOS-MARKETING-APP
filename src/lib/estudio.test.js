@@ -91,6 +91,9 @@ describe("de una publicación al Estudio", () => {
     const { promptDePublicacion } = await import("./estudio.js");
     expect(promptDePublicacion({ idea: "Un sofá gris", descripcion: "Espuma de alta densidad." })).toBe("Un sofá gris\n\nContexto de la publicación: Espuma de alta densidad.");
     expect(promptDePublicacion({ title: "Sofá", descripcion: "Texto largo" })).toBe("Sofá");
+    // «Qué se ve» manda: la idea (el brief) pasa a contexto.
+    expect(promptDePublicacion({ escena: "Una mamá abre el sofá cama", idea: "Lo que gana: dormir bien", descripcion: "Escríbenos." }))
+      .toBe("Una mamá abre el sofá cama\n\nContexto de la publicación: Lo que gana: dormir bien — Escríbenos.");
     expect(promptDePublicacion({})).toBe("");
     expect(promptDePublicacion({ idea: "x".repeat(3000) }).length).toBe(1500);
   });

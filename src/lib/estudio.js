@@ -248,9 +248,14 @@ export function fotosDeVariosProductos(productos = [], ids = [], huecos = 0) {
 
 /** El texto con que arranca el compositor desde una publicación: su idea y, si hay, lo que dice. */
 export function promptDePublicacion(post = {}, { conTexto = true } = {}) {
-  const idea = String(post.idea ?? "").trim();
+  // «Qué se ve» (`escena`, del lote o escrito a mano) manda sobre la idea: es lo que se pensó para la imagen; la
+  // idea (el brief) pasa entonces a contexto.
+  const escena = String(post.escena ?? "").trim();
+  const idea = escena || String(post.idea ?? "").trim();
   const titulo = String(post.title ?? "").trim();
-  const texto = String(post.descripcion ?? post.script ?? "").trim();
+  const texto = escena
+    ? [String(post.idea ?? "").trim(), String(post.descripcion ?? post.script ?? "").trim()].filter(Boolean).join(" — ")
+    : String(post.descripcion ?? post.script ?? "").trim();
   // El producto de la publicación (tipo de contenido), si la idea no lo nombra.
   const producto = String(post.producto ?? "").trim();
   const conProducto = producto && !idea.toLowerCase().includes(producto.toLowerCase()) ? `Producto: ${producto}.` : "";

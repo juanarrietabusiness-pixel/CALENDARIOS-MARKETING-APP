@@ -326,6 +326,13 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           </div>
         )}
 
+        {/* Qué se VE en la imagen (la escena): la escribe el lote y la usan «Crear con IA» y «Producir el mes». */}
+        <div className="field">
+          <label className="label" htmlFor={`${ids}-escena`}>Qué se ve <span style={{ fontWeight: 400, textTransform: "none" }}>· para crear la imagen</span></label>
+          <textarea id={`${ids}-escena`} className="textarea" style={{ minHeight: 60 }} maxLength={400} value={form.escena || ""}
+            onChange={(e) => sf("escena", e.target.value)} placeholder="Una mamá abre el sofá cama en una sala luminosa de tarde…" />
+        </div>
+
         {/* Lo que va ESCRITO encima del diseño (no el caption). En un carrusel va lámina por lámina en el guion. */}
         {form.format !== "carrusel" && (
           <div className="field">

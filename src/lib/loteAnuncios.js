@@ -60,7 +60,17 @@ export const FORMATOS_LOTE = Object.freeze({
   post: { nombre: "Post 4:5", aspectRatio: "4:5", format: "post" },
   historia: { nombre: "Historia 9:16", aspectRatio: "9:16", format: "historia" },
   cuadrado: { nombre: "Cuadrado 1:1", aspectRatio: "1:1", format: "post" },
+  // Los guiados: la IA escribe además su GUION (las láminas, o los planos de 10 s), y se crean como a mano.
+  carrusel: { nombre: "Carrusel", aspectRatio: "4:5", format: "carrusel", guiado: true },
+  reel: { nombre: "Reel IA 10 s", aspectRatio: "9:16", format: "reel", guiado: true },
 });
+
+/** El guion que se le pide a la IA en un formato guiado (vacío en los de una imagen). */
+const GUION_DE_FORMATO = Object.freeze({
+  carrusel: '- "guion": las láminas del carrusel, de 5 a 7, una por línea: «Portada: …», «Slide 1: …», …, «CTA: …». Cada una, una idea corta que se lee en dos segundos; el precio, EXACTO.',
+  reel: '- "guion": el reel de 10 s por planos, una línea por plano con su tiempo: «[0–2 s] qué se ve · texto en pantalla (5 palabras como mucho)», …, y el último con el logo y el llamado. Sin texto largo en pantalla.',
+});
+export const MAX_GUION = 2000;
 
 /** Dónde va el texto en la plantilla, según el formato (en una historia, abajo tapa los botones de Instagram). */
 export const plantillaDeFormato = (formato) => (formato === "historia" ? "centro" : "banda");
@@ -246,7 +256,7 @@ export function pedidoDeProduccion({
 }) {
   const perfilesUsados = [...new Set(plan.map((r) => r.perfil).filter(Boolean))].filter((n) => perfiles[n]);
   return [
-    `Escribe ${plan.length} publicaciones de una imagen (${FORMATOS_LOTE[formato]?.nombre ?? "post"}) para ${marca}${mes ? ", una por día del mes" : ""}. Cada una tiene YA decidido su tipo de contenido (lo que comunica), su nivel de consciencia, su gancho y su composición: respétalos.`,
+    `Escribe ${plan.length} publicaciones ${FORMATOS_LOTE[formato]?.guiado ? `de formato ${FORMATOS_LOTE[formato].nombre}` : `de una imagen (${FORMATOS_LOTE[formato]?.nombre ?? "post"})`} para ${marca}${mes ? ", una por día del mes" : ""}. Cada una tiene YA decidido su tipo de contenido (lo que comunica), su nivel de consciencia, su gancho y su composición (la de la portada o el primer plano): respétalos.`,
     perfilesUsados.length ? `Los perfiles:\n${perfilesUsados.map((n) => `- ${n}: ${perfiles[n]}`).join("\n")}` : "",
     fechasEspeciales.length ? `Fechas especiales:\n${fechasEspeciales.map((f) => `- ${f}`).join("\n")}` : "",
     "",
@@ -259,6 +269,7 @@ export function pedidoDeProduccion({
     `- "apoyo": una línea corta debajo (${MAX_APOYO} caracteres), o vacía. Si el titular ya lo dice todo, vacía.`,
     `- "escena": qué se VE, en una o dos frases sencillas (sujeto, acción, lugar, luz), con su composición. SIN texto dentro. Si sale una persona, descríbela distinta de las de las demás piezas (edad, rasgos, ropa, lugar).`,
     `- "descripcion": el texto de la publicación (caption), de 2 a 4 frases, con un llamado a la acción si el tipo lo pide; sin hashtags (${MAX_DESCRIPCION} caracteres).`,
+    GUION_DE_FORMATO[formato] ?? "",
     "",
     "Reglas:",
     "- Que todo el lote se sienta variado: ni dos titulares parecidos, ni dos escenas en el mismo lugar con la misma acción, ni la misma persona dos veces.",
@@ -270,8 +281,8 @@ export function pedidoDeProduccion({
     "",
     estudio ? `ESTUDIO DE MERCADO:\n${String(estudio).slice(0, 8000)}\n` : "",
     contexto ? `LO QUE SE SABE DE LA MARCA:\n${String(contexto).slice(0, 6000)}\n` : "",
-    'Responde SOLO con JSON, una por número, así: {"ideas":[{"n":1,"titulo":"…","brief":"…","titular":"…","apoyo":"…","escena":"…","descripcion":"…"}]}',
-  ].join("\n").replace(/\n{3,}/g, "\n\n");
+    `Responde SOLO con JSON, una por número, así: {"ideas":[{"n":1,"titulo":"…","brief":"…","titular":"…","apoyo":"…","escena":"…","descripcion":"…"${GUION_DE_FORMATO[formato] ? ',"guion":"…"' : ""}}]}`,
+  ].filter((l, i, t) => l !== "" || t[i - 1] !== "").join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
 const deJSON = (texto) => {
@@ -291,7 +302,8 @@ export function leerProduccion(texto, plan = []) {
   const lista = Array.isArray(d?.ideas) ? d.ideas : Array.isArray(d) ? d : [];
   const porNumero = new Map();
   lista.forEach((x, i) => {
-    const n = Number(x?.n) || i + 1;
+    // Sin número, por orden: el de la casilla del plan (en una tanda, el plan no empieza en 1).
+    const n = Number(x?.n) || plan[i]?.n || i + 1;
     if (!porNumero.has(n)) porNumero.set(n, x);
   });
   const vistos = {};
@@ -308,6 +320,7 @@ export function leerProduccion(texto, plan = []) {
       brief: corto(x?.brief, MAX_BRIEF),
       apoyo: corto(x?.apoyo, MAX_APOYO).replace(/\s*·\s*/g, ". "),
       descripcion: String(x?.descripcion ?? "").trim().slice(0, MAX_DESCRIPCION),
+      ...(String(x?.guion ?? "").trim() ? { guion: String(x.guion).replace(/\\n/g, "\n").trim().slice(0, MAX_GUION) } : {}),
       elegida: true,
     }];
   });
@@ -330,17 +343,23 @@ export function nombreCarpetaLote(producto = "", fecha = new Date()) {
 }
 
 /**
- * La publicación que sale de una pieza: título, brief (la idea), el texto de la pieza, la descripción, su tipo y su
- * matriz, y la imagen escogida. Pendiente: la revisa el equipo y la aprueba el cliente. Pura.
+ * La publicación que sale de una pieza: título, brief (la idea), qué se ve (`escena`: para diseñarla después con el
+ * mismo camino), el texto de la pieza, el guion (carrusel o reel), la descripción, su tipo y su matriz, y los archivos
+ * escogidos. Sin archivos es una IDEA: el cliente aprueba la idea (`aprobacion: "idea"`). Pendiente: la revisa el
+ * equipo y la aprueba el cliente. Pura.
  */
-export function publicacionDePieza({ id, idea, archivo, formato = "post", producto = null }) {
+export function publicacionDePieza({ id, idea, archivo = null, archivos = null, formato = "post", producto = null }) {
   const prod = producto ?? (idea.productoId ? { id: idea.productoId, nombre: idea.producto ?? "" } : null);
+  const lista = (archivos ?? (archivo ? [archivo] : [])).filter(Boolean);
+  const medioDe = (a) => ({ src: a.src, tipo: a.tipo === "video" ? "video" : "imagen", ...(a.ancho && a.alto ? { ancho: a.ancho, alto: a.alto } : {}) });
   return {
     id,
     format: FORMATOS_LOTE[formato]?.format ?? "post",
     title: idea.titulo || idea.titular,
     idea: idea.brief || idea.escena,
+    ...(idea.escena ? { escena: idea.escena } : {}),
     textoPieza: textoDeIdea(idea),
+    ...(idea.guion ? { guion: idea.guion } : {}),
     ...(idea.descripcion ? { descripcion: idea.descripcion } : {}),
     pilar: idea.tipo ?? idea.pilar ?? "anuncio",
     ...(idea.pilarSub ? { pilarSub: idea.pilarSub } : {}),
@@ -349,7 +368,7 @@ export function publicacionDePieza({ id, idea, archivo, formato = "post", produc
     ...(idea.deseo ? { deseo: idea.deseo } : {}),
     ...(idea.perfil ? { perfil: idea.perfil } : {}),
     status: "pending",
-    medios: [{ src: archivo.src, tipo: "imagen", ...(archivo.ancho && archivo.alto ? { ancho: archivo.ancho, alto: archivo.alto } : {}) }],
+    ...(lista.length ? { medios: lista.map(medioDe) } : { aprobacion: "idea" }),
   };
 }
 export const publicacionDeAnuncio = publicacionDePieza;

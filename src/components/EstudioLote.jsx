@@ -7,14 +7,16 @@ import { leerMercado } from "../lib/mercado";
 import { productosActivos, limpiarEstudio } from "../lib/estudioMercado";
 import { NIVELES_CONSCIENCIA, CLAVES_NIVEL, nombreDeNivel } from "../lib/consciencia";
 import { MODELOS, modeloPorId, estimar, textoCosto } from "../lib/estudioCatalogo";
-import { TIPOS_PRESET, ESTILOS_VISUALES, limpiarKit, kitVacio, nombreDePreset } from "../lib/kitMarca";
+import { TIPOS_PRESET, ESTILOS_VISUALES, limpiarKit, kitVacio, nombreDePreset, referenciasDePersonajes } from "../lib/kitMarca";
 import { deMisGustos } from "../lib/aprendizajeVisual";
 import { MODOS_TEXTO } from "../lib/carrusel";
 import {
-  FORMATOS_LOTE, MAX_POR_NIVEL, MAX_LOTE, MAX_TITULAR, MAX_APOYO, MAX_ESCENA, MAX_BRIEF, MAX_DESCRIPCION, cuantasPorDefecto, limpiarCuantas,
+  FORMATOS_LOTE, MAX_POR_NIVEL, MAX_LOTE, MAX_TITULAR, MAX_APOYO, MAX_ESCENA, MAX_BRIEF, MAX_DESCRIPCION, MAX_GUION, cuantasPorDefecto, limpiarCuantas,
   totalDeCuantas, nombreCarpetaLote, publicacionDePieza, COMPOSICIONES, TACTICAS, titularesUsados, aprenderComposiciones, celdasMatriz, celdasPorTipos,
 } from "../lib/loteAnuncios";
-import { pedidoDeLote, crearLote, pulirArchivo } from "../lib/loteEstudio";
+import { pedidoDeLote, crearLote, pulirArchivo, crearCarruselDeIdea, crearReelDeIdea } from "../lib/loteEstudio";
+import { modelosParaCarrusel } from "../lib/carruselEstudio";
+import { modelosParaReel } from "../lib/reelEstudio";
 import { DIAS_LOTE, diasDelLote, diasConTipo, carpetaDelMes, fechaCortaLote, mesDe, textoMes } from "../lib/loteMes";
 import { PILARES, presetDePilar, nombreDePilar } from "../lib/pilares";
 import { fechasDelMes } from "../lib/fechasEspeciales";
@@ -32,11 +34,15 @@ import "./EstudioLote.css";
 //      ritmo; el formato, el modelo, cómo va el texto, cuántas imágenes por
 //      idea (1–3) y si la escena se mejora sola antes de crear.
 //   2. Ideas: la IA escribe título, brief, titular, apoyo, escena y
-//      descripción de cada pieza; se revisan, se corrigen, se quitan, y se ve
-//      el costo total.
+//      descripción de cada pieza (y el guion en un carrusel o un reel), de
+//      TANDA en TANDA; se revisan, se corrigen, se quitan, y se ve el costo
+//      total. Aquí se puede parar: «Sólo las ideas al calendario» las lleva
+//      sin diseñar, para que el cliente apruebe la idea (fase 1).
 //   3. Crear: en cola, con el kit, el logo y las fotos del producto (sólo
 //      donde el producto se ve). Si hay variantes, se escoge una; cada pieza
-//      va al calendario como publicación lista para revisión.
+//      va al calendario como publicación lista para revisión. Un carrusel o
+//      un reel sigue el MISMO camino que a mano (FlujoCarrusel, FlujoReel),
+//      uno detrás de otro.
 //
 // La forma de cada pieza (composición, fondo, gancho, producto) la decide la
 // aplicación, y aprende qué composiciones le gustan a este cliente por sus
@@ -53,6 +59,11 @@ const mesesParaLote = (hoy) => {
   return [0, 1, 2].map((k) => textoMes(y + Math.floor((m + k) / 12), (m + k) % 12));
 };
 const MODOS = [["anuncios", "Anuncios"], ["tipos", "Por tipo de pieza"], ["mes", "Mes completo"]];
+/** Cuántas ideas escribe la IA por llamada: con más, cada pieza recibía muy poca atención y salían planas. */
+const TANDA = 6;
+/** Lo que se calcula por pieza en un carrusel o un reel del lote (para el costo, aproximado). */
+const LAMINAS_APROX = 6;
+const PLANOS_APROX = 5;
 
 export default function EstudioLote({ client, motores, productosConFotos = [], archivos = [], papelera = [], kit, onCerrar, onHecho, onLlevar = null }) {
   const ids = useId();
@@ -92,6 +103,11 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const [pulirCon, setPulirCon] = useState("");
   const [variantes, setVariantes] = useState(1);
   const [mejorar, setMejorar] = useState(true);
+  // Los personajes de la marca que salen en el lote (van de referencia: salen iguales).
+  const [personajesSel, setPersonajesSel] = useState([]);
+  // En un reel: el modelo del video (los fotogramas, con el de imagen).
+  const [modeloVideoId, setModeloVideoId] = useState("");
+  const [progreso, setProgreso] = useState("");
   const [ideas, setIdeas] = useState([]);
   const [productosIdeas, setProductosIdeas] = useState([]);
   const [escribiendo, setEscribiendo] = useState(false);
@@ -121,7 +137,12 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const esMes = alcance === "mes";
   const esMatriz = alcance === "anuncios" && porMatriz && hayMatriz;
 
-  const modelo = modeloPorId(modeloId) ?? modelos[0];
+  const guiado = Boolean(FORMATOS_LOTE[formato]?.guiado);
+  // Un carrusel o un reel necesitan un modelo de imagen que admita referencias (la lámina o el fotograma anterior).
+  const modelosDelFormato = guiado ? modelosParaCarrusel(activos) : modelos;
+  const modelo = modelosDelFormato.find((m) => m.id === modeloId) ?? modelosDelFormato[0];
+  const modelosVideo = useMemo(() => modelosParaReel(activos), [activos]);
+  const modeloVideo = modelosVideo.find((m) => m.id === modeloVideoId) ?? modelosVideo[0] ?? modeloPorId("prueba-video");
   const producto = catalogo?.find((p) => p.id === productoId) ?? null;
   const fotos = api.fotosDelProducto(productosConFotos, productoId);
   // Lo que se aprendió de este cliente: qué composiciones le gustan (y cuáles manda a la papelera).
@@ -148,53 +169,96 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   // El tipo de pieza de cada idea: el suyo (por tipo, el mes); en anuncios, el escogido.
   const presetDe = (idea) => (idea.tipo && idea.tipo !== "anuncio" ? presetDePilar(idea.tipo, idea.pilarSub) : preset);
   const gustos = conGustos ? deMisGustos(archivos, { cuantas: 2 }) : [];
+  const personajes = referenciasDePersonajes(kit, personajesSel, archivos);
+  const listaPersonajes = limpiarKit(kit).personajes;
   // El MISMO camino que una pieza hecha a mano (lib/pieza.js): la escena mejorada llega de crearPieza.
   const pedidoDe = (idea, n = 1, escena = null) => pedidoDeLote({
-    idea, escena, kit, preset: presetDe(idea), estilo, modo, formato, modelo, fotos: fotosDe(idea), archivos, gustos, marca: client.name, rubro: client.industry ?? "", n,
+    idea, escena, kit, preset: presetDe(idea), estilo, modo, formato, modelo, fotos: fotosDe(idea), archivos, gustos, personajes, marca: client.name, rubro: client.industry ?? "", n,
   });
   const nombreTipo = (idea) => nombreDePreset(presetDe(idea), kit);
   const hayFotos = productoId ? fotos.length > 0 : productosConFotos.length > 0;
   const sinReferencias = hayFotos && !(modelo?.referencias > 0);
   const productoDe = (idea) => (catalogo ?? []).find((p) => p.id === (idea.productoId || productoId)) ?? productosIdeas.find((p) => p.id === idea.productoId) ?? null;
-  const costoUna = modelo ? estimar(modelo, 1, pedidoDe({ id: "x", titular: "x", escena: "x" }).ajustes) : 0;
-  const costoTotal = Math.round(costoUna * variantes * elegidas.length * 1000) / 1000;
+  const costoImagen = modelo ? estimar(modelo, 1, { imageSize: "2K", aspectRatio: FORMATOS_LOTE[formato]?.aspectRatio }) : 0;
+  // Por pieza: una imagen (× variantes); un carrusel, sus láminas; un reel, sus fotogramas y el video de 10 s.
+  const costoUna = !modelo ? 0
+    : formato === "carrusel" ? costoImagen * LAMINAS_APROX
+      : formato === "reel" ? costoImagen * PLANOS_APROX + (modeloVideo ? estimar(modeloVideo, 1, { duration: "10" }) : 0)
+        : estimar(modelo, 1, pedidoDe({ id: "x", titular: "x", escena: "x" }).ajustes) * variantes;
+  // Lo que ya se llevó como idea sola no se vuelve a crear aquí: se diseña desde el calendario.
+  const porCrear = elegidas.filter((i) => !llevadas[i.id]);
+  const costoTotal = Math.round(costoUna * porCrear.length * 1000) / 1000;
   const kitListo = !kitVacio(kit);
 
+  /** Las ideas, de TANDA en TANDA: cada llamada sabe lo que ya salió (`usados`) y el plan sale igual con la misma semilla. */
   const escribirIdeas = async () => {
     setEscribiendo(true);
     setAviso(null);
     try {
       // Otro punto de partida en cada lote, lo que ya salió para no repetirlo y las composiciones que funcionan.
-      const comun = { formato, semilla: Math.floor(Math.random() * 1000), usados: titularesUsados(archivos), composiciones: aprendido.orden };
-      const r = esMes
-        ? await api.ideasDelMes(clienteId, { ...comun, mes, dias })
-        : await api.ideasDeLote(clienteId, alcance === "tipos"
-          ? { ...comun, modo: "tipos", tipos }
-          : esMatriz
-            ? { ...comun, modo: "matriz", productoId: productoId || undefined, deseos: deseosElegidos, perfiles: perfilesElegidos, niveles: nivelesSel }
-            : { ...comun, modo: "niveles", productoId: productoId || undefined, cuantas: limpiarCuantas(cuantas) });
-      setIdeas(r.ideas);
-      setProductosIdeas(r.productos ?? []);
+      const comun = { formato, semilla: Math.floor(Math.random() * 1000), composiciones: aprendido.orden };
+      const cuerpo = esMes ? { ...comun, mes, dias }
+        : alcance === "tipos" ? { ...comun, modo: "tipos", tipos }
+          : esMatriz ? { ...comun, modo: "matriz", productoId: productoId || undefined, deseos: deseosElegidos, perfiles: perfilesElegidos, niveles: nivelesSel }
+            : { ...comun, modo: "niveles", productoId: productoId || undefined, cuantas: limpiarCuantas(cuantas) };
+      let todas = [];
+      let usados = titularesUsados(archivos);
+      let ultima = null;
+      for (let desde = 0, cuantasHay = total; desde < cuantasHay && vivo.current; desde += TANDA) {
+        setProgreso(`Escribiendo ${desde + 1}–${Math.min(desde + TANDA, cuantasHay)} de ${cuantasHay}…`);
+        const pedir = esMes ? api.ideasDelMes : api.ideasDeLote;
+        ultima = await pedir(clienteId, { ...cuerpo, usados: usados.slice(0, 30), desde, tamano: TANDA });
+        cuantasHay = ultima.total ?? cuantasHay;
+        // El id por su número en el plan: dos tandas pueden repetir «producto-1».
+        const nuevas = ultima.ideas.map((i) => ({ ...i, id: i.fecha ? i.id : `n${i.n}` }));
+        todas = [...todas, ...nuevas];
+        usados = [...nuevas.map((i) => i.titular), ...usados];
+        setIdeas(todas);
+      }
+      setProductosIdeas(ultima?.productos ?? []);
       setResultados({});
       setPaso(1);
-      const faltan = total - r.ideas.length;
+      const faltan = total - todas.length;
       setAviso({ ok: true, texto: [
-        `La IA escribió ${r.ideas.length} ${r.ideas.length === 1 ? "pieza" : "piezas"}${faltan > 0 ? ` (pediste ${total})` : ""}. Revisa, corrige y quita las que no.`,
-        r.conEstudio ? "" : "Sin estudio de mercado aprobado: las escribió con el catálogo y el cerebro.",
-        r.aviso ?? "",
+        `La IA escribió ${todas.length} ${todas.length === 1 ? "pieza" : "piezas"}${faltan > 0 ? ` (pediste ${total})` : ""}, de ${TANDA} en ${TANDA}. Revisa, corrige y quita las que no.`,
+        ultima?.conEstudio ? "" : "Sin estudio de mercado aprobado: las escribió con el catálogo y el cerebro.",
+        ultima?.aviso ?? "",
       ].filter(Boolean).join(" ") });
     } catch (e) {
       setAviso({ ok: false, texto: e.message });
     } finally {
       setEscribiendo(false);
+      setProgreso("");
       window.dispatchEvent(new Event("ia:gasto"));
     }
+  };
+
+  /** Sólo las IDEAS al calendario, sin diseñar: cada una en su día, para que el cliente apruebe la idea. */
+  const [llevandoIdeas, setLlevandoIdeas] = useState(false);
+  const ideasConDia = elegidas.filter((i) => (i.fecha || fechas[i.id]) && !llevadas[i.id]);
+  const llevarIdeas = async () => {
+    if (!onLlevar) return;
+    setLlevandoIdeas(true);
+    let n = 0;
+    for (const idea of ideasConDia) {
+      try {
+        const fecha = idea.fecha ?? fechas[idea.id];
+        await onLlevar(fecha, publicacionDePieza({ id: uid(), idea, formato, producto: productoDe(idea) }));
+        setLlevadas((m) => ({ ...m, [idea.id]: fecha }));
+        n += 1;
+      } catch (e) {
+        setAviso({ ok: false, texto: e.message });
+        break;
+      }
+    }
+    setLlevandoIdeas(false);
+    if (n) setAviso({ ok: true, texto: `${n} ${n === 1 ? "idea llevada" : "ideas llevadas"} al calendario, cada una en su día, para que el cliente las apruebe. «Qué se ve» queda en cada una: «Crear con IA» y «Producir el mes» la usan para diseñarla después.` });
   };
 
   const cambiarIdea = (id, campo, valor) => setIdeas((l) => l.map((x) => (x.id === id ? { ...x, [campo]: valor } : x)));
 
   const crear = async () => {
-    if (!elegidas.length || !modelo) return;
+    if (!porCrear.length || !modelo) return;
     setPaso(2);
     setAviso(null);
     let carpetaId = null;
@@ -209,11 +273,34 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
       });
       carpetaId = r?.carpeta?.id ?? null;
     } catch { /* sin carpeta, van a la galería igual */ }
-    await crearLote({
-      ideas: elegidas, clienteId, modo, formato, kit, carpetaId, pedidoDe, mejorar, n: variantes, piezaDe: nombreTipo,
-      seguir: () => vivo.current,
-      alAvanzar: (id, r) => { if (vivo.current) setResultados((m) => ({ ...m, [id]: r.opciones ? { ...r, elegida: 0 } : r })); },
-    });
+    const pendientes = porCrear;
+    if (guiado) {
+      // Un carrusel o un reel por idea, uno detrás de otro: cada uno es una serie de pasos (y un reel tarda minutos).
+      for (const idea of pendientes) {
+        if (!vivo.current) break;
+        const poner = (r) => { if (vivo.current) setResultados((m) => ({ ...m, [idea.id]: r })); };
+        poner({ cargando: true, paso: "En cola" });
+        const comun = {
+          clienteId, idea, kit, preset: presetDe(idea), estilo, fotos: fotosDe(idea).map((f) => f.clave), personajes, personajesIds: personajesSel,
+          marca: client.name, rubro: client.industry ?? "", carpetaId, seguir: () => vivo.current, alPaso: (paso) => poner({ cargando: true, paso }),
+        };
+        try {
+          const r = formato === "carrusel"
+            ? await crearCarruselDeIdea({ ...comun, modelo })
+            : await crearReelDeIdea({ ...comun, modeloImagen: modelo, modeloVideo });
+          poner({ opciones: [{ final: r.archivos[0], archivos: r.archivos }], elegida: 0 });
+        } catch (e) {
+          poner({ error: e.message });
+          if (e.datos?.codigo === "presupuesto") break;
+        }
+      }
+    } else {
+      await crearLote({
+        ideas: pendientes, clienteId, modo, formato, kit, carpetaId, pedidoDe, mejorar, n: variantes, piezaDe: nombreTipo,
+        seguir: () => vivo.current,
+        alAvanzar: (id, r) => { if (vivo.current) setResultados((m) => ({ ...m, [id]: r.opciones ? { ...r, elegida: 0 } : r })); },
+      });
+    }
     if (!vivo.current) return;
     carpetaLote.current = carpetaId;
     onHecho?.();
@@ -235,17 +322,20 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     let archivo = elegida(idea.id);
     if (!fecha || !archivo || !onLlevar) return;
     try {
-      const pulidor = pulidores.find((m) => m.id === pulirCon);
+      const pulidor = guiado ? null : pulidores.find((m) => m.id === pulirCon);
       if (pulidor) {
         setResultados((m) => ({ ...m, [idea.id]: { ...m[idea.id], puliendo: true } }));
         archivo = await pulirArchivo({ clienteId, archivo, modelo: pulidor, carpetaId: carpetaLote.current, seguir: () => vivo.current });
         setResultados((m) => ({ ...m, [idea.id]: { ...m[idea.id], puliendo: false, pulido: archivo } }));
       }
-      const post = publicacionDePieza({ id: uid(), idea, archivo, formato, producto: productoDe(idea) });
+      // Un carrusel lleva todas sus láminas; un reel, su video; lo demás, la imagen escogida (o pulida).
+      const r = resultados[idea.id];
+      const lista = guiado ? (r?.opciones?.[0]?.archivos ?? [archivo]) : [archivo];
+      const post = publicacionDePieza({ id: uid(), idea, archivos: lista, formato, producto: productoDe(idea) });
       const calendarId = await onLlevar(fecha, post);
       setLlevadas((m) => ({ ...m, [idea.id]: fecha }));
       // Apuntar que la usa una publicación: así la papelera no se lleva el archivo. Si falla, la pieza ya está.
-      if (calendarId) await api.apuntarUso(clienteId, archivo.id, { calendarId, postId: post.id }).catch(() => {});
+      if (calendarId) for (const a of lista) await api.apuntarUso(clienteId, a.id, { calendarId, postId: post.id }).catch(() => {});
     } catch (e) {
       setResultados((m) => ({ ...m, [idea.id]: { ...m[idea.id], puliendo: false } }));
       setAviso({ ok: false, texto: e.message });
@@ -270,6 +360,9 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     });
   } else grupos = NIVELES_CONSCIENCIA.map((n) => ({ clave: n.clave, titulo: n.nombre, ayuda: n.ayuda, ideas: ideas.filter((i) => i.nivel === n.clave) })).filter((g) => g.ideas.length);
   const listas = Object.values(resultados).filter((r) => r.opciones).length;
+  // En el paso 3: lo que se está creando (lo que se llevó como idea sola no).
+  const delPaso3 = elegidas.filter((i) => resultados[i.id] || !llevadas[i.id]);
+  const nombreDePiezas = (n) => (formato === "carrusel" ? (n === 1 ? "carrusel" : "carruseles") : formato === "reel" ? (n === 1 ? "reel" : "reels") : n === 1 ? "pieza" : "piezas");
   const etiquetaDe = (i) => (i.tipo === "anuncio" || !i.tipo ? nombreDeNivel(i.nivel) : nombreDePilar(i.tipo, i.pilarSub));
 
   return (
@@ -394,26 +487,57 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                   </div>
                 )}
                 <div className="field">
-                  <label className="label" htmlFor={`${ids}-m`}>Modelo</label>
+                  <label className="label" htmlFor={`${ids}-m`}>{formato === "reel" ? "Modelo de los fotogramas" : formato === "carrusel" ? "Modelo de las láminas" : "Modelo"}</label>
                   <select id={`${ids}-m`} className="input" value={modelo?.id ?? ""} onChange={(e) => setModeloId(e.target.value)}>
-                    {modelos.map((m) => <option key={m.id} value={m.id}>{m.nombre} · {textoCosto(m.costo)}</option>)}
+                    {modelosDelFormato.map((m) => <option key={m.id} value={m.id}>{m.nombre} · {textoCosto(m.costo)}</option>)}
                   </select>
                 </div>
+                {formato === "reel" && (
+                  <div className="field">
+                    <label className="label" htmlFor={`${ids}-mv`}>Modelo del video</label>
+                    <select id={`${ids}-mv`} className="input" value={modeloVideo?.id ?? ""} onChange={(e) => setModeloVideoId(e.target.value)}>
+                      {modelosVideo.map((m) => <option key={m.id} value={m.id}>{m.nombre} · {textoCosto(m.costo)}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
-              <div className="field">
-                <span className="label" id={`${ids}-x`}>El texto de la pieza</span>
-                <div className="est-tipos" role="group" aria-labelledby={`${ids}-x`}>
-                  {["ia", "plantilla"].map((id) => <button key={id} type="button" className="filter-chip" aria-pressed={modo === id} onClick={() => setModo(id)}>{MODOS_TEXTO[id].nombre}</button>)}
+              {guiado ? (
+                <p className="hint">
+                  {formato === "carrusel"
+                    ? "Cada idea sale como un carrusel hecho a mano: la IA escribe el guion por láminas, el director de arte lo propone y las láminas se crean una a una, con la anterior y la portada de referencia. El texto lo escribe el modelo."
+                    : "Cada idea sale como un reel de 10 s hecho a mano: guion por planos, un fotograma por plano (el storyboard) y el video con ellos. Cada reel tarda unos minutos; los tramos se corrigen después desde el Estudio."}
+                  {" "}Van uno detrás de otro.
+                </p>
+              ) : (
+                <>
+                  <div className="field">
+                    <span className="label" id={`${ids}-x`}>El texto de la pieza</span>
+                    <div className="est-tipos" role="group" aria-labelledby={`${ids}-x`}>
+                      {["ia", "plantilla"].map((id) => <button key={id} type="button" className="filter-chip" aria-pressed={modo === id} onClick={() => setModo(id)}>{MODOS_TEXTO[id].nombre}</button>)}
+                    </div>
+                    <p className="hint">{MODOS_TEXTO[modo].ayuda}</p>
+                  </div>
+                  <div className="field">
+                    <span className="label" id={`${ids}-v`}>Imágenes por idea</span>
+                    <div className="est-tipos" role="group" aria-labelledby={`${ids}-v`}>
+                      {[1, 2, 3].map((n) => <button key={n} type="button" className="filter-chip" aria-pressed={variantes === n} onClick={() => setVariantes(n)}>{n}</button>)}
+                    </div>
+                    <p className="hint">{variantes > 1 ? `Salen ${variantes} de cada idea y escoges una antes de llevarla al calendario.` : "Una por idea."}</p>
+                  </div>
+                </>
+              )}
+              {listaPersonajes.length > 0 && (
+                <div className="field">
+                  <span className="label" id={`${ids}-pj`}>Personajes de la marca</span>
+                  <div className="est-tipos" role="group" aria-labelledby={`${ids}-pj`}>
+                    {listaPersonajes.map((p) => (
+                      <button key={p.id} type="button" className="filter-chip" aria-pressed={personajesSel.includes(p.id)} title={p.descripcion}
+                        onClick={() => setPersonajesSel((l) => (l.includes(p.id) ? l.filter((x) => x !== p.id) : [...l, p.id]))}>{p.nombre}</button>
+                    ))}
+                  </div>
+                  <p className="hint">Los escogidos van de referencia en cada pieza: salen iguales (cara, pelo, ropa).</p>
                 </div>
-                <p className="hint">{MODOS_TEXTO[modo].ayuda}</p>
-              </div>
-              <div className="field">
-                <span className="label" id={`${ids}-v`}>Imágenes por idea</span>
-                <div className="est-tipos" role="group" aria-labelledby={`${ids}-v`}>
-                  {[1, 2, 3].map((n) => <button key={n} type="button" className="filter-chip" aria-pressed={variantes === n} onClick={() => setVariantes(n)}>{n}</button>)}
-                </div>
-                <p className="hint">{variantes > 1 ? `Salen ${variantes} de cada idea y escoges una antes de llevarla al calendario.` : "Una por idea."}</p>
-              </div>
+              )}
               <div className="field">
                 <label className="label" htmlFor={`${ids}-est`}>Estilo visual</label>
                 <select id={`${ids}-est`} className="input" value={estilo} onChange={(e) => setEstilo(e.target.value)}>
@@ -431,7 +555,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                   {" "}Usar mis «Me gusta» como referencia de estilo (las dos últimas)
                 </label>
               )}
-              {pulidores.length > 0 && (
+              {pulidores.length > 0 && !guiado && (
                 <div className="field">
                   <label className="label" htmlFor={`${ids}-pul`}>Pulir antes de llevar al calendario</label>
                   <select id={`${ids}-pul`} className="input" value={pulirCon} onChange={(e) => setPulirCon(e.target.value)}>
@@ -505,6 +629,18 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                           <label className="label" htmlFor={`${ids}-de-${i.id}`}>Descripción</label>
                           <textarea id={`${ids}-de-${i.id}`} className="input" rows={3} maxLength={MAX_DESCRIPCION} value={i.descripcion ?? ""} onChange={(e) => cambiarIdea(i.id, "descripcion", e.target.value)} />
                         </div>
+                        {guiado && (
+                          <div className="field">
+                            <label className="label" htmlFor={`${ids}-gu-${i.id}`}>{formato === "reel" ? "Guion (planos de 10 s)" : "Guion (lámina por lámina)"}</label>
+                            <textarea id={`${ids}-gu-${i.id}`} className="input" rows={5} maxLength={MAX_GUION} value={i.guion ?? ""} onChange={(e) => cambiarIdea(i.id, "guion", e.target.value)} />
+                          </div>
+                        )}
+                        {!i.fecha && onLlevar && !llevadas[i.id] && (
+                          <div className="lote-llevar">
+                            <SelectorFecha value={fechas[i.id] ?? ""} onChange={(f) => setFechas((m) => ({ ...m, [i.id]: f }))} etiqueta="Día" vacio="Escoger día" prefijo="Día" />
+                          </div>
+                        )}
+                        {llevadas[i.id] && <p className="hint"><Icon name="check" size={14} /> En el calendario, el {diaCorto(llevadas[i.id])}.</p>}
                       </li>
                     ))}
                   </ul>
@@ -515,15 +651,16 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
 
           {paso === 2 && (
             <ul className="lote-resultados">
-              {elegidas.map((i) => {
+              {delPaso3.map((i) => {
                 const r = resultados[i.id];
                 const final = elegida(i.id);
                 return (
                   <li key={i.id} className="lote-resultado">
                     <div className="lote-miniatura">
-                      {final ? <img src={final.src} alt={`Pieza: ${i.titular}`} /> : (
-                        <span className="hint">{r?.error ? "No salió" : r?.cargando ? "Creando…" : "En cola"}</span>
-                      )}
+                      {final?.tipo === "video" ? <video src={final.src} controls playsInline preload="metadata" aria-label={`Reel: ${i.titulo || i.titular}`} />
+                        : final ? <img src={final.src} alt={`Pieza: ${i.titulo || i.titular}`} /> : (
+                          <span className="hint">{r?.error ? "No salió" : r?.cargando ? (r.paso || "Creando…") : "En cola"}</span>
+                        )}
                       {r?.puliendo && (
                         <span className="hint lote-puliendo">Puliendo…</span>
                       )}
@@ -532,6 +669,12 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                       <span className="lote-insignia">{[i.fecha && fechaCortaLote(i.fecha), etiquetaDe(i)].filter(Boolean).join(" · ")}</span>
                       <strong>{i.titulo || i.titular}</strong>
                       {r?.error && <p role="alert" className="cerebro-error">{r.error}</p>}
+                      {r?.cargando && r.paso && final && <p className="hint">{r.paso}</p>}
+                      {guiado && r?.opciones?.[0]?.archivos?.length > 1 && (
+                        <div className="lote-laminas" aria-label={`Las ${r.opciones[0].archivos.length} láminas`}>
+                          {r.opciones[0].archivos.map((a, k) => <img key={a.id} src={a.src} alt={`Lámina ${k + 1}`} />)}
+                        </div>
+                      )}
                       {r?.opciones?.length > 1 && !llevadas[i.id] && (
                         <div className="lote-opciones" role="group" aria-label={`Escoger la imagen de «${i.titulo || i.titular}»`}>
                           {r.opciones.map((o, k) => (
@@ -575,24 +718,30 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
         <div className="lote-pie">
           {paso === 0 && (
             <button type="button" className="btn btn-primary" disabled={escribiendo || !total || !modelo} onClick={escribirIdeas}>
-              <Icon name="sparkles" size={18} /> {escribiendo ? "Escribiendo las piezas…" : `Escribir ${total} ${total === 1 ? "pieza" : "piezas"} con IA`}
+              <Icon name="sparkles" size={18} /> {escribiendo ? (progreso || "Escribiendo las piezas…") : `Escribir ${total} ${total === 1 ? "pieza" : "piezas"} con IA`}
             </button>
           )}
           {paso === 1 && (
             <>
               <button type="button" className="btn btn-ghost" onClick={() => setPaso(0)}>Volver</button>
-              <p className="lote-costo">{elegidas.length} de {ideas.length}{variantes > 1 ? ` × ${variantes}` : ""} · <strong>{textoCosto(costoTotal)}</strong>{modelo?.estimado ? " (aprox.)" : ""}</p>
-              <button type="button" className="btn btn-primary" disabled={!elegidas.length} onClick={crear}>
-                <Icon name="image" size={18} /> Crear {elegidas.length} {elegidas.length === 1 ? "pieza" : "piezas"} · {textoCosto(costoTotal)}
+              {onLlevar && (
+                <button type="button" className="btn btn-secondary" disabled={!ideasConDia.length || llevandoIdeas}
+                  title={ideasConDia.length ? "" : "Escoge el día de cada idea"} onClick={llevarIdeas}>
+                  <Icon name="calendar" size={18} /> {llevandoIdeas ? "Llevando…" : `Sólo las ideas al calendario (${ideasConDia.length})`}
+                </button>
+              )}
+              <p className="lote-costo">{porCrear.length} de {ideas.length}{variantes > 1 && !guiado ? ` × ${variantes}` : ""} · <strong>{textoCosto(costoTotal)}</strong>{modelo?.estimado || guiado ? " (aprox.)" : ""}</p>
+              <button type="button" className="btn btn-primary" disabled={!porCrear.length || llevandoIdeas} onClick={crear}>
+                <Icon name={formato === "reel" ? "video" : "image"} size={18} /> Crear {porCrear.length} {nombreDePiezas(porCrear.length)} · {textoCosto(costoTotal)}
               </button>
             </>
           )}
           {paso === 2 && (
             <>
-              <p className="lote-costo">{listas} de {elegidas.length} listas</p>
+              <p className="lote-costo">{listas} de {delPaso3.length} {listas === 1 ? "lista" : "listas"}</p>
               {!creando && onLlevar && porLlevar > 0 && (
                 <button type="button" className="btn btn-secondary" disabled={llevandoTodas} onClick={llevarTodas}>
-                  <Icon name="calendar" size={18} /> {llevandoTodas ? "Llevando…" : `Llevar las ${porLlevar} al calendario`}
+                  <Icon name="calendar" size={18} /> {llevandoTodas ? "Llevando…" : porLlevar === 1 ? "Llevar al calendario" : `Llevar las ${porLlevar} al calendario`}
                 </button>
               )}
               {creando

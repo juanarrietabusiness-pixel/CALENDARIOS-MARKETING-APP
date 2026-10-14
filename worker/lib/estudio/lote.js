@@ -14,6 +14,9 @@
 //   · tipos    { tipos: { educativo: 3, … } }
 //   · mes      { mes: "AAAA-MM", dias: [0–6] }
 // Comunes: { formato, semilla?, usados?, composiciones? } (las que funcionan con este cliente).
+// Por TANDAS: { desde, tamano } escribe sólo esas piezas del plan (el plan sale igual con la misma semilla), y la
+// pantalla las pide una tras otra pasando lo que ya salió en `usados`. Escribir 30 en una sola llamada daba ideas
+// planas: cada pieza recibía muy poca atención. Sin tanda, todas (como antes).
 //
 // No pide nada al motor de imagen: eso lo hace la pantalla, pieza a pieza,
 // después de que una persona revisa las ideas y ve el costo.
@@ -39,6 +42,8 @@ const leerJSON = (t) => {
   try { return JSON.parse(t); } catch { return null; }
 };
 const MODOS = ["niveles", "matriz", "tipos", "mes"];
+/** Cuántas piezas por llamada como mucho (lo que pide la pantalla es 6). */
+export const TANDA_MAX = 10;
 
 /** → { ideas, producto, productos, conEstudio, modelo, aviso } */
 export async function produccionDeLote(env, acceso, cliente, datos = {}) {
@@ -98,6 +103,12 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     plan = darForma(celdas, { productos: rotan, semilla: datos.semilla, formato, orden });
   }
 
+  const total = plan.length;
+  const desde = Math.max(0, Math.floor(Number(datos.desde) || 0));
+  const tamano = Math.floor(Number(datos.tamano) || 0);
+  if (tamano > 0) plan = plan.slice(desde, desde + Math.min(tamano, TANDA_MAX));
+  if (!plan.length) return { ideas: [], total, productos: rotan.map((p) => ({ id: p.id, nombre: p.nombre })), conEstudio: Boolean(general) };
+
   const usadosProd = new Set(plan.map((r) => r.productoId).filter(Boolean));
   const textoEstudio = [
     general ? resumenGeneral(general) : "",
@@ -118,14 +129,14 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       fechasEspeciales: fechas.map((f) => `${f.fecha} · ${f.nombre}${f.delicada ? " (delicada: sin promociones)" : ""}`),
       usados: (Array.isArray(datos.usados) ? datos.usados : []).map((t) => String(t ?? "").slice(0, 80)).filter(Boolean).slice(0, 30),
     }),
-    salida: 420 * plan.length + 800,
+    salida: (FORMATOS_LOTE[formato]?.guiado ? 800 : 420) * plan.length + 800,
     funcion: modo === "mes" ? "lote del mes" : "ideas de anuncios",
   });
   const nombres = new Map(rotan.map((p) => [p.id, p.nombre]));
   const ideas = leerProduccion(r.texto, plan).map((i) => (i.productoId ? { ...i, producto: nombres.get(i.productoId) ?? i.producto ?? "" } : i));
-  if (!ideas.length) throw fallo("La IA no devolvió ideas que se puedan leer. Inténtalo otra vez.", 502);
+  if (!ideas.length && !tamano) throw fallo("La IA no devolvió ideas que se puedan leer. Inténtalo otra vez.", 502);
   return {
-    ideas,
+    ideas, total,
     producto: producto ? { id: producto.id, nombre: producto.nombre, precio: producto.precio } : null,
     productos: rotan.map((p) => ({ id: p.id, nombre: p.nombre })),
     conEstudio: Boolean(general),
