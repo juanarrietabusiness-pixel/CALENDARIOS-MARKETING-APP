@@ -4,12 +4,12 @@ import worker from "../../worker/index.js";
 import { d1EnMemoria } from "../utils/d1Memoria.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
-import { MODELOS, modeloPorId, MEDIDAS, validarPedido } from "../../src/lib/estudioCatalogo.js";
+import { MODELOS, modeloPorId, MEDIDAS, validarPedido, estimar, modelosParaLista, modeloPorDefecto } from "../../src/lib/estudioCatalogo.js";
 import { generar, texto, SALIDA, MODELOS_HF, PROPORCIONES_CONOCIDAS } from "../../scripts/estudio/generar-higgsfield.mjs";
 import ESQUEMAS_JSON from "../../worker/lib/estudio/higgsfield-schemas.json";
 import { pedidoHiggsfield, rutaDe, cuerpoDe, esDeHiggsfield } from "../../worker/lib/estudio/higgsfield.js";
 import { MODELOS_FAL, pedidoFal, esDeLaCola } from "../../worker/lib/estudio/fal.js";
-import { MODELOS_KIE, pedidoKie, urlsDelResultado, datosDe } from "../../worker/lib/estudio/kie.js";
+import { MODELOS_KIE, pedidoKie, urlsDelResultado, datosDe, validarKie } from "../../worker/lib/estudio/kie.js";
 
 // ============================================================
 // Los motores de fal.ai y Higgsfield
@@ -499,13 +499,16 @@ describe("Kie.ai: el recorrido de un pedido", () => {
     globalThis.fetch = vi.fn(async (url, init = {}) => {
       const u = String(url);
       llamadas.push({ url: u, init });
-      if (u === SUBIDA) return json({ success: true, code: 200, msg: "ok", data: { downloadUrl: "https://tempfile.kie.test/ref.png" } });
+      if (u === SUBIDA) {
+        const video = String(init.body?.get?.("uploadPath") ?? "").startsWith("videos");
+        return json({ success: true, code: 200, msg: "ok", data: { downloadUrl: `https://tempfile.kie.test/ref.${video ? "mp4" : "png"}` } });
+      }
       if (u === `${API}/api/v1/jobs/createTask`) return crear ?? json({ code: 200, msg: "success", data: { taskId: "t-1" } });
       if (u.startsWith(`${API}/api/v1/jobs/recordInfo`)) {
         const state = estados[Math.min(i++, estados.length - 1)];
         return json({ code: 200, data: { taskId: "t-1", state, ...(state === "success" ? { resultJson: resultado ?? JSON.stringify({ resultUrls: ["https://tempfile.kie.test/out.png"] }) } : {}), ...(state === "fail" ? { failMsg: "contenido no permitido" } : {}) } });
       }
-      if (u.startsWith("https://tempfile.kie.test/out")) return archivo(PNG);
+      if (u.startsWith("https://tempfile.kie.test/out")) return archivo(u.endsWith(".mp4") ? MP4 : PNG);
       return new Response("{}", { status: 404 });
     });
     return llamadas;
@@ -524,6 +527,84 @@ describe("Kie.ai: el recorrido de un pedido", () => {
     expect(pedidoKie(m, { prompt: "p", ajustes: { aspectRatio: "1:1", imageSize: "4K" } }).input.resolution).toBe("2K");
     expect(pedidoKie(modeloPorId("nano-banana-pro-kie"), { prompt: "p", ajustes: { aspectRatio: "4:5", imageSize: "2K" }, refs: ["https://a"] }))
       .toEqual({ model: "nano-banana-pro", input: { prompt: "p", image_input: ["https://a"], aspect_ratio: "4:5", resolution: "2K", output_format: "png" } });
+  });
+
+  it("los videos: cada modelo con su forma (texto, imagen inicial y final, referencias, video)", () => {
+    const p = (id, extra = {}) => pedidoKie(modeloPorId(id), { prompt: "p", ajustes: { ...modeloPorId(id).ajustes && Object.fromEntries(Object.entries(modeloPorId(id).ajustes).map(([k, d]) => [k, d.defecto])), ...(extra.ajustes ?? {}) }, ...extra });
+    // Kling 3.0: desde texto con proporción; con imagen inicial y final, sin proporción (la da la imagen).
+    expect(p("kling-3-kie")).toEqual({ model: "kling-3.0/video", input: { prompt: "p", sound: true, duration: "10", mode: "std", multi_shots: false, aspect_ratio: "9:16" } });
+    expect(p("kling-3-kie", { inicio: ["https://i"], fin: ["https://f"], ajustes: { sonido: "no" } }).input).toMatchObject({ image_urls: ["https://i", "https://f"], sound: false });
+    expect(p("kling-3-kie", { inicio: ["https://i"] }).input.aspect_ratio).toBeUndefined();
+    // Kling 3.0 Omni: la ruta sale de lo que lleva.
+    expect(p("kling-3-omni-kie").model).toBe("kling-3.0-omni/text-to-video");
+    expect(p("kling-3-omni-kie", { inicio: ["https://i"] })).toMatchObject({ model: "kling-3.0-omni/image-to-video", input: { image_urls: ["https://i"], duration: 10 } });
+    expect(p("kling-3-omni-kie", { refs: ["https://a", "https://b"] })).toMatchObject({ model: "kling-3.0-omni/reference-to-video", input: { image_urls: ["https://a", "https://b"], duration: 10, aspect_ratio: "9:16" } });
+    expect(p("kling-3-omni-kie", { videos: ["https://v"] }).input).toMatchObject({ video_urls: ["https://v"], aspect_ratio: "auto" });
+    // Seedance: referencias, video y fotogramas en sus campos, la duración como número.
+    expect(p("seedance-2-kie", { refs: ["https://a"], videos: ["https://v"], inicio: ["https://i"] }).input)
+      .toMatchObject({ reference_image_urls: ["https://a"], reference_video_urls: ["https://v"], first_frame_url: "https://i", duration: 10, generate_audio: true });
+    // Veo 3.1: el modelo de arriba es siempre «veo-3-1»; con referencias, 8 s.
+    expect(p("veo-3-1-fast-kie", { refs: ["https://a"], ajustes: { duration: "4" } })).toEqual({
+      model: "veo-3-1", input: { prompt: "p", model: "veo3_fast", aspect_ratio: "9:16", resolution: "720p", duration: 8, generation_type: "REFERENCE_2_VIDEO", image_urls: ["https://a"] },
+    });
+    expect(p("veo-3-1-kie", { inicio: ["https://i"] }).input).toMatchObject({ model: "veo3", generation_type: "FIRST_AND_LAST_FRAMES_2_VIDEO", image_urls: ["https://i"] });
+    // Gemini Omni: con imagen inicial, nada más; con referencias y video, el tramo y como mucho 5 imágenes.
+    expect(p("gemini-omni-kie", { inicio: ["https://i"], fin: ["https://f"] }).input).toEqual({
+      prompt: "p", aspect_ratio: "9:16", resolution: "720p", duration: "10", first_frame_url: "https://i", last_frame_url: "https://f",
+    });
+    const omni = p("gemini-omni-kie", { refs: ["1", "2", "3", "4", "5", "6", "7"].map((x) => `https://${x}`), videos: ["https://v"] }).input;
+    expect(omni.image_urls).toHaveLength(5);
+    expect(omni.video_list).toEqual([{ url: "https://v", start: 0, ends: 10 }]);
+    expect(p("hailuo-2-3-kie", { inicio: ["https://i"] })).toEqual({ model: "hailuo/2-3-image-to-video-pro", input: { prompt: "p", image_url: "https://i", duration: "10", resolution: "768P" } });
+    expect(p("wan-2-7-kie").model).toBe("wan/2-7-text-to-video");
+    expect(p("wan-2-7-kie", { inicio: ["https://i"] }).model).toBe("wan/2-7-image-to-video");
+  });
+
+  it("las imágenes nuevas y «pulir»: su forma, y pulir no sale en las listas del compositor", () => {
+    const p = (id, extra = {}) => pedidoKie(modeloPorId(id), { prompt: "p", ajustes: {}, ...extra });
+    expect(p("ideogram-3-kie", { ajustes: { aspectRatio: "9:16", calidad: "high" } }).input).toMatchObject({ image_size: "portrait_16_9", rendering_speed: "QUALITY" });
+    expect(p("gpt-image-2-5-kie", { refs: ["https://a"] }).model).toBe("gpt-image-2-5-sunburst-image-to-image");
+    expect(p("seedream-5-pro-kie").model).toBe("seedream/5-pro-text-to-image");
+    expect(p("nano-banana-2-1-kie", { refs: ["https://a"], ajustes: { aspectRatio: "4:5" } }).input).toMatchObject({ image_input: ["https://a"], aspect_ratio: "4:5" });
+    expect(p("topaz-ampliar-kie", { refs: ["https://a"], ajustes: { factor: "4" } })).toEqual({ model: "topaz/image-upscale", input: { image_url: "https://a", upscale_factor: "4" } });
+    expect(p("recraft-sin-fondo-kie", { refs: ["https://a"] })).toEqual({ model: "recraft/remove-background", input: { image: "https://a" } });
+    const activos = { kie: true, gemini: true };
+    expect(modelosParaLista("imagen", { activos }).some((m) => m.pulir)).toBe(false);
+    expect(modeloPorDefecto({ kie: true }, "imagen").pulir).toBeFalsy();
+  });
+
+  it("lo que Kie no mezcla se dice al pedir; el precio cambia con la calidad", () => {
+    const v = (id, medios) => validarKie(modeloPorId(id), { medios });
+    expect(v("gemini-omni-kie", { start: ["a"], reference: ["b"] })).toMatch(/no mezcla la imagen inicial/);
+    expect(v("gemini-omni-kie", { video: ["v"], reference: ["1", "2", "3", "4", "5", "6"] })).toMatch(/hasta 5 imágenes/);
+    expect(v("gemini-omni-kie", { reference: ["a"] })).toBeNull();
+    expect(v("veo-3-1-fast-kie", { start: ["a"], reference: ["b"] })).toMatch(/no mezcla/);
+    expect(v("topaz-ampliar-kie", {})).toMatch(/Escoge la imagen/);
+    expect(estimar("kling-3-kie", 1, { duration: "10" })).toBe(0.7);
+    expect(estimar("kling-3-kie", 1, { duration: "10", modo: "pro" })).toBe(1);
+    expect(estimar("gemini-omni-kie", 1, { duration: "10", resolution: "1080p" })).toBe(1.2);
+    expect(estimar("nano-banana-2-1-kie", 1, { imageSize: "4K" })).toBe(0.1);
+  });
+
+  it("un video con imagen inicial y video de referencia: los sube cada uno a su sitio, crea la tarea y baja el MP4", async () => {
+    const llamadas = kie({ resultado: JSON.stringify({ resultUrls: ["https://tempfile.kie.test/out.mp4"] }) });
+    env.MEDIA.objetos.set("clientes/c1/estudio/2026-09/ref.png", { bytes: PNG, tipo: "image/png" });
+    env.MEDIA.objetos.set("clientes/c1/estudio/2026-09/ref.mp4", { bytes: MP4, tipo: "video/mp4" });
+    const { trabajo } = await (await pedirTrabajo({
+      modelo: "seedance-2-kie", tipo: "video", prompt: "el bebé gatea", ajustes: { duration: "5" },
+      medios: { start: ["clientes/c1/estudio/2026-09/ref.png"], video: ["clientes/c1/estudio/2026-09/ref.mp4"] }, confirmado: true,
+    })).json();
+    expect(trabajo.costoEstimado).toBe(0.4);
+    await avanzar(trabajo.id);
+    const subidas = llamadas.filter((l) => l.url === SUBIDA).map((l) => l.init.body.get("uploadPath"));
+    expect(subidas).toEqual(["images/estudio", "videos/estudio"]);
+    const crear = JSON.parse(llamadas.find((l) => l.url.endsWith("/createTask")).init.body);
+    expect(crear).toMatchObject({ model: "bytedance/seedance-2", input: { first_frame_url: "https://tempfile.kie.test/ref.png", reference_video_urls: ["https://tempfile.kie.test/ref.mp4"], duration: 5 } });
+    const fin = await hastaElFinal(trabajo.id);
+    expect(fin.estado).toBe("hecho");
+    const { archivos } = await galeria();
+    expect(archivos[0]).toMatchObject({ tipo: "video", mime: "video/mp4", modelo: "seedance-2-kie" });
+    expect(consumo()[0]).toMatchObject({ proveedor: "kie", costo_usd: 0.4 });
   });
 
   it("el resultado: resultJson como texto o como objeto; el error va por `code` aunque el HTTP sea 200", () => {

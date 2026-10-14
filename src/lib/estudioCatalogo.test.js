@@ -287,7 +287,7 @@ describe("fal.ai y Higgsfield en el catálogo", () => {
 });
 
 describe("la lista de modelos: ordenar y filtrar", () => {
-  const activos = { gemini: true, fal: true, higgsfield: true, prueba: true };
+  const activos = { gemini: true, fal: true, higgsfield: true, kie: true, prueba: true };
   const ids = (lista) => lista.map((m) => m.id);
 
   it("sólo trae modelos del tipo pedido, sin perder ni repetir ninguno", () => {
@@ -296,7 +296,8 @@ describe("la lista de modelos: ordenar y filtrar", () => {
         const lista = modelosParaLista(tipo, { orden, activos });
         expect(lista.every((m) => m.tipo === tipo), `${tipo} ${orden}`).toBe(true);
         expect(new Set(ids(lista)).size).toBe(lista.length);
-        expect(lista.length).toBe(MODELOS.filter((m) => m.tipo === tipo).length);
+        // Los de «pulir» no crean: no salen en la lista.
+        expect(lista.length).toBe(MODELOS.filter((m) => m.tipo === tipo && !m.pulir).length);
       }
     }
   });

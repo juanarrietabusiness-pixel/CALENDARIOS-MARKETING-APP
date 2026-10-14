@@ -1215,13 +1215,23 @@ son del servidor.
   generador. **Nada de fal.ai ni de Higgsfield se ha probado contra el servicio real**: los tests
   usan un `fetch` de mentira que habla como ellos. Lo primero con una llave es un pedido barato
   (Z-Image Turbo, Flux Schnell) y luego uno de video corto.
-  · **Kie.ai es un cuarto proveedor, todo por COLA** (`worker/lib/estudio/kie.js`, `KIE_API_KEY`): GPT Image 2, Nano
-  Banana Pro y Nano Banana 2. Kie contesta casi siempre HTTP 200 y pone el error en `code` (401 llave, 402 créditos,
-  422 datos, 429/455/5xx pasajeros): `datosDe` mira el `code`, no sólo el estado. `resultJson` llega como TEXTO JSON
-  (`urlsDelResultado`). Las imágenes de apoyo se suben a su almacén (`file-stream-upload`, caducan solas) y van por
-  dirección; el resultado se baja SIN la llave. GPT Image 2 no tiene 4:5 (sale 3:4 y se adapta al programar) y en
-  1:1 no pasa de 2K. Un test exige que cada modelo de Kie del catálogo tenga su pedido en `MODELOS_KIE`, y al revés.
-  **Nada de Kie se ha probado contra el servicio real**: la forma sale de su documentación pública.
+  · **Kie.ai es un cuarto proveedor, todo por COLA** (`worker/lib/estudio/kie.js`, `KIE_API_KEY`; su documentación, la
+  parte que se usa, en `docs/kie/`). Imagen: GPT Image 2 y 2.5, Nano Banana Pro, 2 y 2.1, Ideogram 3, Seedream 5 Pro,
+  Imagen 4 Ultra. Video: Gemini Omni Flash (el de Flow: hasta 7 referencias —fotogramas del storyboard, personajes—,
+  o imagen inicial y final, o un video para corregir un tramo), Kling 3.0 y 3.0 Omni, Seedance 2.0 y 2.5, Veo 3.1 Fast
+  y Quality (también por `createTask`, con `model: "veo-3-1"` y el nivel en `input.model`), Hailuo 2.3 y Wan 2.7. Y
+  «pulir» (`pulir: true`: Topaz, Recraft nitidez y quitar fondo), que no crea: se pide desde el visor con la imagen de
+  única referencia y NO sale en las listas del compositor ni como predeterminado (`modelosParaLista`,
+  `modeloPorDefecto`, `modeloParaEditar`, las herramientas del asistente).
+  Kie contesta casi siempre HTTP 200 y pone el error en `code` (401 llave, 402 créditos, 422 datos, 429/455/5xx
+  pasajeros): `datosDe` mira el `code`, no sólo el estado. `resultJson` llega como TEXTO JSON (`urlsDelResultado`).
+  Las imágenes y el video de apoyo se suben a su almacén (`file-stream-upload`, `images/estudio` o `videos/estudio`,
+  caducan solas) y van por dirección, cada papel en su campo (`refs`, `inicio`, `fin`, `videos`); el resultado se baja
+  SIN la llave. Lo que un modelo no mezcla (Omni y Kling Omni: imagen inicial con referencias o video; Veo: referencias
+  con imagen inicial) lo rechaza `validarKie` AL PEDIR. El precio depende de la calidad: `costoSegun` en el catálogo
+  (`costoUnitario`). GPT Image no tiene 4:5 (sale 3:4 y se adapta al programar). Un test exige que cada modelo de Kie
+  del catálogo tenga su pedido en `MODELOS_KIE`, y al revés. **Nada de Kie se ha probado contra el servicio real**: la
+  forma sale de su documentación.
   · **El VIDEO de referencia es un cuarto papel de los medios** (`medios.video`, junto a start/end/reference). Sólo
   lo admiten los modelos de Higgsfield marcados `conVideo` en el generador (Kling Omni · sigue un video, Kling 3.0
   · copia el movimiento): `video: 1` y `necesitaVideo` salen del esquema. Va a SU almacén como las imágenes, desde

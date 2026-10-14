@@ -294,10 +294,16 @@ export function archivoDesdeSrc(src, clienteId, prompt = "") {
 }
 
 /** El nombre de cada ajuste en la pantalla. */
-export const ETIQUETA_AJUSTE = Object.freeze({ aspectRatio: "Formato", imageSize: "Tamaño", resolution: "Resolución", duration: "Duración", calidad: "Calidad", formato: "Archivo" });
+export const ETIQUETA_AJUSTE = Object.freeze({
+  aspectRatio: "Formato", imageSize: "Tamaño", resolution: "Resolución", duration: "Duración", calidad: "Calidad", formato: "Archivo",
+  modo: "Calidad del video", sonido: "Sonido", factor: "Ampliar",
+});
 
 /** «4 s», «720p», «1K» según el ajuste. */
-const VALORES = Object.freeze({ calidad: { high: "Alta (pule en varias pasadas)", low: "Rápida" }, formato: { webp: "WebP (ligero)", png: "PNG", jpeg: "JPEG" } });
+const VALORES = Object.freeze({
+  calidad: { high: "Alta (pule en varias pasadas)", low: "Rápida" }, formato: { webp: "WebP (ligero)", png: "PNG", jpeg: "JPEG" },
+  modo: { std: "Estándar (720p)", pro: "Pro (1080p)", "4K": "4K" }, sonido: { si: "Con sonido", no: "Sin sonido" }, factor: { 2: "Al doble", 4: "Cuatro veces" },
+});
 
 export function valorDeAjuste(nombre, valor) {
   if (nombre === "duration") return `${valor} s`;
@@ -336,7 +342,7 @@ export function promptDeEdicion(instruccion) {
  */
 export function modeloParaEditar(activos = {}) {
   const preferidos = ["muse-image", "nano-banana"];
-  const con = (m) => m.tipo === "imagen" && m.referencias > 0 && activos[m.motor];
+  const con = (m) => m.tipo === "imagen" && m.referencias > 0 && !m.pulir && activos[m.motor];
   return preferidos.map((id) => MODELOS.find((m) => m.id === id)).find((m) => m && con(m))
     ?? MODELOS.find((m) => con(m) && m.motor !== "prueba")
     ?? MODELOS.find((m) => m.id === "prueba");

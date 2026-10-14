@@ -1,7 +1,7 @@
 import { useId, useRef, useState } from "react";
 import Icon from "./Icon";
 import {
-  textoCosto, nombreDelModelo, NOMBRE_PROPORCION, MAX_PROMPT, maxPorPedido, duracionDe, modelosParaLista, creadoresDe, CRITERIOS_ORDEN, NOMBRE_CALIDAD, NOMBRE_MOTOR,
+  textoCosto, costoUnitario, nombreDelModelo, NOMBRE_PROPORCION, MAX_PROMPT, maxPorPedido, duracionDe, modelosParaLista, creadoresDe, CRITERIOS_ORDEN, NOMBRE_CALIDAD, NOMBRE_MOTOR,
 } from "../lib/estudioCatalogo";
 import { ETIQUETA_AJUSTE, valorDeAjuste } from "../lib/estudio";
 import { TIPOS_PRESET, ACABADOS, LINEA_LOGO } from "../lib/kitMarca";
@@ -551,7 +551,7 @@ export default function Compositor({
       <div className="est-pie-compositor">
         <p className="est-costo">
           Costo: <strong>{textoCosto(costo)}</strong>
-          {esVideo && costo > 0 ? ` · ${segundos} s × ${form.n} × ${textoCosto(modelo.costo).replace("≈ ", "")}/s` : ""}
+          {esVideo && costo > 0 ? ` · ${segundos} s × ${form.n} × ${textoCosto(costoUnitario(modelo, form.ajustes)).replace("≈ ", "")}/s` : ""}
           {modelo.estimado && costo > 0 ? " · precio aproximado" : ""}
         </p>
         {confirmando != null ? (
