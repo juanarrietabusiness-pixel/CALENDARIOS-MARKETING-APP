@@ -137,7 +137,7 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
     async ver_estudio({ cliente }) {
       const c = await resolverCliente(cliente);
       const motores = activos();
-      const hay = MODELOS.filter((m) => motores[m.motor] && m.motor !== "prueba" && !m.pulir);
+      const hay = MODELOS.filter((m) => motores[m.motor] && m.motor !== "prueba");
       const usables = hay.length ? hay : MODELOS.filter((m) => m.motor === "prueba");
       const porTipo = (tipo) => usables.filter((m) => m.tipo === tipo);
       const porDefecto = { imagen: modeloPorDefecto(motores, "imagen"), video: modeloPorDefecto(motores, "video") };

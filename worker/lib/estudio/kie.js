@@ -84,10 +84,6 @@ export const MODELOS_KIE = Object.freeze({
   "imagen-4-ultra-kie": ({ prompt, ajustes }) => ({
     model: "google/imagen4-ultra", input: { prompt, aspect_ratio: ajustes.aspectRatio || "3:4" },
   }),
-  // ---- Pulir: ampliar y limpiar, o quitar el fondo. La imagen va como referencia; el texto no se usa.
-  "topaz-ampliar-kie": ({ ajustes, refs }) => ({ model: "topaz/image-upscale", input: { image_url: refs[0], upscale_factor: ajustes.factor || "2" } }),
-  "recraft-nitidez-kie": ({ refs }) => ({ model: "recraft/crisp-upscale", input: { image: refs[0] } }),
-  "recraft-sin-fondo-kie": ({ refs }) => ({ model: "recraft/remove-background", input: { image: refs[0] } }),
 
   // ---- Video
   "kling-3-kie": ({ prompt, ajustes, inicio, fin }) => ({
@@ -187,7 +183,6 @@ export function validarKie(modelo, pedido = {}) {
   if (modelo.id === "gemini-omni-kie" && n("video") && n("reference") > 5) return "Con un video, Gemini Omni admite hasta 5 imágenes de referencia.";
   if (modelo.id === "veo-3-1-fast-kie" && n("reference") && n("start")) return "Veo 3.1 no mezcla referencias con imagen inicial: usa una cosa o la otra.";
   if (modelo.id === "kling-3-omni-kie" && n("start") && (n("reference") || n("video"))) return "Kling 3.0 Omni no mezcla la imagen inicial con referencias o video.";
-  if (modelo.pulir && n("reference") !== 1) return "Escoge la imagen que quieres pulir.";
   return null;
 }
 

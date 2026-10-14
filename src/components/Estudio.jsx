@@ -13,13 +13,14 @@ import { pedidoDePieza } from "../lib/pieza";
 import { deMisGustos } from "../lib/aprendizajeVisual";
 import { segundosParaModelo, ajusteDeDuracion } from "../lib/videoCorto";
 import BancoSelector from "./BancoSelector";
+import EleccionRanura from "./EleccionRanura";
 import ExploradorDrive from "./ExploradorDrive";
 import { idDeCarpeta } from "../lib/drive";
 import { OverflowMenu } from "./calendario/primitivas";
 import { soloLectura } from "../lib/sesionActual";
 import * as api from "../lib/estudio";
 import {
-  MODELOS, modeloPorId, nombreDelModelo, estimar, textoCosto, pideConfirmar, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
+  modeloPorId, nombreDelModelo, estimar, textoCosto, pideConfirmar, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
 } from "../lib/estudioCatalogo";
 import {
   filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga,
@@ -128,6 +129,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const [conLogo, setConLogo] = useState(true);
   // Un flujo guiado abierto en lugar del compositor ("" = el compositor de imagen o video).
   const [guiado, setGuiado] = useState("");
+  const [vueltaGuiado, setVueltaGuiado] = useState(0);
   // Los personajes de la marca que salen en esta pieza (sus imágenes van de referencia: que salgan IGUAL).
   const [personajesSel, setPersonajesSel] = useState([]);
   // «Fijar para este cliente»: el modelo va en su kit (lo comparte el equipo) y arranca el compositor, el lote y
@@ -153,6 +155,10 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   };
   // Traer de Drive: el papel (referencia, inicial…) para el que se abrió el selector.
   const [driveRol, setDriveRol] = useState(null);
+  // «¿Dónde va esta imagen?» y «De la galería» en un sitio concreto del compositor.
+  const [eligiendoRanura, setEligiendoRanura] = useState(null);
+  const [destinoGaleria, setDestinoGaleria] = useState(null);
+  const galeriaRef = useRef(null);
   // La galería: lo que no se pudo pintar (el archivo ya no está) y lo marcado para mandar varias a la papelera.
   const [perdidos, setPerdidos] = useState(() => new Set());
   const [seleccion, setSeleccion] = useState(null); // null = no se está seleccionando; si no, un Set de ids
@@ -440,26 +446,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     }
   };
 
-  /** «Pulir»: ampliar y limpiar (o quitar el fondo) con un modelo de Kie. La imagen va de única referencia. */
-  const pulir = async (a, modeloId) => {
-    const m = modeloPorId(modeloId);
-    if (!m) return;
-    try {
-      const { trabajo } = await api.pedirImagenes(client.id, {
-        modelo: m.id, prompt: (a.prompt || "Imagen pulida").slice(0, MAX_PROMPT), n: 1, ajustes: ajustesDe(m, {}, { reference: [a.clave] }),
-        medios: { reference: [a.clave] }, confirmado: true,
-        ...(a.carpetaId ? { carpetaId: a.carpetaId } : {}),
-      });
-      setVisor(null);
-      setEnPapelera(false);
-      setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, trabajo) } : d));
-      seguir(trabajo.id);
-      avisar(true, `${m.nombre}: sale como una imagen NUEVA y la original no se toca.`);
-    } catch (e) {
-      avisar(false, e.message);
-    }
-  };
-
   const enviar = async (confirmado = false) => {
     if (!form || !modelo || enviando) return;
     if (!form.prompt.trim()) {
@@ -534,37 +520,45 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     });
   };
 
-  /** Dónde cabe un archivo en el modelo elegido: inicial, final, referencia o (un video) video de referencia. `null` si no cabe. */
-  const ranuraPara = (f, m, a) => {
-    if (a.tipo === "video") return m.video && !(f.medios.video ?? []).length ? "video" : null;
-    const puesta = (lista) => lista.some((x) => x.id === a.id);
-    if (m.inicial && !f.medios.start.length) return "start";
-    if (m.final && f.medios.start.length && !f.medios.end.length && !puesta(f.medios.start)) return "end";
-    if (m.referencias && f.medios.reference.length < m.referencias) return "reference";
-    return null;
-  };
   const NOMBRE_RANURA = { start: "imagen inicial", end: "imagen final", reference: "referencia", video: "video de referencia" };
 
-  const usarComoMedio = (a) => {
+  /**
+   * Un archivo de la galería al pedido. Con `rol` (lo escogió la persona, o pulsó «De la galería» en ese sitio) va
+   * ahí; si no, al único sitio libre, y si hay más de uno se pregunta (`EleccionRanura`).
+   */
+  const usarComoMedio = (a, rol = null) => {
     if (!form || !modelo) return;
     if (Object.values(form.medios).some((l) => l.some((x) => x.id === a.id))) { avisar(true, "Ya está puesta."); return; }
-    const rol = ranuraPara(form, modelo, a);
-    if (!rol && a.tipo === "video") {
+    const libres = api.ranurasLibres(form.medios, modelo, a);
+    if (!libres.length && a.tipo === "video") {
       avisar(false, modelo.video
         ? "Ya hay un video de referencia en el pedido. Quítalo para poner otro."
-        : `${modelo.nombre} no sigue videos. Escoge «Kling Omni · sigue un video» o «Kling 3.0 · copia el movimiento».`);
+        : `${modelo.nombre} no sigue videos. Escoge uno que siga videos, como «Gemini Omni Flash (Kie)» o «Kling 3.0 Omni (Kie)».`);
       return;
     }
-    if (!rol) {
+    if (!libres.length) {
       avisar(false, modelo.inicial || modelo.referencias
         ? `${modelo.nombre} no admite más imágenes de apoyo. Quita alguna o escoge otro modelo.`
         : `${modelo.nombre} no admite imágenes de referencia. Escoge otro modelo.`);
       return;
     }
+    const destino = rol && libres.includes(rol) ? rol : libres.length === 1 ? libres[0] : null;
+    if (rol && !libres.includes(rol)) { avisar(false, `Ya no queda sitio en «${NOMBRE_RANURA[rol]}». Quita alguna o ponla en otro sitio.`); return; }
+    if (!destino) { setEligiendoRanura({ archivo: a, opciones: libres }); return; }
+    setEligiendoRanura(null);
+    setDestinoGaleria(null);
     setConfirmando(null);
-    setForm((f) => ({ ...f, medios: { ...f.medios, [rol]: [...f.medios[rol], a] } }));
-    avisar(true, `Puesta como ${NOMBRE_RANURA[rol]}. Escribe qué quieres hacer con ella.`);
+    setForm((f) => ({ ...f, medios: { ...f.medios, [destino]: [...f.medios[destino], a] } }));
+    avisar(true, `Puesta como ${NOMBRE_RANURA[destino]}. Escribe qué quieres hacer con ella.`);
     enfocarPrompt();
+  };
+
+  /** «De la galería» en un sitio del compositor: la siguiente imagen que se toque en la galería va ahí. */
+  const escogerDeLaGaleria = (rol) => {
+    setDestinoGaleria(rol);
+    setEnPapelera(false);
+    setEnDrive(false);
+    galeriaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   /** «Recrear un anuncio» terminado: la versión entra en el compositor (con el anuncio y las fotos del producto) para revisar y crear. */
@@ -998,11 +992,13 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             const Flujo = guiado === "reel" ? FlujoReel : FlujoCarrusel;
             return (
               <Flujo
-                key={guiado} client={client}
+                key={`${guiado}-${vueltaGuiado}`} client={client}
                 estudio={{ kit, productos: datos?.productos ?? [], archivos: datos?.archivos ?? [], activos: Object.fromEntries(Object.entries(motores ?? {}).map(([k, v]) => [k, Boolean(v.activo)])) }}
                 inicial={{ preset: presetVigente }}
                 cabecera={<QueCrear actual={guiado} guiados={GUIADOS} onCambiar={(t) => { if (GUIADOS.some(([x]) => x === t)) setGuiado(t); else { setGuiado(""); cambiarTipo(t); } }} />}
                 onCreando={(si) => { if (!si) cargar(); }}
+                // «Listo»: todo quedó en la galería; el flujo vuelve a empezar, limpio, para el siguiente.
+                onListo={() => { setVueltaGuiado((n) => n + 1); cargar(); avisar(true, guiado === "reel" ? "Reel listo: está en la galería, en su carpeta." : "Carrusel listo: está en la galería, en su carpeta."); }}
               />
             );
           })()}
@@ -1015,6 +1011,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           onEnviar={enviar} onConfirmar={() => enviar(true)} onNo={() => setConfirmando(null)}
           onModelo={cambiarModelo} onTipo={cambiarTipo} onQuitarMedio={quitarMedio} onMarcarReferencia={marcarReferencia} nombrado={nombrado} onSubirArchivos={subirArchivos}
           onDrive={client.driveFolder ? (rol) => setDriveRol(rol) : null}
+          onGaleria={escogerDeLaGaleria}
           mejorando={mejorando} onMejorar={mejorarConIA} onVolverIdea={ideaAnterior != null ? volverAMiIdea : null}
           mejorarSolo={desdePost ? { activo: mejorarSolo, onCambiar: setMejorarSolo } : null}
           estilo={{
@@ -1078,7 +1075,13 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       )}
 
       {/* ---------- Galería ---------- */}
-      <div className="est-galeria-cabecera">
+      <div className="est-galeria-cabecera" ref={galeriaRef}>
+        {destinoGaleria && (
+          <p className="notice est-destino" role="status">
+            Toca una imagen para ponerla como <strong>{NOMBRE_RANURA[destinoGaleria]}</strong>.
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDestinoGaleria(null)}>Cancelar</button>
+          </p>
+        )}
         <h3 className="est-subtitulo">{enPapelera ? "Papelera" : enDrive ? "Drive de " + client.name : "Galería"}</h3>
         <div className="est-filtros" role="group" aria-label="Filtrar la galería">
           <button type="button" className="filter-chip" aria-pressed={!enPapelera && !enDrive && filtro === "todas"} onClick={() => { setEnPapelera(false); setEnDrive(false); setFiltro("todas"); }}>Todas ({cuentas.todas})</button>
@@ -1212,9 +1215,10 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             return (
             <li key={a.id} className={`est-tarjeta${marcada ? " est-tarjeta-marcada" : ""}`}>
               <button
-                type="button" className="est-img" aria-label={seleccion ? `${marcada ? "Quitar de" : "Añadir a"} la selección: ${escena}` : `Abrir: ${escena}`}
+                type="button" className="est-img"
+                aria-label={seleccion ? `${marcada ? "Quitar de" : "Añadir a"} la selección: ${escena}` : destinoGaleria ? `Poner como ${NOMBRE_RANURA[destinoGaleria]}: ${escena}` : `Abrir: ${escena}`}
                 aria-pressed={seleccion ? marcada : undefined}
-                onClick={() => (seleccion ? alternarSeleccion(a) : setVisor(a))}
+                onClick={() => (seleccion ? alternarSeleccion(a) : destinoGaleria ? usarComoMedio(a, destinoGaleria) : setVisor(a))}
               >
                 {perdida ? (
                   <span className="est-perdida"><Icon name="alert" size={20} /> Archivo perdido</span>
@@ -1280,6 +1284,12 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
       <p className="est-precios">Los precios son aproximados y de {new Date(PRECIOS_AL).toLocaleDateString("es-PA", { month: "long", year: "numeric", timeZone: "UTC" })}. Lo que se gasta aquí suma al presupuesto de IA del mes.</p>
 
+      {eligiendoRanura && (
+        <EleccionRanura
+          archivo={eligiendoRanura.archivo} opciones={eligiendoRanura.opciones} modelo={modelo}
+          onElegir={(rol) => usarComoMedio(eligiendoRanura.archivo, rol)} onCerrar={() => setEligiendoRanura(null)}
+        />
+      )}
       {driveRol && (
         <BancoSelector
           clientId={client.dbId || client.id}
@@ -1308,8 +1318,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           onReferencia={() => { const a = visor; setVisor(null); usarComoMedio(a); }}
           onAnimar={() => animar(visor)}
           onEditar={(instruccion) => editar(visor, instruccion)}
-          pulidos={MODELOS.filter((m) => m.pulir && motores?.[m.motor]?.activo).map((m) => ({ id: m.id, nombre: m.nombre, costo: estimar(m, 1) }))}
-          onPulir={/^image\/(png|jpeg|webp)$/.test(visor.mime ?? "") ? (id) => pulir(visor, id) : null}
           original={originalDe(visor, datos?.trabajos ?? [], datos?.archivos ?? [])}
           onVerOriginal={(o) => setVisor(o)}
           onUsar={onUsar ? () => usarEnLaPublicacion(visor) : null}

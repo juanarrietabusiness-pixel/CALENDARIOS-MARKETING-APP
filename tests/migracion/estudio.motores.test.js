@@ -4,7 +4,7 @@ import worker from "../../worker/index.js";
 import { d1EnMemoria } from "../utils/d1Memoria.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
-import { MODELOS, modeloPorId, MEDIDAS, validarPedido, estimar, modelosParaLista, modeloPorDefecto } from "../../src/lib/estudioCatalogo.js";
+import { MODELOS, modeloPorId, MEDIDAS, validarPedido, estimar, nombreDelModelo, retirado } from "../../src/lib/estudioCatalogo.js";
 import { generar, texto, SALIDA, MODELOS_HF, PROPORCIONES_CONOCIDAS } from "../../scripts/estudio/generar-higgsfield.mjs";
 import ESQUEMAS_JSON from "../../worker/lib/estudio/higgsfield-schemas.json";
 import { pedidoHiggsfield, rutaDe, cuerpoDe, esDeHiggsfield } from "../../worker/lib/estudio/higgsfield.js";
@@ -560,17 +560,17 @@ describe("Kie.ai: el recorrido de un pedido", () => {
     expect(p("wan-2-7-kie", { inicio: ["https://i"] }).model).toBe("wan/2-7-image-to-video");
   });
 
-  it("las imágenes nuevas y «pulir»: su forma, y pulir no sale en las listas del compositor", () => {
+  it("las imágenes nuevas: su forma; «pulir» ya no existe y sus piezas se nombran retiradas", () => {
     const p = (id, extra = {}) => pedidoKie(modeloPorId(id), { prompt: "p", ajustes: {}, ...extra });
     expect(p("ideogram-3-kie", { ajustes: { aspectRatio: "9:16", calidad: "high" } }).input).toMatchObject({ image_size: "portrait_16_9", rendering_speed: "QUALITY" });
     expect(p("gpt-image-2-5-kie", { refs: ["https://a"] }).model).toBe("gpt-image-2-5-sunburst-image-to-image");
     expect(p("seedream-5-pro-kie").model).toBe("seedream/5-pro-text-to-image");
     expect(p("nano-banana-2-1-kie", { refs: ["https://a"], ajustes: { aspectRatio: "4:5" } }).input).toMatchObject({ image_input: ["https://a"], aspect_ratio: "4:5" });
-    expect(p("topaz-ampliar-kie", { refs: ["https://a"], ajustes: { factor: "4" } })).toEqual({ model: "topaz/image-upscale", input: { image_url: "https://a", upscale_factor: "4" } });
-    expect(p("recraft-sin-fondo-kie", { refs: ["https://a"] })).toEqual({ model: "recraft/remove-background", input: { image: "https://a" } });
-    const activos = { kie: true, gemini: true };
-    expect(modelosParaLista("imagen", { activos }).some((m) => m.pulir)).toBe(false);
-    expect(modeloPorDefecto({ kie: true }, "imagen").pulir).toBeFalsy();
+    for (const id of ["topaz-ampliar-kie", "recraft-nitidez-kie", "recraft-sin-fondo-kie"]) {
+      expect(modeloPorId(id)).toBeFalsy();
+      expect(nombreDelModelo(id)).toMatch(/\(retirado\)$/);
+      expect(retirado(id)).toMatch(/ya no se ofrece/);
+    }
   });
 
   it("lo que Kie no mezcla se dice al pedir; el precio cambia con la calidad", () => {
@@ -579,7 +579,6 @@ describe("Kie.ai: el recorrido de un pedido", () => {
     expect(v("gemini-omni-kie", { video: ["v"], reference: ["1", "2", "3", "4", "5", "6"] })).toMatch(/hasta 5 imágenes/);
     expect(v("gemini-omni-kie", { reference: ["a"] })).toBeNull();
     expect(v("veo-3-1-fast-kie", { start: ["a"], reference: ["b"] })).toMatch(/no mezcla/);
-    expect(v("topaz-ampliar-kie", {})).toMatch(/Escoge la imagen/);
     expect(estimar("kling-3-kie", 1, { duration: "10" })).toBe(0.7);
     expect(estimar("kling-3-kie", 1, { duration: "10", modo: "pro" })).toBe(1);
     expect(estimar("gemini-omni-kie", 1, { duration: "10", resolution: "1080p" })).toBe(1.2);

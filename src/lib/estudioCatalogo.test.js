@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  modelosParaLista, creadoresDe, CRITERIOS_ORDEN, MODELOS_RETIRADOS, nombreDelModelo,
+  modelosParaLista, costoDePieza, creadoresDe, CRITERIOS_ORDEN, MODELOS_RETIRADOS, nombreDelModelo,
   MODELOS, PRECIOS_AL, CONFIRMAR_DESDE, MAX_POR_PEDIDO, MAX_VIDEOS_POR_PEDIDO, duracionDe, enCola, modeloPorId, modeloPorDefecto, estimar, textoCosto,
   pideConfirmar, normalizarAjustes, validarPedido, diasQueQuedan, DIAS_PAPELERA, proporcionDe, MEDIDAS,
 } from "./estudioCatalogo.js";
@@ -216,7 +216,8 @@ describe("el video", () => {
   it("Veo 3.1 de Google ya no se pide, pero lo creado con él sigue teniendo nombre", () => {
     for (const id of Object.keys(MODELOS_RETIRADOS)) {
       expect(modeloPorId(id), id).toBeNull();
-      expect(validarPedido({ modelo: id, prompt: "a" })).toMatchObject({ ok: false, error: expect.stringMatching(/Google retiró .*Gemini Omni Flash/) });
+      const motivo = id.startsWith("veo-3.1") ? /Google retiró .*Gemini Omni Flash/ : /ya no se ofrece/;
+      expect(validarPedido({ modelo: id, prompt: "a" })).toMatchObject({ ok: false, error: expect.stringMatching(motivo) });
     }
     expect(nombreDelModelo("veo-3.1-lite")).toBe("Veo 3.1 Lite (retirado)");
     expect(nombreDelModelo("nano-banana")).toBe("Nano Banana");
@@ -296,8 +297,7 @@ describe("la lista de modelos: ordenar y filtrar", () => {
         const lista = modelosParaLista(tipo, { orden, activos });
         expect(lista.every((m) => m.tipo === tipo), `${tipo} ${orden}`).toBe(true);
         expect(new Set(ids(lista)).size).toBe(lista.length);
-        // Los de «pulir» no crean: no salen en la lista.
-        expect(lista.length).toBe(MODELOS.filter((m) => m.tipo === tipo && !m.pulir).length);
+        expect(lista.length).toBe(MODELOS.filter((m) => m.tipo === tipo).length);
       }
     }
   });
@@ -315,11 +315,14 @@ describe("la lista de modelos: ordenar y filtrar", () => {
     expect(modelosParaLista("imagen", { orden: "recomendado", activos })[0].id).toBe("nano-banana");
     expect(modelosParaLista("video", { orden: "recomendado", activos })[0].id).toBe("gemini-omni-flash");
     expect(modelosParaLista("imagen", { orden: "calidad", activos })[0].calidad).toBe(4);
+    // Más barato: por lo que cuesta UNA pieza (un video, con su duración por defecto); la prueba, después de los reales.
     const baratos = modelosParaLista("imagen", { orden: "barato", activos });
-    expect(baratos[0].costo).toBe(0); // la prueba, que es gratis
-    expect(baratos[1].id).toBe("flux-schnell");
+    expect(baratos[0].id).toBe("flux-schnell");
+    const reales = baratos.filter((m) => m.motor !== "prueba" && activos[m.motor]);
+    expect(reales.map(costoDePieza)).toEqual([...reales.map(costoDePieza)].sort((x, y) => x - y));
+    expect(baratos.findIndex((m) => m.motor === "prueba")).toBeGreaterThanOrEqual(reales.length);
     const caros = modelosParaLista("video", { orden: "caro", activos });
-    expect(caros[0].costo).toBe(Math.max(...MODELOS.filter((m) => m.tipo === "video").map((m) => m.costo)));
+    expect(costoDePieza(caros[0])).toBe(Math.max(...MODELOS.filter((m) => m.tipo === "video").map(costoDePieza)));
   });
 
   it("por creador agrupa: cada creador aparece en un solo tramo seguido", () => {

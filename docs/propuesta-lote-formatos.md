@@ -48,7 +48,7 @@ Lo que enseñan las muestras (Baby Caleb, Nateen, KMT, D'Casa):
      tipográfica) en una o dos frases;
    - el texto lo diseña el modelo con jerarquía, con los modelos que mejor escriben;
    - alta resolución (2K/4K) cuando el modelo la tiene;
-   - «Pulir al final» (opcional): ampliar y limpiar la escogida con Topaz o Recraft antes de llevarla al calendario.
+   - «Pulir al final» (opcional): ampliar y limpiar la escogida con Topaz o Recraft. **Se quitó después**: la agencia no le encontró uso.
 4. **El mes en fases:** después de escribir las ideas, «Llevar sólo las ideas al calendario» (con «Qué se ve»,
    título, brief, texto en la pieza, descripción, tipo y matriz; pendientes, aprobación de idea) o «Crear los
    diseños». La publicación guarda la escena (`escena`, «Qué se ve») para diseñarla después con el mismo camino.

@@ -9,17 +9,21 @@
 // ============================================================
 
 import * as api from "./estudio";
-import { ajustesDe, MODELOS, modeloPorId } from "./estudioCatalogo";
+import { ajustesDe, MODELOS, modeloPorId, porPrecio } from "./estudioCatalogo";
 import { esperarArchivo } from "./carruselEstudio";
 import { pedidoDeFotograma, promptDeReel, promptDeTramo, fotogramasParaVideo } from "./reel";
 import { ajusteDeDuracion } from "./videoCorto";
 
-/** Los modelos que sirven para el VIDEO de un reel: Omni por Kie primero (storyboard y corregir un tramo). */
+/** Los modelos que sirven para el VIDEO de un reel (storyboard o imagen inicial), del más barato al más caro. */
 export function modelosParaReel(activos = {}) {
-  const preferidos = ["gemini-omni-kie", "kling-3-omni-kie", "seedance-2-kie", "gemini-omni-flash", "kling-3-kie", "veo-3-1-fast-kie"];
-  const usables = MODELOS.filter((m) => m.tipo === "video" && (m.referencias >= 2 || m.inicial) && !m.necesitaVideo && (m.motor === "prueba" || activos[m.motor]));
-  const orden = (m) => { const i = preferidos.indexOf(m.id); return i < 0 ? 99 : i; };
-  return usables.sort((a, b) => orden(a) - orden(b) || (a.motor === "prueba") - (b.motor === "prueba"));
+  return porPrecio(MODELOS.filter((m) => m.tipo === "video" && (m.referencias >= 2 || m.inicial) && !m.necesitaVideo && (m.motor === "prueba" || activos[m.motor])), activos);
+}
+
+/** El que se escoge si nadie escoge: Omni por Kie (storyboard de 7 y corregir un tramo), luego los que le siguen. */
+export function modeloRecomendadoParaReel(activos = {}) {
+  const lista = modelosParaReel(activos);
+  return ["gemini-omni-kie", "kling-3-omni-kie", "seedance-2-kie", "gemini-omni-flash", "kling-3-kie", "veo-3-1-fast-kie"]
+    .map((id) => lista.find((m) => m.id === id)).find(Boolean) ?? lista.find((m) => m.motor !== "prueba") ?? lista[0] ?? null;
 }
 
 /** ¿Este modelo puede corregir un tramo de un video ya hecho? (admite un video de referencia). */

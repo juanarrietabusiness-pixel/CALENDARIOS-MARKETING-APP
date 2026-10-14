@@ -1,10 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
-import { textoCosto, CONFIRMAR_DESDE } from "../lib/estudioCatalogo";
+import { textoCosto, costoDePieza, CONFIRMAR_DESDE } from "../lib/estudioCatalogo";
 import * as api from "../lib/estudio";
 import { TIPOS_PRESET, ESTILOS_VISUALES, estiloDeMarca, limpiarKit, referenciasDePersonajes } from "../lib/kitMarca";
 import { partirGuion, MODOS_TEXTO, PLANTILLAS_TEXTO, MAX_LAMINAS, coloresPlantilla, costoCarrusel } from "../lib/carrusel";
-import { crearCarrusel, crearLamina, corregirLamina, modelosParaCarrusel } from "../lib/carruselEstudio";
+import { crearCarrusel, crearLamina, corregirLamina, modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
 import "./calendario/RevisionMes.css";
 import "./calendario/CarruselIA.css";
 import "./EstudioLote.css";
@@ -31,7 +31,7 @@ const ROL = { portada: "Portada", contenido: "Contenido", cierre: "Cierre" };
 const renumerar = (lista) => lista.map((l, i) => ({ ...l, n: i + 1, rol: i === 0 ? "portada" : i === lista.length - 1 && lista.length >= 3 ? "cierre" : "contenido" }));
 const PASOS = [["guion", "Guion"], ["propuesta", "Propuesta"], ["laminas", "Láminas"]];
 
-export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner = null, yaTiene = false, cabecera = null, onCreando = () => {} }) {
+export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner = null, onListo = null, yaTiene = false, cabecera = null, onCreando = () => {} }) {
   const ids = useId();
   const clienteId = client?.dbId || client?.id;
   const kit = limpiarKit(estudio?.kit);
@@ -58,7 +58,8 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
   useEffect(() => { vivo.current = true; return () => { vivo.current = false; }; }, []);
 
   const modelos = useMemo(() => modelosParaCarrusel(estudio?.activos ?? {}), [estudio]);
-  const modelo = modelos.find((m) => m.id === modeloId) ?? modelos[0] ?? null;
+  // La lista va del más barato al más caro; si nadie escoge, el recomendado (Nano Banana).
+  const modelo = modelos.find((m) => m.id === modeloId) ?? modelos.find((m) => m.id === modeloParaCarrusel(estudio?.activos ?? {}).id) ?? modelos[0] ?? null;
   const total = costoCarrusel(laminas, modelo?.costo);
   const productos = estudio?.productos ?? [];
   const delGuion = partirGuion(guion);
@@ -237,7 +238,7 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
           <div className="field" style={{ margin: 0 }}>
             <label className="label" htmlFor={`${ids}-modelo`}>Modelo</label>
             <select id={`${ids}-modelo`} className="input" value={modelo?.id ?? ""} onChange={(e) => setModeloId(e.target.value)}>
-              {modelos.map((m) => <option key={m.id} value={m.id}>{m.nombre}{m.motor === "prueba" ? "" : ` · ${textoCosto(m.costo)} por lámina`}</option>)}
+              {modelos.map((m) => <option key={m.id} value={m.id}>{m.nombre}{m.motor === "prueba" ? "" : ` · ${textoCosto(costoDePieza(m))} por lámina`}</option>)}
             </select>
           </div>
         </div>
@@ -331,6 +332,11 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
                   {yaTiene ? "Reemplazar lo que hay" : `Poner las ${finales.length} en la publicación`}
                 </button>
               </>
+            )}
+            {onListo && !creando && finales.length > 0 && (
+              <button type="button" className={`btn ${onPoner ? "btn-secondary" : "btn-primary"}`} onClick={onListo}>
+                <Icon name="check" size={18} /> Listo
+              </button>
             )}
           </>
         )}

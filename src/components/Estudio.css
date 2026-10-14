@@ -360,3 +360,13 @@ div.est-img { cursor: default; }
 .est-idea-tarjeta p { margin: 0; }
 .est-idea-tarjeta .btn { align-self: flex-start; margin-top: auto; }
 .est-idea-texto { font-weight: 600; }
+
+/* «¿Dónde va esta imagen?»: imagen inicial, final o referencia. */
+.est-ranura-dialogo { max-width: 420px; display: flex; flex-direction: column; gap: var(--sp-3); }
+.est-ranura-cuerpo { display: flex; align-items: center; gap: var(--sp-3); }
+.est-ranura-miniatura { width: 64px; height: 64px; object-fit: cover; border-radius: var(--radius-sm); flex: none; }
+.est-ranura-opciones { display: flex; flex-direction: column; gap: var(--sp-2); }
+.est-ranura-opcion { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; min-height: var(--tap); height: auto; padding: var(--sp-2) var(--sp-3); white-space: normal; }
+.est-ranura-pie { display: flex; justify-content: flex-end; }
+/* «De la galería»: la siguiente imagen que se toque va a ese sitio. */
+.est-destino { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: 0; position: sticky; top: 0; z-index: 2; padding: var(--sp-2) var(--sp-3); background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: var(--radius-sm); }

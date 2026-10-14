@@ -13,7 +13,7 @@
 
 import * as api from "./estudio";
 import { promptDeEdicion } from "./estudio";
-import { ajustesDe, modeloPorId, MODELOS } from "./estudioCatalogo";
+import { ajustesDe, modeloPorId, MODELOS, porPrecio } from "./estudioCatalogo";
 import { pedidoDeLamina, referenciasDeLamina } from "./carrusel";
 import { componerLamina } from "./textoSobreImagen";
 
@@ -29,11 +29,9 @@ export function modeloParaCarrusel(activos = {}) {
   return deImagen.find((m) => m.id === "nano-banana") ?? deImagen.find((m) => m.predeterminado) ?? deImagen[0] ?? modeloPorId("prueba");
 }
 
-/** Los modelos que sirven para un carrusel (imagen, con al menos dos referencias), el recomendado primero. */
+/** Los modelos que sirven para un carrusel (imagen, con al menos dos referencias), del más barato al más caro. */
 export function modelosParaCarrusel(activos = {}) {
-  const lista = MODELOS.filter((m) => m.tipo === "imagen" && m.referencias >= 2 && (m.motor === "prueba" || activos[m.motor]));
-  const rec = modeloParaCarrusel(activos);
-  return [rec, ...lista.filter((m) => m.id !== rec.id)];
+  return porPrecio(MODELOS.filter((m) => m.tipo === "imagen" && m.referencias >= 2 && (m.motor === "prueba" || activos[m.motor])), activos);
 }
 
 /** Espera a que un trabajo termine, avanzándolo. Devuelve el (primer) archivo creado o lanza el motivo. */

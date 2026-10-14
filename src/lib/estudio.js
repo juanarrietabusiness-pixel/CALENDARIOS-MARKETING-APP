@@ -305,13 +305,13 @@ export function archivoDesdeSrc(src, clienteId, prompt = "") {
 /** El nombre de cada ajuste en la pantalla. */
 export const ETIQUETA_AJUSTE = Object.freeze({
   aspectRatio: "Formato", imageSize: "Tamaño", resolution: "Resolución", duration: "Duración", calidad: "Calidad", formato: "Archivo",
-  modo: "Calidad del video", sonido: "Sonido", factor: "Ampliar",
+  modo: "Calidad del video", sonido: "Sonido",
 });
 
 /** «4 s», «720p», «1K» según el ajuste. */
 const VALORES = Object.freeze({
   calidad: { high: "Alta (pule en varias pasadas)", low: "Rápida" }, formato: { webp: "WebP (ligero)", png: "PNG", jpeg: "JPEG" },
-  modo: { std: "Estándar (720p)", pro: "Pro (1080p)", "4K": "4K" }, sonido: { si: "Con sonido", no: "Sin sonido" }, factor: { 2: "Al doble", 4: "Cuatro veces" },
+  modo: { std: "Estándar (720p)", pro: "Pro (1080p)", "4K": "4K" }, sonido: { si: "Con sonido", no: "Sin sonido" },
 });
 
 export function valorDeAjuste(nombre, valor) {
@@ -344,6 +344,30 @@ export function promptDeEdicion(instruccion) {
   return `Edita la imagen de referencia: ${pedido}. Conserva todo lo demás exactamente igual: la composición, el encuadre, las personas, el producto, los colores, la luz y cualquier texto o logo que no se pida cambiar.`.slice(0, MAX_PROMPT);
 }
 
+/** Cómo se llama cada sitio de una imagen de apoyo, y qué hace ahí. */
+export const RANURAS = Object.freeze({
+  start: { nombre: "Imagen inicial", ayuda: "el video empieza en esta imagen" },
+  end: { nombre: "Imagen final", ayuda: "el video termina en esta imagen" },
+  reference: { nombre: "Referencia", ayuda: "el modelo toma de ella lo que le digas: personaje, producto, estilo…" },
+  video: { nombre: "Video de referencia", ayuda: "el modelo sigue este video" },
+});
+
+/**
+ * Los sitios LIBRES donde puede ir un archivo de la galería con este modelo, en orden: inicial, final, referencia (un
+ * video, sólo video de referencia). Si hay más de uno, la pantalla pregunta: antes iba siempre al primero libre y en
+ * video eso era la imagen inicial, así que una referencia nunca llegaba a referencias. Pura.
+ */
+export function ranurasLibres(medios = {}, modelo = {}, archivo = {}) {
+  const lista = (rol) => medios[rol] ?? [];
+  if (archivo.tipo === "video") return modelo.video && !lista("video").length ? ["video"] : [];
+  const puesta = (rol) => lista(rol).some((x) => x.id === archivo.id);
+  const libres = [];
+  if (modelo.inicial && !lista("start").length) libres.push("start");
+  if (modelo.final && lista("start").length && !lista("end").length && !puesta("start")) libres.push("end");
+  if (modelo.referencias && lista("reference").length < modelo.referencias) libres.push("reference");
+  return libres;
+}
+
 /**
  * Con qué modelo se edita: Muse Image si hay llave de Meta (edita y cuesta
  * 0,01 $), si no Nano Banana, si no el primero de imagen con referencias que
@@ -351,7 +375,7 @@ export function promptDeEdicion(instruccion) {
  */
 export function modeloParaEditar(activos = {}) {
   const preferidos = ["muse-image", "nano-banana"];
-  const con = (m) => m.tipo === "imagen" && m.referencias > 0 && !m.pulir && activos[m.motor];
+  const con = (m) => m.tipo === "imagen" && m.referencias > 0 && activos[m.motor];
   return preferidos.map((id) => MODELOS.find((m) => m.id === id)).find((m) => m && con(m))
     ?? MODELOS.find((m) => con(m) && m.motor !== "prueba")
     ?? MODELOS.find((m) => m.id === "prueba");
