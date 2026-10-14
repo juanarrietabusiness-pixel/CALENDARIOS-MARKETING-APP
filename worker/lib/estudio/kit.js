@@ -19,6 +19,7 @@ import { llamarIA } from "../cerebro/ia.js";
 import { buscar as buscarCerebro } from "../cerebro/cerebro.js";
 import { pack } from "../cerebro/memoria.js";
 import { claveDelCliente } from "./archivos.js";
+import { modeloPorId } from "../../../src/lib/estudioCatalogo.js";
 import { ErrorEstudio } from "./trabajos.js";
 import { aBase64 } from "./gemini.js";
 import { limpiarKit, kitVacio, pedidoDeKit, leerKit, pedidoDeRevision, leerRevision } from "../../../src/lib/kitMarca.js";
@@ -50,6 +51,8 @@ export async function guardarKit(env, acceso, cliente, entrada) {
   kit.referencias = Object.fromEntries(Object.entries(kit.referencias)
     .map(([id, claves]) => [id, claves.filter((c) => claveDelCliente(c, cliente.id))])
     .filter(([, claves]) => claves.length));
+  // El modelo fijado del cliente: sólo uno que exista en el catálogo y sea de ese tipo.
+  kit.modelos = Object.fromEntries(Object.entries(kit.modelos).filter(([tipo, id]) => modeloPorId(id)?.tipo === tipo));
   if (entrada?.logo) {
     const clave = claveDelCliente(entrada.logo, cliente.id);
     if (!clave) throw new ErrorEstudio("El logo tiene que ser una imagen de este cliente.", 400);

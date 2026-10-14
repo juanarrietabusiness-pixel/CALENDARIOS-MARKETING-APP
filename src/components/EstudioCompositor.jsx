@@ -1,7 +1,7 @@
 import { useId, useRef, useState } from "react";
 import Icon from "./Icon";
 import {
-  textoCosto, NOMBRE_PROPORCION, MAX_PROMPT, maxPorPedido, duracionDe, modelosParaLista, creadoresDe, CRITERIOS_ORDEN, NOMBRE_CALIDAD, NOMBRE_MOTOR,
+  textoCosto, nombreDelModelo, NOMBRE_PROPORCION, MAX_PROMPT, maxPorPedido, duracionDe, modelosParaLista, creadoresDe, CRITERIOS_ORDEN, NOMBRE_CALIDAD, NOMBRE_MOTOR,
 } from "../lib/estudioCatalogo";
 import { ETIQUETA_AJUSTE, valorDeAjuste } from "../lib/estudio";
 import { TIPOS_PRESET, ACABADOS, LINEA_LOGO } from "../lib/kitMarca";
@@ -508,8 +508,8 @@ export default function Compositor({
       {onFijar && (
         <label className="est-logo-casilla est-fijar">
           <input type="checkbox" checked={fijado === modelo.id} onChange={(e) => onFijar(e.target.checked ? modelo.id : "")} />
-          {" "}Usar siempre {modelo.nombre} para {esVideo ? "video" : "imagen"}
-          {fijado && fijado !== modelo.id && <span className="hint"> (ahora está fijado otro)</span>}
+          {" "}Fijar {modelo.nombre} para {esVideo ? "los videos" : "las imágenes"} de este cliente
+          {fijado && fijado !== modelo.id && <span className="hint"> (ahora está fijado {nombreDelModelo(fijado) || "otro"})</span>}
         </label>
       )}
 

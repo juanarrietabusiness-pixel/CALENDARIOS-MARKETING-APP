@@ -72,7 +72,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const [formato, setFormato] = useState("post");
   const [preset, setPreset] = useState("anuncio");
   // El modelo: el que se fijó en el Estudio («Usar siempre este»); si no, el predeterminado.
-  const [modeloId, setModeloId] = useState(() => api.modeloPreferido(activos, "imagen").id);
+  const [modeloId, setModeloId] = useState(() => api.modeloPreferido(activos, "imagen", kit?.modelos?.imagen).id);
   const [productosIdeas, setProductosIdeas] = useState([]);
   const [modo, setModo] = useState("plantilla");
   const [ideas, setIdeas] = useState([]);

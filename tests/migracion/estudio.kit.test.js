@@ -120,6 +120,14 @@ describe("guardar el kit", () => {
     expect(kitGuardado().referencias).toEqual({ anuncio: ["clientes/c1/estudio/a.jpg"] });
   });
 
+  it("el modelo fijado del cliente: sólo uno que exista y sea de ese tipo", async () => {
+    const res = await pedir("/api/estudio/c1/kit", { method: "PUT", body: { kit: { modelos: { imagen: "seedream-4", video: "nano-banana" } } } });
+    expect(res.status).toBe(200);
+    expect(kitGuardado().modelos).toEqual({ imagen: "seedream-4" });
+    await pedir("/api/estudio/c1/kit", { method: "PUT", body: { kit: { modelos: { imagen: "no-existe" } } } });
+    expect(kitGuardado().modelos).toEqual({});
+  });
+
   it("la ficha guardada desde el cliente no pisa el kit", async () => {
     await pedir("/api/estudio/c1/kit", { method: "PUT", body: { kit: { tipografia: "Montserrat" } } });
     await pedir("/api/clientes/c1", { method: "PUT", body: { name: "Dcasa", industry: "Muebles" } });

@@ -79,29 +79,14 @@ export const renombrarCarpeta = (clienteId, id, nombre) => pedir(`${base(cliente
 export const borrarCarpeta = (clienteId, id) => pedir(`${base(clienteId)}/carpetas/${encodeURIComponent(id)}`, { method: "DELETE" });
 
 // ------------------------------------------------------------
-// El modelo FIJADO: el que la persona usa casi siempre
+// El modelo FIJADO de un cliente: el que se usa casi siempre con él
 // ------------------------------------------------------------
 
-const claveFijado = (tipo) => `estudio-modelo:${tipo === "video" ? "video" : "imagen"}`;
-
-/** El id del modelo fijado para ese tipo en este navegador, o "". */
-export function modeloFijado(tipo = "imagen") {
-  try { return localStorage.getItem(claveFijado(tipo)) ?? ""; } catch { return ""; }
-}
-
-/** Fija (o, con "", suelta) el modelo de ese tipo: lo usan el compositor, el lote y «Producir el mes». */
-export function fijarModelo(tipo, id = "") {
-  try {
-    if (id) localStorage.setItem(claveFijado(tipo), id);
-    else localStorage.removeItem(claveFijado(tipo));
-  } catch { /* sin almacenamiento: se queda el de siempre */ }
-}
-
 /**
- * El modelo con que se arranca: el fijado si existe, es de ese tipo y su motor tiene llave; si no, el predeterminado
- * del catálogo. `fijado` se puede pasar (pruebas); si no, se lee del navegador.
+ * El modelo con que se arranca: el fijado del CLIENTE (`kit.modelos`, lo comparte el equipo) si existe, es de ese tipo
+ * y su motor tiene llave; si no, el predeterminado del catálogo. Lo usan el compositor, el lote y «Producir el mes».
  */
-export function modeloPreferido(activos = {}, tipo = "imagen", fijado = modeloFijado(tipo)) {
+export function modeloPreferido(activos = {}, tipo = "imagen", fijado = "") {
   const m = fijado ? modeloPorId(fijado) : null;
   return m && m.tipo === tipo && (m.motor === "prueba" || activos[m.motor]) ? m : modeloPorDefecto(activos, tipo);
 }

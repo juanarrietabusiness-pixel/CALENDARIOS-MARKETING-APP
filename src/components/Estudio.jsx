@@ -65,13 +65,13 @@ const nombreDeModelo = (id) => nombreDelModelo(id) || "Aplicación";
 const clavesDe = (medios) => Object.fromEntries(Object.entries(medios).map(([rol, lista]) => [rol, lista.map((a) => a.clave)]));
 
 /** El formulario con que arranca el compositor. */
-function formularioInicial(motores, inicial, productos = []) {
+function formularioInicial(motores, inicial, productos = [], fijados = {}) {
   const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
   const tipo = inicial?.tipo ?? "imagen";
   // Un modelo pedido de fuera (seguir un video de la competencia) se respeta aunque no tenga llave: la pantalla
   // lo enseña «sin llave» en vez de cambiarlo por otro que no hace lo mismo.
   const pedido = inicial?.modelo ? modeloPorId(inicial.modelo) : null;
-  const m = pedido?.tipo === tipo ? pedido : api.modeloPreferido(activos, tipo);
+  const m = pedido?.tipo === tipo ? pedido : api.modeloPreferido(activos, tipo, fijados[tipo]);
   const medios = MEDIOS_VACIOS();
   if (inicial?.inicio) medios.start = [inicial.inicio];
   // Desde una publicación de un producto con fotos en el catálogo, sus fotos van de referencia: sale el producto REAL.
@@ -118,9 +118,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (!desdePost) try { localStorage.setItem(clavePreset, v); } catch { /* sin almacenamiento */ }
   };
   const [conLogo, setConLogo] = useState(true);
-  // «Usar siempre este modelo»: el que se fija arranca el compositor, el lote y «Producir el mes» (en este navegador).
-  const [fijados, setFijados] = useState(() => ({ imagen: api.modeloFijado("imagen"), video: api.modeloFijado("video") }));
-  const fijar = (tipo, id) => { api.fijarModelo(tipo, id); setFijados((f) => ({ ...f, [tipo]: id })); };
+  // «Fijar para este cliente»: el modelo va en su kit (lo comparte el equipo) y arranca el compositor, el lote y
+  // «Producir el mes». Se guarda con el kit; `fijar` se define abajo, con el guardado del kit.
+
   // «Usar mis Me gusta como referencia de estilo» (se recuerda por cliente; apagado por defecto).
   const claveGustos = `estudio-gustos:${client.id}`;
   const [conGustos, setConGustosEstado] = useState(() => { try { return localStorage.getItem(claveGustos) === "1"; } catch { return false; } });
@@ -182,7 +182,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
   // El formulario de partida, una vez que se sabe qué motores tienen llave.
   useEffect(() => {
-    if (motores && datos && !form) setForm(formularioInicial(motores, inicial, datos.productos ?? []));
+    if (motores && datos && !form) setForm(formularioInicial(motores, inicial, datos.productos ?? [], datos.kit?.modelos ?? {}));
   }, [motores, datos, form, inicial]);
 
   const modelo = form ? modeloPorId(form.modelo) : null;
@@ -190,6 +190,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const ajustes = form && modelo ? ajustesDe(modelo, form.ajustes, clavesDe(form.medios)) : {};
   const costo = form && modelo ? estimar(modelo, form.n, ajustes) : 0;
   const kit = datos?.kit ?? null;
+  const fijados = kit?.modelos ?? {};
   const kitListo = !kitVacio(kit);
   // Un preset guardado de antes (producto, corporativo…) se traduce al de ahora.
   const presetVigente = presetActual(preset, kit);
@@ -267,7 +268,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const cambiarTipo = (tipo) => {
     if (!motores || tipo === form.tipo) return;
     const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
-    const m = api.modeloPreferido(activos, tipo);
+    const m = api.modeloPreferido(activos, tipo, fijados[tipo]);
     setConfirmando(null);
     setForm((f) => {
       const medios = recortarMedios(f.medios, m);
@@ -526,7 +527,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setConfirmando(null);
     setVisor(null);
     setEnPapelera(false);
-    setForm(formularioInicial(motores, { ...pedido, ...(pedido.tipo === "video" ? { modelo: "kling-omni-video" } : {}) }));
+    setForm(formularioInicial(motores, { ...pedido, ...(pedido.tipo === "video" ? { modelo: "kling-omni-video" } : {}) }, [], fijados));
     setPreset(pedido.preset ?? "anuncio");
     setIdeaAnterior(null);
     avisar(true, pedido.tipo === "video"
@@ -539,7 +540,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const animar = (a) => {
     if (!motores) return;
     const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
-    const m = modeloPorId(form.modelo)?.tipo === "video" ? modeloPorId(form.modelo) : api.modeloPreferido(activos, "video");
+    const m = modeloPorId(form.modelo)?.tipo === "video" ? modeloPorId(form.modelo) : api.modeloPreferido(activos, "video", fijados.video);
     const proporcion = proporcionDeMedidas(a.ancho, a.alto);
     const medios = { ...MEDIOS_VACIOS(), start: [a] };
     setConfirmando(null);
@@ -561,7 +562,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     // Un modelo sin llave o retirado: el que esté escogido si es del mismo tipo; si no, el predeterminado de ese tipo.
     const escogido = modeloPorId(form.modelo);
     const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
-    const destino = usable ? m : escogido?.tipo === a.tipo ? escogido : api.modeloPreferido(activos, a.tipo);
+    const destino = usable ? m : escogido?.tipo === a.tipo ? escogido : api.modeloPreferido(activos, a.tipo, fijados[a.tipo]);
     const medios = MEDIOS_VACIOS();
     setConfirmando(null);
     setForm({ tipo: destino.tipo, modelo: destino.id, prompt: a.prompt, n: 1, medios, ajustes: ajustesDe(destino, a.ajustes, clavesDe(medios)) });
@@ -786,6 +787,15 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setDatos((d) => (d ? { ...d, kit: r.kit } : d));
     avisar(true, "Kit de marca guardado: los presets ya lo usan.");
     return r.kit;
+  };
+  /** Fija (o suelta, con "") el modelo de ese tipo para ESTE cliente: va en su kit. */
+  const fijar = async (tipo, id) => {
+    try {
+      await guardarKitDeMarca({ ...(kit ?? {}), modelos: { ...(kit?.modelos ?? {}), [tipo]: id || undefined } });
+      avisar(true, id ? `Fijado para ${client.name}: arranca con él en el Estudio, el lote y «Producir el mes».` : "Ya no hay modelo fijado para este cliente.");
+    } catch (e) {
+      avisar(false, e.message);
+    }
   };
   const usarComoLogo = async (a) => {
     try {

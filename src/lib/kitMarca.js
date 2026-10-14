@@ -142,8 +142,17 @@ export function limpiarKit(guardado) {
     aprendido: limpiarAprendido(g.aprendido),
     // La referencia visual de cada tipo de pieza (y de cada propio): claves de la galería de este cliente.
     referencias: limpiarRefsPreset(g.referencias, propios.slice(0, MAX_PROPIOS)),
+    // El modelo FIJADO de este cliente, por tipo («Fijar para este cliente»): un id del catálogo del Estudio.
+    modelos: limpiarModelosKit(g.modelos),
     ...(g.preparadoAt ? { preparadoAt: String(g.preparadoAt) } : {}),
   };
+}
+
+const ID_MODELO = /^[a-z0-9][a-z0-9.-]{1,60}$/;
+/** { imagen?, video? } con ids que parecen de modelo; si el modelo ya no existe, el Estudio cae en el predeterminado. */
+function limpiarModelosKit(entrada) {
+  const e = entrada && typeof entrada === "object" ? entrada : {};
+  return Object.fromEntries(["imagen", "video"].filter((t) => ID_MODELO.test(String(e[t] ?? ""))).map((t) => [t, String(e[t])]));
 }
 
 /** Las referencias por tipo, limpias: ids que existen, claves de `clientes/`, sin repetir y como mucho dos. Pura. */
@@ -382,7 +391,7 @@ export function leerKit(texto) {
 export function fundirKit(guardado, propuesto, ahora = new Date().toISOString()) {
   const antes = limpiarKit(guardado);
   // Lo que la IA no escribe se queda: el logo, los presets propios, las reglas aprendidas y las referencias de cada tipo.
-  return limpiarKit({ ...propuesto, logo: antes.logo, propios: antes.propios, aprendido: antes.aprendido, referencias: antes.referencias, preparadoAt: ahora });
+  return limpiarKit({ ...propuesto, logo: antes.logo, propios: antes.propios, aprendido: antes.aprendido, referencias: antes.referencias, modelos: antes.modelos, preparadoAt: ahora });
 }
 
 /** Lo que se le pide a la IA al revisar una pieza contra el kit. La imagen va aparte. Pura. */

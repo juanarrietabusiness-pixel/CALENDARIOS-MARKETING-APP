@@ -87,7 +87,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
           return { date: d.date, post, tipo: "carrusel", modelo, laminas, costo: costoCarrusel(laminas, modelo.costo), error: "" };
         }
         const tipo = tipoDe(post.format);
-        const modelo = api.modeloPreferido(activos, tipo);
+        const modelo = api.modeloPreferido(activos, tipo, estudio.kit?.modelos?.[tipo]);
         // Las fotos del producto (catálogo) primero: que salga el producto real. Luego el logo, si cabe.
         const delProducto = tipo === "imagen" ? api.fotosDelProducto(estudio.productos, post.productoId) : [];
         const fotos = delProducto.map((f) => f.clave);
