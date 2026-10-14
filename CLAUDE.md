@@ -1351,6 +1351,16 @@ son del servidor.
   cada propio) puede llevar hasta dos imágenes de la galería como referencia visual (`kit.referencias`,
   `referenciasDePreset`; sólo claves de ESE cliente y sólo las que siguen en la galería: una borrada rompería el
   pedido). En el lote van sólo por su estilo: la composición la decide el plan.
+- **Tipo de pieza (QUÉ comunica) y estilo visual (CÓMO se ve) son dos cosas** (`ESTILOS_VISUALES` en kitMarca.js). En
+  el compositor el tipo va ANTES de la idea (cambia «Dame ideas» —de ese tipo, salvo «Variadas»— y «Mejorar idea»,
+  que recibe `pieza` como propósito) y el estilo va después, con el kit y las referencias. Cada estilo lleva UNA
+  línea de acabado profesional (luz, lente, color, tipografía): párrafos largos empeoran el resultado. El estilo de
+  una pieza es el escogido, o el que el cliente fijó para ese tipo (`kit.estiloPorTipo`), o el de la casa
+  (`ESTILO_POR_TIPO`): `estiloDeLaPieza`. `pedidoConMarca` lo aplica SOLO, así el lote, «Producir el mes» y el
+  asistente piden con acabado sin cambiar nada. Corporativo y Creativo eran presets propios que describían un
+  aspecto: `limpiarKit` los pasa a ESTILOS propios (`kit.estilos`, ids `estilo-…`) con sus referencias. Las líneas
+  visuales de las 7 maletas son «composición sugerida (si la escena no dice otra)». El `acabado` de antes (mismos
+  ids) se sigue aceptando.
 - **«Mejorar idea» se lanza SOLA al abrir «Crear con IA» desde una publicación** (apagable, se recuerda por
   navegador): la idea + el texto de la pieza + el contexto llegan juntos y largos, y el motor entiende mucho mejor
   una o dos frases. El texto entre comillas se conserva EXACTO (lo dice el pedido de la mejora). «Volver a mi idea».

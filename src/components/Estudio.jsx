@@ -2,7 +2,10 @@ import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useStat
 import Icon from "./Icon";
 import Compositor from "./EstudioCompositor";
 import Visor, { Pieza } from "./EstudioVisor";
-import { kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, componerPedido, ponerLogo, ideaDelPedido, conOtraEscena, referenciasDePreset, nombreDePreset } from "../lib/kitMarca";
+import {
+  kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, componerPedido, ponerLogo, ideaDelPedido, conOtraEscena, referenciasDePreset, nombreDePreset,
+  estiloDeLaPieza, lineaDeEstilo, nombreDeEstilo, estiloValido, TIPOS_PRESET,
+} from "../lib/kitMarca";
 import { presetDePilar, nombreDePilar } from "../lib/pilares";
 import { ideaDesdeAngulo } from "../lib/estudioMercado";
 import { lineasDeReferencias, productosNombrados } from "../lib/referencias";
@@ -125,13 +128,20 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const claveGustos = `estudio-gustos:${client.id}`;
   const [conGustos, setConGustosEstado] = useState(() => { try { return localStorage.getItem(claveGustos) === "1"; } catch { return false; } });
   const setConGustos = (v) => { setConGustosEstado(v); try { localStorage.setItem(claveGustos, v ? "1" : "0"); } catch { /* sin almacenamiento */ } };
-  // El kit va en TODA pieza mientras esto esté encendido (se recuerda por cliente), y un acabado opcional.
+  // El kit va en TODA pieza mientras esto esté encendido (se recuerda por cliente), y el estilo visual («» = el del tipo).
   const claveUsarKit = `estudio-usar-kit:${client.id}`;
   const [usarKit, setUsarKitEstado] = useState(() => { try { return localStorage.getItem(claveUsarKit) !== "0"; } catch { return true; } });
   const setUsarKit = (v) => { setUsarKitEstado(v); try { localStorage.setItem(claveUsarKit, v ? "1" : "0"); } catch { /* sin almacenamiento */ } };
-  const claveAcabado = `estudio-acabado:${client.id}`;
-  const [acabado, setAcabadoEstado] = useState(() => { try { return localStorage.getItem(claveAcabado) ?? ""; } catch { return ""; } });
-  const setAcabado = (v) => { setAcabadoEstado(v); try { localStorage.setItem(claveAcabado, v); } catch { /* sin almacenamiento */ } };
+  // El estilo visual escogido se recuerda por cliente («» = el del tipo); el «acabado» de antes tenía los mismos ids.
+  const claveEstilo = `estudio-estilo:${client.id}`;
+  const [estiloEscogido, setEstiloEstado] = useState(() => {
+    if (desdePost) return "";
+    try { return localStorage.getItem(claveEstilo) ?? localStorage.getItem(`estudio-acabado:${client.id}`) ?? ""; } catch { return ""; }
+  });
+  const setEstilo = (v) => {
+    setEstiloEstado(v);
+    if (!desdePost) try { localStorage.setItem(claveEstilo, v); } catch { /* sin almacenamiento */ }
+  };
   // Traer de Drive: el papel (referencia, inicial…) para el que se abrió el selector.
   const [driveRol, setDriveRol] = useState(null);
   // La galería: lo que no se pudo pintar (el archivo ya no está) y lo marcado para mandar varias a la papelera.
@@ -195,6 +205,10 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   // Un preset guardado de antes (producto, corporativo…) se traduce al de ahora.
   const presetVigente = presetActual(preset, kit);
   const textoDelPreset = presetVigente ? textoPreset(kit, presetVigente, { marca: client.name, rubro: client.industry ?? "" }) : "";
+  // El estilo visual: el escogido (si sigue existiendo) o el del tipo de pieza.
+  const estiloVigente = estiloValido(estiloEscogido, kit) ? estiloEscogido : "";
+  const estiloDeEsta = estiloDeLaPieza(kit, presetVigente, estiloVigente);
+  const lineaDelEstilo = lineaDeEstilo(kit, estiloDeEsta);
   const conKit = usarKit && kitListo;
   const bloqueMarca = conKit ? bloqueDeMarca(kit) : "";
   const puedeLogo = Boolean(conKit && form && modelo && ponerLogo({ kit, tipo: form.tipo, modelo, referencias: clavesDe(form.medios).reference }));
@@ -213,8 +227,10 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const huecoTipo = form && modelo && form.tipo === "imagen"
     ? (modelo.referencias || 0) - form.medios.reference.length - fotosNombradas.length - (puedeLogo && conLogo ? 1 : 0)
     : 0;
+  // Las del tipo de pieza y, si el estilo es propio del cliente, las de ese estilo.
   const refsTipo = huecoTipo > 0
-    ? referenciasDePreset(kit, presetVigente, datos?.archivos ?? []).filter((a) => !form.medios.reference.some((x) => x.clave === a.clave)).slice(0, huecoTipo)
+    ? [...referenciasDePreset(kit, presetVigente, datos?.archivos ?? []), ...(estiloDeEsta.startsWith("estilo-") ? referenciasDePreset(kit, estiloDeEsta, datos?.archivos ?? []) : [])]
+      .filter((a, i, l) => !form.medios.reference.some((x) => x.clave === a.clave) && l.findIndex((b) => b.clave === a.clave) === i).slice(0, huecoTipo)
     : [];
   // Las últimas que gustaron, sólo por su estilo, en el hueco que quede después del producto, del tipo y del logo.
   const hayGustos = (datos?.archivos ?? []).some((a) => a.favorito && a.tipo === "imagen");
@@ -293,7 +309,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setAviso(null);
     const antes = form.prompt;
     try {
-      const r = await api.mejorarIdea(client.id, { idea: antes, tipo: form.tipo });
+      const r = await api.mejorarIdea(client.id, { idea: antes, tipo: form.tipo, pieza: presetVigente ? nombreDePreset(presetVigente, kit) : "" });
       setConfirmando(null);
       setIdeaAnterior(antes);
       setForm((f) => ({ ...f, prompt: r.idea.slice(0, MAX_PROMPT) }));
@@ -455,7 +471,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       const { trabajo } = await api.pedirImagenes(client.id, {
         modelo: form.modelo,
         prompt: componerPedido({
-          idea: form.prompt, preset: textoDelPreset, acabado, referencias: lineasDeReferencias(refs, { cliente: client.name }),
+          idea: form.prompt, preset: textoDelPreset, estilo: lineaDelEstilo, referencias: lineasDeReferencias(refs, { cliente: client.name }),
           marca: bloqueMarca, logo: conElLogo, video: form.tipo === "video",
         }).slice(0, MAX_PROMPT),
         n: form.n, ajustes: ajustesDe(modelo, form.ajustes, medios),
@@ -817,6 +833,17 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       avisar(false, e.message);
     }
   };
+  /** Fija (o suelta, con "") el estilo visual de un tipo de pieza para ESTE cliente: va en su kit. */
+  const fijarEstilo = async (tipo, id) => {
+    try {
+      const actual = { ...(limpiarKit(kit).estiloPorTipo) };
+      if (id) actual[tipo] = id; else delete actual[tipo];
+      await guardarKitDeMarca({ ...(kit ?? {}), estiloPorTipo: actual });
+      avisar(true, id ? `Las piezas «${TIPOS_PRESET[tipo]?.nombre ?? tipo}» de ${client.name} salen con el estilo ${nombreDeEstilo(kit, id)}.` : "El tipo vuelve a su estilo de siempre.");
+    } catch (e) {
+      avisar(false, e.message);
+    }
+  };
   const usarComoLogo = async (a) => {
     try {
       await guardarKitDeMarca({ ...(kit ?? {}), logo: a.clave });
@@ -964,7 +991,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           mejorarSolo={desdePost ? { activo: mejorarSolo, onCambiar: setMejorarSolo } : null}
           estilo={{
             preset: presetVigente, onPreset: setPreset, kitListo, kit: limpiarKit(kit), marca: client.name, textoPreset: textoDelPreset, refsTipo, sinIdea: !form.prompt.trim(),
-            bloqueMarca, usarKit, onUsarKit: setUsarKit, acabado, onAcabado: setAcabado,
+            bloqueMarca, usarKit, onUsarKit: setUsarKit,
+            estilo: estiloVigente, estiloResuelto: estiloDeEsta, nombreEstilo: nombreDeEstilo(kit, estiloDeEsta), lineaEstilo: lineaDelEstilo, onEstilo: setEstilo,
+            fijadoTipo: limpiarKit(kit).estiloPorTipo[presetVigente.split("-")[0]] ?? "", onFijarEstilo: lectura ? null : fijarEstilo,
             conLogo, onConLogo: setConLogo, puedeLogo,
             angulos: datos?.angulos ?? [],
             onAngulo: (a) => { setConfirmando(null); setForm((f) => ({ ...f, prompt: ideaDesdeAngulo(a) })); },

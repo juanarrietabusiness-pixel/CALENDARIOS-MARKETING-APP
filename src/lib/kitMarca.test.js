@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   ideaDelPedido, PREFIJO_TIPO, referenciasDePreset, MAX_REFS_PRESET, limpiarKit, kitVacio, textoPaleta, textoPreset, componerPedido, ponerLogo, pedidoDeKit, leerKit, fundirKit,
   pedidoDeRevision, leerRevision, TIPOS_PRESET, IDS_PRESET, LINEA_VIDEO, LINEA_LOGO, ACABADOS, bloqueDeMarca, presetValido, presetActual,
-  nombreDePreset, pedidoConMarca, estiloDeMarca,
+  nombreDePreset, pedidoConMarca, estiloDeMarca, ESTILOS_VISUALES, estiloDeLaPieza, lineaDeEstilo, nombreDeEstilo,
 } from "./kitMarca";
 import { PILARES, presetDePilar } from "./pilares";
 
@@ -82,19 +82,42 @@ describe("los presets", () => {
     expect(textoPreset({ ...KIT, presets: { maletas: "Confianza Rofer." } }, "maletas-solucion")).toBe(`Confianza Rofer. ${TIPOS_PRESET.maletas.subtipos.solucion.linea}`);
   });
 
-  it("los de antes se traducen: producto pasa a Producto / Servicio; corporativo y creativo, a propios", () => {
+  it("los de antes se traducen: producto pasa a Producto / Servicio; corporativo y creativo (un aspecto, no un mensaje), a estilos propios", () => {
     const k = limpiarKit({ ...KIT, presets: { producto: "P viejo.", anuncio: "A viejo.", corporativo: "C viejo.", creativo: "Cr viejo." } });
     expect(k.presets).toEqual({ anuncio: "A viejo.", servicios: "P viejo." });
-    expect(k.propios).toEqual([{ id: "propio-corporativo", nombre: "Corporativo", texto: "C viejo." }, { id: "propio-creativo", nombre: "Creativo", texto: "Cr viejo." }]);
+    expect(k.propios).toEqual([]);
+    expect(k.estilos).toEqual([{ id: "estilo-corporativo", nombre: "Corporativo", texto: "C viejo." }, { id: "estilo-creativo", nombre: "Creativo", texto: "Cr viejo." }]);
     // Guardar lo limpio y volver a limpiarlo no duplica nada.
     expect(limpiarKit(k)).toEqual(k);
     expect(presetActual("producto", k)).toBe("servicios");
-    expect(presetActual("corporativo", k)).toBe("propio-corporativo");
-    expect(presetActual("creativo", KIT)).toBe("");
+    expect(presetActual("corporativo", k)).toBe("");
     expect(presetActual("anuncio", KIT)).toBe("anuncio");
-    expect(textoPreset(k, "propio-corporativo")).toBe("C viejo.");
-    expect(nombreDePreset("propio-corporativo", k)).toBe("Corporativo");
     expect(nombreDePreset("maletas-garantia", k)).toBe("7 maletas · Garantía");
+    // Un propio de aspecto guardado como preset propio pasa a estilo con sus referencias.
+    const viejo = limpiarKit({ propios: [{ id: "propio-corporativo", nombre: "Corporativo", texto: "C." }, { id: "propio-navidad", nombre: "Navidad", texto: "N." }], referencias: { "propio-corporativo": ["clientes/c1/a.png"] } });
+    expect(viejo.propios.map((p) => p.id)).toEqual(["propio-navidad"]);
+    expect(viejo.estilos).toEqual([{ id: "estilo-corporativo", nombre: "Corporativo", texto: "C." }]);
+    expect(viejo.referencias["estilo-corporativo"]).toEqual(["clientes/c1/a.png"]);
+  });
+
+  it("el estilo de una pieza: el escogido, el fijado para su tipo o el de la casa; y su línea va en el pedido", () => {
+    const k = limpiarKit({ ...KIT, estilos: [{ id: "estilo-lujo", nombre: "Lujo", texto: "Acabado de lujo." }], estiloPorTipo: { anuncio: "estilo-lujo", educativo: "noexiste", inventado: "grafico" } });
+    expect(k.estiloPorTipo).toEqual({ anuncio: "estilo-lujo" });
+    expect(estiloDeLaPieza(k, "anuncio", "")).toBe("estilo-lujo");
+    expect(estiloDeLaPieza(k, "anuncio", "editorial")).toBe("editorial");
+    expect(estiloDeLaPieza(k, "humano", "")).toBe("natural");
+    expect(estiloDeLaPieza(k, "maletas-garantia", "")).toBe("natural");
+    expect(estiloDeLaPieza(k, "", "")).toBe("");
+    expect(estiloDeLaPieza(k, "propio-x", "")).toBe("");
+    expect(lineaDeEstilo(k, "estilo-lujo")).toBe("Acabado de lujo.");
+    expect(nombreDeEstilo(k, "grafico")).toBe("Diseño gráfico");
+    const p = pedidoConMarca({ kit: k, idea: "Un sofá", preset: "educativo" });
+    expect(p).toContain(ESTILOS_VISUALES.grafico.linea);
+    expect(p.indexOf("Escena: Un sofá")).toBe(0);
+    expect(pedidoConMarca({ kit: k, idea: "Un sofá", preset: "educativo", estilo: "estudio" })).toContain(ESTILOS_VISUALES.estudio.linea);
+    // El «acabado» de antes sigue valiendo.
+    expect(componerPedido({ idea: "x", acabado: "natural" })).toContain(ESTILOS_VISUALES.natural.linea);
+    expect(estiloDeMarca(k, "anuncio")).toContain("Acabado de lujo.");
   });
 
   it("los propios: id con forma, nombre y texto; sin repetir; como mucho seis", () => {
@@ -164,9 +187,11 @@ describe("la IA", () => {
   });
 
   it("al fundir lo que propone la IA se conservan los presets propios (la IA no los escribe)", () => {
-    const guardado = { logo: "clientes/c1/logo.png", propios: [{ id: "propio-corporativo", nombre: "Corporativo", texto: "C." }] };
+    const guardado = { logo: "clientes/c1/logo.png", propios: [{ id: "propio-feria", nombre: "Feria", texto: "C." }], estilos: [{ id: "estilo-lujo", nombre: "Lujo", texto: "L." }], estiloPorTipo: { anuncio: "estilo-lujo" } };
     const f = fundirKit(guardado, limpiarKit({ presets: { anuncio: "A." } }), "2026-10-12T00:00:00Z");
     expect(f.propios).toEqual(guardado.propios);
+    expect(f.estilos).toEqual(guardado.estilos);
+    expect(f.estiloPorTipo).toEqual(guardado.estiloPorTipo);
     expect(f.presets).toEqual({ anuncio: "A." });
   });
 
