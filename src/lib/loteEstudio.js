@@ -13,32 +13,46 @@
 // ============================================================
 
 import * as api from "./estudio";
-import { ajustesDe } from "./estudioCatalogo";
-import { pedidoConMarca, ponerLogo, limpiarKit, referenciasDePreset } from "./kitMarca";
-import { lineasDeReferencias } from "./referencias";
-import { coloresPlantilla } from "./carrusel";
+import { ajustesDe, MAX_PROMPT } from "./estudioCatalogo";
+import { limpiarKit } from "./kitMarca";
+import { coloresPlantilla, PLANTILLAS_TEXTO } from "./carrusel";
 import { componerLamina } from "./textoSobreImagen";
 import { esperarArchivos } from "./carruselEstudio";
-import { escenaDeAnuncio, textoDeIdea, plantillaDeIdea, FORMATOS_LOTE } from "./loteAnuncios";
+import { textoDeIdea, plantillaDeIdea, composicionDe, FORMATOS_LOTE } from "./loteAnuncios";
+import { ideaParaMejorar, ideaSinMejorar, apoyosDePieza, pedidoDePieza, lineaSinTexto } from "./pieza";
 
-/** El pedido de UNA pieza: lo que se manda al motor (y queda en la galería). Pura salvo por los imports. */
-export function pedidoDeLote({ idea, kit, preset = "anuncio", modo = "plantilla", formato = "post", modelo, fotos = [], archivos = [], marca = "", rubro = "", n = 1 }) {
-  const k = limpiarKit(kit);
-  const max = modelo.referencias || 0;
-  // En los niveles fríos el producto NO sale (se habla del problema): sus fotos no van.
-  const deProducto = idea?.conProducto === false ? [] : fotos.slice(0, max);
-  // La referencia visual del tipo, sólo por su ESTILO (la composición la decide el plan), dejando sitio al logo.
-  const delTipo = referenciasDePreset(k, preset, archivos, { toma: ["estilo"] }).slice(0, Math.max(0, max - deProducto.length - (k.logo ? 1 : 0)));
-  const apoyos = [...deProducto, ...delTipo];
-  const claves = apoyos.map((f) => f.clave);
-  const conLogo = ponerLogo({ kit: k, tipo: "imagen", modelo, referencias: claves });
-  const reference = [...claves, ...(conLogo ? [k.logo] : [])];
-  const prompt = pedidoConMarca({
-    kit: k, idea: escenaDeAnuncio(idea, { modo, formato }), preset, marca, rubro, logo: conLogo,
-    referencias: lineasDeReferencias(apoyos, { cliente: marca }),
+/** Lo que entra a la mejora de una idea del lote: escena, composición sugerida, texto (si lo escribe el motor) y brief. Pura. */
+export function ideaDeLote(idea, { modo = "ia" } = {}) {
+  return {
+    escena: idea?.escena ?? "", composicion: composicionDe(idea?.composicion)?.linea ?? "", texto: modo === "ia" ? textoDeIdea(idea) : "",
+    contexto: idea?.brief ?? "", conProducto: idea?.conProducto !== false,
+  };
+}
+
+/**
+ * Lo que va DETRÁS de la escena ya mejorada: la composición por su nombre (corto; así se reconoce para aprender cuáles
+ * funcionan, `aprenderComposiciones`) y, en el modo plantilla, la zona que se deja libre. Pura.
+ */
+export function colaDeLote(idea, { modo = "ia", formato = "post" } = {}) {
+  const comp = composicionDe(idea?.composicion);
+  const zona = PLANTILLAS_TEXTO[plantillaDeIdea(idea, formato)]?.zona ?? PLANTILLAS_TEXTO.banda.zona;
+  return [comp ? `Composición: ${comp.nombre}.` : "", modo === "plantilla" ? lineaSinTexto(zona) : ""].filter(Boolean).join(" ");
+}
+
+/**
+ * El pedido de UNA pieza del lote: por el MISMO camino que una pieza hecha a mano (`pedidoDePieza`), con la escena
+ * (mejorada o no) que se le dé. Pura salvo por los imports.
+ */
+export function pedidoDeLote({ idea, escena = null, kit, preset = "anuncio", estilo = "", modo = "ia", formato = "post", modelo, fotos = [], archivos = [], gustos = [], marca = "", rubro = "", n = 1 }) {
+  const apoyos = apoyosDePieza({
+    kit, preset, estilo, archivos, fotos, gustos, modelo, conProducto: idea?.conProducto !== false,
+    // En el lote la referencia del tipo va sólo por su ESTILO: la composición la decide el plan.
+    tomaTipo: ["estilo"],
   });
-  const medios = reference.length ? { reference } : {};
-  return { modelo: modelo.id, prompt, n: Math.max(1, Math.min(3, Math.floor(n) || 1)), medios, ajustes: ajustesDe(modelo, { aspectRatio: FORMATOS_LOTE[formato]?.aspectRatio ?? "4:5" }, medios) };
+  return pedidoDePieza({
+    kit, idea: escena ?? ideaSinMejorar(ideaDeLote(idea, { modo })), extra: colaDeLote(idea, { modo, formato }),
+    preset, estilo, apoyos, modelo, marca, rubro, n, aspectRatio: FORMATOS_LOTE[formato]?.aspectRatio ?? "4:5",
+  });
 }
 
 /**
@@ -56,19 +70,20 @@ export async function ponerTexto({ clienteId, crudo, texto, plantilla = "banda",
 }
 
 /**
- * Crea UNA pieza con sus variantes. Primero, si se pide, MEJORA la escena (lo que la agencia hacía a mano con
- * «Mejorar idea»: la idea en una o dos frases claras; texto, céntimos); luego pide `n` imágenes (1–3) y, en el modo
- * «plantilla», le pone el texto encima a cada una. → { opciones: [{ crudo, final }], escena }.
+ * Crea UNA pieza con sus variantes, como se haría a mano: primero, si se pide, MEJORA la idea (escena + composición
+ * sugerida + texto exacto, con el brief de contexto: lo que hace «Mejorar idea»; texto, céntimos); luego pide `n`
+ * imágenes (1–3) y, en el modo «plantilla», le pone el texto encima a cada una. → { opciones: [{ crudo, final }], escena }.
  */
-export async function crearPieza({ clienteId, idea, pedidoDe, mejorar = true, modo, formato, kit, n = 1, carpetaId = null, seguir = () => true }) {
-  let escena = idea.escena;
+export async function crearPieza({ clienteId, idea, pedidoDe, mejorar = true, modo, formato, kit, n = 1, carpetaId = null, piezaDe = () => "", seguir = () => true }) {
+  const datos = ideaDeLote(idea, { modo });
+  let escena = ideaSinMejorar(datos);
   if (mejorar) {
     try {
-      const r = await api.mejorarIdea(clienteId, { idea: [idea.escena, idea.brief ? `Contexto de la publicación: ${idea.brief}` : ""].filter(Boolean).join("\n\n"), tipo: "imagen" });
+      const r = await api.mejorarIdea(clienteId, { idea: ideaParaMejorar(datos), tipo: "imagen", pieza: piezaDe(idea) });
       if (r?.idea) escena = r.idea;
-    } catch { /* sin mejora, con la escena de la idea */ }
+    } catch { /* sin mejora, con la idea tal cual */ }
   }
-  const pedido = pedidoDe({ ...idea, escena }, n);
+  const pedido = pedidoDe(idea, n, escena);
   const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true, ...(carpetaId ? { carpetaId } : {}) });
   const crudos = await esperarArchivos(clienteId, trabajo, { seguir });
   const opciones = [];
@@ -101,4 +116,18 @@ export async function crearLote({ ideas, alAvanzar = () => {}, seguir = () => tr
     }
   };
   await Promise.all(Array.from({ length: Math.max(1, paralelo) }, trabajador));
+}
+
+/**
+ * «Pulir» una pieza antes de llevarla al calendario: ampliar y limpiar (o sólo nitidez) con un modelo de pulir. Sale
+ * una imagen NUEVA en la misma carpeta; la original se queda. → el archivo pulido.
+ */
+export async function pulirArchivo({ clienteId, archivo, modelo, carpetaId = null, seguir = () => true }) {
+  const medios = { reference: [archivo.clave] };
+  const { trabajo } = await api.pedirImagenes(clienteId, {
+    modelo: modelo.id, prompt: String(archivo.prompt || "Imagen pulida").slice(0, MAX_PROMPT), n: 1,
+    ajustes: ajustesDe(modelo, {}, medios), medios, confirmado: true, ...(carpetaId ? { carpetaId } : {}),
+  });
+  const [pulido] = await esperarArchivos(clienteId, trabajo, { seguir });
+  return pulido;
 }
