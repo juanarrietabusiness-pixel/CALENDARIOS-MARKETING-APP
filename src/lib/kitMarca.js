@@ -32,6 +32,7 @@
 // ============================================================
 
 import { limpiarAprendido, lineasAprendidas } from "./aprendizajeVisual.js";
+import { posicionDelKit } from "./logoEncima.js";
 
 /** Los presets, uno por tipo de contenido (los ids de `PILARES`, en pilares.js). `base`: la plantilla sin escribir. */
 export const TIPOS_PRESET = Object.freeze({
@@ -139,6 +140,18 @@ const ID_PROPIO = /^propio-[a-z0-9-]{1,40}$/;
 const ID_ESTILO = /^estilo-[a-z0-9-]{1,40}$/;
 
 const HEX = /^#[0-9a-f]{6}$/i;
+/** «Reglas que no se rompen»: lo que la agencia repite en cada pieza (tamaño del texto, el logo, la marca). */
+export const MAX_REGLAS = 12;
+const MAX_REGLA = 160;
+/** Las reglas, limpias: frases cortas, sin repetir (sin mirar mayúsculas), como mucho 12. Pura. */
+export function limpiarReglas(entrada) {
+  const fuera = [];
+  for (const r of Array.isArray(entrada) ? entrada : []) {
+    const t = corto(r, MAX_REGLA).replace(/[.\s]+$/, "");
+    if (t && !fuera.some((x) => x.toLowerCase() === t.toLowerCase())) fuera.push(t);
+  }
+  return fuera.slice(0, MAX_REGLAS);
+}
 /** Imágenes de referencia por tipo de pieza: como mucho dos (los motores admiten pocas y van también el producto y el logo). */
 export const MAX_REFS_PRESET = 2;
 const CLAVE = /^clientes\/[^/]+\/.+/;
@@ -212,6 +225,11 @@ export function limpiarKit(guardado) {
     referencias: limpiarRefsPreset(refsEntrada, [...propios.slice(0, MAX_PROPIOS), ...estilosFinal]),
     // El modelo FIJADO de este cliente, por tipo («Fijar para este cliente»): un id del catálogo del Estudio.
     modelos: limpiarModelosKit(g.modelos),
+    // Las reglas que la agencia no quiere repetir en cada pedido: van en TODA pieza y en la revisión de marca.
+    reglas: limpiarReglas(g.reglas),
+    // Quién pone el logo: el modelo (de referencia, lo de siempre) o la aplicación encima (logoEncima.js).
+    logoModo: g.logoModo === "estampado" ? "estampado" : "modelo",
+    logoPosicion: posicionDelKit(g.logoPosicion),
     ...(g.preparadoAt ? { preparadoAt: String(g.preparadoAt) } : {}),
   };
 }
@@ -289,7 +307,7 @@ export function referenciasDePreset(kitGuardado, id, archivos = [], { toma = ["e
 /** ¿Tiene algo el kit? Pura. */
 export const kitVacio = (kit) => {
   const k = limpiarKit(kit);
-  return !k.paleta.length && !k.tipografia && !k.estilo && !k.luz && !k.evitar && !Object.keys(k.presets).length && !k.propios.length && !k.estilos.length && !k.personajes.length && !k.aprendido.length;
+  return !k.paleta.length && !k.tipografia && !k.estilo && !k.luz && !k.evitar && !Object.keys(k.presets).length && !k.propios.length && !k.estilos.length && !k.personajes.length && !k.aprendido.length && !k.reglas.length;
 };
 
 /** «azul profundo #1B3246 (estructura/tipografía), verde suave #91C9A2 (acento)». Pura. */
@@ -311,6 +329,7 @@ export function bloqueDeMarca(kitGuardado) {
     kit.luz ? `Luz: ${sinPunto(kit.luz)}.` : "",
     kit.tipografia ? `Si lleva texto, tipografía únicamente ${sinPunto(kit.tipografia)}.` : "",
     kit.evitar ? `Nunca: ${sinPunto(kit.evitar)}.` : "",
+    lineaDeReglas(kit.reglas),
     lineasAprendidas(kit.aprendido),
   ].filter(Boolean);
   if (!partes.length) return "";
@@ -454,13 +473,17 @@ export function estiloDeMarca(kit, preset, { marca = "la marca", rubro = "", est
   return [preset ? textoPreset(kit, preset, { marca, rubro }) : "", lineaDeEstilo(kit, estiloDeLaPieza(kit, preset, estilo)), bloqueDeMarca(kit)].filter(Boolean).join("\n\n");
 }
 
+/** «Reglas que no se rompen: …; …». Pura. */
+export const lineaDeReglas = (reglas = []) => (reglas.length ? `Reglas que no se rompen: ${reglas.join("; ")}.` : "");
+
 /**
  * ¿Se pone el logo como referencia? Sólo en imágenes, con un modelo que
- * admita referencias, si hay hueco y si no está ya puesto. Pura.
+ * admita referencias, si hay hueco y si no está ya puesto. Con el logo
+ * ESTAMPADO por la aplicación, nunca: el modelo no lo recibe. Pura.
  */
 export function ponerLogo({ kit, tipo, modelo, referencias = [] }) {
-  const logo = limpiarKit(kit).logo;
-  if (!logo || tipo === "video" || !(modelo?.referencias > 0)) return false;
+  const { logo, logoModo } = limpiarKit(kit);
+  if (!logo || logoModo === "estampado" || tipo === "video" || !(modelo?.referencias > 0)) return false;
   if (referencias.includes(logo)) return false;
   return referencias.length < modelo.referencias;
 }
@@ -523,7 +546,8 @@ export function fundirKit(guardado, propuesto, ahora = new Date().toISOString())
   // Lo que la IA no escribe se queda: el logo, los presets propios, las reglas aprendidas y las referencias de cada tipo.
   return limpiarKit({
     ...propuesto, logo: antes.logo, propios: antes.propios, estilos: antes.estilos, estiloPorTipo: antes.estiloPorTipo, personajes: antes.personajes,
-    aprendido: antes.aprendido, referencias: antes.referencias, modelos: antes.modelos, preparadoAt: ahora,
+    aprendido: antes.aprendido, referencias: antes.referencias, modelos: antes.modelos, reglas: antes.reglas,
+    logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, preparadoAt: ahora,
   });
 }
 
@@ -539,6 +563,7 @@ export function pedidoDeRevision({ marca, kit: kitGuardado, prompt = "" }) {
     kit.estilo ? `Estilo: ${kit.estilo}` : "",
     kit.luz ? `Luz: ${kit.luz}` : "",
     kit.evitar ? `Nunca: ${kit.evitar}` : "",
+    lineaDeReglas(kit.reglas),
     lineasAprendidas(kit.aprendido),
     prompt ? `\nLo que se pidió: ${corto(prompt, 1500)}` : "",
     "",

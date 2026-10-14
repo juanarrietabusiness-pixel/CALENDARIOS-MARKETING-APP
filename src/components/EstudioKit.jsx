@@ -2,7 +2,9 @@ import { useId, useState } from "react";
 import Icon from "./Icon";
 import {
   TIPOS_PRESET, MAX_PROPIOS, MAX_ESTILOS, MAX_PERSONAJES, MAX_REFS_PRESET, ESTILOS_VISUALES, ESTILO_POR_TIPO, limpiarKit, kitVacio, textoPreset, fundirKit, bloqueDeMarca, nombreDeEstilo,
+  MAX_REGLAS,
 } from "../lib/kitMarca";
+import { MODOS_LOGO, ESQUINAS_LOGO, TAMANO_LOGO, MARGEN_LOGO, posicionDelKit } from "../lib/logoEncima";
 
 // ============================================================
 // El kit de marca del cliente, en el Estudio
@@ -117,7 +119,7 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], lectu
               <Icon name="brain" size={14} /> {ocupado === "preparar" ? "Leyendo el cerebro…" : vacio ? "Preparar con IA" : "Volver a preparar"}
             </button>
             {!vacio && !editando && (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditando({ ...kit, paleta: [...kit.paleta], propios: [...kit.propios], estilos: [...kit.estilos], personajes: [...kit.personajes] }); setAbierto(true); }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditando({ ...kit, paleta: [...kit.paleta], propios: [...kit.propios], estilos: [...kit.estilos], personajes: [...kit.personajes], reglas: [...kit.reglas] }); setAbierto(true); }}>
                 <Icon name="pencil" size={14} /> Editar
               </button>
             )}
@@ -181,7 +183,53 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], lectu
                   <input id={`${ids}-${campo}`} className="input" value={borrador[campo] ?? ""} onChange={(e) => cambiar(campo, e.target.value)} placeholder={ejemplo} />
                 </div>
               ))}
-              <p className="hint">Lo de arriba (colores, tipografía, estilo, luz, «nunca») va en TODA pieza. Cada tipo de pieza dice QUÉ comunica; el estilo visual (abajo), cómo se ve.</p>
+              <fieldset className="est-kit-propios">
+                <legend className="label">Reglas que no se rompen</legend>
+                {(borrador.reglas ?? []).map((r, i) => (
+                  <div key={i} className="est-kit-regla">
+                    <input className="input" aria-label={`Regla ${i + 1}`} value={r} maxLength={160}
+                      onChange={(e) => cambiar("reglas", borrador.reglas.map((x, j) => (j === i ? e.target.value : x)))} />
+                    <button type="button" className="btn-icon" aria-label={`Quitar la regla ${i + 1}`} onClick={() => cambiar("reglas", borrador.reglas.filter((_, j) => j !== i))}><Icon name="close" size={14} /></button>
+                  </div>
+                ))}
+                {(borrador.reglas ?? []).length < MAX_REGLAS && (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => cambiar("reglas", [...(borrador.reglas ?? []), ""])}><Icon name="plus" size={14} /> Añadir una regla</button>
+                )}
+                <p className="hint">Lo que repites en cada pedido: «el texto ocupa como mucho un tercio de la pieza», «el logo siempre abajo a la derecha», «nunca tapar la cara del bebé». Van en TODA pieza y en «Revisar marca». También se guardan desde cualquier corrección con «Guardar como regla».</p>
+              </fieldset>
+              <fieldset className="est-kit-propios">
+                <legend className="label">El logo en las piezas</legend>
+                <div className="est-tipos" role="radiogroup" aria-label="Quién pone el logo">
+                  {Object.entries(MODOS_LOGO).map(([id, m]) => (
+                    <label key={id} className="est-kit-modo-logo">
+                      <input type="radio" name={`${ids}-logo-modo`} value={id} checked={(borrador.logoModo ?? "modelo") === id} onChange={() => cambiar("logoModo", id)} />
+                      <span><strong>{m.nombre}</strong><span className="hint"> · {m.ayuda}</span></span>
+                    </label>
+                  ))}
+                </div>
+                {borrador.logoModo === "estampado" && (
+                  <div className="lote-fila">
+                    <div className="field">
+                      <label className="label" htmlFor={`${ids}-lg-esq`}>Dónde</label>
+                      <select id={`${ids}-lg-esq`} className="input" value={borrador.logoPosicion?.esquina ?? "abajo-derecha"}
+                        onChange={(e) => cambiar("logoPosicion", { ...posicionDelKit(borrador.logoPosicion), esquina: e.target.value })}>
+                        {Object.entries(ESQUINAS_LOGO).map(([id, n]) => <option key={id} value={id}>{n}</option>)}
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label className="label" htmlFor={`${ids}-lg-tam`}>Tamaño: {Math.round(posicionDelKit(borrador.logoPosicion).tamano * 100)} % del ancho</label>
+                      <input id={`${ids}-lg-tam`} type="range" min={TAMANO_LOGO.min} max={TAMANO_LOGO.max} step={0.01} value={posicionDelKit(borrador.logoPosicion).tamano}
+                        onChange={(e) => cambiar("logoPosicion", { ...posicionDelKit(borrador.logoPosicion), tamano: Number(e.target.value) })} />
+                    </div>
+                    <div className="field">
+                      <label className="label" htmlFor={`${ids}-lg-mar`}>Margen: {Math.round(posicionDelKit(borrador.logoPosicion).margen * 100)} %</label>
+                      <input id={`${ids}-lg-mar`} type="range" min={MARGEN_LOGO.min} max={MARGEN_LOGO.max} step={0.01} value={posicionDelKit(borrador.logoPosicion).margen}
+                        onChange={(e) => cambiar("logoPosicion", { ...posicionDelKit(borrador.logoPosicion), margen: Number(e.target.value) })} />
+                    </div>
+                  </div>
+                )}
+              </fieldset>
+              <p className="hint">Lo de arriba (colores, tipografía, estilo, luz, «nunca» y las reglas) va en TODA pieza. Cada tipo de pieza dice QUÉ comunica; el estilo visual (abajo), cómo se ve.</p>
               {Object.entries(TIPOS_PRESET).map(([tipo, def]) => (
                 <div key={tipo} className="field">
                   <label className="label" htmlFor={`${ids}-p-${tipo}`}>Tipo «{def.nombre}»: qué comunica</label>
@@ -312,6 +360,7 @@ function VistaKit({ kit: k, marca, logo = null }) {
         {kit.estilo && <div><dt>Estilo</dt><dd>{kit.estilo}</dd></div>}
         {kit.luz && <div><dt>Luz</dt><dd>{kit.luz}</dd></div>}
         {kit.evitar && <div><dt>Nunca</dt><dd>{kit.evitar}</dd></div>}
+        {kit.reglas.length > 0 && <div><dt>Reglas</dt><dd><ul className="est-kit-reglas">{kit.reglas.map((r) => <li key={r}>{r}</li>)}</ul></dd></div>}
         {kit.aprendido.length > 0 && (
           <div>
             <dt>Aprendido</dt>
@@ -323,7 +372,10 @@ function VistaKit({ kit: k, marca, logo = null }) {
         )}
         <div>
           <dt>Logo</dt>
-          <dd>{logo ? <img src={logo.src} alt="Logo de la marca" className="est-kit-logo" /> : kit.logo ? "Guardado" : "Sin escoger: abre una imagen de la galería y pulsa «Usar como logo»."}</dd>
+          <dd>
+            {logo ? <img src={logo.src} alt="Logo de la marca" className="est-kit-logo" /> : kit.logo ? "Guardado" : "Sin escoger: abre una imagen de la galería y pulsa «Usar como logo»."}
+            {kit.logo && <span className="hint"> · {MODOS_LOGO[kit.logoModo].nombre}{kit.logoModo === "estampado" ? ` (${ESQUINAS_LOGO[kit.logoPosicion.esquina].toLowerCase()}, ${Math.round(kit.logoPosicion.tamano * 100)} %)` : ""}</span>}
+          </dd>
         </div>
       </dl>
       <details className="est-kit-presets">

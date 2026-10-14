@@ -7,6 +7,8 @@ import { partirGuion, MODOS_TEXTO, PLANTILLAS_TEXTO, MAX_LAMINAS, coloresPlantil
 import { crearCarrusel, crearLamina, corregirLamina, modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
 import ReferenciasGaleria from "./ReferenciasGaleria";
 import IdeasDeFormato from "./IdeasDeFormato";
+import GuardarRegla from "./GuardarRegla";
+import { estampaSola } from "../lib/logoEstudio";
 import "./calendario/RevisionMes.css";
 import "./calendario/CarruselIA.css";
 import "./EstudioLote.css";
@@ -74,7 +76,8 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
     preset: estiloDeMarca(kit, preset, { marca: client.name, rubro: client.industry ?? "", estilo }),
     fotos: api.fotosDelProducto(productos, productoId).map((f) => f.clave),
     personajes: referenciasDePersonajes(kit, personajes, estudio?.archivos ?? []),
-    logo: kit.logo, colores: coloresPlantilla(kit), familia: kit.tipografia, carpetaId: carpeta.current,
+    // Con el logo estampado (kit), el modelo no lo recibe: se pega encima de cada lámina final.
+    logo: estampaSola(kit) ? "" : kit.logo, estampar: estampaSola(kit) ? kit : null, colores: coloresPlantilla(kit), familia: kit.tipografia, carpetaId: carpeta.current,
     calendarId: inicial.calendarId ?? null, postId: inicial.postId ?? null, seguir: () => vivo.current,
   });
 
@@ -289,6 +292,7 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
                               </form>
                               <ReferenciasGaleria compacto archivos={estudio?.archivos ?? []} elegidas={ejemplos[i] ?? []} onCambiar={(lista) => setEjemplos((e) => ({ ...e, [i]: lista }))}
                                 max={Math.max(1, (modelo?.referencias ?? 2) - 1)} etiqueta="Ejemplo de la galería" />
+                              <GuardarRegla clienteId={clienteId} texto={correcciones[i]} />
                             </>
                           )}
                           <button type="button" className="btn btn-ghost btn-sm" onClick={() => rehacer(i)}>

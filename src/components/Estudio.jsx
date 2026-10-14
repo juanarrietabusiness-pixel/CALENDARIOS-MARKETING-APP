@@ -19,11 +19,12 @@ import { idDeCarpeta } from "../lib/drive";
 import { OverflowMenu } from "./calendario/primitivas";
 import { soloLectura } from "../lib/sesionActual";
 import * as api from "../lib/estudio";
+import { estampaSola, estamparTrabajo, estamparEnGaleria } from "../lib/logoEstudio";
 import {
   modeloPorId, nombreDelModelo, estimar, textoCosto, pideConfirmar, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
 } from "../lib/estudioCatalogo";
 import {
-  filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, textoPapelera, nombreDeDescarga,
+  filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, nombreDeDescarga,
   proporcionDeMedidas, modeloParaEditar, originalDe, FILTROS_GALERIA, agruparGaleria, esGrupo, estaUsado, textoDeGrupo,
 } from "../lib/estudio";
 import "./Estudio.css";
@@ -70,6 +71,8 @@ const recortarMedios = (medios, m) => ({
 const FILTROS_FIJOS = FILTROS_GALERIA;
 // Un carrusel o un reel de la galería con todas sus piezas y la descarga en ZIP: sólo al abrirlo.
 const VisorGrupo = lazy(() => import("./VisorGrupo"));
+// La papelera, igual: sólo al abrirla (la pestaña tiene tope de 20 kB comprimidos).
+const EstudioPapelera = lazy(() => import("./EstudioPapelera"));
 
 const reemplazar = (lista = [], t) => (lista.some((x) => x.id === t.id) ? lista.map((x) => (x.id === t.id ? t : x)) : [t, ...lista]);
 const nombreDeModelo = (id) => nombreDelModelo(id) || "Aplicación";
@@ -183,6 +186,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const [borrando, setBorrando] = useState(null);
 
   const siguiendo = useRef(new Set());
+  // Los trabajos del compositor cuyas imágenes llevan el logo ESTAMPADO al terminar (kit.logoModo «estampado»).
+  const paraEstampar = useRef(new Set());
+  const kitRef = useRef(null);
   const montado = useRef(true);
   const promptRef = useRef(null);
 
@@ -230,6 +236,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const conKit = usarKit && kitListo;
   const bloqueMarca = conKit ? bloqueDeMarca(kit) : "";
   const puedeLogo = Boolean(conKit && form && modelo && ponerLogo({ kit, tipo: form.tipo, modelo, referencias: clavesDe(form.medios).reference }));
+  // Con el logo estampado (kit), el modelo no lo recibe: la aplicación lo pega encima al terminar.
+  const estampa = Boolean(conKit && form && form.tipo !== "video" && estampaSola(kit));
+  kitRef.current = kit;
   // Los productos del catálogo que nombra la idea y cuyas fotos aún no van: al crear se suman (y se dice antes). Con
   // varios, una foto de cada uno antes que la segunda de ninguno: una pieza con tres productos lleva a los tres.
   const libresRefs = form && modelo ? (modelo.referencias || 0) - form.medios.reference.length : 0;
@@ -266,6 +275,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (siguiendo.current.has(id)) return;
     siguiendo.current.add(id);
     let vistas = -1;
+    let ultimo = null;
     try {
       while (montado.current) {
         let r;
@@ -277,6 +287,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         }
         if (!montado.current) break;
         const t = r.trabajo;
+        ultimo = t;
         setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, t) } : d));
         const hechas = t.archivos?.length ?? 0;
         if (hechas !== vistas) { vistas = hechas; cargar(); } // las piezas van apareciendo
@@ -284,6 +295,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         // Otro tiene el paso, el motor pidió esperar (saturación) o el video aún se hace: sin prisa.
         // Si no, el siguiente ya. Nunca más de 15 s: por si acaso se cierra el diálogo y hay que enterarse.
         await dormir(Math.min(15_000, Math.max(r.espera ?? 0, r.ocupado ? 2500 : t.nota ? 3000 : 200)));
+      }
+      // Terminado: si se pidió con el logo estampado, cada imagen sale otra vez con el logo encima (la cruda se queda).
+      if (ultimo && !estaVivo(ultimo.estado) && paraEstampar.current.has(id)) {
+        paraEstampar.current.delete(id);
+        if (await estamparTrabajo({ clienteId: client.id, trabajo: ultimo, kit: kitRef.current })) cargar();
       }
     } finally {
       siguiendo.current.delete(id);
@@ -481,6 +497,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         ...(uso ? { calendarId: uso.calendarId, postId: uso.postId } : {}),
       });
       setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, trabajo) } : d));
+      if (estampa && conLogo) paraEstampar.current.add(trabajo.id);
       seguir(trabajo.id);
       setIdeaAnterior(null);
       if (delNombrado.length) {
@@ -716,10 +733,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         const limite = { reference: modelo.referencias, start: modelo.inicial, end: modelo.final, video: modelo.video }[rol];
         setForm((fm) => ((fm.medios[rol] ?? []).length < (limite || 0) ? { ...fm, medios: { ...fm.medios, [rol]: [...(fm.medios[rol] ?? []), ultima] } } : fm));
       }
-      avisar(true, repetidas && repetidas === Math.min(archivos.length, 6)
-        ? (repetidas === 1 ? "Ya estaba en la galería: se usa la que había, sin guardar otra copia." : "Ya estaban en la galería: se usan las que había.")
-        : [rol === "video" ? "Video subido a la galería." : archivos.length === 1 ? "Imagen subida a la galería." : `${Math.min(archivos.length, 6)} imágenes subidas.`,
-          repetidas ? `${repetidas} ya estaba${repetidas === 1 ? "" : "n"} en la galería (no se guardó otra copia).` : ""].filter(Boolean).join(" "));
+      avisar(true, api.fraseDeSubida(Math.min(archivos.length, 6), repetidas, rol === "video"));
       await cargar();
     } catch (err) {
       avisar(false, err.message);
@@ -772,6 +786,10 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     const { archivo } = await api.cambiarArchivo(client.id, a.id, { favorito: !a.favorito });
     setVisor((v) => (v?.id === a.id ? archivo : v));
   });
+  /** «Estampar el logo»: el original del kit encima, en su esquina; sale una pieza nueva y ésta se queda. */
+  const estampar = (a) => accion(async () => {
+    setVisor(await estamparEnGaleria({ clienteId: client.id, archivo: a, kit }));
+  }, "Listo: sale como una pieza nueva con el logo encima; la original se queda.");
   const aPapelera = (a) => accion(async () => { await api.mandarAPapelera(client.id, a.id); setVisor(null); }, "Movida a la papelera. Puedes recuperarla 30 días.");
   /** Varias de una vez: una por una (cada una es su fila), y se relee la galería una sola vez al terminar. */
   const variasAPapelera = async (lista) => {
@@ -1033,7 +1051,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             bloqueMarca, usarKit, onUsarKit: setUsarKit,
             estilo: estiloVigente, estiloResuelto: estiloDeEsta, nombreEstilo: nombreDeEstilo(kit, estiloDeEsta), lineaEstilo: lineaDelEstilo, onEstilo: setEstilo,
             fijadoTipo: limpiarKit(kit).estiloPorTipo[presetVigente.split("-")[0]] ?? "", onFijarEstilo: lectura ? null : fijarEstilo,
-            conLogo, onConLogo: setConLogo, puedeLogo,
+            conLogo, onConLogo: setConLogo, puedeLogo, estampa,
             angulos: datos?.angulos ?? [],
             onAngulo: (a) => { setConfirmando(null); setForm((f) => ({ ...f, prompt: ideaDesdeAngulo(a) })); },
             productos: modelo.referencias > 0 ? datos?.productos ?? [] : [],
@@ -1178,43 +1196,12 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           />
         </div>
       ) : enPapelera ? (
-        <>
-          {papelera.length > 0 && !lectura && (
-            <p className="est-papelera-nota">
-              Lo que llevas 30 días aquí se borra solo (menos lo que usa una publicación).{" "}
-              <button type="button" className="btn btn-secondary btn-sm" onClick={vaciar}>Vaciar la papelera</button>
-            </p>
-          )}
-          {papelera.length === 0 ? (
-            <p className="est-vacio">La papelera está vacía.</p>
-          ) : (
-            <ul className="est-rejilla">
-              {papelera.map((a) => (
-                <li key={a.id} className="est-tarjeta est-tarjeta-papelera">
-                  <div className="est-img"><Pieza archivo={a} /></div>
-                  <div className="est-pie">
-                    <p className="est-prompt">{a.prompt}</p>
-                    <p className="est-meta">{textoPapelera(a.borradoAt)}{a.usadoEn.length ? ` · en ${a.usadoEn.length} publicación${a.usadoEn.length === 1 ? "" : "es"}` : ""}</p>
-                    {!lectura && (
-                      borrando?.id === a.id ? (
-                        <div className="est-confirmar-borrar" role="alert">
-                          <p>{borrando.usos ? `Está en ${borrando.usos} publicación${borrando.usos === 1 ? "" : "es"}: desaparecerá de ${borrando.usos === 1 ? "ella" : "ellas"}.` : "¿Borrarla del todo?"}</p>
-                          <button type="button" className="btn btn-danger btn-sm" onClick={() => borrarDeVerdad(a, true)}>Sí, borrar</button>
-                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBorrando(null)}>No</button>
-                        </div>
-                      ) : (
-                        <div className="est-acciones">
-                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => recuperar(a)}><Icon name="undo" size={14} /> Recuperar</button>
-                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => borrarDeVerdad(a)}>Borrar del todo</button>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
+        <Suspense fallback={<p className="est-vacio">Abriendo la papelera…</p>}>
+          <EstudioPapelera
+            papelera={papelera} lectura={lectura} borrando={borrando} onVaciar={vaciar}
+            onRecuperar={recuperar} onBorrar={borrarDeVerdad} onNoBorrar={() => setBorrando(null)}
+          />
+        </Suspense>
       ) : archivos.length === 0 ? (
         <div className="card est-vacio-grande">
           <h3>Todavía no hay nada de {client.name}</h3>
@@ -1362,6 +1349,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           onAnimar={() => animar(visor)}
           onEditar={(instruccion, ejemplos) => editar(visor, instruccion, ejemplos)}
           galeria={datos?.archivos ?? []}
+          clienteId={client.id}
+          onEstampar={limpiarKit(kit).logo && visor.tipo !== "video" ? () => estampar(visor) : null}
           original={originalDe(visor, datos?.trabajos ?? [], datos?.archivos ?? [])}
           onVerOriginal={(o) => setVisor(o)}
           onUsar={onUsar ? () => usarEnLaPublicacion(visor) : null}

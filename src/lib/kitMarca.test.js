@@ -256,3 +256,30 @@ describe("los personajes de la marca", () => {
   });
 });
 
+
+describe("reglas que no se rompen y quién pone el logo", () => {
+  const kit = { paleta: [{ hex: "#112233", nombre: "Azul", rol: "fondo" }], logo: "clientes/c1/estudio/logo.png", reglas: ["El texto ocupa como mucho un tercio.", "el texto ocupa como mucho un tercio", "  ", "Nunca tapar la cara del bebé"] };
+
+  it("se limpian (sin repetir ni vacías) y van en TODA pieza y en la revisión", () => {
+    expect(limpiarKit(kit).reglas).toEqual(["El texto ocupa como mucho un tercio", "Nunca tapar la cara del bebé"]);
+    expect(bloqueDeMarca(kit)).toContain("Reglas que no se rompen: El texto ocupa como mucho un tercio; Nunca tapar la cara del bebé.");
+    expect(pedidoDeRevision({ marca: "Baby Caleb", kit })).toContain("Reglas que no se rompen:");
+    expect(kitVacio({ reglas: ["Logo siempre abajo"] })).toBe(false);
+  });
+
+  it("con el logo estampado, el modelo no lo recibe; lo de siempre es que lo ponga el modelo", () => {
+    const modelo = { referencias: 3 };
+    expect(limpiarKit(kit).logoModo).toBe("modelo");
+    expect(ponerLogo({ kit, tipo: "imagen", modelo })).toBe(true);
+    expect(ponerLogo({ kit: { ...kit, logoModo: "estampado" }, tipo: "imagen", modelo })).toBe(false);
+    expect(limpiarKit({ logoModo: "otro" }).logoModo).toBe("modelo");
+  });
+
+  it("«Volver a preparar» con IA no se lleva las reglas ni la forma del logo", () => {
+    const antes = { ...kit, logoModo: "estampado", logoPosicion: { esquina: "arriba-izquierda", tamano: 0.2 } };
+    const nuevo = fundirKit(antes, { paleta: [{ hex: "#445566" }], reglas: ["inventada"], logoModo: "modelo" });
+    expect(nuevo.reglas).toEqual(limpiarKit(kit).reglas);
+    expect(nuevo.logoModo).toBe("estampado");
+    expect(nuevo.logoPosicion).toMatchObject({ esquina: "arriba-izquierda", tamano: 0.2 });
+  });
+});

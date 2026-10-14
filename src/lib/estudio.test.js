@@ -267,3 +267,13 @@ describe("carruseles y reels agrupados en la galería", () => {
     expect([c.usadas, c["sin-usar"]]).toEqual([1, 6]);
   });
 });
+
+describe("lo que se dice al subir", () => {
+  it("avisa de lo que ya estaba", async () => {
+    const { fraseDeSubida } = await import("./estudio.js");
+    expect(fraseDeSubida(1)).toBe("Imagen subida a la galería.");
+    expect(fraseDeSubida(1, 1)).toMatch(/^Ya estaba en la galería/);
+    expect(fraseDeSubida(3, 1)).toBe("3 imágenes subidas. 1 ya estaba en la galería (no se guardó otra copia).");
+    expect(fraseDeSubida(1, 0, true)).toBe("Video subido a la galería.");
+  });
+});

@@ -128,6 +128,19 @@ describe("guardar el kit", () => {
     expect(kitGuardado().modelos).toEqual({});
   });
 
+  it("«Guardar como regla» suma al kit GUARDADO, sin repetir y con tope", async () => {
+    await pedir("/api/estudio/c1/kit", { method: "PUT", body: { kit: { tipografia: "Montserrat", logoModo: "estampado", logoPosicion: { esquina: "arriba-izquierda" } } } });
+    let res = await pedir("/api/estudio/c1/kit/reglas", { method: "POST", body: { regla: "  El texto ocupa como mucho un tercio.  " } });
+    expect(res.status).toBe(200);
+    await pedir("/api/estudio/c1/kit/reglas", { method: "POST", body: { regla: "el texto ocupa como mucho un tercio" } });
+    expect(kitGuardado()).toMatchObject({ tipografia: "Montserrat", reglas: ["El texto ocupa como mucho un tercio"], logoModo: "estampado", logoPosicion: { esquina: "arriba-izquierda" } });
+    expect((await pedir("/api/estudio/c1/kit/reglas", { method: "POST", body: { regla: " " } })).status).toBe(400);
+    for (let i = 1; i < 12; i++) await pedir("/api/estudio/c1/kit/reglas", { method: "POST", body: { regla: `Regla ${i}` } });
+    expect(kitGuardado().reglas).toHaveLength(12);
+    res = await pedir("/api/estudio/c1/kit/reglas", { method: "POST", body: { regla: "Una de más" } });
+    expect(res.status).toBe(409);
+  });
+
   it("la ficha guardada desde el cliente no pisa el kit", async () => {
     await pedir("/api/estudio/c1/kit", { method: "PUT", body: { kit: { tipografia: "Montserrat" } } });
     await pedir("/api/clientes/c1", { method: "PUT", body: { name: "Dcasa", industry: "Muebles" } });

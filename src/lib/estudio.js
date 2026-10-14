@@ -122,6 +122,13 @@ export function modeloPreferido(activos = {}, tipo = "imagen", fijado = "") {
 // Puro
 // ------------------------------------------------------------
 
+/** Lo que se dice al subir `n` archivos de los que `repetidas` ya estaban en la galería. Pura. */
+export function fraseDeSubida(n, repetidas = 0, video = false) {
+  if (repetidas && repetidas >= n) return n === 1 ? "Ya estaba en la galería: se usa la que había, sin guardar otra copia." : "Ya estaban en la galería: se usan las que había.";
+  const subida = video ? "Video subido a la galería." : n === 1 ? "Imagen subida a la galería." : `${n} imágenes subidas.`;
+  return repetidas ? `${subida} ${repetidas} ya estaba${repetidas === 1 ? "" : "n"} en la galería (no se guardó otra copia).` : subida;
+}
+
 /** Los filtros que no son una carpeta. */
 export const FILTROS_GALERIA = ["todas", "favoritas", "subidas", "usadas", "sin-usar", "sin-carpeta"];
 /** ¿Lo usa alguna publicación? */
@@ -513,3 +520,6 @@ export const ideasDelEstudio = (clienteId, datos) => pedir(`${base(clienteId)}/i
 
 /** El lote del mes completo: { mes, dias, formato, semilla?, usados? } → `{ ideas, productos }` (texto). */
 export const ideasDelMes = (clienteId, datos) => pedir(`${base(clienteId)}/lote/mes`, post(datos));
+
+/** «Guardar como regla»: suma una frase a las reglas que no se rompen del kit del cliente. Devuelve `{ kit }`. */
+export const guardarRegla = (clienteId, regla) => pedir(`${base(clienteId)}/kit/reglas`, post({ regla }));

@@ -151,11 +151,16 @@ src/
     loteMes.js            El lote del MES completo: días por el ritmo y la temporada y su plan (puro; también el Worker)
     ideasEstudio.js       «Dame ideas» del Estudio: el plan (tipo, composición, producto), el pedido y su lectura
                           (puro; también lo importa el Worker)
+    ideasFormato.js       «Dame ideas» de carrusel (tema + guion por láminas) y de reel IA (idea central) (puro; también el Worker)
+    zip.js                Un ZIP sin comprimir hecho en el navegador («Descargar el carrusel»), con su CRC-32 (puro)
+    logoEncima.js         El logo ESTAMPADO: modos, esquinas, `posicionLogo` (puro, también lo lee el kit) y el lienzo
+    logoEstudio.js        Estampar el logo y subir la pieza nueva a la galería; `conLogoSiToca` para lote, carrusel y mes
     recrear.js            «Recrear un anuncio»: el análisis en pocas líneas, la versión de partida y lo que va al
                           compositor (el anuncio sólo por su forma, las fotos del producto delante) (puro)
     referencias.js        Qué se toma de cada imagen de referencia (estilo, composición, producto…), la foto
                           REAL del producto (y si es de otra marca), el producto que nombra la idea (puro)
-    estudio.js            Cliente de /api/estudio y lo puro de la pantalla: filtros, trabajos en curso,
+    estudio.js            Cliente de /api/estudio y lo puro de la pantalla: filtros (también «Usadas / Sin usar»),
+                          trabajos en curso, carruseles y reels agrupados en una tarjeta (`agruparGaleria`),
                           de una publicación al Estudio y del Estudio a una publicación
     vivo.js               WebSocket: reconexión, latido, presencia
     horas.js              «9am» → «09:00» y vuelta; la hora que se TECLEA («930», «21:30») (puro)
@@ -273,7 +278,12 @@ src/
     EstudioLote.jsx       «Producir en lote»: qué (anuncios, por tipo o el mes; post, historia, carrusel o reel), ideas por
                           tandas («Sólo las ideas al calendario») y crear; cada pieza «Llevar al calendario» (lazy)
     EstudioRecrear.jsx    «Recrear un anuncio»: el anuncio (subir, galería o Drive), el análisis y la versión editable (lazy)
-    EstudioKit.jsx        El kit de marca: prepararlo con IA desde el cerebro, revisarlo, guardarlo
+    EstudioKit.jsx        El kit de marca: prepararlo con IA desde el cerebro, revisarlo, guardarlo (también las reglas que no se
+                          rompen y quién pone el logo)
+    VisorGrupo.jsx        Un carrusel o un reel de la galería con sus piezas en orden y «Descargar» en ZIP (lazy)
+    IdeasDeFormato.jsx    «Dame ideas» en el paso 1 del carrusel y del reel IA
+    ReferenciasGaleria.jsx  Ejemplos de la galería al corregir (y referencias del reel), cada uno con qué se toma
+    GuardarRegla.jsx      «Guardar como regla» junto a cada corrección
     calendario/RevisionMes.jsx  «Revisar el mes» antes de enviarlo: reglas, IA opcional e imágenes contra el kit (lazy)
     calendario/CarruselIA.jsx   «Crear carrusel con IA»: el guion en láminas, el texto por IA o por plantilla, rehacer una (lazy)
     calendario/ProducirMes.jsx  «Producir el mes con IA»: las piezas que faltan en lote, con costo y confirmación (lazy)
@@ -421,7 +431,7 @@ worker/
                           (/api/webhooks/meta, sin sesión)
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
     plantillas.js         /api/plantillas-plan: listar, guardar (cambiar una de arranque o crear) y borrar/restaurar
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1553,6 +1563,39 @@ son del servidor.
   tramo, como mucho 5 (el video ocupa dos de los 7 huecos de Omni). El reel admite además referencias de la galería
   para todos los fotogramas (`crearFotograma({ referencias })`), detrás del anterior, el primero, los personajes y el
   producto.
+- **«Dame ideas» también en el carrusel y el reel IA** (`src/lib/ideasFormato.js`, `worker/lib/estudio/ideasFormato.js`,
+  `POST /api/estudio/<c>/carrusel/ideas` y `…/reel/ideas`, `IdeasDeFormato.jsx`): de 3 a 5 con el catálogo (precio
+  EXACTO), lo general del estudio de mercado y el cerebro para escribir (nunca lo interno). La de carrusel trae el
+  guion «Portada: / Slide N: / CTA:» que lee `partirGuion`; «Usar» lo pone en el paso 1. Pasa `usados` para no repetir.
+- **Un carrusel o un reel es UNA tarjeta en la galería** (0042: `estudio_carpetas.tipo` y `orden`; `agruparGaleria`,
+  `piezasDeGrupo` en lib/estudio.js; `VisorGrupo.jsx`, lazy). El flujo crea su carpeta con `tipo` («carrusel» |
+  «reel», `carpetaDeGrupo`) y guarda en `orden` las láminas FINALES (o los videos y los fotogramas) cada vez que
+  cambian: `PUT …/carpetas/<id> { orden }` sólo acepta ids que están EN esa carpeta. Sin orden (se cerró a la mitad),
+  la galería lo deduce: las láminas por fecha sin las crudas que ya tienen su versión con texto. Sólo se agrupa en
+  «Todas»; en su propio filtro (chip que aparece al abrirla con «Ver sueltas») y en los demás, pieza a pieza. Las
+  carpetas con tipo NO cuentan en las 30 de la persona (`MAX_GRUPOS`, 300) ni salen en «Mover a carpeta». En el lote,
+  cada carrusel y cada reel van a SU carpeta, no a la del lote. «Descargar el carrusel» baja las piezas y arma un ZIP
+  sin comprimir en el navegador (`src/lib/zip.js`: PNG y JPEG no ganan nada comprimidos; sin librería).
+- **La galería no guarda dos veces la misma imagen** (`estudio_archivos.huella`, SHA-256 de los bytes, 0042). Sólo en lo
+  SUBIDO a mano: una compuesta (con `origenId`) la crea el Estudio y un video no se carga entero. La misma imagen otra
+  vez devuelve 200 con la ficha que había y `repetido: true` (si estaba en la papelera, vuelve) y la pantalla dice «Ya
+  estaba en la galería». En otro cliente sí entra: cada galería es suya. Ojo en los tests: subir el mismo PNG tres
+  veces son UNA ficha (`pngDistinto` en tests/migracion/estudio.test.js). «Usada» en la tarjeta y los filtros «Usadas /
+  Sin usar» salen de `usado_en` (lo que una publicación usa). Etiquetas a mano no hay: carpetas, «Me gusta» y «Usada»
+  cubren lo que se pidió.
+- **Reglas que no se rompen** (`kit.reglas`, hasta 12 frases; `lineaDeReglas` en kitMarca.js): lo que la agencia repetía
+  en cada pedido (tamaño del texto, dónde va el logo). Van en `bloqueDeMarca` —TODA pieza— y en la revisión de marca, y
+  `fundirKit` las conserva. «Guardar como regla» (`GuardarRegla.jsx`) junto a cada corrección (visor, lámina,
+  fotograma) llama a `POST /api/estudio/<c>/kit/reglas`, que suma sobre el kit GUARDADO (no el que tenga abierto la
+  pantalla) sin repetir; con 12, 409.
+- **El logo: lo pone el modelo o lo estampa la aplicación, a escoger por cliente** (`kit.logoModo` «modelo» |
+  «estampado», `kit.logoPosicion` { esquina, tamano, margen }; `src/lib/logoEncima.js`, `logoEstudio.js`). «modelo» es lo
+  de siempre (referencia, `ponerLogo`). Con «estampado» `ponerLogo` devuelve false (el modelo NO lo recibe) y el
+  navegador pega el original al terminar: en el compositor (al acabar el trabajo, `paraEstampar` en Estudio.jsx), en
+  cada lámina del carrusel (la CRUDA sigue sin logo: es la que va de referencia y la que se corrige), en el lote y en
+  «Producir el mes». Sale como pieza NUEVA con `origenId` (la original se queda). «Estampar el logo» del visor funciona
+  en cualquier modo. El asistente y Claude por MCP no pueden estampar (no hay lienzo en el Worker): con «estampado»
+  piden sin logo.
 - **Los personajes de la marca** (`kit.personajes`, hasta 4: nombre, descripción, retrato y cuerpo de la galería): el
   bebé de Baby Caleb tiene que ser EL MISMO en cada lámina y cada pieza. Van de referencia con `toma: ["persona"]` y una
   nota de quién son (`referenciasDePersonajes`), en el compositor («Personajes de la marca») y en el carrusel; el

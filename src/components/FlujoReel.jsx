@@ -8,6 +8,7 @@ import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio"
 import { modelosParaReel, modeloRecomendadoParaReel, modeloParaTramo, crearFotogramas, crearFotograma, editarImagen, pedidoDeVideo, crearVideo, corregirTramo } from "../lib/reelEstudio";
 import { CopyButton } from "./calendario/primitivas";
 import ReferenciasGaleria from "./ReferenciasGaleria";
+import GuardarRegla from "./GuardarRegla";
 import IdeasDeFormato from "./IdeasDeFormato";
 import "./calendario/RevisionMes.css";
 import "./calendario/CarruselIA.css";
@@ -369,6 +370,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
                           </form>
                           <ReferenciasGaleria compacto archivos={estudio?.archivos ?? []} elegidas={ejemplosFoto[i] ?? []} onCambiar={(l) => setEjemplosFoto((e) => ({ ...e, [i]: l }))}
                             max={Math.max(1, (modeloImagen?.referencias ?? 2) - 1)} etiqueta="Ejemplo de la galería" />
+                          <GuardarRegla clienteId={clienteId} texto={correccion[i]} />
                         </>
                       )}
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => rehacerFotograma(i)}><Icon name="refresh" size={14} /> Rehacer</button>

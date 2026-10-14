@@ -17,6 +17,7 @@ import { limpiarKit, estiloDeMarca } from "./kitMarca";
 import { coloresPlantilla, PLANTILLAS_TEXTO } from "./carrusel";
 import { componerLamina } from "./textoSobreImagen";
 import { esperarArchivos, crearCarrusel } from "./carruselEstudio";
+import { estampaSola, conLogoSiToca } from "./logoEstudio";
 import { crearFotogramas, pedidoDeVideo, crearVideo } from "./reelEstudio";
 import { textoDeIdea, plantillaDeIdea, composicionDe, FORMATOS_LOTE } from "./loteAnuncios";
 import { ideaParaMejorar, ideaSinMejorar, apoyosDePieza, pedidoDePieza, lineaSinTexto } from "./pieza";
@@ -91,7 +92,8 @@ export async function crearPieza({ clienteId, idea, pedidoDe, mejorar = true, mo
     const final = modo === "plantilla"
       ? await ponerTexto({ clienteId, crudo, texto: textoDeIdea(idea), plantilla: plantillaDeIdea(idea, formato), kit, carpetaId, nombre: `pieza-${idea.id}` })
       : crudo;
-    opciones.push({ crudo, final });
+    // Con el logo estampado (kit), encima de la final; la cruda se queda sin él.
+    opciones.push({ crudo, final: await conLogoSiToca({ clienteId, archivo: final, kit, carpetaId }) });
   }
   return { opciones, escena };
 }
@@ -139,7 +141,7 @@ export async function crearCarruselDeIdea({ clienteId, idea, kit, preset = "", e
   let hechas = 0;
   const salida = await crearCarrusel({
     clienteId, modelo, modo: "ia", plantilla: "banda", hilo: propuesta.hilo, idea: temaDeIdea(idea), laminas: propuesta.laminas,
-    preset: estiloDeMarca(k, preset, { marca, rubro, estilo }), fotos, personajes, logo: k.logo, colores: coloresPlantilla(k), familia: k.tipografia, carpetaId, seguir,
+    preset: estiloDeMarca(k, preset, { marca, rubro, estilo }), fotos, personajes, logo: estampaSola(k) ? "" : k.logo, estampar: estampaSola(k) ? k : null, colores: coloresPlantilla(k), familia: k.tipografia, carpetaId, seguir,
     alAvanzar: () => { hechas += 1; alPaso(`Lámina ${Math.min(hechas + 1, propuesta.laminas.length)} de ${propuesta.laminas.length}…`); },
   });
   const archivos = salida.map((r) => r?.final).filter(Boolean);

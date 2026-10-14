@@ -207,7 +207,7 @@ function TipoDePieza({ ids, preset, onPreset, kit, sinIdea = false }) {
 function EstiloDeMarca({
   ids, preset, kitListo, kit, marca = "", textoPreset, bloqueMarca = "", usarKit = true, onUsarKit,
   estilo = "", estiloResuelto = "", nombreEstilo = "", lineaEstilo = "", onEstilo, fijadoTipo = "", onFijarEstilo = null,
-  conLogo, onConLogo, puedeLogo, esVideo, angulos = [], onAngulo, productos = [], onProducto, gustos = null, refsTipo = [], personajes = null,
+  conLogo, onConLogo, puedeLogo, estampa = false, esVideo, angulos = [], onAngulo, productos = [], onProducto, gustos = null, refsTipo = [], personajes = null,
 }) {
   const [familia] = String(preset ?? "").split("-");
   const esTipoBase = Boolean(TIPOS_PRESET[familia]);
@@ -321,6 +321,11 @@ function EstiloDeMarca({
       {puedeLogo && (
         <label className="est-logo-casilla">
           <input type="checkbox" checked={conLogo} onChange={(e) => onConLogo(e.target.checked)} /> Poner el logo de la marca como referencia
+        </label>
+      )}
+      {estampa && (
+        <label className="est-logo-casilla">
+          <input type="checkbox" checked={conLogo} onChange={(e) => onConLogo(e.target.checked)} /> Estampar el logo encima al terminar (el original, en su esquina)
         </label>
       )}
       {usarKit && kitListo && esVideo && <p className="hint">En video el logo no va de referencia: el video empezaría en él.</p>}

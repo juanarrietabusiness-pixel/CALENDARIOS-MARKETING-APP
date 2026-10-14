@@ -31,6 +31,7 @@
 //   POST   /<cliente>/archivos/<id>/perdido        Quitar la ficha de un archivo que ya no está en R2
 //   DELETE /<cliente>/archivos/<id>?forzar=1       Borrar del todo (sólo desde la papelera)
 //   POST   /<cliente>/papelera/vaciar
+//   POST   /<cliente>/kit/reglas                   { regla } → se suma a «Reglas que no se rompen» del kit
 //   POST   /<cliente>/carpetas                     { nombre, tipo? } (tipo «carrusel» | «reel»: la galería la agrupa)
 //   PUT    /<cliente>/carpetas/<id>                { nombre?, orden? } (orden: ids de sus piezas, en orden)
 //   DELETE /<cliente>/carpetas/<id>
@@ -58,6 +59,7 @@ import { guionDeReel } from "../lib/estudio/reel.js";
 import { ideasDeFormato } from "../lib/estudio/ideasFormato.js";
 import { leerMercado } from "../lib/mercado.js";
 import { angulosDeAnuncio, fotosDelCatalogo } from "../../src/lib/estudioMercado.js";
+import { MAX_REGLAS } from "../../src/lib/kitMarca.js";
 import {
   crearTrabajo, avanzarTrabajo, cancelarTrabajo, reintentarTrabajo, trabajoPublico, ErrorEstudio,
 } from "../lib/estudio/trabajos.js";
@@ -101,6 +103,20 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         const datos = await cuerpo(req);
         if (!datos?.kit) return error("Falta el kit");
         const kit = await guardarKit(env, acceso, cliente, datos.kit);
+        avisar();
+        return json({ kit });
+      }
+      // «Guardar como regla»: una corrección que se repite pasa a las reglas del kit (sobre el kit GUARDADO, no el que
+      // tenga abierto la pantalla: así no pisa lo que otra persona cambió).
+      if (c === "reglas" && metodo === "POST") {
+        const datos = await cuerpo(req);
+        const regla = String(datos?.regla ?? "").replace(/\s+/g, " ").trim();
+        if (!regla) return error("Escribe la regla.");
+        const actual = kitDe(cliente);
+        if (actual.reglas.length >= MAX_REGLAS && !actual.reglas.some((r) => r.toLowerCase() === regla.toLowerCase().replace(/[.\s]+$/, ""))) {
+          return error(`El kit ya tiene ${MAX_REGLAS} reglas: quita alguna en el kit de marca.`, 409);
+        }
+        const kit = await guardarKit(env, acceso, cliente, { ...actual, reglas: [...actual.reglas, regla] });
         avisar();
         return json({ kit });
       }
