@@ -334,4 +334,27 @@ describe("POST /api/estudio/<cliente>/lote/ideas: la matriz y por tipos", () => 
     expect(r.ideas.filter((i) => i.tipo === "educativo").every((i) => i.conProducto === false)).toBe(true);
     expect((await lote({ modo: "tipos", tipos: {} })).status).toBe(400);
   });
+
+  it("por TANDAS: sólo esas casillas del plan (el mismo plan con la misma semilla), el total, y fuera del plan nadie es llamado", async () => {
+    await conEstudio();
+    const cuerpo = { modo: "tipos", tipos: { educativo: 3, maletas: 2 }, semilla: 7, formato: "carrusel" };
+    anthropic(JSON.stringify({ ideas: [1, 2, 3, 4, 5].map((n) => ({ n, titular: `Titular ${n}`, escena: `Escena ${n}`, guion: `Portada: ${n}\nSlide 2: algo` })) }));
+    const entero = await (await lote(cuerpo)).json();
+    anthropic(JSON.stringify({ ideas: [{ n: 4, titular: "Cuarta", escena: "E4", guion: "Portada: 4" }, { titular: "Quinta sin número", escena: "E5" }] }));
+    const tanda = await (await lote({ ...cuerpo, desde: 3, tamano: 2 })).json();
+    expect(tanda.total).toBe(5);
+    expect(tanda.ideas.map((i) => [i.n, i.titular, i.tipo, i.composicion])).toEqual([
+      [4, "Cuarta", entero.ideas[3].tipo, entero.ideas[3].composicion], [5, "Quinta sin número", entero.ideas[4].tipo, entero.ideas[4].composicion],
+    ]);
+    expect(tanda.ideas[0].guion).toBe("Portada: 4");
+    // El pedido es de carrusel y pide su guion; sólo las dos casillas de la tanda.
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/formato Carrusel/);
+    expect(t).toMatch(/"guion"/);
+    expect(t).not.toMatch(/^1\. /m);
+    anthropic("x");
+    const vacia = await (await lote({ ...cuerpo, desde: 5, tamano: 2 })).json();
+    expect(vacia).toMatchObject({ ideas: [], total: 5 });
+    expect(peticiones).toHaveLength(0);
+  });
 });

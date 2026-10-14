@@ -103,6 +103,14 @@ describe("lo que se le pide a la IA y cómo se lee", () => {
     expect(p).toMatch(/40 caracteres y 8 palabras/);
     expect(p).toMatch(/ya salieron: no repitas[\s\S]*· Duerme mejor/);
     expect(p).toMatch(/"brief"/);
+    expect(p).not.toMatch(/"guion"/);
+    // En un carrusel o un reel, la IA escribe además su guion.
+    const c = pedidoDeProduccion({ marca: "Dcasa", plan, formato: "carrusel" });
+    expect(c).toMatch(/publicaciones de formato Carrusel/);
+    expect(c).toMatch(/"guion": las láminas del carrusel, de 5 a 7/);
+    expect(pedidoDeProduccion({ marca: "Dcasa", plan, formato: "reel" })).toMatch(/"guion": el reel de 10 s por planos/);
+    const leidas = leerProduccion(JSON.stringify({ ideas: [{ n: 1, titular: "Hola", escena: "x", guion: "Portada: a\\nCTA: b" }] }), plan);
+    expect(leidas[0].guion).toBe("Portada: a\nCTA: b");
   });
 
   it("lee por número: título, brief, titular (sin «·»), apoyo, escena y descripción; cada una con lo que decidió el plan", () => {
@@ -176,11 +184,17 @@ describe("cada pieza", () => {
       archivo: { src: "/api/media/clientes/c1/a.jpg", ancho: 1080, alto: 1350 }, formato: "historia", producto: { id: "sofa", nombre: "Sofá cama" },
     });
     expect(post).toEqual({
-      id: "p1", format: "historia", title: "Duerme mejor hoy", idea: "Lo que gana", textoPieza: "Duerme mejor\nDesde $399", descripcion: "Escríbenos.",
+      id: "p1", format: "historia", title: "Duerme mejor hoy", idea: "Lo que gana", escena: "Un sofá cama abierto en un estudio", textoPieza: "Duerme mejor\nDesde $399", descripcion: "Escríbenos.",
       pilar: "anuncio", nivel: "producto", productoId: "sofa", producto: "Sofá cama", deseo: "Tranquilidad", perfil: "Mamá", status: "pending",
       medios: [{ src: "/api/media/clientes/c1/a.jpg", tipo: "imagen", ancho: 1080, alto: 1350 }],
     });
     expect(nombreCarpetaLote("Sofá cama", new Date("2026-10-12T15:00:00Z"))).toBe("Lote Sofá cama · 12 oct");
+    // Sólo la idea (sin diseño): el cliente aprueba la idea; con el guion de un carrusel, va en la publicación.
+    const soloIdea = publicacionDePieza({ id: "p2", idea: { ...idea, guion: "Portada: x\nCTA: y" }, formato: "carrusel" });
+    expect(soloIdea).toMatchObject({ format: "carrusel", aprobacion: "idea", guion: "Portada: x\nCTA: y", escena: "Un sofá cama abierto en un estudio" });
+    expect(soloIdea.medios).toBeUndefined();
+    // Varias láminas (un carrusel hecho) o un video (un reel).
+    expect(publicacionDePieza({ id: "p3", idea, formato: "reel", archivos: [{ src: "/v.mp4", tipo: "video" }] }).medios).toEqual([{ src: "/v.mp4", tipo: "video" }]);
   });
 
   it("los titulares que ya salieron: del texto de la plantilla y del que se le pidió al motor", () => {

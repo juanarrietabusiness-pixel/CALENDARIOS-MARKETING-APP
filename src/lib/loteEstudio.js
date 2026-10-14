@@ -14,10 +14,11 @@
 
 import * as api from "./estudio";
 import { ajustesDe, MAX_PROMPT } from "./estudioCatalogo";
-import { limpiarKit } from "./kitMarca";
+import { limpiarKit, estiloDeMarca } from "./kitMarca";
 import { coloresPlantilla, PLANTILLAS_TEXTO } from "./carrusel";
 import { componerLamina } from "./textoSobreImagen";
-import { esperarArchivos } from "./carruselEstudio";
+import { esperarArchivos, crearCarrusel } from "./carruselEstudio";
+import { crearFotogramas, pedidoDeVideo, crearVideo } from "./reelEstudio";
 import { textoDeIdea, plantillaDeIdea, composicionDe, FORMATOS_LOTE } from "./loteAnuncios";
 import { ideaParaMejorar, ideaSinMejorar, apoyosDePieza, pedidoDePieza, lineaSinTexto } from "./pieza";
 
@@ -43,9 +44,9 @@ export function colaDeLote(idea, { modo = "ia", formato = "post" } = {}) {
  * El pedido de UNA pieza del lote: por el MISMO camino que una pieza hecha a mano (`pedidoDePieza`), con la escena
  * (mejorada o no) que se le dé. Pura salvo por los imports.
  */
-export function pedidoDeLote({ idea, escena = null, kit, preset = "anuncio", estilo = "", modo = "ia", formato = "post", modelo, fotos = [], archivos = [], gustos = [], marca = "", rubro = "", n = 1 }) {
+export function pedidoDeLote({ idea, escena = null, kit, preset = "anuncio", estilo = "", modo = "ia", formato = "post", modelo, fotos = [], archivos = [], gustos = [], personajes = [], marca = "", rubro = "", n = 1 }) {
   const apoyos = apoyosDePieza({
-    kit, preset, estilo, archivos, fotos, gustos, modelo, conProducto: idea?.conProducto !== false,
+    kit, preset, estilo, archivos, fotos, gustos, personajes, modelo, conProducto: idea?.conProducto !== false,
     // En el lote la referencia del tipo va sólo por su ESTILO: la composición la decide el plan.
     tomaTipo: ["estilo"],
   });
@@ -130,4 +131,58 @@ export async function pulirArchivo({ clienteId, archivo, modelo, carpetaId = nul
   });
   const [pulido] = await esperarArchivos(clienteId, trabajo, { seguir });
   return pulido;
+}
+
+// ------------------------------------------------------------
+// Los formatos guiados en lote: el MISMO camino que a mano
+// ------------------------------------------------------------
+
+/** Lo que se le cuenta a la IA del carrusel o del reel de una idea del lote: el tema, el brief y el texto. Pura. */
+export const temaDeIdea = (idea) => [idea?.titulo || idea?.titular, idea?.brief, textoDeIdea(idea) ? `Texto: ${textoDeIdea(idea).replace(/\n/g, " / ")}` : ""].filter(Boolean).join(". ").slice(0, 400);
+
+/**
+ * Un CARRUSEL de una idea del lote, como a mano (components/FlujoCarrusel.jsx): la propuesta del director de arte a
+ * partir de su guion, y las láminas una a una con la anterior, la portada y los personajes de referencia.
+ * `alPaso(texto)` dice por dónde va. → { archivos: [láminas finales] }.
+ */
+export async function crearCarruselDeIdea({ clienteId, idea, kit, preset = "", estilo = "", modelo, fotos = [], personajes = [], personajesIds = [], marca = "", rubro = "", carpetaId = null, seguir = () => true, alPaso = () => {} }) {
+  alPaso("Propuesta de las láminas…");
+  const propuesta = await api.proponerCarrusel(clienteId, { guion: idea.guion ?? "", tema: temaDeIdea(idea), preset, estilo, productoId: idea.productoId || undefined, personajes: personajesIds });
+  const k = limpiarKit(kit);
+  let hechas = 0;
+  const salida = await crearCarrusel({
+    clienteId, modelo, modo: "ia", plantilla: "banda", hilo: propuesta.hilo, idea: temaDeIdea(idea), laminas: propuesta.laminas,
+    preset: estiloDeMarca(k, preset, { marca, rubro, estilo }), fotos, personajes, logo: k.logo, colores: coloresPlantilla(k), familia: k.tipografia, carpetaId, seguir,
+    alAvanzar: () => { hechas += 1; alPaso(`Lámina ${Math.min(hechas + 1, propuesta.laminas.length)} de ${propuesta.laminas.length}…`); },
+  });
+  const archivos = salida.map((r) => r?.final).filter(Boolean);
+  if (!archivos.length) throw new Error(salida.map((r) => r?.error).find(Boolean) || "No salió ninguna lámina.");
+  return { archivos, laminas: propuesta.laminas.length };
+}
+
+/**
+ * Un REEL de una idea del lote, como a mano (components/FlujoReel.jsx): el guion por planos, un fotograma por plano
+ * (el storyboard) y el video con ellos. Sin revisión entre medias: en el lote se revisa al final y se corrige por
+ * tramos desde el Estudio. → { archivos: [video], fotogramas }.
+ */
+export async function crearReelDeIdea({ clienteId, idea, kit, preset = "", estilo = "", modeloImagen, modeloVideo, fotos = [], personajes = [], personajesIds = [], marca = "", rubro = "", carpetaId = null, seguir = () => true, alPaso = () => {} }) {
+  alPaso("Guion por planos…");
+  const guion = await api.guionDeReel(clienteId, {
+    idea: [temaDeIdea(idea), idea.guion ? `Guion propuesto:\n${idea.guion}` : "", idea.escena ? `Qué se ve: ${idea.escena}` : ""].filter(Boolean).join("\n"),
+    segundos: 10, preset, estilo, productoId: idea.productoId || undefined, personajes: personajesIds,
+  });
+  const estiloTexto = estiloDeMarca(limpiarKit(kit), preset, { marca, rubro, estilo });
+  let hechos = 0;
+  alPaso(`Fotograma 1 de ${guion.planos.length}…`);
+  const salida = await crearFotogramas({
+    clienteId, modelo: modeloImagen, planos: guion.planos, hilo: guion.hilo, estilo: estiloTexto, personajes, fotos, carpetaId, seguir,
+    alAvanzar: () => { hechos += 1; alPaso(`Fotograma ${Math.min(hechos + 1, guion.planos.length)} de ${guion.planos.length}…`); },
+  });
+  const fotogramas = salida.map((r) => r?.archivo).filter(Boolean);
+  if (!fotogramas.length) throw new Error(salida.map((r) => r?.error).find(Boolean) || "No salió ningún fotograma.");
+  alPaso("Video (tarda unos minutos)…");
+  const lineaPersonajes = [...new Set(personajes.map((p) => `Personaje: ${p.nota}.`))].join(" ");
+  const pedido = pedidoDeVideo({ modelo: modeloVideo, planos: guion.planos, hilo: guion.hilo, sonido: guion.sonido, segundos: guion.segundos ?? 10, estilo: estiloTexto, personajes: lineaPersonajes, fotogramas });
+  const video = await crearVideo({ clienteId, pedido, carpetaId, seguir });
+  return { archivos: [video], fotogramas, descripcion: guion.descripcion };
 }

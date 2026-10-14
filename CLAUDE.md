@@ -270,7 +270,8 @@ src/
                           y «Revisar marca»
     EstudioMercado.jsx    El estudio de mercado en la pestaña Cerebro: catálogo, «Realizar estudio de mercado» por
                           pasos con revisión, y las referencias de la competencia (lazy)
-    EstudioLote.jsx       «Lote de anuncios»: qué, ideas (con costo) y crear; cada pieza «Llevar al calendario» (lazy)
+    EstudioLote.jsx       «Producir en lote»: qué (anuncios, por tipo o el mes; post, historia, carrusel o reel), ideas por
+                          tandas («Sólo las ideas al calendario») y crear; cada pieza «Llevar al calendario» (lazy)
     EstudioRecrear.jsx    «Recrear un anuncio»: el anuncio (subir, galería o Drive), el análisis y la versión editable (lazy)
     EstudioKit.jsx        El kit de marca: prepararlo con IA desde el cerebro, revisarlo, guardarlo
     calendario/RevisionMes.jsx  «Revisar el mes» antes de enviarlo: reglas, IA opcional e imágenes contra el kit (lazy)
@@ -1385,6 +1386,15 @@ son del servidor.
   aplicados solos: son conservadores) y la matriz de «Planificar mes» (`asignarMatriz`). Las piezas van al calendario
   cada una en su día, una tras otra (`llevarAlCalendario`: el mismo calendario no se escribe a la vez). Del mes en
   curso, sólo desde hoy (Panamá).
+- **El lote va por FASES y por FORMATOS** (`EstudioLote.jsx`). Las ideas se escriben de `TANDA` (6) en 6 con `{ desde,
+  tamano }` (el servidor corta el plan a `TANDA_MAX`, 10, y devuelve `total`): el plan es el MISMO en cada tanda porque
+  sale de la misma semilla, y cada tanda recibe los titulares que ya salieron. Con 30 en una llamada cada pieza recibía
+  muy poca atención. Fase 1: «Sólo las ideas al calendario» las lleva SIN diseñar, cada una en su día, con
+  `aprobacion: "idea"` y «Qué se ve» (`post.escena`), que es lo primero que leen después «Crear con IA» y «Producir el
+  mes» (`promptDePublicacion`). Fase 2: crear las que no se llevaron. Formatos `carrusel` y `reel` (`guiado` en
+  `FORMATOS_LOTE`): la IA escribe además su guion y cada idea pasa por el camino de a mano —`crearCarruselDeIdea`
+  (propuesta + láminas) y `crearReelDeIdea` (planos + fotogramas + video)—, uno detrás de otro; sin revisión entre
+  medias: los tramos y las láminas se corrigen después en el Estudio. Los personajes del kit también van en el lote.
 - **«Dame ideas»** (`POST /api/estudio/<c>/ideas`): variadas (un tipo de contenido distinto cada una) o del tipo
   escogido, sobre lo escrito si hay algo. «Usar» pone escena + texto exacto, el tipo y las fotos de su producto.
 - **Varios productos en una pieza**: `productosNombrados` encuentra TODOS los que nombra la idea («Sofá cama» no cuenta
