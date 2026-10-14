@@ -349,8 +349,7 @@ function DameIdeas({ ids, generando, lista = [], deTipo = "", conTema = false, o
               <span className="est-ref-insignia">{nombreDeTipo(i.tipo)}</span>
               <strong>{i.titulo}</strong>
               <p>{i.escena}</p>
-              {i.texto && <p className="est-idea-texto">«{i.texto.replace(/
-/g, " · ")}»</p>}
+              {i.texto && <p className="est-idea-texto">«{i.texto.split("\n").join(" · ")}»</p>}
               {i.productoId && nombreDeProducto(i.productoId) && <p className="hint" style={{ margin: 0 }}>Producto: {nombreDeProducto(i.productoId)}</p>}
               <button type="button" className="btn btn-primary btn-sm" onClick={() => onUsar(i)} aria-describedby={`${ids}-ideas-usar`}>
                 <Icon name="check" size={14} /> Usar
