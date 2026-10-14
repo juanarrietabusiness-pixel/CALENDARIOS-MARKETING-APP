@@ -1351,6 +1351,17 @@ son del servidor.
   cada propio) puede llevar hasta dos imágenes de la galería como referencia visual (`kit.referencias`,
   `referenciasDePreset`; sólo claves de ESE cliente y sólo las que siguen en la galería: una borrada rompería el
   pedido). En el lote van sólo por su estilo: la composición la decide el plan.
+- **UNA pieza, un solo camino** (`src/lib/pieza.js`): el compositor, el lote, el mes completo y «Producir el mes» arman
+  cada pieza con `apoyosDePieza` (fotos REALES del producto, lo puesto a mano, referencias del tipo y del estilo
+  propio, «Me gusta»; dejando sitio al logo) y `pedidoDePieza` (escena + tipo + estilo con su acabado + referencias +
+  marca + logo, en 2K si el modelo lo tiene; a mano la resolución la escoge la persona). El lote salía peor que la
+  pieza a mano por tres cosas que ya no existen: escribía la escena, la mejora no veía el TEXTO y después pegaba
+  frases fijas iguales para todo el lote («Composición: …», «Fondo de color pleno…»). Ahora la mejora recibe
+  `ideaParaMejorar` (escena, composición SUGERIDA, texto exacto y el brief como contexto) y detrás de la escena sólo
+  va «Composición: <nombre>.» (así `aprenderComposiciones` la reconoce) y, con plantilla, la zona libre. El texto lo
+  escribe el motor por defecto. «Producir el mes» también mejora cada idea (como «Crear con IA» desde una
+  publicación). Un test exige que la misma idea dé el mismo pedido por el lote y a mano. «Pulir antes de llevar al
+  calendario» (lote) amplía la escogida con un modelo de pulir (`pulirArchivo`).
 - **Tipo de pieza (QUÉ comunica) y estilo visual (CÓMO se ve) son dos cosas** (`ESTILOS_VISUALES` en kitMarca.js). En
   el compositor el tipo va ANTES de la idea (cambia «Dame ideas» —de ese tipo, salvo «Variadas»— y «Mejorar idea»,
   que recibe `pieza` como propósito) y el estilo va después, con el kit y las referencias. Cada estilo lleva UNA

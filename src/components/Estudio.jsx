@@ -3,12 +3,13 @@ import Icon from "./Icon";
 import Compositor from "./EstudioCompositor";
 import Visor, { Pieza } from "./EstudioVisor";
 import {
-  kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, componerPedido, ponerLogo, ideaDelPedido, conOtraEscena, referenciasDePreset, nombreDePreset,
+  kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, ponerLogo, ideaDelPedido, conOtraEscena, referenciasDePreset, nombreDePreset,
   estiloDeLaPieza, lineaDeEstilo, nombreDeEstilo, estiloValido, TIPOS_PRESET,
 } from "../lib/kitMarca";
 import { presetDePilar, nombreDePilar } from "../lib/pilares";
 import { ideaDesdeAngulo } from "../lib/estudioMercado";
-import { lineasDeReferencias, productosNombrados } from "../lib/referencias";
+import { productosNombrados } from "../lib/referencias";
+import { pedidoDePieza } from "../lib/pieza";
 import { deMisGustos } from "../lib/aprendizajeVisual";
 import { segundosParaModelo, ajusteDeDuracion } from "../lib/videoCorto";
 import BancoSelector from "./BancoSelector";
@@ -465,15 +466,14 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       // Las fotos del producto que nombra la idea van DELANTE (cuanto cabe), y cada referencia dice qué se toma de ella.
       const delNombrado = fotosNombradas;
       const refs = [...delNombrado, ...form.medios.reference, ...refsTipo, ...gustos];
-      const medios = { ...clavesDe(form.medios), reference: refs.map((a) => a.clave) };
-      const conElLogo = Boolean(conKit && conLogo && ponerLogo({ kit, tipo: form.tipo, modelo, referencias: medios.reference }));
-      if (conElLogo) medios.reference = [...medios.reference, kit.logo];
+      // El MISMO camino que el lote y «Producir el mes» (lib/pieza.js); aquí la resolución la escoge la persona.
+      const pieza = pedidoDePieza({
+        kit, idea: form.prompt, preset: presetVigente, estilo: estiloVigente, apoyos: refs, modelo, marca: client.name, rubro: client.industry ?? "",
+        usarKit: conKit, conLogo, video: form.tipo === "video", altaResolucion: false, ajustes: form.ajustes, n: form.n,
+      });
+      const medios = { ...clavesDe(form.medios), ...pieza.medios };
       const { trabajo } = await api.pedirImagenes(client.id, {
-        modelo: form.modelo,
-        prompt: componerPedido({
-          idea: form.prompt, preset: textoDelPreset, estilo: lineaDelEstilo, referencias: lineasDeReferencias(refs, { cliente: client.name }),
-          marca: bloqueMarca, logo: conElLogo, video: form.tipo === "video",
-        }).slice(0, MAX_PROMPT),
+        modelo: form.modelo, prompt: pieza.prompt,
         n: form.n, ajustes: ajustesDe(modelo, form.ajustes, medios),
         medios, confirmado: true,
         ...(uso ? { calendarId: uso.calendarId, postId: uso.postId } : {}),

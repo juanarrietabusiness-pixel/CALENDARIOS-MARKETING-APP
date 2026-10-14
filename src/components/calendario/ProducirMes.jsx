@@ -4,9 +4,9 @@ import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { FORMATS } from "../../constants";
 import { mediosDe, conMedios } from "../../lib/publicacion";
 import { presetDePilar, nombreDePilar } from "../../lib/pilares";
-import { lineasDeReferencias } from "../../lib/referencias";
-import { pedidoConMarca, estiloDeMarca, ponerLogo, limpiarKit } from "../../lib/kitMarca";
-import { validarPedido, ajustesDe, textoCosto, CONFIRMAR_DESDE } from "../../lib/estudioCatalogo";
+import { estiloDeMarca, limpiarKit, nombreDePreset } from "../../lib/kitMarca";
+import { apoyosDePieza, pedidoDePieza } from "../../lib/pieza";
+import { validarPedido, textoCosto, CONFIRMAR_DESDE } from "../../lib/estudioCatalogo";
 import * as api from "../../lib/estudio";
 import { partirGuion, costoCarrusel, coloresPlantilla, MODOS_TEXTO, PLANTILLAS_TEXTO } from "../../lib/carrusel";
 import { crearCarrusel, modeloParaCarrusel } from "../../lib/carruselEstudio";
@@ -56,6 +56,8 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
   const [semanas, setSemanas] = useState(() => new Set()); // vacío = todas
   const [dias, setDias] = useState(() => new Set());
   const [orden, setOrden] = useState("dia");
+  // Como al abrir «Crear con IA» desde una publicación: la idea, el texto y el contexto pasan por «Mejorar idea».
+  const [mejorar, setMejorar] = useState(true);
   const [modoTexto, setModoTexto] = useState("ia");
   const [plantilla, setPlantilla] = useState("banda");
   const vivo = useRef(true);
@@ -67,7 +69,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
   useEffect(() => {
     vivo.current = true;
     Promise.all([api.leerEstudio(clienteId), api.leerMotores()])
-      .then(([g, m]) => setEstudio({ kit: limpiarKit(g.kit), motores: m.motores ?? {}, productos: g.productos ?? [] }))
+      .then(([g, m]) => setEstudio({ kit: limpiarKit(g.kit), motores: m.motores ?? {}, productos: g.productos ?? [], archivos: g.archivos ?? [] }))
       .catch((e) => setAviso({ ok: false, texto: e.message }));
     return () => { vivo.current = false; };
   }, [clienteId]);
@@ -88,23 +90,23 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
         }
         const tipo = tipoDe(post.format);
         const modelo = api.modeloPreferido(activos, tipo, estudio.kit?.modelos?.[tipo]);
-        // Las fotos del producto (catálogo) primero: que salga el producto real. Luego el logo, si cabe.
-        const delProducto = tipo === "imagen" ? api.fotosDelProducto(estudio.productos, post.productoId) : [];
-        const fotos = delProducto.map((f) => f.clave);
-        const conLogo = ponerLogo({ kit: estudio.kit, tipo, modelo, referencias: fotos });
-        // El preset de su tipo (sin tipo, el de producto) y la identidad de la marca SIEMPRE: la paleta ya no depende del preset.
-        const prompt = pedidoConMarca({
-          kit: estudio.kit, idea: api.promptDePublicacion(post, { conTexto: tipo !== "video" }),
-          preset: presetDePilar(post.pilar, post.pilarSub) || "servicios", marca: client.name, rubro: client.industry ?? "",
-          video: tipo === "video", logo: conLogo,
-          // Las fotos van como el producto REAL (y si es de otra marca, sin el logo del cliente encima).
-          referencias: lineasDeReferencias(delProducto.slice(0, modelo.referencias || 0), { cliente: client.name }),
-        }).slice(0, 4000);
-        const referencia = [...fotos, ...(conLogo ? [estudio.kit.logo] : [])].slice(0, modelo.referencias || 0);
-        const medios = referencia.length ? { reference: referencia } : {};
-        const ajustes = ajustesDe(modelo, { aspectRatio: proporcionDe(post.format, tipo) }, medios);
-        const v = validarPedido({ modelo: modelo.id, prompt, n: 1, ajustes, medios });
-        return { date: d.date, post, tipo, modelo, pedido: { modelo: modelo.id, prompt, n: 1, ajustes, medios }, costo: v.ok ? v.pedido.costoEstimado : 0, error: v.ok ? "" : v.error };
+        const preset = presetDePilar(post.pilar, post.pilarSub) || "servicios";
+        // El MISMO camino que una pieza hecha a mano (lib/pieza.js): las fotos REALES del producto primero, las
+        // referencias del tipo, el logo si cabe, el estilo visual del tipo con su acabado, en alta resolución.
+        const apoyos = tipo === "imagen"
+          ? apoyosDePieza({ kit: estudio.kit, preset, archivos: estudio.archivos, fotos: api.fotosDelProducto(estudio.productos, post.productoId), modelo })
+          : [];
+        const ideaBase = api.promptDePublicacion(post, { conTexto: tipo !== "video" });
+        const armar = (idea) => pedidoDePieza({
+          kit: estudio.kit, idea, preset, apoyos, modelo, marca: client.name, rubro: client.industry ?? "",
+          video: tipo === "video", aspectRatio: proporcionDe(post.format, tipo),
+        });
+        const pedido = armar(ideaBase);
+        const v = validarPedido(pedido);
+        return {
+          date: d.date, post, tipo, modelo, pedido, armar, ideaBase, pieza: nombreDePreset(preset, estudio.kit),
+          costo: v.ok ? v.pedido.costoEstimado : 0, error: v.ok ? "" : v.error,
+        };
       }));
   }, [estudio, cal.days, activos, client.name, client.industry]);
 
@@ -126,7 +128,12 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
     for (const c of elegidas.filter((x) => x.tipo !== "carrusel")) {
       if (!vivo.current) return;
       try {
-        const { trabajo } = await api.pedirImagenes(clienteId, { ...c.pedido, confirmado: true, calendarId: cal.dbId || cal.id, postId: c.post.id });
+        let pedido = c.pedido;
+        if (mejorar && c.tipo === "imagen") {
+          const r = await api.mejorarIdea(clienteId, { idea: c.ideaBase, tipo: "imagen", pieza: c.pieza }).catch(() => null);
+          if (r?.idea) pedido = c.armar(r.idea);
+        }
+        const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true, calendarId: cal.dbId || cal.id, postId: c.post.id });
         creados.push({ postId: c.post.id, date: c.date, format: c.post.format, titulo: c.post.title || c.post.idea || "", id: trabajo.id, estado: trabajo.estado, error: "" });
       } catch (e) {
         creados.push({ postId: c.post.id, date: c.date, format: c.post.format, titulo: c.post.title || c.post.idea || "", id: null, estado: "fallido", error: e.message });
@@ -250,6 +257,9 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
                   )}
                 </div>
               )}
+              <label className="est-logo-casilla">
+                <input type="checkbox" checked={mejorar} onChange={(e) => setMejorar(e.target.checked)} /> Mejorar cada idea antes de crear, como «Mejorar idea» (recomendado; costo de texto mínimo)
+              </label>
               <div className="produccion-filtro" role="group" aria-label="Orden">
                 <span className="hint">Orden</span>
                 <button type="button" className="filter-chip" aria-pressed={orden === "dia"} onClick={() => setOrden("dia")}>De lunes a domingo</button>

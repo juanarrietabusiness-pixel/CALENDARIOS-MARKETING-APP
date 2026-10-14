@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
-  limpiarCuantas, totalDeCuantas, cuantasPorDefecto, pedidoDeProduccion, leerProduccion, escenaDeAnuncio, textoDeIdea, limpiarTitular,
+  limpiarCuantas, totalDeCuantas, cuantasPorDefecto, pedidoDeProduccion, leerProduccion, textoDeIdea, limpiarTitular,
   publicacionDePieza, nombreCarpetaLote, plantillaDeFormato, MAX_LOTE, MAX_POR_NIVEL, POR_NIVEL, celdasPorNiveles, celdasMatriz, celdasPorTipos,
   darForma, seVeElProducto, titularesUsados, aprenderComposiciones, COMPOSICIONES, TACTICAS, MIN_SENALES_COMPOSICION,
 } from "./loteAnuncios";
 import { PLANTILLAS_TEXTO } from "./carrusel";
-import { pedidoDeLote } from "./loteEstudio";
+import { pedidoDeLote, ideaDeLote, colaDeLote } from "./loteEstudio";
+import { ideaParaMejorar, ideaSinMejorar, pedidoDePieza, apoyosDePieza } from "./pieza";
 import { modeloPorId } from "./estudioCatalogo";
 import { ideaDelPedido } from "./kitMarca";
 
@@ -119,11 +120,19 @@ describe("lo que se le pide a la IA y cómo se lee", () => {
 describe("cada pieza", () => {
   const idea = { id: "producto-1", nivel: "producto", titular: "Duerme mejor", apoyo: "Desde $399", escena: "Un sofá cama abierto en un estudio" };
 
-  it("con plantilla, el motor deja el hueco; con «lo escribe la IA», el texto va EXACTO y sobre una superficie real", () => {
-    expect(escenaDeAnuncio(idea, { modo: "plantilla" })).toBe("Un sofá cama abierto en un estudio NO escribas ningún texto, letra ni número en la imagen: el texto se pone después. Deja el tercio inferior limpio y despejado, con buen contraste.");
-    expect(escenaDeAnuncio(idea, { modo: "plantilla", formato: "historia" })).toMatch(/Deja el centro de la lámina limpio/);
-    expect(escenaDeAnuncio(idea, { modo: "ia" })).toMatch(/EXACTO.*"Duerme mejor" \/ "Desde \$399"\. Ningún otro texto\. .*nunca sobre un velo pintado/);
-    expect(escenaDeAnuncio({ ...idea, conProducto: false, composicion: "emocion", plantilla: "arriba" })).toMatch(/primer plano de una cara.*El producto NO aparece.*Deja el tercio superior/);
+  it("la idea que se mejora lleva escena, composición sugerida, texto exacto (si lo escribe el motor) y el brief; sin frases fijas de fondo", () => {
+    const conForma = { ...idea, composicion: "uso", brief: "Lo que gana quien compra" };
+    const m = ideaParaMejorar(ideaDeLote(conForma, { modo: "ia" }));
+    expect(m).toMatch(/^Un sofá cama abierto en un estudio\n\nComposición sugerida: una persona real usando el producto/);
+    expect(m).toMatch(/Texto en la imagen, exacto, legible y bien jerarquizado \(lo primero grande\): "Duerme mejor" \/ "Desde \$399"\./);
+    expect(m).toMatch(/Contexto de la publicación: Lo que gana quien compra$/);
+    expect(m).not.toMatch(/Fondo/);
+    // Con plantilla el motor no escribe: no va el texto, y detrás va la zona libre.
+    expect(ideaParaMejorar(ideaDeLote(conForma, { modo: "plantilla" }))).not.toMatch(/Texto en la imagen/);
+    expect(colaDeLote(conForma, { modo: "plantilla" })).toMatch(/^Composición: En uso\. NO escribas ningún texto.*Deja .* limpio/);
+    expect(colaDeLote({ ...idea, composicion: "heroe" }, { modo: "plantilla", formato: "historia" })).toMatch(/Deja el centro de la lámina limpio/);
+    expect(colaDeLote(conForma, { modo: "ia" })).toBe("Composición: En uso.");
+    expect(ideaSinMejorar(ideaDeLote({ ...conForma, conProducto: false }))).toMatch(/El producto NO aparece/);
     expect(plantillaDeFormato("historia")).toBe("centro");
     expect(textoDeIdea(idea)).toBe("Duerme mejor\nDesde $399");
     expect(PLANTILLAS_TEXTO.degradado).toBeTruthy();
@@ -139,9 +148,26 @@ describe("cada pieza", () => {
     expect(p.prompt).toMatch(/^Escena: Un sofá cama abierto en un estudio/);
     expect(p.prompt).toMatch(/Tipo de pieza .*: Anuncio de venta directa de Dcasa/);
     expect(p.prompt).toMatch(/Imagen de referencia 1: es la foto REAL del producto «Sofá cama»/);
+    // El estilo del tipo (Anuncio → Fotográfico) va con su acabado.
+    expect(p.prompt).toMatch(/Acabado de fotografía publicitaria profesional/);
     expect(ideaDelPedido(p.prompt)).toMatch(/^Un sofá cama abierto en un estudio NO escribas/);
     const frio = pedidoDeLote({ idea: { ...idea, conProducto: false }, kit, modelo: modeloPorId("nano-banana"), fotos, marca: "Dcasa" });
     expect(frio.medios.reference).toEqual(["clientes/c1/logo.png"]);
+  });
+
+  it("la misma pieza pide lo mismo por el lote que hecha a mano: el lote ES el camino individual", () => {
+    const kit = { paleta: [{ hex: "#112233", nombre: "azul" }], logo: "clientes/c1/logo.png" };
+    const fotos = [{ clave: "clientes/c1/sofa.jpg", producto: { nombre: "Sofá cama", marca: "" } }];
+    const modelo = modeloPorId("nano-banana-2");
+    const escena = "Una sala luminosa con el sofá cama abierto; el texto «Duerme mejor» arriba, grande.";
+    const delLote = pedidoDeLote({ idea: { ...idea, composicion: "uso" }, escena, kit, preset: "anuncio", modo: "ia", formato: "post", modelo, fotos, marca: "Dcasa" });
+    const aMano = pedidoDePieza({
+      kit, idea: escena, extra: "Composición: En uso.", preset: "anuncio", modelo, marca: "Dcasa", aspectRatio: "4:5",
+      apoyos: apoyosDePieza({ kit, preset: "anuncio", fotos, modelo, tomaTipo: ["estilo"] }),
+    });
+    expect(delLote).toEqual(aMano);
+    // En alta resolución: un modelo con tamaño pide 2K aunque por defecto sea 1K.
+    expect(delLote.ajustes.imageSize).toBe("2K");
   });
 
   it("al calendario: título, brief como idea, texto de la pieza, descripción, tipo y matriz, pendiente", () => {

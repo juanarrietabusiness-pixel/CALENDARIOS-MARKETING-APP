@@ -7,13 +7,14 @@ import { leerMercado } from "../lib/mercado";
 import { productosActivos, limpiarEstudio } from "../lib/estudioMercado";
 import { NIVELES_CONSCIENCIA, CLAVES_NIVEL, nombreDeNivel } from "../lib/consciencia";
 import { MODELOS, modeloPorId, estimar, textoCosto } from "../lib/estudioCatalogo";
-import { TIPOS_PRESET, limpiarKit, kitVacio } from "../lib/kitMarca";
+import { TIPOS_PRESET, ESTILOS_VISUALES, limpiarKit, kitVacio, nombreDePreset } from "../lib/kitMarca";
+import { deMisGustos } from "../lib/aprendizajeVisual";
 import { MODOS_TEXTO } from "../lib/carrusel";
 import {
   FORMATOS_LOTE, MAX_POR_NIVEL, MAX_LOTE, MAX_TITULAR, MAX_APOYO, MAX_ESCENA, MAX_BRIEF, MAX_DESCRIPCION, cuantasPorDefecto, limpiarCuantas,
   totalDeCuantas, nombreCarpetaLote, publicacionDePieza, COMPOSICIONES, TACTICAS, titularesUsados, aprenderComposiciones, celdasMatriz, celdasPorTipos,
 } from "../lib/loteAnuncios";
-import { pedidoDeLote, crearLote } from "../lib/loteEstudio";
+import { pedidoDeLote, crearLote, pulirArchivo } from "../lib/loteEstudio";
 import { DIAS_LOTE, diasDelLote, diasConTipo, carpetaDelMes, fechaCortaLote, mesDe, textoMes } from "../lib/loteMes";
 import { PILARES, presetDePilar, nombreDePilar } from "../lib/pilares";
 import { fechasDelMes } from "../lib/fechasEspeciales";
@@ -80,7 +81,15 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const [preset, setPreset] = useState("anuncio");
   // El modelo fijado de este cliente (su kit); si no, el predeterminado.
   const [modeloId, setModeloId] = useState(() => api.modeloPreferido(activos, "imagen", kit?.modelos?.imagen).id);
-  const [modo, setModo] = useState("plantilla");
+  // El texto lo escribe el motor por defecto: el modelo DISEÑA la pieza con él (con la plantilla salía plana).
+  const [modo, setModo] = useState("ia");
+  // El estilo visual del lote ("" = el de cada tipo de pieza) y los «Me gusta» como referencia de estilo.
+  const [estilo, setEstilo] = useState("");
+  const claveGustos = `estudio-gustos:${clienteId}`;
+  const [conGustos, setConGustos] = useState(() => { try { return localStorage.getItem(claveGustos) === "1"; } catch { return false; } });
+  // Pulir cada pieza escogida antes de llevarla al calendario (un modelo de «pulir», si hay llave).
+  const pulidores = useMemo(() => MODELOS.filter((m) => m.pulir && m.id !== "recraft-sin-fondo-kie" && activos[m.motor]), [activos]);
+  const [pulirCon, setPulirCon] = useState("");
   const [variantes, setVariantes] = useState(1);
   const [mejorar, setMejorar] = useState(true);
   const [ideas, setIdeas] = useState([]);
@@ -92,6 +101,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const [llevandoTodas, setLlevandoTodas] = useState(false);
   const [aviso, setAviso] = useState(null);
   const vivo = useRef(true);
+  const carpetaLote = useRef(null);
   const creando = Object.values(resultados).some((r) => r.cargando);
   const ref = useDialogA11y(() => { if (!creando) onCerrar(); });
 
@@ -137,7 +147,12 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const fotosDe = (idea) => api.fotosDelProducto(productosConFotos, idea.productoId || productoId);
   // El tipo de pieza de cada idea: el suyo (por tipo, el mes); en anuncios, el escogido.
   const presetDe = (idea) => (idea.tipo && idea.tipo !== "anuncio" ? presetDePilar(idea.tipo, idea.pilarSub) : preset);
-  const pedidoDe = (idea, n = 1) => pedidoDeLote({ idea, kit, preset: presetDe(idea), modo, formato, modelo, fotos: fotosDe(idea), archivos, marca: client.name, rubro: client.industry ?? "", n });
+  const gustos = conGustos ? deMisGustos(archivos, { cuantas: 2 }) : [];
+  // El MISMO camino que una pieza hecha a mano (lib/pieza.js): la escena mejorada llega de crearPieza.
+  const pedidoDe = (idea, n = 1, escena = null) => pedidoDeLote({
+    idea, escena, kit, preset: presetDe(idea), estilo, modo, formato, modelo, fotos: fotosDe(idea), archivos, gustos, marca: client.name, rubro: client.industry ?? "", n,
+  });
+  const nombreTipo = (idea) => nombreDePreset(presetDe(idea), kit);
   const hayFotos = productoId ? fotos.length > 0 : productosConFotos.length > 0;
   const sinReferencias = hayFotos && !(modelo?.referencias > 0);
   const productoDe = (idea) => (catalogo ?? []).find((p) => p.id === (idea.productoId || productoId)) ?? productosIdeas.find((p) => p.id === idea.productoId) ?? null;
@@ -195,11 +210,12 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
       carpetaId = r?.carpeta?.id ?? null;
     } catch { /* sin carpeta, van a la galería igual */ }
     await crearLote({
-      ideas: elegidas, clienteId, modo, formato, kit, carpetaId, pedidoDe, mejorar, n: variantes,
+      ideas: elegidas, clienteId, modo, formato, kit, carpetaId, pedidoDe, mejorar, n: variantes, piezaDe: nombreTipo,
       seguir: () => vivo.current,
       alAvanzar: (id, r) => { if (vivo.current) setResultados((m) => ({ ...m, [id]: r.opciones ? { ...r, elegida: 0 } : r })); },
     });
     if (!vivo.current) return;
+    carpetaLote.current = carpetaId;
     onHecho?.();
     setAviso({ ok: true, texto: [
       "Listo. Están en la galería, en la carpeta del lote.",
@@ -210,21 +226,28 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
 
   const elegida = (id) => {
     const r = resultados[id];
-    return r?.opciones?.[r.elegida ?? 0]?.final ?? null;
+    return r?.pulido ?? r?.opciones?.[r.elegida ?? 0]?.final ?? null;
   };
 
   const llevar = async (idea) => {
     // En el lote del mes, cada una va a SU día; en los demás, al que se escoja.
     const fecha = idea.fecha ?? fechas[idea.id];
-    const archivo = elegida(idea.id);
+    let archivo = elegida(idea.id);
     if (!fecha || !archivo || !onLlevar) return;
     try {
+      const pulidor = pulidores.find((m) => m.id === pulirCon);
+      if (pulidor) {
+        setResultados((m) => ({ ...m, [idea.id]: { ...m[idea.id], puliendo: true } }));
+        archivo = await pulirArchivo({ clienteId, archivo, modelo: pulidor, carpetaId: carpetaLote.current, seguir: () => vivo.current });
+        setResultados((m) => ({ ...m, [idea.id]: { ...m[idea.id], puliendo: false, pulido: archivo } }));
+      }
       const post = publicacionDePieza({ id: uid(), idea, archivo, formato, producto: productoDe(idea) });
       const calendarId = await onLlevar(fecha, post);
       setLlevadas((m) => ({ ...m, [idea.id]: fecha }));
       // Apuntar que la usa una publicación: así la papelera no se lleva el archivo. Si falla, la pieza ya está.
       if (calendarId) await api.apuntarUso(clienteId, archivo.id, { calendarId, postId: post.id }).catch(() => {});
     } catch (e) {
+      setResultados((m) => ({ ...m, [idea.id]: { ...m[idea.id], puliendo: false } }));
       setAviso({ ok: false, texto: e.message });
     }
   };
@@ -380,7 +403,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
               <div className="field">
                 <span className="label" id={`${ids}-x`}>El texto de la pieza</span>
                 <div className="est-tipos" role="group" aria-labelledby={`${ids}-x`}>
-                  {["plantilla", "ia"].map((id) => <button key={id} type="button" className="filter-chip" aria-pressed={modo === id} onClick={() => setModo(id)}>{MODOS_TEXTO[id].nombre}</button>)}
+                  {["ia", "plantilla"].map((id) => <button key={id} type="button" className="filter-chip" aria-pressed={modo === id} onClick={() => setModo(id)}>{MODOS_TEXTO[id].nombre}</button>)}
                 </div>
                 <p className="hint">{MODOS_TEXTO[modo].ayuda}</p>
               </div>
@@ -391,12 +414,36 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                 </div>
                 <p className="hint">{variantes > 1 ? `Salen ${variantes} de cada idea y escoges una antes de llevarla al calendario.` : "Una por idea."}</p>
               </div>
+              <div className="field">
+                <label className="label" htmlFor={`${ids}-est`}>Estilo visual</label>
+                <select id={`${ids}-est`} className="input" value={estilo} onChange={(e) => setEstilo(e.target.value)}>
+                  <option value="">El de cada tipo de pieza</option>
+                  {Object.entries(ESTILOS_VISUALES).map(([id, d]) => <option key={id} value={id}>{d.nombre}</option>)}
+                  {limpiarKit(kit).estilos.map((e) => <option key={e.id} value={e.id}>{e.nombre} (propio)</option>)}
+                </select>
+              </div>
               <label className="est-logo-casilla">
-                <input type="checkbox" checked={mejorar} onChange={(e) => setMejorar(e.target.checked)} /> Mejorar cada escena antes de crear (recomendado: es lo que hace «Mejorar idea», con un costo de texto mínimo)
+                <input type="checkbox" checked={mejorar} onChange={(e) => setMejorar(e.target.checked)} /> Mejorar cada idea antes de crear, como «Mejorar idea» (recomendado: escena, composición y texto en una o dos frases claras; costo de texto mínimo)
               </label>
+              {archivos.some((a) => a.favorito && a.tipo === "imagen") && (
+                <label className="est-logo-casilla">
+                  <input type="checkbox" checked={conGustos} onChange={(e) => { setConGustos(e.target.checked); try { localStorage.setItem(claveGustos, e.target.checked ? "1" : "0"); } catch { /* sin almacenamiento */ } }} />
+                  {" "}Usar mis «Me gusta» como referencia de estilo (las dos últimas)
+                </label>
+              )}
+              {pulidores.length > 0 && (
+                <div className="field">
+                  <label className="label" htmlFor={`${ids}-pul`}>Pulir antes de llevar al calendario</label>
+                  <select id={`${ids}-pul`} className="input" value={pulirCon} onChange={(e) => setPulirCon(e.target.value)}>
+                    <option value="">No pulir</option>
+                    {pulidores.map((m) => <option key={m.id} value={m.id}>{m.nombre} · {textoCosto(m.costo)} cada una</option>)}
+                  </select>
+                  <p className="hint">Amplía y limpia la imagen escogida justo antes de llevarla: lo que más se nota en la nitidez final.</p>
+                </div>
+              )}
               {sinReferencias && <p className="notice notice-warn">{modelo.nombre} no admite imágenes de referencia: las fotos del catálogo no irán y la IA imaginará el producto. Escoge un modelo que las admita (Nano Banana, por ejemplo).</p>}
               <p className="hint">
-                Cada pieza sale con una composición, un fondo y un gancho distintos: lo decide la aplicación, no el azar del modelo.
+                Cada pieza sale con una composición y un gancho distintos (lo decide la aplicación) y pasa por el mismo camino que una hecha a mano: idea mejorada, tipo, estilo visual con su acabado, kit y alta resolución.
                 {aprendido.orden.length ? ` Con ${client.name} se usan más las composiciones que te gustan (${aprendido.senales} señales de tus «Me gusta», lo usado y la papelera).` : ""}
               </p>
               {!kitListo && <p className="notice notice-warn">Este cliente no tiene kit de marca: las piezas no sabrán sus colores ni su estilo. Prepáralo arriba, en «Kit de marca».</p>}
@@ -476,6 +523,9 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                     <div className="lote-miniatura">
                       {final ? <img src={final.src} alt={`Pieza: ${i.titular}`} /> : (
                         <span className="hint">{r?.error ? "No salió" : r?.cargando ? "Creando…" : "En cola"}</span>
+                      )}
+                      {r?.puliendo && (
+                        <span className="hint lote-puliendo">Puliendo…</span>
                       )}
                     </div>
                     <div className="lote-resultado-texto">

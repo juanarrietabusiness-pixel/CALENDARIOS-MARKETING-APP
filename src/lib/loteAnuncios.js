@@ -323,25 +323,6 @@ export const textoDeIdea = (idea) => [limpiarTitular(idea?.titular), corto(idea?
 /** Dónde va el texto de una idea en la plantilla: el de su composición, o el del formato si no trae. Pura. */
 export const plantillaDeIdea = (idea, formato = "post") => (PLANTILLAS_TEXTO[idea?.plantilla] ? idea.plantilla : plantillaDeFormato(formato));
 
-/**
- * La escena del pedido de UNA pieza: lo que se ve, su composición, su fondo, si el producto no sale, y el texto. Con
- * `modo: "ia"` el motor escribe el texto EXACTO, apoyado en una superficie real del encuadre; con «plantilla», deja
- * el hueco y el texto se pone encima después. Lo demás (tipo, referencias, marca, logo) lo añade `pedidoConMarca`. Pura.
- */
-export function escenaDeAnuncio(idea, { modo = "plantilla", formato = "post" } = {}) {
-  const zona = PLANTILLAS_TEXTO[plantillaDeIdea(idea, formato)]?.zona ?? PLANTILLAS_TEXTO.banda.zona;
-  const lineas = textoDeIdea(idea).split("\n").map((l) => `"${l.replace(/["“”«»]/g, "")}"`);
-  return [
-    corto(idea?.escena, MAX_ESCENA),
-    composicionDe(idea?.composicion)?.linea ?? "",
-    lineaDe(FONDOS, idea?.fondo),
-    idea?.conProducto === false ? "El producto NO aparece en esta imagen." : "",
-    modo === "ia"
-      ? `Texto en la imagen, EXACTO, legible y bien jerarquizado (lo primero grande): ${lineas.join(" / ")}. Ningún otro texto. El texto se apoya sobre una superficie real del encuadre (pared, cielo, mesa, tela) o directo sobre la imagen con buen contraste, nunca sobre un velo pintado.`
-      : `NO escribas ningún texto, letra ni número en la imagen: el texto se pone después. Deja ${zona} limpio y despejado, con buen contraste.`,
-  ].filter(Boolean).join(" ");
-}
-
 /** El nombre de la carpeta del lote en la galería. Pura. */
 export function nombreCarpetaLote(producto = "", fecha = new Date()) {
   const dia = fecha.toLocaleDateString("es-PA", { day: "numeric", month: "short", timeZone: "America/Panama" }).replace(/\./g, "");
@@ -408,7 +389,8 @@ export const MIN_SENALES_COMPOSICION = 6;
 export function aprenderComposiciones(archivos = [], papelera = []) {
   const puntos = Object.fromEntries(COMPOSICIONES.map((c) => [c.id, 0]));
   let senales = 0;
-  const de = (a) => COMPOSICIONES.find((c) => String(a?.prompt ?? "").includes(c.linea));
+  // La línea larga (piezas de antes) o el nombre corto que va detrás de la escena mejorada («Composición: En uso.»).
+  const de = (a) => COMPOSICIONES.find((c) => String(a?.prompt ?? "").includes(c.linea) || String(a?.prompt ?? "").includes(`Composición: ${c.nombre}.`));
   for (const a of archivos ?? []) {
     const c = de(a);
     if (!c || a.subido) continue;
