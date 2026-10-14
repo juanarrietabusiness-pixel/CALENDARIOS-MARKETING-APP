@@ -9,7 +9,7 @@
 //   PUT    /<cliente>/estudio/borrador             { borrador }: lo corregido a mano; null lo descarta
 //   POST   /<cliente>/estudio/aprobar              Pasa a vigente, va al cerebro y a Drive
 //   POST   /<cliente>/referencias                  { archivoId, competidor, enlace, desde, nota }: añadir y analizar
-//   POST   /<cliente>/referencias/<id>/analizar    Volver a analizar
+//   POST   /<cliente>/referencias/<id>/analizar    Volver a analizar ({ fotogramas? } si el video lo ve Meta)
 //   POST   /<cliente>/referencias/<id>/adaptar     { productoId, formato }: un guion con su misma estructura (no guarda)
 //   DELETE /<cliente>/referencias/<id>
 //
@@ -29,7 +29,8 @@ const ID = /^[\w-]{1,80}$/;
 
 /** Un fallo que se le puede decir a la persona, con su estado; lo demás sigue hacia el 500 genérico. */
 function fallo(e) {
-  if (e instanceof ErrorMercado || e instanceof ErrorIA) return error(e.message, e.estado ?? 400);
+  // `codigo: "fotogramas"`: el motor de video es Meta y el navegador tiene que sacarlos y volver a pedir.
+  if (e instanceof ErrorMercado || e instanceof ErrorIA) return json({ error: e.message, ...(e.codigo ? { codigo: e.codigo } : {}) }, e.estado ?? 400);
   throw e;
 }
 
@@ -71,7 +72,8 @@ export async function rutasMercado(req, env, { acceso, partes, metodo }) {
       return json(await agregarReferencia(env, acceso, cliente, d), 201);
     }
     if (a === "referencias" && ID.test(String(b ?? "")) && c === "analizar" && metodo === "POST") {
-      return json({ referencia: await reanalizarReferencia(env, acceso, cliente, b) });
+      const d = (await cuerpo(req)) ?? {};
+      return json({ referencia: await reanalizarReferencia(env, acceso, cliente, b, { fotogramas: d.fotogramas }) });
     }
     if (a === "referencias" && ID.test(String(b ?? "")) && c === "adaptar" && metodo === "POST") {
       const d = (await cuerpo(req)) ?? {};

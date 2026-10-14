@@ -58,9 +58,10 @@ const CONSULTA_MERCADO = "productos servicios precios clientes público objetivo
 
 /** Un fallo que se le puede decir a la persona, con su estado. */
 export class ErrorMercado extends Error {
-  constructor(mensaje, estado = 400) {
+  constructor(mensaje, estado = 400, codigo = "") {
     super(mensaje);
     this.estado = estado;
+    if (codigo) this.codigo = codigo;
   }
 }
 
@@ -324,13 +325,14 @@ async function analizarVideo(env, acceso, cliente, archivo, datos, estudio) {
     texto = await verVideo(env, acceso, {
       bytes: await obj.arrayBuffer(), mime: archivo.mime, nombre: archivo.clave.split("/").pop(), clienteId: cliente.id,
       prompt: pedidoDeReferenciaVideo({ marca: cliente.name, ...datos, estudio }), funcion: "referencia de competencia", json: true,
+      fotogramas: datos.fotogramas,
     });
   } catch (e) {
-    if (e instanceof ErrorVideo) throw new ErrorMercado(e.message, e.estado);
+    if (e instanceof ErrorVideo) throw new ErrorMercado(e.message, e.estado, e.codigo);
     throw e;
   }
   const analisis = leerReferencia(texto);
-  if (!analisis) throw new ErrorMercado("Google AI no devolvió un análisis del video que se pueda leer. Inténtalo otra vez.", 502);
+  if (!analisis) throw new ErrorMercado("La IA no devolvió un análisis del video que se pueda leer. Inténtalo otra vez.", 502);
   return analisis;
 }
 
@@ -372,8 +374,12 @@ export async function agregarReferencia(env, acceso, cliente, entrada = {}) {
   let analisis = null;
   let aviso = null;
   try {
-    analisis = await analizar(env, acceso, cliente, archivo, { competidor: base.competidor, desde: base.desde, nota: base.nota, origen: base.origen }, estudio ?? borrador);
+    analisis = await analizar(env, acceso, cliente, archivo, {
+      competidor: base.competidor, desde: base.desde, nota: base.nota, origen: base.origen, fotogramas: entrada.fotogramas,
+    }, estudio ?? borrador);
   } catch (e) {
+    // Con Meta y sin fotogramas, NO se guarda: el navegador los saca y vuelve a pedir (y se guardaría dos veces).
+    if (e?.codigo === "fotogramas") throw e;
     // La referencia se guarda igual: se puede volver a analizar.
     if (!(e instanceof ErrorMercado || e instanceof ErrorIA)) throw e;
     aviso = e.message;
@@ -395,13 +401,13 @@ export async function agregarReferencia(env, acceso, cliente, entrada = {}) {
 }
 
 /** Vuelve a analizar una referencia (por ejemplo, la que falló o tras completar el estudio). */
-export async function reanalizarReferencia(env, acceso, cliente, id) {
+export async function reanalizarReferencia(env, acceso, cliente, id, { fotogramas = null } = {}) {
   const { referencias, estudio, borrador } = await leerMercado(acceso, cliente.id);
   const ref = referencias.find((r) => r.id === id);
   if (!ref) throw new ErrorMercado("Esa referencia no existe.", 404);
   const archivo = await acceso.leerUno("estudio_archivos", { id: ref.archivoId, client_id: cliente.id });
   if (!archivo || archivo.borrado_at) throw new ErrorMercado("La captura de esta referencia ya no está en la galería.", 404);
-  const analisis = await analizar(env, acceso, cliente, archivo, ref, estudio ?? borrador);
+  const analisis = await analizar(env, acceso, cliente, archivo, { ...ref, fotogramas }, estudio ?? borrador);
   const referencia = { ...ref, analisis };
   if (ref.notaId) {
     const texto = notaDeReferencia(referencia);

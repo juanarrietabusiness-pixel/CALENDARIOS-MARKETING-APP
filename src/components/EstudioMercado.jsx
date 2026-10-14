@@ -831,7 +831,7 @@ function PanelCompetencia({ client, datos, lectura, onOcupado, onDatos, onCambio
     setAviso(null);
     try {
       const { archivo: subido } = await subirImagen(client.id, archivo);
-      const r = await agregarReferencia(client.id, { archivoId: subido.id, competidor: f.competidor, enlace: f.enlace, desde: f.desde ?? "", nota: f.nota, origen: f.origen });
+      const r = await agregarReferencia(client.id, { archivoId: subido.id, competidor: f.competidor, enlace: f.enlace, desde: f.desde ?? "", nota: f.nota, origen: f.origen }, subido.tipo === "video" ? subido.src : "");
       onDatos({ referencias: [r.referencia, ...datos.referencias] });
       onCambioCerebro?.();
       setArchivo(null);
@@ -848,7 +848,7 @@ function PanelCompetencia({ client, datos, lectura, onOcupado, onDatos, onCambio
   const reanalizar = async (ref) => {
     ocupar(ref.id);
     try {
-      const r = await reanalizarReferencia(client.id, ref.id);
+      const r = await reanalizarReferencia(client.id, ref.id, ref.medio === "video" && ref.clave ? `/api/media/${ref.clave}` : "");
       onDatos({ referencias: datos.referencias.map((x) => (x.id === ref.id ? r.referencia : x)) });
     } catch (err) {
       setAviso({ ok: false, texto: err.message });

@@ -40,8 +40,8 @@ Sé fiel a lo que hay: no inventes nada que no se vea o no se oiga. La transcrip
 ${REGLA_IDIOMA}`;
 
 export async function rutaAnalizarVideo(req, env, { acceso }) {
-  if (!env.GOOGLE_AI_KEY) {
-    return error("El servidor no tiene configurada la clave de Google AI, que es la que lee los videos", 503);
+  if (!env.GOOGLE_AI_KEY && !env.GOOGLE_AI_KEY_GRATIS && !env.META_API_KEY && !env.MODEL_API_KEY) {
+    return error("El servidor no tiene ninguna llave que pueda ver videos (Google AI o Meta)", 503);
   }
 
   const pedido = (await cuerpo(req)) ?? {};
@@ -86,10 +86,11 @@ export async function rutaAnalizarVideo(req, env, { acceso }) {
   }
 
   try {
-    const analisis = await verVideo(env, acceso, { bytes, mime: tipo, nombre, clienteId, prompt: PROMPT, funcion: "análisis de video" });
+    const analisis = await verVideo(env, acceso, { bytes, mime: tipo, nombre, clienteId, prompt: PROMPT, funcion: "análisis de video", fotogramas: pedido.fotogramas });
     return json({ analisis });
   } catch (e) {
-    if (e instanceof ErrorVideo) return error(e.message, e.estado);
+    // `fotogramas`: el motor es Meta y el navegador tiene que sacarlos y volver a pedir.
+    if (e instanceof ErrorVideo) return json({ error: e.message, ...(e.codigo ? { codigo: e.codigo } : {}) }, e.estado);
     throw e;
   }
 }

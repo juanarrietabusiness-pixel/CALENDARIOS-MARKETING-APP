@@ -8,7 +8,7 @@
 // cerebro suelta lo que el asistente recordaba de él.
 // ============================================================
 
-import { pedir } from "./db";
+import { pedir, conFotogramas } from "./db";
 import { contextoDelChat } from "./cerebroCliente";
 
 const base = (clienteId) => `/mercado/${encodeURIComponent(clienteId)}`;
@@ -56,11 +56,16 @@ export const guardarBorrador = (clienteId, borrador) => pedir(`${base(clienteId)
 export const aprobarEstudio = (clienteId) => cambiandoCerebro(clienteId, () => pedir(`${base(clienteId)}/estudio/aprobar`, post()));
 
 /** Una captura de la competencia ya subida a la galería: se analiza y va al cerebro. → { referencia, aviso }. */
-export const agregarReferencia = (clienteId, datos) =>
-  cambiandoCerebro(clienteId, () => gastando(() => pedir(`${base(clienteId)}/referencias`, post(datos))));
+export const agregarReferencia = (clienteId, datos, src = "") =>
+  cambiandoCerebro(clienteId, () => gastando(() => conFotogramas(
+    (fotogramas) => pedir(`${base(clienteId)}/referencias`, post({ ...datos, ...(fotogramas ? { fotogramas } : {}) })), src,
+  )));
 
-export const reanalizarReferencia = (clienteId, id) =>
-  cambiandoCerebro(clienteId, () => gastando(() => pedir(`${base(clienteId)}/referencias/${encodeURIComponent(id)}/analizar`, post())));
+/** `src`: el video, por si lo ve Meta (con fotogramas). */
+export const reanalizarReferencia = (clienteId, id, src = "") =>
+  cambiandoCerebro(clienteId, () => gastando(() => conFotogramas(
+    (fotogramas) => pedir(`${base(clienteId)}/referencias/${encodeURIComponent(id)}/analizar`, post(fotogramas ? { fotogramas } : {})), src,
+  )));
 
 /** Un guion con la misma estructura que la referencia, para un producto: `{ adaptacion, aviso }`. No guarda. */
 export const adaptarReferencia = (clienteId, id, { productoId = "", formato = "reel" } = {}) =>

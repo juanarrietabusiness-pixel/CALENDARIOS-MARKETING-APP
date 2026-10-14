@@ -82,6 +82,13 @@ export const FUNCIONES_IA = Object.freeze({
 export const MUSE_POR_DEFECTO_EN = Object.freeze(["redaccion", "guiones"]);
 /** Qué motor hace las imágenes de la aplicación (adaptar a 4:5, /api/generar-imagen): «auto» es Meta si hay llave. */
 export const MOTORES_IMAGEN = Object.freeze(["auto", "gemini", "meta"]);
+/**
+ * Quién VE los videos (el análisis del asistente y las referencias de la competencia): Gemini con la llave de siempre,
+ * Gemini con una llave del nivel GRATUITO (`GOOGLE_AI_KEY_GRATIS`: no se cobra, pero Google puede usar lo que se le
+ * manda para mejorar sus productos y tiene topes por minuto y por día) o Meta (Muse Spark), que no recibe el video: ve
+ * fotogramas que saca el navegador, sin el audio.
+ */
+export const MOTORES_VIDEO = Object.freeze(["gemini", "gemini-gratis", "meta"]);
 export const huecoDe = (funcion) =>
   Object.keys(FUNCIONES_IA).find((h) => FUNCIONES_IA[h].includes(String(funcion ?? ""))) ?? "analisis";
 export const ACCIONES_LIMITE = Object.freeze(["avisar", "bajar", "detener"]);
@@ -193,6 +200,7 @@ export function limpiarModelos(valor) {
   for (const [hueco, modelo] of Object.entries(obj && typeof obj === "object" ? obj : {})) {
     if (hueco in FUNCIONES_IA && MODELOS_POR_FUNCION.includes(modelo)) salida[hueco] = modelo;
     if (hueco === "imagen" && MOTORES_IMAGEN.includes(modelo)) salida.imagen = modelo;
+    if (hueco === "video" && MOTORES_VIDEO.includes(modelo)) salida.video = modelo;
   }
   return salida;
 }
@@ -214,6 +222,25 @@ export function motorDeImagen(config, { hayMeta = false } = {}) {
   if (elegido === "meta") return hayMeta ? "meta" : "gemini";
   if (elegido === "gemini") return "gemini";
   return hayMeta ? "meta" : "gemini";
+}
+
+/**
+ * El motor que VE los videos: el elegido si tiene su llave; si no, el que la tenga, y se dice. → { motor, llave, aviso }.
+ * `motor`: gemini | gemini-gratis | meta | null (ninguna llave). Pura.
+ */
+export function motorDeVideo(config, env = {}) {
+  const elegido = config?.ia_modelos?.video ?? "gemini";
+  const google = env.GOOGLE_AI_KEY || "";
+  const gratis = env.GOOGLE_AI_KEY_GRATIS || "";
+  const meta = llaveMeta(env);
+  if (elegido === "meta" && meta) return { motor: "meta", llave: meta, aviso: "" };
+  if (elegido === "gemini-gratis" && gratis) return { motor: "gemini-gratis", llave: gratis, aviso: "" };
+  if (elegido === "gemini" && google) return { motor: "gemini", llave: google, aviso: "" };
+  const falta = { meta: "la llave de Meta (META_API_KEY)", "gemini-gratis": "la llave gratuita de Google (GOOGLE_AI_KEY_GRATIS)", gemini: "la llave de Google AI (GOOGLE_AI_KEY)" }[elegido];
+  if (google) return { motor: "gemini", llave: google, aviso: `Falta ${falta}: el video lo vio Gemini con la llave de siempre.` };
+  if (gratis) return { motor: "gemini-gratis", llave: gratis, aviso: `Falta ${falta}: el video lo vio Gemini con la llave gratuita.` };
+  if (meta) return { motor: "meta", llave: meta, aviso: `Falta ${falta}: el video lo vio Meta por fotogramas (sin el audio).` };
+  return { motor: null, llave: "", aviso: "" };
 }
 
 /** El mes en curso en Panamá, AAAA-MM: es el mes de las facturas de la agencia. */
@@ -365,7 +392,7 @@ export async function registrarConsumo(acceso, { funcion, modelo, uso, clienteId
 }
 
 /** Lo mismo para Gemini (imágenes y video), con su `usageMetadata`. */
-export async function registrarConsumoGemini(acceso, { funcion, modelo, meta, clienteId = null }) {
+export async function registrarConsumoGemini(acceso, { funcion, modelo, meta, clienteId = null, gratis = false }) {
   if (!acceso) return;
   const ahora = new Date().toISOString();
   const dia = fechaEnZona();
@@ -377,13 +404,14 @@ export async function registrarConsumoGemini(acceso, { funcion, modelo, meta, cl
       proveedor: "gemini",
       client_id: clienteId ? String(clienteId) : null,
       funcion: String(funcion ?? "otro").slice(0, 40),
-      modelo: String(modelo ?? ""),
+      modelo: gratis ? `${String(modelo ?? "")} (gratis)` : String(modelo ?? ""),
       entrada: Number(meta?.promptTokenCount ?? 0),
       salida: Number(meta?.candidatesTokenCount ?? 0) + Number(meta?.thoughtsTokenCount ?? 0),
       cache_leido: 0,
       cache_escrito: 0,
       busquedas: 0,
-      costo_usd: costoGemini(modelo, meta),
+      // Con la llave del nivel gratuito no se cobra: se apunta el uso, con costo 0.
+      costo_usd: gratis ? 0 : costoGemini(modelo, meta),
       created_at: ahora,
     });
   } catch (e) {

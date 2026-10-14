@@ -387,9 +387,26 @@ export async function subirImagenPublicacion(clientId, file) {
   return getContentBankUrl(clave);
 }
 
-/** Lo que Gemini ve y oye en un video del banco, por escrito. */
+/**
+ * Pide algo que VE un video y, si el motor de video del espacio es Meta (contesta 409 `fotogramas`), saca los
+ * fotogramas en el navegador —el Worker no puede— y lo pide otra vez con ellos. `llamar(fotogramas)` hace el pedido.
+ */
+export async function conFotogramas(llamar, src) {
+  try {
+    return await llamar(null);
+  } catch (e) {
+    if (e?.datos?.codigo !== "fotogramas" || !src) throw e;
+    const { fotogramasDeVideo } = await import("./medios");
+    return llamar(await fotogramasDeVideo(src, 8, 768));
+  }
+}
+
+/** Lo que el motor de video (Gemini, o Meta por fotogramas) ve en un video del banco, por escrito. */
 export async function analizarVideo(clave) {
-  return avisarGasto(pedir("/ia/video", conCuerpo("POST", { clave })));
+  return avisarGasto(conFotogramas(
+    (fotogramas) => pedir("/ia/video", conCuerpo("POST", { clave, ...(fotogramas ? { fotogramas } : {}) })),
+    getContentBankUrl(clave),
+  ));
 }
 
 export async function feedbackImage(clientId, clave, liked) {
@@ -546,9 +563,12 @@ export async function migrarBancoADrive(clienteId) {
   return pedir(rutaDrive(clienteId, "migrar-banco"), { method: "POST" });
 }
 
-/** Lo que Gemini ve y oye en un video de Drive. */
+/** Lo que el motor de video ve en un video de Drive. */
 export async function analizarVideoDrive(clienteId, fileId) {
-  return avisarGasto(pedir("/ia/video", conCuerpo("POST", { drive: { clienteId, fileId } })));
+  return avisarGasto(conFotogramas(
+    (fotogramas) => pedir("/ia/video", conCuerpo("POST", { drive: { clienteId, fileId }, ...(fotogramas ? { fotogramas } : {}) })),
+    urlArchivoDrive(clienteId, fileId),
+  ));
 }
 
 // ------------------------------------------------------------
