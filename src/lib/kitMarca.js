@@ -224,7 +224,7 @@ function limpiarPersonajes(entrada) {
     const nombre = corto(p?.nombre, 40);
     const imagenes = [...new Set((Array.isArray(p?.imagenes) ? p.imagenes : []).map(String))].filter((c) => CLAVE.test(c) && !c.includes("..")).slice(0, 2);
     if (!ID_PERSONAJE.test(id) || !nombre || !imagenes.length || fuera.some((x) => x.id === id)) continue;
-    fuera.push({ id, nombre, descripcion: corto(p?.descripcion, 300), imagenes, ...(p?.omni && typeof p.omni === "string" ? { omni: corto(p.omni, 80) } : {}) });
+    fuera.push({ id, nombre, descripcion: corto(p?.descripcion, 300), imagenes });
   }
   return fuera.slice(0, MAX_PERSONAJES);
 }

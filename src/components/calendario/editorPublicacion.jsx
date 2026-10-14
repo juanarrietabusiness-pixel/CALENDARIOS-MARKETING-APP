@@ -30,7 +30,7 @@ const esVideoArchivo = (f) => f?.type?.startsWith("video/");
 // Medios
 // ------------------------------------------------------------
 
-export function EditorMedios({ post, clientId, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null }) {
+export function EditorMedios({ post, clientId, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null, onCrearReel = null }) {
   const ids = useId();
   const [eligiendoPortada, setEligiendoPortada] = useState(null);
   const propia = useRef(null);
@@ -291,6 +291,11 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError, e
         {onCrearCarrusel && (
           <button type="button" className="btn btn-secondary btn-sm" onClick={onCrearCarrusel} disabled={!!subiendo}>
             <Icon name="formatCarrusel" size={16} /> Crear carrusel con IA
+          </button>
+        )}
+        {onCrearReel && (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onCrearReel} disabled={!!subiendo}>
+            <Icon name="formatReel" size={16} /> Crear reel con IA
           </button>
         )}
       </div>

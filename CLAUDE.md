@@ -1511,6 +1511,18 @@ son del servidor.
   («Usar el guion tal cual» se la salta); (3) las láminas una a una (`crearCarrusel`) en una carpeta propia, con la
   anterior, la portada y los personajes de referencia. «Corregir esta» (`corregirLamina`) EDITA sólo esa lámina con
   una indicación —en plantilla, la cruda, y el texto se vuelve a poner encima—; «Rehacer esta» la pide otra vez.
+- **El reel con IA de 10 s es un flujo de cuatro pasos** (`components/FlujoReel.jsx`, lazy; «Reel IA» en «Qué crear» del
+  Estudio y «Crear reel con IA» en una publicación de formato reel, `calendario/ReelIA.jsx`). Como en Flow: (1) la idea
+  central → guion por planos (`POST /api/estudio/<c>/reel/guion`, `pedidoDeReel`/`leerReel` en src/lib/reel.js: de 4 a
+  8 planos con su tiempo, qué se ve, texto corto en pantalla y cámara; hilo, sonido y descripción; los tiempos los
+  deja contiguos `repartirTiempos`); (2) los planos se corrigen; (3) un FOTOGRAMA por plano (imagen 9:16, en orden,
+  con el anterior, el primero y los personajes de referencia, `crearFotogramas`), que se corrigen o rehacen ANTES de
+  pagar el video; (4) el VIDEO con los fotogramas como storyboard (`pedidoDeVideo`: Omni por Kie admite 7, repartidos
+  por `fotogramasParaVideo`; un modelo sin referencias recibe el primero como imagen inicial). «Corregir un tramo» manda
+  el video hecho como video de referencia con «del segundo X al Y: …» (`corregirTramo`, `promptDeTramo`; sólo con un
+  modelo que admita video: Gemini Omni o Kling Omni por Kie) y la versión nueva sale arriba, la anterior se queda.
+  Todo va en la carpeta del reel. Los `character_ids` de Omni (personajes registrados) aún no se usan: los personajes
+  van como imágenes de referencia en los fotogramas.
 - **Los personajes de la marca** (`kit.personajes`, hasta 4: nombre, descripción, retrato y cuerpo de la galería): el
   bebé de Baby Caleb tiene que ser EL MISMO en cada lámina y cada pieza. Van de referencia con `toma: ["persona"]` y una
   nota de quién son (`referenciasDePersonajes`), en el compositor («Personajes de la marca») y en el carrusel; el
