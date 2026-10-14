@@ -32,8 +32,9 @@ const EstudioLote = lazy(() => import("./EstudioLote"));
 const EstudioKit = lazy(() => import("./EstudioKit"));
 const EstudioRecrear = lazy(() => import("./EstudioRecrear"));
 const FlujoCarrusel = lazy(() => import("./FlujoCarrusel"));
-/** Lo que se crea con pasos (no de una vez): el carrusel por láminas. */
-const GUIADOS = [["carrusel", "Carrusel", "formatCarrusel"]];
+const FlujoReel = lazy(() => import("./FlujoReel"));
+/** Lo que se crea con pasos (no de una vez): el carrusel por láminas y el reel por planos. */
+const GUIADOS = [["carrusel", "Carrusel", "formatCarrusel"], ["reel", "Reel IA", "formatReel"]];
 
 // ============================================================
 // El Estudio de un cliente: la pestaña y el diálogo «Crear con IA»
@@ -991,15 +992,20 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       )}
 
       {/* ---------- Pedir ---------- */}
-      {!lectura && form && modelo && guiado === "carrusel" && (
+      {!lectura && form && modelo && guiado && (
         <Suspense fallback={<p className="hint">Cargando…</p>}>
-          <FlujoCarrusel
-            client={client}
-            estudio={{ kit, productos: datos?.productos ?? [], archivos: datos?.archivos ?? [], activos: Object.fromEntries(Object.entries(motores ?? {}).map(([k, v]) => [k, Boolean(v.activo)])) }}
-            inicial={{ preset: presetVigente }}
-            cabecera={<QueCrear actual="carrusel" guiados={GUIADOS} onCambiar={(t) => { if (t !== "carrusel") { setGuiado(""); cambiarTipo(t); } }} />}
-            onCreando={(si) => { if (!si) cargar(); }}
-          />
+          {(() => {
+            const Flujo = guiado === "reel" ? FlujoReel : FlujoCarrusel;
+            return (
+              <Flujo
+                key={guiado} client={client}
+                estudio={{ kit, productos: datos?.productos ?? [], archivos: datos?.archivos ?? [], activos: Object.fromEntries(Object.entries(motores ?? {}).map(([k, v]) => [k, Boolean(v.activo)])) }}
+                inicial={{ preset: presetVigente }}
+                cabecera={<QueCrear actual={guiado} guiados={GUIADOS} onCambiar={(t) => { if (GUIADOS.some(([x]) => x === t)) setGuiado(t); else { setGuiado(""); cambiarTipo(t); } }} />}
+                onCreando={(si) => { if (!si) cargar(); }}
+              />
+            );
+          })()}
         </Suspense>
       )}
       {!lectura && form && modelo && !guiado && (

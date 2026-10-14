@@ -66,7 +66,7 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
   /** Lo común a todas las láminas: el tipo, el estilo visual y la marca; las fotos del producto, los personajes, el logo. */
   const comun = () => ({
     clienteId, modelo, modo, plantilla, hilo, idea: tema || inicial.tema || "",
-    preset: estiloDeMarca(kit, preset || "servicios", { marca: client.name, rubro: client.industry ?? "", estilo }),
+    preset: estiloDeMarca(kit, preset, { marca: client.name, rubro: client.industry ?? "", estilo }),
     fotos: api.fotosDelProducto(productos, productoId).map((f) => f.clave),
     personajes: referenciasDePersonajes(kit, personajes, estudio?.archivos ?? []),
     logo: kit.logo, colores: coloresPlantilla(kit), familia: kit.tipografia, carpetaId: carpeta.current,

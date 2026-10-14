@@ -46,6 +46,8 @@ import BotonGuardarDrive from "./botonGuardarDrive";
 
 // «Crear carrusel con IA»: sólo se descarga al abrirlo.
 const CarruselIA = lazy(() => import("./CarruselIA"));
+// «Crear reel con IA»: igual, sólo al abrirlo.
+const ReelIA = lazy(() => import("./ReelIA"));
 
 /**
  * @param formatoAuto  true cuando la publicación se creó con «Subir
@@ -112,6 +114,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
   });
   // El carrusel por láminas: lo creado se pone EN ORDEN, al final o en lugar de lo que había.
   const [carrusel, setCarrusel] = useState(false);
+  const [reel, setReel] = useState(false);
   const ponerCarrusel = (archivos, { reemplazar }) => {
     setForm((p) => {
       const nuevos = archivos.map(medioDeArchivo);
@@ -120,6 +123,13 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
     });
     if (cal && post.id) for (const a of archivos) apuntarUso(clientId, a.id, { calendarId: cal.dbId || cal.id, postId: post.id }).catch(() => {});
     setEscrito(`Puestas ${archivos.length} láminas en la publicación, en orden.`);
+  };
+  /** El video del reel con IA: va SOLO en la publicación (sustituye lo que hubiera) y se apunta su uso. */
+  const ponerReel = ([video]) => {
+    if (!video) return;
+    setForm((p) => ({ ...conMedios(p, [medioDeArchivo(video)]), mediosCambiadosAt: new Date().toISOString() }));
+    if (cal && post.id) apuntarUso(clientId, video.id, { calendarId: cal.dbId || cal.id, postId: post.id }).catch(() => {});
+    setEscrito("Puesto el reel en la publicación.");
   };
   const esHistoria = post.format === "historia";
   const destino = destinoInstagram(post);
@@ -206,6 +216,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           onPortada={conPortada ? (c) => setForm((p) => ({ ...p, ...c })) : null}
           onCrearConIA={abrirCreacion}
           onCrearCarrusel={post.format === "carrusel" && clientId ? () => setCarrusel(true) : null}
+          onCrearReel={post.format === "reel" && clientId ? () => setReel(true) : null}
         />
         {/* «Guardar en Drive»: en la carpeta del cliente, por mes y semana (sólo si tiene carpeta). */}
         {client?.driveFolder && clientId && day?.date && (
@@ -214,6 +225,11 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
         {carrusel && (
           <Suspense fallback={null}>
             <CarruselIA client={client} post={post} cal={cal} onPoner={ponerCarrusel} onCerrar={() => setCarrusel(false)} />
+          </Suspense>
+        )}
+        {reel && (
+          <Suspense fallback={null}>
+            <ReelIA client={client} post={post} cal={cal} onPoner={ponerReel} onCerrar={() => setReel(false)} />
           </Suspense>
         )}
 

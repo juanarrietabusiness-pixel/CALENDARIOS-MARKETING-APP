@@ -14,6 +14,7 @@
 //   POST   /<cliente>/lote/mes                     { mes, dias, formato }: una pieza por día del mes, con el ritmo y la matriz (texto)
 //   POST   /<cliente>/ideas                        { tipo?, n?, video?, tema? }: «Dame ideas», variadas o de un tipo (texto)
 //   POST   /<cliente>/carrusel/propuesta           { guion?, tema?, preset?, estilo?, productoId?, personajes? }: el plan por láminas (texto)
+//   POST   /<cliente>/reel/guion                   { idea, segundos?, preset?, estilo?, productoId?, personajes? }: el guion por planos (texto)
 //   POST   /<cliente>/guion-corto                  { idea, segundos, post? }: guion de un video de 8 o 10 s (texto)
 //   PUT    /<cliente>/kit                          { kit }: guarda el kit de marca (paleta, presets, logo…)
 //   POST   /<cliente>/kit/preparar                 La IA PROPONE el kit desde el cerebro (no guarda)
@@ -50,6 +51,7 @@ import { aprenderDeLoVisual } from "../lib/estudio/aprender.js";
 import { produccionDeLote } from "../lib/estudio/lote.js";
 import { ideasDelEstudio } from "../lib/estudio/ideas.js";
 import { propuestaDeCarrusel } from "../lib/estudio/carrusel.js";
+import { guionDeReel } from "../lib/estudio/reel.js";
 import { leerMercado } from "../lib/mercado.js";
 import { angulosDeAnuncio, fotosDelCatalogo } from "../../src/lib/estudioMercado.js";
 import {
@@ -168,6 +170,18 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       if (!datos) return error("JSON inválido");
       try {
         return json(await propuestaDeCarrusel(env, acceso, cliente, datos));
+      } catch (e) {
+        if (e?.estado) return error(e.message, e.estado);
+        throw e;
+      }
+    }
+
+    // ---------- El reel con IA: el guion por planos (texto: no pide nada al motor) ----------
+    if (b === "reel" && c === "guion" && metodo === "POST") {
+      const datos = await cuerpo(req);
+      if (!datos) return error("JSON inválido");
+      try {
+        return json(await guionDeReel(env, acceso, cliente, datos));
       } catch (e) {
         if (e?.estado) return error(e.message, e.estado);
         throw e;

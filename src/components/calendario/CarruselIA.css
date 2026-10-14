@@ -18,3 +18,15 @@
 .flujo-carrusel { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-5); }
 @media (max-width: 599px) { .flujo-carrusel { padding: var(--sp-3); } }
 .carrusel-ia .flujo-carrusel { box-shadow: none; border: none; padding: 0; background: transparent; }
+
+/* El reel con IA: tramos, fotogramas 9:16, versiones del video y «corregir un tramo» */
+.carrusel-lamina-vista.reel-tramo { aspect-ratio: auto; height: auto; min-height: 44px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-dim); }
+.carrusel-lamina-vista.reel-vista { aspect-ratio: 9 / 16; }
+.reel-video { display: flex; flex-direction: column; gap: var(--sp-3); }
+.reel-version { margin: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.reel-version video { width: min(100%, 300px); aspect-ratio: 9 / 16; background: #000; border-radius: var(--radius); }
+.reel-tramo-form { display: flex; flex-direction: column; gap: var(--sp-2); align-items: flex-start; }
+.reel-tramo-form > .input { width: 100%; }
+.reel-tramo-fila { display: flex; flex-wrap: wrap; gap: var(--sp-3); align-items: center; }
+.reel-tramo-fila label { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.reel-tramo-fila .input { width: 84px; }
