@@ -54,6 +54,7 @@ export const MAX_ESCENA = 400;
 export const MAX_BRIEF = 300;
 export const MAX_DESCRIPCION = 600;
 export const MAX_TITULO = 60;
+export const MAX_HASHTAGS = 300;
 
 /** Los formatos: la proporción de la imagen y el formato de la publicación. */
 export const FORMATOS_LOTE = Object.freeze({
@@ -228,7 +229,7 @@ export function darForma(celdas = [], { productos = [], semilla = 0, formato = "
       ...(productoId ? { productoId } : {}),
       conProducto: ve,
       composicion: comp.id,
-      plantilla: formato === "historia" && comp.plantilla === "banda" ? "centro" : comp.plantilla,
+      plantilla: (c.formato ?? formato) === "historia" && comp.plantilla === "banda" ? "centro" : comp.plantilla,
       fondo: FONDOS[(s + i) % FONDOS.length][0],
       tactica: TACTICAS[(s + i * 3) % TACTICAS.length][0],
     };
@@ -249,13 +250,38 @@ function lineaDePieza(r, productos = {}) {
   const p = pilarDe(r.tipo ?? r.pilar);
   const nv = NIVELES_CONSCIENCIA.find((n) => n.clave === r.nivel);
   const prod = r.productoId && productos[r.productoId] ? productos[r.productoId] : "";
+  const fmt = r.formato && FORMATOS_LOTE[r.formato] ? `[${FORMATOS_LOTE[r.formato].nombre}] ` : "";
   return [
-    `${r.n}. ${r.fecha ? `${fechaLegible(r.fecha)} · ` : ""}${nombreDePilar(r.tipo ?? r.pilar, r.pilarSub)}: ${p?.regla ?? ""}`,
+    `${r.n}. ${fmt}${r.fecha ? `${fechaLegible(r.fecha)} · ` : ""}${nombreDePilar(r.tipo ?? r.pilar, r.pilarSub)}: ${p?.regla ?? ""}`,
     `   ${nv ? `nivel: ${nv.nombre} (${nv.ayuda}; por ${nv.angulo === "dolor" ? "el DOLOR, lo que quiere evitar" : "la GANANCIA, lo que quiere lograr"})` : "nivel: —"} · gancho: ${lineaDe(TACTICAS, r.tactica)} · composición: ${composicionDe(r.composicion)?.nombre ?? ""}`,
     r.deseo || r.perfil ? `   le habla a: ${[r.perfil, r.deseo && `deseo de ${r.deseo}`].filter(Boolean).join(", ")}` : "",
     prod ? `   producto: ${prod}${r.conProducto ? "" : " (NO aparece en la imagen: se habla del problema)"}` : "",
+    r.semana ? `   semana: ${corto(r.semana, 160)}` : "",
+    r.especial ? `   fecha especial ese día: ${corto(r.especial, 120)}` : "",
+    r.ideaPersona ? `   idea de la agencia (desarróllala conservando su intención, su tema y su producto): «${corto(r.ideaPersona, 400)}»` : "",
     r.cambio ? `   ojo: ${r.cambio}` : "",
   ].filter(Boolean).join("\n");
+}
+
+/** ¿Lleva guion este formato (carrusel o reel)? Pura. */
+const esGuiado = (formato) => Boolean(FORMATOS_LOTE[formato]?.guiado);
+
+/**
+ * La estrategia del mes para el pedido: la campaña, las ofertas y el código (sólo lo escrito aquí o en el catálogo se
+ * promete) y el concepto de cada semana. `mes`: { campana, ofertas, codigo, semanas: [texto por semana] }. Pura.
+ */
+export function textoEstrategiaDelMes(mes = null) {
+  if (!mes || typeof mes !== "object") return "";
+  const semanas = (Array.isArray(mes.semanas) ? mes.semanas : []).map((t, i) => (corto(t, 160) ? `- Semana ${i + 1}: ${corto(t, 160)}` : "")).filter(Boolean);
+  const lineas = [
+    corto(mes.objetivo, 300) ? `Objetivo del mes: ${corto(mes.objetivo, 300)}` : "",
+    corto(mes.campana, 300) ? `Campaña: ${corto(mes.campana, 300)}` : "",
+    corto(mes.foco, 200) ? `Foco: ${corto(mes.foco, 200)}` : "",
+    corto(mes.ofertas, 500) ? `Ofertas del mes: ${corto(mes.ofertas, 500)}` : "",
+    corto(mes.codigo, 40) ? `Código promocional: ${corto(mes.codigo, 40)}` : "",
+    semanas.length ? `Concepto de cada semana:\n${semanas.join("\n")}` : "",
+  ].filter(Boolean);
+  return lineas.length ? `ESTRATEGIA DEL MES (cada pieza la sigue; su semana manda en el tono):\n${lineas.join("\n")}` : "";
 }
 
 /**
@@ -265,14 +291,23 @@ function lineaDePieza(r, productos = {}) {
  */
 export function pedidoDeProduccion({
   marca = "la marca", plan = [], productos = {}, perfiles = {}, estudio = "", contexto = "", usados = [], formato = "post", fechasEspeciales = [], mes = false,
-  nota = "",
+  nota = "", estrategia = null,
 }) {
   const perfilesUsados = [...new Set(plan.map((r) => r.perfil).filter(Boolean))].filter((n) => perfiles[n]);
   const cuantas = plan.length === 1 ? "UNA publicación" : `${plan.length} publicaciones`;
+  // Formatos mezclados (el plan del mes: un post, un carrusel, un reel…): cada pieza dice el suyo.
+  const formatos = [...new Set(plan.map((r) => r.formato).filter((f) => FORMATOS_LOTE[f]))];
+  const mixto = formatos.length > 0;
+  const guiados = mixto ? formatos.filter(esGuiado) : esGuiado(formato) ? [formato] : [];
+  const encabezado = mixto
+    ? `Escribe ${cuantas} para ${marca}${mes ? " del mes" : ""}. ${plan.length === 1 ? "Tiene" : "Cada una tiene"} YA decidido su FORMATO (entre corchetes), su tipo de contenido (lo que comunica), su nivel de consciencia, su gancho y su composición (la de la portada o el primer plano): respétalos. La idea de cada una es de SU formato, nunca de otro.`
+    : `Escribe ${cuantas} ${esGuiado(formato) ? `de formato ${FORMATOS_LOTE[formato].nombre}` : `de una imagen (${FORMATOS_LOTE[formato]?.nombre ?? "post"})`} para ${marca}${mes ? ", una por día del mes" : ""}. ${plan.length === 1 ? "Tiene" : "Cada una tiene"} YA decidido su tipo de contenido (lo que comunica), su nivel de consciencia, su gancho y su composición (la de la portada o el primer plano): respétalos.`;
+  const guionLineas = guiados.map((f) => (mixto ? GUION_DE_FORMATO[f].replace('- "guion":', `- "guion" (SÓLO en las de formato ${FORMATOS_LOTE[f].nombre}):`) : GUION_DE_FORMATO[f]));
   return [
-    `Escribe ${cuantas} ${FORMATOS_LOTE[formato]?.guiado ? `de formato ${FORMATOS_LOTE[formato].nombre}` : `de una imagen (${FORMATOS_LOTE[formato]?.nombre ?? "post"})`} para ${marca}${mes ? ", una por día del mes" : ""}. ${plan.length === 1 ? "Tiene" : "Cada una tiene"} YA decidido su tipo de contenido (lo que comunica), su nivel de consciencia, su gancho y su composición (la de la portada o el primer plano): respétalos.`,
-    REGLA_FORMATO[formato] ?? "",
+    encabezado,
+    ...(mixto ? formatos.map((f) => `- ${FORMATOS_LOTE[f].nombre}: ${REGLA_FORMATO[f]}`) : [REGLA_FORMATO[formato] ?? ""]),
     nota ? `Contexto de esta publicación: ${corto(nota, 600)}` : "",
+    textoEstrategiaDelMes(estrategia),
     perfilesUsados.length ? `Los perfiles:\n${perfilesUsados.map((n) => `- ${n}: ${perfiles[n]}`).join("\n")}` : "",
     fechasEspeciales.length ? `Fechas especiales:\n${fechasEspeciales.map((f) => `- ${f}`).join("\n")}` : "",
     "",
@@ -285,7 +320,8 @@ export function pedidoDeProduccion({
     `- "apoyo": una línea corta debajo (${MAX_APOYO} caracteres), o vacía. Si el titular ya lo dice todo, vacía.`,
     `- "escena": qué se VE, en una o dos frases sencillas (sujeto, acción, lugar, luz), con su composición. SIN texto dentro. Si sale una persona, descríbela distinta de las de las demás piezas (edad, rasgos, ropa, lugar).`,
     `- "descripcion": el texto de la publicación (caption), de 2 a 4 frases, con un llamado a la acción si el tipo lo pide; sin hashtags (${MAX_DESCRIPCION} caracteres).`,
-    GUION_DE_FORMATO[formato] ?? "",
+    '- "hashtags": de 5 a 10 hashtags útiles para esa publicación (del tema, del rubro y de la zona; ninguno inventado de otra marca), separados por espacios.',
+    ...guionLineas,
     "",
     "Reglas:",
     "- Que todo el lote se sienta variado: ni dos titulares parecidos, ni dos escenas en el mismo lugar con la misma acción, ni la misma persona dos veces.",
@@ -297,7 +333,7 @@ export function pedidoDeProduccion({
     "",
     estudio ? `ESTUDIO DE MERCADO:\n${String(estudio).slice(0, 8000)}\n` : "",
     contexto ? `LO QUE SE SABE DE LA MARCA:\n${String(contexto).slice(0, 6000)}\n` : "",
-    `Responde SOLO con JSON, una por número, así: {"ideas":[{"n":1,"titulo":"…","brief":"…","titular":"…","apoyo":"…","escena":"…","descripcion":"…"${GUION_DE_FORMATO[formato] ? ',"guion":"…"' : ""}}]}`,
+    `Responde SOLO con JSON, una por número, así: {"ideas":[{"n":1,"titulo":"…","brief":"…","titular":"…","apoyo":"…","escena":"…","descripcion":"…","hashtags":"#… #…"${guiados.length ? ',"guion":"…"' : ""}}]}`,
   ].filter((l, i, t) => l !== "" || t[i - 1] !== "").join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
@@ -309,11 +345,17 @@ const deJSON = (texto) => {
   try { return JSON.parse(t.slice(i, j + 1)); } catch { return null; }
 };
 
+/** Los hashtags limpios: «#uno #dos», cada uno con su «#», sin repetir y con tope. Pura. */
+export function limpiarHashtags(t) {
+  const lista = String(Array.isArray(t) ? t.join(" ") : t ?? "").split(/[\s,]+/).map((h) => h.replace(/^#+/, "").replace(/[^\p{L}\p{N}_]/gu, "")).filter(Boolean);
+  return [...new Set(lista)].slice(0, 15).map((h) => `#${h}`).join(" ").slice(0, MAX_HASHTAGS);
+}
+
 /** Un titular limpio: sin comillas alrededor, sin «·» (los motores lo dibujan como «¿») y con tope. Pura. */
 export const limpiarTitular = (t) => corto(String(t ?? "").replace(/\s*·\s*/g, ". "), 80).replace(/^["«“]|["»”]$/g, "").slice(0, 60).trim();
 
 /** La respuesta de la IA → una idea por casilla del plan (por su número; si no lo trae, por orden). Pura. */
-export function leerProduccion(texto, plan = []) {
+export function leerProduccion(texto, plan = [], formato = "post") {
   const d = deJSON(texto);
   const lista = Array.isArray(d?.ideas) ? d.ideas : Array.isArray(d) ? d : [];
   const porNumero = new Map();
@@ -336,7 +378,9 @@ export function leerProduccion(texto, plan = []) {
       brief: corto(x?.brief, MAX_BRIEF),
       apoyo: corto(x?.apoyo, MAX_APOYO).replace(/\s*·\s*/g, ". "),
       descripcion: String(x?.descripcion ?? "").trim().slice(0, MAX_DESCRIPCION),
-      ...(String(x?.guion ?? "").trim() ? { guion: String(x.guion).replace(/\\n/g, "\n").trim().slice(0, MAX_GUION) } : {}),
+      ...(limpiarHashtags(x?.hashtags) ? { hashtags: limpiarHashtags(x.hashtags) } : {}),
+      // El guion sólo en un carrusel o un reel: en un post sobra, y la pieza lo leería como láminas.
+      ...(String(x?.guion ?? "").trim() && esGuiado(r.formato ?? formato) ? { guion: String(x.guion).replace(/\\n/g, "\n").trim().slice(0, MAX_GUION) } : {}),
       elegida: true,
     }];
   });
@@ -365,6 +409,7 @@ export function nombreCarpetaLote(producto = "", fecha = new Date()) {
  * equipo y la aprueba el cliente. Pura.
  */
 export function publicacionDePieza({ id, idea, archivo = null, archivos = null, formato = "post", producto = null }) {
+  formato = idea.formato && FORMATOS_LOTE[idea.formato] ? idea.formato : formato;
   const prod = producto ?? (idea.productoId ? { id: idea.productoId, nombre: idea.producto ?? "" } : null);
   const lista = (archivos ?? (archivo ? [archivo] : [])).filter(Boolean);
   const medioDe = (a) => ({ src: a.src, tipo: a.tipo === "video" ? "video" : "imagen", ...(a.ancho && a.alto ? { ancho: a.ancho, alto: a.alto } : {}) });
@@ -374,9 +419,14 @@ export function publicacionDePieza({ id, idea, archivo = null, archivos = null, 
     title: idea.titulo || idea.titular,
     idea: idea.brief || idea.escena,
     ...(idea.escena ? { escena: idea.escena } : {}),
-    textoPieza: textoDeIdea(idea),
+    // El texto encima de la pieza: en un carrusel va lámina a lámina (en el guion) y a un reel no se le pide.
+    ...(esGuiado(formato) ? {} : { textoPieza: textoDeIdea(idea) }),
     ...(idea.guion ? { guion: idea.guion } : {}),
     ...(idea.descripcion ? { descripcion: idea.descripcion } : {}),
+    ...(idea.hashtags ? { hashtagsFinales: idea.hashtags } : {}),
+    // La FORMA que decidió el plan: al diseñarla después (Crear con IA, Producir el mes) sale con la misma.
+    ...(idea.composicion ? { composicion: idea.composicion } : {}),
+    ...(idea.tactica ? { tactica: idea.tactica } : {}),
     pilar: idea.tipo ?? idea.pilar ?? "anuncio",
     ...(idea.pilarSub ? { pilarSub: idea.pilarSub } : {}),
     ...(idea.nivel ? { nivel: idea.nivel } : {}),

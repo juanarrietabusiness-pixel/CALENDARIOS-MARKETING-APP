@@ -11,7 +11,12 @@
 // día, la campaña y la semana, y lo que ya hay en el mes para no repetirlo.
 //
 // Sólo RELLENA: título, idea, qué se ve, el texto de la pieza (no en carrusel
-// ni en video) y el guion (carrusel y reel). Lo que ya tiene texto se queda.
+// ni en video), el guion (carrusel y reel), el caption, los hashtags y la forma
+// (composición y gancho). Lo que ya tiene texto se queda.
+//
+// «Planificar mes» va por el MISMO motor, todo el mes de una vez (modo «plan»,
+// `ideasDelPlan`): cada casilla con su formato, su tipo y su matriz, más la
+// estrategia del mes (campaña, ofertas, el concepto de cada semana).
 // Con una idea ya escrita, «Completar» sigue en api.js (instruccionIdea): mejora
 // la de la persona, no la cambia por otra.
 // ============================================================
@@ -65,6 +70,67 @@ export async function ideaParaPublicacion(clienteId, { post, day, cal }) {
   return idea;
 }
 
+/** Los formatos que el motor sabe escribir; un directo («live») sigue por el camino de siempre. */
+export const formatoDelPlan = (format) => FORMATO_DEL_LOTE[format] ?? "";
+
+/**
+ * Las casillas del plan para el motor: una por publicación del alcance, con su clave «fecha|índice», su formato, su
+ * tipo y su matriz, el concepto de su semana, la fecha especial del día y la idea que ya escribió una persona.
+ * `dias`: [{ date, wk, impDate, formats: [{ format, pilar }] }]; `matriz`: Map clave → campos; `ideas`: fecha → [post].
+ * Los directos se quedan fuera. Pura.
+ */
+export function casillasDelPlan(dias = [], { matriz = new Map(), semanas = [], ideas = {} } = {}) {
+  const fuera = [];
+  for (const d of dias) {
+    (d.formats ?? []).forEach((f, j) => {
+      const formato = formatoDelPlan(f.format);
+      if (!formato) return;
+      const clave = `${d.date}|${j}`;
+      const m = matriz.get(clave) ?? {};
+      const previa = (ideas[d.date] ?? [])[j] ?? {};
+      fuera.push({
+        clave, fecha: d.date, formato,
+        ...Object.fromEntries(["pilar", "pilarSub", "productoId", "nivel", "deseo", "perfil"].map((k) => [k, previa[k] || m[k] || ""]).filter(([, v]) => v)),
+        ...(semanas[(d.wk ?? 1) - 1] ? { semana: semanas[(d.wk ?? 1) - 1] } : {}),
+        ...(d.impDate?.name ? { especial: d.impDate.name } : {}),
+        ...(String(previa.idea ?? "").trim() ? { idea: String(previa.idea).trim() } : {}),
+      });
+    });
+  }
+  return fuera;
+}
+
+/**
+ * Las casillas de las publicaciones de un calendario que NO tienen idea (para «Completar los textos que faltan»): la
+ * clave es el id de la publicación, y van su formato, su tipo y su matriz, el concepto de su semana y la fecha especial
+ * del día. Pura.
+ */
+export function casillasSinIdea(cal) {
+  const fuera = [];
+  for (const d of cal?.days ?? []) {
+    for (const p of d.posts ?? []) {
+      const formato = formatoDelPlan(p.format);
+      if (!formato || String(p.idea ?? "").trim() || p.status === "published") continue;
+      fuera.push({
+        clave: p.id, fecha: d.date, formato,
+        ...Object.fromEntries(["pilar", "pilarSub", "productoId", "nivel", "deseo", "perfil"].map((k) => [k, p[k] || ""]).filter(([, v]) => v)),
+        ...(d.concept ? { semana: d.concept } : {}),
+        ...(d.specialDate ? { especial: d.specialDate } : {}),
+      });
+    }
+  }
+  return fuera;
+}
+
+/** La estrategia del mes que va al motor, sacada del calendario: campaña, ofertas, código y el concepto de cada semana. Pura. */
+export const estrategiaDelCalendario = (cal) => ({
+  campana: cal?.campaign ?? "", ofertas: cal?.offers ?? "", codigo: cal?.promoCode ?? "", semanas: Array.isArray(cal?.weekConcepts) ? cal.weekConcepts : [],
+});
+
+/** Pide al motor las ideas de una tanda del plan → { ideas (cada una con su `clave`), total, aviso }. */
+export const ideasDelPlan = (clienteId, cuerpo) =>
+  pedir(`/estudio/${encodeURIComponent(clienteId)}/lote/ideas`, { method: "POST", body: JSON.stringify({ ...cuerpo, modo: "plan" }) });
+
 /** Los cambios que pone la idea en la publicación, SÓLO en lo vacío → { cambios, campos } (campos: qué se rellenó). Pura. */
 export function rellenarConIdea(post = {}, idea = {}) {
   const vacio = (k) => !String(post[k] ?? "").trim();
@@ -77,6 +143,10 @@ export function rellenarConIdea(post = {}, idea = {}) {
     // El texto encima del diseño: en un carrusel va lámina por lámina (en el guion) y a un video no se le pide.
     textoPieza: carrusel || video ? "" : idea.textoPieza || "",
     guion: carrusel || video ? idea.guion || "" : "",
+    descripcion: idea.descripcion || "",
+    hashtagsFinales: idea.hashtags || "",
+    composicion: idea.composicion || "",
+    tactica: idea.tactica || "",
     // Lo que trae la matriz, si la publicación no lo tenía (así «Crear con IA» sabe de qué producto es).
     ...(idea.productoId ? { productoId: idea.productoId, producto: idea.producto ?? "" } : {}),
     ...(idea.nivel ? { nivel: idea.nivel } : {}),
@@ -85,6 +155,6 @@ export function rellenarConIdea(post = {}, idea = {}) {
   for (const [k, v] of Object.entries(propuesta)) if (String(v ?? "").trim() && vacio(k)) cambios[k] = v;
   // El producto va con su nombre: o los dos, o ninguno (uno que ya tenía producto no lo cambia).
   if (!cambios.productoId) delete cambios.producto;
-  const NOMBRES = { title: "título", idea: "idea", escena: "qué se ve", textoPieza: "texto de la pieza", guion: "guion" };
+  const NOMBRES = { title: "título", idea: "idea", escena: "qué se ve", textoPieza: "texto de la pieza", guion: "guion", descripcion: "descripción", hashtagsFinales: "hashtags" };
   return { cambios, campos: Object.keys(cambios).map((k) => NOMBRES[k]).filter(Boolean) };
 }

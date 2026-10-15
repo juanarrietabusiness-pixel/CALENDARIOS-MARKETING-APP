@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ideaComoElLote, usadosDelMes, notaDePublicacion, rellenarConIdea } from "./ideaPublicacion.js";
+import { ideaComoElLote, usadosDelMes, notaDePublicacion, rellenarConIdea, casillasDelPlan, casillasSinIdea, estrategiaDelCalendario } from "./ideaPublicacion.js";
 
 describe("la idea de una publicación, como el lote", () => {
   it("va por el lote con un formato conocido y la idea vacía; con algo escrito, «Completar» sigue como antes", () => {
@@ -41,5 +41,34 @@ describe("la idea de una publicación, como el lote", () => {
     expect(cambios.productoId).toBeUndefined();
     expect(cambios.producto).toBeUndefined();
     expect(cambios.idea).toBe(idea.brief);
+  });
+
+  it("también el caption, los hashtags y la forma (composición y gancho), sólo si faltan", () => {
+    const { cambios } = rellenarConIdea({ format: "post", descripcion: "Mío" }, { ...idea, descripcion: "De la IA", hashtags: "#a #b", composicion: "uso", tactica: "pregunta" });
+    expect(cambios).toMatchObject({ hashtagsFinales: "#a #b", composicion: "uso", tactica: "pregunta" });
+    expect(cambios.descripcion).toBeUndefined();
+  });
+
+  it("las casillas del plan: una por publicación con su clave, su formato y su matriz; sin directos; la idea de la persona", () => {
+    const dias = [
+      { date: "2030-03-04", wk: 1, impDate: { name: "Día de la madre" }, formats: [{ format: "post" }, { format: "carrusel" }, { format: "live" }] },
+      { date: "2030-03-11", wk: 2, formats: [{ format: "reel" }] },
+    ];
+    const matriz = new Map([["2030-03-04|0", { pilar: "beneficios", productoId: "sofa", nivel: "solucion", deseo: "", perfil: "" }]]);
+    const ideas = { "2030-03-04": [{}, { idea: "Errores al comprar un sofá", pilar: "educativo" }] };
+    expect(casillasDelPlan(dias, { matriz, semanas: ["Descanso", "Visitas"], ideas })).toEqual([
+      { clave: "2030-03-04|0", fecha: "2030-03-04", formato: "post", pilar: "beneficios", productoId: "sofa", nivel: "solucion", semana: "Descanso", especial: "Día de la madre" },
+      { clave: "2030-03-04|1", fecha: "2030-03-04", formato: "carrusel", pilar: "educativo", semana: "Descanso", especial: "Día de la madre", idea: "Errores al comprar un sofá" },
+      { clave: "2030-03-11|0", fecha: "2030-03-11", formato: "reel", semana: "Visitas" },
+    ]);
+  });
+
+  it("«Completar los textos»: sólo las publicaciones sin idea ni publicar, por su id; la estrategia sale del calendario", () => {
+    const cal = { campaign: "Marzo", offers: "10 %", promoCode: "X", weekConcepts: ["A"], days: [
+      { date: "2030-03-04", concept: "A", posts: [{ id: "p1", format: "post", pilar: "anuncio" }, { id: "p2", format: "post", idea: "Ya" }, { id: "p3", format: "carrusel", status: "published" }] },
+    ] };
+    expect(casillasSinIdea(cal)).toEqual([{ clave: "p1", fecha: "2030-03-04", formato: "post", pilar: "anuncio", semana: "A" }]);
+    expect(estrategiaDelCalendario(cal)).toEqual({ campana: "Marzo", ofertas: "10 %", codigo: "X", semanas: ["A"] });
+    expect(estrategiaDelCalendario(null)).toEqual({ campana: "", ofertas: "", codigo: "", semanas: [] });
   });
 });

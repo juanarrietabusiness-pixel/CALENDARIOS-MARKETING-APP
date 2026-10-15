@@ -1428,6 +1428,27 @@ son del servidor.
   `instruccionIdea` (api.js, el camino de una idea ya escrita y del banco) nombra el formato y prohíbe cambiarlo.
   `rellenarConIdea` SÓLO rellena: título, idea (el brief), qué se ve, el texto de la pieza (no en carrusel ni en reel) y
   el guion (sólo carrusel y reel); el producto va con su nombre o no va. Un directo sigue por el camino de siempre.
+- **UN solo motor de ideas para el calendario** (modo «plan» de `POST /api/estudio/<c>/lote/ideas`, `limpiarCasillas` en
+  worker/lib/estudio/lote.js). «Planificar mes», «Completar los textos que faltan» y «Mes completo» con la plantilla
+  escriben por el mismo camino que el lote: antes «Planificar mes» pedía «una idea de 1-2 oraciones» sin decir qué es
+  cada formato, sin forma, sin qué se ve ni texto de la pieza, y cada tanda de 7 días no sabía lo que habían escrito
+  las otras (se repetían). Ahora la pantalla manda las CASILLAS ya decididas (`casillasDelPlan`, `casillasSinIdea` en
+  src/lib/ideaPublicacion.js; `casillasConPlantilla` en loteMes.js): clave «fecha|índice» (o el id de la publicación),
+  formato —MEZCLADOS: post, historia, carrusel, reel; un directo no se escribe—, tipo, matriz, el concepto de su
+  semana, la fecha especial y la idea que escribió una persona (se desarrolla conservando su intención; la de la IA
+  queda AL LADO como `sugerencia`). El servidor completa la matriz sobre el plan ENTERO (`asignarMatriz` respeta lo que
+  trae) y le da forma (`darForma`, la plantilla de texto según el formato de CADA casilla), y va por tandas con
+  `{ desde, tamano }` y `usados`. Va además la ESTRATEGIA del mes (`estrategia`: campaña, ofertas, código, el concepto de
+  cada semana; `textoEstrategiaDelMes`, también en el modo «mes»). Cada idea vuelve con su `clave` y trae, además,
+  `hashtags` (`limpiarHashtags`); el guion sólo se lee en carrusel y reel (`leerProduccion(texto, plan, formato)`).
+  Sin `composiciones` en el pedido, el servidor las aprende de la galería (`composicionesAprendidas`, una consulta).
+- **La FORMA de la idea viaja con la publicación** (`composicion`, `tactica`, `hashtagsFinales`; `publicacionDePieza`,
+  `rellenarConIdea`, `handleGenerate` de PlanWizard): al diseñarla después, `promptDePublicacion` pone «Composición
+  sugerida: …». Un carrusel no lleva `textoPieza` (va lámina a lámina en el guion).
+- **«Mes completo» sigue la plantilla de plan del cliente** («Según su plan», `formato: "plan"` en EstudioLote, que
+  arranca así si el cliente tiene plantilla): cada día sus formatos y varias por día. Al crear, primero las de una
+  imagen (por formato: cambian la proporción y la plantilla) y luego carruseles y reels uno a uno; las láminas van con
+  el modelo escogido si admite referencias (`modeloCarrusel`). El costo se suma por formato.
 - **El lote del mes salta los días que ya tienen publicación** (`omitir` en `lote/mes`, `diasConPublicacion` en
   loteMes.js con `client.calendars`): antes «Mes completo» creaba una segunda encima. Todos ocupados: 400 sin llamar a la
   IA. Lo que ya hay se diseña con «Diseñar las que ya hay» (ProducirMes).

@@ -4,6 +4,7 @@ import { uid, daysInMonth, fmtDate, getWeekNumber, dayName } from "../utils";
 import { callAI, buildClientContext, buildDescripcionesPrompt, buildScriptPrompt, loadADN, parseAIResponse, pasajesDeLaTanda } from "../api";
 import { loadClientMemories } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
+import { casillasDelPlan, ideasDelPlan, rellenarConIdea } from "../lib/ideaPublicacion";
 import Icon from "./Icon";
 import { fechasDelMes } from "../lib/fechasEspeciales";
 import { leerMercado } from "../lib/mercado";
@@ -11,7 +12,7 @@ import { productosParaPlan, limpiarEstudio, estructuraATexto } from "../lib/estu
 import { leerPlantillas } from "../lib/plantillasApi";
 import { plantillaDelCliente, configDeFormatos, resumenPlantilla, OBJETIVOS_PLAN } from "../lib/plantillasPlan";
 import {
-  PILARES, limpiarRitmo, ritmoDelMes, sugerenciasDeTemporada, asignarMatriz, lineasDeContenido, reglasDeLosTipos,
+  PILARES, limpiarRitmo, ritmoDelMes, sugerenciasDeTemporada, asignarMatriz, lineasDeContenido,
   nombreDePilar, resumenRitmo, fechaCorta, CAMPOS_MATRIZ, pilarDe,
 } from "../lib/pilares";
 
@@ -344,132 +345,81 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
   /** Un solo botón a la vez: las dos generaciones comparten `generating`. */
   const ocupado = aiLoading || descLoading;
 
+  /**
+   * Las ideas del mes, por el MISMO motor que «Producir en lote» (modo «plan» de /lote/ideas): cada publicación con su
+   * formato, su tipo y su matriz, la estrategia del mes (campaña, ofertas, el concepto de cada semana), el estudio de
+   * mercado, el catálogo y el cerebro. Cada una vuelve con título, brief, qué se ve, el texto de la pieza (o el guion,
+   * en carrusel y reel), el caption, los hashtags y la forma (composición y gancho). De TANDA en TANDA: cada tanda sabe
+   * lo que ya salió. Lo escrito por una persona no se pisa: su idea se desarrolla y la de la IA queda al lado.
+   */
   const generateIdeas = async () => {
     if (generating.current) return;
     generating.current = true;
     setAiLoading(true);
-    setAiStatus("Generando ideas...");
+    setAiStatus("Preparando el plan del mes…");
     try {
-      if (!client.githubContext && client.githubRepo) setAiStatus("Cargando ADN desde GitHub...");
-      const adn = await loadADN(client);
-      const adnExtra = adn.content;
       const daysList = enAlcance(estructuraDelMes());
       const matriz = matrizDelMes();
-      const conTipos = daysList.some((d) => d.pilar);
-
-      const BATCH = 7;
-      const newIdeas = { ...ideas };
-      for (let i = 0; i < daysList.length; i += BATCH) {
-        const batch = daysList.slice(i, i + BATCH);
-        setAiStatus(`Ideas ${i + 1}-${Math.min(i + BATCH, daysList.length)} de ${daysList.length} días…`);
-        const daysDesc = batch
-          .map((d) => {
-            const fmts = d.formats.map((f) => f.format).join(", ");
-            const existing = d.existingIdeas
-              .filter((e) => e.idea)
-              .map((e, j) => `  Post ${j + 1}: ${e.idea}`)
-              .join("\n");
-            // Por publicación, su tipo de contenido, producto, nivel y a quién le habla (la matriz del mes).
-            const porPost = d.formats
-              .map((f, j) => { const m = lineasDeContenido(matriz.get(`${d.date}|${j}`)); return m ? `  Post ${j + 1} (${f.format}): ${m.replace(/\n/g, " | ")}` : ""; })
-              .filter(Boolean).join("\n");
-            return `${d.date} (${DAYS[d.dow]}) | Cat: ${d.cat || "libre"} | Semana ${d.wk}: ${weekConcepts[d.wk - 1] || "libre"} | Formatos: ${fmts}${d.impDate ? ` | FECHA ESPECIAL: ${d.impDate.name}` : ""}${porPost ? `\n${porPost}` : ""}${existing ? `\n  Ideas existentes:\n${existing}` : ""}`;
-          })
-          .join("\n");
-
-        // Lo estable (ADN o ficha y cifras) se cachea; los pasajes son de ESTA tanda de días.
-        const pasajes = await pasajesDeLaTanda(client, adn, { campaign }, batch.map((d) => ({
-          idea: (d.existingIdeas || []).map((e) => e.idea).filter(Boolean).join(" "),
-          category: d.cat,
-          format: d.formats.map((f) => f.format).join(" "),
-          _concept: weekConcepts[d.wk - 1] || "",
-        })));
-        const ctx = buildClientContext(client, { campaign }, adnExtra, adn.cerebro ? { pasajes } : null);
-        const prompt = `${ctx}
-
-CAMPANA: ${campaign || "N/A"}
-
-Genera ideas UNICAS para cada publicacion de estos dias.
-IMPORTANTE: Cada idea debe ser DIFERENTE incluso si el dia de la semana es el mismo.
-${conTipos ? `Cada publicación dice su TIPO DE CONTENIDO, su PRODUCTO, su NIVEL DE CONSCIENCIA y a quién le habla: la idea los cumple, con ojo de marketing profesional (un gancho claro y una razón para actuar).\n\n${reglasDeLosTipos()}\n` : ""}
-Si ya hay idea existente, la escribió una persona (a veces con una breve explicación de lo que quiere): MEJÓRALA conservando su intención —el mismo tema, producto y enfoque—, más clara y con mejor gancho. Si no hay, genera una nueva.
-Cada idea: 1-2 oraciones claras y accionables, sin guion ni descripción.
-
-FORMATO DE RESPUESTA (respeta exactamente):
-===DIA===
-FECHA: YYYY-MM-DD
-===POST===
-FORMATO: formato
-IDEA:
-idea aqui
-===POST===
-FORMATO: formato
-IDEA:
-idea aqui
-===FIN===
-
-DIAS:
-${daysDesc}`;
-
-        const txt = await callAI(prompt, { funcion: "calendario", clienteId: client?.id });
-        for (const block of txt.split("===DIA===").slice(1)) {
-          const dateMatch = block.match(/FECHA:\s*([\d-]+)/);
-          if (!dateMatch) continue;
-          const date = dateMatch[1].trim();
-          const posts = [];
-          for (const pb of block.split("===POST===").slice(1)) {
-            const fm = pb.match(/FORMATO:\s*(\S+)/);
-            const im = pb.match(/IDEA:\n?([\s\S]*?)(?:===|$)/);
-            if (im) {
-              posts.push({
-                format: (fm?.[1] || "post").toLowerCase().trim(),
-                idea: im[1].trim(),
-              });
-            }
-          }
-          const dayData = daysList.find((d) => d.date === date);
-          if (dayData) {
-            const merged = dayData.formats.map((f, j) => {
-              const existing = (newIdeas[date] || [])[j];
-              const aiIdea = posts[j];
-              // Lo escrito por una persona no se pisa: la versión de la IA queda AL LADO como propuesta
-              // («Usar esta» / «Quedarme con la mía»). Antes se pedía mejorarla y la mejora se tiraba.
-              const propia = existing?.idea?.trim();
-              const propuesta = propia && aiIdea?.idea && aiIdea.idea.trim() !== propia ? aiIdea.idea.trim() : "";
-              return {
-                ...matriz.get(`${date}|${j}`),
-                id: existing?.id || uid(),
-                format: f.format,
-                idea: existing?.idea || aiIdea?.idea || "",
-                sugerencia: propuesta || existing?.sugerencia || "",
-                guion: existing?.guion || "",
-                referenciaId: existing?.referenciaId || "",
-                estructuraRef: existing?.estructuraRef || "",
-                referenceLink: existing?.referenceLink || "",
-                image: existing?.image || null,
-                // La descripción sobrevive a una regeneración de ideas: si
-                // la idea no cambió, tirar su caption es tirar una llamada
-                // al modelo por nada.
-                descripcion: existing?.descripcion || "",
-                hashtagsFinales: existing?.hashtagsFinales || "",
-                textoPieza: existing?.textoPieza || "",
-                script: "",
-                status: "pending",
-                category: dayData.cat,
-              };
-            });
-            newIdeas[date] = merged;
-          }
-        }
-        setIdeas({ ...newIdeas });
+      const casillas = casillasDelPlan(daysList, { matriz, semanas: weekConcepts, ideas });
+      if (!casillas.length) {
+        setAiStatus("No hay publicaciones de un formato que la IA escriba (post, historia, carrusel o reel).");
+        setTimeout(() => setAiStatus(""), 4000);
+        return;
       }
+      const estrategia = { campana: campaign, ofertas: offers, codigo: promoCode, semanas: weekConcepts };
+      // Lo que ya hay en el mes (fuera del alcance también) para no repetirlo.
+      let usados = Object.values(ideas).flat().map((p) => String(p?.title || p?.idea || "").trim().slice(0, 80)).filter(Boolean).slice(0, 30);
+      const semilla = Math.floor(Math.random() * 1000);
+      const TANDA = 6;
+      const nuevas = { ...ideas };
+      let escritas = 0;
+      for (let desde = 0, total = casillas.length; desde < total; desde += TANDA) {
+        setAiStatus(`Ideas ${desde + 1}–${Math.min(desde + TANDA, total)} de ${total}…`);
+        const r = await ideasDelPlan(client.dbId || client.id, { casillas, estrategia, usados: usados.slice(0, 30), semilla, desde, tamano: TANDA });
+        total = r.total ?? total;
+        for (const idea of r.ideas ?? []) {
+          const [date, jTexto] = String(idea.clave ?? "").split("|");
+          const j = Number(jTexto);
+          const d = daysList.find((x) => x.date === date);
+          if (!d || !Number.isInteger(j) || !d.formats[j]) continue;
+          const dia = [...(nuevas[date] || [])];
+          const previa = dia[j] || {};
+          const propia = String(previa.idea ?? "").trim();
+          const brief = String(idea.brief || idea.escena || "").trim();
+          const { cambios } = rellenarConIdea({ ...previa, format: d.formats[j].format, idea: propia }, { ...idea, brief: propia ? "" : brief });
+          dia[j] = {
+            ...matriz.get(`${date}|${j}`),
+            ...previa,
+            ...cambios,
+            id: previa.id || uid(),
+            format: d.formats[j].format,
+            idea: propia || brief,
+            // La de la IA queda AL LADO de la de la persona («Usar esta» / «Quedarme con la mía»).
+            sugerencia: propia && brief && brief !== propia ? brief : previa.sugerencia || "",
+            ...(idea.productoId && !previa.productoId ? { productoId: idea.productoId, producto: idea.producto ?? "" } : {}),
+            ...(idea.nivel && !previa.nivel ? { nivel: idea.nivel } : {}),
+            ...(idea.deseo && !previa.deseo ? { deseo: idea.deseo } : {}),
+            ...(idea.perfil && !previa.perfil ? { perfil: idea.perfil } : {}),
+            ...(idea.pilarSub && !previa.pilarSub ? { pilarSub: idea.pilarSub } : {}),
+            status: previa.status || "pending",
+            category: previa.category || d.cat,
+          };
+          nuevas[date] = dia;
+          escritas += 1;
+          usados = [idea.titular || idea.titulo, ...usados].filter(Boolean);
+        }
+        setIdeas({ ...nuevas });
+      }
+      setAiStatus(escritas ? `Listo: ${escritas} ${escritas === 1 ? "publicación" : "publicaciones"} con idea, texto y forma.` : "La IA no devolvió ideas que se puedan leer. Inténtalo otra vez.");
+      setTimeout(() => setAiStatus(""), 4000);
+      window.dispatchEvent(new Event("ia:gasto"));
     } catch (e) {
       setAiStatus("Error: " + e.message);
-      setTimeout(() => setAiStatus(""), 3000);
+      setTimeout(() => setAiStatus(""), 5000);
+    } finally {
+      setAiLoading(false);
+      generating.current = false;
     }
-    setAiLoading(false);
-    setAiStatus("");
-    generating.current = false;
   };
 
   /**
@@ -664,6 +614,11 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
           id: idea?.id || uid(),
           format: f.format,
           idea: idea?.idea || "",
+          // Lo que escribió el motor de ideas: el título, qué se ve y la forma (composición y gancho) de la pieza.
+          ...(idea?.title ? { title: idea.title } : {}),
+          ...(idea?.escena ? { escena: idea.escena } : {}),
+          ...(idea?.composicion ? { composicion: idea.composicion } : {}),
+          ...(idea?.tactica ? { tactica: idea.tactica } : {}),
           referenceLink: idea?.referenceLink || "",
           image: idea?.image || null,
           guion: idea?.guion || "",
@@ -1141,10 +1096,10 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
                 </button>
               </div>
               <p className="hint" style={{ marginBottom: "var(--sp-2)" }}>
-                Primero las ideas: escribe a mano las que tengas claras (basta una breve explicación) y pulsa «Mejorar»
-                o «Generar ideas»; la propuesta de la IA sale al lado de la tuya y tú eliges. Cuando estén revisadas,
-                «Escribir guiones y descripciones»: reels, carruseles, historias y directos llevan guion; los posts,
-                sólo caption. Lo que ya está escrito no se reescribe.
+                Escribe a mano las que tengas claras (basta una breve explicación) y pulsa «Generar ideas»: cada
+                publicación sale con su idea, qué se ve, el texto de la pieza (o el guion, en carruseles y reels), el caption
+                y los hashtags, con la campaña y el concepto de su semana. Donde escribiste tú, la propuesta de la IA sale al
+                lado y eliges. «Escribir guiones y descripciones» completa lo que haya quedado vacío; lo escrito no se reescribe.
               </p>
               {aiStatus && <p role="status" style={{ fontSize: "var(--fs-2xs)", color: "var(--accent)", marginBottom: "var(--sp-2)" }}>{aiStatus}</p>}
 
@@ -1317,6 +1272,25 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
                                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => decidirSugerencia(date, j, false)}>Quedarme con la mía</button>
                                 </div>
                               </div>
+                            )}
+                            {/* Lo que escribió el motor de ideas además de la idea: qué se ve y el texto de la pieza (plegado). */}
+                            {(p.escena || p.textoPieza) && (
+                              <details className="plan-pieza" style={{ marginTop: "var(--sp-1)" }}>
+                                <summary style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", cursor: "pointer", minHeight: "var(--tap-sm)", display: "flex", alignItems: "center" }}>
+                                  {p.title ? `«${p.title}» · ` : ""}qué se ve{p.textoPieza ? " y texto de la pieza" : ""}
+                                </summary>
+                                {[["escena", "Qué se ve"], ["textoPieza", "Texto en la pieza"]].filter(([k]) => p[k] !== undefined && (k !== "textoPieza" || !FORMATOS_CON_GUION.has(p.format))).map(([k, nombre]) => (
+                                  <div key={k} className="field" style={{ marginTop: "var(--sp-1)" }}>
+                                    <label className="label" style={{ textTransform: "none", color: "var(--text-dim)" }} htmlFor={`${ids}-${k}-${date}-${j}`}>{nombre}</label>
+                                    <textarea id={`${ids}-${k}-${date}-${j}`} className="textarea" style={{ minHeight: 56, fontSize: "var(--fs-2xs)" }} value={p[k] || ""}
+                                      onChange={(e) => {
+                                        const newDayIdeas = [...dayIdeas];
+                                        newDayIdeas[j] = { ...newDayIdeas[j], [k]: e.target.value };
+                                        setIdeas((prev) => ({ ...prev, [date]: newDayIdeas }));
+                                      }} />
+                                  </div>
+                                ))}
+                              </details>
                             )}
                             {p.guion && (
                               <>

@@ -17,7 +17,10 @@ import {
 import { pedidoDeLote, crearLote, crearCarruselDeIdea, crearReelDeIdea } from "../lib/loteEstudio";
 import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
 import { modelosParaReel, modeloRecomendadoParaReel } from "../lib/reelEstudio";
-import { DIAS_LOTE, diasDelLote, diasConTipo, carpetaDelMes, fechaCortaLote, mesDe, textoMes, diasConPublicacion } from "../lib/loteMes";
+import { DIAS_LOTE, diasDelLote, diasConTipo, carpetaDelMes, fechaCortaLote, mesDe, textoMes, diasConPublicacion, casillasConPlantilla, diasConPlantilla } from "../lib/loteMes";
+import { leerPlantillas } from "../lib/plantillasApi";
+import { plantillaDelCliente, configDeFormatos, resumenPlantilla } from "../lib/plantillasPlan";
+import { estrategiaDelCalendario } from "../lib/ideaPublicacion";
 import { PILARES, presetDePilar, nombreDePilar } from "../lib/pilares";
 import { fechasDelMes } from "../lib/fechasEspeciales";
 import { fechaEnZona } from "../lib/agenda";
@@ -99,6 +102,10 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   });
   const [diasSel, setDiasSel] = useState(null);
   const [formato, setFormato] = useState("post");
+  // La plantilla de plan del cliente: con ella, «Mes completo» sale con SUS formatos (post, carrusel, reel…) y varias
+  // por día, como «Planificar mes». `formato: "plan"` la usa.
+  const [plantillaPlan, setPlantillaPlan] = useState(null);
+  const formatoTocado = useRef(false);
   const [preset, setPreset] = useState("anuncio");
   // El modelo fijado de este cliente (su kit); si no, el predeterminado.
   const [modeloId, setModeloId] = useState(() => api.modeloPreferido(activos, "imagen", kit?.modelos?.imagen).id);
@@ -129,6 +136,9 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
 
   useEffect(() => () => { vivo.current = false; }, []);
   useEffect(() => {
+    leerPlantillas().then((lista) => setPlantillaPlan(plantillaDelCliente(client.planContenido, lista) ?? null)).catch(() => setPlantillaPlan(null));
+  }, [client.planContenido]);
+  useEffect(() => {
     leerMercado(clienteId)
       .then((m) => setMercado({ catalogo: productosActivos(m.catalogo ?? []), general: limpiarEstudio(m.estudio)?.general ?? null }))
       .catch(() => setMercado({ catalogo: [], general: null }));
@@ -141,13 +151,25 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const deseosElegidos = deseosSel ?? deseos;
   const perfilesElegidos = perfilesSel ?? perfiles;
   const esMes = alcance === "mes";
+  const formatosPlan = useMemo(() => (plantillaPlan ? configDeFormatos(plantillaPlan) : null), [plantillaPlan]);
+  const esPlan = esMes && formato === "plan" && Boolean(formatosPlan);
+  // Con la plantilla, el mes arranca con ella (si nadie escogió otro formato a mano); fuera del mes, «plan» no existe.
+  useEffect(() => {
+    if (esMes && formatosPlan && !formatoTocado.current && formato === "post") setFormato("plan");
+    if (!esMes && formato === "plan") setFormato("post");
+  }, [esMes, formatosPlan, formato]);
+  /** El formato de UNA idea: el suyo (el plan los mezcla) o el escogido. */
+  const fmtDe = (i) => (FORMATOS_LOTE[i?.formato] ? i.formato : FORMATOS_LOTE[formato] ? formato : "post");
+  const guiadoDe = (i) => Boolean(FORMATOS_LOTE[fmtDe(i)]?.guiado);
   const esMatriz = alcance === "anuncios" && porMatriz && hayMatriz;
 
-  const guiado = Boolean(FORMATOS_LOTE[formato]?.guiado);
+  const guiado = !esPlan && Boolean(FORMATOS_LOTE[formato]?.guiado);
   // Un carrusel o un reel necesitan un modelo de imagen que admita referencias (la lámina o el fotograma anterior).
   const modelosDelFormato = guiado ? modelosParaCarrusel(activos) : modelos;
   const modelo = modelosDelFormato.find((m) => m.id === modeloId) ?? (guiado ? modelosDelFormato.find((m) => m.id === modeloParaCarrusel(activos).id) : null) ?? modelosDelFormato[0];
   const modelosVideo = useMemo(() => modelosParaReel(activos), [activos]);
+  // En el plan, las láminas de los carruseles con el modelo escogido si admite referencias (la anterior y la portada).
+  const modeloCarrusel = esPlan && !(modelo?.referencias > 0) ? modeloParaCarrusel(activos) : modelo;
   const modeloVideo = modelosVideo.find((m) => m.id === modeloVideoId) ?? modeloRecomendadoParaReel(activos) ?? modeloPorId("prueba-video");
   const producto = catalogo?.find((p) => p.id === productoId) ?? null;
   const fotos = api.fotosDelProducto(productosConFotos, productoId);
@@ -156,7 +178,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
 
   // ---------- Cuántas piezas ----------
   const mesElegido = mesDe(mes);
-  const diasRitmo = mesElegido ? diasConTipo(client.ritmoContenido, mesElegido.year, mesElegido.month) : [];
+  const diasRitmo = esPlan ? diasConPlantilla(formatosPlan) : mesElegido ? diasConTipo(client.ritmoContenido, mesElegido.year, mesElegido.month) : [];
   const dias = diasSel ?? diasRitmo;
   // Los días que ya tienen publicación se saltan: no se crea una segunda encima de lo que ya hay.
   const ocupados = esMes ? diasConPublicacion(client.calendars, mes) : [];
@@ -165,9 +187,17 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     dias, desde: mes === hoy.slice(0, 7) ? hoy : "",
   }) : [];
   const diasDelMes = diasDelMesTodos.filter((d) => !ocupados.includes(d.fecha));
-  const saltados = diasDelMesTodos.length - diasDelMes.length;
+  // Con la plantilla: una casilla por publicación (varias por día, cada una con su formato).
+  const casillasPlan = esPlan && mesElegido ? casillasConPlantilla({
+    ...mesElegido, ritmo: client.ritmoContenido, fechas: fechasDelMes(mesElegido.year, mesElegido.month, client.fechasEspeciales),
+    formatos: formatosPlan, dias, desde: mes === hoy.slice(0, 7) ? hoy : "", omitir: ocupados,
+  }) : [];
+  const saltados = esPlan ? new Set(ocupados).size : diasDelMesTodos.length - diasDelMes.length;
+  // La estrategia del mes (campaña, ofertas, código, el concepto de cada semana), del calendario de ese mes si lo tiene.
+  const calDelMes = mesElegido ? (client.calendars ?? []).find((c) => c.year === mesElegido.year && c.month === mesElegido.month) : null;
+  const estrategia = estrategiaDelCalendario(calDelMes);
   const tiposDelMes = Object.entries(diasDelMes.reduce((m, d) => ({ ...m, [d.pilar]: (m[d.pilar] ?? 0) + 1 }), {}));
-  const total = esMes ? diasDelMes.length
+  const total = esPlan ? casillasPlan.length : esMes ? diasDelMes.length
     : alcance === "tipos" ? celdasPorTipos(tipos).length
       : esMatriz ? celdasMatriz({ deseos: deseosElegidos, perfiles: perfilesElegidos, niveles: nivelesSel }).length
         : totalDeCuantas(cuantas);
@@ -183,21 +213,25 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const listaPersonajes = limpiarKit(kit).personajes;
   // El MISMO camino que una pieza hecha a mano (lib/pieza.js): la escena mejorada llega de crearPieza.
   const pedidoDe = (idea, n = 1, escena = null) => pedidoDeLote({
-    idea, escena, kit, preset: presetDe(idea), estilo, modo, formato, modelo, fotos: fotosDe(idea), archivos, gustos, personajes, marca: client.name, rubro: client.industry ?? "", n,
+    idea, escena, kit, preset: presetDe(idea), estilo, modo, formato: fmtDe(idea), modelo, fotos: fotosDe(idea), archivos, gustos, personajes, marca: client.name, rubro: client.industry ?? "", n,
   });
   const nombreTipo = (idea) => nombreDePreset(presetDe(idea), kit);
   const hayFotos = productoId ? fotos.length > 0 : productosConFotos.length > 0;
   const sinReferencias = hayFotos && !(modelo?.referencias > 0);
   const productoDe = (idea) => (catalogo ?? []).find((p) => p.id === (idea.productoId || productoId)) ?? productosIdeas.find((p) => p.id === idea.productoId) ?? null;
-  const costoImagen = modelo ? estimar(modelo, 1, { imageSize: "2K", aspectRatio: FORMATOS_LOTE[formato]?.aspectRatio }) : 0;
   // Por pieza: una imagen (× variantes); un carrusel, sus láminas; un reel, sus fotogramas y el video de 10 s.
-  const costoUna = !modelo ? 0
-    : formato === "carrusel" ? costoImagen * LAMINAS_APROX
-      : formato === "reel" ? costoImagen * PLANOS_APROX + (modeloVideo ? estimar(modeloVideo, 1, { duration: "10" }) : 0)
-        : estimar(modelo, 1, pedidoDe({ id: "x", titular: "x", escena: "x" }).ajustes) * variantes;
+  const costoDeFormato = (f) => {
+    if (!modelo) return 0;
+    const deLaminas = modeloCarrusel ? estimar(modeloCarrusel, 1, { imageSize: "2K", aspectRatio: FORMATOS_LOTE[f]?.aspectRatio }) : 0;
+    if (f === "carrusel") return deLaminas * LAMINAS_APROX;
+    if (f === "reel") return deLaminas * PLANOS_APROX + (modeloVideo ? estimar(modeloVideo, 1, { duration: "10" }) : 0);
+    return estimar(modelo, 1, pedidoDe({ id: "x", titular: "x", escena: "x", formato: f }).ajustes) * variantes;
+  };
   // Lo que ya se llevó como idea sola no se vuelve a crear aquí: se diseña desde el calendario.
   const porCrear = elegidas.filter((i) => !llevadas[i.id]);
-  const costoTotal = Math.round(costoUna * porCrear.length * 1000) / 1000;
+  const costoTotal = Math.round(porCrear.reduce((t, i) => t + costoDeFormato(fmtDe(i)), 0) * 1000) / 1000;
+  const hayGuiadas = esPlan ? ideas.some(guiadoDe) || casillasPlan.some((c) => FORMATOS_LOTE[c.formato]?.guiado) : guiado;
+  const hayReels = esPlan ? casillasPlan.some((c) => c.formato === "reel") || ideas.some((i) => fmtDe(i) === "reel") : formato === "reel";
   const kitListo = !kitVacio(kit);
 
   /** Las ideas, de TANDA en TANDA: cada llamada sabe lo que ya salió (`usados`) y el plan sale igual con la misma semilla. */
@@ -207,7 +241,8 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     try {
       // Otro punto de partida en cada lote, lo que ya salió para no repetirlo y las composiciones que funcionan.
       const comun = { formato, semilla: Math.floor(Math.random() * 1000), composiciones: aprendido.orden };
-      const cuerpo = esMes ? { ...comun, mes, dias, omitir: ocupados }
+      const cuerpo = esPlan ? { ...comun, formato: "post", modo: "plan", casillas: casillasPlan, estrategia }
+        : esMes ? { ...comun, mes, dias, omitir: ocupados, estrategia }
         : alcance === "tipos" ? { ...comun, modo: "tipos", tipos }
           : esMatriz ? { ...comun, modo: "matriz", productoId: productoId || undefined, deseos: deseosElegidos, perfiles: perfilesElegidos, niveles: nivelesSel }
             : { ...comun, modo: "niveles", productoId: productoId || undefined, cuantas: limpiarCuantas(cuantas) };
@@ -216,7 +251,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
       let ultima = null;
       for (let desde = 0, cuantasHay = total; desde < cuantasHay && vivo.current; desde += TANDA) {
         setProgreso(`Escribiendo ${desde + 1}–${Math.min(desde + TANDA, cuantasHay)} de ${cuantasHay}…`);
-        const pedir = esMes ? api.ideasDelMes : api.ideasDeLote;
+        const pedir = esMes && !esPlan ? api.ideasDelMes : api.ideasDeLote;
         ultima = await pedir(clienteId, { ...cuerpo, usados: usados.slice(0, 30), desde, tamano: TANDA });
         cuantasHay = ultima.total ?? cuantasHay;
         // El id por su número en el plan: dos tandas pueden repetir «producto-1».
@@ -253,7 +288,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     for (const idea of ideasConDia) {
       try {
         const fecha = idea.fecha ?? fechas[idea.id];
-        await onLlevar(fecha, publicacionDePieza({ id: uid(), idea, formato, producto: productoDe(idea) }));
+        await onLlevar(fecha, publicacionDePieza({ id: uid(), idea, formato: fmtDe(idea), producto: productoDe(idea) }));
         setLlevadas((m) => ({ ...m, [idea.id]: fecha }));
         n += 1;
       } catch (e) {
@@ -284,32 +319,34 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
       carpetaId = r?.carpeta?.id ?? null;
     } catch { /* sin carpeta, van a la galería igual */ }
     const pendientes = porCrear;
-    if (guiado) {
-      // Un carrusel o un reel por idea, uno detrás de otro: cada uno es una serie de pasos (y un reel tarda minutos).
-      for (const idea of pendientes) {
-        if (!vivo.current) break;
-        const poner = (r) => { if (vivo.current) setResultados((m) => ({ ...m, [idea.id]: r })); };
-        poner({ cargando: true, paso: "En cola" });
-        const comun = {
-          clienteId, idea, kit, preset: presetDe(idea), estilo, fotos: fotosDe(idea).map((f) => f.clave), personajes, personajesIds: personajesSel,
-          marca: client.name, rubro: client.industry ?? "", carpetaId, seguir: () => vivo.current, alPaso: (paso) => poner({ cargando: true, paso }),
-        };
-        try {
-          const r = formato === "carrusel"
-            ? await crearCarruselDeIdea({ ...comun, modelo })
-            : await crearReelDeIdea({ ...comun, modeloImagen: modelo, modeloVideo });
-          poner({ opciones: [{ final: r.archivos[0], archivos: r.archivos }], elegida: 0 });
-        } catch (e) {
-          poner({ error: e.message });
-          if (e.datos?.codigo === "presupuesto") break;
-        }
-      }
-    } else {
+    // Primero las de una imagen (de dos en dos, por formato: la proporción y la plantilla cambian), después los
+    // carruseles y los reels, uno detrás de otro: cada uno es una serie de pasos (y un reel tarda minutos).
+    const sueltas = pendientes.filter((i) => !guiadoDe(i));
+    for (const f of [...new Set(sueltas.map(fmtDe))]) {
+      if (!vivo.current) break;
       await crearLote({
-        ideas: pendientes, clienteId, modo, formato, kit, carpetaId, pedidoDe, mejorar, n: variantes, piezaDe: nombreTipo,
+        ideas: sueltas.filter((i) => fmtDe(i) === f), clienteId, modo, formato: f, kit, carpetaId, pedidoDe, mejorar, n: variantes, piezaDe: nombreTipo,
         seguir: () => vivo.current,
         alAvanzar: (id, r) => { if (vivo.current) setResultados((m) => ({ ...m, [id]: r.opciones ? { ...r, elegida: 0 } : r })); },
       });
+    }
+    for (const idea of pendientes.filter(guiadoDe)) {
+      if (!vivo.current) break;
+      const poner = (r) => { if (vivo.current) setResultados((m) => ({ ...m, [idea.id]: r })); };
+      poner({ cargando: true, paso: "En cola" });
+      const comun = {
+        clienteId, idea, kit, preset: presetDe(idea), estilo, fotos: fotosDe(idea).map((f) => f.clave), personajes, personajesIds: personajesSel,
+        marca: client.name, rubro: client.industry ?? "", carpetaId, seguir: () => vivo.current, alPaso: (paso) => poner({ cargando: true, paso }),
+      };
+      try {
+        const r = fmtDe(idea) === "carrusel"
+          ? await crearCarruselDeIdea({ ...comun, modelo: modeloCarrusel })
+          : await crearReelDeIdea({ ...comun, modeloImagen: modeloCarrusel, modeloVideo });
+        poner({ opciones: [{ final: r.archivos[0], archivos: r.archivos }], elegida: 0 });
+      } catch (e) {
+        poner({ error: e.message });
+        if (e.datos?.codigo === "presupuesto") break;
+      }
     }
     if (!vivo.current) return;
     onHecho?.();
@@ -333,8 +370,8 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     try {
       // Un carrusel lleva todas sus láminas; un reel, su video; lo demás, la imagen escogida.
       const r = resultados[idea.id];
-      const lista = guiado ? (r?.opciones?.[0]?.archivos ?? [archivo]) : [archivo];
-      const post = publicacionDePieza({ id: uid(), idea, archivos: lista, formato, producto: productoDe(idea) });
+      const lista = guiadoDe(idea) ? (r?.opciones?.[0]?.archivos ?? [archivo]) : [archivo];
+      const post = publicacionDePieza({ id: uid(), idea, archivos: lista, formato: fmtDe(idea), producto: productoDe(idea) });
       const calendarId = await onLlevar(fecha, post);
       setLlevadas((m) => ({ ...m, [idea.id]: fecha }));
       // Apuntar que la usa una publicación: así la papelera no se lleva el archivo. Si falla, la pieza ya está.
@@ -353,7 +390,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
 
   // Los grupos del paso 2: por nivel, por deseo y perfil, por tipo o el mes.
   let grupos;
-  if (esMes) grupos = [{ clave: "mes", titulo: `${MONTHS[mesElegido?.month ?? 0]} ${mesElegido?.year ?? ""}`, ayuda: "una pieza por día, con el tipo de su día", ideas }];
+  if (esMes) grupos = [{ clave: "mes", titulo: `${MONTHS[mesElegido?.month ?? 0]} ${mesElegido?.year ?? ""}`, ayuda: esPlan ? "con la plantilla de plan del cliente: cada día sus formatos" : "una pieza por día, con el tipo de su día", ideas }];
   else if (alcance === "tipos") grupos = PILARES.map((p) => ({ clave: p.id, titulo: p.nombre, ayuda: p.datos, ideas: ideas.filter((i) => i.tipo === p.id) })).filter((g) => g.ideas.length);
   else if (ideas.some((i) => i.deseo || i.perfil)) {
     grupos = [...new Set(ideas.map((i) => `${i.deseo ?? ""}|${i.perfil ?? ""}`))].map((k) => {
@@ -364,7 +401,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const listas = Object.values(resultados).filter((r) => r.opciones).length;
   // En el paso 3: lo que se está creando (lo que se llevó como idea sola no).
   const delPaso3 = elegidas.filter((i) => resultados[i.id] || !llevadas[i.id]);
-  const nombreDePiezas = (n) => (formato === "carrusel" ? (n === 1 ? "carrusel" : "carruseles") : formato === "reel" ? (n === 1 ? "reel" : "reels") : n === 1 ? "pieza" : "piezas");
+  const nombreDePiezas = (n) => (esPlan ? (n === 1 ? "pieza" : "piezas") : formato === "carrusel" ? (n === 1 ? "carrusel" : "carruseles") : formato === "reel" ? (n === 1 ? "reel" : "reels") : n === 1 ? "pieza" : "piezas");
   const etiquetaDe = (i) => (i.tipo === "anuncio" || !i.tipo ? nombreDeNivel(i.nivel) : nombreDePilar(i.tipo, i.pilarSub));
 
   return (
@@ -480,8 +517,12 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
               <div className="field">
                 <span className="label" id={`${ids}-f`}>Formato</span>
                 <div className="est-tipos" role="group" aria-labelledby={`${ids}-f`}>
-                  {Object.entries(FORMATOS_LOTE).map(([id, f]) => <button key={id} type="button" className="filter-chip" aria-pressed={formato === id} onClick={() => setFormato(id)}>{f.nombre}</button>)}
+                  {esMes && formatosPlan && (
+                    <button type="button" className="filter-chip" aria-pressed={formato === "plan"} onClick={() => { formatoTocado.current = true; setFormato("plan"); }}>Según su plan</button>
+                  )}
+                  {Object.entries(FORMATOS_LOTE).map(([id, f]) => <button key={id} type="button" className="filter-chip" aria-pressed={formato === id} onClick={() => { formatoTocado.current = true; setFormato(id); }}>{f.nombre}</button>)}
                 </div>
+                {esPlan && <p className="hint">La plantilla de plan de {client.name}: {resumenPlantilla(plantillaPlan)}. Cada día sale con sus formatos; los directos no se diseñan.</p>}
               </div>
               <div className="lote-fila">
                 {alcance === "anuncios" && (
@@ -494,12 +535,12 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                   </div>
                 )}
                 <div className="field">
-                  <label className="label" htmlFor={`${ids}-m`}>{formato === "reel" ? "Modelo de los fotogramas" : formato === "carrusel" ? "Modelo de las láminas" : "Modelo"}</label>
+                  <label className="label" htmlFor={`${ids}-m`}>{esPlan ? "Modelo de las imágenes" : formato === "reel" ? "Modelo de los fotogramas" : formato === "carrusel" ? "Modelo de las láminas" : "Modelo"}</label>
                   <select id={`${ids}-m`} className="input" value={modelo?.id ?? ""} onChange={(e) => setModeloId(e.target.value)}>
                     {modelosDelFormato.map((m) => <option key={m.id} value={m.id}>{m.nombre} · {textoCosto(costoDePieza(m))}</option>)}
                   </select>
                 </div>
-                {formato === "reel" && (
+                {hayReels && (
                   <div className="field">
                     <label className="label" htmlFor={`${ids}-mv`}>Modelo del video</label>
                     <select id={`${ids}-mv`} className="input" value={modeloVideo?.id ?? ""} onChange={(e) => setModeloVideoId(e.target.value)}>
@@ -508,6 +549,9 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                   </div>
                 )}
               </div>
+              {esPlan && hayGuiadas && (
+                <p className="hint">Los carruseles y los reels del plan salen como hechos a mano (láminas una a una; el reel con su storyboard y su video), uno detrás de otro, después de las imágenes.{modeloCarrusel && modeloCarrusel.id !== modelo?.id ? ` Las láminas van con ${modeloCarrusel.nombre}, que admite la anterior de referencia.` : ""}</p>
+              )}
               {guiado ? (
                 <p className="hint">
                   {formato === "carrusel"
@@ -584,6 +628,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                         </label>
                         <p className="lote-dia">
                           {i.fecha && <strong>{fechaCortaLote(i.fecha)}</strong>}
+                          {esPlan && <span className="lote-insignia">{FORMATOS_LOTE[fmtDe(i)]?.nombre}</span>}
                           <span className="lote-insignia">{etiquetaDe(i)}</span>
                           {i.cambio && <span className="hint">{i.cambio}</span>}
                         </p>
@@ -592,7 +637,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                             <span className="label">Composición</span>
                             <select className="input" value={i.composicion} onChange={(e) => {
                               const c = COMPOSICIONES.find((x) => x.id === e.target.value);
-                              setIdeas((l) => l.map((x) => (x.id === i.id ? { ...x, composicion: c.id, plantilla: formato === "historia" && c.plantilla === "banda" ? "centro" : c.plantilla } : x)));
+                              setIdeas((l) => l.map((x) => (x.id === i.id ? { ...x, composicion: c.id, plantilla: fmtDe(i) === "historia" && c.plantilla === "banda" ? "centro" : c.plantilla } : x)));
                             }}>
                               {COMPOSICIONES.filter((c) => i.conProducto !== false || !c.objeto).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                             </select>
@@ -626,9 +671,9 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                           <label className="label" htmlFor={`${ids}-de-${i.id}`}>Descripción</label>
                           <textarea id={`${ids}-de-${i.id}`} className="input" rows={3} maxLength={MAX_DESCRIPCION} value={i.descripcion ?? ""} onChange={(e) => cambiarIdea(i.id, "descripcion", e.target.value)} />
                         </div>
-                        {guiado && (
+                        {guiadoDe(i) && (
                           <div className="field">
-                            <label className="label" htmlFor={`${ids}-gu-${i.id}`}>{formato === "reel" ? "Guion (planos de 10 s)" : "Guion (lámina por lámina)"}</label>
+                            <label className="label" htmlFor={`${ids}-gu-${i.id}`}>{fmtDe(i) === "reel" ? "Guion (planos de 10 s)" : "Guion (lámina por lámina)"}</label>
                             <textarea id={`${ids}-gu-${i.id}`} className="input" rows={5} maxLength={MAX_GUION} value={i.guion ?? ""} onChange={(e) => cambiarIdea(i.id, "guion", e.target.value)} />
                           </div>
                         )}
@@ -664,7 +709,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                       <strong>{i.titulo || i.titular}</strong>
                       {r?.error && <p role="alert" className="cerebro-error">{r.error}</p>}
                       {r?.cargando && r.paso && final && <p className="hint">{r.paso}</p>}
-                      {guiado && r?.opciones?.[0]?.archivos?.length > 1 && (
+                      {guiadoDe(i) && r?.opciones?.[0]?.archivos?.length > 1 && (
                         <div className="lote-laminas" aria-label={`Las ${r.opciones[0].archivos.length} láminas`}>
                           {r.opciones[0].archivos.map((a, k) => <img key={a.id} src={a.src} alt={`Lámina ${k + 1}`} />)}
                         </div>
@@ -724,7 +769,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                   <Icon name="calendar" size={18} /> {llevandoIdeas ? "Llevando…" : `Sólo las ideas al calendario (${ideasConDia.length})`}
                 </button>
               )}
-              <p className="lote-costo">{porCrear.length} de {ideas.length}{variantes > 1 && !guiado ? ` × ${variantes}` : ""} · <strong>{textoCosto(costoTotal)}</strong>{modelo?.estimado || guiado ? " (aprox.)" : ""}</p>
+              <p className="lote-costo">{porCrear.length} de {ideas.length}{variantes > 1 && !hayGuiadas ? ` × ${variantes}` : ""} · <strong>{textoCosto(costoTotal)}</strong>{modelo?.estimado || hayGuiadas ? " (aprox.)" : ""}</p>
               <button type="button" className="btn btn-primary" disabled={!porCrear.length || llevandoIdeas} onClick={crear}>
                 <Icon name={formato === "reel" ? "video" : "image"} size={18} /> Crear {porCrear.length} {nombreDePiezas(porCrear.length)} · {textoCosto(costoTotal)}
               </button>

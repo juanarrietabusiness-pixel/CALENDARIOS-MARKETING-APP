@@ -335,6 +335,56 @@ describe("POST /api/estudio/<cliente>/lote/ideas: UNA publicación («Generar» 
   });
 });
 
+describe("POST /api/estudio/<cliente>/lote/ideas: el PLAN del mes («Planificar mes», «Mes completo» con la plantilla)", () => {
+  const plan = (datos) => pedir("/api/estudio/c1/lote/ideas", { method: "POST", body: { modo: "plan", ...datos } });
+
+  it("formatos mezclados, varias por día, la estrategia del mes y la idea de la persona; cada idea vuelve con su clave", async () => {
+    await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: [{ id: "sofa", nombre: "Sofá cama", precio: "$399" }] } });
+    anthropic(JSON.stringify({ ideas: [
+      { n: 1, titulo: "Visitas", brief: "B1", titular: "¿Llegan visitas?", escena: "Una sala", descripcion: "Caption 1", hashtags: "#sofacama muebles #sofacama" },
+      { n: 2, titulo: "3 errores", brief: "B2", titular: "3 errores", escena: "Una tienda", guion: "Portada: 3 errores\nCTA: Escríbenos" },
+      { n: 3, titulo: "Reel", brief: "B3", titular: "Así se abre", escena: "Manos", guion: "[0–2 s] …" },
+    ] }));
+    const res = await plan({
+      casillas: [
+        { clave: "2030-03-04|0", fecha: "2030-03-04", formato: "post", pilar: "beneficios", productoId: "sofa", semana: "Semana del descanso" },
+        { clave: "2030-03-04|1", fecha: "2030-03-04", formato: "carrusel", pilar: "educativo", idea: "Errores al comprar un sofá" },
+        { clave: "2030-03-05|0", fecha: "2030-03-05", formato: "reel", pilar: "humano" },
+        { clave: "x", fecha: "2030-03-06", formato: "live" },
+      ],
+      estrategia: { campana: "Marzo cómodo", ofertas: "10 % en sofás", codigo: "COMODO", semanas: ["Semana del descanso"] },
+    });
+    expect(res.status).toBe(200);
+    const r = await res.json();
+    // El directo no se escribe; cada idea, con su clave y su formato.
+    expect(r.total).toBe(3);
+    expect(r.ideas.map((i) => [i.clave, i.formato])).toEqual([["2030-03-04|0", "post"], ["2030-03-04|1", "carrusel"], ["2030-03-05|0", "reel"]]);
+    expect(r.ideas[0]).toMatchObject({ hashtags: "#sofacama #muebles", textoPieza: "¿Llegan visitas?", productoId: "sofa" });
+    expect(r.ideas[0].guion).toBeUndefined();
+    expect(r.ideas[1].guion).toMatch(/Portada/);
+    // La matriz completa lo que el plan no trae (el nivel de cada tipo).
+    expect(r.ideas.every((i) => i.nivel && i.composicion && i.tactica)).toBe(true);
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/Cada una tiene YA decidido su FORMATO/);
+    expect(t).toMatch(/\[Post 4:5\]/);
+    expect(t).toMatch(/\[Carrusel\]/);
+    expect(t).toMatch(/- Carrusel: Es un CARRUSEL/);
+    expect(t).toMatch(/"guion" \(SÓLO en las de formato Carrusel\)/);
+    expect(t).toMatch(/"guion" \(SÓLO en las de formato Reel IA 10 s\)/);
+    expect(t).toMatch(/ESTRATEGIA DEL MES[\s\S]*Campaña: Marzo cómodo[\s\S]*Ofertas del mes: 10 % en sofás[\s\S]*Código promocional: COMODO[\s\S]*Semana 1: Semana del descanso/);
+    expect(t).toMatch(/idea de la agencia .*«Errores al comprar un sofá»/);
+    expect(t).toMatch(/"hashtags"/);
+    expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("lote del mes");
+  });
+
+  it("sin casillas que se puedan escribir, 400 sin llamar a la IA", async () => {
+    anthropic("x");
+    expect((await plan({ casillas: [] })).status).toBe(400);
+    expect((await plan({ casillas: [{ fecha: "2030-03-04", formato: "live" }] })).status).toBe(400);
+    expect(peticiones).toHaveLength(0);
+  });
+});
+
 describe("POST /api/estudio/<cliente>/lote/ideas: la matriz y por tipos", () => {
   const lote = (datos) => pedir("/api/estudio/c1/lote/ideas", { method: "POST", body: datos });
   const conEstudio = async () => {
