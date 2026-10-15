@@ -9,10 +9,10 @@ const NOTA_VERSION = "es la pieza actual: haz OTRA versión con la misma informa
  * Lo que necesita quien tenga un editor de medios: `abrir({ tipo })` para crear, `abrir({ tipo: "video", desde })`
  * para animar una imagen que ya está puesta, y el `dialogo` que hay que pintar.
  *
- * `onUsar(archivo)` recibe lo escogido; el diálogo se cierra solo. Si la imagen a animar no está en el
+ * `onUsar(archivo)` recibe lo escogido; `onUsarVarias(archivos)`, un carrusel entero de la galería. El diálogo se cierra solo. Si la imagen a animar no está en el
  * almacén de ESTE cliente (una vieja en base64, una de otro cliente), no hay de dónde tomarla: se dice.
  */
-export function useCrearConIA({ client, clientId, post, uso = null, onUsar, onError }) {
+export function useCrearConIA({ client, clientId, post, uso = null, onUsar, onUsarVarias = null, onError }) {
   const [creando, setCreando] = useState(null); // { tipo, inicio, referencias }
   /** `version`: una imagen ya puesta de la que se quiere OTRA versión (va de referencia, con la nota de qué hacer). */
   const abrir = ({ tipo, desde = null, version = null }) => {
@@ -29,6 +29,7 @@ export function useCrearConIA({ client, clientId, post, uso = null, onUsar, onEr
     <CrearConIA
       client={client} post={post} tipo={creando.tipo} inicio={creando.inicio} referencias={creando.referencias} uso={uso}
       onUsar={(archivo) => { setCreando(null); onUsar(archivo); }}
+      onUsarVarias={onUsarVarias ? (lista) => { setCreando(null); onUsarVarias(lista); } : null}
       onCerrar={() => setCreando(null)}
     />
   ) : null;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { diasDelLote, diasConTipo, planDelMes, carpetaDelMes, mesDe } from "./loteMes";
+import { diasDelLote, diasConTipo, planDelMes, carpetaDelMes, mesDe, diasConPublicacion } from "./loteMes";
 import { pedidoDeProduccion, leerProduccion, publicacionDePieza } from "./loteAnuncios";
 
 // Octubre 2026: el 1 es jueves. El ritmo de la agencia: lun Anuncio, mar Beneficios, mié Servicios, jue Educativo,
@@ -45,5 +45,18 @@ describe("el lote del mes completo", () => {
     expect(carpetaDelMes(2026, 9)).toBe("Lote octubre de 2026");
     expect(mesDe("2026-10")).toEqual({ year: 2026, month: 9 });
     expect(mesDe("2026-13")).toBeNull();
+  });
+});
+
+describe("los días que ya tienen publicación (el lote del mes los salta)", () => {
+  it("sólo los del mes pedido y con alguna publicación, sin repetir y en orden", () => {
+    const calendarios = [
+      { days: [{ date: "2026-10-12", posts: [{ id: "a" }] }, { date: "2026-10-05", posts: [{ id: "b" }, { id: "c" }] }, { date: "2026-10-07", posts: [] }] },
+      { days: [{ date: "2026-11-02", posts: [{ id: "d" }] }, { date: "2026-10-12", posts: [{ id: "e" }] }] },
+    ];
+    expect(diasConPublicacion(calendarios, "2026-10")).toEqual(["2026-10-05", "2026-10-12"]);
+    expect(diasConPublicacion(calendarios, "2026-12")).toEqual([]);
+    expect(diasConPublicacion(calendarios, "otro")).toEqual([]);
+    expect(diasConPublicacion(undefined, "2026-10")).toEqual([]);
   });
 });

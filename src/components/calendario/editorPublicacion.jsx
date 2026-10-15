@@ -30,7 +30,7 @@ const esVideoArchivo = (f) => f?.type?.startsWith("video/");
 // Medios
 // ------------------------------------------------------------
 
-export function EditorMedios({ post, clientId, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null, onCrearReel = null }) {
+export function EditorMedios({ post, clientId, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null, onCrearReel = null, onDeLaGaleria = null }) {
   const ids = useId();
   const [eligiendoPortada, setEligiendoPortada] = useState(null);
   const propia = useRef(null);
@@ -281,6 +281,12 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError, e
         {clientId && (
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEscogiendo(true)} disabled={!!subiendo || medios.length >= maximo}>
             <Icon name="folder" size={16} /> {driveFolder ? "De Drive" : "Del banco"}
+          </button>
+        )}
+        {/* Lo ya hecho en el Estudio: imágenes sueltas o un carrusel entero, en su orden. */}
+        {clientId && onDeLaGaleria && (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onDeLaGaleria} disabled={!!subiendo}>
+            <Icon name="image" size={16} /> De la galería
           </button>
         )}
         {clientId && onCrearConIA && (

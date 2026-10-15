@@ -10,7 +10,7 @@ import {
   subirImagenPublicacion, saveCalendar,
 } from "../lib/db";
 import { resumenCola, aprobadasSinProgramar } from "../lib/cola";
-import { navegar } from "../lib/rutas";
+import { navegar, analizarRuta, construirRuta } from "../lib/rutas";
 import { agruparPorSemana, semanaInicial, rangoSemana } from "../lib/semanas";
 import { moverEnCalendario, ponerEnDia } from "../lib/subir";
 import { conAprobacion, resumenEnvio } from "../lib/aprobacion";
@@ -40,6 +40,8 @@ import { CampanaMes } from "./calendario/campanaMes";
 // «Revisar el mes» antes de enviarlo: reglas, IA y marca (se carga al abrirlo).
 const RevisionMes = lazy(() => import("./calendario/RevisionMes"));
 const ProducirMes = lazy(() => import("./calendario/ProducirMes"));
+// «Producir el mes»: crear lo que falta (el lote del Estudio) o diseñar lo que ya hay.
+const ProducirElMes = lazy(() => import("./calendario/ProducirElMes"));
 const GuardarMesDrive = lazy(() => import("./calendario/GuardarMesDrive"));
 const FechasEspecialesDialog = lazy(() => import("./calendario/fechasEspeciales").then((m) => ({ default: m.FechasEspecialesDialog })));
 import { BankPanel } from "./calendario/BankPanel";
@@ -696,6 +698,12 @@ export default function CalendarView({
     cerrarCapa();
   };
 
+  // «Crear lo que falta»: el Estudio de este cliente, en «Producir en lote» → «Mes completo» con ESTE mes.
+  const producirEnLote = () => {
+    const ruta = analizarRuta();
+    navegar(`${construirRuta({ cliente: ruta.cliente, pestana: "estudio" })}?lote=mes&mes=${mesDelCal}`);
+  };
+
   const generateScripts = async () => {
     if (genLoading) return;
     setGenLoading(true);
@@ -988,9 +996,11 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
           resto agrupado. Antes eran siete botones idénticos que mezclaban
           la acción principal con un visor de registros de desarrollo. */}
       <div className="toolbar">
-        <button className="btn btn-accent" onClick={generateScripts} disabled={genLoading || !totalPosts} title={!totalPosts ? "Este mes todavía no tiene publicaciones: planifícalo o añade alguna" : undefined}>
+        {/* «Producir el mes»: con publicaciones pregunta si crear lo que falta o diseñar lo que hay; sin ninguna, va
+            directo al lote del mes del Estudio. Escribir sólo los textos que faltan está en «⋯». */}
+        <button className="btn btn-accent" onClick={() => (totalPosts ? abrirCapa("producir-mes") : producirEnLote())} disabled={genLoading || Boolean(yoActual()?.soloLectura)}>
           <Icon name="sparkles" size={18} />
-          {genLoading ? genStatus : "Generar contenido"}
+          {genLoading ? genStatus : "Producir el mes"}
         </button>
 
         <div className="segmented" role="group" aria-label="Vista del calendario" style={{ width: "auto", flexShrink: 0 }}>
@@ -1047,7 +1057,8 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
             { icon: "pencil", label: "Editar el mes", onClick: () => abrirMeta("general") },
             { icon: "calendar", label: "Fechas especiales", onClick: () => abrirCapa("fechas") },
             { icon: "checkSquare", label: "Revisar el mes", onClick: () => abrirCapa("revision") },
-            { icon: "imageAi", label: "Producir el mes con IA", onClick: () => abrirCapa("producir") },
+            { icon: "sparkles", label: "Completar los textos que faltan", onClick: generateScripts, disabled: genLoading || !totalPosts },
+            { icon: "imageAi", label: "Diseñar las que ya hay", onClick: () => abrirCapa("producir") },
             client?.driveFolder && !virtual && { icon: "upload", label: "Guardar el mes en Drive", onClick: () => abrirCapa("drive") },
             { icon: "copy", label: "Exportar ideas y descripciones", onClick: () => abrirCapa("exportar") },
             { sep: true },
@@ -1632,6 +1643,19 @@ ${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p
               }
             }}
             onArreglar={(date, post) => updatePost(date, post)}
+            onClose={cerrarCapa}
+          />
+        </Suspense>
+      )}
+
+      {capa === "producir-mes" && (
+        <Suspense fallback={<div className="panel-cargando" role="status">Abriendo…</div>}>
+          <ProducirElMes
+            mesNombre={`${MONTHS[cal.month].toLowerCase()} ${cal.year}`}
+            publicaciones={totalPosts}
+            pasado={mesDelCal < fechaEnZona().slice(0, 7)}
+            onCrear={() => { cerrarCapa(); producirEnLote(); }}
+            onDisenar={() => abrirCapa("producir")}
             onClose={cerrarCapa}
           />
         </Suspense>
