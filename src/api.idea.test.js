@@ -17,3 +17,11 @@ describe("el botón de la idea", () => {
     expect(t).not.toMatch(/Genera UNA idea creativa/);
   });
 });
+
+describe("la idea respeta el formato", () => {
+  it("dice qué es el formato y que no proponga otro", () => {
+    expect(instruccionIdea({ format: "post" })).toMatch(/POST de UNA sola imagen fija.*no propongas otro/s);
+    expect(instruccionIdea({ format: "carrusel" })).toMatch(/CARRUSEL de varias láminas/);
+    expect(instruccionIdea({ format: "reel", idea: "Algo" })).toMatch(/REEL.*ni por otro formato/s);
+  });
+});

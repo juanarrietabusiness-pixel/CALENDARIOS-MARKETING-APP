@@ -30,6 +30,7 @@ import "./publicar.css";
 import { useEffect, useId, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES } from "../../constants";
 import { generateFieldForPost } from "../../api";
+import { ideaComoElLote, ideaParaPublicacion, rellenarConIdea } from "../../lib/ideaPublicacion";
 import { vivo } from "../../lib/vivo";
 import { mediosDe } from "../../lib/publicacion";
 import { publicacionVacia } from "../../lib/subir";
@@ -57,6 +58,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
   const [form, setForm] = useState({ ...post });
   const [fieldLoading, setFieldLoading] = useState({});
   const [fieldError, setFieldError] = useState("");
+  const [fieldAviso, setFieldAviso] = useState("");
   const [moveDateOpen, setMoveDateOpen] = useState(false);
   const [moveTarget, setMoveTarget] = useState("");
   const ids = useId();
@@ -142,19 +144,29 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
 
   const otroEditando = editandoOtros[post.id] ?? null;
 
+  const clientId = client?.dbId || client?.id;
+
   const generateField = async (field) => {
     setFieldError("");
+    setFieldAviso("");
     setFieldLoading((p) => ({ ...p, [field]: true }));
     try {
-      const result = await generateFieldForPost(client, form, day, cal, field);
-      sf(field, result);
+      if (field === "idea" && ideaComoElLote(form)) {
+        // Vacía: como el Estudio (el formato, la matriz, el estudio de mercado, el catálogo y el mes). Sólo rellena, y
+        // sobre lo de AHORA: se pudo seguir escribiendo mientras la IA pensaba.
+        const idea = await ideaParaPublicacion(clientId, { post: form, day, cal });
+        const { campos } = rellenarConIdea(form, idea);
+        setForm((p) => ({ ...p, ...rellenarConIdea(p, idea).cambios }));
+        if (campos.length > 1) setFieldAviso(`La IA escribió: ${campos.join(", ")}. Lo que ya tenía texto no se tocó.`);
+      } else {
+        const result = await generateFieldForPost(client, form, day, cal, field);
+        sf(field, result);
+      }
     } catch (e) {
       setFieldError(`No se pudo generar «${field}»: ${e.message}`);
     }
     setFieldLoading((p) => ({ ...p, [field]: false }));
   };
-
-  const clientId = client?.dbId || client?.id;
 
   const AiButton = ({ field, label, accion = "Generar" }) => (
     <button
@@ -244,6 +256,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         {fieldError && (
           <p role="alert" className="notice notice-error" style={pestana === "publicar" && ancho ? { margin: "var(--sp-3) var(--sp-4) 0" } : undefined}>{fieldError}</p>
         )}
+        <div aria-live="polite">{fieldAviso && pestana !== "publicar" && <p role="status" className="hint" style={{ marginTop: 0 }}>{fieldAviso}</p>}</div>
 
         {pestana === "publicar" ? (
           <PestanaPublicar

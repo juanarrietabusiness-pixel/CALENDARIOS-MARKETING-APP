@@ -12,7 +12,9 @@
 //   · niveles  { productoId?, cuantas: { nivel: n } }
 //   · matriz   { productoId?, deseos: [..], perfiles: [..], niveles: [..] } (los del estudio aprobado)
 //   · tipos    { tipos: { educativo: 3, … } }
-//   · mes      { mes: "AAAA-MM", dias: [0–6] }
+//   · mes      { mes: "AAAA-MM", dias: [0–6], omitir?: ["AAAA-MM-DD"] } (omitir: los días que ya tienen publicación)
+//   · publicacion { publicacion: { fecha?, pilar?, pilarSub?, productoId?, nivel?, deseo?, perfil? }, nota? }: UNA pieza,
+//     la de una publicación del calendario («Generar» de su Idea / Brief), con lo que ya trae y la misma calidad del lote
 // Comunes: { formato, semilla?, usados?, composiciones? } (las que funcionan con este cliente).
 // Por TANDAS: { desde, tamano } escribe sólo esas piezas del plan (el plan sale igual con la misma semilla), y la
 // pantalla las pide una tras otra pasando lo que ya salió en `usados`. Escribir 30 en una sola llamada daba ideas
@@ -28,9 +30,9 @@ import { leerMercado } from "../mercado.js";
 import { productosActivos, productosParaPlan, lineaDeProducto, notaDeProducto, resumenGeneral, limpiarEstudio } from "../../../src/lib/estudioMercado.js";
 import {
   pedidoDeProduccion, leerProduccion, limpiarCuantas, totalDeCuantas, celdasPorNiveles, celdasMatriz, celdasPorTipos, darForma,
-  FORMATOS_LOTE, COMPOSICIONES,
+  textoDeIdea, FORMATOS_LOTE, COMPOSICIONES,
 } from "../../../src/lib/loteAnuncios.js";
-import { asignarMatriz } from "../../../src/lib/pilares.js";
+import { asignarMatriz, pilarDe, idDePilar } from "../../../src/lib/pilares.js";
 import { diasDelLote, planDelMes, mesDe, textoMes } from "../../../src/lib/loteMes.js";
 import { fechasDelMes } from "../../../src/lib/fechasEspeciales.js";
 import { fechaEnZona } from "../../../src/lib/agenda.js";
@@ -41,7 +43,8 @@ const leerJSON = (t) => {
   if (t && typeof t === "object") return t;
   try { return JSON.parse(t); } catch { return null; }
 };
-const MODOS = ["niveles", "matriz", "tipos", "mes"];
+const MODOS = ["niveles", "matriz", "tipos", "mes", "publicacion"];
+const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 /** Cuántas piezas por llamada como mucho (lo que pide la pantalla es 6). */
 export const TANDA_MAX = 10;
 
@@ -75,13 +78,41 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
   let fechas = [];
   if (modo === "mes") {
     fechas = fechasDelMes(mes.year, mes.month, leerJSON(cliente.fechas_especiales));
+    // Los días que ya tienen publicación no se vuelven a llenar (los manda la pantalla, que mira el calendario).
+    const omitir = new Set((Array.isArray(datos.omitir) ? datos.omitir : []).map(String).filter((f) => FECHA.test(f)));
     const dias = diasDelLote({
       ...mes, ritmo: leerJSON(cliente.ritmo_contenido), fechas,
       dias: (Array.isArray(datos.dias) ? datos.dias : []).map(Number).filter((d) => d >= 0 && d <= 6),
       desde: textoMes(mes.year, mes.month) === hoy.slice(0, 7) ? hoy : "",
-    });
-    if (!dias.length) throw fallo("Ese mes no tiene días con tipo de contenido en los días escogidos (revisa el ritmo del cliente).");
+    }).filter((d) => !omitir.has(d.fecha));
+    if (!dias.length) {
+      throw fallo(omitir.size
+        ? "Todos los días que escogiste ya tienen publicación. Para diseñarlas, usa «Diseñar las que ya hay»."
+        : "Ese mes no tiene días con tipo de contenido en los días escogidos (revisa el ritmo del cliente).");
+    }
     plan = planDelMes(dias, { productos: rotan, deseos, perfiles, semilla: datos.semilla, formato, orden });
+  } else if (modo === "publicacion") {
+    // Una sola pieza con lo que la publicación ya decidió (su tipo, producto, nivel, deseo y perfil); lo que falte, lo
+    // pone la forma del lote. La fecha especial del día también va.
+    const p = datos.publicacion && typeof datos.publicacion === "object" ? datos.publicacion : {};
+    const fecha = FECHA.test(String(p.fecha ?? "")) ? String(p.fecha) : "";
+    const pilar = pilarDe(p.pilar) ? idDePilar(p.pilar) : "";
+    const corto = (t) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
+    const celda = {
+      ...(pilar ? { tipo: pilar, pilar } : {}),
+      ...(pilar === "maletas" && p.pilarSub ? { pilarSub: corto(p.pilarSub) } : {}),
+      ...(CLAVES_NIVEL.includes(p.nivel) ? { nivel: p.nivel } : {}),
+      ...(corto(p.deseo) ? { deseo: corto(p.deseo) } : {}),
+      ...(corto(p.perfil) ? { perfil: corto(p.perfil) } : {}),
+      ...(fecha ? { fecha } : {}),
+    };
+    const delPost = p.productoId ? productosActivos(catalogo).find((x) => x.id === p.productoId) : null;
+    if (delPost) celda.productoId = delPost.id;
+    if (fecha) {
+      const [y, m] = fecha.split("-").map(Number);
+      fechas = fechasDelMes(y, m, leerJSON(cliente.fechas_especiales)).filter((f) => f.fecha === fecha);
+    }
+    plan = darForma([celda], { productos: delPost ? [delPost, ...rotan.filter((x) => x.id !== delPost.id)] : rotan, semilla: datos.semilla, formato, orden });
   } else {
     let celdas;
     if (modo === "matriz") {
@@ -128,12 +159,16 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       perfiles: Object.fromEntries(perfiles.map((p) => [p.nombre, [p.quien, p.dolor && `le duele: ${p.dolor}`, p.aspiracion && `quiere: ${p.aspiracion}`].filter(Boolean).join("; ")])),
       fechasEspeciales: fechas.map((f) => `${f.fecha} · ${f.nombre}${f.delicada ? " (delicada: sin promociones)" : ""}`),
       usados: (Array.isArray(datos.usados) ? datos.usados : []).map((t) => String(t ?? "").slice(0, 80)).filter(Boolean).slice(0, 30),
+      nota: modo === "publicacion" ? String(datos.nota ?? "").slice(0, 600) : "",
     }),
     salida: (FORMATOS_LOTE[formato]?.guiado ? 800 : 420) * plan.length + 800,
-    funcion: modo === "mes" ? "lote del mes" : "ideas de anuncios",
+    funcion: modo === "mes" ? "lote del mes" : modo === "publicacion" ? "publicación" : "ideas de anuncios",
   });
   const nombres = new Map(rotan.map((p) => [p.id, p.nombre]));
-  const ideas = leerProduccion(r.texto, plan).map((i) => (i.productoId ? { ...i, producto: nombres.get(i.productoId) ?? i.producto ?? "" } : i));
+  const ideas = leerProduccion(r.texto, plan)
+    .map((i) => (i.productoId ? { ...i, producto: nombres.get(i.productoId) ?? i.producto ?? "" } : i))
+    // «Titular\nApoyo»: lo que va escrito en la pieza (el textoPieza de la publicación).
+    .map((i) => ({ ...i, textoPieza: textoDeIdea(i) }));
   if (!ideas.length && !tamano) throw fallo("La IA no devolvió ideas que se puedan leer. Inténtalo otra vez.", 502);
   return {
     ideas, total,

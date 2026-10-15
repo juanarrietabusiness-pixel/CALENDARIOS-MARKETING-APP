@@ -359,17 +359,27 @@ Escribe directamente el contenido, sin preambulos.`;
  * Con algo escrito, la COMPLETA o la mejora sin cambiarla por otra: antes
  * la reemplazaba y se perdía lo que el equipo había pensado. Pura.
  */
+/** Qué ES cada formato, dicho a la IA: «una publicación de post» era ambiguo y a veces salía un carrusel o un reel. */
+const QUE_ES_EL_FORMATO = {
+  post: "un POST de UNA sola imagen fija (no un carrusel, no un video)",
+  carrusel: "un CARRUSEL de varias láminas que se deslizan (no una sola imagen, no un video)",
+  reel: "un REEL: un video vertical corto con varios planos (no una imagen fija, no un carrusel)",
+  historia: "una HISTORIA de Instagram: una imagen o video vertical que se ve unos segundos (no un carrusel)",
+  live: "un DIRECTO (live) en vivo: los temas de la transmisión (no una imagen ni un carrusel)",
+};
+const formatoDicho = (f) => QUE_ES_EL_FORMATO[f] ?? `una publicación de formato ${f}`;
+
 export function instruccionIdea(post = {}) {
   const escrita = String(post.idea ?? "").trim();
   if (!escrita) {
-    return `Genera UNA idea creativa y concreta para una publicacion de ${post.format} para este cliente.
+    return `Genera UNA idea creativa y concreta para ${formatoDicho(post.format)} de este cliente. La idea tiene que ser de ESE formato: no propongas otro.
 La idea debe ser especifica, accionable y alineada con la marca, la categoria y el concepto semanal.
 Responde SOLO con la idea, sin preambulos ni explicaciones. Maximo 2 oraciones.`;
   }
   return `IDEA QUE YA ESCRIBIÓ EL EQUIPO:
 «${escrita.slice(0, 2000)}»
 
-Mejora y completa ESTA idea para una publicación de ${post.format}. Respeta lo que dice: el tema, el producto, la oferta y el enfoque son los suyos; no la cambies por otra idea. Si está a medias, termínala; si ya está completa, hazla más clara y concreta, alineada con la marca.
+Mejora y completa ESTA idea para ${formatoDicho(post.format)}. Respeta lo que dice: el tema, el producto, la oferta y el enfoque son los suyos; no la cambies por otra idea ni por otro formato. Si está a medias, termínala; si ya está completa, hazla más clara y concreta, alineada con la marca.
 Responde SOLO con la idea mejorada, sin preámbulos ni explicaciones. Máximo 3 oraciones.`;
 }
 
