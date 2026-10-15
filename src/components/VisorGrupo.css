@@ -23,8 +23,22 @@
 .visor-grupo-num { left: var(--sp-1); }
 .visor-grupo-usada { right: var(--sp-1); }
 .visor-grupo-pie { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-2); }
+/* Borrar va a la izquierda, lejos de «Usar» y «Descargar» */
+.visor-grupo-borrar { margin-right: auto; color: var(--danger); }
+.visor-grupo-confirmar {
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2);
+}
+/* «De la galería» de una publicación: la tarjeta escogida se marca, y el nombre del grupo va abajo */
+.galeria-selector .visor-grupo-pieza[aria-pressed="true"] { outline: 3px solid var(--accent); outline-offset: -3px; }
+.galeria-selector-pie {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-3xs); font-weight: 600; color: #fff; background: rgba(0, 0, 0, 0.72); text-align: left;
+}
+.galeria-selector-reemplazar { display: flex; align-items: center; gap: var(--sp-2); margin-right: auto; min-height: var(--tap-sm); }
 
 @media (max-width: 599px) {
   .visor-grupo-piezas { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: none; }
   .visor-grupo-pie .btn { flex: 1 1 auto; }
+  .visor-grupo-borrar { margin-right: 0; }
 }

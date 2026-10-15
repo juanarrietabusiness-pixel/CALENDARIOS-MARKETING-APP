@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { motorDeVideo, limpiarModelos } from "../../worker/lib/configIA.js";
-import { verVideo, limpiarFotogramas, ErrorVideo } from "../../worker/lib/geminiVideo.js";
+import { verVideo, limpiarFotogramas, ErrorVideo, elegirModeloVideo } from "../../worker/lib/geminiVideo.js";
 
 // ============================================================
 // Quién VE los videos: Gemini de pago, Gemini con la llave gratuita o Meta
@@ -40,6 +40,55 @@ describe("el motor que ve los videos", () => {
   it("los fotogramas: sólo JPEG en base64, de tamaño razonable, como mucho diez", () => {
     expect(limpiarFotogramas([{ segundo: 1.4, base64: JPEG }, { base64: "iVBOR" + "A".repeat(200) }, { base64: "/9j/<script>" }, null])).toEqual([{ segundo: 1, base64: JPEG }]);
     expect(limpiarFotogramas(Array.from({ length: 14 }, () => ({ base64: JPEG })))).toHaveLength(10);
+  });
+});
+
+describe("una llave sin gemini-2.5-flash (la gratuita de un proyecto nuevo)", () => {
+  const modelo = (id, metodos = ["generateContent"]) => ({ name: `models/${id}`, supportedGenerationMethods: metodos });
+
+  it("elige el Flash estable más nuevo; nada de imagen, voz ni embeddings", () => {
+    const lista = [
+      modelo("gemini-2.5-flash"), modelo("gemini-3.5-flash-lite"), modelo("gemini-3.8-flash"),
+      modelo("gemini-3.9-flash-preview"), modelo("gemini-3.9-flash-image"), modelo("gemini-3.9-flash-tts"),
+      modelo("gemini-4-pro"), modelo("text-embedding-004", ["embedContent"]), modelo("gemini-flash-latest"),
+    ];
+    expect(elegirModeloVideo(lista, ["gemini-2.5-flash"])).toBe("gemini-3.8-flash");
+    expect(elegirModeloVideo([modelo("gemini-3.9-flash-preview"), modelo("gemini-3.5-flash-lite")])).toBe("gemini-3.9-flash-preview");
+    expect(elegirModeloVideo([modelo("gemini-3.5-flash-lite"), modelo("gemini-4-pro")])).toBe("gemini-3.5-flash-lite");
+    expect(elegirModeloVideo([modelo("gemini-flash-latest")])).toBe("gemini-flash-latest");
+    expect(elegirModeloVideo([modelo("gemini-3.9-flash-image")])).toBeNull();
+    expect(elegirModeloVideo(undefined)).toBeNull();
+  });
+
+  const env = { GOOGLE_AI_KEY_GRATIS: "gg" };
+  const pedido = { bytes: new Uint8Array([1]).buffer, mime: "video/mp4", prompt: "Analiza este video." };
+  const geminiFalso = (modelos) => {
+    const pedidos = [];
+    vi.stubGlobal("fetch", async (u, init = {}) => {
+      const url = String(u);
+      pedidos.push(`${init.method ?? "GET"} ${url}`);
+      if (url.includes("/upload/v1beta/files")) return new Response("{}", { headers: { "x-goog-upload-url": "https://generativelanguage.googleapis.com/subida/1" } });
+      if (url.includes("/subida/1")) return Response.json({ file: { name: "files/abc", uri: "https://x/files/abc", state: "ACTIVE", mimeType: "video/mp4" } });
+      if (url.includes("/v1beta/models?")) return Response.json({ models: modelos });
+      if (url.includes("gemini-2.5-flash:generateContent")) return new Response('{"error":{"code":404}}', { status: 404 });
+      if (url.includes(":generateContent")) return Response.json({ candidates: [{ content: { parts: [{ text: "Un gancho y un cierre." }] } }] });
+      return new Response("{}");
+    });
+    return pedidos;
+  };
+
+  it("con 404 pregunta qué modelos tiene la llave y repite con el mejor", async () => {
+    const pedidos = geminiFalso([modelo("gemini-2.5-flash"), modelo("gemini-3.8-flash")]);
+    const texto = await verVideo({ ...env }, { ownerId: "o", leerUno: async () => ({ ia_modelos: '{"video":"gemini-gratis"}' }), insertar: async () => {} }, pedido);
+    expect(texto).toBe("Un gancho y un cierre.");
+    expect(pedidos.some((p) => p.includes("gemini-3.8-flash:generateContent"))).toBe(true);
+  });
+
+  it("si la llave no tiene ninguno que sirva, lo dice con el nombre del modelo", async () => {
+    geminiFalso([modelo("gemini-2.5-flash")]);
+    const e = await verVideo({ ...env }, null, pedido).catch((x) => x);
+    expect(e).toBeInstanceOf(ErrorVideo);
+    expect(e.message).toMatch(/no tiene el modelo gemini-2\.5-flash/);
   });
 });
 

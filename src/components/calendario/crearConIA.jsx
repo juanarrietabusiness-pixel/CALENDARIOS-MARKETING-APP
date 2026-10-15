@@ -23,8 +23,9 @@ const Estudio = lazy(() => import("../Estudio"));
  * @param referencias  archivos que van de referencia («Otra versión» de una imagen ya puesta, con su nota).
  * @param uso     { calendarId, postId }: para apuntar que esta publicación usa lo que se cree.
  * @param onUsar  recibe el archivo escogido.
+ * @param onUsarVarias  recibe un carrusel entero de la galería (o el video de un reel), en orden.
  */
-export default function CrearConIA({ client, post, tipo = "imagen", inicio = null, referencias = null, uso = null, onUsar, onCerrar }) {
+export default function CrearConIA({ client, post, tipo = "imagen", inicio = null, referencias = null, uso = null, onUsar, onUsarVarias = null, onCerrar }) {
   const ref = useDialogA11y(onCerrar);
   // Sólo cuenta al abrir: el compositor no se reinicia si la publicación cambia detrás.
   const [inicial] = useState(() => ({
@@ -45,7 +46,7 @@ export default function CrearConIA({ client, post, tipo = "imagen", inicio = nul
     <div className="overlay overlay-sheet">
       <div ref={ref} role="dialog" aria-modal="true" aria-label="Crear con IA" className="sheet sheet-estudio">
         <Suspense fallback={<p role="status" className="est-nota" style={{ padding: "var(--sp-5)" }}>Abriendo el Estudio…</p>}>
-          <Estudio client={client} modo="dialogo" inicial={inicial} uso={uso} onUsar={onUsar} onCerrar={onCerrar} />
+          <Estudio client={client} modo="dialogo" inicial={inicial} uso={uso} onUsar={onUsar} onUsarVarias={onUsarVarias} onCerrar={onCerrar} />
         </Suspense>
       </div>
     </div>

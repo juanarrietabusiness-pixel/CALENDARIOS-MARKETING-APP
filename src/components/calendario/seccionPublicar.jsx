@@ -48,6 +48,8 @@ import BotonGuardarDrive from "./botonGuardarDrive";
 const CarruselIA = lazy(() => import("./CarruselIA"));
 // «Crear reel con IA»: igual, sólo al abrirlo.
 const ReelIA = lazy(() => import("./ReelIA"));
+// «De la galería»: lo ya hecho en el Estudio (imágenes sueltas o un carrusel entero).
+const GaleriaSelector = lazy(() => import("../GaleriaSelector"));
 
 /**
  * @param formatoAuto  true cuando la publicación se creó con «Subir
@@ -102,6 +104,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
   const { abrir: abrirCreacion, dialogo: dialogoCreacion } = useCrearConIA({
     client, clientId, post, onError,
     uso: cal && post.id ? { calendarId: cal.dbId || cal.id, postId: post.id } : null,
+    onUsarVarias: (archivos) => ponerDeGaleria(archivos, { reemplazar: false }),
     onUsar: (archivo) => {
       setForm((p) => {
         const actuales = mediosDe(p);
@@ -123,6 +126,27 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
     });
     if (cal && post.id) for (const a of archivos) apuntarUso(clientId, a.id, { calendarId: cal.dbId || cal.id, postId: post.id }).catch(() => {});
     setEscrito(`Puestas ${archivos.length} láminas en la publicación, en orden.`);
+  };
+  /**
+   * «De la galería» (y «Usar el carrusel» del Estudio): lo escogido va EN ORDEN, al final o en lugar de lo que había.
+   * Con el formato automático, dos imágenes o más lo vuelven carrusel; si no, se avisa de que el formato no cambió.
+   */
+  const [galeria, setGaleria] = useState(false);
+  const ponerDeGaleria = (archivos, { reemplazar }) => {
+    setGaleria(false);
+    if (!archivos.length) return;
+    setForm((p) => {
+      const nuevos = archivos.map(medioDeArchivo);
+      const medios = (reemplazar ? nuevos : [...mediosDe(p), ...nuevos]).slice(0, LIMITES.instagram.carruselMax);
+      const siguiente = { ...conMedios(p, medios), mediosCambiadosAt: new Date().toISOString() };
+      return auto.current ? { ...siguiente, format: formatoDeMedios(medios) ?? p.format } : siguiente;
+    });
+    if (cal && post.id) for (const a of archivos) apuntarUso(clientId, a.id, { calendarId: cal.dbId || cal.id, postId: post.id }).catch(() => {});
+    const varias = archivos.length > 1;
+    const aviso = varias && !auto.current && post.format !== "carrusel" && post.format !== "historia"
+      ? " Es un «" + (post.format || "post") + "»: cámbialo a carrusel arriba si quieres que salgan como láminas."
+      : "";
+    setEscrito(`${varias ? `Puestas ${archivos.length} piezas` : "Puesta 1 pieza"} de la galería en la publicación${varias ? ", en orden" : ""}.${aviso}`);
   };
   /** El video del reel con IA: va SOLO en la publicación (sustituye lo que hubiera) y se apunta su uso. */
   const ponerReel = ([video]) => {
@@ -217,7 +241,13 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           onCrearConIA={abrirCreacion}
           onCrearCarrusel={post.format === "carrusel" && clientId ? () => setCarrusel(true) : null}
           onCrearReel={post.format === "reel" && clientId ? () => setReel(true) : null}
+          onDeLaGaleria={clientId ? () => setGaleria(true) : null}
         />
+        {galeria && (
+          <Suspense fallback={null}>
+            <GaleriaSelector clienteId={clientId} maximo={LIMITES.instagram.carruselMax} yaTiene={mediosDe(post).length} onElegir={ponerDeGaleria} onCerrar={() => setGaleria(false)} />
+          </Suspense>
+        )}
         {/* «Guardar en Drive»: en la carpeta del cliente, por mes y semana (sólo si tiene carpeta). */}
         {client?.driveFolder && clientId && day?.date && (
           <BotonGuardarDrive clientId={clientId} post={post} fecha={day.date} onGuardado={(g) => sf("guardadoDrive", g)} />

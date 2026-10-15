@@ -281,12 +281,57 @@ describe("POST /api/estudio/<cliente>/lote/mes (el mes completo)", () => {
     expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("lote del mes");
   });
 
+  it("los días que ya tienen publicación no se vuelven a llenar; si no queda ninguno, lo dice sin gastar", async () => {
+    anthropic(JSON.stringify({ ideas: [1, 2].map((n) => ({ n, titular: `Titular ${n}`, escena: `Escena ${n}` })) }));
+    const r = await (await delMes({ mes: "2030-03", dias: [1], formato: "post", omitir: ["2030-03-04", "2030-03-18", "basura"] })).json();
+    expect(r.ideas.map((i) => i.fecha)).toEqual(["2030-03-11", "2030-03-25"]);
+    peticiones.length = 0;
+    const todo = await delMes({ mes: "2030-03", dias: [1], omitir: ["2030-03-04", "2030-03-11", "2030-03-18", "2030-03-25"] });
+    expect(todo.status).toBe(400);
+    expect((await todo.json()).error).toMatch(/ya tienen publicación/);
+    expect(peticiones).toHaveLength(0);
+  });
+
   it("un mes que ya pasó, o sin días con tipo, no llama a nadie", async () => {
     anthropic("x");
     expect((await delMes({ mes: "2020-01", dias: [1] })).status).toBe(400);
     expect((await delMes({ mes: "2030-03", dias: [0] })).status).toBe(400);
     expect((await delMes({ mes: "nada" })).status).toBe(400);
     expect(peticiones).toHaveLength(0);
+  });
+});
+
+describe("POST /api/estudio/<cliente>/lote/ideas: UNA publicación («Generar» de la Idea / Brief)", () => {
+  const una = (datos) => pedir("/api/estudio/c1/lote/ideas", { method: "POST", body: { modo: "publicacion", ...datos } });
+
+  it("con lo que ya trae la publicación, el formato dicho con todas sus letras, el precio EXACTO y lo que ya hay en el mes", async () => {
+    await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: [{ id: "sofa", nombre: "Sofá cama", precio: "$399" }, { id: "mesa", nombre: "Mesa", precio: "$120" }] } });
+    anthropic(JSON.stringify({ ideas: [{ n: 1, titulo: "Visitas sin estrés", brief: "Resuelve dónde duermen las visitas", titular: "¿Llegan visitas?", apoyo: "Sofá cama $399", escena: "Una sala de tarde con el sofá abierto" }] }));
+    const res = await una({
+      formato: "post",
+      publicacion: { fecha: "2030-03-04", pilar: "beneficios", productoId: "sofa", nivel: "solucion", deseo: "tranquilidad", perfil: "Mamá organizada" },
+      nota: "campaña del mes: Marzo cómodo", usados: ["Duerme mejor"],
+    });
+    expect(res.status).toBe(200);
+    const [idea] = (await res.json()).ideas;
+    expect(idea).toMatchObject({ productoId: "sofa", nivel: "solucion", fecha: "2030-03-04", titulo: "Visitas sin estrés", textoPieza: "¿Llegan visitas?\nSofá cama $399" });
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/UNA publicación de una imagen/);
+    expect(t).toMatch(/POST de UNA sola imagen fija.*No propongas carrusel, video ni reel/s);
+    expect(t).toMatch(/Sofá cama \(producto\) · precio: \$399/);
+    expect(t).toMatch(/Contexto de esta publicación: campaña del mes: Marzo cómodo/);
+    expect(t).toMatch(/Duerme mejor/);
+    expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("publicación");
+    expect(db.sqlite.prepare("select count(*) as n from estudio_trabajos").get().n).toBe(0);
+  });
+
+  it("un carrusel pide su guion por láminas y dice que no es una sola imagen", async () => {
+    anthropic(JSON.stringify({ ideas: [{ n: 1, titular: "3 errores", escena: "Una sala", guion: "Portada: 3 errores\nCTA: Escríbenos" }] }));
+    const [idea] = (await (await una({ formato: "carrusel", publicacion: { pilar: "educativo" } })).json()).ideas;
+    expect(idea.guion).toMatch(/Portada/);
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/CARRUSEL de varias láminas/);
+    expect(t).toMatch(/"guion": las láminas del carrusel/);
   });
 });
 

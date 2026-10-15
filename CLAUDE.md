@@ -152,6 +152,8 @@ src/
     ideasEstudio.js       «Dame ideas» del Estudio: el plan (tipo, composición, producto), el pedido y su lectura
                           (puro; también lo importa el Worker)
     ideasFormato.js       «Dame ideas» de carrusel (tema + guion por láminas) y de reel IA (idea central) (puro; también el Worker)
+    ideaPublicacion.js    «Generar» la idea de UNA publicación vacía por el camino del lote (modo «publicacion»): el pedido y
+                          `rellenarConIdea` (sólo lo vacío)
     zip.js                Un ZIP sin comprimir hecho en el navegador («Descargar el carrusel»), con su CRC-32 (puro)
     logoEncima.js         El logo ESTAMPADO: modos, esquinas, `posicionLogo` (puro, también lo lee el kit) y el lienzo
     logoEstudio.js        Estampar el logo y subir la pieza nueva a la galería; `conLogoSiToca` para lote, carrusel y mes
@@ -280,13 +282,16 @@ src/
     EstudioRecrear.jsx    «Recrear un anuncio»: el anuncio (subir, galería o Drive), el análisis y la versión editable (lazy)
     EstudioKit.jsx        El kit de marca: prepararlo con IA desde el cerebro, revisarlo, guardarlo (también las reglas que no se
                           rompen y quién pone el logo)
-    VisorGrupo.jsx        Un carrusel o un reel de la galería con sus piezas en orden y «Descargar» en ZIP (lazy)
+    VisorGrupo.jsx        Un carrusel o un reel de la galería con sus piezas en orden, «Descargar» en ZIP, «Usar el carrusel
+                          en la publicación» y «Mandar el carrusel a la papelera» (lazy)
+    GaleriaSelector.jsx   «De la galería» del panel de una publicación: imágenes sueltas o un carrusel entero, en orden (lazy)
     IdeasDeFormato.jsx    «Dame ideas» en el paso 1 del carrusel y del reel IA
     ReferenciasGaleria.jsx  Ejemplos de la galería al corregir (y referencias del reel), cada uno con qué se toma
     GuardarRegla.jsx      «Guardar como regla» junto a cada corrección
     calendario/RevisionMes.jsx  «Revisar el mes» antes de enviarlo: reglas, IA opcional e imágenes contra el kit (lazy)
     calendario/CarruselIA.jsx   «Crear carrusel con IA»: el guion en láminas, el texto por IA o por plantilla, rehacer una (lazy)
-    calendario/ProducirMes.jsx  «Producir el mes con IA»: las piezas que faltan en lote, con costo y confirmación (lazy)
+    calendario/ProducirMes.jsx  «Diseñar las que ya hay»: las piezas que faltan en lote, con costo y confirmación (lazy)
+    calendario/ProducirElMes.jsx  El botón «Producir el mes»: crear lo que falta (lote del Estudio) o diseñar lo que hay (lazy)
     calendario/crearConIA.jsx  El Estudio en un diálogo dentro del panel de una publicación y de «Subir»
                           (el hook que lo abre, en hooks/useCrearConIA.jsx)
     Cerebro.jsx           La pestaña Cerebro: las notas de un cliente, filtros, buscar, añadir, subir
@@ -1397,6 +1402,9 @@ son del servidor.
   recibe y tiene topes, y el 429 lo dice así) o Meta. Meta NO recibe video: `verVideo` contesta 409
   `codigo: "fotogramas"` y el navegador los saca (`conFotogramas` en db.js) y repite el pedido; sin audio, sin
   transcripción. `agregarReferencia` NO guarda la referencia en ese 409 (si no, el reintento la guardaría dos veces).
+  **La llave gratuita daba 404 y la de pago no:** Google dejó los 2.5 sólo para los proyectos que ya los usaban, y la
+  llave gratuita suele ser de un proyecto nuevo. Con un 404 al analizar, `verVideo` pregunta a `/v1beta/models` qué
+  tiene ESA llave (`elegirModeloVideo`: Flash estable más nuevo, sin imagen ni voz) y repite. El video ya subido vale.
 - **El lote del MES completo** (Producir en lote → «Mes completo», `POST /api/estudio/<c>/lote/mes`): el mes y los días
   de la semana; cada día toma su tipo del RITMO del cliente con los ajustes de temporada (`sugerenciasDeTemporada`,
   aplicados solos: son conservadores) y la matriz de «Planificar mes» (`asignarMatriz`). Las piezas van al calendario
@@ -1411,6 +1419,31 @@ son del servidor.
   `FORMATOS_LOTE`): la IA escribe además su guion y cada idea pasa por el camino de a mano —`crearCarruselDeIdea`
   (propuesta + láminas) y `crearReelDeIdea` (planos + fotogramas + video)—, uno detrás de otro; sin revisión entre
   medias: los tramos y las láminas se corrigen después en el Estudio. Los personajes del kit también van en el lote.
+- **«Generar» la idea de un post vacío va por el LOTE** (`src/lib/ideaPublicacion.js`, modo «publicacion» de
+  `POST /api/estudio/<c>/lote/ideas`). Antes era una frase genérica («una idea creativa, 2 oraciones») con «publicación de
+  post» sin decir qué es un post: salían ideas planas, y para un post a veces un carrusel o un reel. Ahora es UNA casilla
+  de `darForma` con lo que ya trae la publicación (tipo, producto, nivel, deseo, perfil, la fecha especial de su día), la
+  campaña y la semana como `nota`, y lo que ya hay en el mes en `usados`; el estudio de mercado, el catálogo y el cerebro,
+  como el lote. `REGLA_FORMATO` (loteAnuncios.js) dice con todas sus letras qué es cada formato, también en el lote, y
+  `instruccionIdea` (api.js, el camino de una idea ya escrita y del banco) nombra el formato y prohíbe cambiarlo.
+  `rellenarConIdea` SÓLO rellena: título, idea (el brief), qué se ve, el texto de la pieza (no en carrusel ni en reel) y
+  el guion (sólo carrusel y reel); el producto va con su nombre o no va. Un directo sigue por el camino de siempre.
+- **El lote del mes salta los días que ya tienen publicación** (`omitir` en `lote/mes`, `diasConPublicacion` en
+  loteMes.js con `client.calendars`): antes «Mes completo» creaba una segunda encima. Todos ocupados: 400 sin llamar a la
+  IA. Lo que ya hay se diseña con «Diseñar las que ya hay» (ProducirMes).
+- **«Producir el mes» es el botón grande del calendario** (antes «Generar contenido», que sólo escribía textos). Sin
+  publicaciones va directo al Estudio con `?lote=mes&mes=AAAA-MM` (Estudio lo lee al montar, abre el lote en «Mes completo»
+  con ese mes —también uno de más de dos meses adelante— y quita la búsqueda de la dirección); con publicaciones pregunta
+  (`ProducirElMes.jsx`): crear lo que falta o diseñar lo que hay. «Completar los textos que faltan» (el `generateScripts`
+  de siempre) quedó en el menú «⋯».
+- **«De la galería» en una publicación** (`GaleriaSelector.jsx`, botón de `EditorMedios`): un carrusel o un reel es UNA
+  tarjeta y tocarla escoge todas sus piezas en su orden; las sueltas, una a una con su número. Con algo ya puesto pregunta
+  añadir o reemplazar; con el formato automático, dos o más lo vuelven carrusel (si no, se avisa). Se apunta el uso de
+  cada una. Desde «Crear con IA», el visor de un carrusel tiene «Usar el carrusel en la publicación» (`onUsarVarias`, que
+  AÑADE; en un reel, sólo el video). Va lazy: `lib/estudio.js` no puede entrar al arranque.
+- **«Mandar el carrusel a la papelera»** (VisorGrupo, con segundo toque): se va TODO lo de su carpeta (`todas`), también
+  las crudas sin texto y las versiones viejas, y lo dice; avisa de las que usa una publicación (siguen viéndose ahí y la
+  papelera no las purga). La carpeta se queda: sin piezas, la galería no la pinta.
 - **«Dame ideas»** (`POST /api/estudio/<c>/ideas`): variadas (un tipo de contenido distinto cada una) o del tipo
   escogido, sobre lo escrito si hay algo. «Usar» pone escena + texto exacto, el tipo y las fotos de su producto.
 - **Varios productos en una pieza**: `productosNombrados` encuentra TODOS los que nombra la idea («Sofá cama» no cuenta

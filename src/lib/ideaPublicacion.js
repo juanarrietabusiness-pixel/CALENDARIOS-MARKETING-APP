@@ -1,0 +1,90 @@
+// ============================================================
+// «Generar» la idea de UNA publicación, como el Estudio
+//
+// Antes, la Idea / Brief de un post vacío se pedía con una frase genérica
+// («una idea creativa… máximo 2 oraciones») y «publicación de post» sin decir
+// qué es un post: salían ideas planas, a veces de carrusel o de reel para un
+// post. Ahora va por el MISMO camino que el lote (worker/lib/estudio/lote.js,
+// modo «publicacion»): el formato dicho con todas sus letras, el tipo, el
+// producto, el nivel, el deseo y el perfil que ya trae la publicación, el
+// estudio de mercado, el catálogo con su precio exacto, la fecha especial del
+// día, la campaña y la semana, y lo que ya hay en el mes para no repetirlo.
+//
+// Sólo RELLENA: título, idea, qué se ve, el texto de la pieza (no en carrusel
+// ni en video) y el guion (carrusel y reel). Lo que ya tiene texto se queda.
+// Con una idea ya escrita, «Completar» sigue en api.js (instruccionIdea): mejora
+// la de la persona, no la cambia por otra.
+// ============================================================
+
+import { pedir } from "./db";
+
+/** Los formatos que se escriben por este camino; un directo sigue con el de siempre. */
+export const FORMATO_DEL_LOTE = Object.freeze({ post: "post", historia: "historia", carrusel: "carrusel", reel: "reel" });
+
+/** ¿Esta publicación se escribe como el lote? (formato conocido e idea vacía). Pura. */
+export const ideaComoElLote = (post = {}) => Boolean(FORMATO_DEL_LOTE[post.format]) && !String(post.idea ?? "").trim();
+
+/** Lo que ya hay en el mes (título o primera línea del texto de la pieza), para no repetirlo. Pura. */
+export function usadosDelMes(cal, postId = "") {
+  const fuera = [];
+  for (const d of cal?.days ?? []) {
+    for (const p of d.posts ?? []) {
+      if (p.id === postId) continue;
+      const t = String(p.title || String(p.textoPieza ?? "").split("\n")[0] || "").trim();
+      if (t && !fuera.includes(t)) fuera.push(t.slice(0, 80));
+    }
+  }
+  return fuera.slice(0, 30);
+}
+
+/** El contexto que no está en la matriz: la campaña, la semana, la fecha y el título si ya lo tiene. Pura. */
+export function notaDePublicacion(post = {}, day = {}, cal = {}) {
+  return [
+    cal?.campaign ? `campaña del mes: ${cal.campaign}` : "",
+    day?.concept ? `semana: ${day.concept}` : "",
+    post.title ? `título: ${post.title}` : "",
+    post.escena ? `qué se ve (ya escrito): ${post.escena}` : "",
+  ].filter(Boolean).join(" · ").slice(0, 600);
+}
+
+/** Pide la idea al servidor → la idea (titulo, brief, titular, apoyo, escena, textoPieza, guion…). */
+export async function ideaParaPublicacion(clienteId, { post, day, cal }) {
+  const r = await pedir(`/estudio/${encodeURIComponent(clienteId)}/lote/ideas`, {
+    method: "POST",
+    body: JSON.stringify({
+      modo: "publicacion", formato: FORMATO_DEL_LOTE[post.format] ?? "post",
+      publicacion: {
+        fecha: day?.date ?? "", pilar: post.pilar ?? "", pilarSub: post.pilarSub ?? "", productoId: post.productoId ?? "",
+        nivel: post.nivel ?? "", deseo: post.deseo ?? "", perfil: post.perfil ?? "",
+      },
+      nota: notaDePublicacion(post, day, cal), usados: usadosDelMes(cal, post.id), semilla: Date.now() % 997,
+    }),
+  });
+  const idea = r?.ideas?.[0];
+  if (!idea) throw new Error("La IA no devolvió una idea que se pueda leer. Inténtalo otra vez.");
+  return idea;
+}
+
+/** Los cambios que pone la idea en la publicación, SÓLO en lo vacío → { cambios, campos } (campos: qué se rellenó). Pura. */
+export function rellenarConIdea(post = {}, idea = {}) {
+  const vacio = (k) => !String(post[k] ?? "").trim();
+  const video = post.format === "reel";
+  const carrusel = post.format === "carrusel";
+  const propuesta = {
+    title: idea.titulo || idea.titular || "",
+    idea: idea.brief || idea.escena || "",
+    escena: idea.escena || "",
+    // El texto encima del diseño: en un carrusel va lámina por lámina (en el guion) y a un video no se le pide.
+    textoPieza: carrusel || video ? "" : idea.textoPieza || "",
+    guion: carrusel || video ? idea.guion || "" : "",
+    // Lo que trae la matriz, si la publicación no lo tenía (así «Crear con IA» sabe de qué producto es).
+    ...(idea.productoId ? { productoId: idea.productoId, producto: idea.producto ?? "" } : {}),
+    ...(idea.nivel ? { nivel: idea.nivel } : {}),
+  };
+  const cambios = {};
+  for (const [k, v] of Object.entries(propuesta)) if (String(v ?? "").trim() && vacio(k)) cambios[k] = v;
+  // El producto va con su nombre: o los dos, o ninguno (uno que ya tenía producto no lo cambia).
+  if (!cambios.productoId) delete cambios.producto;
+  const NOMBRES = { title: "título", idea: "idea", escena: "qué se ve", textoPieza: "texto de la pieza", guion: "guion" };
+  return { cambios, campos: Object.keys(cambios).map((k) => NOMBRES[k]).filter(Boolean) };
+}

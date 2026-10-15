@@ -65,6 +65,18 @@ export const FORMATOS_LOTE = Object.freeze({
   reel: { nombre: "Reel IA 10 s", aspectRatio: "9:16", format: "reel", guiado: true },
 });
 
+/**
+ * Qué ES cada formato, dicho a la IA: sin esto, «una publicación de post» era ambiguo y a veces proponía un carrusel o
+ * un reel para un post. La idea tiene que ser del formato escogido, nunca de otro.
+ */
+export const REGLA_FORMATO = Object.freeze({
+  post: "Es un POST de UNA sola imagen fija (4:5): la idea se resuelve en una imagen. No propongas carrusel, video ni reel.",
+  cuadrado: "Es un POST de UNA sola imagen fija cuadrada: la idea se resuelve en una imagen. No propongas carrusel, video ni reel.",
+  historia: "Es una HISTORIA de Instagram: una sola imagen vertical 9:16 que se ve unos segundos; una idea rápida y directa. No propongas carrusel ni reel.",
+  carrusel: "Es un CARRUSEL de varias láminas que se deslizan: la idea se desarrolla lámina a lámina. No propongas una sola imagen ni un video.",
+  reel: "Es un REEL: un video vertical de 10 segundos con varios planos. No propongas una imagen fija ni un carrusel.",
+});
+
 /** El guion que se le pide a la IA en un formato guiado (vacío en los de una imagen). */
 const GUION_DE_FORMATO = Object.freeze({
   carrusel: '- "guion": las láminas del carrusel, de 5 a 7, una por línea: «Portada: …», «Slide 1: …», …, «CTA: …». Cada una, una idea corta que se lee en dos segundos; el precio, EXACTO.',
@@ -253,10 +265,14 @@ function lineaDePieza(r, productos = {}) {
  */
 export function pedidoDeProduccion({
   marca = "la marca", plan = [], productos = {}, perfiles = {}, estudio = "", contexto = "", usados = [], formato = "post", fechasEspeciales = [], mes = false,
+  nota = "",
 }) {
   const perfilesUsados = [...new Set(plan.map((r) => r.perfil).filter(Boolean))].filter((n) => perfiles[n]);
+  const cuantas = plan.length === 1 ? "UNA publicación" : `${plan.length} publicaciones`;
   return [
-    `Escribe ${plan.length} publicaciones ${FORMATOS_LOTE[formato]?.guiado ? `de formato ${FORMATOS_LOTE[formato].nombre}` : `de una imagen (${FORMATOS_LOTE[formato]?.nombre ?? "post"})`} para ${marca}${mes ? ", una por día del mes" : ""}. Cada una tiene YA decidido su tipo de contenido (lo que comunica), su nivel de consciencia, su gancho y su composición (la de la portada o el primer plano): respétalos.`,
+    `Escribe ${cuantas} ${FORMATOS_LOTE[formato]?.guiado ? `de formato ${FORMATOS_LOTE[formato].nombre}` : `de una imagen (${FORMATOS_LOTE[formato]?.nombre ?? "post"})`} para ${marca}${mes ? ", una por día del mes" : ""}. ${plan.length === 1 ? "Tiene" : "Cada una tiene"} YA decidido su tipo de contenido (lo que comunica), su nivel de consciencia, su gancho y su composición (la de la portada o el primer plano): respétalos.`,
+    REGLA_FORMATO[formato] ?? "",
+    nota ? `Contexto de esta publicación: ${corto(nota, 600)}` : "",
     perfilesUsados.length ? `Los perfiles:\n${perfilesUsados.map((n) => `- ${n}: ${perfiles[n]}`).join("\n")}` : "",
     fechasEspeciales.length ? `Fechas especiales:\n${fechasEspeciales.map((f) => `- ${f}`).join("\n")}` : "",
     "",

@@ -71,3 +71,19 @@ export const mesDe = (texto) => {
   return Number.isInteger(y) && m >= 1 && m <= 12 ? { year: y, month: m - 1 } : null;
 };
 export const textoMes = (year, month) => `${year}-${dos(month + 1)}`;
+
+/**
+ * Los días de un mes («AAAA-MM») que ya tienen alguna publicación en el calendario del cliente: el lote del mes los
+ * SALTA (`omitir` en el servidor). Lo que ya hay se diseña con «Diseñar las que ya hay» del calendario. Pura.
+ */
+export function diasConPublicacion(calendarios = [], mes = "") {
+  const m = mesDe(mes);
+  if (!m) return [];
+  const fechas = new Set();
+  for (const cal of calendarios ?? []) {
+    for (const d of cal?.days ?? []) {
+      if (String(d?.date ?? "").startsWith(`${mes}-`) && (d.posts ?? []).length) fechas.add(d.date);
+    }
+  }
+  return [...fechas].sort();
+}

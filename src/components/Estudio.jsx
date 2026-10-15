@@ -100,7 +100,7 @@ function formularioInicial(motores, inicial, productos = [], fijados = {}) {
   };
 }
 
-export default function Estudio({ client, pulso = 0, modo = "pestana", inicial = null, uso = null, onUsar = null, onCerrar = null, onLlevarAlCalendario = null }) {
+export default function Estudio({ client, pulso = 0, modo = "pestana", inicial = null, uso = null, onUsar = null, onUsarVarias = null, onCerrar = null, onLlevarAlCalendario = null }) {
   const ids = useId();
   const lectura = soloLectura();
   const dialogo = modo === "dialogo";
@@ -179,7 +179,14 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const [visor, setVisor] = useState(null);
   const [grupoAbierto, setGrupoAbierto] = useState(null);
   const [descartados, setDescartados] = useState(() => new Set());
-  const [loteAbierto, setLoteAbierto] = useState(false);
+  // «Producir el mes» del calendario llega con «?lote=mes&mes=AAAA-MM»: abre el lote en «Mes completo» con ese mes.
+  const [loteAbierto, setLoteAbierto] = useState(() => {
+    const q = modo === "pestana" ? new URLSearchParams(window.location.search) : null;
+    return !lectura && q?.get("lote") === "mes" ? { alcance: "mes", mes: q.get("mes") ?? "" } : false;
+  });
+  useEffect(() => {
+    if (loteAbierto?.alcance) window.history.replaceState(window.history.state, "", window.location.pathname);
+  }, [loteAbierto]);
   const [recrear, setRecrear] = useState(null); // null, o { archivo }: «Recrear un anuncio» abierto (con uno ya escogido)
   const [carpetaNueva, setCarpetaNueva] = useState(null);
   const [renombrando, setRenombrando] = useState(null);
@@ -851,6 +858,24 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     }
   };
 
+  /** Un carrusel entero (o el video de un reel) a la publicación, en orden, con su uso apuntado. */
+  const usarVarias = async (lista) => {
+    try {
+      if (uso) for (const a of lista) await api.apuntarUso(client.id, a.id, uso);
+      setGrupoAbierto(null);
+      onUsarVarias(lista);
+    } catch (e) {
+      avisar(false, e.message);
+    }
+  };
+  /** «Mandar el carrusel a la papelera»: todo lo de su carpeta, también las crudas. */
+  const grupoAPapelera = async (lista) => {
+    for (const id of lista) await api.mandarAPapelera(client.id, id);
+    setGrupoAbierto(null);
+    avisar(true, `${lista.length} a la papelera. Puedes recuperarlas 30 días.`);
+    await cargar();
+  };
+
   // ---------- El kit de marca ----------
   const guardarKitDeMarca = async (nuevo) => {
     const r = await api.guardarKit(client.id, nuevo);
@@ -1008,10 +1033,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           />
         </Suspense>
       )}
-      {loteAbierto && (
+      {loteAbierto && motores && datos && (
         <Suspense fallback={null}>
           <EstudioLote
             client={client} motores={motores} productosConFotos={datos?.productos ?? []} archivos={datos?.archivos ?? []} papelera={datos?.papelera ?? []} kit={kit}
+            inicial={loteAbierto?.alcance ? loteAbierto : null}
             onCerrar={() => setLoteAbierto(false)} onHecho={cargar} onLlevar={onLlevarAlCalendario}
           />
         </Suspense>
@@ -1327,6 +1353,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         <Suspense fallback={null}>
           <VisorGrupo
             grupo={grupoAbierto} onCerrar={() => setGrupoAbierto(null)}
+            todas={archivos.filter((a) => a.carpetaId === grupoAbierto.carpeta.id)}
+            onUsar={onUsarVarias ? usarVarias : null} onPapelera={lectura ? null : grupoAPapelera}
             onAbrir={(a) => { setGrupoAbierto(null); abrirPieza(a); }}
             onSueltas={() => { setFiltro(grupoAbierto.carpeta.id); setGrupoAbierto(null); }}
           />

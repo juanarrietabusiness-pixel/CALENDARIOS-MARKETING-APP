@@ -17,7 +17,7 @@ import {
 import { pedidoDeLote, crearLote, crearCarruselDeIdea, crearReelDeIdea } from "../lib/loteEstudio";
 import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
 import { modelosParaReel, modeloRecomendadoParaReel } from "../lib/reelEstudio";
-import { DIAS_LOTE, diasDelLote, diasConTipo, carpetaDelMes, fechaCortaLote, mesDe, textoMes } from "../lib/loteMes";
+import { DIAS_LOTE, diasDelLote, diasConTipo, carpetaDelMes, fechaCortaLote, mesDe, textoMes, diasConPublicacion } from "../lib/loteMes";
 import { PILARES, presetDePilar, nombreDePilar } from "../lib/pilares";
 import { fechasDelMes } from "../lib/fechasEspeciales";
 import { fechaEnZona } from "../lib/agenda";
@@ -65,7 +65,10 @@ const TANDA = 6;
 const LAMINAS_APROX = 6;
 const PLANOS_APROX = 5;
 
-export default function EstudioLote({ client, motores, productosConFotos = [], archivos = [], papelera = [], kit, onCerrar, onHecho, onLlevar = null }) {
+/**
+ * @param inicial  { alcance, mes }: desde «Producir el mes» del calendario abre en «Mes completo» con ESE mes.
+ */
+export default function EstudioLote({ client, motores, productosConFotos = [], archivos = [], papelera = [], kit, inicial = null, onCerrar, onHecho, onLlevar = null }) {
   const ids = useId();
   const clienteId = client.dbId || client.id;
   const activos = useMemo(() => Object.fromEntries(Object.entries(motores ?? {}).map(([k, v]) => [k, Boolean(v.activo)])), [motores]);
@@ -74,7 +77,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const hoy = fechaEnZona();
 
   const [paso, setPaso] = useState(0);
-  const [alcance, setAlcance] = useState("anuncios");
+  const [alcance, setAlcance] = useState(() => (MODOS.some(([id]) => id === inicial?.alcance) ? inicial.alcance : "anuncios"));
   const [mercado, setMercado] = useState(null); // { catalogo, general }
   const [productoId, setProductoId] = useState("");
   // Anuncios: la matriz del estudio (si lo hay) o por niveles.
@@ -84,8 +87,14 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const [nivelesSel, setNivelesSel] = useState(CLAVES_NIVEL);
   const [cuantas, setCuantas] = useState(cuantasPorDefecto);
   const [tipos, setTipos] = useState(() => Object.fromEntries(PILARES.map((p) => [p.id, p.id === "anuncio" ? 0 : 2])));
+  // Los meses que se ofrecen: este y los dos siguientes, más el que pidió el calendario si es más adelante.
+  const meses = useMemo(() => {
+    const lista = mesesParaLote(hoy);
+    return mesDe(inicial?.mes) && inicial.mes > lista[0] && !lista.includes(inicial.mes) ? [...lista, inicial.mes] : lista;
+  }, [hoy, inicial?.mes]);
   const [mes, setMes] = useState(() => {
-    const [este, siguiente] = mesesParaLote(hoy);
+    if (meses.includes(inicial?.mes)) return inicial.mes;
+    const [este, siguiente] = meses;
     return Number(hoy.slice(8, 10)) > 20 ? siguiente : este;
   });
   const [diasSel, setDiasSel] = useState(null);
@@ -149,10 +158,14 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const mesElegido = mesDe(mes);
   const diasRitmo = mesElegido ? diasConTipo(client.ritmoContenido, mesElegido.year, mesElegido.month) : [];
   const dias = diasSel ?? diasRitmo;
-  const diasDelMes = esMes && mesElegido ? diasDelLote({
+  // Los días que ya tienen publicación se saltan: no se crea una segunda encima de lo que ya hay.
+  const ocupados = esMes ? diasConPublicacion(client.calendars, mes) : [];
+  const diasDelMesTodos = esMes && mesElegido ? diasDelLote({
     ...mesElegido, ritmo: client.ritmoContenido, fechas: fechasDelMes(mesElegido.year, mesElegido.month, client.fechasEspeciales),
     dias, desde: mes === hoy.slice(0, 7) ? hoy : "",
   }) : [];
+  const diasDelMes = diasDelMesTodos.filter((d) => !ocupados.includes(d.fecha));
+  const saltados = diasDelMesTodos.length - diasDelMes.length;
   const tiposDelMes = Object.entries(diasDelMes.reduce((m, d) => ({ ...m, [d.pilar]: (m[d.pilar] ?? 0) + 1 }), {}));
   const total = esMes ? diasDelMes.length
     : alcance === "tipos" ? celdasPorTipos(tipos).length
@@ -194,7 +207,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     try {
       // Otro punto de partida en cada lote, lo que ya salió para no repetirlo y las composiciones que funcionan.
       const comun = { formato, semilla: Math.floor(Math.random() * 1000), composiciones: aprendido.orden };
-      const cuerpo = esMes ? { ...comun, mes, dias }
+      const cuerpo = esMes ? { ...comun, mes, dias, omitir: ocupados }
         : alcance === "tipos" ? { ...comun, modo: "tipos", tipos }
           : esMatriz ? { ...comun, modo: "matriz", productoId: productoId || undefined, deseos: deseosElegidos, perfiles: perfilesElegidos, niveles: nivelesSel }
             : { ...comun, modo: "niveles", productoId: productoId || undefined, cuantas: limpiarCuantas(cuantas) };
@@ -441,7 +454,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                   <div className="field">
                     <label className="label" htmlFor={`${ids}-mes`}>Mes</label>
                     <select id={`${ids}-mes`} className="input" value={mes} onChange={(e) => setMes(e.target.value)}>
-                      {mesesParaLote(hoy).map((m) => <option key={m} value={m}>{MONTHS[Number(m.slice(5, 7)) - 1]} {m.slice(0, 4)}</option>)}
+                      {meses.map((m) => <option key={m} value={m}>{MONTHS[Number(m.slice(5, 7)) - 1]} {m.slice(0, 4)}</option>)}
                     </select>
                   </div>
                   <div className="field">
@@ -455,6 +468,11 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                       {diasDelMes.some((d) => d.cambio) ? ` Ajustes de temporada: ${diasDelMes.filter((d) => d.cambio).map((d) => `${fechaCortaLote(d.fecha)} (${d.cambio})`).join("; ")}.` : ""}
                       {" "}El ritmo se cambia en la ficha del cliente.
                     </p>
+                    {saltados > 0 && (
+                      <p className="hint">
+                        Se saltan {saltados} {saltados === 1 ? "día que ya tiene" : "días que ya tienen"} publicación. Para diseñar lo que ya hay, en el calendario: «Producir el mes» → «Diseñar las que ya hay».
+                      </p>
+                    )}
                   </div>
                 </>
               )}
