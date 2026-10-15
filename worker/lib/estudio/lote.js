@@ -13,6 +13,11 @@
 //   · matriz   { productoId?, deseos: [..], perfiles: [..], niveles: [..] } (los del estudio aprobado)
 //   · tipos    { tipos: { educativo: 3, … } }
 //   · mes      { mes: "AAAA-MM", dias: [0–6], omitir?: ["AAAA-MM-DD"] } (omitir: los días que ya tienen publicación)
+//   · plan     { casillas: [{ clave, fecha, formato, pilar, pilarSub?, productoId?, nivel?, deseo?, perfil?, semana?, idea? }],
+//                estrategia?: { objetivo, campana, foco, ofertas, codigo, semanas: [..] } }: el plan del mes YA decidido por la
+//                pantalla («Planificar mes» y «Mes completo» con la plantilla del cliente): formatos MEZCLADOS (post,
+//                carrusel, reel, historia), varias por día, la campaña y el concepto de cada semana. Cada idea vuelve con
+//                su `clave` para ponerla en su sitio.
 //   · publicacion { publicacion: { fecha?, pilar?, pilarSub?, productoId?, nivel?, deseo?, perfil? }, nota? }: UNA pieza,
 //     la de una publicación del calendario («Generar» de su Idea / Brief), con lo que ya trae y la misma calidad del lote
 // Comunes: { formato, semilla?, usados?, composiciones? } (las que funcionan con este cliente).
@@ -25,6 +30,7 @@
 // ============================================================
 
 import { llamarIA } from "../cerebro/ia.js";
+import { aprenderComposiciones } from "../../../src/lib/loteAnuncios.js";
 import { contexto as contextoCerebro } from "../cerebro/cerebro.js";
 import { leerMercado } from "../mercado.js";
 import { productosActivos, productosParaPlan, lineaDeProducto, notaDeProducto, resumenGeneral, limpiarEstudio } from "../../../src/lib/estudioMercado.js";
@@ -43,7 +49,51 @@ const leerJSON = (t) => {
   if (t && typeof t === "object") return t;
   try { return JSON.parse(t); } catch { return null; }
 };
-const MODOS = ["niveles", "matriz", "tipos", "mes", "publicacion"];
+const MODOS = ["niveles", "matriz", "tipos", "mes", "publicacion", "plan"];
+/** Cuántas casillas puede traer un plan como mucho (un mes de cuatro por día). */
+export const MAX_CASILLAS = 124;
+const corto = (t, max = 80) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, max);
+
+/**
+ * Las casillas del plan que manda la pantalla, limpias: sólo fechas, formatos, tipos, niveles y productos que existen;
+ * el producto, sólo si está activo. Pura salvo por `activos`.
+ */
+export function limpiarCasillas(lista, activos = []) {
+  return (Array.isArray(lista) ? lista : []).slice(0, MAX_CASILLAS).flatMap((c) => {
+    if (!c || typeof c !== "object") return [];
+    const formato = FORMATOS_LOTE[c.formato] ? c.formato : "";
+    if (!formato) return [];
+    const fecha = FECHA.test(String(c.fecha ?? "")) ? String(c.fecha) : "";
+    const pilar = pilarDe(c.pilar) ? idDePilar(c.pilar) : "";
+    const prod = c.productoId ? activos.find((x) => x.id === c.productoId) : null;
+    return [{
+      clave: corto(c.clave, 40) || `${fecha}|${formato}`,
+      formato,
+      ...(fecha ? { fecha } : {}),
+      ...(pilar ? { tipo: pilar, pilar } : {}),
+      ...(pilar === "maletas" && c.pilarSub ? { pilarSub: corto(c.pilarSub) } : {}),
+      ...(CLAVES_NIVEL.includes(c.nivel) ? { nivel: c.nivel } : {}),
+      ...(corto(c.deseo) ? { deseo: corto(c.deseo) } : {}),
+      ...(corto(c.perfil) ? { perfil: corto(c.perfil) } : {}),
+      ...(prod ? { productoId: prod.id } : {}),
+      ...(corto(c.semana, 160) ? { semana: corto(c.semana, 160) } : {}),
+      ...(corto(c.especial, 120) ? { especial: corto(c.especial, 120) } : {}),
+      ...(corto(c.idea, 400) ? { ideaPersona: corto(c.idea, 400) } : {}),
+      ...(corto(c.cambio, 160) ? { cambio: corto(c.cambio, 160) } : {}),
+    }];
+  });
+}
+
+/** Qué composiciones funcionan con este cliente, leído de su galería (una consulta): para quien no lo manda. */
+async function composicionesAprendidas(acceso, clientId) {
+  try {
+    const filas = await acceso.leerColumnas("estudio_archivos", ["prompt", "favorito", "usado_en", "subido", "borrado_at"], { client_id: clientId });
+    const a = (f) => ({ prompt: f.prompt, favorito: Boolean(f.favorito), subido: Boolean(f.subido), usadoEn: leerJSON(f.usado_en) ?? [] });
+    return aprenderComposiciones(filas.filter((f) => !f.borrado_at).map(a), filas.filter((f) => f.borrado_at).map(a)).orden;
+  } catch {
+    return [];
+  }
+}
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 /** Cuántas piezas por llamada como mucho (lo que pide la pantalla es 6). */
 export const TANDA_MAX = 10;
@@ -52,11 +102,12 @@ export const TANDA_MAX = 10;
 export async function produccionDeLote(env, acceso, cliente, datos = {}) {
   const modo = MODOS.includes(datos.modo) ? datos.modo : "niveles";
   const formato = FORMATOS_LOTE[datos.formato] ? datos.formato : "post";
-  const orden = (Array.isArray(datos.composiciones) ? datos.composiciones : []).map(String).filter((id) => COMPOSICIONES.some((c) => c.id === id)).slice(0, 30);
+  let orden = (Array.isArray(datos.composiciones) ? datos.composiciones : []).map(String).filter((id) => COMPOSICIONES.some((c) => c.id === id)).slice(0, 30);
 
   // Lo que no cuesta nada se comprueba antes de leer nada más.
   if (modo === "niveles" && !totalDeCuantas(datos.cuantas)) throw fallo("Escoge al menos un nivel con una idea.");
   if (modo === "tipos" && !celdasPorTipos(datos.tipos).length) throw fallo("Escoge al menos un tipo de pieza con una idea.");
+  if (modo === "plan" && !(Array.isArray(datos.casillas) && datos.casillas.length)) throw fallo("El plan no trae publicaciones.");
   const mes = modo === "mes" ? mesDe(datos.mes) : null;
   const hoy = fechaEnZona();
   if (modo === "mes") {
@@ -73,6 +124,8 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
   const rotan = producto ? [producto] : [...delPlan.filter((p) => p.fotos?.length), ...delPlan.filter((p) => !p.fotos?.length)];
   const deseos = general?.deseos ?? [];
   const perfiles = general?.perfiles ?? [];
+  // Sin las composiciones aprendidas de la pantalla, se leen de la galería (lo hace también «Planificar mes»).
+  if (!Array.isArray(datos.composiciones)) orden = await composicionesAprendidas(acceso, cliente.id);
 
   let plan;
   let fechas = [];
@@ -91,6 +144,19 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
         : "Ese mes no tiene días con tipo de contenido en los días escogidos (revisa el ritmo del cliente).");
     }
     plan = planDelMes(dias, { productos: rotan, deseos, perfiles, semilla: datos.semilla, formato, orden });
+  } else if (modo === "plan") {
+    // El plan ya viene decidido (formato, tipo, producto, nivel…): la forma de cada pieza la pone darForma.
+    const celdas = limpiarCasillas(datos.casillas, productosActivos(catalogo));
+    if (!celdas.length) throw fallo("El plan no trae publicaciones de un formato que se pueda escribir (post, historia, carrusel o reel).");
+    const meses = [...new Set(celdas.map((c) => c.fecha?.slice(0, 7)).filter(Boolean))];
+    for (const m of meses) {
+      const [y, mm] = m.split("-").map(Number);
+      fechas.push(...fechasDelMes(y, mm - 1, leerJSON(cliente.fechas_especiales)));
+    }
+    // Lo que el plan no trae (producto, nivel, deseo, perfil, la maleta) lo pone la matriz, sobre el plan ENTERO: así
+    // la rotación es la misma en cada tanda. Lo que ya trae (lo decidió «Planificar mes» o una persona) se respeta.
+    const conMatriz = asignarMatriz(celdas, { productos: rotan, deseos, perfiles }).map((c) => (c.pilar ? { ...c, tipo: c.pilar } : c));
+    plan = darForma(conMatriz, { productos: rotan, semilla: datos.semilla, formato, orden });
   } else if (modo === "publicacion") {
     // Una sola pieza con lo que la publicación ya decidió (su tipo, producto, nivel, deseo y perfil); lo que falte, lo
     // pone la forma del lote. La fecha especial del día también va.
@@ -110,7 +176,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     if (delPost) celda.productoId = delPost.id;
     if (fecha) {
       const [y, m] = fecha.split("-").map(Number);
-      fechas = fechasDelMes(y, m, leerJSON(cliente.fechas_especiales)).filter((f) => f.fecha === fecha);
+      fechas = fechasDelMes(y, m - 1, leerJSON(cliente.fechas_especiales)).filter((f) => f.fecha === fecha);
     }
     plan = darForma([celda], { productos: delPost ? [delPost, ...rotan.filter((x) => x.id !== delPost.id)] : rotan, semilla: datos.semilla, formato, orden });
   } else {
@@ -160,12 +226,13 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       fechasEspeciales: fechas.map((f) => `${f.fecha} · ${f.nombre}${f.delicada ? " (delicada: sin promociones)" : ""}`),
       usados: (Array.isArray(datos.usados) ? datos.usados : []).map((t) => String(t ?? "").slice(0, 80)).filter(Boolean).slice(0, 30),
       nota: modo === "publicacion" ? String(datos.nota ?? "").slice(0, 600) : "",
+      estrategia: datos.estrategia && typeof datos.estrategia === "object" ? datos.estrategia : null,
     }),
-    salida: (FORMATOS_LOTE[formato]?.guiado ? 800 : 420) * plan.length + 800,
-    funcion: modo === "mes" ? "lote del mes" : modo === "publicacion" ? "publicación" : "ideas de anuncios",
+    salida: plan.reduce((t, r) => t + (FORMATOS_LOTE[r.formato ?? formato]?.guiado ? 850 : 480), 0) + 800,
+    funcion: modo === "mes" || modo === "plan" ? "lote del mes" : modo === "publicacion" ? "publicación" : "ideas de anuncios",
   });
   const nombres = new Map(rotan.map((p) => [p.id, p.nombre]));
-  const ideas = leerProduccion(r.texto, plan)
+  const ideas = leerProduccion(r.texto, plan, formato)
     .map((i) => (i.productoId ? { ...i, producto: nombres.get(i.productoId) ?? i.producto ?? "" } : i))
     // «Titular\nApoyo»: lo que va escrito en la pieza (el textoPieza de la publicación).
     .map((i) => ({ ...i, textoPieza: textoDeIdea(i) }));

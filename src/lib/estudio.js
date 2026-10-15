@@ -13,6 +13,7 @@
 import { pedir } from "./db";
 import { estaVivo, diasQueQuedan, MODELOS, MAX_PROMPT, modeloPorId, modeloPorDefecto, VOCES_OMNI } from "./estudioCatalogo";
 import { lineaDeReferencia } from "./referencias";
+import { composicionDe } from "./loteAnuncios";
 
 const base = (clienteId) => `/estudio/${encodeURIComponent(clienteId)}`;
 const post = (cuerpo) => ({ method: "POST", body: JSON.stringify(cuerpo ?? {}) });
@@ -368,8 +369,11 @@ export function promptDePublicacion(post = {}, { conTexto = true } = {}) {
   // Lo que va escrito encima (`textoPieza`): EXACTO, para que el motor no lo reescriba. En un carrusel va por
   // lámina, y en un video no (los modelos de video escriben mal: `conTexto: false`).
   const pieza = !conTexto || post.format === "carrusel" ? "" : textoDeLaPieza(post.textoPieza);
+  // La composición que decidió el plan (el lote o «Planificar mes»): sugerida, la escena manda si dice otra.
+  const comp = composicionDe(post.composicion);
   const partes = [
     [idea || titulo, conProducto].filter(Boolean).join(" "),
+    comp ? `Composición sugerida: ${comp.linea.replace(/^Composición[^:]*:\s*/i, "")}` : "",
     pieza ? `Texto en la imagen, exacto y legible: ${pieza}` : "",
     idea && texto ? `Contexto de la publicación: ${texto.slice(0, 300)}` : "",
   ].filter(Boolean);

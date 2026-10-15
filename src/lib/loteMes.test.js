@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { diasDelLote, diasConTipo, planDelMes, carpetaDelMes, mesDe, diasConPublicacion } from "./loteMes";
+import { diasDelLote, diasConTipo, planDelMes, carpetaDelMes, mesDe, diasConPublicacion, casillasConPlantilla, diasConPlantilla } from "./loteMes";
 import { pedidoDeProduccion, leerProduccion, publicacionDePieza } from "./loteAnuncios";
 
 // Octubre 2026: el 1 es jueves. El ritmo de la agencia: lun Anuncio, mar Beneficios, mié Servicios, jue Educativo,
@@ -58,5 +58,26 @@ describe("los días que ya tienen publicación (el lote del mes los salta)", () 
     expect(diasConPublicacion(calendarios, "2026-12")).toEqual([]);
     expect(diasConPublicacion(calendarios, "otro")).toEqual([]);
     expect(diasConPublicacion(undefined, "2026-10")).toEqual([]);
+  });
+});
+
+describe("el mes con la plantilla de plan del cliente", () => {
+  // Marzo 2030: el 4 es lunes. Lunes: un post del ritmo y un reel de contenido humano; miércoles: un carrusel; jueves: un directo.
+  const formatos = { 1: [{ format: "post", pilar: "" }, { format: "reel", pilar: "humano" }], 3: [{ format: "carrusel", pilar: "" }], 4: [{ format: "live", pilar: "" }] };
+
+  it("una casilla por publicación de cada día escogido, con su formato y su tipo (el de la plantilla o el del ritmo); sin directos", () => {
+    const c = casillasConPlantilla({ year: 2030, month: 2, formatos, dias: [1, 3, 4], desde: "2030-03-10", omitir: ["2030-03-13"] });
+    expect(c.slice(0, 3)).toEqual([
+      { clave: "2030-03-11|0", fecha: "2030-03-11", formato: "post", pilar: "anuncio" },
+      { clave: "2030-03-11|1", fecha: "2030-03-11", formato: "reel", pilar: "humano" },
+      { clave: "2030-03-18|0", fecha: "2030-03-18", formato: "post", pilar: "anuncio" },
+    ]);
+    expect(c.some((x) => x.fecha === "2030-03-13")).toBe(false);
+    expect(c.filter((x) => x.formato === "carrusel").map((x) => [x.fecha, x.pilar])).toEqual([["2030-03-20", "servicios"], ["2030-03-27", "servicios"]]);
+    expect(c.some((x) => x.formato === "live")).toBe(false);
+  });
+
+  it("los días que se marcan solos: los que tienen algo que el lote sabe hacer", () => {
+    expect(diasConPlantilla(formatos)).toEqual([1, 3]);
   });
 });

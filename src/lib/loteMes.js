@@ -87,3 +87,37 @@ export function diasConPublicacion(calendarios = [], mes = "") {
   }
   return [...fechas].sort();
 }
+
+/** Los formatos del plan que el lote sabe hacer (un directo no se diseña). */
+const FORMATO_DE_PLAN = Object.freeze({ post: "post", historia: "historia", carrusel: "carrusel", reel: "reel" });
+/** Las casillas de un mes como mucho (cuatro por día). */
+export const MAX_CASILLAS_MES = 124;
+
+/**
+ * El mes con la PLANTILLA de plan del cliente (`formatos`: { día de la semana → [{ format, pilar }] }, de
+ * `configDeFormatos`): una casilla por cada publicación de cada día escogido, con su formato y su tipo (el de la
+ * plantilla o, si va vacío, el del ritmo ese día, con los ajustes de temporada). Sin los anteriores a `desde` ni las
+ * fechas de `omitir` (ya tienen publicación). → [{ clave: "fecha|i", fecha, formato, pilar, cambio? }]. Pura.
+ */
+export function casillasConPlantilla({ year, month, ritmo = null, fechas = [], formatos = {}, dias = [], desde = "", omitir = [] }) {
+  const delRitmo = new Map(diasDelLote({ year, month, ritmo, fechas, dias: [0, 1, 2, 3, 4, 5, 6] }).map((d) => [d.fecha, d]));
+  const quiere = new Set((dias ?? []).map(Number));
+  const fuera = new Set(omitir ?? []);
+  const total = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const casillas = [];
+  for (let dia = 1; dia <= total; dia++) {
+    const fecha = `${year}-${dos(month + 1)}-${dos(dia)}`;
+    const dow = diaDeSemana(fecha);
+    if (!quiere.has(dow) || (desde && fecha < desde) || fuera.has(fecha)) continue;
+    (formatos?.[dow] ?? []).forEach((h, j) => {
+      const formato = FORMATO_DE_PLAN[h?.format];
+      if (!formato) return;
+      const r = delRitmo.get(fecha);
+      casillas.push({ clave: `${fecha}|${j}`, fecha, formato, pilar: h.pilar || r?.pilar || "", ...(r?.cambio && !h.pilar ? { cambio: r.cambio } : {}) });
+    });
+  }
+  return casillas.slice(0, MAX_CASILLAS_MES);
+}
+
+/** Los días de la semana que tienen algo en la plantilla: los que se marcan solos con ella. Pura. */
+export const diasConPlantilla = (formatos = {}) => DIAS_LOTE.map(([d]) => d).filter((d) => (formatos?.[d] ?? []).some((h) => FORMATO_DE_PLAN[h?.format]));

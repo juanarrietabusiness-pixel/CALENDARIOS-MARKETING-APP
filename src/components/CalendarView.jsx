@@ -11,6 +11,7 @@ import {
 } from "../lib/db";
 import { resumenCola, aprobadasSinProgramar } from "../lib/cola";
 import { navegar, analizarRuta, construirRuta } from "../lib/rutas";
+import { casillasSinIdea, estrategiaDelCalendario, ideasDelPlan, rellenarConIdea } from "../lib/ideaPublicacion";
 import { agruparPorSemana, semanaInicial, rangoSemana } from "../lib/semanas";
 import { moverEnCalendario, ponerEnDia } from "../lib/subir";
 import { conAprobacion, resumenEnvio } from "../lib/aprobacion";
@@ -727,56 +728,31 @@ export default function CalendarView({
       const formatosConGuion = new Set(["reel", "carrusel", "historia", "live"]);
 
       // ── FASE 1: Ideas para publicaciones sin idea ──
-      const sinIdea = currentDays.flatMap((d) =>
-        (d.posts || []).filter((p) => !(p.idea || "").trim()).map((p) => ({
-          ...p, _date: d.date, _dayName: d.dayName, _weekNumber: d.weekNumber, _concept: d.concept,
-        }))
-      );
-
-      if (sinIdea.length) {
-        addDebug(`Fase 1: ${sinIdea.length} posts sin idea`);
-        let ideasResults = {};
-
-        for (let i = 0; i < sinIdea.length; i += BATCH) {
-          const batch = sinIdea.slice(i, i + BATCH);
-          setGenStatus(`Fase 1 — Ideas ${i + 1}-${Math.min(i + BATCH, sinIdea.length)} de ${sinIdea.length}…`);
-          setGenProgress(Math.round((i / sinIdea.length) * 25));
-
-          // Lo estable (ADN o ficha y cifras) se cachea; los pasajes son de ESTA tanda.
-          const pasajes = await pasajesDeLaTanda(client, adn, cal, batch);
-          const ctx = buildClientContext(client, cal, adnExtra, adn.cerebro ? { pasajes } : null);
-          const prompt = `${ctx}
-
-CAMPAÑA: ${cal.campaign || "N/A"}
-${cal.offers ? `OFERTAS: ${cal.offers}` : ""}
-
-Genera una idea ÚNICA para cada publicación. Cada idea: 1-2 oraciones claras y accionables.
-
-FORMATO DE RESPUESTA (respeta exactamente):
-<<<PUBLICACION_ID:id>>>
-IDEA:
-idea aqui
-
-PUBLICACIONES:
-${batch.map((p) => `<<<PUBLICACION_ID:${p.id}>>>\nFORMATO: ${p.format}\nDIA: ${p._date} (${p._dayName || ""})\nSEMANA: ${p._weekNumber || ""} — ${p._concept || "libre"}`).join("\n\n")}`;
-
-          const res = await callAI([{ type: "text", text: prompt }], { maxTokens: 4000, tolerarCorte: true, funcion: "guiones", clienteId: client?.id });
-          const txt = typeof res === "string" ? res : res.texto;
-          const parsed = parseAIResponse(txt);
-          ideasResults = { ...ideasResults, ...parsed };
-          addDebug(`Fase 1 batch: ${Object.keys(parsed).length} ideas`);
+      // Por el MISMO motor que «Planificar mes» y «Producir en lote» (lib/ideaPublicacion.js): cada una con su formato,
+      // su tipo y su matriz y la estrategia del mes; vuelve con idea, qué se ve, texto de la pieza o guion, caption,
+      // hashtags y forma. Sólo rellena lo vacío.
+      const casillas = casillasSinIdea({ ...cal, days: currentDays });
+      if (casillas.length) {
+        addDebug(`Fase 1: ${casillas.length} publicaciones sin idea`);
+        const porId = {};
+        let usados = currentDays.flatMap((d) => (d.posts || []).map((p) => String(p.title || p.idea || "").trim().slice(0, 80))).filter(Boolean).slice(0, 30);
+        const semilla = Math.floor(Math.random() * 1000);
+        for (let desde = 0; desde < casillas.length; desde += BATCH) {
+          setGenStatus(`Fase 1 — Ideas ${desde + 1}-${Math.min(desde + BATCH, casillas.length)} de ${casillas.length}…`);
+          setGenProgress(Math.round((desde / casillas.length) * 25));
+          const r = await ideasDelPlan(client.dbId || client.id, { casillas, estrategia: estrategiaDelCalendario(cal), usados: usados.slice(0, 30), semilla, desde, tamano: BATCH });
+          for (const idea of r.ideas ?? []) {
+            porId[idea.clave] = idea;
+            usados = [idea.titular || idea.titulo, ...usados].filter(Boolean);
+          }
+          addDebug(`Fase 1 tanda: ${(r.ideas ?? []).length} ideas`);
         }
-
         currentDays = currentDays.map((d) => ({
           ...d,
-          posts: (d.posts || []).map((p) => {
-            const r = ideasResults[p.id];
-            if (!r?.idea) return p;
-            return { ...p, idea: p.idea || r.idea };
-          }),
+          posts: (d.posts || []).map((p) => (porId[p.id] ? { ...p, ...rellenarConIdea(p, porId[p.id]).cambios } : p)),
         }));
         onUpdateCal(calId, { ...cal, days: currentDays });
-        addDebug(`Fase 1 completa: ${Object.keys(ideasResults).length} ideas generadas`);
+        addDebug(`Fase 1 completa: ${Object.keys(porId).length} ideas generadas`);
       } else {
         addDebug("Fase 1: todas las publicaciones ya tienen idea");
       }

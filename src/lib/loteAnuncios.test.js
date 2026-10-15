@@ -109,8 +109,10 @@ describe("lo que se le pide a la IA y cómo se lee", () => {
     expect(c).toMatch(/publicaciones de formato Carrusel/);
     expect(c).toMatch(/"guion": las láminas del carrusel, de 5 a 7/);
     expect(pedidoDeProduccion({ marca: "Dcasa", plan, formato: "reel" })).toMatch(/"guion": el reel de 10 s por planos/);
-    const leidas = leerProduccion(JSON.stringify({ ideas: [{ n: 1, titular: "Hola", escena: "x", guion: "Portada: a\\nCTA: b" }] }), plan);
+    const leidas = leerProduccion(JSON.stringify({ ideas: [{ n: 1, titular: "Hola", escena: "x", guion: "Portada: a\\nCTA: b" }] }), plan, "carrusel");
     expect(leidas[0].guion).toBe("Portada: a\nCTA: b");
+    // En un post el guion sobra: no se lee.
+    expect(leerProduccion(JSON.stringify({ ideas: [{ n: 1, titular: "Hola", escena: "x", guion: "Portada: a" }] }), plan)[0].guion).toBeUndefined();
   });
 
   it("lee por número: título, brief, titular (sin «·»), apoyo, escena y descripción; cada una con lo que decidió el plan", () => {
@@ -204,5 +206,39 @@ describe("cada pieza", () => {
       { prompt: "nada" },
       { ajustes: { plantilla: { texto: "Duerme mejor" } } },
     ])).toEqual(["Duerme mejor", "Hoy sí"]);
+  });
+});
+
+describe("el plan del mes en el lote: hashtags, estrategia y lo que se guarda en la publicación", () => {
+  it("los hashtags, limpios: cada uno con su «#», sin repetir", async () => {
+    const { limpiarHashtags } = await import("./loteAnuncios.js");
+    expect(limpiarHashtags("#Sofá cama, #sofá  ##Panamá #cama")).toBe("#Sofá #cama #sofá #Panamá");
+    expect(limpiarHashtags(["uno", "#dos"])).toBe("#uno #dos");
+    expect(limpiarHashtags("")).toBe("");
+  });
+
+  it("la estrategia del mes: sólo lo escrito, con el concepto de cada semana", async () => {
+    const { textoEstrategiaDelMes } = await import("./loteAnuncios.js");
+    expect(textoEstrategiaDelMes(null)).toBe("");
+    expect(textoEstrategiaDelMes({ campana: "", semanas: ["", ""] })).toBe("");
+    const t = textoEstrategiaDelMes({ campana: "Marzo cómodo", codigo: "COMODO", semanas: ["Descanso", "", "Visitas"] });
+    expect(t).toMatch(/Campaña: Marzo cómodo/);
+    expect(t).toMatch(/Código promocional: COMODO/);
+    expect(t).toMatch(/- Semana 1: Descanso\n- Semana 3: Visitas/);
+  });
+
+  it("la publicación de una idea guarda su formato, la forma, los hashtags; un carrusel no lleva texto de la pieza", async () => {
+    const { publicacionDePieza } = await import("./loteAnuncios.js");
+    const idea = { titulo: "T", titular: "¿Visitas?", escena: "Sala", brief: "B", composicion: "uso", tactica: "pregunta", hashtags: "#a", formato: "carrusel", guion: "Portada: x" };
+    const p = publicacionDePieza({ id: "p", idea, formato: "post" });
+    expect(p).toMatchObject({ format: "carrusel", composicion: "uso", tactica: "pregunta", hashtagsFinales: "#a", guion: "Portada: x", aprobacion: "idea" });
+    expect(p.textoPieza).toBeUndefined();
+    expect(publicacionDePieza({ id: "q", idea: { ...idea, formato: undefined }, formato: "post" }).textoPieza).toBe("¿Visitas?");
+  });
+
+  it("al diseñarla después, la composición que decidió el plan va en el pedido (sugerida)", async () => {
+    const { promptDePublicacion } = await import("./estudio.js");
+    expect(promptDePublicacion({ escena: "Una sala", composicion: "uso" })).toMatch(/^Una sala\n\nComposición sugerida: una persona real usando el producto/);
+    expect(promptDePublicacion({ escena: "Una sala", composicion: "inventada" })).toBe("Una sala");
   });
 });
