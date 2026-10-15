@@ -52,6 +52,43 @@ export function limpiarFotogramas(lista) {
     .slice(0, MAX_FOTOGRAMAS);
 }
 
+/**
+ * El mejor modelo para VER un video entre los que la llave tiene (`GET /v1beta/models`), o null. Pura.
+ *
+ * Por qué hace falta: Google dejó los 2.5 sólo para los proyectos que ya los usaban. Una llave nueva —la gratuita casi
+ * siempre lo es— recibe 404 con `gemini-2.5-flash` aunque la de pago siga funcionando. Mismo remedio que con Opus:
+ * preguntar a la cuenta qué tiene en vez de apostar por un id fijo.
+ * Orden: Flash estable de la versión más alta, luego Flash en preview, luego Flash-Lite, luego Pro; el alias
+ * `gemini-flash-latest` si no hay ninguno con versión. Fuera lo que no ve video (imagen, voz, live, embeddings…).
+ */
+export function elegirModeloVideo(modelos = [], excluir = []) {
+  const fuera = new Set(excluir);
+  const candidatos = [];
+  for (const m of Array.isArray(modelos) ? modelos : []) {
+    const id = String(m?.name ?? "").replace(/^models\//, "");
+    if (!id || fuera.has(id)) continue;
+    const metodos = m?.supportedGenerationMethods;
+    if (Array.isArray(metodos) && !metodos.includes("generateContent")) continue;
+    if (/image|tts|live|audio|embedding|robotics|computer|aqa|nano|learnlm|gemma/i.test(id)) continue;
+    const v = /^gemini-(\d+(?:\.\d+)?)-(flash|pro)(-lite)?(?:-(.+))?$/.exec(id);
+    if (v) {
+      const familia = v[2] === "pro" ? 3 : v[3] ? 2 : v[4] && /preview|exp/.test(v[4]) ? 1 : 0;
+      candidatos.push({ id, familia, version: Number(v[1]), estable: v[4] ? 1 : 0 });
+    } else if (id === "gemini-flash-latest") {
+      candidatos.push({ id, familia: 4, version: 0, estable: 0 });
+    }
+  }
+  candidatos.sort((a, b) => a.familia - b.familia || b.version - a.version || a.estable - b.estable);
+  return candidatos[0]?.id ?? null;
+}
+
+async function modeloDisponible(cabeceras, excluir) {
+  const res = await fetch(`${API}/v1beta/models?pageSize=1000`, { headers: cabeceras }).catch(() => null);
+  if (!res?.ok) return null;
+  const data = await res.json().catch(() => null);
+  return elegirModeloVideo(data?.models, excluir);
+}
+
 async function fallo(paso, res, gratis = false) {
   const texto = await res.text().catch(() => "");
   console.error(`video: al ${paso}, Google AI respondió`, res.status, texto.slice(0, 500));
@@ -77,7 +114,7 @@ export async function verVideo(env, acceso, { bytes, mime: tipo, nombre = "video
   if (motor === "meta") return verConMeta(env, acceso, { clienteId, prompt, funcion, json, fotogramas });
   const falla = (paso, res) => fallo(paso, res, motor === "gemini-gratis");
   const mime = MIME[tipo] ?? tipo;
-  const modelo = env.GEMINI_VIDEO_MODEL || "gemini-2.5-flash";
+  let modelo = env.GEMINI_VIDEO_MODEL || "gemini-2.5-flash";
 
   const arranque = Date.now();
   const restante = () => PRESUPUESTO_MS - (Date.now() - arranque);
@@ -120,23 +157,37 @@ export async function verVideo(env, acceso, { bytes, mime: tipo, nombre = "video
     if (archivo.state !== "ACTIVE") throw new ErrorVideo("Google AI no pudo procesar ese video.", 422);
 
     // 4. Verlo.
-    const abortar = new AbortController();
-    const reloj = setTimeout(() => abortar.abort(), Math.max(restante(), 1000));
-    let res;
-    try {
-      res = await fetch(`${API}/v1beta/models/${modelo}:generateContent`, {
-        method: "POST",
-        signal: abortar.signal,
-        headers: { ...cabeceras, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ fileData: { mimeType: archivo.mimeType || mime, fileUri: archivo.uri } }, { text: prompt }] }],
-          ...(json ? { generationConfig: { responseMimeType: "application/json" } } : {}),
-        }),
-      });
-    } catch {
-      throw new ErrorVideo(abortar.signal.aborted ? "El análisis del video tardó demasiado." : "No se pudo contactar con Google AI", 504);
-    } finally {
-      clearTimeout(reloj);
+    const analizar = async () => {
+      const abortar = new AbortController();
+      const reloj = setTimeout(() => abortar.abort(), Math.max(restante(), 1000));
+      try {
+        return await fetch(`${API}/v1beta/models/${modelo}:generateContent`, {
+          method: "POST",
+          signal: abortar.signal,
+          headers: { ...cabeceras, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ fileData: { mimeType: archivo.mimeType || mime, fileUri: archivo.uri } }, { text: prompt }] }],
+            ...(json ? { generationConfig: { responseMimeType: "application/json" } } : {}),
+          }),
+        });
+      } catch {
+        throw new ErrorVideo(abortar.signal.aborted ? "El análisis del video tardó demasiado." : "No se pudo contactar con Google AI", 504);
+      } finally {
+        clearTimeout(reloj);
+      }
+    };
+    let res = await analizar();
+    // 404: esta llave no tiene ese modelo (los 2.5 ya no se dan a proyectos nuevos). Se pregunta cuál tiene y se repite.
+    if (res.status === 404) {
+      const otro = await modeloDisponible(cabeceras, [modelo]);
+      if (otro) {
+        console.warn(`video: la llave no tiene ${modelo}; se usa ${otro}`);
+        modelo = otro;
+        res = await analizar();
+      } else {
+        await res.text().catch(() => "");
+        throw new ErrorVideo(`Esta llave de Google AI no tiene el modelo ${modelo} ni otro Gemini Flash que pueda ver videos.`, 502);
+      }
     }
     if (!res.ok) throw await falla("analizar el video", res);
 

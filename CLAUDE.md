@@ -1397,6 +1397,9 @@ son del servidor.
   recibe y tiene topes, y el 429 lo dice así) o Meta. Meta NO recibe video: `verVideo` contesta 409
   `codigo: "fotogramas"` y el navegador los saca (`conFotogramas` en db.js) y repite el pedido; sin audio, sin
   transcripción. `agregarReferencia` NO guarda la referencia en ese 409 (si no, el reintento la guardaría dos veces).
+  **La llave gratuita daba 404 y la de pago no:** Google dejó los 2.5 sólo para los proyectos que ya los usaban, y la
+  llave gratuita suele ser de un proyecto nuevo. Con un 404 al analizar, `verVideo` pregunta a `/v1beta/models` qué
+  tiene ESA llave (`elegirModeloVideo`: Flash estable más nuevo, sin imagen ni voz) y repite. El video ya subido vale.
 - **El lote del MES completo** (Producir en lote → «Mes completo», `POST /api/estudio/<c>/lote/mes`): el mes y los días
   de la semana; cada día toma su tipo del RITMO del cliente con los ajustes de temporada (`sugerenciasDeTemporada`,
   aplicados solos: son conservadores) y la matriz de «Planificar mes» (`asignarMatriz`). Las piezas van al calendario
