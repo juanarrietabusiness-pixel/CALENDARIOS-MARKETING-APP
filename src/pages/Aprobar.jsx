@@ -326,7 +326,9 @@ export default function Aprobar() {
         <p className="aprobar-enviada">
           <Icon name="check" size={16} /> {calendar.revisionRevisor || "Tu equipo"} envió la revisión el{" "}
           {new Date(calendar.revisionEnviada).toLocaleDateString("es-PA", { day: "numeric", month: "long" })}.
-          {porRevisar.length > 0 && " Hay publicaciones nuevas o actualizadas por revisar."}
+          {cuenta("actualizada") > 0
+            ? ` Ya ${cuenta("actualizada") === 1 ? "cambiamos 1 publicación" : `cambiamos ${cuenta("actualizada")} publicaciones`} con lo que pediste: están en «Actualizadas».`
+            : porRevisar.length > 0 && " Hay publicaciones nuevas o actualizadas por revisar."}
         </p>
       )}
 
@@ -343,6 +345,8 @@ export default function Aprobar() {
             {[
               ["todas", `Todas · ${publicaciones.length}`],
               ["pendiente", `Por revisar · ${porRevisar.length}`],
+              // Lo que la agencia cambió tras su revisión: revisa sólo eso.
+              ...(cuenta("actualizada") ? [["actualizada", `Actualizadas · ${cuenta("actualizada")}`]] : []),
               ["cambios", `Con cambios · ${cuenta("cambios")}`],
               ["aprobada", `Aprobadas · ${cuenta("aprobada")}`],
             ].map(([id, nombre]) => (

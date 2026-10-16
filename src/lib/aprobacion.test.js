@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   tipoAprobacion, huellaPieza, aprobacionVigente, conAprobacion, porProducir, listaParaProgramar,
   cambiosTrasAprobar, avisoCambios, pedirAprobacion, resumenEnvio, aprobadasDelEspacio,
+  corregidaTrasCambios, estadoDelEnvio, mensajeDeEnvio, instruccionDelCliente,
 } from "./aprobacion.js";
 
 const IMG = { src: "/api/media/clientes/c1/a.jpg", tipo: "imagen" };
@@ -90,5 +91,47 @@ describe("lo aprobado de todo el espacio", () => {
     expect(r.porProgramar.map((x) => x.postId)).toEqual(["a"]);
     expect(r.porProducir.map((x) => x.postId)).toEqual(["b"]);
     expect(r.porProgramar[0].cliente).toBe("Café Luna");
+  });
+});
+
+describe("el calendario completo al cliente, y lo que pidió cambiar", () => {
+  it("«cambios» trae lo que pidió y cuándo; reenviar lo olvida", () => {
+    const p = conAprobacion({ id: "1" }, { estado: "cambios", comentario: " Más luz ", timestamp: "2026-10-05T10:00:00Z" });
+    expect(p).toMatchObject({ status: "rejected", cambiosPedidos: "Más luz", cambiosAt: "2026-10-05T10:00:00Z" });
+    const otra = pedirAprobacion(p, "2026-10-06T00:00:00Z");
+    expect(otra.cambiosPedidos).toBeUndefined();
+    expect(otra.cambiosAt).toBeUndefined();
+  });
+
+  it("corregida: se cambió algo DESPUÉS de que pidiera cambios", () => {
+    const p = { status: "rejected", cambiosAt: "2026-10-05T10:00:00Z" };
+    expect(corregidaTrasCambios(p)).toBe(false);
+    expect(corregidaTrasCambios({ ...p, actualizadaAt: "2026-10-04T10:00:00Z" })).toBe(false);
+    expect(corregidaTrasCambios({ ...p, actualizadaAt: "2026-10-06T10:00:00Z" })).toBe(true);
+  });
+
+  it("el estado del envío: piezas, sin pieza, sin hora, por corregir y corregidas", () => {
+    const days = [{ posts: [
+      { status: "pending", medios: [IMG], publishTime: "09:00" },
+      { status: "pending" },
+      { status: "pending", format: "live" },
+      { status: "approved", medios: [IMG] },
+      { status: "published" },
+      { status: "rejected", medios: [IMG], publishTime: "10:00", cambiosAt: "2026-10-05" },
+      { status: "rejected", medios: [IMG], publishTime: "10:00", cambiosAt: "2026-10-05", actualizadaAt: "2026-10-06" },
+    ] }];
+    expect(estadoDelEnvio(days)).toEqual({ total: 4, conPieza: 3, sinPieza: 1, sinHora: 1, porCorregir: 1, corregidas: 1 });
+  });
+
+  it("el mensaje dice qué se corrigió cuando ya revisó", () => {
+    expect(mensajeDeEnvio({ nombre: "Dcasa", mes: "Noviembre 2026", url: "u", corregidas: 2, revisado: true })).toContain("2 publicaciones");
+    expect(mensajeDeEnvio({ nombre: "Dcasa", mes: "Noviembre 2026", url: "u", corregidas: 2 })).toContain("para tu revisión");
+  });
+
+  it("la indicación de la edición: lo que pidió el cliente y lo que añada la agencia", () => {
+    expect(instruccionDelCliente("Más luz")).toBe("el cliente pidió este cambio: «Más luz». Haz SÓLO ese cambio");
+    expect(instruccionDelCliente("Más luz", "sin la planta")).toContain("y además sin la planta");
+    expect(instruccionDelCliente("", "fondo azul")).toBe("haz este cambio: fondo azul. Haz SÓLO ese cambio");
+    expect(instruccionDelCliente("", "")).toBe("");
   });
 });

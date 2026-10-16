@@ -109,3 +109,25 @@ export async function terminarTrabajo({ clienteId, trabajo, kit, estampar = fals
   }
   return cambios;
 }
+
+/**
+ * «Rehacer con lo que dijo el cliente»: EDITA la imagen de la publicación con su comentario (la misma pieza, sólo
+ * ese cambio) en vez de pedir otra desde cero, que perdería lo que sí le gustó. `src`: la imagen puesta (tiene que
+ * estar en el almacén de ESTE cliente); `medida`: sus { ancho, alto } para la proporción; `texto`: lo que debe decir
+ * (se controla si el control está encendido). → el archivo nuevo de la galería; la imagen de antes se queda allí.
+ */
+export async function rehacerConComentario({ clienteId, src, indicacion, medida = {}, texto = "", activos = null, seguir = () => true }) {
+  const archivo = api.archivoDesdeSrc(src, clienteId);
+  if (!archivo) throw new Error("Esa imagen no está en el almacén de este cliente: súbela de nuevo y prueba otra vez.");
+  if (!String(indicacion ?? "").trim()) throw new Error("Escribe qué hay que cambiar.");
+  const m = modeloParaCorregir(await activosDeMotores(activos), "");
+  if (!m) throw new Error("No hay ningún modelo que edite imágenes con llave puesta (Ajustes → IA).");
+  const { prompt, medios } = api.pedidoDeCorreccion({ clave: archivo.clave, instruccion: indicacion, modelo: m });
+  const { trabajo } = await api.pedirImagenes(clienteId, {
+    modelo: m.id, prompt, n: 1, ajustes: ajustesDe(m, { aspectRatio: proporcion(medida) }, medios), medios, confirmado: true,
+  });
+  const [nueva] = await esperarArchivos(clienteId, trabajo, { seguir });
+  if (!nueva) throw new Error("La imagen nueva no llegó. Prueba otra vez.");
+  if (!controlEncendido()) return nueva;
+  return (await controlarYCorregir({ clienteId, archivo: nueva, texto: texto || null, activos })).archivo;
+}

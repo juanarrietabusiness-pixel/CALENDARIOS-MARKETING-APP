@@ -16,6 +16,7 @@ import { useId } from "react";
 import Icon from "../Icon";
 import { TIPOS_APROBACION, tipoAprobacion, porProducir, avisoCambios, pedirAprobacion } from "../../lib/aprobacion";
 import { mediosDe } from "../../lib/publicacion";
+import { CambiosPedidos } from "./cambiosCliente";
 
 export function EstadoAprobacion({ post, setForm }) {
   const ahora = () => new Date().toISOString();
@@ -74,6 +75,7 @@ export function QueAprueba({ post, sf, setForm }) {
       </div>
       <p className="hint">{TIPOS_APROBACION[tipo].ayuda}{!post.aprobacion && " (Elegido solo: cámbialo si hace falta.)"}</p>
       <EstadoAprobacion post={post} setForm={setForm} />
+      <CambiosPedidos post={post} />
     </div>
   );
 }

@@ -326,6 +326,11 @@
 .aprobacion-estado { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); margin: 0; }
 .aprobacion-estado p { margin: 0; display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .aprobacion-estado .hint { display: block; }
+/* Lo que pidió cambiar el cliente (pestaña Subir), con «Rehacer la imagen». */
+.cambios-cliente { display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-2); margin: 0 0 var(--sp-3); }
+.cambios-cliente > p:first-child { display: block; }
+.cambios-cliente > p:first-child svg { display: inline; vertical-align: -3px; margin-right: var(--sp-1); }
+.cambios-cliente .btn { align-self: flex-start; }
 
 /* El equipo dentro de la publicación (equipoPublicacion.jsx). */
 .persona-mini { border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: var(--fs-3xs); font-weight: 700; flex-shrink: 0; }
