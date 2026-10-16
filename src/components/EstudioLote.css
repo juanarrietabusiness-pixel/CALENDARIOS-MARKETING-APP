@@ -74,3 +74,8 @@
 /* El control de calidad de cada pieza: «Revisada» o «Revisar: …» */
 .lote-control { display: flex; align-items: center; gap: var(--sp-1); margin: 0; font-size: var(--fs-2xs); color: var(--success); }
 .lote-control[data-estado="revisar"] { color: var(--warning, #f5a524); }
+/* El borrador del lote y «Otra» por idea */
+.lote-borrador { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.lote-elegir-fila { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.lote-otra { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); flex: 1 1 260px; }
+.lote-otra .input { flex: 1 1 160px; }

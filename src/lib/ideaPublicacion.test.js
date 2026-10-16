@@ -72,3 +72,18 @@ describe("la idea de una publicación, como el lote", () => {
     expect(estrategiaDelCalendario(null)).toEqual({ campana: "", ofertas: "", codigo: "", semanas: [] });
   });
 });
+
+describe("«Otra» de una publicación", () => {
+  it("la casilla lleva la que había y lo que pide la agencia; la nueva REEMPLAZA lo escrito por la IA y deja lo demás", async () => {
+    const { casillaParaOtra, reemplazarConIdea } = await import("./ideaPublicacion.js");
+    const post = { id: "p1", format: "post", title: "Duerme mejor", idea: "Vieja", pilar: "beneficios", productoId: "sofa", publishTime: "09:00", medios: [{ src: "x" }] };
+    expect(casillaParaOtra(post, { date: "2030-03-04", concept: "Descanso" }, { pide: "más divertida" })).toEqual({
+      clave: "p1", fecha: "2030-03-04", formato: "post", pilar: "beneficios", productoId: "sofa", semana: "Descanso", antes: "Duerme mejor", pide: "más divertida",
+    });
+    expect(casillaParaOtra({ format: "live" })).toBeNull();
+    const nueva = reemplazarConIdea(post, { titulo: "Visitas", brief: "Nueva", escena: "Sala", textoPieza: "¿Visitas?", composicion: "uso" });
+    expect(nueva).toMatchObject({ title: "Visitas", idea: "Nueva", escena: "Sala", textoPieza: "¿Visitas?", composicion: "uso", publishTime: "09:00", productoId: "sofa" });
+    expect(nueva.medios).toEqual([{ src: "x" }]);
+    expect(reemplazarConIdea({ format: "carrusel" }, { titulo: "T", guion: "Portada: x", textoPieza: "no" })).toMatchObject({ guion: "Portada: x", textoPieza: "" });
+  });
+});

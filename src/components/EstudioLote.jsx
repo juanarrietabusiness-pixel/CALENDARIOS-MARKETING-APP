@@ -136,6 +136,63 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const [aviso, setAviso] = useState(null);
   const vivo = useRef(true);
   const creando = Object.values(resultados).some((r) => r.cargando);
+
+  // ---------- El BORRADOR: las ideas escritas (y pagadas) no se pierden al cerrar ----------
+  const claveBorrador = `estudio-lote-borrador:${clienteId}`;
+  const [borrador, setBorrador] = useState(() => {
+    try {
+      const b = JSON.parse(localStorage.getItem(claveBorrador) ?? "null");
+      return b?.ideas?.length && Date.now() - (b.guardado ?? 0) < 7 * 86_400_000 ? b : null;
+    } catch { return null; }
+  });
+  useEffect(() => {
+    if (!ideas.length) return;
+    try {
+      // Todo lo escogido ya está en el calendario: no queda nada por terminar.
+      const terminadas = ideas.filter((i) => i.elegida).every((i) => llevadas[i.id]);
+      if (terminadas) localStorage.removeItem(claveBorrador);
+      else localStorage.setItem(claveBorrador, JSON.stringify({ alcance, formato, mes, ideas, llevadas, guardado: Date.now() }));
+    } catch { /* sin almacenamiento: el lote sigue, sin borrador */ }
+  }, [ideas, llevadas, alcance, formato, mes, claveBorrador]);
+  const seguirBorrador = () => {
+    setAlcance(borrador.alcance);
+    formatoTocado.current = true;
+    setFormato(borrador.formato);
+    if (borrador.mes) setMes(borrador.mes);
+    setIdeas(borrador.ideas);
+    setLlevadas(borrador.llevadas ?? {});
+    setBorrador(null);
+    setPaso(1);
+  };
+  const descartarBorrador = () => {
+    try { localStorage.removeItem(claveBorrador); } catch { /* nada */ }
+    setBorrador(null);
+  };
+
+  // ---------- «Otra» para UNA idea, con lo que se pide (texto: no gasta en el motor de imagen) ----------
+  const [otras, setOtras] = useState({}); // id → { abierta, nota, cargando, error }
+  const ponerOtra = (id, cambios) => setOtras((m) => ({ ...m, [id]: { ...m[id], ...cambios } }));
+  const pedirOtra = async (i) => {
+    ponerOtra(i.id, { cargando: true, error: "" });
+    try {
+      const casilla = {
+        clave: i.id, ...(i.fecha ? { fecha: i.fecha } : {}), formato: fmtDe(i),
+        ...Object.fromEntries([["pilar", i.tipo ?? i.pilar], ["pilarSub", i.pilarSub], ["productoId", i.productoId], ["nivel", i.nivel], ["deseo", i.deseo], ["perfil", i.perfil]].filter(([, v]) => v)),
+        antes: i.titular || i.titulo || "", ...(otras[i.id]?.nota?.trim() ? { pide: otras[i.id].nota.trim() } : {}),
+      };
+      const r = await api.ideasDeLote(clienteId, {
+        modo: "plan", formato: "post", casillas: [casilla], estrategia, semilla: Math.floor(Math.random() * 1000),
+        usados: ideas.filter((x) => x.id !== i.id).map((x) => x.titular).filter(Boolean).slice(0, 30),
+      });
+      const nueva = r?.ideas?.[0];
+      if (!nueva) throw new Error("La IA no devolvió otra idea. Inténtalo otra vez.");
+      setIdeas((l) => l.map((x) => (x.id === i.id ? { ...x, ...nueva, id: x.id, elegida: x.elegida, fecha: x.fecha } : x)));
+      ponerOtra(i.id, { cargando: false, abierta: false, nota: "" });
+      window.dispatchEvent(new Event("ia:gasto"));
+    } catch (e) {
+      ponerOtra(i.id, { cargando: false, error: e.message });
+    }
+  };
   const ref = useDialogA11y(() => { if (!creando) onCerrar(); });
 
   useEffect(() => () => { vivo.current = false; }, []);
@@ -424,6 +481,13 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
         <div className="lote-cuerpo">
           {paso === 0 && (
             <>
+              {borrador && (
+                <div className="notice lote-borrador" role="group" aria-label="Ideas sin terminar">
+                  <span>Tienes {borrador.ideas.length} {borrador.ideas.length === 1 ? "idea" : "ideas"} sin terminar del {new Date(borrador.guardado).toLocaleDateString("es-PA", { day: "numeric", month: "short" })}.</span>
+                  <button type="button" className="btn btn-primary btn-sm" onClick={seguirBorrador}>Seguir con ellas</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={descartarBorrador}>Descartarlas</button>
+                </div>
+              )}
               <div className="est-tipos" role="group" aria-label="Qué lote">
                 {MODOS.map(([id, n]) => <button key={id} type="button" className="filter-chip" aria-pressed={alcance === id} onClick={() => setAlcance(id)}>{n}</button>)}
               </div>
@@ -633,9 +697,24 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                   <ul className="lote-lista">
                     {g.ideas.map((i) => (
                       <li key={i.id} className="lote-idea" data-quitada={!i.elegida || undefined}>
-                        <label className="lote-elegir">
-                          <input type="checkbox" checked={i.elegida} onChange={(e) => cambiarIdea(i.id, "elegida", e.target.checked)} /> Crear esta
-                        </label>
+                        <div className="lote-elegir-fila">
+                          <label className="lote-elegir">
+                            <input type="checkbox" checked={i.elegida} onChange={(e) => cambiarIdea(i.id, "elegida", e.target.checked)} /> Crear esta
+                          </label>
+                          {!llevadas[i.id] && (otras[i.id]?.abierta ? (
+                            <span className="lote-otra">
+                              <input className="input" aria-label={`Qué quieres distinto en «${i.titulo || i.titular}» (opcional)`} maxLength={300} placeholder="Qué quieres distinto (opcional)"
+                                value={otras[i.id]?.nota ?? ""} onChange={(e) => ponerOtra(i.id, { nota: e.target.value })}
+                                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (!otras[i.id]?.cargando) void pedirOtra(i); } }} />
+                              <button type="button" className="btn btn-secondary btn-sm" aria-disabled={Boolean(otras[i.id]?.cargando)} onClick={() => !otras[i.id]?.cargando && pedirOtra(i)}>
+                                <Icon name="sparkles" size={14} /> {otras[i.id]?.cargando ? "Escribiendo…" : "Pedir otra"}
+                              </button>
+                            </span>
+                          ) : (
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => ponerOtra(i.id, { abierta: true })}><Icon name="refresh" size={14} /> Otra</button>
+                          ))}
+                        </div>
+                        {otras[i.id]?.error && <p role="alert" className="cerebro-error">{otras[i.id].error}</p>}
                         <p className="lote-dia">
                           {i.fecha && <strong>{fechaCortaLote(i.fecha)}</strong>}
                           {esPlan && <span className="lote-insignia">{FORMATOS_LOTE[fmtDe(i)]?.nombre}</span>}

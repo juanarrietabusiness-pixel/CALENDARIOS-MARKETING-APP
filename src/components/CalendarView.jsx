@@ -12,6 +12,7 @@ import {
 import { resumenCola, aprobadasSinProgramar } from "../lib/cola";
 import { navegar, analizarRuta, construirRuta } from "../lib/rutas";
 import { casillasSinIdea, estrategiaDelCalendario, ideasDelPlan, rellenarConIdea } from "../lib/ideaPublicacion";
+import { ideasDeRevision, porRevisar } from "../lib/revisionIdeas";
 import { agruparPorSemana, semanaInicial, rangoSemana } from "../lib/semanas";
 import { moverEnCalendario, ponerEnDia } from "../lib/subir";
 import { conAprobacion, resumenEnvio } from "../lib/aprobacion";
@@ -43,6 +44,8 @@ const RevisionMes = lazy(() => import("./calendario/RevisionMes"));
 const ProducirMes = lazy(() => import("./calendario/ProducirMes"));
 // «Producir el mes»: crear lo que falta (el lote del Estudio) o diseñar lo que ya hay.
 const ProducirElMes = lazy(() => import("./calendario/ProducirElMes"));
+// «Revisar las ideas»: la aprobación interna, en tarjetas (aprobar, otra, quitar).
+const RevisarIdeas = lazy(() => import("./calendario/RevisarIdeas"));
 const GuardarMesDrive = lazy(() => import("./calendario/GuardarMesDrive"));
 const FechasEspecialesDialog = lazy(() => import("./calendario/fechasEspeciales").then((m) => ({ default: m.FechasEspecialesDialog })));
 import { BankPanel } from "./calendario/BankPanel";
@@ -1033,6 +1036,7 @@ export default function CalendarView({
             { icon: "pencil", label: "Editar el mes", onClick: () => abrirMeta("general") },
             { icon: "calendar", label: "Fechas especiales", onClick: () => abrirCapa("fechas") },
             { icon: "checkSquare", label: "Revisar el mes", onClick: () => abrirCapa("revision") },
+            { icon: "checkCircle", label: "Revisar las ideas", onClick: () => abrirCapa("revisar-ideas"), disabled: !totalPosts },
             { icon: "sparkles", label: "Completar los textos que faltan", onClick: generateScripts, disabled: genLoading || !totalPosts },
             { icon: "imageAi", label: "Diseñar las que ya hay", onClick: () => abrirCapa("producir") },
             client?.driveFolder && !virtual && { icon: "upload", label: "Guardar el mes en Drive", onClick: () => abrirCapa("drive") },
@@ -1629,9 +1633,22 @@ export default function CalendarView({
           <ProducirElMes
             mesNombre={`${MONTHS[cal.month].toLowerCase()} ${cal.year}`}
             publicaciones={totalPosts}
+            porRevisar={ideasDeRevision(cal).filter(({ post }) => porRevisar(post)).length}
             pasado={mesDelCal < fechaEnZona().slice(0, 7)}
             onCrear={() => { cerrarCapa(); producirEnLote(); }}
+            onRevisar={() => abrirCapa("revisar-ideas")}
             onDisenar={() => abrirCapa("producir")}
+            onClose={cerrarCapa}
+          />
+        </Suspense>
+      )}
+
+      {capa === "revisar-ideas" && (
+        <Suspense fallback={<div className="panel-cargando" role="status">Abriendo…</div>}>
+          <RevisarIdeas
+            client={client}
+            cal={cal}
+            onAplicar={(cambiar) => onUpdateCal(calId, { ...cal, days: cambiar(cal.days || []) })}
             onClose={cerrarCapa}
           />
         </Suspense>

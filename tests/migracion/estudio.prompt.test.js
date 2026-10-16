@@ -377,6 +377,15 @@ describe("POST /api/estudio/<cliente>/lote/ideas: el PLAN del mes («Planificar 
     expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("lote del mes");
   });
 
+  it("«Otra»: la que había y lo que pide la agencia van en el pedido", async () => {
+    anthropic(JSON.stringify({ ideas: [{ n: 1, titulo: "Nueva", titular: "Otra cosa", escena: "Una cocina" }] }));
+    const r = await (await plan({ casillas: [{ clave: "p1", fecha: "2030-03-04", formato: "post", pilar: "educativo", antes: "Duerme mejor", pide: "más divertida, sin precio" }] })).json();
+    expect(r.ideas[0]).toMatchObject({ clave: "p1", titulo: "Nueva" });
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/la que había y NO sirvió .*«Duerme mejor»/);
+    expect(t).toMatch(/lo que pide la agencia para esta: más divertida, sin precio/);
+  });
+
   it("sin casillas que se puedan escribir, 400 sin llamar a la IA", async () => {
     anthropic("x");
     expect((await plan({ casillas: [] })).status).toBe(400);

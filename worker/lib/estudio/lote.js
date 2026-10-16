@@ -79,6 +79,9 @@ export function limpiarCasillas(lista, activos = []) {
       ...(corto(c.semana, 160) ? { semana: corto(c.semana, 160) } : {}),
       ...(corto(c.especial, 120) ? { especial: corto(c.especial, 120) } : {}),
       ...(corto(c.idea, 400) ? { ideaPersona: corto(c.idea, 400) } : {}),
+      // «Otra»: lo que pide la agencia para esta (y la que había, para no repetirla).
+      ...(corto(c.pide, 300) ? { pide: corto(c.pide, 300) } : {}),
+      ...(corto(c.antes, 200) ? { antes: corto(c.antes, 200) } : {}),
       ...(corto(c.cambio, 160) ? { cambio: corto(c.cambio, 160) } : {}),
     }];
   });
