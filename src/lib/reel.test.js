@@ -80,7 +80,7 @@ describe("el reel: música, locución, 8 s con Veo y la voz de Omni", () => {
     expect(ajustarDuracion(planos, 8).map((p) => [p.desde, p.hasta])).toEqual([[0, 4], [4, 8]]);
     expect(locucionQueCabe("una dos tres cuatro cinco", 1)).toBe("una dos…");
     expect(locucionQueCabe("una dos", 10)).toBe("una dos");
-    expect(DURACIONES_REEL.map((d) => d.segundos)).toEqual([10, 8]);
+    expect(DURACIONES_REEL.map((d) => d.segundos)).toEqual([10, 8, 20, 30, 40]);
   });
 
   it("la voz escogida va sólo al modelo que la tiene (Omni por Kie), y no con imagen inicial", () => {
@@ -89,5 +89,45 @@ describe("el reel: música, locución, 8 s con Veo y la voz de Omni", () => {
     expect(pedidoDeVideo({ modelo: modeloPorId("gemini-omni-kie"), planos, fotogramas, voz: "kore" }).ajustes.voz).toBe("kore");
     expect(pedidoDeVideo({ modelo: modeloPorId("veo-3-1-fast-kie"), planos, fotogramas, voz: "kore", segundos: 8 }).ajustes.voz).toBeUndefined();
     expect(pedidoDeVideo({ modelo: modeloPorId("veo-3-1-fast-kie"), planos, fotogramas, segundos: 8 }).ajustes.duration).toBe("8");
+  });
+});
+
+describe("el video para Flow: largo, en clips, y el prompt de una sola instrucción", async () => {
+  const m = await import("./reel.js");
+  it("20, 30 y 40 s son sólo para Flow, con más planos", () => {
+    expect(m.soloFlow(10)).toBe(false);
+    expect(m.soloFlow(30)).toBe(true);
+    expect(m.maxPlanos(10)).toBe(8);
+    expect(m.maxPlanos(40)).toBe(20);
+    expect(m.DURACIONES_REEL.filter((d) => d.soloFlow).map((d) => d.segundos)).toEqual([20, 30, 40]);
+  });
+
+  it("el guion largo pide clips de 10 s sin planos que crucen y puede seguir un anuncio que funciona", () => {
+    const p = m.pedidoDeReel({ marca: "Dcasa", idea: "Sofá cama", segundos: 30, estructura: "0–3 s: gancho con pregunta" });
+    expect(p).toContain("3 clips de 10 s");
+    expect(p).toContain("ESTRUCTURA A SEGUIR");
+    expect(p).toContain("nunca su marca");
+    expect(m.pedidoDeReel({ idea: "x", segundos: 10 })).not.toContain("clips de");
+  });
+
+  it("los planos se reparten en clips por dónde empiezan", () => {
+    const planos = m.repartirTiempos([{ escena: "a", desde: 0 }, { escena: "b", desde: 6 }, { escena: "c", desde: 10 }, { escena: "d", desde: 16 }], 20);
+    expect(m.clipsDelGuion(planos, 20).map((c) => c.planos.map((p) => p.escena))).toEqual([["a", "b"], ["c", "d"]]);
+  });
+
+  it("el prompt lleva la marca, la continuidad, los clips, el sonido y lo que hay que subir", () => {
+    const guion = { segundos: 20, hilo: "Sala cálida", musica: "pop suave", locucion: "Tu sala, lista para visitas", efectos: "",
+      planos: m.repartirTiempos([{ escena: "Ana abre la puerta", desde: 0, texto: "¿Visitas?" }, { escena: "b", desde: 10 }], 20) };
+    const t = m.promptParaFlow({ guion, marca: "Dcasa", identidad: "Paleta azul marino", estilo: "Foto cálida",
+      personajes: [{ nombre: "Ana", descripcion: "30 años" }], producto: "Sofá cama ($399)", ingredientes: ["el logo de Dcasa"] });
+    expect(t).toMatch(/^Crea con Gemini Omni un video vertical 9:16 de 20 segundos para Dcasa, en 2 clips/);
+    expect(t).toContain("LA MARCA (respétala en todo el video):\nPaleta azul marino");
+    expect(t).toContain("Personaje «Ana»: 30 años");
+    expect(t).toContain("Producto: Sofá cama ($399)");
+    expect(t).toContain("súbelas como ingredientes): el logo de Dcasa");
+    expect(t).toContain("CLIP 1 (0–10 s):\n[0–10 s] Ana abre la puerta. Texto en pantalla, exacto: \"¿Visitas?\".");
+    expect(t).toContain("CLIP 2 (10–20 s):");
+    expect(t).toContain("«Tu sala, lista para visitas»");
+    expect(m.promptParaFlow({ guion: { ...guion, segundos: 10, planos: m.repartirTiempos([{ escena: "a" }, { escena: "b" }], 10) } })).toContain("PLANOS:");
   });
 });

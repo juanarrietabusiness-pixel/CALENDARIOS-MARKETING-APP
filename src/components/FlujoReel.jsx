@@ -2,8 +2,8 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import { textoCosto, estimar, costoDePieza, etiquetaDeCosto, CONFIRMAR_DESDE, MODELOS, VOCES_OMNI } from "../lib/estudioCatalogo";
 import * as api from "../lib/estudio";
-import { TIPOS_PRESET, ESTILOS_VISUALES, limpiarKit, referenciasDePersonajes, estiloDeMarca } from "../lib/kitMarca";
-import { repartirTiempos, tramo, MAX_PLANOS, MIN_PLANOS, DURACIONES_REEL, ajustarDuracion, locucionQueCabe, PALABRAS_POR_SEGUNDO } from "../lib/reel";
+import { TIPOS_PRESET, ESTILOS_VISUALES, limpiarKit, referenciasDePersonajes, estiloDeMarca, bloqueDeMarca } from "../lib/kitMarca";
+import { repartirTiempos, tramo, maxPlanos, MIN_PLANOS, DURACIONES_REEL, ajustarDuracion, locucionQueCabe, PALABRAS_POR_SEGUNDO, soloFlow, SEGUNDOS_POR_CLIP, promptParaFlow } from "../lib/reel";
 import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
 import { modelosParaReel, modeloRecomendadoParaReel, modeloParaTramo, crearFotogramas, crearFotograma, editarImagen, pedidoDeVideo, crearVideo, corregirTramo } from "../lib/reelEstudio";
 import { CopyButton } from "./calendario/primitivas";
@@ -32,7 +32,14 @@ import "./EstudioLote.css";
 // escogida (Omni) y efectos—: así la voz cae en el plano que toca. Al corregir
 // un fotograma o un tramo se pueden poner ejemplos de la galería.
 //
-// Lo usan la pestaña Estudio («Reel IA») y «Crear reel con IA» de una
+// «Copiar para Flow» (lo principal): el guion en UNA instrucción para Gemini
+// Omni en Flow, con todo lo que Flow no sabe —la marca, la continuidad, los
+// clips, el sonido y qué imágenes subir— (`promptParaFlow`). 20, 30 y 40 s
+// son SÓLO para Flow: varios clips de 10 s que el agente genera seguidos.
+// El guion puede seguir la ESTRUCTURA de un anuncio que ya funciona (las
+// referencias analizadas del estudio de mercado).
+//
+// Lo usan la pestaña Estudio («Video») y «Crear reel con IA» de una
 // publicación (que además lo pone en ella).
 // ============================================================
 
@@ -51,6 +58,10 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
   const [personajes, setPersonajes] = useState([]);
   const [refsMano, setRefsMano] = useState([]); // de la galería, para los fotogramas
   const [duracion, setDuracion] = useState(10);
+  // Un anuncio que ya funciona (referencias analizadas del estudio de mercado): el guion sigue su estructura.
+  const [referencias, setReferencias] = useState([]);
+  const [referenciaId, setReferenciaId] = useState(inicial.referenciaId ?? "");
+  const [copiado, setCopiado] = useState(false);
   const [voz, setVoz] = useState("");
   const [ejemplosFoto, setEjemplosFoto] = useState({}); // i → [ejemplos de la galería]
   const [ejemplosTramo, setEjemplosTramo] = useState([]);
@@ -67,6 +78,13 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
   const carpeta = useRef(null);
   const vivo = useRef(true);
   useEffect(() => { vivo.current = true; return () => { vivo.current = false; }; }, []);
+  useEffect(() => {
+    let sigue = true;
+    import("../lib/mercado").then(({ leerMercado }) => leerMercado(clienteId))
+      .then((m) => { if (sigue) setReferencias((m?.referencias ?? []).filter((r) => r.analisis)); })
+      .catch(() => { /* sin estudio de mercado, sin referencias */ });
+    return () => { sigue = false; };
+  }, [clienteId]);
 
   const productos = estudio?.productos ?? [];
   const modelosImagen = useMemo(() => modelosParaCarrusel(estudio?.activos ?? {}), [estudio]);
@@ -91,6 +109,20 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
   const palabras = String(guion?.locucion ?? "").trim().split(/\s+/).filter(Boolean).length;
   const costoVideo = pedidoVideo ? estimar(modeloVideo, 1, pedidoVideo.ajustes) : 0;
   const ocupar = (q) => { setOcupado(q); onCreando(Boolean(q)); };
+  const largo = soloFlow(segundos);
+
+  /** El prompt para Flow: todo lo que Flow no sabe, en una sola instrucción. */
+  const producto = productos.find((p) => p.id === productoId);
+  const paraFlow = guion ? promptParaFlow({
+    guion: { ...guion, segundos }, marca: client.name, rubro: client.industry ?? "", identidad: bloqueDeMarca(kit), estilo: estiloTexto,
+    personajes: kit.personajes.filter((p) => personajes.includes(p.id)).map((p) => ({ nombre: p.nombre, descripcion: p.descripcion })),
+    producto: producto ? `${producto.nombre}${producto.precio ? ` (${producto.precio})` : ""}` : "",
+    ingredientes: [
+      kit.logo && `el logo de ${client.name}`,
+      ...kit.personajes.filter((p) => personajes.includes(p.id)).map((p) => `el retrato de ${p.nombre}`),
+      producto && api.fotosDelProducto(productos, productoId).length && `la foto de ${producto.nombre}`,
+    ].filter(Boolean),
+  }) : "";
 
   /** 10 s (Omni) u 8 s (Veo, la mitad): los planos se reparten en el tiempo nuevo y el modelo del video sigue. */
   const cambiarDuracion = (d) => {
@@ -110,6 +142,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
         ))}
       </div>
       {segundos === 8 && <p className="hint">Veo 3.1 Fast cuesta más o menos la mitad. Con fotogramas usa hasta 3 de referencia (el primero, uno del medio y el último).</p>}
+      {soloFlow(segundos) && <p className="hint">Para Flow: {Math.ceil(segundos / SEGUNDOS_POR_CLIP)} clips de {SEGUNDOS_POR_CLIP} s con Gemini Omni, en una sola instrucción. Aquí no se crea por API.</p>}
     </div>
   );
 
@@ -127,7 +160,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
     ocupar("guion");
     setAviso(null);
     try {
-      const r = await api.guionDeReel(clienteId, { idea, segundos: duracion, preset, estilo, productoId: productoId || undefined, personajes });
+      const r = await api.guionDeReel(clienteId, { idea, segundos: duracion, preset, estilo, productoId: productoId || undefined, personajes, referenciaId: referenciaId || undefined });
       setGuion(r);
       setPaso("planos");
       setAviso({ ok: true, texto: ["Revisa los planos: qué se ve, el texto en pantalla y la cámara.", r.aviso ?? ""].filter(Boolean).join(" ") });
@@ -239,6 +272,16 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
               placeholder="Caja grande de wipes Nateen: 960 por $45. Piel sensible protegida desde el primer uso." />
             <p className="hint">La promoción, el beneficio o lo que quieres contar. La IA propone el guion de {duracion} s por planos, con la música y la locución.</p>
           </div>
+          {referencias.length > 0 && (
+            <div className="field">
+              <label className="label" htmlFor={`${ids}-ref`}>Seguir un anuncio que ya funciona (opcional)</label>
+              <select id={`${ids}-ref`} className="input" value={referenciaId} onChange={(e) => setReferenciaId(e.target.value)}>
+                <option value="">Ninguno</option>
+                {referencias.map((r) => <option key={r.id} value={r.id}>{[r.competidor || "Referencia", r.medio === "video" ? "video" : "imagen", r.analisis?.gancho].filter(Boolean).join(" · ").slice(0, 110)}</option>)}
+              </select>
+              <p className="hint">El guion copia su forma —orden, ritmo, gancho y cierre— con tu marca y tu producto. Sin idea escrita, usa la que propuso el análisis.</p>
+            </div>
+          )}
           {selectorDuracion}
           <div className="lote-fila">
             <div className="field">
@@ -288,6 +331,18 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
 
       {paso === "planos" && guion && (
         <div className="carrusel-opciones">
+          {/* Lo principal: el guion entero para Flow, en una sola instrucción, con la marca dentro. */}
+          <div className="notice reel-flow" style={{ display: "block" }}>
+            <p style={{ margin: 0 }}><strong>Para Flow (Gemini Omni)</strong>{largo ? ` · ${Math.ceil(segundos / SEGUNDOS_POR_CLIP)} clips de ${SEGUNDOS_POR_CLIP} s en una sola instrucción` : ""}</p>
+            <p className="hint" style={{ margin: 0 }}>Lleva la marca, la continuidad, cada plano, el texto en pantalla, la música y la locución. Sube en Flow las imágenes que dice el prompt (logo, personajes, producto).</p>
+            <div className="reel-flow-acciones">
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => navigator.clipboard.writeText(paraFlow).then(() => { setCopiado(true); setTimeout(() => setCopiado(false), 2000); }).catch(() => setAviso({ ok: false, texto: "No se pudo copiar: ábrelo en «Ver el prompt» y cópialo a mano." }))}>
+                <Icon name={copiado ? "check" : "copy"} size={14} /> {copiado ? "Copiado" : "Copiar para Flow"}
+              </button>
+              <span role="status" className="sr-only">{copiado ? "Prompt copiado" : ""}</span>
+            </div>
+            <details><summary className="hint">Ver el prompt</summary><pre className="reel-flow-prompt">{paraFlow}</pre></details>
+          </div>
           <div className="field">
             <label className="label" htmlFor={`${ids}-hilo`}>Lo que comparten todos los planos</label>
             <input id={`${ids}-hilo`} className="input" maxLength={300} value={guion.hilo} onChange={(e) => setGuion((g) => ({ ...g, hilo: e.target.value }))} />
@@ -308,7 +363,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
               </li>
             ))}
           </ol>
-          {planos.length < MAX_PLANOS && <button type="button" className="btn btn-ghost btn-sm" onClick={anadirPlano}><Icon name="plus" size={14} /> Añadir plano</button>}
+          {planos.length < maxPlanos(segundos) && <button type="button" className="btn btn-ghost btn-sm" onClick={anadirPlano}><Icon name="plus" size={14} /> Añadir plano</button>}
           {selectorDuracion}
           <fieldset className="reel-sonido">
             <legend className="label">El sonido (va en el mismo pedido del video)</legend>
@@ -443,17 +498,21 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
         ) : (
           <>
             {paso === "idea" && (
-              <button type="button" className="btn btn-primary" disabled={Boolean(ocupado) || !idea.trim()} onClick={escribir}>
+              <button type="button" className="btn btn-primary" disabled={Boolean(ocupado) || (!idea.trim() && !referenciaId)} onClick={escribir}>
                 <Icon name="sparkles" size={18} /> {ocupado === "guion" ? "Escribiendo el guion…" : `Proponer el guion de ${duracion} s`}
               </button>
             )}
             {paso === "planos" && (
               <>
                 <button type="button" className="btn btn-ghost" onClick={() => setPaso("idea")}>Volver</button>
-                <p className="lote-costo">{planos.length} fotogramas · <strong>{textoCosto(costoFotos)}</strong> (aprox.)</p>
-                <button type="button" className="btn btn-primary" disabled={!modeloImagen || planos.some((p) => !p.escena.trim())} onClick={() => pedirConConfirmar("fotogramas", costoFotos, crearLosFotogramas)}>
-                  <Icon name="image" size={18} /> Crear los fotogramas
-                </button>
+                {largo ? <p className="lote-costo">{segundos} s: cópialo arriba y pégalo en Flow.</p> : (
+                  <>
+                    <p className="lote-costo">O aquí por API: {planos.length} fotogramas · <strong>{textoCosto(costoFotos)}</strong> (aprox.)</p>
+                    <button type="button" className="btn btn-secondary" disabled={!modeloImagen || planos.some((p) => !p.escena.trim())} onClick={() => pedirConConfirmar("fotogramas", costoFotos, crearLosFotogramas)}>
+                      <Icon name="image" size={18} /> Crear aquí por API
+                    </button>
+                  </>
+                )}
               </>
             )}
             {paso === "fotogramas" && (

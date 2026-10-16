@@ -33,3 +33,8 @@
 /* El sonido del reel: música, locución y efectos, en el mismo pedido del video. */
 .reel-sonido { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--sp-3); margin: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
 .reel-sonido .field { margin: 0; }
+
+/* «Copiar para Flow» del video (FlujoReel.jsx): lo principal del paso de los planos. */
+.reel-flow { display: flex; flex-direction: column; gap: var(--sp-2); }
+.reel-flow-acciones { display: flex; align-items: center; gap: var(--sp-2); }
+.reel-flow-prompt { white-space: pre-wrap; word-break: break-word; font-size: var(--fs-2xs); max-height: 320px; overflow: auto; margin: var(--sp-2) 0 0; padding: var(--sp-2); background: var(--surface-2); border-radius: var(--radius-sm); }
