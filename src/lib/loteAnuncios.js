@@ -259,6 +259,8 @@ function lineaDePieza(r, productos = {}) {
     r.semana ? `   semana: ${corto(r.semana, 160)}` : "",
     r.especial ? `   fecha especial ese día: ${corto(r.especial, 120)}` : "",
     r.ideaPersona ? `   idea de la agencia (desarróllala conservando su intención, su tema y su producto): «${corto(r.ideaPersona, 400)}»` : "",
+    r.antes ? `   la que había y NO sirvió (escribe OTRA distinta, con otro enfoque): «${corto(r.antes, 200)}»` : "",
+    r.pide ? `   lo que pide la agencia para esta: ${corto(r.pide, 300)}` : "",
     r.cambio ? `   ojo: ${r.cambio}` : "",
   ].filter(Boolean).join("\n");
 }

@@ -159,6 +159,7 @@ src/
     controlEstudio.js     Controlar y corregir: la pieza al terminar (lote, carrusel, «Producir el mes», compositor), editar
                           SÓLO el texto mal escrito de la misma imagen y quedarse con la mejor
     muestraFuente.js      La fuente de la marca en el navegador: registrarla para el lienzo y dibujar su muestra
+    revisionIdeas.js      La revisión interna de las ideas: cuáles se revisan, cuáles están aprobadas por dentro (puro)
     zip.js                Un ZIP sin comprimir hecho en el navegador («Descargar el carrusel»), con su CRC-32 (puro)
     logoEncima.js         El logo ESTAMPADO: modos, esquinas, `posicionLogo` (puro, también lo lee el kit) y el lienzo
     logoEstudio.js        Estampar el logo y subir la pieza nueva a la galería; `conLogoSiToca` para lote, carrusel y mes
@@ -297,7 +298,9 @@ src/
     calendario/RevisionMes.jsx  «Revisar el mes» antes de enviarlo: reglas, IA opcional e imágenes contra el kit (lazy)
     calendario/CarruselIA.jsx   «Crear carrusel con IA»: el guion en láminas, el texto por IA o por plantilla, rehacer una (lazy)
     calendario/ProducirMes.jsx  «Diseñar las que ya hay»: las piezas que faltan en lote, con costo y confirmación (lazy)
-    calendario/ProducirElMes.jsx  El botón «Producir el mes»: crear lo que falta (lote del Estudio) o diseñar lo que hay (lazy)
+    calendario/ProducirElMes.jsx  El botón «Producir el mes»: crear lo que falta (lote del Estudio), revisar las ideas o diseñar
+                          lo que hay (lazy)
+    calendario/RevisarIdeas.jsx  «Revisar las ideas»: la aprobación INTERNA en tarjetas (aprobar, otra con nota, quitar) (lazy)
     calendario/crearConIA.jsx  El Estudio en un diálogo dentro del panel de una publicación y de «Subir»
                           (el hook que lo abre, en hooks/useCrearConIA.jsx)
     Cerebro.jsx           La pestaña Cerebro: las notas de un cliente, filtros, buscar, añadir, subir
@@ -1501,6 +1504,16 @@ son del servidor.
 - **El compositor del Estudio va al límite de su chunk (20 kB):** la lógica de sus referencias vive en
   `apoyosDelCompositor` (pieza.js, compartido), el control en controlEstudio.js y el visor en su chunk. Lo nuevo de la
   pantalla, fuera de Estudio.jsx.
+- **Las ideas las aprueba la AGENCIA; el cliente aprueba el calendario ya creado** (decisión de la agencia: no se le
+  mandan ideas sueltas). «Revisar las ideas» (menú «⋯» y «Producir el mes»; `RevisarIdeas.jsx`, `revisionIdeas.js`):
+  una tarjeta por idea sin contenido con su qué se ve, texto o guion y caption. «Aprobar» la pasa a `etapa:
+  "produccion"` —la misma del tablero, sin campo nuevo—; «Otra» la reescribe por el motor de ideas (modo «plan» con
+  `antes`, la que había, y `pide`, lo que quiere la agencia: `casillaParaOtra` / `reemplazarConIdea`, que REEMPLAZA lo
+  escrito por la IA porque se pidió otra); «Quitar» la saca del mes con un segundo toque. «Diseñar las que ya hay» marca
+  de entrada las aprobadas (si hay) y pide DOS versiones de cada imagen por defecto (se escoge en el resultado; la que
+  pasa el control se propone primero). El lote del Estudio tiene la misma «Otra» por idea y guarda un BORRADOR por
+  cliente en el navegador (`estudio-lote-borrador:<cliente>`, 7 días): cerrar la ventana ya no pierde las ideas pagadas;
+  se borra solo cuando todas las escogidas están en el calendario.
 - **«Dame ideas»** (`POST /api/estudio/<c>/ideas`): variadas (un tipo de contenido distinto cada una) o del tipo
   escogido, sobre lo escrito si hay algo. «Usar» pone escena + texto exacto, el tipo y las fotos de su producto.
 - **Varios productos en una pieza**: `productosNombrados` encuentra TODOS los que nombra la idea («Sofá cama» no cuenta

@@ -158,3 +158,41 @@ export function rellenarConIdea(post = {}, idea = {}) {
   const NOMBRES = { title: "título", idea: "idea", escena: "qué se ve", textoPieza: "texto de la pieza", guion: "guion", descripcion: "descripción", hashtagsFinales: "hashtags" };
   return { cambios, campos: Object.keys(cambios).map((k) => NOMBRES[k]).filter(Boolean) };
 }
+
+/**
+ * «Otra» de una publicación (revisión interna o el lote): su casilla con su formato, su tipo y su matriz, la idea que
+ * había (para que la nueva sea distinta) y lo que pide la agencia. Null si el formato no se escribe por el motor. Pura.
+ */
+export function casillaParaOtra(post = {}, day = {}, { pide = "" } = {}) {
+  const formato = formatoDelPlan(post.format);
+  if (!formato) return null;
+  return {
+    clave: post.id, ...(day?.date ? { fecha: day.date } : {}), formato,
+    ...Object.fromEntries(["pilar", "pilarSub", "productoId", "nivel", "deseo", "perfil"].map((k) => [k, post[k] || ""]).filter(([, v]) => v)),
+    ...(day?.concept ? { semana: day.concept } : {}),
+    ...(day?.specialDate ? { especial: day.specialDate } : {}),
+    antes: String(post.title || post.idea || "").trim().slice(0, 200),
+    ...(String(pide).trim() ? { pide: String(pide).trim().slice(0, 300) } : {}),
+  };
+}
+
+/**
+ * La idea nueva SOBRE la publicación («Otra»: se pidió otra, así que se reemplaza lo que escribió la IA): título, idea,
+ * qué se ve, texto de la pieza o guion, caption, hashtags y forma. Lo demás (fecha, hora, medios, matriz) se queda. Pura.
+ */
+export function reemplazarConIdea(post = {}, idea = {}) {
+  const guiado = post.format === "carrusel" || post.format === "reel";
+  return {
+    ...post,
+    title: idea.titulo || idea.titular || post.title || "",
+    idea: idea.brief || idea.escena || post.idea || "",
+    escena: idea.escena || "",
+    textoPieza: guiado ? "" : idea.textoPieza || "",
+    guion: guiado ? idea.guion || "" : post.guion || "",
+    descripcion: idea.descripcion || post.descripcion || "",
+    hashtagsFinales: idea.hashtags || post.hashtagsFinales || "",
+    composicion: idea.composicion || "",
+    tactica: idea.tactica || "",
+    sugerencia: "",
+  };
+}

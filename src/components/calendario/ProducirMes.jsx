@@ -14,6 +14,7 @@ import { estampaSola, conLogoSiToca } from "../../lib/logoEstudio";
 import { controlarYCorregir, controlEncendido, encenderControl } from "../../lib/controlEstudio";
 import { resumenControl } from "../../lib/control";
 import { referenciaDeTipografia } from "../../lib/kitMarca";
+import { aprobadaPorDentro } from "../../lib/revisionIdeas";
 import { DIAS_SEMANA, diaDeLaSemana, semanasDe, diasDe, filtrarProduccion, ordenarProduccion } from "../../lib/produccion";
 import "./RevisionMes.css";
 
@@ -65,6 +66,9 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
   // El control de calidad de cada pieza al llegar (y corregir el texto solo): se recuerda por navegador.
   const [controlar, setControlar] = useState(controlEncendido);
   const [controles, setControles] = useState({}); // postId → control
+  // Cuántas versiones de cada imagen (para escoger) y las que llegaron: postId → [archivos].
+  const [versiones, setVersiones] = useState(2);
+  const [opciones, setOpciones] = useState({});
   const [modoTexto, setModoTexto] = useState("ia");
   const [plantilla, setPlantilla] = useState("banda");
   const vivo = useRef(true);
@@ -117,15 +121,19 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
       }));
   }, [estudio, cal.days, activos, client.name, client.industry]);
 
+  // Marcadas de entrada: las APROBADAS por dentro («Revisar las ideas»), si hay alguna; si no, todas las que se pueden.
   useEffect(() => {
-    if (estudio && marcadas === null) setMarcadas(new Set(candidatas.filter((c) => c.tipo !== "video" && !c.error).map((c) => c.post.id)));
+    if (!estudio || marcadas !== null) return;
+    const posibles = candidatas.filter((c) => c.tipo !== "video" && !c.error);
+    const aprobadas = posibles.filter((c) => aprobadaPorDentro(c.post));
+    setMarcadas(new Set((aprobadas.length ? aprobadas : posibles).map((c) => c.post.id)));
   }, [estudio, candidatas, marcadas]);
 
   const alternar = (set, valor) => { const n = new Set(set); if (n.has(valor)) n.delete(valor); else n.add(valor); return n; };
   const visibles = useMemo(() => ordenarProduccion(filtrarProduccion(candidatas, { semanas, dias }), orden), [candidatas, semanas, dias, orden]);
   // Sólo cuenta lo que se ve: escoger «semana 2» no pide lo marcado de las otras.
   const elegidas = visibles.filter((c) => marcadas?.has(c.post.id));
-  const total = elegidas.reduce((s, c) => s + c.costo, 0);
+  const total = elegidas.reduce((s, c) => s + c.costo * (c.tipo === "imagen" ? versiones : 1), 0);
   const soloPrueba = elegidas.some((c) => c.modelo.motor === "prueba");
 
   const crear = async () => {
@@ -140,7 +148,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
           const r = await api.mejorarIdea(clienteId, { idea: c.ideaBase, tipo: "imagen", pieza: c.pieza }).catch(() => null);
           if (r?.idea) pedido = c.armar(r.idea);
         }
-        const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true, calendarId: cal.dbId || cal.id, postId: c.post.id });
+        const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, ...(c.tipo === "imagen" ? { n: versiones } : {}), confirmado: true, calendarId: cal.dbId || cal.id, postId: c.post.id });
         creados.push({ postId: c.post.id, date: c.date, format: c.post.format, titulo: c.post.title || c.post.idea || "", id: trabajo.id, estado: trabajo.estado, error: "" });
       } catch (e) {
         creados.push({ postId: c.post.id, date: c.date, format: c.post.format, titulo: c.post.title || c.post.idea || "", id: null, estado: "fallido", error: e.message });
@@ -165,9 +173,12 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
     }
     if (!vivo.current) return;
     const g = await api.leerEstudio(clienteId).catch(() => null);
-    const porTrabajo = new Map((g?.archivos ?? []).map((a) => [a.trabajoId, a]));
+    // Cada trabajo con TODAS sus versiones (la galería trae la más nueva primero: se ordenan por fecha).
+    const porTrabajo = new Map();
+    for (const a of [...(g?.archivos ?? [])].reverse()) if (a.trabajoId) porTrabajo.set(a.trabajoId, [...(porTrabajo.get(a.trabajoId) ?? []), a]);
     const salida = {};
-    for (const t of creados) if (t.id && porTrabajo.has(t.id)) salida[t.postId] = porTrabajo.get(t.id);
+    const versionesDe = {};
+    for (const t of creados) if (t.id && porTrabajo.has(t.id)) { versionesDe[t.postId] = porTrabajo.get(t.id); salida[t.postId] = versionesDe[t.postId][0]; }
     // El control de calidad, antes de estampar el logo: si sólo falla una letra, se corrige editando la misma imagen.
     if (controlar) {
       const vistos = {};
@@ -177,9 +188,16 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
         if (!a || a.tipo === "video" || !vivo.current) continue;
         t.estado = "revisando";
         setTrabajos([...creados]);
-        const r = await controlarYCorregir({ clienteId, archivo: a, texto: c?.post?.textoPieza ?? null, activos, seguir: () => vivo.current });
-        salida[t.postId] = r.archivo;
-        if (r.control) vistos[t.postId] = r.control;
+        // Cada versión pasa por el control; la primera que salga bien es la que se propone.
+        const revisadas = [];
+        for (const v of versionesDe[t.postId] ?? [a]) {
+          const r = await controlarYCorregir({ clienteId, archivo: v, texto: c?.post?.textoPieza ?? null, activos, seguir: () => vivo.current });
+          revisadas.push(r);
+        }
+        versionesDe[t.postId] = revisadas.map((r) => r.archivo);
+        const mejor = revisadas.find((r) => r.control?.estado === "ok") ?? revisadas[0];
+        salida[t.postId] = mejor.archivo;
+        if (mejor.control) vistos[t.postId] = mejor.control;
         t.estado = "hecho";
       }
       setControles((m) => ({ ...m, ...vistos }));
@@ -217,6 +235,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
     }
     if (!vivo.current) return;
     setPiezas(salida);
+    setOpciones(versionesDe);
     setPaso("listo");
     // El botón de crear desaparece: el foco vuelve al diálogo (si no, Escape ya no lo cierra).
     ref.current?.focus({ preventScroll: true });
@@ -294,6 +313,10 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
               <label className="cerebro-casilla">
                 <input type="checkbox" checked={controlar} onChange={(e) => { setControlar(e.target.checked); encenderControl(e.target.checked); }} /> Revisar cada pieza al llegar y corregir solo el texto mal escrito (recomendado; céntimos por pieza)
               </label>
+              <div className="produccion-filtro" role="group" aria-label="Versiones de cada imagen">
+                <span className="hint">Versiones</span>
+                {[1, 2].map((n) => <button key={n} type="button" className="filter-chip" aria-pressed={versiones === n} onClick={() => setVersiones(n)}>{n === 1 ? "Una" : "Dos para escoger"}</button>)}
+              </div>
               <div className="produccion-filtro" role="group" aria-label="Orden">
                 <span className="hint">Orden</span>
                 <button type="button" className="filter-chip" aria-pressed={orden === "dia"} onClick={() => setOrden("dia")}>De lunes a domingo</button>
@@ -318,6 +341,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
                         onChange={(e) => setMarcadas((s) => { const n = new Set(s); if (e.target.checked) n.add(c.post.id); else n.delete(c.post.id); return n; })} />
                       <strong>{fechaCorta(c.date)} · {FORMATS[c.post.format]?.label ?? c.post.format}</strong>
                       <span className="hint">{[nombreDePilar(c.post.pilar, c.post.pilarSub), String(c.post.title || c.post.idea || "").slice(0, 60)].filter(Boolean).join(" · ")}</span>
+                      {aprobadaPorDentro(c.post) && <span className="revisar-idea-ok"><Icon name="check" size={12} /> Aprobada</span>}
                     </label>
                     <p className="revision-problema">
                       {c.error ? c.error : `${c.tipo === "carrusel" ? `Carrusel de ${c.laminas.length} láminas` : c.tipo === "video" ? "Video" : "Imagen"} con ${c.modelo.nombre} · ${textoCosto(c.costo)}`}
@@ -340,6 +364,16 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
                     {a && (a.tipo === "video"
                       ? <video src={a.src} muted controls playsInline preload="metadata" aria-label="Video creado" />
                       : <img src={a.src} alt={`Pieza para el ${fechaCorta(t.date)}`} loading="lazy" />)}
+                    {(opciones[t.postId]?.length ?? 0) > 1 && !puestas.has(t.postId) && (
+                      <div className="lote-opciones" role="group" aria-label={`Escoger la versión del ${fechaCorta(t.date)}`}>
+                        {opciones[t.postId].map((o, k) => (
+                          <button key={o.id} type="button" className="lote-opcion" aria-pressed={piezas[t.postId]?.id === o.id} aria-label={`Versión ${k + 1}`}
+                            onClick={() => setPiezas((m) => ({ ...m, [t.postId]: o }))}>
+                            <img src={o.src} alt="" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <div className="produccion-texto">
                       <strong>{fechaCorta(t.date)} · {FORMATS[t.format]?.label ?? t.format}</strong>
                       <span className="hint">{String(t.titulo).slice(0, 90)}{todas.length > 1 ? ` · ${todas.length} láminas` : ""}{t.laminas && todas.length < t.laminas ? ` (faltaron ${t.laminas - todas.length})` : ""}</span>

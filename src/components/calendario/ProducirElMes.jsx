@@ -21,7 +21,7 @@ import { useDialogA11y } from "../../hooks/useDialogA11y";
 const OPCION = { display: "flex", alignItems: "flex-start", gap: "var(--sp-3)", padding: "var(--sp-3) var(--sp-4)", boxSizing: "border-box", textAlign: "left", width: "100%", minHeight: "var(--tap)", cursor: "pointer", color: "inherit", font: "inherit" };
 const TEXTOS = { display: "flex", flexDirection: "column", gap: "var(--sp-1)" };
 
-export default function ProducirElMes({ mesNombre, publicaciones = 0, pasado = false, onCrear, onDisenar, onClose }) {
+export default function ProducirElMes({ mesNombre, publicaciones = 0, porRevisar = 0, pasado = false, onCrear, onRevisar, onDisenar, onClose }) {
   const ids = useId();
   const ref = useDialogA11y(onClose);
   return (
@@ -42,6 +42,15 @@ export default function ProducirElMes({ mesNombre, publicaciones = 0, pasado = f
             </span>
           </span>
         </button>
+        {porRevisar > 0 && (
+          <button type="button" className="card" style={OPCION} onClick={onRevisar}>
+            <Icon name="checkCircle" size={22} />
+            <span style={TEXTOS}>
+              <strong>Revisar las ideas ({porRevisar} por revisar)</strong>
+              <span className="hint">Antes de diseñar: aprueba las que van, pide otra para las que no y quita las que sobran. «Diseñar» produce primero las aprobadas.</span>
+            </span>
+          </button>
+        )}
         <button type="button" className="card" style={OPCION} onClick={onDisenar} disabled={!publicaciones}>
           <Icon name="imageAi" size={22} />
           <span style={TEXTOS}>
