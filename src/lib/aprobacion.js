@@ -84,7 +84,11 @@ export function aprobacionVigente(post, review) {
 export function conAprobacion(post, review) {
   const vigente = aprobacionVigente(post, review);
   if (!vigente || post?.status === "published") return post;
-  if (vigente.estado === "cambios") return { ...post, status: "rejected" };
+  // Lo que pidió el cliente viaja con la publicación (sólo en el estado): es la indicación de «Rehacer con lo que
+  // dijo el cliente», y `cambiosAt` dice si lo que hizo la agencia después ya lo corrige.
+  if (vigente.estado === "cambios") {
+    return { ...post, status: "rejected", cambiosPedidos: String(vigente.comentario ?? "").trim(), cambiosAt: vigente.timestamp ?? vigente.updated_at ?? null };
+  }
   if (vigente.estado !== "aprobado") return post;
   return {
     ...post,
@@ -129,7 +133,7 @@ export function avisoCambios(post) {
  * se retocó lo aprobado). Lo que el cliente respondió antes deja de contar.
  */
 export function pedirAprobacion(post, ahoraISO, tipo = "pieza") {
-  const { aprobadaComo: _a, huellaAprobada: _h, aprobadaAt: _t, ...resto } = post;
+  const { aprobadaComo: _a, huellaAprobada: _h, aprobadaAt: _t, cambiosPedidos: _c, cambiosAt: _ca, ...resto } = post;
   return { ...resto, aprobacion: tipo, status: "pending", pideAprobacionDesde: ahoraISO };
 }
 
@@ -141,6 +145,57 @@ export function resumenEnvio(days = []) {
     r[tipoAprobacion(p)] += 1;
   }
   return r;
+}
+
+/** ¿Se cambió algo DESPUÉS de que el cliente pidiera cambios? Entonces su enlace la enseña «Actualizada · revísala». */
+export const corregidaTrasCambios = (post) =>
+  post?.status === "rejected" && Boolean(post.actualizadaAt) && post.actualizadaAt > String(post.cambiosAt ?? "");
+
+/**
+ * Cómo va el calendario para mandarlo al cliente COMPLETO (la agencia decidió no mandarle ideas sueltas): cuántas
+ * llevan ya su pieza, cuántas no (el cliente las vería como idea), cuántas no tienen hora (aprobadas, no se podrían
+ * programar), cuántas tienen cambios pedidos sin corregir y cuántas ya están corregidas (el mensaje lo dice). Un
+ * directo no lleva pieza ni cuenta. Pura.
+ */
+export function estadoDelEnvio(days = []) {
+  const r = { total: 0, conPieza: 0, sinPieza: 0, sinHora: 0, porCorregir: 0, corregidas: 0 };
+  for (const d of days ?? []) for (const p of d?.posts ?? []) {
+    if (!p || p.status === "published") continue;
+    if (p.status === "rejected") {
+      if (corregidaTrasCambios(p)) r.corregidas += 1;
+      else r.porCorregir += 1;
+    }
+    if (p.status === "approved" || p.format === "live") continue;
+    r.total += 1;
+    if (mediosDe(p).length) r.conPieza += 1;
+    else r.sinPieza += 1;
+    if (!String(p.publishTime ?? "").trim()) r.sinHora += 1;
+  }
+  return r;
+}
+
+/**
+ * El mensaje de WhatsApp para mandar el enlace. Con correcciones hechas desde su revisión, lo dice: el cliente
+ * revisa sólo esas (en su enlace salen «Actualizada · revísala»). Pura.
+ */
+export function mensajeDeEnvio({ nombre = "", mes = "", url = "", corregidas = 0, revisado = false } = {}) {
+  const hola = `Hola${nombre ? ` ${nombre}` : ""}`;
+  if (revisado && corregidas > 0) {
+    return `${hola}, ya hicimos los cambios que pediste en ${corregidas === 1 ? "1 publicación" : `${corregidas} publicaciones`} de ${mes}. Están marcadas «Actualizada» para que revises sólo esas:\n${url}`;
+  }
+  return `${hola}, aquí está el calendario de ${mes} para tu revisión:\n${url}\nPuedes aprobar o pedir cambios directamente desde tu celular.`;
+}
+
+/**
+ * La indicación para EDITAR la imagen con lo que pidió el cliente (la misma imagen, sólo ese cambio). `extra`: lo que
+ * añada la agencia. Vacío si no hay nada que pedir. Pura.
+ */
+export function instruccionDelCliente(comentario = "", extra = "") {
+  const pide = String(comentario ?? "").replace(/\s+/g, " ").trim().slice(0, 600);
+  const mas = String(extra ?? "").replace(/\s+/g, " ").trim().slice(0, 400);
+  if (!pide && !mas) return "";
+  return [pide && `el cliente pidió este cambio: «${pide}»`, mas && `${pide ? "y además" : "haz este cambio:"} ${mas}`]
+    .filter(Boolean).join(" ").concat(". Haz SÓLO ese cambio");
 }
 
 /**

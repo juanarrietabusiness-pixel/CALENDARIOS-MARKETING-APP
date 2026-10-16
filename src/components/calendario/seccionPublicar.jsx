@@ -37,6 +37,7 @@ import HistoriasDelPost from "./historiasPost";
 import VistaRed from "./vistaRed";
 import CuandoSale from "./cuandoSale";
 import { EstadoAprobacion } from "./aprobacionCliente";
+import CambiosDelCliente from "./cambiosCliente";
 import DestinoRedes from "./destinoRedes";
 import { escribirDesdeContenido } from "../../api";
 import { rellenarDesdeContenido, tieneContenido, formatoDeMedios } from "../../lib/subir";
@@ -216,6 +217,8 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
     <div className="pestana-publicar" data-ancho={ancho || undefined}>
       <div className="pp-izquierda">
       <div className="pp-config">
+      {/* Lo que pidió cambiar el cliente, con «Rehacer la imagen» (la misma imagen, sólo ese cambio). */}
+      <CambiosDelCliente post={post} setForm={setForm} clientId={clientId} uso={cal && post.id ? { calendarId: cal.dbId || cal.id, postId: post.id } : null} />
       <section className="pp-bloque" aria-labelledby={`${ids}-que`}>
         <h3 id={`${ids}-que`} className="label">¿Qué sale y dónde?</h3>
         <DestinoRedes

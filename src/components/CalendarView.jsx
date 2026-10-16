@@ -15,7 +15,7 @@ import { casillasSinIdea, estrategiaDelCalendario, ideasDelPlan, rellenarConIdea
 import { ideasDeRevision, porRevisar } from "../lib/revisionIdeas";
 import { agruparPorSemana, semanaInicial, rangoSemana } from "../lib/semanas";
 import { moverEnCalendario, ponerEnDia } from "../lib/subir";
-import { conAprobacion, resumenEnvio } from "../lib/aprobacion";
+import { conAprobacion, resumenEnvio, estadoDelEnvio, mensajeDeEnvio } from "../lib/aprobacion";
 import { sinLoNecesario } from "../lib/completitud";
 import { programarAprobadasDe } from "../lib/programarAprobadas";
 import { useEquipo } from "../hooks/useEquipo";
@@ -392,6 +392,8 @@ export default function CalendarView({
   const approvalUrl = cal.shareToken
     ? `${window.location.origin}/aprobar?t=${encodeURIComponent(cal.shareToken)}`
     : "";
+  // Cómo va el mes para mandarlo COMPLETO (sólo se calcula con el diálogo de enviar abierto).
+  const envio = capa === "aprobacion" ? estadoDelEnvio(cal.days) : null;
   const totalPosts = (cal.days || []).reduce((a, d) => a + (d.posts || []).length, 0);
 
   const weeks = [...new Set((cal.days || []).map((d) => d.weekNumber || 1))].sort((a, b) => a - b);
@@ -1594,7 +1596,7 @@ export default function CalendarView({
           shareEnabled={cal.shareEnabled !== false}
           working={shareWorking}
           approvalUrl={approvalUrl}
-          whatsappMessage={`Hola${client.name ? " " + client.name : ""}, aquí está el calendario de ${calName} para tu revisión:\n${approvalUrl}\nPuedes aprobar o pedir cambios directamente desde tu celular.`}
+          whatsappMessage={mensajeDeEnvio({ nombre: client.name, mes: calName, url: approvalUrl, corregidas: envio.corregidas, revisado: Boolean(cal.revisionEnviada) })}
           onGenerate={sendToClient}
           onRevoke={() => changeShare(false)}
           onReopen={() => changeShare(true)}
@@ -1607,6 +1609,8 @@ export default function CalendarView({
           resumen={resumenEnvio(cal.days)}
           sinLoNecesario={sinLoNecesario(cal.days)}
           onRevisar={() => abrirCapa("revision")}
+          envio={envio}
+          onDisenar={() => abrirCapa("producir")}
           onClose={cerrarCapa}
         />
       )}

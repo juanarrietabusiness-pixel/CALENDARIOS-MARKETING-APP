@@ -473,7 +473,7 @@ export function ApprovalDialog({
   approvalUrl, whatsappMessage, onClose, onGenerate, onRevoke, onReopen,
   hasLink, shareEnabled, working, allowEditing, onToggleEditing,
   opciones = {}, onCambiarOpciones, revisionEnviada = null, revisionRevisor = "", resumen = null,
-  sinLoNecesario = 0, onRevisar = null,
+  sinLoNecesario = 0, onRevisar = null, envio = null, onDisenar = null,
 }) {
   const ref = useDialogA11y(onClose);
   const ids = useId();
@@ -537,6 +537,33 @@ export function ApprovalDialog({
             <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
               Las respuestas de tu cliente aparecen aquí al instante, sin recargar.
             </p>
+
+            {/* El calendario va al cliente COMPLETO: cada publicación con su pieza, así lo que apruebe queda listo
+                para programar. Lo que falta se dice aquí, con su atajo. */}
+            {envio && envio.total + envio.porCorregir + envio.corregidas > 0 && (
+              <div className={`notice ${envio.sinPieza || envio.porCorregir ? "notice-warn" : "notice-ok"} envio-completo`} style={{ display: "block", marginBottom: "var(--sp-3)" }}>
+                {envio.total > 0 && (envio.sinPieza ? (
+                  <p style={{ margin: 0 }}>
+                    <strong>{envio.conPieza} de {envio.total}</strong> llevan su pieza. {envio.sinPieza === 1 ? "1 todavía no" : `${envio.sinPieza} todavía no`}: el
+                    cliente {envio.sinPieza === 1 ? "la verá" : "las verá"} como idea y, aprobada{envio.sinPieza === 1 ? "" : "s"}, aún habrá que {envio.sinPieza === 1 ? "producirla" : "producirlas"}.
+                  </p>
+                ) : (
+                  <p style={{ margin: 0 }}><Icon name="check" size={14} /> Las {envio.total} llevan su pieza: lo que apruebe queda listo para programar.</p>
+                ))}
+                {envio.sinPieza > 0 && onDisenar && (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={onDisenar}><Icon name="imageAi" size={14} /> Diseñar las que faltan</button>
+                )}
+                {envio.sinHora > 0 && (
+                  <p className="hint" style={{ margin: 0 }}>{envio.sinHora === 1 ? "1 no tiene" : `${envio.sinHora} no tienen`} hora: ponla para que al aprobarse se pueda programar sin tocar nada.</p>
+                )}
+                {envio.porCorregir > 0 && (
+                  <p className="hint" style={{ margin: 0 }}>{envio.porCorregir === 1 ? "1 tiene" : `${envio.porCorregir} tienen`} cambios pedidos sin hacer: ábrela{envio.porCorregir === 1 ? "" : "s"} y usa «Rehacer la imagen con lo que pidió» (pestaña Subir).</p>
+                )}
+                {envio.corregidas > 0 && (
+                  <p className="hint" style={{ margin: 0 }}>{envio.corregidas === 1 ? "1 ya está corregida" : `${envio.corregidas} ya están corregidas`}: en su enlace salen «Actualizada · revísala» y el mensaje de abajo se lo dice.</p>
+                )}
+              </div>
+            )}
 
             {/* La regla de la agencia: lo que va sin contenido (un reel que se graba, algo que no se pudo
                 hacer) lleva la idea en el texto, su guion y una referencia que el cliente pueda abrir. */}

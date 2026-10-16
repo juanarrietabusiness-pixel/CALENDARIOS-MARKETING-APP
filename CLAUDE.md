@@ -261,6 +261,7 @@ src/
     PanelTareas.jsx       Las tareas al lado, como Google Tasks: «Hoy» fijo, lo demás plegable (lazy)
     RepasoAtrasadas.jsx   El repaso de la mañana: qué se hace con cada atrasada
     calendario/aprobacionCliente.jsx  «¿Qué aprueba el cliente?» y en qué quedó
+    calendario/cambiosCliente.jsx  Lo que pidió cambiar el cliente y «Rehacer la imagen con lo que pidió» (pestaña Subir)
     calendario/equipoPublicacion.jsx  Lo lleva, etapa, hilo del equipo, tareas de la
                           publicación e historial
     SubirRapido.jsx       «Subir»: cliente → archivo → la IA escribe → cuándo sale (diálogo)
@@ -1514,6 +1515,18 @@ son del servidor.
   pasa el control se propone primero). El lote del Estudio tiene la misma «Otra» por idea y guarda un BORRADOR por
   cliente en el navegador (`estudio-lote-borrador:<cliente>`, 7 días): cerrar la ventana ya no pierde las ideas pagadas;
   se borra solo cuando todas las escogidas están en el calendario.
+- **El calendario va al cliente COMPLETO, y lo que pide cambiar se rehace sobre la misma pieza** (`estadoDelEnvio`,
+  `mensajeDeEnvio`, `instruccionDelCliente`, `corregidaTrasCambios` en lib/aprobacion.js; `calendario/cambiosCliente.jsx`).
+  «Enviar a cliente» dice cuántas llevan su pieza, cuántas no (el cliente las vería como idea: «Diseñar las que
+  faltan»), cuántas no tienen hora (aprobadas, no se podrían programar sin tocarlas), cuántas tienen cambios pedidos sin
+  hacer y cuántas ya están corregidas. `conAprobacion` trae el comentario del cliente (`cambiosPedidos`) y cuándo lo dijo
+  (`cambiosAt`) —sólo en el estado, como el resto de la respuesta— y `pedirAprobacion` los olvida. En la pestaña Subir,
+  «Rehacer la imagen con lo que pidió» EDITA la misma imagen con su comentario (+ lo que añada la agencia) por
+  `rehacerConComentario` (controlEstudio.js: `pedidoDeCorreccion`, Nano Banana si hay llave, el control si está
+  encendido) y la sustituye en su sitio; la de antes queda en la galería. Al guardar, `marcarActualizada` hace el resto:
+  el enlace del cliente la enseña «Actualizada · revísala» con lo de antes, hay un filtro «Actualizadas» y el mensaje de
+  WhatsApp, tras su revisión, dice «ya hicimos los cambios… revisa sólo esas». Corregida = `actualizadaAt` posterior a
+  `cambiosAt`: sin `cambiosAt` (filas de antes) cualquier cambio cuenta.
 - **«Dame ideas»** (`POST /api/estudio/<c>/ideas`): variadas (un tipo de contenido distinto cada una) o del tipo
   escogido, sobre lo escrito si hay algo. «Usar» pone escena + texto exacto, el tipo y las fotos de su producto.
 - **Varios productos en una pieza**: `productosNombrados` encuentra TODOS los que nombra la idea («Sofá cama» no cuenta
