@@ -16,6 +16,7 @@ import { controlarYCorregir } from "./controlEstudio";
 import { pedidoDeCorreccion } from "./estudio";
 import { ajustesDe, modeloPorId, MODELOS, porPrecio } from "./estudioCatalogo";
 import { pedidoDeLamina, referenciasDeLamina } from "./carrusel";
+import { lineaDeSistema } from "./sistemaCarrusel";
 import { componerLamina } from "./textoSobreImagen";
 import { conLogoSiToca } from "./logoEstudio";
 
@@ -78,7 +79,7 @@ export async function esperarArchivos(clienteId, trabajo, { seguir = () => true 
 export async function crearLamina({
   clienteId, modelo, lamina, total, idea = "", preset = "", modo = "ia", plantilla = "banda", hilo = "", personajes = [],
   anterior = null, portada = null, fotos = [], logo = "", colores, familia = "", fuente = null, calendarId = null, postId = null, carpetaId = null, seguir,
-  estampar = null, tipografia = null, controlar = false, activos = {},
+  estampar = null, tipografia = null, controlar = false, activos = {}, sistema = null,
 }) {
   // Los personajes van justo después de la serie (la anterior y la portada): que salgan IGUAL en cada lámina. La
   // muestra de la tipografía de la marca, sólo si el texto lo escribe el modelo.
@@ -90,6 +91,7 @@ export async function crearLamina({
     lamina, total, idea, preset, modo, plantilla, hilo,
     personajes: [...new Set(quienes)].map((n) => `Una de las referencias ${n}.`).join(" "),
     conAnteriores: Boolean(anterior || portada), conFotos: fotos.some((f) => reference.includes(f)),
+    sistema: lamina.n > 1 ? lineaDeSistema(sistema) : "",
   });
   const medios = reference.length ? { reference } : {};
   const { trabajo } = await api.pedirImagenes(clienteId, {
@@ -101,7 +103,7 @@ export async function crearLamina({
   // a la siguiente (si no, el error se copiaría en toda la serie).
   let control = null;
   if (controlar && modo !== "plantilla") {
-    const r = await controlarYCorregir({ clienteId, archivo: crudo, texto: lamina.texto, activos, carpetaId, seguir });
+    const r = await controlarYCorregir({ clienteId, archivo: crudo, texto: lamina.texto, sistema: lamina.n > 1 ? sistema : null, activos, carpetaId, seguir });
     crudo = r.archivo;
     control = r.control;
   }
@@ -136,21 +138,36 @@ export async function corregirLamina({ clienteId, modelo, resultado, instruccion
 }
 
 /**
- * Todas las láminas, en orden. `alAvanzar(i, resultado)` se llama con cada una ({ crudo, final } o { error }).
- * Una que falla no para las demás: la siguiente toma de referencia la última que sí salió.
- * Un error de presupuesto sí para todo (las siguientes fallarían igual).
+ * El sistema de diseño de la portada (lo que deben respetar las demás láminas): lo escribe la IA mirándola y queda en
+ * su ficha. Si falla, null: las láminas siguen con la portada de referencia, como antes.
  */
-export async function crearCarrusel({ laminas, alAvanzar = () => {}, seguir = () => true, ...comun }) {
-  const salida = [];
-  let portada = null;
-  let anterior = null;
-  for (const [i, lamina] of laminas.entries()) {
+export const sistemaDeLaPortada = (clienteId, portada, texto = "") =>
+  portada?.id ? api.sistemaDeArchivo(clienteId, portada.id, { texto }).then((r) => r?.sistema ?? null).catch(() => null) : Promise.resolve(null);
+
+/**
+ * Las láminas de `desde` a `hasta` (sin incluir), en orden. `previas`: las ya hechas antes de `desde` ({ crudo, final }).
+ * `alAvanzar(i, resultado)` se llama con cada una ({ crudo, final } o { error }). Una que falla no para las demás: la
+ * siguiente toma de referencia la última que sí salió. Un error de presupuesto sí para todo.
+ * Al salir la portada se saca su SISTEMA DE DISEÑO (`conSistema`) y las demás lo reciben en el pedido y en el control;
+ * `alSistema(sistema)` lo avisa. `sistema`: el que ya se sacó (al seguir tras aprobar la portada).
+ */
+export async function crearCarrusel({ laminas, desde = 0, hasta = laminas.length, previas = [], sistema = null, conSistema = true, alSistema = () => {}, alAvanzar = () => {}, seguir = () => true, ...comun }) {
+  const salida = [...previas];
+  let portada = previas[0]?.crudo ?? null;
+  let anterior = previas.slice(0, desde).reverse().find((r) => r?.crudo)?.crudo ?? null;
+  let sis = sistema;
+  for (let i = desde; i < Math.min(hasta, laminas.length); i++) {
+    const lamina = laminas[i];
     if (!seguir()) break;
     try {
-      const r = await crearLamina({ ...comun, lamina, total: laminas.length, anterior, portada: portada !== anterior ? portada : null, seguir });
+      const r = await crearLamina({ ...comun, lamina, total: laminas.length, anterior, portada: portada !== anterior ? portada : null, sistema: sis, seguir });
       salida[i] = r;
       anterior = r.crudo;
       portada ??= r.crudo;
+      if (i === 0 && conSistema && comun.modo !== "plantilla" && !sis) {
+        sis = await sistemaDeLaPortada(comun.clienteId, r.crudo, lamina.texto);
+        if (sis) alSistema(sis);
+      }
     } catch (e) {
       salida[i] = { error: e.message };
       alAvanzar(i, salida[i]);

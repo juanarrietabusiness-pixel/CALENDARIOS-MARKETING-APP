@@ -53,7 +53,7 @@ import { estadoMotores } from "../lib/estudio/motores.js";
 import { mejorarIdea, versionesDeIdea } from "../lib/estudio/prompt.js";
 import { guionCorto } from "../lib/estudio/guionCorto.js";
 import { kitDe, guardarKit, prepararKit, revisarPieza, subirFuente } from "../lib/estudio/kit.js";
-import { controlarPieza } from "../lib/estudio/control.js";
+import { sistemaDePortada, controlarPieza } from "../lib/estudio/control.js";
 import { aprenderDeLoVisual } from "../lib/estudio/aprender.js";
 import { produccionDeLote } from "../lib/estudio/lote.js";
 import { ideasDelEstudio } from "../lib/estudio/ideas.js";
@@ -312,7 +312,15 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       }
       if (d === "control" && metodo === "POST") {
         const datos = (await cuerpo(req)) ?? {};
-        return json(await controlarPieza(env, acceso, cliente, c, { texto: typeof datos.texto === "string" ? datos.texto : null }));
+        return json(await controlarPieza(env, acceso, cliente, c, {
+          texto: typeof datos.texto === "string" ? datos.texto : null,
+          sistema: datos.sistema && typeof datos.sistema === "object" ? datos.sistema : null,
+        }));
+      }
+      // El sistema de diseño de la portada de un carrusel (la IA la mira; se apunta en la ficha).
+      if (d === "sistema" && metodo === "POST") {
+        const datos = (await cuerpo(req)) ?? {};
+        return json(await sistemaDePortada(env, acceso, cliente, c, { texto: typeof datos.texto === "string" ? datos.texto : "" }));
       }
       if (d === "recuperar" && metodo === "POST") {
         const f = await recuperar(acceso, cliente.id, c);

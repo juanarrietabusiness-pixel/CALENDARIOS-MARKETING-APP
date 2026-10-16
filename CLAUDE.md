@@ -162,6 +162,8 @@ src/
                           SÓLO el texto mal escrito de la misma imagen y quedarse con la mejor
     muestraFuente.js      La fuente de la marca en el navegador: registrarla para el lienzo y dibujar su muestra
     revisionIdeas.js      La revisión interna de las ideas: cuáles se revisan, cuáles están aprobadas por dentro (puro)
+    sistemaCarrusel.js    El sistema de diseño de la portada de un carrusel (titular, zona del texto, márgenes, colores): el
+                          pedido a la IA que la mira, su lectura y la línea que va en cada lámina y en el control (puro)
     zip.js                Un ZIP sin comprimir hecho en el navegador («Descargar el carrusel»), con su CRC-32 (puro)
     logoEncima.js         El logo ESTAMPADO: modos, esquinas, `posicionLogo` (puro, también lo lee el kit) y el lienzo
     logoEstudio.js        Estampar el logo y subir la pieza nueva a la galería; `conLogoSiToca` para lote, carrusel y mes
@@ -1697,6 +1699,18 @@ son del servidor.
   tramo, como mucho 5 (el video ocupa dos de los 7 huecos de Omni). El reel admite además referencias de la galería
   para todos los fotogramas (`crearFotograma({ referencias })`), detrás del anterior, el primero, los personajes y el
   producto.
+- **El carrusel sigue el SISTEMA DE DISEÑO de su portada** (`src/lib/sistemaCarrusel.js`, `POST
+  /api/estudio/<c>/archivos/<id>/sistema`, función «sistema de diseño», hueco «análisis»). Una referencia sola dice «algo
+  así»: el titular cambiaba de tamaño y el texto saltaba de zona entre láminas. Al salir la portada, la IA la MIRA y
+  escribe su sistema en medidas aproximadas (titular: tamaño, peso, mayúsculas, color; zona del texto; márgenes; fondo;
+  colores; lo que se repite; el logo), queda en `ajustes.sistema` de la ficha (la segunda vez no se paga) y
+  `crearCarrusel` lo pone en el pedido de cada lámina siguiente (`lineaDeSistema`, sólo de la 2 en adelante) y en su
+  control: `pedidoDeControl({ sistema })` pide `serie`, lo que se sale de la serie, que deja la lámina en «Revisar»
+  pero NO impide corregir sola una letra (`soloTexto` no lo cuenta). Lo usan también el lote y «Producir el mes» (el
+  mismo `crearCarrusel`). En «plantilla» no se saca: el texto lo pone la aplicación. Si falla, null: las láminas
+  siguen con la portada de referencia, como antes. En `FlujoCarrusel` «Primero la portada» (encendido con más de dos
+  láminas) crea sólo la portada; «La portada va: crear las N que faltan» sigue con `crearCarrusel({ desde: 1, previas,
+  sistema })`; rehacer o corregir la portada vuelve a sacar el sistema.
 - **«Dame ideas» también en el carrusel y el reel IA** (`src/lib/ideasFormato.js`, `worker/lib/estudio/ideasFormato.js`,
   `POST /api/estudio/<c>/carrusel/ideas` y `…/reel/ideas`, `IdeasDeFormato.jsx`): de 3 a 5 con el catálogo (precio
   EXACTO), lo general del estudio de mercado y el cerebro para escribir (nunca lo interno). La de carrusel trae el

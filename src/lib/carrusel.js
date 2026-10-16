@@ -118,7 +118,7 @@ const comillas = (texto) => String(texto ?? "").split(/\n+/).map((l) => l.replac
  * PROPUESTA del director de arte, cada lámina trae además qué se ve (`escena`), su composición y el hilo que comparten
  * todas (`hilo`); `personajes`, las líneas de quién es cada personaje que va de referencia. Pura.
  */
-export function pedidoDeLamina({ lamina, total, idea = "", preset = "", modo = "ia", plantilla = "banda", conAnteriores = false, conFotos = false, hilo = "", personajes = "" }) {
+export function pedidoDeLamina({ lamina, total, idea = "", preset = "", modo = "ia", plantilla = "banda", conAnteriores = false, conFotos = false, hilo = "", personajes = "", sistema = "" }) {
   const rol = { portada: "la PORTADA: tiene que detener el scroll", cierre: "el CIERRE: invita a actuar", contenido: "una lámina de contenido" }[lamina.rol] ?? "una lámina";
   const zona = PLANTILLAS_TEXTO[plantilla]?.zona ?? PLANTILLAS_TEXTO.banda.zona;
   return [
@@ -132,6 +132,8 @@ export function pedidoDeLamina({ lamina, total, idea = "", preset = "", modo = "
     conAnteriores
       ? "Las imágenes de referencia incluyen las láminas anteriores de este MISMO carrusel: conserva exactamente su estilo, fondo, paleta, tipografía, márgenes y personajes, como piezas de una misma serie. Cambia sólo el contenido de esta lámina."
       : "Define un estilo limpio y reconocible: las siguientes láminas lo van a repetir.",
+    // El sistema de la portada aprobada, en palabras (src/lib/sistemaCarrusel.js): la referencia sola dice «algo así».
+    sistema,
     conFotos ? "Una de las referencias es la foto real del producto: si aparece, que sea ese producto, igual." : "",
     modo === "plantilla"
       ? `NO escribas ningún texto, letra ni número en la imagen: el texto se pone después. Deja ${zona} limpio y despejado, con buen contraste, para ese texto.\nLo que dice esta lámina (sólo para inspirar la imagen): ${String(lamina.texto).slice(0, 300)}`

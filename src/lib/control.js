@@ -96,7 +96,7 @@ export function textoDelPedido(prompt) {
  * Lo que se le pide a la IA. La imagen va aparte. `texto`: lo que tiene que decir (exacto); `precios`: los del
  * catálogo; `logo`: si la pieza debía llevar el logo de la marca (se le pidió al modelo). Pura.
  */
-export function pedidoDeControl({ marca = "la marca", texto = "", precios = [], logo = false, evitar = "", reglas = [] } = {}) {
+export function pedidoDeControl({ marca = "la marca", texto = "", precios = [], logo = false, evitar = "", reglas = [], sistema = "" } = {}) {
   return [
     `Eres el control de calidad de una agencia. Revisa esta pieza de ${marca} antes de que la vea el cliente. Sé estricto y concreto: lo que dejes pasar lo ve el cliente.`,
     "",
@@ -106,9 +106,11 @@ export function pedidoDeControl({ marca = "la marca", texto = "", precios = [], 
     logo ? `4. La pieza debía llevar el logo de ${marca}: di si falta, si está deformado o redibujado, o si está bien.` : "4. Di si aparece el logo de otra marca o un logo inventado.",
     "5. Busca deformaciones: manos, dedos, caras, ojos, objetos fundidos, perspectivas imposibles, texto fantasma de fondo.",
     evitar || reglas.length ? `6. La marca pide: ${[evitar && `nunca ${corto(evitar, 300)}`, ...reglas.map((r) => corto(r, 120))].filter(Boolean).join("; ")}. Di lo que no se cumpla.` : "",
+    // Una lámina de un carrusel: lo que se sale del sistema de su portada (src/lib/sistemaCarrusel.js).
+    sistema ? `7. Esta pieza es parte de una serie. ${corto(sistema, 900)} Di en "serie" lo que se salga de ese sistema y se note a simple vista (titular de otro tamaño o peso, el texto en otra zona, otros márgenes, otros colores, falta un elemento que se repite); si lo respeta, vacío.` : "",
     "",
     "Responde SOLO con JSON, sin texto alrededor:",
-    '{"textoLeido":"…","errores":[{"escrito":"lo que dice","esperado":"lo que debía decir"}],"precios":["precio que no está en el catálogo"],"logo":"bien|falta|deformado|no aplica","deformaciones":["…"],"otros":["…"],"puntaje":0-10}',
+    `{"textoLeido":"…","errores":[{"escrito":"lo que dice","esperado":"lo que debía decir"}],"precios":["precio que no está en el catálogo"],"logo":"bien|falta|deformado|no aplica","deformaciones":["…"],"otros":["…"],${sistema ? '"serie":["…"],' : ""}"puntaje":0-10}`,
   ].filter((l) => l !== "").join("\n");
 }
 
@@ -138,11 +140,14 @@ export function leerControl(respuesta, { texto = "", logo = false } = {}) {
   const precios = lista(d.precios, 4, 60);
   const deformaciones = lista(d.deformaciones);
   const otros = lista(d.otros);
+  // Lo que se sale del sistema de la portada (sólo en láminas de un carrusel): se revisa, pero no impide corregir
+  // sola una letra mal escrita, que es otra cosa.
+  const serie = lista(d.serie, 4, 140);
   const fallaLogo = logo && (logoEstado === "falta" || logoEstado === "deformado");
   const graves = precios.length + deformaciones.length + (fallaLogo ? 1 : 0);
-  const estado = errores.length || graves ? "revisar" : "ok";
+  const estado = errores.length || graves || serie.length ? "revisar" : "ok";
   return {
-    estado, textoLeido, errores, precios, logo: logoEstado, deformaciones, otros,
+    estado, textoLeido, errores, precios, logo: logoEstado, deformaciones, otros, ...(serie.length ? { serie } : {}),
     puntaje: Math.max(0, Math.min(10, Math.round(Number(d.puntaje) || (estado === "ok" ? 9 : 5)))),
     soloTexto: errores.length > 0 && graves === 0,
   };
@@ -174,5 +179,6 @@ export function resumenControl(control) {
   if (control.logo === "falta") return "Revisar: falta el logo";
   if (control.logo === "deformado") return "Revisar: el logo está deformado";
   if (control.deformaciones?.length) return `Revisar: ${control.deformaciones[0]}`;
+  if (control.serie?.length) return `Revisar: se sale de la serie (${control.serie[0]})`;
   return "Revisar";
 }
