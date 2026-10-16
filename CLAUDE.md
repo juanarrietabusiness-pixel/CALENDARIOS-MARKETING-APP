@@ -154,6 +154,11 @@ src/
     ideasFormato.js       «Dame ideas» de carrusel (tema + guion por láminas) y de reel IA (idea central) (puro; también el Worker)
     ideaPublicacion.js    «Generar» la idea de UNA publicación vacía por el camino del lote (modo «publicacion»): el pedido y
                           `rellenarConIdea` (sólo lo vacío)
+    control.js            El CONTROL DE CALIDAD de una pieza: el pedido a la IA (que la mira), comparar el texto palabra por
+                          palabra (con tildes), el veredicto, la corrección quirúrgica del texto (puro; también el Worker)
+    controlEstudio.js     Controlar y corregir: la pieza al terminar (lote, carrusel, «Producir el mes», compositor), editar
+                          SÓLO el texto mal escrito de la misma imagen y quedarse con la mejor
+    muestraFuente.js      La fuente de la marca en el navegador: registrarla para el lienzo y dibujar su muestra
     zip.js                Un ZIP sin comprimir hecho en el navegador («Descargar el carrusel»), con su CRC-32 (puro)
     logoEncima.js         El logo ESTAMPADO: modos, esquinas, `posicionLogo` (puro, también lo lee el kit) y el lienzo
     logoEstudio.js        Estampar el logo y subir la pieza nueva a la galería; `conLogoSiToca` para lote, carrusel y mes
@@ -284,6 +289,7 @@ src/
                           rompen y quién pone el logo)
     VisorGrupo.jsx        Un carrusel o un reel de la galería con sus piezas en orden, «Descargar» en ZIP, «Usar el carrusel
                           en la publicación» y «Mandar el carrusel a la papelera» (lazy)
+    FuenteDeMarca.jsx     La fuente de la marca en el kit: subir el archivo, dibujar la muestra, guardar las dos
     GaleriaSelector.jsx   «De la galería» del panel de una publicación: imágenes sueltas o un carrusel entero, en orden (lazy)
     IdeasDeFormato.jsx    «Dame ideas» en el paso 1 del carrusel y del reel IA
     ReferenciasGaleria.jsx  Ejemplos de la galería al corregir (y referencias del reel), cada uno con qué se toma
@@ -1465,6 +1471,36 @@ son del servidor.
 - **«Mandar el carrusel a la papelera»** (VisorGrupo, con segundo toque): se va TODO lo de su carpeta (`todas`), también
   las crudas sin texto y las versiones viejas, y lo dice; avisa de las que usa una publicación (siguen viéndose ahí y la
   papelera no las purga). La carpeta se queda: sin piezas, la galería no la pinta.
+- **El texto y el logo los diseña el MOTOR, y el CONTROL DE CALIDAD los vigila** (decisión de la agencia: una maqueta
+  fija —foto, bloque de color, texto abajo siempre igual— se ve genérica; Nano Banana integra el texto con la luz y la
+  composición y diseña mejor, aunque se equivoque en letras). `POST /api/estudio/<c>/archivos/<id>/control` (función
+  «control de calidad», hueco «análisis»; worker/lib/estudio/control.js): la IA MIRA la imagen, transcribe el texto tal
+  cual se ve y señala precios fuera del catálogo, el logo ausente o deformado (sólo si se le dio: `LINEA_LOGO` en el
+  pedido), deformaciones y las reglas del kit. El veredicto NO es sólo de la IA: `compararTexto` compara palabra por
+  palabra el texto esperado con el leído, con tildes y eñes (y dos letras de sitio cuentan un error), porque el modelo
+  suele dar por buena «Sofa» donde dice «Sofá». El texto esperado: el que manda la pantalla, el de la plantilla encima o
+  el del pedido (`textoDelPedido`: la línea del texto, la de la lámina o lo citado DENTRO de la escena mejorada). Queda
+  en `estudio_archivos.ajustes.control` (la galería pinta «✓ Revisada» / «Revisar» con `data-control`, sólo CSS).
+  · **Si sólo falla el texto, se corrige EDITANDO la misma imagen** (`corregirTexto`, `correccionDeTexto`: «donde dice X
+  debe decir Y; conserva todo lo demás») con el modelo que la hizo si edita, o Nano Banana (`modeloParaCorregir`), se
+  controla otra vez y se queda la que tenga menos errores (a igualdad, la original). Pedir otra desde cero perdería el
+  diseño que salió bien. Un precio, el logo o una deformación no se corrigen solos: «Revisar», y decide una persona.
+  · **Va solo** al terminar cada pieza del lote, cada lámina del carrusel (ANTES de que vaya de referencia a la
+  siguiente: si no, el error se copiaría en la serie), «Diseñar las que ya hay» y el compositor (`terminarTrabajo`, que
+  también estampa el logo). Se apaga por navegador («Revisar cada pieza…», `controlEncendido`). Con la plantilla, el
+  texto lo pone la aplicación: no se controla. Si el control falla (sin saldo, sin red), la pieza sigue sin él.
+  · En el visor, `ControlDeCalidad` (EstudioVisor.jsx): lo leído, lo mal escrito, «Corregir el texto» y «Revisar otra vez».
+- **La tipografía REAL de la marca** (`kit.fuente`: { clave, nombre, muestra }; `FuenteDeMarca.jsx`, `POST
+  /api/estudio/<c>/kit/fuente`). El archivo (TTF, OTF, WOFF, WOFF2, reconocido por sus bytes, ≤ 3 MB) va a
+  `clientes/<c>/fuentes/`; el NAVEGADOR dibuja una muestra con él (`dibujarMuestra`: la marca, el abecedario con tildes
+  y eñes, números) que se sube a la galería, y el kit guarda las dos (el servidor comprueba que sean de ESE cliente y
+  existan). La muestra va de referencia con `toma: ["tipografia"]` (`referenciaDeTipografia`) en toda pieza donde el
+  modelo escribe el texto —compositor, lote, «Producir el mes», láminas—: el motor diseña libre pero con la letra de la
+  marca. La plantilla escribe con la fuente real (`cargarFuente` → FontFace desde /api/media, `font-src 'self'`).
+  `fundirKit` la conserva.
+- **El compositor del Estudio va al límite de su chunk (20 kB):** la lógica de sus referencias vive en
+  `apoyosDelCompositor` (pieza.js, compartido), el control en controlEstudio.js y el visor en su chunk. Lo nuevo de la
+  pantalla, fuera de Estudio.jsx.
 - **«Dame ideas»** (`POST /api/estudio/<c>/ideas`): variadas (un tipo de contenido distinto cada una) o del tipo
   escogido, sobre lo escrito si hay algo. «Usar» pone escena + texto exacto, el tipo y las fotos de su producto.
 - **Varios productos en una pieza**: `productosNombrados` encuentra TODOS los que nombra la idea («Sofá cama» no cuenta

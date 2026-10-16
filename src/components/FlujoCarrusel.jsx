@@ -2,7 +2,8 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import { textoCosto, costoDePieza, CONFIRMAR_DESDE } from "../lib/estudioCatalogo";
 import * as api from "../lib/estudio";
-import { TIPOS_PRESET, ESTILOS_VISUALES, estiloDeMarca, limpiarKit, referenciasDePersonajes } from "../lib/kitMarca";
+import { TIPOS_PRESET, ESTILOS_VISUALES, estiloDeMarca, limpiarKit, referenciasDePersonajes, referenciaDeTipografia } from "../lib/kitMarca";
+import { controlEncendido } from "../lib/controlEstudio";
 import { partirGuion, MODOS_TEXTO, PLANTILLAS_TEXTO, MAX_LAMINAS, coloresPlantilla, costoCarrusel } from "../lib/carrusel";
 import { crearCarrusel, crearLamina, corregirLamina, modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
 import ReferenciasGaleria from "./ReferenciasGaleria";
@@ -77,8 +78,10 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
     fotos: api.fotosDelProducto(productos, productoId).map((f) => f.clave),
     personajes: referenciasDePersonajes(kit, personajes, estudio?.archivos ?? []),
     // Con el logo estampado (kit), el modelo no lo recibe: se pega encima de cada lámina final.
-    logo: estampaSola(kit) ? "" : kit.logo, estampar: estampaSola(kit) ? kit : null, colores: coloresPlantilla(kit), familia: kit.tipografia, carpetaId: carpeta.current,
+    logo: estampaSola(kit) ? "" : kit.logo, estampar: estampaSola(kit) ? kit : null, colores: coloresPlantilla(kit), familia: kit.tipografia, fuente: kit.fuente, carpetaId: carpeta.current,
     calendarId: inicial.calendarId ?? null, postId: inicial.postId ?? null, seguir: () => vivo.current,
+    // La tipografía de la marca de referencia y el control de calidad de cada lámina (corrige solo una letra mal).
+    tipografia: referenciaDeTipografia(kit), controlar: controlEncendido(), activos: estudio?.activos ?? {},
   });
 
   const proponer = async () => {

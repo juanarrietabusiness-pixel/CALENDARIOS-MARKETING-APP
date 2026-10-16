@@ -3,14 +3,12 @@ import Icon from "./Icon";
 import Compositor, { QueCrear } from "./EstudioCompositor";
 import Visor, { Pieza } from "./EstudioVisor";
 import {
-  kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, ponerLogo, ideaDelPedido, conOtraEscena, referenciasDePreset, nombreDePreset,
-  estiloDeLaPieza, lineaDeEstilo, nombreDeEstilo, estiloValido, TIPOS_PRESET, referenciasDePersonajes,
+  kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, ponerLogo, ideaDelPedido, conOtraEscena, nombreDePreset,
+  estiloDeLaPieza, lineaDeEstilo, nombreDeEstilo, estiloValido, TIPOS_PRESET,
 } from "../lib/kitMarca";
 import { presetDePilar, nombreDePilar } from "../lib/pilares";
 import { ideaDesdeAngulo } from "../lib/estudioMercado";
-import { productosNombrados } from "../lib/referencias";
-import { pedidoDePieza } from "../lib/pieza";
-import { deMisGustos } from "../lib/aprendizajeVisual";
+import { pedidoDePieza, apoyosDelCompositor } from "../lib/pieza";
 import { segundosParaModelo, ajusteDeDuracion } from "../lib/videoCorto";
 import BancoSelector from "./BancoSelector";
 import EleccionRanura from "./EleccionRanura";
@@ -19,7 +17,8 @@ import { idDeCarpeta } from "../lib/drive";
 import { OverflowMenu } from "./calendario/primitivas";
 import { soloLectura } from "../lib/sesionActual";
 import * as api from "../lib/estudio";
-import { estampaSola, estamparTrabajo, estamparEnGaleria } from "../lib/logoEstudio";
+import { estampaSola, estamparEnGaleria, conLogoSiToca } from "../lib/logoEstudio";
+import { terminarTrabajo } from "../lib/controlEstudio";
 import {
   modeloPorId, nombreDelModelo, estimar, textoCosto, pideConfirmar, ajustesDe, estaVivo, maxPorPedido, PRECIOS_AL, MAX_PROMPT,
 } from "../lib/estudioCatalogo";
@@ -194,7 +193,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
   const siguiendo = useRef(new Set());
   // Los trabajos del compositor cuyas imágenes llevan el logo ESTAMPADO al terminar (kit.logoModo «estampado»).
-  const paraEstampar = useRef(new Set());
+  // Los trabajos de imagen del compositor: al terminar pasan por el control (lib/controlEstudio.js); el valor dice si
+  // además se estampa el logo.
+  const paraEstampar = useRef(new Map());
   const kitRef = useRef(null);
   const montado = useRef(true);
   const promptRef = useRef(null);
@@ -246,36 +247,13 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   // Con el logo estampado (kit), el modelo no lo recibe: la aplicación lo pega encima al terminar.
   const estampa = Boolean(conKit && form && form.tipo !== "video" && estampaSola(kit));
   kitRef.current = kit;
-  // Los productos del catálogo que nombra la idea y cuyas fotos aún no van: al crear se suman (y se dice antes). Con
-  // varios, una foto de cada uno antes que la segunda de ninguno: una pieza con tres productos lleva a los tres.
-  const libresRefs = form && modelo ? (modelo.referencias || 0) - form.medios.reference.length : 0;
-  const nombrados = form && modelo && form.tipo === "imagen" && libresRefs > 0
-    ? productosNombrados(datos?.productos ?? [], form.prompt, clavesDe(form.medios).reference)
-    : [];
-  const fotosNombradas = nombrados.length ? api.fotosDeVariosProductos(datos?.productos ?? [], nombrados.map((p) => p.id), libresRefs) : [];
-  const nombrado = nombrados.length
-    ? { nombres: nombrados.filter((p) => fotosNombradas.some((f) => f.prompt === p.nombre)).map((p) => p.nombre), fotos: fotosNombradas.length, sinHueco: nombrados.length - new Set(fotosNombradas.map((f) => f.prompt)).size }
-    : null;
-  // La referencia visual del tipo de pieza (kit → referencias), en el hueco que dejen el producto y lo puesto a mano,
-  // guardando uno para el logo.
-  const deLosPersonajes = form && modelo && modelo.referencias > 0
-    ? referenciasDePersonajes(kit, personajesSel, datos?.archivos ?? []).filter((a) => !form.medios.reference.some((x) => x.clave === a.clave))
-      .slice(0, Math.max(0, (modelo.referencias || 0) - form.medios.reference.length - fotosNombradas.length - (puedeLogo && conLogo ? 1 : 0)))
-    : [];
-  const huecoTipo = form && modelo && form.tipo === "imagen"
-    ? (modelo.referencias || 0) - form.medios.reference.length - fotosNombradas.length - deLosPersonajes.length - (puedeLogo && conLogo ? 1 : 0)
-    : 0;
-  // Las del tipo de pieza y, si el estilo es propio del cliente, las de ese estilo.
-  const refsTipo = huecoTipo > 0
-    ? [...referenciasDePreset(kit, presetVigente, datos?.archivos ?? []), ...(estiloDeEsta.startsWith("estilo-") ? referenciasDePreset(kit, estiloDeEsta, datos?.archivos ?? []) : [])]
-      .filter((a, i, l) => !form.medios.reference.some((x) => x.clave === a.clave) && l.findIndex((b) => b.clave === a.clave) === i).slice(0, huecoTipo)
-    : [];
-  // Las últimas que gustaron, sólo por su estilo, en el hueco que quede después del producto, del tipo y del logo.
+  // Lo que va de referencia además de lo puesto a mano (lib/pieza.js): las fotos de los productos que nombra la idea,
+  // los personajes, la tipografía de la marca, las referencias del tipo y del estilo, y los «Me gusta».
   const hayGustos = (datos?.archivos ?? []).some((a) => a.favorito && a.tipo === "imagen");
-  const huecoGustos = huecoTipo - refsTipo.length;
-  const gustos = conGustos && huecoGustos > 0
-    ? deMisGustos(datos?.archivos ?? [], { yaPuestas: clavesDe(form.medios).reference, perdidos, cuantas: Math.min(2, huecoGustos) })
-    : [];
+  const { fotosNombradas, nombrado, deLosPersonajes, deLaLetra, refsTipo, gustos } = apoyosDelCompositor({
+    kit, form, modelo, conKit, reservaLogo: puedeLogo && conLogo, preset: presetVigente, estilo: estiloDeEsta, personajes: personajesSel,
+    archivos: datos?.archivos ?? [], productos: datos?.productos ?? [], conGustos, perdidos, puestas: form ? clavesDe(form.medios).reference : [],
+  });
 
   // ---------- Seguir un trabajo: un paso, y otro, hasta que termine ----------
   const seguir = useCallback(async (id) => {
@@ -305,8 +283,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       }
       // Terminado: si se pidió con el logo estampado, cada imagen sale otra vez con el logo encima (la cruda se queda).
       if (ultimo && !estaVivo(ultimo.estado) && paraEstampar.current.has(id)) {
+        const estampar = paraEstampar.current.get(id);
         paraEstampar.current.delete(id);
-        if (await estamparTrabajo({ clienteId: client.id, trabajo: ultimo, kit: kitRef.current })) cargar();
+        if (await terminarTrabajo({ clienteId: client.id, trabajo: ultimo, kit: kitRef.current, estampar, conLogo: conLogoSiToca })) cargar();
       }
     } finally {
       siguiendo.current.delete(id);
@@ -490,7 +469,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       // lo que se manda es lo que queda escrito.
       // Las fotos del producto que nombra la idea van DELANTE (cuanto cabe), y cada referencia dice qué se toma de ella.
       const delNombrado = fotosNombradas;
-      const refs = [...delNombrado, ...deLosPersonajes, ...form.medios.reference, ...refsTipo, ...gustos];
+      const refs = [...delNombrado, ...deLosPersonajes, ...deLaLetra, ...form.medios.reference, ...refsTipo, ...gustos];
       // El MISMO camino que el lote y «Producir el mes» (lib/pieza.js); aquí la resolución la escoge la persona.
       const pieza = pedidoDePieza({
         kit, idea: form.prompt, preset: presetVigente, estilo: estiloVigente, apoyos: refs, modelo, marca: client.name, rubro: client.industry ?? "",
@@ -504,7 +483,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         ...(uso ? { calendarId: uso.calendarId, postId: uso.postId } : {}),
       });
       setDatos((d) => (d ? { ...d, trabajos: reemplazar(d.trabajos, trabajo) } : d));
-      if (estampa && conLogo) paraEstampar.current.add(trabajo.id);
+      if (form.tipo === "imagen") paraEstampar.current.set(trabajo.id, estampa && conLogo);
       seguir(trabajo.id);
       setIdeaAnterior(null);
       if (delNombrado.length) {
@@ -1261,7 +1240,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             return (
             <li key={a.id} className={`est-tarjeta${marcada ? " est-tarjeta-marcada" : ""}`}>
               <button
-                type="button" className="est-img"
+                type="button" className="est-img" data-control={a.ajustes?.control?.estado}
                 aria-label={seleccion ? `${marcada ? "Quitar de" : "Añadir a"} la selección: ${escena}` : destinoGaleria ? `Poner como ${NOMBRE_RANURA[destinoGaleria]}: ${escena}` : `Abrir: ${escena}`}
                 aria-pressed={seleccion ? marcada : undefined}
                 onClick={() => abrirPieza(a)}

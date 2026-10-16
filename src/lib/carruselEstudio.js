@@ -12,6 +12,7 @@
 // ============================================================
 
 import * as api from "./estudio";
+import { controlarYCorregir } from "./controlEstudio";
 import { pedidoDeCorreccion } from "./estudio";
 import { ajustesDe, modeloPorId, MODELOS, porPrecio } from "./estudioCatalogo";
 import { pedidoDeLamina, referenciasDeLamina } from "./carrusel";
@@ -76,13 +77,15 @@ export async function esperarArchivos(clienteId, trabajo, { seguir = () => true 
  */
 export async function crearLamina({
   clienteId, modelo, lamina, total, idea = "", preset = "", modo = "ia", plantilla = "banda", hilo = "", personajes = [],
-  anterior = null, portada = null, fotos = [], logo = "", colores, familia = "", calendarId = null, postId = null, carpetaId = null, seguir,
-  estampar = null,
+  anterior = null, portada = null, fotos = [], logo = "", colores, familia = "", fuente = null, calendarId = null, postId = null, carpetaId = null, seguir,
+  estampar = null, tipografia = null, controlar = false, activos = {},
 }) {
-  // Los personajes van justo después de la serie (la anterior y la portada): que salgan IGUAL en cada lámina.
+  // Los personajes van justo después de la serie (la anterior y la portada): que salgan IGUAL en cada lámina. La
+  // muestra de la tipografía de la marca, sólo si el texto lo escribe el modelo.
+  const letra = modo === "plantilla" ? null : tipografia;
   const clavesPersonajes = personajes.map((p) => p.clave);
-  const reference = referenciasDeLamina({ anterior: anterior?.clave, portada: portada?.clave, fotos: [...clavesPersonajes, ...fotos], logo, max: modelo.referencias || 0 });
-  const quienes = personajes.filter((p) => reference.includes(p.clave)).map((p) => p.nota).filter(Boolean);
+  const reference = referenciasDeLamina({ anterior: anterior?.clave, portada: portada?.clave, fotos: [...clavesPersonajes, ...(letra ? [letra.clave] : []), ...fotos], logo, max: modelo.referencias || 0 });
+  const quienes = [...personajes, ...(letra ? [letra] : [])].filter((p) => reference.includes(p.clave)).map((p) => p.nota).filter(Boolean);
   const prompt = pedidoDeLamina({
     lamina, total, idea, preset, modo, plantilla, hilo,
     personajes: [...new Set(quienes)].map((n) => `Una de las referencias ${n}.`).join(" "),
@@ -93,14 +96,22 @@ export async function crearLamina({
     modelo: modelo.id, prompt, n: 1, ajustes: ajustesDe(modelo, { aspectRatio: "4:5", imageSize: "2K" }, medios), medios,
     confirmado: true, ...(calendarId && postId ? { calendarId, postId } : {}), ...(carpetaId ? { carpetaId } : {}),
   });
-  const crudo = await esperarArchivo(clienteId, trabajo, { seguir });
-  const final = modo === "plantilla" ? await textoEncima({ clienteId, crudo, lamina, plantilla, colores, familia, carpetaId }) : crudo;
-  return conSello({ crudo, final }, { clienteId, estampar, carpetaId });
+  let crudo = await esperarArchivo(clienteId, trabajo, { seguir });
+  // El control de calidad: si el modelo escribió mal una letra, se corrige ANTES de que la lámina vaya de referencia
+  // a la siguiente (si no, el error se copiaría en toda la serie).
+  let control = null;
+  if (controlar && modo !== "plantilla") {
+    const r = await controlarYCorregir({ clienteId, archivo: crudo, texto: lamina.texto, activos, carpetaId, seguir });
+    crudo = r.archivo;
+    control = r.control;
+  }
+  const final = modo === "plantilla" ? await textoEncima({ clienteId, crudo, lamina, plantilla, colores, familia, fuente, carpetaId }) : crudo;
+  return { ...(await conSello({ crudo, final }, { clienteId, estampar, carpetaId })), control };
 }
 
 /** En el modo plantilla: el texto exacto encima de la lámina cruda, subido como imagen nueva. */
-async function textoEncima({ clienteId, crudo, lamina, plantilla, colores, familia, carpetaId = null }) {
-  const blob = await componerLamina({ src: crudo.src, texto: lamina.texto, plantilla, colores, familia });
+async function textoEncima({ clienteId, crudo, lamina, plantilla, colores, familia, fuente = null, carpetaId = null }) {
+  const blob = await componerLamina({ src: crudo.src, texto: lamina.texto, plantilla, colores, familia, fuente });
   const { archivo } = await api.subirImagen(clienteId, new File([blob], `lamina-${lamina.n}.jpg`, { type: "image/jpeg" }), { carpetaId, origenId: crudo.id, plantilla: { texto: lamina.texto, plantilla } });
   return archivo;
 }
@@ -110,7 +121,7 @@ async function textoEncima({ clienteId, crudo, lamina, plantilla, colores, famil
  * conserva) con el mismo modelo, y sale una nueva; la de antes se queda en la galería. En el modo plantilla se corrige
  * la cruda y el texto se vuelve a poner encima. → { crudo, final }.
  */
-export async function corregirLamina({ clienteId, modelo, resultado, instruccion, ejemplos = [], lamina, modo = "ia", plantilla = "banda", colores, familia = "", carpetaId = null, seguir, estampar = null }) {
+export async function corregirLamina({ clienteId, modelo, resultado, instruccion, ejemplos = [], lamina, modo = "ia", plantilla = "banda", colores, familia = "", fuente = null, carpetaId = null, seguir, estampar = null }) {
   // Se corrige la cruda (en «ia», la cruda ES la final, salvo que lleve el logo estampado encima: ése se vuelve a poner).
   const base = resultado.crudo ?? resultado.final;
   // La lámina va primero; los ejemplos de la galería (si los hay) detrás, como guía de lo que se pide.
@@ -120,7 +131,7 @@ export async function corregirLamina({ clienteId, modelo, resultado, instruccion
     confirmado: true, ...(carpetaId ? { carpetaId } : {}),
   });
   const crudo = await esperarArchivo(clienteId, trabajo, { seguir });
-  const final = modo === "plantilla" ? await textoEncima({ clienteId, crudo, lamina, plantilla, colores, familia, carpetaId }) : crudo;
+  const final = modo === "plantilla" ? await textoEncima({ clienteId, crudo, lamina, plantilla, colores, familia, fuente, carpetaId }) : crudo;
   return conSello({ crudo, final }, { clienteId, estampar, carpetaId });
 }
 

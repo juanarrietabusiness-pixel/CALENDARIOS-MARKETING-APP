@@ -78,6 +78,14 @@ const delArchivo = (clienteId, id, accion) => `${base(clienteId)}/archivos/${enc
 export const cambiarArchivo = (clienteId, id, cambios) => pedir(delArchivo(clienteId, id, "cambiar"), post(cambios));
 export const apuntarUso = (clienteId, id, { calendarId, postId }) => pedir(delArchivo(clienteId, id, "uso"), post({ calendarId, postId }));
 export const mandarAPapelera = (clienteId, id) => pedir(delArchivo(clienteId, id, "papelera"), post());
+/** El control de calidad de una pieza (la IA la mira; queda en `ajustes.control`): `{ control, archivo }`. */
+export const controlarArchivo = (clienteId, id, { texto = null } = {}) => pedir(delArchivo(clienteId, id, "control"), post(texto === null ? {} : { texto }));
+/** Sube la fuente de la marca (TTF, OTF, WOFF, WOFF2): `{ clave, nombre }`. No guarda el kit. */
+export function subirFuente(clienteId, archivo) {
+  const form = new FormData();
+  form.set("archivo", archivo);
+  return pedir(`${base(clienteId)}/kit/fuente`, { method: "POST", body: form });
+}
 export const recuperarArchivo = (clienteId, id) => pedir(delArchivo(clienteId, id, "recuperar"), post());
 export const quitarPerdido = (clienteId, id) => pedir(delArchivo(clienteId, id, "perdido"), post());
 export const borrarDelTodo = (clienteId, id, { forzar = false } = {}) =>

@@ -13,7 +13,7 @@
 // ============================================================
 
 import * as api from "./estudio";
-import { limpiarKit, estiloDeMarca } from "./kitMarca";
+import { limpiarKit, estiloDeMarca, referenciaDeTipografia } from "./kitMarca";
 import { coloresPlantilla, PLANTILLAS_TEXTO } from "./carrusel";
 import { componerLamina } from "./textoSobreImagen";
 import { esperarArchivos, crearCarrusel } from "./carruselEstudio";
@@ -21,6 +21,7 @@ import { estampaSola, conLogoSiToca } from "./logoEstudio";
 import { crearFotogramas, pedidoDeVideo, crearVideo } from "./reelEstudio";
 import { textoDeIdea, plantillaDeIdea, composicionDe, FORMATOS_LOTE } from "./loteAnuncios";
 import { ideaParaMejorar, ideaSinMejorar, apoyosDePieza, pedidoDePieza, lineaSinTexto } from "./pieza";
+import { controlarYCorregir } from "./controlEstudio";
 
 /** Lo que entra a la mejora de una idea del lote: escena, composición sugerida, texto (si lo escribe el motor) y brief. Pura. */
 export function ideaDeLote(idea, { modo = "ia" } = {}) {
@@ -48,7 +49,7 @@ export function pedidoDeLote({ idea, escena = null, kit, preset = "anuncio", est
   const apoyos = apoyosDePieza({
     kit, preset, estilo, archivos, fotos, gustos, personajes, modelo, conProducto: idea?.conProducto !== false,
     // En el lote la referencia del tipo va sólo por su ESTILO: la composición la decide el plan.
-    tomaTipo: ["estilo"],
+    tomaTipo: ["estilo"], conTexto: modo === "ia",
   });
   return pedidoDePieza({
     kit, idea: escena ?? ideaSinMejorar(ideaDeLote(idea, { modo })), extra: colaDeLote(idea, { modo, formato }),
@@ -63,7 +64,7 @@ export function pedidoDeLote({ idea, escena = null, kit, preset = "anuncio", est
  */
 export async function ponerTexto({ clienteId, crudo, texto, plantilla = "banda", kit, carpetaId = null, nombre = "anuncio" }) {
   const k = limpiarKit(kit);
-  const blob = await componerLamina({ src: crudo.src, texto, plantilla, colores: coloresPlantilla(k), familia: k.tipografia });
+  const blob = await componerLamina({ src: crudo.src, texto, plantilla, colores: coloresPlantilla(k), familia: k.tipografia, fuente: k.fuente });
   const { archivo } = await api.subirImagen(clienteId, new File([blob], `${nombre}.jpg`, { type: "image/jpeg" }), {
     carpetaId, origenId: crudo.id, plantilla: { texto, plantilla },
   });
@@ -75,7 +76,7 @@ export async function ponerTexto({ clienteId, crudo, texto, plantilla = "banda",
  * sugerida + texto exacto, con el brief de contexto: lo que hace «Mejorar idea»; texto, céntimos); luego pide `n`
  * imágenes (1–3) y, en el modo «plantilla», le pone el texto encima a cada una. → { opciones: [{ crudo, final }], escena }.
  */
-export async function crearPieza({ clienteId, idea, pedidoDe, mejorar = true, modo, formato, kit, n = 1, carpetaId = null, piezaDe = () => "", seguir = () => true }) {
+export async function crearPieza({ clienteId, idea, pedidoDe, mejorar = true, modo, formato, kit, n = 1, carpetaId = null, piezaDe = () => "", seguir = () => true, controlar = false, activos = {} }) {
   const datos = ideaDeLote(idea, { modo });
   let escena = ideaSinMejorar(datos);
   if (mejorar) {
@@ -88,12 +89,20 @@ export async function crearPieza({ clienteId, idea, pedidoDe, mejorar = true, mo
   const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true, ...(carpetaId ? { carpetaId } : {}) });
   const crudos = await esperarArchivos(clienteId, trabajo, { seguir });
   const opciones = [];
-  for (const crudo of crudos) {
+  for (let crudo of crudos) {
+    // El control de calidad cuando el texto lo escribe el motor (con la plantilla lo pone la aplicación, exacto): si sólo
+    // falla una letra, se corrige editando la misma imagen (lib/controlEstudio.js).
+    let control = null;
+    if (controlar && modo !== "plantilla") {
+      const r = await controlarYCorregir({ clienteId, archivo: crudo, texto: textoDeIdea(idea), activos, carpetaId, seguir });
+      crudo = r.archivo;
+      control = r.control;
+    }
     const final = modo === "plantilla"
       ? await ponerTexto({ clienteId, crudo, texto: textoDeIdea(idea), plantilla: plantillaDeIdea(idea, formato), kit, carpetaId, nombre: `pieza-${idea.id}` })
       : crudo;
     // Con el logo estampado (kit), encima de la final; la cruda se queda sin él.
-    opciones.push({ crudo, final: await conLogoSiToca({ clienteId, archivo: final, kit, carpetaId }) });
+    opciones.push({ crudo, final: await conLogoSiToca({ clienteId, archivo: final, kit, carpetaId }), control });
   }
   return { opciones, escena };
 }
@@ -132,7 +141,7 @@ export const temaDeIdea = (idea) => [idea?.titulo || idea?.titular, idea?.brief,
  * partir de su guion, y las láminas una a una con la anterior, la portada y los personajes de referencia.
  * `alPaso(texto)` dice por dónde va. → { archivos: [láminas finales] }.
  */
-export async function crearCarruselDeIdea({ clienteId, idea, kit, preset = "", estilo = "", modelo, fotos = [], personajes = [], personajesIds = [], marca = "", rubro = "", carpetaId = null, seguir = () => true, alPaso = () => {} }) {
+export async function crearCarruselDeIdea({ clienteId, idea, kit, preset = "", estilo = "", modelo, fotos = [], personajes = [], personajesIds = [], marca = "", rubro = "", carpetaId = null, seguir = () => true, alPaso = () => {}, controlar = false, activos = {} }) {
   alPaso("Propuesta de las láminas…");
   // Cada carrusel en SU carpeta (la galería lo enseña como una tarjeta); si no se puede crear, en la del lote.
   carpetaId = (await api.carpetaDeGrupo(clienteId, "carrusel", idea.titulo || idea.titular || temaDeIdea(idea))) ?? carpetaId;
@@ -141,7 +150,8 @@ export async function crearCarruselDeIdea({ clienteId, idea, kit, preset = "", e
   let hechas = 0;
   const salida = await crearCarrusel({
     clienteId, modelo, modo: "ia", plantilla: "banda", hilo: propuesta.hilo, idea: temaDeIdea(idea), laminas: propuesta.laminas,
-    preset: estiloDeMarca(k, preset, { marca, rubro, estilo }), fotos, personajes, logo: estampaSola(k) ? "" : k.logo, estampar: estampaSola(k) ? k : null, colores: coloresPlantilla(k), familia: k.tipografia, carpetaId, seguir,
+    preset: estiloDeMarca(k, preset, { marca, rubro, estilo }), fotos, personajes, logo: estampaSola(k) ? "" : k.logo, estampar: estampaSola(k) ? k : null, colores: coloresPlantilla(k), familia: k.tipografia, fuente: k.fuente, carpetaId, seguir,
+    tipografia: referenciaDeTipografia(k), controlar, activos,
     alAvanzar: () => { hechas += 1; alPaso(`Lámina ${Math.min(hechas + 1, propuesta.laminas.length)} de ${propuesta.laminas.length}…`); },
   });
   const archivos = salida.map((r) => r?.final).filter(Boolean);

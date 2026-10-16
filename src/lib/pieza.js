@@ -18,9 +18,11 @@
 // Un test exige que la misma idea dé el mismo pedido por todas las puertas.
 // ============================================================
 
-import { textoDeLaPieza } from "./estudio.js";
+import { textoDeLaPieza, fotosDeVariosProductos } from "./estudio.js";
+import { productosNombrados } from "./referencias.js";
+import { deMisGustos } from "./aprendizajeVisual.js";
 import { ajustesDe, MAX_PROMPT } from "./estudioCatalogo.js";
-import { pedidoConMarca, ponerLogo, limpiarKit, referenciasDePreset, estiloDeLaPieza } from "./kitMarca.js";
+import { pedidoConMarca, ponerLogo, limpiarKit, referenciasDePreset, estiloDeLaPieza, referenciaDeTipografia, referenciasDePersonajes } from "./kitMarca.js";
 import { lineasDeReferencias } from "./referencias.js";
 
 const limpio = (t) => String(t ?? "").trim();
@@ -56,12 +58,15 @@ export const ideaSinMejorar = (datos) => ideaParaMejorar({ ...datos, contexto: "
  * sitio al logo): las fotos REALES del producto (si sale), los personajes de la marca, lo puesto a mano, las referencias del tipo de pieza y del
  * estilo propio, y las últimas que gustaron (sólo por su estilo). Pura.
  */
-export function apoyosDePieza({ kit, preset = "", estilo = "", archivos = [], fotos = [], manuales = [], personajes = [], gustos = [], modelo, conProducto = true, tomaTipo = ["estilo", "composicion"], reservaLogo = true }) {
+export function apoyosDePieza({ kit, preset = "", estilo = "", archivos = [], fotos = [], manuales = [], personajes = [], gustos = [], modelo, conProducto = true, tomaTipo = ["estilo", "composicion"], reservaLogo = true, conTexto = true }) {
   const max = Math.max(0, (modelo?.referencias ?? 0) - (reservaLogo && limpiarKit(kit).logo ? 1 : 0));
   const deEstilo = estiloDeLaPieza(kit, preset, estilo);
+  // La tipografía de la marca, sólo si el motor escribe el texto (con la plantilla, el texto lo pone la aplicación).
+  const tipografia = conTexto ? referenciaDeTipografia(kit) : null;
   const lista = [
     ...(conProducto === false ? [] : fotos),
     ...personajes,
+    ...(tipografia ? [tipografia] : []),
     ...manuales,
     ...referenciasDePreset(kit, preset, archivos, { toma: tomaTipo }),
     ...(deEstilo.startsWith("estilo-") ? referenciasDePreset(kit, deEstilo, archivos, { toma: ["estilo"] }) : []),
@@ -101,4 +106,38 @@ export function pedidoDePieza({
   const base = { ...entrada, ...(aspectRatio ? { aspectRatio } : {}) };
   const ajustes = ajustesDe(modelo, altaResolucion ? conAltaResolucion(modelo, base) : base, medios);
   return { modelo: modelo.id, prompt, n: Math.max(1, Math.min(8, Math.floor(n) || 1)), medios, ajustes };
+}
+
+/**
+ * Lo que el COMPOSITOR suma de referencia a lo puesto a mano (`puestas`, claves), en orden y cada cosa en el hueco que
+ * deja la anterior (guardando uno para el logo si va): las fotos de los productos que nombra la idea (una de cada uno
+ * antes que la segunda de ninguno), los personajes escogidos, la muestra de la tipografía de la marca, las referencias
+ * del tipo de pieza y del estilo propio, y los «Me gusta». → { fotosNombradas, nombrado, deLosPersonajes, deLaLetra,
+ * refsTipo, gustos }. Pura.
+ */
+export function apoyosDelCompositor({ kit, form, modelo, conKit = true, reservaLogo = false, preset = "", estilo = "", personajes = [], archivos = [], productos = [], conGustos = false, perdidos = new Set(), puestas = [] }) {
+  const vacio = { fotosNombradas: [], nombrado: null, deLosPersonajes: [], deLaLetra: [], refsTipo: [], gustos: [] };
+  if (!form || !modelo) return vacio;
+  const max = modelo.referencias || 0;
+  const hueco = (...usadas) => max - puestas.length - usadas.reduce((t, l) => t + l.length, 0) - (reservaLogo ? 1 : 0);
+  const imagen = form.tipo === "imagen";
+  const libres = max - puestas.length;
+  const nombrados = imagen && libres > 0 ? productosNombrados(productos, form.prompt, puestas) : [];
+  const fotosNombradas = nombrados.length ? fotosDeVariosProductos(productos, nombrados.map((p) => p.id), libres) : [];
+  const nombrado = nombrados.length
+    ? { nombres: nombrados.filter((p) => fotosNombradas.some((f) => f.prompt === p.nombre)).map((p) => p.nombre), fotos: fotosNombradas.length, sinHueco: nombrados.length - new Set(fotosNombradas.map((f) => f.prompt)).size }
+    : null;
+  const deLosPersonajes = max > 0
+    ? referenciasDePersonajes(kit, personajes, archivos).filter((a) => !puestas.includes(a.clave)).slice(0, Math.max(0, hueco(fotosNombradas)))
+    : [];
+  const letra = conKit && imagen ? referenciaDeTipografia(kit) : null;
+  const deLaLetra = letra && !puestas.includes(letra.clave) && hueco(fotosNombradas, deLosPersonajes) > 0 ? [letra] : [];
+  const huecoTipo = imagen ? hueco(fotosNombradas, deLosPersonajes, deLaLetra) : 0;
+  const refsTipo = huecoTipo > 0
+    ? [...referenciasDePreset(kit, preset, archivos), ...(estilo.startsWith("estilo-") ? referenciasDePreset(kit, estilo, archivos) : [])]
+      .filter((a, i, l) => !puestas.includes(a.clave) && l.findIndex((b) => b.clave === a.clave) === i).slice(0, huecoTipo)
+    : [];
+  const huecoGustos = huecoTipo - refsTipo.length;
+  const gustos = conGustos && huecoGustos > 0 ? deMisGustos(archivos, { yaPuestas: puestas, perdidos, cuantas: Math.min(2, huecoGustos) }) : [];
+  return { fotosNombradas, nombrado, deLosPersonajes, deLaLetra, refsTipo, gustos };
 }

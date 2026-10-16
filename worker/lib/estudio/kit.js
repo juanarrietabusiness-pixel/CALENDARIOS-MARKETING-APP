@@ -57,6 +57,13 @@ export async function guardarKit(env, acceso, cliente, entrada) {
     .filter((p) => p.imagenes.length);
   // El modelo fijado del cliente: sólo uno que exista en el catálogo y sea de ese tipo.
   kit.modelos = Object.fromEntries(Object.entries(kit.modelos).filter(([tipo, id]) => modeloPorId(id)?.tipo === tipo));
+  // La fuente: el archivo tiene que estar en `fuentes/` de ESTE cliente y la muestra ser una imagen suya; si no, fuera.
+  if (kit.fuente) {
+    const f = kit.fuente;
+    const ok = claveDelCliente(f.clave, cliente.id) && claveDelCliente(f.muestra, cliente.id)
+      && (await env.MEDIA.head(f.clave)) && (await env.MEDIA.head(f.muestra));
+    if (!ok) throw new ErrorEstudio("La fuente o su muestra no son de este cliente (o ya no existen). Súbela otra vez.", 400);
+  }
   if (entrada?.logo) {
     const clave = claveDelCliente(entrada.logo, cliente.id);
     if (!clave) throw new ErrorEstudio("El logo tiene que ser una imagen de este cliente.", 400);
@@ -69,6 +76,31 @@ export async function guardarKit(env, acceso, cliente, entrada) {
   }
   await acceso.actualizar("clients", { id: cliente.id }, { kit_marca: JSON.stringify(kit) });
   return kit;
+}
+
+/** Los tipos de fuente que se aceptan, por sus primeros bytes: → [tipo MIME, extensión]. */
+export function tipoDeFuente(bytes) {
+  const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const t = String.fromCharCode(...b.slice(0, 4));
+  if (t === "wOF2") return ["font/woff2", "woff2"];
+  if (t === "wOFF") return ["font/woff", "woff"];
+  if (t === "OTTO") return ["font/otf", "otf"];
+  if ((b[0] === 0 && b[1] === 1 && b[2] === 0 && b[3] === 0) || t === "true") return ["font/ttf", "ttf"];
+  return null;
+}
+export const MAX_FUENTE = 3_000_000;
+
+/** Sube la fuente de la marca a `clientes/<c>/fuentes/` (reconocida por sus bytes, ≤ 3 MB). → { clave, nombre }. */
+export async function subirFuente(env, cliente, archivo) {
+  if (!archivo || typeof archivo.arrayBuffer !== "function") throw new ErrorEstudio("Falta el archivo de la fuente.", 400);
+  if (archivo.size > MAX_FUENTE) throw new ErrorEstudio("La fuente pesa más de 3 MB.", 413);
+  const bytes = new Uint8Array(await archivo.arrayBuffer());
+  const tipo = tipoDeFuente(bytes);
+  if (!tipo) throw new ErrorEstudio("Eso no es una fuente: sube un archivo TTF, OTF, WOFF o WOFF2.", 415);
+  const clave = `clientes/${cliente.id}/fuentes/${crypto.randomUUID()}.${tipo[1]}`;
+  await env.MEDIA.put(clave, bytes, { httpMetadata: { contentType: tipo[0] } });
+  const nombre = String(archivo.name ?? "").replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ").trim().slice(0, 60);
+  return { clave, nombre };
 }
 
 /** La IA propone el kit y un preset por tipo de contenido a partir del cerebro y la ficha. No guarda nada. */
