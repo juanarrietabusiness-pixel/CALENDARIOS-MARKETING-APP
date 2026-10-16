@@ -22,7 +22,8 @@ import { TOMAS, MAX_NOTA } from "../lib/referencias";
 //     y cuesta por segundo. Lo que un modelo no admite no se enseña.
 // ============================================================
 
-const TIPOS = [["imagen", "Imagen", "image"], ["video", "Video", "video"]];
+// «Clip rápido»: un prompt, un clip por API (animar una foto). El video con guion es el guiado «Video» (FlujoReel).
+const TIPOS = [["imagen", "Imagen", "image"], ["video", "Clip rápido", "video"]];
 
 /**
  * «Qué crear»: Imagen y Video (de una vez, el compositor) y los guiados (Carrusel, Reel IA), que cambian lo que se
@@ -31,7 +32,7 @@ const TIPOS = [["imagen", "Imagen", "image"], ["video", "Video", "video"]];
 export function QueCrear({ actual, onCambiar, guiados = [] }) {
   return (
     <div className="est-tipos" role="group" aria-label="Qué crear">
-      {[...TIPOS, ...guiados].map(([tipo, nombre, icono]) => (
+      {[TIPOS[0], ...guiados, ...TIPOS.slice(1)].map(([tipo, nombre, icono]) => (
         <button key={tipo} type="button" className="filter-chip" aria-pressed={actual === tipo} onClick={() => onCambiar(tipo)}>
           <Icon name={icono} size={14} /> {nombre}
         </button>

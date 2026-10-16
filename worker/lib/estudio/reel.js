@@ -13,15 +13,32 @@ import { llamarIA } from "../cerebro/ia.js";
 import { contexto as contextoCerebro } from "../cerebro/cerebro.js";
 import { leerMercado } from "../mercado.js";
 import { kitDe } from "./kit.js";
-import { productosActivos, lineaDeProducto } from "../../../src/lib/estudioMercado.js";
+import { productosActivos, lineaDeProducto, estructuraATexto } from "../../../src/lib/estudioMercado.js";
 import { nombreDePreset, lineaDeEstilo, estiloDeLaPieza, bloqueDeMarca } from "../../../src/lib/kitMarca.js";
 import { pedidoDeReel, leerReel } from "../../../src/lib/reel.js";
 
-/** `datos`: { idea, segundos?, preset?, estilo?, productoId?, personajes?: [ids], musica?, locucion? } → { hilo, planos, musica, locucion, efectos, descripcion } */
+/**
+ * `datos`: { idea, segundos?, preset?, estilo?, productoId?, personajes?: [ids], musica?, locucion?, referenciaId? } → { hilo,
+ * planos, musica, locucion, efectos, descripcion }. 20, 30 y 40 s son guiones para Flow (varios clips de 10 s).
+ * `referenciaId`: un anuncio de la competencia ya analizado (estudio de mercado): el guion sigue su ESTRUCTURA.
+ */
 export async function guionDeReel(env, acceso, cliente, datos = {}) {
-  const idea = String(datos.idea ?? "").trim().slice(0, 1500);
+  let idea = String(datos.idea ?? "").trim().slice(0, 1500);
+  // El anuncio que ya funciona: su estructura tramo a tramo (o, sin ella, su gancho y por qué funciona).
+  let estructura = "";
+  if (datos.referenciaId) {
+    try {
+      const { referencias } = await leerMercado(acceso, cliente.id);
+      const ref = referencias.find((r) => r.id === String(datos.referenciaId));
+      const a = ref?.analisis;
+      if (a) {
+        estructura = [estructuraATexto(a.estructura), a.gancho && `Gancho: ${a.gancho}`, a.porQueFunciona && `Por qué funciona: ${a.porQueFunciona}`].filter(Boolean).join(". ");
+        if (!idea) idea = a.ideaParaNosotros || "Adapta este anuncio a nuestra marca y producto.";
+      }
+    } catch { /* sin estudio de mercado */ }
+  }
   if (!idea) throw Object.assign(new Error("Escribe la idea central: la promoción, el beneficio o lo que quieres contar."), { estado: 400 });
-  const segundos = [4, 6, 8, 10, 15].includes(Number(datos.segundos)) ? Number(datos.segundos) : 10;
+  const segundos = [4, 6, 8, 10, 15, 20, 30, 40].includes(Number(datos.segundos)) ? Number(datos.segundos) : 10;
   const kit = kitDe(cliente);
   const preset = String(datos.preset ?? "");
   let producto = "";
@@ -45,9 +62,9 @@ export async function guionDeReel(env, acceso, cliente, datos = {}) {
       estilo: lineaDeEstilo(kit, estiloDeLaPieza(kit, preset, String(datos.estilo ?? ""))),
       personajes: kit.personajes.filter((p) => ids.includes(p.id)).map((p) => `${p.nombre}${p.descripcion ? `: ${p.descripcion}` : ""}`),
       identidad: bloqueDeMarca(kit),
-      musica: String(datos.musica ?? "").slice(0, 300), locucion: String(datos.locucion ?? "").slice(0, 500),
+      musica: String(datos.musica ?? "").slice(0, 300), locucion: String(datos.locucion ?? "").slice(0, 500), estructura,
     }),
-    salida: 2400,
+    salida: segundos > 10 ? 2400 + segundos * 120 : 2400,
     funcion: "guion de video",
   });
   const guion = leerReel(r.texto, segundos);

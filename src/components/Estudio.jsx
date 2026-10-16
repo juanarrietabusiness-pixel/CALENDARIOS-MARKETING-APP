@@ -35,7 +35,7 @@ const EstudioRecrear = lazy(() => import("./EstudioRecrear"));
 const FlujoCarrusel = lazy(() => import("./FlujoCarrusel"));
 const FlujoReel = lazy(() => import("./FlujoReel"));
 /** Lo que se crea con pasos (no de una vez): el carrusel por láminas y el reel por planos. */
-const GUIADOS = [["carrusel", "Carrusel", "formatCarrusel"], ["reel", "Reel IA", "formatReel"]];
+const GUIADOS = [["carrusel", "Carrusel", "formatCarrusel"], ["reel", "Video", "formatReel"]];
 
 // ============================================================
 // El Estudio de un cliente: la pestaña y el diálogo «Crear con IA»

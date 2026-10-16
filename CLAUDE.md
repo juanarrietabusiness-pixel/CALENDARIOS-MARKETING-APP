@@ -1693,6 +1693,17 @@ son del servidor.
   VOZ de Omni por Kie es un ajuste del modelo (`voz`, `VOCES_OMNI`: 30 voces fijas, el idioma lo da el texto): `enviar`
   la REGISTRA (`/api/v1/omni/audio/create`, gratis) y manda su id en `audio_ids`; con imagen inicial Kie no la admite
   (`validarKie`). Un modelo sin voz pone la suya. La música de tendencia de Instagram no va por API.
+- **El video se hace en FLOW: «Copiar para Flow» es lo principal** (`promptParaFlow`, `clipsDelGuion` en src/lib/reel.js;
+  FlujoReel). La agencia usa Gemini Omni en Flow y le da el guion entero al agente en UNA instrucción; por API salía caro
+  y peor. El prompt lleva todo lo que Flow no sabe: la marca (`bloqueDeMarca`), el estilo, la continuidad (hilo,
+  personajes, producto con su precio), cada clip con sus planos, cámara y texto en pantalla exacto, la música, la
+  locución y los efectos, y qué imágenes subir como ingredientes (logo, retratos, foto del producto). **20, 30 y 40 s son
+  sólo para Flow** (`soloFlow`, `DURACIONES_REEL` con `soloFlow: true`): clips de 10 s (`SEGUNDOS_POR_CLIP`) que el agente
+  genera seguidos; el guion pide que ningún plano cruce un múltiplo de 10 s y admite hasta 5 planos por clip
+  (`maxPlanos`). «Crear aquí por API» (fotogramas y video) sigue para 8 y 10 s, como opción secundaria. El guion puede
+  seguir un ANUNCIO QUE YA FUNCIONA (`referenciaId` en `POST …/reel/guion`: el servidor toma la estructura, el gancho y
+  por qué funciona de la referencia analizada del estudio de mercado; su forma, nunca su marca ni su texto). En «Qué
+  crear» el guiado se llama «Video» y el compositor de un prompt, «Clip rápido».
 - **Corregir con un ejemplo de la galería** (`ReferenciasGaleria.jsx`, `pedidoDeCorreccion` en lib/estudio.js): en el
   visor («Editar»), en cada lámina, en cada fotograma y en el tramo del video. La imagen que se corrige va PRIMERO y los
   ejemplos detrás, sólo los que quepan en el modelo, cada uno con su línea («toma SÓLO…» o «es un EJEMPLO…»); en el
