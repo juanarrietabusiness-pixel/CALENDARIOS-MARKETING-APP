@@ -96,6 +96,11 @@ async function fallo(paso, res, gratis = false) {
     return new ErrorVideo("La llave gratuita de Google llegó a su tope (por minuto o del día). Espera un rato, o cambia el motor de video en Ajustes → IA.", 429);
   }
   if (res.status === 429) return new ErrorVideo("Google AI está saturado. Inténtalo en unos segundos.", 429);
+  // 500/503: el modelo de Google está saturado o caído un momento (pasa mucho con la llave gratuita). No es un error de
+  // la app ni del video: se dice así y qué hacer.
+  if (res.status === 503 || res.status === 500) {
+    return new ErrorVideo(`Google AI está saturado ahora mismo (respondió ${res.status}) y no pudo ${paso} tras varios intentos. Prueba en unos minutos${gratis ? ", o cambia el motor de video en Ajustes → IA (la llave de pago o Meta)" : ""}.`, 503);
+  }
   if (res.status === 401 || res.status === 403) return new ErrorVideo("La clave de Google AI no es válida.", 502);
   return new ErrorVideo(`No se pudo ${paso} (Google AI respondió ${res.status}).`, 502);
 }
@@ -177,6 +182,25 @@ export async function verVideo(env, acceso, { bytes, mime: tipo, nombre = "video
       }
     };
     let res = await analizar();
+    // 500/503: el modelo está saturado un momento. Se reintenta con espera (2 s y 5 s) y, si sigue, con OTRO modelo que
+    // la llave tenga (otro Flash o Flash-Lite): la saturación suele ser de un modelo, no de todos.
+    for (const espera of [2000, 5000]) {
+      if (res.status !== 503 && res.status !== 500) break;
+      if (restante() < espera + 25_000) break;
+      await res.text().catch(() => "");
+      console.warn(`video: ${modelo} respondió ${res.status}; se reintenta en ${espera} ms`);
+      await dormir(espera);
+      res = await analizar();
+    }
+    if ((res.status === 503 || res.status === 500) && restante() > 25_000) {
+      const otro = await modeloDisponible(cabeceras, [modelo]);
+      if (otro) {
+        await res.text().catch(() => "");
+        console.warn(`video: ${modelo} sigue saturado; se usa ${otro}`);
+        modelo = otro;
+        res = await analizar();
+      }
+    }
     // 404: esta llave no tiene ese modelo (los 2.5 ya no se dan a proyectos nuevos). Se pregunta cuál tiene y se repite.
     if (res.status === 404) {
       const otro = await modeloDisponible(cabeceras, [modelo]);

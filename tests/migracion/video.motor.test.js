@@ -84,6 +84,52 @@ describe("una llave sin gemini-2.5-flash (la gratuita de un proyecto nuevo)", ()
     expect(pedidos.some((p) => p.includes("gemini-3.8-flash:generateContent"))).toBe(true);
   });
 
+  // 503: el modelo saturado un momento (pasa mucho con la llave gratuita): se reintenta con espera y luego con otro modelo.
+  const saturado = (veces, { siempre = false } = {}) => {
+    const pedidos = [];
+    let n = 0;
+    vi.stubGlobal("fetch", async (u, init = {}) => {
+      const url = String(u);
+      pedidos.push(`${init.method ?? "GET"} ${url}`);
+      if (url.includes("/upload/v1beta/files")) return new Response("{}", { headers: { "x-goog-upload-url": "https://generativelanguage.googleapis.com/subida/1" } });
+      if (url.includes("/subida/1")) return Response.json({ file: { name: "files/abc", uri: "https://x/files/abc", state: "ACTIVE", mimeType: "video/mp4" } });
+      if (url.includes("/v1beta/models?")) return Response.json({ models: [modelo("gemini-2.5-flash"), modelo("gemini-2.5-flash-lite")] });
+      if (url.includes(":generateContent") && (siempre || (url.includes("gemini-2.5-flash:") && n++ < veces))) return new Response('{"error":{"code":503,"status":"UNAVAILABLE"}}', { status: 503 });
+      if (url.includes(":generateContent")) return Response.json({ candidates: [{ content: { parts: [{ text: "Listo." }] } }] });
+      return new Response("{}");
+    });
+    return pedidos;
+  };
+  const conReloj = async (promesa) => { await vi.advanceTimersByTimeAsync(20_000); return promesa; };
+
+  it("503 una vez: espera y repite con el mismo modelo", async () => {
+    vi.useFakeTimers();
+    try {
+      const pedidos = saturado(1);
+      expect(await conReloj(verVideo({ ...env }, null, pedido))).toBe("Listo.");
+      expect(pedidos.filter((p) => p.includes("gemini-2.5-flash:generateContent"))).toHaveLength(2);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("503 que no se va: tras los reintentos prueba con otro modelo de la llave", async () => {
+    vi.useFakeTimers();
+    try {
+      const pedidos = saturado(9);
+      expect(await conReloj(verVideo({ ...env }, null, pedido))).toBe("Listo.");
+      expect(pedidos.some((p) => p.includes("gemini-2.5-flash-lite:generateContent"))).toBe(true);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("si todos siguen saturados, lo dice claro y qué hacer", async () => {
+    vi.useFakeTimers();
+    try {
+      saturado(0, { siempre: true });
+      const e = await conReloj(verVideo({ ...env }, null, pedido).catch((x) => x));
+      expect(e).toBeInstanceOf(ErrorVideo);
+      expect(e.message).toMatch(/saturado ahora mismo \(respondió 503\).*Ajustes → IA/);
+    } finally { vi.useRealTimers(); }
+  });
+
   it("si la llave no tiene ninguno que sirva, lo dice con el nombre del modelo", async () => {
     geminiFalso([modelo("gemini-2.5-flash")]);
     const e = await verVideo({ ...env }, null, pedido).catch((x) => x);
