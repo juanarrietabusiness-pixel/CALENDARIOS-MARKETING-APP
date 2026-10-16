@@ -15,6 +15,8 @@ import {
   totalDeCuantas, nombreCarpetaLote, publicacionDePieza, COMPOSICIONES, TACTICAS, titularesUsados, aprenderComposiciones, celdasMatriz, celdasPorTipos,
 } from "../lib/loteAnuncios";
 import { pedidoDeLote, crearLote, crearCarruselDeIdea, crearReelDeIdea } from "../lib/loteEstudio";
+import { controlEncendido, encenderControl } from "../lib/controlEstudio";
+import { resumenControl } from "../lib/control";
 import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
 import { modelosParaReel, modeloRecomendadoParaReel } from "../lib/reelEstudio";
 import { DIAS_LOTE, diasDelLote, diasConTipo, carpetaDelMes, fechaCortaLote, mesDe, textoMes, diasConPublicacion, casillasConPlantilla, diasConPlantilla } from "../lib/loteMes";
@@ -117,6 +119,8 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const [conGustos, setConGustos] = useState(() => { try { return localStorage.getItem(claveGustos) === "1"; } catch { return false; } });
   const [variantes, setVariantes] = useState(1);
   const [mejorar, setMejorar] = useState(true);
+  // El control de calidad de cada pieza (y corregir el texto solo): se recuerda por navegador.
+  const [controlar, setControlar] = useState(controlEncendido);
   // Los personajes de la marca que salen en el lote (van de referencia: salen iguales).
   const [personajesSel, setPersonajesSel] = useState([]);
   // En un reel: el modelo del video (los fotogramas, con el de imagen).
@@ -326,6 +330,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
       if (!vivo.current) break;
       await crearLote({
         ideas: sueltas.filter((i) => fmtDe(i) === f), clienteId, modo, formato: f, kit, carpetaId, pedidoDe, mejorar, n: variantes, piezaDe: nombreTipo,
+        controlar, activos,
         seguir: () => vivo.current,
         alAvanzar: (id, r) => { if (vivo.current) setResultados((m) => ({ ...m, [id]: r.opciones ? { ...r, elegida: 0 } : r })); },
       });
@@ -337,6 +342,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
       const comun = {
         clienteId, idea, kit, preset: presetDe(idea), estilo, fotos: fotosDe(idea).map((f) => f.clave), personajes, personajesIds: personajesSel,
         marca: client.name, rubro: client.industry ?? "", carpetaId, seguir: () => vivo.current, alPaso: (paso) => poner({ cargando: true, paso }),
+        controlar, activos,
       };
       try {
         const r = fmtDe(idea) === "carrusel"
@@ -598,6 +604,10 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                 </select>
               </div>
               <label className="est-logo-casilla">
+                <input type="checkbox" checked={controlar} onChange={(e) => { setControlar(e.target.checked); encenderControl(e.target.checked); }} />
+                {" "}Revisar cada pieza al terminar y corregir solo el texto mal escrito (recomendado: la IA la mira y, si sólo falla una letra, edita la misma imagen; céntimos por pieza)
+              </label>
+              <label className="est-logo-casilla">
                 <input type="checkbox" checked={mejorar} onChange={(e) => setMejorar(e.target.checked)} /> Mejorar cada idea antes de crear, como «Mejorar idea» (recomendado: escena, composición y texto en una o dos frases claras; costo de texto mínimo)
               </label>
               {archivos.some((a) => a.favorito && a.tipo === "imagen") && (
@@ -708,6 +718,11 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                       <span className="lote-insignia">{[i.fecha && fechaCortaLote(i.fecha), etiquetaDe(i)].filter(Boolean).join(" · ")}</span>
                       <strong>{i.titulo || i.titular}</strong>
                       {r?.error && <p role="alert" className="cerebro-error">{r.error}</p>}
+                      {r?.opciones?.[r.elegida ?? 0]?.control && (
+                        <p className="lote-control" data-estado={r.opciones[r.elegida ?? 0].control.estado}>
+                          <Icon name={r.opciones[r.elegida ?? 0].control.estado === "ok" ? "checkCircle" : "alert"} size={14} /> {resumenControl(r.opciones[r.elegida ?? 0].control)}
+                        </p>
+                      )}
                       {r?.cargando && r.paso && final && <p className="hint">{r.paso}</p>}
                       {guiadoDe(i) && r?.opciones?.[0]?.archivos?.length > 1 && (
                         <div className="lote-laminas" aria-label={`Las ${r.opciones[0].archivos.length} láminas`}>

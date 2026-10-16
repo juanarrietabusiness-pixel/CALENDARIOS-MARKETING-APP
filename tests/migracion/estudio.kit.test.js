@@ -210,6 +210,78 @@ describe("revisar una pieza", () => {
   });
 });
 
+describe("el control de calidad de una pieza", () => {
+  const LINEA_LOGO = "Una de las imágenes de referencia es el logo de la marca: si aparece en la pieza, cópialo tal cual (forma, colores y letras), sin redibujarlo ni inventar otro.";
+  async function pieza(prompt) {
+    env.MEDIA.objetos.set("clientes/c1/estudio/p.png", { bytes: PNG, tipo: "image/png" });
+    db.sqlite.prepare("insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime, prompt) values (?,?,?,?,?,?,?)")
+      .run("p1", JEFE, "c1", "clientes/c1/estudio/p.png", "imagen", "image/png", prompt);
+  }
+
+  it("la IA MIRA la imagen con el texto que debía decir y los precios del catálogo; el código compara y lo apunta en la ficha", async () => {
+    await pieza(`Escena: una sala\n\nTexto en la imagen, exacto, legible y bien jerarquizado (lo primero grande): "Sofá cama" / "$399".\n\n${LINEA_LOGO}`);
+    await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: [{ id: "sofa", nombre: "Sofá cama", precio: "$399" }] } });
+    // La IA dice que está bien, pero lee «Sofa cmaa»: el código lo caza.
+    anthropic('{"textoLeido":"Sofa cmaa $399","errores":[],"precios":[],"logo":"bien","deformaciones":[],"puntaje":9}');
+    const res = await pedir("/api/estudio/c1/archivos/p1/control", { method: "POST", body: {} });
+    expect(res.status).toBe(200);
+    const { control, archivo } = await res.json();
+    expect(control).toMatchObject({ estado: "revisar", soloTexto: true, texto: "Sofá cama\n$399", logo: "bien" });
+    expect(control.errores).toEqual([{ esperado: "sofá", escrito: "sofa" }, { esperado: "cama", escrito: "cmaa" }]);
+    expect(archivo.ajustes.control.estado).toBe("revisar");
+    const bloques = peticiones[0].messages[0].content;
+    expect(bloques[0]).toMatchObject({ type: "image", source: { type: "base64", media_type: "image/png" } });
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/DEBÍA decir \(exacto\): "Sofá cama \$399"/);
+    expect(t).toMatch(/precios válidos son los del catálogo: \$399/);
+    expect(t).toMatch(/debía llevar el logo de Dcasa/);
+    // Queda en la ficha: la galería la marca sin volver a preguntar.
+    const g = await (await pedir("/api/estudio/c1")).json();
+    expect(g.archivos.find((a) => a.id === "p1").ajustes.control.estado).toBe("revisar");
+    expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("control de calidad");
+  });
+
+  it("el texto que manda la pantalla gana; una pieza de otro cliente o un video no se controlan", async () => {
+    await pieza("Escena: una sala");
+    anthropic('{"textoLeido":"Duerme mejor","logo":"no aplica"}');
+    const { control } = await (await pedir("/api/estudio/c1/archivos/p1/control", { method: "POST", body: { texto: "Duerme mejor" } })).json();
+    expect(control).toMatchObject({ estado: "ok", texto: "Duerme mejor" });
+    expect((await pedir("/api/estudio/c2/archivos/p1/control", { method: "POST", body: {} })).status).toBe(404);
+    db.sqlite.prepare("update estudio_archivos set tipo = 'video', mime = 'video/mp4' where id = 'p1'").run();
+    expect((await pedir("/api/estudio/c1/archivos/p1/control", { method: "POST", body: {} })).status).toBe(400);
+  });
+});
+
+describe("la fuente de la marca", () => {
+  const subir = (bytes, nombre = "Montserrat-Bold.woff2") => {
+    const form = new FormData();
+    form.set("archivo", new File([bytes], nombre));
+    return worker.fetch(new Request("https://calendarios.test/api/estudio/c1/kit/fuente", { method: "POST", body: form, headers: { Cookie: `${COOKIE}=${TESTIGO}` } }), env);
+  };
+
+  it("se reconoce por sus bytes y va a fuentes/ del cliente; lo que no es una fuente, no", async () => {
+    const res = await subir(new Uint8Array([0x77, 0x4f, 0x46, 0x32, 0, 1, 0, 0]));
+    expect(res.status).toBe(201);
+    const { clave, nombre } = await res.json();
+    expect(clave).toMatch(/^clientes\/c1\/fuentes\/[\w-]+\.woff2$/);
+    expect(nombre).toBe("Montserrat Bold");
+    expect(env.MEDIA.objetos.get(clave).tipo).toBe("font/woff2");
+    expect((await subir(PNG, "x.ttf")).status).toBe(415);
+  });
+
+  it("el kit guarda la fuente sólo con el archivo y la muestra de ESTE cliente; volver a preparar no se la lleva", async () => {
+    env.MEDIA.objetos.set("clientes/c1/fuentes/f.ttf", { bytes: new Uint8Array([0, 1, 0, 0]), tipo: "font/ttf" });
+    env.MEDIA.objetos.set("clientes/c1/estudio/muestra.png", { bytes: PNG, tipo: "image/png" });
+    const bien = await pedir("/api/estudio/c1/kit", { method: "PUT", body: { kit: { estilo: "cálido", fuente: { clave: "clientes/c1/fuentes/f.ttf", nombre: "Montserrat", muestra: "clientes/c1/estudio/muestra.png" } } } });
+    expect(bien.status).toBe(200);
+    expect(kitGuardado().fuente).toEqual({ clave: "clientes/c1/fuentes/f.ttf", nombre: "Montserrat", muestra: "clientes/c1/estudio/muestra.png" });
+    const ajena = await pedir("/api/estudio/c1/kit", { method: "PUT", body: { kit: { fuente: { clave: "clientes/c2/fuentes/f.ttf", muestra: "clientes/c1/estudio/muestra.png" } } } });
+    expect(ajena.status).toBe(400);
+    const sinArchivo = await pedir("/api/estudio/c1/kit", { method: "PUT", body: { kit: { fuente: { clave: "clientes/c1/fuentes/no.ttf", muestra: "clientes/c1/estudio/muestra.png" } } } });
+    expect(sinArchivo.status).toBe(400);
+  });
+});
+
 // ------------------------------------------------------------
 // Lo que el kit aprende de los «Me gusta» y la papelera
 // ------------------------------------------------------------

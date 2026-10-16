@@ -9,6 +9,7 @@
 // ============================================================
 
 import { partirLineas, titularYApoyo } from "./carrusel";
+import { cargarFuente } from "./muestraFuente";
 
 /** Carga una imagen del mismo origen (también un SVG del motor de prueba) lista para el lienzo. */
 async function cargar(src) {
@@ -37,8 +38,10 @@ const radio = (ctx, x, y, w, h, r) => {
  * @param colores    { fondo, texto, acento } (coloresPlantilla)
  * @param familia    la tipografía del kit, si la hay
  */
-export async function componerLamina({ src, texto, plantilla = "banda", colores, familia = "" }) {
+export async function componerLamina({ src, texto, plantilla = "banda", colores, familia = "", fuente = null }) {
   const img = await cargar(src);
+  // La fuente REAL de la marca (si el kit la tiene): sin ella, la del kit si el navegador la tiene, o la del sistema.
+  familia = (fuente ? await cargarFuente(fuente) : "") || familia;
   const ancho = img.naturalWidth || 1080;
   const alto = img.naturalHeight || 1350;
   const lienzo = document.createElement("canvas");

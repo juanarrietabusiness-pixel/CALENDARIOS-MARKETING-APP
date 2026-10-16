@@ -381,3 +381,21 @@ div.est-img { cursor: default; }
 .est-ranura-pie { display: flex; justify-content: flex-end; }
 /* «De la galería»: la siguiente imagen que se toque va a ese sitio. */
 .est-destino { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin: 0; position: sticky; top: 0; z-index: 2; padding: var(--sp-2) var(--sp-3); background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: var(--radius-sm); }
+
+/* El control de calidad en el visor y la marca de la tarjeta en la galería */
+.est-control { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+.est-control p { margin: 0; }
+.est-control-titulo { display: flex; align-items: center; gap: var(--sp-1); font-weight: 600; color: var(--success); }
+.est-control[data-estado="revisar"] .est-control-titulo { color: var(--warning, #f5a524); }
+.est-control-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.est-img[data-control] { position: relative; }
+.est-img[data-control]::after {
+  position: absolute; left: var(--sp-1); bottom: var(--sp-1); padding: 2px var(--sp-2); border-radius: var(--radius-pill);
+  font-size: var(--fs-3xs); font-weight: 700; background: rgba(0, 0, 0, 0.72); pointer-events: none;
+}
+.est-img[data-control="ok"]::after { content: "✓ Revisada"; color: var(--success); }
+.est-img[data-control="revisar"]::after { content: "Revisar"; color: var(--warning, #f5a524); }
+/* La fuente de la marca en el kit: su muestra y los botones */
+.est-kit-fuente { display: flex; flex-direction: column; gap: var(--sp-2); }
+.est-kit-fuente-muestra { width: min(320px, 100%); border-radius: var(--radius-sm); border: 1px solid var(--border); background: #fff; }
+.est-kit-fuente-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }

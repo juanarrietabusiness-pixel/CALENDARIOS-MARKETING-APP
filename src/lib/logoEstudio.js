@@ -39,18 +39,3 @@ export async function conLogoSiToca({ clienteId, archivo, kit, carpetaId }) {
     return archivo;
   }
 }
-
-/**
- * Al terminar un trabajo del compositor pedido con el logo estampado: cada imagen sale otra vez con el logo encima (la
- * cruda se queda). → true si estampó alguna.
- */
-export async function estamparTrabajo({ clienteId, trabajo, kit }) {
-  if (!trabajo?.archivos?.length || trabajo.tipo === "video") return false;
-  const g = await api.leerEstudio(clienteId).catch(() => null);
-  let hechas = 0;
-  for (const id of trabajo.archivos) {
-    const a = g?.archivos?.find((x) => x.id === id);
-    if (a && (await conLogoSiToca({ clienteId, archivo: a, kit })) !== a) hechas += 1;
-  }
-  return hechas > 0;
-}

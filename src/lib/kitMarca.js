@@ -230,7 +230,31 @@ export function limpiarKit(guardado) {
     // Quién pone el logo: el modelo (de referencia, lo de siempre) o la aplicación encima (logoEncima.js).
     logoModo: g.logoModo === "estampado" ? "estampado" : "modelo",
     logoPosicion: posicionDelKit(g.logoPosicion),
+    // La tipografía REAL de la marca: el archivo de la fuente y una muestra dibujada con ella (imagen de la galería),
+    // que va de referencia «toma la tipografía de aquí» en toda pieza donde el modelo escribe texto.
+    fuente: limpiarFuente(g.fuente),
     ...(g.preparadoAt ? { preparadoAt: String(g.preparadoAt) } : {}),
+  };
+}
+
+/** La fuente de la marca: { clave (el archivo, en `clientes/<c>/fuentes/`), nombre, muestra (imagen del cliente) } o null. */
+function limpiarFuente(f) {
+  const clave = typeof f?.clave === "string" && /^clientes\/[^/]+\/fuentes\/[\w.-]+$/.test(f.clave) && !f.clave.includes("..") ? f.clave : "";
+  const muestra = typeof f?.muestra === "string" && /^clientes\/[^/]+\/.+/.test(f.muestra) && !f.muestra.includes("..") ? f.muestra : "";
+  if (!clave || !muestra) return null;
+  return { clave, muestra, nombre: corto(f?.nombre, 60) || "la tipografía de la marca" };
+}
+
+/**
+ * La muestra de la tipografía como referencia de una pieza (sólo cuando el modelo escribe el texto). Null sin fuente.
+ * Pura.
+ */
+export function referenciaDeTipografia(kitGuardado) {
+  const f = limpiarKit(kitGuardado).fuente;
+  if (!f) return null;
+  return {
+    clave: f.muestra, src: `/api/media/${f.muestra}`, toma: ["tipografia"],
+    nota: `es la muestra de la tipografía de la marca (${f.nombre}): escribe TODO el texto de la pieza con ESA letra (su forma, su grosor, su estilo); no copies las palabras de la muestra`,
   };
 }
 
@@ -547,7 +571,7 @@ export function fundirKit(guardado, propuesto, ahora = new Date().toISOString())
   return limpiarKit({
     ...propuesto, logo: antes.logo, propios: antes.propios, estilos: antes.estilos, estiloPorTipo: antes.estiloPorTipo, personajes: antes.personajes,
     aprendido: antes.aprendido, referencias: antes.referencias, modelos: antes.modelos, reglas: antes.reglas,
-    logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, preparadoAt: ahora,
+    logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, fuente: antes.fuente, preparadoAt: ahora,
   });
 }
 

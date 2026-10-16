@@ -31,6 +31,8 @@
 //   POST   /<cliente>/archivos/<id>/perdido        Quitar la ficha de un archivo que ya no está en R2
 //   DELETE /<cliente>/archivos/<id>?forzar=1       Borrar del todo (sólo desde la papelera)
 //   POST   /<cliente>/papelera/vaciar
+//   POST   /<cliente>/archivos/<id>/control         { texto? }: el control de calidad (la IA mira la pieza; queda en la ficha)
+//   POST   /<cliente>/kit/fuente                   multipart «archivo»: la fuente de la marca (TTF, OTF, WOFF, WOFF2) → { clave }
 //   POST   /<cliente>/kit/reglas                   { regla } → se suma a «Reglas que no se rompen» del kit
 //   POST   /<cliente>/carpetas                     { nombre, tipo? } (tipo «carrusel» | «reel»: la galería la agrupa)
 //   PUT    /<cliente>/carpetas/<id>                { nombre?, orden? } (orden: ids de sus piezas, en orden)
@@ -50,7 +52,8 @@ import { firma, difundir } from "../lib/vivo.js";
 import { estadoMotores } from "../lib/estudio/motores.js";
 import { mejorarIdea, versionesDeIdea } from "../lib/estudio/prompt.js";
 import { guionCorto } from "../lib/estudio/guionCorto.js";
-import { kitDe, guardarKit, prepararKit, revisarPieza } from "../lib/estudio/kit.js";
+import { kitDe, guardarKit, prepararKit, revisarPieza, subirFuente } from "../lib/estudio/kit.js";
+import { controlarPieza } from "../lib/estudio/control.js";
 import { aprenderDeLoVisual } from "../lib/estudio/aprender.js";
 import { produccionDeLote } from "../lib/estudio/lote.js";
 import { ideasDelEstudio } from "../lib/estudio/ideas.js";
@@ -119,6 +122,11 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         const kit = await guardarKit(env, acceso, cliente, { ...actual, reglas: [...actual.reglas, regla] });
         avisar();
         return json({ kit });
+      }
+      // La fuente de la marca: se guarda el archivo (no el kit); la pantalla dibuja la muestra y guarda el kit con las dos.
+      if (c === "fuente" && metodo === "POST") {
+        const form = await req.formData().catch(() => null);
+        return json(await subirFuente(env, cliente, form?.get("archivo")), 201);
       }
       if (c === "preparar" && metodo === "POST") return json(await prepararKit(env, acceso, cliente));
       if (c === "aprender" && metodo === "POST") return json(await aprenderDeLoVisual(env, acceso, cliente));
@@ -288,6 +296,10 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         if (!hecho) return noEncontrado("Archivo");
         avisar();
         return json({ ok: true });
+      }
+      if (d === "control" && metodo === "POST") {
+        const datos = (await cuerpo(req)) ?? {};
+        return json(await controlarPieza(env, acceso, cliente, c, { texto: typeof datos.texto === "string" ? datos.texto : null }));
       }
       if (d === "recuperar" && metodo === "POST") {
         const f = await recuperar(acceso, cliente.id, c);

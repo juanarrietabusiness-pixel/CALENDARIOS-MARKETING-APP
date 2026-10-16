@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 import Icon from "./Icon";
+import FuenteDeMarca from "./FuenteDeMarca";
 import {
   TIPOS_PRESET, MAX_PROPIOS, MAX_ESTILOS, MAX_PERSONAJES, MAX_REFS_PRESET, ESTILOS_VISUALES, ESTILO_POR_TIPO, limpiarKit, kitVacio, textoPreset, fundirKit, bloqueDeMarca, nombreDeEstilo,
   MAX_REGLAS,
@@ -150,7 +151,7 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], lectu
           {!propuesta && !borrador && (
             vacio
               ? <p className="hint">Prepáralo con la IA desde el cerebro de {client.name}, o escríbelo a mano. Con el kit, cada idea sale con la paleta, el estilo y el logo de la marca.</p>
-              : <VistaKit kit={kit} marca={marca} logo={logo} />
+              : <><VistaKit kit={kit} marca={marca} logo={logo} /><div className="field"><span className="label">Fuente de la marca</span><FuenteDeMarca client={client} kit={kit} lectura={lectura} onGuardar={onGuardar} /></div></>
           )}
 
           {!propuesta && !borrador && vacio && !lectura && (

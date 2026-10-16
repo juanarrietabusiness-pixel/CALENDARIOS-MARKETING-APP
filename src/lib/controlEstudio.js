@@ -1,0 +1,111 @@
+// ============================================================
+// Controlar una pieza y, si sólo falla el texto, corregirlo editándola
+//
+// Lo usan el lote, «Producir el mes», el carrusel y el compositor: al
+// terminar cada imagen, la IA la mira (src/lib/control.js, el Worker en
+// worker/lib/estudio/control.js). Si lo único que falla son letras, se pide
+// una EDICIÓN de la misma imagen («donde dice X debe decir Y, no toques nada
+// más») con un modelo que sepa editar texto, y se controla otra vez. Se
+// queda la que tenga menos errores; la otra sigue en la galería.
+//
+// Si falla algo más (un precio, el logo, una deformación), no se toca: se
+// marca «Revisar» y lo decide una persona.
+//
+// Si el control mismo falla (sin saldo, sin red), la pieza sigue su camino
+// sin control: nunca se pierde una pieza por no poder revisarla.
+// ============================================================
+
+import * as api from "./estudio";
+import { correccionDeTexto } from "./control";
+import { esperarArchivos } from "./carruselEstudio";
+import { MODELOS, ajustesDe } from "./estudioCatalogo";
+
+/** ¿Revisar y corregir solo? Se recuerda por navegador; encendido por defecto. */
+const CLAVE = "estudio-control";
+export function controlEncendido() {
+  try { return localStorage.getItem(CLAVE) !== "0"; } catch { return true; }
+}
+export function encenderControl(si) {
+  try { localStorage.setItem(CLAVE, si ? "1" : "0"); } catch { /* sin almacenamiento */ }
+}
+
+/**
+ * Con qué se corrige el texto: el mismo modelo que hizo la pieza si edita (así no cambia el estilo), si no Nano
+ * Banana, y si no el que diga `modeloParaEditar`. `activos`: { motor: bool }. Pura.
+ */
+export function modeloParaCorregir(activos = {}, original = "") {
+  const sirve = (m) => m && m.tipo === "imagen" && m.referencias > 0 && activos[m.motor] && m.motor !== "prueba";
+  const delOriginal = MODELOS.find((m) => m.id === original);
+  if (sirve(delOriginal)) return delOriginal;
+  const nano = MODELOS.find((m) => m.id === "nano-banana");
+  return sirve(nano) ? nano : api.modeloParaEditar(activos);
+}
+
+/** Qué motores tienen llave (para escoger con qué corregir), si quien llama no lo sabe. */
+async function activosDeMotores(activos) {
+  if (activos && Object.keys(activos).length) return activos;
+  const m = await api.leerMotores().catch(() => null);
+  return Object.fromEntries(Object.entries(m?.motores ?? {}).map(([k, v]) => [k, Boolean(v.activo)]));
+}
+
+/** La proporción de una pieza (la que se pidió, o la de sus medidas). Pura. */
+const proporcion = (a) => a?.ajustes?.aspectRatio ?? api.proporcionDeMedidas(a?.ancho, a?.alto);
+
+/**
+ * Controla `archivo` y, si sólo falla el texto y `corregir`, lo corrige una vez. → { archivo, control, corregida }:
+ * `archivo` es la que se queda (la corregida si mejoró). Nunca lanza por el control: sin él, `control: null`.
+ */
+export async function controlarYCorregir({ clienteId, archivo, texto = null, activos = null, corregir = true, carpetaId = null, seguir = () => true }) {
+  if (!archivo || archivo.tipo === "video") return { archivo, control: null, corregida: false };
+  let primero;
+  try {
+    primero = (await api.controlarArchivo(clienteId, archivo.id, { texto })).control;
+  } catch {
+    return { archivo, control: null, corregida: false };
+  }
+  if (!primero || primero.estado === "ok" || !corregir || !primero.soloTexto || !seguir()) return { archivo, control: primero, corregida: false };
+  try {
+    return await corregirTexto({ clienteId, archivo, control: primero, activos, carpetaId, seguir });
+  } catch {
+    return { archivo, control: primero, corregida: false };
+  }
+}
+
+/**
+ * Corrige SÓLO el texto de una pieza ya controlada: edita la misma imagen con la indicación de qué cambiar, controla
+ * la nueva y se queda la que tenga menos errores (a igualdad, la original). → { archivo, control, corregida }. Lanza si
+ * el pedido falla (lo dice quien llama).
+ */
+export async function corregirTexto({ clienteId, archivo, control, activos = null, carpetaId = null, seguir = () => true }) {
+  const m = modeloParaCorregir(await activosDeMotores(activos), archivo.modelo);
+  const { prompt, medios } = api.pedidoDeCorreccion({ clave: archivo.clave, instruccion: correccionDeTexto(control, control.texto), modelo: m });
+  const { trabajo } = await api.pedirImagenes(clienteId, {
+    modelo: m.id, prompt, n: 1, ajustes: ajustesDe(m, { aspectRatio: proporcion(archivo) }, medios), medios, confirmado: true,
+    ...(carpetaId ?? archivo.carpetaId ? { carpetaId: carpetaId ?? archivo.carpetaId } : {}),
+  });
+  const [nueva] = await esperarArchivos(clienteId, trabajo, { seguir });
+  const segundo = (await api.controlarArchivo(clienteId, nueva.id, { texto: control.texto })).control;
+  const mejor = segundo && (segundo.estado === "ok" || segundo.errores.length < control.errores.length);
+  return mejor ? { archivo: nueva, control: segundo, corregida: true } : { archivo, control, corregida: false, intento: nueva };
+}
+
+/**
+ * Lo que se hace al terminar un trabajo del compositor: el control (y la corrección del texto) de cada imagen, si está
+ * encendido, y el logo estampado si el kit lo pide. → true si cambió algo en la galería (hay que releerla).
+ */
+export async function terminarTrabajo({ clienteId, trabajo, kit, estampar = false, conLogo = null }) {
+  if (!trabajo?.archivos?.length || trabajo.tipo === "video" || trabajo.estado !== "hecho") return false;
+  const g = await api.leerEstudio(clienteId).catch(() => null);
+  let cambios = false;
+  for (const id of trabajo.archivos) {
+    let a = g?.archivos?.find((x) => x.id === id);
+    if (!a) continue;
+    if (controlEncendido()) {
+      const r = await controlarYCorregir({ clienteId, archivo: a });
+      cambios ||= Boolean(r.control);
+      a = r.archivo;
+    }
+    if (estampar && conLogo && (await conLogo({ clienteId, archivo: a, kit })) !== a) cambios = true;
+  }
+  return cambios;
+}

@@ -11,6 +11,9 @@ import * as api from "../../lib/estudio";
 import { partirGuion, costoCarrusel, coloresPlantilla, MODOS_TEXTO, PLANTILLAS_TEXTO } from "../../lib/carrusel";
 import { crearCarrusel, modeloParaCarrusel } from "../../lib/carruselEstudio";
 import { estampaSola, conLogoSiToca } from "../../lib/logoEstudio";
+import { controlarYCorregir, controlEncendido, encenderControl } from "../../lib/controlEstudio";
+import { resumenControl } from "../../lib/control";
+import { referenciaDeTipografia } from "../../lib/kitMarca";
 import { DIAS_SEMANA, diaDeLaSemana, semanasDe, diasDe, filtrarProduccion, ordenarProduccion } from "../../lib/produccion";
 import "./RevisionMes.css";
 
@@ -59,6 +62,9 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
   const [orden, setOrden] = useState("dia");
   // Como al abrir «Crear con IA» desde una publicación: la idea, el texto y el contexto pasan por «Mejorar idea».
   const [mejorar, setMejorar] = useState(true);
+  // El control de calidad de cada pieza al llegar (y corregir el texto solo): se recuerda por navegador.
+  const [controlar, setControlar] = useState(controlEncendido);
+  const [controles, setControles] = useState({}); // postId → control
   const [modoTexto, setModoTexto] = useState("ia");
   const [plantilla, setPlantilla] = useState("banda");
   const vivo = useRef(true);
@@ -162,6 +168,22 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
     const porTrabajo = new Map((g?.archivos ?? []).map((a) => [a.trabajoId, a]));
     const salida = {};
     for (const t of creados) if (t.id && porTrabajo.has(t.id)) salida[t.postId] = porTrabajo.get(t.id);
+    // El control de calidad, antes de estampar el logo: si sólo falla una letra, se corrige editando la misma imagen.
+    if (controlar) {
+      const vistos = {};
+      for (const t of creados) {
+        const a = salida[t.postId];
+        const c = elegidas.find((x) => x.post.id === t.postId);
+        if (!a || a.tipo === "video" || !vivo.current) continue;
+        t.estado = "revisando";
+        setTrabajos([...creados]);
+        const r = await controlarYCorregir({ clienteId, archivo: a, texto: c?.post?.textoPieza ?? null, activos, seguir: () => vivo.current });
+        salida[t.postId] = r.archivo;
+        if (r.control) vistos[t.postId] = r.control;
+        t.estado = "hecho";
+      }
+      setControles((m) => ({ ...m, ...vistos }));
+    }
     // Con el logo estampado (kit), la pieza que se pone es la que lo lleva encima.
     if (estampaSola(estudio.kit)) {
       for (const k of Object.keys(salida)) salida[k] = await conLogoSiToca({ clienteId, archivo: salida[k], kit: estudio.kit });
@@ -169,8 +191,9 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
 
     // Los carruseles, después y uno a uno: cada lámina espera a la anterior.
     const comunes = {
-      clienteId, modo: modoTexto, plantilla, logo: estampaSola(estudio.kit) ? "" : estudio.kit.logo, estampar: estampaSola(estudio.kit) ? estudio.kit : null, colores: coloresPlantilla(estudio.kit), familia: estudio.kit.tipografia,
+      clienteId, modo: modoTexto, plantilla, logo: estampaSola(estudio.kit) ? "" : estudio.kit.logo, estampar: estampaSola(estudio.kit) ? estudio.kit : null, colores: coloresPlantilla(estudio.kit), familia: estudio.kit.tipografia, fuente: estudio.kit.fuente,
       calendarId: cal.dbId || cal.id, seguir: () => vivo.current,
+      tipografia: referenciaDeTipografia(estudio.kit), controlar, activos,
     };
     for (const c of elegidas.filter((x) => x.tipo === "carrusel")) {
       if (!vivo.current) return;
@@ -184,6 +207,9 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
         alAvanzar: () => { t.hechas += 1; setTrabajos([...creados]); },
       });
       const finales = hechas.map((r) => r?.final).filter(Boolean);
+      // El control de la serie: si alguna lámina quedó por revisar, la del carrusel es la peor.
+      const malas = hechas.map((r) => r?.control).filter((x) => x?.estado === "revisar");
+      if (hechas.some((r) => r?.control)) setControles((m) => ({ ...m, [c.post.id]: malas[0] ?? { estado: "ok" } }));
       t.estado = finales.length ? "hecho" : "fallido";
       t.error = hechas.find((r) => r?.error)?.error ?? "";
       if (finales.length) salida[c.post.id] = finales;
@@ -265,6 +291,9 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
               <label className="est-logo-casilla">
                 <input type="checkbox" checked={mejorar} onChange={(e) => setMejorar(e.target.checked)} /> Mejorar cada idea antes de crear, como «Mejorar idea» (recomendado; costo de texto mínimo)
               </label>
+              <label className="cerebro-casilla">
+                <input type="checkbox" checked={controlar} onChange={(e) => { setControlar(e.target.checked); encenderControl(e.target.checked); }} /> Revisar cada pieza al llegar y corregir solo el texto mal escrito (recomendado; céntimos por pieza)
+              </label>
               <div className="produccion-filtro" role="group" aria-label="Orden">
                 <span className="hint">Orden</span>
                 <button type="button" className="filter-chip" aria-pressed={orden === "dia"} onClick={() => setOrden("dia")}>De lunes a domingo</button>
@@ -314,6 +343,11 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
                     <div className="produccion-texto">
                       <strong>{fechaCorta(t.date)} · {FORMATS[t.format]?.label ?? t.format}</strong>
                       <span className="hint">{String(t.titulo).slice(0, 90)}{todas.length > 1 ? ` · ${todas.length} láminas` : ""}{t.laminas && todas.length < t.laminas ? ` (faltaron ${t.laminas - todas.length})` : ""}</span>
+                      {controles[t.postId] && (
+                        <span className="lote-control" data-estado={controles[t.postId].estado}>
+                          <Icon name={controles[t.postId].estado === "ok" ? "checkCircle" : "alert"} size={12} /> {resumenControl(controles[t.postId])}
+                        </span>
+                      )}
                       {a ? (
                         puestas.has(t.postId)
                           ? <span className="hint"><Icon name="check" size={12} /> Puesta en la publicación</span>

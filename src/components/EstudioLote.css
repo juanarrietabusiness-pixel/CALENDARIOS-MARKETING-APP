@@ -71,3 +71,6 @@
   .recrear-fuente { grid-template-columns: 1fr; }
   .recrear-pieza { max-width: 220px; }
 }
+/* El control de calidad de cada pieza: «Revisada» o «Revisar: …» */
+.lote-control { display: flex; align-items: center; gap: var(--sp-1); margin: 0; font-size: var(--fs-2xs); color: var(--success); }
+.lote-control[data-estado="revisar"] { color: var(--warning, #f5a524); }

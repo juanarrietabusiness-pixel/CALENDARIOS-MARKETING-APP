@@ -2,7 +2,10 @@ import { useId, useState } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { modeloPorId, nombreDelModelo, textoCosto, NOMBRE_PROPORCION } from "../lib/estudioCatalogo";
+import * as api from "../lib/estudio";
 import { hace, nombreDeDescarga, esVideoReal, valorDeAjuste, ATAJOS_EDICION } from "../lib/estudio";
+import { corregirTexto } from "../lib/controlEstudio";
+import { resumenControl } from "../lib/control";
 import ReferenciasGaleria from "./ReferenciasGaleria";
 import GuardarRegla from "./GuardarRegla";
 
@@ -31,6 +34,51 @@ export function Pieza({ archivo: a, grande = false, onError = undefined }) {
  * respeta y qué no. «Corregir» lleva su sugerencia al compositor, junto a la
  * idea original, para pedirla otra vez.
  */
+/**
+ * El control de calidad (lib/control.js): lo que la IA leyó en la pieza, lo mal escrito, los precios que no están en el
+ * catálogo, el logo y las deformaciones. «Revisar la pieza» lo pide (o lo repite); «Corregir el texto» edita la MISMA
+ * imagen cambiando sólo las palabras mal escritas, y abre la nueva (la de antes se queda en la galería).
+ */
+function ControlDeCalidad({ archivo, clienteId, lectura, onAbrir }) {
+  const [control, setControl] = useState(archivo.ajustes?.control ?? null);
+  const [ocupado, setOcupado] = useState("");
+  const [error, setError] = useState("");
+  const hacer = async (que, fn) => {
+    setOcupado(que);
+    setError("");
+    try { await fn(); } catch (e) { setError(e.message); } finally { setOcupado(""); }
+  };
+  const revisar = () => hacer("Revisando la pieza…", async () => setControl((await api.controlarArchivo(clienteId, archivo.id)).control));
+  const corregir = () => hacer("Corrigiendo el texto (tarda un poco)…", async () => {
+    const r = await corregirTexto({ clienteId, archivo, control });
+    if (r.corregida) onAbrir?.(r.archivo);
+    else setError(`La corrección no mejoró el texto${r.intento ? " (quedó en la galería)" : ""}: prueba «Editar» con tus palabras.`);
+  });
+  if (!clienteId || archivo.tipo === "video") return null;
+  return (
+    <section className="est-control" aria-label="Control de calidad" data-estado={control?.estado}>
+      <p role="status" className={ocupado ? "hint" : "sr-only"}>{ocupado}</p>
+      {control ? (
+        <>
+          <p className="est-control-titulo"><Icon name={control.estado === "ok" ? "checkCircle" : "alert"} size={16} /> {resumenControl(control)}</p>
+          {control.textoLeido && <p className="hint">Se lee: «{control.textoLeido.replace(/\n+/g, " / ")}»</p>}
+          {control.errores.length > 1 && <ul className="est-revision-lista" data-falla>{control.errores.map((e) => <li key={`${e.escrito}-${e.esperado}`}><Icon name="alert" size={14} /> {e.escrito ? `«${e.escrito}» → «${e.esperado}»` : `falta «${e.esperado}»`}</li>)}</ul>}
+          {[...control.precios.map((p) => `Precio que no está en el catálogo: ${p}`), ...control.deformaciones, ...control.otros].map((t) => <p key={t} className="hint"><Icon name="alert" size={14} /> {t}</p>)}
+        </>
+      ) : <p className="hint">Sin revisar: la IA puede leer el texto letra por letra y buscar precios inventados, el logo y deformaciones.</p>}
+      {error && <p role="alert" className="cerebro-error">{error}</p>}
+      {/* Los botones se quedan mientras trabaja (`aria-disabled`, no `disabled`): si desaparecieran o se deshabilitaran,
+          el foco se iría al body y Escape ya no cerraría el visor. */}
+      {!lectura && (
+        <div className="est-control-botones">
+          {control?.soloTexto && <button type="button" className="btn btn-primary btn-sm" aria-disabled={Boolean(ocupado)} onClick={() => !ocupado && corregir()}><Icon name="wand" size={14} /> Corregir el texto</button>}
+          <button type="button" className="btn btn-ghost btn-sm" aria-disabled={Boolean(ocupado)} onClick={() => !ocupado && revisar()}><Icon name="eye" size={14} /> {control ? "Revisar otra vez" : "Revisar la pieza"}</button>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function RevisionDeMarca({ revision, onRevisar, onCorregir }) {
   if (revision?.cargando) return <p role="status" className="hint est-revision">La IA está revisando la imagen contra el kit…</p>;
   if (revision?.error) {
@@ -159,6 +207,7 @@ export default function Visor({
               </p>
             </div>
           )}
+          {!video && <ControlDeCalidad key={a.id} archivo={a} clienteId={clienteId} lectura={lectura} onAbrir={onVerOriginal} />}
           {!video && (onRevisar || revision) && <RevisionDeMarca revision={revision} onRevisar={onRevisar} onCorregir={lectura ? null : onCorregir} />}
           <div className="est-visor-acciones">
             {!lectura && !video && onEditar && !editando && <button type="button" className="btn btn-secondary" onClick={() => setEditando(true)}><Icon name="pencil" size={16} /> Editar</button>}
