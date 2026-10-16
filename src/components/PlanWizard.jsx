@@ -5,6 +5,8 @@ import { callAI, buildClientContext, buildDescripcionesPrompt, buildScriptPrompt
 import { loadClientMemories } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { casillasDelPlan, ideasDelPlan, rellenarConIdea } from "../lib/ideaPublicacion";
+import { objetivoDe, semanasConEtapa, embudoDelMes, limpiarEstrategia } from "../lib/estrategiaMes";
+import { PasoEstrategia, EtapaSemana, BalanceDelMes } from "./EstrategiaMes";
 import Icon from "./Icon";
 import { fechasDelMes } from "../lib/fechasEspeciales";
 import { leerMercado } from "../lib/mercado";
@@ -18,7 +20,7 @@ import {
 
 // Sin paso de categorías: se quitaron del calendario. Las que haya en la
 // ficha del cliente (Semanal) siguen informando a la IA sin preguntarse aquí.
-const STEP_LABELS = ["Plan", "Fechas y ritmo", "Campaña", "Conceptos", "Ofertas", "Ideas"];
+const STEP_LABELS = ["Plan", "Fechas y ritmo", "Estrategia", "Conceptos", "Ofertas", "Ideas"];
 
 /** Los formatos que llevan guion además de descripción (los demás, sólo caption). */
 const FORMATOS_CON_GUION = new Set(["reel", "carrusel", "historia", "live"]);
@@ -98,6 +100,11 @@ export default function PlanWizard({ client, onGenerate, onClose, mesInicial = n
   });
   const [offers, setOffers] = useState("");
   const [promoCode, setPromoCode] = useState("");
+  // La estrategia del mes: objetivo, producto foco y la etapa del embudo de cada semana (src/lib/estrategiaMes.js).
+  const [objetivo, setObjetivo] = useState("");
+  const [focoId, setFocoId] = useState("");
+  const [etapas, setEtapas] = useState([]);
+  const [propuesta, setPropuesta] = useState(null); // { razon, ofertas, mejores, antes }
   const [ideas, setIdeas] = useState({});
   const [ideaMode, setIdeaMode] = useState("day");
   // Qué trozo del mes se genera: «mes» o el número de una semana. El mes
@@ -220,21 +227,6 @@ Solo el JSON, nada mas.`;
     setAiStatus("");
   };
 
-  const suggestCampaign = async () => {
-    setAiLoading(true);
-    setAiStatus("Generando sugerencias de campana...");
-    try {
-      const ctx = buildClientContext(client);
-      const prompt = `${ctx}\n\nSugiere 3 temas de campana para ${MONTHS[month]} ${year}. Una linea por sugerencia. Solo las sugerencias, nada mas.`;
-      const txt = await callAI(prompt, { funcion: "calendario", clienteId: client?.id });
-      setCampaign(txt.split("\n").filter(Boolean)[0] || "");
-    } catch (e) {
-      setAiStatus("Error: " + e.message);
-    }
-    setAiLoading(false);
-    setAiStatus("");
-  };
-
   const suggestConcepts = async () => {
     setAiLoading(true);
     setAiStatus("Generando conceptos semanales...");
@@ -320,8 +312,62 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
     }
     const asignada = asignarMatriz(lista, {
       productos: productosParaPlan(mercado?.catalogo ?? [], mercado?.inventario), deseos: general?.deseos ?? [], perfiles: general?.perfiles ?? [],
+      foco: focoId,
     });
     return new Map(asignada.map(({ clave, ...m }) => [clave, Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, m[k] ?? ""]))]));
+  };
+
+  /** Los productos que pueden ser el foco del mes (los del plan: activos y, con inventario, no agotados). */
+  const productosPlan = productosParaPlan(mercado?.catalogo ?? [], mercado?.inventario);
+  const focoNombre = productosPlan.find((p) => p.id === focoId)?.nombre ?? "";
+
+  /** Las semanas del plan con sus fechas (bloques de siete días desde el 1, como `weekNumber`). */
+  const semanasPlan = () => {
+    const por = new Map();
+    for (const d of estructuraDelMes()) {
+      const s = por.get(d.wk) ?? { n: d.wk, desde: d.date, hasta: d.date };
+      s.hasta = d.date;
+      por.set(d.wk, s);
+    }
+    return [...por.values()].sort((a, b) => a.n - b.n);
+  };
+
+  /** La estrategia que va al motor de ideas: campaña, ofertas, código, objetivo, foco y cada semana con su etapa. */
+  const estrategiaParaElMotor = () => {
+    const obj = objetivoDe(objetivo);
+    return {
+      campana: campaign, ofertas: offers, codigo: promoCode, semanas: semanasConEtapa(weekConcepts, etapas),
+      ...(obj ? { objetivo: `${obj.nombre} — ${obj.ayuda}` } : {}),
+      ...(focoNombre ? { foco: focoNombre, focoId } : {}),
+    };
+  };
+
+  /** Lo que propone la IA se aplica entero (se puede deshacer): objetivo, foco, campaña, conceptos y etapas. */
+  const aplicarPropuesta = (r) => {
+    const e = r?.estrategia;
+    if (!e) return;
+    const antes = { objetivo, focoId, campaign, weekConcepts, etapas };
+    setObjetivo(e.objetivo || objetivo);
+    setFocoId(focoId || e.focoId || "");
+    if (e.campana) setCampaign(e.campana);
+    setWeekConcepts((prev) => prev.map((c, i) => e.semanas?.[i]?.concepto || c));
+    setEtapas(weekConcepts.map((_, i) => e.semanas?.[i]?.etapa || ""));
+    setPropuesta({ razon: e.razon, ofertas: e.ofertas, mejores: r.mejores ?? [], antes });
+  };
+  const deshacerPropuesta = () => {
+    const a = propuesta?.antes;
+    if (!a) return;
+    setObjetivo(a.objetivo); setFocoId(a.focoId); setCampaign(a.campaign); setWeekConcepts(a.weekConcepts); setEtapas(a.etapas);
+    setPropuesta((p) => ({ ...p, antes: null }));
+  };
+
+  /** El plan tal como está (formato, tipo, matriz e idea de cada publicación), para el balance. */
+  const diasDelPlan = () => {
+    const matriz = matrizDelMes();
+    return estructuraDelMes().map((d) => ({
+      date: d.date,
+      posts: d.formats.map((f, j) => ({ ...matriz.get(`${d.date}|${j}`), ...(ideas[d.date] || [])[j], format: f.format })),
+    }));
   };
 
   /** Las semanas que tiene este mes, para poblar el selector. */
@@ -366,7 +412,7 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
         setTimeout(() => setAiStatus(""), 4000);
         return;
       }
-      const estrategia = { campana: campaign, ofertas: offers, codigo: promoCode, semanas: weekConcepts };
+      const estrategia = estrategiaParaElMotor();
       // Lo que ya hay en el mes (fuera del alcance también) para no repetirlo.
       let usados = Object.values(ideas).flat().map((p) => String(p?.title || p?.idea || "").trim().slice(0, 80)).filter(Boolean).slice(0, 30);
       const semilla = Math.floor(Math.random() * 1000);
@@ -648,6 +694,8 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
     onGenerate({
       month,
       year,
+      // El objetivo, el foco y las etapas viajan en `opciones.estrategia` del calendario (no las ve el cliente).
+      estrategia: limpiarEstrategia({ objetivo, focoId, foco: focoNombre, razon: propuesta?.razon ?? "", etapas }),
       campaign,
       weekConcepts,
       offers: offers || "",
@@ -979,23 +1027,13 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
 
           {/* Step 2: Campaign theme */}
           {step === 2 && (
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-3)", marginBottom: "var(--sp-2)" }}>
-                <label className="label" style={{ margin: 0 }} htmlFor={`${ids}-campaign`}>Tema de campaña del mes</label>
-                <button className="btn btn-primary btn-sm" onClick={suggestCampaign} disabled={aiLoading}>
-                  {aiLoading ? "Generando…" : "Sugerir con IA"}
-                </button>
-              </div>
-              {aiStatus && <p role="status" style={{ fontSize: "var(--fs-2xs)", color: "var(--accent)", marginBottom: "var(--sp-2)" }}>{aiStatus}</p>}
-              <textarea
-                id={`${ids}-campaign`}
-                className="textarea"
-                style={{ minHeight: 100 }}
-                value={campaign}
-                onChange={(e) => setCampaign(e.target.value)}
-                placeholder="Ej: Promoción de Regreso a Clases"
-              />
-            </div>
+            <PasoEstrategia
+              client={client} month={month} year={year}
+              objetivo={objetivo} setObjetivo={setObjetivo} focoId={focoId} setFocoId={setFocoId} productos={productosPlan}
+              campaign={campaign} setCampaign={setCampaign} offers={offers}
+              semanas={semanasPlan().map(({ desde, hasta }) => ({ desde, hasta }))}
+              propuesta={propuesta} onPropuesta={aplicarPropuesta} onDeshacer={deshacerPropuesta}
+            />
           )}
 
           {/* Step 3: Weekly concepts */}
@@ -1012,15 +1050,23 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
                 {weekConcepts.map((c, i) => (
                   <div key={i}>
                     <label className="label" htmlFor={`${ids}-wc-${i}`}>Semana {i + 1}</label>
-                    <input
-                      id={`${ids}-wc-${i}`}
-                      className="input"
-                      value={c}
-                      onChange={(e) => setWeekConcepts((prev) => prev.map((v, j) => (j === i ? e.target.value : v)))}
-                      placeholder={`Concepto de la semana ${i + 1}`}
-                    />
+                    <div className="estrategia-semana">
+                      <input
+                        id={`${ids}-wc-${i}`}
+                        className="input"
+                        value={c}
+                        onChange={(e) => setWeekConcepts((prev) => prev.map((v, j) => (j === i ? e.target.value : v)))}
+                        placeholder={`Concepto de la semana ${i + 1}`}
+                      />
+                      <EtapaSemana semana={i + 1} valor={etapas[i] ?? ""} onCambiar={(v) => setEtapas(weekConcepts.map((_, j) => (j === i ? v : etapas[j] ?? "")))} />
+                    </div>
                   </div>
                 ))}
+                {!etapas.some(Boolean) && (
+                  <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => setEtapas(embudoDelMes(objetivo, weekConcepts.length))}>
+                    Repartir las etapas del embudo según el objetivo
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -1102,6 +1148,9 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
                 lado y eliges. «Escribir guiones y descripciones» completa lo que haya quedado vacío; lo escrito no se reescribe.
               </p>
               {aiStatus && <p role="status" style={{ fontSize: "var(--fs-2xs)", color: "var(--accent)", marginBottom: "var(--sp-2)" }}>{aiStatus}</p>}
+
+              {/* Cómo queda repartido el plan (formatos, tipos, niveles) y lo que se descompensa: reglas, sin IA. */}
+              <BalanceDelMes days={diasDelPlan()} semanas={semanasPlan()} objetivo={objetivo} foco={focoNombre} titulo="Balance del plan" />
 
               {/* Idea entry mode toggle */}
               <div className="segmented" role="group" aria-label="Modo de entrada de ideas" style={{ marginBottom: "var(--sp-3)" }}>

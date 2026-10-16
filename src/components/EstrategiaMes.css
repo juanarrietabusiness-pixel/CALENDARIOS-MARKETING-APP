@@ -1,0 +1,11 @@
+/* La estrategia del mes («Planificar mes») y el balance (también en «Revisar el mes»). */
+.estrategia-mes { display: flex; flex-direction: column; gap: var(--sp-3); }
+.estrategia-proponer { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.estrategia-propuesta { display: flex; flex-direction: column; gap: var(--sp-1); }
+.estrategia-mejores { margin: var(--sp-1) 0 0; padding-left: var(--sp-5); }
+.estrategia-semana { display: flex; gap: var(--sp-2); }
+.estrategia-semana .input:first-child { flex: 1; min-width: 0; }
+.estrategia-etapa { width: auto; flex: 0 0 auto; max-width: 42%; }
+.balance-mes { display: flex; flex-direction: column; gap: var(--sp-1); margin-bottom: var(--sp-3); }
+.balance-avisos { list-style: none; margin: var(--sp-1) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-xs); }
+.balance-avisos svg { vertical-align: -2px; }

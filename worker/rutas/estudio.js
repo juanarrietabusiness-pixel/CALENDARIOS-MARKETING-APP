@@ -60,6 +60,7 @@ import { ideasDelEstudio } from "../lib/estudio/ideas.js";
 import { propuestaDeCarrusel } from "../lib/estudio/carrusel.js";
 import { guionDeReel } from "../lib/estudio/reel.js";
 import { ideasDeFormato } from "../lib/estudio/ideasFormato.js";
+import { estrategiaDelMes } from "../lib/estudio/estrategiaMes.js";
 import { leerMercado } from "../lib/mercado.js";
 import { angulosDeAnuncio, fotosDelCatalogo } from "../../src/lib/estudioMercado.js";
 import { MAX_REGLAS } from "../../src/lib/kitMarca.js";
@@ -190,6 +191,18 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       const datos = await cuerpo(req);
       if (!datos) return error("JSON inválido");
       return json(await ideasDelEstudio(env, acceso, cliente, datos));
+    }
+
+    // ---------- «Proponer la estrategia con IA» de «Planificar mes» (texto: propone, no guarda) ----------
+    if (b === "estrategia" && !c && metodo === "POST") {
+      const datos = await cuerpo(req);
+      if (!datos) return error("JSON inválido");
+      try {
+        return json(await estrategiaDelMes(env, acceso, cliente, datos));
+      } catch (e) {
+        if (e?.estado) return error(e.message, e.estado);
+        throw e;
+      }
     }
 
     // ---------- «Dame ideas» de carrusel o de reel IA (texto: no pide nada al motor) ----------
