@@ -5,7 +5,8 @@ import * as api from "../lib/estudio";
 import { TIPOS_PRESET, ESTILOS_VISUALES, estiloDeMarca, limpiarKit, referenciasDePersonajes, referenciaDeTipografia } from "../lib/kitMarca";
 import { controlEncendido } from "../lib/controlEstudio";
 import { partirGuion, MODOS_TEXTO, PLANTILLAS_TEXTO, MAX_LAMINAS, coloresPlantilla, costoCarrusel } from "../lib/carrusel";
-import { crearCarrusel, crearLamina, corregirLamina, modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
+import { crearCarrusel, crearLamina, corregirLamina, modelosParaCarrusel, modeloParaCarrusel, sistemaDeLaPortada } from "../lib/carruselEstudio";
+import { resumenSistema } from "../lib/sistemaCarrusel";
 import ReferenciasGaleria from "./ReferenciasGaleria";
 import IdeasDeFormato from "./IdeasDeFormato";
 import GuardarRegla from "./GuardarRegla";
@@ -28,6 +29,10 @@ import "./EstudioLote.css";
 //      edita sólo esa lámina con una indicación; «Rehacer esta» la vuelve a
 //      pedir. Todas quedan en la galería, en la carpeta del carrusel, que la
 //      galería enseña como UNA tarjeta con las láminas en orden (y el ZIP).
+//      Con «Primero la portada», se crea sólo la portada; al aprobarla, su
+//      SISTEMA DE DISEÑO (lib/sistemaCarrusel.js: titular, zona del texto,
+//      márgenes, colores) va en palabras en el pedido de cada lámina y en su
+//      control de calidad, que dice lo que se sale de la serie.
 //
 // Lo usan la pestaña Estudio («Carrusel») y «Crear carrusel con IA» del
 // panel de una publicación (que además lo pone en la publicación).
@@ -59,6 +64,9 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
   const [correcciones, setCorrecciones] = useState({}); // i → texto
   const [ejemplos, setEjemplos] = useState({}); // i → ejemplos de la galería para corregir esa lámina
   const [aviso, setAviso] = useState(null);
+  // El sistema de diseño de la portada (lo siguen las demás) y si se aprueba la portada antes de crear el resto.
+  const [sistema, setSistema] = useState(null);
+  const [primeroPortada, setPrimeroPortada] = useState(true);
   const carpeta = useRef(null);
   const vivo = useRef(true);
   const creando = resultados.some((r) => r?.cargando);
@@ -116,23 +124,44 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
     api.ordenarCarpeta(clienteId, carpeta.current, ordenFinal.split(",")).catch(() => { /* sin orden, la galería lo deduce */ });
   }, [ordenFinal, creando, clienteId]);
 
-  const crear = async () => {
+  /** Crea de `desde` en adelante (o sólo la portada, si se aprueba antes); `previas`: lo ya hecho. */
+  const crear = async ({ desde = 0, soloPortada = primeroPortada && laminas.length > 2 } = {}) => {
     setConfirmar(false);
     setPaso("laminas");
     setAviso(null);
     onCreando(true);
-    setResultados(laminas.map(() => ({ cargando: true })));
+    const hasta = soloPortada ? 1 : laminas.length;
+    const previas = desde > 0 ? resultados.slice(0, desde) : [];
+    if (desde === 0) setSistema(null);
+    setResultados(laminas.map((_, i) => (i < desde ? resultados[i] : i < hasta ? { cargando: true } : undefined)));
     await prepararCarpeta();
     const salida = await crearCarrusel({
-      ...comun(), laminas,
+      ...comun(), laminas, desde, hasta, previas, sistema: desde > 0 ? sistema : null,
+      alSistema: (s) => { if (vivo.current) setSistema(s); },
       alAvanzar: (i, r) => { if (vivo.current) setResultados((x) => x.map((y, j) => (j === i ? r : y))); },
     });
     onCreando(false);
     if (!vivo.current) return;
-    setResultados(laminas.map((_, i) => salida[i] ?? { error: "No se pidió." }));
+    setResultados(laminas.map((_, i) => (i < hasta ? salida[i] ?? { error: "No se pidió." } : undefined)));
     window.dispatchEvent(new Event("ia:gasto"));
+    if (soloPortada) {
+      setAviso(salida[0]?.final
+        ? { ok: true, texto: "Revisa la portada: las demás láminas seguirán su sistema (tamaño del titular, dónde va el texto, márgenes y colores). Corrígela o rehazla si hace falta." }
+        : { ok: false, texto: `La portada no salió: ${salida[0]?.error ?? "inténtalo otra vez"}.` });
+      return;
+    }
     const bien = salida.filter((r) => r?.final).length;
     setAviso({ ok: bien > 0, texto: bien === laminas.length ? "Listas. Si una tiene un error, corrígela sola: el resto no se toca." : `Salieron ${bien} de ${laminas.length}. Rehaz las que fallaron.` });
+  };
+  /** La portada va: el resto, con su sistema de diseño. */
+  const seguirConElResto = () => crear({ desde: 1, soloPortada: false });
+  const faltanTrasPortada = paso === "laminas" && resultados[0]?.final && resultados.length > 1 && resultados.slice(1).every((r) => r === undefined);
+
+  /** Si cambia la portada (rehecha o corregida), su sistema se saca otra vez. */
+  const nuevoSistema = async (r) => {
+    if (modo === "plantilla" || !r?.crudo) return;
+    const s = await sistemaDeLaPortada(clienteId, r.crudo, laminas[0]?.texto ?? "");
+    if (vivo.current) setSistema(s);
   };
 
   const una = async (i, hacer) => {
@@ -147,15 +176,23 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
     window.dispatchEvent(new Event("ia:gasto"));
   };
   /** Rehacer una sola: con la de antes de referencia (o, si es la portada, la siguiente) para no romper la serie. */
-  const rehacer = (i) => una(i, () => crearLamina({
-    ...comun(), lamina: laminas[i], total: laminas.length,
-    anterior: (i > 0 ? resultados[i - 1]?.crudo : resultados[1]?.crudo) ?? null, portada: i > 1 ? resultados[0]?.crudo ?? null : null,
-  }));
+  const rehacer = (i) => una(i, async () => {
+    const r = await crearLamina({
+      ...comun(), lamina: laminas[i], total: laminas.length, sistema: i > 0 ? sistema : null,
+      anterior: (i > 0 ? resultados[i - 1]?.crudo : resultados[1]?.crudo) ?? null, portada: i > 1 ? resultados[0]?.crudo ?? null : null,
+    });
+    if (i === 0) await nuevoSistema(r);
+    return r;
+  });
   /** Corregir una sola con una indicación: se edita esa lámina, nada más. */
   const corregir = async (i) => {
-    await una(i, () => corregirLamina({
-      ...comun(), resultado: resultados[i], instruccion: correcciones[i], ejemplos: ejemplos[i] ?? [], lamina: laminas[i],
-    }));
+    await una(i, async () => {
+      const r = await corregirLamina({
+        ...comun(), resultado: resultados[i], instruccion: correcciones[i], ejemplos: ejemplos[i] ?? [], lamina: laminas[i],
+      });
+      if (i === 0) await nuevoSistema(r);
+      return r;
+    });
     setEjemplos((e) => ({ ...e, [i]: [] }));
   };
 
@@ -235,6 +272,12 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
             <label className="label" htmlFor={`${ids}-hilo`}>Lo que comparten todas las láminas</label>
             <input id={`${ids}-hilo`} className="input" maxLength={300} value={hilo} onChange={(e) => setHilo(e.target.value)} placeholder="Fondo crema liso, luz natural suave, el mismo bebé pelirrojo con su traje verde" />
           </div>
+          {laminas.length > 2 && (
+            <label className="cerebro-casilla">
+              <input type="checkbox" checked={primeroPortada} onChange={(e) => setPrimeroPortada(e.target.checked)} />
+              <span>Primero la portada: la apruebo y las demás siguen su sistema de diseño (titular, zona del texto, márgenes, colores)</span>
+            </label>
+          )}
           <div className="produccion-filtro" role="group" aria-label="Quién escribe el texto">
             <span className="hint">Texto</span>
             {Object.entries(MODOS_TEXTO).map(([k, v]) => (
@@ -311,6 +354,9 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
           })}
         </ol>
       )}
+      {paso === "laminas" && sistema && (
+        <p className="hint carrusel-sistema"><strong>Sistema de la serie</strong> (sacado de la portada; las demás láminas lo siguen y el control avisa si se salen): {resumenSistema(sistema)}</p>
+      )}
       {paso === "propuesta" && laminas.length < MAX_LAMINAS && (
         <button type="button" className="btn btn-ghost btn-sm" onClick={anadir}><Icon name="plus" size={14} /> Añadir lámina</button>
       )}
@@ -328,14 +374,14 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
           confirmar ? (
             <>
               <button type="button" className="btn btn-secondary" onClick={() => setConfirmar(false)}>No</button>
-              <button type="button" className="btn btn-primary" onClick={crear}>Sí, crear {laminas.length} láminas por {textoCosto(total)}</button>
+              <button type="button" className="btn btn-primary" onClick={() => crear()}>{primeroPortada && laminas.length > 2 ? `Sí, empezar por la portada (${textoCosto(total)} en total)` : `Sí, crear ${laminas.length} láminas por ${textoCosto(total)}`}</button>
             </>
           ) : (
             <>
               <button type="button" className="btn btn-ghost" onClick={() => setPaso("guion")}>Volver</button>
               <p className="lote-costo">{laminas.length} láminas · <strong>{textoCosto(total)}</strong> (aprox.){modelo?.motor === "prueba" ? " · prueba: tarjetas, no imágenes" : ""}</p>
               <button type="button" className="btn btn-primary" disabled={!modelo || !listas} onClick={() => (total >= CONFIRMAR_DESDE ? setConfirmar(true) : crear())}>
-                <Icon name="image" size={18} /> Crear {laminas.length} láminas
+                <Icon name="image" size={18} /> {primeroPortada && laminas.length > 2 ? "Crear la portada" : `Crear ${laminas.length} láminas`}
               </button>
             </>
           )
@@ -343,6 +389,11 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
         {paso === "laminas" && (
           <>
             <p className="lote-costo">{creando ? `Creando… lámina a lámina, no cierres` : `${finales.length} de ${laminas.length} listas · en la galería, en su carpeta`}</p>
+            {faltanTrasPortada && !creando && (
+              <button type="button" className="btn btn-primary" onClick={seguirConElResto}>
+                <Icon name="check" size={18} /> La portada va: crear las {laminas.length - 1} que faltan
+              </button>
+            )}
             {!creando && <button type="button" className="btn btn-ghost" onClick={() => { setResultados([]); setPaso("propuesta"); }}>Volver a la propuesta</button>}
             {onPoner && !creando && finales.length > 0 && (
               <>

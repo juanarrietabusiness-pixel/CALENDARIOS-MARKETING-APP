@@ -55,11 +55,11 @@ const proporcion = (a) => a?.ajustes?.aspectRatio ?? api.proporcionDeMedidas(a?.
  * Controla `archivo` y, si sólo falla el texto y `corregir`, lo corrige una vez. → { archivo, control, corregida }:
  * `archivo` es la que se queda (la corregida si mejoró). Nunca lanza por el control: sin él, `control: null`.
  */
-export async function controlarYCorregir({ clienteId, archivo, texto = null, activos = null, corregir = true, carpetaId = null, seguir = () => true }) {
+export async function controlarYCorregir({ clienteId, archivo, texto = null, sistema = null, activos = null, corregir = true, carpetaId = null, seguir = () => true }) {
   if (!archivo || archivo.tipo === "video") return { archivo, control: null, corregida: false };
   let primero;
   try {
-    primero = (await api.controlarArchivo(clienteId, archivo.id, { texto })).control;
+    primero = (await api.controlarArchivo(clienteId, archivo.id, { texto, sistema })).control;
   } catch {
     return { archivo, control: null, corregida: false };
   }

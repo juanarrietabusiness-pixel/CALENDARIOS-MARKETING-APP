@@ -252,6 +252,40 @@ describe("el control de calidad de una pieza", () => {
   });
 });
 
+describe("el sistema de diseño de la portada de un carrusel", () => {
+  const SISTEMA = '{"titular":{"tamano":"≈9 % del alto","peso":"extra negrita","mayusculas":true,"color":"#ffffff"},"zonaTexto":"tercio superior","margenes":"≈6 % del ancho","fondo":"foto a sangre","colores":["#1b3246"],"elementos":[],"logo":"no lleva"}';
+  async function portada() {
+    env.MEDIA.objetos.set("clientes/c1/estudio/p.png", { bytes: PNG, tipo: "image/png" });
+    db.sqlite.prepare("insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime, prompt) values (?,?,?,?,?,?,?)")
+      .run("p1", JEFE, "c1", "clientes/c1/estudio/p.png", "imagen", "image/png", "Lámina 1 de 4");
+  }
+
+  it("la IA mira la portada, escribe el sistema y queda en la ficha; la segunda vez no se paga", async () => {
+    await portada();
+    anthropic(SISTEMA);
+    const res = await pedir("/api/estudio/c1/archivos/p1/sistema", { method: "POST", body: { texto: "3 errores" } });
+    expect(res.status).toBe(200);
+    const { sistema } = await res.json();
+    expect(sistema).toMatchObject({ zonaTexto: "tercio superior", colores: ["#1b3246"] });
+    expect(peticiones[0].messages[0].content[0]).toMatchObject({ type: "image" });
+    expect(textoDe(peticiones[0])).toMatch(/PORTADA aprobada[\s\S]*"3 errores"/);
+    expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("sistema de diseño");
+    anthropic("{}");
+    const otra = await (await pedir("/api/estudio/c1/archivos/p1/sistema", { method: "POST", body: {} })).json();
+    expect(otra.sistema.zonaTexto).toBe("tercio superior");
+    expect(peticiones).toHaveLength(0);
+    expect((await pedir("/api/estudio/c2/archivos/p1/sistema", { method: "POST", body: {} })).status).toBe(404);
+  });
+
+  it("el control de una lámina recibe el sistema y dice lo que se sale de la serie", async () => {
+    await portada();
+    anthropic('{"textoLeido":"Error 1","serie":["el titular es la mitad de grande"],"logo":"no aplica"}');
+    const { control } = await (await pedir("/api/estudio/c1/archivos/p1/control", { method: "POST", body: { texto: "Error 1", sistema: JSON.parse(SISTEMA) } })).json();
+    expect(control).toMatchObject({ estado: "revisar", serie: ["el titular es la mitad de grande"] });
+    expect(textoDe(peticiones[0])).toMatch(/SISTEMA DE DISEÑO DE LA SERIE[\s\S]*tercio superior/);
+  });
+});
+
 describe("la fuente de la marca", () => {
   const subir = (bytes, nombre = "Montserrat-Bold.woff2") => {
     const form = new FormData();

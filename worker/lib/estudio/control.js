@@ -19,17 +19,15 @@ import { leerMercado } from "../mercado.js";
 import { productosActivos } from "../../../src/lib/estudioMercado.js";
 import { limpiarKit, LINEA_LOGO } from "../../../src/lib/kitMarca.js";
 import { pedidoDeControl, leerControl, textoDelPedido } from "../../../src/lib/control.js";
+import { pedidoDeSistema, leerSistema, lineaDeSistema } from "../../../src/lib/sistemaCarrusel.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 /** Lo que Anthropic admite por imagen (5 MB en base64): con margen. */
 const MAX_BYTES = 3_600_000;
 const MAX_TEXTO = 400;
 
-/**
- * Controla UNA imagen de la galería de este cliente. `texto`: lo que tenía que decir (si la pantalla lo sabe; si no,
- * se saca del pedido). → { control, archivo } con el control apuntado en la ficha.
- */
-export async function controlarPieza(env, acceso, cliente, archivoId, { texto = null } = {}) {
+/** La ficha y los bytes de UNA imagen de la galería de este cliente (para que la IA la mire). */
+async function imagenDeLaGaleria(env, acceso, cliente, archivoId) {
   const fila = await acceso.leerUno("estudio_archivos", { id: String(archivoId), client_id: cliente.id });
   if (!fila || fila.borrado_at) throw new ErrorEstudio("Esa pieza no está en la galería de este cliente.", 404);
   if (fila.tipo !== "imagen" || !/^image\/(png|jpeg|webp|gif)$/.test(fila.mime ?? "")) {
@@ -39,6 +37,16 @@ export async function controlarPieza(env, acceso, cliente, archivoId, { texto = 
   if (!obj) throw new ErrorEstudio("La imagen ya no está en el almacenamiento.", 404);
   const bytes = new Uint8Array(await obj.arrayBuffer());
   if (bytes.byteLength > MAX_BYTES) throw new ErrorEstudio("La imagen es demasiado grande para controlarla (más de 3,5 MB).", 413);
+  return { fila, bytes };
+}
+
+/**
+ * Controla UNA imagen de la galería de este cliente. `texto`: lo que tenía que decir (si la pantalla lo sabe; si no,
+ * se saca del pedido); `sistema`: el sistema de diseño de la portada, si es una lámina de un carrusel (se dice lo que
+ * se sale de la serie). → { control, archivo } con el control apuntado en la ficha.
+ */
+export async function controlarPieza(env, acceso, cliente, archivoId, { texto = null, sistema = null } = {}) {
+  const { fila, bytes } = await imagenDeLaGaleria(env, acceso, cliente, archivoId);
 
   const ajustes = leerJSON(fila.ajustes, {});
   // El texto esperado: el que manda la pantalla, el de la plantilla puesta encima, o el que se le pidió al motor.
@@ -55,7 +63,7 @@ export async function controlarPieza(env, acceso, cliente, archivoId, { texto = 
   const r = await llamarIA(env, acceso, cliente, {
     prompt: [
       { type: "image", source: { type: "base64", media_type: fila.mime, data: aBase64(bytes) } },
-      { type: "text", text: pedidoDeControl({ marca: cliente.name, texto: esperado, precios, logo, evitar: kit.evitar, reglas: kit.reglas }) },
+      { type: "text", text: pedidoDeControl({ marca: cliente.name, texto: esperado, precios, logo, evitar: kit.evitar, reglas: kit.reglas, sistema: lineaDeSistema(sistema) }) },
     ],
     salida: 900,
     funcion: "control de calidad",
@@ -65,4 +73,28 @@ export async function controlarPieza(env, acceso, cliente, archivoId, { texto = 
   const guardado = { ...control, texto: esperado, at: new Date().toISOString() };
   await acceso.actualizar("estudio_archivos", { id: fila.id, client_id: cliente.id }, { ajustes: JSON.stringify({ ...ajustes, control: guardado }) });
   return { control: guardado, archivo: archivoPublico({ ...fila, ajustes: JSON.stringify({ ...ajustes, control: guardado }) }), modelo: r.modelo };
+}
+
+/**
+ * El sistema de diseño de una PORTADA de carrusel (src/lib/sistemaCarrusel.js): la IA la mira y lo escribe en medidas
+ * que el generador pueda seguir. Se apunta en la ficha (`ajustes.sistema`) y, si ya estaba, se devuelve sin llamar a
+ * nadie. `texto`: el de la portada. → { sistema }.
+ */
+export async function sistemaDePortada(env, acceso, cliente, archivoId, { texto = "" } = {}) {
+  const { fila, bytes } = await imagenDeLaGaleria(env, acceso, cliente, archivoId);
+  const ajustes = leerJSON(fila.ajustes, {});
+  const ya = leerSistema(ajustes.sistema);
+  if (ya) return { sistema: ya };
+  const r = await llamarIA(env, acceso, cliente, {
+    prompt: [
+      { type: "image", source: { type: "base64", media_type: fila.mime, data: aBase64(bytes) } },
+      { type: "text", text: pedidoDeSistema({ marca: cliente.name, texto: String(texto ?? "").slice(0, MAX_TEXTO) }) },
+    ],
+    salida: 900,
+    funcion: "sistema de diseño",
+  });
+  const sistema = leerSistema(r.texto);
+  if (!sistema) throw new ErrorEstudio("La IA no devolvió un sistema de diseño que se pueda leer. Inténtalo otra vez.", 502);
+  await acceso.actualizar("estudio_archivos", { id: fila.id, client_id: cliente.id }, { ajustes: JSON.stringify({ ...ajustes, sistema }) });
+  return { sistema, modelo: r.modelo };
 }
