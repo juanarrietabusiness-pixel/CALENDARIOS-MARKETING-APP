@@ -377,6 +377,17 @@ describe("POST /api/estudio/<cliente>/lote/ideas: el PLAN del mes («Planificar 
     expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("lote del mes");
   });
 
+  it("el producto foco de la estrategia pesa la mitad de la rotación y el objetivo va en el pedido", async () => {
+    await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: ["a", "b", "c", "d"].map((id) => ({ id, nombre: `P${id}`, precio: "$1" })) } });
+    anthropic(JSON.stringify({ ideas: [] }));
+    const casillas = Array.from({ length: 8 }, (_, i) => ({ clave: `2030-03-${String(i + 2).padStart(2, "0")}|0`, fecha: `2030-03-${String(i + 2).padStart(2, "0")}`, formato: "post", pilar: "anuncio" }));
+    await plan({ casillas, estrategia: { campana: "X", objetivo: "Vender — Llevar a la compra", foco: "Pc", focoId: "c", semanas: [] } });
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/Objetivo del mes: Vender/);
+    expect(t).toMatch(/Foco: Pc/);
+    expect((t.match(/producto: Pc/g) ?? []).length).toBe(4);
+  });
+
   it("«Otra»: la que había y lo que pide la agencia van en el pedido", async () => {
     anthropic(JSON.stringify({ ideas: [{ n: 1, titulo: "Nueva", titular: "Otra cosa", escena: "Una cocina" }] }));
     const r = await (await plan({ casillas: [{ clave: "p1", fecha: "2030-03-04", formato: "post", pilar: "educativo", antes: "Duerme mejor", pide: "más divertida, sin precio" }] })).json();
@@ -390,6 +401,41 @@ describe("POST /api/estudio/<cliente>/lote/ideas: el PLAN del mes («Planificar 
     anthropic("x");
     expect((await plan({ casillas: [] })).status).toBe(400);
     expect((await plan({ casillas: [{ fecha: "2030-03-04", formato: "live" }] })).status).toBe(400);
+    expect(peticiones).toHaveLength(0);
+  });
+});
+
+describe("POST /api/estudio/<cliente>/estrategia («Proponer la estrategia con IA»)", () => {
+  const estrategia = (datos) => pedir("/api/estudio/c1/estrategia", { method: "POST", body: datos });
+
+  it("con el catálogo, las semanas, las fechas y lo que mejor funcionó el mes anterior; propone sin guardar", async () => {
+    await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: [{ id: "sofa", nombre: "Sofá cama", precio: "$399" }, { id: "mesa", nombre: "Mesa", precio: "$120" }] } });
+    const s = db.sqlite;
+    s.prepare("insert into cuentas_sociales (id, owner_id, red, externo_id, client_id) values (?,?,?,?,?)").run("ig1", JEFE, "instagram", "IG1", "c1");
+    const met = s.prepare("insert into metricas_publicacion (id, owner_id, client_id, cuenta_id, red, externo_id, texto, publicada_at, interacciones) values (?,?,?,?,?,?,?,?,?)");
+    met.run("m1", JEFE, "c1", "ig1", "instagram", "e1", "El sofá que se abre en 3 segundos", "2030-02-10T12:00:00Z", 300);
+    met.run("m2", JEFE, "c1", "ig1", "instagram", "e2", "Fuera del mes", "2030-03-02T12:00:00Z", 900);
+    anthropic(JSON.stringify({ objetivo: "ventas", foco: "sofa", campana: "Marzo cómodo", razon: "Porque sí", semanas: [{ concepto: "Visitas", etapa: "atraer" }, { concepto: "El sofá", etapa: "convertir" }] }));
+    const res = await estrategia({ year: 2030, month: 2, objetivo: "ventas", semanas: [{ desde: "2030-03-01", hasta: "2030-03-07" }, { desde: "2030-03-08", hasta: "2030-03-14" }, { desde: "2030-02-01", hasta: "2030-02-02" }] });
+    expect(res.status).toBe(200);
+    const r = await res.json();
+    expect(r.estrategia).toMatchObject({ objetivo: "ventas", focoId: "sofa", foco: "Sofá cama", campana: "Marzo cómodo" });
+    // Sólo las semanas de ESE mes.
+    expect(r.semanas).toHaveLength(2);
+    expect(r.estrategia.semanas.map((x) => x.etapa)).toEqual(["atraer", "convertir"]);
+    expect(r.mejores.map((m) => m.texto)).toEqual(["El sofá que se abre en 3 segundos"]);
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/OBJETIVO \(lo decidió la agencia, respétalo\): Vender/);
+    expect(t).toMatch(/\[sofa\] Sofá cama/);
+    expect(t).toMatch(/300 interacciones\] El sofá que se abre/);
+    expect(t).not.toMatch(/Fuera del mes/);
+    expect(t).not.toMatch(/margen del 40/);
+    expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("estrategia del mes");
+  });
+
+  it("un mes que no existe, 400 sin llamar a la IA", async () => {
+    anthropic("{}");
+    expect((await estrategia({ year: 2030, month: 12 })).status).toBe(400);
     expect(peticiones).toHaveLength(0);
   });
 });

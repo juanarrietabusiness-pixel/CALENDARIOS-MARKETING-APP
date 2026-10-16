@@ -9,6 +9,9 @@ import { mediosDe } from "../../lib/publicacion";
 import { revisarMarcaDeRuta } from "../../lib/estudio";
 import { FORMATS } from "../../constants";
 import { revisarMes, resumenRevision, aplicarArregloTexto, pedidoDeRevisionIA, leerRevisionIA } from "../../lib/revisionMes";
+import { BalanceDelMes } from "../EstrategiaMes";
+import { semanasDelMes } from "../../lib/campanas";
+import { limpiarEstrategia } from "../../lib/estrategiaMes";
 import "./RevisionMes.css";
 
 // ============================================================
@@ -128,6 +131,10 @@ export default function RevisionMes({ client, cal, onAbrir, onArreglar, onClose 
           <div aria-live="polite">
             {aviso && <p role={aviso.ok ? "status" : "alert"} className={aviso.ok ? "hint" : "cerebro-error"}>{aviso.texto}</p>}
           </div>
+
+          {/* Cómo queda repartido el mes (formatos, tipos, niveles) y lo que se descompensa: reglas, sin IA. */}
+          <BalanceDelMes days={cal.days ?? []} objetivo={limpiarEstrategia(cal.opciones?.estrategia)?.objetivo ?? ""} foco={limpiarEstrategia(cal.opciones?.estrategia)?.foco ?? ""}
+            semanas={Number.isInteger(cal.month) && cal.year ? semanasDelMes(cal.year, cal.month).map((w) => ({ n: w.numero, desde: w.desde, hasta: w.hasta })) : []} />
 
           {mercado !== null && !filas.length && (
             <p className="revision-vacio"><Icon name="checkCircle" size={18} /> Todo listo para enviar.</p>

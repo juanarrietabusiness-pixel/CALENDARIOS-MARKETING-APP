@@ -188,10 +188,13 @@ const PESO_STOCK = { alto: 3, medio: 2, bajo: 2, agotado: 0 };
  * disponibilidad: «mucho» sale más; sin disponibilidad, todos igual y en el orden del catálogo), y lo que tiene
  * POCO sólo en la primera mitad del mes, mientras haya. Lo agotado no sale. Pura.
  */
-export function ordenDeProductos(productos, huecos) {
+export function ordenDeProductos(productos, huecos, { foco = "" } = {}) {
   const lista = (productos ?? []).filter((p) => p && p.stock !== "agotado");
   if (!lista.length || huecos <= 0) return [];
-  const peso = (p) => PESO_STOCK[p.stock] ?? 2;
+  // El producto FOCO del mes (la estrategia) sale en la mitad de los huecos: pesa lo que todos los demás juntos.
+  const base = (p) => PESO_STOCK[p.stock] ?? 2;
+  const otros = lista.reduce((t, p) => t + (p.id === foco ? 0 : base(p)), 0);
+  const peso = (p) => (foco && p.id === foco ? Math.max(3, otros) : base(p));
   const actual = lista.map(() => 0);
   const mitad = Math.ceil(huecos / 2);
   const salida = [];
@@ -219,9 +222,9 @@ export function ordenDeProductos(productos, huecos) {
  * @param productos  los productos del plan ({ id, nombre, stock? }), ya limpios (`productosParaPlan`).
  * @param deseos     los del estudio aprobado ({ deseo }); `perfiles`, ({ nombre }).
  */
-export function asignarMatriz(publicaciones, { productos = [], deseos = [], perfiles = [] } = {}) {
+export function asignarMatriz(publicaciones, { productos = [], deseos = [], perfiles = [], foco = "" } = {}) {
   const necesitan = publicaciones.filter((p) => pilarDe(p.pilar)?.producto && !productos.some((x) => x.id === p.productoId)).length;
-  const orden = ordenDeProductos(productos, necesitan);
+  const orden = ordenDeProductos(productos, necesitan, { foco });
   let iProducto = 0;
   let iMaleta = 0;
   let iCruce = 0;

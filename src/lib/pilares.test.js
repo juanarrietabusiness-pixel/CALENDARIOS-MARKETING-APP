@@ -121,6 +121,12 @@ describe("los productos según su disponibilidad", () => {
     expect(orden.join(",")).not.toMatch(/mucho,mucho,mucho/);
   });
 
+  it("el producto foco del mes sale en la mitad de los huecos, repartido", () => {
+    const orden = ordenDeProductos([P("a"), P("b"), P("c"), P("d")], 12, { foco: "c" }).map((p) => p.id);
+    expect(orden.filter((x) => x === "c")).toHaveLength(6);
+    expect(orden.join(",")).not.toMatch(/c,c,c/);
+  });
+
   it("si sólo queda lo que tiene poco, sale igual", () => {
     expect(ordenDeProductos([P("poco", "bajo")], 4).map((p) => p.id)).toEqual(["poco", "poco", "poco", "poco"]);
     expect(ordenDeProductos([P("x", "agotado")], 3)).toEqual([]);

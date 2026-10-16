@@ -158,7 +158,9 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     }
     // Lo que el plan no trae (producto, nivel, deseo, perfil, la maleta) lo pone la matriz, sobre el plan ENTERO: así
     // la rotación es la misma en cada tanda. Lo que ya trae (lo decidió «Planificar mes» o una persona) se respeta.
-    const conMatriz = asignarMatriz(celdas, { productos: rotan, deseos, perfiles }).map((c) => (c.pilar ? { ...c, tipo: c.pilar } : c));
+    // El producto foco de la estrategia del mes pesa la mitad de la rotación.
+    const foco = typeof datos.estrategia?.focoId === "string" ? datos.estrategia.focoId : "";
+    const conMatriz = asignarMatriz(celdas, { productos: rotan, deseos, perfiles, foco }).map((c) => (c.pilar ? { ...c, tipo: c.pilar } : c));
     plan = darForma(conMatriz, { productos: rotan, semilla: datos.semilla, formato, orden });
   } else if (modo === "publicacion") {
     // Una sola pieza con lo que la publicación ya decidió (su tipo, producto, nivel, deseo y perfil); lo que falte, lo

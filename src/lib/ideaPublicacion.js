@@ -22,6 +22,7 @@
 // ============================================================
 
 import { pedir } from "./db";
+import { limpiarEstrategia, objetivoDe, semanasConEtapa } from "./estrategiaMes.js";
 
 /** Los formatos que se escriben por este camino; un directo sigue con el de siempre. */
 export const FORMATO_DEL_LOTE = Object.freeze({ post: "post", historia: "historia", carrusel: "carrusel", reel: "reel" });
@@ -122,12 +123,27 @@ export function casillasSinIdea(cal) {
   return fuera;
 }
 
-/** La estrategia del mes que va al motor, sacada del calendario: campaña, ofertas, código y el concepto de cada semana. Pura. */
-export const estrategiaDelCalendario = (cal) => ({
-  campana: cal?.campaign ?? "", ofertas: cal?.offers ?? "", codigo: cal?.promoCode ?? "", semanas: Array.isArray(cal?.weekConcepts) ? cal.weekConcepts : [],
-});
+/**
+ * La estrategia del mes que va al motor, sacada del calendario: campaña, ofertas, código, el concepto de cada semana
+ * (con su etapa del embudo) y, si se planeó con estrategia (`opciones.estrategia`), el objetivo y el producto foco. Pura.
+ */
+export function estrategiaDelCalendario(cal) {
+  const e = limpiarEstrategia(cal?.opciones?.estrategia);
+  const obj = objetivoDe(e?.objetivo);
+  const conceptos = Array.isArray(cal?.weekConcepts) ? cal.weekConcepts : [];
+  return {
+    campana: cal?.campaign ?? "", ofertas: cal?.offers ?? "", codigo: cal?.promoCode ?? "",
+    semanas: e?.etapas?.length ? semanasConEtapa(conceptos, e.etapas) : conceptos,
+    ...(obj ? { objetivo: `${obj.nombre} — ${obj.ayuda}` } : {}),
+    ...(e?.foco ? { foco: e.foco, focoId: e.focoId } : {}),
+  };
+}
 
 /** Pide al motor las ideas de una tanda del plan → { ideas (cada una con su `clave`), total, aviso }. */
+/** «Proponer la estrategia con IA» → { estrategia, mejores, semanas, aviso }. Propone: no guarda nada. */
+export const estrategiaConIA = (clienteId, cuerpo) =>
+  pedir(`/estudio/${encodeURIComponent(clienteId)}/estrategia`, { method: "POST", body: JSON.stringify(cuerpo) });
+
 export const ideasDelPlan = (clienteId, cuerpo) =>
   pedir(`/estudio/${encodeURIComponent(clienteId)}/lote/ideas`, { method: "POST", body: JSON.stringify({ ...cuerpo, modo: "plan" }) });
 

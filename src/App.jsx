@@ -1105,6 +1105,8 @@ function Workspace({ session, ruta }) {
         ...(generado.weekConcepts?.length ? { weekConcepts: generado.weekConcepts } : {}),
         ...(generado.offers ? { offers: generado.offers } : {}),
         ...(generado.promoCode ? { promoCode: generado.promoCode } : {}),
+        // El objetivo, el foco y las etapas del embudo: el motor de ideas los lee del calendario (estrategiaDelCalendario).
+        ...(calendarData.estrategia ? { opciones: { ...(base.opciones || {}), estrategia: calendarData.estrategia } } : {}),
         generatedAt: new Date().toISOString(),
       };
       const guardado = await db.saveCalendar(fusion, selectedClientId, ownerId);

@@ -135,6 +135,8 @@ src/
     portadas.js           Las piezas del perfil por plantilla: estilos de portada, colores del kit, medidas (puro)
     pilares.js            Los 6 tipos de contenido de la agencia (+ Contenido humano), el ritmo semanal por
                           cliente, las sugerencias de temporada y la matriz (tipo × producto × nivel × deseo × perfil) (puro)
+    estrategiaMes.js      La estrategia del mes (objetivos, etapas del embudo, el pedido a la IA y su lectura) y el BALANCE del
+                          mes (formatos, tipos, niveles, productos y sus avisos) (puro; también lo importa el Worker)
     plantillasPlan.js     Las plantillas de plan: 3 objetivos × 3 negocios de arranque, juntar con lo guardado, la del
                           cliente, la línea que lee la IA (puro; también lo importa el Worker)
     plantillasApi.js      Cliente de /api/plantillas-plan
@@ -314,6 +316,7 @@ src/
     NavPrincipal.jsx / MenuCuenta.jsx / BarraInferior.jsx / Buscador.jsx
                           Armazón: secciones, cuenta, barra del móvil, Ctrl+K
     ClientModal.jsx       Alta y edición de cliente (5 pestañas)
+    EstrategiaMes.jsx     El paso «Estrategia» de «Planificar mes», la etapa de cada semana y el balance (también en «Revisar el mes»)
     PlanWizard.jsx        «Planificar mes»: 6 pasos que escriben en el mes elegido (lo AÑADEN
                           si ya tenía publicaciones)
     calendario/navegadorMes.jsx ‹ Octubre 2026 › Hoy: recorrer el calendario siempre activo
@@ -1527,6 +1530,21 @@ son del servidor.
   el enlace del cliente la enseña «Actualizada · revísala» con lo de antes, hay un filtro «Actualizadas» y el mensaje de
   WhatsApp, tras su revisión, dice «ya hicimos los cambios… revisa sólo esas». Corregida = `actualizadaAt` posterior a
   `cambiosAt`: sin `cambiosAt` (filas de antes) cualquier cambio cuenta.
+- **La estrategia del mes va ANTES de las ideas** (`src/lib/estrategiaMes.js`, `worker/lib/estudio/estrategiaMes.js`,
+  `POST /api/estudio/<c>/estrategia`, función «estrategia del mes»; `EstrategiaMes.jsx`). El paso «Estrategia» de
+  «Planificar mes» tiene objetivo (`OBJETIVOS_MES`: vender, crecer, lanzar, marca), producto foco y campaña;
+  «Proponer la estrategia con IA» trae además el concepto y la ETAPA del embudo de cada semana (`ETAPAS`: atraer,
+  considerar, convertir, fidelizar), con el catálogo, el estudio, las fechas especiales y lo que mejor funcionó el mes
+  anterior (`mejoresDelPeriodo` sobre `metricas_publicacion`). Propone y no guarda: se aplica entero y se puede
+  deshacer. Las semanas son las de «Planificar mes» (bloques de 7 días desde el 1: las manda la pantalla). Se guarda en
+  `opciones.estrategia` del calendario (objetivo, foco, etapas; el enlace público sólo lee `fechaLimite` y el mensaje), y
+  `estrategiaDelCalendario` la manda al motor de ideas: el objetivo y el foco por su nombre, cada semana «concepto (etapa:
+  …)». **El foco pesa la mitad de la rotación** (`ordenDeProductos(…, { foco })`: pesa lo que todos los demás juntos), en
+  la matriz de la pantalla y en el modo «plan» del servidor (`estrategia.focoId`).
+  · **El balance son REGLAS** (`balanceDelMes`): un tipo de más del 40 %, un producto que no es el foco con más de la
+  mitad, el foco con menos de un tercio, ninguna pieza a quien ya conoce el producto (o más del 75 % vendiendo), sin
+  reels, el mismo formato cuatro días seguidos y una semana vacía. Sale en el paso Ideas de «Planificar mes» y en «Revisar
+  el mes».
 - **«Dame ideas»** (`POST /api/estudio/<c>/ideas`): variadas (un tipo de contenido distinto cada una) o del tipo
   escogido, sobre lo escrito si hay algo. «Usar» pone escena + texto exacto, el tipo y las fotos de su producto.
 - **Varios productos en una pieza**: `productosNombrados` encuentra TODOS los que nombra la idea («Sofá cama» no cuenta
