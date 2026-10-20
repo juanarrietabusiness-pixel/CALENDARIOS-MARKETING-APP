@@ -285,6 +285,41 @@ describe("publicar en TikTok por PostPeer", () => {
     expect(envios()).toHaveLength(1);
   });
 
+  it("un 202 con «success: false» y sin motivo es «aceptada», no un error (el carrusel de Dcasa)", async () => {
+    const fotos = [
+      { src: "/api/media/clientes/c1/posts/a.jpg", ancho: 1080, alto: 1350 },
+      { src: "/api/media/clientes/c1/posts/b.jpg", ancho: 1080, alto: 1350 },
+    ];
+    await sembrar({ posts: [post({ format: "carrusel", medios: fotos })] });
+    respuestas["POST /v1/posts"] = { __estado: 202, cuerpo: { success: false, data: { post: { id: "pp-1", status: "processing" } } } };
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
+    await procesarCola(env);
+    expect(filas()[0]).toMatchObject({ estado: "procesando", contenedor_id: "pp-1" });
+    vi.setSystemTime(new Date("2026-10-01T12:01:00.000Z"));
+    await procesarCola(env);
+    expect(filas()[0]).toMatchObject({ estado: "publicada", externo_id: "pp-1" });
+    expect(envios()).toHaveLength(1);
+  });
+
+  it("un 202 sin id no se manda otra vez sola: se dice qué llegó", async () => {
+    await sembrar();
+    respuestas["POST /v1/posts"] = { __estado: 202, cuerpo: { success: false, queued: true } };
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
+    await procesarCola(env);
+    expect(filas()[0]).toMatchObject({ estado: "error", error: expect.stringMatching(/no devolvió su id \(llegó: success, queued\)/) });
+    vi.setSystemTime(new Date("2026-10-01T13:00:00.000Z"));
+    await procesarCola(env);
+    expect(envios()).toHaveLength(1);
+  });
+
+  it("un 200 con «success: false» y su motivo sigue siendo un rechazo", async () => {
+    await sembrar();
+    respuestas["POST /v1/posts"] = { success: false, error: "Invalid media URL" };
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
+    await procesarCola(env);
+    expect(filas()[0]).toMatchObject({ estado: "error", error: "PostPeer: Invalid media URL" });
+  });
+
   it("una foto que ya no está en el almacenamiento falla ANTES de gastar un crédito", async () => {
     await sembrar({ posts: [post({ format: "post", medios: [{ src: "/api/media/clientes/c1/posts/borrada.jpg" }] })] });
     await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });

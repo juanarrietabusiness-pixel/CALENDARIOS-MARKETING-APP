@@ -92,8 +92,19 @@ export async function postpeer(env, ruta, { metodo = "GET", cuerpo = null, param
     throw new ErrorPostPeer(`No se pudo contactar con PostPeer (${e.message}).`, 0, { red: true });
   }
   const datos = await res.json().catch(() => ({}));
-  if (!res.ok || datos?.success === false) throw new ErrorPostPeer(motivoDe(datos, res.status), res.status || 500);
+  if (!res.ok || rechazoEnElCuerpo(datos, res.status)) throw new ErrorPostPeer(motivoDe(datos, res.status), res.status || 500);
   return datos;
+}
+
+/**
+ * ¿Un 2xx que en realidad es un rechazo? Sólo si dice `success: false` CON
+ * un motivo. Un 202 («aceptada, se está procesando») nunca lo es: un
+ * carrusel de fotos llegaba con 202 y `success: false` sin motivo, se leía
+ * como error —«PostPeer: respondió 202»— y la publicación sí había entrado.
+ */
+function rechazoEnElCuerpo(datos, estado) {
+  if (datos?.success !== false || estado === 202) return false;
+  return Boolean(datos?.error || datos?.message);
 }
 
 /** El contenido de una respuesta: dentro de `data` o suelto. */
@@ -247,7 +258,8 @@ const ESTADOS_FALLIDOS = new Set(["failed", "error", "rejected", "cancelled", "c
 export function leerPublicacion(r) {
   const d = datosDe(r);
   const post = d?.post && typeof d.post === "object" ? d.post : d;
-  const postId = String(post?.id ?? post?.postId ?? d?.postId ?? r?.postId ?? "") || null;
+  const primero = [d?.posts, d?.items].find(Array.isArray)?.[0];
+  const postId = String(post?.id ?? post?.postId ?? post?._id ?? d?.postId ?? d?.post_id ?? r?.postId ?? r?.id ?? primero?.id ?? primero?.postId ?? "") || null;
   const plataformas = [d?.platforms, post?.platforms, d?.results, post?.results].find(Array.isArray) ?? [];
   const tiktok = plataformas.find((p) => String(p?.platform ?? "").toLowerCase() === "tiktok") ?? plataformas[0] ?? null;
   const estadoPost = String(post?.status ?? d?.status ?? "").toLowerCase();

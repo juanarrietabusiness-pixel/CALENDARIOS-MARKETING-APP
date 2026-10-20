@@ -34,7 +34,7 @@ import { uuid, ahora } from "./ids.js";
 import { ErrorMeta, graph, mensajeMeta, descifrarMeta, urlMedioPublico, urlGraphVideo } from "./meta.js";
 import {
   ErrorPostPeer, mensajePostPeer, postpeerConfigurado, infoCreador, problemaConCreador, cuerpoPublicacion, cuerpoFotos,
-  crearPublicacion, consultarPublicacion, leerPublicacion, PRIVACIDAD_PUBLICA,
+  crearPublicacion, consultarPublicacion, leerPublicacion, datosDe, PRIVACIDAD_PUBLICA,
 } from "./postpeer.js";
 import {
   ErrorYouTube, mensajeYouTube, tokenYouTube, privacidadDe, recursoDeVideo, abrirSubidaYouTube, subirTrozoYouTube,
@@ -809,7 +809,11 @@ async function pasoTikTok(env, { cuenta, origen, carga, guardar, fila: actual })
   }
   const lectura = leerPublicacion(respuesta);
   if (!lectura.postId) {
-    throw new ErrorPublicar("PostPeer aceptó la publicación pero no devolvió su id. Mira su panel antes de reintentar, para no publicarla dos veces.");
+    // Los nombres de lo que llegó, para saber dónde viene el id la próxima vez (sin valores).
+    const campos = Object.keys(datosDe(respuesta) ?? {}).slice(0, 12).join(", ") || "nada";
+    throw new ErrorPublicar(
+      `PostPeer aceptó la publicación pero no devolvió su id (llegó: ${campos}). Mira su panel antes de reintentar, para no publicarla dos veces.`,
+    );
   }
   pp.desde = ahora();
   // Lo primero con el id: a partir de aquí nunca se manda otra.

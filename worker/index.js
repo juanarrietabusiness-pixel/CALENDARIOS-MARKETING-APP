@@ -54,6 +54,7 @@ import { rutasEstudio } from "./rutas/estudio.js";
 import { rutasBiblioteca } from "./rutas/biblioteca.js";
 import { rutasPlantillas } from "./rutas/plantillas.js";
 import { rutasAnuncios } from "./rutas/anuncios.js";
+import { rutasTrozos } from "./rutas/trozos.js";
 import { avanzarPendientes } from "./lib/estudio/trabajos.js";
 import { rutasMCP, rutasMCPPublicas } from "./rutas/mcp.js";
 import { informePendiente } from "./lib/informes.js";
@@ -430,6 +431,10 @@ export default {
       // Por eso van juntos ahora: la subida PRIMERO, porque es el caso
       // sin clave, y la lectura y el borrado después, que sí la tienen.
       if (partes[0] === "media") {
+        // Los archivos grandes (un reel de 80 MB) suben por trozos: ver
+        // worker/rutas/trozos.js. Tampoco llevan clave en la ruta.
+        if (partes[1] === "trozos") return await rutasTrozos(req, env, { acceso, partes, metodo });
+
         // Subida de imágenes de publicación y logos. Devuelve la CLAVE,
         // que es lo que se guarda en el JSON del calendario: nunca un
         // data: URI, que es lo que llevaba la fila contra el techo de 2 MB.
