@@ -16,8 +16,8 @@
 //     que el tope sube a 32 000.
 //   · Streaming de punta a punta: el Worker lee el SSE de Anthropic y le
 //     reenvía al navegador el texto según se escribe.
-//   · Un BUCLE en el servidor para las herramientas de servidor (web,
-//     repositorio de GitHub, consultas a D1: ver herramientasServidor.js).
+//   · Un BUCLE en el servidor para las herramientas de servidor (web, el
+//     cerebro del cliente, consultas a D1: ver herramientasServidor.js).
 //     Cuando el modelo pide una herramienta del navegador —las que
 //     escriben en el calendario abierto—, el Worker termina el turno y
 //     el navegador la ejecuta y vuelve a llamar, como antes.
@@ -65,11 +65,20 @@ const MAX_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_TOKENS = 32_000;
 const MAX_VUELTAS = 8;
 
-const INSTRUCCION_SERVIDOR = `HERRAMIENTAS QUE TIENES ADEMÁS DE LAS DEL CALENDARIO:
+const INSTRUCCION_SERVIDOR = `TU FUENTE ES EL CEREBRO DE CADA CLIENTE
+Cada cliente tiene en la aplicación su CEREBRO: sus notas (ficha técnica, cifras, marca, tono, personas, límites,
+estructuras de guion, decisiones, documentos que se le subieron). Es la fuente de verdad, por encima de lo que
+recuerdes de la conversación. Lo que tienes escrito abajo es sólo lo básico; el resto se BUSCA:
+· buscar_cerebro: antes de decir que no sabes algo de un cliente, antes de contestar sobre su marca, sus productos o
+  sus reglas, y antes de escribir para él. Las notas cortas llegan enteras; de las largas, pasajes con su ruta.
+  Si lo que buscas es para escribir un texto que se publica, pon para_publicar=true: así no te llega lo interno.
+· leer_nota_cerebro: la nota completa, cuando los pasajes no bastan.
+Si no está en el cerebro, dilo así («no lo tengo en el cerebro de X») y no lo inventes. NUNCA digas que no tienes
+acceso a la información de un cliente sin haber buscado antes.
+
+OTRAS HERRAMIENTAS QUE TIENES ADEMÁS DE LAS DEL CALENDARIO:
 · web_search y web_fetch: busca en internet y lee páginas cuando necesites datos actuales —tendencias,
   fechas, competencia, noticias del sector—. Cita de dónde sale lo que traigas de fuera.
-· listar_repositorio y leer_archivo_repositorio: el repositorio de GitHub con el ADN de marca del
-  cliente. El contexto de abajo trae un RESUMEN; si necesitas el detalle de un documento, léelo entero.
 · ver_calendario, ver_tareas y ver_banco_ideas: consulta lo que hay guardado, de este u otro cliente
   y de otros meses. Pide lo que necesites en vez de suponerlo.
 · ver_resultados: cómo le fue en redes —seguidores, alcance, interacciones, las publicaciones que mejor

@@ -343,6 +343,9 @@ QUIÉN ERES:
 · Puedes crear tareas para cualquier cliente con crear_tarea (indicando el nombre del cliente).
 · Puedes añadir ideas al banco de ideas de cualquier cliente con agregar_banco_ideas.
 · Puedes navegar al chat de un cliente específico con ir_a_cliente.
+· CADA CLIENTE TIENE SU CEREBRO en la aplicación (sus notas: marca, productos, precios, personas, reglas,
+  decisiones). Para cualquier dato de un cliente usa buscar_cerebro con su nombre en «cliente»; para varios
+  clientes, una búsqueda por cada uno. Abajo sólo va la lista: lo demás se busca.
 
 CLIENTES DE LA AGENCIA (${clients.length}):
 ${clientBlocks || "(Sin clientes aún)"}
@@ -356,7 +359,8 @@ CÓMO DEBES RESPONDER:
 · Conciso y directo.
 · Cuando hables de un cliente, referéncialo por nombre.
 · Puedes comparar clientes, sugerir estrategias cruzadas y dar ideas de campañas.
-· No inventes datos que no estén en el contexto.`;
+· No inventes datos: si no están abajo, búscalos en el cerebro del cliente o con tus herramientas; si no
+  están, dilo. Nunca digas que no tienes acceso a un cliente sin haber buscado antes.`;
   }, [clients]);
 
   const getGlobalTools = useCallback(() => [
@@ -680,7 +684,7 @@ CÓMO DEBES RESPONDER:
       // sin él, el ADN de la ficha como siempre.
       const adn = chatMode === "client" && client ? await adnParaElChat(client) : null;
       let system = chatMode === "client" && client
-        ? buildChatSystemPrompt(client, calRef.current, adn.content, memories, adn.cerebro ? { pasajes: "" } : null)
+        ? buildChatSystemPrompt(client, calRef.current, adn.content, memories, adn.cerebro ? { pasajes: "" } : null, { notasCerebro: adn.notas })
         : buildGlobalSystemPrompt();
       if (res.resumen) {
         system += `\n\nRESUMEN DE LA CONVERSACIÓN ANTERIOR (lo más antiguo, ya plegado; lo reciente va entero en los mensajes):\n${res.resumen}`;

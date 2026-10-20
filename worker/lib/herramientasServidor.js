@@ -7,16 +7,17 @@
 // de los demás clientes, tampoco. Estas herramientas le dejan PEDIR lo
 // que necesita en vez de recibirlo todo en cada mensaje:
 //
-//   · listar_repositorio / leer_archivo_repositorio: el repositorio de
-//     GitHub del cliente, con el token del servidor. Sólo dentro de la
-//     carpeta del cliente: el repositorio es de la agencia entera.
 //   · ver_calendario, ver_tareas, ver_banco_ideas: lo que hay en D1,
 //     siempre por la capa de acceso —el espacio de la sesión—.
 //   · ver_resultados: cómo le fue en redes (las fotos diarias de
 //     métricas), con las MISMAS cuentas que la pestaña Resultados.
-//   · buscar_cerebro: las notas del cerebro del cliente (su ficha, sus
-//     documentos, lo que se le ha ido añadiendo), buscadas por pasajes.
-//     Es la herramienta que sustituye a volcar el ADN entero en el prompt.
+//   · buscar_cerebro y leer_nota_cerebro: las notas del cerebro del cliente
+//     (su ficha, sus documentos, lo que se le ha ido añadiendo). Las cortas
+//     llegan enteras; de las largas, sus pasajes, y la nota completa se pide
+//     aparte. Es LA fuente del asistente: sustituye a volcar el ADN entero
+//     en el prompt y, desde que el cerebro manda, al repositorio de GitHub
+//     (las herramientas que lo leían se quitaron: lo que se corrige en el
+//     cerebro no vuelve al repositorio, y leerlo daba datos viejos).
 //
 // Son de LECTURA a propósito. Lo que escribe en el calendario se queda en
 // el navegador, que es quien tiene el estado abierto y sabe no pisar lo
@@ -29,18 +30,18 @@
 // consultas del MCP— no puede gastar.
 // ============================================================
 
-import { parseGitHubUrl, decodeRuta, decodificarBlob } from "../rutas/adn.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
-import { buscar as buscarCerebro } from "./cerebro/cerebro.js";
+import { buscar as buscarCerebro, leerNota } from "./cerebro/cerebro.js";
 import { pack } from "./cerebro/memoria.js";
 import { DEFINICIONES_ESTUDIO, crearHerramientasEstudio } from "./estudio/herramientas.js";
 import {
   kpis, porFormato, mejoresMomentos, mejoresPublicaciones, resumenCompetencia, numeroCorto, DIAS_SEMANA, BLOQUES_HORA,
 } from "../../src/lib/resultados.js";
 
-const MAX_LECTURA = 60_000;
-const MAX_LISTADO = 200;
-const TEXTO = /\.(md|txt|json|ya?ml|csv|html?)$/i;
+/** Hasta cuántos caracteres una nota encontrada llega ENTERA (y no en dos pasajes). */
+export const NOTA_ENTERA = 4000;
+/** Lo más que se da de una nota pedida entera. */
+const MAX_NOTA = 30_000;
 
 export const HERRAMIENTAS_WEB = Object.freeze([
   {
@@ -60,33 +61,6 @@ const clienteOpcional = {
 };
 
 export const DEFINICIONES_DE_LECTURA = Object.freeze([
-  {
-    name: "listar_repositorio",
-    description:
-      "Lista las carpetas y archivos del repositorio de GitHub (ADN de marca) del cliente, dentro de su carpeta. " +
-      "Úsala para saber qué documentos hay antes de leer uno.",
-    input_schema: {
-      type: "object",
-      properties: {
-        ...clienteOpcional,
-        ruta: { type: "string", description: "Subcarpeta relativa a la carpeta del cliente. Vacío para la raíz." },
-      },
-    },
-  },
-  {
-    name: "leer_archivo_repositorio",
-    description:
-      "Lee ENTERO un archivo de texto del repositorio del cliente (guías de marca, buyer personas, recetas, calendarios " +
-      "aprobados, auditorías). Úsala cuando necesites el detalle y no el resumen.",
-    input_schema: {
-      type: "object",
-      properties: {
-        ...clienteOpcional,
-        ruta: { type: "string", description: "Ruta del archivo relativa a la carpeta del cliente, tal como la da listar_repositorio." },
-      },
-      required: ["ruta"],
-    },
-  },
   {
     name: "ver_calendario",
     description:
@@ -119,16 +93,36 @@ export const DEFINICIONES_DE_LECTURA = Object.freeze([
   {
     name: "buscar_cerebro",
     description:
-      "Busca en el CEREBRO del cliente —sus notas: marca, precios, personas, límites, documentos que se le subieron— y devuelve " +
-      "los pasajes que responden. Úsala ANTES de decir que no sabes algo de un cliente: la ficha que tienes es sólo un resumen. " +
-      "Con varias palabras clave (precio del envío, garantía, tono para historias). Incluye las notas internas: es para el equipo.",
+      "Busca en el CEREBRO del cliente —sus notas: ficha, marca, precios, personas, límites, pautas, decisiones, documentos que " +
+      "se le subieron— y devuelve lo que responde: las notas cortas ENTERAS y, de las largas, sus pasajes (con su ruta, para " +
+      "pedirla entera con leer_nota_cerebro). Úsala ANTES de decir que no sabes algo de un cliente y antes de escribir para él. " +
+      "Con varias palabras clave (precio del envío, garantía, tono para historias).",
     input_schema: {
       type: "object",
       properties: {
         ...clienteOpcional,
         consulta: { type: "string", description: "Qué buscar, en palabras del tema." },
+        para_publicar: {
+          type: "boolean",
+          description: "true si lo que buscas es para ESCRIBIR un texto que se publica (caption, guion, idea, texto de la pieza): " +
+            "entonces las notas internas (costos, márgenes, proveedores) no salen. false o sin poner para una consulta del equipo.",
+        },
       },
       required: ["consulta"],
+    },
+  },
+  {
+    name: "leer_nota_cerebro",
+    description: "Lee ENTERA una nota del cerebro del cliente, por su ruta (la que da buscar_cerebro entre corchetes) o por su título. " +
+      "Úsala cuando buscar_cerebro te dio sólo pasajes de una nota larga y necesitas el resto.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteOpcional,
+        nota: { type: "string", description: "La ruta de la nota o su título." },
+        para_publicar: { type: "boolean", description: "Igual que en buscar_cerebro: true si es para escribir un texto que se publica." },
+      },
+      required: ["nota"],
     },
   },
   {
@@ -157,16 +151,14 @@ const JSON_SEGURO = (v, porDefecto) => {
 };
 
 /**
- * El contexto de UNA petición: la capa de acceso, el cliente abierto (si
- * lo hay) y una caché del árbol de GitHub, que se pide una vez aunque el
- * modelo liste y lea varias veces seguidas.
+ * El contexto de UNA petición: la capa de acceso y el cliente abierto (si
+ * lo hay).
  *
  * `estudio` = { usuario, por, origen }: con ella el ejecutor también sabe
  * pedir al Estudio (ver_estudio, crear_en_estudio, estado_trabajo). Sin ella,
  * no: esas herramientas gastan y necesitan saber quién firma.
  */
 export function crearEjecutor({ env, acceso, clienteActual = null, estudio = null }) {
-  const arboles = new Map();
   let clientes = null;
 
   async function resolverCliente(nombre) {
@@ -183,70 +175,7 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
     return c;
   }
 
-  async function repositorio(cliente) {
-    const parsed = parseGitHubUrl(cliente.github_repo || "");
-    if (!parsed) throw new Error(`${cliente.name} no tiene repositorio de GitHub conectado (ficha del cliente, pestaña GitHub).`);
-    const base = decodeRuta(cliente.github_folder || "") || parsed.folder || "";
-    const clave = `${parsed.owner}/${parsed.repo}`;
-    const cabeceras = { Accept: "application/vnd.github.v3+json", "User-Agent": "juancito-calendarios" };
-    if (env.GITHUB_TOKEN) cabeceras.Authorization = `token ${env.GITHUB_TOKEN}`;
-    const api = `https://api.github.com/repos/${encodeURIComponent(parsed.owner)}/${encodeURIComponent(parsed.repo)}`;
-    if (!arboles.has(clave)) {
-      const res = await fetch(`${api}/git/trees/HEAD?recursive=1`, { headers: cabeceras });
-      if (!res.ok) {
-        throw new Error(res.status === 404
-          ? "No se encontró el repositorio, o el token del servidor no tiene acceso."
-          : `GitHub respondió ${res.status}.`);
-      }
-      const data = await res.json();
-      arboles.set(clave, Array.isArray(data?.tree) ? data.tree : []);
-    }
-    return { arbol: arboles.get(clave), base, api, cabeceras, nombre: clave };
-  }
-
-  /** Une la carpeta del cliente y una ruta relativa, sin salirse de ella. */
-  function dentro(base, ruta) {
-    const limpia = decodeRuta(String(ruta ?? "")).replace(/^\/+|\/+$/g, "");
-    if (limpia.split("/").includes("..")) throw new Error("Ruta no permitida.");
-    if (!base) return limpia;
-    if (!limpia) return base;
-    return limpia === base || limpia.startsWith(`${base}/`) ? limpia : `${base}/${limpia}`;
-  }
-
   const acciones = {
-    async listar_repositorio({ cliente, ruta }) {
-      const c = await resolverCliente(cliente);
-      const { arbol, base, nombre } = await repositorio(c);
-      const carpeta = dentro(base, ruta);
-      const prefijo = carpeta ? `${carpeta}/` : "";
-      const hijos = arbol.filter((n) =>
-        n.path.startsWith(prefijo) && !n.path.slice(prefijo.length).includes("/") && n.path !== carpeta);
-      if (carpeta && !hijos.length && !arbol.some((n) => n.path === carpeta)) {
-        throw new Error(`La carpeta «${carpeta}» no existe en ${nombre}.`);
-      }
-      const rel = (p) => (base ? p.slice(base.length).replace(/^\//, "") : p);
-      const lineas = hijos.slice(0, MAX_LISTADO).map((n) =>
-        n.type === "tree" ? `[carpeta] ${rel(n.path)}/` : `· ${rel(n.path)} (${Math.round((n.size ?? 0) / 1024)} KB)`);
-      return `Repositorio ${nombre}, carpeta «${carpeta || "/"}»:\n${lineas.join("\n") || "(vacía)"}` +
-        (hijos.length > MAX_LISTADO ? `\n… y ${hijos.length - MAX_LISTADO} más.` : "");
-    },
-
-    async leer_archivo_repositorio({ cliente, ruta }) {
-      const c = await resolverCliente(cliente);
-      const { arbol, base, api, cabeceras } = await repositorio(c);
-      const camino = dentro(base, ruta);
-      const nodo = arbol.find((n) => n.type === "blob" && n.path === camino);
-      if (!nodo) throw new Error(`No existe el archivo «${camino}». Usa listar_repositorio para ver qué hay.`);
-      if (!TEXTO.test(camino)) throw new Error(`«${camino}» no es un archivo de texto.`);
-      const res = await fetch(`${api}/git/blobs/${nodo.sha}`, { headers: cabeceras });
-      if (!res.ok) throw new Error(`GitHub respondió ${res.status} al leer «${camino}».`);
-      const data = await res.json();
-      const texto = decodificarBlob(String(data?.content ?? ""));
-      return texto.length > MAX_LECTURA
-        ? `${texto.slice(0, MAX_LECTURA)}\n\n[Recortado: el archivo tiene ${texto.length} caracteres y se muestran ${MAX_LECTURA}.]`
-        : texto;
-    },
-
     async ver_calendario({ cliente, mes }) {
       const c = await resolverCliente(cliente);
       const cals = await acceso.leer("calendars", { client_id: c.id }, "year desc, month desc");
@@ -317,17 +246,32 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
     },
   };
 
-  acciones.buscar_cerebro = async ({ cliente, consulta }) => {
+  // Para publicar, el mismo candado que el resto de la aplicación: lo interno no existe (`para: "texto"`). Para una
+  // consulta del equipo sale, marcado.
+  const usoDe = (paraPublicar) => (paraPublicar === true ? "texto" : "chat");
+  const cabecera = (h) => `--- ${h.titulo} [${h.ruta}] (${h.tipo}${h.interna ? " · INTERNA: no la uses en textos que se publican" : ""}) ---`;
+
+  acciones.buscar_cerebro = async ({ cliente, consulta, para_publicar }) => {
     const c = await resolverCliente(cliente);
     const q = String(consulta ?? "").trim().slice(0, 500);
     if (!q) throw new Error("Falta lo que buscar.");
-    const hits = await buscarCerebro(env, acceso, c.id, q, { para: "chat", n: 6 });
-    if (!hits.length) return `El cerebro de ${c.name} no tiene nada sobre «${q}». Si es algo que debería saberse, se puede añadir como nota en la pestaña Cerebro del cliente.`;
+    const hits = await buscarCerebro(env, acceso, c.id, q, { para: usoDe(para_publicar), n: 6, enteras: NOTA_ENTERA });
+    if (!hits.length) return `El cerebro de ${c.name} no tiene nada sobre «${q}». Prueba con otras palabras antes de decir que no lo sabes; si de verdad no está, dilo y sugiere añadirlo como nota en la pestaña Cerebro.`;
     const bloques = hits.map((h) => ({
-      head: `--- ${h.titulo} [${h.tipo}${h.interna ? " · INTERNA: no la uses en textos que se publican" : ""}] ---`,
-      body: h.pasajes.join("\n…\n"),
+      head: cabecera(h) + (h.texto ? " (entera)" : " (pasajes: pide el resto con leer_nota_cerebro)"),
+      body: h.texto || h.pasajes.join("\n…\n"),
     }));
-    return `Del cerebro de ${c.name}, sobre «${q}»:\n\n${pack(bloques, 9000)}`;
+    return `Del cerebro de ${c.name}, sobre «${q}»:\n\n${pack(bloques, 14_000)}`;
+  };
+
+  acciones.leer_nota_cerebro = async ({ cliente, nota, para_publicar }) => {
+    const c = await resolverCliente(cliente);
+    const cual = String(nota ?? "").trim().slice(0, 200);
+    if (!cual) throw new Error("Falta qué nota leer.");
+    const n = await leerNota(env, acceso, c.id, cual, { para: usoDe(para_publicar) });
+    if (!n) throw new Error(`El cerebro de ${c.name} no tiene una nota «${cual}». Búscala antes con buscar_cerebro.`);
+    const texto = n.texto.length > MAX_NOTA ? `${n.texto.slice(0, MAX_NOTA)}\n\n[Recortada: la nota tiene ${n.texto.length} caracteres y se muestran ${MAX_NOTA}.]` : n.texto;
+    return `${cabecera(n)}\n${texto}`;
   };
 
   acciones.ver_resultados = async ({ cliente, dias = 30 }) => {
@@ -403,12 +347,11 @@ export function describirUso(nombre, entrada = {}) {
   switch (nombre) {
     case "web_search": return `Buscó en internet: «${entrada.query ?? ""}»`;
     case "web_fetch": return `Leyó la página ${entrada.url ?? ""}`;
-    case "listar_repositorio": return `Miró el repositorio${entrada.ruta ? ` (${entrada.ruta})` : ""}`;
-    case "leer_archivo_repositorio": return `Leyó ${entrada.ruta ?? "un archivo"} del repositorio`;
     case "ver_calendario": return `Consultó el calendario${entrada.cliente ? ` de ${entrada.cliente}` : ""}${entrada.mes ? ` (${entrada.mes})` : ""}`;
     case "ver_tareas": return `Consultó las tareas${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "ver_banco_ideas": return `Consultó el banco de ideas${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "buscar_cerebro": return `Buscó en el cerebro${entrada.cliente ? ` de ${entrada.cliente}` : ""}: «${entrada.consulta ?? ""}»`;
+    case "leer_nota_cerebro": return `Leyó la nota «${entrada.nota ?? ""}» del cerebro${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "ver_resultados": return `Consultó los resultados${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "ver_estudio": return `Miró el Estudio${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "crear_en_estudio": return `Pidió al Estudio ${entrada.tipo === "video" ? "un video" : "una imagen"}: «${String(entrada.prompt ?? "").slice(0, 80)}»`;

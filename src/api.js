@@ -786,8 +786,8 @@ export async function adnParaElChat(client) {
     cerebro = await contextoDelCerebro(id);
     contextoDelChat.poner(id, cerebro);
   }
-  if (cerebro && usaElCerebro(cerebro, client)) return { content: textoEstableDelCerebro(cerebro), cerebro: true };
-  return { content: client?.githubContext || "", cerebro: false };
+  if (cerebro && usaElCerebro(cerebro, client)) return { content: textoEstableDelCerebro(cerebro), cerebro: true, notas: cerebro.notas };
+  return { content: client?.githubContext || "", cerebro: false, notas: cerebro?.notas ?? 0 };
 }
 
 // ============================================================
@@ -874,11 +874,22 @@ export async function resumirChat(clienteId) {
   return res.json();
 }
 
-export function buildChatSystemPrompt(client, calendar, adnExtra = "", memories = [], cerebro = null) {
+/**
+ * Lo que el asistente de UN cliente sabe de su cerebro, según cómo esté. Con ficha técnica recibe ficha y cifras y
+ * busca el resto; con notas pero sin ficha recibe el ADN de antes, y antes no se le decía que existía un cerebro:
+ * contestaba con datos que ya se habían corregido allí. Pura.
+ */
+export function avisoDelCerebro({ usado = false, notas = 0 } = {}) {
+  if (usado) return "\n\nPARA MÁS DETALLE de este cliente (precios, personas, límites, pautas, lo que se le ha subido) usa buscar_cerebro: lo de arriba es sólo su ficha técnica y sus cifras. No digas que no sabes algo sin buscarlo antes.";
+  if (notas > 0) return `\n\nESTE CLIENTE YA TIENE CEREBRO (${notas} ${notas === 1 ? "nota" : "notas"}), aún sin ficha técnica: lo de arriba es su ADN de antes y puede estar desactualizado. Busca con buscar_cerebro antes de responder sobre su marca, sus productos o sus reglas; si el cerebro dice otra cosa, gana el cerebro.`;
+  return "\n\nEl cerebro de este cliente aún está vacío: lo que sabes de él es lo de arriba. Si falta algo, pídelo o sugiere añadirlo como nota en la pestaña Cerebro.";
+}
+
+export function buildChatSystemPrompt(client, calendar, adnExtra = "", memories = [], cerebro = null, { notasCerebro = 0 } = {}) {
   // Con cerebro, el asistente recibe la ficha y las cifras —lo estable— y busca el resto con
   // `buscar_cerebro`: volcarle todo el ADN en cada mensaje era lo que más gastaba.
   const ctx = buildClientContext(client, calendar, adnExtra, cerebro, { maquetacion: true }) +
-    (cerebro ? "\n\nPARA MÁS DETALLE de este cliente (precios, personas, límites, lo que se le ha subido) usa la herramienta buscar_cerebro: lo de arriba es sólo su ficha técnica y sus cifras. No digas que no sabes algo sin buscarlo antes." : "");
+    avisoDelCerebro({ usado: Boolean(cerebro), notas: notasCerebro });
 
   let calendarInfo = "";
   if (calendar) {
@@ -941,7 +952,10 @@ Si te pide olvidar algo, usa borrar_memoria con el contenido exacto.`;
 
 QUIÉN ERES:
 · Un estratega de redes sociales y redactor creativo.
-· Conoces a este cliente a fondo: su marca, su tono, su audiencia.
+${cerebro || notasCerebro > 0
+    ? `· Conoces a este cliente por su CEREBRO, sus notas en la aplicación: lo básico va abajo y el resto
+  —marca, tono, audiencia, productos, reglas— lo BUSCAS con buscar_cerebro antes de responder.`
+    : "· Conoces a este cliente por lo que va abajo: su marca, su tono, su audiencia."}
 · Cuando escribes contenido, lo entregas listo para publicar.
 · TIENES DELANTE EL CALENDARIO ENTERO, más abajo: cada publicación con su fecha,
   su semana, su día, su hora, su idea, su descripción, su guion y sus hashtags.
@@ -972,7 +986,7 @@ CÓMO DEBES RESPONDER:
 · Conciso y directo. Sin preámbulos innecesarios.
 · Si generas una descripción o guion, escríbelo listo para copiar y pegar, en su bloque de pieza.
 · Si necesitas más información, pregúntala en vez de inventar.
-· No inventes datos, precios, testimonios ni cifras que no estén en el contexto.
+· No inventes datos, precios, testimonios ni cifras: si no están abajo${cerebro || notasCerebro > 0 ? ", búscalos en el cerebro; si\n  tampoco están ahí" : ""}, dilo.
 · Cuando te pidan CONSULTAR el calendario, contesta directamente leyendo el listado
   de abajo. Cita el ID de cada publicación para que el usuario pueda pedirte cambios
   sobre ella, y respeta la semana y el día tal como aparecen ahí.
