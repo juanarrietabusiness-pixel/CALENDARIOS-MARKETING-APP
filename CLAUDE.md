@@ -102,6 +102,7 @@ src/
   hooks/useTareas.js      Todas las tareas y sus acciones (marcar, pasar a hoy, mover, convertir notas):
                           las comparten Mi día y el panel lateral
   hooks/useRepaso.js      ¿Toca el repaso de la mañana? (una vez al día por persona)
+  hooks/useBancoIdeas.js  El banco de ideas único: leerlo entero, añadir, cambiar (agrupado), asignar empresa, quitar
   lib/
     filas.js              Conversores fila ⇄ aplicación
     auth.js               Sesión, inicio y cierre
@@ -179,6 +180,9 @@ src/
     conversaciones.js     Las conversaciones del asistente: título (el de la IA y el provisional), orden, cuándo (puro;
                           también lo importa el Worker)
     conversacionesApi.js  Cliente de /api/chat/conversaciones y la última abierta por navegador (sólo lo carga el chat)
+    bancoIdeas.js         El banco de ideas ÚNICO: vistas (de este cliente, generales, todas), referencias (enlace limpio,
+                          red, formato sugerido), la idea nueva, filtrar, la fila de D1 (puro; también lo importa el Worker)
+    bancoIdeasApi.js      Cliente de /api/banco-ideas y abrir «Guardar referencia» desde cualquier sitio
     dictado.js            El micrófono del asistente: escucha hasta que se vuelve a pulsar, se reenciende si el
                           navegador lo corta, cada frase una vez, lo provisional aparte (SR inyectado)
     idioma.js             La regla del español latino neutro, puesta en toda llamada de texto (puro)
@@ -274,6 +278,8 @@ src/
     calendario/equipoPublicacion.jsx  Lo lleva, etapa, hilo del equipo, tareas de la
                           publicación e historial
     SubirRapido.jsx       «Subir»: cliente → archivo → la IA escribe → cuándo sale (diálogo)
+    GuardarReferencia.jsx «Guardar referencia»: pegar el enlace de un video, la empresa (o ninguna: general) y una nota (lazy)
+    calendario/BankPanel.jsx  El banco de ideas (junto al calendario y en la pestaña Ideas): filtros, empresa, enlace
     calendario/cuandoSale.jsx   «¿Cuándo sale?» del panel: Ahora / Programar / La publico yo
     calendario/horaSugerida.jsx La hora con mejores resultados, compartida por los dos
     calendario/destinoRedes.jsx «¿Qué sale y dónde?»: formato y cada red con su casilla y
@@ -433,6 +439,7 @@ worker/
     chat.js               El asistente: streaming, bucle de herramientas de
                           servidor y resumen de conversaciones largas
     conversaciones.js     /api/chat/conversaciones: listar, empezar, renombrar, borrar, mensajes y el título con IA
+    bancoIdeas.js         /api/banco-ideas: el banco único (listar, guardar, cambiar o asignar empresa, quitar; oEmbed)
     imagen.js             Generación de imágenes (Gemini) y las historias que complementan un post
     trozos.js             /api/media/trozos: subir un archivo grande por partes (multiparte de R2)
     video.js              Análisis de un video del banco (Gemini)
@@ -460,7 +467,7 @@ worker/
                           (/api/webhooks/meta, sin sesión)
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
     plantillas.js         /api/plantillas-plan: listar, guardar (cambiar una de arranque o crear) y borrar/restaurar
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -2643,14 +2650,31 @@ son del servidor.
   que pueden llevarla —TikTok y YouTube sólo video, ni historias ni
   directos; las fotos a TikTok se marcan a mano—, y es la MISMA regla en el panel, «Subir», «Programar lo
   aprobado» y `planificar()` del servidor.
-- **El banco de ideas no se guardaba.** Añadir, editar o borrar una idea
-  sólo cambiaba el estado (`onUpdateClient` era un `setClients`), y al
-  recargar volvía lo de antes. Peor: llevar una idea a un día de un mes SIN
-  cajón la borraba del banco y no la metía en ningún sitio —el día no
-  existía en `days`—. Ahora `alCambiarBanco` guarda agrupado (sólo
-  `ideasBank`: pasar el cliente entero pisaría los calendarios recién
-  cambiados) e `ideaAlCalendario` crea el mes, la mete con `ponerEnDia` y
-  SÓLO entonces la saca del banco. Lo vigila `regresiones.test.js`.
+- **El banco de ideas es UNO para la agencia** (`banco_ideas`, 0044; `worker/rutas/bancoIdeas.js`, `src/lib/bancoIdeas.js`,
+  `useBancoIdeas`, `BankPanel.jsx`, `GuardarReferencia.jsx`). Cada cliente guardaba el suyo dentro de su fila
+  (`clients.ideas_bank`) y no había sitio para el video de referencia que se encuentra en el teléfono sin saber aún para
+  qué empresa es. Ahora cada idea es una FILA con su cliente o sin él: sin cliente es GENERAL y sale en el banco de
+  TODOS hasta que se le asigne uno. Una REFERENCIA es una idea con `referenceLink`. Cosas que no se ven en la pantalla:
+  · **0044 pasa las ideas de cada cliente a la tabla con su cliente y VACÍA el JSON**: reaplicarla no resucita lo que
+  se borró después. `clientToRow` ya no lleva `ideas_bank` (la columna se queda, con «[]»). La forma de la idea es la
+  de siempre (`datos`), así que llevarla al calendario no cambió; `deIdeaAPublicacion` quita lo que es sólo del banco.
+  · **Una idea sólo sale del banco si entró en el calendario**: `ideaAlCalendario` (App) devuelve si entró y la vista
+  la quita entonces (`banco.quitar`). Antes, llevarla a un mes SIN cajón la borraba sin meterla en ningún sitio.
+  · **`client_id = ?` no casa con un vacío**: la lista se lee entera (son decenas o cientos) y se filtra
+  (`filtrarBanco`, vistas «De este cliente» = suyas + generales, «Generales», «Todas»). Un colaborador no ve las
+  generales ni puede crearlas (403, la capa): «Guardar referencia» le obliga a escoger una de sus empresas.
+  · **El enlace se LIMPIA** (`enlaceLimpio`): al compartir desde el teléfono se copia «Mira este video https://…», y
+  el formulario va con `noValidate` porque `type="url"` lo rechazaba sin decir por qué (lo cazó el navegador, no los
+  tests). La red y el formato salen del enlace (`plataformaDe`, `formatoPorEnlace`; un dominio que sólo se PARECE
+  cuenta como «web»). TikTok y YouTube traen título, autor y miniatura por oEmbed (público, sin llave, 4 s de tope;
+  si no contesta se guarda igual); la miniatura pasa por `/api/metricas/miniatura` (CSP `img-src 'self'`). Instagram
+  pide token para su oEmbed: va sin título.
+  · **El eco de la propia pestaña no llega por el socket**: `bancoIdeasApi` lanza `banco-ideas` en `window` tras
+  añadir, quitar o asignar, para que el banco del calendario vea lo guardado desde la cabecera. Escribir el texto de
+  una idea se guarda agrupado por idea (600 ms) y lo pendiente sale al desmontar.
+  · **«Guardar referencia»** se abre desde la cabecera (computadora), «Enlace» en la barra del móvil, el banco y
+  `abrirGuardarReferencia()` desde cualquier sitio. El asistente (`agregar_banco_ideas`, con `enlace` y sin cliente =
+  general) y Claude por MCP (`anadir_idea`, `ver_banco_ideas`) escriben en la MISMA tabla.
 - **Español latino neutro, en un sitio.** El modelo imita lo que tiene
   delante: con un ADN o un ejemplo con voseo escribía «vení» y «tenés».
   `REGLA_IDIOMA` (src/lib/idioma.js) va delante del sistema en

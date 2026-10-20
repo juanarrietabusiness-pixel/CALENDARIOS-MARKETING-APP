@@ -71,6 +71,7 @@ const Cerebro = lazy(() => import("./components/Cerebro"));
 const Estudio = lazy(() => import("./components/Estudio"));
 const Buscador = lazy(() => import("./components/Buscador"));
 const SubirRapido = lazy(() => import("./components/SubirRapido"));
+const GuardarReferencia = lazy(() => import("./components/GuardarReferencia"));
 
 const Cargando = () => <p role="status" style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando…</p>;
 
@@ -399,6 +400,13 @@ function Workspace({ session, ruta }) {
   });
   const [showBuscador, setShowBuscador] = useState(false);
   const [showSubir, setShowSubir] = useState(false);
+  // «Guardar referencia»: null cerrado; si no, { clienteId } con el que abre (o null = sin escoger).
+  const [guardarRef, setGuardarRef] = useState(null);
+  useEffect(() => {
+    const abrir = (e) => setGuardarRef({ clienteId: e.detail?.clienteId ?? null });
+    window.addEventListener("guardar-referencia", abrir);
+    return () => window.removeEventListener("guardar-referencia", abrir);
+  }, []);
   // Una publicación que el buscador pidió abrir al llegar a su calendario.
   const [postPedido, setPostPedido] = useState(null);
   const anchoAmplio = useAnchoAmplio();
@@ -620,6 +628,11 @@ function Workspace({ session, ruta }) {
           window.dispatchEvent(new CustomEvent("chat:conversaciones", { detail: ev }));
           break;
 
+        // El banco de ideas único: cada vista que lo enseña se relee.
+        case "banco-ideas":
+          window.dispatchEvent(new CustomEvent("banco-ideas", { detail: ev }));
+          break;
+
         case "editando":
           // Se guarda por publicación, no por persona: lo que hace falta
           // saber al abrir una es si alguien más la tiene delante.
@@ -806,17 +819,6 @@ function Workspace({ session, ruta }) {
 
   const fallo = (accion) => (e) => setToast(`No se pudo ${accion}: ${e.message}`);
 
-  const handleAddIdea = useCallback((idea, targetClientId) => {
-    const cId = targetClientId || selectedClientId;
-    if (!cId) return;
-    setClients((prev) => prev.map((c) => {
-      if (c.id !== cId) return c;
-      const updated = { ...c, ideasBank: [...(c.ideasBank || []), idea] };
-      db.saveClient(updated, ownerId).catch(() => {});
-      return updated;
-    }));
-  }, [selectedClientId, ownerId]);
-
   // Deja escapar el error a propósito: ClientModal lo muestra dentro del
   // diálogo y lo mantiene abierto con los datos, en vez de cerrarse y
   // perderlos.
@@ -876,24 +878,6 @@ function Workspace({ session, ruta }) {
     }
   };
 
-  /**
-   * El banco de ideas: estado ya y guardado agrupado. Antes sólo cambiaba
-   * el estado —añadir, editar o borrar una idea no llegaba a la base y al
-   * recargar volvía lo de antes—. Se fusiona SOLO `ideasBank`: pasar el
-   * cliente entero pisaría los calendarios que acaban de cambiar.
-   */
-  const bancoTimers = useRef(new Map());
-  const alCambiarBanco = (actualizado) => {
-    const id = actualizado.id;
-    setClients((prev) => prev.map((c) => (c.id === id ? { ...c, ideasBank: actualizado.ideasBank ?? [] } : c)));
-    clearTimeout(bancoTimers.current.get(id));
-    bancoTimers.current.set(id, setTimeout(() => {
-      bancoTimers.current.delete(id);
-      const cliente = clientsRef.current.find((c) => c.id === id);
-      if (cliente) db.saveClient(cliente, ownerId).catch(fallo("guardar el banco de ideas"));
-    }, 600));
-  };
-
   /** Las fechas especiales de un cliente (lib/fechasEspeciales.js): se guardan con el cliente. */
   const guardarFechasCliente = async (fechas) => {
     const id = selectedClientId;
@@ -904,26 +888,25 @@ function Workspace({ session, ruta }) {
   };
 
   /**
-   * Del banco de ideas a un día del calendario. La idea SÓLO sale del banco
-   * si entró en el calendario: antes se borraba del banco aunque el día no
-   * estuviera en el mes —siempre en un mes sin cajón—, y se esfumaba.
+   * Del banco de ideas a un día del calendario. Devuelve si entró: quien la
+   * llevó la quita del banco SÓLO entonces —antes se borraba del banco aunque
+   * el día no estuviera en el mes (siempre en un mes sin cajón) y se esfumaba—.
    */
   const ideaAlCalendario = async (bankPost, fecha) => {
     const clienteId = selectedClientId;
     const mes = mesDeFecha(fecha);
-    if (!clienteId || !mes) return;
+    if (!clienteId || !mes) return false;
     try {
       const real = await asegurarMes(clienteId, mes);
       const base = pendingSaves.current.get(real.id)?.cal
         ?? clientsRef.current.find((c) => c.id === clienteId)?.calendars?.find((k) => k.id === real.id)
         ?? real;
       updateCalendar(real.id, ponerEnDia(base, fecha, deIdeaAPublicacion(bankPost)));
+      return true;
     } catch (e) {
       fallo("llevar la idea al calendario")(e);
-      return;
+      return false;
     }
-    const cliente = clientsRef.current.find((c) => c.id === clienteId);
-    if (cliente) alCambiarBanco({ ...cliente, ideasBank: (cliente.ideasBank ?? []).filter((p) => p.id !== bankPost.id) });
   };
 
   /** Sólo estado: lo usan las aprobaciones en vivo, que no deben persistirse. */
@@ -1326,6 +1309,11 @@ function Workspace({ session, ruta }) {
               <Icon name="upload" size={16} /> <span className="boton-subir-texto">Subir</span>
             </button>
           )}
+          {!yo.soloLectura && (
+            <button type="button" className="btn btn-secondary btn-sm boton-subir" onClick={() => setGuardarRef({ clienteId: selectedClientId || null })} aria-label="Guardar una referencia en el banco de ideas">
+              <Icon name="link" size={16} /> <span className="boton-subir-texto">Referencia</span>
+            </button>
+          )}
           <MedidorIA pulso={pulso} />
           <button
             type="button"
@@ -1556,10 +1544,7 @@ function Workspace({ session, ruta }) {
                 )}
 
                 {pestana === "ideas" && (
-                  <IdeasBank
-                    client={client}
-                    onUpdateClient={alCambiarBanco}
-                  />
+                  <IdeasBank client={client} clientes={clients} pulso={pulso} />
                 )}
 
                 {pestana === "resultados" && (
@@ -1604,7 +1589,8 @@ function Workspace({ session, ruta }) {
                     onMoverAOtroMes={(postId, fecha, opciones) => moverAOtroMes(calendar, postId, fecha, opciones)}
                     vecinos={diasVecinos(client.calendars ?? [], mesVisto)}
                     onAbrirVecina={(calVecino, postId) => { setPostPedido({ calId: calVecino.id, postId }); irAMes(client.id, calVecino); }}
-                    onUpdateClient={alCambiarBanco}
+                    clientes={clients}
+                    onAviso={setToast}
                     onMoveBankToCal={ideaAlCalendario}
                     onGuardarFechas={guardarFechasCliente}
                   />
@@ -1633,6 +1619,7 @@ function Workspace({ session, ruta }) {
         onCalendario={() => (client ? irA(client.id, selectedCalId) : navegar("/"))}
         onChat={() => setShowChat((v) => !v)}
         onSubir={() => setShowSubir(true)}
+        onReferencia={yo.soloLectura ? null : () => setGuardarRef({ clienteId: selectedClientId || null })}
         onMas={() => setShowDrawer(true)}
       />
 
@@ -1657,6 +1644,15 @@ function Workspace({ session, ruta }) {
             client={client}
             onClose={() => setShowBuscador(false)}
             onElegir={elegirDelBuscador}
+          />
+        )}
+
+        {guardarRef && (
+          <GuardarReferencia
+            clientes={clients}
+            clienteInicial={guardarRef.clienteId}
+            onGuardado={setToast}
+            onClose={() => setGuardarRef(null)}
           />
         )}
 
@@ -1733,7 +1729,6 @@ function Workspace({ session, ruta }) {
             onUpdateCal={esVirtual(calendar) ? (_id, cambiado) => escribirEnMesVacio(calendar, cambiado) : updateCalendar}
             onCrearEnOtroMes={crearEnOtroMes}
             onClose={() => setShowChat(false)}
-            onAddIdea={handleAddIdea}
             onSelectClient={(id) => {
               irA(id);
               // Acoplado, el asistente se queda: se trabaja al lado.

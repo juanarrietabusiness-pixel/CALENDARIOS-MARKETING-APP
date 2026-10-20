@@ -7,7 +7,7 @@
 // de los demás clientes, tampoco. Estas herramientas le dejan PEDIR lo
 // que necesita en vez de recibirlo todo en cada mensaje:
 //
-//   · ver_calendario, ver_tareas, ver_banco_ideas: lo que hay en D1,
+//   · ver_calendario, ver_tareas, ver_banco_ideas (el banco único, con las generales): lo que hay en D1,
 //     siempre por la capa de acceso —el espacio de la sesión—.
 //   · ver_resultados: cómo le fue en redes (las fotos diarias de
 //     métricas), con las MISMAS cuentas que la pestaña Resultados.
@@ -33,6 +33,7 @@
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 import { buscar as buscarCerebro, leerNota } from "./cerebro/cerebro.js";
 import { pack } from "./cerebro/memoria.js";
+import { lineaDeIdea, ideaDeFila as publicaIdea } from "../../src/lib/bancoIdeas.js";
 import { DEFINICIONES_ESTUDIO, crearHerramientasEstudio } from "./estudio/herramientas.js";
 import {
   kpis, porFormato, mejoresMomentos, mejoresPublicaciones, resumenCompetencia, numeroCorto, DIAS_SEMANA, BLOQUES_HORA,
@@ -87,7 +88,8 @@ export const DEFINICIONES_DE_LECTURA = Object.freeze([
   },
   {
     name: "ver_banco_ideas",
-    description: "Lista las ideas guardadas en el banco de ideas de un cliente.",
+    description: "Lista el banco de ideas de la agencia: ideas y referencias (enlaces a videos de Instagram, TikTok…). Con " +
+      "cliente, las suyas y las generales (sin empresa); sin cliente ni cliente abierto, todas.",
     input_schema: { type: "object", properties: { ...clienteOpcional } },
   },
   {
@@ -238,11 +240,15 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
     },
 
     async ver_banco_ideas({ cliente }) {
-      const c = await resolverCliente(cliente);
-      const ideas = JSON_SEGURO(c.ideas_bank, []) ?? [];
-      if (!ideas.length) return `${c.name} no tiene ideas en el banco.`;
-      return `Banco de ideas de ${c.name}:\n${ideas.map((i) =>
-        `· [${i.format ?? "post"}${i.category ? ` · ${i.category}` : ""}] ${i.idea ?? ""}${i.descripcion ? ` — ${i.descripcion.slice(0, 200)}` : ""}`).join("\n")}`;
+      // El banco es UNO para la agencia (tabla banco_ideas): cada idea con su cliente o general.
+      const c = cliente || clienteActual ? await resolverCliente(cliente) : null;
+      clientes ??= await acceso.leer("clients", {}, "created_at asc");
+      const nombre = new Map(clientes.map((x) => [x.id, x.name]));
+      const filas = (await acceso.leer("banco_ideas", {}, "created_at desc", 300))
+        .filter((f) => !c || f.client_id === c.id || !f.client_id)
+        .map(publicaIdea);
+      if (!filas.length) return c ? `${c.name} no tiene ideas en el banco (ni hay generales).` : "El banco de ideas está vacío.";
+      return `Banco de ideas${c ? ` de ${c.name} (y las generales)` : " de la agencia"}:\n${filas.map((i) => lineaDeIdea(i, i.clientId ? nombre.get(i.clientId) ?? "" : "")).join("\n")}`;
     },
   };
 

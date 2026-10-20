@@ -225,7 +225,17 @@ describe("el protocolo y las herramientas", () => {
     await llamar(tk, "completar_tarea", { tarea_id: id });
     expect(db.sqlite.prepare("select status from client_tasks where id = ?").get(id).status).toBe("completed");
     await llamar(tk, "anadir_idea", { cliente: "Café Luna", idea: "Latte art en cámara lenta", formato: "reel" });
-    expect(JSON.parse(db.sqlite.prepare("select ideas_bank from clients where id = 'c1'").get().ideas_bank)[0]).toMatchObject({ idea: "Latte art en cámara lenta", format: "reel" });
+    const fila = db.sqlite.prepare("select client_id, owner_id, datos from banco_ideas where client_id = 'c1'").get();
+    expect(fila).toMatchObject({ client_id: "c1", owner_id: "u-ana" });
+    expect(JSON.parse(fila.datos)).toMatchObject({ idea: "Latte art en cámara lenta", format: "reel" });
+    // Sin cliente y con enlace: una referencia general, que sale en el banco de todos.
+    const ref = await llamar(tk, "anadir_idea", { enlace: "Mira https://www.instagram.com/reel/abc/" });
+    expect(ref.content[0].text).toMatch(/general/);
+    const general = db.sqlite.prepare("select datos from banco_ideas where client_id is null").get();
+    expect(JSON.parse(general.datos)).toMatchObject({ referenceLink: "https://www.instagram.com/reel/abc/", format: "reel" });
+    const vista = await llamar(tk, "ver_banco_ideas", { cliente: "Café Luna" });
+    expect(vista.content[0].text).toMatch(/Latte art/);
+    expect(vista.content[0].text).toMatch(/Instagram: https:\/\/www\.instagram\.com\/reel\/abc\//);
   });
 
   it("programar sin Meta conectado devuelve el motivo, no un fallo del servidor", async () => {

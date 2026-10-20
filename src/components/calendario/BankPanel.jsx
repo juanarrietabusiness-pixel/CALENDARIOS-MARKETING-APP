@@ -1,7 +1,9 @@
 // ============================================================
-// El banco de ideas
+// El banco de ideas (UNO para la agencia: lib/bancoIdeas.js)
 //
-// Publicaciones guardadas fuera del calendario, para reutilizarlas. La
+// Publicaciones guardadas fuera del calendario, para reutilizarlas, y
+// REFERENCIAS: el enlace de un video que se quiere versionar. Cada una con su
+// empresa o general (sale en el banco de todos los clientes). La
 // clave de sus imágenes en R2 lleva el prefijo `clientes/`: sin él no
 // las sirve nadie y el fallo es mudo —la fila está, el objeto está, y
 // la imagen no carga—.
@@ -14,6 +16,8 @@ import { generateFieldForPost } from "../../api";
 import Icon from "../Icon";
 import { TimePicker } from "./primitivas";
 import { nombreDelDia } from "../../lib/meses";
+import { abrirGuardarReferencia } from "../../lib/bancoIdeasApi";
+import { VISTAS_BANCO, PLATAFORMAS, filtrarBanco, nuevaIdea, esReferencia, plataformaDe, tituloDeIdea } from "../../lib/bancoIdeas";
 
 /**
  * Los días a los que se puede llevar una idea: TODOS los del mes, tengan
@@ -30,36 +34,35 @@ function diasDelMes(cal, calDays) {
   });
 }
 
-export function BankPanel({ client, onUpdateClient, calDays, onRemoveFromCal, onClose, cal, onMoveBankToCal }) {
+/**
+ * El banco de ideas ÚNICO de la agencia, visto desde un cliente: sus ideas y las generales (sin empresa), y con
+ * «Todas», las de todos los clientes. `banco` es `useBancoIdeas()`: lo comparten el botón del calendario (su
+ * contador) y este panel. `modo` «pagina» es la pestaña Ideas del cliente: sin cerrar y a todo el ancho.
+ */
+export function BankPanel({ banco, client, clientes = [], calDays, onRemoveFromCal, onClose, cal, onMoveBankToCal, modo = "lateral" }) {
   const [editingId, setEditingId] = useState(null);
   const [dropHover, setDropHover] = useState(false);
+  const [vista, setVista] = useState("cliente");
+  const [soloReferencias, setSoloReferencias] = useState(false);
+  const ids = useId();
 
-  const ideasBank = client.ideasBank || [];
-  const saveBankList = (next) => onUpdateClient({ ...client, ideasBank: next });
+  const visibles = filtrarBanco(banco.ideas, { clienteId: client.id, vista, soloReferencias });
+  const nombreDe = (id) => clientes.find((c) => c.id === id)?.name ?? "";
 
-  const addNewPost = () => {
-    const post = {
-      id: uid(), format: "post", idea: "", category: "", guion: "",
-      descripcion: "", script: "", status: "pending", image: null,
-      referenceLink: "", comment: "", publishTime: "",
-      _addedAt: new Date().toISOString(),
-    };
-    saveBankList([...ideasBank, post]);
+  const addNewPost = async () => {
+    const post = { ...nuevaIdea({ id: uid() }), category: "" };
     setEditingId(post.id);
+    await banco.anadir(post, client.id);
   };
 
-  const updateBankPost = (updated) => {
-    saveBankList(ideasBank.map((p) => p.id === updated.id ? updated : p));
-  };
-
-  const removeFromBank = (postId) => {
-    saveBankList(ideasBank.filter((p) => p.id !== postId));
+  const removeFromBank = async (postId) => {
     if (editingId === postId) setEditingId(null);
+    await banco.quitar(postId);
   };
 
   const moveBankToCalendar = (bankPost, targetDate) => {
-    onMoveBankToCal?.(bankPost, targetDate);
     if (editingId === bankPost.id) setEditingId(null);
+    onMoveBankToCal?.(bankPost, targetDate);
   };
 
   const handleDrop = (e) => {
@@ -72,65 +75,102 @@ export function BankPanel({ client, onUpdateClient, calDays, onRemoveFromCal, on
         const post = sourceDay?.posts?.find((p) => p.id === data.postId);
         if (post) {
           const bankPost = { ...post, id: uid(), _originDate: data.sourceDate, _addedAt: new Date().toISOString() };
-          saveBankList([...ideasBank, bankPost]);
-          if (onRemoveFromCal) onRemoveFromCal(data.sourceDate, data.postId);
+          banco.anadir(bankPost, client.id).then((ok) => { if (ok && onRemoveFromCal) onRemoveFromCal(data.sourceDate, data.postId); });
         }
       }
     } catch { /* ignore */ }
   };
 
+  const vacio = soloReferencias
+    ? "No hay referencias aquí. Guarda el enlace de un video con «Referencia»."
+    : vista === "generales"
+      ? "No hay ideas generales: las que se guardan sin empresa salen aquí y en el banco de todos los clientes."
+      : calDays ? "Arrastra publicaciones aquí, crea una idea o guarda el enlace de una referencia." : "Crea una idea o guarda el enlace de una referencia.";
+
   return (
-    <div
-      className={`bank-panel${dropHover ? " drop-hover" : ""}`}
+    <section
+      className={`bank-panel${modo === "pagina" ? " bank-panel-pagina" : ""}${dropHover ? " drop-hover" : ""}`}
+      aria-labelledby={`${ids}-t`}
       onDragOver={(e) => { e.preventDefault(); setDropHover(true); }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropHover(false); }}
       onDrop={handleDrop}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "var(--sp-3)", borderBottom: "1px solid var(--border)" }}>
-        <h3 style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", fontSize: "var(--fs-xs)", fontWeight: 700, color: "var(--accent-alt)" }}>
-          <Icon name="bulb" size={18} /> Banco ({ideasBank.length})
+      <div className="bank-panel-cabecera">
+        <h3 id={`${ids}-t`} className="bank-panel-titulo">
+          <Icon name="bulb" size={18} /> {modo === "pagina" ? "Banco de ideas" : "Banco"} ({visibles.length})
         </h3>
         <div style={{ display: "flex", gap: "var(--sp-1)" }}>
-          <button className="btn btn-secondary btn-sm" onClick={addNewPost} aria-label="Crear nueva idea">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => abrirGuardarReferencia(client.id)}>
+            <Icon name="link" size={14} /> Referencia
+          </button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={addNewPost} aria-label="Crear nueva idea">
             <Icon name="plus" size={14} />
           </button>
-          <button className="btn-icon" onClick={onClose} aria-label="Cerrar banco de ideas">
-            <Icon name="close" size={18} />
-          </button>
+          {onClose && (
+            <button type="button" className="btn-icon" onClick={onClose} aria-label="Cerrar banco de ideas">
+              <Icon name="close" size={18} />
+            </button>
+          )}
         </div>
       </div>
 
-      <div style={{ flex: 1, overflowY: "auto", padding: "var(--sp-2)" }}>
-        {ideasBank.length === 0 ? (
-          <p style={{ textAlign: "center", padding: "var(--sp-4) 0", color: "var(--text-dim)", fontSize: "var(--fs-2xs)" }}>
-            {calDays
-              ? "Arrastra publicaciones aquí o crea una nueva idea."
-              : "Crea una nueva idea para este cliente."}
-          </p>
+      <div className="bank-panel-filtros" role="group" aria-label="Qué ideas ver">
+        {VISTAS_BANCO.map((v) => (
+          <button key={v.id} type="button" className="filter-chip" aria-pressed={vista === v.id} onClick={() => setVista(v.id)}>
+            {v.nombre}
+          </button>
+        ))}
+        <button type="button" className="filter-chip" aria-pressed={soloReferencias} onClick={() => setSoloReferencias((x) => !x)}>
+          <Icon name="link" size={12} /> Sólo referencias
+        </button>
+      </div>
+
+      <div className="bank-panel-lista">
+        {banco.cargando && !banco.ideas.length ? (
+          <p className="hint" style={{ textAlign: "center", padding: "var(--sp-4) 0" }}>Cargando…</p>
+        ) : visibles.length === 0 ? (
+          <p style={{ textAlign: "center", padding: "var(--sp-4) var(--sp-2)", color: "var(--text-dim)", fontSize: "var(--fs-2xs)" }}>{vacio}</p>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
-            {ideasBank.map((post) => (
-              <BankPostCard
-                key={post.id}
-                post={post}
-                isEditing={editingId === post.id}
-                onToggleEdit={() => setEditingId(editingId === post.id ? null : post.id)}
-                onSave={updateBankPost}
-                onRemove={() => removeFromBank(post.id)}
-                onMoveToCalendar={(date) => moveBankToCalendar(post, date)}
-                calDays={calDays}
-                client={client}
-                cal={cal}
-              />
+          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
+            {visibles.map((post) => (
+              <li key={post.id}>
+                <BankPostCard
+                  post={post}
+                  isEditing={editingId === post.id}
+                  onToggleEdit={() => setEditingId(editingId === post.id ? null : post.id)}
+                  onSave={banco.cambiar}
+                  onRemove={() => removeFromBank(post.id)}
+                  onMoveToCalendar={(date) => moveBankToCalendar(post, date)}
+                  onAsignar={(clienteId) => banco.asignar(post.id, clienteId)}
+                  etiqueta={!post.clientId ? "General" : post.clientId !== client.id ? nombreDe(post.clientId) : ""}
+                  clientes={clientes}
+                  calDays={calDays}
+                  client={client}
+                  cal={cal}
+                />
+              </li>
             ))}
-          </div>
+          </ul>
         )}
       </div>
-    </div>
+    </section>
   );
 }
 
-export function BankPostCard({ post, isEditing, onToggleEdit, onSave, onRemove, onMoveToCalendar, calDays, client, cal }) {
+/** El enlace de una referencia: su red, su título si lo trajo y «Abrir» (en otra pestaña). */
+function EnlaceReferencia({ post }) {
+  if (!esReferencia(post)) return null;
+  const red = PLATAFORMAS[plataformaDe(post.referenceLink)] ?? PLATAFORMAS.web;
+  return (
+    <a className="bank-ref-enlace" href={post.referenceLink} target="_blank" rel="noopener noreferrer" draggable={false}>
+      <Icon name={red.icono} size={12} /> {red.nombre}{post.enlaceAutor ? ` · ${post.enlaceAutor}` : ""}
+      <Icon name="external" size={12} />
+      <span className="sr-only"> (abre en otra pestaña)</span>
+    </a>
+  );
+}
+
+export function BankPostCard({ post, isEditing, onToggleEdit, onSave, onRemove, onMoveToCalendar, onAsignar, etiqueta = "", clientes = [], calDays, client, cal }) {
   const [form, setForm] = useState({ ...post });
   const [moveDate, setMoveDate] = useState("");
   const [fieldLoading, setFieldLoading] = useState({});
@@ -140,7 +180,7 @@ export function BankPostCard({ post, isEditing, onToggleEdit, onSave, onRemove, 
   const sf = (k, v) => { setForm((p) => { const next = { ...p, [k]: v }; onSave(next); return next; }); };
   const f = FORMATS[form.format] || FORMATS.post;
   const isPost = form.format === "post";
-  const title = form.idea || form.descripcion?.slice(0, 40) || f.label;
+  const title = tituloDeIdea(form);
 
   const generateField = async (field) => {
     setFieldError("");
@@ -163,27 +203,29 @@ export function BankPostCard({ post, isEditing, onToggleEdit, onSave, onRemove, 
 
   if (!isEditing) {
     return (
-      <div
-        draggable
-        onDragStart={handleDragStart}
-        style={{
-          display: "flex", alignItems: "center", gap: "var(--sp-2)",
-          padding: "var(--sp-2)", background: "var(--bg)", borderRadius: "var(--radius-sm)",
-          border: `1px solid ${f.color}44`, cursor: "grab",
-        }}
-      >
-        <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={16} style={{ color: f.color, flexShrink: 0 }} />
-        <button
-          type="button" draggable={false}
-          style={{ flex: 1, minWidth: 0, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0, color: "inherit", fontFamily: "inherit" }}
-          onClick={onToggleEdit}
-          aria-label={`Editar: ${title}`}
-        >
-          <span style={{ display: "block", fontSize: "var(--fs-2xs)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {title}
-          </span>
-          {form.publishTime && <span style={{ display: "block", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}><Icon name="clock" size={10} /> {form.publishTime}</span>}
-        </button>
+      <div className="bank-card" draggable onDragStart={handleDragStart} style={{ borderColor: f.color }}>
+        {post.miniatura ? (
+          <img className="bank-card-mini" src={`/api/metricas/miniatura?u=${encodeURIComponent(post.miniatura)}`} alt="" loading="lazy"
+            onError={(e) => { e.currentTarget.style.display = "none"; }} />
+        ) : (
+          <Icon name={FORMAT_ICONS[post.format] || "formatPost"} size={16} style={{ color: f.color, flexShrink: 0 }} />
+        )}
+        <span className="bank-card-cuerpo">
+          <button
+            type="button" draggable={false} className="bank-card-abrir"
+            onClick={onToggleEdit}
+            aria-label={`Editar: ${title}`}
+          >
+            <span className="bank-card-titulo">{title}</span>
+            {(etiqueta || form.publishTime) && (
+              <span className="bank-card-meta">
+                {etiqueta && <span className="bank-card-etiqueta" data-general={etiqueta === "General" || undefined}>{etiqueta}</span>}
+                {form.publishTime && <span><Icon name="clock" size={10} /> {form.publishTime}</span>}
+              </span>
+            )}
+          </button>
+          <EnlaceReferencia post={post} />
+        </span>
         <button type="button" draggable={false} className="btn-remove" aria-label={`Quitar del banco: ${title}`} onClick={onRemove}>
           <Icon name="close" size={14} />
         </button>
@@ -218,6 +260,23 @@ export function BankPostCard({ post, isEditing, onToggleEdit, onSave, onRemove, 
             <Icon name={FORMAT_ICONS[k]} size={12} /> {fmt.label}
           </button>
         ))}
+      </div>
+
+      {onAsignar && (
+        <div style={{ marginBottom: "var(--sp-2)" }}>
+          <label className="label" style={{ fontSize: "var(--fs-3xs)" }} htmlFor={`${cardId}-empresa`}>Empresa</label>
+          <select id={`${cardId}-empresa`} className="input" style={{ fontSize: "var(--fs-2xs)" }} value={post.clientId ?? ""} onChange={(e) => onAsignar(e.target.value || null)}>
+            <option value="">Sin empresa (general: sale en todos los bancos)</option>
+            {clientes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+      )}
+
+      <div style={{ marginBottom: "var(--sp-2)" }}>
+        <label className="label" style={{ fontSize: "var(--fs-3xs)" }} htmlFor={`${cardId}-enlace`}>Enlace de referencia</label>
+        <input id={`${cardId}-enlace`} className="input" type="url" inputMode="url" style={{ fontSize: "var(--fs-2xs)" }}
+          value={form.referenceLink || ""} onChange={(e) => sf("referenceLink", e.target.value)} placeholder="https://www.instagram.com/reel/…" />
+        <EnlaceReferencia post={form} />
       </div>
 
       <div style={{ marginBottom: "var(--sp-2)" }}>

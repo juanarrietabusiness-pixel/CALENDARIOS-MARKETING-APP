@@ -103,7 +103,6 @@ export function createEmptyClient() {
     githubFolder: "",
     githubContext: "",
     driveFolder: "",
-    ideasBank: [],
     savedPlans: [],
     savedCategories: [],
     calendars: [],

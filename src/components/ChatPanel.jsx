@@ -27,6 +27,8 @@ import { etiquetaIA, NIVELES_IA } from "../lib/configIA";
 const NIVEL_DE_ESFUERZO = { low: "bajo", medium: "medio", high: "alto", max: "maximo" };
 import { tareaDesdeIA, fechaEnZona, PROPIEDADES_FECHA_TAREA } from "../lib/agenda";
 import { ponerEnDia } from "../lib/subir";
+import { enlaceLimpio, nuevaIdea } from "../lib/bancoIdeas";
+import { anadirAlBanco } from "../lib/bancoIdeasApi";
 import { mesDeFecha, mismoMes } from "../lib/meses";
 
 const MAX_ADJUNTOS = 6;
@@ -57,7 +59,6 @@ export default function ChatPanel({
   onUpdateCal,
   onCrearEnOtroMes = null,
   onClose,
-  onAddIdea,
   onSelectClient,
   defaultMode,
   acoplado = false,
@@ -419,7 +420,8 @@ QUIÉN ERES:
 · Tienes acceso a la visión general de todos los calendarios y publicaciones.
 · Puedes dar ideas, sugerencias y análisis que abarquen a uno, varios o todos los clientes.
 · Puedes crear tareas para cualquier cliente con crear_tarea (indicando el nombre del cliente).
-· Puedes añadir ideas al banco de ideas de cualquier cliente con agregar_banco_ideas.
+· Puedes guardar ideas y REFERENCIAS (el enlace de un video de Instagram, TikTok, YouTube…) en el banco de ideas con
+  agregar_banco_ideas: con «cliente» van a esa empresa; sin él quedan GENERALES (salen en el banco de todos).
 · Puedes navegar al chat de un cliente específico con ir_a_cliente.
 · CADA CLIENTE TIENE SU CEREBRO en la aplicación (sus notas: marca, productos, precios, personas, reglas,
   decisiones). Para cualquier dato de un cliente usa buscar_cerebro con su nombre en «cliente»; para varios
@@ -472,17 +474,17 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     },
     {
       name: "agregar_banco_ideas",
-      description: "Añade una idea al banco de ideas de un cliente.",
+      description: "Guarda una idea o una referencia (enlace de un video) en el banco de ideas de la agencia. Sin cliente, queda general.",
       input_schema: {
         type: "object",
         properties: {
-          cliente: { type: "string", description: "Nombre del cliente." },
-          idea: { type: "string", description: "Concepto de la publicación." },
+          cliente: { type: "string", description: "Nombre del cliente. Vacío: general (sale en el banco de todos)." },
+          idea: { type: "string", description: "Concepto de la publicación, o qué tiene de bueno la referencia." },
+          enlace: { type: "string", description: "El enlace de la referencia (https://…), si lo hay." },
           formato: { type: "string", enum: ["post", "reel", "carrusel", "historia", "live"] },
           descripcion: { type: "string", description: "Caption sugerida (opcional)." },
           guion: { type: "string", description: "Guion sugerido (opcional)." },
         },
-        required: ["cliente", "idea"],
       },
     },
   ], []);
@@ -491,6 +493,20 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
    * La herramienta guardar_en_cerebro: enseña la propuesta y ESPERA a que la persona la guarde (corregida o no) o la
    * descarte. El turno del asistente sigue con lo que se decidió.
    */
+  /**
+   * agregar_banco_ideas: al banco de ideas ÚNICO de la agencia (/api/banco-ideas), con su empresa o general (`destino`
+   * null). Una idea o una referencia (el enlace de un video); el enlace se limpia igual que en «Guardar referencia».
+   */
+  const guardarEnBanco = useCallback(async (entrada, destino) => {
+    const enlace = enlaceLimpio(entrada.enlace);
+    if (String(entrada.enlace ?? "").trim() && !enlace) return { ok: false, mensaje: "El enlace no es válido: tiene que empezar por https://." };
+    const idea = nuevaIdea({ id: uid(), idea: entrada.idea ?? "", format: entrada.formato, referenceLink: enlace, descripcion: entrada.descripcion ?? "", guion: entrada.guion ?? "" });
+    if (!idea.idea && !idea.referenceLink) return { ok: false, mensaje: "Falta la idea o el enlace." };
+    await anadirAlBanco(idea, destino ? destino.dbId || destino.id : null);
+    const que = idea.referenceLink ? "Referencia" : "Idea";
+    return { ok: true, mensaje: destino ? `${que} guardada en el banco de ${destino.name}.` : `${que} guardada como general: sale en el banco de todos los clientes.` };
+  }, []);
+
   const pedirGuardarEnCerebro = useCallback((destino, entrada) => new Promise((resolve) => {
     setPropuestaCerebro({
       cliente: destino.name, entrada,
@@ -551,19 +567,9 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
         return { ok: true, mensaje: `Tarea creada para ${target.name}: «${toolInput.titulo}»` };
       }
       if (toolName === "agregar_banco_ideas") {
-        const target = resolveClient(toolInput.cliente);
-        if (!target) return { ok: false, mensaje: `No encontré el cliente «${toolInput.cliente}».` };
-        const newIdea = {
-          id: uid(),
-          format: toolInput.formato || "post",
-          idea: toolInput.idea,
-          descripcion: toolInput.descripcion || "",
-          guion: toolInput.guion || "",
-          category: toolInput.categoria || "",
-          status: "pending",
-          _addedAt: new Date().toISOString(),
-        };
-        return { ok: true, mensaje: `Idea añadida para ${target.name}: «${toolInput.idea}»`, _idea: newIdea, _clientId: target.id };
+        const target = toolInput.cliente ? resolveClient(toolInput.cliente) : null;
+        if (toolInput.cliente && !target) return { ok: false, mensaje: `No encontré el cliente «${toolInput.cliente}».` };
+        return guardarEnBanco(toolInput, target);
       }
       if (toolName === "guardar_en_cerebro") {
         const target = resolveClient(toolInput.cliente);
@@ -601,17 +607,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     }
 
     if (toolName === "agregar_banco_ideas") {
-      const newIdea = {
-        id: uid(),
-        format: toolInput.formato || "post",
-        idea: toolInput.idea,
-        descripcion: toolInput.descripcion || "",
-        guion: toolInput.guion || "",
-        category: toolInput.categoria || "",
-        status: "pending",
-        _addedAt: new Date().toISOString(),
-      };
-      return { ok: true, mensaje: `Idea añadida al banco: «${toolInput.idea}»`, _idea: newIdea };
+      return guardarEnBanco(toolInput, toolInput.general === true ? null : client);
     }
 
     const cal = calRef.current;
@@ -762,7 +758,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     }
 
     return { ok: false, mensaje: `Herramienta desconocida: ${toolName}` };
-  }, [chatMode, client, clientId, calId, onUpdateCal, onCrearEnOtroMes, memories, resolveClient, onSelectClient, pedirGuardarEnCerebro]);
+  }, [chatMode, client, clientId, calId, onUpdateCal, onCrearEnOtroMes, memories, resolveClient, onSelectClient, pedirGuardarEnCerebro, guardarEnBanco]);
 
   const handleSend = useCallback(async () => {
     // Enviar apaga el micrófono, y lo que se estaba diciendo va en el mensaje.
@@ -941,9 +937,6 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
         for (const toolBlock of toolUseBlocks) {
           try {
             const result = await executeToolCall(toolBlock.name, toolBlock.input);
-            if (result._idea && onAddIdea) {
-              onAddIdea(result._idea, result._clientId);
-            }
             if (result._imagen) imagenes.push(result._imagen);
             feedbacks.push({ tool: toolBlock.name, ...result });
             toolResults.push({
@@ -978,7 +971,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       setEnVivo({ texto: "", pensando: "", pasos: [] });
       for (const a of enviados) if (a.origen === "subida") URL.revokeObjectURL(a.preview);
     }
-  }, [input, provisional, loading, messages, client, clientId, chatMode, memories, executeToolCall, adjuntos, prepararAdjuntos, buildGlobalSystemPrompt, getGlobalTools, onAddIdea, resumen, conversacionId, ambito]);
+  }, [input, provisional, loading, messages, client, clientId, chatMode, memories, executeToolCall, adjuntos, prepararAdjuntos, buildGlobalSystemPrompt, getGlobalTools, resumen, conversacionId, ambito]);
 
   const handleDeleteMemory = useCallback(async (memId) => {
     try {

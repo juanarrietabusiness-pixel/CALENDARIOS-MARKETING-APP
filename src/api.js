@@ -971,7 +971,8 @@ ${cerebro || notasCerebro > 0
 · Puedes GUARDAR EN EL CEREBRO del cliente lo que deba recordarse, con guardar_en_cerebro: la persona
   lo revisa, puede corregirlo y decide antes de que se guarde.
 · Puedes crear tareas para el cliente con crear_tarea.
-· Puedes añadir ideas al banco de ideas del cliente con agregar_banco_ideas.
+· Puedes guardar ideas y REFERENCIAS (el enlace de un video de Instagram, TikTok, YouTube…) en el banco de ideas con
+  agregar_banco_ideas: van a este cliente, o como generales (general: true) si no son de él todavía.
 · Puedes GENERAR IMÁGENES con IA usando generar_imagen. La imagen se ENTREGA AQUÍ MISMO, en el
   chat, y el usuario la descarga en el tamaño que pidió. Úsala siempre que te pidan una imagen,
   sea o no para una publicación. Si además piden ponerla en una publicación, pasa su post_id.
@@ -1064,16 +1065,17 @@ export function getChatTools(hasCalendar) {
     },
     {
       name: "agregar_banco_ideas",
-      description: "Añade una idea al banco de ideas del cliente. El banco es una lista de publicaciones guardadas para usar después.",
+      description: "Guarda una idea o una referencia (enlace de un video) en el banco de ideas de la agencia, para usarla después. Necesita la idea o el enlace.",
       input_schema: {
         type: "object",
         properties: {
-          idea: { type: "string", description: "Concepto de la publicación." },
+          idea: { type: "string", description: "Concepto de la publicación, o qué tiene de bueno la referencia." },
+          enlace: { type: "string", description: "El enlace de la referencia (https://…), si lo hay." },
+          general: { type: "boolean", description: "true: sin empresa, sale en el banco de todos los clientes. Por defecto, de este cliente." },
           formato: { type: "string", enum: ["post", "reel", "carrusel", "historia", "live"], description: "Formato sugerido." },
           descripcion: { type: "string", description: "Caption/descripción sugerida (opcional)." },
           guion: { type: "string", description: "Guion sugerido (opcional)." },
         },
-        required: ["idea"],
       },
     },
   );

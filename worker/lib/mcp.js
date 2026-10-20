@@ -21,13 +21,12 @@ import { difundir } from "./vivo.js";
 import { uuid, ahora } from "./ids.js";
 import { programar, programarLote, cancelarPendientes, resincronizarCalendario, filaPublica, filaConResumen, ErrorPublicar } from "./publicador.js";
 import { normalizarHora } from "../../src/lib/horas.js";
+import { nuevaIdea } from "../../src/lib/bancoIdeas.js";
 import { aprobadasSinProgramar, fechaHora } from "../../src/lib/cola.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 import { obtenerOCrearMes, moverDeMes, ErrorMes } from "./meses.js";
 import { DEFINICIONES_ESTUDIO, crearHerramientasEstudio, ErrorHerramientaEstudio } from "./estudio/herramientas.js";
 
-// Las columnas JSON de `clients`, como las devuelve la API (datos.js).
-const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe", "competidores", "fechas_especiales", "kit_marca", "ritmo_contenido", "plan_contenido"];
 const FORMATOS = ["post", "reel", "carrusel", "historia", "live"];
 const REDES = ["instagram", "facebook", "tiktok", "youtube"];
 
@@ -50,7 +49,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   { name: "ver_calendario", description: "Las publicaciones de un calendario de un cliente: fecha, ID, formato, hora, estado de aprobación, idea, descripción y guion.", inputSchema: { type: "object", properties: { ...clienteParam, mes: { type: "string", description: "AAAA-MM. Si se omite, el más reciente." } }, required: ["cliente"] }, annotations: soloLectura },
   { name: "ver_cola", description: "La cola de publicación: qué sale en los próximos días, qué falló (con el motivo) y qué salió. De todos los clientes o de uno.", inputSchema: { type: "object", properties: { ...clienteParam, dias: { type: "integer", description: "Días hacia delante. Por defecto 7." } } }, annotations: soloLectura },
   { name: "ver_tareas", description: "Las tareas de un cliente, o todas si no se indica cliente.", inputSchema: { type: "object", properties: { ...clienteParam, estado: { type: "string", enum: ["pendientes", "terminadas", "todas"] } } }, annotations: soloLectura },
-  { name: "ver_banco_ideas", description: "Las ideas guardadas de un cliente.", inputSchema: { type: "object", properties: { ...clienteParam }, required: ["cliente"] }, annotations: soloLectura },
+  { name: "ver_banco_ideas", description: "El banco de ideas de la agencia: ideas y referencias (enlaces a videos). Con cliente, las suyas y las generales (sin empresa); sin cliente, todas.", inputSchema: { type: "object", properties: { ...clienteParam } }, annotations: soloLectura },
   { name: "buscar_cerebro", description: "Busca en el cerebro de un cliente —su ficha técnica, marca, precios, personas, límites y los documentos que se le subieron— y devuelve los pasajes que responden. Úsala antes de escribir para un cliente o de decir que no sabes algo de él. Incluye notas internas: es para el equipo, no las uses en textos que se publican.", inputSchema: { type: "object", properties: { ...clienteParam, consulta: { type: "string", description: "Qué buscar, en palabras del tema." } }, required: ["cliente", "consulta"] }, annotations: soloLectura },
   { name: "leer_nota_cerebro", description: "Lee ENTERA una nota del cerebro de un cliente, por su ruta (la que da buscar_cerebro entre corchetes) o por su título. Para cuando buscar_cerebro dio sólo pasajes de una nota larga.", inputSchema: { type: "object", properties: { ...clienteParam, nota: { type: "string", description: "La ruta de la nota o su título." } }, required: ["cliente", "nota"] }, annotations: soloLectura },
   { name: "ver_resultados", description: "Cómo le va en redes a un cliente: seguidores, alcance, interacción, mejores publicaciones, formatos, horarios y competencia.", inputSchema: { type: "object", properties: { ...clienteParam, dias: { type: "integer", description: "7 a 90. Por defecto 30." } }, required: ["cliente"] }, annotations: soloLectura },
@@ -94,7 +93,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   { name: "cancelar_programacion", description: "Saca de la cola lo que aún no salió de una publicación.", inputSchema: { type: "object", properties: { ...pubParam }, required: ["publicacion_id"] }, annotations: escribe(true) },
   { name: "crear_tarea", description: "Crea una tarea para un cliente (o una tarea rápida sin cliente).", inputSchema: { type: "object", properties: { ...clienteParam, titulo: { type: "string" }, fecha_limite: { type: "string", description: "AAAA-MM-DD" }, para_hoy: { type: "boolean" } }, required: ["titulo"] }, annotations: escribe() },
   { name: "completar_tarea", description: "Marca una tarea como hecha. El id sale de ver_tareas.", inputSchema: { type: "object", properties: { tarea_id: { type: "string" } }, required: ["tarea_id"] }, annotations: escribe() },
-  { name: "anadir_idea", description: "Guarda una idea en el banco de ideas del cliente.", inputSchema: { type: "object", properties: { ...clienteParam, idea: { type: "string" }, formato: { type: "string", enum: FORMATOS }, descripcion: { type: "string" } }, required: ["cliente", "idea"] }, annotations: escribe() },
+  { name: "anadir_idea", description: "Guarda una idea o una referencia (el enlace de un video de Instagram, TikTok, YouTube…) en el banco de ideas. Sin cliente queda GENERAL: sale en el banco de todos hasta que se le asigne uno.", inputSchema: { type: "object", properties: { ...clienteParam, idea: { type: "string", description: "La idea, o qué tiene de bueno la referencia." }, enlace: { type: "string", description: "El enlace de la referencia, si lo hay." }, formato: { type: "string", enum: FORMATOS }, descripcion: { type: "string" } } }, annotations: escribe() },
   // El Estudio: las mismas tres herramientas que el asistente (worker/lib/estudio/herramientas.js). Aquí el cliente siempre se indica.
   ...DEFINICIONES_ESTUDIO.map(({ name, description, input_schema: inputSchema }) => ({
     name,
@@ -333,17 +332,15 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
       throw new ErrorHerramienta(`No encontré la tarea «${id}». Usa ver_tareas.`);
     },
 
-    async anadir_idea({ cliente, idea, formato = "post", descripcion = "" }) {
-      const c = await resolverCliente(cliente);
-      const ideas = leerJSON(c.ideas_bank, []) ?? [];
-      const nueva = { id: idPublicacion(), idea: String(idea).slice(0, 1000), format: FORMATOS.includes(formato) ? formato : "post", descripcion: String(descripcion).slice(0, 2000), createdAt: ahora() };
-      await acceso.actualizar("clients", { id: c.id }, { ideas_bank: JSON.stringify([...ideas, nueva]) });
-      clientes = null;
-      const actualizado = await acceso.leerUno("clients", { id: c.id });
-      const salida = { ...actualizado };
-      for (const k of JSON_CLIENTES) if (typeof salida[k] === "string") salida[k] = leerJSON(salida[k], null);
-      difundir(env, acceso.ownerId, { tipo: "cliente", cliente: salida, por });
-      return `Idea guardada en el banco de ${c.name}.`;
+    async anadir_idea({ cliente, idea = "", enlace = "", formato, descripcion = "" }) {
+      // El banco es UNO para la agencia (tabla banco_ideas): sin cliente, la idea es general.
+      const c = cliente ? await resolverCliente(cliente) : null;
+      const nueva = nuevaIdea({ id: idPublicacion(), idea: String(idea).slice(0, 1000), format: formato, referenceLink: enlace, descripcion: String(descripcion).slice(0, 2000) }, ahora());
+      if (!nueva.idea && !nueva.referenceLink) throw new ErrorHerramienta("Falta la idea o el enlace.");
+      if (String(enlace).trim() && !nueva.referenceLink) throw new ErrorHerramienta("El enlace no es válido: tiene que empezar por https://.");
+      await acceso.insertar("banco_ideas", { id: nueva.id, client_id: c?.id ?? null, datos: JSON.stringify(nueva), creada_por: null, created_at: ahora(), updated_at: ahora() });
+      difundir(env, acceso.ownerId, { tipo: "banco-ideas", id: nueva.id, clientId: c?.id ?? null, por });
+      return `${nueva.referenceLink ? "Referencia" : "Idea"} guardada en el banco ${c ? `de ${c.name}` : "como general (sale en el banco de todos los clientes)"}.`;
     },
   };
 

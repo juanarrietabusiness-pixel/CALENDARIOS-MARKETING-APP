@@ -135,7 +135,9 @@ export function ponerEnDia(cal, fecha, post) {
  */
 export function deIdeaAPublicacion(idea, id = crypto.randomUUID().slice(0, 8)) {
   const post = { ...idea, id, status: "pending" };
-  for (const marca of ["_originDate", "_originCal", "_addedAt"]) delete post[marca];
+  // Lo que es del banco (de qué cliente es, quién la guardó, lo que trajo el enlace) no viaja a la publicación; el
+  // enlace sí: es su referencia (`referenceLink`).
+  for (const marca of ["_originDate", "_originCal", "_addedAt", "clientId", "creadaPor", "created_at", "enlaceTitulo", "enlaceAutor", "miniatura"]) delete post[marca];
   return post;
 }
 

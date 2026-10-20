@@ -195,23 +195,26 @@ describe("el guardado del panel lateral", () => {
 });
 
 describe("el banco de ideas", () => {
-  it("lo que se cambia en el banco se GUARDA, no sólo se pinta", () => {
+  it("lo que se cambia en el banco se GUARDA, no sólo se pinta, y una idea sólo sale si entró en el calendario", () => {
     // Añadir, editar o borrar una idea sólo cambiaba el estado: al recargar
     // volvía lo de antes. Y llevar una idea a un mes sin cajón la borraba
-    // del banco sin meterla en el calendario: se esfumaba.
+    // del banco sin meterla en el calendario: se esfumaba. Desde el banco
+    // único (tabla banco_ideas), cada cambio va a /api/banco-ideas.
     const app = leer("src/App.jsx");
-    const soloEstado = [...app.matchAll(/onUpdateClient=\{([^}]*setClients[^}]*)\}/g)].map((m) => m[1]);
+    const vista = leer("src/components/CalendarView.jsx");
     expect(
-      soloEstado,
+      app,
       fallo({
-        que: "un onUpdateClient de App.jsx sólo actualiza el estado",
-        donde: "src/App.jsx → onUpdateClient",
-        porque: "Lo que se cambia en el banco de ideas no llega a la base y se pierde al recargar.",
-        arreglo: "Pásale `alCambiarBanco`, que guarda agrupado.",
+        que: "el banco de ideas vuelve a vivir dentro del cliente",
+        donde: "src/App.jsx",
+        porque: "El banco es UNO para la agencia (tabla banco_ideas): guardarlo en `clients.ideas_bank` lo partiría otra vez por cliente y las ideas generales no tendrían sitio.",
+        arreglo: "Usa `useBancoIdeas()` (src/hooks/useBancoIdeas.js), que guarda en /api/banco-ideas.",
       }),
-    ).toEqual([]);
+    ).not.toMatch(/ideasBank/);
     expect(app).toMatch(/onMoveBankToCal=\{ideaAlCalendario\}/);
     expect(app).toMatch(/ponerEnDia\(base, fecha, deIdeaAPublicacion\(bankPost\)\)/);
+    // La quita del banco quien la llevó, y sólo si `ideaAlCalendario` dijo que entró.
+    expect(vista).toMatch(/if \(await onMoveBankToCal\?\.\(bankPost, targetDate\)\) banco\.quitar\(bankPost\.id\)/);
   });
 });
 

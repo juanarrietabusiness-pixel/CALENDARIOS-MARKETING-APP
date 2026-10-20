@@ -1494,6 +1494,23 @@ button.campana-semana-boton:hover { border-color: var(--accent-line); }
   border-color: var(--accent);
   background: var(--accent-soft);
 }
+/* La pestaña Ideas del cliente: el mismo banco, a todo el ancho y sin tope de alto. */
+.bank-panel.bank-panel-pagina { width: 100%; position: static; max-height: none; border-style: solid; border-width: 1px; }
+.bank-panel-cabecera { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-2); padding: var(--sp-3); border-bottom: 1px solid var(--border); }
+.bank-panel-titulo { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-xs); font-weight: 700; color: var(--accent-alt); margin: 0; white-space: nowrap; }
+.bank-panel-filtros { display: flex; flex-wrap: wrap; gap: var(--sp-1); padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border); }
+.bank-panel-filtros .filter-chip { min-height: var(--tap-sm); display: inline-flex; align-items: center; gap: 4px; }
+.bank-panel-lista { flex: 1; overflow-y: auto; padding: var(--sp-2); }
+.bank-card { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2); background: var(--bg); border-radius: var(--radius-sm); border: 1px solid var(--border); border-left-width: 3px; cursor: grab; }
+.bank-card-mini { width: 40px; height: 52px; object-fit: cover; border-radius: var(--radius-sm); flex-shrink: 0; background: var(--surface-2); }
+.bank-card-cuerpo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.bank-card-abrir { background: none; border: none; cursor: pointer; text-align: left; padding: 0; color: inherit; font-family: inherit; min-height: var(--tap-sm); }
+.bank-card-titulo { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: var(--fs-2xs); font-weight: 600; }
+.bank-card-meta { display: flex; flex-wrap: wrap; gap: var(--sp-2); font-size: var(--fs-3xs); color: var(--text-dim); }
+.bank-card-etiqueta { padding: 0 6px; border-radius: var(--radius-pill); background: var(--surface-2); color: var(--text-muted); }
+.bank-card-etiqueta[data-general] { background: var(--alt-soft); color: var(--accent-alt); }
+.bank-ref-enlace { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-3xs); color: var(--accent); text-decoration: none; min-height: 24px; }
+.bank-ref-enlace:hover { text-decoration: underline; }
 
 @media (max-width: 1023px) {
   .cal-layout { flex-direction: column; }
