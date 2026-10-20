@@ -66,6 +66,22 @@ export async function registrarUsos(acceso, clientId, postIds, rutas) {
   return ids.length;
 }
 
+/**
+ * El ASISTENTE va a reescribir el texto de estas publicaciones: se fecha su fila de usos como si se le hubiera pedido
+ * texto a la IA otra vez, y así lo que llegue en el próximo guardado se toma como la nueva línea base y no como una
+ * corrección de la persona. Sin esto, «reescríbeme la descripción» en el chat restaba a las notas que se usaron como
+ * si alguien la hubiera corregido entera. Sólo toca las que ya tenían fila: sin ella no hay base ni aprendizaje.
+ * → cuántas se marcaron.
+ */
+export async function marcarTextoDeIA(acceso, clientId, postIds) {
+  const ids = [...new Set((postIds ?? []).map(String).filter((p) => p && p.length <= 200))].slice(0, 40);
+  if (!ids.length) return 0;
+  const filas = await acceso.leerVarios("cerebro_usos", ["post_id"], "post_id", ids, { client_id: clientId });
+  const cuando = new Date().toJSON();
+  for (const f of filas) await acceso.actualizar("cerebro_usos", { client_id: clientId, post_id: f.post_id }, { updated_at: cuando });
+  return filas.length;
+}
+
 /** Map publicación → notas que se usaron para escribirla. */
 export async function usosDe(acceso, clientId, postIds) {
   if (!postIds.length) return new Map();

@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   textoEstableDelCerebro, consultaDeTanda, consultaDePublicacion, TEXTO_SIN_FICHA,
-  usaElCerebro, crearMemoriaCorta, contextoDelChat,
+  usaElCerebro, crearMemoriaCorta, contextoDelChat, adnConPautas, TITULO_PAUTAS,
 } from "./cerebroCliente";
+import { sinCapaMaquetacion } from "./contextoADN";
 import { guardarNota, borrarNota, importarAlCerebro, listarCerebro } from "./cerebro";
 import { contextoEnBloques, MIN_CARACTERES_CACHE } from "./contextoADN";
 import { buildClientContext, buildScriptPrompt, loadADN, contextoDelCerebro, pasajesDeLaTanda, adnParaElChat } from "../api";
@@ -31,14 +32,14 @@ const FICHA = "Dcasa vende muebles y hogar en Panamá. Tono cercano. ".repeat(65
 const CIFRAS = "- Envío gratis desde $300 [[precios]]";
 
 /** El Worker de mentira: contesta al contexto con lo que se le dé. */
-function cerebroFalso({ ficha = FICHA, cifras = CIFRAS, notas = 12, estado = 200, falla = false } = {}) {
+function cerebroFalso({ ficha = FICHA, cifras = CIFRAS, pautas = "", notas = 12, estado = 200, falla = false } = {}) {
   const pedidos = [];
   vi.stubGlobal("fetch", async (url, init) => {
     pedidos.push({ url: String(url), cuerpo: JSON.parse(init.body) });
     if (falla) throw new Error("sin red");
     if (estado !== 200) return new Response("", { status: estado });
     const consulta = JSON.parse(init.body).consulta;
-    return Response.json({ ficha, cifras, pasajes: consulta ? `PASAJES PARA: ${consulta}` : "", fuentes: [], notas });
+    return Response.json({ ficha, cifras, pautas, pasajes: consulta ? `PASAJES PARA: ${consulta}` : "", fuentes: [], notas });
   });
   return pedidos;
 }
@@ -354,5 +355,61 @@ describe("el asistente", () => {
     expect(chat).toMatch(/YA TIENE CEREBRO \(12 notas\)/);
     expect(chat).toMatch(/desactualizado/);
     expect(chat).toMatch(/gana el cerebro/);
+  });
+});
+
+describe("las pautas para escribir", () => {
+  const PAUTA = "Los reels empiezan con una pregunta. Nunca emojis de fuego.";
+
+  it("van en el bloque estable, con su título, detrás de la ficha y las cifras", () => {
+    const t = textoEstableDelCerebro({ ficha: "Quién es: Dcasa", cifras: "- Envío gratis", pautas: PAUTA });
+    expect(t).toContain(`${TITULO_PAUTAS}\n${PAUTA}`);
+    expect(t.indexOf("FICHA TÉCNICA")).toBeLessThan(t.indexOf("PAUTAS PARA ESCRIBIR"));
+  });
+
+  it("sin ficha técnica, van DELANTE del ADN de antes y sobreviven al filtro de la maquetación", () => {
+    const adn = "\n--- X/01_ADN_y_Memoria/05_prompt_maestro_meta_ai.md ---\n# Sistema\n\n## 1 · Las plantillas\nPlantilla A: fondo azul.\n";
+    const con = adnConPautas(adn, PAUTA);
+    expect(con.startsWith(TITULO_PAUTAS)).toBe(true);
+    expect(sinCapaMaquetacion(con)).toContain(PAUTA);
+    expect(adnConPautas(adn, "")).toBe(adn);
+  });
+
+  it("llegan a la generación y al asistente aunque el cliente siga con su ADN de antes", async () => {
+    cerebroFalso({ ficha: "", pautas: PAUTA });
+    const r = await loadADN(cliente);
+    expect(r.cerebro).toBeUndefined();
+    expect(r.content).toContain(PAUTA);
+    expect(r.content).toContain("ADN VIEJO DE LA FICHA");
+    contextoDelChat.olvidar("c1");
+    const chat = await adnParaElChat(cliente);
+    expect(chat).toMatchObject({ cerebro: false, notas: 12 });
+    expect(chat.content).toContain(PAUTA);
+  });
+
+  it("con ficha técnica, en lo que manda el cerebro", async () => {
+    cerebroFalso({ pautas: PAUTA });
+    expect((await loadADN(cliente)).content).toContain(PAUTA);
+  });
+});
+
+describe("guardar en el cerebro desde el asistente", () => {
+  it("el asistente ya no crea memorias: propone guardar en el cerebro, y borra las de antes por su id", async () => {
+    const { getChatTools, buildChatSystemPrompt } = await import("../api");
+    const nombres = getChatTools(true).map((t) => t.name);
+    expect(nombres).toContain("guardar_en_cerebro");
+    expect(nombres).not.toContain("guardar_memoria");
+    const borrar = getChatTools(true).find((t) => t.name === "borrar_memoria");
+    expect(borrar.input_schema.required).toEqual(["id"]);
+    const chat = buildChatSystemPrompt(cliente, null, "ADN", [{ id: "m1", content: "Prefiere tono formal" }]);
+    expect(chat).toContain("· [m1] Prefiere tono formal");
+    expect(chat).toMatch(/guardar_en_cerebro/);
+    expect(chat).toMatch(/«pautas»/);
+  });
+
+  it("en el asistente general dice de qué cliente", async () => {
+    const { herramientaGuardarEnCerebro } = await import("../api");
+    expect(herramientaGuardarEnCerebro({ conCliente: true }).input_schema.required).toEqual(["cliente", "tipo", "titulo", "texto"]);
+    expect(herramientaGuardarEnCerebro().input_schema.properties.cliente).toBeUndefined();
   });
 });

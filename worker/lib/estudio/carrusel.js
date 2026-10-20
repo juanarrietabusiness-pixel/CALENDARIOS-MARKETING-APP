@@ -10,6 +10,7 @@
 // ============================================================
 
 import { llamarIA } from "../cerebro/ia.js";
+import { pautasDe, bloqueDePautas } from "../cerebro/cerebro.js";
 import { leerMercado } from "../mercado.js";
 import { kitDe } from "./kit.js";
 import { productosActivos, lineaDeProducto } from "../../../src/lib/estudioMercado.js";
@@ -33,13 +34,15 @@ export async function propuestaDeCarrusel(env, acceso, cliente, datos = {}) {
   }
   const ids = Array.isArray(datos.personajes) ? datos.personajes.map(String) : [];
   const personajes = kit.personajes.filter((p) => ids.includes(p.id)).map((p) => `${p.nombre}${p.descripcion ? `: ${p.descripcion}` : ""}`);
+  // Las pautas para escribir del cerebro (la jerarquía, el tono de los textos de las láminas): detrás del pedido.
+  const pautas = bloqueDePautas(await pautasDe(env, acceso, cliente.id));
   const r = await llamarIA(env, acceso, cliente, {
-    prompt: pedidoDePropuesta({
+    prompt: [pedidoDePropuesta({
       marca: cliente.name, rubro: cliente.industry ?? "", laminas, tema, producto, personajes,
       tipo: preset ? nombreDePreset(preset, kit) : "",
       estilo: lineaDeEstilo(kit, estiloDeLaPieza(kit, preset, String(datos.estilo ?? ""))),
       identidad: bloqueDeMarca(kit),
-    }),
+    }), pautas].filter(Boolean).join("\n\n"),
     salida: 350 * Math.max(laminas.length, 7) + 600,
     funcion: "prompt de imagen",
   });

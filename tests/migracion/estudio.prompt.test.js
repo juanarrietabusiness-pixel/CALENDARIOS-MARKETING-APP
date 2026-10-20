@@ -531,3 +531,30 @@ describe("POST /api/estudio/<cliente>/carrusel/ideas y /reel/ideas", () => {
     expect((await pedir("/api/estudio/c1/reel/ideas", { method: "POST", body: {} })).status).toBe(502);
   });
 });
+
+describe("las pautas para escribir van en TODO lo que escribe, encuentre la búsqueda lo que encuentre", () => {
+  const PAUTA = "Los reels empiezan con una pregunta al público. Nunca uses emojis de fuego.";
+  beforeEach(async () => {
+    // Marcada interna a propósito: una pauta no puede serlo (no llegaría a lo que escribe).
+    const r = await pedir("/api/cerebro/c1/nota", { method: "PUT", body: { titulo: "Cómo escribimos", texto: PAUTA, tipo: "pautas", interna: true } });
+    expect(r.status).toBe(201);
+  });
+
+  it("una pauta nunca es interna", () => {
+    expect(db.sqlite.prepare("select tipo, interna from cerebro_notas where titulo = 'Cómo escribimos'").get()).toEqual({ tipo: "pautas", interna: 0 });
+  });
+
+  it("en «Dame ideas», en el lote y en la propuesta del carrusel, con su título y sin lo interno", async () => {
+    anthropic(JSON.stringify({ ideas: [{ n: 1, titulo: "x", escena: "y" }] }));
+    await pedir("/api/estudio/c1/ideas", { method: "POST", body: { n: 1, tema: "regreso a clases" } });
+    await pedir("/api/estudio/c1/lote/ideas", { method: "POST", body: { cuantas: { problema: 1 } } });
+    await pedir("/api/estudio/c1/carrusel/propuesta", { method: "POST", body: { tema: "Cómo elegir un colchón" } });
+    expect(peticiones).toHaveLength(3);
+    for (const p of peticiones) {
+      const t = textoDe(p);
+      expect(t).toMatch(/PAUTAS PARA ESCRIBIR/);
+      expect(t).toContain(PAUTA);
+      expect(t).not.toMatch(/margen del 40/);
+    }
+  });
+});

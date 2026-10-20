@@ -29,7 +29,7 @@
 
 import { uuid, ahora } from "./ids.js";
 import { llamarIA, ErrorIA } from "./cerebro/ia.js";
-import { contexto as contextoCerebro, reindexar } from "./cerebro/cerebro.js";
+import { contexto as contextoCerebro, reindexar, bloqueDePautas } from "./cerebro/cerebro.js";
 import { derivados, rutaUnica, MAX_NOTAS_POR_CLIENTE } from "./cerebro/notas.js";
 import { HERRAMIENTAS_WEB } from "./herramientasServidor.js";
 import { idDeCarpeta, carpetaDeLaApp, subirADrive, DriveDesconectado, ErrorDrive } from "./google.js";
@@ -152,7 +152,7 @@ async function contextoDeMarca(env, acceso, cliente, consulta = CONSULTA_MERCADO
     cliente.competencia && `Competencia (de la ficha): ${String(cliente.competencia).slice(0, 600)}`,
   ].filter(Boolean).join("\n");
   if (!c?.notas) return ficha;
-  return [c.ficha && `FICHA:\n${c.ficha}`, c.cifras && `CIFRAS:\n${c.cifras}`, c.pasajes && `NOTAS:\n${c.pasajes}`, ficha && `DE LA FICHA DEL CLIENTE:\n${ficha}`]
+  return [c.ficha && `FICHA:\n${c.ficha}`, bloqueDePautas(c.pautas), c.cifras && `CIFRAS:\n${c.cifras}`, c.pasajes && `NOTAS:\n${c.pasajes}`, ficha && `DE LA FICHA DEL CLIENTE:\n${ficha}`]
     .filter(Boolean).join("\n\n");
 }
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   TIPOS_VISTA, FILTROS_TIPO, nombreDeTipo, ordenarNotas, filtrarNotas, contarPorTipo, formatoCaracteres,
   describirImportacion, describirFicha, avisoSinFicha, tituloDeDocumento, validarDocumento, leerDocumento,
+  TIPOS_PROPONIBLES, propuestaLimpia,
 } from "./cerebroVista";
 import { TIPOS } from "../../worker/lib/cerebro/notas.js";
 import { analizarRuta, construirRuta, PESTANAS_CLIENTE, slugsDeCalendarios } from "./rutas";
@@ -188,5 +189,21 @@ describe("la dirección de la pestaña", () => {
   it("un calendario llamado «Cerebro» no se queda con la dirección de la pestaña", () => {
     const slugs = slugsDeCalendarios([{ id: "1", name: "Cerebro" }]);
     expect(slugs.get("1")).not.toBe("cerebro");
+  });
+});
+
+describe("lo que el asistente propone guardar", () => {
+  it("las pautas son un tipo más, y van con la ficha y las cifras al principio", () => {
+    expect(FILTROS_TIPO).toContain("pautas");
+    expect(nombreDeTipo("pautas")).toBe("Pautas para escribir");
+    const orden = ordenarNotas([{ tipo: "marca", titulo: "A" }, { tipo: "pautas", titulo: "B" }, { tipo: "ficha", titulo: "C" }]);
+    expect(orden.map((n) => n.tipo)).toEqual(["ficha", "pautas", "marca"]);
+  });
+
+  it("un tipo que no se puede proponer pasa a nota; título y texto se recortan y limpian", () => {
+    expect(TIPOS_PROPONIBLES).toEqual(["pautas", "nota", "decision", "marca"]);
+    expect(propuestaLimpia({ tipo: "ficha", titulo: "  T  ", texto: " x " })).toEqual({ tipo: "nota", titulo: "T", texto: "x" });
+    expect(propuestaLimpia({ tipo: "pautas", titulo: "t".repeat(300), texto: "y" }).titulo).toHaveLength(140);
+    expect(propuestaLimpia()).toEqual({ tipo: "nota", titulo: "", texto: "" });
   });
 });

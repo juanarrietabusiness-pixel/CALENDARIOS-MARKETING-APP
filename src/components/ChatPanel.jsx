@@ -5,7 +5,10 @@ import { idDeCarpeta } from "../lib/drive";
 import { CopyButton } from "./calendario/primitivas";
 import { stripMarkdown } from "./calendario/formato";
 import { useDialogA11y } from "../hooks/useDialogA11y";
-import { conversarIA, leerResumenChat, resumirChat, buildChatSystemPrompt, getChatTools, adnParaElChat } from "../api";
+import { conversarIA, leerResumenChat, resumirChat, buildChatSystemPrompt, getChatTools, adnParaElChat, herramientaGuardarEnCerebro, INSTRUCCION_GUARDAR_CEREBRO } from "../api";
+import GuardarEnCerebro from "./GuardarEnCerebro";
+import "./ChatPanel.css";
+import { guardarNota, avisarTextoDeIA } from "../lib/cerebro";
 import { uid, compressImage } from "../utils";
 import { leerHora, MAL, aplicarLote } from "../lib/lote";
 import { partirMensaje, marcarImagen, marcarContexto, FORMATOS_IMAGEN, INSTRUCCION_PIEZAS, INSTRUCCION_ADJUNTOS } from "../lib/mensajeChat";
@@ -21,7 +24,7 @@ import { mesDeFecha, mismoMes } from "../lib/meses";
 
 const MAX_ADJUNTOS = 6;
 // Vueltas del navegador con herramientas propias. Las del servidor
-// (web, repositorio, consultas) no cuentan: las encadena el Worker.
+// (web, cerebro, consultas) no cuentan: las encadena el Worker.
 const MAX_VUELTAS = 8;
 // Pasado este número de mensajes sin resumir, lo más viejo se pliega en
 // el resumen. Lo decide el servidor; esto sólo evita pedirlo en balde.
@@ -58,6 +61,8 @@ export default function ChatPanel({
   const [memories, setMemories] = useState([]);
   const [showMemories, setShowMemories] = useState(false);
   const [actionFeedback, setActionFeedback] = useState([]);
+  // Lo que el asistente propone guardar en el cerebro, a la espera de que la persona decida.
+  const [propuestaCerebro, setPropuestaCerebro] = useState(null);
   const [listening, setListening] = useState(false);
   const [adjuntos, setAdjuntos] = useState([]);
   const [bancoAbierto, setBancoAbierto] = useState(false);
@@ -360,10 +365,12 @@ CÓMO DEBES RESPONDER:
 · Cuando hables de un cliente, referéncialo por nombre.
 · Puedes comparar clientes, sugerir estrategias cruzadas y dar ideas de campañas.
 · No inventes datos: si no están abajo, búscalos en el cerebro del cliente o con tus herramientas; si no
-  están, dilo. Nunca digas que no tienes acceso a un cliente sin haber buscado antes.`;
+  están, dilo. Nunca digas que no tienes acceso a un cliente sin haber buscado antes.
+${INSTRUCCION_GUARDAR_CEREBRO}`;
   }, [clients]);
 
   const getGlobalTools = useCallback(() => [
+    herramientaGuardarEnCerebro({ conCliente: true }),
     {
       name: "ir_a_cliente",
       description: "Navega al asistente de un cliente específico para ver su calendario y ejecutar acciones.",
@@ -407,6 +414,25 @@ CÓMO DEBES RESPONDER:
     },
   ], []);
 
+  /**
+   * La herramienta guardar_en_cerebro: enseña la propuesta y ESPERA a que la persona la guarde (corregida o no) o la
+   * descarte. El turno del asistente sigue con lo que se decidió.
+   */
+  const pedirGuardarEnCerebro = useCallback((destino, entrada) => new Promise((resolve) => {
+    setPropuestaCerebro({
+      cliente: destino.name, entrada,
+      guardar: async (nota) => {
+        await guardarNota(destino.dbId || destino.id, nota);
+        setPropuestaCerebro(null);
+        resolve({ ok: true, mensaje: `Guardado en el cerebro de ${destino.name}: «${nota.titulo}» (${nota.tipo === "pautas" ? "pautas para escribir" : nota.tipo}).` });
+      },
+      descartar: () => {
+        setPropuestaCerebro(null);
+        resolve({ ok: false, mensaje: "La persona decidió no guardarlo en el cerebro. No insistas." });
+      },
+    });
+  }), []);
+
   const executeToolCall = useCallback(async (toolName, toolInput) => {
     if (chatMode === "global") {
       if (toolName === "ir_a_cliente") {
@@ -444,21 +470,26 @@ CÓMO DEBES RESPONDER:
         };
         return { ok: true, mensaje: `Idea añadida para ${target.name}: «${toolInput.idea}»`, _idea: newIdea, _clientId: target.id };
       }
+      if (toolName === "guardar_en_cerebro") {
+        const target = resolveClient(toolInput.cliente);
+        if (!target) return { ok: false, mensaje: `No encontré el cliente «${toolInput.cliente}».` };
+        return pedirGuardarEnCerebro(target, toolInput);
+      }
       return { ok: false, mensaje: `Herramienta desconocida: ${toolName}` };
     }
 
-    if (toolName === "guardar_memoria") {
-      const mem = await db.saveClientMemory(clientId, toolInput.contenido);
-      setMemories((prev) => [...prev, mem]);
-      return { ok: true, mensaje: `Guardado: «${toolInput.contenido}»` };
+    if (toolName === "guardar_en_cerebro") {
+      if (!client) return { ok: false, mensaje: "No hay cliente abierto." };
+      return pedirGuardarEnCerebro(client, toolInput);
     }
 
     if (toolName === "borrar_memoria") {
-      const found = memories.find((m) => m.content === toolInput.contenido);
-      if (!found) return { ok: false, mensaje: "No encontré esa memoria." };
+      // Por id; el texto exacto se acepta todavía por si el modelo lo manda así.
+      const found = memories.find((m) => m.id === toolInput.id) ?? memories.find((m) => m.content === (toolInput.contenido ?? toolInput.id));
+      if (!found) return { ok: false, mensaje: "No encontré esa memoria: usa el id que va entre corchetes." };
       await db.deleteClientMemory(found.id);
       setMemories((prev) => prev.filter((m) => m.id !== found.id));
-      return { ok: true, mensaje: `Olvidado: «${toolInput.contenido}»` };
+      return { ok: true, mensaje: `Olvidado: «${found.content}»` };
     }
 
     if (toolName === "crear_tarea") {
@@ -600,6 +631,8 @@ CÓMO DEBES RESPONDER:
         }),
       }));
       if (!found) return { ok: false, mensaje: `No encontré la publicación ${toolInput.post_id}.` };
+      // Lo que reescribe el asistente es texto de la IA, no una corrección de la persona: se avisa ANTES del guardado.
+      if (["idea", "descripcion", "guion", "texto_pieza"].some((k) => toolInput[k] !== undefined)) await avisarTextoDeIA(clientId, [toolInput.post_id]);
       const updated = { ...cal, days: newDays };
       calRef.current = updated;
       onUpdateCal(calId, updated);
@@ -625,6 +658,8 @@ CÓMO DEBES RESPONDER:
     if (toolName === "editar_publicaciones_lote") {
       const r = aplicarLote(cal, toolInput);
       if (!r.ok) return r;
+      const conTexto = (toolInput.cambios ?? []).filter((c) => c && ["idea", "descripcion", "guion"].some((k) => c[k] !== undefined)).map((c) => c.post_id);
+      if (conTexto.length) await avisarTextoDeIA(clientId, conTexto);
       const updated = { ...cal, days: r.dias };
       calRef.current = updated;
       onUpdateCal(calId, updated);
@@ -632,7 +667,7 @@ CÓMO DEBES RESPONDER:
     }
 
     return { ok: false, mensaje: `Herramienta desconocida: ${toolName}` };
-  }, [chatMode, clientId, calId, onUpdateCal, onCrearEnOtroMes, memories, resolveClient, onSelectClient]);
+  }, [chatMode, client, clientId, calId, onUpdateCal, onCrearEnOtroMes, memories, resolveClient, onSelectClient, pedirGuardarEnCerebro]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -997,8 +1032,11 @@ CÓMO DEBES RESPONDER:
             flexShrink: 0,
           }}>
             <div style={{ fontSize: "var(--fs-3xs)", fontWeight: 600, color: "var(--text-dim)", marginBottom: "var(--sp-1)" }}>
-              Memorias ({memories.length})
+              Memorias de antes ({memories.length})
             </div>
+            <p style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)", margin: "0 0 var(--sp-1)" }}>
+              Lo nuevo ya no se guarda aquí: va al cerebro del cliente. Estas se siguen leyendo hasta que las borres.
+            </p>
             {memories.map((m) => (
               <div key={m.id} style={{
                 display: "flex",
@@ -1051,6 +1089,13 @@ CÓMO DEBES RESPONDER:
           )}
           {loading && (enVivo.pasos.length > 0 || enVivo.pensando) && (
             <EnVivo pasos={enVivo.pasos} pensando={enVivo.pensando} />
+          )}
+          {propuestaCerebro && (
+            <GuardarEnCerebro
+              propuesta={{ cliente: propuestaCerebro.cliente, ...propuestaCerebro.entrada }}
+              onGuardar={propuestaCerebro.guardar}
+              onDescartar={propuestaCerebro.descartar}
+            />
           )}
           {loading && enVivo.texto && (
             <ChatMessage message={{ role: "assistant", content: enVivo.texto }} />

@@ -31,7 +31,7 @@
 
 import { llamarIA } from "../cerebro/ia.js";
 import { aprenderComposiciones } from "../../../src/lib/loteAnuncios.js";
-import { contexto as contextoCerebro } from "../cerebro/cerebro.js";
+import { contexto as contextoCerebro, textoParaEscribir } from "../cerebro/cerebro.js";
 import { leerMercado } from "../mercado.js";
 import { productosActivos, productosParaPlan, lineaDeProducto, notaDeProducto, resumenGeneral, limpiarEstudio } from "../../../src/lib/estudioMercado.js";
 import {
@@ -220,7 +220,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
   let contexto = "";
   try {
     const c = await contextoCerebro(env, acceso, cliente.id, `${producto?.nombre ?? ""} beneficios objeciones público contenido`, { para: "texto", presupuesto: 5000 });
-    contexto = [c.ficha, c.pasajes].filter(Boolean).join("\n\n");
+    contexto = textoParaEscribir(c);
   } catch { /* sin cerebro, con el catálogo y el estudio */ }
 
   const r = await llamarIA(env, acceso, cliente, {

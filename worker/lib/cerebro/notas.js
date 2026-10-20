@@ -17,6 +17,10 @@
 //   ficha        La tarjeta técnica del cliente. Va SIEMPRE en el contexto.
 //   cifras       Precios, plazos, teléfonos vigentes. Va SIEMPRE, aparte:
 //                un precio no puede depender de que la búsqueda lo encuentre.
+//   pautas       Pautas para escribir: estructuras de guion, reglas de
+//                redacción, lo que la IA no hace nunca. Va SIEMPRE, como la
+//                ficha: una regla no puede depender de que la búsqueda la
+//                encuentre (la escribe la agencia o el asistente).
 //   marca        El canon: tono, personas, límites, SEO.
 //   maquetacion  Plantillas, escala, bloque de estilo, negativos: lo que
 //                sólo sirve para pedirle las piezas a Meta AI.
@@ -38,13 +42,13 @@ import { SECCION_DE_MAQUETACION, CLAVES_DE_TEXTO_DE_LA_RECETA } from "../../../s
 import { fold } from "./conocimiento.js";
 import { summary } from "./memoria.js";
 
-export const TIPOS = Object.freeze(["ficha", "cifras", "marca", "maquetacion", "documento", "nota", "decision", "borrador", "mercado"]);
+export const TIPOS = Object.freeze(["ficha", "cifras", "pautas", "marca", "maquetacion", "documento", "nota", "decision", "borrador", "mercado"]);
 // «mercado»: lo escribió el estudio de mercado (worker/lib/mercado.js). Aparte de «ia» a propósito: la ficha
 // técnica reemplaza las notas `origen: "ia"` de tipo cifras, y el catálogo es una nota de cifras que no es suya.
 export const ORIGENES = Object.freeze(["repositorio", "documento", "manual", "ia", "app", "mercado"]);
 
 /** Los tipos que entran SIEMPRE en el contexto, sin competir en la búsqueda. */
-export const SIEMPRE = Object.freeze(["ficha", "cifras"]);
+export const SIEMPRE = Object.freeze(["ficha", "cifras", "pautas"]);
 
 /**
  * Cuánto pesa cada tipo en una búsqueda: el canon gana a un documento
@@ -94,7 +98,8 @@ export function limpiarNota(entrada = {}) {
       titulo,
       texto,
       tipo,
-      interna: entrada.interna ? 1 : 0,
+      // Una pauta interna no llegaría a lo que escribe: no tendría para qué existir.
+      interna: entrada.interna && tipo !== "pautas" ? 1 : 0,
       fuente: String(entrada.fuente ?? "").slice(0, 300),
       origen: ORIGENES.includes(entrada.origen) ? entrada.origen : "manual",
     },
@@ -138,6 +143,7 @@ export function clasificarArchivo(ruta) {
  */
 export function grupoDe(nota) {
   if (nota.tipo === "ficha" || nota.tipo === "cifras") return "Ficha y cifras";
+  if (nota.tipo === "pautas") return "Pautas para escribir";
   // Los informes de otros sistemas se llaman por su fecha («2026-09.md»): un lóbulo por cada uno sería un lóbulo de una nota.
   if (nota.tipo === "borrador") return "Informes de otros sistemas";
   if (nota.fuente) return tituloDeArchivo(nota.fuente);

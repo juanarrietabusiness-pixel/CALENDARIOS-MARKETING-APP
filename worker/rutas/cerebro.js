@@ -8,6 +8,7 @@
 //   DELETE /<cliente>/nota/<id>          Borrar una nota
 //   GET    /<cliente>/buscar?q=&para=    Buscar por pasajes (para: texto | piezas | chat)
 //   POST   /<cliente>/contexto           Lo que se le da a la IA para una tarea
+//   POST   /<cliente>/texto-ia           El asistente reescribe el texto de { postIds }: no es una corrección
 //   GET    /<cliente>/senales            Lo que ha pasado después de escribir (respuestas, resultados, correcciones)
 //   POST   /<cliente>/aprender/historial Aprender de las respuestas que el cliente ya dio { desde? }
 //   POST   /<cliente>/aprender/metricas  Comparar lo que rindió cada publicación en redes con las demás
@@ -34,7 +35,7 @@ import {
   USOS, leerNotasLigeras, reindexar, actualizarIndice, buscar, contexto, notasViejas, grafo,
 } from "../lib/cerebro/cerebro.js";
 import { importarDelRepositorio } from "../lib/cerebro/importar.js";
-import { registrarUsos, leerSenales, aprenderDelHistorial, aprenderDeLasMetricas } from "../lib/cerebro/aprender.js";
+import { registrarUsos, marcarTextoDeIA, leerSenales, aprenderDelHistorial, aprenderDeLasMetricas } from "../lib/cerebro/aprender.js";
 import { proponerReglas, propuestasPendientes, aceptarPropuesta, descartarPropuesta } from "../lib/cerebro/proponer.js";
 import { ErrorIA } from "../lib/cerebro/ia.js";
 import { ErrorRepositorio } from "../lib/cerebro/repositorio.js";
@@ -177,6 +178,12 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
       }
     }
     return json(c);
+  }
+
+  // El asistente va a reescribir textos de estas publicaciones: lo que llegue es de la IA, no una corrección.
+  if (sub === "texto-ia" && metodo === "POST") {
+    const b = (await cuerpo(req)) ?? {};
+    return json({ marcadas: await marcarTextoDeIA(acceso, clienteId, Array.isArray(b.postIds) ? b.postIds : []) });
   }
 
   if (sub === "senales" && metodo === "GET") {

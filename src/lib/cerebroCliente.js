@@ -4,9 +4,9 @@
 // Todo puro. La generación pide al Worker (`/api/cerebro/<id>/contexto`)
 // dos cosas distintas, y este archivo dice cómo se arma cada una:
 //
-//   · LO ESTABLE: la ficha técnica y las cifras vigentes. Son lo mismo en
-//     todas las tandas de una generación, así que van en el bloque que se
-//     cachea (`lib/contextoADN.js`).
+//   · LO ESTABLE: la ficha técnica, las cifras vigentes y las pautas para
+//     escribir. Son lo mismo en todas las tandas de una generación, así que
+//     van en el bloque que se cachea (`lib/contextoADN.js`).
 //   · LOS PASAJES: lo que esa tanda necesita. Cambian con las
 //     publicaciones —una tanda de sofás pide sofás, la siguiente pide
 //     hashtags—, así que van detrás de la marca de caché, con lo que
@@ -58,12 +58,29 @@ export function crearMemoriaCorta(vidaMs = 60_000, ahora = () => Date.now()) {
 /** El contexto del cerebro que usa el asistente, por cliente. La pestaña Cerebro lo suelta al cambiar algo. */
 export const contextoDelChat = crearMemoriaCorta();
 
-/** Lo que va en el bloque cacheado: la ficha y las cifras, con su título. */
-export function textoEstableDelCerebro({ ficha = "", cifras = "" } = {}) {
+/** El título con el que viajan las pautas para escribir (las notas de tipo «pautas»). */
+export const TITULO_PAUTAS = "PAUTAS PARA ESCRIBIR (las reglas de la agencia para este cliente: se siguen SIEMPRE, por encima de cualquier ejemplo)";
+
+/** Lo que va en el bloque cacheado: la ficha, las cifras y las pautas, con su título. */
+export function textoEstableDelCerebro({ ficha = "", cifras = "", pautas = "" } = {}) {
   const partes = [];
   if (String(ficha).trim()) partes.push(`FICHA TÉCNICA\n${String(ficha).trim()}`);
   if (String(cifras).trim()) partes.push(`CIFRAS VIGENTES (lo único que se puede afirmar con números)\n${String(cifras).trim()}`);
+  if (String(pautas).trim()) partes.push(`${TITULO_PAUTAS}\n${String(pautas).trim()}`);
   return partes.length ? partes.join("\n\n") : TEXTO_SIN_FICHA;
+}
+
+/**
+ * El ADN de la ficha del cliente (cuando aún manda él: el cerebro no tiene ficha técnica) con las pautas del cerebro
+ * DELANTE. Las pautas valen aunque el cerebro no se use para lo demás: una regla de la agencia no espera a que alguien
+ * pulse «Preparar ficha con IA». Delante y no detrás a propósito: `sinCapaMaquetacion` reparte el ADN por sus archivos
+ * («--- ruta ---») y lo que va pegado al último —el prompt maestro, la receta— se iría con él; lo que va antes del
+ * primero se conserva siempre.
+ */
+export function adnConPautas(adn, pautas) {
+  const p = String(pautas ?? "").trim();
+  const a = String(adn ?? "");
+  return p ? [`${TITULO_PAUTAS}\n${p}`, a.trim()].filter(Boolean).join("\n\n") : a;
 }
 
 const MAX_CONSULTA = 1500;

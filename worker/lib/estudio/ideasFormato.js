@@ -8,7 +8,7 @@
 // ============================================================
 
 import { llamarIA } from "../cerebro/ia.js";
-import { contexto as contextoCerebro } from "../cerebro/cerebro.js";
+import { contexto as contextoCerebro, textoParaEscribir } from "../cerebro/cerebro.js";
 import { leerMercado } from "../mercado.js";
 import { kitDe } from "./kit.js";
 import { productosActivos, lineaDeProducto, resumenGeneral } from "../../../src/lib/estudioMercado.js";
@@ -31,7 +31,7 @@ export async function ideasDeFormato(env, acceso, cliente, formato, datos = {}) 
   let contexto = "";
   try {
     const c = await contextoCerebro(env, acceso, cliente.id, tema || `ideas ${formato} contenido beneficios público`, { para: "texto", presupuesto: 4000 });
-    contexto = [c.ficha, c.pasajes].filter(Boolean).join("\n\n");
+    contexto = textoParaEscribir(c);
   } catch { /* sin cerebro */ }
   const r = await llamarIA(env, acceso, cliente, {
     prompt: pedidoDeIdeasFormato({

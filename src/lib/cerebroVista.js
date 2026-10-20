@@ -10,6 +10,7 @@
 export const TIPOS_VISTA = Object.freeze({
   ficha: { nombre: "Ficha técnica", ayuda: "La tarjeta corta que la IA lee siempre" },
   cifras: { nombre: "Cifras", ayuda: "Precios, plazos y teléfonos vigentes; la IA los lee siempre" },
+  pautas: { nombre: "Pautas para escribir", ayuda: "Reglas de redacción, estructuras de guion y lo que la IA no hace nunca; la IA las lee SIEMPRE que escribe (chat, ideas, guiones, Estudio)" },
   marca: { nombre: "Marca", ayuda: "Tono, personas, límites: lo que define a la marca" },
   maquetacion: { nombre: "Maquetación", ayuda: "Plantillas y medidas para pedirle las piezas a Meta AI; no entra en los textos" },
   documento: { nombre: "Documento", ayuda: "Lo importado o subido que no es canon" },
@@ -20,12 +21,27 @@ export const TIPOS_VISTA = Object.freeze({
 });
 
 /** Los filtros por tipo, en el orden en que se ofrecen. */
-export const FILTROS_TIPO = Object.freeze(["todas", "ficha", "cifras", "marca", "mercado", "documento", "nota", "maquetacion", "borrador"]);
+export const FILTROS_TIPO = Object.freeze(["todas", "ficha", "cifras", "pautas", "marca", "mercado", "documento", "nota", "maquetacion", "borrador"]);
+
+/** Los tipos que el asistente puede proponer guardar en el cerebro, en este orden. */
+export const TIPOS_PROPONIBLES = Object.freeze(["pautas", "nota", "decision", "marca"]);
+
+/**
+ * Lo que propone el modelo, limpio: un tipo que no se puede proponer pasa a «nota», y título y texto se recortan a
+ * lo que acepta el cerebro. Pura.
+ */
+export function propuestaLimpia(entrada = {}) {
+  return {
+    tipo: TIPOS_PROPONIBLES.includes(entrada.tipo) ? entrada.tipo : "nota",
+    titulo: String(entrada.titulo ?? "").trim().slice(0, 140),
+    texto: String(entrada.texto ?? "").trim().slice(0, 20_000),
+  };
+}
 
 export const nombreDeTipo = (tipo) => TIPOS_VISTA[tipo]?.nombre ?? "Nota";
 
-/** Orden de las notas: la ficha y las cifras primero, luego por tipo y por título. */
-const PESO = { ficha: 0, cifras: 1, marca: 2, mercado: 3, decision: 4, documento: 5, nota: 6, maquetacion: 7, borrador: 8 };
+/** Orden de las notas: la ficha, las cifras y las pautas primero, luego por tipo y por título. */
+const PESO = { ficha: 0, cifras: 1, pautas: 1.5, marca: 2, mercado: 3, decision: 4, documento: 5, nota: 6, maquetacion: 7, borrador: 8 };
 export function ordenarNotas(notas) {
   return [...notas].sort((a, b) => (PESO[a.tipo] ?? 9) - (PESO[b.tipo] ?? 9) || a.titulo.localeCompare(b.titulo, "es"));
 }

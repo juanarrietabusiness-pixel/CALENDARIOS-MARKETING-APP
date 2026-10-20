@@ -11,7 +11,7 @@
 // ============================================================
 
 import { llamarIA } from "../cerebro/ia.js";
-import { contexto as contextoCerebro } from "../cerebro/cerebro.js";
+import { contexto as contextoCerebro, textoParaEscribir } from "../cerebro/cerebro.js";
 import { leerMercado } from "../mercado.js";
 import { productosParaPlan, lineaDeProducto, resumenGeneral, limpiarEstudio } from "../../../src/lib/estudioMercado.js";
 import { fechasDelMes } from "../../../src/lib/fechasEspeciales.js";
@@ -44,7 +44,7 @@ export async function estrategiaDelMes(env, acceso, cliente, datos = {}) {
   let contexto = "";
   try {
     const c = await contextoCerebro(env, acceso, cliente.id, "estrategia campaña objetivo público beneficios temporada", { para: "texto", presupuesto: 4000 });
-    contexto = [c.ficha, c.pasajes].filter(Boolean).join("\n\n");
+    contexto = textoParaEscribir(c);
   } catch { /* sin cerebro */ }
   // Lo que mejor funcionó el mes anterior (una lectura: sólo columnas).
   const ant = month === 0 ? { y: year - 1, m: 11 } : { y: year, m: month - 1 };
