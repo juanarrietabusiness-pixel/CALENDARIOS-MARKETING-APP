@@ -9,6 +9,7 @@ import { conversarIA, leerResumenChat, resumirChat, buildChatSystemPrompt, getCh
 import GuardarEnCerebro from "./GuardarEnCerebro";
 import "./ChatPanel.css";
 import { guardarNota, avisarTextoDeIA } from "../lib/cerebro";
+import { crearDictado, unirDictado } from "../lib/dictado";
 import { uid, compressImage } from "../utils";
 import { leerHora, MAL, aplicarLote } from "../lib/lote";
 import { partirMensaje, marcarImagen, marcarContexto, FORMATOS_IMAGEN, INSTRUCCION_PIEZAS, INSTRUCCION_ADJUNTOS } from "../lib/mensajeChat";
@@ -23,6 +24,9 @@ import { ponerEnDia } from "../lib/subir";
 import { mesDeFecha, mismoMes } from "../lib/meses";
 
 const MAX_ADJUNTOS = 6;
+const CLAVE_AMPLIADO = "chat-ampliado";
+/** Hasta dónde crece la caja de escribir, en parte del alto de la pantalla; luego desplaza por dentro. */
+const ALTO_MAX_CAJA = 0.4;
 // Vueltas del navegador con herramientas propias. Las del servidor
 // (web, cerebro, consultas) no cuentan: las encadena el Worker.
 const MAX_VUELTAS = 8;
@@ -64,6 +68,12 @@ export default function ChatPanel({
   // Lo que el asistente propone guardar en el cerebro, a la espera de que la persona decida.
   const [propuestaCerebro, setPropuestaCerebro] = useState(null);
   const [listening, setListening] = useState(false);
+  // Lo que se está diciendo y aún no se cierra: se ve en gris debajo de la caja y entra si se envía así.
+  const [provisional, setProvisional] = useState("");
+  // Pantalla completa: se recuerda por navegador.
+  const [ampliado, setAmpliado] = useState(() => {
+    try { return localStorage.getItem(CLAVE_AMPLIADO) === "1"; } catch { return false; }
+  });
   const [adjuntos, setAdjuntos] = useState([]);
   const [bancoAbierto, setBancoAbierto] = useState(false);
   const [progreso, setProgreso] = useState("");
@@ -78,7 +88,8 @@ export default function ChatPanel({
   const inputRef = useRef(null);
   const fileRef = useRef(null);
   const recognitionRef = useRef(null);
-  const dialogRef = useDialogA11y(onClose, { activo: !acoplado });
+  // Ampliado tapa toda la pantalla: es un diálogo aunque esté acoplado, y Escape primero lo REDUCE.
+  const dialogRef = useDialogA11y(ampliado ? () => setAmpliado(false) : onClose, { activo: !acoplado || ampliado });
   const inputId = useId();
   const clientId = client?.dbId || client?.id;
   const raizDrive = idDeCarpeta(client?.driveFolder);
@@ -137,26 +148,31 @@ export default function ChatPanel({
   }, [loadingHistory]);
 
   useEffect(() => {
-    return () => {
-      if (recognitionRef.current) {
-        try { recognitionRef.current.stop(); } catch { /* ya parado */ }
-      }
-    };
-  }, []);
+    try { localStorage.setItem(CLAVE_AMPLIADO, ampliado ? "1" : "0"); } catch { /* sin almacenamiento: no se recuerda */ }
+  }, [ampliado]);
 
+  // La caja crece con lo escrito o lo dictado (también cuando el texto llega del micrófono, no sólo al teclear), hasta
+  // ALTO_MAX_CAJA de la pantalla; al enviar vuelve a su tamaño.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, Math.round(window.innerHeight * ALTO_MAX_CAJA))}px`;
+  }, [input, ampliado]);
+
+  useEffect(() => () => recognitionRef.current?.cortar(), []);
+
+  // El dictado sigue hasta que se vuelve a pulsar (src/lib/dictado.js): se reenciende si el navegador lo corta.
   const toggleVoice = useCallback(async () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) {
       setError("Tu navegador no soporta dictado por voz.");
       return;
     }
-
-    if (listening && recognitionRef.current) {
-      recognitionRef.current.stop();
-      setListening(false);
+    if (recognitionRef.current?.escuchando) {
+      recognitionRef.current.parar();
       return;
     }
-
     if (navigator.mediaDevices?.getUserMedia) {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -166,36 +182,17 @@ export default function ChatPanel({
         return;
       }
     }
-
-    const recognition = new SR();
-    recognition.lang = "es-PA";
-    recognition.interimResults = false;
-    recognition.continuous = false;
-
-    recognition.onresult = (e) => {
-      const transcript = Array.from(e.results)
-        .map((r) => r[0].transcript)
-        .join("");
-      setInput((prev) => prev ? prev + " " + transcript : transcript);
-      setListening(false);
-    };
-    recognition.onerror = (ev) => {
-      setListening(false);
-      if (ev.error === "aborted" || ev.error === "not-allowed") return;
-      const msgs = {
-        "no-speech": "No se detectó voz. Intenta de nuevo.",
-        "audio-capture": "No se encontró micrófono. Conecta uno e intenta de nuevo.",
-        "network": "Error de red al procesar la voz.",
-      };
-      const msg = msgs[ev.error] ?? `Error de dictado: ${ev.error || "desconocido"}.`;
-      if (msg) setError(msg);
-    };
-    recognition.onend = () => setListening(false);
-
-    recognitionRef.current = recognition;
-    try { recognition.start(); } catch { setError("No se pudo iniciar el dictado."); setListening(false); return; }
-    setListening(true);
-  }, [listening]);
+    setError("");
+    const dictado = crearDictado({
+      SR,
+      alFinal: (texto) => setInput((prev) => unirDictado(prev, texto)),
+      alProvisional: setProvisional,
+      alEstado: setListening,
+      alError: setError,
+    });
+    recognitionRef.current = dictado;
+    dictado.empezar();
+  }, []);
 
   const agregarAdjuntos = useCallback((nuevos) => {
     const lista = [...adjuntos];
@@ -670,8 +667,10 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
   }, [chatMode, client, clientId, calId, onUpdateCal, onCrearEnOtroMes, memories, resolveClient, onSelectClient, pedirGuardarEnCerebro]);
 
   const handleSend = useCallback(async () => {
-    const text = input.trim();
+    // Enviar apaga el micrófono, y lo que se estaba diciendo va en el mensaje.
+    const text = (recognitionRef.current?.escuchando ? unirDictado(input, provisional) : input).trim();
     if ((!text && !adjuntos.length) || loading) return;
+    recognitionRef.current?.cortar();
 
     const enviados = adjuntos;
     setInput("");
@@ -857,7 +856,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       setEnVivo({ texto: "", pensando: "", pasos: [] });
       for (const a of enviados) if (a.origen === "subida") URL.revokeObjectURL(a.preview);
     }
-  }, [input, loading, messages, client, clientId, chatMode, memories, executeToolCall, adjuntos, prepararAdjuntos, buildGlobalSystemPrompt, getGlobalTools, onAddIdea, resumen]);
+  }, [input, provisional, loading, messages, client, clientId, chatMode, memories, executeToolCall, adjuntos, prepararAdjuntos, buildGlobalSystemPrompt, getGlobalTools, onAddIdea, resumen]);
 
   const handleClear = useCallback(async () => {
     if (chatMode === "client" && clientId) {
@@ -891,12 +890,6 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     }
   };
 
-  const autoGrow = (e) => {
-    const el = e.target;
-    el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 120) + "px";
-  };
-
   const hasSpeechAPI = typeof window !== "undefined" &&
     (window.SpeechRecognition || window.webkitSpeechRecognition);
 
@@ -904,11 +897,12 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
   const panelLabel = isGlobal ? "Agente de la agencia" : `Chat con asistente de ${client?.name || ""}`;
 
   return (
-    <div className={acoplado ? "chat-acoplado" : undefined} style={acoplado ? undefined : { position: "fixed", inset: 0, zIndex: 200, display: "flex", justifyContent: "flex-end" }}>
+    <div className={acoplado && !ampliado ? "chat-acoplado" : undefined} style={acoplado && !ampliado ? undefined : { position: "fixed", inset: 0, zIndex: 200, display: "flex", justifyContent: "flex-end" }}>
       {/* Acoplado —pantalla ancha— es un panel al lado del contenido, no
           un diálogo: sin fondo oscuro, sin foco atrapado y con el resto
-          de la pantalla usable. */}
-      {!acoplado && (
+          de la pantalla usable. Ampliado ocupa la pantalla entera y vuelve
+          a ser un diálogo. */}
+      {!acoplado && !ampliado && (
         <button
           type="button"
           aria-label="Cerrar chat"
@@ -918,11 +912,12 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       )}
       <div
         ref={dialogRef}
-        role={acoplado ? "complementary" : "dialog"}
-        aria-modal={acoplado ? undefined : "true"}
+        className={ampliado ? "chat-ampliado" : undefined}
+        role={acoplado && !ampliado ? "complementary" : "dialog"}
+        aria-modal={acoplado && !ampliado ? undefined : "true"}
         aria-label={panelLabel}
         style={{
-          width: acoplado ? "100%" : 420,
+          width: acoplado || ampliado ? "100%" : 420,
           maxWidth: "100vw",
           height: "100%",
           background: "var(--surface)",
@@ -991,6 +986,16 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
                 <Icon name="trash" size={18} />
               </button>
             )}
+            <button
+              type="button"
+              className="btn-icon chat-ampliar"
+              onClick={() => setAmpliado((a) => !a)}
+              aria-pressed={ampliado}
+              aria-label={ampliado ? "Reducir el asistente" : "Ampliar el asistente a pantalla completa"}
+              title={ampliado ? "Reducir (Escape)" : "Ampliar a pantalla completa"}
+            >
+              <Icon name={ampliado ? "collapse" : "expand"} size={18} />
+            </button>
             <button className="btn-icon" onClick={onClose} aria-label="Cerrar chat">
               <Icon name="close" />
             </button>
@@ -1061,7 +1066,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
         )}
 
         {/* Mensajes */}
-        <div style={{
+        <div className="chat-mensajes" style={{
           flex: 1,
           overflowY: "auto",
           padding: "var(--sp-4)",
@@ -1186,8 +1191,17 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
           />
         )}
 
+        {/* El dictado: que se sepa que sigue escuchando, y lo que se está diciendo antes de que se fije. */}
+        {listening && (
+          <div className="chat-escuchando" role="status">
+            <span className="chat-escuchando-punto" aria-hidden="true" />
+            <span><strong>Escuchando…</strong> pulsa el micrófono para parar.</span>
+            {provisional && <span className="chat-provisional">{provisional}</span>}
+          </div>
+        )}
+
         {/* Entrada */}
-        <div style={{
+        <div className="chat-entrada" style={{
           padding: "var(--sp-3) var(--sp-4)",
           paddingBottom: "calc(var(--sp-3) + var(--safe-bottom))",
           borderTop: "1px solid var(--border)",
@@ -1234,12 +1248,12 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
               onClick={toggleVoice}
               aria-label={listening ? "Detener dictado" : "Dictar por voz"}
               aria-pressed={listening}
-              title={listening ? "Detener dictado" : "Dictar por voz"}
+              title={listening ? "Detener dictado" : "Dictar por voz (escucha hasta que lo vuelvas a pulsar)"}
               disabled={loading}
+              data-escuchando={listening ? "si" : undefined}
               style={{
                 minHeight: "var(--tap)",
                 minWidth: "var(--tap)",
-                color: listening ? "var(--danger)" : undefined,
               }}
             >
               <Icon name="mic" size={18} />
@@ -1251,14 +1265,13 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
             id={inputId}
             className="input"
             value={input}
-            onChange={(e) => { setInput(e.target.value); autoGrow(e); }}
+            onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={listening ? "Escuchando…" : (isGlobal ? "Pregunta sobre tus clientes…" : "Escribe tu mensaje…")}
             rows={1}
             style={{
               flex: 1,
               resize: "none",
-              maxHeight: 120,
               minHeight: "var(--tap)",
               lineHeight: 1.5,
             }}
