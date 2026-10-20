@@ -354,11 +354,13 @@ function NotaFila({ nota, lectura, onAbrir, onInterna, onBorrar }) {
       </div>
       {!lectura && (
         <div className="cerebro-nota-acciones">
-          <button type="button" className="btn-icon" onClick={onInterna} aria-pressed={nota.interna}
-            aria-label={nota.interna ? `Permitir «${nota.titulo}» en los textos` : `Marcar «${nota.titulo}» como interna`}
-            title={nota.interna ? "Es interna: pulsa para que pueda salir en los textos" : "Marcar como interna: no saldrá en los textos que se publican"}>
-            <Icon name="lock" />
-          </button>
+          {nota.tipo !== "pautas" && (
+            <button type="button" className="btn-icon" onClick={onInterna} aria-pressed={nota.interna}
+              aria-label={nota.interna ? `Permitir «${nota.titulo}» en los textos` : `Marcar «${nota.titulo}» como interna`}
+              title={nota.interna ? "Es interna: pulsa para que pueda salir en los textos" : "Marcar como interna: no saldrá en los textos que se publican"}>
+              <Icon name="lock" />
+            </button>
+          )}
           <button type="button" className="btn-icon" onClick={onBorrar} aria-label={`Borrar «${nota.titulo}»`}><Icon name="trash" /></button>
         </div>
       )}
@@ -426,17 +428,20 @@ function EditorNota({ nota, lectura, onCerrar, onGuardar }) {
         <div className="cerebro-editor-fila">
           <div className="field">
             <label className="label" htmlFor={`${ids}-tp`}>Tipo</label>
-            <select id={`${ids}-tp`} className="input" value={f.tipo} disabled={lectura} onChange={(e) => setF({ ...f, tipo: e.target.value })}>
+            <select id={`${ids}-tp`} className="input" value={f.tipo} disabled={lectura}
+              onChange={(e) => setF({ ...f, tipo: e.target.value, interna: e.target.value === "pautas" ? false : f.interna })}>
               {Object.entries(TIPOS_VISTA).map(([k, v]) => <option key={k} value={k}>{v.nombre}</option>)}
             </select>
             <p className="hint">{TIPOS_VISTA[f.tipo]?.ayuda}</p>
           </div>
           <div className="field">
             <label className="cerebro-casilla" htmlFor={`${ids}-in`}>
-              <input id={`${ids}-in`} type="checkbox" checked={f.interna} disabled={lectura} onChange={(e) => setF({ ...f, interna: e.target.checked })} />
+              <input id={`${ids}-in`} type="checkbox" checked={f.interna} disabled={lectura || f.tipo === "pautas"} onChange={(e) => setF({ ...f, interna: e.target.checked })} />
               <span>Interna: no sale en los textos que se publican</span>
             </label>
-            <p className="hint">Para costos, márgenes, proveedores: lo que el equipo sabe y el cliente no debe leer nunca en un caption.</p>
+            <p className="hint">{f.tipo === "pautas"
+              ? "Las pautas no pueden ser internas: existen justamente para que la IA las siga al escribir."
+              : "Para costos, márgenes, proveedores: lo que el equipo sabe y el cliente no debe leer nunca en un caption."}</p>
           </div>
         </div>
 

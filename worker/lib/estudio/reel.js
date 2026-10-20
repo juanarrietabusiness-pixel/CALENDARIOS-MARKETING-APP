@@ -10,7 +10,7 @@
 // ============================================================
 
 import { llamarIA } from "../cerebro/ia.js";
-import { contexto as contextoCerebro } from "../cerebro/cerebro.js";
+import { contexto as contextoCerebro, textoParaEscribir } from "../cerebro/cerebro.js";
 import { leerMercado } from "../mercado.js";
 import { kitDe } from "./kit.js";
 import { productosActivos, lineaDeProducto, estructuraATexto } from "../../../src/lib/estudioMercado.js";
@@ -52,7 +52,7 @@ export async function guionDeReel(env, acceso, cliente, datos = {}) {
   let contexto = "";
   try {
     const c = await contextoCerebro(env, acceso, cliente.id, `${idea} contacto whatsapp beneficios`, { para: "texto", presupuesto: 3000 });
-    contexto = [c.ficha, c.pasajes].filter(Boolean).join("\n\n");
+    contexto = textoParaEscribir(c);
   } catch { /* sin cerebro */ }
   const ids = Array.isArray(datos.personajes) ? datos.personajes.map(String) : [];
   const r = await llamarIA(env, acceso, cliente, {

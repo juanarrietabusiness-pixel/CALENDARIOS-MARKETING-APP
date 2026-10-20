@@ -245,7 +245,33 @@ export async function leerNota(env, acceso, clientId, cual, { para = "texto" } =
   return { ruta, titulo: meta[ruta].ti ?? ruta, tipo: meta[ruta].t ?? "nota", interna: Boolean(meta[ruta].i), texto: textoDe(ix, ruta) };
 }
 
-/** Lo que se le da a la IA para una tarea: la ficha, las cifras y los pasajes que esa tarea necesita. */
+/** Hasta dónde llegan las pautas en un pedido: son reglas, no un manual; con más, desplazan la tarea. */
+export const MAX_PAUTAS = 8000;
+
+/** Las pautas con su título, para el pedido de quien escribe. Vacío si no hay. Pura. */
+export function bloqueDePautas(pautas) {
+  const t = String(pautas ?? "").trim();
+  return t ? `PAUTAS PARA ESCRIBIR (las reglas de la agencia para este cliente: se siguen SIEMPRE, por encima de cualquier ejemplo)\n${t}` : "";
+}
+
+/** El contexto de `contexto()` como texto para escribir: la ficha, las pautas y los pasajes. Pura. */
+export const textoParaEscribir = (c) => [c?.ficha, bloqueDePautas(c?.pautas), c?.pasajes].filter(Boolean).join("\n\n");
+
+/**
+ * Sólo las pautas de un cliente (para quien escribe sin buscar en el cerebro: la propuesta del carrusel). Vacío si no
+ * hay o si falla: una regla que no llega no puede tumbar el pedido.
+ */
+export async function pautasDe(env, acceso, clientId, { para = "texto" } = {}) {
+  try {
+    const { ix, meta } = await cargarIndice(env, acceso, clientId);
+    return Object.keys(meta).filter((r) => meta[r].t === "pautas" && !fueraDeUso(meta[r], para)).sort()
+      .map((r) => textoDe(ix, r)).filter(Boolean).join("\n\n").slice(0, MAX_PAUTAS);
+  } catch {
+    return "";
+  }
+}
+
+/** Lo que se le da a la IA para una tarea: la ficha, las cifras, las pautas y los pasajes que esa tarea necesita. */
 export async function contexto(env, acceso, clientId, consulta, { para = "texto", n = 5, per = 2, presupuesto = 9000, aprendido } = {}) {
   const { ix, meta, aristas } = await cargarIndice(env, acceso, clientId, { conGrafo: true });
   if (aprendido === undefined) aprendido = await cargarBoost(acceso, clientId);
@@ -274,6 +300,7 @@ export async function contexto(env, acceso, clientId, consulta, { para = "texto"
   return {
     ficha: unida("ficha"),
     cifras: unida("cifras"),
+    pautas: unida("pautas").slice(0, MAX_PAUTAS),
     pasajes: pack(bloques, presupuesto),
     fuentes: [...hits.map((h) => h.note), ...vecinas.map((v) => v.note)],
     // Cuántas notas le sirven a ESTE uso: 0 quiere decir que el cerebro aún no se llenó —o que todo lo que tiene

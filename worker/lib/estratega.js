@@ -13,7 +13,7 @@
 // en pausa.
 // ============================================================
 
-import { contexto as contextoCerebro } from "./cerebro/cerebro.js";
+import { contexto as contextoCerebro, bloqueDePautas } from "./cerebro/cerebro.js";
 import { llamarIA, ErrorIA } from "./cerebro/ia.js";
 import { leerMercado } from "./mercado.js";
 import { HERRAMIENTAS_WEB } from "./herramientasServidor.js";
@@ -77,6 +77,7 @@ async function contextoDelCliente(env, acceso, cliente, consulta, mercado) {
     .map((x) => `- ${x.nombre} (${x.objetivo}, ${x.estado}, ${String(x.created_at).slice(0, 10)})`);
   return [
     c?.ficha && `FICHA:\n${c.ficha}`,
+    bloqueDePautas(c?.pautas),
     c?.cifras && `CIFRAS (pueden ser internas: no se dicen en un anuncio):\n${c.cifras}`,
     c?.pasajes && `NOTAS:\n${c.pasajes}`,
     ficha && `DE LA FICHA DEL CLIENTE:\n${ficha}`,

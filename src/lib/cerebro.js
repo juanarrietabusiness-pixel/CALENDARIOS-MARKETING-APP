@@ -100,6 +100,13 @@ export const borrarNota = (clienteId, notaId) =>
   cambiando(clienteId, () => llamar(`${base(clienteId)}/nota/${encodeURIComponent(notaId)}`, { metodo: "DELETE" }));
 
 /** Buscar por pasajes. `para: "chat"` incluye lo interno: es el equipo quien mira. */
+/**
+ * El asistente va a reescribir el texto de estas publicaciones: así lo que llegue al guardar se toma como texto de la IA
+ * (la nueva línea base) y no como una corrección de la persona. Nunca lanza: es un apunte.
+ */
+export const avisarTextoDeIA = (clienteId, postIds) =>
+  llamar(`${base(clienteId)}/texto-ia`, { metodo: "POST", cuerpo: { postIds } }).catch(() => null);
+
 export const buscarEnCerebro = (clienteId, q, { para = "chat", n = 8 } = {}) =>
   llamar(`${base(clienteId)}/buscar?q=${encodeURIComponent(q)}&para=${para}&n=${n}`);
 

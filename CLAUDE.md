@@ -309,6 +309,7 @@ src/
     calendario/crearConIA.jsx  El Estudio en un diálogo dentro del panel de una publicación y de «Subir»
                           (el hook que lo abre, en hooks/useCrearConIA.jsx)
     Cerebro.jsx           La pestaña Cerebro: las notas de un cliente, filtros, buscar, añadir, subir
+    GuardarEnCerebro.jsx  «¿Lo guardo en el cerebro?»: lo que propone el asistente, corregible, a la espera de un sí
     CerebroAprendizaje.jsx  «Lo que aprende»: señales, aprender del historial y de los resultados,
                           y las reglas que la IA propone para que una persona las acepte
     CerebroGrafo.jsx      «Mapa 3D» de la pestaña: explorar, elegir una nota, ver sus vecinas (lazy)
@@ -832,6 +833,22 @@ son del servidor.
   · **Con notas y sin ficha técnica, el asistente recibe el ADN de antes, y ahora SABE que hay cerebro** («puede estar
   desactualizado; gana el cerebro»). Sin notas, no se le nombra la herramienta. El asistente general sabe que cada
   cliente tiene el suyo y lo busca con `cliente`.
+- **Las PAUTAS PARA ESCRIBIR son un tipo de nota que va SIEMPRE** (`pautas` en `SIEMPRE` de notas.js, como la ficha y
+  las cifras): estructuras de guion, reglas de redacción, lo que la IA no hace nunca. `contexto()` las da aparte
+  (`pautas`, hasta `MAX_PAUTAS`) y las quita de los pasajes; quien escribe en el Worker usa `textoParaEscribir(c)` (ficha
+  + pautas + pasajes) o `bloqueDePautas` (mercado, estratega) y la propuesta del carrusel, que no busca, `pautasDe`. En el
+  navegador van en `textoEstableDelCerebro` y, si el cliente aún no usa el cerebro, DELANTE de su ADN (`adnConPautas`):
+  detrás, `sinCapaMaquetacion` se las llevaría con el último archivo. **Una pauta no puede ser interna** (`limpiarNota`):
+  no llegaría a lo que escribe. Lo visual no las lee: para eso están las reglas del kit.
+- **El asistente ya no crea memorias: PROPONE guardar en el cerebro y la persona decide** (`guardar_en_cerebro`,
+  herramienta del NAVEGADOR: `pedirGuardarEnCerebro` en ChatPanel enseña `GuardarEnCerebro.jsx` y la promesa de la
+  herramienta no se resuelve hasta «Guardar» o «No guardar»; el turno espera). Una regla de escritura va como `pautas`.
+  Las memorias de antes se siguen leyendo y se borran por su id (`borrar_memoria`); la agencia las pasa a mano.
+- **Lo que reescribe el asistente no cuenta como corrección de la persona** (`POST /api/cerebro/<c>/texto-ia`,
+  `marcarTextoDeIA`): antes de aplicar un cambio de texto de `editar_publicacion` o del lote, el chat fecha la fila de
+  `cerebro_usos` de esas publicaciones como «se le pidió texto a la IA», y lo que llegue en el guardado es la nueva base.
+  Sólo toca las que ya tenían fila (sin ella no hay aprendizaje). Sin esto, «reescríbeme la descripción» restaba a las
+  notas que se usaron como si alguien la hubiera corregido entera.
 - **Lo que el asistente hace se guarda con su respuesta.** Va plegado como
   `[[contexto: Acciones realizadas]]`: antes sólo se guardaba el texto y
   «¿qué cambiaste ayer?» no tenía respuesta. El historial ya no se corta

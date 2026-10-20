@@ -156,7 +156,8 @@
 /* Los tipos: una franja de color en el chip, sin depender sólo del color (el nombre va escrito). */
 .cerebro-tipo { background: var(--surface-3); color: var(--text); border: 1px solid var(--border-strong); }
 .cerebro-tipo-ficha,
-.cerebro-tipo-cifras { background: var(--accent-soft); border-color: var(--accent-line); color: var(--text-muted); }
+.cerebro-tipo-cifras,
+.cerebro-tipo-pautas { background: var(--accent-soft); border-color: var(--accent-line); color: var(--text-muted); }
 .cerebro-tipo-maquetacion,
 .cerebro-tipo-borrador { color: var(--text-dim); }
 .cerebro-interna { background: var(--alt-soft); border: 1px solid var(--alt-line); color: var(--accent-alt); }

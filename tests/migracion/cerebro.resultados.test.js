@@ -327,6 +327,25 @@ describe("aprender de lo que el equipo corrigió", () => {
     expect(senales("c1", "correccion")).toEqual([]);
   });
 
+  it("lo que reescribe el ASISTENTE es la nueva base, no una corrección; lo que corrige después una persona sí cuenta", async () => {
+    // Antes «reescríbeme la descripción» en el chat se leía como que alguien la había corregido entera.
+    await generar("p1", CON_EMOJIS);
+    await new Promise((r) => setTimeout(r, 5));
+    const r = await pedir("/api/cerebro/c1/texto-ia", { method: "POST", body: { postIds: ["p1", "no-existe"] } });
+    expect(await r.json()).toEqual({ marcadas: 1 });
+    await guardar([publicacion("p1", { descripcion: OTRO }), publicacion("p2")]);
+    expect(usoDe("p1").texto.descripcion).toBe(OTRO);
+    expect(senales("c1", "correccion")).toEqual([]);
+    await guardar([publicacion("p1", { descripcion: SIN_EMOJIS }), publicacion("p2")]);
+    expect(senales("c1", "correccion")).toHaveLength(1);
+  });
+
+  it("avisar del texto del asistente es del espacio: un cliente ajeno es «no encontrado» y sólo lectura no puede", async () => {
+    await generar("p1", CON_EMOJIS);
+    expect((await pedir("/api/cerebro/c-ajeno/texto-ia", { method: "POST", body: { postIds: ["p1"] } })).status).toBe(404);
+    expect((await pedir("/api/cerebro/c1/texto-ia", { method: "POST", body: { postIds: ["p1"] } }, COLAB)).status).toBe(403);
+  });
+
   it("el guion que llega en otra vuelta tiene su propia base y no estropea lo de la descripción", async () => {
     await generar("p1", CON_EMOJIS);
     await contexto("c1", "garantía", { postIds: ["p1"] });

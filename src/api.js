@@ -24,7 +24,7 @@ export function bloqueFechasEspeciales(client, calendar) {
 }
 import { partirSSE } from "../worker/lib/flujoAnthropic.js";
 import { sinCapaMaquetacion, prepararContenidoIA, TITULO_FICHA } from "./lib/contextoADN";
-import { textoEstableDelCerebro, consultaDeTanda, consultaDePublicacion, usaElCerebro, contextoDelChat } from "./lib/cerebroCliente";
+import { textoEstableDelCerebro, consultaDeTanda, consultaDePublicacion, usaElCerebro, contextoDelChat, adnConPautas } from "./lib/cerebroCliente";
 
 // Se reexportan porque media aplicación las importa desde aquí. Viven en
 // `lib/parse.js` para poder probarlas sin arrastrar el cliente de Supabase.
@@ -756,17 +756,19 @@ export async function pasajesDeLaPublicacion(client, adn, calendar, post, day) {
  * releerlo cuando el repositorio ha cambiado.
  */
 export async function loadADN(client, { forzar = false } = {}) {
-  // Si el cliente tiene cerebro, manda él: su ficha y sus cifras, sin releer
+  // Si el cliente tiene cerebro, manda él: su ficha, sus cifras y sus pautas, sin releer
   // el repositorio. Con `forzar` se sigue leyendo GitHub, que es lo que
   // hace la ficha del cliente para probar la conexión.
+  let pautas = "";
   if (!forzar) {
     const cerebro = await contextoDelCerebro(client?.dbId || client?.id);
     if (cerebro && usaElCerebro(cerebro, client)) {
       return { content: textoEstableDelCerebro(cerebro), sections: {}, cacheado: false, cerebro: true, notas: cerebro.notas };
     }
+    pautas = cerebro?.pautas ?? "";
   }
   if (!forzar && client.githubContext) {
-    return { content: client.githubContext, sections: {}, cacheado: true };
+    return { content: adnConPautas(client.githubContext, pautas), sections: {}, cacheado: true };
   }
   if (!client.githubRepo) return { content: "", sections: {}, cacheado: false };
   const result = await fetchGitHubADN(client.githubRepo, client.githubFolder);
@@ -787,7 +789,7 @@ export async function adnParaElChat(client) {
     contextoDelChat.poner(id, cerebro);
   }
   if (cerebro && usaElCerebro(cerebro, client)) return { content: textoEstableDelCerebro(cerebro), cerebro: true, notas: cerebro.notas };
-  return { content: client?.githubContext || "", cerebro: false, notas: cerebro?.notas ?? 0 };
+  return { content: adnConPautas(client?.githubContext || "", cerebro?.pautas), cerebro: false, notas: cerebro?.notas ?? 0 };
 }
 
 // ============================================================
@@ -938,14 +940,15 @@ ${postLines.length ? postLines.join("\n") : "  (vacío)"}`;
 
   let memoriesBlock = "";
   if (memories.length > 0) {
+    // Las memorias de antes del cerebro: se siguen leyendo hasta que la agencia las pase a mano y las borre, pero
+    // ya no crecen. Con su id: borrarlas por el texto exacto fallaba en cuanto el modelo cambiaba una letra.
     memoriesBlock = `\n\n═══════════════════════════════════════════════════════════
-MEMORIAS GUARDADAS DE ESTE CLIENTE
+MEMORIAS DE ANTES DE ESTE CLIENTE (las de antes del cerebro)
 ═══════════════════════════════════════════════════════════
-${memories.map((m) => `· ${m.content}`).join("\n")}
+${memories.map((m) => `· [${m.id}] ${m.content}`).join("\n")}
 
-Usa estas memorias como contexto para personalizar tus respuestas.
-Si el usuario te pide que recuerdes algo nuevo, usa la herramienta guardar_memoria.
-Si te pide olvidar algo, usa borrar_memoria con el contenido exacto.`;
+Úsalas como contexto. Lo NUEVO ya no va aquí: se propone con guardar_en_cerebro.
+Si te piden olvidar una, usa borrar_memoria con su id (el que va entre corchetes).`;
   }
 
   return `Eres el asistente de contenido de la agencia Juancito Ads, dedicado al cliente «${client.name}».
@@ -965,7 +968,8 @@ ${cerebro || notasCerebro > 0
 · Puedes ejecutar acciones sobre el calendario: crear, editar y eliminar publicaciones.
 · Puedes poner la HORA de publicación, de una en una o a muchas a la vez.
 · Puedes editar en lote: cambiar descripciones, guiones o ideas de múltiples publicaciones filtradas por día, formato o semana.
-· Puedes guardar preferencias y datos importantes en tu memoria para recordarlos después.
+· Puedes GUARDAR EN EL CEREBRO del cliente lo que deba recordarse, con guardar_en_cerebro: la persona
+  lo revisa, puede corregirlo y decide antes de que se guarde.
 · Puedes crear tareas para el cliente con crear_tarea.
 · Puedes añadir ideas al banco de ideas del cliente con agregar_banco_ideas.
 · Puedes GENERAR IMÁGENES con IA usando generar_imagen. La imagen se ENTREGA AQUÍ MISMO, en el
@@ -994,37 +998,51 @@ CÓMO DEBES RESPONDER:
   usa las herramientas disponibles. Confirma lo que vas a hacer antes de ejecutar acciones destructivas.
 · Para poner la misma hora a varias publicaciones, usa editar_publicaciones_lote con
   un filtro y aplicar_a_todas, no una llamada por publicación.
-· Cuando el usuario confirme una preferencia o dato que debas recordar, guárdalo con guardar_memoria.`;
+${INSTRUCCION_GUARDAR_CEREBRO}`;
+}
+
+/** Cuándo y cómo se propone guardar algo en el cerebro: lo leen el asistente de un cliente y el general. */
+export const INSTRUCCION_GUARDAR_CEREBRO = `· Cuando te pidan recordar algo («anota esto», «recuerda que…», «de ahora en adelante…», «guarda este
+  análisis»), propónlo con guardar_en_cerebro. Elige el tipo: una regla de CÓMO ESCRIBIR (tono, estructura de un
+  guion, palabras o emojis prohibidos, cómo va el llamado a la acción) es «pautas» —la IA las sigue SIEMPRE que
+  escribe para ese cliente, también en el calendario y en el Estudio—; un dato del cliente es «nota»; algo que el
+  cliente aprobó o rechazó, con su porqué, es «decision». Escríbelo limpio y completo, en frases que se entiendan
+  solas dentro de un mes, sin hablar de esta conversación. La persona lo revisa antes: si no lo guarda, no insistas.`;
+
+/** La herramienta de guardar en el cerebro. `conCliente`: en el asistente general hay que decir de qué cliente. */
+export function herramientaGuardarEnCerebro({ conCliente = false } = {}) {
+  return {
+    name: "guardar_en_cerebro",
+    description: "Propone guardar una nota en el CEREBRO del cliente. La persona la ve, puede corregirla y decide si se guarda: el resultado dice si la guardó. Úsala para lo que deba recordarse en todas las conversaciones y en todo lo que se escriba.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...(conCliente ? { cliente: { type: "string", description: "Nombre del cliente." } } : {}),
+        tipo: {
+          type: "string",
+          enum: ["pautas", "nota", "decision", "marca"],
+          description: "pautas: cómo escribir para este cliente (la IA las lee siempre). nota: un dato. decision: lo que el cliente aprobó o rechazó y por qué. marca: tono, personas o límites de la marca.",
+        },
+        titulo: { type: "string", description: "Título corto y claro. Ej.: «Estructura de los reels», «Sin emojis de fuego»." },
+        texto: { type: "string", description: "Lo que se guarda, completo y limpio, en frases que se entiendan solas." },
+      },
+      required: [...(conCliente ? ["cliente"] : []), "tipo", "titulo", "texto"],
+    },
+  };
 }
 
 export function getChatTools(hasCalendar) {
   const tools = [
-    {
-      name: "guardar_memoria",
-      description: "Guarda una preferencia, instrucción o dato importante del cliente para recordarlo en futuras conversaciones. Úsala cuando el usuario confirme algo que quiere que recuerdes siempre.",
-      input_schema: {
-        type: "object",
-        properties: {
-          contenido: {
-            type: "string",
-            description: "La frase a recordar, breve y concreta. Ej: «Nunca usar emojis de fuego», «El horario de publicación es 9am y 6pm», «Prefiere un tono formal».",
-          },
-        },
-        required: ["contenido"],
-      },
-    },
+    herramientaGuardarEnCerebro(),
     {
       name: "borrar_memoria",
-      description: "Elimina una memoria guardada que ya no aplica o que el usuario pide olvidar.",
+      description: "Borra una de las memorias de antes (las que llevan su id entre corchetes) que ya no aplica o que piden olvidar.",
       input_schema: {
         type: "object",
         properties: {
-          contenido: {
-            type: "string",
-            description: "El contenido exacto de la memoria a eliminar.",
-          },
+          id: { type: "string", description: "El id de la memoria, el que va entre corchetes." },
         },
-        required: ["contenido"],
+        required: ["id"],
       },
     },
   ];

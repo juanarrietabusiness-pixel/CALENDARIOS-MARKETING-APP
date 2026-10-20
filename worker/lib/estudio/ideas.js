@@ -8,7 +8,7 @@
 // ============================================================
 
 import { llamarIA } from "../cerebro/ia.js";
-import { contexto as contextoCerebro } from "../cerebro/cerebro.js";
+import { contexto as contextoCerebro, textoParaEscribir } from "../cerebro/cerebro.js";
 import { leerMercado } from "../mercado.js";
 import { productosActivos, lineaDeProducto, resumenGeneral } from "../../../src/lib/estudioMercado.js";
 import { planDeIdeas, pedidoDeIdeasEstudio, leerIdeasEstudio } from "../../../src/lib/ideasEstudio.js";
@@ -25,7 +25,7 @@ export async function ideasDelEstudio(env, acceso, cliente, datos = {}) {
   let contexto = "";
   try {
     const c = await contextoCerebro(env, acceso, cliente.id, tema || "ideas contenido beneficios público", { para: "texto", presupuesto: 4000 });
-    contexto = [c.ficha, c.pasajes].filter(Boolean).join("\n\n");
+    contexto = textoParaEscribir(c);
   } catch { /* sin cerebro, con el catálogo y el estudio */ }
 
   const usados = new Set(plan.map((r) => r.productoId).filter(Boolean));

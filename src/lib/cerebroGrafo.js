@@ -20,6 +20,7 @@ import { TIPOS_VISTA, sinTildes } from "./cerebroVista";
 export const COLOR_TIPO = Object.freeze({
   ficha: "#FFC46B",
   cifras: "#3DDC97",
+  pautas: "#FFE27A",
   marca: "#6EA8FF",
   maquetacion: "#B58CFF",
   documento: "#5FD6E8",

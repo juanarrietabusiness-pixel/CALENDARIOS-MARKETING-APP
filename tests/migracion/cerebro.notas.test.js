@@ -227,10 +227,10 @@ describe("derivados de una nota", () => {
 });
 
 describe("autoridad", () => {
-  it("el canon pesa más que un documento y un borrador casi nada; la ficha y las cifras no compiten", () => {
+  it("el canon pesa más que un documento y un borrador casi nada; la ficha, las cifras y las pautas no compiten", () => {
     expect(AUTORIDAD.marca).toBeGreaterThan(AUTORIDAD.documento);
     expect(AUTORIDAD.borrador).toBeLessThan(0.5);
-    expect(SIEMPRE).toEqual(["ficha", "cifras"]);
+    expect(SIEMPRE).toEqual(["ficha", "cifras", "pautas"]);
     for (const t of SIEMPRE) expect(AUTORIDAD[t]).toBeUndefined();
   });
 });
