@@ -7,8 +7,11 @@
 //
 //   · «Usar la imagen del post»: la misma imagen, encajada a 9:16 con
 //     fondo difuminado (o el ajuste elegido). Sin IA, sin coste.
-//   · «Crear con IA»: tres variantes de Nano Banana a partir de la imagen
-//     del post —adaptación, anuncio del post y detalle— para escoger.
+//   · «Crear con IA»: tres historias NUEVAS que complementan el post con
+//     su misma información —una pregunta, un beneficio o detalle y el
+//     llamado a la acción—, con la imagen del post de referencia del
+//     producto y del estilo. La misma imagen encajada ya la da el botón de
+//     arriba, sin coste: pedírsela a la IA era pagar por verla tres veces.
 //
 // Lo que no se escoge se descarta (se borra de R2): generar y no usar no
 // debe llenar la carpeta del cliente.
@@ -20,11 +23,18 @@ import { generateImage, getContentBankUrl, subirImagenPublicacion, feedbackImage
 import { historiaDesdeImagen } from "../../lib/medios";
 import { mediosDe, historiasDe, RETRASO_HISTORIA_MIN, LIMITES } from "../../lib/publicacion";
 
+// Los mismos ids que VARIANTES_HISTORIA de worker/rutas/imagen.js.
 const VARIANTES = [
-  ["adaptacion", "Adaptación 9:16"],
-  ["anuncio", "Anuncio del post"],
-  ["detalle", "Detalle"],
+  ["pregunta", "Pregunta"],
+  ["beneficio", "Beneficio o detalle"],
+  ["accion", "Llamado a la acción"],
 ];
+
+/** Lo que la historia tiene que contar de otra forma: la información del post, no su imagen. */
+const infoDelPost = (p) => ({
+  titulo: p.title ?? "", producto: p.producto ?? "", textoPieza: p.textoPieza ?? "",
+  idea: p.idea ?? "", descripcion: p.descripcion || p.script || "",
+});
 const RETRASOS = [0, 5, 15, 30, 60, 120];
 
 export default function HistoriasDelPost({ post, sf, clientId, colorMarca, onError }) {
@@ -54,13 +64,17 @@ export default function HistoriasDelPost({ post, sf, clientId, colorMarca, onErr
 
   const crearConIA = async () => {
     setTrabajando("ia");
-    setCandidatas(VARIANTES.map(([variante, nombre]) => ({ variante, nombre, estado: "creando" })));
-    await Promise.all(VARIANTES.map(async ([variante], i) => {
+    // Las de una tanda anterior que no se escogieron se quedan; las nuevas van detrás, cada una con su id.
+    const tanda = Date.now();
+    const nuevas = VARIANTES.map(([variante, nombre]) => ({ id: `${tanda}-${variante}`, variante, nombre, estado: "creando" }));
+    setCandidatas((c) => [...c, ...nuevas]);
+    const poner1 = (id, cambio) => setCandidatas((c) => c.map((x) => (x.id === id ? { ...x, ...cambio } : x)));
+    await Promise.all(nuevas.map(async ({ id, variante }) => {
       try {
-        const { clave } = await generateImage({ clientId, historiaDe: { src: base.src, variante } });
-        setCandidatas((c) => c.map((x, j) => (j === i ? { ...x, estado: "lista", clave, src: getContentBankUrl(clave) } : x)));
+        const { clave } = await generateImage({ clientId, historiaDe: { src: base.src, variante, post: infoDelPost(post) } });
+        poner1(id, { estado: "lista", clave, src: getContentBankUrl(clave) });
       } catch (e) {
-        setCandidatas((c) => c.map((x, j) => (j === i ? { ...x, estado: "error", error: e.message } : x)));
+        poner1(id, { estado: "error", error: e.message });
       }
     }));
     setTrabajando("");
@@ -121,7 +135,7 @@ export default function HistoriasDelPost({ post, sf, clientId, colorMarca, onErr
       {candidatas.length > 0 && (
         <ul className="historias-post-candidatas" aria-label="Propuestas de la IA">
           {candidatas.map((c) => (
-            <li key={c.variante}>
+            <li key={c.id}>
               <div className="historias-post-marco" data-estado={c.estado}>
                 {c.estado === "lista" ? <img src={c.src} alt={c.nombre} /> : c.estado === "creando" ? <span>Creando…</span> : <span>{c.error}</span>}
               </div>
@@ -142,12 +156,12 @@ export default function HistoriasDelPost({ post, sf, clientId, colorMarca, onErr
           <Icon name="image" size={16} /> {trabajando === "post" ? "Preparando…" : "Usar la imagen del post"}
         </button>
         <button type="button" className="btn btn-secondary btn-sm" disabled={!base || !!trabajando || historias.length >= maximo} onClick={crearConIA}>
-          <Icon name="sparkles" size={16} /> {trabajando === "ia" ? "Creando 3 propuestas…" : "Crear 3 con IA"}
+          <Icon name="sparkles" size={16} /> {trabajando === "ia" ? "Creando 3 propuestas…" : candidatas.length ? "Otras 3 con IA" : "Crear 3 con IA"}
         </button>
       </div>
       <p className="hint">
         {base
-          ? "La historia sale sola a la hora elegida. Deja espacio arriba y abajo para el nombre de la cuenta y los stickers, que se ponen desde el teléfono. Cada imagen con IA cuesta unos 4 céntimos."
+          ? "La historia sale sola a la hora elegida. «Usar la imagen del post» la encaja tal cual; con IA salen tres historias distintas que complementan el post con su misma información (una pregunta, un beneficio y el llamado a la acción). Los stickers se ponen desde el teléfono. Cada imagen con IA cuesta unos 4 céntimos."
           : "Primero añade una imagen al post: las historias se preparan a partir de ella."}
       </p>
     </section>

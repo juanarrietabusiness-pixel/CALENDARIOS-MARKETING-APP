@@ -19,6 +19,8 @@ import { llamarMuseImage } from "../lib/estudio/meta.js";
 import { llamarGemini, aBase64, ErrorMotor } from "../lib/estudio/gemini.js";
 import { registrarImagenGenerada } from "../lib/estudio/galeria.js";
 import { medidasDe } from "../lib/estudio/archivos.js";
+import { bloqueDeMarca } from "../../src/lib/kitMarca.js";
+import { kitDe } from "../lib/estudio/kit.js";
 
 const MAX_REFS = 5;
 
@@ -65,19 +67,61 @@ function construirPrompt(datos) {
 }
 
 /**
- * Las historias que salen de un post. La imagen del post va como BASE
- * (no como inspiración): lo que se pide es la misma pieza llevada a 9:16,
- * no otra nueva. Tres variantes para escoger.
+ * Las historias que ACOMPAÑAN a un post. «Usar la imagen del post» (en el
+ * navegador, sin IA) ya da la misma pieza encajada a 9:16; lo que se le
+ * pide a la IA es lo que esa no da: otra pieza con la MISMA información
+ * —el mismo producto, la misma oferta, el mismo tema— que complemente al
+ * post en vez de repetirlo. Antes las tres eran la misma imagen (ampliada,
+ * en tarjeta y de cerca) y la agencia veía tres veces el post.
  *
- * Todas dejan libres las zonas seguras de una historia —arriba el nombre
- * de la cuenta, abajo la barra de respuesta— y un hueco para el sticker
- * de enlace o encuesta, que por API no se puede poner.
+ * La imagen del post va como referencia de la marca y del producto, no
+ * como base: la composición es nueva. Todas dejan libres las zonas seguras
+ * de una historia y el hueco del sticker, que por API no se puede poner.
  */
-const VARIANTES_HISTORIA = Object.freeze({
-  adaptacion: "Adapta ESTA imagen a una historia vertical 9:16. Conserva exactamente el mismo contenido, producto, personas, colores, estilo y cualquier texto que ya tenga, sin cambiarlo ni traducirlo. Completa el lienzo ampliando el fondo arriba y abajo de forma natural y coherente (sin franjas, sin bordes, sin repetir el motivo). No recortes el motivo principal: debe verse entero, centrado.",
-  anuncio: "Diseña una historia vertical 9:16 que anuncie ESTA publicación: coloca la imagen del post entera, como una tarjeta centrada con esquinas suavemente redondeadas y una sombra sutil, sobre un fondo limpio con los colores de la marca (puede ser un degradado suave o una textura sutil). Encima de la tarjeta, en letras grandes y limpias, sólo el texto «NUEVO POST». Ningún otro texto.",
-  detalle: "Crea una historia vertical 9:16 con un primer plano (detalle) del motivo principal de ESTA imagen: el mismo producto o escena, con la misma luz, colores y estilo, como si fuera una foto real tomada más cerca. Sin texto.",
+export const VARIANTES_HISTORIA = Object.freeze({
+  pregunta: {
+    nombre: "Pregunta",
+    pedido: "Una historia que ABRA la conversación sobre el tema del post: una escena nueva del mismo mundo (el mismo producto o servicio en un momento cotidiano de quien lo usa) y, arriba de la mitad, una pregunta corta (como mucho 7 palabras) que toque el problema o el deseo que resuelve. Deja libre el tercio de abajo del centro para el sticker de encuesta o de pregunta.",
+  },
+  beneficio: {
+    nombre: "Beneficio o detalle",
+    pedido: "Una historia que enseñe UN beneficio o detalle concreto del post que la imagen del post no enseña: el producto en uso, de cerca o en su contexto real, con otra composición y otro encuadre. Una sola línea de texto corta (como mucho 6 palabras) que nombre ese beneficio.",
+  },
+  accion: {
+    nombre: "Llamado a la acción",
+    pedido: "Una historia que CIERRE: el producto o servicio del post como protagonista, con la oferta o el dato clave del post (sólo si aparece en la información; un precio, copiado EXACTO) y un llamado a la acción corto («Escríbenos», «Pide el tuyo», «Toca el enlace»). Deja libre la parte de abajo del centro para el sticker de enlace.",
+  },
 });
+/** Las de antes, por si alguna pestaña abierta las sigue pidiendo. */
+const HISTORIA_ANTIGUA = Object.freeze({ adaptacion: "beneficio", anuncio: "accion", detalle: "beneficio" });
+
+/** Lo que dice el post, en pocas líneas: es la información que la historia tiene que contar de otra forma. */
+export function informacionDelPost(p = {}) {
+  const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
+  return [
+    corto(p.titulo, 120) && `Título: ${corto(p.titulo, 120)}`,
+    corto(p.producto, 80) && `Producto: ${corto(p.producto, 80)}`,
+    corto(p.textoPieza, 300) && `Texto de la pieza del post: «${corto(p.textoPieza, 300)}»`,
+    corto(p.idea, 400) && `Idea del post: ${corto(p.idea, 400)}`,
+    corto(p.descripcion, 600) && `Descripción del post: ${corto(p.descripcion, 600)}`,
+  ].filter(Boolean).join("\n");
+}
+
+export function construirPromptHistoria(variante, { clientName, visualStyle, marca = "", info = "" }) {
+  const v = VARIANTES_HISTORIA[variante] ?? VARIANTES_HISTORIA[HISTORIA_ANTIGUA[variante]] ?? VARIANTES_HISTORIA.beneficio;
+  return [
+    "Genera una imagen para una HISTORIA de Instagram (1080×1920, vertical 9:16) que acompaña a una publicación del feed.",
+    clientName ? `Marca: ${clientName}.` : "",
+    "NO repitas ni encojas la imagen del post: es otra pieza, con otra composición, que cuenta la MISMA información de otra forma. La imagen adjunta sirve para que el producto, los colores y el estilo sean los mismos.",
+    v.pedido,
+    info ? `\nLO QUE DICE EL POST (usa sólo estos datos; no inventes precios, descuentos, fechas ni promesas):\n${info}` : "",
+    "Todo texto, en español y escrito sin errores. Nada de texto pequeño.",
+    "ZONAS SEGURAS: deja libres de texto y de elementos importantes los ~250 px de arriba (ahí va el nombre de la cuenta) y los ~350 px de abajo (ahí va la barra de respuesta).",
+    marca ? `\n${marca}` : "",
+    visualStyle ? `\nGUÍA VISUAL DEL CLIENTE (respetar):\n${visualStyle}` : "",
+    "Genera SOLO la imagen, sin explicación.",
+  ].filter(Boolean).join("\n");
+}
 
 /**
  * La portada de un destacado del perfil. Instagram la enseña recortada en
@@ -91,17 +135,6 @@ function construirPromptPortada({ titulo, contenido }, { clientName, colores, vi
     `Diseño: fondo liso de color ${colores[0]}${colores[1] ? ` (o un degradado muy suave hacia ${colores[1]})` : ""}; en el centro, un icono minimalista de línea, en blanco, que represente ese tema de un vistazo.`,
     `Instagram la recorta en círculo y la enseña a unos 60 px: el icono debe caber holgado en el círculo central (60 % del ancho), ser grueso y simple, sin detalles finos.`,
     `SIN TEXTO, sin letras, sin marcos ni sombras.`,
-    visualStyle ? `\nGUÍA VISUAL DEL CLIENTE (respetar):\n${visualStyle}` : "",
-    `Genera SOLO la imagen, sin explicación.`,
-  ].filter(Boolean).join("\n");
-}
-
-function construirPromptHistoria(variante, { clientName, visualStyle }) {
-  return [
-    `Genera una imagen para una HISTORIA de Instagram (1080×1920, vertical 9:16) a partir de la imagen de la publicación que te adjunto.`,
-    clientName ? `Marca: ${clientName}.` : "",
-    VARIANTES_HISTORIA[variante] ?? VARIANTES_HISTORIA.adaptacion,
-    `ZONAS SEGURAS: deja libres de texto y de elementos importantes los ~250 px de arriba (ahí va el nombre de la cuenta) y los ~350 px de abajo (ahí va la barra de respuesta y el sticker).`,
     visualStyle ? `\nGUÍA VISUAL DEL CLIENTE (respetar):\n${visualStyle}` : "",
     `Genera SOLO la imagen, sin explicación.`,
   ].filter(Boolean).join("\n");
@@ -198,8 +231,11 @@ export async function rutaGenerarImagen(req, env, ctx) {
     if (!base) return error("No encontré la imagen del post: tiene que estar subida a la publicación.", 404);
     formatoFinal = "story";
     parts = [
-      { text: construirPromptHistoria(historia.variante, { clientName: cliente.name, visualStyle: cliente.visual_style || "" }) },
-      { text: "\nIMAGEN DE LA PUBLICACIÓN (la base):" },
+      { text: construirPromptHistoria(historia.variante, {
+        clientName: cliente.name, visualStyle: cliente.visual_style || "",
+        marca: bloqueDeMarca(kitDe(cliente)), info: informacionDelPost(historia.post && typeof historia.post === "object" ? historia.post : {}),
+      }) },
+      { text: "\nIMAGEN DE LA PUBLICACIÓN (referencia del producto y del estilo, no la base):" },
       base,
     ];
   } else if (adaptar) {

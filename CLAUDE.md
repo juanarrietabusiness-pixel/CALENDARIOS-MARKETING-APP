@@ -433,7 +433,8 @@ worker/
     chat.js               El asistente: streaming, bucle de herramientas de
                           servidor y resumen de conversaciones largas
     conversaciones.js     /api/chat/conversaciones: listar, empezar, renombrar, borrar, mensajes y el título con IA
-    imagen.js             Generación de imágenes (Gemini)
+    imagen.js             Generación de imágenes (Gemini) y las historias que complementan un post
+    trozos.js             /api/media/trozos: subir un archivo grande por partes (multiparte de R2)
     video.js              Análisis de un video del banco (Gemini)
     adn.js                Lectura del ADN de marca con el token del servidor
     drive.js              Google Drive como banco: listar, miniatura, archivo,
@@ -2181,6 +2182,10 @@ son del servidor.
   `colaPorPostPeer()`, la única lectura sin dueño que añade, en `acceso.js`.
   · **Lo que llega de PostPeer se lee con tolerancia** (`leerPublicacion`, `datosDe`): la documentación da los
   campos, no siempre el sobre. Si su forma real es otra, se arregla ahí y en nada más.
+  · **Un 202 con `success: false` NO es un rechazo** (`rechazoEnElCuerpo`): el carrusel de fotos lo contestaba así
+  mientras lo procesaba, y la cola lo daba por fallido con el texto genérico. Sólo cuenta como rechazo un `success:
+  false` que no sea 202 y traiga motivo. El id se busca también en `post._id`, `post_id` y el primero de `posts`/`items`,
+  y si no aparece, el error dice QUÉ campos llegaron: es lo primero que hay que leer.
   · **Video, o fotos (una o un carrusel).** Las fotos van con `cuerpoFotos`: de 1 a 32 (`fotosTikTok`; con un
   video en la publicación sale sólo el video), todas con la MISMA proporción y entre 1:2,13 y 2,13:1 —lo comprueba
   `revisarPublicacion` con las medidas que apunta `prepararParaRedes` (`medirImagen`)—, el título es la primera
@@ -2267,6 +2272,13 @@ son del servidor.
   son `post.historias`). Al reprogramar, lo que ya salió o está saliendo
   se SALTA en vez de fallar: si no, añadir la historia a un post ya
   publicado obligaría a borrar la fila publicada.
+- **Las historias «con IA» COMPLEMENTAN el post, no lo encogen** (`VARIANTES_HISTORIA`, `construirPromptHistoria`,
+  `informacionDelPost` en worker/rutas/imagen.js; `historiasPost.jsx`). Salían tres veces la misma imagen adaptada a
+  9:16. Ahora son tres piezas distintas con la MISMA información —una pregunta, un beneficio o detalle y el llamado a la
+  acción—: viajan título, producto, texto de la pieza, idea y descripción, el bloque de marca del kit, y la imagen del
+  post va «de referencia del producto y del estilo, no de base», con la orden de no inventar precios. «Otras 3 con IA»
+  añade una tanda nueva sin borrar las de antes. Los ids viejos (`adaptacion`, `anuncio`, `detalle`) se leen por
+  `HISTORIA_ANTIGUA`. «Usar la imagen del post» sigue siendo la del post encajada tal cual.
 - **Una tanda de historias sale una a una, y nunca se repite una.** El
   avance vive en `carga.tanda` (`i`, `ids`); una tanda que falla a medias
   queda «publicada» con cuántas faltaron. Mismo principio que
@@ -2508,6 +2520,14 @@ son del servidor.
   `sirveMedia()` (worker/index.js) pasa el `Range` a R2 y contesta 206 con
   `Content-Range` (`rangoServido()` en lib/respuesta.js). Lo vigila
   `tests/migracion/enrutado.test.js`.
+- **Un reel de 80 MB no subía, y no decía nada.** `POST /api/media` lee el formulario entero dentro del Worker: minutos
+  sin señal y, pasado de 100 MB (el tope del cuerpo de una petición en Cloudflare), no llegaba nunca. Lo de más de
+  `SUBIDA_DE_UNA_VEZ` (20 MB) va por TROZOS (`worker/rutas/trozos.js`, `subirPorTrozos` en src/lib/db.js): R2 junta las
+  partes con su subida multiparte. Los trozos miden `TAMANO_TROZO` (10 MiB): R2 exige al menos 5 MiB y que todos midan
+  lo mismo salvo el último. Cada trozo se reintenta solo (un 4xx no), y si la subida muere se abandona (`DELETE`) para no
+  dejar partes. La clave la inventa el servidor y cada paso comprueba que sea de un cliente del espacio: el navegador la
+  devuelve en cada trozo. La pantalla enseña el tamaño, el porcentaje y una `<progress>` (XHR, por `upload.onprogress`:
+  `fetch` no da el avance de la subida). **Nada de la multiparte se ha probado contra el R2 real**: el test usa un doble.
 - **Haiku 4.5 no habla el idioma de los modelos 5.** Rechaza con un 400
   `thinking: adaptive`, `output_config.effort` y las herramientas web de
   2026; razona con `budget_tokens` (≥ 1.024 y menor que `max_tokens`) y su

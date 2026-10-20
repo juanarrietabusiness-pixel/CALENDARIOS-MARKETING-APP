@@ -36,6 +36,8 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError, e
   const propia = useRef(null);
   const entrada = entradaRef ?? propia;
   const [subiendo, setSubiendo] = useState("");
+  // Lo que lleva subido el archivo de ahora (0–1), o null si no hay barra que enseñar.
+  const [progreso, setProgreso] = useState(null);
   const [escogiendo, setEscogiendo] = useState(false);
   const [encima, setEncima] = useState(false);
   const arrastrado = useRef(null);
@@ -77,9 +79,21 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError, e
     const lista = [...archivos].slice(0, maximo - medios.length);
     let nuevos = [...medios];
     for (const f of lista) {
-      setSubiendo(`Subiendo «${f.name}»…`);
+      const mb = f.size / (1024 * 1024);
+      const total = mb >= 1 ? ` de ${mb.toLocaleString("es", { maximumFractionDigits: 1 })} MB` : "";
+      setSubiendo(`Subiendo «${f.name}»${total}…`);
+      setProgreso(0);
+      let ultimo = -1;
       try {
-        const src = await subirImagenPublicacion(clientId, f);
+        const src = await subirImagenPublicacion(clientId, f, {
+          alProgreso: (bytes) => {
+            const p = Math.min(1, bytes / (f.size || 1));
+            setProgreso(p);
+            // El texto (que lee el lector de pantalla) sólo cada 10 %: con cada evento hablaría sin parar.
+            const decena = Math.floor(p * 10);
+            if (decena !== ultimo) { ultimo = decena; setSubiendo(`Subiendo «${f.name}»${total}: ${decena * 10} %`); }
+          },
+        });
         // Las medidas, para avisar YA si Instagram no aceptará la
         // proporción, y no a la hora de publicar.
         let medidas = {};
@@ -97,6 +111,7 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError, e
       }
     }
     setSubiendo("");
+    setProgreso(null);
   };
 
   const desdeSelector = async (items) => {
@@ -309,6 +324,14 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError, e
         {medios.length > 1 ? "Arrastra las miniaturas para cambiar el orden. " : ""}También puedes arrastrarlos aquí o pegarlos con Ctrl+V.
       </p>
       <div role="status" aria-live="polite" className={subiendo ? "hint" : "sr-only"}>{subiendo}</div>
+      {subiendo && progreso !== null && (
+        <progress
+          max={1}
+          value={progreso}
+          aria-label="Lo que lleva subido"
+          style={{ width: "100%", height: "var(--sp-2)", accentColor: "var(--accent)" }}
+        />
+      )}
       {escogiendo && (
         <BancoSelector
           clientId={clientId}

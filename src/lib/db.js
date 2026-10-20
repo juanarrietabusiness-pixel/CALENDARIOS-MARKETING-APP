@@ -363,13 +363,82 @@ export async function generateImage(datos) {
  * guarda en `post.image`. En el calendario va la ruta, nunca los bytes:
  * el JSON del mes crece hasta el techo de fila de D1.
  */
-export async function subirImagenPublicacion(clientId, file) {
+export async function subirImagenPublicacion(clientId, file, { alProgreso = null } = {}) {
+  const clave = file.size > SUBIDA_DE_UNA_VEZ
+    ? await subirPorTrozos(clientId, file, "posts", alProgreso)
+    : (await enviarConProgreso("POST", "/media", formularioDeSubida(clientId, file, "posts"), alProgreso)).clave;
+  return getContentBankUrl(clave);
+}
+
+/**
+ * Hasta aquí, de una vez; más grande, por trozos (worker/rutas/trozos.js).
+ * Un reel de 80 MB de una vez se quedaba minutos sin decir nada, y pasado
+ * de 100 MB —el tope de una petición en Cloudflare— no llegaba nunca.
+ */
+export const SUBIDA_DE_UNA_VEZ = 20 * 1024 * 1024;
+/** Cuántas veces se repite un trozo que falló (la red del teléfono se corta). */
+const REINTENTOS_TROZO = 3;
+
+function formularioDeSubida(clientId, file, carpeta) {
   const form = new FormData();
   form.append("archivo", file);
   form.append("clientId", clientId);
-  form.append("carpeta", "posts");
-  const { clave } = await pedir("/media", { method: "POST", body: form });
-  return getContentBankUrl(clave);
+  form.append("carpeta", carpeta);
+  return form;
+}
+
+/**
+ * Una petición con lo que lleva subido (`alProgreso(bytes)`): `fetch` no lo
+ * dice, XMLHttpRequest sí. Mismo contrato que `pedir`: el JSON, o un Error
+ * con su `estado`.
+ */
+function enviarConProgreso(metodo, ruta, cuerpo, alProgreso) {
+  return new Promise((resolver, rechazar) => {
+    const x = new XMLHttpRequest();
+    x.open(metodo, `/api${ruta}`);
+    x.setRequestHeader("X-Pestana", PESTANA);
+    if (typeof cuerpo === "string") x.setRequestHeader("Content-Type", "application/json");
+    if (alProgreso) x.upload.onprogress = (e) => alProgreso(e.loaded);
+    x.onload = () => {
+      let datos = null;
+      try { datos = JSON.parse(x.responseText); } catch { /* 502 del borde: no es JSON */ }
+      if (x.status >= 200 && x.status < 300) return resolver(datos);
+      const e = new Error(datos?.error || `La petición falló con estado ${x.status}.`);
+      e.estado = x.status;
+      e.datos = datos;
+      rechazar(e);
+    };
+    x.onerror = () => rechazar(Object.assign(new Error("Se cortó la conexión."), { estado: 0 }));
+    x.send(cuerpo);
+  });
+}
+
+/** Sube un archivo grande trozo a trozo y devuelve su clave. Si algo falla, suelta lo subido. */
+async function subirPorTrozos(clientId, file, carpeta, alProgreso) {
+  const { clave, id, tamano } = await pedir("/media/trozos", conCuerpo("POST", {
+    clientId, carpeta, nombre: file.name, tipo: file.type,
+  }));
+  const partes = [];
+  try {
+    for (let n = 1, desde = 0; desde < file.size; n++, desde += tamano) {
+      const trozo = file.slice(desde, Math.min(desde + tamano, file.size));
+      const q = new URLSearchParams({ clave, id, n: String(n) });
+      for (let intento = 1; ; intento++) {
+        try {
+          partes.push(await enviarConProgreso("PUT", `/media/trozos?${q}`, trozo, alProgreso && ((b) => alProgreso(desde + b))));
+          break;
+        } catch (e) {
+          // Un 4xx no se arregla repitiendo; un corte o un 5xx, quizá.
+          if (intento >= REINTENTOS_TROZO || (e.estado >= 400 && e.estado < 500)) throw e;
+          await new Promise((r) => setTimeout(r, 1000 * 2 ** intento));
+        }
+      }
+    }
+    return (await pedir("/media/trozos/fin", conCuerpo("POST", { clave, id, partes }))).clave;
+  } catch (e) {
+    pedir(`/media/trozos?${new URLSearchParams({ clave, id })}`, { method: "DELETE" }).catch(() => {});
+    throw e;
+  }
 }
 
 /**

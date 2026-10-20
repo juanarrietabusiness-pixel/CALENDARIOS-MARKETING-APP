@@ -88,6 +88,29 @@ function r2Falso(inicial = {}) {
     },
     async put(clave, cuerpo) { objetos.set(clave, cuerpo); },
     async delete(clave) { objetos.delete(clave); },
+    // La subida multiparte, como R2: las partes no son un objeto hasta `complete`.
+    subidas: new Map(),
+    async createMultipartUpload(clave, opciones) {
+      const uploadId = `sub-${this.subidas.size + 1}`;
+      this.subidas.set(uploadId, { clave, partes: new Map(), opciones });
+      return { uploadId, key: clave };
+    },
+    resumeMultipartUpload(clave, uploadId) {
+      const s = this.subidas.get(uploadId);
+      return {
+        async uploadPart(n, cuerpo) {
+          if (!s || s.clave !== clave) throw new Error("subida desconocida");
+          s.partes.set(n, new Uint8Array(cuerpo));
+          return { partNumber: n, etag: `e${n}` };
+        },
+        async complete(partes) {
+          if (!s || s.clave !== clave) throw new Error("subida desconocida");
+          const juntos = partes.flatMap((p) => [...s.partes.get(p.partNumber)]);
+          objetos.set(clave, new Uint8Array(juntos));
+        },
+        async abort() { if (s) s.abortada = true; },
+      };
+    },
   };
 }
 
@@ -182,6 +205,57 @@ describe("subir un archivo a /api/media", () => {
     );
     expect(res.status).toBe(401);
     expect(env.MEDIA.objetos.size).toBe(0);
+  });
+});
+
+describe("subir un archivo grande por trozos", () => {
+  const empezar = (env, cuerpo) => worker.fetch(conSesion("/api/media/trozos", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo),
+  }), env);
+  const trozo = (env, q, bytes) => worker.fetch(conSesion(`/api/media/trozos?${new URLSearchParams(q)}`, {
+    method: "PUT", body: new Uint8Array(bytes),
+  }), env);
+
+  it("empieza, sube los trozos en orden y los junta en un solo archivo del cliente", async () => {
+    const env = await entorno();
+    const r = await empezar(env, { clientId: "cliente-1", nombre: "reel.MP4", tipo: "video/mp4" });
+    expect(r.status, "la ruta de trozos no se alcanza").toBe(201);
+    const { clave, id } = await r.json();
+    expect(clave).toMatch(/^clientes\/cliente-1\/posts\/[0-9a-f-]+\.mp4$/);
+    expect(env.MEDIA.subidas.get(id).opciones.httpMetadata.contentType).toBe("video/mp4");
+
+    const p1 = await (await trozo(env, { clave, id, n: 1 }, [1, 2])).json();
+    const p2 = await (await trozo(env, { clave, id, n: 2 }, [3])).json();
+    expect(env.MEDIA.objetos.has(clave), "un trozo suelto no es un archivo").toBe(false);
+    const fin = await worker.fetch(conSesion("/api/media/trozos/fin", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clave, id, partes: [p2, p1] }),
+    }), env);
+    expect(fin.status).toBe(201);
+    expect([...env.MEDIA.objetos.get(clave)]).toEqual([1, 2, 3]);
+  });
+
+  it("un trozo a una clave de otro cliente, o inventada, no entra", async () => {
+    const env = await entorno({ clientes: ["cliente-1"] });
+    const ajena = "clientes/cliente-de-otro/posts/00000000-0000-0000-0000-000000000000.mp4";
+    expect((await trozo(env, { clave: ajena, id: "x", n: 1 }, [1])).status).toBe(404);
+    expect((await trozo(env, { clave: "clientes/cliente-1/../x.mp4", id: "x", n: 1 }, [1])).status).toBe(404);
+    expect((await empezar(env, { clientId: "cliente-de-otro", nombre: "a.mp4" })).status).toBe(404);
+  });
+
+  it("sin todos los trozos, no se junta", async () => {
+    const env = await entorno();
+    const { clave, id } = await (await empezar(env, { clientId: "cliente-1", nombre: "a.mp4", tipo: "video/mp4" })).json();
+    const fin = await worker.fetch(conSesion("/api/media/trozos/fin", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clave, id, partes: [{ n: 2, etag: "e2" }] }),
+    }), env);
+    expect(fin.status).toBe(400);
+    expect(env.MEDIA.objetos.has(clave)).toBe(false);
+  });
+
+  it("un tipo que no es imagen ni video se guarda como binario (se sirve como descarga)", async () => {
+    const env = await entorno();
+    const { id } = await (await empezar(env, { clientId: "cliente-1", nombre: "a.html", tipo: "text/html" })).json();
+    expect(env.MEDIA.subidas.get(id).opciones.httpMetadata.contentType).toBe("application/octet-stream");
   });
 });
 
