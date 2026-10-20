@@ -811,7 +811,7 @@ export async function adnParaElChat(client) {
 const VIDA_CACHE_MS = 4.5 * 60_000;
 let ultimaLlamadaChat = 0;
 
-export async function conversarIA({ messages, system, tools, clienteId = null, onEvento = () => {} }) {
+export async function conversarIA({ messages, system, tools, clienteId = null, conversacionId = null, onEvento = () => {} }) {
   const seguido = Date.now() - ultimaLlamadaChat < VIDA_CACHE_MS;
   ultimaLlamadaChat = Date.now();
   let res;
@@ -820,7 +820,7 @@ export async function conversarIA({ messages, system, tools, clienteId = null, o
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages, system, tools, clienteId, seguido }),
+      body: JSON.stringify({ messages, system, tools, clienteId, conversacionId, seguido }),
     });
   } catch {
     throw new Error("No hay conexión con el servidor. Revisa tu red.");
@@ -857,20 +857,20 @@ export async function conversarIA({ messages, system, tools, clienteId = null, o
   return fin;
 }
 
-/** El resumen guardado de la conversación de un cliente. */
-export async function leerResumenChat(clienteId) {
-  const res = await fetch(`/api/ia/chat/resumen?cliente=${encodeURIComponent(clienteId)}`, { credentials: "same-origin" });
+/** El resumen guardado de una conversación del asistente. */
+export async function leerResumenChat(conversacionId) {
+  const res = await fetch(`/api/ia/chat/resumen?conversacion=${encodeURIComponent(conversacionId)}`, { credentials: "same-origin" });
   if (!res.ok) return { resumen: "", hasta: null };
   return res.json();
 }
 
 /** Pliega lo viejo en el resumen si la conversación ya es larga. */
-export async function resumirChat(clienteId) {
+export async function resumirChat(conversacionId) {
   const res = await fetch("/api/ia/chat/resumen", {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ clienteId }),
+    body: JSON.stringify({ conversacionId }),
   });
   if (!res.ok) return null;
   return res.json();

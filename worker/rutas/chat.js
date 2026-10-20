@@ -129,6 +129,10 @@ export async function rutaChat(req, env, { acceso, ctx, usuario = null } = {}) {
     clienteActual = await acceso.leerUno("clients", { id: String(body.clienteId) });
     if (!clienteActual) return error("Cliente no encontrado", 404);
   }
+  // La conversación en la que va esta vuelta: si quien preguntó se va a mitad, la respuesta se guarda en ella.
+  const conversacion = body.conversacionId
+    ? await acceso.leerUno("chat_conversaciones", { id: String(body.conversacionId) })
+    : null;
   const ia = await prepararIA(env, acceso, { para: "chat" });
   if (ia.bloqueo) return error(ia.bloqueo, 402);
   // Con la persona que firma, el asistente también sabe pedir al Estudio (y queda dicho quién lo pidió).
@@ -220,14 +224,14 @@ export async function rutaChat(req, env, { acceso, ctx, usuario = null } = {}) {
     // navegador —si faltaba una herramienta suya, no hay respuesta que
     // guardar—.
     const guardarSiSeFue = async () => {
-      if (conectado || !clienteActual) return;
+      if (conectado || !conversacion) return;
       const texto = nuevos
         .filter((x) => x.role === "assistant")
         .flatMap((x) => x.content.filter((b) => b.type === "text").map((b) => b.text))
         .join("").trim();
       if (!texto) return;
       await acceso.insertar("chat_messages", {
-        id: uuid(), client_id: clienteActual.id, role: "assistant", content: texto, created_at: ahora(),
+        id: uuid(), client_id: conversacion.client_id ?? null, conversacion_id: conversacion.id, role: "assistant", content: texto, created_at: ahora(),
       }).catch((e) => console.error("chat: no se pudo guardar la respuesta huérfana", e));
     };
     const uso = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
@@ -316,16 +320,19 @@ const RECIENTES = 20;
 
 export async function rutaResumenChat(req, env, { acceso, metodo }) {
   const url = new URL(req.url);
-  const clienteId = metodo === "GET" ? url.searchParams.get("cliente") : (await cuerpo(req))?.clienteId;
-  if (!clienteId) return error("Falta el cliente");
-  if (!(await acceso.leerUno("clients", { id: String(clienteId) }))) return error("Cliente no encontrado", 404);
+  // Un resumen por CONVERSACIÓN: cada tema se pliega por su lado.
+  const conversacionId = metodo === "GET" ? url.searchParams.get("conversacion") : (await cuerpo(req))?.conversacionId;
+  if (!conversacionId) return error("Falta la conversación");
+  const conversacion = await acceso.leerUno("chat_conversaciones", { id: String(conversacionId) });
+  if (!conversacion) return error("Conversación no encontrada", 404);
+  const clienteId = conversacion.client_id ?? null;
 
-  const actual = await acceso.leerUno("chat_resumenes", { id: String(clienteId) });
+  const actual = await acceso.leerUno("chat_resumenes", { id: conversacion.id });
   if (metodo === "GET") return json({ resumen: actual?.content ?? "", hasta: actual?.hasta ?? null });
   if (metodo !== "POST") return error(`Método ${metodo} no permitido aquí`, 405);
   if (!env.ANTHROPIC_API_KEY) return error("El servidor no tiene configurada la clave de Anthropic", 503);
 
-  const todos = await acceso.leer("chat_messages", { client_id: String(clienteId) }, "created_at asc");
+  const todos = await acceso.leer("chat_messages", { conversacion_id: conversacion.id }, "created_at asc");
   const sinResumir = actual?.hasta ? todos.filter((m) => m.created_at > actual.hasta) : todos;
   if (sinResumir.length <= UMBRAL) return json({ resumen: actual?.content ?? "", hasta: actual?.hasta ?? null });
 
@@ -371,7 +378,7 @@ export async function rutaResumenChat(req, env, { acceso, metodo }) {
 
   const hasta = aPlegar[aPlegar.length - 1].created_at;
   await acceso.guardar("chat_resumenes", {
-    id: String(clienteId), client_id: String(clienteId), content: resumen, hasta,
+    id: conversacion.id, client_id: clienteId, conversacion_id: conversacion.id, content: resumen, hasta,
     created_at: actual?.created_at ?? ahora(), updated_at: ahora(),
   });
   return json({ resumen, hasta });

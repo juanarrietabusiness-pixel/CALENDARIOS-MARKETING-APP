@@ -606,15 +606,19 @@ describe("el asistente: streaming y bucle de herramientas de servidor", () => {
   });
 });
 
-describe("el resumen del chat", () => {
-  it("sin nada guardado devuelve un resumen vacío", async () => {
+describe("el resumen del chat (va por conversación: tests/migracion/conversaciones.test.js)", () => {
+  it("sin decir de qué conversación, 400", async () => {
     const res = await worker.fetch(conSesion("/api/ia/chat/resumen?cliente=cliente-1"), await entorno());
-    expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ resumen: "", hasta: null });
+    expect(res.status).toBe(400);
   });
 
-  it("de un cliente de otro espacio, 404", async () => {
-    const res = await worker.fetch(conSesion("/api/ia/chat/resumen?cliente=cliente-de-otro"), await entorno());
+  it("de una conversación que no es de este espacio, 404", async () => {
+    const res = await worker.fetch(conSesion("/api/ia/chat/resumen?conversacion=de-otro"), await entorno());
+    expect(res.status).toBe(404);
+  });
+
+  it("la lista de conversaciones está enrutada", async () => {
+    const res = await worker.fetch(conSesion("/api/chat/conversaciones?cliente=cliente-de-otro"), await entorno());
     expect(res.status).toBe(404);
   });
 });

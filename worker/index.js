@@ -35,6 +35,7 @@ import { avisarRespuestaCliente } from "./lib/equipo.js";
 import { rutasEquipo, rutaInvitacionPublica } from "./rutas/equipo.js";
 import { rutaIA } from "./rutas/ia.js";
 import { rutaChat, rutaResumenChat } from "./rutas/chat.js";
+import { rutasConversaciones } from "./rutas/conversaciones.js";
 import { rutaModelos, rutaConsumo, rutaGasto } from "./rutas/iaEspacio.js";
 import { rutaADN, rutaImagenADN } from "./rutas/adn.js";
 import { rutaGenerarImagen } from "./rutas/imagen.js";
@@ -368,7 +369,11 @@ export default {
         return await rutaAnalizarVideo(req, env, { acceso });
       }
       // El asistente, también aquí: sus herramientas de servidor leen D1
-      // y el repositorio del cliente, y eso se acota por el espacio.
+      // y el cerebro del cliente, y eso se acota por el espacio. Sus
+      // conversaciones (por tema, de todo el equipo), igual.
+      if (partes[0] === "chat" && partes[1] === "conversaciones") {
+        return await rutasConversaciones(req, env, { acceso, usuario, partes, metodo });
+      }
       if (partes[0] === "ia" && partes[1] === "chat" && partes[2] === "resumen") {
         return await rutaResumenChat(req, env, { acceso, metodo });
       }
