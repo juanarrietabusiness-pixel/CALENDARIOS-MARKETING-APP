@@ -25,7 +25,7 @@
 // llama hace `acceso.leerUno("clients", …)`) y nunca mezcla dos.
 // ============================================================
 
-import { buildIndex, reemplazarNota, serializar, cargar, search, staleness } from "./conocimiento.js";
+import { buildIndex, reemplazarNota, serializar, cargar, search, staleness, fold } from "./conocimiento.js";
 import { linkGraph, expand, pack, summary } from "./memoria.js";
 import { AUTORIDAD, SIEMPRE, grupoDe } from "./notas.js";
 import { cargarBoost, leerPesos, pesoDe, enlacesAprendidos } from "./pesos.js";
@@ -208,7 +208,7 @@ function pesos(meta, aprendido) {
  * y por eso allí no entran en los pasajes. `aprendido(ruta)` es un factor
  * (0,8–1,2) de lo aprendido.
  */
-export async function buscar(env, acceso, clientId, consulta, { para = "texto", n = 5, per = 2, aprendido } = {}) {
+export async function buscar(env, acceso, clientId, consulta, { para = "texto", n = 5, per = 2, aprendido, enteras = 0 } = {}) {
   const { ix, meta } = await cargarIndice(env, acceso, clientId);
   // Lo aprendido de lo que pasó con las publicaciones (pesos.js): quien no lo pide lo recibe igual.
   if (aprendido === undefined) aprendido = await cargarBoost(acceso, clientId);
@@ -217,10 +217,32 @@ export async function buscar(env, acceso, clientId, consulta, { para = "texto", 
     boost: pesos(meta, aprendido),
     excluir: (ruta) => fueraDeUso(meta[ruta], para),
   });
-  return hits.map((h) => ({
-    ruta: h.note, titulo: meta[h.note]?.ti ?? h.note, tipo: meta[h.note]?.t ?? "nota", interna: Boolean(meta[h.note]?.i),
-    pasajes: h.passages, puntos: h.score,
-  }));
+  // `enteras`: las notas de hasta tantos caracteres van ENTERAS (`texto`). Con dos pasajes por nota, una nota corta
+  // —la estructura de un guion, una lista de reglas— llegaba a medias, y lo que faltaba no existía para quien busca.
+  return hits.map((h) => {
+    const m = meta[h.note];
+    const entera = enteras > 0 && Number(m?.c) > 0 && Number(m.c) <= enteras ? textoDe(ix, h.note) : "";
+    return {
+      ruta: h.note, titulo: m?.ti ?? h.note, tipo: m?.t ?? "nota", interna: Boolean(m?.i),
+      pasajes: h.passages, puntos: h.score, ...(entera ? { texto: entera } : {}),
+    };
+  });
+}
+
+/**
+ * Una nota ENTERA, por su ruta o por su título (sin tildes; si no hay uno igual, el primero que lo contenga). → {
+ * ruta, titulo, tipo, interna, texto } o null. Respeta el uso como `buscar`: con `para: "texto"` una interna no existe.
+ */
+export async function leerNota(env, acceso, clientId, cual, { para = "texto" } = {}) {
+  const { ix, meta } = await cargarIndice(env, acceso, clientId);
+  const q = fold(String(cual ?? "").trim());
+  if (!q) return null;
+  const rutas = Object.keys(meta).filter((r) => !fueraDeUso(meta[r], para));
+  const ruta = rutas.find((r) => r === cual)
+    ?? rutas.find((r) => fold(meta[r].ti ?? "") === q)
+    ?? rutas.find((r) => fold(meta[r].ti ?? "").includes(q) || r.includes(q));
+  if (!ruta) return null;
+  return { ruta, titulo: meta[ruta].ti ?? ruta, tipo: meta[ruta].t ?? "nota", interna: Boolean(meta[ruta].i), texto: textoDe(ix, ruta) };
 }
 
 /** Lo que se le da a la IA para una tarea: la ficha, las cifras y los pasajes que esa tarea necesita. */

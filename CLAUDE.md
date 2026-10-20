@@ -411,7 +411,7 @@ worker/
                           historial, resultados y correcciones); proponer.js (la IA propone
                           reglas y una persona las decide)
     herramientasServidor.js  Lo que el asistente consulta sin el navegador:
-                          web, repositorio de GitHub, calendarios, tareas, ideas
+                          web, el cerebro (notas cortas enteras), calendarios, tareas, ideas
     equipo.js             Avisos (guardar y anunciar), historial y asignaciones
     ids.js                UUID, testigos, huellas
     bandeja/              La Bandeja: webhook.js (la firma del webhook de Meta y qué dice un aviso;
@@ -810,8 +810,8 @@ son del servidor.
   contador del mes en Equipo. `registrarConsumo()` no puede tumbar una
   respuesta: si falla, se pierde un apunte, no el guion.
 - **El asistente tiene DOS bucles, y cada herramienta vive en uno.** Las
-  de servidor (búsqueda web y lectura de páginas de Anthropic; repositorio
-  de GitHub; ver_calendario/tareas/ideas) las encadena el Worker sin
+  de servidor (búsqueda web y lectura de páginas de Anthropic; el cerebro;
+  ver_calendario/tareas/ideas) las encadena el Worker sin
   volver al navegador. Las que ESCRIBEN en el calendario abierto siguen en
   el navegador, que sabe no pisar lo que la persona está editando: cuando
   el modelo pide una, el Worker cierra el turno con `resultadosServidor`
@@ -820,6 +820,18 @@ son del servidor.
   `mensajes` se reenvía TAL CUAL: los bloques de razonamiento llevan
   firma, y tocados son un 400. Entre turnos no se reenvían: el historial
   guardado es texto.
+- **La fuente del asistente es el CEREBRO, no el repositorio** (`INSTRUCCION_SERVIDOR` en worker/rutas/chat.js,
+  `avisoDelCerebro` en api.js). Lo primero que leía era «el contexto trae un RESUMEN; si necesitas el detalle, lee el
+  repositorio de GitHub», y esa lista ni nombraba `buscar_cerebro`: lo empujaba a datos de antes de corregirlos en el
+  cerebro. Las herramientas del repositorio se QUITARON (el importador de la pestaña Cerebro sigue). Tres cosas más:
+  · **Una nota de hasta `NOTA_ENTERA` (4.000) caracteres llega entera** (`buscar(…, { enteras })`); de las largas, dos
+  pasajes con su ruta y `leer_nota_cerebro` la trae completa (también por MCP). Con dos pasajes por nota, la estructura
+  de un guion llegaba a medias.
+  · **`para_publicar: true` es el candado:** busca con `para: "texto"` y lo interno no existe; sin él, es una consulta
+  del equipo y lo interno sale marcado.
+  · **Con notas y sin ficha técnica, el asistente recibe el ADN de antes, y ahora SABE que hay cerebro** («puede estar
+  desactualizado; gana el cerebro»). Sin notas, no se le nombra la herramienta. El asistente general sabe que cada
+  cliente tiene el suyo y lo busca con `cliente`.
 - **Lo que el asistente hace se guarda con su respuesta.** Va plegado como
   `[[contexto: Acciones realizadas]]`: antes sólo se guardaba el texto y
   «¿qué cambiaste ayer?» no tenía respuesta. El historial ya no se corta

@@ -246,7 +246,7 @@ describe("el ADN del asistente", () => {
   it("sin cerebro, lo que el cliente ya lleva en su ficha —como antes—, sin releer GitHub", async () => {
     const pedidos = cerebroFalso({ notas: 0 });
     const r = await adnParaElChat({ ...cliente, githubRepo: "https://github.com/x/y" });
-    expect(r).toEqual({ content: "ADN VIEJO DE LA FICHA", cerebro: false });
+    expect(r).toEqual({ content: "ADN VIEJO DE LA FICHA", cerebro: false, notas: 0 });
     expect(pedidos.every((p) => p.url.startsWith("/api/cerebro/")), "el chat no debe disparar la lectura del repositorio").toBe(true);
     await adnParaElChat(cliente);
     expect(pedidos, "tampoco repite la pregunta: el «no hay cerebro» también se recuerda").toHaveLength(1);
@@ -254,12 +254,12 @@ describe("el ADN del asistente", () => {
 
   it("sin cerebro y sin ADN guardado, vacío: nunca lanza ni lee GitHub", async () => {
     cerebroFalso({ falla: true });
-    expect(await adnParaElChat({ id: "c1", name: "Dcasa", githubRepo: "https://github.com/x/y" })).toEqual({ content: "", cerebro: false });
+    expect(await adnParaElChat({ id: "c1", name: "Dcasa", githubRepo: "https://github.com/x/y" })).toEqual({ content: "", cerebro: false, notas: 0 });
   });
 
   it("con cerebro pero sin ficha y con un ADN guardado, el ADN guardado", async () => {
     cerebroFalso({ ficha: "" });
-    expect(await adnParaElChat(cliente)).toEqual({ content: "ADN VIEJO DE LA FICHA", cerebro: false });
+    expect(await adnParaElChat(cliente)).toEqual({ content: "ADN VIEJO DE LA FICHA", cerebro: false, notas: 12 });
   });
 
   it("cambiar el cerebro desde la pestaña suelta lo recordado: la ficha corregida llega al chat en el acto", async () => {
@@ -344,5 +344,15 @@ describe("el asistente", () => {
   it("sin cerebro no le habla de una herramienta que no aplica", async () => {
     const { buildChatSystemPrompt } = await import("../api");
     expect(buildChatSystemPrompt(cli, null, legacy, [])).not.toMatch(/buscar_cerebro/);
+  });
+
+  it("con notas pero sin ficha técnica SABE que hay cerebro y que el ADN de antes puede estar viejo", async () => {
+    // Antes recibía el ADN viejo sin una palabra del cerebro, y contestaba con datos ya corregidos allí.
+    const { buildChatSystemPrompt } = await import("../api");
+    const chat = buildChatSystemPrompt(cli, null, legacy, [], null, { notasCerebro: 12 });
+    expect(chat).toContain("Nunca versículos.");
+    expect(chat).toMatch(/YA TIENE CEREBRO \(12 notas\)/);
+    expect(chat).toMatch(/desactualizado/);
+    expect(chat).toMatch(/gana el cerebro/);
   });
 });
