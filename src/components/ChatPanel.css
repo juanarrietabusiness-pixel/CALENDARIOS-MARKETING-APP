@@ -23,3 +23,54 @@
 .chat-cerebro .field { margin: 0; }
 .chat-cerebro .cerebro-error { color: var(--danger); font-size: var(--fs-xs); }
 .chat-cerebro-acciones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+/* El micrófono escuchando: rojo y con su frase, para que se sepa que sigue encendido. */
+.btn-icon[data-escuchando="si"],
+.btn-icon[data-escuchando="si"]:hover:not(:disabled) {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.chat-escuchando {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.chat-escuchando strong { color: var(--danger); }
+.chat-escuchando-punto {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: chat-latido 1.2s ease-in-out infinite;
+}
+.chat-provisional {
+  flex-basis: 100%;
+  color: var(--text-faint);
+  font-style: italic;
+}
+@keyframes chat-latido { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .chat-escuchando-punto { animation: none; } }
+
+/* Ampliado: la pantalla entera, con la conversación en una columna de lectura cómoda. */
+.chat-ampliado { border-left: none !important; }
+.chat-ampliado .chat-mensajes,
+.chat-ampliado .chat-entrada,
+.chat-ampliado .chat-escuchando {
+  padding-inline: max(var(--sp-4), calc((100% - 860px) / 2)) !important;
+}
+/* En el teléfono el asistente ya ocupa la pantalla: ampliar no añadiría nada. Lo que sí falta es ancho para
+   escribir: con cuatro botones al lado la caja medía un tercio de la pantalla. Va arriba, entera, y los botones
+   debajo (enviar a la derecha). */
+@media (max-width: 599px) {
+  .chat-ampliar { display: none; }
+  .chat-entrada { flex-wrap: wrap; }
+  .chat-entrada textarea { order: -1; flex: 1 1 100% !important; }
+  .chat-entrada .btn-primary { margin-left: auto; }
+}

@@ -176,6 +176,8 @@ src/
                           de una publicación al Estudio y del Estudio a una publicación
     vivo.js               WebSocket: reconexión, latido, presencia
     horas.js              «9am» → «09:00» y vuelta; la hora que se TECLEA («930», «21:30») (puro)
+    dictado.js            El micrófono del asistente: escucha hasta que se vuelve a pulsar, se reenciende si el
+                          navegador lo corta, cada frase una vez, lo provisional aparte (SR inyectado)
     idioma.js             La regla del español latino neutro, puesta en toda llamada de texto (puro)
     estadoChip.js         Qué dice el chip del mes: miniatura, icono de estado, idea (puro)
     youtube.js            Cliente de /api/redes/youtube (conectar, enlace, elegir canal, privacidad)
@@ -2040,6 +2042,18 @@ son del servidor.
   `__Host-drive-oauth` de la pestaña que lo pidió. Sin la cookie, un
   enlace de conexión reenviado conectaría el Drive de otra persona al
   espacio de quien lo generó.
+- **El micrófono del asistente escucha hasta que se vuelve a pulsar** (`src/lib/dictado.js`). Estaba en
+  `continuous: false` sin provisionales: cortaba en la primera pausa (3–4 s) y no enseñaba nada hasta el final. Ahora
+  `continuous` + `interimResults`; si el navegador corta solo (Chrome tras un silencio, Safari más a menudo) se vuelve
+  a encender mientras siga «escuchando», con tope (`MAX_REENCENDIDOS_VACIOS` cortes seguidos sin oír nada) para no
+  quedarse en bucle sin permiso o sin servicio. Cada frase final entra UNA vez: cada sesión trae su lista vacía y los
+  índices vistos se apuntan. «Parar» deja entrar la frase que se estaba diciendo; ENVIAR la junta con lo provisional
+  y `cortar()` no deja entrar nada más (si no, una frase tardía aparecía sola en la caja vacía). Safari en el iPhone
+  no se ha probado: los tests usan un SpeechRecognition de mentira.
+- **«Ampliar» pone el asistente a pantalla completa** (`chat-ampliado`, se recuerda en `localStorage`): aunque esté
+  acoplado pasa a ser un DIÁLOGO (tapa todo) y Escape primero lo reduce. La caja de escribir crece con el texto —también
+  con el dictado, por eso es un efecto sobre `input` y no el `onChange`— hasta `ALTO_MAX_CAJA` (40 %) de la pantalla;
+  en el teléfono va arriba a todo el ancho y los botones debajo. Sus estilos, en `ChatPanel.css` (va con el chunk lazy).
 - **El asistente es diálogo o panel según el ancho.** Desde 1280 px se
   acopla a la derecha (`role="complementary"`, `useDialogA11y(…, {
   activo: false })`): sin foco atrapado ni fondo oscuro. Por debajo,
