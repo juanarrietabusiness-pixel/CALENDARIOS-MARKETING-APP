@@ -19,6 +19,8 @@ import { conAprobacion, resumenEnvio, estadoDelEnvio, mensajeDeEnvio } from "../
 import { sinLoNecesario } from "../lib/completitud";
 import { programarAprobadasDe } from "../lib/programarAprobadas";
 import { useEquipo } from "../hooks/useEquipo";
+import { useBancoIdeas } from "../hooks/useBancoIdeas";
+import { filtrarBanco } from "../lib/bancoIdeas";
 import { yoActual, esAdmin } from "../lib/sesionActual";
 import { fechaEnZona } from "../lib/agenda";
 import { fechasDelMes, fechasPorDia } from "../lib/fechasEspeciales";
@@ -67,7 +69,8 @@ export default function CalendarView({
   onMoverAOtroMes,
   vecinos = null,
   onAbrirVecina,
-  onUpdateClient,
+  clientes = [],
+  onAviso,
   onMoveBankToCal,
   onGuardarFechas,
   abrirPublicacion = null,
@@ -379,14 +382,19 @@ export default function CalendarView({
     // socket está caído, es lo único que queda.
   }, [cal.id, cal.shareToken, pulso]);
 
-  const ideasBank = client.ideasBank || [];
+  // El banco de ideas ÚNICO de la agencia (lib/bancoIdeas.js): las de este cliente y las generales.
+  const banco = useBancoIdeas({ pulso, onError: onAviso });
+  const ideasBank = filtrarBanco(banco.ideas, { clienteId: client.id });
 
   const addToBank = (post, sourceDate) => {
     const bankPost = { ...post, id: uid(), _originDate: sourceDate, _originCal: calId, _addedAt: new Date().toISOString() };
-    onUpdateClient({ ...client, ideasBank: [...ideasBank, bankPost] });
+    banco.anadir(bankPost, client.id);
   };
 
-  const moveBankToCalendar = (bankPost, targetDate) => onMoveBankToCal?.(bankPost, targetDate);
+  // La idea SÓLO sale del banco si entró en el calendario.
+  const moveBankToCalendar = async (bankPost, targetDate) => {
+    if (await onMoveBankToCal?.(bankPost, targetDate)) banco.quitar(bankPost.id);
+  };
 
   const calName = cal.name || (MONTHS[cal.month] + " " + cal.year);
   const approvalUrl = cal.shareToken
@@ -1283,7 +1291,7 @@ export default function CalendarView({
           onMove={movePost}
           onAddPost={(date) => setAddingPostDay(date)}
           onDropFromBank={moveBankToCalendar}
-          ideasBank={ideasBank}
+          ideasBank={banco.ideas}
           dayLabels={cal.dayLabels || {}}
           onUpdateDayLabel={(dow, value) => {
             const updated = { ...(cal.dayLabels || {}), [dow]: value };
@@ -1578,13 +1586,14 @@ export default function CalendarView({
       {/* Ideas Bank side panel */}
       {capa === "banco" && (
         <BankPanel
+          banco={banco}
           client={client}
-          onUpdateClient={onUpdateClient}
+          clientes={clientes}
           calDays={cal.days}
           onRemoveFromCal={removePostFromDay}
           onClose={cerrarCapa}
           cal={cal}
-          onMoveBankToCal={onMoveBankToCal}
+          onMoveBankToCal={moveBankToCalendar}
         />
       )}
       </div>{/* end cal-layout */}

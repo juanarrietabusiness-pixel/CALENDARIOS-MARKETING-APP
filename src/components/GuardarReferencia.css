@@ -1,0 +1,8 @@
+/* «Guardar referencia» (va con su chunk lazy). */
+.guardar-referencia { display: flex; flex-direction: column; }
+.guardar-referencia-cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.guardar-referencia-cabecera h2 { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-md); font-weight: 700; }
+.guardar-referencia-error { margin: var(--sp-3) 0 0; color: var(--danger); font-size: var(--fs-xs); }
+.guardar-referencia-botones { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-4); }
+.guardar-referencia-red { display: inline-flex; align-items: center; gap: 4px; }
+.guardar-referencia-botones .btn { min-height: var(--tap); }
