@@ -176,6 +176,9 @@ src/
                           de una publicación al Estudio y del Estudio a una publicación
     vivo.js               WebSocket: reconexión, latido, presencia
     horas.js              «9am» → «09:00» y vuelta; la hora que se TECLEA («930», «21:30») (puro)
+    conversaciones.js     Las conversaciones del asistente: título (el de la IA y el provisional), orden, cuándo (puro;
+                          también lo importa el Worker)
+    conversacionesApi.js  Cliente de /api/chat/conversaciones y la última abierta por navegador (sólo lo carga el chat)
     dictado.js            El micrófono del asistente: escucha hasta que se vuelve a pulsar, se reenciende si el
                           navegador lo corta, cada frase una vez, lo provisional aparte (SR inyectado)
     idioma.js             La regla del español latino neutro, puesta en toda llamada de texto (puro)
@@ -311,6 +314,7 @@ src/
     calendario/crearConIA.jsx  El Estudio en un diálogo dentro del panel de una publicación y de «Subir»
                           (el hook que lo abre, en hooks/useCrearConIA.jsx)
     Cerebro.jsx           La pestaña Cerebro: las notas de un cliente, filtros, buscar, añadir, subir
+    ConversacionesChat.jsx  La lista de conversaciones del asistente: abrir, nueva, renombrar, borrar (segundo toque)
     GuardarEnCerebro.jsx  «¿Lo guardo en el cerebro?»: lo que propone el asistente, corregible, a la espera de un sí
     CerebroAprendizaje.jsx  «Lo que aprende»: señales, aprender del historial y de los resultados,
                           y las reglas que la IA propone para que una persona las acepte
@@ -428,6 +432,7 @@ worker/
     iaEspacio.js          Modelos de la cuenta y consumo del mes
     chat.js               El asistente: streaming, bucle de herramientas de
                           servidor y resumen de conversaciones largas
+    conversaciones.js     /api/chat/conversaciones: listar, empezar, renombrar, borrar, mensajes y el título con IA
     imagen.js             Generación de imágenes (Gemini)
     video.js              Análisis de un video del banco (Gemini)
     adn.js                Lectura del ADN de marca con el token del servidor
@@ -454,7 +459,7 @@ worker/
                           (/api/webhooks/meta, sin sesión)
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
     plantillas.js         /api/plantillas-plan: listar, guardar (cambiar una de arranque o crear) y borrar/restaurar
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -2054,6 +2059,25 @@ son del servidor.
   acoplado pasa a ser un DIÁLOGO (tapa todo) y Escape primero lo reduce. La caja de escribir crece con el texto —también
   con el dictado, por eso es un efecto sobre `input` y no el `onChange`— hasta `ALTO_MAX_CAJA` (40 %) de la pantalla;
   en el teléfono va arriba a todo el ancho y los botones debajo. Sus estilos, en `ChatPanel.css` (va con el chunk lazy).
+- **El asistente va por CONVERSACIONES, una por tema, y las ve todo el equipo** (`chat_conversaciones`, 0043;
+  `worker/rutas/conversaciones.js`, `ConversacionesChat.jsx`). Había un hilo por cliente: o se arrastraba todo o se
+  borraba todo, y cada mensaje pagaba el historial entero. Cosas que no se ven en la pantalla:
+  · **0043 reconstruye `chat_messages` y `chat_resumenes`** (el asistente general no tiene cliente y `client_id` era NOT
+  NULL); no tienen hijas. Lo de antes pasa a «Conversación anterior» con id fijo `anterior-<cliente>` y su resumen va
+  con ella. Si alguna vez se reaplicara, no se pierde ningún mensaje, pero todos volverían a esa conversación.
+  · **El resumen es por conversación** (`chat_resumenes.id` = la conversación; `?conversacion=` en /api/ia/chat/resumen)
+  y el asistente sólo recibe el historial de la que está abierta, más el cerebro y las memorias de antes. Lo que deba
+  valer en todas se guarda con «Recordar esto» (la misma tarjeta que `guardar_en_cerebro`).
+  · **La conversación se crea con el PRIMER mensaje**, con las primeras palabras de título (`tituloProvisional`), y la
+  IA le pone el suyo tras la primera respuesta (función «título de conversación», hueco del asistente). La nueva no se
+  relee al crearla (`sinRecargar`): lo que está en pantalla ya es lo que hay.
+  · **El asistente general guarda las suyas sin cliente.** `client_id = ?` no casa con un vacío, así que su lista se
+  filtra en la ruta. Un colaborador no las ve (la capa no le enseña filas sin cliente) y no puede crearlas (403): el
+  chat general le funciona igual, sin guardar.
+  · **Cada cambio avisa** (`chat:conversaciones`): App.jsx lo pasa como evento de `window` y el panel relee su lista y,
+  si es la abierta y no está esperando respuesta, sus mensajes. Así otra persona del equipo puede pedir en la misma
+  conversación y se ve. La que tenía abierta cada persona se recuerda por navegador (`chat-ultima:<cliente>`).
+  · Las rutas de antes (`/api/clientes/<id>/chat`) se quitaron: un mensaje guardado ahí no tendría conversación.
 - **El asistente es diálogo o panel según el ancho.** Desde 1280 px se
   acopla a la derecha (`role="complementary"`, `useDialogA11y(…, {
   activo: false })`): sin foco atrapado ni fondo oscuro. Por debajo,

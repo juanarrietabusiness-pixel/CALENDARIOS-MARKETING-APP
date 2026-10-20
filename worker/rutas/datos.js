@@ -300,28 +300,7 @@ export async function rutasDatos(req, env, ctx) {
     }
 
     // ---- subrecursos del cliente ----
-    if (sub === "chat") {
-      if (metodo === "GET") {
-        const filas = await acceso.leer("chat_messages", { client_id: id }, "created_at asc");
-        return json(filas.map((f) => ({ role: f.role, content: f.content, created_at: f.created_at })));
-      }
-      if (metodo === "POST") {
-        const { role, content } = (await cuerpo(req)) ?? {};
-        if (role !== "user" && role !== "assistant") return error("Rol inválido");
-        if (!content) return error("Falta el contenido");
-        await acceso.insertar("chat_messages", {
-          id: uuid(), client_id: id, role, content, created_at: ahora(),
-        });
-        return json({ ok: true }, 201);
-      }
-      if (metodo === "DELETE") {
-        await acceso.borrar("chat_messages", { client_id: id });
-        // El resumen es de esos mensajes: borrarlos y dejarlo haría que
-        // el asistente «recordara» una conversación que ya no está.
-        await acceso.borrar("chat_resumenes", { client_id: id });
-        return sinContenido();
-      }
-    }
+    // El historial del asistente ya no es uno por cliente: va por conversaciones (worker/rutas/conversaciones.js).
 
     if (sub === "memoria") {
       if (metodo === "GET") {

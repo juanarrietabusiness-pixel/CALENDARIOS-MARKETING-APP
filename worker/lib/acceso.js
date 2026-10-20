@@ -50,6 +50,7 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "image_templates",
   "image_references",
   "chat_resumenes",
+  "chat_conversaciones",
   "consumo_ia",
   "integracion_drive",
   "integracion_meta",
@@ -129,7 +130,7 @@ export const TABLAS_POR_CALENDARIO = Object.freeze(["approvals", "comentarios_ap
  * prospecto, una cuenta sin asignar) no la ve un colaborador.
  */
 export const TABLAS_CON_CLIENTE = Object.freeze([
-  "calendars", "chat_messages", "chat_resumenes", "client_memories", "client_tasks", "content_bank",
+  "calendars", "chat_messages", "chat_resumenes", "chat_conversaciones", "client_memories", "client_tasks", "content_bank",
   "consumo_ia", "cuentas_sociales", "image_references", "image_templates", "informes", "auditorias",
   "metricas_competencia", "metricas_cuenta", "metricas_publicacion", "publicaciones_programadas",
   "cerebro_notas", "cerebro_senales", "cerebro_usos", "cerebro_memoria", "cerebro_propuestas",

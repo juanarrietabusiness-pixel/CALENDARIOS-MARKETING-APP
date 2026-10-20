@@ -10,6 +10,12 @@ import GuardarEnCerebro from "./GuardarEnCerebro";
 import "./ChatPanel.css";
 import { guardarNota, avisarTextoDeIA } from "../lib/cerebro";
 import { crearDictado, unirDictado } from "../lib/dictado";
+import ConversacionesChat from "./ConversacionesChat";
+import { tituloProvisional, TITULO_NUEVA } from "../lib/conversaciones";
+import {
+  listarConversaciones, crearConversacion, renombrarConversacion, borrarConversacion, leerMensajes, guardarMensaje,
+  titularConversacion, leerUltima, guardarUltima,
+} from "../lib/conversacionesApi";
 import { uid, compressImage } from "../utils";
 import { leerHora, MAL, aplicarLote } from "../lib/lote";
 import { partirMensaje, marcarImagen, marcarContexto, FORMATOS_IMAGEN, INSTRUCCION_PIEZAS, INSTRUCCION_ADJUNTOS } from "../lib/mensajeChat";
@@ -60,7 +66,11 @@ export default function ChatPanel({
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [loadingHistory, setLoadingHistory] = useState(chatMode === "client" && Boolean(client));
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  // Las conversaciones por tema (de todo el equipo) y la que está abierta. Sin abierta, el primer mensaje empieza una.
+  const [conversaciones, setConversaciones] = useState([]);
+  const [conversacionId, setConversacionId] = useState(null);
+  const [verLista, setVerLista] = useState(false);
   const [error, setError] = useState("");
   const [memories, setMemories] = useState([]);
   const [showMemories, setShowMemories] = useState(false);
@@ -96,48 +106,114 @@ export default function ChatPanel({
   const calRef = useRef(calendar);
   calRef.current = calendar;
 
-  const globalMsgsRef = useRef([]);
+  // De quién son las conversaciones que se ven: del cliente, o del asistente general (null).
+  const ambito = chatMode === "client" && clientId ? clientId : null;
+  const conversacionRef = useRef(null);
+  conversacionRef.current = conversacionId;
+  const loadingRef = useRef(false);
+  loadingRef.current = loading;
+  // La conversación que se acaba de empezar al enviar: sus mensajes ya están en pantalla, no se releen.
+  const sinRecargar = useRef(null);
 
   const switchMode = useCallback((newMode) => {
     if (newMode === chatMode) return;
-    if (chatMode === "global") globalMsgsRef.current = messages;
-    if (newMode === "global") {
-      setMessages(globalMsgsRef.current);
-      setLoadingHistory(false);
-      setMemories([]);
-      setShowMemories(false);
-    } else {
-      setLoadingHistory(true);
-    }
+    if (newMode === "global") { setMemories([]); setShowMemories(false); }
     setChatMode(newMode);
     setActionFeedback([]);
     setError("");
-  }, [chatMode, messages]);
+  }, [chatMode]);
 
+  // La lista de conversaciones del cliente (o del general) y las memorias de antes; se abre la que esta persona tuvo
+  // abierta la última vez, o la más reciente.
   useEffect(() => {
-    if (chatMode !== "client" || !clientId) return;
-    let alive = true;
+    let vivo = true;
+    setLoadingHistory(true);
+    setMessages([]);
+    setResumen({ resumen: "", hasta: null });
     (async () => {
       try {
-        // El historial entero: el corte en 100 mensajes era perder lo de
-        // hace semanas. Lo más viejo lo cubre el resumen.
-        const [history, mems, res] = await Promise.all([
-          db.loadChatMessages(clientId, Infinity),
-          db.loadClientMemories(clientId),
-          leerResumenChat(clientId),
+        const [lista, mems] = await Promise.all([
+          listarConversaciones(ambito),
+          ambito ? db.loadClientMemories(ambito) : Promise.resolve([]),
         ]);
-        if (alive) {
-          setMessages(history);
-          setMemories(mems);
-          setResumen(res);
-        }
+        if (!vivo) return;
+        setConversaciones(lista);
+        setMemories(mems);
+        const recordada = leerUltima(ambito);
+        const abierta = lista.find((c) => c.id === recordada) ?? lista[0] ?? null;
+        setConversacionId(abierta?.id ?? null);
+        if (!abierta) setLoadingHistory(false);
       } catch {
-        if (alive) setError("No se pudo cargar el historial.");
+        if (!vivo) return;
+        // Un colaborador no tiene conversaciones del asistente general: el chat funciona igual, sin guardar.
+        setConversaciones([]);
+        setConversacionId(null);
+        setLoadingHistory(false);
       }
-      if (alive) setLoadingHistory(false);
     })();
-    return () => { alive = false; };
-  }, [clientId, chatMode]);
+    return () => { vivo = false; };
+  }, [ambito]);
+
+  // Los mensajes y el resumen de la conversación abierta: el asistente sólo recuerda ESA.
+  useEffect(() => {
+    if (!conversacionId) return;
+    guardarUltima(ambito, conversacionId);
+    if (sinRecargar.current === conversacionId) { sinRecargar.current = null; return; }
+    let vivo = true;
+    setLoadingHistory(true);
+    Promise.all([leerMensajes(conversacionId), leerResumenChat(conversacionId)])
+      .then(([m, r]) => { if (vivo) { setMessages(m); setResumen(r); } })
+      .catch(() => { if (vivo) setError("No se pudo cargar la conversación."); })
+      .finally(() => { if (vivo) setLoadingHistory(false); });
+    return () => { vivo = false; };
+    // `ambito` no: cambiarlo ya relee la lista y escoge conversación.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversacionId]);
+
+  // Alguien del equipo empezó, renombró o borró una conversación de aquí, o escribió en la que está abierta.
+  useEffect(() => {
+    const alCambio = (e) => {
+      const ev = e.detail ?? {};
+      if ((ev.clientId ?? null) !== ambito) return;
+      listarConversaciones(ambito).then(setConversaciones).catch(() => {});
+      if (ev.conversacionId !== conversacionRef.current) return;
+      if (ev.borrada) { setConversacionId(null); setMessages([]); setResumen({ resumen: "", hasta: null }); }
+      else if (ev.mensaje && !loadingRef.current) leerMensajes(ev.conversacionId).then(setMessages).catch(() => {});
+    };
+    window.addEventListener("chat:conversaciones", alCambio);
+    return () => window.removeEventListener("chat:conversaciones", alCambio);
+  }, [ambito]);
+
+  const nuevaConversacion = useCallback(() => {
+    if (loading) return;
+    setConversacionId(null);
+    setMessages([]);
+    setResumen({ resumen: "", hasta: null });
+    setActionFeedback([]);
+    setError("");
+    setVerLista(false);
+    guardarUltima(ambito, "");
+    inputRef.current?.focus();
+  }, [loading, ambito]);
+
+  const abrirConversacion = useCallback((id) => {
+    if (loading) return;
+    setActionFeedback([]);
+    setError("");
+    setVerLista(false);
+    if (id !== conversacionId) setConversacionId(id);
+  }, [loading, conversacionId]);
+
+  const renombrar = useCallback(async (id, titulo) => {
+    const c = await renombrarConversacion(id, titulo);
+    setConversaciones((p) => p.map((x) => (x.id === id ? { ...x, titulo: c?.titulo ?? titulo } : x)));
+  }, []);
+
+  const borrarUna = useCallback(async (id) => {
+    await borrarConversacion(id);
+    setConversaciones((p) => p.filter((x) => x.id !== id));
+    if (id === conversacionId) nuevaConversacion();
+  }, [conversacionId, nuevaConversacion]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -430,6 +506,28 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     });
   }), []);
 
+  /**
+   * «Recordar esto» de una respuesta: la misma tarjeta que la herramienta guardar_en_cerebro, con la respuesta como
+   * texto para que la persona se quede sólo con lo que importa. Lo que se guarda vale en TODAS las conversaciones.
+   */
+  const recordarEnCerebro = useCallback((msg) => {
+    if (!client) return;
+    const texto = partirMensaje(msg.content)
+      .filter((b) => b.tipo === "texto" || b.tipo === "pieza")
+      .map((b) => (b.tipo === "pieza" && b.titulo ? `${b.titulo}:\n${b.texto}` : b.texto))
+      .join("\n\n").trim();
+    setPropuestaCerebro({
+      cliente: client.name,
+      entrada: { tipo: "nota", titulo: "", texto },
+      guardar: async (nota) => {
+        await guardarNota(clientId, nota);
+        setPropuestaCerebro(null);
+        setActionFeedback([{ tool: "guardar_en_cerebro", ok: true, mensaje: `Guardado en el cerebro: «${nota.titulo}»` }]);
+      },
+      descartar: () => setPropuestaCerebro(null),
+    });
+  }, [client, clientId]);
+
   const executeToolCall = useCallback(async (toolName, toolInput) => {
     if (chatMode === "global") {
       if (toolName === "ir_a_cliente") {
@@ -698,17 +796,34 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
         setProgreso("");
       }
 
-      if (chatMode === "client" && clientId) {
-        await db.saveChatMessage(clientId, "user", guardado);
+      // Sin conversación abierta, el primer mensaje empieza una (con las primeras palabras de título hasta que la IA
+      // ponga el suyo). Si no se puede —un colaborador en el asistente general—, se conversa igual, sin guardar.
+      let convId = conversacionId;
+      const primera = messages.length === 0;
+      if (!convId) {
+        try {
+          const nueva = await crearConversacion(ambito, tituloProvisional(text || pedido));
+          convId = nueva.id;
+          sinRecargar.current = nueva.id;
+          setConversaciones((p) => [nueva, ...p.filter((c) => c.id !== nueva.id)]);
+          setConversacionId(nueva.id);
+        } catch {
+          convId = null;
+        }
+      }
+      if (convId) {
+        await guardarMensaje(convId, "user", guardado);
+        const ahoraIso = new Date().toISOString();
+        setConversaciones((p) => p.map((c) => (c.id === convId ? { ...c, updated_at: ahoraIso } : c)));
       }
 
       // Conversación larga: se pliega lo viejo ANTES de montar el prompt.
       let res = resumen;
-      if (chatMode === "client" && clientId) {
+      if (convId) {
         const sinResumir = messages.filter((m) => !res.hasta || m.created_at > res.hasta).length;
         if (sinResumir > UMBRAL_RESUMEN) {
           setProgreso("Resumiendo la conversación anterior…");
-          const nuevo = await resumirChat(clientId).catch(() => null);
+          const nuevo = await resumirChat(convId).catch(() => null);
           if (nuevo) { res = nuevo; setResumen(nuevo); }
           setProgreso("");
         }
@@ -729,8 +844,8 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
         : getGlobalTools();
 
       const recientes = [...messages, { role: "user", content: guardado, created_at: userMsg.created_at }]
-        .filter((m) => chatMode !== "client" || !res.hasta || m.created_at > res.hasta)
-        .slice(chatMode === "client" ? 0 : -100)
+        .filter((m) => !res.hasta || m.created_at > res.hasta)
+        .slice(convId ? 0 : -100)
         .map((m) => ({ role: m.role, content: m.content }));
       // La API exige empezar por el usuario.
       while (recientes.length && recientes[0].role !== "user") recientes.shift();
@@ -766,8 +881,14 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
         ].filter(Boolean).join("\n\n");
         entregado = true;
         if (!contenido) return;
-        if (chatMode === "client" && clientId) {
-          await db.saveChatMessage(clientId, "assistant", contenido);
+        if (convId) {
+          await guardarMensaje(convId, "assistant", contenido);
+          // Con el primer intercambio, la IA le pone título (barato); si falla, se queda el provisional.
+          if (primera) {
+            titularConversacion(convId)
+              .then((c) => { if (c) setConversaciones((p) => p.map((x) => (x.id === c.id ? { ...x, titulo: c.titulo } : x))); })
+              .catch(() => {});
+          }
         }
         setMessages((prev) => [
           ...prev,
@@ -792,6 +913,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
           system,
           tools,
           clienteId: chatMode === "client" ? clientId : null,
+          conversacionId: convId,
           onEvento,
         });
         // TAL CUAL: los bloques de razonamiento llevan firma y la API
@@ -856,23 +978,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       setEnVivo({ texto: "", pensando: "", pasos: [] });
       for (const a of enviados) if (a.origen === "subida") URL.revokeObjectURL(a.preview);
     }
-  }, [input, provisional, loading, messages, client, clientId, chatMode, memories, executeToolCall, adjuntos, prepararAdjuntos, buildGlobalSystemPrompt, getGlobalTools, onAddIdea, resumen]);
-
-  const handleClear = useCallback(async () => {
-    if (chatMode === "client" && clientId) {
-      try {
-        await db.clearChatMessages(clientId);
-      } catch {
-        setError("No se pudo limpiar el historial.");
-        return;
-      }
-    }
-    setMessages([]);
-    setResumen({ resumen: "", hasta: null });
-    if (chatMode === "global") globalMsgsRef.current = [];
-    setError("");
-    setActionFeedback([]);
-  }, [chatMode, clientId]);
+  }, [input, provisional, loading, messages, client, clientId, chatMode, memories, executeToolCall, adjuntos, prepararAdjuntos, buildGlobalSystemPrompt, getGlobalTools, onAddIdea, resumen, conversacionId, ambito]);
 
   const handleDeleteMemory = useCallback(async (memId) => {
     try {
@@ -976,16 +1082,16 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
                 <Icon name="brain" size={18} />
               </button>
             )}
-            {messages.length > 0 && (
-              <button
-                className="btn-icon"
-                onClick={handleClear}
-                aria-label="Limpiar historial"
-                title="Limpiar historial"
-              >
-                <Icon name="trash" size={18} />
-              </button>
-            )}
+            <button
+              type="button"
+              className="btn-icon"
+              onClick={nuevaConversacion}
+              aria-disabled={loading}
+              aria-label="Nueva conversación"
+              title="Nueva conversación (la de ahora se queda en la lista)"
+            >
+              <Icon name="plus" size={18} />
+            </button>
             <button
               type="button"
               className="btn-icon chat-ampliar"
@@ -1024,7 +1130,39 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
               </button>
             </div>
           )}
+
+          {/* La conversación abierta y la lista: una por tema, de todo el equipo. */}
+          <button
+            type="button"
+            className="chat-conv-actual"
+            onClick={() => setVerLista((v) => !v)}
+            aria-expanded={verLista}
+            aria-controls={`${inputId}-conv`}
+          >
+            <Icon name="message" size={14} />
+            <span className="chat-conv-actual-titulo">
+              {conversacionId ? (conversaciones.find((c) => c.id === conversacionId)?.titulo || TITULO_NUEVA) : "Nueva conversación"}
+            </span>
+            <span className="chat-conv-actual-cuantas">{conversaciones.length} {conversaciones.length === 1 ? "conversación" : "conversaciones"}</span>
+            <Icon name={verLista ? "chevronUp" : "chevronDown"} size={14} />
+          </button>
         </div>
+
+        <div className="chat-cuerpo">
+        {verLista && (
+          <div id={`${inputId}-conv`} className={ampliado ? "chat-conv-aparte" : "chat-conv-desplegada"}>
+            <ConversacionesChat
+              conversaciones={conversaciones}
+              actualId={conversacionId}
+              onAbrir={abrirConversacion}
+              onNueva={nuevaConversacion}
+              onRenombrar={renombrar}
+              onBorrar={borrarUna}
+              lateral={ampliado}
+            />
+          </div>
+        )}
+        <div className="chat-columna">
 
         {/* Panel de memorias */}
         {!isGlobal && showMemories && memories.length > 0 && (
@@ -1083,7 +1221,9 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
               ? <GlobalEmptyState clientCount={clients.length} />
               : <EmptyState clientName={client?.name || ""} hasCalendar={Boolean(calendar)} />
           ) : (
-            messages.map((msg, i) => <ChatMessage key={i} message={msg} />)
+            messages.map((msg, i) => (
+              <ChatMessage key={i} message={msg} onRecordar={!isGlobal && client && msg.role === "assistant" && !loading ? () => recordarEnCerebro(msg) : null} />
+            ))
           )}
           {actionFeedback.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)" }}>
@@ -1287,6 +1427,8 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
             <Icon name="send" size={18} />
           </button>
         </div>
+        </div>
+        </div>
       </div>
     </div>
   );
@@ -1373,7 +1515,7 @@ function GlobalEmptyState({ clientCount }) {
   );
 }
 
-function ChatMessage({ message }) {
+function ChatMessage({ message, onRecordar = null }) {
   const isUser = message.role === "user";
   const bloques = partirMensaje(message.content);
   // Si hay piezas, cada una trae su botón: copiar además el mensaje
@@ -1393,6 +1535,12 @@ function ChatMessage({ message }) {
         if (b.tipo === "imagen") return <ImagenGenerada key={i} clave={b.clave} formato={b.formato} />;
         return <Contexto key={i} titulo={b.titulo} texto={b.texto} />;
       })}
+      {onRecordar && (
+        <button type="button" className="btn btn-ghost btn-sm chat-recordar" onClick={onRecordar}
+          title="Guardarlo en el cerebro del cliente: vale en todas las conversaciones y en todo lo que se escriba">
+          <Icon name="brain" size={14} /> Recordar esto
+        </button>
+      )}
     </div>
   );
 }
@@ -1565,7 +1713,7 @@ function ImagenGenerada({ clave, formato }) {
 
 function ActionChip({ feedback }) {
   const TOOL_LABELS = {
-    guardar_memoria: "Memoria",
+    guardar_en_cerebro: "Cerebro",
     borrar_memoria: "Memoria",
     crear_publicacion: "Calendario",
     editar_publicacion: "Calendario",

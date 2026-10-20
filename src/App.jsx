@@ -614,6 +614,12 @@ function Workspace({ session, ruta }) {
           setPulso((n) => n + 1);
           break;
 
+        // Las conversaciones del asistente (una por tema, de todo el equipo): el panel abierto relee su lista y,
+        // si es la conversación que tiene delante, sus mensajes.
+        case "chat:conversaciones":
+          window.dispatchEvent(new CustomEvent("chat:conversaciones", { detail: ev }));
+          break;
+
         case "editando":
           // Se guarda por publicación, no por persona: lo que hace falta
           // saber al abrir una es si alguien más la tiene delante.

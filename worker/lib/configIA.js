@@ -74,7 +74,7 @@ export const FUNCIONES_IA = Object.freeze({
   redaccion: ["calendario", "descripciones", "publicación", "ideas de anuncios", "ideas del estudio", "lote del mes", "estrategia del mes"],
   guiones: ["guiones", "guion de video"],
   lectura: ["lectura de contenido"],
-  asistente: ["asistente", "resumen del chat"],
+  asistente: ["asistente", "resumen del chat", "título de conversación"],
   prompts: ["prompt de imagen"],
   analisis: ["informe", "auditoria", "cerebro", "ADN de marca", "kit de marca", "revisión de marca", "control de calidad", "sistema de diseño", "aprendizaje visual", "estudio de mercado", "catálogo", "referencia de competencia", "revisión de textos", "estratega de campañas", "diagnóstico de campañas", "informe de anuncios"],
 });

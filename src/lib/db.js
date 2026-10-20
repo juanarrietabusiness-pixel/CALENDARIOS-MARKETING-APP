@@ -189,22 +189,7 @@ export function subscribeApprovals(calendarDbId, onChange) {
   return () => { clearInterval(id); };
 }
 
-// ------------------------------------------------------------
-// Chat del asistente por cliente
-// ------------------------------------------------------------
-
-export async function loadChatMessages(clientId, limit = 100) {
-  const filas = await pedir(`/clientes/${clientId}/chat`);
-  return (filas ?? []).slice(-limit);
-}
-
-export async function saveChatMessage(clientId, role, content) {
-  await pedir(`/clientes/${clientId}/chat`, conCuerpo("POST", { role, content }));
-}
-
-export async function clearChatMessages(clientId) {
-  await pedir(`/clientes/${clientId}/chat`, { method: "DELETE" });
-}
+// El historial del asistente va por conversaciones: src/lib/conversacionesApi.js (sólo lo carga el asistente).
 
 // ------------------------------------------------------------
 // Memorias persistentes del asistente
