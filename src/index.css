@@ -1087,6 +1087,19 @@ button.cal-semana-franja:hover { border-color: var(--accent); }
   border: 1px solid var(--accent-line);
   border-radius: var(--radius-lg);
 }
+/* «Post que se repite»: lo que le toca a este mes (calendario/repeticionesMes.jsx). */
+.repeticiones-mes {
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  margin-bottom: var(--sp-3); padding: var(--sp-3) var(--sp-4);
+  background: var(--surface); border: 1px dashed var(--accent-line); border-radius: var(--radius-lg);
+}
+.repeticiones-mes-titulo { display: flex; align-items: center; gap: var(--sp-2); margin: 0; font-weight: 700; font-size: var(--fs-sm); }
+.repeticiones-mes-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.repeticiones-mes-lista li { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-size: var(--fs-xs); }
+.repeticiones-mes-fecha { flex-shrink: 0; min-width: 52px; font-weight: 700; color: var(--accent); }
+.repeticiones-mes-nombre { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.repeticiones-mes-opcion { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-xs); min-height: var(--tap-sm); }
+.repeticiones-mes-botones { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 .campana-mes[data-vacia] { background: var(--surface); border-style: dashed; border-color: var(--border-light); }
 .campana-mes-cabecera { display: flex; align-items: flex-start; gap: var(--sp-3); flex-wrap: wrap; }
 .campana-mes-icono {

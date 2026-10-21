@@ -49,6 +49,7 @@ import { useEquipo } from "../../hooks/useEquipo";
 import { resumenCola } from "../../lib/cola";
 import { CopyButton } from "./primitivas";
 import { fieldHeaderStyle } from "./formato";
+import { SeRepite } from "./repeticionesMes";
 
 // «Idea» planifica; «Subir» es archivo, texto y cuándo sale —como lo llama
 // la agencia—. Los valores internos siguen siendo contenido/publicar.
@@ -444,6 +445,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
 
         <div className="idea-lado">
         <LoLleva post={form} sf={sf} miembros={miembros} />
+        <SeRepite form={form} fecha={day.date} sf={sf} idBase={ids} />
         <EtapaPublicacion
           post={form}
           sf={sf}
