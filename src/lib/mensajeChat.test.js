@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { partirMensaje, marcarImagen, marcarContexto, claveImagenValida } from "./mensajeChat";
+import { partirMensaje, marcarImagen, marcarVideo, marcarContexto, claveImagenValida } from "./mensajeChat";
 
 describe("partirMensaje", () => {
   it("un texto sin marcas es un solo bloque", () => {
@@ -55,6 +55,12 @@ describe("partirMensaje", () => {
       { tipo: "texto", texto: "Hazme 3 guiones" },
       { tipo: "contexto", titulo: "Análisis del video «a.mp4»", texto: "Escena 1…" },
     ]);
+  });
+
+  it("un video del Estudio es su propio bloque; una clave ajena se queda como texto", () => {
+    const b = partirMensaje(`Aquí lo tienes:\n\n${marcarVideo("clientes/c1/estudio/v.mp4")}`);
+    expect(b).toEqual([{ tipo: "texto", texto: "Aquí lo tienes:" }, { tipo: "video", clave: "clientes/c1/estudio/v.mp4" }]);
+    expect(partirMensaje("[[video: https://otro.com/v.mp4]]").some((x) => x.tipo === "video")).toBe(false);
   });
 
   it("no revienta con lo que no es texto", () => {

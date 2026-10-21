@@ -90,7 +90,7 @@ export async function crearLamina({
   const prompt = pedidoDeLamina({
     lamina, total, idea, preset, modo, plantilla, hilo,
     personajes: [...new Set(quienes)].map((n) => `Una de las referencias ${n}.`).join(" "),
-    conAnteriores: Boolean(anterior || portada), conFotos: fotos.some((f) => reference.includes(f)),
+    conAnteriores: Boolean(anterior || portada), conFotos: fotos.some((f) => reference.includes(f)), conLogo: Boolean(logo) && reference.includes(logo),
     sistema: lamina.n > 1 ? lineaDeSistema(sistema) : "",
   });
   const medios = reference.length ? { reference } : {};

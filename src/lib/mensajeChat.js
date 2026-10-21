@@ -8,6 +8,7 @@
 //
 //   [[pieza: Descripción 1]] … [[/pieza]]   un texto que se copia entero
 //   [[imagen: clientes/…/x.png | vertical]] una imagen generada
+//   [[video: clientes/…/x.mp4]]             un video del Estudio
 //   [[contexto: Análisis del video]] … [[/contexto]]
 //                                           lo que se le adjuntó al modelo
 //
@@ -54,7 +55,7 @@ export const INSTRUCCION_ADJUNTOS = `ADJUNTOS:
 // sin `..`. Lo que no cuadre se queda como texto en vez de ir a un `src`.
 const CLAVE_VALIDA = /^clientes\/[A-Za-z0-9_-]+\/[A-Za-z0-9_\-/.]+$/;
 
-const MARCA = /\[\[(pieza|contexto)(?::([^\]\n]*))?\]\]|\[\[\/(pieza|contexto)\]\]|\[\[imagen:([^\]\n]*)\]\]/gi;
+const MARCA = /\[\[(pieza|contexto)(?::([^\]\n]*))?\]\]|\[\[\/(pieza|contexto)\]\]|\[\[imagen:([^\]\n]*)\]\]|\[\[video:([^\]\n]*)\]\]/gi;
 
 export function claveImagenValida(clave) {
   return typeof clave === "string" && CLAVE_VALIDA.test(clave) && !clave.includes("..");
@@ -62,6 +63,10 @@ export function claveImagenValida(clave) {
 
 export function marcarImagen(clave, formato = "square") {
   return `[[imagen: ${clave} | ${formato}]]`;
+}
+
+export function marcarVideo(clave) {
+  return `[[video: ${clave}]]`;
 }
 
 export function marcarContexto(titulo, texto) {
@@ -77,7 +82,7 @@ function leerImagen(cuerpo) {
 /**
  * Parte el contenido en bloques. Nunca lanza, y nunca devuelve un
  * bloque vacío.
- * @returns {Array<{tipo:"texto",texto:string}|{tipo:"pieza"|"contexto",titulo:string,texto:string}|{tipo:"imagen",clave:string,formato:string}>}
+ * @returns {Array<{tipo:"texto",texto:string}|{tipo:"pieza"|"contexto",titulo:string,texto:string}|{tipo:"imagen",clave:string,formato:string}|{tipo:"video",clave:string}>}
  */
 export function partirMensaje(contenido) {
   const texto = typeof contenido === "string" ? contenido : "";
@@ -96,7 +101,7 @@ export function partirMensaje(contenido) {
   };
 
   for (const m of texto.matchAll(MARCA)) {
-    const [entero, apertura, titulo, cierre, imagen] = m;
+    const [entero, apertura, titulo, cierre, imagen, video] = m;
     const i = m.index;
 
     if (apertura) {
@@ -113,6 +118,12 @@ export function partirMensaje(contenido) {
       if (!bloque) continue;
       sueltoHasta(i);
       bloques.push(bloque);
+      desde = i + entero.length;
+    } else if (video !== undefined && !abierto) {
+      const clave = video.trim();
+      if (!claveImagenValida(clave)) continue;
+      sueltoHasta(i);
+      bloques.push({ tipo: "video", clave });
       desde = i + entero.length;
     }
   }

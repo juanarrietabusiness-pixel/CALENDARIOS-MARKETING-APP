@@ -101,12 +101,16 @@ export function titularYApoyo(texto) {
 
 /**
  * Las referencias de una lámina, por orden de importancia, hasta `max` (lo que admita el modelo): la anterior (la
- * continuidad), la portada (el ancla del estilo), las fotos del producto y, si cabe, el logo. Sin repetir. Pura.
+ * continuidad), la portada (el ancla del estilo), las fotos del producto y el LOGO, que tiene su hueco reservado
+ * (el último) en cuanto el modelo admite dos. Antes iba «si cabe»: con la anterior, la portada y una foto ya no cabía
+ * en ningún modelo de 3, y los carruseles salían sin logo. Sin repetir. Pura.
  */
 export function referenciasDeLamina({ anterior = "", portada = "", fotos = [], logo = "", max = 3 } = {}) {
+  const tope = Math.max(0, max);
   const salida = [];
-  for (const k of [anterior, portada, ...fotos, logo]) if (k && !salida.includes(k)) salida.push(k);
-  return salida.slice(0, Math.max(0, max));
+  for (const k of [anterior, portada, ...fotos]) if (k && k !== logo && !salida.includes(k)) salida.push(k);
+  if (!logo || tope < 2) return [...salida, ...(logo ? [logo] : [])].slice(0, tope);
+  return [...salida.slice(0, tope - 1), logo];
 }
 
 const comillas = (texto) => String(texto ?? "").split(/\n+/).map((l) => l.replace(/["“”«»]/g, "").trim()).filter(Boolean)
@@ -118,7 +122,7 @@ const comillas = (texto) => String(texto ?? "").split(/\n+/).map((l) => l.replac
  * PROPUESTA del director de arte, cada lámina trae además qué se ve (`escena`), su composición y el hilo que comparten
  * todas (`hilo`); `personajes`, las líneas de quién es cada personaje que va de referencia. Pura.
  */
-export function pedidoDeLamina({ lamina, total, idea = "", preset = "", modo = "ia", plantilla = "banda", conAnteriores = false, conFotos = false, hilo = "", personajes = "", sistema = "" }) {
+export function pedidoDeLamina({ lamina, total, idea = "", preset = "", modo = "ia", plantilla = "banda", conAnteriores = false, conFotos = false, conLogo = false, hilo = "", personajes = "", sistema = "" }) {
   const rol = { portada: "la PORTADA: tiene que detener el scroll", cierre: "el CIERRE: invita a actuar", contenido: "una lámina de contenido" }[lamina.rol] ?? "una lámina";
   const zona = PLANTILLAS_TEXTO[plantilla]?.zona ?? PLANTILLAS_TEXTO.banda.zona;
   return [
@@ -135,6 +139,10 @@ export function pedidoDeLamina({ lamina, total, idea = "", preset = "", modo = "
     // El sistema de la portada aprobada, en palabras (src/lib/sistemaCarrusel.js): la referencia sola dice «algo así».
     sistema,
     conFotos ? "Una de las referencias es la foto real del producto: si aparece, que sea ese producto, igual." : "",
+    // Sin decirlo, el logo de referencia era una imagen más y el modelo no lo ponía.
+    conLogo
+      ? `La ÚLTIMA imagen de referencia es el logo de la marca: ponlo en esta lámina, pequeño y nítido, en el mismo sitio en todas las láminas (una esquina, sin tapar el texto), copiado tal cual —forma, colores y letras—, sin redibujarlo ni inventar otro.${lamina.rol === "portada" || lamina.rol === "cierre" ? " En esta lámina es obligatorio." : ""}`
+      : "",
     modo === "plantilla"
       ? `NO escribas ningún texto, letra ni número en la imagen: el texto se pone después. Deja ${zona} limpio y despejado, con buen contraste, para ese texto.\nLo que dice esta lámina (sólo para inspirar la imagen): ${String(lamina.texto).slice(0, 300)}`
       : `Escribe en la lámina este texto, EXACTO, legible y bien jerarquizado (lo primero grande, lo demás más pequeño): ${comillas(lamina.texto)}. Ningún otro texto.`,
