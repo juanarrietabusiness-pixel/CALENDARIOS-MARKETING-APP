@@ -305,6 +305,13 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
               </button>
             ))}
           </div>
+          {/* Un reel que graba una persona hablando a cámara: la IA le escribe el guion para grabar, no lo crea. */}
+          {form.format === "reel" && (
+            <label htmlFor={`${ids}-rostro`} style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", marginTop: "var(--sp-2)", fontSize: "var(--fs-xs)", minHeight: "var(--tap-sm)" }}>
+              <input id={`${ids}-rostro`} type="checkbox" checked={Boolean(form.rostro)} onChange={(e) => sf("rostro", e.target.checked || undefined)} />
+              Video con rostro (UGC): lo graba una persona; el guion es para grabarlo
+            </label>
+          )}
         </fieldset>
 
         <div className="field">

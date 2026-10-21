@@ -14,3 +14,8 @@
 .editor-plantilla-hueco { display: flex; align-items: center; gap: var(--sp-2); }
 .editor-plantilla-hueco .input { min-width: 0; flex: 1 1 0; }
 .editor-plantilla-dia > .btn { align-self: flex-start; }
+.editor-plantilla-dia[data-elegido] { border-color: var(--accent-line); box-shadow: inset 0 0 0 1px var(--accent-line); }
+/* «Plan semanal» de la barra del calendario: un día por fila, para que los nombres de los tipos quepan enteros. */
+.plan-semanal { max-width: 640px; }
+.plan-semanal .editor-plantilla-dias { grid-template-columns: none; }
+.plan-semanal .editor-plantilla-hueco .input { flex: 1 1 0; min-width: 0; }

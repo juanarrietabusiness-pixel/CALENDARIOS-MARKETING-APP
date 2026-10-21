@@ -113,7 +113,12 @@ export function casillasConPlantilla({ year, month, ritmo = null, fechas = [], f
       const formato = FORMATO_DE_PLAN[h?.format];
       if (!formato) return;
       const r = delRitmo.get(fecha);
-      casillas.push({ clave: `${fecha}|${j}`, fecha, formato, pilar: h.pilar || r?.pilar || "", ...(r?.cambio && !h.pilar ? { cambio: r.cambio } : {}) });
+      casillas.push({
+        clave: `${fecha}|${j}`, fecha, formato, pilar: h.pilar || r?.pilar || "",
+        ...(r?.cambio && !h.pilar ? { cambio: r.cambio } : {}),
+        // Un video con rostro (UGC): la IA escribe el guion para grabarlo; no se crea con IA.
+        ...(formato === "reel" && h.rostro ? { rostro: true } : {}),
+      });
     });
   }
   return casillas.slice(0, MAX_CASILLAS_MES);

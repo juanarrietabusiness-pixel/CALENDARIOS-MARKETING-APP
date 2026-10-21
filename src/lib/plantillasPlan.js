@@ -29,8 +29,8 @@
 import { idDePilar, nombreDePilar } from "./pilares";
 
 export const FORMATOS_PLAN = Object.freeze(["post", "reel", "carrusel", "historia", "live"]);
-const NOMBRE_FORMATO = { post: "post", reel: "reel", carrusel: "carrusel", historia: "historia", live: "directo" };
-const PLURAL_FORMATO = { post: "posts", reel: "reels", carrusel: "carruseles", historia: "historias", live: "directos" };
+const NOMBRE_FORMATO = { post: "post", reel: "reel", carrusel: "carrusel", historia: "historia", live: "directo", rostro: "video con rostro (UGC)" };
+const PLURAL_FORMATO = { post: "posts", reel: "reels", carrusel: "carruseles", historia: "historias", live: "directos", rostro: "videos con rostro (UGC)" };
 
 export const OBJETIVOS_PLAN = Object.freeze([
   { id: "ventas", nombre: "Centrado en ventas", ayuda: "El ritmo de la agencia: cada día un tipo de contenido que vende o prepara la venta.",
@@ -87,11 +87,14 @@ export const esDeArranque = (id) => IDS_BASE.has(id);
 
 const ID = /^[\w-]{1,60}$/;
 
-/** Una publicación de la plantilla, limpia. Null si el formato no existe. */
+/**
+ * Una publicación de la plantilla, limpia. Null si el formato no existe. `rostro`: un reel que GRABA una persona
+ * hablando a cámara (UGC): la IA le escribe un guion para grabar, no se hace con IA. Sólo existe en un reel.
+ */
 function limpiarHueco(h) {
   const format = FORMATOS_PLAN.includes(h?.format) ? h.format : null;
   if (!format) return null;
-  return { format, pilar: idDePilar(h?.pilar) };
+  return { format, pilar: idDePilar(h?.pilar), ...(format === "reel" && h?.rostro === true ? { rostro: true } : {}) };
 }
 
 /** Una plantilla, limpia. Null si no tiene id o nombre. Pura. */
@@ -168,7 +171,9 @@ export function plantillaDelCliente(planContenido, lista = []) {
  */
 export function configDeFormatos(plantilla) {
   const cfg = {};
-  for (let dow = 0; dow < 7; dow++) cfg[dow] = (plantilla?.dias?.[dow] ?? []).map((h) => ({ format: h.format, pilar: idDePilar(h.pilar) }));
+  for (let dow = 0; dow < 7; dow++) {
+    cfg[dow] = (plantilla?.dias?.[dow] ?? []).map((h) => ({ format: h.format, pilar: idDePilar(h.pilar), ...(h.format === "reel" && h.rostro ? { rostro: true } : {}) }));
+  }
   return cfg;
 }
 
@@ -180,7 +185,8 @@ export function conteoSemanal(plantilla) {
   for (let dow = 0; dow < 7; dow++) {
     for (const h of plantilla?.dias?.[dow] ?? []) {
       total++;
-      formatos[h.format] = (formatos[h.format] ?? 0) + 1;
+      const f = h.format === "reel" && h.rostro ? "rostro" : h.format;
+      formatos[f] = (formatos[f] ?? 0) + 1;
       const pilar = idDePilar(h.pilar);
       if (pilar) tipos[pilar] = (tipos[pilar] ?? 0) + 1;
     }
