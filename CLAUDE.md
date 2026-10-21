@@ -284,7 +284,8 @@ src/
     calendario/equipoPublicacion.jsx  Lo lleva, etapa, hilo del equipo, tareas de la
                           publicación e historial
     SubirRapido.jsx       «Subir»: cliente → archivo → la IA escribe → cuándo sale (diálogo)
-    GuardarReferencia.jsx «Guardar referencia»: pegar el enlace de un video, la empresa (o ninguna: general) y una nota (lazy)
+    GuardarReferencia.jsx «Guardar referencia»: pegar el enlace de un video, la empresa (o ninguna: general) y una nota (lazy);
+                          también lo que llega por «Compartir» (/compartir) y cómo dejarlo en la hoja de compartir
     calendario/BankPanel.jsx  El banco de ideas (junto al calendario y en la pestaña Ideas): filtros, empresa, enlace
     calendario/cuandoSale.jsx   «¿Cuándo sale?» del panel: Ahora / Programar / La publico yo
     calendario/horaSugerida.jsx La hora con mejores resultados, compartida por los dos
@@ -1326,6 +1327,18 @@ son del servidor.
   (`costoUnitario`). GPT Image no tiene 4:5 (sale 3:4 y se adapta al programar). Un test exige que cada modelo de Kie
   del catálogo tenga su pedido en `MODELOS_KIE`, y al revés. **Nada de Kie se ha probado contra el servicio real**: la
   forma sale de su documentación.
+  · **La documentación de octubre de 2026 sumó ~35 modelos** (`docs/kie/catalogo-2026-10.md`, el extracto de la agencia:
+  por cada `model`, sus campos, los obligatorios con `*` y los valores de cada lista). Imagen: Imagen 4 y Fast, Nano Banana
+  2 Lite, Z-Image, Seedream 4.5 y 5 Lite/Flash, Flux 2 Pro/Flex y 3 Klein, Grok Imagine 2, GPT Image 1.5 y 2.5 Flare, Qwen
+  2.1 y 3 Pro, Wan 2.7 Image (y Pro) e Ideogram con personaje. Video: Gemini Omni con video, Seedance 2 Fast y Mini, Kling
+  3 Turbo y 2.6 (también «copiar el movimiento»: una foto + un video), Veo 3.1 Lite, Wan 3 y Prime, Hailuo 2.3 Standard,
+  MiniMax H3, PixVerse 6 (con inicio y final hace la transición), HappyHorse 1.1, Grok Imagine Video y Vidu Q4. Fuera, a
+  propósito: lo que exige `callBackUrl`, lo que parte de un `task_id` (extender, ampliar, 4K), máscaras, avatares y labios,
+  y las API con su propio endpoint (4o, Flux Kontext, Runway). **Los precios no vienen en la documentación**: todos son
+  estimados y lo dicen. `tests/migracion/kie.modelos.test.js` LEE el extracto y comprueba cada forma de pedir cada modelo
+  (texto, referencias, inicial, inicial y final, video): `model` que existe, sólo sus campos, todos los obligatorios y los
+  valores de las listas. Cazó uno de antes: Seedance 2.0 y Fast recibían `output_format`, que sólo admite 2.5. Si Kie
+  cambia su documentación, se reemplaza el extracto y el test dice qué pedido dejó de cuadrar.
   · **El VIDEO de referencia es un cuarto papel de los medios** (`medios.video`, junto a start/end/reference). Sólo
   lo admiten los modelos de Higgsfield marcados `conVideo` en el generador (Kling Omni · sigue un video, Kling 3.0
   · copia el movimiento): `video: 1` y `necesitaVideo` salen del esquema. Va a SU almacén como las imágenes, desde
@@ -2709,6 +2722,14 @@ son del servidor.
   · **«Guardar referencia»** se abre desde la cabecera (computadora), «Enlace» en la barra del móvil, el banco y
   `abrirGuardarReferencia()` desde cualquier sitio. El asistente (`agregar_banco_ideas`, con `enlace` y sin cliente =
   general) y Claude por MCP (`anadir_idea`, `ver_banco_ideas`) escriben en la MISMA tabla.
+  · **Desde «Compartir» de Instagram o TikTok, sin abrir la aplicación** (`/compartir`, `deLoCompartido` en
+  lib/bancoIdeas.js): App abre «Guardar referencia» relleno y devuelve la dirección a `/` (en un efecto: en el
+  inicializador del estado, StrictMode lo haría dos veces). En Android lo pone en la hoja de compartir el
+  `share_target` de `public/manifest.webmanifest` (GET con `title`, `text`, `url`; hay que INSTALAR la aplicación desde
+  Chrome, y para eso hacen falta los iconos de 192 y 512). En el iPhone Safari no admite `share_target`: un Atajo
+  («Codificar URL» + «Abrir URL» con `…/compartir?texto=`), y el diálogo enseña los pasos y la dirección para copiar.
+  Sin service worker: Chrome ya no lo exige para instalar. **Ni la instalación ni el Atajo se han probado en un
+  teléfono**: lo comprobado es la dirección en Chromium.
 - **Español latino neutro, en un sitio.** El modelo imita lo que tiene
   delante: con un ADN o un ejemplo con voseo escribía «vení» y «tenés».
   `REGLA_IDIOMA` (src/lib/idioma.js) va delante del sistema en

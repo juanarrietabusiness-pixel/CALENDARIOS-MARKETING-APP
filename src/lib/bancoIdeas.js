@@ -143,3 +143,17 @@ export function lineaDeIdea(idea, nombreCliente = "") {
   const desc = idea.descripcion ? ` — ${String(idea.descripcion).slice(0, 200)}` : "";
   return `· [${idea.format ?? "post"}]${donde} ${tituloDeIdea(idea)}${desc}${enlace}`;
 }
+
+/**
+ * Lo que llega por «Compartir» (/compartir): el share_target del manifiesto en Android (`title`, `text`, `url`) o el
+ * Atajo del iPhone (`texto`). → { texto, nota } para «Guardar referencia», o null si la dirección no es ésa. El enlace
+ * puede venir en `url` o dentro de `text` (Instagram lo pone en el texto); el título va de nota si no es el enlace.
+ */
+export function deLoCompartido(url) {
+  if (String(url?.pathname ?? "").replace(/\/+$/, "") !== "/compartir") return null;
+  const q = new URLSearchParams(url.search ?? "");
+  const texto = [q.get("text"), q.get("url"), q.get("texto")].map((x) => String(x ?? "").trim()).filter(Boolean).join(" ");
+  const titulo = String(q.get("title") ?? q.get("titulo") ?? "").trim();
+  const nota = titulo && !enlaceLimpio(titulo) && !texto.includes(titulo) ? titulo.slice(0, 300) : "";
+  return { texto: (texto || titulo).slice(0, 4000), nota };
+}

@@ -6,3 +6,9 @@
 .guardar-referencia-botones { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-4); }
 .guardar-referencia-red { display: inline-flex; align-items: center; gap: 4px; }
 .guardar-referencia-botones .btn { min-height: var(--tap); }
+.guardar-referencia-ayuda { margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: var(--fs-xs); color: var(--text-muted); }
+.guardar-referencia-ayuda summary { cursor: pointer; min-height: var(--tap-sm); display: flex; align-items: center; color: var(--text); font-weight: 600; }
+.guardar-referencia-ayuda h3 { font-size: var(--fs-xs); margin: var(--sp-2) 0 var(--sp-1); color: var(--text); }
+.guardar-referencia-ayuda ol { margin: 0; padding-left: var(--sp-5); display: flex; flex-direction: column; gap: 4px; }
+.guardar-referencia-direccion { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); flex-wrap: wrap; }
+.guardar-referencia-direccion code { flex: 1; min-width: 0; overflow-wrap: anywhere; padding: 4px 6px; border-radius: var(--radius-sm); background: var(--surface-2); font-size: var(--fs-2xs); }
