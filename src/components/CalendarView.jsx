@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid } from "../utils";
-import { marcarActualizada } from "../lib/publicacion";
+import { marcarActualizada, momentoPublicacion } from "../lib/publicacion";
 import { callAI, loadADN, parseAIResponse, buildScriptPrompt, buildDescripcionesPrompt, buildClientContext, generateSinglePost, pasajesDeLaTanda } from "../api";
 import { base64DeImagen, prepararParaRedes } from "../lib/medios";
 import {
@@ -666,6 +666,24 @@ export default function CalendarView({
   };
 
   const movePost = (postId, sourceDate, targetDate) => {
+    // Lo que está en la cola se mueve con ella (el servidor reprograma al guardar: `resincronizarCalendario`).
+    // Dos casos no: lo que ya salió o está saliendo no cambia de día, y a un momento que ya pasó saldría AL
+    // INSTANTE en el siguiente minuto del cron, que no es lo que se quiere al arrastrar.
+    const filasDelPost = cola.filter((f) => f.postId === postId);
+    if (filasDelPost.some((f) => ["procesando", "publicada"].includes(f.estado))) {
+      setSyncStatus("Esa publicación ya salió (o está saliendo): no se mueve de día.");
+      setTimeout(() => setSyncStatus(""), 5000);
+      return;
+    }
+    const programadas = filasDelPost.filter((f) => f.estado === "programada");
+    if (programadas.length) {
+      const post = (cal.days || []).find((d) => d.date === sourceDate)?.posts.find((p) => p.id === postId);
+      const nuevo = momentoPublicacion(targetDate, post?.publishTime);
+      if (nuevo && Date.parse(nuevo) < Date.now()
+        && !window.confirm("Está programada y esa fecha ya pasó: si la mueves, saldrá en el próximo minuto. ¿Moverla igual?")) return;
+      setSyncStatus(`La programación se mueve con ella: sale el ${Number(targetDate.slice(8))}.`);
+      setTimeout(() => setSyncStatus(""), 5000);
+    }
     // A otro mes lo mueve el servidor, con su aprobación, su cola y lo demás.
     if (targetDate.slice(0, 7) !== mesDelCal) {
       void onMoverAOtroMes?.(postId, targetDate);

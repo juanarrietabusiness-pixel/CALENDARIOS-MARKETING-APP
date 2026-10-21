@@ -6,6 +6,7 @@ import { useRepaso } from "../hooks/useRepaso";
 import { Avatar } from "./Presencia";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { useTareas, hecha, claveTarea, esDe } from "../hooks/useTareas";
+import { useArrastrarOrden } from "../hooks/useArrastrarOrden";
 import { useEquipo, miembroDe } from "../hooks/useEquipo";
 import { clasificar, fechaEnZona, textoAtraso, textoFecha, partirNotas, empresaDelPrefijo, sumarDias } from "../lib/agenda";
 import { navegar } from "../lib/rutas";
@@ -28,7 +29,8 @@ import "./PanelTareas.css";
 // día»: `useTareas`. Aquí sólo se pinta.
 // ============================================================
 
-const PLEGADOS_INICIALES = { atrasadas: false, proximas: true, sinFecha: true, hechasHoy: true };
+// «Por agendar» (lo que no tiene día) va ABIERTO: plegado, las tareas rápidas sin fecha no las veía nadie.
+const PLEGADOS_INICIALES = { atrasadas: false, proximas: true, sinFecha: false, hechasHoy: true };
 
 function leerLocal(clave, porDefecto) {
   try {
@@ -72,6 +74,7 @@ export default function PanelTareas({ clients = [], pulso = 0, yo = null, client
   const visibles = quien === "equipo" ? t.todas : t.todas.filter((x) => esDe(x, persona, { sinAsignar: quien === "mias" }));
   const bloques = clasificar(visibles, hoy, { foco: clienteActual });
   const nHoy = bloques.hoy.length;
+  const ordenHoy = useArrastrarOrden(bloques.hoy, (x) => claveTarea(x.tarea), (lista) => t.reordenar(lista.map((x) => x.tarea)));
 
   const alternarPlegado = (k) => setPlegados((p) => ({ ...p, [k]: !p[k] }));
 
@@ -81,9 +84,10 @@ export default function PanelTareas({ clients = [], pulso = 0, yo = null, client
     if (n) setAviso({ texto: `Se crearon ${n} ${n === 1 ? "tarea" : "tareas"}.`, tarea });
   };
 
-  const fila = (item) => (
+  const fila = (item, orden = null) => (
     <FilaTarea
       key={claveTarea(item.tarea)}
+      orden={orden}
       item={item}
       hoy={hoy}
       empresa={item.tarea._rapida ? "" : nombreDe(item.tarea.client_id)}
@@ -164,11 +168,19 @@ export default function PanelTareas({ clients = [], pulso = 0, yo = null, client
               <section className="panel-tareas-bloque" aria-label="Hoy">
                 {bloques.hoy.length === 0
                   ? <p className="panel-tareas-vacio">Nada para hoy. Escribe arriba o pulsa «Hoy» en cualquier tarea.</p>
-                  : <ul className="panel-tareas-lista">{bloques.hoy.map(fila)}</ul>}
+                  : (
+                    <ul className="panel-tareas-lista" aria-label="Hoy (arrastra para ordenar)">
+                      {ordenHoy.lista.map((item, i) => fila(item, {
+                        props: ordenHoy.props(item),
+                        arriba: i > 0 ? () => ordenHoy.mover(item, -1) : null,
+                        abajo: i < ordenHoy.lista.length - 1 ? () => ordenHoy.mover(item, 1) : null,
+                      }))}
+                    </ul>
+                  )}
               </section>
               <Plegable titulo="Atrasadas" clave="atrasadas" items={bloques.atrasadas} plegados={plegados} onAlternar={alternarPlegado} fila={fila} peligro />
               <Plegable titulo="Próximas" clave="proximas" items={bloques.proximas} plegados={plegados} onAlternar={alternarPlegado} fila={fila} />
-              <Plegable titulo="Sin fecha" clave="sinFecha" items={bloques.sinFecha} plegados={plegados} onAlternar={alternarPlegado} fila={fila} />
+              <Plegable titulo="Por agendar" clave="sinFecha" items={bloques.sinFecha} plegados={plegados} onAlternar={alternarPlegado} fila={fila} />
               <Plegable titulo="Hechas hoy" clave="hechasHoy" items={bloques.hechasHoy} plegados={plegados} onAlternar={alternarPlegado} fila={fila} />
             </>
           )}
@@ -195,7 +207,7 @@ function Plegable({ titulo, clave, items, plegados, onAlternar, fila, peligro = 
         <span style={{ color: peligro ? "var(--danger)" : undefined }}>{titulo}</span>
         <span className="panel-tareas-numero" data-peligro={peligro}>{items.length}</span>
       </button>
-      {abierto && <ul id={id} className="panel-tareas-lista">{items.map(fila)}</ul>}
+      {abierto && <ul id={id} className="panel-tareas-lista">{items.map((x) => fila(x))}</ul>}
     </section>
   );
 }
@@ -255,7 +267,7 @@ function AgregarTarea({ clients, clienteActual, persona, onCrear }) {
   );
 }
 
-function FilaTarea({ item, hoy, empresa, responsable, verResponsable, miembros, abierta, onAbrir, acciones, onConvertir, onEmpresa }) {
+function FilaTarea({ item, hoy, empresa, responsable, verResponsable, miembros, abierta, onAbrir, acciones, onConvertir, onEmpresa, orden = null }) {
   const { tarea: t, fecha, atraso } = item;
   const esHecha = hecha(t);
   const detalleId = useId();
@@ -263,7 +275,7 @@ function FilaTarea({ item, hoy, empresa, responsable, verResponsable, miembros, 
   const esHoy = fecha === hoy;
 
   return (
-    <li className="panel-tarea" data-hecha={esHecha} data-atrasada={atraso > 0 && !esHecha}>
+    <li className="panel-tarea" data-hecha={esHecha} data-atrasada={atraso > 0 && !esHecha} {...(orden && !abierta ? orden.props : {})}>
       <button
         type="button"
         className="panel-tarea-check"
@@ -295,6 +307,12 @@ function FilaTarea({ item, hoy, empresa, responsable, verResponsable, miembros, 
             {!esHoy && <button type="button" className="btn btn-ghost btn-sm" onClick={() => acciones.moverA(t, hoy)}>{atraso > 0 ? "Pasar a hoy" : "Hoy"}</button>}
             {esHoy && <button type="button" className="btn btn-ghost btn-sm" onClick={() => acciones.moverA(t, sumarDias(hoy, 1))}>Mañana</button>}
             <SelectorFecha value={null} onChange={(f) => f && acciones.moverA(t, f)} etiqueta={`Mover «${t.title}» a otro día`} vacio="Mover a…" prefijo="Para" />
+            {orden && (orden.arriba || orden.abajo) && (
+              <span className="dia-orden">
+                <button type="button" className="btn-icon btn-sm" disabled={!orden.arriba} onClick={orden.arriba ?? undefined} aria-label={`Subir «${t.title}»`} title="Antes"><Icon name="chevronUp" size={16} /></button>
+                <button type="button" className="btn-icon btn-sm" disabled={!orden.abajo} onClick={orden.abajo ?? undefined} aria-label={`Bajar «${t.title}»`} title="Después"><Icon name="chevronDown" size={16} /></button>
+              </span>
+            )}
           </div>
         )}
         {abierta && (

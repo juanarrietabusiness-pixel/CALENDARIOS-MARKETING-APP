@@ -10,7 +10,7 @@ import CalendarView from "./components/CalendarView";
 import NavegadorMes from "./components/calendario/navegadorMes";
 import { diasVecinos } from "./lib/meses";
 import { ponerEnDia, deIdeaAPublicacion } from "./lib/subir";
-import QuickTasksPanel from "./components/QuickTasksPanel";
+import HoyInicio from "./components/HoyInicio";
 import ResumenCliente from "./components/ResumenCliente";
 import NavPrincipal from "./components/NavPrincipal";
 import MenuCuenta from "./components/MenuCuenta";
@@ -366,7 +366,7 @@ function Inicio({ yo, clients, pulso, presentes, onAbrir, onNuevo }) {
         })}
       </ul>
 
-      <QuickTasksPanel pulso={pulso} />
+      <HoyInicio clients={clients} yo={yo} pulso={pulso} />
     </div>
   );
 }
@@ -529,8 +529,13 @@ function Workspace({ session, ruta }) {
         });
         return;
       }
-      // Filtro 1: mi propio eco.
-      if (ev.por?.tab && ev.por.tab === db.PESTANA) return;
+      // Filtro 1: mi propio eco. Salvo la cola: al mover de día una publicación programada, la fecha nueva
+      // la escribe el SERVIDOR (resincronizarCalendario) y quien la movió no la tiene en pantalla. Sin releer,
+      // la tarjeta y el chip seguían diciendo la fecha vieja y parecía que no se había movido.
+      if (ev.por?.tab && ev.por.tab === db.PESTANA) {
+        if (ev.tipo === "publicacion") setPulso((n) => n + 1);
+        return;
+      }
 
       switch (ev.tipo) {
         case "cliente": {

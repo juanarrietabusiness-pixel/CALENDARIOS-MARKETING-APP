@@ -289,10 +289,28 @@ export async function cancelarPendientes(acceso, calendarId, postId, motivo) {
  * ya empezó a publicarse no se toca.
  */
 export async function resincronizarCalendario(env, acceso, cal, por) {
-  const filas = await acceso.leer("publicaciones_programadas", { calendar_id: cal.id, estado: "programada" });
-  if (!filas.length) return 0;
+  const [filas, fallidas] = await Promise.all([
+    acceso.leer("publicaciones_programadas", { calendar_id: cal.id, estado: "programada" }),
+    acceso.leer("publicaciones_programadas", { calendar_id: cal.id, estado: "error" }),
+  ]);
+  if (!filas.length && !fallidas.length) return 0;
   const days = leerJSON(cal.days, []);
   let cambios = 0;
+  // Lo que falló y ya se resolvió por otro camino deja de avisar: la publicación se quitó, se publicó a
+  // mano o se pasó a «La publico yo». Antes el aviso seguía en Mi día y en Programación después de
+  // arreglarlo, y la única salida era ir a descartarlo una por una. Lo que sigue pendiente se queda.
+  for (const f of fallidas) {
+    const hallada = buscarPublicacion(days, f.post_id);
+    const motivo = !hallada ? "Se quitó del calendario."
+      : hallada.post.status === "published" ? "Se publicó por otro camino."
+        : hallada.post.asistida ? "Pasó a publicarse a mano."
+          : null;
+    if (!motivo) continue;
+    await acceso.actualizar("publicaciones_programadas", { id: f.id, updated_at: f.updated_at }, {
+      estado: "cancelada", error: `${f.error ?? ""} (${motivo})`.trim(), updated_at: ahora(),
+    });
+    cambios += 1;
+  }
   for (const f of filas) {
     const carga = leerJSON(f.carga, {});
     if (f.contenedor_id || f.intentos > 0 || carga.ahoraMismo) continue;

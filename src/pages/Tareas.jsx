@@ -2,10 +2,12 @@ import { useState, useEffect, useId, useMemo } from "react";
 import Icon from "../components/Icon";
 import { Avatar } from "../components/Presencia";
 import SelectorFecha from "../components/SelectorFecha";
+import ElegirDia from "../components/ElegirDia";
 import RepasoAtrasadas from "../components/RepasoAtrasadas";
 import { useRepaso } from "../hooks/useRepaso";
 import * as db from "../lib/db";
 import { useTareas, hecha, claveTarea as claveDe, esDe } from "../hooks/useTareas";
+import { useArrastrarOrden } from "../hooks/useArrastrarOrden";
 import { navegar } from "../lib/rutas";
 import { clasificar, fechaEnZona, textoAtraso, textoFecha } from "../lib/agenda";
 import { filtrarCola, ordenarProgramacion, horaDe, asistidasPendientes } from "../lib/cola";
@@ -25,6 +27,11 @@ import { REDES } from "../lib/publicacion";
 //   · su fecha límite;
 //   · su recurrencia: la diaria está aquí cada mañana.
 //
+// El orden de la página es el de la prioridad: Hoy arriba (y se ordena
+// arrastrando), luego los avisos de las publicaciones —cada uno se puede
+// ocultar hasta que cambie, y lo que falló se puede descartar—, y después
+// Atrasadas. Con lo atrasado delante, lo de hoy quedaba debajo de todo.
+//
 // La vista «Por empresa» es la de antes, para quien quiera revisar
 // una empresa entera. Lo mismo, a mano desde cualquier pantalla, está en
 // el panel lateral (PanelTareas); las acciones son de `useTareas`.
@@ -35,7 +42,7 @@ const RECURRENCIA = { daily: "Diaria", weekly: "Semanal", monthly: "Mensual" };
 export default function Tareas({
   clients = [], pulso = 0, onSelectClient, yo = null, presentes = [], foco = null, onFoco,
 }) {
-  const { todas, loading, error, alternarHecha, actualizar, alternarHoy, moverA, crear: crearTarea } = useTareas(pulso);
+  const { todas, loading, error, alternarHecha, actualizar, alternarHoy, moverA, crear: crearTarea, reordenar } = useTareas(pulso);
   const [vista, setVista] = useState("dia");
   const [soloMias, setSoloMias] = useState(false);
   const [verHechas, setVerHechas] = useState(false);
@@ -57,7 +64,9 @@ export default function Tareas({
   const visibles = soloMias && yo?.nombre ? todas.filter((t) => esDe(t, yo)) : todas;
   const bloques = clasificar(visibles, hoy, { foco });
 
-  const crear = ({ titulo, empresa }) => crearTarea({ titulo, empresa, today_date: hoy });
+  const ordenHoy = useArrastrarOrden(bloques.hoy, (x) => claveDe(x.tarea), (lista) => reordenar(lista.map((x) => x.tarea)));
+
+  const crear = ({ titulo, empresa, dia }) => crearTarea({ titulo, empresa, today_date: dia || null });
 
   const filaProps = (item) => ({
     item,
@@ -131,19 +140,21 @@ export default function Tareas({
             />
           )}
 
-          <PublicacionesDeHoy pulso={pulso} nombreDe={nombreDe} clients={clients} />
-
-          <Bloque titulo="Atrasadas" icono="alert" color="var(--danger)" items={bloques.atrasadas} filaProps={filaProps} />
           <Bloque
             titulo="Hoy"
             icono="clock"
             color="var(--accent)"
-            items={bloques.hoy}
+            items={ordenHoy.lista}
             filaProps={filaProps}
+            orden={ordenHoy}
             vacio="Nada para hoy. Pulsa «Hoy» o «Pasar a hoy» en cualquier tarea para traerla aquí."
           />
+
+          <PublicacionesDeHoy pulso={pulso} nombreDe={nombreDe} clients={clients} yo={yo} />
+
+          <Bloque titulo="Atrasadas" icono="alert" color="var(--danger)" items={bloques.atrasadas} filaProps={filaProps} />
           <Bloque titulo="Próximas" icono="calendar" color="var(--text-dim)" items={bloques.proximas} filaProps={filaProps} />
-          <Bloque titulo="Sin fecha" icono="list" color="var(--text-dim)" items={bloques.sinFecha} filaProps={filaProps} />
+          <Bloque titulo="Por agendar" icono="list" color="var(--text-dim)" items={bloques.sinFecha} filaProps={filaProps} />
 
           {bloques.hechasHoy.length > 0 && (
             <section className="dia-bloque">
@@ -173,7 +184,7 @@ export default function Tareas({
   );
 }
 
-function Bloque({ titulo, icono, color, items, filaProps, vacio }) {
+function Bloque({ titulo, icono, color, items, filaProps, vacio, orden = null }) {
   if (!items.length && !vacio) return null;
   return (
     <section className="dia-bloque" aria-label={titulo}>
@@ -184,19 +195,29 @@ function Bloque({ titulo, icono, color, items, filaProps, vacio }) {
       </h2>
       {items.length === 0
         ? <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-faint)" }}>{vacio}</p>
-        : items.map((item) => <FilaDia key={claveDe(item.tarea)} {...filaProps(item)} />)}
+        : items.map((item, i) => (
+          <FilaDia
+            key={claveDe(item.tarea)}
+            {...filaProps(item)}
+            orden={orden && {
+              props: orden.props(item),
+              arriba: i > 0 ? () => orden.mover(item, -1) : null,
+              abajo: i < items.length - 1 ? () => orden.mover(item, 1) : null,
+            }}
+          />
+        ))}
     </section>
   );
 }
 
-function FilaDia({ item, hoy, empresa, enFoco, onToggle, onHoy, onMover, onFecha, onEmpresa }) {
+function FilaDia({ item, hoy, empresa, enFoco, onToggle, onHoy, onMover, onFecha, onEmpresa, orden = null }) {
   const { tarea: t, fecha, atraso } = item;
   const esHecha = hecha(t);
   const marcadaHoy = t.today_date === hoy;
   const rec = RECURRENCIA[t.recurrence];
 
   return (
-    <div className="dia-fila" data-atrasada={atraso > 0 && !esHecha} data-foco={enFoco}>
+    <div className="dia-fila" data-atrasada={atraso > 0 && !esHecha} data-foco={enFoco} {...(orden && !esHecha ? orden.props : {})}>
       <button
         type="button"
         className="dia-check"
@@ -231,6 +252,12 @@ function FilaDia({ item, hoy, empresa, enFoco, onToggle, onHoy, onMover, onFecha
 
       {!esHecha && (
         <>
+          {orden && (orden.arriba || orden.abajo) && (
+            <span className="dia-orden">
+              <button type="button" className="btn-icon" disabled={!orden.arriba} onClick={orden.arriba ?? undefined} aria-label={`Subir «${t.title}»`} title="Antes"><Icon name="chevronUp" size={16} /></button>
+              <button type="button" className="btn-icon" disabled={!orden.abajo} onClick={orden.abajo ?? undefined} aria-label={`Bajar «${t.title}»`} title="Después"><Icon name="chevronDown" size={16} /></button>
+            </span>
+          )}
           <SelectorFecha value={t.due_date} onChange={onFecha} etiqueta={`Fecha límite de ${t.title}`} vacio="Fecha límite" />
           {fecha !== hoy && (
             <SelectorFecha value={null} onChange={(f) => f && onMover(f)} etiqueta={`Mover «${t.title}» a otro día`} vacio="Mover a…" prefijo="Para" />
@@ -250,10 +277,14 @@ function FilaDia({ item, hoy, empresa, enFoco, onToggle, onHoy, onMover, onFecha
   );
 }
 
-/** «Añadir para hoy»: con empresa o sin ella (entonces es una tarea rápida). */
+/**
+ * Una tarea nueva: con empresa o sin ella (entonces es una tarea rápida), y el día en que se hace —hoy por
+ * defecto; mañana, otro día de la semana o sin día—.
+ */
 function NuevaParaHoy({ clients, foco, onCrear }) {
   const [titulo, setTitulo] = useState("");
   const [empresa, setEmpresa] = useState(foco ?? "");
+  const [dia, setDia] = useState(() => fechaEnZona());
   const [enviando, setEnviando] = useState(false);
   const tituloId = useId();
   const empresaId = useId();
@@ -265,20 +296,20 @@ function NuevaParaHoy({ clients, foco, onCrear }) {
     const t = titulo.trim();
     if (!t || enviando) return;
     setEnviando(true);
-    await onCrear({ titulo: t, empresa });
+    await onCrear({ titulo: t, empresa, dia });
     setEnviando(false);
     setTitulo("");
   };
 
   return (
     <form onSubmit={enviar} style={{ display: "flex", gap: "var(--sp-2)", flex: "1 1 420px", flexWrap: "wrap" }}>
-      <label htmlFor={tituloId} className="sr-only">Nueva tarea para hoy</label>
+      <label htmlFor={tituloId} className="sr-only">Nueva tarea</label>
       <input
         id={tituloId}
         className="input"
         value={titulo}
         onChange={(e) => setTitulo(e.target.value)}
-        placeholder="Nueva tarea para hoy…"
+        placeholder="Nueva tarea…"
         style={{ flex: "1 1 200px" }}
       />
       <label htmlFor={empresaId} className="sr-only">Empresa</label>
@@ -289,6 +320,7 @@ function NuevaParaHoy({ clients, foco, onCrear }) {
       <button type="submit" className="btn btn-primary" disabled={!titulo.trim() || enviando}>
         <Icon name="plus" size={16} /> Añadir
       </button>
+      <ElegirDia value={dia} onChange={setDia} etiqueta="¿Cuándo la haces?" />
     </form>
   );
 }
@@ -373,12 +405,36 @@ function PorEmpresa({ todas, nombreDe, filaProps, hoy }) {
 }
 
 /**
+ * Lo que se ocultó de Mi día, por persona y en este navegador: cada aviso guarda la HUELLA de lo que decía
+ * al ocultarlo (qué publicaciones), y vuelve en cuanto cambia —otra que falla, otra aprobada—. Así se quita
+ * del camino lo ya visto sin perderse lo nuevo.
+ */
+function useOcultos(yoId) {
+  const clave = `midia-ocultos:${yoId ?? "yo"}`;
+  const [ocultos, setOcultos] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(clave) || "{}") ?? {}; } catch { return {}; }
+  });
+  const ocultar = (tipo, huella) => setOcultos((prev) => {
+    const siguiente = { ...prev, [tipo]: huella };
+    try { localStorage.setItem(clave, JSON.stringify(siguiente)); } catch { /* sin almacenamiento */ }
+    return siguiente;
+  });
+  return { visible: (tipo, huella) => Boolean(huella) && ocultos[tipo] !== huella, ocultar };
+}
+
+const huellaDe = (lista, id) => lista.map(id).sort().join("|");
+
+/**
  * La cola, vista desde Mi día: lo que no se publicó —que es trabajo, como
  * una tarea atrasada— y lo que sale hoy. El detalle está en Programación.
+ * Cada aviso se puede ocultar, y lo que falló se puede descartar aquí mismo.
  */
-function PublicacionesDeHoy({ pulso, nombreDe, clients }) {
+function PublicacionesDeHoy({ pulso, nombreDe, clients, yo }) {
   const [filas, setFilas] = useState([]);
   const [aprobadas, setAprobadas] = useState({ porProgramar: [], porProducir: [] });
+  const [ocupada, setOcupada] = useState(null);
+  const [fallo, setFallo] = useState("");
+  const { visible, ocultar } = useOcultos(yo?.id);
   useEffect(() => {
     let vivo = true;
     db.listarProgramacion(1).then((f) => { if (vivo) setFilas(f); }).catch(() => {});
@@ -390,43 +446,86 @@ function PublicacionesDeHoy({ pulso, nombreDe, clients }) {
   const aMano = asistidasPendientes(clients, undefined, 1);
   const nProgramar = aprobadas.porProgramar?.length ?? 0;
   const nProducir = aprobadas.porProducir?.length ?? 0;
-  if (!fallidas.length && !hoy.length && !aMano.length && !nProgramar && !nProducir) return null;
+  const huellas = {
+    fallidas: huellaDe(fallidas, (f) => f.id),
+    aprobadas: huellaDe([...(aprobadas.porProgramar ?? []), ...(aprobadas.porProducir ?? [])], (x) => `${x.calendarId}:${x.postId}`),
+    aMano: huellaDe(aMano, (x) => x.post.id),
+  };
+  const ver = {
+    fallidas: fallidas.length > 0 && visible("fallidas", huellas.fallidas),
+    aprobadas: (nProgramar > 0 || nProducir > 0) && visible("aprobadas", huellas.aprobadas),
+    aMano: aMano.length > 0 && visible("aMano", huellas.aMano),
+  };
+  const nOcultos = [fallidas.length > 0 && !ver.fallidas, (nProgramar || nProducir) && !ver.aprobadas, aMano.length > 0 && !ver.aMano].filter(Boolean).length;
+  if (!ver.fallidas && !ver.aprobadas && !ver.aMano && !hoy.length && !nOcultos) return null;
   const ir = (e) => { e.preventDefault(); navegar("/programacion"); };
   const linea = (f) => `${nombreDe(f.clientId) || "Cliente"} · ${REDES[f.red]?.nombre ?? f.red}${f.variante === "historia" ? " (historia)" : ""}`;
+  const descartar = async (f) => {
+    if (!window.confirm("¿Descartar este fallo? No se volverá a intentar.")) return;
+    setOcupada(f.id);
+    setFallo("");
+    try {
+      await db.cancelarPublicacion(f.id);
+      setFilas((prev) => prev.filter((x) => x.id !== f.id));
+    } catch (e) {
+      setFallo(e.message);
+    }
+    setOcupada(null);
+  };
+  const botonOcultar = (tipo) => (
+    <button type="button" className="btn btn-ghost btn-sm" onClick={() => ocultar(tipo, huellas[tipo])} title="Vuelve a salir si cambia algo">
+      <Icon name="eyeOff" size={14} /> Ocultar
+    </button>
+  );
 
   return (
     <section className="dia-bloque" aria-label="Publicaciones">
-      {fallidas.length > 0 && (
+      {ver.fallidas && (
         <div className="notice notice-error" style={{ display: "block", marginBottom: "var(--sp-2)" }}>
-          <p style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
-            <Icon name="alert" size={16} /> {fallidas.length} {fallidas.length === 1 ? "publicación no se publicó" : "publicaciones no se publicaron"}
-          </p>
+          <div className="dia-aviso-cabecera">
+            <p style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
+              <Icon name="alert" size={16} /> {fallidas.length} {fallidas.length === 1 ? "publicación no se publicó" : "publicaciones no se publicaron"}
+            </p>
+            {botonOcultar("fallidas")}
+          </div>
           <ul style={{ margin: "var(--sp-1) 0 var(--sp-2) var(--sp-4)", fontSize: "var(--fs-2xs)" }}>
-            {fallidas.slice(0, 3).map((f) => <li key={f.id}><strong>{linea(f)}:</strong> {f.error}</li>)}
+            {fallidas.slice(0, 5).map((f) => (
+              <li key={f.id}>
+                <strong>{linea(f)}:</strong> {f.error}{" "}
+                <button type="button" className="btn btn-ghost btn-sm" disabled={ocupada === f.id} onClick={() => descartar(f)}>Descartar</button>
+              </li>
+            ))}
           </ul>
+          {fallo && <p role="alert" style={{ fontSize: "var(--fs-2xs)" }}>{fallo}</p>}
           <a href="/programacion" onClick={ir}>Revisar y reintentar en Programación</a>
         </div>
       )}
-      {(nProgramar > 0 || nProducir > 0) && (
+      {ver.aprobadas && (
         <div className="notice" style={{ display: "block", marginBottom: "var(--sp-2)" }}>
-          <p style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap" }}>
-            <Icon name="checkSquare" size={16} />
-            {[
-              nProgramar && `${nProgramar} ${nProgramar === 1 ? "aprobada" : "aprobadas"} por programar`,
-              nProducir && `${nProducir} ${nProducir === 1 ? "idea aprobada" : "ideas aprobadas"} por producir`,
-            ].filter(Boolean).join(" · ")}
-          </p>
+          <div className="dia-aviso-cabecera">
+            <p style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap" }}>
+              <Icon name="checkSquare" size={16} />
+              {[
+                nProgramar && `${nProgramar} ${nProgramar === 1 ? "aprobada" : "aprobadas"} por programar`,
+                nProducir && `${nProducir} ${nProducir === 1 ? "idea aprobada" : "ideas aprobadas"} por producir`,
+              ].filter(Boolean).join(" · ")}
+            </p>
+            {botonOcultar("aprobadas")}
+          </div>
           <p style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", margin: "var(--sp-1) 0" }}>
             Lo aprobado no sale solo: revísalo y dale el paso final.
           </p>
           <a href="/programacion" onClick={ir}>Revisar y programar en Programación</a>
         </div>
       )}
-      {aMano.length > 0 && (
+      {ver.aMano && (
         <div className="notice notice-warn" style={{ display: "block", marginBottom: "var(--sp-2)" }}>
-          <p style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
-            <Icon name="photo" size={16} /> Hoy toca publicar a mano ({aMano.length})
-          </p>
+          <div className="dia-aviso-cabecera">
+            <p style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
+              <Icon name="photo" size={16} /> Hoy toca publicar a mano ({aMano.length})
+            </p>
+            {botonOcultar("aMano")}
+          </div>
           <ul style={{ margin: "var(--sp-1) 0 0 var(--sp-4)", fontSize: "var(--fs-2xs)" }}>
             {aMano.map((x) => (
               <li key={x.post.id}>
@@ -444,6 +543,11 @@ function PublicacionesDeHoy({ pulso, nombreDe, clients }) {
           <Icon name="clock" size={14} />
           Hoy {hoy.length === 1 ? "sale 1 publicación" : `salen ${hoy.length} publicaciones`}; la próxima a las {horaDe(hoy[0].programadaPara)} ({linea(hoy[0])}).
           <a href="/programacion" onClick={ir}>Ver la cola</a>
+        </p>
+      )}
+      {nOcultos > 0 && (
+        <p style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)", margin: 0 }}>
+          {nOcultos === 1 ? "Un aviso oculto" : `${nOcultos} avisos ocultos`}: vuelven si cambia algo, y siguen en <a href="/programacion" onClick={ir}>Programación</a>.
         </p>
       )}
     </section>
