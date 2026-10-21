@@ -39,6 +39,7 @@ import { useAnchoAmplio } from "../../hooks/useAnchoAmplio";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { AvisoEditando } from "../Presencia";
 import Icon from "../Icon";
+import SelectorFecha from "../SelectorFecha";
 import { ConversacionCliente } from "./editorPublicacion";
 import { TipoContenido } from "./tipoContenido";
 import PestanaPublicar from "./seccionPublicar";
@@ -54,13 +55,15 @@ import { fieldHeaderStyle } from "./formato";
 const PESTANAS = [["contenido", "Idea", "bulb"], ["publicar", "Subir", "upload"]];
 let pestanaRecordada = "contenido";
 
-export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onSendToBank, onDescartar, suggestion, onAcceptSuggestion, onRejectSuggestion, client, cal, editandoOtros = {}, pulso = 0, publicacion = null, pestanaInicial = null, nueva = false }) {
+export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDate, onDuplicar = null, onSendToBank, onDescartar, suggestion, onAcceptSuggestion, onRejectSuggestion, client, cal, editandoOtros = {}, pulso = 0, publicacion = null, pestanaInicial = null, nueva = false }) {
   const [form, setForm] = useState({ ...post });
   const [fieldLoading, setFieldLoading] = useState({});
   const [fieldError, setFieldError] = useState("");
   const [fieldAviso, setFieldAviso] = useState("");
   const [moveDateOpen, setMoveDateOpen] = useState(false);
   const [moveTarget, setMoveTarget] = useState("");
+  const [duplicando, setDuplicando] = useState(false);
+  const [destinoCopia, setDestinoCopia] = useState("");
   const ids = useId();
   const panelRef = useDialogA11y(onClose);
   const ancho = useAnchoAmplio(1024);
@@ -504,6 +507,18 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
 
       {/* A lo ancho, en Subir, estas acciones van en la barra de «¿Cuándo sale?». */}
       {!(pestana === "publicar" && ancho) && <div style={{ padding: "var(--sp-3) var(--sp-4)", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
+        {duplicando && onDuplicar && (
+          <div className="duplicar-fila">
+            <span className="label" style={{ margin: 0 }}>Duplicar a</span>
+            <SelectorFecha value={destinoCopia || null} onChange={(f) => setDestinoCopia(f || "")} etiqueta="Día de la copia" vacio="Escoge el día" prefijo="El" />
+            <button type="button" className="btn btn-primary btn-sm" disabled={!destinoCopia}
+              onClick={async () => { save(); const copia = await onDuplicar(form, destinoCopia); if (copia) { setDuplicando(false); setDestinoCopia(""); } }}>
+              <Icon name="copy" size={14} /> Duplicar
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDuplicando(false)} aria-label="No duplicar"><Icon name="close" size={14} /></button>
+            <p className="hint" style={{ flexBasis: "100%", margin: 0 }}>Una copia nueva, pendiente, con la misma información y los mismos archivos. Después, «Otra versión» le da otro diseño.</p>
+          </div>
+        )}
         {moveDateOpen && (
           <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "flex-end" }}>
             <div style={{ flex: 1 }}>
@@ -535,6 +550,18 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           >
             <Icon name="calendar" size={16} />
           </button>
+          {onDuplicar && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              aria-label="Duplicar a otro día"
+              title="Duplicar a otro día"
+              aria-expanded={duplicando}
+              onClick={() => setDuplicando((o) => !o)}
+            >
+              <Icon name="copy" size={16} />
+            </button>
+          )}
           <button
             className="btn btn-secondary btn-sm"
             aria-label="Enviar al banco de ideas"

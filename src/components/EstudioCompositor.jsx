@@ -1,13 +1,14 @@
-import { useId, useRef, useState } from "react";
+import { lazy, Suspense, useId, useRef, useState } from "react";
 import Icon from "./Icon";
 import {
   textoCosto, etiquetaDeCosto, costoUnitario, nombreDelModelo, NOMBRE_PROPORCION, MAX_PROMPT, maxPorPedido, duracionDe, modelosParaLista, creadoresDe, CRITERIOS_ORDEN, NOMBRE_CALIDAD, NOMBRE_MOTOR,
 } from "../lib/estudioCatalogo";
 import { ETIQUETA_AJUSTE, valorDeAjuste } from "../lib/estudio";
 import { TIPOS_PRESET, ESTILOS_VISUALES, LINEA_LOGO } from "../lib/kitMarca";
-import { NOMBRE_TRAMO } from "../lib/videoCorto";
-import { CopyButton } from "./calendario/primitivas";
 import { TOMAS, MAX_NOTA } from "../lib/referencias";
+
+// Sólo en el clip de video: aparte, que el chunk del Estudio va al límite (20 kB).
+const GuionCorto = lazy(() => import("./EstudioGuionCorto"));
 
 // ============================================================
 // El compositor del Estudio: qué se quiere crear
@@ -22,22 +23,42 @@ import { TOMAS, MAX_NOTA } from "../lib/referencias";
 //     y cuesta por segundo. Lo que un modelo no admite no se enseña.
 // ============================================================
 
-// «Clip rápido»: un prompt, un clip por API (animar una foto). El video con guion es el guiado «Video» (FlujoReel).
-const TIPOS = [["imagen", "Imagen", "image"], ["video", "Clip rápido", "video"]];
+// «Clip rápido»: un prompt, un clip por API (animar una foto). El video con guion es el guiado «reel» (FlujoReel).
+const TIPOS = [["imagen", "Imagen", "image"], ["video", "Video", "video"]];
+
+// Las dos formas de hacer un video, dentro de la MISMA opción «Video». Antes eran dos chips sueltos («Video» y «Clip
+// rápido») y no se entendía cuál era cuál; los dos sistemas siguen igual, sólo cambia cómo se escoge.
+const FORMAS_VIDEO = [["reel", "Con guion", "Planos, sonido y Flow"], ["video", "Clip rápido", "Un prompt, un clip"]];
 
 /**
- * «Qué crear»: Imagen y Video (de una vez, el compositor) y los guiados (Carrusel, Reel IA), que cambian lo que se
- * ve debajo por sus pasos. Lo comparten el compositor y los flujos guiados.
+ * «Qué crear»: Imagen, Carrusel y Video. El video tiene dos formas (con guion —el guiado «reel»— o clip rápido —el
+ * compositor de video—) que se escogen debajo; arranca con guion. Lo comparten el compositor y los flujos guiados.
  */
 export function QueCrear({ actual, onCambiar, guiados = [] }) {
+  const conGuion = guiados.some(([t]) => t === "reel");
+  const esVideo = actual === "video" || actual === "reel";
+  const opciones = [TIPOS[0], ...guiados.filter(([t]) => t !== "reel"), TIPOS[1]];
+  const elegir = (tipo) => onCambiar(tipo === "video" && conGuion ? "reel" : tipo);
   return (
-    <div className="est-tipos" role="group" aria-label="Qué crear">
-      {[TIPOS[0], ...guiados, ...TIPOS.slice(1)].map(([tipo, nombre, icono]) => (
-        <button key={tipo} type="button" className="filter-chip" aria-pressed={actual === tipo} onClick={() => onCambiar(tipo)}>
-          <Icon name={icono} size={14} /> {nombre}
-        </button>
-      ))}
-    </div>
+    <>
+      <div className="est-tipos" role="group" aria-label="Qué crear">
+        {opciones.map(([tipo, nombre, icono]) => (
+          <button key={tipo} type="button" className="filter-chip" aria-pressed={tipo === "video" ? esVideo : actual === tipo} onClick={() => elegir(tipo)}>
+            <Icon name={icono} size={14} /> {nombre}
+          </button>
+        ))}
+      </div>
+      {conGuion && esVideo && (
+        <div className="est-formas-video" role="radiogroup" aria-label="Cómo hacer el video">
+          {FORMAS_VIDEO.map(([forma, nombre, ayuda]) => (
+            <button key={forma} type="button" role="radio" aria-checked={actual === forma} className="est-forma-video" onClick={() => onCambiar(forma)}>
+              <strong>{nombre}</strong>
+              <span>{ayuda}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -334,47 +355,6 @@ function EstiloDeMarca({
   );
 }
 
-/**
- * El guion de un video corto (8 o 10 s según el modelo): gancho, beneficio y cierre en una sola toma. La IA
- * lo escribe; la persona lo mira y lo usa como pedido. Lo que va en edición (texto largo, logo) se dice aparte.
- */
-function GuionCorto({ segundos, escribiendo, resultado, onEscribir, onUsar, onDescartar }) {
-  const g = resultado?.guion;
-  return (
-    <div className="est-guion">
-      <div className="est-acciones-idea">
-        <button type="button" className="btn btn-secondary btn-sm" disabled={escribiendo} onClick={onEscribir}>
-          <Icon name="video" size={14} /> {escribiendo ? "Escribiendo el guion…" : `Guion de ${segundos} s con IA`}
-        </button>
-        <p className="hint" style={{ margin: 0 }}>Gancho, beneficio y cierre en una sola toma. El texto largo y el logo van en edición.</p>
-      </div>
-      {g && (
-        <div className="est-guion-tarjeta">
-          {g.escena && <p><strong>Escena:</strong> {g.escena}</p>}
-          <ol className="est-guion-tramos">
-            {g.tramos.map((t) => <li key={t.clave}><strong>{t.desde}–{t.hasta} s · {NOMBRE_TRAMO[t.clave]}:</strong> {t.accion}</li>)}
-          </ol>
-          {g.camara && <p><strong>Cámara:</strong> {g.camara}</p>}
-          <p><strong>Texto en pantalla:</strong> {g.textoPantalla ? `«${g.textoPantalla}»` : "ninguno"}</p>
-          {g.textoEdicion && <p><strong>Para edición (CapCut o Canva):</strong> {g.textoEdicion}</p>}
-          {g.sonido && <p><strong>Sonido:</strong> {g.sonido}</p>}
-          {g.descripcion && (
-            <div className="est-guion-desc">
-              <p><strong>Descripción del post:</strong></p>
-              <p className="est-guion-caption">{g.descripcion}</p>
-              <CopyButton text={g.descripcion} describes="la descripción" />
-            </div>
-          )}
-          <div className="est-acciones-idea">
-            <button type="button" className="btn btn-primary btn-sm" onClick={onUsar}><Icon name="check" size={14} /> Usar como pedido</button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={onDescartar}>Descartar</button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 /** Lo que se sabe del modelo escogido: quién lo hace, qué tan bueno es, cuánto tarda y para qué sirve. */
 function FichaDelModelo({ modelo }) {
   const calidad = modelo.calidad ?? 2;
@@ -529,7 +509,7 @@ export default function Compositor({
 
       {onMejorar && <MejorarIdea mejorando={mejorando} onMejorar={onMejorar} onVolverIdea={onVolverIdea} mejorarSolo={mejorarSolo} />}
 
-      {esVideo && guionCorto && <GuionCorto {...guionCorto} />}
+      {esVideo && guionCorto && <Suspense fallback={null}><GuionCorto {...guionCorto} /></Suspense>}
 
       {estilo && <EstiloDeMarca ids={ids} esVideo={esVideo} {...estilo} />}
 
@@ -537,7 +517,9 @@ export default function Compositor({
         <div className="field">
           <label className="label" htmlFor={`${ids}-m`}>Modelo</label>
           <select id={`${ids}-m`} className="input" value={form.modelo} onChange={(e) => onModelo(e.target.value)}>
-            {modelosParaLista(form.tipo, { orden, creador, activos, seleccionado: form.modelo }).map((m) => (
+            {/* Sólo los que se pueden pedir: los de un proveedor sin llave (Higgsfield, fal…) salían en gris y
+                llenaban la lista de cosas que no se pueden escoger. El escogido se queda aunque no tenga llave. */}
+            {modelosParaLista(form.tipo, { orden, creador, activos, seleccionado: form.modelo }).filter((m) => activo(m) || m.id === form.modelo).map((m) => (
               <option key={m.id} value={m.id} disabled={!activo(m)}>
                 {m.nombre}{m.motor === "prueba" ? "" : ` · ${NOMBRE_MOTOR[m.motor] ?? m.motor}`} · {etiquetaDeCosto(m)}{activo(m) ? "" : " · sin llave"}
               </option>

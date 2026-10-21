@@ -15,16 +15,20 @@ import "./GuardarReferencia.css";
 // pega el enlace, se escoge la empresa (o ninguna: queda GENERAL y sale en
 // el banco de todos los clientes hasta que se le asigne una) y, si se quiere,
 // una nota de qué tiene de bueno. Va al banco de ideas único.
+//
+// También se abre desde «Compartir» de Instagram o TikTok (/compartir, ya
+// relleno): en Android instalando la aplicación (el manifiesto la pone en la
+// hoja de compartir) y en el iPhone con un Atajo que abre esa dirección.
 // ============================================================
 
-export default function GuardarReferencia({ clientes = [], clienteInicial = null, onClose, onGuardado }) {
+export default function GuardarReferencia({ clientes = [], clienteInicial = null, textoInicial = "", notaInicial = "", onClose, onGuardado }) {
   const ids = useId();
   const ref = useDialogA11y(onClose);
   // Un colaborador no puede guardar sin empresa (la capa no le enseña las generales).
   const colaborador = Array.isArray(yoActual()?.clientes);
-  const [texto, setTexto] = useState("");
+  const [texto, setTexto] = useState(textoInicial);
   const [clienteId, setClienteId] = useState(clienteInicial || (colaborador ? clientes[0]?.id ?? "" : ""));
-  const [nota, setNota] = useState("");
+  const [nota, setNota] = useState(notaInicial);
   const [formato, setFormato] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
@@ -117,6 +121,8 @@ export default function GuardarReferencia({ clientes = [], clienteInicial = null
           {Object.entries(FORMATS).map(([k, f]) => <option key={k} value={k}>{f.label}</option>)}
         </select>
 
+        <DesdeCompartir />
+
         {error && <p role="alert" className="guardar-referencia-error">{error}</p>}
 
         <div className="guardar-referencia-botones">
@@ -127,5 +133,43 @@ export default function GuardarReferencia({ clientes = [], clienteInicial = null
         </div>
       </form>
     </div>
+  );
+}
+
+/** Cómo guardar sin abrir la aplicación: desde «Compartir». Android por el manifiesto; iPhone, con un Atajo. */
+function DesdeCompartir() {
+  const ids = useId();
+  const [copiado, setCopiado] = useState(false);
+  const direccion = `${window.location.origin}/compartir?texto=`;
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(direccion);
+      setCopiado(true);
+    } catch {
+      setCopiado(false);
+    }
+  };
+  return (
+    <details className="guardar-referencia-ayuda">
+      <summary>Guardar directo desde «Compartir» de Instagram o TikTok</summary>
+      <h3 id={`${ids}-a`}>Android</h3>
+      <ol aria-labelledby={`${ids}-a`}>
+        <li>Abre esta aplicación en Chrome y toca el menú ⋮ → «Instalar aplicación» (o «Añadir a la pantalla de inicio»).</li>
+        <li>En Instagram o TikTok toca «Compartir» → «Juancito Ads». Se abre esta ventana con el enlace puesto.</li>
+      </ol>
+      <h3 id={`${ids}-i`}>iPhone (con un Atajo, una sola vez)</h3>
+      <ol aria-labelledby={`${ids}-i`}>
+        <li>Abre la app «Atajos» → «+» → «Añadir acción» y busca «Codificar URL».</li>
+        <li>Añade debajo «Abrir URL» y escribe la dirección de abajo seguida de la «URL codificada».</li>
+        <li>En los detalles del atajo activa «Mostrar en hoja de compartir» y ponle de nombre «Guardar en Juancito».</li>
+        <li>En Instagram o TikTok: «Compartir» → «Guardar en Juancito». Safari abre esta ventana con el enlace puesto.</li>
+      </ol>
+      <div className="guardar-referencia-direccion">
+        <code>{direccion}</code>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={copiar}>
+          <Icon name={copiado ? "check" : "copy"} size={14} /> {copiado ? "Copiada" : "Copiar"}
+        </button>
+      </div>
+    </details>
   );
 }

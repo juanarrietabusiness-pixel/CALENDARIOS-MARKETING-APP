@@ -33,11 +33,15 @@ export async function base64DeImagen(image, lado = 800) {
   return null;
 }
 
-function esperar(el, evento) {
+// Con plazo: Safari en el iPhone no carga un video que no está en pantalla (ni sin tocarlo, ni con el
+// ahorro de batería), así que «loadeddata» o «seeked» podían no llegar NUNCA. «Subir» esperaba a la IA
+// —que esperaba a los fotogramas— y «Publicar ahora» se quedaba gris para siempre sin decir por qué.
+function esperar(el, evento, plazo = 12_000) {
   return new Promise((ok, mal) => {
-    const limpiar = () => { el.removeEventListener(evento, bien); el.removeEventListener("error", fallo); };
+    const limpiar = () => { clearTimeout(reloj); el.removeEventListener(evento, bien); el.removeEventListener("error", fallo); };
     const bien = () => { limpiar(); ok(); };
     const fallo = () => { limpiar(); mal(new Error("El navegador no pudo leer ese video.")); };
+    const reloj = setTimeout(() => { limpiar(); mal(new Error("El navegador tardó demasiado en leer el video.")); }, plazo);
     el.addEventListener(evento, bien);
     el.addEventListener("error", fallo);
   });
@@ -54,7 +58,9 @@ export async function fotogramasDeVideo(url, n = 6, ancho = 640) {
   video.playsInline = true;
   video.preload = "auto";
   video.src = url;
-  await esperar(video, "loadeddata");
+  const cargado = esperar(video, "loadeddata");
+  video.load(); // Safari no empieza a cargar sin esto
+  await cargado;
 
   const duracion = Number.isFinite(video.duration) ? video.duration : 0;
   const escala = Math.min(1, ancho / (video.videoWidth || ancho));

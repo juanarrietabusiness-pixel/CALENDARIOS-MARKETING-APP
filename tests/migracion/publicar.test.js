@@ -310,6 +310,20 @@ describe("la cola sigue al calendario", () => {
     expect(filas()[0]).toMatchObject({ estado: "cancelada", error: "Se quitó del calendario." });
   });
 
+  it("lo que falló deja de avisar si se publicó a mano o se quitó; si sigue pendiente, se queda", async () => {
+    await sembrar();
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1" });
+    db.sqlite.prepare("update publicaciones_programadas set estado = 'error', error = 'Meta dijo que no.'").run();
+    pasar();
+    const dias = (p) => ({ id: "cal1", days: JSON.stringify([{ date: "2026-10-05", posts: [p] }]) });
+    await resincronizarCalendario(env, acceso(), dias(post()));
+    expect(filas()[0].estado).toBe("error");
+
+    pasar();
+    await resincronizarCalendario(env, acceso(), dias(post({ status: "published" })));
+    expect(filas()[0]).toMatchObject({ estado: "cancelada", error: "Meta dijo que no. (Se publicó por otro camino.)" });
+  });
+
   it("si el cliente pide cambios, lo programado no sale", async () => {
     await sembrar();
     await programar(env, acceso(), { calendarId: "cal1", postId: "p1" });

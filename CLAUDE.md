@@ -103,6 +103,7 @@ src/
                           las comparten Mi día y el panel lateral
   hooks/useRepaso.js      ¿Toca el repaso de la mañana? (una vez al día por persona)
   hooks/useBancoIdeas.js  El banco de ideas único: leerlo entero, añadir, cambiar (agrupado), asignar empresa, quitar
+  hooks/useArrastrarOrden.js  Ordenar una lista arrastrando y con flechas (Hoy de Mi día y del panel de tareas)
   lib/
     filas.js              Conversores fila ⇄ aplicación
     auth.js               Sesión, inicio y cierre
@@ -170,6 +171,9 @@ src/
     logoEstudio.js        Estampar el logo y subir la pieza nueva a la galería; `conLogoSiToca` para lote, carrusel y mes
     recrear.js            «Recrear un anuncio»: el análisis en pocas líneas, la versión de partida y lo que va al
                           compositor (el anuncio sólo por su forma, las fotos del producto delante) (puro)
+    otraVersion.js        «Otra versión» y «Recrear con mi marca» de un medio de la PUBLICACIÓN: se hacen ahí y ocupan
+                          su sitio (lazy)
+    piezaChat.js          La imagen o el video que pide el asistente, por el Estudio con el kit del cliente (lazy)
     referencias.js        Qué se toma de cada imagen de referencia (estilo, composición, producto…), la foto
                           REAL del producto (y si es de otra marca), el producto que nombra la idea (puro)
     estudio.js            Cliente de /api/estudio y lo puro de la pantalla: filtros (también «Usadas / Sin usar»),
@@ -202,7 +206,7 @@ src/
                           también lo importa el Worker)
     foco.js               La empresa en foco de cada persona, por día
     configIA.js           Nombres de modelos y niveles de razonamiento (puro)
-    mensajeChat.js        Marcas del chat: piezas, imágenes, contexto (puro)
+    mensajeChat.js        Marcas del chat: piezas, imágenes, videos, contexto (puro)
     medios.js             Fotogramas de video, imagen para la IA, descarga a tamaño
     drive.js              Id de carpeta a partir del enlace, tipo y tamaño; el plan de «Guardar en Drive»: carpetas
                           Mes / Semana, nombres de pieza, qué subir y qué quitar (puro; también lo importa el Worker)
@@ -273,12 +277,15 @@ src/
     CargaEquipo.jsx       Qué tiene cada persona los próximos 7 días
     PanelTareas.jsx       Las tareas al lado, como Google Tasks: «Hoy» fijo, lo demás plegable (lazy)
     RepasoAtrasadas.jsx   El repaso de la mañana: qué se hace con cada atrasada
+    ElegirDia.jsx         «¿Cuándo la haces?»: sin día, hoy, mañana u otro día (el `today_date` de una tarea)
+    HoyInicio.jsx         «Tus tareas de hoy» en el inicio (sustituye al panel de tareas rápidas)
     calendario/aprobacionCliente.jsx  «¿Qué aprueba el cliente?» y en qué quedó
     calendario/cambiosCliente.jsx  Lo que pidió cambiar el cliente y «Rehacer la imagen con lo que pidió» (pestaña Subir)
     calendario/equipoPublicacion.jsx  Lo lleva, etapa, hilo del equipo, tareas de la
                           publicación e historial
     SubirRapido.jsx       «Subir»: cliente → archivo → la IA escribe → cuándo sale (diálogo)
-    GuardarReferencia.jsx «Guardar referencia»: pegar el enlace de un video, la empresa (o ninguna: general) y una nota (lazy)
+    GuardarReferencia.jsx «Guardar referencia»: pegar el enlace de un video, la empresa (o ninguna: general) y una nota (lazy);
+                          también lo que llega por «Compartir» (/compartir) y cómo dejarlo en la hoja de compartir
     calendario/BankPanel.jsx  El banco de ideas (junto al calendario y en la pestaña Ideas): filtros, empresa, enlace
     calendario/cuandoSale.jsx   «¿Cuándo sale?» del panel: Ahora / Programar / La publico yo
     calendario/horaSugerida.jsx La hora con mejores resultados, compartida por los dos
@@ -1130,6 +1137,10 @@ son del servidor.
   dentro de un binario que nadie mira antes de hacer commit. Misma
   familia que `scripts/migracion/datos/`. (El que había en el historial
   estaba vacío: no llegó a colarse ningún dato.)
+- **El asistente crea imágenes y videos POR EL ESTUDIO y los entrega en el chat** (`generar_imagen` con `tipo`, `estilo`,
+  `confirmado`; `src/lib/piezaChat.js`). Con un cliente abierto va por el camino de UNA pieza (kit, logo, fotos del
+  producto que nombra, modelo fijado) y el navegador espera el trabajo; desde 0,50 $ devuelve «NO SE CREÓ NADA» con la
+  cifra y sólo con el «sí» se repite. Sin cliente, la imagen de Gemini de siempre. El video llega como `[[video: clave]]`.
 - **Lo que no es prosa en el chat viaja DENTRO del texto, como marca.**
   `chat_messages.content` es texto, así que las piezas copiables
   (`[[pieza: …]]`), las imágenes generadas (`[[imagen: clave | formato]]`)
@@ -1175,6 +1186,16 @@ son del servidor.
   planeaste el viernes: es de mañana). Un plan que ya pasó la deja atrasada,
   y el plan de una recurrente sólo vale dentro de su periodo: el «Hoy» de la
   semana pasada no la deja atrasada esta. La fecha límite no se toca al mover.
+- **Mi día va por prioridad: Hoy arriba, los avisos de la cola, y luego Atrasadas.** Con lo atrasado delante, lo de
+  hoy quedaba debajo de todo. Hoy se ORDENA (arrastrar o flechas, `useArrastrarOrden`, que reescribe `position` sólo
+  de las que cambian y mezcla las dos tablas: la posición sólo se compara dentro del bloque). Una tarea nueva va al
+  final (`position` = la mayor + 1): con 0 saltaba delante de lo ordenado. Cada aviso de publicaciones se OCULTA
+  hasta que cambia (`midia-ocultos:<persona>` en el navegador guarda la huella de lo que decía) y lo que falló se
+  descarta ahí mismo. Además los fallos se limpian solos al guardar el calendario (`resincronizarCalendario`): si la
+  publicación se quitó, se publicó a mano o pasó a «La publico yo», la fila en error pasa a cancelada con el motivo.
+  «Sin fecha» se llama «Por agendar» y va abierto: las tareas rápidas del inicio no tenían día y caían ahí, plegadas,
+  donde nadie las veía. Por eso el inicio enseña ahora «Tus tareas de hoy» (las mismas de Mi día) y lo que se apunta
+  lleva su día. Al crear una tarea, en Mi día, en el inicio o en una empresa, se escoge el día (`ElegirDia`).
 - **El panel de tareas es el asistente con otro contenido:** acoplado desde
   1280 px en el mismo sitio (`.app-shell[data-lateral="acoplado"]`, antes
   `data-chat`) y cajón por debajo. Uno a la vez: abrir uno cierra el otro.
@@ -1306,6 +1327,18 @@ son del servidor.
   (`costoUnitario`). GPT Image no tiene 4:5 (sale 3:4 y se adapta al programar). Un test exige que cada modelo de Kie
   del catálogo tenga su pedido en `MODELOS_KIE`, y al revés. **Nada de Kie se ha probado contra el servicio real**: la
   forma sale de su documentación.
+  · **La documentación de octubre de 2026 sumó ~35 modelos** (`docs/kie/catalogo-2026-10.md`, el extracto de la agencia:
+  por cada `model`, sus campos, los obligatorios con `*` y los valores de cada lista). Imagen: Imagen 4 y Fast, Nano Banana
+  2 Lite, Z-Image, Seedream 4.5 y 5 Lite/Flash, Flux 2 Pro/Flex y 3 Klein, Grok Imagine 2, GPT Image 1.5 y 2.5 Flare, Qwen
+  2.1 y 3 Pro, Wan 2.7 Image (y Pro) e Ideogram con personaje. Video: Gemini Omni con video, Seedance 2 Fast y Mini, Kling
+  3 Turbo y 2.6 (también «copiar el movimiento»: una foto + un video), Veo 3.1 Lite, Wan 3 y Prime, Hailuo 2.3 Standard,
+  MiniMax H3, PixVerse 6 (con inicio y final hace la transición), HappyHorse 1.1, Grok Imagine Video y Vidu Q4. Fuera, a
+  propósito: lo que exige `callBackUrl`, lo que parte de un `task_id` (extender, ampliar, 4K), máscaras, avatares y labios,
+  y las API con su propio endpoint (4o, Flux Kontext, Runway). **Los precios no vienen en la documentación**: todos son
+  estimados y lo dicen. `tests/migracion/kie.modelos.test.js` LEE el extracto y comprueba cada forma de pedir cada modelo
+  (texto, referencias, inicial, inicial y final, video): `model` que existe, sólo sus campos, todos los obligatorios y los
+  valores de las listas. Cazó uno de antes: Seedance 2.0 y Fast recibían `output_format`, que sólo admite 2.5. Si Kie
+  cambia su documentación, se reemplaza el extracto y el test dice qué pedido dejó de cuadrar.
   · **El VIDEO de referencia es un cuarto papel de los medios** (`medios.video`, junto a start/end/reference). Sólo
   lo admiten los modelos de Higgsfield marcados `conVideo` en el generador (Kling Omni · sigue un video, Kling 3.0
   · copia el movimiento): `video: 1` y `necesitaVideo` salen del esquema. Va a SU almacén como las imágenes, desde
@@ -1374,8 +1407,13 @@ son del servidor.
   repite el pedido de la pieza con las imágenes de SU trabajo. «Versión distinta» pide a la IA 1–3 escenas nuevas con la
   misma información (`POST /api/estudio/<c>/versiones`, función «prompt de imagen», texto) y `conOtraEscena()` cambia
   SÓLO la escena del pedido: tipo, acabado, referencias, marca y logo se quedan. El costo se enseña en el botón (es la
-  confirmación). En la imagen de una publicación, «Otra versión» abre «Crear con IA» con esa imagen de referencia y la
-  nota de qué hacer: la imagen de un post no siempre está en la galería.
+  confirmación). En la imagen de una publicación (pestaña Subir), «Otra versión» se HACE AHÍ (`src/lib/otraVersion.js`)
+  y ocupa el sitio de la anterior, con «Deshacer»: si la imagen salió del Estudio, su pedido con otra escena; si no
+  (subida, Drive), el camino de UNA pieza sobre la idea y el texto de la publicación, SIN la imagen vieja de referencia
+  (la copiaría). Es para reutilizar un post con otro diseño; «Duplicar a otro día» (`copiaDePublicacion`, lib/subir.js:
+  pendiente, sin la aprobación, la etapa ni la copia de Drive de la original) es el otro medio. «Recrear con mi marca»
+  hace lo mismo con una REFERENCIA subida al post (imagen: va primera con `TOMA_DE_OTRA_MARCA`; video: como video de
+  referencia, con Kling Omni u otro que lo admita). En «Subir», sin publicación todavía, sigue abriendo «Crear con IA».
 - **«Me gusta» (la estrella de antes, `favorito`) y la papelera enseñan al kit** (`src/lib/aprendizajeVisual.js`,
   `worker/lib/estudio/aprender.js`, `POST /api/estudio/<c>/kit/aprender`, en Cerebro → Lo que aprende → «Lo visual»).
   La IA MIRA las imágenes (hasta 8 que gustan y 4 descartadas, función «aprendizaje visual») y PROPONE reglas; nada
@@ -1695,6 +1733,9 @@ son del servidor.
   hay `usado_en` para el catálogo.
   · **«Producir el mes» va por semanas y días, de lunes a domingo** (`lib/produccion.js`): el tipo de contenido va
   por día, así que todos los lunes salen juntos con el mismo estilo. Sólo cuenta lo que se ve con el filtro.
+- **El logo del carrusel tiene su hueco** (`referenciasDeLamina`): iba «si cabe», detrás de la anterior, la portada y las
+  fotos, y en un modelo de 3 referencias no cabía nunca; un test exigía que se cayera. Ahora es el último y nunca se
+  recorta (con 2 referencias o más), y `pedidoDeLamina({ conLogo })` dice dónde ponerlo: la imagen sola no basta.
 - **El carrusel se crea lámina a lámina, y EN ORDEN** (`lib/carrusel.js`, `lib/carruselEstudio.js`,
   `calendario/CarruselIA.jsx`; también lo usa «Producir el mes»). Pedir las láminas a la vez salía con cada una de un
   estilo. Cada lámina es un trabajo del Estudio con la ANTERIOR y la PORTADA de referencia (más las fotos del producto
@@ -1747,7 +1788,8 @@ son del servidor.
   (`maxPlanos`). «Crear aquí por API» (fotogramas y video) sigue para 8 y 10 s, como opción secundaria. El guion puede
   seguir un ANUNCIO QUE YA FUNCIONA (`referenciaId` en `POST …/reel/guion`: el servidor toma la estructura, el gancho y
   por qué funciona de la referencia analizada del estudio de mercado; su forma, nunca su marca ni su texto). En «Qué
-  crear» el guiado se llama «Video» y el compositor de un prompt, «Clip rápido».
+  crear» hay UN chip «Video» y debajo sus dos formas: «Con guion» (el guiado, FlujoReel) y «Clip rápido» (el
+  compositor de un prompt). Eran dos chips sueltos y no se entendía cuál era cuál.
 - **Corregir con un ejemplo de la galería** (`ReferenciasGaleria.jsx`, `pedidoDeCorreccion` en lib/estudio.js): en el
   visor («Editar»), en cada lámina, en cada fotograma y en el tramo del video. La imagen que se corrige va PRIMERO y los
   ejemplos detrás, sólo los que quepan en el modelo, cada uno con su línea («toma SÓLO…» o «es un EJEMPLO…»); en el
@@ -2578,6 +2620,11 @@ son del servidor.
   «Duplicar calendario» creaba «Octubre 2026 (copia)» del mismo mes. Crear
   con el PUT un mes que ya existe devuelve 409 con el que hay (no un 500 del
   índice); el asistente de planificar lo trata AÑADIENDO a lo que hay.
+- **Mover de día lo programado: el servidor reprograma, y la pestaña que lo movió lo tiene que RELEER.**
+  `resincronizarCalendario` (en el PUT del calendario) ya cambiaba `programada_para`, pero su aviso
+  `publicacion` vuelve con la pestaña de quien movió y el filtro del eco lo descartaba: la tarjeta y el chip seguían
+  con la fecha vieja y parecía que no se había movido. El eco propio de `publicacion` sube el `pulso` (sin aviso).
+  Arrastrar lo que ya salió o está saliendo no se deja, y a un momento que ya pasó pregunta (saldría en el minuto).
 - **Mover a otro mes es del servidor, y todo o nada**
   (`moverDeMes`, worker/lib/meses.js). Seis tablas señalan cada publicación
   por «calendario + publicación» (approvals, comentarios_aprobacion,
@@ -2675,6 +2722,14 @@ son del servidor.
   · **«Guardar referencia»** se abre desde la cabecera (computadora), «Enlace» en la barra del móvil, el banco y
   `abrirGuardarReferencia()` desde cualquier sitio. El asistente (`agregar_banco_ideas`, con `enlace` y sin cliente =
   general) y Claude por MCP (`anadir_idea`, `ver_banco_ideas`) escriben en la MISMA tabla.
+  · **Desde «Compartir» de Instagram o TikTok, sin abrir la aplicación** (`/compartir`, `deLoCompartido` en
+  lib/bancoIdeas.js): App abre «Guardar referencia» relleno y devuelve la dirección a `/` (en un efecto: en el
+  inicializador del estado, StrictMode lo haría dos veces). En Android lo pone en la hoja de compartir el
+  `share_target` de `public/manifest.webmanifest` (GET con `title`, `text`, `url`; hay que INSTALAR la aplicación desde
+  Chrome, y para eso hacen falta los iconos de 192 y 512). En el iPhone Safari no admite `share_target`: un Atajo
+  («Codificar URL» + «Abrir URL» con `…/compartir?texto=`), y el diálogo enseña los pasos y la dirección para copiar.
+  Sin service worker: Chrome ya no lo exige para instalar. **Ni la instalación ni el Atajo se han probado en un
+  teléfono**: lo comprobado es la dirección en Chromium.
 - **Español latino neutro, en un sitio.** El modelo imita lo que tiene
   delante: con un ADN o un ejemplo con voseo escribía «vení» y «tenés».
   `REGLA_IDIOMA` (src/lib/idioma.js) va delante del sistema en
@@ -2824,6 +2879,10 @@ son del servidor.
   siquiera pregunta y el dictado falla en la web; en el iPhone funcionaba
   porque Safari no aplica esa cabecera. Cámara y geolocalización siguen
   cerradas, y `tests/despliegue/plantillas.test.js` lo vigila.
+- **Leer un video en el navegador tiene plazo** (`esperar` en lib/medios.js, 12 s). Safari en el iPhone no carga un
+  video que no está en pantalla, así que `loadeddata` no llegaba nunca: «Subir» esperaba a la IA, que esperaba a los
+  fotogramas, y «Publicar ahora» se quedaba gris para siempre sin decir por qué. Ahora el botón dice su motivo al lado
+  y hay «No esperar a la IA».
 - **La espera de TikTok tiene plazo** (`PLAZO_TIKTOK_MS`, 30 min en
   `seguirPostPeer`): sin él, un estado que no terminaba dejaba la fila en
   «Publicando…» para siempre. Al vencer queda en error con el último estado y

@@ -10,7 +10,8 @@ import CalendarView from "./components/CalendarView";
 import NavegadorMes from "./components/calendario/navegadorMes";
 import { diasVecinos } from "./lib/meses";
 import { ponerEnDia, deIdeaAPublicacion } from "./lib/subir";
-import QuickTasksPanel from "./components/QuickTasksPanel";
+import { deLoCompartido } from "./lib/bancoIdeas";
+import HoyInicio from "./components/HoyInicio";
 import ResumenCliente from "./components/ResumenCliente";
 import NavPrincipal from "./components/NavPrincipal";
 import MenuCuenta from "./components/MenuCuenta";
@@ -366,7 +367,7 @@ function Inicio({ yo, clients, pulso, presentes, onAbrir, onNuevo }) {
         })}
       </ul>
 
-      <QuickTasksPanel pulso={pulso} />
+      <HoyInicio clients={clients} yo={yo} pulso={pulso} />
     </div>
   );
 }
@@ -400,8 +401,19 @@ function Workspace({ session, ruta }) {
   });
   const [showBuscador, setShowBuscador] = useState(false);
   const [showSubir, setShowSubir] = useState(false);
-  // «Guardar referencia»: null cerrado; si no, { clienteId } con el que abre (o null = sin escoger).
-  const [guardarRef, setGuardarRef] = useState(null);
+  // «Guardar referencia»: null cerrado; si no, { clienteId } con el que abre (o null = sin escoger). Lo que llega
+  // por «Compartir» (/compartir: el manifiesto en Android, el Atajo en el iPhone) lo abre ya relleno, y la dirección
+  // vuelve al inicio para que recargar no lo abra otra vez.
+  const [guardarRef, setGuardarRef] = useState(() => {
+    const compartido = deLoCompartido(window.location);
+    return compartido ? { clienteId: null, texto: compartido.texto, nota: compartido.nota } : null;
+  });
+  // Fuera del inicializador: StrictMode lo llama dos veces y la segunda ya no vería /compartir.
+  useEffect(() => {
+    if (deLoCompartido(window.location)) {
+      try { window.history.replaceState(null, "", "/"); } catch { /* sin historial */ }
+    }
+  }, []);
   useEffect(() => {
     const abrir = (e) => setGuardarRef({ clienteId: e.detail?.clienteId ?? null });
     window.addEventListener("guardar-referencia", abrir);
@@ -529,8 +541,13 @@ function Workspace({ session, ruta }) {
         });
         return;
       }
-      // Filtro 1: mi propio eco.
-      if (ev.por?.tab && ev.por.tab === db.PESTANA) return;
+      // Filtro 1: mi propio eco. Salvo la cola: al mover de día una publicación programada, la fecha nueva
+      // la escribe el SERVIDOR (resincronizarCalendario) y quien la movió no la tiene en pantalla. Sin releer,
+      // la tarjeta y el chip seguían diciendo la fecha vieja y parecía que no se había movido.
+      if (ev.por?.tab && ev.por.tab === db.PESTANA) {
+        if (ev.tipo === "publicacion") setPulso((n) => n + 1);
+        return;
+      }
 
       switch (ev.tipo) {
         case "cliente": {
@@ -1587,6 +1604,7 @@ function Workspace({ session, ruta }) {
                     onUpdateCalLocal={updateCalendarLocal}
                     onDeleteCal={deleteCalendar}
                     onMoverAOtroMes={(postId, fecha, opciones) => moverAOtroMes(calendar, postId, fecha, opciones)}
+                    onLlevarAlCalendario={llevarAlCalendario}
                     vecinos={diasVecinos(client.calendars ?? [], mesVisto)}
                     onAbrirVecina={(calVecino, postId) => { setPostPedido({ calId: calVecino.id, postId }); irAMes(client.id, calVecino); }}
                     clientes={clients}
@@ -1651,6 +1669,8 @@ function Workspace({ session, ruta }) {
           <GuardarReferencia
             clientes={clients}
             clienteInicial={guardarRef.clienteId}
+            textoInicial={guardarRef.texto ?? ""}
+            notaInicial={guardarRef.nota ?? ""}
             onGuardado={setToast}
             onClose={() => setGuardarRef(null)}
           />

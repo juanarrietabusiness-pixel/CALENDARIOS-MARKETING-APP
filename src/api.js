@@ -973,10 +973,14 @@ ${cerebro || notasCerebro > 0
 · Puedes crear tareas para el cliente con crear_tarea.
 · Puedes guardar ideas y REFERENCIAS (el enlace de un video de Instagram, TikTok, YouTube…) en el banco de ideas con
   agregar_banco_ideas: van a este cliente, o como generales (general: true) si no son de él todavía.
-· Puedes GENERAR IMÁGENES con IA usando generar_imagen. La imagen se ENTREGA AQUÍ MISMO, en el
-  chat, y el usuario la descarga en el tamaño que pidió. Úsala siempre que te pidan una imagen,
-  sea o no para una publicación. Si además piden ponerla en una publicación, pasa su post_id.
-  No escribas la clave ni un enlace: la imagen aparece sola debajo de tu mensaje.
+· Puedes CREAR IMÁGENES Y VIDEOS con generar_imagen (tipo «video» para un video). Con un cliente abierto
+  la hace el ESTUDIO con su kit de marca: paleta, estilo, logo, la letra de la marca, las fotos reales del
+  producto que nombres y el modelo que el cliente tiene fijado; tú sólo describes la ESCENA (qué se ve) y,
+  si lleva texto, el texto exacto entre comillas. Pasa «estilo» con el tipo de contenido si lo sabes. Se
+  ENTREGA AQUÍ MISMO, en el chat, y queda en la galería. Úsala siempre que te pidan una imagen o un video,
+  sea o no para una publicación; si piden ponerla en una publicación, pasa su post_id.
+  Si la respuesta dice que cuesta y no se creó nada, di la cifra y sólo con un «sí» repites con
+  confirmado=true. No escribas la clave ni un enlace: la pieza aparece sola debajo de tu mensaje.
 · Puedes ver las imágenes y los videos que el usuario te adjunte y crear contenido basado en ellos.
 
 ${ctx}
@@ -1182,7 +1186,7 @@ export function getChatTools(hasCalendar) {
   // Fuera del `if`: una imagen para el chat no necesita calendario.
   tools.push({
     name: "generar_imagen",
-    description: "Genera una imagen con IA y la ENTREGA EN EL CHAT, donde el usuario la ve y la descarga en el tamaño pedido. Úsala siempre que pidan una imagen. Si también piden ponerla en una publicación del calendario, pasa post_id.",
+    description: "Crea una imagen (o un video, con tipo «video») con IA y la ENTREGA EN EL CHAT, donde el usuario la ve y la descarga. Con un cliente abierto la hace el Estudio con su kit de marca (logo, paleta, fotos del producto). Úsala siempre que pidan una imagen o un video. Si también piden ponerla en una publicación del calendario, pasa post_id.",
     input_schema: {
       type: "object",
       properties: {
@@ -1193,6 +1197,13 @@ export function getChatTools(hasCalendar) {
           description: "Tamaño: square (1080×1080, post), vertical (1080×1350, post de feed alto), story (1080×1920, historia o reel), horizontal (1200×630, portada o anuncio web). Elige el que corresponda a lo que pidan; por defecto square.",
         },
         post_id: { type: "string", description: "ID de una publicación del calendario a la que además asignarla (opcional)." },
+        tipo: { type: "string", enum: ["imagen", "video"], description: "imagen (por defecto) o video. Un video sólo con un cliente abierto, y tarda unos minutos." },
+        estilo: {
+          type: "string",
+          enum: ["anuncio", "beneficios", "servicios", "educativo", "diferenciador", "maletas", "humano"],
+          description: "El tipo de contenido de la pieza (el del día o el de la publicación): pone el preset de ese tipo del kit de marca. Opcional.",
+        },
+        confirmado: { type: "boolean", description: "Sólo true si el usuario ya dijo que sí al costo que le dijiste. Nunca lo pongas por tu cuenta." },
       },
       required: ["prompt"],
     },

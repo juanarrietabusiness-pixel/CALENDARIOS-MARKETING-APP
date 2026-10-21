@@ -39,7 +39,9 @@ describe("el texto de una lámina", () => {
 
 describe("lo que se pide", () => {
   it("las referencias: la anterior, la portada, las fotos y el logo, sin repetir y con tope", () => {
-    expect(referenciasDeLamina({ anterior: "a", portada: "p", fotos: ["f1", "f2"], logo: "l", max: 3 })).toEqual(["a", "p", "f1"]);
+    // El logo tiene su hueco: antes se caía en cuanto había anterior, portada y una foto.
+    expect(referenciasDeLamina({ anterior: "a", portada: "p", fotos: ["f1", "f2"], logo: "l", max: 3 })).toEqual(["a", "p", "l"]);
+    expect(referenciasDeLamina({ anterior: "a", fotos: ["f1"], logo: "l", max: 1 })).toEqual(["a"]);
     expect(referenciasDeLamina({ anterior: "p", portada: "p", logo: "l" })).toEqual(["p", "l"]);
     expect(referenciasDeLamina({ fotos: ["f"], max: 0 })).toEqual([]);
   });
@@ -56,6 +58,10 @@ describe("lo que se pide", () => {
     expect(pl).toContain("el tercio superior");
     expect(pl).toContain("foto real del producto");
     expect(pl).toContain("Define un estilo");
+    expect(pl).not.toContain("logo");
+    const conLogo = pedidoDeLamina({ lamina: { ...lamina, n: 1, rol: "portada" }, total: 5, conLogo: true });
+    expect(conLogo).toContain("ÚLTIMA imagen de referencia es el logo");
+    expect(conLogo).toContain("obligatorio");
   });
 
   it("el costo es una imagen por lámina", () => {

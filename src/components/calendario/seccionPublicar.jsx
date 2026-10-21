@@ -156,6 +156,46 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
     if (cal && post.id) apuntarUso(clientId, video.id, { calendarId: cal.dbId || cal.id, postId: post.id }).catch(() => {});
     setEscrito("Puesto el reel en la publicación.");
   };
+  /**
+   * «Otra versión»: la imagen nueva se HACE aquí (lib/otraVersion.js) y ocupa el sitio de la que se tocó; la de antes
+   * se puede recuperar con «Deshacer» (y si era del Estudio, sigue en la galería). Para reutilizar un post en otro día
+   * con otro diseño y la misma información.
+   */
+  const [versionando, setVersionando] = useState(null);
+  const [progresoVersion, setProgresoVersion] = useState("");
+  const [deshacer, setDeshacer] = useState(null);
+  // «Recrear con mi marca» (una referencia subida al post) va por el mismo sitio: la pieza nueva ocupa el de la referencia.
+  const otraVersion = async (medio, { recrear = false } = {}) => {
+    if (versionando || !client) return;
+    setVersionando(medio.src);
+    setDeshacer(null);
+    setEscrito("");
+    try {
+      const { otraVersionDelPost, recrearConLaMarca } = await import("../../lib/otraVersion");
+      const hacer = recrear ? recrearConLaMarca : otraVersionDelPost;
+      const nueva = await hacer({
+        client, post, medio, calendarId: cal && post.id ? cal.dbId || cal.id : null, alProgresar: setProgresoVersion,
+        confirmar: (costo) => window.confirm(`${recrear ? "Recrearla" : "Esta versión"} cuesta unos ${costo.toFixed(2).replace(".", ",")} $. ¿Sigo?`),
+      });
+      if (nueva) {
+        const puesto = medioDeArchivo(nueva);
+        setForm((p) => ({ ...conMedios(p, mediosDe(p).map((m) => (m.src === medio.src ? puesto : m))), mediosCambiadosAt: new Date().toISOString() }));
+        setDeshacer({ antes: medio, ahora: puesto.src });
+        setEscrito(recrear ? "Lista: recreada con la marca, en el sitio de la referencia." : "Lista la versión nueva, en el sitio de la anterior.");
+      }
+    } catch (e) {
+      onError?.(`No se pudo ${recrear ? "recrear con la marca" : "hacer otra versión"}: ${e.message}`);
+    }
+    setVersionando(null);
+    setProgresoVersion("");
+  };
+  const volverALaAnterior = () => {
+    if (!deshacer) return;
+    setForm((p) => ({ ...conMedios(p, mediosDe(p).map((m) => (m.src === deshacer.ahora ? deshacer.antes : m))), mediosCambiadosAt: new Date().toISOString() }));
+    setDeshacer(null);
+    setEscrito("Vuelve a estar la imagen anterior.");
+  };
+
   const esHistoria = post.format === "historia";
   const destino = destinoInstagram(post);
   const conImagen = mediosDe(post).some((m) => m.tipo === "imagen");
@@ -242,10 +282,24 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           entradaRef={entrada}
           onPortada={conPortada ? (c) => setForm((p) => ({ ...p, ...c })) : null}
           onCrearConIA={abrirCreacion}
+          onOtraVersion={client ? otraVersion : null}
+          onRecrear={client ? (m) => otraVersion(m, { recrear: true }) : null}
+          versionando={versionando}
           onCrearCarrusel={post.format === "carrusel" && clientId ? () => setCarrusel(true) : null}
           onCrearReel={post.format === "reel" && clientId ? () => setReel(true) : null}
           onDeLaGaleria={clientId ? () => setGaleria(true) : null}
         />
+        {(progresoVersion || deshacer) && (
+          <div role="status" aria-live="polite" className="otra-version-estado">
+            {progresoVersion && <p className="hint" style={{ margin: 0 }}><Icon name="sparkles" size={13} /> {progresoVersion}</p>}
+            {deshacer && !progresoVersion && (
+              <p className="hint" style={{ margin: 0 }}>
+                Versión nueva puesta.{" "}
+                <button type="button" className="btn btn-ghost btn-sm" onClick={volverALaAnterior}>Deshacer</button>
+              </p>
+            )}
+          </div>
+        )}
         {galeria && (
           <Suspense fallback={null}>
             <GaleriaSelector clienteId={clientId} maximo={LIMITES.instagram.carruselMax} yaTiene={mediosDe(post).length} onElegir={ponerDeGaleria} onCerrar={() => setGaleria(false)} />

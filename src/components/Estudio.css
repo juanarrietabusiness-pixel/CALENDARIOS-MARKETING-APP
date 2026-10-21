@@ -45,6 +45,11 @@
 /* Pedir */
 .est-tipos { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-4); }
 .est-tipos .filter-chip { display: inline-flex; align-items: center; gap: var(--sp-1); }
+/* Las dos formas del video, debajo de «Video» (QueCrear). */
+.est-formas-video { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-2); margin: calc(-1 * var(--sp-2)) 0 var(--sp-4); }
+.est-forma-video { display: flex; flex-direction: column; gap: 2px; text-align: left; min-height: var(--tap); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+.est-forma-video span { font-size: var(--fs-3xs); color: var(--text-dim); }
+.est-forma-video[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); }
 .est-compositor { display: flex; flex-direction: column; gap: 0; padding: var(--sp-5); }
 .est-prompt-campo { resize: vertical; min-height: 96px; line-height: var(--lh-normal); }
 .est-fila { display: grid; grid-template-columns: 1fr; gap: 0 var(--sp-4); }

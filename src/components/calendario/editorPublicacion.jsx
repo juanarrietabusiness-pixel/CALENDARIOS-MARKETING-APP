@@ -30,7 +30,7 @@ const esVideoArchivo = (f) => f?.type?.startsWith("video/");
 // Medios
 // ------------------------------------------------------------
 
-export function EditorMedios({ post, clientId, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null, onCrearReel = null, onDeLaGaleria = null }) {
+export function EditorMedios({ post, clientId, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null, onCrearReel = null, onDeLaGaleria = null, onOtraVersion = null, onRecrear = null, versionando = null }) {
   const ids = useId();
   const [eligiendoPortada, setEligiendoPortada] = useState(null);
   const propia = useRef(null);
@@ -235,9 +235,21 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError, e
                     <Icon name="video" size={13} /> Animar
                   </button>
                 )}
-                {m.tipo === "imagen" && onCrearConIA && (
-                  <button type="button" className="editor-medios-portada-btn" onClick={() => onCrearConIA({ tipo: "imagen", version: m })} title="Otra imagen con la misma información, pero distinta">
-                    <Icon name="sparkles" size={13} /> Otra versión
+                {/* «Otra versión» se HACE aquí y ocupa su sitio (seccionPublicar): era un botón gris que además mandaba
+                    al compositor. Sin quien la haga aquí (en «Subir»), el compositor de siempre. */}
+                {m.tipo === "imagen" && (onOtraVersion || onCrearConIA) && (
+                  <button type="button" className="btn btn-sm editor-medios-version"
+                    disabled={Boolean(versionando)} aria-busy={versionando === m.src || undefined}
+                    onClick={() => (onOtraVersion ? onOtraVersion(m) : onCrearConIA({ tipo: "imagen", version: m }))}
+                    title="Otra imagen con la misma información y otro diseño, hecha aquí mismo">
+                    <Icon name="sparkles" size={14} /> {versionando === m.src ? "Creando…" : "Otra versión"}
+                  </button>
+                )}
+                {/* Una referencia subida al post (un anuncio que funciona, un video de IA): rehecha con la marca, aquí. */}
+                {onRecrear && (
+                  <button type="button" className="editor-medios-portada-btn" disabled={Boolean(versionando)} onClick={() => onRecrear(m)}
+                    title="Usar esto de referencia: su forma, con el producto, el texto y la marca de este cliente. Sale en su sitio.">
+                    <Icon name="wand" size={13} /> Recrear con mi marca
                   </button>
                 )}
                 {m.tipo === "video" && i === 0 && onPortada && (

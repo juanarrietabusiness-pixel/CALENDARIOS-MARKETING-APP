@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES, MONTHS, DAYS } from "../constants";
 import { uid } from "../utils";
-import { marcarActualizada } from "../lib/publicacion";
+import { marcarActualizada, momentoPublicacion } from "../lib/publicacion";
 import { callAI, loadADN, parseAIResponse, buildScriptPrompt, buildDescripcionesPrompt, buildClientContext, generateSinglePost, pasajesDeLaTanda } from "../api";
 import { base64DeImagen, prepararParaRedes } from "../lib/medios";
 import {
@@ -14,7 +14,7 @@ import { navegar, analizarRuta, construirRuta } from "../lib/rutas";
 import { casillasSinIdea, estrategiaDelCalendario, ideasDelPlan, rellenarConIdea } from "../lib/ideaPublicacion";
 import { ideasDeRevision, porRevisar } from "../lib/revisionIdeas";
 import { agruparPorSemana, semanaInicial, rangoSemana } from "../lib/semanas";
-import { moverEnCalendario, ponerEnDia } from "../lib/subir";
+import { moverEnCalendario, ponerEnDia, copiaDePublicacion } from "../lib/subir";
 import { conAprobacion, resumenEnvio, estadoDelEnvio, mensajeDeEnvio } from "../lib/aprobacion";
 import { sinLoNecesario } from "../lib/completitud";
 import { programarAprobadasDe } from "../lib/programarAprobadas";
@@ -67,6 +67,7 @@ export default function CalendarView({
   onUpdateCalLocal,
   onDeleteCal,
   onMoverAOtroMes,
+  onLlevarAlCalendario,
   vecinos = null,
   onAbrirVecina,
   clientes = [],
@@ -666,6 +667,24 @@ export default function CalendarView({
   };
 
   const movePost = (postId, sourceDate, targetDate) => {
+    // Lo que está en la cola se mueve con ella (el servidor reprograma al guardar: `resincronizarCalendario`).
+    // Dos casos no: lo que ya salió o está saliendo no cambia de día, y a un momento que ya pasó saldría AL
+    // INSTANTE en el siguiente minuto del cron, que no es lo que se quiere al arrastrar.
+    const filasDelPost = cola.filter((f) => f.postId === postId);
+    if (filasDelPost.some((f) => ["procesando", "publicada"].includes(f.estado))) {
+      setSyncStatus("Esa publicación ya salió (o está saliendo): no se mueve de día.");
+      setTimeout(() => setSyncStatus(""), 5000);
+      return;
+    }
+    const programadas = filasDelPost.filter((f) => f.estado === "programada");
+    if (programadas.length) {
+      const post = (cal.days || []).find((d) => d.date === sourceDate)?.posts.find((p) => p.id === postId);
+      const nuevo = momentoPublicacion(targetDate, post?.publishTime);
+      if (nuevo && Date.parse(nuevo) < Date.now()
+        && !window.confirm("Está programada y esa fecha ya pasó: si la mueves, saldrá en el próximo minuto. ¿Moverla igual?")) return;
+      setSyncStatus(`La programación se mueve con ella: sale el ${Number(targetDate.slice(8))}.`);
+      setTimeout(() => setSyncStatus(""), 5000);
+    }
     // A otro mes lo mueve el servidor, con su aprobación, su cola y lo demás.
     if (targetDate.slice(0, 7) !== mesDelCal) {
       void onMoverAOtroMes?.(postId, targetDate);
@@ -689,6 +708,25 @@ export default function CalendarView({
     }
 
     onUpdateCal(calId, { ...cal, days });
+  };
+
+  /**
+   * «Duplicar a otro día»: una copia nueva y pendiente (lib/subir.js) en esa fecha; en otro mes, en su cajón (lo
+   * crea si no existe). La original no se toca. → la copia, o null si no se pudo.
+   */
+  const duplicarPost = async (post, fecha) => {
+    const copia = copiaDePublicacion(post, uid());
+    try {
+      if (fecha.slice(0, 7) === mesDelCal) onUpdateCal(calId, ponerEnDia(cal, fecha, copia));
+      else if (onLlevarAlCalendario) await onLlevarAlCalendario(fecha, copia);
+      else throw new Error("Ese día es de otro mes: ábrelo y duplícala desde allí.");
+      setSyncStatus(`Duplicada al ${Number(fecha.slice(8))}${fecha.slice(0, 7) === mesDelCal ? "" : ` de ${MONTHS[Number(fecha.slice(5, 7)) - 1]}`}. Ábrela y pulsa «Otra versión» para darle otro diseño.`);
+      setTimeout(() => setSyncStatus(""), 7000);
+      return copia;
+    } catch (e) {
+      onAviso?.(`No se pudo duplicar: ${e.message}`);
+      return null;
+    }
   };
 
   const saveMetaEdit = () => {
@@ -1721,6 +1759,7 @@ export default function CalendarView({
             onUpdate={updatePost}
             onDelete={deletePost}
             onMoveDate={movePost}
+            onDuplicar={duplicarPost}
             onSendToBank={(post, date) => { addToBank(post, date); removePostFromDay(date, post.id); }}
             onClose={() => setSidePanel(null)}
             suggestion={suggestions[sidePanel.post.id] || null}

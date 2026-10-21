@@ -3,6 +3,7 @@ import Icon from "./Icon";
 import LimpiezaTerminadas from "./LimpiezaTerminadas";
 import CampoResponsable from "./CampoResponsable";
 import SelectorFecha from "./SelectorFecha";
+import ElegirDia from "./ElegirDia";
 import * as db from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { fechaEnZona, textoFecha, textoAtraso, fechaObjetivo, diasEntre } from "../lib/agenda";
@@ -43,6 +44,7 @@ export default function TaskPanel({ client, pulso = 0 }) {
   const [newAssigned, setNewAssigned] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newDue, setNewDue] = useState("");
+  const [newDia, setNewDia] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const [detailTask, setDetailTask] = useState(null);
   const [editingTask, setEditingTask] = useState(null);
@@ -72,11 +74,13 @@ export default function TaskPanel({ client, pulso = 0 }) {
         recurrence_day: newRecurrenceDay || null,
         assigned_to: newAssigned.trim(),
         due_date: newDue || null,
+        today_date: newDia || null,
       });
       setTasks((prev) => [...prev, task]);
       setNewTitle("");
       setNewDescription("");
       setNewDue("");
+      setNewDia("");
       setNewRecurrence("none");
       setNewRecurrenceDay("");
       setNewAssigned("");
@@ -84,7 +88,7 @@ export default function TaskPanel({ client, pulso = 0 }) {
     } catch {
       setError("No se pudo crear la tarea.");
     }
-  }, [clientId, newTitle, newDescription, newRecurrence, newRecurrenceDay, newAssigned, newDue]);
+  }, [clientId, newTitle, newDescription, newRecurrence, newRecurrenceDay, newAssigned, newDue, newDia]);
 
   const handleUpdate = useCallback(async (taskId, data) => {
     try {
@@ -332,13 +336,15 @@ export default function TaskPanel({ client, pulso = 0 }) {
               assigned={newAssigned}
               due={newDue}
               onDueChange={setNewDue}
+              dia={newDia}
+              onDiaChange={setNewDia}
               onTitleChange={setNewTitle}
               onDescriptionChange={setNewDescription}
               onRecurrenceChange={(v) => { setNewRecurrence(v); setNewRecurrenceDay(""); }}
               onRecurrenceDayChange={setNewRecurrenceDay}
               onAssignedChange={setNewAssigned}
               onSubmit={handleAdd}
-              onCancel={() => { setAdding(false); setNewTitle(""); setNewDescription(""); setNewAssigned(""); setNewDue(""); }}
+              onCancel={() => { setAdding(false); setNewTitle(""); setNewDescription(""); setNewAssigned(""); setNewDue(""); setNewDia(""); }}
               submitLabel="Añadir"
             />
           ) : (
@@ -539,7 +545,7 @@ function TaskRow({ task, onComplete, onReopen, onDelete, onEdit, onDetail, onHoy
   );
 }
 
-function TaskForm({ formId, title, description, recurrence, recurrenceDay, assigned, due, onDueChange, onTitleChange, onDescriptionChange, onRecurrenceChange, onRecurrenceDayChange, onAssignedChange, onSubmit, onCancel, submitLabel }) {
+function TaskForm({ formId, title, description, recurrence, recurrenceDay, assigned, due, onDueChange, dia = "", onDiaChange = null, onTitleChange, onDescriptionChange, onRecurrenceChange, onRecurrenceDayChange, onAssignedChange, onSubmit, onCancel, submitLabel }) {
   return (
     <div style={{
       marginTop: "var(--sp-2)",
@@ -608,6 +614,7 @@ function TaskForm({ formId, title, description, recurrence, recurrenceDay, assig
 
         <SelectorFecha value={due} onChange={(f) => onDueChange(f ?? "")} etiqueta="Fecha límite de la tarea nueva" vacio="Fecha límite" />
       </div>
+      {onDiaChange && recurrence === "none" && <ElegirDia value={dia} onChange={onDiaChange} etiqueta="¿Cuándo la haces?" />}
       <CampoResponsable value={assigned} onChange={onAssignedChange} />
       <div style={{ display: "flex", gap: "var(--sp-2)" }}>
         <button className="btn btn-primary" onClick={onSubmit} disabled={!title.trim()} style={{ fontSize: "var(--fs-3xs)", padding: "var(--sp-1) var(--sp-3)" }}>
@@ -628,6 +635,7 @@ function TaskEditModal({ task, onSave, onClose, conFecha = true }) {
   const [recurrenceDay, setRecurrenceDay] = useState(task.recurrence_day ?? "");
   const [assigned, setAssigned] = useState(task.assigned_to || "");
   const [due, setDue] = useState(task.due_date || "");
+  const [dia, setDia] = useState(task.today_date || "");
   const dialogRef = useDialogA11y(onClose);
 
   const handleSubmit = () => {
@@ -638,7 +646,7 @@ function TaskEditModal({ task, onSave, onClose, conFecha = true }) {
       recurrence_day: recurrenceDay || null,
       assigned_to: assigned.trim(),
       // Las plantillas no tienen fecha: son moldes, no tareas.
-      ...(conFecha ? { due_date: due || null } : {}),
+      ...(conFecha ? { due_date: due || null, today_date: dia || null } : {}),
     });
   };
 
@@ -692,6 +700,12 @@ function TaskEditModal({ task, onSave, onClose, conFecha = true }) {
           <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>
             Fecha límite
             <SelectorFecha value={due} onChange={(f) => setDue(f ?? "")} etiqueta={`Fecha límite de ${task.title}`} vacio="Escoger fecha" />
+          </div>
+        )}
+        {conFecha && recurrence === "none" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)", fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>
+            ¿Cuándo la haces?
+            <ElegirDia value={dia} onChange={setDia} etiqueta={`Día en que se hace ${task.title}`} />
           </div>
         )}
         <CampoResponsable value={assigned} onChange={setAssigned} />

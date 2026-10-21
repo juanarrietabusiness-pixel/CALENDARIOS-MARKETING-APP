@@ -18,7 +18,7 @@ import {
 } from "../lib/conversacionesApi";
 import { uid, compressImage } from "../utils";
 import { leerHora, MAL, aplicarLote } from "../lib/lote";
-import { partirMensaje, marcarImagen, marcarContexto, FORMATOS_IMAGEN, INSTRUCCION_PIEZAS, INSTRUCCION_ADJUNTOS } from "../lib/mensajeChat";
+import { partirMensaje, marcarImagen, marcarVideo, marcarContexto, FORMATOS_IMAGEN, INSTRUCCION_PIEZAS, INSTRUCCION_ADJUNTOS } from "../lib/mensajeChat";
 import { imagenParaModelo, fotogramasDeVideo, descargarEnTamano } from "../lib/medios";
 import * as db from "../lib/db";
 import { useConfigIA } from "../hooks/useConfigIA";
@@ -27,6 +27,7 @@ import { etiquetaIA, NIVELES_IA } from "../lib/configIA";
 const NIVEL_DE_ESFUERZO = { low: "bajo", medium: "medio", high: "alto", max: "maximo" };
 import { tareaDesdeIA, fechaEnZona, PROPIEDADES_FECHA_TAREA } from "../lib/agenda";
 import { ponerEnDia } from "../lib/subir";
+import { conMedios, mediosDe } from "../lib/publicacion";
 import { enlaceLimpio, nuevaIdea } from "../lib/bancoIdeas";
 import { anadirAlBanco } from "../lib/bancoIdeasApi";
 import { mesDeFecha, mismoMes } from "../lib/meses";
@@ -620,6 +621,42 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       const post = toolInput.post_id && cal
         ? cal.days.flatMap((d) => d.posts || []).find((p) => p.id === toolInput.post_id)
         : null;
+      const video = toolInput.tipo === "video";
+      // Con un cliente, por el ESTUDIO: su kit de marca, su logo, las fotos del producto y su modelo fijado. Sin
+      // cliente (el asistente general) no hay marca que poner: el camino de siempre, y sólo imagen.
+      if (client) {
+        setProgreso(video ? "Preparando el video con el kit de la marca…" : `Preparando la imagen con el kit de la marca (${FORMATOS_IMAGEN[formato].label})…`);
+        try {
+          const { crearPiezaParaElChat, fraseDeConfirmar, apuntarUso } = await import("../lib/piezaChat");
+          const r = await crearPiezaParaElChat({
+            cliente: client, idea: toolInput.prompt, tipo: video ? "video" : "imagen", formato,
+            estilo: toolInput.estilo || "", confirmado: toolInput.confirmado === true, alProgresar: setProgreso,
+          });
+          if (r.confirmar) return { ok: false, mensaje: fraseDeConfirmar(r, video) };
+          const entregada = { ok: true, ...(video ? { _video: { clave: r.archivo.clave } } : { _imagen: { clave: r.archivo.clave, formato } }) };
+          const dicho = `${video ? "Video" : "Imagen"} creada en el Estudio con el kit de ${client.name} (${r.modelo.nombre}) y mostrada en el chat; también queda en su galería.`;
+          if (!toolInput.post_id) return { ...entregada, mensaje: dicho };
+          if (!post || !calId || !onUpdateCal) return { ...entregada, mensaje: `${dicho} No encontré la publicación ${toolInput.post_id} para ponerla.` };
+          const medio = { src: r.archivo.src, tipo: video ? "video" : "imagen", nombre: r.archivo.prompt?.slice(0, 40) || (video ? "video" : "imagen") };
+          const updated = {
+            ...cal,
+            days: cal.days.map((d) => ({
+              ...d,
+              posts: (d.posts || []).map((p) => (p.id === toolInput.post_id ? conMedios(p, [...mediosDe(p), medio]) : p)),
+            })),
+          };
+          calRef.current = updated;
+          onUpdateCal(calId, updated);
+          // Que la papelera del Estudio sepa que una publicación la usa.
+          void apuntarUso(client.dbId || client.id, r.archivo.id, { calendarId: cal.dbId || calId, postId: toolInput.post_id }).catch(() => null);
+          return { ...entregada, mensaje: `${dicho} Puesta en la publicación ${toolInput.post_id}.` };
+        } catch (err) {
+          return { ok: false, mensaje: err?.message || "El Estudio no pudo crearla." };
+        } finally {
+          setProgreso("");
+        }
+      }
+      if (video) return { ok: false, mensaje: "Un video se crea en el Estudio de un cliente: abre el asistente dentro de ese cliente." };
       setProgreso(`Generando la imagen (${FORMATOS_IMAGEN[formato].label})…`);
       try {
         const res = await db.generateImage({
@@ -858,6 +895,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       // Las imágenes generadas van al mensaje final como marcas: así se
       // pintan debajo del texto y siguen ahí al recargar el historial.
       const imagenes = [];
+      const videos = [];
       let entregado = false;
       let textoTurno = "";
 
@@ -873,6 +911,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
         const contenido = [
           textoAsistente,
           ...imagenes.map((i) => marcarImagen(i.clave, i.formato)),
+          ...videos.map((v) => marcarVideo(v.clave)),
           hechas.length ? marcarContexto("Acciones realizadas", hechas.join("\n")) : "",
         ].filter(Boolean).join("\n\n");
         entregado = true;
@@ -938,6 +977,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
           try {
             const result = await executeToolCall(toolBlock.name, toolBlock.input);
             if (result._imagen) imagenes.push(result._imagen);
+            if (result._video) videos.push(result._video);
             feedbacks.push({ tool: toolBlock.name, ...result });
             toolResults.push({
               type: "tool_result",
@@ -1526,6 +1566,7 @@ function ChatMessage({ message, onRecordar = null }) {
         if (b.tipo === "texto") return <Burbuja key={i} isUser={isUser} texto={b.texto} copiable={!isUser && !hayPiezas} />;
         if (b.tipo === "pieza") return <Pieza key={i} titulo={b.titulo} texto={b.texto} />;
         if (b.tipo === "imagen") return <ImagenGenerada key={i} clave={b.clave} formato={b.formato} />;
+        if (b.tipo === "video") return <VideoGenerado key={i} clave={b.clave} />;
         return <Contexto key={i} titulo={b.titulo} texto={b.texto} />;
       })}
       {onRecordar && (
@@ -1700,6 +1741,21 @@ function ImagenGenerada({ clave, formato }) {
         </button>
       </figcaption>
       {fallo && <p role="alert" style={{ margin: 0, padding: "0 var(--sp-2) var(--sp-2)", color: "var(--danger)", fontSize: "var(--fs-3xs)" }}>{fallo}</p>}
+    </figure>
+  );
+}
+
+/** El video que creó el asistente en el Estudio: se ve aquí y se descarga. */
+function VideoGenerado({ clave }) {
+  const url = db.getContentBankUrl(clave);
+  return (
+    <figure style={{ margin: 0, width: "92%", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", overflow: "hidden" }}>
+      <video src={url} controls playsInline preload="metadata" style={{ display: "block", width: "100%", maxHeight: 480, background: "var(--bg)" }} aria-label="Video creado por el asistente" />
+      <figcaption style={{ display: "flex", gap: "var(--sp-2)", padding: "var(--sp-2)" }}>
+        <a className="btn btn-primary btn-sm" href={url} download style={{ minHeight: "var(--tap-sm)" }}>
+          <Icon name="download" size={16} /> Descargar
+        </a>
+      </figcaption>
     </figure>
   );
 }

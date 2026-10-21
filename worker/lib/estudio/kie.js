@@ -14,7 +14,8 @@
 // de apoyo se suben a SU almacén (caducan solas a los pocos días) y van por dirección: Kie no acepta data URI.
 // Veo 3.1 también va por `createTask` (con `model: "veo-3-1"` y el nivel en `input.model`).
 //
-// LA FORMA SALE DE SU DOCUMENTACIÓN (docs/kie/, el extracto que entregó la agencia), NO DE PROBARLA. Se lee con
+// LA FORMA SALE DE SU DOCUMENTACIÓN (docs/kie/, los extractos que entregó la agencia: el último, de octubre de 2026,
+// con el catálogo entero), NO DE PROBARLA. Se lee con
 // tolerancia (`datosDe`, `urlsDelResultado`) y todo rechazo enseña lo que dijo Kie.
 //
 // Aquí sólo vive lo que Kie sabe: modelos y cuerpos. El catálogo (src/lib/estudioCatalogo.js) dice qué hay; un test
@@ -84,6 +85,64 @@ export const MODELOS_KIE = Object.freeze({
   "imagen-4-ultra-kie": ({ prompt, ajustes }) => ({
     model: "google/imagen4-ultra", input: { prompt, aspect_ratio: ajustes.aspectRatio || "3:4" },
   }),
+  "imagen-4-kie": ({ prompt, ajustes }) => ({ model: "google/imagen4", input: { prompt, aspect_ratio: ajustes.aspectRatio || "3:4" } }),
+  "imagen-4-fast-kie": ({ prompt, ajustes }) => ({ model: "google/imagen4-fast", input: { prompt, aspect_ratio: ajustes.aspectRatio || "3:4" } }),
+  "nano-banana-2-lite-kie": ({ prompt, ajustes, refs }) => ({
+    model: "nano-banana-2-lite", input: { prompt, image_urls: refs.slice(0, 10), aspect_ratio: ajustes.aspectRatio || "4:5" },
+  }),
+  "z-image-kie": ({ prompt, ajustes }) => ({ model: "z-image", input: { prompt: prompt.slice(0, 1000), aspect_ratio: ajustes.aspectRatio || "3:4" } }),
+  "seedream-4-5-kie": ({ prompt, ajustes, refs }) => {
+    const input = { prompt: prompt.slice(0, 3000), aspect_ratio: ajustes.aspectRatio || "3:4", quality: ajustes.calidad === "low" ? "basic" : "high" };
+    return refs.length ? { model: "seedream/4.5-edit", input: { ...input, image_urls: refs.slice(0, 14) } } : { model: "seedream/4.5-text-to-image", input };
+  },
+  "seedream-5-lite-kie": ({ prompt, ajustes, refs }) => {
+    const quality = { low: "basic", ultra: "ultra" }[ajustes.calidad] ?? "high";
+    const input = { prompt: prompt.slice(0, 2995), aspect_ratio: ajustes.aspectRatio || "3:4", quality, output_format: "png" };
+    return refs.length ? { model: "seedream/5-lite-image-to-image", input: { ...input, image_urls: refs.slice(0, 14) } } : { model: "seedream/5-lite-text-to-image", input };
+  },
+  "seedream-5-flash-kie": ({ prompt, ajustes, refs }) => {
+    const input = { prompt, aspect_ratio: ajustes.aspectRatio || "3:4", size: ajustes.imageSize || "2K", output_format: "png" };
+    return refs.length ? { model: "seedream/5-flash-image-to-image", input: { ...input, image_urls: refs.slice(0, 10) } } : { model: "seedream/5-flash-text-to-image", input };
+  },
+  "flux-2-pro-kie": (p) => flux2("pro", p),
+  "flux-2-flex-kie": (p) => flux2("flex", p),
+  "flux-3-klein-kie": ({ prompt, ajustes, refs }) => {
+    // El prompt ya va escrito y pensado: que Flux no lo reescriba.
+    const input = { prompt, aspect_ratio: ajustes.aspectRatio || "3:4", resolution: ajustes.imageSize || "1K", output_format: "png", num_images: 1, enhance_prompt: false };
+    return refs.length ? { model: "flux-3/klein-edit-image", input: { ...input, image_urls: refs.slice(0, 10) } } : { model: "flux-3/klein-text-to-image", input };
+  },
+  "grok-imagine-2-kie": ({ prompt, ajustes, refs }) => (refs.length
+    ? { model: "grok-imagine-image-2-0/image-edit", input: { prompt, aspect_ratio: ajustes.aspectRatio || "2:3", image_urls: refs.slice(0, 5) } }
+    : { model: "grok-imagine-image-2-0/text-to-image", input: { prompt, aspect_ratio: ajustes.aspectRatio || "2:3" } }),
+  "gpt-image-1-5-kie": ({ prompt, ajustes, refs }) => {
+    const input = { prompt, aspect_ratio: conProporcion(ajustes.aspectRatio, ["1:1", "2:3", "3:2"], "2:3"), quality: ajustes.calidad === "low" ? "medium" : "high" };
+    return refs.length ? { model: "gpt-image/1.5-image-to-image", input: { ...input, input_urls: refs.slice(0, 16) } } : { model: "gpt-image/1.5-text-to-image", input };
+  },
+  "gpt-image-2-5-flare-kie": ({ prompt, ajustes, refs }) => {
+    const input = { prompt, aspect_ratio: ajustes.aspectRatio || "3:4", resolution: ajustes.imageSize || "2K" };
+    return refs.length
+      ? { model: "gpt-image-2-5-flare-image-to-image", input: { ...input, input_urls: refs.slice(0, 16) } }
+      : { model: "gpt-image-2-5-flare-text-to-image", input };
+  },
+  "qwen-2-1-kie": ({ prompt, ajustes, refs }) => {
+    const input = { prompt, aspect_ratio: ajustes.aspectRatio || "3:4", resolution: ajustes.imageSize || "2K", output_format: "png", enhance_prompt: false };
+    return refs.length ? { model: "qwen2-1/image-to-image", input: { ...input, image_urls: refs.slice(0, 10) } } : { model: "qwen2-1/text-to-image", input };
+  },
+  "qwen-3-pro-kie": ({ prompt, ajustes, refs }) => {
+    // En Qwen 3 la proporción se llama `image_size`.
+    const input = { prompt, image_size: ajustes.aspectRatio || "3:4", resolution: ajustes.imageSize || "2K", output_format: "png", prompt_extend: false };
+    return refs.length ? { model: "qwen3/pro-image-to-image", input: { ...input, image_urls: refs.slice(0, 3) } } : { model: "qwen3/pro-text-to-image", input };
+  },
+  "wan-2-7-image-kie": (p) => wanImagen("wan/2-7-image", p),
+  "wan-2-7-image-pro-kie": (p) => wanImagen("wan/2-7-image-pro", p),
+  "ideogram-personaje-kie": ({ prompt, ajustes, refs }) => ({
+    // La PRIMERA referencia es el personaje: Ideogram sólo recibe una.
+    model: "ideogram/character",
+    input: {
+      prompt, reference_image_urls: refs.slice(0, 1), image_size: TAMANO_IDEOGRAM[ajustes.aspectRatio] ?? "portrait_4_3",
+      rendering_speed: ajustes.calidad === "low" ? "BALANCED" : "QUALITY", style: "AUTO", expand_prompt: false, num_images: "1",
+    },
+  }),
 
   // ---- Video
   "kling-3-kie": ({ prompt, ajustes, inicio, fin }) => ({
@@ -145,14 +204,125 @@ export const MODELOS_KIE = Object.freeze({
       model: "wan/2-7-text-to-video",
       input: { prompt, ratio: ajustes.aspectRatio || "9:16", resolution: ajustes.resolution || "1080p", duration: entero(ajustes.duration, 10), watermark: false },
     }),
+  "gemini-omni-video-kie": ({ prompt, ajustes, refs, videos, audios = [] }) => {
+    const desde = Math.max(0, Number(ajustes.desde) || 0);
+    const hasta = Math.min(desde + 10, Number(ajustes.hasta) || desde + 10);
+    return {
+      model: "gemini-omni-video",
+      input: {
+        prompt, aspect_ratio: ajustes.aspectRatio || "9:16", resolution: ajustes.resolution || "720p", duration: String(ajustes.duration || "10"),
+        ...(refs.length ? { image_urls: refs.slice(0, videos.length ? 5 : 7) } : {}),
+        ...(videos.length ? { video_list: [{ url: videos[0], start: desde, ends: hasta }] } : {}),
+        ...(audios.length ? { audio_ids: audios.slice(0, 3) } : {}),
+      },
+    };
+  },
+  "seedance-2-fast-kie": (p) => seedance("bytedance/seedance-2-fast", 9, 3, p),
+  "seedance-2-mini-kie": (p) => seedance("bytedance/seedance-2-mini", 9, 3, p),
+  "kling-3-turbo-kie": ({ prompt, ajustes, inicio }) => {
+    const input = { prompt: prompt.slice(0, 2500), duration: String(ajustes.duration || "10"), resolution: ajustes.resolution || "720p" };
+    return inicio.length
+      ? { model: "kling/v3-turbo-image-to-video", input: { ...input, image_urls: inicio.slice(0, 1) } }
+      : { model: "kling/v3-turbo-text-to-video", input: { ...input, aspect_ratio: ajustes.aspectRatio || "9:16" } };
+  },
+  "kling-2-6-kie": ({ prompt, ajustes, inicio }) => {
+    const input = { prompt: prompt.slice(0, 2500), sound: si(ajustes.sonido), duration: String(ajustes.duration || "10") };
+    return inicio.length
+      ? { model: "kling-2.6/image-to-video", input: { ...input, image_urls: inicio.slice(0, 1) } }
+      : { model: "kling-2.6/text-to-video", input: { ...input, aspect_ratio: ajustes.aspectRatio || "9:16" } };
+  },
+  "kling-2-6-movimiento-kie": ({ prompt, ajustes, refs, inicio, videos }) => ({
+    // La persona sale de la foto (referencia o imagen inicial) y el movimiento, del video.
+    model: "kling-2.6/motion-control",
+    input: {
+      prompt: prompt.slice(0, 2500), input_urls: [refs[0] ?? inicio[0]].filter(Boolean), video_urls: videos.slice(0, 1),
+      character_orientation: ajustes.orientacion === "image" ? "image" : "video", mode: ajustes.resolution || "720p",
+    },
+  }),
+  "veo-3-1-lite-kie": (p) => veo("veo3_lite", p),
+  "wan-3-kie": (p) => wan3("wan/3-0-video", p),
+  "wan-3-prime-kie": (p) => wan3("wan/3-0-video-prime", p),
+  "hailuo-2-3-std-kie": ({ prompt, ajustes, inicio }) => ({
+    model: "hailuo/2-3-image-to-video-standard",
+    input: { prompt, image_url: inicio[0], duration: String(ajustes.duration || "10"), resolution: ajustes.resolution || "768P" },
+  }),
+  "minimax-h3-kie": ({ prompt, ajustes, refs, inicio, fin, videos }) => {
+    const comun = { prompt: prompt.slice(0, 7000), duration: entero(ajustes.duration, 10), resolution: ajustes.resolution || "768P" };
+    if (refs.length || videos.length) {
+      return {
+        model: "minimax-h3/reference-to-video",
+        input: {
+          ...comun, aspect_ratio: ajustes.aspectRatio || "9:16",
+          ...(refs.length ? { reference_image_urls: refs.slice(0, 9) } : {}), ...(videos.length ? { reference_video_urls: videos.slice(0, 3) } : {}),
+        },
+      };
+    }
+    if (inicio.length) return { model: "minimax-h3/image-to-video", input: { ...comun, first_frame_url: inicio[0], ...(fin.length ? { last_frame_url: fin[0] } : {}) } };
+    return { model: "minimax-h3/text-to-video", input: { ...comun, aspect_ratio: ajustes.aspectRatio || "9:16" } };
+  },
+  "pixverse-6-kie": ({ prompt, ajustes, inicio, fin }) => {
+    const comun = { prompt, quality: ajustes.resolution || "720p", duration: entero(ajustes.duration, 10), generate_audio_switch: ajustes.sonido === "si" };
+    if (inicio.length && fin.length) return { model: "pixverse-v6/transition", input: { ...comun, first_frame_image_url: inicio[0], last_frame_image_url: fin[0] } };
+    if (inicio.length) return { model: "pixverse-v6/image-to-video", input: { ...comun, image_urls: inicio.slice(0, 1) } };
+    return { model: "pixverse-v6/text-to-video", input: { ...comun, aspect_ratio: ajustes.aspectRatio || "9:16" } };
+  },
+  "happyhorse-1-1-kie": ({ prompt, ajustes, refs, inicio }) => {
+    const comun = { prompt, resolution: ajustes.resolution || "1080p", duration: entero(ajustes.duration, 10) };
+    if (refs.length) return { model: "happyhorse-1-1/reference-to-video", input: { ...comun, reference_image: refs.slice(0, 9), aspect_ratio: ajustes.aspectRatio || "9:16" } };
+    if (inicio.length) return { model: "happyhorse-1-1/image-to-video", input: { ...comun, image_urls: inicio.slice(0, 1) } };
+    return { model: "happyhorse-1-1/text-to-video", input: { ...comun, aspect_ratio: ajustes.aspectRatio || "9:16" } };
+  },
+  "grok-imagine-video-kie": ({ prompt, ajustes, refs }) => ({
+    model: "grok-imagine-video-1-5-preview",
+    input: {
+      prompt: prompt.slice(0, 4096), aspect_ratio: ajustes.aspectRatio || "9:16", resolution: ajustes.resolution || "720p", duration: entero(ajustes.duration, 8),
+      ...(refs.length ? { image_urls: refs.slice(0, 7) } : {}),
+    },
+  }),
+  "vidu-q4-kie": ({ prompt, ajustes, refs, inicio }) => {
+    const comun = { prompt, duration: entero(ajustes.duration, 10), resolution: ajustes.resolution || "720p", audio: si(ajustes.sonido) };
+    return inicio.length
+      ? { model: "vidu-q4/image-to-video", input: { ...comun, image_url: inicio[0] } }
+      : { model: "vidu-q4/reference-to-video", input: { ...comun, reference_image_urls: refs.slice(0, 15), aspect_ratio: ajustes.aspectRatio || "9:16" } };
+  },
 });
+
+/** Flux 2 (Pro o Flex): texto a imagen, o imagen a imagen con las referencias. */
+function flux2(variante, { prompt, ajustes, refs }) {
+  const input = { prompt, aspect_ratio: ajustes.aspectRatio || "3:4", resolution: ajustes.imageSize || "2K" };
+  return refs.length
+    ? { model: `flux-2/${variante}-image-to-image`, input: { ...input, input_urls: refs.slice(0, 8) } }
+    : { model: `flux-2/${variante}-text-to-image`, input };
+}
+
+/** La imagen de Wan 2.7 (normal o Pro): las referencias van en `input_urls`, sin marca de agua. */
+function wanImagen(model, { prompt, ajustes, refs }) {
+  return {
+    model,
+    input: { prompt, aspect_ratio: ajustes.aspectRatio || "3:4", resolution: ajustes.imageSize || "2K", n: 1, watermark: false, ...(refs.length ? { input_urls: refs.slice(0, 9) } : {}) },
+  };
+}
+
+/** Wan 3.0 (normal o Prime): todo en un mismo pedido, cada cosa en su campo. */
+function wan3(model, { prompt, ajustes, refs, inicio, fin, videos }) {
+  return {
+    model,
+    input: {
+      prompt, resolution: ajustes.resolution || "1080P", aspect_ratio: ajustes.aspectRatio || "9:16", duration: entero(ajustes.duration, 10), audio: si(ajustes.sonido),
+      ...(inicio.length ? { first_frame_url: inicio[0] } : {}), ...(fin.length ? { last_frame_url: fin[0] } : {}),
+      ...(refs.length ? { reference_image_urls: refs.slice(0, 10) } : {}), ...(videos.length ? { reference_video_urls: videos.slice(0, 5) } : {}),
+    },
+  };
+}
 
 function seedance(model, maxRefs, maxVideos, { prompt, ajustes, refs, inicio, fin, videos }) {
   return {
     model,
     input: {
       prompt, generate_audio: si(ajustes.sonido), resolution: ajustes.resolution || "720p", aspect_ratio: ajustes.aspectRatio || "9:16",
-      duration: entero(ajustes.duration, 10), output_format: "mp4",
+      duration: entero(ajustes.duration, 10),
+      // Sólo Seedance 2.5 tiene `output_format` (la documentación de 2.0, Fast y Mini no lo nombra).
+      ...(model === "bytedance/seedance-2-5" ? { output_format: "mp4" } : {}),
       ...(inicio.length ? { first_frame_url: inicio[0] } : {}), ...(fin.length ? { last_frame_url: fin[0] } : {}),
       ...(refs.length ? { reference_image_urls: refs.slice(0, maxRefs) } : {}),
       ...(videos.length ? { reference_video_urls: videos.slice(0, maxVideos) } : {}),
@@ -186,6 +356,11 @@ export function validarKie(modelo, pedido = {}) {
   if (modelo.id === "gemini-omni-kie" && n("start") && pedido.ajustes?.voz) return "Con imagen inicial, Gemini Omni no admite una voz escogida: quita la voz o usa los fotogramas como referencias.";
   if (modelo.id === "veo-3-1-fast-kie" && n("reference") && n("start")) return "Veo 3.1 no mezcla referencias con imagen inicial: usa una cosa o la otra.";
   if (modelo.id === "kling-3-omni-kie" && n("start") && (n("reference") || n("video"))) return "Kling 3.0 Omni no mezcla la imagen inicial con referencias o video.";
+  if (modelo.id === "gemini-omni-video-kie" && n("video") && n("reference") > 5) return "Con un video, Gemini Omni admite hasta 5 imágenes de referencia.";
+  if (modelo.id === "minimax-h3-kie" && n("start") && (n("reference") || n("video"))) return "MiniMax H3 no mezcla la imagen inicial con referencias o video: usa una cosa o la otra.";
+  if (modelo.id === "happyhorse-1-1-kie" && n("start") && n("reference")) return "HappyHorse no mezcla la imagen inicial con referencias: usa una cosa o la otra.";
+  if (modelo.id === "vidu-q4-kie" && n("start") && n("reference")) return "Vidu Q4 no mezcla la imagen inicial con referencias: usa una cosa o la otra.";
+  if (modelo.id === "kling-2-6-movimiento-kie" && n("start") + n("reference") > 1) return "Para copiar el movimiento va UNA foto de la persona (como referencia o como imagen inicial).";
   return null;
 }
 
@@ -248,6 +423,9 @@ export function urlsDelResultado(data = {}) {
   return (Array.isArray(lista) ? lista : [lista]).map(String).filter((u) => /^https:\/\//.test(u));
 }
 
+/** Los Omni que admiten una voz escogida (se registra y va en `audio_ids`). */
+const OMNI_CON_VOZ = new Set(["gemini-omni-kie", "gemini-omni-video-kie"]);
+
 const NOTAS = { waiting: "En espera en Kie.ai", queuing: "En cola en Kie.ai", generating: "Generando en Kie.ai…" };
 
 /** Registra una voz fija de Omni (`gemini-omni-audio`, gratis) → su `audioId` para `audio_ids`. */
@@ -280,7 +458,7 @@ export const MOTOR_KIE = {
     const fin = esVideo ? await subirTodas(medios.end) : [];
     const videos = esVideo ? await subirTodas(medios.video) : [];
     // La voz de la locución de Omni: se REGISTRA (gratis, en el acto) y su id va en `audio_ids`.
-    const audios = modelo.id === "gemini-omni-kie" && ajustes?.voz && !inicio.length ? [await registrarVoz(env, ajustes.voz)] : [];
+    const audios = OMNI_CON_VOZ.has(modelo.id) && ajustes?.voz && !inicio.length ? [await registrarVoz(env, ajustes.voz)] : [];
     const cuerpo = pedidoKie(modelo, { prompt, ajustes, refs, inicio, fin, videos, audios });
     const d = await llamar(env, `${BASE(env)}/api/v1/jobs/createTask`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo),

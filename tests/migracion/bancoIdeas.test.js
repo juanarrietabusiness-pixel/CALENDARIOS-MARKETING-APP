@@ -6,7 +6,7 @@ import { ruta } from "../utils/repo.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
 import {
-  enlaceLimpio, plataformaDe, formatoPorEnlace, filtrarBanco, limpiarIdea, nuevaIdea, tituloDeIdea, esReferencia, ideaDeFila,
+  enlaceLimpio, plataformaDe, formatoPorEnlace, filtrarBanco, limpiarIdea, nuevaIdea, tituloDeIdea, esReferencia, ideaDeFila, deLoCompartido,
 } from "../../src/lib/bancoIdeas.js";
 
 // ============================================================
@@ -109,6 +109,34 @@ describe("lo puro", () => {
     expect("clientId" in l).toBe(false);
     expect(limpiarIdea("texto", "x")).toBeNull();
     expect(ideaDeFila({ id: "r", client_id: null, datos: "{roto" })).toMatchObject({ id: "r", clientId: null });
+  });
+
+  it("lo que llega por «Compartir» (/compartir) abre el diálogo relleno", () => {
+    const u = (x) => new URL(x, "https://calendario.test");
+    // Android (share_target): Instagram manda el enlace en `text`, otras apps en `url`; el título va a la nota.
+    expect(deLoCompartido(u("/compartir?title=Reel%20de%20Dcasa&text=https%3A%2F%2Fwww.instagram.com%2Freel%2Fabc%2F")))
+      .toEqual({ texto: "https://www.instagram.com/reel/abc/", nota: "Reel de Dcasa" });
+    expect(enlaceLimpio(deLoCompartido(u("/compartir?url=https%3A%2F%2Fvm.tiktok.com%2FZM%2F")).texto)).toBe("https://vm.tiktok.com/ZM/");
+    // iPhone (el Atajo): `texto`, con la barra final o sin ella.
+    expect(deLoCompartido(u("/compartir/?texto=https%3A%2F%2Fyoutu.be%2Fx")).texto).toBe("https://youtu.be/x");
+    // Un título que ya va dentro del texto, o que es el enlace, no se repite en la nota.
+    expect(deLoCompartido(u("/compartir?title=https%3A%2F%2Fyoutu.be%2Fx&text=https%3A%2F%2Fyoutu.be%2Fx")).nota).toBe("");
+    // Otra dirección no es «Compartir».
+    expect(deLoCompartido(u("/cliente/dcasa?texto=x"))).toBeNull();
+    expect(deLoCompartido(u("/compartirlo?texto=x"))).toBeNull();
+  });
+
+  it("el manifiesto pone la aplicación en la hoja de compartir de Android", () => {
+    const m = JSON.parse(readFileSync(ruta("public", "manifest.webmanifest"), "utf8"));
+    expect(m.share_target).toMatchObject({ action: "/compartir", method: "GET" });
+    expect(Object.values(m.share_target.params).sort()).toEqual(["text", "title", "url"]);
+    // Android sólo instala con un icono de 192 y otro de 512 que existan.
+    for (const t of ["192x192", "512x512"]) {
+      const i = m.icons.find((x) => x.sizes === t);
+      expect(i, t).toBeTruthy();
+      expect(readFileSync(ruta("public", i.src.replace(/^\//, ""))).length).toBeGreaterThan(0);
+    }
+    expect(readFileSync(ruta("index.html"), "utf8")).toMatch(/rel="manifest"/);
   });
 });
 

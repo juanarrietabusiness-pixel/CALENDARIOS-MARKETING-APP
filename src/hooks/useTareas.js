@@ -97,9 +97,28 @@ export function useTareas(pulso = 0) {
   /** «Mover a…»: el día en que se piensa hacer. La fecha límite no se toca. */
   const moverA = (t, fecha) => actualizar(t, { today_date: fecha || null });
 
+  /**
+   * Ordenar a mano lo de un bloque (Hoy): `lista` en el orden nuevo. Se reescribe `position` sólo de las
+   * que cambian, y antes en pantalla que en la base, para que el arrastre no salte. Mezcla las dos tablas
+   * (empresa y rápidas): su `position` sólo se compara dentro del bloque, que es lo que ordena `clasificar`.
+   */
+  const reordenar = accion(async (lista) => {
+    const cambian = lista.map((t, i) => ({ t, i })).filter(({ t, i }) => (t.position ?? 0) !== i);
+    if (!cambian.length) return;
+    const aplicar = (set, rapida) => set((prev) => prev.map((x) => {
+      const c = cambian.find(({ t }) => t.id === x.id && Boolean(t._rapida) === rapida);
+      return c ? { ...x, position: c.i } : x;
+    }));
+    aplicar(setClientTasks, false);
+    aplicar(setQuickTasks, true);
+    await Promise.all(cambian.map(({ t, i }) => (t._rapida ? db.updateQuickTask(t.id, { position: i }) : db.updateClientTask(t.id, { position: i }))));
+  });
+
   /** Una tarea nueva: con empresa es de esa empresa; sin ella, una rápida. */
   const crear = accion(async ({ titulo, empresa = "", notas = "", today_date = null, due_date = null, assigned_to = "" }) => {
-    const base = { title: titulo, description: notas, today_date, due_date, assigned_to };
+    // Al final: con `position` 0 una tarea nueva saltaría delante de lo que ya se ordenó a mano.
+    const position = todas.reduce((m, t) => Math.max(m, (t.position ?? 0) + 1), 0);
+    const base = { title: titulo, description: notas, today_date, due_date, assigned_to, position };
     if (empresa) {
       const fila = await db.saveClientTask({ ...base, client_id: empresa, recurrence: "none" });
       setClientTasks((prev) => [...prev, fila]);
@@ -135,5 +154,5 @@ export function useTareas(pulso = 0) {
     return tareas.length;
   });
 
-  return { todas, loading, error, setError, alternarHecha, actualizar, alternarHoy, moverA, crear, borrar, convertir };
+  return { todas, loading, error, setError, alternarHecha, actualizar, alternarHoy, moverA, crear, borrar, convertir, reordenar };
 }

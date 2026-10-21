@@ -115,17 +115,22 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
     delEstudio.current.clear();
   };
 
+  // Cada escritura lleva su número: «No esperar a la IA» suelta el botón, y lo que llegue después de una
+  // escritura abandonada no pisa nada (ni enseña su progreso).
+  const turno = useRef(0);
   const escribir = async (p = completo) => {
+    const mio = ++turno.current;
     setFallo("");
     setEscribiendo("Preparando…");
     try {
-      const propuesta = await escribirDesdeContenido(cliente, p, { fecha, alProgresar: setEscribiendo });
-      setPost((actual) => rellenarDesdeContenido({ ...actual, format: formato }, propuesta).post);
+      const propuesta = await escribirDesdeContenido(cliente, p, { fecha, alProgresar: (t) => { if (turno.current === mio) setEscribiendo(t); } });
+      if (turno.current === mio) setPost((actual) => rellenarDesdeContenido({ ...actual, format: formato }, propuesta).post);
     } catch (e) {
-      setFallo(`La IA no pudo escribir: ${e.message}`);
+      if (turno.current === mio) setFallo(`La IA no pudo escribir: ${e.message}`);
     }
-    setEscribiendo("");
+    if (turno.current === mio) setEscribiendo("");
   };
+  const noEsperar = () => { turno.current += 1; setEscribiendo(""); };
 
   // En cuanto hay archivo y no hay texto, la IA escribe sola: es el caso normal.
   const alCambiarMedios = (medios) => {
@@ -212,9 +217,19 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
   const vista = cliente && hayMedios ? <VistaRed post={completo} redes={destino} client={cliente} /> : null;
 
   const etiqueta = modo === "ahora" ? "Publicar ahora" : modo === "mano" ? "Guardar para publicar a mano" : cuando ? `Programar para ${fechaHora(cuando)}` : "Programar";
+  const sinMeta = modo !== "mano" && estado && !estado.meta?.conectado && destino.some(esDeMeta);
   const bloqueado = !!trabajando || !!escribiendo || !cliente || !hayMedios
-    || (modo !== "mano" && (errores.length > 0 || sinCuenta.length > 0 || !estado?.meta?.conectado && destino.some(esDeMeta)))
+    || (modo !== "mano" && (!estado || errores.length > 0 || sinCuenta.length > 0 || sinMeta))
     || (modo === "programar" && (!cuando || yaPaso));
+  // El botón gris tiene que decir POR QUÉ, junto a él: en el teléfono la causa quedaba pantallas más arriba
+  // (o no se decía en ningún sitio, como Meta sin conectar) y parecía que «no sube».
+  const motivo = trabajando || !hayMedios ? ""
+    : escribiendo ? "Espera: la IA está escribiendo el texto."
+      : modo !== "mano" && !estado ? "Leyendo las cuentas conectadas…"
+        : sinMeta ? "Meta no está conectado: conéctalo en Ajustes → Integraciones o quita Instagram y Facebook."
+          : modo !== "mano" && sinCuenta.length ? `Falta la cuenta de ${sinCuenta.map((r) => REDES[r].nombre).join(" y ")} de ${cliente?.name}.`
+            : modo !== "mano" && errores.length ? "Arregla lo marcado arriba para poder seguir."
+              : yaPaso ? "Esa hora ya pasó." : "";
 
   return (
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget && !trabajando) onClose(); }}>
@@ -338,6 +353,12 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
           <div className="subir-pie">
             <div role="status" aria-live="polite" className={trabajando ? "hint" : "sr-only"}>{trabajando}</div>
             {hayMedios && <p className="cuando-destino"><Icon name="send" size={13} /> {resumenDestino(completo, destino)}</p>}
+            {motivo && (
+              <p className="hint subir-motivo">
+                <Icon name="alert" size={13} /> {motivo}
+                {escribiendo && <button type="button" className="btn btn-ghost btn-sm" onClick={noEsperar}>No esperar a la IA</button>}
+              </p>
+            )}
             <div className="subir-botones">
               <button type="button" className="btn btn-secondary" onClick={onClose} disabled={!!trabajando}>Cancelar</button>
               <button type="button" className="btn btn-primary cuando-principal" disabled={bloqueado} onClick={confirmar}>

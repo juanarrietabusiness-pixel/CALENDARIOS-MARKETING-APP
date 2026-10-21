@@ -89,7 +89,7 @@ OTRAS HERRAMIENTAS QUE TIENES ADEMÁS DE LAS DEL CALENDARIO:
   un modelo concreto o partir de imágenes de la galería se piden con crear_en_estudio: NO espera, queda
   en la galería del cliente y tú dices el ID del pedido. Cuesta dinero: si la respuesta trae un costo y
   dice que no se creó nada, díselo al usuario con la cifra y sólo con su «sí» repites con confirmado=true.
-  Para una imagen suelta que deba verse aquí mismo, sigue usando generar_imagen.
+  Para una imagen o un video que deba verse aquí mismo (con el kit de la marca), usa generar_imagen.
 Antes de decir que no tienes un dato, mira si alguna de estas herramientas lo trae.`;
 
 const NOMBRES_WEB = new Set(HERRAMIENTAS_WEB.map((h) => h.name));

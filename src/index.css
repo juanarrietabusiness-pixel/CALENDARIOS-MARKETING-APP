@@ -1976,6 +1976,16 @@ button.campana-semana-boton:hover { border-color: var(--accent-line); }
   cursor: pointer;
 }
 .dia-hoy[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* «¿Cuándo la haces?» (ElegirDia.jsx): sin día, hoy, mañana u otro día. */
+.elegir-dia { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); }
+.elegir-dia .filter-chip { min-height: var(--tap-sm); }
+/* Arrastrar para ordenar lo de Hoy (Mi día y el panel lateral). */
+[data-arrastrable="true"] { cursor: grab; }
+[data-arrastrando="true"] { opacity: .5; }
+.dia-orden { display: inline-flex; gap: 2px; }
+/* Un aviso de Mi día que se puede quitar del camino. */
+.dia-aviso-cabecera { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.dia-aviso-cabecera > p { flex: 1 1 200px; margin: 0; }
 .contador-atrasadas {
   position: absolute;
   top: 2px;
@@ -2866,3 +2876,14 @@ a.btn, a.btn-icon { text-decoration: none; }
 .ia-funcion label span { font-size: var(--fs-2xs); color: var(--text-dim); }
 .ia-funcion > .notice, .ia-funcion > p { grid-column: 1 / -1; }
 @media (max-width: 599px) { .ia-funcion { grid-template-columns: 1fr; } }
+
+/* «Tus tareas de hoy» del inicio (HoyInicio.jsx). */
+.hoy-inicio { margin-top: var(--sp-5); padding: var(--sp-4); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; gap: var(--sp-2); }
+.hoy-inicio-cabecera { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); flex-wrap: wrap; }
+.hoy-inicio-cabecera h2 { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-sm); font-weight: 700; margin: 0; }
+.hoy-inicio-cabecera a { font-size: var(--fs-2xs); }
+.hoy-inicio-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.hoy-inicio-lista li { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--tap-sm); }
+.hoy-inicio-titulo { flex: 1; min-width: 0; font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.hoy-inicio-nueva { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.hoy-inicio-nueva .input { flex: 1 1 220px; }

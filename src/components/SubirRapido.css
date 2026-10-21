@@ -28,3 +28,7 @@
 }
 .subir-vista > h3 { margin: 0; }
 .subir-vista .vista-red-telefono { max-width: 340px; }
+
+/* Por qué el botón está gris, junto al botón. */
+.subir-motivo { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); margin: 0; color: var(--text-dim); }
+.subir-motivo svg { flex-shrink: 0; }
