@@ -1592,6 +1592,7 @@ function Workspace({ session, ruta }) {
                     onUpdateCalLocal={updateCalendarLocal}
                     onDeleteCal={deleteCalendar}
                     onMoverAOtroMes={(postId, fecha, opciones) => moverAOtroMes(calendar, postId, fecha, opciones)}
+                    onLlevarAlCalendario={llevarAlCalendario}
                     vecinos={diasVecinos(client.calendars ?? [], mesVisto)}
                     onAbrirVecina={(calVecino, postId) => { setPostPedido({ calId: calVecino.id, postId }); irAMes(client.id, calVecino); }}
                     clientes={clients}

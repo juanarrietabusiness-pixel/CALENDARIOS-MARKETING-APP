@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { redesDe } from "./publicacion.js";
 import {
   formatoDeMedios, redesPorDefecto, rellenarDesdeContenido, ponerEnDia, moverEnCalendario, tieneContenido,
-  queSaleEn, resumenDestino, publicacionVacia, deIdeaAPublicacion,
+  queSaleEn, resumenDestino, publicacionVacia, deIdeaAPublicacion, copiaDePublicacion,
 } from "./subir.js";
 
 const img = (n) => ({ src: `/api/media/clientes/c/${n}.jpg`, tipo: "imagen" });
@@ -107,5 +107,19 @@ describe("subir contenido", () => {
     const cal = ponerEnDia({ days: [] }, "2026-11-12", post);
     expect(cal.days).toHaveLength(1);
     expect(cal.days[0].posts[0].id).toBe("nuevo");
+  });
+});
+
+describe("copiaDePublicacion", () => {
+  it("copia lo que se publica y suelta lo que le pasó a la original", () => {
+    const original = {
+      id: "p1", status: "approved", idea: "Sofá cama", descripcion: "Texto", medios: [{ src: "/api/media/clientes/c/a.jpg", tipo: "imagen" }],
+      redes: ["instagram"], aprobadaComo: "pieza", cambiosPedidos: "Más luz", guardadoDrive: { x: 1 }, etapa: "cliente", publicadaAMano: "2026-10-01",
+    };
+    const c = copiaDePublicacion(original, "nuevo");
+    expect(c).toMatchObject({ id: "nuevo", status: "pending", idea: "Sofá cama", descripcion: "Texto", redes: ["instagram"] });
+    expect(c.medios).toEqual(original.medios);
+    for (const k of ["aprobadaComo", "cambiosPedidos", "guardadoDrive", "etapa", "publicadaAMano"]) expect(c).not.toHaveProperty(k);
+    expect(original.status).toBe("approved");
   });
 });

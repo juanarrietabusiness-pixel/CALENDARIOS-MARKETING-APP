@@ -14,7 +14,7 @@ import { navegar, analizarRuta, construirRuta } from "../lib/rutas";
 import { casillasSinIdea, estrategiaDelCalendario, ideasDelPlan, rellenarConIdea } from "../lib/ideaPublicacion";
 import { ideasDeRevision, porRevisar } from "../lib/revisionIdeas";
 import { agruparPorSemana, semanaInicial, rangoSemana } from "../lib/semanas";
-import { moverEnCalendario, ponerEnDia } from "../lib/subir";
+import { moverEnCalendario, ponerEnDia, copiaDePublicacion } from "../lib/subir";
 import { conAprobacion, resumenEnvio, estadoDelEnvio, mensajeDeEnvio } from "../lib/aprobacion";
 import { sinLoNecesario } from "../lib/completitud";
 import { programarAprobadasDe } from "../lib/programarAprobadas";
@@ -67,6 +67,7 @@ export default function CalendarView({
   onUpdateCalLocal,
   onDeleteCal,
   onMoverAOtroMes,
+  onLlevarAlCalendario,
   vecinos = null,
   onAbrirVecina,
   clientes = [],
@@ -707,6 +708,25 @@ export default function CalendarView({
     }
 
     onUpdateCal(calId, { ...cal, days });
+  };
+
+  /**
+   * «Duplicar a otro día»: una copia nueva y pendiente (lib/subir.js) en esa fecha; en otro mes, en su cajón (lo
+   * crea si no existe). La original no se toca. → la copia, o null si no se pudo.
+   */
+  const duplicarPost = async (post, fecha) => {
+    const copia = copiaDePublicacion(post, uid());
+    try {
+      if (fecha.slice(0, 7) === mesDelCal) onUpdateCal(calId, ponerEnDia(cal, fecha, copia));
+      else if (onLlevarAlCalendario) await onLlevarAlCalendario(fecha, copia);
+      else throw new Error("Ese día es de otro mes: ábrelo y duplícala desde allí.");
+      setSyncStatus(`Duplicada al ${Number(fecha.slice(8))}${fecha.slice(0, 7) === mesDelCal ? "" : ` de ${MONTHS[Number(fecha.slice(5, 7)) - 1]}`}. Ábrela y pulsa «Otra versión» para darle otro diseño.`);
+      setTimeout(() => setSyncStatus(""), 7000);
+      return copia;
+    } catch (e) {
+      onAviso?.(`No se pudo duplicar: ${e.message}`);
+      return null;
+    }
   };
 
   const saveMetaEdit = () => {
@@ -1739,6 +1759,7 @@ export default function CalendarView({
             onUpdate={updatePost}
             onDelete={deletePost}
             onMoveDate={movePost}
+            onDuplicar={duplicarPost}
             onSendToBank={(post, date) => { addToBank(post, date); removePostFromDay(date, post.id); }}
             onClose={() => setSidePanel(null)}
             suggestion={suggestions[sidePanel.post.id] || null}

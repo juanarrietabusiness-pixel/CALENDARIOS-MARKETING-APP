@@ -16,7 +16,7 @@
   border: 1px solid rgba(255,255,255,.35); background: rgba(11,18,32,.78); color: #fff;
 }
 .editor-medios-quitar:hover, .editor-medios-quitar:focus-visible { background: var(--danger); border-color: var(--danger); }
-.editor-medios-acciones { display: flex; align-items: center; justify-content: space-between; gap: 2px; min-height: var(--tap-sm); }
+.editor-medios-acciones { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 2px; min-height: var(--tap-sm); }
 .editor-medios-acciones:empty { display: none; }
 .editor-medios-acciones .btn-icon { min-width: 30px; min-height: var(--tap-sm); }
 .editor-medios-portada-btn {
@@ -24,6 +24,14 @@
   border: none; background: none; color: var(--accent); font-size: var(--fs-3xs); font-weight: 700; cursor: pointer;
 }
 .editor-medios-portada-btn[aria-expanded="true"] { background: var(--accent-soft); }
+/* «Otra versión»: un botón de verdad, en el color de la IA, a lo ancho de la ficha (era texto gris de 11 px). */
+.editor-medios-version {
+  flex: 1 1 100%; justify-content: center; min-height: var(--tap-sm); gap: 6px;
+  background: var(--accent-soft); border: 1px solid var(--accent-line); color: var(--accent); font-weight: 700;
+}
+.editor-medios-version:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.otra-version-estado { padding: var(--sp-1) 0; }
+.otra-version-estado p { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .editor-medios li.editor-medios-mas { border-style: dashed; background: none; }
 .editor-medios-mas button {
   flex: 1; width: 100%; min-height: 130px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
@@ -369,3 +377,5 @@
 /* «Guardar en Drive» de la publicación: el botón y dónde queda. */
 .guardar-drive { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); margin-top: var(--sp-2); }
 .guardar-drive [role="status"]:not(.sr-only) { flex-basis: 100%; margin: 0; }
+/* «Duplicar a otro día» al pie del panel. */
+.duplicar-fila { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }

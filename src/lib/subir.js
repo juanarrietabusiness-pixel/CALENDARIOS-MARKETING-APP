@@ -155,3 +155,17 @@ export function moverEnCalendario(cal, postId, fecha) {
   };
   return post ? ponerEnDia(sin, fecha, post) : cal;
 }
+
+/**
+ * «Duplicar a otro día»: la misma publicación —idea, textos, tipo, producto, archivos y redes— como una NUEVA,
+ * pendiente: id nuevo y sin nada de lo que le pasó a la original (la respuesta del cliente, lo publicado, la copia en
+ * Drive, la etapa del equipo). Para reutilizar un post en otro día; con «Otra versión» se le da otro diseño. Pura.
+ */
+export function copiaDePublicacion(post = {}, id = crypto.randomUUID().slice(0, 8)) {
+  const copia = { ...post, id, status: "pending" };
+  for (const campo of [
+    "cambiosPedidos", "cambiosAt", "actualizadaAt", "mediosCambiadosAt", "publicadaAMano", "guardadoDrive",
+    "etapa", "subidaRapida", "aprobadaComo", "huellaAprobada", "aprobadaAt", "comment",
+  ]) delete copia[campo];
+  return copia;
+}
