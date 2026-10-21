@@ -262,8 +262,15 @@ function lineaDePieza(r, productos = {}) {
     r.antes ? `   la que había y NO sirvió (escribe OTRA distinta, con otro enfoque): «${corto(r.antes, 200)}»` : "",
     r.pide ? `   lo que pide la agencia para esta: ${corto(r.pide, 300)}` : "",
     r.cambio ? `   ojo: ${r.cambio}` : "",
+    r.rostro ? `   ${LINEA_ROSTRO}` : "",
   ].filter(Boolean).join("\n");
 }
+
+/**
+ * Un VIDEO CON ROSTRO (UGC): lo graba una persona de la marca hablando a cámara, no se hace con IA. Su guion es para
+ * grabarlo: por tomas, lo que DICE (palabra por palabra), lo que se ve y el texto en pantalla. Lo dice en el pedido.
+ */
+export const LINEA_ROSTRO = "VIDEO CON ROSTRO (UGC): lo GRABA una persona de la marca hablando a cámara; no se hace con IA. En el guion, cada línea una toma: «[0–3 s] lo que DICE, palabra por palabra · lo que se ve · texto en pantalla (5 palabras como mucho)». La escena dice dónde y cómo grabarlo.";
 
 /** ¿Lleva guion este formato (carrusel o reel)? Pura. */
 const esGuiado = (formato) => Boolean(FORMATOS_LOTE[formato]?.guiado);
@@ -435,6 +442,7 @@ export function publicacionDePieza({ id, idea, archivo = null, archivos = null, 
     ...(prod?.id ? { productoId: prod.id, producto: prod.nombre ?? "" } : {}),
     ...(idea.deseo ? { deseo: idea.deseo } : {}),
     ...(idea.perfil ? { perfil: idea.perfil } : {}),
+    ...(idea.rostro ? { rostro: true } : {}),
     status: "pending",
     ...(lista.length ? { medios: lista.map(medioDe) } : { aprobacion: "idea" }),
   };

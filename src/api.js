@@ -131,6 +131,9 @@ export async function callAI(content, { maxTokens, tier, tolerarCorte = false, f
  */
 const REGLA_TEXTO_PIEZA = `TEXTO_PIEZA (lo que va escrito ENCIMA del diseño, no el caption): un titular de hasta 6 palabras y, en otra línea, una frase de apoyo de hasta 10; si el tipo lleva precio u oferta, el precio EXACTO del catálogo en una tercera línea. Frases de marketing, sacadas del gancho y del deseo de la publicación. En carrusel, vacío (el texto va lámina por lámina en el guion); en reel, el texto de la portada.`;
 
+/** Un video con rostro (UGC, `post.rostro`): lo graba una persona; el guion es para grabarlo, no para la IA. */
+const REGLA_ROSTRO = "VIDEO CON ROSTRO (UGC): lo GRABA una persona de la marca hablando a cámara. GUION por tomas: [tiempo] lo que DICE palabra por palabra · lo que se ve · texto en pantalla corto (Hook → Desarrollo → CTA) + DESCRIPCION (caption con hashtags al final)";
+
 export function buildScriptPrompt(client, calendar, posts, adnExtra = "", memories = [], cerebro = null) {
   const ctx = buildClientContext(client, calendar, adnExtra, cerebro);
   const memBlock = memories.length
@@ -152,7 +155,7 @@ DIA: ${p._date} (${p._dayName || ""})
 SEMANA: ${p._weekNumber || ""}
 CONCEPTO_SEMANAL: ${p._concept || "N/A"}
 IDEA: ${p.idea || "genera según contexto del cliente"}
-${p.estructuraRef ? `ESTRUCTURA A SEGUIR (de una referencia de la competencia: la MISMA forma, tramos y ritmo; el contenido es de la marca y no se copia nada): ${String(p.estructuraRef).slice(0, 900)}\n` : ""}REGLAS_FORMATO: ${formatRules[p.format] || formatRules.post}`;
+${p.estructuraRef ? `ESTRUCTURA A SEGUIR (de una referencia de la competencia: la MISMA forma, tramos y ritmo; el contenido es de la marca y no se copia nada): ${String(p.estructuraRef).slice(0, 900)}\n` : ""}REGLAS_FORMATO: ${p.format === "reel" && p.rostro ? REGLA_ROSTRO : formatRules[p.format] || formatRules.post}`;
   }).join("\n\n");
 
   return `${ctx}

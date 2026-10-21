@@ -957,6 +957,8 @@ input[type="radio"] {
   white-space: nowrap;
   font-family: inherit;
 }
+/* El plan semanal de la empresa (lib/planSemanal.js): una línea por publicación del día. */
+.cal-header-plan { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cal-header-label:hover {
   background: var(--accent-soft);
   color: var(--text-muted);

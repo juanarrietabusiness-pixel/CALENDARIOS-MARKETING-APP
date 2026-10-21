@@ -51,6 +51,7 @@ const ProducirElMes = lazy(() => import("./calendario/ProducirElMes"));
 // «Revisar las ideas»: la aprobación interna, en tarjetas (aprobar, otra, quitar).
 const RevisarIdeas = lazy(() => import("./calendario/RevisarIdeas"));
 const GuardarMesDrive = lazy(() => import("./calendario/GuardarMesDrive"));
+const PlanSemanal = lazy(() => import("./calendario/PlanSemanal"));
 const FechasEspecialesDialog = lazy(() => import("./calendario/fechasEspeciales").then((m) => ({ default: m.FechasEspecialesDialog })));
 import { BankPanel } from "./calendario/BankPanel";
 import {
@@ -77,6 +78,7 @@ export default function CalendarView({
   onAviso,
   onMoveBankToCal,
   onGuardarFechas,
+  onGuardarPlan,
   abrirPublicacion = null,
   onPublicacionAbierta,
 }) {
@@ -244,6 +246,18 @@ export default function CalendarView({
   // séptima bandera que alguien tendrá que acordarse de bajar.
   // ------------------------------------------------------------
   const [capa, setCapa] = useState(null);
+  // El plan semanal de la empresa en la barra de los días (lib/planSemanal.js): lo que leen el lote y la IA.
+  // Va en diferido: las plantillas no caben en el arranque (rendimiento.bundle.test.js), y la barra sólo pinta texto.
+  const [semanaPlan, setSemanaPlan] = useState(null);
+  const [diaPlan, setDiaPlan] = useState(null);
+  useEffect(() => {
+    let vivo = true;
+    Promise.all([import("../lib/planSemanal"), import("../lib/plantillasApi").then((m) => m.leerPlantillas()).catch(() => [])])
+      .then(([m, lista]) => { if (vivo) setSemanaPlan(m.lineasDeLaSemana(client, lista)); })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [client]);
+  const puedeEditarPlan = Boolean(onGuardarPlan) && !yoActual()?.soloLectura;
   const abrirCapa = useCallback((nombre) => setCapa(nombre), []);
   const cerrarCapa = useCallback(() => setCapa(null), []);
   const [suggestions, setSuggestions] = useState({});
@@ -1002,6 +1016,12 @@ export default function CalendarView({
       {/* Edit calendar meta modal */}
       {capa === "meta" && <EditMetaDialog metaForm={metaForm} setMetaForm={setMetaForm} onSave={saveMetaEdit} onClose={cerrarCapa} tabInicial={metaTab} semanas={semanasMes} aviso={metaAviso} />}
 
+      {capa === "plan" && (
+        <Suspense fallback={null}>
+          <PlanSemanal client={client} diaInicial={diaPlan} onGuardar={onGuardarPlan} onClose={cerrarCapa} />
+        </Suspense>
+      )}
+
       {capa === "fechas" && (
         <Suspense fallback={null}>
           <FechasEspecialesDialog client={client} year={cal.year} month={cal.month} onGuardar={onGuardarFechas} onClose={cerrarCapa} />
@@ -1126,6 +1146,7 @@ export default function CalendarView({
           items={[
             { icon: "pencil", label: "Editar el mes", onClick: () => abrirMeta("general") },
             { icon: "calendar", label: "Fechas especiales", onClick: () => abrirCapa("fechas") },
+            puedeEditarPlan && { icon: "grid", label: "Plan semanal de la empresa", onClick: () => { setDiaPlan(null); abrirCapa("plan"); } },
             { icon: "checkSquare", label: "Revisar el mes", onClick: () => abrirCapa("revision") },
             { icon: "checkCircle", label: "Revisar las ideas", onClick: () => abrirCapa("revisar-ideas"), disabled: !totalPosts },
             { icon: "sparkles", label: "Completar los textos que faltan", onClick: generateScripts, disabled: genLoading || !totalPosts },
@@ -1373,11 +1394,8 @@ export default function CalendarView({
           onAddPost={(date) => setAddingPostDay(date)}
           onDropFromBank={moveBankToCalendar}
           ideasBank={banco.ideas}
-          dayLabels={cal.dayLabels || {}}
-          onUpdateDayLabel={(dow, value) => {
-            const updated = { ...(cal.dayLabels || {}), [dow]: value };
-            onUpdateCal(calId, { ...cal, dayLabels: updated });
-          }}
+          semana={semanaPlan}
+          onEditarPlan={puedeEditarPlan ? (dow) => { setDiaPlan(dow); abrirCapa("plan"); } : undefined}
           vecinos={vecinos}
           onVecina={(calVecino, post) => onAbrirVecina?.(calVecino, post.id)}
           fechas={fechasDia}

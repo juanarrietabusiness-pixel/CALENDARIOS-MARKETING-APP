@@ -23,10 +23,9 @@ import { estadoDelChip, miniaturaDe, ESTADOS_CHIP } from "../../lib/estadoChip";
  * sus días, un toque lo abre en su mes, y soltar ahí una publicación de
  * este mes la lleva a ese día (a otro mes: lo hace el servidor).
  */
-export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, onAddPost, onDropFromBank, ideasBank, dayLabels, onUpdateDayLabel, vecinos = null, onVecina, fechas = null, conceptos = [], onEditarSemana }) {
+export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, onAddPost, onDropFromBank, ideasBank, semana = null, onEditarPlan, vecinos = null, onVecina, fechas = null, conceptos = [], onEditarSemana }) {
   const [drag, setDrag] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
-  const [editingHeader, setEditingHeader] = useState(null);
   const today = fmtDate(new Date());
 
   const cells = () => {
@@ -52,33 +51,22 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
     <>
     <div className="cal-grid">
       {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((n, i) => {
-        const label = (dayLabels || {})[i] || "";
-        const isEditing = editingHeader === i;
+        // La cabecera es el PLAN SEMANAL de la empresa (lib/planSemanal.js): qué tipo y qué formato salen cada día,
+        // fijo todos los meses. Es lo mismo que lee el lote del Estudio; tocarla lo edita.
+        const dow = (i + 1) % 7;
+        const lineas = semana?.[dow] ?? [];
+        const contenido = lineas.length
+          ? lineas.map((l, k) => <span key={k} className="cal-header-plan">{l}</span>)
+          : <span className="cal-header-plan" style={{ color: "var(--text-faint)" }}>{onEditarPlan ? "+" : "—"}</span>;
         return (
           <div key={n} className="cal-header-cell">
             <abbr title={FULL_DOW[i]} style={{ textDecoration: "none" }}>{n}</abbr>
-            {isEditing ? (
-              <input
-                className="cal-header-input"
-                defaultValue={label}
-                autoFocus
-                placeholder="Etiqueta…"
-                onBlur={(e) => { onUpdateDayLabel?.(i, e.target.value); setEditingHeader(null); }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") { onUpdateDayLabel?.(i, e.target.value); setEditingHeader(null); }
-                  if (e.key === "Escape") setEditingHeader(null);
-                }}
-              />
-            ) : (
-              <button
-                type="button"
-                className="cal-header-label"
-                onClick={() => setEditingHeader(i)}
-                aria-label={`Editar etiqueta de ${FULL_DOW[i]}`}
-              >
-                {label || <span style={{ color: "var(--text-faint)" }}>+</span>}
+            {onEditarPlan ? (
+              <button type="button" className="cal-header-label" onClick={() => onEditarPlan(dow)}
+                aria-label={`Plan de los ${FULL_DOW[i].toLowerCase()}: ${lineas.join(", ") || "nada"}. Editar`}>
+                {contenido}
               </button>
-            )}
+            ) : <span className="cal-header-label">{contenido}</span>}
           </div>
         );
       })}

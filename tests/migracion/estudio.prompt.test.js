@@ -388,6 +388,23 @@ describe("POST /api/estudio/<cliente>/lote/ideas: el PLAN del mes («Planificar 
     expect((t.match(/producto: Pc/g) ?? []).length).toBe(4);
   });
 
+  it("un video con rostro (UGC) del plan semanal: el pedido dice que lo graba una persona y la idea vuelve marcada", async () => {
+    anthropic(JSON.stringify({ ideas: [
+      { n: 1, titulo: "Detrás de cámaras", titular: "Así armamos tu sofá", escena: "En el taller", guion: "[0–3 s] Hola, soy Ana…" },
+      { n: 2, titulo: "Reel IA", titular: "Se abre solo", escena: "Manos", guion: "[0–2 s] …" },
+    ] }));
+    const r = await (await plan({ casillas: [
+      { clave: "2030-03-05|0", fecha: "2030-03-05", formato: "reel", pilar: "humano", rostro: true },
+      { clave: "2030-03-05|1", fecha: "2030-03-05", formato: "reel", pilar: "humano", rostro: "sí" },
+    ] })).json();
+    expect(r.ideas[0]).toMatchObject({ clave: "2030-03-05|0", rostro: true });
+    // Sólo el booleano: lo demás no lo marca.
+    expect(r.ideas[1].rostro).toBeUndefined();
+    const t = textoDe(peticiones[0]);
+    expect((t.match(/VIDEO CON ROSTRO \(UGC\)/g) ?? []).length).toBe(1);
+    expect(t).toMatch(/lo que DICE, palabra por palabra/);
+  });
+
   it("«Otra»: la que había y lo que pide la agencia van en el pedido", async () => {
     anthropic(JSON.stringify({ ideas: [{ n: 1, titulo: "Nueva", titular: "Otra cosa", escena: "Una cocina" }] }));
     const r = await (await plan({ casillas: [{ clave: "p1", fecha: "2030-03-04", formato: "post", pilar: "educativo", antes: "Duerme mejor", pide: "más divertida, sin precio" }] })).json();

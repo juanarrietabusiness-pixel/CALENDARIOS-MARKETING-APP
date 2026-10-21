@@ -366,7 +366,7 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
     const matriz = matrizDelMes();
     return estructuraDelMes().map((d) => ({
       date: d.date,
-      posts: d.formats.map((f, j) => ({ ...matriz.get(`${d.date}|${j}`), ...(ideas[d.date] || [])[j], format: f.format })),
+      posts: d.formats.map((f, j) => ({ ...matriz.get(`${d.date}|${j}`), ...(ideas[d.date] || [])[j], format: f.format, ...(f.rostro ? { rostro: true } : {}) })),
     }));
   };
 
@@ -659,6 +659,8 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
           ...Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, idea?.[k] || m[k] || ""])),
           id: idea?.id || uid(),
           format: f.format,
+          // Un video con rostro (UGC) del plan del cliente: lo graba una persona.
+          ...(f.format === "reel" && f.rostro ? { rostro: true } : {}),
           idea: idea?.idea || "",
           // Lo que escribió el motor de ideas: el título, qué se ve y la forma (composición y gancho) de la pieza.
           ...(idea?.title ? { title: idea.title } : {}),

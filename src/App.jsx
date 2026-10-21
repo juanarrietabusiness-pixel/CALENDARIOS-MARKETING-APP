@@ -905,6 +905,19 @@ function Workspace({ session, ruta }) {
   };
 
   /**
+   * El plan semanal de un cliente (lib/planSemanal.js): la plantilla personalizada y el ritmo, que es lo que leen el
+   * lote del Estudio, «Planificar mes» y la IA. Deja escapar el error: el diálogo lo dice y se queda abierto.
+   */
+  const guardarPlanCliente = async ({ planContenido, ritmoContenido }) => {
+    const id = selectedClientId;
+    const cliente = clientsRef.current.find((c) => c.id === id);
+    if (!cliente) return;
+    const nuevo = { ...cliente, planContenido, ritmoContenido };
+    await db.saveClient(nuevo, ownerId);
+    setClients((prev) => prev.map((c) => (c.id === id ? { ...c, planContenido, ritmoContenido } : c)));
+  };
+
+  /**
    * Del banco de ideas a un día del calendario. Devuelve si entró: quien la
    * llevó la quita del banco SÓLO entonces —antes se borraba del banco aunque
    * el día no estuviera en el mes (siempre en un mes sin cajón) y se esfumaba—.
@@ -1612,6 +1625,7 @@ function Workspace({ session, ruta }) {
                     onAviso={setToast}
                     onMoveBankToCal={ideaAlCalendario}
                     onGuardarFechas={guardarFechasCliente}
+                    onGuardarPlan={guardarPlanCliente}
                   />
                 ) : null)}
               </>

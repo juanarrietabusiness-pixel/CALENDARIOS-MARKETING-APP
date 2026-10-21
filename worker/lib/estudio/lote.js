@@ -83,6 +83,8 @@ export function limpiarCasillas(lista, activos = []) {
       ...(corto(c.pide, 300) ? { pide: corto(c.pide, 300) } : {}),
       ...(corto(c.antes, 200) ? { antes: corto(c.antes, 200) } : {}),
       ...(corto(c.cambio, 160) ? { cambio: corto(c.cambio, 160) } : {}),
+      // Un video con rostro (UGC): lo graba una persona; el guion es para grabarlo.
+      ...(formato === "reel" && c.rostro === true ? { rostro: true } : {}),
     }];
   });
 }

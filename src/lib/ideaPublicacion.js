@@ -95,6 +95,7 @@ export function casillasDelPlan(dias = [], { matriz = new Map(), semanas = [], i
         ...(semanas[(d.wk ?? 1) - 1] ? { semana: semanas[(d.wk ?? 1) - 1] } : {}),
         ...(d.impDate?.name ? { especial: d.impDate.name } : {}),
         ...(String(previa.idea ?? "").trim() ? { idea: String(previa.idea).trim() } : {}),
+        ...(formato === "reel" && f.rostro ? { rostro: true } : {}),
       });
     });
   }
@@ -117,6 +118,7 @@ export function casillasSinIdea(cal) {
         ...Object.fromEntries(["pilar", "pilarSub", "productoId", "nivel", "deseo", "perfil"].map((k) => [k, p[k] || ""]).filter(([, v]) => v)),
         ...(d.concept ? { semana: d.concept } : {}),
         ...(d.specialDate ? { especial: d.specialDate } : {}),
+        ...(formato === "reel" && p.rostro ? { rostro: true } : {}),
       });
     }
   }

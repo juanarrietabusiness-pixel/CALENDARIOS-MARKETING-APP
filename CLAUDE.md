@@ -228,6 +228,8 @@ src/
                           la propuesta de la IA, poner o mover una publicación de día (puro)
     repetir.js            «Post que se repite»: las reglas (semana, n.º día del mes, último, número), qué le toca a un
                           mes y la copia como idea (puro)
+    planSemanal.js        La barra de los días del calendario: el plan semanal de la empresa (tipo y formato de cada
+                          publicación de cada día, «Video con rostro (UGC)»), guardar y volver al estándar (puro)
     aprobacion.js         Qué aprueba el cliente (idea o pieza final), qué cuenta de su respuesta,
                           por programar / por producir, cambios tras aprobar (puro; también
                           lo importa el Worker)
@@ -347,6 +349,7 @@ src/
     calendario/tipoContenido.jsx  «Tipo de contenido» del panel: tipo, producto, nivel, perfil y deseo
     calendario/campanaMes.jsx   La tarjeta de la campaña: nombre del mes, semanas, ofertas, fechas
     calendario/repeticionesMes.jsx  Lo que se repite este mes (añadir, ahora no, no repetir más) y «Se repite» del panel
+    calendario/PlanSemanal.jsx  «Plan semanal de <empresa>»: editar lo que sale cada día, fijo todos los meses (lazy)
     calendario/fechasEspeciales.jsx  Escoger las fechas de un cliente (importante, ocultar, propias, IA)
     CalendarView.jsx      Vista de lista y de rejilla, filtros, generación, envío
     anuncios/AsistenteCampana.jsx  «Nueva campaña»: objetivo y destino (web o WhatsApp), públicos (1–3), anuncios (1–6, carrusel), revisar
@@ -1428,6 +1431,25 @@ son del servidor.
   qué se ve, y «Escribir sus textos con IA» corre el «Completar los textos que faltan» de siempre (sólo rellena). «No
   repetir más» quita la regla de la original aunque esté en otro mes (`onUpdateOtroCal`: con el mes virtual, `onUpdateCal`
   escribe en ESE mes).
+- **La barra de los días encima del mes ES el plan semanal de la empresa** (`src/lib/planSemanal.js`,
+  `calendario/PlanSemanal.jsx`). Era texto libre por MES (`cal.dayLabels`) que no leía nadie: el lote seguía con el ritmo
+  de la agencia aunque la barra dijera otra cosa. Ahora enseña y edita lo MISMO que leen el lote del Estudio («Mes
+  completo» → «Según su plan»), «Planificar mes» y la IA: el ritmo (`ritmo_contenido`) y la copia personalizada de la
+  plantilla (`plan_contenido.personalizada`), fijos todos los meses; `cal.dayLabels` se queda en la fila sin usarse.
+  Cosas que no se ven:
+  · **La primera publicación de cada día va con el tipo VACÍO en el plan y su tipo en el ritmo** (`semanaParaGuardar`),
+  la convención de las plantillas de arranque: así la temporada (`cambio` de `casillasConPlantilla`, que sólo se aplica
+  sin tipo escrito) sigue ajustándola. Las demás del día llevan su tipo.
+  · **Sólo tipos de la agencia** (`PILARES`); nada de nombres libres. Sin plan, la barra enseña el ritmo sin formato
+  (lo que hacía el lote sin plan) y al guardar cada día toma el formato escogido («Post» por defecto).
+  · **«Volver al estándar de la agencia»** quita la copia y el ritmo propio; la plantilla elegida en la ficha se queda.
+  · Se guarda con `guardarPlanCliente` (App.jsx); lo ya creado en el calendario no cambia. En el teléfono la barra no
+  cabe: «⋯ → Plan semanal de la empresa». Sólo lectura no la edita.
+- **«Video con rostro (UGC)» es un REEL que graba una persona** (`rostro: true` en la publicación del plan, la casilla,
+  la idea y el post; sólo vale en un reel). La IA le escribe un guion para GRABAR, toma por toma con lo que se dice
+  (`LINEA_ROSTRO` en loteAnuncios.js; `REGLA_ROSTRO` en api.js para «Completar los textos»), y el lote NO lo crea con IA:
+  al «Crear» van al calendario como idea con su guion (`conRostro` en EstudioLote) y no cuentan como reels que pidan
+  modelo de video. El servidor sólo acepta el booleano (`limpiarCasillas`). En el panel, la casilla bajo «Formato».
 - **«Me gusta» (la estrella de antes, `favorito`) y la papelera enseñan al kit** (`src/lib/aprendizajeVisual.js`,
   `worker/lib/estudio/aprender.js`, `POST /api/estudio/<c>/kit/aprender`, en Cerebro → Lo que aprende → «Lo visual»).
   La IA MIRA las imágenes (hasta 8 que gustan y 4 descartadas, función «aprendizaje visual») y PROPONE reglas; nada

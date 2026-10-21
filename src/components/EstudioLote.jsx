@@ -288,11 +288,14 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     if (f === "reel") return deLaminas * PLANOS_APROX + (modeloVideo ? estimar(modeloVideo, 1, { duration: "10" }) : 0);
     return estimar(modelo, 1, pedidoDe({ id: "x", titular: "x", escena: "x", formato: f }).ajustes) * variantes;
   };
-  // Lo que ya se llevó como idea sola no se vuelve a crear aquí: se diseña desde el calendario.
-  const porCrear = elegidas.filter((i) => !llevadas[i.id]);
+  // Lo que ya se llevó como idea sola no se vuelve a crear aquí: se diseña desde el calendario. Un video con rostro
+  // (UGC) tampoco: lo graba una persona, así que va al calendario como idea con su guion para grabar.
+  const porCrear = elegidas.filter((i) => !llevadas[i.id] && !i.rostro);
+  const conRostro = elegidas.filter((i) => i.rostro && !llevadas[i.id] && (i.fecha || fechas[i.id]));
   const costoTotal = Math.round(porCrear.reduce((t, i) => t + costoDeFormato(fmtDe(i)), 0) * 1000) / 1000;
-  const hayGuiadas = esPlan ? ideas.some(guiadoDe) || casillasPlan.some((c) => FORMATOS_LOTE[c.formato]?.guiado) : guiado;
-  const hayReels = esPlan ? casillasPlan.some((c) => c.formato === "reel") || ideas.some((i) => fmtDe(i) === "reel") : formato === "reel";
+  // Un video con rostro (UGC) no se crea con IA: no cuenta como reel que pida modelo de video.
+  const hayGuiadas = esPlan ? ideas.some((i) => guiadoDe(i) && !i.rostro) || casillasPlan.some((c) => FORMATOS_LOTE[c.formato]?.guiado && !c.rostro) : guiado;
+  const hayReels = esPlan ? casillasPlan.some((c) => c.formato === "reel" && !c.rostro) || ideas.some((i) => fmtDe(i) === "reel" && !i.rostro) : formato === "reel";
   const kitListo = !kitVacio(kit);
 
   /** Las ideas, de TANDA en TANDA: cada llamada sabe lo que ya salió (`usados`) y el plan sale igual con la misma semilla. */
@@ -364,7 +367,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const cambiarIdea = (id, campo, valor) => setIdeas((l) => l.map((x) => (x.id === id ? { ...x, [campo]: valor } : x)));
 
   const crear = async () => {
-    if (!porCrear.length || !modelo) return;
+    if ((!porCrear.length && !conRostro.length) || !modelo) return;
     setPaso(2);
     setAviso(null);
     let carpetaId = null;
@@ -380,6 +383,20 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
       carpetaId = r?.carpeta?.id ?? null;
     } catch { /* sin carpeta, van a la galería igual */ }
     const pendientes = porCrear;
+    // Los videos con rostro van ya al calendario como idea (con su guion para grabar): no cuestan nada.
+    let grabar = 0;
+    for (const idea of conRostro) {
+      if (!vivo.current || !onLlevar) break;
+      try {
+        const fecha = idea.fecha ?? fechas[idea.id];
+        await onLlevar(fecha, publicacionDePieza({ id: uid(), idea, formato: "reel", producto: productoDe(idea) }));
+        setLlevadas((m) => ({ ...m, [idea.id]: fecha }));
+        grabar += 1;
+      } catch (e) {
+        setAviso({ ok: false, texto: e.message });
+        break;
+      }
+    }
     // Primero las de una imagen (de dos en dos, por formato: la proporción y la plantilla cambian), después los
     // carruseles y los reels, uno detrás de otro: cada uno es una serie de pasos (y un reel tarda minutos).
     const sueltas = pendientes.filter((i) => !guiadoDe(i));
@@ -415,6 +432,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     onHecho?.();
     setAviso({ ok: true, texto: [
       "Listo. Están en la galería, en la carpeta del lote.",
+      grabar ? `${grabar === 1 ? "El video con rostro va" : `Los ${grabar} videos con rostro van`} al calendario como idea, con su guion para grabar.` : "",
       variantes > 1 ? "Escoge una imagen de cada pieza." : "",
       esMes ? "«Llevar las N al calendario» las pone cada una en su día, listas para revisión." : "Lleva al calendario las que quieras.",
     ].filter(Boolean).join(" ") });
@@ -573,7 +591,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                       {total} {total === 1 ? "pieza" : "piezas"}{mes === hoy.slice(0, 7) ? " (desde hoy)" : ""}. Cada día lleva el tipo de su ritmo
                       {tiposDelMes.length ? `: ${tiposDelMes.map(([t, n]) => `${nombreDePilar(t)} ${n}`).join(", ")}` : ""}.
                       {diasDelMes.some((d) => d.cambio) ? ` Ajustes de temporada: ${diasDelMes.filter((d) => d.cambio).map((d) => `${fechaCortaLote(d.fecha)} (${d.cambio})`).join("; ")}.` : ""}
-                      {" "}El ritmo se cambia en la ficha del cliente.
+                      {" "}El plan de cada día se cambia tocando la barra de los días del calendario.
                     </p>
                     {saltados > 0 && (
                       <p className="hint">
@@ -762,9 +780,12 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                         </div>
                         {guiadoDe(i) && (
                           <div className="field">
-                            <label className="label" htmlFor={`${ids}-gu-${i.id}`}>{fmtDe(i) === "reel" ? "Guion (planos de 10 s)" : "Guion (lámina por lámina)"}</label>
+                            <label className="label" htmlFor={`${ids}-gu-${i.id}`}>{i.rostro ? "Guion para grabar (toma por toma)" : fmtDe(i) === "reel" ? "Guion (planos de 10 s)" : "Guion (lámina por lámina)"}</label>
                             <textarea id={`${ids}-gu-${i.id}`} className="input" rows={5} maxLength={MAX_GUION} value={i.guion ?? ""} onChange={(e) => cambiarIdea(i.id, "guion", e.target.value)} />
                           </div>
+                        )}
+                        {i.rostro && (
+                          <p className="hint"><Icon name="user" size={14} /> Video con rostro (UGC): lo graba una persona. No se crea con IA: va al calendario como idea con este guion.</p>
                         )}
                         {!i.fecha && onLlevar && !llevadas[i.id] && (
                           <div className="lote-llevar">
@@ -863,8 +884,8 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                   <Icon name="calendar" size={18} /> {llevandoIdeas ? "Llevando…" : `Sólo las ideas al calendario (${ideasConDia.length})`}
                 </button>
               )}
-              <p className="lote-costo">{porCrear.length} de {ideas.length}{variantes > 1 && !hayGuiadas ? ` × ${variantes}` : ""} · <strong>{textoCosto(costoTotal)}</strong>{modelo?.estimado || hayGuiadas ? " (aprox.)" : ""}</p>
-              <button type="button" className="btn btn-primary" disabled={!porCrear.length || llevandoIdeas} onClick={crear}>
+              <p className="lote-costo">{porCrear.length} de {ideas.length}{variantes > 1 && !hayGuiadas ? ` × ${variantes}` : ""} · <strong>{textoCosto(costoTotal)}</strong>{modelo?.estimado || hayGuiadas ? " (aprox.)" : ""}{conRostro.length ? ` · ${conRostro.length} con rostro van como idea` : ""}</p>
+              <button type="button" className="btn btn-primary" disabled={(!porCrear.length && !conRostro.length) || llevandoIdeas} onClick={crear}>
                 <Icon name={formato === "reel" ? "video" : "image"} size={18} /> Crear {porCrear.length} {nombreDePiezas(porCrear.length)} · {textoCosto(costoTotal)}
               </button>
             </>
