@@ -226,6 +226,8 @@ src/
                           calculados) + lo que elige cada cliente; el pedido a la IA (puro)
     subir.js              «Subir»: formato deducido, redes por defecto, rellenar lo vacío con
                           la propuesta de la IA, poner o mover una publicación de día (puro)
+    repetir.js            «Post que se repite»: las reglas (semana, n.º día del mes, último, número), qué le toca a un
+                          mes y la copia como idea (puro)
     aprobacion.js         Qué aprueba el cliente (idea o pieza final), qué cuenta de su respuesta,
                           por programar / por producir, cambios tras aprobar (puro; también
                           lo importa el Worker)
@@ -344,6 +346,7 @@ src/
     calendario/navegadorMes.jsx ‹ Octubre 2026 › Hoy: recorrer el calendario siempre activo
     calendario/tipoContenido.jsx  «Tipo de contenido» del panel: tipo, producto, nivel, perfil y deseo
     calendario/campanaMes.jsx   La tarjeta de la campaña: nombre del mes, semanas, ofertas, fechas
+    calendario/repeticionesMes.jsx  Lo que se repite este mes (añadir, ahora no, no repetir más) y «Se repite» del panel
     calendario/fechasEspeciales.jsx  Escoger las fechas de un cliente (importante, ocultar, propias, IA)
     CalendarView.jsx      Vista de lista y de rejilla, filtros, generación, envío
     anuncios/AsistenteCampana.jsx  «Nueva campaña»: objetivo y destino (web o WhatsApp), públicos (1–3), anuncios (1–6, carrusel), revisar
@@ -1414,6 +1417,17 @@ son del servidor.
   pendiente, sin la aprobación, la etapa ni la copia de Drive de la original) es el otro medio. «Recrear con mi marca»
   hace lo mismo con una REFERENCIA subida al post (imagen: va primera con `TOMA_DE_OTRA_MARCA`; video: como video de
   referencia, con Kling Omni u otro que lo admita). En «Subir», sin publicación todavía, sigue abriendo «Crear con IA».
+- **«Post que se repite»** (`src/lib/repetir.js`, `calendario/repeticionesMes.jsx`). En el panel, «Se repite»: cada semana
+  (ese día), cada mes el n.º día (el 2.º martes), el último o el número del día; las opciones salen de la FECHA de la
+  publicación y la regla vive en ella (`post.repetir`). Nada se crea solo —el cajón de un mes se crea al escribir—: al
+  mirar un mes, `repeticionesPendientes` junta las reglas de TODOS los meses del cliente (`client.calendars` + el que se
+  mira, que puede ser virtual) y el aviso encima de la rejilla ofrece «Añadirlas al mes» o «Ahora no» (por navegador,
+  `repetir-omitidas:<cliente>`); sólo desde hoy (Panamá). La copia (`copiaRepetida`) es una IDEA pendiente sin archivos,
+  con `repiteDe` y `repeticion` (la fecha que le tocaba: moverla de día no la vuelve a ofrecer) y SIN regla propia: si la
+  llevara, serían dos series de lo mismo. Con «La IA escribe textos nuevos» llega sin descripción, texto de la pieza ni
+  qué se ve, y «Escribir sus textos con IA» corre el «Completar los textos que faltan» de siempre (sólo rellena). «No
+  repetir más» quita la regla de la original aunque esté en otro mes (`onUpdateOtroCal`: con el mes virtual, `onUpdateCal`
+  escribe en ESE mes).
 - **«Me gusta» (la estrella de antes, `favorito`) y la papelera enseñan al kit** (`src/lib/aprendizajeVisual.js`,
   `worker/lib/estudio/aprender.js`, `POST /api/estudio/<c>/kit/aprender`, en Cerebro → Lo que aprende → «Lo visual»).
   La IA MIRA las imágenes (hasta 8 que gustan y 4 descartadas, función «aprendizaje visual») y PROPONE reglas; nada

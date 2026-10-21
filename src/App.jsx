@@ -1601,6 +1601,7 @@ function Workspace({ session, ruta }) {
                     abrirPublicacion={postPedido?.calId === selectedCalId ? postPedido.postId : null}
                     onPublicacionAbierta={publicacionAbierta}
                     onUpdateCal={esVirtual(calendar) ? (_id, cambiado) => escribirEnMesVacio(calendar, cambiado) : updateCalendar}
+                    onUpdateOtroCal={updateCalendar}
                     onUpdateCalLocal={updateCalendarLocal}
                     onDeleteCal={deleteCalendar}
                     onMoverAOtroMes={(postId, fecha, opciones) => moverAOtroMes(calendar, postId, fecha, opciones)}

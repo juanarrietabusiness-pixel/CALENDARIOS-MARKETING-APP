@@ -41,6 +41,8 @@ const PostSidePanel = lazy(() => import("./calendario/PostSidePanel").then((m) =
 const ProgramarAprobadas = lazy(() => import("./calendario/programarAprobadas"));
 import { MonthGrid } from "./calendario/MonthGrid";
 import { CampanaMes } from "./calendario/campanaMes";
+import { RepeticionesMes } from "./calendario/repeticionesMes";
+import { repeticionesPendientes, copiaRepetida, conRegla } from "../lib/repetir";
 // «Revisar el mes» antes de enviarlo: reglas, IA y marca (se carga al abrirlo).
 const RevisionMes = lazy(() => import("./calendario/RevisionMes"));
 const ProducirMes = lazy(() => import("./calendario/ProducirMes"));
@@ -64,6 +66,7 @@ export default function CalendarView({
   pulso = 0,
   editandoOtros = {},
   onUpdateCal,
+  onUpdateOtroCal,
   onUpdateCalLocal,
   onDeleteCal,
   onMoverAOtroMes,
@@ -268,6 +271,34 @@ export default function CalendarView({
   const conceptos = conceptosDelMes(cal);
   const fechasMes = useMemo(() => fechasDelMes(cal.year, cal.month, client?.fechasEspeciales), [cal.year, cal.month, client?.fechasEspeciales]);
   const fechasDia = useMemo(() => fechasPorDia(fechasMes), [fechasMes]);
+
+  // «Post que se repite» (lib/repetir.js): lo que le toca a este mes y aún no está. Las reglas pueden vivir en
+  // cualquier mes del cliente; éste va con su versión de ahora (el virtual no está en `client.calendars`).
+  // «Ahora no» se recuerda por navegador y por cliente.
+  const claveOmitidas = `repetir-omitidas:${client?.id ?? ""}`;
+  const [omitidas, setOmitidas] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(claveOmitidas) || "[]"); } catch { return []; }
+  });
+  const [repetidasHechas, setRepetidasHechas] = useState(0);
+  const repeticiones = useMemo(() => {
+    const cals = [...(client?.calendars ?? []).filter((k) => k.id !== cal.id), cal];
+    return repeticionesPendientes(cals, mesDelCal, { hoy: fechaEnZona(), omitidas });
+  }, [client?.calendars, cal, mesDelCal, omitidas]);
+  const omitirRepeticiones = () => {
+    const todas = [...new Set([...omitidas, ...repeticiones.map((r) => r.clave)])].slice(-300);
+    setOmitidas(todas);
+    try { localStorage.setItem(claveOmitidas, JSON.stringify(todas)); } catch { /* sin almacenamiento: sólo esta vez */ }
+  };
+  const anadirRepeticiones = ({ textosNuevos }) => {
+    let nuevo = cal;
+    for (const r of repeticiones) nuevo = ponerEnDia(nuevo, r.fecha, copiaRepetida(r.origen, r.fecha, uid(), { textosNuevos }));
+    setRepetidasHechas(repeticiones.length);
+    onUpdateCal(calId, nuevo);
+  };
+  const noRepetirMas = (r) => {
+    if (r.calOrigen.id === cal.id) onUpdateCal(calId, conRegla(cal, r.origen.id, ""));
+    else onUpdateOtroCal?.(r.calOrigen.id, conRegla(r.calOrigen, r.origen.id, ""));
+  };
   const [metaTab, setMetaTab] = useState("general");
   const [metaAviso, setMetaAviso] = useState("");
   const [nombrando, setNombrando] = useState(false);
@@ -1017,6 +1048,18 @@ export default function CalendarView({
         onEditar={(tab) => abrirMeta(tab)}
         onSugerir={sugerirNombres}
         onFechas={() => abrirCapa("fechas")}
+      />
+
+      <RepeticionesMes
+        pendientes={repeticiones}
+        hechas={repetidasHechas}
+        soloLectura={Boolean(yoActual()?.soloLectura)}
+        escribiendo={genLoading}
+        onAnadir={anadirRepeticiones}
+        onOmitir={omitirRepeticiones}
+        onNoRepetir={noRepetirMas}
+        onEscribir={() => { setRepetidasHechas(0); void generateScripts(); }}
+        onCerrarHechas={() => setRepetidasHechas(0)}
       />
 
       {/* Barra de herramientas: acción primaria, conmutador de vista y el
