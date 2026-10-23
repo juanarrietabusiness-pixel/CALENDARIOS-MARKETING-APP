@@ -139,6 +139,8 @@ src/
     videoCorto.js         Guiones de video de 8 s (Veo por fal) o 10 s (Omni): gancho, beneficio y cierre; el pedido
                           al modelo sin texto largo ni logo (puro; también lo importa el Worker)
     portadas.js           Las piezas del perfil por plantilla: estilos de portada, colores del kit, medidas (puro)
+    materialTipo.js       Qué busca el cerebro según el TIPO de contenido, qué material falta (testimonios, garantía, equipo,
+                          diferenciador, saber del rubro) y el pedido de la nota «Saber del rubro» (puro; también el Worker)
     pilares.js            Los 6 tipos de contenido de la agencia (+ Contenido humano), el ritmo semanal por
                           cliente, las sugerencias de temporada y la matriz (tipo × producto × nivel × deseo × perfil) (puro)
     estrategiaMes.js      La estrategia del mes (objetivos, etapas del embudo, el pedido a la IA y su lectura) y el BALANCE del
@@ -1606,6 +1608,20 @@ son del servidor.
   `instruccionIdea` (api.js, el camino de una idea ya escrita y del banco) nombra el formato y prohíbe cambiarlo.
   `rellenarConIdea` SÓLO rellena: título, idea (el brief), qué se ve, el texto de la pieza (no en carrusel ni en reel) y
   el guion (sólo carrusel y reel); el producto va con su nombre o no va. Un directo sigue por el camino de siempre.
+- **El motor de ideas busca en el cerebro según los TIPOS de la tanda y dice qué material falta** (`src/lib/materialTipo.js`,
+  `produccionDeLote` en worker/lib/estudio/lote.js). Antes la consulta era siempre «beneficios objeciones público
+  contenido»: un educativo y un testimonio recibían los mismos pasajes. Ahora `consultaDelPlan` junta las palabras de los
+  tipos (y las maletas por la suya). Lo que un tipo NECESITA de verdad (`MATERIAL`: testimonios reales, la garantía, el
+  equipo o la historia, el diferenciador) se busca aparte con `buscar` (n: 1, sólo si el cerebro tiene notas): si no hay
+  nada, va a la IA «no lo inventes» (`lineaDeLoQueFalta`, en las reglas del pedido) y la respuesta trae `faltan`, que el
+  lote y «Planificar mes» enseñan (`avisoDeLoQueFalta`). Las palabras de búsqueda de cada material son ESTRECHAS
+  («testimonio reseña», no «cliente»): una palabra común encontraría siempre algo y el aviso no saldría nunca.
+  · **«Saber del rubro»** (`worker/lib/cerebro/rubro.js`, `POST /api/cerebro/<c>/rubro`, botón en la pestaña Cerebro): la IA
+  PROPONE lo que un experto del rubro sabe —consejos, errores comunes, mitos, preguntas frecuentes, datos con fuente— con
+  búsqueda web si la cuenta la tiene (función «saber del rubro», hueco «análisis») y lo que se sabe de la marca (sin lo
+  interno); si ya había nota, la mejora. No guarda: se abre en el editor de notas de siempre (con su `id` si existía) y la
+  persona la guarda. El motor de ideas la lee ENTERA (hasta 4.000 caracteres) cuando la tanda lleva un educativo, por su ruta
+  (`saber-del-rubro`) o por su título; sin ella, `faltan: ["rubro"]`.
 - **UN solo motor de ideas para el calendario** (modo «plan» de `POST /api/estudio/<c>/lote/ideas`, `limpiarCasillas` en
   worker/lib/estudio/lote.js). «Planificar mes», «Completar los textos que faltan» y «Mes completo» con la plantilla
   escriben por el mismo camino que el lote: antes «Planificar mes» pedía «una idea de 1-2 oraciones» sin decir qué es

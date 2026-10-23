@@ -3,7 +3,7 @@ import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { soloLectura } from "../lib/sesionActual";
 import {
-  listarCerebro, leerNota, guardarNota, borrarNota, buscarEnCerebro, importarAlCerebro, prepararFicha,
+  listarCerebro, leerNota, guardarNota, borrarNota, buscarEnCerebro, importarAlCerebro, prepararFicha, proponerRubro,
 } from "../lib/cerebro";
 import {
   TIPOS_VISTA, FILTROS_TIPO, nombreDeTipo, ordenarNotas, filtrarNotas, contarPorTipo,
@@ -100,6 +100,26 @@ export default function Cerebro({ client }) {
     try {
       avisar(true, describirFicha(await prepararFicha(client.id, { forzar })));
       await cargar();
+    } catch (e) {
+      avisar(false, e.message);
+    } finally {
+      setTrabajando("");
+    }
+  };
+
+  // «Saber del rubro»: la IA la PROPONE y se abre en el editor de siempre; nada se guarda hasta «Guardar». Es lo que lee
+  // el contenido educativo (lib/materialTipo.js). Si ya había una, la propuesta la mejora y la guarda encima.
+  const rubro = async () => {
+    setTrabajando("rubro");
+    setAviso(null);
+    try {
+      const r = await proponerRubro(client.id);
+      setEditor({ ...(r.existente ? { id: r.existente.id } : {}), titulo: r.titulo, texto: r.texto, tipo: "nota", interna: false });
+      avisar(true, [
+        r.conWeb ? "La IA buscó en internet: revisa los datos y sus fuentes antes de guardar." : "Sin búsqueda en internet: sólo conocimiento general del rubro. Revísala antes de guardar.",
+        "Guárdala con ese título: es la que lee el contenido educativo.",
+        r.aviso ?? "",
+      ].filter(Boolean).join(" "));
     } catch (e) {
       avisar(false, e.message);
     } finally {
@@ -231,6 +251,10 @@ export default function Cerebro({ client }) {
               <Icon name="sparkles" size={18} /> {trabajando === "ficha" ? "Escribiendo la ficha…" : estado?.conFicha ? "Renovar ficha con IA" : "Preparar ficha con IA"}
             </button>
           )}
+          <button type="button" className="btn btn-secondary" disabled={trabajo} onClick={rubro}
+            title="La IA propone lo que un experto del rubro sabe (consejos, errores, mitos, preguntas): de ahí sale el contenido educativo">
+            <Icon name="bulb" size={18} /> {trabajando === "rubro" ? "Escribiendo…" : "Saber del rubro"}
+          </button>
           <button type="button" className="btn btn-secondary" disabled={trabajo} onClick={() => setEditor({ titulo: "", texto: "", tipo: "nota", interna: false })}>
             <Icon name="plus" size={18} /> Añadir nota
           </button>
@@ -242,7 +266,7 @@ export default function Cerebro({ client }) {
       )}
 
       <div aria-live="polite">
-        {trabajo && <p role="status" className="cerebro-trabajando">{trabajando === "ficha" ? "La IA está leyendo las notas de marca. Tarda de medio minuto a un par de minutos." : "Leyendo el repositorio…"}</p>}
+        {trabajo && <p role="status" className="cerebro-trabajando">{trabajando === "ficha" ? "La IA está leyendo las notas de marca. Tarda de medio minuto a un par de minutos." : trabajando === "rubro" ? "La IA está escribiendo lo que sabe un experto del rubro. Tarda un minuto o dos." : "Leyendo el repositorio…"}</p>}
         {aviso && (
           <div role={aviso.ok ? "status" : "alert"} className={aviso.ok ? "cerebro-aviso" : "cerebro-error"}>
             <p>{aviso.texto}</p>

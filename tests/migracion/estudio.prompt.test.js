@@ -575,3 +575,48 @@ describe("las pautas para escribir van en TODO lo que escribe, encuentre la bús
     }
   });
 });
+
+describe("el cerebro se busca por TIPO y se dice qué material falta (lib/materialTipo.js)", () => {
+  const plan = (casillas) => pedir("/api/estudio/c1/lote/ideas", { method: "POST", body: { modo: "plan", casillas } });
+  const IDEA = JSON.stringify({ ideas: [{ n: 1, titulo: "x", brief: "b", titular: "Algo", escena: "Una sala" }] });
+
+  it("un testimonio sin testimonios en el cerebro: la IA lo sabe y la respuesta lo avisa; con uno escrito, no", async () => {
+    anthropic(IDEA);
+    let r = await (await plan([{ clave: "a", fecha: "2030-03-07", formato: "post", pilar: "maletas", pilarSub: "testimonio" }])).json();
+    expect(r.faltan).toEqual(["testimonios"]);
+    expect(textoDe(peticiones[0])).toMatch(/Lo que NO está en lo que se sabe de la marca \(no lo inventes.*testimonios reales/);
+    await pedir("/api/cerebro/c1/nota", { method: "PUT", body: { titulo: "Testimonios", texto: "Testimonio de Ana: «el sofá llegó en dos días y es comodísimo».", tipo: "nota" } });
+    anthropic(IDEA);
+    r = await (await plan([{ clave: "a", fecha: "2030-03-07", formato: "post", pilar: "maletas", pilarSub: "testimonio" }])).json();
+    expect(r.faltan).toBeUndefined();
+    expect(textoDe(peticiones[0])).toContain("el sofá llegó en dos días");
+  });
+
+  it("el educativo lee entera la nota «Saber del rubro»; sin ella, avisa", async () => {
+    anthropic(IDEA);
+    let r = await (await plan([{ clave: "a", fecha: "2030-03-05", formato: "carrusel", pilar: "educativo" }])).json();
+    expect(r.faltan).toEqual(["rubro"]);
+    await pedir("/api/cerebro/c1/nota", { method: "PUT", body: { titulo: "Saber del rubro", texto: "## Consejos\n- Un sofá de espuma de alta densidad dura el doble.", tipo: "nota" } });
+    anthropic(IDEA);
+    r = await (await plan([{ clave: "a", fecha: "2030-03-05", formato: "carrusel", pilar: "educativo" }])).json();
+    expect(r.faltan).toBeUndefined();
+    expect(textoDe(peticiones[0])).toMatch(/SABER DEL RUBRO[^\n]*\n## Consejos\n- Un sofá de espuma de alta densidad dura el doble/);
+  });
+
+  it("«Saber del rubro»: la IA la propone (no guarda) y si ya había una la mejora", async () => {
+    anthropic("Aquí va:\n## Consejos que da un experto\n- Ventila el sofá.");
+    let res = await pedir("/api/cerebro/c1/rubro", { method: "POST" });
+    expect(res.status).toBe(200);
+    let r = await res.json();
+    expect(r).toMatchObject({ titulo: "Saber del rubro", texto: "## Consejos que da un experto\n- Ventila el sofá.", existente: null });
+    expect(db.sqlite.prepare("select count(*) n from cerebro_notas where ruta = 'saber-del-rubro'").get().n).toBe(0);
+    expect(textoDe(peticiones[0])).not.toMatch(/margen del 40/);
+    await pedir("/api/cerebro/c1/nota", { method: "PUT", body: { titulo: r.titulo, texto: r.texto, tipo: "nota" } });
+    const id = db.sqlite.prepare("select id from cerebro_notas where ruta = 'saber-del-rubro'").get().id;
+    anthropic("## Consejos que da un experto\n- Ventila el sofá cada semana.");
+    r = await (await pedir("/api/cerebro/c1/rubro", { method: "POST" })).json();
+    expect(r.existente).toEqual({ id });
+    expect(textoDe(peticiones[0])).toContain("LA NOTA DE AHORA");
+    expect(db.sqlite.prepare("select funcion from consumo_ia").all().map((x) => x.funcion)).toContain("saber del rubro");
+  });
+});
