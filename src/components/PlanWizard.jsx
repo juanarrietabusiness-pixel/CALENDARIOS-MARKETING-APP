@@ -5,6 +5,7 @@ import { callAI, buildClientContext, buildDescripcionesPrompt, buildScriptPrompt
 import { loadClientMemories } from "../lib/db";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { casillasDelPlan, ideasDelPlan, rellenarConIdea } from "../lib/ideaPublicacion";
+import { avisoDeLoQueFalta } from "../lib/materialTipo";
 import { objetivoDe, semanasConEtapa, embudoDelMes, limpiarEstrategia } from "../lib/estrategiaMes";
 import { PasoEstrategia, EtapaSemana, BalanceDelMes } from "./EstrategiaMes";
 import Icon from "./Icon";
@@ -419,10 +420,13 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
       const TANDA = 6;
       const nuevas = { ...ideas };
       let escritas = 0;
+      // Lo que al cerebro le falta para algún tipo (testimonios, garantía, saber del rubro…), de todas las tandas.
+      const faltan = new Set();
       for (let desde = 0, total = casillas.length; desde < total; desde += TANDA) {
         setAiStatus(`Ideas ${desde + 1}–${Math.min(desde + TANDA, total)} de ${total}…`);
         const r = await ideasDelPlan(client.dbId || client.id, { casillas, estrategia, usados: usados.slice(0, 30), semilla, desde, tamano: TANDA });
         total = r.total ?? total;
+        for (const k of r.faltan ?? []) faltan.add(k);
         for (const idea of r.ideas ?? []) {
           const [date, jTexto] = String(idea.clave ?? "").split("|");
           const j = Number(jTexto);
@@ -456,8 +460,9 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
         }
         setIdeas({ ...nuevas });
       }
-      setAiStatus(escritas ? `Listo: ${escritas} ${escritas === 1 ? "publicación" : "publicaciones"} con idea, texto y forma.` : "La IA no devolvió ideas que se puedan leer. Inténtalo otra vez.");
-      setTimeout(() => setAiStatus(""), 4000);
+      const falta = avisoDeLoQueFalta([...faltan]);
+      setAiStatus(escritas ? `Listo: ${escritas} ${escritas === 1 ? "publicación" : "publicaciones"} con idea, texto y forma.${falta ? ` ${falta}` : ""}` : "La IA no devolvió ideas que se puedan leer. Inténtalo otra vez.");
+      setTimeout(() => setAiStatus(""), falta ? 15000 : 4000);
       window.dispatchEvent(new Event("ia:gasto"));
     } catch (e) {
       setAiStatus("Error: " + e.message);

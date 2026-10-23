@@ -153,3 +153,12 @@ export async function aprenderDeLoVisual(clienteId) {
 
 /** Guarda el kit con sus reglas aprendidas (el kit entero: PUT /kit lo reemplaza). */
 export const guardarKitAprendido = (clienteId, kit) => llamar(`${baseEstudio(clienteId)}/kit`, { metodo: "PUT", cuerpo: { kit } });
+
+/** «Saber del rubro»: la IA propone la nota → { titulo, texto, existente: { id } | null, conWeb, fuentes, aviso }. No guarda. */
+export async function proponerRubro(clienteId) {
+  try {
+    return await llamar(`${base(clienteId)}/rubro`, { metodo: "POST" });
+  } finally {
+    window.dispatchEvent(new Event("ia:gasto"));
+  }
+}

@@ -303,7 +303,7 @@ export function textoEstrategiaDelMes(mes = null) {
  */
 export function pedidoDeProduccion({
   marca = "la marca", plan = [], productos = {}, perfiles = {}, estudio = "", contexto = "", usados = [], formato = "post", fechasEspeciales = [], mes = false,
-  nota = "", estrategia = null,
+  nota = "", estrategia = null, falta = "",
 }) {
   const perfilesUsados = [...new Set(plan.map((r) => r.perfil).filter(Boolean))].filter((n) => perfiles[n]);
   const cuantas = plan.length === 1 ? "UNA publicación" : `${plan.length} publicaciones`;
@@ -345,6 +345,7 @@ export function pedidoDeProduccion({
     "- Precios, ofertas, garantías y cifras: sólo los del catálogo y EXACTOS como allí. No inventes reseñas, testimonios, seguidores, porcentajes ni plazos; una urgencia sólo con una fecha real.",
     "- En la escena, lo que no es el producto real va LISO y sin marca (ropa, empaques, pantallas sin números), y nada de logos ni carteles de otros negocios.",
     "- Un día marcado «sin promociones» no vende ni da precios. No nombres a la competencia.",
+    ...(falta ? [`- ${falta}`] : []),
     usados.length ? `- Estos titulares ya salieron: no repitas ninguno ni su idea:\n${usados.slice(0, 30).map((t) => `  · ${corto(t, 80)}`).join("\n")}` : "",
     "",
     estudio ? `ESTUDIO DE MERCADO:\n${String(estudio).slice(0, 8000)}\n` : "",

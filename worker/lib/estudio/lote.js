@@ -31,7 +31,8 @@
 
 import { llamarIA } from "../cerebro/ia.js";
 import { aprenderComposiciones } from "../../../src/lib/loteAnuncios.js";
-import { contexto as contextoCerebro, textoParaEscribir } from "../cerebro/cerebro.js";
+import { contexto as contextoCerebro, textoParaEscribir, buscar as buscarCerebro, leerNota as leerNotaCerebro } from "../cerebro/cerebro.js";
+import { consultaDelPlan, materialDelPlan, conEducativo, lineaDeLoQueFalta, MATERIAL, RUTA_RUBRO, TITULO_RUBRO } from "../../../src/lib/materialTipo.js";
 import { leerMercado } from "../mercado.js";
 import { productosActivos, productosParaPlan, lineaDeProducto, notaDeProducto, resumenGeneral, limpiarEstudio } from "../../../src/lib/estudioMercado.js";
 import {
@@ -221,11 +222,28 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     ...rotan.filter((p) => usadosProd.has(p.id) && estudio?.productos?.[p.id]).slice(0, 3).map((p) => notaDeProducto(estudio.productos[p.id], p)),
   ].filter(Boolean).join("\n\n");
 
+  // El cerebro, buscado con las palabras de los TIPOS de esta tanda (lib/materialTipo.js): un educativo y un testimonio
+  // no necesitan los mismos pasajes. Lo que un tipo necesita de verdad (testimonios, garantía, equipo…) se busca aparte:
+  // si no hay nada, se le dice a la IA que no lo invente y a la persona qué falta (`faltan`).
   let contexto = "";
+  const faltan = [];
   try {
-    const c = await contextoCerebro(env, acceso, cliente.id, `${producto?.nombre ?? ""} beneficios objeciones público contenido`, { para: "texto", presupuesto: 5000 });
+    const c = await contextoCerebro(env, acceso, cliente.id, consultaDelPlan(plan, { producto: producto?.nombre ?? "" }), { para: "texto", presupuesto: 5000 });
     contexto = textoParaEscribir(c);
+    for (const k of materialDelPlan(plan)) {
+      if (!MATERIAL[k]?.buscar) continue;
+      const hits = c?.notas ? await buscarCerebro(env, acceso, cliente.id, MATERIAL[k].buscar, { para: "texto", n: 1, per: 1 }) : [];
+      if (!hits.length) faltan.push(k);
+    }
   } catch { /* sin cerebro, con el catálogo y el estudio */ }
+  // El educativo lee entera la nota «Saber del rubro» (la propone la IA y la aprueba una persona en Cerebro).
+  if (conEducativo(plan)) {
+    // Por su ruta o, si alguien la creó a mano, por su título.
+    let rubro = await acceso.leerUno("cerebro_notas", { client_id: cliente.id, ruta: RUTA_RUBRO }).catch(() => null);
+    if (!rubro) rubro = await leerNotaCerebro(env, acceso, cliente.id, TITULO_RUBRO, { para: "texto" }).catch(() => null);
+    if (rubro?.texto && !rubro.interna) contexto = [contexto, `SABER DEL RUBRO (úsalo en el contenido educativo):\n${String(rubro.texto).slice(0, 4000)}`].filter(Boolean).join("\n\n");
+    else faltan.push("rubro");
+  }
 
   const r = await llamarIA(env, acceso, cliente, {
     prompt: pedidoDeProduccion({
@@ -236,6 +254,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       usados: (Array.isArray(datos.usados) ? datos.usados : []).map((t) => String(t ?? "").slice(0, 80)).filter(Boolean).slice(0, 30),
       nota: modo === "publicacion" ? String(datos.nota ?? "").slice(0, 600) : "",
       estrategia: datos.estrategia && typeof datos.estrategia === "object" ? datos.estrategia : null,
+      falta: lineaDeLoQueFalta(faltan),
     }),
     salida: plan.reduce((t, r) => t + (FORMATOS_LOTE[r.formato ?? formato]?.guiado ? 850 : 600), 0) + 800,
     funcion: modo === "mes" || modo === "plan" ? "lote del mes" : modo === "publicacion" ? "publicación" : "ideas de anuncios",
@@ -247,7 +266,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     .map((i) => ({ ...i, textoPieza: textoDeIdea(i) }));
   if (!ideas.length && !tamano) throw fallo("La IA no devolvió ideas que se puedan leer. Inténtalo otra vez.", 502);
   return {
-    ideas, total,
+    ideas, total, ...(faltan.length ? { faltan } : {}),
     producto: producto ? { id: producto.id, nombre: producto.nombre, precio: producto.precio } : null,
     productos: rotan.map((p) => ({ id: p.id, nombre: p.nombre })),
     conEstudio: Boolean(general),

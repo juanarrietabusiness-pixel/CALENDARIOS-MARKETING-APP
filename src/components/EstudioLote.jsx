@@ -28,6 +28,7 @@ import { fechasDelMes } from "../lib/fechasEspeciales";
 import { fechaEnZona } from "../lib/agenda";
 import { MONTHS } from "../constants";
 import { uid } from "../utils";
+import { avisoDeLoQueFalta } from "../lib/materialTipo";
 import "./EstudioLote.css";
 
 // ============================================================
@@ -313,11 +314,14 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
       let todas = [];
       let usados = titularesUsados(archivos);
       let ultima = null;
+      // Lo que al cerebro le falta para algún tipo (testimonios, garantía…), junto de todas las tandas.
+      const faltanMaterial = new Set();
       for (let desde = 0, cuantasHay = total; desde < cuantasHay && vivo.current; desde += TANDA) {
         setProgreso(`Escribiendo ${desde + 1}–${Math.min(desde + TANDA, cuantasHay)} de ${cuantasHay}…`);
         const pedir = esMes && !esPlan ? api.ideasDelMes : api.ideasDeLote;
         ultima = await pedir(clienteId, { ...cuerpo, usados: usados.slice(0, 30), desde, tamano: TANDA });
         cuantasHay = ultima.total ?? cuantasHay;
+        for (const k of ultima.faltan ?? []) faltanMaterial.add(k);
         // El id por su número en el plan: dos tandas pueden repetir «producto-1».
         const nuevas = ultima.ideas.map((i) => ({ ...i, id: i.fecha ? i.id : `n${i.n}` }));
         todas = [...todas, ...nuevas];
@@ -331,6 +335,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
       setAviso({ ok: true, texto: [
         `La IA escribió ${todas.length} ${todas.length === 1 ? "pieza" : "piezas"}${faltan > 0 ? ` (pediste ${total})` : ""}, de ${TANDA} en ${TANDA}. Revisa, corrige y quita las que no.`,
         ultima?.conEstudio ? "" : "Sin estudio de mercado aprobado: las escribió con el catálogo y el cerebro.",
+        avisoDeLoQueFalta([...faltanMaterial]),
         ultima?.aviso ?? "",
       ].filter(Boolean).join(" ") });
     } catch (e) {

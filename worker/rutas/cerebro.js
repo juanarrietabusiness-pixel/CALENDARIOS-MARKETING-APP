@@ -19,6 +19,7 @@
 //   POST   /<cliente>/reindexar          Reconstruir el índice desde las notas
 //   POST   /<cliente>/importar           Llenar el cerebro desde el repositorio { carpeta?, actualizar? }
 //   POST   /<cliente>/preparar           La IA escribe la ficha técnica y las cifras { forzar? }
+//   POST   /<cliente>/rubro              La IA PROPONE la nota «Saber del rubro» (no guarda; se guarda con PUT /nota)
 //
 // Todo pasa por `clienteDe()`: el cliente tiene que ser de este espacio y,
 // si quien pregunta es un colaborador, de los suyos. Un cliente ajeno da
@@ -40,6 +41,7 @@ import { proponerReglas, propuestasPendientes, aceptarPropuesta, descartarPropue
 import { ErrorIA } from "../lib/cerebro/ia.js";
 import { ErrorRepositorio } from "../lib/cerebro/repositorio.js";
 import { prepararFicha, ErrorPreparar } from "../lib/cerebro/preparar.js";
+import { proponerRubro } from "../lib/cerebro/rubro.js";
 
 const ID = /^[\w-]{1,80}$/;
 const MAX_CONSULTA = 4000;
@@ -239,6 +241,16 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
       return json(await importarDelRepositorio(env, acceso, cliente, { carpeta: String(b.carpeta ?? ""), actualizar: Boolean(b.actualizar) }));
     } catch (e) {
       if (e instanceof ErrorRepositorio) return error(e.message, 502, e.cause);
+      throw e;
+    }
+  }
+
+  // ---------- «Saber del rubro»: la IA la PROPONE (la persona la guarda con PUT /nota) ----------
+  if (sub === "rubro" && metodo === "POST") {
+    try {
+      return json(await proponerRubro(env, acceso, cliente));
+    } catch (e) {
+      if (e instanceof ErrorIA) return error(e.message, e.estado ?? 502, e.cause);
       throw e;
     }
   }
