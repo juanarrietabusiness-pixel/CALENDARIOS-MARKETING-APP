@@ -30,3 +30,7 @@
 
 /
   Cache-Control: public, max-age=0, must-revalidate
+
+# El service worker de «Compartir»: siempre el último (si se cacheara, un arreglo tardaría en llegar).
+/sw.js
+  Cache-Control: public, max-age=0, must-revalidate

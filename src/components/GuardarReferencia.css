@@ -12,3 +12,5 @@
 .guardar-referencia-ayuda ol { margin: 0; padding-left: var(--sp-5); display: flex; flex-direction: column; gap: 4px; }
 .guardar-referencia-direccion { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); flex-wrap: wrap; }
 .guardar-referencia-direccion code { flex: 1; min-width: 0; overflow-wrap: anywhere; padding: 4px 6px; border-radius: var(--radius-sm); background: var(--surface-2); font-size: var(--fs-2xs); }
+.guardar-referencia-archivos { display: flex; align-items: center; gap: 4px; margin: var(--sp-2) 0 0; font-size: var(--fs-xs); }
+.guardar-referencia-traer { display: flex; flex-direction: column; gap: var(--sp-1); margin-top: var(--sp-2); align-items: flex-start; }

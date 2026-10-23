@@ -162,3 +162,56 @@
 .mercado-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .mercado-foto .btn-icon { position: absolute; top: 2px; right: 2px; background: var(--surface); }
 .mercado-foto-subir { cursor: pointer; }
+
+/* «Su contenido en Instagram»: las publicaciones de un competidor, las mejores primero. */
+.competencia-ig { display: flex; flex-direction: column; gap: var(--sp-3); margin: var(--sp-3) 0; padding: var(--sp-3); }
+.competencia-ig h3 { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-md); }
+.competencia-ig-buscar { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.competencia-ig-buscar .input { flex: 1 1 200px; }
+.competencia-ig-chips { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.competencia-ig-perfil { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin: 0; }
+.competencia-ig-perfil img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
+.competencia-ig-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--sp-3);
+}
+.competencia-ig-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  min-width: 0;
+}
+.competencia-ig-vista { position: relative; aspect-ratio: 4 / 5; border-radius: var(--radius-sm); overflow: hidden; background: var(--bg); display: grid; place-items: center; }
+.competencia-ig-vista img { width: 100%; height: 100%; object-fit: cover; }
+.competencia-ig-formato, .competencia-ig-top {
+  position: absolute;
+  top: var(--sp-1);
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-3xs);
+  font-weight: 700;
+  background: var(--surface-3);
+  color: var(--text);
+}
+.competencia-ig-formato { left: var(--sp-1); }
+.competencia-ig-top { right: var(--sp-1); background: var(--accent); color: #fff; }
+.competencia-ig-cifras { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: center; margin: 0; font-size: var(--fs-2xs); }
+.competencia-ig-cifras span { display: inline-flex; align-items: center; gap: 2px; }
+.competencia-ig-texto {
+  margin: 0;
+  font-size: var(--fs-2xs);
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.competencia-ig-acciones { display: flex; flex-direction: column; gap: var(--sp-1); margin-top: auto; }

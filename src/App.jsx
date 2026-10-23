@@ -406,7 +406,7 @@ function Workspace({ session, ruta }) {
   // vuelve al inicio para que recargar no lo abra otra vez.
   const [guardarRef, setGuardarRef] = useState(() => {
     const compartido = deLoCompartido(window.location);
-    return compartido ? { clienteId: null, texto: compartido.texto, nota: compartido.nota } : null;
+    return compartido ? { clienteId: null, texto: compartido.texto, nota: compartido.nota, archivos: compartido.archivos ?? null, sinArchivos: Boolean(compartido.sinArchivos) } : null;
   });
   // Fuera del inicializador: StrictMode lo llama dos veces y la segunda ya no vería /compartir.
   useEffect(() => {
@@ -1686,6 +1686,8 @@ function Workspace({ session, ruta }) {
             clienteInicial={guardarRef.clienteId}
             textoInicial={guardarRef.texto ?? ""}
             notaInicial={guardarRef.nota ?? ""}
+            archivosCompartidos={guardarRef.archivos ?? null}
+            sinArchivos={Boolean(guardarRef.sinArchivos)}
             onGuardado={setToast}
             onClose={() => setGuardarRef(null)}
           />

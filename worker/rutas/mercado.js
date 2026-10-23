@@ -12,6 +12,9 @@
 //   POST   /<cliente>/referencias/<id>/analizar    Volver a analizar ({ fotogramas? } si el video lo ve Meta)
 //   POST   /<cliente>/referencias/<id>/adaptar     { productoId, formato }: un guion con su misma estructura (no guarda)
 //   DELETE /<cliente>/referencias/<id>
+//   GET    /<cliente>/competencia?usuario=…        Las últimas publicaciones de esa cuenta, las mejores primero
+//   POST   /<cliente>/competencia/traer            { usuario, id }: su archivo a la galería («Competencia»)
+//   POST   /<cliente>/competencia/enlace           { enlace, usuario? }: lo mismo desde un enlace de Instagram
 //   POST   /<cliente>/ugc                          { archivoId | clave, productoId?, duracion?, nota?, fotogramas? }: extraer el
 //                                                   guion de un video de la galería y adaptarlo en UGC (no guarda)
 //
@@ -22,6 +25,7 @@
 
 import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { ErrorIA } from "../lib/cerebro/ia.js";
+import { contenidoDe, traerPublicacion, traerEnlace, ErrorCompetencia } from "../lib/competencia.js";
 import {
   leerMercado, guardarCatalogo, proponerCatalogo, estudiarGeneral, estudiarProducto, guardarBorrador,
   aprobarEstudio, agregarReferencia, reanalizarReferencia, borrarReferencia, adaptarReferencia, extraerUgc, ErrorMercado,
@@ -32,7 +36,7 @@ const ID = /^[\w-]{1,80}$/;
 /** Un fallo que se le puede decir a la persona, con su estado; lo demás sigue hacia el 500 genérico. */
 function fallo(e) {
   // `codigo: "fotogramas"`: el motor de video es Meta y el navegador tiene que sacarlos y volver a pedir.
-  if (e instanceof ErrorMercado || e instanceof ErrorIA) return json({ error: e.message, ...(e.codigo ? { codigo: e.codigo } : {}) }, e.estado ?? 400);
+  if (e instanceof ErrorMercado || e instanceof ErrorIA || e instanceof ErrorCompetencia) return json({ error: e.message, ...(e.codigo ? { codigo: e.codigo } : {}) }, e.estado ?? 400);
   throw e;
 }
 
@@ -80,6 +84,18 @@ export async function rutasMercado(req, env, { acceso, partes, metodo }) {
     if (a === "referencias" && ID.test(String(b ?? "")) && c === "adaptar" && metodo === "POST") {
       const d = (await cuerpo(req)) ?? {};
       return json(await adaptarReferencia(env, acceso, cliente, b, { productoId: String(d.productoId ?? ""), formato: String(d.formato ?? "reel") }));
+    }
+    if (a === "competencia" && !b && metodo === "GET") {
+      return json(await contenidoDe(env, acceso, cliente, new URL(req.url).searchParams.get("usuario") ?? ""));
+    }
+    if (a === "competencia" && b === "traer" && metodo === "POST") {
+      const d = (await cuerpo(req)) ?? {};
+      if (!/^\d{1,30}$/.test(String(d.id ?? ""))) return error("Falta la publicación.");
+      return json(await traerPublicacion(env, acceso, cliente, { usuario: String(d.usuario ?? ""), id: String(d.id) }), 201);
+    }
+    if (a === "competencia" && b === "enlace" && metodo === "POST") {
+      const d = (await cuerpo(req)) ?? {};
+      return json(await traerEnlace(env, acceso, cliente, { enlace: String(d.enlace ?? "").slice(0, 600), usuario: String(d.usuario ?? "") }), 201);
     }
     if (a === "ugc" && !b && metodo === "POST") {
       const d = (await cuerpo(req)) ?? {};

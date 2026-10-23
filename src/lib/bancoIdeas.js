@@ -155,5 +155,11 @@ export function deLoCompartido(url) {
   const texto = [q.get("text"), q.get("url"), q.get("texto")].map((x) => String(x ?? "").trim()).filter(Boolean).join(" ");
   const titulo = String(q.get("title") ?? q.get("titulo") ?? "").trim();
   const nota = titulo && !enlaceLimpio(titulo) && !texto.includes(titulo) ? titulo.slice(0, 300) : "";
-  return { texto: (texto || titulo).slice(0, 4000), nota };
+  // Los archivos que dejó el service worker de «Compartir» (public/sw.js) en su caché: «<id>:<cuántos>».
+  const a = /^([a-z0-9]{4,40}):([1-5])$/.exec(String(q.get("archivos") ?? ""));
+  return {
+    texto: (texto || titulo).slice(0, 4000), nota,
+    ...(a ? { archivos: { id: a[1], n: Number(a[2]) } } : {}),
+    ...(q.get("error") === "archivos" ? { sinArchivos: true } : {}),
+  };
 }

@@ -130,7 +130,9 @@ src/
                           Reiss, nivel de consciencia), los 7 elementos por producto, ganchos por nivel, textos de
                           anuncio, referencias de la competencia; pedidos a la IA, notas y documento (puro; también
                           lo importa el Worker)
-    mercado.js            Cliente de /api/mercado
+    mercado.js            Cliente de /api/mercado (también el contenido de la competencia y traer un enlace de Instagram)
+    competencia.js        El contenido de la competencia en Instagram: el código de un enlace, ordenar por lo que funcionó (puro;
+                          también lo importa el Worker)
     consciencia.js        Niveles de consciencia (Schwartz) y deseos de Reiss: pequeño, para el bundle principal
     ugc.js                UGC · guion para grabar: tramos «[0–3 s] VOZ: «…» | SE VE: … | TEXTO: …», duración (15–60 s, 2,5
                           palabras/s), ganchos, copiar voz y tomas; transcribir un video y adaptarlo (puro; también el Worker)
@@ -312,6 +314,8 @@ src/
     EstudioCompositor.jsx Qué crear: tipo, prompt, modelo (ordenar/filtrar), ajustes, imágenes de apoyo
     EstudioVisor.jsx      La pieza grande (imagen o video) con todo lo que se sabe de ella, «Usar como logo»
                           y «Revisar marca»
+    ContenidoCompetencia.jsx  «Su contenido en Instagram» (pestaña Competencia del estudio de mercado): las publicaciones de
+                          un competidor, las mejores primero; analizar como referencia o extraer su guion UGC (lazy)
     EstudioMercado.jsx    El estudio de mercado en la pestaña Cerebro: catálogo, «Realizar estudio de mercado» por
                           pasos con revisión, y las referencias de la competencia (lazy)
     EstudioLote.jsx       «Producir en lote»: qué (anuncios, por tipo o el mes; post, historia, carrusel o reel), ideas por
@@ -419,6 +423,8 @@ worker/
     anuncios.js           Meta Ads: cuentas publicitarias, campañas e /insights, subir el medio
                           (/adimages, /advideos por file_url), crear en pausa, activar y pausar
     mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
+    competencia.js        `business_discovery` de un competidor (sus últimas publicaciones) y «traer» su archivo del CDN de Meta
+                          a la galería («Competencia»), también desde un enlace de Instagram
     mercado.js            El estudio de mercado: catálogo (y su nota de cifras), el estudio por pasos con búsqueda
                           web, aprobar (notas del cerebro + documento en Drive), referencias de la competencia
     estudio/              El Estudio: meta.js (Muse Image: generar y editar, 0,01 $), prompt.js («Mejorar
@@ -1737,6 +1743,16 @@ son del servidor.
   que ya estaban las detecta la pantalla (la imagen no carga) y «Quitarlas de la
   galería» llama a `POST …/archivos/<id>/perdido`, que sólo borra la ficha si R2 dice
   que el archivo NO está: una imagen que falló por la red no se pierde.
+- **«Su contenido en Instagram»: lo que publica la competencia, lo que mejor le funcionó primero**
+  (`ContenidoCompetencia.jsx` en la pestaña Competencia del estudio de mercado; `worker/lib/competencia.js`,
+  `src/lib/competencia.js`; `GET /api/mercado/<c>/competencia?usuario=`). `business_discovery` desde el Instagram del
+  cliente o, si no tiene, cualquiera del espacio (como la auditoría): sólo cuentas de empresa o creador (409 si no). Se
+  ordena por interacciones (un comentario pesa el doble) con la tasa por cada 100 seguidores; los chips son los
+  `competidores` de la ficha. Las miniaturas pasan por `/api/metricas/miniatura` y la dirección del ARCHIVO no llega al
+  navegador. «Analizar como referencia» = `POST …/competencia/traer` (baja el archivo del CDN de Meta —sólo de
+  `cdninstagram.com`/`fbcdn.net`, ≤ 50 MB— a la galería, carpeta «Competencia», pidiendo la dirección otra vez porque
+  caducan) + la referencia de siempre (`agregarReferencia`, orgánica): desde ella salen «Adaptar», «Recrear con mi marca»
+  y «Seguir este video». En un reel, además, «Extraer guion UGC». **Nada se ha probado contra Meta real.**
 - **El estudio de mercado: catálogo, estudio y competencia, por cliente** (`mercado_clientes`, 0034; lo puro
   en `src/lib/estudioMercado.js`, lo que toca base/IA/Drive en `worker/lib/mercado.js`). Va en su TABLA y no
   en `clients`: pesa decenas de miles de caracteres y `clients` viaja entero en cada carga y cada aviso.
@@ -2797,6 +2813,16 @@ son del servidor.
   · **«Guardar referencia»** se abre desde la cabecera (computadora), «Enlace» en la barra del móvil, el banco y
   `abrirGuardarReferencia()` desde cualquier sitio. El asistente (`agregar_banco_ideas`, con `enlace` y sin cliente =
   general) y Claude por MCP (`anadir_idea`, `ver_banco_ideas`) escriben en la MISMA tabla.
+  · **Con el ARCHIVO, desde la galería del teléfono** (Android, la app instalada): el `share_target` es POST multipart
+  (`files: archivos`) y lo recibe `public/sw.js` —el ÚNICO service worker, que sólo atiende POST /compartir: sin caché
+  de la app ni modo sin conexión—: guarda los archivos en la caché «compartido» y redirige a `/compartir?…&archivos=
+  <id>:<n>` (`deLoCompartido`). «Guardar referencia» los lee de ahí, exige escoger la empresa, los SUBE a su galería, la
+  idea del banco lleva `archivos` [{ id, src, tipo }] y la caché se vacía. Con un video, «Guardada» ofrece «Extraer guion
+  y adaptar». Con un enlace de INSTAGRAM sin archivo, «Traer el video de Instagram» (`POST /api/mercado/<c>/competencia/
+  enlace`): el código sale del enlace y la cuenta también si la trae; si no, 409 `codigo: "usuario"` y se pregunta el @
+  (la API no busca por enlace: se busca entre las últimas 50 de esa cuenta, sólo empresa o creador). Lo registra
+  main.jsx; `/sw.js` va con `max-age=0` en `_headers`. **No se ha probado en un teléfono**: lo comprobado es el POST
+  simulado en Chromium.
   · **Desde «Compartir» de Instagram o TikTok, sin abrir la aplicación** (`/compartir`, `deLoCompartido` en
   lib/bancoIdeas.js): App abre «Guardar referencia» relleno y devuelve la dirección a `/` (en un efecto: en el
   inicializador del estado, StrictMode lo haría dos veces). En Android lo pone en la hoja de compartir el
