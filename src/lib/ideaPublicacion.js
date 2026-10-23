@@ -23,6 +23,7 @@
 
 import { pedir } from "./db";
 import { limpiarEstrategia, objetivoDe, semanasConEtapa } from "./estrategiaMes.js";
+import { camposDePromptListo } from "./promptImagen.js";
 
 /** Los formatos que se escriben por este camino; un directo sigue con el de siempre. */
 export const FORMATO_DEL_LOTE = Object.freeze({ post: "post", historia: "historia", carrusel: "carrusel", reel: "reel" });
@@ -173,6 +174,12 @@ export function rellenarConIdea(post = {}, idea = {}) {
   for (const [k, v] of Object.entries(propuesta)) if (String(v ?? "").trim() && vacio(k)) cambios[k] = v;
   // El producto va con su nombre: o los dos, o ninguno (uno que ya tenía producto no lo cambia).
   if (!cambios.productoId) delete cambios.producto;
+  // El pedido de la imagen, listo, sólo si la publicación queda diciendo lo que escribió la IA (qué se ve y su texto).
+  const queda = { ...post, ...cambios };
+  const igual = (a, b) => String(a ?? "").trim() === String(b ?? "").trim();
+  if (idea.imagen && !carrusel && !video && igual(queda.escena, idea.escena) && igual(queda.textoPieza, propuesta.textoPieza)) {
+    Object.assign(cambios, camposDePromptListo(queda, idea.imagen));
+  }
   const NOMBRES = { title: "título", idea: "idea", escena: "qué se ve", textoPieza: "texto de la pieza", guion: "guion", descripcion: "descripción", hashtagsFinales: "hashtags" };
   return { cambios, campos: Object.keys(cambios).map((k) => NOMBRES[k]).filter(Boolean) };
 }
@@ -200,7 +207,7 @@ export function casillaParaOtra(post = {}, day = {}, { pide = "" } = {}) {
  */
 export function reemplazarConIdea(post = {}, idea = {}) {
   const guiado = post.format === "carrusel" || post.format === "reel";
-  return {
+  const nueva = {
     ...post,
     title: idea.titulo || idea.titular || post.title || "",
     idea: idea.brief || idea.escena || post.idea || "",
@@ -212,5 +219,8 @@ export function reemplazarConIdea(post = {}, idea = {}) {
     composicion: idea.composicion || "",
     tactica: idea.tactica || "",
     sugerencia: "",
+    promptImagen: "",
+    promptImagenDe: "",
   };
+  return idea.imagen && !guiado ? { ...nueva, ...camposDePromptListo(nueva, idea.imagen) } : nueva;
 }

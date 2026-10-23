@@ -2,6 +2,7 @@ import { lazy, Suspense, useState } from "react";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { promptDePublicacion, proporcionParaFormato } from "../../lib/estudio";
 import { presetDePilar, CAMPOS_MATRIZ } from "../../lib/pilares";
+import { promptListo } from "../../lib/promptImagen";
 
 // ============================================================
 // «Crear con IA» dentro del panel de una publicación
@@ -24,11 +25,16 @@ const Estudio = lazy(() => import("../Estudio"));
  * @param uso     { calendarId, postId }: para apuntar que esta publicación usa lo que se cree.
  * @param onUsar  recibe el archivo escogido.
  * @param onUsarVarias  recibe un carrusel entero de la galería (o el video de un reel), en orden.
+ * @param onMejorada  recibe la idea que dejó «Mejorar idea» al abrir: la publicación la guarda como su pedido listo.
  */
-export default function CrearConIA({ client, post, tipo = "imagen", inicio = null, referencias = null, uso = null, onUsar, onUsarVarias = null, onCerrar }) {
+export default function CrearConIA({ client, post, tipo = "imagen", inicio = null, referencias = null, uso = null, onUsar, onUsarVarias = null, onMejorada = null, onCerrar }) {
   const ref = useDialogA11y(onCerrar);
+  // El pedido de la imagen que ya escribió el motor de ideas (o una mejora anterior): no hace falta mejorarlo otra vez.
+  const listo = tipo === "imagen" && !inicio ? promptListo(post) : "";
   // Sólo cuenta al abrir: el compositor no se reinicia si la publicación cambia detrás.
   const [inicial] = useState(() => ({
+    ...(listo ? { listo: true } : {}),
+    ...(onMejorada ? { alMejorar: onMejorada } : {}),
     tipo,
     inicio,
     ...(referencias?.length ? { referencias } : {}),
@@ -39,7 +45,7 @@ export default function CrearConIA({ client, post, tipo = "imagen", inicio = nul
     post: Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, post[k] ?? ""])),
     prompt: inicio
       ? `Anima esta imagen con un movimiento suave y natural: ${promptDePublicacion(post, { conTexto: false })}`.slice(0, 1500)
-      : promptDePublicacion(post, { conTexto: tipo !== "video" }),
+      : listo || promptDePublicacion(post, { conTexto: tipo !== "video" }),
   }));
 
   return (

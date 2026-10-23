@@ -156,6 +156,8 @@ src/
     ideasEstudio.js       «Dame ideas» del Estudio: el plan (tipo, composición, producto), el pedido y su lectura
                           (puro; también lo importa el Worker)
     ideasFormato.js       «Dame ideas» de carrusel (tema + guion por láminas) y de reel IA (idea central) (puro; también el Worker)
+    promptImagen.js       El pedido de la imagen de un post, YA LISTO (`promptImagen` + la huella `promptImagenDe`): lo escribe
+                          el motor de ideas y «Crear con IA» / «Crear la imagen aquí» no esperan a «Mejorar idea» (puro)
     ideaPublicacion.js    «Generar» la idea de UNA publicación vacía por el camino del lote (modo «publicacion»): el pedido y
                           `rellenarConIdea` (sólo lo vacío)
     control.js            El CONTROL DE CALIDAD de una pieza: el pedido a la IA (que la mira), comparar el texto palabra por
@@ -1530,6 +1532,23 @@ son del servidor.
 - **«Mejorar idea» se lanza SOLA al abrir «Crear con IA» desde una publicación** (apagable, se recuerda por
   navegador): la idea + el texto de la pieza + el contexto llegan juntos y largos, y el motor entiende mucho mejor
   una o dos frases. El texto entre comillas se conserva EXACTO (lo dice el pedido de la mejora). «Volver a mi idea».
+  **Salvo que el post ya traiga su pedido LISTO** (`src/lib/promptImagen.js`): el motor de ideas (lote, «Planificar
+  mes», «Completar los textos», «Generar», «Otra») escribe por cada pieza de una imagen el campo `imagen` —la escena
+  con su composición y el titular y el apoyo EXACTOS entre comillas, el estilo de la mejora— y `leerProduccion` sólo
+  lo acepta si trae el titular y el apoyo tal cual (si los reescribió, el motor escribiría otra cosa). Se guarda en
+  `promptImagen` con `promptImagenDe`, la huella de qué se ve (o la idea), el texto de la pieza y el formato: si alguien
+  cambia cualquiera, deja de valer y se vuelve a la mejora. `rellenarConIdea` sólo lo pone si la publicación queda
+  diciendo lo de la IA (qué se ve escrito por una persona no lo recibe). Una mejora hecha al abrir se GUARDA en el post
+  (`onMejorada`): la segunda vez sale lista. Bajo «Qué se ve», «Lista para crear la imagen».
+- **«Crear la imagen aquí», «Corregir esta» y «¿Qué quieres?» en la pestaña Subir** (`crearImagenDelPost` en
+  lib/otraVersion.js; seccionPublicar.jsx). Un post o una historia SIN archivos se crea ahí, sin abrir el Estudio: el
+  pedido listo (o la publicación mejorada una vez, que se queda en el post), el modelo fijado del cliente, su kit, las
+  fotos de su producto, su tipo, el control y el logo; confirma desde 0,50 $ como «Otra versión» y «Deshacer» la quita.
+  «Crear con IA» sigue para revisarlo antes. «¿Qué quieres?» (opcional, no se guarda) lo suman «Crear la imagen aquí»,
+  «Otra versión» y «Recrear con mi marca» (`lineaDeIndicacion`: también a la IA que escribe la escena nueva);
+  «Corregir esta» lo NECESITA y EDITA la misma imagen (`rehacerConComentario`, como «Rehacer con lo que pidió el
+  cliente») en su sitio. Se vacía al salir bien. CalendarView importa el motor de ideas EN DIFERIDO (al pulsar
+  «Completar los textos»): con la huella dentro, la carga inicial pasaba de 180 kB.
 - **Quién VE los videos se escoge** (Ajustes → IA → «Ver videos», `ia_modelos.video`, `motorDeVideo`): Gemini con la
   llave de siempre, Gemini con `GOOGLE_AI_KEY_GRATIS` (nivel gratuito: se apunta a costo 0; Google puede usar lo que
   recibe y tiene topes, y el 429 lo dice así) o Meta. Meta NO recibe video: `verVideo` contesta 409
