@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   partirGuionUgc, guionUgcATexto, vozDelGuion, tomasDelGuion, medidaDeLaVoz, palabrasQueCaben, duracionUgc, esGuionUgc,
   leerGuionConGanchos, conGancho, reglaUgc, leerTranscripcion, leerAdaptacionUgc, publicacionDeUgc, pedidoDeAdaptacionUgc,
+  pedidoDeVozUgc, leerVozUgc, lineaDeVozUgc, guionesUgcDe, ugcParaGrabar, textoParaGrabar,
 } from "./ugc.js";
 
 const GUION = [
@@ -74,5 +75,64 @@ describe("extraer y adaptar", () => {
     expect(publicacionDeUgc(a, { duracion: 15, productoId: "p1", producto: "Lavado" })).toMatchObject({
       format: "reel", rostro: true, title: "Sofá como nuevo", guion: GUION, ganchosUgc: ["Uno", "Dos"], duracionUgc: 15, productoId: "p1",
     });
+  });
+});
+
+describe("la línea «FÓRMULA:» que dice la IA no entra en el guion", () => {
+  it("ni partido por tramos ni en el texto de respaldo", () => {
+    expect(partirGuionUgc(`FÓRMULA: Pregunta → precio\n${GUION}`)).toHaveLength(3);
+    expect(leerGuionConGanchos(`FÓRMULA: X\n${GUION}\nGANCHOS:\n- Uno`).guion).not.toMatch(/F[OÓ]RMULA/i);
+    expect(leerGuionConGanchos("Fórmula: X\nUn guion sin tramos").guion).toBe("VOZ: «Un guion sin tramos»");
+  });
+});
+
+describe("la «Voz UGC» de un cliente", () => {
+  it("los guiones UGC de sus calendarios: sólo reels con rostro y guion, los aprobados primero y luego los más nuevos", () => {
+    const cals = [{ days: [
+      { date: "2030-10-05", posts: [{ format: "reel", rostro: true, title: "Nuevo", guion: "x" }] },
+      { date: "2030-10-01", posts: [{ format: "reel", rostro: true, title: "Aprobado", guion: "y", status: "approved" }, { format: "reel", title: "Sin rostro", guion: "z" }] },
+      { date: "2030-10-08", posts: [{ format: "reel", rostro: true, title: "Vacío", guion: " " }] },
+    ] }];
+    expect(guionesUgcDe(cals).map((g) => [g.titulo, g.estado])).toEqual([["Aprobado", "aprobado"], ["Nuevo", ""]]);
+  });
+
+  it("el pedido lleva sus guiones y la nota de ahora; sin guiones lo dice; la respuesta se limpia", () => {
+    const p = pedidoDeVozUgc({ marca: "Dcasa", guiones: [{ titulo: "Uno", guion: "[0–3 s] VOZ: «Hola»", estado: "aprobado" }], actual: "## Quién habla\nAna" });
+    expect(p).toMatch(/Escribe la nota «Voz UGC» de Dcasa/);
+    expect(p).toContain("### 1. Uno (aprobado)");
+    expect(p).toContain("LA NOTA DE AHORA");
+    expect(pedidoDeVozUgc({ marca: "Dcasa" })).toMatch(/Todavía no hay guiones UGC/);
+    expect(leerVozUgc("Claro:\n## Quién habla\nAna")).toBe("## Quién habla\nAna");
+    expect(lineaDeVozUgc("")).toBe("");
+    expect(lineaDeVozUgc("De tú.")).toMatch(/^VOZ UGC DE ESTA MARCA[^\n]*\nDe tú\.$/);
+  });
+});
+
+describe("«Guiones para grabar»", () => {
+  const DIAS = [
+    { date: "2030-10-09", posts: [{ id: "b", format: "reel", rostro: true, title: "Segundo", guion: GUION, duracionUgc: 15 }] },
+    { date: "2030-10-02", posts: [
+      { id: "a", format: "reel", rostro: true, title: "Primero", guion: GUION },
+      { id: "con-video", format: "reel", rostro: true, guion: GUION, medios: [{ tipo: "video", src: "/api/media/x.mp4" }] },
+      { id: "no-ugc", format: "reel", guion: GUION },
+    ] },
+    { date: "2030-10-05", posts: [{ id: "enviado", format: "reel", rostro: true, guion: GUION, etapa: "produccion" }, { id: "sin", format: "reel", rostro: true }] },
+  ];
+
+  it("los UGC sin video, por fecha; los ya enviados sólo si se piden; los que no tienen guion, marcados", () => {
+    expect(ugcParaGrabar(DIAS).map((x) => x.id)).toEqual(["a", "sin", "b"]);
+    expect(ugcParaGrabar(DIAS).find((x) => x.id === "sin").sinGuion).toBe(true);
+    expect(ugcParaGrabar(DIAS, { conEnviados: true }).map((x) => x.id)).toEqual(["a", "enviado", "sin", "b"]);
+  });
+
+  it("un solo mensaje: la sesión y cada video con lo que dice y sus tomas", () => {
+    const t = textoParaGrabar({ cliente: "Dcasa", cuando: "jueves 30 oct", piezas: [DIAS[1].posts[0], DIAS[0].posts[0]] });
+    expect(t.split("\n")[0]).toBe("*Grabación Dcasa · jueves 30 oct* · 2 videos");
+    expect(t).toContain("*1. Primero*");
+    expect(t).toContain("*2. Segundo* (15 s)");
+    expect(t).toContain("_Lo que dices:_\n¿Tu sofá tiene manchas?");
+    expect(t).toContain("_Tomas:_");
+    expect(t.indexOf("Primero")).toBeLessThan(t.indexOf("Segundo"));
+    expect(textoParaGrabar({ piezas: [{ title: "Uno", guion: GUION }] })).toMatch(/^\*Grabación\* · 1 video/);
   });
 });

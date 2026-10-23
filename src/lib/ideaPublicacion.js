@@ -170,6 +170,8 @@ export function rellenarConIdea(post = {}, idea = {}) {
     // Lo que trae la matriz, si la publicación no lo tenía (así «Crear con IA» sabe de qué producto es).
     ...(idea.productoId ? { productoId: idea.productoId, producto: idea.producto ?? "" } : {}),
     ...(idea.nivel ? { nivel: idea.nivel } : {}),
+    // La fórmula UGC que siguió el guion (sólo en un reel con rostro).
+    ...(video && post.rostro && idea.formulaUgc ? { formulaUgc: idea.formulaUgc } : {}),
   };
   const cambios = {};
   for (const [k, v] of Object.entries(propuesta)) if (String(v ?? "").trim() && vacio(k)) cambios[k] = v;

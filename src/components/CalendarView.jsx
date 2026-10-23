@@ -49,6 +49,7 @@ const ProducirMes = lazy(() => import("./calendario/ProducirMes"));
 const ProducirElMes = lazy(() => import("./calendario/ProducirElMes"));
 // «Revisar las ideas»: la aprobación interna, en tarjetas (aprobar, otra, quitar).
 const RevisarIdeas = lazy(() => import("./calendario/RevisarIdeas"));
+const GuionesParaGrabar = lazy(() => import("./calendario/GuionesParaGrabar"));
 const GuardarMesDrive = lazy(() => import("./calendario/GuardarMesDrive"));
 const PlanSemanal = lazy(() => import("./calendario/PlanSemanal"));
 const FechasEspecialesDialog = lazy(() => import("./calendario/fechasEspeciales").then((m) => ({ default: m.FechasEspecialesDialog })));
@@ -1150,6 +1151,7 @@ export default function CalendarView({
             puedeEditarPlan && { icon: "grid", label: "Plan semanal de la empresa", onClick: () => { setDiaPlan(null); abrirCapa("plan"); } },
             { icon: "checkSquare", label: "Revisar el mes", onClick: () => abrirCapa("revision") },
             { icon: "checkCircle", label: "Revisar las ideas", onClick: () => abrirCapa("revisar-ideas"), disabled: !totalPosts },
+            { icon: "video", label: "Guiones para grabar", onClick: () => abrirCapa("grabar"), disabled: !totalPosts },
             { icon: "sparkles", label: "Completar los textos que faltan", onClick: generateScripts, disabled: genLoading || !totalPosts },
             { icon: "imageAi", label: "Diseñar las que ya hay", onClick: () => abrirCapa("producir") },
             client?.driveFolder && !virtual && { icon: "upload", label: "Guardar el mes en Drive", onClick: () => abrirCapa("drive") },
@@ -1759,6 +1761,17 @@ export default function CalendarView({
       {capa === "revisar-ideas" && (
         <Suspense fallback={<div className="panel-cargando" role="status">Abriendo…</div>}>
           <RevisarIdeas
+            client={client}
+            cal={cal}
+            onAplicar={(cambiar) => onUpdateCal(calId, { ...cal, days: cambiar(cal.days || []) })}
+            onClose={cerrarCapa}
+          />
+        </Suspense>
+      )}
+
+      {capa === "grabar" && (
+        <Suspense fallback={<div className="panel-cargando" role="status">Abriendo…</div>}>
+          <GuionesParaGrabar
             client={client}
             cal={cal}
             onAplicar={(cambiar) => onUpdateCal(calId, { ...cal, days: cambiar(cal.days || []) })}

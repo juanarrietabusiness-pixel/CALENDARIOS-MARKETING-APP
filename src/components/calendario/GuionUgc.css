@@ -88,3 +88,46 @@
 .extraer-ugc-caption { margin: 0; font-size: var(--fs-xs); white-space: pre-wrap; }
 .extraer-ugc-acciones { display: flex; gap: var(--sp-2); flex-wrap: wrap; justify-content: flex-end; }
 .guion-ugc-cabeza h4 { display: flex; align-items: center; gap: var(--sp-1); }
+
+/* Las fórmulas UGC de la agencia: la lista y el editor (FormulasUgc.jsx), y el selector del guion. */
+.formulas-ugc-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.formulas-ugc-item {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-xs);
+}
+.formulas-ugc-pasos { margin: var(--sp-1) 0 0; padding-left: 1.2rem; display: flex; flex-direction: column; gap: 2px; }
+.formulas-ugc-acciones { display: flex; flex-direction: column; gap: var(--sp-1); flex-shrink: 0; }
+.formulas-ugc-editor { display: flex; flex-direction: column; gap: var(--sp-3); }
+.formulas-ugc-tramos { border: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.formulas-ugc-tramo { display: grid; grid-template-columns: 3.5rem 3.5rem 1fr auto; gap: var(--sp-2); align-items: center; }
+@media (max-width: 599px) {
+  .formulas-ugc-item { flex-direction: column; }
+  .formulas-ugc-acciones { flex-direction: row; }
+  .formulas-ugc-tramo { grid-template-columns: 3.5rem 3.5rem 1fr auto; }
+}
+.guion-ugc-formula { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-size: var(--fs-xs); }
+.guion-ugc-formula .input { width: auto; max-width: 100%; min-height: var(--tap-sm); }
+
+/* «Guiones para grabar» (GuionesParaGrabar.jsx). */
+.grabar-cabeza { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-3); }
+.grabar-enviados { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-xs); min-height: var(--tap-sm); }
+.grabar-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.grabar-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.grabar-item.is-va { border-color: var(--accent-line); background: var(--accent-soft); }
+.grabar-item input[type="checkbox"] { width: 20px; height: 20px; }
+.grabar-item-texto { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-xs); cursor: pointer; min-height: var(--tap-sm); justify-content: center; }
+.grabar-item-mover { display: flex; gap: 2px; }
+.grabar-texto { width: 100%; font-size: var(--fs-xs); font-family: inherit; }

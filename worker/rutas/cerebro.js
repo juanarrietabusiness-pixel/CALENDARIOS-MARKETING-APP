@@ -20,6 +20,8 @@
 //   POST   /<cliente>/importar           Llenar el cerebro desde el repositorio { carpeta?, actualizar? }
 //   POST   /<cliente>/preparar           La IA escribe la ficha técnica y las cifras { forzar? }
 //   POST   /<cliente>/rubro              La IA PROPONE la nota «Saber del rubro» (no guarda; se guarda con PUT /nota)
+//   GET    /<cliente>/voz-ugc            La nota «Voz UGC» ({ id, texto } o vacía): la lee el guion UGC del panel
+//   POST   /<cliente>/voz-ugc            La IA PROPONE la «Voz UGC» desde sus guiones UGC (no guarda)
 //
 // Todo pasa por `clienteDe()`: el cliente tiene que ser de este espacio y,
 // si quien pregunta es un colaborador, de los suyos. Un cliente ajeno da
@@ -42,6 +44,7 @@ import { ErrorIA } from "../lib/cerebro/ia.js";
 import { ErrorRepositorio } from "../lib/cerebro/repositorio.js";
 import { prepararFicha, ErrorPreparar } from "../lib/cerebro/preparar.js";
 import { proponerRubro } from "../lib/cerebro/rubro.js";
+import { proponerVozUgc, vozUgcDe } from "../lib/cerebro/vozUgc.js";
 
 const ID = /^[\w-]{1,80}$/;
 const MAX_CONSULTA = 4000;
@@ -241,6 +244,17 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
       return json(await importarDelRepositorio(env, acceso, cliente, { carpeta: String(b.carpeta ?? ""), actualizar: Boolean(b.actualizar) }));
     } catch (e) {
       if (e instanceof ErrorRepositorio) return error(e.message, 502, e.cause);
+      throw e;
+    }
+  }
+
+  // ---------- «Voz UGC»: cómo habla esta marca en sus videos (la IA la propone; se guarda con PUT /nota) ----------
+  if (sub === "voz-ugc" && metodo === "GET") return json((await vozUgcDe(env, acceso, clienteId)) ?? { id: null, texto: "" });
+  if (sub === "voz-ugc" && metodo === "POST") {
+    try {
+      return json(await proponerVozUgc(env, acceso, cliente));
+    } catch (e) {
+      if (e instanceof ErrorIA) return error(e.message, e.estado ?? 502, e.cause);
       throw e;
     }
   }

@@ -303,7 +303,7 @@ export function textoEstrategiaDelMes(mes = null) {
  */
 export function pedidoDeProduccion({
   marca = "la marca", plan = [], productos = {}, perfiles = {}, estudio = "", contexto = "", usados = [], formato = "post", fechasEspeciales = [], mes = false,
-  nota = "", estrategia = null, falta = "",
+  nota = "", estrategia = null, falta = "", ugc = "",
 }) {
   const perfilesUsados = [...new Set(plan.map((r) => r.perfil).filter(Boolean))].filter((n) => perfiles[n]);
   const cuantas = plan.length === 1 ? "UNA publicación" : `${plan.length} publicaciones`;
@@ -338,6 +338,7 @@ export function pedidoDeProduccion({
     `- "descripcion": el texto de la publicación (caption), de 2 a 4 frases, con un llamado a la acción si el tipo lo pide; sin hashtags (${MAX_DESCRIPCION} caracteres).`,
     '- "hashtags": de 5 a 10 hashtags útiles para esa publicación (del tema, del rubro y de la zona; ninguno inventado de otra marca), separados por espacios.',
     ...guionLineas,
+    ugc && plan.some((r) => r.rostro) ? '- "formula" (SÓLO en las UGC): el nombre exacto de la fórmula de la agencia que sigue su guion.' : "",
     "",
     "Reglas:",
     "- Que todo el lote se sienta variado: ni dos titulares parecidos, ni dos escenas en el mismo lugar con la misma acción, ni la misma persona dos veces.",
@@ -350,6 +351,8 @@ export function pedidoDeProduccion({
     "",
     estudio ? `ESTUDIO DE MERCADO:\n${String(estudio).slice(0, 8000)}\n` : "",
     contexto ? `LO QUE SE SABE DE LA MARCA:\n${String(contexto).slice(0, 6000)}\n` : "",
+    // Las UGC: la voz de esta marca en sus videos y las fórmulas de la agencia (lib/ugc.js, lib/formulasUgc.js).
+    ugc && plan.some((r) => r.rostro) ? `PARA LAS UGC:\n${String(ugc).slice(0, 7000)}\n` : "",
     `Responde SOLO con JSON, una por número, así: {"ideas":[{"n":1,"titulo":"…","brief":"…","titular":"…","apoyo":"…","escena":"…"${deUnaImagen ? ',"imagen":"…"' : ""},"descripcion":"…","hashtags":"#… #…"${guiados.length ? ',"guion":"…"' : ""}}]}`,
   ].filter((l, i, t) => l !== "" || t[i - 1] !== "").join("\n").replace(/\n{3,}/g, "\n\n");
 }
@@ -403,6 +406,8 @@ export function leerProduccion(texto, plan = [], formato = "post") {
       ...(limpiarHashtags(x?.hashtags) ? { hashtags: limpiarHashtags(x.hashtags) } : {}),
       // El guion sólo en un carrusel o un reel: en un post sobra, y la pieza lo leería como láminas.
       ...(String(x?.guion ?? "").trim() && esGuiado(r.formato ?? formato) ? { guion: String(x.guion).replace(/\\n/g, "\n").trim().slice(0, MAX_GUION) } : {}),
+      // La fórmula UGC por su nombre (el Worker la pasa a su id).
+      ...(r.rostro && corto(x?.formula, 60) ? { formula: corto(x.formula, 60) } : {}),
       elegida: true,
     }];
   });
@@ -456,6 +461,7 @@ export function publicacionDePieza({ id, idea, archivo = null, archivos = null, 
     ...(idea.deseo ? { deseo: idea.deseo } : {}),
     ...(idea.perfil ? { perfil: idea.perfil } : {}),
     ...(idea.rostro ? { rostro: true } : {}),
+    ...(idea.rostro && idea.formulaUgc ? { formulaUgc: idea.formulaUgc } : {}),
     status: "pending",
     ...(lista.length ? { medios: lista.map(medioDe) } : { aprobacion: "idea" }),
   };

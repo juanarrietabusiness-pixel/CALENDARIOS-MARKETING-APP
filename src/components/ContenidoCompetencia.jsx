@@ -74,7 +74,7 @@ export default function ContenidoCompetencia({ client, lectura = false, onRefere
     setError("");
     try {
       const archivo = await traer(p);
-      setExtraer({ id: archivo.id, src: archivo.src, nombre: `Reel de @${datos.perfil.usuario}` });
+      setExtraer({ id: archivo.id, src: archivo.src, nombre: `Reel de @${datos.perfil.usuario}`, cuenta: `@${datos.perfil.usuario}`, enlace: p.enlace });
     } catch (e) {
       setError(e.message);
     }
