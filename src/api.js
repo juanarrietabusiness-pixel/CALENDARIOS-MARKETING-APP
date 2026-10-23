@@ -132,7 +132,7 @@ export async function callAI(content, { maxTokens, tier, tolerarCorte = false, f
 const REGLA_TEXTO_PIEZA = `TEXTO_PIEZA (lo que va escrito ENCIMA del diseño, no el caption): un titular de hasta 6 palabras y, en otra línea, una frase de apoyo de hasta 10; si el tipo lleva precio u oferta, el precio EXACTO del catálogo en una tercera línea. Frases de marketing, sacadas del gancho y del deseo de la publicación. En carrusel, vacío (el texto va lámina por lámina en el guion); en reel, el texto de la portada.`;
 
 /** Un video con rostro (UGC, `post.rostro`): lo graba una persona; el guion es para grabarlo, no para la IA. */
-const REGLA_ROSTRO = "VIDEO CON ROSTRO (UGC): lo GRABA una persona de la marca hablando a cámara. GUION por tomas: [tiempo] lo que DICE palabra por palabra · lo que se ve · texto en pantalla corto (Hook → Desarrollo → CTA) + DESCRIPCION (caption con hashtags al final)";
+const REGLA_ROSTRO = "UGC (guion para grabar): lo GRABA una persona de la marca hablando a cámara. GUION por tramos, uno por línea: [0–3 s] VOZ: «lo que dice, palabra por palabra» | SE VE: la toma | TEXTO: texto corto en pantalla (gancho → desarrollo → llamado a la acción; unas 2,5 palabras por segundo) + DESCRIPCION (caption con hashtags al final)";
 
 export function buildScriptPrompt(client, calendar, posts, adnExtra = "", memories = [], cerebro = null) {
   const ctx = buildClientContext(client, calendar, adnExtra, cerebro);
@@ -386,7 +386,8 @@ Mejora y completa ESTA idea para ${formatoDicho(post.format)}. Respeta lo que di
 Responde SOLO con la idea mejorada, sin preámbulos ni explicaciones. Máximo 3 oraciones.`;
 }
 
-export async function generateFieldForPost(client, post, day, calendar, field) {
+/** `opciones.reglaGuion`: la regla del guion cuando no es la de su formato (un UGC: lib/ugc.js, que no va al arranque). */
+export async function generateFieldForPost(client, post, day, calendar, field, opciones = {}) {
   const adn = await loadADN(client);
   const adnExtra = adn.content;
   const pasajes = await pasajesDeLaPublicacion(client, adn, calendar, post, day);
@@ -415,8 +416,8 @@ FECHA: ${day.date} (${day.dayName || ""})
 
 IDEA: ${post.idea || "N/A"}
 
-Basandote en la idea y el contexto del cliente, genera el GUION para esta publicacion.
-${post.format === "reel" ? "Formato: Hook (0-3s) → Desarrollo (3-20s) → CTA final" : ""}
+Basandote en la idea y el contexto del cliente, genera el GUION para esta publicacion. Lo que la idea pone entre comillas se usa TAL CUAL.
+${opciones.reglaGuion ? opciones.reglaGuion : post.format === "reel" ? "Formato: Hook (0-3s) → Desarrollo (3-20s) → CTA final" : ""}
 ${post.format === "carrusel" ? "Formato: texto por cada slide, separados por ---" : ""}
 ${post.format === "historia" ? "Formato: nota breve, max 2 oraciones" : ""}
 ${post.format === "live" ? "Formato: bullet points de los temas a cubrir" : ""}

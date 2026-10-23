@@ -132,6 +132,8 @@ src/
                           lo importa el Worker)
     mercado.js            Cliente de /api/mercado
     consciencia.js        Niveles de consciencia (Schwartz) y deseos de Reiss: pequeño, para el bundle principal
+    ugc.js                UGC · guion para grabar: tramos «[0–3 s] VOZ: «…» | SE VE: … | TEXTO: …», duración (15–60 s, 2,5
+                          palabras/s), ganchos, copiar voz y tomas; transcribir un video y adaptarlo (puro; también el Worker)
     videoCorto.js         Guiones de video de 8 s (Veo por fal) o 10 s (Omni): gancho, beneficio y cierre; el pedido
                           al modelo sin texto largo ni logo (puro; también lo importa el Worker)
     portadas.js           Las piezas del perfil por plantilla: estilos de portada, colores del kit, medidas (puro)
@@ -348,6 +350,9 @@ src/
     PlanWizard.jsx        «Planificar mes»: 6 pasos que escriben en el mes elegido (lo AÑADEN
                           si ya tenía publicaciones)
     calendario/navegadorMes.jsx ‹ Octubre 2026 › Hoy: recorrer el calendario siempre activo
+    calendario/GuionUgc.jsx  El guion de un UGC en el panel: columnas, duración, ganchos, copiar, «Extraer guion de un video»
+    calendario/ExtraerUgc.jsx  «Extraer guion y adaptar»: el video (de la publicación, la galería o subido), producto,
+                          duración; el original transcrito y el adaptado → la publicación o el banco (lazy)
     calendario/tipoContenido.jsx  «Tipo de contenido» del panel: tipo, producto, nivel, perfil y deseo
     calendario/campanaMes.jsx   La tarjeta de la campaña: nombre del mes, semanas, ofertas, fechas
     calendario/repeticionesMes.jsx  Lo que se repite este mes (añadir, ahora no, no repetir más) y «Se repite» del panel
@@ -1447,11 +1452,26 @@ son del servidor.
   · **«Volver al estándar de la agencia»** quita la copia y el ritmo propio; la plantilla elegida en la ficha se queda.
   · Se guarda con `guardarPlanCliente` (App.jsx); lo ya creado en el calendario no cambia. En el teléfono la barra no
   cabe: «⋯ → Plan semanal de la empresa». Sólo lectura no la edita.
-- **«Video con rostro (UGC)» es un REEL que graba una persona** (`rostro: true` en la publicación del plan, la casilla,
-  la idea y el post; sólo vale en un reel). La IA le escribe un guion para GRABAR, toma por toma con lo que se dice
-  (`LINEA_ROSTRO` en loteAnuncios.js; `REGLA_ROSTRO` en api.js para «Completar los textos»), y el lote NO lo crea con IA:
-  al «Crear» van al calendario como idea con su guion (`conRostro` en EstudioLote) y no cuentan como reels que pidan
-  modelo de video. El servidor sólo acepta el booleano (`limpiarCasillas`). En el panel, la casilla bajo «Formato».
+- **«UGC · guion para grabar» (antes «Video con rostro») es un REEL que graba una persona** (`rostro: true` en la
+  publicación del plan, la casilla, la idea y el post; sólo vale en un reel). La IA le escribe un guion para GRABAR,
+  tramo a tramo (`src/lib/ugc.js`): `[0–3 s] VOZ: «palabra por palabra» | SE VE: la toma | TEXTO: en pantalla`. Sigue en
+  `post.guion` (texto: el enlace del cliente y la exportación no cambian) y `partirGuionUgc` lee también la forma corta
+  del lote («dice · se ve · texto»). Al lado, `duracionUgc` (15/30/45/60 s; la voz cabe a 2,5 palabras por segundo y el
+  panel avisa si sobra) y `ganchosUgc` (3 alternativos; «Usar este» cambia la voz del primer tramo). El lote no lo crea
+  con IA: van al calendario como idea con su guion (`conRostro` en EstudioLote). El servidor sólo acepta el booleano
+  (`limpiarCasillas`; también en el modo «publicacion», que ahora lo recibe). En el panel (`GuionUgc.jsx`), la tabla, la
+  duración, «Copiar la voz» y «Copiar la lista de tomas» y los ganchos; el texto se edita en su campo de siempre.
+  · **El botón «IA» del guion aplica la regla UGC** (`reglaUgc` + `LINEA_GANCHOS` por `generateFieldForPost(…, {
+  reglaGuion })`: ugc.js NO va al arranque, la regla la pasa el panel). Sin idea, primero el motor de ideas (que ya trae
+  el guion para grabar); con idea, el guion sobre ella, y lo que la idea cita entre comillas se dice TAL CUAL.
+  · **«Extraer guion y adaptar»** (`ExtraerUgc.jsx`, `POST /api/mercado/<c>/ugc`, `extraerUgc` en worker/lib/mercado.js):
+  Gemini VE el video (de la galería por `archivoId` o puesto en la publicación por `clave`, siempre de ESE cliente) y lo
+  transcribe —voz palabra por palabra y tomas— (`pedidoDeTranscripcion`); la IA de texto lo ADAPTA a la marca con el
+  producto del catálogo y el cerebro para escribir, sin copiar frases ni marcas (`pedidoDeAdaptacionUgc`). La
+  transcripción queda en `ajustes.transcripcion` de la ficha del video: volver a adaptar no paga otra vez a Gemini. No
+  guarda nada: «Usar en la publicación» (guion, ganchos, duración; caption y título sólo si estaban vacíos) o «Guardar en
+  el banco de ideas». También desde el visor de un video de la galería («Extraer guion UGC»). Con Meta como motor de
+  video va por fotogramas (sin audio: sin voz). **Nada de esto se ha probado contra Gemini real.**
 - **«Me gusta» (la estrella de antes, `favorito`) y la papelera enseñan al kit** (`src/lib/aprendizajeVisual.js`,
   `worker/lib/estudio/aprender.js`, `POST /api/estudio/<c>/kit/aprender`, en Cerebro → Lo que aprende → «Lo visual»).
   La IA MIRA las imágenes (hasta 8 que gustan y 4 descartadas, función «aprendizaje visual») y PROPONE reglas; nada

@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { lazy, Suspense, useId, useState } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { modeloPorId, nombreDelModelo, textoCosto, NOMBRE_PROPORCION } from "../lib/estudioCatalogo";
@@ -8,6 +8,9 @@ import { corregirTexto } from "../lib/controlEstudio";
 import { resumenControl } from "../lib/control";
 import ReferenciasGaleria from "./ReferenciasGaleria";
 import GuardarRegla from "./GuardarRegla";
+
+// «Extraer guion y adaptar» (UGC) de un video: sólo se descarga al abrirlo.
+const ExtraerUgc = lazy(() => import("./calendario/ExtraerUgc"));
 
 // ============================================================
 // El visor: la imagen (o el video) grande y todo lo que se sabe de ella
@@ -118,7 +121,7 @@ export default function Visor({
   costoOtra = null, onOtraIgual = null, onOtrasVersiones = null, versionando = false, onRecrear = null,
   onEditar = null, original = null, onVerOriginal = null,
   esLogo = false, onLogo = null, revision = null, onRevisar = null, onCorregir = null, galeria = [],
-  clienteId = null, onEstampar = null,
+  clienteId = null, onEstampar = null, cliente = null,
 }) {
   const ref = useDialogA11y(onCerrar);
   const id = useId();
@@ -126,6 +129,7 @@ export default function Visor({
   const [cambio, setCambio] = useState("");
   const [ejemplos, setEjemplos] = useState([]);
   const [cuantas, setCuantas] = useState(1);
+  const [extrayendo, setExtrayendo] = useState(false);
   const m = modeloPorId(a.modelo);
   const puedeOtra = !lectura && !a.subido && costoOtra != null && onOtraIgual;
   const video = a.tipo === "video";
@@ -216,6 +220,11 @@ export default function Visor({
             {!lectura && !video && <button type="button" className="btn btn-secondary" onClick={onAnimar}><Icon name="video" size={16} /> Animar</button>}
             {!lectura && !video && <button type="button" className="btn btn-secondary" onClick={onReferencia}><Icon name="paperclip" size={16} /> Usar de referencia</button>}
             {!lectura && onRecrear && <button type="button" className="btn btn-secondary" onClick={onRecrear} title="Analizarlo y hacer una versión con la marca"><Icon name="refresh" size={16} /> Recrear como anuncio</button>}
+            {!lectura && video && cliente && esVideoReal(a) && (
+              <button type="button" className="btn btn-secondary" onClick={() => setExtrayendo(true)} title="Sacar lo que se dice y lo que se ve, y reescribirlo para esta marca como UGC para grabar">
+                <Icon name="user" size={16} /> Extraer guion UGC
+              </button>
+            )}
             {!lectura && !video && onEstampar && (
               <button type="button" className="btn btn-secondary" onClick={onEstampar} title="Pega el logo original del kit encima, en su esquina: sale una pieza nueva">
                 <Icon name="star" size={16} /> Estampar el logo
@@ -232,6 +241,11 @@ export default function Visor({
           </div>
         </div>
       </div>
+      {extrayendo && (
+        <Suspense fallback={null}>
+          <ExtraerUgc client={cliente} inicial={{ id: a.id, src: a.src, nombre: "Este video" }} onCerrar={() => setExtrayendo(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }

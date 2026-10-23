@@ -36,7 +36,7 @@ describe("guardar lo editado en la barra", () => {
     expect(planContenido.personalizada.dias[2]).toEqual([{ format: "carrusel", pilar: "" }, { format: "reel", pilar: "humano", rostro: true }]);
     // Un día sin formato fijo toma «post», lo que hacía el lote sin plan.
     expect(planContenido.personalizada.dias[1]).toEqual([{ format: "post", pilar: "" }]);
-    expect(planContenido.linea).toMatch(/video con rostro/);
+    expect(planContenido.linea).toMatch(/UGC \(guion para grabar\)/);
     // Lo guardado se vuelve a leer igual.
     const s = semanaDelCliente({ ...cliente, planContenido, ritmoContenido }, lista);
     expect(s.dias[2]).toEqual([{ format: "carrusel", pilar: "servicios" }, { format: "reel", pilar: "humano", rostro: true }]);
@@ -73,13 +73,13 @@ describe("guardar lo editado en la barra", () => {
     const dias = semanaDelCliente({}, lista).dias;
     dias[2] = [{ format: "carrusel", pilar: "servicios" }, conFormato({ pilar: "humano" }, "rostro")];
     const g = semanaParaGuardar({}, lista, dias);
-    expect(lineasDeLaSemana(g, lista)[2]).toEqual(["Productos · Carrusel", "Humano · Video con rostro"]);
+    expect(lineasDeLaSemana(g, lista)[2]).toEqual(["Productos · Carrusel", "Humano · UGC"]);
     expect(lineasDeLaSemana({}, lista)[1]).toEqual(["Anuncio"]);
   });
 
   it("los nombres que se ven", () => {
     expect(valorDeFormato({ format: "reel", rostro: true })).toBe("rostro");
-    expect(nombreDeFormato({ format: "reel", rostro: true })).toBe("Video con rostro");
+    expect(nombreDeFormato({ format: "reel", rostro: true })).toBe("UGC");
     expect(conFormato({ format: "reel", rostro: true, pilar: "humano" }, "post")).toEqual({ format: "post", pilar: "humano" });
     expect(nombreCortoDeTipo("servicios")).toBe("Productos");
     expect(nombreCortoDeTipo("viral")).toBe("Humano");

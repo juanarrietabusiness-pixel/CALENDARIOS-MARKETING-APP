@@ -14,7 +14,7 @@ import "../EditorPlantilla.css";
 // Se abre tocando la barra de los días encima del mes (o desde «⋯» en el
 // teléfono, donde la barra no cabe). Cada día lleva hasta cuatro
 // publicaciones, cada una con su tipo (sólo los de la agencia) y su formato
-// —también «Video con rostro (UGC)», un reel que graba una persona—. Se
+// —también «UGC · guion para grabar», un reel que graba una persona—. Se
 // guarda en la empresa (lib/planSemanal.js): es lo que leen «Producir el
 // mes», «Planificar mes» y la IA. Lo ya creado en el calendario no cambia.
 // ============================================================

@@ -29,8 +29,8 @@
 import { idDePilar, nombreDePilar } from "./pilares";
 
 export const FORMATOS_PLAN = Object.freeze(["post", "reel", "carrusel", "historia", "live"]);
-const NOMBRE_FORMATO = { post: "post", reel: "reel", carrusel: "carrusel", historia: "historia", live: "directo", rostro: "video con rostro (UGC)" };
-const PLURAL_FORMATO = { post: "posts", reel: "reels", carrusel: "carruseles", historia: "historias", live: "directos", rostro: "videos con rostro (UGC)" };
+const NOMBRE_FORMATO = { post: "post", reel: "reel", carrusel: "carrusel", historia: "historia", live: "directo", rostro: "UGC (guion para grabar)" };
+const PLURAL_FORMATO = { post: "posts", reel: "reels", carrusel: "carruseles", historia: "historias", live: "directos", rostro: "UGC (guiones para grabar)" };
 
 export const OBJETIVOS_PLAN = Object.freeze([
   { id: "ventas", nombre: "Centrado en ventas", ayuda: "El ritmo de la agencia: cada día un tipo de contenido que vende o prepara la venta.",

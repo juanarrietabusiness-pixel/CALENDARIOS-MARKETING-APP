@@ -432,7 +432,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     onHecho?.();
     setAviso({ ok: true, texto: [
       "Listo. Están en la galería, en la carpeta del lote.",
-      grabar ? `${grabar === 1 ? "El video con rostro va" : `Los ${grabar} videos con rostro van`} al calendario como idea, con su guion para grabar.` : "",
+      grabar ? `${grabar === 1 ? "El UGC va" : `Los ${grabar} UGC van`} al calendario como idea, con su guion para grabar.` : "",
       variantes > 1 ? "Escoge una imagen de cada pieza." : "",
       esMes ? "«Llevar las N al calendario» las pone cada una en su día, listas para revisión." : "Lleva al calendario las que quieras.",
     ].filter(Boolean).join(" ") });
@@ -785,7 +785,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                           </div>
                         )}
                         {i.rostro && (
-                          <p className="hint"><Icon name="user" size={14} /> Video con rostro (UGC): lo graba una persona. No se crea con IA: va al calendario como idea con este guion.</p>
+                          <p className="hint"><Icon name="user" size={14} /> UGC · guion para grabar: lo graba una persona. No se crea con IA: va al calendario como idea con este guion.</p>
                         )}
                         {!i.fecha && onLlevar && !llevadas[i.id] && (
                           <div className="lote-llevar">

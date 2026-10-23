@@ -18,7 +18,7 @@
 //                pantalla («Planificar mes» y «Mes completo» con la plantilla del cliente): formatos MEZCLADOS (post,
 //                carrusel, reel, historia), varias por día, la campaña y el concepto de cada semana. Cada idea vuelve con
 //                su `clave` para ponerla en su sitio.
-//   · publicacion { publicacion: { fecha?, pilar?, pilarSub?, productoId?, nivel?, deseo?, perfil? }, nota? }: UNA pieza,
+//   · publicacion { publicacion: { fecha?, pilar?, pilarSub?, productoId?, nivel?, deseo?, perfil?, rostro? }, nota? }: UNA pieza,
 //     la de una publicación del calendario («Generar» de su Idea / Brief), con lo que ya trae y la misma calidad del lote
 // Comunes: { formato, semilla?, usados?, composiciones? } (las que funcionan con este cliente).
 // Por TANDAS: { desde, tamano } escribe sólo esas piezas del plan (el plan sale igual con la misma semilla), y la
@@ -178,6 +178,8 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       ...(corto(p.deseo) ? { deseo: corto(p.deseo) } : {}),
       ...(corto(p.perfil) ? { perfil: corto(p.perfil) } : {}),
       ...(fecha ? { fecha } : {}),
+      // Un UGC: la idea trae su guion para grabar (lib/ugc.js), no uno de reel hecho con IA.
+      ...(formato === "reel" && p.rostro === true ? { rostro: true } : {}),
     };
     const delPost = p.productoId ? productosActivos(catalogo).find((x) => x.id === p.productoId) : null;
     if (delPost) celda.productoId = delPost.id;

@@ -63,6 +63,7 @@ export async function ideaParaPublicacion(clienteId, { post, day, cal }) {
       publicacion: {
         fecha: day?.date ?? "", pilar: post.pilar ?? "", pilarSub: post.pilarSub ?? "", productoId: post.productoId ?? "",
         nivel: post.nivel ?? "", deseo: post.deseo ?? "", perfil: post.perfil ?? "",
+        ...(post.format === "reel" && post.rostro ? { rostro: true } : {}),
       },
       nota: notaDePublicacion(post, day, cal), usados: usadosDelMes(cal, post.id), semilla: Date.now() % 997,
     }),
