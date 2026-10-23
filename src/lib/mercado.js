@@ -82,3 +82,18 @@ export const extraerUgc = (clienteId, { archivoId = "", clave = "", productoId =
   gastando(() => conFotogramas(
     (fotogramas) => pedir(`${base(clienteId)}/ugc`, post({ ...(archivoId ? { archivoId } : { clave }), productoId, ...(duracion ? { duracion } : {}), nota, ...(fotogramas ? { fotogramas } : {}) })), src,
   ));
+
+// ---------- El contenido de la competencia en Instagram ----------
+
+/** Las últimas publicaciones de @usuario, las mejores primero → { perfil, publicaciones }. Sólo lee. */
+export const contenidoDeCompetencia = (clienteId, usuario) =>
+  pedir(`${base(clienteId)}/competencia?usuario=${encodeURIComponent(String(usuario ?? "").trim())}`);
+
+/** El archivo de una de ellas a la galería del cliente (carpeta «Competencia») → { archivo, publicacion, usuario }. */
+export const traerDeCompetencia = (clienteId, usuario, id) => pedir(`${base(clienteId)}/competencia/traer`, post({ usuario, id }));
+
+/**
+ * Un enlace de Instagram → su archivo en la galería. Sin @ en el enlace ni en `usuario`, el error trae
+ * `datos.codigo === "usuario"`: hay que preguntarlo.
+ */
+export const traerEnlaceDeInstagram = (clienteId, enlace, usuario = "") => pedir(`${base(clienteId)}/competencia/enlace`, post({ enlace, usuario }));

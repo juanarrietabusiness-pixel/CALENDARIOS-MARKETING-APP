@@ -128,8 +128,15 @@ describe("lo puro", () => {
 
   it("el manifiesto pone la aplicación en la hoja de compartir de Android", () => {
     const m = JSON.parse(readFileSync(ruta("public", "manifest.webmanifest"), "utf8"));
-    expect(m.share_target).toMatchObject({ action: "/compartir", method: "GET" });
-    expect(Object.values(m.share_target.params).sort()).toEqual(["text", "title", "url"]);
+    // POST multipart: así llegan también los ARCHIVOS (el video guardado del teléfono). Lo recibe el service worker,
+    // que los deja en su caché y redirige a /compartir?…&archivos=… (public/sw.js); sin él, el POST no tiene quién lo atienda.
+    expect(m.share_target).toMatchObject({ action: "/compartir", method: "POST", enctype: "multipart/form-data" });
+    expect(m.share_target.params).toMatchObject({ title: "title", text: "text", url: "url" });
+    expect(m.share_target.params.files[0]).toMatchObject({ name: "archivos" });
+    const sw = readFileSync(ruta("public", "sw.js"), "utf8");
+    expect(sw).toMatch(/pathname !== "\/compartir"/);
+    expect(sw).toMatch(/getAll\("archivos"\)/);
+    expect(readFileSync(ruta("src", "main.jsx"), "utf8")).toMatch(/serviceWorker\.register\('\/sw\.js'\)/);
     // Android sólo instala con un icono de 192 y otro de 512 que existan.
     for (const t of ["192x192", "512x512"]) {
       const i = m.icons.find((x) => x.sizes === t);

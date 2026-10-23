@@ -18,6 +18,8 @@ import {
 
 // El Estudio en un diálogo, para «Recrear con mi marca» y «Seguir este video»: sólo se descarga al abrirlo.
 const Estudio = lazy(() => import("./Estudio"));
+// «Su contenido en Instagram»: las publicaciones de un competidor, las mejores primero (sólo se descarga al abrir la pestaña).
+const ContenidoCompetencia = lazy(() => import("./ContenidoCompetencia"));
 import "./EstudioMercado.css";
 
 // ============================================================
@@ -887,6 +889,13 @@ function PanelCompetencia({ client, datos, lectura, onOcupado, onDatos, onCambio
           <Icon name="external" size={14} /> Abrir la Biblioteca de anuncios
         </a>
       </div>
+
+      <Suspense fallback={<p className="hint" role="status">Cargando…</p>}>
+        <ContenidoCompetencia
+          client={client} lectura={lectura} onCambioCerebro={onCambioCerebro}
+          onReferencia={(r) => onDatos({ referencias: [r, ...datos.referencias] })}
+        />
+      </Suspense>
 
       {!lectura && (
         <form className="mercado-referencia-form card" onSubmit={enviar}>

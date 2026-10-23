@@ -304,7 +304,7 @@ export async function aprobarEstudio(env, acceso, cliente) {
 // ------------------------------------------------------------
 
 /** La carpeta «Competencia» de la galería del Estudio; se crea si falta. Null si no se pudo (tope de carpetas). */
-async function carpetaCompetencia(acceso, clienteId) {
+export async function carpetaCompetencia(acceso, clienteId) {
   const existentes = await acceso.leerColumnas("estudio_carpetas", ["id", "nombre"], { client_id: clienteId });
   const hay = existentes.find((c) => c.nombre.toLowerCase() === CARPETA_COMPETENCIA.toLowerCase());
   if (hay) return hay.id;
