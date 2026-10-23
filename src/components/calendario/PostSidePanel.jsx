@@ -51,6 +51,7 @@ import { CopyButton } from "./primitivas";
 import { fieldHeaderStyle } from "./formato";
 import { SeRepite } from "./repeticionesMes";
 import { promptListo } from "../../lib/promptImagen";
+import GuionUgc from "./GuionUgc";
 
 // «Idea» planifica; «Subir» es archivo, texto y cuándo sale —como lo llama
 // la agencia—. Los valores internos siguen siendo contenido/publicar.
@@ -163,6 +164,23 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         const { campos } = rellenarConIdea(form, idea);
         setForm((p) => ({ ...p, ...rellenarConIdea(p, idea).cambios }));
         if (campos.length > 1) setFieldAviso(`La IA escribió: ${campos.join(", ")}. Lo que ya tenía texto no se tocó.`);
+      } else if (field === "guion" && form.format === "reel" && form.rostro) {
+        // UGC: sin idea, primero la idea por el motor de ideas (trae también su guion para grabar); con idea, el guion
+        // por tramos con la regla de lib/ugc.js y tres ganchos para probar. Lo escrito a mano en la idea se respeta.
+        const ugc = await import("../../lib/ugc");
+        let base = form;
+        if (ideaComoElLote(form)) {
+          const idea = await ideaParaPublicacion(clientId, { post: form, day, cal });
+          const { cambios } = rellenarConIdea(form, idea);
+          base = { ...form, ...cambios };
+          setForm((p) => ({ ...p, ...rellenarConIdea(p, idea).cambios }));
+          if (String(base.guion ?? "").trim()) setFieldAviso("La IA escribió la idea y su guion para grabar. Revísalos.");
+        }
+        if (!String(base.guion ?? "").trim() || base === form) {
+          const texto = await generateFieldForPost(client, base, day, cal, "guion", { reglaGuion: `${ugc.reglaUgc(base.duracionUgc)}\n${ugc.LINEA_GANCHOS}` });
+          const { guion, ganchos } = ugc.leerGuionConGanchos(texto);
+          setForm((p) => ({ ...p, guion, ...(ganchos.length ? { ganchosUgc: ganchos } : {}), duracionUgc: ugc.duracionUgc(p.duracionUgc) }));
+        }
       } else {
         const result = await generateFieldForPost(client, form, day, cal, field);
         sf(field, result);
@@ -310,7 +328,7 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           {form.format === "reel" && (
             <label htmlFor={`${ids}-rostro`} style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", marginTop: "var(--sp-2)", fontSize: "var(--fs-xs)", minHeight: "var(--tap-sm)" }}>
               <input id={`${ids}-rostro`} type="checkbox" checked={Boolean(form.rostro)} onChange={(e) => sf("rostro", e.target.checked || undefined)} />
-              Video con rostro (UGC): lo graba una persona; el guion es para grabarlo
+              UGC · guion para grabar: lo graba una persona; la IA escribe lo que dice y lo que se ve
             </label>
           )}
         </fieldset>
@@ -331,10 +349,15 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           <textarea id={`${ids}-idea`} className="textarea" value={form.idea || ""} onChange={(e) => sf("idea", e.target.value)} placeholder="Explicación o prompt para la generación con IA…" />
         </div>
 
+        {/* UGC: el guion en columnas, la duración, los ganchos, copiar y «Extraer guion de un video y adaptarlo». */}
+        {form.format === "reel" && form.rostro && (
+          <GuionUgc form={form} sf={sf} setForm={setForm} client={client} onAviso={setFieldAviso} />
+        )}
+
         {!isPost && (
           <div className="field">
             <div style={fieldHeaderStyle}>
-              <label className="label" style={{ margin: 0, color: "#FF7BA8" }} htmlFor={`${ids}-guion`}>Guion</label>
+              <label className="label" style={{ margin: 0, color: "#FF7BA8" }} htmlFor={`${ids}-guion`}>{form.format === "reel" && form.rostro ? "Guion (texto, para editar)" : "Guion"}</label>
               <div style={{ display: "flex", gap: "var(--sp-2)" }}>
                 <CopyButton text={form.guion} describes="el guion" />
                 <AiButton field="guion" label="el guion" />

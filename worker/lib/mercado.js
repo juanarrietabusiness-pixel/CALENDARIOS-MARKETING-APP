@@ -37,6 +37,8 @@ import { crearCarpeta, cambiarArchivo } from "./estudio/galeria.js";
 import { aBase64 } from "./estudio/gemini.js";
 import { kitDe } from "./estudio/kit.js";
 import { verVideo, ErrorVideo, MAX_BYTES_VIDEO } from "./geminiVideo.js";
+import { claveDelCliente } from "./estudio/archivos.js";
+import { pedidoDeTranscripcion, leerTranscripcion, pedidoDeAdaptacionUgc, leerAdaptacionUgc, duracionUgc } from "../../src/lib/ugc.js";
 import { bloqueoPorPresupuesto } from "./configIA.js";
 import { textoPaleta } from "../../src/lib/kitMarca.js";
 import {
@@ -457,4 +459,74 @@ export async function adaptarReferencia(env, acceso, cliente, id, { productoId =
   const adaptacion = leerAdaptacion(r.texto);
   if (!adaptacion) throw new ErrorMercado("La IA no devolvió un guion que se pueda leer. Inténtalo otra vez.", 502);
   return { adaptacion, modelo: r.modelo, aviso: r.aviso };
+}
+
+// ------------------------------------------------------------
+// «Extraer guion y adaptar» (UGC): un video que funciona → uno para grabar
+// ------------------------------------------------------------
+
+/**
+ * Gemini VE el video (de la galería de ESTE cliente: un anuncio de la competencia, un reel guardado, una referencia de
+ * la publicación) y lo transcribe tramo a tramo —la voz palabra por palabra y las tomas—; después la IA de texto lo
+ * ADAPTA a la marca en UGC (lib/ugc.js), con el producto del catálogo y lo que dice el cerebro para escribir (sin lo
+ * interno). La transcripción se guarda en la ficha del video (`ajustes.transcripcion`): volver a adaptarlo —otro
+ * producto, otra duración— no paga otra vez a Gemini. No guarda la adaptación: la pantalla la pone en la publicación o
+ * en el banco. → { original, adaptado, duracion, modelo, aviso }.
+ */
+export async function extraerUgc(env, acceso, cliente, { archivoId = "", clave = "", productoId = "", duracion, nota = "", fotogramas = null } = {}) {
+  // Un video de la galería (por su id) o uno puesto en una publicación (por su clave, de ESTE cliente).
+  let archivo = archivoId ? await acceso.leerUno("estudio_archivos", { id: String(archivoId), client_id: cliente.id }) : null;
+  if (!archivo && clave) {
+    const k = claveDelCliente(clave, cliente.id);
+    if (!k) throw new ErrorMercado("Ese video no es de este cliente.", 404);
+    archivo = (await acceso.leer("estudio_archivos", { client_id: cliente.id, clave: k }))[0] ?? null;
+    if (!archivo) {
+      const cabeza = await env.MEDIA.head(k);
+      if (!cabeza) throw new ErrorMercado("El video ya no está en el almacenamiento.", 404);
+      archivo = { id: null, clave: k, tipo: "video", mime: cabeza.httpMetadata?.contentType || "video/mp4", ajustes: "{}" };
+    }
+  }
+  if (!archivo || archivo.borrado_at) throw new ErrorMercado("Ese video no está en la galería de este cliente.", 404);
+  if (archivo.tipo !== "video" || !/^video\//.test(archivo.mime ?? "")) throw new ErrorMercado("Para extraer el guion hace falta un video.", 400);
+  const bloqueo = await bloqueoPorPresupuesto(acceso);
+  if (bloqueo) throw new ErrorMercado(bloqueo, 402);
+  const ajustes = leerJSON(archivo.ajustes, {});
+
+  let original = ajustes.transcripcion && Array.isArray(ajustes.transcripcion.tramos) ? ajustes.transcripcion : null;
+  if (!original) {
+    const obj = await env.MEDIA.get(archivo.clave);
+    if (!obj) throw new ErrorMercado("El video ya no está en el almacenamiento.", 404);
+    if (obj.size > MAX_BYTES_VIDEO) throw new ErrorMercado("El video es demasiado grande para analizarlo.", 413);
+    let texto;
+    try {
+      texto = await verVideo(env, acceso, {
+        bytes: await obj.arrayBuffer(), mime: archivo.mime, nombre: archivo.clave.split("/").pop(), clienteId: cliente.id,
+        prompt: pedidoDeTranscripcion(), funcion: "guion de video", json: true, fotogramas,
+      });
+    } catch (e) {
+      if (e instanceof ErrorVideo) throw new ErrorMercado(e.message, e.estado, e.codigo);
+      throw e;
+    }
+    original = leerTranscripcion(texto);
+    if (!original) throw new ErrorMercado("La IA no devolvió la transcripción del video. Inténtalo otra vez.", 502);
+    // Sólo se recuerda en una ficha de la galería (un video suelto de una publicación no tiene dónde).
+    if (archivo.id) await acceso.actualizar("estudio_archivos", { id: archivo.id, client_id: cliente.id }, { ajustes: JSON.stringify({ ...ajustes, transcripcion: original }) }).catch(() => {});
+  }
+
+  const { catalogo, inventario } = await leerMercado(acceso, cliente.id);
+  const producto = productosActivos(catalogo).find((p) => p.id === productoId) ?? null;
+  // Sin duración pedida, la del original redondeada a la que se graba (15, 30, 45 o 60).
+  const d = duracion != null ? duracionUgc(duracion) : duracionUgc([15, 30, 45, 60].reduce((a, b) => (Math.abs(b - (original.duracion ?? 30)) < Math.abs(a - (original.duracion ?? 30)) ? b : a)));
+  const r = await llamarIA(env, acceso, cliente, {
+    prompt: pedidoDeAdaptacionUgc({
+      marca: cliente.name, original, duracion: d, nota,
+      productoLinea: producto ? lineaDeProducto(producto, { inventario }).slice(2) : "",
+      contexto: await contextoDeMarca(env, acceso, cliente, `${producto?.nombre ?? ""} ${original.gancho} ${original.estructura} testimonios beneficios objeciones`),
+    }),
+    salida: 2500,
+    funcion: "guion de video",
+  });
+  const adaptado = leerAdaptacionUgc(r.texto);
+  if (!adaptado) throw new ErrorMercado("La IA no devolvió un guion que se pueda leer. Inténtalo otra vez.", 502);
+  return { original, adaptado, duracion: d, producto: producto ? { id: producto.id, nombre: producto.nombre } : null, modelo: r.modelo, aviso: r.aviso };
 }

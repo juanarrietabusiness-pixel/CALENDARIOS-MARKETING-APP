@@ -401,8 +401,8 @@ describe("POST /api/estudio/<cliente>/lote/ideas: el PLAN del mes («Planificar 
     // Sólo el booleano: lo demás no lo marca.
     expect(r.ideas[1].rostro).toBeUndefined();
     const t = textoDe(peticiones[0]);
-    expect((t.match(/VIDEO CON ROSTRO \(UGC\)/g) ?? []).length).toBe(1);
-    expect(t).toMatch(/lo que DICE, palabra por palabra/);
+    expect((t.match(/UGC \(guion para grabar/g) ?? []).length).toBe(1);
+    expect(t).toMatch(/VOZ: «lo que dice, palabra por palabra»/);
   });
 
   it("«Otra»: la que había y lo que pide la agencia van en el pedido", async () => {

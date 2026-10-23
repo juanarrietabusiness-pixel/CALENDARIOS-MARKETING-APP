@@ -1345,7 +1345,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       )}
       {visor && (
         <Visor
-          archivo={visor} carpetas={carpetasPropias} lectura={lectura}
+          archivo={visor} carpetas={carpetasPropias} lectura={lectura} cliente={client}
           onCerrar={() => setVisor(null)}
           onFavorito={() => alternarFavorito(visor)}
           onPapelera={() => aPapelera(visor)}

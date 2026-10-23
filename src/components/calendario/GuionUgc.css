@@ -1,0 +1,90 @@
+/* UGC · guion para grabar: el guion en columnas, la duración, los ganchos y «Extraer guion y adaptar». */
+.guion-ugc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.guion-ugc-cabeza {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.guion-ugc-duracion {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-xs);
+}
+.guion-ugc-duracion .input { width: auto; min-height: var(--tap-sm); }
+.guion-ugc-tabla {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  font-size: var(--fs-xs);
+}
+.guion-ugc-fila {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr 1fr;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  border-top: 1px solid var(--border);
+}
+.guion-ugc-fila:first-child { border-top: none; }
+.guion-ugc-titulos {
+  background: var(--surface-3);
+  font-size: var(--fs-3xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-muted);
+}
+.guion-ugc-tiempo { font-variant-numeric: tabular-nums; color: var(--text-muted); white-space: nowrap; }
+.guion-ugc-texto { display: block; margin-top: var(--sp-1); color: var(--text-muted); font-style: italic; }
+.guion-ugc-medida { margin: 0; }
+.guion-ugc-medida.is-largo { color: var(--danger); }
+.guion-ugc-copiar { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.guion-ugc-ganchos ul { list-style: none; margin: var(--sp-1) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.guion-ugc-ganchos li { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); font-size: var(--fs-xs); }
+
+/* En el teléfono, el tiempo encima y las dos columnas una debajo de otra. */
+@media (max-width: 599px) {
+  .guion-ugc-fila { grid-template-columns: 1fr; gap: var(--sp-1); }
+  .guion-ugc-titulos { display: none; }
+}
+
+.extraer-ugc { width: min(720px, 100%); max-height: 90vh; overflow-y: auto; }
+.extraer-ugc-form, .extraer-ugc-resultado { display: flex; flex-direction: column; gap: var(--sp-3); }
+.extraer-ugc-videos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--sp-2);
+}
+.extraer-ugc-videos label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-2xs);
+  cursor: pointer;
+  min-height: var(--tap);
+}
+.extraer-ugc-videos label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.extraer-ugc-videos video { width: 100%; aspect-ratio: 9 / 16; max-height: 160px; object-fit: cover; border-radius: var(--radius-sm); background: var(--bg); }
+.extraer-ugc-ajustes { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+@media (max-width: 599px) { .extraer-ugc-ajustes { grid-template-columns: 1fr; } }
+.extraer-ugc-caption { margin: 0; font-size: var(--fs-xs); white-space: pre-wrap; }
+.extraer-ugc-acciones { display: flex; gap: var(--sp-2); flex-wrap: wrap; justify-content: flex-end; }
+.guion-ugc-cabeza h4 { display: flex; align-items: center; gap: var(--sp-1); }

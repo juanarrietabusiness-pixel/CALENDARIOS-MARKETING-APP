@@ -331,6 +331,76 @@ describe("las referencias de la competencia", () => {
     expect(t).not.toContain("margen");
     expect((await pedir("/api/mercado/c1/referencias/no-existe/adaptar", { method: "POST", body: {} })).status).toBe(404);
   });
+
+  it("«Extraer guion y adaptar» (UGC): Gemini transcribe una vez, la IA adapta con el producto; la transcripción se recuerda", async () => {
+    env.GOOGLE_AI_KEY = "g";
+    await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: CATALOGO } });
+    const MP4 = new Uint8Array([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 0, 0, 9, 8, 7, 6]);
+    const form = new FormData();
+    form.set("archivo", new File([MP4], "reel.mp4", { type: "video/mp4" }));
+    const { archivo } = await (await pedir("/api/estudio/c1/archivos", { method: "POST", body: form })).json();
+    const transcripcion = {
+      tramos: [
+        { desde: 0, hasta: 3, voz: "¿Tu sofá tiene manchas?", seVe: "Una mujer señala el sofá", texto: "¿Manchas?" },
+        { desde: 3, hasta: 12, voz: "Nosotros lo dejamos como nuevo en una tarde", seVe: "Lavan el sofá" },
+        { desde: 12, hasta: 15, voz: "Escríbenos hoy", seVe: "El sofá limpio" },
+      ],
+      duracion: 15, gancho: "Pregunta directa", porQue: "Problema común", estructura: "problema → solución → llamado",
+    };
+    let vistas = 0;
+    const fetchGemini = async (url, op = {}) => {
+      const u = String(url);
+      if (u.includes("/upload/v1beta/files")) return new Response("{}", { headers: { "x-goog-upload-url": "https://generativelanguage.googleapis.com/subida/1" } });
+      if (u.endsWith("/subida/1")) return Response.json({ file: { name: "files/1", state: "ACTIVE", uri: "https://g/files/1", mimeType: "video/mp4" } });
+      if (u.includes(":generateContent")) { vistas++; return Response.json({ candidates: [{ content: { parts: [{ text: JSON.stringify(transcripcion) }] } }], usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 200 } }); }
+      if (op.method === "DELETE") return new Response("{}");
+      return null;
+    };
+    const respuesta = [
+      "TITULO: Sofá como nuevo",
+      "GUION:",
+      "[0–3 s] VOZ: «¿Ese sofá ya no se ve igual?» | SE VE: La dueña frente al sofá | TEXTO: ¿Sofá manchado?",
+      "[3–12 s] VOZ: «Lo lavamos en tu casa desde $45» | SE VE: Lavado en la sala",
+      "[12–15 s] VOZ: «Escríbenos por WhatsApp» | SE VE: El sofá limpio",
+      "GANCHOS:",
+      "- ¿Cuándo fue la última vez que lavaste tu sofá?",
+      "- Esto sale del sofá en una tarde",
+      "- Nadie ve lo que guarda tu sofá",
+      "DESCRIPCION: Tu sofá como nuevo. Escríbenos. #sofa #limpieza",
+    ].join("\n");
+    const llamadas = [];
+    vi.stubGlobal("fetch", async (url, op = {}) => {
+      const g = await fetchGemini(url, op);
+      if (g) return g;
+      const u = String(url);
+      if (u.startsWith("https://api.anthropic.com/v1/models")) return Response.json({ data: [{ id: "claude-sonnet-5" }] });
+      if (u.startsWith("https://api.anthropic.com/v1/messages")) { llamadas.push(JSON.parse(op.body)); return flujo(respuesta); }
+      throw new Error(`fetch inesperado a ${u}`);
+    });
+    const r = await pedir("/api/mercado/c1/ugc", { method: "POST", body: { archivoId: archivo.id, productoId: "p-lavado" } });
+    expect(r.status).toBe(200);
+    const d = await r.json();
+    expect(d.duracion).toBe(15);
+    expect(d.original.tramos).toHaveLength(3);
+    expect(d.adaptado.titulo).toBe("Sofá como nuevo");
+    expect(d.adaptado.guion.split("\n")[0]).toBe("[0–3 s] VOZ: «¿Ese sofá ya no se ve igual?» | SE VE: La dueña frente al sofá | TEXTO: ¿Sofá manchado?");
+    expect(d.adaptado.ganchos).toHaveLength(3);
+    const t = textoDe(llamadas[0]);
+    expect(t).toContain("¿Tu sofá tiene manchas?");
+    expect(t).toContain("Desde $45");
+    expect(t).toContain("UGC · GUION PARA GRABAR (15 segundos)");
+    expect(t).not.toContain("margen");
+    // Otra vez, con otra duración: no vuelve a pagar a Gemini.
+    const otra = await pedir("/api/mercado/c1/ugc", { method: "POST", body: { archivoId: archivo.id, duracion: 30 } });
+    expect(otra.status).toBe(200);
+    expect((await otra.json()).duracion).toBe(30);
+    expect(vistas).toBe(1);
+    // Por su clave (un video puesto en la publicación) también; la de otro cliente, no.
+    expect((await pedir("/api/mercado/c1/ugc", { method: "POST", body: { clave: archivo.src } })).status).toBe(200);
+    expect((await pedir("/api/mercado/c1/ugc", { method: "POST", body: { clave: "/api/media/clientes/otro/x.mp4" } })).status).toBe(404);
+    // Sin video, nada.
+    expect((await pedir("/api/mercado/c1/ugc", { method: "POST", body: {} })).status).toBe(400);
+  });
 });
 
 describe("el guion de un video corto", () => {

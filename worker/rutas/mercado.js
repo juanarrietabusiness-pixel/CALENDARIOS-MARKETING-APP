@@ -12,6 +12,8 @@
 //   POST   /<cliente>/referencias/<id>/analizar    Volver a analizar ({ fotogramas? } si el video lo ve Meta)
 //   POST   /<cliente>/referencias/<id>/adaptar     { productoId, formato }: un guion con su misma estructura (no guarda)
 //   DELETE /<cliente>/referencias/<id>
+//   POST   /<cliente>/ugc                          { archivoId | clave, productoId?, duracion?, nota?, fotogramas? }: extraer el
+//                                                   guion de un video de la galería y adaptarlo en UGC (no guarda)
 //
 // El cliente tiene que ser de este espacio (y, si es un colaborador, de los
 // suyos): uno ajeno da «no encontrado». Lo que gasta IA lo corta además la
@@ -22,7 +24,7 @@ import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { ErrorIA } from "../lib/cerebro/ia.js";
 import {
   leerMercado, guardarCatalogo, proponerCatalogo, estudiarGeneral, estudiarProducto, guardarBorrador,
-  aprobarEstudio, agregarReferencia, reanalizarReferencia, borrarReferencia, adaptarReferencia, ErrorMercado,
+  aprobarEstudio, agregarReferencia, reanalizarReferencia, borrarReferencia, adaptarReferencia, extraerUgc, ErrorMercado,
 } from "../lib/mercado.js";
 
 const ID = /^[\w-]{1,80}$/;
@@ -78,6 +80,15 @@ export async function rutasMercado(req, env, { acceso, partes, metodo }) {
     if (a === "referencias" && ID.test(String(b ?? "")) && c === "adaptar" && metodo === "POST") {
       const d = (await cuerpo(req)) ?? {};
       return json(await adaptarReferencia(env, acceso, cliente, b, { productoId: String(d.productoId ?? ""), formato: String(d.formato ?? "reel") }));
+    }
+    if (a === "ugc" && !b && metodo === "POST") {
+      const d = (await cuerpo(req)) ?? {};
+      const porId = ID.test(String(d.archivoId ?? ""));
+      if (!porId && !String(d.clave ?? "").trim()) return error("Falta el video.");
+      return json(await extraerUgc(env, acceso, cliente, {
+        archivoId: porId ? String(d.archivoId) : "", clave: porId ? "" : String(d.clave).slice(0, 400), productoId: String(d.productoId ?? ""), duracion: d.duracion ?? null,
+        nota: String(d.nota ?? "").slice(0, 500), fotogramas: d.fotogramas,
+      }));
     }
     if (a === "referencias" && ID.test(String(b ?? "")) && !c && metodo === "DELETE") {
       return (await borrarReferencia(env, acceso, cliente, b)) ? json({ ok: true }) : noEncontrado("Referencia");

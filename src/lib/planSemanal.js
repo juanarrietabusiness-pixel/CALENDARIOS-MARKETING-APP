@@ -12,30 +12,30 @@
 //     ritmo», y su tipo se guarda en el ritmo: así la temporada (un día
 //     delicado deja de vender) sigue ajustándola;
 //   · las demás llevan su tipo escrito.
-// Sólo tipos de la agencia (`PILARES`). «Video con rostro (UGC)» es un reel
+// Sólo tipos de la agencia (`PILARES`). «UGC · guion para grabar» es un reel
 // que graba una persona (`rostro: true`).
 // ============================================================
 
 import { limpiarPlanCliente, plantillaDelCliente, planParaGuardar, MAX_POR_DIA } from "./plantillasPlan.js";
 import { limpiarRitmo, idDePilar, pilarDe, RITMO_POR_DEFECTO } from "./pilares.js";
 
-/** Lo que se escoge como formato en la barra: los del plan y el video con rostro (un reel que graba una persona). */
+/** Lo que se escoge como formato en la barra: los del plan y el UGC (un reel que graba una persona con su guion). */
 export const FORMATOS_SEMANA = Object.freeze([
   { valor: "post", nombre: "Post" },
   { valor: "carrusel", nombre: "Carrusel" },
   { valor: "reel", nombre: "Reel" },
-  { valor: "rostro", nombre: "Video con rostro (UGC)" },
+  { valor: "rostro", nombre: "UGC · guion para grabar" },
   { valor: "historia", nombre: "Historia" },
   { valor: "live", nombre: "Directo" },
 ]);
 const NOMBRE_FORMATO = Object.fromEntries(FORMATOS_SEMANA.map((f) => [f.valor, f.nombre]));
-NOMBRE_FORMATO.rostro = "Video con rostro";
+NOMBRE_FORMATO.rostro = "UGC";
 
 /** Cómo se llama cada tipo en la barra, corto (cabe en la celda de un día). */
 const CORTO = { anuncio: "Anuncio", beneficios: "Beneficios", servicios: "Productos", educativo: "Educativo", diferenciador: "Diferenciador", maletas: "7 maletas", humano: "Humano" };
 export const nombreCortoDeTipo = (id) => CORTO[idDePilar(id)] ?? "";
 
-/** El valor del selector de formato de una publicación del plan («rostro» para un reel con rostro). Pura. */
+/** El valor del selector de formato de una publicación del plan («rostro» para un UGC). Pura. */
 export const valorDeFormato = (h) => (h?.format === "reel" && h?.rostro ? "rostro" : h?.format ?? "post");
 /** Del valor del selector a la publicación del plan. Pura. */
 export const conFormato = (h, valor) => {
@@ -43,7 +43,7 @@ export const conFormato = (h, valor) => {
   delete resto.rostro;
   return valor === "rostro" ? { ...resto, format: "reel", rostro: true } : { ...resto, format: valor };
 };
-/** «Post», «Video con rostro»… Pura. */
+/** «Post», «UGC»… Pura. */
 export const nombreDeFormato = (h) => NOMBRE_FORMATO[valorDeFormato(h)] ?? "";
 
 /**
@@ -65,7 +65,7 @@ export function semanaDelCliente(cliente, lista = []) {
 }
 
 /**
- * Lo que dice la barra de los días: dow → [«Productos · Carrusel», «Humano · Video con rostro»]. La barra va en el
+ * Lo que dice la barra de los días: dow → [«Productos · Carrusel», «Humano · UGC»]. La barra va en el
  * arranque y esto no: CalendarView lo pide en diferido y la rejilla sólo pinta texto. Pura.
  */
 export function lineasDeLaSemana(cliente, lista = []) {

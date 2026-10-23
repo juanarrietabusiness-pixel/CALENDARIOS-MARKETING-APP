@@ -73,3 +73,12 @@ export const adaptarReferencia = (clienteId, id, { productoId = "", formato = "r
 
 export const borrarReferencia = (clienteId, id) =>
   cambiandoCerebro(clienteId, () => pedir(`${base(clienteId)}/referencias/${encodeURIComponent(id)}`, { method: "DELETE" }));
+
+/**
+ * «Extraer guion y adaptar»: un video de la galería del cliente (`archivoId`) o puesto en una publicación (`clave`) → { original (la transcripción), adaptado (titulo,
+ * guion, ganchos, descripcion), duracion, producto, aviso }. No guarda. `src`: el video, por si lo ve Meta.
+ */
+export const extraerUgc = (clienteId, { archivoId = "", clave = "", productoId = "", duracion = null, nota = "" }, src = "") =>
+  gastando(() => conFotogramas(
+    (fotogramas) => pedir(`${base(clienteId)}/ugc`, post({ ...(archivoId ? { archivoId } : { clave }), productoId, ...(duracion ? { duracion } : {}), nota, ...(fotogramas ? { fotogramas } : {}) })), src,
+  ));

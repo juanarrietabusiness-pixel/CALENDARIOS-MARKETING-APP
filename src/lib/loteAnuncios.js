@@ -273,7 +273,7 @@ function lineaDePieza(r, productos = {}) {
  * Un VIDEO CON ROSTRO (UGC): lo graba una persona de la marca hablando a cámara, no se hace con IA. Su guion es para
  * grabarlo: por tomas, lo que DICE (palabra por palabra), lo que se ve y el texto en pantalla. Lo dice en el pedido.
  */
-export const LINEA_ROSTRO = "VIDEO CON ROSTRO (UGC): lo GRABA una persona de la marca hablando a cámara; no se hace con IA. En el guion, cada línea una toma: «[0–3 s] lo que DICE, palabra por palabra · lo que se ve · texto en pantalla (5 palabras como mucho)». La escena dice dónde y cómo grabarlo.";
+export const LINEA_ROSTRO = "UGC (guion para grabar, 30 s): lo GRABA una persona de la marca hablando a cámara; no se hace con IA. En el guion, cada línea un tramo: «[0–3 s] VOZ: «lo que dice, palabra por palabra» | SE VE: la toma | TEXTO: en pantalla (6 palabras como mucho)», unas 2,5 palabras por segundo. La escena dice dónde y cómo grabarlo.";
 
 /** ¿Lleva guion este formato (carrusel o reel)? Pura. */
 const esGuiado = (formato) => Boolean(FORMATOS_LOTE[formato]?.guiado);
