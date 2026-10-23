@@ -43,6 +43,7 @@ import { escribirDesdeContenido } from "../../api";
 import { rellenarDesdeContenido, tieneContenido, formatoDeMedios } from "../../lib/subir";
 import { medioDeArchivo, apuntarUso } from "../../lib/estudio";
 import { useCrearConIA } from "../../hooks/useCrearConIA";
+import { conPromptListo } from "../../lib/promptImagen";
 import BotonGuardarDrive from "./botonGuardarDrive";
 
 // «Crear carrusel con IA»: sólo se descarga al abrirlo.
@@ -104,6 +105,8 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
   // y con un cambio funcional: el diálogo puede tardar y `post` se habría quedado atrás.
   const { abrir: abrirCreacion, dialogo: dialogoCreacion } = useCrearConIA({
     client, clientId, post, onError,
+    // La idea que dejó «Mejorar idea» al abrir: la publicación la guarda y la próxima vez sale lista.
+    onMejorada: (idea) => setForm((p) => conPromptListo(p, idea)),
     uso: cal && post.id ? { calendarId: cal.dbId || cal.id, postId: post.id } : null,
     onUsarVarias: (archivos) => ponerDeGaleria(archivos, { reemplazar: false }),
     onUsar: (archivo) => {
@@ -164,23 +167,40 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
   const [versionando, setVersionando] = useState(null);
   const [progresoVersion, setProgresoVersion] = useState("");
   const [deshacer, setDeshacer] = useState(null);
+  // «¿Qué quieres?»: lo que la persona pide para la imagen. Lo leen «Crear la imagen aquí», «Otra versión», «Recrear
+  // con mi marca» y «Corregir esta» (ésta lo necesita). Se vacía cuando sale bien: no se cuela en la siguiente.
+  const [indicacion, setIndicacion] = useState("");
+  const campoIndicacion = useRef(null);
+  const uso = cal && post.id ? cal.dbId || cal.id : null;
+  const costoDe = (costo) => costo.toFixed(2).replace(".", ",");
+  /** La pieza nueva ocupa el sitio de `medio` (o se añade, si no había), con «Deshacer». */
+  const ponerEnSuSitio = (medio, nueva) => {
+    const puesto = medioDeArchivo(nueva);
+    setForm((p) => {
+      const lista = mediosDe(p);
+      const medios = medio ? lista.map((m) => (m.src === medio.src ? puesto : m)) : [...lista, puesto];
+      const siguiente = { ...conMedios(p, medios), mediosCambiadosAt: new Date().toISOString() };
+      return !medio && auto.current ? { ...siguiente, format: formatoDeMedios(medios) ?? p.format } : siguiente;
+    });
+    setDeshacer({ antes: medio, ahora: puesto.src });
+    setIndicacion("");
+  };
   // «Recrear con mi marca» (una referencia subida al post) va por el mismo sitio: la pieza nueva ocupa el de la referencia.
   const otraVersion = async (medio, { recrear = false } = {}) => {
     if (versionando || !client) return;
     setVersionando(medio.src);
     setDeshacer(null);
     setEscrito("");
+    onError?.(""); // el aviso de un intento anterior ya no aplica
     try {
       const { otraVersionDelPost, recrearConLaMarca } = await import("../../lib/otraVersion");
       const hacer = recrear ? recrearConLaMarca : otraVersionDelPost;
       const nueva = await hacer({
-        client, post, medio, calendarId: cal && post.id ? cal.dbId || cal.id : null, alProgresar: setProgresoVersion,
-        confirmar: (costo) => window.confirm(`${recrear ? "Recrearla" : "Esta versión"} cuesta unos ${costo.toFixed(2).replace(".", ",")} $. ¿Sigo?`),
+        client, post, medio, indicacion, calendarId: uso, alProgresar: setProgresoVersion,
+        confirmar: (costo) => window.confirm(`${recrear ? "Recrearla" : "Esta versión"} cuesta unos ${costoDe(costo)} $. ¿Sigo?`),
       });
       if (nueva) {
-        const puesto = medioDeArchivo(nueva);
-        setForm((p) => ({ ...conMedios(p, mediosDe(p).map((m) => (m.src === medio.src ? puesto : m))), mediosCambiadosAt: new Date().toISOString() }));
-        setDeshacer({ antes: medio, ahora: puesto.src });
+        ponerEnSuSitio(medio, nueva);
         setEscrito(recrear ? "Lista: recreada con la marca, en el sitio de la referencia." : "Lista la versión nueva, en el sitio de la anterior.");
       }
     } catch (e) {
@@ -189,12 +209,72 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
     setVersionando(null);
     setProgresoVersion("");
   };
+  /**
+   * «Crear la imagen aquí»: la del post, sin abrir el Estudio (lib/otraVersion.js). Con su pedido listo sale directa;
+   * si no lo tenía, la idea mejorada se queda en la publicación para la próxima.
+   */
+  const crearAqui = async () => {
+    if (versionando || !client) return;
+    setVersionando("nueva");
+    setDeshacer(null);
+    setEscrito("");
+    onError?.(""); // el aviso de un intento anterior ya no aplica
+    try {
+      const { crearImagenDelPost } = await import("../../lib/otraVersion");
+      const nueva = await crearImagenDelPost({
+        client, post, indicacion, calendarId: uso, alProgresar: setProgresoVersion,
+        alMejorar: (idea) => setForm((p) => conPromptListo(p, idea)),
+        confirmar: (costo) => window.confirm(`Esta imagen cuesta unos ${costoDe(costo)} $. ¿Sigo?`),
+      });
+      if (nueva) {
+        ponerEnSuSitio(null, nueva);
+        setEscrito("Lista la imagen, en la publicación (también queda en la galería del Estudio).");
+      }
+    } catch (e) {
+      onError?.(`No se pudo crear la imagen: ${e.message}`);
+    }
+    setVersionando(null);
+    setProgresoVersion("");
+  };
+  /** «Corregir esta»: EDITA la misma imagen con lo que dice «¿Qué quieres?» (sólo ese cambio) y ocupa su sitio. */
+  const corregir = async (medio) => {
+    if (versionando || !clientId) return;
+    if (!indicacion.trim()) {
+      onError?.("Escribe en «¿Qué quieres?» qué hay que cambiar de la imagen y pulsa «Corregir esta» otra vez.");
+      campoIndicacion.current?.focus();
+      return;
+    }
+    setVersionando(medio.src);
+    setDeshacer(null);
+    setEscrito("");
+    onError?.(""); // el aviso de un intento anterior ya no aplica
+    setProgresoVersion("Corrigiendo la imagen (sólo lo que pediste)…");
+    try {
+      const { rehacerConComentario } = await import("../../lib/controlEstudio");
+      const nueva = await rehacerConComentario({ clienteId: clientId, src: medio.src, indicacion, medida: medio, texto: post.format === "carrusel" ? "" : post.textoPieza || "" });
+      if (uso && post.id) apuntarUso(clientId, nueva.id, { calendarId: uso, postId: post.id }).catch(() => {});
+      window.dispatchEvent(new Event("ia:gasto"));
+      ponerEnSuSitio(medio, nueva);
+      setEscrito("Lista la imagen corregida, en el sitio de la anterior (la de antes sigue en la galería).");
+    } catch (e) {
+      onError?.(`No se pudo corregir la imagen: ${e.message}`);
+    }
+    setVersionando(null);
+    setProgresoVersion("");
+  };
   const volverALaAnterior = () => {
     if (!deshacer) return;
-    setForm((p) => ({ ...conMedios(p, mediosDe(p).map((m) => (m.src === deshacer.ahora ? deshacer.antes : m))), mediosCambiadosAt: new Date().toISOString() }));
+    setForm((p) => {
+      const lista = mediosDe(p);
+      const medios = deshacer.antes ? lista.map((m) => (m.src === deshacer.ahora ? deshacer.antes : m)) : lista.filter((m) => m.src !== deshacer.ahora);
+      return { ...conMedios(p, medios), mediosCambiadosAt: new Date().toISOString() };
+    });
     setDeshacer(null);
-    setEscrito("Vuelve a estar la imagen anterior.");
+    setEscrito(deshacer.antes ? "Vuelve a estar la imagen anterior." : "Quitada la imagen nueva (sigue en la galería).");
   };
+  // «Crear la imagen aquí» sólo en lo que es UNA imagen: un carrusel y un reel tienen su propio flujo.
+  const deUnaImagen = !post.format || post.format === "post" || post.format === "historia";
+  const puedeCrearAqui = Boolean(client && clientId && deUnaImagen && !mediosDe(post).length);
 
   const esHistoria = post.format === "historia";
   const destino = destinoInstagram(post);
@@ -284,17 +364,34 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           onCrearConIA={abrirCreacion}
           onOtraVersion={client ? otraVersion : null}
           onRecrear={client ? (m) => otraVersion(m, { recrear: true }) : null}
+          onCrearAqui={puedeCrearAqui ? crearAqui : null}
+          onCorregir={clientId ? corregir : null}
           versionando={versionando}
           onCrearCarrusel={post.format === "carrusel" && clientId ? () => setCarrusel(true) : null}
           onCrearReel={post.format === "reel" && clientId ? () => setReel(true) : null}
           onDeLaGaleria={clientId ? () => setGaleria(true) : null}
         />
+        {client && (puedeCrearAqui || conImagen) && (
+          <div className="field que-quieres">
+            <label className="label" htmlFor={`${ids}-quiero`}>¿Qué quieres? <span className="hint">(opcional)</span></label>
+            <textarea
+              id={`${ids}-quiero`} ref={campoIndicacion} className="input" rows={2} maxLength={300} value={indicacion}
+              onChange={(e) => setIndicacion(e.target.value)} aria-describedby={`${ids}-quiero-ayuda`}
+              placeholder={conImagen ? "Ej.: el fondo más claro, el producto más grande, quita la planta" : "Ej.: una mamá con su bebé en la sala, luz de mañana"}
+            />
+            <p id={`${ids}-quiero-ayuda`} className="hint" style={{ margin: 0 }}>
+              {conImagen
+                ? "Lo leen «Otra versión» y «Recrear con mi marca». «Corregir esta» cambia sólo esto en la misma imagen."
+                : "Lo suma «Crear la imagen aquí» a lo que dice la publicación."}
+            </p>
+          </div>
+        )}
         {(progresoVersion || deshacer) && (
           <div role="status" aria-live="polite" className="otra-version-estado">
             {progresoVersion && <p className="hint" style={{ margin: 0 }}><Icon name="sparkles" size={13} /> {progresoVersion}</p>}
             {deshacer && !progresoVersion && (
               <p className="hint" style={{ margin: 0 }}>
-                Versión nueva puesta.{" "}
+                {deshacer.antes ? "Imagen nueva puesta." : "Imagen creada y puesta."}{" "}
                 <button type="button" className="btn btn-ghost btn-sm" onClick={volverALaAnterior}>Deshacer</button>
               </p>
             )}

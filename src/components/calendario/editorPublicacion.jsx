@@ -30,7 +30,7 @@ const esVideoArchivo = (f) => f?.type?.startsWith("video/");
 // Medios
 // ------------------------------------------------------------
 
-export function EditorMedios({ post, clientId, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null, onCrearReel = null, onDeLaGaleria = null, onOtraVersion = null, onRecrear = null, versionando = null }) {
+export function EditorMedios({ post, clientId, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null, onCrearReel = null, onDeLaGaleria = null, onOtraVersion = null, onRecrear = null, onCrearAqui = null, onCorregir = null, versionando = null }) {
   const ids = useId();
   const [eligiendoPortada, setEligiendoPortada] = useState(null);
   const propia = useRef(null);
@@ -245,6 +245,13 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError, e
                     <Icon name="sparkles" size={14} /> {versionando === m.src ? "Creando…" : "Otra versión"}
                   </button>
                 )}
+                {/* La MISMA imagen con sólo lo que se pide en «¿Qué quieres?» (seccionPublicar). */}
+                {m.tipo === "imagen" && onCorregir && (
+                  <button type="button" className="editor-medios-portada-btn" disabled={Boolean(versionando)} onClick={() => onCorregir(m)}
+                    title="Editar esta misma imagen con lo que escribas en «¿Qué quieres?»: el resto se conserva">
+                    <Icon name="pencil" size={13} /> Corregir esta
+                  </button>
+                )}
                 {/* Una referencia subida al post (un anuncio que funciona, un video de IA): rehecha con la marca, aquí. */}
                 {onRecrear && (
                   <button type="button" className="editor-medios-portada-btn" disabled={Boolean(versionando)} onClick={() => onRecrear(m)}
@@ -314,6 +321,13 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError, e
         {clientId && onDeLaGaleria && (
           <button type="button" className="btn btn-secondary btn-sm" onClick={onDeLaGaleria} disabled={!!subiendo}>
             <Icon name="image" size={16} /> De la galería
+          </button>
+        )}
+        {/* La imagen del post hecha aquí mismo, sin abrir el Estudio; «Crear con IA» sigue para revisarla antes. */}
+        {onCrearAqui && (
+          <button type="button" className="btn btn-sm btn-primary" onClick={onCrearAqui} disabled={!!subiendo || Boolean(versionando)} aria-busy={versionando === "nueva" || undefined}
+            title="Con su idea, su texto, el kit y el modelo del cliente. Sale en la publicación y en la galería.">
+            <Icon name="sparkles" size={16} /> {versionando === "nueva" ? "Creando…" : "Crear la imagen aquí"}
           </button>
         )}
         {clientId && onCrearConIA && (

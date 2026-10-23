@@ -235,7 +235,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       nota: modo === "publicacion" ? String(datos.nota ?? "").slice(0, 600) : "",
       estrategia: datos.estrategia && typeof datos.estrategia === "object" ? datos.estrategia : null,
     }),
-    salida: plan.reduce((t, r) => t + (FORMATOS_LOTE[r.formato ?? formato]?.guiado ? 850 : 480), 0) + 800,
+    salida: plan.reduce((t, r) => t + (FORMATOS_LOTE[r.formato ?? formato]?.guiado ? 850 : 600), 0) + 800,
     funcion: modo === "mes" || modo === "plan" ? "lote del mes" : modo === "publicacion" ? "publicación" : "ideas de anuncios",
   });
   const nombres = new Map(rotan.map((p) => [p.id, p.nombre]));

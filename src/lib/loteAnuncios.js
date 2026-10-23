@@ -43,6 +43,7 @@
 import { NIVELES_CONSCIENCIA, CLAVES_NIVEL, nombreDeNivel } from "./consciencia.js";
 import { PLANTILLAS_TEXTO } from "./carrusel.js";
 import { PILARES, pilarDe, nombreDePilar } from "./pilares.js";
+import { camposDePromptListo } from "./promptImagen.js";
 
 export const POR_NIVEL = 5;
 export const MAX_POR_NIVEL = 10;
@@ -51,6 +52,8 @@ export const MAX_LOTE = 30;
 export const MAX_TITULAR = 40;
 export const MAX_APOYO = 90;
 export const MAX_ESCENA = 400;
+/** El pedido de la imagen ya listo (escena + texto exacto), como el de «Mejorar idea». */
+export const MAX_IMAGEN = 900;
 export const MAX_BRIEF = 300;
 export const MAX_DESCRIPCION = 600;
 export const MAX_TITULO = 60;
@@ -311,6 +314,9 @@ export function pedidoDeProduccion({
   const encabezado = mixto
     ? `Escribe ${cuantas} para ${marca}${mes ? " del mes" : ""}. ${plan.length === 1 ? "Tiene" : "Cada una tiene"} YA decidido su FORMATO (entre corchetes), su tipo de contenido (lo que comunica), su nivel de consciencia, su gancho y su composición (la de la portada o el primer plano): respétalos. La idea de cada una es de SU formato, nunca de otro.`
     : `Escribe ${cuantas} ${esGuiado(formato) ? `de formato ${FORMATOS_LOTE[formato].nombre}` : `de una imagen (${FORMATOS_LOTE[formato]?.nombre ?? "post"})`} para ${marca}${mes ? ", una por día del mes" : ""}. ${plan.length === 1 ? "Tiene" : "Cada una tiene"} YA decidido su tipo de contenido (lo que comunica), su nivel de consciencia, su gancho y su composición (la de la portada o el primer plano): respétalos.`;
+  // Las de una imagen traen además su pedido para el motor, ya listo: así «Crear con IA» desde el post no espera a
+  // «Mejorar idea» (lib/promptImagen.js).
+  const deUnaImagen = mixto ? formatos.some((f) => !esGuiado(f)) : !esGuiado(formato);
   const guionLineas = guiados.map((f) => (mixto ? GUION_DE_FORMATO[f].replace('- "guion":', `- "guion" (SÓLO en las de formato ${FORMATOS_LOTE[f].nombre}):`) : GUION_DE_FORMATO[f]));
   return [
     encabezado,
@@ -328,6 +334,7 @@ export function pedidoDeProduccion({
     `- "titular": el texto grande de la pieza: ${MAX_TITULAR} caracteres y 8 palabras como mucho. Empieza por un verbo o una pregunta, nunca por el nombre de la marca. Sin el signo «·».`,
     `- "apoyo": una línea corta debajo (${MAX_APOYO} caracteres), o vacía. Si el titular ya lo dice todo, vacía.`,
     `- "escena": qué se VE, en una o dos frases sencillas (sujeto, acción, lugar, luz), con su composición. SIN texto dentro. Si sale una persona, descríbela distinta de las de las demás piezas (edad, rasgos, ropa, lugar).`,
+    deUnaImagen ? `- "imagen"${mixto ? " (SÓLO en las de una imagen: post o historia)" : ""}: lo que se le pide al generador de imágenes, listo para usar: la escena con su composición en una o dos frases sencillas (60 palabras como mucho, sin contar el texto), y el titular y el apoyo EXACTOS entre comillas, tal cual los escribiste, legibles y bien jerarquizados (lo primero grande). Sin listas ni términos técnicos.` : "",
     `- "descripcion": el texto de la publicación (caption), de 2 a 4 frases, con un llamado a la acción si el tipo lo pide; sin hashtags (${MAX_DESCRIPCION} caracteres).`,
     '- "hashtags": de 5 a 10 hashtags útiles para esa publicación (del tema, del rubro y de la zona; ninguno inventado de otra marca), separados por espacios.',
     ...guionLineas,
@@ -342,7 +349,7 @@ export function pedidoDeProduccion({
     "",
     estudio ? `ESTUDIO DE MERCADO:\n${String(estudio).slice(0, 8000)}\n` : "",
     contexto ? `LO QUE SE SABE DE LA MARCA:\n${String(contexto).slice(0, 6000)}\n` : "",
-    `Responde SOLO con JSON, una por número, así: {"ideas":[{"n":1,"titulo":"…","brief":"…","titular":"…","apoyo":"…","escena":"…","descripcion":"…","hashtags":"#… #…"${guiados.length ? ',"guion":"…"' : ""}}]}`,
+    `Responde SOLO con JSON, una por número, así: {"ideas":[{"n":1,"titulo":"…","brief":"…","titular":"…","apoyo":"…","escena":"…"${deUnaImagen ? ',"imagen":"…"' : ""},"descripcion":"…","hashtags":"#… #…"${guiados.length ? ',"guion":"…"' : ""}}]}`,
   ].filter((l, i, t) => l !== "" || t[i - 1] !== "").join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
@@ -379,13 +386,18 @@ export function leerProduccion(texto, plan = [], formato = "post") {
     const titular = limpiarTitular(x?.titular);
     const escena = corto(x?.escena, MAX_ESCENA);
     if (!titular || !escena) return [];
+    // El pedido listo sólo vale si trae el texto EXACTO (si lo reescribió, el motor escribiría otra cosa).
+    const apoyo = corto(x?.apoyo, MAX_APOYO).replace(/\s*·\s*/g, ". ");
+    const imagen = esGuiado(r.formato ?? formato) ? "" : corto(x?.imagen, MAX_IMAGEN);
+    const imagenValida = imagen && imagen.includes(titular) && (!apoyo || imagen.includes(apoyo));
     const grupo = r.fecha ? `mes-${r.fecha}` : r.tipo === "anuncio" ? r.nivel : r.tipo;
     vistos[grupo] = (vistos[grupo] ?? 0) + 1;
     return [{
       id: `${grupo}-${vistos[grupo]}`, ...r, titular, escena,
       titulo: corto(x?.titulo, MAX_TITULO) || titular,
       brief: corto(x?.brief, MAX_BRIEF),
-      apoyo: corto(x?.apoyo, MAX_APOYO).replace(/\s*·\s*/g, ". "),
+      apoyo,
+      ...(imagenValida ? { imagen } : {}),
       descripcion: String(x?.descripcion ?? "").trim().slice(0, MAX_DESCRIPCION),
       ...(limpiarHashtags(x?.hashtags) ? { hashtags: limpiarHashtags(x.hashtags) } : {}),
       // El guion sólo en un carrusel o un reel: en un post sobra, y la pieza lo leería como láminas.
@@ -422,7 +434,7 @@ export function publicacionDePieza({ id, idea, archivo = null, archivos = null, 
   const prod = producto ?? (idea.productoId ? { id: idea.productoId, nombre: idea.producto ?? "" } : null);
   const lista = (archivos ?? (archivo ? [archivo] : [])).filter(Boolean);
   const medioDe = (a) => ({ src: a.src, tipo: a.tipo === "video" ? "video" : "imagen", ...(a.ancho && a.alto ? { ancho: a.ancho, alto: a.alto } : {}) });
-  return {
+  const pub = {
     id,
     format: FORMATOS_LOTE[formato]?.format ?? "post",
     title: idea.titulo || idea.titular,
@@ -446,6 +458,8 @@ export function publicacionDePieza({ id, idea, archivo = null, archivos = null, 
     status: "pending",
     ...(lista.length ? { medios: lista.map(medioDe) } : { aprobacion: "idea" }),
   };
+  // Sin archivo todavía: el pedido de su imagen, listo para «Crear con IA» desde el post.
+  return idea.imagen && !lista.length && !esGuiado(formato) ? { ...pub, ...camposDePromptListo(pub, idea.imagen) } : pub;
 }
 export const publicacionDeAnuncio = publicacionDePieza;
 

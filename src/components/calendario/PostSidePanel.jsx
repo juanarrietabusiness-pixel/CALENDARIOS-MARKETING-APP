@@ -50,6 +50,7 @@ import { resumenCola } from "../../lib/cola";
 import { CopyButton } from "./primitivas";
 import { fieldHeaderStyle } from "./formato";
 import { SeRepite } from "./repeticionesMes";
+import { promptListo } from "../../lib/promptImagen";
 
 // «Idea» planifica; «Subir» es archivo, texto y cuándo sale —como lo llama
 // la agencia—. Los valores internos siguen siendo contenido/publicar.
@@ -355,6 +356,11 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           <label className="label" htmlFor={`${ids}-escena`}>Qué se ve <span style={{ fontWeight: 400, textTransform: "none" }}>· para crear la imagen</span></label>
           <textarea id={`${ids}-escena`} className="textarea" style={{ minHeight: 60 }} maxLength={400} value={form.escena || ""}
             onChange={(e) => sf("escena", e.target.value)} placeholder="Una mamá abre el sofá cama en una sala luminosa de tarde…" />
+          {/* El pedido de la imagen ya escrito (lib/promptImagen.js): «Crear la imagen aquí» y «Crear con IA» no esperan
+              a «Mejorar idea». Si se cambia qué se ve o el texto, deja de valer y se vuelve a preparar al crear. */}
+          {promptListo(form) && (
+            <p className="hint" style={{ margin: 0 }}><Icon name="check" size={13} /> Lista para crear la imagen: sale sin esperar a «Mejorar idea».</p>
+          )}
         </div>
 
         {/* Lo que va ESCRITO encima del diseño (no el caption). En un carrusel va lámina por lámina en el guion. */}

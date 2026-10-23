@@ -13,6 +13,12 @@
 //     UNA pieza (pieza.js): la escena nueva sobre su idea y su texto, el kit,
 //     las fotos de su producto, su tipo de contenido y el logo.
 //
+// «Crear la imagen aquí» (`crearImagenDelPost`) es lo mismo para un post que
+// aún no tiene imagen: su pedido listo (lib/promptImagen.js) o, si no lo
+// tiene, el de la publicación mejorado una vez —y se le devuelve para que lo
+// guarde—, sin abrir el Estudio. Las tres aceptan `indicacion`: lo que la
+// persona escribió en «¿Qué quieres?» encima de la imagen.
+//
 // Pasa por el control de calidad y el logo estampado como cualquier pieza
 // del Estudio. Se carga aparte: arrastra el catálogo.
 // ============================================================
@@ -20,17 +26,53 @@
 import * as api from "./estudio";
 import { ajustesDe, estimar, modeloPorId, porPrecio, MODELOS, CONFIRMAR_DESDE, MAX_PROMPT } from "./estudioCatalogo";
 import { TOMA_DE_OTRA_MARCA, NOTA_OTRA_MARCA } from "./recrear";
-import { ideaDelPedido, conOtraEscena } from "./kitMarca";
+import { ideaDelPedido, conOtraEscena, nombreDePreset } from "./kitMarca";
 import { apoyosDePieza, pedidoDePieza, lineaDeTexto } from "./pieza";
 import { presetDePilar } from "./pilares";
+import { promptListo } from "./promptImagen";
 import { esperarArchivos } from "./carruselEstudio";
 import { controlEncendido, controlarYCorregir } from "./controlEstudio";
 import { conLogoSiToca } from "./logoEstudio";
 
 const PARA_HISTORIA = new Set(["historia", "reel"]);
 
+/** Lo que pidió la persona en «¿Qué quieres?», como una línea del pedido (o vacío). Pura. */
+export const lineaDeIndicacion = (indicacion) => {
+  const t = String(indicacion ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
+  return t ? `Además, la agencia pide: ${t.replace(/[.\s]+$/, "")}.` : "";
+};
+/** La idea con lo que pidió la persona detrás (para la IA que escribe la escena nueva). Pura. */
+const conIndicacion = (idea, indicacion) => {
+  const t = String(indicacion ?? "").trim();
+  return t ? `${idea}\n\nLo que pide la agencia para la imagen nueva: ${t.slice(0, 300)}` : idea;
+};
+
+/** Los motores con llave y lo del Estudio del cliente, de una vez. */
+async function leerTodo(clienteId) {
+  const [g, m] = await Promise.all([api.leerEstudio(clienteId), api.leerMotores()]);
+  return { g, activos: Object.fromEntries(Object.entries(m?.motores ?? {}).map(([k, v]) => [k, v.activo])) };
+}
+
+/** La proporción de la imagen nueva: 9:16 en historia o reel; si no, la de la que había (o 4:5), si el modelo la tiene. */
+function proporcionPara(modelo, post, medio = null) {
+  const deseada = PARA_HISTORIA.has(post.format) ? "9:16" : (medio && api.proporcionDeMedidas(medio.ancho, medio.alto)) || "4:5";
+  const valores = modelo.ajustes?.aspectRatio?.valores ?? [];
+  return valores.includes(deseada) ? deseada : valores.includes("4:5") ? "4:5" : "";
+}
+
+/** Lo que pasa después de que el motor entrega: el control, el logo estampado y el uso en la publicación. */
+async function terminar({ clienteId, nueva, post, kit, activos, calendarId, alProgresar }) {
+  if (controlEncendido()) {
+    alProgresar("Revisando la imagen…");
+    nueva = (await controlarYCorregir({ clienteId, archivo: nueva, texto: post.format === "carrusel" ? null : (post.textoPieza || null), activos })).archivo;
+  }
+  nueva = await conLogoSiToca({ clienteId, archivo: nueva, kit });
+  if (calendarId) await api.apuntarUso(clienteId, nueva.id, { calendarId, postId: post.id }).catch(() => null);
+  return nueva;
+}
+
 /** El pedido de la versión nueva, sin crear nada. → { pedido, costo } (pedido listo para `pedirImagenes`). */
-async function prepararVersion({ clienteId, client, post, medio, g, activos }) {
+async function prepararVersion({ clienteId, client, post, medio, g, activos, indicacion = "" }) {
   const kit = g?.kit ?? {};
   // 1. Una pieza del Estudio: su mismo pedido, con otra escena.
   const archivo = (g?.archivos ?? []).find((a) => a.src === medio.src && a.tipo === "imagen");
@@ -39,12 +81,12 @@ async function prepararVersion({ clienteId, client, post, medio, g, activos }) {
   // Con el texto de la plantilla encima (lote), la nueva saldría cruda: mejor por el camino de la publicación.
   if (archivo && trabajo && suyo && !archivo.ajustes?.plantilla && (suyo.motor === "prueba" || activos[suyo.motor])) {
     const { escena, cola } = api.partirEscena(ideaDelPedido(archivo.prompt));
-    const r = await api.versionesDeIdea(clienteId, { idea: escena, n: 1, tipo: "imagen" });
+    const r = await api.versionesDeIdea(clienteId, { idea: conIndicacion(escena, indicacion), n: 1, tipo: "imagen" });
     const nueva = r?.versiones?.[0];
     if (nueva) {
       const medios = Object.fromEntries(Object.entries(trabajo.medios ?? {}).filter(([, l]) => Array.isArray(l) && l.length));
       const ajustes = ajustesDe(suyo, archivo.ajustes ?? trabajo.ajustes ?? {}, medios);
-      const prompt = conOtraEscena(archivo.prompt, [nueva, cola].filter(Boolean).join(" ")).slice(0, MAX_PROMPT);
+      const prompt = conOtraEscena(archivo.prompt, [nueva, lineaDeIndicacion(indicacion), cola].filter(Boolean).join(" ")).slice(0, MAX_PROMPT);
       return { pedido: { modelo: suyo.id, prompt, n: 1, ajustes, medios }, costo: estimar(suyo, 1, ajustes) };
     }
   }
@@ -54,17 +96,15 @@ async function prepararVersion({ clienteId, client, post, medio, g, activos }) {
   if (!modelo) throw new Error("No hay ningún modelo de imagen con llave (Ajustes → IA).");
   const base = api.promptDePublicacion(post, { conTexto: false });
   if (!base.trim()) throw new Error("La publicación no tiene idea ni texto para hacer otra versión: escribe qué se ve.");
-  const r = await api.versionesDeIdea(clienteId, { idea: base, n: 1, tipo: "imagen" }).catch(() => null);
+  const r = await api.versionesDeIdea(clienteId, { idea: conIndicacion(base, indicacion), n: 1, tipo: "imagen" }).catch(() => null);
   const escena = r?.versiones?.[0] || `${base} Una composición distinta a la anterior: otro encuadre y otra escena.`;
   const fotos = api.fotosDelProducto(g?.productos ?? [], post.productoId ?? "");
   const preset = presetDePilar(post.pilar, post.pilarSub);
   const apoyos = apoyosDePieza({ kit, preset, archivos: g?.archivos ?? [], fotos, modelo });
-  const deseada = PARA_HISTORIA.has(post.format) ? "9:16" : api.proporcionDeMedidas(medio.ancho, medio.alto) || "4:5";
-  const valores = modelo.ajustes?.aspectRatio?.valores ?? [];
   const pedido = pedidoDePieza({
     kit, idea: escena, preset, apoyos, modelo, marca: client.name, rubro: client.industry ?? "",
-    aspectRatio: valores.includes(deseada) ? deseada : valores.includes("4:5") ? "4:5" : "",
-    extra: post.format === "carrusel" ? "" : lineaDeTexto(post.textoPieza),
+    aspectRatio: proporcionPara(modelo, post, medio),
+    extra: [lineaDeIndicacion(indicacion), post.format === "carrusel" ? "" : lineaDeTexto(post.textoPieza)].filter(Boolean).join(" "),
   });
   return { pedido, costo: estimar(modelo, 1, pedido.ajustes) };
 }
@@ -73,24 +113,60 @@ async function prepararVersion({ clienteId, client, post, medio, g, activos }) {
  * Crea la otra versión y espera a que salga. `confirmar(costo)` se llama si cuesta desde 0,50 $ (devuelve si sigue).
  * → el archivo nuevo de la galería, o null si no se confirmó.
  */
-export async function otraVersionDelPost({ client, post, medio, calendarId = null, confirmar = () => true, alProgresar = () => {} }) {
+export async function otraVersionDelPost({ client, post, medio, indicacion = "", calendarId = null, confirmar = () => true, alProgresar = () => {} }) {
   const clienteId = client.dbId || client.id;
   alProgresar("Escribiendo otra escena con la misma información…");
-  const [g, m] = await Promise.all([api.leerEstudio(clienteId), api.leerMotores()]);
-  const activos = Object.fromEntries(Object.entries(m?.motores ?? {}).map(([k, v]) => [k, v.activo]));
-  const { pedido, costo } = await prepararVersion({ clienteId, client, post, medio, g, activos });
+  const { g, activos } = await leerTodo(clienteId);
+  const { pedido, costo } = await prepararVersion({ clienteId, client, post, medio, g, activos, indicacion });
   if (costo >= CONFIRMAR_DESDE && !confirmar(costo)) return null;
   alProgresar("Creando la imagen nueva…");
   const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true, ...(calendarId ? { calendarId, postId: post.id } : {}) });
-  let [nueva] = await esperarArchivos(clienteId, trabajo);
+  const [nueva] = await esperarArchivos(clienteId, trabajo);
   if (!nueva) throw new Error("La imagen nueva no llegó. Prueba otra vez.");
-  if (controlEncendido()) {
-    alProgresar("Revisando la imagen…");
-    nueva = (await controlarYCorregir({ clienteId, archivo: nueva, texto: post.format === "carrusel" ? null : (post.textoPieza || null), activos })).archivo;
+  return terminar({ clienteId, nueva, post, kit: g?.kit ?? {}, activos, calendarId, alProgresar });
+}
+
+// ------------------------------------------------------------
+// «Crear la imagen aquí»: la del post, sin abrir el Estudio
+// ------------------------------------------------------------
+
+/**
+ * La imagen de una publicación que aún no la tiene, hecha ahí mismo con el modelo del cliente, su kit, las fotos de su
+ * producto, su tipo de contenido y el logo. La idea es su pedido listo; sin él, la publicación pasa una vez por
+ * «Mejorar idea» y `alMejorar(idea)` la recibe para guardarla (la próxima sale sin esperar). `confirmar(costo)` se
+ * llama si cuesta desde 0,50 $, como «Otra versión». → el archivo nuevo, o null si no se confirmó.
+ */
+export async function crearImagenDelPost({ client, post, indicacion = "", calendarId = null, confirmar = () => true, alProgresar = () => {}, alMejorar = () => {} }) {
+  const clienteId = client.dbId || client.id;
+  alProgresar("Preparando la imagen…");
+  const { g, activos } = await leerTodo(clienteId);
+  const kit = g?.kit ?? {};
+  const modelo = api.modeloPreferido(activos, "imagen", kit.modelos?.imagen);
+  if (!modelo) throw new Error("No hay ningún modelo de imagen con llave (Ajustes → IA).");
+  const preset = presetDePilar(post.pilar, post.pilarSub);
+  let idea = promptListo(post);
+  if (!idea) {
+    const base = api.promptDePublicacion(post);
+    if (!base.trim()) throw new Error("La publicación no dice qué se ve: escribe la idea o «Qué se ve» primero.");
+    alProgresar("Dejando la idea lista para el motor…");
+    const r = await api.mejorarIdea(clienteId, { idea: base, tipo: "imagen", pieza: preset ? nombreDePreset(preset, kit) : "" }).catch(() => null);
+    idea = r?.idea || base;
+    if (r?.idea) alMejorar(r.idea);
   }
-  nueva = await conLogoSiToca({ clienteId, archivo: nueva, kit: g?.kit ?? {} });
-  if (calendarId) await api.apuntarUso(clienteId, nueva.id, { calendarId, postId: post.id }).catch(() => null);
-  return nueva;
+  const fotos = api.fotosDelProducto(g?.productos ?? [], post.productoId ?? "");
+  const apoyos = apoyosDePieza({ kit, preset, archivos: g?.archivos ?? [], fotos, modelo });
+  // El texto exacto ya va dentro de la idea (el pedido listo o la publicación): no se repite.
+  const pedido = pedidoDePieza({
+    kit, idea, preset, apoyos, modelo, marca: client.name, rubro: client.industry ?? "",
+    aspectRatio: proporcionPara(modelo, post), extra: lineaDeIndicacion(indicacion),
+  });
+  const costo = estimar(modelo, 1, pedido.ajustes);
+  if (costo >= CONFIRMAR_DESDE && !confirmar(costo)) return null;
+  alProgresar(`Creando la imagen con ${modelo.nombre}…`);
+  const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true, ...(calendarId ? { calendarId, postId: post.id } : {}) });
+  const [nueva] = await esperarArchivos(clienteId, trabajo);
+  if (!nueva) throw new Error("La imagen no llegó. Prueba otra vez.");
+  return terminar({ clienteId, nueva, post, kit, activos, calendarId, alProgresar });
 }
 
 // ------------------------------------------------------------
@@ -111,20 +187,20 @@ function modeloQueSigueVideo(activos, fijado) {
  * logo. Como «Recrear un anuncio» del Estudio (lib/recrear.js), pero sin salir del post: la pieza nueva ocupa el sitio
  * de la referencia. → el archivo nuevo, o null si no se confirmó el costo.
  */
-export async function recrearConLaMarca({ client, post, medio, calendarId = null, confirmar = () => true, alProgresar = () => {} }) {
+export async function recrearConLaMarca({ client, post, medio, indicacion = "", calendarId = null, confirmar = () => true, alProgresar = () => {} }) {
   const clienteId = client.dbId || client.id;
   const ref = api.archivoDesdeSrc(medio.src, clienteId);
   if (!ref) throw new Error("Esa referencia no está en el almacén de este cliente: súbela otra vez a la publicación.");
   const video = medio.tipo === "video";
   alProgresar("Preparando la versión con tu marca…");
-  const [g, m] = await Promise.all([api.leerEstudio(clienteId), api.leerMotores()]);
-  const activos = Object.fromEntries(Object.entries(m?.motores ?? {}).map(([k, v]) => [k, v.activo]));
+  const { g, activos } = await leerTodo(clienteId);
   const kit = g?.kit ?? {};
   const fotos = api.fotosDelProducto(g?.productos ?? [], post.productoId ?? "");
   const contexto = api.promptDePublicacion(post, { conTexto: false });
   const idea = [
     `Recrea la pieza de referencia para ${client.name}: conserva su forma (composición, encuadre, ritmo${video ? ", planos y movimiento de cámara" : ""}), pero con el producto, la marca y el mensaje de ${client.name}; nada del producto, el texto ni el logo de la referencia.`,
     contexto ? `De qué va: ${contexto}` : "",
+    lineaDeIndicacion(indicacion),
   ].filter(Boolean).join(" ");
 
   let pedido;

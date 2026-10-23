@@ -326,7 +326,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   };
 
   /** La IA devuelve la idea más clara y sencilla, en el mismo campo. No gasta en el motor. */
-  const mejorarConIA = async () => {
+  const mejorarConIA = async ({ alAbrir = false } = {}) => {
     if (!form || mejorando) return;
     if (!form.prompt.trim()) { avisar(false, "Escribe primero la idea, con tus palabras."); promptRef.current?.focus(); return; }
     setMejorando(true);
@@ -337,6 +337,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       setConfirmando(null);
       setIdeaAnterior(antes);
       setForm((f) => ({ ...f, prompt: r.idea.slice(0, MAX_PROMPT) }));
+      // La de al abrir desde un post se queda en él: la próxima vez sale lista (lib/promptImagen.js).
+      if (alAbrir && form.tipo === "imagen") inicial?.alMejorar?.(r.idea);
       avisar(true, ["Listo: revisa la idea antes de crear.", r.aviso ?? ""].filter(Boolean).join(" "));
       enfocarPrompt();
     } catch (e) {
@@ -387,7 +389,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   useEffect(() => {
     if (yaMejorado.current || !desdePost || !mejorarSolo || lectura || !form?.prompt?.trim()) return;
     yaMejorado.current = true;
-    mejorarConIA();
+    // El pedido ya llega listo (lo escribió el motor de ideas): mejorarlo otra vez sólo haría esperar.
+    if (inicial?.listo) return;
+    mejorarConIA({ alAbrir: true });
   });
 
   // ---------- «Dame ideas» ----------

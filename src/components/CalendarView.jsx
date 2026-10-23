@@ -11,7 +11,6 @@ import {
 } from "../lib/db";
 import { resumenCola, aprobadasSinProgramar } from "../lib/cola";
 import { navegar, analizarRuta, construirRuta } from "../lib/rutas";
-import { casillasSinIdea, estrategiaDelCalendario, ideasDelPlan, rellenarConIdea } from "../lib/ideaPublicacion";
 import { ideasDeRevision, porRevisar } from "../lib/revisionIdeas";
 import { agruparPorSemana, semanaInicial, rangoSemana } from "../lib/semanas";
 import { moverEnCalendario, ponerEnDia, copiaDePublicacion } from "../lib/subir";
@@ -827,6 +826,8 @@ export default function CalendarView({
       // Por el MISMO motor que «Planificar mes» y «Producir en lote» (lib/ideaPublicacion.js): cada una con su formato,
       // su tipo y su matriz y la estrategia del mes; vuelve con idea, qué se ve, texto de la pieza o guion, caption,
       // hashtags y forma. Sólo rellena lo vacío.
+      // En diferido: el motor de ideas sólo se baja al pulsar (la carga inicial tiene tope).
+      const { casillasSinIdea, estrategiaDelCalendario, ideasDelPlan, rellenarConIdea } = await import("../lib/ideaPublicacion");
       const casillas = casillasSinIdea({ ...cal, days: currentDays });
       if (casillas.length) {
         addDebug(`Fase 1: ${casillas.length} publicaciones sin idea`);
