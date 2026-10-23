@@ -135,7 +135,11 @@ src/
                           también lo importa el Worker)
     consciencia.js        Niveles de consciencia (Schwartz) y deseos de Reiss: pequeño, para el bundle principal
     ugc.js                UGC · guion para grabar: tramos «[0–3 s] VOZ: «…» | SE VE: … | TEXTO: …», duración (15–60 s, 2,5
-                          palabras/s), ganchos, copiar voz y tomas; transcribir un video y adaptarlo (puro; también el Worker)
+                          palabras/s), ganchos, copiar voz y tomas; transcribir un video y adaptarlo; la «Voz UGC» de cada
+                          cliente; «Guiones para grabar» (los UGC sin video y el mensaje de la sesión) (puro; también el Worker)
+    formulasUgc.js        Las fórmulas UGC de la agencia: limpiar, repartir en otra duración, la línea para la IA, que la IA
+                          escoja y diga cuál, sacarla de un video transcrito (puro; también el Worker)
+    formulasUgcApi.js     Cliente de /api/formulas-ugc
     videoCorto.js         Guiones de video de 8 s (Veo por fal) o 10 s (Omni): gancho, beneficio y cierre; el pedido
                           al modelo sin texto largo ni logo (puro; también lo importa el Worker)
     portadas.js           Las piezas del perfil por plantilla: estilos de portada, colores del kit, medidas (puro)
@@ -358,7 +362,10 @@ src/
     calendario/navegadorMes.jsx ‹ Octubre 2026 › Hoy: recorrer el calendario siempre activo
     calendario/GuionUgc.jsx  El guion de un UGC en el panel: columnas, duración, ganchos, copiar, «Extraer guion de un video»
     calendario/ExtraerUgc.jsx  «Extraer guion y adaptar»: el video (de la publicación, la galería o subido), producto,
-                          duración; el original transcrito y el adaptado → la publicación o el banco (lazy)
+                          duración; el original transcrito y el adaptado → la publicación o el banco; «Guardar como fórmula» (lazy)
+    calendario/FormulasUgc.jsx  Las fórmulas UGC de la agencia: la lista, corregir, quitar, escribir una (lazy)
+    calendario/GuionesParaGrabar.jsx  «Guiones para grabar»: los UGC del mes sin video, escoger y ordenar, copiar o compartir
+                          todo en un mensaje; pasan a «En producción» (lazy)
     calendario/tipoContenido.jsx  «Tipo de contenido» del panel: tipo, producto, nivel, perfil y deseo
     calendario/campanaMes.jsx   La tarjeta de la campaña: nombre del mes, semanas, ofertas, fechas
     calendario/repeticionesMes.jsx  Lo que se repite este mes (añadir, ahora no, no repetir más) y «Se repite» del panel
@@ -450,7 +457,8 @@ worker/
                           pesos.js (los pesos que se leen en cada búsqueda); aprender.js
                           (lo que TOCA la base: usos, señales, refuerzo, notas automáticas,
                           historial, resultados y correcciones); proponer.js (la IA propone
-                          reglas y una persona las decide)
+                          reglas y una persona las decide); rubro.js y vozUgc.js (la IA propone
+                          «Saber del rubro» y la «Voz UGC»; se guardan como nota)
     herramientasServidor.js  Lo que el asistente consulta sin el navegador:
                           web, el cerebro (notas cortas enteras), calendarios, tareas, ideas
     equipo.js             Avisos (guardar y anunciar), historial y asignaciones
@@ -495,7 +503,8 @@ worker/
                           (/api/webhooks/meta, sin sesión)
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
     plantillas.js         /api/plantillas-plan: listar, guardar (cambiar una de arranque o crear) y borrar/restaurar
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único)
+    formulasUgc.js        /api/formulas-ugc: las fórmulas UGC de la agencia (listar, guardar, corregir, quitar, proponer)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1480,6 +1489,34 @@ son del servidor.
   guarda nada: «Usar en la publicación» (guion, ganchos, duración; caption y título sólo si estaban vacíos) o «Guardar en
   el banco de ideas». También desde el visor de un video de la galería («Extraer guion UGC»). Con Meta como motor de
   video va por fotogramas (sin audio: sin voz). **Nada de esto se ha probado contra Gemini real.**
+- **La FÓRMULA de un UGC es de la agencia; la VOZ, de cada cliente** (`formulas_ugc`, 0045; `src/lib/formulasUgc.js`,
+  `worker/rutas/formulasUgc.js`, `FormulasUgc.jsx`; la voz en `worker/lib/cerebro/vozUgc.js`). Un guion fijo para todos no
+  sirve y aprender sólo del cliente tampoco: los videos que funcionan traen formas nuevas.
+  · **Una fórmula es la receta sin el contenido**: tramos con lo que HACE cada uno, tipo de gancho, por qué funciona y
+  cuándo conviene. «Guardar como fórmula» (en «Extraer guion y adaptar», sólo quien cambia lo de la agencia) le pide a la
+  IA que la ABSTRAIGA del video ORIGINAL transcrito (`POST /api/formulas-ugc/proponer`, función «fórmula UGC», no guarda)
+  y se abre en el editor; también se escribe a mano. La duración original se lleva a 15/30/45/60 y al usarla los tramos se
+  reparten en la del video (`tramosEnDuracion`). Son del ESPACIO (sin `client_id`): las ven todos y las cambian admin y
+  editores sin clientes asignados (403, como las plantillas de plan); aviso `formulas-ugc`.
+  · **En el panel, «Fórmula»** (`post.formulaUgc`): vacía = «La IA escoge la que encaje» (`bloqueDeFormulas`, que le pide
+  empezar con «FÓRMULA: <nombre>»; `formulaUsada` lo pasa a su id y `leerGuionConGanchos`/`partirGuionUgc` quitan esa línea
+  del guion) y la publicación recuerda cuál siguió; escogida, la IA la sigue (`lineaDeFormula`) aunque la idea ya trajera
+  guion (se reescribe con ella). El lote hace lo mismo con las casillas UGC (`ugc` en `pedidoDeProduccion`, `"formula"` en
+  la respuesta → `formulaUgc` por `publicacionDePieza` y `rellenarConIdea`). Con `formulaUgc` en cada publicación sale
+  después qué fórmula funciona con cada cliente (aún no se calcula).
+  · **La «Voz UGC»** es una nota del cerebro con ruta fija (`RUTA_VOZ_UGC`, o por su título si se escribió a mano): quién
+  habla, tú o usted, cómo empieza y cierra, qué no dice nunca. «Voz UGC» en la pestaña Cerebro (`POST
+  /api/cerebro/<c>/voz-ugc`, función «voz UGC») la PROPONE leyendo los guiones UGC de sus calendarios (`guionesUgcDe`: los
+  aprobados primero) y la nota de ahora; no guarda, como «Saber del rubro». Va en todo guion UGC (`lineaDeVozUgc`: el
+  botón «IA» del panel la lee con `GET …/voz-ugc` y el lote con `vozUgcDe`); una nota interna no cuenta.
+  · **«Guiones para grabar»** (menú «⋯» del calendario, `GuionesParaGrabar.jsx`): los UGC del mes sin video
+  (`ugcParaGrabar`), por fecha; se marcan y ordenan y sale UN mensaje (`textoParaGrabar`: la sesión con el cliente y el
+  día, y cada video con «Lo que dices» y «Tomas») para copiar o compartir. Al copiarlo o compartirlo pasan a la etapa
+  «En producción» (`etapa: "produccion"`, la del tablero) y no se vuelven a ofrecer salvo con «Enseñar los ya enviados».
+  Cerrar la hoja de compartir (AbortError) no marca nada.
+  · **Un diálogo que cambia de vista se queda con el foco** (efecto en `FormulasUgc`): al guardar, el botón pulsado
+  desaparece y el foco caía al `<body>`; Escape y Tab dejaban de funcionar (los escucha el nodo del diálogo). Lo cazó
+  Chromium, no los tests.
 - **«Me gusta» (la estrella de antes, `favorito`) y la papelera enseñan al kit** (`src/lib/aprendizajeVisual.js`,
   `worker/lib/estudio/aprender.js`, `POST /api/estudio/<c>/kit/aprender`, en Cerebro → Lo que aprende → «Lo visual»).
   La IA MIRA las imágenes (hasta 8 que gustan y 4 descartadas, función «aprendizaje visual») y PROPONE reglas; nada

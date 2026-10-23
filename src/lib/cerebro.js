@@ -162,3 +162,15 @@ export async function proponerRubro(clienteId) {
     window.dispatchEvent(new Event("ia:gasto"));
   }
 }
+
+/** La nota «Voz UGC» del cliente → { id, texto } (texto vacío si no hay). */
+export const leerVozUgc = (clienteId) => llamar(`${base(clienteId)}/voz-ugc`);
+
+/** «Voz UGC»: la IA la propone desde sus guiones UGC → { titulo, texto, existente, guiones, aviso }. No guarda. */
+export async function proponerVozUgc(clienteId) {
+  try {
+    return await llamar(`${base(clienteId)}/voz-ugc`, { metodo: "POST" });
+  } finally {
+    window.dispatchEvent(new Event("ia:gasto"));
+  }
+}

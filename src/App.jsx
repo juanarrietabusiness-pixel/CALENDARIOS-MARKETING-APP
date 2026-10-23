@@ -650,6 +650,11 @@ function Workspace({ session, ruta }) {
           window.dispatchEvent(new CustomEvent("banco-ideas", { detail: ev }));
           break;
 
+        // Las fórmulas UGC de la agencia: quien las tenga abiertas las relee.
+        case "formulas-ugc":
+          window.dispatchEvent(new CustomEvent("formulas-ugc", { detail: ev }));
+          break;
+
         case "editando":
           // Se guarda por publicación, no por persona: lo que hace falta
           // saber al abrir una es si alguien más la tiene delante.

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import Icon from "../Icon";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { leerEstudio, subirImagen } from "../../lib/estudio";
@@ -6,7 +6,12 @@ import { extraerUgc } from "../../lib/mercado";
 import { anadirAlBanco } from "../../lib/bancoIdeasApi";
 import { nuevaIdea } from "../../lib/bancoIdeas";
 import { DURACIONES_UGC, partirGuionUgc, publicacionDeUgc } from "../../lib/ugc";
+import { proponerFormula } from "../../lib/formulasUgcApi";
+import { editaLaAgencia } from "../../lib/sesionActual";
 import "./GuionUgc.css";
+
+// Las fórmulas de la agencia: sólo al guardar una.
+const FormulasUgc = lazy(() => import("./FormulasUgc"));
 
 // ============================================================
 // «Extraer guion y adaptar» (UGC)
@@ -21,6 +26,10 @@ import "./GuionUgc.css";
 // El video sale de la publicación (lo que ya tiene puesto), de la galería
 // del Estudio o se sube aquí (a la galería). La transcripción se recuerda
 // en la ficha del video: adaptarlo otra vez no vuelve a pagar a Gemini.
+//
+// «Guardar como fórmula» saca del video ORIGINAL su receta (sin su
+// contenido) para la biblioteca de la agencia (lib/formulasUgc.js): la IA la
+// propone y se abre en el editor; nada se guarda hasta «Guardar».
 // ============================================================
 
 /** Un tramo en una fila: tiempo · lo que dice · lo que se ve. */
@@ -60,6 +69,7 @@ export default function ExtraerUgc({ client, videos = [], duracion: duracionInic
   const [resultado, setResultado] = useState(null);
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
+  const [formula, setFormula] = useState(null); // la propuesta, abierta en el editor
 
   useEffect(() => {
     let vivo = true;
@@ -111,6 +121,21 @@ export default function ExtraerUgc({ client, videos = [], duracion: duracionInic
       setAviso("Guardado en el banco de ideas de este cliente. Desde allí se lleva a un día del calendario.");
     } catch (e) {
       setError(`No se pudo guardar: ${e.message}`);
+    }
+    setOcupado("");
+  };
+
+  const comoFormula = async () => {
+    if (!resultado?.original) return;
+    setError("");
+    setOcupado("Sacando la fórmula del video…");
+    try {
+      const fuente = { ...(video?.id ? { archivoId: video.id } : {}), ...(inicial?.cuenta ? { cuenta: inicial.cuenta } : {}), ...(inicial?.enlace ? { enlace: inicial.enlace } : {}) };
+      const r = await proponerFormula({ original: resultado.original, fuente, duracion: resultado.original.duracion ?? resultado.duracion, clienteId });
+      setFormula(r.formula);
+      if (r.aviso) setAviso(r.aviso);
+    } catch (e) {
+      setError(`No se pudo sacar la fórmula: ${e.message}`);
     }
     setOcupado("");
   };
@@ -202,6 +227,12 @@ export default function ExtraerUgc({ client, videos = [], duracion: duracionInic
             </details>
             <div className="extraer-ugc-acciones">
               <button type="button" className="btn btn-ghost" onClick={() => setResultado(null)} disabled={Boolean(ocupado)}>Cambiar y volver a adaptar</button>
+              {editaLaAgencia() && (
+                <button type="button" className="btn btn-secondary" onClick={comoFormula} disabled={Boolean(ocupado)}
+                  title="La receta del video original, sin su contenido, para usarla con cualquier cliente">
+                  <Icon name="list" size={16} /> Guardar como fórmula
+                </button>
+              )}
               <button type="button" className="btn btn-secondary" onClick={alBanco} disabled={Boolean(ocupado)}>
                 <Icon name="bulb" size={16} /> Guardar en el banco de ideas
               </button>
@@ -217,6 +248,12 @@ export default function ExtraerUgc({ client, videos = [], duracion: duracionInic
         <div role="status" aria-live="polite" className={ocupado || aviso ? "hint" : "sr-only"}>{ocupado || aviso}</div>
         {error && <p role="alert" className="cerebro-error">{error}</p>}
       </div>
+      {formula && (
+        <Suspense fallback={null}>
+          <FormulasUgc inicial={formula} onCerrar={() => setFormula(null)}
+            onGuardada={(f) => { setFormula(null); setAviso(`Fórmula «${f.nombre}» guardada: ya se puede escoger en cualquier guion UGC.`); }} />
+        </Suspense>
+      )}
     </div>
   );
 }

@@ -37,6 +37,7 @@ import { rutaIA } from "./rutas/ia.js";
 import { rutaChat, rutaResumenChat } from "./rutas/chat.js";
 import { rutasConversaciones } from "./rutas/conversaciones.js";
 import { rutasBancoIdeas } from "./rutas/bancoIdeas.js";
+import { rutasFormulasUgc } from "./rutas/formulasUgc.js";
 import { rutaModelos, rutaConsumo, rutaGasto } from "./rutas/iaEspacio.js";
 import { rutaADN, rutaImagenADN } from "./rutas/adn.js";
 import { rutaGenerarImagen } from "./rutas/imagen.js";
@@ -379,6 +380,10 @@ export default {
       // El banco de ideas de la agencia: ideas y referencias, con cliente o generales.
       if (partes[0] === "banco-ideas") {
         return await rutasBancoIdeas(req, env, { acceso, usuario, partes, metodo });
+      }
+      // Las fórmulas UGC de la agencia (la receta de un video, sin su contenido).
+      if (partes[0] === "formulas-ugc") {
+        return await rutasFormulasUgc(req, env, { acceso, usuario, partes, metodo });
       }
       if (partes[0] === "ia" && partes[1] === "chat" && partes[2] === "resumen") {
         return await rutaResumenChat(req, env, { acceso, metodo });

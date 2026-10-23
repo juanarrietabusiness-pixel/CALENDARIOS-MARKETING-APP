@@ -167,7 +167,12 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
       } else if (field === "guion" && form.format === "reel" && form.rostro) {
         // UGC: sin idea, primero la idea por el motor de ideas (trae también su guion para grabar); con idea, el guion
         // por tramos con la regla de lib/ugc.js y tres ganchos para probar. Lo escrito a mano en la idea se respeta.
-        const ugc = await import("../../lib/ugc");
+        // Con la FÓRMULA escogida (o la IA escoge entre las de la agencia y dice cuál) y la VOZ UGC de la marca.
+        const [ugc, fu, { listarFormulas }, { leerVozUgc }] = await Promise.all([
+          import("../../lib/ugc"), import("../../lib/formulasUgc"), import("../../lib/formulasUgcApi"), import("../../lib/cerebro"),
+        ]);
+        const [formulas, voz] = await Promise.all([listarFormulas().catch(() => []), leerVozUgc(clientId).catch(() => null)]);
+        const elegida = formulas.find((f) => f.id === form.formulaUgc) ?? null;
         let base = form;
         if (ideaComoElLote(form)) {
           const idea = await ideaParaPublicacion(clientId, { post: form, day, cal });
@@ -176,10 +181,22 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           setForm((p) => ({ ...p, ...rellenarConIdea(p, idea).cambios }));
           if (String(base.guion ?? "").trim()) setFieldAviso("La IA escribió la idea y su guion para grabar. Revísalos.");
         }
-        if (!String(base.guion ?? "").trim() || base === form) {
-          const texto = await generateFieldForPost(client, base, day, cal, "guion", { reglaGuion: `${ugc.reglaUgc(base.duracionUgc)}\n${ugc.LINEA_GANCHOS}` });
+        // Una fórmula escogida a mano manda: el guion que trajo la idea se reescribe con ella.
+        if (!String(base.guion ?? "").trim() || base === form || elegida) {
+          const duracion = ugc.duracionUgc(base.duracionUgc);
+          const regla = [
+            ugc.reglaUgc(duracion), ugc.LINEA_GANCHOS,
+            elegida ? fu.lineaDeFormula(elegida, duracion) : fu.bloqueDeFormulas(formulas, duracion),
+            ugc.lineaDeVozUgc(voz?.texto),
+          ].filter(Boolean).join("\n");
+          const texto = await generateFieldForPost(client, base, day, cal, "guion", { reglaGuion: regla });
+          const usada = elegida?.id || fu.formulaUsada(texto, formulas);
           const { guion, ganchos } = ugc.leerGuionConGanchos(texto);
-          setForm((p) => ({ ...p, guion, ...(ganchos.length ? { ganchosUgc: ganchos } : {}), duracionUgc: ugc.duracionUgc(p.duracionUgc) }));
+          setForm((p) => ({
+            ...p, guion, ...(ganchos.length ? { ganchosUgc: ganchos } : {}), duracionUgc: ugc.duracionUgc(p.duracionUgc),
+            ...(usada ? { formulaUgc: usada } : {}),
+          }));
+          if (usada && !elegida) setFieldAviso(`La IA siguió la fórmula «${formulas.find((f) => f.id === usada)?.nombre}». Revisa el guion antes de grabar.`);
         }
       } else {
         const result = await generateFieldForPost(client, form, day, cal, field);

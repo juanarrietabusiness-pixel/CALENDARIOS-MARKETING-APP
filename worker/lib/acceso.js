@@ -53,6 +53,8 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "chat_conversaciones",
   // El banco de ideas de la agencia: cada idea con su cliente o sin él (general). worker/rutas/bancoIdeas.js.
   "banco_ideas",
+  // Las fórmulas UGC de la agencia (la receta de un video, sin su contenido): worker/rutas/formulasUgc.js.
+  "formulas_ugc",
   "consumo_ia",
   "integracion_drive",
   "integracion_meta",

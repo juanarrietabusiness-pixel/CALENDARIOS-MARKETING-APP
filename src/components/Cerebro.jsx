@@ -3,7 +3,7 @@ import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { soloLectura } from "../lib/sesionActual";
 import {
-  listarCerebro, leerNota, guardarNota, borrarNota, buscarEnCerebro, importarAlCerebro, prepararFicha, proponerRubro,
+  listarCerebro, leerNota, guardarNota, borrarNota, buscarEnCerebro, importarAlCerebro, prepararFicha, proponerRubro, proponerVozUgc,
 } from "../lib/cerebro";
 import {
   TIPOS_VISTA, FILTROS_TIPO, nombreDeTipo, ordenarNotas, filtrarNotas, contarPorTipo,
@@ -118,6 +118,26 @@ export default function Cerebro({ client }) {
       avisar(true, [
         r.conWeb ? "La IA buscó en internet: revisa los datos y sus fuentes antes de guardar." : "Sin búsqueda en internet: sólo conocimiento general del rubro. Revísala antes de guardar.",
         "Guárdala con ese título: es la que lee el contenido educativo.",
+        r.aviso ?? "",
+      ].filter(Boolean).join(" "));
+    } catch (e) {
+      avisar(false, e.message);
+    } finally {
+      setTrabajando("");
+    }
+  };
+
+  // «Voz UGC»: cómo habla ESTA marca en sus videos, sacada de sus guiones UGC (los aprobados mandan). Como «Saber del
+  // rubro»: la IA la propone, se abre en el editor y nada se guarda hasta «Guardar». La lee el guion UGC del panel y el lote.
+  const vozUgc = async () => {
+    setTrabajando("voz");
+    setAviso(null);
+    try {
+      const r = await proponerVozUgc(client.id);
+      setEditor({ ...(r.existente ? { id: r.existente.id } : {}), titulo: r.titulo, texto: r.texto, tipo: "nota", interna: false });
+      avisar(true, [
+        r.guiones ? `La IA leyó ${r.guiones} ${r.guiones === 1 ? "guion UGC" : "guiones UGC"} de ${client.name}.` : `${client.name} todavía no tiene guiones UGC: la propuesta sale de lo que se sabe de la marca.`,
+        "Corrígela y guárdala con ese título: es la que sigue todo guion UGC de este cliente.",
         r.aviso ?? "",
       ].filter(Boolean).join(" "));
     } catch (e) {
@@ -255,6 +275,10 @@ export default function Cerebro({ client }) {
             title="La IA propone lo que un experto del rubro sabe (consejos, errores, mitos, preguntas): de ahí sale el contenido educativo">
             <Icon name="bulb" size={18} /> {trabajando === "rubro" ? "Escribiendo…" : "Saber del rubro"}
           </button>
+          <button type="button" className="btn btn-secondary" disabled={trabajo} onClick={vozUgc}
+            title="La IA propone cómo habla esta marca en sus videos UGC (quién habla, tono, cómo empieza y cierra), leyendo sus guiones">
+            <Icon name="user" size={18} /> {trabajando === "voz" ? "Escribiendo…" : "Voz UGC"}
+          </button>
           <button type="button" className="btn btn-secondary" disabled={trabajo} onClick={() => setEditor({ titulo: "", texto: "", tipo: "nota", interna: false })}>
             <Icon name="plus" size={18} /> Añadir nota
           </button>
@@ -266,7 +290,7 @@ export default function Cerebro({ client }) {
       )}
 
       <div aria-live="polite">
-        {trabajo && <p role="status" className="cerebro-trabajando">{trabajando === "ficha" ? "La IA está leyendo las notas de marca. Tarda de medio minuto a un par de minutos." : trabajando === "rubro" ? "La IA está escribiendo lo que sabe un experto del rubro. Tarda un minuto o dos." : "Leyendo el repositorio…"}</p>}
+        {trabajo && <p role="status" className="cerebro-trabajando">{trabajando === "ficha" ? "La IA está leyendo las notas de marca. Tarda de medio minuto a un par de minutos." : trabajando === "rubro" ? "La IA está escribiendo lo que sabe un experto del rubro. Tarda un minuto o dos." : trabajando === "voz" ? "La IA está leyendo los guiones UGC de este cliente. Tarda menos de un minuto." : "Leyendo el repositorio…"}</p>}
         {aviso && (
           <div role={aviso.ok ? "status" : "alert"} className={aviso.ok ? "cerebro-aviso" : "cerebro-error"}>
             <p>{aviso.texto}</p>

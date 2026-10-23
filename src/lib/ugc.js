@@ -53,7 +53,8 @@ export function partirGuionUgc(texto) {
   const tramos = [];
   for (const crudo of String(texto ?? "").replace(/\\n/g, "\n").split(/\n+/)) {
     const linea = crudo.replace(/^\s*[-*•]\s*/, "").trim();
-    if (!linea || /^ganchos?\b/i.test(linea)) continue;
+    // «GANCHOS:» y «FÓRMULA: …» (la que dice la IA que usó) no son tramos.
+    if (!linea || /^ganchos?\b/i.test(linea) || /^f[oó]rmula\s*:/i.test(linea)) continue;
     const m = linea.match(/^\[?\s*(\d+(?:[.,]\d+)?)\s*(?:s|seg)?\s*[–—-]\s*(\d+(?:[.,]\d+)?)\s*(?:s|seg|segundos)?\s*\]?\s*[:.)-]?\s*(.*)$/i);
     const resto = m ? m[3] : linea;
     const partes = resto.split(/\s+[|·]\s+/).map((p) => p.trim()).filter(Boolean);
@@ -137,7 +138,8 @@ export function leerGuionConGanchos(texto) {
     ? limpiarGanchos(t.slice(m.index + m[0].length).split(/\n+/).map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "")).filter((l) => l.trim()))
     : [];
   const tramos = partirGuionUgc(cuerpo);
-  return { guion: tramos.length ? guionUgcATexto(tramos) : cuerpo.trim(), ganchos };
+  // La línea «FÓRMULA: …» (la que dice la IA que siguió) no es parte del guion.
+  return { guion: tramos.length ? guionUgcATexto(tramos) : cuerpo.replace(/^[ \t]*f[oó]rmula\s*:.*$/gim, "").trim(), ganchos };
 }
 
 /** El gancho escogido pasa a ser la voz del primer tramo. Pura. */
@@ -255,4 +257,106 @@ export function publicacionDeUgc(adaptado = {}, { duracion = DURACION_UGC, produ
     ...(adaptado.descripcion ? { descripcion: adaptado.descripcion } : {}),
     ...(productoId ? { productoId, producto } : {}),
   };
+}
+
+// ------------------------------------------------------------
+// La «Voz UGC» de cada cliente: cómo habla ESA marca en sus videos
+// ------------------------------------------------------------
+
+/** La ruta fija de la nota en el cerebro del cliente (como «Saber del rubro»). */
+export const RUTA_VOZ_UGC = "voz-ugc";
+export const TITULO_VOZ_UGC = "Voz UGC";
+
+/**
+ * Lo que se le pide a la IA para PROPONER la nota a partir de los guiones UGC de ese cliente (los aprobados o
+ * corregidos pesan más) y de la nota de ahora. `guiones`: [{ titulo, guion, estado }]. Pura.
+ */
+export function pedidoDeVozUgc({ marca = "la marca", guiones = [], actual = "", contexto = "" }) {
+  const lista = guiones.slice(0, 12).map((g, i) => `### ${i + 1}. ${limpio(g.titulo, 80) || "Sin título"}${g.estado ? ` (${g.estado})` : ""}\n${String(g.guion ?? "").slice(0, 1500)}`).join("\n\n");
+  return [
+    `Escribe la nota «${TITULO_VOZ_UGC}» de ${marca}: cómo habla ESTA marca en sus videos UGC (los que graba una persona a cámara), para que quien escriba el próximo guion lo haga igual.`,
+    "Sácalo de sus guiones de abajo (los aprobados o corregidos por la agencia mandan sobre los demás). No es la fórmula del video (eso va aparte): es la VOZ.",
+    "",
+    "Forma (en Markdown, sin introducción, frases cortas):",
+    "## Quién habla (quién graba, cómo se presenta)",
+    "## Cómo habla (tú o usted, tono, largo de las frases, muletillas que sí y que no)",
+    "## Cómo empieza y cómo cierra (ganchos y llamados a la acción típicos)",
+    "## Qué dice siempre y qué no dice nunca (precios en voz, promesas, palabras prohibidas)",
+    "## Cómo se graba (lugar, planos, ritmo)",
+    "",
+    "Reglas: sólo lo que se ve en los guiones o en lo que se sabe de la marca; nada inventado. Si algo no se puede saber, no lo pongas. Español neutro.",
+    actual ? `\nLA NOTA DE AHORA (mejórala con lo nuevo, no la pierdas):\n${String(actual).slice(0, 5000)}` : "",
+    lista ? `\nSUS GUIONES UGC:\n${lista}` : "\nTodavía no hay guiones UGC de esta marca: escribe la nota con lo que se sabe de ella y dilo arriba en una línea.",
+    contexto ? `\nLO QUE SE SABE DE LA MARCA:\n${String(contexto).slice(0, 5000)}` : "",
+  ].filter((l, i, t) => l !== "" || t[i - 1] !== "").join("\n");
+}
+
+/** La respuesta de la IA → el texto de la nota, limpio. Pura. */
+export function leerVozUgc(texto) {
+  const t = String(texto ?? "").replace(/```[a-z]*|```/g, "").trim();
+  const i = t.indexOf("##");
+  return (i > 0 ? t.slice(i) : t).trim().slice(0, 12_000);
+}
+
+/** La voz del cliente como bloque para quien escribe el guion. Vacío si no hay. Pura. */
+export const lineaDeVozUgc = (texto) => (String(texto ?? "").trim() ? `VOZ UGC DE ESTA MARCA (cómo habla en sus videos; se sigue SIEMPRE):\n${String(texto).trim().slice(0, 4000)}` : "");
+
+/** Los guiones UGC de los calendarios de un cliente, los más nuevos primero (para proponer su voz). Pura. */
+export function guionesUgcDe(calendarios = [], max = 12) {
+  const lista = [];
+  for (const cal of calendarios ?? []) {
+    for (const d of cal?.days ?? []) {
+      for (const p of d?.posts ?? []) {
+        if (p?.format !== "reel" || !p?.rostro || !String(p.guion ?? "").trim()) continue;
+        const estado = p.status === "approved" || p.status === "published" ? "aprobado" : p.etapa === "produccion" ? "enviado a grabar" : "";
+        lista.push({ fecha: d.date ?? "", titulo: p.title || p.idea || "", guion: p.guion, estado });
+      }
+    }
+  }
+  // Primero los aprobados; dentro de cada grupo, los más nuevos.
+  return lista.sort((a, b) => Number(Boolean(b.estado)) - Number(Boolean(a.estado)) || String(b.fecha).localeCompare(String(a.fecha))).slice(0, max);
+}
+
+// ------------------------------------------------------------
+// «Guiones para grabar»: todos los UGC de una sesión en un solo mensaje
+// ------------------------------------------------------------
+
+const tieneVideo = (p) => (Array.isArray(p?.medios) ? p.medios : []).some((m) => m?.tipo === "video") || /\.(mp4|mov|webm)(\?|$)/i.test(String(p?.video ?? ""));
+
+/**
+ * Los UGC de un mes que se pueden mandar a grabar: reel con rostro, con guion y todavía sin video. Los ya enviados
+ * (etapa «En producción») sólo con `conEnviados`. → [{ id, fecha, post, enviado }], por fecha. Pura.
+ */
+export function ugcParaGrabar(days = [], { conEnviados = false } = {}) {
+  const fuera = [];
+  for (const d of days ?? []) {
+    for (const p of d?.posts ?? []) {
+      if (p?.format !== "reel" || !p?.rostro || tieneVideo(p)) continue;
+      const enviado = p.etapa === "produccion";
+      if (enviado && !conEnviados) continue;
+      fuera.push({ id: p.id, fecha: d.date ?? "", post: p, enviado, sinGuion: !String(p.guion ?? "").trim() });
+    }
+  }
+  return fuera.sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+}
+
+/**
+ * El mensaje para quien graba: la sesión y cada video con lo que se dice y la lista de tomas. `cuando`: el texto de la
+ * fecha de grabación («jueves 30 oct»). Pura.
+ */
+export function textoParaGrabar({ cliente = "", cuando = "", piezas = [] }) {
+  const cabeza = [`*Grabación${cliente ? ` ${cliente}` : ""}${cuando ? ` · ${cuando}` : ""}*`, `${piezas.length} ${piezas.length === 1 ? "video" : "videos"}`].join(" · ");
+  const cuerpo = piezas.map((p, i) => {
+    const titulo = limpio(p.title || p.idea, 80) || `Video ${i + 1}`;
+    const dur = p.duracionUgc ? ` (${duracionUgc(p.duracionUgc)} s)` : "";
+    const voz = vozDelGuion(p.guion);
+    const tomas = tomasDelGuion(p.guion);
+    return [
+      `*${i + 1}. ${titulo}*${dur}`,
+      voz ? `_Lo que dices:_\n${voz}` : "",
+      tomas ? `_Tomas:_\n${tomas}` : "",
+      !voz && !tomas && String(p.guion ?? "").trim() ? String(p.guion).trim() : "",
+    ].filter(Boolean).join("\n");
+  });
+  return [cabeza, ...cuerpo].join("\n\n");
 }

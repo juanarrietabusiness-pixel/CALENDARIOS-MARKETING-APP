@@ -1,12 +1,14 @@
-import { lazy, Suspense, useId, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useMemo, useState } from "react";
 import Icon from "../Icon";
 import { CopyButton } from "./primitivas";
 import { mediosDe } from "../../lib/publicacion";
 import { DURACIONES_UGC, duracionUgc, partirGuionUgc, vozDelGuion, tomasDelGuion, medidaDeLaVoz, conGancho } from "../../lib/ugc";
+import { listarFormulas } from "../../lib/formulasUgcApi";
 import "./GuionUgc.css";
 
-// «Extraer guion y adaptar»: sólo se descarga al abrirlo.
+// «Extraer guion y adaptar» y las fórmulas de la agencia: sólo se descargan al abrirlos.
 const ExtraerUgc = lazy(() => import("./ExtraerUgc"));
+const FormulasUgc = lazy(() => import("./FormulasUgc"));
 
 // ============================================================
 // UGC · guion para grabar, en el panel de una publicación
@@ -16,6 +18,11 @@ const ExtraerUgc = lazy(() => import("./ExtraerUgc"));
 // ganchos para probar y dos botones para copiar —la voz seguida, para el
 // teleprompter, y la lista de tomas—. El guion sigue siendo `post.guion`
 // (texto): se edita en su campo de siempre, debajo (lib/ugc.js).
+//
+// La FÓRMULA (`post.formulaUgc`, lib/formulasUgc.js) es la receta de la
+// agencia que sigue el guion: vacía, la IA escoge entre todas al pulsar «IA»
+// y la publicación recuerda cuál usó; escogida, la IA la sigue. La voz de la
+// marca (la nota «Voz UGC» de su cerebro) va siempre.
 // ============================================================
 
 export default function GuionUgc({ form, sf, setForm, client, onAviso }) {
@@ -26,6 +33,17 @@ export default function GuionUgc({ form, sf, setForm, client, onAviso }) {
   const medida = medidaDeLaVoz(form.guion, duracion);
   const ganchos = Array.isArray(form.ganchosUgc) ? form.ganchosUgc : [];
   const videos = mediosDe(form).filter((m) => m?.tipo === "video");
+  const [formulas, setFormulas] = useState(null);
+  const [verFormulas, setVerFormulas] = useState(false);
+
+  useEffect(() => {
+    let vivo = true;
+    const leer = () => listarFormulas().then((l) => vivo && setFormulas(l)).catch(() => vivo && setFormulas([]));
+    void leer();
+    window.addEventListener("formulas-ugc", leer);
+    return () => { vivo = false; window.removeEventListener("formulas-ugc", leer); };
+  }, []);
+  const formula = (formulas ?? []).find((f) => f.id === form.formulaUgc) ?? null;
 
   return (
     <section className="guion-ugc" aria-labelledby={`${ids}-t`}>
@@ -38,6 +56,17 @@ export default function GuionUgc({ form, sf, setForm, client, onAviso }) {
           </select>
         </label>
       </div>
+
+      <div className="guion-ugc-formula">
+        <label htmlFor={`${ids}-f`}>Fórmula</label>
+        <select id={`${ids}-f`} className="input" value={formula ? formula.id : ""} onChange={(e) => sf("formulaUgc", e.target.value)} disabled={!formulas}>
+          <option value="">{formulas?.length ? "La IA escoge la que encaje" : "Sin fórmulas todavía"}</option>
+          {(formulas ?? []).map((f) => <option key={f.id} value={f.id}>{f.nombre}</option>)}
+          {form.formulaUgc && formulas && !formula && <option value={form.formulaUgc} disabled>(una fórmula que ya no está)</option>}
+        </select>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setVerFormulas(true)}><Icon name="list" size={14} /> Fórmulas</button>
+      </div>
+      {formula?.cuando && <p className="hint" style={{ margin: 0 }}>Conviene: {formula.cuando}</p>}
 
       {tramos.length > 0 ? (
         <>
@@ -89,6 +118,11 @@ export default function GuionUgc({ form, sf, setForm, client, onAviso }) {
         <button type="button" className="btn btn-secondary btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => setExtrayendo(true)}>
           <Icon name="video" size={14} /> Extraer guion de un video y adaptarlo
         </button>
+      )}
+      {verFormulas && (
+        <Suspense fallback={null}>
+          <FormulasUgc onCerrar={() => setVerFormulas(false)} />
+        </Suspense>
       )}
       {extrayendo && (
         <Suspense fallback={null}>

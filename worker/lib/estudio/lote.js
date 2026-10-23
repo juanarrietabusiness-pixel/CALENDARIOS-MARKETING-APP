@@ -34,6 +34,9 @@ import { aprenderComposiciones } from "../../../src/lib/loteAnuncios.js";
 import { contexto as contextoCerebro, textoParaEscribir, buscar as buscarCerebro, leerNota as leerNotaCerebro } from "../cerebro/cerebro.js";
 import { consultaDelPlan, materialDelPlan, conEducativo, lineaDeLoQueFalta, MATERIAL, RUTA_RUBRO, TITULO_RUBRO } from "../../../src/lib/materialTipo.js";
 import { leerMercado } from "../mercado.js";
+import { vozUgcDe } from "../cerebro/vozUgc.js";
+import { lineaDeVozUgc } from "../../../src/lib/ugc.js";
+import { limpiarFormula, bloqueDeFormulas, formulaUsada, MAX_FORMULAS } from "../../../src/lib/formulasUgc.js";
 import { productosActivos, productosParaPlan, lineaDeProducto, notaDeProducto, resumenGeneral, limpiarEstudio } from "../../../src/lib/estudioMercado.js";
 import {
   pedidoDeProduccion, leerProduccion, limpiarCuantas, totalDeCuantas, celdasPorNiveles, celdasMatriz, celdasPorTipos, darForma,
@@ -245,6 +248,17 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     else faltan.push("rubro");
   }
 
+  // Las UGC: la voz de ESTA marca en sus videos (nota «Voz UGC») y las fórmulas de la agencia, para que la IA escoja.
+  let ugc = "";
+  let formulas = [];
+  if (plan.some((c) => c.rostro)) {
+    formulas = await acceso.leer("formulas_ugc", {}, "created_at desc", MAX_FORMULAS)
+      .then((filas) => filas.map((f) => limpiarFormula({ ...leerJSONSeguro(f.datos), id: f.id })).filter(Boolean))
+      .catch(() => []);
+    const voz = await vozUgcDe(env, acceso, cliente.id);
+    ugc = [lineaDeVozUgc(voz?.texto), bloqueDeFormulas(formulas, 30).replace(/\nEmpieza tu respuesta[^\n]*$/, "")].filter(Boolean).join("\n\n");
+  }
+
   const r = await llamarIA(env, acceso, cliente, {
     prompt: pedidoDeProduccion({
       marca: cliente.name, plan, formato, contexto, estudio: textoEstudio, mes: modo === "mes",
@@ -255,6 +269,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       nota: modo === "publicacion" ? String(datos.nota ?? "").slice(0, 600) : "",
       estrategia: datos.estrategia && typeof datos.estrategia === "object" ? datos.estrategia : null,
       falta: lineaDeLoQueFalta(faltan),
+      ugc,
     }),
     salida: plan.reduce((t, r) => t + (FORMATOS_LOTE[r.formato ?? formato]?.guiado ? 850 : 600), 0) + 800,
     funcion: modo === "mes" || modo === "plan" ? "lote del mes" : modo === "publicacion" ? "publicación" : "ideas de anuncios",
@@ -263,7 +278,12 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
   const ideas = leerProduccion(r.texto, plan, formato)
     .map((i) => (i.productoId ? { ...i, producto: nombres.get(i.productoId) ?? i.producto ?? "" } : i))
     // «Titular\nApoyo»: lo que va escrito en la pieza (el textoPieza de la publicación).
-    .map((i) => ({ ...i, textoPieza: textoDeIdea(i) }));
+    .map((i) => ({ ...i, textoPieza: textoDeIdea(i) }))
+    // La fórmula UGC por su nombre → su id (`formulaUgc`, lo que recuerda la publicación).
+    .map(({ formula, ...i }) => {
+      const id = formula ? formulaUsada(`FÓRMULA: ${formula}`, formulas) : "";
+      return id ? { ...i, formulaUgc: id } : i;
+    });
   if (!ideas.length && !tamano) throw fallo("La IA no devolvió ideas que se puedan leer. Inténtalo otra vez.", 502);
   return {
     ideas, total, ...(faltan.length ? { faltan } : {}),
@@ -272,6 +292,10 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     conEstudio: Boolean(general),
     modelo: r.modelo, aviso: r.aviso ?? null,
   };
+}
+
+function leerJSONSeguro(t) {
+  try { return JSON.parse(t) ?? {}; } catch { return {}; }
 }
 
 /** Compatibilidad con el nombre de antes (anuncios por nivel). */
