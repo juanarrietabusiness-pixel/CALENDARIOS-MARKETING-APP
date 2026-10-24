@@ -775,7 +775,7 @@ export function notaDeReferencia(referencia) {
  * gancho) para un producto de la marca, con lo del estudio de mercado. Pura.
  * @param productoLinea  el producto con su precio exacto (`lineaDeProducto`), o vacío.
  */
-export function pedidoDeAdaptacion({ marca, referencia, productoLinea = "", formato = "reel", contexto = "", kit = "", modo = "", antes = "", pide = "", segundos = 0 }) {
+export function pedidoDeAdaptacion({ marca, referencia, productoLinea = "", formato = "reel", contexto = "", kit = "", modo = "", antes = "", pide = "", segundos = 0, criterio = "" }) {
   const r = limpiarReferencia(referencia);
   const a = r?.analisis ?? {};
   const estructura = estructuraATexto(a.estructura, 1500);
@@ -802,6 +802,7 @@ export function pedidoDeAdaptacion({ marca, referencia, productoLinea = "", form
     "",
     antes && `\nYA SE PROPUSO ESTA (no la repitas: escribe otra distinta con la misma estructura):\n${corto(antes, 1200)}`,
     pide && `\nLO QUE PIDE LA AGENCIA PARA ESTA VERSIÓN (mándalo sobre todo lo demás): ${corto(pide, 500)}`,
+    video && criterio && `\n${String(criterio).trim().slice(0, 4500)}`,
     "",
     "Reglas: español latino neutro; nada de precios, garantías ni testimonios inventados; la competencia no se nombra.",
     video ? `El video va LIMPIO: sin texto, subtítulos ni logos en pantalla (los modelos de video escriben mal); «textoPantalla» va vacío. Sin voz ni diálogo: música y sonido ambiente.` : "",

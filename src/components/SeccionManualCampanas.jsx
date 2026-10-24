@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from "react";
 import Icon from "./Icon";
 import { leerManual, guardarManual } from "../lib/anunciosApi";
 import { editaLaAgencia } from "../lib/sesionActual";
+import { MANUAL_VIDEO_BASE, MAX_MANUAL_VIDEO } from "../lib/directorVideo";
 
 // ============================================================
 // Ajustes → Manual de campañas de la agencia
@@ -50,8 +51,8 @@ export default function SeccionManualCampanas({ pulso = 0 }) {
         <Icon name="megaphone" size={18} /> Manual de campañas
       </h2>
       <p className="ajustes-intro">
-        Las reglas de la agencia para los anuncios. El estratega de campañas (en Anuncios) las sigue siempre, por encima
-        de lo que proponga él.
+        Las reglas de la agencia para los anuncios y los videos. El estratega de campañas (en Anuncios) y los guiones de
+        video las siguen siempre, por encima de lo que propongan ellos.
       </p>
       {!m ? <p className="hint">{aviso?.texto ?? "Cargando…"}</p> : (
         <>
@@ -76,6 +77,13 @@ export default function SeccionManualCampanas({ pulso = 0 }) {
             <input id={`${ids}-tasa`} className="input" type="number" inputMode="decimal" min="1" max="100" style={{ maxWidth: 140 }} value={m.tasaCierre} readOnly={!puede}
               onChange={(e) => poner({ tasaCierre: e.target.value })} />
             <p className="hint" style={{ margin: 0 }}>Con esto y el margen sale el costo máximo que aguanta cada conversación. Se cambia en cada plan si un cliente es distinto.</p>
+          </div>
+          <div className="field">
+            <label className="label" htmlFor={`${ids}-video`}>Criterio comercial de los videos</label>
+            <textarea id={`${ids}-video`} className="textarea" rows={8} maxLength={MAX_MANUAL_VIDEO} value={m.video ?? ""} readOnly={!puede}
+              onChange={(e) => poner({ video: e.target.value })} placeholder={MANUAL_VIDEO_BASE} />
+            <p className="hint" style={{ margin: 0 }}>Lo sigue TODO guion de video (Reel IA, recrear un anuncio) y «Revisar como director comercial», por encima de cómo venga escrito el pedido. Vacío, vale el de la casa (el que se ve de ejemplo).</p>
+            {puede && !m.video && <button type="button" className="btn btn-ghost btn-sm" onClick={() => poner({ video: MANUAL_VIDEO_BASE })}>Partir del de la casa</button>}
           </div>
           <div aria-live="polite">{aviso && <p role={aviso.ok ? "status" : "alert"} className={aviso.ok ? "hint" : "cerebro-error"}>{aviso.texto}</p>}</div>
           {puede ? (

@@ -1803,6 +1803,14 @@ son del servidor.
   crudo y se le pone la cabecera WAV (`wavDePcm`). Si la llave no tiene el primer modelo de voz (404), prueba el
   siguiente (`MODELOS_VOZ`). Pasa por `bloqueoPorPresupuesto` y `registrarConsumoGemini`. **No se ha probado contra
   Google real.**
+- **El director comercial de los videos** (`src/lib/directorVideo.js`, `worker/lib/estudio/director.js`). TODO guion de
+  video (Reel IA, recrear un anuncio) lleva el CRITERIO COMERCIAL de la agencia (`lineaDelDirector`): gancho visual en 2
+  s, problema antes que producto, un beneficio, nada inventado, llamado a la acción… Se edita en Ajustes → Manual de
+  campañas → «Criterio comercial de los videos» (`manual_campanas.video`: dentro del manual, sin migración); vacío vale
+  `MANUAL_VIDEO_BASE`. «Revisar como director comercial» del Reel IA (`POST /api/estudio/<c>/director`, función
+  «director comercial») devuelve la idea mejorada y qué cambió y por qué; nada cambia hasta «Usar esta». El criterio se
+  lee a mano en director.js y no con `leerManual` de estratega.js: estratega.js importa mercado.js, y mercado.js usa
+  director.js (sería circular).
 - **Sin llave, el modelo no existe para la pantalla.** El compositor sólo lista los que tienen llave y, si el escogido
   no la tiene (un borrador, una llave quitada, un pedido de fuera), Estudio.jsx lo cambia al preferido. El recreador de
   video fijaba Kling Omni de HIGGSFIELD —sin llave en la cuenta—, y por eso «no se creaba el video».

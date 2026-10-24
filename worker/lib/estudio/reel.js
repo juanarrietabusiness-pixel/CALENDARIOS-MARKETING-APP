@@ -16,6 +16,7 @@ import { kitDe } from "./kit.js";
 import { productosActivos, lineaDeProducto, estructuraATexto } from "../../../src/lib/estudioMercado.js";
 import { nombreDePreset, lineaDeEstilo, estiloDeLaPieza, bloqueDeMarca } from "../../../src/lib/kitMarca.js";
 import { pedidoDeReel, leerReel } from "../../../src/lib/reel.js";
+import { criterioDelEspacio } from "./director.js";
 
 /**
  * `datos`: { idea, segundos?, preset?, estilo?, productoId?, personajes?: [ids], musica?, locucion?, referenciaId? } → { hilo,
@@ -63,6 +64,8 @@ export async function guionDeReel(env, acceso, cliente, datos = {}) {
       personajes: kit.personajes.filter((p) => ids.includes(p.id)).map((p) => `${p.nombre}${p.descripcion ? `: ${p.descripcion}` : ""}`),
       identidad: bloqueDeMarca(kit),
       musica: String(datos.musica ?? "").slice(0, 300), locucion: String(datos.locucion ?? "").slice(0, 500), estructura,
+      // El criterio comercial de la agencia va en TODO guion de video (lib/directorVideo.js).
+      criterio: await criterioDelEspacio(acceso),
     }),
     salida: segundos > 10 ? 2400 + segundos * 120 : 2400,
     funcion: "guion de video",

@@ -58,11 +58,12 @@ export const sinVozPropia = (modelo) => /^(seedance|wan)/.test(String(modelo?.id
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
 /** Lo que se le pide a la IA para el guion por planos. Pura. */
-export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segundos = 10, tipo = "", estilo = "", producto = "", personajes = [], identidad = "", contexto = "", musica = "", locucion = "", estructura = "" }) {
+export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segundos = 10, tipo = "", estilo = "", producto = "", personajes = [], identidad = "", contexto = "", musica = "", locucion = "", estructura = "", criterio = "" }) {
   const clips = Math.ceil(segundos / SEGUNDOS_POR_CLIP);
   return [
     `Eres director creativo de reels. Escribe el guion de UN reel vertical (9:16) de ${segundos} segundos para ${marca}${rubro ? ` (${rubro})` : ""}, para generarlo con un modelo de video con IA que hace varios planos con cortes en una sola pieza.`,
     `LA IDEA CENTRAL: ${corto(idea, 1200) || "propón una a partir de lo que sabemos de la marca"}`,
+    criterio ? `\n${String(criterio).trim()}\n` : "",
     tipo ? `Tipo de pieza: ${tipo}.` : "",
     estilo ? `Estilo visual: ${estilo}` : "",
     producto ? `Producto (precio EXACTO si se nombra): ${producto}` : "",

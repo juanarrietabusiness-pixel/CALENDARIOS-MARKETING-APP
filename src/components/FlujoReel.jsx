@@ -79,6 +79,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
   const [segundosClip, setSegundosClip] = useState(5);
   const [clips, setClips] = useState([]); // por plano: { archivo } | { error } | { cargando } | null
   const [bajando, setBajando] = useState(false);
+  const [revision, setRevision] = useState(null); // { idea, cambios }: lo que propone el director comercial
   const [ocupado, setOcupado] = useState("");
   const [confirmar, setConfirmar] = useState(null); // "fotogramas" | "video" | null
   const [aviso, setAviso] = useState(null);
@@ -177,6 +178,21 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
       setGuion(r);
       setPaso("planos");
       setAviso({ ok: true, texto: ["Revisa los planos: qué se ve y la cámara. El video va limpio, sin texto.", r.aviso ?? ""].filter(Boolean).join(" ") });
+    } catch (e) {
+      setAviso({ ok: false, texto: e.message });
+    } finally {
+      ocupar("");
+      window.dispatchEvent(new Event("ia:gasto"));
+    }
+  };
+
+  /** El director comercial mejora la idea y dice por qué; no se cambia nada hasta «Usar esta». */
+  const revisarDirector = async () => {
+    ocupar("director");
+    setAviso(null);
+    try {
+      const r = await api.revisarComoDirector(clienteId, { idea, segundos: duracion, productoId: productoId || undefined });
+      setRevision({ idea: r.idea, cambios: r.cambios ?? [] });
     } catch (e) {
       setAviso({ ok: false, texto: e.message });
     } finally {
@@ -325,8 +341,23 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
             <label className="label" htmlFor={`${ids}-idea`}>La idea central</label>
             <textarea id={`${ids}-idea`} className="input" rows={3} maxLength={1500} value={idea} onChange={(e) => setIdea(e.target.value)}
               placeholder="Caja grande de wipes Nateen: 960 por $45. Piel sensible protegida desde el primer uso." />
-            <p className="hint">La promoción, el beneficio o lo que quieres contar. La IA propone el guion de {duracion} s por planos, con la música y la locución.</p>
+            <p className="hint">La promoción, el beneficio o lo que quieres contar. La IA propone el guion de {duracion} s por planos, con la música y la locución, siguiendo el criterio comercial de la agencia.</p>
+            <button type="button" className="btn btn-ghost btn-sm" disabled={Boolean(ocupado) || !idea.trim()} onClick={revisarDirector}>
+              <Icon name="sparkles" size={14} /> {ocupado === "director" ? "Revisando…" : "Revisar como director comercial"}
+            </button>
           </div>
+          {revision && (
+            <div className="card" role="region" aria-label="La revisión del director comercial">
+              <p style={{ margin: 0 }}><strong>Así funcionaría mejor:</strong> {revision.idea}</p>
+              {revision.cambios.length > 0 && (
+                <ul className="hint" style={{ margin: "var(--sp-2) 0" }}>{revision.cambios.map((c, i) => <li key={i}>{c}</li>)}</ul>
+              )}
+              <div className="lote-fila">
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => { setIdea(revision.idea); setRevision(null); }}>Usar esta</button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRevision(null)}>Quedarme con la mía</button>
+              </div>
+            </div>
+          )}
           {referencias.length > 0 && (
             <div className="field">
               <label className="label" htmlFor={`${ids}-ref`}>Seguir un anuncio que ya funciona (opcional)</label>

@@ -69,6 +69,8 @@ export function limpiarManual(m = {}) {
     reglas: largo(m?.reglas, MAX_MANUAL),
     nomenclatura: Object.fromEntries(Object.entries(NOMENCLATURA_POR_DEFECTO).map(([k, def]) => [k, corto(n[k], 160) || def])),
     tasaCierre: tasa > 0 && tasa <= 100 ? tasa : TASA_CIERRE_POR_DEFECTO,
+    // El criterio comercial de los VIDEOS (lib/directorVideo.js); vacío, vale el de la casa.
+    video: largo(m?.video, MAX_MANUAL),
   };
 }
 
