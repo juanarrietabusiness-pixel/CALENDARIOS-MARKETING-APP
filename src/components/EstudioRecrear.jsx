@@ -6,7 +6,8 @@ import { useDialogA11y } from "../hooks/useDialogA11y";
 import * as api from "../lib/estudio";
 import { leerMercado, agregarReferencia, adaptarReferencia } from "../lib/mercado";
 import { productosActivos } from "../lib/estudioMercado";
-import { resumenDelAnalisis, versionDeAdaptacion, pedidoParaElCompositor } from "../lib/recrear";
+import { resumenDelAnalisis, versionDeAdaptacion, pedidoParaElCompositor, MODOS_RECREAR, duracionDeReferencia } from "../lib/recrear";
+import { motorParaRecrear } from "../lib/motorRecrear";
 import { CopyButton } from "./calendario/primitivas";
 import "./EstudioLote.css";
 
@@ -19,17 +20,29 @@ import "./EstudioLote.css";
 //      el cerebro como referencia INTERNA. Luego propone la versión para el
 //      cliente con la misma forma; una persona la corrige.
 //   3. «Crear con mi marca» la pone en el compositor del Estudio con el kit, el
-//      logo y las fotos del producto: el costo se ve allí antes de pedir.
+//      logo y las fotos del producto (también en video): el costo se ve allí
+//      antes de pedir.
+//
+// En VIDEO hay dos modos (`MODOS_RECREAR`): el mismo video con nuestro producto
+// (se edita el original) u otra versión que transmita lo mismo; el motor lo
+// propone una regla entre los que tienen llave (lib/motorRecrear.js). «Otra
+// versión» reescribe sin volver a analizar, y un anuncio ya analizado no se paga
+// otra vez: su análisis está en las referencias del estudio de mercado.
 // ============================================================
 
 const PASOS = ["El anuncio", "La versión"];
+const FILTROS = [["todo", "Todo"], ["video", "Videos"], ["imagen", "Imágenes"]];
 
-export default function EstudioRecrear({ client, archivos = [], productosConFotos = [], inicial = null, onCerrar, onCrear }) {
+export default function EstudioRecrear({ client, archivos = [], productosConFotos = [], inicial = null, activos = {}, onCerrar, onCrear }) {
   const ids = useId();
   const clienteId = client.dbId || client.id;
   const [paso, setPaso] = useState(0);
   const [archivo, setArchivo] = useState(inicial);
   const [catalogo, setCatalogo] = useState(null);
+  const [analizadas, setAnalizadas] = useState([]); // las referencias del estudio de mercado: un anuncio ya analizado no se paga otra vez
+  const [filtro, setFiltro] = useState("todo");
+  const [modo, setModo] = useState("version");
+  const [pide, setPide] = useState("");
   const [productoId, setProductoId] = useState("");
   const [competidor, setCompetidor] = useState("");
   const [nota, setNota] = useState("");
@@ -44,12 +57,14 @@ export default function EstudioRecrear({ client, archivos = [], productosConFoto
   const ref = useDialogA11y(() => { if (!ocupado) onCerrar(); });
 
   useEffect(() => {
-    leerMercado(clienteId).then((m) => setCatalogo(productosActivos(m.catalogo ?? []))).catch(() => setCatalogo([]));
+    leerMercado(clienteId).then((m) => { setCatalogo(productosActivos(m.catalogo ?? [])); setAnalizadas(m.referencias ?? []); }).catch(() => setCatalogo([]));
   }, [clienteId]);
 
   const producto = catalogo?.find((p) => p.id === productoId) ?? null;
   const video = archivo?.tipo === "video";
-  const galeria = archivos.filter((a) => !a.borradoAt);
+  const galeria = archivos.filter((a) => !a.borradoAt && (filtro === "todo" || a.tipo === filtro));
+  const segundos = duracionDeReferencia(referencia);
+  const motor = video ? motorParaRecrear(activos, { modo, segundos }) : null;
 
   const subir = async (lista, comoArchivo = (a) => a) => {
     if (!lista?.length) return;
@@ -64,40 +79,75 @@ export default function EstudioRecrear({ client, archivos = [], productosConFoto
     }
   };
 
-  /** Analizar (queda en el cerebro como referencia interna) y pedir la versión para el cliente. */
-  const analizar = async () => {
-    if (!archivo) return;
-    setTrabajando("analizar");
-    setAviso(null);
+  /** La versión para el cliente (no vuelve a analizar). `antes` + `pide`: otra distinta de la que hay. */
+  const proponer = async (ref, { modoVideo = modo, antes = "", pedido = "" } = {}) => {
+    setTrabajando("version");
     try {
-      // Un video lo puede ver Meta por fotogramas: se le da de dónde sacarlos.
-      const r = await agregarReferencia(clienteId, { archivoId: archivo.id, competidor, nota, origen: "anuncio" }, archivo.tipo === "video" ? archivo.src : "");
-      setReferencia(r.referencia);
-      setPaso(1);
-      if (!r.referencia?.analisis) {
-        setAviso({ ok: false, texto: r.aviso || "No se pudo analizar. Puedes escribir la versión a mano." });
-        setVersion({ idea: "", texto: "", descripcion: "" });
-        return;
-      }
-      setTrabajando("version");
-      try {
-        const a = await adaptarReferencia(clienteId, r.referencia.id, { productoId, formato: video ? "reel" : "post" });
-        setVersion(versionDeAdaptacion(a.adaptacion));
-        setAviso({ ok: true, texto: "Analizado y guardado en el cerebro como referencia interna. Revisa la versión antes de crear." });
-      } catch (e) {
-        setVersion({ idea: r.referencia.analisis.ideaParaNosotros ?? "", texto: "", descripcion: "" });
-        setAviso({ ok: false, texto: `Analizado, pero la versión no salió: ${e.message} Escríbela a mano.` });
-      }
+      const a = await adaptarReferencia(clienteId, ref.id, {
+        productoId, formato: video ? "reel" : "post", modo: video ? modoVideo : "", antes, pide: pedido, segundos: duracionDeReferencia(ref),
+      });
+      setVersion(versionDeAdaptacion(a.adaptacion));
+      return true;
     } catch (e) {
-      setAviso({ ok: false, texto: e.message });
+      setAviso({ ok: false, texto: `La versión no salió: ${e.message} Escríbela a mano o pide otra.` });
+      return false;
     } finally {
       setTrabajando("");
     }
   };
 
+  /** Analizar (queda en el cerebro como referencia interna) y pedir la versión. Si ya estaba analizado, no se paga otra vez. */
+  const analizar = async () => {
+    if (!archivo) return;
+    setAviso(null);
+    const yaEstaba = analizadas.find((r) => r.archivoId === archivo.id && r.analisis);
+    let ref = yaEstaba ?? null;
+    if (!ref) {
+      setTrabajando("analizar");
+      try {
+        // Un video lo puede ver Meta por fotogramas: se le da de dónde sacarlos.
+        const r = await agregarReferencia(clienteId, { archivoId: archivo.id, competidor, nota, origen: "anuncio" }, archivo.tipo === "video" ? archivo.src : "");
+        ref = r.referencia;
+        if (ref) setAnalizadas((l) => [ref, ...l]);
+        if (!ref?.analisis) {
+          setReferencia(ref);
+          setPaso(1);
+          setAviso({ ok: false, texto: r.aviso || "No se pudo analizar. Puedes escribir la versión a mano." });
+          setVersion({ idea: "", texto: "", descripcion: "" });
+          setTrabajando("");
+          return;
+        }
+      } catch (e) {
+        setAviso({ ok: false, texto: e.message });
+        setTrabajando("");
+        return;
+      }
+    }
+    setReferencia(ref);
+    setPaso(1);
+    if (await proponer(ref)) {
+      setAviso({ ok: true, texto: yaEstaba ? "Ya estaba analizado: se usó ese análisis (no se pagó otra vez). Revisa la versión antes de crear." : "Analizado y guardado en el cerebro como referencia interna. Revisa la versión antes de crear." });
+    } else {
+      setVersion({ idea: ref.analisis.ideaParaNosotros ?? "", texto: "", descripcion: "" });
+    }
+  };
+
+  /** Otra versión distinta, con lo que pida la agencia (o en el otro modo), sin volver a analizar. */
+  const otraVersion = async (modoVideo = modo) => {
+    if (!referencia?.analisis) return;
+    setAviso(null);
+    const mismoModo = modoVideo === modo;
+    setModo(modoVideo);
+    if (await proponer(referencia, { modoVideo, antes: mismoModo ? version?.idea ?? "" : "", pedido: pide })) {
+      setPide("");
+      setAviso({ ok: true, texto: mismoModo ? "Otra versión: revisa y crea, o pide otra." : `Versión para «${MODOS_RECREAR[modoVideo].nombre}».` });
+    }
+  };
+
   const crear = () => {
-    const fotos = video ? [] : api.fotosDelProducto(productosConFotos, productoId);
-    onCrear(pedidoParaElCompositor({ archivo, fotos, version, video }));
+    // Las fotos REALES del producto van también en video (antes se vaciaban y el video salía con otro producto).
+    const fotos = api.fotosDelProducto(productosConFotos, productoId);
+    onCrear(pedidoParaElCompositor({ archivo, fotos, version, video, modo, modelo: motor?.modelo ?? null, segundos: motor?.segundos ?? 0 }));
   };
 
   return (
@@ -122,7 +172,7 @@ export default function EstudioRecrear({ client, archivos = [], productosConFoto
                   <button type="button" className="btn btn-secondary btn-sm" disabled={ocupado} onClick={() => entrada.current?.click()}>
                     <Icon name="upload" size={16} /> {trabajando === "subir" ? "Subiendo…" : "Subir imagen o video"}
                   </button>
-                  <button type="button" className="btn btn-secondary btn-sm" disabled={ocupado || !galeria.length} aria-expanded={escogiendo} onClick={() => setEscogiendo((x) => !x)}>
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={ocupado || !archivos.length} aria-expanded={escogiendo} onClick={() => setEscogiendo((x) => !x)}>
                     <Icon name="image" size={16} /> De la galería
                   </button>
                   {client.driveFolder && (
@@ -135,8 +185,16 @@ export default function EstudioRecrear({ client, archivos = [], productosConFoto
                 </div>
               </div>
               {escogiendo && (
+                <div role="group" aria-label="Qué enseñar de la galería" className="est-filtros">
+                  {FILTROS.map(([id, nombre]) => (
+                    <button key={id} type="button" className="filter-chip" aria-pressed={filtro === id} onClick={() => setFiltro(id)}>{nombre}</button>
+                  ))}
+                </div>
+              )}
+              {escogiendo && (
                 <ul className="recrear-galeria" aria-label="Escoger de la galería">
-                  {galeria.slice(0, 40).map((a) => (
+                  {!galeria.length && <li className="hint">No hay {filtro === "video" ? "videos" : "imágenes"} en la galería.</li>}
+                  {galeria.slice(0, 120).map((a) => (
                     <li key={a.id}>
                       <button type="button" aria-pressed={archivo?.id === a.id} aria-label={`Escoger: ${a.prompt || "pieza"}`} onClick={() => { setArchivo(a); setEscogiendo(false); }}>
                         <Pieza archivo={a} />
@@ -162,6 +220,7 @@ export default function EstudioRecrear({ client, archivos = [], productosConFoto
                 <label className="label" htmlFor={`${ids}-n`}>Qué te gusta de él (opcional)</label>
                 <input id={`${ids}-n`} className="input" maxLength={400} value={nota} placeholder="El gancho de arriba, cómo muestra el antes y después…" onChange={(e) => setNota(e.target.value)} />
               </div>
+              {video && <ModoVideo ids={ids} modo={modo} onModo={setModo} disabled={ocupado} />}
               <p className="hint">
                 {video ? "Gemini ve el video" : "Claude mira la imagen"} y lo explica: el gancho, cómo está hecho y por qué funciona. Queda en el cerebro como
                 referencia INTERNA (la ven el equipo y el asistente, nunca lo que se escribe para publicar).
@@ -190,6 +249,10 @@ export default function EstudioRecrear({ client, archivos = [], productosConFoto
                       <input id={`${ids}-x`} className="input" maxLength={120} value={version.texto} onChange={(e) => setVersion((v) => ({ ...v, texto: e.target.value }))} />
                     </div>
                   )}
+                  {video && motor && (
+                    <p className="hint" role="note"><strong>Motor recomendado: {motor.modelo.nombre}</strong> ({motor.segundos} s). {motor.porque}</p>
+                  )}
+                  {video && !motor && <p className="cerebro-error" role="alert">No hay ningún modelo de video con llave que sirva para esto.</p>}
                   {version.descripcion && (
                     <div className="field">
                       <span className="label">Descripción propuesta</span>
@@ -197,6 +260,16 @@ export default function EstudioRecrear({ client, archivos = [], productosConFoto
                       <CopyButton text={version.descripcion} describes="la descripción" />
                     </div>
                   )}
+                  <div className="field">
+                    <label className="label" htmlFor={`${ids}-o`}>¿No te gusta? Qué cambiar (opcional)</label>
+                    <input id={`${ids}-o`} className="input" maxLength={500} value={pide} disabled={ocupado} placeholder="Más emotivo, que salga una mamá, que termine con el producto en la mesa…" onChange={(e) => setPide(e.target.value)} />
+                  </div>
+                  <div className="lote-fila">
+                    <button type="button" className="btn btn-secondary btn-sm" disabled={ocupado || !referencia?.analisis} onClick={() => otraVersion()}>
+                      <Icon name="refresh" size={16} /> {trabajando === "version" ? "Escribiendo…" : "Otra versión"}
+                    </button>
+                    {video && <ModoVideo ids={`${ids}-2`} modo={modo} onModo={(m) => otraVersion(m)} disabled={ocupado || !referencia?.analisis} />}
+                  </div>
                 </section>
               )}
             </>
@@ -216,7 +289,7 @@ export default function EstudioRecrear({ client, archivos = [], productosConFoto
           {paso === 1 && (
             <>
               <button type="button" className="btn btn-ghost" disabled={ocupado} onClick={() => setPaso(0)}>Volver</button>
-              <button type="button" className="btn btn-primary" disabled={ocupado || !version?.idea.trim()} onClick={crear}>
+              <button type="button" className="btn btn-primary" disabled={ocupado || !version?.idea.trim() || (video && !motor)} onClick={crear}>
                 <Icon name={video ? "video" : "imageAi"} size={18} /> Crear con mi marca
               </button>
             </>
@@ -230,5 +303,20 @@ export default function EstudioRecrear({ client, archivos = [], productosConFoto
         />
       )}
     </div>
+  );
+}
+
+/** Los dos modos de recrear un video: radios con su ayuda. */
+function ModoVideo({ ids, modo, onModo, disabled }) {
+  return (
+    <fieldset className="field" disabled={disabled}>
+      <legend className="label">Cómo recrearlo</legend>
+      {Object.entries(MODOS_RECREAR).map(([id, d]) => (
+        <label key={id} className="est-logo-casilla" htmlFor={`${ids}-m-${id}`}>
+          <input id={`${ids}-m-${id}`} type="radio" name={`${ids}-modo`} checked={modo === id} onChange={() => onModo(id)} />
+          <span><strong>{d.nombre}</strong> · {d.ayuda}</span>
+        </label>
+      ))}
+    </fieldset>
   );
 }

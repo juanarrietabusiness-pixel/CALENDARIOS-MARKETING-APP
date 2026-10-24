@@ -81,10 +81,10 @@ const clavesDe = (medios) => Object.fromEntries(Object.entries(medios).map(([rol
 function formularioInicial(motores, inicial, productos = [], fijados = {}) {
   const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
   const tipo = inicial?.tipo ?? "imagen";
-  // Un modelo pedido de fuera (seguir un video de la competencia) se respeta aunque no tenga llave: la pantalla
-  // lo enseña «sin llave» en vez de cambiarlo por otro que no hace lo mismo.
+  // Un modelo pedido de fuera sólo se respeta si tiene llave: uno sin llave no se puede pedir, y la lista ya no
+  // enseña los que no tienen (el recreador escoge entre los que hay: lib/recrear.js).
   const pedido = inicial?.modelo ? modeloPorId(inicial.modelo) : null;
-  const m = pedido?.tipo === tipo ? pedido : api.modeloPreferido(activos, tipo, fijados[tipo]);
+  const m = pedido?.tipo === tipo && (pedido.motor === "prueba" || activos[pedido.motor]) ? pedido : api.modeloPreferido(activos, tipo, fijados[tipo]);
   const medios = MEDIOS_VACIOS();
   if (inicial?.inicio) medios.start = [inicial.inicio];
   // Desde una publicación de un producto con fotos en el catálogo, sus fotos van de referencia: sale el producto REAL.
@@ -95,7 +95,8 @@ function formularioInicial(motores, inicial, productos = [], fijados = {}) {
   if (inicial?.video && m.video) medios.video = [inicial.video];
   return {
     tipo, modelo: m.id, prompt: inicial?.prompt ?? "", n: 1, medios,
-    ajustes: ajustesDe(m, inicial?.proporcion ? { aspectRatio: inicial.proporcion } : {}, clavesDe(medios)),
+    // Los ajustes que trae (la duración y el sonido del recreador) y la proporción; `ajustesDe` descarta lo que el modelo no admite.
+    ajustes: ajustesDe(m, { ...(inicial?.ajustes ?? {}), ...(inicial?.proporcion ? { aspectRatio: inicial.proporcion } : {}) }, clavesDe(medios)),
   };
 }
 
@@ -324,6 +325,16 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       return { ...f, modelo: id, n: Math.min(f.n, maxPorPedido(m)), medios, ajustes: ajustesDe(m, f.ajustes, clavesDe(medios)) };
     });
   };
+
+  // Nunca queda escogido un modelo sin llave (un borrador de antes, una llave que se quitó): pasa al preferido.
+  useEffect(() => {
+    if (!form || !motores) return;
+    const m = modeloPorId(form.modelo);
+    if (m && (m.motor === "prueba" || motores[m.motor]?.activo)) return;
+    const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, Boolean(v.activo)]));
+    cambiarModelo(api.modeloPreferido(activos, form.tipo, fijados[form.tipo]).id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form?.modelo, form?.tipo, motores]);
 
   /** La IA devuelve la idea más clara y sencilla, en el mismo campo. No gasta en el motor. */
   const mejorarConIA = async ({ alAbrir = false } = {}) => {
@@ -580,11 +591,12 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setConfirmando(null);
     setVisor(null);
     setEnPapelera(false);
-    setForm(formularioInicial(motores, { ...pedido, ...(pedido.tipo === "video" ? { modelo: "kling-omni-video" } : {}) }, [], fijados));
+    // El modelo lo propone el recreador entre los que tienen llave (lib/motorRecrear.js); sin llave no se respeta.
+    setForm(formularioInicial(motores, pedido, [], fijados));
     setPreset(pedido.preset ?? "anuncio");
     setIdeaAnterior(null);
     avisar(true, pedido.tipo === "video"
-      ? "Lista para seguir el video con tu marca. Revisa el pedido y pulsa «Crear video»."
+      ? `Lista para recrear el video con tu marca${pedido.referencias?.length ? " y las fotos del producto" : ""}. Revisa el pedido y pulsa «Crear video».`
       : "Lista para recrear con tu marca: el anuncio va de referencia sólo por su composición y su estilo, con las fotos del producto. Revisa y pulsa «Crear imagen».");
     enfocarPrompt();
   };
@@ -1012,6 +1024,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         <Suspense fallback={null}>
           <EstudioRecrear
             client={client} archivos={datos?.archivos ?? []} productosConFotos={datos?.productos ?? []} inicial={recrear.archivo}
+            activos={Object.fromEntries(Object.entries(motores ?? {}).map(([k, v]) => [k, Boolean(v.activo)]))}
             onCerrar={() => { setRecrear(null); cargar(); }} onCrear={desdeRecrear}
           />
         </Suspense>

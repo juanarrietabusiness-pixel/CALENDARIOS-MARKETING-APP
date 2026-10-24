@@ -2,9 +2,9 @@
 // El reel con IA de 10 segundos, como en Flow (puro)
 //
 //   1. La IDEA central (promoción, beneficio o idea) → el GUION por planos:
-//      de 4 a 8 planos con cortes, cada uno con qué se ve, su texto corto en
-//      pantalla (el precio EXACTO si lo lleva) y la cámara; el cierre con el
-//      logo y el llamado. Más el hilo que comparten todos (personajes, luz,
+//      de 4 a 8 planos con cortes, cada uno con qué se ve y la cámara, SIN
+//      texto en pantalla (videoLimpio.js: los modelos de video escriben mal y
+//      deforman el logo). Más el hilo que comparten todos (personajes, luz,
 //      paleta), el sonido y la descripción del post.
 //   2. El STORYBOARD: un fotograma por plano (imagen 9:16), en orden, cada uno
 //      con el anterior y los personajes de referencia. Se revisan y corrigen
@@ -17,6 +17,8 @@
 // Lo usan la pantalla (components/FlujoReel.jsx) y el Worker
 // (worker/lib/estudio/reel.js).
 // ============================================================
+
+import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
 
 export const MIN_PLANOS = 3;
 export const MAX_PLANOS = 8;
@@ -43,7 +45,6 @@ export const soloFlow = (segundos) => Number(segundos) > SEGUNDOS_POR_CLIP;
 export const maxPlanos = (segundos = 10) => (soloFlow(segundos) ? Math.min(20, Math.ceil(segundos / SEGUNDOS_POR_CLIP) * 5) : MAX_PLANOS);
 
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
-const comillas = (t) => String(t ?? "").split(/\n+/).map((l) => l.replace(/["“”«»]/g, "").trim()).filter(Boolean).map((l) => `"${l}"`).join(" / ");
 
 /** Lo que se le pide a la IA para el guion por planos. Pura. */
 export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segundos = 10, tipo = "", estilo = "", producto = "", personajes = [], identidad = "", contexto = "", musica = "", locucion = "", estructura = "" }) {
@@ -63,9 +64,9 @@ export function pedidoDeReel({ marca = "la marca", rubro = "", idea = "", segund
     estructura ? `ESTRUCTURA A SEGUIR (es la de un anuncio que ya funciona, de otra marca): copia su forma —el orden de los momentos, el ritmo, el tipo de gancho y de cierre— con el producto y la marca de ${marca}; nunca su marca, sus personajes ni su texto.\n${corto(estructura, 1500)}` : "",
     soloFlow(segundos) ? `Es un video LARGO que se hará en ${clips} clips de ${SEGUNDOS_POR_CLIP} s que se pegan uno tras otro: ningún plano cruza un múltiplo de ${SEGUNDOS_POR_CLIP} s (cada clip empieza en un plano nuevo), cada clip termina en un momento que enlaza con el siguiente, el gancho va en el primero y el cierre con el llamado en el último. Los personajes, la ropa, el lugar y la luz son los MISMOS en todos.` : "",
     "",
-    `Reglas: de ${MIN_PLANOS + 1} a ${maxPlanos(segundos)} planos que sumen ${segundos} s exactos, contiguos desde 0. El primero detiene el scroll (gancho); el del medio muestra el producto o el resultado; el último cierra con el logo de la marca y el llamado a la acción (WhatsApp si lo hay en lo que se sabe). Texto en pantalla corto: como mucho 5 palabras por plano (o vacío), sin errores; un precio, EXACTO como en el catálogo. Nada de reseñas, cifras ni urgencias inventadas. La locución (voz en off) dura lo que el video: como mucho ${Math.floor(segundos * PALABRAS_POR_SEGUNDO)} palabras, en español latino neutro, o vacía si el reel va sólo con música.`,
+    `Reglas: de ${MIN_PLANOS + 1} a ${maxPlanos(segundos)} planos que sumen ${segundos} s exactos, contiguos desde 0. El primero detiene el scroll (gancho); el del medio muestra el producto o el resultado; el último cierra con el producto o el resultado y deja ganas de escribir (el logo y el llamado no los dibuja el modelo de video: los modelos los deforman). El video va LIMPIO: ningún plano lleva texto, letras ni subtítulos en pantalla. Nada de reseñas, cifras ni urgencias inventadas. La locución (voz en off) dura lo que el video: como mucho ${Math.floor(segundos * PALABRAS_POR_SEGUNDO)} palabras, en español latino neutro, o vacía si el reel va sólo con música.`,
     "",
-    'Responde SOLO con JSON: {"hilo":"lo que comparten todos los planos (personaje, luz, paleta, lugar), en una frase","planos":[{"desde":0,"hasta":2,"escena":"qué se ve (sujeto, acción, lugar, luz)","texto":"texto en pantalla o vacío","camara":"movimiento de cámara"}],"musica":"estilo, ritmo y ánimo de la música","locucion":"lo que dice la voz en off, o vacío","efectos":"sonido ambiente o efectos, o vacío","descripcion":"el texto del post, de 2 a 4 frases, sin hashtags"}',
+    'Responde SOLO con JSON: {"hilo":"lo que comparten todos los planos (personaje, luz, paleta, lugar), en una frase","planos":[{"desde":0,"hasta":2,"escena":"qué se ve (sujeto, acción, lugar, luz)","camara":"movimiento de cámara"}],"musica":"estilo, ritmo y ánimo de la música","locucion":"lo que dice la voz en off, o vacío","efectos":"sonido ambiente o efectos, o vacío","descripcion":"el texto del post, de 2 a 4 frases, sin hashtags"}',
   ].filter((l) => l !== "").join("\n");
 }
 
@@ -134,7 +135,7 @@ export const tramo = (p) => `[${p.desde}–${p.hasta} s]`;
 
 /**
  * Lo que se pide para UN fotograma del storyboard (imagen 9:16): el plano, el hilo, el estilo de la marca y, si ya
- * hay, que siga los anteriores. El texto en pantalla va EXACTO (el fotograma enseña cómo se verá). Pura.
+ * hay, que siga los anteriores. Sin texto: el fotograma enseña cómo se verá el video, y el video va limpio. Pura.
  */
 export function pedidoDeFotograma({ plano, total, hilo = "", estilo = "", personajes = "", conAnteriores = false, conFotos = false }) {
   return [
@@ -146,7 +147,7 @@ export function pedidoDeFotograma({ plano, total, hilo = "", estilo = "", person
     personajes,
     conAnteriores ? "Las referencias incluyen los fotogramas anteriores de este MISMO reel: mismos personajes, mismo lugar, misma luz y paleta, como planos de una misma pieza." : "",
     conFotos ? "Una de las referencias es la foto real del producto: si aparece, que sea ese producto, igual." : "",
-    plano.texto ? `Texto en pantalla, EXACTO y legible, corto y bien colocado: ${comillas(plano.texto)}. Ningún otro texto.` : "Sin texto en pantalla.",
+    SIN_TEXTO_VIDEO,
   ].filter(Boolean).join("\n\n").slice(0, 3800);
 }
 
@@ -165,10 +166,11 @@ export function fotogramasParaVideo(fotogramas = [], max = MAX_STORYBOARD) {
 export function promptDeReel({ planos = [], hilo = "", sonido = "", musica = "", locucion = "", efectos = "", segundos = 10, estilo = "", conStoryboard = false, personajes = "" }) {
   return [
     `Reel vertical 9:16 de ${segundos} segundos, con varios planos y cortes limpios, calidad de anuncio profesional.`,
-    conStoryboard ? "Las imágenes de referencia son el STORYBOARD, en orden: cada una es un plano. Respeta sus personajes, su lugar, su luz, su paleta y su texto." : "",
+    conStoryboard ? "Las imágenes de referencia son el STORYBOARD, en orden: cada una es un plano. Respeta sus personajes, su lugar, su luz y su paleta." : "",
+    SIN_TEXTO_VIDEO,
     personajes,
     hilo ? `Lo que comparten todos los planos: ${hilo}` : "",
-    ...planos.map((p) => `${tramo(p)} ${p.escena}${p.camara ? ` Cámara: ${p.camara}.` : ""}${p.texto ? ` Texto en pantalla, exacto: ${comillas(p.texto)}.` : ""}`),
+    ...planos.map((p) => `${tramo(p)} ${p.escena}${p.camara ? ` Cámara: ${p.camara}.` : ""}`),
     sonido ? `Sonido: ${sonido}` : "",
     musica ? `Música de fondo: ${corto(musica, 300)}.` : "",
     locucion ? `Locución en off, en español latino neutro, clara y a tiempo con los planos: «${corto(locucion, 500)}».` : "",
@@ -189,7 +191,7 @@ export function clipsDelGuion(planos = [], segundos = 10, porClip = SEGUNDOS_POR
 /**
  * El prompt para pegar en FLOW (Gemini Omni), en UNA sola instrucción: Flow no sabe nada de la marca, así que lleva
  * todo —la marca, el estilo, la ficha de continuidad (personajes, producto, lugar, luz), los clips con sus planos,
- * cámara y texto en pantalla, la música, la locución y los efectos— y qué imágenes subir como ingredientes. Con más
+ * y cámara, la música, la locución y los efectos— y qué imágenes subir como ingredientes. Con más
  * de un clip, el agente de Flow los genera seguidos y cada uno continúa al anterior. Pura.
  * @param personajes [{ nombre, descripcion }]  @param producto «Nombre (precio…)»  @param ingredientes nombres de lo que se sube
  */
@@ -197,7 +199,7 @@ export function promptParaFlow({ guion = {}, marca = "la marca", rubro = "", ide
   const segundos = Number(guion.segundos) || 10;
   const clips = clipsDelGuion(guion.planos ?? [], segundos);
   const varios = clips.length > 1;
-  const plano = (p) => `${tramo(p)} ${String(p.escena ?? "").trim().replace(/([^.!?])$/, "$1.")}${p.camara ? ` Cámara: ${p.camara}.` : ""}${p.texto ? ` Texto en pantalla, exacto: ${comillas(p.texto)}.` : " Sin texto en pantalla."}`;
+  const plano = (p) => `${tramo(p)} ${String(p.escena ?? "").trim().replace(/([^.!?])$/, "$1.")}${p.camara ? ` Cámara: ${p.camara}.` : ""}`;
   return [
     varios
       ? `Crea con Gemini Omni un video vertical 9:16 de ${segundos} segundos para ${marca}${rubro ? ` (${rubro})` : ""}, en ${clips.length} clips de ${SEGUNDOS_POR_CLIP} segundos que se pegan en orden. Genera los ${clips.length} clips seguidos: cada uno continúa exactamente donde termina el anterior (mismo personaje, ropa, lugar, luz y paleta), como un solo anuncio.`
@@ -216,12 +218,12 @@ export function promptParaFlow({ guion = {}, marca = "la marca", rubro = "", ide
     guion.locucion ? `- Locución en off, en español latino neutro, clara${varios ? ", repartida a lo largo de los clips" : ""}: «${corto(guion.locucion, 1200)}».` : "- Sin locución.",
     guion.efectos ? `- Efectos: ${corto(guion.efectos, 300)}.` : "",
     "",
-    "REGLAS: el texto en pantalla, exacto y sin faltas (ningún otro texto ni letras inventadas); sin logos ni marcas de otros; manos, caras y producto sin deformaciones; nada de subtítulos automáticos.",
+    `REGLAS: ${SIN_TEXTO_VIDEO} Sin marcas de otros; manos, caras y producto sin deformaciones.`,
   ].join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /** «Del segundo X al Y: …» sobre un video hecho: cambia SÓLO ese tramo. Pura. */
 export function promptDeTramo({ desde = 0, hasta = 10, cambio = "" }) {
   const c = corto(cambio, 500).replace(/[.\s]+$/, "");
-  return `Corrige este video SOLO del segundo ${desde} al ${hasta}: ${c}. Conserva todo lo demás exactamente igual: los otros planos, los personajes, el texto en pantalla, la música y la duración.`;
+  return `Corrige este video SOLO del segundo ${desde} al ${hasta}: ${c}. Conserva todo lo demás exactamente igual: los otros planos, los personajes, la música y la duración, sin añadir texto.`;
 }

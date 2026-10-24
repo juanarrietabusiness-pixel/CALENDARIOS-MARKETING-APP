@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { segundosParaModelo, ajusteDeDuracion, pedidoDeGuionCorto, leerGuionCorto, promptDeVideoCorto, MAX_PALABRAS_PANTALLA } from "./videoCorto";
+import { segundosParaModelo, ajusteDeDuracion, pedidoDeGuionCorto, leerGuionCorto, promptDeVideoCorto } from "./videoCorto";
+import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
 import { modeloPorId } from "./estudioCatalogo";
 
 describe("la duración según el modelo", () => {
@@ -19,18 +20,18 @@ describe("el guion", () => {
     expect(p).toContain("gancho (0–2 s), beneficio (2–7 s), cierre (7–10 s)");
     expect(p).toContain("TIPO DE CONTENIDO: Anuncio");
     expect(p).toContain("Desde $45");
-    expect(p).toContain(`como MUCHO ${MAX_PALABRAS_PANTALLA} palabras`);
+    expect(p).toContain("El video va LIMPIO, sin texto en pantalla");
   });
 
-  it("lee el JSON, recorta el texto en pantalla y arma el pedido sin texto largo ni logo", () => {
+  it("lee el JSON y arma el pedido limpio: sin texto en pantalla ni logo", () => {
     const g = leerGuionCorto('{"escena":"Una sala luminosa","camara":"acercamiento lento","tramos":[{"clave":"gancho","accion":"Un niño derrama jugo en el sofá"},{"clave":"beneficio","accion":"El técnico limpia y la mancha desaparece"},{"clave":"cierre","accion":"La familia se sienta sonriendo"}],"textoPantalla":"Tu sofá como nuevo hoy mismo","textoEdicion":"Desde $45 · Escríbenos","sonido":"música alegre","descripcion":"¿Manchas? 👉 Escríbenos #Panama"}', 8);
-    expect(g.textoPantalla).toBe("Tu sofá como nuevo");
+    expect(g.textoPantalla).toBe("");
     expect(g.tramos.map((t) => `${t.desde}-${t.hasta}`)).toEqual(["0-2", "2-6", "6-8"]);
     const pedido = promptDeVideoCorto(g);
     expect(pedido).toContain("Video vertical de 8 segundos, una sola toma");
     expect(pedido).toContain("0–2 s: Un niño derrama jugo en el sofá.");
-    expect(pedido).toContain("«Tu sofá como nuevo»");
-    expect(pedido).toContain("Sin logos.");
+    expect(pedido).not.toContain("Tu sofá como nuevo");
+    expect(pedido).toContain(SIN_TEXTO_VIDEO);
     expect(pedido).not.toContain("Desde $45");
     expect(leerGuionCorto("nada")).toBeNull();
   });

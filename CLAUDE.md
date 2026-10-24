@@ -1786,6 +1786,21 @@ son del servidor.
   mi marca» no crea nada: pone la versión en el compositor (`pedidoParaElCompositor`, src/lib/recrear.js) con las
   fotos del producto delante y el anuncio con `toma: ["composicion", "estilo"]` y la nota de que es de otra marca; el
   costo se ve allí. En video, el anuncio va como video de referencia con Kling Omni y sin texto en pantalla.
+- **El video va LIMPIO: a un modelo de video nunca se le pide texto, subtítulos ni logo** (`SIN_TEXTO_VIDEO` en
+  `src/lib/videoLimpio.js`, decisión de la agencia: escriben mal y deforman el logo). Una sola frase que usan
+  `LINEA_VIDEO` (todo video del compositor), el Reel IA (guion, fotogramas, video, Flow, tramo), el guion corto, el lote
+  y el recreador. El guion del reel ya no trae `texto` por plano; uno de antes que lo traiga se lee y se ignora.
+- **Sin llave, el modelo no existe para la pantalla.** El compositor sólo lista los que tienen llave y, si el escogido
+  no la tiene (un borrador, una llave quitada, un pedido de fuera), Estudio.jsx lo cambia al preferido. El recreador de
+  video fijaba Kling Omni de HIGGSFIELD —sin llave en la cuenta—, y por eso «no se creaba el video».
+- **Recrear un video: dos modos y el motor lo propone una REGLA** (`MODOS_RECREAR` en lib/recrear.js,
+  `motorParaRecrear` en lib/motorRecrear.js). «Mismo video, con mi producto» edita el original (Omni por Kie, con 5
+  fotos del producto como mucho); «Otra versión que transmita lo mismo» hace uno nuevo SIN el original, por tramos, a la
+  duración de la referencia (Seedance 2.5 llega a 30 s). La regla recorre una lista de preferencia y se queda con el
+  primero CON LLAVE: la IA no escoge, así no puede proponer lo que no hay. Las fotos del producto van también en video
+  (antes `video ? [] : …` las vaciaba). «Otra versión» llama a `…/adaptar` con `antes` y `pide`, sin volver a analizar,
+  y un anuncio ya analizado (está en las referencias del estudio de mercado por su `archivoId`) no se paga otra vez.
+  Seedance y Wan van SIN voz (la inventan mal en español): música y sonido ambiente.
 - **La galería tiene una pestaña Drive** (`ExploradorDrive` en modo «escoger»): lo tocado se baja (`archivoDeDrive`), se
   sube a la galería y entra en el pedido. No le pases un `onError` en línea: está en las dependencias de su carga, y una
   función nueva en cada render la relee en bucle (y le llega un `Error`, no un texto).

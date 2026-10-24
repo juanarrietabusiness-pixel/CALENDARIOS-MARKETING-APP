@@ -10,7 +10,8 @@
 //   POST   /<cliente>/estudio/aprobar              Pasa a vigente, va al cerebro y a Drive
 //   POST   /<cliente>/referencias                  { archivoId, competidor, enlace, desde, nota }: añadir y analizar
 //   POST   /<cliente>/referencias/<id>/analizar    Volver a analizar ({ fotogramas? } si el video lo ve Meta)
-//   POST   /<cliente>/referencias/<id>/adaptar     { productoId, formato }: un guion con su misma estructura (no guarda)
+//   POST   /<cliente>/referencias/<id>/adaptar     { productoId, formato, modo, antes, pide, segundos }: un guion con su misma
+//                                                   estructura, u otra versión distinta de la anterior (no guarda)
 //   DELETE /<cliente>/referencias/<id>
 //   GET    /<cliente>/competencia?usuario=…        Las últimas publicaciones de esa cuenta, las mejores primero
 //   POST   /<cliente>/competencia/traer            { usuario, id }: su archivo a la galería («Competencia»)
@@ -83,7 +84,10 @@ export async function rutasMercado(req, env, { acceso, partes, metodo }) {
     }
     if (a === "referencias" && ID.test(String(b ?? "")) && c === "adaptar" && metodo === "POST") {
       const d = (await cuerpo(req)) ?? {};
-      return json(await adaptarReferencia(env, acceso, cliente, b, { productoId: String(d.productoId ?? ""), formato: String(d.formato ?? "reel") }));
+      return json(await adaptarReferencia(env, acceso, cliente, b, {
+        productoId: String(d.productoId ?? ""), formato: String(d.formato ?? "reel"),
+        modo: String(d.modo ?? ""), antes: String(d.antes ?? ""), pide: String(d.pide ?? ""), segundos: Number(d.segundos) || 0,
+      }));
     }
     if (a === "competencia" && !b && metodo === "GET") {
       return json(await contenidoDe(env, acceso, cliente, new URL(req.url).searchParams.get("usuario") ?? ""));

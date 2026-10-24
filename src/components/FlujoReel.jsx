@@ -19,8 +19,8 @@ import "./EstudioLote.css";
 //
 //   1. Idea: la promoción, el beneficio o la idea central; el tipo, el
 //      estilo, el producto y los personajes. La IA propone el guion.
-//   2. Planos: de 4 a 8, cada uno con su tiempo, qué se ve, el texto corto
-//      en pantalla y la cámara; el sonido y la descripción del post.
+//   2. Planos: de 4 a 8, cada uno con su tiempo, qué se ve y la cámara (sin
+//      texto en pantalla: videoLimpio.js); el sonido y la descripción del post.
 //   3. Fotogramas: uno por plano, en orden, para revisar personajes, estilo
 //      e historia ANTES de pagar el video. Cada uno se corrige o se rehace.
 //   4. Video: con los fotogramas como storyboard. «Corregir un tramo» (del
@@ -163,7 +163,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
       const r = await api.guionDeReel(clienteId, { idea, segundos: duracion, preset, estilo, productoId: productoId || undefined, personajes, referenciaId: referenciaId || undefined });
       setGuion(r);
       setPaso("planos");
-      setAviso({ ok: true, texto: ["Revisa los planos: qué se ve, el texto en pantalla y la cámara.", r.aviso ?? ""].filter(Boolean).join(" ") });
+      setAviso({ ok: true, texto: ["Revisa los planos: qué se ve y la cámara. El video va limpio, sin texto.", r.aviso ?? ""].filter(Boolean).join(" ") });
     } catch (e) {
       setAviso({ ok: false, texto: e.message });
     } finally {
@@ -174,7 +174,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
 
   const cambiarPlano = (i, campo, valor) => setGuion((g) => ({ ...g, planos: g.planos.map((p, j) => (j === i ? { ...p, [campo]: valor } : p)) }));
   const quitarPlano = (i) => setGuion((g) => ({ ...g, planos: repartirTiempos(g.planos.filter((_, j) => j !== i), g.segundos) }));
-  const anadirPlano = () => setGuion((g) => ({ ...g, planos: repartirTiempos([...g.planos, { escena: "", texto: "", camara: "" }], g.segundos) }));
+  const anadirPlano = () => setGuion((g) => ({ ...g, planos: repartirTiempos([...g.planos, { escena: "", camara: "" }], g.segundos) }));
 
   const comunFotos = () => ({
     clienteId, modelo: modeloImagen, hilo: guion.hilo, estilo: estiloTexto, personajes: deLosPersonajes,
@@ -334,7 +334,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
           {/* Lo principal: el guion entero para Flow, en una sola instrucción, con la marca dentro. */}
           <div className="notice reel-flow" style={{ display: "block" }}>
             <p style={{ margin: 0 }}><strong>Para Flow (Gemini Omni)</strong>{largo ? ` · ${Math.ceil(segundos / SEGUNDOS_POR_CLIP)} clips de ${SEGUNDOS_POR_CLIP} s en una sola instrucción` : ""}</p>
-            <p className="hint" style={{ margin: 0 }}>Lleva la marca, la continuidad, cada plano, el texto en pantalla, la música y la locución. Sube en Flow las imágenes que dice el prompt (logo, personajes, producto).</p>
+            <p className="hint" style={{ margin: 0 }}>Lleva la marca, la continuidad, cada plano, la música y la locución; el video, sin texto. Sube en Flow las imágenes que dice el prompt (logo, personajes, producto).</p>
             <div className="reel-flow-acciones">
               <button type="button" className="btn btn-primary btn-sm" onClick={() => navigator.clipboard.writeText(paraFlow).then(() => { setCopiado(true); setTimeout(() => setCopiado(false), 2000); }).catch(() => setAviso({ ok: false, texto: "No se pudo copiar: ábrelo en «Ver el prompt» y cópialo a mano." }))}>
                 <Icon name={copiado ? "check" : "copy"} size={14} /> {copiado ? "Copiado" : "Copiar para Flow"}
@@ -354,8 +354,6 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
                 <div className="carrusel-lamina-texto">
                   <label className="sr-only" htmlFor={`${ids}-pe-${i}`}>Qué se ve en el plano {p.n}</label>
                   <textarea id={`${ids}-pe-${i}`} className="textarea" rows={2} maxLength={300} value={p.escena} placeholder="Qué se ve" onChange={(e) => cambiarPlano(i, "escena", e.target.value)} />
-                  <label className="sr-only" htmlFor={`${ids}-pt-${i}`}>Texto en pantalla del plano {p.n}</label>
-                  <input id={`${ids}-pt-${i}`} className="input" maxLength={60} value={p.texto} placeholder="Texto en pantalla (corto, o vacío)" onChange={(e) => cambiarPlano(i, "texto", e.target.value)} />
                   <label className="sr-only" htmlFor={`${ids}-pc-${i}`}>Cámara del plano {p.n}</label>
                   <input id={`${ids}-pc-${i}`} className="input" maxLength={160} value={p.camara} placeholder="Cámara" onChange={(e) => cambiarPlano(i, "camara", e.target.value)} />
                   {planos.length > MIN_PLANOS && <button type="button" className="btn btn-ghost btn-sm" onClick={() => quitarPlano(i)}><Icon name="trash" size={14} /> Quitar</button>}
@@ -412,7 +410,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
                 </div>
                 <div className="carrusel-lamina-texto">
                   <strong>{tramo(p)}</strong>
-                  <p className="hint" style={{ margin: 0 }}>{p.escena}{p.texto ? ` · «${p.texto}»` : ""}</p>
+                  <p className="hint" style={{ margin: 0 }}>{p.escena}</p>
                   {f?.error && <p className="revision-problema">{f.error}</p>}
                   {paso === "fotogramas" && !ocupado && f && !f.cargando && (
                     <div className="carrusel-lamina-acciones">

@@ -31,6 +31,8 @@
 //
 // ============================================================
 
+import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
+
 import { limpiarAprendido, lineasAprendidas } from "./aprendizajeVisual.js";
 import { posicionDelKit } from "./logoEncima.js";
 
@@ -407,7 +409,7 @@ export function textoPreset(kitGuardado, id, { marca = "la marca", rubro = "" } 
 export const PREFIJO_TIPO = "Tipo de pieza (orienta el propósito y el tono; la escena y su composición mandan):";
 
 /** Lo que se añade en un video: el movimiento, corto. */
-export const LINEA_VIDEO = "Video corto: movimiento de cámara suave y natural, sin cortes bruscos, ritmo tranquilo.";
+export const LINEA_VIDEO = `Video corto: movimiento de cámara suave y natural, sin cortes bruscos, ritmo tranquilo. ${SIN_TEXTO_VIDEO}`;
 
 /** Lo que se dice del logo cuando va de referencia: que no lo redibuje. */
 export const LINEA_LOGO = "Una de las imágenes de referencia es el logo de la marca: si aparece en la pieza, cópialo tal cual (forma, colores y letras), sin redibujarlo ni inventar otro.";

@@ -517,11 +517,11 @@ export default function Compositor({
         <div className="field">
           <label className="label" htmlFor={`${ids}-m`}>Modelo</label>
           <select id={`${ids}-m`} className="input" value={form.modelo} onChange={(e) => onModelo(e.target.value)}>
-            {/* Sólo los que se pueden pedir: los de un proveedor sin llave (Higgsfield, fal…) salían en gris y
-                llenaban la lista de cosas que no se pueden escoger. El escogido se queda aunque no tenga llave. */}
-            {modelosParaLista(form.tipo, { orden, creador, activos, seleccionado: form.modelo }).filter((m) => activo(m) || m.id === form.modelo).map((m) => (
-              <option key={m.id} value={m.id} disabled={!activo(m)}>
-                {m.nombre}{m.motor === "prueba" ? "" : ` · ${NOMBRE_MOTOR[m.motor] ?? m.motor}`} · {etiquetaDeCosto(m)}{activo(m) ? "" : " · sin llave"}
+            {/* Sólo los que se pueden pedir: los de un proveedor sin llave (Higgsfield, fal…) no salen. Si el
+                escogido no tiene llave, Estudio.jsx lo cambia al preferido. */}
+            {modelosParaLista(form.tipo, { orden, creador, activos, seleccionado: form.modelo }).filter((m) => activo(m) || m.motor === "prueba").map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.nombre}{m.motor === "prueba" ? "" : ` · ${NOMBRE_MOTOR[m.motor] ?? m.motor}`} · {etiquetaDeCosto(m)}
               </option>
             ))}
           </select>

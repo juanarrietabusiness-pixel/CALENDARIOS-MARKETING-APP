@@ -438,7 +438,7 @@ export async function borrarReferencia(env, acceso, cliente, id) {
  * «Adaptar a la marca»: un guion con la misma estructura que la referencia, para un producto del catálogo. No guarda
  * nada: devuelve el guion para revisarlo, copiarlo o llevarlo al planificador.
  */
-export async function adaptarReferencia(env, acceso, cliente, id, { productoId = "", formato = "reel" } = {}) {
+export async function adaptarReferencia(env, acceso, cliente, id, { productoId = "", formato = "reel", modo = "", antes = "", pide = "", segundos = 0 } = {}) {
   const { referencias, catalogo, inventario } = await leerMercado(acceso, cliente.id);
   const ref = referencias.find((r) => r.id === id);
   if (!ref) throw new ErrorMercado("Esa referencia no existe.", 404);
@@ -452,6 +452,9 @@ export async function adaptarReferencia(env, acceso, cliente, id, { productoId =
       productoLinea: producto ? lineaDeProducto(producto, { inventario }).slice(2) : "",
       kit: textoKit,
       contexto: await contextoDeMarca(env, acceso, cliente, `${producto?.nombre ?? ""} ${ref.analisis.gancho} ${ref.analisis.angulo}`),
+      modo: modo === "mismo" ? "mismo" : modo === "version" ? "version" : "",
+      antes: String(antes ?? "").slice(0, 1500), pide: String(pide ?? "").slice(0, 500),
+      segundos: Math.min(60, Math.max(0, Math.round(Number(segundos) || 0))),
     }),
     salida: 2500,
     funcion: "guion de video",

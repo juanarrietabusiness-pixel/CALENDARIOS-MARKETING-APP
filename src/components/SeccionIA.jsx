@@ -149,7 +149,8 @@ export default function SeccionIA({ esAdmin, pulso = 0 }) {
             </label>
             <select id={`${ids}-vid`} className="input" value={config.ia_modelos?.video ?? "gemini"} disabled={!esAdmin || guardando}
               onChange={(e) => cambiar("ia_modelos", { video: e.target.value })}>
-              {MOTORES_VIDEO.map((m) => (
+              {/* Sólo los que tienen llave (y el escogido, para que se vea qué hay puesto). */}
+              {MOTORES_VIDEO.filter((m) => !modelos?.video?.llaves || modelos.video.llaves[m.id] || m.id === (config.ia_modelos?.video ?? "gemini")).map((m) => (
                 <option key={m.id} value={m.id}>{m.nombre}{modelos?.video?.llaves && !modelos.video.llaves[m.id] ? " · sin llave" : ""}</option>
               ))}
             </select>
