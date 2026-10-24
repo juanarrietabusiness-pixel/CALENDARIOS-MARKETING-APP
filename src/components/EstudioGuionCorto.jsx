@@ -23,8 +23,8 @@ export default function GuionCorto({ segundos, escribiendo, resultado, onEscribi
             {g.tramos.map((t) => <li key={t.clave}><strong>{t.desde}–{t.hasta} s · {NOMBRE_TRAMO[t.clave]}:</strong> {t.accion}</li>)}
           </ol>
           {g.camara && <p><strong>Cámara:</strong> {g.camara}</p>}
-          <p><strong>Texto en pantalla:</strong> {g.textoPantalla ? `«${g.textoPantalla}»` : "ninguno"}</p>
-          {g.textoEdicion && <p><strong>Para edición (CapCut o Canva):</strong> {g.textoEdicion}</p>}
+          <p><strong>Texto en pantalla:</strong> ninguno (el video va limpio)</p>
+          {g.textoEdicion && <p><strong>Para la descripción o la edición:</strong> {g.textoEdicion}</p>}
           {g.sonido && <p><strong>Sonido:</strong> {g.sonido}</p>}
           {g.descripcion && (
             <div className="est-guion-desc">

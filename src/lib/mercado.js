@@ -67,9 +67,12 @@ export const reanalizarReferencia = (clienteId, id, src = "") =>
     (fotogramas) => pedir(`${base(clienteId)}/referencias/${encodeURIComponent(id)}/analizar`, post(fotogramas ? { fotogramas } : {})), src,
   )));
 
-/** Un guion con la misma estructura que la referencia, para un producto: `{ adaptacion, aviso }`. No guarda. */
-export const adaptarReferencia = (clienteId, id, { productoId = "", formato = "reel" } = {}) =>
-  gastando(() => pedir(`${base(clienteId)}/referencias/${encodeURIComponent(id)}/adaptar`, post({ productoId, formato })));
+/**
+ * Un guion con la misma estructura que la referencia, para un producto: `{ adaptacion, aviso }`. No guarda. En video,
+ * `modo` «mismo» (editar el mismo video) o «version» (otro que transmita lo mismo); `antes` + `pide`: otra versión.
+ */
+export const adaptarReferencia = (clienteId, id, { productoId = "", formato = "reel", modo = "", antes = "", pide = "", segundos = 0 } = {}) =>
+  gastando(() => pedir(`${base(clienteId)}/referencias/${encodeURIComponent(id)}/adaptar`, post({ productoId, formato, modo, antes, pide, segundos })));
 
 export const borrarReferencia = (clienteId, id) =>
   cambiandoCerebro(clienteId, () => pedir(`${base(clienteId)}/referencias/${encodeURIComponent(id)}`, { method: "DELETE" }));

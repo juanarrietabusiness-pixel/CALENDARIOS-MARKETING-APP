@@ -775,12 +775,18 @@ export function notaDeReferencia(referencia) {
  * gancho) para un producto de la marca, con lo del estudio de mercado. Pura.
  * @param productoLinea  el producto con su precio exacto (`lineaDeProducto`), o vacío.
  */
-export function pedidoDeAdaptacion({ marca, referencia, productoLinea = "", formato = "reel", contexto = "", kit = "" }) {
+export function pedidoDeAdaptacion({ marca, referencia, productoLinea = "", formato = "reel", contexto = "", kit = "", modo = "", antes = "", pide = "", segundos = 0 }) {
   const r = limpiarReferencia(referencia);
   const a = r?.analisis ?? {};
   const estructura = estructuraATexto(a.estructura, 1500);
+  const video = formato === "reel";
+  // En video, dos modos (lib/recrear.js): «mismo» conserva el video y cambia lo suyo por lo nuestro (Omni lo edita);
+  // «version» es un video NUEVO que transmite lo mismo, por tramos con sus segundos.
+  const mismo = video && modo === "mismo";
   return [
-    `Eres director creativo de una agencia en Panamá. Escribe ${formato === "carrusel" ? "un carrusel" : formato === "post" ? "un post" : "un video corto (reel)"} para ${marca} con la MISMA estructura que esta referencia de la competencia: misma forma, mismo tipo de gancho y mismo ritmo; el contenido es de ${marca}. Nunca copies sus frases, su marca ni sus datos.`,
+    mismo
+      ? `Eres director creativo de una agencia en Panamá. Vamos a EDITAR este video de la competencia con un modelo que conserva su escenario, su cámara, su ritmo y su música, y sólo cambia lo que le digas. Escribe para ${marca} la orden de edición: qué se cambia (su producto por el nuestro, sus colores por los de la marca, lo que delate a la otra marca) y qué se conserva. Nunca copies sus frases, su marca ni sus datos.`
+      : `Eres director creativo de una agencia en Panamá. Escribe ${formato === "carrusel" ? "un carrusel" : formato === "post" ? "un post" : `un video corto (reel)${segundos ? ` de ${segundos} segundos` : ""}`} para ${marca} con la MISMA estructura que esta referencia de la competencia: misma forma, mismo tipo de gancho y mismo ritmo; el contenido es de ${marca}. Nunca copies sus frases, su marca ni sus datos.`,
     "",
     "LA REFERENCIA:",
     a.gancho && `- Gancho: ${a.gancho}`,
@@ -794,10 +800,15 @@ export function pedidoDeAdaptacion({ marca, referencia, productoLinea = "", form
     kit && `\nEL ESTILO DE LA MARCA:\n${corto(kit, 1200)}`,
     contexto && `\nLO QUE SABEMOS DE LA MARCA:\n${largo(contexto, 5000)}`,
     "",
+    antes && `\nYA SE PROPUSO ESTA (no la repitas: escribe otra distinta con la misma estructura):\n${corto(antes, 1200)}`,
+    pide && `\nLO QUE PIDE LA AGENCIA PARA ESTA VERSIÓN (mándalo sobre todo lo demás): ${corto(pide, 500)}`,
+    "",
     "Reglas: español latino neutro; nada de precios, garantías ni testimonios inventados; la competencia no se nombra.",
+    video ? `El video va LIMPIO: sin texto, subtítulos ni logos en pantalla (los modelos de video escriben mal); «textoPantalla» va vacío. Sin voz ni diálogo: música y sonido ambiente.` : "",
     formato === "carrusel"
       ? "En «guion», el texto de cada lámina separado por ---."
-      : formato === "post" ? "En «guion», qué se ve en la pieza y el texto que lleva encima." : "En «guion», escena por escena con sus segundos (como los tramos de la referencia).",
+      : formato === "post" ? "En «guion», qué se ve en la pieza y el texto que lleva encima."
+      : mismo ? "En «guion», la orden de edición en 2 a 4 frases: «Conserva … Cambia … por …». Nada de tramos." : `En «guion», escena por escena con sus segundos${segundos ? `, que sumen ${segundos} s` : ""} (como los tramos de la referencia), cada una con qué se ve y la cámara.`,
     "",
     "Responde SOLO con JSON, sin texto alrededor:",
     '{"titulo":"…","idea":"la idea en 1-2 frases","guion":"…","textoPantalla":"lo que se lee en pantalla (corto)","descripcion":"el caption, con llamada a la acción y hashtags al final"}',

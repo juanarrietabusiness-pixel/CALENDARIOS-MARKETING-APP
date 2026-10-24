@@ -11,13 +11,13 @@
 //   cierre     el mensaje, corto y directo.
 //
 // Y una advertencia que manda sobre todo lo demás: los modelos de video
-// escriben MAL el texto dentro del video. El guion pone como mucho cuatro
-// palabras en pantalla, o lo deja «para edición» (CapCut, Canva). El logo,
-// igual: mejor en edición que pedírselo al modelo.
+// escriben MAL el texto dentro del video. El video va LIMPIO (videoLimpio.js):
+// lo que haya que leer queda en «textoEdicion», y el logo tampoco se le pide.
 //
 // Lo usan el Estudio (pantalla) y el Worker (worker/lib/estudio/guionCorto.js).
 // ============================================================
 
+import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
 import { pilarDe, nombreDePilar, lineasDeContenido } from "./pilares";
 
 /** Los tres tiempos de cada duración, en segundos. */
@@ -26,7 +26,6 @@ export const TRAMOS = Object.freeze({
   10: [{ clave: "gancho", desde: 0, hasta: 2 }, { clave: "beneficio", desde: 2, hasta: 7 }, { clave: "cierre", desde: 7, hasta: 10 }],
 });
 export const NOMBRE_TRAMO = Object.freeze({ gancho: "Gancho", beneficio: "Beneficio", cierre: "Cierre" });
-export const MAX_PALABRAS_PANTALLA = 4;
 
 /**
  * Para qué duración escribir con un modelo y sus ajustes: 10 s si el modelo llega a 10, si no 8 (o lo más que
@@ -46,7 +45,6 @@ export function ajusteDeDuracion(modelo, segundos) {
 }
 
 const tramosDe = (segundos) => TRAMOS[segundos >= 10 ? 10 : 8];
-const recortarPalabras = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().split(" ").filter(Boolean).slice(0, n).join(" ");
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
 /** Lo que se le pide a la IA para un guion corto. Pura. */
@@ -67,12 +65,12 @@ export function pedidoDeGuionCorto({ marca, idea = "", segundos = 8, post = null
     "- El gancho es una ACCIÓN visual que llama la atención en el primer segundo, no un texto.",
     "- Un solo movimiento de cámara, suave (acercamiento, paneo lento o cámara fija). Nada de giros ni efectos.",
     "- Los colores de la marca en la escena (ropa, fondo, objetos), sin que se vea forzado.",
-    `- Texto en pantalla: como MUCHO ${MAX_PALABRAS_PANTALLA} palabras, porque los modelos de video escriben mal. Si el mensaje necesita más, va en «textoEdicion» para ponerlo en CapCut o Canva.`,
+    "- El video va LIMPIO, sin texto en pantalla: los modelos de video escriben mal. Lo que haya que leer va en «textoEdicion» (para la descripción o la edición).",
     "- El logo NO lo dibuja el modelo: va en edición.",
     "- Mensaje corto y directo, en español latino neutro. Nada de precios inventados.",
     "",
     "Responde SOLO con JSON, sin texto alrededor:",
-    `{"escena":"dónde pasa y quién sale, en una frase","camara":"el movimiento","tramos":[${tramos.map((t) => `{"clave":"${t.clave}","accion":"lo que se ve"}`).join(",")}],"textoPantalla":"hasta ${MAX_PALABRAS_PANTALLA} palabras (o vacío)","textoEdicion":"el texto que se añade en edición (o vacío)","sonido":"música o sonido ambiente; voz sólo si hace falta, en una frase","descripcion":"el caption del post, con llamada a la acción y hashtags al final"}`,
+    `{"escena":"dónde pasa y quién sale, en una frase","camara":"el movimiento","tramos":[${tramos.map((t) => `{"clave":"${t.clave}","accion":"lo que se ve"}`).join(",")}],"textoEdicion":"el texto que se añade en edición (o vacío)","sonido":"música o sonido ambiente; voz sólo si hace falta, en una frase","descripcion":"el caption del post, con llamada a la acción y hashtags al final"}`,
   ].filter((x) => x !== "").join("\n");
 }
 
@@ -93,7 +91,7 @@ export function leerGuionCorto(texto, segundos = 8) {
     escena: corto(d.escena, 300),
     camara: corto(d.camara, 160),
     tramos,
-    textoPantalla: recortarPalabras(d.textoPantalla, MAX_PALABRAS_PANTALLA),
+    textoPantalla: "",
     textoEdicion: corto(d.textoEdicion, 200),
     sonido: corto(d.sonido, 200),
     descripcion: String(d.descripcion ?? "").trim().slice(0, 2200),
@@ -111,8 +109,7 @@ export function promptDeVideoCorto(guion) {
     guion.escena && `Escena: ${guion.escena}.`,
     ...guion.tramos.filter((t) => t.accion).map((t) => `${t.desde}–${t.hasta} s: ${t.accion}.`),
     guion.camara && `Cámara: ${guion.camara}.`,
-    guion.textoPantalla ? `Texto en pantalla, exactamente: «${guion.textoPantalla}».` : "Sin texto en pantalla.",
-    "Sin logos.",
+    SIN_TEXTO_VIDEO,
     guion.sonido && `Sonido: ${guion.sonido}.`,
   ];
   return partes.filter(Boolean).join(" ").replace(/\.\./g, ".");

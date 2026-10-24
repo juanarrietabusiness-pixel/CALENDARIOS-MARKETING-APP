@@ -1,17 +1,18 @@
 import { describe, it, expect } from "vitest";
+import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
 import { pedidoDeReel, leerReel, repartirTiempos, pedidoDeFotograma, fotogramasParaVideo, promptDeReel, promptDeTramo, tramo, ajustarDuracion, locucionQueCabe, DURACIONES_REEL } from "./reel";
 import { modelosParaReel, modeloRecomendadoParaReel, pedidoDeVideo, modeloParaTramo } from "./reelEstudio";
 import { modeloPorId, costoDePieza } from "./estudioCatalogo";
 
 describe("el reel con IA: el guion por planos", () => {
-  it("pide varios planos con cortes, el cierre con logo y llamado, texto corto y el precio exacto", () => {
+  it("pide varios planos con cortes y el video limpio, sin texto ni logo dibujado", () => {
     const p = pedidoDeReel({ marca: "Baby Caleb", idea: "Caja grande de wipes: 960 por $45", producto: "Wipes Nateen · $45", personajes: ["Mamá"], tipo: "Anuncio" });
     expect(p).toMatch(/reel vertical \(9:16\) de 10 segundos para Baby Caleb/);
     expect(p).toMatch(/LA IDEA CENTRAL: Caja grande de wipes: 960 por \$45/);
     expect(p).toMatch(/de 4 a 8 planos que sumen 10 s/);
-    expect(p).toMatch(/logo de la marca y el llamado/);
-    expect(p).toMatch(/como mucho 5 palabras/);
-    expect(p).toMatch(/"planos":\[\{"desde":0,"hasta":2,"escena"/);
+    expect(p).toMatch(/ningún plano lleva texto, letras ni subtítulos/);
+    expect(p).toMatch(/el logo y el llamado no los dibuja el modelo/);
+    expect(p).toMatch(/"planos":\[\{"desde":0,"hasta":2,"escena":"[^"]*","camara"/);
   });
 
   it("lee el guion y deja los tiempos contiguos desde 0 hasta los segundos", () => {
@@ -24,18 +25,21 @@ describe("el reel con IA: el guion por planos", () => {
     expect(tramo({ desde: 2, hasta: 5 })).toBe("[2–5 s]");
   });
 
-  it("cada fotograma lleva su plano, el hilo, los anteriores y el texto exacto; el video, el storyboard en orden", () => {
+  it("cada fotograma lleva su plano, el hilo y los anteriores, sin texto; el video, el storyboard en orden y limpio", () => {
     const plano = { n: 2, desde: 2, hasta: 5, escena: "La mano limpia la piel con la toallita", texto: "Sin cloro", camara: "acercamiento lento" };
     const f = pedidoDeFotograma({ plano, total: 5, hilo: "fondo crema", conAnteriores: true });
     expect(f).toMatch(/Fotograma 2 de 5 del storyboard de un reel vertical 9:16: el plano \[2–5 s\]/);
     expect(f).toMatch(/Qué se ve: La mano limpia/);
     expect(f).toMatch(/fotogramas anteriores de este MISMO reel/);
-    expect(f).toMatch(/Texto en pantalla, EXACTO.*"Sin cloro"/);
+    expect(f).toContain(SIN_TEXTO_VIDEO);
+    expect(f).not.toContain("Sin cloro");
     expect(fotogramasParaVideo([1, 2, 3, 4, 5, 6, 7, 8, 9], 7)).toEqual([1, 2, 4, 5, 6, 8, 9]);
     expect(fotogramasParaVideo([1, 2], 7)).toEqual([1, 2]);
     const v = promptDeReel({ planos: [{ desde: 0, hasta: 2, escena: "a", texto: "Hola" }, { desde: 2, hasta: 10, escena: "b", camara: "fija" }], hilo: "h", sonido: "voz", conStoryboard: true });
     expect(v).toMatch(/STORYBOARD, en orden/);
-    expect(v).toMatch(/\[0–2 s\] a Texto en pantalla, exacto: "Hola"\./);
+    expect(v).toMatch(/\[0–2 s\] a$/m);
+    expect(v).not.toContain("Hola");
+    expect(v).toContain(SIN_TEXTO_VIDEO);
     expect(v).toMatch(/\[2–10 s\] b Cámara: fija\./);
     expect(promptDeTramo({ desde: 3, hasta: 5, cambio: "que la mamá sonría." })).toMatch(/SOLO del segundo 3 al 5: que la mamá sonría\. Conserva todo lo demás/);
   });
@@ -125,7 +129,9 @@ describe("el video para Flow: largo, en clips, y el prompt de una sola instrucci
     expect(t).toContain("Personaje «Ana»: 30 años");
     expect(t).toContain("Producto: Sofá cama ($399)");
     expect(t).toContain("súbelas como ingredientes): el logo de Dcasa");
-    expect(t).toContain("CLIP 1 (0–10 s):\n[0–10 s] Ana abre la puerta. Texto en pantalla, exacto: \"¿Visitas?\".");
+    expect(t).toContain("CLIP 1 (0–10 s):\n[0–10 s] Ana abre la puerta.\n");
+    expect(t).not.toContain("¿Visitas?");
+    expect(t).toContain(SIN_TEXTO_VIDEO);
     expect(t).toContain("CLIP 2 (10–20 s):");
     expect(t).toContain("«Tu sala, lista para visitas»");
     expect(m.promptParaFlow({ guion: { ...guion, segundos: 10, planos: m.repartirTiempos([{ escena: "a" }, { escena: "b" }], 10) } })).toContain("PLANOS:");

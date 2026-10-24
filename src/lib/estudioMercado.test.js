@@ -226,6 +226,19 @@ describe("las referencias de video", () => {
     expect(leerAdaptacion("{}")).toBeNull();
   });
 
+  it("adaptar un video: «mismo» pide la orden de edición; «version», tramos con los segundos; otra versión no repite", () => {
+    const ref = { id: "r1", analisis: { gancho: "Derrame", estructura: ESTRUCTURA } };
+    const mismo = pedidoDeAdaptacion({ marca: "Dcasa", referencia: ref, formato: "reel", modo: "mismo" });
+    expect(mismo).toContain("Vamos a EDITAR este video");
+    expect(mismo).toContain("la orden de edición en 2 a 4 frases");
+    expect(mismo).toContain("El video va LIMPIO");
+    const otra = pedidoDeAdaptacion({ marca: "Dcasa", referencia: ref, formato: "reel", modo: "version", segundos: 15, antes: "La de antes", pide: "Más emotivo" });
+    expect(otra).toContain("un video corto (reel) de 15 segundos");
+    expect(otra).toContain("que sumen 15 s");
+    expect(otra).toContain("YA SE PROPUSO ESTA (no la repitas");
+    expect(otra).toContain("LO QUE PIDE LA AGENCIA PARA ESTA VERSIÓN (mándalo sobre todo lo demás): Más emotivo");
+  });
+
   it("recrear y seguir un video arman el pedido sin IA, con el producto y sin copiar", () => {
     const ref = { id: "r1", analisis: { gancho: "50% hoy.", formato: "foto de producto con texto encima.", estructura: ESTRUCTURA } };
     const r = ideaParaRecrear(ref, { nombre: "Sofá", precio: "$400" });

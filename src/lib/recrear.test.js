@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
+import { modeloPorId } from "./estudioCatalogo";
+import { motorParaRecrear, duracionAdmitida } from "./motorRecrear";
 import { resumenDelAnalisis, versionDeAdaptacion, pedidoParaElCompositor, TOMA_DE_OTRA_MARCA, NOTA_OTRA_MARCA } from "./recrear";
 import { lineasDeReferencias } from "./referencias";
 
@@ -33,13 +36,39 @@ describe("recrear un anuncio", () => {
     expect(lineas).toMatch(/Imagen de referencia 2: toma SÓLO su composición y su encuadre y su estilo, su luz y sus colores; lo demás de esa imagen \(su producto, su texto, sus logos\) no se copia\. Nota: es un anuncio de otra marca/);
   });
 
-  it("en video: el anuncio va como video de referencia y no se le pide texto", () => {
+  it("en video, «mismo»: edita el video original, con las fotos del producto (5 como mucho), limpio y sin voz", () => {
     const archivo = { id: "v1", clave: "clientes/c1/anuncio.mp4", tipo: "video" };
-    const p = pedidoParaElCompositor({ archivo, version: { idea: "Abre con el sofá cerrado y se despliega.", texto: "No va" }, video: true });
-    expect(p).toMatchObject({ tipo: "video", video: archivo, proporcion: "9:16", preset: "anuncio" });
-    expect(p.prompt).toMatch(/^Sigue los planos, el ritmo y el movimiento del video de referencia/);
-    expect(p.prompt).toMatch(/Abre con el sofá cerrado/);
+    const fotos = Array.from({ length: 7 }, (_, i) => ({ id: `f${i}`, clave: `clientes/c1/f${i}.jpg` }));
+    const modelo = modeloPorId("gemini-omni-kie");
+    const p = pedidoParaElCompositor({ archivo, fotos, version: { idea: "Cambia su sofá por el nuestro.", texto: "No va" }, video: true, modo: "mismo", modelo, segundos: 10 });
+    expect(p).toMatchObject({ tipo: "video", video: archivo, modelo: "gemini-omni-kie", proporcion: "9:16", ajustes: { duration: "10", sonido: "si" } });
+    expect(p.referencias).toHaveLength(5);
+    expect(p.prompt).toMatch(/^Edita el video de referencia: conserva su escenario/);
+    expect(p.prompt).toMatch(/Cambia su sofá por el nuestro/);
+    expect(p.prompt).toMatch(/producto REAL/);
+    expect(p.prompt).toMatch(/Sin voz ni diálogo/);
+    expect(p.prompt).toContain(SIN_TEXTO_VIDEO);
     expect(p.prompt).not.toMatch(/No va/);
-    expect(p.referencias).toBeUndefined();
+  });
+
+  it("en video, «version»: un video nuevo sin el original, con las fotos del producto", () => {
+    const archivo = { id: "v1", clave: "clientes/c1/anuncio.mp4", tipo: "video" };
+    const p = pedidoParaElCompositor({ archivo, fotos: [{ id: "f", clave: "clientes/c1/f.jpg" }], version: { idea: "0–3 s: …" }, video: true, modo: "version", modelo: modeloPorId("seedance-2-5-kie"), segundos: 20 });
+    expect(p.video).toBeUndefined();
+    expect(p.referencias).toHaveLength(1);
+    expect(p).toMatchObject({ modelo: "seedance-2-5-kie", ajustes: { duration: "20", sonido: "si" } });
+  });
+
+  it("el motor lo propone una regla entre los que tienen llave, con su porqué", () => {
+    // Sin Kie no hay nada que sirva: nunca propone un modelo sin llave.
+    expect(motorParaRecrear({ higgsfield: false }, { modo: "mismo" })).toBeNull();
+    const mismo = motorParaRecrear({ kie: true }, { modo: "mismo", segundos: 25 });
+    expect(mismo.modelo.id).toBe("gemini-omni-kie");
+    expect(mismo.segundos).toBe(10);
+    expect(mismo.porque).toMatch(/conserva el escenario/);
+    const largo = motorParaRecrear({ kie: true }, { modo: "version", segundos: 22 });
+    expect(largo.modelo.id).toBe("seedance-2-5-kie");
+    expect(largo.segundos).toBe(30);
+    expect(duracionAdmitida(modeloPorId("seedance-2-5-kie"), 13)).toBe(15);
   });
 });

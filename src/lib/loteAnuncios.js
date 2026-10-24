@@ -84,7 +84,7 @@ export const REGLA_FORMATO = Object.freeze({
 /** El guion que se le pide a la IA en un formato guiado (vacío en los de una imagen). */
 const GUION_DE_FORMATO = Object.freeze({
   carrusel: '- "guion": las láminas del carrusel, de 5 a 7, una por línea: «Portada: …», «Slide 1: …», …, «CTA: …». Cada una, una idea corta que se lee en dos segundos; el precio, EXACTO.',
-  reel: '- "guion": el reel de 10 s por planos, una línea por plano con su tiempo: «[0–2 s] qué se ve · texto en pantalla (5 palabras como mucho)», …, y el último con el logo y el llamado. Sin texto largo en pantalla.',
+  reel: '- "guion": el reel de 10 s por planos, una línea por plano con su tiempo: «[0–2 s] qué se ve · cámara», …, y el último cierra con el producto o el resultado. SIN texto en pantalla: el video va limpio (los modelos de video escriben mal).',
 });
 export const MAX_GUION = 2000;
 
