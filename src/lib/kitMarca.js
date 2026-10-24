@@ -235,6 +235,9 @@ export function limpiarKit(guardado) {
     // La tipografía REAL de la marca: el archivo de la fuente y una muestra dibujada con ella (imagen de la galería),
     // que va de referencia «toma la tipografía de aquí» en toda pieza donde el modelo escribe texto.
     fuente: limpiarFuente(g.fuente),
+    // La VOZ de la marca en los videos con locución: una de las voces fijas de Google (VOCES_OMNI en el catálogo del
+    // Estudio; Omni por Kie la registra). Vacía: la que escoja el modelo.
+    voz: /^[a-z]{3,20}$/.test(String(g.voz ?? "")) ? String(g.voz) : "",
     ...(g.preparadoAt ? { preparadoAt: String(g.preparadoAt) } : {}),
   };
 }
@@ -573,7 +576,7 @@ export function fundirKit(guardado, propuesto, ahora = new Date().toISOString())
   return limpiarKit({
     ...propuesto, logo: antes.logo, propios: antes.propios, estilos: antes.estilos, estiloPorTipo: antes.estiloPorTipo, personajes: antes.personajes,
     aprendido: antes.aprendido, referencias: antes.referencias, modelos: antes.modelos, reglas: antes.reglas,
-    logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, fuente: antes.fuente, preparadoAt: ahora,
+    logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, fuente: antes.fuente, voz: antes.voz, preparadoAt: ahora,
   });
 }
 

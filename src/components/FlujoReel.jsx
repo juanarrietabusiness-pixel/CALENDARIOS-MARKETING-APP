@@ -3,9 +3,10 @@ import Icon from "./Icon";
 import { textoCosto, estimar, costoDePieza, etiquetaDeCosto, CONFIRMAR_DESDE, MODELOS, VOCES_OMNI } from "../lib/estudioCatalogo";
 import * as api from "../lib/estudio";
 import { TIPOS_PRESET, ESTILOS_VISUALES, limpiarKit, referenciasDePersonajes, estiloDeMarca, bloqueDeMarca } from "../lib/kitMarca";
-import { repartirTiempos, tramo, maxPlanos, MIN_PLANOS, DURACIONES_REEL, ajustarDuracion, locucionQueCabe, PALABRAS_POR_SEGUNDO, soloFlow, SEGUNDOS_POR_CLIP, promptParaFlow } from "../lib/reel";
+import { repartirTiempos, tramo, maxPlanos, MIN_PLANOS, DURACIONES_REEL, ajustarDuracion, locucionQueCabe, PALABRAS_POR_SEGUNDO, soloFlow, SEGUNDOS_POR_CLIP, promptParaFlow, sinVozPropia } from "../lib/reel";
 import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
-import { modelosParaReel, modeloRecomendadoParaReel, modeloParaTramo, crearFotogramas, crearFotograma, editarImagen, pedidoDeVideo, crearVideo, corregirTramo } from "../lib/reelEstudio";
+import { modelosParaReel, modeloRecomendadoParaReel, modeloParaTramo, crearFotogramas, crearFotograma, editarImagen, pedidoDeVideo, crearVideo, corregirTramo, modelosParaClips, modeloParaClips, pedidoDeClip, crearClips } from "../lib/reelEstudio";
+import { crearZip } from "../lib/zip";
 import { CopyButton } from "./calendario/primitivas";
 import ReferenciasGaleria from "./ReferenciasGaleria";
 import GuardarRegla from "./GuardarRegla";
@@ -62,7 +63,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
   const [referencias, setReferencias] = useState([]);
   const [referenciaId, setReferenciaId] = useState(inicial.referenciaId ?? "");
   const [copiado, setCopiado] = useState(false);
-  const [voz, setVoz] = useState("");
+  const [voz, setVoz] = useState(() => kit.voz || ""); // la voz fija del cliente (kit), si la tiene
   const [ejemplosFoto, setEjemplosFoto] = useState({}); // i → [ejemplos de la galería]
   const [ejemplosTramo, setEjemplosTramo] = useState([]);
   const [guion, setGuion] = useState(null); // { hilo, planos, musica, locucion, efectos, descripcion, segundos }
@@ -72,6 +73,12 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
   const [tramoCambio, setTramoCambio] = useState({ desde: 0, hasta: 3, cambio: "" });
   const [modeloImagenId, setModeloImagenId] = useState("");
   const [modeloVideoId, setModeloVideoId] = useState("");
+  // Qué sale de los fotogramas: UN video con todo (el storyboard) o un clip LIMPIO por fotograma para editar en CapCut.
+  const [salida, setSalida] = useState("uno");
+  const [modeloClipsId, setModeloClipsId] = useState("");
+  const [segundosClip, setSegundosClip] = useState(5);
+  const [clips, setClips] = useState([]); // por plano: { archivo } | { error } | { cargando } | null
+  const [bajando, setBajando] = useState(false);
   const [ocupado, setOcupado] = useState("");
   const [confirmar, setConfirmar] = useState(null); // "fotogramas" | "video" | null
   const [aviso, setAviso] = useState(null);
@@ -108,6 +115,12 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
   const maxPalabras = Math.floor(segundos * PALABRAS_POR_SEGUNDO);
   const palabras = String(guion?.locucion ?? "").trim().split(/\s+/).filter(Boolean).length;
   const costoVideo = pedidoVideo ? estimar(modeloVideo, 1, pedidoVideo.ajustes) : 0;
+  const modelosClips = useMemo(() => modelosParaClips(estudio?.activos ?? {}), [estudio]);
+  const modeloClips = modelosClips.find((m) => m.id === modeloClipsId) ?? modeloParaClips(activos);
+  const duracionesClip = (modeloClips?.ajustes?.duration?.valores ?? []).map(Number);
+  const conFotograma = fotos.filter((f) => f?.archivo).length;
+  const muestraClip = modeloClips && listos[0] && planos[0] ? pedidoDeClip({ modelo: modeloClips, plano: planos[0], fotograma: listos[0], segundos: segundosClip }) : null;
+  const costoClips = muestraClip ? Math.round(conFotograma * estimar(modeloClips, 1, muestraClip.ajustes) * 1000) / 1000 : 0;
   const ocupar = (q) => { setOcupado(q); onCreando(Boolean(q)); };
   const largo = soloFlow(segundos);
 
@@ -231,6 +244,48 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
       window.dispatchEvent(new Event("ia:gasto"));
     }
   };
+  /** Un clip limpio por fotograma, todos a la vez (sin voz, sin música, sin texto: lo demás se pone en CapCut). */
+  const crearLosClips = async () => {
+    setConfirmar(null);
+    setPaso("video");
+    ocupar("clips");
+    setClips(fotos.map((f) => (f?.archivo ? { cargando: true } : null)));
+    setAviso({ ok: true, texto: `Creando ${conFotograma} clips a la vez: tardan unos minutos. Quedan en la galería.` });
+    await prepararCarpeta();
+    const salidaClips = await crearClips({
+      clienteId, modelo: modeloClips, planos, fotogramas: fotos.map((f) => f?.archivo ?? null), hilo: guion.hilo, estilo: estiloTexto,
+      personajes: lineaPersonajes, segundos: segundosClip, carpetaId: carpeta.current, seguir: () => vivo.current,
+      alAvanzar: (i, r) => { if (vivo.current) setClips((x) => x.map((y, j) => (j === i ? r : y))); },
+    });
+    ocupar("");
+    window.dispatchEvent(new Event("ia:gasto"));
+    if (!vivo.current) return;
+    const bien = salidaClips.filter((r) => r?.archivo).length;
+    setAviso({ ok: bien > 0, texto: bien === conFotograma ? "Listos. Descárgalos en un ZIP, en orden, para editarlos." : `Salieron ${bien} de ${conFotograma}.` });
+  };
+  /** Los clips en un ZIP, numerados en el orden de los planos. */
+  const bajarClips = async () => {
+    setBajando(true);
+    try {
+      const hechos = clips.map((c, i) => (c?.archivo ? { archivo: c.archivo, i } : null)).filter(Boolean);
+      const archivos = await Promise.all(hechos.map(async ({ archivo, i }) => {
+        const r = await fetch(archivo.src, { credentials: "same-origin" });
+        if (!r.ok) throw new Error(`No se pudo bajar el clip ${i + 1}.`);
+        return { nombre: `${String(i + 1).padStart(2, "0")}-plano-${i + 1}.mp4`, datos: new Uint8Array(await r.arrayBuffer()) };
+      }));
+      const url = URL.createObjectURL(new Blob([crearZip(archivos)], { type: "application/zip" }));
+      const enlace = document.createElement("a");
+      enlace.href = url;
+      enlace.download = `clips-${String(client.name ?? "reel").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40)}.zip`;
+      enlace.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    } catch (e) {
+      setAviso({ ok: false, texto: e.message });
+    } finally {
+      setBajando(false);
+    }
+  };
+
   const corregirElTramo = async () => {
     const video = videos[0];
     if (!video || !paraTramo || !tramoCambio.cambio.trim()) return;
@@ -437,6 +492,39 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
       )}
 
       {paso === "fotogramas" && !ocupado && listos.length > 0 && (
+        <fieldset className="field" style={{ margin: 0 }}>
+          <legend className="label">Qué sale de los fotogramas</legend>
+          <label className="est-logo-casilla">
+            <input type="radio" name={`${ids}-salida`} checked={salida === "uno"} onChange={() => setSalida("uno")} />
+            <span><strong>Un solo video con todo</strong> · los fotogramas como storyboard, de {segundos} s, listo para subir</span>
+          </label>
+          <label className="est-logo-casilla">
+            <input type="radio" name={`${ids}-salida`} checked={salida === "clips"} onChange={() => setSalida("clips")} />
+            <span><strong>Un clip limpio por fotograma</strong> · {conFotograma} videos sin texto, voz ni música, para editarlos en CapCut</span>
+          </label>
+        </fieldset>
+      )}
+
+      {paso === "fotogramas" && !ocupado && listos.length > 0 && salida === "clips" && (
+        <div className="lote-fila">
+          <div className="field">
+            <label className="label" htmlFor={`${ids}-mc`}>Modelo de los clips</label>
+            <select id={`${ids}-mc`} className="input" value={modeloClips?.id ?? ""} onChange={(e) => setModeloClipsId(e.target.value)}>
+              {modelosClips.map((m) => <option key={m.id} value={m.id}>{m.nombre}{m.motor === "prueba" ? "" : ` · ${etiquetaDeCosto(m)}`}</option>)}
+            </select>
+          </div>
+          {duracionesClip.length > 0 && (
+            <div className="field">
+              <label className="label" htmlFor={`${ids}-sc`}>Cada clip dura</label>
+              <select id={`${ids}-sc`} className="input" value={duracionesClip.find((d) => d >= segundosClip) ?? duracionesClip.at(-1)} onChange={(e) => setSegundosClip(Number(e.target.value))}>
+                {duracionesClip.map((d) => <option key={d} value={d}>{d} s</option>)}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+
+      {paso === "fotogramas" && !ocupado && listos.length > 0 && salida === "uno" && (
         <div className="field" style={{ margin: 0 }}>
           <label className="label" htmlFor={`${ids}-mv`}>Modelo del video</label>
           <select id={`${ids}-mv`} className="input" value={modeloVideo?.id ?? ""} onChange={(e) => setModeloVideoId(e.target.value)}>
@@ -452,11 +540,25 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
               <p className="hint">Voces fijas de Google: el idioma lo da el texto. Registrar la voz no cuesta nada.</p>
             </>
           )}
-          {!conVoz && guion?.locucion?.trim() && <p className="hint">{modeloVideo?.nombre} no deja escoger la voz: pone la suya. Para escogerla, Gemini Omni Flash (Kie).</p>}
+          {!conVoz && guion?.locucion?.trim() && <p className="hint">{sinVozPropia(modeloVideo) ? `${modeloVideo?.nombre} va sin voz (la inventa mal en español): sólo música y efectos. Para la locución, Gemini Omni (Kie) con la voz de la marca.` : `${modeloVideo?.nombre} no deja escoger la voz: pone la suya. Para escogerla, Gemini Omni (Kie).`}</p>}
         </div>
       )}
 
-      {paso === "video" && (
+      {paso === "video" && salida === "clips" && (
+        <div className="reel-video">
+          <ol className="carrusel-laminas">
+            {clips.map((c, i) => c && (
+              <li key={i} className="revision-item carrusel-lamina">
+                {c.archivo ? <video src={c.archivo.src} controls playsInline preload="metadata" aria-label={`Clip ${i + 1}`} />
+                  : <p className="hint">{c.cargando ? `Clip ${i + 1}: creándolo…` : `Clip ${i + 1}: ${c.error}`}</p>}
+                <p className="hint" style={{ margin: 0 }}>{tramo(planos[i] ?? { desde: 0, hasta: 0 })} {planos[i]?.escena}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {paso === "video" && salida === "uno" && (
         <div className="reel-video">
           {videos.length === 0 && <p className="hint">{ocupado === "video" ? "Creando el video…" : "Todavía no hay video."}</p>}
           {videos.map((v, k) => (
@@ -489,8 +591,8 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
         {confirmar ? (
           <>
             <button type="button" className="btn btn-secondary" onClick={() => setConfirmar(null)}>No</button>
-            <button type="button" className="btn btn-primary" onClick={confirmar === "video" ? crearElVideo : crearLosFotogramas}>
-              Sí, {confirmar === "video" ? `crear el video por ${textoCosto(costoVideo)}` : `crear ${planos.length} fotogramas por ${textoCosto(costoFotos)}`}
+            <button type="button" className="btn btn-primary" onClick={confirmar === "video" ? crearElVideo : confirmar === "clips" ? crearLosClips : crearLosFotogramas}>
+              Sí, {confirmar === "video" ? `crear el video por ${textoCosto(costoVideo)}` : confirmar === "clips" ? `crear ${conFotograma} clips por ${textoCosto(costoClips)}` : `crear ${planos.length} fotogramas por ${textoCosto(costoFotos)}`}
             </button>
           </>
         ) : (
@@ -516,10 +618,15 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
             {paso === "fotogramas" && (
               <>
                 {!ocupado && <button type="button" className="btn btn-ghost" onClick={() => setPaso("planos")}>Volver a los planos</button>}
-                <p className="lote-costo">{ocupado ? "Creando los fotogramas, en orden…" : `Video de ${segundos} s · ${textoCosto(costoVideo)} (aprox.)`}</p>
-                {!ocupado && listos.length > 0 && (
+                <p className="lote-costo">{ocupado ? "Creando los fotogramas, en orden…" : salida === "clips" ? `${conFotograma} clips · ${textoCosto(costoClips)} (aprox.)` : `Video de ${segundos} s · ${textoCosto(costoVideo)} (aprox.)`}</p>
+                {!ocupado && listos.length > 0 && salida === "uno" && (
                   <button type="button" className="btn btn-primary" disabled={!pedidoVideo} onClick={() => pedirConConfirmar("video", costoVideo, crearElVideo)}>
                     <Icon name="video" size={18} /> Crear el video
+                  </button>
+                )}
+                {!ocupado && listos.length > 0 && salida === "clips" && (
+                  <button type="button" className="btn btn-primary" disabled={!modeloClips} onClick={() => pedirConConfirmar("clips", costoClips, crearLosClips)}>
+                    <Icon name="video" size={18} /> Crear {conFotograma} clips limpios
                   </button>
                 )}
               </>
@@ -527,7 +634,12 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
             {paso === "video" && !ocupado && (
               <>
                 <button type="button" className="btn btn-ghost" onClick={() => setPaso("fotogramas")}>Volver al storyboard</button>
-                {onPoner && videos[0] && (
+                {salida === "clips" && clips.some((c) => c?.archivo) && (
+                  <button type="button" className="btn btn-primary" disabled={bajando} onClick={bajarClips}>
+                    <Icon name="download" size={18} /> {bajando ? "Preparando el ZIP…" : `Descargar los ${clips.filter((c) => c?.archivo).length} clips (ZIP)`}
+                  </button>
+                )}
+                {salida === "uno" && onPoner && videos[0] && (
                   <button type="button" className="btn btn-primary" onClick={() => onPoner([videos[0]], { reemplazar: true })}>
                     <Icon name="check" size={18} /> Poner en la publicación
                   </button>

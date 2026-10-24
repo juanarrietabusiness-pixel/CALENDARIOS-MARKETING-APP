@@ -32,6 +32,7 @@
 //   DELETE /<cliente>/archivos/<id>?forzar=1       Borrar del todo (sólo desde la papelera)
 //   POST   /<cliente>/papelera/vaciar
 //   POST   /<cliente>/archivos/<id>/control         { texto? }: el control de calidad (la IA mira la pieza; queda en la ficha)
+//   GET    /<cliente>/voz/<voz>                    la muestra de una voz de Google (audio/wav; se pide una vez y queda en R2)
 //   POST   /<cliente>/kit/fuente                   multipart «archivo»: la fuente de la marca (TTF, OTF, WOFF, WOFF2) → { clave }
 //   POST   /<cliente>/kit/reglas                   { regla } → se suma a «Reglas que no se rompen» del kit
 //   POST   /<cliente>/carpetas                     { nombre, tipo? } (tipo «carrusel» | «reel»: la galería la agrupa)
@@ -47,7 +48,8 @@
 // eso ya lo corta `worker/index.js` antes de llegar aquí.
 // ============================================================
 
-import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
+import { json, error, cuerpo, noEncontrado, CABECERAS_API } from "../lib/respuesta.js";
+import { muestraDeVoz } from "../lib/estudio/voz.js";
 import { firma, difundir } from "../lib/vivo.js";
 import { estadoMotores } from "../lib/estudio/motores.js";
 import { mejorarIdea, versionesDeIdea } from "../lib/estudio/prompt.js";
@@ -98,6 +100,14 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         angulos: mercado ? angulosDeAnuncio(mercado.estudio, mercado.catalogo) : [],
         // Las fotos de cada producto, para ponerlas de referencia (las de una publicación de ese producto, solas).
         productos: mercado ? fotosDelCatalogo(mercado.catalogo) : [],
+      });
+    }
+
+    // ---------- Escuchar una voz de la marca (la misma para toda la agencia; se paga una vez) ----------
+    if (b === "voz" && c && !d && metodo === "GET") {
+      const { cuerpo: audio } = await muestraDeVoz(env, acceso, String(c));
+      return new Response(audio, {
+        headers: { ...CABECERAS_API, "Content-Type": "audio/wav", "Cache-Control": "private, max-age=86400" },
       });
     }
 
