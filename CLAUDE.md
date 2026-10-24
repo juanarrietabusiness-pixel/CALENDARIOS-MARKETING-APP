@@ -1790,6 +1790,19 @@ son del servidor.
   `src/lib/videoLimpio.js`, decisión de la agencia: escriben mal y deforman el logo). Una sola frase que usan
   `LINEA_VIDEO` (todo video del compositor), el Reel IA (guion, fotogramas, video, Flow, tramo), el guion corto, el lote
   y el recreador. El guion del reel ya no trae `texto` por plano; uno de antes que lo traiga se lee y se ignora.
+- **El Reel IA saca dos cosas de los fotogramas** (FlujoReel.jsx): «Un solo video con todo» (el storyboard, listo para
+  subir) o «Un clip limpio por fotograma» (`pedidoDeClip`/`crearClips` en lib/reelEstudio.js): cada fotograma es la
+  imagen inicial de su clip, SIN texto, voz ni música (`sonido: "no"`), todos a la vez, y se bajan en un ZIP numerado por
+  plano para CapCut — el método de la agencia en Flow. 15, 20 y 30 s salen en UN video por API con Seedance 2.5 por Kie
+  (`DURACIONES_REEL`; `soloFlow` es sólo 40 s); en 30 s caben 12 planos. Seedance y Wan van SIN voz (`sinVozPropia`:
+  la inventan mal en español): el pedido dice «sin voz ni diálogo» y la locución del guion no se les manda.
+- **La voz de la marca es del kit** (`kit.voz`, una de `VOCES_OMNI`; el servidor descarta otra). Arranca el Reel IA y el
+  compositor al escoger Omni. «Escuchar» (`GET /api/estudio/<c>/voz/<voz>`, worker/lib/estudio/voz.js) pide a Google
+  una frase con esa voz por su texto a voz —las voces de Omni son las de Google— con la MISMA `GOOGLE_AI_KEY`, y la
+  guarda en R2 bajo `voces/` (no `clientes/`): cada voz se paga una vez para toda la agencia. Google devuelve PCM en
+  crudo y se le pone la cabecera WAV (`wavDePcm`). Si la llave no tiene el primer modelo de voz (404), prueba el
+  siguiente (`MODELOS_VOZ`). Pasa por `bloqueoPorPresupuesto` y `registrarConsumoGemini`. **No se ha probado contra
+  Google real.**
 - **Sin llave, el modelo no existe para la pantalla.** El compositor sólo lista los que tienen llave y, si el escogido
   no la tiene (un borrador, una llave quitada, un pedido de fuera), Estudio.jsx lo cambia al preferido. El recreador de
   video fijaba Kling Omni de HIGGSFIELD —sin llave en la cuenta—, y por eso «no se creaba el video».

@@ -132,6 +132,10 @@ export const PRECIO_BUSQUEDA = 0.01;
 export const PRECIOS_GEMINI = Object.freeze({
   "gemini-2.5-flash": { entrada: 0.3, salida: 2.5 },
   "gemini-2.5-flash-image": { entrada: 0.3, salida: 30 },
+  // Texto a voz (la muestra de las voces del kit): el audio sale caro por token, pero la muestra dura segundos.
+  "gemini-2.5-flash-preview-tts": { entrada: 0.5, salida: 10 },
+  "gemini-2.5-flash-tts": { entrada: 0.5, salida: 10 },
+  "gemini-2.5-pro-preview-tts": { entrada: 1, salida: 20 },
 });
 
 export function etiquetaModelo(id) {

@@ -84,7 +84,7 @@ describe("el reel: música, locución, 8 s con Veo y la voz de Omni", () => {
     expect(ajustarDuracion(planos, 8).map((p) => [p.desde, p.hasta])).toEqual([[0, 4], [4, 8]]);
     expect(locucionQueCabe("una dos tres cuatro cinco", 1)).toBe("una dos…");
     expect(locucionQueCabe("una dos", 10)).toBe("una dos");
-    expect(DURACIONES_REEL.map((d) => d.segundos)).toEqual([10, 8, 20, 30, 40]);
+    expect(DURACIONES_REEL.map((d) => d.segundos)).toEqual([10, 8, 15, 20, 30, 40]);
   });
 
   it("la voz escogida va sólo al modelo que la tiene (Omni por Kie), y no con imagen inicial", () => {
@@ -98,20 +98,33 @@ describe("el reel: música, locución, 8 s con Veo y la voz de Omni", () => {
 
 describe("el video para Flow: largo, en clips, y el prompt de una sola instrucción", async () => {
   const m = await import("./reel.js");
-  it("20, 30 y 40 s son sólo para Flow, con más planos", () => {
+  it("15, 20 y 30 s salen en UN video por API (Seedance 2.5); 40 s, sólo en Flow", () => {
     expect(m.soloFlow(10)).toBe(false);
-    expect(m.soloFlow(30)).toBe(true);
+    expect(m.soloFlow(30)).toBe(false);
+    expect(m.soloFlow(40)).toBe(true);
     expect(m.maxPlanos(10)).toBe(8);
+    expect(m.maxPlanos(30)).toBe(12);
     expect(m.maxPlanos(40)).toBe(20);
-    expect(m.DURACIONES_REEL.filter((d) => d.soloFlow).map((d) => d.segundos)).toEqual([20, 30, 40]);
+    expect(m.DURACIONES_REEL.filter((d) => d.soloFlow).map((d) => d.segundos)).toEqual([40]);
+    expect(m.DURACIONES_REEL.find((d) => d.segundos === 30).modelos).toEqual(["seedance-2-5-kie"]);
+  });
+
+  it("Seedance y Wan van sin voz: la locución no se les pide", () => {
+    expect(m.sinVozPropia({ id: "seedance-2-5-kie" })).toBe(true);
+    expect(m.sinVozPropia({ id: "wan-3-kie" })).toBe(true);
+    expect(m.sinVozPropia({ id: "gemini-omni-kie" })).toBe(false);
+    const p = m.promptDeReel({ planos: [{ desde: 0, hasta: 15, escena: "a" }], locucion: "Hola", sinVoz: true, segundos: 15 });
+    expect(p).toContain("Sin voz ni diálogo");
+    expect(p).not.toContain("Hola");
   });
 
   it("el guion largo pide clips de 10 s sin planos que crucen y puede seguir un anuncio que funciona", () => {
-    const p = m.pedidoDeReel({ marca: "Dcasa", idea: "Sofá cama", segundos: 30, estructura: "0–3 s: gancho con pregunta" });
-    expect(p).toContain("3 clips de 10 s");
+    const p = m.pedidoDeReel({ marca: "Dcasa", idea: "Sofá cama", segundos: 40, estructura: "0–3 s: gancho con pregunta" });
+    expect(p).toContain("4 clips de 10 s");
     expect(p).toContain("ESTRUCTURA A SEGUIR");
     expect(p).toContain("nunca su marca");
     expect(m.pedidoDeReel({ idea: "x", segundos: 10 })).not.toContain("clips de");
+    expect(m.pedidoDeReel({ idea: "x", segundos: 30 })).not.toContain("clips de");
   });
 
   it("los planos se reparten en clips por dónde empiezan", () => {
@@ -135,5 +148,19 @@ describe("el video para Flow: largo, en clips, y el prompt de una sola instrucci
     expect(t).toContain("CLIP 2 (10–20 s):");
     expect(t).toContain("«Tu sala, lista para visitas»");
     expect(m.promptParaFlow({ guion: { ...guion, segundos: 10, planos: m.repartirTiempos([{ escena: "a" }, { escena: "b" }], 10) } })).toContain("PLANOS:");
+  });
+});
+
+describe("un clip limpio por fotograma (para CapCut)", () => {
+  it("cada clip arranca en su fotograma, sin texto, sin voz ni música", async () => {
+    const { pedidoDeClip, modeloParaClips } = await import("./reelEstudio");
+    const modelo = modeloPorId("kling-3-kie");
+    const c = pedidoDeClip({ modelo, plano: { escena: "La mamá abre la caja", camara: "acercamiento lento" }, fotograma: { clave: "clientes/c1/f1.png" }, segundos: 5 });
+    expect(c.medios).toEqual({ start: ["clientes/c1/f1.png"] });
+    expect(c.prompt).toMatch(/arranca EXACTAMENTE en esta imagen/);
+    expect(c.prompt).toContain("Sin voz ni música");
+    expect(c.prompt).toContain(SIN_TEXTO_VIDEO);
+    expect(c.ajustes).toMatchObject({ duration: "5", sonido: "no", aspectRatio: "9:16" });
+    expect(modeloParaClips({ kie: true }).id).toBe("kling-3-kie");
   });
 });

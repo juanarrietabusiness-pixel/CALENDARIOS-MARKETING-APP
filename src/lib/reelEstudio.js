@@ -11,9 +11,10 @@
 import * as api from "./estudio";
 import { ajustesDe, MODELOS, modeloPorId, porPrecio } from "./estudioCatalogo";
 import { esperarArchivo } from "./carruselEstudio";
-import { pedidoDeFotograma, promptDeReel, promptDeTramo, fotogramasParaVideo } from "./reel";
+import { pedidoDeFotograma, promptDeReel, promptDeTramo, fotogramasParaVideo, sinVozPropia } from "./reel";
 import { lineaDeReferencia } from "./referencias";
 import { ajusteDeDuracion } from "./videoCorto";
+import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
 
 /** Los modelos que sirven para el VIDEO de un reel (storyboard o imagen inicial), del más barato al más caro. */
 export function modelosParaReel(activos = {}) {
@@ -100,9 +101,11 @@ export function pedidoDeVideo({ modelo, planos, hilo = "", sonido = "", musica =
   const duracion = ajusteDeDuracion(modelo, segundos) ?? undefined;
   // La voz escogida sólo la entiende el modelo que la tiene en su catálogo (Omni por Kie), y no con imagen inicial.
   const conVoz = voz && modelo.ajustes?.voz?.valores?.includes(voz) && !medios.start;
+  // Seedance y Wan inventan la voz (mal, en español): van sin ella, con música y efectos.
+  const sinVoz = sinVozPropia(modelo);
   return {
     modelo: modelo.id, n: 1, medios,
-    prompt: promptDeReel({ planos, hilo, sonido, musica, locucion, efectos, segundos, estilo, personajes, conStoryboard: storyboard.length > 0 }),
+    prompt: promptDeReel({ planos, hilo, sonido, musica, locucion: sinVoz ? "" : locucion, efectos, segundos, estilo, personajes, conStoryboard: storyboard.length > 0, sinVoz }),
     ajustes: ajustesDe(modelo, { aspectRatio: "9:16", ...(duracion ? { duration: duracion } : {}), ...(conVoz ? { voz } : {}) }, medios),
   };
 }
@@ -127,4 +130,63 @@ export async function corregirTramo({ clienteId, modelo, video, desde, hasta, ca
     confirmado: true, ...(carpetaId ? { carpetaId } : {}),
   });
   return esperarArchivo(clienteId, trabajo, { seguir });
+}
+
+// ------------------------------------------------------------
+// «Un video limpio por fotograma»: el método de la agencia en Flow. Cada fotograma del storyboard arranca su propio
+// clip (sin texto, sin voz ni música: el sonido, el texto y el orden se ponen en CapCut) y se bajan juntos en un ZIP.
+// ------------------------------------------------------------
+
+/** Los modelos que animan un fotograma (imagen inicial), del más barato al más caro. */
+export function modelosParaClips(activos = {}) {
+  return porPrecio(MODELOS.filter((m) => m.tipo === "video" && m.inicial && !m.necesitaVideo && (m.motor === "prueba" || activos[m.motor])), activos);
+}
+
+/** El que se escoge si nadie escoge: Kling 3.0 (anima bien una imagen y es barato), luego los que le siguen. */
+export function modeloParaClips(activos = {}) {
+  const lista = modelosParaClips(activos);
+  return ["kling-3-kie", "seedance-2-5-kie", "seedance-2-kie", "wan-3-kie", "hailuo-2-3-kie"]
+    .map((id) => lista.find((m) => m.id === id)).find(Boolean) ?? lista.find((m) => m.motor !== "prueba") ?? lista[0] ?? null;
+}
+
+/** El pedido de UN clip limpio que arranca en su fotograma (sin pedirlo). Pura salvo por los imports. */
+export function pedidoDeClip({ modelo, plano, fotograma, hilo = "", estilo = "", personajes = "", segundos = 5 }) {
+  const medios = { start: [fotograma.clave] };
+  const duracion = ajusteDeDuracion(modelo, segundos) ?? undefined;
+  return {
+    modelo: modelo.id, n: 1, medios,
+    prompt: [
+      `Video vertical 9:16${duracion ? ` de ${duracion} segundos` : ""} que arranca EXACTAMENTE en esta imagen y la anima, calidad de anuncio profesional: ${String(plano.escena ?? "").trim()}`,
+      plano.camara ? `Cámara: ${plano.camara}.` : "",
+      hilo ? `Lo que se mantiene: ${hilo}` : "",
+      personajes,
+      estilo,
+      "Un solo plano continuo, sin cortes; los personajes, el producto y la luz, iguales a la imagen.",
+      "Sin voz ni música: el sonido se pone en la edición.",
+      SIN_TEXTO_VIDEO,
+    ].filter(Boolean).join("\n").slice(0, 3000),
+    ajustes: ajustesDe(modelo, { aspectRatio: "9:16", ...(duracion ? { duration: duracion } : {}), sonido: "no" }, medios),
+  };
+}
+
+/**
+ * Todos los clips a la vez (cada uno es un trabajo del Estudio aparte: no dependen entre sí). `fotogramas[i]` es el
+ * archivo del plano i (o null: ese plano no lleva clip). → [{ archivo } | { error } | null], en el orden de los planos.
+ */
+export async function crearClips({ clienteId, modelo, planos, fotogramas, hilo, estilo, personajes, segundos, carpetaId = null, alAvanzar = () => {}, seguir }) {
+  return Promise.all(planos.map(async (plano, i) => {
+    const fotograma = fotogramas[i];
+    if (!fotograma) return null;
+    try {
+      const pedido = pedidoDeClip({ modelo, plano, fotograma, hilo, estilo, personajes, segundos });
+      const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true, ...(carpetaId ? { carpetaId } : {}) });
+      const r = { archivo: await esperarArchivo(clienteId, trabajo, { seguir }) };
+      alAvanzar(i, r);
+      return r;
+    } catch (e) {
+      const r = { error: e.message };
+      alAvanzar(i, r);
+      return r;
+    }
+  }));
 }

@@ -19,7 +19,7 @@ import { llamarIA } from "../cerebro/ia.js";
 import { buscar as buscarCerebro } from "../cerebro/cerebro.js";
 import { pack } from "../cerebro/memoria.js";
 import { claveDelCliente } from "./archivos.js";
-import { modeloPorId } from "../../../src/lib/estudioCatalogo.js";
+import { modeloPorId, VOCES_OMNI } from "../../../src/lib/estudioCatalogo.js";
 import { ErrorEstudio } from "./trabajos.js";
 import { aBase64 } from "./gemini.js";
 import { limpiarKit, kitVacio, pedidoDeKit, leerKit, pedidoDeRevision, leerRevision } from "../../../src/lib/kitMarca.js";
@@ -47,6 +47,8 @@ export const kitDe = (cliente) => limpiarKit(leerJSON(cliente?.kit_marca, {}));
 /** Guarda el kit. El logo, si viene, tiene que ser una imagen de este cliente que exista. */
 export async function guardarKit(env, acceso, cliente, entrada) {
   const kit = limpiarKit(entrada);
+  // La voz, sólo una de las fijas de Google (la pantalla no ofrece otras; el servidor no se lo cree).
+  if (kit.voz && !Object.hasOwn(VOCES_OMNI, kit.voz)) kit.voz = "";
   // Las referencias de cada tipo las manda el navegador: sólo claves de ESTE cliente (una ajena no llega a un motor).
   kit.referencias = Object.fromEntries(Object.entries(kit.referencias)
     .map(([id, claves]) => [id, claves.filter((c) => claveDelCliente(c, cliente.id))])

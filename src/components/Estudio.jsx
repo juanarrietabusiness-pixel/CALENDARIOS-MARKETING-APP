@@ -322,7 +322,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setConfirmando(null);
     setForm((f) => {
       const medios = recortarMedios(f.medios, m);
-      return { ...f, modelo: id, n: Math.min(f.n, maxPorPedido(m)), medios, ajustes: ajustesDe(m, f.ajustes, clavesDe(medios)) };
+      // Un modelo con voz escogible (Omni por Kie) arranca con la voz fija del cliente, si el kit la tiene.
+      const voz = m?.ajustes?.voz && !f.ajustes?.voz && kit?.voz ? { voz: kit.voz } : {};
+      return { ...f, modelo: id, n: Math.min(f.n, maxPorPedido(m)), medios, ajustes: ajustesDe(m, { ...f.ajustes, ...voz }, clavesDe(medios)) };
     });
   };
 

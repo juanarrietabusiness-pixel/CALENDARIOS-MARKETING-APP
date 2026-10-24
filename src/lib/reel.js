@@ -28,21 +28,32 @@ const MAX_ESCENA = 300;
 const MAX_TEXTO = 60;
 /** Lo que se dice cómodo en voz en off: unas 2,5 palabras por segundo. */
 export const PALABRAS_POR_SEGUNDO = 2.5;
-/** Las duraciones del reel: 10 s con Omni, 8 s con Veo (cuesta la mitad). */
+/**
+ * Las duraciones del reel: 10 s con Omni, 8 s con Veo (cuesta la mitad) y, en UN solo video por API, 15, 20 y 30 s con
+ * Seedance 2.5 por Kie (varios planos, música propia y el storyboard de referencia). Lo de más, en Flow.
+ */
 export const DURACIONES_REEL = Object.freeze([
   { segundos: 10, nombre: "10 s · Gemini Omni", modelos: ["gemini-omni-kie", "kling-3-omni-kie", "seedance-2-kie", "gemini-omni-flash"] },
   { segundos: 8, nombre: "8 s · Veo 3.1 Fast", modelos: ["veo-3-1-fast-kie"] },
-  // Los largos son para FLOW: varios clips de 10 s de Omni pegados (aquí no se crean por API).
-  { segundos: 20, nombre: "20 s · 2 clips", modelos: [], soloFlow: true },
-  { segundos: 30, nombre: "30 s · 3 clips", modelos: [], soloFlow: true },
-  { segundos: 40, nombre: "40 s · 4 clips", modelos: [], soloFlow: true },
+  { segundos: 15, nombre: "15 s · un solo video", modelos: ["seedance-2-5-kie", "kling-3-omni-kie", "seedance-2-kie"] },
+  { segundos: 20, nombre: "20 s · Seedance 2.5", modelos: ["seedance-2-5-kie"] },
+  { segundos: 30, nombre: "30 s · Seedance 2.5", modelos: ["seedance-2-5-kie"] },
+  // Lo más largo es para FLOW: varios clips de 10 s de Omni pegados (aquí no se crea por API).
+  { segundos: 40, nombre: "40 s · Flow, 4 clips", modelos: [], soloFlow: true },
 ]);
-/** Lo que dura un clip de Omni en Flow: un guion largo se parte en clips de esto. */
+/** Lo que dura un clip de Omni en Flow: un guion para Flow se parte en clips de esto. */
 export const SEGUNDOS_POR_CLIP = 10;
-/** ¿Esta duración sólo se hace en Flow (más de un clip)? Pura. */
-export const soloFlow = (segundos) => Number(segundos) > SEGUNDOS_POR_CLIP;
-/** Cuántos planos caben: hasta 8 en un clip; en uno largo, hasta 5 por clip. Pura. */
-export const maxPlanos = (segundos = 10) => (soloFlow(segundos) ? Math.min(20, Math.ceil(segundos / SEGUNDOS_POR_CLIP) * 5) : MAX_PLANOS);
+/** Hasta dónde llega UN video por API (Seedance 2.5 por Kie). */
+export const MAX_SEGUNDOS_API = 30;
+/** ¿Esta duración sólo se hace en Flow (varios clips pegados)? Pura. */
+export const soloFlow = (segundos) => Boolean(DURACIONES_REEL.find((d) => d.segundos === Number(segundos))?.soloFlow) || Number(segundos) > MAX_SEGUNDOS_API;
+/** Cuántos planos caben: hasta 8 en 10 s, uno cada 2,5 s en un video más largo (12 como mucho); en Flow, 5 por clip. Pura. */
+export const maxPlanos = (segundos = 10) => (soloFlow(segundos)
+  ? Math.min(20, Math.ceil(segundos / SEGUNDOS_POR_CLIP) * 5)
+  : Math.max(MAX_PLANOS, Math.min(12, Math.ceil(Number(segundos) / 2.5))));
+
+/** ¿Este modelo inventa la voz (mal, en español)? Seedance y Wan van SIN voz: música y efectos. Pura. */
+export const sinVozPropia = (modelo) => /^(seedance|wan)/.test(String(modelo?.id ?? modelo ?? ""));
 
 const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 
@@ -163,7 +174,7 @@ export function fotogramasParaVideo(fotogramas = [], max = MAX_STORYBOARD) {
  * El pedido del VIDEO: los planos con sus tiempos, el hilo, el sonido y el estilo; con storyboard, que las imágenes
  * de referencia son los fotogramas EN ORDEN. Pura.
  */
-export function promptDeReel({ planos = [], hilo = "", sonido = "", musica = "", locucion = "", efectos = "", segundos = 10, estilo = "", conStoryboard = false, personajes = "" }) {
+export function promptDeReel({ planos = [], hilo = "", sonido = "", musica = "", locucion = "", efectos = "", segundos = 10, estilo = "", conStoryboard = false, personajes = "", sinVoz = false }) {
   return [
     `Reel vertical 9:16 de ${segundos} segundos, con varios planos y cortes limpios, calidad de anuncio profesional.`,
     conStoryboard ? "Las imágenes de referencia son el STORYBOARD, en orden: cada una es un plano. Respeta sus personajes, su lugar, su luz y su paleta." : "",
@@ -173,7 +184,8 @@ export function promptDeReel({ planos = [], hilo = "", sonido = "", musica = "",
     ...planos.map((p) => `${tramo(p)} ${p.escena}${p.camara ? ` Cámara: ${p.camara}.` : ""}`),
     sonido ? `Sonido: ${sonido}` : "",
     musica ? `Música de fondo: ${corto(musica, 300)}.` : "",
-    locucion ? `Locución en off, en español latino neutro, clara y a tiempo con los planos: «${corto(locucion, 500)}».` : "",
+    sinVoz ? "Sin voz ni diálogo: sólo música y efectos de sonido."
+      : locucion ? `Locución en off, en español latino neutro, clara y a tiempo con los planos: «${corto(locucion, 500)}».` : "",
     efectos ? `Efectos de sonido: ${corto(efectos, 300)}.` : "",
     estilo,
   ].filter(Boolean).join("\n").slice(0, 4000);
