@@ -36,6 +36,7 @@ import { idDeCarpeta, carpetaDeLaApp, subirADrive, DriveDesconectado, ErrorDrive
 import { crearCarpeta, cambiarArchivo } from "./estudio/galeria.js";
 import { aBase64 } from "./estudio/gemini.js";
 import { kitDe } from "./estudio/kit.js";
+import { criterioDelEspacio } from "./estudio/director.js";
 import { verVideo, ErrorVideo, MAX_BYTES_VIDEO } from "./geminiVideo.js";
 import { claveDelCliente } from "./estudio/archivos.js";
 import { pedidoDeTranscripcion, leerTranscripcion, pedidoDeAdaptacionUgc, leerAdaptacionUgc, duracionUgc } from "../../src/lib/ugc.js";
@@ -455,6 +456,7 @@ export async function adaptarReferencia(env, acceso, cliente, id, { productoId =
       modo: modo === "mismo" ? "mismo" : modo === "version" ? "version" : "",
       antes: String(antes ?? "").slice(0, 1500), pide: String(pide ?? "").slice(0, 500),
       segundos: Math.min(60, Math.max(0, Math.round(Number(segundos) || 0))),
+      criterio: await criterioDelEspacio(acceso),
     }),
     salida: 2500,
     funcion: "guion de video",

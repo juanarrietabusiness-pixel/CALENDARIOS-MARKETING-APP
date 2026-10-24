@@ -32,6 +32,8 @@
 //   DELETE /<cliente>/archivos/<id>?forzar=1       Borrar del todo (sólo desde la papelera)
 //   POST   /<cliente>/papelera/vaciar
 //   POST   /<cliente>/archivos/<id>/control         { texto? }: el control de calidad (la IA mira la pieza; queda en la ficha)
+//   POST   /<cliente>/director                     { idea, formato, segundos, productoId }: la idea mejorada como director
+//                                                   comercial, con qué cambió y por qué (no guarda)
 //   GET    /<cliente>/voz/<voz>                    la muestra de una voz de Google (audio/wav; se pide una vez y queda en R2)
 //   POST   /<cliente>/kit/fuente                   multipart «archivo»: la fuente de la marca (TTF, OTF, WOFF, WOFF2) → { clave }
 //   POST   /<cliente>/kit/reglas                   { regla } → se suma a «Reglas que no se rompen» del kit
@@ -50,6 +52,7 @@
 
 import { json, error, cuerpo, noEncontrado, CABECERAS_API } from "../lib/respuesta.js";
 import { muestraDeVoz } from "../lib/estudio/voz.js";
+import { revisarComoDirector } from "../lib/estudio/director.js";
 import { firma, difundir } from "../lib/vivo.js";
 import { estadoMotores } from "../lib/estudio/motores.js";
 import { mejorarIdea, versionesDeIdea } from "../lib/estudio/prompt.js";
@@ -64,7 +67,7 @@ import { guionDeReel } from "../lib/estudio/reel.js";
 import { ideasDeFormato } from "../lib/estudio/ideasFormato.js";
 import { estrategiaDelMes } from "../lib/estudio/estrategiaMes.js";
 import { leerMercado } from "../lib/mercado.js";
-import { angulosDeAnuncio, fotosDelCatalogo } from "../../src/lib/estudioMercado.js";
+import { angulosDeAnuncio, fotosDelCatalogo, productosActivos, lineaDeProducto } from "../../src/lib/estudioMercado.js";
 import { MAX_REGLAS } from "../../src/lib/kitMarca.js";
 import {
   crearTrabajo, avanzarTrabajo, cancelarTrabajo, reintentarTrabajo, trabajoPublico, ErrorEstudio,
@@ -101,6 +104,20 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         // Las fotos de cada producto, para ponerlas de referencia (las de una publicación de ese producto, solas).
         productos: mercado ? fotosDelCatalogo(mercado.catalogo) : [],
       });
+    }
+
+    // ---------- «Revisar como director comercial»: la idea de un video, mejorada y con su porqué (no guarda) ----------
+    if (b === "director" && !c && metodo === "POST") {
+      const datos = (await cuerpo(req)) ?? {};
+      let producto = "";
+      if (datos.productoId) {
+        const mercado = await leerMercado(acceso, cliente.id).catch(() => null);
+        const p = mercado ? productosActivos(mercado.catalogo).find((x) => x.id === String(datos.productoId)) : null;
+        if (p) producto = lineaDeProducto(p, { inventario: mercado.inventario }).slice(2);
+      }
+      return json(await revisarComoDirector(env, acceso, cliente, {
+        idea: String(datos.idea ?? "").slice(0, 2000), formato: String(datos.formato ?? "reel"), segundos: Number(datos.segundos) || 10, producto,
+      }));
     }
 
     // ---------- Escuchar una voz de la marca (la misma para toda la agencia; se paga una vez) ----------
