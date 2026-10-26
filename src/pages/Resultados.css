@@ -72,14 +72,6 @@
 .barras-h-pista span { display: block; height: 100%; background: var(--accent); }
 .barras-h li > span:last-child { text-align: right; color: var(--text-dim); }
 
-.competidores-form { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
-.competidores-form .input { flex: 1 1 200px; }
-.competidores-chips { list-style: none; display: flex; flex-wrap: wrap; gap: var(--sp-1); }
-.competidores-chips li {
-  display: inline-flex; align-items: center; gap: 2px; padding-left: var(--sp-2);
-  border-radius: var(--radius-pill); background: var(--surface-2); font-size: var(--fs-2xs);
-}
-
 @media (max-width: 599px) {
   .resultados-actualizar { margin-left: 0; }
   .mapa-horas td { height: 24px; font-size: 0; }

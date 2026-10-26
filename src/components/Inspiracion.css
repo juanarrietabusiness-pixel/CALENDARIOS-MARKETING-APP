@@ -1,0 +1,51 @@
+/* Inspiración: lo que publican las cuentas que sigue cada cliente (junto al calendario y como pestaña). */
+.bank-panel.inspiracion { width: 380px; border-style: solid; border-width: 1px; }
+.bank-panel.inspiracion.bank-panel-pagina { width: 100%; }
+.inspiracion-cuentas { padding: var(--sp-3); border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: var(--sp-2); }
+/* A 380 px no caben el título y tres botones en una fila: los botones bajan a la suya. */
+.inspiracion .bank-panel-cabecera { flex-wrap: wrap; }
+.inspiracion .bank-panel-cabecera > div { flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
+.inspiracion .bank-panel-cabecera .btn { white-space: nowrap; }
+.inspiracion-orden { align-items: center; }
+.inspiracion-orden .input { flex: 1 1 100%; min-width: 0; min-height: var(--tap-sm); padding-block: 0; }
+.bank-panel-pagina .inspiracion-orden .input { flex: 0 1 220px; }
+.inspiracion-error { margin: var(--sp-2) var(--sp-3) 0; color: var(--danger); font-size: var(--fs-2xs); }
+.inspiracion-aviso { margin: var(--sp-2) var(--sp-3) 0; }
+.inspiracion-errores { list-style: none; margin: var(--sp-2) var(--sp-3) 0; padding: var(--sp-2); border-radius: var(--radius-sm); background: var(--danger-soft); font-size: var(--fs-3xs); display: flex; flex-direction: column; gap: 2px; }
+.inspiracion-errores a { font-weight: 700; color: inherit; }
+.inspiracion-resumen { padding: var(--sp-2) var(--sp-3) 0; }
+.inspiracion-resumen-nota { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-2); border-radius: var(--radius-sm); background: var(--surface-2); }
+
+.inspiracion-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.bank-panel-pagina .inspiracion-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.inspiracion-item {
+  display: grid; grid-template-columns: 88px 1fr; gap: var(--sp-2); align-items: start;
+  padding: var(--sp-2); background: var(--bg); border: 1px solid var(--border); border-left: 3px solid var(--border-strong); border-radius: var(--radius-sm);
+}
+.inspiracion-item[draggable="true"] { cursor: grab; }
+.inspiracion-item[data-tipo="inspiracion"] { border-left-color: var(--accent-alt); }
+.inspiracion-item[data-tipo="competencia"] { border-left-color: var(--accent); }
+.inspiracion-vista { position: relative; width: 88px; aspect-ratio: 4 / 5; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-2); display: flex; align-items: center; justify-content: center; }
+.inspiracion-vista img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.inspiracion-formato {
+  position: absolute; left: 4px; bottom: 4px; display: inline-flex; align-items: center; gap: 2px;
+  padding: 1px 6px; border-radius: var(--radius-pill); background: rgba(0, 0, 0, .65); color: #fff; font-size: var(--fs-3xs); font-weight: 700;
+}
+.inspiracion-rinde {
+  position: absolute; right: 4px; top: 4px; padding: 1px 6px; border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, .65); color: #fff; font-size: var(--fs-3xs); font-weight: 800;
+}
+.inspiracion-rinde[data-alto] { background: var(--accent-alt); color: #1a1200; }
+.inspiracion-cuerpo { min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-2xs); }
+.inspiracion-de { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); }
+.inspiracion-tipo { padding: 0 6px; border-radius: var(--radius-pill); background: var(--surface-2); font-size: var(--fs-3xs); color: var(--text-muted); }
+.inspiracion-cifras { margin: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2); color: var(--text-dim); font-size: var(--fs-3xs); }
+.inspiracion-cifras span { display: inline-flex; align-items: center; gap: 3px; }
+.inspiracion-texto { margin: 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: var(--text-muted); }
+.inspiracion-acciones { display: flex; flex-wrap: wrap; gap: 4px; margin-top: var(--sp-1); }
+.inspiracion-acciones .btn-sm { min-height: var(--tap-sm); }
+.inspiracion-llevar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
+
+@media (max-width: 1023px) {
+  .bank-panel.inspiracion { width: 100%; }
+}

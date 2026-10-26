@@ -30,6 +30,27 @@ export function codigoDeInstagram(enlace) {
   return { codigo: partes[i + 1], usuario };
 }
 
+/**
+ * El @ de quien publicó, leído de la página pública de «insertar» de Instagram (`/p/<código>/embed/`): la que Instagram
+ * sirve para incrustar un post en otra web. SÓLO el @: el archivo se baja después por la vía oficial
+ * (`business_discovery`). Prueba varias marcas porque Instagram cambia esa página sin avisar: el nombre de la cabecera,
+ * el enlace al perfil con `utm_source=ig_embed` y el `owner` de los datos incrustados. "" si no lo encuentra. Pura.
+ * NO se ha probado contra Instagram real: la forma sale de cómo se ve hoy esa página.
+ */
+export function usuarioDelEmbed(html) {
+  const t = String(html ?? "");
+  const patrones = [
+    /class="[^"]*\bUsernameText\b[^"]*"[^>]*>\s*([A-Za-z0-9._]{1,30})\s*</,
+    /href="https?:\/\/(?:www\.)?instagram\.com\/([A-Za-z0-9._]{1,30})\/?\?[^"]*utm_source=ig_embed/,
+    /\\?"owner\\?"\s*:\s*\{[^{}]*?\\?"username\\?"\s*:\s*\\?"([A-Za-z0-9._]{1,30})\\?"/,
+  ];
+  for (const p of patrones) {
+    const u = t.match(p)?.[1]?.toLowerCase() ?? "";
+    if (u && !RESERVADAS.has(u) && /^[a-z0-9._]{1,30}$/.test(u)) return u;
+  }
+  return "";
+}
+
 /** El formato de una publicación de Graph: reel, carrusel o imagen. Pura. */
 export const formatoDeMedia = (m) => (m?.media_product_type === "REELS" || m?.media_type === "VIDEO" ? "reel" : m?.media_type === "CAROUSEL_ALBUM" ? "carrusel" : "imagen");
 
@@ -54,7 +75,10 @@ export function publicacionesDeGraph(lista = []) {
       interacciones: meGusta + comentarios * 2,
       fecha: m.timestamp ?? null,
       enlace: String(m.permalink ?? ""),
+      codigo: codigoDeInstagram(m.permalink)?.codigo ?? "",
       miniatura: String((formato === "reel" ? m.thumbnail_url : m.media_url) || m.thumbnail_url || ""),
+      // Meta no da el archivo de un video con música de su biblioteca (o marcado por derechos): sólo su miniatura.
+      sinArchivo: formato === "reel" && !m.media_url,
     };
   });
 }

@@ -38,6 +38,8 @@ import { rutaChat, rutaResumenChat } from "./rutas/chat.js";
 import { rutasConversaciones } from "./rutas/conversaciones.js";
 import { rutasBancoIdeas } from "./rutas/bancoIdeas.js";
 import { rutasFormulasUgc } from "./rutas/formulasUgc.js";
+import { rutasInspiracion } from "./rutas/inspiracion.js";
+import { inspiracionPendiente } from "./lib/inspiracion.js";
 import { rutaModelos, rutaConsumo, rutaGasto } from "./rutas/iaEspacio.js";
 import { rutaADN, rutaImagenADN } from "./rutas/adn.js";
 import { rutaGenerarImagen } from "./rutas/imagen.js";
@@ -415,6 +417,8 @@ export default {
       if (partes[0] === "cerebro") return await rutasCerebro(req, env, { acceso, usuario, partes, metodo });
       // El estudio de mercado: catálogo, estudio por pasos, referencias de la competencia.
       if (partes[0] === "mercado") return await rutasMercado(req, env, { acceso, usuario, partes, metodo });
+      // Inspiración: lo que publican las cuentas que sigue cada cliente (competencia y las que le inspiran).
+      if (partes[0] === "inspiracion") return await rutasInspiracion(req, env, { acceso, usuario, partes, metodo });
       // El Estudio: imágenes por trabajos, con su galería por cliente.
       if (partes[0] === "estudio") return await rutasEstudio(req, env, { acceso, usuario, partes, metodo });
       // La bandeja: comentarios y mensajes de Facebook e Instagram.
@@ -514,8 +518,11 @@ export default {
       // El de anuncios, a la misma hora y con la misma regla: uno por vuelta.
       const deAnuncios = await informeAnunciosPendiente(env, cuando).catch((e) => { console.error("cron informe de anuncios:", e); return 1; });
       if (deAnuncios) return;
-      // Y por último el Estudio: lo que nadie está mirando (cerró la pestaña).
-      await avanzarPendientes(env, cuando).catch((e) => console.error("cron estudio:", e));
+      // El Estudio: lo que nadie está mirando (cerró la pestaña).
+      const estudio = await avanzarPendientes(env, cuando).catch((e) => { console.error("cron estudio:", e); return 1; });
+      if (estudio) return;
+      // Y por último Inspiración: el feed de un cliente que lleva un día sin leerse (hasta diez llamadas a Meta o Google).
+      await inspiracionPendiente(env, cuando).catch((e) => console.error("cron inspiración:", e));
     })());
   },
 };

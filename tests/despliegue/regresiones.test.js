@@ -212,7 +212,7 @@ describe("el banco de ideas", () => {
       }),
     ).not.toMatch(/ideasBank/);
     expect(app).toMatch(/onMoveBankToCal=\{ideaAlCalendario\}/);
-    expect(app).toMatch(/ponerEnDia\(base, fecha, deIdeaAPublicacion\(bankPost\)\)/);
+    expect(app).toMatch(/const post = deIdeaAPublicacion\(bankPost\);\s*updateCalendar\(real\.id, ponerEnDia\(base, fecha, post\)\)/);
     // La quita del banco quien la llevó, y sólo si `ideaAlCalendario` dijo que entró.
     expect(vista).toMatch(/if \(await onMoveBankToCal\?\.\(bankPost, targetDate\)\) banco\.quitar\(bankPost\.id\)/);
   });

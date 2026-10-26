@@ -48,8 +48,10 @@ const megas = (b) => `${(b / 1024 / 1024).toFixed(1).replace(".", ",")} MB`;
 // En Android llega además el ARCHIVO (el video guardado del teléfono): lo
 // recibe el service worker y aquí se sube a la galería de la empresa que se
 // escoja. Con un enlace de Instagram sin archivo, «Traer el video de
-// Instagram» lo baja por la API (business_discovery: hace falta el @ de la
-// cuenta si el enlace no lo dice, y que sea de empresa o creador). Si se
+// Instagram» lo baja por la API (business_discovery, sólo empresa o
+// creador). El @ lo busca el servidor —la memoria, las cuentas fijas del
+// cliente, la página pública del post— y sólo si no aparece lo pregunta. Un
+// reel con música de Instagram no trae video: se ofrece su miniatura. Si se
 // guardó un video, se ofrece «Extraer guion y adaptar» (UGC).
 // ============================================================
 
@@ -70,6 +72,8 @@ export default function GuardarReferencia({ clientes = [], clienteInicial = null
   const [trayendo, setTrayendo] = useState(false);
   const [preguntaUsuario, setPreguntaUsuario] = useState(false);
   const [usuarioIg, setUsuarioIg] = useState("");
+  // El reel trae música de Instagram y Meta no da su video: se puede traer su miniatura.
+  const [sinVideo, setSinVideo] = useState(false);
   // Guardado con un video: se ofrece extraer su guion. { video } | null; `extrayendo` abre el diálogo.
   const [hecho, setHecho] = useState(null);
   const [extrayendo, setExtrayendo] = useState(false);
@@ -99,19 +103,21 @@ export default function GuardarReferencia({ clientes = [], clienteInicial = null
   const deInstagram = Boolean(enlace) && plataformaDe(enlace) === "instagram";
 
   /** «Traer el video de Instagram»: por la API, a la galería de la empresa. Sin @ en el enlace, lo pregunta. */
-  const traer = async () => {
+  const traer = async ({ miniatura = false } = {}) => {
     if (!clienteId) { setError("Escoge primero la empresa: el video va a su galería."); return; }
     setTrayendo(true);
     setError("");
     try {
       // En diferido: el cliente del estudio de mercado sólo se baja si se trae algo.
       const { traerEnlaceDeInstagram } = await import("../lib/mercado");
-      const r = await traerEnlaceDeInstagram(clienteId, enlace, usuarioIg);
+      const r = await traerEnlaceDeInstagram(clienteId, enlace, usuarioIg, { miniatura });
       setTraidos([r.archivo]);
       setPreguntaUsuario(false);
+      setSinVideo(false);
       if (!nota.trim() && r.publicacion?.texto) setNota(`@${r.usuario}: ${r.publicacion.texto.slice(0, 200)}`);
     } catch (err) {
       if (err?.datos?.codigo === "usuario") setPreguntaUsuario(true);
+      if (err?.datos?.codigo === "musica") setSinVideo(true);
       setError(err.message);
     }
     setTrayendo(false);
@@ -192,7 +198,7 @@ export default function GuardarReferencia({ clientes = [], clienteInicial = null
           <input
             id={`${ids}-enlace`} className="input" type="url" inputMode="url" autoComplete="off" autoFocus
             placeholder="https://www.instagram.com/reel/…" value={texto}
-            onChange={(e) => { setTexto(e.target.value); setError(""); }}
+            onChange={(e) => { setTexto(e.target.value); setError(""); setSinVideo(false); }}
             aria-describedby={`${ids}-red`}
           />
           {puedePegar && (
@@ -224,10 +230,19 @@ export default function GuardarReferencia({ clientes = [], clienteInicial = null
                 <input id={`${ids}-ig`} className="input" placeholder="@cuenta" value={usuarioIg} onChange={(e) => setUsuarioIg(e.target.value)} autoComplete="off" />
               </>
             )}
-            <button type="button" className="btn btn-secondary btn-sm" onClick={traer} disabled={trayendo || (preguntaUsuario && !usuarioIg.trim())}>
-              <Icon name="download" size={14} /> {trayendo ? "Trayendo…" : "Traer el video de Instagram"}
-            </button>
-            <p className="hint" style={{ margin: 0 }}>Sólo de cuentas de empresa o de creador, y entre sus últimas 50 publicaciones.</p>
+            {sinVideo ? (
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => traer({ miniatura: true })} disabled={trayendo}>
+                <Icon name="image" size={14} /> {trayendo ? "Trayendo…" : "Traer sólo su miniatura"}
+              </button>
+            ) : (
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => traer()} disabled={trayendo || (preguntaUsuario && !usuarioIg.trim())}>
+                <Icon name="download" size={14} /> {trayendo ? "Buscando y trayendo…" : "Traer el video de Instagram"}
+              </button>
+            )}
+            <p className="hint" style={{ margin: 0 }}>
+              La cuenta la busco yo (entre las que sigue la empresa, y si no, en la página del post); sólo si no aparece te
+              pregunto su @. Sólo cuentas de empresa o de creador, y entre sus últimas 50 publicaciones.
+            </p>
           </div>
         )}
 

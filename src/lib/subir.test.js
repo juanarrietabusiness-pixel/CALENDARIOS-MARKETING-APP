@@ -108,6 +108,21 @@ describe("subir contenido", () => {
     expect(cal.days).toHaveLength(1);
     expect(cal.days[0].posts[0].id).toBe("nuevo");
   });
+
+  it("el video que trajo la idea llega como REFERENCIA: ni se pierde ni se publica", () => {
+    // Antes iba en `archivos`, que la publicación no lee: el video traído de Instagram se perdía al llevar la idea.
+    const idea = {
+      id: "b1", idea: "Referencia de @rival", format: "reel", referenceLink: "https://www.instagram.com/reel/AbC123/",
+      archivos: [{ id: "a1", src: "/api/media/clientes/c/rival.mp4", tipo: "video" }, { id: "a2", src: "/api/media/clientes/c/rival.mp4", tipo: "video" }],
+    };
+    const post = deIdeaAPublicacion(idea, "nuevo");
+    expect(post.archivos).toBeUndefined();
+    expect(post.medios).toBeUndefined();
+    expect(post.referencias).toEqual([{ id: "a1", src: "/api/media/clientes/c/rival.mp4", tipo: "video" }]);
+    expect(post.referenceLink).toBe("https://www.instagram.com/reel/AbC123/");
+    // Sin archivos, no aparece el campo.
+    expect(deIdeaAPublicacion({ id: "b2", idea: "x", format: "post" }, "n2").referencias).toBeUndefined();
+  });
 });
 
 describe("copiaDePublicacion", () => {

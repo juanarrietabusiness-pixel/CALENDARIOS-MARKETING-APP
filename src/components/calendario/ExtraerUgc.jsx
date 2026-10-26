@@ -32,6 +32,9 @@ const FormulasUgc = lazy(() => import("./FormulasUgc"));
 // propone y se abre en el editor; nada se guarda hasta «Guardar».
 // ============================================================
 
+/** De dónde sale el video para el servidor: su ficha de la galería, su clave en una publicación o su enlace de YouTube. */
+const origenDelVideo = (v) => (v.youtube ? { youtube: v.youtube } : v.id ? { archivoId: v.id } : { clave: v.src });
+
 /** Un tramo en una fila: tiempo · lo que dice · lo que se ve. */
 function Tabla({ tramos, etiqueta }) {
   return (
@@ -53,9 +56,12 @@ function Tabla({ tramos, etiqueta }) {
 /**
  * @param videos     los videos ya puestos en la publicación ({ src, nombre? }).
  * @param onUsar     recibe la publicación UGC (`publicacionDeUgc`); sin él, sólo se guarda en el banco.
- * @param inicial    un video de la galería con el que arrancar ({ id, src, nombre }), p. ej. desde el visor.
+ * @param inicial    un video de la galería con el que arrancar ({ id, src, nombre }), p. ej. desde el visor; o uno PÚBLICO
+ *                   de YouTube ({ youtube, nombre }): Gemini lo ve por su enlace (Inspiración), sin bajarlo.
+ * @param formula    abrir directo en «Guardar como fórmula»: sólo se transcribe el original (sin adaptar, no se paga
+ *                   la llamada de texto) y la IA propone su receta.
  */
-export default function ExtraerUgc({ client, videos = [], duracion: duracionInicial = 30, productoId: productoInicial = "", inicial = null, onUsar = null, onCerrar }) {
+export default function ExtraerUgc({ client, videos = [], duracion: duracionInicial = 30, productoId: productoInicial = "", inicial = null, onUsar = null, onCerrar, formula: soloFormula = false }) {
   const ids = useId();
   const clienteId = client.dbId || client.id;
   const [ocupado, setOcupado] = useState("");
@@ -103,7 +109,7 @@ export default function ExtraerUgc({ client, videos = [], duracion: duracionInic
     setResultado(null);
     setOcupado("Viendo el video y adaptándolo a la marca (puede tardar un minuto)…");
     try {
-      const r = await extraerUgc(clienteId, { ...(video.id ? { archivoId: video.id } : { clave: video.src }), productoId, duracion, nota }, video.src);
+      const r = await extraerUgc(clienteId, { ...origenDelVideo(video), productoId, duracion, nota }, video.src ?? "");
       setResultado(r);
       if (r.aviso) setAviso(r.aviso);
     } catch (e) {
@@ -125,15 +131,32 @@ export default function ExtraerUgc({ client, videos = [], duracion: duracionInic
     setOcupado("");
   };
 
+  const formulaDe = async (original, duracionOriginal) => {
+    const fuente = { ...(video?.id ? { archivoId: video.id } : {}), ...(inicial?.cuenta ? { cuenta: inicial.cuenta } : {}), ...(inicial?.enlace ? { enlace: inicial.enlace } : {}) };
+    const r = await proponerFormula({ original, fuente, duracion: original.duracion ?? duracionOriginal, clienteId });
+    setFormula(r.formula);
+    if (r.aviso) setAviso(r.aviso);
+  };
   const comoFormula = async () => {
     if (!resultado?.original) return;
     setError("");
     setOcupado("Sacando la fórmula del video…");
     try {
-      const fuente = { ...(video?.id ? { archivoId: video.id } : {}), ...(inicial?.cuenta ? { cuenta: inicial.cuenta } : {}), ...(inicial?.enlace ? { enlace: inicial.enlace } : {}) };
-      const r = await proponerFormula({ original: resultado.original, fuente, duracion: resultado.original.duracion ?? resultado.duracion, clienteId });
-      setFormula(r.formula);
-      if (r.aviso) setAviso(r.aviso);
+      await formulaDe(resultado.original, resultado.duracion);
+    } catch (e) {
+      setError(`No se pudo sacar la fórmula: ${e.message}`);
+    }
+    setOcupado("");
+  };
+  // Directo a la fórmula (desde Inspiración): sólo la transcripción del original; sin adaptarlo.
+  const sacarFormula = async () => {
+    if (!video || ocupado) return;
+    setError("");
+    setAviso("");
+    setOcupado("Viendo el video y sacando su fórmula (puede tardar un minuto)…");
+    try {
+      const r = await extraerUgc(clienteId, { ...origenDelVideo(video), soloTranscribir: true }, video.src ?? "");
+      await formulaDe(r.original, duracion);
     } catch (e) {
       setError(`No se pudo sacar la fórmula: ${e.message}`);
     }
@@ -161,8 +184,13 @@ export default function ExtraerUgc({ client, videos = [], duracion: duracionInic
           <div className="extraer-ugc-form">
             <fieldset className="field" style={{ border: "none", padding: 0, margin: 0 }}>
               <legend className="label">El video</legend>
-              {!galeria && !videos.length && <p className="hint" role="status">Cargando la galería…</p>}
-              {opciones.length > 0 && (
+              {video?.youtube && (
+                <p className="hint" style={{ margin: 0 }}>
+                  <Icon name="play" size={12} /> {video.nombre || "El video de YouTube"}: Gemini lo ve por su enlace, sin bajarlo.
+                </p>
+              )}
+              {!video?.youtube && !galeria && !videos.length && <p className="hint" role="status">Cargando la galería…</p>}
+              {!video?.youtube && opciones.length > 0 && (
                 <ul className="extraer-ugc-videos">
                   {opciones.map((o) => (
                     <li key={o.clave}>
@@ -175,12 +203,16 @@ export default function ExtraerUgc({ client, videos = [], duracion: duracionInic
                   ))}
                 </ul>
               )}
-              {galeria && !opciones.length && <p className="hint" style={{ margin: 0 }}>Este cliente no tiene videos en la galería: sube uno (el que guardaste del teléfono).</p>}
-              <input ref={entrada} type="file" accept="video/*" className="sr-only" aria-label="Video para extraer el guion"
-                onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void subir(f); }} />
-              <button type="button" className="btn btn-secondary btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => entrada.current?.click()} disabled={Boolean(ocupado)}>
-                <Icon name="upload" size={14} /> Subir un video
-              </button>
+              {!video?.youtube && galeria && !opciones.length && <p className="hint" style={{ margin: 0 }}>Este cliente no tiene videos en la galería: sube uno (el que guardaste del teléfono).</p>}
+              {!video?.youtube && (
+                <>
+                  <input ref={entrada} type="file" accept="video/*" className="sr-only" aria-label="Video para extraer el guion"
+                    onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; void subir(f); }} />
+                  <button type="button" className="btn btn-secondary btn-sm" style={{ alignSelf: "flex-start" }} onClick={() => entrada.current?.click()} disabled={Boolean(ocupado)}>
+                    <Icon name="upload" size={14} /> Subir un video
+                  </button>
+                </>
+              )}
             </fieldset>
             <div className="extraer-ugc-ajustes">
               <label className="field" htmlFor={`${ids}-prod`}>
@@ -202,9 +234,16 @@ export default function ExtraerUgc({ client, videos = [], duracion: duracionInic
               <textarea id={`${ids}-nota`} className="input" rows={2} maxLength={500} value={nota} onChange={(e) => setNota(e.target.value)}
                 placeholder="Ej.: que lo diga la dueña, mencionar el envío gratis" />
             </label>
-            <button type="button" className="btn btn-primary" onClick={extraer} disabled={!video || Boolean(ocupado)} aria-busy={Boolean(ocupado) || undefined}>
-              <Icon name="sparkles" size={16} /> {ocupado && !resultado ? "Trabajando…" : "Extraer y adaptar"}
-            </button>
+            {soloFormula && editaLaAgencia() ? (
+              <button type="button" className="btn btn-primary" onClick={sacarFormula} disabled={!video || Boolean(ocupado)} aria-busy={Boolean(ocupado) || undefined}
+                title="La receta del video, sin su contenido, para la biblioteca de fórmulas de la agencia">
+                <Icon name="list" size={16} /> {ocupado ? "Trabajando…" : "Sacar su fórmula"}
+              </button>
+            ) : (
+              <button type="button" className="btn btn-primary" onClick={extraer} disabled={!video || Boolean(ocupado)} aria-busy={Boolean(ocupado) || undefined}>
+                <Icon name="sparkles" size={16} /> {ocupado && !resultado ? "Trabajando…" : "Extraer y adaptar"}
+              </button>
+            )}
           </div>
         )}
 

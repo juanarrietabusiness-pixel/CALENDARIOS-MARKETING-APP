@@ -12,6 +12,7 @@ import { mediosDe, destinoInstagram, conHistoria, conHistorias, esShortYouTube, 
 
 export { redesPorDefecto } from "./publicacion.js";
 import { semanaDelMes } from "./semanas.js";
+import { referenciasDe } from "./referenciasPost.js";
 
 const DIAS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
@@ -138,6 +139,12 @@ export function deIdeaAPublicacion(idea, id = crypto.randomUUID().slice(0, 8)) {
   // Lo que es del banco (de qué cliente es, quién la guardó, lo que trajo el enlace) no viaja a la publicación; el
   // enlace sí: es su referencia (`referenceLink`).
   for (const marca of ["_originDate", "_originCal", "_addedAt", "clientId", "creadaPor", "created_at", "enlaceTitulo", "enlaceAutor", "miniatura"]) delete post[marca];
+  // El archivo que se trajo con la idea (el video de otra cuenta) va como REFERENCIA, no entre lo que se publica: en
+  // `archivos` la publicación no lo leía y se perdía; en `medios` saldría en el perfil del cliente (lib/inspiracion.js).
+  const referencias = referenciasDe(post);
+  delete post.archivos;
+  if (referencias.length) post.referencias = referencias;
+  else delete post.referencias;
   return post;
 }
 

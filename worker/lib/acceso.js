@@ -63,6 +63,11 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "metricas_cuenta",
   "metricas_publicacion",
   "metricas_competencia",
+  // Inspiración: las cuentas que sigue cada cliente, lo que publican y la memoria de
+  // «este enlace es de esta cuenta» (worker/lib/inspiracion.js, worker/lib/competencia.js).
+  "inspiracion_cuentas",
+  "inspiracion_publicaciones",
+  "instagram_enlaces",
   "informes",
   "auditorias",
   "mcp_codigos",
@@ -137,6 +142,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "calendars", "chat_messages", "chat_resumenes", "chat_conversaciones", "banco_ideas", "client_memories", "client_tasks", "content_bank",
   "consumo_ia", "cuentas_sociales", "image_references", "image_templates", "informes", "auditorias",
   "metricas_competencia", "metricas_cuenta", "metricas_publicacion", "publicaciones_programadas",
+  "inspiracion_cuentas", "inspiracion_publicaciones",
   "cerebro_notas", "cerebro_senales", "cerebro_usos", "cerebro_memoria", "cerebro_propuestas",
   "mercado_clientes",
   "estudio_trabajos", "estudio_archivos", "estudio_carpetas",
@@ -561,6 +567,26 @@ export async function estudioPendiente(db, ahoraISO, antesDe, limite = 1) {
         limit ?`,
     )
     .bind(antesDe, ahoraISO, limite)
+    .all();
+  return results ?? [];
+}
+
+/**
+ * Los clientes con cuentas de inspiración (`clients.competidores`) que no se han leído desde `antesDe`, de TODOS los
+ * espacios: para que el cron ponga al día su feed, uno por vuelta. Igual que `colaPendiente`: sólo ids y dueño; lo
+ * demás se lee después con `crearAcceso(db, owner_id)`. Un cliente cuenta como leído si ALGUNA de sus cuentas se leyó
+ * después de `antesDe`: se leen todas a la vez, y una que falló también lleva su fecha.
+ */
+export async function clientesConInspiracionVieja(db, antesDe, limite = 1) {
+  const { results } = await db
+    .prepare(
+      `select c.id, c.owner_id from clients c
+        where c.competidores is not null and c.competidores not in ('', '[]')
+          and not exists (select 1 from inspiracion_cuentas i where i.client_id = c.id and i.actualizada_at > ?)
+        order by (select max(i.actualizada_at) from inspiracion_cuentas i where i.client_id = c.id) asc
+        limit ?`,
+    )
+    .bind(antesDe, limite)
     .all();
   return results ?? [];
 }

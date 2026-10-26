@@ -52,6 +52,7 @@ import { fieldHeaderStyle } from "./formato";
 import { SeRepite } from "./repeticionesMes";
 import { promptListo } from "../../lib/promptImagen";
 import GuionUgc from "./GuionUgc";
+import { ReferenciasPost } from "./referenciasPost";
 
 // «Idea» planifica; «Subir» es archivo, texto y cuándo sale —como lo llama
 // la agencia—. Los valores internos siguen siendo contenido/publicar.
@@ -431,6 +432,9 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
             Mientras no haya contenido, el cliente la ve junto a la idea y el guion para entender qué va.
           </p>
         </div>
+
+        {/* El video o la imagen de otra cuenta que se trajo con la idea: aparte de lo que se publica. */}
+        <ReferenciasPost form={form} setForm={setForm} client={client} cal={cal} onAviso={setFieldAviso} />
 
         <div className="field">
           <div style={fieldHeaderStyle}>
