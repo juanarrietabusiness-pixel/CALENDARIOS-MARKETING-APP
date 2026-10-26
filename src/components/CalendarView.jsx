@@ -52,6 +52,8 @@ const RevisarIdeas = lazy(() => import("./calendario/RevisarIdeas"));
 const GuionesParaGrabar = lazy(() => import("./calendario/GuionesParaGrabar"));
 const GuardarMesDrive = lazy(() => import("./calendario/GuardarMesDrive"));
 const PlanSemanal = lazy(() => import("./calendario/PlanSemanal"));
+// Inspiración: lo que publican las cuentas que sigue el cliente, junto al calendario.
+const Inspiracion = lazy(() => import("./Inspiracion"));
 const FechasEspecialesDialog = lazy(() => import("./calendario/fechasEspeciales").then((m) => ({ default: m.FechasEspecialesDialog })));
 import { BankPanel } from "./calendario/BankPanel";
 import {
@@ -79,6 +81,7 @@ export default function CalendarView({
   onMoveBankToCal,
   onGuardarFechas,
   onGuardarPlan,
+  onPersistClient = null,
   abrirPublicacion = null,
   onPublicacionAbierta,
 }) {
@@ -441,6 +444,8 @@ export default function CalendarView({
   const moveBankToCalendar = async (bankPost, targetDate) => {
     if (await onMoveBankToCal?.(bankPost, targetDate)) banco.quitar(bankPost.id);
   };
+  // Una publicación de «Inspiración» soltada en un día: la lleva el panel (baja su archivo como referencia).
+  const llevarInspiracion = useRef(null);
 
   const calName = cal.name || (MONTHS[cal.month] + " " + cal.year);
   const approvalUrl = cal.shareToken
@@ -1127,6 +1132,16 @@ export default function CalendarView({
 
         <button
           className="btn btn-secondary"
+          onClick={() => setCapa((c) => (c === "inspiracion" ? null : "inspiracion"))}
+          aria-expanded={capa === "inspiracion"}
+          aria-label="Inspiración: lo que publican las cuentas que sigue este cliente"
+          title="Inspiración: lo que publican su competencia y las cuentas que le inspiran"
+        >
+          <Icon name="eye" size={18} />
+        </button>
+
+        <button
+          className="btn btn-secondary"
           onClick={() => setCapa((c) => (c === "banco" ? null : "banco"))}
           aria-expanded={capa === "banco"}
           aria-label={`Banco de ideas, ${ideasBank.length} guardadas`}
@@ -1384,7 +1399,7 @@ export default function CalendarView({
       )}
 
       {/* Calendar + Ideas Bank layout */}
-      <div className={`cal-layout${capa === "banco" ? " bank-visible" : ""}`}>
+      <div className={`cal-layout${capa === "banco" || capa === "inspiracion" ? " bank-visible" : ""}`}>
       <div className="cal-layout-main">
       {/* Grid view */}
       {viewMode === "grid" ? (
@@ -1396,6 +1411,7 @@ export default function CalendarView({
           onMove={movePost}
           onAddPost={(date) => setAddingPostDay(date)}
           onDropFromBank={moveBankToCalendar}
+          onDropInspiracion={capa === "inspiracion" ? (id, fecha) => llevarInspiracion.current?.(id, fecha) : undefined}
           ideasBank={banco.ideas}
           semana={semanaPlan}
           onEditarPlan={puedeEditarPlan ? (dow) => { setDiaPlan(dow); abrirCapa("plan"); } : undefined}
@@ -1684,6 +1700,20 @@ export default function CalendarView({
         />
       )}
       </div>{/* end cal-layout-main */}
+
+      {/* Inspiración: lo que publican las cuentas del cliente; se arrastra a un día */}
+      {capa === "inspiracion" && (
+        <Suspense fallback={null}>
+          <Inspiracion
+            client={client}
+            lectura={Boolean(yoActual()?.soloLectura)}
+            onCerrar={cerrarCapa}
+            onPersistClient={onPersistClient}
+            onLlevar={onMoveBankToCal}
+            llevarRef={llevarInspiracion}
+          />
+        </Suspense>
+      )}
 
       {/* Ideas Bank side panel */}
       {capa === "banco" && (

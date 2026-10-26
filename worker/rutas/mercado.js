@@ -14,10 +14,14 @@
 //                                                   estructura, u otra versión distinta de la anterior (no guarda)
 //   DELETE /<cliente>/referencias/<id>
 //   GET    /<cliente>/competencia?usuario=…        Las últimas publicaciones de esa cuenta, las mejores primero
-//   POST   /<cliente>/competencia/traer            { usuario, id }: su archivo a la galería («Competencia»)
-//   POST   /<cliente>/competencia/enlace           { enlace, usuario? }: lo mismo desde un enlace de Instagram
-//   POST   /<cliente>/ugc                          { archivoId | clave, productoId?, duracion?, nota?, fotogramas? }: extraer el
-//                                                   guion de un video de la galería y adaptarlo en UGC (no guarda)
+//   POST   /<cliente>/competencia/traer            { usuario, id, miniatura? }: su archivo a la galería («Competencia»);
+//                                                   con `miniatura`, su miniatura (un reel con música no trae video)
+//   POST   /<cliente>/competencia/enlace           { enlace, usuario?, miniatura? }: lo mismo desde un enlace de Instagram
+//                                                   (el @ lo busca: memoria, cuentas fijas, página pública; si no, 409)
+//   POST   /<cliente>/ugc                          { archivoId | clave | youtube, productoId?, duracion?, nota?, fotogramas?,
+//                                                   soloTranscribir? }: extraer el guion de un video de la galería (o de
+//                                                   uno público de YouTube, por su enlace) y adaptarlo en UGC (no guarda);
+//                                                   con `soloTranscribir`, sólo el original (para «Guardar como fórmula»)
 //
 // El cliente tiene que ser de este espacio (y, si es un colaborador, de los
 // suyos): uno ajeno da «no encontrado». Lo que gasta IA lo corta además la
@@ -95,19 +99,21 @@ export async function rutasMercado(req, env, { acceso, partes, metodo }) {
     if (a === "competencia" && b === "traer" && metodo === "POST") {
       const d = (await cuerpo(req)) ?? {};
       if (!/^\d{1,30}$/.test(String(d.id ?? ""))) return error("Falta la publicación.");
-      return json(await traerPublicacion(env, acceso, cliente, { usuario: String(d.usuario ?? ""), id: String(d.id) }), 201);
+      return json(await traerPublicacion(env, acceso, cliente, { usuario: String(d.usuario ?? ""), id: String(d.id), miniatura: d.miniatura === true }), 201);
     }
     if (a === "competencia" && b === "enlace" && metodo === "POST") {
       const d = (await cuerpo(req)) ?? {};
-      return json(await traerEnlace(env, acceso, cliente, { enlace: String(d.enlace ?? "").slice(0, 600), usuario: String(d.usuario ?? "") }), 201);
+      return json(await traerEnlace(env, acceso, cliente, { enlace: String(d.enlace ?? "").slice(0, 600), usuario: String(d.usuario ?? ""), miniatura: d.miniatura === true }), 201);
     }
     if (a === "ugc" && !b && metodo === "POST") {
       const d = (await cuerpo(req)) ?? {};
       const porId = ID.test(String(d.archivoId ?? ""));
-      if (!porId && !String(d.clave ?? "").trim()) return error("Falta el video.");
+      const youtube = porId ? "" : String(d.youtube ?? "").trim().slice(0, 300);
+      if (!porId && !youtube && !String(d.clave ?? "").trim()) return error("Falta el video.");
       return json(await extraerUgc(env, acceso, cliente, {
-        archivoId: porId ? String(d.archivoId) : "", clave: porId ? "" : String(d.clave).slice(0, 400), productoId: String(d.productoId ?? ""), duracion: d.duracion ?? null,
-        nota: String(d.nota ?? "").slice(0, 500), fotogramas: d.fotogramas,
+        archivoId: porId ? String(d.archivoId) : "", clave: porId || youtube ? "" : String(d.clave).slice(0, 400), youtube,
+        productoId: String(d.productoId ?? ""), duracion: d.duracion ?? null,
+        nota: String(d.nota ?? "").slice(0, 500), fotogramas: d.fotogramas, soloTranscribir: d.soloTranscribir === true,
       }));
     }
     if (a === "referencias" && ID.test(String(b ?? "")) && !c && metodo === "DELETE") {

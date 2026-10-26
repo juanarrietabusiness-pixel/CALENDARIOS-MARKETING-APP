@@ -379,3 +379,15 @@
 .guardar-drive [role="status"]:not(.sr-only) { flex-basis: 100%; margin: 0; }
 /* «Duplicar a otro día» al pie del panel. */
 .duplicar-fila { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+
+/* Las referencias de la publicación (el video de otra cuenta): aparte de lo que se publica. */
+.referencias-post-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.referencias-post-item {
+  display: grid; grid-template-columns: 96px 1fr; gap: var(--sp-3); align-items: start;
+  padding: var(--sp-2); border-radius: var(--radius-sm); background: var(--surface-2); border: 1px dashed var(--border-strong);
+}
+.referencias-post-vista { width: 96px; aspect-ratio: 9 / 16; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-3); }
+.referencias-post-vista video, .referencias-post-vista img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.referencias-post-datos { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; font-size: var(--fs-2xs); }
+.referencias-post-datos a { display: inline-flex; align-items: center; gap: 4px; }
+.referencias-post-acciones { display: flex; flex-wrap: wrap; gap: var(--sp-1); align-items: center; }

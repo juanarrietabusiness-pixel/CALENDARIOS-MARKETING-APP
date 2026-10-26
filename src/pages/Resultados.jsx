@@ -1,8 +1,9 @@
 import "./Resultados.css";
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Icon from "../components/Icon";
 import { GraficaLinea, GraficaBarras } from "../components/Graficas";
 import SeccionInformes from "../components/SeccionInformes";
+import CuentasReferencia from "../components/CuentasReferencia";
 import * as db from "../lib/db";
 import { navegar } from "../lib/rutas";
 import { fechaEnZona, sumarDias } from "../lib/agenda";
@@ -50,41 +51,6 @@ function Kpi({ titulo, cifra, sufijo = "", extra = null }) {
       <p className="kpi-valor">{cifra?.valor == null ? "—" : `${numeroCorto(cifra.valor)}${sufijo}`}</p>
       <Cambio valor={cifra?.cambio} />
       {extra && <p className="kpi-extra">{extra}</p>}
-    </div>
-  );
-}
-
-function Competidores({ client, onPersistClient }) {
-  const ids = useId();
-  const [nuevo, setNuevo] = useState("");
-  const lista = client.competidores ?? [];
-  const guardar = (siguiente) => onPersistClient?.({ ...client, competidores: siguiente });
-  const anadir = (e) => {
-    e.preventDefault();
-    const u = nuevo.trim().replace(/^@/, "").replace(/.*instagram\.com\//, "").replace(/\/.*$/, "");
-    if (!/^[\w.]{1,30}$/.test(u) || lista.some((x) => x.toLowerCase() === u.toLowerCase()) || lista.length >= 5) return;
-    guardar([...lista, u]);
-    setNuevo("");
-  };
-  return (
-    <div className="competidores-editor">
-      <form onSubmit={anadir} className="competidores-form">
-        <label htmlFor={`${ids}-c`} className="sr-only">Usuario de Instagram del competidor</label>
-        <input id={`${ids}-c`} className="input" value={nuevo} onChange={(e) => setNuevo(e.target.value)} placeholder="@competidor (hasta 5)" disabled={lista.length >= 5} />
-        <button type="submit" className="btn btn-secondary btn-sm" disabled={!nuevo.trim() || lista.length >= 5}><Icon name="plus" size={14} /> Seguir</button>
-      </form>
-      {lista.length > 0 && (
-        <ul className="competidores-chips" aria-label="Competidores que se siguen">
-          {lista.map((u) => (
-            <li key={u}>
-              @{u}
-              <button type="button" className="btn-icon" aria-label={`Dejar de seguir a @${u}`} onClick={() => guardar(lista.filter((x) => x !== u))}>
-                <Icon name="close" size={12} />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }
@@ -335,8 +301,11 @@ export default function Resultados({ client, pulso = 0, onPersistClient }) {
 
       <section className="resultados-tarjeta" aria-labelledby="res-com">
         <h3 id="res-com">Competencia</h3>
-        <p className="hint">Cuentas profesionales de Instagram. Se miden cada día junto con la del cliente.</p>
-        <Competidores client={client} onPersistClient={onPersistClient} />
+        <p className="hint">
+          Las cuentas fijas del cliente: las de Instagram de competencia (cuentas de empresa o de creador) se miden cada día
+          junto con la del cliente; todas salen en «Inspiración» junto al calendario.
+        </p>
+        <CuentasReferencia client={client} onGuardar={(competidores) => onPersistClient?.({ ...client, competidores })} />
         {competencia.length > 0 && (
           <table className="tabla-resultados">
             <thead><tr><th scope="col">Cuenta</th><th scope="col">Seguidores</th><th scope="col">Cambio</th><th scope="col">Interacción media</th><th scope="col">Publicaciones</th></tr></thead>

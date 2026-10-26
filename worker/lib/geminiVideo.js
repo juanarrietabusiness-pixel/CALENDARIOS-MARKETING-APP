@@ -111,19 +111,26 @@ async function fallo(paso, res, gratis = false) {
  * @param funcion     cómo se apunta en el consumo («análisis de video», «referencia de competencia»…).
  * @param fotogramas  [{ segundo, base64 }] JPEG que saca el navegador: los usa Meta.
  */
-export async function verVideo(env, acceso, { bytes, mime: tipo, nombre = "video", clienteId = null, prompt, funcion = "análisis de video", json = false, fotogramas = null }) {
-  if (!String(tipo ?? "").startsWith("video/")) throw new ErrorVideo("Ese archivo no es un video", 400);
+export async function verVideo(env, acceso, { bytes, mime: tipo, nombre = "video", clienteId = null, prompt, funcion = "análisis de video", json = false, fotogramas = null, youtube = "" }) {
+  if (!youtube && !String(tipo ?? "").startsWith("video/")) throw new ErrorVideo("Ese archivo no es un video", 400);
   const config = acceso ? await leerConfigIA(acceso).catch(() => null) : null;
   const { motor, llave } = motorDeVideo(config, env);
   if (!motor) throw new ErrorVideo("El servidor no tiene ninguna llave que pueda ver videos (Google AI o Meta).", 503);
+  // Un video público de YouTube lo ve Gemini por su enlace, sin bajarlo; Meta sólo ve fotogramas y aquí no los hay.
+  if (youtube && motor === "meta") throw new ErrorVideo("Un video de YouTube sólo lo puede ver Gemini: cambia el motor de video en Ajustes → IA.", 409);
   if (motor === "meta") return verConMeta(env, acceso, { clienteId, prompt, funcion, json, fotogramas });
   const falla = (paso, res) => fallo(paso, res, motor === "gemini-gratis");
   const mime = MIME[tipo] ?? tipo;
-  let modelo = env.GEMINI_VIDEO_MODEL || "gemini-2.5-flash";
+  const modelo = env.GEMINI_VIDEO_MODEL || "gemini-2.5-flash";
 
   const arranque = Date.now();
   const restante = () => PRESUPUESTO_MS - (Date.now() - arranque);
   const cabeceras = { "x-goog-api-key": llave };
+
+  if (youtube) {
+    const datos = { fileUri: youtube };
+    return generarConVideo(acceso, { cabeceras, datos, prompt, json, restante, falla, modelo, funcion, clienteId, gratis: motor === "gemini-gratis" });
+  }
 
   // 1. Abrir la subida y 2. mandar los bytes.
   const inicio = await fetch(`${API}/upload/v1beta/files`, {
@@ -162,69 +169,81 @@ export async function verVideo(env, acceso, { bytes, mime: tipo, nombre = "video
     if (archivo.state !== "ACTIVE") throw new ErrorVideo("Google AI no pudo procesar ese video.", 422);
 
     // 4. Verlo.
-    const analizar = async () => {
-      const abortar = new AbortController();
-      const reloj = setTimeout(() => abortar.abort(), Math.max(restante(), 1000));
-      try {
-        return await fetch(`${API}/v1beta/models/${modelo}:generateContent`, {
-          method: "POST",
-          signal: abortar.signal,
-          headers: { ...cabeceras, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ fileData: { mimeType: archivo.mimeType || mime, fileUri: archivo.uri } }, { text: prompt }] }],
-            ...(json ? { generationConfig: { responseMimeType: "application/json" } } : {}),
-          }),
-        });
-      } catch {
-        throw new ErrorVideo(abortar.signal.aborted ? "El análisis del video tardó demasiado." : "No se pudo contactar con Google AI", 504);
-      } finally {
-        clearTimeout(reloj);
-      }
-    };
-    let res = await analizar();
-    // 500/503: el modelo está saturado un momento. Se reintenta con espera (2 s y 5 s) y, si sigue, con OTRO modelo que
-    // la llave tenga (otro Flash o Flash-Lite): la saturación suele ser de un modelo, no de todos.
-    for (const espera of [2000, 5000]) {
-      if (res.status !== 503 && res.status !== 500) break;
-      if (restante() < espera + 25_000) break;
-      await res.text().catch(() => "");
-      console.warn(`video: ${modelo} respondió ${res.status}; se reintenta en ${espera} ms`);
-      await dormir(espera);
-      res = await analizar();
-    }
-    if ((res.status === 503 || res.status === 500) && restante() > 25_000) {
-      const otro = await modeloDisponible(cabeceras, [modelo]);
-      if (otro) {
-        await res.text().catch(() => "");
-        console.warn(`video: ${modelo} sigue saturado; se usa ${otro}`);
-        modelo = otro;
-        res = await analizar();
-      }
-    }
-    // 404: esta llave no tiene ese modelo (los 2.5 ya no se dan a proyectos nuevos). Se pregunta cuál tiene y se repite.
-    if (res.status === 404) {
-      const otro = await modeloDisponible(cabeceras, [modelo]);
-      if (otro) {
-        console.warn(`video: la llave no tiene ${modelo}; se usa ${otro}`);
-        modelo = otro;
-        res = await analizar();
-      } else {
-        await res.text().catch(() => "");
-        throw new ErrorVideo(`Esta llave de Google AI no tiene el modelo ${modelo} ni otro Gemini Flash que pueda ver videos.`, 502);
-      }
-    }
-    if (!res.ok) throw await falla("analizar el video", res);
-
-    const data = await res.json();
-    await registrarConsumoGemini(acceso, { funcion, modelo, meta: data?.usageMetadata, clienteId, gratis: motor === "gemini-gratis" });
-    const texto = (data?.candidates?.[0]?.content?.parts ?? []).map((p) => p?.text ?? "").join("").trim();
-    if (!texto) throw new ErrorVideo("Google AI no devolvió ningún análisis del video.", 422);
-    return texto;
+    return await generarConVideo(acceso, {
+      cabeceras, datos: { mimeType: archivo.mimeType || mime, fileUri: archivo.uri }, prompt, json, restante, falla, modelo, funcion, clienteId,
+      gratis: motor === "gemini-gratis",
+    });
   } finally {
     // Caducan solos a las 48 h; borrarlo ya es no dejar el video de un
     // cliente en otro sitio más tiempo del necesario.
     fetch(`${API}/v1beta/${archivo.name}`, { method: "DELETE", headers: cabeceras }).catch(() => {});
   }
+}
+
+/**
+ * El paso de VERLO: `datos` es el `fileData` (el video subido a la Files API o la dirección de un video público de
+ * YouTube). Reintenta la saturación y cambia de modelo si la llave no tiene el pedido. → el texto de la respuesta.
+ */
+async function generarConVideo(acceso, { cabeceras, datos, prompt, json, restante, falla, modelo: inicial, funcion, clienteId, gratis }) {
+  let modelo = inicial;
+  const analizar = async () => {
+    const abortar = new AbortController();
+    const reloj = setTimeout(() => abortar.abort(), Math.max(restante(), 1000));
+    try {
+      return await fetch(`${API}/v1beta/models/${modelo}:generateContent`, {
+        method: "POST",
+        signal: abortar.signal,
+        headers: { ...cabeceras, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ fileData: datos }, { text: prompt }] }],
+          ...(json ? { generationConfig: { responseMimeType: "application/json" } } : {}),
+        }),
+      });
+    } catch {
+      throw new ErrorVideo(abortar.signal.aborted ? "El análisis del video tardó demasiado." : "No se pudo contactar con Google AI", 504);
+    } finally {
+      clearTimeout(reloj);
+    }
+  };
+  let res = await analizar();
+  // 500/503: el modelo está saturado un momento. Se reintenta con espera (2 s y 5 s) y, si sigue, con OTRO modelo que
+  // la llave tenga (otro Flash o Flash-Lite): la saturación suele ser de un modelo, no de todos.
+  for (const espera of [2000, 5000]) {
+    if (res.status !== 503 && res.status !== 500) break;
+    if (restante() < espera + 25_000) break;
+    await res.text().catch(() => "");
+    console.warn(`video: ${modelo} respondió ${res.status}; se reintenta en ${espera} ms`);
+    await dormir(espera);
+    res = await analizar();
+  }
+  if ((res.status === 503 || res.status === 500) && restante() > 25_000) {
+    const otro = await modeloDisponible(cabeceras, [modelo]);
+    if (otro) {
+      await res.text().catch(() => "");
+      console.warn(`video: ${modelo} sigue saturado; se usa ${otro}`);
+      modelo = otro;
+      res = await analizar();
+    }
+  }
+  // 404: esta llave no tiene ese modelo (los 2.5 ya no se dan a proyectos nuevos). Se pregunta cuál tiene y se repite.
+  if (res.status === 404) {
+    const otro = await modeloDisponible(cabeceras, [modelo]);
+    if (otro) {
+      console.warn(`video: la llave no tiene ${modelo}; se usa ${otro}`);
+      modelo = otro;
+      res = await analizar();
+    } else {
+      await res.text().catch(() => "");
+      throw new ErrorVideo(`Esta llave de Google AI no tiene el modelo ${modelo} ni otro Gemini Flash que pueda ver videos.`, 502);
+    }
+  }
+  if (!res.ok) throw await falla("analizar el video", res);
+
+  const data = await res.json();
+  await registrarConsumoGemini(acceso, { funcion, modelo, meta: data?.usageMetadata, clienteId, gratis });
+  const texto = (data?.candidates?.[0]?.content?.parts ?? []).map((p) => p?.text ?? "").join("").trim();
+  if (!texto) throw new ErrorVideo("Google AI no devolvió ningún análisis del video.", 422);
+  return texto;
 }
 
 /**

@@ -23,7 +23,7 @@ import { estadoDelChip, miniaturaDe, ESTADOS_CHIP } from "../../lib/estadoChip";
  * sus días, un toque lo abre en su mes, y soltar ahí una publicación de
  * este mes la lleva a ese día (a otro mes: lo hace el servidor).
  */
-export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, onAddPost, onDropFromBank, ideasBank, semana = null, onEditarPlan, vecinos = null, onVecina, fechas = null, conceptos = [], onEditarSemana }) {
+export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, onAddPost, onDropFromBank, onDropInspiracion, ideasBank, semana = null, onEditarPlan, vecinos = null, onVecina, fechas = null, conceptos = [], onEditarSemana }) {
   const [drag, setDrag] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const today = fmtDate(new Date());
@@ -109,6 +109,8 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
                   const bankPost = ideasBank.find((p) => p.id === data.bankPostId);
                   if (bankPost) { onDropFromBank(bankPost, date); handled = true; }
                 }
+                // Una publicación de «Inspiración»: la lleva el panel (con su archivo como referencia).
+                if (data.inspiracionId && onDropInspiracion) { onDropInspiracion(data.inspiracionId, date); handled = true; }
               } catch { /* not bank data */ }
               if (!handled && drag && drag.sourceDate !== date) onMove(drag.postId, drag.sourceDate, date);
               setDrag(null);

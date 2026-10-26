@@ -46,6 +46,7 @@ const Tareas = lazy(() => import("./pages/Tareas"));
 const Equipo = lazy(() => import("./pages/Equipo"));
 const Ajustes = lazy(() => import("./pages/Ajustes"));
 const Resultados = lazy(() => import("./pages/Resultados"));
+const Inspiracion = lazy(() => import("./components/Inspiracion"));
 const Programacion = lazy(() => import("./pages/Programacion"));
 const Tablero = lazy(() => import("./pages/Tablero"));
 const Bandeja = lazy(() => import("./pages/Bandeja"));
@@ -84,6 +85,7 @@ const PESTANAS = [
   ["tareas", "Tareas", "clipboardCheck"],
   ["contenido", "Contenido", "cloud"],
   ["ideas", "Ideas", "bulb"],
+  ["inspiracion", "Inspiración", "eye"],
   ["resultados", "Resultados", "chart"],
   ["estudio", "Estudio", "imageAi"],
   ["cerebro", "Cerebro", "brain"],
@@ -655,6 +657,11 @@ function Workspace({ session, ruta }) {
           window.dispatchEvent(new CustomEvent("formulas-ugc", { detail: ev }));
           break;
 
+        // Inspiración: el feed de un cliente se puso al día (el cron, otra persona): quien lo tenga abierto lo relee.
+        case "inspiracion":
+          window.dispatchEvent(new CustomEvent("inspiracion", { detail: ev }));
+          break;
+
         case "editando":
           // Se guarda por publicación, no por persona: lo que hace falta
           // saber al abrir una es si alguien más la tiene delante.
@@ -936,7 +943,16 @@ function Workspace({ session, ruta }) {
       const base = pendingSaves.current.get(real.id)?.cal
         ?? clientsRef.current.find((c) => c.id === clienteId)?.calendars?.find((k) => k.id === real.id)
         ?? real;
-      updateCalendar(real.id, ponerEnDia(base, fecha, deIdeaAPublicacion(bankPost)));
+      const post = deIdeaAPublicacion(bankPost);
+      updateCalendar(real.id, ponerEnDia(base, fecha, post));
+      // Lo que trajo de referencia (un video de otra cuenta, en la galería) lo USA ahora una publicación: así la
+      // papelera de la galería no se lo lleva. En diferido: lib/estudio.js no va en el arranque.
+      const usados = (post.referencias ?? []).filter((r) => r.id);
+      if (usados.length) {
+        const idCliente = clientsRef.current.find((c) => c.id === clienteId)?.dbId || clienteId;
+        import("./lib/estudio").then(({ apuntarUso }) => Promise.all(usados.map((r) => apuntarUso(idCliente, r.id, { calendarId: real.dbId || real.id, postId: post.id }))))
+          .catch(() => {});
+      }
       return true;
     } catch (e) {
       fallo("llevar la idea al calendario")(e);
@@ -1586,6 +1602,10 @@ function Workspace({ session, ruta }) {
                   <Resultados client={client} pulso={pulso} onPersistClient={persistClient} />
                 )}
 
+                {pestana === "inspiracion" && (
+                  <Inspiracion key={client.id} client={client} modo="pestana" lectura={Boolean(yo.soloLectura)} onPersistClient={persistClient} onLlevar={ideaAlCalendario} />
+                )}
+
                 {pestana === "estudio" && <Estudio key={client.id} client={client} pulso={pulso} onLlevarAlCalendario={llevarAlCalendario} />}
 
                 {pestana === "cerebro" && <Cerebro client={client} />}
@@ -1631,6 +1651,7 @@ function Workspace({ session, ruta }) {
                     onMoveBankToCal={ideaAlCalendario}
                     onGuardarFechas={guardarFechasCliente}
                     onGuardarPlan={guardarPlanCliente}
+                    onPersistClient={persistClient}
                   />
                 ) : null)}
               </>

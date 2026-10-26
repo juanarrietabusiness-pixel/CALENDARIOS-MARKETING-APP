@@ -369,20 +369,57 @@ export async function videosRecientesYouTube(token, listaSubidas, desde, max = 1
     .map((i) => i.contentDetails?.videoId).filter(Boolean).slice(0, max);
   if (!ids.length) return [];
   const r = await api(token, "/youtube/v3/videos", { query: { part: "snippet,statistics,contentDetails", id: ids.join(","), maxResults: 50 } });
-  return (r?.items ?? []).map((v) => {
-    const meGusta = num(v.statistics?.likeCount) ?? 0;
-    const comentarios = num(v.statistics?.commentCount) ?? 0;
-    const segundos = segundosISO(v.contentDetails?.duration);
-    // Un Short no se distingue por la API: se toma por uno lo que dura un
-    // minuto o menos, o lo que lleva #Shorts.
-    const short = (segundos !== null && segundos <= 60) || /#shorts\b/i.test(`${v.snippet?.title ?? ""} ${v.snippet?.description ?? ""}`);
-    return {
-      externo_id: String(v.id), tipo: short ? "short" : "video", enlace: enlaceYouTube(v.id, short),
-      texto: String(v.snippet?.title ?? "").slice(0, 300),
-      miniatura: v.snippet?.thumbnails?.medium?.url ?? v.snippet?.thumbnails?.default?.url ?? "",
-      publicada_at: v.snippet?.publishedAt ? new Date(v.snippet.publishedAt).toJSON() : null,
-      me_gusta: meGusta, comentarios, guardados: 0, compartidos: 0, alcance: 0, vistas: num(v.statistics?.viewCount) ?? 0,
-      interacciones: meGusta + comentarios,
-    };
-  });
+  return (r?.items ?? []).map(filaDeVideo);
+}
+
+/** Un video de la Data API con sus cifras, en la forma de `metricas_publicacion`. */
+function filaDeVideo(v) {
+  const meGusta = num(v.statistics?.likeCount) ?? 0;
+  const comentarios = num(v.statistics?.commentCount) ?? 0;
+  const segundos = segundosISO(v.contentDetails?.duration);
+  // Un Short no se distingue por la API: se toma por uno lo que dura un
+  // minuto o menos, o lo que lleva #Shorts.
+  const short = (segundos !== null && segundos <= 60) || /#shorts\b/i.test(`${v.snippet?.title ?? ""} ${v.snippet?.description ?? ""}`);
+  return {
+    externo_id: String(v.id), tipo: short ? "short" : "video", enlace: enlaceYouTube(v.id, short),
+    texto: String(v.snippet?.title ?? "").slice(0, 300),
+    miniatura: v.snippet?.thumbnails?.medium?.url ?? v.snippet?.thumbnails?.default?.url ?? "",
+    publicada_at: v.snippet?.publishedAt ? new Date(v.snippet.publishedAt).toJSON() : null,
+    me_gusta: meGusta, comentarios, guardados: 0, compartidos: 0, alcance: 0, vistas: num(v.statistics?.viewCount) ?? 0,
+    interacciones: meGusta + comentarios,
+  };
+}
+
+// ------------------------------------------------------------
+// Un canal de OTRO (Inspiración): datos públicos
+// ------------------------------------------------------------
+//
+// Lo público de un canal ajeno se lee con cualquier credencial de la Data
+// API: el token de un canal conectado del espacio o, si el servidor la
+// tiene, una llave de API (`YOUTUBE_API_KEY`). `cred` es { token } o { llave }.
+
+async function publica(cred, ruta, query = {}) {
+  if (cred?.token) return api(cred.token, ruta, { query });
+  const u = new URL(`${API}${ruta}`);
+  for (const [k, v] of Object.entries({ ...query, key: cred?.llave })) if (v !== undefined && v !== null) u.searchParams.set(k, String(v));
+  const res = await llamar(u, {});
+  if (!res.ok) throw await errorDe(res);
+  return res.json();
+}
+
+/** El canal de @handle (o de su id UC…), con sus cifras y su lista de subidas, o null. */
+export async function canalPublicoYouTube(cred, usuario) {
+  const query = /^UC[\w-]{22}$/.test(String(usuario)) ? { id: usuario } : { forHandle: `@${usuario}` };
+  const r = await publica(cred, "/youtube/v3/channels", { part: "snippet,statistics,contentDetails", ...query, maxResults: 1 });
+  return r?.items?.[0] ?? null;
+}
+
+/** Los últimos videos de una lista de subidas ajena, con sus cifras (dos llamadas). */
+export async function videosPublicosYouTube(cred, listaSubidas, max = 25) {
+  if (!listaSubidas) return [];
+  const lista = await publica(cred, "/youtube/v3/playlistItems", { part: "contentDetails", playlistId: listaSubidas, maxResults: Math.min(max, 50) });
+  const ids = (lista?.items ?? []).map((i) => i.contentDetails?.videoId).filter(Boolean).slice(0, max);
+  if (!ids.length) return [];
+  const r = await publica(cred, "/youtube/v3/videos", { part: "snippet,statistics,contentDetails", id: ids.join(","), maxResults: 50 });
+  return (r?.items ?? []).map(filaDeVideo);
 }

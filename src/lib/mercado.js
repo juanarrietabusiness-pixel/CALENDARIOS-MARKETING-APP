@@ -81,10 +81,16 @@ export const borrarReferencia = (clienteId, id) =>
  * «Extraer guion y adaptar»: un video de la galería del cliente (`archivoId`) o puesto en una publicación (`clave`) → { original (la transcripción), adaptado (titulo,
  * guion, ganchos, descripcion), duracion, producto, aviso }. No guarda. `src`: el video, por si lo ve Meta.
  */
-export const extraerUgc = (clienteId, { archivoId = "", clave = "", productoId = "", duracion = null, nota = "" }, src = "") =>
-  gastando(() => conFotogramas(
-    (fotogramas) => pedir(`${base(clienteId)}/ugc`, post({ ...(archivoId ? { archivoId } : { clave }), productoId, ...(duracion ? { duracion } : {}), nota, ...(fotogramas ? { fotogramas } : {}) })), src,
-  ));
+export const extraerUgc = (clienteId, { archivoId = "", clave = "", youtube = "", productoId = "", duracion = null, nota = "", soloTranscribir = false }, src = "") =>
+  gastando(() => (youtube
+    // Un video público de YouTube lo ve Gemini por su enlace: no hay archivo del que sacar fotogramas.
+    ? pedir(`${base(clienteId)}/ugc`, post({ youtube, productoId, ...(duracion ? { duracion } : {}), nota, ...(soloTranscribir ? { soloTranscribir: true } : {}) }))
+    : conFotogramas(
+      (fotogramas) => pedir(`${base(clienteId)}/ugc`, post({
+        ...(archivoId ? { archivoId } : { clave }), productoId, ...(duracion ? { duracion } : {}), nota,
+        ...(fotogramas ? { fotogramas } : {}), ...(soloTranscribir ? { soloTranscribir: true } : {}),
+      })), src,
+    )));
 
 // ---------- El contenido de la competencia en Instagram ----------
 
@@ -92,11 +98,16 @@ export const extraerUgc = (clienteId, { archivoId = "", clave = "", productoId =
 export const contenidoDeCompetencia = (clienteId, usuario) =>
   pedir(`${base(clienteId)}/competencia?usuario=${encodeURIComponent(String(usuario ?? "").trim())}`);
 
-/** El archivo de una de ellas a la galería del cliente (carpeta «Competencia») → { archivo, publicacion, usuario }. */
-export const traerDeCompetencia = (clienteId, usuario, id) => pedir(`${base(clienteId)}/competencia/traer`, post({ usuario, id }));
+/**
+ * El archivo de una de ellas a la galería del cliente (carpeta «Competencia») → { archivo, publicacion, usuario }. Con
+ * `miniatura`, su miniatura: un reel con música de Instagram no trae video (el error lleva `codigo: "musica"`).
+ */
+export const traerDeCompetencia = (clienteId, usuario, id, { miniatura = false } = {}) =>
+  pedir(`${base(clienteId)}/competencia/traer`, post({ usuario, id, ...(miniatura ? { miniatura: true } : {}) }));
 
 /**
  * Un enlace de Instagram → su archivo en la galería. Sin @ en el enlace ni en `usuario`, el error trae
  * `datos.codigo === "usuario"`: hay que preguntarlo.
  */
-export const traerEnlaceDeInstagram = (clienteId, enlace, usuario = "") => pedir(`${base(clienteId)}/competencia/enlace`, post({ enlace, usuario }));
+export const traerEnlaceDeInstagram = (clienteId, enlace, usuario = "", { miniatura = false } = {}) =>
+  pedir(`${base(clienteId)}/competencia/enlace`, post({ enlace, usuario, ...(miniatura ? { miniatura: true } : {}) }));

@@ -24,6 +24,7 @@
 import { crearAcceso, cuentasSinFoto } from "./acceso.js";
 import { graph, descifrarMeta } from "./meta.js";
 import { tokenYouTube, canalesYouTube, diaDelCanal, videosRecientesYouTube } from "./youtube.js";
+import { usuariosParaMetricas } from "../../src/lib/inspiracion.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 
 const DIAS_PUBLICACIONES = 45;
@@ -266,10 +267,8 @@ export async function fotografiarCuenta(env, acceso, cuenta, fecha = fechaDeFoto
 
 async function fotografiarCompetencia(env, acceso, cuenta, token, fecha) {
   const cliente = await acceso.leerUno("clients", { id: cuenta.client_id });
-  const usuarios = leerJSON(cliente?.competidores ?? "[]", [])
-    .map((u) => String(u).trim().replace(/^@/, ""))
-    .filter((u) => /^[\w.]{1,30}$/.test(u))
-    .slice(0, MAX_COMPETIDORES);
+  // Las cuentas fijas del cliente (lib/inspiracion.js): sólo las de Instagram que son de COMPETENCIA.
+  const usuarios = usuariosParaMetricas(leerJSON(cliente?.competidores ?? "[]", [])).slice(0, MAX_COMPETIDORES);
   const filas = [];
   for (const usuario of usuarios) {
     const c = await competidorIG(env, token, cuenta.externo_id, usuario);

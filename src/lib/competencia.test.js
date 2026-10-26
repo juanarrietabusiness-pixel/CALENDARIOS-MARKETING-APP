@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { codigoDeInstagram, publicacionesDeGraph, ordenarPorRendimiento, haceCuanto } from "./competencia.js";
+import { codigoDeInstagram, publicacionesDeGraph, ordenarPorRendimiento, haceCuanto, usuarioDelEmbed } from "./competencia.js";
 import { deLoCompartido } from "./bancoIdeas.js";
 
 describe("el enlace de Instagram", () => {
@@ -12,7 +12,29 @@ describe("el enlace de Instagram", () => {
   });
 });
 
+describe("el @ de la página pública de «insertar»", () => {
+  it("lo lee de la cabecera, del enlace al perfil o de los datos incrustados", () => {
+    expect(usuarioDelEmbed('<a class="Avatar InsideRing" href="x"></a><span class="UsernameText">Muebles.X</span>')).toBe("muebles.x");
+    expect(usuarioDelEmbed('<a href="https://www.instagram.com/rival_cafe/?utm_source=ig_embed&amp;ig_rid=1">ver</a>')).toBe("rival_cafe");
+    expect(usuarioDelEmbed('<script>{\\"owner\\":{\\"id\\":\\"9\\",\\"username\\":\\"tienda.pty\\"}}</script>')).toBe("tienda.pty");
+  });
+  it("sin nada reconocible devuelve vacío (y se pregunta el @); nunca una palabra reservada", () => {
+    expect(usuarioDelEmbed("<html><body>Inicia sesión</body></html>")).toBe("");
+    expect(usuarioDelEmbed('<a href="https://www.instagram.com/p/?utm_source=ig_embed">x</a>')).toBe("");
+    expect(usuarioDelEmbed(null)).toBe("");
+  });
+});
+
 describe("las publicaciones", () => {
+  it("un reel sin `media_url` es uno con música de Instagram: no trae su video; el código sale del enlace", () => {
+    const [con, sin, foto] = publicacionesDeGraph([
+      { id: "1", media_type: "VIDEO", media_product_type: "REELS", media_url: "v1", permalink: "https://www.instagram.com/reel/AbCdE1/" },
+      { id: "2", media_type: "VIDEO", media_product_type: "REELS", thumbnail_url: "t2", permalink: "https://www.instagram.com/reel/XyZ987/" },
+      { id: "3", media_type: "IMAGE", media_url: "i3" },
+    ]);
+    expect([con.sinArchivo, sin.sinArchivo, foto.sinArchivo]).toEqual([false, true, false]);
+    expect([con.codigo, sin.codigo, foto.codigo]).toEqual(["AbCdE1", "XyZ987", ""]);
+  });
   it("las lee de Graph y pone primero lo que mejor funcionó (un comentario pesa el doble)", () => {
     const l = publicacionesDeGraph([
       { id: "1", media_type: "IMAGE", like_count: 50, comments_count: 0, media_url: "u1", timestamp: "2026-10-01" },

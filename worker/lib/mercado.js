@@ -40,6 +40,7 @@ import { criterioDelEspacio } from "./estudio/director.js";
 import { verVideo, ErrorVideo, MAX_BYTES_VIDEO } from "./geminiVideo.js";
 import { claveDelCliente } from "./estudio/archivos.js";
 import { pedidoDeTranscripcion, leerTranscripcion, pedidoDeAdaptacionUgc, leerAdaptacionUgc, duracionUgc } from "../../src/lib/ugc.js";
+import { enlaceDeYouTube } from "../../src/lib/inspiracion.js";
 import { bloqueoPorPresupuesto } from "./configIA.js";
 import { textoPaleta } from "../../src/lib/kitMarca.js";
 import {
@@ -478,7 +479,26 @@ export async function adaptarReferencia(env, acceso, cliente, id, { productoId =
  * producto, otra duración— no paga otra vez a Gemini. No guarda la adaptación: la pantalla la pone en la publicación o
  * en el banco. → { original, adaptado, duracion, modelo, aviso }.
  */
-export async function extraerUgc(env, acceso, cliente, { archivoId = "", clave = "", productoId = "", duracion, nota = "", fotogramas = null } = {}) {
+export async function extraerUgc(env, acceso, cliente, { archivoId = "", clave = "", youtube = "", productoId = "", duracion, nota = "", fotogramas = null, soloTranscribir = false } = {}) {
+  // Un video PÚBLICO de YouTube (Inspiración) no se baja: Gemini lo ve por su enlace. No hay ficha donde recordar la
+  // transcripción, así que cada vez se paga otra vez a Gemini.
+  const enlaceYT = youtube ? enlaceDeYouTube(youtube) : "";
+  if (youtube && !enlaceYT) throw new ErrorMercado("Ese no es el enlace de un video de YouTube.", 400);
+  if (enlaceYT) {
+    const bloqueo = await bloqueoPorPresupuesto(acceso);
+    if (bloqueo) throw new ErrorMercado(bloqueo, 402);
+    let texto;
+    try {
+      texto = await verVideo(env, acceso, { youtube: enlaceYT, clienteId: cliente.id, prompt: pedidoDeTranscripcion(), funcion: "guion de video", json: true });
+    } catch (e) {
+      if (e instanceof ErrorVideo) throw new ErrorMercado(e.message, e.estado, e.codigo);
+      throw e;
+    }
+    const original = leerTranscripcion(texto);
+    if (!original) throw new ErrorMercado("La IA no devolvió la transcripción del video. Inténtalo otra vez.", 502);
+    return soloTranscribir ? { original } : adaptarUgc(env, acceso, cliente, { original, productoId, duracion, nota });
+  }
+
   // Un video de la galería (por su id) o uno puesto en una publicación (por su clave, de ESTE cliente).
   let archivo = archivoId ? await acceso.leerUno("estudio_archivos", { id: String(archivoId), client_id: cliente.id }) : null;
   if (!archivo && clave) {
@@ -517,7 +537,13 @@ export async function extraerUgc(env, acceso, cliente, { archivoId = "", clave =
     // Sólo se recuerda en una ficha de la galería (un video suelto de una publicación no tiene dónde).
     if (archivo.id) await acceso.actualizar("estudio_archivos", { id: archivo.id, client_id: cliente.id }, { ajustes: JSON.stringify({ ...ajustes, transcripcion: original }) }).catch(() => {});
   }
+  // «Guardar como fórmula» sólo necesita el ORIGINAL transcrito: sin adaptar, no se paga la llamada de texto.
+  if (soloTranscribir) return { original };
+  return adaptarUgc(env, acceso, cliente, { original, productoId, duracion, nota });
+}
 
+/** La transcripción de un video → el guion UGC adaptado a la marca (una llamada de texto). */
+async function adaptarUgc(env, acceso, cliente, { original, productoId, duracion, nota }) {
   const { catalogo, inventario } = await leerMercado(acceso, cliente.id);
   const producto = productosActivos(catalogo).find((p) => p.id === productoId) ?? null;
   // Sin duración pedida, la del original redondeada a la que se graba (15, 30, 45 o 60).

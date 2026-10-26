@@ -3,6 +3,7 @@ import Icon from "./Icon";
 import { contenidoDeCompetencia, traerDeCompetencia, agregarReferencia } from "../lib/mercado";
 import { haceCuanto } from "../lib/competencia";
 import { usuarioInstagram } from "../lib/auditoria";
+import { usuariosInstagram } from "../lib/inspiracion";
 
 // «Extraer guion y adaptar» de un reel de la competencia: sólo se descarga al abrirlo.
 const ExtraerUgc = lazy(() => import("./calendario/ExtraerUgc"));
@@ -23,7 +24,8 @@ const FORMATO = { reel: "Reel", carrusel: "Carrusel", imagen: "Imagen" };
 
 export default function ContenidoCompetencia({ client, lectura = false, onReferencia, onCambioCerebro }) {
   const ids = useId();
-  const sugeridos = (Array.isArray(client.competidores) ? client.competidores : []).map((u) => usuarioInstagram(u)).filter(Boolean).slice(0, 8);
+  // Las cuentas fijas de Instagram del cliente (competencia e inspiración, lib/inspiracion.js).
+  const sugeridos = usuariosInstagram(client.competidores);
   const [usuario, setUsuario] = useState(sugeridos[0] ?? "");
   const [datos, setDatos] = useState(null);
   const [cargando, setCargando] = useState(false);
@@ -48,17 +50,21 @@ export default function ContenidoCompetencia({ client, lectura = false, onRefere
     setCargando(false);
   };
 
-  const traer = async (p) => (await traerDeCompetencia(client.id, datos.perfil.usuario, p.id)).archivo;
+  const traer = async (p, opciones) => (await traerDeCompetencia(client.id, datos.perfil.usuario, p.id, opciones)).archivo;
 
+  // Un reel con música de Instagram no trae video (Meta lo omite): se analiza su miniatura con el texto y las cifras.
   const analizar = async (p) => {
     setTrabajando(p.id);
     setError("");
     setAviso("");
     try {
-      const archivo = await traer(p);
+      const archivo = await traer(p, { miniatura: Boolean(p.sinArchivo) });
       const r = await agregarReferencia(client.id, {
         archivoId: archivo.id, competidor: `@${datos.perfil.usuario}`, enlace: p.enlace, origen: "organico",
-        nota: `${fmt(p.meGusta)} me gusta y ${fmt(p.comentarios)} comentarios`,
+        nota: [
+          `${fmt(p.meGusta)} me gusta y ${fmt(p.comentarios)} comentarios`,
+          p.sinArchivo ? `es un reel (con música de Instagram: se analiza su miniatura). Su texto: ${String(p.texto ?? "").slice(0, 400)}` : "",
+        ].filter(Boolean).join("; "),
       }, archivo.tipo === "video" ? archivo.src : "");
       onReferencia?.(r.referencia);
       onCambioCerebro?.();
@@ -127,13 +133,14 @@ export default function ContenidoCompetencia({ client, lectura = false, onRefere
                   <span className="hint">{haceCuanto(p.fecha)}</span>
                 </p>
                 {p.texto && <p className="competencia-ig-texto">{p.texto}</p>}
+                {p.sinArchivo && <p className="hint" style={{ margin: 0 }}>Con música de Instagram: Meta no entrega su video. Guárdalo desde el teléfono y compártelo a la app para sacar el guion.</p>}
                 <div className="competencia-ig-acciones">
                   {!lectura && (
                     <button type="button" className="btn btn-secondary btn-sm" onClick={() => analizar(p)} disabled={Boolean(trabajando)} aria-busy={trabajando === p.id || undefined}>
-                      <Icon name="sparkles" size={13} /> {trabajando === p.id ? "Trabajando…" : "Analizar como referencia"}
+                      <Icon name="sparkles" size={13} /> {trabajando === p.id ? "Trabajando…" : p.sinArchivo ? "Analizar sin el video" : "Analizar como referencia"}
                     </button>
                   )}
-                  {!lectura && p.video && (
+                  {!lectura && p.video && !p.sinArchivo && (
                     <button type="button" className="btn btn-secondary btn-sm" onClick={() => guion(p)} disabled={Boolean(trabajando)}>
                       <Icon name="user" size={13} /> Extraer guion UGC
                     </button>

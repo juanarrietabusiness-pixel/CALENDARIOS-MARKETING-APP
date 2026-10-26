@@ -131,8 +131,13 @@ src/
                           anuncio, referencias de la competencia; pedidos a la IA, notas y documento (puro; también
                           lo importa el Worker)
     mercado.js            Cliente de /api/mercado (también el contenido de la competencia y traer un enlace de Instagram)
-    competencia.js        El contenido de la competencia en Instagram: el código de un enlace, ordenar por lo que funcionó (puro;
-                          también lo importa el Worker)
+    competencia.js        El contenido de la competencia en Instagram: el código de un enlace, ordenar por lo que funcionó, el @
+                          de la página pública de «insertar» (puro; también lo importa el Worker)
+    inspiracion.js        Inspiración: las cuentas fijas de cada cliente (10, competencia o inspiración; lee los @ sueltos de
+                          antes), «rinde X× su promedio» (mediana de la cuenta), filtrar el feed, avisos, de una publicación a una
+                          idea con REFERENCIA, YouTube por enlace, el resumen «Lo que funciona en tu competencia» (puro; también el Worker)
+    inspiracionApi.js     Cliente de /api/inspiracion
+    referenciasPost.js    Los archivos de REFERENCIA de una publicación (`post.referencias`): aparte de `medios`, no se publican
     consciencia.js        Niveles de consciencia (Schwartz) y deseos de Reiss: pequeño, para el bundle principal
     ugc.js                UGC · guion para grabar: tramos «[0–3 s] VOZ: «…» | SE VE: … | TEXTO: …», duración (15–60 s, 2,5
                           palabras/s), ganchos, copiar voz y tomas; transcribir un video y adaptarlo; la «Voz UGC» de cada
@@ -322,6 +327,10 @@ src/
                           y «Revisar marca»
     ContenidoCompetencia.jsx  «Su contenido en Instagram» (pestaña Competencia del estudio de mercado): las publicaciones de
                           un competidor, las mejores primero; analizar como referencia o extraer su guion UGC (lazy)
+    Inspiracion.jsx       Inspiración: lo que publican las cuentas del cliente, junto al calendario (se arrastra a un día) y como
+                          pestaña; llevar a un día, banco, analizar, guion, fórmula, recrear, el resumen al cerebro (lazy)
+    CuentasReferencia.jsx Las cuentas fijas de un cliente (red, @, tipo, nota): en Resultados y en Inspiración
+    calendario/referenciasPost.jsx  «Referencias · no se publican» del panel: recrear con la marca, extraer guion, usar como contenido
     EstudioMercado.jsx    El estudio de mercado en la pestaña Cerebro: catálogo, «Realizar estudio de mercado» por
                           pasos con revisión, y las referencias de la competencia (lazy)
     EstudioLote.jsx       «Producir en lote»: qué (anuncios, por tipo o el mes; post, historia, carrusel o reel), ideas por
@@ -433,7 +442,10 @@ worker/
                           (/adimages, /advideos por file_url), crear en pausa, activar y pausar
     mcp.js                Las herramientas de Claude por MCP (consulta + escritura)
     competencia.js        `business_discovery` de un competidor (sus últimas publicaciones) y «traer» su archivo del CDN de Meta
-                          a la galería («Competencia»), también desde un enlace de Instagram
+                          a la galería («Competencia»), también desde un enlace de Instagram SIN @ (memoria, cuentas fijas,
+                          página pública) y la miniatura de un reel con música
+    inspiracion.js        Inspiración: leer las cuentas de un cliente (Instagram y YouTube), guardar lo que publican con su
+                          «rinde», borrar lo que ya no está, avisar de lo que rinde 3×, el cron y el resumen con IA
     mercado.js            El estudio de mercado: catálogo (y su nota de cifras), el estudio por pasos con búsqueda
                           web, aprobar (notas del cerebro + documento en Drive), referencias de la competencia
     estudio/              El Estudio: meta.js (Muse Image: generar y editar, 0,01 $), prompt.js («Mejorar
@@ -504,7 +516,8 @@ worker/
     anuncios.js           /api/anuncios: cuentas, campañas, estadísticas, crear, activar (admin + confirmado)
     plantillas.js         /api/plantillas-plan: listar, guardar (cambiar una de arranque o crear) y borrar/restaurar
     formulasUgc.js        /api/formulas-ugc: las fórmulas UGC de la agencia (listar, guardar, corregir, quitar, proponer)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC)
+    inspiracion.js        /api/inspiracion/<cliente>: el feed, actualizar, traer un archivo, el resumen
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -523,7 +536,7 @@ tests/
 | `/` | Panel, sin cliente elegido |
 | `/cliente/<slug>` | Un cliente |
 | `/cliente/<slug>/<mes>-<año>` | Un mes del calendario de ese cliente (`octubre-2026`), exista o no su cajón. Los enlaces viejos con el nombre o el id del calendario siguen abriendo su mes |
-| `/cliente/<slug>/tareas` · `/contenido` · `/ideas` · `/resultados` · `/estudio` · `/cerebro` · `/ficha` | Las otras pestañas del cliente |
+| `/cliente/<slug>/tareas` · `/contenido` · `/ideas` · `/inspiracion` · `/resultados` · `/estudio` · `/cerebro` · `/ficha` | Las otras pestañas del cliente |
 | `/tareas` | Mi día |
 | `/ajustes` | IA, presupuesto, integraciones, tareas, copia de seguridad |
 | `/resultados` | Todos los clientes, últimos 30 días |
@@ -1287,8 +1300,8 @@ son del servidor.
 - **El Estudio: una imagen es un TRABAJO, y el Worker no puede esperar.** Pedir crea
   una fila (`estudio_trabajos`) y cada `POST …/avanzar` da UN paso —una imagen—, que
   guarda su avance; lo avanza el navegador mientras se mira la pantalla y el cron
-  (`avanzarPendientes`, el último paso de la vuelta, sólo si no hubo nada que publicar,
-  medir ni informar) para lo que nadie mira. Cosas que no se ven mirando la pantalla:
+  (`avanzarPendientes`, sólo si no hubo nada que publicar, medir ni informar; detrás de él sólo va Inspiración)
+  para lo que nadie mira. Cosas que no se ven mirando la pantalla:
   · **Un paso a la vez, y no es un detalle:** dos que avancen el mismo trabajo generan y
   COBRAN la imagen dos veces. El permiso es `bloqueado_hasta`, reservado con el valor que
   se leyó como condición del UPDATE (el segundo no cambia ninguna fila) y soltado al
@@ -1842,6 +1855,39 @@ son del servidor.
   `cdninstagram.com`/`fbcdn.net`, ≤ 50 MB— a la galería, carpeta «Competencia», pidiendo la dirección otra vez porque
   caducan) + la referencia de siempre (`agregarReferencia`, orgánica): desde ella salen «Adaptar», «Recrear con mi marca»
   y «Seguir este video». En un reel, además, «Extraer guion UGC». **Nada se ha probado contra Meta real.**
+- **Inspiración: las cuentas que sigue cada cliente y lo que publican** (`src/lib/inspiracion.js`, `worker/lib/inspiracion.js`,
+  `Inspiracion.jsx`, 0046). Hasta 10 cuentas por cliente (Instagram, YouTube o TikTok; «Competencia» o «Inspiración») en
+  `clients.competidores`, que eran @ sueltos: `cuentasDeReferencia` lee las dos formas sin tocar una fila, y la foto de
+  Resultados mide sólo las de Instagram de competencia (`usuariosParaMetricas`). Cosas que no se ven en la pantalla:
+  · **El feed se GUARDA** (`inspiracion_cuentas`, `inspiracion_publicaciones`): abrirlo no gasta llamadas. Lo pone al día el
+  cron (`inspiracionPendiente`: un cliente por vuelta, cada `CADA_HORAS` (20), el último paso y sólo si la vuelta no hizo nada
+  más; hasta 10 llamadas a Meta o 3 por canal de YouTube) y «Actualizar». Una cuenta que falla deja su error Y su fecha (si no,
+  el cron la repetiría cada minuto) y no borra lo que ya se había leído de ella; lo de una cuenta leída bien que ya no está entre
+  sus últimas, o de una cuenta que se quitó, se borra. La consulta del cron es una lectura sin dueño (`clientesConInspiracionVieja`).
+  · **«Rinde X×» es contra la MEDIANA de la propia cuenta** (`conRendimiento`; con menos de 3 publicaciones, null): con la media,
+  un viral dejaba a las demás por debajo. Lo nuevo (7 días) que rinde 3× o más AVISA al equipo una vez (`avisado`, tope 3 por lectura).
+  · **YouTube por la Data API** con el token de un canal conectado del espacio o `YOUTUBE_API_KEY` (`canalPublicoYouTube`,
+  `forHandle`); su video NO se baja (sus condiciones): el guion lo saca Gemini POR EL ENLACE (`verVideo({ youtube })`,
+  `extraerUgc({ youtube })`; con Meta como motor de video, 409). **TikTok no deja ver lo de otros**: la cuenta queda con su
+  error y se abre su perfil.
+  · **Un enlace de Instagram sin @** (`traerEnlace`): la API no busca por enlace. Se busca en este orden y se para en el primero:
+  el @ del enlace o el escrito, la memoria (`instagram_enlaces`) y el feed guardado, las cuentas fijas del cliente (una llamada
+  por cuenta, y esa lectura sirve para bajarlo), la página pública de «insertar» (`/p/<código>/embed/captioned/`,
+  `usuarioDelEmbed`: SÓLO el @, decisión de la agencia; el archivo va siempre por `business_discovery`) y, si nada, 409
+  `codigo: "usuario"`. Lo resuelto se recuerda en cuanto se encuentra la publicación.
+  · **Un reel con música de Instagram no trae `media_url`** (Meta lo omite, incluso del propio): 409 `codigo: "musica"` y se
+  ofrece su miniatura (`miniatura: true`) para analizarlo con su texto, o guardarlo desde el teléfono y compartirlo.
+  · **Lo de otra cuenta va como REFERENCIA, nunca en `medios`** (`post.referencias`, `referenciasPost.jsx`): lo que está en
+  medios se publica. `deIdeaAPublicacion` pasa los `archivos` de una idea del banco a `referencias` —antes iban en un campo que
+  la publicación no leía y el video traído se perdía— y `ideaAlCalendario` apunta su uso en la galería. «Usar como contenido»
+  lo pasa a medios con una pregunta (sólo si es del cliente o hay permiso). La referencia no va al enlace del cliente.
+  · Se lleva a un día ARRASTRANDO desde el panel (`inspiracionId` en el `dataTransfer`, `onDropInspiracion` de MonthGrid →
+  `llevarRef` del panel) o con «Llevar a un día»; los dos bajan el archivo (sólo Instagram) y usan `ideaAlCalendario`.
+  · «Lo que funciona en tu competencia» (función del mismo nombre, hueco «análisis»): la IA lee las que más rindieron (45 días) y
+  escribe PATRONES sin nombrar cuentas ni marcas; NO es interna (para que el motor de ideas la lea) y no se guarda sola: «Guardar
+  en el cerebro» con PUT /nota, una por mes (la del mes se reemplaza por su ruta).
+  · «Fórmula» abre «Extraer guion» en modo fórmula (`formula`): sólo transcribe (`soloTranscribir`, sin la llamada de texto de
+  adaptar) y propone la receta. **Nada de esto se ha probado contra Meta, Google ni Instagram reales.**
 - **El estudio de mercado: catálogo, estudio y competencia, por cliente** (`mercado_clientes`, 0034; lo puro
   en `src/lib/estudioMercado.js`, lo que toca base/IA/Drive en `worker/lib/mercado.js`). Va en su TABLA y no
   en `clients`: pesa decenas de miles de caracteres y `clients` viaja entero en cada carga y cada aviso.
