@@ -57,6 +57,8 @@ export async function guardarKit(env, acceso, cliente, entrada) {
   kit.personajes = kit.personajes
     .map((p) => ({ ...p, imagenes: p.imagenes.filter((c) => claveDelCliente(c, cliente.id)) }))
     .filter((p) => p.imagenes.length);
+  // Las plantillas: su imagen tiene que ser de ESTE cliente.
+  kit.plantillas = kit.plantillas.filter((p) => claveDelCliente(p.clave, cliente.id));
   // El modelo fijado del cliente: sólo uno que exista en el catálogo y sea de ese tipo.
   kit.modelos = Object.fromEntries(Object.entries(kit.modelos).filter(([tipo, id]) => modeloPorId(id)?.tipo === tipo));
   // La fuente: el archivo tiene que estar en `fuentes/` de ESTE cliente y la muestra ser una imagen suya; si no, fuera.

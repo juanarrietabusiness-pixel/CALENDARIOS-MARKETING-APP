@@ -41,21 +41,30 @@ export const claveIndice = (clientId) => {
 /**
  * Para qué se pide el contexto:
  *   texto   escribir lo que se PUBLICA (ideas, guiones, captions): sin notas
- *           internas y sin la capa de maquetación de Meta AI.
- *   piezas  pedirle las piezas a Meta AI: con la maquetación, sin internas.
- *   imagen  crear una imagen o un video: la identidad visual (marca, maquetación), sin internas.
+ *           internas.
+ *   piezas  (de antes: pedirle las piezas a Meta AI) igual que «imagen».
+ *   imagen  crear una imagen o un video: la identidad visual, sin internas.
  *           Un prompt de imagen sale hacia un proveedor externo y queda en la galería del cliente:
  *           lo que el equipo se dice a sí mismo (costos, márgenes) no tiene nada que hacer ahí.
  *   chat    el equipo hablando con el asistente: todo.
+ *
+ * El «prompt maestro» de Meta AI (la capa de MAQUETACIÓN: plantillas, escala, bloque de estilo, el HTML que
+ * devolvía Meta AI) quedó fuera de TODOS los usos, también del asistente: eran instrucciones de un proyecto
+ * viejo y la agencia decidió olvidarlas. Ahora diseña el director creativo (src/lib/director.js). Las notas
+ * siguen en la pestaña Cerebro (para borrarlas), pero ninguna IA las lee.
  */
 export const USOS = Object.freeze(["texto", "piezas", "imagen", "chat"]);
+
+/** ¿Es una nota del prompt maestro de Meta AI (la maquetación de antes)? Por su tipo o por su título. */
+export const esDelPromptMaestro = (meta) =>
+  meta?.t === "maquetacion" || /prompt[\s_-]*maestro|\bmeta[\s_-]*ai\b|nano[\s_-]*banana\s*v\d/i.test(String(meta?.ti ?? ""));
 
 /** ¿Esta nota queda fuera de este uso? */
 export function fueraDeUso(meta, para) {
   if (!meta) return false;
+  if (esDelPromptMaestro(meta)) return true;
   if (para === "chat") return false;
-  if (meta.i) return true;
-  return para === "texto" && meta.t === "maquetacion";
+  return Boolean(meta.i);
 }
 
 // ------------------------------------------------------------

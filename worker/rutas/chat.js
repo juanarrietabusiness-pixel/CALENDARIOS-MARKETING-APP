@@ -60,6 +60,10 @@ import { prepararIA, registrarConsumo, MODELO_SONNET, etiquetaModelo } from "../
 import { crearEjecutor, DEFINICIONES, HERRAMIENTAS_WEB, NOMBRES, describirUso } from "../lib/herramientasServidor.js";
 import { ahora, uuid } from "../lib/ids.js";
 import { firma } from "../lib/vivo.js";
+import { kitDe } from "../lib/estudio/kit.js";
+import { manualDelEspacio } from "../lib/estudio/fichas.js";
+import { bloqueDeMarca, kitVacio } from "../../src/lib/kitMarca.js";
+import { instruccionDeDiseno, resumenDelKit } from "../../src/lib/director.js";
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_TOKENS = 32_000;
@@ -143,6 +147,14 @@ export async function rutaChat(req, env, { acceso, ctx, usuario = null } = {}) {
 
   const cachear = body.seguido === true;
   const system = [{ type: "text", text: INSTRUCCION_SERVIDOR }];
+  // Con un cliente abierto, el asistente es además su DIRECTOR CREATIVO: el manual de la agencia (Ajustes), la ficha de
+  // diseño, sus herramientas y lo que exige su kit (o que no lo tiene). Va antes del sistema del navegador: no cambia
+  // de un mensaje a otro, así que entra en la caché.
+  if (clienteActual) {
+    const kit = kitDe(clienteActual);
+    const manual = await manualDelEspacio(acceso);
+    system.push({ type: "text", text: `${instruccionDeDiseno(manual)}\n\n${resumenDelKit({ kit, marca: bloqueDeMarca(kit), vacio: kitVacio(kit), cliente: clienteActual.name })}` });
+  }
   if (typeof body.system === "string" && body.system.trim()) {
     system.push({ type: "text", text: body.system });
   }

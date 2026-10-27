@@ -2,7 +2,7 @@
 // Las conversaciones del asistente: /api/chat/conversaciones
 //
 //   GET    /chat/conversaciones?cliente=<id>   La lista de un cliente; sin cliente, la del asistente general
-//   POST   /chat/conversaciones                Empezar una { clienteId?, titulo? }
+//   POST   /chat/conversaciones                Empezar una { clienteId?, titulo?, tema? } (tema «diseno»: desde el Estudio)
 //   PATCH  /chat/conversaciones/<id>           Cambiarle el título { titulo }
 //   DELETE /chat/conversaciones/<id>           Borrarla, con sus mensajes y su resumen (cascada de D1)
 //   GET    /chat/conversaciones/<id>/mensajes  Sus mensajes, en orden
@@ -33,7 +33,7 @@ const deCliente = (url) => {
   return c || null;
 };
 
-const publica = (c) => ({ id: c.id, clientId: c.client_id ?? null, titulo: c.titulo || TITULO_NUEVA, creadaPor: c.creada_por ?? null, created_at: c.created_at, updated_at: c.updated_at });
+const publica = (c) => ({ id: c.id, clientId: c.client_id ?? null, titulo: c.titulo || TITULO_NUEVA, tema: c.tema === "diseno" ? "diseno" : "", creadaPor: c.creada_por ?? null, created_at: c.created_at, updated_at: c.updated_at });
 
 export async function rutasConversaciones(req, env, { acceso, usuario, partes, metodo }) {
   const url = new URL(req.url);
@@ -60,6 +60,8 @@ export async function rutasConversaciones(req, env, { acceso, usuario, partes, m
     if (cliente && !(await acceso.leerUno("clients", { id: cliente }))) return noEncontrado("Cliente");
     const fila = {
       id: uuid(), client_id: cliente, titulo: tituloLimpio(b.titulo) || TITULO_NUEVA, creada_por: usuario?.id ?? null,
+      // Las empezadas en el Estudio, con el director creativo (0047): el resto, como siempre.
+      tema: b.tema === "diseno" ? "diseno" : "",
       created_at: ahora(), updated_at: ahora(),
     };
     await acceso.insertar("chat_conversaciones", fila);

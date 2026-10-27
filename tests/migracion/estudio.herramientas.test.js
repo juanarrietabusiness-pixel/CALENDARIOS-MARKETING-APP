@@ -381,14 +381,21 @@ describe("por MCP (Claude)", () => {
 });
 
 describe("el cerebro para imagen", () => {
-  it("«imagen» es un uso del cerebro: deja fuera lo interno y conserva la maquetación (que es identidad visual)", () => {
+  it("«imagen» es un uso del cerebro: deja fuera lo interno", () => {
     expect(USOS).toContain("imagen");
     expect(fueraDeUso({ t: "marca", i: 1 }, "imagen")).toBe(true);
     expect(fueraDeUso({ t: "marca", i: 0 }, "imagen")).toBe(false);
-    expect(fueraDeUso({ t: "maquetacion", i: 0 }, "imagen")).toBe(false);
-    // Para escribir texto la maquetación sigue fuera, como antes.
-    expect(fueraDeUso({ t: "maquetacion", i: 0 }, "texto")).toBe(true);
-    // El equipo hablando con el asistente lo ve todo.
+    // El equipo hablando con el asistente ve lo interno.
     expect(fueraDeUso({ t: "marca", i: 1 }, "chat")).toBe(false);
+  });
+
+  it("el prompt maestro de Meta AI (la maquetación de antes) no lo lee NINGUNA IA, tampoco el asistente", () => {
+    for (const para of USOS) {
+      expect(fueraDeUso({ t: "maquetacion", i: 0 }, para)).toBe(true);
+      expect(fueraDeUso({ t: "marca", i: 0, ti: "Prompt maestro meta ai — El bloque de estilo" }, para)).toBe(true);
+      expect(fueraDeUso({ t: "marca", i: 0, ti: "Master prompts — Nano Banana v3 — Mockup" }, para)).toBe(true);
+    }
+    // Una nota de marca normal sigue viva.
+    expect(fueraDeUso({ t: "marca", i: 0, ti: "Brand guidelines — Paleta de marca" }, "imagen")).toBe(false);
   });
 });

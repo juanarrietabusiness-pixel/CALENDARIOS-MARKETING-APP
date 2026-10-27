@@ -1,0 +1,96 @@
+import { describe, it, expect } from "vitest";
+import {
+  asegurarTexto, limpiarFicha, leerFichas, pedidoDeFichas, instruccionDeDiseno, resumenDelKit, manualDeDiseno,
+  MANUAL_DISENO_BASE, FORMATO_FICHA, MAX_FICHA,
+} from "./director.js";
+import { limpiarKit, bloqueDeMarca, referenciaDePlantilla, lineaDePlantillaEnPedido, fundirKit, MAX_PLANTILLAS } from "./kitMarca.js";
+
+describe("la ficha de diseño", () => {
+  it("sin líneas en blanco (el pedido del motor se parte por ellas) y con tope", () => {
+    expect(limpiarFicha("Pieza: post.\n\n\nTexto: «Hola»  \n")).toBe("Pieza: post.\nTexto: «Hola»");
+    expect(limpiarFicha("x".repeat(5000))).toHaveLength(MAX_FICHA);
+  });
+
+  it("el texto exacto se repone si la IA lo reescribió, en vez de tirar la ficha", () => {
+    const ficha = "Pieza: post.\nTexto: titular «Sofa cama» (grande).";
+    expect(asegurarTexto(ficha, "Sofá cama")).toMatch(/Texto exacto que va en la imagen[^\n]*«Sofá cama»/);
+    // Si ya está (con o sin comillas), no se toca.
+    expect(asegurarTexto("Texto: titular «Sofá cama».", "Sofá cama")).toBe("Texto: titular «Sofá cama».");
+    expect(asegurarTexto("Texto: «Envío gratis» / «Todo noviembre»", "Envío gratis\nTodo noviembre")).not.toMatch(/Texto exacto/);
+    // Sin texto que asegurar, la ficha tal cual.
+    expect(asegurarTexto(ficha, "")).toBe(ficha);
+  });
+});
+
+describe("el director de arte por tandas", () => {
+  const piezas = [{ n: 1, idea: "Envío gratis", texto: "Envío gratis\nTodo noviembre" }, { n: 2, idea: "El sofá", sinTexto: true, indicacion: "fondo blanco" }];
+
+  it("el pedido lleva el manual, la ficha, cada pieza y lo que pide la agencia (que manda)", () => {
+    const p = pedidoDeFichas({ cliente: "D'CASA", piezas, marca: "Paleta: #1340B1", plantillas: [{ id: "plantilla-a", nombre: "Oferta", uso: "post", sistema: "titular grande" }] });
+    expect(p).toContain(MANUAL_DISENO_BASE.split("\n")[0]);
+    expect(p).toContain(FORMATO_FICHA.split("\n")[0]);
+    expect(p).toMatch(/estas 2 piezas/);
+    expect(p).toMatch(/texto EXACTO de la pieza: «Envío gratis» \/ «Todo noviembre»/);
+    expect(p).toMatch(/SIN TEXTO en la imagen/);
+    expect(p).toMatch(/LO QUE PIDE LA AGENCIA \(manda sobre todo lo demás\): fondo blanco/);
+    expect(p).toMatch(/plantilla-a · «Oferta»/);
+    // Sin kit, se le dice qué hacer.
+    expect(pedidoDeFichas({ piezas })).toMatch(/aún no tiene kit de marca/);
+  });
+
+  it("lee una ficha por pieza, con el texto asegurado; lo que no se entiende, null", () => {
+    const r = leerFichas(JSON.stringify({ concepto: "Noviembre azul", piezas: [{ n: 1, ficha: "Pieza: uno.\nTexto: «Envio gratis»" }, { n: 2, ficha: "Pieza: dos.", plantilla: "plantilla-a" }, { n: 9, ficha: "no existe" }] }), piezas);
+    expect(r.concepto).toBe("Noviembre azul");
+    expect(r.fichas[1].ficha).toMatch(/«Envío gratis» \/ «Todo noviembre»/);
+    expect(r.fichas[2]).toEqual({ ficha: "Pieza: dos.", plantilla: "plantilla-a" });
+    expect(r.fichas[9]).toBeUndefined();
+    expect(leerFichas("no es json", piezas)).toBeNull();
+  });
+});
+
+describe("el asistente como director creativo", () => {
+  it("su instrucción lleva el manual (el de la agencia si lo escribió) y sus herramientas", () => {
+    expect(instruccionDeDiseno(null)).toContain(MANUAL_DISENO_BASE);
+    expect(instruccionDeDiseno({ diseno: "Siempre fondo blanco." })).toContain("Siempre fondo blanco.");
+    expect(manualDeDiseno({ diseno: "  " })).toBe(MANUAL_DISENO_BASE);
+    for (const h of ["disenar_piezas", "ver_lo_que_funciona", "corregir_pieza", "version_final", "guardar_regla"]) expect(instruccionDeDiseno(null)).toContain(h);
+  });
+
+  it("sabe si el cliente tiene kit, y si no, que lo diga y ofrezca prepararlo", () => {
+    expect(resumenDelKit({ vacio: true, cliente: "D'CASA" })).toMatch(/NO está preparado[\s\S]*Preparar con IA/);
+    const kit = limpiarKit({ paleta: [{ hex: "#1340B1", nombre: "Azul" }], logo: "clientes/c1/logo.png", plantillas: [{ id: "plantilla-a", nombre: "Oferta", clave: "clientes/c1/a.png", uso: "post" }] });
+    const r = resumenDelKit({ kit, marca: bloqueDeMarca(kit), cliente: "D'CASA" });
+    expect(r).toMatch(/#1340B1/);
+    expect(r).toMatch(/plantilla-a · «Oferta»/);
+  });
+});
+
+describe("las plantillas del kit", () => {
+  const kit = { plantillas: [{ id: "plantilla-a", nombre: "Oferta azul", uso: "post", clave: "clientes/c1/a.png", sistema: "SISTEMA DE DISEÑO DE LA SERIE (…): titular grande; el texto va arriba." }] };
+
+  it("se limpian: id con forma, clave del cliente, uso conocido y tope", () => {
+    const k = limpiarKit({ plantillas: [
+      ...kit.plantillas,
+      { id: "otra", nombre: "Mala", clave: "clientes/c1/b.png" },
+      { id: "plantilla-b", nombre: "Sin clave", clave: "../fuera.png" },
+      { id: "plantilla-c", nombre: "Uso raro", clave: "clientes/c1/c.png", uso: "valla" },
+    ] });
+    expect(k.plantillas.map((p) => p.id)).toEqual(["plantilla-a", "plantilla-c"]);
+    expect(k.plantillas[1].uso).toBe("post");
+    const muchas = Array.from({ length: MAX_PLANTILLAS + 3 }, (_, i) => ({ id: `plantilla-${i}`, nombre: `P${i}`, clave: `clientes/c1/${i}.png` }));
+    expect(limpiarKit({ plantillas: muchas }).plantillas).toHaveLength(MAX_PLANTILLAS);
+  });
+
+  it("su imagen va de referencia por su DISEÑO (nunca su contenido), y sólo si sigue en la galería", () => {
+    const ref = referenciaDePlantilla(kit, "plantilla-a");
+    expect(ref).toMatchObject({ clave: "clientes/c1/a.png", toma: ["composicion", "estilo", "tipografia"] });
+    expect(ref.nota).toMatch(/no copies su texto/);
+    expect(referenciaDePlantilla(kit, "plantilla-a", [])).toBeNull();
+    expect(referenciaDePlantilla(kit, "plantilla-a", [{ clave: "clientes/c1/a.png" }])).not.toBeNull();
+    expect(lineaDePlantillaEnPedido(kit, "plantilla-a")).toMatch(/^Sigue el diseño de la plantilla «Oferta azul»[^:]*: titular grande/);
+  });
+
+  it("«Volver a preparar» el kit con IA no se las lleva", () => {
+    expect(fundirKit(kit, { estilo: "nuevo" }).plantillas).toHaveLength(1);
+  });
+});

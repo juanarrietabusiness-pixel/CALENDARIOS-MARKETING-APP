@@ -324,12 +324,12 @@ describe("el asistente", () => {
   const legacy = "\n--- X/01_ADN_y_Memoria/05_prompt_maestro_meta_ai.md ---\n# Sistema\n\n## 1 · Las plantillas\nPlantilla A: fondo azul.\n\n## 2 · Las reglas duras\nNunca versículos.\n";
   const cli = { id: "c1", name: "Dcasa", githubRepo: "x" };
 
-  it("sin cerebro sigue viendo el ADN ENTERO, maquetación incluida: alguien puede pedirle el prompt para Meta AI", async () => {
+  it("sin cerebro ve el ADN SIN la maquetación del prompt maestro de Meta AI (instrucciones viejas que la agencia descartó)", async () => {
     const { buildChatSystemPrompt } = await import("../api");
     const chat = buildChatSystemPrompt(cli, null, legacy, []);
     const texto = buildClientContext(cli, null, legacy);
-    expect(chat).toContain("Plantilla A: fondo azul.");
-    expect(texto, "lo que escribe captions no la necesita").not.toContain("Plantilla A: fondo azul.");
+    expect(chat).not.toContain("Plantilla A: fondo azul.");
+    expect(texto).not.toContain("Plantilla A: fondo azul.");
     expect(chat).toContain("Nunca versículos.");
   });
 

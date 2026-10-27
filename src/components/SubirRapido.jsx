@@ -304,7 +304,7 @@ export default function SubirRapido({ clients = [], clienteInicial = null, onCal
                 {!(ancho && hayMedios) && vista}
                 {!["historia", "live"].includes(formato) && destino.some(conHistorias) && (
                   <Plegable titulo="También en historias" icono="formatHistoria" resumen={post.historiaTambien && historias.length ? `${historias.length} ${historias.length === 1 ? "historia" : "historias"}` : null}>
-                    <HistoriasDelPost post={completo} sf={sf} clientId={clienteDb} colorMarca={cliente?.primaryColor} onError={setFallo} />
+                    <HistoriasDelPost post={completo} sf={sf} clientId={clienteDb} cliente={cliente} colorMarca={cliente?.primaryColor} onError={setFallo} />
                   </Plegable>
                 )}
               </>

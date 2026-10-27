@@ -171,6 +171,12 @@ src/
     ideasEstudio.js       «Dame ideas» del Estudio: el plan (tipo, composición, producto), el pedido y su lectura
                           (puro; también lo importa el Worker)
     ideasFormato.js       «Dame ideas» de carrusel (tema + guion por láminas) y de reel IA (idea central) (puro; también el Worker)
+    director.js           El DIRECTOR CREATIVO: su manual (el de la casa y el de Ajustes), la ficha de diseño, asegurar el texto
+                          exacto, el pedido por tandas y su lectura, lo que el asistente sabe para diseñar (puro; también el Worker)
+    disenoChat.js         Las herramientas de diseño del asistente: el plan y su costo, crear de 3 en 3, las imágenes que vuelven al
+                          modelo, corregir, la versión final, lo que funciona (lazy)
+    herramientasDiseno.js Las definiciones de esas herramientas (fuera de api.js: el bundle principal está en su tope)
+    historiasEstudio.js   Las 3 historias del post por el Estudio: el director escribe su texto, el modelo del cliente, el control
     promptImagen.js       El pedido de la imagen de un post, YA LISTO (`promptImagen` + la huella `promptImagenDe`): lo escribe
                           el motor de ideas y «Crear con IA» / «Crear la imagen aquí» no esperan a «Mejorar idea» (puro)
     ideaPublicacion.js    «Generar» la idea de UNA publicación vacía por el camino del lote (modo «publicacion»): el pedido y
@@ -353,6 +359,10 @@ src/
     calendario/RevisarIdeas.jsx  «Revisar las ideas»: la aprobación INTERNA en tarjetas (aprobar, otra con nota, quitar) (lazy)
     calendario/crearConIA.jsx  El Estudio en un diálogo dentro del panel de una publicación y de «Subir»
                           (el hook que lo abre, en hooks/useCrearConIA.jsx)
+    DisenoDirector.jsx    La pestaña Diseño: el asistente incrustado como director creativo, con atajos (lazy)
+    PlanDePiezas.jsx      El plan de una tanda del director: las fichas, el costo, «Crear» y cada pieza según sale
+    GuardarPlantilla.jsx  «Guardar como plantilla» del visor: la IA lee su sistema de diseño y la pieza pasa al kit (lazy)
+    calendario/OpcionesCrearAqui.jsx  Tipo, estilo, modelo y plantilla de «Crear la imagen aquí» (lazy)
     Cerebro.jsx           La pestaña Cerebro: las notas de un cliente, filtros, buscar, añadir, subir
     ConversacionesChat.jsx  La lista de conversaciones del asistente: abrir, nueva, renombrar, borrar (segundo toque)
     GuardarEnCerebro.jsx  «¿Lo guardo en el cerebro?»: lo que propone el asistente, corregible, a la espera de un sí
@@ -449,7 +459,8 @@ worker/
     mercado.js            El estudio de mercado: catálogo (y su nota de cifras), el estudio por pasos con búsqueda
                           web, aprobar (notas del cerebro + documento en Drive), referencias de la competencia
     estudio/              El Estudio: meta.js (Muse Image: generar y editar, 0,01 $), prompt.js («Mejorar
-                          idea»: la idea más clara, en una o dos frases), trabajos.js (pedir, avanzar por pasos, cancelar; el permiso de
+                          idea»: la ficha del director de arte en una imagen, la mejora corta en un video), fichas.js (el
+                          director de arte), plantillas.js (las plantillas del kit), trabajos.js (pedir, avanzar por pasos, cancelar; el permiso de
                           un paso a la vez y el cron), motores.js (prueba y Gemini, mismo contrato;
                           fal.js, higgsfield.js y kie.js son los otros tres), gemini.js (la llamada,
                           compartida con /api/generar-imagen), galeria.js (archivos, carpetas,
@@ -517,7 +528,7 @@ worker/
     plantillas.js         /api/plantillas-plan: listar, guardar (cambiar una de arranque o crear) y borrar/restaurar
     formulasUgc.js        /api/formulas-ugc: las fórmulas UGC de la agencia (listar, guardar, corregir, quitar, proponer)
     inspiracion.js        /api/inspiracion/<cliente>: el feed, actualizar, traer un archivo, el resumen
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -536,7 +547,7 @@ tests/
 | `/` | Panel, sin cliente elegido |
 | `/cliente/<slug>` | Un cliente |
 | `/cliente/<slug>/<mes>-<año>` | Un mes del calendario de ese cliente (`octubre-2026`), exista o no su cajón. Los enlaces viejos con el nombre o el id del calendario siguen abriendo su mes |
-| `/cliente/<slug>/tareas` · `/contenido` · `/ideas` · `/inspiracion` · `/resultados` · `/estudio` · `/cerebro` · `/ficha` | Las otras pestañas del cliente |
+| `/cliente/<slug>/tareas` · `/contenido` · `/ideas` · `/inspiracion` · `/resultados` · `/estudio` · `/diseno` · `/cerebro` · `/ficha` | Las otras pestañas del cliente (`/diseno`: el director creativo) |
 | `/tareas` | Mi día |
 | `/ajustes` | IA, presupuesto, integraciones, tareas, copia de seguridad |
 | `/resultados` | Todos los clientes, últimos 30 días |
@@ -1296,7 +1307,7 @@ son del servidor.
   LA APLICACIÓN» de `buildClientContext` es donde se parte, y una
   petición cuyo PRIMER bloque es una imagen no se cachea (la caché es por
   prefijo). Las dos fallan abiertas: si no reconocen la forma, mandan
-  todo. El asistente pide `{ maquetacion: true }` y sigue viendo el ADN íntegro.
+  todo. Ni el asistente ve ya esa capa: el prompt maestro de Meta AI no lo lee ninguna IA (ver más abajo).
 - **El Estudio: una imagen es un TRABAJO, y el Worker no puede esperar.** Pedir crea
   una fila (`estudio_trabajos`) y cada `POST …/avanzar` da UN paso —una imagen—, que
   guarda su avance; lo avanza el navegador mientras se mira la pantalla y el cron
@@ -1608,8 +1619,8 @@ son del servidor.
   visuales de las 7 maletas son «composición sugerida (si la escena no dice otra)». El `acabado` de antes (mismos
   ids) se sigue aceptando.
 - **«Mejorar idea» se lanza SOLA al abrir «Crear con IA» desde una publicación** (apagable, se recuerda por
-  navegador): la idea + el texto de la pieza + el contexto llegan juntos y largos, y el motor entiende mucho mejor
-  una o dos frases. El texto entre comillas se conserva EXACTO (lo dice el pedido de la mejora). «Volver a mi idea».
+  navegador): la idea + el texto de la pieza + el contexto llegan juntos y largos; en una imagen la reescribe el
+  director de arte como FICHA DE DISEÑO (ver «Mejorar idea ya NO resume», más abajo). El texto entre comillas se conserva EXACTO (lo dice el pedido de la mejora). «Volver a mi idea».
   **Salvo que el post ya traiga su pedido LISTO** (`src/lib/promptImagen.js`): el motor de ideas (lote, «Planificar
   mes», «Completar los textos», «Generar», «Otra») escribe por cada pieza de una imagen el campo `imagen` —la escena
   con su composición y el titular y el apoyo EXACTOS entre comillas, el estilo de la mejora— y `leerProduccion` sólo
@@ -2132,7 +2143,7 @@ son del servidor.
 - **«Interna» es un candado, no una etiqueta.** Una nota interna la ve el
   equipo y el asistente (`para: "chat"`), pero `contexto()` y `buscar()`
   con `para: "texto"` —lo que escribe captions, guiones e ideas— la dejan
-  fuera, y también las notas de maquetación. La IA no puede filtrar lo que
+  fuera. Las de maquetación (el prompt maestro de Meta AI) no las lee nadie, ni el asistente (`fueraDeUso`). La IA no puede filtrar lo que
   no ve: el ADN de Baby Caleb lleva costos y márgenes «que no se dicen al
   cliente» y antes viajaban en cada prompt. Al importar se marcan solas las
   secciones cuyo TÍTULO habla de economía unitaria, márgenes, proveedores,
@@ -2193,9 +2204,8 @@ son del servidor.
   la respuesta un minuto y la pestaña Cerebro la suelta al cambiar algo. Los pasajes de cada TANDA se piden aparte (`pasajesDeLaTanda`) y
   van detrás de la marca de caché: si un pasaje se colara en el bloque
   cacheado, cada tanda escribiría la caché entera y nunca la leería. El
-  chat usa `{ maquetacion: true }` porque alguien puede pedirle el prompt
-  para Meta AI; en la Fase 0 se le quitó sin querer (`buildChatSystemPrompt`
-  también pasa por `buildClientContext`) y este mismo archivo decía que no.
+  chat ya NO recibe la capa de maquetación (decisión de la agencia: el prompt maestro de Meta AI son
+  instrucciones viejas); `buildClientContext` la quita siempre.
 - **El mapa 3D se dibuja en un lienzo 2D, sin three.js, y eso es una
   decisión.** La oficina de agentes usa three.js (144 kB comprimidos, más que
   toda esta aplicación) porque dibuja miles de notas; un cliente de esta
@@ -2553,7 +2563,9 @@ son del servidor.
   acción—: viajan título, producto, texto de la pieza, idea y descripción, el bloque de marca del kit, y la imagen del
   post va «de referencia del producto y del estilo, no de base», con la orden de no inventar precios. «Otras 3 con IA»
   añade una tanda nueva sin borrar las de antes. Los ids viejos (`adaptacion`, `anuncio`, `detalle`) se leen por
-  `HISTORIA_ANTIGUA`. «Usar la imagen del post» sigue siendo la del post encajada tal cual.
+  `HISTORIA_ANTIGUA`. «Usar la imagen del post» sigue siendo la del post encajada tal cual. **Ese camino
+  (`/api/generar-imagen` con `historiaDe`) quedó de respaldo:** la pantalla las crea ahora por el Estudio
+  (`historiasEstudio.js`, ver «Las 3 historias del post salían con faltas», más abajo).
 - **Una tanda de historias sale una a una, y nunca se repite una.** El
   avance vive en `carga.tanda` (`i`, `ids`); una tanda que falla a medias
   queda «publicada» con cuántas faltaron. Mismo principio que
@@ -3073,14 +3085,74 @@ son del servidor.
   la advertencia de Ajustes no se puede cerrar mientras lo use alguna
   función. Las notas internas no viajan a la redacción; al asistente, sí.
 
-- **«Mejorar idea», no «Escribir el prompt».** Lo que había (memoria de la
-  marca, apego a las referencias, carruseles) escribía párrafos de dirección
-  de arte y el motor, con tanto texto, sacaba cualquier cosa; la agencia lo
-  quitó. Ahora `mejorarIdea()` (worker/lib/estudio/prompt.js, `POST
-  /api/estudio/<cliente>/mejorar`) devuelve la idea en una o dos frases
-  sencillas (`MAX_PALABRAS`, 60), sin JSON, sin listas y sin meter la marca
-  por detrás, en el MISMO campo; «Volver a mi idea» la deshace. Es texto (función
-  «prompt de imagen», con su modelo en Ajustes): no gasta en el motor.
+- **«Mejorar idea» ya NO resume: en una imagen diseña el DIRECTOR DE ARTE** (`worker/lib/estudio/fichas.js`, `POST
+  /api/estudio/<c>/fichas`; `mejorarIdea` de prompt.js lo llama con una pieza; un VIDEO sigue con la mejora corta de 60
+  palabras, porque va limpio). Por qué: las piezas del asistente salían muchísimo mejores que las del Estudio, y el motor
+  era el mismo —lo distinto era el PEDIDO—: el asistente escribía una instrucción de diseño gráfico (zonas, placas,
+  códigos de color, tamaño del titular) y «Mejorar idea» devolvía dos frases describiendo una foto. Ahora toda pieza de
+  imagen lleva una FICHA DE DISEÑO (`FORMATO_FICHA` en `src/lib/director.js`: Pieza, Composición, Fondo, Imagen
+  principal, Texto exacto, Marca, Evitar), escrita con el MANUAL DEL DIRECTOR (Ajustes → Manual de la agencia,
+  `manual_campanas.diseno`; vacío vale `MANUAL_DISENO_BASE`), el kit, la identidad visual del cerebro, el catálogo y las
+  plantillas del cliente. Función «director de arte», hueco «prompts» (en Ajustes se llama «Director de arte»). Cosas que
+  no se ven:
+  · **Una tanda es una SERIE**: el lote (`conFichas` en loteEstudio.js) y «Producir el mes» piden de 6 en 6 y el concepto
+  de la primera tanda pasa a la siguiente. Lo que ya trae su ficha (el pedido listo) no espera.
+  · **La ficha va SIN líneas en blanco** (`limpiarFicha`): `ideaDelPedido`/`conOtraEscena` parten el pedido del motor por
+  ellas, y una ficha con huecos perdía media escena.
+  · **El texto exacto no se pierde**: si la IA lo reescribió, `asegurarTexto` le añade la línea «Texto exacto…» en vez de
+  tirar la ficha (antes `leerProduccion` tiraba el pedido listo por una letra cambiada). Lo usan el director, el motor de
+  ideas (el campo `imagen`, que ahora ES una ficha, con el kit delante: `identidad` en `pedidoDeProduccion`) y el lote.
+  · **Lo que pide la agencia MANDA**: «¿Qué quieres?» del post, la nota de «Otra» del lote y la «Indicación para toda la
+  tanda» van al director como `indicacion` y DELANTE del pedido (`lineaDeIndicacion`: «LO QUE PIDE LA AGENCIA (manda…)»).
+  Antes iban detrás como «Además, la agencia pide…» y, si chocaban con la escena, el motor se quedaba con la escena.
+  · **El pedido listo del post (`promptImagen`) es la ficha**, con su huella: «Crear la imagen aquí» y «Producir el mes»
+  la usan sin esperar; un comentario o una plantilla escogida la rediseñan (y esa no se guarda).
+- **El PROMPT MAESTRO de Meta AI no lo lee NINGUNA IA** (decisión de la agencia: instrucciones viejas de otro proyecto).
+  `fueraDeUso` (worker/lib/cerebro/cerebro.js) deja fuera de todos los usos —también del asistente— las notas de tipo
+  `maquetacion` y las que se titulan «Prompt maestro», «Meta AI» o «Nano Banana vN» (`esDelPromptMaestro`), y
+  `buildClientContext` ya no tiene `{ maquetacion }`: el ADN de antes llega siempre sin esa capa. Las notas siguen en la
+  pestaña Cerebro para borrarlas. Si vuelve a aparecer «prompt maestro» en un pedido, es una regresión.
+- **El asistente es el DIRECTOR CREATIVO del cliente** (`src/lib/director.js`, `src/lib/disenoChat.js`,
+  `src/lib/herramientasDiseno.js`, `PlanDePiezas.jsx`). Con un cliente, el Worker le pone en el sistema el manual, la
+  ficha, sus herramientas y lo que exige su kit (o que NO tiene kit: lo dice y ofrece prepararlo) —`instruccionDeDiseno`,
+  `resumenDelKit` en worker/rutas/chat.js—. Cosas que no se ven:
+  · **`disenar_piezas` (1–12 fichas) espera un BOTÓN**: la herramienta enseña el plan con su costo y su promesa no se
+  resuelve hasta «Crear» o «Cambiar algo» (como `guardar_en_cerebro`). El botón es la confirmación del costo, como en el
+  lote; «Final» rehace con el mejor modelo con llave (`MODELOS_FINALES`). Se crea de 3 en 3 (`crearPlan`) con el control
+  y el logo estampado; las de una publicación se ponen en ella con su ficha como pedido listo.
+  · **El modelo VE lo que crea**: cada imagen vuelve en el `tool_result` como bloque de imagen (`paraElModelo`, copia de
+  768 px en JPEG; el resultado lleva texto + imágenes). Antes recibía «Imagen creada» y diseñaba a ciegas.
+  · **Las vueltas de diseño no gastan del tope** (`HERRAMIENTAS_DE_DISENO` en ChatPanel: crear, corregir, mirar, la regla
+  y `crear_publicacion`): doce piezas eran doce vueltas y salía «Me quedé sin vueltas». Tope normal 10, total 40.
+  · `corregir_pieza` edita la misma imagen y la nueva sustituye a la anterior en el mensaje y en la publicación; acepta el
+  id o la CLAVE (el botón «Pedir un cambio» de una imagen del chat deja «En la imagen clientes/…:» en la caja).
+  `guardar_regla` suma al kit (sólo con el sí de la persona). Las definiciones viven en `herramientasDiseno.js` y NO en
+  api.js: api.js va en el bundle principal, y con ellas la carga inicial pasaba de 180 kB.
+- **La pestaña «Diseño»** (`/cliente/<slug>/diseno`, `DisenoDirector.jsx`): el MISMO ChatPanel, `incrustado` (en la
+  página, `role="region"`, sin foco atrapado) y `tema="diseno"`. Sus conversaciones llevan `chat_conversaciones.tema =
+  'diseno'` (0047): las ve todo el equipo, también desde el chat (con la etiqueta «Diseño»), y la última abierta se
+  recuerda aparte (`chat-ultima:<cliente>:diseno`). Es pestaña y no un modo del Estudio porque el chunk del Estudio está en
+  su tope de 20 kB (por eso también `EleccionRanura` y «Guardar como plantilla» van lazy).
+- **Las PLANTILLAS del kit** (`kit.plantillas`, hasta 12: id `plantilla-…`, nombre, uso post|historia|portada|lamina,
+  clave, sistema; `worker/lib/estudio/plantillas.js`, `POST|DELETE /api/estudio/<c>/kit/plantillas`). «Guardar como
+  plantilla» del visor hace que la IA mire la pieza UNA vez (`sistemaDePortada(…, { para: "plantilla" })`, queda en
+  `ajustes.sistema`) y la pase al kit. Al usarla, su imagen va de referencia sólo por su diseño (`referenciaDePlantilla`:
+  composición, estilo y tipografía; nunca su contenido) y su sistema escrito detrás de la escena
+  (`lineaDePlantillaEnPedido`). Se escoge en el compositor, en el lote («Plantilla» para toda la tanda), en «Crear la
+  imagen aquí»; el director la elige solo cuando encaja (`plantilla` en su respuesta) y el lote y las historias ponen su
+  imagen. `fundirKit` las conserva; el servidor sólo acepta claves de ESE cliente. plantillas.js va aparte de kit.js a
+  propósito: control.js lee mercado.js, que lee kit.js (sería circular).
+- **Las 3 historias del post salían con faltas porque el motor de imagen INVENTABA el texto** (y siempre con el primer
+  Nano Banana). Ahora van por el Estudio (`src/lib/historiasEstudio.js`): el director escribe las tres fichas con su texto
+  exacto, cada una con el modelo del cliente (si admite referencias), su kit, las fotos del producto y la imagen del post
+  de referencia (`toma: producto, estilo`, «no la repitas»), las zonas seguras de historia y el control que corrige la
+  letra mal escrita. Lo que no se escoge va a la papelera del Estudio. **Siempre activo** (decisión de la agencia, apagable
+  por navegador `historias-solas`): cuando el post RECIBE su primera imagen —no al abrir uno que ya la tenía— se prepara
+  la encajada (gratis), se marca «Publicar también como historia» y, en cuanto el post dice algo, se crean las 3 con IA.
+  La ruta vieja (`historiaDe` en /api/generar-imagen) sigue, pero ya no la llama la pantalla.
+- **«Crear la imagen aquí» escoge tipo, estilo, modelo y plantilla** (`OpcionesCrearAqui.jsx`, lazy: arrastra el
+  catálogo; se recuerda por cliente en `crear-aqui:<cliente>`). Vacío es lo de siempre: el tipo del post, el estilo de ese
+  tipo, el modelo fijado y ninguna plantilla.
 - **Editar una imagen no la toca: hace otra.** Es un trabajo con la imagen de
   referencia y `promptDeEdicion()` (la indicación + «conserva todo lo
   demás»), con Muse Image si hay llave de Meta y si no Nano Banana

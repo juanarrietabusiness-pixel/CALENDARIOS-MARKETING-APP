@@ -29,11 +29,11 @@ describe("el motor de ideas lo escribe", () => {
   const plan = [{ n: 1, formato: "post", tipo: "beneficios" }, { n: 2, formato: "carrusel", tipo: "educativo" }];
   it("se le pide sólo a las de una imagen", () => {
     const pedido = pedidoDeProduccion({ plan });
-    expect(pedido).toMatch(/"imagen" \(SÓLO en las de una imagen/);
+    expect(pedido).toMatch(/"imagen" \(SÓLO en las de una imagen[^\n]*FICHA DE DISEÑO/);
     expect(pedido).toContain('"imagen":"…"');
     expect(pedidoDeProduccion({ plan: [{ n: 1 }], formato: "reel" })).not.toContain('"imagen"');
   });
-  it("se lee sólo si trae el texto EXACTO, y nunca en un carrusel", () => {
+  it("se lee con el texto EXACTO (repuesto si hace falta), y nunca en un carrusel", () => {
     const respuesta = JSON.stringify({ ideas: [
       { n: 1, titular: "Duerme mejor", apoyo: "Desde $399", escena: "Una sala", imagen: 'Una sala de tarde. "Duerme mejor" / "Desde $399"' },
       { n: 2, titular: "Aprende a elegir", escena: "Una tienda", imagen: 'Una tienda. "Aprende a elegir"', guion: "Portada: …" },
@@ -41,8 +41,12 @@ describe("el motor de ideas lo escribe", () => {
     const [a, b] = leerProduccion(respuesta, plan);
     expect(a.imagen).toMatch(/^Una sala de tarde/);
     expect(b.imagen).toBeUndefined();
+    // Si la IA reescribió el texto, la ficha no se tira: se le repone el texto exacto.
     const mal = JSON.stringify({ ideas: [{ n: 1, titular: "Duerme mejor", escena: "Una sala", imagen: 'Una sala. "Duerme bien"' }] });
-    expect(leerProduccion(mal, plan.slice(0, 1))[0].imagen).toBeUndefined();
+    expect(leerProduccion(mal, plan.slice(0, 1))[0].imagen).toMatch(/Texto exacto que va en la imagen[^\n]*«Duerme mejor»/);
+    // La ficha conserva sus líneas (cada apartado en la suya).
+    const ficha = JSON.stringify({ ideas: [{ n: 1, titular: "Duerme mejor", escena: "Una sala", imagen: "Pieza: post 4:5.\nTexto: titular «Duerme mejor»." }] });
+    expect(leerProduccion(ficha, plan.slice(0, 1))[0].imagen).toBe("Pieza: post 4:5.\nTexto: titular «Duerme mejor».");
   });
   it("la publicación del lote sale con su pedido listo (si aún no tiene imagen)", () => {
     const idea = { titular: "Duerme mejor", apoyo: "Desde $399", escena: "Una sala", imagen: 'Una sala. "Duerme mejor" / "Desde $399"', tipo: "beneficios" };
@@ -66,8 +70,8 @@ describe("el motor de ideas lo escribe", () => {
 });
 
 describe("«¿Qué quieres?»", () => {
-  it("va como una línea del pedido", () => {
-    expect(lineaDeIndicacion("  el fondo más claro.  ")).toBe("Además, la agencia pide: el fondo más claro.");
+  it("va como una línea del pedido, y manda", () => {
+    expect(lineaDeIndicacion("  el fondo más claro.  ")).toBe("LO QUE PIDE LA AGENCIA (manda sobre todo lo demás de este pedido): el fondo más claro.");
     expect(lineaDeIndicacion("")).toBe("");
   });
 });

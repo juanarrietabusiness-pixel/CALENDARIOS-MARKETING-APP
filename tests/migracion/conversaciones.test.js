@@ -144,6 +144,47 @@ describe("las rutas", () => {
     expect(await lista(JEFE, "c2")).toEqual([]);
   });
 
+  it("las de DISEÑO (tema «diseno», desde la pestaña Diseño) son las mismas: se listan con las demás, con su tema", async () => {
+    const d = (await (await pedir(JEFE, "/api/chat/conversaciones", { method: "POST", body: { clienteId: "c1", titulo: "Noviembre", tema: "diseno" } })).json()).conversacion;
+    const n = await crear(JEFE, "c1", "Otra");
+    const mala = (await (await pedir(JEFE, "/api/chat/conversaciones", { method: "POST", body: { clienteId: "c1", tema: "cualquiera" } })).json()).conversacion;
+    expect(d.tema).toBe("diseno");
+    expect(n.tema).toBe("");
+    expect(mala.tema).toBe("");
+    // Otra persona del equipo la ve igual.
+    expect((await lista(ANA, "c1")).find((c) => c.id === d.id).tema).toBe("diseno");
+  });
+
+  it("el asistente con un cliente es también su DIRECTOR CREATIVO: el manual, la ficha y lo que exige su kit", async () => {
+    const pedidos = [];
+    vi.stubGlobal("fetch", async (url, init = {}) => {
+      const u = String(url);
+      if (u.includes("/v1/models")) return Response.json({ data: [{ id: "claude-sonnet-5" }] });
+      pedidos.push(JSON.parse(init.body));
+      const ev = (t, d) => `event: ${t}\ndata: ${JSON.stringify(d)}\n\n`;
+      return new Response([
+        ev("message_start", { type: "message_start", message: { model: "claude-sonnet-5", content: [], usage: { input_tokens: 10, output_tokens: 0 } } }),
+        ev("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }),
+        ev("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Hola" } }),
+        ev("content_block_stop", { type: "content_block_stop", index: 0 }),
+        ev("message_delta", { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 2 } }),
+        ev("message_stop", { type: "message_stop" }),
+      ].join(""), { headers: { "content-type": "text/event-stream" } });
+    });
+    env.ANTHROPIC_API_KEY = "k";
+    db.sqlite.prepare("insert into ajustes_espacio (id, owner_id) values (?, ?) on conflict(id) do nothing").run(JEFE, JEFE);
+    db.sqlite.prepare("update ajustes_espacio set manual_campanas = ? where id = ?").run(JSON.stringify({ diseno: "Siempre fondo hueso y placa azul." }), JEFE);
+    const leer = async (r) => { await r.text(); };
+    await leer(await pedir(JEFE, "/api/ia/chat", { method: "POST", body: { messages: [{ role: "user", content: "Hola" }], clienteId: "c1" } }));
+    const sistema = pedidos[0].system.map((b) => b.text).join("\n");
+    expect(sistema).toMatch(/ERES EL DIRECTOR CREATIVO/);
+    expect(sistema).toMatch(/Siempre fondo hueso y placa azul\./);
+    expect(sistema).toMatch(/KIT DE MARCA DE DCASA: NO está preparado/);
+    // Sin cliente (el asistente general), no.
+    await leer(await pedir(JEFE, "/api/ia/chat", { method: "POST", body: { messages: [{ role: "user", content: "Hola" }] } }));
+    expect(pedidos[1].system.map((b) => b.text).join("\n")).not.toMatch(/DIRECTOR CREATIVO/);
+  });
+
   it("las ve todo el equipo: otra persona del espacio la abre y sigue en ella", async () => {
     const a = await crear(JEFE, "c1", "Guiones de reels");
     await decir(JEFE, a.id, "Quiero cinco guiones");

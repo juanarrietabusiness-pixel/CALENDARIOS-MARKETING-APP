@@ -37,6 +37,11 @@ export const reintentarTrabajo = (clienteId, id) => pedir(`${base(clienteId)}/tr
  * motor la entienda. `{ idea, modelo, aviso }`. Es texto: no pide nada al motor.
  */
 export const mejorarIdea = (clienteId, datos) => pedir(`${base(clienteId)}/mejorar`, post(datos));
+/** «Guardar como plantilla»: { archivoId, nombre?, uso? } → { kit, plantilla }. */
+export const guardarPlantilla = (clienteId, datos) => pedir(`${base(clienteId)}/kit/plantillas`, post(datos));
+export const quitarPlantilla = (clienteId, id) => pedir(`${base(clienteId)}/kit/plantillas/${encodeURIComponent(id)}`, { method: "DELETE" });
+/** El director de arte: { piezas: [{ n, formato, tipo, idea, escena, texto, productoId, indicacion, sinTexto, plantilla }], concepto? } → { concepto, fichas }. */
+export const fichasDeDiseno = (clienteId, datos) => pedir(`${base(clienteId)}/fichas`, post(datos));
 /** El carrusel: la contrapropuesta del director de arte → { hilo, laminas: [{ n, rol, escena, texto, composicion }] } (texto). */
 export const proponerCarrusel = (clienteId, datos) => pedir(`${base(clienteId)}/carrusel/propuesta`, post(datos));
 /** El reel: el guion por planos → { hilo, planos: [{ n, desde, hasta, escena, texto, camara }], sonido, descripcion } (texto). */

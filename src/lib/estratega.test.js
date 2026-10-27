@@ -62,7 +62,7 @@ describe("el manual y los nombres", () => {
 
   it("el manual limpio, con lo de siempre donde no dice nada", () => {
     const m = limpiarManual({ reglas: "  Siempre a WhatsApp.  ", nomenclatura: { campana: "{cliente} - {mes}" }, tasaCierre: 500 });
-    expect(m).toEqual({ reglas: "Siempre a WhatsApp.", nomenclatura: { ...NOMENCLATURA_POR_DEFECTO, campana: "{cliente} - {mes}" }, tasaCierre: TASA_CIERRE_POR_DEFECTO, video: "" });
+    expect(m).toEqual({ reglas: "Siempre a WhatsApp.", nomenclatura: { ...NOMENCLATURA_POR_DEFECTO, campana: "{cliente} - {mes}" }, tasaCierre: TASA_CIERRE_POR_DEFECTO, video: "", diseno: "" });
     expect(limpiarManual(null).reglas).toBe("");
   });
 });

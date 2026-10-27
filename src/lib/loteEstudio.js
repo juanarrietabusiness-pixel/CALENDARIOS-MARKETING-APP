@@ -13,7 +13,7 @@
 // ============================================================
 
 import * as api from "./estudio";
-import { limpiarKit, estiloDeMarca, referenciaDeTipografia } from "./kitMarca";
+import { limpiarKit, estiloDeMarca, referenciaDeTipografia, referenciaDePlantilla, lineaDePlantillaEnPedido } from "./kitMarca";
 import { coloresPlantilla, PLANTILLAS_TEXTO } from "./carrusel";
 import { componerLamina } from "./textoSobreImagen";
 import { esperarArchivos, crearCarrusel } from "./carruselEstudio";
@@ -22,6 +22,7 @@ import { crearFotogramas, pedidoDeVideo, crearVideo } from "./reelEstudio";
 import { textoDeIdea, plantillaDeIdea, composicionDe, FORMATOS_LOTE } from "./loteAnuncios";
 import { ideaParaMejorar, ideaSinMejorar, apoyosDePieza, pedidoDePieza, lineaSinTexto } from "./pieza";
 import { controlarYCorregir } from "./controlEstudio";
+import { asegurarTexto } from "./director";
 
 /** Lo que entra a la mejora de una idea del lote: escena, composición sugerida, texto (si lo escribe el motor) y brief. Pura. */
 export function ideaDeLote(idea, { modo = "ia" } = {}) {
@@ -46,13 +47,16 @@ export function colaDeLote(idea, { modo = "ia", formato = "post" } = {}) {
  * (mejorada o no) que se le dé. Pura salvo por los imports.
  */
 export function pedidoDeLote({ idea, escena = null, kit, preset = "anuncio", estilo = "", modo = "ia", formato = "post", modelo, fotos = [], archivos = [], gustos = [], personajes = [], marca = "", rubro = "", n = 1 }) {
+  // La plantilla de la pieza (la escogida para la tanda o la que eligió el director de arte): su imagen, por su diseño.
+  const plantilla = idea?.plantilla ? referenciaDePlantilla(kit, idea.plantilla, archivos) : null;
   const apoyos = apoyosDePieza({
-    kit, preset, estilo, archivos, fotos, gustos, personajes, modelo, conProducto: idea?.conProducto !== false,
+    kit, preset, estilo, archivos, fotos, gustos, personajes, modelo, conProducto: idea?.conProducto !== false, manuales: plantilla ? [plantilla] : [],
     // En el lote la referencia del tipo va sólo por su ESTILO: la composición la decide el plan.
     tomaTipo: ["estilo"], conTexto: modo === "ia",
   });
   return pedidoDePieza({
-    kit, idea: escena ?? ideaSinMejorar(ideaDeLote(idea, { modo })), extra: colaDeLote(idea, { modo, formato }),
+    kit, idea: escena ?? ideaSinMejorar(ideaDeLote(idea, { modo })),
+    extra: [colaDeLote(idea, { modo, formato }), plantilla ? lineaDePlantillaEnPedido(kit, idea.plantilla) : ""].filter(Boolean).join(" "),
     preset, estilo, apoyos, modelo, marca, rubro, n, aspectRatio: FORMATOS_LOTE[formato]?.aspectRatio ?? "4:5",
   });
 }
@@ -76,14 +80,20 @@ export async function ponerTexto({ clienteId, crudo, texto, plantilla = "banda",
  * sugerida + texto exacto, con el brief de contexto: lo que hace «Mejorar idea»; texto, céntimos); luego pide `n`
  * imágenes (1–3) y, en el modo «plantilla», le pone el texto encima a cada una. → { opciones: [{ crudo, final }], escena }.
  */
-export async function crearPieza({ clienteId, idea, pedidoDe, mejorar = true, modo, formato, kit, n = 1, carpetaId = null, piezaDe = () => "", seguir = () => true, controlar = false, activos = {} }) {
+export async function crearPieza({ clienteId, idea, pedidoDe, mejorar = true, modo, formato, kit, n = 1, carpetaId = null, piezaDe = () => "", seguir = () => true, controlar = false, activos = {}, indicacion = "" }) {
   const datos = ideaDeLote(idea, { modo });
   let escena = ideaSinMejorar(datos);
   if (mejorar) {
-    try {
-      const r = await api.mejorarIdea(clienteId, { idea: ideaParaMejorar(datos), tipo: "imagen", pieza: piezaDe(idea) });
-      if (r?.idea) escena = r.idea;
-    } catch { /* sin mejora, con la idea tal cual */ }
+    // La ficha del director de arte (la tanda entera, `conFichas`) o, si no, el pedido listo que escribió el motor de
+    // ideas (en el modo «ia» y sin nada que cambiar); sólo sin ninguno de los dos se diseña esta pieza sola.
+    const lista = idea.ficha || (modo === "ia" && !indicacion && !idea.pide ? asegurarTexto(idea.imagen, textoDeIdea(idea)) : "");
+    if (lista) escena = lista;
+    else {
+      try {
+        const r = await api.mejorarIdea(clienteId, { ...encargoDeIdea(idea, { modo, formato, piezaDe, indicacion }), idea: ideaParaMejorar(datos), tipo: "imagen", pieza: piezaDe(idea) });
+        if (r?.idea) escena = r.idea;
+      } catch { /* sin mejora, con la idea tal cual */ }
+    }
   }
   const pedido = pedidoDe(idea, n, escena);
   const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true, ...(carpetaId ? { carpetaId } : {}) });
@@ -107,12 +117,53 @@ export async function crearPieza({ clienteId, idea, pedidoDe, mejorar = true, mo
   return { opciones, escena };
 }
 
+/** Lo que el director de arte necesita de una idea del lote (src/lib/director.js, `limpiarPiezaEncargo`). Pura. */
+export function encargoDeIdea(idea, { modo = "ia", formato = "post", piezaDe = () => "", indicacion = "" } = {}) {
+  return {
+    formato: formato === "anuncio" ? "anuncio" : FORMATOS_LOTE[formato] ? formato : "post",
+    proporcion: FORMATOS_LOTE[formato]?.aspectRatio ?? "",
+    tipo: piezaDe(idea), idea: [idea?.titulo, idea?.brief].filter(Boolean).join(" — "), escena: idea?.escena ?? "",
+    texto: modo === "ia" ? textoDeIdea(idea) : "", sinTexto: modo === "plantilla", productoId: idea?.productoId ?? "",
+    composicion: composicionDe(idea?.composicion)?.linea ?? "", fecha: idea?.fecha ?? "",
+    indicacion: [indicacion, idea?.pide].map((t) => String(t ?? "").trim()).filter(Boolean).join(". "),
+    ...(idea?.plantilla ? { plantilla: idea.plantilla } : {}),
+  };
+}
+
+/** Cuántas piezas diseña el director por llamada en el lote. */
+const TANDA_FICHAS = 6;
+
+/**
+ * Las ideas con su ficha del director de arte (`ficha`), en tandas de 6. Las que ya traen su pedido listo y no tienen
+ * nada que cambiar no esperan. Si una tanda falla, sus ideas siguen sin ficha (se diseñan una a una al crear).
+ */
+export async function conFichas({ ideas, clienteId, modo = "ia", formato = "post", piezaDe = () => "", indicacion = "", seguir = () => true }) {
+  const salida = ideas.map((i) => ({ ...i }));
+  const faltan = salida.filter((i) => !i.ficha && !(modo === "ia" && i.imagen && !indicacion && !i.pide));
+  let concepto = "";
+  for (let k = 0; k < faltan.length && seguir(); k += TANDA_FICHAS) {
+    const tanda = faltan.slice(k, k + TANDA_FICHAS);
+    try {
+      const r = await api.fichasDeDiseno(clienteId, { concepto, piezas: tanda.map((i, j) => ({ n: j + 1, ...encargoDeIdea(i, { modo, formato, piezaDe, indicacion }) })) });
+      concepto ||= r?.concepto ?? "";
+      tanda.forEach((i, j) => {
+        const f = r?.fichas?.[j + 1];
+        if (f?.ficha) i.ficha = f.ficha;
+        // Si el director escogió una plantilla del kit, su imagen va de referencia (pedidoDeLote).
+        if (f?.plantilla && !i.plantilla) i.plantilla = f.plantilla;
+      });
+    } catch { /* esta tanda, pieza a pieza al crear */ }
+  }
+  return salida;
+}
+
 /**
  * Todo el lote, de `paralelo` en `paralelo`. `alAvanzar(id, resultado)` con { cargando } | { crudo, final } | { error }.
  * Un error de presupuesto para lo que queda (las siguientes fallarían igual).
  */
 export async function crearLote({ ideas, alAvanzar = () => {}, seguir = () => true, paralelo = 2, ...comun }) {
-  const cola = [...ideas];
+  // El director de arte diseña la tanda como una SERIE, antes de crear: una ficha por pieza, en tandas de 6.
+  const cola = comun.mejorar ? await conFichas({ ideas, ...comun, seguir }) : [...ideas];
   let parar = false;
   const trabajador = async () => {
     while (cola.length && !parar && seguir()) {

@@ -47,6 +47,9 @@ import { diasDelLote, planDelMes, mesDe, textoMes } from "../../../src/lib/loteM
 import { fechasDelMes } from "../../../src/lib/fechasEspeciales.js";
 import { fechaEnZona } from "../../../src/lib/agenda.js";
 import { CLAVES_NIVEL } from "../../../src/lib/consciencia.js";
+import { bloqueDeMarca, kitVacio } from "../../../src/lib/kitMarca.js";
+import { lineaDePlantilla } from "../../../src/lib/director.js";
+import { kitDe } from "./kit.js";
 
 const fallo = (mensaje, estado = 400) => Object.assign(new Error(mensaje), { estado });
 const leerJSON = (t) => {
@@ -270,8 +273,10 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       estrategia: datos.estrategia && typeof datos.estrategia === "object" ? datos.estrategia : null,
       falta: lineaDeLoQueFalta(faltan),
       ugc,
+      identidad: identidadParaFichas(cliente),
     }),
-    salida: plan.reduce((t, r) => t + (FORMATOS_LOTE[r.formato ?? formato]?.guiado ? 850 : 600), 0) + 800,
+    // Las de una imagen escriben además su ficha de diseño (unas 350 palabras más cada una).
+    salida: plan.reduce((t, r) => t + (FORMATOS_LOTE[r.formato ?? formato]?.guiado ? 850 : 950), 0) + 800,
     funcion: modo === "mes" || modo === "plan" ? "lote del mes" : modo === "publicacion" ? "publicación" : "ideas de anuncios",
   });
   const nombres = new Map(rotan.map((p) => [p.id, p.nombre]));
@@ -300,3 +305,14 @@ function leerJSONSeguro(t) {
 
 /** Compatibilidad con el nombre de antes (anuncios por nivel). */
 export const ideasDeLote = (env, acceso, cliente, datos = {}) => produccionDeLote(env, acceso, cliente, { modo: "niveles", ...datos });
+
+/** Lo que la ficha de diseño del motor de ideas necesita de la marca: su kit y sus plantillas (vacío sin kit). */
+function identidadParaFichas(cliente) {
+  try {
+    const kit = kitDe(cliente);
+    if (kitVacio(kit)) return "";
+    return [bloqueDeMarca(kit), kit.plantillas.length ? `Plantillas de la marca (si una encaja, la ficha la nombra):\n${kit.plantillas.map(lineaDePlantilla).join("\n")}` : ""].filter(Boolean).join("\n");
+  } catch {
+    return "";
+  }
+}

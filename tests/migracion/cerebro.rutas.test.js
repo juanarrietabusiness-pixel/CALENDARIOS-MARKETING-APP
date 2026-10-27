@@ -227,14 +227,14 @@ describe("lo interno no llega a un texto que se publica", () => {
     expect(titulos(r)).toEqual(["Precios"]);
   });
 
-  it("para piezas: con la maquetación, sin internas", async () => {
+  it("para piezas: sin internas y sin la maquetación del prompt maestro (ya no la lee ninguna IA)", async () => {
     const r = await (await pedir(JEFE, "/api/cerebro/c1/buscar?q=pañal recién nacido&para=piezas")).json();
-    expect(titulos(r)).toEqual(["Plantillas", "Precios"]);
+    expect(titulos(r)).toEqual(["Precios"]);
   });
 
-  it("para el chat del equipo: todo", async () => {
+  it("para el chat del equipo: lo interno sí, el prompt maestro de Meta AI no", async () => {
     const r = await (await pedir(JEFE, "/api/cerebro/c1/buscar?q=pañal recién nacido&para=chat")).json();
-    expect(titulos(r)).toEqual(["Economía unitaria", "Plantillas", "Precios"]);
+    expect(titulos(r)).toEqual(["Economía unitaria", "Precios"]);
   });
 
   it("el contexto para texto tampoco la trae, ni como pasaje ni como «relacionada»", async () => {

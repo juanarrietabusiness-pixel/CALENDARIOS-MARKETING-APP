@@ -19,9 +19,11 @@ const corto = (t, max) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, m
 const HEX = /^#[0-9a-f]{6}$/i;
 
 /** Lo que se le pide a la IA, con la portada como imagen aparte. `texto`: el que lleva la portada (para no confundirlo). Pura. */
-export function pedidoDeSistema({ marca = "la marca", texto = "" } = {}) {
+export function pedidoDeSistema({ marca = "la marca", texto = "", para = "portada" } = {}) {
   return [
-    `Eres director de arte. Esta es la PORTADA aprobada de un carrusel de Instagram de ${marca}. Las demás láminas se van a generar una a una y tienen que parecer de la MISMA serie.`,
+    para === "plantilla"
+      ? `Eres director de arte. Esta pieza de redes de ${marca} quedó muy bien y la agencia la guarda como PLANTILLA: las próximas piezas repetirán su diseño con otro contenido (otra foto, otro texto, otro producto).`
+      : `Eres director de arte. Esta es la PORTADA aprobada de un carrusel de Instagram de ${marca}. Las demás láminas se van a generar una a una y tienen que parecer de la MISMA serie.`,
     texto ? `El texto de la portada es: "${corto(texto, 200).replace(/"/g, "'")}".` : "",
     "Describe su sistema de diseño con medidas aproximadas que un generador de imágenes pueda seguir (porcentajes del alto o del ancho de la imagen, no píxeles):",
     "- titular: tamaño (≈ % del alto de la imagen que ocupa una línea), peso (fina, regular, negrita, extra negrita), si va en MAYÚSCULAS, color (hex), alineación y tipo de letra (serif, sans, script, display…);",

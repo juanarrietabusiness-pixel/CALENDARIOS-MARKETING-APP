@@ -44,6 +44,7 @@ import { rellenarDesdeContenido, tieneContenido, formatoDeMedios } from "../../l
 import { medioDeArchivo, apuntarUso } from "../../lib/estudio";
 import { useCrearConIA } from "../../hooks/useCrearConIA";
 import { conPromptListo } from "../../lib/promptImagen";
+import { presetDePilar } from "../../lib/pilares";
 import BotonGuardarDrive from "./botonGuardarDrive";
 
 // «Crear carrusel con IA»: sólo se descarga al abrirlo.
@@ -52,6 +53,8 @@ const CarruselIA = lazy(() => import("./CarruselIA"));
 const ReelIA = lazy(() => import("./ReelIA"));
 // «De la galería»: lo ya hecho en el Estudio (imágenes sueltas o un carrusel entero).
 const GaleriaSelector = lazy(() => import("../GaleriaSelector"));
+// El tipo, el estilo, el modelo y la plantilla de «Crear la imagen aquí»: arrastra el catálogo, va aparte.
+const OpcionesCrearAqui = lazy(() => import("./OpcionesCrearAqui"));
 
 /**
  * @param formatoAuto  true cuando la publicación se creó con «Subir
@@ -171,6 +174,17 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
   // con mi marca» y «Corregir esta» (ésta lo necesita). Se vacía cuando sale bien: no se cuela en la siguiente.
   const [indicacion, setIndicacion] = useState("");
   const campoIndicacion = useRef(null);
+  // Lo escogido para «Crear la imagen aquí» (vacío: lo de la publicación y del cliente), recordado por cliente.
+  const claveOpciones = `crear-aqui:${clientId ?? ""}`;
+  const [opcionesCrear, setOpcionesCrearEstado] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(claveOpciones) || "{}") ?? {}; } catch { return {}; }
+  });
+  const setOpcionesCrear = (v) => {
+    setOpcionesCrearEstado(v);
+    try { localStorage.setItem(claveOpciones, JSON.stringify(v)); } catch { /* sin almacenamiento */ }
+  };
+  const [verOpciones, setVerOpciones] = useState(false);
+  const opcionesPuestas = Object.values(opcionesCrear).filter(Boolean).length;
   const uso = cal && post.id ? cal.dbId || cal.id : null;
   const costoDe = (costo) => costo.toFixed(2).replace(".", ",");
   /** La pieza nueva ocupa el sitio de `medio` (o se añade, si no había), con «Deshacer». */
@@ -222,7 +236,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
     try {
       const { crearImagenDelPost } = await import("../../lib/otraVersion");
       const nueva = await crearImagenDelPost({
-        client, post, indicacion, calendarId: uso, alProgresar: setProgresoVersion,
+        client, post, indicacion, opciones: opcionesCrear, calendarId: uso, alProgresar: setProgresoVersion,
         alMejorar: (idea) => setForm((p) => conPromptListo(p, idea)),
         confirmar: (costo) => window.confirm(`Esta imagen cuesta unos ${costoDe(costo)} $. ¿Sigo?`),
       });
@@ -381,9 +395,23 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
             />
             <p id={`${ids}-quiero-ayuda`} className="hint" style={{ margin: 0 }}>
               {conImagen
-                ? "Lo leen «Otra versión» y «Recrear con mi marca». «Corregir esta» cambia sólo esto en la misma imagen."
-                : "Lo suma «Crear la imagen aquí» a lo que dice la publicación."}
+                ? "Manda sobre todo lo demás en «Otra versión» y «Recrear con mi marca». «Corregir esta» cambia sólo esto en la misma imagen."
+                : "Manda sobre todo lo demás: el director de arte rediseña la pieza con ello."}
             </p>
+            {puedeCrearAqui && (
+              <>
+                <button type="button" className="btn btn-ghost btn-sm" aria-expanded={verOpciones} aria-controls={`${ids}-opciones`} onClick={() => setVerOpciones((v) => !v)}>
+                  <Icon name="palette" size={14} /> {verOpciones ? "Cerrar las opciones" : `Tipo, estilo, modelo y plantilla${opcionesPuestas ? ` (${opcionesPuestas} escogid${opcionesPuestas === 1 ? "a" : "as"})` : ""}`}
+                </button>
+                {verOpciones && (
+                  <div id={`${ids}-opciones`}>
+                    <Suspense fallback={<p className="hint" role="status">Cargando las opciones…</p>}>
+                      <OpcionesCrearAqui clientId={clientId} valor={opcionesCrear} onCambiar={setOpcionesCrear} presetDelPost={presetDePilar(post.pilar, post.pilarSub)} />
+                    </Suspense>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
         {(progresoVersion || deshacer) && (
@@ -476,7 +504,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           )}
           {post.format !== "live" && (
             <Plegable titulo="También en historias" icono="formatHistoria" resumen={resumenHistoria}>
-              <HistoriasDelPost post={post} sf={sf} clientId={clientId} colorMarca={client?.primaryColor} onError={onError} />
+              <HistoriasDelPost post={post} sf={sf} clientId={clientId} cliente={client} calendarId={uso} colorMarca={client?.primaryColor} onError={onError} />
             </Plegable>
           )}
         </div>

@@ -4,14 +4,13 @@ import Compositor, { QueCrear } from "./EstudioCompositor";
 import Visor, { Pieza } from "./EstudioVisor";
 import {
   kitVacio, limpiarKit, textoPreset, bloqueDeMarca, presetActual, ponerLogo, ideaDelPedido, conOtraEscena, nombreDePreset,
-  estiloDeLaPieza, lineaDeEstilo, nombreDeEstilo, estiloValido, TIPOS_PRESET,
+  estiloDeLaPieza, lineaDeEstilo, nombreDeEstilo, estiloValido, TIPOS_PRESET, referenciaDePlantilla, lineaDePlantillaEnPedido,
 } from "../lib/kitMarca";
 import { presetDePilar, nombreDePilar } from "../lib/pilares";
 import { ideaDesdeAngulo } from "../lib/estudioMercado";
 import { pedidoDePieza, apoyosDelCompositor } from "../lib/pieza";
 import { segundosParaModelo, ajusteDeDuracion } from "../lib/videoCorto";
 import BancoSelector from "./BancoSelector";
-import EleccionRanura from "./EleccionRanura";
 import ExploradorDrive from "./ExploradorDrive";
 import { idDeCarpeta } from "../lib/drive";
 import { OverflowMenu } from "./calendario/primitivas";
@@ -29,6 +28,8 @@ import {
 import "./Estudio.css";
 
 const EstudioLote = lazy(() => import("./EstudioLote"));
+// Sólo cuando una imagen de la galería cabe en más de un sitio: aparte, el chunk del Estudio está en su tope.
+const EleccionRanura = lazy(() => import("./EleccionRanura"));
 // El kit va plegado y sólo en la pestaña: en su chunk (el del Estudio tiene tope, rendimiento.bundle.test.js).
 const EstudioKit = lazy(() => import("./EstudioKit"));
 const EstudioRecrear = lazy(() => import("./EstudioRecrear"));
@@ -137,6 +138,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const [vueltaGuiado, setVueltaGuiado] = useState(0);
   // Los personajes de la marca que salen en esta pieza (sus imágenes van de referencia: que salgan IGUAL).
   const [personajesSel, setPersonajesSel] = useState([]);
+  // Una plantilla del kit: la pieza repite su diseño (su imagen de referencia y su sistema escrito).
+  const [plantillaSel, setPlantillaSel] = useState("");
   // «Fijar para este cliente»: el modelo va en su kit (lo comparte el equipo) y arranca el compositor, el lote y
   // «Producir el mes». Se guarda con el kit; `fijar` se define abajo, con el guardado del kit.
 
@@ -346,13 +349,16 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setAviso(null);
     const antes = form.prompt;
     try {
-      const r = await api.mejorarIdea(client.id, { idea: antes, tipo: form.tipo, pieza: presetVigente ? nombreDePreset(presetVigente, kit) : "" });
+      const r = await api.mejorarIdea(client.id, {
+        idea: antes, tipo: form.tipo, pieza: presetVigente ? nombreDePreset(presetVigente, kit) : "",
+        proporcion: form.ajustes?.aspectRatio ?? "", productoId: inicial?.post?.productoId ?? "",
+      });
       setConfirmando(null);
       setIdeaAnterior(antes);
       setForm((f) => ({ ...f, prompt: r.idea.slice(0, MAX_PROMPT) }));
       // La de al abrir desde un post se queda en él: la próxima vez sale lista (lib/promptImagen.js).
       if (alAbrir && form.tipo === "imagen") inicial?.alMejorar?.(r.idea);
-      avisar(true, ["Listo: revisa la idea antes de crear.", r.aviso ?? ""].filter(Boolean).join(" "));
+      avisar(true, ["Listo: revísala antes de crear.", r.aviso ?? ""].filter(Boolean).join(" "));
       enfocarPrompt();
     } catch (e) {
       avisar(false, e.message);
@@ -433,7 +439,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     setForm((f) => ({ ...f, prompt: (f.tipo === "video" ? idea.escena : api.ideaAlPedido(idea)).slice(0, MAX_PROMPT) }));
     setPreset(presetDePilar(idea.tipo));
     if (form.tipo === "imagen" && idea.productoId) ponerFotosDeProducto(idea.productoId);
-    avisar(true, "Idea puesta en el pedido. Revísala (o pulsa «Mejorar idea») y crea.");
+    avisar(true, "Idea puesta en el pedido. Revísala (o pulsa «Diseñar con el director») y crea.");
     enfocarPrompt();
   };
 
@@ -486,11 +492,13 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       // lo que se manda es lo que queda escrito.
       // Las fotos del producto que nombra la idea van DELANTE (cuanto cabe), y cada referencia dice qué se toma de ella.
       const delNombrado = fotosNombradas;
-      const refs = [...delNombrado, ...deLosPersonajes, ...deLaLetra, ...form.medios.reference, ...refsTipo, ...gustos];
+      const dePlantilla = form.tipo === "imagen" && plantillaSel ? referenciaDePlantilla(kit, plantillaSel, datos?.archivos ?? []) : null;
+      const refs = [...delNombrado, ...(dePlantilla ? [dePlantilla] : []), ...deLosPersonajes, ...deLaLetra, ...form.medios.reference, ...refsTipo, ...gustos];
       // El MISMO camino que el lote y «Producir el mes» (lib/pieza.js); aquí la resolución la escoge la persona.
       const pieza = pedidoDePieza({
         kit, idea: form.prompt, preset: presetVigente, estilo: estiloVigente, apoyos: refs, modelo, marca: client.name, rubro: client.industry ?? "",
         usarKit: conKit, conLogo, video: form.tipo === "video", altaResolucion: false, ajustes: form.ajustes, n: form.n,
+        extra: dePlantilla ? lineaDePlantillaEnPedido(kit, plantillaSel) : "",
       });
       const medios = { ...clavesDe(form.medios), ...pieza.medios };
       const { trabajo } = await api.pedirImagenes(client.id, {
@@ -1084,6 +1092,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
               ? { lista: limpiarKit(kit).personajes, escogidos: personajesSel, onCambiar: setPersonajesSel, van: deLosPersonajes.length }
               : null,
             onProducto: ponerFotosDeProducto,
+            plantillas: form.tipo === "imagen" && modelo.referencias > 0 && limpiarKit(kit).plantillas.length
+              ? { lista: limpiarKit(kit).plantillas, escogida: plantillaSel, onCambiar: setPlantillaSel }
+              : null,
           }}
           fijado={fijados[form.tipo] ?? ""} onFijar={(id) => fijar(form.tipo, id)}
           guiados={dialogo ? [] : GUIADOS} onGuiado={setGuiado}
@@ -1330,10 +1341,12 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       <p className="est-precios">Los precios son aproximados y de {new Date(PRECIOS_AL).toLocaleDateString("es-PA", { month: "long", year: "numeric", timeZone: "UTC" })}. Lo que se gasta aquí suma al presupuesto de IA del mes.</p>
 
       {eligiendoRanura && (
-        <EleccionRanura
-          archivo={eligiendoRanura.archivo} opciones={eligiendoRanura.opciones} modelo={modelo}
-          onElegir={(rol) => usarComoMedio(eligiendoRanura.archivo, rol)} onCerrar={() => setEligiendoRanura(null)}
-        />
+        <Suspense fallback={null}>
+          <EleccionRanura
+            archivo={eligiendoRanura.archivo} opciones={eligiendoRanura.opciones} modelo={modelo}
+            onElegir={(rol) => usarComoMedio(eligiendoRanura.archivo, rol)} onCerrar={() => setEligiendoRanura(null)}
+          />
+        </Suspense>
       )}
       {driveRol && (
         <BancoSelector
@@ -1379,6 +1392,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           onEstampar={limpiarKit(kit).logo && visor.tipo !== "video" ? () => estampar(visor) : null}
           original={originalDe(visor, datos?.trabajos ?? [], datos?.archivos ?? [])}
           onVerOriginal={(o) => setVisor(o)}
+          onPlantilla={(r) => setDatos((d) => (d ? { ...d, kit: r.kit } : d))}
           onUsar={onUsar ? () => usarEnLaPublicacion(visor) : null}
           esLogo={Boolean(kit?.logo) && kit.logo === visor.clave}
           onLogo={/^image\/(png|jpeg|webp)$/.test(visor.mime ?? "") ? () => usarComoLogo(visor) : null}

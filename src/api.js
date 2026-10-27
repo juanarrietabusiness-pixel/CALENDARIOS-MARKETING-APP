@@ -611,19 +611,18 @@ export async function imagenDelADN(repoUrl, path) {
 /** El plan de contenido del cliente, como lo guardó su ficha (plantillasPlan.js, `lineaDelPlan`). */
 const lineaDelPlanDe = (client) => String(client?.planContenido?.linea ?? "").slice(0, 400);
 
-export function buildClientContext(client, calendar, adnCompleto = "", cerebro = null, { maquetacion = false } = {}) {
+export function buildClientContext(client, calendar, adnCompleto = "", cerebro = null) {
   // Quien llama a esto ESCRIBE texto —ideas, guiones, captions—: la capa de
   // maquetación para Meta AI no le sirve y son ~41 000 caracteres en Dcasa.
-  // El asistente también pasa por aquí, pero pide `{ maquetacion: true }`.
   //
   // `cerebro` ({ pasajes }) es el modo del cerebro del cliente: `adnCompleto`
   // trae su ficha técnica y sus cifras, y los pasajes que esta tarea necesita
   // van DESPUÉS del título de la ficha de la aplicación —es donde se parte
   // la caché—, porque cambian con cada tanda.
   const conCerebro = Boolean(cerebro);
-  // `maquetacion` es del asistente: alguien puede pedirle «arma el prompt para Meta AI», y para eso
-  // necesita la receta y el prompt maestro, que un caption no.
-  const adnExtra = conCerebro || maquetacion ? adnCompleto : sinCapaMaquetacion(adnCompleto);
+  // La capa de maquetación (el prompt maestro de Meta AI) ya no la lee nadie, tampoco el asistente: eran
+  // instrucciones de un proyecto viejo y ahora diseña el director creativo (lib/director.js).
+  const adnExtra = conCerebro ? adnCompleto : sinCapaMaquetacion(adnCompleto);
   const pasajes = String(cerebro?.pasajes ?? "").trim();
   if (adnExtra) {
     return `Escribes para ${client.name}, cliente de la agencia Juancito Ads.
@@ -894,7 +893,7 @@ export function avisoDelCerebro({ usado = false, notas = 0 } = {}) {
 export function buildChatSystemPrompt(client, calendar, adnExtra = "", memories = [], cerebro = null, { notasCerebro = 0 } = {}) {
   // Con cerebro, el asistente recibe la ficha y las cifras —lo estable— y busca el resto con
   // `buscar_cerebro`: volcarle todo el ADN en cada mensaje era lo que más gastaba.
-  const ctx = buildClientContext(client, calendar, adnExtra, cerebro, { maquetacion: true }) +
+  const ctx = buildClientContext(client, calendar, adnExtra, cerebro) +
     avisoDelCerebro({ usado: Boolean(cerebro), notas: notasCerebro });
 
   let calendarInfo = "";
@@ -977,12 +976,14 @@ ${cerebro || notasCerebro > 0
 · Puedes crear tareas para el cliente con crear_tarea.
 · Puedes guardar ideas y REFERENCIAS (el enlace de un video de Instagram, TikTok, YouTube…) en el banco de ideas con
   agregar_banco_ideas: van a este cliente, o como generales (general: true) si no son de él todavía.
-· Puedes CREAR IMÁGENES Y VIDEOS con generar_imagen (tipo «video» para un video). Con un cliente abierto
+· Puedes DISEÑAR piezas con diseño gráfico (posts, historias, anuncios, portadas) con disenar_piezas: eres el director
+  creativo (abajo, «CÓMO DISEÑAS»). Es lo que usas siempre que pidan diseños, posts o piezas, de una o de muchas.
+· Puedes CREAR IMÁGENES Y VIDEOS sueltos con generar_imagen (tipo «video» para un video). Con un cliente abierto
   la hace el ESTUDIO con su kit de marca: paleta, estilo, logo, la letra de la marca, las fotos reales del
   producto que nombres y el modelo que el cliente tiene fijado; tú sólo describes la ESCENA (qué se ve) y,
   si lleva texto, el texto exacto entre comillas. Pasa «estilo» con el tipo de contenido si lo sabes. Se
-  ENTREGA AQUÍ MISMO, en el chat, y queda en la galería. Úsala siempre que te pidan una imagen o un video,
-  sea o no para una publicación; si piden ponerla en una publicación, pasa su post_id.
+  ENTREGA AQUÍ MISMO, en el chat, y queda en la galería. Úsala para una foto o un video sin diseño gráfico;
+  para un diseño, disenar_piezas. Si piden ponerla en una publicación, pasa su post_id.
   Si la respuesta dice que cuesta y no se creó nada, di la cifra y sólo con un «sí» repites con
   confirmado=true. No escribas la clave ni un enlace: la pieza aparece sola debajo de tu mensaje.
 · Puedes ver las imágenes y los videos que el usuario te adjunte y crear contenido basado en ellos.
