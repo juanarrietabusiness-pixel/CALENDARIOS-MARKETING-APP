@@ -44,6 +44,7 @@ export const MANUAL_DISENO_BASE = [
   "- Jerarquía: 1) titular, 2) imagen o producto, 3) apoyo, 4) botón y logo. Como mucho tres tamaños de letra y dos familias.",
   "- Contraste siempre: letra clara sobre fondo oscuro o al revés. Sobre una foto, el texto va en una placa, una banda o una zona limpia de la foto.",
   "- Retícula: márgenes de un 6 a 8 % del ancho, todo alineado a las mismas líneas, aire alrededor del titular.",
+  "- Posiciones y tamaños SIEMPRE con números (% del alto y del ancho de la pieza): «arriba» o «grande» no le dicen nada a quien genera la imagen, y es donde más se equivoca (el texto muy arriba, muy abajo o muy grande).",
   "- Zonas seguras: en un post 4:5 nada importante pegado al borde; en historia y reel, libres el 14 % de arriba y el 20 % de abajo.",
   "- Los colores de la marca con su código exacto y en proporción: uno manda, otro acompaña y el acento sólo en lo que se toca (precio, botón, oferta).",
   "- El producto real se ve grande, nítido y fiel; si hay foto del producto, se copia tal cual.",
@@ -59,10 +60,10 @@ export const manualDeDiseno = (manual) => largo(manual?.diseno, MAX_MANUAL_DISEN
 /** Cómo se escribe una ficha: la misma para el asistente, el director de arte y el motor de ideas. */
 export const FORMATO_FICHA = [
   "Pieza: <formato y proporción> — <para qué es, en una frase>.",
-  "Composición: <la retícula y dónde va cada cosa (arriba, centro, abajo; izquierda, derecha) con proporciones aproximadas>.",
+  "Composición: <dónde va cada cosa CON MEDIDAS en % de la pieza: «titular entre el 8 y el 22 % de la altura, 80 % del ancho, centrado; producto del 30 al 85 %; logo abajo a la derecha, 10 % del ancho»>.",
   "Fondo: <color con su código #HEX, foto a sangre, degradado, textura>.",
   "Imagen principal: <qué se ve: sujeto o producto, acción, lugar, luz y encuadre>.",
-  "Texto (exacto, sin cambiar una letra): titular «…» (<tamaño, peso, color, posición>); apoyo «…» (…); botón «…» (<forma y color>).",
+  "Texto (exacto, sin cambiar una letra): titular «…» (<alto de letra en % de la altura de la pieza, peso, color, zona>); apoyo «…» (…); botón «…» (<forma, color y zona>).",
   "Marca: <dónde va el logo y de qué tamaño; qué colores de la paleta mandan>.",
   "Evitar: <lo que no debe salir>.",
 ].join("\n");
@@ -128,6 +129,7 @@ export function instruccionDeDiseno(manual) {
     "· version_final: cuando la persona escoja las buenas, la misma pieza con el mejor modelo que haya (los borradores salen con el modelo del cliente).",
     "· guardar_regla: si la persona corrige lo mismo dos veces, ofrécele guardarlo como regla del kit (va en todas las piezas); sólo con su sí.",
     "· La persona puede señalar una imagen escribiendo «En la imagen clientes/…:»: es su clave; pásala como archivo_id a corregir_pieza o version_final.",
+    "· Si en una serie una pieza quedó con el texto en otro sitio o de otro tamaño, corregir_pieza con igual_a = la que quedó bien: se iguala a ella (más fiable que describirlo).",
     "· generar_imagen sigue para una imagen rápida sin diseño (una foto, una ilustración).",
   ].join("\n");
 }

@@ -200,6 +200,7 @@ div.est-img { cursor: default; }
 /* «Editar» en el visor. */
 .est-editar { display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--accent-line); border-radius: var(--radius-sm); background: var(--accent-soft); }
 .est-editar-atajos { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.est-ajustar-texto { display: flex; flex-direction: column; gap: var(--sp-2); }
 .est-editar-atajos .filter-chip { min-height: var(--tap-sm); }
 .est-editar-botones { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 .est-visor-original { display: flex; align-items: center; gap: var(--sp-1); flex-wrap: wrap; margin: 0; }

@@ -44,9 +44,10 @@ export const HERRAMIENTAS_DISENO = Object.freeze([
         type: "object",
         properties: {
           archivo_id: { type: "string", description: "El id de la imagen (el que te devolvió disenar_piezas) o su clave («En la imagen clientes/…» de la persona)." },
-          indicacion: { type: "string", description: "Qué cambiar, concreto: «donde dice X debe decir Y», «el precio el doble de grande»." },
+          indicacion: { type: "string", description: "Qué cambiar, concreto y con medidas: «donde dice X debe decir Y», «el titular baja al 10–24 % de la altura», «el precio el doble de grande»." },
+          igual_a: { type: "string", description: "Opcional: el id de otra pieza de la MISMA serie que quedó bien; el texto de ésta se pone en su misma posición y tamaño. Con esto, la indicación puede ir vacía." },
         },
-        required: ["archivo_id", "indicacion"],
+        required: ["archivo_id"],
       },
     },
     {

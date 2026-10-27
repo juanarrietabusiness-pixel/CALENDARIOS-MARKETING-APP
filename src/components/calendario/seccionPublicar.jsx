@@ -41,7 +41,7 @@ import CambiosDelCliente from "./cambiosCliente";
 import DestinoRedes from "./destinoRedes";
 import { escribirDesdeContenido } from "../../api";
 import { rellenarDesdeContenido, tieneContenido, formatoDeMedios } from "../../lib/subir";
-import { medioDeArchivo, apuntarUso } from "../../lib/estudio";
+import { medioDeArchivo, apuntarUso, AJUSTES_DE_TEXTO } from "../../lib/estudio";
 import { useCrearConIA } from "../../hooks/useCrearConIA";
 import { conPromptListo } from "../../lib/promptImagen";
 import { presetDePilar } from "../../lib/pilares";
@@ -393,6 +393,13 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
               onChange={(e) => setIndicacion(e.target.value)} aria-describedby={`${ids}-quiero-ayuda`}
               placeholder={conImagen ? "Ej.: el fondo más claro, el producto más grande, quita la planta" : "Ej.: una mamá con su bebé en la sala, luz de mañana"}
             />
+            {conImagen && (
+              <div className="est-editar-atajos" style={{ display: "flex", flexWrap: "wrap", gap: "var(--sp-1)" }} role="group" aria-label="Ajustes del texto de la imagen, de un toque">
+                {AJUSTES_DE_TEXTO.map((x) => (
+                  <button key={x.id} type="button" className="filter-chip" aria-pressed={indicacion === x.instruccion} onClick={() => setIndicacion(x.instruccion)}>{x.etiqueta}</button>
+                ))}
+              </div>
+            )}
             <p id={`${ids}-quiero-ayuda`} className="hint" style={{ margin: 0 }}>
               {conImagen
                 ? "Manda sobre todo lo demás en «Otra versión» y «Recrear con mi marca». «Corregir esta» cambia sólo esto en la misma imagen."
