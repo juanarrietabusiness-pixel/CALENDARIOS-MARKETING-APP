@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import { textoCosto, costoDePieza, CONFIRMAR_DESDE } from "../lib/estudioCatalogo";
 import * as api from "../lib/estudio";
+import { AJUSTES_DE_TEXTO, IGUALAR_TEXTO, ejemploParaIgualar } from "../lib/estudio";
 import { TIPOS_PRESET, ESTILOS_VISUALES, estiloDeMarca, limpiarKit, referenciasDePersonajes, referenciaDeTipografia } from "../lib/kitMarca";
 import { controlEncendido } from "../lib/controlEstudio";
 import { partirGuion, MODOS_TEXTO, PLANTILLAS_TEXTO, MAX_LAMINAS, coloresPlantilla, costoCarrusel } from "../lib/carrusel";
@@ -185,10 +186,11 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
     return r;
   });
   /** Corregir una sola con una indicación: se edita esa lámina, nada más. */
-  const corregir = async (i) => {
+  /** Corrige la lámina `i` con lo escrito, o con un ajuste de un toque (`instruccion`, `ejemplo`: «Igualar a la portada»). */
+  const corregir = async (i, instruccion = null, ejemplo = null) => {
     await una(i, async () => {
       const r = await corregirLamina({
-        ...comun(), resultado: resultados[i], instruccion: correcciones[i], ejemplos: ejemplos[i] ?? [], lamina: laminas[i],
+        ...comun(), resultado: resultados[i], instruccion: instruccion ?? correcciones[i], ejemplos: ejemplo ? [ejemplo] : ejemplos[i] ?? [], lamina: laminas[i],
       });
       if (i === 0) await nuevoSistema(r);
       return r;
@@ -354,6 +356,15 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
                               <ReferenciasGaleria compacto archivos={estudio?.archivos ?? []} elegidas={ejemplos[i] ?? []} onCambiar={(lista) => setEjemplos((e) => ({ ...e, [i]: lista }))}
                                 max={Math.max(1, (modelo?.referencias ?? 2) - 1)} etiqueta="Ejemplo de la galería" />
                               <GuardarRegla clienteId={clienteId} texto={correcciones[i]} />
+                              {/* El texto, de un toque; y la lámina que se sale de la serie, igual que la portada. */}
+                              {modo === "ia" && (
+                                <div className="est-editar-atajos" style={{ display: "flex", flexWrap: "wrap", gap: "var(--sp-1)" }} role="group" aria-label={`Ajustar el texto de la lámina ${l.n}`}>
+                                  {i > 0 && resultados[0]?.crudo && (
+                                    <button type="button" className="filter-chip" onClick={() => corregir(i, IGUALAR_TEXTO, ejemploParaIgualar(resultados[0].crudo))}>Igualar el texto a la portada</button>
+                                  )}
+                                  {AJUSTES_DE_TEXTO.map((x) => <button key={x.id} type="button" className="filter-chip" onClick={() => corregir(i, x.instruccion)}>{x.etiqueta}</button>)}
+                                </div>
+                              )}
                             </>
                           )}
                           <button type="button" className="btn btn-ghost btn-sm" onClick={() => rehacer(i)}>

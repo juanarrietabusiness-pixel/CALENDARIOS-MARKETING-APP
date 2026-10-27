@@ -207,13 +207,17 @@ export const proporcionDe = (a) => a?.ajustes?.aspectRatio ?? api.proporcionDeMe
  * corregir_pieza: EDITA la misma imagen con la indicación (no la rehace). → { archivo (la nueva), antes }. La de antes
  * se queda en la galería.
  */
-export async function corregirPieza(ctx, { archivoId, indicacion, seguir = () => true }) {
-  const { a } = await archivoDe(ctx, archivoId);
+export async function corregirPieza(ctx, { archivoId, indicacion, igualA = "", seguir = () => true }) {
+  const { a, g } = await archivoDe(ctx, archivoId);
   if (!a) throw new Error("No encontré esa imagen en la galería de este cliente.");
-  if (!String(indicacion ?? "").trim()) throw new Error("Falta qué corregir.");
+  // «Igualar a otra»: la que quedó bien va de referencia, sólo por dónde va el texto y de qué tamaño.
+  const buena = igualA ? (g?.archivos ?? []).find((x) => x.id === igualA || x.clave === igualA) : null;
+  if (igualA && !buena) throw new Error("No encontré la pieza a la que igualar.");
+  const instruccion = String(indicacion ?? "").trim() || (buena ? api.IGUALAR_TEXTO : "");
+  if (!instruccion) throw new Error("Falta qué corregir.");
   const m = modeloParaCorregir(ctx.activos, a.modelo, proporcionDe(a));
   if (!m) throw new Error("No hay ningún modelo que edite imágenes con llave (Ajustes → IA).");
-  const { prompt, medios } = api.pedidoDeCorreccion({ clave: a.clave, instruccion: indicacion, modelo: m });
+  const { prompt, medios } = api.pedidoDeCorreccion({ clave: a.clave, instruccion, ejemplos: buena ? [api.ejemploParaIgualar(buena)] : [], modelo: m });
   const { trabajo } = await api.pedirImagenes(ctx.clienteId, {
     modelo: m.id, prompt, n: 1, ajustes: ajustesDe(m, { aspectRatio: proporcionDe(a) }, medios), medios, confirmado: true,
     ...(a.carpetaId ? { carpetaId: a.carpetaId } : {}),

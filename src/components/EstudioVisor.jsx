@@ -3,7 +3,7 @@ import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { modeloPorId, nombreDelModelo, textoCosto, NOMBRE_PROPORCION } from "../lib/estudioCatalogo";
 import * as api from "../lib/estudio";
-import { hace, nombreDeDescarga, esVideoReal, valorDeAjuste, ATAJOS_EDICION } from "../lib/estudio";
+import { hace, nombreDeDescarga, esVideoReal, valorDeAjuste, ATAJOS_EDICION, AJUSTES_DE_TEXTO, IGUALAR_TEXTO, ejemploParaIgualar } from "../lib/estudio";
 import { corregirTexto } from "../lib/controlEstudio";
 import { resumenControl } from "../lib/control";
 import ReferenciasGaleria from "./ReferenciasGaleria";
@@ -118,6 +118,38 @@ function RevisionDeMarca({ revision, onRevisar, onCorregir }) {
   );
 }
 
+/**
+ * El texto de la pieza, de un toque (lib/estudio.js: AJUSTES_DE_TEXTO): más arriba, más abajo, más pequeño, más grande,
+ * centrado. Y si es de un carrusel, «Igualar el texto a…» otra lámina de su serie (va de referencia). Cada toque es una
+ * edición: sale una imagen nueva y esta se queda.
+ */
+function AjustarTexto({ archivo: a, galeria = [], onEditar }) {
+  const id = useId();
+  const serie = a.carpetaId ? galeria.filter((x) => x.carpetaId === a.carpetaId && x.id !== a.id && x.tipo === "imagen" && !x.borrado) : [];
+  return (
+    <div className="est-ajustar-texto" role="group" aria-labelledby={`${id}-t`}>
+      <span className="label" id={`${id}-t`}>Ajustar el texto</span>
+      <div className="est-editar-atajos">
+        {AJUSTES_DE_TEXTO.map((x) => (
+          <button key={x.id} type="button" className="filter-chip" onClick={() => onEditar(x.instruccion, [])}>{x.etiqueta}</button>
+        ))}
+      </div>
+      {serie.length > 0 && (
+        <div className="field" style={{ margin: 0 }}>
+          <label className="label" htmlFor={`${id}-ig`}>Igualar el texto a otra lámina del carrusel</label>
+          <select id={`${id}-ig`} className="input" value="" onChange={(e) => {
+            const otra = serie.find((x) => x.id === e.target.value);
+            if (otra) onEditar(IGUALAR_TEXTO, [ejemploParaIgualar(otra)]);
+          }}>
+            <option value="">Escoge la lámina que quedó bien…</option>
+            {serie.map((x) => <option key={x.id} value={x.id}>{`${String(x.prompt ?? "").replace(/^(Escena|Lámina \d+ de \d+[^.]*\.)\s*/, "").slice(0, 50) || "Sin descripción"} · ${hace(x.creado)}`}</option>)}
+          </select>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Visor({
   archivo: a, carpetas, lectura, onCerrar, onFavorito, onPapelera, onMover, onRepetir, onReferencia, onAnimar, onUsar, etiquetaUsar,
   costoOtra = null, onOtraIgual = null, onOtrasVersiones = null, versionando = false, onRecrear = null,
@@ -213,6 +245,7 @@ export default function Visor({
               </p>
             </div>
           )}
+          {!lectura && !video && onEditar && !editando && <AjustarTexto archivo={a} galeria={galeria} onEditar={onEditar} />}
           {!video && <ControlDeCalidad key={a.id} archivo={a} clienteId={clienteId} lectura={lectura} onAbrir={onVerOriginal} />}
           {!video && !lectura && clienteId && <Suspense fallback={null}><GuardarPlantilla key={`p-${a.id}`} clienteId={clienteId} archivo={a} onGuardada={onPlantilla} /></Suspense>}
           {!video && (onRevisar || revision) && <RevisionDeMarca revision={revision} onRevisar={onRevisar} onCorregir={lectura ? null : onCorregir} />}

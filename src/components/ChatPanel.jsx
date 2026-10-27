@@ -679,7 +679,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     try {
       const r = como === "final"
         ? await mod.versionFinal(ctx, { archivoId: String(entrada.archivo_id ?? "") })
-        : await mod.corregirPieza(ctx, { archivoId: String(entrada.archivo_id ?? ""), indicacion: String(entrada.indicacion ?? "") });
+        : await mod.corregirPieza(ctx, { archivoId: String(entrada.archivo_id ?? ""), indicacion: String(entrada.indicacion ?? ""), igualA: String(entrada.igual_a ?? "") });
       const enPost = ponerEnElCalendario({ archivo: r.archivo, antes: r.antes?.src ?? "" });
       const [bloque] = await mod.paraElModelo([r.archivo]);
       return {

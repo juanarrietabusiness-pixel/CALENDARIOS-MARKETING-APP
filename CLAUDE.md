@@ -3153,6 +3153,16 @@ son del servidor.
 - **«Crear la imagen aquí» escoge tipo, estilo, modelo y plantilla** (`OpcionesCrearAqui.jsx`, lazy: arrastra el
   catálogo; se recuerda por cliente en `crear-aqui:<cliente>`). Vacío es lo de siempre: el tipo del post, el estilo de ese
   tipo, el modelo fijado y ninguna plantilla.
+- **El texto bien colocado** (donde más se equivoca el diseño no es la ortografía: es dónde va el texto y de qué tamaño).
+  · **La ficha lleva medidas:** `FORMATO_FICHA` pide la composición y el tamaño del texto en % de la pieza («titular entre
+  el 8 y el 22 % de la altura, 80 % del ancho») y el manual de la casa lo exige («arriba» o «grande» no le dicen nada al
+  generador).
+  · **Ajustes de un toque** (`AJUSTES_DE_TEXTO` en lib/estudio.js: más arriba, más abajo, más pequeño, más grande,
+  centrar): cada uno es una EDICIÓN precisa de la misma imagen. En el visor (`AjustarTexto`, sale una nueva), en cada
+  lámina de «Carrusel con IA» y en «¿Qué quieres?» del post (rellenan la indicación de «Corregir esta»).
+  · **«Igualar el texto a…»** (`IGUALAR_TEXTO`, `ejemploParaIgualar`): la lámina que se salió de la serie se edita con la
+  buena de referencia, sólo por su composición y su letra. En el visor (las otras imágenes de su carpeta de carrusel), en
+  «Carrusel con IA» («Igualar el texto a la portada») y en el chat (`corregir_pieza` con `igual_a`).
 - **UN solo director para todo** (decisión de la agencia: el chat daba un 8 y el lote menos, y era porque iban por
   caminos distintos). Tres cosas lo igualan:
   · **El mismo modelo:** la función «director de arte» (fichas del lote, «Producir el mes», el post, las historias, los

@@ -504,6 +504,26 @@ export function valorDeAjuste(nombre, valor) {
 // ------------------------------------------------------------
 
 /** Atajos de «¿Qué cambio?»: lo que más se pide. */
+/**
+ * Los ajustes del TEXTO de un toque: donde más se equivoca el diseño no es la ortografía sino dónde va el texto y de qué
+ * tamaño. Cada uno es una edición precisa de la misma imagen (con medidas), sin escribir nada.
+ */
+export const AJUSTES_DE_TEXTO = Object.freeze([
+  { id: "arriba", etiqueta: "Texto más arriba", instruccion: "Sube el bloque de texto completo (titular, apoyo y botón, juntos) unos 10 puntos porcentuales de la altura, sin cambiar su tamaño, su letra ni sus palabras, y sin que se salga de los márgenes" },
+  { id: "abajo", etiqueta: "Texto más abajo", instruccion: "Baja el bloque de texto completo (titular, apoyo y botón, juntos) unos 10 puntos porcentuales de la altura, sin cambiar su tamaño, su letra ni sus palabras, y sin que se salga de los márgenes" },
+  { id: "pequeno", etiqueta: "Texto más pequeño", instruccion: "Reduce el tamaño de todo el texto un 20 % manteniendo su posición, su alineación, su letra y sus palabras" },
+  { id: "grande", etiqueta: "Texto más grande", instruccion: "Aumenta el tamaño del titular un 25 % (y el apoyo en proporción) manteniendo su posición y su alineación, sin que se salga de los márgenes ni tape el sujeto" },
+  { id: "centrar", etiqueta: "Centrar el texto", instruccion: "Centra el bloque de texto en horizontal, con el mismo margen a cada lado, sin cambiar su tamaño ni su altura" },
+]);
+
+/**
+ * «Igualar a otra lámina»: el texto de esta imagen con la MISMA posición, tamaño, peso y alineación que en otra de la
+ * misma serie (va de referencia 2, sólo por la composición y la tipografía). Para el carrusel perfecto con una lámina
+ * que quedó con el texto muy arriba. Pura.
+ */
+export const IGUALAR_TEXTO = "Pon el texto de la imagen de referencia 1 en la MISMA posición, con el MISMO tamaño, peso, color y alineación que el texto de la imagen de referencia 2 (otra lámina de la misma serie). Cambia sólo dónde va el texto y de qué tamaño es: sus palabras, el fondo, el sujeto y los colores se quedan";
+export const ejemploParaIgualar = (a) => ({ id: a.id, clave: a.clave, src: a.src, toma: ["composicion", "tipografia"], nota: "es otra lámina de la MISMA serie: iguala a ésta la posición y el tamaño del texto" });
+
 export const ATAJOS_EDICION = Object.freeze([
   "Quita el texto",
   "Cambia el fondo por uno liso y claro",

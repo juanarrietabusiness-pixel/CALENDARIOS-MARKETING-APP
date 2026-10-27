@@ -288,3 +288,15 @@ describe("el orden de un carrusel agrupado", () => {
     expect(moverEnOrden(igual, "x", 1)).toBe(igual);
   });
 });
+
+describe("el texto de la pieza, de un toque", () => {
+  it("cada ajuste es una edición con medidas; «Igualar» lleva la buena de referencia sólo por su composición y su letra", async () => {
+    const { AJUSTES_DE_TEXTO, IGUALAR_TEXTO, ejemploParaIgualar, pedidoDeCorreccion } = await import("./estudio");
+    expect(AJUSTES_DE_TEXTO.map((x) => x.id)).toEqual(["arriba", "abajo", "pequeno", "grande", "centrar"]);
+    expect(AJUSTES_DE_TEXTO.find((x) => x.id === "arriba").instruccion).toMatch(/10 puntos porcentuales/);
+    const p = pedidoDeCorreccion({ clave: "clientes/c1/mala.png", instruccion: IGUALAR_TEXTO, ejemplos: [ejemploParaIgualar({ id: "b", clave: "clientes/c1/buena.png" })], modelo: { referencias: 3 } });
+    expect(p.medios.reference).toEqual(["clientes/c1/mala.png", "clientes/c1/buena.png"]);
+    expect(p.prompt).toMatch(/^Edita la imagen de referencia 1: Pon el texto de la imagen de referencia 1 en la MISMA posición/);
+    expect(p.prompt).toMatch(/Imagen de referencia 2: toma SÓLO/);
+  });
+});
