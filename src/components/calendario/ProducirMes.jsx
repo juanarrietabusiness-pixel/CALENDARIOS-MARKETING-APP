@@ -247,9 +247,15 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
       const t = { postId: c.post.id, date: c.date, format: c.post.format, titulo: c.post.title || c.post.idea || "", id: null, estado: "en marcha", error: "", laminas: c.laminas.length, hechas: 0 };
       creados.push(t);
       setTrabajos([...creados]);
+      // El director diseña la serie (la ficha de cada lámina y el sistema) a partir del guion, como en «Carrusel con
+      // IA»; si no responde, las láminas del guion tal cual.
+      const preset = presetDePilar(c.post.pilar, c.post.pilarSub) || "servicios";
+      const propuesta = mejorar
+        ? await api.proponerCarrusel(clienteId, { guion: c.post.guion ?? "", tema: c.post.idea || c.post.title || "", preset, productoId: c.post.productoId || undefined }).catch(() => null)
+        : null;
       const hechas = await crearCarrusel({
-        ...comunes, modelo: c.modelo, laminas: c.laminas, postId: c.post.id, idea: c.post.idea || c.post.title || "",
-        preset: estiloDeMarca(estudio.kit, presetDePilar(c.post.pilar, c.post.pilarSub) || "servicios", { marca: client.name, rubro: client.industry ?? "" }),
+        ...comunes, modelo: c.modelo, laminas: propuesta?.laminas ?? c.laminas, hilo: propuesta?.hilo ?? "", postId: c.post.id, idea: c.post.idea || c.post.title || "",
+        preset: estiloDeMarca(estudio.kit, preset, { marca: client.name, rubro: client.industry ?? "" }),
         fotos: api.fotosDelProducto(estudio.productos, c.post.productoId).map((f) => f.clave),
         alAvanzar: () => { t.hechas += 1; setTrabajos([...creados]); },
       });
@@ -337,7 +343,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
                 </div>
               )}
               <label className="est-logo-casilla">
-                <input type="checkbox" checked={mejorar} onChange={(e) => setMejorar(e.target.checked)} /> Que el director de arte diseñe cada imagen antes de crear (recomendado: una ficha de diseño por pieza, todas como una serie; las que ya la tienen no esperan; costo de texto mínimo)
+                <input type="checkbox" checked={mejorar} onChange={(e) => setMejorar(e.target.checked)} /> Que el director diseñe cada imagen y cada carrusel antes de crear (recomendado: una ficha de diseño por pieza o lámina, todas como una serie; las que ya la tienen no esperan; costo de texto mínimo)
               </label>
               <label className="cerebro-casilla">
                 <input type="checkbox" checked={controlar} onChange={(e) => { setControlar(e.target.checked); encenderControl(e.target.checked); }} /> Revisar cada pieza al llegar y corregir solo el texto mal escrito (recomendado; céntimos por pieza)

@@ -25,8 +25,8 @@ export const FUNCIONES_IA = Object.freeze([
   { id: "redaccion", nombre: "Redacción", nota: "Ideas del mes, descripciones y captions" },
   { id: "guiones", nombre: "Guiones", nota: "Guiones de reels y videos" },
   { id: "lectura", nombre: "Escribir mirando el contenido", nota: "Lo que la IA escribe a partir de las imágenes subidas" },
-  { id: "asistente", nombre: "Asistente", nota: "El chat (con Meta no hay búsqueda web)" },
-  { id: "prompts", nombre: "Director de arte", nota: "Diseña cada pieza de imagen (la ficha de diseño) en el Estudio, el lote, el mes y el post. Mejor con Opus o Sonnet alto" },
+  { id: "asistente", nombre: "Asistente y director creativo", nota: "El chat y el diseño de cada pieza (el lote, el mes, el post, los carruseles): el mismo modelo en todo. Mejor con Opus o Sonnet alto (con Meta no hay búsqueda web)" },
+  { id: "prompts", nombre: "Escenas de imagen", nota: "«Otra versión distinta» del visor y la mejora corta de un video" },
   { id: "analisis", nombre: "Análisis", nota: "Informes, auditorías, cerebro y ADN de marca" },
 ]);
 

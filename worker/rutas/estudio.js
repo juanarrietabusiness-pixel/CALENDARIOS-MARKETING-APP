@@ -221,7 +221,7 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       const datos = await cuerpo(req);
       if (!datos || !Array.isArray(datos.piezas)) return error("Faltan las piezas");
       try {
-        return json(await fichasDeDiseno(env, acceso, cliente, { piezas: datos.piezas, concepto: String(datos.concepto ?? "") }));
+        return json(await fichasDeDiseno(env, acceso, cliente, { piezas: datos.piezas, concepto: String(datos.concepto ?? ""), vistas: datos.vistas }));
       } catch (e) {
         if (e?.estado) return error(e.message, e.estado);
         throw e;

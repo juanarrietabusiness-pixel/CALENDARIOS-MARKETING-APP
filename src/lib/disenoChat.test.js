@@ -17,8 +17,13 @@ vi.mock("./estudio", async (original) => {
     }),
   };
 });
+const carruseles = [];
 vi.mock("./carruselEstudio", () => ({
   esperarArchivos: vi.fn(async (_c, t) => [{ id: `a-${t.id}`, clave: `clientes/c1/estudio/${t.id}.png`, src: `/api/media/clientes/c1/estudio/${t.id}.png`, tipo: "imagen" }]),
+  crearCarrusel: vi.fn(async (datos) => {
+    carruseles.push(datos);
+    return datos.laminas.map((l) => { const r = { final: { id: `l${l.n}`, clave: `clientes/c1/l${l.n}.png` } }; datos.alAvanzar(l.n - 1, r); return r; });
+  }),
 }));
 vi.mock("./controlEstudio", () => ({ controlEncendido: () => false, controlarYCorregir: vi.fn(), modeloParaCorregir: () => null }));
 
@@ -70,11 +75,20 @@ describe("las herramientas de diseño del asistente", () => {
     expect(vistos.sort()).toEqual([1, 2, 3, 4, 5]);
   });
 
-  it("un carrusel va a su carpeta y queda en el orden del plan", async () => {
+  it("un carrusel va por el camino de «Carrusel con IA» (en orden, con la ficha de cada lámina), a su carpeta y en orden", async () => {
     ordenes.length = 0;
-    const plan = planDePiezas(ctx(), Array.from({ length: 4 }, (_, i) => ({ titulo: `L${i + 1}`, ficha: `Pieza: lámina ${i + 1}.` })));
-    const r = await crearPlan(ctx(), plan, { carrusel: "Envío gratis" });
-    expect(pedidos.every((p) => p.carpetaId === "carpeta-1")).toBe(true);
+    carruseles.length = 0;
+    const plan = planDePiezas(ctx(), Array.from({ length: 4 }, (_, i) => ({ titulo: `L${i + 1}`, ficha: `Pieza: lámina ${i + 1}.\nTexto (exacto): titular «Uno ${i + 1}».` })));
+    const vistos = [];
+    const r = await crearPlan(ctx(), plan, { carrusel: "Envío gratis", alAvanzar: (n, e) => { if (e.archivo) vistos.push(n); } });
+    expect(pedidos).toHaveLength(0);
+    expect(carruseles).toHaveLength(1);
+    const c = carruseles[0];
+    expect(c.carpetaId).toBe("carpeta-1");
+    expect(c.laminas.map((l) => l.rol)).toEqual(["portada", "contenido", "contenido", "cierre"]);
+    expect(c.laminas[1]).toMatchObject({ texto: "Uno 2", ficha: expect.stringMatching(/^Pieza: lámina 2\./) });
+    expect(c.logo).toBe("clientes/c1/logo.png");
+    expect(vistos).toEqual([1, 2, 3, 4]);
     expect(ordenes).toEqual([{ id: "carpeta-1", orden: r.map((x) => x.archivo.id) }]);
   });
 

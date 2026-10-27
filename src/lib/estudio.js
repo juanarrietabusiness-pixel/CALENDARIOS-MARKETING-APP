@@ -11,6 +11,7 @@
 // ============================================================
 
 import { pedir } from "./db";
+import { imagenParaModelo } from "./medios";
 import { estaVivo, diasQueQuedan, MODELOS, MAX_PROMPT, modeloPorId, modeloPorDefecto, VOCES_OMNI, ajustesDe } from "./estudioCatalogo";
 import { lineaDeReferencia } from "./referencias";
 import { composicionDe } from "./loteAnuncios";
@@ -36,14 +37,39 @@ export const reintentarTrabajo = (clienteId, id) => pedir(`${base(clienteId)}/tr
  * «Mejorar idea»: la IA devuelve la idea más clara y sencilla, para que el
  * motor la entienda. `{ idea, modelo, aviso }`. Es texto: no pide nada al motor.
  */
-export const mejorarIdea = (clienteId, datos) => pedir(`${base(clienteId)}/mejorar`, post(datos));
+export const mejorarIdea = async (clienteId, datos) => pedir(`${base(clienteId)}/mejorar`, post(datos?.tipo === "video" ? datos : await conVistas(clienteId, datos)));
 /** «Guardar como plantilla»: { archivoId, nombre?, uso? } → { kit, plantilla }. */
 export const guardarPlantilla = (clienteId, datos) => pedir(`${base(clienteId)}/kit/plantillas`, post(datos));
 export const quitarPlantilla = (clienteId, id) => pedir(`${base(clienteId)}/kit/plantillas/${encodeURIComponent(id)}`, { method: "DELETE" });
 /** El director de arte: { piezas: [{ n, formato, tipo, idea, escena, texto, productoId, indicacion, sinTexto, plantilla }], concepto? } → { concepto, fichas }. */
-export const fichasDeDiseno = (clienteId, datos) => pedir(`${base(clienteId)}/fichas`, post(datos));
+export const fichasDeDiseno = async (clienteId, datos) => pedir(`${base(clienteId)}/fichas`, post(await conVistas(clienteId, datos)));
 /** El carrusel: la contrapropuesta del director de arte → { hilo, laminas: [{ n, rol, escena, texto, composicion }] } (texto). */
-export const proponerCarrusel = (clienteId, datos) => pedir(`${base(clienteId)}/carrusel/propuesta`, post(datos));
+export const proponerCarrusel = async (clienteId, datos) => pedir(`${base(clienteId)}/carrusel/propuesta`, post(await conVistas(clienteId, datos)));
+
+/**
+ * Lo que el director VE de este cliente antes de diseñar: hasta 4 imágenes pequeñas (512 px, JPEG) de sus plantillas
+ * del kit y de las que le gustaron a la agencia. El director del chat las veía y el del lote no: era una de las
+ * razones por las que el chat daba un 8 y el lote menos. Se recuerdan 10 minutos por cliente (una tanda pide varias
+ * veces). Sin galería o si falla, ninguna: el director diseña igual, sólo con texto.
+ */
+const VISTAS = new Map();
+export async function vistasDelCliente(clienteId) {
+  const guardada = VISTAS.get(clienteId);
+  if (guardada && Date.now() - guardada.t < 10 * 60_000) return guardada.v;
+  try {
+    const g = await leerEstudio(clienteId);
+    const archivos = g?.archivos ?? [];
+    const plantillas = (g?.kit?.plantillas ?? []).map((p) => archivos.find((a) => a.clave === p.clave)).filter(Boolean);
+    const gustos = archivos.filter((a) => a.favorito && a.tipo === "imagen" && !plantillas.includes(a));
+    const v = (await Promise.all([...plantillas, ...gustos].slice(0, 4)
+      .map((a) => imagenParaModelo(a.src, 512).then((data) => ({ media_type: "image/jpeg", data })).catch(() => null)))).filter(Boolean);
+    VISTAS.set(clienteId, { t: Date.now(), v });
+    return v;
+  } catch {
+    return [];
+  }
+}
+const conVistas = async (clienteId, datos = {}) => (datos.vistas ? datos : { ...datos, vistas: await vistasDelCliente(clienteId) });
 /** El reel: el guion por planos → { hilo, planos: [{ n, desde, hasta, escena, texto, camara }], sonido, descripcion } (texto). */
 export const guionDeReel = (clienteId, datos) => pedir(`${base(clienteId)}/reel/guion`, post(datos));
 /** «Revisar como director comercial»: `{ idea, cambios }` (no guarda). */

@@ -61,9 +61,9 @@ import { crearEjecutor, DEFINICIONES, HERRAMIENTAS_WEB, NOMBRES, describirUso } 
 import { ahora, uuid } from "../lib/ids.js";
 import { firma } from "../lib/vivo.js";
 import { kitDe } from "../lib/estudio/kit.js";
-import { manualDelEspacio } from "../lib/estudio/fichas.js";
+import { manualDelEspacio, correccionesDelCliente } from "../lib/estudio/fichas.js";
 import { bloqueDeMarca, kitVacio } from "../../src/lib/kitMarca.js";
-import { instruccionDeDiseno, resumenDelKit } from "../../src/lib/director.js";
+import { instruccionDeDiseno, resumenDelKit, lineaDeCorrecciones } from "../../src/lib/director.js";
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_TOKENS = 32_000;
@@ -152,8 +152,8 @@ export async function rutaChat(req, env, { acceso, ctx, usuario = null } = {}) {
   // de un mensaje a otro, así que entra en la caché.
   if (clienteActual) {
     const kit = kitDe(clienteActual);
-    const manual = await manualDelEspacio(acceso);
-    system.push({ type: "text", text: `${instruccionDeDiseno(manual)}\n\n${resumenDelKit({ kit, marca: bloqueDeMarca(kit), vacio: kitVacio(kit), cliente: clienteActual.name })}` });
+    const [manual, correcciones] = await Promise.all([manualDelEspacio(acceso), correccionesDelCliente(acceso, clienteActual.id)]);
+    system.push({ type: "text", text: [instruccionDeDiseno(manual), resumenDelKit({ kit, marca: bloqueDeMarca(kit), vacio: kitVacio(kit), cliente: clienteActual.name }), lineaDeCorrecciones(correcciones)].filter(Boolean).join("\n\n") });
   }
   if (typeof body.system === "string" && body.system.trim()) {
     system.push({ type: "text", text: body.system });

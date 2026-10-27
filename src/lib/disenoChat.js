@@ -23,10 +23,11 @@ import * as api from "./estudio";
 import { estimar, ajustesDe, modeloPorId, modeloQueRespeta } from "./estudioCatalogo";
 import { apoyosDePieza, pedidoDePieza } from "./pieza";
 import { productosNombrados } from "./referencias";
-import { esperarArchivos } from "./carruselEstudio";
-import { referenciaDePlantilla, lineaDePlantillaEnPedido, limpiarKit, kitVacio } from "./kitMarca";
+import { esperarArchivos, crearCarrusel } from "./carruselEstudio";
+import { referenciaDePlantilla, lineaDePlantillaEnPedido, limpiarKit, kitVacio, estiloDeMarca, referenciaDeTipografia } from "./kitMarca";
+import { coloresPlantilla } from "./carrusel";
 import { controlEncendido, controlarYCorregir, modeloParaCorregir } from "./controlEstudio";
-import { conLogoSiToca } from "./logoEstudio";
+import { conLogoSiToca, estampaSola } from "./logoEstudio";
 import { imagenParaModelo } from "./medios";
 import { limpiarFicha, lineasDelTexto, MAX_FICHAS } from "./director";
 
@@ -116,21 +117,19 @@ export function textoDeLaFicha(ficha = "") {
  * pide). → [{ n, archivo | error }] en el orden del plan. `seguir()` false para parar.
  */
 export async function crearPlan(ctx, plan, { alAvanzar = () => {}, seguir = () => true, calendarId = null, carrusel = "" } = {}) {
+  if (carrusel) return crearCarruselDelPlan(ctx, plan, { alAvanzar, seguir, titulo: carrusel });
   const { clienteId, activos, kit } = ctx;
   const cola = plan.filter((p) => !p.error).map((p) => p);
   const salida = Object.fromEntries(plan.filter((p) => p.error).map((p) => [p.n, { n: p.n, error: p.error }]));
-  // Las láminas de UN carrusel van a su carpeta, en orden: la galería las enseña como una tarjeta (y no sueltas).
-  const carpetaId = carrusel ? await api.carpetaDeGrupo(clienteId, "carrusel", carrusel) : null;
-  const enCarpeta = carpetaId ? { carpetaId } : {};
   const trabajador = async () => {
     while (cola.length && seguir()) {
       const p = cola.shift();
       alAvanzar(p.n, { cargando: true });
       try {
-        const { trabajo } = await api.pedirImagenes(clienteId, { ...p.pedido, confirmado: true, ...enCarpeta, ...(calendarId && p.postId ? { calendarId, postId: p.postId } : {}) });
+        const { trabajo } = await api.pedirImagenes(clienteId, { ...p.pedido, confirmado: true, ...(calendarId && p.postId ? { calendarId, postId: p.postId } : {}) });
         let [archivo] = await esperarArchivos(clienteId, trabajo, { seguir });
-        if (controlEncendido()) archivo = (await controlarYCorregir({ clienteId, archivo, texto: textoDeLaFicha(p.ficha) || null, activos, seguir, carpetaId })).archivo;
-        archivo = await conLogoSiToca({ clienteId, archivo, kit, carpetaId });
+        if (controlEncendido()) archivo = (await controlarYCorregir({ clienteId, archivo, texto: textoDeLaFicha(p.ficha) || null, activos, seguir })).archivo;
+        archivo = await conLogoSiToca({ clienteId, archivo, kit });
         salida[p.n] = { n: p.n, archivo };
         alAvanzar(p.n, { archivo });
       } catch (e) {
@@ -141,8 +140,42 @@ export async function crearPlan(ctx, plan, { alAvanzar = () => {}, seguir = () =
     }
   };
   await Promise.all(Array.from({ length: Math.min(PARALELO, Math.max(1, cola.length)) }, trabajador));
+  return plan.map((p) => salida[p.n] ?? { n: p.n, error: "No se llegó a crear." });
+}
+
+/**
+ * Un CARRUSEL del director: por el MISMO camino que «Carrusel con IA» (carruselEstudio.js), no pieza a pieza: las
+ * láminas EN ORDEN, cada una con la anterior y la portada de referencia, el sistema de diseño que se saca de la
+ * portada, la ficha de cada lámina, el logo y el control. Antes salían sueltas y en paralelo, cada una por su lado, y
+ * había que «unificarlas» después. Van a su carpeta, en orden (una tarjeta en la galería). Mismo contrato que crearPlan.
+ */
+async function crearCarruselDelPlan(ctx, plan, { alAvanzar, seguir, titulo }) {
+  const { clienteId, activos, cliente, g } = ctx;
+  const kit = limpiarKit(ctx.kit);
+  const validas = plan.filter((p) => !p.error);
+  const salida = Object.fromEntries(plan.filter((p) => p.error).map((p) => [p.n, { n: p.n, error: p.error }]));
+  if (!validas.length) return plan.map((p) => salida[p.n]);
+  const carpetaId = await api.carpetaDeGrupo(clienteId, "carrusel", titulo);
+  const ultima = validas.length - 1;
+  const laminas = validas.map((p, i) => ({
+    n: i + 1, rol: i === 0 ? "portada" : i === ultima && validas.length >= 3 ? "cierre" : "contenido", texto: textoDeLaFicha(p.ficha), ficha: p.ficha,
+  }));
+  const productos = g?.productos ?? [];
+  const nombrados = productosNombrados(productos, validas.map((p) => p.ficha).join("\n"));
+  const fotos = nombrados.length ? api.fotosDeVariosProductos(productos, nombrados.map((x) => x.id), 2).map((f) => f.clave) : [];
+  alAvanzar(validas[0].n, { cargando: true });
+  const hechas = await crearCarrusel({
+    clienteId, modelo: validas[0].modelo, modo: "ia", plantilla: "banda", hilo: titulo, idea: titulo, laminas,
+    preset: estiloDeMarca(kit, validas[0].estilo, { marca: cliente.name, rubro: cliente.industry ?? "" }), fotos, personajes: [],
+    logo: estampaSola(kit) ? "" : kit.logo, estampar: estampaSola(kit) ? kit : null, colores: coloresPlantilla(kit), familia: kit.tipografia, fuente: kit.fuente,
+    carpetaId, seguir, tipografia: referenciaDeTipografia(kit), controlar: controlEncendido(), activos,
+    alAvanzar: (i, r) => {
+      alAvanzar(validas[i].n, r?.final ? { archivo: r.final } : { error: r?.error || "No salió." });
+      if (validas[i + 1]) alAvanzar(validas[i + 1].n, { cargando: true });
+    },
+  });
+  validas.forEach((p, i) => { salida[p.n] = hechas[i]?.final ? { n: p.n, archivo: hechas[i].final } : { n: p.n, error: hechas[i]?.error || "No se llegó a crear." }; });
   const resultado = plan.map((p) => salida[p.n] ?? { n: p.n, error: "No se llegó a crear." });
-  // El orden del carrusel es el del plan (salen de tres en tres y no en orden).
   if (carpetaId) await api.ordenarCarpeta(clienteId, carpetaId, resultado.filter((r) => r.archivo).map((r) => r.archivo.id)).catch(() => {});
   return resultado;
 }

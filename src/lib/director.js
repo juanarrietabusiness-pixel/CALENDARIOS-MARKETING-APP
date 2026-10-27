@@ -187,9 +187,10 @@ function lineaDeEncargo(p) {
  * (paleta, estilo, reglas); `guia`: la identidad visual del cerebro; `plantillas`: las del kit; `concepto`: el de la
  * tanda si ya lo hay. Pura.
  */
-export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], marca = "", guia = "", plantillas = [], manual = null, concepto = "", productos = "" }) {
+export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], marca = "", guia = "", plantillas = [], manual = null, concepto = "", productos = "", correcciones = [], vistas = 0 }) {
   const lista = piezas.slice(0, MAX_FICHAS).map(limpiarPiezaEncargo);
   return [
+    lineaDeVistas(vistas),
     `Eres el director creativo y diseñador gráfico de una agencia en Panamá. Diseña ${lista.length === 1 ? "esta pieza" : `estas ${lista.length} piezas`} de redes sociales para ${cliente}${rubro ? ` (${rubro})` : ""}${lista.length > 1 ? ", como una serie coherente" : ""}.`,
     "Antes de escribir, razona: para qué es cada pieza, qué la hace funcionar, y el sistema visual de la serie. Después escribe la ficha de cada una, completa: quien genera la imagen no sabe nada más que lo que dice la ficha.",
     "",
@@ -200,6 +201,7 @@ export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], 
     guia ? `\nIDENTIDAD VISUAL (del cerebro del cliente):\n${largo(guia, 3500)}` : "",
     productos ? `\nPRODUCTOS (precios exactos; no inventes otros):\n${largo(productos, 1500)}` : "",
     plantillas.length ? `\nPLANTILLAS DE ESTE CLIENTE (diseños que ya funcionaron; si una encaja, síguela y di su id en «plantilla»):\n${plantillas.map(lineaDePlantilla).join("\n")}` : "",
+    lineaDeCorrecciones(correcciones),
     concepto ? `\nCONCEPTO DE LA TANDA (síguelo): ${corto(concepto, 600)}` : "",
     "",
     "LAS PIEZAS:",
@@ -259,4 +261,108 @@ export function resumenDelKit({ kit = null, marca = "", vacio = false, cliente =
     kit.logo ? (kit.logoModo === "estampado" ? "Logo: lo estampa la aplicación encima al terminar; en la ficha deja libre su esquina y no lo dibujes." : "Logo: va de referencia al motor; di en la ficha dónde va y de qué tamaño.") : "Logo: el kit no tiene logo.",
     (kit.plantillas ?? []).length ? `Plantillas guardadas (diseños que ya funcionaron; pasa su id en «plantilla» para seguir una):\n${kit.plantillas.map(lineaDePlantilla).join("\n")}` : "",
   ].filter(Boolean).join("\n");
+}
+
+// ------------------------------------------------------------
+// Lo que la agencia ya corrigió en este cliente (para no repetirlo)
+// ------------------------------------------------------------
+
+/**
+ * Las correcciones recientes de la agencia en este cliente, sacadas de los pedidos de EDICIÓN de su Estudio
+ * («Edita la imagen de referencia: el titular más arriba. Conserva…»): lo que se corrige una y otra vez es lo que el
+ * director tiene que hacer bien desde la ficha. Fuera las que hace sola la aplicación (la letra mal escrita del
+ * control: «donde dice…»; la recomposición de la proporción). `prompts` de la más nueva a la más vieja. Pura.
+ */
+export function correccionesRecientes(prompts = [], max = 8) {
+  const vistas = new Set();
+  const salida = [];
+  for (const p of prompts) {
+    const m = String(p ?? "").match(/^Edita la imagen de referencia(?: 1)?: ([\s\S]+?)\. Conserva todo lo demás/);
+    if (!m) continue;
+    const t = m[1].replace(/\s+/g, " ").trim();
+    if (!t || /donde dice/i.test(t) || /^Recompón/i.test(t)) continue;
+    const clave = t.toLowerCase().slice(0, 60);
+    if (vistas.has(clave)) continue;
+    vistas.add(clave);
+    salida.push(t.slice(0, 200));
+    if (salida.length >= max) break;
+  }
+  return salida;
+}
+
+/** Las correcciones recientes, para el pedido del director. Pura. */
+export const lineaDeCorrecciones = (lista = []) => (lista.length
+  ? `CORRECCIONES QUE LA AGENCIA HIZO HACE POCO EN ESTE CLIENTE (errores que se repiten: que la ficha los evite desde el principio):\n${lista.map((c) => `- ${c}`).join("\n")}`
+  : "");
+
+/** Cuando el director VE imágenes del cliente (plantillas y «Me gusta»): qué son. Pura. */
+export const lineaDeVistas = (n) => (n
+  ? `Las ${n === 1 ? "imagen de arriba es" : `${n} imágenes de arriba son`} plantillas y piezas que le gustaron a la agencia de este cliente: ese es el nivel y el estilo a igualar (no copies su contenido).`
+  : "");
+
+// ------------------------------------------------------------
+// El carrusel, diseñado por el director
+// ------------------------------------------------------------
+
+/** Cómo va en la ficha el sistema de la serie: con medidas, igual en todas las láminas. */
+const REGLA_SERIE = "Un carrusel es UNA serie: el titular en la MISMA zona, del MISMO tamaño y peso en todas las láminas (dilo con medidas: «titular entre el 8 y el 22 % de la altura, 80 % del ancho»), los mismos márgenes, el mismo fondo o su variación, el logo en el mismo sitio y del mismo tamaño. Lo que cambia de una a otra es el contenido.";
+
+/**
+ * Lo que se le pide al director para un carrusel: con el guion (`laminas`: las de partirGuion) o sólo un tema, de 5 a 7
+ * láminas. Devuelve el sistema de la serie y la ficha de cada lámina con su texto exacto. Pura.
+ */
+export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [], tema = "", tipo = "", estilo = "", producto = "", personajes = [], marca = "", guia = "", plantillas = [], manual = null, correcciones = [], vistas = 0 }) {
+  const conGuion = laminas.length >= 2;
+  const deCarrusel = plantillas.filter((p) => p.uso === "portada" || p.uso === "lamina");
+  return [
+    lineaDeVistas(vistas),
+    `Eres el director creativo y diseñador gráfico de una agencia en Panamá. Diseña un carrusel de Instagram (cada lámina vertical 4:5) de ${cliente}${rubro ? ` (${rubro})` : ""}. Un generador de imágenes hará las láminas UNA a una, cada una con la anterior y la portada de referencia, y sólo sabe lo que diga la ficha.`,
+    conGuion
+      ? `EL GUION (respeta su orden y sus datos; puedes acortar un texto que no quepa, sin cambiar precios ni cifras):\n${laminas.map((l) => `${l.n}. (${l.rol}) ${String(l.texto).replace(/\s+/g, " ").slice(0, 400)}`).join("\n")}`
+      : `No hay guion: escribe de 5 a 7 láminas sobre este tema: ${corto(tema, 400)}`,
+    conGuion && tema ? `Tema: ${corto(tema, 300)}` : "",
+    tipo ? `Tipo de contenido: ${tipo}.` : "",
+    estilo ? `Estilo visual: ${corto(estilo, 300)}` : "",
+    producto ? `Producto (real, precio exacto si se nombra): ${corto(producto, 300)}` : "",
+    personajes.length ? `Personajes de la marca (salen IGUAL donde aparezcan): ${personajes.join("; ")}` : "",
+    "",
+    "MANUAL DEL DIRECTOR (síguelo siempre):",
+    manualDeDiseno(manual),
+    "",
+    marca ? `LA MARCA (obligatorio en toda lámina):\n${marca}` : "Este cliente aún no tiene kit de marca: toma los colores y el estilo de la identidad de abajo.",
+    guia ? `\nIDENTIDAD VISUAL (del cerebro del cliente):\n${largo(guia, 3000)}` : "",
+    deCarrusel.length ? `\nPLANTILLAS DE CARRUSEL DE ESTE CLIENTE (si una encaja, sigue su sistema):\n${deCarrusel.map(lineaDePlantilla).join("\n")}` : "",
+    lineaDeCorrecciones(correcciones),
+    "",
+    REGLA_SERIE,
+    "La portada detiene el scroll; las de en medio cuentan una idea cada una; el cierre invita a actuar.",
+    "",
+    "LA FICHA de cada lámina, una línea por apartado y sin líneas en blanco:",
+    FORMATO_FICHA,
+    "",
+    "Reglas: español latino neutro; el texto de cada lámina, corto (se lee en dos segundos), copiado letra por letra entre «» en su ficha; nada de precios, descuentos, sellos ni reseñas que no estén arriba; ningún logo de otra marca.",
+    'Responde SOLO con JSON: {"sistema":"el sistema de la serie en una o dos frases, con medidas","laminas":[{"n":1,"texto":"titular\\napoyo","ficha":"Pieza: …\\nComposición: …"}]}',
+  ].filter((l) => l !== "").join("\n");
+}
+
+/**
+ * La respuesta → { hilo, laminas: [{ n, rol, texto, ficha }] } (2 a 10), con el texto exacto asegurado en cada ficha.
+ * `hilo` es el sistema de la serie (lo que comparten todas). null si no se puede leer. Pura.
+ */
+export function leerCarrusel(texto, maxLaminas = 10) {
+  const t = String(texto ?? "").replace(/```[a-z]*|```/g, "");
+  const i = t.indexOf("{");
+  const j = t.lastIndexOf("}");
+  if (i < 0 || j <= i) return null;
+  let d;
+  try { d = JSON.parse(t.slice(i, j + 1)); } catch { return null; }
+  const lista = (Array.isArray(d?.laminas) ? d.laminas : []).map((x) => {
+    const texto = String(x?.texto ?? "").split(/\n|\\n/).map((l) => l.trim()).filter(Boolean).slice(0, 3).join("\n").slice(0, 400);
+    return { texto, ficha: asegurarTexto(x?.ficha, texto) };
+  }).filter((x) => x.ficha || x.texto).slice(0, maxLaminas);
+  if (lista.length < 2) return null;
+  return {
+    hilo: corto(d?.sistema ?? d?.hilo, 400),
+    laminas: lista.map((x, k) => ({ n: k + 1, rol: k === 0 ? "portada" : k === lista.length - 1 && lista.length >= 3 ? "cierre" : "contenido", ...x })),
+  };
 }

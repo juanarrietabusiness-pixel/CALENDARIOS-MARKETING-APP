@@ -19,7 +19,7 @@ import { kitDe } from "./kit.js";
 import { leerMercado } from "../mercado.js";
 import { bloqueDeMarca, kitVacio } from "../../../src/lib/kitMarca.js";
 import { productosActivos, lineaDeProducto } from "../../../src/lib/estudioMercado.js";
-import { pedidoDeFichas, leerFichas, limpiarPiezaEncargo, MAX_FICHAS } from "../../../src/lib/director.js";
+import { pedidoDeFichas, leerFichas, limpiarPiezaEncargo, MAX_FICHAS, correccionesRecientes } from "../../../src/lib/director.js";
 import { ErrorEstudio } from "./trabajos.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
@@ -48,11 +48,39 @@ export async function guiaVisual(env, acceso, clienteId) {
 }
 
 /**
+ * Lo que la agencia corrigió hace poco en este cliente (los pedidos de edición de su Estudio, los más nuevos primero),
+ * para que el director no repita esos errores. Vacío si no hay o falla.
+ */
+export async function correccionesDelCliente(acceso, clienteId) {
+  try {
+    const filas = await acceso.leerColumnas("estudio_trabajos", ["prompt"], { client_id: clienteId }, "created_at desc", 80);
+    return correccionesRecientes(filas.map((f) => f.prompt));
+  } catch {
+    return [];
+  }
+}
+
+/** Como mucho, las imágenes del cliente que ve el director (las manda el navegador ya pequeñas). */
+export const MAX_VISTAS = 4;
+const MAX_VISTA = 700_000; // caracteres de base64 por imagen (~500 kB): copias de 512–768 px en JPEG
+
+/** Las imágenes que manda el navegador, limpias: sólo JPEG, PNG o WEBP en base64 y de tamaño razonable. */
+export function limpiarVistas(vistas) {
+  return (Array.isArray(vistas) ? vistas : [])
+    .filter((v) => /^image\/(jpeg|png|webp)$/.test(String(v?.media_type ?? "")) && typeof v?.data === "string" && v.data.length > 0 && v.data.length <= MAX_VISTA && /^[A-Za-z0-9+/=]+$/.test(v.data.slice(0, 200)))
+    .slice(0, MAX_VISTAS)
+    .map((v) => ({ type: "image", source: { type: "base64", media_type: v.media_type, data: v.data } }));
+}
+
+/** El pedido con las imágenes delante (si las hay): así el director ve el nivel a igualar. */
+export const conVistas = (bloques, texto) => (bloques.length ? [...bloques, { type: "text", text: texto }] : texto);
+
+/**
  * Las fichas de una tanda. `piezas`: [{ n, formato, tipo, idea, escena, texto, productoId, indicacion, sinTexto,
  * plantilla, composicion, fecha }] (hasta 12); `concepto`: el de la tanda, si ya se sabe.
  * → { concepto, fichas: { n → { ficha, plantilla? } }, modelo, aviso }.
  */
-export async function fichasDeDiseno(env, acceso, cliente, { piezas = [], concepto = "" } = {}) {
+export async function fichasDeDiseno(env, acceso, cliente, { piezas = [], concepto = "", vistas = [] } = {}) {
   const lista = (Array.isArray(piezas) ? piezas : []).slice(0, MAX_FICHAS);
   if (!lista.length) throw new ErrorEstudio("No hay piezas que diseñar.", 400);
   const kit = kitDe(cliente);
@@ -67,12 +95,14 @@ export async function fichasDeDiseno(env, acceso, cliente, { piezas = [], concep
   const productos = [...new Set(lista.map((p) => p?.productoId).filter(Boolean))]
     .map(productoDe).filter(Boolean)
     .map((p) => lineaDeProducto(p, { inventario: mercado.inventario })).join("\n");
-  const [guia, manual] = await Promise.all([guiaVisual(env, acceso, cliente.id), manualDelEspacio(acceso)]);
+  const [guia, manual, correcciones] = await Promise.all([guiaVisual(env, acceso, cliente.id), manualDelEspacio(acceso), correccionesDelCliente(acceso, cliente.id)]);
+  const imagenes = limpiarVistas(vistas);
   const r = await llamarIA(env, acceso, cliente, {
-    prompt: pedidoDeFichas({
+    prompt: conVistas(imagenes, pedidoDeFichas({
       cliente: cliente.name, rubro: cliente.industry ?? "", piezas: encargo,
       marca: kitVacio(kit) ? "" : bloqueDeMarca(kit), guia, plantillas: kit.plantillas, manual, concepto, productos,
-    }),
+      correcciones, vistas: imagenes.length,
+    })),
     salida: Math.min(900 * encargo.length + 1200, 14_000),
     funcion: "director de arte",
   });

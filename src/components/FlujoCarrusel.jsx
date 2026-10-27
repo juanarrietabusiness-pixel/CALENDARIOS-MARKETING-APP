@@ -100,7 +100,7 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
       setHilo(r.hilo ?? "");
       setLaminas(r.laminas);
       setPaso("propuesta");
-      setAviso({ ok: true, texto: ["Revisa la propuesta: qué se ve, el texto exacto y la composición de cada lámina.", r.aviso ?? ""].filter(Boolean).join(" ") });
+      setAviso({ ok: true, texto: ["El director diseñó la serie: revisa el texto de cada lámina y, si quieres, su ficha de diseño.", r.aviso ?? ""].filter(Boolean).join(" ") });
     } catch (e) {
       setAviso({ ok: false, texto: e.message });
     } finally {
@@ -270,7 +270,7 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
         <div className="carrusel-opciones">
           <div className="field">
             <label className="label" htmlFor={`${ids}-hilo`}>Lo que comparten todas las láminas</label>
-            <input id={`${ids}-hilo`} className="input" maxLength={300} value={hilo} onChange={(e) => setHilo(e.target.value)} placeholder="Fondo crema liso, luz natural suave, el mismo bebé pelirrojo con su traje verde" />
+            <input id={`${ids}-hilo`} className="input" maxLength={400} value={hilo} onChange={(e) => setHilo(e.target.value)} placeholder="Fondo crema liso, luz natural suave, el mismo bebé pelirrojo con su traje verde" />
           </div>
           {laminas.length > 2 && (
             <label className="cerebro-casilla">
@@ -315,12 +315,27 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
                   <strong>{l.n}. {ROL[l.rol]}</strong>
                   {paso === "propuesta" ? (
                     <>
-                      <label className="sr-only" htmlFor={`${ids}-esc-${i}`}>Qué se ve en la lámina {l.n}</label>
-                      <textarea id={`${ids}-esc-${i}`} className="textarea" rows={2} maxLength={300} value={l.escena ?? ""} placeholder="Qué se ve (vacío: lo decide el modelo)" onChange={(e) => cambiar(i, "escena", e.target.value)} />
+                      {/* Con la propuesta del director, su ficha de diseño; con el guion tal cual, qué se ve y la composición. */}
+                      {l.ficha === undefined ? (
+                        <>
+                          <label className="sr-only" htmlFor={`${ids}-esc-${i}`}>Qué se ve en la lámina {l.n}</label>
+                          <textarea id={`${ids}-esc-${i}`} className="textarea" rows={2} maxLength={300} value={l.escena ?? ""} placeholder="Qué se ve (vacío: lo decide el modelo)" onChange={(e) => cambiar(i, "escena", e.target.value)} />
+                        </>
+                      ) : null}
                       <label className="sr-only" htmlFor={`${ids}-tx-${i}`}>Texto de la lámina {l.n}</label>
                       <textarea id={`${ids}-tx-${i}`} className="textarea" rows={2} maxLength={400} value={l.texto} placeholder="Titular (primera línea) y apoyo" onChange={(e) => cambiar(i, "texto", e.target.value)} />
-                      <label className="sr-only" htmlFor={`${ids}-co-${i}`}>Composición de la lámina {l.n}</label>
-                      <input id={`${ids}-co-${i}`} className="input" maxLength={200} value={l.composicion ?? ""} placeholder="Composición: dónde va el sujeto y dónde el texto" onChange={(e) => cambiar(i, "composicion", e.target.value)} />
+                      {l.ficha === undefined ? (
+                        <>
+                          <label className="sr-only" htmlFor={`${ids}-co-${i}`}>Composición de la lámina {l.n}</label>
+                          <input id={`${ids}-co-${i}`} className="input" maxLength={200} value={l.composicion ?? ""} placeholder="Composición: dónde va el sujeto y dónde el texto" onChange={(e) => cambiar(i, "composicion", e.target.value)} />
+                        </>
+                      ) : (
+                        <details>
+                          <summary className="hint">Ficha de diseño del director</summary>
+                          <label className="sr-only" htmlFor={`${ids}-fi-${i}`}>Ficha de diseño de la lámina {l.n}</label>
+                          <textarea id={`${ids}-fi-${i}`} className="textarea" rows={6} maxLength={1800} value={l.ficha} onChange={(e) => cambiar(i, "ficha", e.target.value)} />
+                        </details>
+                      )}
                       {laminas.length > 2 && <button type="button" className="btn btn-ghost btn-sm" onClick={() => quitar(i)}><Icon name="trash" size={14} /> Quitar</button>}
                     </>
                   ) : (
