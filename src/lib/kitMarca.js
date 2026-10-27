@@ -238,8 +238,58 @@ export function limpiarKit(guardado) {
     // La VOZ de la marca en los videos con locución: una de las voces fijas de Google (VOCES_OMNI en el catálogo del
     // Estudio; Omni por Kie la registra). Vacía: la que escoja el modelo.
     voz: /^[a-z]{3,20}$/.test(String(g.voz ?? "")) ? String(g.voz) : "",
+    // Las PLANTILLAS: piezas que quedaron muy bien, guardadas con su sistema de diseño para repetir el diseño con otro
+    // contenido (post fijo, historia, portada o lámina de carrusel). Claves de la galería de ESTE cliente.
+    plantillas: limpiarPlantillas(g.plantillas),
     ...(g.preparadoAt ? { preparadoAt: String(g.preparadoAt) } : {}),
   };
+}
+
+/** Plantillas del kit, como mucho: con más, escoger deja de ser rápido. */
+export const MAX_PLANTILLAS = 12;
+const ID_PLANTILLA = /^plantilla-[a-z0-9-]{1,40}$/;
+const USOS_PLANTILLA = ["post", "historia", "portada", "lamina"];
+
+/** Las plantillas: id con forma, nombre, uso, la clave de la imagen y su sistema de diseño en palabras. Pura. */
+function limpiarPlantillas(entrada) {
+  const fuera = [];
+  for (const p of Array.isArray(entrada) ? entrada : []) {
+    const id = String(p?.id ?? "");
+    const clave = String(p?.clave ?? "");
+    const nombre = corto(p?.nombre, 60);
+    if (!ID_PLANTILLA.test(id) || !CLAVE.test(clave) || clave.includes("..") || !nombre || fuera.some((x) => x.id === id)) continue;
+    fuera.push({
+      id, nombre, clave,
+      uso: USOS_PLANTILLA.includes(p?.uso) ? p.uso : "post",
+      sistema: corto(p?.sistema, 900),
+      ...(typeof p?.archivoId === "string" && /^[\w-]{1,80}$/.test(p.archivoId) ? { archivoId: p.archivoId } : {}),
+    });
+  }
+  return fuera.slice(0, MAX_PLANTILLAS);
+}
+
+/** La plantilla `id` del kit, o null. Pura. */
+export const plantillaDelKit = (kitGuardado, id) => (id ? limpiarKit(kitGuardado).plantillas.find((p) => p.id === id) ?? null : null);
+
+/**
+ * La imagen de una plantilla como referencia de una pieza: se toma su DISEÑO (retícula, zonas, tamaños, colores,
+ * tipografía), nunca su contenido. Null si no existe o ya no está en la galería (`archivos`: si se da, se comprueba). Pura.
+ */
+export function referenciaDePlantilla(kitGuardado, id, archivos = null) {
+  const p = plantillaDelKit(kitGuardado, id);
+  if (!p) return null;
+  if (Array.isArray(archivos) && !archivos.some((a) => a.clave === p.clave)) return null;
+  return {
+    clave: p.clave, src: `/api/media/${p.clave}`, toma: ["composicion", "estilo", "tipografia"],
+    nota: `es la PLANTILLA «${p.nombre}» de la marca: repite su diseño (retícula, zonas, tamaños y peso del texto, colores, elementos que se repiten, dónde va el logo) con el contenido NUEVO de esta pieza; no copies su texto, su foto ni su producto`,
+  };
+}
+
+/** El sistema de la plantilla en una línea del pedido (vacío si no tiene). Pura. */
+export function lineaDePlantillaEnPedido(kitGuardado, id) {
+  const p = plantillaDelKit(kitGuardado, id);
+  if (!p?.sistema) return p ? `Sigue el diseño de la plantilla «${p.nombre}» (imagen de referencia): mismo sistema, contenido nuevo.` : "";
+  return `Sigue el diseño de la plantilla «${p.nombre}» (imagen de referencia): ${p.sistema.replace(/^SISTEMA DE DISEÑO[^:]*:\s*/i, "")} Sólo cambia el contenido.`;
 }
 
 /** La fuente de la marca: { clave (el archivo, en `clientes/<c>/fuentes/`), nombre, muestra (imagen del cliente) } o null. */
@@ -576,7 +626,7 @@ export function fundirKit(guardado, propuesto, ahora = new Date().toISOString())
   return limpiarKit({
     ...propuesto, logo: antes.logo, propios: antes.propios, estilos: antes.estilos, estiloPorTipo: antes.estiloPorTipo, personajes: antes.personajes,
     aprendido: antes.aprendido, referencias: antes.referencias, modelos: antes.modelos, reglas: antes.reglas,
-    logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, fuente: antes.fuente, voz: antes.voz, preparadoAt: ahora,
+    logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, fuente: antes.fuente, voz: antes.voz, plantillas: antes.plantillas, preparadoAt: ahora,
   });
 }
 

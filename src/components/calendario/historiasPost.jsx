@@ -7,40 +7,39 @@
 //
 //   · «Usar la imagen del post»: la misma imagen, encajada a 9:16 con
 //     fondo difuminado (o el ajuste elegido). Sin IA, sin coste.
-//   · «Crear con IA»: tres historias NUEVAS que complementan el post con
+//   · «Crear 3 con IA»: tres historias NUEVAS que complementan el post con
 //     su misma información —una pregunta, un beneficio o detalle y el
-//     llamado a la acción—, con la imagen del post de referencia del
-//     producto y del estilo. La misma imagen encajada ya la da el botón de
-//     arriba, sin coste: pedírsela a la IA era pagar por verla tres veces.
+//     llamado a la acción—, por el camino del Estudio (lib/historiasEstudio.js):
+//     el director de arte escribe el texto exacto (antes lo inventaba el motor
+//     de imagen, y de ahí las faltas), el modelo y el kit del cliente, y el
+//     control de calidad corrige la letra que salga mal.
 //
-// Lo que no se escoge se descarta (se borra de R2): generar y no usar no
-// debe llenar la carpeta del cliente.
+// SIEMPRE ACTIVO (decisión de la agencia: casi todo post va también a
+// historias): al poner la primera imagen del post, se prepara sola la
+// encajada, se marca «Publicar también como historia» y se crean las tres
+// con IA para escoger. Se apaga por navegador.
+//
+// Lo que no se escoge va a la papelera del Estudio.
 // ============================================================
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Icon from "../Icon";
-import { generateImage, getContentBankUrl, subirImagenPublicacion, feedbackImage } from "../../lib/db";
+import { subirImagenPublicacion } from "../../lib/db";
 import { historiaDesdeImagen } from "../../lib/medios";
 import { mediosDe, historiasDe, RETRASO_HISTORIA_MIN, LIMITES } from "../../lib/publicacion";
 
-// Los mismos ids que VARIANTES_HISTORIA de worker/rutas/imagen.js.
-const VARIANTES = [
-  ["pregunta", "Pregunta"],
-  ["beneficio", "Beneficio o detalle"],
-  ["accion", "Llamado a la acción"],
-];
-
-/** Lo que la historia tiene que contar de otra forma: la información del post, no su imagen. */
-const infoDelPost = (p) => ({
-  titulo: p.title ?? "", producto: p.producto ?? "", textoPieza: p.textoPieza ?? "",
-  idea: p.idea ?? "", descripcion: p.descripcion || p.script || "",
-});
 const RETRASOS = [0, 5, 15, 30, 60, 120];
 
-export default function HistoriasDelPost({ post, sf, clientId, colorMarca, onError }) {
+/** ¿Crear las historias solas al poner la imagen del post? Por navegador; encendido por defecto. */
+const CLAVE_SOLAS = "historias-solas";
+const leerSolas = () => { try { return localStorage.getItem(CLAVE_SOLAS) !== "0"; } catch { return true; } };
+
+export default function HistoriasDelPost({ post, sf, clientId, cliente = null, calendarId = null, colorMarca, onError }) {
   const ids = useId();
   const [trabajando, setTrabajando] = useState("");
   const [candidatas, setCandidatas] = useState([]);
+  const [solas, setSolasEstado] = useState(leerSolas);
+  const setSolas = (v) => { setSolasEstado(v); try { localStorage.setItem(CLAVE_SOLAS, v ? "1" : "0"); } catch { /* sin almacenamiento */ } };
   const historias = historiasDe(post);
   const base = mediosDe(post).find((m) => m.tipo === "imagen" && m.src.startsWith("/api/media/clientes/"));
   const maximo = LIMITES.instagram.carruselMax;
@@ -51,11 +50,11 @@ export default function HistoriasDelPost({ post, sf, clientId, colorMarca, onErr
     if (lista.length) sf("historiaTambien", true);
   };
 
-  const usarLaDelPost = async () => {
+  const usarLaDelPost = async (antes = historias) => {
     setTrabajando("post");
     try {
       const h = await historiaDesdeImagen(base.src, (f) => subirImagenPublicacion(clientId, f), post.ajusteIG || "difuminado", colorMarca);
-      poner([...historias, h]);
+      poner([...antes, h]);
     } catch (e) {
       onError?.(`No se pudo preparar la historia: ${e.message}`);
     }
@@ -63,31 +62,58 @@ export default function HistoriasDelPost({ post, sf, clientId, colorMarca, onErr
   };
 
   const crearConIA = async () => {
+    if (!cliente) return;
     setTrabajando("ia");
     // Las de una tanda anterior que no se escogieron se quedan; las nuevas van detrás, cada una con su id.
     const tanda = Date.now();
-    const nuevas = VARIANTES.map(([variante, nombre]) => ({ id: `${tanda}-${variante}`, variante, nombre, estado: "creando" }));
+    const { crearHistorias, VARIANTES } = await import("../../lib/historiasEstudio");
+    const nuevas = VARIANTES.map((v) => ({ id: `${tanda}-${v.id}`, variante: v.id, nombre: v.nombre, estado: "creando", paso: "Diseñando…" }));
     setCandidatas((c) => [...c, ...nuevas]);
-    const poner1 = (id, cambio) => setCandidatas((c) => c.map((x) => (x.id === id ? { ...x, ...cambio } : x)));
-    await Promise.all(nuevas.map(async ({ id, variante }) => {
-      try {
-        const { clave } = await generateImage({ clientId, historiaDe: { src: base.src, variante, post: infoDelPost(post) } });
-        poner1(id, { estado: "lista", clave, src: getContentBankUrl(clave) });
-      } catch (e) {
-        poner1(id, { estado: "error", error: e.message });
-      }
-    }));
+    const poner1 = (variante, cambio) => setCandidatas((c) => c.map((x) => (x.id === `${tanda}-${variante}` ? { ...x, ...cambio } : x)));
+    try {
+      await crearHistorias({
+        client: cliente, post, base: base.src,
+        alAvanzar: (variante, r) => poner1(variante, r.archivo ? { estado: "lista", archivo: r.archivo, src: r.archivo.src } : r.error ? { estado: "error", error: r.error } : { paso: r.paso }),
+      });
+    } catch (e) {
+      setCandidatas((c) => c.map((x) => (x.id.startsWith(`${tanda}-`) && x.estado === "creando" ? { ...x, estado: "error", error: e.message } : x)));
+    }
+    window.dispatchEvent(new Event("ia:gasto"));
     setTrabajando("");
   };
 
+  // SIEMPRE ACTIVO: cuando el post RECIBE su primera imagen (no al abrir uno que ya la tenía), la encajada en el acto
+  // y las tres con IA en cuanto el post diga algo (en «Subir» la IA escribe el texto después de subir la imagen).
+  const formatoSinHistoria = ["historia", "live", "reel", "carrusel"].includes(post.format);
+  const hayInfo = Boolean(String(post.idea || post.descripcion || post.textoPieza || post.title || "").trim());
+  const baseAntes = useRef(base?.src ?? null);
+  const faltanLasDeIA = useRef(false);
+  useEffect(() => {
+    const antes = baseAntes.current;
+    baseAntes.current = base?.src ?? null;
+    if (!solas || antes || !base || historias.length || trabajando || formatoSinHistoria) return;
+    faltanLasDeIA.current = Boolean(cliente);
+    usarLaDelPost([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base?.src]);
+  useEffect(() => {
+    if (!faltanLasDeIA.current || !hayInfo || trabajando || !base) return;
+    faltanLasDeIA.current = false;
+    crearConIA();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hayInfo, trabajando, base?.src]);
+
   const elegir = (c) => {
-    poner([...historias, { src: c.src, tipo: "imagen", nombre: `${c.variante}.png`, ancho: 1080, alto: 1920 }]);
+    poner([...historias, { src: c.src, tipo: "imagen", nombre: `${c.variante}.png`, ancho: c.archivo?.ancho || 1080, alto: c.archivo?.alto || 1920 }]);
     setCandidatas((l) => l.filter((x) => x !== c));
+    // Que la papelera del Estudio sepa que la usa esta publicación.
+    if (c.archivo?.id && calendarId && post.id) import("../../lib/estudio").then((api) => api.apuntarUso(clientId, c.archivo.id, { calendarId, postId: post.id })).catch(() => {});
   };
 
   const descartar = (c) => {
     setCandidatas((l) => l.filter((x) => x !== c));
-    if (c.clave) feedbackImage(clientId, c.clave, false).catch(() => {});
+    // Lo que no se escoge, a la papelera del Estudio (se puede recuperar 30 días).
+    if (c.archivo?.id) import("../../lib/estudio").then((api) => api.mandarAPapelera(clientId, c.archivo.id)).catch(() => {});
   };
 
   const quitar = (i) => {
@@ -137,7 +163,7 @@ export default function HistoriasDelPost({ post, sf, clientId, colorMarca, onErr
           {candidatas.map((c) => (
             <li key={c.id}>
               <div className="historias-post-marco" data-estado={c.estado}>
-                {c.estado === "lista" ? <img src={c.src} alt={c.nombre} /> : c.estado === "creando" ? <span>Creando…</span> : <span>{c.error}</span>}
+                {c.estado === "lista" ? <img src={c.src} alt={c.nombre} /> : c.estado === "creando" ? <span>{c.paso || "Creando…"}</span> : <span>{c.error}</span>}
               </div>
               <p>{c.nombre}</p>
               {c.estado !== "creando" && (
@@ -152,16 +178,20 @@ export default function HistoriasDelPost({ post, sf, clientId, colorMarca, onErr
       )}
 
       <div className="historias-post-botones">
-        <button type="button" className="btn btn-secondary btn-sm" disabled={!base || !!trabajando || historias.length >= maximo} onClick={usarLaDelPost}>
+        <button type="button" className="btn btn-secondary btn-sm" disabled={!base || !!trabajando || historias.length >= maximo} onClick={() => usarLaDelPost()}>
           <Icon name="image" size={16} /> {trabajando === "post" ? "Preparando…" : "Usar la imagen del post"}
         </button>
-        <button type="button" className="btn btn-secondary btn-sm" disabled={!base || !!trabajando || historias.length >= maximo} onClick={crearConIA}>
+        <button type="button" className="btn btn-secondary btn-sm" disabled={!base || !cliente || !!trabajando || historias.length >= maximo} onClick={crearConIA}>
           <Icon name="sparkles" size={16} /> {trabajando === "ia" ? "Creando 3 propuestas…" : candidatas.length ? "Otras 3 con IA" : "Crear 3 con IA"}
         </button>
       </div>
+      <label className="casilla">
+        <input type="checkbox" checked={solas} onChange={(e) => setSolas(e.target.checked)} />
+        Al poner la imagen del post, preparar sola la historia y crear 3 con IA para escoger
+      </label>
       <p className="hint">
         {base
-          ? "La historia sale sola a la hora elegida. «Usar la imagen del post» la encaja tal cual; con IA salen tres historias distintas que complementan el post con su misma información (una pregunta, un beneficio y el llamado a la acción). Los stickers se ponen desde el teléfono. Cada imagen con IA cuesta unos 4 céntimos."
+          ? "La historia sale sola a la hora elegida. «Usar la imagen del post» la encaja tal cual; con IA salen tres historias distintas que complementan el post con su misma información (una pregunta, un beneficio y el llamado a la acción), con el texto escrito por el director de arte y revisado. Los stickers se ponen desde el teléfono. Cada imagen con IA cuesta lo que el modelo del cliente (unos céntimos)."
           : "Primero añade una imagen al post: las historias se preparan a partir de ella."}
       </p>
     </section>

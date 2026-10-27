@@ -9,6 +9,7 @@
 //   POST   /<cliente>/trabajos/<id>/cancelar
 //   POST   /<cliente>/trabajos/<id>/reintentar
 //   POST   /<cliente>/mejorar                      { idea, tipo, pieza? }: la IA devuelve la idea más clara (texto)
+//   POST   /<cliente>/fichas                     { piezas, concepto? }: el director de arte, una ficha de diseño por pieza (texto)
 //   POST   /<cliente>/versiones                    { idea, n, tipo }: 1–3 escenas distintas con la misma información (texto)
 //   POST   /<cliente>/lote/ideas                   { modo: niveles|matriz|tipos, desde?, tamano?, … }: la producción en lote, por tandas (texto)
 //   POST   /<cliente>/lote/mes                     { mes, dias, formato, desde?, tamano? }: una pieza por día del mes, con el ritmo y la matriz (texto)
@@ -37,6 +38,8 @@
 //   GET    /<cliente>/voz/<voz>                    la muestra de una voz de Google (audio/wav; se pide una vez y queda en R2)
 //   POST   /<cliente>/kit/fuente                   multipart «archivo»: la fuente de la marca (TTF, OTF, WOFF, WOFF2) → { clave }
 //   POST   /<cliente>/kit/reglas                   { regla } → se suma a «Reglas que no se rompen» del kit
+//   POST   /<cliente>/kit/plantillas               { archivoId, nombre?, uso? }: «Guardar como plantilla» (la IA saca su sistema)
+//   DELETE /<cliente>/kit/plantillas/<id>          quita una plantilla del kit (la imagen se queda en la galería)
 //   POST   /<cliente>/carpetas                     { nombre, tipo? } (tipo «carrusel» | «reel»: la galería la agrupa)
 //   PUT    /<cliente>/carpetas/<id>                { nombre?, orden? } (orden: ids de sus piezas, en orden)
 //   DELETE /<cliente>/carpetas/<id>
@@ -56,8 +59,10 @@ import { revisarComoDirector } from "../lib/estudio/director.js";
 import { firma, difundir } from "../lib/vivo.js";
 import { estadoMotores } from "../lib/estudio/motores.js";
 import { mejorarIdea, versionesDeIdea } from "../lib/estudio/prompt.js";
+import { fichasDeDiseno } from "../lib/estudio/fichas.js";
 import { guionCorto } from "../lib/estudio/guionCorto.js";
 import { kitDe, guardarKit, prepararKit, revisarPieza, subirFuente } from "../lib/estudio/kit.js";
+import { guardarPlantilla, quitarPlantilla } from "../lib/estudio/plantillas.js";
 import { sistemaDePortada, controlarPieza } from "../lib/estudio/control.js";
 import { aprenderDeLoVisual } from "../lib/estudio/aprender.js";
 import { produccionDeLote } from "../lib/estudio/lote.js";
@@ -156,6 +161,18 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         const form = await req.formData().catch(() => null);
         return json(await subirFuente(env, cliente, form?.get("archivo")), 201);
       }
+      // «Guardar como plantilla»: la pieza pasa al kit con su sistema de diseño (la IA la mira una vez).
+      if (c === "plantillas" && !d && metodo === "POST") {
+        const datos = (await cuerpo(req)) ?? {};
+        const r = await guardarPlantilla(env, acceso, cliente, { archivoId: datos.archivoId, nombre: datos.nombre, uso: datos.uso });
+        avisar();
+        return json(r, 201);
+      }
+      if (c === "plantillas" && d && metodo === "DELETE") {
+        const r = await quitarPlantilla(env, acceso, cliente, String(d));
+        avisar();
+        return json(r);
+      }
       if (c === "preparar" && metodo === "POST") return json(await prepararKit(env, acceso, cliente));
       if (c === "aprender" && metodo === "POST") return json(await aprenderDeLoVisual(env, acceso, cliente));
     }
@@ -193,6 +210,18 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       if (!datos) return error("JSON inválido");
       try {
         return json(await mejorarIdea(env, acceso, cliente, datos));
+      } catch (e) {
+        if (e?.estado) return error(e.message, e.estado);
+        throw e;
+      }
+    }
+
+    // ---------- El director de arte: la ficha de diseño de cada pieza de una tanda (texto: no pide nada al motor) ----------
+    if (b === "fichas" && !c && metodo === "POST") {
+      const datos = await cuerpo(req);
+      if (!datos || !Array.isArray(datos.piezas)) return error("Faltan las piezas");
+      try {
+        return json(await fichasDeDiseno(env, acceso, cliente, { piezas: datos.piezas, concepto: String(datos.concepto ?? "") }));
       } catch (e) {
         if (e?.estado) return error(e.message, e.estado);
         throw e;

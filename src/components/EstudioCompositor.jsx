@@ -229,7 +229,7 @@ function TipoDePieza({ ids, preset, onPreset, kit, sinIdea = false }) {
 function EstiloDeMarca({
   ids, preset, kitListo, kit, marca = "", textoPreset, bloqueMarca = "", usarKit = true, onUsarKit,
   estilo = "", estiloResuelto = "", nombreEstilo = "", lineaEstilo = "", onEstilo, fijadoTipo = "", onFijarEstilo = null,
-  conLogo, onConLogo, puedeLogo, estampa = false, esVideo, angulos = [], onAngulo, productos = [], onProducto, gustos = null, refsTipo = [], personajes = null,
+  conLogo, onConLogo, puedeLogo, estampa = false, esVideo, angulos = [], onAngulo, productos = [], onProducto, gustos = null, refsTipo = [], personajes = null, plantillas = null,
 }) {
   const [familia] = String(preset ?? "").split("-");
   const esTipoBase = Boolean(TIPOS_PRESET[familia]);
@@ -310,6 +310,15 @@ function EstiloDeMarca({
             {productos.map((p) => <option key={p.id} value={p.id}>{p.nombre} ({p.fotos.length} {p.fotos.length === 1 ? "foto" : "fotos"})</option>)}
           </select>
           <p className="hint">Las del catálogo: así sale el producto real y no uno parecido. Escoge varios para una pieza con varios productos: se reparten los huecos.</p>
+        </div>
+      )}
+      {plantillas && (
+        <div className="field">
+          <label className="label" htmlFor={`${ids}-plantilla`}>Plantilla</label>
+          <select id={`${ids}-plantilla`} className="input" value={plantillas.escogida} onChange={(e) => plantillas.onCambiar(e.target.value)}>
+            <option value="">Ninguna: diseño libre</option>
+            {plantillas.lista.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+          </select>
         </div>
       )}
       {personajes && (
@@ -423,24 +432,24 @@ function DameIdeas({ ids, generando, lista = [], deTipo = "", conTema = false, o
 }
 
 /**
- * «Mejorar idea»: la IA devuelve la idea más clara y sencilla en el mismo campo, y
- * «Volver a mi idea» la deshace.
+ * «Diseñar con el director»: en una imagen, el director de arte escribe la ficha de diseño completa en el mismo campo
+ * (en un video, la idea más clara); «Volver a mi idea» la deshace.
  */
 function MejorarIdea({ mejorando, onMejorar, onVolverIdea, mejorarSolo = null }) {
   return (
     <div className="est-mejorar">
       <button type="button" className="btn btn-accent btn-sm" disabled={mejorando} onClick={onMejorar}>
-        <Icon name="wand" size={16} /> {mejorando ? "Mejorando la idea…" : "Mejorar idea"}
+        <Icon name="wand" size={16} /> {mejorando ? "El director está diseñando…" : "Diseñar con el director"}
       </button>
       {onVolverIdea && (
         <button type="button" className="btn btn-ghost btn-sm" disabled={mejorando} onClick={onVolverIdea}>
           Volver a mi idea
         </button>
       )}
-      <p className="hint">La reescribe más clara y sencilla para que la IA la entienda. No crea nada todavía.</p>
+      <p className="hint">La convierte en una ficha de diseño (composición, colores, texto exacto). No crea nada todavía.</p>
       {mejorarSolo && (
         <label className="est-logo-casilla">
-          <input type="checkbox" checked={mejorarSolo.activo} onChange={(e) => mejorarSolo.onCambiar(e.target.checked)} /> Mejorarla sola al abrir desde una publicación
+          <input type="checkbox" checked={mejorarSolo.activo} onChange={(e) => mejorarSolo.onCambiar(e.target.checked)} /> Diseñarla sola al abrir desde una publicación
         </label>
       )}
     </div>

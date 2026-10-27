@@ -11,6 +11,8 @@ import GuardarRegla from "./GuardarRegla";
 
 // «Extraer guion y adaptar» (UGC) de un video: sólo se descarga al abrirlo.
 const ExtraerUgc = lazy(() => import("./calendario/ExtraerUgc"));
+// «Guardar como plantilla» va en su chunk: el del Estudio está en su tope.
+const GuardarPlantilla = lazy(() => import("./GuardarPlantilla"));
 
 // ============================================================
 // El visor: la imagen (o el video) grande y todo lo que se sabe de ella
@@ -121,7 +123,7 @@ export default function Visor({
   costoOtra = null, onOtraIgual = null, onOtrasVersiones = null, versionando = false, onRecrear = null,
   onEditar = null, original = null, onVerOriginal = null,
   esLogo = false, onLogo = null, revision = null, onRevisar = null, onCorregir = null, galeria = [],
-  clienteId = null, onEstampar = null, cliente = null,
+  clienteId = null, onEstampar = null, cliente = null, onPlantilla = null,
 }) {
   const ref = useDialogA11y(onCerrar);
   const id = useId();
@@ -212,6 +214,7 @@ export default function Visor({
             </div>
           )}
           {!video && <ControlDeCalidad key={a.id} archivo={a} clienteId={clienteId} lectura={lectura} onAbrir={onVerOriginal} />}
+          {!video && !lectura && clienteId && <Suspense fallback={null}><GuardarPlantilla key={`p-${a.id}`} clienteId={clienteId} archivo={a} onGuardada={onPlantilla} /></Suspense>}
           {!video && (onRevisar || revision) && <RevisionDeMarca revision={revision} onRevisar={onRevisar} onCorregir={lectura ? null : onCorregir} />}
           <div className="est-visor-acciones">
             {!lectura && !video && onEditar && !editando && <button type="button" className="btn btn-secondary" onClick={() => setEditando(true)}><Icon name="pencil" size={16} /> Editar</button>}

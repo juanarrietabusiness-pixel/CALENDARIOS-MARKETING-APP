@@ -120,6 +120,10 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const [conGustos, setConGustos] = useState(() => { try { return localStorage.getItem(claveGustos) === "1"; } catch { return false; } });
   const [variantes, setVariantes] = useState(1);
   const [mejorar, setMejorar] = useState(true);
+  // Lo que la agencia pide para TODA la tanda (lo lee el director de arte al diseñar cada pieza).
+  const [indicacion, setIndicacion] = useState("");
+  // Una plantilla del kit para toda la tanda ("" = la que escoja el director, si alguna encaja).
+  const [plantillaLote, setPlantillaLote] = useState("");
   // El control de calidad de cada pieza (y corregir el texto solo): se recuerda por navegador.
   const [controlar, setControlar] = useState(controlEncendido);
   // Los personajes de la marca que salen en el lote (van de referencia: salen iguales).
@@ -187,7 +191,9 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
       });
       const nueva = r?.ideas?.[0];
       if (!nueva) throw new Error("La IA no devolvió otra idea. Inténtalo otra vez.");
-      setIdeas((l) => l.map((x) => (x.id === i.id ? { ...x, ...nueva, id: x.id, elegida: x.elegida, fecha: x.fecha } : x)));
+      // Lo que pidió la agencia se queda en la idea: también lo lee el director de arte al diseñarla.
+      const pide = otras[i.id]?.nota?.trim() ?? "";
+      setIdeas((l) => l.map((x) => (x.id === i.id ? { ...x, ...nueva, id: x.id, elegida: x.elegida, fecha: x.fecha, ...(pide ? { pide } : {}) } : x)));
       ponerOtra(i.id, { cargando: false, abierta: false, nota: "" });
       window.dispatchEvent(new Event("ia:gasto"));
     } catch (e) {
@@ -408,7 +414,8 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     for (const f of [...new Set(sueltas.map(fmtDe))]) {
       if (!vivo.current) break;
       await crearLote({
-        ideas: sueltas.filter((i) => fmtDe(i) === f), clienteId, modo, formato: f, kit, carpetaId, pedidoDe, mejorar, n: variantes, piezaDe: nombreTipo,
+        ideas: sueltas.filter((i) => fmtDe(i) === f).map((i) => (plantillaLote ? { ...i, plantilla: plantillaLote } : i)), clienteId, modo, formato: f, kit, carpetaId, pedidoDe, mejorar, n: variantes, piezaDe: nombreTipo,
+        indicacion: indicacion.trim(),
         controlar, activos,
         seguir: () => vivo.current,
         alAvanzar: (id, r) => { if (vivo.current) setResultados((m) => ({ ...m, [id]: r.opciones ? { ...r, elegida: 0 } : r })); },
@@ -695,8 +702,24 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                 {" "}Revisar cada pieza al terminar y corregir solo el texto mal escrito (recomendado: la IA la mira y, si sólo falla una letra, edita la misma imagen; céntimos por pieza)
               </label>
               <label className="est-logo-casilla">
-                <input type="checkbox" checked={mejorar} onChange={(e) => setMejorar(e.target.checked)} /> Mejorar cada idea antes de crear, como «Mejorar idea» (recomendado: escena, composición y texto en una o dos frases claras; costo de texto mínimo)
+                <input type="checkbox" checked={mejorar} onChange={(e) => setMejorar(e.target.checked)} /> Que el director de arte diseñe la tanda antes de crear (recomendado: una ficha de diseño por pieza, todas como una serie; las que ya traen su pedido listo no esperan; costo de texto mínimo)
               </label>
+              <div className="field">
+                <label className="label" htmlFor={`${ids}-indicacion`}>Indicación para toda la tanda (opcional)</label>
+                <textarea id={`${ids}-indicacion`} className="textarea" rows={2} maxLength={400} value={indicacion} onChange={(e) => setIndicacion(e.target.value)}
+                  placeholder="Ej.: fondo blanco en todas, el precio siempre grande en amarillo, nada de personas" />
+                <p className="hint" style={{ margin: 0 }}>Manda sobre todo lo demás al diseñar cada pieza.</p>
+              </div>
+              {limpiarKit(kit).plantillas.length > 0 && (
+                <div className="field">
+                  <label className="label" htmlFor={`${ids}-plantilla`}>Plantilla</label>
+                  <select id={`${ids}-plantilla`} className="input" value={plantillaLote} onChange={(e) => setPlantillaLote(e.target.value)}>
+                    <option value="">La que escoja el director (si alguna encaja)</option>
+                    {limpiarKit(kit).plantillas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  </select>
+                  <p className="hint" style={{ margin: 0 }}>Todas las piezas repiten el diseño de esa plantilla, cada una con su contenido.</p>
+                </div>
+              )}
               {archivos.some((a) => a.favorito && a.tipo === "imagen") && (
                 <label className="est-logo-casilla">
                   <input type="checkbox" checked={conGustos} onChange={(e) => { setConGustos(e.target.checked); try { localStorage.setItem(claveGustos, e.target.checked ? "1" : "0"); } catch { /* sin almacenamiento */ } }} />

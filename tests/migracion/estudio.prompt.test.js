@@ -142,24 +142,42 @@ beforeEach(async () => {
 afterEach(() => { vi.unstubAllGlobals(); olvidarModelos(); });
 
 describe("POST /api/estudio/<cliente>/mejorar", () => {
-  it("devuelve la idea más clara, en texto; no crea ningún trabajo y apunta el gasto", async () => {
-    anthropic("Un sofá color arena en una sala con luz natural de la tarde, foto realista.");
-    const res = await mejorar({ idea: "un sofá en una sala bonita" });
+  const FICHA = "Pieza: post vertical 4:5 — vender el sofá.\nComposición: el sofá ocupa los dos tercios de abajo; titular arriba.\nTexto (exacto, sin cambiar una letra): titular «Sofá cama» (grande, blanco).";
+
+  it("una IMAGEN la diseña el director de arte: devuelve su ficha de diseño, en texto, y no crea ningún trabajo", async () => {
+    anthropic(JSON.stringify({ concepto: "", piezas: [{ n: 1, ficha: FICHA }] }));
+    const res = await mejorar({ idea: "un sofá en una sala bonita", texto: "Sofá cama" });
     expect(res.status).toBe(200);
     const r = await res.json();
-    expect(r.idea).toBe("Un sofá color arena en una sala con luz natural de la tarde, foto realista.");
-    expect(textoDe(peticiones[0])).toMatch(/LA IDEA:\nun sofá en una sala bonita/);
-    // Ni imágenes ni nada más: sólo el texto del pedido.
-    expect(typeof peticiones[0].messages[0].content).toBe("string");
+    expect(r.idea).toBe(FICHA);
+    expect(r.ficha).toBe(true);
+    // El pedido es de diseño gráfico: con el manual del director y la ficha.
+    expect(textoDe(peticiones[0])).toMatch(/director creativo y diseñador gráfico/);
+    expect(textoDe(peticiones[0])).toMatch(/de qué va: un sofá en una sala bonita/);
     expect(db.sqlite.prepare("select count(*) as n from estudio_trabajos").get().n).toBe(0);
     const apunte = db.sqlite.prepare("select funcion, client_id from consumo_ia").get();
-    expect({ ...apunte }).toEqual({ funcion: "prompt de imagen", client_id: "c1" });
+    expect({ ...apunte }).toEqual({ funcion: "director de arte", client_id: "c1" });
   });
 
-  it("no mete la marca por detrás: ni la memoria del cerebro, ni lo interno", async () => {
-    anthropic("Un sofá en una sala.");
+  it("el director lee la identidad visual del cerebro, pero nunca lo interno", async () => {
+    anthropic(JSON.stringify({ piezas: [{ n: 1, ficha: FICHA }] }));
     await mejorar({ idea: "un sofá" });
-    expect(textoDe(peticiones[0])).not.toMatch(/azul marino|margen|200 dólares/);
+    expect(textoDe(peticiones[0])).toMatch(/azul marino/);
+    expect(textoDe(peticiones[0])).not.toMatch(/margen|200 dólares/);
+  });
+
+  it("si la IA reescribió el texto de la pieza, la ficha lo recupera EXACTO (no se tira)", async () => {
+    anthropic(JSON.stringify({ piezas: [{ n: 1, ficha: "Pieza: post.\nTexto: titular «Sofa cama»." }] }));
+    const r = await (await mejorar({ idea: "un sofá", texto: "Sofá cama" })).json();
+    expect(r.idea).toMatch(/Texto exacto que va en la imagen[^\n]*«Sofá cama»/);
+  });
+
+  it("un VIDEO sigue con la mejora corta de siempre (va limpio, sin diseño gráfico)", async () => {
+    anthropic("Un sofá que se abre en cama, cámara lenta.");
+    const r = await (await mejorar({ idea: "un sofá que se abre", tipo: "video" })).json();
+    expect(r.idea).toBe("Un sofá que se abre en cama, cámara lenta.");
+    expect(textoDe(peticiones[0])).toMatch(/LA IDEA:\nun sofá que se abre/);
+    expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("prompt de imagen");
   });
 
   it("sin idea no se llama a nadie; y la ruta vieja de «Escribir el prompt» ya no existe", async () => {
@@ -167,6 +185,28 @@ describe("POST /api/estudio/<cliente>/mejorar", () => {
     expect((await mejorar({ idea: "  " })).status).toBe(400);
     expect(peticiones).toHaveLength(0);
     expect((await pedir("/api/estudio/c1/prompt", { method: "POST", body: { idea: "x" } })).status).toBe(404);
+  });
+});
+
+describe("POST /api/estudio/<cliente>/fichas", () => {
+  const fichas = (datos) => pedir("/api/estudio/c1/fichas", { method: "POST", body: datos });
+
+  it("una tanda: una ficha por pieza, como una serie, con el concepto", async () => {
+    anthropic(JSON.stringify({ concepto: "Noviembre azul", piezas: [{ n: 1, ficha: "Pieza: uno.\nTexto: «Envío gratis»" }, { n: 2, ficha: "Pieza: dos." }] }));
+    const res = await fichas({ piezas: [{ n: 1, texto: "Envío gratis", idea: "envío" }, { n: 2, idea: "sofá", sinTexto: true }] });
+    expect(res.status).toBe(200);
+    const r = await res.json();
+    expect(r.concepto).toBe("Noviembre azul");
+    expect(r.fichas[1].ficha).toMatch(/Envío gratis/);
+    expect(r.fichas[2].ficha).toBe("Pieza: dos.");
+    expect(textoDe(peticiones[0])).toMatch(/estas 2 piezas/);
+    expect(textoDe(peticiones[0])).toMatch(/SIN TEXTO en la imagen/);
+  });
+
+  it("sin piezas, 400 sin llamar a nadie", async () => {
+    anthropic("x");
+    expect((await fichas({ piezas: [] })).status).toBe(400);
+    expect(peticiones).toHaveLength(0);
   });
 });
 

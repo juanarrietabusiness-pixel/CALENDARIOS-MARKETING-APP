@@ -16,8 +16,8 @@ export async function listarConversaciones(clienteId) {
   return r?.conversaciones ?? [];
 }
 
-export async function crearConversacion(clienteId, titulo) {
-  return (await pedir(BASE, json("POST", { clienteId: clienteId || null, titulo })))?.conversacion;
+export async function crearConversacion(clienteId, titulo, tema = "") {
+  return (await pedir(BASE, json("POST", { clienteId: clienteId || null, titulo, ...(tema ? { tema } : {}) })))?.conversacion;
 }
 
 export async function renombrarConversacion(id, titulo) {
@@ -37,16 +37,17 @@ export async function titularConversacion(id) {
   return (await pedir(`${BASE}/${encodeURIComponent(id)}/titulo`, json("POST", {})))?.conversacion;
 }
 
-const claveUltima = (clienteId) => `chat-ultima:${clienteId || "general"}`;
+// La del Estudio (tema «diseno») se recuerda aparte: abrir el director no cambia la del chat de siempre.
+const claveUltima = (clienteId, tema = "") => `chat-ultima:${clienteId || "general"}${tema ? `:${tema}` : ""}`;
 
 /** La conversación que esta persona tuvo abierta la última vez en este cliente (o en el general). */
-export function leerUltima(clienteId) {
-  try { return localStorage.getItem(claveUltima(clienteId)) || ""; } catch { return ""; }
+export function leerUltima(clienteId, tema = "") {
+  try { return localStorage.getItem(claveUltima(clienteId, tema)) || ""; } catch { return ""; }
 }
 
-export function guardarUltima(clienteId, id) {
+export function guardarUltima(clienteId, id, tema = "") {
   try {
-    if (id) localStorage.setItem(claveUltima(clienteId), id);
-    else localStorage.removeItem(claveUltima(clienteId));
+    if (id) localStorage.setItem(claveUltima(clienteId, tema), id);
+    else localStorage.removeItem(claveUltima(clienteId, tema));
   } catch { /* sin almacenamiento: se abre la más reciente */ }
 }

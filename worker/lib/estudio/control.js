@@ -80,7 +80,7 @@ export async function controlarPieza(env, acceso, cliente, archivoId, { texto = 
  * que el generador pueda seguir. Se apunta en la ficha (`ajustes.sistema`) y, si ya estaba, se devuelve sin llamar a
  * nadie. `texto`: el de la portada. → { sistema }.
  */
-export async function sistemaDePortada(env, acceso, cliente, archivoId, { texto = "" } = {}) {
+export async function sistemaDePortada(env, acceso, cliente, archivoId, { texto = "", para = "portada" } = {}) {
   const { fila, bytes } = await imagenDeLaGaleria(env, acceso, cliente, archivoId);
   const ajustes = leerJSON(fila.ajustes, {});
   const ya = leerSistema(ajustes.sistema);
@@ -88,7 +88,7 @@ export async function sistemaDePortada(env, acceso, cliente, archivoId, { texto 
   const r = await llamarIA(env, acceso, cliente, {
     prompt: [
       { type: "image", source: { type: "base64", media_type: fila.mime, data: aBase64(bytes) } },
-      { type: "text", text: pedidoDeSistema({ marca: cliente.name, texto: String(texto ?? "").slice(0, MAX_TEXTO) }) },
+      { type: "text", text: pedidoDeSistema({ marca: cliente.name, texto: String(texto ?? "").slice(0, MAX_TEXTO), para }) },
     ],
     salida: 900,
     funcion: "sistema de diseño",

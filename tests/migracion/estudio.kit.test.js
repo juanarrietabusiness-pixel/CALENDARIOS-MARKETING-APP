@@ -286,6 +286,54 @@ describe("el sistema de diseño de la portada de un carrusel", () => {
   });
 });
 
+describe("las plantillas del kit («Guardar como plantilla»)", () => {
+  const SISTEMA = '{"titular":{"tamano":"≈9 % del alto","peso":"extra negrita","mayusculas":true,"color":"#ffffff"},"zonaTexto":"tercio superior","fondo":"placa azul","colores":["#1340b1"],"elementos":[],"logo":"abajo a la derecha"}';
+  async function buena(id = "b1", cliente = "c1") {
+    env.MEDIA.objetos.set(`clientes/${cliente}/estudio/${id}.png`, { bytes: PNG, tipo: "image/png" });
+    db.sqlite.prepare("insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime, prompt) values (?,?,?,?,?,?,?)")
+      .run(id, JEFE, cliente, `clientes/${cliente}/estudio/${id}.png`, "imagen", "image/png", "Oferta con placa azul");
+  }
+  const guardar = (datos, cliente = "c1") => pedir(`/api/estudio/${cliente}/kit/plantillas`, { method: "POST", body: datos });
+
+  it("la IA mira la pieza una vez, escribe su sistema y la pieza pasa al kit con su nombre y su uso", async () => {
+    await buena();
+    anthropic(SISTEMA);
+    const res = await guardar({ archivoId: "b1", nombre: "Oferta azul", uso: "post" });
+    expect(res.status).toBe(201);
+    const { plantilla, kit } = await res.json();
+    expect(plantilla).toMatchObject({ nombre: "Oferta azul", uso: "post", clave: "clientes/c1/estudio/b1.png", archivoId: "b1" });
+    expect(plantilla.id).toMatch(/^plantilla-[a-z0-9-]+$/);
+    expect(plantilla.sistema).toMatch(/tercio superior/);
+    expect(kit.plantillas).toHaveLength(1);
+    expect(kitGuardado().plantillas[0].id).toBe(plantilla.id);
+    expect(textoDe(peticiones[0])).toMatch(/la agencia la guarda como PLANTILLA/);
+    // Guardarla otra vez no la duplica ni vuelve a pagar el análisis.
+    anthropic("{}");
+    const otra = await (await guardar({ archivoId: "b1", nombre: "Oferta azul 2" })).json();
+    expect(otra.kit.plantillas).toHaveLength(1);
+    expect(otra.plantilla.nombre).toBe("Oferta azul 2");
+    expect(peticiones).toHaveLength(0);
+  });
+
+  it("una pieza de otro cliente no se guarda; quitarla deja la imagen en la galería", async () => {
+    await buena("b2", "c2");
+    anthropic(SISTEMA);
+    expect((await guardar({ archivoId: "b2" })).status).toBe(404);
+    await buena();
+    const { plantilla } = await (await guardar({ archivoId: "b1" })).json();
+    const res = await pedir(`/api/estudio/c1/kit/plantillas/${plantilla.id}`, { method: "DELETE" });
+    expect(res.status).toBe(200);
+    expect(kitGuardado().plantillas).toEqual([]);
+    expect(db.sqlite.prepare("select count(*) as n from estudio_archivos where id = 'b1'").get().n).toBe(1);
+  });
+
+  it("el kit no acepta una plantilla con la imagen de otro cliente (la clave llega del navegador)", async () => {
+    const res = await pedir("/api/estudio/c1/kit", { method: "PUT", body: { kit: { plantillas: [{ id: "plantilla-x", nombre: "Ajena", clave: "clientes/c2/estudio/z.png" }] } } });
+    expect(res.status).toBe(200);
+    expect(kitGuardado().plantillas).toEqual([]);
+  });
+});
+
 describe("la fuente de la marca", () => {
   const subir = (bytes, nombre = "Montserrat-Bold.woff2") => {
     const form = new FormData();

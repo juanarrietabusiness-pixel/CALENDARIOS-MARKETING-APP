@@ -44,6 +44,7 @@ import { NIVELES_CONSCIENCIA, CLAVES_NIVEL, nombreDeNivel } from "./consciencia.
 import { PLANTILLAS_TEXTO } from "./carrusel.js";
 import { PILARES, pilarDe, nombreDePilar } from "./pilares.js";
 import { camposDePromptListo } from "./promptImagen.js";
+import { FORMATO_FICHA, limpiarFicha, asegurarTexto } from "./director.js";
 
 export const POR_NIVEL = 5;
 export const MAX_POR_NIVEL = 10;
@@ -53,7 +54,7 @@ export const MAX_TITULAR = 40;
 export const MAX_APOYO = 90;
 export const MAX_ESCENA = 400;
 /** El pedido de la imagen ya listo (escena + texto exacto), como el de «Mejorar idea». */
-export const MAX_IMAGEN = 900;
+export const MAX_IMAGEN = 1_500;
 export const MAX_BRIEF = 300;
 export const MAX_DESCRIPCION = 600;
 export const MAX_TITULO = 60;
@@ -303,7 +304,7 @@ export function textoEstrategiaDelMes(mes = null) {
  */
 export function pedidoDeProduccion({
   marca = "la marca", plan = [], productos = {}, perfiles = {}, estudio = "", contexto = "", usados = [], formato = "post", fechasEspeciales = [], mes = false,
-  nota = "", estrategia = null, falta = "", ugc = "",
+  nota = "", estrategia = null, falta = "", ugc = "", identidad = "",
 }) {
   const perfilesUsados = [...new Set(plan.map((r) => r.perfil).filter(Boolean))].filter((n) => perfiles[n]);
   const cuantas = plan.length === 1 ? "UNA publicación" : `${plan.length} publicaciones`;
@@ -334,7 +335,8 @@ export function pedidoDeProduccion({
     `- "titular": el texto grande de la pieza: ${MAX_TITULAR} caracteres y 8 palabras como mucho. Empieza por un verbo o una pregunta, nunca por el nombre de la marca. Sin el signo «·».`,
     `- "apoyo": una línea corta debajo (${MAX_APOYO} caracteres), o vacía. Si el titular ya lo dice todo, vacía.`,
     `- "escena": qué se VE, en una o dos frases sencillas (sujeto, acción, lugar, luz), con su composición. SIN texto dentro. Si sale una persona, descríbela distinta de las de las demás piezas (edad, rasgos, ropa, lugar).`,
-    deUnaImagen ? `- "imagen"${mixto ? " (SÓLO en las de una imagen: post o historia)" : ""}: lo que se le pide al generador de imágenes, listo para usar: la escena con su composición en una o dos frases sencillas (60 palabras como mucho, sin contar el texto), y el titular y el apoyo EXACTOS entre comillas, tal cual los escribiste, legibles y bien jerarquizados (lo primero grande). Sin listas ni términos técnicos.` : "",
+    deUnaImagen && identidad ? `- (Para la ficha «imagen») LA MARCA: ${corto(identidad, 1500)}` : "",
+    deUnaImagen ? `- "imagen"${mixto ? " (SÓLO en las de una imagen: post o historia)" : ""}: la FICHA DE DISEÑO de la pieza, como la escribiría un director creativo y diseñador gráfico, lista para el generador de imágenes. Una línea por apartado, separadas por \\n: ${FORMATO_FICHA.split("\n").map((l) => l.split(":")[0]).join(", ")}. En «Texto», el titular y el apoyo EXACTOS entre «», tal cual los escribiste, con su tamaño y su posición; en «Fondo», los colores de la marca con su código. Concreta y completa: quien genera la imagen sólo sabe lo que dice la ficha.` : "",
     `- "descripcion": el texto de la publicación (caption), de 2 a 4 frases, con un llamado a la acción si el tipo lo pide; sin hashtags (${MAX_DESCRIPCION} caracteres).`,
     '- "hashtags": de 5 a 10 hashtags útiles para esa publicación (del tema, del rubro y de la zona; ninguno inventado de otra marca), separados por espacios.',
     ...guionLineas,
@@ -390,10 +392,12 @@ export function leerProduccion(texto, plan = [], formato = "post") {
     const titular = limpiarTitular(x?.titular);
     const escena = corto(x?.escena, MAX_ESCENA);
     if (!titular || !escena) return [];
-    // El pedido listo sólo vale si trae el texto EXACTO (si lo reescribió, el motor escribiría otra cosa).
+    // El pedido listo (la ficha de diseño) lleva SIEMPRE el texto exacto: si la IA lo reescribió, se le repone
+    // (asegurarTexto) en vez de tirar la ficha entera por una letra.
     const apoyo = corto(x?.apoyo, MAX_APOYO).replace(/\s*·\s*/g, ". ");
-    const imagen = esGuiado(r.formato ?? formato) ? "" : corto(x?.imagen, MAX_IMAGEN);
-    const imagenValida = imagen && imagen.includes(titular) && (!apoyo || imagen.includes(apoyo));
+    const ficha = esGuiado(r.formato ?? formato) ? "" : limpiarFicha(String(x?.imagen ?? "").replace(/\\n/g, "\n")).slice(0, MAX_IMAGEN);
+    const imagen = ficha ? asegurarTexto(ficha, [titular, apoyo].filter(Boolean).join("\n")) : "";
+    const imagenValida = Boolean(imagen);
     const grupo = r.fecha ? `mes-${r.fecha}` : r.tipo === "anuncio" ? r.nivel : r.tipo;
     vistos[grupo] = (vistos[grupo] ?? 0) + 1;
     return [{

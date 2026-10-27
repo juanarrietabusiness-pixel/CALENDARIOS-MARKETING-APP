@@ -71,6 +71,7 @@ const PestanaContenido = lazy(() => import("./components/PestanaContenido"));
 const FichaCliente = lazy(() => import("./components/FichaCliente"));
 const Cerebro = lazy(() => import("./components/Cerebro"));
 const Estudio = lazy(() => import("./components/Estudio"));
+const DisenoDirector = lazy(() => import("./components/DisenoDirector"));
 const Buscador = lazy(() => import("./components/Buscador"));
 const SubirRapido = lazy(() => import("./components/SubirRapido"));
 const GuardarReferencia = lazy(() => import("./components/GuardarReferencia"));
@@ -88,6 +89,7 @@ const PESTANAS = [
   ["inspiracion", "Inspiración", "eye"],
   ["resultados", "Resultados", "chart"],
   ["estudio", "Estudio", "imageAi"],
+  ["diseno", "Diseño", "palette"],
   ["cerebro", "Cerebro", "brain"],
   ["ficha", "Ficha", "building"],
 ];
@@ -1608,6 +1610,17 @@ function Workspace({ session, ruta }) {
 
                 {pestana === "estudio" && <Estudio key={client.id} client={client} pulso={pulso} onLlevarAlCalendario={llevarAlCalendario} />}
 
+                {pestana === "diseno" && (
+                  <DisenoDirector
+                    key={client.id}
+                    client={client}
+                    asistente={{
+                      calendar, calId: selectedCalId, clients, onCrearEnOtroMes: crearEnOtroMes,
+                      onUpdateCal: esVirtual(calendar) ? (_id, cambiado) => escribirEnMesVacio(calendar, cambiado) : updateCalendar,
+                    }}
+                  />
+                )}
+
                 {pestana === "cerebro" && <Cerebro client={client} />}
 
                 {pestana === "ficha" && (
@@ -1752,7 +1765,8 @@ function Workspace({ session, ruta }) {
         )}
       </Suspense>
 
-      {!showChat && (
+      {/* En «Diseño» el asistente ya está en la página: el botón flotante taparía su botón de enviar. */}
+      {!showChat && pestana !== "diseno" && (
         <button
           className="chat-fab"
           onClick={() => setShowChat(true)}

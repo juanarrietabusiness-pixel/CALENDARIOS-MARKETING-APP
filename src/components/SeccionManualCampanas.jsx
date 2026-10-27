@@ -3,6 +3,7 @@ import Icon from "./Icon";
 import { leerManual, guardarManual } from "../lib/anunciosApi";
 import { editaLaAgencia } from "../lib/sesionActual";
 import { MANUAL_VIDEO_BASE, MAX_MANUAL_VIDEO } from "../lib/directorVideo";
+import { MANUAL_DISENO_BASE, MAX_MANUAL_DISENO } from "../lib/director";
 
 // ============================================================
 // Ajustes → Manual de campañas de la agencia
@@ -38,7 +39,7 @@ export default function SeccionManualCampanas({ pulso = 0 }) {
     try {
       setM(await guardarManual(m));
       setCambiado(false);
-      setAviso({ ok: true, texto: "Guardado. El estratega lo sigue desde el próximo plan." });
+      setAviso({ ok: true, texto: "Guardado. Vale desde el próximo plan, guion o pieza." });
     } catch (e) {
       setAviso({ ok: false, texto: e.message });
     }
@@ -51,8 +52,8 @@ export default function SeccionManualCampanas({ pulso = 0 }) {
         <Icon name="megaphone" size={18} /> Manual de campañas
       </h2>
       <p className="ajustes-intro">
-        Las reglas de la agencia para los anuncios y los videos. El estratega de campañas (en Anuncios) y los guiones de
-        video las siguen siempre, por encima de lo que propongan ellos.
+        Las reglas de la agencia para los anuncios, los videos y el diseño de las piezas. El estratega de campañas (en
+        Anuncios), los guiones de video y el director creativo las siguen siempre, por encima de lo que propongan ellos.
       </p>
       {!m ? <p className="hint">{aviso?.texto ?? "Cargando…"}</p> : (
         <>
@@ -84,6 +85,13 @@ export default function SeccionManualCampanas({ pulso = 0 }) {
               onChange={(e) => poner({ video: e.target.value })} placeholder={MANUAL_VIDEO_BASE} />
             <p className="hint" style={{ margin: 0 }}>Lo sigue TODO guion de video (Reel IA, recrear un anuncio) y «Revisar como director comercial», por encima de cómo venga escrito el pedido. Vacío, vale el de la casa (el que se ve de ejemplo).</p>
             {puede && !m.video && <button type="button" className="btn btn-ghost btn-sm" onClick={() => poner({ video: MANUAL_VIDEO_BASE })}>Partir del de la casa</button>}
+          </div>
+          <div className="field">
+            <label className="label" htmlFor={`${ids}-diseno`}>Manual del director creativo (diseño de las piezas)</label>
+            <textarea id={`${ids}-diseno`} className="textarea" rows={10} maxLength={MAX_MANUAL_DISENO} value={m.diseno ?? ""} readOnly={!puede}
+              onChange={(e) => poner({ diseno: e.target.value })} placeholder={MANUAL_DISENO_BASE} />
+            <p className="hint" style={{ margin: 0 }}>Lo sigue TODA pieza de imagen: el asistente cuando diseña, el director de arte del Estudio, el lote, «Producir el mes», el post y las historias. Vacío, vale el de la casa (el que se ve de ejemplo).</p>
+            {puede && !m.diseno && <button type="button" className="btn btn-ghost btn-sm" onClick={() => poner({ diseno: MANUAL_DISENO_BASE })}>Partir del de la casa</button>}
           </div>
           <div aria-live="polite">{aviso && <p role={aviso.ok ? "status" : "alert"} className={aviso.ok ? "hint" : "cerebro-error"}>{aviso.texto}</p>}</div>
           {puede ? (

@@ -76,7 +76,7 @@ export default function ConversacionesChat({ conversaciones, actualId, onAbrir, 
               ) : (
                 <>
                   <button type="button" className="chat-conv-abrir" onClick={() => onAbrir(c.id)}>
-                    <span className="chat-conv-nombre">{c.titulo || TITULO_NUEVA}</span>
+                    <span className="chat-conv-nombre">{c.titulo || TITULO_NUEVA}{c.tema === "diseno" && <span className="badge chat-conv-diseno">Diseño</span>}</span>
                     <span className="chat-conv-fecha">{cuandoFue(c.updated_at)}</span>
                   </button>
                   <button type="button" className="btn-icon" onClick={() => { setBorrar(null); setEditando({ id: c.id, titulo: c.titulo || "" }); }}

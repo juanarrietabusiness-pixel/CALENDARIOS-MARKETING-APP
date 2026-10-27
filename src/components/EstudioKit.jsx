@@ -2,6 +2,7 @@ import { useId, useState } from "react";
 import Icon from "./Icon";
 import FuenteDeMarca from "./FuenteDeMarca";
 import VozDeMarca from "./VozDeMarca";
+import { NOMBRES_USO } from "../lib/director";
 import {
   TIPOS_PRESET, MAX_PROPIOS, MAX_ESTILOS, MAX_PERSONAJES, MAX_REFS_PRESET, ESTILOS_VISUALES, ESTILO_POR_TIPO, limpiarKit, kitVacio, textoPreset, fundirKit, bloqueDeMarca, nombreDeEstilo,
   MAX_REGLAS,
@@ -152,7 +153,7 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], lectu
           {!propuesta && !borrador && (
             vacio
               ? <p className="hint">Prepáralo con la IA desde el cerebro de {client.name}, o escríbelo a mano. Con el kit, cada idea sale con la paleta, el estilo y el logo de la marca.</p>
-              : <><VistaKit kit={kit} marca={marca} logo={logo} /><div className="field"><span className="label">Fuente de la marca</span><FuenteDeMarca client={client} kit={kit} lectura={lectura} onGuardar={onGuardar} /></div><VozDeMarca client={client} kit={kit} lectura={lectura} onGuardar={onGuardar} /></>
+              : <><VistaKit kit={kit} marca={marca} logo={logo} onQuitarPlantilla={lectura || ocupado ? null : (id) => guardar({ ...kit, plantillas: kit.plantillas.filter((x) => x.id !== id) })} /><div className="field"><span className="label">Fuente de la marca</span><FuenteDeMarca client={client} kit={kit} lectura={lectura} onGuardar={onGuardar} /></div><VozDeMarca client={client} kit={kit} lectura={lectura} onGuardar={onGuardar} /></>
           )}
 
           {!propuesta && !borrador && vacio && !lectura && (
@@ -343,7 +344,7 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], lectu
 }
 
 /** El kit tal cual, para mirar: colores, tipografía, estilo, logo y los presets. */
-function VistaKit({ kit: k, marca, logo = null }) {
+function VistaKit({ kit: k, marca, logo = null, onQuitarPlantilla = null }) {
   const kit = limpiarKit(k);
   return (
     <div className="est-kit-vista">
@@ -380,6 +381,25 @@ function VistaKit({ kit: k, marca, logo = null }) {
           </dd>
         </div>
       </dl>
+      {kit.plantillas.length > 0 && (
+        <section className="est-kit-plantillas" aria-label="Plantillas de la marca">
+          <p className="label" style={{ margin: 0 }}>Plantillas ({kit.plantillas.length})</p>
+          <p className="hint" style={{ margin: 0 }}>Piezas que quedaron muy bien: se repite su diseño con otro contenido. Se guardan desde la galería («Guardar como plantilla»).</p>
+          <ul className="est-kit-plantillas-lista">
+            {kit.plantillas.map((p) => (
+              <li key={p.id}>
+                <img src={`/api/media/${p.clave}`} alt={p.nombre} loading="lazy" />
+                <span><strong>{p.nombre}</strong> <span className="hint">· {NOMBRES_USO[p.uso] ?? p.uso}</span></span>
+                {onQuitarPlantilla && (
+                  <button type="button" className="btn-icon" aria-label={`Quitar la plantilla ${p.nombre}`} onClick={() => onQuitarPlantilla(p.id)}>
+                    <Icon name="close" size={14} />
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <details className="est-kit-presets">
         <summary>Ver lo que va en cada pieza y los presets</summary>
         {bloqueDeMarca(kit) && <p><strong>En toda pieza:</strong> {bloqueDeMarca(kit)}</p>}

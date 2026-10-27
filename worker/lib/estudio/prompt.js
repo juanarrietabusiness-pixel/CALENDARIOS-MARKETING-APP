@@ -1,6 +1,9 @@
 // ============================================================
 // «Mejorar idea»: la idea de la persona, más clara, y nada más
 //
+// (Para una IMAGEN ya no: la diseña el director de arte —fichas.js— y vuelve
+// su ficha de diseño. Lo de abajo sigue para el VIDEO, que va limpio.)
+//
 // La persona escribe lo que quiere con sus palabras; la IA la devuelve
 // mejor dicha para que el motor de imagen o video la entienda: una o dos
 // frases sencillas, con el sujeto, dónde está y cómo se ve. Sin listas,
@@ -16,6 +19,7 @@
 // ============================================================
 
 import { llamarIA } from "../cerebro/ia.js";
+import { fichasDeDiseno } from "./fichas.js";
 
 const MAX_IDEA = 2_000;
 /** Palabras como mucho de la idea mejorada: más que eso ya es un prompt. */
@@ -53,10 +57,24 @@ export function leerIdea(texto) {
   return limpio.replace(/\s*\n+\s*/g, " ");
 }
 
-/** Mejora la idea. `datos`: { idea, tipo, pieza? } (`pieza`: el nombre del tipo de pieza, como contexto). */
+/**
+ * Mejora la idea. `datos`: { idea, tipo, pieza?, texto?, productoId?, indicacion?, formato?, proporcion?, sinTexto?,
+ * plantilla? } (`pieza`: el nombre del tipo de pieza). Una IMAGEN la diseña el director de arte (fichas.js): devuelve
+ * su ficha de diseño, no una frase. Un VIDEO sigue con la mejora corta de siempre (va limpio, sin diseño gráfico).
+ */
 export async function mejorarIdea(env, acceso, cliente, datos = {}) {
   const idea = String(datos.idea ?? "").trim();
   if (!idea) throw Object.assign(new Error("Escribe primero la idea, con tus palabras."), { estado: 400 });
+  if (datos.tipo !== "video") {
+    const r = await fichasDeDiseno(env, acceso, cliente, {
+      piezas: [{
+        n: 1, idea, tipo: datos.pieza, formato: datos.formato, proporcion: datos.proporcion, texto: datos.texto,
+        productoId: datos.productoId, indicacion: datos.indicacion, sinTexto: datos.sinTexto === true, plantilla: datos.plantilla,
+      }],
+    });
+    const f = r.fichas[1];
+    return { idea: f.ficha, ...(f.plantilla ? { plantilla: f.plantilla } : {}), modelo: r.modelo, aviso: r.aviso, ficha: true };
+  }
   const r = await llamarIA(env, acceso, cliente, {
     prompt: pedidoDeMejora({ idea, tipo: datos.tipo === "video" ? "video" : "imagen", cliente, pieza: datos.pieza }),
     salida: 600,

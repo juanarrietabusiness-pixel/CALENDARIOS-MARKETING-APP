@@ -71,6 +71,8 @@ export function limpiarManual(m = {}) {
     tasaCierre: tasa > 0 && tasa <= 100 ? tasa : TASA_CIERRE_POR_DEFECTO,
     // El criterio comercial de los VIDEOS (lib/directorVideo.js); vacío, vale el de la casa.
     video: largo(m?.video, MAX_MANUAL),
+    // El manual del DIRECTOR CREATIVO de las piezas (lib/director.js); vacío, vale el de la casa.
+    diseno: largo(m?.diseno, MAX_MANUAL),
   };
 }
 

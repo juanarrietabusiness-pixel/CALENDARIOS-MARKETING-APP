@@ -75,7 +75,7 @@ export const FUNCIONES_IA = Object.freeze({
   guiones: ["guiones", "guion de video", "fórmula UGC", "voz UGC", "director comercial"],
   lectura: ["lectura de contenido"],
   asistente: ["asistente", "resumen del chat", "título de conversación"],
-  prompts: ["prompt de imagen"],
+  prompts: ["prompt de imagen", "director de arte"],
   analisis: ["informe", "auditoria", "cerebro", "ADN de marca", "kit de marca", "revisión de marca", "control de calidad", "sistema de diseño", "aprendizaje visual", "estudio de mercado", "catálogo", "referencia de competencia", "revisión de textos", "estratega de campañas", "diagnóstico de campañas", "informe de anuncios", "saber del rubro", "lo que funciona en la competencia"],
 });
 /** Lo que escribe Muse Spark Contributor por defecto en cuanto hay llave de Meta (decisión de la agencia). */

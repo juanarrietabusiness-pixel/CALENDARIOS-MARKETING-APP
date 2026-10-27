@@ -15,6 +15,7 @@ import { controlarYCorregir, controlEncendido, encenderControl } from "../../lib
 import { resumenControl } from "../../lib/control";
 import { referenciaDeTipografia } from "../../lib/kitMarca";
 import { aprobadaPorDentro } from "../../lib/revisionIdeas";
+import { promptListo, conPromptListo } from "../../lib/promptImagen";
 import { DIAS_SEMANA, diaDeLaSemana, semanasDe, diasDe, filtrarProduccion, ordenarProduccion } from "../../lib/produccion";
 import "./RevisionMes.css";
 
@@ -61,7 +62,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
   const [semanas, setSemanas] = useState(() => new Set()); // vacío = todas
   const [dias, setDias] = useState(() => new Set());
   const [orden, setOrden] = useState("dia");
-  // Como al abrir «Crear con IA» desde una publicación: la idea, el texto y el contexto pasan por «Mejorar idea».
+  // El director de arte diseña cada imagen (la ficha de diseño), como «Crear con IA» desde una publicación.
   const [mejorar, setMejorar] = useState(true);
   // El control de calidad de cada pieza al llegar (y corregir el texto solo): se recuerda por navegador.
   const [controlar, setControlar] = useState(controlEncendido);
@@ -140,14 +141,41 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
     setPaso("creando");
     setAviso(null);
     const creados = [];
+    // El director de arte diseña las imágenes como una SERIE, en tandas de 6: la ficha que ya traía la publicación (su
+    // pedido listo) se usa tal cual; las demás se diseñan juntas y la ficha se guarda en el post (`onFicha`).
+    const fichas = {};
+    const nuevas = {};
+    if (mejorar) {
+      const sueltas = elegidas.filter((x) => x.tipo === "imagen");
+      for (const c of sueltas) { const l = promptListo(c.post); if (l) fichas[c.post.id] = l; }
+      const faltan = sueltas.filter((c) => !fichas[c.post.id]);
+      let concepto = "";
+      for (let k = 0; k < faltan.length && vivo.current; k += 6) {
+        const tanda = faltan.slice(k, k + 6);
+        setAviso({ ok: true, texto: `El director de arte está diseñando ${k + tanda.length} de ${faltan.length}…` });
+        const r = await api.fichasDeDiseno(clienteId, {
+          concepto,
+          piezas: tanda.map((c, j) => ({
+            n: j + 1, formato: c.post.format === "historia" ? "historia" : "post", proporcion: proporcionDe(c.post.format, "imagen"),
+            tipo: c.pieza, idea: [c.post.title, c.post.idea].filter(Boolean).join(" — "), escena: c.post.escena ?? "",
+            texto: c.post.textoPieza ?? "", productoId: c.post.productoId ?? "", composicion: c.post.composicion ?? "", fecha: c.date,
+          })),
+        }).catch(() => null);
+        concepto ||= r?.concepto ?? "";
+        tanda.forEach((c, j) => {
+          const f = r?.fichas?.[j + 1]?.ficha;
+          if (f) { fichas[c.post.id] = f; nuevas[c.post.id] = f; }
+        });
+      }
+      // Las fichas nuevas se quedan en su publicación, todas de una vez: la próxima vez salen al instante.
+      if (Object.keys(nuevas).length) onPoner((p) => (nuevas[p.id] ? conPromptListo(p, nuevas[p.id]) : p));
+      setAviso(null);
+    }
     for (const c of elegidas.filter((x) => x.tipo !== "carrusel")) {
       if (!vivo.current) return;
       try {
         let pedido = c.pedido;
-        if (mejorar && c.tipo === "imagen") {
-          const r = await api.mejorarIdea(clienteId, { idea: c.ideaBase, tipo: "imagen", pieza: c.pieza }).catch(() => null);
-          if (r?.idea) pedido = c.armar(r.idea);
-        }
+        if (mejorar && c.tipo === "imagen" && fichas[c.post.id]) pedido = c.armar(fichas[c.post.id]);
         const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, ...(c.tipo === "imagen" ? { n: versiones } : {}), confirmado: true, calendarId: cal.dbId || cal.id, postId: c.post.id });
         creados.push({ postId: c.post.id, date: c.date, format: c.post.format, titulo: c.post.title || c.post.idea || "", id: trabajo.id, estado: trabajo.estado, error: "" });
       } catch (e) {
@@ -308,7 +336,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
                 </div>
               )}
               <label className="est-logo-casilla">
-                <input type="checkbox" checked={mejorar} onChange={(e) => setMejorar(e.target.checked)} /> Mejorar cada idea antes de crear, como «Mejorar idea» (recomendado; costo de texto mínimo)
+                <input type="checkbox" checked={mejorar} onChange={(e) => setMejorar(e.target.checked)} /> Que el director de arte diseñe cada imagen antes de crear (recomendado: una ficha de diseño por pieza, todas como una serie; las que ya la tienen no esperan; costo de texto mínimo)
               </label>
               <label className="cerebro-casilla">
                 <input type="checkbox" checked={controlar} onChange={(e) => { setControlar(e.target.checked); encenderControl(e.target.checked); }} /> Revisar cada pieza al llegar y corregir solo el texto mal escrito (recomendado; céntimos por pieza)

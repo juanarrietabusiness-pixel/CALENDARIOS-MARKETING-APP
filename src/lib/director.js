@@ -1,0 +1,261 @@
+// ============================================================
+// El DIRECTOR CREATIVO de las piezas (puro)
+//
+// Las piezas que salían del asistente eran mucho mejores que las del Estudio,
+// y la diferencia no era el motor: era el PEDIDO. El asistente escribía una
+// instrucción de diseño gráfico —zonas, placas, colores exactos, tamaño del
+// titular— razonando como un diseñador; el Estudio pasaba todo por «Mejorar
+// idea», que por regla devolvía una o dos frases de 60 palabras describiendo
+// una foto. Con eso no se puede pedir una maqueta.
+//
+// Aquí vive lo que hace que se diseñe igual en todas partes:
+//
+//   · El MANUAL del director (editable en Ajustes → Manual de la agencia,
+//     `manual.diseno`; vacío vale `MANUAL_DISENO_BASE`, escrito con palabras
+//     propias): el proceso, las reglas de diseño y cómo se revisa.
+//   · La FICHA DE DISEÑO (`FORMATO_FICHA`): la única forma de pedir una
+//     imagen con diseño. La escriben el asistente (disenar_piezas), el
+//     director de arte por tandas (`pedidoDeFichas`, worker/lib/estudio/
+//     fichas.js) y el motor de ideas del lote (el campo `imagen`).
+//   · Lo que nunca se pierde: el texto EXACTO de la pieza. `asegurarTexto`
+//     lo repone si la IA lo reescribió, en vez de tirar la ficha entera.
+//
+// Lo importan el Worker y la pantalla.
+// ============================================================
+
+export const MAX_MANUAL_DISENO = 6_000;
+/** Una ficha, como mucho: con la marca, las referencias y el logo detrás, el pedido no pasa de MAX_PROMPT (4.000). */
+export const MAX_FICHA = 1_800;
+/** Piezas por llamada al director de arte: más que eso y cada una recibe poca atención. */
+export const MAX_FICHAS = 12;
+
+const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
+const largo = (t, n) => String(t ?? "").replace(/\r/g, "").trim().slice(0, n);
+
+export const MANUAL_DISENO_BASE = [
+  "PROCESO",
+  "1. Entiende para qué es cada pieza (vender, enseñar, dar confianza, recordar la marca) y a quién le habla.",
+  "2. En una tanda, define antes el CONCEPTO que une las piezas y su SISTEMA VISUAL: qué se repite (tipografía, colores, márgenes, dónde va el logo) y qué cambia de una a otra.",
+  "3. Escribe una ficha por pieza, completa: quien la genera no sabe nada más que lo que dice la ficha.",
+  "4. Revisa cada imagen hecha como un director: el texto letra por letra, que el titular se lea en un teléfono, la jerarquía, la marca, nada deformado ni inventado. Si es un detalle, corrige esa misma imagen; si la composición no sirve, rehazla.",
+  "",
+  "REGLAS DE DISEÑO",
+  "- Un mensaje por pieza. Titular de 2 a 7 palabras, lo más grande de la pieza; apoyo de una línea; botón de 2 o 3 palabras.",
+  "- Jerarquía: 1) titular, 2) imagen o producto, 3) apoyo, 4) botón y logo. Como mucho tres tamaños de letra y dos familias.",
+  "- Contraste siempre: letra clara sobre fondo oscuro o al revés. Sobre una foto, el texto va en una placa, una banda o una zona limpia de la foto.",
+  "- Retícula: márgenes de un 6 a 8 % del ancho, todo alineado a las mismas líneas, aire alrededor del titular.",
+  "- Zonas seguras: en un post 4:5 nada importante pegado al borde; en historia y reel, libres el 14 % de arriba y el 20 % de abajo.",
+  "- Los colores de la marca con su código exacto y en proporción: uno manda, otro acompaña y el acento sólo en lo que se toca (precio, botón, oferta).",
+  "- El producto real se ve grande, nítido y fiel; si hay foto del producto, se copia tal cual.",
+  "- Fotografía creíble antes que ilustración genérica (salvo que la marca diga otra cosa); personas y lugares de Panamá y Latinoamérica.",
+  "- Variedad en la serie: dos piezas seguidas no repiten composición. Alterna foto a sangre, placa de color, pantalla dividida, producto aislado sobre color, tipográfica, antes y después.",
+  "- Nada inventado: precios, descuentos, fechas, reseñas, sellos o logos sólo si están en los datos.",
+  "- El texto, en español sin faltas, entre comillas «…» y copiado exacto.",
+].join("\n");
+
+/** El manual que vale: el escrito por la agencia o el de la casa. Pura. */
+export const manualDeDiseno = (manual) => largo(manual?.diseno, MAX_MANUAL_DISENO) || MANUAL_DISENO_BASE;
+
+/** Cómo se escribe una ficha: la misma para el asistente, el director de arte y el motor de ideas. */
+export const FORMATO_FICHA = [
+  "Pieza: <formato y proporción> — <para qué es, en una frase>.",
+  "Composición: <la retícula y dónde va cada cosa (arriba, centro, abajo; izquierda, derecha) con proporciones aproximadas>.",
+  "Fondo: <color con su código #HEX, foto a sangre, degradado, textura>.",
+  "Imagen principal: <qué se ve: sujeto o producto, acción, lugar, luz y encuadre>.",
+  "Texto (exacto, sin cambiar una letra): titular «…» (<tamaño, peso, color, posición>); apoyo «…» (…); botón «…» (<forma y color>).",
+  "Marca: <dónde va el logo y de qué tamaño; qué colores de la paleta mandan>.",
+  "Evitar: <lo que no debe salir>.",
+].join("\n");
+
+/** Una pieza que NO lleva texto (lo pone la plantilla encima, o es un video): la línea de texto cambia por esto. */
+export const FICHA_SIN_TEXTO = "Texto: NINGUNO. No escribas letras ni números en la imagen; deja libre y limpia la zona indicada.";
+
+/** La ficha limpia: sin líneas en blanco (el pedido del motor separa sus partes con una línea en blanco) y con tope. Pura. */
+export function limpiarFicha(texto) {
+  return String(texto ?? "")
+    .replace(/\r/g, "")
+    .replace(/```[a-z]*|```/g, "")
+    .split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean)
+    .join("\n")
+    .slice(0, MAX_FICHA)
+    .trim();
+}
+
+const sinMarcas = (t) => String(t ?? "").normalize("NFC").replace(/["“”«»]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+
+/** Las líneas del texto de la pieza (titular, apoyo, botón), sin comillas. Pura. */
+export const lineasDelTexto = (texto) => String(texto ?? "").split(/\n+/).map((l) => l.replace(/["“”«»]/g, "").trim()).filter(Boolean).slice(0, 4);
+
+/**
+ * La ficha con el texto EXACTO de la pieza dentro. Si la IA reescribió alguna línea (o se la comió), se añade la línea
+ * «Texto exacto…» con las que faltan: el texto de la pieza lo escribió una persona o el motor de ideas, y es lo único
+ * que el diseño no decide. Antes se tiraba la ficha entera por una letra cambiada. Pura.
+ */
+export function asegurarTexto(ficha, texto) {
+  const f = limpiarFicha(ficha);
+  const lineas = lineasDelTexto(texto);
+  if (!f || !lineas.length) return f;
+  const dentro = sinMarcas(f);
+  const faltan = lineas.filter((l) => !dentro.includes(sinMarcas(l)));
+  if (!faltan.length) return f;
+  return limpiarFicha(`${f}\nTexto exacto que va en la imagen (gana sobre cualquier otro texto de esta ficha): ${faltan.map((l) => `«${l.slice(0, 120)}»`).join(" / ")}.`);
+}
+
+// ------------------------------------------------------------
+// El asistente, como director creativo
+// ------------------------------------------------------------
+
+/**
+ * Lo que el asistente sabe de cómo diseñar: el manual, la ficha y cómo usar sus herramientas de diseño. Va en su
+ * sistema cuando hay un cliente abierto. Pura.
+ */
+export function instruccionDeDiseno(manual) {
+  return [
+    "CÓMO DISEÑAS: ERES EL DIRECTOR CREATIVO Y DISEÑADOR GRÁFICO DE LA AGENCIA",
+    "La persona te da instrucciones sencillas («12 posts de noviembre, envío gratis»). Tú razonas todo lo demás: el concepto, el sistema visual, la composición y el texto de cada pieza. No le preguntes lo que puedas decidir con el cerebro del cliente, su calendario y su kit; pregunta sólo lo imprescindible.",
+    "",
+    "MANUAL DEL DIRECTOR (síguelo siempre):",
+    manualDeDiseno(manual),
+    "",
+    "LA FICHA DE DISEÑO: cada pieza se pide con una ficha así, una línea por apartado (quien genera la imagen sólo sabe lo que dice):",
+    FORMATO_FICHA,
+    "",
+    "TUS HERRAMIENTAS DE DISEÑO:",
+    "· disenar_piezas: de 1 a 12 piezas, una ficha cada una. La persona ve las fichas y el costo y aprueba con un botón: NO le pidas el «sí» por texto antes. Si son para publicaciones del calendario, pasa el post_id de cada una y copia su texto de la pieza TAL CUAL.",
+    "· ver_lo_que_funciona: las plantillas y las imágenes que gustaron de este cliente, para que veas su estilo. Míralo antes de la primera tanda de la conversación.",
+    "· Al terminar, disenar_piezas te devuelve cada imagen para que la MIRES. Si una tiene una falta de ortografía, un texto ilegible, un logo deformado o se sale del sistema, arréglala con corregir_pieza (un detalle) o pídela otra vez con disenar_piezas (la composición no sirve) ANTES de dar la tanda por buena. Di en una línea qué corregiste.",
+    "· version_final: cuando la persona escoja las buenas, la misma pieza con el mejor modelo que haya (los borradores salen con el modelo del cliente).",
+    "· guardar_regla: si la persona corrige lo mismo dos veces, ofrécele guardarlo como regla del kit (va en todas las piezas); sólo con su sí.",
+    "· La persona puede señalar una imagen escribiendo «En la imagen clientes/…:»: es su clave; pásala como archivo_id a corregir_pieza o version_final.",
+    "· generar_imagen sigue para una imagen rápida sin diseño (una foto, una ilustración).",
+  ].join("\n");
+}
+
+/** Una plantilla del kit en una línea, para el asistente y el director de arte. Pura. */
+export const lineaDePlantilla = (p) => `- ${p.id} · «${p.nombre}» (${NOMBRES_USO[p.uso] ?? p.uso})${p.sistema ? `: ${corto(p.sistema, 400)}` : ""}`;
+
+export const USOS_PLANTILLA = Object.freeze(["post", "historia", "portada", "lamina"]);
+export const NOMBRES_USO = Object.freeze({ post: "post fijo", historia: "historia", portada: "portada de carrusel", lamina: "lámina interior de carrusel" });
+
+// ------------------------------------------------------------
+// El director de arte por tandas (sin chat)
+// ------------------------------------------------------------
+
+/**
+ * Una pieza del encargo, limpia. `n` su número; `formato` post|historia|carrusel|reel; `tipo` el tipo de contenido (su
+ * nombre); `idea` el brief; `escena` lo que una persona escribió de qué se ve (manda); `texto` el texto EXACTO de la
+ * pieza; `producto` su línea del catálogo; `indicacion` lo que pidió la agencia (manda sobre todo); `sinTexto` si el
+ * texto lo pone la plantilla encima; `plantilla` el id de una plantilla del kit. Pura.
+ */
+export function limpiarPiezaEncargo(p = {}, i = 0) {
+  return {
+    n: Number.isInteger(p.n) && p.n > 0 ? p.n : i + 1,
+    formato: ["post", "historia", "carrusel", "reel", "anuncio"].includes(p.formato) ? p.formato : "post",
+    proporcion: /^\d{1,2}:\d{1,2}$/.test(String(p.proporcion ?? "")) ? String(p.proporcion) : "",
+    tipo: corto(p.tipo, 80),
+    idea: corto(p.idea, 900),
+    escena: corto(p.escena, 900),
+    texto: largo(p.texto, 400),
+    producto: corto(p.producto, 300),
+    indicacion: corto(p.indicacion, 400),
+    composicion: corto(p.composicion, 200),
+    sinTexto: p.sinTexto === true,
+    plantilla: /^plantilla-[a-z0-9-]{1,40}$/.test(String(p.plantilla ?? "")) ? String(p.plantilla) : "",
+    fecha: /^\d{4}-\d{2}-\d{2}$/.test(String(p.fecha ?? "")) ? String(p.fecha) : "",
+  };
+}
+
+const NOMBRE_FORMATO = { post: "post del feed", historia: "historia (9:16)", carrusel: "portada de carrusel", reel: "portada de reel (9:16)", anuncio: "anuncio" };
+
+/** Una pieza del encargo en el pedido. Pura. */
+function lineaDeEncargo(p) {
+  return [
+    `${p.n}. ${NOMBRE_FORMATO[p.formato] ?? p.formato}${p.proporcion ? ` ${p.proporcion}` : ""}${p.fecha ? ` · ${p.fecha}` : ""}${p.tipo ? ` · tipo: ${p.tipo}` : ""}`,
+    p.idea ? `   de qué va: ${p.idea}` : "",
+    p.escena ? `   qué se ve (lo escribió la agencia: respétalo): ${p.escena}` : "",
+    p.sinTexto ? "   SIN TEXTO en la imagen: el texto se pone después encima; deja la zona libre." : p.texto ? `   texto EXACTO de la pieza: ${lineasDelTexto(p.texto).map((l) => `«${l}»`).join(" / ")}` : "   sin texto escrito: propón un titular corto y, si hace falta, un apoyo.",
+    p.producto ? `   producto (real, con su precio exacto si se nombra): ${p.producto}` : "",
+    p.composicion ? `   composición sugerida por el plan: ${p.composicion}` : "",
+    p.plantilla ? `   sigue la plantilla ${p.plantilla} (su sistema de diseño, con este contenido)` : "",
+    p.indicacion ? `   LO QUE PIDE LA AGENCIA (manda sobre todo lo demás): ${p.indicacion}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+/**
+ * Lo que se le pide al director de arte: una ficha por pieza, todas de una serie coherente. `marca`: el bloque del kit
+ * (paleta, estilo, reglas); `guia`: la identidad visual del cerebro; `plantillas`: las del kit; `concepto`: el de la
+ * tanda si ya lo hay. Pura.
+ */
+export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], marca = "", guia = "", plantillas = [], manual = null, concepto = "", productos = "" }) {
+  const lista = piezas.slice(0, MAX_FICHAS).map(limpiarPiezaEncargo);
+  return [
+    `Eres el director creativo y diseñador gráfico de una agencia en Panamá. Diseña ${lista.length === 1 ? "esta pieza" : `estas ${lista.length} piezas`} de redes sociales para ${cliente}${rubro ? ` (${rubro})` : ""}${lista.length > 1 ? ", como una serie coherente" : ""}.`,
+    "Antes de escribir, razona: para qué es cada pieza, qué la hace funcionar, y el sistema visual de la serie. Después escribe la ficha de cada una, completa: quien genera la imagen no sabe nada más que lo que dice la ficha.",
+    "",
+    "MANUAL DEL DIRECTOR (síguelo siempre):",
+    manualDeDiseno(manual),
+    "",
+    marca ? `LA MARCA (obligatorio en toda pieza):\n${marca}` : "Este cliente aún no tiene kit de marca: toma los colores y el estilo de la identidad de abajo; si no hay, usa una paleta sobria de dos colores y dilo en la ficha.",
+    guia ? `\nIDENTIDAD VISUAL (del cerebro del cliente):\n${largo(guia, 3500)}` : "",
+    productos ? `\nPRODUCTOS (precios exactos; no inventes otros):\n${largo(productos, 1500)}` : "",
+    plantillas.length ? `\nPLANTILLAS DE ESTE CLIENTE (diseños que ya funcionaron; si una encaja, síguela y di su id en «plantilla»):\n${plantillas.map(lineaDePlantilla).join("\n")}` : "",
+    concepto ? `\nCONCEPTO DE LA TANDA (síguelo): ${corto(concepto, 600)}` : "",
+    "",
+    "LAS PIEZAS:",
+    ...lista.map(lineaDeEncargo),
+    "",
+    "LA FICHA, una línea por apartado y sin líneas en blanco:",
+    FORMATO_FICHA,
+    `En una pieza SIN TEXTO, la línea de texto es: ${FICHA_SIN_TEXTO}`,
+    "",
+    "Reglas: español latino neutro; el texto exacto de cada pieza, copiado letra por letra entre «»; nada de precios, descuentos, sellos ni reseñas que no estén arriba; ningún logo de otra marca.",
+    'Responde SOLO con JSON: {"concepto":"la idea que une la serie y su sistema visual, en 1 o 2 frases","piezas":[{"n":1,"ficha":"Pieza: …\\nComposición: …","plantilla":""}]}',
+  ].filter((l) => l !== "").join("\n");
+}
+
+/**
+ * La respuesta → { concepto, fichas: { n → { ficha, plantilla } } }, con el texto exacto asegurado en cada una. Las que
+ * no vengan, no están (quien pide sigue con su camino de antes para esas). Pura.
+ */
+export function leerFichas(texto, piezas = []) {
+  const t = String(texto ?? "").replace(/```[a-z]*|```/g, "");
+  const i = t.indexOf("{");
+  const j = t.lastIndexOf("}");
+  if (i < 0 || j <= i) return null;
+  let d;
+  try { d = JSON.parse(t.slice(i, j + 1)); } catch { return null; }
+  const lista = piezas.map(limpiarPiezaEncargo);
+  const fichas = {};
+  for (const x of Array.isArray(d?.piezas) ? d.piezas : []) {
+    const p = lista.find((y) => y.n === Number(x?.n));
+    if (!p) continue;
+    let ficha = limpiarFicha(x?.ficha);
+    if (!ficha) continue;
+    ficha = p.sinTexto ? ficha : asegurarTexto(ficha, p.texto);
+    const plantilla = /^plantilla-[a-z0-9-]{1,40}$/.test(String(x?.plantilla ?? "")) ? String(x.plantilla) : p.plantilla;
+    fichas[p.n] = { ficha, ...(plantilla ? { plantilla } : {}) };
+  }
+  if (!Object.keys(fichas).length) return null;
+  return { concepto: corto(d?.concepto, 600), fichas };
+}
+
+// ------------------------------------------------------------
+// El kit, en pocas líneas, para quien diseña
+// ------------------------------------------------------------
+
+/**
+ * Lo que el asistente necesita saber del kit para diseñar: si está, qué exige y qué plantillas hay. Si no está, que
+ * lo diga y ofrezca prepararlo. `kit` ya limpio (limpiarKit); `marca`: su bloque (bloqueDeMarca). Pura.
+ */
+export function resumenDelKit({ kit = null, marca = "", vacio = false, cliente = "este cliente" } = {}) {
+  if (!kit || vacio) {
+    return `KIT DE MARCA DE ${cliente.toUpperCase()}: NO está preparado. Las piezas saldrán sin su paleta ni su logo: díselo a la persona en una línea y ofrécele prepararlo (Estudio → Kit de marca → «Preparar con IA»). Mientras, saca los colores y el estilo del cerebro (buscar_cerebro) y escríbelos en cada ficha.`;
+  }
+  return [
+    `KIT DE MARCA DE ${cliente.toUpperCase()} (el Estudio lo pone solo en cada pieza; tú escribe la ficha de acuerdo con él):`,
+    marca,
+    kit.tipografia ? `Tipografía: ${kit.tipografia}.` : "",
+    kit.logo ? (kit.logoModo === "estampado" ? "Logo: lo estampa la aplicación encima al terminar; en la ficha deja libre su esquina y no lo dibujes." : "Logo: va de referencia al motor; di en la ficha dónde va y de qué tamaño.") : "Logo: el kit no tiene logo.",
+    (kit.plantillas ?? []).length ? `Plantillas guardadas (diseños que ya funcionaron; pasa su id en «plantilla» para seguir una):\n${kit.plantillas.map(lineaDePlantilla).join("\n")}` : "",
+  ].filter(Boolean).join("\n");
+}

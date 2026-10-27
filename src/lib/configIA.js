@@ -26,7 +26,7 @@ export const FUNCIONES_IA = Object.freeze([
   { id: "guiones", nombre: "Guiones", nota: "Guiones de reels y videos" },
   { id: "lectura", nombre: "Escribir mirando el contenido", nota: "Lo que la IA escribe a partir de las imágenes subidas" },
   { id: "asistente", nombre: "Asistente", nota: "El chat (con Meta no hay búsqueda web)" },
-  { id: "prompts", nombre: "Mejorar idea", nota: "«Mejorar idea» del Estudio: la idea más clara para el motor de imagen" },
+  { id: "prompts", nombre: "Director de arte", nota: "Diseña cada pieza de imagen (la ficha de diseño) en el Estudio, el lote, el mes y el post. Mejor con Opus o Sonnet alto" },
   { id: "analisis", nombre: "Análisis", nota: "Informes, auditorías, cerebro y ADN de marca" },
 ]);
 

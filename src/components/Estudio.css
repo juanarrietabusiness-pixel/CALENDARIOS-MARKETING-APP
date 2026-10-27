@@ -404,3 +404,9 @@ div.est-img { cursor: default; }
 .est-kit-fuente { display: flex; flex-direction: column; gap: var(--sp-2); }
 .est-kit-fuente-muestra { width: min(320px, 100%); border-radius: var(--radius-sm); border: 1px solid var(--border); background: #fff; }
 .est-kit-fuente-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+/* Las plantillas del kit: la miniatura, el nombre y quitar. */
+.est-kit-plantillas { display: flex; flex-direction: column; gap: var(--sp-1); }
+.est-kit-plantillas-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.est-kit-plantillas-lista li { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-1); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: var(--fs-xs); }
+.est-kit-plantillas-lista img { width: 40px; height: 50px; object-fit: cover; border-radius: var(--radius-sm); }
+.est-plantilla { display: flex; flex-direction: column; gap: var(--sp-1); }

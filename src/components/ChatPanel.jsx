@@ -7,6 +7,8 @@ import { stripMarkdown } from "./calendario/formato";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { conversarIA, leerResumenChat, resumirChat, buildChatSystemPrompt, getChatTools, adnParaElChat, herramientaGuardarEnCerebro, INSTRUCCION_GUARDAR_CEREBRO } from "../api";
 import GuardarEnCerebro from "./GuardarEnCerebro";
+import PlanDePiezas from "./PlanDePiezas";
+import { HERRAMIENTAS_DISENO } from "../lib/herramientasDiseno";
 import "./ChatPanel.css";
 import { guardarNota, avisarTextoDeIA } from "../lib/cerebro";
 import { crearDictado, unirDictado } from "../lib/dictado";
@@ -28,6 +30,7 @@ const NIVEL_DE_ESFUERZO = { low: "bajo", medium: "medio", high: "alto", max: "ma
 import { tareaDesdeIA, fechaEnZona, PROPIEDADES_FECHA_TAREA } from "../lib/agenda";
 import { ponerEnDia } from "../lib/subir";
 import { conMedios, mediosDe } from "../lib/publicacion";
+import { conPromptListo } from "../lib/promptImagen";
 import { enlaceLimpio, nuevaIdea } from "../lib/bancoIdeas";
 import { anadirAlBanco } from "../lib/bancoIdeasApi";
 import { mesDeFecha, mismoMes } from "../lib/meses";
@@ -37,8 +40,13 @@ const CLAVE_AMPLIADO = "chat-ampliado";
 /** Hasta dónde crece la caja de escribir, en parte del alto de la pantalla; luego desplaza por dentro. */
 const ALTO_MAX_CAJA = 0.4;
 // Vueltas del navegador con herramientas propias. Las del servidor
-// (web, cerebro, consultas) no cuentan: las encadena el Worker.
-const MAX_VUELTAS = 8;
+// (web, cerebro, consultas) no cuentan: las encadena el Worker. Tampoco las
+// de DISEÑO (crear, corregir, mirar): doce piezas eran doce vueltas y el
+// asistente se cortaba a la mitad con «Me quedé sin vueltas». Esas tienen
+// su propio techo, mucho más alto.
+const MAX_VUELTAS = 10;
+const MAX_VUELTAS_TOTAL = 40;
+const HERRAMIENTAS_DE_DISENO = new Set(["disenar_piezas", "corregir_pieza", "version_final", "ver_lo_que_funciona", "guardar_regla", "generar_imagen", "crear_publicacion"]);
 // Pasado este número de mensajes sin resumir, lo más viejo se pliega en
 // el resumen. Lo decide el servidor; esto sólo evita pedirlo en balde.
 const UMBRAL_RESUMEN = 60;
@@ -63,6 +71,10 @@ export default function ChatPanel({
   onSelectClient,
   defaultMode,
   acoplado = false,
+  // Dentro de la pestaña Estudio («Con el director»): en la página, sin ser un diálogo, y sólo sus conversaciones de diseño.
+  incrustado = false,
+  tema = "",
+  atajos = null,
 }) {
   const [chatMode, setChatMode] = useState(defaultMode || (client ? "client" : "global"));
   const [messages, setMessages] = useState([]);
@@ -79,6 +91,8 @@ export default function ChatPanel({
   const [actionFeedback, setActionFeedback] = useState([]);
   // Lo que el asistente propone guardar en el cerebro, a la espera de que la persona decida.
   const [propuestaCerebro, setPropuestaCerebro] = useState(null);
+  // El plan de una tanda del director (disenar_piezas), a la espera del botón y luego con cada pieza según sale.
+  const [planDiseno, setPlanDiseno] = useState(null);
   const [listening, setListening] = useState(false);
   // Lo que se está diciendo y aún no se cierra: se ve en gris debajo de la caja y entra si se envía así.
   const [provisional, setProvisional] = useState("");
@@ -101,7 +115,7 @@ export default function ChatPanel({
   const fileRef = useRef(null);
   const recognitionRef = useRef(null);
   // Ampliado tapa toda la pantalla: es un diálogo aunque esté acoplado, y Escape primero lo REDUCE.
-  const dialogRef = useDialogA11y(ampliado ? () => setAmpliado(false) : onClose, { activo: !acoplado || ampliado });
+  const dialogRef = useDialogA11y(ampliado ? () => setAmpliado(false) : onClose, { activo: (!acoplado && !incrustado) || ampliado });
   const inputId = useId();
   const clientId = client?.dbId || client?.id;
   const raizDrive = idDeCarpeta(client?.driveFolder);
@@ -139,10 +153,12 @@ export default function ChatPanel({
           ambito ? db.loadClientMemories(ambito) : Promise.resolve([]),
         ]);
         if (!vivo) return;
-        setConversaciones(lista);
+        // En el Estudio, sólo las de diseño (en el chat de siempre salen todas, con su etiqueta).
+        const deAqui = tema ? lista.filter((c) => c.tema === tema) : lista;
+        setConversaciones(deAqui);
         setMemories(mems);
-        const recordada = leerUltima(ambito);
-        const abierta = lista.find((c) => c.id === recordada) ?? lista[0] ?? null;
+        const recordada = leerUltima(ambito, tema);
+        const abierta = deAqui.find((c) => c.id === recordada) ?? deAqui[0] ?? null;
         setConversacionId(abierta?.id ?? null);
         if (!abierta) setLoadingHistory(false);
       } catch {
@@ -154,12 +170,12 @@ export default function ChatPanel({
       }
     })();
     return () => { vivo = false; };
-  }, [ambito]);
+  }, [ambito, tema]);
 
   // Los mensajes y el resumen de la conversación abierta: el asistente sólo recuerda ESA.
   useEffect(() => {
     if (!conversacionId) return;
-    guardarUltima(ambito, conversacionId);
+    guardarUltima(ambito, conversacionId, tema);
     if (sinRecargar.current === conversacionId) { sinRecargar.current = null; return; }
     let vivo = true;
     setLoadingHistory(true);
@@ -177,14 +193,26 @@ export default function ChatPanel({
     const alCambio = (e) => {
       const ev = e.detail ?? {};
       if ((ev.clientId ?? null) !== ambito) return;
-      listarConversaciones(ambito).then(setConversaciones).catch(() => {});
+      listarConversaciones(ambito).then((l) => setConversaciones(tema ? l.filter((c) => c.tema === tema) : l)).catch(() => {});
       if (ev.conversacionId !== conversacionRef.current) return;
       if (ev.borrada) { setConversacionId(null); setMessages([]); setResumen({ resumen: "", hasta: null }); }
       else if (ev.mensaje && !loadingRef.current) leerMensajes(ev.conversacionId).then(setMessages).catch(() => {});
     };
     window.addEventListener("chat:conversaciones", alCambio);
     return () => window.removeEventListener("chat:conversaciones", alCambio);
-  }, [ambito]);
+  }, [ambito, tema]);
+
+  // «Pedir un cambio» de una imagen del chat: la caja queda señalándola, para escribir qué cambiar.
+  useEffect(() => {
+    const alPedir = (e) => {
+      const clave = e.detail?.clave;
+      if (!clave) return;
+      setInput((t) => `${t.trim() ? `${t.trim()}\n` : ""}En la imagen ${clave}: `);
+      inputRef.current?.focus();
+    };
+    window.addEventListener("chat:cambio-imagen", alPedir);
+    return () => window.removeEventListener("chat:cambio-imagen", alPedir);
+  }, []);
 
   const nuevaConversacion = useCallback(() => {
     if (loading) return;
@@ -194,9 +222,9 @@ export default function ChatPanel({
     setActionFeedback([]);
     setError("");
     setVerLista(false);
-    guardarUltima(ambito, "");
+    guardarUltima(ambito, "", tema);
     inputRef.current?.focus();
-  }, [loading, ambito]);
+  }, [loading, ambito, tema]);
 
   const abrirConversacion = useCallback((id) => {
     if (loading) return;
@@ -545,6 +573,130 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     });
   }, [client, clientId]);
 
+  // ---------- El asistente como director creativo (lib/disenoChat.js, lazy) ----------
+
+  /** Pone `archivo` en la publicación `postId` (con su ficha como pedido listo) o, con `antes`, lo cambia por esa imagen donde esté. */
+  const ponerEnElCalendario = useCallback(({ archivo, postId = "", ficha = "", antes = "" }) => {
+    const cal = calRef.current;
+    if (!cal || !calId || !onUpdateCal || !archivo) return false;
+    let puesto = false;
+    const medio = { src: archivo.src, tipo: "imagen", nombre: (archivo.prompt || "pieza").slice(0, 40), ...(archivo.ancho ? { ancho: archivo.ancho, alto: archivo.alto } : {}) };
+    const days = cal.days.map((d) => ({
+      ...d,
+      posts: (d.posts || []).map((p) => {
+        if (antes && mediosDe(p).some((m) => m.src === antes)) {
+          puesto = true;
+          return conMedios(p, mediosDe(p).map((m) => (m.src === antes ? { ...m, ...medio, nombre: m.nombre || medio.nombre } : m)));
+        }
+        if (postId && p.id === postId) {
+          puesto = true;
+          const con = conMedios(p, [...mediosDe(p), medio]);
+          return ficha ? conPromptListo(con, ficha) : con;
+        }
+        return p;
+      }),
+    }));
+    if (!puesto) return false;
+    const updated = { ...cal, days };
+    calRef.current = updated;
+    onUpdateCal(calId, updated);
+    return true;
+  }, [calId, onUpdateCal]);
+
+  /** disenar_piezas: el plan a la vista, ESPERA el botón, crea de tres en tres y devuelve las imágenes al modelo. */
+  const disenarPiezas = useCallback(async (entrada) => {
+    if (!client) return { ok: false, mensaje: "Abre el asistente dentro de un cliente para diseñar." };
+    const piezas = (Array.isArray(entrada.piezas) ? entrada.piezas : []).slice(0, 12);
+    if (!piezas.length) return { ok: false, mensaje: "No mandaste ninguna pieza." };
+    setProgreso("Preparando el plan con el kit de la marca…");
+    const mod = await import("../lib/disenoChat");
+    const ctx = await mod.leerContexto(client);
+    setProgreso("");
+    const borrador = mod.planDePiezas(ctx, piezas, { calidad: "borrador" });
+    const conModelo = borrador.find((p) => p.modelo);
+    if (!conModelo) return { ok: false, mensaje: borrador[0]?.error || "No hay ningún modelo de imagen con llave." };
+    const fin = mod.modeloFinal(ctx.activos);
+    const finalPlan = fin && fin.id !== conModelo.modelo.id ? mod.planDePiezas(ctx, piezas, { calidad: "final" }).find((p) => p.modelo) : null;
+    const calidades = {
+      borrador: { nombre: conModelo.modelo.nombre, costo: conModelo.costo },
+      ...(finalPlan ? { final: { nombre: finalPlan.modelo.nombre, costo: finalPlan.costo } } : {}),
+    };
+    return new Promise((resolve) => {
+      setPlanDiseno({
+        concepto: String(entrada.concepto ?? "").slice(0, 400),
+        piezas: borrador.map((p) => ({ n: p.n, titulo: p.titulo, ficha: p.ficha })),
+        calidades, estado: "revisar", avance: {},
+        cancelar: () => {
+          setPlanDiseno(null);
+          resolve({ ok: false, mensaje: "La persona no creó el plan: quiere cambiar algo. Pregúntale qué, en una línea, y vuelve a proponerlo." });
+        },
+        crear: async (editadas, calidad) => {
+          // Las fichas corregidas en la tarjeta mandan; las quitadas no van.
+          const entradaFinal = editadas.map((e) => ({ ...piezas[e.n - 1], titulo: e.titulo, ficha: e.ficha }));
+          const plan = mod.planDePiezas(ctx, entradaFinal, { calidad });
+          setPlanDiseno((pl) => pl && { ...pl, piezas: plan.map((p) => ({ n: p.n, titulo: p.titulo, ficha: p.ficha })), estado: "creando", avance: {} });
+          const cal = calRef.current;
+          const resultados = await mod.crearPlan(ctx, plan, {
+            calendarId: cal ? cal.dbId || calId : null,
+            alAvanzar: (n, est) => setPlanDiseno((pl) => pl && { ...pl, avance: { ...pl.avance, [n]: est } }),
+          });
+          setPlanDiseno((pl) => pl && { ...pl, estado: "hecho" });
+          const lineas = [];
+          const imagenes = [];
+          const paraElModelo = [];
+          for (const r of resultados) {
+            const p = plan[r.n - 1];
+            if (!r.archivo) { lineas.push(`${r.n}. «${p.titulo}»: NO salió (${r.error}).`); continue; }
+            const enPost = p.postId ? ponerEnElCalendario({ archivo: r.archivo, postId: p.postId, ficha: p.ficha }) : false;
+            if (enPost) void mod.apuntarUso?.(ctx.clienteId, r.archivo.id, { calendarId: cal?.dbId || calId, postId: p.postId });
+            lineas.push(`${r.n}. «${p.titulo}» → archivo_id ${r.archivo.id}${p.postId ? (enPost ? ` (puesta en la publicación ${p.postId})` : ` (no encontré la publicación ${p.postId} en el mes abierto)`) : ""}.`);
+            imagenes.push({ clave: r.archivo.clave, formato: mod.formatoDe(r.archivo), id: r.archivo.id });
+            const [bloque] = await mod.paraElModelo([r.archivo]);
+            if (bloque) paraElModelo.push({ type: "text", text: `Pieza ${r.n} «${p.titulo}» (archivo_id ${r.archivo.id}):` }, bloque);
+          }
+          const hechas = imagenes.length;
+          resolve({
+            ok: hechas > 0,
+            mensaje: `${hechas} de ${plan.length} creadas con ${plan.find((p) => p.modelo)?.modelo.nombre ?? "el modelo del cliente"}. Están en la galería y la persona ya las ve.\n${lineas.join("\n")}\nAhora MÍRALAS (van abajo): si alguna tiene una falta, un texto ilegible o se sale del sistema, corrígela antes de darla por buena.`,
+            _imagenes: imagenes, _paraModelo: paraElModelo,
+          });
+        },
+      });
+    });
+  }, [client, calId, ponerEnElCalendario]);
+
+  /** corregir_pieza y version_final: la nueva ocupa el sitio de la anterior (en el chat y en la publicación). */
+  const rehacerPieza = useCallback(async (como, entrada) => {
+    if (!client) return { ok: false, mensaje: "Abre el asistente dentro de un cliente." };
+    const mod = await import("../lib/disenoChat");
+    const ctx = await mod.leerContexto(client);
+    setProgreso(como === "final" ? "Haciendo la versión final con el mejor modelo…" : "Corrigiendo la pieza…");
+    try {
+      const r = como === "final"
+        ? await mod.versionFinal(ctx, { archivoId: String(entrada.archivo_id ?? "") })
+        : await mod.corregirPieza(ctx, { archivoId: String(entrada.archivo_id ?? ""), indicacion: String(entrada.indicacion ?? "") });
+      const enPost = ponerEnElCalendario({ archivo: r.archivo, antes: r.antes?.src ?? "" });
+      const [bloque] = await mod.paraElModelo([r.archivo]);
+      return {
+        ok: true,
+        mensaje: `${como === "final" ? `Versión final con ${r.modelo?.nombre}` : "Corregida"}: archivo_id ${r.archivo.id} (sustituye a ${r.antes?.id})${enPost ? "; también en su publicación" : ""}. Mírala abajo.`,
+        _imagenes: [{ clave: r.archivo.clave, formato: mod.formatoDe(r.archivo), id: r.archivo.id, reemplaza: r.antes?.id }],
+        _paraModelo: bloque ? [bloque] : [],
+      };
+    } finally {
+      setProgreso("");
+    }
+  }, [client, ponerEnElCalendario]);
+
+  /** ver_lo_que_funciona: las plantillas y los «Me gusta» del cliente, como imágenes. */
+  const verLoQueFunciona = useCallback(async () => {
+    if (!client) return { ok: false, mensaje: "Abre el asistente dentro de un cliente." };
+    const mod = await import("../lib/disenoChat");
+    const ctx = await mod.leerContexto(client);
+    const { texto, archivos } = mod.loQueFunciona(ctx);
+    return { ok: true, mensaje: texto, _paraModelo: await mod.paraElModelo(archivos) };
+  }, [client]);
+
   const executeToolCall = useCallback(async (toolName, toolInput) => {
     if (chatMode === "global") {
       if (toolName === "ir_a_cliente") {
@@ -583,6 +735,19 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     if (toolName === "guardar_en_cerebro") {
       if (!client) return { ok: false, mensaje: "No hay cliente abierto." };
       return pedirGuardarEnCerebro(client, toolInput);
+    }
+
+    if (toolName === "disenar_piezas") return disenarPiezas(toolInput);
+    if (toolName === "corregir_pieza") return rehacerPieza("corregir", toolInput);
+    if (toolName === "version_final") return rehacerPieza("final", toolInput);
+    if (toolName === "ver_lo_que_funciona") return verLoQueFunciona();
+    if (toolName === "guardar_regla") {
+      if (!clientId) return { ok: false, mensaje: "Abre el asistente dentro de un cliente." };
+      const { guardarRegla } = await import("../lib/estudio");
+      const regla = String(toolInput.regla ?? "").trim();
+      if (!regla) return { ok: false, mensaje: "Falta la regla." };
+      await guardarRegla(clientId, regla);
+      return { ok: true, mensaje: `Regla guardada en el kit de ${client.name}: «${regla}». Va en todas las piezas siguientes.` };
     }
 
     if (toolName === "borrar_memoria") {
@@ -633,8 +798,10 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
             estilo: toolInput.estilo || "", confirmado: toolInput.confirmado === true, alProgresar: setProgreso,
           });
           if (r.confirmar) return { ok: false, mensaje: fraseDeConfirmar(r, video) };
-          const entregada = { ok: true, ...(video ? { _video: { clave: r.archivo.clave } } : { _imagen: { clave: r.archivo.clave, formato } }) };
-          const dicho = `${video ? "Video" : "Imagen"} creada en el Estudio con el kit de ${client.name} (${r.modelo.nombre}) y mostrada en el chat; también queda en su galería.`;
+          // La imagen vuelve al modelo para que la mire (antes sólo recibía «Imagen creada»).
+          const vista = video ? [] : await import("../lib/disenoChat").then((m) => m.paraElModelo([r.archivo])).catch(() => []);
+          const entregada = { ok: true, ...(video ? { _video: { clave: r.archivo.clave } } : { _imagen: { clave: r.archivo.clave, formato, id: r.archivo.id }, _paraModelo: vista }) };
+          const dicho = `${video ? "Video" : "Imagen"} creada en el Estudio con el kit de ${client.name} (${r.modelo.nombre}, archivo_id ${r.archivo.id}) y mostrada en el chat; también queda en su galería.`;
           if (!toolInput.post_id) return { ...entregada, mensaje: dicho };
           if (!post || !calId || !onUpdateCal) return { ...entregada, mensaje: `${dicho} No encontré la publicación ${toolInput.post_id} para ponerla.` };
           const medio = { src: r.archivo.src, tipo: video ? "video" : "imagen", nombre: r.archivo.prompt?.slice(0, 40) || (video ? "video" : "imagen") };
@@ -730,12 +897,12 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
         } catch (e) {
           return { ok: false, mensaje: `No pude crearla en ese mes: ${e?.message || "error"}.` };
         }
-        return { ok: true, mensaje: `Publicación creada: ${newPost.format} el ${toolInput.fecha} (en el calendario de ese mes, no en el que está abierto).` };
+        return { ok: true, mensaje: `Publicación creada: ${newPost.format} el ${toolInput.fecha} (en el calendario de ese mes, no en el que está abierto; post_id ${newPost.id}, pero para ponerle una pieza hay que abrir ese mes).` };
       }
       const updated = ponerEnDia(cal, toolInput.fecha, newPost);
       calRef.current = updated;
       onUpdateCal(calId, updated);
-      return { ok: true, mensaje: `Publicación creada: ${newPost.format} el ${toolInput.fecha}.` };
+      return { ok: true, mensaje: `Publicación creada: ${newPost.format} el ${toolInput.fecha} (post_id ${newPost.id}).` };
     }
 
     if (toolName === "editar_publicacion") {
@@ -795,7 +962,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     }
 
     return { ok: false, mensaje: `Herramienta desconocida: ${toolName}` };
-  }, [chatMode, client, clientId, calId, onUpdateCal, onCrearEnOtroMes, memories, resolveClient, onSelectClient, pedirGuardarEnCerebro, guardarEnBanco]);
+  }, [chatMode, client, clientId, calId, onUpdateCal, onCrearEnOtroMes, memories, resolveClient, onSelectClient, pedirGuardarEnCerebro, guardarEnBanco, disenarPiezas, rehacerPieza, verLoQueFunciona]);
 
   const handleSend = useCallback(async () => {
     // Enviar apaga el micrófono, y lo que se estaba diciendo va en el mensaje.
@@ -835,7 +1002,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       const primera = messages.length === 0;
       if (!convId) {
         try {
-          const nueva = await crearConversacion(ambito, tituloProvisional(text || pedido));
+          const nueva = await crearConversacion(ambito, tituloProvisional(text || pedido), tema);
           convId = nueva.id;
           sinRecargar.current = nueva.id;
           setConversaciones((p) => [nueva, ...p.filter((c) => c.id !== nueva.id)]);
@@ -873,7 +1040,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       }
 
       const tools = chatMode === "client"
-        ? getChatTools(Boolean(calRef.current))
+        ? [...getChatTools(Boolean(calRef.current)), ...(client ? HERRAMIENTAS_DISENO : [])]
         : getGlobalTools();
 
       const recientes = [...messages, { role: "user", content: guardado, created_at: userMsg.created_at }]
@@ -941,7 +1108,9 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
         }
       };
 
-      for (let vuelta = 0; vuelta < MAX_VUELTAS; vuelta++) {
+      // Las vueltas de diseño no gastan del tope normal (ver HERRAMIENTAS_DE_DISENO).
+      let gastadas = 0;
+      for (let vuelta = 0; gastadas < MAX_VUELTAS && vuelta < MAX_VUELTAS_TOTAL; vuelta++) {
         setEnVivo((v) => ({ ...v, pensando: "" }));
         const fin = await conversarIA({
           messages: conversationMessages,
@@ -972,17 +1141,25 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
         const ultimo = fin.mensajes[fin.mensajes.length - 1]?.content ?? [];
         const toolUseBlocks = ultimo.filter((b) => b.type === "tool_use" && !yaResueltas.has(b.id));
 
+        if (!toolUseBlocks.length || toolUseBlocks.some((b) => !HERRAMIENTAS_DE_DISENO.has(b.name))) gastadas += 1;
         const toolResults = [...(fin.resultadosServidor ?? [])];
         for (const toolBlock of toolUseBlocks) {
           try {
             const result = await executeToolCall(toolBlock.name, toolBlock.input);
-            if (result._imagen) imagenes.push(result._imagen);
+            // Una pieza corregida ocupa el sitio de la anterior en el mensaje; las demás, detrás.
+            for (const img of [...(result._imagen ? [result._imagen] : []), ...(result._imagenes ?? [])]) {
+              const i = img.reemplaza ? imagenes.findIndex((x) => x.id === img.reemplaza) : -1;
+              if (i >= 0) imagenes[i] = img; else imagenes.push(img);
+            }
             if (result._video) videos.push(result._video);
-            feedbacks.push({ tool: toolBlock.name, ...result });
+            feedbacks.push({ tool: toolBlock.name, ok: result.ok, mensaje: result.mensaje });
+            const texto = JSON.stringify({ ok: result.ok, mensaje: result.mensaje });
+            const vistas = result._paraModelo;
             toolResults.push({
               type: "tool_result",
               tool_use_id: toolBlock.id,
-              content: JSON.stringify({ ok: result.ok, mensaje: result.mensaje }),
+              // Con imágenes, el modelo las VE: el resultado lleva el texto y las copias pequeñas.
+              content: vistas?.length ? [{ type: "text", text: texto }, ...vistas] : texto,
             });
           } catch (e) {
             const result = { ok: false, mensaje: e.message || "Error al ejecutar la acción." };
@@ -1007,11 +1184,12 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       setError(e.message || "Error al generar respuesta.");
     } finally {
       setLoading(false);
+      setPlanDiseno(null);
       setProgreso("");
       setEnVivo({ texto: "", pensando: "", pasos: [] });
       for (const a of enviados) if (a.origen === "subida") URL.revokeObjectURL(a.preview);
     }
-  }, [input, provisional, loading, messages, client, clientId, chatMode, memories, executeToolCall, adjuntos, prepararAdjuntos, buildGlobalSystemPrompt, getGlobalTools, resumen, conversacionId, ambito]);
+  }, [input, provisional, loading, messages, client, clientId, chatMode, memories, executeToolCall, adjuntos, prepararAdjuntos, buildGlobalSystemPrompt, getGlobalTools, resumen, conversacionId, ambito, tema]);
 
   const handleDeleteMemory = useCallback(async (memId) => {
     try {
@@ -1036,12 +1214,15 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
   const panelLabel = isGlobal ? "Agente de la agencia" : `Chat con asistente de ${client?.name || ""}`;
 
   return (
-    <div className={acoplado && !ampliado ? "chat-acoplado" : undefined} style={acoplado && !ampliado ? undefined : { position: "fixed", inset: 0, zIndex: 200, display: "flex", justifyContent: "flex-end" }}>
+    <div
+      className={incrustado && !ampliado ? "chat-incrustado" : acoplado && !ampliado ? "chat-acoplado" : undefined}
+      style={(acoplado || incrustado) && !ampliado ? undefined : { position: "fixed", inset: 0, zIndex: 200, display: "flex", justifyContent: "flex-end" }}
+    >
       {/* Acoplado —pantalla ancha— es un panel al lado del contenido, no
           un diálogo: sin fondo oscuro, sin foco atrapado y con el resto
           de la pantalla usable. Ampliado ocupa la pantalla entera y vuelve
           a ser un diálogo. */}
-      {!acoplado && !ampliado && (
+      {!acoplado && !incrustado && !ampliado && (
         <button
           type="button"
           aria-label="Cerrar chat"
@@ -1052,19 +1233,19 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       <div
         ref={dialogRef}
         className={ampliado ? "chat-ampliado" : undefined}
-        role={acoplado && !ampliado ? "complementary" : "dialog"}
-        aria-modal={acoplado && !ampliado ? undefined : "true"}
+        role={incrustado && !ampliado ? "region" : acoplado && !ampliado ? "complementary" : "dialog"}
+        aria-modal={(acoplado || incrustado) && !ampliado ? undefined : "true"}
         aria-label={panelLabel}
         style={{
-          width: acoplado || ampliado ? "100%" : 420,
+          width: acoplado || incrustado || ampliado ? "100%" : 420,
           maxWidth: "100vw",
           height: "100%",
           background: "var(--surface)",
           borderLeft: "1px solid var(--border-strong)",
-          boxShadow: acoplado ? "none" : "var(--elev-2)",
+          boxShadow: acoplado || incrustado ? "none" : "var(--elev-2)",
           display: "flex",
           flexDirection: "column",
-          animation: acoplado ? undefined : "slideIn .24s cubic-bezier(.22,.61,.36,1)",
+          animation: acoplado || incrustado ? undefined : "slideIn .24s cubic-bezier(.22,.61,.36,1)",
         }}
       >
         {/* Cabecera */}
@@ -1089,10 +1270,10 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
               }}>
-                {isGlobal ? "Agente de la agencia" : `Asistente de ${client?.name || ""}`}
+                {isGlobal ? "Agente de la agencia" : tema === "diseno" ? `Director creativo de ${client?.name || ""}` : `Asistente de ${client?.name || ""}`}
               </div>
               <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)", display: "flex", alignItems: "center", gap: "var(--sp-1)", flexWrap: "wrap" }}>
-                <span>{isGlobal ? "Conoce todos tus clientes" : "Conversa, genera ideas y ejecuta acciones"}</span>
+                <span>{isGlobal ? "Conoce todos tus clientes" : tema === "diseno" ? "Dile qué quieres con tus palabras: él diseña, revisa y te enseña" : "Conversa, genera ideas y ejecuta acciones"}</span>
                 <span
                   className="badge"
                   style={{ background: "var(--accent-soft)", color: "var(--accent)", fontSize: "var(--fs-3xs)" }}
@@ -1135,13 +1316,15 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
             >
               <Icon name={ampliado ? "collapse" : "expand"} size={18} />
             </button>
-            <button className="btn-icon" onClick={onClose} aria-label="Cerrar chat">
-              <Icon name="close" />
-            </button>
+            {onClose && (
+              <button className="btn-icon" onClick={onClose} aria-label="Cerrar chat">
+                <Icon name="close" />
+              </button>
+            )}
           </div>
 
-          {/* Selector de contexto: Global / Cliente */}
-          {client && (
+          {/* Selector de contexto: Global / Cliente (el director es siempre de su cliente) */}
+          {client && tema !== "diseno" && (
             <div className="chat-mode-tabs" role="tablist" aria-label="Contexto del chat">
               <button
                 role="tab"
@@ -1252,7 +1435,9 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
           ) : messages.length === 0 ? (
             isGlobal
               ? <GlobalEmptyState clientCount={clients.length} />
-              : <EmptyState clientName={client?.name || ""} hasCalendar={Boolean(calendar)} />
+              : tema === "diseno"
+                ? <DisenoEmptyState clientName={client?.name || ""} />
+                : <EmptyState clientName={client?.name || ""} hasCalendar={Boolean(calendar)} />
           ) : (
             messages.map((msg, i) => (
               <ChatMessage key={i} message={msg} onRecordar={!isGlobal && client && msg.role === "assistant" && !loading ? () => recordarEnCerebro(msg) : null} />
@@ -1273,6 +1458,13 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
               propuesta={{ cliente: propuestaCerebro.cliente, ...propuestaCerebro.entrada }}
               onGuardar={propuestaCerebro.guardar}
               onDescartar={propuestaCerebro.descartar}
+            />
+          )}
+          {planDiseno && (
+            <PlanDePiezas
+              plan={planDiseno}
+              onCrear={planDiseno.crear}
+              onCancelar={planDiseno.cancelar}
             />
           )}
           {loading && enVivo.texto && (
@@ -1304,6 +1496,17 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
           )}
           <div ref={messagesEndRef} />
         </div>
+
+        {/* Atajos del director: rellenan la caja con un encargo que se completa con lo de cada uno. */}
+        {atajos?.length > 0 && !loading && (
+          <div className="chat-atajos" role="group" aria-label="Encargos frecuentes">
+            {atajos.map((a) => (
+              <button key={a.etiqueta} type="button" className="filter-chip" onClick={() => { setInput(a.texto); inputRef.current?.focus(); }}>
+                {a.etiqueta}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Adjuntos listos para enviar */}
         {adjuntos.length > 0 && (
@@ -1506,6 +1709,29 @@ function EmptyState({ clientName, hasCalendar }) {
           </>
         )}
         <span style={{ fontStyle: "italic" }}>«Recuerda que prefiero un tono formal»</span>
+      </div>
+    </div>
+  );
+}
+
+/** Lo que ve quien abre «Diseño» por primera vez: qué pedirle, con palabras sencillas. */
+function DisenoEmptyState({ clientName }) {
+  return (
+    <div style={{ textAlign: "center", color: "var(--text-faint)", padding: "var(--sp-8) var(--sp-4)", display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-3)" }}>
+      <span style={{ color: "var(--accent)", opacity: 0.6 }}>
+        <Icon name="palette" size={36} />
+      </span>
+      <p style={{ fontSize: "var(--fs-xs)", maxWidth: 360 }}>
+        Soy el director creativo de <strong style={{ color: "var(--text)" }}>{clientName}</strong>. Dime qué necesitas
+        como se lo dirías a un diseñador: te enseño el plan con su costo, creo al pulsar «Crear», reviso cada imagen y
+        corrijo lo que salga mal.
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-1)", fontSize: "var(--fs-3xs)", color: "var(--text-dim)", textAlign: "left" }}>
+        <span>Prueba con algo como:</span>
+        <span style={{ fontStyle: "italic" }}>«Diseña los posts de la semana que viene»</span>
+        <span style={{ fontStyle: "italic" }}>«4 anuncios del sofá cama, uno por cada objeción»</span>
+        <span style={{ fontStyle: "italic" }}>«Esta quedó oscura: más luz y el precio más grande»</span>
+        <span style={{ fontStyle: "italic" }}>«Pasa a final las que me gustaron»</span>
       </div>
     </div>
   );
@@ -1739,6 +1965,11 @@ function ImagenGenerada({ clave, formato }) {
         <button type="button" className="btn btn-primary btn-sm" onClick={descargar} disabled={bajando} style={{ minHeight: "var(--tap-sm)" }}>
           <Icon name="download" size={16} /> {bajando ? "Preparando…" : "Descargar"}
         </button>
+        {/* «Pedir un cambio»: la caja queda con la imagen señalada; se escribe el cambio y el director la corrige. */}
+        <button type="button" className="btn btn-ghost btn-sm" style={{ minHeight: "var(--tap-sm)" }}
+          onClick={() => window.dispatchEvent(new CustomEvent("chat:cambio-imagen", { detail: { clave } }))}>
+          <Icon name="pencil" size={16} /> Pedir un cambio
+        </button>
       </figcaption>
       {fallo && <p role="alert" style={{ margin: 0, padding: "0 var(--sp-2) var(--sp-2)", color: "var(--danger)", fontSize: "var(--fs-3xs)" }}>{fallo}</p>}
     </figure>
@@ -1772,6 +2003,11 @@ function ActionChip({ feedback }) {
     agregar_banco_ideas: "Banco de ideas",
     ir_a_cliente: "Navegación",
     generar_imagen: "Imagen",
+    disenar_piezas: "Diseño",
+    corregir_pieza: "Diseño",
+    version_final: "Diseño",
+    ver_lo_que_funciona: "Diseño",
+    guardar_regla: "Kit de marca",
   };
   return (
     <div style={{
