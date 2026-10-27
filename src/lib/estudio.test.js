@@ -277,3 +277,14 @@ describe("lo que se dice al subir", () => {
     expect(fraseDeSubida(1, 0, true)).toBe("Video subido a la galería.");
   });
 });
+
+describe("el orden de un carrusel agrupado", () => {
+  it("mueve una pieza un sitio, sin salirse", async () => {
+    const { moverEnOrden } = await import("./estudio");
+    expect(moverEnOrden(["a", "b", "c"], "b", -1)).toEqual(["b", "a", "c"]);
+    expect(moverEnOrden(["a", "b", "c"], "b", 1)).toEqual(["a", "c", "b"]);
+    const igual = ["a", "b"];
+    expect(moverEnOrden(igual, "a", -1)).toBe(igual);
+    expect(moverEnOrden(igual, "x", 1)).toBe(igual);
+  });
+});

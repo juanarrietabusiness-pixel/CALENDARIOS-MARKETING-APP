@@ -48,3 +48,27 @@ describe("una pieza, por el mismo camino", () => {
     expect(sin.medios).toEqual({});
   });
 });
+
+describe("la proporción pedida es la que sale", () => {
+  const muse = modeloPorId("muse-image");
+  const conMeta = { meta: true, kie: true };
+
+  it("Muse Image sin referencias hace 4:5; con el logo de referencia, cede a Nano Banana 2 (si tiene llave)", () => {
+    const sinNada = pedidoDePieza({ kit: {}, idea: "Una sala", modelo: muse, proporcion: "4:5", activos: conMeta });
+    expect(sinNada.modelo).toBe("muse-image");
+    expect(sinNada.ajustes.aspectRatio).toBe("4:5");
+    const conLogo = pedidoDePieza({ kit, idea: "Una sala", modelo: muse, proporcion: "4:5", activos: conMeta });
+    expect(conLogo.modelo).toBe("nano-banana-2-kie");
+    expect(conLogo.ajustes.aspectRatio).toBe("4:5");
+    expect(conLogo.medios.reference).toContain("clientes/c1/logo.png");
+  });
+
+  it("sin un modelo que lo respete con llave, sigue con el escogido (la red de seguridad lo recompone después)", () => {
+    const p = pedidoDePieza({ kit, idea: "Una sala", modelo: muse, proporcion: "4:5", activos: { meta: true } });
+    expect(p.modelo).toBe("muse-image");
+  });
+
+  it("sin `activos` no cambia nada (lo de antes)", () => {
+    expect(pedidoDePieza({ kit, idea: "Una sala", modelo: muse, aspectRatio: "4:5" }).modelo).toBe("muse-image");
+  });
+});

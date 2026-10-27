@@ -2,7 +2,7 @@ import { useId, useState } from "react";
 import Icon from "./Icon";
 import { Pieza } from "./EstudioVisor";
 import { useDialogA11y } from "../hooks/useDialogA11y";
-import { textoDeGrupo, nombresParaZip, estaUsado } from "../lib/estudio";
+import { textoDeGrupo, nombresParaZip, estaUsado, moverEnOrden } from "../lib/estudio";
 import { crearZip } from "../lib/zip";
 import "./VisorGrupo.css";
 
@@ -18,11 +18,22 @@ const nombreZip = (carpeta) =>
  *   todas       TODO lo de su carpeta, también las crudas sin texto y las versiones viejas: es lo que va a la papelera
  *   onUsar      (piezas) => void: desde una publicación, «Usar el carrusel en la publicación» (en un reel, el video)
  *   onPapelera  (ids) => Promise: «Mandar el carrusel a la papelera», con un segundo toque que dice qué se va
+ *   onOrdenar   (ids) => Promise: guardar el orden nuevo (las flechas de cada lámina)
+ *   onDesagrupar () => Promise: las piezas vuelven a la galería sueltas
  */
-export default function VisorGrupo({ grupo, todas = null, onCerrar, onAbrir, onSueltas, onUsar = null, onPapelera = null }) {
+export default function VisorGrupo({ grupo, todas = null, onCerrar, onAbrir, onSueltas, onUsar = null, onPapelera = null, onOrdenar = null, onDesagrupar = null }) {
   const ids = useId();
   const ref = useDialogA11y(onCerrar);
-  const { carpeta, piezas } = grupo;
+  const { carpeta } = grupo;
+  // El orden se cambia aquí mismo (flechas) y se guarda; la lista se pinta con el de ahora.
+  const [orden, setOrden] = useState(() => grupo.piezas.map((a) => a.id));
+  const piezas = orden.map((id) => grupo.piezas.find((a) => a.id === id)).filter(Boolean);
+  const mover = async (id, paso) => {
+    const nuevo = moverEnOrden(orden, id, paso);
+    if (nuevo === orden) return;
+    setOrden(nuevo);
+    try { await onOrdenar(nuevo); } catch (e) { setError(e.message); setOrden(orden); }
+  };
   const [bajando, setBajando] = useState(false);
   const [error, setError] = useState("");
   const [confirmando, setConfirmando] = useState(false);
@@ -86,6 +97,12 @@ export default function VisorGrupo({ grupo, todas = null, onCerrar, onAbrir, onS
                 <span className="visor-grupo-num">{i + 1}</span>
                 {estaUsado(a) && <span className="visor-grupo-usada">Usada</span>}
               </button>
+              {onOrdenar && !reel && piezas.length > 1 && (
+                <span className="visor-grupo-flechas">
+                  <button type="button" className="btn-icon" disabled={i === 0} aria-label={`Mover la lámina ${i + 1} antes`} onClick={() => mover(a.id, -1)}><Icon name="chevronLeft" size={16} /></button>
+                  <button type="button" className="btn-icon" disabled={i === piezas.length - 1} aria-label={`Mover la lámina ${i + 1} después`} onClick={() => mover(a.id, 1)}><Icon name="chevronRight" size={16} /></button>
+                </span>
+              )}
             </li>
           ))}
         </ol>
@@ -116,6 +133,9 @@ export default function VisorGrupo({ grupo, todas = null, onCerrar, onAbrir, onS
               <button type="button" className="btn btn-ghost visor-grupo-borrar" onClick={() => setConfirmando(true)}>
                 <Icon name="trash" size={16} /> {reel ? "Mandar el reel a la papelera" : "Mandar el carrusel a la papelera"}
               </button>
+            )}
+            {onDesagrupar && (
+              <button type="button" className="btn btn-ghost" onClick={() => onDesagrupar().catch((e) => setError(e.message))}>Desagrupar</button>
             )}
             <button type="button" className="btn btn-ghost" onClick={onSueltas}><Icon name="folder" size={16} /> Ver sueltas</button>
             <button type="button" className={`btn ${onUsar ? "btn-secondary" : "btn-primary"}`} disabled={bajando} onClick={descargar}>

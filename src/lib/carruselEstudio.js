@@ -14,7 +14,7 @@
 import * as api from "./estudio";
 import { controlarYCorregir } from "./controlEstudio";
 import { pedidoDeCorreccion } from "./estudio";
-import { ajustesDe, modeloPorId, MODELOS, porPrecio } from "./estudioCatalogo";
+import { ajustesDe, modeloPorId, MODELOS, porPrecio, modeloQueRespeta, relevoPara, fueraDeProporcion, pedidoDeRecomponer } from "./estudioCatalogo";
 import { pedidoDeLamina, referenciasDeLamina } from "./carrusel";
 import { lineaDeSistema } from "./sistemaCarrusel";
 import { componerLamina } from "./textoSobreImagen";
@@ -30,6 +30,12 @@ async function conSello({ crudo, final }, { clienteId, estampar, carpetaId }) {
 }
 
 const TERMINADO = new Set(["hecho", "fallido", "cancelado"]);
+
+/** Qué motores tienen llave, si quien llama no lo sabe. */
+async function activosDeMotores() {
+  const m = await api.leerMotores().catch(() => null);
+  return Object.fromEntries(Object.entries(m?.motores ?? {}).map(([k, v]) => [k, Boolean(v.activo)]));
+}
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -51,8 +57,14 @@ export async function esperarArchivo(clienteId, trabajo, opciones = {}) {
   return (await esperarArchivos(clienteId, trabajo, opciones))[0];
 }
 
-/** Lo mismo, con TODOS los archivos del trabajo (un pedido de 2 o 3 variantes), en el orden en que salieron. */
-export async function esperarArchivos(clienteId, trabajo, { seguir = () => true } = {}) {
+/**
+ * Lo mismo, con TODOS los archivos del trabajo (un pedido de 2 o 3 variantes), en el orden en que salieron.
+ * La RED DE SEGURIDAD de la proporción vive aquí, porque por aquí esperan todos (el director, el lote, el carrusel, las
+ * historias, «Crear la imagen aquí»…): una imagen que no salió en la proporción pedida se RECOMPONE en ella con un
+ * modelo que la respete (la misma pieza, sin recortar: el texto no se encoge) y la nueva ocupa su sitio. Si no hay
+ * con qué, o falla, sigue la que salió. `sinRelevo`: no recomponer (la propia recomposición).
+ */
+export async function esperarArchivos(clienteId, trabajo, { seguir = () => true, sinRelevo = false } = {}) {
   let t = trabajo;
   while (!TERMINADO.has(t.estado)) {
     if (!seguir()) throw new Error("Se detuvo.");
@@ -69,7 +81,27 @@ export async function esperarArchivos(clienteId, trabajo, { seguir = () => true 
   // La cruda: una pieza con el texto de la plantilla encima hereda el trabajo de la suya (lib/loteEstudio.js).
   const archivos = (g?.archivos ?? []).filter((a) => a.trabajoId === t.id && !a.ajustes?.plantilla).reverse();
   if (!archivos.length) throw new Error("La pieza se creó pero no aparece en la galería.");
-  return archivos;
+  const pedida = t.ajustes?.aspectRatio;
+  if (sinRelevo || !pedida || !archivos.some((a) => a.tipo === "imagen" && fueraDeProporcion(a, pedida))) return archivos;
+  const activos = await activosDeMotores();
+  return Promise.all(archivos.map((a) => (a.tipo === "imagen" && fueraDeProporcion(a, pedida) ? recomponer(clienteId, a, pedida, activos, seguir) : a)));
+}
+
+/** La misma pieza, recompuesta en su proporción (ver esperarArchivos). Si no se puede, la que había. */
+async function recomponer(clienteId, archivo, proporcion, activos, seguir) {
+  const m = relevoPara(activos, proporcion, 1);
+  if (!m) return archivo;
+  try {
+    const { prompt, medios } = api.pedidoDeCorreccion({ clave: archivo.clave, instruccion: pedidoDeRecomponer(proporcion), modelo: m });
+    const { trabajo } = await api.pedirImagenes(clienteId, {
+      modelo: m.id, prompt, n: 1, ajustes: ajustesDe(m, { aspectRatio: proporcion, imageSize: "2K" }, medios), medios, confirmado: true,
+      ...(archivo.carpetaId ? { carpetaId: archivo.carpetaId } : {}),
+    });
+    const [nueva] = await esperarArchivos(clienteId, trabajo, { seguir, sinRelevo: true });
+    return nueva ?? archivo;
+  } catch {
+    return archivo;
+  }
 }
 
 /**
@@ -85,7 +117,12 @@ export async function crearLamina({
   // muestra de la tipografía de la marca, sólo si el texto lo escribe el modelo.
   const letra = modo === "plantilla" ? null : tipografia;
   const clavesPersonajes = personajes.map((p) => p.clave);
-  const reference = referenciasDeLamina({ anterior: anterior?.clave, portada: portada?.clave, fotos: [...clavesPersonajes, ...(letra ? [letra.clave] : []), ...fotos], logo, max: modelo.referencias || 0 });
+  const deLamina = (m) => referenciasDeLamina({ anterior: anterior?.clave, portada: portada?.clave, fotos: [...clavesPersonajes, ...(letra ? [letra.clave] : []), ...fotos], logo, max: m.referencias || 0 });
+  // Una lámina es 4:5 SIEMPRE: si el modelo no lo respeta con referencias (Muse Image da 2:3), va con otro.
+  const elegido = modelo;
+  const conLlave = Object.keys(activos ?? {}).length ? activos : await activosDeMotores();
+  modelo = modeloQueRespeta(elegido, conLlave, "4:5", deLamina(elegido).length);
+  const reference = deLamina(modelo);
   const quienes = [...personajes, ...(letra ? [letra] : [])].filter((p) => reference.includes(p.clave)).map((p) => p.nota).filter(Boolean);
   const prompt = pedidoDeLamina({
     lamina, total, idea, preset, modo, plantilla, hilo,
@@ -123,7 +160,9 @@ async function textoEncima({ clienteId, crudo, lamina, plantilla, colores, famil
  * conserva) con el mismo modelo, y sale una nueva; la de antes se queda en la galería. En el modo plantilla se corrige
  * la cruda y el texto se vuelve a poner encima. → { crudo, final }.
  */
-export async function corregirLamina({ clienteId, modelo, resultado, instruccion, ejemplos = [], lamina, modo = "ia", plantilla = "banda", colores, familia = "", fuente = null, carpetaId = null, seguir, estampar = null }) {
+export async function corregirLamina({ clienteId, modelo: elegido, resultado, instruccion, ejemplos = [], lamina, modo = "ia", plantilla = "banda", colores, familia = "", fuente = null, carpetaId = null, seguir, estampar = null, activos = null }) {
+  // Corregir es editar CON referencia: el modelo tiene que respetar el 4:5 así (Muse Image no).
+  const modelo = modeloQueRespeta(elegido, activos ?? (await activosDeMotores()), "4:5", 1);
   // Se corrige la cruda (en «ia», la cruda ES la final, salvo que lleve el logo estampado encima: ése se vuelve a poner).
   const base = resultado.crudo ?? resultado.final;
   // La lámina va primero; los ejemplos de la galería (si los hay) detrás, como guía de lo que se pide.

@@ -26,7 +26,7 @@ export default function PlanDePiezas({ plan, onCrear, onCancelar }) {
   const [abierta, setAbierta] = useState(null);
   const [calidad, setCalidad] = useState("borrador");
   const titulo = useRef(null);
-  useEffect(() => { titulo.current?.focus(); }, []);
+  useEffect(() => { titulo.current?.focus({ preventScroll: true }); }, []);
 
   const revisando = plan.estado === "revisar";
   // Revisando, lo que la persona va cambiando; creando, lo que de verdad se pidió.

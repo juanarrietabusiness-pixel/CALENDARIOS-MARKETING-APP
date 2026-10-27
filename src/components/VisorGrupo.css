@@ -21,6 +21,7 @@
   font-size: var(--fs-3xs); font-weight: 700; color: #fff; background: rgba(0, 0, 0, 0.72);
 }
 .visor-grupo-num { left: var(--sp-1); }
+.visor-grupo-flechas { display: flex; justify-content: center; gap: var(--sp-1); margin-top: var(--sp-1); }
 .visor-grupo-usada { right: var(--sp-1); }
 .visor-grupo-pie { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-2); }
 /* Borrar va a la izquierda, lejos de «Usar» y «Descargar» */

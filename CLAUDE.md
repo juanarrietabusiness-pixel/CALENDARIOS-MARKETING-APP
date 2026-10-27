@@ -3153,6 +3153,30 @@ son del servidor.
 - **«Crear la imagen aquí» escoge tipo, estilo, modelo y plantilla** (`OpcionesCrearAqui.jsx`, lazy: arrastra el
   catálogo; se recuerda por cliente en `crear-aqui:<cliente>`). Vacío es lo de siempre: el tipo del post, el estilo de ese
   tipo, el modelo fijado y ninguna plantilla.
+- **La proporción pedida es la que sale** (`respetaProporcion`, `modeloQueRespeta`, `relevoPara`, `fueraDeProporcion` en
+  estudioCatalogo.js). Muse Image con imágenes de referencia (el logo, la foto del producto, la lámina anterior) pierde la
+  vía de medidas exactas y la de Responses sólo da 1:1, 2:3 y 3:2 (`conReferencias` en su ficha del catálogo): los 4:5
+  del director salían 2:3. Y GPT Image, Seedream e Imagen no tienen 4:5. Dos capas:
+  · **Antes de crear:** `pedidoDePieza({ …, proporcion, activos })` cambia el modelo por el primero de `RELEVO_PROPORCION`
+  con llave (Nano Banana 2 por Kie, luego el de Google…) si el escogido no la respeta con esas referencias; quien llama
+  lee el modelo usado en `pedido.modelo` (para el costo y el nombre). Lo usan el director del chat, `generar_imagen`, el
+  lote, «Producir el mes», «Crear la imagen aquí», «Otra versión», las historias, las láminas del carrusel
+  (`crearLamina`, `corregirLamina`: un carrusel es 4:5 SIEMPRE), las correcciones (`modeloParaCorregir(…, aspecto)`) y la
+  versión final. El compositor respeta lo que escoge la persona.
+  · **Después, la red de seguridad** (`esperarArchivos` en carruselEstudio.js, por donde esperan todos): una imagen cuyas
+  medidas no casan con el `aspectRatio` de su trabajo (4 % de margen: el 896×1152 de Nano Banana vale) se RECOMPONE en
+  esa proporción con el relevo (`pedidoDeRecomponer`: la misma pieza, sin recortar ni acercar; el texto no se encoge) y
+  la nueva ocupa su sitio. Decisión de la agencia: NADA de recortar ni de «zona segura» (el texto quedaba pequeño).
+- **«Agrupar como carrusel» en la galería** (`agruparComoCarrusel`, `desagrupar`, `moverEnOrden` en lib/estudio.js): con
+  «Seleccionar», las imágenes tocadas pasan a una carpeta de carrusel EN EL ORDEN en que se tocaron y la galería las
+  enseña como una tarjeta; en `VisorGrupo`, flechas para cambiar el orden (se guarda con `ordenarCarpeta`) y «Desagrupar»
+  (borra la carpeta: el servidor devuelve sus piezas a la galería). Los carruseles del director (`disenar_piezas` con
+  `carrusel: true`, todas 4:5) van solos a su carpeta y quedan en el orden del plan.
+- **El chat no mueve la página** (ChatPanel): bajar al último mensaje era `scrollIntoView`, que desplaza TODOS los
+  contenedores, también la página: en la pestaña Diseño el chat se subía y la caja de escribir quedaba fuera de su sitio
+  hasta cambiar de pestaña. Ahora se desplaza sólo la lista (`scrollTo` de `.chat-mensajes`) y todo `focus()` del chat va
+  con `preventScroll`. El formulario inicial del compositor vive en lib/estudio.js (`formularioInicial`): la pestaña
+  Estudio estaba en su tope de 20 kB.
 - **Editar una imagen no la toca: hace otra.** Es un trabajo con la imagen de
   referencia y `promptDeEdicion()` (la indicación + «conserva todo lo
   demás»), con Muse Image si hay llave de Meta y si no Nano Banana

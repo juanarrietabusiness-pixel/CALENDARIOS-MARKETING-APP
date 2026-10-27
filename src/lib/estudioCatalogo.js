@@ -119,6 +119,9 @@ export const MODELOS = Object.freeze([
   {
     id: "muse-image", motor: "meta", tipo: "imagen", gid: "muse-image-1.0", nombre: "Muse Image",
     creador: "Meta", calidad: 3, velocidad: "normal", costo: 0.01, referencias: 10,
+    // Con imágenes de referencia Meta rechaza la vía de las medidas exactas y la segunda (Responses) sólo da estas tres:
+    // un 4:5 con el logo o la foto del producto salía 2:3. `modeloQueRespeta` lo manda a otro modelo.
+    conReferencias: ["1:1", "2:3", "3:2"],
     nota: "De Meta: genera y edita, y busca por su cuenta referencias reales (marcas, lugares, datos actuales) antes de dibujar. Texto legible e infografías. Muy barato.",
     para: ["texto legible", "editar y componer", "barato"],
     ajustes: {
@@ -692,6 +695,56 @@ export function modeloPorDefecto(motoresActivos = {}, tipo = "imagen") {
   return deEsteTipo.find((m) => m.predeterminado) ?? deEsteTipo[0]
     ?? MODELOS.find((m) => m.tipo === tipo && m.motor === "prueba");
 }
+
+/**
+ * ¿Sale este modelo en la proporción pedida? Tiene que admitirla y, si la pieza lleva imágenes de referencia, no ser
+ * uno de los que con referencias sólo dan otras (`conReferencias`). Sin proporción, sí. Pura.
+ */
+export function respetaProporcion(modelo, proporcion, conReferencias = false) {
+  if (!proporcion || modelo?.tipo !== "imagen") return true;
+  if (!(modelo.ajustes?.aspectRatio?.valores ?? []).includes(proporcion)) return false;
+  return !(conReferencias && modelo.conReferencias && !modelo.conReferencias.includes(proporcion));
+}
+
+/** Los que hacen cualquier proporción con referencias, en orden de preferencia (calidad y precio). */
+export const RELEVO_PROPORCION = Object.freeze(["nano-banana-2-kie", "nano-banana-2", "nano-banana-2-1-kie", "nano-banana-pro-kie", "nano-banana-pro", "nano-banana"]);
+
+/**
+ * El modelo con que de verdad sale la pieza en `proporcion`: el escogido si la respeta; si no, el primero de
+ * RELEVO_PROPORCION con llave que la respete (con sitio para las referencias, si van). Sin relevo, el escogido: la red
+ * de seguridad de después (recomponer) la deja en su proporción. Pura.
+ */
+export function modeloQueRespeta(modelo, activos = {}, proporcion = "", referencias = 0) {
+  if (!modelo || respetaProporcion(modelo, proporcion, referencias > 0)) return modelo;
+  return relevoPara(activos, proporcion, Math.min(referencias, modelo.referencias ?? 0)) ?? modelo;
+}
+
+/** El primero de RELEVO_PROPORCION con llave que haga `proporcion` con `referencias` imágenes de apoyo, o null. Pura. */
+export function relevoPara(activos = {}, proporcion = "", referencias = 1) {
+  for (const id of RELEVO_PROPORCION) {
+    const m = modeloPorId(id);
+    if (m && activos[m.motor] && respetaProporcion(m, proporcion, referencias > 0) && (m.referencias ?? 0) >= referencias) return m;
+  }
+  return null;
+}
+
+/**
+ * ¿Salió la imagen en otra proporción que la pedida? Con un 4 % de margen: Nano Banana entrega el 4:5 en 896×1152
+ * (0,78) y eso vale; un 2:3 o un 3:4 cuando se pidió 4:5, no. Sin medidas o sin proporción pedida, no. Pura.
+ */
+export function fueraDeProporcion(archivo, proporcion = "") {
+  const [w, h] = String(proporcion).split(":").map(Number);
+  if (!(w > 0 && h > 0 && archivo?.ancho > 0 && archivo?.alto > 0)) return false;
+  const pedida = w / h;
+  return Math.abs(archivo.ancho / archivo.alto - pedida) / pedida > 0.04;
+}
+
+/**
+ * La orden de RECOMPONER una pieza que salió en otra proporción: la misma pieza en el formato pedido, sin recortar ni
+ * acercar (no se pierde el texto ni se encoge), reacomodando el fondo y los márgenes. Pura.
+ */
+export const pedidoDeRecomponer = (proporcion) =>
+  `Recompón esta MISMA pieza en formato ${proporcion} (vertical si el alto es mayor). Conserva el diseño: el texto exacto palabra por palabra, con el mismo tamaño relativo y la misma jerarquía, la tipografía, los colores, el producto, las personas y el logo. Reacomoda o extiende el fondo y los márgenes para llenar el formato nuevo. No recortes ningún elemento, no hagas zoom ni cambies el encuadre del sujeto, no añadas texto.`;
 
 /** Segundos de un video pedido (su ajuste `duration`, o el que traiga el modelo por defecto). */
 export const duracionDe = (modelo, ajustes = {}) =>

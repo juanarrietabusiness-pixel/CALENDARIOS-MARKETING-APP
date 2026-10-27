@@ -14,7 +14,7 @@
 // ============================================================
 
 import * as api from "./estudio";
-import { estimar, CONFIRMAR_DESDE, textoCosto } from "./estudioCatalogo";
+import { estimar, CONFIRMAR_DESDE, textoCosto, modeloPorId } from "./estudioCatalogo";
 import { apoyosDePieza, pedidoDePieza } from "./pieza";
 import { productosNombrados } from "./referencias";
 import { esperarArchivos } from "./carruselEstudio";
@@ -43,15 +43,16 @@ export async function crearPiezaParaElChat({ cliente, idea, tipo = "imagen", for
   const deseada = PROPORCION[formato] ?? (video ? "9:16" : "1:1");
   const pedido = pedidoDePieza({
     kit, idea, preset: estilo, apoyos, modelo, marca: cliente.name, rubro: cliente.industry ?? "",
-    aspectRatio: valores.includes(deseada) ? deseada : "", video,
+    aspectRatio: valores.includes(deseada) ? deseada : "", video, ...(video ? {} : { proporcion: deseada, activos }),
   });
-  const costo = estimar(modelo, 1, pedido.ajustes);
-  if (costo >= CONFIRMAR_DESDE && !confirmado) return { confirmar: costo, modelo };
+  const usado = modeloPorId(pedido.modelo) ?? modelo;
+  const costo = estimar(usado, 1, pedido.ajustes);
+  if (costo >= CONFIRMAR_DESDE && !confirmado) return { confirmar: costo, modelo: usado };
 
-  alProgresar(video ? `Creando el video con ${modelo.nombre} (puede tardar unos minutos)…` : `Creando la imagen con ${modelo.nombre}…`);
+  alProgresar(video ? `Creando el video con ${usado.nombre} (puede tardar unos minutos)…` : `Creando la imagen con ${usado.nombre}…`);
   const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true });
   const [archivo] = await esperarArchivos(clienteId, trabajo);
-  return { archivo, modelo, costo };
+  return { archivo, modelo: usado, costo };
 }
 
 /** Lo que se le dice al modelo cuando la pieza cuesta y falta el «sí». */

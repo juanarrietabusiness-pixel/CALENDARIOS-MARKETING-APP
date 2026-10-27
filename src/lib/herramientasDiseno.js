@@ -15,6 +15,7 @@ export const HERRAMIENTAS_DISENO = Object.freeze([
         type: "object",
         properties: {
           concepto: { type: "string", description: "La idea que une la tanda y su sistema visual, en 1 o 2 frases." },
+          carrusel: { type: "boolean", description: "true si las piezas son las láminas de UN carrusel, en su orden (portada primero): quedan agrupadas en la galería como un carrusel. Todas en formato vertical 4:5." },
           piezas: {
             type: "array",
             minItems: 1,
