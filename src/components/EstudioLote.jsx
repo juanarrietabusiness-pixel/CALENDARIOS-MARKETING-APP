@@ -281,7 +281,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const listaPersonajes = limpiarKit(kit).personajes;
   // El MISMO camino que una pieza hecha a mano (lib/pieza.js): la escena mejorada llega de crearPieza.
   const pedidoDe = (idea, n = 1, escena = null) => pedidoDeLote({
-    idea, escena, kit, preset: presetDe(idea), estilo, modo, formato: fmtDe(idea), modelo, fotos: fotosDe(idea), archivos, gustos, personajes, marca: client.name, rubro: client.industry ?? "", n,
+    idea, escena, kit, preset: presetDe(idea), estilo, modo, formato: fmtDe(idea), modelo, fotos: fotosDe(idea), archivos, gustos, personajes, marca: client.name, rubro: client.industry ?? "", n, activos,
   });
   const nombreTipo = (idea) => nombreDePreset(presetDe(idea), kit);
   const hayFotos = productoId ? fotos.length > 0 : productosConFotos.length > 0;

@@ -11,7 +11,7 @@
 // ============================================================
 
 import { pedir } from "./db";
-import { estaVivo, diasQueQuedan, MODELOS, MAX_PROMPT, modeloPorId, modeloPorDefecto, VOCES_OMNI } from "./estudioCatalogo";
+import { estaVivo, diasQueQuedan, MODELOS, MAX_PROMPT, modeloPorId, modeloPorDefecto, VOCES_OMNI, ajustesDe } from "./estudioCatalogo";
 import { lineaDeReferencia } from "./referencias";
 import { composicionDe } from "./loteAnuncios";
 
@@ -120,6 +120,31 @@ export async function carpetaDeGrupo(clienteId, tipo, titulo) {
     const g = await leerEstudio(clienteId).catch(() => null);
     return (g?.carpetas ?? []).find((c) => c.nombre.toLowerCase() === nombre.toLowerCase())?.id ?? null;
   }
+}
+/**
+ * «Agrupar como carrusel»: las imágenes escogidas (en el orden en que se tocaron) pasan a una carpeta de carrusel con
+ * ese orden, y la galería las enseña como UNA tarjeta (y «De la galería» las pone juntas en una publicación). Las
+ * que estaban en otra carpeta salen de ella. → el id de la carpeta.
+ */
+export async function agruparComoCarrusel(clienteId, ids = [], titulo = "Agrupado") {
+  const carpetaId = await carpetaDeGrupo(clienteId, "carrusel", titulo);
+  if (!carpetaId) throw new Error("No se pudo crear el carrusel. Prueba otra vez.");
+  for (const id of ids) await cambiarArchivo(clienteId, id, { carpetaId });
+  await ordenarCarpeta(clienteId, carpetaId, ids);
+  return carpetaId;
+}
+
+/** «Desagrupar»: se borra la carpeta del carrusel y sus piezas vuelven a la galería sueltas (lo hace el servidor). */
+export const desagrupar = (clienteId, carpetaId) => borrarCarpeta(clienteId, carpetaId);
+
+/** Una pieza movida un sitio antes (-1) o después (+1) en el orden de un grupo. Pura. */
+export function moverEnOrden(ids = [], id, paso) {
+  const i = ids.indexOf(id);
+  const j = i + paso;
+  if (i < 0 || j < 0 || j >= ids.length) return ids;
+  const nuevo = [...ids];
+  [nuevo[i], nuevo[j]] = [nuevo[j], nuevo[i]];
+  return nuevo;
 }
 export const renombrarCarpeta = (clienteId, id, nombre) => pedir(`${base(clienteId)}/carpetas/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ nombre }) });
 export const borrarCarpeta = (clienteId, id) => pedir(`${base(clienteId)}/carpetas/${encodeURIComponent(id)}`, { method: "DELETE" });
@@ -545,3 +570,39 @@ export const ideasDelMes = (clienteId, datos) => pedir(`${base(clienteId)}/lote/
 
 /** «Guardar como regla»: suma una frase a las reglas que no se rompen del kit del cliente. Devuelve `{ kit }`. */
 export const guardarRegla = (clienteId, regla) => pedir(`${base(clienteId)}/kit/reglas`, post({ regla }));
+
+// ------------------------------------------------------------
+// El formulario del compositor (fuera de Estudio.jsx: la pestaña tiene tope de 20 kB comprimidos)
+// ------------------------------------------------------------
+
+export const MEDIOS_VACIOS = () => ({ reference: [], start: [], end: [], video: [] });
+/** Lo que cabe de cada papel en un modelo (al cambiar de modelo o de tipo, lo que no cabe se cae). */
+export const recortarMedios = (medios, m) => ({
+  reference: medios.reference.slice(0, m.referencias || 0), start: medios.start.slice(0, m.inicial || 0),
+  end: medios.end.slice(0, m.final || 0), video: (medios.video ?? []).slice(0, m.video || 0),
+});
+/** Las claves de R2 de cada papel de los medios. */
+export const clavesDe = (medios) => Object.fromEntries(Object.entries(medios).map(([rol, lista]) => [rol, lista.map((a) => a.clave)]));
+
+/** El formulario con que arranca el compositor. */
+export function formularioInicial(motores, inicial, productos = [], fijados = {}) {
+  const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
+  const tipo = inicial?.tipo ?? "imagen";
+  // Un modelo pedido de fuera sólo se respeta si tiene llave: uno sin llave no se puede pedir, y la lista ya no
+  // enseña los que no tienen (el recreador escoge entre los que hay: lib/recrear.js).
+  const pedido = inicial?.modelo ? modeloPorId(inicial.modelo) : null;
+  const m = pedido?.tipo === tipo && (pedido.motor === "prueba" || activos[pedido.motor]) ? pedido : modeloPreferido(activos, tipo, fijados[tipo]);
+  const medios = MEDIOS_VACIOS();
+  if (inicial?.inicio) medios.start = [inicial.inicio];
+  // Desde una publicación de un producto con fotos en el catálogo, sus fotos van de referencia: sale el producto REAL.
+  const delProducto = tipo === "imagen" && !inicial?.inicio ? fotosDelProducto(productos, inicial?.post?.productoId) : [];
+  // Lo que llega de fuera (la pieza de la que se pide otra versión, una referencia de la competencia) y las fotos del producto.
+  const referencias = [...(inicial?.referencias ?? []), ...delProducto.filter((f) => !(inicial?.referencias ?? []).some((r) => r.clave === f.clave))];
+  if (referencias.length) medios.reference = referencias.slice(0, m.referencias || 0);
+  if (inicial?.video && m.video) medios.video = [inicial.video];
+  return {
+    tipo, modelo: m.id, prompt: inicial?.prompt ?? "", n: 1, medios,
+    // Los ajustes que trae (la duración y el sonido del recreador) y la proporción; `ajustesDe` descarta lo que el modelo no admite.
+    ajustes: ajustesDe(m, { ...(inicial?.ajustes ?? {}), ...(inicial?.proporcion ? { aspectRatio: inicial.proporcion } : {}) }, clavesDe(medios)),
+  };
+}

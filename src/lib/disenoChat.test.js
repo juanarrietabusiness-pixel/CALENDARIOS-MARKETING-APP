@@ -3,11 +3,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // La red del Estudio, de mentira: lo que se comprueba es lo que se PIDE.
 const pedidos = [];
 const fichasPedidas = [];
+const ordenes = [];
 vi.mock("./estudio", async (original) => {
   const real = await original();
   return {
     ...real,
     pedirImagenes: vi.fn(async (_c, datos) => { pedidos.push(datos); return { trabajo: { id: `t${pedidos.length}`, estado: "hecho" } }; }),
+    carpetaDeGrupo: vi.fn(async () => "carpeta-1"),
+    ordenarCarpeta: vi.fn(async (_c, id, orden) => { ordenes.push({ id, orden }); }),
     fichasDeDiseno: vi.fn(async (_c, datos) => {
       fichasPedidas.push(datos);
       return { concepto: "Serie azul", fichas: Object.fromEntries(datos.piezas.map((p) => [p.n, { ficha: `Pieza: ficha ${p.n}.`, ...(p.n === 1 ? { plantilla: "plantilla-a" } : {}) }])) };
@@ -36,13 +39,18 @@ describe("las herramientas de diseño del asistente", () => {
       { titulo: "Envío gratis", ficha: "Pieza: post.\nTexto: titular «Envío gratis».", formato: "vertical", plantilla_id: "plantilla-a" },
       { titulo: "Sin ficha", ficha: "" },
     ]);
-    expect(plan[0].modelo.id).toBe("muse-image");
+    // Con referencias (la plantilla y el logo) Muse Image no da 4:5: el plan va con Nano Banana 2, que sí.
+    expect(plan[0].modelo.id).toBe("nano-banana-2");
+    expect(plan[0].pedido.modelo).toBe("nano-banana-2");
     expect(plan[0].pedido.prompt).toMatch(/^Escena: Pieza: post\./);
     expect(plan[0].pedido.prompt).toMatch(/Sigue el diseño de la plantilla «Oferta»/);
     expect(plan[0].pedido.medios.reference).toContain("clientes/c1/p.png");
     expect(plan[0].pedido.ajustes.aspectRatio).toBe("4:5");
     expect(plan[1].error).toMatch(/Falta la ficha/);
     expect(costoDelPlan(plan)).toBeCloseTo(plan[0].costo);
+    // Una pieza sin referencias sigue con el modelo del cliente.
+    const solo = planDePiezas({ ...ctx(), kit: { modelos: { imagen: "muse-image" } } }, [{ titulo: "x", ficha: "Pieza: post.", formato: "vertical" }]);
+    expect(solo[0].modelo.id).toBe("muse-image");
   });
 
   it("«Final» usa el mejor modelo con llave; sin llave de ninguno, el del cliente", () => {
@@ -60,6 +68,14 @@ describe("las herramientas de diseño del asistente", () => {
     expect(r.map((x) => x.n)).toEqual([1, 2, 3, 4, 5]);
     expect(r.every((x) => x.archivo)).toBe(true);
     expect(vistos.sort()).toEqual([1, 2, 3, 4, 5]);
+  });
+
+  it("un carrusel va a su carpeta y queda en el orden del plan", async () => {
+    ordenes.length = 0;
+    const plan = planDePiezas(ctx(), Array.from({ length: 4 }, (_, i) => ({ titulo: `L${i + 1}`, ficha: `Pieza: lámina ${i + 1}.` })));
+    const r = await crearPlan(ctx(), plan, { carrusel: "Envío gratis" });
+    expect(pedidos.every((p) => p.carpetaId === "carpeta-1")).toBe(true);
+    expect(ordenes).toEqual([{ id: "carpeta-1", orden: r.map((x) => x.archivo.id) }]);
   });
 
   it("el texto que debe tener una pieza sale de su ficha (para el control)", () => {

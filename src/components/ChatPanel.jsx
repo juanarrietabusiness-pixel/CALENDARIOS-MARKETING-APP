@@ -208,7 +208,7 @@ export default function ChatPanel({
       const clave = e.detail?.clave;
       if (!clave) return;
       setInput((t) => `${t.trim() ? `${t.trim()}\n` : ""}En la imagen ${clave}: `);
-      inputRef.current?.focus();
+      inputRef.current?.focus({ preventScroll: true });
     };
     window.addEventListener("chat:cambio-imagen", alPedir);
     return () => window.removeEventListener("chat:cambio-imagen", alPedir);
@@ -223,7 +223,7 @@ export default function ChatPanel({
     setError("");
     setVerLista(false);
     guardarUltima(ambito, "", tema);
-    inputRef.current?.focus();
+    inputRef.current?.focus({ preventScroll: true });
   }, [loading, ambito, tema]);
 
   const abrirConversacion = useCallback((id) => {
@@ -246,11 +246,14 @@ export default function ChatPanel({
   }, [conversacionId, nuevaConversacion]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Sólo baja la LISTA de mensajes: scrollIntoView movía también la página (en la pestaña Diseño el chat subía y la
+    // caja de escribir quedaba fuera de su sitio hasta cambiar de pestaña).
+    const lista = messagesEndRef.current?.parentElement;
+    if (lista) lista.scrollTo({ top: lista.scrollHeight, behavior: "smooth" });
   }, [messages, loading, actionFeedback]);
 
   useEffect(() => {
-    if (!loadingHistory) inputRef.current?.focus();
+    if (!loadingHistory) inputRef.current?.focus({ preventScroll: true });
   }, [loadingHistory]);
 
   useEffect(() => {
@@ -606,7 +609,8 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
   /** disenar_piezas: el plan a la vista, ESPERA el botón, crea de tres en tres y devuelve las imágenes al modelo. */
   const disenarPiezas = useCallback(async (entrada) => {
     if (!client) return { ok: false, mensaje: "Abre el asistente dentro de un cliente para diseñar." };
-    const piezas = (Array.isArray(entrada.piezas) ? entrada.piezas : []).slice(0, 12);
+    // Un carrusel es 4:5 en todas sus láminas, diga lo que diga cada una.
+    const piezas = (Array.isArray(entrada.piezas) ? entrada.piezas : []).slice(0, 12).map((p) => (entrada.carrusel === true ? { ...p, formato: "vertical" } : p));
     if (!piezas.length) return { ok: false, mensaje: "No mandaste ninguna pieza." };
     setProgreso("Preparando el plan con el kit de la marca…");
     const mod = await import("../lib/disenoChat");
@@ -638,6 +642,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
           const cal = calRef.current;
           const resultados = await mod.crearPlan(ctx, plan, {
             calendarId: cal ? cal.dbId || calId : null,
+            carrusel: entrada.carrusel === true ? String(entrada.concepto || plan[0]?.titulo || "Carrusel") : "",
             alAvanzar: (n, est) => setPlanDiseno((pl) => pl && { ...pl, avance: { ...pl.avance, [n]: est } }),
           });
           setPlanDiseno((pl) => pl && { ...pl, estado: "hecho" });
@@ -1501,7 +1506,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
         {atajos?.length > 0 && !loading && (
           <div className="chat-atajos" role="group" aria-label="Encargos frecuentes">
             {atajos.map((a) => (
-              <button key={a.etiqueta} type="button" className="filter-chip" onClick={() => { setInput(a.texto); inputRef.current?.focus(); }}>
+              <button key={a.etiqueta} type="button" className="filter-chip" onClick={() => { setInput(a.texto); inputRef.current?.focus({ preventScroll: true }); }}>
                 {a.etiqueta}
               </button>
             ))}

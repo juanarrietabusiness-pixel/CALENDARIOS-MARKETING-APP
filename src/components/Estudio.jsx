@@ -16,6 +16,7 @@ import { idDeCarpeta } from "../lib/drive";
 import { OverflowMenu } from "./calendario/primitivas";
 import { soloLectura } from "../lib/sesionActual";
 import * as api from "../lib/estudio";
+import { MEDIOS_VACIOS, recortarMedios, clavesDe, formularioInicial } from "../lib/estudio";
 import { estampaSola, estamparEnGaleria, conLogoSiToca } from "../lib/logoEstudio";
 import { terminarTrabajo } from "../lib/controlEstudio";
 import {
@@ -62,12 +63,6 @@ const GUIADOS = [["carrusel", "Carrusel", "formatCarrusel"], ["reel", "Video", "
 // ============================================================
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
-const MEDIOS_VACIOS = () => ({ reference: [], start: [], end: [], video: [] });
-/** Lo que cabe de cada papel en un modelo (al cambiar de modelo o de tipo, lo que no cabe se cae). */
-const recortarMedios = (medios, m) => ({
-  reference: medios.reference.slice(0, m.referencias || 0), start: medios.start.slice(0, m.inicial || 0),
-  end: medios.end.slice(0, m.final || 0), video: (medios.video ?? []).slice(0, m.video || 0),
-});
 const FILTROS_FIJOS = FILTROS_GALERIA;
 // Un carrusel o un reel de la galería con todas sus piezas y la descarga en ZIP: sólo al abrirlo.
 const VisorGrupo = lazy(() => import("./VisorGrupo"));
@@ -76,30 +71,6 @@ const EstudioPapelera = lazy(() => import("./EstudioPapelera"));
 
 const reemplazar = (lista = [], t) => (lista.some((x) => x.id === t.id) ? lista.map((x) => (x.id === t.id ? t : x)) : [t, ...lista]);
 const nombreDeModelo = (id) => nombreDelModelo(id) || "Aplicación";
-const clavesDe = (medios) => Object.fromEntries(Object.entries(medios).map(([rol, lista]) => [rol, lista.map((a) => a.clave)]));
-
-/** El formulario con que arranca el compositor. */
-function formularioInicial(motores, inicial, productos = [], fijados = {}) {
-  const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
-  const tipo = inicial?.tipo ?? "imagen";
-  // Un modelo pedido de fuera sólo se respeta si tiene llave: uno sin llave no se puede pedir, y la lista ya no
-  // enseña los que no tienen (el recreador escoge entre los que hay: lib/recrear.js).
-  const pedido = inicial?.modelo ? modeloPorId(inicial.modelo) : null;
-  const m = pedido?.tipo === tipo && (pedido.motor === "prueba" || activos[pedido.motor]) ? pedido : api.modeloPreferido(activos, tipo, fijados[tipo]);
-  const medios = MEDIOS_VACIOS();
-  if (inicial?.inicio) medios.start = [inicial.inicio];
-  // Desde una publicación de un producto con fotos en el catálogo, sus fotos van de referencia: sale el producto REAL.
-  const delProducto = tipo === "imagen" && !inicial?.inicio ? api.fotosDelProducto(productos, inicial?.post?.productoId) : [];
-  // Lo que llega de fuera (la pieza de la que se pide otra versión, una referencia de la competencia) y las fotos del producto.
-  const referencias = [...(inicial?.referencias ?? []), ...delProducto.filter((f) => !(inicial?.referencias ?? []).some((r) => r.clave === f.clave))];
-  if (referencias.length) medios.reference = referencias.slice(0, m.referencias || 0);
-  if (inicial?.video && m.video) medios.video = [inicial.video];
-  return {
-    tipo, modelo: m.id, prompt: inicial?.prompt ?? "", n: 1, medios,
-    // Los ajustes que trae (la duración y el sonido del recreador) y la proporción; `ajustesDe` descarta lo que el modelo no admite.
-    ajustes: ajustesDe(m, { ...(inicial?.ajustes ?? {}), ...(inicial?.proporcion ? { aspectRatio: inicial.proporcion } : {}) }, clavesDe(medios)),
-  };
-}
 
 export default function Estudio({ client, pulso = 0, modo = "pestana", inicial = null, uso = null, onUsar = null, onUsarVarias = null, onCerrar = null, onLlevarAlCalendario = null }) {
   const ids = useId();
@@ -816,6 +787,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       await cargar();
     }
   };
+  /** Las escogidas, en el orden en que se tocaron, a un carrusel (una tarjeta en la galería). */
+  const agrupar = () => accion(async () => {
+    await api.agruparComoCarrusel(client.id, [...seleccion].filter((id) => archivos.some((a) => a.id === id && a.tipo === "imagen")));
+    setSeleccion(null);
+  }, "Agrupadas como carrusel, en el orden en que las tocaste.");
   const alternarSeleccion = (a) => setSeleccion((sel) => {
     const nueva = new Set(sel ?? []);
     if (nueva.has(a.id)) nueva.delete(a.id); else nueva.add(a.id);
@@ -1198,6 +1174,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
               <>
                 <span className="est-seleccion-cuenta">{seleccion.size} seleccionada{seleccion.size === 1 ? "" : "s"}</span>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSeleccion(new Set(visibles.map((a) => a.id)))}>Todas las que se ven</button>
+                <button type="button" className="btn btn-secondary btn-sm" disabled={seleccion.size < 2 || lectura} onClick={agrupar}>Agrupar como carrusel</button>
                 <button type="button" className="btn btn-danger btn-sm" disabled={!seleccion.size} onClick={() => variasAPapelera([...seleccion])}>
                   <Icon name="trash" size={14} /> Mandar {seleccion.size || ""} a la papelera
                 </button>
@@ -1368,6 +1345,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             onUsar={onUsarVarias ? usarVarias : null} onPapelera={lectura ? null : grupoAPapelera}
             onAbrir={(a) => { setGrupoAbierto(null); abrirPieza(a); }}
             onSueltas={() => { setFiltro(grupoAbierto.carpeta.id); setGrupoAbierto(null); }}
+            onOrdenar={lectura ? null : (orden) => api.ordenarCarpeta(client.id, grupoAbierto.carpeta.id, orden).then(cargar)}
+            onDesagrupar={lectura ? null : () => api.desagrupar(client.id, grupoAbierto.carpeta.id).then(() => { setGrupoAbierto(null); return cargar(); })}
           />
         </Suspense>
       )}

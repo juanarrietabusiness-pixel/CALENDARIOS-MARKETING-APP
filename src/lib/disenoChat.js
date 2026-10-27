@@ -20,7 +20,7 @@
 // ============================================================
 
 import * as api from "./estudio";
-import { estimar, ajustesDe, modeloPorId } from "./estudioCatalogo";
+import { estimar, ajustesDe, modeloPorId, modeloQueRespeta } from "./estudioCatalogo";
 import { apoyosDePieza, pedidoDePieza } from "./pieza";
 import { productosNombrados } from "./referencias";
 import { esperarArchivos } from "./carruselEstudio";
@@ -89,14 +89,14 @@ export function planDePiezas(ctx, piezas = [], { calidad = "borrador" } = {}) {
     const nombrados = productosNombrados(productos, p.ficha);
     const fotos = nombrados.length ? api.fotosDeVariosProductos(productos, nombrados.map((y) => y.id), modelo.referencias || 0) : [];
     const apoyos = apoyosDePieza({ kit, preset: p.estilo, archivos: g?.archivos ?? [], fotos, manuales: plantilla ? [plantilla] : [], modelo });
-    const valores = modelo.ajustes?.aspectRatio?.valores ?? [];
-    const deseada = PROPORCION[p.formato];
+    // La proporción TIENE que salir: si el modelo no la respeta con estas referencias, el pedido va con otro.
     const pedido = pedidoDePieza({
       kit, idea: p.ficha, preset: p.estilo, apoyos, modelo, marca: cliente.name, rubro: cliente.industry ?? "",
-      aspectRatio: valores.includes(deseada) ? deseada : "",
+      proporcion: PROPORCION[p.formato], activos,
       extra: plantilla ? lineaDePlantillaEnPedido(kit, p.plantilla) : "",
     });
-    return { ...p, modelo, costo: estimar(modelo, 1, pedido.ajustes), pedido };
+    const usado = modeloPorId(pedido.modelo) ?? modelo;
+    return { ...p, modelo: usado, costo: estimar(usado, 1, pedido.ajustes), pedido };
   });
 }
 
@@ -115,19 +115,22 @@ export function textoDeLaFicha(ficha = "") {
  * el control de calidad (si está encendido: corrige sola una letra mal escrita) y el logo estampado (si el kit lo
  * pide). → [{ n, archivo | error }] en el orden del plan. `seguir()` false para parar.
  */
-export async function crearPlan(ctx, plan, { alAvanzar = () => {}, seguir = () => true, calendarId = null } = {}) {
+export async function crearPlan(ctx, plan, { alAvanzar = () => {}, seguir = () => true, calendarId = null, carrusel = "" } = {}) {
   const { clienteId, activos, kit } = ctx;
   const cola = plan.filter((p) => !p.error).map((p) => p);
   const salida = Object.fromEntries(plan.filter((p) => p.error).map((p) => [p.n, { n: p.n, error: p.error }]));
+  // Las láminas de UN carrusel van a su carpeta, en orden: la galería las enseña como una tarjeta (y no sueltas).
+  const carpetaId = carrusel ? await api.carpetaDeGrupo(clienteId, "carrusel", carrusel) : null;
+  const enCarpeta = carpetaId ? { carpetaId } : {};
   const trabajador = async () => {
     while (cola.length && seguir()) {
       const p = cola.shift();
       alAvanzar(p.n, { cargando: true });
       try {
-        const { trabajo } = await api.pedirImagenes(clienteId, { ...p.pedido, confirmado: true, ...(calendarId && p.postId ? { calendarId, postId: p.postId } : {}) });
+        const { trabajo } = await api.pedirImagenes(clienteId, { ...p.pedido, confirmado: true, ...enCarpeta, ...(calendarId && p.postId ? { calendarId, postId: p.postId } : {}) });
         let [archivo] = await esperarArchivos(clienteId, trabajo, { seguir });
-        if (controlEncendido()) archivo = (await controlarYCorregir({ clienteId, archivo, texto: textoDeLaFicha(p.ficha) || null, activos, seguir })).archivo;
-        archivo = await conLogoSiToca({ clienteId, archivo, kit });
+        if (controlEncendido()) archivo = (await controlarYCorregir({ clienteId, archivo, texto: textoDeLaFicha(p.ficha) || null, activos, seguir, carpetaId })).archivo;
+        archivo = await conLogoSiToca({ clienteId, archivo, kit, carpetaId });
         salida[p.n] = { n: p.n, archivo };
         alAvanzar(p.n, { archivo });
       } catch (e) {
@@ -138,7 +141,10 @@ export async function crearPlan(ctx, plan, { alAvanzar = () => {}, seguir = () =
     }
   };
   await Promise.all(Array.from({ length: Math.min(PARALELO, Math.max(1, cola.length)) }, trabajador));
-  return plan.map((p) => salida[p.n] ?? { n: p.n, error: "No se llegó a crear." });
+  const resultado = plan.map((p) => salida[p.n] ?? { n: p.n, error: "No se llegó a crear." });
+  // El orden del carrusel es el del plan (salen de tres en tres y no en orden).
+  if (carpetaId) await api.ordenarCarpeta(clienteId, carpetaId, resultado.filter((r) => r.archivo).map((r) => r.archivo.id)).catch(() => {});
+  return resultado;
 }
 
 /** Las imágenes como bloques para el modelo (copias pequeñas en JPEG). Las que no se puedan leer, se saltan. */
@@ -172,7 +178,7 @@ export async function corregirPieza(ctx, { archivoId, indicacion, seguir = () =>
   const { a } = await archivoDe(ctx, archivoId);
   if (!a) throw new Error("No encontré esa imagen en la galería de este cliente.");
   if (!String(indicacion ?? "").trim()) throw new Error("Falta qué corregir.");
-  const m = modeloParaCorregir(ctx.activos, a.modelo);
+  const m = modeloParaCorregir(ctx.activos, a.modelo, proporcionDe(a));
   if (!m) throw new Error("No hay ningún modelo que edite imágenes con llave (Ajustes → IA).");
   const { prompt, medios } = api.pedidoDeCorreccion({ clave: a.clave, instruccion: indicacion, modelo: m });
   const { trabajo } = await api.pedirImagenes(ctx.clienteId, {
@@ -191,13 +197,14 @@ export async function corregirPieza(ctx, { archivoId, indicacion, seguir = () =>
 export async function versionFinal(ctx, { archivoId, seguir = () => true }) {
   const { a, g } = await archivoDe(ctx, archivoId);
   if (!a?.prompt) throw new Error("Esa imagen no salió del Estudio: no tengo su pedido para repetirlo con otro modelo.");
-  const m = modeloFinal(ctx.activos);
+  const prop = proporcionDe(a);
+  // La final no puede cambiar de tamaño: un modelo sin esa proporción (GPT Image no tiene 4:5) cede al que la tenga.
+  const m = modeloQueRespeta(modeloFinal(ctx.activos), ctx.activos, prop, 1);
   if (!m) throw new Error("No hay ningún modelo de calidad final con llave (Nano Banana Pro o GPT Image).");
   const trabajo = (g?.trabajos ?? []).find((t) => t.id === a.trabajoId);
   const refs = (trabajo?.medios?.reference ?? []).slice(0, m.referencias || 0);
   const medios = refs.length ? { reference: refs } : {};
   const valores = m.ajustes?.aspectRatio?.valores ?? [];
-  const prop = proporcionDe(a);
   const base = { ...(valores.includes(prop) ? { aspectRatio: prop } : {}), ...((m.ajustes?.imageSize?.valores ?? []).includes("2K") ? { imageSize: "2K" } : {}) };
   const { trabajo: nuevo } = await api.pedirImagenes(ctx.clienteId, { modelo: m.id, prompt: a.prompt, n: 1, ajustes: ajustesDe(m, base, medios), medios, confirmado: true, ...(a.carpetaId ? { carpetaId: a.carpetaId } : {}) });
   let [archivo] = await esperarArchivos(ctx.clienteId, nuevo, { seguir });

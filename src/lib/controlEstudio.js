@@ -18,7 +18,7 @@
 import * as api from "./estudio";
 import { correccionDeTexto } from "./control";
 import { esperarArchivos } from "./carruselEstudio";
-import { MODELOS, ajustesDe } from "./estudioCatalogo";
+import { MODELOS, ajustesDe, modeloQueRespeta } from "./estudioCatalogo";
 
 /** ¿Revisar y corregir solo? Se recuerda por navegador; encendido por defecto. */
 const CLAVE = "estudio-control";
@@ -33,12 +33,14 @@ export function encenderControl(si) {
  * Con qué se corrige el texto: el mismo modelo que hizo la pieza si edita (así no cambia el estilo), si no Nano
  * Banana, y si no el que diga `modeloParaEditar`. `activos`: { motor: bool }. Pura.
  */
-export function modeloParaCorregir(activos = {}, original = "") {
+export function modeloParaCorregir(activos = {}, original = "", aspecto = "") {
   const sirve = (m) => m && m.tipo === "imagen" && m.referencias > 0 && activos[m.motor] && m.motor !== "prueba";
   const delOriginal = MODELOS.find((m) => m.id === original);
-  if (sirve(delOriginal)) return delOriginal;
   const nano = MODELOS.find((m) => m.id === "nano-banana");
-  return sirve(nano) ? nano : api.modeloParaEditar(activos);
+  const m = sirve(delOriginal) ? delOriginal : sirve(nano) ? nano : api.modeloParaEditar(activos);
+  // Editar es pedir CON referencia (la misma imagen): un modelo que así no respeta la proporción (Muse Image da 2:3)
+  // cede al que sí, o la pieza corregida saldría de otro tamaño.
+  return modeloQueRespeta(m, activos, aspecto, 1);
 }
 
 /** Qué motores tienen llave (para escoger con qué corregir), si quien llama no lo sabe. */
@@ -77,7 +79,7 @@ export async function controlarYCorregir({ clienteId, archivo, texto = null, sis
  * el pedido falla (lo dice quien llama).
  */
 export async function corregirTexto({ clienteId, archivo, control, activos = null, carpetaId = null, seguir = () => true }) {
-  const m = modeloParaCorregir(await activosDeMotores(activos), archivo.modelo);
+  const m = modeloParaCorregir(await activosDeMotores(activos), archivo.modelo, proporcion(archivo));
   const { prompt, medios } = api.pedidoDeCorreccion({ clave: archivo.clave, instruccion: correccionDeTexto(control, control.texto), modelo: m });
   const { trabajo } = await api.pedirImagenes(clienteId, {
     modelo: m.id, prompt, n: 1, ajustes: ajustesDe(m, { aspectRatio: proporcion(archivo) }, medios), medios, confirmado: true,
@@ -120,7 +122,7 @@ export async function rehacerConComentario({ clienteId, src, indicacion, medida 
   const archivo = api.archivoDesdeSrc(src, clienteId);
   if (!archivo) throw new Error("Esa imagen no está en el almacén de este cliente: súbela de nuevo y prueba otra vez.");
   if (!String(indicacion ?? "").trim()) throw new Error("Escribe qué hay que cambiar.");
-  const m = modeloParaCorregir(await activosDeMotores(activos), "");
+  const m = modeloParaCorregir(await activosDeMotores(activos), "", proporcion(medida));
   if (!m) throw new Error("No hay ningún modelo que edite imágenes con llave puesta (Ajustes → IA).");
   const { prompt, medios } = api.pedidoDeCorreccion({ clave: archivo.clave, instruccion: indicacion, modelo: m });
   const { trabajo } = await api.pedirImagenes(clienteId, {

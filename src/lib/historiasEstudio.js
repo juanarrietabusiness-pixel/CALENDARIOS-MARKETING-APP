@@ -108,7 +108,7 @@ export async function crearHistorias({ client, post, base, indicacion = "", alAv
       const valores = modelo.ajustes?.aspectRatio?.valores ?? [];
       const pedido = pedidoDePieza({
         kit, idea: ficha, preset, apoyos, modelo, marca: client.name, rubro: client.industry ?? "",
-        aspectRatio: valores.includes("9:16") ? "9:16" : "", extra: [ZONAS, plantilla ? lineaDePlantillaEnPedido(kit, idPlantilla) : ""].filter(Boolean).join(" "),
+        aspectRatio: valores.includes("9:16") ? "9:16" : "", proporcion: "9:16", activos, extra: [ZONAS, plantilla ? lineaDePlantillaEnPedido(kit, idPlantilla) : ""].filter(Boolean).join(" "),
       });
       alAvanzar(v.id, { cargando: true, paso: "Creando…" });
       const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true });

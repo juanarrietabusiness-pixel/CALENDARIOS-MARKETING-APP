@@ -59,9 +59,12 @@ async function leerTodo(clienteId) {
   return { g, activos: Object.fromEntries(Object.entries(m?.motores ?? {}).map(([k, v]) => [k, v.activo])) };
 }
 
+/** La proporción que TIENE que salir: 9:16 en historia o reel; si no, la de la que había, o 4:5. */
+const deseadaPara = (post, medio = null) => (PARA_HISTORIA.has(post.format) ? "9:16" : (medio && api.proporcionDeMedidas(medio.ancho, medio.alto)) || "4:5");
+
 /** La proporción de la imagen nueva: 9:16 en historia o reel; si no, la de la que había (o 4:5), si el modelo la tiene. */
 function proporcionPara(modelo, post, medio = null) {
-  const deseada = PARA_HISTORIA.has(post.format) ? "9:16" : (medio && api.proporcionDeMedidas(medio.ancho, medio.alto)) || "4:5";
+  const deseada = deseadaPara(post, medio);
   const valores = modelo.ajustes?.aspectRatio?.valores ?? [];
   return valores.includes(deseada) ? deseada : valores.includes("4:5") ? "4:5" : "";
 }
@@ -118,10 +121,11 @@ async function prepararVersion({ clienteId, client, post, medio, g, activos, ind
   const apoyos = apoyosDePieza({ kit, preset, archivos: g?.archivos ?? [], fotos, modelo });
   const pedido = pedidoDePieza({
     kit, idea: conIndicacion(escena, indicacion), preset, apoyos, modelo, marca: client.name, rubro: client.industry ?? "", aspectRatio,
+    proporcion: deseadaPara(post, medio), activos,
     // Con la ficha del director el texto ya va dentro; sin ella, la línea de siempre.
     extra: r?.idea || post.format === "carrusel" ? "" : lineaDeTexto(post.textoPieza),
   });
-  return { pedido, costo: estimar(modelo, 1, pedido.ajustes) };
+  return { pedido, costo: estimar(modeloPorId(pedido.modelo) ?? modelo, 1, pedido.ajustes) };
 }
 
 /**
@@ -182,11 +186,12 @@ export async function crearImagenDelPost({ client, post, indicacion = "", opcion
   // El texto exacto ya va dentro de la idea (el pedido listo o la ficha): no se repite.
   const pedido = pedidoDePieza({
     kit, idea: conIndicacion(idea, indicacion), preset, estilo: opciones.estilo || "", apoyos, modelo, marca: client.name, rubro: client.industry ?? "",
-    aspectRatio, extra: plantilla ? lineaDePlantillaEnPedido(kit, opciones.plantilla) : "",
+    aspectRatio, proporcion: deseadaPara(post), activos, extra: plantilla ? lineaDePlantillaEnPedido(kit, opciones.plantilla) : "",
   });
-  const costo = estimar(modelo, 1, pedido.ajustes);
+  const usado = modeloPorId(pedido.modelo) ?? modelo;
+  const costo = estimar(usado, 1, pedido.ajustes);
   if (costo >= CONFIRMAR_DESDE && !confirmar(costo)) return null;
-  alProgresar(`Creando la imagen con ${modelo.nombre}…`);
+  alProgresar(`Creando la imagen con ${usado.nombre}…`);
   const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true, ...(calendarId ? { calendarId, postId: post.id } : {}) });
   const [nueva] = await esperarArchivos(clienteId, trabajo);
   if (!nueva) throw new Error("La imagen no llegó. Prueba otra vez.");
@@ -246,8 +251,9 @@ export async function recrearConLaMarca({ client, post, medio, indicacion = "", 
     const valores = modelo.ajustes?.aspectRatio?.valores ?? [];
     pedido = pedidoDePieza({
       kit, idea, preset: presetDePilar(post.pilar, post.pilarSub), apoyos, modelo, marca: client.name, rubro: client.industry ?? "",
-      aspectRatio: valores.includes(deseada) ? deseada : "", extra: post.format === "carrusel" ? "" : lineaDeTexto(post.textoPieza),
+      aspectRatio: valores.includes(deseada) ? deseada : "", proporcion: deseada, activos, extra: post.format === "carrusel" ? "" : lineaDeTexto(post.textoPieza),
     });
+    modelo = modeloPorId(pedido.modelo) ?? modelo;
   }
   const costo = estimar(modelo, 1, pedido.ajustes);
   if (costo >= CONFIRMAR_DESDE && !confirmar(costo)) return null;

@@ -353,3 +353,27 @@ describe("la lista de modelos: ordenar y filtrar", () => {
     expect(c).toEqual(expect.arrayContaining(["Google", "Recraft", "Ideogram"]));
   });
 });
+
+describe("respetar la proporción", () => {
+  it("Muse Image con referencias sólo da 1:1, 2:3 y 3:2; sin ellas, cualquiera de su lista", async () => {
+    const { respetaProporcion, modeloQueRespeta, relevoPara, fueraDeProporcion, pedidoDeRecomponer, modeloPorId } = await import("./estudioCatalogo");
+    const muse = modeloPorId("muse-image");
+    expect(respetaProporcion(muse, "4:5")).toBe(true);
+    expect(respetaProporcion(muse, "4:5", true)).toBe(false);
+    expect(respetaProporcion(muse, "1:1", true)).toBe(true);
+    // GPT Image no tiene 4:5: cede aunque no lleve referencias.
+    const gpt = modeloPorId("gpt-image-2-kie");
+    expect(modeloQueRespeta(gpt, { kie: true }, "4:5", 0).id).toBe("nano-banana-2-kie");
+    expect(modeloQueRespeta(gpt, { kie: true }, "3:4", 0).id).toBe("gpt-image-2-kie");
+    // Con sólo la llave de Google, el relevo es el de Google.
+    expect(relevoPara({ gemini: true }, "4:5", 2).id).toBe("nano-banana-2");
+    expect(relevoPara({ meta: true }, "4:5", 1)).toBeNull();
+    // 896×1152 vale como 4:5; 1024×1536 (2:3) y 3:4 no.
+    expect(fueraDeProporcion({ ancho: 896, alto: 1152 }, "4:5")).toBe(false);
+    expect(fueraDeProporcion({ ancho: 1024, alto: 1536 }, "4:5")).toBe(true);
+    expect(fueraDeProporcion({ ancho: 1536, alto: 2048 }, "4:5")).toBe(true);
+    expect(fueraDeProporcion({ ancho: 0, alto: 0 }, "4:5")).toBe(false);
+    expect(fueraDeProporcion({ ancho: 1000, alto: 1000 }, "")).toBe(false);
+    expect(pedidoDeRecomponer("4:5")).toMatch(/No recortes/);
+  });
+});

@@ -121,6 +121,7 @@ export function instruccionDeDiseno(manual) {
     FORMATO_FICHA,
     "",
     "TUS HERRAMIENTAS DE DISEÑO:",
+    "· Un CARRUSEL: sus láminas en orden (portada primero) en UNA sola llamada a disenar_piezas con carrusel=true y formato vertical (4:5); así quedan agrupadas en la galería. Mismo sistema en todas: el titular, los márgenes, el fondo y el logo en el mismo sitio y del mismo tamaño en cada lámina, y dilo con medidas en cada ficha.",
     "· disenar_piezas: de 1 a 12 piezas, una ficha cada una. La persona ve las fichas y el costo y aprueba con un botón: NO le pidas el «sí» por texto antes. Si son para publicaciones del calendario, pasa el post_id de cada una y copia su texto de la pieza TAL CUAL.",
     "· ver_lo_que_funciona: las plantillas y las imágenes que gustaron de este cliente, para que veas su estilo. Míralo antes de la primera tanda de la conversación.",
     "· Al terminar, disenar_piezas te devuelve cada imagen para que la MIRES. Si una tiene una falta de ortografía, un texto ilegible, un logo deformado o se sale del sistema, arréglala con corregir_pieza (un detalle) o pídela otra vez con disenar_piezas (la composición no sirve) ANTES de dar la tanda por buena. Di en una línea qué corregiste.",

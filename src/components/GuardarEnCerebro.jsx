@@ -22,7 +22,7 @@ export default function GuardarEnCerebro({ propuesta, onGuardar, onDescartar }) 
   const [estado, setEstado] = useState({ guardando: false, error: "" });
   const titulo = useRef(null);
   // La tarjeta aparece en medio del turno: el foco va a ella para que se sepa que espera una decisión.
-  useEffect(() => { titulo.current?.focus(); }, []);
+  useEffect(() => { titulo.current?.focus({ preventScroll: true }); }, []);
 
   const vacia = !f.titulo.trim() || !f.texto.trim();
   const guardar = async () => {

@@ -46,7 +46,7 @@ export function colaDeLote(idea, { modo = "ia", formato = "post" } = {}) {
  * El pedido de UNA pieza del lote: por el MISMO camino que una pieza hecha a mano (`pedidoDePieza`), con la escena
  * (mejorada o no) que se le dé. Pura salvo por los imports.
  */
-export function pedidoDeLote({ idea, escena = null, kit, preset = "anuncio", estilo = "", modo = "ia", formato = "post", modelo, fotos = [], archivos = [], gustos = [], personajes = [], marca = "", rubro = "", n = 1 }) {
+export function pedidoDeLote({ idea, escena = null, kit, preset = "anuncio", estilo = "", modo = "ia", formato = "post", modelo, fotos = [], archivos = [], gustos = [], personajes = [], marca = "", rubro = "", n = 1, activos = null }) {
   // La plantilla de la pieza (la escogida para la tanda o la que eligió el director de arte): su imagen, por su diseño.
   const plantilla = idea?.plantilla ? referenciaDePlantilla(kit, idea.plantilla, archivos) : null;
   const apoyos = apoyosDePieza({
@@ -58,6 +58,7 @@ export function pedidoDeLote({ idea, escena = null, kit, preset = "anuncio", est
     kit, idea: escena ?? ideaSinMejorar(ideaDeLote(idea, { modo })),
     extra: [colaDeLote(idea, { modo, formato }), plantilla ? lineaDePlantillaEnPedido(kit, idea.plantilla) : ""].filter(Boolean).join(" "),
     preset, estilo, apoyos, modelo, marca, rubro, n, aspectRatio: FORMATOS_LOTE[formato]?.aspectRatio ?? "4:5",
+    ...(activos ? { proporcion: FORMATOS_LOTE[formato]?.aspectRatio ?? "4:5", activos } : {}),
   });
 }
 

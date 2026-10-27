@@ -6,7 +6,7 @@ import { mediosDe, conMedios } from "../../lib/publicacion";
 import { presetDePilar, nombreDePilar } from "../../lib/pilares";
 import { estiloDeMarca, limpiarKit, nombreDePreset } from "../../lib/kitMarca";
 import { apoyosDePieza, pedidoDePieza } from "../../lib/pieza";
-import { validarPedido, textoCosto, CONFIRMAR_DESDE } from "../../lib/estudioCatalogo";
+import { validarPedido, textoCosto, CONFIRMAR_DESDE, modeloPorId } from "../../lib/estudioCatalogo";
 import * as api from "../../lib/estudio";
 import { partirGuion, costoCarrusel, coloresPlantilla, MODOS_TEXTO, PLANTILLAS_TEXTO } from "../../lib/carrusel";
 import { crearCarrusel, modeloParaCarrusel } from "../../lib/carruselEstudio";
@@ -112,11 +112,12 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
         const armar = (idea) => pedidoDePieza({
           kit: estudio.kit, idea, preset, apoyos, modelo, marca: client.name, rubro: client.industry ?? "",
           video: tipo === "video", aspectRatio: proporcionDe(post.format, tipo),
+          ...(tipo === "imagen" ? { proporcion: proporcionDe(post.format, tipo), activos } : {}),
         });
         const pedido = armar(ideaBase);
         const v = validarPedido(pedido);
         return {
-          date: d.date, post, tipo, modelo, pedido, armar, ideaBase, pieza: nombreDePreset(preset, estudio.kit),
+          date: d.date, post, tipo, modelo: modeloPorId(pedido.modelo) ?? modelo, pedido, armar, ideaBase, pieza: nombreDePreset(preset, estudio.kit),
           costo: v.ok ? v.pedido.costoEstimado : 0, error: v.ok ? "" : v.error,
         };
       }));

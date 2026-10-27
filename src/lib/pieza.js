@@ -21,7 +21,7 @@
 import { textoDeLaPieza, fotosDeVariosProductos } from "./estudio.js";
 import { productosNombrados } from "./referencias.js";
 import { deMisGustos } from "./aprendizajeVisual.js";
-import { ajustesDe, MAX_PROMPT } from "./estudioCatalogo.js";
+import { ajustesDe, MAX_PROMPT, modeloQueRespeta } from "./estudioCatalogo.js";
 import { pedidoConMarca, ponerLogo, limpiarKit, referenciasDePreset, estiloDeLaPieza, referenciaDeTipografia, referenciasDePersonajes } from "./kitMarca.js";
 import { lineasDeReferencias } from "./referencias.js";
 
@@ -86,12 +86,25 @@ export function conAltaResolucion(modelo, ajustes = {}) {
 /**
  * El pedido de UNA pieza, listo para `pedirImagenes`: { modelo, prompt, n, medios, ajustes }. `idea` es la escena
  * final (ya mejorada); `apoyos`, las referencias en orden (`apoyosDePieza`), cada una con lo que se toma de ella. El
- * logo va el último si cabe. `extra`: líneas que van detrás de la idea (la zona libre de la plantilla). Pura.
+ * logo va el último si cabe. `extra`: líneas que van detrás de la idea (la zona libre de la plantilla).
+ * Con `activos` y `proporcion` (la que TIENE que salir), si el modelo no la respeta con estas referencias (Muse Image
+ * con el logo daba 2:3 en vez de 4:5) el pedido va con el primero que sí (`modeloQueRespeta`): mira `pedido.modelo`.
+ * Pura.
  */
-export function pedidoDePieza({
+export function pedidoDePieza(datos) {
+  const { activos = null, proporcion = "", modelo, video = false } = datos;
+  const primero = armarPedido(datos);
+  if (!activos || !proporcion || video) return primero;
+  const otro = modeloQueRespeta(modelo, activos, proporcion, primero.medios.reference?.length ?? 0);
+  return otro === modelo ? primero : armarPedido({ ...datos, modelo: otro });
+}
+
+function armarPedido({
   kit, idea, preset = "", estilo = "", apoyos = [], modelo, marca = "la marca", rubro = "", usarKit = true, conLogo = true,
-  aspectRatio = "", n = 1, video = false, extra = "", altaResolucion = true, ajustes: entrada = {},
+  aspectRatio = "", proporcion = "", n = 1, video = false, extra = "", altaResolucion = true, ajustes: entrada = {},
 }) {
+  // La proporción que tiene que salir manda sobre la que se pidiera, si este modelo la tiene.
+  if (proporcion && (modelo?.ajustes?.aspectRatio?.valores ?? []).includes(proporcion)) aspectRatio = proporcion;
   const max = modelo?.referencias ?? 0;
   const usados = apoyos.slice(0, max);
   const claves = usados.map((a) => a.clave);
