@@ -275,12 +275,13 @@ export function crearAcceso(db, ownerId, { clientes = null } = {}) {
      * sus versiones. `select *` de 400 notas de 200 000 caracteres no cabe
      * en una petición.
      */
-    async leerColumnas(tabla, columnas, where = {}, orden = "created_at asc") {
+    async leerColumnas(tabla, columnas, where = {}, orden = "created_at asc", limite = 0) {
       const cols = exigirColumnas(columnas);
       if (!cols.length) throw new Error("leerColumnas sin columnas");
       const { sql, valores } = acotar(tabla, where);
+      const tope = Number.isInteger(limite) && limite > 0 ? ` limit ${limite}` : "";
       const { results } = await db
-        .prepare(`select ${cols.join(", ")} from ${tabla} where ${sql} order by ${orden}`)
+        .prepare(`select ${cols.join(", ")} from ${tabla} where ${sql} order by ${orden}${tope}`)
         .bind(...valores)
         .all();
       return results ?? [];

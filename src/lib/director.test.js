@@ -94,3 +94,38 @@ describe("las plantillas del kit", () => {
     expect(fundirKit(kit, { estilo: "nuevo" }).plantillas).toHaveLength(1);
   });
 });
+
+describe("lo que la agencia corrige y el carrusel del director", () => {
+  it("las correcciones: de los pedidos de edición, sin las que hace sola la aplicación, sin repetir y con tope", async () => {
+    const { correccionesRecientes, lineaDeCorrecciones } = await import("./director.js");
+    const c = correccionesRecientes([
+      "Edita la imagen de referencia: el titular más arriba. Conserva todo lo demás exactamente igual.",
+      "Edita la imagen de referencia 1: el precio en amarillo. Conserva todo lo demás exactamente igual.\nImagen de referencia 2: …",
+      "Edita la imagen de referencia: donde dice «Sofa» debe decir «Sofá». Conserva todo lo demás exactamente igual.",
+      "Edita la imagen de referencia: Recompón esta MISMA pieza en formato 4:5. Conserva todo lo demás exactamente igual.",
+      "Edita la imagen de referencia: El titular más arriba. Conserva todo lo demás exactamente igual.",
+      "Escena: un sofá",
+    ]);
+    expect(c).toEqual(["el titular más arriba", "el precio en amarillo"]);
+    expect(correccionesRecientes(Array.from({ length: 20 }, (_, i) => `Edita la imagen de referencia: cambio ${i}. Conserva todo lo demás exactamente igual.`))).toHaveLength(8);
+    expect(lineaDeCorrecciones([])).toBe("");
+    expect(lineaDeCorrecciones(c)).toMatch(/^CORRECCIONES QUE LA AGENCIA HIZO HACE POCO/);
+  });
+
+  it("el carrusel: pide la serie con medidas y lee una ficha por lámina con su texto exacto", async () => {
+    const { pedidoDeCarrusel, leerCarrusel } = await import("./director.js");
+    const p = pedidoDeCarrusel({ cliente: "Dcasa", laminas: [{ n: 1, rol: "portada", texto: "Hola" }, { n: 2, rol: "cierre", texto: "Chao" }], plantillas: [{ id: "plantilla-a", nombre: "Portada azul", uso: "portada", sistema: "" }, { id: "plantilla-b", nombre: "Post", uso: "post", sistema: "" }], vistas: 2 });
+    expect(p).toMatch(/^Las 2 imágenes de arriba son plantillas/);
+    expect(p).toMatch(/1\. \(portada\) Hola/);
+    expect(p).toMatch(/titular entre el 8 y el 22 % de la altura/);
+    expect(p).toMatch(/plantilla-a · «Portada azul»/);
+    expect(p).not.toMatch(/plantilla-b/);
+    expect(pedidoDeCarrusel({ tema: "Colchones" })).toMatch(/escribe de 5 a 7 láminas sobre este tema: Colchones/);
+    const r = leerCarrusel('{"sistema":"titular arriba","laminas":[{"n":1,"texto":"Uno","ficha":"Pieza: a.\\n\\nComposición: b."},{"n":2,"texto":"Dos","ficha":"Pieza: c."}]}');
+    expect(r.hilo).toBe("titular arriba");
+    expect(r.laminas[0]).toMatchObject({ n: 1, rol: "portada", texto: "Uno" });
+    expect(r.laminas[0].ficha).toMatch(/^Pieza: a\.\nComposición: b\.\nTexto exacto que va en la imagen.*«Uno»/);
+    expect(leerCarrusel('{"laminas":[{"texto":"sola"}]}')).toBeNull();
+    expect(leerCarrusel("nada")).toBeNull();
+  });
+});

@@ -660,3 +660,45 @@ describe("el cerebro se busca por TIPO y se dice qué material falta (lib/materi
     expect(db.sqlite.prepare("select funcion from consumo_ia").all().map((x) => x.funcion)).toContain("saber del rubro");
   });
 });
+
+describe("un solo director: el carrusel, las correcciones de la agencia y lo que ve", () => {
+  const CARRUSEL = JSON.stringify({
+    sistema: "Titular entre el 8 y el 22 % de la altura, 80 % del ancho; logo abajo a la derecha.",
+    laminas: [
+      { n: 1, texto: "¿Duermes mal?", ficha: "Pieza: portada 4:5.\nComposición: titular arriba.\nTexto (exacto): titular «¿Duermes mal?»." },
+      { n: 2, texto: "Elige firmeza media", ficha: "Pieza: lámina 4:5.\nTexto (exacto): titular «Elige firmeza media»." },
+      { n: 3, texto: "Escríbenos", ficha: "Pieza: cierre 4:5.\nTexto (exacto): botón «Escríbenos»." },
+    ],
+  });
+  const edicion = (id, texto, minuto) => db.sqlite.prepare("insert into estudio_trabajos (id, owner_id, client_id, motor, modelo, prompt, created_at) values (?,?,?,?,?,?,?)")
+    .run(id, JEFE, "c1", "gemini", "nano-banana", texto, `2026-10-20T10:${minuto}:00.000Z`);
+
+  it("el carrusel lo diseña el director con el MISMO modelo que el chat: sistema de la serie y una ficha por lámina", async () => {
+    edicion("e1", "Edita la imagen de referencia: el titular más arriba y más grande. Conserva todo lo demás exactamente igual.", "01");
+    edicion("e2", "Edita la imagen de referencia: donde dice «Sofa» debe decir «Sofá». Conserva todo lo demás exactamente igual.", "02");
+    anthropic(CARRUSEL);
+    const vista = { media_type: "image/jpeg", data: "QUJD" };
+    const r = await (await pedir("/api/estudio/c1/carrusel/propuesta", { method: "POST", body: { guion: "Portada: ¿Duermes mal?\nSlide 1: Elige firmeza media\nCTA: Escríbenos", vistas: [vista, { media_type: "text/html", data: "x" }] } })).json();
+    expect(r.hilo).toMatch(/entre el 8 y el 22 %/);
+    expect(r.laminas.map((l) => l.rol)).toEqual(["portada", "contenido", "cierre"]);
+    expect(r.laminas[1].ficha).toMatch(/^Pieza: lámina 4:5\./);
+    const p = peticiones[0];
+    const t = textoDe(p);
+    expect(t).toMatch(/MANUAL DEL DIRECTOR/);
+    expect(t).toMatch(/Un carrusel es UNA serie/);
+    // Lo que la agencia corrigió hace poco, sin la letra mal escrita (eso lo arregla el control solo).
+    expect(t).toMatch(/CORRECCIONES QUE LA AGENCIA HIZO HACE POCO[^]*- el titular más arriba y más grande/);
+    expect(t).not.toMatch(/donde dice «Sofa»/);
+    // Ve la imagen buena (la que no es imagen, fuera) y se le dice qué es.
+    expect(p.messages[0].content.filter((b) => b.type === "image")).toHaveLength(1);
+    expect(t).toMatch(/imagen de arriba es plantillas y piezas que le gustaron/);
+    expect(db.sqlite.prepare("select funcion from consumo_ia order by rowid desc").get().funcion).toBe("director de arte");
+  });
+
+  it("las fichas del lote también leen las correcciones de la agencia", async () => {
+    edicion("e3", "Edita la imagen de referencia: el logo más pequeño. Conserva todo lo demás exactamente igual.", "03");
+    anthropic(JSON.stringify({ concepto: "x", piezas: [{ n: 1, ficha: "Pieza: post.\nTexto: NINGUNO." }] }));
+    await pedir("/api/estudio/c1/fichas", { method: "POST", body: { piezas: [{ n: 1, idea: "Un sofá", sinTexto: true }] } });
+    expect(textoDe(peticiones[0])).toMatch(/- el logo más pequeño/);
+  });
+});

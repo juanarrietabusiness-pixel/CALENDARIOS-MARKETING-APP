@@ -71,6 +71,7 @@ export async function mejorarIdea(env, acceso, cliente, datos = {}) {
         n: 1, idea, tipo: datos.pieza, formato: datos.formato, proporcion: datos.proporcion, texto: datos.texto,
         productoId: datos.productoId, indicacion: datos.indicacion, sinTexto: datos.sinTexto === true, plantilla: datos.plantilla,
       }],
+      vistas: datos.vistas,
     });
     const f = r.fichas[1];
     return { idea: f.ficha, ...(f.plantilla ? { plantilla: f.plantilla } : {}), modelo: r.modelo, aviso: r.aviso, ficha: true };

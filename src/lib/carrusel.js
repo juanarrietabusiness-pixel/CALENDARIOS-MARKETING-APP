@@ -17,6 +17,8 @@
 // se pide y cómo se coloca.
 // ============================================================
 
+import { asegurarTexto, limpiarFicha } from "./director.js";
+
 export const MAX_LAMINAS = 10; // lo que admite un carrusel de Instagram
 const MAX_TEXTO = 400;
 
@@ -125,10 +127,16 @@ const comillas = (texto) => String(texto ?? "").split(/\n+/).map((l) => l.replac
 export function pedidoDeLamina({ lamina, total, idea = "", preset = "", modo = "ia", plantilla = "banda", conAnteriores = false, conFotos = false, conLogo = false, hilo = "", personajes = "", sistema = "" }) {
   const rol = { portada: "la PORTADA: tiene que detener el scroll", cierre: "el CIERRE: invita a actuar", contenido: "una lámina de contenido" }[lamina.rol] ?? "una lámina";
   const zona = PLANTILLAS_TEXTO[plantilla]?.zona ?? PLANTILLAS_TEXTO.banda.zona;
+  // Con la ficha del director (src/lib/director.js), ella dice qué se ve y cómo se compone; el texto exacto se asegura
+  // contra el de la lámina (una persona pudo cambiarlo después). En plantilla el modelo no escribe: fuera su línea.
+  const ficha = lamina.ficha
+    ? (modo === "plantilla" ? limpiarFicha(lamina.ficha).split("\n").filter((l) => !/^Texto/i.test(l)).join("\n") : asegurarTexto(lamina.ficha, lamina.texto))
+    : "";
   return [
     `Lámina ${lamina.n} de ${total} de un carrusel de Instagram, vertical 4:5. Es ${rol}.`,
-    lamina.escena ? `Qué se ve en esta lámina: ${String(lamina.escena).slice(0, MAX_ESCENA_LAMINA)}` : "",
-    lamina.composicion ? `Composición de esta lámina: ${String(lamina.composicion).slice(0, 200)}` : "",
+    ficha ? `FICHA DE DISEÑO DE ESTA LÁMINA (síguela):\n${ficha}` : "",
+    !ficha && lamina.escena ? `Qué se ve en esta lámina: ${String(lamina.escena).slice(0, MAX_ESCENA_LAMINA)}` : "",
+    !ficha && lamina.composicion ? `Composición de esta lámina: ${String(lamina.composicion).slice(0, 200)}` : "",
     preset,
     idea ? `Tema del carrusel: ${String(idea).slice(0, 300)}` : "",
     hilo ? `Lo que comparten TODAS las láminas: ${String(hilo).slice(0, 300)}` : "",
@@ -149,60 +157,8 @@ export function pedidoDeLamina({ lamina, total, idea = "", preset = "", modo = "
   ].filter(Boolean).join("\n\n").slice(0, 3800);
 }
 
-// ------------------------------------------------------------
-// La contrapropuesta del director de arte (texto)
-// ------------------------------------------------------------
-
+// Lo que se dice de la escena de una lámina, como mucho (las de antes, sin ficha del director).
 export const MAX_ESCENA_LAMINA = 300;
-
-/**
- * Lo que se le pide a la IA: el guion (o el tema) convertido en un plan lámina por lámina que entienda quien lo va a
- * generar (como la contrapropuesta que hacía Flow): qué se ve, el texto EXACTO con su jerarquía y la composición, y
- * el hilo visual que comparten todas. `laminas`: las del guion (`partirGuion`); sin guion, la IA escribe de 5 a 7 desde
- * el tema. Pura.
- */
-export function pedidoDePropuesta({ marca = "la marca", rubro = "", laminas = [], tema = "", tipo = "", estilo = "", producto = "", personajes = [], identidad = "" }) {
-  const conGuion = laminas.length >= 2;
-  return [
-    `Eres director de arte de una agencia. Prepara un carrusel de Instagram (4:5) de ${marca}${rubro ? ` (${rubro})` : ""} para un generador de imágenes que hará las láminas UNA a una, cada una con la anterior de referencia.`,
-    conGuion ? "Convierte este guion en un plan lámina por lámina. Respeta su orden y sus datos; puedes acortar un texto que no quepa en una lámina, sin cambiar precios ni cifras:" : `No hay guion: escribe de 5 a 7 láminas sobre este tema: ${String(tema).slice(0, 400)}`,
-    conGuion ? laminas.map((l) => `${l.n}. (${l.rol}) ${String(l.texto).replace(/\s+/g, " ").slice(0, 400)}`).join("\n") : "",
-    conGuion && tema ? `Tema: ${String(tema).slice(0, 300)}` : "",
-    tipo ? `Tipo de pieza: ${tipo}.` : "",
-    estilo ? `Estilo visual: ${estilo}` : "",
-    producto ? `Producto: ${producto}` : "",
-    personajes.length ? `Personajes de la marca (salen IGUAL en todas las láminas donde aparezcan): ${personajes.join("; ")}` : "",
-    identidad ? `Identidad de la marca: ${String(identidad).slice(0, 600)}` : "",
-    "",
-    "Para cada lámina:",
-    `- "escena": qué se VE, en una o dos frases concretas (sujeto, acción, lugar, luz, encuadre). Sin texto dentro. ${MAX_ESCENA_LAMINA} caracteres.`,
-    '- "texto": lo que va ESCRITO, como mucho tres líneas cortas separadas por «\\n»: la primera es el titular (grande); las demás, el apoyo. Corto: se tiene que leer en dos segundos.',
-    '- "composicion": dónde va el sujeto y dónde el texto, en una frase. Distinta en cada lámina, con el mismo hilo visual.',
-    "La portada detiene el scroll; las de en medio cuentan una idea cada una; el cierre invita a actuar.",
-    "",
-    'Responde SOLO con JSON: {"hilo":"lo que comparten todas (fondo, luz, paleta, personaje), en una frase","laminas":[{"n":1,"rol":"portada","escena":"…","texto":"…","composicion":"…"}]}',
-  ].filter((l) => l !== "").join("\n");
-}
-
-/** La respuesta → { hilo, laminas: [{ n, rol, escena, texto, composicion }] } (hasta MAX_LAMINAS), o null. Pura. */
-export function leerPropuesta(texto) {
-  const t = String(texto ?? "").replace(/```[a-z]*|```/g, "");
-  const i = t.indexOf("{");
-  const j = t.lastIndexOf("}");
-  if (i < 0 || j <= i) return null;
-  let d;
-  try { d = JSON.parse(t.slice(i, j + 1)); } catch { return null; }
-  const lista = (Array.isArray(d?.laminas) ? d.laminas : []).map((x) => ({
-    escena: String(x?.escena ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_ESCENA_LAMINA),
-    texto: String(x?.texto ?? "").split(/\n|\\n/).map((l) => l.trim()).filter(Boolean).slice(0, 3).join("\n").slice(0, MAX_TEXTO),
-    composicion: String(x?.composicion ?? "").replace(/\s+/g, " ").trim().slice(0, 200),
-  })).filter((x) => x.escena || x.texto).slice(0, MAX_LAMINAS);
-  if (lista.length < 2) return null;
-  return {
-    hilo: String(d?.hilo ?? "").replace(/\s+/g, " ").trim().slice(0, 300),
-    laminas: lista.map((x, k) => ({ n: k + 1, rol: k === 0 ? "portada" : k === lista.length - 1 && lista.length >= 3 ? "cierre" : "contenido", ...x })),
-  };
-}
 
 // ------------------------------------------------------------
 // La plantilla: colores y líneas (el dibujo, en lib/textoSobreImagen.js)

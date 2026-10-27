@@ -3153,6 +3153,26 @@ son del servidor.
 - **«Crear la imagen aquí» escoge tipo, estilo, modelo y plantilla** (`OpcionesCrearAqui.jsx`, lazy: arrastra el
   catálogo; se recuerda por cliente en `crear-aqui:<cliente>`). Vacío es lo de siempre: el tipo del post, el estilo de ese
   tipo, el modelo fijado y ninguna plantilla.
+- **UN solo director para todo** (decisión de la agencia: el chat daba un 8 y el lote menos, y era porque iban por
+  caminos distintos). Tres cosas lo igualan:
+  · **El mismo modelo:** la función «director de arte» (fichas del lote, «Producir el mes», el post, las historias, los
+  carruseles) cae en el hueco «asistente» (`FUNCIONES_IA`), no en «prompts»: diseña con el modelo del chat. En Ajustes el
+  hueco se llama «Asistente y director creativo»; «prompts» quedó en «Escenas de imagen» (otra versión distinta, video).
+  · **Ve lo mismo:** `vistasDelCliente` (lib/estudio.js) manda hasta 4 copias de 512 px de las plantillas del kit y los «Me
+  gusta» con `fichasDeDiseno`, `mejorarIdea` (imagen) y `proponerCarrusel`; el Worker las limpia (`limpiarVistas`: sólo
+  imagen en base64, tope de tamaño) y las pone DELANTE del pedido (`conVistas`, `lineaDeVistas`). Se recuerdan 10 minutos.
+  · **Sabe lo que la agencia corrige:** `correccionesDelCliente` (worker/lib/estudio/fichas.js) lee los últimos pedidos de
+  EDICIÓN del Estudio del cliente y `correccionesRecientes` (director.js) saca la indicación («el titular más arriba»),
+  sin las que hace sola la aplicación (la letra del control, «donde dice…»; la recomposición). Van al director de arte,
+  al carrusel y al sistema del chat (`lineaDeCorrecciones`). `leerColumnas` admite ahora un `limite`.
+  · **El carrusel lo diseña el director** (`pedidoDeCarrusel`, `leerCarrusel` en director.js; worker/lib/estudio/carrusel.js):
+  la «contrapropuesta» de antes (qué se ve y composición en una frase, sin manual, kit ni plantillas) se quitó. Ahora
+  devuelve el SISTEMA de la serie con medidas (`REGLA_SERIE`: el titular en la misma zona y del mismo tamaño en todas) como
+  `hilo` y una FICHA por lámina con su texto exacto; `pedidoDeLamina` la sigue («FICHA DE DISEÑO DE ESTA LÁMINA») y
+  asegura el texto de la lámina aunque se cambiara después (en plantilla quita la línea del texto). Lo usan «Carrusel con
+  IA» (paso 2: el texto y la ficha plegada, editable), el lote, «Producir el mes» (con «Que el director diseñe»
+  encendido) y el asistente: `disenar_piezas` con `carrusel: true` va por `crearCarrusel` (en orden, con la anterior y la
+  portada de referencia, el sistema de la portada y el control), no pieza a pieza.
 - **La proporción pedida es la que sale** (`respetaProporcion`, `modeloQueRespeta`, `relevoPara`, `fueraDeProporcion` en
   estudioCatalogo.js). Muse Image con imágenes de referencia (el logo, la foto del producto, la lámina anterior) pierde la
   vía de medidas exactas y la de Responses sólo da 1:1, 2:3 y 3:2 (`conReferencias` en su ficha del catálogo): los 4:5
