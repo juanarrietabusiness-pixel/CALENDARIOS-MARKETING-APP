@@ -167,6 +167,7 @@ export function rellenarConIdea(post = {}, idea = {}) {
     hashtagsFinales: idea.hashtags || "",
     composicion: idea.composicion || "",
     tactica: idea.tactica || "",
+    ...(carrusel && idea.estructura ? { estructura: idea.estructura } : {}),
     // Lo que trae la matriz, si la publicación no lo tenía (así «Crear con IA» sabe de qué producto es).
     ...(idea.productoId ? { productoId: idea.productoId, producto: idea.producto ?? "" } : {}),
     ...(idea.nivel ? { nivel: idea.nivel } : {}),
@@ -221,6 +222,7 @@ export function reemplazarConIdea(post = {}, idea = {}) {
     hashtagsFinales: idea.hashtags || post.hashtagsFinales || "",
     composicion: idea.composicion || "",
     tactica: idea.tactica || "",
+    ...(guiado && idea.estructura ? { estructura: idea.estructura } : {}),
     sugerencia: "",
     promptImagen: "",
     promptImagenDe: "",

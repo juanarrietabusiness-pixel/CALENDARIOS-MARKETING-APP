@@ -249,6 +249,8 @@ export function limpiarKit(guardado) {
 export const MAX_PLANTILLAS = 12;
 const ID_PLANTILLA = /^plantilla-[a-z0-9-]{1,40}$/;
 const USOS_PLANTILLA = ["post", "historia", "portada", "lamina"];
+/** Los tipos a los que se puede asignar una plantilla: los de DISENO_POR_TIPO (lib/director.js). */
+const TIPOS_DE_PLANTILLA = ["anuncio", "beneficios", "servicios", "educativo", "diferenciador", "maletas", "humano"];
 
 /** Las plantillas: id con forma, nombre, uso, la clave de la imagen y su sistema de diseño en palabras. Pura. */
 function limpiarPlantillas(entrada) {
@@ -262,6 +264,8 @@ function limpiarPlantillas(entrada) {
       id, nombre, clave,
       uso: USOS_PLANTILLA.includes(p?.uso) ? p.uso : "post",
       sistema: corto(p?.sistema, 900),
+      // Los tipos de contenido que la usan siempre (ids de PILARES): el director la sigue en las piezas de ese tipo.
+      tipos: [...new Set((Array.isArray(p?.tipos) ? p.tipos : []).map(String).filter((x) => TIPOS_DE_PLANTILLA.includes(x)))],
       ...(typeof p?.archivoId === "string" && /^[\w-]{1,80}$/.test(p.archivoId) ? { archivoId: p.archivoId } : {}),
     });
   }

@@ -19,6 +19,8 @@ import { guiaVisual, manualDelEspacio, correccionesDelCliente, limpiarVistas, co
 import { productosActivos, lineaDeProducto } from "../../../src/lib/estudioMercado.js";
 import { partirGuion } from "../../../src/lib/carrusel.js";
 import { pedidoDeCarrusel, leerCarrusel } from "../../../src/lib/director.js";
+import { estructuraDe, estructuraPara, lineaDeEstructura } from "../../../src/lib/estructurasCarrusel.js";
+import { estructurasRecientes } from "./lote.js";
 import { nombreDePreset, lineaDeEstilo, estiloDeLaPieza, bloqueDeMarca, kitVacio } from "../../../src/lib/kitMarca.js";
 
 /** `datos`: { guion?, tema?, preset?, estilo?, productoId?, personajes?: [ids], vistas? } → { hilo, laminas: [{ n, rol, texto, ficha }] } */
@@ -36,6 +38,13 @@ export async function propuestaDeCarrusel(env, acceso, cliente, datos = {}) {
       if (p) producto = lineaDeProducto(p, { inventario }).slice(2);
     } catch { /* sin catálogo, sin producto */ }
   }
+  // Sólo con un tema, la estructura la pone el código (la de la publicación, o una del tipo que el cliente no usó
+  // hace poco): si no, todos los carruseles salían con la misma forma.
+  let estructura = "";
+  if (laminas.length < 2) {
+    estructura = estructuraDe(datos.estructura)?.id
+      ?? estructuraPara(preset.split("-")[0], { usadas: await estructurasRecientes(acceso, cliente.id), semilla: Date.now() % 997 });
+  }
   const ids = Array.isArray(datos.personajes) ? datos.personajes.map(String) : [];
   const personajes = kit.personajes.filter((p) => ids.includes(p.id)).map((p) => `${p.nombre}${p.descripcion ? `: ${p.descripcion}` : ""}`);
   const [guia, manual, correcciones, pautasNotas] = await Promise.all([
@@ -49,6 +58,7 @@ export async function propuestaDeCarrusel(env, acceso, cliente, datos = {}) {
     tipo: preset ? nombreDePreset(preset, kit) : "",
     estilo: lineaDeEstilo(kit, estiloDeLaPieza(kit, preset, String(datos.estilo ?? ""))),
     marca: kitVacio(kit) ? "" : bloqueDeMarca(kit), guia, plantillas: kit.plantillas, manual, correcciones, vistas: imagenes.length,
+    estructura: estructura ? lineaDeEstructura(estructura) : "",
   }), pautas].filter(Boolean).join("\n\n");
   const r = await llamarIA(env, acceso, cliente, {
     prompt: conVistas(imagenes, pedido),
@@ -57,5 +67,5 @@ export async function propuestaDeCarrusel(env, acceso, cliente, datos = {}) {
   });
   const propuesta = leerCarrusel(r.texto);
   if (!propuesta) throw Object.assign(new Error("El director no devolvió un carrusel que se pueda leer. Inténtalo otra vez."), { estado: 502 });
-  return { ...propuesta, modelo: r.modelo, aviso: r.aviso ?? null };
+  return { ...propuesta, ...(estructura ? { estructura } : {}), modelo: r.modelo, aviso: r.aviso ?? null };
 }

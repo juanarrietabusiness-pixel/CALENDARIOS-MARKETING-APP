@@ -19,6 +19,7 @@
 // va siempre delante.
 // ============================================================
 
+import { limpiarDisenoTipos } from "./director.js";
 import { ELEMENTOS_MERCADO } from "./estudioMercado.js";
 import { OBJETIVOS, DESTINOS, TIPOS_CONJUNTO, MAX_CONJUNTOS, MAX_ANUNCIOS, MAX_TARJETAS, EDAD_MIN, EDAD_MAX, MAX_TEXTO, MAX_TITULO } from "./anuncios.js";
 
@@ -73,6 +74,8 @@ export function limpiarManual(m = {}) {
     video: largo(m?.video, MAX_MANUAL),
     // El manual del DIRECTOR CREATIVO de las piezas (lib/director.js); vacío, vale el de la casa.
     diseno: largo(m?.diseno, MAX_MANUAL),
+    // Cómo se diseña cada tipo de contenido (lib/director.js, DISENO_POR_TIPO); lo vacío vale el de la casa.
+    disenoTipos: limpiarDisenoTipos(m?.disenoTipos),
   };
 }
 

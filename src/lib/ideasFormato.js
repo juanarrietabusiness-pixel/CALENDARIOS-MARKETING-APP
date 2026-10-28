@@ -12,6 +12,8 @@
 // (worker/lib/estudio/ideasFormato.js).
 // ============================================================
 
+import { estructuraDe, lineaDeEstructura } from "./estructurasCarrusel.js";
+
 export const MIN_IDEAS_FORMATO = 3;
 export const MAX_IDEAS_FORMATO = 5;
 const MAX_TITULO = 60;
@@ -23,9 +25,11 @@ const corto = (t, n) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, n);
 const limiteIdeas = (n) => Math.max(MIN_IDEAS_FORMATO, Math.min(MAX_IDEAS_FORMATO, Math.round(Number(n) || 4)));
 
 /** Lo que se le pide a la IA. `formato`: "carrusel" | "reel". Pura. */
-export function pedidoDeIdeasFormato({ formato = "carrusel", marca = "la marca", rubro = "", n = 4, tipo = "", tema = "", producto = "", estudio = "", contexto = "", usados = [], segundos = 10 }) {
+export function pedidoDeIdeasFormato({ formato = "carrusel", marca = "la marca", rubro = "", n = 4, tipo = "", tema = "", producto = "", estudio = "", contexto = "", usados = [], segundos = 10, estructuras = [] }) {
   const cuantas = limiteIdeas(n);
   const carrusel = formato !== "reel";
+  // Una estructura DISTINTA por idea (la pone el código: sin ella todas salían «Portada / Slide 1…5 / CTA»).
+  const formas = carrusel ? estructuras.filter((id) => estructuraDe(id)).slice(0, cuantas) : [];
   return [
     carrusel
       ? `Propón ${cuantas} ideas de CARRUSEL de Instagram (de 5 a 8 láminas) para ${marca}${rubro ? ` (${rubro})` : ""}.`
@@ -35,6 +39,7 @@ export function pedidoDeIdeasFormato({ formato = "carrusel", marca = "la marca",
     producto ? `Producto (precio EXACTO si se nombra): ${producto}` : "",
     estudio ? `Lo que dice el estudio de mercado:\n${String(estudio).slice(0, 2500)}` : "",
     contexto ? `Lo que se sabe de la marca:\n${String(contexto).slice(0, 3500)}` : "",
+    formas.length ? `Cada idea con SU estructura, en este orden (una distinta por idea; el guion la sigue lámina a lámina y con ese número de láminas):\n${formas.map((id, k) => `${k + 1}. ${lineaDeEstructura(id)}`).join("\n")}` : "",
     usados.length ? `Ya salieron estas (no las repitas): ${usados.slice(0, 15).map((u) => `«${corto(u, 80)}»`).join(", ")}` : "",
     "",
     carrusel
@@ -43,12 +48,13 @@ export function pedidoDeIdeasFormato({ formato = "carrusel", marca = "la marca",
     "",
     carrusel
       ? 'Responde SOLO con JSON: {"ideas":[{"titulo":"cómo la llamarías, corto","tema":"de qué va y por qué funciona, en una frase","guion":"Portada: …\\nSlide 2: …\\nSlide 3: …\\nCTA: …"}]}'
+      + (formas.length ? ` (las ideas en el orden de las estructuras: la 1 con la estructura 1…)` : "")
       : 'Responde SOLO con JSON: {"ideas":[{"titulo":"cómo la llamarías, corto","idea":"la idea central: el gancho, lo que se ve y el cierre, en 2 o 3 frases"}]}',
   ].filter((l) => l !== "").join("\n");
 }
 
 /** La respuesta → [{ id, titulo, tema, guion }] (carrusel) o [{ id, titulo, idea }] (reel). Las vacías, fuera. Pura. */
-export function leerIdeasFormato(texto, formato = "carrusel") {
+export function leerIdeasFormato(texto, formato = "carrusel", estructuras = []) {
   const t = String(texto ?? "").replace(/```[a-z]*|```/g, "");
   const i = t.indexOf("{");
   const j = t.lastIndexOf("}");
@@ -64,6 +70,7 @@ export function leerIdeasFormato(texto, formato = "carrusel") {
     }
     const guion = String(x?.guion ?? "").replace(/\\n/g, "\n").trim().slice(0, MAX_GUION);
     const tema = corto(x?.tema, MAX_TEMA);
-    return guion || tema ? [{ id: `idea-${k + 1}`, titulo: titulo || tema.slice(0, 40), tema, guion }] : [];
+    const estructura = estructuraDe(estructuras[k])?.id;
+    return guion || tema ? [{ id: `idea-${k + 1}`, titulo: titulo || tema.slice(0, 40), tema, guion, ...(estructura ? { estructura } : {}) }] : [];
   });
 }

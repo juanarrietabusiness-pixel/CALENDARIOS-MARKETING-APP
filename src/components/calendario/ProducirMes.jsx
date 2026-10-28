@@ -251,7 +251,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
       // IA»; si no responde, las láminas del guion tal cual.
       const preset = presetDePilar(c.post.pilar, c.post.pilarSub) || "servicios";
       const propuesta = mejorar
-        ? await api.proponerCarrusel(clienteId, { guion: c.post.guion ?? "", tema: c.post.idea || c.post.title || "", preset, productoId: c.post.productoId || undefined }).catch(() => null)
+        ? await api.proponerCarrusel(clienteId, { guion: c.post.guion ?? "", tema: c.post.idea || c.post.title || "", preset, productoId: c.post.productoId || undefined, estructura: c.post.estructura || undefined }).catch(() => null)
         : null;
       const hechas = await crearCarrusel({
         ...comunes, modelo: c.modelo, laminas: propuesta?.laminas ?? c.laminas, hilo: propuesta?.hilo ?? "", postId: c.post.id, idea: c.post.idea || c.post.title || "",

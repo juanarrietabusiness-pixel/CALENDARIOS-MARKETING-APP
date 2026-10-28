@@ -197,7 +197,7 @@ export async function crearCarruselDeIdea({ clienteId, idea, kit, preset = "", e
   alPaso("Propuesta de las láminas…");
   // Cada carrusel en SU carpeta (la galería lo enseña como una tarjeta); si no se puede crear, en la del lote.
   carpetaId = (await api.carpetaDeGrupo(clienteId, "carrusel", idea.titulo || idea.titular || temaDeIdea(idea))) ?? carpetaId;
-  const propuesta = await api.proponerCarrusel(clienteId, { guion: idea.guion ?? "", tema: temaDeIdea(idea), preset, estilo, productoId: idea.productoId || undefined, personajes: personajesIds });
+  const propuesta = await api.proponerCarrusel(clienteId, { guion: idea.guion ?? "", tema: temaDeIdea(idea), preset, estilo, productoId: idea.productoId || undefined, personajes: personajesIds, estructura: idea.estructura || undefined });
   const k = limpiarKit(kit);
   let hechas = 0;
   const salida = await crearCarrusel({

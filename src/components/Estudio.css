@@ -410,4 +410,6 @@ div.est-img { cursor: default; }
 .est-kit-plantillas-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .est-kit-plantillas-lista li { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-1); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: var(--fs-xs); }
 .est-kit-plantillas-lista img { width: 40px; height: 50px; object-fit: cover; border-radius: var(--radius-sm); }
+.est-kit-plantilla-tipos { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: var(--sp-1); }
+.est-kit-plantilla-tipos .filter-chip { min-height: var(--tap-sm); font-size: var(--fs-3xs); }
 .est-plantilla { display: flex; flex-direction: column; gap: var(--sp-1); }

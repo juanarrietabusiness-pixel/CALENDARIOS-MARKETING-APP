@@ -672,6 +672,7 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci√
           ...(idea?.escena ? { escena: idea.escena } : {}),
           ...(idea?.composicion ? { composicion: idea.composicion } : {}),
           ...(idea?.tactica ? { tactica: idea.tactica } : {}),
+          ...(f.format === "carrusel" && idea?.estructura ? { estructura: idea.estructura } : {}),
           referenceLink: idea?.referenceLink || "",
           image: idea?.image || null,
           guion: idea?.guion || "",

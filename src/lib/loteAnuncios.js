@@ -43,6 +43,7 @@
 import { NIVELES_CONSCIENCIA, CLAVES_NIVEL, nombreDeNivel } from "./consciencia.js";
 import { PLANTILLAS_TEXTO } from "./carrusel.js";
 import { PILARES, pilarDe, nombreDePilar } from "./pilares.js";
+import { estructuraDe, estructuraPara, limpiarEstructurasRecientes, lineaDeEstructura } from "./estructurasCarrusel.js";
 import { camposDePromptListo } from "./promptImagen.js";
 import { FORMATO_FICHA, limpiarFicha, asegurarTexto } from "./director.js";
 
@@ -84,7 +85,7 @@ export const REGLA_FORMATO = Object.freeze({
 
 /** El guion que se le pide a la IA en un formato guiado (vacío en los de una imagen). */
 const GUION_DE_FORMATO = Object.freeze({
-  carrusel: '- "guion": las láminas del carrusel, de 5 a 7, una por línea: «Portada: …», «Slide 1: …», …, «CTA: …». Cada una, una idea corta que se lee en dos segundos; el precio, EXACTO.',
+  carrusel: '- "guion": las láminas del carrusel siguiendo SU estructura (la que dice cada pieza) y su número de láminas, una por línea: «Portada: …», «Slide 1: …», …, «CTA: …». La portada promete algo concreto de esa estructura (no un título genérico); cada lámina, una idea corta que se lee en dos segundos; el precio, EXACTO. Dos carruseles no se parecen.',
   reel: '- "guion": el reel de 10 s por planos, una línea por plano con su tiempo: «[0–2 s] qué se ve · cámara», …, y el último cierra con el producto o el resultado. SIN texto en pantalla: el video va limpio (los modelos de video escriben mal).',
 });
 export const MAX_GUION = 2000;
@@ -135,6 +136,9 @@ const SIN_PRODUCTO_EN = new Set(["inconsciente", "problema"]);
 
 const corto = (t, max) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, max).trim();
 const lineaDe = (lista, id) => lista.find(([x]) => x === id)?.[1] ?? "";
+// Las estructuras de un carrusel viven en su módulo (pequeño: lo leen también «Dame ideas» y el director).
+export { ESTRUCTURAS_CARRUSEL, estructuraDe, estructuraPara, limpiarEstructurasRecientes, estructurasDeCalendarios, lineaDeEstructura } from "./estructurasCarrusel.js";
+
 export const composicionDe = (id) => COMPOSICIONES.find((x) => x.id === id) ?? null;
 const mcd = (a, b) => (b ? mcd(b, a % b) : a);
 /** Un salto que recorre la lista entera antes de repetir y no deja dos vecinas seguidas. */
@@ -207,7 +211,7 @@ export function seVeElProducto(celda, hayProductos = true) {
  * producto en cuadro; en el orden `orden` si se aprendió cuáles funcionan), fondo, táctica y dónde va el texto. Dos
  * vecinas nunca comparten composición. `semilla` mueve el punto de partida. Pura.
  */
-export function darForma(celdas = [], { productos = [], semilla = 0, formato = "post", orden = null } = {}) {
+export function darForma(celdas = [], { productos = [], semilla = 0, formato = "post", orden = null, estructuras = [] } = {}) {
   const s = Math.abs(Math.floor(Number(semilla) || 0));
   // `orden` (aprenderComposiciones): sólo las que funcionan, las mejores repetidas para que salgan más. Si se queda
   // corta (menos de 3 sin objeto), todas: un lote sin producto en cuadro no puede quedarse sin opciones.
@@ -218,7 +222,13 @@ export function darForma(celdas = [], { productos = [], semilla = 0, formato = "
   let iCon = 0;
   let iSin = 0;
   let previa = "";
+  // Las estructuras de los carruseles: las recientes del cliente y las que se van dando en este plan.
+  const usadas = limpiarEstructurasRecientes(estructuras);
+  let iCarrusel = 0;
   return celdas.map((c, i) => {
+    const esCarrusel = (c.formato ?? formato) === "carrusel";
+    const estructura = esCarrusel ? (estructuraDe(c.estructura)?.id ?? estructuraPara(c.tipo ?? c.pilar, { usadas, semilla: s, indice: iCarrusel++ })) : "";
+    if (estructura) usadas.push({ pilar: c.tipo ?? c.pilar ?? "", estructura });
     const ve = seVeElProducto(c, productos.length > 0);
     let productoId = c.productoId ?? "";
     if (ve && !productos.some((p) => p.id === productoId)) productoId = productos[(s + iProd++) % productos.length].id;
@@ -236,6 +246,7 @@ export function darForma(celdas = [], { productos = [], semilla = 0, formato = "
       plantilla: (c.formato ?? formato) === "historia" && comp.plantilla === "banda" ? "centro" : comp.plantilla,
       fondo: FONDOS[(s + i) % FONDOS.length][0],
       tactica: TACTICAS[(s + i * 3) % TACTICAS.length][0],
+      ...(estructura ? { estructura } : {}),
     };
   });
 }
@@ -260,6 +271,7 @@ function lineaDePieza(r, productos = {}) {
     `   ${nv ? `nivel: ${nv.nombre} (${nv.ayuda}; por ${nv.angulo === "dolor" ? "el DOLOR, lo que quiere evitar" : "la GANANCIA, lo que quiere lograr"})` : "nivel: —"} · gancho: ${lineaDe(TACTICAS, r.tactica)} · composición: ${composicionDe(r.composicion)?.nombre ?? ""}`,
     r.deseo || r.perfil ? `   le habla a: ${[r.perfil, r.deseo && `deseo de ${r.deseo}`].filter(Boolean).join(", ")}` : "",
     prod ? `   producto: ${prod}${r.conProducto ? "" : " (NO aparece en la imagen: se habla del problema)"}` : "",
+    estructuraDe(r.estructura) ? `   ${lineaDeEstructura(r.estructura)}` : "",
     r.semana ? `   semana: ${corto(r.semana, 160)}` : "",
     r.especial ? `   fecha especial ese día: ${corto(r.especial, 120)}` : "",
     r.ideaPersona ? `   idea de la agencia (desarróllala conservando su intención, su tema y su producto): «${corto(r.ideaPersona, 400)}»` : "",
@@ -335,7 +347,7 @@ export function pedidoDeProduccion({
     `- "titular": el texto grande de la pieza: ${MAX_TITULAR} caracteres y 8 palabras como mucho. Empieza por un verbo o una pregunta, nunca por el nombre de la marca. Sin el signo «·».`,
     `- "apoyo": una línea corta debajo (${MAX_APOYO} caracteres), o vacía. Si el titular ya lo dice todo, vacía.`,
     `- "escena": qué se VE, en una o dos frases sencillas (sujeto, acción, lugar, luz), con su composición. SIN texto dentro. Si sale una persona, descríbela distinta de las de las demás piezas (edad, rasgos, ropa, lugar).`,
-    deUnaImagen && identidad ? `- (Para la ficha «imagen») LA MARCA: ${corto(identidad, 1500)}` : "",
+    deUnaImagen && identidad ? `- (Para la ficha «imagen») LA MARCA Y CÓMO SE DISEÑA CADA TIPO: ${String(identidad).trim().slice(0, 3000)}` : "",
     deUnaImagen ? `- "imagen"${mixto ? " (SÓLO en las de una imagen: post o historia)" : ""}: la FICHA DE DISEÑO de la pieza, como la escribiría un director creativo y diseñador gráfico, lista para el generador de imágenes. Una línea por apartado, separadas por \\n: ${FORMATO_FICHA.split("\n").map((l) => l.split(":")[0]).join(", ")}. En «Texto», el titular y el apoyo EXACTOS entre «», tal cual los escribiste, con su tamaño y su posición; en «Fondo», los colores de la marca con su código. Concreta y completa: quien genera la imagen sólo sabe lo que dice la ficha.` : "",
     `- "descripcion": el texto de la publicación (caption), de 2 a 4 frases, con un llamado a la acción si el tipo lo pide; sin hashtags (${MAX_DESCRIPCION} caracteres).`,
     '- "hashtags": de 5 a 10 hashtags útiles para esa publicación (del tema, del rubro y de la zona; ninguno inventado de otra marca), separados por espacios.',
@@ -458,6 +470,7 @@ export function publicacionDePieza({ id, idea, archivo = null, archivos = null, 
     // La FORMA que decidió el plan: al diseñarla después (Crear con IA, Producir el mes) sale con la misma.
     ...(idea.composicion ? { composicion: idea.composicion } : {}),
     ...(idea.tactica ? { tactica: idea.tactica } : {}),
+    ...(idea.estructura ? { estructura: idea.estructura } : {}),
     pilar: idea.tipo ?? idea.pilar ?? "anuncio",
     ...(idea.pilarSub ? { pilarSub: idea.pilarSub } : {}),
     ...(idea.nivel ? { nivel: idea.nivel } : {}),

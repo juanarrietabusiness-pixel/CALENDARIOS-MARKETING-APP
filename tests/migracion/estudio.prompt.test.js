@@ -701,4 +701,18 @@ describe("un solo director: el carrusel, las correcciones de la agencia y lo que
     await pedir("/api/estudio/c1/fichas", { method: "POST", body: { piezas: [{ n: 1, idea: "Un sofá", sinTexto: true }] } });
     expect(textoDe(peticiones[0])).toMatch(/- el logo más pequeño/);
   });
+
+  it("cada tipo se diseña a su manera, y la plantilla asignada a un tipo va sola en las piezas de ese tipo", async () => {
+    const kit = { plantillas: [{ id: "plantilla-edu", nombre: "Educativa azul", uso: "post", clave: "clientes/c1/edu.png", tipos: ["educativo"] }] };
+    db.sqlite.prepare("update clients set kit_marca = ? where id = 'c1'").run(JSON.stringify(kit));
+    anthropic(JSON.stringify({ concepto: "x", piezas: [{ n: 1, ficha: "Pieza: post.\nTexto (exacto): titular «Tres mitos»." }, { n: 2, ficha: "Pieza: post.\nTexto (exacto): titular «Sofá cama»." }] }));
+    const r = await (await pedir("/api/estudio/c1/fichas", { method: "POST", body: { piezas: [
+      { n: 1, tipo: "Educativo / Informativo", texto: "Tres mitos" }, { n: 2, tipo: "Anuncio", texto: "Sofá cama" },
+    ] } })).json();
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/CÓMO SE DISEÑA CADA TIPO[^]*- Educativo \/ Informativo: El texto es el protagonista[^]*- Anuncio: /);
+    expect(t).toMatch(/sigue la plantilla plantilla-edu/);
+    expect(r.fichas[1].plantilla).toBe("plantilla-edu");
+    expect(r.fichas[2].plantilla).toBeUndefined();
+  });
 });

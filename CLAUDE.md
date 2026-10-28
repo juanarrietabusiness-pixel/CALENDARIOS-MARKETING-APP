@@ -167,6 +167,7 @@ src/
                           composiciones funcionan con cada cliente (puro; también el Worker)
     loteEstudio.js        Crear las piezas del lote en el Estudio, de dos en dos, con la escena mejorada y 1–3
                           variantes; `ponerTexto` (la compuesta recuerda su cruda: «Otra versión» sobre ella)
+    estructurasCarrusel.js  Las estructuras de un carrusel (errores, mitos, paso a paso…): rotar por tipo sin repetir (puro)
     loteMes.js            El lote del MES completo: días por el ritmo y la temporada y su plan (puro; también el Worker)
     ideasEstudio.js       «Dame ideas» del Estudio: el plan (tipo, composición, producto), el pedido y su lectura
                           (puro; también lo importa el Worker)
@@ -3183,6 +3184,25 @@ son del servidor.
   IA» (paso 2: el texto y la ficha plegada, editable), el lote, «Producir el mes» (con «Que el director diseñe»
   encendido) y el asistente: `disenar_piezas` con `carrusel: true` va por `crearCarrusel` (en orden, con la anterior y la
   portada de referencia, el sistema de la portada y el control), no pieza a pieza.
+- **Dos carruseles no se parecen: la ESTRUCTURA la pone el código** (`src/lib/estructurasCarrusel.js`). Todas las ideas
+  salían «Portada / Slide 1…5 / CTA», y las de un mismo tipo, casi iguales. Hay 14 estructuras propias (errores comunes,
+  mito o realidad, paso a paso, antes y después, comparación, lista, señales, preguntas, caso real, qué incluye, guía para
+  escoger, detrás de cámaras, historia, un dato), cada una con su número de láminas y los tipos con los que encaja.
+  `estructuraPara` rota dentro del tipo SIN las dos últimas que el cliente usó en ese tipo (`estructurasRecientes` en
+  worker/lib/estudio/lote.js lee sus tres últimos meses: una consulta, sólo si el lote puede llevar carruseles). La pone
+  `darForma` (lote, «Planificar mes», «Mes completo», «Generar»), va en la línea de cada pieza y en el guion
+  (`GUION_DE_FORMATO.carrusel`), y la publicación la guarda (`post.estructura`) para que la siguiente no la repita. «Dame
+  ideas» del carrusel da una distinta por idea (`estructurasDistintas`) y el director, con sólo un tema, sigue la de la
+  publicación o una nueva (`estructura` en /carrusel/propuesta). Con un guion escrito, manda el guion.
+- **Cada tipo de contenido se diseña a su manera** (`DISENO_POR_TIPO` en director.js: un anuncio con el producto
+  protagonista y el precio; un educativo tipográfico y sin botón de compra; contenido humano con foto real y poco texto…).
+  Va en las fichas del director (sólo los tipos de la tanda, `bloqueDeDisenoPorTipo`), en la ficha `imagen` del motor de
+  ideas (`identidadParaFichas`), en el carrusel y en el sistema del asistente. La agencia lo cambia tipo a tipo en Ajustes
+  → Manual → «Cómo se diseña cada tipo» (`manual_campanas.disenoTipos`, `limpiarDisenoTipos`); vacío, el de la casa. El
+  tipo llega por su NOMBRE («Educativo / Informativo»): `tipoDeDiseno` lo reconoce (también los alias y las maletas).
+  · **Una plantilla del kit puede ser LA de un tipo** (`plantilla.tipos`, chips en el kit): `fichasDeDiseno` la pone sola
+  en las piezas de ese tipo y uso (post, historia, portada de carrusel; `plantillaParaTipo`) si nadie escogió otra y la
+  pieza lleva su texto, y la línea de la plantilla dice «ES LA DE: …» para el asistente y el motor de ideas.
 - **La proporción pedida es la que sale** (`respetaProporcion`, `modeloQueRespeta`, `relevoPara`, `fueraDeProporcion` en
   estudioCatalogo.js). Muse Image con imágenes de referencia (el logo, la foto del producto, la lámina anterior) pierde la
   vía de medidas exactas y la de Responses sólo da 1:1, 2:3 y 3:2 (`conReferencias` en su ficha del catálogo): los 4:5

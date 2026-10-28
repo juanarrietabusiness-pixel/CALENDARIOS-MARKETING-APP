@@ -3,7 +3,7 @@ import Icon from "./Icon";
 import { leerManual, guardarManual } from "../lib/anunciosApi";
 import { editaLaAgencia } from "../lib/sesionActual";
 import { MANUAL_VIDEO_BASE, MAX_MANUAL_VIDEO } from "../lib/directorVideo";
-import { MANUAL_DISENO_BASE, MAX_MANUAL_DISENO } from "../lib/director";
+import { MANUAL_DISENO_BASE, MAX_MANUAL_DISENO, DISENO_POR_TIPO, MAX_DISENO_TIPO } from "../lib/director";
 
 // ============================================================
 // Ajustes → Manual de campañas de la agencia
@@ -93,6 +93,18 @@ export default function SeccionManualCampanas({ pulso = 0 }) {
             <p className="hint" style={{ margin: 0 }}>Lo sigue TODA pieza de imagen: el asistente cuando diseña, el director de arte del Estudio, el lote, «Producir el mes», el post y las historias. Vacío, vale el de la casa (el que se ve de ejemplo).</p>
             {puede && !m.diseno && <button type="button" className="btn btn-ghost btn-sm" onClick={() => poner({ diseno: MANUAL_DISENO_BASE })}>Partir del de la casa</button>}
           </div>
+          <details className="field">
+            <summary className="label">Cómo se diseña cada tipo de contenido</summary>
+            <p className="hint" style={{ margin: 0 }}>Lo lee el director en cada pieza según su tipo (un anuncio no se diseña como un educativo). Vacío, vale el de la casa (el que se ve de ejemplo).</p>
+            {DISENO_POR_TIPO.map((x) => (
+              <div key={x.id} className="field">
+                <label className="label" htmlFor={`${ids}-tipo-${x.id}`}>{x.nombre}</label>
+                <textarea id={`${ids}-tipo-${x.id}`} className="textarea" rows={3} maxLength={MAX_DISENO_TIPO} readOnly={!puede}
+                  value={m.disenoTipos?.[x.id] ?? ""} placeholder={x.base}
+                  onChange={(e) => poner({ disenoTipos: { ...(m.disenoTipos ?? {}), [x.id]: e.target.value } })} />
+              </div>
+            ))}
+          </details>
           <div aria-live="polite">{aviso && <p role={aviso.ok ? "status" : "alert"} className={aviso.ok ? "hint" : "cerebro-error"}>{aviso.texto}</p>}</div>
           {puede ? (
             <button type="button" className="btn btn-primary" onClick={guardar} disabled={!cambiado || guardando}>{guardando ? "Guardando…" : "Guardar el manual"}</button>
