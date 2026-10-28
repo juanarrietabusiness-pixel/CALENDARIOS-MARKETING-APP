@@ -112,8 +112,8 @@ export const cambiarArchivo = (clienteId, id, cambios) => pedir(delArchivo(clien
 export const apuntarUso = (clienteId, id, { calendarId, postId }) => pedir(delArchivo(clienteId, id, "uso"), post({ calendarId, postId }));
 export const mandarAPapelera = (clienteId, id) => pedir(delArchivo(clienteId, id, "papelera"), post());
 /** El control de calidad de una pieza (la IA la mira; queda en `ajustes.control`): `{ control, archivo }`. */
-export const controlarArchivo = (clienteId, id, { texto = null, sistema = null } = {}) =>
-  pedir(delArchivo(clienteId, id, "control"), post({ ...(texto === null ? {} : { texto }), ...(sistema ? { sistema } : {}) }));
+export const controlarArchivo = (clienteId, id, { texto = null, sistema = null, ficha = null } = {}) =>
+  pedir(delArchivo(clienteId, id, "control"), post({ ...(texto === null ? {} : { texto }), ...(sistema ? { sistema } : {}), ...(ficha ? { ficha } : {}) }));
 /** El sistema de diseño de la portada de un carrusel (la IA la mira; queda en su ficha) → { sistema }. */
 export const sistemaDeArchivo = (clienteId, id, { texto = "" } = {}) => pedir(delArchivo(clienteId, id, "sistema"), post({ texto }));
 /** Sube la fuente de la marca (TTF, OTF, WOFF, WOFF2): `{ clave, nombre }`. No guarda el kit. */

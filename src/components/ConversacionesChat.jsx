@@ -11,7 +11,7 @@ import { ordenarConversaciones, cuandoFue, TITULO_NUEVA } from "../lib/conversac
 // debajo de la cabecera.
 // ============================================================
 
-export default function ConversacionesChat({ conversaciones, actualId, onAbrir, onNueva, onRenombrar, onBorrar, lateral = false, cargando = false }) {
+export default function ConversacionesChat({ conversaciones, actualId, onAbrir, onNueva, onRenombrar, onBorrar, lateral = false, cargando = false, filtro = null, onFiltro = null }) {
   const ids = useId();
   const [buscar, setBuscar] = useState("");
   const [editando, setEditando] = useState(null); // { id, titulo }
@@ -50,6 +50,13 @@ export default function ConversacionesChat({ conversaciones, actualId, onAbrir, 
           <Icon name="plus" size={14} /> Nueva
         </button>
       </div>
+      {/* Todas o sólo las del director (las de la pestaña Diseño), cuando hay de las dos. */}
+      {filtro && onFiltro && (
+        <div className="chat-conv-filtro" role="group" aria-label="Qué conversaciones ver">
+          <button type="button" className="filter-chip" aria-pressed={filtro === "todas"} onClick={() => onFiltro("todas")}>Todas</button>
+          <button type="button" className="filter-chip" aria-pressed={filtro === "diseno"} onClick={() => onFiltro("diseno")}>Diseño</button>
+        </div>
+      )}
       {conversaciones.length > 4 && (
         <>
           <label htmlFor={`${ids}-b`} className="sr-only">Buscar una conversación</label>

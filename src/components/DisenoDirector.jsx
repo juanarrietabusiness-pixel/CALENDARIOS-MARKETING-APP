@@ -14,15 +14,11 @@ import { lazy, Suspense } from "react";
 // Los atajos dejan escrito el encargo para completarlo con lo de cada uno.
 // ============================================================
 
+import { ATAJOS_DIRECTOR } from "../lib/director";
+
 const ChatPanel = lazy(() => import("./ChatPanel"));
 
-const ATAJOS = Object.freeze([
-  { etiqueta: "Diseña la semana", texto: "Diseña las piezas de la semana que viene del calendario: cada una en su publicación, con su texto de la pieza." },
-  { etiqueta: "Anuncios de un producto", texto: "Diseña 6 anuncios del producto " },
-  { etiqueta: "Historias de un post", texto: "Diseña 3 historias que acompañen al post del " },
-  { etiqueta: "Otra como esta", texto: "Haz otra pieza con el mismo diseño de la plantilla " },
-  { etiqueta: "Mira lo que funciona", texto: "Mira las plantillas y lo que me gustó de este cliente y dime qué estilo ves antes de diseñar." },
-]);
+
 
 /** `asistente`: lo que el chat necesita del calendario abierto ({ calendar, calId, clients, onUpdateCal, onCrearEnOtroMes }). */
 export default function DisenoDirector({ client, asistente }) {
@@ -44,7 +40,7 @@ export default function DisenoDirector({ client, asistente }) {
           defaultMode="client"
           incrustado
           tema="diseno"
-          atajos={ATAJOS}
+          atajos={ATAJOS_DIRECTOR}
         />
       </Suspense>
     </section>

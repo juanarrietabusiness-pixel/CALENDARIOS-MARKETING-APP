@@ -96,7 +96,7 @@ export function textoDelPedido(prompt) {
  * Lo que se le pide a la IA. La imagen va aparte. `texto`: lo que tiene que decir (exacto); `precios`: los del
  * catálogo; `logo`: si la pieza debía llevar el logo de la marca (se le pidió al modelo). Pura.
  */
-export function pedidoDeControl({ marca = "la marca", texto = "", precios = [], logo = false, evitar = "", reglas = [], sistema = "" } = {}) {
+export function pedidoDeControl({ marca = "la marca", texto = "", precios = [], logo = false, evitar = "", reglas = [], sistema = "", ficha = "" } = {}) {
   return [
     `Eres el control de calidad de una agencia. Revisa esta pieza de ${marca} antes de que la vea el cliente. Sé estricto y concreto: lo que dejes pasar lo ve el cliente.`,
     "",
@@ -108,9 +108,12 @@ export function pedidoDeControl({ marca = "la marca", texto = "", precios = [], 
     evitar || reglas.length ? `6. La marca pide: ${[evitar && `nunca ${corto(evitar, 300)}`, ...reglas.map((r) => corto(r, 120))].filter(Boolean).join("; ")}. Di lo que no se cumpla.` : "",
     // Una lámina de un carrusel: lo que se sale del sistema de su portada (src/lib/sistemaCarrusel.js).
     sistema ? `7. Esta pieza es parte de una serie. ${corto(sistema, 900)} Di en "serie" lo que se salga de ese sistema y se note a simple vista (titular de otro tamaño o peso, el texto en otra zona, otros márgenes, otros colores, falta un elemento que se repite); si lo respeta, vacío.` : "",
+    // La revisión del DIRECTOR: el diseño frente a su ficha, donde más se equivoca (el texto muy arriba, muy abajo o
+    // muy grande). Va en la MISMA llamada: no cuesta otra.
+    ficha ? `8. Ahora mira la pieza como el DIRECTOR CREATIVO que la diseñó con esta ficha:\n${String(ficha).trim().slice(0, 2500)}\nCompara dónde está el texto y de qué tamaño (en % del alto y del ancho de la pieza) con lo que pide la ficha, y la jerarquía, el contraste, los márgenes y el producto. En "diseno", hasta 3 problemas que se noten a simple vista, cada uno con su ARREGLO como una orden de edición precisa y con números («baja el titular hasta el 10–24 % de la altura», «reduce el titular al 70 % del ancho»); si está bien, vacío. En "puntajeDiseno", del 1 al 10 como director (8 o más: se entrega así).` : "",
     "",
     "Responde SOLO con JSON, sin texto alrededor:",
-    `{"textoLeido":"…","errores":[{"escrito":"lo que dice","esperado":"lo que debía decir"}],"precios":["precio que no está en el catálogo"],"logo":"bien|falta|deformado|no aplica","deformaciones":["…"],"otros":["…"],${sistema ? '"serie":["…"],' : ""}"puntaje":0-10}`,
+    `{"textoLeido":"…","errores":[{"escrito":"lo que dice","esperado":"lo que debía decir"}],"precios":["precio que no está en el catálogo"],"logo":"bien|falta|deformado|no aplica","deformaciones":["…"],"otros":["…"],${sistema ? '"serie":["…"],' : ""}${ficha ? '"diseno":[{"problema":"…","arreglo":"…"}],"puntajeDiseno":1-10,' : ""}"puntaje":0-10}`,
   ].filter((l) => l !== "").join("\n");
 }
 
@@ -145,12 +148,59 @@ export function leerControl(respuesta, { texto = "", logo = false } = {}) {
   const serie = lista(d.serie, 4, 140);
   const fallaLogo = logo && (logoEstado === "falta" || logoEstado === "deformado");
   const graves = precios.length + deformaciones.length + (fallaLogo ? 1 : 0);
-  const estado = errores.length || graves || serie.length ? "revisar" : "ok";
+  // La revisión del director (sólo si se le dio la ficha): los problemas de diseño con su arreglo, y su nota.
+  const diseno = (Array.isArray(d.diseno) ? d.diseno : [])
+    .map((x) => ({ problema: corto(x?.problema, 160), arreglo: corto(x?.arreglo, 200) }))
+    .filter((x) => x.arreglo).slice(0, 3);
+  const nota = Number(d.puntajeDiseno);
+  const puntajeDiseno = Number.isFinite(nota) && nota > 0 ? Math.max(1, Math.min(10, Math.round(nota))) : null;
+  const flojo = puntajeDiseno !== null && puntajeDiseno < NOTA_MINIMA && diseno.length > 0;
+  const estado = errores.length || graves || serie.length || flojo ? "revisar" : "ok";
   return {
     estado, textoLeido, errores, precios, logo: logoEstado, deformaciones, otros, ...(serie.length ? { serie } : {}),
+    ...(puntajeDiseno !== null ? { puntajeDiseno, diseno } : {}),
     puntaje: Math.max(0, Math.min(10, Math.round(Number(d.puntaje) || (estado === "ok" ? 9 : 5)))),
     soloTexto: errores.length > 0 && graves === 0,
+    // Lo que se arregla editando la MISMA imagen sin que decida una persona: letras y diseño (nunca un precio, el logo
+    // o una deformación).
+    corregible: graves === 0 && (errores.length > 0 || flojo),
   };
+}
+
+/** Desde qué nota del director se entrega una pieza sin tocarla. */
+export const NOTA_MINIMA = 8;
+
+/** Las ediciones automáticas empiezan así: no son correcciones de la agencia y el director no las aprende. */
+export const PREFIJO_AJUSTE = "Ajuste del director:";
+
+/**
+ * La edición que arregla de una vez lo corregible: las letras (`correccionDeTexto`) y los arreglos de diseño del
+ * director, conservando todo lo demás. "" si no hay nada que arreglar. Pura.
+ */
+export function correccionDelDirector(control, textoEsperado = "") {
+  const texto = control?.errores?.length ? correccionDeTexto(control, textoEsperado) : "";
+  const flojo = control?.puntajeDiseno != null && control.puntajeDiseno < NOTA_MINIMA;
+  const arreglos = flojo ? (control.diseno ?? []).map((x) => x.arreglo).filter(Boolean) : [];
+  if (!arreglos.length) return texto;
+  return [
+    `${PREFIJO_AJUSTE} ${arreglos.join("; ")}.`,
+    texto,
+    !texto && textoEsperado ? `El texto se queda EXACTAMENTE así: "${corto(textoEsperado, 400).replace(/"/g, "'")}".` : "",
+    "Conserva todo lo demás exactamente igual: el texto letra por letra, los colores, la tipografía, las personas, los objetos, el producto y el logo.",
+  ].filter(Boolean).join(" ");
+}
+
+/** ¿Mejoró la corregida? Menos errores de texto y la nota del director no baja (ni sube sin llegar). Pura. */
+export function mejoro(antes, despues) {
+  if (!despues) return false;
+  if (despues.estado === "ok") return true;
+  const errA = antes?.errores?.length ?? 0;
+  const errD = despues.errores?.length ?? 0;
+  if (errD > errA) return false;
+  const nA = antes?.puntajeDiseno ?? null;
+  const nD = despues.puntajeDiseno ?? null;
+  if (nA !== null && nD !== null && nD < nA) return false;
+  return errD < errA || (nA !== null && nD !== null && nD > nA);
 }
 
 /**
@@ -180,5 +230,6 @@ export function resumenControl(control) {
   if (control.logo === "deformado") return "Revisar: el logo está deformado";
   if (control.deformaciones?.length) return `Revisar: ${control.deformaciones[0]}`;
   if (control.serie?.length) return `Revisar: se sale de la serie (${control.serie[0]})`;
+  if (control.puntajeDiseno != null && control.puntajeDiseno < NOTA_MINIMA && control.diseno?.length) return `Revisar: ${control.diseno[0].problema || control.diseno[0].arreglo} (director: ${control.puntajeDiseno}/10)`;
   return "Revisar";
 }

@@ -54,10 +54,10 @@ function ControlDeCalidad({ archivo, clienteId, lectura, onAbrir }) {
     try { await fn(); } catch (e) { setError(e.message); } finally { setOcupado(""); }
   };
   const revisar = () => hacer("Revisando la pieza…", async () => setControl((await api.controlarArchivo(clienteId, archivo.id)).control));
-  const corregir = () => hacer("Corrigiendo el texto (tarda un poco)…", async () => {
+  const corregir = () => hacer("Corrigiendo (tarda un poco)…", async () => {
     const r = await corregirTexto({ clienteId, archivo, control });
     if (r.corregida) onAbrir?.(r.archivo);
-    else setError(`La corrección no mejoró el texto${r.intento ? " (quedó en la galería)" : ""}: prueba «Editar» con tus palabras.`);
+    else setError(`La corrección no mejoró la pieza${r.intento ? " (quedó en la galería)" : ""}: prueba «Editar» con tus palabras.`);
   });
   if (!clienteId || archivo.tipo === "video") return null;
   return (
@@ -69,6 +69,10 @@ function ControlDeCalidad({ archivo, clienteId, lectura, onAbrir }) {
           {control.textoLeido && <p className="hint">Se lee: «{control.textoLeido.replace(/\n+/g, " / ")}»</p>}
           {control.errores.length > 1 && <ul className="est-revision-lista" data-falla>{control.errores.map((e) => <li key={`${e.escrito}-${e.esperado}`}><Icon name="alert" size={14} /> {e.escrito ? `«${e.escrito}» → «${e.esperado}»` : `falta «${e.esperado}»`}</li>)}</ul>}
           {[...control.precios.map((p) => `Precio que no está en el catálogo: ${p}`), ...control.deformaciones, ...control.otros].map((t) => <p key={t} className="hint"><Icon name="alert" size={14} /> {t}</p>)}
+          {/* La revisión del director: su nota y lo que arreglaría, con números. */}
+          {control.puntajeDiseno != null && (
+            <p className="hint">Director: {control.puntajeDiseno}/10{control.diseno?.length ? ` · ${control.diseno.map((x) => x.arreglo).join(" · ")}` : ""}</p>
+          )}
         </>
       ) : <p className="hint">Sin revisar: la IA puede leer el texto letra por letra y buscar precios inventados, el logo y deformaciones.</p>}
       {error && <p role="alert" className="cerebro-error">{error}</p>}
@@ -76,7 +80,7 @@ function ControlDeCalidad({ archivo, clienteId, lectura, onAbrir }) {
           el foco se iría al body y Escape ya no cerraría el visor. */}
       {!lectura && (
         <div className="est-control-botones">
-          {control?.soloTexto && <button type="button" className="btn btn-primary btn-sm" aria-disabled={Boolean(ocupado)} onClick={() => !ocupado && corregir()}><Icon name="wand" size={14} /> Corregir el texto</button>}
+          {(control?.corregible ?? control?.soloTexto) && <button type="button" className="btn btn-primary btn-sm" aria-disabled={Boolean(ocupado)} onClick={() => !ocupado && corregir()}><Icon name="wand" size={14} /> {control.errores.length ? "Corregir el texto" : "Aplicar los arreglos del director"}</button>}
           <button type="button" className="btn btn-ghost btn-sm" aria-disabled={Boolean(ocupado)} onClick={() => !ocupado && revisar()}><Icon name="eye" size={14} /> {control ? "Revisar otra vez" : "Revisar la pieza"}</button>
         </div>
       )}

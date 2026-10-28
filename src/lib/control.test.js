@@ -82,3 +82,46 @@ describe("la tipografía de la marca como referencia y con qué se corrige", () 
     expect(modeloParaCorregir({ gemini: true }, "prueba").id).toBe("nano-banana");
   });
 });
+
+describe("la revisión del director", async () => {
+  const { pedidoDeControl, leerControl, correccionDelDirector, mejoro, NOTA_MINIMA, PREFIJO_AJUSTE } = await import("./control.js");
+  const { correccionesRecientes } = await import("./director.js");
+
+  it("con la ficha, el control pide además la nota y los arreglos de diseño con números", () => {
+    const p = pedidoDeControl({ texto: "Hola", ficha: "Pieza: post.\nComposición: titular del 8 al 22 %." });
+    expect(p).toMatch(/como el DIRECTOR CREATIVO que la diseñó con esta ficha:\nPieza: post\./);
+    expect(p).toMatch(/"puntajeDiseno":1-10/);
+    expect(pedidoDeControl({ texto: "Hola" })).not.toMatch(/DIRECTOR/);
+  });
+
+  it("por debajo de 8 con arreglos, revisar y corregible; con un precio inventado, no se toca solo", () => {
+    const flojo = leerControl('{"textoLeido":"Hola","logo":"no aplica","diseno":[{"problema":"muy abajo","arreglo":"sube el titular al 10 %"}],"puntajeDiseno":6}', { texto: "Hola" });
+    expect(flojo).toMatchObject({ estado: "revisar", puntajeDiseno: 6, corregible: true, soloTexto: false });
+    const bien = leerControl('{"textoLeido":"Hola","logo":"no aplica","diseno":[{"problema":"x","arreglo":"y"}],"puntajeDiseno":8}', { texto: "Hola" });
+    expect(bien.estado).toBe("ok");
+    expect(NOTA_MINIMA).toBe(8);
+    const precio = leerControl('{"textoLeido":"Hola","precios":["$5"],"diseno":[{"arreglo":"sube"}],"puntajeDiseno":5}', { texto: "Hola" });
+    expect(precio.corregible).toBe(false);
+    // Sin ficha (no hay nota), lo de siempre.
+    expect(leerControl('{"textoLeido":"Hola"}', { texto: "Hola" }).puntajeDiseno).toBeUndefined();
+  });
+
+  it("una sola edición arregla letras y diseño, y el director no aprende de ella", () => {
+    const c = leerControl('{"textoLeido":"Hloa","diseno":[{"arreglo":"sube el titular al 10 %"}],"puntajeDiseno":6}', { texto: "Hola" });
+    const e = correccionDelDirector(c, "Hola");
+    expect(e.startsWith(`${PREFIJO_AJUSTE} sube el titular al 10 %.`)).toBe(true);
+    expect(e).toMatch(/donde dice "hloa" debe decir "hola"/);
+    expect(correccionDelDirector({ errores: [], puntajeDiseno: 9, diseno: [{ arreglo: "x" }] }, "Hola")).toBe("");
+    expect(correccionesRecientes([`Edita la imagen de referencia: ${e}. Conserva todo lo demás exactamente igual.`, "Edita la imagen de referencia: el logo más pequeño. Conserva todo lo demás exactamente igual."]))
+      .toEqual(["el logo más pequeño"]);
+  });
+
+  it("se queda la corregida sólo si mejoró", () => {
+    const antes = { estado: "revisar", errores: [], puntajeDiseno: 6 };
+    expect(mejoro(antes, { estado: "revisar", errores: [], puntajeDiseno: 7 })).toBe(true);
+    expect(mejoro(antes, { estado: "revisar", errores: [], puntajeDiseno: 5 })).toBe(false);
+    expect(mejoro(antes, { estado: "revisar", errores: [{ esperado: "a" }], puntajeDiseno: 9 })).toBe(false);
+    expect(mejoro({ errores: [{ esperado: "a" }] }, { estado: "revisar", errores: [] })).toBe(true);
+    expect(mejoro(antes, null)).toBe(false);
+  });
+});

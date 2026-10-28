@@ -8,6 +8,11 @@
 // más») con un modelo que sepa editar texto, y se controla otra vez. Se
 // queda la que tenga menos errores; la otra sigue en la galería.
 //
+// En la MISMA llamada, el DIRECTOR revisa el diseño contra su ficha (dónde
+// está el texto y de qué tamaño, la jerarquía…) y le pone nota. Por debajo de
+// 8, sus arreglos van en la misma edición que las letras: UNA edición como
+// mucho por pieza, así el costo tiene techo (una imagen más).
+//
 // Si falla algo más (un precio, el logo, una deformación), no se toca: se
 // marca «Revisar» y lo decide una persona.
 //
@@ -16,7 +21,7 @@
 // ============================================================
 
 import * as api from "./estudio";
-import { correccionDeTexto } from "./control";
+import { correccionDelDirector, mejoro } from "./control";
 import { esperarArchivos } from "./carruselEstudio";
 import { MODELOS, ajustesDe, modeloQueRespeta } from "./estudioCatalogo";
 
@@ -65,7 +70,7 @@ export async function controlarYCorregir({ clienteId, archivo, texto = null, sis
   } catch {
     return { archivo, control: null, corregida: false };
   }
-  if (!primero || primero.estado === "ok" || !corregir || !primero.soloTexto || !seguir()) return { archivo, control: primero, corregida: false };
+  if (!primero || primero.estado === "ok" || !corregir || !primero.corregible || !seguir()) return { archivo, control: primero, corregida: false };
   try {
     return await corregirTexto({ clienteId, archivo, control: primero, activos, carpetaId, seguir });
   } catch {
@@ -74,20 +79,22 @@ export async function controlarYCorregir({ clienteId, archivo, texto = null, sis
 }
 
 /**
- * Corrige SÓLO el texto de una pieza ya controlada: edita la misma imagen con la indicación de qué cambiar, controla
- * la nueva y se queda la que tenga menos errores (a igualdad, la original). → { archivo, control, corregida }. Lanza si
- * el pedido falla (lo dice quien llama).
+ * Corrige lo corregible de una pieza ya controlada (las letras y los arreglos de diseño del director) editando la
+ * misma imagen, controla la nueva contra la MISMA ficha y se queda la mejor (a igualdad, la original). → { archivo,
+ * control, corregida }. Lanza si el pedido falla (lo dice quien llama).
  */
 export async function corregirTexto({ clienteId, archivo, control, activos = null, carpetaId = null, seguir = () => true }) {
   const m = modeloParaCorregir(await activosDeMotores(activos), archivo.modelo, proporcion(archivo));
-  const { prompt, medios } = api.pedidoDeCorreccion({ clave: archivo.clave, instruccion: correccionDeTexto(control, control.texto), modelo: m });
+  const instruccion = correccionDelDirector(control, control.texto);
+  if (!instruccion) return { archivo, control, corregida: false };
+  const { prompt, medios } = api.pedidoDeCorreccion({ clave: archivo.clave, instruccion, modelo: m });
   const { trabajo } = await api.pedirImagenes(clienteId, {
     modelo: m.id, prompt, n: 1, ajustes: ajustesDe(m, { aspectRatio: proporcion(archivo) }, medios), medios, confirmado: true,
     ...(carpetaId ?? archivo.carpetaId ? { carpetaId: carpetaId ?? archivo.carpetaId } : {}),
   });
   const [nueva] = await esperarArchivos(clienteId, trabajo, { seguir });
-  const segundo = (await api.controlarArchivo(clienteId, nueva.id, { texto: control.texto })).control;
-  const mejor = segundo && (segundo.estado === "ok" || segundo.errores.length < control.errores.length);
+  const segundo = (await api.controlarArchivo(clienteId, nueva.id, { texto: control.texto, ficha: control.ficha ?? null })).control;
+  const mejor = mejoro(control, segundo);
   return mejor ? { archivo: nueva, control: segundo, corregida: true } : { archivo, control, corregida: false, intento: nueva };
 }
 
