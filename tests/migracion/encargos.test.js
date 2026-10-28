@@ -175,6 +175,23 @@ describe("lo que hace la pantalla", () => {
     expect(r.encargo.pasos[0].finales).toEqual([propia, null]);
   });
 
+  it("lo que espera a la pantalla (texto, logo) sale en «por terminar» hasta que la pantalla lo apunta", async () => {
+    const { encargo: e } = await (await lanzar({ pasos: [paso("a", { navegador: { logo: true } }), paso("b")] })).json();
+    await bombearHastaElFinal();
+    const lista = await (await pedir(JEFE, "/encargos/por-terminar")).json();
+    expect(lista.encargos.map((x) => x.encargo.id)).toEqual([e.id]);
+    // La que no necesita nada ya tiene su final; la del logo, no.
+    const pasos = lista.encargos[0].encargo.pasos;
+    expect(pasos.find((x) => x.id === "b").finales).toHaveLength(1);
+    expect(pasos.find((x) => x.id === "a").finales).toBeNull();
+    expect(lista.encargos[0].archivos.length).toBeGreaterThan(0);
+    const propia = pasos.find((x) => x.id === "a").opciones[0].id;
+    await pedir(JEFE, `/estudio/c1/encargos/${e.id}/final`, { method: "POST", body: { pasoId: "a", finales: [propia] } });
+    expect((await (await pedir(JEFE, "/encargos/por-terminar")).json()).encargos).toEqual([]);
+    // Y de otro espacio no se ve nada.
+    expect((await (await pedir(OTRA, "/encargos/por-terminar")).json()).encargos).toEqual([]);
+  });
+
   it("un encargo de otro espacio no existe", async () => {
     const { encargo: e } = await (await lanzar({ pasos: [paso("a")] })).json();
     expect((await pedir(OTRA, `/estudio/c1/encargos/${e.id}`)).status).toBe(404);

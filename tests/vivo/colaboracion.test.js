@@ -186,4 +186,23 @@ describe("el Estudio sigue sin la pantalla", () => {
     expect(e.estado).toBe("hecho");
     expect(e.pasos.map((p) => p.fase)).toEqual(["hecho", "hecho", "hecho"]);
   }, 45_000);
+
+  it("y un CARRUSEL: las láminas en orden, cada una con la anterior de referencia, sin pantalla", async () => {
+    const id = crypto.randomUUID();
+    await espacio.api(ANA, `/api/clientes/${id}`, { method: "PUT", body: JSON.stringify({ id, name: "Cliente del carrusel" }) });
+    const laminas = [1, 2, 3].map((n) => ({ n, texto: `Lámina ${n}`, rol: n === 1 ? "portada" : "contenido" }));
+    const r = await espacio.api(ANA, `/api/estudio/${id}/encargos`, {
+      method: "POST", body: JSON.stringify({ tipo: "carrusel", comun: { modelo: "prueba", idea: "Tres errores" }, laminas, conSistema: false }),
+    });
+    expect(r.status).toBe(201);
+    const { encargo } = await r.json();
+    let e = encargo;
+    for (let i = 0; i < 80 && e.estado === "en_marcha"; i++) {
+      await new Promise((ok) => setTimeout(ok, 500));
+      e = (await (await espacio.api(ANA, `/api/estudio/${id}/encargos/${encargo.id}`)).json()).encargo;
+    }
+    expect(e.estado).toBe("hecho");
+    expect(e.pasos.map((p) => p.fase)).toEqual(["hecho", "hecho", "hecho"]);
+  }, 60_000);
 });
+

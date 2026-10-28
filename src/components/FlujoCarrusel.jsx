@@ -6,7 +6,8 @@ import { AJUSTES_DE_TEXTO, IGUALAR_TEXTO, ejemploParaIgualar } from "../lib/estu
 import { TIPOS_PRESET, ESTILOS_VISUALES, estiloDeMarca, limpiarKit, referenciasDePersonajes, referenciaDeTipografia } from "../lib/kitMarca";
 import { controlEncendido } from "../lib/controlEstudio";
 import { partirGuion, MODOS_TEXTO, PLANTILLAS_TEXTO, MAX_LAMINAS, coloresPlantilla, costoCarrusel } from "../lib/carrusel";
-import { crearCarrusel, crearLamina, corregirLamina, modelosParaCarrusel, modeloParaCarrusel, sistemaDeLaPortada } from "../lib/carruselEstudio";
+import { crearLamina, corregirLamina, modelosParaCarrusel, modeloParaCarrusel, sistemaDeLaPortada } from "../lib/carruselEstudio";
+import { lanzarCarrusel, seguirEncargo, terminarEncargo, laminasDeEncargo } from "../lib/encargosApi";
 import { resumenSistema } from "../lib/sistemaCarrusel";
 import ReferenciasGaleria from "./ReferenciasGaleria";
 import IdeasDeFormato from "./IdeasDeFormato";
@@ -125,33 +126,59 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
     api.ordenarCarpeta(clienteId, carpeta.current, ordenFinal.split(",")).catch(() => { /* sin orden, la galería lo deduce */ });
   }, [ordenFinal, creando, clienteId]);
 
-  /** Crea de `desde` en adelante (o sólo la portada, si se aprueba antes); `previas`: lo ya hecho. */
+  /**
+   * Crea de `desde` en adelante (o sólo la portada, si se aprueba antes). Lo lleva el SERVIDOR (un encargo): las
+   * láminas en orden, con la anterior y la portada de referencia, el sistema de la portada y el control. Se puede
+   * cerrar: el carrusel queda en su carpeta de la galería, y el texto de la plantilla o el logo estampado se ponen al
+   * volver a abrir la aplicación (lib/encargosApi.js).
+   */
   const crear = async ({ desde = 0, soloPortada = primeroPortada && laminas.length > 2 } = {}) => {
     setConfirmar(false);
     setPaso("laminas");
     setAviso(null);
-    onCreando(true);
     const hasta = soloPortada ? 1 : laminas.length;
-    const previas = desde > 0 ? resultados.slice(0, desde) : [];
     if (desde === 0) setSistema(null);
     setResultados(laminas.map((_, i) => (i < desde ? resultados[i] : i < hasta ? { cargando: true } : undefined)));
-    await prepararCarpeta();
-    const salida = await crearCarrusel({
-      ...comun(), laminas, desde, hasta, previas, sistema: desde > 0 ? sistema : null,
-      alSistema: (s) => { if (vivo.current) setSistema(s); },
-      alAvanzar: (i, r) => { if (vivo.current) setResultados((x) => x.map((y, j) => (j === i ? r : y))); },
-    });
-    onCreando(false);
-    if (!vivo.current) return;
-    setResultados(laminas.map((_, i) => (i < hasta ? salida[i] ?? { error: "No se pidió." } : undefined)));
-    window.dispatchEvent(new Event("ia:gasto"));
-    if (soloPortada) {
-      setAviso(salida[0]?.final
-        ? { ok: true, texto: "Revisa la portada: las demás láminas seguirán su sistema (tamaño del titular, dónde va el texto, márgenes y colores). Corrígela o rehazla si hace falta." }
-        : { ok: false, texto: `La portada no salió: ${salida[0]?.error ?? "inténtalo otra vez"}.` });
+    onCreando(true);
+    let lanzado;
+    try {
+      await prepararCarpeta();
+      const c = comun();
+      lanzado = await lanzarCarrusel({
+        clienteId, comun: c, laminas: laminas.slice(desde, hasta), total: laminas.length,
+        previas: desde > 0 ? { portada: resultados[0]?.crudo?.clave ?? "", anterior: resultados.slice(0, desde).reverse().find((x) => x?.crudo)?.crudo?.clave ?? "" } : null,
+        sistema: desde > 0 ? sistema : null, conSistema: modo !== "plantilla", carpetaId: carpeta.current, controlar: c.controlar,
+        logoEstampado: Boolean(c.estampar), titulo: tema || laminas[0]?.texto || "Carrusel",
+      });
+    } catch (e) {
+      onCreando(false);
+      setResultados((x) => x.map((y, i) => (i >= desde && i < hasta ? { error: e.message } : y)));
+      setAviso({ ok: false, texto: e.message });
       return;
     }
-    const bien = salida.filter((r) => r?.final).length;
+    onCreando(false);
+    setAviso({ ok: true, texto: "Se está creando en el servidor: puedes cerrar. El carrusel queda en la galería, en su carpeta; desde la publicación se pone con «De la galería»." });
+    let ultimo = {};
+    const e = await seguirEncargo({
+      clienteId, id: lanzado.encargo.id, seguir: () => vivo.current,
+      alCambio: (enc, archivos) => {
+        ultimo = laminasDeEncargo(enc, archivos);
+        setResultados((x) => laminas.map((_, i) => (ultimo[i] !== undefined ? ultimo[i] : x[i])));
+        if (enc.sistema) setSistema(enc.sistema);
+        void terminarEncargo({ clienteId, encargo: enc, archivos, kit });
+      },
+    });
+    if (!vivo.current || !e) return;
+    // Terminado: quien lo enseña relee (la galería del Estudio).
+    onCreando(false);
+    window.dispatchEvent(new Event("ia:gasto"));
+    if (soloPortada) {
+      setAviso(ultimo[0]?.final
+        ? { ok: true, texto: "Revisa la portada: las demás láminas seguirán su sistema (tamaño del titular, dónde va el texto, márgenes y colores). Corrígela o rehazla si hace falta." }
+        : { ok: false, texto: `La portada no salió: ${ultimo[0]?.error ?? "inténtalo otra vez"}.` });
+      return;
+    }
+    const bien = laminas.filter((_, i) => i >= desde && ultimo[i]?.final).length + desde;
     setAviso({ ok: bien > 0, texto: bien === laminas.length ? "Listas. Si una tiene un error, corrígela sola: el resto no se toca." : `Salieron ${bien} de ${laminas.length}. Rehaz las que fallaron.` });
   };
   /** La portada va: el resto, con su sistema de diseño. */

@@ -760,14 +760,16 @@ function Workspace({ session, ruta }) {
   }, [toast]);
 
   // Las historias automáticas necesitan su imagen, y esa la dibuja un lienzo: se preparan al abrir, sin que nadie
-  // lo pida, las de lo publicado desde la última vez (una vez por sesión; el módulo va aparte del arranque).
+  // lo pida, las de lo publicado desde la última vez (una vez por sesión; los módulos van aparte del arranque).
   useEffect(() => {
     if (yo.soloLectura) return undefined;
     const t = setTimeout(() => {
       import("./lib/historiasAutoApi").then((m) => m.prepararEnSegundoPlano()).catch(() => {});
+      // Y lo que el Estudio terminó en el servidor sin nadie mirando y espera el lienzo (texto de plantilla, logo).
+      import("./lib/encargosApi").then((m) => m.terminarPendientes(yo.id)).catch(() => {});
     }, 20_000);
     return () => clearTimeout(t);
-  }, [yo.soloLectura]);
+  }, [yo.soloLectura, yo.id]);
 
   // ----------------------------------------------------------
   // De la dirección a lo que se mira

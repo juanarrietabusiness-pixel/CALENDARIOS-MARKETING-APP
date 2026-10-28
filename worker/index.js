@@ -66,6 +66,7 @@ import { informePendiente } from "./lib/informes.js";
 import { informeAnunciosPendiente } from "./lib/informeAnuncios.js";
 import { historiasAutomaticasPendiente } from "./lib/historiasAuto.js";
 import { encargosDelCron } from "./lib/estudio/bomba.js";
+import { encargosPorTerminar } from "./lib/estudio/encargos.js";
 import { rutasBandeja, rutaWebhookMeta } from "./rutas/bandeja.js";
 
 // El Durable Object del espacio. Se reexporta desde aquí porque
@@ -422,6 +423,8 @@ export default {
       if (partes[0] === "mercado") return await rutasMercado(req, env, { acceso, usuario, partes, metodo });
       // Inspiración: lo que publican las cuentas que sigue cada cliente (competencia y las que le inspiran).
       if (partes[0] === "inspiracion") return await rutasInspiracion(req, env, { acceso, usuario, partes, metodo });
+      // Lo que el servidor terminó del Estudio y espera a la pantalla (el texto de la plantilla, el logo estampado).
+      if (partes[0] === "encargos" && partes[1] === "por-terminar" && metodo === "GET") return json({ encargos: await encargosPorTerminar(acceso) });
       // El Estudio: imágenes por trabajos, con su galería por cliente.
       if (partes[0] === "estudio") return await rutasEstudio(req, env, { acceso, usuario, partes, metodo });
       // La bandeja: comentarios y mensajes de Facebook e Instagram.
