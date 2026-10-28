@@ -87,15 +87,10 @@ import {
   leerGaleria, subirArchivo, cambiarArchivo, marcarUso, enviarAPapelera, recuperar, borrarParaSiempre, quitarPerdido,
   vaciarPapelera, crearCarpeta, renombrarCarpeta, ordenarCarpeta, borrarCarpeta, archivoPublico,
 } from "../lib/estudio/galeria.js";
-import { crearEncargo, avanzarEncargo, cancelarEncargo, finalesDePaso, encargoPublico } from "../lib/estudio/encargos.js";
+import { crearEncargo, avanzarEncargo, cancelarEncargo, finalesDePaso, encargoPublico, encargoConArchivos } from "../lib/estudio/encargos.js";
 
 const ID = /^[\w-]{1,80}$/;
 
-/** Lo que `archivoPublico` lee de una ficha de la galería (para pedir varias por id sin `select *`). */
-const COLUMNAS_ARCHIVO = [
-  "id", "clave", "tipo", "mime", "ancho", "alto", "bytes", "prompt", "modelo", "ajustes", "trabajo_id", "carpeta_id",
-  "origen", "costo", "favorito", "subido", "usado_en", "borrado_at", "created_at",
-];
 
 /** Una respuesta de error de este módulo: lleva además el `codigo` y el costo, que la pantalla usa para pedir confirmación. */
 const fallo = (e) => json({ error: e.message, ...(e.codigo ? { codigo: e.codigo } : {}), ...(e.costo != null ? { costo: e.costo } : {}), ...(e.usos != null ? { usos: e.usos } : {}) }, e.estado ?? 400);
@@ -196,12 +191,7 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
 
     // ---------- Los encargos: la cadena de piezas que sigue en el servidor ----------
     if (b === "encargos") {
-      const conArchivos = async (fila) => {
-        const e = encargoPublico(fila);
-        const ids = [...new Set(e.pasos.flatMap((p) => [...p.opciones.map((o) => o.id), ...(p.finales ?? [])]).filter(Boolean))];
-        const archivos = ids.length ? await acceso.leerVarios("estudio_archivos", COLUMNAS_ARCHIVO, "id", ids, { client_id: cliente.id }) : [];
-        return { encargo: e, archivos: archivos.map(archivoPublico) };
-      };
+      const conArchivos = (fila) => encargoConArchivos(acceso, fila);
       if (!c && metodo === "POST") {
         const datos = await cuerpo(req);
         if (!datos) return error("JSON inválido");

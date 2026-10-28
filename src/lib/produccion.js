@@ -53,3 +53,65 @@ export function ordenarProduccion(lista = [], orden = "dia") {
   return [...lista].sort((a, b) =>
     (orden === "dia" ? posicion(a.date) - posicion(b.date) : 0) || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
+
+// ------------------------------------------------------------
+// Lo que sale del servidor
+// ------------------------------------------------------------
+
+const terminado = (e) => Boolean(e) && e.estado !== "en_marcha";
+
+/**
+ * De los encargos de «Producir el mes» (las imágenes, en un lote; cada carrusel, el suyo) a lo que enseña la pantalla.
+ * `metas`: [{ id, tipo: "lote" | "carrusel", postId? }] tal cual se lanzaron; `estados`: id → { encargo, archivos (Map),
+ * fin }; `posts`: Map id → { post, date }. → { trabajos, versiones, mejores, controles, fichas, listo }:
+ *   · `trabajos`: por publicación, su avance ({ postId, date, format, titulo, estado, error, laminas?, hechas? });
+ *   · `versiones` postId → [archivos]; `mejores` postId → la que se propone (la primera que pasó el control) o, en un
+ *     carrusel, sus láminas en orden; `controles` postId → el control de la propuesta (en un carrusel, la peor lámina);
+ *   · `fichas` postId → la ficha que escribió el director (se guarda en la publicación: la próxima vez sale al instante);
+ *   · `listo`: todo terminó y la pantalla ya puso lo suyo.
+ * Pura.
+ */
+export function resultadosDeProduccion(metas = [], estados = {}, posts = new Map()) {
+  const trabajos = [];
+  const versiones = {};
+  const mejores = {};
+  const controles = {};
+  const fichas = {};
+  const base = (postId) => {
+    const x = posts.get(postId);
+    return { postId, date: x?.date ?? "", format: x?.post?.format ?? "post", titulo: x?.post?.title || x?.post?.idea || "" };
+  };
+  for (const m of metas) {
+    const est = estados[m.id];
+    const e = est?.encargo;
+    const archivos = est?.archivos ?? new Map();
+    if (m.tipo === "carrusel") {
+      const hechas = (e?.pasos ?? []).filter((p) => p.fase === "hecho");
+      const lista = hechas.map((p) => archivos.get(p.finales?.[0]) ?? archivos.get(p.opciones?.[0]?.id)).filter(Boolean);
+      const fin = terminado(e);
+      trabajos.push({
+        ...base(m.postId), laminas: e?.pasos?.length || m.laminas || 0, hechas: hechas.length,
+        estado: !fin ? "creando" : lista.length ? "hecho" : "fallido", error: fin && !lista.length ? e?.error || "No salió ninguna lámina." : "",
+      });
+      if (fin && lista.length) {
+        mejores[m.postId] = lista;
+        const vistos = hechas.map((p) => p.opciones?.[0]?.control).filter(Boolean);
+        if (vistos.length) controles[m.postId] = vistos.find((c) => c.estado === "revisar") ?? { estado: "ok" };
+      }
+      continue;
+    }
+    for (const p of e?.pasos ?? []) {
+      trabajos.push({ ...base(p.id), estado: p.fase === "hecho" ? "hecho" : p.fase === "fallido" ? "fallido" : "creando", error: p.error ?? "" });
+      if (p.deDirector && p.escena) fichas[p.id] = p.escena;
+      if (p.fase !== "hecho") continue;
+      const lista = (p.opciones ?? []).map((o, i) => archivos.get(p.finales?.[i]) ?? archivos.get(o.id)).filter(Boolean);
+      if (!lista.length) continue;
+      versiones[p.id] = lista;
+      const k = Math.max(0, (p.opciones ?? []).findIndex((o) => o.control?.estado === "ok"));
+      mejores[p.id] = lista[k] ?? lista[0];
+      if (p.opciones?.[k]?.control) controles[p.id] = p.opciones[k].control;
+    }
+  }
+  const listo = metas.length > 0 && metas.every((m) => estados[m.id]?.fin);
+  return { trabajos, versiones, mejores, controles, fichas, listo };
+}

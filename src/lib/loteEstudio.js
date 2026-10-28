@@ -14,11 +14,9 @@
 // ============================================================
 
 import * as api from "./estudio";
-import { limpiarKit, estiloDeMarca, referenciaDeTipografia, referenciaDePlantilla, lineaDePlantillaEnPedido } from "./kitMarca";
+import { limpiarKit, estiloDeMarca, referenciaDePlantilla, lineaDePlantillaEnPedido } from "./kitMarca";
 import { coloresPlantilla, PLANTILLAS_TEXTO } from "./carrusel";
 import { componerLamina } from "./textoSobreImagen";
-import { crearCarrusel } from "./carruselEstudio";
-import { estampaSola } from "./logoEstudio";
 import { crearFotogramas, pedidoDeVideo, crearVideo } from "./reelEstudio";
 import { textoDeIdea, plantillaDeIdea, composicionDe, FORMATOS_LOTE } from "./loteAnuncios";
 import { ideaSinMejorar, apoyosDePieza, pedidoDePieza, lineaSinTexto } from "./pieza";
@@ -121,30 +119,6 @@ export async function conFichas({ ideas, clienteId, modo = "ia", formato = "post
 
 /** Lo que se le cuenta a la IA del carrusel o del reel de una idea del lote: el tema, el brief y el texto. Pura. */
 export const temaDeIdea = (idea) => [idea?.titulo || idea?.titular, idea?.brief, textoDeIdea(idea) ? `Texto: ${textoDeIdea(idea).replace(/\n/g, " / ")}` : ""].filter(Boolean).join(". ").slice(0, 400);
-
-/**
- * Un CARRUSEL de una idea del lote, como a mano (components/FlujoCarrusel.jsx): la propuesta del director de arte a
- * partir de su guion, y las láminas una a una con la anterior, la portada y los personajes de referencia.
- * `alPaso(texto)` dice por dónde va. → { archivos: [láminas finales] }.
- */
-export async function crearCarruselDeIdea({ clienteId, idea, kit, preset = "", estilo = "", modelo, fotos = [], personajes = [], personajesIds = [], marca = "", rubro = "", carpetaId = null, seguir = () => true, alPaso = () => {}, controlar = false, activos = {} }) {
-  alPaso("Propuesta de las láminas…");
-  // Cada carrusel en SU carpeta (la galería lo enseña como una tarjeta); si no se puede crear, en la del lote.
-  carpetaId = (await api.carpetaDeGrupo(clienteId, "carrusel", idea.titulo || idea.titular || temaDeIdea(idea))) ?? carpetaId;
-  const propuesta = await api.proponerCarrusel(clienteId, { guion: idea.guion ?? "", tema: temaDeIdea(idea), preset, estilo, productoId: idea.productoId || undefined, personajes: personajesIds, estructura: idea.estructura || undefined });
-  const k = limpiarKit(kit);
-  let hechas = 0;
-  const salida = await crearCarrusel({
-    clienteId, modelo, modo: "ia", plantilla: "banda", hilo: propuesta.hilo, idea: temaDeIdea(idea), laminas: propuesta.laminas,
-    preset: estiloDeMarca(k, preset, { marca, rubro, estilo }), fotos, personajes, logo: estampaSola(k) ? "" : k.logo, estampar: estampaSola(k) ? k : null, colores: coloresPlantilla(k), familia: k.tipografia, fuente: k.fuente, carpetaId, seguir,
-    tipografia: referenciaDeTipografia(k), controlar, activos,
-    alAvanzar: () => { hechas += 1; alPaso(`Lámina ${Math.min(hechas + 1, propuesta.laminas.length)} de ${propuesta.laminas.length}…`); },
-  });
-  const archivos = salida.map((r) => r?.final).filter(Boolean);
-  if (!archivos.length) throw new Error(salida.map((r) => r?.error).find(Boolean) || "No salió ninguna lámina.");
-  if (carpetaId) await api.ordenarCarpeta(clienteId, carpetaId, archivos.map((a) => a.id)).catch(() => {});
-  return { archivos, laminas: propuesta.laminas.length };
-}
 
 /**
  * Un REEL de una idea del lote, como a mano (components/FlujoReel.jsx): el guion por planos, un fotograma por plano

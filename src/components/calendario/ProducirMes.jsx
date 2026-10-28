@@ -8,15 +8,17 @@ import { estiloDeMarca, limpiarKit, nombreDePreset } from "../../lib/kitMarca";
 import { apoyosDePieza, pedidoDePieza } from "../../lib/pieza";
 import { validarPedido, textoCosto, CONFIRMAR_DESDE, modeloPorId } from "../../lib/estudioCatalogo";
 import * as api from "../../lib/estudio";
-import { partirGuion, costoCarrusel, coloresPlantilla, MODOS_TEXTO, PLANTILLAS_TEXTO } from "../../lib/carrusel";
-import { crearCarrusel, modeloParaCarrusel } from "../../lib/carruselEstudio";
-import { estampaSola, conLogoSiToca } from "../../lib/logoEstudio";
-import { controlarYCorregir, controlEncendido, encenderControl } from "../../lib/controlEstudio";
+import { partirGuion, costoCarrusel, MODOS_TEXTO, PLANTILLAS_TEXTO } from "../../lib/carrusel";
+import { modeloParaCarrusel } from "../../lib/carruselEstudio";
+import { crearEncargo, lanzarCarrusel, seguirEncargo, terminarEncargo } from "../../lib/encargosApi";
+import { ESCENA } from "../../lib/encargos";
+import { estampaSola } from "../../lib/logoEstudio";
+import { controlEncendido, encenderControl } from "../../lib/controlEstudio";
 import { resumenControl } from "../../lib/control";
 import { referenciaDeTipografia } from "../../lib/kitMarca";
 import { aprobadaPorDentro } from "../../lib/revisionIdeas";
 import { promptListo, conPromptListo } from "../../lib/promptImagen";
-import { DIAS_SEMANA, diaDeLaSemana, semanasDe, diasDe, filtrarProduccion, ordenarProduccion } from "../../lib/produccion";
+import { DIAS_SEMANA, diaDeLaSemana, semanasDe, diasDe, filtrarProduccion, ordenarProduccion, resultadosDeProduccion } from "../../lib/produccion";
 import "./RevisionMes.css";
 
 // ============================================================
@@ -37,13 +39,16 @@ import "./RevisionMes.css";
 // lista va de lunes a domingo: el tipo de contenido va por día, así que
 // todos los lunes salen juntos con el mismo estilo (lib/produccion.js).
 //
-// Un carrusel con guion se produce lámina a lámina (lib/carruselEstudio.js):
-// después de las piezas sueltas, uno detrás de otro, con el texto de la IA
-// o con la plantilla del kit, según se escoja aquí.
+// Un carrusel con guion se produce lámina a lámina, con el texto de la IA o
+// con la plantilla del kit, según se escoja aquí.
+//
+// Lo lleva el SERVIDOR (lib/encargosApi.js): las imágenes en un encargo, cada
+// carrusel en el suyo, con el director, el control y la corrección. Se puede
+// cerrar: los encargos quedan apuntados en este navegador (`producir-mes:<mes>`,
+// tres días) y al volver a abrir esto se ve lo que salió, para ponerlo.
 // ============================================================
 
-const TERMINADO = new Set(["hecho", "fallido", "cancelado"]);
-const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
+const DIAS_GUARDADO = 3;
 const fechaCorta = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString("es-PA", { weekday: "short", day: "numeric", month: "short" });
 
 /** El tipo de pieza que le toca a un formato: un reel o un directo es video; lo demás, imagen. */
@@ -54,8 +59,16 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
   const ids = useId();
   const [estudio, setEstudio] = useState(null); // { kit, motores }
   const [marcadas, setMarcadas] = useState(null); // Set de ids de publicación
-  const [trabajos, setTrabajos] = useState([]); // [{ postId, date, id, estado, error }]
-  const [piezas, setPiezas] = useState({}); // postId → archivo
+  // Los encargos lanzados (los guarda este navegador: al volver se retoman) y lo que se sabe de cada uno.
+  const claveGuardado = `producir-mes:${cal.dbId || cal.id}`;
+  const [metas, setMetas] = useState(() => {
+    try {
+      const g = JSON.parse(localStorage.getItem(claveGuardado) ?? "null");
+      return g?.metas?.length && Date.now() - (g.t ?? 0) < DIAS_GUARDADO * 86_400_000 ? g.metas : [];
+    } catch { return []; }
+  });
+  const [estados, setEstados] = useState({}); // id → { encargo, archivos, fin }
+  const [escogidas, setEscogidas] = useState({}); // postId → la versión escogida a mano
   const [puestas, setPuestas] = useState(new Set());
   const [paso, setPaso] = useState("elegir"); // elegir | confirmar | creando | listo
   const [aviso, setAviso] = useState(null);
@@ -66,17 +79,60 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
   const [mejorar, setMejorar] = useState(true);
   // El control de calidad de cada pieza al llegar (y corregir el texto solo): se recuerda por navegador.
   const [controlar, setControlar] = useState(controlEncendido);
-  const [controles, setControles] = useState({}); // postId → control
-  // Cuántas versiones de cada imagen (para escoger) y las que llegaron: postId → [archivos].
+  // Cuántas versiones de cada imagen (para escoger).
   const [versiones, setVersiones] = useState(2);
-  const [opciones, setOpciones] = useState({});
   const [modoTexto, setModoTexto] = useState("ia");
   const [plantilla, setPlantilla] = useState("banda");
   const vivo = useRef(true);
-  const creando = paso === "creando";
-  // Mientras se piden y avanzan los trabajos, cerrar los dejaría a medias (el cron los termina igual, pero sin ponerlos).
+  // Lo de esta pantalla mientras se piden los encargos (segundos). Después, lo lleva el servidor: se puede cerrar.
+  const [lanzando, setLanzando] = useState(false);
+  const creando = lanzando;
   const ref = useDialogA11y(() => { if (!creando) onClose(); });
   const clienteId = client?.dbId || client?.id;
+
+  // Las publicaciones del mes por id (para nombrar lo que sale) y lo que sale de los encargos.
+  const posts = useMemo(() => new Map((cal.days ?? []).flatMap((d) => (d.posts ?? []).map((p) => [p.id, { post: p, date: d.date }]))), [cal.days]);
+  const r = useMemo(() => resultadosDeProduccion(metas, estados, posts), [metas, estados, posts]);
+  const trabajos = r.trabajos;
+  const opciones = r.versiones;
+  const controles = r.controles;
+  const piezas = useMemo(() => ({ ...r.mejores, ...escogidas }), [r.mejores, escogidas]);
+  const setPiezas = (f) => setEscogidas((m) => ({ ...m, ...f(piezas) }));
+
+  // Con encargos de antes (se cerró mientras se creaban), se vuelve a lo que salió.
+  useEffect(() => { if (metas.length && paso === "elegir") setPaso("creando"); }, [metas.length, paso]);
+  // Seguir cada encargo; lo que necesita lienzo (el logo estampado, el texto de la plantilla), según sale.
+  const siguiendo = useRef(new Set());
+  useEffect(() => {
+    if (!estudio) return;
+    for (const m of metas) {
+      if (siguiendo.current.has(m.id)) continue;
+      siguiendo.current.add(m.id);
+      void seguirEncargo({
+        clienteId, id: m.id, seguir: () => vivo.current,
+        alCambio: (e, archivos) => {
+          if (!vivo.current) return;
+          setEstados((x) => ({ ...x, [m.id]: { ...x[m.id], encargo: e, archivos } }));
+          void terminarEncargo({ clienteId, encargo: e, archivos, kit: estudio.kit });
+        },
+      }).then((e) => { if (vivo.current) setEstados((x) => ({ ...x, [m.id]: { ...x[m.id], ...(e ? { encargo: e } : {}), fin: true } })); });
+    }
+  }, [metas, estudio, clienteId]);
+  // Todo listo: a escoger y poner. Las fichas nuevas del director se quedan en su publicación (la próxima vez, al
+  // instante), una sola vez.
+  const fichasGuardadas = useRef(false);
+  useEffect(() => {
+    if (!r.listo || paso === "listo") return;
+    setPaso("listo");
+    ref.current?.focus({ preventScroll: true });
+    window.dispatchEvent(new Event("ia:gasto"));
+    const n = Object.keys(r.mejores).length;
+    setAviso({ ok: n > 0, texto: n ? `Listas ${n} de ${trabajos.length}. Revisa cada una y ponla en su publicación.` : "No llegó ninguna pieza: mira el motivo de cada una." });
+    if (!fichasGuardadas.current && Object.keys(r.fichas).length) {
+      fichasGuardadas.current = true;
+      onPoner((p) => (r.fichas[p.id] && !promptListo(p) ? conPromptListo(p, r.fichas[p.id]) : p));
+    }
+  }, [r, paso, trabajos.length, onPoner, ref]);
 
   useEffect(() => {
     vivo.current = true;
@@ -141,142 +197,68 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
   const crear = async () => {
     setPaso("creando");
     setAviso(null);
-    const creados = [];
-    // El director de arte diseña las imágenes como una SERIE, en tandas de 6: la ficha que ya traía la publicación (su
-    // pedido listo) se usa tal cual; las demás se diseñan juntas y la ficha se guarda en el post (`onFicha`).
-    const fichas = {};
-    const nuevas = {};
-    if (mejorar) {
-      const sueltas = elegidas.filter((x) => x.tipo === "imagen");
-      for (const c of sueltas) { const l = promptListo(c.post); if (l) fichas[c.post.id] = l; }
-      const faltan = sueltas.filter((c) => !fichas[c.post.id]);
-      let concepto = "";
-      for (let k = 0; k < faltan.length && vivo.current; k += 6) {
-        const tanda = faltan.slice(k, k + 6);
-        setAviso({ ok: true, texto: `El director de arte está diseñando ${k + tanda.length} de ${faltan.length}…` });
-        const r = await api.fichasDeDiseno(clienteId, {
-          concepto,
-          piezas: tanda.map((c, j) => ({
-            n: j + 1, formato: c.post.format === "historia" ? "historia" : "post", proporcion: proporcionDe(c.post.format, "imagen"),
+    setLanzando(true);
+    const kit = estudio.kit;
+    const calendarId = cal.dbId || cal.id;
+    const nuevas = [];
+    // Las imágenes (y los videos) en UN encargo: el director las diseña como una SERIE, de 6 en 6; las que ya traían su
+    // ficha (el pedido listo) no esperan. Cada pedido va armado por el mismo camino de siempre, con el hueco de la escena.
+    const sueltas = elegidas.filter((x) => x.tipo !== "carrusel");
+    if (sueltas.length) {
+      const pasos = sueltas.map((c) => {
+        const imagen = c.tipo === "imagen";
+        const lista = imagen ? promptListo(c.post) : "";
+        const disenar = mejorar && imagen && !lista;
+        return {
+          id: c.post.id, titulo: c.post.title || c.post.idea || "",
+          pedido: { ...c.armar(ESCENA), ...(imagen ? { n: versiones } : {}), calendarId, postId: c.post.id },
+          escena: mejorar && imagen ? lista : c.ideaBase, sinMejorar: c.ideaBase,
+          encargo: disenar ? {
+            formato: c.post.format === "historia" ? "historia" : "post", proporcion: proporcionDe(c.post.format, "imagen"),
             tipo: c.pieza, idea: [c.post.title, c.post.idea].filter(Boolean).join(" — "), escena: c.post.escena ?? "",
             texto: c.post.textoPieza ?? "", productoId: c.post.productoId ?? "", composicion: c.post.composicion ?? "", fecha: c.date,
-          })),
-        }).catch(() => null);
-        concepto ||= r?.concepto ?? "";
-        tanda.forEach((c, j) => {
-          const f = r?.fichas?.[j + 1]?.ficha;
-          if (f) { fichas[c.post.id] = f; nuevas[c.post.id] = f; }
-        });
-      }
-      // Las fichas nuevas se quedan en su publicación, todas de una vez: la próxima vez salen al instante.
-      if (Object.keys(nuevas).length) onPoner((p) => (nuevas[p.id] ? conPromptListo(p, nuevas[p.id]) : p));
-      setAviso(null);
-    }
-    for (const c of elegidas.filter((x) => x.tipo !== "carrusel")) {
-      if (!vivo.current) return;
-      try {
-        let pedido = c.pedido;
-        if (mejorar && c.tipo === "imagen" && fichas[c.post.id]) pedido = c.armar(fichas[c.post.id]);
-        const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, ...(c.tipo === "imagen" ? { n: versiones } : {}), confirmado: true, calendarId: cal.dbId || cal.id, postId: c.post.id });
-        creados.push({ postId: c.post.id, date: c.date, format: c.post.format, titulo: c.post.title || c.post.idea || "", id: trabajo.id, estado: trabajo.estado, error: "" });
-      } catch (e) {
-        creados.push({ postId: c.post.id, date: c.date, format: c.post.format, titulo: c.post.title || c.post.idea || "", id: null, estado: "fallido", error: e.message });
-        if (e.datos?.codigo === "presupuesto") { setAviso({ ok: false, texto: e.message }); break; }
-      }
-      setTrabajos([...creados]);
-    }
-    // Se avanzan desde aquí mientras se mira (el cron los termina igual si se cierra después).
-    let pendientes = creados.filter((t) => t.id && !TERMINADO.has(t.estado));
-    while (pendientes.length && vivo.current) {
-      for (const t of pendientes) {
-        try {
-          const r = await api.avanzarTrabajo(clienteId, t.id);
-          if (r?.trabajo) { t.estado = r.trabajo.estado; t.error = r.trabajo.error || ""; }
-        } catch (e) {
-          if (e.estado !== 409) { t.estado = "fallido"; t.error = e.message; }
-        }
-      }
-      setTrabajos([...creados]);
-      pendientes = creados.filter((t) => t.id && !TERMINADO.has(t.estado));
-      if (pendientes.length) await dormir(2500);
-    }
-    if (!vivo.current) return;
-    const g = await api.leerEstudio(clienteId).catch(() => null);
-    // Cada trabajo con TODAS sus versiones (la galería trae la más nueva primero: se ordenan por fecha).
-    const porTrabajo = new Map();
-    for (const a of [...(g?.archivos ?? [])].reverse()) if (a.trabajoId) porTrabajo.set(a.trabajoId, [...(porTrabajo.get(a.trabajoId) ?? []), a]);
-    const salida = {};
-    const versionesDe = {};
-    for (const t of creados) if (t.id && porTrabajo.has(t.id)) { versionesDe[t.postId] = porTrabajo.get(t.id); salida[t.postId] = versionesDe[t.postId][0]; }
-    // El control de calidad, antes de estampar el logo: si sólo falla una letra, se corrige editando la misma imagen.
-    if (controlar) {
-      const vistos = {};
-      for (const t of creados) {
-        const a = salida[t.postId];
-        const c = elegidas.find((x) => x.post.id === t.postId);
-        if (!a || a.tipo === "video" || !vivo.current) continue;
-        t.estado = "revisando";
-        setTrabajos([...creados]);
-        // Cada versión pasa por el control; la primera que salga bien es la que se propone.
-        const revisadas = [];
-        for (const v of versionesDe[t.postId] ?? [a]) {
-          const r = await controlarYCorregir({ clienteId, archivo: v, texto: c?.post?.textoPieza ?? null, activos, seguir: () => vivo.current });
-          revisadas.push(r);
-        }
-        versionesDe[t.postId] = revisadas.map((r) => r.archivo);
-        const mejor = revisadas.find((r) => r.control?.estado === "ok") ?? revisadas[0];
-        salida[t.postId] = mejor.archivo;
-        if (mejor.control) vistos[t.postId] = mejor.control;
-        t.estado = "hecho";
-      }
-      setControles((m) => ({ ...m, ...vistos }));
-    }
-    // Con el logo estampado (kit), la pieza que se pone es la que lo lleva encima.
-    if (estampaSola(estudio.kit)) {
-      for (const k of Object.keys(salida)) salida[k] = await conLogoSiToca({ clienteId, archivo: salida[k], kit: estudio.kit });
-    }
-
-    // Los carruseles, después y uno a uno: cada lámina espera a la anterior.
-    const comunes = {
-      clienteId, modo: modoTexto, plantilla, logo: estampaSola(estudio.kit) ? "" : estudio.kit.logo, estampar: estampaSola(estudio.kit) ? estudio.kit : null, colores: coloresPlantilla(estudio.kit), familia: estudio.kit.tipografia, fuente: estudio.kit.fuente,
-      calendarId: cal.dbId || cal.id, seguir: () => vivo.current,
-      tipografia: referenciaDeTipografia(estudio.kit), controlar, activos,
-    };
-    for (const c of elegidas.filter((x) => x.tipo === "carrusel")) {
-      if (!vivo.current) return;
-      const t = { postId: c.post.id, date: c.date, format: c.post.format, titulo: c.post.title || c.post.idea || "", id: null, estado: "en marcha", error: "", laminas: c.laminas.length, hechas: 0 };
-      creados.push(t);
-      setTrabajos([...creados]);
-      // El director diseña la serie (la ficha de cada lámina y el sistema) a partir del guion, como en «Carrusel con
-      // IA»; si no responde, las láminas del guion tal cual.
-      const preset = presetDePilar(c.post.pilar, c.post.pilarSub) || "servicios";
-      const propuesta = mejorar
-        ? await api.proponerCarrusel(clienteId, { guion: c.post.guion ?? "", tema: c.post.idea || c.post.title || "", preset, productoId: c.post.productoId || undefined, estructura: c.post.estructura || undefined }).catch(() => null)
-        : null;
-      const hechas = await crearCarrusel({
-        ...comunes, modelo: c.modelo, laminas: propuesta?.laminas ?? c.laminas, hilo: propuesta?.hilo ?? "", postId: c.post.id, idea: c.post.idea || c.post.title || "",
-        preset: estiloDeMarca(estudio.kit, preset, { marca: client.name, rubro: client.industry ?? "" }),
-        fotos: api.fotosDelProducto(estudio.productos, c.post.productoId).map((f) => f.clave),
-        alAvanzar: () => { t.hechas += 1; setTrabajos([...creados]); },
+          } : null,
+          texto: c.post.textoPieza ?? "", controlar: controlar && imagen,
+          navegador: imagen && estampaSola(kit) ? { logo: true } : null,
+        };
       });
-      const finales = hechas.map((r) => r?.final).filter(Boolean);
-      // El control de la serie: si alguna lámina quedó por revisar, la del carrusel es la peor.
-      const malas = hechas.map((r) => r?.control).filter((x) => x?.estado === "revisar");
-      if (hechas.some((r) => r?.control)) setControles((m) => ({ ...m, [c.post.id]: malas[0] ?? { estado: "ok" } }));
-      t.estado = finales.length ? "hecho" : "fallido";
-      t.error = hechas.find((r) => r?.error)?.error ?? "";
-      if (finales.length) salida[c.post.id] = finales;
-      setTrabajos([...creados]);
+      try {
+        const vistas = mejorar ? await api.vistasDelCliente(clienteId).catch(() => []) : [];
+        const { encargo } = await crearEncargo(clienteId, { tipo: "lote", titulo: "Producir el mes", pasos, mejorar, controlar, paralelo: 2, vistas });
+        nuevas.push({ id: encargo.id, tipo: "lote" });
+      } catch (e) {
+        setAviso({ ok: false, texto: e.message });
+      }
     }
-    if (!vivo.current) return;
-    setPiezas(salida);
-    setOpciones(versionesDe);
-    setPaso("listo");
-    // El botón de crear desaparece: el foco vuelve al diálogo (si no, Escape ya no lo cierra).
-    ref.current?.focus({ preventScroll: true });
-    window.dispatchEvent(new Event("ia:gasto"));
-    const n = Object.keys(salida).length;
-    setAviso({ ok: n > 0, texto: n ? `Listas ${n} de ${creados.length}. Revisa cada una y ponla en su publicación.` : "No llegó ninguna pieza: mira el motivo de cada una." });
+    // Cada carrusel, el suyo: el director diseña la serie (la ficha de cada lámina) a partir del guion, en el servidor;
+    // si no responde, las láminas del guion tal cual. Cada uno en su carpeta: la galería lo enseña como una tarjeta.
+    for (const c of elegidas.filter((x) => x.tipo === "carrusel")) {
+      const preset = presetDePilar(c.post.pilar, c.post.pilarSub) || "servicios";
+      try {
+        const carpetaId = await api.carpetaDeGrupo(clienteId, "carrusel", c.post.title || c.post.idea || "");
+        const { encargo } = await lanzarCarrusel({
+          clienteId, carpetaId, controlar, logoEstampado: estampaSola(kit), titulo: c.post.title || "Carrusel",
+          comun: {
+            modelo: c.modelo, modo: modoTexto, plantilla, idea: c.post.idea || c.post.title || "",
+            preset: estiloDeMarca(kit, preset, { marca: client.name, rubro: client.industry ?? "" }),
+            fotos: api.fotosDelProducto(estudio.productos, c.post.productoId).map((f) => f.clave),
+            logo: estampaSola(kit) ? "" : kit.logo, tipografia: referenciaDeTipografia(kit), calendarId, postId: c.post.id,
+          },
+          propuesta: mejorar ? { guion: c.post.guion ?? "", tema: c.post.idea || c.post.title || "", preset, productoId: c.post.productoId || undefined, estructura: c.post.estructura || undefined } : null,
+          laminas: c.laminas,
+        });
+        nuevas.push({ id: encargo.id, tipo: "carrusel", postId: c.post.id, laminas: c.laminas.length });
+      } catch (e) {
+        setAviso({ ok: false, texto: e.message });
+        if (e.datos?.codigo === "presupuesto") break;
+      }
+    }
+    setLanzando(false);
+    if (!nuevas.length) { setPaso("elegir"); return; }
+    const todas = [...metas, ...nuevas];
+    setMetas(todas);
+    try { localStorage.setItem(claveGuardado, JSON.stringify({ metas: todas, t: Date.now() })); } catch { /* sin almacenamiento: se sigue aquí */ }
+    setAviso({ ok: true, texto: "Se está creando en el servidor: puedes cerrar. Al volver a abrir «Diseñar las que ya hay» verás lo que salió para ponerlo; también queda en la galería." });
   };
 
   // Una pieza suelta es un archivo; un carrusel, sus láminas en orden.
@@ -288,7 +270,12 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
     onPoner((p) => (porPost.has(p.id)
       ? { ...conMedios(p, [...mediosDe(p), ...porPost.get(p.id).map(api.medioDeArchivo)]), mediosCambiadosAt: ahora }
       : p));
-    setPuestas((s) => new Set([...s, ...lista.map((x) => x.postId)]));
+    setPuestas((s) => {
+      const n = new Set([...s, ...lista.map((x) => x.postId)]);
+      // Todo puesto: los encargos ya no hace falta recordarlos al volver.
+      if (trabajos.every((t) => !piezas[t.postId] || n.has(t.postId))) { try { localStorage.removeItem(claveGuardado); } catch { /* nada */ } }
+      return n;
+    });
     for (const { postId } of lista) {
       for (const a of archivosDe(postId)) api.apuntarUso(clienteId, a.id, { calendarId: cal.dbId || cal.id, postId }).catch(() => {});
     }

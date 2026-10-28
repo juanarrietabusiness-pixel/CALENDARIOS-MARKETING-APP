@@ -15,8 +15,7 @@ import * as api from "./estudio";
 import { controlarYCorregir } from "./controlEstudio";
 import { pedidoDeCorreccion } from "./estudio";
 import { ajustesDe, modeloPorId, MODELOS, porPrecio, modeloQueRespeta, relevoPara, fueraDeProporcion, pedidoDeRecomponer, respetaProporcion } from "./estudioCatalogo";
-import { pedidoDeLamina, referenciasDeLamina } from "./carrusel";
-import { lineaDeSistema } from "./sistemaCarrusel";
+import { armarLamina } from "./laminaPedido";
 import { componerLamina } from "./textoSobreImagen";
 import { conLogoSiToca } from "./logoEstudio";
 
@@ -126,27 +125,15 @@ export async function crearLamina({
   anterior = null, portada = null, fotos = [], logo = "", colores, familia = "", fuente = null, calendarId = null, postId = null, carpetaId = null, seguir,
   estampar = null, tipografia = null, controlar = false, activos = {}, sistema = null,
 }) {
-  // Los personajes van justo después de la serie (la anterior y la portada): que salgan IGUAL en cada lámina. La
-  // muestra de la tipografía de la marca, sólo si el texto lo escribe el modelo.
-  const letra = modo === "plantilla" ? null : tipografia;
-  const clavesPersonajes = personajes.map((p) => p.clave);
-  const deLamina = (m) => referenciasDeLamina({ anterior: anterior?.clave, portada: portada?.clave, fotos: [...clavesPersonajes, ...(letra ? [letra.clave] : []), ...fotos], logo, max: m.referencias || 0 });
-  // Una lámina es 4:5 SIEMPRE: si el modelo no lo respeta con referencias (Muse Image da 2:3), va con otro.
-  const elegido = modelo;
+  // El pedido, por el MISMO camino que el servidor (lib/laminaPedido.js): la anterior y la portada, los personajes, la
+  // letra de la marca (si escribe el modelo), las fotos y el logo; 4:5 siempre.
   const conLlave = Object.keys(activos ?? {}).length ? activos : await activosDeMotores();
-  modelo = modeloQueRespeta(elegido, conLlave, "4:5", deLamina(elegido).length);
-  const reference = deLamina(modelo);
-  const quienes = [...personajes, ...(letra ? [letra] : [])].filter((p) => reference.includes(p.clave)).map((p) => p.nota).filter(Boolean);
-  const prompt = pedidoDeLamina({
-    lamina, total, idea, preset, modo, plantilla, hilo,
-    personajes: [...new Set(quienes)].map((n) => `Una de las referencias ${n}.`).join(" "),
-    conAnteriores: Boolean(anterior || portada), conFotos: fotos.some((f) => reference.includes(f)), conLogo: Boolean(logo) && reference.includes(logo),
-    sistema: lamina.n > 1 ? lineaDeSistema(sistema) : "",
+  const pedido = armarLamina({
+    modelo, activos: conLlave, lamina, total, idea, preset, modo, plantilla, hilo, personajes, tipografia, fotos, logo,
+    anterior: anterior?.clave ?? "", portada: portada?.clave ?? "", sistema,
   });
-  const medios = reference.length ? { reference } : {};
   const { trabajo } = await api.pedirImagenes(clienteId, {
-    modelo: modelo.id, prompt, n: 1, ajustes: ajustesDe(modelo, { aspectRatio: "4:5", imageSize: "2K" }, medios), medios,
-    confirmado: true, ...(calendarId && postId ? { calendarId, postId } : {}), ...(carpetaId ? { carpetaId } : {}),
+    ...pedido, confirmado: true, ...(calendarId && postId ? { calendarId, postId } : {}), ...(carpetaId ? { carpetaId } : {}),
   });
   let crudo = await esperarArchivo(clienteId, trabajo, { seguir });
   // El control de calidad: si el modelo escribió mal una letra, se corrige ANTES de que la lámina vaya de referencia

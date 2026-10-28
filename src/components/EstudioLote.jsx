@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import SelectorFecha from "./SelectorFecha";
 import { useDialogA11y } from "../hooks/useDialogA11y";
+import { estampaSola } from "../lib/logoEstudio";
 import * as api from "../lib/estudio";
 import { leerMercado } from "../lib/mercado";
 import { productosActivos, limpiarEstudio } from "../lib/estudioMercado";
@@ -15,8 +16,9 @@ import {
   totalDeCuantas, nombreCarpetaLote, publicacionDePieza, COMPOSICIONES, TACTICAS, titularesUsados, aprenderComposiciones, celdasMatriz, celdasPorTipos,
   estructuraDe,
 } from "../lib/loteAnuncios";
-import { pedidoDeLote, crearCarruselDeIdea, crearReelDeIdea } from "../lib/loteEstudio";
-import { lanzarLote, seguirEncargo, terminarPieza, cancelarEncargo, resultadoDePaso } from "../lib/loteServidor";
+import { pedidoDeLote, crearReelDeIdea } from "../lib/loteEstudio";
+import { lanzarLote, lanzarCarruselDeIdea, resultadoDePaso } from "../lib/loteServidor";
+import { seguirEncargo, terminarEncargo, cancelarEncargo, resultadoDeCarrusel } from "../lib/encargosApi";
 import { controlEncendido, encenderControl } from "../lib/controlEstudio";
 import { resumenControl } from "../lib/control";
 import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
@@ -222,25 +224,22 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     for (const enc of encargos) {
       if (siguiendo.current.has(enc.id)) continue;
       siguiendo.current.add(enc.id);
-      const terminando = new Set();
       void seguirEncargo({
         clienteId, id: enc.id, seguir: () => vivo.current,
         alCambio: (e, archivos) => {
           if (!vivo.current) return;
           setResultados((m) => {
             const n = { ...m };
-            for (const p of e.pasos) {
+            // Un carrusel del lote es UNA idea; un lote de imágenes, una idea por paso.
+            if (enc.ideaId) n[enc.ideaId] = resultadoDeCarrusel(e, archivos);
+            else for (const p of e.pasos) {
               const r = resultadoDePaso(p, archivos);
               if (r) n[p.id] = { ...r, enServidor: true, ...(r.opciones && m[p.id]?.elegida != null ? { elegida: m[p.id].elegida } : {}) };
             }
             return n;
           });
-          for (const p of e.pasos) {
-            if (p.fase !== "hecho" || p.finales || terminando.has(p.id)) continue;
-            terminando.add(p.id);
-            const idea = ideasRef.current.find((i) => i.id === p.id);
-            void terminarPieza({ clienteId, encargoId: e.id, paso: p, idea, archivos, modo: enc.modo, formato: enc.formato, kit, carpetaId: enc.carpetaId });
-          }
+          // Lo que necesita lienzo (el texto de la plantilla, el logo estampado), según sale cada pieza.
+          void terminarEncargo({ clienteId, encargo: e, archivos, kit });
         },
       }).then((e) => {
         if (!e || !vivo.current) return;
@@ -466,7 +465,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
       try {
         const r = await lanzarLote({
           clienteId, ideas: delFormato, titulo: `Lote · ${FORMATOS_LOTE[f]?.nombre ?? f}`, carpetaId, pedidoDe, mejorar, n: variantes, piezaDe: nombreTipo,
-          indicacion: indicacion.trim(), controlar, modo, formato: f,
+          indicacion: indicacion.trim(), controlar, modo, formato: f, logo: estampaSola(kit),
         });
         lanzados.push({ id: r.encargo.id, formato: f, modo, carpetaId });
       } catch (e) {
@@ -475,7 +474,23 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
       }
     }
     if (lanzados.length) setEncargos((l) => [...l, ...lanzados]);
-    for (const idea of pendientes.filter(guiadoDe)) {
+    // Los carruseles, también al servidor: la propuesta del director y las láminas en orden, cada uno en su carpeta.
+    for (const idea of pendientes.filter((i) => fmtDe(i) === "carrusel")) {
+      setResultados((m) => ({ ...m, [idea.id]: { cargando: true, paso: "En cola", enServidor: true } }));
+      try {
+        const { encargo } = await lanzarCarruselDeIdea({
+          clienteId, idea, kit, preset: presetDe(idea), estilo, modelo: modeloCarrusel, fotos: fotosDe(idea).map((f) => f.clave), personajes,
+          personajesIds: personajesSel, marca: client.name, rubro: client.industry ?? "", controlar,
+        });
+        lanzados.push({ id: encargo.id, formato: "carrusel", ideaId: idea.id });
+        setEncargos((l) => [...l, { id: encargo.id, formato: "carrusel", ideaId: idea.id }]);
+      } catch (e) {
+        setResultados((m) => ({ ...m, [idea.id]: { error: e.message } }));
+        if (e.datos?.codigo === "presupuesto") break;
+      }
+    }
+    // Los reels siguen aquí (guion, fotogramas y video, uno detrás de otro): ésos sí necesitan la pantalla abierta.
+    for (const idea of pendientes.filter((i) => guiadoDe(i) && fmtDe(i) !== "carrusel")) {
       if (!vivo.current) break;
       const poner = (r) => { if (vivo.current) setResultados((m) => ({ ...m, [idea.id]: r })); };
       poner({ cargando: true, paso: "En cola" });
@@ -485,9 +500,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
         controlar, activos,
       };
       try {
-        const r = fmtDe(idea) === "carrusel"
-          ? await crearCarruselDeIdea({ ...comun, modelo: modeloCarrusel })
-          : await crearReelDeIdea({ ...comun, modeloImagen: modeloCarrusel, modeloVideo });
+        const r = await crearReelDeIdea({ ...comun, modeloImagen: modeloCarrusel, modeloVideo });
         poner({ opciones: [{ final: r.archivos[0], archivos: r.archivos }], elegida: 0 });
       } catch (e) {
         poner({ error: e.message });

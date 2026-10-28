@@ -167,8 +167,11 @@ src/
                           composiciones funcionan con cada cliente (puro; también el Worker)
     loteEstudio.js        Cómo se arma cada pieza del lote (`pedidoDeLote`, lo que lee el director) y `ponerTexto` (la
                           compuesta recuerda su cruda: «Otra versión» sobre ella); los carruseles y reels del lote
-    loteServidor.js       El lote que lleva el SERVIDOR: armar cada pieza como paso (`pasoDeLote`, con «{{ESCENA}}»),
-                          lanzarlo, seguirlo y terminar lo que necesita lienzo (texto de plantilla, logo)
+    loteServidor.js       El lote que lleva el SERVIDOR: armar cada pieza como paso (`pasoDeLote`, con «{{ESCENA}}») y
+                          lanzarlo; un carrusel del lote (`lanzarCarruselDeIdea`)
+    encargosApi.js        Los encargos desde el navegador: pedir, seguir (`seguirEncargo`), lanzar un carrusel, terminar lo
+                          que necesita lienzo (`terminarPaso`, una vez) y, al abrir la app, lo que quedó (`terminarPendientes`)
+    laminaPedido.js       El pedido de UNA lámina completo (`armarLamina`): lo usan la pantalla y el servidor (puro)
     encargos.js           Los encargos del Estudio, lo compartido con el Worker: el hueco de la escena, topes y cómo se
                           cuenta cada pieza en pantalla (puro)
     edicion.js            Editar una imagen ya hecha: el pedido, con qué modelo, la proporción (puro; también el Worker)
@@ -543,7 +546,7 @@ worker/
     formulasUgc.js        /api/formulas-ugc: las fórmulas UGC de la agencia (listar, guardar, corregir, quitar, proponer)
     inspiracion.js        /api/inspiracion/<cliente>: el feed, actualizar, traer un archivo, el resumen
     historiasAuto.js      /api/historias-auto/<cliente>: ajustes, pendientes de preparar, piezas
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1446,7 +1449,23 @@ son del servidor.
   · **Lo que necesita lienzo lo hace la pantalla al volver**: el texto de la plantilla y el logo estampado
   (`terminarPieza`, una vez por pieza; `finales`). Mientras, la pieza se ve cruda.
   · **Lo que NO hace el servidor**: si el director escoge una plantilla del kit, en el servidor sólo cuenta su ficha (el
-  pedido ya va armado). Los carruseles, los reels y «Producir el mes» siguen en la pantalla (siguiente entrega).
+  pedido ya va armado). Los REELS (guion, fotogramas, video) y los planes del director en el chat siguen en la pantalla.
+  · **El carrusel también es un encargo** (`tipo: "carrusel"`): «Carrusel con IA» (FlujoCarrusel), los carruseles del
+  lote y los de «Producir el mes». Va en ORDEN (`paralelo` 1): cada lámina con la anterior y la portada (las CRUDAS) de
+  referencia, armada por `armarLamina` (src/lib/laminaPedido.js), el MISMO pedido que `crearLamina` en la pantalla; el
+  sistema de la portada se saca UNA vez antes de la segunda (no en plantilla) y va en su pedido y su control. Con
+  `propuesta`, el director diseña la serie en el servidor antes de la primera lámina (las `laminas` del guion quedan de
+  respaldo). «Primero la portada» son dos encargos: el segundo lleva `previas` (claves de la portada y la anterior) y el
+  `sistema`. Al terminar, la carpeta del carrusel queda ORDENADA (la galería lo enseña como una tarjeta).
+  · **Lo que necesita lienzo va en `navegador` de cada paso** ({ plantilla: { texto, plantilla }, logo }); sin nada, el
+  servidor pone `finales` = lo que salió. Lo pone la pantalla que sigue el encargo y, si nadie lo miraba, la aplicación a
+  los 20 s de abrirse (`terminarPendientes`, sólo los encargos de quien los pidió: si no, cada pestaña del equipo pondría el
+  mismo texto) desde `/api/encargos/por-terminar` (los de 7 días con piezas sin `finales`). `enCurso` evita hacerlo dos
+  veces en la misma pestaña.
+  · **«Diseñar las que ya hay»** (ProducirMes) lanza un lote con las imágenes (pedido con `calendarId`/`postId`, la ficha
+  lista si la hay, el director si no) y un carrusel por publicación; apunta los encargos en el navegador
+  (`producir-mes:<calendario>`, 3 días) y al reabrir enseña lo que salió para ponerlo (`resultadosDeProduccion`,
+  lib/produccion.js). Las fichas nuevas del director (`deDirector`) se guardan en su publicación una vez.
   · **Volver**: el borrador del lote guarda los encargos; «Seguir con ellas» abre el paso 3 con lo que salió y sigue lo que
   falte. Cerrar el diálogo ya no se impide por lo que va en el servidor («Cerrar (sigue en el servidor)»), y «Detener»
   lo cancela (lo que ya estaba saliendo se queda en la galería).
