@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   mediosDe, conMedios, textoPara, primerComentario, destinoInstagram, revisarPublicacion,
   publicacionParaCliente, marcarActualizada, contarHashtags, rutasDeMedios, momentoPublicacion, esJPEG,
-  aplicarArreglo, proporcionParaIA, AJUSTES, fotosTikTok, tituloTikTok,
+  aplicarArreglo, proporcionParaIA, AJUSTES, fotosTikTok, tituloTikTok, queHacerConLaEncajada,
 } from "./publicacion.js";
 
 describe("medios", () => {
@@ -273,5 +273,25 @@ describe("ampliar con IA", () => {
 
   it("es un ajuste más para elegir", () => {
     expect(Object.keys(AJUSTES)).toContain("ia");
+  });
+});
+
+describe("la historia encajada sigue a la imagen del post", () => {
+  const enc = { de: "/api/media/clientes/c1/a.jpg", src: "/api/media/clientes/c1/h-a.jpg" };
+  it("primera imagen y sin historias: se crea", () => {
+    expect(queHacerConLaEncajada({ antes: null, ahora: enc.de, historias: [] })).toBe("crear");
+  });
+  it("abrir un post que ya tenía imagen no hace nada", () => {
+    expect(queHacerConLaEncajada({ antes: enc.de, ahora: enc.de, historias: [{ src: enc.src }], encajada: enc })).toBeNull();
+  });
+  it("la imagen cambió y la encajada sigue puesta: se rehace con la nueva", () => {
+    expect(queHacerConLaEncajada({ antes: enc.de, ahora: "/api/media/clientes/c1/b.jpg", historias: [{ src: enc.src }], encajada: enc })).toBe("rehacer");
+  });
+  it("si la encajada se quitó, o las historias son otras, no se toca nada", () => {
+    expect(queHacerConLaEncajada({ antes: enc.de, ahora: "/api/media/clientes/c1/b.jpg", historias: [{ src: "/otra.jpg" }], encajada: enc })).toBeNull();
+    expect(queHacerConLaEncajada({ antes: enc.de, ahora: "/api/media/clientes/c1/b.jpg", historias: [], encajada: null })).toBeNull();
+  });
+  it("sin imagen, nada", () => {
+    expect(queHacerConLaEncajada({ antes: enc.de, ahora: null, historias: [] })).toBeNull();
   });
 });

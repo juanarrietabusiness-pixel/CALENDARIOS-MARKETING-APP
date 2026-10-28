@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import Icon from "./Icon";
 import { TimePicker } from "./calendario/primitivas";
-import { leerHistorias, guardarHistorias, quitarHistoria, prepararPendientes } from "../lib/historiasAutoApi";
+import { leerHistorias, guardarHistorias, quitarHistoria, devolverHistoria, prepararPendientes } from "../lib/historiasAutoApi";
 import { REDES_HISTORIAS } from "../lib/historiasAuto";
 import { fmtDate } from "../utils";
 
@@ -65,11 +65,12 @@ export default function HistoriasAutomaticas({ clients = [], onCambio }) {
     setTrabajando("");
   };
 
-  const quitar = async (pieza) => {
+  const quitar = async (pieza, volver = false) => {
     setTrabajando(pieza.id);
-    try { setDatos(await quitarHistoria(clienteId, pieza.id)); } catch (e) { setMensaje({ tipo: "error", texto: e.message }); }
+    try { setDatos(await (volver ? devolverHistoria : quitarHistoria)(clienteId, pieza.id)); } catch (e) { setMensaje({ tipo: "error", texto: e.message }); }
     setTrabajando("");
   };
+  const quitadas = datos?.quitadas ?? [];
 
   const redes = datos?.redes ?? ["instagram"];
   const alternarRed = (r) => {
@@ -89,7 +90,7 @@ export default function HistoriasAutomaticas({ clients = [], onCambio }) {
           <p className="hint" style={{ margin: 0 }}>
             Para que la cuenta no se quede callada: cada día, a la hora escogida, vuelve a salir como historia algo que
             ya se publicó (la imagen del post encajada en 9:16 con una frase corta). Primero lo que menos salió y, entre
-            eso, lo que mejor funcionó. Sale sola; se quita en la lista de abajo como cualquier otra.
+            eso, lo que mejor funcionó. Sale sola. «Que no salga» la aparta para siempre (se puede devolver abajo); la de un día concreto se quita en la lista de la cola.
           </p>
           <div className="historias-auto-fila">
             <label className="sr-only" htmlFor={`${ids}-cl`}>Cliente</label>
@@ -158,6 +159,22 @@ export default function HistoriasAutomaticas({ clients = [], onCambio }) {
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {quitadas.length > 0 && (
+                <details className="historias-auto-quitadas">
+                  <summary>{quitadas.length === 1 ? "1 apartada (no sale)" : `${quitadas.length} apartadas (no salen)`}</summary>
+                  <ul className="historias-auto-piezas">
+                    {quitadas.map((p) => (
+                      <li key={p.id}>
+                        <img src={p.src} alt={p.titulo ? `Historia apartada de «${p.titulo}»` : "Historia apartada"} loading="lazy" />
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => quitar(p, true)} disabled={trabajando === p.id}>
+                          Que vuelva a salir
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               )}
             </>
           )}

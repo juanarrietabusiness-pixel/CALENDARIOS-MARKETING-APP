@@ -82,3 +82,6 @@
 .historias-auto-piezas li { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .historias-auto-piezas img { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: var(--radius-sm); background: var(--surface-3); }
 .historias-auto-usos { font-size: var(--fs-3xs); color: var(--text-dim); }
+.historias-auto-quitadas > summary { cursor: pointer; font-size: var(--fs-xs); font-weight: 600; color: var(--text-dim); min-height: var(--tap-sm); display: flex; align-items: center; }
+.historias-auto-quitadas[open] > summary { margin-bottom: var(--sp-2); }
+.historias-auto-quitadas img { opacity: 0.6; }

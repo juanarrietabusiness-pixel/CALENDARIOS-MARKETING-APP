@@ -29,7 +29,7 @@ import { conLogoSiToca } from "./logoEstudio";
 import { presetDePilar } from "./pilares";
 import { nombreDePreset, referenciaDePlantilla, lineaDePlantillaEnPedido } from "./kitMarca";
 import { textoDeLaFicha, modeloFinal } from "./disenoChat";
-import { modeloPorId } from "./estudioCatalogo";
+import { modeloPorId, MODELOS, porPrecio, etiquetaDeCosto } from "./estudioCatalogo";
 
 /** Las tres, con lo que cuenta cada una (los mismos ids que VARIANTES_HISTORIA de worker/rutas/imagen.js). */
 export const VARIANTES = Object.freeze([
@@ -53,8 +53,17 @@ export function informacionDelPost(p = {}) {
   ].filter(Boolean).join("\n");
 }
 
-/** El modelo de las historias: el del cliente si admite referencias (va la imagen del post); si no, el mejor que sí. */
-function modeloDeHistorias(activos, kit) {
+/** Puede hacer las historias: un modelo de imagen con llave que admite la imagen del post de referencia. Pura. */
+const sirveParaHistorias = (m, activos) => Boolean(m) && m.tipo === "imagen" && m.referencias > 0 && (m.motor === "prueba" || activos[m.motor]);
+
+/**
+ * El modelo de las historias: el FIJADO para las historias del cliente (`kit.modelos.historias`, se escoge junto a
+ * «Crear 3 con IA») si sigue teniendo llave; si no, el del cliente si admite referencias (va la imagen del post); si no,
+ * el mejor que sí. Pura.
+ */
+export function modeloDeHistorias(activos, kit) {
+  const fijado = modeloPorId(kit.modelos?.historias);
+  if (sirveParaHistorias(fijado, activos)) return fijado;
   const m = api.modeloPreferido(activos, "imagen", kit.modelos?.imagen);
   if (m?.referencias > 0) return m;
   for (const id of ["nano-banana-2-kie", "nano-banana-2", "nano-banana", "muse-image"]) {
@@ -62,6 +71,33 @@ function modeloDeHistorias(activos, kit) {
     if (x && activos[x.motor]) return x;
   }
   return modeloFinal(activos) ?? m;
+}
+
+/** Los que se pueden escoger para las historias, del más barato al más caro: [{ id, nombre, costo }]. Pura. */
+export function opcionesParaHistorias(activos) {
+  return porPrecio(MODELOS.filter((m) => m.motor !== "prueba" && sirveParaHistorias(m, activos)), activos)
+    .map((m) => ({ id: m.id, nombre: m.nombre, costo: etiquetaDeCosto(m) }));
+}
+
+/** Lo que pinta el selector del panel: las opciones, la fijada («» = la de siempre) y cuál sale sin fijar. */
+export async function modelosParaHistorias(clienteId) {
+  const [g, m] = await Promise.all([api.leerEstudio(clienteId), api.leerMotores()]);
+  const activos = Object.fromEntries(Object.entries(m?.motores ?? {}).map(([k, v]) => [k, Boolean(v.activo)]));
+  const kit = g?.kit ?? {};
+  const fijado = sirveParaHistorias(modeloPorId(kit.modelos?.historias), activos) ? kit.modelos.historias : "";
+  return { opciones: opcionesParaHistorias(activos), fijado, porDefecto: modeloDeHistorias(activos, { ...kit, modelos: { ...(kit.modelos ?? {}), historias: "" } })?.nombre ?? "" };
+}
+
+/**
+ * Fija (o suelta, con «») el modelo de las historias de ESTE cliente: va en su kit, así lo comparte el equipo. Lee el kit
+ * guardado justo antes, para no pisar lo que otra persona cambió en el Estudio.
+ */
+export async function fijarModeloHistorias(clienteId, id) {
+  const g = await api.leerEstudio(clienteId);
+  const kit = g?.kit ?? {};
+  const modelos = { ...(kit.modelos ?? {}) };
+  if (id) modelos.historias = id; else delete modelos.historias;
+  await api.guardarKit(clienteId, { ...kit, modelos });
 }
 
 /**

@@ -25,8 +25,8 @@
 //
 // LO QUE NO SE HACE AQUÍ. Poner el texto de la plantilla encima y estampar el
 // logo necesitan un lienzo: los hace el navegador al volver a abrir el lote
-// (`finales` de cada paso). Y si el director escoge una plantilla del kit, en
-// el servidor sólo cuenta su ficha: el pedido ya va armado.
+// (`finales` de cada paso). Si el director escoge una plantilla del kit, su
+// imagen se suma aquí al pedido (`conPlantillaDelDirector`), como en la pantalla.
 // ============================================================
 
 import { uuid } from "../ids.js";
@@ -46,6 +46,28 @@ import { pedidoDeCorreccion, modeloParaCorregir, proporcionDeMedidas } from "../
 import { correccionDelDirector, mejoro } from "../../../src/lib/control.js";
 import { armarLamina } from "../../../src/lib/laminaPedido.js";
 import { ESCENA, MAX_PASOS, MAX_LAMINAS, TANDA_FICHAS, TIPOS_ENCARGO } from "../../../src/lib/encargos.js";
+import { referenciaDePlantilla, lineaDePlantillaEnPedido } from "../../../src/lib/kitMarca.js";
+import { lineaDeReferencia } from "../../../src/lib/referencias.js";
+import { kitDe } from "./kit.js";
+
+/**
+ * La plantilla del kit que escogió el DIRECTOR (o la de su tipo) en el pedido de una pieza, como lo hace la pantalla
+ * (`pedidoDeLote`): su imagen de referencia —sólo por su diseño—, con su línea, y el sistema escrito detrás. Si la
+ * pieza ya llevaba una plantilla, si la imagen no cabe en el modelo o si la plantilla ya no está, el pedido no cambia
+ * (la ficha del director ya la describe). Pura.
+ */
+export function conPlantillaDelDirector(pedido, kitGuardado, id) {
+  const ref = id ? referenciaDePlantilla(kitGuardado, id) : null;
+  const linea = id ? lineaDePlantillaEnPedido(kitGuardado, id) : "";
+  if (!ref || !pedido || String(pedido.prompt ?? "").includes("Sigue el diseño de la plantilla")) return pedido;
+  const actuales = Array.isArray(pedido.medios?.reference) ? pedido.medios.reference : [];
+  if (actuales.includes(ref.clave)) return pedido;
+  const cabe = modeloPorId(pedido.modelo)?.referencias ?? 0;
+  if (actuales.length >= cabe) return pedido;
+  const reference = [...actuales, ref.clave];
+  const lineas = [linea, lineaDeReferencia(ref, reference.length)].filter(Boolean).join("\n");
+  return { ...pedido, prompt: `${pedido.prompt}\n${lineas}`, medios: { ...(pedido.medios ?? {}), reference } };
+}
 
 /** Cuánto vale el permiso de un paso: el director con razonamiento puede tardar minutos. */
 export const RESERVA_ENCARGO_MS = 240_000;
@@ -316,7 +338,15 @@ async function paso(env, acceso, fila, pasos, datos) {
           concepto: datos.concepto ?? "", vistas: datos.vistas ?? [], piezas: tanda.map((p, j) => ({ n: j + 1, ...p.encargo })),
         });
         datos.concepto ||= String(r?.concepto ?? "");
-        tanda.forEach((p, j) => { const f = r?.fichas?.[j + 1]; if (f?.ficha) { p.escena = String(f.ficha); p.deDirector = true; } });
+        const kit = tanda.some((_, j) => r?.fichas?.[j + 1]?.plantilla) ? kitDe(cliente) : null;
+        tanda.forEach((p, j) => {
+          const f = r?.fichas?.[j + 1];
+          if (!f?.ficha) return;
+          p.escena = String(f.ficha);
+          p.deDirector = true;
+          // La plantilla que escogió el director: su imagen va de referencia, como en la pantalla.
+          if (f.plantilla && kit) p.pedido = conPlantillaDelDirector(p.pedido, kit, f.plantilla);
+        });
       } catch (e) {
         if (e?.codigo === "presupuesto" || e?.estado === 402) return pararTodo(pasos, e.message);
         // Sin ficha, cada pieza se diseña sola al crearla (la mejora).
