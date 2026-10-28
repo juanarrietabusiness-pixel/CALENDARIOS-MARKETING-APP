@@ -58,11 +58,13 @@ import { rutasEstudio } from "./rutas/estudio.js";
 import { rutasBiblioteca } from "./rutas/biblioteca.js";
 import { rutasPlantillas } from "./rutas/plantillas.js";
 import { rutasAnuncios } from "./rutas/anuncios.js";
+import { rutasHistoriasAuto } from "./rutas/historiasAuto.js";
 import { rutasTrozos } from "./rutas/trozos.js";
 import { avanzarPendientes } from "./lib/estudio/trabajos.js";
 import { rutasMCP, rutasMCPPublicas } from "./rutas/mcp.js";
 import { informePendiente } from "./lib/informes.js";
 import { informeAnunciosPendiente } from "./lib/informeAnuncios.js";
+import { historiasAutomaticasPendiente } from "./lib/historiasAuto.js";
 import { rutasBandeja, rutaWebhookMeta } from "./rutas/bandeja.js";
 
 // El Durable Object del espacio. Se reexporta desde aquí porque
@@ -429,6 +431,8 @@ export default {
       if (partes[0] === "plantillas-plan") return await rutasPlantillas(req, env, { acceso, usuario, partes, metodo });
       // Meta Ads: cuentas publicitarias, campañas y estadísticas. Activar es de admin y con confirmación.
       if (partes[0] === "anuncios") return await rutasAnuncios(req, env, { acceso, usuario, partes, metodo });
+      // Las historias automáticas: lo ya publicado vuelve como historia, una al día.
+      if (partes[0] === "historias-auto") return await rutasHistoriasAuto(req, env, { acceso, partes, metodo });
 
       // ---------- Medios ----------
       //
@@ -518,6 +522,10 @@ export default {
       // El de anuncios, a la misma hora y con la misma regla: uno por vuelta.
       const deAnuncios = await informeAnunciosPendiente(env, cuando).catch((e) => { console.error("cron informe de anuncios:", e); return 1; });
       if (deAnuncios) return;
+      // Las historias automáticas: poner en la cola la del día de un cliente (una sola vez al día por cliente;
+      // sin nada que hacer es UNA consulta). Antes del Estudio: con el Estudio ocupado horas, no saldría ninguna.
+      const historias = await historiasAutomaticasPendiente(env, cuando).catch((e) => { console.error("cron historias:", e); return 1; });
+      if (historias) return;
       // El Estudio: lo que nadie está mirando (cerró la pestaña).
       const estudio = await avanzarPendientes(env, cuando).catch((e) => { console.error("cron estudio:", e); return 1; });
       if (estudio) return;

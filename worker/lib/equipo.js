@@ -153,8 +153,10 @@ export async function avisarRespuestaCliente(env, acceso, { calendarId, postId, 
 /** Algo que no se pudo publicar: a quien la lleva, a quien la programó, o a todos. */
 export async function avisarFallo(env, acceso, fila, mensaje) {
   try {
-    const cal = await acceso.leerUno("calendars", { id: fila.calendar_id });
-    const post = cal ? buscar(cal, fila.post_id) : null;
+    // Una historia automática no tiene calendario: su publicación va en la carga.
+    const cal = fila.calendar_id ? await acceso.leerUno("calendars", { id: fila.calendar_id }) : null;
+    let post = cal ? buscar(cal, fila.post_id) : null;
+    if (!fila.calendar_id) { try { post = JSON.parse(fila.carga ?? "{}").post ?? null; } catch { post = null; } }
     const para = post?.responsableId ? [post.responsableId] : fila.creado_por ? [fila.creado_por] : (await miembrosDe(acceso)).map((m) => m.userId);
     const titulo = post?.title || String(post?.idea || "").split(/[.\n]/)[0].slice(0, 50) || "Una publicación";
     await avisar(env, acceso, {

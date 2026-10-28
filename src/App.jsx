@@ -759,6 +759,16 @@ function Workspace({ session, ruta }) {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // Las historias automáticas necesitan su imagen, y esa la dibuja un lienzo: se preparan al abrir, sin que nadie
+  // lo pida, las de lo publicado desde la última vez (una vez por sesión; el módulo va aparte del arranque).
+  useEffect(() => {
+    if (yo.soloLectura) return undefined;
+    const t = setTimeout(() => {
+      import("./lib/historiasAutoApi").then((m) => m.prepararEnSegundoPlano()).catch(() => {});
+    }, 20_000);
+    return () => clearTimeout(t);
+  }, [yo.soloLectura]);
+
   // ----------------------------------------------------------
   // De la dirección a lo que se mira
   //

@@ -1,5 +1,5 @@
 import "./Programacion.css";
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useState } from "react";
 import Icon from "../components/Icon";
 import * as db from "../lib/db";
 import { navegar } from "../lib/rutas";
@@ -7,6 +7,9 @@ import { REDES } from "../lib/publicacion";
 import { filtrarCola, ordenarProgramacion, fechaHora, horaDe, TEXTO_ESTADO, asistidasPendientes } from "../lib/cola";
 import { FORMAT_ICONS } from "../constants";
 import PorProgramar from "../components/PorProgramar";
+
+// Las historias automáticas, en su chunk: sólo las mira quien abre esta página.
+const HistoriasAutomaticas = lazy(() => import("../components/HistoriasAutomaticas"));
 
 // ============================================================
 // Programación: lo que sale, en todas las cuentas
@@ -122,6 +125,10 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
         onProgramado={cargar}
       />
 
+      <Suspense fallback={null}>
+        <HistoriasAutomaticas clients={clients} onCambio={cargar} />
+      </Suspense>
+
       <div className="prog-filtros">
         <div className="segmented" role="group" aria-label="Cuántos días mirar">
           {RANGOS.map(([n, nombre]) => (
@@ -182,7 +189,7 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
                   <button type="button" className="btn btn-primary btn-sm" disabled={ocupada === f.id} onClick={() => reintentar(f)}>
                     <Icon name="refresh" size={14} /> Reintentar
                   </button>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => abrir(f)}>Abrir</button>
+                  {f.calendarId && <button type="button" className="btn btn-secondary btn-sm" onClick={() => abrir(f)}>Abrir</button>}
                   <button type="button" className="btn btn-ghost btn-sm" disabled={ocupada === f.id} onClick={() => cancelar(f, "¿Descartar esta publicación fallida? No se volverá a intentar.")}>
                     Descartar
                   </button>
@@ -235,7 +242,7 @@ export default function Programacion({ clients = [], pulso = 0, onAbrir, onSubir
                   {f.error && f.estado === "programada" && <p className="prog-cuando">Reintento pendiente: {f.error}</p>}
                 </div>
                 <div className="prog-acciones">
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => abrir(f)}>Abrir</button>
+                  {f.calendarId && <button type="button" className="btn btn-secondary btn-sm" onClick={() => abrir(f)}>Abrir</button>}
                   {f.estado === "programada" && (
                     <button type="button" className="btn btn-ghost btn-sm" disabled={ocupada === f.id} onClick={() => cancelar(f, "¿Quitar esta publicación de la cola? No saldrá.")}>
                       Cancelar
