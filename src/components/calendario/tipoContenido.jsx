@@ -3,7 +3,7 @@ import { Plegable } from "./editorPublicacion";
 import { leerMercado } from "../../lib/mercado";
 import { productosActivos, limpiarEstudio } from "../../lib/estudioMercado";
 import { NIVELES_CONSCIENCIA } from "../../lib/consciencia";
-import { PILARES, SUBTIPOS_MALETAS, pilarDe, nombreDePilar } from "../../lib/pilares";
+import { PILARES, SUBTIPOS_MALETAS, pilarDe, nombreDePilar, productosDelPost, conProductos } from "../../lib/pilares";
 
 // ============================================================
 // «Tipo de contenido» en el panel de una publicación
@@ -36,10 +36,15 @@ export function TipoContenido({ form, sf, clienteId, lectura = false }) {
   const general = limpiarEstudio(mercado?.estudio)?.general;
   const pilar = pilarDe(form.pilar);
   const resumen = pilar ? [nombreDePilar(form.pilar, form.pilarSub), form.producto].filter(Boolean).join(" · ") : "Sin tipo";
-  const cambiarProducto = (id) => {
-    const p = productos.find((x) => x.id === id);
-    sf("productoId", p?.id ?? "");
-    sf("producto", p?.nombre ?? "");
+  // Varios a la vez (una pieza puede hablar de un kit o de «los tres más vendidos»): el primero que se escoge es el
+  // principal (`productoId`, el que usa la matriz) y van todos en `productoIds`.
+  const elegidos = productosDelPost(form).filter((id) => productos.some((p) => p.id === id));
+  const perdido = Boolean(form.producto) && productos.length > 0 && !elegidos.length;
+  const alternar = (id) => {
+    const c = conProductos(elegidos.includes(id) ? elegidos.filter((x) => x !== id) : [...elegidos, id], productos);
+    sf("productoId", c.productoId);
+    sf("productoIds", c.productoIds);
+    sf("producto", c.producto);
   };
 
   return (
@@ -64,15 +69,22 @@ export function TipoContenido({ form, sf, clienteId, lectura = false }) {
           </div>
         )}
         <div className="field">
-          <label className="label" htmlFor={`${ids}-p`}>Producto o servicio</label>
-          <select id={`${ids}-p`} className="input" value={productos.some((p) => p.id === form.productoId) ? form.productoId : ""} disabled={lectura} onChange={(e) => cambiarProducto(e.target.value)}>
-            <option value="">{form.producto && !productos.some((p) => p.id === form.productoId) ? `${form.producto} (ya no está en el catálogo)` : "Ninguno"}</option>
-            {productos.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nombre}{p.precio ? ` · ${p.precio}` : ""}{mercado?.inventario && p.stock === "agotado" ? " · agotado" : ""}
-              </option>
-            ))}
-          </select>
+          <span className="label" id={`${ids}-p`}>Productos o servicios</span>
+          {productos.length > 0 && (
+            <div role="group" aria-labelledby={`${ids}-p`} style={{ display: "flex", flexWrap: "wrap", gap: "var(--sp-1)" }}>
+              {productos.map((p) => {
+                const n = elegidos.indexOf(p.id);
+                return (
+                  <button key={p.id} type="button" className="filter-chip" style={{ minHeight: "var(--tap-sm)" }} aria-pressed={n >= 0} disabled={lectura} onClick={() => alternar(p.id)}
+                    title={n === 0 && elegidos.length > 1 ? "El principal (el primero que escogiste)" : undefined}>
+                    {p.nombre}{p.precio ? ` · ${p.precio}` : ""}{mercado?.inventario && p.stock === "agotado" ? " · agotado" : ""}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {perdido && <p className="hint">{form.producto} ya no está en el catálogo.</p>}
+          {elegidos.length > 1 && <p className="hint">Salen {elegidos.length} productos en la imagen: van las fotos reales de todos.</p>}
           {!productos.length && <p className="hint">Este cliente no tiene catálogo todavía (Cerebro → Estudio de mercado).</p>}
         </div>
         <div className="field">

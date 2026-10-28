@@ -11,7 +11,7 @@
 // por el mismo camino de siempre (`pedidoDeLote`), con «{{ESCENA}}» donde va
 // la escena— y el servidor lo LLEVA, paso a paso, guardando el avance:
 //
-//   1. el director de arte, de 6 en 6 (la escena de cada pieza);
+//   1. el director de arte, una llamada por pieza (la primera sola, luego de 3 en 3, mientras se crean las listas);
 //   2. cada pieza: la mejora si no tiene ficha, y su trabajo;
 //   3. cada imagen que sale: la proporción (se recompone si no casa), el
 //      control de calidad y, si hace falta, UNA corrección que se queda sólo
@@ -238,6 +238,8 @@ export function conEscena(prompt, escena) {
 }
 
 const vivo = (p) => p.fase === "generando" || p.fase === "opciones";
+/** ¿Esta pieza ya se puede pedir? Con su escena, sin director que esperar, o con el director ya intentado (va la mejora). */
+const listaParaCrear = (p, datos) => Boolean(p.escena) || !datos.mejorar || !p.encargo || Boolean(p.fichaIntentada);
 const terminado = (p) => p.fase === "hecho" || p.fase === "fallido";
 
 /**
@@ -328,14 +330,19 @@ async function paso(env, acceso, fila, pasos, datos) {
     return { hizo: true, nota: `El director diseñó ${pasos.length} láminas.` };
   }
 
-  // 1. El director de arte, de 6 en 6: la tanda entera como una SERIE (el concepto de la primera pasa a las demás).
+  // 1. El director de arte: CADA pieza en su llamada, pensada entera. La primera va sola y fija el concepto de la serie;
+  //    después, de TANDA_FICHAS en TANDA_FICHAS a la vez, con ese concepto y las ya diseñadas delante. Mientras quedan
+  //    piezas listas para crear y hay sitio, se crean primero: el director sigue en el paso siguiente.
   if (datos.mejorar) {
     const faltan = pasos.filter((p) => p.fase === "nuevo" && p.encargo && !p.escena && !p.fichaIntentada);
-    if (faltan.length) {
-      const tanda = faltan.slice(0, TANDA_FICHAS);
+    const listas = pasos.filter((p) => p.fase === "nuevo" && listaParaCrear(p, datos));
+    const hayHueco = pasos.filter(vivo).length < (datos.paralelo ?? 2);
+    if (faltan.length && !(listas.length && hayHueco)) {
+      const tanda = faltan.slice(0, datos.concepto ? TANDA_FICHAS : 1);
       try {
         const r = await fichasDeDiseno(env, acceso, cliente, {
-          concepto: datos.concepto ?? "", vistas: datos.vistas ?? [], piezas: tanda.map((p, j) => ({ n: j + 1, ...p.encargo })),
+          concepto: datos.concepto ?? "", vistas: datos.vistas ?? [], previas: datos.serie ?? [], serie: pasos.length,
+          piezas: tanda.map((p, j) => ({ n: j + 1, ...p.encargo })),
         });
         datos.concepto ||= String(r?.concepto ?? "");
         const kit = tanda.some((_, j) => r?.fichas?.[j + 1]?.plantilla) ? kitDe(cliente) : null;
@@ -347,13 +354,15 @@ async function paso(env, acceso, fila, pasos, datos) {
           // La plantilla que escogió el director: su imagen va de referencia, como en la pantalla.
           if (f.plantilla && kit) p.pedido = conPlantillaDelDirector(p.pedido, kit, f.plantilla);
         });
+        // Lo que ya diseñó de la serie (corto): lo ven las siguientes para no repetir composición.
+        datos.serie = [...(datos.serie ?? []), ...tanda.filter((p) => p.deDirector).map((p) => texto(p.escena, 700))].slice(-2);
       } catch (e) {
         if (e?.codigo === "presupuesto" || e?.estado === 402) return pararTodo(pasos, e.message);
         // Sin ficha, cada pieza se diseña sola al crearla (la mejora).
       }
       for (const p of tanda) p.fichaIntentada = true;
       // Las vistas sólo las usa el director: no se reescriben en cada paso.
-      if (!pasos.some((p) => p.fase === "nuevo" && p.encargo && !p.escena && !p.fichaIntentada)) delete datos.vistas;
+      if (!pasos.some((p) => p.fase === "nuevo" && p.encargo && !p.escena && !p.fichaIntentada)) { delete datos.vistas; delete datos.serie; }
       return { hizo: true, datos, nota: `El director diseñó ${Math.min(pasos.length, pasos.filter((p) => p.fichaIntentada).length)} de ${pasos.length}.` };
     }
   }
@@ -422,7 +431,8 @@ async function paso(env, acceso, fila, pasos, datos) {
   }
 
   if (pasos.filter(vivo).length < (datos.paralelo ?? 2)) {
-    const siguiente = pasos.find((p) => p.fase === "nuevo");
+    // La siguiente que ya tiene su diseño (o no lo espera): una que aún espera al director no se pide sin él.
+    const siguiente = pasos.find((p) => p.fase === "nuevo" && (fila.tipo === "carrusel" || listaParaCrear(p, datos)));
     if (siguiente) {
       const r = fila.tipo === "carrusel" ? await iniciarLamina(ctx, siguiente) : await iniciar(ctx, siguiente);
       if (r?.presupuesto) return pararTodo(pasos, r.presupuesto);

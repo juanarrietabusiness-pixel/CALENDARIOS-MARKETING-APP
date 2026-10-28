@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   limpiarRitmo, RITMO_POR_DEFECTO, sugerenciasDeTemporada, ritmoDelMes, asignarMatriz, lineasDeContenido,
-  nombreDePilar, presetDePilar, mezclaDeTipos, resumenRitmo, reglasDeLosTipos, MAX_CAMBIOS_POR_SEMANA, ordenDeProductos, PILARES, idDePilar,
+  nombreDePilar, presetDePilar, mezclaDeTipos, resumenRitmo, reglasDeLosTipos, MAX_CAMBIOS_POR_SEMANA, ordenDeProductos, PILARES, idDePilar, productosDelPost, conProductos,
 } from "./pilares";
 import { fechasDelMes } from "./fechasEspeciales";
 
@@ -137,5 +137,19 @@ describe("los productos según su disponibilidad", () => {
     const m = asignarMatriz(pubs, { productos: [P("a", "alto"), P("b", "agotado"), P("c", "bajo")] });
     expect(m.map((x) => x.productoId)).not.toContain("b");
     expect(m.slice(3).map((x) => x.productoId)).not.toContain("c");
+  });
+});
+
+describe("varios productos en una publicación", () => {
+  const catalogo = [{ id: "s", nombre: "Sofá cama" }, { id: "m", nombre: "Mesa" }, { id: "l", nombre: "Lámpara" }];
+  it("el principal primero y los demás sin repetir; las publicaciones de antes (un solo producto) siguen valiendo", () => {
+    expect(productosDelPost({ productoId: "s" })).toEqual(["s"]);
+    expect(productosDelPost({ productoId: "s", productoIds: ["s", "m", "", "m"] })).toEqual(["s", "m"]);
+    expect(productosDelPost({})).toEqual([]);
+  });
+  it("al escoger: el primero es el principal, y el nombre los junta (es lo que lee la IA)", () => {
+    expect(conProductos(["m", "s"], catalogo)).toEqual({ productoId: "m", productoIds: ["m", "s"], producto: "Mesa + Sofá cama" });
+    // Uno que ya no está en el catálogo no entra; sin ninguno, todo vacío.
+    expect(conProductos(["x"], catalogo)).toEqual({ productoId: "", productoIds: [], producto: "" });
   });
 });

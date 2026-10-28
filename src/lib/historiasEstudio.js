@@ -26,7 +26,7 @@ import { apoyosDePieza, pedidoDePieza } from "./pieza";
 import { esperarArchivos } from "./carruselEstudio";
 import { controlEncendido, controlarYCorregir } from "./controlEstudio";
 import { conLogoSiToca } from "./logoEstudio";
-import { presetDePilar } from "./pilares";
+import { presetDePilar, productosDelPost } from "./pilares";
 import { nombreDePreset, referenciaDePlantilla, lineaDePlantillaEnPedido } from "./kitMarca";
 import { textoDeLaFicha, modeloFinal } from "./disenoChat";
 import { modeloPorId, MODELOS, porPrecio, etiquetaDeCosto } from "./estudioCatalogo";
@@ -125,14 +125,14 @@ export async function crearHistorias({ client, post, base, indicacion = "", alAv
       piezas: VARIANTES.map((v, i) => ({
         n: i + 1, formato: "historia", proporcion: "9:16", tipo: preset ? nombreDePreset(preset, kit) : "",
         idea: `${v.pedido}\nLO QUE DICE EL POST (usa sólo estos datos; no inventes precios, descuentos, fechas ni promesas):\n${info}`,
-        productoId: post.productoId ?? "", indicacion,
+        productoId: post.productoId ?? "", productoIds: productosDelPost(post), indicacion,
       })),
     });
     fichas = r?.fichas ?? {};
   } catch { /* sin director: con el pedido de cada variante, como antes */ }
 
   // 2 y 3. Cada historia por el camino de UNA pieza, con el control y el logo.
-  const fotos = api.fotosDelProducto(g?.productos ?? [], post.productoId ?? "");
+  const fotos = api.fotosDelPost(g?.productos ?? [], post);
   const delPost = { clave: imagenDelPost.clave, src: imagenDelPost.src, toma: ["producto", "estilo"], nota: "es la imagen del POST que esta historia acompaña: toma de ella el producto, los colores y el estilo; NO la repitas ni la encojas, esta historia es otra pieza con otra composición" };
   return Promise.all(VARIANTES.map(async (v, i) => {
     try {

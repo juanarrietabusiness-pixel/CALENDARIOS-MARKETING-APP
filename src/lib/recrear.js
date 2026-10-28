@@ -20,7 +20,7 @@ import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
 
 /** Lo que se toma del anuncio de otra marca, y lo que se le dice al modelo de él. */
 export const TOMA_DE_OTRA_MARCA = Object.freeze(["composicion", "estilo"]);
-export const NOTA_OTRA_MARCA = "es un anuncio de otra marca: toma su forma, no su producto, su texto ni su logo";
+export const NOTA_OTRA_MARCA = "es un anuncio de otra marca: toma su idea y su tipo de composición en una versión propia, ligeramente distinta (otro encuadre y otra distribución: que no se reconozca como copia); nada de su producto, su texto ni su logo";
 
 const corto = (t, max) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, max).trim();
 

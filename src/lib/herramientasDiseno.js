@@ -10,12 +10,13 @@
 export const HERRAMIENTAS_DISENO = Object.freeze([
     {
       name: "disenar_piezas",
-      description: "Diseña de 1 a 12 piezas de imagen con diseño gráfico (posts, historias, portadas, anuncios) para este cliente, una FICHA DE DISEÑO cada una. La persona ve las fichas y el costo y aprueba con un botón (no le pidas el «sí» antes). Al terminar recibes cada imagen para revisarla.",
+      description: "Diseña de 1 a 12 piezas de imagen con diseño gráfico (posts, historias, portadas, anuncios, las láminas de un carrusel) para este cliente, una FICHA DE DISEÑO cada una. Los productos, SÓLO del catálogo y con sus ids en «productos». La persona ve las fichas y el costo y aprueba con un botón (no le pidas el «sí» antes). Al terminar recibes cada imagen para revisarla.",
       input_schema: {
         type: "object",
         properties: {
           concepto: { type: "string", description: "La idea que une la tanda y su sistema visual, en 1 o 2 frases." },
           carrusel: { type: "boolean", description: "true si las piezas son las láminas de UN carrusel, en su orden (portada primero): quedan agrupadas en la galería como un carrusel. Todas en formato vertical 4:5." },
+          productos: { type: "array", items: { type: "string" }, maxItems: 6, description: "Los ids del CATÁLOGO del cliente (los del sistema) de los productos que enseña la tanda o el carrusel: sus fotos reales van de referencia en cada pieza que no diga los suyos. Sólo ids que existan; si no sabes cuál, pregúntale a la persona antes." },
           piezas: {
             type: "array",
             minItems: 1,
@@ -29,6 +30,7 @@ export const HERRAMIENTAS_DISENO = Object.freeze([
                 post_id: { type: "string", description: "La publicación del calendario a la que va (opcional): se pone en ella al salir." },
                 estilo: { type: "string", enum: ["anuncio", "beneficios", "servicios", "educativo", "diferenciador", "maletas", "humano"], description: "El tipo de contenido (opcional)." },
                 plantilla_id: { type: "string", description: "El id de una plantilla del kit a seguir (opcional)." },
+                productos: { type: "array", items: { type: "string" }, maxItems: 6, description: "Los ids del catálogo de los productos que salen en ESTA pieza (puede ser más de uno); manda sobre los de la tanda." },
               },
               required: ["titulo", "ficha"],
             },

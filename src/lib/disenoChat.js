@@ -29,7 +29,7 @@ import { coloresPlantilla } from "./carrusel";
 import { controlEncendido, controlarYCorregir, modeloParaCorregir } from "./controlEstudio";
 import { conLogoSiToca, estampaSola } from "./logoEstudio";
 import { imagenParaModelo } from "./medios";
-import { limpiarFicha, lineasDelTexto, MAX_FICHAS } from "./director";
+import { limpiarFicha, textoDeLaFicha, MAX_FICHAS } from "./director";
 
 /** Del tamaño que dice el asistente a la proporción del motor. */
 export const PROPORCION = Object.freeze({ square: "1:1", vertical: "4:5", story: "9:16", horizontal: "16:9" });
@@ -69,7 +69,19 @@ export function limpiarPieza(p = {}, i = 0) {
     postId: String(p.post_id ?? p.postId ?? "").slice(0, 80),
     plantilla: /^plantilla-[a-z0-9-]{1,40}$/.test(String(p.plantilla_id ?? p.plantilla ?? "")) ? String(p.plantilla_id ?? p.plantilla) : "",
     texto: String(p.texto ?? "").slice(0, 400),
+    // Los ids del catálogo de lo que enseña la pieza: sus fotos reales van de referencia.
+    productos: [...new Set((Array.isArray(p.productos) ? p.productos : []).map((x) => String(x ?? "").slice(0, 80)).filter(Boolean))].slice(0, 6),
   };
+}
+
+/**
+ * Las fotos REALES de una pieza del director: las de los productos que pasó (`productos`, ids del catálogo) y las de
+ * los que nombra la ficha, una de cada uno antes que la segunda de ninguno. Un id que no está en el catálogo no trae
+ * nada. Pura salvo por los imports.
+ */
+export function fotosDeLaPiezaDelChat(productos = [], pieza = {}, huecos = 8) {
+  const ids = [...(pieza.productos ?? []), ...productosNombrados(productos, pieza.ficha ?? "").map((y) => y.id)];
+  return ids.length ? api.fotosDeVariosProductos(productos, ids, huecos) : [];
 }
 
 /**
@@ -87,8 +99,7 @@ export function planDePiezas(ctx, piezas = [], { calidad = "borrador" } = {}) {
     if (!p.ficha) return { ...p, error: "Falta la ficha de esta pieza." };
     if (!modelo) return { ...p, error: "No hay ningún modelo de imagen con llave (Ajustes → IA)." };
     const plantilla = p.plantilla ? referenciaDePlantilla(kit, p.plantilla, g?.archivos ?? []) : null;
-    const nombrados = productosNombrados(productos, p.ficha);
-    const fotos = nombrados.length ? api.fotosDeVariosProductos(productos, nombrados.map((y) => y.id), modelo.referencias || 0) : [];
+    const fotos = fotosDeLaPiezaDelChat(productos, p, modelo.referencias || 0);
     const apoyos = apoyosDePieza({ kit, preset: p.estilo, archivos: g?.archivos ?? [], fotos, manuales: plantilla ? [plantilla] : [], modelo });
     // La proporción TIENE que salir: si el modelo no la respeta con estas referencias, el pedido va con otro.
     const pedido = pedidoDePieza({
@@ -104,12 +115,8 @@ export function planDePiezas(ctx, piezas = [], { calidad = "borrador" } = {}) {
 /** El costo total de un plan. Pura. */
 export const costoDelPlan = (plan = []) => plan.reduce((t, p) => t + (p.error ? 0 : p.costo || 0), 0);
 
-/** El texto exacto que debe tener una pieza (para el control): lo que va entre «» en la línea de texto de su ficha. Pura. */
-export function textoDeLaFicha(ficha = "") {
-  const linea = String(ficha).split("\n").find((l) => /^Texto/i.test(l)) ?? "";
-  const citas = [...linea.matchAll(/«([^»]{1,120})»/g)].map((m) => m[1].trim()).filter(Boolean);
-  return citas.length ? lineasDelTexto(citas.join("\n")).join("\n") : "";
-}
+/** El texto exacto que debe tener una pieza (para el control): lo que va entre «» en la línea de texto de su ficha. */
+export { textoDeLaFicha };
 
 /**
  * Crea el plan, de tres en tres. `alAvanzar(n, estado)` con { cargando } | { archivo } | { error }. Cada pieza pasa por
@@ -160,9 +167,12 @@ async function crearCarruselDelPlan(ctx, plan, { alAvanzar, seguir, titulo }) {
   const laminas = validas.map((p, i) => ({
     n: i + 1, rol: i === 0 ? "portada" : i === ultima && validas.length >= 3 ? "cierre" : "contenido", texto: textoDeLaFicha(p.ficha), ficha: p.ficha,
   }));
+  // Las fotos de los productos del carrusel (los ids que pasó el asistente y los que nombran las fichas): van en todas
+  // las láminas como el producto REAL. Antes sólo se buscaban por el nombre en la ficha, y si no lo nombraba igual
+  // al catálogo, el motor se inventaba el producto y la marca.
   const productos = g?.productos ?? [];
-  const nombrados = productosNombrados(productos, validas.map((p) => p.ficha).join("\n"));
-  const fotos = nombrados.length ? api.fotosDeVariosProductos(productos, nombrados.map((x) => x.id), 2).map((f) => f.clave) : [];
+  const todas = { productos: validas.flatMap((p) => p.productos ?? []), ficha: validas.map((p) => p.ficha).join("\n") };
+  const fotos = fotosDeLaPiezaDelChat(productos, todas, 3).map((f) => f.clave);
   alAvanzar(validas[0].n, { cargando: true });
   const hechas = await crearCarrusel({
     clienteId, modelo: validas[0].modelo, modo: "ia", plantilla: "banda", hilo: titulo, idea: titulo, laminas,

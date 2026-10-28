@@ -3,7 +3,7 @@ import Icon from "../Icon";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { FORMATS } from "../../constants";
 import { mediosDe, conMedios } from "../../lib/publicacion";
-import { presetDePilar, nombreDePilar } from "../../lib/pilares";
+import { presetDePilar, nombreDePilar, productosDelPost } from "../../lib/pilares";
 import { estiloDeMarca, limpiarKit, nombreDePreset } from "../../lib/kitMarca";
 import { apoyosDePieza, pedidoDePieza } from "../../lib/pieza";
 import { validarPedido, textoCosto, CONFIRMAR_DESDE, modeloPorId } from "../../lib/estudioCatalogo";
@@ -162,7 +162,7 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
         // El MISMO camino que una pieza hecha a mano (lib/pieza.js): las fotos REALES del producto primero, las
         // referencias del tipo, el logo si cabe, el estilo visual del tipo con su acabado, en alta resolución.
         const apoyos = tipo === "imagen"
-          ? apoyosDePieza({ kit: estudio.kit, preset, archivos: estudio.archivos, fotos: api.fotosDelProducto(estudio.productos, post.productoId), modelo })
+          ? apoyosDePieza({ kit: estudio.kit, preset, archivos: estudio.archivos, fotos: api.fotosDelPost(estudio.productos, post), modelo })
           : [];
         const ideaBase = api.promptDePublicacion(post, { conTexto: tipo !== "video" });
         const armar = (idea) => pedidoDePieza({
@@ -201,22 +201,23 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
     const kit = estudio.kit;
     const calendarId = cal.dbId || cal.id;
     const nuevas = [];
-    // Las imágenes (y los videos) en UN encargo: el director las diseña como una SERIE, de 6 en 6; las que ya traían su
-    // ficha (el pedido listo) no esperan. Cada pedido va armado por el mismo camino de siempre, con el hueco de la escena.
+    // Las imágenes (y los videos) en UN encargo: el director las diseña como una SERIE, cada una en su llamada; las que
+    // ya traían su ficha del director (el pedido listo) no esperan. Cada pedido va armado por el mismo camino de siempre, con el hueco de la escena.
     const sueltas = elegidas.filter((x) => x.tipo !== "carrusel");
     if (sueltas.length) {
       const pasos = sueltas.map((c) => {
         const imagen = c.tipo === "imagen";
+        // Sólo la ficha del DIRECTOR se salta su diseño; el borrador del motor de ideas queda de respaldo.
         const lista = imagen ? promptListo(c.post) : "";
         const disenar = mejorar && imagen && !lista;
         return {
           id: c.post.id, titulo: c.post.title || c.post.idea || "",
           pedido: { ...c.armar(ESCENA), ...(imagen ? { n: versiones } : {}), calendarId, postId: c.post.id },
-          escena: mejorar && imagen ? lista : c.ideaBase, sinMejorar: c.ideaBase,
+          escena: mejorar && imagen ? lista : c.ideaBase, sinMejorar: (imagen && promptListo(c.post, { cualquiera: true })) || c.ideaBase,
           encargo: disenar ? {
             formato: c.post.format === "historia" ? "historia" : "post", proporcion: proporcionDe(c.post.format, "imagen"),
             tipo: c.pieza, idea: [c.post.title, c.post.idea].filter(Boolean).join(" — "), escena: c.post.escena ?? "",
-            texto: c.post.textoPieza ?? "", productoId: c.post.productoId ?? "", composicion: c.post.composicion ?? "", fecha: c.date,
+            texto: c.post.textoPieza ?? "", productoId: c.post.productoId ?? "", productoIds: productosDelPost(c.post), composicion: c.post.composicion ?? "", fecha: c.date,
           } : null,
           texto: c.post.textoPieza ?? "", controlar: controlar && imagen,
           navegador: imagen && estampaSola(kit) ? { logo: true } : null,
@@ -241,10 +242,10 @@ export default function ProducirMes({ client, cal, onPoner, onClose }) {
           comun: {
             modelo: c.modelo, modo: modoTexto, plantilla, idea: c.post.idea || c.post.title || "",
             preset: estiloDeMarca(kit, preset, { marca: client.name, rubro: client.industry ?? "" }),
-            fotos: api.fotosDelProducto(estudio.productos, c.post.productoId).map((f) => f.clave),
+            fotos: api.fotosDelPost(estudio.productos, c.post, 6).map((f) => f.clave),
             logo: estampaSola(kit) ? "" : kit.logo, tipografia: referenciaDeTipografia(kit), calendarId, postId: c.post.id,
           },
-          propuesta: mejorar ? { guion: c.post.guion ?? "", tema: c.post.idea || c.post.title || "", preset, productoId: c.post.productoId || undefined, estructura: c.post.estructura || undefined } : null,
+          propuesta: mejorar ? { guion: c.post.guion ?? "", tema: c.post.idea || c.post.title || "", preset, productoId: c.post.productoId || undefined, productoIds: productosDelPost(c.post), estructura: c.post.estructura || undefined } : null,
           laminas: c.laminas,
         });
         nuevas.push({ id: encargo.id, tipo: "carrusel", postId: c.post.id, laminas: c.laminas.length });

@@ -6,6 +6,7 @@ import { AJUSTES_DE_TEXTO, IGUALAR_TEXTO, ejemploParaIgualar } from "../lib/estu
 import { TIPOS_PRESET, ESTILOS_VISUALES, estiloDeMarca, limpiarKit, referenciasDePersonajes, referenciaDeTipografia } from "../lib/kitMarca";
 import { controlEncendido } from "../lib/controlEstudio";
 import { partirGuion, MODOS_TEXTO, PLANTILLAS_TEXTO, MAX_LAMINAS, coloresPlantilla, costoCarrusel } from "../lib/carrusel";
+import { productosDelPost } from "../lib/pilares";
 import { crearLamina, corregirLamina, modelosParaCarrusel, modeloParaCarrusel, sistemaDeLaPortada } from "../lib/carruselEstudio";
 import { lanzarCarrusel, seguirEncargo, terminarEncargo, laminasDeEncargo } from "../lib/encargosApi";
 import { resumenSistema } from "../lib/sistemaCarrusel";
@@ -53,7 +54,9 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
   const [guion, setGuion] = useState(inicial.guion ?? "");
   const [preset, setPreset] = useState(inicial.preset ?? "");
   const [estilo, setEstilo] = useState("");
-  const [productoId, setProductoId] = useState(inicial.productoId ?? "");
+  // Varios a la vez: un carrusel puede hablar de varios productos (sus fotos reales van en todas las láminas).
+  const [productoIds, setProductoIds] = useState(() => productosDelPost(inicial));
+  const productoId = productoIds[0] ?? "";
   const [personajes, setPersonajes] = useState([]);
   const [hilo, setHilo] = useState("");
   const [laminas, setLaminas] = useState([]);
@@ -85,7 +88,7 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
   const comun = () => ({
     clienteId, modelo, modo, plantilla, hilo, idea: tema || inicial.tema || "",
     preset: estiloDeMarca(kit, preset, { marca: client.name, rubro: client.industry ?? "", estilo }),
-    fotos: api.fotosDelProducto(productos, productoId).map((f) => f.clave),
+    fotos: api.fotosDeVariosProductos(productos, productoIds, 4).map((f) => f.clave),
     personajes: referenciasDePersonajes(kit, personajes, estudio?.archivos ?? []),
     // Con el logo estampado (kit), el modelo no lo recibe: se pega encima de cada lámina final.
     logo: estampaSola(kit) ? "" : kit.logo, estampar: estampaSola(kit) ? kit : null, colores: coloresPlantilla(kit), familia: kit.tipografia, fuente: kit.fuente, carpetaId: carpeta.current,
@@ -98,7 +101,7 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
     setProponiendo(true);
     setAviso(null);
     try {
-      const r = await api.proponerCarrusel(clienteId, { guion, tema, preset, estilo, productoId: productoId || undefined, personajes });
+      const r = await api.proponerCarrusel(clienteId, { guion, tema, preset, estilo, productoId: productoId || undefined, productoIds, personajes });
       setHilo(r.hilo ?? "");
       setLaminas(r.laminas);
       setPaso("propuesta");
@@ -261,11 +264,13 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
             </div>
             {productos.length > 0 && (
               <div className="field">
-                <label className="label" htmlFor={`${ids}-prod`}>Producto (sus fotos van de referencia)</label>
-                <select id={`${ids}-prod`} className="input" value={productoId} onChange={(e) => setProductoId(e.target.value)}>
-                  <option value="">Ninguno</option>
-                  {productos.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                </select>
+                <span className="label" id={`${ids}-prod`}>Productos (sus fotos van de referencia; puedes escoger varios)</span>
+                <div className="est-tipos" role="group" aria-labelledby={`${ids}-prod`}>
+                  {productos.map((p) => (
+                    <button key={p.id} type="button" className="filter-chip" aria-pressed={productoIds.includes(p.id)}
+                      onClick={() => setProductoIds((l) => (l.includes(p.id) ? l.filter((x) => x !== p.id) : [...l, p.id].slice(0, 6)))}>{p.nombre}</button>
+                  ))}
+                </div>
               </div>
             )}
           </div>

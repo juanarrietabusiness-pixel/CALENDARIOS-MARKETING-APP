@@ -144,6 +144,16 @@ const sinMarcas = (t) => String(t ?? "").normalize("NFC").replace(/["“”«»]
 /** Las líneas del texto de la pieza (titular, apoyo, botón), sin comillas. Pura. */
 export const lineasDelTexto = (texto) => String(texto ?? "").split(/\n+/).map((l) => l.replace(/["“”«»]/g, "").trim()).filter(Boolean).slice(0, 4);
 
+/** El texto exacto de una ficha: lo que va entre «» en su línea «Texto…». Pura. */
+export function textoDeLaFicha(ficha = "") {
+  const linea = String(ficha).split("\n").find((l) => /^Texto/i.test(l)) ?? "";
+  const citas = [...linea.matchAll(/«([^»]{1,120})»/g)].map((m) => m[1].trim()).filter(Boolean);
+  return citas.length ? lineasDelTexto(citas.join("\n")).join("\n") : "";
+}
+
+/** ¿Es una ficha de diseño (y no una escena de una o dos frases)? Pura. */
+export const esFicha = (t) => /(^|\n)\s*Pieza: /.test(String(t ?? "")) && /\nComposición: /.test(String(t ?? ""));
+
 /**
  * La ficha con el texto EXACTO de la pieza dentro. Si la IA reescribió alguna línea (o se la comió), se añade la línea
  * «Texto exacto…» con las que faltan: el texto de la pieza lo escribió una persona o el motor de ideas, y es lo único
@@ -183,6 +193,7 @@ export function instruccionDeDiseno(manual) {
     "",
     "TUS HERRAMIENTAS DE DISEÑO:",
     "· Un CARRUSEL: sus láminas en orden (portada primero) en UNA sola llamada a disenar_piezas con carrusel=true y formato vertical (4:5); así quedan agrupadas en la galería. Mismo sistema en todas: el titular, los márgenes, el fondo y el logo en el mismo sitio y del mismo tamaño en cada lámina, y dilo con medidas en cada ficha.",
+    "· LOS PRODUCTOS salen del CATÁLOGO del cliente (abajo, con sus ids): por su nombre exacto en la ficha y con sus ids en «productos» de disenar_piezas (de la tanda, o de cada pieza si cambian), también en un carrusel. Así van sus fotos REALES y el motor no se inventa otro producto ni otra marca. Si no sabes de qué producto va y no lo dice el calendario ni el cerebro, PREGUNTA cuál antes de diseñar (ofrece las opciones del catálogo). Una pieza puede llevar varios productos.",
     "· disenar_piezas: de 1 a 12 piezas, una ficha cada una. La persona ve las fichas y el costo y aprueba con un botón: NO le pidas el «sí» por texto antes. Si son para publicaciones del calendario, pasa el post_id de cada una y copia su texto de la pieza TAL CUAL.",
     "· ver_lo_que_funciona: las plantillas y las imágenes que gustaron de este cliente, para que veas su estilo. Míralo antes de la primera tanda de la conversación.",
     "· Al terminar, disenar_piezas te devuelve cada imagen para que la MIRES. Si una tiene una falta de ortografía, un texto ilegible, un logo deformado o se sale del sistema, arréglala con corregir_pieza (un detalle) o pídela otra vez con disenar_piezas (la composición no sirve) ANTES de dar la tanda por buena. Di en una línea qué corregiste.",
@@ -219,7 +230,8 @@ export function limpiarPiezaEncargo(p = {}, i = 0) {
     idea: corto(p.idea, 900),
     escena: corto(p.escena, 900),
     texto: largo(p.texto, 400),
-    producto: corto(p.producto, 300),
+    // Una pieza puede hablar de VARIOS productos del catálogo (una línea por producto).
+    producto: largo(p.producto, 900),
     indicacion: corto(p.indicacion, 400),
     composicion: corto(p.composicion, 200),
     sinTexto: p.sinTexto === true,
@@ -227,6 +239,36 @@ export function limpiarPiezaEncargo(p = {}, i = 0) {
     fecha: /^\d{4}-\d{2}-\d{2}$/.test(String(p.fecha ?? "")) ? String(p.fecha) : "",
   };
 }
+
+/**
+ * Cómo piensa el director cada pieza: lo que el asistente hace en una conversación (por eso sus piezas salían mejores)
+ * dicho como un proceso. Va en todo pedido de fichas y de carrusel.
+ */
+export const RAZONA_COMO_DIRECTOR = [
+  "Piensa cada pieza como lo harías sentado con la agencia, ANTES de escribir su ficha:",
+  "1) para qué es y a quién le habla (lo que vende la marca, el producto, el tipo de contenido);",
+  "2) qué tiene que sentir o entender quien la ve en dos segundos, y cuál es la UNA idea visual que lo consigue (no la primera que se le ocurre a cualquiera: la que sólo funciona para esta marca);",
+  "3) la composición con medidas, la jerarquía del texto y dónde respira la pieza;",
+  "4) qué podría salir mal al generarla (texto muy pequeño, producto deformado, algo inventado) y cómo lo evita la ficha.",
+  "Después escribe la ficha completa: quien genera la imagen no sabe nada más que lo que dice la ficha.",
+].join("\n");
+
+/** El catálogo del cliente para quien diseña: lo único que se puede enseñar como producto. */
+export const REGLA_PRODUCTOS = "Productos y marcas: SÓLO los del catálogo del cliente, con su nombre exacto; nunca inventes un producto, un modelo, un empaque ni una marca (tampoco los de una referencia de otra marca). Si la pieza no dice cuál, escoge del catálogo el que mejor encaje o no enseñes ninguno.";
+const lineaDeCatalogo = (catalogo) => `CATÁLOGO DEL CLIENTE (lo único que existe; precios exactos):\n${largo(catalogo, 2500)}`;
+export const MAX_SOBRE_LA_MARCA = 2_500;
+
+/** Lo que es cada imagen ESPECIAL que va delante del pedido (la original de «Otra versión», la referencia de otra marca). */
+const PAPELES = Object.freeze({
+  original: (n) => `LA IMAGEN ${n} ES LA PIEZA ORIGINAL de la que se pide OTRA VERSIÓN: mírala bien. La versión nueva conserva su mensaje, su texto exacto, su producto, su paleta y su nivel de acabado, y se tiene que reconocer como de la misma campaña; lo que cambia es la composición, de forma moderada (otro encuadre, otra distribución, otro fondo o escenario), para que sea una alternativa real y no la misma imagen ni algo ajeno.`,
+  inspiracion: (n, cliente) => `LA IMAGEN ${n} ES UNA PIEZA DE OTRA MARCA que a la agencia le gustó como inspiración. Toma de ella la IDEA —el gancho, el ángulo, cómo cuenta el mensaje, el tipo de composición— y diseña una versión PROPIA de ${cliente}, ligeramente distinta: cambia la distribución, el encuadre, el fondo y el estilo de la foto lo suficiente para que nadie la reconozca como una copia. Nada de su producto, su texto, su marca, su empaque ni su logo: el producto es del catálogo de ${cliente} y los colores, los de su marca.`,
+});
+
+/** Las líneas de las imágenes especiales, en el orden en que van (las primeras del pedido). Pura. */
+export function lineaDeEspeciales(papeles = [], cliente = "la marca") {
+  return papeles.map((p, i) => PAPELES[p]?.(i + 1, cliente) ?? "").filter(Boolean).join("\n");
+}
+export const PAPELES_ESPECIALES = Object.freeze(Object.keys(PAPELES));
 
 const NOMBRE_FORMATO = { post: "post del feed", historia: "historia (9:16)", carrusel: "portada de carrusel", reel: "portada de reel (9:16)", anuncio: "anuncio" };
 
@@ -237,7 +279,11 @@ function lineaDeEncargo(p) {
     p.idea ? `   de qué va: ${p.idea}` : "",
     p.escena ? `   qué se ve (lo escribió la agencia: respétalo): ${p.escena}` : "",
     p.sinTexto ? "   SIN TEXTO en la imagen: el texto se pone después encima; deja la zona libre." : p.texto ? `   texto EXACTO de la pieza: ${lineasDelTexto(p.texto).map((l) => `«${l}»`).join(" / ")}` : "   sin texto escrito: propón un titular corto y, si hace falta, un apoyo.",
-    p.producto ? `   producto (real, con su precio exacto si se nombra): ${p.producto}` : "",
+    p.producto
+      ? (p.producto.includes("\n")
+        ? `   productos que salen JUNTOS en esta pieza (reales; precio exacto si se nombra; todos visibles y reconocibles):\n${p.producto.split("\n").map((l) => `     ${l.replace(/^-\s*/, "- ")}`).join("\n")}`
+        : `   producto (real, con su precio exacto si se nombra): ${p.producto}`)
+      : "",
     p.composicion ? `   composición sugerida por el plan: ${p.composicion}` : "",
     p.plantilla ? `   sigue la plantilla ${p.plantilla} (su sistema de diseño, con este contenido)` : "",
     p.indicacion ? `   LO QUE PIDE LA AGENCIA (manda sobre todo lo demás): ${p.indicacion}` : "",
@@ -249,19 +295,24 @@ function lineaDeEncargo(p) {
  * (paleta, estilo, reglas); `guia`: la identidad visual del cerebro; `plantillas`: las del kit; `concepto`: el de la
  * tanda si ya lo hay. Pura.
  */
-export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], marca = "", guia = "", plantillas = [], manual = null, concepto = "", productos = "", correcciones = [], vistas = 0 }) {
+export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], marca = "", guia = "", plantillas = [], manual = null, concepto = "", productos = "", catalogo = "", sobreLaMarca = "", correcciones = [], vistas = 0, especiales = [], previas = [], serie = 0 }) {
   const lista = piezas.slice(0, MAX_FICHAS).map(limpiarPiezaEncargo);
+  const enSerie = lista.length > 1 || serie > 1;
   return [
-    lineaDeVistas(vistas),
-    `Eres el director creativo y diseñador gráfico de una agencia en Panamá. Diseña ${lista.length === 1 ? "esta pieza" : `estas ${lista.length} piezas`} de redes sociales para ${cliente}${rubro ? ` (${rubro})` : ""}${lista.length > 1 ? ", como una serie coherente" : ""}.`,
-    "Antes de escribir, razona: para qué es cada pieza, qué la hace funcionar, y el sistema visual de la serie. Después escribe la ficha de cada una, completa: quien genera la imagen no sabe nada más que lo que dice la ficha.",
+    lineaDeEspeciales(especiales, cliente),
+    lineaDeVistas(vistas, { desde: especiales.length + 1 }),
+    `Eres el director creativo y diseñador gráfico de una agencia en Panamá. Diseña ${lista.length === 1 ? "esta pieza" : `estas ${lista.length} piezas`} de redes sociales para ${cliente}${rubro ? ` (${rubro})` : ""}${enSerie ? `, ${lista.length === 1 ? "parte de una serie coherente" : "como una serie coherente"}` : ""}.`,
+    RAZONA_COMO_DIRECTOR,
     "",
     "MANUAL DEL DIRECTOR (síguelo siempre):",
     manualDeDiseno(manual),
     "",
     marca ? `LA MARCA (obligatorio en toda pieza):\n${marca}` : "Este cliente aún no tiene kit de marca: toma los colores y el estilo de la identidad de abajo; si no hay, usa una paleta sobria de dos colores y dilo en la ficha.",
+    sobreLaMarca ? `\nLO QUE SE SABE DE ${String(cliente).toUpperCase()} (su ficha técnica en el cerebro: qué vende, a quién, cómo habla):\n${largo(sobreLaMarca, MAX_SOBRE_LA_MARCA)}` : "",
     guia ? `\nIDENTIDAD VISUAL (del cerebro del cliente):\n${largo(guia, 3500)}` : "",
-    productos ? `\nPRODUCTOS (precios exactos; no inventes otros):\n${largo(productos, 1500)}` : "",
+    productos ? `\nPRODUCTOS DE ESTAS PIEZAS (precios exactos; no inventes otros):\n${largo(productos, 1500)}` : "",
+    catalogo ? `\n${lineaDeCatalogo(catalogo)}` : "",
+    previas.length ? `\nPIEZAS DE ESTA SERIE QUE YA DISEÑASTE (síguelas en el sistema visual —tipografía, márgenes, logo, paleta— y NO repitas su composición):\n${previas.slice(0, 3).map((f, i) => `${i + 1}. ${corto(f, 700)}`).join("\n")}` : "",
     plantillas.length ? `\nPLANTILLAS DE ESTE CLIENTE (diseños que ya funcionaron; si una encaja, síguela y di su id en «plantilla»; la que «ES LA DE» un tipo se usa en las piezas de ese tipo salvo que la pieza diga otra):\n${plantillas.map(lineaDePlantilla).join("\n")}` : "",
     bloqueDeDisenoPorTipo(lista.map((p) => p.tipo), manual) ? `\n${bloqueDeDisenoPorTipo(lista.map((p) => p.tipo), manual)}` : "",
     lineaDeCorrecciones(correcciones),
@@ -274,7 +325,7 @@ export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], 
     FORMATO_FICHA,
     `En una pieza SIN TEXTO, la línea de texto es: ${FICHA_SIN_TEXTO}`,
     "",
-    "Reglas: español latino neutro; el texto exacto de cada pieza, copiado letra por letra entre «»; nada de precios, descuentos, sellos ni reseñas que no estén arriba; ningún logo de otra marca.",
+    `Reglas: español latino neutro; el texto exacto de cada pieza, copiado letra por letra entre «»; nada de precios, descuentos, sellos ni reseñas que no estén arriba; ningún logo de otra marca. ${REGLA_PRODUCTOS}`,
     'Responde SOLO con JSON: {"concepto":"la idea que une la serie y su sistema visual, en 1 o 2 frases","piezas":[{"n":1,"ficha":"Pieza: …\\nComposición: …","plantilla":""}]}',
   ].filter((l) => l !== "").join("\n");
 }
@@ -360,9 +411,11 @@ export const lineaDeCorrecciones = (lista = []) => (lista.length
   : "");
 
 /** Cuando el director VE imágenes del cliente (plantillas y «Me gusta»): qué son. Pura. */
-export const lineaDeVistas = (n) => (n
-  ? `Las ${n === 1 ? "imagen de arriba es" : `${n} imágenes de arriba son`} plantillas y piezas que le gustaron a la agencia de este cliente: ese es el nivel y el estilo a igualar (no copies su contenido).`
-  : "");
+export const lineaDeVistas = (n, { desde = 1 } = {}) => {
+  if (!n) return "";
+  if (desde > 1) return `${n === 1 ? `La imagen ${desde} es una plantilla o pieza` : `Las imágenes ${desde} a ${desde + n - 1} son plantillas y piezas`} que le gustaron a la agencia de este cliente: ese es el nivel y el estilo a igualar (no copies su contenido).`;
+  return `Las ${n === 1 ? "imagen de arriba es" : `${n} imágenes de arriba son`} plantillas y piezas que le gustaron a la agencia de este cliente: ese es el nivel y el estilo a igualar (no copies su contenido).`;
+};
 
 // ------------------------------------------------------------
 // El carrusel, diseñado por el director
@@ -375,26 +428,29 @@ const REGLA_SERIE = "Un carrusel es UNA serie: el titular en la MISMA zona, del 
  * Lo que se le pide al director para un carrusel: con el guion (`laminas`: las de partirGuion) o sólo un tema, de 5 a 7
  * láminas. Devuelve el sistema de la serie y la ficha de cada lámina con su texto exacto. Pura.
  */
-export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [], tema = "", tipo = "", estilo = "", producto = "", personajes = [], marca = "", guia = "", plantillas = [], manual = null, correcciones = [], vistas = 0, estructura = "" }) {
+export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [], tema = "", tipo = "", estilo = "", producto = "", personajes = [], marca = "", guia = "", plantillas = [], manual = null, correcciones = [], vistas = 0, estructura = "", catalogo = "", sobreLaMarca = "" }) {
   const conGuion = laminas.length >= 2;
   const deCarrusel = plantillas.filter((p) => p.uso === "portada" || p.uso === "lamina");
   return [
     lineaDeVistas(vistas),
     `Eres el director creativo y diseñador gráfico de una agencia en Panamá. Diseña un carrusel de Instagram (cada lámina vertical 4:5) de ${cliente}${rubro ? ` (${rubro})` : ""}. Un generador de imágenes hará las láminas UNA a una, cada una con la anterior y la portada de referencia, y sólo sabe lo que diga la ficha.`,
+    RAZONA_COMO_DIRECTOR.replace("cada pieza", "el carrusel y cada lámina"),
     conGuion
       ? `EL GUION (respeta su orden y sus datos; puedes acortar un texto que no quepa, sin cambiar precios ni cifras):\n${laminas.map((l) => `${l.n}. (${l.rol}) ${String(l.texto).replace(/\s+/g, " ").slice(0, 400)}`).join("\n")}`
       : `No hay guion: escribe ${estructura ? "las láminas" : "de 5 a 7 láminas"} sobre este tema: ${corto(tema, 400)}${estructura ? `\nSigue esta ${corto(estructura, 400)} (la portada promete algo concreto de esa estructura, no un título genérico).` : ""}`,
     conGuion && tema ? `Tema: ${corto(tema, 300)}` : "",
     tipo ? `Tipo de contenido: ${tipo}.` : "",
     estilo ? `Estilo visual: ${corto(estilo, 300)}` : "",
-    producto ? `Producto (real, precio exacto si se nombra): ${corto(producto, 300)}` : "",
+    producto ? (producto.includes("\n") ? `Productos de este carrusel (reales, precio exacto si se nombra):\n${largo(producto, 900)}` : `Producto (real, precio exacto si se nombra): ${corto(producto, 300)}`) : "",
     personajes.length ? `Personajes de la marca (salen IGUAL donde aparezcan): ${personajes.join("; ")}` : "",
     "",
     "MANUAL DEL DIRECTOR (síguelo siempre):",
     manualDeDiseno(manual),
     "",
     marca ? `LA MARCA (obligatorio en toda lámina):\n${marca}` : "Este cliente aún no tiene kit de marca: toma los colores y el estilo de la identidad de abajo.",
+    sobreLaMarca ? `\nLO QUE SE SABE DE ${String(cliente).toUpperCase()} (su ficha técnica en el cerebro):\n${largo(sobreLaMarca, MAX_SOBRE_LA_MARCA)}` : "",
     guia ? `\nIDENTIDAD VISUAL (del cerebro del cliente):\n${largo(guia, 3000)}` : "",
+    catalogo ? `\n${lineaDeCatalogo(catalogo)}` : "",
     deCarrusel.length ? `\nPLANTILLAS DE CARRUSEL DE ESTE CLIENTE (si una encaja, sigue su sistema; la que «ES LA DE» este tipo, síguela):\n${deCarrusel.map(lineaDePlantilla).join("\n")}` : "",
     tipo && disenoDelTipo(tipo, manual) ? `\nCÓMO SE DISEÑA ESTE TIPO (${corto(tipo, 60)}): ${disenoDelTipo(tipo, manual)}` : "",
     lineaDeCorrecciones(correcciones),
@@ -405,7 +461,7 @@ export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [
     "LA FICHA de cada lámina, una línea por apartado y sin líneas en blanco:",
     FORMATO_FICHA,
     "",
-    "Reglas: español latino neutro; el texto de cada lámina, corto (se lee en dos segundos), copiado letra por letra entre «» en su ficha; nada de precios, descuentos, sellos ni reseñas que no estén arriba; ningún logo de otra marca.",
+    `Reglas: español latino neutro; el texto de cada lámina, corto (se lee en dos segundos), copiado letra por letra entre «» en su ficha; nada de precios, descuentos, sellos ni reseñas que no estén arriba; ningún logo de otra marca. ${REGLA_PRODUCTOS}`,
     'Responde SOLO con JSON: {"sistema":"el sistema de la serie en una o dos frases, con medidas","laminas":[{"n":1,"texto":"titular\\napoyo","ficha":"Pieza: …\\nComposición: …"}]}',
   ].filter((l) => l !== "").join("\n");
 }

@@ -86,21 +86,22 @@ export function encargoDeIdea(idea, { modo = "ia", formato = "post", piezaDe = (
   };
 }
 
-/** Cuántas piezas diseña el director por llamada en el lote. */
+/** Cuántas piezas se le mandan al director por petición (dentro, cada una es su propia llamada: fichas.js). */
 const TANDA_FICHAS = 6;
 
 /**
- * Las ideas con su ficha del director de arte (`ficha`), en tandas de 6. Las que ya traen su pedido listo y no tienen
- * nada que cambiar no esperan. Si una tanda falla, sus ideas siguen sin ficha (se diseñan una a una al crear).
+ * Las ideas con su ficha del director de arte (`ficha`), de 6 en 6 por petición. TODAS pasan por el director: el
+ * borrador del motor de ideas (`imagen`) ya no se lo salta. Si una tanda falla, sus ideas siguen sin ficha (se
+ * diseñan una a una al crear).
  */
 export async function conFichas({ ideas, clienteId, modo = "ia", formato = "post", piezaDe = () => "", indicacion = "", seguir = () => true }) {
   const salida = ideas.map((i) => ({ ...i }));
-  const faltan = salida.filter((i) => !i.ficha && !(modo === "ia" && i.imagen && !indicacion && !i.pide));
+  const faltan = salida.filter((i) => !i.ficha);
   let concepto = "";
   for (let k = 0; k < faltan.length && seguir(); k += TANDA_FICHAS) {
     const tanda = faltan.slice(k, k + TANDA_FICHAS);
     try {
-      const r = await api.fichasDeDiseno(clienteId, { concepto, piezas: tanda.map((i, j) => ({ n: j + 1, ...encargoDeIdea(i, { modo, formato, piezaDe, indicacion }) })) });
+      const r = await api.fichasDeDiseno(clienteId, { concepto, serie: faltan.length, piezas: tanda.map((i, j) => ({ n: j + 1, ...encargoDeIdea(i, { modo, formato, piezaDe, indicacion }) })) });
       concepto ||= r?.concepto ?? "";
       tanda.forEach((i, j) => {
         const f = r?.fichas?.[j + 1];

@@ -13,31 +13,26 @@
 
 import { llamarIA } from "../cerebro/ia.js";
 import { pautasDe, bloqueDePautas } from "../cerebro/cerebro.js";
-import { leerMercado } from "../mercado.js";
-import { kitDe } from "./kit.js";
-import { guiaVisual, manualDelEspacio, correccionesDelCliente, limpiarVistas, conVistas } from "./fichas.js";
-import { productosActivos, lineaDeProducto } from "../../../src/lib/estudioMercado.js";
+import { contextoDelDirector, idsDeProductos, limpiarVistas, conVistas } from "./fichas.js";
+import { lineaDeProducto } from "../../../src/lib/estudioMercado.js";
 import { partirGuion } from "../../../src/lib/carrusel.js";
 import { pedidoDeCarrusel, leerCarrusel } from "../../../src/lib/director.js";
 import { estructuraDe, estructuraPara, lineaDeEstructura } from "../../../src/lib/estructurasCarrusel.js";
 import { estructurasRecientes } from "./lote.js";
 import { nombreDePreset, lineaDeEstilo, estiloDeLaPieza, bloqueDeMarca, kitVacio } from "../../../src/lib/kitMarca.js";
 
-/** `datos`: { guion?, tema?, preset?, estilo?, productoId?, personajes?: [ids], vistas? } → { hilo, laminas: [{ n, rol, texto, ficha }] } */
+/** `datos`: { guion?, tema?, preset?, estilo?, productoId?, productoIds?, personajes?: [ids], vistas? } → { hilo, laminas: [{ n, rol, texto, ficha }] } */
 export async function propuestaDeCarrusel(env, acceso, cliente, datos = {}) {
   const laminas = partirGuion(String(datos.guion ?? "").slice(0, 6000));
   const tema = String(datos.tema ?? "").slice(0, 400);
   if (laminas.length < 2 && !tema.trim()) throw Object.assign(new Error("Escribe el guion (una lámina por línea) o el tema del carrusel."), { estado: 400 });
-  const kit = kitDe(cliente);
   const preset = String(datos.preset ?? "");
-  let producto = "";
-  if (datos.productoId) {
-    try {
-      const { catalogo, inventario } = await leerMercado(acceso, cliente.id);
-      const p = productosActivos(catalogo).find((x) => x.id === datos.productoId);
-      if (p) producto = lineaDeProducto(p, { inventario }).slice(2);
-    } catch { /* sin catálogo, sin producto */ }
-  }
+  // Lo mismo que lee el director de un post: el catálogo entero, la ficha técnica y la identidad visual del cerebro.
+  const ctx = await contextoDelDirector(env, acceso, cliente);
+  const kit = ctx.kit;
+  const lineas = idsDeProductos(datos).map((id) => ctx.activos.find((x) => x.id === id)).filter(Boolean)
+    .map((p) => lineaDeProducto(p, { inventario: ctx.mercado?.inventario }));
+  const producto = lineas.length > 1 ? lineas.join("\n") : lineas.length ? lineas[0].slice(2) : "";
   // Sólo con un tema, la estructura la pone el código (la de la publicación, o una del tipo que el cliente no usó
   // hace poco): si no, todos los carruseles salían con la misma forma.
   let estructura = "";
@@ -47,22 +42,21 @@ export async function propuestaDeCarrusel(env, acceso, cliente, datos = {}) {
   }
   const ids = Array.isArray(datos.personajes) ? datos.personajes.map(String) : [];
   const personajes = kit.personajes.filter((p) => ids.includes(p.id)).map((p) => `${p.nombre}${p.descripcion ? `: ${p.descripcion}` : ""}`);
-  const [guia, manual, correcciones, pautasNotas] = await Promise.all([
-    guiaVisual(env, acceso, cliente.id), manualDelEspacio(acceso), correccionesDelCliente(acceso, cliente.id), pautasDe(env, acceso, cliente.id),
-  ]);
   // Las pautas para escribir del cerebro (la jerarquía, el tono de los textos de las láminas): detrás del pedido.
-  const pautas = bloqueDePautas(pautasNotas);
+  const pautas = bloqueDePautas(await pautasDe(env, acceso, cliente.id));
   const imagenes = limpiarVistas(datos.vistas);
   const pedido = [pedidoDeCarrusel({
     cliente: cliente.name, rubro: cliente.industry ?? "", laminas, tema, producto, personajes,
     tipo: preset ? nombreDePreset(preset, kit) : "",
     estilo: lineaDeEstilo(kit, estiloDeLaPieza(kit, preset, String(datos.estilo ?? ""))),
-    marca: kitVacio(kit) ? "" : bloqueDeMarca(kit), guia, plantillas: kit.plantillas, manual, correcciones, vistas: imagenes.length,
+    marca: kitVacio(kit) ? "" : bloqueDeMarca(kit), guia: ctx.guia, sobreLaMarca: ctx.sobreLaMarca, catalogo: ctx.catalogo,
+    plantillas: kit.plantillas, manual: ctx.manual, correcciones: ctx.correcciones, vistas: imagenes.length,
     estructura: estructura ? lineaDeEstructura(estructura) : "",
   }), pautas].filter(Boolean).join("\n\n");
   const r = await llamarIA(env, acceso, cliente, {
     prompt: conVistas(imagenes, pedido),
-    salida: 900 * Math.max(laminas.length, 7) + 1200,
+    // Cada lámina con su ficha completa, y aire para pensar la serie entera.
+    salida: 1_100 * Math.max(laminas.length, 7) + 1600,
     funcion: "director de arte",
   });
   const propuesta = leerCarrusel(r.texto);

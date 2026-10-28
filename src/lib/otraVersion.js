@@ -28,7 +28,9 @@ import { ajustesDe, estimar, modeloPorId, porPrecio, MODELOS, CONFIRMAR_DESDE, M
 import { TOMA_DE_OTRA_MARCA, NOTA_OTRA_MARCA } from "./recrear";
 import { ideaDelPedido, conOtraEscena, nombreDePreset, referenciaDePlantilla, lineaDePlantillaEnPedido } from "./kitMarca";
 import { apoyosDePieza, pedidoDePieza, lineaDeTexto } from "./pieza";
-import { presetDePilar } from "./pilares";
+import { presetDePilar, productosDelPost } from "./pilares";
+import { productosNombrados } from "./referencias";
+import { textoDeLaFicha } from "./director";
 import { promptListo } from "./promptImagen";
 import { esperarArchivos } from "./carruselEstudio";
 import { controlEncendido, controlarYCorregir } from "./controlEstudio";
@@ -48,10 +50,29 @@ export const lineaDeIndicacion = (indicacion) => {
 /** La idea con lo que pidió la persona DELANTE. Pura. */
 export const conIndicacion = (idea, indicacion) => [lineaDeIndicacion(indicacion), String(idea ?? "").trim()].filter(Boolean).join("\n");
 /** Lo que el director de arte necesita de una publicación (src/lib/director.js). Pura. */
-const encargoDelPost = (post, { indicacion = "", proporcion = "", pieza = "", plantilla = "" } = {}) => ({
+const encargoDelPost = (post, { indicacion = "", proporcion = "", pieza = "", plantilla = "", texto = null } = {}) => ({
   tipo: "imagen", pieza, formato: post.format === "historia" ? "historia" : "post", proporcion,
-  texto: post.format === "carrusel" ? "" : post.textoPieza ?? "", productoId: post.productoId ?? "", indicacion, ...(plantilla ? { plantilla } : {}),
+  texto: texto ?? (post.format === "carrusel" ? "" : post.textoPieza ?? ""),
+  productoId: post.productoId ?? "", productoIds: productosDelPost(post), indicacion, ...(plantilla ? { plantilla } : {}),
 });
+
+/**
+ * Las fotos REALES de los productos de la pieza: los de la publicación (pueden ser varios) y los que nombre la ficha del
+ * director (si la publicación no decía cuál, el director escoge del catálogo y aquí van sus fotos). Pura.
+ */
+export function fotosDeLaPieza(productos = [], post = {}, ficha = "") {
+  const ids = [...productosDelPost(post), ...productosNombrados(productos, ficha).map((p) => p.id)];
+  return api.fotosDeVariosProductos(productos, ids, 8);
+}
+
+/** Lo que se le pide al director para OTRA VERSIÓN de una pieza: la misma información y el mismo texto. Pura. */
+export function ideaDeOtraVersion(anterior = "", { conTexto = true } = {}) {
+  return [
+    "OTRA VERSIÓN de la pieza original (es la imagen que ves): el mismo mensaje, el mismo producto y el MISMO texto exacto, con la misma marca y el mismo nivel de acabado; que se reconozca como de la misma campaña. Cambia la composición de forma moderada: otro encuadre, otra distribución o otro fondo.",
+    conTexto ? "" : "El texto es el que se lee en la imagen original: cópialo exacto, sin cambiar, quitar ni añadir una palabra.",
+    anterior ? `La ficha o escena con la que se hizo la original:\n${anterior}` : "",
+  ].filter(Boolean).join("\n");
+}
 
 /** Los motores con llave y lo del Estudio del cliente, de una vez. */
 async function leerTodo(clienteId) {
@@ -92,12 +113,16 @@ async function prepararVersion({ clienteId, client, post, medio, g, activos, ind
   const pieza = preset ? nombreDePreset(preset, kit) : "";
   if (archivo && trabajo && suyo && !archivo.ajustes?.plantilla && (suyo.motor === "prueba" || activos[suyo.motor])) {
     const { escena, cola } = api.partirEscena(ideaDelPedido(archivo.prompt));
-    // El director de arte escribe la ficha de la versión nueva: la misma información, otra composición.
+    // El director de arte MIRA la original y escribe la ficha de la versión nueva: el mismo mensaje y el MISMO texto
+    // (el de la publicación o el de la ficha de la original), otra composición moderada. Antes se le decía «DISTINTA,
+    // otra escena» sin enseñarle la imagen, y salían piezas raras, a veces sin texto.
+    const texto = post.format === "carrusel" ? "" : (post.textoPieza || textoDeLaFicha(escena) || "");
     const r = await api.mejorarIdea(clienteId, {
-      ...encargoDelPost(post, { indicacion, pieza, proporcion: archivo.ajustes?.aspectRatio ?? "" }),
-      idea: `Otra versión DISTINTA de esta pieza: la misma información y el mismo texto, con otra composición, otro encuadre y otra escena. La de antes era:\n${escena}`,
+      ...encargoDelPost(post, { indicacion, pieza, proporcion: archivo.ajustes?.aspectRatio ?? "", texto }),
+      idea: ideaDeOtraVersion(escena, { conTexto: Boolean(texto) }),
+      especiales: [{ papel: "original", src: medio.src }],
     }).catch(() => null);
-    const nueva = r?.idea || (await api.versionesDeIdea(clienteId, { idea: conIndicacion(escena, indicacion), n: 1, tipo: "imagen" }).catch(() => null))?.versiones?.[0];
+    const nueva = r?.idea || (await api.versionesDeIdea(clienteId, { idea: conIndicacion(escena, indicacion), n: 1, tipo: "imagen", texto, original: medio.src }).catch(() => null))?.versiones?.[0];
     if (nueva) {
       const medios = Object.fromEntries(Object.entries(trabajo.medios ?? {}).filter(([, l]) => Array.isArray(l) && l.length));
       const ajustes = ajustesDe(suyo, archivo.ajustes ?? trabajo.ajustes ?? {}, medios);
@@ -114,10 +139,11 @@ async function prepararVersion({ clienteId, client, post, medio, g, activos, ind
   const aspectRatio = proporcionPara(modelo, post, medio);
   const r = await api.mejorarIdea(clienteId, {
     ...encargoDelPost(post, { indicacion, pieza, proporcion: aspectRatio }),
-    idea: `${base}\nUna versión DISTINTA de la que había: otra composición, otro encuadre y otra escena, con la misma información.`,
+    idea: `${ideaDeOtraVersion("", { conTexto: Boolean(post.textoPieza) })}\nDe qué va la publicación: ${base}`,
+    especiales: medio?.tipo === "video" ? [] : [{ papel: "original", src: medio.src }],
   }).catch(() => null);
-  const escena = r?.idea || `${base} Una composición distinta a la anterior: otro encuadre y otra escena.`;
-  const fotos = api.fotosDelProducto(g?.productos ?? [], post.productoId ?? "");
+  const escena = r?.idea || `${base} Otra versión de la imagen que había: el mismo mensaje, con otro encuadre.`;
+  const fotos = fotosDeLaPieza(g?.productos ?? [], post, escena);
   const apoyos = apoyosDePieza({ kit, preset, archivos: g?.archivos ?? [], fotos, modelo });
   const pedido = pedidoDePieza({
     kit, idea: conIndicacion(escena, indicacion), preset, apoyos, modelo, marca: client.name, rubro: client.industry ?? "", aspectRatio,
@@ -181,7 +207,7 @@ export async function crearImagenDelPost({ client, post, indicacion = "", opcion
     idea = r?.idea || base;
     if (r?.idea && !algoCambia) alMejorar(r.idea);
   }
-  const fotos = api.fotosDelProducto(g?.productos ?? [], post.productoId ?? "");
+  const fotos = fotosDeLaPieza(g?.productos ?? [], post, idea);
   const apoyos = apoyosDePieza({ kit, preset, estilo: opciones.estilo || "", archivos: g?.archivos ?? [], fotos, manuales: plantilla ? [plantilla] : [], modelo });
   // El texto exacto ya va dentro de la idea (el pedido listo o la ficha): no se repite.
   const pedido = pedidoDePieza({
@@ -224,11 +250,11 @@ export async function recrearConLaMarca({ client, post, medio, indicacion = "", 
   alProgresar("Preparando la versión con tu marca…");
   const { g, activos } = await leerTodo(clienteId);
   const kit = g?.kit ?? {};
-  const fotos = api.fotosDelProducto(g?.productos ?? [], post.productoId ?? "");
+  const fotos = api.fotosDelPost(g?.productos ?? [], post);
   const contexto = api.promptDePublicacion(post, { conTexto: false });
   const idea = [
     lineaDeIndicacion(indicacion),
-    `Recrea la pieza de referencia para ${client.name}: conserva su forma (composición, encuadre, ritmo${video ? ", planos y movimiento de cámara" : ""}), pero con el producto, la marca y el mensaje de ${client.name}; nada del producto, el texto ni el logo de la referencia.`,
+    `Recrea la idea de la pieza de referencia para ${client.name}: toma su idea y su tipo de composición${video ? ", su ritmo y sus planos" : ""}, pero en una versión propia, ligeramente distinta (otro encuadre, otra distribución, otro escenario), con el producto, la marca y el mensaje de ${client.name}; nada del producto, el texto ni el logo de la referencia.`,
     contexto ? `De qué va: ${contexto}` : "",
   ].filter(Boolean).join(" ");
 
@@ -244,15 +270,38 @@ export async function recrearConLaMarca({ client, post, medio, indicacion = "", 
     modelo = api.modeloPreferido(activos, "imagen", kit.modelos?.imagen);
     if (!(modelo?.referencias > 0)) modelo = porPrecio(MODELOS.filter((x) => x.tipo === "imagen" && x.referencias > 0 && activos[x.motor]), activos)[0] ?? null;
     if (!modelo) throw new Error("No hay ningún modelo de imagen con referencias y con llave (Ajustes → IA).");
-    // La referencia va PRIMERO (si no cabe, no hay nada que recrear) y dice qué se toma de ella; luego el producto real.
-    const deLaReferencia = { clave: ref.clave, toma: [...TOMA_DE_OTRA_MARCA], nota: NOTA_OTRA_MARCA };
-    const apoyos = apoyosDePieza({ kit, preset: presetDePilar(post.pilar, post.pilarSub), archivos: g?.archivos ?? [], fotos: [deLaReferencia, ...fotos], modelo });
+    const preset = presetDePilar(post.pilar, post.pilarSub);
     const deseada = PARA_HISTORIA.has(post.format) ? "9:16" : api.proporcionDeMedidas(medio.ancho, medio.alto) || "4:5";
     const valores = modelo.ajustes?.aspectRatio?.valores ?? [];
-    pedido = pedidoDePieza({
-      kit, idea, preset: presetDePilar(post.pilar, post.pilarSub), apoyos, modelo, marca: client.name, rubro: client.industry ?? "",
-      aspectRatio: valores.includes(deseada) ? deseada : "", proporcion: deseada, activos, extra: post.format === "carrusel" ? "" : lineaDeTexto(post.textoPieza),
-    });
+    // El DIRECTOR mira la referencia y diseña una versión PROPIA, ligeramente distinta, con el catálogo del cliente. La
+    // referencia ya no va al motor de imagen: con ella delante (aunque se le dijera «sólo la composición») el motor la
+    // copiaba casi exacta, y la otra marca la habría reconocido.
+    alProgresar("El director está mirando la referencia…");
+    const r = await api.mejorarIdea(clienteId, {
+      ...encargoDelPost(post, { indicacion, pieza: preset ? nombreDePreset(preset, kit) : "", proporcion: valores.includes(deseada) ? deseada : "" }),
+      idea: [
+        `Recrea para ${client.name} la IDEA de la pieza de otra marca que ves: una versión propia, ligeramente distinta, que no se reconozca como copia.`,
+        contexto ? `De qué va la publicación: ${contexto}` : "",
+        productosDelPost(post).length ? "" : "La publicación no dice qué producto: escoge del catálogo el que mejor encaje con la idea de la referencia.",
+      ].filter(Boolean).join("\n"),
+      especiales: [{ papel: "inspiracion", src: medio.src }],
+    }).catch(() => null);
+    if (r?.idea) {
+      const deLaFicha = fotosDeLaPieza(g?.productos ?? [], post, r.idea);
+      const apoyos = apoyosDePieza({ kit, preset, archivos: g?.archivos ?? [], fotos: deLaFicha, modelo });
+      pedido = pedidoDePieza({
+        kit, idea: conIndicacion(r.idea, indicacion), preset, apoyos, modelo, marca: client.name, rubro: client.industry ?? "",
+        aspectRatio: valores.includes(deseada) ? deseada : "", proporcion: deseada, activos,
+      });
+    } else {
+      // Sin director (sin saldo, sin red): la referencia va al motor, sólo por su idea y con la orden de no copiarla.
+      const deLaReferencia = { clave: ref.clave, toma: [...TOMA_DE_OTRA_MARCA], nota: NOTA_OTRA_MARCA };
+      const apoyos = apoyosDePieza({ kit, preset, archivos: g?.archivos ?? [], fotos: [deLaReferencia, ...fotos], modelo });
+      pedido = pedidoDePieza({
+        kit, idea, preset, apoyos, modelo, marca: client.name, rubro: client.industry ?? "",
+        aspectRatio: valores.includes(deseada) ? deseada : "", proporcion: deseada, activos, extra: post.format === "carrusel" ? "" : lineaDeTexto(post.textoPieza),
+      });
+    }
     modelo = modeloPorId(pedido.modelo) ?? modelo;
   }
   const costo = estimar(modelo, 1, pedido.ajustes);

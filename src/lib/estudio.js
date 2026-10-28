@@ -14,6 +14,7 @@ import { pedir } from "./db";
 import { imagenParaModelo } from "./medios";
 import { estaVivo, diasQueQuedan, modeloPorId, modeloPorDefecto, VOCES_OMNI, ajustesDe } from "./estudioCatalogo";
 import { composicionDe } from "./loteAnuncios";
+import { productosDelPost } from "./pilares";
 // Lo de editar una imagen vive en un módulo puro: también lo usa el Worker (los encargos del servidor).
 export { proporcionDeMedidas, promptDeEdicion, pedidoDeCorreccion, modeloParaEditar } from "./edicion";
 
@@ -70,7 +71,19 @@ export async function vistasDelCliente(clienteId) {
     return [];
   }
 }
-const conVistas = async (clienteId, datos = {}) => (datos.vistas ? datos : { ...datos, vistas: await vistasDelCliente(clienteId) });
+/**
+ * Las imágenes ESPECIALES que el director mira antes que nada ({ papel, src }: la original de «Otra versión», la pieza
+ * de otra marca de «Recrear con mi marca»), como copias de 768 px en JPEG. La que no se pueda leer se queda fuera.
+ */
+async function conEspeciales(datos = {}) {
+  const lista = Array.isArray(datos.especiales) ? datos.especiales : [];
+  if (!lista.length) return datos;
+  const especiales = (await Promise.all(lista.slice(0, 2).map((e) => (e?.data ? Promise.resolve(e) : e?.src
+    ? imagenParaModelo(e.src, 768).then((data) => ({ papel: e.papel, media_type: "image/jpeg", data })).catch(() => null)
+    : Promise.resolve(null))))).filter(Boolean);
+  return { ...datos, especiales };
+}
+const conVistas = async (clienteId, datos = {}) => conEspeciales(datos.vistas ? datos : { ...datos, vistas: await vistasDelCliente(clienteId) });
 /** El reel: el guion por planos → { hilo, planos: [{ n, desde, hasta, escena, texto, camara }], sonido, descripcion } (texto). */
 export const guionDeReel = (clienteId, datos) => pedir(`${base(clienteId)}/reel/guion`, post(datos));
 /** «Revisar como director comercial»: `{ idea, cambios }` (no guarda). */
@@ -78,8 +91,14 @@ export const revisarComoDirector = (clienteId, datos) => pedir(`${base(clienteId
 
 /** «Dame ideas» de carrusel o de reel IA: { preset?, tema?, productoId?, n?, usados? } → `{ ideas }` (texto). */
 export const ideasDeFormato = (clienteId, formato, datos) => pedir(`${base(clienteId)}/${formato === "reel" ? "reel" : "carrusel"}/ideas`, post(datos));
-/** «Otra versión distinta»: { idea, n, tipo } → { versiones: [escena] } (texto: no gasta en el motor). */
-export const versionesDeIdea = (clienteId, datos) => pedir(`${base(clienteId)}/versiones`, post(datos));
+/** «Otra versión distinta»: { idea, n, tipo, original?, texto? } → { versiones: [escena o ficha] } (texto: no gasta en el motor). */
+export const versionesDeIdea = async (clienteId, { original, ...datos } = {}) => {
+  // Con la imagen original (su ruta), el director la mira para hacer la versión: la misma información, el mismo texto.
+  const conOriginal = original && datos.tipo !== "video"
+    ? await imagenParaModelo(original, 768).then((data) => ({ ...datos, original: { media_type: "image/jpeg", data } })).catch(() => datos)
+    : datos;
+  return pedir(`${base(clienteId)}/versiones`, post(conOriginal));
+};
 /** El guion de un video corto (8 o 10 s): `{ guion, prompt }`. Texto: no pide nada al motor. */
 export const escribirGuionCorto = (clienteId, datos) => pedir(`${base(clienteId)}/guion-corto`, post(datos));
 
@@ -594,7 +613,7 @@ export function formularioInicial(motores, inicial, productos = [], fijados = {}
   const medios = MEDIOS_VACIOS();
   if (inicial?.inicio) medios.start = [inicial.inicio];
   // Desde una publicación de un producto con fotos en el catálogo, sus fotos van de referencia: sale el producto REAL.
-  const delProducto = tipo === "imagen" && !inicial?.inicio ? fotosDelProducto(productos, inicial?.post?.productoId) : [];
+  const delProducto = tipo === "imagen" && !inicial?.inicio ? fotosDelPost(productos, inicial?.post ?? {}) : [];
   // Lo que llega de fuera (la pieza de la que se pide otra versión, una referencia de la competencia) y las fotos del producto.
   const referencias = [...(inicial?.referencias ?? []), ...delProducto.filter((f) => !(inicial?.referencias ?? []).some((r) => r.clave === f.clave))];
   if (referencias.length) medios.reference = referencias.slice(0, m.referencias || 0);
@@ -605,3 +624,9 @@ export function formularioInicial(motores, inicial, productos = [], fijados = {}
     ajustes: ajustesDe(m, { ...(inicial?.ajustes ?? {}), ...(inicial?.proporcion ? { aspectRatio: inicial.proporcion } : {}) }, clavesDe(medios)),
   };
 }
+
+/**
+ * Las fotos REALES de todos los productos de una publicación (el principal y los que salen con él), una de cada uno
+ * antes que la segunda de ninguno (`fotosDeVariosProductos`). Quien arma la pieza recorta a lo que cabe en el modelo.
+ */
+export const fotosDelPost = (productos = [], post = {}, huecos = 8) => fotosDeVariosProductos(productos, productosDelPost(post), huecos);

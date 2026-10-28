@@ -621,7 +621,11 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
   const disenarPiezas = useCallback(async (entrada) => {
     if (!client) return { ok: false, mensaje: "Abre el asistente dentro de un cliente para diseñar." };
     // Un carrusel es 4:5 en todas sus láminas, diga lo que diga cada una.
-    const piezas = (Array.isArray(entrada.piezas) ? entrada.piezas : []).slice(0, 12).map((p) => (entrada.carrusel === true ? { ...p, formato: "vertical" } : p));
+    // Los productos de la tanda (los ids del catálogo) valen para cada pieza que no diga los suyos: así van sus fotos.
+    const deLaTanda = Array.isArray(entrada.productos) ? entrada.productos : [];
+    const piezas = (Array.isArray(entrada.piezas) ? entrada.piezas : []).slice(0, 12)
+      .map((p) => ({ ...p, productos: Array.isArray(p.productos) && p.productos.length ? p.productos : deLaTanda }))
+      .map((p) => (entrada.carrusel === true ? { ...p, formato: "vertical" } : p));
     if (!piezas.length) return { ok: false, mensaje: "No mandaste ninguna pieza." };
     setProgreso("Preparando el plan con el kit de la marca…");
     const mod = await import("../lib/disenoChat");

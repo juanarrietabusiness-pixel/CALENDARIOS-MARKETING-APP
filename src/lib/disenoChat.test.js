@@ -39,6 +39,29 @@ const ctx = (activos = { meta: true, gemini: true }) => ({
 describe("las herramientas de diseño del asistente", () => {
   beforeEach(() => { pedidos.length = 0; fichasPedidas.length = 0; });
 
+  it("los productos que pasa el asistente (ids del catálogo) llevan sus fotos REALES, también varios en una pieza", () => {
+    const productos = [
+      { id: "s", nombre: "Sofá cama", fotos: ["clientes/c1/p/s1.png", "clientes/c1/p/s2.png"] },
+      { id: "m", nombre: "Mesa de centro", fotos: ["clientes/c1/p/m1.png"] },
+    ];
+    const c = { ...ctx({ gemini: true }), kit: {}, g: { archivos: [], productos } };
+    const [p] = planDePiezas(c, [{ titulo: "La sala", ficha: "Pieza: post.\nImagen principal: una sala.", productos: ["s", "m", "inventado"] }]);
+    expect(p.productos).toEqual(["s", "m", "inventado"]);
+    // Una de cada uno antes que la segunda de ninguno; el id que no existe no trae nada.
+    expect(p.pedido.medios.reference.slice(0, 2)).toEqual(["clientes/c1/p/s1.png", "clientes/c1/p/m1.png"]);
+    expect(p.pedido.prompt).toMatch(/foto REAL del producto «Sofá cama»/);
+    expect(p.pedido.prompt).toMatch(/foto REAL del producto «Mesa de centro»/);
+  });
+
+  it("un carrusel del asistente lleva las fotos de sus productos en todas las láminas", async () => {
+    carruseles.length = 0;
+    const productos = [{ id: "s", nombre: "Sofá cama", fotos: ["clientes/c1/p/s1.png"] }];
+    const c = { ...ctx({ gemini: true }), kit: {}, g: { archivos: [], productos } };
+    const plan = planDePiezas(c, [{ titulo: "Portada", ficha: "Pieza: portada.", productos: ["s"] }, { titulo: "Dos", ficha: "Pieza: dos." }]);
+    await crearPlan(c, plan, { carrusel: "Sofás" });
+    expect(carruseles[0].fotos).toEqual(["clientes/c1/p/s1.png"]);
+  });
+
   it("el plan arma cada pieza por el camino de UNA pieza, con el modelo del cliente, la plantilla y su costo", () => {
     const plan = planDePiezas(ctx(), [
       { titulo: "Envío gratis", ficha: "Pieza: post.\nTexto: titular «Envío gratis».", formato: "vertical", plantilla_id: "plantilla-a" },
@@ -113,7 +136,7 @@ describe("las herramientas de diseño del asistente", () => {
 describe("el lote, con el director de arte", () => {
   beforeEach(() => { fichasPedidas.length = 0; });
 
-  it("diseña la tanda de una vez; lo que ya trae su ficha (sin nada que cambiar) no espera", async () => {
+  it("TODAS pasan por el director: el borrador del motor de ideas (`imagen`) ya no se lo salta", async () => {
     const ideas = [
       { id: "a", titular: "Uno", escena: "Una sala" },
       { id: "b", titular: "Dos", escena: "Un cuarto", imagen: "Pieza: lista." },
@@ -121,14 +144,17 @@ describe("el lote, con el director de arte", () => {
     ];
     const r = await conFichas({ ideas, clienteId: "c1", modo: "ia", formato: "post", piezaDe: () => "Anuncio", indicacion: "" });
     expect(fichasPedidas).toHaveLength(1);
-    expect(fichasPedidas[0].piezas.map((p) => p.escena)).toEqual(["Una sala", "Un patio"]);
-    expect(fichasPedidas[0].piezas).toHaveLength(2);
-    expect(fichasPedidas[0].piezas[1].indicacion).toBe("más luz");
+    expect(fichasPedidas[0].piezas.map((p) => p.escena)).toEqual(["Una sala", "Un cuarto", "Un patio"]);
+    // Sabe cuántas son en total: la serie.
+    expect(fichasPedidas[0].serie).toBe(3);
+    expect(fichasPedidas[0].piezas[2].indicacion).toBe("más luz");
     expect(r.find((i) => i.id === "a").ficha).toBe("Pieza: ficha 1.");
     expect(r.find((i) => i.id === "a").plantilla).toBe("plantilla-a");
-    expect(r.find((i) => i.id === "b").ficha).toBeUndefined();
-    // Con una indicación para toda la tanda, también se rediseña la que venía lista.
+    // La que ya diseñó el director (`ficha`) no se vuelve a pedir.
     fichasPedidas.length = 0;
+    await conFichas({ ideas: [{ id: "d", escena: "Un balcón", ficha: "Pieza: ya." }], clienteId: "c1" });
+    expect(fichasPedidas).toHaveLength(0);
+    // Con una indicación para toda la tanda, va en cada pieza.
     await conFichas({ ideas, clienteId: "c1", modo: "ia", indicacion: "fondo blanco" });
     expect(fichasPedidas[0].piezas).toHaveLength(3);
     expect(fichasPedidas[0].piezas.every((p) => p.indicacion.startsWith("fondo blanco"))).toBe(true);
