@@ -66,3 +66,19 @@
 .por-programar-marca { width: 22px; height: 22px; flex-shrink: 0; accent-color: var(--accent); }
 .por-programar-cambio { color: var(--accent-alt); display: flex; align-items: center; gap: 4px; }
 .por-producir summary { cursor: pointer; font-size: var(--fs-sm); font-weight: 700; min-height: var(--tap-sm); display: flex; align-items: center; gap: var(--sp-2); }
+
+/* Historias automáticas (su componente va en otro chunk; sus estilos, con la página). */
+.historias-auto .prog-titulo .btn { padding-inline: 0; font-size: var(--fs-sm); font-weight: 700; }
+.historias-auto-cuerpo {
+  display: flex; flex-direction: column; gap: var(--sp-3);
+  padding: var(--sp-3); border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border);
+}
+.historias-auto-fila { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); justify-content: space-between; }
+.historias-auto-fila > .input { flex: 1 1 200px; max-width: 320px; }
+.historias-auto-piezas {
+  list-style: none; display: grid; gap: var(--sp-2);
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+}
+.historias-auto-piezas li { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.historias-auto-piezas img { width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: var(--radius-sm); background: var(--surface-3); }
+.historias-auto-usos { font-size: var(--fs-3xs); color: var(--text-dim); }

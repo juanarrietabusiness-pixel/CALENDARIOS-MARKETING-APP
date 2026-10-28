@@ -241,6 +241,10 @@ src/
                           hora sale (puro; también lo importa el Worker)
     cola.js               La cola de publicación resumida para la rejilla y el panel, la
                           página Programación y «Programar lo aprobado» (puro)
+    historiasAuto.js      Historias automáticas: ajustes, qué día toca (Panamá), qué se prepara, cuál sale, la carga
+                          de la cola y las frases (puro; también lo importa el Worker)
+    historiasRepost.js    La historia de un post ya publicado, dibujada: la imagen encajada en 9:16 y su frase (lienzo)
+    historiasAutoApi.js   Cliente de /api/historias-auto y preparar lo que falte (también sola, al abrir la aplicación)
     resultados.js         De las filas de métricas a cifras, formatos, horarios (puro)
     colores.js            Colores y logo de la marca a partir del ADN (puro)
     semanas.js            La vista de lista por semanas: agrupar, resumen, cuál se abre (puro)
@@ -302,6 +306,7 @@ src/
     MedidorIA.jsx         El gasto del mes contra el presupuesto, en la cabecera
     Avisos.jsx            La campana: la bandeja de avisos de cada persona (y las del sistema)
     PorProgramar.jsx      «Aprobadas, por programar» (el paso final) e «Ideas por producir»
+    HistoriasAutomaticas.jsx  «Historias automáticas» en Programación: interruptor, hora, redes, lo preparado (lazy)
     CargaEquipo.jsx       Qué tiene cada persona los próximos 7 días
     PanelTareas.jsx       Las tareas al lado, como Google Tasks: «Hoy» fijo, lo demás plegable (lazy)
     RepasoAtrasadas.jsx   El repaso de la mañana: qué se hace con cada atrasada
@@ -440,6 +445,8 @@ worker/
     firmas.js             Cifrar y firmar con el secreto de una integración (HKDF)
     meta.js               OAuth de Meta, cliente de la Graph API, cuentas, medios firmados
     publicador.js         La cola: programar, procesar (Instagram/Facebook/TikTok/YouTube), reintentos
+    historiasAuto.js      Historias automáticas: ajustes, lo que falta preparar, guardar la pieza y el paso del cron
+                          que pone en la cola la del día
     postpeer.js           TikTok por PostPeer: perfiles y cuentas, creator-info, el cuerpo de /posts, leer su
                           estado y la firma del webhook
     youtube.js            OAuth de Google por cliente (YouTube), subida reanudable por trozos,
@@ -529,7 +536,8 @@ worker/
     plantillas.js         /api/plantillas-plan: listar, guardar (cambiar una de arranque o crear) y borrar/restaurar
     formulasUgc.js        /api/formulas-ugc: las fórmulas UGC de la agencia (listar, guardar, corregir, quitar, proponer)
     inspiracion.js        /api/inspiracion/<cliente>: el feed, actualizar, traer un archivo, el resumen
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño)
+    historiasAuto.js      /api/historias-auto/<cliente>: ajustes, pendientes de preparar, piezas
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -2551,6 +2559,24 @@ son del servidor.
   cien veces más cupo. Las miniaturas pasan por el proxy (`ytimg.com`).
   · **Nada de esto se ha probado contra Google:** los tests usan un `fetch`
   de mentira que contesta como su documentación.
+- **Historias automáticas: lo ya publicado vuelve como historia, una al día por cliente** (decisión de la agencia: la
+  cuenta no se queda callada entre publicaciones; `src/lib/historiasAuto.js`, `worker/lib/historiasAuto.js`, 0048,
+  «Historias automáticas» en Programación). Cosas que no se ven:
+  · **La imagen la hace el NAVEGADOR** (`historiasRepost.js`: la del post entera sobre ella misma difuminada, y una frase
+  corta en una placa, fuera del 14 % de arriba y el 20 % de abajo; JPEG). El Worker no tiene lienzo. Se preparan solas a
+  los 20 s de abrir la aplicación (una vez por sesión, `prepararEnSegundoPlano`, módulo en diferido) y con «Preparar
+  ahora». El servidor sólo acepta una imagen de ESE cliente que esté en R2 y una fila de la cola PUBLICADA de verdad.
+  · **Una pieza por publicación** (`clave_post` = «calendario|publicación»): salió en Instagram y Facebook y es una.
+  · **El cron pone UNA al día** (`historiasAutomaticasPendiente`, antes del Estudio: con el Estudio ocupado horas no
+  saldría ninguna; sin nada que hacer, una consulta). La de hoy si a su hora le quedan 10 minutos; si no, la de mañana
+  (`proximaFecha`, hora de Panamá). Sale la menos usada; a igualdad, la de más interacciones en Instagram
+  (`metricas_publicacion` por `externo_id`); nunca lo publicado hace menos de 2 días ni lo que salió hace menos de 4.
+  Sin nada que pueda salir, `ultima_fecha` se pone igual y `nota` lo dice: si no, el cliente se leería cada minuto.
+  · **Va a la cola de siempre SIN calendario** (`calendar_id` null, `post_id` «repost-<pieza>-<fecha>», variante
+  historia, la publicación en la carga con `historiaTambien` y `historias`): la cola no la relee de ningún mes,
+  `resincronizarCalendario` no la toca y Programación la enseña sin «Abrir». Se quita como cualquier fila.
+  `avisarFallo` toma el título de la carga cuando no hay calendario.
+  · **Nada de esto se ha probado contra Meta real**: la cola es la de siempre y los tests hablan con un `fetch` de mentira.
 - **Una publicación puede salir DOS veces por red: el post y su
   historia.** Cada salida es una fila de la cola con su `variante`
   (`post` | `historia`); `piezasDe()` dice cuáles tocan y

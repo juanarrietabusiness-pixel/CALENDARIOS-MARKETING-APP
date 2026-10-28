@@ -112,6 +112,9 @@ export const TABLAS_CON_DUENO = Object.freeze([
   // El informe de anuncios del mes y lo que se decide por cliente (worker/lib/informeAnuncios.js).
   "informes_anuncios",
   "anuncios_clientes",
+  // Las historias automáticas: el interruptor de cada cliente y la historia hecha de cada publicación (worker/lib/historiasAuto.js).
+  "historias_auto",
+  "historias_auto_piezas",
   // Del equipo. Tienen dueño como las demás: la lista de miembros de un
   // espacio es un dato del espacio, y pedirla sin acotar devolvería la
   // plantilla de otra agencia. Quien resuelve «este usuario, ¿de qué
@@ -150,6 +153,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "biblioteca_filtros",
   "cuentas_anuncios", "campanas_anuncios", "historial_anuncios",
   "planes_campana", "informes_anuncios", "anuncios_clientes",
+  "historias_auto", "historias_auto_piezas",
 ]);
 
 /** Las que cuelgan de un calendario sin llevar el cliente: se acotan por el calendario. */
@@ -547,6 +551,25 @@ export async function clientesSinInformeAnuncios(db, mes, limite = 1) {
         limit ?`,
     )
     .bind(mes, limite)
+    .all();
+  return results ?? [];
+}
+
+/**
+ * Los clientes con historias automáticas encendidas a los que les falta poner
+ * en la cola la de `hasta` (mañana en Panamá) o antes, de TODOS los espacios.
+ * Ids, dueño, hora y último día (como `colaPendiente`, sin leer nada más): quien
+ * decide si ya le toca es el cron, sin otra consulta por cliente.
+ */
+export async function clientesConHistoriasPendientes(db, hasta, limite = 50) {
+  const { results } = await db
+    .prepare(
+      `select client_id, owner_id, hora, ultima_fecha from historias_auto
+        where activa = 1 and (ultima_fecha is null or ultima_fecha < ?)
+        order by coalesce(ultima_fecha, '') asc
+        limit ?`,
+    )
+    .bind(hasta, limite)
     .all();
   return results ?? [];
 }
