@@ -3203,6 +3203,22 @@ son del servidor.
   · **Una plantilla del kit puede ser LA de un tipo** (`plantilla.tipos`, chips en el kit): `fichasDeDiseno` la pone sola
   en las piezas de ese tipo y uso (post, historia, portada de carrusel; `plantillaParaTipo`) si nadie escogió otra y la
   pieza lleva su texto, y la línea de la plantilla dice «ES LA DE: …» para el asistente y el motor de ideas.
+- **El DIRECTOR revisa cada pieza en la MISMA llamada del control** (`pedidoDeControl({ ficha })`, `leerControl` en
+  src/lib/control.js; `fichaDelPedido` en worker/lib/estudio/control.js). Con la ficha del pedido delante (del «Pieza:» a
+  la primera línea en blanco), compara dónde está el texto y de qué tamaño, la jerarquía y los márgenes, pone nota
+  (`puntajeDiseno`) y da hasta 3 arreglos con números. Por debajo de `NOTA_MINIMA` (8) la pieza queda «Revisar» y es
+  `corregible`: `controlarYCorregir` (todos los caminos: lote, carrusel, «Producir el mes», compositor, el post, las
+  historias, el asistente) hace UNA edición con letras y arreglos juntos (`correccionDelDirector`), la vuelve a controlar
+  con la ficha de la ORIGINAL (`ficha` en el POST: la edición no la lleva) y se queda la que `mejoro()`. Una edición como
+  mucho por pieza: el costo tiene techo. Un precio, el logo o una deformación siguen sin tocarse solos. Las ediciones
+  automáticas empiezan por `PREFIJO_AJUSTE` («Ajuste del director:») y `correccionesRecientes` las descarta: no son de la
+  agencia. Sin ficha (una pieza a mano, una edición sin la original) no hay revisión del director. En el visor, su nota
+  y «Aplicar los arreglos del director».
+- **«Modo director» en el asistente flotante** (ChatPanel, con un cliente): las conversaciones nuevas son de diseño
+  (`tema: "diseno"`, las mismas que la pestaña Diseño), cambia el título y salen los encargos (`ATAJOS_DIRECTOR` en
+  director.js, compartidos con la pestaña). Abrir una conversación de diseño lo enciende y una de las otras lo apaga; la
+  lista tiene «Todas / Diseño» cuando hay de las dos. El sistema del asistente ya sabía diseñar con cliente: el modo cambia
+  dónde se guarda y lo que se ve, no lo que sabe.
 - **La proporción pedida es la que sale** (`respetaProporcion`, `modeloQueRespeta`, `relevoPara`, `fueraDeProporcion` en
   estudioCatalogo.js). Muse Image con imágenes de referencia (el logo, la foto del producto, la lámina anterior) pierde la
   vía de medidas exactas y la de Responses sólo da 1:1, 2:3 y 3:2 (`conReferencias` en su ficha del catálogo): los 4:5

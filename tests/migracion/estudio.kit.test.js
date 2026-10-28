@@ -250,6 +250,31 @@ describe("el control de calidad de una pieza", () => {
     db.sqlite.prepare("update estudio_archivos set tipo = 'video', mime = 'video/mp4' where id = 'p1'").run();
     expect((await pedir("/api/estudio/c1/archivos/p1/control", { method: "POST", body: {} })).status).toBe(400);
   });
+
+  it("el director revisa el diseño contra la ficha del pedido en la MISMA llamada, y la corregida usa la de la original", async () => {
+    const ficha = "Pieza: post 4:5 — vender el sofá.\nComposición: titular del 8 al 22 % de la altura, 80 % del ancho.\nTexto (exacto): titular «Duerme mejor».\nEvitar: texto pegado al borde.";
+    await pieza(`${ficha}\n\nEstilo: limpio.`);
+    anthropic('{"textoLeido":"Duerme mejor","logo":"no aplica","diseno":[{"problema":"el titular está en el 40 % de la altura","arreglo":"sube el titular al 8–22 % de la altura"}],"puntajeDiseno":6}');
+    const { control } = await (await pedir("/api/estudio/c1/archivos/p1/control", { method: "POST", body: { texto: "Duerme mejor" } })).json();
+    expect(control).toMatchObject({ estado: "revisar", puntajeDiseno: 6, corregible: true, soloTexto: false });
+    expect(control.ficha).toMatch(/^Pieza: post 4:5/);
+    expect(control.ficha).not.toMatch(/Estilo: limpio/);
+    expect(peticiones.length).toBe(1);
+    expect(textoDe(peticiones[0])).toMatch(/como el DIRECTOR CREATIVO que la diseñó con esta ficha:\nPieza: post 4:5/);
+    // La versión corregida es una edición (su pedido no trae ficha): se revisa con la de la original.
+    env.MEDIA.objetos.set("clientes/c1/estudio/p2.png", { bytes: PNG, tipo: "image/png" });
+    db.sqlite.prepare("insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime, prompt) values (?,?,?,?,?,?,?)")
+      .run("p2", JEFE, "c1", "clientes/c1/estudio/p2.png", "imagen", "image/png", "Edita la imagen de referencia: Ajuste del director: sube el titular. Conserva todo lo demás exactamente igual.");
+    anthropic('{"textoLeido":"Duerme mejor","logo":"no aplica","diseno":[],"puntajeDiseno":9}');
+    const otro = await (await pedir("/api/estudio/c1/archivos/p2/control", { method: "POST", body: { texto: "Duerme mejor", ficha: control.ficha } })).json();
+    expect(otro.control).toMatchObject({ estado: "ok", puntajeDiseno: 9 });
+    expect(textoDe(peticiones[0])).toMatch(/DIRECTOR CREATIVO/);
+    // Sin ficha (una pieza a mano), no hay revisión del director.
+    db.sqlite.prepare("update estudio_archivos set prompt = 'Una sala' where id = 'p1'").run();
+    anthropic('{"textoLeido":"Duerme mejor","logo":"no aplica"}');
+    await pedir("/api/estudio/c1/archivos/p1/control", { method: "POST", body: { texto: "Duerme mejor" } });
+    expect(textoDe(peticiones[0])).not.toMatch(/DIRECTOR CREATIVO/);
+  });
 });
 
 describe("el sistema de diseño de la portada de un carrusel", () => {

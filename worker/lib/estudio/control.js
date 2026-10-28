@@ -41,11 +41,24 @@ async function imagenDeLaGaleria(env, acceso, cliente, archivoId) {
 }
 
 /**
+ * La FICHA de diseño con la que se pidió la pieza (lo que va del «Pieza:» al «Evitar:» del pedido), para que el
+ * director la revise contra ella. "" si el pedido no la llevaba (una pieza a mano, una edición): sin ficha no hay
+ * con qué comparar, y la revisión del director no se hace.
+ */
+export function fichaDelPedido(prompt) {
+  const t = String(prompt ?? "");
+  if (/^Edita la imagen de referencia/.test(t)) return "";
+  const i = t.search(/(^|\n)Pieza: /);
+  if (i < 0 || !/\nComposición: /.test(t)) return "";
+  return t.slice(i).trim().split("\n\n")[0].slice(0, 2500);
+}
+
+/**
  * Controla UNA imagen de la galería de este cliente. `texto`: lo que tenía que decir (si la pantalla lo sabe; si no,
  * se saca del pedido); `sistema`: el sistema de diseño de la portada, si es una lámina de un carrusel (se dice lo que
  * se sale de la serie). → { control, archivo } con el control apuntado en la ficha.
  */
-export async function controlarPieza(env, acceso, cliente, archivoId, { texto = null, sistema = null } = {}) {
+export async function controlarPieza(env, acceso, cliente, archivoId, { texto = null, sistema = null, ficha = null } = {}) {
   const { fila, bytes } = await imagenDeLaGaleria(env, acceso, cliente, archivoId);
 
   const ajustes = leerJSON(fila.ajustes, {});
@@ -60,17 +73,19 @@ export async function controlarPieza(env, acceso, cliente, archivoId, { texto = 
     precios = productosActivos(catalogo).flatMap((p) => [p.precio, p.oferta]).map((x) => String(x ?? "").trim()).filter(Boolean);
   } catch { /* sin catálogo, cualquier precio se señala */ }
 
+  // La ficha con la que el director la diseñó: la de su pedido, o la que manda la pantalla (la de la original).
+  const laFicha = fichaDelPedido(fila.prompt) || String(ficha ?? "").trim();
   const r = await llamarIA(env, acceso, cliente, {
     prompt: [
       { type: "image", source: { type: "base64", media_type: fila.mime, data: aBase64(bytes) } },
-      { type: "text", text: pedidoDeControl({ marca: cliente.name, texto: esperado, precios, logo, evitar: kit.evitar, reglas: kit.reglas, sistema: lineaDeSistema(sistema) }) },
+      { type: "text", text: pedidoDeControl({ marca: cliente.name, texto: esperado, precios, logo, evitar: kit.evitar, reglas: kit.reglas, sistema: lineaDeSistema(sistema), ficha: laFicha }) },
     ],
-    salida: 900,
+    salida: 1300,
     funcion: "control de calidad",
   });
   const control = leerControl(r.texto, { texto: esperado, logo });
   if (!control) throw new ErrorEstudio("La IA no devolvió un control que se pueda leer. Inténtalo otra vez.", 502);
-  const guardado = { ...control, texto: esperado, at: new Date().toISOString() };
+  const guardado = { ...control, texto: esperado, ...(laFicha ? { ficha: laFicha } : {}), at: new Date().toISOString() };
   await acceso.actualizar("estudio_archivos", { id: fila.id, client_id: cliente.id }, { ajustes: JSON.stringify({ ...ajustes, control: guardado }) });
   return { control: guardado, archivo: archivoPublico({ ...fila, ajustes: JSON.stringify({ ...ajustes, control: guardado }) }), modelo: r.modelo };
 }

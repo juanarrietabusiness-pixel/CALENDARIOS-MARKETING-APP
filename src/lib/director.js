@@ -343,7 +343,8 @@ export function correccionesRecientes(prompts = [], max = 8) {
     const m = String(p ?? "").match(/^Edita la imagen de referencia(?: 1)?: ([\s\S]+?)\. Conserva todo lo demás/);
     if (!m) continue;
     const t = m[1].replace(/\s+/g, " ").trim();
-    if (!t || /donde dice/i.test(t) || /^Recompón/i.test(t)) continue;
+    // Lo que hace sola la aplicación no es de la agencia: la letra del control, la recomposición y el ajuste del director.
+    if (!t || /donde dice/i.test(t) || /^Recompón/i.test(t) || /^Ajuste del director:/i.test(t)) continue;
     const clave = t.toLowerCase().slice(0, 60);
     if (vistas.has(clave)) continue;
     vistas.add(clave);
@@ -430,3 +431,13 @@ export function leerCarrusel(texto, maxLaminas = 10) {
     laminas: lista.map((x, k) => ({ n: k + 1, rol: k === 0 ? "portada" : k === lista.length - 1 && lista.length >= 3 ? "cierre" : "contenido", ...x })),
   };
 }
+
+/** Los encargos frecuentes del director: rellenan la caja del chat (pestaña Diseño y «Modo director» del asistente). */
+export const ATAJOS_DIRECTOR = Object.freeze([
+  { etiqueta: "Diseña la semana", texto: "Diseña las piezas de la semana que viene del calendario: cada una en su publicación, con su texto de la pieza." },
+  { etiqueta: "Anuncios de un producto", texto: "Diseña 6 anuncios del producto " },
+  { etiqueta: "Un carrusel", texto: "Diseña un carrusel 4:5 sobre " },
+  { etiqueta: "Historias de un post", texto: "Diseña 3 historias que acompañen al post del " },
+  { etiqueta: "Otra como esta", texto: "Haz otra pieza con el mismo diseño de la plantilla " },
+  { etiqueta: "Mira lo que funciona", texto: "Mira las plantillas y lo que me gustó de este cliente y dime qué estilo ves antes de diseñar." },
+]);

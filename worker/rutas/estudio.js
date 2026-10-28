@@ -371,6 +371,8 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         return json(await controlarPieza(env, acceso, cliente, c, {
           texto: typeof datos.texto === "string" ? datos.texto : null,
           sistema: datos.sistema && typeof datos.sistema === "object" ? datos.sistema : null,
+          // La ficha de la pieza ORIGINAL al controlar su versión corregida (la edición no la lleva en su pedido).
+          ficha: typeof datos.ficha === "string" ? datos.ficha.slice(0, 2500) : null,
         }));
       }
       // El sistema de diseño de la portada de un carrusel (la IA la mira; se apunta en la ficha).

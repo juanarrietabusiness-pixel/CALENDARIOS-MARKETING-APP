@@ -12,6 +12,7 @@ import { HERRAMIENTAS_DISENO } from "../lib/herramientasDiseno";
 import "./ChatPanel.css";
 import { guardarNota, avisarTextoDeIA } from "../lib/cerebro";
 import { crearDictado, unirDictado } from "../lib/dictado";
+import { ATAJOS_DIRECTOR } from "../lib/director";
 import ConversacionesChat from "./ConversacionesChat";
 import { tituloProvisional, TITULO_NUEVA } from "../lib/conversaciones";
 import {
@@ -73,9 +74,18 @@ export default function ChatPanel({
   acoplado = false,
   // Dentro de la pestaña Estudio («Con el director»): en la página, sin ser un diálogo, y sólo sus conversaciones de diseño.
   incrustado = false,
-  tema = "",
-  atajos = null,
+  tema: temaFijo = "",
+  atajos: atajosFijos = null,
 }) {
+  // El «Modo director» del asistente flotante: las conversaciones nuevas son de diseño (las mismas que la pestaña
+  // Diseño) y salen los encargos del director. La pestaña Diseño lo trae fijo (`tema`). Abrir una conversación de
+  // diseño lo enciende; una de las otras, lo apaga.
+  const [modoDirector, setModoDirector] = useState(false);
+  const temaVisible = temaFijo || (modoDirector ? "diseno" : "");
+  const atajos = atajosFijos ?? (temaVisible === "diseno" ? ATAJOS_DIRECTOR : null);
+  // La lista: en la pestaña Diseño sólo las suyas; en el asistente, todas o sólo las de diseño.
+  const [filtroLista, setFiltroLista] = useState("todas");
+  const tema = temaFijo;
   const [chatMode, setChatMode] = useState(defaultMode || (client ? "client" : "global"));
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -231,8 +241,9 @@ export default function ChatPanel({
     setActionFeedback([]);
     setError("");
     setVerLista(false);
+    if (!temaFijo) setModoDirector(conversaciones.find((c) => c.id === id)?.tema === "diseno");
     if (id !== conversacionId) setConversacionId(id);
-  }, [loading, conversacionId]);
+  }, [loading, conversacionId, conversaciones, temaFijo]);
 
   const renombrar = useCallback(async (id, titulo) => {
     const c = await renombrarConversacion(id, titulo);
@@ -1007,7 +1018,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       const primera = messages.length === 0;
       if (!convId) {
         try {
-          const nueva = await crearConversacion(ambito, tituloProvisional(text || pedido), tema);
+          const nueva = await crearConversacion(ambito, tituloProvisional(text || pedido), temaVisible);
           convId = nueva.id;
           sinRecargar.current = nueva.id;
           setConversaciones((p) => [nueva, ...p.filter((c) => c.id !== nueva.id)]);
@@ -1194,7 +1205,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       setEnVivo({ texto: "", pensando: "", pasos: [] });
       for (const a of enviados) if (a.origen === "subida") URL.revokeObjectURL(a.preview);
     }
-  }, [input, provisional, loading, messages, client, clientId, chatMode, memories, executeToolCall, adjuntos, prepararAdjuntos, buildGlobalSystemPrompt, getGlobalTools, resumen, conversacionId, ambito, tema]);
+  }, [input, provisional, loading, messages, client, clientId, chatMode, memories, executeToolCall, adjuntos, prepararAdjuntos, buildGlobalSystemPrompt, getGlobalTools, resumen, conversacionId, ambito, temaVisible]);
 
   const handleDeleteMemory = useCallback(async (memId) => {
     try {
@@ -1275,10 +1286,10 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
               }}>
-                {isGlobal ? "Agente de la agencia" : tema === "diseno" ? `Director creativo de ${client?.name || ""}` : `Asistente de ${client?.name || ""}`}
+                {isGlobal ? "Agente de la agencia" : temaVisible === "diseno" ? `Director creativo de ${client?.name || ""}` : `Asistente de ${client?.name || ""}`}
               </div>
               <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)", display: "flex", alignItems: "center", gap: "var(--sp-1)", flexWrap: "wrap" }}>
-                <span>{isGlobal ? "Conoce todos tus clientes" : tema === "diseno" ? "Dile qué quieres con tus palabras: él diseña, revisa y te enseña" : "Conversa, genera ideas y ejecuta acciones"}</span>
+                <span>{isGlobal ? "Conoce todos tus clientes" : temaVisible === "diseno" ? "Dile qué quieres con tus palabras: él diseña, revisa y te enseña" : "Conversa, genera ideas y ejecuta acciones"}</span>
                 <span
                   className="badge"
                   style={{ background: "var(--accent-soft)", color: "var(--accent)", fontSize: "var(--fs-3xs)" }}
@@ -1352,6 +1363,23 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
             </div>
           )}
 
+          {/* «Modo director»: el mismo director de la pestaña Diseño, sin salir de donde se está. */}
+          {client && !temaFijo && !isGlobal && (
+            <button
+              type="button"
+              className="filter-chip chat-modo-director"
+              aria-pressed={modoDirector}
+              disabled={loading}
+              onClick={() => {
+                setModoDirector((v) => !v);
+                // Cambiar de modo empieza en limpio: lo nuevo va a una conversación de ese tipo.
+                if (messages.length) nuevaConversacion();
+              }}
+            >
+              <Icon name="wand" size={14} /> Modo director
+            </button>
+          )}
+
           {/* La conversación abierta y la lista: una por tema, de todo el equipo. */}
           <button
             type="button"
@@ -1373,7 +1401,9 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
         {verLista && (
           <div id={`${inputId}-conv`} className={ampliado ? "chat-conv-aparte" : "chat-conv-desplegada"}>
             <ConversacionesChat
-              conversaciones={conversaciones}
+              conversaciones={!temaFijo && filtroLista === "diseno" ? conversaciones.filter((c) => c.tema === "diseno") : conversaciones}
+              filtro={!temaFijo && conversaciones.some((c) => c.tema === "diseno") ? filtroLista : null}
+              onFiltro={setFiltroLista}
               actualId={conversacionId}
               onAbrir={abrirConversacion}
               onNueva={nuevaConversacion}
@@ -1440,7 +1470,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
           ) : messages.length === 0 ? (
             isGlobal
               ? <GlobalEmptyState clientCount={clients.length} />
-              : tema === "diseno"
+              : temaVisible === "diseno"
                 ? <DisenoEmptyState clientName={client?.name || ""} />
                 : <EmptyState clientName={client?.name || ""} hasCalendar={Boolean(calendar)} />
           ) : (
