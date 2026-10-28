@@ -52,10 +52,10 @@ export function diasConTipo(ritmo, year, month) {
  * (`darForma`: si el producto se ve, composición, fondo, gancho y dónde va el texto). `productos`: los del plan
  * (`productosParaPlan`); `orden`: las composiciones que funcionan con este cliente. Pura.
  */
-export function planDelMes(dias, { productos = [], deseos = [], perfiles = [], semilla = 0, formato = "post", orden = null } = {}) {
+export function planDelMes(dias, { productos = [], deseos = [], perfiles = [], semilla = 0, formato = "post", orden = null, estructuras = [] } = {}) {
   const matriz = asignarMatriz(dias.map((d) => ({ fecha: d.fecha, pilar: d.pilar, ...(d.cambio ? { cambio: d.cambio } : {}) })), { productos, deseos, perfiles })
     .map((p) => ({ ...p, tipo: p.pilar }));
-  return darForma(matriz, { productos, semilla, formato, orden });
+  return darForma(matriz, { productos, semilla, formato, orden, estructuras });
 }
 
 /** «Lote octubre 2026». Pura. */

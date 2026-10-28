@@ -13,7 +13,9 @@ import { leerMercado } from "../mercado.js";
 import { kitDe } from "./kit.js";
 import { productosActivos, lineaDeProducto, resumenGeneral } from "../../../src/lib/estudioMercado.js";
 import { nombreDePreset } from "../../../src/lib/kitMarca.js";
-import { pedidoDeIdeasFormato, leerIdeasFormato } from "../../../src/lib/ideasFormato.js";
+import { pedidoDeIdeasFormato, leerIdeasFormato, MIN_IDEAS_FORMATO, MAX_IDEAS_FORMATO } from "../../../src/lib/ideasFormato.js";
+import { estructurasDistintas } from "../../../src/lib/estructurasCarrusel.js";
+import { estructurasRecientes } from "./lote.js";
 
 /** `formato`: "carrusel" | "reel"; `datos`: { tipo?, tema?, productoId?, n?, usados?, segundos? } → { ideas } */
 export async function ideasDeFormato(env, acceso, cliente, formato, datos = {}) {
@@ -33,8 +35,12 @@ export async function ideasDeFormato(env, acceso, cliente, formato, datos = {}) 
     const c = await contextoCerebro(env, acceso, cliente.id, tema || `ideas ${formato} contenido beneficios público`, { para: "texto", presupuesto: 4000 });
     contexto = textoParaEscribir(c);
   } catch { /* sin cerebro */ }
+  // En un carrusel, cada idea con una estructura distinta, sin las últimas que el cliente usó en ese tipo.
+  const n = Math.max(MIN_IDEAS_FORMATO, Math.min(MAX_IDEAS_FORMATO, Math.round(Number(datos.n) || 4)));
+  const estructuras = formato === "reel" ? []
+    : estructurasDistintas(preset.split("-")[0], n, { usadas: await estructurasRecientes(acceso, cliente.id), semilla: Date.now() % 997 });
   const r = await llamarIA(env, acceso, cliente, {
-    prompt: pedidoDeIdeasFormato({
+    prompt: pedidoDeIdeasFormato({ estructuras,
       formato, marca: cliente.name, rubro: cliente.industry ?? "", n: datos.n, tema, producto, estudio, contexto,
       tipo: preset ? nombreDePreset(preset, kit) : "",
       usados: (Array.isArray(datos.usados) ? datos.usados : []).map((t) => String(t ?? "").slice(0, 80)).filter(Boolean),
@@ -43,7 +49,7 @@ export async function ideasDeFormato(env, acceso, cliente, formato, datos = {}) 
     salida: formato === "reel" ? 1500 : 3200,
     funcion: "ideas del estudio",
   });
-  const ideas = leerIdeasFormato(r.texto, formato);
+  const ideas = leerIdeasFormato(r.texto, formato, estructuras);
   if (!ideas.length) throw Object.assign(new Error("La IA no devolvió ideas que se puedan leer. Inténtalo otra vez."), { estado: 502 });
   return { ideas, modelo: r.modelo, aviso: r.aviso ?? null };
 }

@@ -35,7 +35,7 @@ export async function guardarPlantilla(env, acceso, cliente, { archivoId, nombre
     id: yaEsta?.id ?? `plantilla-${crypto.randomUUID().slice(0, 8)}`,
     nombre: String(nombre ?? "").replace(/\s+/g, " ").trim().slice(0, 60) || yaEsta?.nombre || `Plantilla ${actual.plantillas.length + 1}`,
     uso: USOS_PLANTILLA.includes(uso) ? uso : "post",
-    clave: fila.clave, archivoId: fila.id, sistema: lineaDeSistema(sistema),
+    clave: fila.clave, archivoId: fila.id, sistema: lineaDeSistema(sistema), tipos: yaEsta?.tipos ?? [],
   };
   const kit = await guardarKit(env, acceso, cliente, { ...actual, plantillas: [...actual.plantillas.filter((p) => p.id !== plantilla.id), plantilla] });
   return { kit, plantilla };

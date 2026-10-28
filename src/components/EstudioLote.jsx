@@ -13,6 +13,7 @@ import { MODOS_TEXTO } from "../lib/carrusel";
 import {
   FORMATOS_LOTE, MAX_POR_NIVEL, MAX_LOTE, MAX_TITULAR, MAX_APOYO, MAX_ESCENA, MAX_BRIEF, MAX_DESCRIPCION, MAX_GUION, cuantasPorDefecto, limpiarCuantas,
   totalDeCuantas, nombreCarpetaLote, publicacionDePieza, COMPOSICIONES, TACTICAS, titularesUsados, aprenderComposiciones, celdasMatriz, celdasPorTipos,
+  estructuraDe,
 } from "../lib/loteAnuncios";
 import { pedidoDeLote, crearLote, crearCarruselDeIdea, crearReelDeIdea } from "../lib/loteEstudio";
 import { controlEncendido, encenderControl } from "../lib/controlEstudio";
@@ -766,6 +767,7 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                           {esPlan && <span className="lote-insignia">{FORMATOS_LOTE[fmtDe(i)]?.nombre}</span>}
                           <span className="lote-insignia">{etiquetaDe(i)}</span>
                           {i.cambio && <span className="hint">{i.cambio}</span>}
+                          {estructuraDe(i.estructura) && <span className="lote-insignia">{estructuraDe(i.estructura).nombre}</span>}
                         </p>
                         <div className="lote-forma">
                           <label className="lote-forma-campo">

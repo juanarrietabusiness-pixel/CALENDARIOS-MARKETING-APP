@@ -39,7 +39,7 @@ import { lineaDeVozUgc } from "../../../src/lib/ugc.js";
 import { limpiarFormula, bloqueDeFormulas, formulaUsada, MAX_FORMULAS } from "../../../src/lib/formulasUgc.js";
 import { productosActivos, productosParaPlan, lineaDeProducto, notaDeProducto, resumenGeneral, limpiarEstudio } from "../../../src/lib/estudioMercado.js";
 import {
-  pedidoDeProduccion, leerProduccion, limpiarCuantas, totalDeCuantas, celdasPorNiveles, celdasMatriz, celdasPorTipos, darForma,
+  pedidoDeProduccion, leerProduccion, limpiarCuantas, totalDeCuantas, celdasPorNiveles, celdasMatriz, celdasPorTipos, darForma, estructurasDeCalendarios,
   textoDeIdea, FORMATOS_LOTE, COMPOSICIONES,
 } from "../../../src/lib/loteAnuncios.js";
 import { asignarMatriz, pilarDe, idDePilar } from "../../../src/lib/pilares.js";
@@ -48,7 +48,8 @@ import { fechasDelMes } from "../../../src/lib/fechasEspeciales.js";
 import { fechaEnZona } from "../../../src/lib/agenda.js";
 import { CLAVES_NIVEL } from "../../../src/lib/consciencia.js";
 import { bloqueDeMarca, kitVacio } from "../../../src/lib/kitMarca.js";
-import { lineaDePlantilla } from "../../../src/lib/director.js";
+import { lineaDePlantilla, bloqueDeDisenoPorTipo } from "../../../src/lib/director.js";
+import { manualDelEspacio } from "./fichas.js";
 import { kitDe } from "./kit.js";
 
 const fallo = (mensaje, estado = 400) => Object.assign(new Error(mensaje), { estado });
@@ -106,6 +107,18 @@ async function composicionesAprendidas(acceso, clientId) {
     return [];
   }
 }
+/**
+ * Las estructuras de carrusel que este cliente ya usó (sus tres últimos meses), para no repetirlas: una consulta, sólo
+ * cuando el lote puede llevar carruseles.
+ */
+export async function estructurasRecientes(acceso, clientId) {
+  try {
+    const filas = await acceso.leerColumnas("calendars", ["days"], { client_id: clientId }, "year desc, month desc", 3);
+    return estructurasDeCalendarios(filas.reverse().map((f) => ({ days: leerJSON(f.days) ?? [] })));
+  } catch {
+    return [];
+  }
+}
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 /** Cuántas piezas por llamada como mucho (lo que pide la pantalla es 6). */
 export const TANDA_MAX = 10;
@@ -138,6 +151,9 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
   const perfiles = general?.perfiles ?? [];
   // Sin las composiciones aprendidas de la pantalla, se leen de la galería (lo hace también «Planificar mes»).
   if (!Array.isArray(datos.composiciones)) orden = await composicionesAprendidas(acceso, cliente.id);
+  // Los carruseles rotan de estructura sin repetir las últimas de ese tipo (errores, mitos, paso a paso…).
+  const puedeCarrusel = formato === "carrusel" || modo === "mes" || (modo === "plan" && datos.casillas.some((c) => c?.formato === "carrusel"));
+  const estructuras = puedeCarrusel ? await estructurasRecientes(acceso, cliente.id) : [];
 
   let plan;
   let fechas = [];
@@ -155,7 +171,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
         ? "Todos los días que escogiste ya tienen publicación. Para diseñarlas, usa «Diseñar las que ya hay»."
         : "Ese mes no tiene días con tipo de contenido en los días escogidos (revisa el ritmo del cliente).");
     }
-    plan = planDelMes(dias, { productos: rotan, deseos, perfiles, semilla: datos.semilla, formato, orden });
+    plan = planDelMes(dias, { productos: rotan, deseos, perfiles, semilla: datos.semilla, formato, orden, estructuras });
   } else if (modo === "plan") {
     // El plan ya viene decidido (formato, tipo, producto, nivel…): la forma de cada pieza la pone darForma.
     const celdas = limpiarCasillas(datos.casillas, productosActivos(catalogo));
@@ -170,7 +186,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     // El producto foco de la estrategia del mes pesa la mitad de la rotación.
     const foco = typeof datos.estrategia?.focoId === "string" ? datos.estrategia.focoId : "";
     const conMatriz = asignarMatriz(celdas, { productos: rotan, deseos, perfiles, foco }).map((c) => (c.pilar ? { ...c, tipo: c.pilar } : c));
-    plan = darForma(conMatriz, { productos: rotan, semilla: datos.semilla, formato, orden });
+    plan = darForma(conMatriz, { productos: rotan, semilla: datos.semilla, formato, orden, estructuras });
   } else if (modo === "publicacion") {
     // Una sola pieza con lo que la publicación ya decidió (su tipo, producto, nivel, deseo y perfil); lo que falte, lo
     // pone la forma del lote. La fecha especial del día también va.
@@ -194,7 +210,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       const [y, m] = fecha.split("-").map(Number);
       fechas = fechasDelMes(y, m - 1, leerJSON(cliente.fechas_especiales)).filter((f) => f.fecha === fecha);
     }
-    plan = darForma([celda], { productos: delPost ? [delPost, ...rotan.filter((x) => x.id !== delPost.id)] : rotan, semilla: datos.semilla, formato, orden });
+    plan = darForma([celda], { productos: delPost ? [delPost, ...rotan.filter((x) => x.id !== delPost.id)] : rotan, semilla: datos.semilla, formato, orden, estructuras });
   } else {
     let celdas;
     if (modo === "matriz") {
@@ -213,7 +229,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     }
     // Con un producto escogido, también las piezas frías saben de qué producto es el problema (aunque no salga).
     if (producto) celdas = celdas.map((c) => ({ ...c, productoId: producto.id }));
-    plan = darForma(celdas, { productos: rotan, semilla: datos.semilla, formato, orden });
+    plan = darForma(celdas, { productos: rotan, semilla: datos.semilla, formato, orden, estructuras });
   }
 
   const total = plan.length;
@@ -273,7 +289,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       estrategia: datos.estrategia && typeof datos.estrategia === "object" ? datos.estrategia : null,
       falta: lineaDeLoQueFalta(faltan),
       ugc,
-      identidad: identidadParaFichas(cliente),
+      identidad: identidadParaFichas(cliente, plan, await manualDelEspacio(acceso).catch(() => null)),
     }),
     // Las de una imagen escriben además su ficha de diseño (unas 350 palabras más cada una).
     salida: plan.reduce((t, r) => t + (FORMATOS_LOTE[r.formato ?? formato]?.guiado ? 850 : 950), 0) + 800,
@@ -306,12 +322,16 @@ function leerJSONSeguro(t) {
 /** Compatibilidad con el nombre de antes (anuncios por nivel). */
 export const ideasDeLote = (env, acceso, cliente, datos = {}) => produccionDeLote(env, acceso, cliente, { modo: "niveles", ...datos });
 
-/** Lo que la ficha de diseño del motor de ideas necesita de la marca: su kit y sus plantillas (vacío sin kit). */
-function identidadParaFichas(cliente) {
+/**
+ * Lo que la ficha de diseño del motor de ideas necesita de la marca: su kit, sus plantillas y cómo se diseña cada tipo
+ * del plan (el manual de la agencia o el de la casa). Sin kit, sólo lo de los tipos.
+ */
+function identidadParaFichas(cliente, plan = [], manual = null) {
   try {
     const kit = kitDe(cliente);
-    if (kitVacio(kit)) return "";
-    return [bloqueDeMarca(kit), kit.plantillas.length ? `Plantillas de la marca (si una encaja, la ficha la nombra):\n${kit.plantillas.map(lineaDePlantilla).join("\n")}` : ""].filter(Boolean).join("\n");
+    const porTipo = bloqueDeDisenoPorTipo(plan.map((r) => r.tipo ?? r.pilar), manual);
+    if (kitVacio(kit)) return porTipo;
+    return [bloqueDeMarca(kit), kit.plantillas.length ? `Plantillas de la marca (si una encaja, la ficha la nombra; la que «ES LA DE» un tipo va en las de ese tipo):\n${kit.plantillas.map(lineaDePlantilla).join("\n")}` : "", porTipo].filter(Boolean).join("\n");
   } catch {
     return "";
   }

@@ -57,6 +57,63 @@ export const MANUAL_DISENO_BASE = [
 /** El manual que vale: el escrito por la agencia o el de la casa. Pura. */
 export const manualDeDiseno = (manual) => largo(manual?.diseno, MAX_MANUAL_DISENO) || MANUAL_DISENO_BASE;
 
+/**
+ * CÓMO SE DISEÑA CADA TIPO DE CONTENIDO: lo que el director decide distinto según para qué es la pieza (un anuncio
+ * no se diseña como un educativo). Los ids son los de `PILARES` (pilares.js); `claves`, cómo se reconoce el tipo por su
+ * nombre (a quien diseña le llega «Educativo / Informativo», no el id). La agencia lo cambia tipo a tipo en Ajustes →
+ * Manual de la agencia (`manual.disenoTipos`); vacío, vale el de la casa.
+ */
+export const DISENO_POR_TIPO = Object.freeze([
+  { id: "anuncio", nombre: "Anuncio", claves: ["anuncio"], base: "El producto real es el protagonista (40–60 % de la pieza) y el titular habla del resultado; el precio exacto y el botón en el color de acento. Poco texto: titular, una línea y el botón." },
+  { id: "beneficios", nombre: "Beneficios / Promociones", claves: ["beneficio", "promoci"], base: "La oferta manda: el número o el beneficio en grande (el titular), el producto acompaña, la fecha límite sólo si es real. Color de acento en la oferta." },
+  { id: "educativo", nombre: "Educativo / Informativo", claves: ["educativ", "informativ"], base: "El texto es el protagonista: tipográfica limpia o un icono o foto que apoye; fondo de un color de la marca; el producto no aparece salvo que sea el ejemplo. Nada de botón de compra." },
+  { id: "diferenciador", nombre: "Diferenciador", claves: ["diferenciador"], base: "Una sola afirmación que nadie más puede decir, muy grande; una prueba visual (proceso, detalle, material, equipo). Sobria y segura, sin oferta." },
+  { id: "maletas", nombre: "7 maletas", claves: ["maleta", "garant", "testimonio", "soluci", "objeci"], base: "Da confianza: un testimonio va como cita con comillas y nombre (sólo si es real); una garantía, con su sello hecho con la tipografía de la marca (sin inventar sellos oficiales); un antes y después, en pantalla dividida." },
+  { id: "humano", nombre: "Contenido humano", claves: ["humano", "viral", "comunidad"], base: "Foto o escena real y cercana (personas, equipo, el día a día), poco texto y sin aspecto de anuncio; el logo pequeño." },
+  { id: "servicios", nombre: "Servicios / Productos", claves: ["servicio", "producto"], base: "Enseña el producto o el servicio y qué incluye: foto clara y fiel, el nombre y dos o tres puntos cortos; el precio exacto si está." },
+]);
+const sinTildes = (t) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/** El id del tipo de diseño por su id o su nombre («Educativo / Informativo» → «educativo»), o "". Pura. */
+export function tipoDeDiseno(tipo) {
+  const t = sinTildes(tipo).trim();
+  if (!t) return "";
+  const porId = DISENO_POR_TIPO.find((x) => x.id === t || t.startsWith(`${x.id}-`));
+  if (porId) return porId.id;
+  return DISENO_POR_TIPO.find((x) => x.claves.some((c) => t.includes(c)))?.id ?? "";
+}
+
+/** Cómo se diseña ese tipo: el del manual de la agencia o el de la casa. "" si no es un tipo conocido. Pura. */
+export function disenoDelTipo(tipo, manual = null) {
+  const id = tipoDeDiseno(tipo);
+  if (!id) return "";
+  return largo(manual?.disenoTipos?.[id], MAX_DISENO_TIPO) || DISENO_POR_TIPO.find((x) => x.id === id).base;
+}
+export const MAX_DISENO_TIPO = 500;
+
+/** El bloque «CÓMO SE DISEÑA CADA TIPO» con sólo los tipos que hay (todos si `tipos` va vacío y `todos`). Pura. */
+export function bloqueDeDisenoPorTipo(tipos = [], manual = null, { todos = false } = {}) {
+  const ids = todos ? DISENO_POR_TIPO.map((x) => x.id) : [...new Set(tipos.map(tipoDeDiseno).filter(Boolean))];
+  if (!ids.length) return "";
+  return ["CÓMO SE DISEÑA CADA TIPO DE CONTENIDO (decide la pieza según su tipo):",
+    ...ids.map((id) => `- ${DISENO_POR_TIPO.find((x) => x.id === id).nombre}: ${disenoDelTipo(id, manual)}`)].join("\n");
+}
+
+/** Los `disenoTipos` del manual, limpios: sólo tipos que existen y con tope. Pura. */
+export const limpiarDisenoTipos = (m) => Object.fromEntries(DISENO_POR_TIPO
+  .map((x) => [x.id, largo(m?.[x.id], MAX_DISENO_TIPO)]).filter(([, v]) => v));
+
+/**
+ * La plantilla del kit ASIGNADA al tipo de una pieza (`plantilla.tipos`), para su uso: post e historia por el suyo;
+ * la portada de un carrusel o de un reel, por «portada». null si no hay. Pura.
+ */
+export function plantillaParaTipo(plantillas = [], tipo = "", formato = "post") {
+  const id = tipoDeDiseno(tipo);
+  if (!id) return null;
+  const uso = formato === "historia" || formato === "reel" ? "historia" : formato === "carrusel" ? "portada" : "post";
+  return plantillas.find((p) => (p.tipos ?? []).includes(id) && p.uso === uso) ?? null;
+}
+
 /** Cómo se escribe una ficha: la misma para el asistente, el director de arte y el motor de ideas. */
 export const FORMATO_FICHA = [
   "Pieza: <formato y proporción> — <para qué es, en una frase>.",
@@ -118,6 +175,9 @@ export function instruccionDeDiseno(manual) {
     "MANUAL DEL DIRECTOR (síguelo siempre):",
     manualDeDiseno(manual),
     "",
+    bloqueDeDisenoPorTipo([], manual, { todos: true }),
+    "Cuando una plantilla del cliente «ES LA DE» un tipo, las piezas de ese tipo la siguen (pasa su id en «plantilla»).",
+    "",
     "LA FICHA DE DISEÑO: cada pieza se pide con una ficha así, una línea por apartado (quien genera la imagen sólo sabe lo que dice):",
     FORMATO_FICHA,
     "",
@@ -135,7 +195,7 @@ export function instruccionDeDiseno(manual) {
 }
 
 /** Una plantilla del kit en una línea, para el asistente y el director de arte. Pura. */
-export const lineaDePlantilla = (p) => `- ${p.id} · «${p.nombre}» (${NOMBRES_USO[p.uso] ?? p.uso})${p.sistema ? `: ${corto(p.sistema, 400)}` : ""}`;
+export const lineaDePlantilla = (p) => `- ${p.id} · «${p.nombre}» (${NOMBRES_USO[p.uso] ?? p.uso}${(p.tipos ?? []).length ? `; ES LA DE: ${p.tipos.map((id) => DISENO_POR_TIPO.find((x) => x.id === id)?.nombre ?? id).join(", ")}` : ""})${p.sistema ? `: ${corto(p.sistema, 400)}` : ""}`;
 
 export const USOS_PLANTILLA = Object.freeze(["post", "historia", "portada", "lamina"]);
 export const NOMBRES_USO = Object.freeze({ post: "post fijo", historia: "historia", portada: "portada de carrusel", lamina: "lámina interior de carrusel" });
@@ -202,7 +262,8 @@ export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], 
     marca ? `LA MARCA (obligatorio en toda pieza):\n${marca}` : "Este cliente aún no tiene kit de marca: toma los colores y el estilo de la identidad de abajo; si no hay, usa una paleta sobria de dos colores y dilo en la ficha.",
     guia ? `\nIDENTIDAD VISUAL (del cerebro del cliente):\n${largo(guia, 3500)}` : "",
     productos ? `\nPRODUCTOS (precios exactos; no inventes otros):\n${largo(productos, 1500)}` : "",
-    plantillas.length ? `\nPLANTILLAS DE ESTE CLIENTE (diseños que ya funcionaron; si una encaja, síguela y di su id en «plantilla»):\n${plantillas.map(lineaDePlantilla).join("\n")}` : "",
+    plantillas.length ? `\nPLANTILLAS DE ESTE CLIENTE (diseños que ya funcionaron; si una encaja, síguela y di su id en «plantilla»; la que «ES LA DE» un tipo se usa en las piezas de ese tipo salvo que la pieza diga otra):\n${plantillas.map(lineaDePlantilla).join("\n")}` : "",
+    bloqueDeDisenoPorTipo(lista.map((p) => p.tipo), manual) ? `\n${bloqueDeDisenoPorTipo(lista.map((p) => p.tipo), manual)}` : "",
     lineaDeCorrecciones(correcciones),
     concepto ? `\nCONCEPTO DE LA TANDA (síguelo): ${corto(concepto, 600)}` : "",
     "",
@@ -313,7 +374,7 @@ const REGLA_SERIE = "Un carrusel es UNA serie: el titular en la MISMA zona, del 
  * Lo que se le pide al director para un carrusel: con el guion (`laminas`: las de partirGuion) o sólo un tema, de 5 a 7
  * láminas. Devuelve el sistema de la serie y la ficha de cada lámina con su texto exacto. Pura.
  */
-export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [], tema = "", tipo = "", estilo = "", producto = "", personajes = [], marca = "", guia = "", plantillas = [], manual = null, correcciones = [], vistas = 0 }) {
+export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [], tema = "", tipo = "", estilo = "", producto = "", personajes = [], marca = "", guia = "", plantillas = [], manual = null, correcciones = [], vistas = 0, estructura = "" }) {
   const conGuion = laminas.length >= 2;
   const deCarrusel = plantillas.filter((p) => p.uso === "portada" || p.uso === "lamina");
   return [
@@ -321,7 +382,7 @@ export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [
     `Eres el director creativo y diseñador gráfico de una agencia en Panamá. Diseña un carrusel de Instagram (cada lámina vertical 4:5) de ${cliente}${rubro ? ` (${rubro})` : ""}. Un generador de imágenes hará las láminas UNA a una, cada una con la anterior y la portada de referencia, y sólo sabe lo que diga la ficha.`,
     conGuion
       ? `EL GUION (respeta su orden y sus datos; puedes acortar un texto que no quepa, sin cambiar precios ni cifras):\n${laminas.map((l) => `${l.n}. (${l.rol}) ${String(l.texto).replace(/\s+/g, " ").slice(0, 400)}`).join("\n")}`
-      : `No hay guion: escribe de 5 a 7 láminas sobre este tema: ${corto(tema, 400)}`,
+      : `No hay guion: escribe ${estructura ? "las láminas" : "de 5 a 7 láminas"} sobre este tema: ${corto(tema, 400)}${estructura ? `\nSigue esta ${corto(estructura, 400)} (la portada promete algo concreto de esa estructura, no un título genérico).` : ""}`,
     conGuion && tema ? `Tema: ${corto(tema, 300)}` : "",
     tipo ? `Tipo de contenido: ${tipo}.` : "",
     estilo ? `Estilo visual: ${corto(estilo, 300)}` : "",
@@ -333,7 +394,8 @@ export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [
     "",
     marca ? `LA MARCA (obligatorio en toda lámina):\n${marca}` : "Este cliente aún no tiene kit de marca: toma los colores y el estilo de la identidad de abajo.",
     guia ? `\nIDENTIDAD VISUAL (del cerebro del cliente):\n${largo(guia, 3000)}` : "",
-    deCarrusel.length ? `\nPLANTILLAS DE CARRUSEL DE ESTE CLIENTE (si una encaja, sigue su sistema):\n${deCarrusel.map(lineaDePlantilla).join("\n")}` : "",
+    deCarrusel.length ? `\nPLANTILLAS DE CARRUSEL DE ESTE CLIENTE (si una encaja, sigue su sistema; la que «ES LA DE» este tipo, síguela):\n${deCarrusel.map(lineaDePlantilla).join("\n")}` : "",
+    tipo && disenoDelTipo(tipo, manual) ? `\nCÓMO SE DISEÑA ESTE TIPO (${corto(tipo, 60)}): ${disenoDelTipo(tipo, manual)}` : "",
     lineaDeCorrecciones(correcciones),
     "",
     REGLA_SERIE,

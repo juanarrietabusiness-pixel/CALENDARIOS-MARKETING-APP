@@ -14,7 +14,7 @@
 //   POST   /<cliente>/lote/ideas                   { modo: niveles|matriz|tipos, desde?, tamano?, … }: la producción en lote, por tandas (texto)
 //   POST   /<cliente>/lote/mes                     { mes, dias, formato, desde?, tamano? }: una pieza por día del mes, con el ritmo y la matriz (texto)
 //   POST   /<cliente>/ideas                        { tipo?, n?, video?, tema? }: «Dame ideas», variadas o de un tipo (texto)
-//   POST   /<cliente>/carrusel/propuesta           { guion?, tema?, preset?, estilo?, productoId?, personajes? }: el plan por láminas (texto)
+//   POST   /<cliente>/carrusel/propuesta           { guion?, tema?, preset?, estilo?, productoId?, personajes?, estructura? }: el plan por láminas (texto)
 //   POST   /<cliente>/carrusel/ideas               { preset?, tema?, productoId?, n?, usados? }: ideas de carrusel con su guion (texto)
 //   POST   /<cliente>/reel/ideas                   { preset?, tema?, productoId?, n?, usados?, segundos? }: ideas de reel IA (texto)
 //   POST   /<cliente>/reel/guion                   { idea, segundos?, preset?, estilo?, productoId?, personajes? }: el guion por planos (texto)

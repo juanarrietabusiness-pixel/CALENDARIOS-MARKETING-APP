@@ -107,7 +107,7 @@ describe("lo que se le pide a la IA y cómo se lee", () => {
     // En un carrusel o un reel, la IA escribe además su guion.
     const c = pedidoDeProduccion({ marca: "Dcasa", plan, formato: "carrusel" });
     expect(c).toMatch(/publicaciones de formato Carrusel/);
-    expect(c).toMatch(/"guion": las láminas del carrusel, de 5 a 7/);
+    expect(c).toMatch(/"guion": las láminas del carrusel siguiendo SU estructura/);
     expect(pedidoDeProduccion({ marca: "Dcasa", plan, formato: "reel" })).toMatch(/"guion": el reel de 10 s por planos/);
     const leidas = leerProduccion(JSON.stringify({ ideas: [{ n: 1, titular: "Hola", escena: "x", guion: "Portada: a\\nCTA: b" }] }), plan, "carrusel");
     expect(leidas[0].guion).toBe("Portada: a\nCTA: b");

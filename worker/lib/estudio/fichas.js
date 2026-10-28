@@ -19,7 +19,7 @@ import { kitDe } from "./kit.js";
 import { leerMercado } from "../mercado.js";
 import { bloqueDeMarca, kitVacio } from "../../../src/lib/kitMarca.js";
 import { productosActivos, lineaDeProducto } from "../../../src/lib/estudioMercado.js";
-import { pedidoDeFichas, leerFichas, limpiarPiezaEncargo, MAX_FICHAS, correccionesRecientes } from "../../../src/lib/director.js";
+import { pedidoDeFichas, leerFichas, limpiarPiezaEncargo, MAX_FICHAS, correccionesRecientes, plantillaParaTipo } from "../../../src/lib/director.js";
 import { ErrorEstudio } from "./trabajos.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
@@ -90,7 +90,14 @@ export async function fichasDeDiseno(env, acceso, cliente, { piezas = [], concep
   const productoDe = (id) => activos.find((p) => p.id === String(id ?? ""));
   const encargo = lista.map((p, i) => {
     const prod = productoDe(p?.productoId);
-    return limpiarPiezaEncargo({ ...p, producto: prod ? lineaDeProducto(prod, { inventario: mercado.inventario }).slice(2) : p?.producto }, i);
+    const limpia = limpiarPiezaEncargo({ ...p, producto: prod ? lineaDeProducto(prod, { inventario: mercado.inventario }).slice(2) : p?.producto }, i);
+    // La plantilla asignada a su tipo de contenido, si nadie escogió otra (y la pieza lleva su texto: con la plantilla
+    // de texto encima, el diseño lo decide la plantilla de la aplicación).
+    if (!limpia.plantilla && !limpia.sinTexto) {
+      const asignada = plantillaParaTipo(kit.plantillas, limpia.tipo, limpia.formato);
+      if (asignada) limpia.plantilla = asignada.id;
+    }
+    return limpia;
   });
   const productos = [...new Set(lista.map((p) => p?.productoId).filter(Boolean))]
     .map(productoDe).filter(Boolean)

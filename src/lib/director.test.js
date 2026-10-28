@@ -129,3 +129,47 @@ describe("lo que la agencia corrige y el carrusel del director", () => {
     expect(leerCarrusel("nada")).toBeNull();
   });
 });
+
+describe("cómo se diseña cada tipo y las plantillas por tipo", async () => {
+  const { tipoDeDiseno, disenoDelTipo, bloqueDeDisenoPorTipo, plantillaParaTipo, limpiarDisenoTipos, pedidoDeFichas, lineaDePlantilla, DISENO_POR_TIPO } = await import("./director.js");
+  const { limpiarKit } = await import("./kitMarca.js");
+
+  it("reconoce el tipo por su id o por su nombre", () => {
+    expect(tipoDeDiseno("Educativo / Informativo")).toBe("educativo");
+    expect(tipoDeDiseno("Servicios / Productos")).toBe("servicios");
+    expect(tipoDeDiseno("maletas-garantia")).toBe("maletas");
+    expect(tipoDeDiseno("Testimonio")).toBe("maletas");
+    expect(tipoDeDiseno("Comunidad")).toBe("humano");
+    expect(tipoDeDiseno("Variadas")).toBe("");
+  });
+
+  it("vale el del manual de la agencia o el de la casa, y sólo los tipos de la tanda", () => {
+    expect(disenoDelTipo("educativo")).toBe(DISENO_POR_TIPO.find((x) => x.id === "educativo").base);
+    expect(disenoDelTipo("Educativo / Informativo", { disenoTipos: { educativo: "Siempre fondo azul." } })).toBe("Siempre fondo azul.");
+    const b = bloqueDeDisenoPorTipo(["Anuncio", "Anuncio", "Educativo / Informativo"]);
+    expect(b).toMatch(/^CÓMO SE DISEÑA CADA TIPO/);
+    expect(b.split("\n")).toHaveLength(3);
+    expect(bloqueDeDisenoPorTipo([])).toBe("");
+    expect(bloqueDeDisenoPorTipo([], null, { todos: true }).split("\n")).toHaveLength(DISENO_POR_TIPO.length + 1);
+    expect(limpiarDisenoTipos({ educativo: "  x ", inventado: "y", anuncio: "" })).toEqual({ educativo: "x" });
+  });
+
+  it("el director lo lee en las fichas, y la plantilla de un tipo dice de qué tipo es", () => {
+    const p = pedidoDeFichas({ piezas: [{ n: 1, tipo: "Anuncio", texto: "Hola" }] });
+    expect(p).toMatch(/CÓMO SE DISEÑA CADA TIPO[\s\S]*- Anuncio: El producto real es el protagonista/);
+    expect(p).not.toMatch(/- Educativo/);
+    expect(lineaDePlantilla({ id: "plantilla-a", nombre: "Azul", uso: "post", tipos: ["educativo"] })).toMatch(/ES LA DE: Educativo \/ Informativo/);
+  });
+
+  it("la plantilla asignada a un tipo, por su uso", () => {
+    const kit = limpiarKit({ plantillas: [
+      { id: "plantilla-a", nombre: "Edu", uso: "post", clave: "clientes/c1/a.png", tipos: ["educativo", "inventado"] },
+      { id: "plantilla-b", nombre: "Portada", uso: "portada", clave: "clientes/c1/b.png", tipos: ["educativo"] },
+    ] });
+    expect(kit.plantillas[0].tipos).toEqual(["educativo"]);
+    expect(plantillaParaTipo(kit.plantillas, "Educativo / Informativo", "post")?.id).toBe("plantilla-a");
+    expect(plantillaParaTipo(kit.plantillas, "educativo", "carrusel")?.id).toBe("plantilla-b");
+    expect(plantillaParaTipo(kit.plantillas, "educativo", "historia")).toBeNull();
+    expect(plantillaParaTipo(kit.plantillas, "Anuncio", "post")).toBeNull();
+  });
+});
