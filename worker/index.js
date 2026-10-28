@@ -65,6 +65,7 @@ import { rutasMCP, rutasMCPPublicas } from "./rutas/mcp.js";
 import { informePendiente } from "./lib/informes.js";
 import { informeAnunciosPendiente } from "./lib/informeAnuncios.js";
 import { historiasAutomaticasPendiente } from "./lib/historiasAuto.js";
+import { encargosDelCron } from "./lib/estudio/bomba.js";
 import { rutasBandeja, rutaWebhookMeta } from "./rutas/bandeja.js";
 
 // El Durable Object del espacio. Se reexporta desde aquí porque
@@ -529,6 +530,9 @@ export default {
       // El Estudio: lo que nadie está mirando (cerró la pestaña).
       const estudio = await avanzarPendientes(env, cuando).catch((e) => { console.error("cron estudio:", e); return 1; });
       if (estudio) return;
+      // Y los encargos (el lote que sigue en el servidor) que su bomba no esté llevando.
+      const encargos = await encargosDelCron(env, cuando).catch((e) => { console.error("cron encargos:", e); return 1; });
+      if (encargos) return;
       // Y por último Inspiración: el feed de un cliente que lleva un día sin leerse (hasta diez llamadas a Meta o Google).
       await inspiracionPendiente(env, cuando).catch((e) => console.error("cron inspiración:", e));
     })());

@@ -37,7 +37,17 @@
 //
 //   · PRESENCIA. Quién está conectado y qué está mirando. No toca la
 //     base: nace y muere con los sockets, que es exactamente lo que es.
+//
+// LA BOMBA DEL ESTUDIO
+//
+// Además, el objeto lleva lo que el Estudio deja en marcha (trabajos y
+// encargos) cuando nadie mira la pantalla: `/despertar` pone una ALARMA y
+// la alarma da unos pocos pasos (worker/lib/estudio/bomba.js) y se vuelve a
+// poner mientras quede algo vivo. Cada alarma es su propia invocación, con
+// sus propios límites: por eso da pocos pasos y vuelve en segundos.
 // ============================================================
+
+import { bombear } from "./lib/estudio/bomba.js";
 
 /** Lo que se guarda pegado a cada socket. Sobrevive a la hibernación. */
 function datosDe(ws) {
@@ -49,8 +59,9 @@ function datosDe(ws) {
 }
 
 export class EspacioHub {
-  constructor(state) {
+  constructor(state, env) {
     this.state = state;
+    this.env = env;
   }
 
   async fetch(req) {
@@ -84,6 +95,16 @@ export class EspacioHub {
       return new Response(null, { status: 101, webSocket: cliente });
     }
 
+    if (url.pathname.endsWith("/despertar")) {
+      const { ownerId } = await req.json().catch(() => ({}));
+      if (typeof ownerId !== "string" || !ownerId) return new Response("Falta el espacio", { status: 400 });
+      await this.state.storage.put("owner", ownerId);
+      const puesta = await this.state.storage.getAlarm();
+      // Una alarma que ya va a sonar pronto basta; una lejana (un video esperando) se adelanta.
+      if (!puesta || puesta > Date.now() + 2000) await this.state.storage.setAlarm(Date.now() + 1000);
+      return new Response(null, { status: 204 });
+    }
+
     if (url.pathname.endsWith("/difundir")) {
       const evento = await req.json();
       this.difundir(evento);
@@ -91,6 +112,20 @@ export class EspacioHub {
     }
 
     return new Response("No encontrado", { status: 404 });
+  }
+
+  /** La bomba del Estudio: unos pasos y, si queda algo vivo, la siguiente alarma. */
+  async alarm() {
+    const ownerId = await this.state.storage.get("owner");
+    if (!ownerId || !this.env?.DB) return;
+    let siguiente = null;
+    try {
+      siguiente = await bombear(this.env, ownerId);
+    } catch (e) {
+      console.error("bomba del estudio:", e?.message ?? e);
+      siguiente = 30_000;
+    }
+    if (siguiente != null) await this.state.storage.setAlarm(Date.now() + siguiente);
   }
 
   async webSocketMessage(ws, mensaje) {

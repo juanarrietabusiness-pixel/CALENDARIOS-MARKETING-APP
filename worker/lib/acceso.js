@@ -92,6 +92,8 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "estudio_trabajos",
   "estudio_archivos",
   "estudio_carpetas",
+  // Los encargos: una cadena de piezas (el lote) que sigue en el servidor con la aplicación cerrada (encargos.js).
+  "estudio_encargos",
   // La bandeja: comentarios y mensajes de Facebook e Instagram, y el
   // interruptor de cada cliente (worker/lib/bandeja.js).
   "bandeja_clientes",
@@ -148,7 +150,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "inspiracion_cuentas", "inspiracion_publicaciones",
   "cerebro_notas", "cerebro_senales", "cerebro_usos", "cerebro_memoria", "cerebro_propuestas",
   "mercado_clientes",
-  "estudio_trabajos", "estudio_archivos", "estudio_carpetas",
+  "estudio_trabajos", "estudio_archivos", "estudio_carpetas", "estudio_encargos",
   "bandeja_clientes", "bandeja_comentarios", "bandeja_hilos", "bandeja_mensajes",
   "biblioteca_filtros",
   "cuentas_anuncios", "campanas_anuncios", "historial_anuncios",
@@ -570,6 +572,40 @@ export async function clientesConHistoriasPendientes(db, hasta, limite = 50) {
         limit ?`,
     )
     .bind(hasta, limite)
+    .all();
+  return results ?? [];
+}
+
+/**
+ * Lo vivo del Estudio de UN espacio, para la bomba de su Durable Object (worker/lib/estudio/bomba.js): los
+ * trabajos en marcha y los encargos sin terminar. Sólo ids, tiempos y el permiso; cada uno se avanza después con
+ * `crearAcceso`. El espacio va en la consulta: no es una lectura de todos.
+ */
+export async function estudioVivoDe(db, ownerId, limite = 12) {
+  const [trabajos, encargos] = await Promise.all([
+    db.prepare(
+      `select id, remoto, n, bloqueado_hasta, updated_at from estudio_trabajos
+        where owner_id = ? and estado in ('en_cola','en_marcha')
+        order by updated_at asc limit ?`,
+    ).bind(ownerId, limite).all(),
+    db.prepare(
+      `select id, bloqueado_hasta, updated_at from estudio_encargos
+        where owner_id = ? and estado = 'en_marcha'
+        order by updated_at asc limit ?`,
+    ).bind(ownerId, limite).all(),
+  ]);
+  return { trabajos: trabajos.results ?? [], encargos: encargos.results ?? [] };
+}
+
+/** Los encargos sin terminar de TODOS los espacios que nadie avanza (para el cron de respaldo). */
+export async function encargosPendientes(db, ahoraISO, antesDe, limite = 1) {
+  const { results } = await db
+    .prepare(
+      `select id, owner_id from estudio_encargos
+        where estado = 'en_marcha' and updated_at <= ? and bloqueado_hasta <= ?
+        order by updated_at asc limit ?`,
+    )
+    .bind(antesDe, ahoraISO, limite)
     .all();
   return results ?? [];
 }

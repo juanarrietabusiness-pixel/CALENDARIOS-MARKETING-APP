@@ -165,8 +165,13 @@ src/
     loteAnuncios.js       La producción en lote: las casillas (niveles, matriz deseos × perfiles × niveles, tipos),
                           la forma de cada pieza, el pedido y su lectura, la escena, la publicación y qué
                           composiciones funcionan con cada cliente (puro; también el Worker)
-    loteEstudio.js        Crear las piezas del lote en el Estudio, de dos en dos, con la escena mejorada y 1–3
-                          variantes; `ponerTexto` (la compuesta recuerda su cruda: «Otra versión» sobre ella)
+    loteEstudio.js        Cómo se arma cada pieza del lote (`pedidoDeLote`, lo que lee el director) y `ponerTexto` (la
+                          compuesta recuerda su cruda: «Otra versión» sobre ella); los carruseles y reels del lote
+    loteServidor.js       El lote que lleva el SERVIDOR: armar cada pieza como paso (`pasoDeLote`, con «{{ESCENA}}»),
+                          lanzarlo, seguirlo y terminar lo que necesita lienzo (texto de plantilla, logo)
+    encargos.js           Los encargos del Estudio, lo compartido con el Worker: el hueco de la escena, topes y cómo se
+                          cuenta cada pieza en pantalla (puro)
+    edicion.js            Editar una imagen ya hecha: el pedido, con qué modelo, la proporción (puro; también el Worker)
     estructurasCarrusel.js  Las estructuras de un carrusel (errores, mitos, paso a paso…): rotar por tipo sin repetir (puro)
     loteMes.js            El lote del MES completo: días por el ritmo y la temporada y su plan (puro; también el Worker)
     ideasEstudio.js       «Dame ideas» del Estudio: el plan (tipo, composición, producto), el pedido y su lectura
@@ -427,7 +432,7 @@ src/
     Campanas.jsx          /campanas («Anuncios»): cuenta publicitaria, cifras, campañas, crear (lazy)
 worker/
   index.js                Enrutado, sesión y cabeceras de /api/*
-  hub.js                  Durable Object: un espacio, sus sockets y su presencia
+  hub.js                  Durable Object: un espacio, sus sockets y su presencia; y la ALARMA que lleva el Estudio sin pantalla
   lib/
     acceso.js             La capa que sustituye a las políticas RLS
     sesion.js             PBKDF2, cookie __Host-, espacio de trabajo e invitaciones
@@ -476,7 +481,8 @@ worker/
                           resultado a R2 por flujo, con topes), herramientas.js (ver_estudio,
                           crear_en_estudio y estado_trabajo: las mismas para el asistente y el MCP),
                           higgsfield-schemas.json (SU documentación: campos, valores, obligatorios), ideas.js
-                          («Dame ideas») y lote.js (la producción en lote: niveles, matriz, tipos y mes)
+                          («Dame ideas»), lote.js (la producción en lote: niveles, matriz, tipos y mes), encargos.js
+                          (la cadena del lote que sigue en el servidor) y bomba.js (lo avanza sin pantalla)
     cerebro/              El cerebro de un cliente: conocimiento.js (BM25 por pasajes) y
                           memoria.js (grafo, presupuesto, sinapsis) portados de Agents
                           Office; notas.js (tipos, partir un archivo en notas);
@@ -537,7 +543,7 @@ worker/
     formulasUgc.js        /api/formulas-ugc: las fórmulas UGC de la agencia (listar, guardar, corregir, quitar, proponer)
     inspiracion.js        /api/inspiracion/<cliente>: el feed, actualizar, traer un archivo, el resumen
     historiasAuto.js      /api/historias-auto/<cliente>: ajustes, pendientes de preparar, piezas
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1418,6 +1424,33 @@ son del servidor.
   lo que sale al proveedor tiene que ser lo que quedó escrito en la galería.
   · **Lo creado desde «Subir» apunta su uso al guardar** (`delEstudio` en `SubirRapido`): la
   publicación aún no existe al crear, y sin `usado_en` la papelera podría llevarse el archivo.
+- **El lote sigue en el SERVIDOR aunque se cierre la aplicación** (decisión de la agencia: en el teléfono, salir de la
+  app paraba lo que se estaba creando; `worker/lib/estudio/encargos.js`, `bomba.js`, 0049; `src/lib/loteServidor.js`).
+  Antes el lote lo orquestaba la pestaña con `await`: lo pedido terminaba por el cron, lo demás no se pedía nunca.
+  · **Un ENCARGO es la cadena entera como lista de pasos con su avance** (`estudio_encargos`). La pantalla arma cada
+  pieza por el MISMO camino de siempre (`pedidoDeLote`) con «{{ESCENA}}» en el hueco (`pasoDeLote`; un test exige que,
+  quitado el hueco, el pedido sea idéntico) y el servidor la lleva: el director de 6 en 6 (las vistas de las plantillas y
+  los «Me gusta» viajan con el encargo y se borran al terminar el director), la mejora si no hay ficha, el trabajo, la
+  proporción (se recompone con el mismo modelo y si no con el relevo, como `esperarArchivos`), el control y UNA
+  corrección que se queda sólo si mejoró (`mejoro`, contra la ficha de la ORIGINAL). De dos en dos (`paralelo`).
+  · **Quién avanza**: la BOMBA, la alarma del Durable Object del espacio (`hub.js` → `bombear`). `crearTrabajo` y
+  `crearEncargo` la despiertan (`despertar`, ESPERADO: sin `await` la petición al objeto podía cortarse). Cada alarma es
+  su propia invocación (sus 50 consultas y 50 peticiones): da 3 pasos caros y vuelve en 1,5 s, o cuando toque el video.
+  Con eso también un trabajo SUELTO (el compositor, «Crear la imagen aquí») sigue en segundos sin pantalla; antes, uno por
+  minuto. El cron sigue de respaldo (`avanzarPendientes`, `encargosDelCron`) y despierta a la bomba si la ve dormida. La
+  pantalla sólo LEE cada 3 s y empuja (`/avanzar`) si lleva 20 s quieto: si diera ella los pasos, salir a mitad de una
+  llamada a la IA la tiraría (y se pagaría igual).
+  · **El permiso** es `bloqueado_hasta` (4 min: el director con razonamiento tarda), reservado con el valor leído como
+  condición, como en los trabajos. Los `finales` que pone la pantalla también lo toman (si no, un paso a la vez se
+  llevaría lo escrito): ocupado → 409 y la pantalla reintenta.
+  · **Lo que necesita lienzo lo hace la pantalla al volver**: el texto de la plantilla y el logo estampado
+  (`terminarPieza`, una vez por pieza; `finales`). Mientras, la pieza se ve cruda.
+  · **Lo que NO hace el servidor**: si el director escoge una plantilla del kit, en el servidor sólo cuenta su ficha (el
+  pedido ya va armado). Los carruseles, los reels y «Producir el mes» siguen en la pantalla (siguiente entrega).
+  · **Volver**: el borrador del lote guarda los encargos; «Seguir con ellas» abre el paso 3 con lo que salió y sigue lo que
+  falte. Cerrar el diálogo ya no se impide por lo que va en el servidor («Cerrar (sigue en el servidor)»), y «Detener»
+  lo cancela (lo que ya estaba saliendo se queda en la galería).
+  · **Nada de esto se ha probado contra Cloudflare real**: los tests llaman a `bombear` como lo haría la alarma.
 - **El kit de marca del Estudio: lo que la agencia hacía en Flow con un texto
   por marca, por cliente y SALIDO DEL CEREBRO** (`clients.kit_marca`, 0033;
   lo puro en `src/lib/kitMarca.js`, lo que toca base/R2/IA en
