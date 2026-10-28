@@ -15,9 +15,13 @@
 //     control de calidad corrige la letra que salga mal.
 //
 // SIEMPRE ACTIVO (decisión de la agencia: casi todo post va también a
-// historias): al poner la primera imagen del post, se prepara sola la
-// encajada, se marca «Publicar también como historia» y se crean las tres
-// con IA para escoger. Se apaga por navegador.
+// historias): al poner la primera imagen del post se prepara sola la
+// ENCAJADA (la misma imagen en 9:16, gratis) y se marca «Publicar también
+// como historia»; si la imagen del post cambia (otra versión, corregida…), la
+// encajada se rehace con la nueva, así la historia es la del post que se
+// aprueba. Las tres con IA, SÓLO con su botón (cuestan: un post que no gusta
+// no las paga), con el modelo que se escoja aquí para el cliente. Se apaga
+// por navegador.
 //
 // Lo que no se escoge va a la papelera del Estudio.
 // ============================================================
@@ -26,7 +30,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import Icon from "../Icon";
 import { subirImagenPublicacion } from "../../lib/db";
 import { historiaDesdeImagen } from "../../lib/medios";
-import { mediosDe, historiasDe, RETRASO_HISTORIA_MIN, LIMITES } from "../../lib/publicacion";
+import { mediosDe, historiasDe, queHacerConLaEncajada, RETRASO_HISTORIA_MIN, LIMITES } from "../../lib/publicacion";
 
 const RETRASOS = [0, 5, 15, 30, 60, 120];
 
@@ -50,11 +54,13 @@ export default function HistoriasDelPost({ post, sf, clientId, cliente = null, c
     if (lista.length) sf("historiaTambien", true);
   };
 
-  const usarLaDelPost = async (antes = historias) => {
+  // La encajada recuerda de qué imagen salió (`encajadaDe`): si la del post cambia, se rehace en su sitio.
+  const usarLaDelPost = async (antes = historias, reemplaza = "") => {
     setTrabajando("post");
     try {
       const h = await historiaDesdeImagen(base.src, (f) => subirImagenPublicacion(clientId, f), post.ajusteIG || "difuminado", colorMarca);
-      poner([...antes, h]);
+      poner(reemplaza ? antes.map((x) => (x.src === reemplaza ? h : x)) : [...antes, h]);
+      sf("encajadaDe", { de: base.src, src: h.src });
     } catch (e) {
       onError?.(`No se pudo preparar la historia: ${e.message}`);
     }
@@ -82,26 +88,37 @@ export default function HistoriasDelPost({ post, sf, clientId, cliente = null, c
     setTrabajando("");
   };
 
-  // SIEMPRE ACTIVO: cuando el post RECIBE su primera imagen (no al abrir uno que ya la tenía), la encajada en el acto
-  // y las tres con IA en cuanto el post diga algo (en «Subir» la IA escribe el texto después de subir la imagen).
+  // SIEMPRE ACTIVO: cuando el post RECIBE su primera imagen (no al abrir uno que ya la tenía), la encajada en el acto; si
+  // la imagen cambia y la encajada sigue puesta, se rehace con la nueva. Las tres con IA, sólo con su botón.
   const formatoSinHistoria = ["historia", "live", "reel", "carrusel"].includes(post.format);
-  const hayInfo = Boolean(String(post.idea || post.descripcion || post.textoPieza || post.title || "").trim());
   const baseAntes = useRef(base?.src ?? null);
-  const faltanLasDeIA = useRef(false);
   useEffect(() => {
     const antes = baseAntes.current;
     baseAntes.current = base?.src ?? null;
-    if (!solas || antes || !base || historias.length || trabajando || formatoSinHistoria) return;
-    faltanLasDeIA.current = Boolean(cliente);
-    usarLaDelPost([]);
+    if (!solas || trabajando || formatoSinHistoria) return;
+    const que = queHacerConLaEncajada({ antes, ahora: base?.src ?? null, historias, encajada: post.encajadaDe });
+    if (que === "crear") void usarLaDelPost([]);
+    if (que === "rehacer") void usarLaDelPost(historias, post.encajadaDe.src);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base?.src]);
+
+  // El modelo de las tres con IA: el fijado para las historias de este cliente (lo comparte el equipo) o el de siempre.
+  const [modelos, setModelos] = useState(null);
   useEffect(() => {
-    if (!faltanLasDeIA.current || !hayInfo || trabajando || !base) return;
-    faltanLasDeIA.current = false;
-    crearConIA();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hayInfo, trabajando, base?.src]);
+    if (!cliente || !base || formatoSinHistoria) return;
+    let vivo = true;
+    import("../../lib/historiasEstudio").then((m) => m.modelosParaHistorias(clientId)).then((r) => { if (vivo) setModelos(r); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [cliente, clientId, Boolean(base), formatoSinHistoria]); // eslint-disable-line react-hooks/exhaustive-deps
+  const fijarModelo = async (id) => {
+    setModelos((m) => ({ ...m, fijado: id }));
+    try {
+      const { fijarModeloHistorias } = await import("../../lib/historiasEstudio");
+      await fijarModeloHistorias(clientId, id);
+    } catch (e) {
+      onError?.(`No se pudo guardar el modelo: ${e.message}`);
+    }
+  };
 
   const elegir = (c) => {
     poner([...historias, { src: c.src, tipo: "imagen", nombre: `${c.variante}.png`, ancho: c.archivo?.ancho || 1080, alto: c.archivo?.alto || 1920 }]);
@@ -120,6 +137,8 @@ export default function HistoriasDelPost({ post, sf, clientId, cliente = null, c
     const lista = historias.filter((_, j) => j !== i);
     sf("historias", lista);
     if (!lista.length) sf("historiaTambien", false);
+    // Quitada a mano, la encajada ya no se rehace sola.
+    if (historias[i]?.src && historias[i].src === post.encajadaDe?.src) sf("encajadaDe", null);
   };
 
   return (
@@ -187,11 +206,20 @@ export default function HistoriasDelPost({ post, sf, clientId, cliente = null, c
       </div>
       <label className="casilla">
         <input type="checkbox" checked={solas} onChange={(e) => setSolas(e.target.checked)} />
-        Al poner la imagen del post, preparar sola la historia y crear 3 con IA para escoger
+        Al poner la imagen del post, preparar sola su historia (la misma imagen en vertical, sin costo)
       </label>
+      {cliente && base && modelos?.opciones?.length > 0 && (
+        <div className="field" style={{ margin: 0 }}>
+          <label className="label" htmlFor={`${ids}-m`}>Modelo de las 3 con IA</label>
+          <select id={`${ids}-m`} className="input" value={modelos.fijado} onChange={(e) => fijarModelo(e.target.value)} disabled={!!trabajando}>
+            <option value="">{modelos.porDefecto ? `El de siempre (${modelos.porDefecto})` : "El de siempre"}</option>
+            {modelos.opciones.map((m) => <option key={m.id} value={m.id}>{m.nombre} · {m.costo}</option>)}
+          </select>
+        </div>
+      )}
       <p className="hint">
         {base
-          ? "La historia sale sola a la hora elegida. «Usar la imagen del post» la encaja tal cual; con IA salen tres historias distintas que complementan el post con su misma información (una pregunta, un beneficio y el llamado a la acción), con el texto escrito por el director de arte y revisado. Los stickers se ponen desde el teléfono. Cada imagen con IA cuesta lo que el modelo del cliente (unos céntimos)."
+          ? "La historia sale sola a la hora elegida. «Usar la imagen del post» la encaja tal cual (se hace sola al poner la imagen y sigue a la imagen si cambia). «Crear 3 con IA» sólo se hace al pulsarlo: tres historias distintas que complementan el post con su misma información (una pregunta, un beneficio y el llamado a la acción), con el texto escrito por el director de arte y revisado; mejor cuando el post ya está aprobado. El modelo se escoge arriba y vale para este cliente. Los stickers se ponen desde el teléfono."
           : "Primero añade una imagen al post: las historias se preparan a partir de ella."}
       </p>
     </section>

@@ -36,14 +36,16 @@ const leerJSON = (t, d) => { try { return JSON.parse(t); } catch { return d; } }
 /** Lo que ve la agencia de un cliente: el interruptor, la hora, las redes y qué hay listo. */
 export async function ajustesHistorias(acceso, clientId) {
   const f = await acceso.leerUno("historias_auto", { client_id: clientId });
-  const piezas = await acceso.leerColumnas("historias_auto_piezas", ["id", "titulo", "clave", "usos", "usada_at", "publicada_at"], { client_id: clientId }, "created_at desc");
+  const piezas = await acceso.leerColumnas("historias_auto_piezas", ["id", "titulo", "clave", "usos", "usada_at", "publicada_at", "excluida"], { client_id: clientId }, "created_at desc");
   const ajustes = limpiarAjustes({ activa: f?.activa === 1, hora: f?.hora, redes: leerJSON(f?.redes, []) });
+  const vista = (p) => ({ id: p.id, titulo: p.titulo, src: `/api/media/${p.clave}`, usos: p.usos ?? 0, usadaAt: p.usada_at ?? null });
   return {
     ...ajustes,
     ultimaFecha: f?.ultima_fecha ?? null,
     nota: f?.nota ?? "",
     proxima: ajustes.activa ? proximaFecha(ajustes.hora) : null,
-    piezas: piezas.map((p) => ({ id: p.id, titulo: p.titulo, src: `/api/media/${p.clave}`, usos: p.usos ?? 0, usadaAt: p.usada_at ?? null })),
+    piezas: piezas.filter((p) => !p.excluida).map(vista),
+    quitadas: piezas.filter((p) => p.excluida).map(vista),
   };
 }
 
@@ -98,14 +100,18 @@ export async function guardarPieza(env, acceso, clientId, { filaId, src, frase =
     externo_id: fila.red === "instagram" ? fila.externo_id ?? "" : previa?.externo_id ?? "",
     clave, titulo: String(post.title || post.idea || "").slice(0, 140), frase: String(frase).slice(0, 60),
     publicada_at: fila.publicada_at ?? null, usos: previa?.usos ?? 0, usada_at: previa?.usada_at ?? null,
-    created_at: previa?.created_at ?? ahora(),
+    excluida: previa?.excluida ? 1 : 0, created_at: previa?.created_at ?? ahora(),
   };
   await acceso.guardar("historias_auto_piezas", pieza);
   return pieza;
 }
 
-export async function quitarPieza(acceso, clientId, id) {
-  return acceso.borrar("historias_auto_piezas", { id: String(id), client_id: clientId });
+/**
+ * «Que no salga» (`excluida`: true) o «Que vuelva a salir» (false). La fila NO se borra: si se borrara, la publicación
+ * volvería a estar «sin historia hecha» y la aplicación la prepararía otra vez al abrirse.
+ */
+export async function excluirPieza(acceso, clientId, id, excluida = true) {
+  return acceso.actualizar("historias_auto_piezas", { id: String(id), client_id: clientId }, { excluida: excluida ? 1 : 0 });
 }
 
 /**
@@ -121,9 +127,11 @@ export async function programarHistoriaDelDia(env, acceso, clientId, fecha, mome
   };
   if (!ajustes.activa) return 0;
 
-  const piezas = await acceso.leer("historias_auto_piezas", { client_id: clientId });
+  const todas = await acceso.leer("historias_auto_piezas", { client_id: clientId });
+  const piezas = todas.filter((p) => !p.excluida);
   if (!piezas.length) {
-    await cerrar("Aún no hay publicaciones preparadas: se preparan solas al abrir la aplicación.");
+    await cerrar(todas.length ? "Todas las preparadas están apartadas con «Que no salga»."
+      : "Aún no hay publicaciones preparadas: se preparan solas al abrir la aplicación.");
     return 0;
   }
   const medidas = await acceso.leerVarios("metricas_publicacion", ["externo_id", "interacciones"], "externo_id",

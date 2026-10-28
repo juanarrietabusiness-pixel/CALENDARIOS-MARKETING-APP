@@ -546,7 +546,7 @@ worker/
     formulasUgc.js        /api/formulas-ugc: las fórmulas UGC de la agencia (listar, guardar, corregir, quitar, proponer)
     inspiracion.js        /api/inspiracion/<cliente>: el feed, actualizar, traer un archivo, el resumen
     historiasAuto.js      /api/historias-auto/<cliente>: ajustes, pendientes de preparar, piezas
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1448,8 +1448,10 @@ son del servidor.
   llevaría lo escrito): ocupado → 409 y la pantalla reintenta.
   · **Lo que necesita lienzo lo hace la pantalla al volver**: el texto de la plantilla y el logo estampado
   (`terminarPieza`, una vez por pieza; `finales`). Mientras, la pieza se ve cruda.
-  · **Lo que NO hace el servidor**: si el director escoge una plantilla del kit, en el servidor sólo cuenta su ficha (el
-  pedido ya va armado). Los REELS (guion, fotogramas, video) y los planes del director en el chat siguen en la pantalla.
+  · **La plantilla que escoge el director** (o la de su tipo) se suma al pedido EN EL SERVIDOR (`conPlantillaDelDirector`
+  en encargos.js): su imagen detrás de las que ya iban, con su línea numerada y su sistema escrito, como `pedidoDeLote` en
+  la pantalla. Si ya llevaba una, si no cabe en el modelo o si la plantilla ya no está, el pedido no cambia.
+  · **Lo que NO hace el servidor**: los REELS (guion, fotogramas, video) y los planes del director en el chat.
   · **El carrusel también es un encargo** (`tipo: "carrusel"`): «Carrusel con IA» (FlujoCarrusel), los carruseles del
   lote y los de «Producir el mes». Va en ORDEN (`paralelo` 1): cada lámina con la anterior y la portada (las CRUDAS) de
   referencia, armada por `armarLamina` (src/lib/laminaPedido.js), el MISMO pedido que `crearLamina` en la pantalla; el
@@ -2619,6 +2621,9 @@ son del servidor.
   los 20 s de abrir la aplicación (una vez por sesión, `prepararEnSegundoPlano`, módulo en diferido) y con «Preparar
   ahora». El servidor sólo acepta una imagen de ESE cliente que esté en R2 y una fila de la cola PUBLICADA de verdad.
   · **Una pieza por publicación** (`clave_post` = «calendario|publicación»): salió en Instagram y Facebook y es una.
+  · **«Que no salga» APARTA, no borra** (`excluida`, 0050): borrada, la publicación volvía a estar «sin historia hecha» y
+  la aplicación la preparaba otra vez al abrirse, así que volvía a salir. Apartada no se prepara ni sale; «Que vuelva a
+  salir» (`POST …/piezas/<id>/volver`) la devuelve. Volver a subirla conserva `excluida`.
   · **El cron pone UNA al día** (`historiasAutomaticasPendiente`, antes del Estudio: con el Estudio ocupado horas no
   saldría ninguna; sin nada que hacer, una consulta). La de hoy si a su hora le quedan 10 minutos; si no, la de mañana
   (`proximaFecha`, hora de Panamá). Sale la menos usada; a igualdad, la de más interacciones en Instagram
@@ -3225,9 +3230,14 @@ son del servidor.
   Nano Banana). Ahora van por el Estudio (`src/lib/historiasEstudio.js`): el director escribe las tres fichas con su texto
   exacto, cada una con el modelo del cliente (si admite referencias), su kit, las fotos del producto y la imagen del post
   de referencia (`toma: producto, estilo`, «no la repitas»), las zonas seguras de historia y el control que corrige la
-  letra mal escrita. Lo que no se escoge va a la papelera del Estudio. **Siempre activo** (decisión de la agencia, apagable
-  por navegador `historias-solas`): cuando el post RECIBE su primera imagen —no al abrir uno que ya la tenía— se prepara
-  la encajada (gratis), se marca «Publicar también como historia» y, en cuanto el post dice algo, se crean las 3 con IA.
+  letra mal escrita. Lo que no se escoge va a la papelera del Estudio. **La encajada, siempre; las 3 con IA, sólo con su
+  botón** (decisión de la agencia: un post que no gusta no paga tres historias; apagable por navegador `historias-solas`):
+  cuando el post RECIBE su primera imagen —no al abrir uno que ya la tenía— se prepara la encajada (la misma imagen en
+  9:16, gratis) y se marca «Publicar también como historia». Recuerda de qué imagen salió (`post.encajadaDe` { de, src }):
+  si la imagen del post cambia (otra versión, corregida) y la encajada sigue puesta, se REHACE en su sitio
+  (`queHacerConLaEncajada`, publicacion.js); quitada a mano, ya no. El modelo de las 3 se escoge en el panel («Modelo de
+  las 3 con IA») y se guarda en el kit (`kit.modelos.historias`, una imagen que admita referencias; lo comparte el
+  equipo); vacío, el del cliente si admite referencias o el mejor que sí (`modeloDeHistorias`).
   La ruta vieja (`historiaDe` en /api/generar-imagen) sigue, pero ya no la llama la pantalla.
 - **«Crear la imagen aquí» escoge tipo, estilo, modelo y plantilla** (`OpcionesCrearAqui.jsx`, lazy: arrastra el
   catálogo; se recuerda por cliente en `crear-aqui:<cliente>`). Vacío es lo de siempre: el tipo del post, el estilo de ese

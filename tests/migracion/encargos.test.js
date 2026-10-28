@@ -5,7 +5,7 @@ import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
 import { crearAcceso } from "../../worker/lib/acceso.js";
 import { bombear, encargosDelCron } from "../../worker/lib/estudio/bomba.js";
-import { avanzarEncargo, conEscena } from "../../worker/lib/estudio/encargos.js";
+import { avanzarEncargo, conEscena, conPlantillaDelDirector } from "../../worker/lib/estudio/encargos.js";
 import { ESCENA } from "../../src/lib/encargos.js";
 import { MAX_PROMPT } from "../../src/lib/estudioCatalogo.js";
 
@@ -210,5 +210,29 @@ describe("la escena en el pedido", () => {
     const largo = conEscena(`Escena: ${ESCENA}\n\nLÍNEA DEL LOGO.`, "x".repeat(MAX_PROMPT));
     expect(largo.length).toBeLessThanOrEqual(MAX_PROMPT);
     expect(largo.endsWith("LÍNEA DEL LOGO.")).toBe(true);
+  });
+});
+
+describe("la plantilla que escoge el director", () => {
+  const kit = { plantillas: [{ id: "plantilla-oferta", nombre: "Oferta", uso: "post", clave: "clientes/c1/estudio/oferta.png", sistema: "Titular arriba, 12 % del alto." }] };
+  const pedido = { modelo: "nano-banana", prompt: `Escena: ${ESCENA}`, medios: { reference: ["clientes/c1/estudio/producto.png"] } };
+
+  it("su imagen va de referencia, numerada detrás de las que ya iban, con su sistema escrito (como en la pantalla)", () => {
+    const r = conPlantillaDelDirector(pedido, kit, "plantilla-oferta");
+    expect(r.medios.reference).toEqual(["clientes/c1/estudio/producto.png", "clientes/c1/estudio/oferta.png"]);
+    expect(r.prompt).toContain("Sigue el diseño de la plantilla «Oferta»");
+    expect(r.prompt).toContain("Titular arriba, 12 % del alto.");
+    expect(r.prompt).toMatch(/Imagen de referencia 2: toma SÓLO/);
+    // El hueco de la escena sigue ahí: la ficha se pone después.
+    expect(r.prompt).toContain(ESCENA);
+  });
+
+  it("no cambia nada si la pieza ya llevaba plantilla, si no cabe en el modelo o si la plantilla ya no está", () => {
+    const conUna = conPlantillaDelDirector(pedido, kit, "plantilla-oferta");
+    expect(conPlantillaDelDirector(conUna, kit, "plantilla-oferta")).toBe(conUna);
+    const lleno = { ...pedido, medios: { reference: ["a", "b", "c"].map((x) => `clientes/c1/${x}.png`) } };
+    expect(conPlantillaDelDirector(lleno, kit, "plantilla-oferta")).toBe(lleno);
+    expect(conPlantillaDelDirector(pedido, kit, "plantilla-borrada")).toBe(pedido);
+    expect(conPlantillaDelDirector(pedido, kit, "")).toBe(pedido);
   });
 });

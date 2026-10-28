@@ -154,10 +154,28 @@ describe("el cron", () => {
     expect((await (await pedir("/historias-auto/c1")).json()).nota).toMatch(/salió hace poco/);
   });
 
-  it("«Que no salga» la quita de la rotación", async () => {
+  it("«Que no salga» es para siempre: no se vuelve a preparar ni sale, y «Que vuelva a salir» la devuelve", async () => {
     await preparar();
     const { piezas } = await (await pedir("/historias-auto/c1")).json();
     const r = await pedir(`/historias-auto/c1/piezas/${piezas[0].id}`, { method: "DELETE" });
-    expect((await r.json()).piezas).toEqual([]);
+    const quitada = await r.json();
+    expect(quitada.piezas).toEqual([]);
+    expect(quitada.quitadas).toHaveLength(1);
+    // Antes se borraba la fila y, al abrir la aplicación, la publicación volvía a «sin historia» y se preparaba otra vez.
+    expect((await (await pedir("/historias-auto/c1/pendientes")).json()).pendientes).toEqual([]);
+    // Volver a subirla (otra pestaña que la preparaba a la vez) no la devuelve a la rotación.
+    await pedir("/historias-auto/c1/piezas", { method: "POST", body: JSON.stringify({ filaId: "f1", src: HISTORIA }) });
+    expect((await (await pedir("/historias-auto/c1")).json()).quitadas).toHaveLength(1);
+    // Encendidas, el cron no la pone: no hay ninguna que pueda salir.
+    await pedir("/historias-auto/c1", { method: "PUT", body: JSON.stringify({ activa: true }) });
+    expect(await historiasAutomaticasPendiente(env, new Date())).toBe(1);
+    expect(cola()).toHaveLength(0);
+    expect((await (await pedir("/historias-auto/c1")).json()).nota).toMatch(/apartadas con «Que no salga»/);
+    // «Que vuelva a salir».
+    const v = await (await pedir(`/historias-auto/c1/piezas/${piezas[0].id}/volver`, { method: "POST" })).json();
+    expect(v.piezas).toHaveLength(1);
+    expect(v.quitadas).toEqual([]);
+    // Una de otro cliente no se toca desde este.
+    expect((await pedir(`/historias-auto/c2/piezas/${piezas[0].id}`, { method: "DELETE" })).status).toBe(404);
   });
 });

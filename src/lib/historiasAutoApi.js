@@ -17,6 +17,8 @@ export const clientesConHistorias = async () => (await pedir("/historias-auto"))
 export const leerHistorias = (clientId) => pedir(ruta(clientId));
 export const guardarHistorias = (clientId, cambios) => pedir(ruta(clientId), { method: "PUT", body: JSON.stringify(cambios) });
 export const quitarHistoria = (clientId, id) => pedir(ruta(clientId, `/piezas/${encodeURIComponent(id)}`), { method: "DELETE" });
+/** «Que vuelva a salir»: la que se apartó con «Que no salga». */
+export const devolverHistoria = (clientId, id) => pedir(ruta(clientId, `/piezas/${encodeURIComponent(id)}/volver`), { method: "POST" });
 
 /**
  * Dibuja y sube las historias que le falten a un cliente (como mucho

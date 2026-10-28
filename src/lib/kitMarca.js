@@ -356,7 +356,8 @@ const ID_MODELO = /^[a-z0-9][a-z0-9.-]{1,60}$/;
 /** { imagen?, video? } con ids que parecen de modelo; si el modelo ya no existe, el Estudio cae en el predeterminado. */
 function limpiarModelosKit(entrada) {
   const e = entrada && typeof entrada === "object" ? entrada : {};
-  return Object.fromEntries(["imagen", "video"].filter((t) => ID_MODELO.test(String(e[t] ?? ""))).map((t) => [t, String(e[t])]));
+  // `historias`: el de las 3 historias con IA de un post (una imagen); se escoge junto a «Crear 3 con IA».
+  return Object.fromEntries(["imagen", "video", "historias"].filter((t) => ID_MODELO.test(String(e[t] ?? ""))).map((t) => [t, String(e[t])]));
 }
 
 /** Las referencias por tipo, limpias: ids que existen, claves de `clientes/`, sin repetir y como mucho dos. Pura. */

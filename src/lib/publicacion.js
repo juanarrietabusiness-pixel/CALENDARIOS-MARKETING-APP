@@ -181,6 +181,17 @@ export function historiasDe(post) {
   return mediosDe({ medios: Array.isArray(post?.historias) ? post.historias : [] });
 }
 
+/**
+ * La encajada después de que la imagen del post cambie: «rehacer» si la que se hizo sigue puesta y salió de otra imagen,
+ * «crear» si es la primera imagen y aún no hay historias, null si no hay nada que hacer. `encajada`: { de, src }, de
+ * qué imagen salió y cuál es. Pura.
+ */
+export function queHacerConLaEncajada({ antes, ahora, historias = [], encajada = null }) {
+  if (!ahora || antes === ahora) return null;
+  if (encajada?.src && encajada.de !== ahora && historias.some((h) => h.src === encajada.src)) return "rehacer";
+  return !antes && !historias.length ? "crear" : null;
+}
+
 /** ¿Sale también como historia? Sólo un post (no una historia ni un directo) con historias preparadas. */
 export const conHistoria = (post) =>
   Boolean(post?.historiaTambien) && !["historia", "live"].includes(post?.format) && historiasDe(post).length > 0;
