@@ -20,6 +20,14 @@
 // pantalla decía «Meta rechazó el pedido.» sin motivo. Ahora el error lleva
 // el código y el cuerpo de las DOS vías.
 //
+// LA PROPORCIÓN MANDA (decisión de la agencia: Muse es su modelo y un 4:5 tiene
+// que salir 4:5, sin pasarse a otro motor). La segunda vía sólo da 1:1, 2:3 y
+// 3:2, así que antes de llegar a ella se reintenta por la PRIMERA con menos
+// imágenes de referencia (las primeras: el producto va delante) y, si no es una
+// edición, sin ninguna. Lo que se tuvo que dejar fuera se dice en `aviso` (queda
+// en la nota del trabajo): es lo primero que hay que leer si una pieza salió sin
+// el logo o sin la foto del producto.
+//
 // Auth: `Authorization: Bearer <META_API_KEY>` (o `MODEL_API_KEY`). La base
 // se puede cambiar con `META_BASE` para un doble en las pruebas.
 // ============================================================
@@ -34,6 +42,24 @@ const BASE = (env) => (env?.META_BASE || "https://api.meta.ai/v1").replace(/\/$/
 const PLAZO_MS = 180_000;
 /** Los rechazos que hacen probar la otra vía: el pedido no le gustó, no es que Meta esté caído. */
 const PROBAR_LA_OTRA = new Set([400, 404, 405, 415, 422]);
+
+/** Las proporciones que la API de Responses entrega EXACTAS. */
+const EXACTAS_RESPONSES = new Set(["1:1", "2:3", "3:2"]);
+/** ¿Es una edición de una imagen (corregir, recomponer)? Sin su imagen de referencia no tiene sentido pedirla. */
+const esEdicion = (prompt) => /^Edita la imagen de referencia/.test(String(prompt ?? ""));
+
+/**
+ * Los intentos por la primera vía, en orden: todas las referencias, las 2 primeras, la primera y, si no es una
+ * edición, ninguna. Cada uno con lo que se dejó fuera (para el aviso). Pura.
+ */
+export function escaleraMuse(referencias = [], prompt = "") {
+  const n = referencias.length;
+  const pasos = [{ refs: n, aviso: "" }];
+  if (n > 2) pasos.push({ refs: 2, aviso: `Meta no aceptó las ${n} imágenes de referencia: salió con las 2 primeras.` });
+  if (n > 1) pasos.push({ refs: 1, aviso: `Meta no aceptó las ${n} imágenes de referencia: salió sólo con la primera.` });
+  if (n > 0 && !esEdicion(prompt)) pasos.push({ refs: 0, aviso: "Meta no aceptó las imágenes de referencia: salió sin ellas (el logo, si va, lo puede estampar la aplicación)." });
+  return pasos;
+}
 
 /** Los tres tamaños que admite el tool `image_generation` de la API de Responses. */
 export const TAMANOS_MUSE = Object.freeze({ cuadrado: "1024x1024", vertical: "1024x1536", horizontal: "1536x1024" });
@@ -142,12 +168,26 @@ export async function llamarMuseImage(env, { gid = "muse-image-1.0", prompt, aju
   const llave = llaveMeta(env);
   if (!llave) throw new ErrorMotor("El servidor no tiene la llave de Meta (META_API_KEY).", 503);
   const modelo = { gid, referencias: maxReferencias };
-  const intentos = [await llamar(env, llave, peticionMuse(modelo, { prompt, ajustes, referencias }))];
-  if (!intentos[0].ok && PROBAR_LA_OTRA.has(intentos[0].estado)) {
-    intentos.push(await llamar(env, llave, peticionMuseResponses(modelo, { prompt, ajustes, referencias })));
+  const refs = referencias.slice(0, maxReferencias);
+  const intentos = [];
+  let aviso = "";
+  // La primera vía (medidas exactas), con cada vez menos referencias mientras Meta RECHACE el pedido.
+  for (const paso of escaleraMuse(refs, prompt)) {
+    const i = await llamar(env, llave, peticionMuse(modelo, { prompt, ajustes, referencias: refs.slice(0, paso.refs) }));
+    intentos.push(i);
+    if (i.ok) { aviso = paso.aviso; break; }
+    if (!PROBAR_LA_OTRA.has(i.estado)) break;
+  }
+  const ultimo = intentos[intentos.length - 1];
+  if (!ultimo.ok && PROBAR_LA_OTRA.has(ultimo.estado)) {
+    intentos.push(await llamar(env, llave, peticionMuseResponses(modelo, { prompt, ajustes, referencias: refs })));
+    if (intentos[intentos.length - 1].ok && !EXACTAS_RESPONSES.has(ajustes.aspectRatio ?? "1:1")) {
+      aviso = `Meta sólo la aceptó por su otra vía, que no tiene ${ajustes.aspectRatio}: salió en ${tamanoMuse(ajustes.aspectRatio)} y se recompone. Motivo: ${motivoDe(intentos[0].texto)}`;
+    }
   }
   const bueno = intentos.find((i) => i.ok);
   if (!bueno) throw errorDeMeta(intentos);
+  if (aviso) console.warn(`meta imagen: ${aviso} · primer rechazo: ${motivoDe(intentos[0].texto)}`);
 
   let datos = null;
   try { datos = JSON.parse(bueno.texto); } catch { /* respuesta rara */ }
@@ -165,7 +205,7 @@ export async function llamarMuseImage(env, { gid = "muse-image-1.0", prompt, aju
   // El tipo, por los bytes: lo que se pidió no siempre es lo que llega.
   const mime = tipoPorBytes(bytes);
   if (!mime?.startsWith("image/")) throw new ErrorMotor("Muse Image devolvió algo que no es una imagen.", 502);
-  return { bytes, mime };
+  return { bytes, mime, ...(aviso ? { aviso } : {}) };
 }
 
 export const MOTOR_META = Object.freeze({
@@ -173,7 +213,7 @@ export const MOTOR_META = Object.freeze({
   llave: "META_API_KEY",
   activo: (env) => Boolean(llaveMeta(env)),
   async generar(env, { modelo, prompt, ajustes, referencias = [] }) {
-    const { bytes, mime } = await llamarMuseImage(env, { gid: modelo.gid, prompt, ajustes, referencias, maxReferencias: modelo.referencias ?? 0 });
-    return { bytes, mime, costo: modelo.costo };
+    const { bytes, mime, aviso } = await llamarMuseImage(env, { gid: modelo.gid, prompt, ajustes, referencias, maxReferencias: modelo.referencias ?? 0 });
+    return { bytes, mime, costo: modelo.costo, ...(aviso ? { aviso } : {}) };
   },
 });

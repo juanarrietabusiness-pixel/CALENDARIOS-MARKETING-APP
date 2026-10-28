@@ -14,7 +14,7 @@
 import * as api from "./estudio";
 import { controlarYCorregir } from "./controlEstudio";
 import { pedidoDeCorreccion } from "./estudio";
-import { ajustesDe, modeloPorId, MODELOS, porPrecio, modeloQueRespeta, relevoPara, fueraDeProporcion, pedidoDeRecomponer } from "./estudioCatalogo";
+import { ajustesDe, modeloPorId, MODELOS, porPrecio, modeloQueRespeta, relevoPara, fueraDeProporcion, pedidoDeRecomponer, respetaProporcion } from "./estudioCatalogo";
 import { pedidoDeLamina, referenciasDeLamina } from "./carrusel";
 import { lineaDeSistema } from "./sistemaCarrusel";
 import { componerLamina } from "./textoSobreImagen";
@@ -87,10 +87,23 @@ export async function esperarArchivos(clienteId, trabajo, { seguir = () => true,
   return Promise.all(archivos.map((a) => (a.tipo === "imagen" && fueraDeProporcion(a, pedida) ? recomponer(clienteId, a, pedida, activos, seguir) : a)));
 }
 
-/** La misma pieza, recompuesta en su proporción (ver esperarArchivos). Si no se puede, la que había. */
+/**
+ * La misma pieza, recompuesta en su proporción (ver esperarArchivos), con el MISMO modelo que la hizo si la respeta
+ * (una serie de Muse con una pieza de Nano Banana se nota) y, si no o si vuelve a salir de otra medida, con el relevo.
+ * Si no se puede, la que había.
+ */
 async function recomponer(clienteId, archivo, proporcion, activos, seguir) {
+  const propio = modeloPorId(archivo.modelo);
+  const mismo = propio && activos[propio.motor] && propio.motor !== "prueba" && (propio.referencias ?? 0) >= 1 && respetaProporcion(propio, proporcion, true) ? propio : null;
+  if (mismo) {
+    const nueva = await recomponerCon(clienteId, archivo, proporcion, mismo, seguir);
+    if (nueva !== archivo && !fueraDeProporcion(nueva, proporcion)) return nueva;
+  }
   const m = relevoPara(activos, proporcion, 1);
-  if (!m) return archivo;
+  return m && m.id !== mismo?.id ? recomponerCon(clienteId, archivo, proporcion, m, seguir) : archivo;
+}
+
+async function recomponerCon(clienteId, archivo, proporcion, m, seguir) {
   try {
     const { prompt, medios } = api.pedidoDeCorreccion({ clave: archivo.clave, instruccion: pedidoDeRecomponer(proporcion), modelo: m });
     const { trabajo } = await api.pedirImagenes(clienteId, {

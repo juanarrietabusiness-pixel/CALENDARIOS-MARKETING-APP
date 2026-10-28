@@ -119,9 +119,9 @@ export const MODELOS = Object.freeze([
   {
     id: "muse-image", motor: "meta", tipo: "imagen", gid: "muse-image-1.0", nombre: "Muse Image",
     creador: "Meta", calidad: 3, velocidad: "normal", costo: 0.01, referencias: 10,
-    // Con imágenes de referencia Meta rechaza la vía de las medidas exactas y la segunda (Responses) sólo da estas tres:
-    // un 4:5 con el logo o la foto del producto salía 2:3. `modeloQueRespeta` lo manda a otro modelo.
-    conReferencias: ["1:1", "2:3", "3:2"],
+    // Con referencias, si Meta rechaza la vía de medidas exactas, el Worker reintenta por ella con menos referencias
+    // antes de la segunda (que sólo da 1:1, 2:3 y 3:2): la agencia quiere Muse en 4:5, no otro motor
+    // (worker/lib/estudio/meta.js, `escaleraMuse`). Por eso NO lleva `conReferencias`.
     nota: "De Meta: genera y edita, y busca por su cuenta referencias reales (marcas, lugares, datos actuales) antes de dibujar. Texto legible e infografías. Muy barato.",
     para: ["texto legible", "editar y componer", "barato"],
     ajustes: {

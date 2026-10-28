@@ -53,14 +53,16 @@ describe("la proporción pedida es la que sale", () => {
   const muse = modeloPorId("muse-image");
   const conMeta = { meta: true, kie: true };
 
-  it("Muse Image sin referencias hace 4:5; con el logo de referencia, cede a Nano Banana 2 (si tiene llave)", () => {
+  it("Muse Image se queda en 4:5 con o sin el logo de referencia (la agencia la quiere a ella); GPT Image, que no tiene 4:5, cede", () => {
     const sinNada = pedidoDePieza({ kit: {}, idea: "Una sala", modelo: muse, proporcion: "4:5", activos: conMeta });
     expect(sinNada.modelo).toBe("muse-image");
     expect(sinNada.ajustes.aspectRatio).toBe("4:5");
     const conLogo = pedidoDePieza({ kit, idea: "Una sala", modelo: muse, proporcion: "4:5", activos: conMeta });
-    expect(conLogo.modelo).toBe("nano-banana-2-kie");
+    expect(conLogo.modelo).toBe("muse-image");
     expect(conLogo.ajustes.aspectRatio).toBe("4:5");
     expect(conLogo.medios.reference).toContain("clientes/c1/logo.png");
+    const gpt = pedidoDePieza({ kit, idea: "Una sala", modelo: modeloPorId("gpt-image-2-kie"), proporcion: "4:5", activos: conMeta });
+    expect(gpt.modelo).toBe("nano-banana-2-kie");
   });
 
   it("sin un modelo que lo respete con llave, sigue con el escogido (la red de seguridad lo recompone después)", () => {
