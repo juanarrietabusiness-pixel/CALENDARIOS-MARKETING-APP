@@ -28,6 +28,7 @@
 
 import { uuid } from "../ids.js";
 import { difundir } from "../vivo.js";
+import { despertar } from "../despertar.js";
 import { bloqueoPorPresupuesto, registrarConsumoFijo } from "../configIA.js";
 import { MOTORES } from "./motores.js";
 import { ErrorMotor, aBase64 } from "./gemini.js";
@@ -141,6 +142,8 @@ export async function crearTrabajo(env, acceso, cliente, datos, { usuario = null
     created_at: ahora, updated_at: ahora, terminado_at: null,
   });
   anunciar(env, acceso, fila, por);
+  // Que siga aunque se cierre la pantalla: la bomba del espacio lo avanza en segundos (antes, el cron, uno por minuto).
+  await despertar(env, acceso.ownerId);
   return fila;
 }
 
@@ -520,13 +523,18 @@ export async function reintentarTrabajo(env, acceso, id, { por = null } = {}) {
  * que tarda el navegador entre paso y paso. Devuelve cuántos avanzó.
  */
 export async function avanzarPendientes(env, ahora = new Date()) {
-  const [siguiente] = await estudioPendiente(env.DB, ahora.toISOString(), new Date(ahora.getTime() - 15_000).toISOString(), 1);
-  if (!siguiente) return 0;
-  const acceso = crearAcceso(env.DB, siguiente.owner_id);
-  try {
-    await avanzarTrabajo(env, acceso, siguiente.id);
-  } catch (e) {
-    console.error("cron estudio:", siguiente.id, e?.message);
+  const antesDe = new Date(ahora.getTime() - 15_000).toISOString();
+  const [siguiente] = await estudioPendiente(env.DB, ahora.toISOString(), antesDe, 1);
+  if (siguiente) {
+    const acceso = crearAcceso(env.DB, siguiente.owner_id);
+    try {
+      await avanzarTrabajo(env, acceso, siguiente.id);
+    } catch (e) {
+      console.error("cron estudio:", siguiente.id, e?.message);
+    }
+    // Si llegó hasta aquí sin nadie mirando, la bomba del espacio se durmió: se despierta.
+    await despertar(env, siguiente.owner_id);
+    return 1;
   }
-  return 1;
+  return 0;
 }

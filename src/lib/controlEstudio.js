@@ -23,7 +23,8 @@
 import * as api from "./estudio";
 import { correccionDelDirector, mejoro } from "./control";
 import { esperarArchivos } from "./carruselEstudio";
-import { MODELOS, ajustesDe, modeloQueRespeta } from "./estudioCatalogo";
+import { ajustesDe } from "./estudioCatalogo";
+import { modeloParaCorregir } from "./edicion";
 
 /** ¿Revisar y corregir solo? Se recuerda por navegador; encendido por defecto. */
 const CLAVE = "estudio-control";
@@ -34,19 +35,7 @@ export function encenderControl(si) {
   try { localStorage.setItem(CLAVE, si ? "1" : "0"); } catch { /* sin almacenamiento */ }
 }
 
-/**
- * Con qué se corrige el texto: el mismo modelo que hizo la pieza si edita (así no cambia el estilo), si no Nano
- * Banana, y si no el que diga `modeloParaEditar`. `activos`: { motor: bool }. Pura.
- */
-export function modeloParaCorregir(activos = {}, original = "", aspecto = "") {
-  const sirve = (m) => m && m.tipo === "imagen" && m.referencias > 0 && activos[m.motor] && m.motor !== "prueba";
-  const delOriginal = MODELOS.find((m) => m.id === original);
-  const nano = MODELOS.find((m) => m.id === "nano-banana");
-  const m = sirve(delOriginal) ? delOriginal : sirve(nano) ? nano : api.modeloParaEditar(activos);
-  // Editar es pedir CON referencia (la misma imagen): un modelo que así no respeta la proporción (Muse Image da 2:3)
-  // cede al que sí, o la pieza corregida saldría de otro tamaño.
-  return modeloQueRespeta(m, activos, aspecto, 1);
-}
+export { modeloParaCorregir } from "./edicion";
 
 /** Qué motores tienen llave (para escoger con qué corregir), si quien llama no lo sabe. */
 async function activosDeMotores(activos) {

@@ -149,3 +149,41 @@ describe("borrar también se ve", () => {
     expect(fuera.id).toBe(id);
   });
 });
+
+describe("el Estudio sigue sin la pantalla", () => {
+  it("un trabajo pedido termina SOLO: la alarma del Durable Object lo avanza, nadie llama a /avanzar", async () => {
+    // Lo que pidió la agencia: salir de la aplicación y que siga. Aquí no hay pestaña que avance el trabajo; si llega
+    // a «hecho», lo llevó la bomba del espacio (worker/hub.js → bombear). El motor de prueba no gasta ni pide llave.
+    const id = crypto.randomUUID();
+    await espacio.api(ANA, `/api/clientes/${id}`, { method: "PUT", body: JSON.stringify({ id, name: "Cliente del Estudio" }) });
+    const r = await espacio.api(ANA, `/api/estudio/${id}/trabajos`, {
+      method: "POST", body: JSON.stringify({ modelo: "prueba", prompt: "una taza de café", n: 2 }),
+    });
+    expect(r.status).toBe(201);
+    const { trabajo } = await r.json();
+    let estado = trabajo.estado;
+    for (let i = 0; i < 40 && estado !== "hecho"; i++) {
+      await new Promise((ok) => setTimeout(ok, 500));
+      estado = (await (await espacio.api(ANA, `/api/estudio/${id}/trabajos/${trabajo.id}`)).json()).trabajo.estado;
+    }
+    expect(estado).toBe("hecho");
+  }, 30_000);
+
+  it("y un LOTE entero (el encargo) también: cada pieza se pide, sale y el encargo se cierra", async () => {
+    const id = crypto.randomUUID();
+    await espacio.api(ANA, `/api/clientes/${id}`, { method: "PUT", body: JSON.stringify({ id, name: "Cliente del lote" }) });
+    const paso = (n) => ({ id: `p${n}`, escena: `Una taza número ${n}`, pedido: { modelo: "prueba", prompt: "Escena: {{ESCENA}}", n: 1, ajustes: { aspectRatio: "4:5" }, medios: {} } });
+    const r = await espacio.api(ANA, `/api/estudio/${id}/encargos`, {
+      method: "POST", body: JSON.stringify({ tipo: "lote", mejorar: false, pasos: [paso(1), paso(2), paso(3)] }),
+    });
+    expect(r.status).toBe(201);
+    const { encargo } = await r.json();
+    let e = encargo;
+    for (let i = 0; i < 60 && e.estado === "en_marcha"; i++) {
+      await new Promise((ok) => setTimeout(ok, 500));
+      e = (await (await espacio.api(ANA, `/api/estudio/${id}/encargos/${encargo.id}`)).json()).encargo;
+    }
+    expect(e.estado).toBe("hecho");
+    expect(e.pasos.map((p) => p.fase)).toEqual(["hecho", "hecho", "hecho"]);
+  }, 45_000);
+});

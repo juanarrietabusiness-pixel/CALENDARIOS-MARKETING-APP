@@ -7,22 +7,21 @@
 // hueco y aquí se escribe encima el texto exacto con los colores del kit
 // (como en el carrusel); la pieza cruda también queda en la galería.
 //
-// Lo orquesta el navegador, de dos en dos: cerrar a la mitad deja hechas
-// las que salieron. Un error de presupuesto para todo. Cada pieza puede
-// salir en 2 o 3 variantes para escoger, con la escena mejorada antes.
+// Las de UNA imagen las lleva el servidor (un encargo, lib/loteServidor.js):
+// aquí queda cómo se arma cada pieza (`pedidoDeLote`, lo que lee el
+// director) y el texto de la plantilla encima (`ponerTexto`, con lienzo).
+// Los carruseles y los reels del lote siguen orquestados aquí, en orden.
 // ============================================================
 
 import * as api from "./estudio";
 import { limpiarKit, estiloDeMarca, referenciaDeTipografia, referenciaDePlantilla, lineaDePlantillaEnPedido } from "./kitMarca";
 import { coloresPlantilla, PLANTILLAS_TEXTO } from "./carrusel";
 import { componerLamina } from "./textoSobreImagen";
-import { esperarArchivos, crearCarrusel } from "./carruselEstudio";
-import { estampaSola, conLogoSiToca } from "./logoEstudio";
+import { crearCarrusel } from "./carruselEstudio";
+import { estampaSola } from "./logoEstudio";
 import { crearFotogramas, pedidoDeVideo, crearVideo } from "./reelEstudio";
 import { textoDeIdea, plantillaDeIdea, composicionDe, FORMATOS_LOTE } from "./loteAnuncios";
-import { ideaParaMejorar, ideaSinMejorar, apoyosDePieza, pedidoDePieza, lineaSinTexto } from "./pieza";
-import { controlarYCorregir } from "./controlEstudio";
-import { asegurarTexto } from "./director";
+import { ideaSinMejorar, apoyosDePieza, pedidoDePieza, lineaSinTexto } from "./pieza";
 
 /** Lo que entra a la mejora de una idea del lote: escena, composición sugerida, texto (si lo escribe el motor) y brief. Pura. */
 export function ideaDeLote(idea, { modo = "ia" } = {}) {
@@ -76,48 +75,6 @@ export async function ponerTexto({ clienteId, crudo, texto, plantilla = "banda",
   return archivo;
 }
 
-/**
- * Crea UNA pieza con sus variantes, como se haría a mano: primero, si se pide, MEJORA la idea (escena + composición
- * sugerida + texto exacto, con el brief de contexto: lo que hace «Mejorar idea»; texto, céntimos); luego pide `n`
- * imágenes (1–3) y, en el modo «plantilla», le pone el texto encima a cada una. → { opciones: [{ crudo, final }], escena }.
- */
-export async function crearPieza({ clienteId, idea, pedidoDe, mejorar = true, modo, formato, kit, n = 1, carpetaId = null, piezaDe = () => "", seguir = () => true, controlar = false, activos = {}, indicacion = "" }) {
-  const datos = ideaDeLote(idea, { modo });
-  let escena = ideaSinMejorar(datos);
-  if (mejorar) {
-    // La ficha del director de arte (la tanda entera, `conFichas`) o, si no, el pedido listo que escribió el motor de
-    // ideas (en el modo «ia» y sin nada que cambiar); sólo sin ninguno de los dos se diseña esta pieza sola.
-    const lista = idea.ficha || (modo === "ia" && !indicacion && !idea.pide ? asegurarTexto(idea.imagen, textoDeIdea(idea)) : "");
-    if (lista) escena = lista;
-    else {
-      try {
-        const r = await api.mejorarIdea(clienteId, { ...encargoDeIdea(idea, { modo, formato, piezaDe, indicacion }), idea: ideaParaMejorar(datos), tipo: "imagen", pieza: piezaDe(idea) });
-        if (r?.idea) escena = r.idea;
-      } catch { /* sin mejora, con la idea tal cual */ }
-    }
-  }
-  const pedido = pedidoDe(idea, n, escena);
-  const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true, ...(carpetaId ? { carpetaId } : {}) });
-  const crudos = await esperarArchivos(clienteId, trabajo, { seguir });
-  const opciones = [];
-  for (let crudo of crudos) {
-    // El control de calidad cuando el texto lo escribe el motor (con la plantilla lo pone la aplicación, exacto): si sólo
-    // falla una letra, se corrige editando la misma imagen (lib/controlEstudio.js).
-    let control = null;
-    if (controlar && modo !== "plantilla") {
-      const r = await controlarYCorregir({ clienteId, archivo: crudo, texto: textoDeIdea(idea), activos, carpetaId, seguir });
-      crudo = r.archivo;
-      control = r.control;
-    }
-    const final = modo === "plantilla"
-      ? await ponerTexto({ clienteId, crudo, texto: textoDeIdea(idea), plantilla: plantillaDeIdea(idea, formato), kit, carpetaId, nombre: `pieza-${idea.id}` })
-      : crudo;
-    // Con el logo estampado (kit), encima de la final; la cruda se queda sin él.
-    opciones.push({ crudo, final: await conLogoSiToca({ clienteId, archivo: final, kit, carpetaId }), control });
-  }
-  return { opciones, escena };
-}
-
 /** Lo que el director de arte necesita de una idea del lote (src/lib/director.js, `limpiarPiezaEncargo`). Pura. */
 export function encargoDeIdea(idea, { modo = "ia", formato = "post", piezaDe = () => "", indicacion = "" } = {}) {
   return {
@@ -156,29 +113,6 @@ export async function conFichas({ ideas, clienteId, modo = "ia", formato = "post
     } catch { /* esta tanda, pieza a pieza al crear */ }
   }
   return salida;
-}
-
-/**
- * Todo el lote, de `paralelo` en `paralelo`. `alAvanzar(id, resultado)` con { cargando } | { crudo, final } | { error }.
- * Un error de presupuesto para lo que queda (las siguientes fallarían igual).
- */
-export async function crearLote({ ideas, alAvanzar = () => {}, seguir = () => true, paralelo = 2, ...comun }) {
-  // El director de arte diseña la tanda como una SERIE, antes de crear: una ficha por pieza, en tandas de 6.
-  const cola = comun.mejorar ? await conFichas({ ideas, ...comun, seguir }) : [...ideas];
-  let parar = false;
-  const trabajador = async () => {
-    while (cola.length && !parar && seguir()) {
-      const idea = cola.shift();
-      alAvanzar(idea.id, { cargando: true });
-      try {
-        alAvanzar(idea.id, await crearPieza({ ...comun, idea, seguir }));
-      } catch (e) {
-        alAvanzar(idea.id, { error: e.message });
-        if (e.datos?.codigo === "presupuesto") parar = true;
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: Math.max(1, paralelo) }, trabajador));
 }
 
 // ------------------------------------------------------------

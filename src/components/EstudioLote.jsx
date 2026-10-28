@@ -15,7 +15,8 @@ import {
   totalDeCuantas, nombreCarpetaLote, publicacionDePieza, COMPOSICIONES, TACTICAS, titularesUsados, aprenderComposiciones, celdasMatriz, celdasPorTipos,
   estructuraDe,
 } from "../lib/loteAnuncios";
-import { pedidoDeLote, crearLote, crearCarruselDeIdea, crearReelDeIdea } from "../lib/loteEstudio";
+import { pedidoDeLote, crearCarruselDeIdea, crearReelDeIdea } from "../lib/loteEstudio";
+import { lanzarLote, seguirEncargo, terminarPieza, cancelarEncargo, resultadoDePaso } from "../lib/loteServidor";
 import { controlEncendido, encenderControl } from "../lib/controlEstudio";
 import { resumenControl } from "../lib/control";
 import { modelosParaCarrusel, modeloParaCarrusel } from "../lib/carruselEstudio";
@@ -141,7 +142,13 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const [llevandoTodas, setLlevandoTodas] = useState(false);
   const [aviso, setAviso] = useState(null);
   const vivo = useRef(true);
-  const creando = Object.values(resultados).some((r) => r.cargando);
+  // Las piezas de una imagen las lleva el SERVIDOR (lib/loteServidor.js): se puede cerrar sin perderlas. Lo que sigue
+  // en la pantalla (carruseles y reels) es lo único que no deja cerrar.
+  const [encargos, setEncargos] = useState([]); // [{ id, formato, modo, carpetaId }]
+  const ideasRef = useRef(ideas);
+  ideasRef.current = ideas;
+  const creando = Object.values(resultados).some((r) => r.cargando && !r.enServidor);
+  const enServidor = Object.values(resultados).some((r) => r.cargando && r.enServidor);
 
   // ---------- El BORRADOR: las ideas escritas (y pagadas) no se pierden al cerrar ----------
   const claveBorrador = `estudio-lote-borrador:${clienteId}`;
@@ -157,9 +164,9 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
       // Todo lo escogido ya está en el calendario: no queda nada por terminar.
       const terminadas = ideas.filter((i) => i.elegida).every((i) => llevadas[i.id]);
       if (terminadas) localStorage.removeItem(claveBorrador);
-      else localStorage.setItem(claveBorrador, JSON.stringify({ alcance, formato, mes, ideas, llevadas, guardado: Date.now() }));
+      else localStorage.setItem(claveBorrador, JSON.stringify({ alcance, formato, mes, ideas, llevadas, encargos, guardado: Date.now() }));
     } catch { /* sin almacenamiento: el lote sigue, sin borrador */ }
-  }, [ideas, llevadas, alcance, formato, mes, claveBorrador]);
+  }, [ideas, llevadas, encargos, alcance, formato, mes, claveBorrador]);
   const seguirBorrador = () => {
     setAlcance(borrador.alcance);
     formatoTocado.current = true;
@@ -167,8 +174,12 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     if (borrador.mes) setMes(borrador.mes);
     setIdeas(borrador.ideas);
     setLlevadas(borrador.llevadas ?? {});
+    // Con piezas en el servidor, se vuelve a lo que salió (y se siguen las que falten).
+    if (borrador.encargos?.length) {
+      setEncargos(borrador.encargos);
+      setPaso(2);
+    } else setPaso(1);
     setBorrador(null);
-    setPaso(1);
   };
   const descartarBorrador = () => {
     try { localStorage.removeItem(claveBorrador); } catch { /* nada */ }
@@ -204,6 +215,40 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
   const ref = useDialogA11y(() => { if (!creando) onCerrar(); });
 
   useEffect(() => () => { vivo.current = false; }, []);
+  // Seguir lo que lleva el servidor: cada pieza, según sale; y al terminar una, lo que pone la pantalla (el texto de la
+  // plantilla, el logo estampado), UNA vez.
+  const siguiendo = useRef(new Set());
+  useEffect(() => {
+    for (const enc of encargos) {
+      if (siguiendo.current.has(enc.id)) continue;
+      siguiendo.current.add(enc.id);
+      const terminando = new Set();
+      void seguirEncargo({
+        clienteId, id: enc.id, seguir: () => vivo.current,
+        alCambio: (e, archivos) => {
+          if (!vivo.current) return;
+          setResultados((m) => {
+            const n = { ...m };
+            for (const p of e.pasos) {
+              const r = resultadoDePaso(p, archivos);
+              if (r) n[p.id] = { ...r, enServidor: true, ...(r.opciones && m[p.id]?.elegida != null ? { elegida: m[p.id].elegida } : {}) };
+            }
+            return n;
+          });
+          for (const p of e.pasos) {
+            if (p.fase !== "hecho" || p.finales || terminando.has(p.id)) continue;
+            terminando.add(p.id);
+            const idea = ideasRef.current.find((i) => i.id === p.id);
+            void terminarPieza({ clienteId, encargoId: e.id, paso: p, idea, archivos, modo: enc.modo, formato: enc.formato, kit, carpetaId: enc.carpetaId });
+          }
+        },
+      }).then((e) => {
+        if (!e || !vivo.current) return;
+        onHecho?.();
+        if (e.estado === "fallido") setAviso({ ok: false, texto: e.error || "No salió ninguna pieza." });
+      });
+    }
+  }, [encargos, clienteId, kit, onHecho]);
   useEffect(() => {
     leerPlantillas().then((lista) => setPlantillaPlan(plantillaDelCliente(client.planContenido, lista) ?? null)).catch(() => setPlantillaPlan(null));
   }, [client.planContenido]);
@@ -412,16 +457,24 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     // Primero las de una imagen (de dos en dos, por formato: la proporción y la plantilla cambian), después los
     // carruseles y los reels, uno detrás de otro: cada uno es una serie de pasos (y un reel tarda minutos).
     const sueltas = pendientes.filter((i) => !guiadoDe(i));
+    // Las de una imagen van al SERVIDOR, un encargo por formato (la proporción y la plantilla cambian): el director,
+    // cada pieza, el control y la corrección siguen aunque se cierre la aplicación.
+    const lanzados = [];
     for (const f of [...new Set(sueltas.map(fmtDe))]) {
-      if (!vivo.current) break;
-      await crearLote({
-        ideas: sueltas.filter((i) => fmtDe(i) === f).map((i) => (plantillaLote ? { ...i, plantilla: plantillaLote } : i)), clienteId, modo, formato: f, kit, carpetaId, pedidoDe, mejorar, n: variantes, piezaDe: nombreTipo,
-        indicacion: indicacion.trim(),
-        controlar, activos,
-        seguir: () => vivo.current,
-        alAvanzar: (id, r) => { if (vivo.current) setResultados((m) => ({ ...m, [id]: r.opciones ? { ...r, elegida: 0 } : r })); },
-      });
+      const delFormato = sueltas.filter((i) => fmtDe(i) === f).map((i) => (plantillaLote ? { ...i, plantilla: plantillaLote } : i));
+      setResultados((m) => ({ ...m, ...Object.fromEntries(delFormato.map((i) => [i.id, { cargando: true, paso: "En cola", enServidor: true }])) }));
+      try {
+        const r = await lanzarLote({
+          clienteId, ideas: delFormato, titulo: `Lote · ${FORMATOS_LOTE[f]?.nombre ?? f}`, carpetaId, pedidoDe, mejorar, n: variantes, piezaDe: nombreTipo,
+          indicacion: indicacion.trim(), controlar, modo, formato: f,
+        });
+        lanzados.push({ id: r.encargo.id, formato: f, modo, carpetaId });
+      } catch (e) {
+        setResultados((m) => ({ ...m, ...Object.fromEntries(delFormato.map((i) => [i.id, { error: e.message }])) }));
+        if (e.datos?.codigo === "presupuesto") break;
+      }
     }
+    if (lanzados.length) setEncargos((l) => [...l, ...lanzados]);
     for (const idea of pendientes.filter(guiadoDe)) {
       if (!vivo.current) break;
       const poner = (r) => { if (vivo.current) setResultados((m) => ({ ...m, [idea.id]: r })); };
@@ -444,7 +497,9 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
     if (!vivo.current) return;
     onHecho?.();
     setAviso({ ok: true, texto: [
-      "Listo. Están en la galería, en la carpeta del lote.",
+      lanzados.length
+        ? "Las piezas siguen creándose en el servidor: puedes cerrar la aplicación. Al volver, «Producir en lote» → «Seguir con ellas» las enseña aquí; también salen en la galería, en la carpeta del lote."
+        : "Listo. Están en la galería, en la carpeta del lote.",
       grabar ? `${grabar === 1 ? "El UGC va" : `Los ${grabar} UGC van`} al calendario como idea, con su guion para grabar.` : "",
       variantes > 1 ? "Escoge una imagen de cada pieza." : "",
       esMes ? "«Llevar las N al calendario» las pone cada una en su día, listas para revisión." : "Lleva al calendario las que quieras.",
@@ -928,9 +983,15 @@ export default function EstudioLote({ client, motores, productosConFotos = [], a
                   <Icon name="calendar" size={18} /> {llevandoTodas ? "Llevando…" : porLlevar === 1 ? "Llevar al calendario" : `Llevar las ${porLlevar} al calendario`}
                 </button>
               )}
+              {enServidor && !creando && (
+                <button type="button" className="btn btn-ghost" onClick={async () => {
+                  await Promise.all(encargos.map((e) => cancelarEncargo(clienteId, e.id).catch(() => null)));
+                  setAviso({ ok: true, texto: "Detenido: lo que ya estaba saliendo se queda en la galería." });
+                }}>Detener</button>
+              )}
               {creando
                 ? <button type="button" className="btn btn-secondary" onClick={() => { vivo.current = false; setAviso({ ok: true, texto: "Se detiene después de las que están en marcha." }); }}>Detener</button>
-                : <button type="button" className="btn btn-primary" onClick={onCerrar}>Cerrar</button>}
+                : <button type="button" className="btn btn-primary" onClick={onCerrar}>{enServidor ? "Cerrar (sigue en el servidor)" : "Cerrar"}</button>}
             </>
           )}
         </div>

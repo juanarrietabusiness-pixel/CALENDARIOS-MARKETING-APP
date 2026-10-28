@@ -8,6 +8,12 @@
 //   POST   /<cliente>/trabajos/<id>/avanzar        UN paso: una imagen
 //   POST   /<cliente>/trabajos/<id>/cancelar
 //   POST   /<cliente>/trabajos/<id>/reintentar
+//   POST   /<cliente>/encargos                     { tipo: "lote", pasos, … }: una cadena de piezas que lleva el SERVIDOR
+//   GET    /<cliente>/encargos                     Los de este cliente en marcha y los de las últimas 48 h
+//   GET    /<cliente>/encargos/<id>                Uno, con las imágenes que ya salieron
+//   POST   /<cliente>/encargos/<id>/avanzar        UN paso (lo da también la bomba del espacio, sin pantalla)
+//   POST   /<cliente>/encargos/<id>/cancelar
+//   POST   /<cliente>/encargos/<id>/final          { pasoId, finales }: lo que puso el navegador (texto de plantilla, logo)
 //   POST   /<cliente>/mejorar                      { idea, tipo, pieza? }: la IA devuelve la idea más clara (texto)
 //   POST   /<cliente>/fichas                     { piezas, concepto? }: el director de arte, una ficha de diseño por pieza (texto)
 //   POST   /<cliente>/versiones                    { idea, n, tipo }: 1–3 escenas distintas con la misma información (texto)
@@ -81,8 +87,15 @@ import {
   leerGaleria, subirArchivo, cambiarArchivo, marcarUso, enviarAPapelera, recuperar, borrarParaSiempre, quitarPerdido,
   vaciarPapelera, crearCarpeta, renombrarCarpeta, ordenarCarpeta, borrarCarpeta, archivoPublico,
 } from "../lib/estudio/galeria.js";
+import { crearEncargo, avanzarEncargo, cancelarEncargo, finalesDePaso, encargoPublico } from "../lib/estudio/encargos.js";
 
 const ID = /^[\w-]{1,80}$/;
+
+/** Lo que `archivoPublico` lee de una ficha de la galería (para pedir varias por id sin `select *`). */
+const COLUMNAS_ARCHIVO = [
+  "id", "clave", "tipo", "mime", "ancho", "alto", "bytes", "prompt", "modelo", "ajustes", "trabajo_id", "carpeta_id",
+  "origen", "costo", "favorito", "subido", "usado_en", "borrado_at", "created_at",
+];
 
 /** Una respuesta de error de este módulo: lleva además el `codigo` y el costo, que la pantalla usa para pedir confirmación. */
 const fallo = (e) => json({ error: e.message, ...(e.codigo ? { codigo: e.codigo } : {}), ...(e.costo != null ? { costo: e.costo } : {}), ...(e.usos != null ? { usos: e.usos } : {}) }, e.estado ?? 400);
@@ -179,6 +192,49 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
     if (b === "revisar" && !c && metodo === "POST") {
       const datos = await cuerpo(req);
       return json(await revisarPieza(env, acceso, cliente, datos?.archivoId, { clave: typeof datos?.clave === "string" ? datos.clave : null }));
+    }
+
+    // ---------- Los encargos: la cadena de piezas que sigue en el servidor ----------
+    if (b === "encargos") {
+      const conArchivos = async (fila) => {
+        const e = encargoPublico(fila);
+        const ids = [...new Set(e.pasos.flatMap((p) => [...p.opciones.map((o) => o.id), ...(p.finales ?? [])]).filter(Boolean))];
+        const archivos = ids.length ? await acceso.leerVarios("estudio_archivos", COLUMNAS_ARCHIVO, "id", ids, { client_id: cliente.id }) : [];
+        return { encargo: e, archivos: archivos.map(archivoPublico) };
+      };
+      if (!c && metodo === "POST") {
+        const datos = await cuerpo(req);
+        if (!datos) return error("JSON inválido");
+        try {
+          return json(await conArchivos(await crearEncargo(env, acceso, cliente, datos, { usuario })), 201);
+        } catch (e) {
+          if (e instanceof ErrorEstudio) return fallo(e);
+          throw e;
+        }
+      }
+      if (!c && metodo === "GET") {
+        const desde = new Date(Date.now() - 48 * 3600_000).toISOString();
+        const filas = (await acceso.leer("estudio_encargos", { client_id: cliente.id }, "created_at desc", 20))
+          .filter((f) => f.estado === "en_marcha" || f.created_at >= desde);
+        return json({ encargos: filas.map((f) => encargoPublico(f)) });
+      }
+      if (!ID.test(String(c ?? ""))) return noEncontrado("Encargo");
+      const fila = await acceso.leerUno("estudio_encargos", { id: c, client_id: cliente.id });
+      if (!fila) return noEncontrado("Encargo");
+      if (!d && metodo === "GET") return json(await conArchivos(fila));
+      if (d === "avanzar" && metodo === "POST") {
+        const r = await avanzarEncargo(env, acceso, c);
+        return json({ ...(await conArchivos(r?.encargo ?? fila)), ocupado: Boolean(r?.ocupado) });
+      }
+      if (d === "cancelar" && metodo === "POST") return json(await conArchivos(await cancelarEncargo(env, acceso, c)));
+      if (d === "final" && metodo === "POST") {
+        const datos = (await cuerpo(req)) ?? {};
+        const r = await finalesDePaso(env, acceso, cliente, c, String(datos.pasoId ?? ""), datos.finales);
+        if (!r) return noEncontrado("Pieza");
+        if (r.ocupado) return json({ ocupado: true }, 409);
+        return json(await conArchivos(r.encargo));
+      }
+      return error(`Método ${metodo} no permitido aquí`, 405);
     }
 
     // ---------- Los trabajos ----------
