@@ -44,9 +44,9 @@ describe("las herramientas de diseño del asistente", () => {
       { titulo: "Envío gratis", ficha: "Pieza: post.\nTexto: titular «Envío gratis».", formato: "vertical", plantilla_id: "plantilla-a" },
       { titulo: "Sin ficha", ficha: "" },
     ]);
-    // Con referencias (la plantilla y el logo) Muse Image no da 4:5: el plan va con Nano Banana 2, que sí.
-    expect(plan[0].modelo.id).toBe("nano-banana-2");
-    expect(plan[0].pedido.modelo).toBe("nano-banana-2");
+    // Con referencias (la plantilla y el logo) sigue Muse Image, el modelo del cliente: el Worker asegura el 4:5.
+    expect(plan[0].modelo.id).toBe("muse-image");
+    expect(plan[0].pedido.modelo).toBe("muse-image");
     expect(plan[0].pedido.prompt).toMatch(/^Escena: Pieza: post\./);
     expect(plan[0].pedido.prompt).toMatch(/Sigue el diseño de la plantilla «Oferta»/);
     expect(plan[0].pedido.medios.reference).toContain("clientes/c1/p.png");

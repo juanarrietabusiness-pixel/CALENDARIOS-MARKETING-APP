@@ -321,7 +321,8 @@ async function paso(env, acceso, fila) {
     archivos: JSON.stringify(lista),
     costo: (fila.costo ?? 0) + (salida.costo ?? 0),
     estado: completo ? "hecho" : "en_marcha",
-    intentos: 0, nota: "", error: "",
+    // Lo que el motor tuvo que dejar fuera (Muse sin algunas referencias): se queda en la nota del trabajo.
+    intentos: 0, nota: salida.aviso ? String(salida.aviso).slice(0, 400) : "", error: "",
     ...(completo ? { terminado_at: new Date().toISOString() } : {}),
   };
 }

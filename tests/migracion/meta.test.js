@@ -8,7 +8,7 @@ import {
   MODELO_MUSE_CONTRIBUIDOR, FUNCIONES_IA,
 } from "../../worker/lib/configIA.js";
 import { adaptarAlModelo, esRechazoDeModelo, RechazoAnthropic } from "../../worker/lib/anthropic.js";
-import { peticionMuse, peticionMuseResponses, tamanoMuse, TAMANOS_MUSE, llamarMuseImage } from "../../worker/lib/estudio/meta.js";
+import { peticionMuse, peticionMuseResponses, tamanoMuse, TAMANOS_MUSE, llamarMuseImage, escaleraMuse } from "../../worker/lib/estudio/meta.js";
 
 // Un PNG de 1×1: los bytes que reconoce `tipoPorBytes`.
 const PNG_MINI = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
@@ -159,9 +159,41 @@ describe("Muse Image en el Estudio", () => {
 
     it("si la rechaza, prueba la API de Responses y lee el `image_generation_call`", async () => {
       globalThis.fetch = vi.fn(async (url) => (String(url).endsWith("/responses") ? responses() : Response.json({ error: { message: "Unknown parameter" } }, { status: 400 })));
-      const r = await llamarMuseImage(env, { prompt: "una taza", ajustes: { aspectRatio: "4:5" }, referencias: [{ mime: "image/png", base64: PNG_MINI }] });
+      // Una edición: sin su imagen no se puede pedir, así que no hay intento sin referencias.
+      const r = await llamarMuseImage(env, { prompt: "Edita la imagen de referencia: más luz.", ajustes: { aspectRatio: "4:5" }, referencias: [{ mime: "image/png", base64: PNG_MINI }] });
       expect(r.bytes[0]).toBe(0x89);
       expect(globalThis.fetch.mock.calls.map((c) => String(c[0]))).toEqual(["https://api.meta.ai/v1/images/edits", "https://api.meta.ai/v1/responses"]);
+      // La segunda vía no tiene 4:5: lo dice (va en la nota del trabajo).
+      expect(r.aviso).toMatch(/no tiene 4:5: salió en 1024x1536.*Unknown parameter/);
+    });
+
+    it("la proporción manda: con referencias rechazadas reintenta por las medidas exactas con menos, y luego sin ellas", async () => {
+      const ref = { mime: "image/png", base64: PNG_MINI };
+      const pedidos = [];
+      globalThis.fetch = vi.fn(async (url, init) => {
+        const cuerpo = JSON.parse(init.body);
+        pedidos.push({ ruta: String(url).replace("https://api.meta.ai/v1", ""), refs: cuerpo.images?.length ?? 0, size: cuerpo.size });
+        // Meta acepta sólo con 1 referencia o menos.
+        return (cuerpo.images?.length ?? 0) > 1 ? Response.json({ error: { message: "Too many images" } }, { status: 400 }) : Response.json({ data: [{ b64_json: PNG_MINI }] });
+      });
+      const r = await llamarMuseImage(env, { prompt: "Escena: una sala", ajustes: { aspectRatio: "4:5" }, referencias: [ref, ref, ref] });
+      expect(pedidos).toEqual([
+        { ruta: "/images/edits", refs: 3, size: "1024x1280" },
+        { ruta: "/images/edits", refs: 2, size: "1024x1280" },
+        { ruta: "/images/edits", refs: 1, size: "1024x1280" },
+      ]);
+      expect(r.aviso).toMatch(/salió sólo con la primera/);
+      // Si ninguna referencia entra, sin ellas (no es una edición) y SIEMPRE con las medidas exactas.
+      pedidos.length = 0;
+      globalThis.fetch = vi.fn(async (url, init) => {
+        const cuerpo = JSON.parse(init.body);
+        pedidos.push({ ruta: String(url).replace("https://api.meta.ai/v1", ""), refs: cuerpo.images?.length ?? 0 });
+        return cuerpo.images ? Response.json({ error: { message: "no" } }, { status: 422 }) : Response.json({ data: [{ b64_json: PNG_MINI }] });
+      });
+      const sin = await llamarMuseImage(env, { prompt: "Escena: una sala", ajustes: { aspectRatio: "4:5" }, referencias: [ref, ref] });
+      expect(pedidos.map((x) => `${x.ruta}:${x.refs}`)).toEqual(["/images/edits:2", "/images/edits:1", "/images/generations:0"]);
+      expect(sin.aviso).toMatch(/salió sin ellas/);
+      expect(escaleraMuse([ref], "Edita la imagen de referencia: x").map((x) => x.refs)).toEqual([1]);
     });
 
     it("si las dos fallan, el error dice el código y lo que contestó Meta en cada una, aunque no sea JSON", async () => {

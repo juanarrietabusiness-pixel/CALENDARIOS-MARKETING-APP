@@ -355,12 +355,14 @@ describe("la lista de modelos: ordenar y filtrar", () => {
 });
 
 describe("respetar la proporción", () => {
-  it("Muse Image con referencias sólo da 1:1, 2:3 y 3:2; sin ellas, cualquiera de su lista", async () => {
+  it("Muse Image se queda en 4:5 también con referencias (el Worker la asegura); un modelo sin 4:5 cede", async () => {
     const { respetaProporcion, modeloQueRespeta, relevoPara, fueraDeProporcion, pedidoDeRecomponer, modeloPorId } = await import("./estudioCatalogo");
     const muse = modeloPorId("muse-image");
     expect(respetaProporcion(muse, "4:5")).toBe(true);
-    expect(respetaProporcion(muse, "4:5", true)).toBe(false);
-    expect(respetaProporcion(muse, "1:1", true)).toBe(true);
+    expect(respetaProporcion(muse, "4:5", true)).toBe(true);
+    expect(modeloQueRespeta(muse, { meta: true, kie: true }, "4:5", 3).id).toBe("muse-image");
+    // Un modelo que con referencias sólo diera algunas (`conReferencias`) sí cedería.
+    expect(respetaProporcion({ ...muse, conReferencias: ["1:1"] }, "4:5", true)).toBe(false);
     // GPT Image no tiene 4:5: cede aunque no lleve referencias.
     const gpt = modeloPorId("gpt-image-2-kie");
     expect(modeloQueRespeta(gpt, { kie: true }, "4:5", 0).id).toBe("nano-banana-2-kie");

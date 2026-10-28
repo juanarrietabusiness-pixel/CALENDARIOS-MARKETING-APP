@@ -3219,10 +3219,15 @@ son del servidor.
   director.js, compartidos con la pestaña). Abrir una conversación de diseño lo enciende y una de las otras lo apaga; la
   lista tiene «Todas / Diseño» cuando hay de las dos. El sistema del asistente ya sabía diseñar con cliente: el modo cambia
   dónde se guarda y lo que se ve, no lo que sabe.
-- **La proporción pedida es la que sale** (`respetaProporcion`, `modeloQueRespeta`, `relevoPara`, `fueraDeProporcion` en
-  estudioCatalogo.js). Muse Image con imágenes de referencia (el logo, la foto del producto, la lámina anterior) pierde la
-  vía de medidas exactas y la de Responses sólo da 1:1, 2:3 y 3:2 (`conReferencias` en su ficha del catálogo): los 4:5
-  del director salían 2:3. Y GPT Image, Seedream e Imagen no tienen 4:5. Dos capas:
+- **La proporción pedida es la que sale, y Muse se queda** (`respetaProporcion`, `modeloQueRespeta`, `relevoPara`,
+  `fueraDeProporcion` en estudioCatalogo.js; `escaleraMuse` en worker/lib/estudio/meta.js). Muse Image es el modelo de la
+  agencia (barato y se ve bien), y una serie con piezas de Muse y de Nano Banana se nota: NO se cambia de motor por la
+  proporción. Si Meta rechaza la vía de medidas exactas (1024×1280 en 4:5) con las referencias, el Worker reintenta por
+  ELLA con las 2 primeras, con la primera y, si no es una edición, sin ninguna; sólo después va a la de Responses (que da
+  1:1, 2:3 o 3:2). Lo que dejó fuera queda en la NOTA del trabajo (`aviso`): si una pieza salió sin logo o sin la foto
+  del producto, ahí está el porqué y lo que contestó Meta. La primera versión daba a Muse por incapaz de 4:5 con
+  referencias (`conReferencias`) y la cambiaba sola a Nano Banana: la agencia ya no podía escogerla. `conReferencias`
+  sigue en el catálogo para un modelo que de verdad lo necesite. GPT Image, Seedream e Imagen no tienen 4:5. Dos capas:
   · **Antes de crear:** `pedidoDePieza({ …, proporcion, activos })` cambia el modelo por el primero de `RELEVO_PROPORCION`
   con llave (Nano Banana 2 por Kie, luego el de Google…) si el escogido no la respeta con esas referencias; quien llama
   lee el modelo usado en `pedido.modelo` (para el costo y el nombre). Lo usan el director del chat, `generar_imagen`, el
@@ -3231,8 +3236,8 @@ son del servidor.
   versión final. El compositor respeta lo que escoge la persona.
   · **Después, la red de seguridad** (`esperarArchivos` en carruselEstudio.js, por donde esperan todos): una imagen cuyas
   medidas no casan con el `aspectRatio` de su trabajo (4 % de margen: el 896×1152 de Nano Banana vale) se RECOMPONE en
-  esa proporción con el relevo (`pedidoDeRecomponer`: la misma pieza, sin recortar ni acercar; el texto no se encoge) y
-  la nueva ocupa su sitio. Decisión de la agencia: NADA de recortar ni de «zona segura» (el texto quedaba pequeño).
+  esa proporción (`pedidoDeRecomponer`: la misma pieza, sin recortar ni acercar; el texto no se encoge) con el MISMO
+  modelo que la hizo y, sólo si vuelve a salir de otra medida, con el relevo; la nueva ocupa su sitio. Decisión de la agencia: NADA de recortar ni de «zona segura» (el texto quedaba pequeño).
 - **«Agrupar como carrusel» en la galería** (`agruparComoCarrusel`, `desagrupar`, `moverEnOrden` en lib/estudio.js): con
   «Seleccionar», las imágenes tocadas pasan a una carpeta de carrusel EN EL ORDEN en que se tocaron y la galería las
   enseña como una tarjeta; en `VisorGrupo`, flechas para cambiar el orden (se guarda con `ordenarCarpeta`) y «Desagrupar»
