@@ -87,7 +87,7 @@ function r2Falso(inicial = {}) {
       };
     },
     async put(clave, cuerpo) { objetos.set(clave, cuerpo); },
-    async delete(clave) { objetos.delete(clave); },
+    async delete(clave) { for (const k of [].concat(clave)) objetos.delete(k); },
     // La subida multiparte, como R2: las partes no son un objeto hasta `complete`.
     subidas: new Map(),
     async createMultipartUpload(clave, opciones) {

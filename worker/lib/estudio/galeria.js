@@ -18,6 +18,7 @@
 // ============================================================
 
 import { uuid } from "../ids.js";
+import { NULO, NO_NULO } from "../acceso.js";
 import { claveDeArchivo, medidasDe, tipoPorBytes } from "./archivos.js";
 import { DIAS_PAPELERA } from "../../../src/lib/estudioCatalogo.js";
 import { ErrorEstudio, trabajoPublico } from "./trabajos.js";
@@ -57,43 +58,83 @@ const MAX_ORDEN = 40;
 /** ¿El Estudio es dueño del objeto de R2 de este archivo? */
 const esDelEstudio = (f) => f.origen === "estudio" || Boolean(f.subido);
 
+/** Lo que se lee de la papelera de una vez (y lo que «Vaciar» borra por llamada: si quedan más, la pantalla repite). */
+export const MAX_PAPELERA = 500;
+
 /**
- * ¿Se puede borrar de verdad? No lo que usa una publicación, ni lo que usa la MARCA (`protegidas`, de
+ * Lo que de verdad usa cada archivo: `usado_en` se apunta al ponerlo en una publicación y NUNCA se quitaba, así que una
+ * imagen que se cambió por otra, o de una publicación que se borró, quedaba «en uso» para siempre y «Vaciar la papelera»
+ * no la borraba nunca. Aquí se mira en los calendarios del cliente (una lectura, sólo si alguna fila tiene usos) si la
+ * publicación sigue existiendo y sigue llevando ESE archivo (por su clave, en cualquier sitio de la publicación: medios,
+ * historias, copias adaptadas, portada, referencias). → Map(id del archivo → [usos vivos, con la fecha del día]).
+ */
+export async function usosVivos(acceso, clientId, filas) {
+  const conUsos = filas.filter((f) => leerJSON(f.usado_en, []).length);
+  if (!conUsos.length) return new Map();
+  const calendarios = await acceso.leerColumnas("calendars", ["id", "days"], { client_id: clientId });
+  const posts = new Map();
+  for (const c of calendarios) {
+    for (const d of leerJSON(c.days, [])) for (const p of d?.posts ?? []) posts.set(`${c.id}:${p.id}`, { texto: JSON.stringify(p), fecha: d.date });
+  }
+  return new Map(conUsos.map((f) => [f.id, leerJSON(f.usado_en, [])
+    .map((u) => ({ u, p: posts.get(`${u.calendarId}:${u.postId}`) }))
+    .filter(({ p }) => p?.texto.includes(f.clave))
+    .map(({ u, p }) => ({ ...u, fecha: p.fecha }))]));
+}
+
+/**
+ * ¿Se puede borrar de verdad? No lo que usa una publicación (de verdad: `vivos`), ni lo que usa la MARCA (`protegidas`, de
  * `clavesDeLaMarca`: el logo, la tipografía, los personajes, las plantillas, las fotos del catálogo). Borrado, el kit y
  * el catálogo seguían apuntando a él y TODA pieza que lo llevaba de referencia fallaba con «Una de las imágenes ya no
  * existe».
  */
-const sePuedeBorrar = (f, protegidas) => leerJSON(f.usado_en, []).length === 0 && !protegidas?.has(f.clave);
+const sePuedeBorrar = (f, protegidas, vivos) => !(vivos?.get(f.id) ?? []).length && !protegidas?.has(f.clave);
+
+/** Borra de R2 de una vez (R2 admite hasta 1.000 claves por llamada): una sola petición, no una por archivo. */
+async function borrarDeR2(env, claves) {
+  for (let i = 0; i < claves.length; i += 1000) await env.MEDIA.delete(claves.slice(i, i + 1000)).catch(() => {});
+}
 
 /**
  * Borra de verdad lo que lleva más de 30 días en la papelera y no usa
  * ninguna publicación ni la marca. Devuelve las filas que quedan.
  */
-export async function purgarPapelera(env, acceso, filas, ahoraMs = Date.now(), protegidas = null) {
+export async function purgarPapelera(env, acceso, filas, ahoraMs = Date.now(), protegidas = null, vivos = null) {
   const limite = ahoraMs - DIAS_PAPELERA * 86_400_000;
+  const enUso = vivos ?? new Map(filas.map((f) => [f.id, leerJSON(f.usado_en, [])]));
   const vencidas = filas
-    .filter((f) => f.borrado_at && Date.parse(f.borrado_at) <= limite && sePuedeBorrar(f, protegidas))
+    .filter((f) => f.borrado_at && Date.parse(f.borrado_at) <= limite && sePuedeBorrar(f, protegidas, enUso))
     .slice(0, MAX_PURGA_POR_LECTURA);
   if (!vencidas.length) return filas;
-  for (const f of vencidas) {
-    if (esDelEstudio(f)) await env.MEDIA.delete(f.clave).catch(() => {});
-  }
+  await borrarDeR2(env, vencidas.filter(esDelEstudio).map((f) => f.clave));
   await acceso.borrarVarios("estudio_archivos", vencidas.map((f) => f.id));
   const idas = new Set(vencidas.map((f) => f.id));
   return filas.filter((f) => !idas.has(f.id));
 }
 
-/** Todo lo que la pantalla del Estudio necesita de un cliente, en una lectura. */
+/** Un archivo para la pantalla, con lo que lo protege: la marca (`deLaMarca`) y sus usos de verdad. */
+const conProteccion = (f, protegidas, vivos) => {
+  const a = archivoPublico(f);
+  const marca = protegidas?.get(f.clave);
+  return { ...a, ...(vivos?.has(f.id) ? { usadoEn: vivos.get(f.id) } : {}), ...(marca ? { deLaMarca: marca.que } : {}) };
+};
+
+/**
+ * Todo lo que la pantalla del Estudio necesita de un cliente, en una lectura. La galería y la papelera se leen APARTE:
+ * juntas en los 300 más recientes, una papelera vieja no se veía (ni se podía vaciar) en cuanto la galería pasaba de 300.
+ */
 export async function leerGaleria(env, acceso, clientId, { protegidas = null } = {}) {
-  const [todas, trabajos, carpetas] = await Promise.all([
-    acceso.leer("estudio_archivos", { client_id: clientId }, "created_at desc", MAX_LISTADOS),
+  const [activas, enPapelera, trabajos, carpetas] = await Promise.all([
+    acceso.leer("estudio_archivos", { client_id: clientId, borrado_at: NULO }, "created_at desc", MAX_LISTADOS),
+    acceso.leer("estudio_archivos", { client_id: clientId, borrado_at: NO_NULO }, "borrado_at desc", MAX_PAPELERA),
     acceso.leer("estudio_trabajos", { client_id: clientId }, "created_at desc", 40),
     acceso.leer("estudio_carpetas", { client_id: clientId }, "created_at asc"),
   ]);
-  const filas = await purgarPapelera(env, acceso, todas, Date.now(), protegidas);
+  const vivos = await usosVivos(acceso, clientId, enPapelera);
+  const papelera = await purgarPapelera(env, acceso, enPapelera, Date.now(), protegidas, vivos);
   return {
-    archivos: filas.filter((f) => !f.borrado_at).map(archivoPublico),
-    papelera: filas.filter((f) => f.borrado_at).map(archivoPublico),
+    archivos: activas.map((f) => conProteccion(f, protegidas, null)),
+    papelera: papelera.map((f) => conProteccion(f, protegidas, vivos)),
     trabajos: trabajos.map(trabajoPublico),
     carpetas: carpetas.map(carpetaPublica),
   };
@@ -101,10 +142,17 @@ export async function leerGaleria(env, acceso, clientId, { protegidas = null } =
 
 const archivoDe = (acceso, clientId, id) => acceso.leerUno("estudio_archivos", { id, client_id: clientId });
 
-/** A la papelera. */
-export async function enviarAPapelera(acceso, clientId, id) {
+/**
+ * A la papelera. Lo que usa la MARCA (el logo, una foto del catálogo, una plantilla…) no: 409 con qué es y dónde se
+ * cambia. Antes se dejaba mandar y luego no se podía borrar, o se borraba con una papelera de antes y rompía las piezas.
+ */
+export async function enviarAPapelera(acceso, clientId, id, { protegidas = null } = {}) {
   const f = await archivoDe(acceso, clientId, id);
   if (!f) return null;
+  const deLaMarca = protegidas?.get(f.clave);
+  if (deLaMarca && !f.borrado_at) {
+    throw new ErrorEstudio(`No se puede mandar a la papelera: es ${deLaMarca.que}. ${deLaMarca.arreglo}`, 409, { codigo: "de_la_marca", que: deLaMarca.que });
+  }
   if (!f.borrado_at) await acceso.actualizar("estudio_archivos", { id, client_id: clientId }, { borrado_at: new Date().toISOString() });
   return archivoPublico(await archivoDe(acceso, clientId, id));
 }
@@ -127,11 +175,11 @@ export async function borrarParaSiempre(env, acceso, clientId, id, { forzar = fa
   if (!f.borrado_at) throw new ErrorEstudio("Primero mándalo a la papelera.", 409);
   const deLaMarca = protegidas?.get(f.clave);
   if (deLaMarca) throw new ErrorEstudio(`No se puede borrar del todo: es ${deLaMarca.que} y se usa en cada pieza. ${deLaMarca.arreglo}`, 409, { codigo: "de_la_marca" });
-  const usos = leerJSON(f.usado_en, []);
+  const usos = (await usosVivos(acceso, clientId, [f])).get(f.id) ?? [];
   if (usos.length && !forzar) {
     throw new ErrorEstudio(`Está en ${usos.length} publicación${usos.length === 1 ? "" : "es"}. Si lo borras del todo, desaparecerá de ${usos.length === 1 ? "ella" : "ellas"}.`, 409, { codigo: "en_uso", usos: usos.length });
   }
-  if (esDelEstudio(f)) await env.MEDIA.delete(f.clave).catch(() => {});
+  if (esDelEstudio(f)) await borrarDeR2(env, [f.clave]);
   await acceso.borrar("estudio_archivos", { id, client_id: clientId });
   return true;
 }
@@ -154,13 +202,26 @@ export async function olvidarClave(acceso, clientId, clave) {
   await acceso.borrar("estudio_archivos", { client_id: clientId, clave: String(clave) });
 }
 
-/** Vacía la papelera: lo que no usa ninguna publicación ni la marca. Devuelve cuántos. */
+/**
+ * Vacía la papelera: TODO lo que no usa de verdad una publicación ni la marca (antes, 20 por clic y con los usos de
+ * hace meses contando). → { borrados, quedan: [{ id, motivo: "marca" | "publicacion", que?, fecha? }], mas } — `mas`: había
+ * más de las que caben en una llamada (la pantalla repite).
+ */
 export async function vaciarPapelera(env, acceso, clientId, { protegidas = null } = {}) {
-  const filas = await acceso.leer("estudio_archivos", { client_id: clientId }, "created_at desc", MAX_LISTADOS);
-  const fuera = filas.filter((f) => f.borrado_at && sePuedeBorrar(f, protegidas)).slice(0, MAX_PURGA_POR_LECTURA);
-  for (const f of fuera) if (esDelEstudio(f)) await env.MEDIA.delete(f.clave).catch(() => {});
+  const filas = await acceso.leer("estudio_archivos", { client_id: clientId, borrado_at: NO_NULO }, "borrado_at asc", MAX_PAPELERA);
+  const vivos = await usosVivos(acceso, clientId, filas);
+  const quedan = [];
+  const fuera = [];
+  for (const f of filas) {
+    const marca = protegidas?.get(f.clave);
+    const usos = vivos.get(f.id) ?? [];
+    if (marca) quedan.push({ id: f.id, motivo: "marca", que: marca.que });
+    else if (usos.length) quedan.push({ id: f.id, motivo: "publicacion", fecha: usos[0].fecha ?? "" });
+    else fuera.push(f);
+  }
+  await borrarDeR2(env, fuera.filter(esDelEstudio).map((f) => f.clave));
   if (fuera.length) await acceso.borrarVarios("estudio_archivos", fuera.map((f) => f.id));
-  return fuera.length;
+  return { borrados: fuera.length, quedan, mas: filas.length >= MAX_PAPELERA && fuera.length > 0 };
 }
 
 /** Favorito y carpeta. Una carpeta tiene que ser de este cliente. */

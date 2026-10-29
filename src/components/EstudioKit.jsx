@@ -8,6 +8,7 @@ import {
   MAX_REGLAS,
 } from "../lib/kitMarca";
 import { MODOS_LOGO, ESQUINAS_LOGO, TAMANO_LOGO, MARGEN_LOGO, posicionDelKit } from "../lib/logoEncima";
+import { quitarPerdidasDelKit } from "../lib/estudio";
 
 // ============================================================
 // El kit de marca del cliente, en el Estudio
@@ -65,11 +66,12 @@ const PERSONAJE_VACIO = () => ({ id: `personaje-${Date.now().toString(36)}`, nom
  * @param perdidas  lo de la marca cuyo archivo ya no está (el servidor lo dice en GET /api/estudio: [{ que, arreglo }]).
  *                  Las piezas salen sin eso; se avisa aquí, a la vista aunque el kit esté plegado.
  */
-export default function EstudioKit({ client, kit: guardado, archivos = [], perdidas = [], lectura = false, onGuardar, onPreparar }) {
+export default function EstudioKit({ client, kit: guardado, archivos = [], perdidas = [], lectura = false, onGuardar, onPreparar, onCambio = null }) {
   const ids = useId();
   const kit = limpiarKit(guardado);
   const vacio = kitVacio(kit);
   const [abierto, setAbierto] = useState(vacio);
+  const [quitando, setQuitando] = useState(false);
   const [editando, setEditando] = useState(null); // el borrador, o null
   const [propuesta, setPropuesta] = useState(null); // { kit, dudas, conCerebro }
   const [ocupado, setOcupado] = useState("");
@@ -140,6 +142,16 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], perdi
           <ul style={{ margin: "var(--sp-1) 0 0", paddingLeft: "var(--sp-4)" }}>
             {perdidas.map((p) => <li key={p.clave}>{p.que.charAt(0).toUpperCase() + p.que.slice(1)}. {p.arreglo}</li>)}
           </ul>
+          {/* Lo guardado seguía apuntando a ellas y el aviso no se iba nunca: con esto salen del kit y del catálogo. */}
+          {onCambio && !lectura && (
+            <button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: "var(--sp-2)" }} disabled={quitando}
+              onClick={async () => {
+                setQuitando(true);
+                try { await quitarPerdidasDelKit(client.id); await onCambio(); } catch (e) { setError(e.message || "No se pudieron quitar."); } finally { setQuitando(false); }
+              }}>
+              {quitando ? "Quitando…" : `Quitar${perdidas.length === 1 ? "la" : "las"} del kit y del catálogo`}
+            </button>
+          )}
         </div>
       )}
 

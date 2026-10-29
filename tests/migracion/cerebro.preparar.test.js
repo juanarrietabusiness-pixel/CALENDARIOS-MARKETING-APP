@@ -54,7 +54,7 @@ function r2() {
     objetos,
     async get(clave) { return objetos.has(clave) ? { text: async () => objetos.get(clave) } : null; },
     async put(clave, valor) { objetos.set(clave, String(valor)); },
-    async delete(clave) { objetos.delete(clave); },
+    async delete(clave) { for (const k of [].concat(clave)) objetos.delete(k); },
   };
 }
 

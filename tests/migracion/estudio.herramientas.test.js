@@ -45,7 +45,7 @@ function r2() {
       return { body: o.bytes, size: o.bytes.length, httpMetadata: { contentType: o.tipo }, text: async () => new TextDecoder().decode(o.bytes), json: async () => JSON.parse(new TextDecoder().decode(o.bytes)), arrayBuffer: async () => o.bytes.buffer };
     },
     async put(clave, valor, opciones) { objetos.set(clave, { bytes: await bytesDe(valor), tipo: opciones?.httpMetadata?.contentType }); },
-    async delete(clave) { objetos.delete(clave); },
+    async delete(clave) { for (const k of [].concat(clave)) objetos.delete(k); },
   };
 }
 

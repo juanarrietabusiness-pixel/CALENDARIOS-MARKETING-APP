@@ -147,6 +147,39 @@ export const quitarPerdido = (clienteId, id) => pedir(delArchivo(clienteId, id, 
 export const borrarDelTodo = (clienteId, id, { forzar = false } = {}) =>
   pedir(`${base(clienteId)}/archivos/${encodeURIComponent(id)}${forzar ? "?forzar=1" : ""}`, { method: "DELETE" });
 export const vaciarPapelera = (clienteId) => pedir(`${base(clienteId)}/papelera/vaciar`, post());
+/** Quita del kit y del catálogo lo de la marca que ya no existe (el aviso «Falta una imagen de la marca»). */
+export const quitarPerdidasDelKit = (clienteId) => pedir(`${base(clienteId)}/kit/perdidas`, post());
+
+/** «Vaciar la papelera» entera (el servidor borra 500 por llamada y dice si quedan más) → lo que hay que decir. */
+export async function vaciarDelTodo(clienteId) {
+  let borrados = 0;
+  let r;
+  do { r = await vaciarPapelera(clienteId); borrados += r.borrados ?? 0; } while (r.mas);
+  return textoDeVaciar(borrados, r.quedan ?? []);
+}
+
+/** De unas piezas para la papelera, las que no son de la marca y lo que se dice de las que se quedan. Pura. */
+export function sinLasDeLaMarca(ids, archivos = []) {
+  const lista = ids.filter((id) => !archivos.find((x) => x.id === id)?.deLaMarca);
+  const n = ids.length - lista.length;
+  return { lista, nota: n ? ` ${n === 1 ? "Una se queda: es" : `${n} se quedan: son`} de la marca (kit o catálogo).` : "" };
+}
+
+/**
+ * Lo que dice «Vaciar la papelera»: cuántas se borraron y qué se queda y POR QUÉ (antes, «no había nada que borrar» con
+ * la papelera llena). `quedan`: [{ motivo: "marca" | "publicacion", que?, fecha? }]. Pura.
+ */
+export function textoDeVaciar(borrados, quedan = []) {
+  const hecho = borrados ? `${borrados} borrada${borrados === 1 ? "" : "s"} del todo.` : "No se borró nada.";
+  if (!quedan.length) return hecho;
+  const enUso = quedan.filter((q) => q.motivo === "publicacion").length;
+  const deMarca = quedan.filter((q) => q.motivo === "marca");
+  const partes = [
+    enUso ? `${enUso} ${enUso === 1 ? "la usa" : "las usan"} una publicación (quítala de ahí primero)` : "",
+    deMarca.length ? `${deMarca.length} ${deMarca.length === 1 ? "es" : "son"} de la marca (${[...new Set(deMarca.map((q) => q.que))].slice(0, 3).join(", ")}): cámbiala en el kit o el catálogo` : "",
+  ].filter(Boolean);
+  return `${hecho} Se ${quedan.length === 1 ? "queda 1" : `quedan ${quedan.length}`}: ${partes.join("; ")}.`;
+}
 
 /** `tipo` «carrusel» | «reel»: la galería la enseña como UNA tarjeta con sus piezas en orden. */
 export const crearCarpeta = (clienteId, nombre, { tipo = "" } = {}) => pedir(`${base(clienteId)}/carpetas`, post({ nombre, ...(tipo ? { tipo } : {}) }));

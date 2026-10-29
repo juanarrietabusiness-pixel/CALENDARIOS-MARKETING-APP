@@ -300,3 +300,13 @@ describe("el texto de la pieza, de un toque", () => {
     expect(p.prompt).toMatch(/Imagen de referencia 2: toma SÓLO/);
   });
 });
+
+describe("«Vaciar la papelera» dice qué se queda y por qué", async () => {
+  const { textoDeVaciar } = await import("./estudio.js");
+  it("cuántas se borraron y, de lo que se queda, cuántas usa una publicación y cuáles son de la marca", () => {
+    expect(textoDeVaciar(5)).toBe("5 borradas del todo.");
+    expect(textoDeVaciar(1, [{ motivo: "publicacion", fecha: "2026-10-12" }])).toBe("1 borrada del todo. Se queda 1: 1 la usa una publicación (quítala de ahí primero).");
+    expect(textoDeVaciar(0, [{ motivo: "marca", que: "el logo del kit" }, { motivo: "publicacion" }, { motivo: "publicacion" }]))
+      .toBe("No se borró nada. Se quedan 3: 2 las usan una publicación (quítala de ahí primero); 1 es de la marca (el logo del kit): cámbiala en el kit o el catálogo.");
+  });
+});

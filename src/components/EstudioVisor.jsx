@@ -290,7 +290,10 @@ export default function Visor({
             )}
             {!lectura && <button type="button" className="btn btn-secondary est-me-gusta" aria-pressed={a.favorito} onClick={onFavorito} title="El cerebro aprende de lo que te gusta"><Icon name="heart" size={16} /> {a.favorito ? "Te gusta" : "Me gusta"}</button>}
             <a className="btn btn-secondary" href={a.src} download={nombreDeDescarga(a)}><Icon name="download" size={16} /> Descargar</a>
-            {!lectura && <button type="button" className="btn btn-ghost" onClick={onPapelera}><Icon name="trash" size={16} /> A la papelera</button>}
+            {/* Lo de la marca (el logo, una foto del catálogo…) no va a la papelera: se dice qué es y dónde se cambia. */}
+            {!lectura && (a.deLaMarca
+              ? <p className="hint" style={{ margin: 0 }}><Icon name="lock" size={14} /> Es {a.deLaMarca}: para quitarla, cámbiala primero en el kit o en el catálogo.</p>
+              : <button type="button" className="btn btn-ghost" onClick={onPapelera}><Icon name="trash" size={16} /> A la papelera</button>)}
           </div>
         </div>
       </div>

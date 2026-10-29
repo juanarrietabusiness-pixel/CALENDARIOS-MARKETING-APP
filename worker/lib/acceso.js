@@ -166,6 +166,13 @@ const CON_CLIENTE = new Set(TABLAS_CON_CLIENTE);
 const CON_CALENDARIO = new Set(TABLAS_CON_CALENDARIO);
 
 /** Escribir en un cliente que no es de los tuyos. Es de la petición, no del servidor. */
+/**
+ * Para un WHERE de la capa: «esta columna es nula» / «no lo es» (`{ borrado_at: NULO }`). Un `null` a secas sigue
+ * siendo `= ?`, que no casa con nada: así se escribía antes y hay código que cuenta con eso.
+ */
+export const NULO = Symbol("nulo");
+export const NO_NULO = Symbol("no nulo");
+
 export class ErrorAcceso extends Error {
   constructor(mensaje = "No tienes acceso a ese cliente.") {
     super(mensaje);
@@ -235,24 +242,25 @@ export function crearAcceso(db, ownerId, { clientes = null } = {}) {
     return r ? { sql: ` and ${r.sql}`, valores: r.valores } : { sql: "", valores: [] };
   }
 
-  /** Añade el dueño a un WHERE que puede traer más condiciones. */
+  /** Añade el dueño a un WHERE que puede traer más condiciones (`NULO` / `NO_NULO`: «is null» / «is not null»). */
   function acotar(tabla, where = {}) {
     exigirTabla(tabla);
     const cols = exigirColumnas(Object.keys(where));
-    const valores = cols.map((c) => where[c]);
+    const condicion = (c) => (where[c] === NULO ? `${c} is null` : where[c] === NO_NULO ? `${c} is not null` : `${c} = ?`);
+    const valores = cols.filter((c) => where[c] !== NULO && where[c] !== NO_NULO).map((c) => where[c]);
     const cliente = porCliente(tabla);
     const extra = cliente ? { sql: [cliente.sql], valores: cliente.valores } : { sql: [], valores: [] };
 
     if (CON_DUENO.has(tabla)) {
       return {
-        sql: [...cols.map((c) => `${c} = ?`), "owner_id = ?", ...extra.sql].join(" and "),
+        sql: [...cols.map(condicion), "owner_id = ?", ...extra.sql].join(" and "),
         valores: [...valores, ownerId, ...extra.valores],
       };
     }
     // approvals: el dueño está un salto más allá.
     return {
       sql: [
-        ...cols.map((c) => `${c} = ?`),
+        ...cols.map(condicion),
         "calendar_id in (select id from calendars where owner_id = ?)",
         ...extra.sql,
       ].join(" and "),

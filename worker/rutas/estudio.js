@@ -38,7 +38,8 @@
 //   POST   /<cliente>/archivos/<id>/recuperar      De la papelera
 //   POST   /<cliente>/archivos/<id>/perdido        Quitar la ficha de un archivo que ya no está en R2
 //   DELETE /<cliente>/archivos/<id>?forzar=1       Borrar del todo (sólo desde la papelera)
-//   POST   /<cliente>/papelera/vaciar
+//   POST   /<cliente>/papelera/vaciar           Todo lo que no se usa de verdad; dice qué se queda y por qué
+//   POST   /<cliente>/kit/perdidas              Quita del kit y del catálogo lo de la marca que ya no existe
 //   POST   /<cliente>/archivos/<id>/control         { texto? }: el control de calidad (la IA mira la pieza; queda en la ficha)
 //   POST   /<cliente>/director                     { idea, formato, segundos, productoId }: la idea mejorada como director
 //                                                   comercial, con qué cambió y por qué (no guarda)
@@ -78,7 +79,7 @@ import { propuestaDeCarrusel } from "../lib/estudio/carrusel.js";
 import { guionDeReel } from "../lib/estudio/reel.js";
 import { ideasDeFormato } from "../lib/estudio/ideasFormato.js";
 import { estrategiaDelMes } from "../lib/estudio/estrategiaMes.js";
-import { leerMercado } from "../lib/mercado.js";
+import { leerMercado, guardarCatalogo } from "../lib/mercado.js";
 import { angulosDeAnuncio, fotosDelCatalogo, productosActivos, lineaDeProducto } from "../../src/lib/estudioMercado.js";
 import { MAX_REGLAS, clavesDeLaMarca, sinClavesPerdidas } from "../../src/lib/kitMarca.js";
 import {
@@ -94,7 +95,7 @@ const ID = /^[\w-]{1,80}$/;
 
 
 /** Una respuesta de error de este módulo: lleva además el `codigo` y el costo, que la pantalla usa para pedir confirmación. */
-const fallo = (e) => json({ error: e.message, ...(e.codigo ? { codigo: e.codigo } : {}), ...(e.costo != null ? { costo: e.costo } : {}), ...(e.usos != null ? { usos: e.usos } : {}) }, e.estado ?? 400);
+const fallo = (e) => json({ error: e.message, ...(e.codigo ? { codigo: e.codigo } : {}), ...(e.costo != null ? { costo: e.costo } : {}), ...(e.usos != null ? { usos: e.usos } : {}), ...(e.que ? { que: e.que } : {}) }, e.estado ?? 400);
 
 export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }) {
   const [, a, b, c, d] = partes;
@@ -162,6 +163,20 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         const kit = await guardarKit(env, acceso, cliente, datos.kit);
         avisar();
         return json({ kit });
+      }
+      // «Quitarlas del kit»: lo de la marca cuyo archivo ya no existe (lo borró una papelera de antes) sale del kit y del
+      // catálogo GUARDADOS. Hasta ahora sólo se escondía al leer, y el aviso «Falta una imagen de la marca» no se iba nunca.
+      if (c === "perdidas" && !d && metodo === "POST") {
+        const { mercado, protegidas } = await marcaDe();
+        const perdidas = await clavesPerdidas(env, protegidas, await leerGaleria(env, acceso, cliente.id, { protegidas }));
+        if (!perdidas.size) return json({ quitadas: 0, kit: kitDe(cliente) });
+        const kit = await guardarKit(env, acceso, cliente, sinClavesPerdidas(kitDe(cliente), [], perdidas).kit);
+        const catalogo = (mercado?.catalogo ?? []).map((p) => ({ ...p, fotos: (p.fotos ?? []).filter((k) => !perdidas.has(k)) }));
+        if (mercado && catalogo.some((p, i) => p.fotos.length !== (mercado.catalogo[i].fotos ?? []).length)) {
+          await guardarCatalogo(env, acceso, cliente, catalogo);
+        }
+        avisar();
+        return json({ quitadas: perdidas.size, kit });
       }
       // «Guardar como regla»: una corrección que se repite pasa a las reglas del kit (sobre el kit GUARDADO, no el que
       // tenga abierto la pantalla: así no pisa lo que otra persona cambió).
@@ -417,7 +432,8 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         return f ? json({ archivo: f }) : noEncontrado("Archivo");
       }
       if (d === "papelera" && metodo === "POST") {
-        const f = await enviarAPapelera(acceso, cliente.id, c);
+        const { protegidas } = await marcaDe();
+        const f = await enviarAPapelera(acceso, cliente.id, c, { protegidas });
         if (!f) return noEncontrado("Archivo");
         avisar();
         return json({ archivo: f });
@@ -466,9 +482,9 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
     // ---------- La papelera ----------
     if (b === "papelera" && c === "vaciar" && metodo === "POST") {
       const { protegidas } = await marcaDe();
-      const borrados = await vaciarPapelera(env, acceso, cliente.id, { protegidas });
+      const r = await vaciarPapelera(env, acceso, cliente.id, { protegidas });
       avisar();
-      return json({ borrados });
+      return json(r);
     }
 
     // ---------- Las carpetas ----------
