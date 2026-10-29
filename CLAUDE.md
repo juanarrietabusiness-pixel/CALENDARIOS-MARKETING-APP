@@ -1721,8 +1721,11 @@ son del servidor.
   «Vaciar» los saltan y «Borrar del todo» contesta 409 diciendo qué es. Lo que una papelera de antes ya borró: GET
   /api/estudio lo quita del kit y de `productos` que devuelve (sin tocar lo guardado; se comprueba en R2 sólo lo que no
   tiene ficha, como mucho 10) y lo dice en `perdidas`, que el kit enseña arriba. `crear_en_estudio` salta un logo
-  perdido, y si aun así llega una referencia perdida, `crearTrabajo` dice CUÁL («Una foto del producto «X» ya no
-  existe…») y dónde se arregla.
+  perdido. Y si aun así llega una referencia perdida que es de la MARCA (`sinLaQueFalta` en trabajos.js: al pedir y
+  otra vez al generar, porque los encargos del servidor guardan sus claves y `conPlantillaDelDirector` lee el kit
+  GUARDADO), la pieza se crea SIN ella y la nota dice cuál faltó y dónde se arregla (`medios.faltaron`); antes una
+  sola tumbaba el carrusel entero. Una que no es de la marca (la imagen que se corrige, la lámina anterior, lo puesto
+  a mano) sigue cortando: sin ella sería otro pedido.
 - **El modelo se escoge para UNA acción, sin fijarlo** (`SelectorModelo.jsx`; `modeloEscogido` en otraVersion.js,
   `modeloDeEdicion` en edicion.js): en el visor («Editar», «Otra igual», «Otra versión distinta») y en el post
   («Crear la imagen aquí» y las acciones rápidas; ya no está en `OpcionesCrearAqui`). Los que no hacen la proporción

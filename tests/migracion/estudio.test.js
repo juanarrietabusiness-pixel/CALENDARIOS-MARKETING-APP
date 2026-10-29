@@ -670,7 +670,7 @@ describe("subir a mano, carpetas y papelera", () => {
       expect(env.MEDIA.objetos.has(logo.clave)).toBe(true);
     });
 
-    it("lo que ya se borró antes no se ofrece de referencia, y pedirlo dice CUÁL falta", async () => {
+    it("lo que ya se borró antes no se ofrece de referencia, y pedirlo crea la pieza SIN ella y dice CUÁL faltó", async () => {
       env.MEDIA.objetos.set("clientes/c1/estudio/viva.png", { bytes: PNG, tipo: "image/png" });
       marca({ logo: "clientes/c1/estudio/logo-borrado.png", fotos: ["clientes/c1/estudio/foto-borrada.png", "clientes/c1/estudio/viva.png"] });
 
@@ -679,9 +679,36 @@ describe("subir a mano, carpetas y papelera", () => {
       expect(g.productos).toEqual([expect.objectContaining({ nombre: "Pañal de bambú", fotos: ["clientes/c1/estudio/viva.png"] })]);
       expect(g.perdidas.map((p) => p.que).sort()).toEqual(["el logo del kit", "una foto del producto «Pañal de bambú»"]);
 
-      const res = await pedirTrabajo(JEFE, "c1", { medios: { reference: ["clientes/c1/estudio/foto-borrada.png"] } });
+      // Lo que la pantalla (o un encargo del servidor) aún manda con la clave perdida: sale, sin esa imagen.
+      const res = await pedirTrabajo(JEFE, "c1", { medios: { reference: ["clientes/c1/estudio/viva.png", "clientes/c1/estudio/foto-borrada.png", "clientes/c1/estudio/logo-borrado.png"] } });
+      expect(res.status).toBe(201);
+      const { trabajo } = await res.json();
+      expect(trabajo.nota).toMatch(/Se creó sin una foto del producto «Pañal de bambú».*Se creó sin el logo del kit/);
+      const fin = await hastaElFinal(JEFE, "c1", trabajo.id);
+      expect(fin.estado).toBe("hecho");
+      expect(fin.nota).toMatch(/Se creó sin el logo del kit/);
+    });
+
+    it("una imagen de la marca borrada DESPUÉS de pedir tampoco tumba la pieza; una que no es de la marca, sí", async () => {
+      const logo = (await (await subir(JEFE, "c1", pngDistinto(21), "logo.png", "image/png")).json()).archivo;
+      const otra = (await (await subir(JEFE, "c1", pngDistinto(22), "otra.png", "image/png")).json()).archivo;
+      marca({ logo: logo.clave });
+
+      const conLogo = (await (await pedirTrabajo(JEFE, "c1", { medios: { reference: [logo.clave] } })).json()).trabajo;
+      const conOtra = (await (await pedirTrabajo(JEFE, "c1", { medios: { reference: [otra.clave] } })).json()).trabajo;
+      env.MEDIA.objetos.delete(logo.clave);
+      env.MEDIA.objetos.delete(otra.clave);
+
+      const a = await hastaElFinal(JEFE, "c1", conLogo.id);
+      expect(a.estado).toBe("hecho");
+      expect(a.nota).toMatch(/Se creó sin el logo del kit/);
+      const b = await hastaElFinal(JEFE, "c1", conOtra.id);
+      expect(b.estado).toBe("fallido");
+      expect(b.error).toMatch(/imágenes de apoyo ya no existe/);
+
+      // Y al pedir, una que no es de la marca sigue cortando con su motivo (cambiaría lo que se pidió).
+      const res = await pedirTrabajo(JEFE, "c1", { medios: { reference: [otra.clave] } });
       expect(res.status).toBe(404);
-      expect((await res.json()).error).toMatch(/^Una foto del producto «Pañal de bambú» ya no existe .*catálogo/);
     });
   });
 
