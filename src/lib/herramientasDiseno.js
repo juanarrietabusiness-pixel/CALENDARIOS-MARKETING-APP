@@ -54,7 +54,7 @@ export const HERRAMIENTAS_DISENO = Object.freeze([
     },
     {
       name: "version_final",
-      description: "Rehace una imagen escogida con el mejor modelo que tenga llave (Nano Banana Pro o GPT Image), con su misma ficha y en alta resolución. Úsala cuando la persona escoja las buenas. La nueva ocupa el sitio de la anterior en la publicación.",
+      description: "Rehace una imagen con OTRO modelo (Nano Banana Pro o GPT Image), con su misma ficha y en alta resolución. Sólo cuando la persona lo pida para esa pieza: lo que sale con el modelo del cliente ya es una pieza final, no un borrador. La nueva ocupa el sitio de la anterior en la publicación.",
       input_schema: {
         type: "object",
         properties: { archivo_id: { type: "string", description: "El id de la imagen." } },

@@ -197,7 +197,7 @@ export function instruccionDeDiseno(manual) {
     "· disenar_piezas: de 1 a 12 piezas, una ficha cada una. La persona ve las fichas y el costo y aprueba con un botón: NO le pidas el «sí» por texto antes. Si son para publicaciones del calendario, pasa el post_id de cada una y copia su texto de la pieza TAL CUAL.",
     "· ver_lo_que_funciona: las plantillas y las imágenes que gustaron de este cliente, para que veas su estilo. Míralo antes de la primera tanda de la conversación.",
     "· Al terminar, disenar_piezas te devuelve cada imagen para que la MIRES. Si una tiene una falta de ortografía, un texto ilegible, un logo deformado o se sale del sistema, arréglala con corregir_pieza (un detalle) o pídela otra vez con disenar_piezas (la composición no sirve) ANTES de dar la tanda por buena. Di en una línea qué corregiste.",
-    "· version_final: cuando la persona escoja las buenas, la misma pieza con el mejor modelo que haya (los borradores salen con el modelo del cliente).",
+    "· Lo que sale con el modelo del cliente (Muse, casi siempre) YA es una pieza final: no la llames borrador ni ofrezcas rehacerla con otro modelo por tu cuenta. version_final sólo si la persona pide otro modelo para una pieza concreta (la misma ficha con Nano Banana Pro o GPT Image).",
     "· guardar_regla: si la persona corrige lo mismo dos veces, ofrécele guardarlo como regla del kit (va en todas las piezas); sólo con su sí.",
     "· La persona puede señalar una imagen escribiendo «En la imagen clientes/…:»: es su clave; pásala como archivo_id a corregir_pieza o version_final.",
     "· Si en una serie una pieza quedó con el texto en otro sitio o de otro tamaño, corregir_pieza con igual_a = la que quedó bien: se iguala a ella (más fiable que describirlo).",

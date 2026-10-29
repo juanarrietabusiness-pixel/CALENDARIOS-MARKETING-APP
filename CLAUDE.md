@@ -3247,7 +3247,9 @@ son del servidor.
   `resumenDelKit` en worker/rutas/chat.js—. Cosas que no se ven:
   · **`disenar_piezas` (1–12 fichas) espera un BOTÓN**: la herramienta enseña el plan con su costo y su promesa no se
   resuelve hasta «Crear» o «Cambiar algo» (como `guardar_en_cerebro`). El botón es la confirmación del costo, como en el
-  lote; «Final» rehace con el mejor modelo con llave (`MODELOS_FINALES`). Se crea de 3 en 3 (`crearPlan`) con el control
+  lote; «Con qué modelo» escoge entre el del cliente y otra opción (`MODELOS_FINALES`). NO son «borrador» y «final»
+  (decisión de la agencia: lo de Muse casi siempre ES la pieza que se usa); el asistente no ofrece `version_final` por
+  su cuenta, sólo si la persona pide otro modelo. Se crea de 3 en 3 (`crearPlan`) con el control
   y el logo estampado; las de una publicación se ponen en ella con su ficha como pedido listo.
   · **El modelo VE lo que crea**: cada imagen vuelve en el `tool_result` como bloque de imagen (`paraElModelo`, copia de
   768 px en JPEG; el resultado lleva texto + imágenes). Antes recibía «Imagen creada» y diseñaba a ciegas.
