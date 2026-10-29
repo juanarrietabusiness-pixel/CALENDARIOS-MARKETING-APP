@@ -17,7 +17,7 @@ import { aBase64 } from "./gemini.js";
 import { archivoPublico } from "./galeria.js";
 import { leerMercado } from "../mercado.js";
 import { productosActivos } from "../../../src/lib/estudioMercado.js";
-import { limpiarKit, LINEA_LOGO } from "../../../src/lib/kitMarca.js";
+import { limpiarKit, pideLogoDeReferencia } from "../../../src/lib/kitMarca.js";
 import { pedidoDeControl, leerControl, textoDelPedido } from "../../../src/lib/control.js";
 import { pedidoDeSistema, leerSistema, lineaDeSistema } from "../../../src/lib/sistemaCarrusel.js";
 
@@ -66,7 +66,7 @@ export async function controlarPieza(env, acceso, cliente, archivoId, { texto = 
   const esperado = String(texto ?? ajustes?.plantilla?.texto ?? textoDelPedido(fila.prompt) ?? "").trim().slice(0, MAX_TEXTO);
   const kit = limpiarKit(leerJSON(cliente.kit_marca, {}));
   // ¿Se le dio el logo al modelo? Entonces tiene que salir, y bien.
-  const logo = String(fila.prompt ?? "").includes(LINEA_LOGO);
+  const logo = pideLogoDeReferencia(fila.prompt);
   let precios = [];
   try {
     const { catalogo } = await leerMercado(acceso, cliente.id);

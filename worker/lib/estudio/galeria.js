@@ -216,9 +216,11 @@ async function herenciaDe(acceso, clientId, origenId, plantilla) {
   try { p = typeof plantilla === "string" ? JSON.parse(plantilla) : plantilla; } catch { p = null; }
   const texto = String(p?.texto ?? "").slice(0, 400);
   const donde = ["banda", "arriba", "centro", "degradado"].includes(p?.plantilla) ? p.plantilla : "banda";
+  // La que lleva el logo ESTAMPADO ya no está «sin logo»: si heredara la marca, corregirla lo estamparía dos veces.
+  const { logoFuera, ...ajustes } = leerJSON(o.ajustes, {});
   return {
     prompt: o.prompt, modelo: o.modelo, trabajo_id: o.trabajo_id,
-    ajustes: JSON.stringify({ ...leerJSON(o.ajustes, {}), ...(texto ? { plantilla: { texto, plantilla: donde, origenId: o.id } } : {}) }),
+    ajustes: JSON.stringify({ ...ajustes, ...(logoFuera && p?.plantilla !== "logo" ? { logoFuera } : {}), ...(texto ? { plantilla: { texto, plantilla: donde, origenId: o.id } } : {}) }),
   };
 }
 

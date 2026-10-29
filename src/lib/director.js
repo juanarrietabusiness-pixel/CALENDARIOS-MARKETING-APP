@@ -296,7 +296,7 @@ function lineaDeEncargo(p) {
  * (paleta, estilo, reglas); `guia`: la identidad visual del cerebro; `plantillas`: las del kit; `concepto`: el de la
  * tanda si ya lo hay. Pura.
  */
-export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], marca = "", guia = "", plantillas = [], manual = null, concepto = "", productos = "", catalogo = "", sobreLaMarca = "", correcciones = [], vistas = 0, especiales = [], previas = [], serie = 0 }) {
+export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], marca = "", conLogo = true, guia = "", plantillas = [], manual = null, concepto = "", productos = "", catalogo = "", sobreLaMarca = "", correcciones = [], vistas = 0, especiales = [], previas = [], serie = 0 }) {
   const lista = piezas.slice(0, MAX_FICHAS).map(limpiarPiezaEncargo);
   const enSerie = lista.length > 1 || serie > 1;
   return [
@@ -327,6 +327,7 @@ export function pedidoDeFichas({ cliente = "la marca", rubro = "", piezas = [], 
     `En una pieza SIN TEXTO, la línea de texto es: ${FICHA_SIN_TEXTO}`,
     "",
     `Reglas: español latino neutro; el texto exacto de cada pieza, copiado letra por letra entre «»; nada de precios, descuentos, sellos ni reseñas que no estén arriba; ningún logo de otra marca. ${REGLA_PRODUCTOS}`,
+    conLogo ? "" : SIN_LOGO_EN_LA_FICHA,
     'Responde SOLO con JSON: {"concepto":"la idea que une la serie y su sistema visual, en 1 o 2 frases","piezas":[{"n":1,"ficha":"Pieza: …\\nComposición: …","plantilla":""}]}',
   ].filter((l) => l !== "").join("\n");
 }
@@ -361,19 +362,26 @@ export function leerFichas(texto, piezas = []) {
 // El kit, en pocas líneas, para quien diseña
 // ------------------------------------------------------------
 
+/** Sin logo en el kit: el motor no tiene el de verdad, así que pedirlo es pedirle que se invente uno. */
+const SIN_LOGO_EN_LA_FICHA = "Mientras no haya logo, en la ficha NO pidas ningún logo, monograma ni sello (el motor se inventaría uno): si la pieza firma con la marca, que sea su nombre en texto.";
+
 /**
  * Lo que el asistente necesita saber del kit para diseñar: si está, qué exige y qué plantillas hay. Si no está, que
  * lo diga y ofrezca prepararlo. `kit` ya limpio (limpiarKit); `marca`: su bloque (bloqueDeMarca). Pura.
  */
 export function resumenDelKit({ kit = null, marca = "", vacio = false, cliente = "este cliente" } = {}) {
   if (!kit || vacio) {
-    return `KIT DE MARCA DE ${cliente.toUpperCase()}: NO está preparado. Las piezas saldrán sin su paleta ni su logo: díselo a la persona en una línea y ofrécele prepararlo (Estudio → Kit de marca → «Preparar con IA»). Mientras, saca los colores y el estilo del cerebro (buscar_cerebro) y escríbelos en cada ficha.`;
+    return `KIT DE MARCA DE ${cliente.toUpperCase()}: NO está preparado. Las piezas saldrán sin su paleta ni su logo: díselo a la persona en una línea y ofrécele prepararlo (Estudio → Kit de marca → «Preparar con IA») y cargar su logo («Usar como logo» en la galería). Mientras, saca los colores y el estilo del cerebro (buscar_cerebro) y escríbelos en cada ficha. ${SIN_LOGO_EN_LA_FICHA}`;
   }
   return [
     `KIT DE MARCA DE ${cliente.toUpperCase()} (el Estudio lo pone solo en cada pieza; tú escribe la ficha de acuerdo con él):`,
     marca,
     kit.tipografia ? `Tipografía: ${kit.tipografia}.` : "",
-    kit.logo ? (kit.logoModo === "estampado" ? "Logo: lo estampa la aplicación encima al terminar; en la ficha deja libre su esquina y no lo dibujes." : "Logo: va de referencia al motor; di en la ficha dónde va y de qué tamaño.") : "Logo: el kit no tiene logo.",
+    kit.logo
+      ? (kit.logoModo === "estampado"
+        ? "Logo: lo estampa la aplicación encima al terminar (el original, exacto); en la ficha deja libre su esquina y no lo dibujes. La persona puede escoger en el plan que lo integre la IA."
+        : "Logo: va al motor como la ÚLTIMA imagen de referencia y la IA lo integra en el diseño; di en la ficha dónde va y de qué tamaño, y que es EL logo de referencia (no otro). Si Muse no lo acepta, la aplicación le estampa el original. La persona puede escoger en el plan que lo estampe la aplicación.")
+      : `Logo: el kit NO tiene logo cargado. Díselo a la persona en una línea (en la galería, abre su logo → «Usar como logo»). ${SIN_LOGO_EN_LA_FICHA}`,
     (kit.plantillas ?? []).length ? `Plantillas guardadas (diseños que ya funcionaron; pasa su id en «plantilla» para seguir una):\n${kit.plantillas.map(lineaDePlantilla).join("\n")}` : "",
   ].filter(Boolean).join("\n");
 }
@@ -429,7 +437,7 @@ const REGLA_SERIE = "Un carrusel es UNA serie: el titular en la MISMA zona, del 
  * Lo que se le pide al director para un carrusel: con el guion (`laminas`: las de partirGuion) o sólo un tema, de 5 a 7
  * láminas. Devuelve el sistema de la serie y la ficha de cada lámina con su texto exacto. Pura.
  */
-export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [], tema = "", tipo = "", estilo = "", producto = "", personajes = [], marca = "", guia = "", plantillas = [], manual = null, correcciones = [], vistas = 0, estructura = "", catalogo = "", sobreLaMarca = "" }) {
+export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [], tema = "", tipo = "", estilo = "", producto = "", personajes = [], marca = "", conLogo = true, guia = "", plantillas = [], manual = null, correcciones = [], vistas = 0, estructura = "", catalogo = "", sobreLaMarca = "" }) {
   const conGuion = laminas.length >= 2;
   const deCarrusel = plantillas.filter((p) => p.uso === "portada" || p.uso === "lamina");
   return [
@@ -463,6 +471,7 @@ export function pedidoDeCarrusel({ cliente = "la marca", rubro = "", laminas = [
     FORMATO_FICHA,
     "",
     `Reglas: español latino neutro; el texto de cada lámina, corto (se lee en dos segundos), copiado letra por letra entre «» en su ficha; nada de precios, descuentos, sellos ni reseñas que no estén arriba; ningún logo de otra marca. ${REGLA_PRODUCTOS}`,
+    conLogo ? "" : SIN_LOGO_EN_LA_FICHA,
     'Responde SOLO con JSON: {"sistema":"el sistema de la serie en una o dos frases, con medidas","laminas":[{"n":1,"texto":"titular\\napoyo","ficha":"Pieza: …\\nComposición: …"}]}',
   ].filter((l) => l !== "").join("\n");
 }

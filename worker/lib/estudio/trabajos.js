@@ -31,6 +31,7 @@ import { difundir } from "../vivo.js";
 import { despertar } from "../despertar.js";
 import { bloqueoPorPresupuesto, registrarConsumoFijo } from "../configIA.js";
 import { MOTORES } from "./motores.js";
+import { esEdicion } from "./meta.js";
 import { ErrorMotor, aBase64 } from "./gemini.js";
 import { abrirDescarga, guardarDescarga, TOPE_VIDEO, TOPE_IMAGEN } from "./descarga.js";
 import { claveDeArchivo, claveDelCliente, medidasDe, medidasDeVideo, tipoPorBytes } from "./archivos.js";
@@ -360,8 +361,11 @@ async function paso(env, acceso, fila) {
   await env.MEDIA.put(clave, salida.bytes, { httpMetadata: { contentType: mime } });
   const medidas = salida.ancho ? { ancho: salida.ancho, alto: salida.alto } : medidasDe(salida.bytes, mime);
   const [aw, ah] = MEDIDAS[proporcionDe(leerJSON(fila.ajustes, {}))];
+  // Muse tuvo que dejar fuera el logo (o es una edición de una que salió así): la aplicación le estampa el original.
+  const logoFuera = salida.logoFuera === true || (await editaUnaSinLogo(acceso, fila));
   const archivoId = await guardarArchivo(acceso, fila, modelo, {
     clave, mime, tipo: "imagen", ancho: medidas.ancho || aw, alto: medidas.alto || ah, bytes: salida.bytes.byteLength, costo: salida.costo ?? 0,
+    ...(logoFuera ? { ajustes: JSON.stringify({ ...leerJSON(fila.ajustes, {}), logoFuera: true }) } : {}),
   });
 
   const lista = [...hechos, archivoId];
@@ -376,13 +380,25 @@ async function paso(env, acceso, fila) {
   };
 }
 
+/**
+ * ¿Es una edición (corregir la letra, recomponer en su proporción…) de una pieza que salió SIN el logo que pedía? Entonces
+ * la nueva tampoco lo lleva y hereda la marca: si no, la corrección del control perdía el logo por el camino.
+ */
+async function editaUnaSinLogo(acceso, fila) {
+  if (!esEdicion(fila.prompt)) return false;
+  const original = leerJSON(fila.medios, {}).reference?.[0];
+  if (!original) return false;
+  const a = await acceso.leerUno("estudio_archivos", { client_id: fila.client_id, clave: String(original) }).catch(() => null);
+  return leerJSON(a?.ajustes, {}).logoFuera === true;
+}
+
 /** Apunta un archivo terminado en la galería y su gasto. Devuelve el id del archivo. */
-async function guardarArchivo(acceso, fila, modelo, { clave, mime, tipo, ancho, alto, bytes, costo }) {
+async function guardarArchivo(acceso, fila, modelo, { clave, mime, tipo, ancho, alto, bytes, costo, ajustes = fila.ajustes }) {
   const id = uuid();
   const ahora = new Date().toISOString();
   await acceso.insertar("estudio_archivos", {
     id, client_id: fila.client_id, clave, tipo, mime, ancho, alto, bytes,
-    prompt: fila.prompt, modelo: modelo.id, ajustes: fila.ajustes, trabajo_id: fila.id, carpeta_id: fila.carpeta_id,
+    prompt: fila.prompt, modelo: modelo.id, ajustes, trabajo_id: fila.id, carpeta_id: fila.carpeta_id,
     origen: "estudio", costo, favorito: 0, subido: 0, usado_en: "[]", borrado_at: null,
     created_at: ahora, updated_at: ahora,
   });

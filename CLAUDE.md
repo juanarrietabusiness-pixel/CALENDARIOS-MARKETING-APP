@@ -3259,6 +3259,27 @@ son del servidor.
   id o la CLAVE (el botón «Pedir un cambio» de una imagen del chat deja «En la imagen clientes/…:» en la caja).
   `guardar_regla` suma al kit (sólo con el sí de la persona). Las definiciones viven en `herramientasDiseno.js` y NO en
   api.js: api.js va en el bundle principal, y con ellas la carga inicial pasaba de 180 kB.
+- **El logo: las dos formas siguen, y ninguna se lo inventa** (`LINEA_LOGO`, `lineaSinLogo`, `pideLogoDeReferencia` en
+  kitMarca.js; `escaleraMuse`/`pedidoDelPaso` en worker/lib/estudio/meta.js; `tocaEstampar` en logoEstudio.js). La agencia
+  quiere poder escoger: «lo integra la IA» (el logo va de referencia) o «lo estampa la aplicación» (el original encima). Se
+  escoge en el kit y, para una tanda del director, en la tarjeta del plan («El logo»; `conModoDeLogo`). El logo salía
+  inventado por cuatro cosas:
+  · **Muse descartaba las referencias por el final, y el logo va el último:** era lo PRIMERO que se caía, y el pedido seguía
+  diciendo que había logo. Ahora la escalera recorta lo de delante y deja el logo hasta el final; con menos referencias, el
+  pedido dice cuáles van («OJO: sólo van…»). Si al final sale sin ninguna, la línea del logo se cambia por «no dibujes
+  ningún logo» (`LINEA_LOGO_FUERA`) y el archivo queda con `ajustes.logoFuera`: todo camino que estampa (`conLogoSiToca`,
+  `terminarTrabajo`, el carrusel, los encargos del servidor con `navegador.logo` y `forzar`) le pega el original. Una
+  EDICIÓN de esa pieza (la corrección del control, la recompuesta) hereda la marca (`editaUnaSinLogo` en trabajos.js); la
+  ya estampada no (`herenciaDe` la quita con la plantilla «logo»: si no, corregirla lo estamparía dos veces).
+  · **«Una de las imágenes… si aparece» no decía cuál**, entre fotos del producto, plantillas y la muestra de la letra. Ahora
+  dice que es la ÚLTIMA y que es la firma. La de antes (`LINEA_LOGO_ANTERIOR`, en los pedidos guardados) se sigue
+  reconociendo.
+  · **Sin logo de referencia no se decía nada**, y la ficha («Marca: el logo arriba») o la guía del cerebro («toda pieza
+  lleva logo») hacían que el motor dibujara uno. Ahora va `lineaSinLogo` (también SIN kit: D'CASA no lo tenía preparado) y
+  los logos de la foto REAL de un producto de otra marca se respetan.
+  · **El director no sabía que el kit no tenía logo:** `kitVacio` no mira el logo (un kit con sólo el logo contaba como
+  vacío) y «Logo: el kit no tiene logo» no le decía qué hacer. Ahora lo dice a la persona y no lo pide en la ficha
+  (`SIN_LOGO_EN_LA_FICHA`, también en `pedidoDeFichas` y `pedidoDeCarrusel` con `conLogo`).
 - **Lo diseñado se PONE en el post sin volver a crearlo** (`poner_en_publicacion`; `piezasParaPoner`, `postConPiezas` en
   src/lib/disenoChat.js; `cambiarPublicacion` en App.jsx). El asistente sólo podía poner una pieza AL CREARLA (`post_id` de
   cada pieza), y en un carrusel eso iba lámina por lámina: si no lo ponía en todas, no se ponía ninguna, sólo en el mes

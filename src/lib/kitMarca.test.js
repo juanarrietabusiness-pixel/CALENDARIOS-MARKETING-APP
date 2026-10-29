@@ -283,3 +283,39 @@ describe("reglas que no se rompen y quién pone el logo", () => {
     expect(nuevo.logoPosicion).toMatchObject({ esquina: "arriba-izquierda", tamano: 0.2 });
   });
 });
+
+describe("el logo: que no se invente uno", async () => {
+  const { pedidoConMarca, pideLogoDeReferencia, lineaSinLogo, LINEA_LOGO, LINEA_LOGO_ANTERIOR } = await import("./kitMarca.js");
+  const { tocaEstampar } = await import("./logoEstudio.js");
+
+  it("con el logo de referencia, dice que es la ÚLTIMA imagen; el control y Muse lo reconocen (también en los pedidos de antes)", () => {
+    const p = pedidoConMarca({ kit: { logo: "clientes/c1/logo.png", paleta: [{ hex: "#1340B1", nombre: "azul" }] }, idea: "una sala", logo: true });
+    expect(p).toContain(LINEA_LOGO);
+    expect(pideLogoDeReferencia(p)).toBe(true);
+    expect(pideLogoDeReferencia(`Escena: x\n\n${LINEA_LOGO_ANTERIOR}`)).toBe(true);
+    expect(pideLogoDeReferencia("Escena: x")).toBe(false);
+  });
+
+  it("sin el logo de referencia (no hay, o lo estampa la aplicación), el pedido dice que no dibuje ninguno; también sin kit", () => {
+    const sinKit = pedidoConMarca({ kit: {}, idea: "una sala" });
+    expect(sinKit).toMatch(/No dibujes ni inventes ningún logo/);
+    expect(sinKit).toMatch(/foto REAL de un producto se respetan/);
+    const estampado = pedidoConMarca({ kit: { logo: "clientes/c1/logo.png", logoModo: "estampado", logoPosicion: { esquina: "arriba-izquierda" } }, idea: "una sala" });
+    expect(estampado).toMatch(/esquina de arriba a la izquierda: déjala limpia/);
+    expect(estampado).not.toContain(LINEA_LOGO);
+    // En un video no se habla de logos (va limpio), y sin el kit puesto, la idea tal cual.
+    expect(pedidoConMarca({ kit: {}, idea: "una sala", video: true })).not.toMatch(/logo/);
+    expect(pedidoConMarca({ kit: {}, idea: "una sala", usarKit: false })).toBe("una sala");
+    expect(lineaSinLogo({})).toMatch(/sólo su nombre escrito en texto limpio/);
+  });
+
+  it("se estampa con el kit en «lo estampa la aplicación» o cuando el motor dejó fuera el logo; nunca un video ni sin logo", () => {
+    const img = { tipo: "imagen", ajustes: {} };
+    expect(tocaEstampar(img, { logo: "clientes/c1/logo.png", logoModo: "estampado" })).toBe(true);
+    expect(tocaEstampar(img, { logo: "clientes/c1/logo.png" })).toBe(false);
+    expect(tocaEstampar({ ...img, ajustes: { logoFuera: true } }, { logo: "clientes/c1/logo.png" })).toBe(true);
+    expect(tocaEstampar(img, { logo: "clientes/c1/logo.png" }, { forzar: true })).toBe(true);
+    expect(tocaEstampar({ tipo: "video", ajustes: { logoFuera: true } }, { logo: "clientes/c1/logo.png", logoModo: "estampado" })).toBe(false);
+    expect(tocaEstampar({ ...img, ajustes: { logoFuera: true } }, {})).toBe(false);
+  });
+});

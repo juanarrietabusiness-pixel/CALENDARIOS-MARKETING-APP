@@ -30,9 +30,19 @@ export async function estamparEnGaleria({ clienteId, archivo, kit, carpetaId }) 
   return nuevo;
 }
 
-/** Con el logo estampado en el kit, la pieza con su logo; si no toca (o falla el dibujo), la misma. */
-export async function conLogoSiToca({ clienteId, archivo, kit, carpetaId }) {
-  if (!archivo || archivo.tipo === "video" || !estampaSola(kit)) return archivo;
+/**
+ * ¿Hay que estampar el logo en esta pieza? Con el kit en «lo estampa la aplicación», siempre; con «lo pone el modelo», sólo
+ * si el motor tuvo que dejarlo fuera (`ajustes.logoFuera`: Muse no aceptó todas las referencias) o `forzar` (el encargo
+ * del servidor lo pide así). Pura.
+ */
+export function tocaEstampar(archivo, kit, { forzar = false } = {}) {
+  if (!archivo || archivo.tipo === "video" || !limpiarKit(kit).logo) return false;
+  return estampaSola(kit) || forzar || archivo.ajustes?.logoFuera === true;
+}
+
+/** La pieza con el logo estampado si toca (`tocaEstampar`); si no toca (o falla el dibujo), la misma. */
+export async function conLogoSiToca({ clienteId, archivo, kit, carpetaId, forzar = false }) {
+  if (!tocaEstampar(archivo, kit, { forzar })) return archivo;
   try {
     return await estamparEnGaleria({ clienteId, archivo, kit, carpetaId });
   } catch {

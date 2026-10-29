@@ -77,7 +77,8 @@ export async function terminarPaso({ clienteId, encargo, paso, archivos, kit, ca
         if (nav.plantilla) {
           final = await ponerTexto({ clienteId, crudo, texto: nav.plantilla.texto, plantilla: nav.plantilla.plantilla, kit, carpetaId: carpetaId ?? crudo.carpetaId ?? null, nombre: nav.plantilla.nombre || "pieza" });
         }
-        if (nav.logo) final = await conLogoSiToca({ clienteId, archivo: final, kit, carpetaId: carpetaId ?? crudo.carpetaId ?? null });
+        // `forzar`: el servidor lo pide también cuando Muse dejó fuera el logo (aunque el kit diga «lo pone el modelo»).
+        if (nav.logo) final = await conLogoSiToca({ clienteId, archivo: final, kit, carpetaId: carpetaId ?? crudo.carpetaId ?? null, forzar: true });
       } catch { /* se queda la que hay: se vuelve a intentar la próxima vez */ }
       finales.push(final);
     }

@@ -37,6 +37,7 @@ import { tipoPorBytes } from "./archivos.js";
 import { abrirDescarga, TOPE_IMAGEN } from "./descarga.js";
 import { MEDIDAS } from "../../../src/lib/estudioCatalogo.js";
 import { llaveMeta } from "../configIA.js";
+import { pideLogoDeReferencia, LINEA_LOGO_FUERA, LINEA_LOGO_ANTERIOR } from "../../../src/lib/kitMarca.js";
 
 const BASE = (env) => (env?.META_BASE || "https://api.meta.ai/v1").replace(/\/$/, "");
 const PLAZO_MS = 180_000;
@@ -46,19 +47,48 @@ const PROBAR_LA_OTRA = new Set([400, 404, 405, 415, 422]);
 /** Las proporciones que la API de Responses entrega EXACTAS. */
 const EXACTAS_RESPONSES = new Set(["1:1", "2:3", "3:2"]);
 /** ¿Es una edición de una imagen (corregir, recomponer)? Sin su imagen de referencia no tiene sentido pedirla. */
-const esEdicion = (prompt) => /^Edita la imagen de referencia/.test(String(prompt ?? ""));
+export const esEdicion = (prompt) => /^Edita la imagen de referencia/.test(String(prompt ?? ""));
 
 /**
  * Los intentos por la primera vía, en orden: todas las referencias, las 2 primeras, la primera y, si no es una
  * edición, ninguna. Cada uno con lo que se dejó fuera (para el aviso). Pura.
+ *
+ * El LOGO (la última referencia cuando el pedido lo dice: `pideLogoDeReferencia`) es lo ÚLTIMO que se deja fuera: antes
+ * era lo primero (iba el último y se cortaba por el final), el pedido seguía diciendo que había logo y el motor se
+ * inventaba uno. Si al final no entra, el pedido lo dice (`LINEA_LOGO_FUERA`) y la pieza sale con `logoFuera`: la
+ * aplicación le estampa el original.
  */
 export function escaleraMuse(referencias = [], prompt = "") {
   const n = referencias.length;
-  const pasos = [{ refs: n, aviso: "" }];
-  if (n > 2) pasos.push({ refs: 2, aviso: `Meta no aceptó las ${n} imágenes de referencia: salió con las 2 primeras.` });
-  if (n > 1) pasos.push({ refs: 1, aviso: `Meta no aceptó las ${n} imágenes de referencia: salió sólo con la primera.` });
-  if (n > 0 && !esEdicion(prompt)) pasos.push({ refs: 0, aviso: "Meta no aceptó las imágenes de referencia: salió sin ellas (el logo, si va, lo puede estampar la aplicación)." });
+  const conLogo = n > 0 && pideLogoDeReferencia(prompt);
+  const resto = conLogo ? n - 1 : n;
+  const logo = conLogo ? [n - 1] : [];
+  const yLogo = conLogo ? " y el logo" : "";
+  const paso = (indices, aviso = "", extra = {}) => ({ indices, refs: indices.length, aviso, ...extra });
+  const pasos = [paso([...Array(n).keys()])];
+  if (resto > 2) pasos.push(paso([0, 1, ...logo], `Meta no aceptó las ${n} imágenes de referencia: salió con las 2 primeras${yLogo}.`));
+  if (resto > 1) pasos.push(paso([0, ...logo], `Meta no aceptó las ${n} imágenes de referencia: salió sólo con la primera${yLogo}.`));
+  if (conLogo && resto > 0 && !esEdicion(prompt)) pasos.push(paso(logo, `Meta no aceptó las ${n} imágenes de referencia: salió sólo con el logo.`));
+  if (n > 0 && !esEdicion(prompt)) {
+    pasos.push(paso([], `Meta no aceptó las imágenes de referencia: salió sin ellas${conLogo ? "; el logo real se le estampa encima" : ""}.`, conLogo ? { logoFuera: true } : {}));
+  }
   return pasos;
+}
+
+/**
+ * El pedido para un paso de la escalera: con menos referencias, que diga cuáles van (los números de arriba ya no casan) y,
+ * sin el logo, que no dibuje ninguno. Pura.
+ */
+export function pedidoDelPaso(prompt, total, pasoMuse) {
+  const t = String(prompt ?? "");
+  if (pasoMuse.logoFuera) {
+    return t.replace(/La ÚLTIMA imagen de referencia es el logo[^\n]*/g, LINEA_LOGO_FUERA).split(LINEA_LOGO_ANTERIOR).join(LINEA_LOGO_FUERA);
+  }
+  if (pasoMuse.indices.length === total || !pasoMuse.indices.length) return t;
+  const logo = pideLogoDeReferencia(t) && pasoMuse.indices.includes(total - 1);
+  const sinLogo = pasoMuse.indices.filter((i) => i !== total - 1 || !logo).length;
+  const que = [sinLogo ? `${sinLogo === 1 ? "la primera" : `las ${sinLogo} primeras`} de las que se nombran arriba` : "", logo ? "el logo, que es la última" : ""].filter(Boolean).join(" y ");
+  return `${t}\n\nOJO: sólo van ${pasoMuse.indices.length} imágenes de referencia: ${que}.`;
 }
 
 /** Los tres tamaños que admite el tool `image_generation` de la API de Responses. */
@@ -171,11 +201,12 @@ export async function llamarMuseImage(env, { gid = "muse-image-1.0", prompt, aju
   const refs = referencias.slice(0, maxReferencias);
   const intentos = [];
   let aviso = "";
-  // La primera vía (medidas exactas), con cada vez menos referencias mientras Meta RECHACE el pedido.
+  let logoFuera = false;
+  // La primera vía (medidas exactas), con cada vez menos referencias mientras Meta RECHACE el pedido (el logo, lo último).
   for (const paso of escaleraMuse(refs, prompt)) {
-    const i = await llamar(env, llave, peticionMuse(modelo, { prompt, ajustes, referencias: refs.slice(0, paso.refs) }));
+    const i = await llamar(env, llave, peticionMuse(modelo, { prompt: pedidoDelPaso(prompt, refs.length, paso), ajustes, referencias: paso.indices.map((k) => refs[k]) }));
     intentos.push(i);
-    if (i.ok) { aviso = paso.aviso; break; }
+    if (i.ok) { aviso = paso.aviso; logoFuera = Boolean(paso.logoFuera); break; }
     if (!PROBAR_LA_OTRA.has(i.estado)) break;
   }
   const ultimo = intentos[intentos.length - 1];
@@ -205,7 +236,7 @@ export async function llamarMuseImage(env, { gid = "muse-image-1.0", prompt, aju
   // El tipo, por los bytes: lo que se pidió no siempre es lo que llega.
   const mime = tipoPorBytes(bytes);
   if (!mime?.startsWith("image/")) throw new ErrorMotor("Muse Image devolvió algo que no es una imagen.", 502);
-  return { bytes, mime, ...(aviso ? { aviso } : {}) };
+  return { bytes, mime, ...(aviso ? { aviso } : {}), ...(logoFuera ? { logoFuera } : {}) };
 }
 
 export const MOTOR_META = Object.freeze({
@@ -213,7 +244,7 @@ export const MOTOR_META = Object.freeze({
   llave: "META_API_KEY",
   activo: (env) => Boolean(llaveMeta(env)),
   async generar(env, { modelo, prompt, ajustes, referencias = [] }) {
-    const { bytes, mime, aviso } = await llamarMuseImage(env, { gid: modelo.gid, prompt, ajustes, referencias, maxReferencias: modelo.referencias ?? 0 });
-    return { bytes, mime, costo: modelo.costo, ...(aviso ? { aviso } : {}) };
+    const { bytes, mime, aviso, logoFuera } = await llamarMuseImage(env, { gid: modelo.gid, prompt, ajustes, referencias, maxReferencias: modelo.referencias ?? 0 });
+    return { bytes, mime, costo: modelo.costo, ...(aviso ? { aviso } : {}), ...(logoFuera ? { logoFuera } : {}) };
   },
 });

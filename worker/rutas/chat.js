@@ -176,7 +176,7 @@ export async function rutaChat(req, env, { acceso, ctx, usuario = null } = {}) {
       manualDelEspacio(acceso), correccionesDelCliente(acceso, clienteActual.id), leerMercado(acceso, clienteActual.id).catch(() => null),
     ]);
     system.push({ type: "text", text: [
-      instruccionDeDiseno(manual), resumenDelKit({ kit, marca: bloqueDeMarca(kit), vacio: kitVacio(kit), cliente: clienteActual.name }),
+      instruccionDeDiseno(manual), resumenDelKit({ kit, marca: bloqueDeMarca(kit), vacio: kitVacio(kit) && !kit.logo, cliente: clienteActual.name }),
       catalogoParaDisenar(mercado, clienteActual.name), lineaDeCorrecciones(correcciones),
     ].filter(Boolean).join("\n\n") });
   }

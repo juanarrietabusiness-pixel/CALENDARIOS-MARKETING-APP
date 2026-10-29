@@ -195,3 +195,15 @@ describe("poner_en_publicacion: lo que YA está en la galería, a un post", () =
     expect(postConPiezas({ id: "h", format: "historia" }, piezas).post.format).toBe("historia");
   });
 });
+
+describe("el logo de una tanda del director se escoge", async () => {
+  const { logoDelKit, conModoDeLogo } = await import("./disenoChat.js");
+  it("por defecto, el del kit; escoger el otro cambia sólo esa tanda", () => {
+    expect(logoDelKit({ logo: "clientes/c1/logo.png" })).toEqual({ hay: true, modo: "modelo" });
+    expect(logoDelKit({})).toEqual({ hay: false, modo: "modelo" });
+    const ctxBase = { kit: { logo: "clientes/c1/logo.png" } };
+    expect(conModoDeLogo(ctxBase, "estampado").kit.logoModo).toBe("estampado");
+    expect(conModoDeLogo(ctxBase, "modelo")).toBe(ctxBase);
+    expect(conModoDeLogo(ctxBase, "otro")).toBe(ctxBase);
+  });
+});
