@@ -22,7 +22,7 @@ const r2 = () => {
   return {
     async get(k) { return objetos.has(k) ? { text: async () => objetos.get(k) } : null; },
     async put(k, v) { objetos.set(k, String(v)); },
-    async delete(k) { objetos.delete(k); },
+    async delete(k) { for (const x of [].concat(k)) objetos.delete(x); },
   };
 };
 

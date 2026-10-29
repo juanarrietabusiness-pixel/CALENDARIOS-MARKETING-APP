@@ -69,7 +69,7 @@ function r2() {
       const bytes = typeof valor === "string" ? valor : valor instanceof ReadableStream ? new Uint8Array(await new Response(valor).arrayBuffer()) : new Uint8Array(valor);
       objetos.set(clave, { bytes, tipo: op?.httpMetadata?.contentType });
     },
-    async delete(clave) { objetos.delete(clave); },
+    async delete(clave) { for (const k of [].concat(clave)) objetos.delete(k); },
   };
 }
 

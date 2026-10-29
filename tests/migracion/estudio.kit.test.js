@@ -56,7 +56,7 @@ function r2() {
     },
     async head(clave) { return objetos.has(clave) ? {} : null; },
     async put(clave, valor, op) { objetos.set(clave, { bytes: typeof valor === "string" ? valor : new Uint8Array(valor), tipo: op?.httpMetadata?.contentType }); },
-    async delete(clave) { objetos.delete(clave); },
+    async delete(clave) { for (const k of [].concat(clave)) objetos.delete(k); },
   };
 }
 

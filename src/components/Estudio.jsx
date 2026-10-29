@@ -787,11 +787,13 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   }, "Listo: sale como una pieza nueva con el logo encima; la original se queda.");
   const aPapelera = (a) => accion(async () => { await api.mandarAPapelera(client.id, a.id); setVisor(null); }, "Movida a la papelera. Puedes recuperarla 30 días.");
   /** Varias de una vez: una por una (cada una es su fila), y se relee la galería una sola vez al terminar. */
-  const variasAPapelera = async (lista) => {
+  const variasAPapelera = async (todas) => {
     let hechas = 0;
+    // Lo de la marca (el logo, las fotos del catálogo…) no va a la papelera: se salta y se dice.
+    const { lista, nota } = api.sinLasDeLaMarca(todas, archivos);
     try {
       for (const id of lista) { await api.mandarAPapelera(client.id, id); hechas += 1; }
-      avisar(true, `${hechas} a la papelera. Puedes recuperarlas 30 días.`);
+      avisar(true, `${hechas} a la papelera. Puedes recuperarlas 30 días.${nota}`);
     } catch (e) {
       avisar(false, hechas ? `Se mandaron ${hechas} de ${lista.length}: ${e.message}` : e.message);
     } finally {
@@ -830,10 +832,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       else avisar(false, e.message);
     }
   };
-  const vaciar = () => accion(async () => {
-    const r = await api.vaciarPapelera(client.id);
-    avisar(true, r.borrados ? `${r.borrados} borrada${r.borrados === 1 ? "" : "s"} del todo.` : "No había nada que borrar (lo que usa una publicación o la marca se queda).");
-  });
+  // Todo de una vez y qué se queda y por qué (lib/estudio.js).
+  const vaciar = () => accion(async () => avisar(true, await api.vaciarDelTodo(client.id)));
   const descargar = (a) => {
     const enlace = document.createElement("a");
     enlace.href = a.src;
@@ -862,10 +862,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     }
   };
   /** «Mandar el carrusel a la papelera»: todo lo de su carpeta, también las crudas. */
-  const grupoAPapelera = async (lista) => {
+  const grupoAPapelera = async (todas) => {
+    const { lista, nota } = api.sinLasDeLaMarca(todas, archivos);
     for (const id of lista) await api.mandarAPapelera(client.id, id);
     setGrupoAbierto(null);
-    avisar(true, `${lista.length} a la papelera. Puedes recuperarlas 30 días.`);
+    avisar(true, `${lista.length} a la papelera. Puedes recuperarlas 30 días.${nota}`);
     await cargar();
   };
 
@@ -999,6 +1000,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             kit={kit}
             archivos={archivos}
             perdidas={datos.perdidas}
+            onCambio={cargar}
             lectura={lectura}
             onPreparar={() => api.prepararKit(client.id)}
             onGuardar={guardarKitDeMarca}
@@ -1273,10 +1275,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
                 )}
                 {a.tipo === "video" && <span className="est-marca-video"><Icon name="video" size={12} /> Video</span>}
                 {enMedios(a) && <span className="est-marca-ref">En el pedido</span>}
+                {a.deLaMarca && <span className="est-marca-marca" title={a.deLaMarca}><Icon name="lock" size={12} /> Marca</span>}
                 {estaUsado(a) && <span className="est-marca-usada" title={`En ${a.usadoEn.length} publicación${a.usadoEn.length === 1 ? "" : "es"}`}>Usada</span>}
                 {seleccion && <span className="est-marca-check" aria-hidden="true"><Icon name={marcada ? "checkSquare" : "square"} size={18} /></span>}
               </button>
-              {!lectura && !seleccion && (
+              {!lectura && !seleccion && !a.deLaMarca && (
                 <button type="button" className="btn-icon est-a-papelera" aria-label={`Mandar a la papelera: ${escena}`} title="Mandar a la papelera" onClick={() => aPapelera(a)}>
                   <Icon name="trash" size={16} />
                 </button>

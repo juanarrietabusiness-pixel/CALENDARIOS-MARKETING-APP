@@ -158,7 +158,7 @@ describe("el protocolo y las herramientas", () => {
     env.MEDIA = {
       async get(k) { return objetos.has(k) ? { text: async () => objetos.get(k) } : null; },
       async put(k, v) { objetos.set(k, String(v)); },
-      async delete(k) { objetos.delete(k); },
+      async delete(k) { for (const x of [].concat(k)) objetos.delete(x); },
     };
     const nota = (id, cliente, dueno, ruta, titulo, texto, interna = 0) => db.sqlite.prepare(
       "insert into cerebro_notas (id, owner_id, client_id, ruta, titulo, texto, tipo, interna) values (?,?,?,?,?,?, 'marca', ?)",

@@ -186,7 +186,7 @@ function r2() {
       return { body: o.bytes, size: o.bytes.length, httpMetadata: { contentType: o.tipo }, arrayBuffer: async () => o.bytes.buffer.slice(o.bytes.byteOffset, o.bytes.byteOffset + o.bytes.byteLength) };
     },
     async put(clave, valor, opciones) { objetos.set(clave, { bytes: await bytesDe(valor), tipo: opciones?.httpMetadata?.contentType }); },
-    async delete(clave) { objetos.delete(clave); },
+    async delete(clave) { for (const k of [].concat(clave)) objetos.delete(k); },
   };
 }
 

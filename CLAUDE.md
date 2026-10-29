@@ -3259,6 +3259,23 @@ son del servidor.
   id o la CLAVE (el botón «Pedir un cambio» de una imagen del chat deja «En la imagen clientes/…:» en la caja).
   `guardar_regla` suma al kit (sólo con el sí de la persona). Las definiciones viven en `herramientasDiseno.js` y NO en
   api.js: api.js va en el bundle principal, y con ellas la carga inicial pasaba de 180 kB.
+- **«Vaciar la papelera» no vaciaba, por tres cosas** (`vaciarPapelera`, `usosVivos`, `leerGaleria` en
+  worker/lib/estudio/galeria.js; `NULO`/`NO_NULO` en acceso.js; `vaciarDelTodo`, `textoDeVaciar` en lib/estudio.js):
+  · **`usado_en` se apunta al poner un archivo en una publicación y NUNCA se quita**: una imagen cambiada por otra, o de una
+  publicación borrada, quedaba «en uso» para siempre. Ahora cuenta sólo el uso VIVO: la publicación sigue en su calendario
+  y sigue llevando ESA clave (en cualquier sitio de su JSON). Una lectura de `calendars` y sólo si alguna fila tiene usos.
+  · **20 por clic**, y **la papelera iba dentro de los 300 más recientes**: con una galería grande, lo viejo de la papelera
+  ni se veía. La galería y la papelera se leen aparte (`borrado_at: NULO` / `NO_NULO`, el «is null» que la capa no tenía:
+  un `null` a secas sigue siendo `= ?`); vaciar borra hasta `MAX_PAPELERA` (500) por llamada, R2 por lotes (una
+  petición) y la pantalla repite mientras `mas`.
+  · **No decía por qué se quedaba algo**: devuelve `quedan` con el motivo (la usa la publicación del día X, es el logo…),
+  y cada tarjeta de la papelera lo dice.
+- **Lo de la marca no va a la papelera** (`enviarAPapelera(…, { protegidas })`, 409 `de_la_marca`; `deLaMarca` en cada
+  archivo de GET /api/estudio). El logo, las fotos del catálogo, las plantillas, la muestra de la letra y los personajes
+  llevan «Marca» con un candado y sin botón de papelera; seleccionadas en grupo, se saltan y se dice (`sinLasDeLaMarca`).
+  Para quitarlas hay que cambiarlas primero en el kit o en el catálogo.
+- **«Falta una imagen de la marca» ya se puede quitar** (`POST /api/estudio/<c>/kit/perdidas`, botón del aviso del kit):
+  sale del kit y del catálogo GUARDADOS lo que ya no existe en R2. Hasta ahora sólo se escondía al leer y el aviso no se iba.
 - **El logo: las dos formas siguen, y ninguna se lo inventa** (`LINEA_LOGO`, `lineaSinLogo`, `pideLogoDeReferencia` en
   kitMarca.js; `escaleraMuse`/`pedidoDelPaso` en worker/lib/estudio/meta.js; `tocaEstampar` en logoEstudio.js). La agencia
   quiere poder escoger: «lo integra la IA» (el logo va de referencia) o «lo estampa la aplicación» (el original encima). Se

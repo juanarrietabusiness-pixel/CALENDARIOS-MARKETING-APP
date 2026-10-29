@@ -128,6 +128,7 @@ div.est-img { cursor: default; }
 .est-marca-ref,
 .est-marca-video,
 .est-marca-grupo,
+.est-marca-marca,
 .est-marca-usada {
   position: absolute; top: var(--sp-2);
   display: inline-flex; align-items: center; gap: var(--sp-1);
@@ -140,6 +141,8 @@ div.est-img { cursor: default; }
 /* Abajo, para no chocar con la papelera ni con «En el pedido»: qué grupo es y si ya está en una publicación. */
 .est-marca-grupo { top: auto; bottom: var(--sp-2); left: var(--sp-2); background: rgba(0, 0, 0, 0.72); color: #fff; }
 .est-marca-usada { top: auto; bottom: var(--sp-2); right: var(--sp-2); background: rgba(0, 0, 0, 0.72); color: var(--success); }
+/* Lo que usa la marca (el logo, las fotos del catálogo…): no va a la papelera. Arriba a la derecha, donde iría la papelera. */
+.est-marca-marca { right: var(--sp-2); background: rgba(0, 0, 0, 0.72); color: #fff; }
 /* Un carrusel o un reel: la tarjeta se ve como un montón de láminas. */
 .est-tarjeta-grupo { box-shadow: 4px 4px 0 -1px var(--surface-2), 4px 4px 0 0 var(--border); }
 .est-pie { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-3); flex: 1; }
@@ -415,3 +418,5 @@ div.est-img { cursor: default; }
 .est-kit-plantilla-tipos { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin-top: var(--sp-1); }
 .est-kit-plantilla-tipos .filter-chip { min-height: var(--tap-sm); font-size: var(--fs-3xs); }
 .est-plantilla { display: flex; flex-direction: column; gap: var(--sp-1); }
+/* En la papelera: por qué esta no se va al vaciar (la usa una publicación, es de la marca). */
+.est-se-queda { display: flex; align-items: center; gap: var(--sp-1); color: var(--text-muted); }

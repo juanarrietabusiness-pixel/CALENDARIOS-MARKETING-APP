@@ -35,7 +35,7 @@ function r2() {
       return { text: async () => v, body: v, size: v.length, httpEtag: '"x"', writeHttpMetadata: () => {} };
     },
     async put(clave, valor) { objetos.set(clave, typeof valor === "string" ? valor : await new Response(valor).text()); },
-    async delete(clave) { objetos.delete(clave); },
+    async delete(clave) { for (const k of [].concat(clave)) objetos.delete(k); },
   };
 }
 

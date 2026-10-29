@@ -39,7 +39,7 @@ function r2() {
     async get(clave) { return objetos.has(clave) ? { arrayBuffer: async () => objetos.get(clave) } : null; },
     async head(clave) { return objetos.has(clave) ? {} : null; },
     async put(clave, valor) { objetos.set(clave, valor instanceof ReadableStream ? new Uint8Array(await new Response(valor).arrayBuffer()) : valor); },
-    async delete(clave) { objetos.delete(clave); },
+    async delete(clave) { for (const k of [].concat(clave)) objetos.delete(k); },
   };
 }
 
