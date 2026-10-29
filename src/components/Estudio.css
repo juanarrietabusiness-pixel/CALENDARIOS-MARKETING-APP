@@ -420,3 +420,12 @@ div.est-img { cursor: default; }
 .est-plantilla { display: flex; flex-direction: column; gap: var(--sp-1); }
 /* En la papelera: por qué esta no se va al vaciar (la usa una publicación, es de la marca). */
 .est-se-queda { display: flex; align-items: center; gap: var(--sp-1); color: var(--text-muted); }
+/* Las otras versiones de una pieza, en el visor: miniaturas que la abren. */
+.est-visor-versiones { display: grid; gap: var(--sp-1); }
+.est-visor-versiones-lista { display: flex; gap: var(--sp-2); flex-wrap: wrap; list-style: none; margin: 0; padding: 0; }
+.est-visor-version {
+  width: 72px; height: 72px; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface-2); overflow: hidden; cursor: pointer;
+}
+.est-visor-version img, .est-visor-version video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.est-visor-version:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

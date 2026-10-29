@@ -361,11 +361,15 @@ async function paso(env, acceso, fila) {
   await env.MEDIA.put(clave, salida.bytes, { httpMetadata: { contentType: mime } });
   const medidas = salida.ancho ? { ancho: salida.ancho, alto: salida.alto } : medidasDe(salida.bytes, mime);
   const [aw, ah] = MEDIDAS[proporcionDe(leerJSON(fila.ajustes, {}))];
-  // Muse tuvo que dejar fuera el logo (o es una edición de una que salió así): la aplicación le estampa el original.
-  const logoFuera = salida.logoFuera === true || (await editaUnaSinLogo(acceso, fila));
+  // Una edición (corregir la letra, recomponer…) recuerda de qué archivo sale (`deArchivo`: la galería las apila como
+  // versiones de UNA pieza). Muse tuvo que dejar fuera el logo, o es una edición de una que salió así: `logoFuera`, y la
+  // aplicación le estampa el original.
+  const original = await originalDeLaEdicion(acceso, fila);
+  const logoFuera = salida.logoFuera === true || leerJSON(original?.ajustes, {}).logoFuera === true;
+  const extra = { ...(original ? { deArchivo: original.id } : {}), ...(logoFuera ? { logoFuera: true } : {}) };
   const archivoId = await guardarArchivo(acceso, fila, modelo, {
     clave, mime, tipo: "imagen", ancho: medidas.ancho || aw, alto: medidas.alto || ah, bytes: salida.bytes.byteLength, costo: salida.costo ?? 0,
-    ...(logoFuera ? { ajustes: JSON.stringify({ ...leerJSON(fila.ajustes, {}), logoFuera: true }) } : {}),
+    ...(Object.keys(extra).length ? { ajustes: JSON.stringify({ ...leerJSON(fila.ajustes, {}), ...extra }) } : {}),
   });
 
   const lista = [...hechos, archivoId];
@@ -381,15 +385,16 @@ async function paso(env, acceso, fila) {
 }
 
 /**
- * ¿Es una edición (corregir la letra, recomponer en su proporción…) de una pieza que salió SIN el logo que pedía? Entonces
- * la nueva tampoco lo lleva y hereda la marca: si no, la corrección del control perdía el logo por el camino.
+ * El archivo de la galería que EDITA este trabajo (corregir la letra, recomponer en su proporción…): la primera
+ * referencia de un pedido «Edita la imagen de referencia…». null si no es una edición o no está en la galería. Si la
+ * original salió SIN el logo que pedía, la nueva tampoco lo lleva y hereda la marca (si no, la corrección del control
+ * perdía el logo por el camino).
  */
-async function editaUnaSinLogo(acceso, fila) {
-  if (!esEdicion(fila.prompt)) return false;
-  const original = leerJSON(fila.medios, {}).reference?.[0];
-  if (!original) return false;
-  const a = await acceso.leerUno("estudio_archivos", { client_id: fila.client_id, clave: String(original) }).catch(() => null);
-  return leerJSON(a?.ajustes, {}).logoFuera === true;
+async function originalDeLaEdicion(acceso, fila) {
+  if (!esEdicion(fila.prompt)) return null;
+  const clave = leerJSON(fila.medios, {}).reference?.[0];
+  if (!clave) return null;
+  return acceso.leerUno("estudio_archivos", { client_id: fila.client_id, clave: String(clave) }).catch(() => null);
 }
 
 /** Apunta un archivo terminado en la galería y su gasto. Devuelve el id del archivo. */

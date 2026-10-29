@@ -158,6 +158,21 @@ export async function vaciarDelTodo(clienteId) {
   return textoDeVaciar(borrados, r.quedan ?? []);
 }
 
+/**
+ * Varias piezas a la papelera, una por una (cada una es su fila), salvo las de la marca. → lo que hay que decir. Si una
+ * falla a mitad, el error dice cuántas se mandaron.
+ */
+export async function variasALaPapelera(clienteId, ids, archivos = []) {
+  const { lista, nota } = sinLasDeLaMarca(ids, archivos);
+  let hechas = 0;
+  try {
+    for (const id of lista) { await mandarAPapelera(clienteId, id); hechas += 1; }
+  } catch (e) {
+    throw new Error(hechas ? `Se mandaron ${hechas} de ${lista.length}: ${e.message}` : e.message);
+  }
+  return `${hechas} a la papelera. Puedes recuperarlas 30 días.${nota}`;
+}
+
 /** De unas piezas para la papelera, las que no son de la marca y lo que se dice de las que se quedan. Pura. */
 export function sinLasDeLaMarca(ids, archivos = []) {
   const lista = ids.filter((id) => !archivos.find((x) => x.id === id)?.deLaMarca);
@@ -334,6 +349,59 @@ export function piezasDeGrupo(carpeta, archivos = []) {
   if (carpeta?.tipo === "reel") return [...viejas.filter((a) => a.tipo === "video").reverse(), ...viejas.filter((a) => a.tipo !== "video")];
   const conTexto = new Set(dentro.map((a) => a.ajustes?.plantilla?.origenId).filter(Boolean));
   return viejas.filter((a) => !conTexto.has(a.id));
+}
+
+/**
+ * De qué pieza sale este archivo, si sale de otra de la galería: `deArchivo` (una edición: la letra que corrigió el
+ * control, la recompuesta en su proporción, «Corregir esta»; la del logo estampado) o la cruda de la que lleva el texto
+ * de la plantilla. Las ediciones de antes, sin `deArchivo`, por su trabajo (`ediciones`: clave original por trabajo). Pura.
+ */
+function padreDe(a, ediciones) {
+  return a?.ajustes?.deArchivo ?? a?.ajustes?.plantilla?.origenId ?? ediciones.get(a?.trabajoId) ?? null;
+}
+
+/**
+ * Las VERSIONES de una pieza en una sola tarjeta. Cada pieza deja de 2 a 4 archivos (la cruda y la que lleva el texto, la
+ * corrección del control, la recompuesta a 4:5, la del logo estampado, lo que se corrigió desde el chat) y la galería se
+ * llenaba de casi-iguales. Se ve UNA por pieza —la que usa una publicación; si no, la que gusta; si no, la que pasó el
+ * control; si no, la más nueva— con las demás en `anteriores` (la tarjeta dice «N versiones» y el visor las enseña). Lo
+ * de un carrusel o un reel se queda como está (su carpeta ya lo agrupa). `archivos`, del más nuevo al más viejo. Pura.
+ */
+export function apilarVersiones(archivos = [], carpetas = [], trabajos = []) {
+  const grupos = new Set(carpetas.filter(esGrupo).map((c) => c.id));
+  const porClave = new Map(archivos.map((a) => [a.clave, a.id]));
+  const ediciones = new Map(trabajos
+    .filter((t) => /^Edita la imagen de referencia/.test(t.prompt ?? "") && porClave.has(t.medios?.reference?.[0]))
+    .map((t) => [t.id, porClave.get(t.medios.reference[0])]));
+  const porId = new Map(archivos.map((a) => [a.id, a]));
+  const raiz = (a) => {
+    let r = a;
+    for (let i = 0; i < 12; i++) {
+      const p = porId.get(padreDe(r, ediciones));
+      if (!p || p === r) break;
+      r = p;
+    }
+    return r.id;
+  };
+  const pilas = new Map();
+  for (const a of archivos) {
+    if (a.carpetaId && grupos.has(a.carpetaId)) { pilas.set(a.id, [a]); continue; }
+    const r = raiz(a);
+    pilas.set(r, [...(pilas.get(r) ?? []), a]);
+  }
+  const puntos = (a) => (estaUsado(a) ? 8 : 0) + (a.favorito ? 4 : 0) + (a.ajustes?.control?.estado === "ok" ? 2 : 0);
+  const salida = [];
+  const puestas = new Set();
+  for (const a of archivos) {
+    const pila = pilas.get(a.carpetaId && grupos.has(a.carpetaId) ? a.id : raiz(a));
+    if (puestas.has(pila)) continue;
+    puestas.add(pila);
+    // La primera de las que más puntúan: a igualdad, la más nueva (vienen de la más nueva a la más vieja).
+    const vista = pila.reduce((m, x) => (puntos(x) > puntos(m) ? x : m), pila[0]);
+    const anteriores = pila.filter((x) => x !== vista);
+    salida.push(anteriores.length ? { ...vista, anteriores } : vista);
+  }
+  return salida;
 }
 
 /** «Carrusel · 6 láminas» · «Reel · 1 video y 5 fotogramas». */

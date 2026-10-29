@@ -882,6 +882,9 @@ describe("subir a mano, carpetas y papelera", () => {
     await avanzar(JEFE, "c1", edicion.id);
     const corregida = db.sqlite.prepare("select ajustes from estudio_archivos where trabajo_id = ?").get(edicion.id);
     expect(JSON.parse(corregida.ajustes).logoFuera).toBe(true);
+    // Y recuerda de qué pieza sale: la galería la apila como una versión de ella.
+    const idDeSin = db.sqlite.prepare("select id from estudio_archivos where clave = ?").get(sin.clave).id;
+    expect(JSON.parse(corregida.ajustes).deArchivo).toBe(idDeSin);
   });
 
   it("adaptar a 4:5 deja escoger el motor de ESA imagen y dice con cuál salió", async () => {
