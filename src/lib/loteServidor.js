@@ -23,19 +23,22 @@ import * as api from "./estudio";
 
 /**
  * UNA pieza del lote como paso del encargo: lo mismo que hacía `crearPieza` antes de pedir, sin pedir. La escena va
- * lista si ya la hay (la ficha del director o el pedido listo del motor de ideas); si no, el servidor se la pide al
- * director y, si tampoco, a la mejora. Pura salvo por los imports.
+ * lista sólo si ya la diseñó el director (`idea.ficha`); si no, el servidor se la pide al director. El borrador de
+ * ficha que escribe el motor de ideas (`idea.imagen`) ya NO se salta al director: lo escribía el redactor de seis en
+ * seis junto con títulos, captions y hashtags, y por eso el lote salía peor que el chat. Queda de respaldo (si el
+ * director falla, o con «Mejorar» apagado). Pura salvo por los imports.
  */
 export function pasoDeLote(idea, { pedidoDe, modo = "ia", formato = "post", n = 1, mejorar = true, piezaDe = () => "", indicacion = "", controlar = false, logo = false }) {
   const datos = ideaDeLote(idea, { modo });
-  const sinMejorar = ideaSinMejorar(datos);
-  const lista = idea.ficha || (modo === "ia" && !indicacion && !idea.pide ? asegurarTexto(idea.imagen, textoDeIdea(idea)) : "");
+  const delRedactor = modo === "ia" && !indicacion && !idea.pide ? asegurarTexto(idea.imagen, textoDeIdea(idea)) : "";
+  const sinMejorar = delRedactor || ideaSinMejorar(datos);
+  const lista = idea.ficha || "";
   const encargo = encargoDeIdea(idea, { modo, formato, piezaDe, indicacion });
   const disenar = mejorar && !lista;
   return {
     id: idea.id, titulo: idea.titulo || idea.titular || "",
     pedido: pedidoDe(idea, n, ESCENA),
-    escena: mejorar ? lista || "" : sinMejorar,
+    escena: mejorar ? lista : sinMejorar,
     sinMejorar,
     encargo: disenar ? encargo : null,
     mejora: disenar ? { ...encargo, idea: ideaParaMejorar(datos), tipo: "imagen", pieza: piezaDe(idea) } : null,

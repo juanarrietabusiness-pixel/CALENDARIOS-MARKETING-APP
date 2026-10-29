@@ -52,19 +52,22 @@ describe("el motor de ideas lo escribe", () => {
     const idea = { titular: "Duerme mejor", apoyo: "Desde $399", escena: "Una sala", imagen: 'Una sala. "Duerme mejor" / "Desde $399"', tipo: "beneficios" };
     const pub = publicacionDePieza({ id: "p1", idea });
     expect(pub.textoPieza).toBe(textoDeIdea(idea));
-    expect(promptListo(pub)).toBe(idea.imagen);
+    // Queda guardado como BORRADOR del motor de ideas: no se salta al director (sólo con `cualquiera`).
+    expect(promptListo(pub)).toBe("");
+    expect(promptListo(pub, { cualquiera: true })).toBe(idea.imagen);
     expect(publicacionDePieza({ id: "p2", idea, archivo: { src: "/api/media/clientes/c/a.png", tipo: "imagen" } }).promptImagen).toBeUndefined();
     expect(publicacionDePieza({ id: "p3", idea, formato: "carrusel" }).promptImagen).toBeUndefined();
   });
   it("«Generar» y «Completar» lo dejan sólo si la publicación queda con lo de la IA", () => {
     const idea = { escena: "Una sala", textoPieza: "Duerme mejor", imagen: 'Una sala. "Duerme mejor"' };
     const { cambios } = rellenarConIdea({ format: "post" }, idea);
-    expect(promptListo({ format: "post", ...cambios })).toBe(idea.imagen);
+    expect(promptListo({ format: "post", ...cambios }, { cualquiera: true })).toBe(idea.imagen);
+    expect(promptListo({ format: "post", ...cambios })).toBe("");
     // Qué se ve lo escribió una persona: el pedido de la IA no le corresponde.
     expect(rellenarConIdea({ format: "post", escena: "La mía" }, idea).cambios.promptImagen).toBeUndefined();
     expect(rellenarConIdea({ format: "reel" }, idea).cambios.promptImagen).toBeUndefined();
     const otra = reemplazarConIdea({ format: "post", promptImagen: "viejo", promptImagenDe: "x" }, idea);
-    expect(promptListo(otra)).toBe(idea.imagen);
+    expect(promptListo(otra, { cualquiera: true })).toBe(idea.imagen);
     expect(reemplazarConIdea({ format: "post", promptImagen: "viejo" }, { escena: "Otra" }).promptImagen).toBe("");
   });
 });
@@ -73,5 +76,16 @@ describe("«¿Qué quieres?»", () => {
   it("va como una línea del pedido, y manda", () => {
     expect(lineaDeIndicacion("  el fondo más claro.  ")).toBe("LO QUE PIDE LA AGENCIA (manda sobre todo lo demás de este pedido): el fondo más claro.");
     expect(lineaDeIndicacion("")).toBe("");
+  });
+});
+
+describe("el pedido listo del DIRECTOR", () => {
+  it("sólo el del director se usa para crear, y conserva las líneas de la ficha", () => {
+    const post = { format: "post", escena: "Una sala", textoPieza: "Duerme mejor" };
+    const listo = conPromptListo(post, "Pieza: post 4:5.\nComposición: el titular arriba.");
+    expect(listo.promptImagenPor).toBe("director");
+    expect(promptListo(listo)).toBe("Pieza: post 4:5.\nComposición: el titular arriba.");
+    // Si cambia lo que dice la publicación, deja de valer.
+    expect(promptListo({ ...listo, escena: "Otra" })).toBe("");
   });
 });

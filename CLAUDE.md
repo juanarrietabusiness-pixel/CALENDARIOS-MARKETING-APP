@@ -1432,7 +1432,7 @@ son del servidor.
   Antes el lote lo orquestaba la pestaña con `await`: lo pedido terminaba por el cron, lo demás no se pedía nunca.
   · **Un ENCARGO es la cadena entera como lista de pasos con su avance** (`estudio_encargos`). La pantalla arma cada
   pieza por el MISMO camino de siempre (`pedidoDeLote`) con «{{ESCENA}}» en el hueco (`pasoDeLote`; un test exige que,
-  quitado el hueco, el pedido sea idéntico) y el servidor la lleva: el director de 6 en 6 (las vistas de las plantillas y
+  quitado el hueco, el pedido sea idéntico) y el servidor la lleva: el director pieza a pieza (ver «El director piensa CADA pieza»; las vistas de las plantillas y
   los «Me gusta» viajan con el encargo y se borran al terminar el director), la mejora si no hay ficha, el trabajo, la
   proporción (se recompone con el mismo modelo y si no con el relevo, como `esperarArchivos`), el control y UNA
   corrección que se queda sólo si mejoró (`mejoro`, contra la ficha de la ORIGINAL). De dos en dos (`paralelo`).
@@ -3179,8 +3179,8 @@ son del servidor.
   `manual_campanas.diseno`; vacío vale `MANUAL_DISENO_BASE`), el kit, la identidad visual del cerebro, el catálogo y las
   plantillas del cliente. Función «director de arte», hueco «prompts» (en Ajustes se llama «Director de arte»). Cosas que
   no se ven:
-  · **Una tanda es una SERIE**: el lote (`conFichas` en loteEstudio.js) y «Producir el mes» piden de 6 en 6 y el concepto
-  de la primera tanda pasa a la siguiente. Lo que ya trae su ficha (el pedido listo) no espera.
+  · **Una tanda es una SERIE**: el concepto de la primera pieza pasa a las demás (ver «El director piensa CADA pieza»). Lo
+  que ya trae la ficha DEL DIRECTOR no espera; el borrador del motor de ideas, sí.
   · **La ficha va SIN líneas en blanco** (`limpiarFicha`): `ideaDelPedido`/`conOtraEscena` parten el pedido del motor por
   ellas, y una ficha con huecos perdía media escena.
   · **El texto exacto no se pierde**: si la IA lo reescribió, `asegurarTexto` le añade la línea «Texto exacto…» en vez de
@@ -3272,6 +3272,51 @@ son del servidor.
   IA» (paso 2: el texto y la ficha plegada, editable), el lote, «Producir el mes» (con «Que el director diseñe»
   encendido) y el asistente: `disenar_piezas` con `carrusel: true` va por `crearCarrusel` (en orden, con la anterior y la
   portada de referencia, el sistema de la portada y el control), no pieza a pieza.
+- **El director piensa CADA pieza, como en el chat** (decisión de la agencia: lo diseñado en el chat salía «infinitamente
+  mejor» que el lote y que «Carrusel con IA»; `fichasDeDiseno` en worker/lib/estudio/fichas.js). Había cuatro diferencias:
+  · **El motor de ideas se saltaba al director.** Su campo `imagen` (un borrador de ficha que escribe el REDACTOR junto con
+  títulos, captions y hashtags, de seis en seis) iba directo al motor de imagen en el lote (`conFichas`, `pasoDeLote`),
+  «Producir el mes» y «Crear la imagen aquí». Ahora sólo se salta al director su PROPIA ficha: `promptListo(post)` exige
+  `promptImagenPor: "director"` (lo pone `conPromptListo`; `camposDePromptListo`, el del motor de ideas, lo deja vacío) y
+  el borrador queda de respaldo (`{ cualquiera: true }`, «Mejorar» apagado o el director caído). Las fichas guardadas antes
+  de esto no llevan la marca: se rediseñan una vez. `promptImagen` conserva sus líneas (antes `limpio` las juntaba en una y
+  `fichaDelPedido` no la reconocía para la revisión del director).
+  · **Una llamada por pieza.** La primera va sola y fija el concepto; las demás, de 3 en 3 a la vez (`A_LA_VEZ`; más, y la
+  cuenta da 429), con el concepto y las ya diseñadas (`previas`, las dos últimas) para no repetir composición. En el
+  servidor, `TANDA_FICHAS` (3) por paso y la primera sola; mientras haya una pieza lista y sitio, se CREA antes de seguir
+  diseñando (`listaParaCrear`), y una que aún espera al director no se pide sin él. El contexto (kit, catálogo, cerebro,
+  manual, correcciones) se lee UNA vez por tanda (`contextoDelDirector`).
+  · **Razona con el nivel del ASISTENTE.** Todo lo que cae en el hueco «asistente» (`huecoDe`, el director de arte) usa
+  `ia_razonamiento_chat` si el espacio puso uno (`prepararIA`); antes, el de redacción.
+  · **Sabe lo que el chat sabe:** la ficha técnica del cerebro (`sobreLaMarca`, con `contexto(…, { para: "imagen" })`, que
+  también da la identidad visual), el CATÁLOGO entero (`catalogo`, con `REGLA_PRODUCTOS`: nada inventado) y el proceso
+  de diseño dicho como en una conversación (`RAZONA_COMO_DIRECTOR`). El carrusel (`propuestaDeCarrusel`) lee lo mismo y
+  sigue en UNA llamada: es una serie con narrativa.
+- **«Otra versión» es la MISMA pieza con otra composición, y el director la MIRA** (`encargoDeVersion` en
+  worker/lib/estudio/prompt.js; `ideaDeOtraVersion` en src/lib/otraVersion.js). Salía rara y a veces sin texto por dos
+  cosas: «Otra versión distinta» del visor reescribía la FICHA entera en una frase de 60 palabras (`pedidoDeVersiones`) y
+  `conOtraEscena` la ponía en lugar del diseño; y la del post le pedía al director «DISTINTA, otra escena» sin enseñarle la
+  imagen. Ahora, si la escena es una ficha (`esFicha`), cada versión la escribe el director con el MISMO texto (el de la
+  publicación o `textoDeLaFicha`), una variación moderada (con varias, cada una por su eje: `EJES_DE_VERSION`) y la
+  original delante como imagen especial (`especiales: [{ papel: "original" }]`, ver `PAPELES` en director.js). La
+  pantalla manda la ruta (`original` / `src`) y `estudio.js` la convierte en una copia de 768 px.
+- **«Recrear con mi marca» ya no copia** (decisión de la agencia: la otra marca la habría reconocido). Con la referencia
+  delante, aunque se dijera «sólo la composición», el motor la calcaba. Ahora el DIRECTOR la mira (`papel: "inspiracion"`:
+  la idea, el gancho y el tipo de composición, en una versión propia ligeramente distinta) y escribe la ficha con el
+  catálogo; la imagen de otra marca NO va al motor de imagen. Si la publicación no dice qué producto, el director escoge
+  del catálogo y van las fotos de los que nombra (`fotosDeLaPieza`). Sin director (sin saldo), la de antes, con
+  `NOTA_OTRA_MARCA` («ligeramente distinta… que no se reconozca como copia»).
+- **Una publicación puede llevar VARIOS productos** (`post.productoIds`; `productosDelPost`, `conProductos` en pilares.js;
+  `fotosDelPost` en estudio.js). `productoId` sigue siendo el principal —el primero que se escoge; lo usa la matriz— y
+  `producto` junta los nombres («Sofá cama + Mesa»), que es lo que lee la IA al escribir. En «Tipo de contenido» se
+  escogen como chips (`tipoContenido.jsx`) y en «Carrusel con IA» igual. Llegan al director (una línea por producto,
+  «salen JUNTOS») y sus fotos van una de cada uno antes que la segunda de ninguno: «Crear la imagen aquí», «Otra versión»,
+  «Recrear», las historias, «Crear con IA», «Producir el mes» y los carruseles.
+- **El asistente diseña con el CATÁLOGO** (`catalogoParaDisenar` en worker/rutas/chat.js, en su sistema cuando hay
+  cliente): cada producto con su id, su precio y si tiene fotos. `disenar_piezas` recibe `productos` (ids, de la tanda o de
+  cada pieza) y sus fotos REALES van de referencia también en un carrusel (`fotosDeLaPiezaDelChat`); antes sólo se
+  buscaban por el nombre en la ficha y, si no lo nombraba igual, el motor se inventaba el producto y la marca. Si no sabe
+  de qué producto va, se le pide que PREGUNTE (con las opciones del catálogo); sin catálogo, que pregunte cuál y cómo es.
 - **Dos carruseles no se parecen: la ESTRUCTURA la pone el código** (`src/lib/estructurasCarrusel.js`). Todas las ideas
   salían «Portada / Slide 1…5 / CTA», y las de un mismo tipo, casi iguales. Hay 14 estructuras propias (errores comunes,
   mito o realidad, paso a paso, antes y después, comparación, lista, señales, preguntas, caso real, qué incluye, guía para

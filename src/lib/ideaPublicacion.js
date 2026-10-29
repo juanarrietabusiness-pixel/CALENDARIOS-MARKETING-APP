@@ -226,6 +226,7 @@ export function reemplazarConIdea(post = {}, idea = {}) {
     sugerencia: "",
     promptImagen: "",
     promptImagenDe: "",
+    promptImagenPor: "",
   };
   return idea.imagen && !guiado ? { ...nueva, ...camposDePromptListo(nueva, idea.imagen) } : nueva;
 }

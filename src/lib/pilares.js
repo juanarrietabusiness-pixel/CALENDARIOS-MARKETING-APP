@@ -308,3 +308,24 @@ export function resumenRitmo(ritmo) {
 export const fechaCorta = (fecha) => `${+fecha.slice(8, 10)} de ${MONTHS[+fecha.slice(5, 7) - 1].toLowerCase()}`;
 
 export { nombreDeNivel };
+
+/**
+ * Los productos del catálogo de una publicación, en orden: el principal (`productoId`, el de la matriz) y los demás que
+ * salen con él en la imagen (`productoIds`). Una pieza puede hablar de varios a la vez (un kit, una comparación, «los
+ * tres más vendidos»). Sin repetir, hasta 6. Pura.
+ */
+export const productosDelPost = (post = {}) => [...new Set([post?.productoId, ...(Array.isArray(post?.productoIds) ? post.productoIds : [])]
+  .map((x) => String(x ?? "").trim()).filter(Boolean))].slice(0, 6);
+
+/**
+ * Los cambios de una publicación al escoger sus productos (`ids` en orden; el primero es el principal) con su nombre
+ * («Sofá cama + Mesa de centro»): lo que lee la IA al escribir. `productos`: los del catálogo ({ id, nombre }). Pura.
+ */
+export function conProductos(ids = [], productos = []) {
+  const elegidos = [...new Set(ids)].map((id) => productos.find((p) => p.id === id)).filter(Boolean).slice(0, 6);
+  return {
+    productoId: elegidos[0]?.id ?? "",
+    productoIds: elegidos.map((p) => p.id),
+    producto: elegidos.map((p) => p.nombre).join(" + "),
+  };
+}

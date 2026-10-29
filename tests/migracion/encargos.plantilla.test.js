@@ -13,9 +13,12 @@ import { crearAcceso } from "../../worker/lib/acceso.js";
 
 vi.mock("../../worker/lib/estudio/fichas.js", () => ({
   limpiarVistas: (v) => v ?? [],
-  fichasDeDiseno: vi.fn(async () => ({
+  // Una ficha por pieza pedida (el director ya va pieza a pieza): la «a» escoge la plantilla, la «b» no.
+  fichasDeDiseno: vi.fn(async (_env, _acceso, _cliente, { piezas }) => ({
     concepto: "Serie de ofertas",
-    fichas: { 1: { ficha: "Pieza: oferta.\nComposición: titular arriba.", plantilla: "plantilla-oferta" }, 2: { ficha: "Pieza: otra." } },
+    fichas: Object.fromEntries(piezas.map((p, j) => [j + 1, p.titulo === "Pieza a"
+      ? { ficha: "Pieza: oferta.\nComposición: titular arriba.", plantilla: "plantilla-oferta" }
+      : { ficha: "Pieza: otra." }])),
   })),
 }));
 

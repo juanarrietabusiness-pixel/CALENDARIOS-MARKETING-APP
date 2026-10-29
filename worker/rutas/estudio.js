@@ -16,7 +16,8 @@
 //   POST   /<cliente>/encargos/<id>/final          { pasoId, finales }: lo que puso el navegador (texto de plantilla, logo)
 //   POST   /<cliente>/mejorar                      { idea, tipo, pieza? }: la IA devuelve la idea más clara (texto)
 //   POST   /<cliente>/fichas                     { piezas, concepto? }: el director de arte, una ficha de diseño por pieza (texto)
-//   POST   /<cliente>/versiones                    { idea, n, tipo }: 1–3 escenas distintas con la misma información (texto)
+//   POST   /<cliente>/versiones                    { idea, n, tipo, original?, texto? }: 1–3 escenas distintas con la misma
+//                                                   información (texto; con una ficha, el director mirando la original)
 //   POST   /<cliente>/lote/ideas                   { modo: niveles|matriz|tipos, desde?, tamano?, … }: la producción en lote, por tandas (texto)
 //   POST   /<cliente>/lote/mes                     { mes, dias, formato, desde?, tamano? }: una pieza por día del mes, con el ritmo y la matriz (texto)
 //   POST   /<cliente>/ideas                        { tipo?, n?, video?, tema? }: «Dame ideas», variadas o de un tipo (texto)
@@ -267,7 +268,10 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       const datos = await cuerpo(req);
       if (!datos || !Array.isArray(datos.piezas)) return error("Faltan las piezas");
       try {
-        return json(await fichasDeDiseno(env, acceso, cliente, { piezas: datos.piezas, concepto: String(datos.concepto ?? ""), vistas: datos.vistas }));
+        return json(await fichasDeDiseno(env, acceso, cliente, {
+          piezas: datos.piezas, concepto: String(datos.concepto ?? ""), vistas: datos.vistas, especiales: datos.especiales,
+          serie: Math.min(40, Math.max(0, Math.floor(Number(datos.serie)) || 0)),
+        }));
       } catch (e) {
         if (e?.estado) return error(e.message, e.estado);
         throw e;

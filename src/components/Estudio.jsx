@@ -322,7 +322,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     try {
       const r = await api.mejorarIdea(client.id, {
         idea: antes, tipo: form.tipo, pieza: presetVigente ? nombreDePreset(presetVigente, kit) : "",
-        proporcion: form.ajustes?.aspectRatio ?? "", productoId: inicial?.post?.productoId ?? "",
+        proporcion: form.ajustes?.aspectRatio ?? "", productoId: inicial?.post?.productoId ?? "", productoIds: inicial?.post?.productoIds,
       });
       setConfirmando(null);
       setIdeaAnterior(antes);
@@ -676,8 +676,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     }
   };
   /**
-   * «Otra versión distinta»: la IA escribe 1–3 escenas nuevas con la misma información; el tipo, la marca y las
-   * referencias se quedan. Sale YA, sin pasar por el compositor (también desde la tarjeta de la galería). Lo que la
+   * «Otra versión distinta»: la IA escribe 1–3 escenas nuevas con la misma información (con una ficha, el director
+   * mirando la original y con el mismo texto); el tipo, la marca y las referencias se quedan. Sale YA, sin pasar por el compositor (también desde la tarjeta de la galería). Lo que la
    * escena manda sobre el texto («NO escribas…», «Texto en la imagen…») no se le da a reescribir: se vuelve a poner.
    */
   const otrasVersiones = async (a, n) => {
@@ -686,7 +686,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     avisar(true, n === 1 ? "Escribiendo otra versión con la misma información…" : `Escribiendo ${n} versiones con la misma información…`);
     try {
       const { escena, cola } = api.partirEscena(ideaDelPedido(a.prompt));
-      const r = await api.versionesDeIdea(client.id, { idea: escena, n, tipo: a.tipo });
+      const r = await api.versionesDeIdea(client.id, { idea: escena, n, tipo: a.tipo, original: a.src });
       await pedirOtras(a, r.versiones.map((v) => conOtraEscena(a.prompt, [v, cola].filter(Boolean).join(" "))));
       setVisor(null);
       setEnPapelera(false);

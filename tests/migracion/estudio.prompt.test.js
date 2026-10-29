@@ -199,8 +199,54 @@ describe("POST /api/estudio/<cliente>/fichas", () => {
     expect(r.concepto).toBe("Noviembre azul");
     expect(r.fichas[1].ficha).toMatch(/Envío gratis/);
     expect(r.fichas[2].ficha).toBe("Pieza: dos.");
-    expect(textoDe(peticiones[0])).toMatch(/estas 2 piezas/);
-    expect(textoDe(peticiones[0])).toMatch(/SIN TEXTO en la imagen/);
+    // CADA pieza es su propia llamada (pensada entera): la primera sola, fija el concepto; la segunda lo sigue y ve la
+    // primera para no repetir su composición.
+    expect(peticiones).toHaveLength(2);
+    expect(textoDe(peticiones[0])).toMatch(/esta pieza de redes sociales para [^,]+, parte de una serie coherente/);
+    expect(textoDe(peticiones[0])).toMatch(/Envío gratis/);
+    expect(textoDe(peticiones[0])).not.toMatch(/SIN TEXTO en la imagen/);
+    expect(textoDe(peticiones[1])).toMatch(/SIN TEXTO en la imagen/);
+    expect(textoDe(peticiones[1])).toMatch(/CONCEPTO DE LA TANDA \(síguelo\): Noviembre azul/);
+    expect(textoDe(peticiones[1])).toMatch(/PIEZAS DE ESTA SERIE QUE YA DISEÑASTE[^]*Pieza: uno\./);
+    // Razona como en el chat, con el nivel de razonamiento del asistente.
+    expect(textoDe(peticiones[0])).toMatch(/Piensa cada pieza como lo harías sentado con la agencia/);
+  });
+
+  it("el director lee el CATÁLOGO entero y los productos de la pieza (varios), y no inventa otros", async () => {
+    const catalogo = [
+      { id: "s", nombre: "Sofá cama", tipo: "producto", precio: "$399", activo: true },
+      { id: "m", nombre: "Mesa de centro", tipo: "producto", precio: "$120", activo: true },
+      { id: "l", nombre: "Lámpara", tipo: "producto", precio: "$45", activo: true },
+    ];
+    db.sqlite.prepare("insert into mercado_clientes (id, client_id, owner_id, catalogo) values ('m1', 'c1', ?, ?)").run(JEFE, JSON.stringify(catalogo));
+    anthropic(JSON.stringify({ concepto: "x", piezas: [{ n: 1, ficha: "Pieza: post." }] }));
+    const res = await pedir("/api/estudio/c1/fichas", { method: "POST", body: { piezas: [{ n: 1, idea: "la sala completa", productoId: "s", productoIds: ["s", "m"] }] } });
+    expect(res.status).toBe(200);
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/productos que salen JUNTOS en esta pieza[^]*Sofá cama[^]*Mesa de centro/);
+    expect(t).toMatch(/CATÁLOGO DEL CLIENTE \(lo único que existe[^]*Lámpara/);
+    expect(t).toMatch(/nunca inventes un producto/);
+  });
+
+  it("el director razona con el nivel del ASISTENTE (el del chat), no con el de redacción", async () => {
+    db.sqlite.prepare("insert into ajustes_espacio (id, owner_id, ia_razonamiento, ia_razonamiento_chat) values (?,?,?,?)").run(JEFE, JEFE, "bajo", "maximo");
+    anthropic(JSON.stringify({ concepto: "x", piezas: [{ n: 1, ficha: "Pieza: post." }] }));
+    await pedir("/api/estudio/c1/fichas", { method: "POST", body: { piezas: [{ n: 1, idea: "x" }] } });
+    expect(peticiones[0].output_config.effort).toBe("max");
+    // Lo que no es del hueco del asistente (las escenas de un video) sigue con el de redacción.
+    anthropic("Una taza humeante sobre la mesa.");
+    await mejorar({ idea: "una taza", tipo: "video" });
+    expect(peticiones[0].output_config.effort).toBe("low");
+  });
+
+  it("con una imagen ESPECIAL (la original), el director la ve delante con lo que es", async () => {
+    anthropic(JSON.stringify({ concepto: "x", piezas: [{ n: 1, ficha: "Pieza: post." }] }));
+    const data = Buffer.from("x".repeat(60)).toString("base64");
+    await pedir("/api/estudio/c1/fichas", { method: "POST", body: { piezas: [{ n: 1, idea: "otra versión" }], vistas: [], especiales: [{ papel: "original", media_type: "image/jpeg", data }, { papel: "inventado", media_type: "image/jpeg", data }] } });
+    const c = peticiones[0].messages[0].content;
+    expect(c[0].type).toBe("image");
+    expect(c.filter((b) => b.type === "image")).toHaveLength(1);
+    expect(textoDe(peticiones[0])).toMatch(/LA IMAGEN 1 ES LA PIEZA ORIGINAL/);
   });
 
   it("sin piezas, 400 sin llamar a nadie", async () => {
@@ -223,6 +269,21 @@ describe("POST /api/estudio/<cliente>/versiones", () => {
     expect(textoDe(peticiones[0])).not.toMatch(/margen|200 dólares/);
     expect(db.sqlite.prepare("select count(*) as n from estudio_trabajos").get().n).toBe(0);
     expect(db.sqlite.prepare("select funcion from consumo_ia").get().funcion).toBe("prompt de imagen");
+  });
+
+  it("con una FICHA de diseño, la versión la escribe el director: el mismo texto, mirando la original", async () => {
+    anthropic(JSON.stringify({ concepto: "x", piezas: [{ n: 1, ficha: "Pieza: post 4:5.\nComposición: el sofá a la izquierda.\nTexto (exacto): titular «Desde $399»." }] }));
+    const data = Buffer.from("x".repeat(60)).toString("base64");
+    const ficha = "Pieza: post 4:5.\nComposición: el sofá a la derecha.\nTexto (exacto): titular «Desde $399».";
+    const res = await versiones({ idea: ficha, n: 1, tipo: "imagen", original: { media_type: "image/jpeg", data } });
+    expect(res.status).toBe(200);
+    const r = await res.json();
+    expect(r.versiones[0]).toMatch(/^Pieza: post 4:5\.\nComposición: el sofá a la izquierda/);
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/OTRA VERSIÓN de esta pieza[^]*MISMO texto exacto/);
+    expect(t).toMatch(/texto EXACTO de la pieza: «Desde \$399»/);
+    expect(t).toMatch(/LA IMAGEN 1 ES LA PIEZA ORIGINAL/);
+    expect(peticiones[0].messages[0].content[0].type).toBe("image");
   });
 
   it("de 1 a 3, y sin escena no se llama a nadie", async () => {
@@ -709,9 +770,12 @@ describe("un solo director: el carrusel, las correcciones de la agencia y lo que
     const r = await (await pedir("/api/estudio/c1/fichas", { method: "POST", body: { piezas: [
       { n: 1, tipo: "Educativo / Informativo", texto: "Tres mitos" }, { n: 2, tipo: "Anuncio", texto: "Sofá cama" },
     ] } })).json();
+    // Cada pieza, su llamada: cada una lleva cómo se diseña SU tipo.
+    expect(peticiones).toHaveLength(2);
     const t = textoDe(peticiones[0]);
-    expect(t).toMatch(/CÓMO SE DISEÑA CADA TIPO[^]*- Educativo \/ Informativo: El texto es el protagonista[^]*- Anuncio: /);
+    expect(t).toMatch(/CÓMO SE DISEÑA CADA TIPO[^]*- Educativo \/ Informativo: El texto es el protagonista/);
     expect(t).toMatch(/sigue la plantilla plantilla-edu/);
+    expect(textoDe(peticiones[1])).toMatch(/CÓMO SE DISEÑA CADA TIPO[^]*- Anuncio: /);
     expect(r.fichas[1].plantilla).toBe("plantilla-edu");
     expect(r.fichas[2].plantilla).toBeUndefined();
   });

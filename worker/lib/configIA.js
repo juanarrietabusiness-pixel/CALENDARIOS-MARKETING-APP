@@ -296,7 +296,11 @@ export async function prepararIA(env, acceso, { para = "texto", funcion = null }
   const config = acceso ? await leerConfigIA(acceso) : { ...POR_DEFECTO };
   const gasto = acceso ? await gastoDelMes(acceso) : 0;
   const { estado } = estadoPresupuesto(gasto, config.presupuesto_usd);
-  const nivel = para === "chat" && config.ia_razonamiento_chat ? config.ia_razonamiento_chat : config.ia_razonamiento;
+  const hueco = para === "chat" ? "asistente" : huecoDe(funcion);
+  // Lo que cae en el hueco del asistente (el director de arte del lote, «Producir el mes», los carruseles, el post)
+  // razona con el nivel del ASISTENTE: con el mismo modelo pero menos razonamiento, sus piezas salían peores que las
+  // del chat.
+  const nivel = hueco === "asistente" && config.ia_razonamiento_chat ? config.ia_razonamiento_chat : config.ia_razonamiento;
   const tope = `$${config.presupuesto_usd.toFixed(2)}`;
 
   if (estado === "agotado" && config.al_limite === "detener") {
@@ -306,7 +310,6 @@ export async function prepararIA(env, acceso, { para = "texto", funcion = null }
     const ia = await resolverIA(env, { ia_modelo: "sonnet", ia_razonamiento: "bajo" });
     return { ...ia, aviso: `Presupuesto del mes alcanzado (${tope}): la IA trabaja con Sonnet en nivel Bajo.`, config, gasto, bloqueo: null };
   }
-  const hueco = para === "chat" ? "asistente" : huecoDe(funcion);
   const elegido = modeloParaHueco(config, hueco, { hayMeta: Boolean(llaveMeta(env)) });
   const ia = await resolverIA(env, { ia_modelo: elegido, ia_razonamiento: nivel });
   return { ...ia, hueco, config, gasto, bloqueo: null };

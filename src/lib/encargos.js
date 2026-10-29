@@ -12,8 +12,11 @@ export const TIPOS_ENCARGO = Object.freeze(["lote", "carrusel"]);
 export const MAX_PASOS = 40;
 /** Láminas de un carrusel (Instagram admite 10). */
 export const MAX_LAMINAS = 10;
-/** Cuántas piezas diseña el director por llamada. */
-export const TANDA_FICHAS = 6;
+/**
+ * Cuántas piezas diseña el director en un paso del encargo: cada una es su propia llamada (pensada entera), a la vez.
+ * La primera va sola: fija el concepto de la serie.
+ */
+export const TANDA_FICHAS = 3;
 
 export const terminadoEncargo = (e) => Boolean(e) && e.estado !== "en_marcha";
 

@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import Icon from "../Icon";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { mediosDe } from "../../lib/publicacion";
-import { presetDePilar } from "../../lib/pilares";
+import { presetDePilar, productosDelPost } from "../../lib/pilares";
 import { limpiarKit } from "../../lib/kitMarca";
 import * as api from "../../lib/estudio";
 import "./RevisionMes.css";
@@ -62,7 +62,7 @@ export default function CarruselIA({ client, post, cal = null, onPoner, onCerrar
                 client={client} estudio={estudio} yaTiene={mediosDe(post).length > 0} onCreando={setCreando}
                 inicial={{
                   guion: post.guion ?? "", tema: post.idea || post.title || "", preset: presetDePilar(post.pilar, post.pilarSub) || "",
-                  productoId: post.productoId ?? "", postId: post.id ?? null, calendarId: cal ? cal.dbId || cal.id : null,
+                  productoId: post.productoId ?? "", productoIds: productosDelPost(post), postId: post.id ?? null, calendarId: cal ? cal.dbId || cal.id : null,
                 }}
                 onPoner={(finales, opciones) => { onPoner(finales, opciones); onCerrar(); }}
                 onListo={onCerrar}
