@@ -643,6 +643,48 @@ describe("subir a mano, carpetas y papelera", () => {
     expect(env.MEDIA.objetos.has(c.clave)).toBe(true);
   });
 
+  describe("lo que usa la MARCA (kit y catálogo)", () => {
+    const marca = ({ logo = "", fotos = [] }) => {
+      db.sqlite.prepare("update clients set kit_marca = ? where id = 'c1'").run(JSON.stringify({ logo }));
+      db.sqlite.prepare("insert into mercado_clientes (id, owner_id, client_id, catalogo) values ('m1', ?, 'c1', ?)")
+        .run(JEFE, JSON.stringify([{ id: "p1", nombre: "Pañal de bambú", fotos }]));
+    };
+
+    it("la papelera no lo borra de verdad: ni a los 30 días, ni al vaciarla, ni «Borrar del todo»", async () => {
+      const logo = (await (await subir(JEFE, "c1", pngDistinto(11), "logo.png", "image/png")).json()).archivo;
+      const foto = (await (await subir(JEFE, "c1", pngDistinto(12), "foto.png", "image/png")).json()).archivo;
+      const suelta = (await (await subir(JEFE, "c1", pngDistinto(13), "suelta.png", "image/png")).json()).archivo;
+      marca({ logo: logo.clave, fotos: [foto.clave] });
+      db.sqlite.prepare("update estudio_archivos set borrado_at = ?").run(new Date(Date.now() - 40 * 86_400_000).toISOString());
+
+      const g = await galeria(JEFE, "c1");
+      expect(g.papelera.map((x) => x.id).sort()).toEqual([logo.id, foto.id].sort());
+      expect(env.MEDIA.objetos.has(suelta.clave)).toBe(false);
+      expect(env.MEDIA.objetos.has(logo.clave)).toBe(true);
+
+      await pedir(JEFE, "/api/estudio/c1/papelera/vaciar", { method: "POST" });
+      expect(env.MEDIA.objetos.has(foto.clave)).toBe(true);
+      const borrar = await pedir(JEFE, `/api/estudio/c1/archivos/${logo.id}`, { method: "DELETE" });
+      expect(borrar.status).toBe(409);
+      expect((await borrar.json()).error).toMatch(/es el logo del kit/);
+      expect(env.MEDIA.objetos.has(logo.clave)).toBe(true);
+    });
+
+    it("lo que ya se borró antes no se ofrece de referencia, y pedirlo dice CUÁL falta", async () => {
+      env.MEDIA.objetos.set("clientes/c1/estudio/viva.png", { bytes: PNG, tipo: "image/png" });
+      marca({ logo: "clientes/c1/estudio/logo-borrado.png", fotos: ["clientes/c1/estudio/foto-borrada.png", "clientes/c1/estudio/viva.png"] });
+
+      const g = await galeria(JEFE, "c1");
+      expect(g.kit.logo).toBe("");
+      expect(g.productos).toEqual([expect.objectContaining({ nombre: "Pañal de bambú", fotos: ["clientes/c1/estudio/viva.png"] })]);
+      expect(g.perdidas.map((p) => p.que).sort()).toEqual(["el logo del kit", "una foto del producto «Pañal de bambú»"]);
+
+      const res = await pedirTrabajo(JEFE, "c1", { medios: { reference: ["clientes/c1/estudio/foto-borrada.png"] } });
+      expect(res.status).toBe(404);
+      expect((await res.json()).error).toMatch(/^Una foto del producto «Pañal de bambú» ya no existe .*catálogo/);
+    });
+  });
+
   it("de lo que entró por generar-imagen la papelera quita la fila y NUNCA el objeto de R2, que puede estar en una publicación", async () => {
     env.GOOGLE_AI_KEY = "k";
     globalThis.fetch = vi.fn(async () => respuestaGemini());

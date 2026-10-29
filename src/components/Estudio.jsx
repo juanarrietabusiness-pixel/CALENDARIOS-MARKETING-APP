@@ -832,7 +832,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   };
   const vaciar = () => accion(async () => {
     const r = await api.vaciarPapelera(client.id);
-    avisar(true, r.borrados ? `${r.borrados} borrada${r.borrados === 1 ? "" : "s"} del todo.` : "No había nada que borrar (lo que usa una publicación se queda).");
+    avisar(true, r.borrados ? `${r.borrados} borrada${r.borrados === 1 ? "" : "s"} del todo.` : "No había nada que borrar (lo que usa una publicación o la marca se queda).");
   });
   const descargar = (a) => {
     const enlace = document.createElement("a");
@@ -998,6 +998,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             client={client}
             kit={kit}
             archivos={archivos}
+            perdidas={datos.perdidas}
             lectura={lectura}
             onPreparar={() => api.prepararKit(client.id)}
             onGuardar={guardarKitDeMarca}

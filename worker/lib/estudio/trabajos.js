@@ -38,6 +38,8 @@ import { crearAcceso, estudioPendiente } from "../acceso.js";
 import {
   modeloPorId, MODELOS_RETIRADOS, retirado, validarPedido, pideConfirmar, textoCosto, estaVivo, MEDIDAS, proporcionDe, estimar, enCola,
 } from "../../../src/lib/estudioCatalogo.js";
+import { clavesDeLaMarca } from "../../../src/lib/kitMarca.js";
+import { fotosDelCatalogo } from "../../../src/lib/estudioMercado.js";
 
 /** Cuánto vale un permiso de paso: lo que tarda Gemini en darse por vencido, más margen. */
 export const RESERVA_MS = 150_000;
@@ -87,6 +89,21 @@ function anunciar(env, acceso, fila, por) {
 // ------------------------------------------------------------
 
 /**
+ * Qué imagen de apoyo falta, dicho para la persona: el logo, una foto del producto «X», la plantilla «Y»… con dónde se
+ * arregla. Antes era siempre «Una de las imágenes ya no existe» y no había forma de saber cuál. Sólo en el camino del
+ * error (lee el catálogo; mercado.js se importa al momento: por kit.js, importa este módulo).
+ */
+async function queImagenFalta(acceso, cliente, clave) {
+  try {
+    const { leerMercado } = await import("../mercado.js");
+    const mercado = await leerMercado(acceso, cliente.id).catch(() => null);
+    const d = clavesDeLaMarca(leerJSON(cliente.kit_marca, {}), mercado ? fotosDelCatalogo(mercado.catalogo) : []).get(clave);
+    if (d) return `${d.que.charAt(0).toUpperCase()}${d.que.slice(1)} ya no existe (se borró de la galería). ${d.arreglo}`;
+  } catch { /* sin el catálogo, el mensaje de siempre */ }
+  return "Una de las imágenes de apoyo ya no existe (se borró de la galería). Quítala del pedido o súbela otra vez.";
+}
+
+/**
  * Crea un trabajo. No genera nada: eso lo hace el primer `avanzar`. Todo lo
  * que puede rechazarse se rechaza AQUÍ, antes de gastar: el modelo, la
  * llave, las referencias, la confirmación de un costo alto y el presupuesto.
@@ -114,7 +131,7 @@ export async function crearTrabajo(env, acceso, cliente, datos, { usuario = null
     for (const valor of medios[rol] ?? []) {
       const clave = claveDelCliente(valor, cliente.id);
       if (!clave) throw new ErrorEstudio(rol === "video" ? "El video no es de este cliente." : "Una de las imágenes no es de este cliente.", 400);
-      if (!(await env.MEDIA.head(clave))) throw new ErrorEstudio(rol === "video" ? "El video ya no existe." : "Una de las imágenes ya no existe.", 404);
+      if (!(await env.MEDIA.head(clave))) throw new ErrorEstudio(rol === "video" ? "El video ya no existe." : await queImagenFalta(acceso, cliente, clave), 404);
       (guardados[rol] ??= []).push(clave);
     }
   }

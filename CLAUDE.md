@@ -1713,6 +1713,16 @@ son del servidor.
   que no salió del Estudio (subida: no hay pedido que repetir) abre el compositor con ella de referencia. Con
   `inicial.abrir` el diálogo NO lanza «Mejorar idea» (`listo`): se viene a corregir, no a crear. «Aquí, rápido» (se
   recuerda por navegador, `post-acciones-donde`) es el camino de antes. «Animar» se quitó del post.
+- **La papelera no borra lo que usa la MARCA** (`clavesDeLaMarca`, `sinClavesPerdidas` en kitMarca.js; `clavesPerdidas` en
+  worker/lib/estudio/galeria.js). El logo, la muestra de la tipografía, los personajes, las plantillas, las referencias
+  de cada tipo y las fotos del catálogo son archivos de la galería sin `usado_en`: vaciar la papelera (o la purga de 30
+  días) los borraba de R2, el kit y el catálogo seguían apuntando a ellos y TODA pieza que los llevaba de referencia
+  fallaba con «Una de las imágenes ya no existe» (un carrusel entero del director, lámina a lámina). Ahora la purga y
+  «Vaciar» los saltan y «Borrar del todo» contesta 409 diciendo qué es. Lo que una papelera de antes ya borró: GET
+  /api/estudio lo quita del kit y de `productos` que devuelve (sin tocar lo guardado; se comprueba en R2 sólo lo que no
+  tiene ficha, como mucho 10) y lo dice en `perdidas`, que el kit enseña arriba. `crear_en_estudio` salta un logo
+  perdido, y si aun así llega una referencia perdida, `crearTrabajo` dice CUÁL («Una foto del producto «X» ya no
+  existe…») y dónde se arregla.
 - **El modelo se escoge para UNA acción, sin fijarlo** (`SelectorModelo.jsx`; `modeloEscogido` en otraVersion.js,
   `modeloDeEdicion` en edicion.js): en el visor («Editar», «Otra igual», «Otra versión distinta») y en el post
   («Crear la imagen aquí» y las acciones rápidas; ya no está en `OpcionesCrearAqui`). Los que no hacen la proporción

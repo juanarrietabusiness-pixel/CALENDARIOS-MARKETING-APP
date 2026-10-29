@@ -668,3 +668,54 @@ export function leerRevision(texto) {
   const puntaje = Math.max(0, Math.min(10, Math.round(Number(d.puntaje) || 0)));
   return { puntaje, cumple: lista(d.cumple), falla: lista(d.falla), sugerencia: corto(d.sugerencia, 300) };
 }
+
+// ------------------------------------------------------------
+// Las imágenes que la MARCA sigue usando
+// ------------------------------------------------------------
+
+const ARREGLO_KIT = "Cámbiala en el kit de marca (pestaña Estudio).";
+const ARREGLO_CATALOGO = "Quítala o súbela otra vez en el catálogo (Cerebro → Estudio de mercado).";
+
+/**
+ * Las imágenes de la galería que la marca sigue usando —el logo, la muestra de la tipografía, los personajes, las
+ * plantillas, las referencias de cada tipo de pieza y las fotos de los productos del catálogo— con qué es cada una:
+ * Map clave → { que, arreglo }. El servidor no las borra al vaciar la papelera (borradas, TODA pieza que las lleva de
+ * referencia fallaba con «Una de las imágenes ya no existe») y con esto dice cuál falta. `productos`: [{ nombre, fotos }].
+ * Pura.
+ */
+export function clavesDeLaMarca(kitGuardado, productos = []) {
+  const kit = limpiarKit(kitGuardado);
+  const mapa = new Map();
+  const poner = (clave, que, arreglo = ARREGLO_KIT) => { if (clave && !mapa.has(clave)) mapa.set(clave, { que, arreglo }); };
+  poner(kit.logo, "el logo del kit");
+  poner(kit.fuente?.muestra, "la muestra de la tipografía de la marca");
+  for (const p of kit.personajes) for (const c of p.imagenes) poner(c, `una imagen del personaje «${p.nombre}»`);
+  for (const p of kit.plantillas) poner(p.clave, `la plantilla «${p.nombre}»`);
+  for (const lista of Object.values(kit.referencias)) for (const c of lista) poner(c, "una referencia visual de un tipo de pieza");
+  for (const p of Array.isArray(productos) ? productos : []) {
+    for (const c of Array.isArray(p?.fotos) ? p.fotos : []) poner(String(c), `una foto del producto «${p?.nombre || "sin nombre"}»`, ARREGLO_CATALOGO);
+  }
+  return mapa;
+}
+
+/**
+ * El kit y las fotos del catálogo SIN las claves de `perdidas` (un Set: archivos que ya no están en el almacenamiento).
+ * Así la pantalla deja de pedirlas de referencia y la pieza sale; lo guardado no se toca. Pura.
+ */
+export function sinClavesPerdidas(kitGuardado, productos = [], perdidas = new Set()) {
+  const kit = limpiarKit(kitGuardado);
+  if (!perdidas.size) return { kit, productos };
+  const vale = (c) => !perdidas.has(c);
+  const referencias = Object.fromEntries(Object.entries(kit.referencias).map(([id, l]) => [id, l.filter(vale)]).filter(([, l]) => l.length));
+  return {
+    kit: {
+      ...kit,
+      logo: vale(kit.logo) ? kit.logo : "",
+      fuente: kit.fuente && vale(kit.fuente.muestra) ? kit.fuente : null,
+      personajes: kit.personajes.map((p) => ({ ...p, imagenes: p.imagenes.filter(vale) })).filter((p) => p.imagenes.length),
+      plantillas: kit.plantillas.filter((p) => vale(p.clave)),
+      referencias,
+    },
+    productos: productos.map((p) => ({ ...p, fotos: (p.fotos ?? []).filter(vale) })).filter((p) => p.fotos.length),
+  };
+}
