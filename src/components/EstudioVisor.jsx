@@ -195,7 +195,7 @@ export default function Visor({
           {/* Las otras versiones de esta pieza (la galería enseña una sola tarjeta: lib/estudio.js, `apilarVersiones`). */}
           {anteriores?.length > 0 && (
             <div className="est-visor-versiones">
-              <p className="hint" style={{ margin: 0 }}>Otras {anteriores.length} versiones de esta pieza (la de antes de corregirla, la cruda, la recompuesta…):</p>
+              <p className="hint" style={{ margin: 0 }}>{anteriores.length === 1 ? "Otra versión" : `Otras ${anteriores.length} versiones`} de esta pieza (la de antes de corregirla, la cruda, la recompuesta…):</p>
               <ul className="est-visor-versiones-lista">
                 {anteriores.map((v) => (
                   <li key={v.id}>
