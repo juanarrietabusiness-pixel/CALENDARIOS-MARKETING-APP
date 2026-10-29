@@ -62,7 +62,7 @@ beforeEach(() => {
   db = d1EnMemoria();
   env = {
     DB: db, POSTPEER_API_KEY: LLAVE, META_APP_SECRET: "meta",
-    MEDIA: { async head(clave) { return ["clientes/c1/posts/v.mp4", "clientes/c1/posts/a.jpg", "clientes/c1/posts/b.jpg"].includes(clave) ? { size: 1000 } : null; } },
+    MEDIA: { async head(clave) { return ["clientes/c1/posts/v.mp4", "clientes/c1/posts/a.jpg", "clientes/c1/posts/b.jpg", "clientes/c1/posts/grande-tiktok.jpg"].includes(clave) ? { size: 1000 } : null; } },
   };
   llamadas = [];
   respuestas = {
@@ -283,6 +283,16 @@ describe("publicar en TikTok por PostPeer", () => {
     await procesarCola(env);
     expect(filas()[0]).toMatchObject({ estado: "publicada", externo_id: "pp-1" });
     expect(envios()).toHaveLength(1);
+  });
+
+  it("una foto en 2K (o PNG) sale por su copia para TikTok de 1080p, la que hizo el navegador al programar", async () => {
+    const grande = "/api/media/clientes/c1/posts/grande.png";
+    await sembrar({ posts: [post({ format: "post", medios: [{ src: grande, ancho: 2048, alto: 2560 }],
+      adaptados: { [`tiktok|${grande}`]: { src: "/api/media/clientes/c1/posts/grande-tiktok.jpg", ancho: 1080, alto: 1350 } } })] });
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
+    await procesarCola(env);
+    const [envio] = envios();
+    expect(envio.cuerpo.mediaItems.map((m) => m.url)).toEqual([expect.stringMatching(/\/grande-tiktok\.jpg$/)]);
   });
 
   it("un 202 con «success: false» y sin motivo es «aceptada», no un error (el carrusel de Dcasa)", async () => {

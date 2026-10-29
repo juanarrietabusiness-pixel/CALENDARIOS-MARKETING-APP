@@ -13,7 +13,8 @@
 // no den el mismo paso.
 // ============================================================
 
-import { crearAcceso, estudioVivoDe, encargosPendientes } from "../acceso.js";
+import { crearAcceso, estudioVivoDe, encargosPendientes, colaDelEspacio } from "../acceso.js";
+import { procesarPublicacion } from "../publicador.js";
 import { despertar } from "../despertar.js";
 import { avanzarTrabajo, esperaDe } from "./trabajos.js";
 import { avanzarEncargo } from "./encargos.js";
@@ -22,6 +23,8 @@ import { avanzarEncargo } from "./encargos.js";
 export const PASOS_POR_VUELTA = 3;
 /** Lo que se deja correr una vuelta antes de pedir la siguiente. */
 export const PRESUPUESTO_MS = 25_000;
+/** Lo que sale en la cola dentro de este plazo mantiene la alarma (a su hora); lo de más lejos lo lleva el cron. */
+export const COLA_DESPIERTA_MS = 5 * 60_000;
 
 /**
  * Una vuelta para el espacio `ownerId`. → ms hasta la siguiente, o null si ya no queda nada vivo (la alarma no se
@@ -29,12 +32,28 @@ export const PRESUPUESTO_MS = 25_000;
  */
 export async function bombear(env, ownerId, { pasos = PASOS_POR_VUELTA, presupuestoMs = PRESUPUESTO_MS } = {}) {
   const inicio = Date.now();
-  const { trabajos, encargos } = await estudioVivoDe(env.DB, ownerId);
-  if (!trabajos.length && !encargos.length) return null;
+  const [{ trabajos, encargos }, cola] = await Promise.all([
+    estudioVivoDe(env.DB, ownerId),
+    colaDelEspacio(env.DB, ownerId, new Date().toISOString()),
+  ]);
+  // Lo que sale en la cola dentro de poco también la mantiene despierta (a su hora); lo de más lejos, el cron.
+  const enMs = cola.cuando ? Date.parse(cola.cuando) - Date.now() : Infinity;
+  const colaPronto = enMs <= COLA_DESPIERTA_MS;
+  if (!trabajos.length && !encargos.length && !cola.ya.length && !colaPronto) return null;
   const acceso = crearAcceso(env.DB, ownerId);
   const queda = () => Date.now() - inicio < presupuestoMs;
   let dados = 0;
-  let espera = Infinity;
+  let espera = colaPronto ? Math.max(0, enMs) : Infinity;
+  // La cola PRIMERO: publicar a su hora importa más que una imagen que se está haciendo. Cuenta como paso caro.
+  for (const f of cola.ya) {
+    if (!queda()) break;
+    try {
+      await procesarPublicacion(env, f);
+      dados++;
+    } catch (err) {
+      console.error("bomba: publicación", f.id, err?.message);
+    }
+  }
 
   for (const t of trabajos) {
     if (dados >= pasos || !queda()) break;

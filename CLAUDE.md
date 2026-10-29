@@ -3259,6 +3259,21 @@ son del servidor.
   id o la CLAVE (el botón «Pedir un cambio» de una imagen del chat deja «En la imagen clientes/…:» en la caja).
   `guardar_regla` suma al kit (sólo con el sí de la persona). Las definiciones viven en `herramientasDiseno.js` y NO en
   api.js: api.js va en el bundle principal, y con ellas la carga inicial pasaba de 180 kB.
+- **La cola de publicación también la lleva la bomba del espacio** (`colaDelEspacio` en acceso.js, `bombear` en
+  worker/lib/estudio/bomba.js, `despertar` en `procesarPublicacion`). Con sólo el cron (una vuelta por minuto, tres filas),
+  cada espera de Meta (el contenedor de un reel o de un carrusel, 20 s) costaba un minuto entero y una publicación con
+  feed, historias y TikTok tardaba varios: parecía colgada y se volvía a publicar a mano. Ahora, tras una espera corta
+  (≤ 5 min), `procesarPublicacion` despierta a la bomba, que mira la cola PRIMERO (cuenta como paso caro) y se queda
+  despierta hasta la hora de lo que sale pronto (`COLA_DESPIERTA_MS`). La reserva de cada fila (su `updated_at`) evita que
+  el cron y la bomba den el mismo paso. Lo de más lejos lo sigue llevando el cron.
+- **Las fotos de TikTok salen por su copia de 1080p** (`src/lib/fotosTikTok.js`, `adaptados["tiktok|<src>"]`, la cola la
+  manda en `pasoTikTok`). Un carrusel de D'CASA falló con `picture_size_check_failed`: lo más probable, las fotos en 2K del
+  Estudio (TikTok también lee sólo JPEG o WebP). El navegador hace la copia al programar, como la de Instagram; va en
+  diferido porque medios.js está en la carga inicial y ésta está en su tope (180 kB): por eso `capturaReducida` se fue a
+  `lib/capturas.js`. **No se ha probado contra TikTok real**: el límite de 1080p es el de su documentación de fotos.
+- **`ver_cola` (asistente y MCP) enseña lo que FALLÓ y después se canceló** (reprogramado, quitado del calendario,
+  publicado por otro camino), con su motivo, de la última semana. El motivo siempre se guardaba, pero nada lo enseñaba: «tuve
+  que publicarla dos veces» no tenía explicación.
 - **«Vaciar la papelera» no vaciaba, por tres cosas** (`vaciarPapelera`, `usosVivos`, `leerGaleria` en
   worker/lib/estudio/galeria.js; `NULO`/`NO_NULO` en acceso.js; `vaciarDelTodo`, `textoDeVaciar` en lib/estudio.js):
   · **`usado_en` se apunta al poner un archivo en una publicación y NUNCA se quita**: una imagen cambiada por otra, o de una
