@@ -158,7 +158,7 @@ function AjustarTexto({ archivo: a, galeria = [], onEditar }) {
 export default function Visor({
   archivo: a, carpetas, lectura, onCerrar, onFavorito, onPapelera, onMover, onRepetir, onReferencia, onAnimar, onUsar, etiquetaUsar,
   costoOtra = null, onOtraIgual = null, onOtrasVersiones = null, versionando = false, onRecrear = null,
-  onEditar = null, original = null, onVerOriginal = null,
+  onEditar = null, original = null, onVerOriginal = null, anteriores = null,
   esLogo = false, onLogo = null, revision = null, onRevisar = null, onCorregir = null, galeria = [],
   clienteId = null, onEstampar = null, cliente = null, onPlantilla = null, activos = null, desdePost = null,
 }) {
@@ -192,6 +192,21 @@ export default function Visor({
             <button type="button" className="btn-icon" aria-label="Cerrar" onClick={onCerrar}><Icon name="close" size={18} /></button>
           </div>
           <p className="est-visor-prompt">{a.prompt}</p>
+          {/* Las otras versiones de esta pieza (la galería enseña una sola tarjeta: lib/estudio.js, `apilarVersiones`). */}
+          {anteriores?.length > 0 && (
+            <div className="est-visor-versiones">
+              <p className="hint" style={{ margin: 0 }}>Otras {anteriores.length} versiones de esta pieza (la de antes de corregirla, la cruda, la recompuesta…):</p>
+              <ul className="est-visor-versiones-lista">
+                {anteriores.map((v) => (
+                  <li key={v.id}>
+                    <button type="button" className="est-visor-version" onClick={() => onVerOriginal?.(v)} aria-label={`Ver la versión del ${new Date(v.creado).toLocaleString("es-PA")}`}>
+                      <Pieza archivo={v} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {original && (
             <p className="hint est-visor-original">
               <Icon name="refresh" size={14} /> Editada a partir de{" "}

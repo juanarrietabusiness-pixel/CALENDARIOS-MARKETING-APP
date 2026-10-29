@@ -3259,6 +3259,13 @@ son del servidor.
   id o la CLAVE (el botón «Pedir un cambio» de una imagen del chat deja «En la imagen clientes/…:» en la caja).
   `guardar_regla` suma al kit (sólo con el sí de la persona). Las definiciones viven en `herramientasDiseno.js` y NO en
   api.js: api.js va en el bundle principal, y con ellas la carga inicial pasaba de 180 kB.
+- **Las versiones de una pieza son UNA tarjeta en la galería** (`apilarVersiones` en lib/estudio.js; `deArchivo` en
+  `ajustes`, que ponen `paso` en trabajos.js para toda edición y `herenciaDe` en galeria.js para lo compuesto o estampado).
+  Cada pieza dejaba de 2 a 4 archivos casi iguales (la cruda y la del texto, la corrección del control, la recompuesta a
+  4:5, la del logo estampado, lo corregido desde el chat). En «Todas» se ve una por pieza —la que usa una publicación; si
+  no, la que gusta; si no, la que pasó el control; si no, la más nueva— con «N versiones», y el visor enseña las demás
+  (`anteriores`). En los demás filtros, todas sueltas; lo de un carrusel o un reel no se apila (su carpeta ya lo agrupa).
+  Las ediciones de antes, sin `deArchivo`, se reconocen por su trabajo (sólo los 40 últimos que lee la galería).
 - **La cola de publicación también la lleva la bomba del espacio** (`colaDelEspacio` en acceso.js, `bombear` en
   worker/lib/estudio/bomba.js, `despertar` en `procesarPublicacion`). Con sólo el cron (una vuelta por minuto, tres filas),
   cada espera de Meta (el contenedor de un reel o de un carrusel, 20 s) costaba un minuto entero y una publicación con

@@ -787,15 +787,12 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   }, "Listo: sale como una pieza nueva con el logo encima; la original se queda.");
   const aPapelera = (a) => accion(async () => { await api.mandarAPapelera(client.id, a.id); setVisor(null); }, "Movida a la papelera. Puedes recuperarla 30 días.");
   /** Varias de una vez: una por una (cada una es su fila), y se relee la galería una sola vez al terminar. */
+  // Varias de una vez (lo de la marca se salta y se dice: lib/estudio.js); se relee la galería una sola vez al terminar.
   const variasAPapelera = async (todas) => {
-    let hechas = 0;
-    // Lo de la marca (el logo, las fotos del catálogo…) no va a la papelera: se salta y se dice.
-    const { lista, nota } = api.sinLasDeLaMarca(todas, archivos);
     try {
-      for (const id of lista) { await api.mandarAPapelera(client.id, id); hechas += 1; }
-      avisar(true, `${hechas} a la papelera. Puedes recuperarlas 30 días.${nota}`);
+      avisar(true, await api.variasALaPapelera(client.id, todas, archivos));
     } catch (e) {
-      avisar(false, hechas ? `Se mandaron ${hechas} de ${lista.length}: ${e.message}` : e.message);
+      avisar(false, e.message);
     } finally {
       setSeleccion(null);
       await cargar();
@@ -863,10 +860,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   };
   /** «Mandar el carrusel a la papelera»: todo lo de su carpeta, también las crudas. */
   const grupoAPapelera = async (todas) => {
-    const { lista, nota } = api.sinLasDeLaMarca(todas, archivos);
-    for (const id of lista) await api.mandarAPapelera(client.id, id);
+    const dicho = await api.variasALaPapelera(client.id, todas, archivos);
     setGrupoAbierto(null);
-    avisar(true, `${lista.length} a la papelera. Puedes recuperarlas 30 días.${nota}`);
+    avisar(true, dicho);
     await cargar();
   };
 
@@ -947,7 +943,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const cuentas = useMemo(() => contarFiltros(archivos, carpetas), [archivos, carpetas]);
   const visibles = useMemo(() => filtrarArchivos(archivos, { filtro, texto, modelo: modeloFiltro }), [archivos, filtro, texto, modeloFiltro]);
   // En «Todas», cada carrusel y cada reel es UNA tarjeta; en sus filtros (o en el de su carpeta), pieza a pieza.
-  const vista = useMemo(() => (filtro === "todas" ? agruparGaleria(visibles, carpetas, archivos) : visibles), [visibles, carpetas, archivos, filtro]);
+  // En «Todas», un carrusel o un reel es UNA tarjeta y las versiones de una pieza también (lib/estudio.js).
+  const vista = useMemo(() => (filtro === "todas" ? agruparGaleria(api.apilarVersiones(visibles, carpetas, datos?.trabajos), carpetas, archivos) : visibles), [visibles, carpetas, archivos, filtro, datos]);
   const carpetasPropias = useMemo(() => carpetas.filter((c) => !esGrupo(c)), [carpetas]);
   const abrirPieza = (a) => (seleccion ? alternarSeleccion(a) : destinoGaleria ? usarComoMedio(a, destinoGaleria) : setVisor(a));
   const enCurso = useMemo(() => trabajosVisibles(datos?.trabajos ?? [], { descartados }), [datos, descartados]);
@@ -1276,6 +1273,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
                 {a.tipo === "video" && <span className="est-marca-video"><Icon name="video" size={12} /> Video</span>}
                 {enMedios(a) && <span className="est-marca-ref">En el pedido</span>}
                 {a.deLaMarca && <span className="est-marca-marca" title={a.deLaMarca}><Icon name="lock" size={12} /> Marca</span>}
+                {a.anteriores && <span className="est-marca-grupo">{a.anteriores.length + 1} versiones</span>}
                 {estaUsado(a) && <span className="est-marca-usada" title={`En ${a.usadoEn.length} publicación${a.usadoEn.length === 1 ? "" : "es"}`}>Usada</span>}
                 {seleccion && <span className="est-marca-check" aria-hidden="true"><Icon name={marcada ? "checkSquare" : "square"} size={18} /></span>}
               </button>
@@ -1388,7 +1386,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           galeria={datos?.archivos ?? []}
           clienteId={client.id}
           onEstampar={limpiarKit(kit).logo && visor.tipo !== "video" ? () => estampar(visor) : null}
-          original={originalDe(visor, datos?.trabajos ?? [], datos?.archivos ?? [])}
+          original={originalDe(visor, datos?.trabajos ?? [], datos?.archivos ?? [])} anteriores={visor.anteriores}
           onVerOriginal={(o) => setVisor(o)}
           onPlantilla={(r) => setDatos((d) => (d ? { ...d, kit: r.kit } : d))}
           onUsar={onUsar ? () => usarEnLaPublicacion(visor) : null} etiquetaUsar={inicial?.etiquetaUsar}

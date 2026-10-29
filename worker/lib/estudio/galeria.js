@@ -281,7 +281,8 @@ async function herenciaDe(acceso, clientId, origenId, plantilla) {
   const { logoFuera, ...ajustes } = leerJSON(o.ajustes, {});
   return {
     prompt: o.prompt, modelo: o.modelo, trabajo_id: o.trabajo_id,
-    ajustes: JSON.stringify({ ...ajustes, ...(logoFuera && p?.plantilla !== "logo" ? { logoFuera } : {}), ...(texto ? { plantilla: { texto, plantilla: donde, origenId: o.id } } : {}) }),
+    // `deArchivo`: de qué pieza sale (la galería la apila como una versión de ella), también la del logo estampado.
+    ajustes: JSON.stringify({ ...ajustes, deArchivo: o.id, ...(logoFuera && p?.plantilla !== "logo" ? { logoFuera } : {}), ...(texto ? { plantilla: { texto, plantilla: donde, origenId: o.id } } : {}) }),
   };
 }
 

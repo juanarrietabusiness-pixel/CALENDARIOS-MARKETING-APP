@@ -310,3 +310,34 @@ describe("«Vaciar la papelera» dice qué se queda y por qué", async () => {
       .toBe("No se borró nada. Se quedan 3: 2 las usan una publicación (quítala de ahí primero); 1 es de la marca (el logo del kit): cámbiala en el kit o el catálogo.");
   });
 });
+
+describe("las versiones de una pieza van en UNA tarjeta", async () => {
+  const { apilarVersiones } = await import("./estudio.js");
+  const a = (id, extra = {}) => ({ id, clave: `clientes/c1/${id}.png`, tipo: "imagen", usadoEn: [], ajustes: {}, ...extra });
+  it("la corrección, la recompuesta, la del texto y la del logo se apilan sobre su original; se ve la mejor", () => {
+    const lista = [
+      a("logo", { ajustes: { deArchivo: "texto" } }),
+      a("texto", { ajustes: { plantilla: { origenId: "corregida" } } }),
+      a("corregida", { ajustes: { deArchivo: "cruda", control: { estado: "ok" } } }),
+      a("cruda"),
+      a("suelta"),
+    ];
+    const vista = apilarVersiones(lista);
+    expect(vista.map((x) => x.id)).toEqual(["corregida", "suelta"]);
+    expect(vista[0].anteriores.map((x) => x.id)).toEqual(["logo", "texto", "cruda"]);
+    // La que usa una publicación manda sobre la que pasó el control.
+    const usada = apilarVersiones(lista.map((x) => (x.id === "logo" ? { ...x, usadoEn: [{ postId: "p1" }] } : x)));
+    expect(usada[0].id).toBe("logo");
+    // Sin nada que la distinga, la más nueva.
+    expect(apilarVersiones([a("n2", { ajustes: { deArchivo: "n1" } }), a("n1")])[0].id).toBe("n2");
+  });
+
+  it("lo de un carrusel o un reel no se apila (su carpeta ya lo agrupa); una edición de antes se reconoce por su trabajo", () => {
+    const carpetas = [{ id: "car", tipo: "carrusel" }];
+    const lista = [a("l2", { carpetaId: "car", ajustes: { deArchivo: "l1" } }), a("l1", { carpetaId: "car" })];
+    expect(apilarVersiones(lista, carpetas).map((x) => x.id)).toEqual(["l2", "l1"]);
+    const trabajos = [{ id: "t9", prompt: "Edita la imagen de referencia: más luz. Conserva todo lo demás.", medios: { reference: ["clientes/c1/vieja.png"] } }];
+    const vista = apilarVersiones([a("nueva", { trabajoId: "t9" }), a("vieja")], [], trabajos);
+    expect(vista.map((x) => x.id)).toEqual(["nueva"]);
+  });
+});
