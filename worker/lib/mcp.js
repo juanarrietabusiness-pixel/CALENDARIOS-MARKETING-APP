@@ -176,8 +176,13 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
     async ver_cola({ cliente, dias = 7 }) {
       const c = cliente ? await resolverCliente(cliente) : null;
       const n = Math.min(60, Math.max(1, Number(dias) || 7));
-      const filas = (await acceso.leer("publicaciones_programadas", c ? { client_id: c.id } : {}, "programada_para asc"))
-        .filter((f) => f.estado !== "cancelada").map(filaConResumen);
+      const todas = await acceso.leer("publicaciones_programadas", c ? { client_id: c.id } : {}, "programada_para asc");
+      const filas = todas.filter((f) => f.estado !== "cancelada").map(filaConResumen);
+      // Lo que FALLÓ y después se canceló (se reprogramó, se quitó del calendario, se publicó por otro camino): con eso
+      // fuera, «tuve que hacerlo dos veces» no tenía explicación. Su motivo seguía guardado; ahora se ve.
+      const desde = sumarDias(fechaEnZona(), -7);
+      const resueltas = todas.filter((f) => f.estado === "cancelada" && f.intentos > 0 && f.error && (f.updated_at ?? "") >= desde)
+        .map(filaConResumen).slice(-10);
       clientes ??= await acceso.leer("clients", {}, "created_at asc");
       const nombre = (id) => clientes.find((x) => x.id === id)?.name ?? "¿?";
       const hasta = sumarDias(fechaEnZona(), n);
@@ -189,6 +194,7 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
         fallidas.length ? `NO SE PUBLICARON (${fallidas.length}):\n${fallidas.map((f) => `${linea(f)}\n  Motivo: ${f.error}`).join("\n")}` : "Nada ha fallado.",
         `PRÓXIMOS ${n} DÍAS (${proximas.length}):\n${proximas.map(linea).join("\n") || "(nada)"}`,
         salieron.length ? `SALIERON (última semana):\n${salieron.map((f) => `${linea(f)}${f.enlace ? ` → ${f.enlace}` : ""}`).join("\n")}` : "",
+        resueltas.length ? `FALLARON Y SE CANCELARON (última semana):\n${resueltas.map((f) => `${linea(f)}\n  Motivo: ${f.error}`).join("\n")}` : "",
       ].filter(Boolean).join("\n\n");
     },
 

@@ -509,6 +509,30 @@ export async function colaPendiente(db, ahoraISO, limite = 3) {
 }
 
 /**
+ * La cola de publicación de UN espacio, para la bomba (su Durable Object): lo que ya toca, y cuándo toca lo siguiente
+ * (`cuando`: lo más temprano entre la hora de salir y el siguiente intento de lo que está saliendo). Con el cron sólo,
+ * cada paso de un reel o un carrusel (esperar a que Meta lo procese) esperaba al minuto siguiente.
+ */
+export async function colaDelEspacio(db, ownerId, ahoraISO, limite = 2) {
+  const [ya, proxima] = await Promise.all([
+    db.prepare(
+      `select id, owner_id from publicaciones_programadas
+        where owner_id = ? and estado in ('programada','procesando')
+          and programada_para <= ?
+          and (siguiente_intento is null or siguiente_intento <= ?)
+        order by programada_para asc
+        limit ?`,
+    ).bind(ownerId, ahoraISO, ahoraISO, limite).all(),
+    db.prepare(
+      `select min(max(programada_para, coalesce(siguiente_intento, programada_para))) as cuando
+         from publicaciones_programadas
+        where owner_id = ? and estado in ('programada','procesando')`,
+    ).bind(ownerId).first(),
+  ]);
+  return { ya: ya.results ?? [], cuando: proxima?.cuando ?? null };
+}
+
+/**
  * Las cuentas asignadas a un cliente que aún no tienen su foto de
  * métricas de `fecha`, de todos los espacios. Igual que `colaPendiente`:
  * sólo ids y dueño, y lo demás se lee después con `crearAcceso`.

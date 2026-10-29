@@ -30,6 +30,7 @@
 
 import { crearAcceso, colaPendiente } from "./acceso.js";
 import { difundir } from "./vivo.js";
+import { despertar } from "./despertar.js";
 import { uuid, ahora } from "./ids.js";
 import { ErrorMeta, graph, mensajeMeta, descifrarMeta, urlMedioPublico, urlGraphVideo } from "./meta.js";
 import {
@@ -58,6 +59,8 @@ export class ErrorPublicar extends Error {
 
 const EN_COLA = ["programada", "procesando"];
 const MAX_INTENTOS = 5;
+/** Una espera de la cola hasta este plazo la lleva la bomba del espacio; más larga, el cron. */
+const COLA_DESPIERTA_MS = 5 * 60_000;
 const ESPERAS_MIN = [1, 3, 10, 30, 60];
 /** Lo que una vuelta del cron dedica a una publicación antes de dejarla para la siguiente. */
 const PRESUPUESTO_MS = 25_000;
@@ -470,6 +473,9 @@ export async function procesarPublicacion(env, { id, owner_id: ownerId }) {
       const espera = r.esperar ?? 0;
       if (espera > 6000 || Date.now() - inicio + espera > PRESUPUESTO_MS) {
         await guardar({ siguiente_intento: dentroDe(espera) });
+        // La bomba del espacio la mira A SU HORA (20 s después, no al minuto siguiente del cron): un reel o un carrusel
+        // son varios pasos con esperas de Meta, y con sólo el cron tardaban minutos y parecía colgado.
+        if (espera <= COLA_DESPIERTA_MS) await despertar(env, ownerId);
         break;
       }
       await dormir(espera);
@@ -784,7 +790,8 @@ async function pasoTikTok(env, { cuenta, origen, carga, guardar, fila: actual })
   const post = publicacionDeVariante(carga.post ?? {}, fila.variante);
   const video = mediosDe(post).find((m) => m.tipo === "video");
   // Sin video, fotos: una o un carrusel (no se mezclan; con video, sale el video).
-  const fotos = video ? [] : fotosTikTok(post);
+  // De cada foto, la copia para TikTok (1080p, JPEG) si la preparó el navegador al programar; si no, el original.
+  const fotos = video ? [] : fotosTikTok(post).map((f) => ({ ...f, src: post.adaptados?.[`tiktok|${f.src}`]?.src ?? f.src }));
   const medios = video ? [video] : fotos;
   if (!medios.length) throw new ErrorPublicar("Para TikTok hace falta un video o al menos una foto subidos a la publicación.");
   for (const m of medios) {

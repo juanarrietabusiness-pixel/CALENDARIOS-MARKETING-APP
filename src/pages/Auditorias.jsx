@@ -8,7 +8,7 @@ import { fmtDate } from "../utils";
 
 // Las piezas del perfil (portadas y foto, por plantilla) se descargan sólo si se abren.
 const PiezasPerfil = lazy(() => import("../components/PiezasPerfil"));
-import { capturaReducida } from "../lib/medios";
+import { capturaReducida } from "../lib/capturas";
 
 // ============================================================
 // /auditorias — la auditoría del perfil de Instagram

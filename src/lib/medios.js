@@ -369,15 +369,11 @@ export async function prepararParaRedes(post, redes, { subir, colorMarca } = {})
     const r0 = await medirVideos(mediosDe(nuevo));
     if (r0.cambio) { nuevo = { ...nuevo, medios: r0.medios }; cambio = true; }
   }
-  // Las fotos de TikTok tienen que tener todas la misma proporción: sin medidas no se puede comprobar al programar.
-  if (redes.includes("tiktok") && fotosTikTok(nuevo).some((m) => !m.ancho || !m.alto)) {
-    const medidos = [];
-    for (const m of mediosDe(nuevo)) {
-      const medidas = m.tipo === "imagen" && (!m.ancho || !m.alto) ? await medirImagen(m.src) : null;
-      medidos.push(medidas ? { ...m, ...medidas } : m);
-      if (medidas) cambio = true;
-    }
-    if (cambio) nuevo = { ...nuevo, medios: medidos };
+  // TikTok: las fotos medidas (todas con la misma proporción) y, si pasan de 1080p o no son JPEG ni WebP, su copia
+  // (lib/fotosTikTok.js, en diferido: medios.js va en la carga inicial).
+  if (redes.includes("tiktok") && fotosTikTok(nuevo).length) {
+    const r = await (await import("./fotosTikTok.js")).paraTikTok(nuevo, subir);
+    if (r.cambio) { nuevo = r.post; cambio = true; }
   }
   const meta = redes.some(esDeMeta);
   if (!meta) return { post: nuevo, cambio };
@@ -415,20 +411,4 @@ export async function prepararParaRedes(post, redes, { subir, colorMarca } = {})
   }
   if (cambio) nuevo = { ...nuevo, adaptados };
   return { post: nuevo, cambio };
-}
-
-/**
- * Una captura de pantalla, reducida para mandarla a la IA: JPEG de 1080 px
- * de ancho como mucho. Una captura del teléfono pesa varios MB y la API
- * tiene tope por imagen; a este tamaño se sigue leyendo todo el texto.
- */
-export async function capturaReducida(archivo, maximo = 1080) {
-  const img = await createImageBitmap(archivo);
-  const escala = Math.min(1, maximo / img.width);
-  const lienzo = document.createElement("canvas");
-  lienzo.width = Math.round(img.width * escala);
-  lienzo.height = Math.round(img.height * escala);
-  lienzo.getContext("2d").drawImage(img, 0, 0, lienzo.width, lienzo.height);
-  img.close?.();
-  return lienzo.toDataURL("image/jpeg", 0.82);
 }

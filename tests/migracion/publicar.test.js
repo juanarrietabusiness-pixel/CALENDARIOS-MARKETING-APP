@@ -159,6 +159,24 @@ describe("la cola: Instagram", () => {
     expect(llamadas).toHaveLength(0);
   });
 
+  it("la bomba del espacio (su Durable Object) también publica, y se queda despierta para lo que sale pronto", async () => {
+    const { bombear } = await import("../../worker/lib/estudio/bomba.js");
+    await sembrar();
+    await programar(env, acceso(), { calendarId: "cal1", postId: "p1" });
+    // Sale a las 10:00 de Panamá (15:00 UTC): a las 14:58 no hay nada que publicar, pero la alarma se queda para entonces.
+    vi.setSystemTime(new Date("2026-10-05T14:58:00.000Z"));
+    const espera = await bombear(env, DUENO);
+    expect(llamadas).toHaveLength(0);
+    expect(espera).toBeGreaterThanOrEqual(1500);
+    expect(espera).toBeLessThanOrEqual(30_000);
+    // A su hora la publica la bomba, sin esperar al cron.
+    vi.setSystemTime(new Date("2026-10-05T15:00:30.000Z"));
+    await bombear(env, DUENO);
+    expect(filas()[0].estado).toBe("publicada");
+    // Sin nada vivo ni pronto, la alarma no se vuelve a poner.
+    expect(await bombear(env, DUENO)).toBeNull();
+  });
+
   it("a su hora: contenedor, estado, publicar, enlace — con el texto y una URL firmada", async () => {
     await sembrar();
     await programar(env, acceso(), { calendarId: "cal1", postId: "p1" });
