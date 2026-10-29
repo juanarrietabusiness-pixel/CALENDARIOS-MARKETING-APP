@@ -53,7 +53,7 @@ describe("el asistente como director creativo", () => {
     expect(instruccionDeDiseno(null)).toContain(MANUAL_DISENO_BASE);
     expect(instruccionDeDiseno({ diseno: "Siempre fondo blanco." })).toContain("Siempre fondo blanco.");
     expect(manualDeDiseno({ diseno: "  " })).toBe(MANUAL_DISENO_BASE);
-    for (const h of ["disenar_piezas", "ver_lo_que_funciona", "corregir_pieza", "version_final", "guardar_regla"]) expect(instruccionDeDiseno(null)).toContain(h);
+    for (const h of ["disenar_piezas", "ver_lo_que_funciona", "corregir_pieza", "version_final", "guardar_regla", "poner_en_publicacion"]) expect(instruccionDeDiseno(null)).toContain(h);
   });
 
   it("sabe si el cliente tiene kit, y si no, que lo diga y ofrezca prepararlo", () => {

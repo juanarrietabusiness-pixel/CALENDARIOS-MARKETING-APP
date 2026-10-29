@@ -27,7 +27,7 @@ vi.mock("./carruselEstudio", () => ({
 }));
 vi.mock("./controlEstudio", () => ({ controlEncendido: () => false, controlarYCorregir: vi.fn(), modeloParaCorregir: () => null }));
 
-const { planDePiezas, crearPlan, costoDelPlan, textoDeLaFicha, modeloFinal, loQueFunciona, formatoDe } = await import("./disenoChat.js");
+const { planDePiezas, crearPlan, costoDelPlan, textoDeLaFicha, modeloFinal, loQueFunciona, formatoDe, piezasParaPoner, postConPiezas } = await import("./disenoChat.js");
 const { conFichas } = await import("./loteEstudio.js");
 
 const kit = { logo: "clientes/c1/logo.png", modelos: { imagen: "muse-image" }, plantillas: [{ id: "plantilla-a", nombre: "Oferta", uso: "post", clave: "clientes/c1/p.png", sistema: "titular grande" }] };
@@ -158,5 +158,40 @@ describe("el lote, con el director de arte", () => {
     await conFichas({ ideas, clienteId: "c1", modo: "ia", indicacion: "fondo blanco" });
     expect(fichasPedidas[0].piezas).toHaveLength(3);
     expect(fichasPedidas[0].piezas.every((p) => p.indicacion.startsWith("fondo blanco"))).toBe(true);
+  });
+});
+
+describe("poner_en_publicacion: lo que YA está en la galería, a un post", () => {
+  const lamina = (n, extra = {}) => ({ id: `l${n}`, clave: `clientes/c1/l${n}.png`, src: `/api/media/clientes/c1/l${n}.png`, tipo: "imagen", carpetaId: "car", creado: `2026-10-0${n}`, ...extra });
+  const g = {
+    archivos: [lamina(1), lamina(2), lamina(3), lamina(4, { carpetaId: null }), lamina(5, { borradoAt: "2026-10-10" })],
+    carpetas: [{ id: "car", tipo: "carrusel", orden: ["l3", "l1", "l2"] }],
+  };
+
+  it("un carrusel entero, en el orden de la galería, por su carpeta o por cualquiera de sus láminas", () => {
+    expect(piezasParaPoner(g, { carruselId: "car" }).piezas.map((a) => a.id)).toEqual(["l3", "l1", "l2"]);
+    expect(piezasParaPoner(g, { carruselId: "l2" }).piezas.map((a) => a.id)).toEqual(["l3", "l1", "l2"]);
+    expect(piezasParaPoner(g, { carruselId: "l4" }).error).toMatch(/No encontré ese carrusel/);
+  });
+
+  it("sueltas en el orden en que se pasan, por id o por clave; nada de la papelera ni inventado", () => {
+    expect(piezasParaPoner(g, { archivoIds: ["l4", "clientes/c1/l1.png"] }).piezas.map((a) => a.id)).toEqual(["l4", "l1"]);
+    expect(piezasParaPoner(g, { archivoIds: ["l5", "nada"] }).error).toMatch(/l5, nada/);
+    expect(piezasParaPoner(g, {}).error).toMatch(/Falta qué poner/);
+  });
+
+  it("reemplaza o añade; con dos imágenes o más el post pasa a carrusel", () => {
+    const post = { id: "p1", format: "post", medios: [{ src: "/api/media/clientes/c1/vieja.png", tipo: "imagen" }] };
+    const piezas = piezasParaPoner(g, { carruselId: "car" }).piezas;
+    const r = postConPiezas(post, piezas, "reemplazar");
+    expect(r.post.medios.map((m) => m.src)).toEqual(piezas.map((a) => a.src));
+    expect(r.post.format).toBe("carrusel");
+    expect(r.post.image).toBe(piezas[0].src);
+    expect(r.post.mediosCambiadosAt).toBeTruthy();
+    expect(r.antes).toHaveLength(1);
+    const a = postConPiezas(post, [piezas[0], piezas[0]], "anadir");
+    expect(a.post.medios.map((m) => m.src)).toEqual(["/api/media/clientes/c1/vieja.png", piezas[0].src]);
+    // Una historia no se vuelve carrusel.
+    expect(postConPiezas({ id: "h", format: "historia" }, piezas).post.format).toBe("historia");
   });
 });

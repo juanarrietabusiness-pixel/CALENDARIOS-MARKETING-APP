@@ -16,6 +16,7 @@ export const HERRAMIENTAS_DISENO = Object.freeze([
         properties: {
           concepto: { type: "string", description: "La idea que une la tanda y su sistema visual, en 1 o 2 frases." },
           carrusel: { type: "boolean", description: "true si las piezas son las láminas de UN carrusel, en su orden (portada primero): quedan agrupadas en la galería como un carrusel. Todas en formato vertical 4:5." },
+          post_id: { type: "string", description: "Con carrusel=true: la publicación del calendario donde va el carrusel ENTERO. Al terminar, sus láminas quedan puestas en ella, en orden y listas para revisar (reemplazan lo que tuviera; lo de antes sigue en la galería)." },
           productos: { type: "array", items: { type: "string" }, maxItems: 6, description: "Los ids del CATÁLOGO del cliente (los del sistema) de los productos que enseña la tanda o el carrusel: sus fotos reales van de referencia en cada pieza que no diga los suyos. Sólo ids que existan; si no sabes cuál, pregúntale a la persona antes." },
           piezas: {
             type: "array",
@@ -59,6 +60,20 @@ export const HERRAMIENTAS_DISENO = Object.freeze([
         type: "object",
         properties: { archivo_id: { type: "string", description: "El id de la imagen." } },
         required: ["archivo_id"],
+      },
+    },
+    {
+      name: "poner_en_publicacion",
+      description: "Pone piezas que YA ESTÁN en la galería en una publicación del calendario (de cualquier mes), listas para revisar y programar: un carrusel entero en su orden (carrusel_id) o imágenes sueltas en el orden que pases (archivo_ids). NO crea nada ni cuesta nada: úsala siempre que la persona pida poner en un post algo ya diseñado; nunca lo vuelvas a crear para ponerlo. Con dos imágenes o más, el post pasa a carrusel.",
+      input_schema: {
+        type: "object",
+        properties: {
+          post_id: { type: "string", description: "La publicación (su post_id del calendario)." },
+          carrusel_id: { type: "string", description: "El carrusel_id que te devolvió disenar_piezas (o el archivo_id de cualquiera de sus láminas): van todas, en orden." },
+          archivo_ids: { type: "array", items: { type: "string" }, maxItems: 10, description: "Ids (o claves) de imágenes sueltas de la galería, en el orden en que van." },
+          modo: { type: "string", enum: ["reemplazar", "anadir"], description: "Si la publicación ya tiene archivos: reemplazar (lo de antes sigue en la galería) o añadir al final. Si ya tiene y no sabes qué quiere la persona, pregúntale antes." },
+        },
+        required: ["post_id"],
       },
     },
     {
