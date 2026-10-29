@@ -13,7 +13,7 @@
 //   · Cada imagen VUELVE AL MODELO (`paraElModelo`, una copia pequeña en
 //     JPEG): antes sólo recibía «Imagen creada» y diseñaba a ciegas.
 //   · corregir_pieza edita la misma imagen; version_final la repite con el
-//     mejor modelo que tenga llave (los borradores salen con el del cliente).
+//     otro modelo con llave, sólo si se pide (lo del modelo del cliente ya es final).
 //   · ver_lo_que_funciona le enseña las plantillas y los «Me gusta».
 //
 // Se carga aparte (import dinámico desde ChatPanel): arrastra el catálogo.

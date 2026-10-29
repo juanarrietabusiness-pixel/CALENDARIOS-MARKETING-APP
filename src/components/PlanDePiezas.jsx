@@ -82,11 +82,13 @@ export default function PlanDePiezas({ plan, onCrear, onCancelar }) {
         <>
           {plan.calidades?.final && (
             <fieldset className="plan-piezas-calidad">
-              <legend className="label">Calidad</legend>
-              {[["borrador", "Borrador"], ["final", "Final"]].map(([k, nombre]) => (
+              {/* Dos modelos, no «borrador» y «final»: lo que sale con el del cliente (Muse, casi siempre) ES la pieza
+                  que se usa; el otro es otra opción, más cara, no la única buena. */}
+              <legend className="label">Con qué modelo</legend>
+              {[["borrador", "el de este cliente"], ["final", "otra opción"]].map(([k, nota]) => (
                 <label key={k} className="casilla">
                   <input type="radio" name={`${ids}-cal`} checked={calidad === k} onChange={() => setCalidad(k)} />
-                  {nombre}: {plan.calidades[k].nombre} ({textoCosto(plan.calidades[k].costo)} c/u)
+                  {plan.calidades[k].nombre} ({nota}) · {textoCosto(plan.calidades[k].costo)} c/u
                 </label>
               ))}
             </fieldset>
