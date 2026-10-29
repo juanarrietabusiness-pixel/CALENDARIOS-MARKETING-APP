@@ -145,7 +145,7 @@ export async function fichasDeDiseno(env, acceso, cliente, { piezas = [], concep
   const disenar = async (pieza, { concepto: c, previas: antes }) => {
     const lineas = lineasDe(lista[encargo.indexOf(pieza)]);
     const r = await llamarIA(env, acceso, cliente, {
-      prompt: conVistas(imagenes, pedidoDeFichas({
+      prompt: conVistas(imagenes, pedidoDeFichas({ conLogo: Boolean(kit?.logo),
         cliente: cliente.name, rubro: cliente.industry ?? "", piezas: [pieza], serie: total,
         marca: kitVacio(kit) ? "" : bloqueDeMarca(kit), guia: ctx.guia, sobreLaMarca: ctx.sobreLaMarca, catalogo: ctx.catalogo,
         plantillas: kit.plantillas, manual: ctx.manual, concepto: c, productos: lineas.join("\n"),

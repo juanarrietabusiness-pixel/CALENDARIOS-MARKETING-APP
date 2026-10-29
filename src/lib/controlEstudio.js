@@ -103,7 +103,8 @@ export async function terminarTrabajo({ clienteId, trabajo, kit, estampar = fals
       cambios ||= Boolean(r.control);
       a = r.archivo;
     }
-    if (estampar && conLogo && (await conLogo({ clienteId, archivo: a, kit })) !== a) cambios = true;
+    // También si el motor dejó fuera el logo que pedía (`logoFuera`): se le estampa el original.
+    if ((estampar || a.ajustes?.logoFuera) && conLogo && (await conLogo({ clienteId, archivo: a, kit })) !== a) cambios = true;
   }
   return cambios;
 }

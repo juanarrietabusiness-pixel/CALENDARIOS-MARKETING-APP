@@ -23,9 +23,11 @@ import { conLogoSiToca } from "./logoEstudio";
  * Con el logo ESTAMPADO en el kit (`estampar`: el kit), la lámina final lleva el logo pegado encima; la cruda no (es la
  * que va de referencia a la siguiente y la que se corrige). Sin kit, la misma.
  */
-async function conSello({ crudo, final }, { clienteId, estampar, carpetaId }) {
-  if (!estampar) return { crudo, final };
-  return { crudo, final: await conLogoSiToca({ clienteId, archivo: final, kit: estampar, carpetaId }) };
+async function conSello({ crudo, final }, { clienteId, estampar, carpetaId, logo = "" }) {
+  // Con «lo pone el modelo», sólo si el motor lo dejó fuera (la cruda lo dice): se estampa el original.
+  const kit = estampar ?? (logo && crudo?.ajustes?.logoFuera ? { logo } : null);
+  if (!kit) return { crudo, final };
+  return { crudo, final: await conLogoSiToca({ clienteId, archivo: final, kit, carpetaId, forzar: !estampar }) };
 }
 
 const TERMINADO = new Set(["hecho", "fallido", "cancelado"]);
@@ -145,7 +147,7 @@ export async function crearLamina({
     control = r.control;
   }
   const final = modo === "plantilla" ? await textoEncima({ clienteId, crudo, lamina, plantilla, colores, familia, fuente, carpetaId }) : crudo;
-  return { ...(await conSello({ crudo, final }, { clienteId, estampar, carpetaId })), control };
+  return { ...(await conSello({ crudo, final }, { clienteId, estampar, carpetaId, logo })), control };
 }
 
 /** En el modo plantilla: el texto exacto encima de la lámina cruda, subido como imagen nueva. */
@@ -160,7 +162,7 @@ async function textoEncima({ clienteId, crudo, lamina, plantilla, colores, famil
  * conserva) con el mismo modelo, y sale una nueva; la de antes se queda en la galería. En el modo plantilla se corrige
  * la cruda y el texto se vuelve a poner encima. → { crudo, final }.
  */
-export async function corregirLamina({ clienteId, modelo: elegido, resultado, instruccion, ejemplos = [], lamina, modo = "ia", plantilla = "banda", colores, familia = "", fuente = null, carpetaId = null, seguir, estampar = null, activos = null }) {
+export async function corregirLamina({ clienteId, modelo: elegido, resultado, instruccion, ejemplos = [], lamina, modo = "ia", plantilla = "banda", colores, familia = "", fuente = null, carpetaId = null, seguir, estampar = null, activos = null, logo = "" }) {
   // Corregir es editar CON referencia: el modelo tiene que respetar el 4:5 así (Muse Image no).
   const modelo = modeloQueRespeta(elegido, activos ?? (await activosDeMotores()), "4:5", 1);
   // Se corrige la cruda (en «ia», la cruda ES la final, salvo que lleve el logo estampado encima: ése se vuelve a poner).
@@ -173,7 +175,7 @@ export async function corregirLamina({ clienteId, modelo: elegido, resultado, in
   });
   const crudo = await esperarArchivo(clienteId, trabajo, { seguir });
   const final = modo === "plantilla" ? await textoEncima({ clienteId, crudo, lamina, plantilla, colores, familia, fuente, carpetaId }) : crudo;
-  return conSello({ crudo, final }, { clienteId, estampar, carpetaId });
+  return conSello({ crudo, final }, { clienteId, estampar, carpetaId, logo });
 }
 
 /**

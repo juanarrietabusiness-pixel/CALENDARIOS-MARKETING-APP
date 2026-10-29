@@ -469,8 +469,44 @@ export const PREFIJO_TIPO = "Tipo de pieza (orienta el propósito y el tono; la 
 /** Lo que se añade en un video: el movimiento, corto. */
 export const LINEA_VIDEO = `Video corto: movimiento de cámara suave y natural, sin cortes bruscos, ritmo tranquilo. ${SIN_TEXTO_VIDEO}`;
 
-/** Lo que se dice del logo cuando va de referencia: que no lo redibuje. */
-export const LINEA_LOGO = "Una de las imágenes de referencia es el logo de la marca: si aparece en la pieza, cópialo tal cual (forma, colores y letras), sin redibujarlo ni inventar otro.";
+/**
+ * Lo que se dice del logo cuando va de referencia. Va SIEMPRE el último (`armarPedido` en pieza.js, `referenciasDeLamina`
+ * en el carrusel), y se dice: con «una de las imágenes… si aparece», entre fotos del producto, plantillas y la muestra de
+ * la letra, el motor no sabía cuál era y se inventaba uno. El Worker lo busca en el pedido (`pideLogoDeReferencia`) para no
+ * dejarlo fuera el primero si Muse no acepta todas las referencias.
+ */
+export const LINEA_LOGO = "La ÚLTIMA imagen de referencia es el logo REAL de la marca: la firma de la pieza es ése, copiado tal cual (forma, colores y letras), pequeño y nítido, sin redibujarlo, sin cambiarle nada y sin inventar otro.";
+/** La de antes: sigue en los pedidos guardados en la galería («Otra igual» los repite tal cual). */
+export const LINEA_LOGO_ANTERIOR = "Una de las imágenes de referencia es el logo de la marca: si aparece en la pieza, cópialo tal cual (forma, colores y letras), sin redibujarlo ni inventar otro.";
+/** La del carrusel (carrusel.js), que ya decía cuál era. */
+const LOGO_DEL_CARRUSEL = "La ÚLTIMA imagen de referencia es el logo de la marca";
+
+/** ¿El pedido manda el logo como la ÚLTIMA referencia? (lo leen el control y Muse en el Worker). Pura. */
+export const pideLogoDeReferencia = (prompt) => {
+  const t = String(prompt ?? "");
+  return t.includes(LINEA_LOGO) || t.includes(LINEA_LOGO_ANTERIOR) || t.includes(LOGO_DEL_CARRUSEL);
+};
+
+/**
+ * Lo que se dice cuando el logo NO va al motor: que no se invente uno. Sin esto, una ficha que decía «firma: logo de la
+ * marca» (o la guía «toda pieza lleva logo») hacía que el motor dibujara uno a su manera. Con el logo estampado, además,
+ * que deje limpia SU esquina. Los logos de la foto REAL de un producto de otra marca se respetan. Pura.
+ */
+export function lineaSinLogo(kitGuardado) {
+  const k = limpiarKit(kitGuardado);
+  const respeta = "Los logos que ya traiga la foto REAL de un producto se respetan tal cual.";
+  if (k.logo && k.logoModo === "estampado") {
+    const esquina = (ESQUINA_EN_TEXTO[k.logoPosicion?.esquina] ?? "de abajo a la derecha");
+    return `Sin logo en la imagen: no dibujes ningún logo, monograma, sello ni firma de la marca; el logo real se pone después encima, en la esquina ${esquina}: déjala limpia, sin texto ni nada importante. ${respeta}`;
+  }
+  return `No dibujes ni inventes ningún logo, monograma, emblema ni sello de la marca: si la pieza firma con ella, que sea sólo su nombre escrito en texto limpio. ${respeta}`;
+}
+/** La línea que sustituye a la del logo cuando Muse tuvo que dejarlo fuera (el Worker; luego se estampa). */
+export const LINEA_LOGO_FUERA = "Sin logo en la imagen: no dibujes ningún logo, monograma, sello ni firma de la marca; el logo real se pone después encima, en una esquina: deja las esquinas limpias.";
+const ESQUINA_EN_TEXTO = Object.freeze({
+  "abajo-derecha": "de abajo a la derecha", "abajo-izquierda": "de abajo a la izquierda", "abajo-centro": "de abajo, al centro",
+  "arriba-derecha": "de arriba a la derecha", "arriba-izquierda": "de arriba a la izquierda",
+});
 
 /** ¿Existe ese estilo para este kit? (uno de la casa o un propio del cliente). Pura. */
 export const estiloValido = (id, kitGuardado) => Boolean(id) && (Boolean(ESTILOS_VISUALES[id]) || limpiarKit(kitGuardado).estilos.some((e) => e.id === id));
@@ -504,13 +540,13 @@ export function nombreDeEstilo(kitGuardado, id) {
  * video, cómo se mueve. Sin nada de eso, la idea tal cual. Lo que se manda es lo que queda escrito en la galería.
  * `estilo` es la LÍNEA ya resuelta; `acabado` (el id de antes) se acepta por compatibilidad. Pura.
  */
-export function componerPedido({ idea, preset = "", estilo = "", acabado = "", referencias = "", marca = "", logo = false, video = false }) {
+export function componerPedido({ idea, preset = "", estilo = "", acabado = "", referencias = "", marca = "", logo = false, sinLogo = "", video = false }) {
   const escena = String(idea ?? "").trim();
   const lineaEstilo = String(estilo || ACABADOS[acabado]?.linea || "").trim();
   const lineasRefs = String(referencias ?? "").trim();
-  if (!preset && !lineaEstilo && !lineasRefs && !marca && !logo) return escena;
+  if (!preset && !lineaEstilo && !lineasRefs && !marca && !logo && !sinLogo) return escena;
   const tipo = String(preset ?? "").trim();
-  return [`Escena: ${escena}`, tipo ? `${PREFIJO_TIPO} ${tipo}` : "", lineaEstilo, lineasRefs, String(marca).trim(), logo ? LINEA_LOGO : "", video ? LINEA_VIDEO : ""]
+  return [`Escena: ${escena}`, tipo ? `${PREFIJO_TIPO} ${tipo}` : "", lineaEstilo, lineasRefs, String(marca).trim(), logo ? LINEA_LOGO : String(sinLogo ?? "").trim(), video ? LINEA_VIDEO : ""]
     .filter(Boolean).join("\n\n");
 }
 
@@ -545,6 +581,9 @@ export function pedidoConMarca({ kit, idea, preset = "", estilo = "", acabado = 
     referencias,
     marca: usarKit ? bloqueDeMarca(kit) : "",
     logo: usarKit && logo && !video,
+    // Sin el logo de referencia (estampado, sin hueco o sin logo en el kit), que no se invente uno: también sin kit, que es
+    // donde más se inventaba (la guía del cerebro pide el logo y el motor no lo tiene).
+    sinLogo: usarKit && !logo && !video ? lineaSinLogo(kit) : "",
     video,
   });
 }

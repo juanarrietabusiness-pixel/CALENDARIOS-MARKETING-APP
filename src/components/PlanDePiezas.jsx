@@ -17,14 +17,16 @@ import { textoCosto } from "../lib/estudioCatalogo";
 
 /**
  * `plan`: { concepto, piezas: [{ n, titulo, ficha, formato }], calidades: { borrador: { nombre, costo }, final?: {…} },
- * estado: "revisar"|"creando"|"hecho", avance: { n → { cargando?, archivo?, error? } } }. `onCrear(piezas, calidad)`,
- * `onCancelar()`.
+ * estado: "revisar"|"creando"|"hecho", avance: { n → { cargando?, archivo?, error? } }, logo?: { hay, modo } }.
+ * `onCrear(piezas, calidad, modoLogo)`, `onCancelar()`.
  */
 export default function PlanDePiezas({ plan, onCrear, onCancelar }) {
   const ids = useId();
   const [piezas, setPiezas] = useState(plan.piezas);
   const [abierta, setAbierta] = useState(null);
   const [calidad, setCalidad] = useState("borrador");
+  // Quién pone el logo en ESTA tanda: el del kit por defecto; las dos opciones valen (la IA lo integra, la app pega el original).
+  const [modoLogo, setModoLogo] = useState(plan.logo?.modo ?? "modelo");
   const titulo = useRef(null);
   useEffect(() => { titulo.current?.focus({ preventScroll: true }); }, []);
 
@@ -93,8 +95,19 @@ export default function PlanDePiezas({ plan, onCrear, onCancelar }) {
               ))}
             </fieldset>
           )}
+          {plan.logo?.hay && (
+            <fieldset className="plan-piezas-calidad">
+              <legend className="label">El logo</legend>
+              {[["modelo", "Lo integra la IA en el diseño"], ["estampado", "Lo estampa la aplicación (el original, exacto)"]].map(([k, texto]) => (
+                <label key={k} className="casilla">
+                  <input type="radio" name={`${ids}-logo`} checked={modoLogo === k} onChange={() => setModoLogo(k)} />
+                  {texto}
+                </label>
+              ))}
+            </fieldset>
+          )}
           <div className="chat-cerebro-acciones">
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => onCrear(piezas, calidad)}>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => onCrear(piezas, calidad, modoLogo)}>
               <Icon name="sparkles" size={14} /> Crear {piezas.length === 1 ? "la pieza" : `las ${piezas.length}`} ({textoCosto(total)})
             </button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={onCancelar}>Cambiar algo</button>

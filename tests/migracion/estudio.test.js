@@ -780,6 +780,46 @@ describe("subir a mano, carpetas y papelera", () => {
     expect(urls[1]).toMatch(/generativelanguage/);
   });
 
+  it("si Muse no acepta las referencias, el LOGO es lo último que se cae; sin él, el pedido lo dice y la pieza sale «sin logo» (y su corrección también)", async () => {
+    env.META_API_KEY = "m";
+    for (const c of ["clientes/c1/p/sofa.png", "clientes/c1/p/mesa.png", "clientes/c1/p/sala.png", "clientes/c1/logo.png"]) env.MEDIA.objetos.set(c, { bytes: PNG, tipo: "image/png" });
+    const enviados = [];
+    // Meta acepta, como mucho, UNA referencia; y en la segunda ronda ninguna.
+    let tope = 1;
+    globalThis.fetch = vi.fn(async (url, init) => {
+      const cuerpo = JSON.parse(init.body);
+      enviados.push({ refs: cuerpo.images?.length ?? 0, prompt: cuerpo.prompt ?? "" });
+      if (String(url).endsWith("/responses")) return new Response("no", { status: 400 });
+      return (cuerpo.images?.length ?? 0) > tope ? Response.json({ error: { message: "Too many" } }, { status: 400 }) : Response.json({ data: [{ b64_json: PNG_B64 }] });
+    });
+    const LINEA = "La ÚLTIMA imagen de referencia es el logo REAL de la marca: la firma de la pieza es ése, copiado tal cual (forma, colores y letras), pequeño y nítido, sin redibujarlo, sin cambiarle nada y sin inventar otro.";
+    const refs = ["clientes/c1/p/sofa.png", "clientes/c1/p/mesa.png", "clientes/c1/p/sala.png", "clientes/c1/logo.png"];
+    const crear = async () => {
+      const { trabajo } = await (await pedirTrabajo(JEFE, "c1", { modelo: "muse-image", prompt: `Escena: una sala\n\n${LINEA}`, ajustes: { aspectRatio: "4:5" }, medios: { reference: refs } })).json();
+      await avanzar(JEFE, "c1", trabajo.id);
+      return db.sqlite.prepare("select clave, ajustes from estudio_archivos where trabajo_id = ?").get(trabajo.id);
+    };
+    // Con una sola que entra, va el LOGO solo (no la primera foto): 4 → 2+logo → 1+logo → logo.
+    const conLogo = await crear();
+    expect(enviados.map((e) => e.refs)).toEqual([4, 3, 2, 1]);
+    expect(enviados[3].prompt).toMatch(/OJO: sólo van 1 imágenes de referencia: el logo, que es la última/);
+    expect(JSON.parse(conLogo.ajustes).logoFuera).toBeUndefined();
+    // Sin ninguna, sale sin referencias, el pedido dice que no dibuje logo y la pieza queda marcada para estampar.
+    enviados.length = 0;
+    tope = 0;
+    const sin = await crear();
+    expect(enviados.map((e) => e.refs)).toEqual([4, 3, 2, 1, 0]);
+    expect(enviados[4].prompt).not.toContain(LINEA);
+    expect(enviados[4].prompt).toMatch(/Sin logo en la imagen: no dibujes ningún logo/);
+    expect(JSON.parse(sin.ajustes).logoFuera).toBe(true);
+    // Una corrección (edición) de esa pieza hereda la marca: tampoco lleva el logo.
+    tope = 5;
+    const { trabajo: edicion } = await (await pedirTrabajo(JEFE, "c1", { modelo: "muse-image", prompt: "Edita la imagen de referencia: el titular más arriba. Conserva todo lo demás.", ajustes: { aspectRatio: "4:5" }, medios: { reference: [sin.clave] } })).json();
+    await avanzar(JEFE, "c1", edicion.id);
+    const corregida = db.sqlite.prepare("select ajustes from estudio_archivos where trabajo_id = ?").get(edicion.id);
+    expect(JSON.parse(corregida.ajustes).logoFuera).toBe(true);
+  });
+
   it("adaptar a 4:5 deja escoger el motor de ESA imagen y dice con cuál salió", async () => {
     env.GOOGLE_AI_KEY = "k";
     env.META_API_KEY = "m";

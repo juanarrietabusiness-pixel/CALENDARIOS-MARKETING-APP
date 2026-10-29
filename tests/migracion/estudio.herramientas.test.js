@@ -168,7 +168,7 @@ describe("crear_en_estudio", () => {
     const [t] = trabajos();
     expect(t.prompt).toMatch(/^Escena: un sofá junto a la ventana\n\nTipo de pieza .*: Pieza de producto o servicio de Dcasa/);
     expect(t.prompt).toContain("Paleta estrictamente limitada a: azul #1E2A5A (dominante)");
-    expect(t.prompt).toContain("es el logo de la marca: si aparece en la pieza, cópialo tal cual");
+    expect(t.prompt).toContain("La ÚLTIMA imagen de referencia es el logo REAL de la marca");
     expect(JSON.parse(t.medios).reference).toEqual(["clientes/c1/estudio/logo.png"]);
   });
 

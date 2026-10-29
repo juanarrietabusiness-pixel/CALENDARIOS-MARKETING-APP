@@ -534,6 +534,8 @@ async function revisar(ctx, p, o) {
   const a = await ctx.acceso.leerUno("estudio_archivos", { id: o.id });
   if (!a) { o.fase = "hecho"; return false; }
   o.clave = a.clave;
+  // Muse dejó fuera el logo que pedía: la pantalla le estampa el original al terminar (como el logo «estampado»).
+  if (leerJSON(a.ajustes, {}).logoFuera === true) p.navegador = { ...(p.navegador ?? {}), logo: true };
   const pedida = p.proporcion;
   if (a.tipo === "imagen" && pedida && fueraDeProporcion(a, pedida) && (o.intentos ?? 0) < 2) {
     const activos = activosDe(ctx.env);

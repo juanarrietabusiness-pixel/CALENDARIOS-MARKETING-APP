@@ -113,6 +113,21 @@ export function planDePiezas(ctx, piezas = [], { calidad = "borrador" } = {}) {
   });
 }
 
+/**
+ * El logo de la tanda: si el kit lo tiene y quién lo pone por defecto («modelo»: la IA lo integra en el diseño;
+ * «estampado»: la aplicación pega el original). La tarjeta del plan deja cambiarlo para esa tanda. Pura.
+ */
+export function logoDelKit(kit) {
+  const k = limpiarKit(kit);
+  return { hay: Boolean(k.logo), modo: k.logoModo === "estampado" ? "estampado" : "modelo" };
+}
+
+/** El contexto con el logo puesto por quien se escogió para ESTA tanda (sin tocar el kit guardado). Pura. */
+export function conModoDeLogo(ctx, modo) {
+  if (!["modelo", "estampado"].includes(modo) || modo === logoDelKit(ctx.kit).modo) return ctx;
+  return { ...ctx, kit: { ...(ctx.kit ?? {}), logoModo: modo } };
+}
+
 /** El costo total de un plan. Pura. */
 export const costoDelPlan = (plan = []) => plan.reduce((t, p) => t + (p.error ? 0 : p.costo || 0), 0);
 

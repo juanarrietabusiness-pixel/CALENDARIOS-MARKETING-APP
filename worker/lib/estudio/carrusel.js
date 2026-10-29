@@ -45,7 +45,7 @@ export async function propuestaDeCarrusel(env, acceso, cliente, datos = {}) {
   // Las pautas para escribir del cerebro (la jerarquía, el tono de los textos de las láminas): detrás del pedido.
   const pautas = bloqueDePautas(await pautasDe(env, acceso, cliente.id));
   const imagenes = limpiarVistas(datos.vistas);
-  const pedido = [pedidoDeCarrusel({
+  const pedido = [pedidoDeCarrusel({ conLogo: Boolean(kit?.logo),
     cliente: cliente.name, rubro: cliente.industry ?? "", laminas, tema, producto, personajes,
     tipo: preset ? nombreDePreset(preset, kit) : "",
     estilo: lineaDeEstilo(kit, estiloDeLaPieza(kit, preset, String(datos.estilo ?? ""))),

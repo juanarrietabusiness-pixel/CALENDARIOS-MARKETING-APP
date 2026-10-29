@@ -672,7 +672,8 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     if (!piezas.length) return { ok: false, mensaje: "No mandaste ninguna pieza." };
     setProgreso("Preparando el plan con el kit de la marca…");
     const mod = await import("../lib/disenoChat");
-    const ctx = await mod.leerContexto(client);
+    const ctxBase = await mod.leerContexto(client);
+    const ctx = ctxBase;
     setProgreso("");
     const borrador = mod.planDePiezas(ctx, piezas, { calidad: "borrador" });
     const conModelo = borrador.find((p) => p.modelo);
@@ -687,14 +688,15 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       setPlanDiseno({
         concepto: String(entrada.concepto ?? "").slice(0, 400),
         piezas: borrador.map((p) => ({ n: p.n, titulo: p.titulo, ficha: p.ficha })),
-        calidades, estado: "revisar", avance: {},
+        calidades, estado: "revisar", avance: {}, logo: mod.logoDelKit(ctx.kit),
         cancelar: () => {
           setPlanDiseno(null);
           resolve({ ok: false, mensaje: "La persona no creó el plan: quiere cambiar algo. Pregúntale qué, en una línea, y vuelve a proponerlo." });
         },
-        crear: async (editadas, calidad) => {
-          // Las fichas corregidas en la tarjeta mandan; las quitadas no van.
+        crear: async (editadas, calidad, modoLogo) => {
+          // Las fichas corregidas en la tarjeta mandan; las quitadas no van. El logo, como se escogió para esta tanda.
           const entradaFinal = editadas.map((e) => ({ ...piezas[e.n - 1], titulo: e.titulo, ficha: e.ficha }));
+          const ctx = mod.conModoDeLogo(ctxBase, modoLogo);
           const plan = mod.planDePiezas(ctx, entradaFinal, { calidad });
           setPlanDiseno((pl) => pl && { ...pl, piezas: plan.map((p) => ({ n: p.n, titulo: p.titulo, ficha: p.ficha })), estado: "creando", avance: {} });
           const cal = calRef.current;
