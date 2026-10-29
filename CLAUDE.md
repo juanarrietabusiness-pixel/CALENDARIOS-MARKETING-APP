@@ -30,6 +30,12 @@ despliegue vive en `.github/workflows/desplegar.yml`, que corre
 `npm run verificar` entero y dentro del mismo job antes de publicar
 nada, para que no haya forma de saltárselo.
 
+**Un cambio no está terminado hasta que está DESPLEGADO** (decisión de la agencia: dos veces se dio por hecho
+algo que sólo estaba en la rama y en el sitio seguía el error). Al acabar: subir la rama, abrir el pull request,
+esperar el job `verificar` en verde, unirlo a `main` y seguir el workflow «Desplegar» (`desplegar.yml`, que corre
+solo con el push a `main`) hasta que termine bien. Si falla, se arregla y se vuelve a desplegar. Nunca decir
+«está en la rama» como si fuera el final.
+
 **Antes de dar por terminado cualquier cambio:**
 
 ```bash
