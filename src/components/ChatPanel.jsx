@@ -47,7 +47,7 @@ const ALTO_MAX_CAJA = 0.4;
 // su propio techo, mucho más alto.
 const MAX_VUELTAS = 10;
 const MAX_VUELTAS_TOTAL = 40;
-const HERRAMIENTAS_DE_DISENO = new Set(["disenar_piezas", "corregir_pieza", "version_final", "ver_lo_que_funciona", "guardar_regla", "generar_imagen", "crear_publicacion"]);
+const HERRAMIENTAS_DE_DISENO = new Set(["disenar_piezas", "corregir_pieza", "version_final", "ver_lo_que_funciona", "guardar_regla", "generar_imagen", "crear_publicacion", "poner_en_publicacion"]);
 // Pasado este número de mensajes sin resumir, lo más viejo se pliega en
 // el resumen. Lo decide el servidor; esto sólo evita pedirlo en balde.
 const UMBRAL_RESUMEN = 60;
@@ -68,6 +68,8 @@ export default function ChatPanel({
   clients = [],
   onUpdateCal,
   onCrearEnOtroMes = null,
+  // Cambiar una publicación de OTRO mes del cliente (App.jsx): poner_en_publicacion llega a cualquier mes.
+  onCambiarPublicacion = null,
   onClose,
   onSelectClient,
   defaultMode,
@@ -617,6 +619,47 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     return true;
   }, [calId, onUpdateCal]);
 
+  /**
+   * Pone piezas de la galería en la publicación `postId`, esté en el mes abierto o en otro (`onCambiarPublicacion`), y
+   * apunta su uso (la papelera no se las lleva). → { puestas, antes } | { error }.
+   */
+  const ponerPiezasEnPost = useCallback(async (mod, clienteId, postId, piezas, modo) => {
+    let antes = null;
+    const cambiar = (p) => { const r = mod.postConPiezas(p, piezas, modo); antes = r.antes; return r.post; };
+    let calendarId = null;
+    const cal = calRef.current;
+    if (cal && calId && onUpdateCal && cal.days.some((d) => (d.posts || []).some((p) => p.id === postId))) {
+      const updated = { ...cal, days: cal.days.map((d) => ({ ...d, posts: (d.posts || []).map((p) => (p.id === postId ? cambiar(p) : p)) })) };
+      calRef.current = updated;
+      onUpdateCal(calId, updated);
+      calendarId = cal.dbId || calId;
+    } else if (onCambiarPublicacion) {
+      calendarId = onCambiarPublicacion(postId, cambiar);
+    }
+    if (!calendarId) return { error: `No encontré la publicación ${postId} en los calendarios de este cliente.` };
+    for (const a of piezas) void mod.apuntarUso?.(clienteId, a.id, { calendarId, postId }).catch(() => null);
+    return { puestas: piezas.length, antes: antes ?? [] };
+  }, [calId, onUpdateCal, onCambiarPublicacion]);
+
+  /** poner_en_publicacion: lo que YA está en la galería, a un post (sin crear ni cobrar nada). */
+  const ponerEnPublicacion = useCallback(async (entrada) => {
+    if (!client) return { ok: false, mensaje: "Abre el asistente dentro de un cliente." };
+    const postId = String(entrada.post_id ?? "").trim();
+    if (!postId) return { ok: false, mensaje: "Falta el post_id." };
+    const mod = await import("../lib/disenoChat");
+    const ctx = await mod.leerContexto(client);
+    const { piezas, error } = mod.piezasParaPoner(ctx.g, { archivoIds: entrada.archivo_ids, carruselId: entrada.carrusel_id });
+    if (error) return { ok: false, mensaje: error };
+    const modo = entrada.modo === "anadir" ? "anadir" : "reemplazar";
+    const r = await ponerPiezasEnPost(mod, ctx.clienteId, postId, piezas, modo);
+    if (r.error) return { ok: false, mensaje: r.error };
+    const quitadas = modo === "reemplazar" ? r.antes.filter((m) => !piezas.some((a) => a.src === m.src)).length : 0;
+    return {
+      ok: true,
+      mensaje: `${r.puestas} pieza${r.puestas === 1 ? "" : "s"} puesta${r.puestas === 1 ? "" : "s"} en la publicación ${postId}${r.puestas >= 2 ? " como carrusel, en orden" : ""}${quitadas ? ` (sustituyen a ${quitadas} archivo${quitadas === 1 ? "" : "s"} que tenía, que siguen en la galería)` : ""}. Ya se ven en su pestaña Subir, listas para revisar y programar.`,
+    };
+  }, [client, ponerPiezasEnPost]);
+
   /** disenar_piezas: el plan a la vista, ESPERA el botón, crea de tres en tres y devuelve las imágenes al modelo. */
   const disenarPiezas = useCallback(async (entrada) => {
     if (!client) return { ok: false, mensaje: "Abre el asistente dentro de un cliente para diseñar." };
@@ -675,15 +718,27 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
             if (bloque) paraElModelo.push({ type: "text", text: `Pieza ${r.n} «${p.titulo}» (archivo_id ${r.archivo.id}):` }, bloque);
           }
           const hechas = imagenes.length;
+          // Un carrusel para un post: sus láminas, en orden, en ESE post (no lámina por lámina, que se perdía).
+          const carruselId = resultados.find((r) => r.carpetaId)?.carpetaId ?? "";
+          let enElPost = "";
+          if (entrada.carrusel === true && carruselId) {
+            const postCarrusel = String(entrada.post_id ?? "").trim();
+            if (postCarrusel) {
+              const laminas = resultados.filter((r) => r.archivo).map((r) => r.archivo);
+              const puesto = laminas.length ? await ponerPiezasEnPost(mod, ctx.clienteId, postCarrusel, laminas, "reemplazar") : { error: "No salió ninguna lámina." };
+              enElPost = puesto.error ? `\nNo se pudo poner en la publicación: ${puesto.error}` : `\nPuesto en la publicación ${postCarrusel}: ${puesto.puestas} láminas en orden, listas para revisar.`;
+            }
+            enElPost += `\ncarrusel_id ${carruselId} (para ponerlo en un post: poner_en_publicacion).`;
+          }
           resolve({
             ok: hechas > 0,
-            mensaje: `${hechas} de ${plan.length} creadas con ${plan.find((p) => p.modelo)?.modelo.nombre ?? "el modelo del cliente"}. Están en la galería y la persona ya las ve.\n${lineas.join("\n")}\nAhora MÍRALAS (van abajo): si alguna tiene una falta, un texto ilegible o se sale del sistema, corrígela antes de darla por buena.`,
+            mensaje: `${hechas} de ${plan.length} creadas con ${plan.find((p) => p.modelo)?.modelo.nombre ?? "el modelo del cliente"}. Están en la galería y la persona ya las ve.\n${lineas.join("\n")}${enElPost}\nAhora MÍRALAS (van abajo): si alguna tiene una falta, un texto ilegible o se sale del sistema, corrígela antes de darla por buena.`,
             _imagenes: imagenes, _paraModelo: paraElModelo,
           });
         },
       });
     });
-  }, [client, calId, ponerEnElCalendario]);
+  }, [client, calId, ponerEnElCalendario, ponerPiezasEnPost]);
 
   /** corregir_pieza y version_final: la nueva ocupa el sitio de la anterior (en el chat y en la publicación). */
   const rehacerPieza = useCallback(async (como, entrada) => {
@@ -761,6 +816,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     if (toolName === "corregir_pieza") return rehacerPieza("corregir", toolInput);
     if (toolName === "version_final") return rehacerPieza("final", toolInput);
     if (toolName === "ver_lo_que_funciona") return verLoQueFunciona();
+    if (toolName === "poner_en_publicacion") return ponerEnPublicacion(toolInput);
     if (toolName === "guardar_regla") {
       if (!clientId) return { ok: false, mensaje: "Abre el asistente dentro de un cliente." };
       const { guardarRegla } = await import("../lib/estudio");
@@ -982,7 +1038,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
     }
 
     return { ok: false, mensaje: `Herramienta desconocida: ${toolName}` };
-  }, [chatMode, client, clientId, calId, onUpdateCal, onCrearEnOtroMes, memories, resolveClient, onSelectClient, pedirGuardarEnCerebro, guardarEnBanco, disenarPiezas, rehacerPieza, verLoQueFunciona]);
+  }, [chatMode, client, clientId, calId, onUpdateCal, onCrearEnOtroMes, memories, resolveClient, onSelectClient, pedirGuardarEnCerebro, guardarEnBanco, disenarPiezas, rehacerPieza, verLoQueFunciona, ponerEnPublicacion]);
 
   const handleSend = useCallback(async () => {
     // Enviar apaga el micrófono, y lo que se estaba diciendo va en el mensaje.

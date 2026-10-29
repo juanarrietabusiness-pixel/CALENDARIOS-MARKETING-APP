@@ -36,6 +36,7 @@ export default function DisenoDirector({ client, asistente }) {
           clients={asistente?.clients ?? []}
           onUpdateCal={asistente?.onUpdateCal}
           onCrearEnOtroMes={asistente?.onCrearEnOtroMes ?? null}
+          onCambiarPublicacion={asistente?.onCambiarPublicacion ?? null}
           onClose={null}
           defaultMode="client"
           incrustado

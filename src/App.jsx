@@ -1078,6 +1078,22 @@ function Workspace({ session, ruta }) {
   };
 
   /**
+   * Cambia una publicación del cliente que se mira, esté en el mes que esté (el asistente pone en ella piezas ya
+   * hechas de la galería). Parte de lo último escrito en ese mes, no del estado de antes. → el id de su calendario, o
+   * null si no está en ninguno.
+   */
+  const cambiarPublicacion = (postId, cambiar) => {
+    const cliente = clientsRef.current.find((c) => c.id === selectedClientId);
+    for (const cal of cliente?.calendars ?? []) {
+      const base = pendingSaves.current.get(cal.id)?.cal ?? cal;
+      if (!(base.days ?? []).some((d) => (d.posts ?? []).some((p) => p.id === postId))) continue;
+      updateCalendar(cal.id, { ...base, days: base.days.map((d) => ({ ...d, posts: (d.posts ?? []).map((p) => (p.id === postId ? cambiar(p) : p)) })) });
+      return base.dbId || cal.id;
+    }
+    return null;
+  };
+
+  /**
    * Una pieza del Estudio (el lote de anuncios) al calendario del cliente que
    * se mira: obtiene (o crea) su mes y la mete en su día. Devuelve el id del
    * calendario, para apuntar que la pieza la usa una publicación.
@@ -1627,7 +1643,7 @@ function Workspace({ session, ruta }) {
                     key={client.id}
                     client={client}
                     asistente={{
-                      calendar, calId: selectedCalId, clients, onCrearEnOtroMes: crearEnOtroMes,
+                      calendar, calId: selectedCalId, clients, onCrearEnOtroMes: crearEnOtroMes, onCambiarPublicacion: cambiarPublicacion,
                       onUpdateCal: esVirtual(calendar) ? (_id, cambiado) => escribirEnMesVacio(calendar, cambiado) : updateCalendar,
                     }}
                   />
@@ -1817,6 +1833,7 @@ function Workspace({ session, ruta }) {
             // Un mes sin cajón se escribe igual que desde el calendario.
             onUpdateCal={esVirtual(calendar) ? (_id, cambiado) => escribirEnMesVacio(calendar, cambiado) : updateCalendar}
             onCrearEnOtroMes={crearEnOtroMes}
+            onCambiarPublicacion={cambiarPublicacion}
             onClose={() => setShowChat(false)}
             onSelectClient={(id) => {
               irA(id);

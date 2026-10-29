@@ -3259,6 +3259,14 @@ son del servidor.
   id o la CLAVE (el botón «Pedir un cambio» de una imagen del chat deja «En la imagen clientes/…:» en la caja).
   `guardar_regla` suma al kit (sólo con el sí de la persona). Las definiciones viven en `herramientasDiseno.js` y NO en
   api.js: api.js va en el bundle principal, y con ellas la carga inicial pasaba de 180 kB.
+- **Lo diseñado se PONE en el post sin volver a crearlo** (`poner_en_publicacion`; `piezasParaPoner`, `postConPiezas` en
+  src/lib/disenoChat.js; `cambiarPublicacion` en App.jsx). El asistente sólo podía poner una pieza AL CREARLA (`post_id` de
+  cada pieza), y en un carrusel eso iba lámina por lámina: si no lo ponía en todas, no se ponía ninguna, sólo en el mes
+  abierto, añadiendo a lo que había y sin cambiar el formato. Al pedirle «ponlo en el post» no tenía herramienta y lo
+  volvía a diseñar (y a cobrar). Ahora `disenar_piezas` con `carrusel: true` lleva UN `post_id` para todo el carrusel y
+  devuelve `carrusel_id`, y `poner_en_publicacion` pone un carrusel entero (en el orden de la galería) o sueltas, en un post
+  de CUALQUIER mes (`onCambiarPublicacion` parte de lo pendiente de ese mes), reemplazando o añadiendo; con dos imágenes o
+  más el post pasa a carrusel, y se apunta el uso de cada pieza.
 - **La pestaña «Diseño»** (`/cliente/<slug>/diseno`, `DisenoDirector.jsx`): el MISMO ChatPanel, `incrustado` (en la
   página, `role="region"`, sin foco atrapado) y `tema="diseno"`. Sus conversaciones llevan `chat_conversaciones.tema =
   'diseno'` (0047): las ve todo el equipo, también desde el chat (con la etiqueta «Diseño»), y la última abierta se
