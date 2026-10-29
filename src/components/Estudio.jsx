@@ -24,8 +24,10 @@ import {
 } from "../lib/estudioCatalogo";
 import {
   filtrarArchivos, contarFiltros, trabajosVisibles, fraseDeTrabajo, hace, nombreDeDescarga,
-  proporcionDeMedidas, modeloParaEditar, originalDe, FILTROS_GALERIA, agruparGaleria, esGrupo, estaUsado, textoDeGrupo,
+  proporcionDeMedidas, modeloDeEdicion, originalDe, FILTROS_GALERIA, agruparGaleria, esGrupo, estaUsado, textoDeGrupo,
+  modeloDeLaPieza,
 } from "../lib/estudio";
+import { FiltroDeModelo } from "./SelectorModelo";
 import "./Estudio.css";
 
 const EstudioLote = lazy(() => import("./EstudioLote"));
@@ -70,7 +72,6 @@ const VisorGrupo = lazy(() => import("./VisorGrupo"));
 const EstudioPapelera = lazy(() => import("./EstudioPapelera"));
 
 const reemplazar = (lista = [], t) => (lista.some((x) => x.id === t.id) ? lista.map((x) => (x.id === t.id ? t : x)) : [t, ...lista]);
-const nombreDeModelo = (id) => nombreDelModelo(id) || "Aplicación";
 
 export default function Estudio({ client, pulso = 0, modo = "pestana", inicial = null, uso = null, onUsar = null, onUsarVarias = null, onCerrar = null, onLlevarAlCalendario = null }) {
   const ids = useId();
@@ -146,6 +147,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
   const [filtro, setFiltro] = useState("todas");
   const [texto, setTexto] = useState("");
+  const [modeloFiltro, setModeloFiltro] = useState(""); // el nombre de un modelo de la galería («Nano Banana»), o todos
   const [enPapelera, setEnPapeleraEstado] = useState(false);
   // La carpeta de Drive del cliente, dentro de la galería: de ahí se traen referencias sin salir.
   const [enDrive, setEnDrive] = useState(false);
@@ -197,6 +199,15 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
   useEffect(() => { cargar(); }, [cargar, pulso]);
 
+  // Desde una publicación («Corregir esta», «Otra versión», «Recrear con mi marca»): la pieza que se tocó ya abierta en
+  // el visor, o en el recreador. Una vez: cerrarla deja la galería del diálogo, con «Usar» en cada pieza.
+  const abierta = useRef(false);
+  useEffect(() => {
+    if (!datos || abierta.current || !inicial?.abrir) return;
+    abierta.current = true;
+    if (inicial.accion === "recrear") setRecrear({ archivo: inicial.abrir }); else setVisor(inicial.abrir);
+  }, [datos, inicial]);
+
   // El formulario de partida, una vez que se sabe qué motores tienen llave.
   useEffect(() => {
     if (motores && datos && !form) setForm(formularioInicial(motores, inicial, datos.productos ?? [], datos.kit?.modelos ?? {}));
@@ -204,6 +215,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
   const modelo = form ? modeloPorId(form.modelo) : null;
   const motorActivo = (m) => Boolean(motores?.[m.motor]?.activo);
+  // Qué motores tienen llave ({ motor: bool }): lo piden los cálculos de modelo, el visor y los flujos.
+  const activos = useMemo(() => Object.fromEntries(Object.entries(motores ?? {}).map(([k, v]) => [k, Boolean(v.activo)])), [motores]);
   const ajustes = form && modelo ? ajustesDe(modelo, form.ajustes, clavesDe(form.medios)) : {};
   const costo = form && modelo ? estimar(modelo, form.n, ajustes) : 0;
   const kit = datos?.kit ?? null;
@@ -282,7 +295,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
   const cambiarTipo = (tipo) => {
     if (!motores || tipo === form.tipo) return;
-    const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
     const m = api.modeloPreferido(activos, tipo, fijados[tipo]);
     setConfirmando(null);
     setForm((f) => {
@@ -307,7 +319,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (!form || !motores) return;
     const m = modeloPorId(form.modelo);
     if (m && (m.motor === "prueba" || motores[m.motor]?.activo)) return;
-    const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, Boolean(v.activo)]));
     cambiarModelo(api.modeloPreferido(activos, form.tipo, fijados[form.tipo]).id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form?.modelo, form?.tipo, motores]);
@@ -423,13 +434,13 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   };
 
   /** «Editar»: la imagen va de referencia a un modelo que edita, con la indicación y la orden de no tocar lo demás. */
-  const editar = async (a, instruccion, ejemplos = []) => {
+  const editar = async (a, instruccion, ejemplos = [], escogido = "") => {
     if (!String(instruccion ?? "").trim() || !motores) return;
-    const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
-    const m = modeloParaEditar(activos);
+    const proporcion = a.ajustes?.aspectRatio ?? proporcionDeMedidas(a.ancho, a.alto);
+    // El que escogió la persona en el visor (si edita); si no, el de editar. Si no hace la proporción, el que sí.
+    const m = modeloDeEdicion(activos, escogido, proporcion);
     // La imagen primero; los ejemplos de la galería detrás, los que quepan en el modelo.
     const { prompt, medios } = api.pedidoDeCorreccion({ clave: a.clave, instruccion, ejemplos, modelo: m });
-    const proporcion = a.ajustes?.aspectRatio ?? proporcionDeMedidas(a.ancho, a.alto);
     try {
       const { trabajo } = await api.pedirImagenes(client.id, {
         modelo: m.id, prompt, n: 1, ajustes: ajustesDe(m, { aspectRatio: proporcion }, medios),
@@ -585,7 +596,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   /** «Animar»: la imagen pasa a ser el primer fotograma de un video. */
   const animar = (a) => {
     if (!motores) return;
-    const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
     const m = modeloPorId(form.modelo)?.tipo === "video" ? modeloPorId(form.modelo) : api.modeloPreferido(activos, "video", fijados.video);
     const proporcion = proporcionDeMedidas(a.ancho, a.alto);
     const medios = { ...MEDIOS_VACIOS(), start: [a] };
@@ -607,7 +617,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     const usable = m && motorActivo(m);
     // Un modelo sin llave o retirado: el que esté escogido si es del mismo tipo; si no, el predeterminado de ese tipo.
     const escogido = modeloPorId(form.modelo);
-    const activos = Object.fromEntries(Object.entries(motores).map(([k, v]) => [k, v.activo]));
     const destino = usable ? m : escogido?.tipo === a.tipo ? escogido : api.modeloPreferido(activos, a.tipo, fijados[a.tipo]);
     const medios = MEDIOS_VACIOS();
     setConfirmando(null);
@@ -620,11 +629,13 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
   // ---------- «Otra igual» y «Otra versión distinta»: salen ya, sin pasar por el compositor ----------
   /** El pedido con que se creó una pieza: su prompt, su modelo, sus ajustes y sus imágenes de apoyo (las de su trabajo). */
-  const pedidoDe = (a) => {
+  const pedidoDe = (a, otro = "") => {
     const t = (datos?.trabajos ?? []).find((x) => x.id === a.trabajoId);
-    const m = modeloPorId(a.modelo);
+    // `otro`: el modelo escogido en el visor para esta vez; sus referencias, las que le quepan.
+    const o = api.modeloParaOtra(activos, otro, a, t?.medios?.reference?.length ?? 0);
+    const m = o ?? modeloPorId(a.modelo);
     if (!m || !motorActivo(m)) return { error: `${nombreDelModelo(a.modelo) || "Ese modelo"} no está disponible: usa «Ajustar y pedir» para escoger otro.` };
-    const medios = Object.fromEntries(Object.entries(t?.medios ?? {}).filter(([, l]) => Array.isArray(l) && l.length));
+    const medios = Object.fromEntries(Object.entries(t?.medios ?? {}).filter(([, l]) => Array.isArray(l) && l.length).map(([k, l]) => [k, m === o && k === "reference" ? l.slice(0, m.referencias || 0) : l]));
     return { modelo: m, medios, ajustes: ajustesDe(m, a.ajustes ?? t?.ajustes ?? {}, medios), carpetaId: a.carpetaId ?? null };
   };
   /** Lo que cuesta una pieza más como esta (lo enseña el visor antes de pedir). */
@@ -649,9 +660,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       if (montado.current) avisar(false, `La nueva salió, pero sin el texto encima: ${e.message}`);
     }
   };
-  const pedirOtras = async (a, prompts) => {
-    const p = pedidoDe(a);
-    if (p.error) { avisar(false, p.error); return; }
+  const pedirOtras = async (a, prompts, otro = "") => {
+    const p = pedidoDe(a, otro);
+    if (p.error) throw new Error(p.error);
     for (const prompt of prompts) {
       const { trabajo } = await api.pedirImagenes(client.id, {
         modelo: p.modelo.id, prompt: prompt.slice(0, MAX_PROMPT), n: 1, ajustes: p.ajustes, medios: p.medios, confirmado: true,
@@ -662,14 +673,15 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
       if (a.ajustes?.plantilla?.texto) conTextoEncima(a, trabajo);
       else seguir(trabajo.id);
     }
+    return p.modelo.nombre;
   };
   /** «Otra igual»: el mismo pedido otra vez (el motor no repite la imagen: sale otra con lo mismo). */
-  const otraIgual = async (a) => {
+  const otraIgual = async (a, otro = "") => {
     try {
-      await pedirOtras(a, [a.prompt]);
+      const con = await pedirOtras(a, [a.prompt], otro);
       setVisor(null);
       setEnPapelera(false);
-      avisar(true, "Pedida otra igual: aparece en la galería en unos segundos.");
+      avisar(true, `Pedida otra igual con ${con}: aparece en la galería en unos segundos.`);
     } catch (e) {
       setVisor(null);
       avisar(false, e.message);
@@ -680,17 +692,17 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
    * mirando la original y con el mismo texto); el tipo, la marca y las referencias se quedan. Sale YA, sin pasar por el compositor (también desde la tarjeta de la galería). Lo que la
    * escena manda sobre el texto («NO escribas…», «Texto en la imagen…») no se le da a reescribir: se vuelve a poner.
    */
-  const otrasVersiones = async (a, n) => {
+  const otrasVersiones = async (a, n, otro = "") => {
     if (versionando) return;
     setVersionando(true);
     avisar(true, n === 1 ? "Escribiendo otra versión con la misma información…" : `Escribiendo ${n} versiones con la misma información…`);
     try {
       const { escena, cola } = api.partirEscena(ideaDelPedido(a.prompt));
       const r = await api.versionesDeIdea(client.id, { idea: escena, n, tipo: a.tipo, original: a.src });
-      await pedirOtras(a, r.versiones.map((v) => conOtraEscena(a.prompt, [v, cola].filter(Boolean).join(" "))));
+      const con = await pedirOtras(a, r.versiones.map((v) => conOtraEscena(a.prompt, [v, cola].filter(Boolean).join(" "))), otro);
       setVisor(null);
       setEnPapelera(false);
-      avisar(true, [`${r.versiones.length === 1 ? "Pedida 1 versión distinta" : `Pedidas ${r.versiones.length} versiones distintas`}: aparecen en la galería.`, r.aviso ?? ""].filter(Boolean).join(" "));
+      avisar(true, [`${r.versiones.length === 1 ? "Pedida 1 versión distinta" : `Pedidas ${r.versiones.length} versiones distintas`} con ${con}: aparecen en la galería.`, r.aviso ?? ""].filter(Boolean).join(" "));
     } catch (e) {
       avisar(false, e.message);
     } finally {
@@ -820,7 +832,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   };
   const vaciar = () => accion(async () => {
     const r = await api.vaciarPapelera(client.id);
-    avisar(true, r.borrados ? `${r.borrados} borrada${r.borrados === 1 ? "" : "s"} del todo.` : "No había nada que borrar (lo que usa una publicación se queda).");
+    avisar(true, r.borrados ? `${r.borrados} borrada${r.borrados === 1 ? "" : "s"} del todo.` : "No había nada que borrar (lo que usa una publicación o la marca se queda).");
   });
   const descargar = (a) => {
     const enlace = document.createElement("a");
@@ -932,7 +944,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   const carpetas = useMemo(() => datos?.carpetas ?? [], [datos]);
   const papelera = datos?.papelera ?? [];
   const cuentas = useMemo(() => contarFiltros(archivos, carpetas), [archivos, carpetas]);
-  const visibles = useMemo(() => filtrarArchivos(archivos, { filtro, texto }), [archivos, filtro, texto]);
+  const visibles = useMemo(() => filtrarArchivos(archivos, { filtro, texto, modelo: modeloFiltro }), [archivos, filtro, texto, modeloFiltro]);
   // En «Todas», cada carrusel y cada reel es UNA tarjeta; en sus filtros (o en el de su carpeta), pieza a pieza.
   const vista = useMemo(() => (filtro === "todas" ? agruparGaleria(visibles, carpetas, archivos) : visibles), [visibles, carpetas, archivos, filtro]);
   const carpetasPropias = useMemo(() => carpetas.filter((c) => !esGrupo(c)), [carpetas]);
@@ -986,6 +998,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             client={client}
             kit={kit}
             archivos={archivos}
+            perdidas={datos.perdidas}
             lectura={lectura}
             onPreparar={() => api.prepararKit(client.id)}
             onGuardar={guardarKitDeMarca}
@@ -1010,7 +1023,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         <Suspense fallback={null}>
           <EstudioRecrear
             client={client} archivos={datos?.archivos ?? []} productosConFotos={datos?.productos ?? []} inicial={recrear.archivo}
-            activos={Object.fromEntries(Object.entries(motores ?? {}).map(([k, v]) => [k, Boolean(v.activo)]))}
+            activos={activos}
             onCerrar={() => { setRecrear(null); cargar(); }} onCrear={desdeRecrear}
           />
         </Suspense>
@@ -1033,7 +1046,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             return (
               <Flujo
                 key={`${guiado}-${vueltaGuiado}`} client={client}
-                estudio={{ kit, productos: datos?.productos ?? [], archivos: datos?.archivos ?? [], activos: Object.fromEntries(Object.entries(motores ?? {}).map(([k, v]) => [k, Boolean(v.activo)])) }}
+                estudio={{ kit, productos: datos?.productos ?? [], archivos: datos?.archivos ?? [], activos }}
                 inicial={{ preset: presetVigente }}
                 cabecera={<QueCrear actual={guiado} guiados={GUIADOS} onCambiar={(t) => { if (GUIADOS.some(([x]) => x === t)) setGuiado(t); else { setGuiado(""); cambiarTipo(t); } }} />}
                 onCreando={(si) => { if (!si) cargar(); }}
@@ -1096,7 +1109,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
               <div className="est-trabajo-texto">
                 <p className="est-trabajo-prompt">{t.prompt}</p>
                 <p className="est-trabajo-estado">
-                  {nombreDeModelo(t.modelo)} · {fraseDeTrabajo(t)}
+                  {nombreDelModelo(t.modelo) || "Aplicación"} · {fraseDeTrabajo(t)}
                 </p>
                 {estaVivo(t.estado) && t.n > 1 && (
                   <progress className="est-progreso" max={t.n} value={t.archivos?.length ?? 0} aria-label={`${t.archivos?.length ?? 0} de ${t.n}`} />
@@ -1191,10 +1204,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => quitarPerdidas([...perdidos])}>Quitarlas de la galería</button>
           </p>
         )}
-        {!enPapelera && !enDrive && archivos.length > 6 && (
+        {!enPapelera && !enDrive && archivos.length > 1 && (
           <div className="est-buscar">
             <label className="est-solo-lector" htmlFor={`${ids}-b`}>Buscar en la galería</label>
-            <input id={`${ids}-b`} type="search" className="input" placeholder="Buscar por lo que pediste…" value={texto} onChange={(e) => setTexto(e.target.value)} />
+            <input id={`${ids}-b`} type="search" className="input" placeholder="Buscar por lo que pediste o el modelo…" value={texto} onChange={(e) => setTexto(e.target.value)} />
+            <FiltroDeModelo archivos={archivos} valor={modeloFiltro} onCambiar={setModeloFiltro} />
           </div>
         )}
       </div>
@@ -1269,10 +1283,10 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
               )}
               <div className="est-pie">
                 <p className="est-prompt" title={a.prompt}>{escena}</p>
-                <p className="est-meta">{a.subido ? "Subida" : nombreDeModelo(a.modelo)}{a.costo > 0 ? ` · ${textoCosto(a.costo)}` : ""} · {hace(a.creado)}</p>
+                <p className="est-meta">{modeloDeLaPieza(a)}{a.costo > 0 ? ` · ${textoCosto(a.costo)}` : ""} · {hace(a.creado)}</p>
                 {onUsar && (
                   <button type="button" className="btn btn-primary btn-sm est-usar" onClick={() => usarEnLaPublicacion(a)}>
-                    <Icon name="check" size={14} /> Usar en la publicación
+                    <Icon name="check" size={14} /> {inicial?.etiquetaUsar ?? "Usar en la publicación"}
                   </button>
                 )}
                 <div className="est-acciones">
@@ -1358,21 +1372,23 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           onPapelera={() => aPapelera(visor)}
           onMover={(c) => moverA(visor, c)}
           onRepetir={() => repetir(visor)}
-          onRecrear={dialogo ? null : () => { const a = visor; setVisor(null); setRecrear({ archivo: a }); }}
+          onRecrear={dialogo && !inicial?.abrir ? null : () => { const a = visor; setVisor(null); setRecrear({ archivo: a }); }}
           costoOtra={costoDeOtra(visor)}
-          onOtraIgual={() => otraIgual(visor)}
-          onOtrasVersiones={(n) => otrasVersiones(visor, n)}
+          onOtraIgual={(otro) => otraIgual(visor, otro)}
+          onOtrasVersiones={(n, otro) => otrasVersiones(visor, n, otro)}
           versionando={versionando}
           onReferencia={() => { const a = visor; setVisor(null); usarComoMedio(a); }}
           onAnimar={() => animar(visor)}
-          onEditar={(instruccion, ejemplos) => editar(visor, instruccion, ejemplos)}
+          onEditar={(instruccion, ejemplos, otro) => editar(visor, instruccion, ejemplos, otro)}
+          activos={activos}
+          desdePost={inicial?.abrir?.id === visor.id ? inicial : null}
           galeria={datos?.archivos ?? []}
           clienteId={client.id}
           onEstampar={limpiarKit(kit).logo && visor.tipo !== "video" ? () => estampar(visor) : null}
           original={originalDe(visor, datos?.trabajos ?? [], datos?.archivos ?? [])}
           onVerOriginal={(o) => setVisor(o)}
           onPlantilla={(r) => setDatos((d) => (d ? { ...d, kit: r.kit } : d))}
-          onUsar={onUsar ? () => usarEnLaPublicacion(visor) : null}
+          onUsar={onUsar ? () => usarEnLaPublicacion(visor) : null} etiquetaUsar={inicial?.etiquetaUsar}
           esLogo={Boolean(kit?.logo) && kit.logo === visor.clave}
           onLogo={/^image\/(png|jpeg|webp)$/.test(visor.mime ?? "") ? () => usarComoLogo(visor) : null}
           revision={revisiones[visor.id] ?? null}

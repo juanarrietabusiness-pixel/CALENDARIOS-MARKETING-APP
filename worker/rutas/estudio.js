@@ -80,13 +80,13 @@ import { ideasDeFormato } from "../lib/estudio/ideasFormato.js";
 import { estrategiaDelMes } from "../lib/estudio/estrategiaMes.js";
 import { leerMercado } from "../lib/mercado.js";
 import { angulosDeAnuncio, fotosDelCatalogo, productosActivos, lineaDeProducto } from "../../src/lib/estudioMercado.js";
-import { MAX_REGLAS } from "../../src/lib/kitMarca.js";
+import { MAX_REGLAS, clavesDeLaMarca, sinClavesPerdidas } from "../../src/lib/kitMarca.js";
 import {
   crearTrabajo, avanzarTrabajo, cancelarTrabajo, reintentarTrabajo, trabajoPublico, ErrorEstudio,
 } from "../lib/estudio/trabajos.js";
 import {
   leerGaleria, subirArchivo, cambiarArchivo, marcarUso, enviarAPapelera, recuperar, borrarParaSiempre, quitarPerdido,
-  vaciarPapelera, crearCarpeta, renombrarCarpeta, ordenarCarpeta, borrarCarpeta, archivoPublico,
+  vaciarPapelera, crearCarpeta, renombrarCarpeta, ordenarCarpeta, borrarCarpeta, archivoPublico, clavesPerdidas,
 } from "../lib/estudio/galeria.js";
 import { crearEncargo, avanzarEncargo, cancelarEncargo, finalesDePaso, encargoPublico, encargoConArchivos } from "../lib/estudio/encargos.js";
 
@@ -106,17 +106,29 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
   if (!cliente) return noEncontrado("Cliente");
   const por = firma(usuario, req);
   const avisar = () => difundir(env, acceso.ownerId, { tipo: "estudio", clientId: cliente.id, por });
+  // Lo que la MARCA sigue usando (el kit y las fotos del catálogo): la papelera no lo borra de verdad.
+  const marcaDe = async () => {
+    const mercado = await leerMercado(acceso, cliente.id).catch(() => null);
+    const productos = mercado ? fotosDelCatalogo(mercado.catalogo) : [];
+    return { mercado, productos, protegidas: clavesDeLaMarca(kitDe(cliente), productos) };
+  };
 
   try {
     // ---------- La galería ----------
     if (!b && metodo === "GET") {
       // Los ganchos del estudio de mercado aprobado, para escoger uno con el preset de anuncio (con su precio).
-      const mercado = await leerMercado(acceso, cliente.id).catch(() => null);
+      const { mercado, productos, protegidas } = await marcaDe();
+      const galeria = await leerGaleria(env, acceso, cliente.id, { protegidas });
+      // Lo de la marca cuyo archivo ya no está (lo borró una papelera de antes) no se ofrece: si no, TODA pieza que lo
+      // llevaba de referencia fallaba con «Una de las imágenes ya no existe». Lo guardado no se toca; `perdidas` lo dice.
+      const perdidas = await clavesPerdidas(env, protegidas, galeria);
+      const limpio = sinClavesPerdidas(kitDe(cliente), productos, perdidas);
       return json({
-        ...(await leerGaleria(env, acceso, cliente.id)), kit: kitDe(cliente),
+        ...galeria, kit: limpio.kit,
         angulos: mercado ? angulosDeAnuncio(mercado.estudio, mercado.catalogo) : [],
         // Las fotos de cada producto, para ponerlas de referencia (las de una publicación de ese producto, solas).
-        productos: mercado ? fotosDelCatalogo(mercado.catalogo) : [],
+        productos: limpio.productos,
+        ...(perdidas.size ? { perdidas: [...perdidas].map((c) => ({ clave: c, ...protegidas.get(c) })) } : {}),
       });
     }
 
@@ -438,7 +450,8 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       }
       if (!d && metodo === "DELETE") {
         const url = new URL(req.url);
-        const hecho = await borrarParaSiempre(env, acceso, cliente.id, c, { forzar: url.searchParams.get("forzar") === "1" });
+        const { protegidas } = await marcaDe();
+        const hecho = await borrarParaSiempre(env, acceso, cliente.id, c, { forzar: url.searchParams.get("forzar") === "1", protegidas });
         if (!hecho) return noEncontrado("Archivo");
         avisar();
         return json({ ok: true });
@@ -452,7 +465,8 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
 
     // ---------- La papelera ----------
     if (b === "papelera" && c === "vaciar" && metodo === "POST") {
-      const borrados = await vaciarPapelera(env, acceso, cliente.id);
+      const { protegidas } = await marcaDe();
+      const borrados = await vaciarPapelera(env, acceso, cliente.id, { protegidas });
       avisar();
       return json({ borrados });
     }

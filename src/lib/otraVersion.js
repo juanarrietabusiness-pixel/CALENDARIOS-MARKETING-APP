@@ -24,7 +24,7 @@
 // ============================================================
 
 import * as api from "./estudio";
-import { ajustesDe, estimar, modeloPorId, porPrecio, MODELOS, CONFIRMAR_DESDE, MAX_PROMPT } from "./estudioCatalogo";
+import { ajustesDe, estimar, modeloPorId, modeloQueRespeta, porPrecio, MODELOS, CONFIRMAR_DESDE, MAX_PROMPT } from "./estudioCatalogo";
 import { TOMA_DE_OTRA_MARCA, NOTA_OTRA_MARCA } from "./recrear";
 import { ideaDelPedido, conOtraEscena, nombreDePreset, referenciaDePlantilla, lineaDePlantillaEnPedido } from "./kitMarca";
 import { apoyosDePieza, pedidoDePieza, lineaDeTexto } from "./pieza";
@@ -74,6 +74,15 @@ export function ideaDeOtraVersion(anterior = "", { conTexto = true } = {}) {
   ].filter(Boolean).join("\n");
 }
 
+/**
+ * El modelo que escogió la persona para ESTA acción («Con qué modelo», sin fijar nada): sólo si es de imagen, tiene
+ * llave y —cuando la acción lleva imágenes de apoyo— admite referencias. Si no, null y se usa el de siempre. Pura.
+ */
+export function modeloEscogido(id, activos = {}, { referencias = false } = {}) {
+  const m = id ? modeloPorId(id) : null;
+  return m && m.tipo === "imagen" && (m.motor === "prueba" || activos[m.motor]) && (!referencias || m.referencias > 0) ? m : null;
+}
+
 /** Los motores con llave y lo del Estudio del cliente, de una vez. */
 async function leerTodo(clienteId) {
   const [g, m] = await Promise.all([api.leerEstudio(clienteId), api.leerMotores()]);
@@ -102,16 +111,17 @@ async function terminar({ clienteId, nueva, post, kit, activos, calendarId, alPr
 }
 
 /** El pedido de la versión nueva, sin crear nada. → { pedido, costo } (pedido listo para `pedirImagenes`). */
-async function prepararVersion({ clienteId, client, post, medio, g, activos, indicacion = "" }) {
+async function prepararVersion({ clienteId, client, post, medio, g, activos, indicacion = "", modeloId = "" }) {
   const kit = g?.kit ?? {};
   // 1. Una pieza del Estudio: su mismo pedido, con otra escena.
   const archivo = (g?.archivos ?? []).find((a) => a.src === medio.src && a.tipo === "imagen");
   const trabajo = archivo && (g?.trabajos ?? []).find((t) => t.id === archivo.trabajoId);
   const suyo = archivo?.prompt && modeloPorId(archivo.modelo);
+  const escogido = modeloEscogido(modeloId, activos);
   // Con el texto de la plantilla encima (lote), la nueva saldría cruda: mejor por el camino de la publicación.
   const preset = presetDePilar(post.pilar, post.pilarSub);
   const pieza = preset ? nombreDePreset(preset, kit) : "";
-  if (archivo && trabajo && suyo && !archivo.ajustes?.plantilla && (suyo.motor === "prueba" || activos[suyo.motor])) {
+  if (archivo && trabajo && suyo && !archivo.ajustes?.plantilla && (escogido || suyo.motor === "prueba" || activos[suyo.motor])) {
     const { escena, cola } = api.partirEscena(ideaDelPedido(archivo.prompt));
     // El director de arte MIRA la original y escribe la ficha de la versión nueva: el mismo mensaje y el MISMO texto
     // (el de la publicación o el de la ficha de la original), otra composición moderada. Antes se le decía «DISTINTA,
@@ -124,15 +134,20 @@ async function prepararVersion({ clienteId, client, post, medio, g, activos, ind
     }).catch(() => null);
     const nueva = r?.idea || (await api.versionesDeIdea(clienteId, { idea: conIndicacion(escena, indicacion), n: 1, tipo: "imagen", texto, original: medio.src }).catch(() => null))?.versiones?.[0];
     if (nueva) {
-      const medios = Object.fromEntries(Object.entries(trabajo.medios ?? {}).filter(([, l]) => Array.isArray(l) && l.length));
-      const ajustes = ajustesDe(suyo, archivo.ajustes ?? trabajo.ajustes ?? {}, medios);
+      // Con otro modelo escogido, sus referencias son las que le quepan; si no hace la proporción, el que sí.
+      const aspecto = archivo.ajustes?.aspectRatio ?? trabajo.ajustes?.aspectRatio ?? "";
+      const refs = (trabajo.medios?.reference ?? []).length;
+      const usar = escogido ? modeloQueRespeta(escogido, activos, aspecto, refs) : suyo;
+      const medios = Object.fromEntries(Object.entries(trabajo.medios ?? {}).filter(([, l]) => Array.isArray(l) && l.length)
+        .map(([k, l]) => [k, usar !== suyo && k === "reference" ? l.slice(0, usar.referencias || 0) : l]));
+      const ajustes = ajustesDe(usar, archivo.ajustes ?? trabajo.ajustes ?? {}, medios);
       const prompt = conOtraEscena(archivo.prompt, [conIndicacion(nueva, indicacion), cola].filter(Boolean).join("\n")).slice(0, MAX_PROMPT);
-      return { pedido: { modelo: suyo.id, prompt, n: 1, ajustes, medios }, costo: estimar(suyo, 1, ajustes) };
+      return { pedido: { modelo: usar.id, prompt, n: 1, ajustes, medios }, costo: estimar(usar, 1, ajustes) };
     }
   }
 
   // 2. Desde la publicación: su idea y su texto, diseñada otra vez por el director de arte.
-  const modelo = api.modeloPreferido(activos, "imagen", kit.modelos?.imagen);
+  const modelo = escogido ?? api.modeloPreferido(activos, "imagen", kit.modelos?.imagen);
   if (!modelo) throw new Error("No hay ningún modelo de imagen con llave (Ajustes → IA).");
   const base = api.promptDePublicacion(post, { conTexto: false });
   if (!base.trim()) throw new Error("La publicación no tiene idea ni texto para hacer otra versión: escribe qué se ve.");
@@ -158,13 +173,13 @@ async function prepararVersion({ clienteId, client, post, medio, g, activos, ind
  * Crea la otra versión y espera a que salga. `confirmar(costo)` se llama si cuesta desde 0,50 $ (devuelve si sigue).
  * → el archivo nuevo de la galería, o null si no se confirmó.
  */
-export async function otraVersionDelPost({ client, post, medio, indicacion = "", calendarId = null, confirmar = () => true, alProgresar = () => {} }) {
+export async function otraVersionDelPost({ client, post, medio, indicacion = "", modelo = "", calendarId = null, confirmar = () => true, alProgresar = () => {} }) {
   const clienteId = client.dbId || client.id;
   alProgresar("Escribiendo otra escena con la misma información…");
   const { g, activos } = await leerTodo(clienteId);
-  const { pedido, costo } = await prepararVersion({ clienteId, client, post, medio, g, activos, indicacion });
+  const { pedido, costo } = await prepararVersion({ clienteId, client, post, medio, g, activos, indicacion, modeloId: modelo });
   if (costo >= CONFIRMAR_DESDE && !confirmar(costo)) return null;
-  alProgresar("Creando la imagen nueva…");
+  alProgresar(`Creando la imagen nueva con ${modeloPorId(pedido.modelo)?.nombre ?? "el modelo"}…`);
   const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true, ...(calendarId ? { calendarId, postId: post.id } : {}) });
   const [nueva] = await esperarArchivos(clienteId, trabajo);
   if (!nueva) throw new Error("La imagen nueva no llegó. Prueba otra vez.");
@@ -242,7 +257,7 @@ function modeloQueSigueVideo(activos, fijado) {
  * logo. Como «Recrear un anuncio» del Estudio (lib/recrear.js), pero sin salir del post: la pieza nueva ocupa el sitio
  * de la referencia. → el archivo nuevo, o null si no se confirmó el costo.
  */
-export async function recrearConLaMarca({ client, post, medio, indicacion = "", calendarId = null, confirmar = () => true, alProgresar = () => {} }) {
+export async function recrearConLaMarca({ client, post, medio, indicacion = "", modelo: modeloId = "", calendarId = null, confirmar = () => true, alProgresar = () => {} }) {
   const clienteId = client.dbId || client.id;
   const ref = api.archivoDesdeSrc(medio.src, clienteId);
   if (!ref) throw new Error("Esa referencia no está en el almacén de este cliente: súbela otra vez a la publicación.");
@@ -267,7 +282,7 @@ export async function recrearConLaMarca({ client, post, medio, indicacion = "", 
     const medios = { ...base.medios, video: [ref.clave] };
     pedido = { ...base, medios, ajustes: ajustesDe(modelo, base.ajustes, medios) };
   } else {
-    modelo = api.modeloPreferido(activos, "imagen", kit.modelos?.imagen);
+    modelo = modeloEscogido(modeloId, activos, { referencias: true }) ?? api.modeloPreferido(activos, "imagen", kit.modelos?.imagen);
     if (!(modelo?.referencias > 0)) modelo = porPrecio(MODELOS.filter((x) => x.tipo === "imagen" && x.referencias > 0 && activos[x.motor]), activos)[0] ?? null;
     if (!modelo) throw new Error("No hay ningún modelo de imagen con referencias y con llave (Ajustes → IA).");
     const preset = presetDePilar(post.pilar, post.pilarSub);

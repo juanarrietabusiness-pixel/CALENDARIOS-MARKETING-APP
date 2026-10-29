@@ -211,6 +211,8 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       // imágenes, el logo de referencia.
       if (entrada.estilo && !IDS_PRESET.includes(entrada.estilo)) throw new ErrorHerramientaEstudio(`El estilo tiene que ser uno de: ${IDS_PRESET.join(", ")}.`);
       const kit = kitDe(c);
+      // Un logo cuyo archivo ya no está (lo borró una papelera de antes) no se pide: tumbaría la pieza entera.
+      if (kit.logo && !(await env.MEDIA.head(kit.logo).catch(() => true))) kit.logo = "";
       const conLogo = !kitVacio(kit) && ponerLogo({ kit, tipo, modelo, referencias: medios.reference ?? [] });
       if (conLogo) medios.reference = [...(medios.reference ?? []), kit.logo];
       const prompt = pedidoConMarca({

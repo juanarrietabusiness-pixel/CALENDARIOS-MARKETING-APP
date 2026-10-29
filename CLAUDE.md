@@ -30,6 +30,12 @@ despliegue vive en `.github/workflows/desplegar.yml`, que corre
 `npm run verificar` entero y dentro del mismo job antes de publicar
 nada, para que no haya forma de saltárselo.
 
+**Un cambio no está terminado hasta que está DESPLEGADO** (decisión de la agencia: dos veces se dio por hecho
+algo que sólo estaba en la rama y en el sitio seguía el error). Al acabar: subir la rama, abrir el pull request,
+esperar el job `verificar` en verde, unirlo a `main` y seguir el workflow «Desplegar» (`desplegar.yml`, que corre
+solo con el push a `main`) hasta que termine bien. Si falla, se arregla y se vuelve a desplegar. Nunca decir
+«está en la rama» como si fuera el final.
+
 **Antes de dar por terminado cualquier cambio:**
 
 ```bash
@@ -362,6 +368,8 @@ src/
                           en la publicación» y «Mandar el carrusel a la papelera» (lazy)
     FuenteDeMarca.jsx     La fuente de la marca en el kit: subir el archivo, dibujar la muestra, guardar las dos
     GaleriaSelector.jsx   «De la galería» del panel de una publicación: imágenes sueltas o un carrusel entero, en orden (lazy)
+    SelectorModelo.jsx    «Con qué modelo (sólo esta vez)»: visor, post; marca los que no hacen la proporción; y el filtro
+                          «Modelo» de la galería (`FiltroDeModelo`)
     IdeasDeFormato.jsx    «Dame ideas» en el paso 1 del carrusel y del reel IA
     ReferenciasGaleria.jsx  Ejemplos de la galería al corregir (y referencias del reel), cada uno con qué se toma
     GuardarRegla.jsx      «Guardar como regla» junto a cada corrección
@@ -1701,6 +1709,37 @@ son del servidor.
   «Corregir esta» lo NECESITA y EDITA la misma imagen (`rehacerConComentario`, como «Rehacer con lo que pidió el
   cliente») en su sitio. Se vacía al salir bien. CalendarView importa el motor de ideas EN DIFERIDO (al pulsar
   «Completar los textos»): con la huella dentro, la carga inicial pasaba de 180 kB.
+- **«Otra versión», «Corregir esta» y «Recrear con mi marca» de una imagen del post se hacen EN EL ESTUDIO por defecto**
+  (decisión de la agencia: lo hecho a ciegas en el post, sobre todo una lámina suelta de un carrusel, salía peor que en
+  la galería). `abrirEnEstudio` (seccionPublicar) pasa la imagen por `archivoEnGaleria` (lib/estudio.js: la ficha que
+  ya había por ruta o clave; si se subió directo al post o vino de Drive, la SUBE —la huella evita la copia doble—) y
+  abre el diálogo del Estudio con `inicial.abrir`: el visor (sus versiones; «Editar» ya abierto con lo escrito en «¿Qué
+  quieres?») o el recreador. Lo escogido —esa pieza o cualquiera de la galería— va al SITIO de la imagen tocada
+  (`onReemplazar` de `useCrearConIA`; el botón dice «Poner en la lámina N»), no al final. «Otra versión» de una imagen
+  que no salió del Estudio (subida: no hay pedido que repetir) abre el compositor con ella de referencia. Con
+  `inicial.abrir` el diálogo NO lanza «Mejorar idea» (`listo`): se viene a corregir, no a crear. «Aquí, rápido» (se
+  recuerda por navegador, `post-acciones-donde`) es el camino de antes. «Animar» se quitó del post.
+- **La papelera no borra lo que usa la MARCA** (`clavesDeLaMarca`, `sinClavesPerdidas` en kitMarca.js; `clavesPerdidas` en
+  worker/lib/estudio/galeria.js). El logo, la muestra de la tipografía, los personajes, las plantillas, las referencias
+  de cada tipo y las fotos del catálogo son archivos de la galería sin `usado_en`: vaciar la papelera (o la purga de 30
+  días) los borraba de R2, el kit y el catálogo seguían apuntando a ellos y TODA pieza que los llevaba de referencia
+  fallaba con «Una de las imágenes ya no existe» (un carrusel entero del director, lámina a lámina). Ahora la purga y
+  «Vaciar» los saltan y «Borrar del todo» contesta 409 diciendo qué es. Lo que una papelera de antes ya borró: GET
+  /api/estudio lo quita del kit y de `productos` que devuelve (sin tocar lo guardado; se comprueba en R2 sólo lo que no
+  tiene ficha, como mucho 10) y lo dice en `perdidas`, que el kit enseña arriba. `crear_en_estudio` salta un logo
+  perdido. Y si aun así llega una referencia perdida que es de la MARCA (`sinLaQueFalta` en trabajos.js: al pedir y
+  otra vez al generar, porque los encargos del servidor guardan sus claves y `conPlantillaDelDirector` lee el kit
+  GUARDADO), la pieza se crea SIN ella y la nota dice cuál faltó y dónde se arregla (`medios.faltaron`); antes una
+  sola tumbaba el carrusel entero. Una que no es de la marca (la imagen que se corrige, la lámina anterior, lo puesto
+  a mano) sigue cortando: sin ella sería otro pedido.
+- **El modelo se escoge para UNA acción, sin fijarlo** (`SelectorModelo.jsx`; `modeloEscogido` en otraVersion.js,
+  `modeloDeEdicion` en edicion.js): en el visor («Editar», «Otra igual», «Otra versión distinta») y en el post
+  («Crear la imagen aquí» y las acciones rápidas; ya no está en `OpcionesCrearAqui`). Los que no hacen la proporción
+  que tiene que salir se marcan con el que los releva (`relevoDe`): antes se cambiaban en silencio y la galería se
+  llenaba de Nano Banana sin que nadie lo escogiera. Lo que sale dice con qué se hizo. La galería filtra por modelo
+  (`modelosDeLaGaleria`, por NOMBRE) y el buscador encuentra por él. **Lo de `/api/generar-imagen` se apunta con el id
+  del PROVEEDOR** («gemini-2.5-flash-image», «muse-image-1.0»): `nombreDelModelo` lo resuelve por `gid`, o la tarjeta
+  decía «gemini-2.5-flash-image».
 - **Quién VE los videos se escoge** (Ajustes → IA → «Ver videos», `ia_modelos.video`, `motorDeVideo`): Gemini con la
   llave de siempre, Gemini con `GOOGLE_AI_KEY_GRATIS` (nivel gratuito: se apunta a costo 0; Google puede usar lo que
   recibe y tiene topes, y el 429 lo dice así) o Meta. Meta NO recibe video: `verVideo` contesta 409
@@ -2918,7 +2957,13 @@ son del servidor.
   la pide al programar —cuesta dinero—: sin copia, esa imagen sale
   difuminada. Gemini entrega el 4:5 en 896×1152 (0,78), por debajo de lo
   que admite Instagram (0,8): `ampliarConIA()` recorta al tamaño exacto en
-  el navegador y borra el bruto de R2.
+  el navegador y borra el bruto de R2. En un carrusel cada imagen que no
+  cabe tiene su fila (cómo queda, con qué modelo, «Generar» / «Otra vez»
+  sólo para ella): antes se enseñaba la primera y el botón las rehacía
+  todas. El motor se escoge para esa vez (`adaptarDe.motor`: «meta» o
+  «google»; vacío, el del espacio) y la respuesta trae `modelo`, que queda
+  en la copia de `post.adaptados`. Cada copia se pone en cuanto sale: si
+  la siguiente falla, la anterior no se pierde.
 - **A lo ancho, el panel de «Subir» no desplaza entero.** Cada columna
   desplaza por su cuenta (la izquierda con la barra de «¿Cuándo sale?»
   pegada debajo; la derecha, la vista previa) y el pie del panel se funde

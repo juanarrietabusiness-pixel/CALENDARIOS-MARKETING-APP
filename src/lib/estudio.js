@@ -12,11 +12,11 @@
 
 import { pedir } from "./db";
 import { imagenParaModelo } from "./medios";
-import { estaVivo, diasQueQuedan, modeloPorId, modeloPorDefecto, VOCES_OMNI, ajustesDe } from "./estudioCatalogo";
+import { estaVivo, diasQueQuedan, modeloPorId, modeloPorDefecto, modeloQueRespeta, VOCES_OMNI, ajustesDe, nombreDelModelo } from "./estudioCatalogo";
 import { composicionDe } from "./loteAnuncios";
 import { productosDelPost } from "./pilares";
 // Lo de editar una imagen vive en un módulo puro: también lo usa el Worker (los encargos del servidor).
-export { proporcionDeMedidas, promptDeEdicion, pedidoDeCorreccion, modeloParaEditar } from "./edicion";
+export { proporcionDeMedidas, promptDeEdicion, pedidoDeCorreccion, modeloParaEditar, modeloDeEdicion } from "./edicion";
 
 const base = (clienteId) => `/estudio/${encodeURIComponent(clienteId)}`;
 const post = (cuerpo) => ({ method: "POST", body: JSON.stringify(cuerpo ?? {}) });
@@ -224,17 +224,43 @@ export const FILTROS_GALERIA = ["todas", "favoritas", "subidas", "usadas", "sin-
 /** ¿Lo usa alguna publicación? */
 export const estaUsado = (a) => (a?.usadoEn?.length ?? 0) > 0;
 
-/** Filtros de la galería: los de `FILTROS_GALERIA` o el id de una carpeta. */
-export function filtrarArchivos(archivos = [], { filtro = "todas", texto = "" } = {}) {
+/**
+ * El modelo escogido en el visor para «Otra igual» u «Otra versión distinta» de la pieza `a` (sólo esa vez): del mismo
+ * tipo y con llave; si no hace la proporción de la pieza con sus `refs` imágenes de apoyo, el que lo releva (lo mismo que
+ * avisa «Con qué modelo»). null si no sirve: se usa el de la pieza. Pura.
+ */
+export function modeloParaOtra(activos = {}, id = "", a = {}, refs = 0) {
+  const o = id ? modeloPorId(id) : null;
+  if (!o || o.tipo !== a.tipo || !(o.motor === "prueba" || activos[o.motor])) return null;
+  return modeloQueRespeta(o, activos, a.ajustes?.aspectRatio ?? "", Math.min(refs, o.referencias ?? 0));
+}
+
+/** Con qué se hizo una pieza, como se lee en la pantalla: «Subida» o el nombre del modelo. Pura. */
+export const modeloDeLaPieza = (a) => (a?.subido ? "Subida" : nombreDelModelo(a?.modelo) || "Aplicación");
+
+/** Los modelos que hay en la galería, el más usado primero: [{ nombre, n }]. Para el filtro «Modelo». Pura. */
+export function modelosDeLaGaleria(archivos = []) {
+  const cuentas = new Map();
+  for (const a of archivos) cuentas.set(modeloDeLaPieza(a), (cuentas.get(modeloDeLaPieza(a)) ?? 0) + 1);
+  return [...cuentas].map(([nombre, n]) => ({ nombre, n })).sort((x, y) => y.n - x.n || x.nombre.localeCompare(y.nombre));
+}
+
+/**
+ * Filtros de la galería: los de `FILTROS_GALERIA` o el id de una carpeta; `modelo`, el NOMBRE de uno de
+ * `modelosDeLaGaleria` («Nano Banana» junta lo del Estudio y lo de «Ampliar con IA», que se apunta con otro id). El
+ * texto busca también por el nombre del modelo.
+ */
+export function filtrarArchivos(archivos = [], { filtro = "todas", texto = "", modelo = "" } = {}) {
   const t = String(texto ?? "").trim().toLowerCase();
   return archivos.filter((a) => {
+    if (modelo && modeloDeLaPieza(a) !== modelo) return false;
     if (filtro === "favoritas" && !a.favorito) return false;
     if (filtro === "subidas" && !a.subido) return false;
     if (filtro === "usadas" && !estaUsado(a)) return false;
     if (filtro === "sin-usar" && estaUsado(a)) return false;
     if (filtro === "sin-carpeta" && a.carpetaId) return false;
     if (!FILTROS_GALERIA.includes(filtro) && a.carpetaId !== filtro) return false;
-    if (t && !`${a.prompt} ${a.modelo}`.toLowerCase().includes(t)) return false;
+    if (t && !`${a.prompt} ${a.modelo} ${modeloDeLaPieza(a)}`.toLowerCase().includes(t)) return false;
     return true;
   });
 }
@@ -491,6 +517,25 @@ export function archivoDesdeSrc(src, clienteId, prompt = "") {
   try { clave = decodeURIComponent(ruta.slice(prefijo.length).split("?")[0]); } catch { return null; }
   if (!clave.startsWith(`clientes/${clienteId}/`) || clave.includes("..")) return null;
   return { id: `ext:${clave}`, src: ruta, clave, prompt: String(prompt ?? "").slice(0, 200) };
+}
+
+/**
+ * La ficha de la galería de una imagen puesta en una publicación, para abrirla en el visor del Estudio («Corregir
+ * esta», «Otra versión», «Recrear con mi marca»): la que ya está, por su ruta o su clave; si se subió directo al post o
+ * vino de Drive, se sube ahora a la galería (si los bytes ya estaban, la galería devuelve la que había y no guarda otra
+ * copia). Lanza si la imagen no es de ESTE cliente.
+ */
+export async function archivoEnGaleria(clienteId, src) {
+  const ref = archivoDesdeSrc(src, clienteId);
+  if (!ref) throw new Error("Esa imagen no está en el almacén de este cliente: súbela de nuevo a la publicación.");
+  const g = await leerEstudio(clienteId);
+  const ya = (g?.archivos ?? []).find((a) => a.src === src || a.clave === ref.clave);
+  if (ya) return ya;
+  const r = await fetch(src, { credentials: "same-origin" });
+  if (!r.ok) throw new Error("No se pudo leer la imagen para abrirla en el Estudio.");
+  const blob = await r.blob();
+  const { archivo } = await subirImagen(clienteId, new File([blob], ref.clave.split("/").pop() || "imagen.jpg", { type: blob.type || "image/jpeg" }));
+  return archivo;
 }
 
 /** El nombre de cada ajuste en la pantalla. */

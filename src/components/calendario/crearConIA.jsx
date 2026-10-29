@@ -26,14 +26,20 @@ const Estudio = lazy(() => import("../Estudio"));
  * @param onUsar  recibe el archivo escogido.
  * @param onUsarVarias  recibe un carrusel entero de la galería (o el video de un reel), en orden.
  * @param onMejorada  recibe la idea que dejó «Mejorar idea» al abrir: la publicación la guarda como su pedido listo.
+ * @param abrir   una pieza de la galería que se abre YA: en el visor (`accion` «version» o «editar», con `indicacion`
+ *                escrita en «¿Qué cambio?») o en el recreador («recrear»). Se viene a corregir, no a crear: la idea
+ *                de la publicación no se mejora sola.
+ * @param etiquetaUsar  lo que dice «Usar en la publicación» cuando lo escogido va al sitio de una pieza («Poner en la lámina 3»).
  */
-export default function CrearConIA({ client, post, tipo = "imagen", inicio = null, referencias = null, uso = null, onUsar, onUsarVarias = null, onMejorada = null, onCerrar }) {
+export default function CrearConIA({ client, post, tipo = "imagen", inicio = null, referencias = null, uso = null, abrir = null, accion = "", indicacion = "", etiquetaUsar = null, onUsar, onUsarVarias = null, onMejorada = null, onCerrar }) {
   const ref = useDialogA11y(onCerrar);
   // El pedido de la imagen que ya escribió el motor de ideas (o una mejora anterior): no hace falta mejorarlo otra vez.
   const listo = tipo === "imagen" && !inicio ? promptListo(post) : "";
   // Sólo cuenta al abrir: el compositor no se reinicia si la publicación cambia detrás.
   const [inicial] = useState(() => ({
-    ...(listo ? { listo: true } : {}),
+    ...(listo || abrir ? { listo: true } : {}),
+    ...(abrir ? { abrir, accion, indicacion } : {}),
+    ...(etiquetaUsar ? { etiquetaUsar } : {}),
     ...(onMejorada ? { alMejorar: onMejorada } : {}),
     tipo,
     inicio,
@@ -50,7 +56,7 @@ export default function CrearConIA({ client, post, tipo = "imagen", inicio = nul
 
   return (
     <div className="overlay overlay-sheet">
-      <div ref={ref} role="dialog" aria-modal="true" aria-label="Crear con IA" className="sheet sheet-estudio">
+      <div ref={ref} role="dialog" aria-modal="true" aria-label={abrir ? "Estudio: corregir la pieza" : "Crear con IA"} className="sheet sheet-estudio">
         <Suspense fallback={<p role="status" className="est-nota" style={{ padding: "var(--sp-5)" }}>Abriendo el Estudio…</p>}>
           <Estudio client={client} modo="dialogo" inicial={inicial} uso={uso} onUsar={onUsar} onUsarVarias={onUsarVarias} onCerrar={onCerrar} />
         </Suspense>

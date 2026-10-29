@@ -158,6 +158,8 @@ describe("el catálogo", () => {
     const fotos = ["clientes/c1/estudio/a.jpg", "clientes/otro/estudio/b.jpg", "clientes/c1/../otro/x.jpg", "https://x.com/y.jpg"];
     const d = await (await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: [{ ...CATALOGO[0], fotos }] } })).json();
     expect(d.catalogo[0].fotos).toEqual(["clientes/c1/estudio/a.jpg"]);
+    // El Estudio sólo ofrece las fotos cuyo archivo sigue en R2 (una borrada tumbaría cada pieza que la lleva).
+    env.MEDIA.objetos.set("clientes/c1/estudio/a.jpg", { bytes: "x", tipo: "image/jpeg" });
     const g = await (await pedir("/api/estudio/c1")).json();
     expect(g.productos).toEqual([{ id: d.catalogo[0].id, nombre: CATALOGO[0].nombre, marca: "", fotos: ["clientes/c1/estudio/a.jpg"] }]);
     // La nota de cifras no habla de fotos.

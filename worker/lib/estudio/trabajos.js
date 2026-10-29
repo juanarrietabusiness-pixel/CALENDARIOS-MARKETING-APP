@@ -38,6 +38,8 @@ import { crearAcceso, estudioPendiente } from "../acceso.js";
 import {
   modeloPorId, MODELOS_RETIRADOS, retirado, validarPedido, pideConfirmar, textoCosto, estaVivo, MEDIDAS, proporcionDe, estimar, enCola,
 } from "../../../src/lib/estudioCatalogo.js";
+import { clavesDeLaMarca } from "../../../src/lib/kitMarca.js";
+import { fotosDelCatalogo } from "../../../src/lib/estudioMercado.js";
 
 /** Cuánto vale un permiso de paso: lo que tarda Gemini en darse por vencido, más margen. */
 export const RESERVA_MS = 150_000;
@@ -87,6 +89,36 @@ function anunciar(env, acceso, fila, por) {
 // ------------------------------------------------------------
 
 /**
+ * Qué imagen de apoyo falta, dicho para la persona: el logo, una foto del producto «X», la plantilla «Y»… con dónde se
+ * arregla. Antes era siempre «Una de las imágenes ya no existe» y no había forma de saber cuál. Sólo en el camino del
+ * error (lee el catálogo; mercado.js se importa al momento: por kit.js, importa este módulo).
+ */
+async function deLaMarca(acceso, cliente, clave) {
+  try {
+    const { leerMercado } = await import("../mercado.js");
+    const mercado = await leerMercado(acceso, cliente.id).catch(() => null);
+    return clavesDeLaMarca(leerJSON(cliente.kit_marca, {}), mercado ? fotosDelCatalogo(mercado.catalogo) : []).get(clave) ?? null;
+  } catch { return null; /* sin el catálogo, el mensaje de siempre */ }
+}
+
+const IMAGEN_PERDIDA = "Una de las imágenes de apoyo ya no existe (se borró de la galería). Quítala del pedido o súbela otra vez.";
+
+/**
+ * Lo que se hace con una imagen de apoyo que ya no está en R2. Si es de la MARCA (el logo, una plantilla, la muestra
+ * de la letra, una foto del catálogo…), la pieza se crea SIN ella y la nota lo dice: un logo borrado tumbaba carruseles
+ * enteros, lámina a lámina, por algo que la pieza puede llevar o no. Cualquier otra (la imagen que se corrige, la
+ * lámina anterior, lo puesto a mano) cambia lo que se pidió: corta, con el motivo. Devuelve el aviso para la nota.
+ */
+async function sinLaQueFalta(acceso, cliente, clave) {
+  const d = cliente ? await deLaMarca(acceso, cliente, clave) : null;
+  if (!d) throw new ErrorEstudio(IMAGEN_PERDIDA, 404);
+  return `Se creó sin ${d.que}: ya no existe. ${d.arreglo}`;
+}
+
+/** El aviso de las imágenes de la marca que faltaban, para la nota del trabajo. */
+const notaDeFaltantes = (medios) => (Array.isArray(medios?.faltaron) ? medios.faltaron.join(" ").slice(0, 400) : "");
+
+/**
  * Crea un trabajo. No genera nada: eso lo hace el primer `avanzar`. Todo lo
  * que puede rechazarse se rechaza AQUÍ, antes de gastar: el modelo, la
  * llave, las referencias, la confirmación de un costo alto y el presupuesto.
@@ -110,14 +142,21 @@ export async function crearTrabajo(env, acceso, cliente, datos, { usuario = null
 
   // Los medios (referencias, imagen inicial y final) son del MISMO cliente y existen: el id llega del navegador y no se cree.
   const guardados = {};
+  const faltaron = [];
   for (const rol of ["reference", "start", "end", "video"]) {
     for (const valor of medios[rol] ?? []) {
       const clave = claveDelCliente(valor, cliente.id);
       if (!clave) throw new ErrorEstudio(rol === "video" ? "El video no es de este cliente." : "Una de las imágenes no es de este cliente.", 400);
-      if (!(await env.MEDIA.head(clave))) throw new ErrorEstudio(rol === "video" ? "El video ya no existe." : "Una de las imágenes ya no existe.", 404);
+      if (!(await env.MEDIA.head(clave))) {
+        if (rol === "video") throw new ErrorEstudio("El video ya no existe.", 404);
+        if (rol !== "reference") throw new ErrorEstudio(IMAGEN_PERDIDA, 404);
+        faltaron.push(await sinLaQueFalta(acceso, cliente, clave));
+        continue;
+      }
       (guardados[rol] ??= []).push(clave);
     }
   }
+  if (faltaron.length) guardados.faltaron = faltaron;
 
   if (pideConfirmar(costoEstimado) && !datos.confirmado) {
     throw new ErrorEstudio(
@@ -134,7 +173,7 @@ export async function crearTrabajo(env, acceso, cliente, datos, { usuario = null
   const fila = await acceso.insertar("estudio_trabajos", {
     id: uuid(), client_id: cliente.id, estado: "en_cola", tipo: modelo.tipo, motor: modelo.motor, modelo: modelo.id,
     prompt, n, ajustes: JSON.stringify(ajustes), medios: JSON.stringify(guardados),
-    remoto: "[]", archivos: "[]", nota: "", intentos: 0, bloqueado_hasta: "", costo_estimado: costoEstimado, costo: 0, error: "",
+    remoto: "[]", archivos: "[]", nota: faltaron.join(" ").slice(0, 400), intentos: 0, bloqueado_hasta: "", costo_estimado: costoEstimado, costo: 0, error: "",
     origen, creado_por: usuario?.id ?? null,
     calendar_id: datos.calendarId ? String(datos.calendarId).slice(0, 80) : null,
     post_id: datos.postId ? String(datos.postId).slice(0, 80) : null,
@@ -158,14 +197,21 @@ const MAX_VIDEO_REFERENCIA = 50 * 1024 * 1024;
  * corta el paso: seguir sin ella cambiaría lo que se pidió. Con `base64` cada imagen trae además su texto en base64
  * (lo piden Gemini y Omni).
  */
-async function cargarMedios(env, fila, modelo, { base64 = false } = {}) {
+async function cargarMedios(env, acceso, fila, modelo, { base64 = false } = {}) {
   const guardados = leerJSON(fila.medios, {});
   const limite = { reference: modelo.referencias || 0, start: modelo.inicial || 0, end: modelo.final || 0, video: modelo.video || 0 };
-  const salida = { reference: [], start: [], end: [], video: [] };
-  for (const rol of Object.keys(salida)) {
+  const salida = { reference: [], start: [], end: [], video: [], faltaron: [...(guardados.faltaron ?? [])] };
+  for (const rol of ["reference", "start", "end", "video"]) {
     for (const clave of (guardados[rol] ?? []).slice(0, limite[rol])) {
       const obj = await env.MEDIA.get(clave);
-      if (!obj) throw new ErrorMotor(rol === "video" ? "El video de referencia ya no existe." : "Una de las imágenes ya no existe.", 422);
+      if (!obj && rol === "reference") {
+        // Se borró después de pedir (o el trabajo es de antes de comprobarlo al crear): si es de la marca, sin ella.
+        const cliente = await acceso.leerUno("clients", { id: fila.client_id }).catch(() => null);
+        try { salida.faltaron.push(await sinLaQueFalta(acceso, cliente, clave)); continue; } catch {
+          throw new ErrorMotor(IMAGEN_PERDIDA, 422);
+        }
+      }
+      if (!obj) throw new ErrorMotor(rol === "video" ? "El video de referencia ya no existe." : IMAGEN_PERDIDA, 422);
       if (rol === "video") {
         // El video va tal cual al almacén del motor: sólo MP4 o WebM y con tope (el Worker lo tiene en memoria al subirlo).
         const mime = obj.httpMetadata?.contentType || "";
@@ -293,9 +339,9 @@ async function paso(env, acceso, fila) {
     if (bloqueo) return termina(bloqueo);
   }
 
-  let salida;
+  let salida, medios;
   try {
-    const medios = await cargarMedios(env, fila, modelo);
+    medios = await cargarMedios(env, acceso, fila, modelo);
     salida = await motor.generar(env, {
       modelo, prompt: fila.prompt, ajustes: leerJSON(fila.ajustes, {}), referencias: medios.reference, medios, indice: hechos.length, total: fila.n,
     });
@@ -325,7 +371,7 @@ async function paso(env, acceso, fila) {
     costo: (fila.costo ?? 0) + (salida.costo ?? 0),
     estado: completo ? "hecho" : "en_marcha",
     // Lo que el motor tuvo que dejar fuera (Muse sin algunas referencias): se queda en la nota del trabajo.
-    intentos: 0, nota: salida.aviso ? String(salida.aviso).slice(0, 400) : "", error: "",
+    intentos: 0, nota: [salida.aviso, notaDeFaltantes(medios)].filter(Boolean).join(" ").slice(0, 400), error: "",
     ...(completo ? { terminado_at: new Date().toISOString() } : {}),
   };
 }
@@ -388,9 +434,9 @@ async function pasoDeCola(env, acceso, fila, { modelo, motor, hechos, termina, f
       const bloqueo = await bloqueoPorPresupuesto(acceso);
       if (bloqueo) return detener(bloqueo);
     }
-    let enviado;
+    let enviado, medios;
     try {
-      const medios = await cargarMedios(env, fila, modelo, { base64: true });
+      medios = await cargarMedios(env, acceso, fila, modelo, { base64: true });
       enviado = await motor.enviar(env, { modelo, prompt: fila.prompt, ajustes, medios });
     } catch (e) {
       if (!(e instanceof ErrorMotor)) throw e;
@@ -404,7 +450,8 @@ async function pasoDeCola(env, acceso, fila, { modelo, motor, hechos, termina, f
     await acceso.actualizar("estudio_trabajos", { id: fila.id }, { remoto: escribirRemoto() });
     return {
       remoto: escribirRemoto(), estado: "en_marcha", intentos: 0, error: "",
-      nota: fila.n > 1 ? `Enviado ${remoto.length} de ${fila.n}` : `Enviado: ${esVideo ? "el video tarda unos minutos" : "la imagen tarda un momento"}.`,
+      nota: [fila.n > 1 ? `Enviado ${remoto.length} de ${fila.n}.` : `Enviado: ${esVideo ? "el video tarda unos minutos" : "la imagen tarda un momento"}.`,
+        notaDeFaltantes(medios)].filter(Boolean).join(" "),
     };
   }
 

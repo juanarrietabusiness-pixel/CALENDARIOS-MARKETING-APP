@@ -61,7 +61,11 @@ const PROPIO_VACIO = () => ({ id: `propio-${Date.now().toString(36)}`, nombre: "
 const ESTILO_VACIO = () => ({ id: `estilo-${Date.now().toString(36)}`, nombre: "", texto: "" });
 const PERSONAJE_VACIO = () => ({ id: `personaje-${Date.now().toString(36)}`, nombre: "", descripcion: "", imagenes: [] });
 
-export default function EstudioKit({ client, kit: guardado, archivos = [], lectura = false, onGuardar, onPreparar }) {
+/**
+ * @param perdidas  lo de la marca cuyo archivo ya no está (el servidor lo dice en GET /api/estudio: [{ que, arreglo }]).
+ *                  Las piezas salen sin eso; se avisa aquí, a la vista aunque el kit esté plegado.
+ */
+export default function EstudioKit({ client, kit: guardado, archivos = [], perdidas = [], lectura = false, onGuardar, onPreparar }) {
   const ids = useId();
   const kit = limpiarKit(guardado);
   const vacio = kitVacio(kit);
@@ -130,6 +134,14 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], lectu
         )}
       </div>
       {error && <p role="alert" className="notice notice-error">{error}</p>}
+      {perdidas.length > 0 && (
+        <div className="notice notice-warn" role="status">
+          <p style={{ margin: 0 }}><strong>Falta {perdidas.length === 1 ? "una imagen" : `${perdidas.length} imágenes`} de la marca:</strong> se borraron de la galería, y las piezas salen sin {perdidas.length === 1 ? "ella" : "ellas"}.</p>
+          <ul style={{ margin: "var(--sp-1) 0 0", paddingLeft: "var(--sp-4)" }}>
+            {perdidas.map((p) => <li key={p.clave}>{p.que.charAt(0).toUpperCase() + p.que.slice(1)}. {p.arreglo}</li>)}
+          </ul>
+        </div>
+      )}
 
       {abierto && (
         <div id={`${ids}-c`} className="est-kit-cuerpo">
