@@ -711,6 +711,36 @@ describe("subir a mano, carpetas y papelera", () => {
     expect(urls[1]).toMatch(/generativelanguage/);
   });
 
+  it("adaptar a 4:5 deja escoger el motor de ESA imagen y dice con cuál salió", async () => {
+    env.GOOGLE_AI_KEY = "k";
+    env.META_API_KEY = "m";
+    env.MEDIA.objetos.set("clientes/c1/posts/flow.png", { bytes: PNG, tipo: "image/png" });
+    const urls = [];
+    globalThis.fetch = vi.fn(async (url) => {
+      urls.push(String(url));
+      return String(url).startsWith("https://api.meta.ai/") ? Response.json({ data: [{ b64_json: PNG_B64 }] }) : respuestaGemini();
+    });
+    const adaptar = (motor) => pedir(JEFE, "/api/generar-imagen", { method: "POST", body: { clientId: "c1", adaptarDe: { src: "/api/media/clientes/c1/posts/flow.png", proporcion: "4:5", motor } } });
+
+    // Con llave de Meta, «google» va directo a Nano Banana, sin pasar por Muse.
+    const conNano = await adaptar("google");
+    expect(conNano.status).toBe(201);
+    expect(urls.some((u) => u.includes("api.meta.ai"))).toBe(false);
+    expect((await conNano.json()).modelo).toBe("gemini-2.5-flash-image");
+
+    urls.length = 0;
+    const conMuse = await adaptar("meta");
+    expect((await conMuse.json()).modelo).toBe("muse-image-1.0");
+    expect(urls[0]).toMatch(/api\.meta\.ai/);
+
+    // Sin llave de Meta, pedir Muse no rompe nada: sale con Nano Banana y lo dice.
+    delete env.META_API_KEY;
+    urls.length = 0;
+    const sinLlave = await adaptar("meta");
+    expect((await sinLlave.json()).modelo).toBe("gemini-2.5-flash-image");
+    expect(urls.some((u) => u.includes("api.meta.ai"))).toBe(false);
+  });
+
   it("/api/generar-imagen conserva sus mensajes de siempre", async () => {
     env.GOOGLE_AI_KEY = "k";
     globalThis.fetch = vi.fn(async () => new Response("{}", { status: 429 }));

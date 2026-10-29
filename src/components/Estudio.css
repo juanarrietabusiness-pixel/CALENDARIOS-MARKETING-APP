@@ -104,7 +104,9 @@
 .est-chip-nueva { border-style: dashed; }
 .est-carpeta-form, .est-carpeta-acciones { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .est-carpeta-form .input { flex: 1 1 200px; min-width: 0; }
-.est-buscar .input { max-width: 420px; }
+.est-buscar { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.est-buscar .input { flex: 1 1 220px; max-width: 420px; min-width: 0; }
+.est-buscar select.input { flex: 0 1 240px; }
 .est-papelera-nota { margin: 0; color: var(--text-dim); font-size: var(--fs-sm); display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 
 .est-rejilla {

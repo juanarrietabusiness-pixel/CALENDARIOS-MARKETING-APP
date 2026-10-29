@@ -230,32 +230,28 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError, e
                     </button>
                   </>
                 )}
-                {m.tipo === "imagen" && onCrearConIA && (
-                  <button type="button" className="editor-medios-portada-btn" onClick={() => onCrearConIA({ tipo: "video", desde: m })} title="Convertir esta imagen en un video con IA">
-                    <Icon name="video" size={13} /> Animar
-                  </button>
-                )}
-                {/* «Otra versión» se HACE aquí y ocupa su sitio (seccionPublicar): era un botón gris que además mandaba
-                    al compositor. Sin quien la haga aquí (en «Subir»), el compositor de siempre. */}
+                {/* «Otra versión», «Corregir esta» y «Recrear con mi marca» abren el Estudio con ESTA imagen (o se hacen aquí,
+                    rápido, si así se escogió en «¿Qué quieres?»: seccionPublicar) y lo escogido vuelve a su sitio. Sin
+                    quien lo haga (en «Subir»), el compositor de siempre. «Animar» se quitó: la agencia no lo usaba. */}
                 {m.tipo === "imagen" && (onOtraVersion || onCrearConIA) && (
                   <button type="button" className="btn btn-sm editor-medios-version"
                     disabled={Boolean(versionando)} aria-busy={versionando === m.src || undefined}
                     onClick={() => (onOtraVersion ? onOtraVersion(m) : onCrearConIA({ tipo: "imagen", version: m }))}
-                    title="Otra imagen con la misma información y otro diseño, hecha aquí mismo">
+                    title="Otra imagen con la misma información y otro diseño; vuelve a este mismo sitio">
                     <Icon name="sparkles" size={14} /> {versionando === m.src ? "Creando…" : "Otra versión"}
                   </button>
                 )}
                 {/* La MISMA imagen con sólo lo que se pide en «¿Qué quieres?» (seccionPublicar). */}
                 {m.tipo === "imagen" && onCorregir && (
                   <button type="button" className="editor-medios-portada-btn" disabled={Boolean(versionando)} onClick={() => onCorregir(m)}
-                    title="Editar esta misma imagen con lo que escribas en «¿Qué quieres?»: el resto se conserva">
+                    title="Editar esta misma imagen (con tu comentario y ejemplos de la galería): el resto se conserva y vuelve a este sitio">
                     <Icon name="pencil" size={13} /> Corregir esta
                   </button>
                 )}
                 {/* Una referencia subida al post (un anuncio que funciona, un video de IA): rehecha con la marca, aquí. */}
                 {onRecrear && (
                   <button type="button" className="editor-medios-portada-btn" disabled={Boolean(versionando)} onClick={() => onRecrear(m)}
-                    title="Usar esto de referencia: su forma, con el producto, el texto y la marca de este cliente. Sale en su sitio.">
+                    title="Usar esto de referencia: su idea, con el producto, el texto y la marca de este cliente. Sale en su sitio.">
                     <Icon name="wand" size={13} /> Recrear con mi marca
                   </button>
                 )}

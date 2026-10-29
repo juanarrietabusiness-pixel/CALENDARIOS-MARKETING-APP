@@ -70,3 +70,14 @@ export function modeloParaCorregir(activos = {}, original = "", aspecto = "") {
   // pieza corregida saldría de otro tamaño.
   return modeloQueRespeta(m, activos, aspecto, 1);
 }
+
+/**
+ * Con qué se edita cuando la PERSONA escoge el modelo («Editar» del visor, «Corregir esta» del post): el escogido si
+ * edita (admite referencias) y tiene llave; si no, `modeloParaEditar`. Si no hace `aspecto` con la imagen de
+ * referencia, cede al que sí (la pantalla lo dice: «Editando con…»). Pura.
+ */
+export function modeloDeEdicion(activos = {}, escogido = "", aspecto = "") {
+  const e = MODELOS.find((m) => m.id === escogido);
+  const m = e && e.tipo === "imagen" && e.referencias > 0 && activos[e.motor] ? e : modeloParaEditar(activos);
+  return modeloQueRespeta(m, activos, aspecto, 1);
+}

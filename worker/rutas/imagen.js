@@ -273,9 +273,14 @@ export async function rutaGenerarImagen(req, env, ctx) {
   // Adaptar a 4:5 o 9:16: con Muse Image si el espacio lo eligió (o «auto»
   // y hay llave de Meta) —0,01 $ frente a ~0,04 $—, con la original de
   // referencia. Si Meta falla, se hace con Nano Banana como siempre: la
-  // persona pidió una imagen, no un proveedor.
+  // persona pidió una imagen, no un proveedor. La pantalla puede escoger el
+  // motor de ESTA imagen (`adaptarDe.motor`: «meta» o «google»); la respuesta
+  // dice con cuál salió de verdad.
   let resultado = null;
-  if (adaptar && motorDeImagen(await leerConfigIA(acceso), { hayMeta: Boolean(llaveMeta(env)) }) === "meta") {
+  const pedidoMotor = adaptar && ["meta", "google"].includes(adaptar.motor) ? adaptar.motor : "";
+  const conMuse = adaptar && Boolean(llaveMeta(env)) && pedidoMotor !== "google"
+    && (pedidoMotor === "meta" || motorDeImagen(await leerConfigIA(acceso), { hayMeta: true }) === "meta");
+  if (conMuse) {
     const base = parts.find((p) => p.inlineData)?.inlineData;
     try {
       resultado = await llamarMuseImage(env, {
@@ -323,5 +328,5 @@ export async function rutaGenerarImagen(req, env, ctx) {
     ajustes: { aspectRatio: (FORMATOS[formatoFinal] ?? FORMATOS.square).ratio, origen: funcion },
   });
 
-  return json({ clave, mimeType }, 201);
+  return json({ clave, mimeType, modelo }, 201);
 }

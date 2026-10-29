@@ -24,7 +24,7 @@ import * as api from "./estudio";
 import { correccionDelDirector, mejoro } from "./control";
 import { esperarArchivos } from "./carruselEstudio";
 import { ajustesDe } from "./estudioCatalogo";
-import { modeloParaCorregir } from "./edicion";
+import { modeloParaCorregir, modeloDeEdicion } from "./edicion";
 
 /** ¿Revisar y corregir solo? Se recuerda por navegador; encendido por defecto. */
 const CLAVE = "estudio-control";
@@ -112,13 +112,16 @@ export async function terminarTrabajo({ clienteId, trabajo, kit, estampar = fals
  * «Rehacer con lo que dijo el cliente»: EDITA la imagen de la publicación con su comentario (la misma pieza, sólo
  * ese cambio) en vez de pedir otra desde cero, que perdería lo que sí le gustó. `src`: la imagen puesta (tiene que
  * estar en el almacén de ESTE cliente); `medida`: sus { ancho, alto } para la proporción; `texto`: lo que debe decir
- * (se controla si el control está encendido). → el archivo nuevo de la galería; la imagen de antes se queda allí.
+ * (se controla si el control está encendido); `modelo`, el escogido para esta vez. → el archivo nuevo de la galería; la
+ * imagen de antes se queda allí.
  */
-export async function rehacerConComentario({ clienteId, src, indicacion, medida = {}, texto = "", activos = null, seguir = () => true }) {
+export async function rehacerConComentario({ clienteId, src, indicacion, medida = {}, texto = "", activos = null, modelo = "", seguir = () => true }) {
   const archivo = api.archivoDesdeSrc(src, clienteId);
   if (!archivo) throw new Error("Esa imagen no está en el almacén de este cliente: súbela de nuevo y prueba otra vez.");
   if (!String(indicacion ?? "").trim()) throw new Error("Escribe qué hay que cambiar.");
-  const m = modeloParaCorregir(await activosDeMotores(activos), "", proporcion(medida));
+  // `modelo`: el que escogió la persona para esta vez (si edita); si no, el de corregir de siempre.
+  const llaves = await activosDeMotores(activos);
+  const m = modelo ? modeloDeEdicion(llaves, modelo, proporcion(medida)) : modeloParaCorregir(llaves, "", proporcion(medida));
   if (!m) throw new Error("No hay ningún modelo que edite imágenes con llave puesta (Ajustes → IA).");
   const { prompt, medios } = api.pedidoDeCorreccion({ clave: archivo.clave, instruccion: indicacion, modelo: m });
   const { trabajo } = await api.pedirImagenes(clienteId, {

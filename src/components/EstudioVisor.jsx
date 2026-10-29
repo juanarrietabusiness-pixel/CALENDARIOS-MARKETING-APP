@@ -1,13 +1,14 @@
 import { lazy, Suspense, useId, useState } from "react";
 import Icon from "./Icon";
 import { useDialogA11y } from "../hooks/useDialogA11y";
-import { modeloPorId, nombreDelModelo, textoCosto, NOMBRE_PROPORCION } from "../lib/estudioCatalogo";
+import { modeloPorId, nombreDelModelo, textoCosto, estimar, NOMBRE_PROPORCION } from "../lib/estudioCatalogo";
 import * as api from "../lib/estudio";
 import { hace, nombreDeDescarga, esVideoReal, valorDeAjuste, ATAJOS_EDICION, AJUSTES_DE_TEXTO, IGUALAR_TEXTO, ejemploParaIgualar } from "../lib/estudio";
 import { corregirTexto } from "../lib/controlEstudio";
 import { resumenControl } from "../lib/control";
 import ReferenciasGaleria from "./ReferenciasGaleria";
 import GuardarRegla from "./GuardarRegla";
+import SelectorModelo from "./SelectorModelo";
 
 // «Extraer guion y adaptar» (UGC) de un video: sólo se descarga al abrirlo.
 const ExtraerUgc = lazy(() => import("./calendario/ExtraerUgc"));
@@ -159,18 +160,28 @@ export default function Visor({
   costoOtra = null, onOtraIgual = null, onOtrasVersiones = null, versionando = false, onRecrear = null,
   onEditar = null, original = null, onVerOriginal = null,
   esLogo = false, onLogo = null, revision = null, onRevisar = null, onCorregir = null, galeria = [],
-  clienteId = null, onEstampar = null, cliente = null, onPlantilla = null,
+  clienteId = null, onEstampar = null, cliente = null, onPlantilla = null, activos = null, desdePost = null,
 }) {
   const ref = useDialogA11y(onCerrar);
   const id = useId();
-  const [editando, setEditando] = useState(false);
-  const [cambio, setCambio] = useState("");
+  // Desde «Corregir esta» de una publicación, el visor abre ya en «Editar», con lo escrito en «¿Qué quieres?».
+  const [editando, setEditando] = useState(desdePost?.accion === "editar");
+  // El modelo de «Editar» y de «Otra versión» para ESTA vez ("" = el de siempre); no fija nada.
+  const [modeloSel, setModeloSel] = useState("");
+  const [cambio, setCambio] = useState(desdePost?.accion === "editar" ? desdePost.indicacion ?? "" : "");
   const [ejemplos, setEjemplos] = useState([]);
   const [cuantas, setCuantas] = useState(1);
   const [extrayendo, setExtrayendo] = useState(false);
   const m = modeloPorId(a.modelo);
   const puedeOtra = !lectura && !a.subido && costoOtra != null && onOtraIgual;
   const video = a.tipo === "video";
+  const proporcion = a.ajustes?.aspectRatio ?? api.proporcionDeMedidas(a.ancho, a.alto) ?? "";
+  const elegido = modeloPorId(modeloSel);
+  const costoVersion = elegido ? estimar(elegido, 1, a.ajustes ?? {}) : costoOtra;
+  const editarCon = (instruccion, ejemplos) => onEditar(instruccion, ejemplos, modeloSel);
+  const selector = (vacio) => activos && (
+    <SelectorModelo activos={activos} valor={modeloSel} onCambiar={setModeloSel} proporcion={proporcion} conReferencias etiqueta="Con qué modelo (sólo esta vez)" vacio={vacio} disabled={versionando} />
+  );
   return (
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) onCerrar(); }}>
       <div ref={ref} className="dialog est-visor" role="dialog" aria-modal="true" aria-labelledby={`${id}-t`}>
@@ -206,7 +217,7 @@ export default function Visor({
             </div>
           )}
           {editando && (
-            <form className="est-editar" onSubmit={(e) => { e.preventDefault(); if (cambio.trim()) onEditar(cambio, ejemplos); }}>
+            <form className="est-editar" onSubmit={(e) => { e.preventDefault(); if (cambio.trim()) editarCon(cambio, ejemplos); }}>
               <label className="label" htmlFor={`${id}-e`}>¿Qué cambio?</label>
               <input id={`${id}-e`} className="input" value={cambio} maxLength={500}
                 placeholder="Ej.: quita el texto de arriba y pon el fondo blanco" onChange={(e) => setCambio(e.target.value)} />
@@ -216,6 +227,7 @@ export default function Visor({
                 ))}
               </div>
               <ReferenciasGaleria archivos={galeria} elegidas={ejemplos} onCambiar={setEjemplos} max={2} etiqueta="Ejemplo de la galería" />
+              {selector(`El de editar (${api.modeloParaEditar(activos ?? {})?.nombre ?? "automático"})`)}
               <div className="est-editar-botones">
                 <button type="submit" className="btn btn-primary btn-sm" disabled={!cambio.trim()}><Icon name="wand" size={14} /> Editar con IA</button>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditando(false); setCambio(""); }}>Cancelar</button>
@@ -228,7 +240,7 @@ export default function Visor({
             <div className="est-otra" role="group" aria-labelledby={`${id}-otra`}>
               <span className="label" id={`${id}-otra`}>¿Otra?</span>
               <div className="est-otra-fila">
-                <button type="button" className="btn btn-secondary btn-sm" disabled={versionando} onClick={onOtraIgual}>
+                <button type="button" className="btn btn-secondary btn-sm" disabled={versionando} onClick={() => onOtraIgual(modeloSel)}>
                   <Icon name="refresh" size={14} /> Otra igual
                 </button>
                 <span className="est-otra-versiones">
@@ -238,18 +250,19 @@ export default function Visor({
                       {[1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
                     </select>
                   </label>
-                  <button type="button" className="btn btn-secondary btn-sm" disabled={versionando} onClick={() => onOtrasVersiones(cuantas)}>
+                  <button type="button" className="btn btn-secondary btn-sm" disabled={versionando} onClick={() => onOtrasVersiones(cuantas, modeloSel)}>
                     <Icon name="sparkles" size={14} /> {versionando ? "Escribiendo las versiones…" : cuantas === 1 ? "Otra versión distinta" : `${cuantas} versiones distintas`}
                   </button>
                 </span>
               </div>
+              {!editando && selector(`El de esta pieza (${nombreDelModelo(a.modelo) || "el mismo"})`)}
               <p className="hint" style={{ margin: 0 }}>
                 «Otra igual» repite el pedido. «Versión distinta»: la misma información con otra escena (la IA la escribe); se quedan el tipo, la marca y las referencias.
-                {" "}{textoCosto(costoOtra)} cada una{m?.estimado ? ", aprox." : ""}.
+                {" "}{textoCosto(costoVersion)} cada una{(elegido ?? m)?.estimado ? ", aprox." : ""}.
               </p>
             </div>
           )}
-          {!lectura && !video && onEditar && !editando && <AjustarTexto archivo={a} galeria={galeria} onEditar={onEditar} />}
+          {!lectura && !video && onEditar && !editando && <AjustarTexto archivo={a} galeria={galeria} onEditar={editarCon} />}
           {!video && <ControlDeCalidad key={a.id} archivo={a} clienteId={clienteId} lectura={lectura} onAbrir={onVerOriginal} />}
           {!video && !lectura && clienteId && <Suspense fallback={null}><GuardarPlantilla key={`p-${a.id}`} clienteId={clienteId} archivo={a} onGuardada={onPlantilla} /></Suspense>}
           {!video && (onRevisar || revision) && <RevisionDeMarca revision={revision} onRevisar={onRevisar} onCorregir={lectura ? null : onCorregir} />}

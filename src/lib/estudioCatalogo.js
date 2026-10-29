@@ -682,8 +682,14 @@ export const retirado = (id) => (DE_GOOGLE.has(id)
   ? `Google retiró ${MODELOS_RETIRADOS[id] ?? id} de su API el 22 de octubre de 2026. Pídelo con Gemini Omni Flash o con Veo 3 Fast (fal).`
   : `«${MODELOS_RETIRADOS[id] ?? id}» ya no se ofrece en el Estudio.`);
 
-/** El nombre de un modelo para la pantalla, también de uno retirado; si no se conoce, el id tal cual. */
-export const nombreDelModelo = (id) => modeloPorId(id)?.nombre ?? (MODELOS_RETIRADOS[id] ? `${MODELOS_RETIRADOS[id]} (retirado)` : id || "");
+/**
+ * El nombre de un modelo para la pantalla, también de uno retirado; si no se conoce, el id tal cual. Lo que hacen
+ * «Ampliar con IA» y /api/generar-imagen se apunta con el id del PROVEEDOR («gemini-2.5-flash-image», «muse-image-1.0»):
+ * también se nombra, o la galería decía «gemini-2.5-flash-image» donde era Nano Banana.
+ */
+export const nombreDelModelo = (id) => modeloPorId(id)?.nombre
+  ?? (id && MODELOS.find((m) => m.gid === id && (m.motor === "gemini" || m.motor === "meta"))?.nombre)
+  ?? (MODELOS_RETIRADOS[id] ? `${MODELOS_RETIRADOS[id]} (retirado)` : id || "");
 
 /**
  * El modelo con que arranca el compositor: el marcado `predeterminado` de ese tipo si su motor tiene llave, luego
@@ -961,3 +967,20 @@ export const estaVivo = (estado) => ESTADOS_VIVOS.includes(estado);
 export const NOMBRE_ESTADO = Object.freeze({
   en_cola: "En cola", en_marcha: "Creando…", hecho: "Listo", fallido: "No salió", cancelado: "Cancelado",
 });
+
+// ---- «¿Con qué modelo?» para una acción (components/SelectorModelo.jsx) ----
+
+/** Los modelos de imagen con llave que puede ofrecer esta acción, del más barato al más caro. Pura. */
+export function modelosParaAccion(activos = {}, { conReferencias = false } = {}) {
+  const sirve = (m) => m.tipo === "imagen" && m.motor !== "prueba" && activos[m.motor]
+    && (conReferencias ? m.referencias > 0 : !m.necesitaImagen);
+  return porPrecio(MODELOS.filter(sirve), activos);
+}
+
+/** Si `id` no hace `proporcion`, el modelo con que saldrá de verdad (o null si sale con él). Pura. */
+export function relevoDe(id, activos = {}, proporcion = "", conReferencias = false) {
+  const m = modeloPorId(id);
+  if (!m || !proporcion || respetaProporcion(m, proporcion, conReferencias)) return null;
+  const otro = modeloQueRespeta(m, activos, proporcion, conReferencias ? 1 : 0);
+  return otro && otro.id !== m.id ? otro : null;
+}
