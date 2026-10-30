@@ -28,7 +28,7 @@ const TIPOS = [["imagen", "Imagen", "image"], ["video", "Video", "video"]];
 
 // Las dos formas de hacer un video, dentro de la MISMA opción «Video». Antes eran dos chips sueltos («Video» y «Clip
 // rápido») y no se entendía cuál era cuál; los dos sistemas siguen igual, sólo cambia cómo se escoge.
-const FORMAS_VIDEO = [["reel", "Con guion", "Planos, sonido y Flow"], ["video", "Clip rápido", "Un prompt, un clip"]];
+const FORMAS_VIDEO = [["reel", "Guiado", "Por planos o del producto"], ["video", "Clip rápido", "Un prompt, un clip"]];
 
 /**
  * «Qué crear»: Imagen, Carrusel y Video. El video tiene dos formas (con guion —el guiado «reel»— o clip rápido —el

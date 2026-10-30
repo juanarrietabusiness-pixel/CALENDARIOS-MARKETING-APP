@@ -504,6 +504,7 @@ export const ATAJOS_DIRECTOR = Object.freeze([
   { etiqueta: "Anuncios de un producto", texto: "Diseña 6 anuncios del producto " },
   { etiqueta: "Un carrusel", texto: "Diseña un carrusel 4:5 sobre " },
   { etiqueta: "Historias de un post", texto: "Diseña 3 historias que acompañen al post del " },
+  { etiqueta: "Video de un producto", texto: "Mira el Estudio y sigue la receta «Video del producto»: un video de 10 s, con voz en español, del producto " },
   { etiqueta: "Otra como esta", texto: "Haz otra pieza con el mismo diseño de la plantilla " },
   { etiqueta: "Mira lo que funciona", texto: "Mira las plantillas y lo que me gustó de este cliente y dime qué estilo ves antes de diseñar." },
 ]);

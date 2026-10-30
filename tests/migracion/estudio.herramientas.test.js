@@ -161,6 +161,9 @@ describe("ver_estudio", () => {
     expect(texto).not.toContain("foto-vieja");
     expect(texto).not.toContain("foto-ajena");
     expect(texto).toMatch(/LOGO DEL KIT: logo-bc\. [^\n]*imagen_final/);
+    // Con fotos del catálogo, la receta del video del producto (la misma que el botón de la pantalla).
+    expect(texto).toContain("RECETA «VIDEO DEL PRODUCTO»");
+    expect(texto).toMatch(/sin_logo=true/);
     // Y los IDs que da sirven de verdad para pedir.
     const r = await usar(asistente(), "crear_en_estudio", { cliente: "Baby Caleb", prompt: "la caja", modelo: "prueba", referencias: ["foto-pants"] });
     expect(r.error).toBe(false);
@@ -170,6 +173,7 @@ describe("ver_estudio", () => {
     const { texto } = await usar(asistente(), "ver_estudio", { cliente: "Dcasa" });
     expect(texto).not.toContain("CATÁLOGO");
     expect(texto).not.toContain("LOGO DEL KIT");
+    expect(texto).not.toContain("RECETA");
   });
 
   it("lo que está en marcha aparece", async () => {
@@ -190,6 +194,17 @@ describe("crear_en_estudio", () => {
     expect(texto).toContain(t.id);
     expect(texto).toMatch(/estado_trabajo/);
     expect(texto).toMatch(/no hace falta esperar/);
+  });
+
+  it("sin_logo: el primer fotograma de un video sale SIN el logo del kit y el pedido dice que no se invente uno", async () => {
+    objetos.set("clientes/c1/estudio/logo.png", { bytes: new Uint8Array([1]), tipo: "image/png" });
+    db.sqlite.prepare("update clients set kit_marca = ? where id = 'c1'").run(JSON.stringify({ estilo: "cálido", logo: "clientes/c1/estudio/logo.png" }));
+    const { error } = await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "una sala", modelo: "prueba", formato: "9:16", sin_logo: true });
+    expect(error).toBe(false);
+    const [t] = trabajos();
+    expect(JSON.parse(t.medios ?? "{}").reference ?? []).not.toContain("clientes/c1/estudio/logo.png");
+    expect(t.prompt).not.toContain("La ÚLTIMA imagen de referencia es el logo REAL de la marca");
+    expect(t.prompt).toMatch(/No dibujes ni inventes ningún logo/);
   });
 
   it("con estilo, la escena primero, el preset de su tipo detrás, luego la marca y el logo de referencia", async () => {

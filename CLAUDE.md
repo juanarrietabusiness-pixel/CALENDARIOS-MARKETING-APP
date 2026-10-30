@@ -153,6 +153,9 @@ src/
     formulasUgcApi.js     Cliente de /api/formulas-ugc
     videoCorto.js         Guiones de video de 8 s (Veo por fal) o 10 s (Omni): gancho, beneficio y cierre; el pedido
                           al modelo sin texto largo ni logo (puro; también lo importa el Worker)
+    videoProducto.js      La receta «Video del producto» (10–15 s): tramos, el guion con la voz en español, las escenas del
+                          primer fotograma y del cierre, el prompt corto del video (puro; también el Worker)
+    videoProductoEstudio.js  La receta en el Estudio: qué modelo, los dos fotogramas por el camino de una pieza, el video
     portadas.js           Las piezas del perfil por plantilla: estilos de portada, colores del kit, medidas (puro)
     materialTipo.js       Qué busca el cerebro según el TIPO de contenido, qué material falta (testimonios, garantía, equipo,
                           diferenciador, saber del rubro) y el pedido de la nota «Saber del rubro» (puro; también el Worker)
@@ -371,6 +374,7 @@ src/
     SelectorModelo.jsx    «Con qué modelo (sólo esta vez)»: visor, post; marca los que no hacen la proporción; y el filtro
                           «Modelo» de la galería (`FiltroDeModelo`)
     IdeasDeFormato.jsx    «Dame ideas» en el paso 1 del carrusel y del reel IA
+    FlujoVideoProducto.jsx  «Video del producto»: producto, guion, los dos fotogramas y el video (lazy; dentro de FlujoReel)
     ReferenciasGaleria.jsx  Ejemplos de la galería al corregir (y referencias del reel), cada uno con qué se toma
     GuardarRegla.jsx      «Guardar como regla» junto a cada corrección
     calendario/RevisionMes.jsx  «Revisar el mes» antes de enviarlo: reglas, IA opcional e imágenes contra el kit (lazy)
@@ -1921,6 +1925,23 @@ son del servidor.
   `src/lib/videoLimpio.js`, decisión de la agencia: escriben mal y deforman el logo). Una sola frase que usan
   `LINEA_VIDEO` (todo video del compositor), el Reel IA (guion, fotogramas, video, Flow, tramo), el guion corto, el lote
   y el recreador. El guion del reel ya no trae `texto` por plano; uno de antes que lo traiga se lee y se ignora.
+- **«Video del producto» es una RECETA: termina en la foto real y el logo real porque no los dibuja el modelo de video**
+  (`src/lib/videoProducto.js`, `videoProductoEstudio.js`, `FlujoVideoProducto.jsx`, `POST /api/estudio/<c>/video-producto/guion`;
+  salió de una prueba con Baby Caleb y MiniMax H3 que la agencia aprobó). Producto del catálogo CON fotos → guion (primer
+  fotograma, tres tramos, cámara, locución y música) → el primer fotograma SIN logo y el cierre con las fotos del producto
+  y el logo del kit (o estampado), por el camino de una pieza (`pedidoDePieza`) → el video con imagen inicial Y final
+  (`sirveParaProducto`; `PREFERIDOS_PRODUCTO` empieza por MiniMax H3). Cosas que no se ven:
+  · **La voz va ESCRITA entre comillas en el pedido** (`promptDeVideoProducto`): sin ella, H3 se inventó una locución en
+  otro idioma. Seedance y Wan van sin voz (`sinVozEnProducto`). El prompt es CORTO (`MAX_PROMPT_VIDEO_PRODUCTO`) y describe
+  el movimiento por segundos, no lo que ya se ve: reglas del método público de Higgsfield (MIT, `docs/licencias/`).
+  · **El primer fotograma no lleva logo**: el video lo arrastraría deformado. El cierre lleva el logo el ÚLTIMO (las fotos
+  dejan su hueco, `fotosParaFotograma`).
+  · **Vive DENTRO de FlujoReel** («Video» → «Guiado» → «Del producto», `FORMAS`): el chunk del Estudio está en su tope y una
+  forma nueva en el compositor no cabía. En una publicación de reel o historia, «Video del producto» abre `ReelIA` con
+  `forma="producto"`; el caption que escribe sólo RELLENA el del post.
+  · **El asistente y Claude (MCP) siguen la misma receta**: `ver_estudio` la explica (`RECETA_VIDEO_PRODUCTO`) cuando el
+  catálogo tiene fotos, `crear_en_estudio` acepta `sin_logo` para el primer fotograma y su tope de video es 15 s (lo frena
+  la confirmación de 0,50 $). Atajo del director: «Video de un producto».
 - **El Reel IA saca dos cosas de los fotogramas** (FlujoReel.jsx): «Un solo video con todo» (el storyboard, listo para
   subir) o «Un clip limpio por fotograma» (`pedidoDeClip`/`crearClips` en lib/reelEstudio.js): cada fotograma es la
   imagen inicial de su clip, SIN texto, voz ni música (`sonido: "no"`), todos a la vez, y se bajan en un ZIP numerado por

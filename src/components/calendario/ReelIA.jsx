@@ -18,7 +18,7 @@ const FlujoReel = lazy(() => import("../FlujoReel"));
 // con un botón.
 // ============================================================
 
-export default function ReelIA({ client, post, cal = null, onPoner, onCerrar }) {
+export default function ReelIA({ client, post, cal = null, forma = "guion", onPoner, onCerrar }) {
   const ids = useId();
   const clienteId = client?.dbId || client?.id;
   const [estudio, setEstudio] = useState(null);
@@ -48,8 +48,10 @@ export default function ReelIA({ client, post, cal = null, onPoner, onCerrar }) 
       <div ref={ref} role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} className="sheet revision-mes carrusel-ia" tabIndex={-1}>
         <div className="sheet-header">
           <div>
-            <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)", margin: 0 }}>Crear reel con IA</h2>
-            <p className="hint" style={{ margin: 0 }}>Guion de 10 s por planos, el storyboard para revisar y el video; luego se corrige por tramos.</p>
+            <h2 id={`${ids}-t`} style={{ fontSize: "var(--fs-md)", margin: 0 }}>{forma === "producto" ? "Video del producto" : "Crear reel con IA"}</h2>
+            <p className="hint" style={{ margin: 0 }}>{forma === "producto"
+              ? "10 a 15 s: el primer fotograma y el cierre con la foto real del producto y el logo, y el video entre los dos."
+              : "Guion de 10 s por planos, el storyboard para revisar y el video; luego se corrige por tramos."}</p>
           </div>
           <button type="button" className="btn-icon" onClick={onCerrar} disabled={creando} aria-label="Cerrar"><Icon name="close" /></button>
         </div>
@@ -60,7 +62,10 @@ export default function ReelIA({ client, post, cal = null, onPoner, onCerrar }) 
             <Suspense fallback={<p className="hint">Cargando…</p>}>
               <FlujoReel
                 client={client} estudio={estudio} onCreando={setCreando}
-                inicial={{ idea, preset: presetDePilar(post.pilar, post.pilarSub) || "", productoId: post.productoId ?? "", postId: post.id ?? null, calendarId: cal ? cal.dbId || cal.id : null }}
+                inicial={{
+                  idea, preset: presetDePilar(post.pilar, post.pilarSub) || "", productoId: post.productoId ?? "", postId: post.id ?? null, calendarId: cal ? cal.dbId || cal.id : null,
+                  forma, post: { pilar: post.pilar ?? "", pilarSub: post.pilarSub ?? "", productoId: post.productoId ?? "", producto: post.producto ?? "", nivel: post.nivel ?? "", deseo: post.deseo ?? "", perfil: post.perfil ?? "" },
+                }}
                 onPoner={(archivos, opciones) => { onPoner(archivos, opciones); onCerrar(); }}
                 onListo={onCerrar}
               />

@@ -86,6 +86,8 @@ async function conEspeciales(datos = {}) {
 const conVistas = async (clienteId, datos = {}) => conEspeciales(datos.vistas ? datos : { ...datos, vistas: await vistasDelCliente(clienteId) });
 /** El reel: el guion por planos → { hilo, planos: [{ n, desde, hasta, escena, texto, camara }], sonido, descripcion } (texto). */
 export const guionDeReel = (clienteId, datos) => pedir(`${base(clienteId)}/reel/guion`, post(datos));
+/** La receta «Video del producto»: el guion (texto). → { guion, producto, prompt, aviso? } */
+export const guionDeVideoProducto = (clienteId, datos) => pedir(`${base(clienteId)}/video-producto/guion`, post(datos));
 /** «Revisar como director comercial»: `{ idea, cambios }` (no guarda). */
 export const revisarComoDirector = (clienteId, datos) => pedir(`${base(clienteId)}/director`, post(datos));
 

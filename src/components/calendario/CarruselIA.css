@@ -38,3 +38,12 @@
 .reel-flow { display: flex; flex-direction: column; gap: var(--sp-2); }
 .reel-flow-acciones { display: flex; align-items: center; gap: var(--sp-2); }
 .reel-flow-prompt { white-space: pre-wrap; word-break: break-word; font-size: var(--fs-2xs); max-height: 320px; overflow: auto; margin: var(--sp-2) 0 0; padding: var(--sp-2); background: var(--surface-2); border-radius: var(--radius-sm); }
+
+/* «Qué video» del flujo de video (por planos o del producto). Las mismas reglas que en Estudio.css: el flujo también se
+   abre desde el panel de una publicación, donde Estudio.css no se carga. */
+.est-formas-video { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--sp-2); }
+.flujo-reel-formas { margin: 0 0 var(--sp-4); }
+.est-forma-video { display: flex; flex-direction: column; gap: 2px; text-align: left; min-height: var(--tap); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+.est-forma-video span { font-size: var(--fs-3xs); color: var(--text-dim); }
+.est-forma-video[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.est-forma-video:disabled { cursor: default; opacity: .6; }

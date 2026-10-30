@@ -422,6 +422,43 @@ describe("el guion de un video corto", () => {
   });
 });
 
+describe("la receta «Video del producto»", () => {
+  const RESPUESTA = '{"inicio":"Una sala con un sofá manchado","tramos":[{"clave":"gancho","accion":"Cae jugo sobre el sofá"},{"clave":"uso","accion":"Lo limpian con la máquina"},{"clave":"cierre","accion":"El sofá limpio y el servicio"}],"camara":"acercamiento","locucion":"¿Se manchó tu sofá? Lo dejamos como nuevo.","musica":"alegre","descripcion":"Escríbenos"}';
+
+  it("escribe el guion con el producto del catálogo y su precio, sin lo interno, y la voz va en el pedido del video", async () => {
+    await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: CATALOGO } });
+    anthropic(flujo(RESPUESTA));
+    const r = await pedir("/api/estudio/c1/video-producto/guion", { method: "POST", body: { productoId: "p-lavado", segundos: 12, idea: "Sofá manchado" } });
+    expect(r.status).toBe(200);
+    const d = await r.json();
+    expect(d.guion.segundos).toBe(12);
+    expect(d.guion.tramos.at(-1).hasta).toBe(12);
+    expect(d.producto).toEqual({ id: "p-lavado", nombre: expect.any(String) });
+    expect(d.prompt).toContain("dice exactamente: «¿Se manchó tu sofá? Lo dejamos como nuevo.»");
+    const t = textoDe(peticiones[0]);
+    expect(t).toContain("Desde $45");
+    expect(t).toContain("Sofá manchado");
+    expect(t).not.toContain("margen");
+    expect(db.sqlite.prepare("select funcion from consumo_ia").all().map((x) => x.funcion)).toContain("guion de video");
+  });
+
+  it("sin un producto del catálogo no escribe nada (el video termina en su foto real)", async () => {
+    await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: CATALOGO } });
+    const antes = peticiones.length;
+    const r = await pedir("/api/estudio/c1/video-producto/guion", { method: "POST", body: { productoId: "no-existe", segundos: 10 } });
+    expect(r.status).toBe(400);
+    expect((await r.json()).error).toMatch(/producto del catálogo/);
+    expect(peticiones).toHaveLength(antes);
+  });
+
+  it("una duración que no es de la receta cae en 10 s", async () => {
+    await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: CATALOGO } });
+    anthropic(flujo(RESPUESTA));
+    const d = await (await pedir("/api/estudio/c1/video-producto/guion", { method: "POST", body: { productoId: "p-lavado", segundos: 99 } })).json();
+    expect(d.guion.segundos).toBe(10);
+  });
+});
+
 describe("de quién es", () => {
   it("un cliente de otro espacio no existe", async () => {
     expect((await pedir("/api/mercado/ajeno")).status).toBe(404);
