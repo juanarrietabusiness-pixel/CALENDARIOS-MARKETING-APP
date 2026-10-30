@@ -51,7 +51,8 @@ import { pedidoConMarca, ponerLogo, kitVacio, IDS_PRESET, TIPOS_PRESET } from ".
 import { productosActivos } from "../../../src/lib/estudioMercado.js";
 
 /** Lo más que puede pedir una IA de una vez. La pantalla admite más (8 imágenes, 2 videos): ahí lo ve una persona. */
-export const LIMITES = Object.freeze({ imagenes: 4, videos: MAX_VIDEOS_POR_PEDIDO, segundos: 10 });
+// 15 s: lo que dura un clip de MiniMax H3 o Kling 3.0 (la receta «Video del producto»). El gasto lo frena la confirmación.
+export const LIMITES = Object.freeze({ imagenes: 4, videos: MAX_VIDEOS_POR_PEDIDO, segundos: 15 });
 
 const GALERIA_A_MOSTRAR = 12;
 const MAX_GUIA = 1_800;
@@ -102,6 +103,7 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
           type: "string", enum: [...IDS_PRESET],
           description: `El preset del KIT DE MARCA según el TIPO DE CONTENIDO (${Object.entries(TIPOS_PRESET).map(([id, d]) => `${id}: ${d.nombre}`).join("; ")}; las 7 maletas también como maletas-garantia, maletas-testimonio, maletas-solucion o maletas-objeciones). La identidad de la marca (paleta, estilo, tipografía) y el logo de referencia van SIEMPRE que el cliente tenga kit, con estilo o sin él: el prompt es sólo la ESCENA en una o dos frases.`,
         },
+        sin_logo: { type: "boolean", description: "Una imagen SIN el logo del kit (el primer fotograma de un video: el logo va sólo en la imagen del cierre)." },
         confirmado: { type: "boolean", description: "Sólo tras oír «sí» del usuario a la cifra exacta que le dijiste." },
       },
       required: ["prompt"],
@@ -115,6 +117,20 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
 ]);
 
 export const NOMBRES_ESTUDIO = new Set(DEFINICIONES_ESTUDIO.map((d) => d.name));
+
+/**
+ * La receta «Video del producto» (src/lib/videoProducto.js) dicha a la IA: la misma que sigue el botón de la pantalla, así
+ * pedirla en el chat o por Claude da lo mismo. Salió de una prueba que funcionó: la caja y el logo salen perfectos porque
+ * NO los dibuja el modelo de video.
+ */
+export const RECETA_VIDEO_PRODUCTO = [
+  "RECETA «VIDEO DEL PRODUCTO» (10–15 s; síguela cuando pidan un video de un producto):",
+  "1. Primer fotograma: crear_en_estudio de imagen, formato 9:16, con sin_logo=true: la escena donde empieza la acción.",
+  "2. Cierre: imagen 9:16 con las fotos del producto en referencias: el producto IDÉNTICO al centro del tercio inferior y el logo (lo pone el kit) arriba.",
+  "3. Video: tipo video con imagen_inicial (1) e imagen_final (2), minimax-h3-kie si está; el prompt describe el MOVIMIENTO por segundos " +
+    "(no lo que ya se ve), corto, y la voz en off en español latino neutro escrita entre comillas palabra por palabra (2,5 palabras por segundo): " +
+    "si no se escribe, el modelo se inventa una en otro idioma. Sin texto en pantalla.",
+].join("\n");
 
 /** El catálogo guardado (texto JSON de `mercado_clientes`), o vacío si no se lee. */
 function catalogoDeLaFila(fila) {
@@ -149,6 +165,7 @@ export function textoDelCatalogo(catalogo, kit, archivos) {
       "manda (lo deforma): si el video tiene que cerrar con el logo, crea primero la imagen del cierre (sale con el logo) y úsala de imagen_final.",
     );
   }
+  if (catalogo.some((p) => p.fotos.some((k) => idDe.has(k)))) partes.push(RECETA_VIDEO_PRODUCTO);
   return partes.join("\n\n");
 }
 
@@ -262,7 +279,7 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       const kit = kitDe(c);
       // Un logo cuyo archivo ya no está (lo borró una papelera de antes) no se pide: tumbaría la pieza entera.
       if (kit.logo && !(await env.MEDIA.head(kit.logo).catch(() => true))) kit.logo = "";
-      const conLogo = !kitVacio(kit) && ponerLogo({ kit, tipo, modelo, referencias: medios.reference ?? [] });
+      const conLogo = entrada.sin_logo !== true && !kitVacio(kit) && ponerLogo({ kit, tipo, modelo, referencias: medios.reference ?? [] });
       if (conLogo) medios.reference = [...(medios.reference ?? []), kit.logo];
       const prompt = pedidoConMarca({
         kit, idea: entrada.prompt, preset: entrada.estilo ?? "", marca: c.name, rubro: c.industry ?? "",

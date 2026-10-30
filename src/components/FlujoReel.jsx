@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import { textoCosto, estimar, costoDePieza, etiquetaDeCosto, CONFIRMAR_DESDE, MODELOS, VOCES_OMNI } from "../lib/estudioCatalogo";
 import * as api from "../lib/estudio";
@@ -46,8 +46,14 @@ import "./EstudioLote.css";
 
 const PASOS = [["idea", "Idea"], ["planos", "Planos"], ["fotogramas", "Fotogramas"], ["video", "Video"]];
 
+// La receta «Video del producto» (10–15 s, termina en la foto real y el logo) es la otra forma de este mismo flujo: va
+// aquí y no como opción del compositor porque el chunk del Estudio está en su tope (rendimiento.bundle.test.js).
+const FlujoVideoProducto = lazy(() => import("./FlujoVideoProducto"));
+const FORMAS = [["guion", "Por planos", "La idea, el storyboard y el video (o Flow)"], ["producto", "Del producto", "10–15 s que terminan en su foto real y el logo"]];
+
 export default function FlujoReel({ client, estudio, inicial = {}, onPoner = null, onListo = null, cabecera = null, onCreando = () => {} }) {
   const ids = useId();
+  const [forma, setForma] = useState(inicial.forma === "producto" ? "producto" : "guion");
   const clienteId = client?.dbId || client?.id;
   const kit = limpiarKit(estudio?.kit);
   const activos = estudio?.activos ?? {};
@@ -325,9 +331,33 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
   const pedirConConfirmar = (que, costo, hacer) => (costo >= CONFIRMAR_DESDE ? setConfirmar(que) : hacer());
   const indice = PASOS.findIndex(([x]) => x === paso);
 
+  // Qué video: por planos (este flujo) o la receta del producto. Mientras se crea algo no se cambia (se perdería).
+  const selectorForma = (paso === "idea" || forma === "producto") && (
+    <div className="est-formas-video flujo-reel-formas" role="radiogroup" aria-label="Qué video">
+      {FORMAS.map(([id, nombre, ayuda]) => (
+        <button key={id} type="button" role="radio" aria-checked={forma === id} className="est-forma-video" disabled={Boolean(ocupado)} onClick={() => setForma(id)}>
+          <strong>{nombre}</strong>
+          <span>{ayuda}</span>
+        </button>
+      ))}
+    </div>
+  );
+  if (forma === "producto") {
+    return (
+      <section className="card flujo-carrusel flujo-reel" aria-label="Video del producto">
+        {cabecera}
+        {selectorForma}
+        <Suspense fallback={<p className="hint">Cargando…</p>}>
+          <FlujoVideoProducto client={client} estudio={estudio} inicial={inicial} onPoner={onPoner} onListo={onListo} onCreando={(si) => { ocupar(si ? "producto" : ""); }} />
+        </Suspense>
+      </section>
+    );
+  }
+
   return (
     <section className="card flujo-carrusel flujo-reel" aria-labelledby={`${ids}-t`}>
       {cabecera}
+      {selectorForma}
       <h3 id={`${ids}-t`} className="sr-only">Crear un reel con IA</h3>
       <ol className="lote-pasos" aria-label="Pasos">
         {PASOS.map(([id, n], k) => <li key={id} aria-current={id === paso ? "step" : undefined} data-hecho={indice > k || undefined}>{k + 1}. {n}</li>)}

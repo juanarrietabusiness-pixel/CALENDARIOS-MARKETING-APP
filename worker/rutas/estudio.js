@@ -26,6 +26,7 @@
 //   POST   /<cliente>/reel/ideas                   { preset?, tema?, productoId?, n?, usados?, segundos? }: ideas de reel IA (texto)
 //   POST   /<cliente>/reel/guion                   { idea, segundos?, preset?, estilo?, productoId?, personajes? }: el guion por planos (texto)
 //   POST   /<cliente>/guion-corto                  { idea, segundos, post? }: guion de un video de 8 o 10 s (texto)
+//   POST   /<cliente>/video-producto/guion         { productoId, segundos?, idea?, post? }: la receta «Video del producto» (texto)
 //   PUT    /<cliente>/kit                          { kit }: guarda el kit de marca (paleta, presets, logo…)
 //   POST   /<cliente>/kit/preparar                 La IA PROPONE el kit desde el cerebro (no guarda)
 //   POST   /<cliente>/kit/aprender                 La IA MIRA los «Me gusta» y la papelera y PROPONE reglas visuales (no guarda)
@@ -68,7 +69,7 @@ import { firma, difundir } from "../lib/vivo.js";
 import { estadoMotores } from "../lib/estudio/motores.js";
 import { mejorarIdea, versionesDeIdea } from "../lib/estudio/prompt.js";
 import { fichasDeDiseno } from "../lib/estudio/fichas.js";
-import { guionCorto } from "../lib/estudio/guionCorto.js";
+import { guionCorto, guionDeVideoProducto } from "../lib/estudio/guionCorto.js";
 import { kitDe, guardarKit, prepararKit, revisarPieza, subirFuente } from "../lib/estudio/kit.js";
 import { guardarPlantilla, quitarPlantilla } from "../lib/estudio/plantillas.js";
 import { sistemaDePortada, controlarPieza } from "../lib/estudio/control.js";
@@ -392,6 +393,18 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       if (!datos) return error("JSON inválido");
       try {
         return json(await guionCorto(env, acceso, cliente, datos));
+      } catch (e) {
+        if (e?.estado) return error(e.message, e.estado);
+        throw e;
+      }
+    }
+
+    // ---------- La receta «Video del producto»: el guion (texto) ----------
+    if (b === "video-producto" && c === "guion" && !d && metodo === "POST") {
+      const datos = await cuerpo(req);
+      if (!datos) return error("JSON inválido");
+      try {
+        return json(await guionDeVideoProducto(env, acceso, cliente, datos));
       } catch (e) {
         if (e?.estado) return error(e.message, e.estado);
         throw e;

@@ -163,9 +163,14 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
     setEscrito(`${varias ? `Puestas ${archivos.length} piezas` : "Puesta 1 pieza"} de la galería en la publicación${varias ? ", en orden" : ""}.${aviso}`);
   };
   /** El video del reel con IA: va SOLO en la publicación (sustituye lo que hubiera) y se apunta su uso. */
-  const ponerReel = ([video]) => {
+  const ponerReel = ([video], opciones = {}) => {
     if (!video) return;
-    setForm((p) => ({ ...conMedios(p, [medioDeArchivo(video)]), mediosCambiadosAt: new Date().toISOString() }));
+    // El caption que escribió la receta «Video del producto» sólo RELLENA: lo escrito a mano gana.
+    const caption = String(opciones.descripcion ?? "").trim();
+    setForm((p) => ({
+      ...conMedios(p, [medioDeArchivo(video)]), mediosCambiadosAt: new Date().toISOString(),
+      ...(caption && !String(p.descripcion || p.script || "").trim() ? { descripcion: caption } : {}),
+    }));
     if (cal && post.id) apuntarUso(clientId, video.id, { calendarId: cal.dbId || cal.id, postId: post.id }).catch(() => {});
     setEscrito("Puesto el reel en la publicación.");
   };
@@ -424,7 +429,8 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           onCorregir={clientId ? (m) => (enEstudio ? abrirEnEstudio(m, "editar") : corregir(m)) : null}
           versionando={versionando}
           onCrearCarrusel={post.format === "carrusel" && clientId ? () => setCarrusel(true) : null}
-          onCrearReel={post.format === "reel" && clientId ? () => setReel(true) : null}
+          onCrearReel={post.format === "reel" && clientId ? () => setReel("guion") : null}
+          onVideoProducto={(post.format === "reel" || post.format === "historia") && clientId ? () => setReel("producto") : null}
           onDeLaGaleria={clientId ? () => setGaleria(true) : null}
         />
         {client && (puedeCrearAqui || conImagen) && (
@@ -515,7 +521,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
         )}
         {reel && (
           <Suspense fallback={null}>
-            <ReelIA client={client} post={post} cal={cal} onPoner={ponerReel} onCerrar={() => setReel(false)} />
+            <ReelIA client={client} post={post} cal={cal} forma={reel} onPoner={ponerReel} onCerrar={() => setReel(false)} />
           </Suspense>
         )}
 
