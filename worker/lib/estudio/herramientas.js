@@ -5,7 +5,8 @@
 // como las de consulta de `herramientasServidor.js`):
 //
 //   · ver_estudio        qué modelos hay HOY, lo último de la galería, lo que está en
-//                        marcha y la GUÍA VISUAL de la marca (del cerebro)
+//                        marcha, la GUÍA VISUAL de la marca (del cerebro) y el CATÁLOGO
+//                        con los ids de las fotos de cada producto y del logo
 //   · crear_en_estudio   pide una imagen o un video: un TRABAJO, no una espera
 //   · estado_trabajo     cómo va un pedido y qué archivos dio
 //
@@ -30,6 +31,12 @@
 // sería un prompt que nadie escribió. Claude ve la guía y la usa al escribir el suyo.
 // Sale del cerebro con `para: "imagen"`: la identidad visual, sin las notas internas
 // (costos, márgenes) que a un proveedor externo no se le cuentan.
+//
+// LAS FOTOS DEL CATÁLOGO SE DAN POR SU ID DE LA GALERÍA. Antes ver_estudio sólo enseñaba
+// las 12 piezas más nuevas: las fotos REALES de un producto (subidas hace semanas) no
+// salían nunca, y un video del producto se lo inventaba entero. El catálogo se lee de
+// `mercado_clientes` a mano y no con `leerMercado`: mercado.js importa (por
+// herramientasServidor.js) este archivo, y sería circular.
 // ============================================================
 
 import {
@@ -41,6 +48,7 @@ import { buscar as buscarCerebro } from "../cerebro/cerebro.js";
 import { pack } from "../cerebro/memoria.js";
 import { kitDe } from "./kit.js";
 import { pedidoConMarca, ponerLogo, kitVacio, IDS_PRESET, TIPOS_PRESET } from "../../../src/lib/kitMarca.js";
+import { productosActivos } from "../../../src/lib/estudioMercado.js";
 
 /** Lo más que puede pedir una IA de una vez. La pantalla admite más (8 imágenes, 2 videos): ahí lo ve una persona. */
 export const LIMITES = Object.freeze({ imagenes: 4, videos: MAX_VIDEOS_POR_PEDIDO, segundos: 10 });
@@ -62,8 +70,10 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
     name: "ver_estudio",
     description:
       "El Estudio de un cliente (imágenes y videos con IA): qué modelos están disponibles ahora y cuánto cuestan, la GUÍA VISUAL de su " +
-      "marca, lo último de su galería (con los IDs para partir de una imagen) y lo que está en marcha. Mírala ANTES de crear algo: " +
-      "los modelos que aparecen son los únicos que funcionan, y la guía visual es lo que hay que meter en el prompt para que la pieza sea de esa marca.",
+      "marca, su CATÁLOGO con los IDs de las fotos reales de cada producto y del logo, lo último de su galería (con los IDs para partir de una " +
+      "imagen) y lo que está en marcha. Mírala ANTES de crear algo: los modelos que aparecen son los únicos que funcionan, la guía visual es lo " +
+      "que hay que meter en el prompt para que la pieza sea de esa marca, y si la pieza enseña un producto, sus fotos van de referencia o de " +
+      "imagen_inicial: sin ellas el modelo se inventa el empaque.",
     input_schema: { type: "object", properties: { ...clienteParam } },
   },
   {
@@ -105,6 +115,42 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
 ]);
 
 export const NOMBRES_ESTUDIO = new Set(DEFINICIONES_ESTUDIO.map((d) => d.name));
+
+/** El catálogo guardado (texto JSON de `mercado_clientes`), o vacío si no se lee. */
+function catalogoDeLaFila(fila) {
+  try {
+    return productosActivos(JSON.parse(fila?.catalogo ?? "[]"));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * El catálogo y el logo con los IDs de la galería que sirven en crear_en_estudio. Pura.
+ * Una foto sin ficha viva en la galería (en la papelera, o subida antes de que existiera) no tiene ID: se cuenta, no se ofrece.
+ */
+export function textoDelCatalogo(catalogo, kit, archivos) {
+  const idDe = new Map(archivos.filter((f) => !f.borrado_at && String(f.mime).startsWith("image/")).map((f) => [f.clave, f.id]));
+  const partes = [];
+  if (catalogo.length) {
+    const lineas = catalogo.map((p) => {
+      const ids = p.fotos.map((k) => idDe.get(k)).filter(Boolean);
+      const sinFicha = p.fotos.length - ids.length;
+      const fotos = ids.length ? `fotos: ${ids.join(", ")}` : "sin fotos";
+      return `· ${p.nombre}${p.marca ? ` (de la marca ${p.marca}: respeta su empaque y no le pongas el logo del cliente)` : ""}` +
+        `${p.precio ? ` · ${p.precio}` : ""} · ${fotos}${sinFicha ? ` (${sinFicha} sin ficha en la galería: no se pueden usar desde aquí)` : ""}`;
+    });
+    partes.push(`CATÁLOGO (las fotos son el producto REAL: pon sus IDs en referencias o en imagen_inicial cuando la pieza lo enseñe):\n${lineas.join("\n")}`);
+  }
+  if (kit.logo) {
+    const id = idDe.get(kit.logo);
+    partes.push(
+      `LOGO DEL KIT: ${id ?? "está en el kit pero no tiene ficha en la galería"}. En una imagen el kit ya lo pone solo. A un modelo de VIDEO no se le ` +
+      "manda (lo deforma): si el video tiene que cerrar con el logo, crea primero la imagen del cierre (sale con el logo) y úsala de imagen_final.",
+    );
+  }
+  return partes.join("\n\n");
+}
 
 /**
  * @param resolverCliente  async (nombre?) → fila de `clients`; la misma que usan las demás herramientas
@@ -148,13 +194,15 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
           `${porDefecto[m.tipo]?.id === m.id ? " · PREDETERMINADO" : ""}${valores ? ` · ${valores}` : ""}${apoyo ? ` · admite ${apoyo}` : ""}`;
       };
 
-      const [filas, trabajos, guia] = await Promise.all([
+      const [filas, trabajos, guia, mercado] = await Promise.all([
         acceso.leer("estudio_archivos", { client_id: c.id }, "created_at desc"),
         acceso.leer("estudio_trabajos", { client_id: c.id }, "created_at desc", 20),
         guiaVisual(c.id),
+        acceso.leerUno("mercado_clientes", { client_id: c.id }).catch(() => null),
       ]);
       const galeria = filas.filter((f) => !f.borrado_at).slice(0, GALERIA_A_MOSTRAR);
       const vivos = trabajos.filter((t) => estaVivo(t.estado));
+      const catalogo = textoDelCatalogo(catalogoDeLaFila(mercado), kitDe(c), filas);
 
       return [
         `Estudio de ${c.name}.`,
@@ -167,6 +215,7 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         guia
           ? `GUÍA VISUAL DE LA MARCA (del cerebro; ponla en el prompt, con tus palabras):\n${guia}`
           : `GUÍA VISUAL: el cerebro de ${c.name} no tiene notas de identidad visual. Pregunta al usuario por colores, estilo y qué evitar, o pídele que las añada en la pestaña Cerebro.`,
+        catalogo,
         galeria.length
           ? `GALERÍA (lo último; el ID sirve de imagen_inicial o referencia):\n${galeria.map((f) => `· ${f.id} · ${f.tipo} · ${f.modelo || "subida"} · «${String(f.prompt).slice(0, 90)}»`).join("\n")}`
           : "GALERÍA: todavía no hay nada.",

@@ -1433,6 +1433,11 @@ son del servidor.
   ejecutor sin `estudio` no puede gastar. La guía visual de la marca sale del cerebro con
   `para: "imagen"` (sin notas internas) y se le ENSEÑA al modelo; no se pega al prompt, porque
   lo que sale al proveedor tiene que ser lo que quedó escrito en la galería.
+  · **`ver_estudio` da el CATÁLOGO con los IDs de la galería de las fotos de cada producto y del logo** (`textoDelCatalogo`):
+  sólo enseñaba las 12 piezas más nuevas, y las fotos reales de un producto, subidas hace semanas, no salían nunca —Claude
+  pedía el video sin ellas y el modelo se inventaba la caja—. Lee `mercado_clientes` a mano, no con `leerMercado`
+  (mercado.js importa este archivo por herramientasServidor.js: sería circular). El logo se da con su regla: en video, una
+  imagen de cierre con el logo como `imagen_final`, nunca de referencia.
   · **Lo creado desde «Subir» apunta su uso al guardar** (`delEstudio` en `SubirRapido`): la
   publicación aún no existe al crear, y sin `usado_en` la papelera podría llevarse el archivo.
 - **El lote sigue en el SERVIDOR aunque se cierre la aplicación** (decisión de la agencia: en el teléfono, salir de la
