@@ -138,6 +138,40 @@ describe("ver_estudio", () => {
     expect(texto).toMatch(/no tiene notas de identidad visual/);
   });
 
+  it("el catálogo sale con los IDs de las fotos reales y del logo, aunque sean viejas y no estén entre las 12 últimas", async () => {
+    const foto = archivo("foto-pants", "c2", { prompt: "subida" });
+    const papelera = archivo("foto-vieja", "c2", { borrado: "2026-09-01T00:00:00.000Z" });
+    const ajena = archivo("foto-ajena", "c1");
+    const logo = archivo("logo-bc", "c2", { prompt: "logo" });
+    for (let i = 0; i < 14; i++) archivo(`nueva-${i}`, "c2");
+    // Las 14 nuevas van DESPUÉS: la foto y el logo quedan fuera de «lo último».
+    db.sqlite.prepare("update estudio_archivos set created_at = '2026-01-01T00:00:00.000Z' where id in ('foto-pants', 'logo-bc')").run();
+    db.sqlite.prepare("update clients set kit_marca = ? where id = 'c2'").run(JSON.stringify({ estilo: "cálido", logo }));
+    db.sqlite.prepare("insert into mercado_clientes (id, owner_id, client_id, catalogo) values (?,?,?,?)").run("m2", ANA, "c2", JSON.stringify([
+      { id: "pants", nombre: "Pañales Nateen tipo pants", precio: "$55.00", fotos: [foto, papelera, ajena] },
+      { id: "fular", nombre: "Fular Moon", precio: "$46.00", marca: "Moon" },
+      { id: "viejo", nombre: "Producto retirado", activo: false, fotos: [foto] },
+    ]));
+
+    const { texto } = await usar(asistente(), "ver_estudio", { cliente: "Baby Caleb" });
+    expect(texto).toMatch(/CATÁLOGO/);
+    expect(texto).toMatch(/Pañales Nateen tipo pants · \$55\.00 · fotos: foto-pants \(2 sin ficha/);
+    expect(texto).toMatch(/Fular Moon \(de la marca Moon[^\n]*sin fotos/);
+    expect(texto).not.toContain("Producto retirado");
+    expect(texto).not.toContain("foto-vieja");
+    expect(texto).not.toContain("foto-ajena");
+    expect(texto).toMatch(/LOGO DEL KIT: logo-bc\. [^\n]*imagen_final/);
+    // Y los IDs que da sirven de verdad para pedir.
+    const r = await usar(asistente(), "crear_en_estudio", { cliente: "Baby Caleb", prompt: "la caja", modelo: "prueba", referencias: ["foto-pants"] });
+    expect(r.error).toBe(false);
+  });
+
+  it("sin catálogo ni logo, no hay sección de catálogo", async () => {
+    const { texto } = await usar(asistente(), "ver_estudio", { cliente: "Dcasa" });
+    expect(texto).not.toContain("CATÁLOGO");
+    expect(texto).not.toContain("LOGO DEL KIT");
+  });
+
   it("lo que está en marcha aparece", async () => {
     await usar(asistente(), "crear_en_estudio", { cliente: "Dcasa", prompt: "un sofá", modelo: "prueba" });
     const { texto } = await usar(asistente(), "ver_estudio", { cliente: "Dcasa" });
