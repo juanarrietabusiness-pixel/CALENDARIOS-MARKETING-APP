@@ -125,6 +125,36 @@ export function conMedios(post, medios) {
   return { ...post, medios: lista, image: primeraImagen };
 }
 
+/**
+ * Una imagen de la publicación cambiada por otra EN SU SITIO (la lámina N de un carrusel sigue siendo la N). La usa la
+ * versión 4:5 / 9:16 hecha con IA: antes quedaba aparte, en `adaptados`, y la lámina seguía enseñando la original con la
+ * medida mala. Las copias adaptadas de la vieja se van (ya no son de nada). Pura.
+ */
+export function reemplazarMedio(post, srcViejo, nuevo) {
+  const medios = mediosDe(post);
+  const i = medios.findIndex((m) => m.src === srcViejo);
+  if (i < 0 || !nuevo?.src) return post;
+  const lista = medios.map((m, k) => (k === i
+    ? { src: nuevo.src, tipo: "imagen", nombre: nuevo.nombre ?? m.nombre ?? "", ...(nuevo.ancho && nuevo.alto ? { ancho: nuevo.ancho, alto: nuevo.alto } : {}) }
+    : m));
+  const adaptados = Object.fromEntries(Object.entries(post?.adaptados ?? {}).filter(([k]) => !k.endsWith(`|${srcViejo}`)));
+  return { ...conMedios(post, lista), adaptados };
+}
+
+/**
+ * Las copias adaptadas siguen a su imagen cuando ésta cambia de ruta (al pasarla a JPEG para programar, la PNG del
+ * Estudio sube con otra dirección). Sin esto la copia 4:5 hecha con IA quedaba colgando de la ruta vieja, no se
+ * encontraba, y el carrusel salía difuminado o con la medida mala. `mapa`: ruta vieja → nueva. Pura.
+ */
+export function renombrarAdaptados(adaptados, mapa) {
+  if (!adaptados || !mapa?.size) return adaptados;
+  return Object.fromEntries(Object.entries(adaptados).map(([k, v]) => {
+    const corte = k.indexOf("|");
+    const src = k.slice(corte + 1);
+    return [mapa.has(src) ? `${k.slice(0, corte)}|${mapa.get(src)}` : k, v];
+  }));
+}
+
 /** Las redes que, por defecto, sólo llevan video: TikTok (por PostPeer) y YouTube. */
 const SOLO_VIDEO = new Set(["tiktok", "youtube"]);
 

@@ -9,7 +9,7 @@
 import { compressImage } from "../utils";
 import {
   mediosDe, fotosTikTok, historiasDe, piezasDe, publicacionDeVariante, objetivoDe, necesitaAjuste, claveAdaptado, medidasAjuste, proporcionParaIA,
-  esDeMeta,
+  esDeMeta, renombrarAdaptados,
 } from "./publicacion";
 
 /** Una imagen del banco, reducida y en base64 para mandarla al modelo. */
@@ -258,15 +258,20 @@ export function encuadrarParaCuadricula(img, encuadre = 0) {
 
 const aBlob = (lienzo, calidad = 0.9) => new Promise((ok) => lienzo.toBlob(ok, "image/jpeg", calidad));
 
-/** Cómo quedará: una vista pequeña (data: URL) sin subir nada. */
+/**
+ * Cómo quedará, sin subir nada. Lo que ya cabe en su destino es el ORIGINAL tal cual (la misma URL); lo que no, el
+ * ajuste a su tamaño de salida (1080 de ancho) en un data: URL. Antes todo se dibujaba a 360 px con calidad 0,75: en
+ * una pantalla retina la vista previa de Instagram se veía borrosa y la de Facebook (el original) nítida.
+ */
 export async function vistaAjuste(src, objetivo, modo, color) {
   const img = await bitmapDe(src);
+  const medio = { tipo: "imagen", ancho: img.width, alto: img.height };
+  if (!necesitaAjuste(medio, objetivo)) { img.close?.(); return src; }
   const m = medidasAjuste(img.width, img.height, objetivo);
-  const escala = 360 / m.ancho;
   // «ia» sin copia todavía: se enseña lo que saldría, que es el difuminado.
-  const lienzo = encajar(img, { ancho: Math.round(m.ancho * escala), alto: Math.round(m.alto * escala) }, modo === "ia" ? "difuminado" : modo, color);
+  const lienzo = encajar(img, { ancho: m.ancho, alto: m.alto }, modo === "ia" ? "difuminado" : modo, color);
   img.close?.();
-  return lienzo.toDataURL("image/jpeg", 0.75);
+  return lienzo.toDataURL("image/jpeg", 0.9);
 }
 
 /** Una imagen llevada a historia 9:16 (sin IA) y subida: lista para `post.historias`. */
@@ -378,12 +383,18 @@ export async function prepararParaRedes(post, redes, { subir, colorMarca } = {})
   const meta = redes.some(esDeMeta);
   if (!meta) return { post: nuevo, cambio };
 
-  const r1 = await prepararMediosParaMeta(mediosDe(nuevo), subir);
-  if (r1.cambio) { nuevo = { ...nuevo, medios: r1.medios, image: r1.medios.find((m) => m.tipo !== "video")?.src ?? null }; cambio = true; }
+  // La conversión a JPEG cambia la ruta de la imagen: las copias adaptadas la siguen (renombrarAdaptados).
+  const rutas = new Map();
+  const apuntar = (antes, despues) => antes.forEach((m, i) => { if (despues[i] && despues[i].src !== m.src) rutas.set(m.src, despues[i].src); });
+  const antes1 = mediosDe(nuevo);
+  const r1 = await prepararMediosParaMeta(antes1, subir);
+  if (r1.cambio) { apuntar(antes1, r1.medios); nuevo = { ...nuevo, medios: r1.medios, image: r1.medios.find((m) => m.tipo !== "video")?.src ?? null }; cambio = true; }
   if (historiasDe(nuevo).length) {
-    const r2 = await prepararMediosParaMeta(historiasDe(nuevo), subir);
-    if (r2.cambio) { nuevo = { ...nuevo, historias: r2.medios }; cambio = true; }
+    const antes2 = historiasDe(nuevo);
+    const r2 = await prepararMediosParaMeta(antes2, subir);
+    if (r2.cambio) { apuntar(antes2, r2.medios); nuevo = { ...nuevo, historias: r2.medios }; cambio = true; }
   }
+  if (rutas.size && nuevo.adaptados) nuevo = { ...nuevo, adaptados: renombrarAdaptados(nuevo.adaptados, rutas) };
 
   const modo = nuevo.ajusteIG || "difuminado";
   const adaptados = { ...(nuevo.adaptados ?? {}) };

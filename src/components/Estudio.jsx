@@ -611,22 +611,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     enfocarPrompt();
   };
 
-  /** «Ajustar y pedir»: la pieza vuelve al compositor para cambiar algo antes de pedirla otra vez. */
-  const repetir = (a) => {
-    const m = modeloPorId(a.modelo);
-    const usable = m && motorActivo(m);
-    // Un modelo sin llave o retirado: el que esté escogido si es del mismo tipo; si no, el predeterminado de ese tipo.
-    const escogido = modeloPorId(form.modelo);
-    const destino = usable ? m : escogido?.tipo === a.tipo ? escogido : api.modeloPreferido(activos, a.tipo, fijados[a.tipo]);
-    const medios = MEDIOS_VACIOS();
-    setConfirmando(null);
-    setForm({ tipo: destino.tipo, modelo: destino.id, prompt: a.prompt, n: 1, medios, ajustes: ajustesDe(destino, a.ajustes, clavesDe(medios)) });
-    setVisor(null);
-    setEnPapelera(false);
-    setAviso(usable || !a.modelo ? null : { ok: false, texto: `${nombreDelModelo(a.modelo)} no está disponible${m ? " en este servidor" : ""}: se usó ${destino.nombre}.` });
-    enfocarPrompt();
-  };
-
   // ---------- «Otra igual» y «Otra versión distinta»: salen ya, sin pasar por el compositor ----------
   /** El pedido con que se creó una pieza: su prompt, su modelo, sus ajustes y sus imágenes de apoyo (las de su trabajo). */
   const pedidoDe = (a, otro = "") => {
@@ -634,7 +618,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     // `otro`: el modelo escogido en el visor para esta vez; sus referencias, las que le quepan.
     const o = api.modeloParaOtra(activos, otro, a, t?.medios?.reference?.length ?? 0);
     const m = o ?? modeloPorId(a.modelo);
-    if (!m || !motorActivo(m)) return { error: `${nombreDelModelo(a.modelo) || "Ese modelo"} no está disponible: usa «Ajustar y pedir» para escoger otro.` };
+    if (!m || !motorActivo(m)) return { error: `${nombreDelModelo(a.modelo) || "Ese modelo"} no está disponible: escoge otro en «Con qué modelo».` };
     const medios = Object.fromEntries(Object.entries(t?.medios ?? {}).filter(([, l]) => Array.isArray(l) && l.length).map(([k, l]) => [k, m === o && k === "reference" ? l.slice(0, m.referencias || 0) : l]));
     return { modelo: m, medios, ajustes: ajustesDe(m, a.ajustes ?? t?.ajustes ?? {}, medios), carpetaId: a.carpetaId ?? null };
   };
@@ -1372,7 +1356,6 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           onFavorito={() => alternarFavorito(visor)}
           onPapelera={() => aPapelera(visor)}
           onMover={(c) => moverA(visor, c)}
-          onRepetir={() => repetir(visor)}
           onRecrear={dialogo && !inicial?.abrir ? null : () => { const a = visor; setVisor(null); setRecrear({ archivo: a }); }}
           costoOtra={costoDeOtra(visor)}
           onOtraIgual={(otro) => otraIgual(visor, otro)}

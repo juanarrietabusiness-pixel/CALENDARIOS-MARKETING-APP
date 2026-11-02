@@ -13,6 +13,7 @@ import { fechasDelMes } from "../lib/fechasEspeciales";
 import { leerMercado } from "../lib/mercado";
 import { productosParaPlan, limpiarEstudio, estructuraATexto } from "../lib/estudioMercado";
 import { leerPlantillas } from "../lib/plantillasApi";
+import { conNotasDelDia } from "../lib/notasSemana";
 import { plantillaDelCliente, configDeFormatos, resumenPlantilla, OBJETIVOS_PLAN } from "../lib/plantillasPlan";
 import {
   PILARES, limpiarRitmo, ritmoDelMes, sugerenciasDeTemporada, asignarMatriz, lineasDeContenido,
@@ -308,11 +309,14 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
         const previa = (ideas[d.date] || [])[j] || {};
         const propia = Object.fromEntries(CAMPOS_MATRIZ.filter((k) => previa[k]).map((k) => [k, previa[k]]));
         // El tipo de la publicación: el que diga la plantilla (un reel de contenido humano) o el del ritmo del día.
-        lista.push({ clave: `${d.date}|${j}`, pilar: f.pilar || d.pilar, ...propia });
+        lista.push({ clave: `${d.date}|${j}`, fecha: d.date, pilar: f.pilar || d.pilar, ...propia });
       });
     }
-    const asignada = asignarMatriz(lista, {
-      productos: productosParaPlan(mercado?.catalogo ?? [], mercado?.inventario), deseos: general?.deseos ?? [], perfiles: general?.perfiles ?? [],
+    const productos = productosParaPlan(mercado?.catalogo ?? [], mercado?.inventario);
+    // La nota fija del día («los lunes, muebles y camas»): si nombra un producto, ese día va con él (lib/notasSemana.js).
+    const conNotas = conNotasDelDia(lista, client?.notasSemana, productos).map(({ notaDia: _n, fecha: _f, ...c }) => c);
+    const asignada = asignarMatriz(conNotas, {
+      productos, deseos: general?.deseos ?? [], perfiles: general?.perfiles ?? [],
       foco: focoId,
     });
     return new Map(asignada.map(({ clave, ...m }) => [clave, Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, m[k] ?? ""]))]));

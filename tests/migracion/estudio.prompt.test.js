@@ -439,6 +439,23 @@ describe("POST /api/estudio/<cliente>/lote/ideas: UNA publicación («Generar» 
 describe("POST /api/estudio/<cliente>/lote/ideas: el PLAN del mes («Planificar mes», «Mes completo» con la plantilla)", () => {
   const plan = (datos) => pedir("/api/estudio/c1/lote/ideas", { method: "POST", body: { modo: "plan", ...datos } });
 
+  it("la NOTA FIJA del día va a la IA y, si nombra un producto, ese día lleva ese producto; el formato y el tipo no cambian", async () => {
+    await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: [{ id: "sofa", nombre: "Sofá cama", precio: "$399" }, { id: "mesa", nombre: "Mesa", precio: "$99" }] } });
+    // 2030-03-04 es lunes (1); el martes (2) no tiene nota.
+    db.sqlite.prepare("update clients set notas_semana = ? where id = 'c1'").run(JSON.stringify({ 1: "Promo sofá cama" }));
+    anthropic(JSON.stringify({ ideas: [{ n: 1, titular: "Uno", escena: "Una sala" }, { n: 2, titular: "Dos", escena: "Otra sala" }] }));
+    const r = await (await plan({
+      casillas: [
+        { clave: "a", fecha: "2030-03-04", formato: "carrusel", pilar: "anuncio" },
+        { clave: "b", fecha: "2030-03-05", formato: "post", pilar: "educativo" },
+      ],
+    })).json();
+    expect(r.ideas[0]).toMatchObject({ clave: "a", formato: "carrusel", pilar: "anuncio", productoId: "sofa" });
+    const t = textoDe(peticiones[0]);
+    expect(t).toMatch(/nota fija de este día de la semana \(el TEMA del día; no cambia el formato ni el tipo\): Promo sofá cama/);
+    expect(t.match(/nota fija de este día/g)).toHaveLength(1);
+  });
+
   it("formatos mezclados, varias por día, la estrategia del mes y la idea de la persona; cada idea vuelve con su clave", async () => {
     await pedir("/api/mercado/c1/catalogo", { method: "PUT", body: { catalogo: [{ id: "sofa", nombre: "Sofá cama", precio: "$399" }] } });
     anthropic(JSON.stringify({ ideas: [

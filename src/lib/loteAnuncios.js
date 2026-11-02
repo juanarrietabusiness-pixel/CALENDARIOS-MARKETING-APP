@@ -41,6 +41,7 @@
 // ============================================================
 
 import { NIVELES_CONSCIENCIA, CLAVES_NIVEL, nombreDeNivel } from "./consciencia.js";
+import { lineaDeNotaDelDia } from "./notasSemana.js";
 import { PLANTILLAS_TEXTO } from "./carrusel.js";
 import { PILARES, pilarDe, nombreDePilar } from "./pilares.js";
 import { estructuraDe, estructuraPara, limpiarEstructurasRecientes, lineaDeEstructura } from "./estructurasCarrusel.js";
@@ -274,6 +275,7 @@ function lineaDePieza(r, productos = {}) {
     estructuraDe(r.estructura) ? `   ${lineaDeEstructura(r.estructura)}` : "",
     r.semana ? `   semana: ${corto(r.semana, 160)}` : "",
     r.especial ? `   fecha especial ese día: ${corto(r.especial, 120)}` : "",
+    r.notaDia ? `   ${lineaDeNotaDelDia(r.notaDia)}` : "",
     r.ideaPersona ? `   idea de la agencia (desarróllala conservando su intención, su tema y su producto): «${corto(r.ideaPersona, 400)}»` : "",
     r.antes ? `   la que había y NO sirvió (escribe OTRA distinta, con otro enfoque): «${corto(r.antes, 200)}»` : "",
     r.pide ? `   lo que pide la agencia para esta: ${corto(r.pide, 300)}` : "",

@@ -498,7 +498,7 @@ export function leerCarrusel(texto, maxLaminas = 10) {
   };
 }
 
-/** Los encargos frecuentes del director: rellenan la caja del chat (pestaña Diseño y «Modo director» del asistente). */
+/** Los encargos frecuentes del director: rellenan la caja del chat (pestaña Diseño y pestaña «Director» del asistente). */
 export const ATAJOS_DIRECTOR = Object.freeze([
   { etiqueta: "Diseña la semana", texto: "Diseña las piezas de la semana que viene del calendario: cada una en su publicación, con su texto de la pieza." },
   { etiqueta: "Anuncios de un producto", texto: "Diseña 6 anuncios del producto " },

@@ -104,6 +104,7 @@ src/
   hooks/useDialogA11y.js  Foco atrapado, Escape y bloqueo de scroll en diálogos
   hooks/useConfigIA.js    El modelo y el razonamiento del espacio, releídos con `pulso`
   hooks/useAnchoAmplio.js ¿Pantalla ancha? (asistente acoplado, panel a dos columnas)
+  hooks/useAltoVisible.js Lo que se ve de la pantalla con el teclado abierto (el asistente flotante mide eso)
   hooks/useEquipo.js      Los miembros del espacio (para «Lo lleva», menciones, carga)
   hooks/useTareas.js      Todas las tareas y sus acciones (marcar, pasar a hoy, mover, convertir notas):
                           las comparten Mi día y el panel lateral
@@ -280,6 +281,8 @@ src/
                           la propuesta de la IA, poner o mover una publicación de día (puro)
     repetir.js            «Post que se repite»: las reglas (semana, n.º día del mes, último, número), qué le toca a un
                           mes y la copia como idea (puro)
+    notasSemana.js        La NOTA FIJA de cada día de la semana («los lunes, muebles y camas»): limpiar, la de una fecha, el
+                          producto que nombra, ponerla en las casillas del motor de ideas (puro; también el Worker)
     planSemanal.js        La barra de los días del calendario: el plan semanal de la empresa (tipo y formato de cada
                           publicación de cada día, «Video con rostro (UGC)»), guardar y volver al estándar (puro)
     aprobacion.js         Qué aprueba el cliente (idea o pieza final), qué cuenta de su respuesta,
@@ -569,7 +572,7 @@ worker/
     formulasUgc.js        /api/formulas-ugc: las fórmulas UGC de la agencia (listar, guardar, corregir, quitar, proponer)
     inspiracion.js        /api/inspiracion/<cliente>: el feed, actualizar, traer un archivo, el resumen
     historiasAuto.js      /api/historias-auto/<cliente>: ajustes, pendientes de preparar, piezas
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -1584,6 +1587,13 @@ son del servidor.
   · **«Volver al estándar de la agencia»** quita la copia y el ritmo propio; la plantilla elegida en la ficha se queda.
   · Se guarda con `guardarPlanCliente` (App.jsx); lo ya creado en el calendario no cambia. En el teléfono la barra no
   cabe: «⋯ → Plan semanal de la empresa». Sólo lectura no la edita.
+- **Cada día de la semana puede llevar una NOTA FIJA** (`clients.notas_semana`, 0051; `src/lib/notasSemana.js`): «los
+  lunes, muebles y camas». Se escribe en el diálogo del plan semanal y sale debajo del plan en la cabecera del mes. Va en
+  SU columna y no dentro de `plan_contenido` a propósito: «Volver al estándar de la agencia» borra el plan y no debe
+  llevarse las notas (`guardarPlanCliente` sólo las cambia si vienen). No cambia formato ni tipo: es el TEMA del día para
+  el motor de ideas (`notaDia` en cada casilla, `lineaDeNotaDelDia`), y si nombra un producto del plan (palabra entera,
+  sin tildes, el nombre más largo) ese día va con él (`conNotasDelDia`) salvo que la casilla ya traiga uno. Se aplica en
+  el servidor (modos mes, plan y publicación) y en «Planificar mes», que calcula la matriz en la pantalla.
 - **«UGC · guion para grabar» (antes «Video con rostro») es un REEL que graba una persona** (`rostro: true` en la
   publicación del plan, la casilla, la idea y el post; sólo vale en un reel). La IA le escribe un guion para GRABAR,
   tramo a tramo (`src/lib/ugc.js`): `[0–3 s] VOZ: «palabra por palabra» | SE VE: la toma | TEXTO: en pantalla`. Sigue en
@@ -3016,6 +3026,14 @@ son del servidor.
   del esquema (`tablasDelEsquema()` en tests/despliegue/acceso.test.js)
   siguen `drop table` y `rename to` en orden: sin eso veían la tabla
   provisional como una tabla nueva con dueño y sin declarar.
+- **La imagen generada con IA en 4:5 / 9:16 REEMPLAZA a la original en la publicación** (`reemplazarMedio`, en su
+  mismo sitio del carrusel; `ajusteImagen.jsx`). Antes iba aparte, en `post.adaptados`: la lámina seguía enseñando la de
+  la medida mala y la agencia no podía dejar el carrusel listo. Y al programar, la conversión a JPEG cambia la ruta de la
+  imagen: las copias de `adaptados` (difuminado, color, las de antes hechas con IA) ahora la siguen
+  (`renombrarAdaptados` en `prepararParaRedes`); antes se quedaban colgando de la ruta vieja y salía difuminada.
+- **La vista previa enseña el ORIGINAL si ya cabe** (`vistaAjuste`): sólo lo que necesita ajuste se dibuja, y a su tamaño
+  de salida (1080 de ancho, JPEG 0,9). Antes todo iba a 360 px y calidad 0,75: en retina, Instagram borroso y Facebook
+  nítido.
 - **«Ampliar con IA» es un ajuste más, pero no se hace solo.** Es el cuarto
   valor de `ajusteIG` («ia»), y su copia va en `post.adaptados` como las
   demás. A diferencia de difuminado/color/recorte, `prepararParaRedes()` NO
@@ -3527,11 +3545,16 @@ son del servidor.
   automáticas empiezan por `PREFIJO_AJUSTE` («Ajuste del director:») y `correccionesRecientes` las descarta: no son de la
   agencia. Sin ficha (una pieza a mano, una edición sin la original) no hay revisión del director. En el visor, su nota
   y «Aplicar los arreglos del director».
-- **«Modo director» en el asistente flotante** (ChatPanel, con un cliente): las conversaciones nuevas son de diseño
-  (`tema: "diseno"`, las mismas que la pestaña Diseño), cambia el título y salen los encargos (`ATAJOS_DIRECTOR` en
-  director.js, compartidos con la pestaña). Abrir una conversación de diseño lo enciende y una de las otras lo apaga; la
-  lista tiene «Todas / Diseño» cuando hay de las dos. El sistema del asistente ya sabía diseñar con cliente: el modo cambia
-  dónde se guarda y lo que se ve, no lo que sabe.
+- **El asistente flotante tiene dos pestañas: «Asistente» y «Director (diseño)»** (ChatPanel, con un cliente;
+  `cambiarPestana`). Antes era un interruptor «Modo director» con un filtro «Todas / Diseño» en la lista, y no se sabía
+  en cuál se estaba. Cada pestaña enseña SÓLO sus conversaciones (las del director, `tema: "diseno"`, son las mismas de la
+  pestaña Diseño) y recuerda su última abierta aparte (`chat-ultima:<cliente>:diseno`). Se guardan todas en `todasConv` y
+  `conversaciones` es la vista de la pestaña: la lista no se vuelve a pedir al cambiar. El sistema del asistente ya sabía
+  diseñar con cliente: la pestaña cambia dónde se guarda y lo que se ve (título, encargos), no lo que sabe.
+- **El asistente flotante mide lo que SE VE** (`useAltoVisible`, `visualViewport`): en el teléfono el teclado no encoge
+  `innerHeight` ni un `fixed; inset: 0`, así que la caja de escribir crecía hasta el 40 % de la pantalla entera y el
+  botón de enviar quedaba bajo el teclado. Ahora el panel mide el alto visible, la caja crece hasta el 30 % de eso (220 px
+  como mucho) y los encargos del director se esconden mientras hay texto.
 - **La proporción pedida es la que sale, y Muse se queda** (`respetaProporcion`, `modeloQueRespeta`, `relevoPara`,
   `fueraDeProporcion` en estudioCatalogo.js; `escaleraMuse` en worker/lib/estudio/meta.js). Muse Image es el modelo de la
   agencia (barato y se ve bien), y una serie con piezas de Muse y de Nano Banana se nota: NO se cambia de motor por la

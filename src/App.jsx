@@ -934,13 +934,15 @@ function Workspace({ session, ruta }) {
    * El plan semanal de un cliente (lib/planSemanal.js): la plantilla personalizada y el ritmo, que es lo que leen el
    * lote del Estudio, «Planificar mes» y la IA. Deja escapar el error: el diálogo lo dice y se queda abierto.
    */
-  const guardarPlanCliente = async ({ planContenido, ritmoContenido }) => {
+  const guardarPlanCliente = async (cambio) => {
     const id = selectedClientId;
     const cliente = clientsRef.current.find((c) => c.id === id);
     if (!cliente) return;
-    const nuevo = { ...cliente, planContenido, ritmoContenido };
+    // Las notas fijas de los días sólo cambian si vienen: «Volver al estándar» no las trae y no se las lleva.
+    const campos = { planContenido: cambio.planContenido, ritmoContenido: cambio.ritmoContenido, ...("notasSemana" in cambio ? { notasSemana: cambio.notasSemana } : {}) };
+    const nuevo = { ...cliente, ...campos };
     await db.saveClient(nuevo, ownerId);
-    setClients((prev) => prev.map((c) => (c.id === id ? { ...c, planContenido, ritmoContenido } : c)));
+    setClients((prev) => prev.map((c) => (c.id === id ? { ...c, ...campos } : c)));
   };
 
   /**
