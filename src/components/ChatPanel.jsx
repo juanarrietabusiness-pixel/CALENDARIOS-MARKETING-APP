@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef, useId, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useId, useCallback, useMemo, lazy, Suspense } from "react";
 import Icon from "./Icon";
 import BancoSelector from "./BancoSelector";
+// «De la galería» del Estudio del cliente (lazy: arrastra lib/estudio.js).
+const GaleriaSelector = lazy(() => import("./GaleriaSelector"));
 import { idDeCarpeta } from "../lib/drive";
 import { CopyButton } from "./calendario/primitivas";
 import { stripMarkdown } from "./calendario/formato";
@@ -123,6 +125,7 @@ export default function ChatPanel({
   });
   const [adjuntos, setAdjuntos] = useState([]);
   const [bancoAbierto, setBancoAbierto] = useState(false);
+  const [galeriaAbierta, setGaleriaAbierta] = useState(false);
   const [progreso, setProgreso] = useState("");
   // Lo que llega en streaming mientras el asistente escribe.
   const [enVivo, setEnVivo] = useState({ texto: "", pensando: "", pasos: [] });
@@ -312,6 +315,21 @@ export default function ChatPanel({
 
   useEffect(() => () => recognitionRef.current?.cortar(), []);
 
+  // Si se cierra el chat con un plan del director esperando «Crear», la conversación lo dice: al volver, «créalo» basta
+  // (antes el plan se perdía sin rastro y había que pedirlo todo otra vez).
+  const planRef = useRef(null);
+  planRef.current = planDiseno;
+  useEffect(() => () => {
+    const pl = planRef.current;
+    const conv = conversacionRef.current;
+    if (!pl || pl.estado !== "revisar" || !conv) return;
+    const fichas = (pl.piezas ?? []).map((p) => `${p.n}. «${p.titulo}»\n${p.ficha}`).join("\n\n");
+    void guardarMensaje(conv, "assistant", [
+      "Se cerró el chat antes de pulsar «Crear»: no se creó nada. Dime «créalo» y te vuelvo a enseñar el plan.",
+      marcarContexto("Plan sin crear", `${pl.concepto ? `Concepto: ${pl.concepto}\n\n` : ""}${fichas}`.slice(0, 12000)),
+    ].join("\n\n")).catch(() => {});
+  }, []);
+
   // El dictado sigue hasta que se vuelve a pulsar (src/lib/dictado.js): se reenciende si el navegador lo corta.
   const toggleVoice = useCallback(async () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -398,6 +416,16 @@ export default function ChatPanel({
     })));
   }, [agregarAdjuntos]);
 
+  // De la galería del Estudio: imágenes (y videos) que ya existen. Van con su archivo_id, así el asistente puede usarlas
+  // de referencia al diseñar, corregirlas o ponerlas en una publicación sin volver a subirlas.
+  const desdeGaleria = useCallback((archivos) => {
+    setGaleriaAbierta(false);
+    agregarAdjuntos(archivos.map((a) => ({
+      id: uid(), tipo: a.tipo === "video" ? "video" : "imagen", nombre: a.prompt ? a.prompt.slice(0, 40) : "pieza de la galería",
+      origen: "galeria", clave: a.clave, archivoId: a.id, preview: a.src,
+    })));
+  }, [agregarAdjuntos]);
+
   const quitarAdjunto = useCallback((id) => {
     const a = adjuntos.find((x) => x.id === id);
     if (a?.origen === "subida") URL.revokeObjectURL(a.preview);
@@ -424,7 +452,9 @@ export default function ChatPanel({
       if (a.tipo === "imagen") {
         setProgreso(`Preparando «${a.nombre}»…`);
         const base64 = a.base64 ?? await imagenParaModelo(a.preview);
-        bloques.push({ type: "text", text: `Imagen adjunta «${a.nombre}»:` });
+        bloques.push({ type: "text", text: a.archivoId
+          ? `Imagen de la galería del Estudio (archivo_id ${a.archivoId}, clave ${a.clave}) «${a.nombre}»: úsala con ese id si hay que diseñar con ella, corregirla o ponerla en una publicación.`
+          : `Imagen adjunta «${a.nombre}»:` });
         bloques.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: base64 } });
         continue;
       }
@@ -435,10 +465,15 @@ export default function ChatPanel({
       if (!clave && !fileId) {
         if (raizDrive) {
           setProgreso(`Guardando «${a.nombre}» en el Drive del cliente…`);
-          fileId = (await db.subirADrive(clientId, a.file)).id;
+          fileId = (await db.subirADrive(clientId, a.file, "", {
+            alProgreso: (b) => setProgreso(`Guardando «${a.nombre}» en el Drive del cliente: ${Math.min(99, Math.round((b / a.file.size) * 100))} %…`),
+          })).id;
         } else {
-          setProgreso(`Guardando «${a.nombre}» en el banco…`);
-          clave = (await db.uploadContentBankItem(clientId, a.file)).file_path;
+          setProgreso(`Guardando «${a.nombre}»…`);
+          // Por trozos si es grande (como en la publicación): de una vez, pasado de 100 MB no llegaba.
+          clave = (await db.subirImagenPublicacion(clientId, a.file, {
+            alProgreso: (b) => setProgreso(`Guardando «${a.nombre}»: ${Math.min(99, Math.round((b / a.file.size) * 100))} %…`),
+          })).replace(/^\/api\/media\//, "");
         }
       }
       setProgreso(`Viendo y escuchando «${a.nombre}»… (puede tardar un minuto)`);
@@ -1152,7 +1187,15 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       const recientes = [...messages, { role: "user", content: guardado, created_at: userMsg.created_at }]
         .filter((m) => !res.hasta || m.created_at > res.hasta)
         .slice(convId ? 0 : -100)
-        .map((m) => ({ role: m.role, content: m.content }));
+        .map((m) => ({ role: m.role, content: m.content }))
+        // Dos seguidos del mismo papel van en uno (las piezas se guardan al salir, antes de la respuesta final).
+        .reduce((l, m) => {
+          const ultimo = l[l.length - 1];
+          if (ultimo && ultimo.role === m.role && typeof ultimo.content === "string" && typeof m.content === "string") {
+            ultimo.content = `${ultimo.content}\n\n${m.content}`;
+          } else l.push({ ...m });
+          return l;
+        }, []);
       // La API exige empezar por el usuario.
       while (recientes.length && recientes[0].role !== "user") recientes.shift();
       const conversationMessages = recientes;
@@ -1183,7 +1226,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
         ];
         const contenido = [
           textoAsistente,
-          ...imagenes.map((i) => marcarImagen(i.clave, i.formato)),
+          ...imagenes.filter((i) => !i.guardada).map((i) => marcarImagen(i.clave, i.formato)),
           ...videos.map((v) => marcarVideo(v.clave)),
           hechas.length ? marcarContexto("Acciones realizadas", hechas.join("\n")) : "",
         ].filter(Boolean).join("\n\n");
@@ -1253,9 +1296,22 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
           try {
             const result = await executeToolCall(toolBlock.name, toolBlock.input);
             // Una pieza corregida ocupa el sitio de la anterior en el mensaje; las demás, detrás.
-            for (const img of [...(result._imagen ? [result._imagen] : []), ...(result._imagenes ?? [])]) {
+            const nuevasImg = [...(result._imagen ? [result._imagen] : []), ...(result._imagenes ?? [])];
+            for (const img of nuevasImg) {
               const i = img.reemplaza ? imagenes.findIndex((x) => x.id === img.reemplaza) : -1;
               if (i >= 0) imagenes[i] = img; else imagenes.push(img);
+            }
+            // Lo creado se GUARDA en la conversación en cuanto sale: antes iba sólo en la respuesta final, y si se cerraba
+            // el chat (o se bloqueaba el teléfono) a mitad del turno, las piezas estaban en la galería y no en el chat.
+            if (convId && nuevasImg.length) {
+              const avance = [
+                marcarContexto("Piezas creadas", String(result.mensaje ?? "").split("\nAhora MÍRALAS")[0]),
+                ...nuevasImg.map((i) => marcarImagen(i.clave, i.formato)),
+              ].join("\n\n");
+              await guardarMensaje(convId, "assistant", avance).catch(() => {});
+              setMessages((prev) => [...prev, { role: "assistant", content: avance, created_at: new Date().toISOString() }]);
+              // Ya están guardadas: la respuesta final no las repite.
+              for (const img of nuevasImg) img.guardada = true;
             }
             if (result._video) videos.push(result._video);
             feedbacks.push({ tool: toolBlock.name, ok: result.ok, mensaje: result.mensaje });
@@ -1662,7 +1718,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
                   {/* Un video recién escogido es un blob:, y la CSP no deja
                       reproducirlos (media-src cae en 'self'): se enseña el
                       icono hasta que esté en el banco. */}
-                  {a.tipo === "video" && (a.origen === "banco" || a.origen === "drive") ? (
+                  {a.tipo === "video" && (a.origen === "banco" || a.origen === "drive" || a.origen === "galeria") ? (
                     <video src={`${a.preview}#t=0.5`} muted preload="metadata" aria-label={`Video: ${a.nombre}`} style={{ width: 56, height: 56, objectFit: "cover", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", display: "block", background: "var(--bg)" }} />
                   ) : a.tipo === "video" ? (
                     <span role="img" aria-label={`Video: ${a.nombre}`} title={a.nombre} style={{ width: 56, height: 56, borderRadius: "var(--radius-sm)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", color: "var(--text-dim)" }}>
@@ -1690,6 +1746,12 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
               ))}
             </ul>
           </div>
+        )}
+
+        {galeriaAbierta && clientId && (
+          <Suspense fallback={null}>
+            <GaleriaSelector clienteId={clientId} maximo={MAX_ADJUNTOS - adjuntos.length} destino="el chat" onElegir={desdeGaleria} onCerrar={() => setGaleriaAbierta(false)} />
+          </Suspense>
         )}
 
         {bancoAbierto && clientId && (
@@ -1752,6 +1814,18 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
               style={{ minHeight: "var(--tap)", minWidth: "var(--tap)" }}
             >
               <Icon name="folder" size={18} />
+            </button>
+          )}
+          {clientId && (
+            <button
+              className="btn-icon"
+              onClick={() => setGaleriaAbierta(true)}
+              aria-label="Escoger de la galería del Estudio"
+              title="Escoger de la galería del Estudio"
+              disabled={loading || adjuntos.length >= MAX_ADJUNTOS}
+              style={{ minHeight: "var(--tap)", minWidth: "var(--tap)" }}
+            >
+              <Icon name="image" size={18} />
             </button>
           )}
           {hasSpeechAPI && (

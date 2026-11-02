@@ -571,8 +571,17 @@ export const urlArchivoDrive = (clienteId, id, { descargar = false } = {}) =>
 export const urlMiniaturaDrive = (clienteId, id, tam = 400) =>
   `/api${rutaDrive(clienteId, `miniatura/${encodeURIComponent(id)}`)}?t=${tam}`;
 
-/** Sube el archivo tal cual, sin FormData: el Worker lo pasa a Drive sin copiarlo. */
-export async function subirADrive(clienteId, file, carpeta = "") {
+/**
+ * Sube el archivo tal cual, sin FormData: el Worker lo pasa a Drive sin copiarlo. Uno GRANDE (más de
+ * `DRIVE_DE_UNA_VEZ`) va antes a R2 por trozos y el Worker lo pasa a Drive desde allí: de una vez, una petición no
+ * pasa de 100 MB y un reel de 250 MB no subía.
+ */
+export const DRIVE_DE_UNA_VEZ = 90 * 1024 * 1024;
+export async function subirADrive(clienteId, file, carpeta = "", { alProgreso = null } = {}) {
+  if (file.size > DRIVE_DE_UNA_VEZ) {
+    const clave = await subirPorTrozos(clienteId, file, "subidas", alProgreso);
+    return pedir(rutaDrive(clienteId, "desde-media"), conCuerpo("POST", { clave, nombre: file.name || "archivo", carpeta }));
+  }
   const p = new URLSearchParams({ nombre: file.name || "archivo" });
   if (carpeta) p.set("carpeta", carpeta);
   return pedir(`${rutaDrive(clienteId, "subir")}?${p}`, {

@@ -187,6 +187,13 @@ export default function CalendarView({
   // Lo aprobado que aún no está en la cola, y las redes que el cliente
   // tiene de verdad: sin ninguna cuenta, la barra de publicar no sale.
   const candidatas = useMemo(() => aprobadasSinProgramar(cal?.days ?? [], cola), [cal?.days, cola]);
+  // «Programar al aprobar» es del CLIENTE (todos sus meses); un mes que lo tenía encendido antes también cuenta.
+  const alAprobar = Boolean(client?.programarAlAprobar || cal?.opciones?.programarAlAprobar);
+  const cambiarAlAprobar = (valor) => {
+    onPersistClient?.({ ...client, programarAlAprobar: valor });
+    // Apagarlo también apaga el del mes (si no, el mes lo seguiría encendiendo).
+    if (!valor && cal?.opciones?.programarAlAprobar) onUpdateCal(calId, { ...cal, opciones: { ...(cal.opciones || {}), programarAlAprobar: false } });
+  };
   const redesDelCliente = useMemo(
     () => [...new Set((redes?.cuentas ?? []).filter((c) => c.clientId === clienteDb).map((c) => c.red))],
     [redes, clienteDb],
@@ -687,7 +694,26 @@ export default function CalendarView({
   // El calendario ya no se copia a ningún sitio al compartirlo: el
   // enlace apunta a la misma fila que edita la agencia, así que el
   // cliente ve siempre la versión actual sin volver a enviarlo.
+  // Con «Programar al aprobar», al abrir el envío se preparan las piezas (JPEG y 4:5) en segundo plano: el servidor
+  // las programa al aprobar y no puede convertir imágenes (lib/prepararEnvio.js, en diferido).
+  const calActual = useRef(cal);
+  calActual.current = cal;
+  const preparandoEnvio = useRef(false);
+  const prepararEnvio = async () => {
+    if (!alAprobar || preparandoEnvio.current || !redesDelCliente.length) return;
+    preparandoEnvio.current = true;
+    try {
+      const texto = await (await import("../lib/prepararEnvio")).prepararEnvioDelMes({
+        cal, ahora: () => calActual.current, cola, redesDelCliente, clienteDb, colorMarca: client?.primaryColor,
+        avisar: setSyncStatus, guardar: (nuevo) => onUpdateCal(calId, nuevo),
+      });
+      if (texto) { setSyncStatus(texto); setTimeout(() => setSyncStatus(""), 9000); }
+    } catch { /* sin preparar: el aviso de la campana dirá qué falta al aprobar */ }
+    preparandoEnvio.current = false;
+  };
+
   const sendToClient = async () => {
+    void prepararEnvio();
     if (cal.shareToken) {
       abrirCapa("aprobacion");
       return;
@@ -1150,10 +1176,11 @@ export default function CalendarView({
               type="button"
               role="switch"
               aria-labelledby={`auto-${calId}`}
-              aria-checked={!!cal.opciones?.programarAlAprobar}
-              className={`toggle${cal.opciones?.programarAlAprobar ? " is-on" : ""}`}
-              onClick={() => onUpdateCal(calId, { ...cal, opciones: { ...(cal.opciones || {}), programarAlAprobar: !cal.opciones?.programarAlAprobar } })}
-              title="Apagado: lo aprobado espera en Programación a que alguien lo programe. Encendido: la pieza final aprobada entra sola en la cola (una idea aprobada, nunca)"
+              aria-checked={alAprobar}
+              className={`toggle${alAprobar ? " is-on" : ""}`}
+              disabled={!onPersistClient}
+              onClick={() => cambiarAlAprobar(!alAprobar)}
+              title="Para todos los meses de este cliente: la pieza final aprobada entra sola en la cola (una idea, nunca)"
             >
               <span className="toggle-thumb" />
             </button>
@@ -1690,8 +1717,12 @@ export default function CalendarView({
           onReopen={() => changeShare(true)}
           allowEditing={cal.allowEditing || false}
           onToggleEditing={() => onUpdateCal(calId, { ...cal, allowEditing: !cal.allowEditing })}
-          opciones={cal.opciones || {}}
-          onCambiarOpciones={(cambios) => onUpdateCal(calId, { ...cal, opciones: { ...(cal.opciones || {}), ...cambios } })}
+          opciones={{ ...(cal.opciones || {}), programarAlAprobar: alAprobar }}
+          onCambiarOpciones={(cambios) => {
+            const { programarAlAprobar: p, ...resto } = cambios;
+            if (p !== undefined) cambiarAlAprobar(p);
+            if (Object.keys(resto).length) onUpdateCal(calId, { ...cal, opciones: { ...(cal.opciones || {}), ...resto } });
+          }}
           revisionEnviada={cal.revisionEnviada}
           revisionRevisor={cal.revisionRevisor}
           resumen={resumenEnvio(cal.days)}

@@ -234,5 +234,5 @@ export async function levantarEspacio() {
     await rm(estado, { recursive: true, force: true });
   }
 
-  return { base, entrar, api, conectar, cerrar, registro: () => salida };
+  return { base, entrar, api, conectar, cerrar, d1, registro: () => salida };
 }

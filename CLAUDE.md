@@ -290,7 +290,9 @@ src/
                           lo importa el Worker)
     trabajo.js            Equipo: menciones, etapas, qué ve el cliente con revisión interna,
                           historial (qué cambió) y carga (puro; también lo importa el Worker)
-    programarAprobadas.js Preparar imágenes, guardar y programar en lote lo aprobado de un calendario
+    programarAprobadas.js Preparar imágenes, guardar y programar en lote lo aprobado de un calendario (cada una por su lado)
+    prepararEnvio.js      Al enviar el mes con «Programar al aprobar»: preparar las piezas (JPEG, 4:5) para que el servidor
+                          las programe solo (en diferido: la carga inicial está en su tope)
     sesionActual.js       Quién está dentro (papel), para las piezas que no reciben `yo`
     auditoria.js          Auditoría de perfil: cifras, usuario, límites de Instagram (puro;
                           también lo importa el Worker)
@@ -572,7 +574,7 @@ worker/
     formulasUgc.js        /api/formulas-ugc: las fórmulas UGC de la agencia (listar, guardar, corregir, quitar, proponer)
     inspiracion.js        /api/inspiracion/<cliente>: el feed, actualizar, traer un archivo, el resumen
     historiasAuto.js      /api/historias-auto/<cliente>: ajustes, pendientes de preparar, piezas
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -2939,6 +2941,16 @@ son del servidor.
   Idea, lo que se escribe y lo que se habla con el cliente. La barra de
   «¿Cuándo sale?» sólo es fija a lo ancho: en el teléfono tapaba más de
   media pantalla y va al final.
+- **«Programar lo aprobado» prepara CADA publicación por su lado** (`programarAprobadasDe`; `programarLote` en el
+  servidor igual): antes, una sola imagen que no se podía leer lanzaba y el lote entero se iba sin programar nada —el
+  botón se ponía gris y volvía— mientras una a una, desde su panel, sí salían. La que falla vuelve en `fallidas` con su
+  motivo. En Programación el mensaje va ARRIBA, junto al botón: abajo del todo no se veía.
+- **«Programar al aprobar» es del CLIENTE** (`clients.programar_al_aprobar`, 0052; el de `calendars.opciones` de antes se
+  sigue leyendo). No funcionaba ni encendido: el servidor no puede convertir a JPEG ni hacer la copia 4:5, y las piezas
+  del Estudio son PNG. Ahora, al abrir «Enviar al cliente» con el interruptor encendido, el navegador prepara las piezas
+  en segundo plano (`prepararEnvioDelMes`, lib/prepararEnvio.js; `conPreparadas` sólo pone lo preparado en las
+  publicaciones cuyos archivos no cambiaron mientras tanto). Y si al aprobar no se puede programar, el motivo va a la
+  CAMPANA (`avisar`), no sólo al aviso del momento, que se perdía si nadie tenía la aplicación abierta.
 - **Lo aprobado NO sale solo: espera el paso final.** El cliente aprueba
   a veces sólo la IDEA y a veces la PIEZA FINAL; cada publicación dice cuál
   se le pide (`post.aprobacion`, sin elegir: pieza si hay archivo) y la
@@ -3005,6 +3017,12 @@ son del servidor.
   `sirveMedia()` (worker/index.js) pasa el `Range` a R2 y contesta 206 con
   `Content-Range` (`rangoServido()` en lib/respuesta.js). Lo vigila
   `tests/migracion/enrutado.test.js`.
+- **A Drive, un archivo de más de 90 MB va por R2** (`subirADrive` en db.js, `DRIVE_DE_UNA_VEZ`; ruta `POST
+  /api/drive/clientes/<c>/desde-media`): se sube por trozos a `clientes/<c>/subidas/`, el Worker lo pasa a Drive por
+  flujo (sin cargarlo entero) y lo borra de R2. De una vez, el cuerpo de una petición no pasa de 100 MB y la pantalla
+  decía «el máximo es 100 MB». Lo usan la pestaña Contenido y los videos adjuntos del chat (que, sin Drive, también van
+  por trozos). Que la IA VEA un video sigue con su tope de 80 MB: pasado de ahí, el chat y «Subir» trabajan con
+  fotogramas.
 - **Un reel de 80 MB no subía, y no decía nada.** `POST /api/media` lee el formulario entero dentro del Worker: minutos
   sin señal y, pasado de 100 MB (el tope del cuerpo de una petición en Cloudflare), no llegaba nunca. Lo de más de
   `SUBIDA_DE_UNA_VEZ` (20 MB) va por TROZOS (`worker/rutas/trozos.js`, `subirPorTrozos` en src/lib/db.js): R2 junta las
@@ -3579,6 +3597,12 @@ son del servidor.
   enseña como una tarjeta; en `VisorGrupo`, flechas para cambiar el orden (se guarda con `ordenarCarpeta`) y «Desagrupar»
   (borra la carpeta: el servidor devuelve sus piezas a la galería). Los carruseles del director (`disenar_piezas` con
   `carrusel: true`, todas 4:5) van solos a su carpeta y quedan en el orden del plan.
+- **Lo que crea el director se guarda en la conversación EN CUANTO SALE** (ChatPanel, en el bucle de herramientas): antes
+  iba sólo en la respuesta final, y si se cerraba el chat o se bloqueaba el teléfono a mitad del turno, las piezas
+  estaban en la galería y no en el chat. Por eso el historial puede tener dos mensajes seguidos del asistente: al
+  mandarlo a la IA se juntan en uno. Un plan que esperaba «Crear» cuando se cerró el chat queda como «Plan sin crear» en
+  la conversación, y el director sabe que «créalo» basta. «De la galería» en el chat adjunta piezas del Estudio con su
+  `archivo_id` (el asistente las puede usar de referencia, corregir o poner en un post sin volver a subirlas).
 - **El chat no mueve la página** (ChatPanel): bajar al último mensaje era `scrollIntoView`, que desplaza TODOS los
   contenedores, también la página: en la pestaña Diseño el chat se subía y la caja de escribir quedaba fuera de su sitio
   hasta cambiar de pestaña. Ahora se desplaza sólo la lista (`scrollTo` de `.chat-mensajes`) y todo `focus()` del chat va

@@ -94,11 +94,16 @@ export default function PorProgramar({ clients = [], pulso = 0, onAbrir, onCalen
 
   if (!datos) return null;
   const producir = datos.porProducir ?? [];
-  if (!filas.length && !producir.length) return null;
+  if (!filas.length && !producir.length && !mensaje) return null;
   const abrir = (item) => onAbrir?.({ clientId: item.clientId, calendarId: item.calendarId, postId: item.postId });
 
   return (
     <section className="prog-bloque prog-por-programar" aria-labelledby="por-programar-t">
+      {/* Arriba, junto al botón: abajo del todo, con la lista larga, no se veía y parecía que «no hacía nada». */}
+      <div role="status" aria-live="polite" className={mensaje?.tipo === "ok" ? undefined : "sr-only"}>
+        {mensaje?.tipo === "ok" && <p className="notice notice-ok">{mensaje.texto}</p>}
+      </div>
+      {mensaje?.tipo === "error" && <p role="alert" className="notice notice-error">{mensaje.texto}</p>}
       {filas.length > 0 && (
         <>
           <div className="por-programar-cabecera">
@@ -188,10 +193,6 @@ export default function PorProgramar({ clients = [], pulso = 0, onAbrir, onCalen
         </details>
       )}
 
-      <div role="status" aria-live="polite" className={mensaje?.tipo === "ok" ? undefined : "sr-only"}>
-        {mensaje?.tipo === "ok" && <p className="notice notice-ok">{mensaje.texto}</p>}
-      </div>
-      {mensaje?.tipo === "error" && <p role="alert" className="notice notice-error">{mensaje.texto}</p>}
     </section>
   );
 }
