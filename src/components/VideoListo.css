@@ -1,0 +1,16 @@
+/* «¿Está listo este video?» (se carga aparte, con su componente) */
+.video-listo { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); background: var(--surface-2); border-radius: var(--radius-sm); }
+.video-listo-titulo { display: flex; align-items: center; gap: var(--sp-1); margin: 0; font-weight: 700; }
+.video-listo[data-veredicto="listo"] .video-listo-titulo { color: var(--success); }
+.video-listo[data-veredicto="casi"] .video-listo-titulo,
+.video-listo[data-veredicto="no"] .video-listo-titulo { color: var(--warning, var(--accent-alt)); }
+.video-listo-lista, .video-listo-arreglos { margin: 0; font-size: var(--fs-2xs); display: flex; flex-direction: column; gap: var(--sp-1); }
+.video-listo-lista { list-style: none; padding: 0; }
+.video-listo-arreglos { padding-left: var(--sp-4); }
+.video-listo-lista li { display: flex; align-items: flex-start; gap: var(--sp-1); }
+.video-listo-lista li > svg { flex-shrink: 0; margin-top: 2px; }
+.video-listo-lista li[data-ok="si"] > svg { color: var(--success); }
+.video-listo-lista li[data-ok="no"] > svg { color: var(--warning, var(--accent-alt)); }
+.video-listo-lista li[data-ok="na"] { color: var(--text-dim); }
+.video-listo-arranque { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.video-listo-arranque .hint { flex: 1 1 200px; margin: 0; }

@@ -208,7 +208,9 @@ export async function crearImagenDelPost({ client, post, indicacion = "", opcion
   if (!modelo) throw new Error("No hay ningún modelo de imagen con llave (Ajustes → IA).");
   const preset = opciones.preset || presetDePilar(post.pilar, post.pilarSub);
   const plantilla = opciones.plantilla ? referenciaDePlantilla(kit, opciones.plantilla, g?.archivos ?? []) : null;
-  const aspectRatio = proporcionPara(modelo, post);
+  // `opciones.proporcion`: la que manda quien llama (la portada de YouTube va en 16:9 aunque el post sea un reel).
+  const valores = modelo.ajustes?.aspectRatio?.valores ?? [];
+  const aspectRatio = opciones.proporcion && valores.includes(opciones.proporcion) ? opciones.proporcion : proporcionPara(modelo, post);
   const algoCambia = Boolean(String(indicacion).trim() || plantilla);
   let idea = algoCambia ? "" : promptListo(post);
   if (!idea) {
@@ -227,7 +229,7 @@ export async function crearImagenDelPost({ client, post, indicacion = "", opcion
   // El texto exacto ya va dentro de la idea (el pedido listo o la ficha): no se repite.
   const pedido = pedidoDePieza({
     kit, idea: conIndicacion(idea, indicacion), preset, estilo: opciones.estilo || "", apoyos, modelo, marca: client.name, rubro: client.industry ?? "",
-    aspectRatio, proporcion: deseadaPara(post), activos, extra: plantilla ? lineaDePlantillaEnPedido(kit, opciones.plantilla) : "",
+    aspectRatio, proporcion: opciones.proporcion || deseadaPara(post), activos, extra: plantilla ? lineaDePlantillaEnPedido(kit, opciones.plantilla) : "",
   });
   const usado = modeloPorId(pedido.modelo) ?? modelo;
   const costo = estimar(usado, 1, pedido.ajustes);

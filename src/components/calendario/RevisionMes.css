@@ -37,3 +37,6 @@
 .lote-opcion img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .lote-opcion[aria-pressed="true"] { border-color: var(--accent); }
 .lote-llevar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); }
+/* «Las piezas juntas»: el mes visto como una serie */
+.revision-serie { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-3); padding: var(--sp-3); background: var(--surface-2); border-radius: var(--radius-sm); }
+.revision-serie-resultado { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-xs); }

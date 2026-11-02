@@ -1,0 +1,12 @@
+/* «Portada que da clic» (se carga aparte, dentro de «Portada del video») */
+.portada-clic { display: flex; flex-direction: column; gap: var(--sp-2); padding-top: var(--sp-3); border-top: 1px solid var(--border); }
+.portada-clic-conceptos, .portada-clic-formato { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.portada-clic-aviso { color: var(--warning, var(--accent-alt)); margin: var(--sp-1) 0 0; }
+.portada-clic-hechas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.portada-clic-hechas li { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-2) var(--sp-3); }
+.portada-clic-grande { width: 160px; border-radius: var(--radius-sm); background: var(--surface-3); object-fit: cover; aspect-ratio: 9 / 16; }
+.portada-clic-grande[data-formato="youtube"] { width: 240px; aspect-ratio: 16 / 9; }
+.portada-clic-mini { display: flex; flex-direction: column; gap: var(--sp-1); }
+/* 120 px de ancho: en el perfil, un reel se ve en su ventana 3:4 del centro. */
+.portada-clic-120 { width: 120px; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 4px; background: var(--surface-3); }
+.portada-clic-120[data-formato="youtube"] { aspect-ratio: 16 / 9; }

@@ -158,6 +158,11 @@ src/
     videoProductoEstudio.js  La receta en el Estudio: qué modelo, los dos fotogramas por el camino de una pieza, el video
     temporada.js          Las fechas especiales del cliente que se acercan (sin las delicadas) y cuál merece el aviso del mes (puro)
     modosFoto.js          Los atajos de «¿Qué quieres?»: modos de foto de producto y la versión de temporada (puro)
+    portadaClic.js        «Portada que da clic»: 16 conceptos, el titular que se lee a 120 px, la escena por formato (puro)
+    revisionVideo.js      «¿Está listo este video?»: los criterios, el pedido al motor que lo ve y el veredicto (puro; también el Worker)
+    piezasJuntas.js       «Las piezas juntas»: la rejilla de la hoja del mes, el pedido a la IA y su lectura (puro; también el Worker)
+    hojaPiezas.js         La hoja de «Las piezas juntas»: las imágenes del mes numeradas en un JPEG (lienzo)
+    revisionVideoApi.js   Cliente de /api/estudio/<c>/revisar-video y /serie (fuera de lib/estudio.js, que arrastra el catálogo)
     portadas.js           Las piezas del perfil por plantilla: estilos de portada, colores del kit, medidas (puro)
     materialTipo.js       Qué busca el cerebro según el TIPO de contenido, qué material falta (testimonios, garantía, equipo,
                           diferenciador, saber del rubro) y el pedido de la nota «Saber del rubro» (puro; también el Worker)
@@ -417,6 +422,8 @@ src/
     calendario/campanaMes.jsx   La tarjeta de la campaña: nombre del mes, semanas, ofertas, fechas
     calendario/repeticionesMes.jsx  Lo que se repite este mes (añadir, ahora no, no repetir más) y «Se repite» del panel
     calendario/ExportarContenido.jsx  «Exportar ideas y descripciones» (lazy: con su estado, fuera de la carga inicial)
+    calendario/PortadaClic.jsx  «Portada que da clic» dentro de «Portada del video»: concepto, titular, formato, la vista a 120 px (lazy)
+    VideoListo.jsx        «¿Está listo este video?»: en la pestaña Subir y en el visor del Estudio (lazy)
     calendario/avisoTemporada.jsx  «Se acerca …»: la fecha comercial del cliente en tres semanas y cómo reutilizar una pieza
     calendario/PlanSemanal.jsx  «Plan semanal de <empresa>»: editar lo que sale cada día, fijo todos los meses (lazy)
     calendario/fechasEspeciales.jsx  Escoger las fechas de un cliente (importante, ocultar, propias, IA)
@@ -1939,6 +1946,24 @@ son del servidor.
   300 caracteres del campo (un test lo recorre). El aviso del mes (`fechaParaAvisar`: comercial, propia o escogida en 21
   días) va en `CalendarView`, que es de la carga inicial: por eso los textos viven aparte, en modosFoto.js, que sólo
   carga el panel. «Ahora no» se recuerda por navegador (`temporada-avisada:<cliente>`).
+- **La fase 2 de las recetas de Higgsfield: portada, revisión del video y la serie del mes** (método público, MIT,
+  `docs/licencias/higgsfield-skills.md`). Cosas que no se ven:
+  · **«Portada que da clic»** (`src/lib/portadaClic.js`, `calendario/PortadaClic.jsx` dentro de «Portada del video») no
+  tiene ruta propia: es «Crear la imagen aquí» (`crearImagenDelPost`) con la publicación cambiada —su `escena` es la de la
+  portada (`escenaDePortada`: el concepto, una idea, el titular enorme, la zona segura del formato), `textoPieza` el titular
+  (así el control lo lee letra por letra) y sin el pedido listo— y `opciones.proporcion` (9:16 o 16:9, que el post no
+  dice). La vista a 120 px es un `<img>` a ese ancho (en reel, la ventana 3:4 del perfil): si ahí no se lee, no sirve.
+  · **«¿Está listo este video?»** (`src/lib/revisionVideo.js`, `worker/lib/estudio/revisionVideo.js`, `POST
+  /api/estudio/<c>/revisar-video`, función «revisión de video») va por `verVideo`, como «Extraer guion»: Gemini, o Meta
+  por fotogramas (sin audio: la voz queda «sin saber», `porFotogramas`). El VEREDICTO lo pone el código (`veredictoVideo`):
+  un no en el gancho, la voz o un defecto lo deja «No está listo» aunque el puntaje sea 9. Queda en
+  `ajustes.revisionVideo` de la ficha: un video no cambia (una versión es otro archivo) y la segunda vez no se paga, salvo
+  «Revisar otra vez».
+  · **«Las piezas juntas»** (`src/lib/piezasJuntas.js`, `lib/hojaPiezas.js`, `worker/lib/estudio/serie.js`, `POST
+  /api/estudio/<c>/serie`, función «piezas juntas»; en «Revisar el mes») mira el mes como SERIE, lo que la revisión de cada
+  imagen sola no ve. El navegador junta hasta 24 en UNA hoja numerada (encajadas, sin recortar: el recorte escondería el
+  logo) y la IA la mira con el kit: cuesta lo de una imagen. El servidor sólo acepta un JPEG de verdad (por sus bytes) y
+  `leerSerie` sólo devuelve números que están en la hoja. **Nada de esto se ha probado contra Gemini ni Anthropic reales.**
 - **«Video del producto» es una RECETA: termina en la foto real y el logo real porque no los dibuja el modelo de video**
   (`src/lib/videoProducto.js`, `videoProductoEstudio.js`, `FlujoVideoProducto.jsx`, `POST /api/estudio/<c>/video-producto/guion`;
   salió de una prueba con Baby Caleb y MiniMax H3 que la agencia aprobó). Producto del catálogo CON fotos → guion (primer
