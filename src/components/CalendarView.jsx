@@ -26,7 +26,6 @@ import { fechasDelMes, fechasPorDia } from "../lib/fechasEspeciales";
 import { semanasDelMes, conceptosDelMes, pedidoDeNombres, leerNombres } from "../lib/campanas";
 import { semanaDelMes } from "../lib/semanas";
 import { esVirtual } from "../lib/meses";
-import { construirExportacion, FORMATOS_EXPORTABLES_POR_DEFECTO, CAMPOS_EXPORTABLES } from "../lib/exportarContenido";
 import Icon from "./Icon";
 import { useConfigIA } from "../hooks/useConfigIA";
 import { etiquetaIA } from "../lib/configIA";
@@ -54,10 +53,13 @@ const GuardarMesDrive = lazy(() => import("./calendario/GuardarMesDrive"));
 const PlanSemanal = lazy(() => import("./calendario/PlanSemanal"));
 // Inspiración: lo que publican las cuentas que sigue el cliente, junto al calendario.
 const Inspiracion = lazy(() => import("./Inspiracion"));
+// El aviso de la fecha que se acerca, en diferido: la carga inicial está en su tope (rendimiento.bundle.test.js).
+const ExportarContenido = lazy(() => import("./calendario/ExportarContenido"));
+const AvisoTemporada = lazy(() => import("./calendario/avisoTemporada"));
 const FechasEspecialesDialog = lazy(() => import("./calendario/fechasEspeciales").then((m) => ({ default: m.FechasEspecialesDialog })));
 import { BankPanel } from "./calendario/BankPanel";
 import {
-  ExportContenidoDialog, ElegirNuevaPublicacion,
+  ElegirNuevaPublicacion,
   EditMetaDialog, ApprovalDialog, AddPostDialog,
 } from "./calendario/dialogos";
 import { fmt12h } from "./calendario/formato";
@@ -968,56 +970,6 @@ export default function CalendarView({
     }
   };
 
-  // La construcción del texto vive en `lib/exportarContenido.js`: es pura
-  // y allí se puede probar sin montar el componente entero.
-  const [formatosExport, setFormatosExport] = useState(FORMATOS_EXPORTABLES_POR_DEFECTO);
-  const [camposExport, setCamposExport] = useState(CAMPOS_EXPORTABLES);
-  const [copiado, setCopiado] = useState(false);
-
-  const exportacion = capa === "exportar"
-    ? construirExportacion({
-        days: cal.days || [],
-        formatos: formatosExport,
-        campos: camposExport,
-        cliente: client.name,
-        calendario: calName,
-      })
-    : { texto: "", completas: 0, incompletas: [] };
-
-  const alternarFormatoExport = (clave) => {
-    setFormatosExport((prev) =>
-      prev.includes(clave) ? prev.filter((f) => f !== clave) : [...prev, clave]
-    );
-  };
-
-  const alternarCampoExport = (clave) => {
-    setCamposExport((prev) =>
-      prev.includes(clave) ? prev.filter((c) => c !== clave) : [...prev, clave]
-    );
-  };
-
-  const copiarExportacion = () => {
-    navigator.clipboard.writeText(exportacion.texto).then(
-      () => {
-        setCopiado(true);
-        setTimeout(() => setCopiado(false), 2000);
-      },
-      () => setGenStatus("El navegador no dejó copiar al portapapeles.")
-    );
-  };
-
-  const descargarExportacion = () => {
-    const blob = new Blob([exportacion.texto], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `contenido-${calName.replace(/\s+/g, "-")}-${client.name.replace(/\s+/g, "-")}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <div className={viewMode === "grid" ? "cal-vista-mes" : undefined} style={{ paddingBottom: sidePanel ? 0 : 80 }}>
       {/* Edit calendar meta modal */}
@@ -1048,17 +1000,9 @@ export default function CalendarView({
       )}
 
       {capa === "exportar" && (
-        <ExportContenidoDialog
-          exportacion={exportacion}
-          formatos={formatosExport}
-          onToggleFormato={alternarFormatoExport}
-          campos={camposExport}
-          onToggleCampo={alternarCampoExport}
-          onCopiar={copiarExportacion}
-          copiado={copiado}
-          onDescargar={descargarExportacion}
-          onClose={cerrarCapa}
-        />
+        <Suspense fallback={null}>
+          <ExportarContenido cal={cal} client={client} calName={calName} onError={setGenStatus} onClose={cerrarCapa} />
+        </Suspense>
       )}
 
       {/* El mes ya lo dice el navegador de arriba (‹ Octubre 2026 ›), y las
@@ -1088,6 +1032,8 @@ export default function CalendarView({
         onEscribir={() => { setRepetidasHechas(0); void generateScripts(); }}
         onCerrarHechas={() => setRepetidasHechas(0)}
       />
+
+      <Suspense fallback={null}><AvisoTemporada key={client?.id} client={client} /></Suspense>
 
       {/* Barra de herramientas: acción primaria, conmutador de vista y el
           resto agrupado. Antes eran siete botones idénticos que mezclaban

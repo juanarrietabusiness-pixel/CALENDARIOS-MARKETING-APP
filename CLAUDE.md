@@ -156,6 +156,8 @@ src/
     videoProducto.js      La receta «Video del producto» (10–15 s): tramos, el guion con la voz en español, las escenas del
                           primer fotograma y del cierre, el prompt corto del video (puro; también el Worker)
     videoProductoEstudio.js  La receta en el Estudio: qué modelo, los dos fotogramas por el camino de una pieza, el video
+    temporada.js          Las fechas especiales del cliente que se acercan (sin las delicadas) y cuál merece el aviso del mes (puro)
+    modosFoto.js          Los atajos de «¿Qué quieres?»: modos de foto de producto y la versión de temporada (puro)
     portadas.js           Las piezas del perfil por plantilla: estilos de portada, colores del kit, medidas (puro)
     materialTipo.js       Qué busca el cerebro según el TIPO de contenido, qué material falta (testimonios, garantía, equipo,
                           diferenciador, saber del rubro) y el pedido de la nota «Saber del rubro» (puro; también el Worker)
@@ -414,6 +416,8 @@ src/
     calendario/tipoContenido.jsx  «Tipo de contenido» del panel: tipo, producto, nivel, perfil y deseo
     calendario/campanaMes.jsx   La tarjeta de la campaña: nombre del mes, semanas, ofertas, fechas
     calendario/repeticionesMes.jsx  Lo que se repite este mes (añadir, ahora no, no repetir más) y «Se repite» del panel
+    calendario/ExportarContenido.jsx  «Exportar ideas y descripciones» (lazy: con su estado, fuera de la carga inicial)
+    calendario/avisoTemporada.jsx  «Se acerca …»: la fecha comercial del cliente en tres semanas y cómo reutilizar una pieza
     calendario/PlanSemanal.jsx  «Plan semanal de <empresa>»: editar lo que sale cada día, fijo todos los meses (lazy)
     calendario/fechasEspeciales.jsx  Escoger las fechas de un cliente (importante, ocultar, propias, IA)
     CalendarView.jsx      Vista de lista y de rejilla, filtros, generación, envío
@@ -1925,6 +1929,16 @@ son del servidor.
   `src/lib/videoLimpio.js`, decisión de la agencia: escriben mal y deforman el logo). Una sola frase que usan
   `LINEA_VIDEO` (todo video del compositor), el Reel IA (guion, fotogramas, video, Flow, tramo), el guion corto, el lote
   y el recreador. El guion del reel ya no trae `texto` por plano; uno de antes que lo traiga se lee y se ignora.
+- **«Modo de foto» y «De temporada» son atajos de «¿Qué quieres?»** (`src/lib/modosFoto.js`, `temporada.js`,
+  `calendario/avisoTemporada.jsx`). Rellenan la indicación que ya usan «Crear la imagen aquí», «Otra versión» y «Recrear»
+  (el director la trata como lo que manda): no crean nada solos. Los modos son los de la sesión de fotos de producto de
+  Higgsfield que no existían como composición (con manos, una persona lo usa, flotando, salpicadura, Pinterest); NO se
+  sumaron a `COMPOSICIONES`, que rota el lote y aprende de la galería. La temporada es la MISMA pieza ambientada en una
+  fecha del cliente (`fechasQueVienen`: sin delicadas ni ocultas; las que venden van antes de los feriados al recortar,
+  o los cinco feriados patrios de noviembre dejaban fuera al Black Friday), sin inventar ofertas. Todo atajo cabe en los
+  300 caracteres del campo (un test lo recorre). El aviso del mes (`fechaParaAvisar`: comercial, propia o escogida en 21
+  días) va en `CalendarView`, que es de la carga inicial: por eso los textos viven aparte, en modosFoto.js, que sólo
+  carga el panel. «Ahora no» se recuerda por navegador (`temporada-avisada:<cliente>`).
 - **«Video del producto» es una RECETA: termina en la foto real y el logo real porque no los dibuja el modelo de video**
   (`src/lib/videoProducto.js`, `videoProductoEstudio.js`, `FlujoVideoProducto.jsx`, `POST /api/estudio/<c>/video-producto/guion`;
   salió de una prueba con Baby Caleb y MiniMax H3 que la agencia aprobó). Producto del catálogo CON fotos → guion (primer

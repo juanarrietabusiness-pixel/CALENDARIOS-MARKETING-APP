@@ -47,6 +47,9 @@ import { SelectorModeloDelEspacio } from "../SelectorModelo";
 import { useCrearConIA } from "../../hooks/useCrearConIA";
 import { conPromptListo } from "../../lib/promptImagen";
 import { presetDePilar } from "../../lib/pilares";
+import { fechasQueVienen, fraseDeFalta } from "../../lib/temporada";
+import { MODOS_FOTO, instruccionDeTemporada } from "../../lib/modosFoto";
+import { fechaEnZona } from "../../lib/agenda";
 import BotonGuardarDrive from "./botonGuardarDrive";
 
 // «Crear carrusel con IA»: sólo se descarga al abrirlo.
@@ -185,6 +188,8 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
   // «¿Qué quieres?»: lo que la persona pide para la imagen. Lo leen «Crear la imagen aquí», «Otra versión», «Recrear
   // con mi marca» y «Corregir esta» (ésta lo necesita). Se vacía cuando sale bien: no se cuela en la siguiente.
   const [indicacion, setIndicacion] = useState("");
+  // «De temporada»: las fechas especiales del cliente que vienen (sin las delicadas), para reutilizar la pieza en ellas.
+  const temporada = useMemo(() => fechasQueVienen(client?.fechasEspeciales, fechaEnZona()), [client?.fechasEspeciales]);
   const campoIndicacion = useRef(null);
   // Lo escogido para «Crear la imagen aquí» (vacío: lo de la publicación y del cliente), recordado por cliente.
   const claveOpciones = `crear-aqui:${clientId ?? ""}`;
@@ -446,6 +451,27 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
                 {AJUSTES_DE_TEXTO.map((x) => (
                   <button key={x.id} type="button" className="filter-chip" aria-pressed={indicacion === x.instruccion} onClick={() => setIndicacion(x.instruccion)}>{x.etiqueta}</button>
                 ))}
+              </div>
+            )}
+            {/* Atajos de Higgsfield adaptados (lib/modosFoto.js): un modo de foto de producto, o la misma pieza en una fecha. */}
+            <div className="que-quieres-atajos" role="group" aria-label="Modo de foto del producto">
+              <span className="hint">Modo de foto:</span>
+              {MODOS_FOTO.map((x) => (
+                <button key={x.id} type="button" className="filter-chip" aria-pressed={indicacion === x.instruccion} onClick={() => setIndicacion(x.instruccion)}>{x.etiqueta}</button>
+              ))}
+            </div>
+            {temporada.length > 0 && (
+              <div className="que-quieres-atajos" role="group" aria-label="Versión de temporada">
+                <span className="hint">De temporada:</span>
+                {temporada.map((f) => {
+                  const texto = instruccionDeTemporada(f);
+                  return (
+                    <button key={`${f.id}-${f.fecha}`} type="button" className="filter-chip" aria-pressed={indicacion === texto} onClick={() => setIndicacion(texto)}
+                      title={`${f.nombre}: ${fraseDeFalta(f.faltan)}`}>
+                      {f.nombre} <span className="hint">· {fraseDeFalta(f.faltan)}</span>
+                    </button>
+                  );
+                })}
               </div>
             )}
             <p id={`${ids}-quiero-ayuda`} className="hint" style={{ margin: 0 }}>

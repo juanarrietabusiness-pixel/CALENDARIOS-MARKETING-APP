@@ -403,3 +403,6 @@
 /* «Otra versión», «Corregir esta» y «Recrear»: en el Estudio o aquí, rápido. */
 .donde-se-hace { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); }
 .donde-se-hace .filter-chip { display: inline-flex; align-items: center; gap: var(--sp-1); }
+/* «Modo de foto» y «De temporada» de «¿Qué quieres?» (lib/temporada.js). */
+.que-quieres-atajos { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); }
+.que-quieres-atajos .filter-chip .hint { font-size: var(--fs-3xs); }

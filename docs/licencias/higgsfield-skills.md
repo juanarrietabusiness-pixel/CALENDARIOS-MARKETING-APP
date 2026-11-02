@@ -10,6 +10,7 @@ en esos archivos y no se ha adaptado.
 | Receta del calendario | De qué skill | Qué se tomó |
 |---|---|---|
 | «Video del producto» (`src/lib/videoProducto.js`) | `higgsfield-generate` (`references/prompt-engineering.md`), `higgsfield-faceless-video` | Con imagen inicial se describe el movimiento y no lo que ya se ve; prompts cortos; decir lo que sí debe salir; bloques de 10 s con su locución de ~26–30 palabras |
+| «Modo de foto» y «De temporada» (`src/lib/modosFoto.js`) | `higgsfield-product-photoshoot` | Los modos que faltaban (con manos, persona usándolo, flotando/salpicadura, Pinterest) y el «restyle» por temporada; las líneas fotográficas son propias (las suyas viven en su servidor) |
 
 ## Licencia original
 
