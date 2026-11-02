@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useId, useCallback } from "react";
+import { useState, useEffect, useRef, useId, useCallback, useMemo } from "react";
 import Icon from "./Icon";
 import BancoSelector from "./BancoSelector";
 import { idDeCarpeta } from "../lib/drive";
@@ -25,6 +25,7 @@ import { partirMensaje, marcarImagen, marcarVideo, marcarContexto, FORMATOS_IMAG
 import { imagenParaModelo, fotogramasDeVideo, descargarEnTamano } from "../lib/medios";
 import * as db from "../lib/db";
 import { useConfigIA } from "../hooks/useConfigIA";
+import { useAltoVisible } from "../hooks/useAltoVisible";
 import { etiquetaIA, NIVELES_IA } from "../lib/configIA";
 
 const NIVEL_DE_ESFUERZO = { low: "bajo", medium: "medio", high: "alto", max: "maximo" };
@@ -39,7 +40,10 @@ import { mesDeFecha, mismoMes } from "../lib/meses";
 const MAX_ADJUNTOS = 6;
 const CLAVE_AMPLIADO = "chat-ampliado";
 /** Hasta dónde crece la caja de escribir, en parte del alto de la pantalla; luego desplaza por dentro. */
-const ALTO_MAX_CAJA = 0.4;
+// Lo que puede crecer la caja de escribir: una parte de lo que SE VE (con el teclado abierto, no la pantalla entera) y
+// nunca más de ALTO_MAX_CAJA_PX. Con el 40 % de la pantalla, en el teléfono el botón de enviar quedaba bajo el teclado.
+const ALTO_MAX_CAJA = 0.3;
+const ALTO_MAX_CAJA_PX = 220;
 // Vueltas del navegador con herramientas propias. Las del servidor
 // (web, cerebro, consultas) no cuentan: las encadena el Worker. Tampoco las
 // de DISEÑO (crear, corregir, mirar): doce piezas eran doce vueltas y el
@@ -79,22 +83,27 @@ export default function ChatPanel({
   tema: temaFijo = "",
   atajos: atajosFijos = null,
 }) {
-  // El «Modo director» del asistente flotante: las conversaciones nuevas son de diseño (las mismas que la pestaña
-  // Diseño) y salen los encargos del director. La pestaña Diseño lo trae fijo (`tema`). Abrir una conversación de
-  // diseño lo enciende; una de las otras, lo apaga.
+  // Dos pestañas en el asistente de un cliente: «Asistente» y «Director». Cada una con SUS conversaciones (las del
+  // director son las mismas de la pestaña Diseño) y la última abierta de cada una se recuerda aparte. Antes era un
+  // interruptor «Modo director» con un filtro «Todas / Diseño» en la lista, y no se sabía en cuál se estaba.
+  // La pestaña Diseño lo trae fijo (`tema`).
   const [modoDirector, setModoDirector] = useState(false);
   const temaVisible = temaFijo || (modoDirector ? "diseno" : "");
   const atajos = atajosFijos ?? (temaVisible === "diseno" ? ATAJOS_DIRECTOR : null);
-  // La lista: en la pestaña Diseño sólo las suyas; en el asistente, todas o sólo las de diseño.
-  const [filtroLista, setFiltroLista] = useState("todas");
-  const tema = temaFijo;
+  const tema = temaVisible;
   const [chatMode, setChatMode] = useState(defaultMode || (client ? "client" : "global"));
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(true);
   // Las conversaciones por tema (de todo el equipo) y la que está abierta. Sin abierta, el primer mensaje empieza una.
-  const [conversaciones, setConversaciones] = useState([]);
+  const [todasConv, setConversaciones] = useState([]);
+  const conversaciones = useMemo(
+    () => todasConv.filter((c) => (tema === "diseno" ? c.tema === "diseno" : c.tema !== "diseno")),
+    [todasConv, tema],
+  );
+  const temaRef = useRef(tema);
+  temaRef.current = tema;
   const [conversacionId, setConversacionId] = useState(null);
   const [verLista, setVerLista] = useState(false);
   const [error, setError] = useState("");
@@ -165,11 +174,12 @@ export default function ChatPanel({
           ambito ? db.loadClientMemories(ambito) : Promise.resolve([]),
         ]);
         if (!vivo) return;
-        // En el Estudio, sólo las de diseño (en el chat de siempre salen todas, con su etiqueta).
-        const deAqui = tema ? lista.filter((c) => c.tema === tema) : lista;
-        setConversaciones(deAqui);
+        // Se guardan todas; cada pestaña enseña las suyas (`conversaciones`).
+        setConversaciones(lista);
         setMemories(mems);
-        const recordada = leerUltima(ambito, tema);
+        const t = temaRef.current;
+        const deAqui = lista.filter((c) => (t === "diseno" ? c.tema === "diseno" : c.tema !== "diseno"));
+        const recordada = leerUltima(ambito, t);
         const abierta = deAqui.find((c) => c.id === recordada) ?? deAqui[0] ?? null;
         setConversacionId(abierta?.id ?? null);
         if (!abierta) setLoadingHistory(false);
@@ -182,7 +192,8 @@ export default function ChatPanel({
       }
     })();
     return () => { vivo = false; };
-  }, [ambito, tema]);
+    // `tema` no: cambiar de pestaña escoge la conversación sin volver a pedir la lista (cambiarPestana).
+  }, [ambito, temaFijo]);
 
   // Los mensajes y el resumen de la conversación abierta: el asistente sólo recuerda ESA.
   useEffect(() => {
@@ -205,14 +216,14 @@ export default function ChatPanel({
     const alCambio = (e) => {
       const ev = e.detail ?? {};
       if ((ev.clientId ?? null) !== ambito) return;
-      listarConversaciones(ambito).then((l) => setConversaciones(tema ? l.filter((c) => c.tema === tema) : l)).catch(() => {});
+      listarConversaciones(ambito).then(setConversaciones).catch(() => {});
       if (ev.conversacionId !== conversacionRef.current) return;
       if (ev.borrada) { setConversacionId(null); setMessages([]); setResumen({ resumen: "", hasta: null }); }
       else if (ev.mensaje && !loadingRef.current) leerMensajes(ev.conversacionId).then(setMessages).catch(() => {});
     };
     window.addEventListener("chat:conversaciones", alCambio);
     return () => window.removeEventListener("chat:conversaciones", alCambio);
-  }, [ambito, tema]);
+  }, [ambito]);
 
   // «Pedir un cambio» de una imagen del chat: la caja queda señalándola, para escribir qué cambiar.
   useEffect(() => {
@@ -243,9 +254,23 @@ export default function ChatPanel({
     setActionFeedback([]);
     setError("");
     setVerLista(false);
-    if (!temaFijo) setModoDirector(conversaciones.find((c) => c.id === id)?.tema === "diseno");
     if (id !== conversacionId) setConversacionId(id);
-  }, [loading, conversacionId, conversaciones, temaFijo]);
+  }, [loading, conversacionId]);
+
+  // Cambiar de pestaña (Asistente ⇄ Director): se abre la última de esa pestaña, o la más reciente, o una nueva.
+  const cambiarPestana = useCallback((director) => {
+    if (loading || temaFijo || director === modoDirector) return;
+    const t = director ? "diseno" : "";
+    const deAqui = todasConv.filter((c) => (director ? c.tema === "diseno" : c.tema !== "diseno"));
+    const recordada = leerUltima(ambito, t);
+    const abierta = deAqui.find((c) => c.id === recordada) ?? deAqui[0] ?? null;
+    setModoDirector(director);
+    setActionFeedback([]);
+    setError("");
+    setVerLista(false);
+    setConversacionId(abierta?.id ?? null);
+    if (!abierta) { setMessages([]); setResumen({ resumen: "", hasta: null }); setLoadingHistory(false); }
+  }, [loading, temaFijo, modoDirector, todasConv, ambito]);
 
   const renombrar = useCallback(async (id, titulo) => {
     const c = await renombrarConversacion(id, titulo);
@@ -275,12 +300,15 @@ export default function ChatPanel({
 
   // La caja crece con lo escrito o lo dictado (también cuando el texto llega del micrófono, no sólo al teclear), hasta
   // ALTO_MAX_CAJA de la pantalla; al enviar vuelve a su tamaño.
+  const flotante = (!acoplado && !incrustado) || ampliado;
+  const visible = useAltoVisible(flotante);
   useEffect(() => {
     const el = inputRef.current;
     if (!el) return;
+    const tope = Math.min(ALTO_MAX_CAJA_PX, Math.round((visible.alto || window.innerHeight) * ALTO_MAX_CAJA));
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, Math.round(window.innerHeight * ALTO_MAX_CAJA))}px`;
-  }, [input, ampliado]);
+    el.style.height = `${Math.max(44, Math.min(el.scrollHeight, tope))}px`;
+  }, [input, ampliado, visible.alto]);
 
   useEffect(() => () => recognitionRef.current?.cortar(), []);
 
@@ -1294,7 +1322,9 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
   return (
     <div
       className={incrustado && !ampliado ? "chat-incrustado" : acoplado && !ampliado ? "chat-acoplado" : undefined}
-      style={(acoplado || incrustado) && !ampliado ? undefined : { position: "fixed", inset: 0, zIndex: 200, display: "flex", justifyContent: "flex-end" }}
+      // Flotante, mide lo que SE VE (useAltoVisible): con el teclado del teléfono abierto, el pie —la caja y el botón de
+      // enviar— queda encima del teclado y no debajo.
+      style={flotante ? { position: "fixed", left: 0, right: 0, top: visible.arriba, height: visible.alto || "100%", zIndex: 200, display: "flex", justifyContent: "flex-end" } : undefined}
     >
       {/* Acoplado —pantalla ancha— es un panel al lado del contenido, no
           un diálogo: sin fondo oscuro, sin foco atrapado y con el resto
@@ -1425,21 +1455,31 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
             </div>
           )}
 
-          {/* «Modo director»: el mismo director de la pestaña Diseño, sin salir de donde se está. */}
+          {/* Asistente o Director: cada pestaña con sus conversaciones (las del director, las mismas de la pestaña
+              Diseño). */}
           {client && !temaFijo && !isGlobal && (
-            <button
-              type="button"
-              className="filter-chip chat-modo-director"
-              aria-pressed={modoDirector}
-              disabled={loading}
-              onClick={() => {
-                setModoDirector((v) => !v);
-                // Cambiar de modo empieza en limpio: lo nuevo va a una conversación de ese tipo.
-                if (messages.length) nuevaConversacion();
-              }}
-            >
-              <Icon name="wand" size={14} /> Modo director
-            </button>
+            <div className="chat-mode-tabs" role="tablist" aria-label="Con quién hablas">
+              <button
+                role="tab"
+                className="chat-mode-tab"
+                aria-selected={modoDirector ? "false" : "true"}
+                aria-disabled={loading || undefined}
+                onClick={() => cambiarPestana(false)}
+              >
+                <Icon name="message" size={14} style={{ verticalAlign: -2, marginRight: 4 }} />
+                Asistente
+              </button>
+              <button
+                role="tab"
+                className="chat-mode-tab"
+                aria-selected={modoDirector ? "true" : "false"}
+                aria-disabled={loading || undefined}
+                onClick={() => cambiarPestana(true)}
+              >
+                <Icon name="wand" size={14} style={{ verticalAlign: -2, marginRight: 4 }} />
+                Director (diseño)
+              </button>
+            </div>
           )}
 
           {/* La conversación abierta y la lista: una por tema, de todo el equipo. */}
@@ -1463,9 +1503,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
         {verLista && (
           <div id={`${inputId}-conv`} className={ampliado ? "chat-conv-aparte" : "chat-conv-desplegada"}>
             <ConversacionesChat
-              conversaciones={!temaFijo && filtroLista === "diseno" ? conversaciones.filter((c) => c.tema === "diseno") : conversaciones}
-              filtro={!temaFijo && conversaciones.some((c) => c.tema === "diseno") ? filtroLista : null}
-              onFiltro={setFiltroLista}
+              conversaciones={conversaciones}
               actualId={conversacionId}
               onAbrir={abrirConversacion}
               onNueva={nuevaConversacion}
@@ -1594,8 +1632,9 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Atajos del director: rellenan la caja con un encargo que se completa con lo de cada uno. */}
-        {atajos?.length > 0 && !loading && (
+        {/* Atajos del director: rellenan la caja con un encargo que se completa con lo de cada uno. Mientras se escribe
+            se van: le quitaban alto a la caja y al botón de enviar. */}
+        {atajos?.length > 0 && !loading && !input.trim() && (
           <div className="chat-atajos" role="group" aria-label="Encargos frecuentes">
             {atajos.map((a) => (
               <button key={a.etiqueta} type="button" className="filter-chip" onClick={() => { setInput(a.texto); inputRef.current?.focus({ preventScroll: true }); }}>

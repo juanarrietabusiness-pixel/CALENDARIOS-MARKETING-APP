@@ -3,6 +3,7 @@ import {
   mediosDe, conMedios, textoPara, primerComentario, destinoInstagram, revisarPublicacion,
   publicacionParaCliente, marcarActualizada, contarHashtags, rutasDeMedios, momentoPublicacion, esJPEG,
   aplicarArreglo, proporcionParaIA, AJUSTES, fotosTikTok, tituloTikTok, queHacerConLaEncajada,
+  reemplazarMedio, renombrarAdaptados, necesitaAjuste,
 } from "./publicacion.js";
 
 describe("medios", () => {
@@ -293,5 +294,50 @@ describe("la historia encajada sigue a la imagen del post", () => {
   });
   it("sin imagen, nada", () => {
     expect(queHacerConLaEncajada({ antes: enc.de, ahora: null, historias: [] })).toBeNull();
+  });
+});
+
+describe("la versión 4:5 hecha con IA ocupa el sitio de la lámina", () => {
+  const img = (src, ancho, alto) => ({ src, tipo: "imagen", nombre: "", ancho, alto });
+  const carrusel = {
+    format: "carrusel",
+    medios: [img("/1.png", 1080, 1350), img("/2.png", 896, 1200), img("/3.png", 896, 1200)],
+    image: "/1.png",
+    adaptados: { "feed|/2.png": { src: "/2-dif.jpg", modo: "difuminado" }, "feed|/1.png": { src: "/x" } },
+  };
+  it("reemplaza SÓLO esa lámina y en su posición", () => {
+    const p = reemplazarMedio(carrusel, "/2.png", { src: "/2-45.jpg", ancho: 1080, alto: 1350, modo: "ia" });
+    expect(p.medios.map((m) => m.src)).toEqual(["/1.png", "/2-45.jpg", "/3.png"]);
+    expect(p.medios[1]).toMatchObject({ tipo: "imagen", ancho: 1080, alto: 1350 });
+    expect(p.medios[1].modo).toBeUndefined();
+    expect(necesitaAjuste(p.medios[1], "feed")).toBe(false);
+    // La copia vieja de esa lámina ya no es de nada; las de las otras se quedan.
+    expect(p.adaptados).toEqual({ "feed|/1.png": { src: "/x" } });
+  });
+  it("si la lámina era la primera, `image` la sigue", () => {
+    expect(reemplazarMedio(carrusel, "/1.png", { src: "/1b.jpg", ancho: 1080, alto: 1350 }).image).toBe("/1b.jpg");
+  });
+  it("una ruta que no está, o sin imagen nueva, no cambia nada", () => {
+    expect(reemplazarMedio(carrusel, "/nada.png", { src: "/n.jpg" })).toBe(carrusel);
+    expect(reemplazarMedio(carrusel, "/2.png", null)).toBe(carrusel);
+  });
+  it("una publicación de antes, con sólo `image`, también", () => {
+    const p = reemplazarMedio({ image: "/a.png" }, "/a.png", { src: "/a45.jpg", ancho: 1080, alto: 1350 });
+    expect(p.image).toBe("/a45.jpg");
+    expect(p.medios).toHaveLength(1);
+  });
+});
+
+describe("las copias adaptadas siguen a su imagen al pasarla a JPEG", () => {
+  it("cambia la ruta de la clave y deja lo demás", () => {
+    const a = { "feed|/a.png": { src: "/a45.jpg", modo: "ia" }, "historia|/a.png": { src: "/a916.jpg" }, "feed|/b.jpg": { src: "/b45.jpg" } };
+    const r = renombrarAdaptados(a, new Map([["/a.png", "/a.jpg"]]));
+    expect(r).toEqual({ "feed|/a.jpg": { src: "/a45.jpg", modo: "ia" }, "historia|/a.jpg": { src: "/a916.jpg" }, "feed|/b.jpg": { src: "/b45.jpg" } });
+  });
+  it("las rutas con «|» dentro no se rompen, y sin cambios devuelve lo mismo", () => {
+    expect(renombrarAdaptados({ "tiktok|/x|y.png": 1 }, new Map([["/x|y.png", "/z.jpg"]]))).toEqual({ "tiktok|/z.jpg": 1 });
+    const a = { "feed|/a.png": 1 };
+    expect(renombrarAdaptados(a, new Map())).toBe(a);
+    expect(renombrarAdaptados(undefined, new Map([["/a", "/b"]]))).toBeUndefined();
   });
 });

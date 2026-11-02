@@ -46,6 +46,7 @@ import { asignarMatriz, pilarDe, idDePilar } from "../../../src/lib/pilares.js";
 import { diasDelLote, planDelMes, mesDe, textoMes } from "../../../src/lib/loteMes.js";
 import { fechasDelMes } from "../../../src/lib/fechasEspeciales.js";
 import { fechaEnZona } from "../../../src/lib/agenda.js";
+import { limpiarNotasSemana, conNotasDelDia, notaDelDia, productoDeNota } from "../../../src/lib/notasSemana.js";
 import { CLAVES_NIVEL } from "../../../src/lib/consciencia.js";
 import { bloqueDeMarca, kitVacio } from "../../../src/lib/kitMarca.js";
 import { lineaDePlantilla, bloqueDeDisenoPorTipo } from "../../../src/lib/director.js";
@@ -148,6 +149,9 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
   const delPlan = productosParaPlan(catalogo, inventario);
   const rotan = producto ? [producto] : [...delPlan.filter((p) => p.fotos?.length), ...delPlan.filter((p) => !p.fotos?.length)];
   const deseos = general?.deseos ?? [];
+  // Las notas fijas de cada día de la semana («los lunes, muebles y camas»): el tema del día y, si nombran un producto
+  // del plan, ese día va con él (lib/notasSemana.js). No cambian ni el formato ni el tipo.
+  const notas = limpiarNotasSemana(leerJSON(cliente.notas_semana));
   const perfiles = general?.perfiles ?? [];
   // Sin las composiciones aprendidas de la pantalla, se leen de la galería (lo hace también «Planificar mes»).
   if (!Array.isArray(datos.composiciones)) orden = await composicionesAprendidas(acceso, cliente.id);
@@ -166,15 +170,16 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       dias: (Array.isArray(datos.dias) ? datos.dias : []).map(Number).filter((d) => d >= 0 && d <= 6),
       desde: textoMes(mes.year, mes.month) === hoy.slice(0, 7) ? hoy : "",
     }).filter((d) => !omitir.has(d.fecha));
+    const conNotas = producto ? conNotasDelDia(dias, notas, []) : conNotasDelDia(dias, notas, rotan);
     if (!dias.length) {
       throw fallo(omitir.size
         ? "Todos los días que escogiste ya tienen publicación. Para diseñarlas, usa «Diseñar las que ya hay»."
         : "Ese mes no tiene días con tipo de contenido en los días escogidos (revisa el ritmo del cliente).");
     }
-    plan = planDelMes(dias, { productos: rotan, deseos, perfiles, semilla: datos.semilla, formato, orden, estructuras });
+    plan = planDelMes(conNotas, { productos: rotan, deseos, perfiles, semilla: datos.semilla, formato, orden, estructuras });
   } else if (modo === "plan") {
     // El plan ya viene decidido (formato, tipo, producto, nivel…): la forma de cada pieza la pone darForma.
-    const celdas = limpiarCasillas(datos.casillas, productosActivos(catalogo));
+    const celdas = conNotasDelDia(limpiarCasillas(datos.casillas, productosActivos(catalogo)), notas, rotan);
     if (!celdas.length) throw fallo("El plan no trae publicaciones de un formato que se pueda escribir (post, historia, carrusel o reel).");
     const meses = [...new Set(celdas.map((c) => c.fecha?.slice(0, 7)).filter(Boolean))];
     for (const m of meses) {
@@ -209,6 +214,12 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     if (fecha) {
       const [y, m] = fecha.split("-").map(Number);
       fechas = fechasDelMes(y, m - 1, leerJSON(cliente.fechas_especiales)).filter((f) => f.fecha === fecha);
+    }
+    const nota = fecha ? notaDelDia(notas, fecha) : "";
+    if (nota) {
+      celda.notaDia = nota;
+      const delaNota = delPost ? null : productoDeNota(nota, rotan);
+      if (delaNota) { celda.productoId = delaNota.id; celda.producto = delaNota.nombre; }
     }
     plan = darForma([celda], { productos: delPost ? [delPost, ...rotan.filter((x) => x.id !== delPost.id)] : rotan, semilla: datos.semilla, formato, orden, estructuras });
   } else {

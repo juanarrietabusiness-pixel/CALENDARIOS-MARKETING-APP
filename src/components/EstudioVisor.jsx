@@ -157,7 +157,7 @@ function AjustarTexto({ archivo: a, galeria = [], onEditar }) {
 }
 
 export default function Visor({
-  archivo: a, carpetas, lectura, onCerrar, onFavorito, onPapelera, onMover, onRepetir, onReferencia, onAnimar, onUsar, etiquetaUsar,
+  archivo: a, carpetas, lectura, onCerrar, onFavorito, onPapelera, onMover, onReferencia, onAnimar, onUsar, etiquetaUsar,
   costoOtra = null, onOtraIgual = null, onOtrasVersiones = null, versionando = false, onRecrear = null,
   onEditar = null, original = null, onVerOriginal = null, anteriores = null,
   esLogo = false, onLogo = null, revision = null, onRevisar = null, onCorregir = null, galeria = [],
@@ -288,7 +288,6 @@ export default function Visor({
           <div className="est-visor-acciones">
             {!lectura && !video && onEditar && !editando && <button type="button" className="btn btn-secondary" onClick={() => setEditando(true)}><Icon name="pencil" size={16} /> Editar</button>}
             {onUsar && <button type="button" className="btn btn-primary" onClick={onUsar}><Icon name="check" size={16} /> {etiquetaUsar ?? "Usar en la publicación"}</button>}
-            {!lectura && !a.subido && <button type="button" className={`btn ${onUsar ? "btn-secondary" : "btn-primary"}`} onClick={onRepetir}><Icon name="pencil" size={16} /> Ajustar y pedir</button>}
             {!lectura && !video && <button type="button" className="btn btn-secondary" onClick={onAnimar}><Icon name="video" size={16} /> Animar</button>}
             {!lectura && !video && <button type="button" className="btn btn-secondary" onClick={onReferencia}><Icon name="paperclip" size={16} /> Usar de referencia</button>}
             {!lectura && onRecrear && <button type="button" className="btn btn-secondary" onClick={onRecrear} title="Analizarlo y hacer una versión con la marca"><Icon name="refresh" size={16} /> Recrear como anuncio</button>}

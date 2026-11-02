@@ -23,7 +23,7 @@ import { estadoDelChip, miniaturaDe, ESTADOS_CHIP } from "../../lib/estadoChip";
  * sus días, un toque lo abre en su mes, y soltar ahí una publicación de
  * este mes la lleva a ese día (a otro mes: lo hace el servidor).
  */
-export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, onAddPost, onDropFromBank, onDropInspiracion, ideasBank, semana = null, onEditarPlan, vecinos = null, onVecina, fechas = null, conceptos = [], onEditarSemana }) {
+export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, onAddPost, onDropFromBank, onDropInspiracion, ideasBank, semana = null, notas = null, onEditarPlan, vecinos = null, onVecina, fechas = null, conceptos = [], onEditarSemana }) {
   const [drag, setDrag] = useState(null);
   const [dropTarget, setDropTarget] = useState(null);
   const today = fmtDate(new Date());
@@ -55,15 +55,22 @@ export function MonthGrid({ cal, cola = [], miembros = [], onPostClick, onMove, 
         // fijo todos los meses. Es lo mismo que lee el lote del Estudio; tocarla lo edita.
         const dow = (i + 1) % 7;
         const lineas = semana?.[dow] ?? [];
-        const contenido = lineas.length
-          ? lineas.map((l, k) => <span key={k} className="cal-header-plan">{l}</span>)
-          : <span className="cal-header-plan" style={{ color: "var(--text-faint)" }}>{onEditarPlan ? "+" : "—"}</span>;
+        // La nota fija del día («Muebles y camas», lib/notasSemana.js): debajo del plan, aparte de él.
+        const nota = typeof notas?.[dow] === "string" ? notas[dow].trim() : "";
+        const contenido = (
+          <>
+            {lineas.length
+              ? lineas.map((l, k) => <span key={k} className="cal-header-plan">{l}</span>)
+              : <span className="cal-header-plan" style={{ color: "var(--text-faint)" }}>{onEditarPlan ? "+" : "—"}</span>}
+            {nota && <span className="cal-header-nota" title={nota}>{nota}</span>}
+          </>
+        );
         return (
           <div key={n} className="cal-header-cell">
             <abbr title={FULL_DOW[i]} style={{ textDecoration: "none" }}>{n}</abbr>
             {onEditarPlan ? (
               <button type="button" className="cal-header-label" onClick={() => onEditarPlan(dow)}
-                aria-label={`Plan de los ${FULL_DOW[i].toLowerCase()}: ${lineas.join(", ") || "nada"}. Editar`}>
+                aria-label={`Plan de los ${FULL_DOW[i].toLowerCase()}: ${lineas.join(", ") || "nada"}${nota ? `. Nota: ${nota}` : ""}. Editar`}>
                 {contenido}
               </button>
             ) : <span className="cal-header-label">{contenido}</span>}

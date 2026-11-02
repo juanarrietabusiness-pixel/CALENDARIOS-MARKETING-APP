@@ -5,6 +5,7 @@ import { PILARES } from "../../lib/pilares";
 import { MAX_POR_DIA } from "../../lib/plantillasPlan";
 import { leerPlantillas } from "../../lib/plantillasApi";
 import { FORMATOS_SEMANA, semanaDelCliente, semanaParaGuardar, semanaEstandar, semanaPropia, valorDeFormato, conFormato } from "../../lib/planSemanal";
+import { limpiarNotasSemana, MAX_NOTA_DIA } from "../../lib/notasSemana";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import "../EditorPlantilla.css";
 
@@ -17,6 +18,10 @@ import "../EditorPlantilla.css";
 // —también «UGC · guion para grabar», un reel que graba una persona—. Se
 // guarda en la empresa (lib/planSemanal.js): es lo que leen «Producir el
 // mes», «Planificar mes» y la IA. Lo ya creado en el calendario no cambia.
+//
+// Cada día tiene además su NOTA FIJA («Muebles y camas»): no es un formato
+// ni un tipo, es el tema de ese día (lib/notasSemana.js). Se guarda aparte
+// y «Volver al estándar de la agencia» no la borra.
 // ============================================================
 
 const ORDEN_DIAS = [1, 2, 3, 4, 5, 6, 0];
@@ -28,6 +33,7 @@ export default function PlanSemanal({ client, diaInicial = null, onGuardar, onCl
   const [dias, setDias] = useState(null);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
+  const [notas, setNotas] = useState(() => limpiarNotasSemana(client?.notasSemana) ?? {});
   const conPlan = useRef(false);
 
   useEffect(() => {
@@ -68,7 +74,8 @@ export default function PlanSemanal({ client, diaInicial = null, onGuardar, onCl
         </div>
         <p className="hint" style={{ margin: "var(--sp-2) 0 var(--sp-3)" }}>
           Qué sale cada día, fijo todos los meses. Lo usan «Producir el mes», «Planificar mes» y la IA. Lo que ya está en el
-          calendario no cambia.{!conPlan.current && dias ? " Esta empresa todavía no tiene formatos fijos: escoge el de cada día." : ""}
+          calendario no cambia. La nota fija de cada día es el tema que se repite (si nombra un producto, ese día va con él):
+          no cambia el formato ni el tipo.{!conPlan.current && dias ? " Esta empresa todavía no tiene formatos fijos: escoge el de cada día." : ""}
         </p>
 
         {!dias ? <p className="hint" role="status">Cargando…</p> : (
@@ -97,6 +104,10 @@ export default function PlanSemanal({ client, diaInicial = null, onGuardar, onCl
                       </button>
                     </div>
                   ))}
+                  <label className="sr-only" htmlFor={`${ids}-nota-${dow}`}>Nota fija de los {DAYS[dow].toLowerCase()}</label>
+                  <input id={`${ids}-nota-${dow}`} className="input" maxLength={MAX_NOTA_DIA} value={notas[dow] ?? ""}
+                    placeholder={`Nota fija de los ${DAYS[dow].toLowerCase()} (opcional): «Muebles y camas»`}
+                    onChange={(e) => setNotas((n) => ({ ...n, [dow]: e.target.value }))} />
                   {l.length < MAX_POR_DIA && (
                     <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: "flex-start" }}
                       onClick={() => cambiarDia(dow, [...l, { format: "post", pilar: l[0]?.pilar || "anuncio" }])}>
@@ -119,7 +130,7 @@ export default function PlanSemanal({ client, diaInicial = null, onGuardar, onCl
           )}
           <button type="button" className="btn btn-secondary" onClick={onClose} disabled={guardando}>Cancelar</button>
           <button type="button" className="btn btn-primary" disabled={!dias || guardando}
-            onClick={() => guardar(semanaParaGuardar(client, lista ?? [], dias))}>
+            onClick={() => guardar({ ...semanaParaGuardar(client, lista ?? [], dias), notasSemana: limpiarNotasSemana(notas) })}>
             {guardando ? "Guardando…" : "Guardar para todos los meses"}
           </button>
         </div>

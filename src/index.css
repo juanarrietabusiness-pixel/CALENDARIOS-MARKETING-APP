@@ -858,6 +858,8 @@ input[type="radio"] {
   min-height: 28px;
   transition: background .15s, color .15s;
 }
+/* El icono en la misma línea que el texto (sin esto el SVG, que es de bloque, iba encima). */
+.chat-mode-tab { display: inline-flex; align-items: center; justify-content: center; gap: 2px; }
 .chat-mode-tab[aria-selected="true"] {
   background: var(--surface);
   color: var(--text);
@@ -959,6 +961,8 @@ input[type="radio"] {
 }
 /* El plan semanal de la empresa (lib/planSemanal.js): una línea por publicación del día. */
 .cal-header-plan { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* La nota fija del día: debajo del plan, en el color de acento, hasta dos líneas. */
+.cal-header-nota { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--accent); font-weight: 600; white-space: normal; }
 .cal-header-label:hover {
   background: var(--accent-soft);
   color: var(--text-muted);

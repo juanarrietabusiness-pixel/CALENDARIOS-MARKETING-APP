@@ -4,16 +4,15 @@
 // En vez de un error sin salida: cómo se va a ajustar y cómo queda. Tres
 // ajustes se hacen solos al programar (difuminado, color, recorte) y el
 // cuarto —GENERARLA de nuevo con IA en 4:5 o 9:16— se pide con su botón,
-// porque cuesta dinero. Antes se le pedía a Nano Banana que la «ampliara»
-// y la redibujaba más cerca, como un zoom; ahora recrea la escena en la
-// proporción nueva con la original de referencia. La copia va en
-// `post.adaptados`, como las otras. El original
-// no se toca: Facebook, el cliente y la página de aprobación lo ven tal
-// cual.
+// porque cuesta dinero. Recrea la escena en la proporción nueva con la
+// original de referencia, y la imagen nueva REEMPLAZA a la original en la
+// publicación, en su mismo sitio (`reemplazarMedio`): antes iba aparte, en
+// `post.adaptados`, la lámina seguía enseñando la de la medida mala y el
+// carrusel no quedaba listo para subir. La original sigue en la galería si
+// salió de ahí.
 //
 // En un carrusel cada imagen que no cabe tiene su FILA: se ve cómo queda,
-// con qué modelo se generó y se regenera sola, sin tocar las demás. Antes
-// sólo se enseñaba la primera («—y 2 más—») y el botón las rehacía todas.
+// con qué modelo se generó y se regenera sola, sin tocar las demás.
 // El motor (Muse Image o Nano Banana) se puede escoger para esta vez.
 //
 // Lo usan el panel de la publicación y «Subir»: por eso recibe
@@ -22,11 +21,13 @@
 
 import { useEffect, useId, useState } from "react";
 import Icon from "../Icon";
-import { AJUSTES, claveAdaptado, mediosDe, necesitaAjuste } from "../../lib/publicacion";
+import { AJUSTES, claveAdaptado, mediosDe, necesitaAjuste, reemplazarMedio } from "../../lib/publicacion";
 import { vistaAjuste, ampliarConIA } from "../../lib/medios";
 import { generateImage, getContentBankUrl, subirImagenPublicacion, feedbackImage } from "../../lib/db";
 import { leerMotores } from "../../lib/estudio";
 import { nombreDelModelo } from "../../lib/estudioCatalogo";
+
+const destinoDe = (objetivo) => (objetivo === "historia" ? "9:16" : "4:5");
 
 /** Los dos motores que saben ampliar (worker/rutas/imagen.js, `adaptarDe.motor`). */
 const MOTORES_AMPLIAR = [["meta", "Muse Image · unos 0,01 $"], ["google", "Nano Banana · unos 0,04 $"]];
@@ -63,7 +64,7 @@ export default function AjusteImagen({ post, alCambiar, clientId, objetivo, colo
   }, []);
 
   if (!medio) return null;
-  const destino = objetivo === "historia" ? "9:16" : "4:5";
+  const destino = destinoDe(objetivo);
   const carrusel = medios.length > 1;
   const nombre = (m) => `${carrusel ? (objetivo === "historia" ? "Historia" : "Lámina") : "Imagen"} ${m.n}`;
   const ocupado = Boolean(ampliando);
@@ -73,18 +74,16 @@ export default function AjusteImagen({ post, alCambiar, clientId, objetivo, colo
     for (const [i, m] of lista.entries()) {
       setAmpliando({ src: m.src, todas, texto: lista.length > 1 ? `Generando ${i + 1} de ${lista.length}…` : "Generando con IA…" });
       try {
-        let modelo = "";
         const copiaNueva = await ampliarConIA(m.src, objetivo, {
           generar: async (proporcion) => {
             const r = await generateImage({ clientId, adaptarDe: { src: m.src, proporcion, ...(motor ? { motor } : {}) } });
-            modelo = r.modelo ?? "";
             return { clave: r.clave, src: getContentBankUrl(r.clave) };
           },
           subir: (f) => subirImagenPublicacion(clientId, f),
           descartar: (clave) => feedbackImage(clientId, clave, false).catch(() => {}),
         });
-        // Cada una se pone en cuanto sale: si la siguiente falla, la anterior no se pierde.
-        alCambiar((p) => ({ ...p, ajusteIG: "ia", adaptados: { ...(p.adaptados ?? {}), [claveAdaptado(objetivo, m.src)]: { ...copiaNueva, modelo } } }));
+        // Cada una se pone en cuanto sale, EN SU SITIO: si la siguiente falla, la anterior no se pierde.
+        alCambiar((p) => reemplazarMedio(p, m.src, { ...copiaNueva, nombre: m.nombre ? `${m.nombre.replace(/\.[a-z0-9]+$/i, "")}-${destinoDe(objetivo).replace(":", "x")}.jpg` : "" }));
       } catch (e) {
         onError?.(`No se pudo generar ${carrusel ? `la ${nombre(m).toLowerCase()}` : "la imagen"} con IA: ${e.message}`);
         break;
@@ -107,7 +106,7 @@ export default function AjusteImagen({ post, alCambiar, clientId, objetivo, colo
               ? <><strong>{fuera.length} imágenes</strong> no caben</>
               : <><strong>{medio.ancho}×{medio.alto}</strong> no cabe</>}
             {" "}en {objetivo === "historia" ? "una historia (9:16)" : "el feed de Instagram (de 4:5 a 1.91:1)"}.
-            {" "}El original no se toca: Facebook y tu cliente lo ven tal cual.
+            {" "}Si la generas con IA, la nueva reemplaza a la original en la publicación (en todas las redes); los otros ajustes sólo cambian lo que sale en Instagram.
           </p>
           <label className="sr-only" htmlFor={`${ids}-a`}>Cómo ajustar las imágenes</label>
           <select id={`${ids}-a`} className="input" value={modo} onChange={(e) => alCambiar((p) => ({ ...p, ajusteIG: e.target.value }))} disabled={ocupado}>
@@ -134,9 +133,9 @@ export default function AjusteImagen({ post, alCambiar, clientId, objetivo, colo
           <p className="hint">
             {modo === "ia"
               ? faltan.length
-                ? `Falta generar ${faltan.length === 1 ? "una imagen" : `${faltan.length} imágenes`}: sin la copia, sale con fondo difuminado. Unos 4 céntimos por imagen (1 con Muse).`
-                : "La IA las recreó en la proporción nueva, sin acercarlas. Si una no te convence, vuelve a generar sólo esa o elige otro ajuste."
-              : `La IA recrea la misma escena en ${destino}, con un plano igual o más abierto: sin zoom ni bandas. Unos 4 céntimos por imagen (1 con Muse). Los otros ajustes se hacen solos al programar.`}
+                ? `Falta generar ${faltan.length === 1 ? "una imagen" : `${faltan.length} imágenes`}: sin generarla, sale con fondo difuminado. Unos 4 céntimos por imagen (1 con Muse).`
+                : "La IA las recreó en la proporción nueva, sin acercarlas."
+              : `La IA recrea la misma escena en ${destino}, con un plano igual o más abierto, y la pone en su lugar en la publicación. Unos 4 céntimos por imagen (1 con Muse). Los otros ajustes se hacen solos al programar.`}
           </p>
         </div>
       </div>
