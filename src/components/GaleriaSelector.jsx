@@ -13,8 +13,9 @@ import "./VisorGrupo.css";
  *   maximo      cuántas caben (Instagram: 10)
  *   yaTiene     cuántas tiene ya la publicación (entonces se pregunta añadir o reemplazar)
  *   onElegir    (archivos, { reemplazar }) => void
+ *   destino     «la publicación» o «el chat»: lo que dice el botón (el asistente también escoge de aquí)
  */
-export default function GaleriaSelector({ clienteId, maximo = 10, yaTiene = 0, onElegir, onCerrar }) {
+export default function GaleriaSelector({ clienteId, maximo = 10, yaTiene = 0, onElegir, onCerrar, destino = "la publicación" }) {
   const ids = useId();
   const ref = useDialogA11y(onCerrar);
   const [datos, setDatos] = useState(null);
@@ -87,10 +88,10 @@ export default function GaleriaSelector({ clienteId, maximo = 10, yaTiene = 0, o
               <input type="checkbox" checked={reemplazar} onChange={(e) => setReemplazar(e.target.checked)} /> Reemplazar lo que ya tiene ({yaTiene})
             </label>
           )}
-          {sobran && <p role="alert" className="hint" style={{ margin: 0 }}>Caben {caben}: Instagram admite {maximo} por publicación.</p>}
+          {sobran && <p role="alert" className="hint" style={{ margin: 0 }}>Caben {caben}{destino === "la publicación" ? `: Instagram admite ${maximo} por publicación` : ` en ${destino}`}.</p>}
           <button type="button" className="btn btn-ghost" onClick={onCerrar}>Cancelar</button>
           <button type="button" className="btn btn-primary" disabled={!elegidas.length || sobran} onClick={() => onElegir(elegidas, { reemplazar })}>
-            <Icon name="check" size={18} /> {elegidas.length ? `Poner ${elegidas.length} en la publicación` : "Escoge algo"}
+            <Icon name="check" size={18} /> {elegidas.length ? `Poner ${elegidas.length} en ${destino}` : "Escoge algo"}
           </button>
         </div>
       </div>

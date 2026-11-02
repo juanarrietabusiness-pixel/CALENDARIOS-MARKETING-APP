@@ -479,6 +479,28 @@ describe("programar al aprobar", () => {
   };
   const conSesion = (ruta) => new Request(`https://calendarios.test${ruta}`, { headers: { Cookie: `${COOKIE}=${TESTIGO}` } });
 
+  it("encendida en el CLIENTE (no en el mes), la pieza aprobada entra sola en la cola", async () => {
+    await sembrar();
+    db.sqlite.prepare("update clients set programar_al_aprobar = 1 where id = 'c1'").run();
+    db.sqlite.prepare("update calendars set share_token = ?, share_enabled = 1 where id = 'cal1'").run("t".repeat(48));
+    expect((await aprobar()).status).toBe(200);
+    expect(filas()).toMatchObject([{ post_id: "p1", red: "instagram", estado: "programada" }]);
+  });
+
+  it("si no se puede programar sola, el motivo queda en la CAMPANA (no sólo en el aviso del momento)", async () => {
+    // Una PNG: Instagram sólo publica JPEG y el servidor no la puede convertir.
+    await sembrar({ posts: [post({ image: "/api/media/clientes/c1/posts/foto.png", medios: [{ src: "/api/media/clientes/c1/posts/foto.png", tipo: "imagen", ancho: 1080, alto: 1350 }] })] });
+    db.sqlite.prepare("update clients set programar_al_aprobar = 1 where id = 'c1'").run();
+    db.sqlite.prepare("update calendars set share_token = ?, share_enabled = 1 where id = 'cal1'").run("t".repeat(48));
+    expect((await aprobar()).status).toBe(200);
+    expect(filas()).toHaveLength(0);
+    const avisos = db.sqlite.prepare("select tipo, texto, enlace from avisos").all();
+    const aviso = avisos.find((x) => /no se pudo programar sola/.test(x.texto));
+    expect(aviso).toBeTruthy();
+    expect(aviso.texto).toMatch(/Café Luna: el cliente aprobó .* JPEG/);
+    expect(aviso.enlace).toMatch(/cal1\?publicacion=p1/);
+  });
+
   it("aun encendida, una IDEA aprobada no se programa: aprobar un concepto no es aprobar la pieza", async () => {
     await sembrar({ opciones: { programarAlAprobar: true }, posts: [post({ aprobacion: "idea" })] });
     db.sqlite.prepare("update calendars set share_token = ?, share_enabled = 1 where id = 'cal1'").run("t".repeat(48));

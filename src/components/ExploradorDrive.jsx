@@ -86,9 +86,13 @@ export default function ExploradorDrive({
     setFallo("");
     let hechos = 0;
     for (const f of archivos) {
-      setSubiendo(`Subiendo «${f.name}» (${hechos + 1} de ${archivos.length})…`);
+      const cual = `«${f.name}» (${hechos + 1} de ${archivos.length})`;
+      setSubiendo(`Subiendo ${cual}…`);
       try {
-        await db.subirADrive(clienteId, f, carpeta);
+        // Un archivo grande va por trozos y dice cuánto lleva: 250 MB no se suben en un momento.
+        await db.subirADrive(clienteId, f, carpeta, {
+          alProgreso: (b) => setSubiendo(`Subiendo ${cual}: ${Math.min(99, Math.round((b / f.size) * 100))} % de ${Math.round(f.size / 1048576)} MB…`),
+        });
         hechos += 1;
       } catch (e) {
         setFallo(`«${f.name}»: ${e.message}`);

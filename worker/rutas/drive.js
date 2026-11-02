@@ -260,11 +260,36 @@ async function rutasConSesion(req, env, { acceso, usuario, partes, metodo }) {
     const mime = req.headers.get("Content-Type") || "application/octet-stream";
     const largo = Number(req.headers.get("Content-Length") ?? 0);
     if (!largo) return error("Falta el tamaño del archivo", 411);
-    if (largo > MAX_SUBIDA) return error(`El archivo pesa ${Math.round(largo / 1048576)} MB; el máximo es ${MAX_SUBIDA / 1048576} MB. Súbelo directo a Drive.`, 413);
+    // Más grande, por trozos y «desde-media» (src/lib/db.js lo hace solo): esto es la red por si llega aquí.
+    if (largo > MAX_SUBIDA) return error(`El archivo pesa ${Math.round(largo / 1048576)} MB: de una vez sólo entran ${MAX_SUBIDA / 1048576} MB. Vuelve a subirlo desde la aplicación actualizada (recarga la página).`, 413);
     if (!(await dentroDelCliente(env, acceso, raiz, carpeta))) return noEncontrado("Carpeta");
     const f = await subirADrive(env, acceso, { carpeta, nombre, mime, largo, cuerpo: req.body });
     difundir(env, acceso.ownerId, { tipo: "banco", clientId: clienteId, por: firma(usuario, req) });
     return json(aArchivo(f), 201);
+  }
+
+  // Un archivo GRANDE (un reel de 250 MB): el navegador lo sube antes a R2 por trozos (/api/media/trozos, carpeta
+  // «subidas») y aquí se pasa a Drive por flujo, sin cargarlo entero, y se borra de R2. De una vez, el cuerpo de una
+  // petición en Cloudflare no pasa de 100 MB, y la pantalla decía «el máximo es 100 MB».
+  if (sub === "desde-media" && metodo === "POST") {
+    const d = (await cuerpo(req)) ?? {};
+    const clave = String(d.clave ?? "");
+    if (!clave.startsWith(`clientes/${clienteId}/subidas/`) || clave.includes("..")) return noEncontrado("Archivo");
+    const carpeta = String(d.carpeta || "") || raiz;
+    if (!(await dentroDelCliente(env, acceso, raiz, carpeta))) return noEncontrado("Carpeta");
+    const objeto = await env.MEDIA.get(clave);
+    if (!objeto) return noEncontrado("Archivo");
+    const nombre = String(d.nombre || "archivo").slice(0, 200);
+    try {
+      const f = await subirADrive(env, acceso, {
+        carpeta, nombre, mime: objeto.httpMetadata?.contentType || "application/octet-stream", largo: objeto.size, cuerpo: objeto.body,
+      });
+      difundir(env, acceso.ownerId, { tipo: "banco", clientId: clienteId, por: firma(usuario, req) });
+      return json(aArchivo(f), 201);
+    } finally {
+      // Era sólo el camino a Drive: no se queda en R2 (ni si falló: se vuelve a subir).
+      await env.MEDIA.delete(clave).catch(() => {});
+    }
   }
 
   // A la papelera de Drive (se puede recuperar desde Drive 30 días).

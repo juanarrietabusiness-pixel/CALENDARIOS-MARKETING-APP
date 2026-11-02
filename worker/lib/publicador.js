@@ -47,7 +47,7 @@ import {
   tituloYouTube, descripcionYouTube, etiquetasYouTube, esShortYouTube, fotosTikTok, tituloTikTok,
 } from "../../src/lib/publicacion.js";
 import { tipoAprobacion } from "../../src/lib/aprobacion.js";
-import { avisarFallo } from "./equipo.js";
+import { avisarFallo, avisar, miembrosDe, enlacePublicacion } from "./equipo.js";
 
 /** Un error que es de lo que se pidió, no del servidor: se enseña tal cual. */
 export class ErrorPublicar extends Error {
@@ -178,8 +178,10 @@ export async function programarLote(env, acceso, { calendarId, postIds = [], usu
       nuevas.push(...plan.nuevas);
       cancelar.push(...plan.cancelar);
     } catch (e) {
-      if (!(e instanceof ErrorPublicar)) throw e;
-      fallidas.push({ postId, motivo: e.message });
+      // Una publicación rara no tumba el lote: antes un error inesperado con UNA devolvía 500 y no se programaba
+      // ninguna. Lo inesperado se registra y esa vuelve con su motivo.
+      if (!(e instanceof ErrorPublicar)) console.error("programar lote:", postId, e);
+      fallidas.push({ postId, motivo: e instanceof ErrorPublicar ? e.message : "No se pudo programar por un error inesperado. Ábrela y prográmala desde su panel." });
     }
   }
   await acceso.guardarVarios("publicaciones_programadas", [...cancelar, ...nuevas]);
@@ -353,7 +355,10 @@ export async function resincronizarCalendario(env, acceso, cal, por) {
 export async function programarAlAprobar(env, ownerId, calendarId, postId) {
   const acceso = crearAcceso(env.DB, ownerId);
   const cal = await acceso.leerUno("calendars", { id: calendarId });
-  if (!leerJSON(cal?.opciones, {})?.programarAlAprobar) return null;
+  if (!cal) return null;
+  // Del CLIENTE (0052); lo encendido antes en un mes concreto se sigue respetando.
+  const cliente = await acceso.leerUno("clients", { id: cal.client_id });
+  if (!(cliente?.programar_al_aprobar === 1 || leerJSON(cal.opciones, {})?.programarAlAprobar)) return null;
   const hallada = buscarPublicacion(leerJSON(cal.days, []), postId);
   if (!hallada || tipoAprobacion(hallada.post) !== "pieza") return null;
   try {
@@ -361,13 +366,21 @@ export async function programarAlAprobar(env, ownerId, calendarId, postId) {
     difundir(env, ownerId, { tipo: "publicacion", calId: calendarId, postId, por: FIRMA_SISTEMA });
     return filas;
   } catch (e) {
-    difundir(env, ownerId, {
-      tipo: "publicacion", calId: calendarId, postId, por: FIRMA_SISTEMA,
-      aviso: `El cliente la aprobó, pero no se pudo programar: ${e.message}`,
-    });
+    const texto = `${cliente?.name ? `${cliente.name}: ` : ""}el cliente aprobó «${tituloDe(hallada.post)}», pero no se pudo programar sola: ${e.message}`;
+    difundir(env, ownerId, { tipo: "publicacion", calId: calendarId, postId, por: FIRMA_SISTEMA, aviso: texto });
+    // Y en la campana: el aviso del momento se perdía si nadie tenía la aplicación abierta.
+    try {
+      const para = hallada.post.responsableId ? [hallada.post.responsableId] : (await miembrosDe(acceso)).map((m) => m.userId);
+      await avisar(env, acceso, {
+        para, tipo: "fallo", texto, enlace: enlacePublicacion(cal.client_id, calendarId, postId),
+        por: { userId: "sistema", nombre: "Programar al aprobar" },
+      });
+    } catch (x) { console.error("aviso de programar al aprobar:", x); }
     return null;
   }
 }
+
+const tituloDe = (post) => String(post?.title || post?.idea || "una publicación").replace(/\s+/g, " ").slice(0, 80);
 
 // ------------------------------------------------------------
 // Procesar la cola

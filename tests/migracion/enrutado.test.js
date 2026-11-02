@@ -1064,6 +1064,38 @@ describe("Google Drive como banco de contenido", () => {
     expect(r.quitados).toEqual(["vieja-del-cliente-0001"]);
   });
 
+  it("un archivo GRANDE va a Drive desde R2 (subido antes por trozos) y se borra de R2; uno de otro cliente, no", async () => {
+    const subidas = [];
+    const cuerpos = [];
+    vi.stubGlobal("fetch", async (url, opciones = {}) => {
+      const u = new URL(String(url));
+      if (u.host === "oauth2.googleapis.com") return Response.json({ access_token: "token-acceso", expires_in: 3600 });
+      if (u.pathname === "/upload/drive/v3/files") {
+        subidas.push({ meta: JSON.parse(opciones.body), largo: opciones.headers["X-Upload-Content-Length"] });
+        return new Response(null, { headers: { Location: "https://subida.test/s/1" } });
+      }
+      if (u.host === "subida.test") {
+        cuerpos.push(await new Response(opciones.body).text());
+        return Response.json({ id: "drive-reel", name: "reel.mp4", mimeType: "video/mp4", size: "8" });
+      }
+      return new Response("no esperado", { status: 500 });
+    });
+    const env = await conDrive({ r2: { "clientes/cliente-1/subidas/reel.mp4": "BYTES123", "clientes/otro/subidas/x.mp4": "AJENO" } });
+    const pedir = (clave) => worker.fetch(conSesion("/api/drive/clientes/cliente-1/desde-media", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clave, nombre: "reel.mp4" }),
+    }), env);
+    const res = await pedir("clientes/cliente-1/subidas/reel.mp4");
+    expect(res.status).toBe(201);
+    expect((await res.json()).id).toBe("drive-reel");
+    expect(subidas).toEqual([{ meta: expect.objectContaining({ name: "reel.mp4", parents: [RAIZ] }), largo: "8" }]);
+    expect(cuerpos).toEqual(["BYTES123"]);
+    expect(env.MEDIA.objetos.has("clientes/cliente-1/subidas/reel.mp4")).toBe(false);
+    // Una clave de otro cliente, o de otra carpeta que no es la de las subidas: no se toca.
+    expect((await pedir("clientes/otro/subidas/x.mp4")).status).toBe(404);
+    expect((await pedir("clientes/cliente-1/posts/a.jpg")).status).toBe(404);
+    expect(env.MEDIA.objetos.has("clientes/otro/subidas/x.mp4")).toBe(true);
+  });
+
   it("una imagen de Drive en una publicación se COPIA a R2 y devuelve su clave", async () => {
     googleFalso({ foto: { mimeType: "image/png", parents: [RAIZ], contenido: "PNG" } });
     const env = await conDrive();
