@@ -14,6 +14,7 @@ import SelectorModelo from "./SelectorModelo";
 const ExtraerUgc = lazy(() => import("./calendario/ExtraerUgc"));
 // «Guardar como plantilla» va en su chunk: el del Estudio está en su tope.
 const GuardarPlantilla = lazy(() => import("./GuardarPlantilla"));
+const VideoListo = lazy(() => import("./VideoListo"));
 
 // ============================================================
 // El visor: la imagen (o el video) grande y todo lo que se sabe de ella
@@ -280,6 +281,9 @@ export default function Visor({
           {!lectura && !video && onEditar && !editando && <AjustarTexto archivo={a} galeria={galeria} onEditar={editarCon} />}
           {!video && <ControlDeCalidad key={a.id} archivo={a} clienteId={clienteId} lectura={lectura} onAbrir={onVerOriginal} />}
           {!video && !lectura && clienteId && <Suspense fallback={null}><GuardarPlantilla key={`p-${a.id}`} clienteId={clienteId} archivo={a} onGuardada={onPlantilla} /></Suspense>}
+          {video && clienteId && esVideoReal(a) && (
+            <Suspense fallback={null}><VideoListo key={`v-${a.id}`} clienteId={clienteId} archivoId={a.id} src={a.src} inicial={a.ajustes?.revisionVideo} /></Suspense>
+          )}
           {!video && (onRevisar || revision) && <RevisionDeMarca revision={revision} onRevisar={onRevisar} onCorregir={lectura ? null : onCorregir} />}
           <div className="est-visor-acciones">
             {!lectura && !video && onEditar && !editando && <button type="button" className="btn btn-secondary" onClick={() => setEditando(true)}><Icon name="pencil" size={16} /> Editar</button>}

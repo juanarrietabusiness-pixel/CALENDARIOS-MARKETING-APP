@@ -17,12 +17,14 @@
 // `lib/publicacion.js`, las mismas que aplica el servidor al publicar.
 // ============================================================
 
-import { useEffect, useId, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import Icon from "../Icon";
 import BancoSelector from "../BancoSelector";
 import { subirImagenPublicacion, getContentBankUrl, medioDeDrive, loadComentarios, comentarComoAgencia } from "../../lib/db";
 import { mediosDe, textoPara, contarHashtags, LIMITES } from "../../lib/publicacion";
 import { medirImagen, ventanaCuadricula, encuadrarParaCuadricula } from "../../lib/medios";
+
+const PortadaClic = lazy(() => import("./PortadaClic"));
 
 const esVideoArchivo = (f) => f?.type?.startsWith("video/");
 
@@ -30,7 +32,7 @@ const esVideoArchivo = (f) => f?.type?.startsWith("video/");
 // Medios
 // ------------------------------------------------------------
 
-export function EditorMedios({ post, clientId, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null, onCrearReel = null, onVideoProducto = null, onDeLaGaleria = null, onOtraVersion = null, onRecrear = null, onCrearAqui = null, onCorregir = null, versionando = null }) {
+export function EditorMedios({ post, clientId, client = null, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null, onCrearReel = null, onVideoProducto = null, onDeLaGaleria = null, onOtraVersion = null, onRecrear = null, onCrearAqui = null, onCorregir = null, versionando = null }) {
   const ids = useId();
   const [eligiendoPortada, setEligiendoPortada] = useState(null);
   const propia = useRef(null);
@@ -285,6 +287,7 @@ export function EditorMedios({ post, clientId, driveFolder, onChange, onError, e
           video={medios[eligiendoPortada]}
           post={post}
           clientId={clientId}
+          client={client}
           onPortada={onPortada}
           onError={onError}
           onCerrar={() => setEligiendoPortada(null)}
@@ -401,7 +404,7 @@ async function fotogramaDe(video, encuadre = 0) {
   return new File([blob], "portada.jpg", { type: "image/jpeg" });
 }
 
-export function PortadaVideo({ id, video, post, clientId, onPortada, onError, onCerrar }) {
+export function PortadaVideo({ id, video, post, clientId, client = null, onPortada, onError, onCerrar }) {
   const ids = useId();
   const ref = useRef(null);
   const archivo = useRef(null);
@@ -525,6 +528,12 @@ export function PortadaVideo({ id, video, post, clientId, onPortada, onError, on
           <p className="hint">Instagram usa la imagen o el fotograma; en TikTok la portada la elige TikTok.</p>
         </div>
       </div>
+      {/* Una portada creada para dar clic (lib/portadaClic.js): concepto, titular corto y la vista a 120 px. */}
+      {client && (
+        <Suspense fallback={null}>
+          <PortadaClic client={client} post={post} onError={onError} onPortada={(c) => { onPortada(c); onCerrar(); }} />
+        </Suspense>
+      )}
     </div>
   );
 }

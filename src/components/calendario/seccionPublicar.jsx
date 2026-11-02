@@ -60,6 +60,7 @@ const ReelIA = lazy(() => import("./ReelIA"));
 const GaleriaSelector = lazy(() => import("../GaleriaSelector"));
 // El tipo, el estilo y la plantilla de «Crear la imagen aquí»: lee el kit, va aparte.
 const OpcionesCrearAqui = lazy(() => import("./OpcionesCrearAqui"));
+const VideoListo = lazy(() => import("../VideoListo"));
 
 /**
  * @param formatoAuto  true cuando la publicación se creó con «Subir
@@ -398,6 +399,8 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
   const historias = historiasDe(post);
   const resumenHistoria = post.historiaTambien && historias.length ? plural(historias.length, "historia", "historias") : null;
   const conPortada = mediosDe(post).some((m) => m.tipo === "video");
+  // El video que revisa «¿Está listo este video?»: el primero que ya está en el almacenamiento.
+  const videoSubido = mediosDe(post).find((m) => m.tipo === "video" && String(m.src ?? "").startsWith("/api/media/"))?.src ?? "";
 
   return (
     <div className="pestana-publicar" data-ancho={ancho || undefined}>
@@ -422,6 +425,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
         <EditorMedios
           post={post}
           clientId={clientId}
+          client={client}
           driveFolder={client?.driveFolder}
           onChange={alCambiarMedios}
           onError={onError}
@@ -578,6 +582,13 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           </div>
         )}
       </section>
+
+      {videoSubido && clientId && (
+        <Suspense fallback={null}>
+          <VideoListo key={videoSubido} clienteId={clientId} clave={videoSubido} src={videoSubido} productoId={post.productoId ?? ""}
+            idea={String(post.idea || post.title || post.descripcion || "")} formato={esHistoria ? "historia" : "reel"} />
+        </Suspense>
+      )}
 
       {fuera && <AjusteImagen post={post} alCambiar={setForm} clientId={clientId} objetivo={objetivo} color={client?.primaryColor} onError={onError} />}
 

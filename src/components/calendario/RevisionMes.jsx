@@ -12,6 +12,7 @@ import { revisarMes, resumenRevision, aplicarArregloTexto, pedidoDeRevisionIA, l
 import { BalanceDelMes } from "../EstrategiaMes";
 import { semanasDelMes } from "../../lib/campanas";
 import { limpiarEstrategia } from "../../lib/estrategiaMes";
+import { MAX_PIEZAS_SERIE } from "../../lib/piezasJuntas";
 import "./RevisionMes.css";
 
 // ============================================================
@@ -22,6 +23,8 @@ import "./RevisionMes.css";
 // nada. Dos pasadas opcionales, que sí cuestan: la IA lee los textos (lo
 // que las reglas no ven) y mira las imágenes contra el kit de marca. Nada
 // se cambia solo: cada arreglo es un botón, y «Abrir» lleva al panel.
+// «Ver las piezas juntas» mira todas las imágenes A LA VEZ (una hoja numerada que arma el navegador, lib/hojaPiezas.js)
+// y dice cuáles se salen de la serie: lo que la revisión de cada imagen sola no ve.
 // ============================================================
 
 const MAX_IMAGENES = 30;
@@ -38,6 +41,7 @@ export default function RevisionMes({ client, cal, onAbrir, onArreglar, onClose 
   const [conImagenes, setConImagenes] = useState(false);
   const [trabajando, setTrabajando] = useState("");
   const [aviso, setAviso] = useState(null);
+  const [serie, setSerie] = useState(null); // { puntaje, resumen, comun, fuera, porId: postId → { n, motivo, arreglo } }
   const clienteId = client?.dbId || client?.id;
 
   useEffect(() => { leerMercado(clienteId).then(setMercado).catch(() => setMercado({})); }, [clienteId]);
@@ -96,14 +100,36 @@ export default function RevisionMes({ client, cal, onAbrir, onArreglar, onClose 
     window.dispatchEvent(new Event("ia:gasto"));
   };
 
+  // La imagen que representa a cada publicación en la hoja: la primera imagen, o la portada de un video.
+  const piezasConImagen = useMemo(() => todas
+    .map(({ date, post }) => ({ date, post, src: mediosDe(post).find((m) => m.tipo !== "video" && String(m.src ?? "").startsWith("/api/media/"))?.src || (String(post.portada ?? "").startsWith("/api/media/") ? post.portada : "") }))
+    .filter((x) => x.src)
+    .slice(0, MAX_PIEZAS_SERIE), [todas]);
+
+  const verJuntas = async () => {
+    setTrabajando("juntas");
+    setAviso(null);
+    try {
+      const [{ hojaDePiezas }, { revisarSerie }] = await Promise.all([import("../../lib/hojaPiezas"), import("../../lib/revisionVideoApi")]);
+      const { base64, total } = await hojaDePiezas(piezasConImagen.map((x) => x.src));
+      const r = await revisarSerie(clienteId, base64, total);
+      const porId = Object.fromEntries(r.fuera.map((f) => [piezasConImagen[f.n - 1]?.post.id, f]).filter(([id]) => id));
+      setSerie({ ...r, porId });
+      setAviso({ ok: true, texto: r.fuera.length ? `${r.fuera.length} ${r.fuera.length === 1 ? "pieza se sale" : "piezas se salen"} de la serie.` : "Las piezas se ven de la misma marca." });
+    } catch (e) {
+      setAviso({ ok: false, texto: e.message });
+    }
+    setTrabajando("");
+  };
+
   // Lo que se ve: las reglas, y lo que digan la IA y la revisión de imágenes (aunque las reglas no vieran nada ahí).
   const filas = useMemo(() => {
     const porId = new Map(lista.map((x) => [x.post.id, x]));
     for (const { date, post } of todas) {
-      if (!porId.has(post.id) && (ia[post.id]?.length || marca[post.id])) porId.set(post.id, { date, post, problemas: [], falta: [] });
+      if (!porId.has(post.id) && (ia[post.id]?.length || marca[post.id] || serie?.porId[post.id])) porId.set(post.id, { date, post, problemas: [], falta: [] });
     }
     return [...porId.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
-  }, [lista, todas, ia, marca]);
+  }, [lista, todas, ia, marca, serie]);
 
   const resumen = resumenRevision(lista);
   const ocupado = Boolean(trabajando);
@@ -128,6 +154,22 @@ export default function RevisionMes({ client, cal, onAbrir, onArreglar, onClose 
               <span>y las imágenes contra el kit de marca (unos centavos cada una)</span>
             </label>
           </div>
+          {piezasConImagen.length >= 2 && (
+            <section className="revision-serie" aria-label="Las piezas juntas">
+              <div className="revision-acciones" style={{ marginBottom: 0 }}>
+                <button type="button" className="btn btn-secondary" disabled={ocupado} onClick={verJuntas}>
+                  <Icon name="grid" size={16} /> {trabajando === "juntas" ? "Mirando las piezas juntas…" : serie ? "Volver a verlas juntas" : "Ver las piezas juntas"}
+                </button>
+                <span className="hint">¿Parecen de la misma marca? Mira las {piezasConImagen.length} imágenes a la vez (unos centavos).</span>
+              </div>
+              {serie && (
+                <div className="revision-serie-resultado">
+                  <p style={{ margin: 0 }}><strong>Serie: {serie.puntaje}/10.</strong> {serie.resumen}</p>
+                  {serie.comun.length > 0 && <p className="hint" style={{ margin: 0 }}>Lo que comparten: {serie.comun.join("; ")}.</p>}
+                </div>
+              )}
+            </section>
+          )}
           <div aria-live="polite">
             {aviso && <p role={aviso.ok ? "status" : "alert"} className={aviso.ok ? "hint" : "cerebro-error"}>{aviso.texto}</p>}
           </div>
@@ -163,6 +205,12 @@ export default function RevisionMes({ client, cal, onAbrir, onArreglar, onClose 
                   </p>
                 ))}
                 {(ia[post.id] ?? []).map((t, i) => <p key={`ia${i}`} className="revision-problema revision-ia"><Icon name="sparkles" size={12} /> {t}</p>)}
+                {serie?.porId[post.id] && (
+                  <p className="revision-problema">
+                    <Icon name="grid" size={12} /> Se sale de la serie (n.º {serie.porId[post.id].n}): {serie.porId[post.id].motivo}
+                    {serie.porId[post.id].arreglo ? ` Para traerla de vuelta: ${serie.porId[post.id].arreglo}` : ""}
+                  </p>
+                )}
                 {marca[post.id] && (
                   <p className={`revision-problema${marca[post.id].error || marca[post.id].falla?.length ? "" : " revision-ok"}`}>
                     <Icon name="palette" size={12} />{" "}

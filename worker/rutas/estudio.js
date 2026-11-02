@@ -31,6 +31,9 @@
 //   POST   /<cliente>/kit/preparar                 La IA PROPONE el kit desde el cerebro (no guarda)
 //   POST   /<cliente>/kit/aprender                 La IA MIRA los «Me gusta» y la papelera y PROPONE reglas visuales (no guarda)
 //   POST   /<cliente>/revisar                      { archivoId } o { clave }: la IA mira la imagen contra el kit
+//   POST   /<cliente>/revisar-video                { archivoId } o { clave }, idea?, productoId?, formato?, otraVez?, fotogramas?:
+//                                                   «¿Está listo este video?» (queda en la ficha: la segunda vez no se paga)
+//   POST   /<cliente>/serie                        { imagen (JPEG base64), total }: «Las piezas juntas» del mes
 //   POST   /<cliente>/archivos                     Subir a mano (multipart: archivo, carpetaId?, origenId?, plantilla?);
 //                                                   la misma imagen dos veces → 200 con la ficha que había y `repetido`
 //   POST   /<cliente>/archivos/<id>/cambiar        { favorito?, carpetaId? }
@@ -72,6 +75,8 @@ import { fichasDeDiseno } from "../lib/estudio/fichas.js";
 import { guionCorto, guionDeVideoProducto } from "../lib/estudio/guionCorto.js";
 import { kitDe, guardarKit, prepararKit, revisarPieza, subirFuente } from "../lib/estudio/kit.js";
 import { guardarPlantilla, quitarPlantilla } from "../lib/estudio/plantillas.js";
+import { revisarVideo } from "../lib/estudio/revisionVideo.js";
+import { revisarSerie } from "../lib/estudio/serie.js";
 import { sistemaDePortada, controlarPieza } from "../lib/estudio/control.js";
 import { aprenderDeLoVisual } from "../lib/estudio/aprender.js";
 import { produccionDeLote } from "../lib/estudio/lote.js";
@@ -212,6 +217,30 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
       }
       if (c === "preparar" && metodo === "POST") return json(await prepararKit(env, acceso, cliente));
       if (c === "aprender" && metodo === "POST") return json(await aprenderDeLoVisual(env, acceso, cliente));
+    }
+    if (b === "revisar-video" && !c && metodo === "POST") {
+      const d = (await cuerpo(req)) ?? {};
+      const porId = ID.test(String(d.archivoId ?? ""));
+      if (!porId && !String(d.clave ?? "").trim()) return error("Falta el video.");
+      try {
+        return json(await revisarVideo(env, acceso, cliente, {
+          archivoId: porId ? String(d.archivoId) : "", clave: porId ? "" : String(d.clave).slice(0, 400), fotogramas: d.fotogramas,
+          idea: String(d.idea ?? "").slice(0, 1200), productoId: String(d.productoId ?? "").slice(0, 80),
+          formato: String(d.formato ?? "reel"), otraVez: d.otraVez === true,
+        }));
+      } catch (e) {
+        if (e?.estado) return fallo(e);
+        throw e;
+      }
+    }
+    if (b === "serie" && !c && metodo === "POST") {
+      const d = (await cuerpo(req)) ?? {};
+      try {
+        return json(await revisarSerie(env, acceso, cliente, { imagen: d.imagen, total: d.total }));
+      } catch (e) {
+        if (e?.estado) return fallo(e);
+        throw e;
+      }
     }
     if (b === "revisar" && !c && metodo === "POST") {
       const datos = await cuerpo(req);

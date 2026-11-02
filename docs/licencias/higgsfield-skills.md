@@ -10,6 +10,9 @@ en esos archivos y no se ha adaptado.
 | Receta del calendario | De qué skill | Qué se tomó |
 |---|---|---|
 | «Video del producto» (`src/lib/videoProducto.js`) | `higgsfield-generate` (`references/prompt-engineering.md`), `higgsfield-faceless-video` | Con imagen inicial se describe el movimiento y no lo que ya se ve; prompts cortos; decir lo que sí debe salir; bloques de 10 s con su locución de ~26–30 palabras |
+| «Portada que da clic» (`src/lib/portadaClic.js`) | `higgsfield-thumbnail` | La portada se juzga en miniatura (unos 120 px): una idea, un foco grande, titular de pocas palabras con contraste; los 16 conceptos y sus textos son propios |
+| «¿Está listo este video?» (`src/lib/revisionVideo.js`) | `higgsfield-video-review` | Revisar el video terminado antes de publicarlo (gancho, sin sonido, cierre, defectos); los criterios y el veredicto son propios |
+| «Las piezas juntas» (`src/lib/piezasJuntas.js`) | `higgsfield-brand-consistency` | Mirar las piezas como un conjunto y señalar las que se salen; la hoja numerada y el pedido son propios |
 | «Modo de foto» y «De temporada» (`src/lib/modosFoto.js`) | `higgsfield-product-photoshoot` | Los modos que faltaban (con manos, persona usándolo, flotando/salpicadura, Pinterest) y el «restyle» por temporada; las líneas fotográficas son propias (las suyas viven en su servidor) |
 
 ## Licencia original
