@@ -46,6 +46,47 @@ export function ordenarNotas(notas) {
   return [...notas].sort((a, b) => (PESO[a.tipo] ?? 9) - (PESO[b.tipo] ?? 9) || a.titulo.localeCompare(b.titulo, "es"));
 }
 
+/** Los tipos que la IA lee SIEMPRE, sin buscarlos: van arriba, aparte, porque un error ahí está en todo lo que escribe. */
+export const TIPOS_SIEMPRE = Object.freeze(["ficha", "cifras", "pautas"]);
+
+const GRUPO_ORIGEN = {
+  manual: "Escritas aquí",
+  ia: "Escritas por la IA",
+  mercado: "Del estudio de mercado",
+  documento: "Documentos subidos",
+  app: "Aprendidas de la aplicación",
+};
+
+/** «clientes/Rofer/01_brand_guidelines.md» → «01 brand guidelines». */
+export const nombreDeArchivo = (ruta) => String(ruta ?? "").split("/").pop().replace(/\.[a-z0-9]+$/i, "").replace(/[_-]+/g, " ").trim() || "Archivo";
+
+/**
+ * Las notas como se enseñan: lo que la IA lee siempre arriba, y lo demás agrupado por de dónde salió (cada archivo del
+ * repositorio es un grupo: una nota es una SECCIÓN de ese archivo, y suelta no se entendía de dónde venía). Pura.
+ * @returns {{ siempre: object[], grupos: Array<{ clave, titulo, ayuda, notas: object[] }> }}
+ */
+export function agruparNotas(notas) {
+  const siempre = ordenarNotas(notas.filter((n) => TIPOS_SIEMPRE.includes(n.tipo)));
+  const mapa = new Map();
+  for (const n of ordenarNotas(notas.filter((x) => !TIPOS_SIEMPRE.includes(x.tipo)))) {
+    const delRepo = n.origen === "repositorio" && n.fuente;
+    const clave = delRepo ? `repo:${n.fuente}` : `origen:${n.origen ?? "manual"}`;
+    if (!mapa.has(clave)) {
+      mapa.set(clave, {
+        clave,
+        titulo: delRepo ? nombreDeArchivo(n.fuente) : GRUPO_ORIGEN[n.origen] ?? "Otras",
+        ayuda: delRepo ? `Del repositorio: ${n.fuente}` : "",
+        notas: [],
+      });
+    }
+    mapa.get(clave).notas.push(n);
+  }
+  // Primero lo escrito aquí (lo más reciente de la agencia), luego los archivos por nombre.
+  const orden = (g) => (g.clave === "origen:manual" ? 0 : g.clave.startsWith("repo:") ? 1 : 2);
+  const grupos = [...mapa.values()].sort((a, b) => orden(a) - orden(b) || a.titulo.localeCompare(b.titulo, "es"));
+  return { siempre, grupos };
+}
+
 export const sinTildes = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
 /** Filtra por tipo, por «sólo internas» y por lo que se escriba en el cuadro (título o resumen). */
@@ -87,7 +128,7 @@ export function describirImportacion(r) {
   const partes = [];
   if (n.creadas) partes.push(`${plural(n.creadas, "nota creada", "notas creadas")} de ${plural((a.nuevos ?? 0) + (a.actualizados ?? 0), "archivo", "archivos")}`);
   if (n.reemplazadas) partes.push(`${plural(n.reemplazadas, "nota renovada", "notas renovadas")}`);
-  if (n.conservadas) partes.push(`${plural(n.conservadas, "corregida a mano se conservó", "corregidas a mano se conservaron")}`);
+  if (n.conservadas) partes.push(`${plural(n.conservadas, "nota que corregiste aquí no se actualizó", "notas que corregiste aquí no se actualizaron")} (abajo puedes usar la del repositorio)`);
   if (a.iguales) partes.push(`${plural(a.iguales, "archivo sin cambios", "archivos sin cambios")}`);
   if (a.cambiados) partes.push(`${plural(a.cambiados, "archivo cambió", "archivos cambiaron")} en el repositorio (usa «Actualizar lo que cambió» para traerlos)`);
   if (a.omitidos) partes.push(`${plural(a.omitidos, "archivo quedó", "archivos quedaron")} para la siguiente vuelta: vuelve a pulsar el botón`);

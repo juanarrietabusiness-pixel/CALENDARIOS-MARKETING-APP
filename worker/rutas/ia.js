@@ -30,7 +30,7 @@
 
 import { json, error, cuerpo } from "../lib/respuesta.js";
 import { abrirFlujo, leerFlujo, textoDe, esRechazoDeModelo, mensajeDeRechazo, RechazoAnthropic } from "../lib/anthropic.js";
-import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET, etiquetaModelo, esMuse } from "../lib/configIA.js";
+import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET, etiquetaModelo, esMuse, sinIADeTexto } from "../lib/configIA.js";
 
 const MAX_BODY_BYTES = 5 * 1024 * 1024;   // las publicaciones llevan imágenes
 const MAX_TOKENS_CAP = 64_000;            // texto pedido + margen del razonamiento
@@ -54,7 +54,7 @@ export async function rutaIA(req, env, { acceso } = {}) {
   // Un solo proveedor de texto: Anthropic. Groq se quitó cuando Haiku
   // pasó a ser elegible en Ajustes: la opción barata ya cuenta en el mismo
   // presupuesto y habla el mismo idioma que el resto.
-  if (!env.ANTHROPIC_API_KEY) return error("El servidor no tiene configurada la clave de Anthropic", 503);
+  if (sinIADeTexto(env)) return error("El servidor no tiene configurada ninguna llave de IA de texto (Anthropic o Meta)", 503);
 
   const arranque = Date.now();
   const restante = () => PRESUPUESTO_MS - (Date.now() - arranque);

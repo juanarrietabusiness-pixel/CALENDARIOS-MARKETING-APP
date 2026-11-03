@@ -197,3 +197,62 @@
 .cerebro-visual-tipo { flex: none; font-size: var(--fs-3xs); font-weight: 600; padding: 1px var(--sp-2); border-radius: var(--radius-pill); }
 .cerebro-visual-gusta { background: var(--accent-soft); color: var(--accent); }
 .cerebro-visual-evitar { background: var(--danger-soft); color: var(--danger); }
+
+/* ---------- Avisos que piden algo (ficha vieja, datos que no cuadran, notas sin actualizar) ---------- */
+.cerebro-alerta {
+  border-radius: var(--radius-sm);
+  padding: var(--sp-3) var(--sp-4);
+  font-size: var(--fs-sm);
+  background: var(--alt-soft);
+  border: 1px solid var(--alt-line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.cerebro-alerta p { margin: 0; }
+.cerebro-alerta ul { margin: 0; padding-left: var(--sp-5); }
+.cerebro-alerta-titulo { margin: 0; font-size: var(--fs-sm); display: flex; align-items: center; gap: var(--sp-2); }
+.cerebro-alerta-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.cerebro-datos { list-style: none; padding: 0 !important; display: flex; flex-direction: column; gap: var(--sp-3); }
+.cerebro-vieja { background: var(--alt-soft); color: var(--accent-alt); }
+
+/* ---------- «Más» ---------- */
+.cerebro-mas { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: var(--sp-2); padding: var(--sp-2); background: var(--surface-2); border-radius: var(--radius-sm); }
+
+/* ---------- La lista agrupada ---------- */
+.cerebro-grupos { display: flex; flex-direction: column; gap: var(--sp-3); }
+.cerebro-grupo-titulo { margin: var(--sp-2) 0 0; font-size: var(--fs-md); }
+.cerebro-grupo-siempre { padding: var(--sp-3); border-radius: var(--radius); background: var(--accent-soft); border: 1px solid var(--accent-line); display: flex; flex-direction: column; gap: var(--sp-2); }
+.cerebro-grupo-siempre .hint { margin: 0; }
+details.cerebro-grupo > summary {
+  cursor: pointer;
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-weight: 600;
+  padding: 0 var(--sp-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+details.cerebro-grupo > .cerebro-lista { margin-top: var(--sp-2); }
+
+/* ---------- Añadir: qué es ---------- */
+.cerebro-que { border: 0; padding: 0; margin: 0 0 var(--sp-3); }
+.cerebro-que-opciones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.cerebro-avanzado > summary { cursor: pointer; min-height: var(--tap-sm); display: flex; align-items: center; color: var(--text-muted); font-size: var(--fs-sm); }
+
+/* ---------- La nota formateada ---------- */
+.nota-legible { font-size: var(--fs-sm); line-height: 1.55; display: flex; flex-direction: column; gap: var(--sp-2); }
+.nota-legible h4, .nota-legible h5 { margin: var(--sp-2) 0 0; font-size: var(--fs-md); }
+.nota-legible h5 { font-size: var(--fs-sm); }
+.nota-legible p, .nota-legible ul, .nota-legible ol, .nota-legible blockquote { margin: 0; }
+.nota-legible ul, .nota-legible ol { padding-left: var(--sp-5); }
+.nota-legible blockquote { border-left: 3px solid var(--accent-line); padding-left: var(--sp-3); color: var(--text-dim); }
+.nota-legible code { font-size: var(--fs-xs); background: var(--surface-2); padding: 0 4px; border-radius: 4px; }
+.nota-legible hr { border: 0; border-top: 1px solid var(--border); width: 100%; }
+.nota-legible-tabla { overflow-x: auto; }
+.nota-legible table { border-collapse: collapse; font-size: var(--fs-xs); min-width: 100%; }
+.nota-legible th, .nota-legible td { border: 1px solid var(--border); padding: var(--sp-1) var(--sp-2); text-align: left; vertical-align: top; }
+.nota-legible th { background: var(--surface-2); }
+.nota-legible-enlace { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; }

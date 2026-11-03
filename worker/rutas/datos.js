@@ -27,7 +27,7 @@ import { uuid, testigo, ahora } from "../lib/ids.js";
 import { difundir, firma } from "../lib/vivo.js";
 import { tareasParaPurgar, terminadasBorrables, MODOS_PURGA } from "../lib/tareas.js";
 import { fechaEnZona, debeReabrirse, esFecha } from "../../src/lib/agenda.js";
-import { leerConfigIA, MODELOS_ELEGIBLES, RAZONAMIENTOS, ACCIONES_LIMITE, FUNCIONES_IA, MODELOS_POR_FUNCION, MOTORES_IMAGEN, MOTORES_VIDEO } from "../lib/configIA.js";
+import { leerConfigIA, llaveMeta, MODELOS_ELEGIBLES, RAZONAMIENTOS, ACCIONES_LIMITE, FUNCIONES_IA, MODELOS_POR_FUNCION, MOTORES_IMAGEN, MOTORES_VIDEO } from "../lib/configIA.js";
 import { resincronizarCalendario } from "../lib/publicador.js";
 import { asignarTarea, alGuardarCalendario, avisarNota, avisar, enlacePublicacion } from "../lib/equipo.js";
 import { registrarCorrecciones } from "../lib/cerebro/aprender.js";
@@ -173,7 +173,9 @@ export async function rutasDatos(req, env, ctx) {
   if (seccion === "ajustes") {
     if (metodo === "GET") {
       const fila = await acceso.leerUno("ajustes_espacio", { id: acceso.ownerId });
-      return json({ purga_tareas: fila?.purga_tareas ?? "nunca", ...(await leerConfigIA(acceso)) });
+      // `meta`: si hay llave de Meta. Con ella, redacción y guiones escriben con Muse por defecto, y la pantalla tiene
+      // que saberlo para no rotular «Sonnet 5» lo que escribe Muse.
+      return json({ purga_tareas: fila?.purga_tareas ?? "nunca", ...(await leerConfigIA(acceso)), meta: Boolean(llaveMeta(env)) });
     }
     if (metodo === "PUT") {
       const datos = (await cuerpo(req)) ?? {};
@@ -216,9 +218,18 @@ export async function rutasDatos(req, env, ctx) {
           if (!ACCIONES_LIMITE.includes(datos.al_limite)) return error("Acción al límite inválida");
           cambios.al_limite = datos.al_limite;
         }
+        // El modelo general: uno de Anthropic va a su columna; uno de Meta, a `ia_modelos.general` (la columna tiene un
+        // CHECK que sólo admite Anthropic). Escoger uno quita el otro, así no quedan dos «generales».
         if ("ia_modelo" in datos) {
-          if (!MODELOS_ELEGIBLES.includes(datos.ia_modelo)) return error("Modelo inválido");
-          cambios.ia_modelo = datos.ia_modelo;
+          if (!MODELOS_POR_FUNCION.includes(datos.ia_modelo)) return error("Modelo inválido");
+          const juntos = cambios.ia_modelos ? JSON.parse(cambios.ia_modelos) : { ...(await leerConfigIA(acceso)).ia_modelos };
+          if (MODELOS_ELEGIBLES.includes(datos.ia_modelo)) {
+            cambios.ia_modelo = datos.ia_modelo;
+            delete juntos.general;
+          } else {
+            juntos.general = datos.ia_modelo;
+          }
+          cambios.ia_modelos = JSON.stringify(juntos);
         }
         if ("ia_razonamiento" in datos) {
           if (!(datos.ia_razonamiento in RAZONAMIENTOS)) return error("Nivel de razonamiento inválido");
@@ -233,7 +244,9 @@ export async function rutasDatos(req, env, ctx) {
       });
       difundir(env, acceso.ownerId, { tipo: "ajustes", por: firma(ctx.usuario, req) });
       const fila = await acceso.leerUno("ajustes_espacio", { id: acceso.ownerId });
-      return json({ purga_tareas: fila?.purga_tareas ?? "nunca", ...(await leerConfigIA(acceso)) });
+      // `meta`: si hay llave de Meta. Con ella, redacción y guiones escriben con Muse por defecto, y la pantalla tiene
+      // que saberlo para no rotular «Sonnet 5» lo que escribe Muse.
+      return json({ purga_tareas: fila?.purga_tareas ?? "nunca", ...(await leerConfigIA(acceso)), meta: Boolean(llaveMeta(env)) });
     }
   }
 

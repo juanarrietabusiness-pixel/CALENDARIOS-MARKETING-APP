@@ -67,13 +67,32 @@ export const ACCIONES_LIMITE = Object.freeze([
   { id: "detener", nombre: "Detener la IA", nota: "Nada de IA (texto, imágenes ni video) hasta el mes siguiente o hasta subir el presupuesto." },
 ]);
 
+/** Lo que redacción y guiones escriben por defecto en cuanto hay llave de Meta (el servidor: MUSE_POR_DEFECTO_EN). */
+const MUSE_POR_DEFECTO_EN = ["redaccion", "guiones"];
+
 /**
- * «Sonnet 5 · Alto». Con `para: "chat"`, el nivel del asistente si el
- * espacio le puso uno propio.
+ * El modelo que usa DE VERDAD una función: el suyo, o con llave de Meta Muse Spark Contributor en redacción y guiones,
+ * o el general (que puede ser de Meta). La misma regla que `modeloParaHueco` del servidor; `config.meta` lo manda el
+ * servidor con los ajustes.
+ */
+export function modeloDeFuncion(config, hueco) {
+  const c = { ...CONFIG_IA_POR_DEFECTO, ...(config ?? {}) };
+  const propio = c.ia_modelos?.[hueco];
+  if (propio) return propio;
+  if (c.meta && MUSE_POR_DEFECTO_EN.includes(hueco)) return "muse-contribuidor";
+  return c.ia_modelo;
+}
+
+/** Nombre corto de un modelo para una etiqueta. */
+export const nombreCortoModelo = (id) => (MODELOS_FUNCION.find((m) => m.id === id)?.nombre ?? "Sonnet 5").replace(/ \(Meta\)$/, "");
+
+/**
+ * «Muse Spark Contributor · Alto». Antes decía siempre el modelo GENERAL de Anthropic, aunque la función escribiera con
+ * Muse: la agencia veía «Sonnet 5» sin usar Claude. Con `para: "chat"`, el del asistente y su nivel.
  */
 export function etiquetaIA(config, { para = "texto" } = {}) {
   const c = { ...CONFIG_IA_POR_DEFECTO, ...(config ?? {}) };
-  const modelo = MODELOS_IA.find((m) => m.id === c.ia_modelo)?.nombre ?? "Sonnet 5";
+  const modelo = nombreCortoModelo(modeloDeFuncion(c, para === "chat" ? "asistente" : "redaccion"));
   const idNivel = para === "chat" && c.ia_razonamiento_chat ? c.ia_razonamiento_chat : c.ia_razonamiento;
   const nivel = NIVELES_IA.find((n) => n.id === idNivel)?.nombre ?? "Alto";
   return `${modelo} · ${nivel}`;

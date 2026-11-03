@@ -61,6 +61,9 @@ export default function MenuCuenta({ yo, onSalir }) {
           <button type="button" className="menu-cuenta-item" onClick={() => ir("/equipo")}>
             <Icon name="users" size={16} /> Equipo y perfil
           </button>
+          <button type="button" className="menu-cuenta-item" onClick={() => ir("/equipo#contrasena")}>
+            <Icon name="lock" size={16} /> Cambiar contraseña
+          </button>
           <button type="button" className="menu-cuenta-item" data-peligro="true" onClick={onSalir}>
             <Icon name="logout" size={16} /> Salir
           </button>

@@ -58,6 +58,11 @@ export const MODELO_MUSE_CONTRIBUIDOR = "muse-spark-1.2-contributor";
 export const esMuse = (id) => String(id ?? "").startsWith("muse-");
 /** La llave de Meta: `META_API_KEY`, o `MODEL_API_KEY`, que es como la llama su documentación. */
 export const llaveMeta = (env) => env?.META_API_KEY || env?.MODEL_API_KEY || "";
+/**
+ * ¿No hay con qué escribir? Sin la llave de Anthropic NI la de Meta. Antes bastaba con que faltara la de Anthropic para
+ * contestar «no hay clave», aunque el espacio escribiera con Muse.
+ */
+export const sinIADeTexto = (env) => !env?.ANTHROPIC_API_KEY && !llaveMeta(env);
 
 export const RAZONAMIENTOS = Object.freeze({ bajo: "low", medio: "medium", alto: "high", maximo: "max" });
 /** Lo que se elige para TODO (columna `ia_modelo`, con su CHECK): sólo Anthropic. */
@@ -185,14 +190,18 @@ export function elegirOpus(ids = []) {
 /** La configuración del espacio, con los valores por defecto si no hay fila. */
 export async function leerConfigIA(acceso) {
   const fila = await acceso.leerUno("ajustes_espacio", { id: acceso.ownerId }).catch(() => null);
-  const modelo = MODELOS_ELEGIBLES.includes(fila?.ia_modelo) ? fila.ia_modelo : POR_DEFECTO.ia_modelo;
+  const modelos = limpiarModelos(fila?.ia_modelos);
+  // El modelo general puede ser de Meta: va en `ia_modelos.general` (la columna `ia_modelo` tiene un CHECK que sólo
+  // admite los de Anthropic y cambiarlo es reconstruir la tabla). Si está, MANDA: antes la pantalla seguía diciendo
+  // «Sonnet 5» a una agencia que ya no usaba Claude.
+  const modelo = modelos.general ?? (MODELOS_ELEGIBLES.includes(fila?.ia_modelo) ? fila.ia_modelo : POR_DEFECTO.ia_modelo);
   const razonamiento = fila?.ia_razonamiento in RAZONAMIENTOS ? fila.ia_razonamiento : POR_DEFECTO.ia_razonamiento;
   const presupuesto = Number(fila?.presupuesto_usd);
   return {
     ia_modelo: modelo,
     ia_razonamiento: razonamiento,
     ia_razonamiento_chat: fila?.ia_razonamiento_chat in RAZONAMIENTOS ? fila.ia_razonamiento_chat : null,
-    ia_modelos: limpiarModelos(fila?.ia_modelos),
+    ia_modelos: modelos,
     presupuesto_usd: Number.isFinite(presupuesto) && presupuesto >= 0 && fila?.presupuesto_usd != null ? presupuesto : POR_DEFECTO.presupuesto_usd,
     al_limite: ACCIONES_LIMITE.includes(fila?.al_limite) ? fila.al_limite : POR_DEFECTO.al_limite,
   };
@@ -204,7 +213,7 @@ export function limpiarModelos(valor) {
   if (typeof valor === "string") { try { obj = JSON.parse(valor); } catch { obj = {}; } }
   const salida = {};
   for (const [hueco, modelo] of Object.entries(obj && typeof obj === "object" ? obj : {})) {
-    if (hueco in FUNCIONES_IA && MODELOS_POR_FUNCION.includes(modelo)) salida[hueco] = modelo;
+    if ((hueco in FUNCIONES_IA || hueco === "general") && MODELOS_POR_FUNCION.includes(modelo)) salida[hueco] = modelo;
     if (hueco === "imagen" && MOTORES_IMAGEN.includes(modelo)) salida.imagen = modelo;
     if (hueco === "video" && MOTORES_VIDEO.includes(modelo)) salida.video = modelo;
   }
@@ -307,8 +316,10 @@ export async function prepararIA(env, acceso, { para = "texto", funcion = null }
     return { bloqueo: textoBloqueo(config), config, gasto };
   }
   if (estado === "agotado" && config.al_limite === "bajar") {
-    const ia = await resolverIA(env, { ia_modelo: "sonnet", ia_razonamiento: "bajo" });
-    return { ...ia, aviso: `Presupuesto del mes alcanzado (${tope}): la IA trabaja con Sonnet en nivel Bajo.`, config, gasto, bloqueo: null };
+    // Se baja dentro del proveedor que escogió la agencia: con Meta, a Muse Spark Contributor (el más barato), no a Claude.
+    const barato = String(config.ia_modelo).startsWith("muse") && llaveMeta(env) ? "muse-contribuidor" : "sonnet";
+    const ia = await resolverIA(env, { ia_modelo: barato, ia_razonamiento: "bajo" });
+    return { ...ia, aviso: `Presupuesto del mes alcanzado (${tope}): la IA trabaja con ${barato === "sonnet" ? "Sonnet" : "Muse Spark Contributor"} en nivel Bajo.`, config, gasto, bloqueo: null };
   }
   const elegido = modeloParaHueco(config, hueco, { hayMeta: Boolean(llaveMeta(env)) });
   const ia = await resolverIA(env, { ia_modelo: elegido, ia_razonamiento: nivel });

@@ -36,6 +36,7 @@ import { cifrasInformeAnuncios, pedidoInformeAnuncios, leerAnalisisAnuncios } fr
 import { conexionMeta, clienteYCuenta, estadisticasCuenta, listarCampanas, mensajeAnuncios, ErrorAnuncios } from "./anuncios.js";
 import { limitesDelMes, mesAnterior } from "./informes.js";
 import { llamarIA } from "./cerebro/ia.js";
+import { sinIADeTexto } from "./configIA.js";
 
 const FIRMA = { userId: "sistema", nombre: "Informe de anuncios", color: "#1E90FF" };
 const CDN = /(^|\.)(cdninstagram\.com|fbcdn\.net)$/;
@@ -208,7 +209,7 @@ export const contenidoInforme = (f) => leerJSON(f?.contenido, {});
  * encendido y cuenta publicitaria. Uno por vuelta, y sólo si el informe de redes no hizo nada en ella.
  */
 export async function informeAnunciosPendiente(env, momento = new Date()) {
-  if (!env.ANTHROPIC_API_KEY) return 0;
+  if (sinIADeTexto(env)) return 0;
   const hoy = fechaEnZona(momento);
   const horaPanama = (momento.getUTCHours() + 19) % 24;
   if (Number(hoy.slice(8, 10)) > 5 || horaPanama < 9) return 0;

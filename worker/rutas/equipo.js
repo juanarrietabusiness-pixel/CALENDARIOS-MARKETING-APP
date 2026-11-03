@@ -22,7 +22,10 @@
 
 import { json, error, sinContenido, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { uuid, testigo, sha256, ahora, enHoras } from "../lib/ids.js";
-import { HORAS_INVITACION, aceptarInvitacion, invitacionPorTestigo, expulsarDelEspacio, cookieSesion, clientesPermitidos } from "../lib/sesion.js";
+import {
+  HORAS_INVITACION, aceptarInvitacion, invitacionPorTestigo, expulsarDelEspacio, cookieSesion, clientesPermitidos,
+  cambiarContrasena, restablecerContrasena,
+} from "../lib/sesion.js";
 import { difundir, firma } from "../lib/vivo.js";
 
 const COLOR_VALIDO = /^#[0-9a-fA-F]{6}$/;
@@ -88,8 +91,25 @@ export async function rutasEquipo(req, env, ctx) {
     });
   }
 
+  // ---- PUT /api/equipo/yo/contrasena ---- cambiar la mía (también quien es de sólo lectura: es suya)
+  if (sub === "yo" && subId === "contrasena" && metodo === "PUT") {
+    const { actual, nueva } = (await cuerpo(req)) ?? {};
+    const r = await cambiarContrasena(env.DB, req, usuario.id, actual, nueva);
+    if (!r.ok) return error(r.error, 400);
+    return json({ ok: true, cerradas: r.cerradas });
+  }
+
+  // ---- POST /api/equipo/miembro/:userId/contrasena ---- el administrador le pone una temporal a quien la olvidó
+  if (sub === "miembro" && partes[3] === "contrasena" && metodo === "POST") {
+    if (!esAdmin) return error("Sólo quien administra el espacio puede restablecer contraseñas.", 403);
+    if (subId === usuario.id) return error("Tu propia contraseña la cambias en «Mi cuenta».", 400);
+    const r = await restablecerContrasena(env.DB, usuario.ownerId, subId);
+    if (!r.ok) return error(r.error, r.estado ?? 400);
+    return json({ temporal: r.temporal });
+  }
+
   // ---- PUT /api/equipo/yo ---- cómo me ven los demás
-  if (sub === "yo" && metodo === "PUT") {
+  if (sub === "yo" && !subId && metodo === "PUT") {
     const { nombre, color } = (await cuerpo(req)) ?? {};
     const cambios = {};
     if (typeof nombre === "string" && nombre.trim()) cambios.nombre = nombre.trim().slice(0, 60);

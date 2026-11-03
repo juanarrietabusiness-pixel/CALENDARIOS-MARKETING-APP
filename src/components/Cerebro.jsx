@@ -4,12 +4,15 @@ import { useDialogA11y } from "../hooks/useDialogA11y";
 import { soloLectura } from "../lib/sesionActual";
 import {
   listarCerebro, leerNota, guardarNota, borrarNota, buscarEnCerebro, importarAlCerebro, prepararFicha, proponerRubro, proponerVozUgc,
+  leerDatosQueNoCuadran,
 } from "../lib/cerebro";
 import {
-  TIPOS_VISTA, FILTROS_TIPO, nombreDeTipo, ordenarNotas, filtrarNotas, contarPorTipo,
+  TIPOS_VISTA, FILTROS_TIPO, nombreDeTipo, ordenarNotas, filtrarNotas, contarPorTipo, agruparNotas,
   formatoCaracteres, describirImportacion, describirFicha, avisoSinFicha, leerDocumento,
 } from "../lib/cerebroVista";
+import { deleteClientMemory } from "../lib/db";
 import CerebroAprendizaje from "./CerebroAprendizaje";
+import NotaLegible from "./NotaLegible";
 import "./Cerebro.css";
 
 // El mapa 3D se descarga sólo si se abre: la lista es lo que se ve al entrar.
@@ -49,6 +52,10 @@ export default function Cerebro({ client }) {
   const [editor, setEditor] = useState(null);         // la nota que se edita (con su texto) o una nueva
   const [borrando, setBorrando] = useState(null);
   const [vista, setVista] = useState(leerVista);      // "lista" | "mapa"
+  const [datosMal, setDatosMal] = useState([]);       // «Datos que no cuadran»
+  const [sinActualizar, setSinActualizar] = useState([]); // notas corregidas aquí que GitHub traía cambiadas
+  const [fichaTuya, setFichaTuya] = useState(false);  // la última renovación conservó la ficha editada a mano
+  const [mas, setMas] = useState(false);              // el menú «Más»
   const entrada = useRef(null);
   const cambiarVista = (v) => { setVista(v); guardarVista(v); };
 
@@ -61,6 +68,8 @@ export default function Cerebro({ client }) {
     } finally {
       setCargando(false);
     }
+    // «Datos que no cuadran» no puede tumbar la pantalla: si falla, no se enseña y ya.
+    leerDatosQueNoCuadran(client.id).then((r) => setDatosMal(r?.datos ?? [])).catch(() => setDatosMal([]));
   }, [client.id]);
 
   useEffect(() => {
@@ -68,24 +77,44 @@ export default function Cerebro({ client }) {
     setDatos(null);
     setBusqueda(null);
     setAviso(null);
+    setSinActualizar([]);
+    setFichaTuya(false);
     cargar();
   }, [cargar]);
 
   const notas = useMemo(() => ordenarNotas(datos?.notas ?? []), [datos]);
   const visibles = useMemo(() => filtrarNotas(notas, filtro), [notas, filtro]);
+  const agrupadas = useMemo(() => agruparNotas(notas), [notas]);
+  const sinFiltro = filtro.tipo === "todas" && !filtro.soloInternas && !filtro.texto.trim();
   const cuentas = useMemo(() => contarPorTipo(notas), [notas]);
   const estado = datos?.estado;
 
   const avisar = (ok, texto, detalles = []) => setAviso({ ok, texto, detalles });
 
   // ---------- Las dos acciones grandes ----------
-  const importar = async (actualizar) => {
+  // Lo que cambie en las notas tiene que llegar a la ficha y las cifras, que es lo que la IA lee SIEMPRE: si no, sigue
+  // escribiendo con lo de antes (el WhatsApp viejo de ROFER). Por eso, si la importación trajo algo y ya había ficha,
+  // se renueva sola (sin pisar la que alguien editó a mano: eso lo decide la persona con «Renovar de todas formas»).
+  const importar = async (actualizar, pisar = []) => {
     setTrabajando(actualizar ? "actualizar" : "importar");
     setAviso(null);
     try {
-      const r = await importarAlCerebro(client.id, { actualizar });
+      const r = await importarAlCerebro(client.id, { actualizar, pisar });
       const d = describirImportacion(r);
-      avisar(true, d.texto, d.detalles);
+      setSinActualizar(r.sinActualizar ?? []);
+      let texto = d.texto;
+      const trajo = (r.notas?.creadas ?? 0) + (r.notas?.reemplazadas ?? 0) > 0;
+      if (trajo && estado?.conFicha) {
+        setTrabajando("ficha");
+        try {
+          const f = await prepararFicha(client.id, { forzar: false });
+          setFichaTuya(f.ficha === "conservada" || f.cifras === "conservada");
+          texto += ` ${describirFicha(f)}`;
+        } catch (e) {
+          texto += ` La ficha técnica no se pudo renovar (${e.message}): pulsa «Renovar ficha».`;
+        }
+      }
+      avisar(true, texto, d.detalles);
       await cargar();
     } catch (e) {
       avisar(false, e.message);
@@ -98,12 +127,24 @@ export default function Cerebro({ client }) {
     setTrabajando("ficha");
     setAviso(null);
     try {
-      avisar(true, describirFicha(await prepararFicha(client.id, { forzar })));
+      const f = await prepararFicha(client.id, { forzar });
+      setFichaTuya(f.ficha === "conservada" || f.cifras === "conservada");
+      avisar(true, describirFicha(f));
       await cargar();
     } catch (e) {
       avisar(false, e.message);
     } finally {
       setTrabajando("");
+    }
+  };
+
+  const borrarMemorias = async (ids) => {
+    try {
+      for (const id of ids) await deleteClientMemory(id);
+      avisar(true, ids.length === 1 ? "Memoria borrada: el asistente ya no la lee." : `${ids.length} memorias borradas.`);
+      await cargar();
+    } catch (e) {
+      avisar(false, e.message);
     }
   };
 
@@ -114,7 +155,7 @@ export default function Cerebro({ client }) {
     setAviso(null);
     try {
       const r = await proponerRubro(client.id);
-      setEditor({ ...(r.existente ? { id: r.existente.id } : {}), titulo: r.titulo, texto: r.texto, tipo: "nota", interna: false });
+      setEditor({ ...(r.existente ? { id: r.existente.id } : {}), titulo: r.titulo, texto: r.texto, tipo: "nota", interna: false, editar: true });
       avisar(true, [
         r.conWeb ? "La IA buscó en internet: revisa los datos y sus fuentes antes de guardar." : "Sin búsqueda en internet: sólo conocimiento general del rubro. Revísala antes de guardar.",
         "Guárdala con ese título: es la que lee el contenido educativo.",
@@ -134,7 +175,7 @@ export default function Cerebro({ client }) {
     setAviso(null);
     try {
       const r = await proponerVozUgc(client.id);
-      setEditor({ ...(r.existente ? { id: r.existente.id } : {}), titulo: r.titulo, texto: r.texto, tipo: "nota", interna: false });
+      setEditor({ ...(r.existente ? { id: r.existente.id } : {}), titulo: r.titulo, texto: r.texto, tipo: "nota", interna: false, editar: true });
       avisar(true, [
         r.guiones ? `La IA leyó ${r.guiones} ${r.guiones === 1 ? "guion UGC" : "guiones UGC"} de ${client.name}.` : `${client.name} todavía no tiene guiones UGC: la propuesta sale de lo que se sabe de la marca.`,
         "Corrígela y guárdala con ese título: es la que sigue todo guion UGC de este cliente.",
@@ -156,11 +197,24 @@ export default function Cerebro({ client }) {
     }
   };
 
+  // Un dato que cambió (teléfono, precio, horario) se guarda como nota y la ficha y las cifras se renuevan en el acto:
+  // es lo que la IA lee siempre, y es lo que se quiere cambiar.
   const guardar = async (nota) => {
-    await guardarNota(client.id, nota);
+    const { renovar, ...limpia } = nota;
+    await guardarNota(client.id, limpia);
     setEditor(null);
+    if (renovar && estado?.conFicha) {
+      await preparar(false);
+      return;
+    }
     avisar(true, nota.id ? "Nota guardada." : "Nota añadida.");
     await cargar();
+  };
+
+  const abrirPorRuta = (ruta) => {
+    const n = notas.find((x) => x.ruta === ruta);
+    if (n) abrir(n);
+    else avisar(false, `No hay ninguna nota con la ruta «${ruta}».`);
   };
 
   const alternarInterna = async (nota) => {
@@ -255,37 +309,120 @@ export default function Cerebro({ client }) {
 
       {!lectura && (
         <div className="cerebro-acciones" role="group" aria-label="Acciones del cerebro">
-          <button type="button" className="btn btn-primary" disabled={trabajo || !estado?.repositorio} onClick={() => importar(false)}
-            title={estado?.repositorio ? "Lee el repositorio de GitHub del cliente y lo parte en notas" : "Este cliente no tiene un repositorio en su ficha"}>
-            <Icon name="download" size={18} /> {trabajando === "importar" ? "Llenando…" : "Llenar desde el repositorio"}
-          </button>
-          {!vacio && estado?.repositorio && (
-            <button type="button" className="btn btn-secondary" disabled={trabajo} onClick={() => importar(true)}
-              title="Trae de nuevo los archivos que cambiaron; lo que corrigiste a mano se conserva">
-              <Icon name="refresh" size={18} /> {trabajando === "actualizar" ? "Actualizando…" : "Actualizar lo que cambió"}
+          {vacio ? (
+            <button type="button" className="btn btn-primary" disabled={trabajo || !estado?.repositorio} onClick={() => importar(false)}
+              title={estado?.repositorio ? "Lee el repositorio de GitHub del cliente y lo parte en notas" : "Este cliente no tiene un repositorio en su ficha"}>
+              <Icon name="download" size={18} /> {trabajando === "importar" ? "Llenando…" : "Llenar desde el repositorio"}
             </button>
-          )}
-          {!vacio && (
-            <button type="button" className="btn btn-accent" disabled={trabajo} onClick={() => preparar(false)}
-              title="Una llamada a la IA lee las notas de marca y escribe la ficha técnica y las cifras">
-              <Icon name="sparkles" size={18} /> {trabajando === "ficha" ? "Escribiendo la ficha…" : estado?.conFicha ? "Renovar ficha con IA" : "Preparar ficha con IA"}
+          ) : null}
+          {vacio ? (
+            <button type="button" className="btn btn-secondary" disabled={trabajo} onClick={() => setEditor({ titulo: "", texto: "", tipo: "nota", interna: false, editar: true })}>
+              <Icon name="plus" size={18} /> Añadir nota
             </button>
+          ) : (
+            <>
+              <button type="button" className="btn btn-primary" disabled={trabajo} onClick={() => setEditor({ titulo: "", texto: "", tipo: "nota", interna: false, editar: true })}>
+                <Icon name="plus" size={18} /> Añadir
+              </button>
+              {estado?.repositorio && (
+                <button type="button" className="btn btn-secondary" disabled={trabajo} onClick={() => importar(true)}
+                  title="Trae lo nuevo y lo que cambió en GitHub, y renueva la ficha técnica. Lo que corregiste aquí se conserva">
+                  <Icon name="refresh" size={18} /> {trabajando === "actualizar" ? "Actualizando…" : "Actualizar desde GitHub"}
+                </button>
+              )}
+              <button type="button" className="btn btn-accent" disabled={trabajo} onClick={() => preparar(false)}
+                title="Una llamada a la IA lee las notas de marca y escribe la ficha técnica y las cifras">
+                <Icon name="sparkles" size={18} /> {trabajando === "ficha" ? "Escribiendo la ficha…" : estado?.conFicha ? "Renovar ficha" : "Preparar ficha con IA"}
+              </button>
+            </>
           )}
-          <button type="button" className="btn btn-secondary" disabled={trabajo} onClick={rubro}
-            title="La IA propone lo que un experto del rubro sabe (consejos, errores, mitos, preguntas): de ahí sale el contenido educativo">
-            <Icon name="bulb" size={18} /> {trabajando === "rubro" ? "Escribiendo…" : "Saber del rubro"}
+          <button type="button" className="btn btn-ghost" aria-expanded={mas} aria-controls={`${ids}-mas`} onClick={() => setMas((v) => !v)}>
+            <Icon name="more" size={18} /> Más
           </button>
-          <button type="button" className="btn btn-secondary" disabled={trabajo} onClick={vozUgc}
-            title="La IA propone cómo habla esta marca en sus videos UGC (quién habla, tono, cómo empieza y cierra), leyendo sus guiones">
-            <Icon name="user" size={18} /> {trabajando === "voz" ? "Escribiendo…" : "Voz UGC"}
-          </button>
-          <button type="button" className="btn btn-secondary" disabled={trabajo} onClick={() => setEditor({ titulo: "", texto: "", tipo: "nota", interna: false })}>
-            <Icon name="plus" size={18} /> Añadir nota
-          </button>
-          <button type="button" className="btn btn-secondary" disabled={trabajo} onClick={() => entrada.current?.click()}>
-            <Icon name="upload" size={18} /> Subir documento
-          </button>
+          {mas && (
+            <div id={`${ids}-mas`} className="cerebro-mas" role="group" aria-label="Más acciones">
+              <button type="button" className="btn btn-secondary btn-sm" disabled={trabajo} onClick={() => entrada.current?.click()}>
+                <Icon name="upload" size={16} /> Subir documento
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" disabled={trabajo} onClick={rubro}
+                title="La IA propone lo que un experto del rubro sabe (consejos, errores, mitos, preguntas): de ahí sale el contenido educativo">
+                <Icon name="bulb" size={16} /> {trabajando === "rubro" ? "Escribiendo…" : "Saber del rubro"}
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" disabled={trabajo} onClick={vozUgc}
+                title="La IA propone cómo habla esta marca en sus videos UGC (quién habla, tono, cómo empieza y cierra), leyendo sus guiones">
+                <Icon name="user" size={16} /> {trabajando === "voz" ? "Escribiendo…" : "Voz UGC"}
+              </button>
+              {estado?.conFicha && (
+                <button type="button" className="btn btn-secondary btn-sm" disabled={trabajo} onClick={() => preparar(true)}
+                  title="Reescribe la ficha y las cifras aunque alguien las haya editado a mano">
+                  <Icon name="sparkles" size={16} /> Renovar ficha de todas formas
+                </button>
+              )}
+            </div>
+          )}
           <input ref={entrada} type="file" multiple accept=".md,.markdown,.txt,.csv,.json" onChange={subir} className="cerebro-archivo" aria-label="Elegir documentos de texto para el cerebro" tabIndex={-1} />
+        </div>
+      )}
+
+      {estado?.fichaVieja && !trabajo && (
+        <div className="cerebro-alerta" role="note">
+          <p>
+            <strong>La ficha técnica está desactualizada.</strong> Es lo que la IA lee en TODO lo que escribe, y es de antes de que
+            {estado.fichaVieja.total === 1 ? " cambiara una nota" : ` cambiaran ${estado.fichaVieja.total} notas`}
+            {` (${estado.fichaVieja.cambiadas.slice(0, 4).join(", ")}${estado.fichaVieja.total > 4 ? "…" : ""})`}. Hasta que la renueves, la IA sigue usando lo de antes.
+          </p>
+          {!lectura && (
+            <div className="cerebro-alerta-botones">
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => preparar(false)}><Icon name="sparkles" size={14} /> Renovar ahora</button>
+              {fichaTuya && <button type="button" className="btn btn-secondary btn-sm" onClick={() => preparar(true)}>La editaste a mano: renovar de todas formas</button>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {datosMal.length > 0 && (
+        <section className="cerebro-alerta" aria-labelledby={`${ids}-dm`}>
+          <h3 id={`${ids}-dm`} className="cerebro-alerta-titulo"><Icon name="alert" size={16} /> Datos que no cuadran</h3>
+          <p className="hint">Están en lo que la IA lee siempre, pero ninguna nota los dice. Lo más probable es que sean viejos.</p>
+          <ul className="cerebro-datos">
+            {datosMal.map((d) => (
+              <li key={`${d.tipo}|${d.valor}`}>
+                <p>
+                  {d.tipo === "telefono" ? "El teléfono" : "El correo"} <strong>{d.valor}</strong> está en {d.en.join(", ")}; las notas dicen{" "}
+                  <strong>{d.vigentes.join(" o ")}</strong>{d.vigentesEn.length ? ` (${d.vigentesEn.slice(0, 3).join(", ")})` : ""}.
+                </p>
+                {!lectura && (
+                  <div className="cerebro-alerta-botones">
+                    {(d.fuentes.includes("ficha") || d.fuentes.includes("cifras")) && (
+                      <button type="button" className="btn btn-secondary btn-sm" disabled={trabajo} onClick={() => preparar(true)}>Renovar la ficha y las cifras</button>
+                    )}
+                    {d.memorias.length > 0 && (
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => borrarMemorias(d.memorias)}>
+                        Borrar {d.memorias.length === 1 ? "esa memoria" : "esas memorias"} del asistente
+                      </button>
+                    )}
+                    {d.fuentes.includes("cliente") && <span className="hint">Corrígelo en la pestaña Ficha del cliente (teléfono o WhatsApp).</span>}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {sinActualizar.length > 0 && !lectura && (
+        <div className="cerebro-alerta" role="note">
+          <p>
+            <strong>{sinActualizar.length === 1 ? "Una nota no se actualizó" : `${sinActualizar.length} notas no se actualizaron`}</strong>: cambiaron en GitHub,
+            pero aquí alguien les había corregido el texto, y lo corregido aquí manda.
+          </p>
+          <ul>{sinActualizar.slice(0, 8).map((n) => <li key={n.id}>{n.titulo}</li>)}</ul>
+          <div className="cerebro-alerta-botones">
+            <button type="button" className="btn btn-primary btn-sm" disabled={trabajo} onClick={() => importar(true, sinActualizar.map((n) => n.id))}>
+              Usar la versión de GitHub en {sinActualizar.length === 1 ? "esa" : "todas"}
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSinActualizar([])}>Quedarme con lo de aquí</button>
+          </div>
         </div>
       )}
 
@@ -362,6 +499,35 @@ export default function Cerebro({ client }) {
 
               {busqueda ? (
                 <Resultados busqueda={busqueda} onCerrar={() => setBusqueda(null)} onAbrir={(r) => { const n = notas.find((x) => x.ruta === r.ruta); if (n) abrir(n); }} />
+              ) : sinFiltro ? (
+                <div className="cerebro-grupos">
+                  {agrupadas.siempre.length > 0 && (
+                    <section className="cerebro-grupo cerebro-grupo-siempre" aria-labelledby={`${ids}-siempre`}>
+                      <h3 id={`${ids}-siempre`} className="cerebro-grupo-titulo">Lo que la IA lee siempre</h3>
+                      <p className="hint">La ficha técnica, las cifras y las pautas van en todo lo que escribe. Si un dato está mal aquí, está mal en todo.</p>
+                      <ul className="cerebro-lista">
+                        {agrupadas.siempre.map((n) => (
+                          <NotaFila key={n.id} nota={n} lectura={lectura} vieja={Boolean(estado.fichaVieja) && (n.tipo === "ficha" || n.tipo === "cifras")}
+                            onAbrir={() => abrir(n)} onInterna={() => alternarInterna(n)} onBorrar={() => setBorrando(n)} />
+                        ))}
+                      </ul>
+                    </section>
+                  )}
+                  <h3 className="cerebro-grupo-titulo">Lo que busca cuando lo necesita</h3>
+                  <p className="hint">Cada archivo de GitHub se parte en notas, una por sección: la IA lee sólo las que tienen que ver con lo que escribe.</p>
+                  {agrupadas.grupos.map((g) => (
+                    <details key={g.clave} className="cerebro-grupo" open={g.clave === "origen:manual"}>
+                      <summary title={g.ayuda || undefined}>
+                        <span>{g.titulo}</span> <span className="cerebro-cuenta">{g.notas.length}</span>
+                      </summary>
+                      <ul className="cerebro-lista">
+                        {g.notas.map((n) => (
+                          <NotaFila key={n.id} nota={n} lectura={lectura} onAbrir={() => abrir(n)} onInterna={() => alternarInterna(n)} onBorrar={() => setBorrando(n)} />
+                        ))}
+                      </ul>
+                    </details>
+                  ))}
+                </div>
               ) : (
                 <ul className="cerebro-lista" aria-label={`${visibles.length} notas`}>
                   {visibles.map((n) => (
@@ -375,7 +541,7 @@ export default function Cerebro({ client }) {
         </>
       )}
 
-      {editor && <EditorNota nota={editor} lectura={lectura} onCerrar={() => setEditor(null)} onGuardar={guardar} />}
+      {editor && <EditorNota key={editor.id ?? "nueva"} nota={editor} lectura={lectura} onCerrar={() => setEditor(null)} onGuardar={guardar} onNota={abrirPorRuta} />}
       {borrando && <ConfirmarBorrado nota={borrando} onCancelar={() => setBorrando(null)} onBorrar={borrar} />}
     </section>
   );
@@ -383,7 +549,7 @@ export default function Cerebro({ client }) {
 
 // ------------------------------------------------------------
 
-function NotaFila({ nota, lectura, onAbrir, onInterna, onBorrar }) {
+function NotaFila({ nota, lectura, vieja = false, onAbrir, onInterna, onBorrar }) {
   const tipo = TIPOS_VISTA[nota.tipo];
   return (
     <li className="cerebro-nota card">
@@ -395,6 +561,8 @@ function NotaFila({ nota, lectura, onAbrir, onInterna, onBorrar }) {
         <p className="cerebro-meta">
           <span className={`badge cerebro-tipo cerebro-tipo-${nota.tipo}`} title={tipo?.ayuda}>{nombreDeTipo(nota.tipo)}</span>
           {nota.interna && <span className="badge cerebro-interna" title="La ve el equipo, pero no sale en los textos que se publican"><Icon name="lock" size={12} /> Interna</span>}
+          {vieja && <span className="badge cerebro-vieja" title="Es de antes del último cambio en las notas: renuévala">Desactualizada</span>}
+          {nota.corregida && nota.origen === "repositorio" && <span className="badge" title="Le cambiaron el texto aquí: al actualizar desde GitHub no se pisa">Corregida aquí</span>}
           <span>{formatoCaracteres(nota.caracteres)} car.</span>
           <span>{nota.origen === "repositorio" ? "Del repositorio" : nota.origen === "ia" ? "Escrita por la IA" : nota.origen === "mercado" ? "Del estudio de mercado" : nota.origen === "documento" ? "Documento" : "A mano"}</span>
           <span>{fecha(nota.actualizada)}</span>
@@ -438,65 +606,126 @@ function Resultados({ busqueda, onCerrar, onAbrir }) {
   );
 }
 
-function EditorNota({ nota, lectura, onCerrar, onGuardar }) {
+/** Lo que se quiere añadir, en palabras de la agencia: cada opción es un tipo de nota y una pista de qué escribir. */
+const QUE_ANADIR = [
+  { id: "dato", nombre: "Cambió un dato", ayuda: "Teléfono, precio, horario, dirección. Se guarda y se renueva la ficha técnica en el acto.", tipo: "nota", titulo: "Ej.: Nuevo WhatsApp", texto: "Ej.: El WhatsApp vigente es +507 6086-6581 desde el 9 de octubre de 2026. El anterior ya no se usa." },
+  { id: "regla", nombre: "Una regla para escribir", ayuda: "Cómo se escribe para este cliente: lo que la IA sigue SIEMPRE.", tipo: "pautas", titulo: "Ej.: Siempre de usted", texto: "Ej.: Nunca tutear. Cerrar cada caption con «Escríbanos al WhatsApp»." },
+  { id: "info", nombre: "Información de la marca", ayuda: "Productos, público, historia, lo que la IA busca cuando lo necesita.", tipo: "nota", titulo: "Ej.: Servicio de demoliciones", texto: "" },
+  { id: "interna", nombre: "Algo interno", ayuda: "Costos, márgenes, proveedores: lo ve el equipo y nunca sale en lo que se publica.", tipo: "nota", interna: true, titulo: "Ej.: Márgenes 2026", texto: "" },
+];
+
+function EditorNota({ nota, lectura, onCerrar, onGuardar, onNota }) {
   const ids = useId();
   const ref = useDialogA11y(onCerrar);
   const [f, setF] = useState({ titulo: nota.titulo, texto: nota.texto, tipo: nota.tipo, interna: Boolean(nota.interna) });
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const nueva = !nota.id;
+  // Una nota que ya existe se abre para LEER (formateada); «Editar» la cambia a escribir.
+  const [editando, setEditando] = useState(Boolean(nota.editar) || nueva);
+  const [que, setQue] = useState(nueva && !nota.titulo ? "" : "propia");
+  const opcion = QUE_ANADIR.find((o) => o.id === que);
+
+  const escoger = (o) => {
+    setQue(o.id);
+    setF((x) => ({ ...x, tipo: o.tipo, interna: Boolean(o.interna) }));
+  };
 
   const enviar = async (e) => {
     e.preventDefault();
     setGuardando(true);
     setError("");
     try {
-      await onGuardar({ ...f, id: nota.id });
+      await onGuardar({ ...f, id: nota.id, renovar: que === "dato" });
     } catch (err) {
       setError(err.message);
       setGuardando(false);
     }
   };
 
+  if (!editando) {
+    return (
+      <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) onCerrar(); }}>
+        <div ref={ref} className="dialog cerebro-editor" role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`}>
+          <h3 id={`${ids}-t`}>{nota.titulo}</h3>
+          <p className="cerebro-meta">
+            <span className={`badge cerebro-tipo cerebro-tipo-${nota.tipo}`}>{nombreDeTipo(nota.tipo)}</span>
+            {nota.interna && <span className="badge cerebro-interna"><Icon name="lock" size={12} /> Interna</span>}
+            {nota.fuente && <span>De <code>{nota.fuente}</code></span>}
+            {nota.actualizada && <span>{fecha(nota.actualizada)}</span>}
+          </p>
+          <NotaLegible texto={nota.texto} onNota={(ruta) => { onCerrar(); onNota?.(ruta); }} />
+          <div className="cerebro-editor-pie">
+            <button type="button" className="btn btn-secondary" onClick={onCerrar}>Cerrar</button>
+            {!lectura && <button type="button" className="btn btn-primary" onClick={() => setEditando(true)}><Icon name="pencil" size={16} /> Editar</button>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="overlay" onClick={(e) => { if (e.target === e.currentTarget) onCerrar(); }}>
       <form ref={ref} className="dialog cerebro-editor" role="dialog" aria-modal="true" aria-labelledby={`${ids}-t`} onSubmit={enviar}>
-        <h3 id={`${ids}-t`}>{nueva ? "Añadir una nota" : lectura ? nota.titulo : "Editar la nota"}</h3>
-        {!nueva && nota.fuente && <p className="hint">De <code>{nota.fuente}</code>. Si la corriges, una nueva importación no la pisa.</p>}
+        <h3 id={`${ids}-t`}>{nueva ? "Añadir al cerebro" : "Editar la nota"}</h3>
+        {!nueva && nota.fuente && <p className="hint">De <code>{nota.fuente}</code>. Si le cambias el texto, al actualizar desde GitHub no se pisa (se te avisará si allí cambió).</p>}
 
-        <div className="field">
-          <label className="label" htmlFor={`${ids}-ti`}>Título</label>
-          <input id={`${ids}-ti`} className="input" value={f.titulo} maxLength={140} readOnly={lectura} onChange={(e) => setF({ ...f, titulo: e.target.value })} required />
-        </div>
-        <div className="field">
-          <label className="label" htmlFor={`${ids}-tx`}>Texto</label>
-          <textarea id={`${ids}-tx`} className="input cerebro-texto" rows={14} value={f.texto} readOnly={lectura} onChange={(e) => setF({ ...f, texto: e.target.value })} required />
-          <p className="hint">{formatoCaracteres(f.texto.length)} de 200 mil caracteres. Con «## Títulos» la búsqueda encuentra mejor lo que necesita.</p>
-        </div>
-        <div className="cerebro-editor-fila">
-          <div className="field">
-            <label className="label" htmlFor={`${ids}-tp`}>Tipo</label>
-            <select id={`${ids}-tp`} className="input" value={f.tipo} disabled={lectura}
-              onChange={(e) => setF({ ...f, tipo: e.target.value, interna: e.target.value === "pautas" ? false : f.interna })}>
-              {Object.entries(TIPOS_VISTA).map(([k, v]) => <option key={k} value={k}>{v.nombre}</option>)}
-            </select>
-            <p className="hint">{TIPOS_VISTA[f.tipo]?.ayuda}</p>
-          </div>
-          <div className="field">
-            <label className="cerebro-casilla" htmlFor={`${ids}-in`}>
-              <input id={`${ids}-in`} type="checkbox" checked={f.interna} disabled={lectura || f.tipo === "pautas"} onChange={(e) => setF({ ...f, interna: e.target.checked })} />
-              <span>Interna: no sale en los textos que se publican</span>
-            </label>
-            <p className="hint">{f.tipo === "pautas"
-              ? "Las pautas no pueden ser internas: existen justamente para que la IA las siga al escribir."
-              : "Para costos, márgenes, proveedores: lo que el equipo sabe y el cliente no debe leer nunca en un caption."}</p>
-          </div>
-        </div>
+        {nueva && (
+          <fieldset className="cerebro-que">
+            <legend className="label">¿Qué quieres añadir?</legend>
+            <div className="cerebro-que-opciones">
+              {QUE_ANADIR.map((o) => (
+                <button key={o.id} type="button" className="filter-chip" aria-pressed={que === o.id} onClick={() => escoger(o)}>{o.nombre}</button>
+              ))}
+            </div>
+            {opcion && <p className="hint">{opcion.ayuda}</p>}
+          </fieldset>
+        )}
+
+        {(!nueva || que) && (
+          <>
+            <div className="field">
+              <label className="label" htmlFor={`${ids}-ti`}>Título</label>
+              <input id={`${ids}-ti`} className="input" value={f.titulo} maxLength={140} placeholder={opcion?.titulo} onChange={(e) => setF({ ...f, titulo: e.target.value })} required />
+            </div>
+            <div className="field">
+              <label className="label" htmlFor={`${ids}-tx`}>Texto</label>
+              <textarea id={`${ids}-tx`} className="input cerebro-texto" rows={12} value={f.texto} placeholder={opcion?.texto} onChange={(e) => setF({ ...f, texto: e.target.value })} required />
+              <p className="hint">{formatoCaracteres(f.texto.length)} de 200 mil caracteres. Con «## Títulos» la búsqueda encuentra mejor lo que necesita.</p>
+            </div>
+            <details className="cerebro-avanzado" open={!nueva}>
+              <summary>Tipo y candado</summary>
+              <div className="cerebro-editor-fila">
+                <div className="field">
+                  <label className="label" htmlFor={`${ids}-tp`}>Tipo</label>
+                  <select id={`${ids}-tp`} className="input" value={f.tipo}
+                    onChange={(e) => setF({ ...f, tipo: e.target.value, interna: e.target.value === "pautas" ? false : f.interna })}>
+                    {Object.entries(TIPOS_VISTA).map(([k, v]) => <option key={k} value={k}>{v.nombre}</option>)}
+                  </select>
+                  <p className="hint">{TIPOS_VISTA[f.tipo]?.ayuda}</p>
+                </div>
+                <div className="field">
+                  <label className="cerebro-casilla" htmlFor={`${ids}-in`}>
+                    <input id={`${ids}-in`} type="checkbox" checked={f.interna} disabled={f.tipo === "pautas"} onChange={(e) => setF({ ...f, interna: e.target.checked })} />
+                    <span>Interna: no sale en los textos que se publican</span>
+                  </label>
+                  <p className="hint">{f.tipo === "pautas"
+                    ? "Las pautas no pueden ser internas: existen justamente para que la IA las siga al escribir."
+                    : "Para costos, márgenes, proveedores: lo que el equipo sabe y el cliente no debe leer nunca en un caption."}</p>
+                </div>
+              </div>
+            </details>
+          </>
+        )}
 
         {error && <p role="alert" className="cerebro-error">{error}</p>}
         <div className="cerebro-editor-pie">
-          <button type="button" className="btn btn-secondary" onClick={onCerrar}>{lectura ? "Cerrar" : "Cancelar"}</button>
-          {!lectura && <button type="submit" className="btn btn-primary" disabled={guardando}>{guardando ? "Guardando…" : "Guardar"}</button>}
+          <button type="button" className="btn btn-secondary" onClick={onCerrar}>Cancelar</button>
+          {(!nueva || que) && (
+            <button type="submit" className="btn btn-primary" disabled={guardando}>
+              {guardando ? "Guardando…" : que === "dato" ? "Guardar y renovar la ficha" : "Guardar"}
+            </button>
+          )}
         </div>
       </form>
     </div>

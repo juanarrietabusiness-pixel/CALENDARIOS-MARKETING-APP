@@ -14,7 +14,7 @@ import { json, error } from "../lib/respuesta.js";
 import {
   modelosDeLaCuenta, leerConfigIA, resolverIA, etiquetaModelo,
   gastoDelMes, estadoPresupuesto, mesActual,
-  FUNCIONES_IA, modeloParaHueco, llaveMeta, motorDeImagen, motorDeVideo,
+  FUNCIONES_IA, modeloParaHueco, llaveMeta, motorDeImagen, motorDeVideo, sinIADeTexto,
 } from "../lib/configIA.js";
 
 export async function rutaGasto(req, env, { acceso }) {
@@ -31,7 +31,7 @@ export async function rutaGasto(req, env, { acceso }) {
 }
 
 export async function rutaModelos(req, env, { acceso }) {
-  if (!env.ANTHROPIC_API_KEY) return error("El servidor no tiene configurada la clave de Anthropic", 503);
+  if (sinIADeTexto(env)) return error("El servidor no tiene configurada ninguna llave de IA de texto (Anthropic o Meta)", 503);
   const ids = await modelosDeLaCuenta(env);
   const config = await leerConfigIA(acceso);
   const ia = await resolverIA(env, config);

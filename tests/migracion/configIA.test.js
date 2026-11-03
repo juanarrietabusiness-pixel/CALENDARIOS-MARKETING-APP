@@ -109,3 +109,27 @@ describe("rangoServido: el trozo que se contesta con 206", () => {
     expect(rangoServido({ offset: 8, length: 50 }, 10)).toEqual({ inicio: 8, fin: 9 });
   });
 });
+
+describe("el modelo que de verdad escribe (la agencia ya no usaba Claude y la pantalla decía «Sonnet 5»)", async () => {
+  const { etiquetaIA, modeloDeFuncion } = await import("../../src/lib/configIA.js");
+  const { leerConfigIA, modeloParaHueco, sinIADeTexto } = await import("../../worker/lib/configIA.js");
+
+  it("la etiqueta dice el modelo de la función, también el de Meta por defecto con llave", () => {
+    expect(etiquetaIA({ ia_modelo: "sonnet", ia_modelos: {}, meta: true })).toBe("Muse Spark Contributor · Alto");
+    expect(etiquetaIA({ ia_modelo: "sonnet", ia_modelos: { asistente: "muse" }, meta: true }, { para: "chat" })).toBe("Muse Spark 1.3 · Alto");
+    expect(etiquetaIA({ ia_modelo: "sonnet", ia_modelos: {} })).toBe("Sonnet 5 · Alto");
+    expect(modeloDeFuncion({ ia_modelo: "muse", ia_modelos: {} }, "analisis")).toBe("muse");
+  });
+
+  it("el general de Meta se guarda en ia_modelos.general y manda sobre la columna", async () => {
+    const acceso = { ownerId: "o", leerUno: async () => ({ ia_modelo: "sonnet", ia_modelos: JSON.stringify({ general: "muse" }) }) };
+    const c = await leerConfigIA(acceso);
+    expect(c.ia_modelo).toBe("muse");
+    expect(modeloParaHueco(c, "analisis")).toBe("muse");
+  });
+
+  it("sin la llave de Anthropic pero con la de Meta, hay IA de texto", () => {
+    expect(sinIADeTexto({ META_API_KEY: "m" })).toBe(false);
+    expect(sinIADeTexto({})).toBe(true);
+  });
+});

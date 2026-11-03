@@ -72,7 +72,9 @@ export default function SeccionIA({ esAdmin, pulso = 0 }) {
 
   const nivel = NIVELES_IA.find((n) => n.id === config.ia_razonamiento) ?? NIVELES_IA[2];
   const nivelChat = NIVELES_IA.find((n) => n.id === config.ia_razonamiento_chat) ?? null;
-  const modelo = MODELOS_IA.find((m) => m.id === config.ia_modelo) ?? MODELOS_IA[0];
+  const modelo = MODELOS_FUNCION.find((m) => m.id === config.ia_modelo) ?? MODELOS_IA[0];
+  // Los de Meta sólo se ofrecen como general si hay llave (o si ya es el general, para poder verlo y cambiarlo).
+  const generales = MODELOS_FUNCION.filter((m) => !m.id.startsWith("muse") || modelos?.meta?.conectado || config.meta || m.id === config.ia_modelo);
   const nota = { fontSize: "var(--fs-3xs)", color: "var(--text-dim)", marginTop: "var(--sp-1)" };
 
   return (
@@ -92,7 +94,7 @@ export default function SeccionIA({ esAdmin, pulso = 0 }) {
           </p>
           <Segmentado
             etiquetaId={`${ids}-modelo`}
-            opciones={MODELOS_IA.map((m) => ({ id: m.id, nombre: m.id === "sonnet" ? `${m.nombre} (recomendado)` : m.nombre }))}
+            opciones={generales.map((m) => ({ id: m.id, nombre: m.id === "sonnet" ? `${m.nombre} (recomendado)` : m.nombre }))}
             valor={config.ia_modelo}
             onCambiar={(v) => cambiar("ia_modelo", v)}
             deshabilitado={!esAdmin || guardando}
@@ -203,11 +205,15 @@ export default function SeccionIA({ esAdmin, pulso = 0 }) {
 
         {modelos && (
           <div style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)" }}>
+            {/* Lo que escribe CADA función de verdad: el general solo mentía cuando una función tenía el suyo (Muse). */}
             <p>
               <Icon name="sparkles" size={14} style={{ verticalAlign: -2 }} />{" "}
-              Ahora escribe <strong style={{ color: "var(--text)" }}>{modelos.enUso?.nombre}</strong>
-              {" · "}{nivel.nombre}
-              {nivelChat && <> · el asistente, en {nivelChat.nombre}</>}
+              Ahora escribe:{" "}
+              {FUNCIONES_IA.map((f, i) => (
+                <span key={f.id}>{i ? " · " : ""}{f.nombre} con <strong style={{ color: "var(--text)" }}>{modelos.funciones?.[f.id]?.nombre ?? modelos.enUso?.nombre}</strong></span>
+              ))}
+              {" · "}nivel {nivel.nombre}
+              {nivelChat && <> (el asistente, {nivelChat.nombre})</>}
             </p>
             {modelos.enUso?.aviso && <p className="notice notice-warn" style={{ marginTop: "var(--sp-2)" }}>{modelos.enUso.aviso}</p>}
             {modelos.listaCompleta && modelos.disponibles?.length > 0 && (

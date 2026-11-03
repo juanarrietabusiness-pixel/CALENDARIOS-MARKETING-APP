@@ -48,7 +48,6 @@ const Ajustes = lazy(() => import("./pages/Ajustes"));
 const Resultados = lazy(() => import("./pages/Resultados"));
 const Inspiracion = lazy(() => import("./components/Inspiracion"));
 const Programacion = lazy(() => import("./pages/Programacion"));
-const Tablero = lazy(() => import("./pages/Tablero"));
 const Bandeja = lazy(() => import("./pages/Bandeja"));
 const ResumenAgencia = lazy(() => import("./pages/Resultados").then((m) => ({ default: m.ResumenAgencia })));
 // Lo que sólo se abre a demanda —diálogos, pestañas que no son el
@@ -1501,16 +1500,6 @@ function Workspace({ session, ruta }) {
             ) : ruta.vista === "equipo" ? (
               <Suspense fallback={<p style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando Equipo…</p>}>
                 <Equipo presentes={presentes} yo={yo} pulso={pulso} clients={clients} onVolver={() => navegar("/")} />
-              </Suspense>
-            ) : ruta.vista === "tablero" ? (
-              <Suspense fallback={<Cargando />}>
-                <Tablero
-                  clients={clients}
-                  pulso={pulso}
-                  onAbrir={abrirPublicacionDeCola}
-                  onCalendarioGuardado={calendarioGuardado}
-                  soltarPendiente={soltarPendiente}
-                />
               </Suspense>
             ) : ruta.vista === "bandeja" ? (
               <Suspense fallback={<Cargando />}>

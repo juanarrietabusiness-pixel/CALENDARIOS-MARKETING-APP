@@ -231,6 +231,52 @@ export async function iniciarSesion(db, email, contrasena, userAgent = "") {
   return { testigo: bruto, usuario: await perfilDeUsuario(db, usuario.id, usuario.email) };
 }
 
+/** Lo mínimo que se le pide a una contraseña: lo mismo que al alta y a una invitación. */
+export const MIN_CONTRASENA = 12;
+
+/**
+ * Cambiar la propia contraseña: hace falta la actual (una sesión abierta en un equipo ajeno no basta para quedarse
+ * con la cuenta). Cierra las DEMÁS sesiones de la persona —quien cambia la contraseña porque alguien la sabía quiere
+ * que esa otra sesión se acabe—; la de esta pestaña sigue.
+ * @returns {Promise<{ ok: true, cerradas: number } | { ok: false, error: string }>}
+ */
+export async function cambiarContrasena(db, req, userId, actual, nueva) {
+  if (String(nueva ?? "").length < MIN_CONTRASENA) return { ok: false, error: `La contraseña nueva debe tener ${MIN_CONTRASENA} caracteres como mínimo.` };
+  const u = await db.prepare("select password_hash, salt from users where id = ?").bind(userId).first();
+  if (!u) return { ok: false, error: "No se encontró tu cuenta." };
+  if ((await derivar(String(actual ?? ""), u.salt)) !== u.password_hash) return { ok: false, error: "La contraseña actual no es correcta." };
+  const { salt, password_hash } = await hashearContrasena(String(nueva));
+  const esta = leerCookie(req);
+  const huella = esta ? await sha256(esta) : "";
+  const [, borrado] = await db.batch([
+    db.prepare("update users set password_hash = ?, salt = ? where id = ?").bind(password_hash, salt, userId),
+    db.prepare("delete from sessions where user_id = ? and token_hash <> ?").bind(userId, huella),
+  ]);
+  return { ok: true, cerradas: borrado?.meta?.changes ?? 0 };
+}
+
+/**
+ * El administrador le pone a otra persona del ESPACIO una contraseña temporal (cuando la olvidó: la aplicación no
+ * manda correos). Se cierran todas sus sesiones y la persona entra con la temporal y la cambia en «Mi cuenta». Sólo
+ * personas de este espacio, y nunca la del fundador (que la cambia él mismo).
+ * @returns {Promise<{ ok: true, temporal: string } | { ok: false, error: string, estado?: number }>}
+ */
+export async function restablecerContrasena(db, ownerId, userId) {
+  if (userId === ownerId) return { ok: false, error: "Quien fundó el espacio cambia su contraseña desde «Mi cuenta».", estado: 400 };
+  const m = await db.prepare("select user_id from memberships where user_id = ? and owner_id = ?").bind(userId, ownerId).first();
+  if (!m) return { ok: false, error: "Esa persona no está en tu equipo.", estado: 404 };
+  // 16 caracteres sin los que se confunden al dictarlos (0/O, 1/l/I).
+  const letras = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const azar = crypto.getRandomValues(new Uint8Array(16));
+  const temporal = [...azar].map((b) => letras[b % letras.length]).join("");
+  const { salt, password_hash } = await hashearContrasena(temporal);
+  await db.batch([
+    db.prepare("update users set password_hash = ?, salt = ? where id = ?").bind(password_hash, salt, userId),
+    db.prepare("delete from sessions where user_id = ?").bind(userId),
+  ]);
+  return { ok: true, temporal };
+}
+
 /** Cerrar sesión borra la FILA, no sólo la cookie. */
 export async function cerrarSesion(db, req) {
   const bruto = leerCookie(req);

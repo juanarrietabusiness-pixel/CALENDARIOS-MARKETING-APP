@@ -109,7 +109,7 @@ export const leerNotas = (acceso, clientId) => acceso.leer("cerebro_notas", { cl
 
 /** Las notas del cliente SIN su texto: lo que hace falta para listarlas, compararlas o repartir rutas. */
 export const COLUMNAS_LIGERAS = Object.freeze([
-  "id", "ruta", "titulo", "tipo", "origen", "fuente", "fuente_sha", "interna", "resumen", "caracteres", "created_at", "updated_at",
+  "id", "ruta", "titulo", "tipo", "origen", "fuente", "fuente_sha", "interna", "resumen", "caracteres", "editada", "created_at", "updated_at",
 ]);
 export const leerNotasLigeras = (acceso, clientId) =>
   acceso.leerColumnas("cerebro_notas", COLUMNAS_LIGERAS, { client_id: clientId }, "titulo asc");
