@@ -24,3 +24,20 @@ export const cambiarFiltro = (id, cambios) =>
   pedir(`/biblioteca/filtros/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(cambios) });
 
 export const borrarFiltro = (id) => pedir(`/biblioteca/filtros/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+// ---- Scrape Creators: la Biblioteca entera (cada pedido gasta un crédito; lo repetido sale de la caché) ----
+
+export const empresasSC = (q) => pedir(`/biblioteca/sc/empresas?${new URLSearchParams({ q })}`);
+
+export function anunciosSC(consulta, cursor = "") {
+  const q = new URLSearchParams({ c: JSON.stringify(consulta) });
+  if (cursor) q.set("cursor", cursor);
+  return pedir(`/biblioteca/sc/anuncios?${q}`);
+}
+
+export const anuncioSC = (id, { transcripcion = false } = {}) =>
+  pedir(`/biblioteca/sc/anuncio/${encodeURIComponent(id)}${transcripcion ? "?transcripcion=1" : ""}`);
+
+/** El archivo de un anuncio a la galería del cliente (carpeta «Competencia»): devuelve { archivo }. */
+export const traerAnuncioSC = ({ clientId, url, tipo, id, pagina }) =>
+  pedir("/biblioteca/sc/traer", { method: "POST", body: JSON.stringify({ clientId, url, tipo, id, pagina }) });

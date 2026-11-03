@@ -21,6 +21,8 @@
 // ============================================================
 
 /** Lo que cabe en una respuesta de Meta y lo que se sigue de una misma búsqueda. */
+import { consultaSC } from "./scrapeCreators.js";
+
 export const LIMITE_POR_DEFECTO = 25;
 export const LIMITE_MAX = 50;
 export const MAX_PAGINAS = 10;
@@ -337,7 +339,8 @@ export function filtroDeFila(f = {}) {
   try { consulta = JSON.parse(f.consulta ?? "{}") ?? {}; } catch { consulta = {}; }
   return {
     id: f.id, nombre: f.nombre ?? "", clientId: f.client_id ?? null,
-    consulta: normalizarConsulta(consulta).consulta,
+    // Una búsqueda por Scrape Creators (`fuente: "sc"`: la empresa por su pageId) se limpia con SUS reglas.
+    consulta: consulta.fuente === "sc" ? consultaSC(consulta).consulta : normalizarConsulta(consulta).consulta,
     creado: f.created_at ?? null, actualizado: f.updated_at ?? null,
   };
 }

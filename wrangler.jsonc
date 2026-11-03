@@ -82,6 +82,7 @@
   //   META_APP_ID, META_APP_SECRET, META_CONFIG_ID,
   //   META_CONFIG_ID_BANDEJA, META_WEBHOOK_VERIFY_TOKEN   —la Bandeja; opcionales—,
   //   POSTPEER_API_KEY, POSTPEER_WEBHOOK_SECRET   —TikTok, por PostPeer; el webhook es opcional—
+  //   SCRAPECREATORS_API_KEY   —la Biblioteca de anuncios entera, por Scrape Creators; opcional—
   // Estas variables sí son públicas en el sentido de que no abren nada:
   // son nombres de modelo y políticas.
   "vars": {

@@ -79,3 +79,36 @@
 @media (max-width: 1023px) {
   .bib-rejilla { grid-template-columns: 1fr; }
 }
+
+/* Scrape Creators (BibliotecaSC.jsx): fuente, empresas, el medio del anuncio y sus acciones. */
+.bib-fuente { max-width: 460px; margin-bottom: var(--sp-4); }
+.bib-sc-form { display: flex; flex-direction: column; gap: var(--sp-3); }
+.bib-sc-fila { display: flex; gap: var(--sp-2); }
+.bib-sc-fila .input { flex: 1; min-width: 0; }
+.bib-sc-check { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-2xs); margin-top: var(--sp-1); min-height: var(--tap-sm); }
+.bib-sc-filtros { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--sp-2); }
+.bib-sc-filtros .label { margin: 0; }
+.bib-sc-titulo { font-size: var(--fs-sm); margin: 0 0 var(--sp-2); }
+.bib-sc-empresas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); max-height: 320px; overflow-y: auto; }
+.bib-sc-empresa {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%; min-height: var(--tap);
+  padding: var(--sp-2); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.bib-sc-empresa:hover { border-color: var(--accent-line); }
+.bib-sc-empresa img, .bib-sc-sinfoto { width: 36px; height: 36px; border-radius: var(--radius-pill); object-fit: cover; flex: none; }
+.bib-sc-sinfoto { display: inline-flex; align-items: center; justify-content: center; background: var(--surface-3); }
+.bib-sc-empresa > span { display: flex; flex-direction: column; min-width: 0; font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.bib-sc-medio { position: relative; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface-2); }
+.bib-sc-medio img { display: block; width: 100%; max-height: 320px; object-fit: contain; }
+.bib-sc-video {
+  position: absolute; left: var(--sp-2); top: var(--sp-2); display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: var(--radius-pill); background: rgba(0, 0, 0, 0.65); color: #fff; font-size: var(--fs-3xs);
+}
+.bib-sc-video + .bib-sc-video { top: auto; bottom: var(--sp-2); }
+.bib-sc-acciones { display: flex; flex-wrap: wrap; gap: var(--sp-1); align-items: center; }
+.bib-sc-transcripcion { margin: 0; padding: var(--sp-2); border-left: 3px solid var(--accent-line); font-size: var(--fs-2xs); background: var(--surface-2); }
+.bib-sc-cliente { width: auto; max-width: 220px; }
+
+/* Las direcciones de fbcdn caducan: sin imagen, un recuadro que lo dice (no el texto alternativo suelto). */
+.bib-sc-caducada { display: flex; align-items: center; justify-content: center; gap: var(--sp-2); min-height: 120px; padding: var(--sp-3); text-align: center; font-size: var(--fs-sm); color: var(--text-muted); background: var(--surface-3); border-radius: var(--radius-sm); }

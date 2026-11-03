@@ -101,7 +101,7 @@ async function recordar(acceso, codigo, usuario) {
 }
 
 /** Baja de una dirección del CDN de Meta (con tope) y lo sube a la galería del cliente, carpeta «Competencia». */
-async function bajarALaGaleria(env, acceso, cliente, url, nombre, tipoPorDefecto) {
+export async function bajarALaGaleria(env, acceso, cliente, url, nombre, tipoPorDefecto) {
   let host = "";
   try { host = new URL(url).hostname; } catch { /* sin dirección */ }
   if (!url || !CDN.test(host)) throw new ErrorCompetencia("Instagram no da el archivo de esa publicación.", 409);
