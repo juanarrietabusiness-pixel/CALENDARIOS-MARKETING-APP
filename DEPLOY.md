@@ -126,6 +126,7 @@ Ahora que el Worker existe, ya tiene dónde guardarlas.
 | `META_CONFIG_ID_ANUNCIOS` | El ID de la configuración CON los permisos de anuncios *(opcional)* | Ver «Anuncios de Meta» abajo. Sólo hace falta si se usa `META_CONFIG_ID` |
 | `POSTPEER_API_KEY` | La llave de PostPeer (publica en TikTok) | Ver «TikTok (por PostPeer)» abajo |
 | `POSTPEER_WEBHOOK_SECRET` | El secreto del webhook de PostPeer *(opcional)* | Ver «TikTok (por PostPeer)» abajo |
+| `SCRAPECREATORS_API_KEY` | La llave de Scrape Creators: la Biblioteca de anuncios con TODOS los anuncios *(opcional)* | app.scrapecreators.com → API key. Cada búsqueda gasta un crédito; la misma búsqueda se repite gratis unas horas |
 
 El `GITHUB_TOKEN` es para leer el ADN de marca de los repositorios de los
 clientes —lo usa «Llenar desde el repositorio» de la pestaña Cerebro—. Con
@@ -588,6 +589,7 @@ despliegue (`EspacioHub`, migración `v1` de `wrangler.jsonc`).
 
 | `META_CONFIG_ID_ANUNCIOS` | **Cloudflare** | Anuncios de Meta (opcional) |
 | `POSTPEER_API_KEY` / `POSTPEER_WEBHOOK_SECRET` | **Cloudflare** | TikTok, por PostPeer (el webhook, opcional) |
+| `SCRAPECREATORS_API_KEY` | **Cloudflare** | La Biblioteca de anuncios por Scrape Creators (opcional) |
 
 La regla: **en GitHub, lo que necesita el workflow. En Cloudflare, lo que
 necesita el Worker mientras corre.** Ninguna de las dos listas llega

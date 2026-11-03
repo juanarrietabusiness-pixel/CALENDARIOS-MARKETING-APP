@@ -1,5 +1,5 @@
 import "./Biblioteca.css";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";import Icon from "../components/Icon";
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";import Icon from "../components/Icon";
 import SelectorFecha from "../components/SelectorFecha";
 import { navegar } from "../lib/rutas";
 import { soloLectura } from "../lib/sesionActual";
@@ -33,6 +33,9 @@ const fechaCorta = (f) => (f ? new Date(`${f}T12:00:00`).toLocaleDateString("es-
 const alternar = (lista, v) => (lista.includes(v) ? lista.filter((x) => x !== v) : [...lista, v]);
 
 /** Descarga un texto como archivo. Sin librerías: un Blob y un enlace. */
+// La Biblioteca entera por Scrape Creators: sólo se descarga si hay llave y se escoge.
+const BibliotecaSC = lazy(() => import("../components/BibliotecaSC"));
+
 function descargar(texto, nombre, tipo = "text/csv;charset=utf-8") {
   const url = URL.createObjectURL(new Blob([texto], { type: tipo }));
   const a = document.createElement("a");
@@ -287,6 +290,9 @@ export default function Biblioteca({ clients = [], pulso = 0 }) {
   const [buscando, setBuscando] = useState(false);
   const [aviso, setAviso] = useState({ texto: "", error: false });
   const resultadosRef = useRef(null);
+  // De dónde salen los anuncios: Scrape Creators (TODOS, si hay llave) o la API de Meta (fuera de la UE, sólo política).
+  const [fuente, setFuente] = useState(null);
+  const fuenteVista = fuente ?? (estado?.sc ? "sc" : "meta");
 
   const avisar = (texto, error = false) => setAviso({ texto, error });
   // Se relee tras cada cambio PROPIO: el evento «biblioteca» de la propia pestaña se descarta (X-Pestana),
@@ -332,9 +338,25 @@ export default function Biblioteca({ clients = [], pulso = 0 }) {
     <div className="biblioteca">
       <div className="page-header">
         <h1 className="page-title">Biblioteca de anuncios</h1>
-        <p className="page-meta">Los anuncios que se están viendo en Facebook e Instagram, desde la Biblioteca de anuncios de Meta: qué dicen, desde cuándo y dónde.</p>
+        <p className="page-meta">Los anuncios que se están viendo en Facebook e Instagram, desde la Biblioteca de anuncios de Meta: qué dicen, desde cuándo y dónde.{estado && !estado.sc ? " Para ver TODOS (también los comerciales de Panamá), añade la llave de Scrape Creators (SCRAPECREATORS_API_KEY) en Cloudflare." : ""}</p>
       </div>
 
+      {estado?.sc && (
+        <div className="segmented bib-fuente" role="group" aria-label="De dónde salen los anuncios">
+          <button type="button" className={`segmented-btn ${fuenteVista === "sc" ? "active" : ""}`} aria-pressed={fuenteVista === "sc"} onClick={() => setFuente("sc")}>
+            <Icon name="search" size={14} /> Todos los anuncios
+          </button>
+          <button type="button" className={`segmented-btn ${fuenteVista === "meta" ? "active" : ""}`} aria-pressed={fuenteVista === "meta"} onClick={() => setFuente("meta")}>
+            <Icon name="globe" size={14} /> API de Meta (política)
+          </button>
+        </div>
+      )}
+
+      {fuenteVista === "sc" ? (
+        <Suspense fallback={<p className="hint">Cargando…</p>}>
+          <BibliotecaSC clients={clients} filtros={estado?.filtros ?? []} lectura={lectura} onCambio={cargar} />
+        </Suspense>
+      ) : (<>
       <div className="notice notice-warn bib-cobertura" role="note">
         <p><strong>Lo que la API de Meta deja ver.</strong> {AVISO_COBERTURA}</p>
         <a className="btn btn-secondary btn-sm" href={web} target="_blank" rel="noopener noreferrer">
@@ -404,6 +426,7 @@ export default function Biblioteca({ clients = [], pulso = 0 }) {
           )}
         </section>
       </div>
+      </>)}
     </div>
   );
 }
