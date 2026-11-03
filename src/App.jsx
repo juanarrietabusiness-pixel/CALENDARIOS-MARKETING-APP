@@ -945,6 +945,24 @@ function Workspace({ session, ruta }) {
   };
 
   /**
+   * Los días fijos de una empresa en Mi día por semanas. Primero en pantalla (el eco de esta pestaña se descarta) y
+   * luego en el servidor; si falla, vuelve lo de antes y el error sube a quien lo pidió.
+   */
+  const guardarDiasEmpresa = async (clienteId, dias) => {
+    const es = (c) => c.id === clienteId || c.dbId === clienteId;
+    const antes = clientsRef.current.find(es)?.diasTrabajo ?? [];
+    setClients((prev) => prev.map((c) => (es(c) ? { ...c, diasTrabajo: dias } : c)));
+    try {
+      const fila = await db.guardarDiasTrabajo(clienteId, dias);
+      const guardados = rowToClient(fila).diasTrabajo;
+      setClients((prev) => prev.map((c) => (es(c) ? { ...c, diasTrabajo: guardados } : c)));
+    } catch (e) {
+      setClients((prev) => prev.map((c) => (es(c) ? { ...c, diasTrabajo: antes } : c)));
+      throw e;
+    }
+  };
+
+  /**
    * Del banco de ideas a un día del calendario. Devuelve si entró: quien la
    * llevó la quita del banco SÓLO entonces —antes se borraba del banco aunque
    * el día no estuviera en el mes (siempre en un mes sin cajón) y se esfumaba—.
@@ -1495,6 +1513,7 @@ function Workspace({ session, ruta }) {
                 presentes={presentes}
                 foco={foco}
                 onFoco={cambiarFoco}
+                onDiasEmpresa={guardarDiasEmpresa}
               />
               </Suspense>
             ) : ruta.vista === "equipo" ? (

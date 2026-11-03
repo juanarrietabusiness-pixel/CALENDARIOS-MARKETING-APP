@@ -10,6 +10,7 @@ import { useArrastrarOrden } from "../hooks/useArrastrarOrden";
 import { useEquipo, miembroDe } from "../hooks/useEquipo";
 import { clasificar, fechaEnZona, textoAtraso, textoFecha, partirNotas, empresaDelPrefijo, sumarDias } from "../lib/agenda";
 import { navegar } from "../lib/rutas";
+import { TIPO_ARRASTRE } from "../lib/semanaTareas";
 import "./PanelTareas.css";
 
 // ============================================================
@@ -274,8 +275,15 @@ function FilaTarea({ item, hoy, empresa, responsable, verResponsable, miembros, 
   const notas = (t.description ?? "").trim();
   const esHoy = fecha === hoy;
 
+  // Toda tarea sin hacer se arrastra a «Mi día» por semanas (a una empresa en su día). Las de «Hoy» además se
+  // ordenan: el arrastre de orden sigue igual y lleva también la clave de la tarea.
+  const ponerClave = (e) => e.dataTransfer.setData(TIPO_ARRASTRE, claveTarea(t));
+  const arrastre = esHecha || abierta ? {} : orden
+    ? { ...orden.props, onDragStart: (e) => { orden.props.onDragStart(e); ponerClave(e); } }
+    : { draggable: true, onDragStart: (e) => { e.dataTransfer.effectAllowed = "move"; ponerClave(e); e.dataTransfer.setData("text/plain", t.title); } };
+
   return (
-    <li className="panel-tarea" data-hecha={esHecha} data-atrasada={atraso > 0 && !esHecha} {...(orden && !abierta ? orden.props : {})}>
+    <li className="panel-tarea" data-hecha={esHecha} data-atrasada={atraso > 0 && !esHecha} {...arrastre}>
       <button
         type="button"
         className="panel-tarea-check"

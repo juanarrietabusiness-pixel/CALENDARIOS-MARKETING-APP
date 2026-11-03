@@ -136,6 +136,29 @@ export function useTareas(pulso = 0) {
   });
 
   /**
+   * Soltar una tarea en la tarjeta de una empresa de un día (Mi día por semanas), o «Agendar» con botones: le pone
+   * esa empresa y ese día. Una rápida que pasa a una empresa cambia de tabla: se crea en la empresa con lo mismo
+   * (notas, quién la lleva, fecha límite) y se borra la rápida. Devuelve el motivo si no se puede.
+   */
+  const soltar = accion(async (t, destino) => {
+    // En diferido: este hook va en la carga inicial (el inicio lo usa), que está en su tope; Mi día ya lo cargó.
+    const { cambioAlSoltar } = await import("../lib/semanaTareas");
+    const cambio = cambioAlSoltar(t, destino);
+    if (!cambio) return null;
+    if (cambio.error) { setError(cambio.error); return cambio.error; }
+    if (cambio.datos) { await actualizar(t, cambio.datos); return null; }
+    const position = todas.reduce((m, x) => Math.max(m, (x.position ?? 0) + 1), 0);
+    const fila = await db.saveClientTask({
+      title: t.title, description: t.description ?? "", assigned_to: t.assigned_to ?? "", due_date: t.due_date ?? null,
+      today_date: cambio.convertir.today_date, client_id: cambio.convertir.empresa, recurrence: "none", position,
+    });
+    setClientTasks((prev) => [...prev, fila]);
+    await db.deleteQuickTask(t.id);
+    setQuickTasks((prev) => prev.filter((x) => x.id !== t.id));
+    return null;
+  });
+
+  /**
    * «Convertir en tareas»: cada viñeta de las notas pasa a ser su propia
    * tarea, con la misma empresa, la misma persona y las mismas fechas, y
    * sale de las notas. La tarea de origen se queda (la persona decide si
@@ -154,5 +177,5 @@ export function useTareas(pulso = 0) {
     return tareas.length;
   });
 
-  return { todas, loading, error, setError, alternarHecha, actualizar, alternarHoy, moverA, crear, borrar, convertir, reordenar };
+  return { todas, loading, error, setError, alternarHecha, actualizar, alternarHoy, moverA, crear, borrar, convertir, reordenar, soltar };
 }

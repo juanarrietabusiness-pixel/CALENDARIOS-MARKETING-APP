@@ -223,6 +223,11 @@ export async function updateClientTask(taskId, data) {
   return pedir(`/tareas/${taskId}`, conCuerpo("PUT", data));
 }
 
+/** Los días fijos de una empresa en Mi día por semanas (1 lunes … 6 sábado). Devuelve la fila del cliente. */
+export async function guardarDiasTrabajo(clientId, dias) {
+  return pedir(`/clientes/${encodeURIComponent(clientId)}/dias`, conCuerpo("PUT", { dias }));
+}
+
 export async function deleteClientTask(taskId) {
   await pedir(`/tareas/${taskId}`, { method: "DELETE" });
 }

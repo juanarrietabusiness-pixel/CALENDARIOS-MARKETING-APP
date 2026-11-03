@@ -103,6 +103,8 @@ export function rowToClient(row) {
     ritmoContenido: row.ritmo_contenido || null,
     planContenido: row.plan_contenido || null,
     notasSemana: row.notas_semana || null,
+    // Los días fijos de Mi día por semanas (1 lunes … 6 sábado). Sólo de lectura aquí: `clientToRow` no lo lleva.
+    diasTrabajo: Array.isArray(row.dias_trabajo) ? row.dias_trabajo : [],
     // Sólo de lectura aquí: lo escribe el Estudio (/api/estudio/<cliente>/kit), no la ficha.
     kitMarca: row.kit_marca || null,
     savedPlans: [],
