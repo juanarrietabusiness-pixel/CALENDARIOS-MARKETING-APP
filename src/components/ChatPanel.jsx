@@ -7,7 +7,8 @@ import { idDeCarpeta } from "../lib/drive";
 import { CopyButton } from "./calendario/primitivas";
 import { stripMarkdown } from "./calendario/formato";
 import { useDialogA11y } from "../hooks/useDialogA11y";
-import { conversarIA, leerResumenChat, resumirChat, buildChatSystemPrompt, getChatTools, adnParaElChat, herramientaGuardarEnCerebro, INSTRUCCION_GUARDAR_CEREBRO } from "../api";
+import { conversarIA, leerResumenChat, resumirChat, buildChatSystemPrompt, adnParaElChat, herramientaGuardarEnCerebro, INSTRUCCION_GUARDAR_CEREBRO } from "../api";
+import { getChatTools } from "../lib/herramientasChat.js";
 import GuardarEnCerebro from "./GuardarEnCerebro";
 import PlanDePiezas from "./PlanDePiezas";
 import { HERRAMIENTAS_DISENO } from "../lib/herramientasDiseno";
@@ -28,6 +29,7 @@ import { imagenParaModelo, fotogramasDeVideo, descargarEnTamano } from "../lib/m
 import * as db from "../lib/db";
 import { useConfigIA } from "../hooks/useConfigIA";
 import { useAltoVisible } from "../hooks/useAltoVisible";
+import { herramientasDelPost, guardaDelPost, bloqueDelPost } from "../lib/asistentePost";
 import { etiquetaIA, NIVELES_IA } from "../lib/configIA";
 
 const NIVEL_DE_ESFUERZO = { low: "bajo", medium: "medio", high: "alto", max: "maximo" };
@@ -84,6 +86,10 @@ export default function ChatPanel({
   incrustado = false,
   tema: temaFijo = "",
   atajos: atajosFijos = null,
+  // Abierto DENTRO de una publicación (PostSidePanel): { post, fecha }. Sólo puede cambiar esa (lib/asistentePost.js),
+  // y el calendario que recibe sólo deja pasar sus cambios. `lateral`: a lo ancho, al lado del panel y sin fondo.
+  publicacionFija = null,
+  lateral = false,
 }) {
   // Dos pestañas en el asistente de un cliente: «Asistente» y «Director». Cada una con SUS conversaciones (las del
   // director son las mismas de la pestaña Diseño) y la última abierta de cada una se recuerda aparte. Antes era un
@@ -93,6 +99,9 @@ export default function ChatPanel({
   const temaVisible = temaFijo || (modoDirector ? "diseno" : "");
   const atajos = atajosFijos ?? (temaVisible === "diseno" ? ATAJOS_DIRECTOR : null);
   const tema = temaVisible;
+  const fijaId = publicacionFija?.post?.id ?? "";
+  // La última conversación abierta se recuerda por pestaña y, dentro de un post, por post.
+  const claveTema = fijaId ? `post-${fijaId}` : tema;
   const [chatMode, setChatMode] = useState(defaultMode || (client ? "client" : "global"));
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -108,6 +117,7 @@ export default function ChatPanel({
   temaRef.current = tema;
   const [conversacionId, setConversacionId] = useState(null);
   const [verLista, setVerLista] = useState(false);
+  const [borrarSeguro, setBorrarSeguro] = useState(false);
   const [error, setError] = useState("");
   const [memories, setMemories] = useState([]);
   const [showMemories, setShowMemories] = useState(false);
@@ -139,7 +149,8 @@ export default function ChatPanel({
   const fileRef = useRef(null);
   const recognitionRef = useRef(null);
   // Ampliado tapa toda la pantalla: es un diálogo aunque esté acoplado, y Escape primero lo REDUCE.
-  const dialogRef = useDialogA11y(ampliado ? () => setAmpliado(false) : onClose, { activo: (!acoplado && !incrustado) || ampliado });
+  // `lateral` (dentro de un post, a lo ancho): al lado del panel, sin fondo ni foco atrapado, como el acoplado.
+  const dialogRef = useDialogA11y(ampliado ? () => setAmpliado(false) : onClose, { activo: (!acoplado && !incrustado && !lateral) || ampliado });
   const inputId = useId();
   const clientId = client?.dbId || client?.id;
   const raizDrive = idDeCarpeta(client?.driveFolder);
@@ -182,8 +193,9 @@ export default function ChatPanel({
         setMemories(mems);
         const t = temaRef.current;
         const deAqui = lista.filter((c) => (t === "diseno" ? c.tema === "diseno" : c.tema !== "diseno"));
-        const recordada = leerUltima(ambito, t);
-        const abierta = deAqui.find((c) => c.id === recordada) ?? deAqui[0] ?? null;
+        const recordada = leerUltima(ambito, fijaId ? `post-${fijaId}` : t);
+        // Dentro de un post, sólo la SUYA (o ninguna: empieza una); nunca la última del asistente general.
+        const abierta = deAqui.find((c) => c.id === recordada) ?? (fijaId ? null : deAqui[0] ?? null);
         setConversacionId(abierta?.id ?? null);
         if (!abierta) setLoadingHistory(false);
       } catch {
@@ -196,12 +208,12 @@ export default function ChatPanel({
     })();
     return () => { vivo = false; };
     // `tema` no: cambiar de pestaña escoge la conversación sin volver a pedir la lista (cambiarPestana).
-  }, [ambito, temaFijo]);
+  }, [ambito, temaFijo, fijaId]);
 
   // Los mensajes y el resumen de la conversación abierta: el asistente sólo recuerda ESA.
   useEffect(() => {
     if (!conversacionId) return;
-    guardarUltima(ambito, conversacionId, tema);
+    guardarUltima(ambito, conversacionId, claveTema);
     if (sinRecargar.current === conversacionId) { sinRecargar.current = null; return; }
     let vivo = true;
     setLoadingHistory(true);
@@ -248,9 +260,9 @@ export default function ChatPanel({
     setActionFeedback([]);
     setError("");
     setVerLista(false);
-    guardarUltima(ambito, "", tema);
+    guardarUltima(ambito, "", claveTema);
     inputRef.current?.focus({ preventScroll: true });
-  }, [loading, ambito, tema]);
+  }, [loading, ambito, claveTema]);
 
   const abrirConversacion = useCallback((id) => {
     if (loading) return;
@@ -1060,6 +1072,9 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
           if (toolInput.descripcion !== undefined) upd.descripcion = toolInput.descripcion;
           if (toolInput.guion !== undefined) upd.guion = toolInput.guion;
           if (toolInput.texto_pieza !== undefined) upd.textoPieza = toolInput.texto_pieza;
+          if (toolInput.titulo !== undefined) upd.title = toolInput.titulo;
+          if (toolInput.hashtags !== undefined) upd.hashtagsFinales = toolInput.hashtags;
+          if (toolInput.escena !== undefined) upd.escena = toolInput.escena;
           if (toolInput.categoria !== undefined) upd.category = toolInput.categoria;
           if (toolInput.formato !== undefined) upd.format = toolInput.formato;
           if (hora !== undefined) upd.publishTime = hora;
@@ -1143,7 +1158,11 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       const primera = messages.length === 0;
       if (!convId) {
         try {
-          const nueva = await crearConversacion(ambito, tituloProvisional(text || pedido), temaVisible);
+          const nueva = await crearConversacion(
+            ambito,
+            fijaId ? `Post ${publicacionFija.fecha ?? ""}: ${tituloProvisional(publicacionFija.post?.title || text || pedido)}`.slice(0, 120) : tituloProvisional(text || pedido),
+            temaVisible,
+          );
           convId = nueva.id;
           sinRecargar.current = nueva.id;
           setConversaciones((p) => [nueva, ...p.filter((c) => c.id !== nueva.id)]);
@@ -1176,13 +1195,19 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       let system = chatMode === "client" && client
         ? buildChatSystemPrompt(client, calRef.current, adn.content, memories, adn.cerebro ? { pasajes: "" } : null, { notasCerebro: adn.notas })
         : buildGlobalSystemPrompt();
+      // Dentro de un post: lo que tiene AHORA (el panel, en vivo) y la regla de que sólo se cambia ése.
+      if (fijaId) {
+        const vivo = (calRef.current?.days ?? []).flatMap((d) => d.posts ?? []).find((p) => p.id === fijaId) ?? publicacionFija.post;
+        system += `\n\n${bloqueDelPost(vivo, publicacionFija.fecha)}`;
+      }
       if (res.resumen) {
         system += `\n\nRESUMEN DE LA CONVERSACIÓN ANTERIOR (lo más antiguo, ya plegado; lo reciente va entero en los mensajes):\n${res.resumen}`;
       }
 
-      const tools = chatMode === "client"
+      const todas = chatMode === "client"
         ? [...getChatTools(Boolean(calRef.current)), ...(client ? HERRAMIENTAS_DISENO : [])]
         : getGlobalTools();
+      const tools = fijaId ? herramientasDelPost(todas) : todas;
 
       const recientes = [...messages, { role: "user", content: guardado, created_at: userMsg.created_at }]
         .filter((m) => !res.hasta || m.created_at > res.hasta)
@@ -1235,7 +1260,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
         if (convId) {
           await guardarMensaje(convId, "assistant", contenido);
           // Con el primer intercambio, la IA le pone título (barato); si falla, se queda el provisional.
-          if (primera) {
+          if (primera && !fijaId) {
             titularConversacion(convId)
               .then((c) => { if (c) setConversaciones((p) => p.map((x) => (x.id === c.id ? { ...x, titulo: c.titulo } : x))); })
               .catch(() => {});
@@ -1268,7 +1293,17 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
           clienteId: chatMode === "client" ? clientId : null,
           conversacionId: convId,
           onEvento,
+          // Se cortó (teléfono bloqueado, otra pestaña): el servidor sigue y aquí se espera su final al volver.
+          onRecuperando: () => setProgreso("Se cortó la conexión: sigo en cuanto vuelvas a esta pantalla…"),
         });
+        if (fin.recuperado) setProgreso("");
+        // Si el servidor ya guardó la respuesta final en la conversación (el navegador no estaba), no se guarda otra
+        // vez: se relee y termina el turno.
+        if (fin.guardadoPorServidor && fin.stopReason !== "tool_use") {
+          entregado = true;
+          if (convId) await leerMensajes(convId).then(setMessages).catch(() => {});
+          break;
+        }
         // TAL CUAL: los bloques de razonamiento llevan firma y la API
         // rechaza la vuelta siguiente si llegan tocados.
         conversationMessages.push(...fin.mensajes);
@@ -1294,7 +1329,9 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
         const toolResults = [...(fin.resultadosServidor ?? [])];
         for (const toolBlock of toolUseBlocks) {
           try {
-            const result = await executeToolCall(toolBlock.name, toolBlock.input);
+            // Dentro de un post, la guarda va ANTES: otra publicación no se toca aunque el modelo la nombre.
+            const guarda = fijaId ? guardaDelPost(fijaId, toolBlock.name, toolBlock.input) : { entrada: toolBlock.input };
+            const result = guarda.error ? { ok: false, mensaje: guarda.error } : await executeToolCall(toolBlock.name, guarda.entrada);
             // Una pieza corregida ocupa el sitio de la anterior en el mensaje; las demás, detrás.
             const nuevasImg = [...(result._imagen ? [result._imagen] : []), ...(result._imagenes ?? [])];
             for (const img of nuevasImg) {
@@ -1351,7 +1388,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       setEnVivo({ texto: "", pensando: "", pasos: [] });
       for (const a of enviados) if (a.origen === "subida") URL.revokeObjectURL(a.preview);
     }
-  }, [input, provisional, loading, messages, client, clientId, chatMode, memories, executeToolCall, adjuntos, prepararAdjuntos, buildGlobalSystemPrompt, getGlobalTools, resumen, conversacionId, ambito, temaVisible]);
+  }, [input, provisional, loading, messages, client, clientId, chatMode, memories, executeToolCall, adjuntos, prepararAdjuntos, buildGlobalSystemPrompt, getGlobalTools, resumen, conversacionId, ambito, temaVisible, fijaId, publicacionFija]);
 
   const handleDeleteMemory = useCallback(async (memId) => {
     try {
@@ -1380,13 +1417,17 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       className={incrustado && !ampliado ? "chat-incrustado" : acoplado && !ampliado ? "chat-acoplado" : undefined}
       // Flotante, mide lo que SE VE (useAltoVisible): con el teclado del teléfono abierto, el pie —la caja y el botón de
       // enviar— queda encima del teclado y no debajo.
-      style={flotante ? { position: "fixed", left: 0, right: 0, top: visible.arriba, height: visible.alto || "100%", zIndex: 200, display: "flex", justifyContent: "flex-end" } : undefined}
+      // Dentro de un post va por ENCIMA del panel (que está en --z-panel); `lateral`, sin tapar el panel (no recoge clics).
+      style={flotante ? {
+        position: "fixed", left: 0, right: 0, top: visible.arriba, height: visible.alto || "100%", display: "flex", justifyContent: "flex-end",
+        zIndex: fijaId ? "var(--z-overlay)" : 200, ...(lateral && !ampliado ? { pointerEvents: "none" } : {}),
+      } : undefined}
     >
       {/* Acoplado —pantalla ancha— es un panel al lado del contenido, no
           un diálogo: sin fondo oscuro, sin foco atrapado y con el resto
           de la pantalla usable. Ampliado ocupa la pantalla entera y vuelve
           a ser un diálogo. */}
-      {!acoplado && !incrustado && !ampliado && (
+      {!acoplado && !incrustado && !ampliado && !lateral && (
         <button
           type="button"
           aria-label="Cerrar chat"
@@ -1397,8 +1438,8 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
       <div
         ref={dialogRef}
         className={ampliado ? "chat-ampliado" : undefined}
-        role={incrustado && !ampliado ? "region" : acoplado && !ampliado ? "complementary" : "dialog"}
-        aria-modal={(acoplado || incrustado) && !ampliado ? undefined : "true"}
+        role={incrustado && !ampliado ? "region" : (acoplado || lateral) && !ampliado ? "complementary" : "dialog"}
+        aria-modal={(acoplado || incrustado || lateral) && !ampliado ? undefined : "true"}
         aria-label={panelLabel}
         style={{
           width: acoplado || incrustado || ampliado ? "100%" : 420,
@@ -1410,6 +1451,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
           display: "flex",
           flexDirection: "column",
           animation: acoplado || incrustado ? undefined : "slideIn .24s cubic-bezier(.22,.61,.36,1)",
+          pointerEvents: "auto",
         }}
       >
         {/* Cabecera */}
@@ -1434,10 +1476,10 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
               }}>
-                {isGlobal ? "Agente de la agencia" : temaVisible === "diseno" ? `Director creativo de ${client?.name || ""}` : `Asistente de ${client?.name || ""}`}
+                {isGlobal ? "Agente de la agencia" : fijaId ? "Asistente de esta publicación" : temaVisible === "diseno" ? `Director creativo de ${client?.name || ""}` : `Asistente de ${client?.name || ""}`}
               </div>
               <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-faint)", display: "flex", alignItems: "center", gap: "var(--sp-1)", flexWrap: "wrap" }}>
-                <span>{isGlobal ? "Conoce todos tus clientes" : temaVisible === "diseno" ? "Dile qué quieres con tus palabras: él diseña, revisa y te enseña" : "Conversa, genera ideas y ejecuta acciones"}</span>
+                <span>{isGlobal ? "Conoce todos tus clientes" : fijaId ? "Cambia los textos, el diseño o una lámina de ESTE post, en vivo" : temaVisible === "diseno" ? "Dile qué quieres con tus palabras: él diseña, revisa y te enseña" : "Conversa, genera ideas y ejecuta acciones"}</span>
                 <span
                   className="badge"
                   style={{ background: "var(--accent-soft)", color: "var(--accent)", fontSize: "var(--fs-3xs)" }}
@@ -1488,7 +1530,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
           </div>
 
           {/* Selector de contexto: Global / Cliente (el director es siempre de su cliente) */}
-          {client && tema !== "diseno" && (
+          {client && tema !== "diseno" && !fijaId && (
             <div className="chat-mode-tabs" role="tablist" aria-label="Contexto del chat">
               <button
                 role="tab"
@@ -1513,7 +1555,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
 
           {/* Asistente o Director: cada pestaña con sus conversaciones (las del director, las mismas de la pestaña
               Diseño). */}
-          {client && !temaFijo && !isGlobal && (
+          {client && !temaFijo && !isGlobal && !fijaId && (
             <div className="chat-mode-tabs" role="tablist" aria-label="Con quién hablas">
               <button
                 role="tab"
@@ -1538,8 +1580,26 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
             </div>
           )}
 
+          {/* Dentro de un post: su conversación se queda guardada con él; «Borrar conversación» empieza en limpio
+              (con un segundo toque). La lista de las demás no sale: aquí sólo se habla de este post. */}
+          {fijaId && conversacionId && (
+            <button
+              type="button"
+              className={`btn btn-ghost btn-sm${borrarSeguro ? " chat-conv-borrar-seguro" : ""}`}
+              style={{ alignSelf: "flex-start" }}
+              disabled={loading}
+              onClick={() => {
+                if (!borrarSeguro) { setBorrarSeguro(true); setTimeout(() => setBorrarSeguro(false), 4000); return; }
+                setBorrarSeguro(false);
+                void borrarUna(conversacionId).catch((e) => setError(e.message));
+              }}
+            >
+              <Icon name="trash" size={14} /> {borrarSeguro ? "Toca otra vez para borrarla" : "Borrar conversación"}
+            </button>
+          )}
+
           {/* La conversación abierta y la lista: una por tema, de todo el equipo. */}
-          <button
+          {!fijaId && <button
             type="button"
             className="chat-conv-actual"
             onClick={() => setVerLista((v) => !v)}
@@ -1552,7 +1612,7 @@ ${INSTRUCCION_GUARDAR_CEREBRO}`;
             </span>
             <span className="chat-conv-actual-cuantas">{conversaciones.length} {conversaciones.length === 1 ? "conversación" : "conversaciones"}</span>
             <Icon name={verLista ? "chevronUp" : "chevronDown"} size={14} />
-          </button>
+          </button>}
         </div>
 
         <div className="chat-cuerpo">

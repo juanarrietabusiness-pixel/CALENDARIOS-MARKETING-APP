@@ -395,7 +395,8 @@ describe("las pautas para escribir", () => {
 
 describe("guardar en el cerebro desde el asistente", () => {
   it("el asistente ya no crea memorias: propone guardar en el cerebro, y borra las de antes por su id", async () => {
-    const { getChatTools, buildChatSystemPrompt } = await import("../api");
+    const { buildChatSystemPrompt } = await import("../api");
+    const { getChatTools } = await import("./herramientasChat.js");
     const nombres = getChatTools(true).map((t) => t.name);
     expect(nombres).toContain("guardar_en_cerebro");
     expect(nombres).not.toContain("guardar_memoria");

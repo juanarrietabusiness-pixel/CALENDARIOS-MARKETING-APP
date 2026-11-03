@@ -54,7 +54,7 @@
 //   · cualquier otro rechazo enseña el mensaje real de Anthropic.
 // ============================================================
 
-import { error, cuerpo, CABECERAS_API, json } from "../lib/respuesta.js";
+import { error, cuerpo, CABECERAS_API, json, noEncontrado } from "../lib/respuesta.js";
 import { abrirFlujo, leerFlujo, esRechazoDeModelo, esRechazoDeWeb, mensajeDeRechazo, RechazoAnthropic, textoDe } from "../lib/anthropic.js";
 import { prepararIA, registrarConsumo, MODELO_SONNET, etiquetaModelo } from "../lib/configIA.js";
 import { crearEjecutor, DEFINICIONES, HERRAMIENTAS_WEB, NOMBRES, describirUso } from "../lib/herramientasServidor.js";
@@ -206,7 +206,14 @@ export async function rutaChat(req, env, { acceso, ctx, usuario = null } = {}) {
   const escritor = writable.getWriter();
   const enc = new TextEncoder();
   let conectado = true;
+  // El final de esta vuelta («fin» o «error») se GUARDA con el id del turno que manda el navegador (R2, bajo
+  // `turnos/<espacio>/`, nunca bajo `clientes/`): si el teléfono se bloqueó o la pestaña quedó atrás y la conexión se
+  // cortó, al volver el navegador lo pide (GET /api/ia/chat/turno/<id>) y sigue donde iba en vez de dar error.
+  const turnoId = /^[0-9a-f-]{36}$/.test(String(body.turnoId ?? "")) ? String(body.turnoId) : "";
+  let finDelTurno = null;
+  let guardadoPorServidor = false;
   const emitir = async (obj) => {
+    if (obj?.t === "fin" || obj?.t === "error") finDelTurno = obj;
     if (!conectado) return;
     try {
       await escritor.write(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
@@ -269,7 +276,7 @@ export async function rutaChat(req, env, { acceso, ctx, usuario = null } = {}) {
       if (!texto) return;
       await acceso.insertar("chat_messages", {
         id: uuid(), client_id: conversacion.client_id ?? null, conversacion_id: conversacion.id, role: "assistant", content: texto, created_at: ahora(),
-      }).catch((e) => console.error("chat: no se pudo guardar la respuesta huérfana", e));
+      }).then(() => { guardadoPorServidor = true; }).catch((e) => console.error("chat: no se pudo guardar la respuesta huérfana", e));
     };
     const uso = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
     let busquedas = 0;
@@ -331,6 +338,11 @@ export async function rutaChat(req, env, { acceso, ctx, usuario = null } = {}) {
       console.error("chat:", e);
       await emitir({ t: "error", mensaje: e?.message || "No se pudo generar la respuesta" });
     } finally {
+      if (turnoId && finDelTurno && env.MEDIA) {
+        await env.MEDIA.put(claveDeTurno(acceso.ownerId, turnoId), JSON.stringify({ evento: finDelTurno, guardado: guardadoPorServidor }), {
+          httpMetadata: { contentType: "application/json" },
+        }).catch((e) => console.error("chat: no se pudo guardar el turno", e));
+      }
       try { await escritor.close(); } catch { /* ya cerrado */ }
     }
   })();
@@ -340,6 +352,24 @@ export async function rutaChat(req, env, { acceso, ctx, usuario = null } = {}) {
     status: 200,
     headers: { ...CABECERAS_API, "Content-Type": "text/event-stream; charset=utf-8" },
   });
+}
+
+const claveDeTurno = (ownerId, turnoId) => `turnos/${ownerId}/${turnoId}.json`;
+
+/**
+ * GET /api/ia/chat/turno/<id>: el final de una vuelta del asistente que el navegador no llegó a recibir (se cortó la
+ * conexión). 404 `{ pendiente: true }` mientras no esté (el servidor puede seguir trabajando); una vez leído se borra.
+ * Sólo los del espacio de quien pregunta: la clave lleva el espacio.
+ */
+export async function rutaTurnoChat(req, env, { acceso, partes }) {
+  const id = String(partes[3] ?? "");
+  if (!/^[0-9a-f-]{36}$/.test(id) || !env.MEDIA) return noEncontrado("Turno");
+  const clave = claveDeTurno(acceso.ownerId, id);
+  const obj = await env.MEDIA.get(clave);
+  if (!obj) return json({ pendiente: true }, 404);
+  const datos = await obj.json().catch(() => null);
+  await env.MEDIA.delete(clave).catch(() => {});
+  return datos ? json(datos) : noEncontrado("Turno");
 }
 
 // ============================================================

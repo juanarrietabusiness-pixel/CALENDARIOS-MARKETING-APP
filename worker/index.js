@@ -34,7 +34,7 @@ import { rutasAvisos } from "./rutas/avisos.js";
 import { avisarRespuestaCliente } from "./lib/equipo.js";
 import { rutasEquipo, rutaInvitacionPublica } from "./rutas/equipo.js";
 import { rutaIA } from "./rutas/ia.js";
-import { rutaChat, rutaResumenChat } from "./rutas/chat.js";
+import { rutaChat, rutaResumenChat, rutaTurnoChat } from "./rutas/chat.js";
 import { rutasConversaciones } from "./rutas/conversaciones.js";
 import { rutasBancoIdeas } from "./rutas/bancoIdeas.js";
 import { rutasFormulasUgc } from "./rutas/formulasUgc.js";
@@ -390,6 +390,9 @@ export default {
       // Las fórmulas UGC de la agencia (la receta de un video, sin su contenido).
       if (partes[0] === "formulas-ugc") {
         return await rutasFormulasUgc(req, env, { acceso, usuario, partes, metodo });
+      }
+      if (partes[0] === "ia" && partes[1] === "chat" && partes[2] === "turno" && metodo === "GET") {
+        return await rutaTurnoChat(req, env, { acceso, partes });
       }
       if (partes[0] === "ia" && partes[1] === "chat" && partes[2] === "resumen") {
         return await rutaResumenChat(req, env, { acceso, metodo });

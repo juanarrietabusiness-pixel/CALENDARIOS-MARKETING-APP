@@ -65,15 +65,32 @@ export async function esperarArchivo(clienteId, trabajo, opciones = {}) {
  * modelo que la respete (la misma pieza, sin recortar: el texto no se encoge) y la nueva ocupa su sitio. Si no hay
  * con qué, o falla, sigue la que salió. `sinRelevo`: no recomponer (la propia recomposición).
  */
+/** Cortes de red seguidos que se aguantan al esperar una pieza (cada uno, unos segundos). */
+const MAX_CORTES = 40;
+/** Hasta que la pestaña vuelva a verse: con el teléfono bloqueado no tiene sentido preguntar. */
+const hastaQueSeVea = () => (typeof document === "undefined" || document.visibilityState !== "hidden"
+  ? Promise.resolve()
+  : new Promise((r) => {
+    const alVer = () => { if (document.visibilityState !== "hidden") { document.removeEventListener("visibilitychange", alVer); r(); } };
+    document.addEventListener("visibilitychange", alVer);
+  }));
+
 export async function esperarArchivos(clienteId, trabajo, { seguir = () => true, sinRelevo = false } = {}) {
   let t = trabajo;
+  let cortes = 0;
   while (!TERMINADO.has(t.estado)) {
     if (!seguir()) throw new Error("Se detuvo.");
     try {
       const r = await api.avanzarTrabajo(clienteId, t.id);
       if (r?.trabajo) t = r.trabajo;
+      cortes = 0;
     } catch (e) {
-      if (e.estado !== 409) throw e;
+      // Un corte de red (teléfono bloqueado, pestaña atrás) NO es que la pieza fallara: el servidor la sigue creando.
+      // Se espera a que la pantalla vuelva a verse y se pregunta otra vez; antes se daba por perdida.
+      if (!e.estado || e.estado >= 500) {
+        if (++cortes > MAX_CORTES) throw e;
+        await hastaQueSeVea();
+      } else if (e.estado !== 409) throw e;
     }
     if (!TERMINADO.has(t.estado)) await dormir(2000);
   }

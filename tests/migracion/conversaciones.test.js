@@ -284,3 +284,54 @@ describe("las rutas", () => {
     expect((await pedir(OTRA, `/api/ia/chat/resumen?conversacion=${a.id}`)).status).toBe(404);
   });
 });
+
+describe("una vuelta que se corta se recupera al volver (teléfono bloqueado, otra pestaña)", () => {
+  const TURNO = "0b6d2f1e-3c4a-4b5c-8d9e-0f1a2b3c4d5e";
+  const r2 = () => {
+    const objetos = new Map();
+    return {
+      objetos,
+      async put(k, v) { objetos.set(k, v); },
+      async get(k) { return objetos.has(k) ? { json: async () => JSON.parse(objetos.get(k)) } : null; },
+      async delete(k) { objetos.delete(k); },
+    };
+  };
+  beforeEach(() => {
+    vi.stubGlobal("fetch", async (url) => {
+      if (String(url).includes("/v1/models")) return Response.json({ data: [{ id: "claude-sonnet-5" }] });
+      const ev = (t, d) => `event: ${t}\ndata: ${JSON.stringify(d)}\n\n`;
+      return new Response([
+        ev("message_start", { type: "message_start", message: { model: "claude-sonnet-5", content: [], usage: { input_tokens: 10, output_tokens: 0 } } }),
+        ev("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }),
+        ev("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Listo" } }),
+        ev("content_block_stop", { type: "content_block_stop", index: 0 }),
+        ev("message_delta", { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 2 } }),
+        ev("message_stop", { type: "message_stop" }),
+      ].join(""), { headers: { "content-type": "text/event-stream" } });
+    });
+    env.ANTHROPIC_API_KEY = "k";
+    env.MEDIA = r2();
+  });
+
+  it("el final de la vuelta queda guardado con su id, lo pide sólo su espacio y se borra al leerlo", async () => {
+    await (await pedir(JEFE, "/api/ia/chat", { method: "POST", body: { messages: [{ role: "user", content: "Hola" }], clienteId: "c1", turnoId: TURNO } })).text();
+    expect([...env.MEDIA.objetos.keys()]).toEqual([`turnos/${JEFE}/${TURNO}.json`]);
+    // Otro espacio no lo encuentra (la clave lleva el espacio).
+    expect((await pedir(OTRA, `/api/ia/chat/turno/${TURNO}`)).status).toBe(404);
+    const r = await pedir(JEFE, `/api/ia/chat/turno/${TURNO}`);
+    expect(r.status).toBe(200);
+    const d = await r.json();
+    expect(d.evento).toMatchObject({ t: "fin", stopReason: "end_turn" });
+    expect(JSON.stringify(d.evento.mensajes)).toMatch(/Listo/);
+    // Leído, se borra; mientras no está, «pendiente».
+    const otra = await pedir(JEFE, `/api/ia/chat/turno/${TURNO}`);
+    expect(otra.status).toBe(404);
+    expect(await otra.json()).toMatchObject({ pendiente: true });
+  });
+
+  it("sin id de turno (o con uno que no es un uuid), no se guarda nada", async () => {
+    await (await pedir(JEFE, "/api/ia/chat", { method: "POST", body: { messages: [{ role: "user", content: "Hola" }], turnoId: "../x" } })).text();
+    expect(env.MEDIA.objetos.size).toBe(0);
+    expect((await pedir(JEFE, "/api/ia/chat/turno/..%2Fx")).status).toBe(404);
+  });
+});
