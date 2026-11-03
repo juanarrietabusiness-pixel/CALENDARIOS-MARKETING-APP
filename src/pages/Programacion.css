@@ -85,3 +85,47 @@
 .historias-auto-quitadas > summary { cursor: pointer; font-size: var(--fs-xs); font-weight: 600; color: var(--text-dim); min-height: var(--tap-sm); display: flex; align-items: center; }
 .historias-auto-quitadas[open] > summary { margin-bottom: var(--sp-2); }
 .historias-auto-quitadas img { opacity: 0.6; }
+
+/* ---------- Pestañas, filtros y tabla (estilo Business Suite) ---------- */
+.prog-pestanas { display: flex; gap: var(--sp-1); border-bottom: 1px solid var(--border); overflow-x: auto; }
+.prog-pestana {
+  background: none; border: 0; border-bottom: 2px solid transparent; color: var(--text-muted);
+  min-height: var(--tap); padding: 0 var(--sp-3); font: inherit; font-size: var(--fs-sm); font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; gap: var(--sp-2); white-space: nowrap;
+}
+.prog-pestana[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+.prog-pestana[data-aviso] .prog-cuenta { color: var(--danger); font-weight: 700; }
+.prog-buscar { flex: 2 1 220px !important; max-width: 360px !important; }
+
+.prog-tabla { width: 100%; border-collapse: collapse; font-size: var(--fs-xs); }
+.prog-tabla th { text-align: left; font-size: var(--fs-3xs); color: var(--text-dim); font-weight: 700; padding: var(--sp-2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+.prog-tabla td { padding: var(--sp-2); border-bottom: 1px solid var(--border); vertical-align: middle; }
+.prog-tabla tbody tr:hover { background: var(--surface); }
+.prog-tabla tr[data-estado="error"] td { background: var(--danger-soft); }
+.prog-tabla tr[data-estado="procesando"] td { background: var(--accent-soft); }
+.prog-num { text-align: right !important; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.prog-marca { width: 36px; }
+.prog-marca input { width: 20px; height: 20px; accent-color: var(--accent); }
+.prog-publicacion { display: flex; align-items: center; gap: var(--sp-3); min-width: 220px; }
+.prog-miniatura { position: relative; }
+.prog-miniatura-red {
+  position: absolute; right: 2px; bottom: 2px; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--surface-3); color: var(--text); display: flex; align-items: center; justify-content: center;
+}
+.prog-tabla .prog-acciones { white-space: nowrap; text-align: right; }
+.prog-seleccion { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius); background: var(--surface-2); margin-bottom: var(--sp-2); font-size: var(--fs-xs); }
+.prog-no { display: flex; flex-direction: column; gap: var(--sp-4); }
+.prog-titulo-error { color: var(--danger); }
+
+/* En el teléfono la tabla se vuelve tarjetas: cada celda con su etiqueta. */
+@media (max-width: 719px) {
+  .prog-tabla thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .prog-tabla, .prog-tabla tbody, .prog-tabla tr, .prog-tabla td { display: block; width: 100%; }
+  .prog-tabla tr { border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: var(--sp-2); padding: var(--sp-2); background: var(--surface); }
+  .prog-tabla td { border: 0; padding: 2px 0; }
+  .prog-tabla td[data-etiqueta] { display: flex; justify-content: space-between; gap: var(--sp-2); text-align: left !important; }
+  .prog-tabla td[data-etiqueta]::before { content: attr(data-etiqueta); color: var(--text-dim); font-size: var(--fs-3xs); font-weight: 700; }
+  .prog-tabla .prog-acciones { text-align: left; white-space: normal; padding-top: var(--sp-2); }
+  .prog-tabla .prog-marca { width: auto; }
+  .prog-publicacion { min-width: 0; }
+}

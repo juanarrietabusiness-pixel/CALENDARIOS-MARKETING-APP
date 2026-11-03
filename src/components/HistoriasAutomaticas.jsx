@@ -12,7 +12,7 @@ import { useCallback, useEffect, useId, useState } from "react";
 import Icon from "./Icon";
 import { TimePicker } from "./calendario/primitivas";
 import { leerHistorias, guardarHistorias, quitarHistoria, devolverHistoria, prepararPendientes } from "../lib/historiasAutoApi";
-import { REDES_HISTORIAS } from "../lib/historiasAuto";
+import { REDES_HISTORIAS, MAX_POR_DIA } from "../lib/historiasAuto";
 import { fmtDate } from "../utils";
 
 const NOMBRE_RED = { instagram: "Instagram", facebook: "Facebook" };
@@ -88,7 +88,7 @@ export default function HistoriasAutomaticas({ clients = [], onCambio }) {
       {abierta && (
         <div id={`${ids}-c`} className="historias-auto-cuerpo">
           <p className="hint" style={{ margin: 0 }}>
-            Para que la cuenta no se quede callada: cada día, a la hora escogida, vuelve a salir como historia algo que
+            Para que la cuenta no se quede callada: cada día (de 1 a 5 veces; la primera a la hora escogida y las demás cada 2 horas), vuelve a salir como historia algo que
             ya se publicó (la imagen del post encajada en 9:16 con una frase corta). Primero lo que menos salió y, entre
             eso, lo que mejor funcionó. Sale sola. «Que no salga» la aparta para siempre (se puede devolver abajo); la de un día concreto se quita en la lista de la cola.
           </p>
@@ -98,7 +98,7 @@ export default function HistoriasAutomaticas({ clients = [], onCambio }) {
               {clients.map((c) => <option key={idDe(c)} value={idDe(c)}>{c.name}</option>)}
             </select>
             <div className="interruptor-fila">
-              <span style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Una historia al día</span>
+              <span style={{ fontSize: "var(--fs-xs)", fontWeight: 600 }}>Historias automáticas</span>
               <button
                 type="button" role="switch" aria-checked={Boolean(datos?.activa)} aria-label="Historias automáticas de este cliente"
                 className={`toggle${datos?.activa ? " is-on" : ""}`} disabled={!datos || trabajando === "ajustes"}
@@ -117,6 +117,13 @@ export default function HistoriasAutomaticas({ clients = [], onCambio }) {
                   <TimePicker id={`${ids}-h`} value={datos.hora} atajos={false} onChange={(h) => h && cambiar({ hora: h })} />
                 </div>
                 <div className="field" style={{ margin: 0 }}>
+                  <label className="label" htmlFor={`${ids}-n`}>Cuántas al día</label>
+                  <select id={`${ids}-n`} className="input" value={datos.porDia ?? 1} disabled={trabajando === "ajustes"}
+                    onChange={(e) => cambiar({ porDia: Number(e.target.value) })}>
+                    {Array.from({ length: MAX_POR_DIA }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n === 1 ? "1 al día" : `${n} al día`}</option>)}
+                  </select>
+                </div>
+                <div className="field" style={{ margin: 0 }}>
                   <span className="label" id={`${ids}-r`}>Dónde</span>
                   <div role="group" aria-labelledby={`${ids}-r`} style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap" }}>
                     {REDES_HISTORIAS.map((r) => (
@@ -130,7 +137,7 @@ export default function HistoriasAutomaticas({ clients = [], onCambio }) {
 
               <p className="hint" role="status" style={{ margin: 0 }}>
                 {datos.activa
-                  ? `La próxima sale el ${diaCorto(datos.proxima)} a las ${datos.hora}${datos.ultimaFecha && datos.ultimaFecha >= datos.proxima ? " (ya está en la cola)" : ""}.`
+                  ? `Las próximas salen el ${diaCorto(datos.proxima)} a las ${(datos.horas ?? [datos.hora]).join(", ")}${datos.ultimaFecha && datos.ultimaFecha >= datos.proxima ? " (ya están en la cola)" : ""}. Cada una con una publicación distinta.`
                   : "Apagadas para este cliente."}
                 {datos.nota ? ` Última: ${datos.nota}` : ""}
               </p>

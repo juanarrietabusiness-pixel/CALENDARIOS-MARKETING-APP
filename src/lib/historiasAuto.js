@@ -13,6 +13,11 @@ import { fechaEnZona } from "./agenda.js";
 import { mediosDe } from "./publicacion.js";
 
 export const HORA_HISTORIAS = "18:00";
+/** Cuántas al día como mucho (decisión de la agencia: empezar con una y subir si todo va bien). */
+export const MAX_POR_DIA = 5;
+/** Entre una y la siguiente del mismo día, en minutos; y la última no pasa de aquí (si no caben, se juntan). */
+const SEPARACION = 120;
+const ULTIMA = 22 * 60;
 export const REDES_HISTORIAS = Object.freeze(["instagram", "facebook"]);
 
 /** Lo publicado de los últimos días que puede volver como historia. */
@@ -44,10 +49,12 @@ const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
 /** Los ajustes de un cliente, con lo que falte puesto por defecto. */
 export function limpiarAjustes(a = {}) {
   const redes = Array.isArray(a.redes) ? [...new Set(a.redes.filter((r) => REDES_HISTORIAS.includes(r)))] : [];
+  const porDia = Math.round(Number(a.porDia));
   return {
     activa: a.activa === true,
     hora: HORA.test(String(a.hora ?? "")) ? a.hora : HORA_HISTORIAS,
     redes: redes.length ? redes : ["instagram"],
+    porDia: porDia >= 1 && porDia <= MAX_POR_DIA ? porDia : 1,
   };
 }
 
@@ -67,6 +74,21 @@ const minutosDe = (hora) => Number(hora.slice(0, 2)) * 60 + Number(hora.slice(3,
 export function proximaFecha(hora, momento = new Date()) {
   const hoy = fechaEnZona(momento);
   return minutosPanama(momento) <= minutosDe(HORA.test(String(hora)) ? hora : HORA_HISTORIAS) - 10 ? hoy : sumarDias(hoy, 1);
+}
+
+const comoHora = (m) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+
+/**
+ * Las horas de las historias de un día: la primera a su hora y las demás cada 2 horas; si la última pasaría de las
+ * 22:00, se juntan (nunca a menos de 30 minutos, ni después de las 23:50). Pura.
+ */
+export function horasDelDia(hora, porDia = 1) {
+  const inicio = minutosDe(HORA.test(String(hora)) ? hora : HORA_HISTORIAS);
+  const n = Math.min(MAX_POR_DIA, Math.max(1, Math.round(Number(porDia)) || 1));
+  if (n === 1) return [comoHora(inicio)];
+  const cabe = Math.floor((ULTIMA - inicio) / (n - 1));
+  const paso = Math.max(30, Math.min(SEPARACION, cabe));
+  return Array.from({ length: n }, (_, i) => comoHora(Math.min(23 * 60 + 50, inicio + i * paso)));
 }
 
 const dias = (a, b) => (Date.parse(b) - Date.parse(a)) / 86_400_000;
@@ -129,6 +151,19 @@ export function elegirPieza(piezas, { interacciones = new Map(), momento = new D
     (a.usos ?? 0) - (b.usos ?? 0) ||
     valor(b) - valor(a) ||
     String(a.usada_at ?? "").localeCompare(String(b.usada_at ?? "")))[0];
+}
+
+/** Las `n` piezas de un día, distintas, cada una con la misma regla que `elegirPieza`. Pura. */
+export function elegirPiezas(piezas, n = 1, opciones = {}) {
+  const salida = [];
+  let quedan = [...piezas];
+  for (let i = 0; i < n; i++) {
+    const p = elegirPieza(quedan, opciones);
+    if (!p) break;
+    salida.push(p);
+    quedan = quedan.filter((x) => x.id !== p.id);
+  }
+  return salida;
 }
 
 /** La publicación que va en la carga de la cola: sólo la historia, con la imagen ya hecha. */

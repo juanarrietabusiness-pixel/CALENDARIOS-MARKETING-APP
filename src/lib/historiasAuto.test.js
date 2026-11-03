@@ -13,11 +13,11 @@ const fila = (extra = {}) => ({
 
 describe("los ajustes", () => {
   it("apagadas, a las 18:00 y en Instagram si no se dice otra cosa", () => {
-    expect(limpiarAjustes({})).toEqual({ activa: false, hora: "18:00", redes: ["instagram"] });
+    expect(limpiarAjustes({})).toEqual({ activa: false, hora: "18:00", redes: ["instagram"], porDia: 1 });
   });
   it("sólo redes con historias y horas que valen", () => {
     expect(limpiarAjustes({ activa: true, hora: "25:00", redes: ["tiktok", "facebook", "facebook"] }))
-      .toEqual({ activa: true, hora: "18:00", redes: ["facebook"] });
+      .toEqual({ activa: true, hora: "18:00", redes: ["facebook"], porDia: 1 });
   });
 });
 
@@ -84,5 +84,25 @@ describe("lo que va a la cola", () => {
   it("las frases rotan", () => {
     expect(fraseDe(0)).toBe(FRASES_HISTORIA[0]);
     expect(fraseDe(FRASES_HISTORIA.length + 1)).toBe(FRASES_HISTORIA[1]);
+  });
+});
+
+describe("varias historias al día", async () => {
+  const { horasDelDia, elegirPiezas, limpiarAjustes } = await import("./historiasAuto");
+  it("la primera a su hora y las demás cada 2 horas; si no caben antes de las 22:00, más juntas", () => {
+    expect(horasDelDia("10:00", 1)).toEqual(["10:00"]);
+    expect(horasDelDia("10:00", 3)).toEqual(["10:00", "12:00", "14:00"]);
+    expect(horasDelDia("18:00", 5)).toEqual(["18:00", "19:00", "20:00", "21:00", "22:00"]);
+    expect(horasDelDia("21:30", 3)).toEqual(["21:30", "22:00", "22:30"]);
+  });
+  it("de 1 a 5; lo de antes vale 1", () => {
+    expect(limpiarAjustes({}).porDia).toBe(1);
+    expect(limpiarAjustes({ porDia: 9 }).porDia).toBe(1);
+    expect(limpiarAjustes({ porDia: "3" }).porDia).toBe(3);
+  });
+  it("cada historia del día es una publicación distinta", () => {
+    const piezas = [{ id: "a", usos: 0 }, { id: "b", usos: 1 }, { id: "c", usos: 0 }];
+    const r = elegirPiezas(piezas, 5, { momento: new Date("2026-11-03T12:00:00Z") });
+    expect(r.map((p) => p.id).sort()).toEqual(["a", "b", "c"]);
   });
 });

@@ -18,7 +18,7 @@ import { difundir } from "./vivo.js";
 import { uuid, ahora } from "./ids.js";
 import { momentoPublicacion } from "../../src/lib/publicacion.js";
 import {
-  limpiarAjustes, proximaFecha, porPreparar, elegirPieza, publicacionDeRepost, fraseDe, DIAS_ATRAS,
+  limpiarAjustes, proximaFecha, porPreparar, elegirPiezas, horasDelDia, publicacionDeRepost, fraseDe, DIAS_ATRAS,
 } from "../../src/lib/historiasAuto.js";
 
 export class ErrorHistorias extends Error {
@@ -37,13 +37,14 @@ const leerJSON = (t, d) => { try { return JSON.parse(t); } catch { return d; } }
 export async function ajustesHistorias(acceso, clientId) {
   const f = await acceso.leerUno("historias_auto", { client_id: clientId });
   const piezas = await acceso.leerColumnas("historias_auto_piezas", ["id", "titulo", "clave", "usos", "usada_at", "publicada_at", "excluida"], { client_id: clientId }, "created_at desc");
-  const ajustes = limpiarAjustes({ activa: f?.activa === 1, hora: f?.hora, redes: leerJSON(f?.redes, []) });
+  const ajustes = limpiarAjustes({ activa: f?.activa === 1, hora: f?.hora, redes: leerJSON(f?.redes, []), porDia: f?.por_dia });
   const vista = (p) => ({ id: p.id, titulo: p.titulo, src: `/api/media/${p.clave}`, usos: p.usos ?? 0, usadaAt: p.usada_at ?? null });
   return {
     ...ajustes,
     ultimaFecha: f?.ultima_fecha ?? null,
     nota: f?.nota ?? "",
     proxima: ajustes.activa ? proximaFecha(ajustes.hora) : null,
+    horas: horasDelDia(ajustes.hora, ajustes.porDia),
     piezas: piezas.filter((p) => !p.excluida).map(vista),
     quitadas: piezas.filter((p) => p.excluida).map(vista),
   };
@@ -51,15 +52,16 @@ export async function ajustesHistorias(acceso, clientId) {
 
 export async function guardarAjustesHistorias(acceso, clientId, cambios = {}) {
   const previa = await acceso.leerUno("historias_auto", { client_id: clientId });
-  const antes = limpiarAjustes({ activa: previa?.activa === 1, hora: previa?.hora, redes: leerJSON(previa?.redes, []) });
+  const antes = limpiarAjustes({ activa: previa?.activa === 1, hora: previa?.hora, redes: leerJSON(previa?.redes, []), porDia: previa?.por_dia });
   const nuevos = limpiarAjustes({
     activa: typeof cambios.activa === "boolean" ? cambios.activa : antes.activa,
     hora: cambios.hora ?? antes.hora,
     redes: Array.isArray(cambios.redes) ? cambios.redes : antes.redes,
+    porDia: cambios.porDia ?? antes.porDia,
   });
   await acceso.guardar("historias_auto", {
     id: previa?.id ?? uuid(), client_id: clientId, activa: nuevos.activa ? 1 : 0, hora: nuevos.hora,
-    redes: JSON.stringify(nuevos.redes),
+    redes: JSON.stringify(nuevos.redes), por_dia: nuevos.porDia,
     // Cambiar la hora o encenderla vuelve a mirar el día: si la de hoy aún no salió, puede entrar.
     ultima_fecha: nuevos.hora !== antes.hora || (nuevos.activa && !antes.activa) ? null : previa?.ultima_fecha ?? null,
     nota: previa?.nota ?? "",
@@ -121,7 +123,7 @@ export async function excluirPieza(acceso, clientId, id, excluida = true) {
 export async function programarHistoriaDelDia(env, acceso, clientId, fecha, momento = new Date()) {
   const config = await acceso.leerUno("historias_auto", { client_id: clientId });
   if (!config) return 0;
-  const ajustes = limpiarAjustes({ activa: config.activa === 1, hora: config.hora, redes: leerJSON(config.redes, []) });
+  const ajustes = limpiarAjustes({ activa: config.activa === 1, hora: config.hora, redes: leerJSON(config.redes, []), porDia: config.por_dia });
   const cerrar = async (nota) => {
     await acceso.actualizar("historias_auto", { id: config.id }, { ultima_fecha: fecha, nota, updated_at: ahora() });
   };
@@ -136,8 +138,10 @@ export async function programarHistoriaDelDia(env, acceso, clientId, fecha, mome
   }
   const medidas = await acceso.leerVarios("metricas_publicacion", ["externo_id", "interacciones"], "externo_id",
     piezas.map((p) => p.externo_id).filter(Boolean), { client_id: clientId });
-  const pieza = elegirPieza(piezas, { interacciones: new Map(medidas.map((m) => [m.externo_id, m.interacciones])), momento });
-  if (!pieza) {
+  // Las del día (hasta `porDia`), cada una con una publicación distinta y su hora (`horasDelDia`).
+  const horas = horasDelDia(ajustes.hora, ajustes.porDia);
+  const elegidas = elegirPiezas(piezas, horas.length, { interacciones: new Map(medidas.map((m) => [m.externo_id, m.interacciones])), momento });
+  if (!elegidas.length) {
     await cerrar("Ese día no salió ninguna: todo lo preparado salió hace poco o se acaba de publicar.");
     return 0;
   }
@@ -151,17 +155,22 @@ export async function programarHistoriaDelDia(env, acceso, clientId, fecha, mome
     return 0;
   }
 
-  const cuando = momentoPublicacion(fecha, ajustes.hora);
-  const post = publicacionDeRepost(pieza, fecha);
-  const filas = destinos.map((c) => ({
-    id: uuid(), client_id: clientId, calendar_id: null, post_id: `${post.id}-${fecha}`, red: c.red, variante: "historia",
-    cuenta_id: c.id, programada_para: cuando, estado: "programada", intentos: 0, siguiente_intento: null,
-    carga: JSON.stringify({ post: { ...post, publishTime: ajustes.hora } }), creado_por: null,
-    created_at: ahora(), updated_at: ahora(),
-  }));
+  const filas = elegidas.flatMap((pieza, i) => {
+    const cuando = momentoPublicacion(fecha, horas[i]);
+    const post = publicacionDeRepost(pieza, fecha);
+    return destinos.map((c) => ({
+      id: uuid(), client_id: clientId, calendar_id: null, post_id: `${post.id}-${fecha}`, red: c.red, variante: "historia",
+      cuenta_id: c.id, programada_para: cuando, estado: "programada", intentos: 0, siguiente_intento: null,
+      carga: JSON.stringify({ post: { ...post, publishTime: horas[i] } }), creado_por: null,
+      created_at: ahora(), updated_at: ahora(),
+    }));
+  });
   await acceso.guardarVarios("publicaciones_programadas", filas);
-  await acceso.actualizar("historias_auto_piezas", { id: pieza.id }, { usos: (pieza.usos ?? 0) + 1, usada_at: cuando });
-  await cerrar(`${fecha}: «${pieza.titulo || "Publicación"}» en ${destinos.map((c) => NOMBRE_RED[c.red]).join(" y ")}.`);
+  for (const [i, pieza] of elegidas.entries()) {
+    await acceso.actualizar("historias_auto_piezas", { id: pieza.id }, { usos: (pieza.usos ?? 0) + 1, usada_at: momentoPublicacion(fecha, horas[i]) });
+  }
+  const faltaron = horas.length - elegidas.length;
+  await cerrar(`${fecha}: ${elegidas.map((p, i) => `«${p.titulo || "Publicación"}» (${horas[i]})`).join(", ")} en ${destinos.map((c) => NOMBRE_RED[c.red]).join(" y ")}.${faltaron ? ` ${faltaron === 1 ? "Faltó una" : `Faltaron ${faltaron}`}: no hay más preparadas que puedan salir hoy.` : ""}`);
   for (const f of filas) {
     difundir(env, acceso.ownerId, { tipo: "publicacion", calId: null, postId: f.post_id, red: f.red, variante: "historia", estado: "programada", por: FIRMA });
   }
