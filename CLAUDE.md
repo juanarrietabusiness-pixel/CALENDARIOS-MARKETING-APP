@@ -233,6 +233,11 @@ src/
     conversaciones.js     Las conversaciones del asistente: título (el de la IA y el provisional), orden, cuándo (puro;
                           también lo importa el Worker)
     conversacionesApi.js  Cliente de /api/chat/conversaciones y la última abierta por navegador (sólo lo carga el chat)
+    herramientasChat.js   Las herramientas del navegador que se le declaran al asistente (`getChatTools`; fuera de api.js:
+                          la carga inicial está en su tope)
+    asistentePost.js      El asistente DENTRO de una publicación: qué herramientas le quedan, la guarda del post_id y lo
+                          que sabe del post (puro)
+    turnoChat.js          Recuperar una vuelta del asistente que se cortó (teléfono bloqueado, pestaña atrás) (en diferido)
     bancoIdeas.js         El banco de ideas ÚNICO: vistas (de este cliente, generales, todas), referencias (enlace limpio,
                           red, formato sugerido), la idea nueva, filtrar, la fila de D1 (puro; también lo importa el Worker)
     bancoIdeasApi.js      Cliente de /api/banco-ideas y abrir «Guardar referencia» desde cualquier sitio
@@ -1049,7 +1054,7 @@ son del servidor.
   principio, pero no estaba en el esquema de ninguna de las herramientas
   del asistente, así que a «ponle las 9 de la mañana» contestaba que no
   podía —y era verdad—. Antes de tocar el prompt o cambiar de modelo,
-  mira `getChatTools()` y el contexto de `buildChatSystemPrompt()`: lo
+  mira `getChatTools()` (src/lib/herramientasChat.js) y el contexto de `buildChatSystemPrompt()`: lo
   que no está declarado ahí no existe para la IA.
   El mismo fallo al revés: los datos SÍ estaban —descripción y guion van
   en el contexto— y aun así decía que no podía leerlos, porque la lista
@@ -3573,6 +3578,22 @@ son del servidor.
   `innerHeight` ni un `fixed; inset: 0`, así que la caja de escribir crecía hasta el 40 % de la pantalla entera y el
   botón de enviar quedaba bajo el teclado. Ahora el panel mide el alto visible, la caja crece hasta el 30 % de eso (220 px
   como mucho) y los encargos del director se esconden mientras hay texto.
+- **El asistente DENTRO de un post sólo cambia ESE post** (botón «Asistente» en la cabecera del panel; `ChatPanel` con
+  `publicacionFija` y `lateral`; `src/lib/asistentePost.js`). La regla no la pone el prompt —un modelo se equivoca de
+  id— sino el código: `herramientasDelPost` quita todo lo que crea, borra, mueve o edita en lote (y tareas, banco,
+  memorias), y `guardaDelPost` rechaza la herramienta que nombre otra publicación y pone el `post_id` a la que lo omite.
+  El calendario que ve (`calDelAsistente` en PostSidePanel) lleva el `form` abierto, y sus cambios entran en el `form`
+  (`desdeElAsistente`) con «Deshacer»: si escribiera en el calendario, el guardado al desmontar el panel lo pisaría. A lo
+  ancho va al lado (el panel se corre: `.con-asistente`); en el teléfono, encima. La conversación es POR PUBLICACIÓN
+  (`chat-ultima:<cliente>:post-<id>`, título «Post <fecha>: …») y no se borra al salir: «Borrar conversación» (segundo
+  toque). `editar_publicacion` admite además `titulo`, `hashtags` y `escena`.
+- **Una vuelta del asistente que se corta se RECUPERA al volver** (teléfono bloqueado, otra pestaña: el sistema corta la
+  conexión). El navegador manda `turnoId`; el Worker, que sigue hasta acabar su vuelta, guarda el final en R2
+  (`turnos/<espacio>/<turno>.json`, nunca bajo `clientes/`) y `GET /api/ia/chat/turno/<id>` lo da UNA vez (lo borra al
+  leerlo). `conversarIA` lo pide en diferido (`turnoChat.js`) cuando la pestaña vuelve a verse, cada 4 s, y el chat sigue:
+  con herramientas del navegador, las ejecuta; si el servidor ya guardó la respuesta (`guardado`), relee la conversación.
+  `esperarArchivos` (carruselEstudio.js) tampoco se rinde por un corte: espera a que la pestaña se vea (hasta 40). Lo que
+  NO hace todavía: seguir con las herramientas del navegador con la aplicación cerrada (eso sería otro paso).
 - **La proporción pedida es la que sale, y Muse se queda** (`respetaProporcion`, `modeloQueRespeta`, `relevoPara`,
   `fueraDeProporcion` en estudioCatalogo.js; `escaleraMuse` en worker/lib/estudio/meta.js). Muse Image es el modelo de la
   agencia (barato y se ve bien), y una serie con piezas de Muse y de Nano Banana se nota: NO se cambia de motor por la

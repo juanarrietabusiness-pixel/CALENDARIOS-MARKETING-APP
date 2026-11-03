@@ -321,6 +321,8 @@
   border: 1px solid var(--border-strong); border-radius: var(--radius-lg); overflow: hidden;
   animation: popIn .2s cubic-bezier(.22,.61,.36,1);
 }
+/* Con el asistente de la publicación abierto (420 px a la derecha): el panel se aparta y los cambios se ven. */
+.panel-right.panel-ancho.con-asistente { left: var(--sp-4); right: calc(420px + var(--sp-4)); }
 .pp-config { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
 .pp-bloque { display: flex; flex-direction: column; gap: var(--sp-2); }
 .pp-bloque > h3 { margin: 0; }

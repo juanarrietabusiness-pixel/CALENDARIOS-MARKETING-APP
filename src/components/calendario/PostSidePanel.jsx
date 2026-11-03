@@ -27,7 +27,7 @@ import "./publicar.css";
 // vacía por cada vez que alguien abrió y se arrepintió.
 // ============================================================
 
-import { useEffect, useId, useState, useRef } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useState, useRef } from "react";
 import { FORMATS, FORMAT_ICONS, STATUSES } from "../../constants";
 import { generateFieldForPost } from "../../api";
 import { ideaComoElLote, ideaParaPublicacion, rellenarConIdea } from "../../lib/ideaPublicacion";
@@ -53,6 +53,9 @@ import { SeRepite } from "./repeticionesMes";
 import { promptListo } from "../../lib/promptImagen";
 import GuionUgc from "./GuionUgc";
 import { ReferenciasPost } from "./referenciasPost";
+
+// El asistente DENTRO de la publicación (lib/asistentePost.js): el mismo chat, sólo para este post.
+const ChatPanel = lazy(() => import("../ChatPanel"));
 
 // «Idea» planifica; «Subir» es archivo, texto y cuándo sale —como lo llama
 // la agencia—. Los valores internos siguen siendo contenido/publicar.
@@ -84,6 +87,25 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
     document.getElementById(`${ids}-tab-${otra}`)?.focus();
   };
   const sf = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  // ---- El asistente de esta publicación ----
+  // Recibe un calendario en el que la publicación es la del FORMULARIO (lo que se ve, aunque no se haya guardado) y su
+  // «guardar» sólo deja pasar los cambios de ella: entran en el formulario, en vivo, y se guardan como todo lo demás
+  // (al cerrar el panel). Así no hay dos escrituras peleándose: si el asistente guardara el calendario por su lado, el
+  // guardado del panel al cerrar lo pisaría con lo de antes.
+  const [asistente, setAsistente] = useState(false);
+  const [deshacer, setDeshacer] = useState(null);
+  const calDelAsistente = useMemo(() => (cal
+    ? { ...cal, days: (cal.days ?? []).map((d) => ({ ...d, posts: (d.posts ?? []).map((p) => (p.id === post.id ? form : p)) })) }
+    : { id: "post", days: [{ date: day.date, posts: [form] }] }), [cal, form, post.id, day.date]);
+  const desdeElAsistente = useCallback((_calId, nuevo) => {
+    const p = (nuevo?.days ?? []).flatMap((d) => d.posts ?? []).find((x) => x.id === post.id);
+    if (!p) return;
+    setForm((antes) => {
+      setDeshacer(antes);
+      return { ...antes, ...p };
+    });
+  }, [post.id]);
   const f = FORMATS[form.format] || FORMATS.post;
   const isPost = form.format === "post";
 
@@ -223,9 +245,10 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
   );
 
   return (
+    <>
     <div
       ref={panelRef}
-      className={`panel-right panel-publicacion${ancho ? " panel-ancho" : ""}`}
+      className={`panel-right panel-publicacion${ancho ? " panel-ancho" : ""}${asistente && ancho ? " con-asistente" : ""}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby={`${ids}-title`}
@@ -259,6 +282,12 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
                 <Icon name="bulb" size={16} />
               </button>
             </>
+          )}
+          {client && (
+            <button type="button" className="btn btn-secondary btn-sm" aria-pressed={asistente} onClick={() => setAsistente((v) => !v)}
+              title="El asistente, sólo para esta publicación: textos, diseño o una lámina, en vivo">
+              <Icon name="sparkles" size={16} /> Asistente
+            </button>
           )}
           <button className="btn-icon" onClick={() => { save(); onClose(); }} aria-label="Guardar y cerrar" title="Guardar y cerrar"><Icon name="close" /></button>
         </div>
@@ -633,7 +662,33 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
           </button>
         </div>
       </div>}
+      {/* Lo último que cambió el asistente se puede deshacer de un toque. */}
+      {deshacer && (
+        <div className="notice notice-ok" role="status" style={{ position: "absolute", left: "var(--sp-4)", right: "var(--sp-4)", bottom: "var(--sp-4)", display: "flex", gap: "var(--sp-2)", alignItems: "center", zIndex: 2 }}>
+          <Icon name="sparkles" size={16} /> <span style={{ flex: 1 }}>El asistente cambió esta publicación.</span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setForm(deshacer); setDeshacer(null); }}>
+            <Icon name="undo" size={14} /> Deshacer
+          </button>
+          <button type="button" className="btn-icon" aria-label="Cerrar el aviso" onClick={() => setDeshacer(null)}><Icon name="close" size={14} /></button>
+        </div>
+      )}
     </div>
+    {asistente && client && (
+      <Suspense fallback={null}>
+        <ChatPanel
+          client={client}
+          clients={[client]}
+          calendar={calDelAsistente}
+          calId={calDelAsistente.id || "post"}
+          onUpdateCal={desdeElAsistente}
+          onClose={() => setAsistente(false)}
+          defaultMode="client"
+          publicacionFija={{ post: form, fecha: day.date }}
+          lateral={ancho}
+        />
+      </Suspense>
+    )}
+    </>
   );
 }
 
