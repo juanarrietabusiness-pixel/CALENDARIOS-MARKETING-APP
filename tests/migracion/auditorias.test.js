@@ -231,3 +231,75 @@ describe("los perfiles de referencia", () => {
     expect(a.referentes.aprender).toEqual(["Reels de proceso"]);
   });
 });
+
+describe("«Aplicar en el perfil», guardado en el servidor", () => {
+  const pedir = async (ruta, metodo = "GET", cuerpo) => {
+    const r = await worker.fetch(conSesion(`/api${ruta}`, { method: metodo, body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo) }), env, {});
+    return { status: r.status, json: await r.json().catch(() => null) };
+  };
+  const crear = async () => (await pedir("/auditorias", "POST", { clientId: "c1" })).json;
+
+  it("marcar un cambio guarda quién y cuándo, y un cambio que no está en la auditoría se rechaza", async () => {
+    await sembrar();
+    const a = await crear();
+    const r = await pedir(`/auditorias/${a.id}/aplicado`, "PATCH", { k: "nombre", hecho: true });
+    expect(r.status).toBe(200);
+    expect(r.json.aplicado.nombre).toMatchObject({ hecho: true, por: "Juan", auto: false });
+    expect(r.json.aplicado.nombre.at).toMatch(/^2026-10-01/);
+    // El enlace ya está «bien»: no se pide cambiarlo.
+    expect((await pedir(`/auditorias/${a.id}/aplicado`, "PATCH", { k: "enlace", hecho: true })).status).toBe(400);
+    expect((await pedir(`/auditorias/${a.id}/aplicado`, "PATCH", { k: "<script>", hecho: true })).status).toBe(400);
+    // Desmarcar.
+    const otra = await pedir(`/auditorias/${a.id}/aplicado`, "PATCH", { k: "nombre", hecho: false });
+    expect(otra.json.aplicado.nombre.hecho).toBe(false);
+  });
+
+  it("«Comprobar en Instagram» marca el nombre y la biografía que ya están puestos, y no desmarca nada", async () => {
+    await sembrar();
+    const a = await crear();
+    await pedir(`/auditorias/${a.id}/aplicado`, "PATCH", { k: "foto", hecho: true });
+    // Ahora el perfil ya lleva el nombre propuesto y la primera biografía.
+    const antes = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (entrada, init) => {
+      const u = new URL(String(entrada));
+      if (u.host === "graph.facebook.com") {
+        return new Response(JSON.stringify({ ...perfilGraph("cafeluna"), name: "Café Luna | Café de especialidad", biography: "☕  Café de especialidad en Panamá" }));
+      }
+      return antes(entrada, init);
+    }));
+    const r = await pedir(`/auditorias/${a.id}/comprobar`, "POST");
+    expect(r.status).toBe(200);
+    expect(r.json.nuevas.sort()).toEqual(["bio", "nombre"]);
+    expect(r.json.auditoria.aplicado.nombre).toMatchObject({ hecho: true, auto: true, por: "Comprobado en Instagram" });
+    expect(r.json.auditoria.aplicado.foto.hecho).toBe(true);
+    // Una segunda lectura no vuelve a «marcar» lo ya marcado.
+    expect((await pedir(`/auditorias/${a.id}/comprobar`, "POST")).json.nuevas).toEqual([]);
+  });
+
+  it("una biografía cambiada que no es ninguna de las propuestas no se marca: se avisa", async () => {
+    await sembrar();
+    const a = await crear();
+    const antes = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (entrada, init) => {
+      const u = new URL(String(entrada));
+      if (u.host === "graph.facebook.com") return new Response(JSON.stringify({ ...perfilGraph("cafeluna"), biography: "Otra cosa distinta" }));
+      return antes(entrada, init);
+    }));
+    const r = await pedir(`/auditorias/${a.id}/comprobar`, "POST");
+    expect(r.json.nuevas).toEqual([]);
+    expect(r.json.avisos.join(" ")).toMatch(/biografía cambió/);
+  });
+
+  it("«optimizado» se marca y se quita; sale en la lista y en el enlace del cliente (sin la lista interna)", async () => {
+    await sembrar();
+    const a = await crear();
+    const r = await pedir(`/auditorias/${a.id}/optimizado`, "POST", { si: true });
+    expect(r.json.optimizado).toMatch(/^2026-10-01/);
+    expect((await pedir("/auditorias")).json[0].optimizado).toMatch(/^2026-10-01/);
+    const { testigo } = (await pedir(`/auditorias/${a.id}/enlace`, "POST")).json;
+    const publica = await (await worker.fetch(new Request(`https://calendarios.test/api/publico-auditoria/${testigo}`), env, {})).json();
+    expect(publica.optimizado).toMatch(/^2026-10-01/);
+    expect(publica.aplicado).toBeUndefined();
+    expect((await pedir(`/auditorias/${a.id}/optimizado`, "POST", { si: false })).json.optimizado).toBeNull();
+  });
+});

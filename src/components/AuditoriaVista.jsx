@@ -1,7 +1,7 @@
 import "./AuditoriaVista.css";
 import { useState } from "react";
 import Icon from "./Icon";
-import { ESTADOS, LIMITES_PERFIL } from "../lib/auditoria";
+import { ESTADOS, LIMITES_PERFIL, itemsParaAplicar, progresoAplicado } from "../lib/auditoria";
 import { numeroCorto } from "../lib/resultados";
 
 // ============================================================
@@ -56,66 +56,100 @@ const Cifra = ({ nombre, valor }) => (valor === null || valor === undefined ? nu
 ));
 
 /**
- * «Aplicar en el perfil»: lo que hay que cambiar a mano en Instagram (la API no deja cambiar la foto, la
- * biografía, los destacados ni los fijados), con lo que ya está listo para copiar o diseñar. Lo marcado se
- * recuerda en este navegador; «Crear tarea» lo deja como tarea del cliente, una línea por cambio.
+ * «Aplicar en el perfil»: lo que hay que cambiar a mano en Instagram (la API no deja cambiar la foto, la biografía, los
+ * destacados ni los fijados), con lo que ya está listo para copiar o diseñar. Lo marcado se GUARDA en la auditoría
+ * (quién y cuándo: lo ve todo el equipo) y «Comprobar en Instagram» marca solo lo que ya se ve hecho. Con todo hecho,
+ * «Perfil optimizado». Sin `acciones` (prospecto sin guardar, enlace público) no se pinta.
  */
-function AplicarEnPerfil({ id, a, perfil, onPiezas, onCrearTarea }) {
-  const clave = `aplicar-perfil:${id}`;
-  const [hechos, setHechos] = useState(() => { try { return JSON.parse(localStorage.getItem(clave) ?? "[]"); } catch { return []; } });
+function AplicarEnPerfil({ id, a, perfil, aplicado = {}, optimizado = null, acciones, onPiezas, onCrearTarea }) {
   const [tarea, setTarea] = useState("");
-  const alternar = (k) => setHechos((h) => {
-    const n = h.includes(k) ? h.filter((x) => x !== k) : [...h, k];
-    try { localStorage.setItem(clave, JSON.stringify(n)); } catch { /* sin almacenamiento: se olvida al recargar */ }
-    return n;
-  });
-  const items = [
-    a.foto?.estado !== "bien" && { k: "foto", texto: "Cambiar la foto de perfil", accion: onPiezas && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onPiezas("foto")}><Icon name="palette" size={14} /> Diseñar</button> },
-    a.nombre?.propuesta && a.nombre.propuesta !== perfil?.nombre && { k: "nombre", texto: `Nombre: «${a.nombre.propuesta}»`, accion: <Copiar texto={a.nombre.propuesta} que="el nombre" /> },
-    a.bio?.opciones?.length > 0 && { k: "bio", texto: "Biografía: pegar una de las opciones de arriba" },
-    a.enlace?.recomendacion && a.enlace.estado !== "bien" && { k: "enlace", texto: `Enlace: ${a.enlace.recomendacion}` },
-    a.destacados?.propuesta?.length > 0 && { k: "destacados", texto: `Destacados: ${a.destacados.propuesta.map((d) => d.titulo).join(", ")}`, accion: onPiezas && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onPiezas("destacados")}><Icon name="palette" size={14} /> Diseñar portadas</button> },
-    ...(a.fijados?.propuesta ?? []).map((f, i) => ({ k: `fijado-${i}`, texto: `Fijar: ${f.titulo || f.idea}` })),
-  ].filter(Boolean);
+  const [ocupado, setOcupado] = useState("");
+  const [nota, setNota] = useState("");
+  // Lo marcado se ve al pulsar, sin esperar al servidor; si falla, vuelve a lo guardado.
+  const [provisional, setProvisional] = useState({});
+  const items = itemsParaAplicar(a, perfil);
   if (!items.length) return null;
+  const { hechos, total, completo } = progresoAplicado(items, aplicado);
+  const accion = {
+    foto: onPiezas && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onPiezas("foto")}><Icon name="palette" size={14} /> Diseñar</button>,
+    nombre: a.nombre?.propuesta && <Copiar texto={a.nombre.propuesta} que="el nombre" />,
+    destacados: onPiezas && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onPiezas("destacados")}><Icon name="palette" size={14} /> Diseñar portadas</button>,
+  };
+  const hacer = async (que, fn) => {
+    setOcupado(que);
+    setNota("");
+    try { await fn(); } catch (e) { setNota(e.message); }
+    setOcupado("");
+  };
+  const comprobar = () => hacer("comprobar", async () => {
+    const r = await acciones.onComprobar();
+    const partes = [r.nuevas?.length ? `Ya está hecho en Instagram: ${r.nuevas.length === 1 ? "1 cambio" : `${r.nuevas.length} cambios`}.` : "Instagram todavía no enseña ningún cambio nuevo de la lista."];
+    if (r.avisos?.length) partes.push(...r.avisos);
+    partes.push("La foto, los destacados y los fijados se marcan a mano: Instagram no los da.");
+    setNota(partes.join(" "));
+  });
   const crear = async () => {
     setTarea("Creando…");
     try {
-      await onCrearTarea(items.map((x) => `- ${x.texto}`).join("\n"));
+      await onCrearTarea(items.filter((x) => !aplicado[x.k]?.hecho).map((x) => `- ${x.texto}`).join("\n"));
       setTarea("Tarea creada: está en Mi día y en las tareas del cliente.");
     } catch (e) {
       setTarea(e.message);
     }
   };
+  const cuando = (f) => (f ? new Date(f).toLocaleDateString("es-PA", { day: "numeric", month: "short" }) : "");
   return (
     <section className="aud-bloque aud-aplicar no-imprimir" aria-labelledby={`aplicar-${id}`}>
       <header className="aud-bloque-cabecera">
         <h3 id={`aplicar-${id}`}><Icon name="clipboardCheck" size={18} /> Aplicar en el perfil</h3>
-        <span className="hint">{hechos.filter((h) => items.some((x) => x.k === h)).length} de {items.length}</span>
+        <span className="hint">{hechos} de {total}</span>
       </header>
-      <p className="hint">Instagram no deja cambiar esto por la API: se sube a mano. Lo de cada línea ya está listo.</p>
+      <progress className="aud-progreso" max={total} value={hechos} aria-label={`Hechos ${hechos} de ${total}`} />
+      <p className="hint">Instagram no deja cambiar esto por la API: se sube a mano. Lo de cada línea ya está listo, y lo que se marca lo ve todo el equipo.</p>
       <ul className="aud-aplicar-lista">
-        {items.map((x) => (
-          <li key={x.k}>
-            <label>
-              <input type="checkbox" checked={hechos.includes(x.k)} onChange={() => alternar(x.k)} />
-              <span data-hecho={hechos.includes(x.k) || undefined}>{x.texto}</span>
-            </label>
-            {x.accion}
-          </li>
-        ))}
+        {items.map((x) => {
+          const m = aplicado[x.k];
+          const marcado = provisional[x.k] ?? Boolean(m?.hecho);
+          const alternar = () => {
+            setProvisional((p) => ({ ...p, [x.k]: !marcado }));
+            void hacer(x.k, () => acciones.onMarcar(x.k, !marcado)).then(() => setProvisional(({ [x.k]: _hecho, ...resto }) => resto));
+          };
+          return (
+            <li key={x.k}>
+              <label>
+                <input type="checkbox" checked={marcado} disabled={!acciones || ocupado === x.k} onChange={alternar} />
+                <span data-hecho={marcado || undefined}>{x.texto}</span>
+              </label>
+              {m?.hecho && <span className="hint aud-quien">{m.auto ? "Comprobado en Instagram" : m.por || "Hecho"} · {cuando(m.at)}</span>}
+              {accion[x.k]}
+            </li>
+          );
+        })}
       </ul>
-      {onCrearTarea && (
+      {acciones && (
         <div className="aud-aplicar-pie">
-          <button type="button" className="btn btn-secondary btn-sm" onClick={crear} disabled={tarea === "Creando…"}><Icon name="checkSquare" size={14} /> Crear tarea con esta lista</button>
-          {tarea && <span role="status" className="hint">{tarea}</span>}
+          <button type="button" className="btn btn-secondary btn-sm" onClick={comprobar} disabled={Boolean(ocupado)}>
+            <Icon name="refresh" size={14} /> {ocupado === "comprobar" ? "Leyendo Instagram…" : "Comprobar en Instagram"}
+          </button>
+          {onCrearTarea && hechos < total && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={crear} disabled={tarea === "Creando…"}><Icon name="checkSquare" size={14} /> Crear tarea con lo que falta</button>
+          )}
+          {optimizado ? (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => hacer("optimizado", () => acciones.onOptimizado(false))} disabled={Boolean(ocupado)}>Quitar «optimizado»</button>
+          ) : (
+            <button type="button" className={`btn btn-sm ${completo ? "btn-primary" : "btn-ghost"}`} onClick={() => hacer("optimizado", () => acciones.onOptimizado(true))} disabled={Boolean(ocupado)}
+              title={completo ? "" : "Todavía falta algo de la lista: se puede marcar igual"}>
+              <Icon name="checkCircle" size={14} /> Marcar perfil optimizado
+            </button>
+          )}
         </div>
       )}
+      {(nota || tarea) && <p role="status" className="hint">{nota || tarea}</p>}
     </section>
   );
 }
 
-export default function AuditoriaVista({ auditoria, cliente = null, onPortada = null, portadas = {}, onPiezas = null, onCrearTarea = null }) {
+export default function AuditoriaVista({ auditoria, cliente = null, onPortada = null, portadas = {}, onPiezas = null, onCrearTarea = null, acciones = null }) {
   const { perfil = {}, cifras = {}, analisis: a = {} } = auditoria ?? {};
   const usuario = perfil?.usuario || auditoria?.usuario || "";
   const fecha = auditoria?.auditadoEl || auditoria?.actualizada;
@@ -140,6 +174,10 @@ export default function AuditoriaVista({ auditoria, cliente = null, onPortada = 
           </div>
         )}
       </header>
+
+      {auditoria?.optimizado && (
+        <p className="aud-optimizado"><Icon name="checkCircle" size={16} /> Perfil optimizado el {new Date(auditoria.optimizado).toLocaleDateString("es-PA", { day: "numeric", month: "long", year: "numeric" })}</p>
+      )}
 
       {a.resumen && <p className="aud-resumen">{a.resumen}</p>}
       {perfil?.aviso && <p className="aud-aviso">{perfil.aviso}</p>}
@@ -262,7 +300,12 @@ export default function AuditoriaVista({ auditoria, cliente = null, onPortada = 
       <Bloque titulo="La rejilla" icono="grid" b={a.rejilla} />
       <Bloque titulo="El contenido" icono="chart" b={a.contenido} />
 
-      {onCrearTarea !== null && <AplicarEnPerfil id={auditoria?.id ?? usuario} a={a} perfil={perfil} onPiezas={onPiezas} onCrearTarea={onCrearTarea} />}
+      {acciones && (
+        <AplicarEnPerfil
+          id={auditoria?.id ?? usuario} a={a} perfil={perfil} aplicado={auditoria?.aplicado ?? {}} optimizado={auditoria?.optimizado ?? null}
+          acciones={acciones} onPiezas={onPiezas} onCrearTarea={onCrearTarea}
+        />
+      )}
 
       <footer className="aud-pie">
         Auditoría preparada por Juancito Ads{cliente?.name ? ` para ${cliente.name}` : ""}. Las cifras son las que da Instagram el día de la auditoría.

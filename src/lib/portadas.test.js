@@ -19,7 +19,7 @@ describe("las piezas del perfil", () => {
   });
 
   it("seis estilos y nombres de archivo limpios", () => {
-    expect(ESTILOS_PORTADA).toHaveLength(6);
+    expect(ESTILOS_PORTADA).toHaveLength(7);
     expect(nombreDePortada("Reseñas ⭐")).toBe("destacado-resenas.png");
     expect(nombreDePortada("", 2)).toBe("destacado-3.png");
   });

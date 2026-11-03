@@ -420,7 +420,7 @@ export async function informeAnunciosPorTestigo(db, token) {
 export async function auditoriaPorTestigo(db, token) {
   if (!testigoValido(token)) return null;
   const a = await db
-    .prepare("select client_id, usuario, datos, analisis, updated_at from auditorias where testigo = ? and compartido = 1 and estado = 'listo'")
+    .prepare("select client_id, usuario, datos, analisis, updated_at, optimizado_at from auditorias where testigo = ? and compartido = 1 and estado = 'listo'")
     .bind(token)
     .first();
   if (!a) return null;
@@ -437,6 +437,8 @@ export async function auditoriaPorTestigo(db, token) {
     perfil: datos.perfil ? { ...datos.perfil, medios: (datos.perfil.medios ?? []).map(({ imagen: _imagen, ...m }) => m) } : null,
     cifras: datos.cifras ?? null,
     auditadoEl: datos.auditadoEl ?? a.updated_at,
+    // Cuándo se dio el perfil por optimizado: el cliente lo ve en su enlace. La lista de quién marcó qué no sale.
+    optimizado: a.optimizado_at ?? null,
     analisis,
     cliente: cliente ? {
       name: cliente.name, primaryColor: cliente.primary_color, secondaryColor: cliente.secondary_color, accentColor: cliente.accent_color,
