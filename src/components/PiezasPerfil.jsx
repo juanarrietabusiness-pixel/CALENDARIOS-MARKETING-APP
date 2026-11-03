@@ -13,7 +13,7 @@ import "./PiezasPerfil.css";
 // Las piezas del perfil, por plantilla (desde una auditoría)
 //
 // Portadas de destacados (1080 × 1920, lo importante dentro del círculo del
-// centro) en seis estilos con la paleta del kit de marca, y la foto de
+// centro) en siete estilos con la paleta del kit de marca (uno firmado con su logo), y la foto de
 // perfil con el logo original. Se dibujan aquí, en un lienzo: uniformes y
 // sin gastar en IA. Se descargan o se guardan en la galería del Estudio
 // para subirlas a mano a Instagram, que no deja cambiarlas por la API.
@@ -45,7 +45,7 @@ function cargarImagen(src) {
 const circulo = (ctx, cx, cy, r) => { ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); };
 
 /** Dibuja una portada en un lienzo de 1080 × 1920. */
-async function dibujarPortada(lienzo, { estilo, colores, icono, fondo, iconos }) {
+async function dibujarPortada(lienzo, { estilo, colores, icono, fondo, iconos, logo = null }) {
   const { ancho: W, alto: H } = PORTADA;
   lienzo.width = W;
   lienzo.height = H;
@@ -94,6 +94,22 @@ async function dibujarPortada(lienzo, { estilo, colores, icono, fondo, iconos })
     circulo(ctx, cx, cy, RADIO_SEGURO - 90);
     ctx.stroke();
     colorIcono = textoSobre(colores.principal);
+  } else if (estilo === "marca") {
+    // El icono sube y el logo del kit va debajo, los dos dentro del círculo que enseña Instagram.
+    ctx.fillStyle = colores.principal;
+    ctx.fillRect(0, 0, W, H);
+    const img = await iconoComoImagen(iconos, icono, textoSobre(colores.principal), 1.6);
+    const ladoIcono = logo ? 300 : 380;
+    const arriba = logo ? cy - 70 : cy;
+    ctx.drawImage(img, cx - ladoIcono / 2, arriba - ladoIcono / 2, ladoIcono, ladoIcono);
+    if (logo) {
+      // El logo, en una caja de 340 × 120 bajo el icono (dentro de RADIO_SEGURO), sin deformarlo.
+      const escala = Math.min(340 / logo.naturalWidth, 120 / logo.naturalHeight);
+      const w = logo.naturalWidth * escala;
+      const h = logo.naturalHeight * escala;
+      ctx.drawImage(logo, cx - w / 2, cy + 150 - h / 2, w, h);
+    }
+    return;
   } else if (estilo === "foto" && fondo) {
     const r = cubrir(fondo.naturalWidth, fondo.naturalHeight, W, H);
     ctx.drawImage(fondo, r.x, r.y, r.w, r.h);
@@ -283,6 +299,7 @@ export default function PiezasPerfil({ clientId, destacados = [], inicial = "des
                 ))}
               </div>
               <p className="hint">{ESTILOS_PORTADA.find((e) => e.id === estilo)?.ayuda}</p>
+              {estilo === "marca" && sinLogo && <p className="notice">El kit de marca no tiene logo: sale sólo el icono. En el Estudio, abre el logo y pulsa «Usar como logo».</p>}
               {estilo === "foto" && (
                 <div className="field">
                   <label className="label" htmlFor={`${ids}-fondo`}>Imagen de fondo (de la galería del Estudio)</label>
@@ -299,8 +316,8 @@ export default function PiezasPerfil({ clientId, destacados = [], inicial = "des
                       nombre={nombresPortadas[i]}
                       etiqueta={`Portada de «${d.titulo}»`}
                       onLista={guardarLienzo}
-                      deps={[estilo, colores.principal, colores.acento, colores.icono, d.icono, fondoImg]}
-                      dibujar={(lienzo) => dibujarPortada(lienzo, { estilo, colores, icono: d.icono, fondo: fondoImg, iconos: iconos.current })}
+                      deps={[estilo, colores.principal, colores.acento, colores.icono, d.icono, fondoImg, logoImg]}
+                      dibujar={(lienzo) => dibujarPortada(lienzo, { estilo, colores, icono: d.icono, fondo: fondoImg, iconos: iconos.current, logo: logoImg })}
                     />
                     <div className="piezas-campos">
                       <label className="label" htmlFor={`${ids}-t${i}`}>Título (en Instagram)</label>

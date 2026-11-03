@@ -107,3 +107,19 @@
 .aud-aplicar-lista input { margin-top: 3px; width: 18px; height: 18px; flex-shrink: 0; }
 .aud-aplicar-lista span[data-hecho] { text-decoration: line-through; opacity: .6; }
 .aud-aplicar-pie { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+
+/* «Aplicar en el perfil» guardado: el avance, quién marcó cada cambio y el perfil optimizado. */
+.aud-progreso { width: 100%; height: 8px; accent-color: var(--success, var(--accent)); margin: var(--sp-1) 0; }
+.aud-quien { flex: 0 0 auto; }
+.aud-optimizado {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin: 0 0 var(--sp-3);
+  padding: 4px var(--sp-3);
+  border-radius: var(--radius-pill);
+  background: var(--success-soft, var(--accent-soft));
+  color: var(--success, var(--accent));
+  font-weight: 700;
+  font-size: var(--fs-xs);
+}

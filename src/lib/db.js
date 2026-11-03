@@ -865,6 +865,21 @@ export async function borrarAuditoria(id) {
   return pedir(`/auditorias/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+/** «Aplicar en el perfil»: un cambio hecho (o no). Devuelve la auditoría entera. */
+export async function marcarAplicado(id, k, hecho) {
+  return pedir(`/auditorias/${encodeURIComponent(id)}/aplicado`, conCuerpo("PATCH", { k, hecho }));
+}
+
+/** Relee el perfil en Instagram y marca lo que ya se ve hecho: { auditoria, nuevas, avisos }. */
+export async function comprobarAuditoria(id) {
+  return pedir(`/auditorias/${encodeURIComponent(id)}/comprobar`, { method: "POST" });
+}
+
+/** El perfil, dado por optimizado (o ya no). Devuelve la auditoría entera. */
+export async function marcarOptimizado(id, si) {
+  return pedir(`/auditorias/${encodeURIComponent(id)}/optimizado`, conCuerpo("POST", { si }));
+}
+
 /** La auditoría que abre el cliente o el prospecto, sin sesión. */
 export async function auditoriaPublica(testigo) {
   return pedir(`/publico-auditoria/${encodeURIComponent(testigo)}`);

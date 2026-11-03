@@ -4,7 +4,7 @@
 // Con IA de imagen las portadas salían cada una distinta y con detalles
 // raros: un juego de destacados tiene que verse como un JUEGO. Aquí se
 // dibujan en un lienzo con la paleta del kit de marca y un icono del set de
-// la aplicación, en uno de seis estilos que no se ven básicos. Sin gastar
+// la aplicación, en uno de siete estilos que no se ven básicos. Sin gastar
 // en IA: si se quiere un fondo «con IA», se crea UNO en el Estudio y se
 // reutiliza en todas (estilo «foto»).
 //
@@ -35,6 +35,7 @@ export const ESTILOS_PORTADA = Object.freeze([
   { id: "contorno", nombre: "Contorno doble", ayuda: "Fondo de la marca y dos anillos finos en el acento alrededor del icono." },
   { id: "cristal", nombre: "Cristal", ayuda: "Degradado con un disco translúcido y brillo suave detrás del icono." },
   { id: "sello", nombre: "Sello", ayuda: "Fondo claro y un círculo lleno del color de la marca, como una insignia." },
+  { id: "marca", nombre: "Con la marca", ayuda: "El color principal, el icono y, debajo, el logo del kit: todas las portadas firmadas con la marca.", logo: true },
   { id: "foto", nombre: "Fondo con imagen", ayuda: "Una imagen de la galería (puede ser un fondo hecho con IA) con un velo y el icono encima.", fondo: true },
 ]);
 

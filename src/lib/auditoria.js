@@ -149,3 +149,72 @@ export function extraerJSON(textoIA) {
   if (inicio < 0 || fin < inicio) return null;
   try { return JSON.parse(t.slice(inicio, fin + 1)); } catch { return null; }
 }
+
+// ============================================================
+// «Aplicar en el perfil»: la lista de cambios, guardada en el servidor
+//
+// Antes se marcaba en el navegador de cada uno: lo que hacía Ana no lo veía
+// Juan, y al cambiar de equipo se perdía. Ahora cada cambio guarda quién y
+// cuándo (`auditorias.aplicado`, 0057) y, con todo hecho, el perfil se marca
+// «optimizado» (`optimizado_at`). «Comprobar en Instagram» relee el perfil y
+// marca solo lo que se puede ver por la API: el nombre, la biografía y el
+// enlace. La foto no (su dirección del CDN cambia en cada lectura aunque la
+// foto sea la misma), y los destacados y los fijados la API no los da nunca.
+// ============================================================
+
+const normal = (t) => String(t ?? "").normalize("NFC").replace(/\s+/g, " ").trim().toLowerCase();
+
+/** Los cambios que propone una auditoría, en el orden en que se hacen. `k` es la clave estable de cada uno. */
+export function itemsParaAplicar(analisis = {}, perfil = {}) {
+  const a = analisis ?? {};
+  return [
+    a.foto?.estado && a.foto.estado !== "bien" && { k: "foto", texto: "Cambiar la foto de perfil", auto: false },
+    a.nombre?.propuesta && a.nombre.propuesta !== perfil?.nombre && { k: "nombre", texto: `Nombre: «${a.nombre.propuesta}»`, auto: true },
+    a.bio?.opciones?.length > 0 && { k: "bio", texto: "Biografía: pegar una de las opciones de arriba", auto: true },
+    a.enlace?.recomendacion && a.enlace.estado !== "bien" && { k: "enlace", texto: `Enlace: ${a.enlace.recomendacion}`, auto: true },
+    a.destacados?.propuesta?.length > 0 && { k: "destacados", texto: `Destacados: ${a.destacados.propuesta.map((d) => d.titulo).join(", ")}`, auto: false },
+    ...(a.fijados?.propuesta ?? []).map((f, i) => ({ k: `fijado-${i}`, texto: `Fijar: ${f.titulo || f.idea}`, auto: false })),
+  ].filter(Boolean);
+}
+
+/** Lo guardado, limpio: { clave: { hecho, por, at, auto } }. Sólo claves cortas y sin rarezas. */
+export function limpiarAplicado(valor) {
+  let v = valor;
+  if (typeof v === "string") { try { v = JSON.parse(v); } catch { return {}; } }
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  const salida = {};
+  for (const [k, x] of Object.entries(v)) {
+    if (!/^[a-z][a-z0-9-]{0,30}$/.test(k) || !x || typeof x !== "object") continue;
+    salida[k] = { hecho: x.hecho === true, por: String(x.por ?? "").slice(0, 80), at: String(x.at ?? "").slice(0, 40), auto: x.auto === true };
+  }
+  return salida;
+}
+
+/** Cuántos están hechos de los que pide la auditoría (lo marcado de una clave que ya no se pide no cuenta). */
+export function progresoAplicado(items, aplicado = {}) {
+  const hechos = items.filter((x) => aplicado[x.k]?.hecho).length;
+  return { hechos, total: items.length, completo: items.length > 0 && hechos === items.length };
+}
+
+/**
+ * Lo que ya se ve hecho en el perfil leído ahora. Devuelve las claves hechas y, de las que cambiaron sin ser lo
+ * propuesto, un aviso (una persona decide si vale).
+ * @returns {{ hechas: string[], avisos: string[] }}
+ */
+export function comprobarEnPerfil(analisis = {}, antes = {}, ahora = {}) {
+  const hechas = [];
+  const avisos = [];
+  const a = analisis ?? {};
+  if (a.nombre?.propuesta) {
+    if (normal(ahora.nombre) === normal(a.nombre.propuesta)) hechas.push("nombre");
+    else if (normal(ahora.nombre) !== normal(antes.nombre)) avisos.push(`El nombre cambió a «${ahora.nombre}», pero no es el propuesto.`);
+  }
+  if (a.bio?.opciones?.length) {
+    if (a.bio.opciones.some((o) => normal(o) === normal(ahora.bio))) hechas.push("bio");
+    else if (normal(ahora.bio) !== normal(antes.bio)) avisos.push("La biografía cambió, pero no es ninguna de las opciones: si vale, márcala a mano.");
+  }
+  if (a.enlace?.recomendacion && a.enlace.estado !== "bien" && normal(ahora.enlace) && normal(ahora.enlace) !== normal(antes.enlace)) {
+    hechas.push("enlace");
+  }
+  return { hechas, avisos };
+}

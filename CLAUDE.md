@@ -341,8 +341,8 @@ src/
     SeccionInformes.jsx   Resultados → informes mensuales: generar, revisar, compartir
     InformeVista.jsx      El informe como documento (claro, con la marca, imprimible)
     AuditoriaVista.jsx    La auditoría de perfil como documento, con copiar y portadas, referentes, fijados y
-                          «Aplicar en el perfil» (lista que se vuelve tarea)
-    PiezasPerfil.jsx      Portadas de destacados (6 estilos) y foto de perfil con el logo, dibujadas en un lienzo (lazy)
+                          «Aplicar en el perfil» (guardada: quién y cuándo, «Comprobar en Instagram», «Perfil optimizado»)
+    PiezasPerfil.jsx      Portadas de destacados (7 estilos, uno con el logo del kit) y foto de perfil con el logo, dibujadas en un lienzo (lazy)
     Graficas.jsx          Línea y barras en SVG, sin librería
     MedidorIA.jsx         El gasto del mes contra el presupuesto, en la cabecera
     Avisos.jsx            La campana: la bandeja de avisos de cada persona (y las del sistema)
@@ -588,7 +588,7 @@ worker/
     formulasUgc.js        /api/formulas-ugc: las fórmulas UGC de la agencia (listar, guardar, corregir, quitar, proponer)
     inspiracion.js        /api/inspiracion/<cliente>: el feed, actualizar, traer un archivo, el resumen
     historiasAuto.js      /api/historias-auto/<cliente>: ajustes, pendientes de preparar, piezas
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -2314,7 +2314,7 @@ son del servidor.
   referencia por `business_discovery` (sólo empresa o creador; el que no se lee, avisa y no tumba nada) y la IA
   dice qué adaptar de ellos; propone además tres publicaciones FIJADAS y un icono por destacado (sólo de
   `ICONOS_DESTACADO`). Las portadas se DIBUJAN (`PiezasPerfil.jsx`): 1080 × 1920 con lo importante dentro del
-  círculo central (`RADIO_SEGURO`), seis estilos con la paleta del kit, y el icono se toma del SVG de `Icon.jsx`
+  círculo central (`RADIO_SEGURO`), siete estilos con la paleta del kit («Con la marca» firma cada una con su logo), y el icono se toma del SVG de `Icon.jsx`
   pintado oculto en el diálogo —renderizar con `createRoot`+`flushSync` dentro de un efecto no pinta nada y la
   imagen sale vacía—. La foto de perfil lleva el logo del kit al 62 % del diámetro. Instagram no deja cambiar
   foto, biografía, destacados ni fijados por la API: «Aplicar en el perfil» deja la lista y la convierte en
@@ -3872,6 +3872,15 @@ son del servidor.
   empresa. Una RÁPIDA soltada en una empresa cambia de tabla (`soltar` en useTareas: se crea en la empresa con sus
   notas, persona y fecha límite y se borra la rápida); una de empresa no se queda sin empresa.
   · La vista que se abre se recuerda por navegador (`midia-vista`); la lista y «Por empresa» siguen como estaban.
+- **«Aplicar en el perfil» se guarda en la AUDITORÍA, no en el navegador** (`auditorias.aplicado` y `optimizado_at`, 0057;
+  `itemsParaAplicar`, `limpiarAplicado`, `progresoAplicado`, `comprobarEnPerfil` en src/lib/auditoria.js). Antes iba en
+  `localStorage` de cada uno: lo que marcaba una persona no lo veía otra. Cada cambio guarda quién y cuándo (`PATCH
+  /api/auditorias/<id>/aplicado`, sólo claves que la auditoría pide). «Comprobar en Instagram» (`POST …/comprobar`) relee
+  el perfil con `leerPerfil` y marca SOLO el nombre y la biografía si ya son lo propuesto (sin mayúsculas ni espacios de
+  más) y el enlace si cambió; nunca desmarca. La foto no se puede comparar (su dirección del CDN cambia en cada lectura) y
+  destacados y fijados la API no los da: se marcan a mano. «Marcar perfil optimizado» (`POST …/optimizado`) se ve en la
+  lista y en el enlace del cliente (`optimizado`, sin la lista interna). Las portadas tienen un séptimo estilo, «Con la
+  marca»: el icono y el logo del kit debajo, dentro del círculo seguro.
 - **Historias automáticas: de 1 a 5 al día** (`historias_auto.por_dia`, 0055; `horasDelDia`, `elegirPiezas` en
   src/lib/historiasAuto.js): la primera a su hora y las demás cada 2 horas; si la última pasaría de las 22:00 se juntan (no
   menos de 30 min). Cada una es una publicación DISTINTA con la misma regla de siempre; si no hay bastantes, pone las que

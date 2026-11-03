@@ -57,3 +57,34 @@ describe("los perfiles de referencia", () => {
     expect(MAX_REFERENTES).toBe(3);
   });
 });
+
+describe("aplicar en el perfil", () => {
+  const a = {
+    foto: { estado: "mejorable" }, nombre: { propuesta: "Luna | Café" }, bio: { opciones: ["Café en Panamá", "Otra"] },
+    enlace: { estado: "mal", recomendacion: "Un enlace a WhatsApp" }, destacados: { propuesta: [{ titulo: "Menú" }] },
+    fijados: { propuesta: [{ titulo: "Quiénes somos" }] },
+  };
+
+  it("la lista sale de lo propuesto, con claves estables, y lo que ya está bien no entra", async () => {
+    const { itemsParaAplicar } = await import("./auditoria.js");
+    expect(itemsParaAplicar(a, { nombre: "Luna" }).map((x) => x.k)).toEqual(["foto", "nombre", "bio", "enlace", "destacados", "fijado-0"]);
+    expect(itemsParaAplicar({ ...a, foto: { estado: "bien" }, nombre: { propuesta: "Luna" } }, { nombre: "Luna" }).map((x) => x.k)).not.toContain("foto");
+  });
+
+  it("lo guardado se limpia y el progreso sólo cuenta lo que se pide", async () => {
+    const { itemsParaAplicar, limpiarAplicado, progresoAplicado } = await import("./auditoria.js");
+    const guardado = limpiarAplicado(JSON.stringify({ nombre: { hecho: true, por: "Ana" }, "<x>": { hecho: true }, viejo: { hecho: true } }));
+    expect(Object.keys(guardado)).toEqual(["nombre", "viejo"]);
+    expect(progresoAplicado(itemsParaAplicar(a, {}), guardado)).toEqual({ hechos: 1, total: 6, completo: false });
+    expect(limpiarAplicado("no es json")).toEqual({});
+  });
+
+  it("comprobar: nombre y biografía iguales (sin mayúsculas ni espacios de más), y el enlace si cambió", async () => {
+    const { comprobarEnPerfil } = await import("./auditoria.js");
+    const r = comprobarEnPerfil(a, { nombre: "Luna", bio: "vieja", enlace: "" }, { nombre: "luna | café", bio: "Café  en Panamá", enlace: "https://wa.me/1" });
+    expect(r.hechas).toEqual(["nombre", "bio", "enlace"]);
+    const nada = comprobarEnPerfil(a, { nombre: "Luna", bio: "vieja" }, { nombre: "Luna", bio: "vieja" });
+    expect(nada).toEqual({ hechas: [], avisos: [] });
+    expect(comprobarEnPerfil(a, { nombre: "Luna" }, { nombre: "Otro nombre" }).avisos[0]).toMatch(/no es el propuesto/);
+  });
+});

@@ -212,6 +212,15 @@ export default function Auditorias({ clients = [], pulso = 0 }) {
 
   const clienteDe = (a) => clients.find((c) => c.id === a?.clientId);
 
+  // «Aplicar en el perfil», guardado en el servidor: cada acción devuelve la auditoría entera y la lista se relee
+  // (la marca «optimizado» se ve en ella).
+  const poner = (a) => { setAbierta(a); void cargar(); return a; };
+  const acciones = abierta && {
+    onMarcar: async (k, hecho) => poner(await db.marcarAplicado(abierta.id, k, hecho)),
+    onComprobar: async () => { const r = await db.comprobarAuditoria(abierta.id); poner(r.auditoria); return r; },
+    onOptimizado: async (si) => poner(await db.marcarOptimizado(abierta.id, si)),
+  };
+
   /** «Aplicar en el perfil» → una tarea del cliente para hoy, con una línea por cambio. */
   const crearTarea = async (lineas) => {
     await db.saveClientTask({
@@ -249,12 +258,13 @@ export default function Auditorias({ clients = [], pulso = 0 }) {
           {abierta.estado === "generando" && <p role="status" className="hint">Todavía se está escribiendo…</p>}
           {abierta.estado === "listo" && (
             <AuditoriaVista
-              auditoria={{ ...abierta.datos, id: abierta.id, analisis: abierta.analisis, usuario: abierta.usuario, actualizada: abierta.actualizada }}
+              auditoria={{ ...abierta.datos, id: abierta.id, analisis: abierta.analisis, usuario: abierta.usuario, actualizada: abierta.actualizada, aplicado: abierta.aplicado, optimizado: abierta.optimizado }}
               cliente={clienteDe(abierta) ? { name: clienteDe(abierta).name, primaryColor: clienteDe(abierta).primaryColor } : null}
               onPortada={abierta.clientId ? portada : null}
               portadas={portadas}
               onPiezas={abierta.clientId ? setPiezas : null}
               onCrearTarea={abierta.clientId ? crearTarea : undefined}
+              acciones={acciones}
             />
           )}
           {piezas && abierta?.clientId && (
@@ -278,6 +288,7 @@ export default function Auditorias({ clients = [], pulso = 0 }) {
                     <span className="aud-item-meta">
                       {a.clientId ? nombreCliente(a.clientId) || "Cliente" : "Prospecto"} · {new Date(a.creada).toLocaleDateString("es-PA", { day: "numeric", month: "short" })}
                       {a.compartido && " · compartida"}
+                      {a.optimizado && " · optimizado"}
                     </span>
                     <span className="aud-item-estado">
                       {a.estado === "listo" ? (a.puntuacion ?? "—") : a.estado === "generando" ? "Escribiendo…" : "Falló"}
