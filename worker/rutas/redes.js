@@ -354,12 +354,22 @@ export async function rutasPublicar(req, env, { acceso, usuario, partes, metodo,
       return json(filas.map(filaConResumen));
     }
     if (url.searchParams.get("todo")) {
-      const dias = Math.min(60, Math.max(1, Number(url.searchParams.get("dias")) || 14));
+      // Hasta 90 días de lo publicado (la página tiene «Últimos 90 días»), con sus cifras: alcance, vistas e
+      // interacciones de la foto de métricas (`metricas_publicacion`, unida por el id de Meta). Lo que aún no se midió
+      // va sin cifras.
+      const dias = Math.min(90, Math.max(1, Number(url.searchParams.get("dias")) || 14));
       const desde = new Date(Date.now() - dias * 86_400_000).toJSON();
-      const filas = await acceso.leer("publicaciones_programadas", {}, "programada_para asc");
-      return json(filas
-        .filter((f) => f.estado !== "cancelada" && (f.estado !== "publicada" || (f.publicada_at ?? f.programada_para) >= desde))
-        .map(filaConResumen));
+      const filas = (await acceso.leer("publicaciones_programadas", {}, "programada_para asc"))
+        .filter((f) => f.estado !== "cancelada" && (f.estado !== "publicada" || (f.publicada_at ?? f.programada_para) >= desde));
+      const ids = [...new Set(filas.filter((f) => f.estado === "publicada" && f.externo_id).map((f) => f.externo_id))];
+      const medidas = ids.length
+        ? await acceso.leerVarios("metricas_publicacion", ["externo_id", "red", "alcance", "vistas", "interacciones"], "externo_id", ids)
+        : [];
+      const porId = new Map(medidas.map((m) => [`${m.red}:${m.externo_id}`, m]));
+      return json(filas.map((f) => {
+        const m = f.externo_id ? porId.get(`${f.red}:${f.externo_id}`) : null;
+        return { ...filaConResumen(f), ...(m ? { metricas: { alcance: m.alcance, vistas: m.vistas, interacciones: m.interacciones } } : {}) };
+      }));
     }
     if (!calendario && !cliente) return error("Falta el calendario o el cliente");
     const filas = await acceso.leer(

@@ -113,3 +113,36 @@ describe("lo que se publica a mano", () => {
     expect(r[1]).toMatchObject({ fecha: "2026-10-05", cuando: "2026-10-05T13:00:00.000Z" });
   });
 });
+
+describe("las pestañas de Programación", async () => {
+  const { pestanasProgramacion, cifraCorta } = await import("./cola.js");
+  const HOY = "2026-11-03";
+  const filas = [
+    { id: "p1", estado: "publicada", clientId: "c1", red: "instagram", formato: "carrusel", titulo: "Camas de noviembre", publicadaAt: "2026-11-02T13:00:00Z", programadaPara: "2026-11-02T13:00:00Z" },
+    { id: "p2", estado: "publicada", clientId: "c2", red: "facebook", formato: "post", titulo: "Mes de la Patria", publicadaAt: "2026-11-01T01:20:00Z", programadaPara: "2026-11-01T01:20:00Z" },
+    { id: "p3", estado: "publicada", clientId: "c1", red: "instagram", formato: "post", titulo: "Viejo", publicadaAt: "2026-07-01T13:00:00Z", programadaPara: "2026-07-01T13:00:00Z" },
+    { id: "g1", estado: "programada", clientId: "c1", red: "instagram", formato: "historia", titulo: "Historia", programadaPara: "2026-11-05T23:00:00Z" },
+    { id: "g2", estado: "procesando", clientId: "c1", red: "tiktok", formato: "reel", titulo: "Reel", programadaPara: "2026-11-04T15:00:00Z" },
+    { id: "e1", estado: "error", clientId: "c2", red: "instagram", formato: "post", titulo: "Falló", programadaPara: "2026-10-30T15:00:00Z" },
+    { id: "x1", estado: "cancelada", clientId: "c1", red: "instagram", formato: "post", titulo: "Quitada", programadaPara: "2026-11-04T15:00:00Z" },
+  ];
+  it("reparte por pestaña, lo publicado de los últimos días y lo más reciente primero", () => {
+    const r = pestanasProgramacion(filas, { dias: 30 }, HOY);
+    expect(r.publicadas.map((f) => f.id)).toEqual(["p1", "p2"]);
+    expect(r.programadas.map((f) => f.id)).toEqual(["g2", "g1"]);
+    expect(r.no.map((f) => f.id)).toEqual(["e1"]);
+    expect(r.cuentas).toEqual({ publicadas: 2, programadas: 2, no: 1 });
+    expect(pestanasProgramacion(filas, { dias: 180 }, HOY).publicadas).toHaveLength(3);
+  });
+  it("filtra por cliente, red, formato y texto (sin tildes)", () => {
+    expect(pestanasProgramacion(filas, { formato: "carrusel" }, HOY).publicadas.map((f) => f.id)).toEqual(["p1"]);
+    expect(pestanasProgramacion(filas, { red: "facebook" }, HOY).cuentas).toEqual({ publicadas: 1, programadas: 0, no: 0 });
+    expect(pestanasProgramacion(filas, { texto: "patria" }, HOY).publicadas.map((f) => f.id)).toEqual(["p2"]);
+    expect(pestanasProgramacion(filas, { cliente: "c2" }, HOY).no.map((f) => f.id)).toEqual(["e1"]);
+  });
+  it("las cifras, cortas", () => {
+    expect(cifraCorta(2006)).toBe((2006).toLocaleString("es-PA"));
+    expect(cifraCorta(undefined)).toBe("—");
+    expect(cifraCorta(12500)).toMatch(/12[.,]5 mil/);
+  });
+});

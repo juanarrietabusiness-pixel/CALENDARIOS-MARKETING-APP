@@ -130,6 +130,15 @@ describe("el cron", () => {
     expect(lista.find((x) => x.id === f.id)).toMatchObject({ calendarId: null, formato: "historia", miniatura: HISTORIA });
   });
 
+  it("con 3 al día pide tres horas; si sólo hay una preparada, pone ésa y dice que faltaron", async () => {
+    await preparar();
+    const ajustes = await (await pedir("/historias-auto/c1", { method: "PUT", body: JSON.stringify({ activa: true, hora: "10:00", porDia: 3 }) })).json();
+    expect(ajustes).toMatchObject({ porDia: 3, horas: ["10:00", "12:00", "14:00"] });
+    expect(await historiasAutomaticasPendiente(env, new Date())).toBe(1);
+    expect(cola()).toHaveLength(1);
+    expect((await (await pedir("/historias-auto/c1")).json()).nota).toMatch(/Faltaron 2/);
+  });
+
   it("la cola la publica como historia, con la imagen hecha, sin buscarla en ningún mes", async () => {
     await preparar();
     await pedir("/historias-auto/c1", { method: "PUT", body: JSON.stringify({ activa: true, hora: "18:00" }) });

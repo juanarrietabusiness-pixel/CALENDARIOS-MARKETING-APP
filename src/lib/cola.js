@@ -178,3 +178,51 @@ export function asistidasPendientes(clients = [], hoy = fechaEnZona(new Date(), 
   }
   return salida.sort((a, b) => (a.cuando < b.cuando ? -1 : 1));
 }
+
+// ------------------------------------------------------------
+// La página Programación, como en Meta Business Suite: tres pestañas
+// ------------------------------------------------------------
+
+/** Las pestañas de la página: lo publicado, lo que va a salir y lo que no salió (lo que pide hacer algo). */
+export const PESTANAS_PROGRAMACION = Object.freeze([
+  ["publicadas", "Publicadas"],
+  ["programadas", "Programadas"],
+  ["no", "No publicadas"],
+]);
+
+/** Los formatos por los que se filtra (el de la fila: una historia automática es «historia»). */
+export const FORMATOS_PROGRAMACION = Object.freeze([
+  ["post", "Post"], ["carrusel", "Carrusel"], ["reel", "Reel"], ["historia", "Historia"],
+]);
+
+const sinTildes = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+/**
+ * Las filas de cada pestaña con los filtros puestos, y cuántas hay en cada una. `dias` es lo publicado que se mira
+ * hacia atrás (7, 30, 90); lo programado y lo que falló van enteros. Lo publicado, lo más reciente primero; lo
+ * programado, lo más próximo primero. Pura.
+ * @returns {{ publicadas: object[], programadas: object[], no: object[], cuentas: { publicadas, programadas, no } }}
+ */
+export function pestanasProgramacion(filas = [], { cliente = "", red = "", formato = "", texto = "", dias = 30 } = {}, hoy = fechaEnZona(new Date(), ZONA)) {
+  const desde = sumarDias(hoy, -(dias - 1));
+  const q = sinTildes(texto).trim();
+  const pasa = (f) => (!cliente || f.clientId === cliente)
+    && (!red || f.red === red)
+    && (!formato || (f.formato ?? "post") === formato)
+    && (!q || sinTildes(f.titulo).includes(q));
+  const vivas = filas.filter((f) => f.estado !== "cancelada" && pasa(f));
+  const momento = (f) => f.publicadaAt ?? f.programadaPara ?? "";
+  const publicadas = vivas.filter((f) => f.estado === "publicada" && diaDeFila(f) >= desde).sort((a, b) => (momento(a) < momento(b) ? 1 : -1));
+  const programadas = vivas.filter((f) => f.estado === "programada" || f.estado === "procesando").sort((a, b) => (a.programadaPara < b.programadaPara ? -1 : 1));
+  const no = vivas.filter((f) => f.estado === "error").sort((a, b) => (a.programadaPara < b.programadaPara ? 1 : -1));
+  return { publicadas, programadas, no, cuentas: { publicadas: publicadas.length, programadas: programadas.length, no: no.length } };
+}
+
+/** 2006 → «2006»; 12500 → «12,5 mil»; sin medir → «—». */
+export function cifraCorta(n) {
+  if (n === null || n === undefined || Number.isNaN(Number(n))) return "—";
+  const v = Number(n);
+  if (v < 10_000) return v.toLocaleString("es-PA");
+  if (v < 1_000_000) return `${(Math.round(v / 100) / 10).toLocaleString("es-PA")} mil`;
+  return `${(Math.round(v / 100_000) / 10).toLocaleString("es-PA")} M`;
+}
