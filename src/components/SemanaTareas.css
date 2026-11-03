@@ -1,0 +1,158 @@
+/* Mi día por semanas (SemanaTareas.jsx). Va con el chunk de Mi día, no con la carga inicial. */
+
+.semana-barra { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-3); }
+.semana-titulo { font-size: var(--fs-sm); font-weight: 700; margin: 0; }
+
+.semana-antes { display: block; margin-bottom: var(--sp-3); }
+.semana-antes ul { margin: var(--sp-1) 0 0; padding: 0; list-style: none; font-size: var(--fs-2xs); }
+.semana-antes li { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); flex-wrap: wrap; padding: 2px 0; }
+
+.semana-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); }
+
+/* Seis columnas; por debajo del ancho que caben, se desplazan de lado (cada día con su ancho mínimo). */
+.semana-dias {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(150px, 1fr));
+  gap: var(--sp-2);
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding-bottom: var(--sp-2);
+}
+.semana-dia {
+  /* Contiene las etiquetas `.sr-only` (absolutas): sin esto escapan del desplazamiento lateral y ensanchan la página. */
+  position: relative;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-height: 220px;
+  padding: var(--sp-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+/* El día de hoy, sombreado: cambia solo con la fecha. */
+.semana-dia[data-hoy="true"] { background: var(--accent-soft); border-color: var(--accent-line); }
+.semana-dia[data-pasado="true"] .semana-dia-cabecera { opacity: 0.7; }
+
+.semana-dia-cabecera { display: flex; align-items: baseline; gap: var(--sp-1); flex-wrap: wrap; }
+.semana-dia-nombre { font-size: var(--fs-xs); font-weight: 700; }
+.semana-dia-fecha { font-size: var(--fs-3xs); color: var(--text-dim); }
+.semana-hoy {
+  font-size: var(--fs-3xs);
+  font-weight: 700;
+  color: var(--accent);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius-pill);
+  padding: 0 6px;
+}
+.semana-numero { margin-left: auto; background: var(--surface-2); font-size: var(--fs-3xs); }
+
+.semana-tarjeta {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2);
+}
+.semana-tarjeta[data-fija="false"] { border-style: dashed; }
+.semana-tarjeta[data-encima="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+.semana-tarjeta-cabecera { display: flex; align-items: center; gap: var(--sp-1); }
+.semana-tarjeta-nombre {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 0 var(--sp-1);
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.semana-sueltas .semana-tarjeta-nombre { cursor: default; color: var(--text-dim); }
+.semana-fijo { width: var(--tap-sm); height: var(--tap-sm); color: var(--text-faint); }
+.semana-fijo[aria-pressed="true"] { color: var(--accent); }
+
+.semana-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.semana-fila {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: var(--fs-2xs);
+}
+.semana-fila[draggable="true"] { cursor: grab; }
+.semana-fila[data-atrasada="true"] { background: var(--danger-soft); }
+.semana-fila[data-hecha="true"] .semana-fila-titulo { text-decoration: line-through; color: var(--text-dim); }
+.semana-check {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-sm);
+  height: var(--tap-sm);
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.semana-fila-texto { flex: 1 1 80px; min-width: 0; display: flex; flex-direction: column; }
+.semana-fila-titulo { overflow-wrap: anywhere; }
+.semana-atraso { color: var(--danger); font-weight: 700; font-size: var(--fs-3xs); }
+.semana-quien { color: var(--accent); font-size: var(--fs-3xs); }
+
+.semana-vacio { margin: 0; font-size: var(--fs-3xs); color: var(--text-faint); }
+.semana-nueva { margin-top: var(--sp-1); }
+.semana-nueva .input { min-height: var(--tap-sm); padding-block: 4px; }
+.semana-plegable {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--tap-sm);
+  margin-top: var(--sp-1);
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--fs-3xs);
+  cursor: pointer;
+}
+.semana-fijar { margin-top: auto; }
+.semana-fijar .input { min-height: var(--tap-sm); padding-block: 4px; font-size: var(--fs-2xs); }
+.semana-soltar-suelta {
+  font-size: var(--fs-3xs);
+  color: var(--text-faint);
+  text-align: center;
+  padding: var(--sp-1);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.semana-bandeja {
+  padding: var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+.semana-bandeja > .semana-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--sp-1) var(--sp-2); }
+.semana-bandeja-titulo { display: flex; align-items: center; gap: var(--sp-1); margin: 0 0 var(--sp-1); font-size: var(--fs-xs); font-weight: 700; }
+.semana-ayuda { margin: 0 0 var(--sp-2); font-size: var(--fs-3xs); color: var(--text-dim); }
+.semana-bandeja-item > .semana-fila { list-style: none; }
+.semana-agendar { display: flex; flex-wrap: wrap; gap: var(--sp-1); padding: var(--sp-1) 0 var(--sp-2); }
+.semana-agendar .input { flex: 1 1 140px; min-height: var(--tap-sm); padding-block: 4px; }
+
+@media (max-width: 599px) {
+  .semana-dias { grid-template-columns: repeat(6, 85%); }
+  .semana-agendar .input, .semana-nueva .input, .semana-fijar .input { font-size: 16px; }
+}

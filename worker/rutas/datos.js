@@ -34,6 +34,7 @@ import { registrarCorrecciones } from "../lib/cerebro/aprender.js";
 import { obtenerOCrearMes, moverDeMes, ErrorMes } from "../lib/meses.js";
 import { olvidarIndice } from "../lib/cerebro/cerebro.js";
 import { olvidarClave } from "../lib/estudio/galeria.js";
+import { limpiarDias } from "../../src/lib/semanaTareas.js";
 
 /**
  * Lo que va después de responder (avisos, historial): con el `waitUntil`
@@ -49,7 +50,7 @@ function despues(ctx, promesa) {
 /** Borrar un cliente o un calendario entero, sólo quien administra. */
 const soloAdmin = (ctx) => (ctx.usuario?.rol === "admin" ? null : error("Sólo quien administra el espacio puede borrar clientes o calendarios enteros.", 403));
 
-const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe", "competidores", "fechas_especiales", "kit_marca", "ritmo_contenido", "plan_contenido", "notas_semana"];
+const JSON_CLIENTES = ["ideas_bank", "saved_categories", "weekly_structure", "meta_recipe", "competidores", "fechas_especiales", "kit_marca", "ritmo_contenido", "plan_contenido", "notas_semana", "dias_trabajo"];
 const JSON_CALENDARIOS = ["week_concepts", "days", "visual_references", "day_labels", "opciones"];
 const BOOL_CALENDARIOS = ["share_enabled", "allow_editing"];
 
@@ -310,6 +311,19 @@ export async function rutasDatos(req, env, ctx) {
       }
       difundir(env, acceso.ownerId, { tipo: "cliente:fuera", id, por: firma(ctx.usuario, req) });
       return sinContenido();
+    }
+
+    // ---- /api/clientes/<id>/dias: los días fijos de la empresa en Mi día por semanas ----
+    // Su propia ruta: `clientToRow` no lleva la columna, así una ficha abierta desde antes no la pisa.
+    if (sub === "dias" && metodo === "PUT") {
+      const { dias } = (await cuerpo(req)) ?? {};
+      if (!Array.isArray(dias)) return error("Faltan los días");
+      const limpios = limpiarDias(dias);
+      const n = await acceso.actualizar("clients", { id }, { dias_trabajo: limpios.length ? JSON.stringify(limpios) : null, updated_at: ahora() });
+      if (!n) return noEncontrado("Cliente");
+      const guardado = salidaCliente(await acceso.leerUno("clients", { id }));
+      difundir(env, acceso.ownerId, { tipo: "cliente", cliente: guardado, por: firma(ctx.usuario, req) });
+      return json(guardado);
     }
 
     // ---- subrecursos del cliente ----

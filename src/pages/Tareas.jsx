@@ -4,6 +4,7 @@ import { Avatar } from "../components/Presencia";
 import SelectorFecha from "../components/SelectorFecha";
 import ElegirDia from "../components/ElegirDia";
 import RepasoAtrasadas from "../components/RepasoAtrasadas";
+import SemanaTareas from "../components/SemanaTareas";
 import { useRepaso } from "../hooks/useRepaso";
 import * as db from "../lib/db";
 import { useTareas, hecha, claveTarea as claveDe, esDe } from "../hooks/useTareas";
@@ -32,6 +33,9 @@ import { REDES } from "../lib/publicacion";
 // ocultar hasta que cambie, y lo que falló se puede descartar—, y después
 // Atrasadas. Con lo atrasado delante, lo de hoy quedaba debajo de todo.
 //
+// La vista «Semana» (la de por defecto, SemanaTareas.jsx) reparte lo mismo de
+// lunes a sábado, cada día con sus empresas fijas.
+//
 // La vista «Por empresa» es la de antes, para quien quiera revisar
 // una empresa entera. Lo mismo, a mano desde cualquier pantalla, está en
 // el panel lateral (PanelTareas); las acciones son de `useTareas`.
@@ -39,11 +43,22 @@ import { REDES } from "../lib/publicacion";
 
 const RECURRENCIA = { daily: "Diaria", weekly: "Semanal", monthly: "Mensual" };
 
+// La vista se recuerda por navegador: quien trabaja por semanas abre siempre ahí.
+const VISTAS = ["semana", "dia", "empresa"];
+const leerVista = () => {
+  try { const v = localStorage.getItem("midia-vista"); return VISTAS.includes(v) ? v : "semana"; } catch { return "semana"; }
+};
+
 export default function Tareas({
-  clients = [], pulso = 0, onSelectClient, yo = null, presentes = [], foco = null, onFoco,
+  clients = [], pulso = 0, onSelectClient, yo = null, presentes = [], foco = null, onFoco, onDiasEmpresa,
 }) {
-  const { todas, loading, error, alternarHecha, actualizar, alternarHoy, moverA, crear: crearTarea, reordenar } = useTareas(pulso);
-  const [vista, setVista] = useState("dia");
+  const acciones = useTareas(pulso);
+  const { todas, loading, error, alternarHecha, actualizar, alternarHoy, moverA, crear: crearTarea, reordenar } = acciones;
+  const [vista, setVistaEstado] = useState(leerVista);
+  const setVista = (v) => {
+    setVistaEstado(v);
+    try { localStorage.setItem("midia-vista", v); } catch { /* sin almacenamiento */ }
+  };
   const [soloMias, setSoloMias] = useState(false);
   const [verHechas, setVerHechas] = useState(false);
   const hoy = fechaEnZona();
@@ -95,7 +110,10 @@ export default function Tareas({
             {" · "}{pendientes} pendiente{pendientes === 1 ? "" : "s"}
           </p>
         </div>
-        <div className="segmented" role="group" aria-label="Vista" style={{ flex: "1 1 260px", maxWidth: 360 }}>
+        <div className="segmented" role="group" aria-label="Vista" style={{ flex: "1 1 320px", maxWidth: 480 }}>
+          <button type="button" className={`segmented-btn ${vista === "semana" ? "active" : ""}`} aria-pressed={vista === "semana"} onClick={() => setVista("semana")}>
+            <Icon name="calendar" size={14} /> Semana
+          </button>
           <button type="button" className={`segmented-btn ${vista === "dia" ? "active" : ""}`} aria-pressed={vista === "dia"} onClick={() => setVista("dia")}>
             <Icon name="clock" size={14} /> Mi día
           </button>
@@ -107,9 +125,36 @@ export default function Tareas({
 
       {error && <p role="alert" className="notice notice-error">{error}</p>}
 
-      <Foco clients={clients} foco={foco} onFoco={onFoco} presentes={presentes} yo={yo} nombreDe={nombreDe} />
+      {vista !== "semana" && <Foco clients={clients} foco={foco} onFoco={onFoco} presentes={presentes} yo={yo} nombreDe={nombreDe} />}
 
       {loading && <p style={{ color: "var(--text-dim)", fontSize: "var(--fs-xs)" }}>Cargando tareas…</p>}
+
+      {!loading && vista === "semana" && (
+        <>
+          {yo?.nombre && (
+            <div style={{ marginBottom: "var(--sp-3)" }}>
+              <button
+                type="button"
+                className={`filter-chip ${soloMias ? "active" : ""}`}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6, minHeight: "var(--tap-sm)" }}
+                aria-pressed={soloMias}
+                onClick={() => setSoloMias((v) => !v)}
+                title={`Sólo las asignadas a ${yo.nombre} y las que no lleva nadie`}
+              >
+                <Icon name="user" size={12} /> Sólo las mías
+              </button>
+            </div>
+          )}
+          <SemanaTareas
+            tareas={soloMias && yo?.nombre ? todas.filter((t) => esDe(t, yo, { sinAsignar: true })) : todas}
+            clients={clients}
+            acciones={acciones}
+            onDiasEmpresa={onDiasEmpresa}
+            onSelectClient={onSelectClient}
+            soloLectura={Boolean(yo?.soloLectura)}
+          />
+        </>
+      )}
 
       {!loading && vista === "dia" && (
         <>
