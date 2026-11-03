@@ -19,7 +19,7 @@ import { useCallback, useEffect, useId, useState } from "react";
 import Icon from "../Icon";
 import SelectorFecha from "../SelectorFecha";
 import * as db from "../../lib/db";
-import { ETAPAS, NOMBRE_ETAPA, ETAPAS_MANUALES, etapaDe, etapaTrasProducir } from "../../lib/trabajo";
+import { ETAPAS, detalleEtapa } from "../../lib/trabajo";
 import { miembroDe } from "../../hooks/useEquipo";
 import { yoActual } from "../../lib/sesionActual";
 import { iniciales } from "../../utils";
@@ -62,59 +62,38 @@ export function LoLleva({ post, sf, miembros }) {
   );
 }
 
-export function EtapaPublicacion({ post, sf, miembros, estadoCola = null, compartido = false, revisionInterna = false }) {
+/**
+ * La etapa, que sale SOLA (decisión de la agencia: a mano nadie la marcaba): idea → producción → cliente → programada
+ * (publicada). Lo único que se toca es lo interno: con revisión interna, «Aprobada por dentro» (el cliente no la ve
+ * antes) y devolverla.
+ */
+export function EtapaPublicacion({ post, sf, estadoCola = null, compartido = false, revisionInterna = false }) {
   const ids = useId();
-  const actual = etapaDe(post, { estadoCola, compartido });
-  const automatica = !ETAPAS_MANUALES.includes(actual);
-  const elegir = (k) => {
-    if (k === "revision" && !post.revisorId) {
-      // Sin revisor elegido, la pide quien no sea quien la lleva.
-      const otro = miembros.find((m) => m.userId !== post.responsableId && m.userId !== yoActual()?.id);
-      if (otro) sf("revisorId", otro.userId);
-    }
-    sf("etapa", k);
-  };
+  const d = detalleEtapa(post, { estadoCola, compartido, revisionInterna });
+  const sinEnviar = !post?.enviadoAt && (!post?.status || post.status === "pending");
   return (
     <div className="field etapa-publicacion">
       <span className="label" id={`${ids}-etapa`}>Etapa</span>
       <ol className="etapas" aria-labelledby={`${ids}-etapa`}>
-        {ETAPAS.map(([k, nombre, icono]) => {
-          const manual = ETAPAS_MANUALES.includes(k);
-          return (
-            <li key={k} data-actual={actual === k || undefined}>
-              {manual ? (
-                <button type="button" aria-pressed={actual === k} onClick={() => elegir(k)}>
-                  <Icon name={icono} size={13} /> {nombre}
-                </button>
-              ) : (
-                <span title="Sale sola de la aprobación y la cola"><Icon name={icono} size={13} /> {nombre}</span>
-              )}
-            </li>
-          );
-        })}
+        {ETAPAS.map(([k, nombre, icono], i) => (
+          <li key={k} data-actual={d.paso === i || undefined} data-hecha={d.paso > i || undefined}>
+            <span aria-current={d.paso === i ? "step" : undefined}>
+              <Icon name={d.etapa === "publicada" && k === "programada" ? "check" : icono} size={13} /> {d.etapa === "publicada" && k === "programada" ? "Publicada" : nombre}
+            </span>
+          </li>
+        ))}
       </ol>
-      {automatica && <p className="hint">«{NOMBRE_ETAPA[actual]}»: esta etapa sale sola de la aprobación del cliente y la cola.</p>}
-      {revisionInterna && ["idea", "produccion", "revision"].includes(actual) && (
-        <p className="hint"><Icon name="users" size={13} /> Este cliente pide revisión interna: no la ve hasta que pase a «Con el cliente».</p>
-      )}
-      {actual === "produccion" && (
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => elegir(etapaTrasProducir(revisionInterna))}>
-          <Icon name="check" size={14} /> Terminé la producción: {revisionInterna ? "a revisión" : "lista para el cliente"}
-        </button>
-      )}
-      {actual === "revision" && (
-        <div className="etapa-revision">
-          <label className="label" htmlFor={`${ids}-revisa`}>La revisa</label>
-          <SelectorPersona id={`${ids}-revisa`} valor={post.revisorId} miembros={miembros} onCambiar={(v) => sf("revisorId", v)} vacio="Cualquiera del equipo" />
-          <div className="etapa-botones">
-            <button type="button" className="btn btn-primary btn-sm" onClick={() => sf("etapa", "cliente")}>
-              <Icon name="check" size={14} /> Aprobar y pasar al cliente
+      <p className="hint" role="status">{d.texto}. La etapa sale sola: de los archivos, el envío al cliente, su respuesta y la cola.</p>
+      {revisionInterna && sinEnviar && d.etapa !== "programada" && d.etapa !== "publicada" && (
+        <div className="etapa-botones">
+          {post?.etapa !== "cliente" ? (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => sf("etapa", "cliente")}>
+              <Icon name="check" size={14} /> Aprobada por dentro: que la vea el cliente
             </button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => sf("etapa", "produccion")}>
-              Devolver a producción
-            </button>
-          </div>
-          <p className="hint">Al devolverla, cuenta qué cambiar en el hilo del equipo (con @nombre le llega el aviso).</p>
+          ) : (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => sf("etapa", "revision")}>Devolver a revisión interna</button>
+          )}
+          <p className="hint" style={{ flexBasis: "100%" }}><Icon name="users" size={13} /> Este cliente pide revisión interna: no la ve hasta que se apruebe por dentro.</p>
         </div>
       )}
     </div>

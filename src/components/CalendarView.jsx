@@ -15,6 +15,7 @@ import { ideasDeRevision, porRevisar } from "../lib/revisionIdeas";
 import { agruparPorSemana, semanaInicial, rangoSemana } from "../lib/semanas";
 import { moverEnCalendario, ponerEnDia, copiaDePublicacion } from "../lib/subir";
 import { conAprobacion, resumenEnvio, estadoDelEnvio, mensajeDeEnvio } from "../lib/aprobacion";
+import { marcarEnviadas } from "../lib/trabajo";
 import { sinLoNecesario } from "../lib/completitud";
 import { programarAprobadasDe } from "../lib/programarAprobadas";
 import { useEquipo } from "../hooks/useEquipo";
@@ -728,6 +729,15 @@ export default function CalendarView({
       setTimeout(() => setSyncStatus(""), 8000);
     }
     setShareWorking(false);
+  };
+
+  // Al copiar el enlace o el mensaje, lo que el cliente va a ver queda ENVIADO (`enviadoAt`): de ahí sale sola la
+  // etapa «Cliente». El mes apunta además que ya se mandó con esta regla (`opciones.enviadoAt`), y desde entonces deja
+  // de valer el respaldo de «con enlace = con el cliente».
+  const marcarEnvio = () => {
+    const days = marcarEnviadas(cal.days, { revisionInterna: Boolean(client?.revisionInterna) });
+    if (days === cal.days && cal.opciones?.enviadoAt) return;
+    onUpdateCal(calId, { ...cal, days, opciones: { ...(cal.opciones || {}), enviadoAt: cal.opciones?.enviadoAt || new Date().toISOString() } });
   };
 
   const changeShare = async (enabled) => {
@@ -1730,6 +1740,7 @@ export default function CalendarView({
           onRevisar={() => abrirCapa("revision")}
           envio={envio}
           onDisenar={() => abrirCapa("producir")}
+          onEnviado={marcarEnvio}
           onClose={cerrarCapa}
         />
       )}

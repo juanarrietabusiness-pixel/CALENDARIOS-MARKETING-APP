@@ -23,6 +23,7 @@
 
 import { crearAcceso, clientesSinInforme } from "./acceso.js";
 import { abrirFlujo, leerFlujo, textoDe, esRechazoDeModelo, mensajeDeRechazo } from "./anthropic.js";
+import { limpiarSeleccion, entraRed } from "../../src/lib/informeRedes.js";
 import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET, sinIADeTexto } from "./configIA.js";
 import { difundir } from "./vivo.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
@@ -58,7 +59,7 @@ const salidaPublicacion = (p) => ({
 });
 
 /** Las cifras del mes, congeladas: lo que se enseña y lo que lee la IA. */
-export async function cifrasDelMes(acceso, clientId, mes) {
+export async function cifrasDelMes(acceso, clientId, mes, seleccion = null) {
   const { desde, hasta } = limitesDelMes(mes);
   const antes = sumarDias(desde, -40);
   const [cliente, cuentas, serieBruta, pubsBrutas, compBruta, calendarios, publicadas] = await Promise.all([
@@ -71,15 +72,18 @@ export async function cifrasDelMes(acceso, clientId, mes) {
     acceso.leer("publicaciones_programadas", { client_id: clientId, estado: "publicada" }),
   ]);
   if (!cliente) throw new Error("Ese cliente no existe.");
+  // Las redes que se escogieron para el informe (sin escoger, todas): lo de las demás no entra en ninguna cifra.
+  const sel = seleccion ?? limpiarSeleccion(cliente.informe_redes);
+  const cuentasDentro = cuentas.filter((c) => entraRed(sel, c.red));
 
-  const serie = serieBruta.filter((f) => f.fecha >= antes && f.fecha <= hasta).map((f) => {
+  const serie = serieBruta.filter((f) => f.fecha >= antes && f.fecha <= hasta && entraRed(sel, f.red)).map((f) => {
     const d = leerJSON(f.datos, {});
     return {
       cuentaId: f.cuenta_id, red: f.red, fecha: f.fecha, seguidores: f.seguidores, alcance: f.alcance, vistas: f.vistas,
       interacciones: f.interacciones, visitas: f.visitas_perfil, ...(d.error ? { error: d.error } : {}),
     };
   });
-  const publicaciones = pubsBrutas.map((p) => ({
+  const publicaciones = pubsBrutas.filter((p) => entraRed(sel, p.red)).map((p) => ({
     ...salidaPublicacion(p), publicadaAt: p.publicada_at,
   })).filter((p) => p.publicadaAt && p.publicadaAt >= `${sumarDias(desde, -31)}T00:00:00`);
   const delMes = publicaciones.filter((p) => p.publicadaAt >= `${desde}T05:00:00` && p.publicadaAt < `${sumarDias(hasta, 1)}T05:00:00`);
@@ -103,7 +107,7 @@ export async function cifrasDelMes(acceso, clientId, mes) {
     desde,
     hasta,
     cliente: { nombre: cliente.name, industria: cliente.industry ?? "" },
-    redes: cuentas.map((c) => ({ red: c.red, usuario: c.usuario, nombre: c.nombre })),
+    redes: cuentasDentro.map((c) => ({ red: c.red, usuario: c.usuario, nombre: c.nombre })),
     kpis: kpis({ serie, publicaciones }, { desde, hasta }),
     seguidores: serieDiaria(serie).filter((d) => d.fecha >= desde).map((d) => ({ fecha: d.fecha, valor: d.seguidores })),
     alcance: serieDiaria(serie).filter((d) => d.fecha >= desde).map((d) => ({ fecha: d.fecha, valor: d.alcance })),
@@ -194,7 +198,7 @@ const lista = (x, n) => (Array.isArray(x) ? x.map((s) => (typeof s === "string" 
  * Genera (o regenera) el informe de `mes`. Conserva el enlace público si
  * ya lo había: regenerar no puede romper el que el cliente tiene.
  */
-export async function generarInforme(env, acceso, { clientId, mes, usuarioId = null, automatico = false }) {
+export async function generarInforme(env, acceso, { clientId, mes, usuarioId = null, automatico = false, seleccion = null }) {
   if (!/^\d{4}-\d{2}$/.test(mes)) throw new Error("Mes inválido.");
   const cliente = await acceso.leerUno("clients", { id: clientId });
   if (!cliente) throw new Error("Ese cliente no existe.");
@@ -210,10 +214,12 @@ export async function generarInforme(env, acceso, { clientId, mes, usuarioId = n
   difundir(env, acceso.ownerId, { tipo: "informe", clientId, mes, estado: "generando", por: { userId: "sistema", nombre: "Informes", color: "#1E90FF" } });
 
   try {
-    const cifras = await cifrasDelMes(acceso, clientId, mes);
+    // Lo escogido al generar; si no, lo que se recordó para el cliente (el automático del día 1 va por aquí).
+    const sel = seleccion ?? limpiarSeleccion(cliente.informe_redes);
+    const cifras = await cifrasDelMes(acceso, clientId, mes, sel);
     // El aviso (sin permiso, error de Meta) es para la agencia: no va en
-    // las cifras, que también ve el cliente.
-    const anuncios = await anunciosDelMes(env, acceso, clientId, mes);
+    // las cifras, que también ve el cliente. Sin «anuncios» en la selección, ni se pregunta a Meta.
+    const anuncios = sel.anuncios ? await anunciosDelMes(env, acceso, clientId, mes) : null;
     const avisos = anuncios?.aviso ? [anuncios.aviso] : [];
     if (anuncios && !anuncios.aviso) cifras.anuncios = anuncios;
     const ia = await prepararIA(env, acceso, { funcion: "informe" });
@@ -252,7 +258,7 @@ export async function generarInforme(env, acceso, { clientId, mes, usuarioId = n
         }
       : { resumen: texto.trim().slice(0, 3000), destacados: [], aprendizajes: [], recomendaciones: [], ideas: [] };
 
-    const fila = { ...base, estado: "listo", contenido: JSON.stringify({ cifras, analisis, modelo, ...(avisos.length ? { avisos } : {}) }), error: null, updated_at: "" };
+    const fila = { ...base, estado: "listo", contenido: JSON.stringify({ cifras, analisis, modelo, seleccion: sel, ...(avisos.length ? { avisos } : {}) }), error: null, updated_at: "" };
     await acceso.guardar("informes", fila);
     difundir(env, acceso.ownerId, { tipo: "informe", clientId, mes, estado: "listo", por: { userId: "sistema", nombre: "Informes", color: "#1E90FF" } });
     return fila;

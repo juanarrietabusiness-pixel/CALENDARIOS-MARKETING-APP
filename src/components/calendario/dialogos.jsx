@@ -334,14 +334,16 @@ export function ApprovalDialog({
   approvalUrl, whatsappMessage, onClose, onGenerate, onRevoke, onReopen,
   hasLink, shareEnabled, working, allowEditing, onToggleEditing,
   opciones = {}, onCambiarOpciones, revisionEnviada = null, revisionRevisor = "", resumen = null,
-  sinLoNecesario = 0, onRevisar = null, envio = null, onDisenar = null,
+  sinLoNecesario = 0, onRevisar = null, envio = null, onDisenar = null, onEnviado = null,
 }) {
   const ref = useDialogA11y(onClose);
   const ids = useId();
   const [copied, setCopied] = useState("");
   const [mensaje, setMensaje] = useState(opciones.mensajeCliente ?? "");
 
+  // Copiar el enlace o el mensaje ES mandarlo: las publicaciones que va a ver pasan solas a la etapa «Cliente».
   const copy = (value, which) => {
+    onEnviado?.();
     navigator.clipboard.writeText(value).then(() => {
       setCopied(which);
       setTimeout(() => setCopied(""), 2000);

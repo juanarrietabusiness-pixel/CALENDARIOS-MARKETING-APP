@@ -80,6 +80,10 @@
 /* Informes mensuales */
 .informes-generar { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 .informes-generar .input { flex: 0 1 220px; }
+.informes-redes { border: 0; padding: 0; margin: var(--sp-3) 0 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.informes-redes-opciones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.informes-redes .hint { margin: 0; }
+.informes-recordar { display: flex; gap: var(--sp-2); align-items: center; font-size: var(--fs-xs); min-height: var(--tap-sm); }
 .informes-lista { list-style: none; display: flex; flex-direction: column; gap: var(--sp-2); }
 .informes-lista li {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3);

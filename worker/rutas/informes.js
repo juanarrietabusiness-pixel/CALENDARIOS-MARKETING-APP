@@ -3,7 +3,8 @@
 //
 //   GET    /api/informes?cliente=:id     Los de un cliente (sin el contenido)
 //   GET    /api/informes/:id             Uno entero
-//   POST   /api/informes                 Generar o regenerar { clientId, mes }
+//   GET    /api/informes/redes?cliente=  Las redes conectadas del cliente y las que entran ({ conectadas, seleccion })
+//   POST   /api/informes                 Generar o regenerar { clientId, mes, redes?, anuncios?, recordar? }
 //   POST   /api/informes/:id/enlace      Compartir con el cliente (testigo)
 //   PATCH  /api/informes/:id/enlace      Dejar de compartir / volver
 //   DELETE /api/informes/:id
@@ -16,6 +17,7 @@ import { json, error, cuerpo, noEncontrado, sinContenido } from "../lib/respuest
 import { difundir, firma } from "../lib/vivo.js";
 import { testigo as nuevoTestigo } from "../lib/ids.js";
 import { generarInforme } from "../lib/informes.js";
+import { limpiarSeleccion } from "../../src/lib/informeRedes.js";
 
 const leerJSON = (t, d) => { try { return JSON.parse(t) ?? d; } catch { return d; } };
 
@@ -35,12 +37,29 @@ export async function rutasInformes(req, env, { acceso, usuario, partes, metodo 
     return json((await acceso.leer("informes", { client_id: cliente }, "mes desc")).map(resumen));
   }
 
+  // Qué redes tiene conectadas el cliente y cuáles entran en su informe (lo recordado; sin nada, todas).
+  if (id === "redes" && metodo === "GET") {
+    const cliente = await acceso.leerUno("clients", { id: url.searchParams.get("cliente") ?? "" });
+    if (!cliente) return noEncontrado("Cliente");
+    const cuentas = await acceso.leer("cuentas_sociales", { client_id: cliente.id });
+    return json({
+      conectadas: [...new Set(cuentas.map((c) => c.red))],
+      anuncios: Boolean(await acceso.leerUno("cuentas_anuncios", { client_id: cliente.id })),
+      seleccion: limpiarSeleccion(cliente.informe_redes),
+    });
+  }
+
   if (!id && metodo === "POST") {
-    const { clientId, mes } = (await cuerpo(req)) ?? {};
+    const b = (await cuerpo(req)) ?? {};
+    const { clientId, mes } = b;
     if (!clientId || !/^\d{4}-\d{2}$/.test(String(mes ?? ""))) return error("Falta el cliente o el mes");
     if (!(await acceso.leerUno("clients", { id: clientId }))) return noEncontrado("Cliente");
+    // Las redes que entran: las que mande la pantalla; si no manda ninguna, lo recordado del cliente.
+    const seleccion = "redes" in b || "anuncios" in b ? limpiarSeleccion({ redes: b.redes, anuncios: b.anuncios }) : null;
+    // «Recordar para este cliente»: también la usa el informe automático del día 1.
+    if (seleccion && b.recordar) await acceso.actualizar("clients", { id: clientId }, { informe_redes: JSON.stringify(seleccion) });
     try {
-      const fila = await generarInforme(env, acceso, { clientId, mes, usuarioId: usuario.id });
+      const fila = await generarInforme(env, acceso, { clientId, mes, usuarioId: usuario.id, seleccion });
       return json({ ...resumen(fila), contenido: leerJSON(fila.contenido, {}) }, 201);
     } catch (e) {
       return error(e.message, 502);

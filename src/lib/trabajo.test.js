@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mencionesEn, etapaDe, visibleParaCliente, cambiosEntre, cargaDelEquipo, etapaTrasProducir } from "./trabajo.js";
+import { mencionesEn, etapaDe, detalleEtapa, marcarEnviadas, visibleParaCliente, cambiosEntre, cargaDelEquipo } from "./trabajo.js";
 
 const EQUIPO = [
   { userId: "a", nombre: "Ana María" },
@@ -22,22 +22,44 @@ describe("menciones", () => {
 });
 
 describe("etapas", () => {
-  it("las manuales las pone el equipo; las demás salen de la aprobación y la cola", () => {
+  const MEDIO = { medios: [{ src: "/api/media/clientes/c/a.jpg" }] };
+  it("salen solas: idea sin archivos, producción con archivos, cliente al mandarla, programada y publicada", () => {
     expect(etapaDe({})).toBe("idea");
-    expect(etapaDe({ medios: [{ src: "/api/media/clientes/c/a.jpg" }] })).toBe("produccion");
-    expect(etapaDe({ etapa: "revision" })).toBe("revision");
-    expect(etapaDe({}, { compartido: true })).toBe("cliente");
-    expect(etapaDe({ status: "approved", subidaRapida: true })).toBe("aprobada");
+    expect(etapaDe(MEDIO)).toBe("produccion");
+    expect(etapaDe({ ...MEDIO, enviadoAt: "2026-11-03T10:00:00Z" })).toBe("cliente");
     expect(etapaDe({ status: "approved" }, { estadoCola: "programada" })).toBe("programada");
     expect(etapaDe({ status: "published" })).toBe("publicada");
+    expect(detalleEtapa({ status: "published" })).toMatchObject({ paso: 3, texto: "Publicada" });
   });
-  it("idea aprobada o cambios pedidos: vuelve a producción", () => {
-    expect(etapaDe({ status: "approved", aprobadaComo: "idea", etapa: "cliente" })).toBe("produccion");
-    expect(etapaDe({ status: "rejected", etapa: "cliente" })).toBe("produccion");
+  it("marcar la etapa a mano ya no cuenta: `etapa` es sólo lo interno", () => {
+    expect(etapaDe({ ...MEDIO, etapa: "revision" })).toBe("produccion");
+    expect(etapaDe({ etapa: "cliente" })).toBe("idea");
   });
-  it("al terminar de producir: a revisión si el cliente la pide", () => {
-    expect(etapaTrasProducir(true)).toBe("revision");
-    expect(etapaTrasProducir(false)).toBe("cliente");
+  it("en el paso «Cliente» dice en qué quedó", () => {
+    expect(detalleEtapa({ ...MEDIO, status: "approved" }).texto).toBe("Aprobada por el cliente");
+    expect(detalleEtapa({ ...MEDIO, status: "rejected", cambiosAt: "2026-11-02" })).toMatchObject({ etapa: "cliente", texto: "Pidió cambios" });
+    expect(detalleEtapa({ ...MEDIO, status: "rejected", cambiosAt: "2026-11-02", actualizadaAt: "2026-11-03" }).texto).toBe("Corregida · falta que la vea");
+  });
+  it("idea aprobada: a producir", () => {
+    expect(detalleEtapa({ status: "approved", aprobadaComo: "idea" })).toMatchObject({ etapa: "produccion", texto: "Idea aprobada · por producir" });
+  });
+  it("los meses mandados antes de apuntar el envío: con enlace, con el cliente", () => {
+    expect(etapaDe(MEDIO, { compartido: true })).toBe("cliente");
+  });
+  it("con revisión interna: falta aprobarla por dentro; aprobada por dentro, lista para mandar", () => {
+    expect(detalleEtapa(MEDIO, { revisionInterna: true }).texto).toBe("Falta la revisión interna");
+    expect(detalleEtapa({ ...MEDIO, etapa: "cliente" }, { revisionInterna: true }).texto).toMatch(/Aprobada por dentro/);
+    expect(etapaDe(MEDIO, { compartido: true, revisionInterna: true }), "con enlace, pero el cliente no la ve").toBe("produccion");
+  });
+  it("marcarEnviadas: sólo las pendientes que el cliente ve y que no estaban mandadas", () => {
+    const days = [{ date: "2026-11-03", posts: [
+      { id: "a", ...MEDIO }, { id: "b", status: "approved" }, { id: "c", enviadoAt: "antes" }, { id: "d", etapa: "revision" },
+    ] }];
+    const r = marcarEnviadas(days, { cuando: "ahora" });
+    expect(r[0].posts.map((p) => p.enviadoAt)).toEqual(["ahora", undefined, "antes", "ahora"]);
+    const conRevision = marcarEnviadas(days, { cuando: "ahora", revisionInterna: true });
+    expect(conRevision[0].posts.find((p) => p.id === "d").enviadoAt, "con revisión interna, lo que no pasó no se manda").toBeUndefined();
+    expect(marcarEnviadas(r, { cuando: "otra" }), "nada nuevo que marcar: los mismos días").toBe(r);
   });
   it("con revisión interna el cliente sólo ve lo que la pasó", () => {
     expect(visibleParaCliente({ etapa: "revision" }, true)).toBe(false);
@@ -61,7 +83,7 @@ describe("historial", () => {
       "La movió del 5/10 al 6/10",
       "Cambió la hora a 10:00",
       "Cambió el texto",
-      "La pasó a «Revisión interna»",
+      "La devolvió a revisión interna",
       "Se la asignó a Bruno",
       "Creó «Nueva» (7/10)",
       "Quitó «Vieja» del calendario",
