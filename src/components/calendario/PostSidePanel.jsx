@@ -535,9 +535,9 @@ export function PostSidePanel({ post, day, onUpdate, onClose, onDelete, onMoveDa
         <EtapaPublicacion
           post={form}
           sf={sf}
-          miembros={miembros}
           estadoCola={resumenCola(publicacion?.filas ?? [], post.id)?.estado ?? null}
-          compartido={Boolean(cal?.shareToken)}
+          // Los meses mandados antes de apuntar el envío por publicación (`enviadoAt`): con enlace, «con el cliente».
+          compartido={Boolean(cal?.shareToken) && !cal?.opciones?.enviadoAt}
           revisionInterna={Boolean(client?.revisionInterna)}
         />
         <fieldset className="field" style={{ border: "none" }}>

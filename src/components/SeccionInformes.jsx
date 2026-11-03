@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useState } from "react";
+import { REDES_INFORME, describirSeleccion } from "../lib/informeRedes";
 import Icon from "./Icon";
 import InformeVista from "./InformeVista";
 import * as db from "../lib/db";
@@ -61,11 +62,24 @@ export default function SeccionInformes({ client, pulso = 0 }) {
   const [fallo, setFallo] = useState("");
   const [aviso, setAviso] = useState("");
   const [abierto, setAbierto] = useState(null);
+  // Qué redes entran: { conectadas, anuncios (tiene cuenta publicitaria), seleccion } del servidor, y lo escogido aquí.
+  const [redes, setRedes] = useState(null);
+  const [escogidas, setEscogidas] = useState([]);
+  const [conAnuncios, setConAnuncios] = useState(true);
+  const [recordar, setRecordar] = useState(true);
 
   const cargar = useCallback(() => {
     db.listarInformes(clientId).then(setInformes).catch((e) => setFallo(e.message));
   }, [clientId]);
   useEffect(() => { cargar(); }, [cargar, pulso]);
+  useEffect(() => {
+    db.redesDelInforme(clientId).then((r) => {
+      setRedes(r);
+      setEscogidas(r.seleccion?.redes ?? r.conectadas);
+      setConAnuncios(r.seleccion?.anuncios !== false);
+    }).catch(() => setRedes(null));
+  }, [clientId]);
+  const alternarRed = (red) => setEscogidas((xs) => (xs.includes(red) ? xs.filter((x) => x !== red) : [...xs, red]));
 
   const hacer = async (clave, accion, ok = "") => {
     setTrabajando(clave);
@@ -106,15 +120,38 @@ export default function SeccionInformes({ client, pulso = 0 }) {
         <button
           type="button"
           className="btn btn-primary btn-sm"
-          disabled={!!trabajando}
+          disabled={!!trabajando || (redes && redes.conectadas.length > 0 && !escogidas.length)}
           onClick={() => {
             if (existente && !window.confirm(`Ya hay un informe de ${nombreMes(mes)}. ¿Volver a escribirlo? El enlace del cliente se mantiene.`)) return;
-            void hacer("generar", () => db.generarInforme(clientId, mes), "Informe listo.");
+            const seleccion = redes ? { redes: escogidas, anuncios: conAnuncios, recordar } : null;
+            void hacer("generar", () => db.generarInforme(clientId, mes, seleccion), "Informe listo.");
           }}
         >
           <Icon name="sparkles" size={16} /> {trabajando === "generar" ? "Escribiendo el informe…" : existente ? "Regenerar" : "Generar informe"}
         </button>
       </div>
+
+      {redes && redes.conectadas.length > 0 && (
+        <fieldset className="informes-redes">
+          <legend className="label">Qué entra en el informe</legend>
+          <div className="informes-redes-opciones">
+            {REDES_INFORME.filter((r) => redes.conectadas.includes(r.id)).map((r) => (
+              <button key={r.id} type="button" className="filter-chip" aria-pressed={escogidas.includes(r.id)} onClick={() => alternarRed(r.id)} disabled={!!trabajando}>
+                {r.nombre}
+              </button>
+            ))}
+            {redes.anuncios && (
+              <button type="button" className="filter-chip" aria-pressed={conAnuncios} onClick={() => setConAnuncios((v) => !v)} disabled={!!trabajando}>Anuncios</button>
+            )}
+          </div>
+          <label className="informes-recordar" htmlFor={`${ids}-rec`}>
+            <input id={`${ids}-rec`} type="checkbox" checked={recordar} onChange={(e) => setRecordar(e.target.checked)} />
+            Recordar para {client?.name ?? "este cliente"} (también el informe automático del día 1)
+          </label>
+          {!escogidas.length && <p className="hint" role="alert">Escoge al menos una red.</p>}
+          <p className="hint">Entra: {describirSeleccion({ redes: escogidas, anuncios: conAnuncios || !redes.anuncios }, redes.conectadas)}.</p>
+        </fieldset>
+      )}
 
       <div role="status" aria-live="polite">
         {trabajando === "generar" && <p className="hint">La IA está leyendo las cifras del mes. Tarda uno o dos minutos.</p>}

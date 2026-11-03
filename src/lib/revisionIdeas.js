@@ -3,7 +3,7 @@
 //
 // El cliente recibe el calendario con todo creado; las ideas las aprueba la
 // agencia antes de gastar en imágenes. Una idea aprobada pasa a «En
-// producción» (`etapa: "produccion"`, la misma etapa del tablero), y
+// producción» (`etapa: "produccion"`, la marca interna de «aprobada por dentro»), y
 // «Diseñar las que ya hay» produce primero ésas.
 // ============================================================
 

@@ -235,3 +235,36 @@ describe("los anuncios en el informe", () => {
     expect(graph).toEqual([]);
   });
 });
+
+describe("qué redes entran en el informe", () => {
+  const conSesion = (ruta, opciones = {}) => new Request(`https://calendarios.test${ruta}`, {
+    ...opciones, headers: { Cookie: `${COOKIE}=${TESTIGO}`, "Content-Type": "application/json" },
+  });
+  beforeEach(() => {
+    const s = db.sqlite;
+    s.prepare("insert into cuentas_sociales (id, owner_id, red, externo_id, usuario, client_id) values (?,?,?,?,?,?)")
+      .run("tt", DUENO, "tiktok", "TT1", "cafeluna_tt", "c1");
+    const foto = s.prepare("insert into metricas_cuenta (id, owner_id, client_id, cuenta_id, red, fecha, seguidores, alcance, interacciones) values (?,?,?,?,?,?,?,?,?)");
+    foto.run("tt:2026-09-01", DUENO, "c1", "tt", "tiktok", "2026-09-01", 5000, 9000, 900);
+    foto.run("tt:2026-09-30", DUENO, "c1", "tt", "tiktok", "2026-09-30", 5200, 9000, 900);
+  });
+
+  it("sin escoger entra todo, como antes; dejando TikTok fuera, sus cifras no cuentan", async () => {
+    const todo = await cifrasDelMes(acceso(), "c1", "2026-09");
+    expect(todo.redes.map((r) => r.red).sort()).toEqual(["instagram", "tiktok"]);
+    const sinTikTok = await cifrasDelMes(acceso(), "c1", "2026-09", { redes: ["instagram"], anuncios: true });
+    expect(sinTikTok.redes.map((r) => r.red)).toEqual(["instagram"]);
+    expect(sinTikTok.kpis.seguidores.valor).toBe(1060);
+  });
+
+  it("«Recordar» lo guarda en el cliente y el informe automático del día 1 lo usa", async () => {
+    const r = await worker.fetch(conSesion("/api/informes", { method: "POST", body: JSON.stringify({ clientId: "c1", mes: "2026-09", redes: ["instagram"], anuncios: false, recordar: true }) }), env, {});
+    expect(r.status).toBe(201);
+    const redes = await (await worker.fetch(conSesion("/api/informes/redes?cliente=c1"), env, {})).json();
+    expect(redes).toMatchObject({ conectadas: expect.arrayContaining(["instagram", "tiktok"]), seleccion: { redes: ["instagram"], anuncios: false } });
+    // El automático (sin selección) lee lo recordado.
+    await generarInforme(env, acceso(), { clientId: "c1", mes: "2026-09", automatico: true });
+    const pedido = JSON.stringify(pedidos.at(-1));
+    expect(pedido).not.toMatch(/cafeluna_tt/);
+  });
+});

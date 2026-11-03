@@ -773,9 +773,17 @@ export async function leerInforme(id) {
   return pedir(`/informes/${encodeURIComponent(id)}`);
 }
 
-/** Generar tarda: la IA escribe el análisis (hasta un par de minutos). */
-export async function generarInforme(clientId, mes) {
-  return avisarGasto(pedir("/informes", conCuerpo("POST", { clientId, mes })));
+/**
+ * Generar tarda: la IA escribe el análisis (hasta un par de minutos). `seleccion` = { redes, anuncios, recordar }: qué
+ * entra (sin ella, lo recordado del cliente) y si se recuerda para él y para el automático del día 1.
+ */
+export async function generarInforme(clientId, mes, seleccion = null) {
+  return avisarGasto(pedir("/informes", conCuerpo("POST", { clientId, mes, ...(seleccion ?? {}) })));
+}
+
+/** Las redes conectadas del cliente y las que entran en su informe → { conectadas, anuncios, seleccion }. */
+export async function redesDelInforme(clientId) {
+  return pedir(`/informes/redes?cliente=${encodeURIComponent(clientId)}`);
 }
 
 export async function compartirInforme(id) {

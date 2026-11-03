@@ -46,37 +46,56 @@ export function mencionesEn(texto, miembros = []) {
 // ------------------------------------------------------------
 
 /**
- * De la idea a publicada. Las cuatro primeras las mueve el equipo
- * (`post.etapa`); las tres últimas salen solas de la aprobación y la cola.
+ * De la idea a publicada, en CUATRO pasos que salen SOLOS (decisión de la agencia: marcar la etapa a mano no lo hacía
+ * nadie, y el tablero mentía). Nadie la elige:
+ *
+ *   idea         sin archivos todavía;
+ *   producción   ya tiene archivos (subidos o del Estudio) y no se ha mandado al cliente;
+ *   cliente      se le mandó (se copió o compartió el enlace o el mensaje de «Enviar a cliente»: `post.enviadoAt`) o ya
+ *                respondió. Dice en qué quedó: con el cliente, aprobada, pidió cambios, corregida;
+ *   programada   está en la cola; el mismo paso dice «Publicada» cuando sale.
+ *
+ * `post.etapa` se queda para lo INTERNO: «aprobada por dentro» (revisión interna, «Revisar las ideas») y «enviada a
+ * grabar» (los guiones UGC). Ya no es lo que se enseña.
  */
 export const ETAPAS = [
   ["idea", "Idea", "bulb"],
-  ["produccion", "En producción", "palette"],
-  ["revision", "Revisión interna", "users"],
-  ["cliente", "Con el cliente", "send"],
-  ["aprobada", "Aprobada", "checkSquare"],
+  ["produccion", "Producción", "palette"],
+  ["cliente", "Cliente", "send"],
   ["programada", "Programada", "clock"],
-  ["publicada", "Publicada", "check"],
 ];
-export const NOMBRE_ETAPA = Object.fromEntries(ETAPAS.map(([k, n]) => [k, n]));
-export const ETAPAS_MANUALES = ["idea", "produccion", "revision", "cliente"];
+export const NOMBRE_ETAPA = { ...Object.fromEntries(ETAPAS.map(([k, n]) => [k, n])), publicada: "Publicada" };
 
 /**
- * En qué etapa está. `estadoCola` es el de su fila en la cola (si hay):
- * «programada», «procesando», «publicada»… `compartido` dice si el
- * calendario tiene enlace: sin etapa elegida, una pendiente de un
- * calendario ya enviado está con el cliente.
+ * En qué paso está y qué decir de él. `estadoCola` es el de su fila en la cola (si hay). `compartido` es el respaldo de
+ * los meses que se mandaron ANTES de apuntar `enviadoAt` (el calendario tiene enlace y nunca se marcó un envío): ahí,
+ * como antes, una pendiente con enlace está con el cliente.
+ * @returns {{ etapa: "idea"|"produccion"|"cliente"|"programada"|"publicada", paso: number, texto: string }}
  */
-export function etapaDe(post, { estadoCola = null, compartido = false } = {}) {
-  if (post?.status === "published" || estadoCola === "publicada") return "publicada";
-  if (estadoCola === "programada" || estadoCola === "procesando") return "programada";
-  if (listaParaProgramar(post)) return "aprobada";
-  const manual = ETAPAS_MANUALES.includes(post?.etapa) ? post.etapa : null;
-  // Idea aprobada o cambios pedidos: vuelve a producción (o sigue en revisión).
-  if (porProducir(post) || post?.status === "rejected") return manual === "revision" ? "revision" : "produccion";
-  if (manual) return manual;
-  return compartido ? "cliente" : mediosDe(post).length ? "produccion" : "idea";
+export function detalleEtapa(post, { estadoCola = null, compartido = false, revisionInterna = false } = {}) {
+  const con = (etapa, texto) => ({ etapa, paso: etapa === "publicada" ? 3 : ETAPAS.findIndex(([k]) => k === etapa), texto });
+  if (post?.status === "published" || estadoCola === "publicada") return con("publicada", "Publicada");
+  if (estadoCola === "programada" || estadoCola === "procesando") return con("programada", estadoCola === "procesando" ? "Publicándose" : "Programada");
+  if (listaParaProgramar(post)) return con("cliente", post.subidaRapida ? "Lista para programar" : "Aprobada por el cliente");
+  const conArchivos = mediosDe(post).length > 0;
+  // Idea aprobada: toca producirla (o ya se está produciendo).
+  if (porProducir(post)) return con("produccion", conArchivos ? "Idea aprobada · con su pieza" : "Idea aprobada · por producir");
+  if (post?.status === "rejected") {
+    const corregida = post.actualizadaAt && (!post.cambiosAt || post.actualizadaAt > post.cambiosAt);
+    return con("cliente", corregida ? "Corregida · falta que la vea" : "Pidió cambios");
+  }
+  if (post?.enviadoAt || (compartido && visibleParaCliente(post, revisionInterna))) return con("cliente", "Con el cliente");
+  if (!conArchivos) return con("idea", aprobadaDentro(post) ? "Idea aprobada por dentro" : "Idea");
+  // Con revisión interna, el cliente sólo ve lo que pasó a «cliente» por dentro (`visibleParaCliente`).
+  if (revisionInterna && post?.etapa !== "cliente") return con("produccion", "Falta la revisión interna");
+  return con("produccion", revisionInterna ? "Aprobada por dentro · lista para enviar" : "En producción");
 }
+
+/** El paso, en una palabra (lo que antes devolvía): idea | produccion | cliente | programada | publicada. */
+export const etapaDe = (post, opciones = {}) => detalleEtapa(post, opciones).etapa;
+
+/** ¿La agencia ya la aprobó por dentro? (revisión interna o «Revisar las ideas»). */
+const aprobadaDentro = (post) => ["produccion", "revision", "cliente"].includes(post?.etapa);
 
 /**
  * Con revisión interna, el enlace del cliente sólo enseña lo que pasó la
@@ -89,8 +108,26 @@ export function visibleParaCliente(post, revisionInterna) {
   return !["idea", "produccion", "revision"].includes(post?.etapa ?? "idea");
 }
 
-/** Terminar la producción: a revisión si el cliente la pide; si no, lista para el cliente. */
-export const etapaTrasProducir = (revisionInterna) => (revisionInterna ? "revision" : "cliente");
+/**
+ * Marca como ENVIADAS al cliente las publicaciones que va a ver (al copiar o compartir el enlace o el mensaje de
+ * «Enviar a cliente»). Sólo las pendientes que aún no lo estaban: reenviar el enlace no cambia la fecha de las de antes.
+ * Pura: devuelve los días nuevos, o los mismos si no había nada que marcar.
+ */
+export function marcarEnviadas(days, { revisionInterna = false, cuando = new Date().toISOString() } = {}) {
+  let cambio = false;
+  const nuevos = (days ?? []).map((d) => {
+    let tocado = false;
+    const posts = (d.posts ?? []).map((p) => {
+      if (p.enviadoAt || p.status === "published" || (p.status && p.status !== "pending") || !visibleParaCliente(p, revisionInterna)) return p;
+      tocado = true;
+      return { ...p, enviadoAt: cuando };
+    });
+    if (!tocado) return d;
+    cambio = true;
+    return { ...d, posts };
+  });
+  return cambio ? nuevos : days;
+}
 
 // ------------------------------------------------------------
 // Historial: qué cambió entre dos versiones de un calendario
@@ -133,7 +170,12 @@ export function cambiosEntre(antes = [], despues = [], nombreDe = () => "") {
     if (archivos(p0) !== archivos(post)) salida.push({ postId: id, titulo: t, accion: "Cambió las imágenes o videos" });
     if ((p0.format || "") !== (post.format || "")) salida.push({ postId: id, titulo: t, accion: `Cambió el formato a ${post.format}` });
     if ((p0.status || "pending") !== (post.status || "pending") && post.status === "published") salida.push({ postId: id, titulo: t, accion: "La marcó como publicada" });
-    if ((p0.etapa || "") !== (post.etapa || "") && post.etapa) salida.push({ postId: id, titulo: t, accion: `La pasó a «${NOMBRE_ETAPA[post.etapa] ?? post.etapa}»`, etapa: post.etapa });
+    // `etapa` es ya sólo lo interno: aprobarla por dentro (o devolverla) y mandarla a grabar.
+    if ((p0.etapa || "") !== (post.etapa || "") && post.etapa) {
+      const accion = post.etapa === "cliente" ? "La aprobó por dentro" : post.etapa === "idea" ? "La devolvió a idea" : post.etapa === "produccion" ? "La pasó a producción" : post.etapa === "revision" ? "La devolvió a revisión interna" : `La pasó a «${post.etapa}»`;
+      salida.push({ postId: id, titulo: t, accion, etapa: post.etapa });
+    }
+    if (!p0.enviadoAt && post.enviadoAt) salida.push({ postId: id, titulo: t, accion: "Se le mandó al cliente" });
     if ((p0.responsableId || "") !== (post.responsableId || "")) {
       salida.push({
         postId: id, titulo: t,

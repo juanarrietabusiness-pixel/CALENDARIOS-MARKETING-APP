@@ -297,8 +297,9 @@ src/
     aprobacion.js         Qué aprueba el cliente (idea o pieza final), qué cuenta de su respuesta,
                           por programar / por producir, cambios tras aprobar (puro; también
                           lo importa el Worker)
-    trabajo.js            Equipo: menciones, etapas, qué ve el cliente con revisión interna,
-                          historial (qué cambió) y carga (puro; también lo importa el Worker)
+    trabajo.js            Equipo: menciones, las 4 etapas que salen solas (`detalleEtapa`, `marcarEnviadas`), qué ve el
+                          cliente con revisión interna, historial (qué cambió) y carga (puro; también lo importa el Worker)
+    informeRedes.js       Qué redes entran en el informe mensual: limpiar, ¿entra?, describir (puro; también el Worker)
     programarAprobadas.js Preparar imágenes, guardar y programar en lote lo aprobado de un calendario (cada una por su lado)
     prepararEnvio.js      Al enviar el mes con «Programar al aprobar»: preparar las piezas (JPEG, 4:5) para que el servidor
                           las programe solo (en diferido: la carga inicial está en su tope)
@@ -584,7 +585,7 @@ worker/
     formulasUgc.js        /api/formulas-ugc: las fórmulas UGC de la agencia (listar, guardar, corregir, quitar, proponer)
     inspiracion.js        /api/inspiracion/<cliente>: el feed, actualizar, traer un archivo, el resumen
     historiasAuto.js      /api/historias-auto/<cliente>: ajustes, pendientes de preparar, piezas
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -3834,6 +3835,18 @@ son del servidor.
   /api/equipo/miembro/<id>/contrasena`, se enseña una vez y cierra sus sesiones): la aplicación no manda correos. Nunca al
   fundador ni a alguien de otro espacio.
 - **El Tablero se quitó** (decisión de la agencia: no le encontraba sentido). `/tablero` abre Programación.
+- **Las etapas salen SOLAS, en cuatro pasos** (`detalleEtapa` en src/lib/trabajo.js; decisión de la agencia: a mano nadie
+  las marcaba): idea (sin archivos) → producción (con archivos) → cliente (se le mandó, o ya respondió: con el cliente,
+  aprobada, pidió cambios, corregida) → programada, que dice «Publicada» al salir. «Mandado» es `post.enviadoAt`, que pone
+  `marcarEnviadas` al COPIAR el enlace o el mensaje de «Enviar a cliente» (copiar es mandarlo), sólo en lo que el cliente
+  ve y está pendiente. El mes apunta `opciones.enviadoAt`: los meses mandados antes no lo tienen y ahí sigue el respaldo
+  de «con enlace = con el cliente». `post.etapa` se queda SÓLO para lo interno: «aprobada por dentro» (revisión interna:
+  `cliente`; «Revisar las ideas»: `produccion`) y «enviada a grabar» (UGC); ya no se enseña ni se elige.
+- **El informe mensual lleva las redes que se escojan** (`clients.informe_redes`, 0054; src/lib/informeRedes.js). Sin
+  nada guardado, todas, como antes. Al generar se escogen (y «Anuncios»); con «Recordar» se guarda en el cliente y lo usa
+  el automático del día 1. Lo de las demás redes no entra en NINGUNA cifra (`cifrasDelMes(…, seleccion)` filtra cuentas,
+  fotos y publicaciones), y sin anuncios ni se pregunta a Meta. La selección va en `contenido.seleccion`, NO dentro de
+  `cifras` (eso lo lee la IA). La columna no la escribe `clientToRow`: una ficha abierta desde antes no la pisa.
 
 ## Documentos relacionados
 

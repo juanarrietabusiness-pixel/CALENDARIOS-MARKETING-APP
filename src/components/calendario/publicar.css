@@ -358,6 +358,7 @@
 .etapas li button, .etapas li span { display: inline-flex; align-items: center; gap: 4px; min-height: var(--tap-sm); padding: 0 var(--sp-2); border-radius: var(--radius-pill); border: 1px solid var(--border); background: var(--bg); color: var(--text-dim); font-size: var(--fs-3xs); font-weight: 600; }
 .etapas li button { cursor: pointer; }
 .etapas li span { border-style: dashed; }
+.etapas li[data-hecha] span { border-style: solid; color: var(--text-muted); }
 .etapas li[data-actual] button, .etapas li[data-actual] span { background: var(--accent-soft); border-color: var(--accent); border-style: solid; color: var(--accent); }
 .etapa-revision { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border-radius: var(--radius); background: var(--surface-2); }
 .etapa-botones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
