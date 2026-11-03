@@ -107,7 +107,7 @@ describe("contar lo que hizo una importación", () => {
   });
 
   it("lo corregido a mano que se conservó se cuenta, porque tranquiliza", () => {
-    expect(describirImportacion({ archivos: { actualizados: 1 }, notas: { creadas: 1, reemplazadas: 1, conservadas: 2 } }).texto).toMatch(/2 corregidas a mano se conservaron/);
+    expect(describirImportacion({ archivos: { actualizados: 1 }, notas: { creadas: 1, reemplazadas: 1, conservadas: 2 } }).texto).toMatch(/2 notas que corregiste aquí no se actualizaron/);
   });
 });
 
@@ -205,5 +205,23 @@ describe("lo que el asistente propone guardar", () => {
     expect(propuestaLimpia({ tipo: "ficha", titulo: "  T  ", texto: " x " })).toEqual({ tipo: "nota", titulo: "T", texto: "x" });
     expect(propuestaLimpia({ tipo: "pautas", titulo: "t".repeat(300), texto: "y" }).titulo).toHaveLength(140);
     expect(propuestaLimpia()).toEqual({ tipo: "nota", titulo: "", texto: "" });
+  });
+});
+
+describe("agruparNotas", async () => {
+  const { agruparNotas, nombreDeArchivo } = await import("./cerebroVista");
+  it("pone arriba lo que la IA lee siempre y agrupa el resto por archivo de origen", () => {
+    const n = (titulo, tipo, origen, fuente = "") => ({ id: titulo, titulo, tipo, origen, fuente });
+    const { siempre, grupos } = agruparNotas([
+      n("Ficha técnica", "ficha", "ia"), n("Pautas", "pautas", "manual"),
+      n("Datos del negocio", "marca", "repositorio", "Rofer/01_brand_guidelines.md"),
+      n("Tono", "marca", "repositorio", "Rofer/01_brand_guidelines.md"),
+      n("WhatsApp oficial", "nota", "manual"),
+      n("Flota", "mercado", "repositorio", "Rofer/05_flota_equipos.md"),
+    ]);
+    expect(siempre.map((x) => x.titulo)).toEqual(["Ficha técnica", "Pautas"]);
+    expect(grupos.map((g) => g.titulo)).toEqual(["Escritas aquí", "01 brand guidelines", "05 flota equipos"]);
+    expect(grupos[1].notas).toHaveLength(2);
+    expect(nombreDeArchivo("a/b/02_tono-de-voz.md")).toBe("02 tono de voz");
   });
 });

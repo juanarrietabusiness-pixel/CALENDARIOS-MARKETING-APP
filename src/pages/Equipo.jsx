@@ -6,10 +6,72 @@ import CargaEquipo from "../components/CargaEquipo";
 import { navegar } from "../lib/rutas";
 import {
   cargarEquipo, invitar, retirarInvitacion, sacarMiembro,
-  guardarMiPerfil, enlaceDeInvitacion, cambiarPapel, papelDe, PAPELES,
+  guardarMiPerfil, enlaceDeInvitacion, cambiarPapel, papelDe, PAPELES, cambiarMiContrasena, restablecerContrasenaDe,
 } from "../lib/equipo";
 
 const NOMBRE_PAPEL = Object.fromEntries(PAPELES.map(([k, n]) => [k, n]));
+
+/**
+ * Cambiar mi contraseña. Pide la actual (una sesión abierta en un equipo ajeno no basta para quedarse con la cuenta) y
+ * la nueva dos veces; al guardar se cierran las demás sesiones de esta persona.
+ */
+function CambiarContrasena() {
+  const ids = useId();
+  const [f, setF] = useState({ actual: "", nueva: "", otra: "" });
+  const [ver, setVer] = useState(false);
+  const [estado, setEstado] = useState({ ok: null, texto: "" });
+  const [guardando, setGuardando] = useState(false);
+  const corta = f.nueva && f.nueva.length < 12;
+  const distinta = f.otra && f.otra !== f.nueva;
+
+  const enviar = async (e) => {
+    e.preventDefault();
+    if (corta || distinta || !f.actual) return;
+    setGuardando(true);
+    setEstado({ ok: null, texto: "" });
+    try {
+      const r = await cambiarMiContrasena({ actual: f.actual, nueva: f.nueva });
+      setF({ actual: "", nueva: "", otra: "" });
+      setEstado({ ok: true, texto: `Contraseña cambiada.${r.cerradas ? ` Se cerraron ${r.cerradas === 1 ? "tu otra sesión abierta" : `tus otras ${r.cerradas} sesiones abiertas`}.` : ""}` });
+    } catch (err) {
+      setEstado({ ok: false, texto: err.message || "No se pudo cambiar." });
+    }
+    setGuardando(false);
+  };
+
+  const campo = (k, etiqueta, ayuda) => (
+    <div className="field" style={{ flex: "1 1 220px", marginBottom: 0 }}>
+      <label className="label" htmlFor={`${ids}-${k}`}>{etiqueta}</label>
+      <input id={`${ids}-${k}`} className="input" type={ver ? "text" : "password"} value={f[k]}
+        autoComplete={k === "actual" ? "current-password" : "new-password"}
+        aria-describedby={ayuda ? `${ids}-${k}-a` : undefined} aria-invalid={(k === "nueva" && corta) || (k === "otra" && distinta) || undefined}
+        onChange={(e) => setF({ ...f, [k]: e.target.value })} required />
+      {ayuda && <p id={`${ids}-${k}-a`} className="hint">{ayuda}</p>}
+    </div>
+  );
+
+  return (
+    <section id="contrasena" aria-labelledby={`${ids}-t`}>
+      <h2 className="label" id={`${ids}-t`}>Tu contraseña</h2>
+      <form onSubmit={enviar} style={{ display: "flex", gap: "var(--sp-3)", alignItems: "flex-start", flexWrap: "wrap" }}>
+        {campo("actual", "Contraseña actual")}
+        {campo("nueva", "Nueva", corta ? "Mínimo 12 caracteres." : "Mínimo 12 caracteres. Una frase corta es fácil de recordar y difícil de adivinar.")}
+        {campo("otra", "Repite la nueva", distinta ? "No coincide con la nueva." : "")}
+        <div style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", flexWrap: "wrap", flexBasis: "100%" }}>
+          <label className="elegir-cliente" htmlFor={`${ids}-ver`}>
+            <input id={`${ids}-ver`} type="checkbox" checked={ver} onChange={(e) => setVer(e.target.checked)} /> Ver lo que escribo
+          </label>
+          <button className="btn btn-primary" type="submit" disabled={guardando || corta || distinta || !f.actual || !f.nueva || !f.otra}>
+            <Icon name="lock" size={18} /> {guardando ? "Cambiando…" : "Cambiar contraseña"}
+          </button>
+        </div>
+      </form>
+      <div role="status" aria-live="polite">
+        {estado.texto && <p className={`notice ${estado.ok ? "notice-ok" : "notice-error"}`} style={{ marginTop: "var(--sp-2)" }}>{estado.texto}</p>}
+      </div>
+    </section>
+  );
+}
 
 /** Los clientes que puede ver un colaborador: casillas. */
 function ElegirClientes({ clients, valor = [], onCambiar, etiqueta }) {
@@ -78,6 +140,7 @@ export default function Equipo({ presentes = [], yo, pulso = 0, onVolver, client
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
+  const [temporal, setTemporal] = useState(null); // { nombre, clave }: la contraseña temporal que se acaba de poner
   const [enlaceNuevo, setEnlaceNuevo] = useState(null);
   const [enviando, setEnviando] = useState(false);
 
@@ -106,6 +169,11 @@ export default function Equipo({ presentes = [], yo, pulso = 0, onVolver, client
   // hasta que alguien recargue.
   useEffect(() => { void recargar(); }, [recargar, pulso]);
 
+  // «Cambiar contraseña» del menú de la cuenta trae aquí con #contrasena.
+  useEffect(() => {
+    if (datos && window.location.hash === "#contrasena") document.getElementById("contrasena")?.scrollIntoView({ block: "start" });
+  }, [datos]);
+
   useEffect(() => {
     if (!aviso) return;
     const t = setTimeout(() => setAviso(""), 5000);
@@ -132,7 +200,7 @@ export default function Equipo({ presentes = [], yo, pulso = 0, onVolver, client
   const copiar = async (texto) => {
     try {
       await navigator.clipboard.writeText(texto);
-      setAviso("Enlace copiado. Mándaselo por donde ya habléis.");
+      setAviso(temporal && texto === temporal.clave ? "Contraseña temporal copiada." : "Enlace copiado. Mándaselo por donde ya habléis.");
     } catch {
       // Sin permiso de portapapeles —o en http—: el enlace está a la
       // vista y se puede seleccionar a mano, que es lo que queda.
@@ -181,6 +249,17 @@ export default function Equipo({ presentes = [], yo, pulso = 0, onVolver, client
           {/* ---- Miembros ---- */}
           <section>
             <h2 className="label">En el espacio</h2>
+            {temporal && (
+              <div className="notice notice-warn" role="status" style={{ display: "block", marginBottom: "var(--sp-3)" }}>
+                <p>Contraseña temporal de <strong>{temporal.nombre}</strong> (se enseña sólo ahora):</p>
+                <p style={{ display: "flex", gap: "var(--sp-2)", alignItems: "center", flexWrap: "wrap", margin: "var(--sp-2) 0" }}>
+                  <code style={{ fontSize: "var(--fs-md)", userSelect: "all" }}>{temporal.clave}</code>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => copiar(temporal.clave)}><Icon name="copy" size={14} /> Copiar</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTemporal(null)}>Listo</button>
+                </p>
+                <p className="hint">Sus sesiones se cerraron. Que entre con ésta y la cambie en «Equipo y perfil → Tu contraseña».</p>
+              </div>
+            )}
             <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "var(--sp-2)" }}>
               {datos.miembros.map((m) => (
                 <li
@@ -209,6 +288,21 @@ export default function Equipo({ presentes = [], yo, pulso = 0, onVolver, client
                       <PapelMiembro m={m} clients={clients} onGuardado={(t) => { setAviso(t); void recargar(); }} onError={setError} />
                     )}
                   </div>
+                  {esAdmin && m.userId !== yo?.id && m.userId !== yo?.ownerId && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      aria-label={`Restablecer la contraseña de ${m.nombre}`}
+                      title="Le pone una contraseña temporal y cierra sus sesiones: dásela y que la cambie al entrar"
+                      onClick={async () => {
+                        try {
+                          const { temporal } = await restablecerContrasenaDe(m.userId);
+                          setTemporal({ nombre: m.nombre, clave: temporal });
+                        } catch (err) { setError(err.message); }
+                      }}
+                    >
+                      <Icon name="lock" size={16} /> Contraseña
+                    </button>
+                  )}
                   {esAdmin && m.userId !== yo?.id && (
                     <button
                       className="btn btn-ghost btn-sm"
@@ -349,6 +443,8 @@ export default function Equipo({ presentes = [], yo, pulso = 0, onVolver, client
               <Icon name="settings" size={14} /> Ajustes
             </button>
           </p>
+
+          <CambiarContrasena />
 
           {/* ---- Cómo te ven ---- */}
           <section>

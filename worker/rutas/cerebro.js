@@ -3,6 +3,8 @@
 //
 //   GET    /<cliente>                    Las notas (sin su texto entero) y el estado
 //   GET    /<cliente>/grafo              El mapa: las notas sin texto y sus conexiones (enlaces y menciones)
+//   GET    /<cliente>/datos              «Datos que no cuadran»: teléfonos y correos de la ficha, las cifras, la ficha del
+//                                        cliente y las memorias que ninguna nota dice (src/lib/datosCerebro.js)
 //   GET    /<cliente>/nota/<id>          Una nota entera
 //   PUT    /<cliente>/nota               Crear o editar una nota { id?, titulo, texto, tipo, interna }
 //   DELETE /<cliente>/nota/<id>          Borrar una nota
@@ -33,17 +35,18 @@
 
 import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { uuid, ahora } from "../lib/ids.js";
-import { limpiarNota, derivados, slug, rutaUnica, MAX_NOTAS_POR_CLIENTE } from "../lib/cerebro/notas.js";
+import { limpiarNota, derivados, slug, rutaUnica, editadaTrasGuardar, textoEditado, MAX_NOTAS_POR_CLIENTE } from "../lib/cerebro/notas.js";
 import {
-  USOS, leerNotasLigeras, reindexar, actualizarIndice, buscar, contexto, notasViejas, grafo,
+  USOS, leerNotas, leerNotasLigeras, reindexar, actualizarIndice, buscar, contexto, notasViejas, grafo,
 } from "../lib/cerebro/cerebro.js";
 import { importarDelRepositorio } from "../lib/cerebro/importar.js";
 import { registrarUsos, marcarTextoDeIA, leerSenales, aprenderDelHistorial, aprenderDeLasMetricas } from "../lib/cerebro/aprender.js";
 import { proponerReglas, propuestasPendientes, aceptarPropuesta, descartarPropuesta } from "../lib/cerebro/proponer.js";
 import { ErrorIA } from "../lib/cerebro/ia.js";
 import { ErrorRepositorio } from "../lib/cerebro/repositorio.js";
-import { prepararFicha, ErrorPreparar } from "../lib/cerebro/preparar.js";
+import { prepararFicha, ErrorPreparar, fichaDesactualizada } from "../lib/cerebro/preparar.js";
 import { proponerRubro } from "../lib/cerebro/rubro.js";
+import { datosQueNoCuadran } from "../../src/lib/datosCerebro.js";
 import { proponerVozUgc, vozUgcDe } from "../lib/cerebro/vozUgc.js";
 
 const ID = /^[\w-]{1,80}$/;
@@ -61,7 +64,7 @@ async function clienteDe(acceso, id) {
  */
 const publica = (n, { conTexto = false } = {}) => ({
   id: n.id, ruta: n.ruta, titulo: n.titulo, tipo: n.tipo, origen: n.origen, fuente: n.fuente,
-  interna: Boolean(n.interna), caracteres: conTexto ? n.texto.length : n.caracteres, actualizada: n.updated_at, creada: n.created_at,
+  interna: Boolean(n.interna), corregida: textoEditado(n), caracteres: conTexto ? n.texto.length : n.caracteres, actualizada: n.updated_at, creada: n.created_at,
   ...(conTexto ? { texto: n.texto } : { resumen: n.resumen }),
 });
 
@@ -85,6 +88,9 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
         conCifras: notas.some((n) => n.tipo === "cifras"),
         internas: notas.filter((n) => n.interna).length,
         viejas: notasViejas(notas),
+        // La ficha y las cifras van en TODO lo que escribe la IA: si alguna nota de la que salen cambió después, lo
+        // que llega a la IA es lo de antes (el WhatsApp viejo de ROFER). La pantalla lo dice y ofrece renovarlas.
+        fichaVieja: fichaDesactualizada(notas),
         ultima: notas.reduce((m, n) => (n.updated_at > m ? n.updated_at : m), ""),
         // Para que la pantalla sepa si el cliente tiene de dónde llenarlo.
         repositorio: Boolean(cliente.github_repo),
@@ -93,6 +99,24 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
   }
 
   if (sub === "grafo" && metodo === "GET") return json(await grafo(env, acceso, clienteId));
+
+  // ---------- «Datos que no cuadran» ----------
+  // Sin IA: lo que va SIEMPRE (ficha técnica, cifras, ficha del cliente, memorias del asistente) contra lo que dicen
+  // las notas. Las notas internas no cuentan (un teléfono de un proveedor no es el del cliente).
+  if (sub === "datos" && metodo === "GET") {
+    const [notas, memorias] = await Promise.all([
+      leerNotas(acceso, clienteId),
+      acceso.leer("client_memories", { client_id: clienteId }, "created_at desc", 100),
+    ]);
+    const fuentes = [
+      ...notas.filter((n) => !n.interna).map((n) => ({
+        fuente: n.tipo === "ficha" ? "ficha" : n.tipo === "cifras" ? "cifras" : "nota", titulo: n.titulo, texto: n.texto, id: n.id,
+      })),
+      { fuente: "cliente", titulo: "", texto: [cliente.phone, cliente.whatsapp].filter(Boolean).join("\n") },
+      ...memorias.map((m) => ({ fuente: "memoria", titulo: "", texto: m.content, id: m.id })),
+    ];
+    return json({ datos: datosQueNoCuadran(fuentes) });
+  }
 
   if (sub === "nota" && notaId && metodo === "GET") {
     const nota = await acceso.leerUno("cerebro_notas", { id: notaId, client_id: clienteId });
@@ -129,6 +153,8 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
       // De qué versión del archivo salió (si salió de uno): no cambia al editar. Que la nota se tocó lo dice
       // su `updated_at`, y es lo que mira una nueva importación para no pisarla.
       fuente_sha: previa?.fuente_sha ?? "",
+      // Qué le cambió la persona: el texto (no se pisa al importar) o sólo el tipo o el candado (se conservan).
+      editada: editadaTrasGuardar(previa, { ...nota }),
       created_at: previa?.created_at ?? t, updated_at: t,
     };
     // Que una nota está «editada a mano» se sabe porque su `updated_at` ya no es su `created_at` (importar.js, preparar.js
@@ -241,7 +267,10 @@ export async function rutasCerebro(req, env, { acceso, partes, metodo }) {
     if (!cliente.github_repo) return error("Este cliente no tiene un repositorio de GitHub en su ficha.");
     const b = (await cuerpo(req)) ?? {};
     try {
-      return json(await importarDelRepositorio(env, acceso, cliente, { carpeta: String(b.carpeta ?? ""), actualizar: Boolean(b.actualizar) }));
+      return json(await importarDelRepositorio(env, acceso, cliente, {
+        carpeta: String(b.carpeta ?? ""), actualizar: Boolean(b.actualizar || (Array.isArray(b.pisar) && b.pisar.length)),
+        pisar: Array.isArray(b.pisar) ? b.pisar.slice(0, 200).map(String) : [],
+      }));
     } catch (e) {
       if (e instanceof ErrorRepositorio) return error(e.message, 502, e.cause);
       throw e;

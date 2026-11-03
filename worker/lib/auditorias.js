@@ -24,7 +24,7 @@
 // ============================================================
 
 import { abrirFlujo, leerFlujo, textoDe, esRechazoDeModelo, mensajeDeRechazo } from "./anthropic.js";
-import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET } from "./configIA.js";
+import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET, sinIADeTexto } from "./configIA.js";
 import { graph, descifrarMeta, mensajeMeta, ErrorMeta } from "./meta.js";
 import { difundir } from "./vivo.js";
 import { uuid, ahora } from "./ids.js";
@@ -203,7 +203,7 @@ const vacio = JSON.stringify({});
  * algo falla: nunca desaparece sin decir por qué.
  */
 export async function generarAuditoria(env, acceso, { clientId = null, usuario = "", capturas = [], nota = "", usuarioId = null, referentes: pedidos = [] }) {
-  if (!env.ANTHROPIC_API_KEY) throw new ErrorAuditoria("El servidor no tiene configurada la clave de Anthropic.");
+  if (sinIADeTexto(env)) throw new ErrorAuditoria("El servidor no tiene configurada ninguna llave de IA de texto (Anthropic o Meta).");
   const cliente = clientId ? await acceso.leerUno("clients", { id: clientId }) : null;
   if (clientId && !cliente) throw new ErrorAuditoria("Ese cliente no existe.");
   const imagenesCaptura = (Array.isArray(capturas) ? capturas : []).slice(0, MAX_CAPTURAS).map(captura).filter(Boolean);

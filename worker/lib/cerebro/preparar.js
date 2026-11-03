@@ -35,7 +35,8 @@ import { uuid } from "../ids.js";
 import { ErrorIA, llamarIA } from "./ia.js";
 import { parseBloques } from "../../../src/lib/parse.js";
 import { leerNotas, reindexar } from "./cerebro.js";
-import { derivados, rutaUnica } from "./notas.js";
+import { derivados, rutaUnica, textoEditado } from "./notas.js";
+import { sinIADeTexto } from "../configIA.js";
 
 const SALIDA = 6000;               // lo que se pide para escribir; el razonamiento va aparte
 const PRESUPUESTO_NOTAS = 60_000;  // caracteres de notas que entran en la llamada
@@ -65,6 +66,21 @@ export function notasParaLaFicha(notas, { presupuesto = PRESUPUESTO_NOTAS, maxPo
     usado += texto.length;
   }
   return { dentro, fuera };
+}
+
+/**
+ * ¿La ficha o las cifras son de antes de la última nota de la que salen? `null` si están al día (o no hay).
+ * Cuentan las notas que lee la ficha (`notasParaLaFicha`: marca, decisión, documento y nota, no internas) y no
+ * las escritas por la IA. Puro: recibe las filas ligeras.
+ * @returns {{ desde: string, cambiadas: string[] } | null}
+ */
+export function fichaDesactualizada(notas) {
+  const deLaIA = notas.filter((n) => n.origen === "ia" && (n.tipo === "ficha" || n.tipo === "cifras"));
+  if (!deLaIA.length) return null;
+  const desde = deLaIA.reduce((m, n) => (!m || n.updated_at < m ? n.updated_at : m), "");
+  const tipos = new Set(["marca", "decision", "documento", "nota"]);
+  const cambiadas = notas.filter((n) => n.origen !== "ia" && !n.interna && tipos.has(n.tipo) && String(n.updated_at) > String(desde));
+  return cambiadas.length ? { desde, cambiadas: cambiadas.map((n) => n.titulo).slice(0, 12), total: cambiadas.length } : null;
 }
 
 /** El prompt. Puro. */
@@ -111,7 +127,7 @@ const filaIA = (clientId, ruta, titulo, tipo, texto) => ({
  *             modelo: string, aviso: string|null, leidas: number, fuera: string[], segundos: number }}
  */
 export async function prepararFicha(env, acceso, cliente, { forzar = false } = {}) {
-  if (!env.ANTHROPIC_API_KEY) throw new ErrorPreparar("El servidor no tiene configurada la clave de Anthropic", 503);
+  if (sinIADeTexto(env)) throw new ErrorPreparar("El servidor no tiene configurada ninguna llave de IA de texto (Anthropic o Meta)", 503);
   const notas = await leerNotas(acceso, cliente.id);
   const paraLaIA = notasParaLaFicha(notas);
   if (!paraLaIA.dentro.length) {
@@ -122,7 +138,7 @@ export async function prepararFicha(env, acceso, cliente, { forzar = false } = {
   const propia = (tipo) => notas.find((n) => n.origen === "ia" && n.tipo === tipo) ?? null;
   const editada = (tipo) => {
     const n = propia(tipo);
-    return n && n.updated_at !== n.created_at ? n : null;
+    return n && textoEditado(n) ? n : null;
   };
   const conservaFicha = !forzar && editada("ficha");
   const conservaCifras = !forzar && editada("cifras");

@@ -107,6 +107,36 @@ export function limpiarNota(entrada = {}) {
 }
 
 // ------------------------------------------------------------
+// Qué le cambió una persona a una nota (columna `editada`, 0053)
+// ------------------------------------------------------------
+
+/** Bit 1: le cambiaron el texto o el título. Una importación o la pasada de IA no la pisan. */
+export const EDITADA_TEXTO = 1;
+/** Bit 2: sólo le cambiaron el tipo o el candado. Una importación le pone el texto nuevo y conserva esos dos. */
+export const EDITADA_AJUSTE = 2;
+
+/**
+ * ¿Una persona le cambió el TEXTO? Una fila sin la columna (las de antes de 0053, o un doble de prueba) se juzga
+ * como antes: por las fechas.
+ */
+export function textoEditado(n) {
+  if (n?.editada === undefined || n?.editada === null) return Boolean(n) && n.updated_at !== n.created_at;
+  return (Number(n.editada) & EDITADA_TEXTO) !== 0;
+}
+
+/** ¿Le ajustaron el tipo o el candado (sin tocar el texto)? */
+export const ajustada = (n) => (Number(n?.editada ?? 0) & EDITADA_AJUSTE) !== 0;
+
+/** El valor de `editada` tras un guardado: lo que ya tenía más lo que cambia ahora. Pura. */
+export function editadaTrasGuardar(previa, nueva) {
+  if (!previa) return 0;
+  let v = Number(previa.editada ?? (previa.updated_at !== previa.created_at ? EDITADA_TEXTO : 0));
+  if (previa.texto !== nueva.texto || previa.titulo !== nueva.titulo) v |= EDITADA_TEXTO;
+  if (previa.tipo !== nueva.tipo || Boolean(previa.interna) !== Boolean(nueva.interna)) v |= EDITADA_AJUSTE;
+  return v;
+}
+
+// ------------------------------------------------------------
 // De un archivo del repositorio a notas
 // ------------------------------------------------------------
 

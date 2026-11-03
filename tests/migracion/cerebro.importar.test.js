@@ -199,22 +199,36 @@ describe("volver a importar", () => {
     expect(notas().map((n) => n.ruta).sort(), "los [[enlaces]] de otras notas dependen de las rutas").toEqual(rutasAntes);
   });
 
-  it("con «actualizar» NO pisa lo que alguien corrigió a mano, ni siquiera marcar una nota como interna", async () => {
+  it("con «actualizar» NO pisa el TEXTO corregido a mano; marcarla interna no la congela, pero el candado se queda", async () => {
     const tono = notas().find((n) => n.titulo === "Brand guidelines — Tono");
     const limites = notas().find((n) => n.titulo === "Brand guidelines — Límites");
     // Una corrige el texto; la otra sólo la marca interna.
     await pedir("/api/cerebro/c1/nota", { method: "PUT", body: { id: tono.id, titulo: tono.titulo, texto: "Tono corregido por la agencia.", tipo: "marca" } });
     await pedir("/api/cerebro/c1/nota", { method: "PUT", body: { id: limites.id, titulo: limites.titulo, texto: limites.texto, tipo: "marca", interna: true } });
 
-    github({ ...repo, "Dcasa/01_ADN_y_Memoria/01_brand_guidelines.md": GUIAS.replace("Nunca versículos", "Nada de política") });
+    github({ ...repo, "Dcasa/01_ADN_y_Memoria/01_brand_guidelines.md": GUIAS.replace("No mencionar la competencia.", "Nada de política.") });
     const r = await (await importar({ actualizar: true })).json();
-    // La introducción se reemplaza; las dos corregidas se quedan, y su sección NO se vuelve a crear al lado.
-    expect(r.notas).toEqual({ creadas: 1, reemplazadas: 1, conservadas: 2 });
+    // La introducción y los límites se renuevan; sólo la de texto corregido se queda, y su sección no se crea al lado.
+    expect(r.notas).toEqual({ creadas: 2, reemplazadas: 2, conservadas: 1 });
+    expect(r.sinActualizar.map((n) => n.id), "la pantalla ofrece «Usar la versión de GitHub» en ésta").toEqual([tono.id]);
     const despues = notas();
     expect(despues.find((n) => n.id === tono.id).texto).toBe("Tono corregido por la agencia.");
-    expect(despues.find((n) => n.id === limites.id).interna).toBe(1);
-    // Y editarlas no les borró de dónde vienen.
+    // Antes se quedaba con el texto viejo para siempre (así siguió ROFER con su WhatsApp viejo).
+    const nuevosLimites = despues.find((n) => n.ruta === limites.ruta);
+    expect(nuevosLimites.texto).toContain("Nada de política");
+    expect(nuevosLimites.interna, "un candado puesto a mano no se quita al actualizar").toBe(1);
     expect(despues.filter((n) => n.origen === "repositorio" && n.fuente.endsWith("01_brand_guidelines.md")).length, "ni una copia de más ni una de menos").toBe(3);
+  });
+
+  it("«Usar la versión de GitHub» reemplaza la nota corregida aquí aunque el archivo no haya vuelto a cambiar", async () => {
+    const tono = notas().find((n) => n.titulo === "Brand guidelines — Tono");
+    await pedir("/api/cerebro/c1/nota", { method: "PUT", body: { id: tono.id, titulo: tono.titulo, texto: "Tono corregido por la agencia.", tipo: "marca" } });
+    github({ ...repo, "Dcasa/01_ADN_y_Memoria/01_brand_guidelines.md": GUIAS.replace("Cercano, de tú.", "Formal, de usted.") });
+    await importar({ actualizar: true });
+    const r = await (await importar({ actualizar: true, pisar: [tono.id] })).json();
+    expect(r.sinActualizar).toEqual([]);
+    const ahora = notas().find((n) => n.ruta === tono.ruta);
+    expect(ahora.texto).toContain("Formal, de usted.");
   });
 
   it("una importación que no cambia nada tampoco reconstruye el índice", async () => {
@@ -310,5 +324,27 @@ describe.skipIf(!hayWorkspace)("con el ADN real de Agencia_Workspace", () => {
     expect(c.pasajes, "el precio de venta no puede faltar").toMatch(/\$\s?50/);
     expect(c.pasajes, "el costo por wipe es interno").not.toMatch(/\$0[.,]017/);
     expect(c.pasajes).not.toMatch(/landed/i);
+  });
+});
+
+describe("el caso ROFER: la ficha técnica con el WhatsApp viejo", () => {
+  beforeEach(async () => {
+    github({ "Dcasa/01_ADN_y_Memoria/01_brand_guidelines.md": "# Datos\n\n## Contacto\n\nWhatsApp +507 6086-6581 (reemplaza al anterior 61562010).\n" });
+    await importar();
+    // La ficha la escribió la IA ANTES del cambio: va siempre y dice el número viejo.
+    db.sqlite.prepare(`insert into cerebro_notas (id, owner_id, client_id, ruta, titulo, texto, resumen, caracteres, tipo, origen, fuente, fuente_sha, interna, created_at, updated_at)
+      values ('f1', ?, 'c1', 'ficha-tecnica', 'Ficha técnica', 'Contacto y redes\nWhatsApp: 61562010', '', 30, 'ficha', 'ia', '', '', 0, '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')`).run(JEFE);
+  });
+
+  it("el estado dice que la ficha es de antes de las notas", async () => {
+    const r = await (await pedir("/api/cerebro/c1")).json();
+    expect(r.estado.fichaVieja.total).toBeGreaterThan(0);
+    expect(r.estado.fichaVieja.cambiadas.join(" ")).toMatch(/Contacto/);
+  });
+
+  it("«Datos que no cuadran» encuentra el número viejo de la ficha", async () => {
+    const r = await (await pedir("/api/cerebro/c1/datos")).json();
+    expect(r.datos).toHaveLength(1);
+    expect(r.datos[0]).toMatchObject({ tipo: "telefono", valor: "6156-2010", fuentes: ["ficha"], vigentes: ["6086-6581"] });
   });
 });

@@ -23,7 +23,7 @@
 
 import { crearAcceso, clientesSinInforme } from "./acceso.js";
 import { abrirFlujo, leerFlujo, textoDe, esRechazoDeModelo, mensajeDeRechazo } from "./anthropic.js";
-import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET } from "./configIA.js";
+import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET, sinIADeTexto } from "./configIA.js";
 import { difundir } from "./vivo.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 import { conexionMeta, estadisticasCuenta, listarCampanas, mensajeAnuncios } from "./anuncios.js";
@@ -198,7 +198,7 @@ export async function generarInforme(env, acceso, { clientId, mes, usuarioId = n
   if (!/^\d{4}-\d{2}$/.test(mes)) throw new Error("Mes inválido.");
   const cliente = await acceso.leerUno("clients", { id: clientId });
   if (!cliente) throw new Error("Ese cliente no existe.");
-  if (!env.ANTHROPIC_API_KEY) throw new Error("El servidor no tiene configurada la clave de Anthropic.");
+  if (sinIADeTexto(env)) throw new Error("El servidor no tiene configurada ninguna llave de IA de texto (Anthropic o Meta).");
 
   const id = `${clientId}:${mes}`;
   const previo = await acceso.leerUno("informes", { id });
@@ -269,7 +269,7 @@ export async function generarInforme(env, acceso, { clientId, mes, usuarioId = n
  * cuentas medidas. Uno por vuelta.
  */
 export async function informePendiente(env, ahora = new Date()) {
-  if (!env.ANTHROPIC_API_KEY) return 0;
+  if (sinIADeTexto(env)) return 0;
   const hoy = fechaEnZona(ahora);
   const horaPanama = (ahora.getUTCHours() + 19) % 24;
   if (Number(hoy.slice(8, 10)) > 5 || horaPanama < 9) return 0;

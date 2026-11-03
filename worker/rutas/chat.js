@@ -56,7 +56,7 @@
 
 import { error, cuerpo, CABECERAS_API, json, noEncontrado } from "../lib/respuesta.js";
 import { abrirFlujo, leerFlujo, esRechazoDeModelo, esRechazoDeWeb, mensajeDeRechazo, RechazoAnthropic, textoDe } from "../lib/anthropic.js";
-import { prepararIA, registrarConsumo, MODELO_SONNET, etiquetaModelo } from "../lib/configIA.js";
+import { prepararIA, registrarConsumo, MODELO_SONNET, etiquetaModelo, sinIADeTexto } from "../lib/configIA.js";
 import { crearEjecutor, DEFINICIONES, HERRAMIENTAS_WEB, NOMBRES, describirUso } from "../lib/herramientasServidor.js";
 import { ahora, uuid } from "../lib/ids.js";
 import { firma } from "../lib/vivo.js";
@@ -146,7 +146,7 @@ export async function rutaChat(req, env, { acceso, ctx, usuario = null } = {}) {
   if (!body) return error("JSON inválido");
   const invalido = validarMensajes(body.messages);
   if (invalido) return error(invalido);
-  if (!env.ANTHROPIC_API_KEY) return error("El servidor no tiene configurada la clave de Anthropic", 503);
+  if (sinIADeTexto(env)) return error("El servidor no tiene configurada ninguna llave de IA de texto (Anthropic o Meta)", 503);
 
   let clienteActual = null;
   if (body.clienteId) {
@@ -397,7 +397,7 @@ export async function rutaResumenChat(req, env, { acceso, metodo }) {
   const actual = await acceso.leerUno("chat_resumenes", { id: conversacion.id });
   if (metodo === "GET") return json({ resumen: actual?.content ?? "", hasta: actual?.hasta ?? null });
   if (metodo !== "POST") return error(`Método ${metodo} no permitido aquí`, 405);
-  if (!env.ANTHROPIC_API_KEY) return error("El servidor no tiene configurada la clave de Anthropic", 503);
+  if (sinIADeTexto(env)) return error("El servidor no tiene configurada ninguna llave de IA de texto (Anthropic o Meta)", 503);
 
   const todos = await acceso.leer("chat_messages", { conversacion_id: conversacion.id }, "created_at asc");
   const sinResumir = actual?.hasta ? todos.filter((m) => m.created_at > actual.hasta) : todos;

@@ -20,7 +20,7 @@
 // ============================================================
 
 import { abrirFlujo, leerFlujo, textoDe, esRechazoDeModelo, esRechazoDeWeb, mensajeDeRechazo, RechazoAnthropic } from "../anthropic.js";
-import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET, etiquetaModelo } from "../configIA.js";
+import { prepararIA, registrarConsumo, MARGEN_RAZONAMIENTO, MODELO_SONNET, etiquetaModelo, sinIADeTexto } from "../configIA.js";
 
 const MAX_TOKENS_CAP = 64_000;
 const PRESUPUESTO_MS = 290_000;
@@ -51,7 +51,7 @@ export class ErrorIA extends Error {
  * @returns {{ texto: string, modelo: string, aviso: string|null, segundos: number, busquedas: number, conWeb: boolean, fuentes: string[] }}
  */
 export async function llamarIA(env, acceso, cliente, { prompt, salida = 6000, funcion = "cerebro", herramientas = null, modelo: forzado = null }) {
-  if (!env.ANTHROPIC_API_KEY) throw new ErrorIA("El servidor no tiene configurada la clave de Anthropic", 503);
+  if (sinIADeTexto(env)) throw new ErrorIA("El servidor no tiene configurada ninguna llave de IA de texto (Anthropic o Meta)", 503);
   const ia = await prepararIA(env, acceso, { funcion });
   if (ia.bloqueo) throw new ErrorIA(ia.bloqueo, 402);
   const maxTokens = Math.min(salida + (MARGEN_RAZONAMIENTO[ia.esfuerzo] ?? 16_000), MAX_TOKENS_CAP);

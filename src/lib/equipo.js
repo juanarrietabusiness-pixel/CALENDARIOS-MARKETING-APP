@@ -54,6 +54,16 @@ export async function sacarMiembro(userId) {
   await pedir(`/equipo/miembro/${encodeURIComponent(userId)}`, { method: "DELETE" });
 }
 
+/** Cambiar mi contraseña: la actual y la nueva. Cierra mis otras sesiones. → { ok, cerradas } */
+export async function cambiarMiContrasena({ actual, nueva }) {
+  return pedir("/equipo/yo/contrasena", { method: "PUT", body: JSON.stringify({ actual, nueva }) });
+}
+
+/** El administrador le pone una contraseña temporal a quien la olvidó. → { temporal } (se enseña una vez) */
+export async function restablecerContrasenaDe(userId) {
+  return pedir(`/equipo/miembro/${encodeURIComponent(userId)}/contrasena`, { method: "POST" });
+}
+
 export async function guardarMiPerfil({ nombre, color }) {
   return pedir("/equipo/yo", { method: "PUT", body: JSON.stringify({ nombre, color }) });
 }

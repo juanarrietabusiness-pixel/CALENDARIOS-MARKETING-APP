@@ -160,7 +160,8 @@ export function analizarRuta(url = window.location) {
   if (partes[0] === "ajustes") return { vista: "ajustes" };
   if (partes[0] === "resultados") return { vista: "resultados" };
   if (partes[0] === "programacion") return { vista: "programacion" };
-  if (partes[0] === "tablero") return { vista: "tablero" };
+  // El tablero se quitó (las etapas salen solas en cada publicación): un enlace viejo va a Programación.
+  if (partes[0] === "tablero") return { vista: "programacion" };
   if (partes[0] === "bandeja") return { vista: "bandeja" };
   if (partes[0] === "biblioteca") return { vista: "biblioteca" };
   if (partes[0] === "campanas") return { vista: "campanas" };
@@ -185,7 +186,6 @@ export function construirRuta({ vista = "panel", cliente = null, calendario = nu
   if (vista === "ajustes") return "/ajustes";
   if (vista === "resultados") return "/resultados";
   if (vista === "programacion") return "/programacion";
-  if (vista === "tablero") return "/tablero";
   if (vista === "bandeja") return "/bandeja";
   if (vista === "campanas") return "/campanas";
   if (vista === "auditorias") return "/auditorias";

@@ -111,8 +111,11 @@ export const buscarEnCerebro = (clienteId, q, { para = "chat", n = 8 } = {}) =>
   llamar(`${base(clienteId)}/buscar?q=${encodeURIComponent(q)}&para=${para}&n=${n}`);
 
 /** Llenar el cerebro desde el repositorio del cliente. */
-export const importarAlCerebro = (clienteId, { actualizar = false } = {}) =>
-  cambiando(clienteId, () => llamar(`${base(clienteId)}/importar`, { metodo: "POST", cuerpo: { actualizar } }));
+export const importarAlCerebro = (clienteId, { actualizar = false, pisar = [] } = {}) =>
+  cambiando(clienteId, () => llamar(`${base(clienteId)}/importar`, { metodo: "POST", cuerpo: { actualizar, pisar } }));
+
+/** «Datos que no cuadran»: teléfonos y correos de lo que va siempre a la IA que ninguna nota dice. */
+export const leerDatosQueNoCuadran = (clienteId) => llamar(`${base(clienteId)}/datos`);
 
 /** La IA escribe la ficha técnica y las cifras. Gasta: se releé el medidor de la cabecera al terminar. */
 export async function prepararFicha(clienteId, { forzar = false } = {}) {
