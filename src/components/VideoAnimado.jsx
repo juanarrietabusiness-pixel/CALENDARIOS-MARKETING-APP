@@ -27,6 +27,7 @@ import "./VideoAnimado.css";
 
 // «Probar una voz» va en su propio chunk: sólo lo carga quien lo abre.
 const ProbarVoz = lazy(() => import("./ProbarVoz"));
+const VideoSonido = lazy(() => import("./VideoSonido"));
 
 /** Un guion de arranque: tres escenas que se ven bien con cualquier kit. Se edita antes de guardar. */
 const ARRANQUE = {
@@ -114,7 +115,9 @@ export default function VideoAnimado({ client, estudio }) {
     try {
       const v = await aprobarVideo(client.id, abierto.id, abierto.version);
       setAbierto(v);
-      setMsg({ texto: "Guion aprobado. El siguiente paso es la locución (Claude la genera con generar_locucion, con su costo y tu confirmación)." });
+      setMsg({ texto: v.vozReutilizada
+        ? "Guion aprobado. Lo que se dice no cambió: la voz que ya tenía sirve (no hace falta pagar otra). Ya se puede renderizar."
+        : "Guion aprobado. El siguiente paso es la locución (Claude la genera con generar_locucion, con su costo y tu confirmación)." });
       recargarLista();
     } catch (e) { setMsg({ error: true, texto: e.message }); } finally { setOcupado(""); }
   };
@@ -219,6 +222,11 @@ export default function VideoAnimado({ client, estudio }) {
           </div>
           {sucio && <p className="hint">Hay cambios sin guardar.</p>}
           {!abierto.nuevo && <RenderVideo client={client} video={abierto} sucio={sucio} onCambio={setAbierto} />}
+          {!abierto.nuevo && (
+            <Suspense fallback={null}>
+              <VideoSonido client={client} video={abierto} sucio={sucio} onCambio={(v) => { setAbierto(v); setTexto(JSON.stringify(v.guion, null, 2)); }} />
+            </Suspense>
+          )}
         </div>
       </div>
     </div>

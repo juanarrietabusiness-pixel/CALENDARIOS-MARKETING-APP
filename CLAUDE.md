@@ -173,8 +173,12 @@ src/
     videosApi.js          Cliente de /api/videos/<cliente>
     subtitulos.js         Los SUBTÍTULOS por palabra: grupos por trozos de frase y parejos, la palabra clave, qué está dicho,
                           diciéndose o falta en cada instante (puro: lo leen el motor, la vista previa y el render)
-    renderVideo.js        El RENDER a mp4: los cuadros, la voz en tramos con los silencios insertados, el filtro de ffmpeg y
-                          loudnorm a -14 LUFS, cuándo se puede renderizar (puro: lo leen el Container, el Worker y la pantalla)
+    renderVideo.js        El RENDER a mp4: los cuadros, la voz en tramos con los silencios insertados (copiando muestras), la
+                          ganancia a -14 LUFS, cuándo se puede renderizar (puro: lo leen el Container, el Worker y la pantalla)
+    sonidoVideo.js        Lo que suena DEBAJO de la voz (aparte del guion): limpiar el sonido del video, la música con ducking,
+                          fundido y repetida (puro: Worker, Container y pantalla)
+    efectosSonido.js      Los efectos del video animado: whoosh en las transiciones y pop en sellos y llamados, sintetizados
+                          (sin archivos) y mezclados bajitos (puro: el Container)
     revisionEscenas.js    La revisión antes de renderizar: subtítulos que tapan, texto que se sale o se parte, fuera de la zona
                           segura, capas encimadas; el instante «lleno» de cada escena (puro: mide con el lienzo que le dan)
     videoFormatoIA.js     El formato de escenas v1 contado a una IA (`formato_video`), sacado del mismo vocabulario que valida,
@@ -433,6 +437,8 @@ src/
     VideoAnimado.jsx      «Animado con código»: los videos animados del cliente, el guion (errores con su sitio), la vista
                           previa en el lienzo y «Aprobar el guion» (lazy; dentro de FlujoReel)
     RenderVideo.jsx       «Renderizar a mp4»: pedirlo, esperarlo (relee cada 4 s), verlo, descargarlo y a qué publicación va
+    VideoSonido.jsx       «Sonido» (efectos y música de la galería, con su volumen) e «Historial de versiones» del video
+                          animado (lazy: el chunk de VideoAnimado está en su tope)
     ReferenciasGaleria.jsx  Ejemplos de la galería al corregir (y referencias del reel), cada uno con qué se toma
     GuardarRegla.jsx      «Guardar como regla» junto a cada corrección
     calendario/RevisionMes.jsx  «Revisar el mes» antes de enviarlo: reglas, IA opcional e imágenes contra el kit (lazy)
@@ -631,7 +637,7 @@ worker/
     videos.js             /api/videos/<cliente>: los videos animados (listar, crear, guardar el guion, aprobar, borrar)
 container/                El Container del video animado (Node + @napi-rs/canvas + ffmpeg, Dockerfile): /cuadro, /hoja, /revisar y
                           /render (render.mjs) con el MISMO motor de src/lib; probar.mjs es su prueba de humo (job «contenedor»)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -4181,6 +4187,27 @@ son del servidor.
   del 12 % del cuadro, o cabe en una franja de menos del 35 % del alto) y `desequilibrio` (el centro de lo que OCUPA la
   escena —no pesado por área: un titular ancho abajo y una cifra arriba no están «abajo»— se va más del 15 % del alto o
   del 12 % del ancho). Son avisos, no graves.
+  · **El SONIDO va aparte del guion** (`videos_proyectos.sonido`, 0060; `src/lib/sonidoVideo.js`, `efectosSonido.js`,
+  `VideoSonido.jsx`; `PUT /api/videos/<c>/<id>/sonido`, herramientas `sonido_video` y `musicas`): cambiarlo NO sube la
+  versión ni devuelve a borrador, así que no obliga a pagar otra voz; se oye al volver a renderizar (gratis). Los EFECTOS
+  (encendidos por defecto) son un whoosh en cada transición que no es un corte y un pop al entrar un sello o un llamado,
+  SINTETIZADOS (ruido filtrado con semilla, un tono que cae: sin archivos ni licencias) y mezclados 12 dB por debajo del
+  nivel de la voz. La MÚSICA es un audio de la galería del cliente (`subirArchivo(…, { musica: true })`, tipo «audio»,
+  modelo `musica-subida`; las locuciones también son audio y no salen en `musicasDe`): se mezcla en JS por debajo de la
+  voz con DUCKING (9 dB bajo la voz en los huecos, 20 mientras se habla; baja en 80 ms y sube en 450), fundido de 0,4 s al
+  entrar y 2 s al salir, repetida si es corta, ±12 dB a mano. Todo antes de la ganancia, así guarda su distancia con la voz
+  sea cual sea la toma. Una música que ya no está no tumba el render: sale sin ella y lo dice en `render.aviso`.
+  · **Generar la música con Suno por Kie (`generar_musica`) NO está hecho**: la documentación de Kie (docs.kie.ai y sus
+  espejos) no se pudo leer desde la sesión, y la forma de su API no se adivina. Lo que falta es poner su extracto en
+  `docs/kie/` y la llamada; la mezcla, la galería y el cambio sin rehacer la voz ya están.
+  · **El HISTORIAL** (`videos_versiones`, 0060; `versionesDe`, `volverAVersion` en videosProyectos.js; `GET|POST
+  /api/videos/<c>/<id>/versiones`, `versiones_video`, `volver_a_version`): cada cambio del guion guarda el de ANTES (hasta
+  `MAX_VERSIONES`, 30). Volver crea una versión NUEVA con ese guion, en borrador; nunca se reescribe la historia.
+  · **Si lo que se DICE no cambió, la voz sigue valiendo** (`vozQueSigueValiendo`): al aprobar, si la locución está lista y
+  `textoParaVoz(guion)` es exactamente el `prompt` de su trabajo, pasa a la versión nueva (`deVersion` dice de cuál era) y
+  el video queda «Con voz». Cambiar capas, fondos o pausas ya no obliga a pagar otra locución.
+  · **Un sello que se parte en dos líneas avisa** (`sello_partido` en revisionEscenas.js): un sello se lee de un vistazo
+  en UNA línea.
   · **El ejemplo de `formato_video` sólo usa componentes que el motor ya dibuja** (un test lo exige): uno con marcadores
   enseñaba a Claude justo lo que hay que evitar.
   · **Nada de esto se ha probado contra Kie real** (los tests hablan con un `fetch` de mentira): los nombres de los campos

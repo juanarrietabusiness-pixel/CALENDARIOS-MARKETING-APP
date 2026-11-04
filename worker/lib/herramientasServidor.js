@@ -387,6 +387,10 @@ export function describirUso(nombre, entrada = {}) {
     case "revisar_video": return "Revisó el video animado antes de renderizar";
     case "renderizar_video": return "Pidió el render a mp4 de un video animado";
     case "ligar_video": return entrada.publicacion_id ? "Ligó un video animado a una publicación" : "Desligó un video animado de su publicación";
+    case "sonido_video": return entrada.efectos === undefined && entrada.musica_id === undefined && entrada.volumen === undefined ? "Miró el sonido de un video animado" : "Cambió el sonido de un video animado (efectos o música)";
+    case "musicas": return `Miró las músicas de fondo${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
+    case "versiones_video": return "Miró el historial de un video animado";
+    case "volver_a_version": return `Volvió un video animado a su versión ${entrada.a_version ?? ""}`;
     default: return nombre;
   }
 }

@@ -85,7 +85,7 @@ function vozDePrueba(segundos) {
 }
 
 const linea = lineaDeTiempo(validarGuion(EJEMPLO_GUION).guion, null);
-const v = await post("/render", { audio: vozDePrueba(Math.max(1, linea.total - 1)) });
+const v = await post("/render", { audio: vozDePrueba(Math.max(1, linea.total - 1)), efectos: true });
 if (v.estado !== 200) falla(`/render devolvió ${v.estado}: ${new TextDecoder().decode(v.bytes).slice(0, 300)}`);
 if (!esMp4(v.bytes)) falla("/render no devolvió un mp4");
 const cuadros = Number(v.cabeceras.get("x-cuadros"));

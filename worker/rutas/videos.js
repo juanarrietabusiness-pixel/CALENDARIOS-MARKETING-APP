@@ -30,6 +30,12 @@
 //                                           del render lo hace (worker/lib/estudio/render.js). No gasta IA
 //   POST   /api/videos/<c>/<id>/publicacion { postId, calendarId? }: ligarlo a una publicación del cliente (postId vacío:
 //                                           desligarlo). Si el mp4 ya está hecho, se pone en ella ya
+//   PUT    /api/videos/<c>/<id>/sonido      { efectos, musica: { archivoId, volumen } | null }: lo que suena debajo de la
+//                                           voz. Va aparte del guion: no sube la versión ni pide otra voz (gratis)
+//   GET    /api/videos/<c>/<id>/versiones   El historial: las versiones de antes del guion
+//   POST   /api/videos/<c>/<id>/versiones   { version, aVersion }: volver a una (crea una versión nueva con su guion)
+//   GET    /api/videos/<c>/musicas          Las músicas de fondo del cliente (audio de su galería)
+//   POST   /api/videos/<c>/musicas          Subir una (multipart: archivo; MP3 o WAV, ≤ 15 MB)
 //
 // El guion lo valida `validarGuion` (src/lib/videoEscenas.js) aquí, en el servidor: lo que llega del navegador, del
 // asistente o de Claude por MCP no se cree. Un guion con errores NO se guarda: vuelve 400 con la lista de errores,
@@ -45,7 +51,10 @@ import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { difundir, firma } from "../lib/vivo.js";
 import {
   deFila, listarProyectos, crearProyecto, guardarProyecto, aprobarProyecto, ErrorVideo, ID_VIDEO as ID,
+  guardarSonido, versionesDe, volverAVersion,
 } from "../lib/videosProyectos.js";
+import { musicasDe, subirArchivo } from "../lib/estudio/galeria.js";
+import { ErrorEstudio } from "../lib/estudio/trabajos.js";
 import { listarVoces, pedirMuestra, pedirLocucion, locucionAlDia, claveDeMuestra, HUELLA, ErrorVoz, viaDeVoz, fijarVozDeMarca } from "../lib/estudio/locucion.js";
 import { buscarEnBiblioteca, anadirDeLaBiblioteca, previaGratis, ACENTOS_BIBLIOTECA } from "../lib/estudio/elevenlabs.js";
 import { ErrorMotor } from "../lib/estudio/gemini.js";
@@ -154,6 +163,22 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
 
   if (id === "voces") return rutasVoces(req, env, { acceso, usuario, cliente, sub: accion, metodo });
 
+  // Las músicas de fondo del cliente: listar y subir (gratis).
+  if (id === "musicas" && !accion) {
+    if (metodo === "GET") return json({ musicas: await musicasDe(acceso, clienteId) });
+    if (metodo === "POST") {
+      try {
+        const form = await req.formData().catch(() => null);
+        const a = await subirArchivo(env, acceso, cliente, form?.get("archivo"), { musica: true });
+        return json({ musica: { id: a.id, nombre: String(a.prompt || "Música").replace(/\.[a-z0-9]+$/i, ""), src: a.src ?? `/api/media/${a.clave}` }, repetido: a.repetido === true }, 201);
+      } catch (e) {
+        if (e instanceof ErrorEstudio) return error(e.message, e.estado ?? 400);
+        throw e;
+      }
+    }
+    return error("Método no permitido.", 405);
+  }
+
   if (!ID.test(String(id))) return noEncontrado("Video");
   // Un render que se quedó a medias (pasado su plazo) se da por fallido al leerlo.
   const fila = await renderAlDia(acceso, await acceso.leerUno("videos_proyectos", { id, client_id: clienteId }));
@@ -188,7 +213,7 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
 
   const b = (await cuerpo(req)) ?? {};
   if (!accion && metodo === "PUT") {
-    const r = await guardarProyecto(acceso, cliente, fila, { guion: b.guion, titulo: b.titulo, version: b.version });
+    const r = await guardarProyecto(acceso, cliente, fila, { guion: b.guion, titulo: b.titulo, version: b.version, por: usuario?.nombre ?? null });
     if (r.cambio) avisar(env, acceso, usuario, req, clienteId, id);
     return json({ video: r.video, avisos: r.avisos });
   }
@@ -200,6 +225,15 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
     });
     return json(r);
   }
+
+  // El sonido (efectos y música): tampoco toca el guion ni la voz.
+  if (accion === "sonido" && metodo === "PUT") {
+    const r = await guardarSonido(acceso, cliente, fila, { efectos: b.efectos, musica: b.musica ?? null });
+    avisar(env, acceso, usuario, req, clienteId, id);
+    return json(r);
+  }
+
+  if (accion === "versiones" && metodo === "GET") return json({ versiones: await versionesDe(acceso, clienteId, fila), actual: fila.version });
 
   // La versión que se leyó: si alguien guardó después, no se pisa.
   if (!Number.isInteger(b.version)) return error("Falta la versión que tenías abierta.");
@@ -220,6 +254,12 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
   if (accion === "render" && metodo === "POST") {
     const r = await pedirRender(env, acceso, cliente, fila, { version: b.version, usuario, por: firma(usuario, req) });
     return json(r, 202);
+  }
+
+  if (accion === "versiones" && metodo === "POST") {
+    const r = await volverAVersion(acceso, cliente, fila, { version: b.version, aVersion: b.aVersion, por: usuario?.nombre ?? null });
+    avisar(env, acceso, usuario, req, clienteId, id);
+    return json({ video: r.video, avisos: r.avisos });
   }
 
   if (accion === "aprobar" && metodo === "POST") {

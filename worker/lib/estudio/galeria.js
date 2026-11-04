@@ -288,18 +288,34 @@ async function herenciaDe(acceso, clientId, origenId, plantilla) {
   };
 }
 
-export async function subirArchivo(env, acceso, cliente, archivo, { carpetaId = null, origenId = null, plantilla = null } = {}) {
+/** El `modelo` de una música subida a mano (las locuciones también son audio: así se distinguen). */
+export const MODELO_MUSICA_SUBIDA = "musica-subida";
+
+/** Las músicas de fondo de un cliente (subidas a mano o generadas), de la más nueva a la más vieja. */
+export async function musicasDe(acceso, clienteId) {
+  const filas = await acceso.leerColumnas("estudio_archivos", ["id", "clave", "prompt", "modelo", "bytes", "ajustes", "created_at"],
+    { client_id: clienteId, tipo: "audio", borrado_at: NULO }, "created_at desc", 100);
+  return filas.filter((f) => String(f.modelo).startsWith("musica")).map((f) => ({
+    id: f.id, nombre: String(f.prompt || "Música").replace(/\.[a-z0-9]+$/i, "").slice(0, 80), src: `/api/media/${f.clave}`,
+    bytes: f.bytes, modelo: f.modelo, fecha: f.created_at,
+  }));
+}
+
+export async function subirArchivo(env, acceso, cliente, archivo, { carpetaId = null, origenId = null, plantilla = null, musica = false } = {}) {
   if (!archivo || typeof archivo === "string") throw new ErrorEstudio("Falta el archivo.", 400);
   if (archivo.size > MAX_SUBIDA_VIDEO) throw new ErrorEstudio("El archivo pesa más de 50 MB.", 413);
   const cabecera = new Uint8Array(await archivo.slice(0, 65_536).arrayBuffer());
   const mime = tipoPorBytes(cabecera);
-  if (!mime) throw new ErrorEstudio("Sólo se pueden subir imágenes PNG, JPEG o WebP, o videos MP4, MOV o WebM.", 415);
+  // Un audio sólo entra como MÚSICA de un video animado (`musica`): en la galería de imágenes no tiene sitio.
+  if (musica && !mime?.startsWith("audio/")) throw new ErrorEstudio("La música tiene que ser un MP3 o un WAV.", 415);
+  if (!mime || (!musica && mime.startsWith("audio/"))) throw new ErrorEstudio("Sólo se pueden subir imágenes PNG, JPEG o WebP, o videos MP4, MOV o WebM.", 415);
   const esVideo = mime.startsWith("video/");
-  if (!esVideo && archivo.size > MAX_SUBIDA) throw new ErrorEstudio("La imagen pesa más de 15 MB.", 413);
+  const esAudio = mime.startsWith("audio/");
+  if (!esVideo && archivo.size > MAX_SUBIDA) throw new ErrorEstudio(esAudio ? "La música pesa más de 15 MB." : "La imagen pesa más de 15 MB.", 413);
   if (carpetaId && !(await acceso.leerUno("estudio_carpetas", { id: String(carpetaId), client_id: cliente.id }))) {
     throw new ErrorEstudio("Esa carpeta no existe.", 404);
   }
-  const herencia = esVideo ? null : await herenciaDe(acceso, cliente.id, origenId, plantilla);
+  const herencia = esVideo || esAudio ? null : await herenciaDe(acceso, cliente.id, origenId, plantilla);
   // Una imagen subida a mano dos veces es la misma: se devuelve la ficha que ya había (y, si estaba en la papelera,
   // vuelve). Las compuestas no se comparan (las crea el Estudio) y los videos tampoco (no se cargan enteros).
   const huella = !esVideo && !herencia ? await huellaDe(archivo) : "";
@@ -312,11 +328,11 @@ export async function subirArchivo(env, acceso, cliente, archivo, { carpetaId = 
   }
   const clave = claveDeArchivo(cliente.id, archivo.name?.replace(/\.[^.]+$/, "") || "subida", mime);
   await env.MEDIA.put(clave, archivo.stream(), { httpMetadata: { contentType: mime } });
-  const { ancho, alto } = esVideo ? { ancho: 0, alto: 0 } : medidasDe(cabecera, mime);
+  const { ancho, alto } = esVideo || esAudio ? { ancho: 0, alto: 0 } : medidasDe(cabecera, mime);
   const ahora = new Date().toISOString();
   const fila = await acceso.insertar("estudio_archivos", {
-    id: uuid(), client_id: cliente.id, clave, tipo: esVideo ? "video" : "imagen", mime, ancho, alto, bytes: archivo.size,
-    prompt: herencia?.prompt ?? String(archivo.name ?? "").slice(0, 200), modelo: herencia?.modelo ?? "", ajustes: herencia?.ajustes ?? "{}",
+    id: uuid(), client_id: cliente.id, clave, tipo: esVideo ? "video" : esAudio ? "audio" : "imagen", mime, ancho, alto, bytes: archivo.size,
+    prompt: herencia?.prompt ?? String(archivo.name ?? "").slice(0, 200), modelo: herencia?.modelo ?? (esAudio ? MODELO_MUSICA_SUBIDA : ""), ajustes: herencia?.ajustes ?? "{}",
     trabajo_id: herencia?.trabajo_id ?? null,
     // Una compuesta la crea el Estudio (el texto encima de su pieza): no es «subida a mano», y su objeto de R2 es suyo.
     carpeta_id: carpetaId ? String(carpetaId) : null, origen: herencia ? "estudio" : "subida", costo: 0, favorito: 0, subido: herencia ? 0 : 1, usado_en: "[]",

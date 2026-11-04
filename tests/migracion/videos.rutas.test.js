@@ -142,3 +142,84 @@ describe("los proyectos de video animado", () => {
     expect((await pedir(`/videos/bc/${video.id}`, "t-jefe")).status).toBe(404);
   });
 });
+
+// ------------------------------------------------------------
+// El sonido (efectos y música), el historial del guion y la voz que sigue valiendo
+// ------------------------------------------------------------
+
+import { textoParaVoz, MODELO_VOZ_POR_DEFECTO } from "../../src/lib/voces.js";
+
+/** Le pone al video una locución LISTA de su versión 1, con el texto que se le mandó a la voz en su trabajo. */
+function conLocucion(video, guion) {
+  db.sqlite.prepare("insert into estudio_trabajos (id, owner_id, client_id, estado, tipo, motor, modelo, prompt) values (?,?,?,?,?,?,?,?)")
+    .run("tr-voz", JEFE, "bc", "hecho", "audio", "elevenlabs", "elevenlabs-v4", textoParaVoz(guion, MODELO_VOZ_POR_DEFECTO));
+  const locucion = { estado: "lista", clave: "clientes/bc/estudio/voz.mp3", trabajoId: "tr-voz", modelo: MODELO_VOZ_POR_DEFECTO, version: 1, duracion: 20 };
+  db.sqlite.prepare("update videos_proyectos set estado = 'con_voz', locucion = ? where id = ?").run(JSON.stringify(locucion), video.id);
+}
+
+describe("el sonido, el historial y la voz que sigue valiendo", () => {
+  it("el sonido va aparte: cambiarlo no sube la versión ni toca la voz; una música de otro cliente no entra", async () => {
+    const { video } = await crear();
+    expect(video.sonido).toEqual({ efectos: true, musica: null });
+    db.sqlite.prepare("insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime, modelo, prompt) values (?,?,?,?,?,?,?,?)")
+      .run("m1", JEFE, "bc", "clientes/bc/estudio/tema.mp3", "audio", "audio/mpeg", "musica-subida", "Tema alegre.mp3");
+    const r = await pedir(`/videos/bc/${video.id}/sonido`, "t-jefe", { method: "PUT", body: { efectos: false, musica: { archivoId: "m1", volumen: -3 } } });
+    expect(r.status).toBe(200);
+    const { video: v } = await r.json();
+    expect(v.sonido).toEqual({ efectos: false, musica: { archivoId: "m1", clave: "clientes/bc/estudio/tema.mp3", nombre: "Tema alegre", volumen: -3 } });
+    expect(v).toMatchObject({ version: 1, estado: "borrador" });
+    // Una locución (audio, pero no música) tampoco es de otro cliente: un id que no es suyo da 404.
+    expect((await pedir(`/videos/bc/${video.id}/sonido`, "t-jefe", { method: "PUT", body: { musica: { archivoId: "no-existe" } } })).status).toBe(404);
+    // La lista de músicas sólo trae las músicas (no las locuciones).
+    db.sqlite.prepare("insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime, modelo) values (?,?,?,?,?,?,?)")
+      .run("voz1", JEFE, "bc", "clientes/bc/estudio/voz.mp3", "audio", "audio/mpeg", "elevenlabs-v4");
+    const { musicas } = await (await pedir("/videos/bc/musicas", "t-jefe")).json();
+    expect(musicas.map((m) => m.id)).toEqual(["m1"]);
+    expect(musicas[0].nombre).toBe("Tema alegre");
+  });
+
+  it("cada cambio del guion guarda el de antes en el historial, y se puede volver a él (versión nueva, en borrador)", async () => {
+    const { video } = await crear();
+    const g = ejemplo();
+    g.escenas[1].pantalla = "Cambio uno";
+    await pedir(`/videos/bc/${video.id}`, "t-jefe", { method: "PUT", body: { guion: g, version: 1 } });
+    g.escenas[1].pantalla = "Cambio dos";
+    await pedir(`/videos/bc/${video.id}`, "t-jefe", { method: "PUT", body: { guion: g, version: 2 } });
+    const h = await (await pedir(`/videos/bc/${video.id}/versiones`, "t-jefe")).json();
+    expect(h.actual).toBe(3);
+    expect(h.versiones.map((v) => v.version)).toEqual([2, 1]);
+    expect(h.versiones[0]).toMatchObject({ por: "Juan", escenas: ejemplo().escenas.length });
+    // Volver a la 1: es la versión 4, con el guion de la 1, y la 3 queda en el historial.
+    const r = await (await pedir(`/videos/bc/${video.id}/versiones`, "t-jefe", { method: "POST", body: { version: 3, aVersion: 1 } })).json();
+    expect(r.video).toMatchObject({ version: 4, estado: "borrador" });
+    expect(r.video.guion.escenas[1].pantalla).toBe(ejemplo().escenas[1].pantalla);
+    const h2 = await (await pedir(`/videos/bc/${video.id}/versiones`, "t-jefe")).json();
+    expect(h2.versiones.map((v) => v.version)).toEqual([3, 2, 1]);
+    // Con la versión vieja, 409; a una que no existe, 404.
+    expect((await pedir(`/videos/bc/${video.id}/versiones`, "t-jefe", { method: "POST", body: { version: 3, aVersion: 1 } })).status).toBe(409);
+    expect((await pedir(`/videos/bc/${video.id}/versiones`, "t-jefe", { method: "POST", body: { version: 4, aVersion: 9 } })).status).toBe(404);
+    // Otro espacio no ve el historial.
+    expect((await pedir(`/videos/bc/${video.id}/versiones`, "t-otro")).status).toBe(404);
+  });
+
+  it("si sólo cambió lo que SE VE, al aprobar la voz de antes sigue valiendo (no se paga otra); si cambió lo que se dice, no", async () => {
+    const { video } = await crear();
+    await pedir(`/videos/bc/${video.id}/aprobar`, "t-jefe", { method: "POST", body: { version: 1 } });
+    conLocucion(video, ejemplo());
+    // Sólo lo que se ve.
+    const g = ejemplo();
+    g.escenas[1].pantalla = "Otro texto en pantalla";
+    await pedir(`/videos/bc/${video.id}`, "t-jefe", { method: "PUT", body: { guion: g, version: 1 } });
+    const a = await (await pedir(`/videos/bc/${video.id}/aprobar`, "t-jefe", { method: "POST", body: { version: 2 } })).json();
+    expect(a.vozReutilizada).toBe(true);
+    expect(a.video).toMatchObject({ estado: "con_voz", aprobadaVersion: 2 });
+    expect(a.video.locucion).toMatchObject({ estado: "lista", version: 2, deVersion: 1 });
+    // Lo que se dice.
+    g.escenas[1].habla = `${g.escenas[1].habla} Y algo más.`;
+    await pedir(`/videos/bc/${video.id}`, "t-jefe", { method: "PUT", body: { guion: g, version: 2 } });
+    const b = await (await pedir(`/videos/bc/${video.id}/aprobar`, "t-jefe", { method: "POST", body: { version: 3 } })).json();
+    expect(b.vozReutilizada).toBe(false);
+    expect(b.video).toMatchObject({ estado: "aprobado", aprobadaVersion: 3 });
+    expect(b.video.locucion.version).toBe(2);
+  });
+});

@@ -10,14 +10,23 @@
 //   · guardar y aprobar llevan la `version` que se leyó: si otra persona guardó entremedias, 409 en vez de pisarla;
 //   · editar un guion lo devuelve a borrador (la aprobación era de otro texto) y sube la versión; mientras se
 //     renderiza no se deja editar;
-//   · sólo se aprueba un borrador sin errores, y la aprobación fija `aprobada_version` (la voz sólo sale de ésa).
+//   · sólo se aprueba un borrador sin errores, y la aprobación fija `aprobada_version` (la voz sólo sale de ésa). Si lo
+//     que se DICE no cambió (sólo lo que se ve: capas, fondos, pausas), la locución que ya había sirve para la versión
+//     nueva y no se paga otra (`vozQueSigueValiendo`);
+//   · cada cambio del guion guarda el de ANTES en `videos_versiones` (el historial); volver a una versión crea otra
+//     nueva con ese guion, nunca reescribe la historia;
+//   · el SONIDO (efectos y música) va aparte del guion: cambiarlo no toca la versión ni la voz.
 // ============================================================
 
 import { uuid, ahora } from "./ids.js";
 import { validarGuion, lineaDeTiempo, estadoTrasEditar, NOMBRE_ESTADO_VIDEO } from "../../src/lib/videoEscenas.js";
+import { textoParaVoz } from "../../src/lib/voces.js";
+import { limpiarSonido } from "../../src/lib/sonidoVideo.js";
 
 export const ID_VIDEO = /^[\w-]{1,80}$/;
 export const MAX_PROYECTOS = 200;
+/** Las versiones de antes que se guardan por video (las más viejas se borran). */
+export const MAX_VERSIONES = 30;
 export const COLUMNAS_LISTA = ["id", "titulo", "estado", "version", "aprobada_version", "calendar_id", "post_id", "nota", "created_at", "updated_at"];
 
 /** Un fallo de lo pedido, con su estado HTTP y lo que la pantalla necesita (`errores`, `avisos`, `video`). */
@@ -42,7 +51,7 @@ export function deFila(f) {
     calendarId: f.calendar_id ?? null, postId: f.post_id ?? null, nota: f.nota ?? "",
     guion: v.guion ?? guion, valido: v.ok, errores: v.errores,
     segundos: v.guion?.escenas?.length ? lineaDeTiempo(v.guion, locucion.palabras ?? null).total : 0,
-    locucion, render: leerJSON(f.render, {}),
+    locucion, render: leerJSON(f.render, {}), sonido: limpiarSonido(leerJSON(f.sonido, {})),
     aprobadoPor: f.aprobado_por ?? null, aprobadoAt: f.aprobado_at ?? null,
     creado: f.created_at, actualizado: f.updated_at,
   };
@@ -119,7 +128,7 @@ function comprobarVersion(fila, version) {
  * Guarda el guion y/o el título de la versión que se tenía abierta. Un guion distinto sube la versión y devuelve el
  * proyecto a borrador. → { video, avisos, cambio } (`cambio`: si se escribió algo).
  */
-export async function guardarProyecto(acceso, cliente, fila, { guion: entrada, titulo, version }) {
+export async function guardarProyecto(acceso, cliente, fila, { guion: entrada, titulo, version, por = null }) {
   comprobarVersion(fila, version);
   const cambios = {};
   let avisos = [];
@@ -141,7 +150,80 @@ export async function guardarProyecto(acceso, cliente, fila, { guion: entrada, t
   cambios.updated_at = ahora();
   const n = await acceso.actualizar("videos_proyectos", { id: fila.id, client_id: cliente.id, version: fila.version }, cambios);
   if (!n) throw new ErrorVideo("Otra persona cambió este video mientras lo guardabas. Vuelve a abrirlo.", 409);
+  // El guion de antes, al historial (sólo si cambió). Que falle no deshace el guardado: se pierde un paso del historial.
+  if (cambios.guion) await guardarVersionAnterior(acceso, cliente.id, fila, por).catch(() => null);
   return { video: deFila({ ...fila, ...cambios }), avisos, cambio: true };
+}
+
+/** Guarda en el historial el guion de `fila` (la versión que se va a dejar atrás) y recorta a MAX_VERSIONES. */
+async function guardarVersionAnterior(acceso, clienteId, fila, por) {
+  await acceso.insertar("videos_versiones", {
+    id: uuid(), client_id: clienteId, video_id: fila.id, version: fila.version, titulo: fila.titulo ?? "",
+    guion: fila.guion || "{}", por: por ?? null, created_at: ahora(),
+  });
+  const todas = await acceso.leerColumnas("videos_versiones", ["id"], { client_id: clienteId, video_id: fila.id }, "version desc");
+  const sobran = todas.slice(MAX_VERSIONES).map((v) => v.id);
+  if (sobran.length) await acceso.borrarVarios("videos_versiones", sobran);
+}
+
+/** Las versiones de antes de un video, de la más nueva a la más vieja → [{ version, titulo, escenas, segundos, habla, por, fecha }]. */
+export async function versionesDe(acceso, clienteId, fila) {
+  const filas = await acceso.leerColumnas("videos_versiones", ["version", "titulo", "guion", "por", "created_at"], { client_id: clienteId, video_id: fila.id }, "version desc", MAX_VERSIONES);
+  return filas.map((v) => {
+    const g = leerJSON(v.guion, {});
+    const escenas = Array.isArray(g.escenas) ? g.escenas : [];
+    const ok = validarGuion(g);
+    return {
+      version: v.version, titulo: v.titulo, escenas: escenas.length, por: v.por ?? null, fecha: v.created_at,
+      segundos: ok.guion?.escenas?.length ? lineaDeTiempo(ok.guion).total : 0,
+      habla: escenas.map((e) => String(e?.habla ?? "")).join(" ").replace(/\s+/g, " ").trim().slice(0, 160),
+    };
+  });
+}
+
+/**
+ * Vuelve a la versión `aVersion` (una del historial): su guion pasa a ser una versión NUEVA (la de ahora se guarda en el
+ * historial como cualquier cambio) y el video queda en borrador. Si lo que se dice es lo mismo que la locución que hay,
+ * al aprobarla la voz sigue valiendo. → { video, avisos, cambio }.
+ */
+export async function volverAVersion(acceso, cliente, fila, { version, aVersion, por = null }) {
+  comprobarVersion(fila, version);
+  if (!Number.isInteger(aVersion)) throw new ErrorVideo("Falta a qué versión volver.", 400);
+  if (aVersion === fila.version) throw new ErrorVideo("Ya es la versión de ahora.", 400);
+  const vieja = await acceso.leerUno("videos_versiones", { client_id: cliente.id, video_id: fila.id, version: aVersion });
+  if (!vieja) throw new ErrorVideo(`No guardé la versión ${aVersion} de este video.`, 404);
+  const r = await guardarProyecto(acceso, cliente, fila, { guion: leerJSON(vieja.guion, {}), version, por });
+  if (!r.cambio) throw new ErrorVideo(`El guion de la versión ${aVersion} es igual al de ahora.`, 400);
+  return r;
+}
+
+/**
+ * ¿La locución que tiene el video sigue valiendo para el guion de ahora? Sí si está lista y lo que se DICE es
+ * exactamente lo mismo que se le mandó a la voz (el texto del trabajo de la locución): los tiempos de cada palabra
+ * siguen cuadrando. Así, cambiar sólo lo que se ve (capas, fondos, pausas) no obliga a pagar otra voz. → bool.
+ */
+export async function vozQueSigueValiendo(acceso, clienteId, fila, guion) {
+  const l = leerJSON(fila.locucion, {});
+  if (l.estado !== "lista" || !l.clave || !l.trabajoId) return false;
+  const trabajo = await acceso.leerUno("estudio_trabajos", { id: String(l.trabajoId), client_id: clienteId }).catch(() => null);
+  if (!trabajo?.prompt) return false;
+  return textoParaVoz(guion, l.modelo) === trabajo.prompt;
+}
+
+/** Cambia el sonido del video (efectos y música; ver src/lib/sonidoVideo.js). No toca la versión ni la voz. → { video }. */
+export async function guardarSonido(acceso, cliente, fila, sonido) {
+  if (fila.estado === "renderizando") throw new ErrorVideo("Se está renderizando: espera a que termine para cambiar el sonido.", 409);
+  const limpio = limpiarSonido(sonido);
+  if (limpio.musica) {
+    const a = await acceso.leerUno("estudio_archivos", { id: limpio.musica.archivoId, client_id: cliente.id });
+    if (!a || a.tipo !== "audio" || a.borrado_at) throw new ErrorVideo("Esa música no está en la galería de este cliente.", 404);
+    const nombre = limpio.musica.nombre || String(a.prompt ?? "").replace(/\.[a-z0-9]+$/i, "").trim().slice(0, 80) || "Música";
+    limpio.musica = { ...limpio.musica, clave: a.clave, nombre };
+  }
+  const momento = ahora();
+  const n = await acceso.actualizar("videos_proyectos", { id: fila.id, client_id: cliente.id, estado: fila.estado }, { sonido: JSON.stringify(limpio), updated_at: momento });
+  if (!n) throw new ErrorVideo("Otra persona cambió este video mientras lo guardabas. Vuelve a abrirlo.", 409);
+  return { video: deFila({ ...fila, sonido: JSON.stringify(limpio), updated_at: momento }) };
 }
 
 /**
@@ -149,7 +231,7 @@ export async function guardarProyecto(acceso, cliente, fila, { guion: entrada, t
  * con `posicion`, la mueve); con uno nuevo la añade en `posicion` (1 = la primera) o al final; `quitar` (un id) la
  * borra. El guion resultante se valida entero y se guarda como `guardarProyecto`. → { video, avisos, cambio, que }.
  */
-export async function editarEscena(acceso, cliente, fila, { version, escena, posicion, quitar }) {
+export async function editarEscena(acceso, cliente, fila, { version, escena, posicion, quitar, por = null }) {
   comprobarVersion(fila, version);
   const guion = leerJSON(fila.guion, {});
   const escenas = Array.isArray(guion.escenas) ? [...guion.escenas] : [];
@@ -169,7 +251,7 @@ export async function editarEscena(acceso, cliente, fila, { version, escena, pos
     escenas.splice(n, 0, nueva);
     que = i >= 0 ? `Cambiada la escena «${nueva.id}»${n !== i ? ` (ahora es la ${n + 1})` : ""}.` : `Añadida una escena en la posición ${n + 1}.`;
   }
-  const r = await guardarProyecto(acceso, cliente, fila, { guion: { ...guion, escenas }, version });
+  const r = await guardarProyecto(acceso, cliente, fila, { guion: { ...guion, escenas }, version, por });
   return { ...r, que };
 }
 
@@ -182,7 +264,13 @@ export async function aprobarProyecto(acceso, cliente, fila, { version, usuario 
   if (!v.ok) throw new ErrorVideo("El guion tiene errores: corrígelos antes de aprobarlo.", 400, { errores: v.errores });
   const momento = ahora();
   const cambios = { estado: "aprobado", aprobada_version: fila.version, aprobado_por: usuario?.id ?? null, aprobado_at: momento, updated_at: momento };
+  // Lo que se dice no cambió: la locución de antes sirve para esta versión (no se paga otra).
+  const sigue = await vozQueSigueValiendo(acceso, cliente.id, fila, v.guion).catch(() => false);
+  if (sigue) {
+    const l = leerJSON(fila.locucion, {});
+    Object.assign(cambios, { estado: "con_voz", locucion: JSON.stringify({ ...l, version: fila.version, desfasada: false, deVersion: l.deVersion ?? l.version }) });
+  }
   const n = await acceso.actualizar("videos_proyectos", { id: fila.id, client_id: cliente.id, version: fila.version }, cambios);
   if (!n) throw new ErrorVideo("Otra persona cambió este video mientras lo aprobabas. Vuelve a abrirlo.", 409);
-  return { video: deFila({ ...fila, ...cambios }) };
+  return { video: deFila({ ...fila, ...cambios }), vozReutilizada: sigue };
 }

@@ -9,7 +9,7 @@
 //   POST /cuadro    { …, t, ancho?, tipo? }  → la imagen del instante t (JPEG por defecto; X-Escena: su id)
 //   POST /hoja      { …, ancho? }            → una hoja con un cuadro de cada escena en su instante «lleno», numerados
 //   POST /revisar   { …, formatos? }         → JSON { problemas, texto }: la revisión con las fuentes reales
-//   POST /render    { …, audio? (base64) }   → el MP4 entero (voz con los silencios, -14 LUFS, subtítulos), y en
+//   POST /render    { …, audio? (base64), musica? { audio (base64), volumen }, efectos? (bool) }   → el MP4 entero (voz con los silencios, -14 LUFS, subtítulos), y en
 //                                              cabeceras lo que tardó, la duración y el volumen medido
 //
 // Todo pedido lleva { guion, palabras, formato, paleta, imagenes, logo, fuentes } (ver recursos.mjs). El guion se
@@ -112,7 +112,10 @@ async function atender(ruta, p) {
   }
   if (ruta === "/render") {
     const audio = typeof p.audio === "string" && p.audio ? Buffer.from(p.audio, "base64") : null;
-    const turno = renderEnCurso.then(() => renderizar(base, { audio }));
+    const musica = typeof p.musica?.audio === "string" && p.musica.audio
+      ? { audio: Buffer.from(p.musica.audio, "base64"), volumen: Number(p.musica.volumen) || 0 } : null;
+    const efectos = p.efectos === true;
+    const turno = renderEnCurso.then(() => renderizar(base, { audio, musica, efectos }));
     renderEnCurso = turno.catch(() => {});
     const r = await turno;
     return {

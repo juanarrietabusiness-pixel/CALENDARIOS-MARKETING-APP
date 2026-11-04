@@ -144,6 +144,9 @@ export function revisarEscenas(ctx, { guion, linea, formato, recursos = {}, fuen
       if (masAncha > anchoTexto + TOLERANCIA) {
         const larga = String(capa.texto ?? "").split(/\s+/).reduce((x, y) => (y.length > x.length ? y : x), "");
         de(caja, "texto_se_sale", `El texto de ${nombre} no cabe: «${larga}» es más ancha que su caja y se sale. Acórtala o dale más ancho (tam).`);
+      } else if (capa.tipo === "sello" && enc.lineas.length > 1) {
+        // Un sello es un golpe de vista («NUEVO», «-20 %»): partido en dos líneas ya no se lee de un vistazo.
+        de(caja, "sello_partido", `El sello ${nombre} se parte en ${enc.lineas.length} líneas («${enc.lineas.join(" / ")}»): un sello se lee de un vistazo en UNA. Déjalo en una o dos palabras cortas, o pásalo a un texto.`, false);
       } else if (enc.lineas.length > r.lineas) {
         de(caja, "texto_se_parte", `El texto de ${nombre} se parte en ${enc.lineas.length} líneas (lo normal para un ${rol} son ${r.lineas}). Acórtalo.`, false);
       }

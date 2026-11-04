@@ -24,11 +24,14 @@ import { resincronizarCalendario } from "../publicador.js";
 import { pedidoDelVideo, aBase64 } from "./cuadros.js";
 import { claveDeArchivo, claveDelCliente, slugCorto } from "./archivos.js";
 import { puedeRenderizar, esMp4, PLAZO_RENDER_MS } from "../../../src/lib/renderVideo.js";
+import { limpiarSonido } from "../../../src/lib/sonidoVideo.js";
 
 const leerJSON = (t, d) => { try { return typeof t === "string" ? JSON.parse(t) : (t ?? d); } catch { return d; } };
 const SISTEMA = { userId: "sistema", nombre: "Render", color: "", tab: null };
 /** La voz que se manda al Container: una toma de un video corto son cientos de kB. */
 const TOPE_VOZ = 20 * 1024 * 1024;
+/** Lo que pesa como mucho la música de fondo (va en el mismo pedido que la voz). */
+const TOPE_MUSICA = 15 * 1024 * 1024;
 
 const avisar = (env, ownerId, clienteId, id, por = SISTEMA) => difundir(env, ownerId, { tipo: "videos", clienteId, id, por });
 
@@ -164,7 +167,19 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     if (voz.size > TOPE_VOZ) throw new Error("El audio de la locución pesa demasiado.");
     const audio = aBase64(new Uint8Array(await voz.arrayBuffer()));
 
-    const r = await enviar("/render", { ...pedido, audio });
+    // El sonido de debajo (efectos y música): aparte del guion. Una música que ya no está no tumba el render: va sin ella.
+    const sonido = limpiarSonido(leerJSON(fila.sonido, {}));
+    let musica = null;
+    let sinMusica = null;
+    const claveMusica = sonido.musica ? claveDelCliente(sonido.musica.clave, clienteId) : null;
+    if (sonido.musica) {
+      const obj = claveMusica ? await env.MEDIA.get(claveMusica) : null;
+      if (!obj) sinMusica = "La música de fondo ya no está en la galería: salió sin ella.";
+      else if (obj.size > TOPE_MUSICA) sinMusica = "La música de fondo pesa más de 15 MB: salió sin ella.";
+      else musica = { audio: aBase64(new Uint8Array(await obj.arrayBuffer())), volumen: sonido.musica.volumen };
+    }
+
+    const r = await enviar("/render", { ...pedido, audio, efectos: sonido.efectos, ...(musica ? { musica } : {}) });
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
       throw new Error(j.error || `El Container respondió ${r.status}.`);
@@ -187,6 +202,7 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     const datos = {
       duracion, cuadros: num("X-Cuadros"), lufs: num("X-Lufs"), lufsAntes: num("X-Lufs-Antes"),
       ms: { audio: num("X-Ms-Audio"), video: num("X-Ms-Video"), total: Date.now() - inicio }, videoId: fila.id, version: render.version,
+      efectos: sonido.efectos, musica: musica ? sonido.musica.nombre || "Música" : null,
     };
     await acceso.insertar("estudio_archivos", {
       id: archivoId, client_id: clienteId, clave, tipo: "video", mime: "video/mp4", ancho, alto, bytes: bytes.byteLength,
@@ -195,7 +211,8 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
     });
     const listo = {
       ...render, estado: "listo", clave, archivoId, bytes: bytes.byteLength, ancho, alto, ...datos, terminadoAt: momento,
-      adjunto: puesto?.postId ? { calendarId: puesto.calendarId, postId: puesto.postId } : null, aviso: puesto?.aviso ?? null,
+      adjunto: puesto?.postId ? { calendarId: puesto.calendarId, postId: puesto.postId } : null,
+      aviso: [sinMusica, puesto?.aviso].filter(Boolean).join(" ") || null,
     };
     delete listo.anterior;
     await terminar(acceso, clienteId, videoId, intento, "renderizado", listo);
