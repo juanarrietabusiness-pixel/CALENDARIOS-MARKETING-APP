@@ -48,6 +48,10 @@ import { fotosDelCatalogo } from "../../../src/lib/estudioMercado.js";
 export const RESERVA_MS = 150_000;
 /** Un trabajo que lleva más que esto vivo se da por perdido. */
 export const PLAZO_TRABAJO_MS = 30 * 60_000;
+// Una voz tarda segundos: si a los 12 minutos Kie sigue «en espera» (pasó en la primera prueba real de ElevenLabs v3,
+// con la tarea cobrada y «running» en su panel), no va a llegar. Kie mismo corta con 408 a los 10 minutos.
+export const PLAZO_AUDIO_MS = 12 * 60_000;
+const plazoDe = (fila) => (fila.tipo === "audio" ? PLAZO_AUDIO_MS : PLAZO_TRABAJO_MS);
 /** Veces que se reintenta solo un fallo pasajero (saturación, red, tiempo). */
 export const MAX_INTENTOS = 2;
 
@@ -280,10 +284,13 @@ export async function avanzarTrabajo(env, acceso, id, { por = null } = {}) {
   const t = Date.now();
   if (fila.bloqueado_hasta && fila.bloqueado_hasta > new Date(t).toISOString()) return { trabajo: fila, ocupado: true };
 
-  if (t - Date.parse(fila.created_at) > PLAZO_TRABAJO_MS) {
+  if (t - Date.parse(fila.created_at) > plazoDe(fila)) {
     const hechos = leerJSON(fila.archivos, []).length;
+    const sinTiempo = fila.tipo === "audio"
+      ? `Kie.ai no terminó la voz en 12 minutos${fila.nota ? ` (se quedó en «${fila.nota}»)` : ""}. Suele ser de su lado: vuelve a intentarlo más tarde.`
+      : "No terminó a tiempo. Vuelve a intentarlo.";
     await acceso.actualizar("estudio_trabajos", { id, estado: fila.estado }, {
-      ...(hechos ? cerrada("hecho", { nota: `Llegaron ${hechos} de ${fila.n}: el resto no terminó a tiempo.` }) : cerrada("fallido", { error: "No terminó a tiempo. Vuelve a intentarlo." })),
+      ...(hechos ? cerrada("hecho", { nota: `Llegaron ${hechos} de ${fila.n}: el resto no terminó a tiempo.` }) : cerrada("fallido", { error: sinTiempo })),
       bloqueado_hasta: "", updated_at: new Date().toISOString(),
     });
     const cerradaFila = await acceso.leerUno("estudio_trabajos", { id });

@@ -396,6 +396,9 @@ export function errorDeKie(codigo, mensaje = "") {
   if (codigo === 402) return new ErrorMotor(`Kie.ai no tiene créditos suficientes en la cuenta${d}. Recárgala en kie.ai.`, 502);
   if (codigo === 404) return new ErrorMotor(`Kie.ai no encontró eso${d}.`, 502);
   if (codigo === 422) return new ErrorMotor(`Kie.ai rechazó el pedido${d || " (datos no válidos)"}.`, 502);
+  // 408 y 501 son de la TAREA (sin resultado en 10 minutos; la generación falló): repetir la consulta no los arregla.
+  if (codigo === 408) return new ErrorMotor(`Kie.ai no tuvo resultado en 10 minutos${d}. Suele ser de su lado: vuelve a intentarlo más tarde.`, 502);
+  if (codigo === 501) return new ErrorMotor(`Kie.ai no pudo generarlo${d}.`, 502);
   if (codigo === 429) return new ErrorMotor("Kie.ai está saturado. Inténtalo en unos segundos.", 429, { reintentable: true });
   if (codigo === 455) return new ErrorMotor("Kie.ai está en mantenimiento. Inténtalo más tarde.", 503, { reintentable: true });
   return new ErrorMotor(`Kie.ai devolvió un error (${codigo})${d || "."}`, 502, { reintentable: codigo >= 500 });

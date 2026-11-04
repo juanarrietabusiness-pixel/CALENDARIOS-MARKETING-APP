@@ -4014,6 +4014,10 @@ son del servidor.
   formulario). La primera prueba real con Matilda —de serie en ElevenLabs— volvió «Invalid voice parameter». La voz va por
   el ID en v3 y en v2 (`vozParaKie`); v3 lleva `language_code: "es"` (con «auto», una voz de acento inglés lee el español
   como extranjera) y v2 no (según Kie, sólo Turbo y Flash lo admiten). Una voz propia del kit tiene que estar en esa lista.
+  · **Una voz que Kie deja «en espera» se da por fallida a los 12 minutos** (`PLAZO_AUDIO_MS`; el resto de trabajos, 30):
+  la primera prueba real de v3 se quedó en `waiting` (en su panel, `running` y cobrada) y la pantalla cargaba media hora.
+  El error dice en qué estado se quedó. Un 408 (sin resultado en 10 min) o un 501 (falló la generación) de Kie, en
+  cualquier modelo, terminan el trabajo con su motivo y ya no se reintentan (`errorDeKie`).
   · **Nada de esto se ha probado contra Kie real** (los tests hablan con un `fetch` de mentira): los nombres de los campos
   de v3 y v2, si la voz va por id o por nombre (`vozParaKie`), si devuelven tiempos y en qué forma, y el redondeo real de
   los créditos salen de la documentación pública y se comprueban con la primera toma de verdad.
