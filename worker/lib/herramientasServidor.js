@@ -385,6 +385,7 @@ export function describirUso(nombre, entrada = {}) {
     case "ver_cuadro": return `Miró un cuadro del video animado${entrada.escena ? ` (escena ${entrada.escena})` : ""}`;
     case "ver_escenas": return "Miró todas las escenas del video animado";
     case "revisar_video": return "Revisó el video animado antes de renderizar";
+    case "renderizar_video": return "Pidió el render a mp4 de un video animado";
     default: return nombre;
   }
 }

@@ -68,6 +68,11 @@
       {
         "name": "VIDEO",
         "class_name": "ContenedorVideo"
+      },
+      // El RENDER a mp4 del video animado: uno por video, con su Container más grande (worker/contenedor.js).
+      {
+        "name": "RENDER",
+        "class_name": "RenderVideo"
       }
     ]
   },
@@ -81,6 +86,11 @@
     {
       "tag": "v2",
       "new_sqlite_classes": ["ContenedorVideo"]
+    },
+    // v3: el Durable Object del RENDER del video animado. No toca D1 ni a los otros dos.
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["RenderVideo"]
     }
   ],
 
@@ -98,6 +108,16 @@
       "image": "./container/Dockerfile",
       "image_build_context": ".",
       "instance_type": "basic",
+      "max_instances": 2
+    },
+    // El del RENDER: la MISMA imagen, más grande. 2 vCPU (el motor dibuja en uno y ffmpeg codifica en el otro) y la
+    // memoria mínima que Cloudflare admite para 2 vCPU (3 GiB por vCPU): la memoria y el disco se pagan mientras está
+    // despierto; la CPU, sólo la que se usa. Un video de 30 s son ~20 s de render (ver CLAUDE.md, el costo).
+    {
+      "class_name": "RenderVideo",
+      "image": "./container/Dockerfile",
+      "image_build_context": ".",
+      "instance_type": { "vcpu": 2, "memory_mib": 6144, "disk_mb": 6000 },
       "max_instances": 2
     }
   ],

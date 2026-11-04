@@ -25,7 +25,7 @@ const NOMBRE = "cuadros";
 const leerJSON = (t, d) => { try { return typeof t === "string" ? JSON.parse(t) : (t ?? d); } catch { return d; } };
 
 /** Bytes → base64, por trozos (un `String.fromCharCode(...bytes)` de varios MB revienta la pila). */
-function aBase64(bytes) {
+export function aBase64(bytes) {
   let s = "";
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
   return btoa(s);

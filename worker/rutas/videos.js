@@ -25,6 +25,9 @@
 //   GET    /api/videos/<c>/<id>/hoja?formato=   Un cuadro de cada escena, en su instante «lleno», en una sola imagen
 //   GET    /api/videos/<c>/<id>/revision?formatos=9:16,1:1   La revisión antes de renderizar (subtítulos que tapan,
 //                                           texto que se sale, fuera de la zona segura…), con las fuentes reales
+//   POST   /api/videos/<c>/<id>/render      { version }: el RENDER a mp4 (voz, escenas y subtítulos, -14 LUFS). Sólo
+//                                           con el guion aprobado y su locución; contesta ya (202) y el Durable Object
+//                                           del render lo hace (worker/lib/estudio/render.js). No gasta IA
 //
 // El guion lo valida `validarGuion` (src/lib/videoEscenas.js) aquí, en el servidor: lo que llega del navegador, del
 // asistente o de Claude por MCP no se cree. Un guion con errores NO se guarda: vuelve 400 con la lista de errores,
@@ -45,6 +48,7 @@ import { listarVoces, pedirMuestra, pedirLocucion, locucionAlDia, claveDeMuestra
 import { buscarEnBiblioteca, anadirDeLaBiblioteca, previaGratis, ACENTOS_BIBLIOTECA } from "../lib/estudio/elevenlabs.js";
 import { ErrorMotor } from "../lib/estudio/gemini.js";
 import { pedidoDelVideo, alContenedor } from "../lib/estudio/cuadros.js";
+import { pedirRender, renderAlDia } from "../lib/estudio/render.js";
 import { costoDeVoz, fraseDeMuestra, modeloDeVoz, esIdDeVoz } from "../../src/lib/voces.js";
 
 /** Un ErrorVoz como respuesta: su mensaje, su estado y lo que la pantalla necesita (`codigo`, `costo`…). */
@@ -149,7 +153,8 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
   if (id === "voces") return rutasVoces(req, env, { acceso, usuario, cliente, sub: accion, metodo });
 
   if (!ID.test(String(id))) return noEncontrado("Video");
-  const fila = await acceso.leerUno("videos_proyectos", { id, client_id: clienteId });
+  // Un render que se quedó a medias (pasado su plazo) se da por fallido al leerlo.
+  const fila = await renderAlDia(acceso, await acceso.leerUno("videos_proyectos", { id, client_id: clienteId }));
   if (!fila) return noEncontrado("Video");
 
   // Si la voz se estaba generando y el pedido acabó mal, se dice al abrirlo.
@@ -200,6 +205,11 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
       if (e instanceof ErrorVoz) return respuestaDeVoz(e);
       throw e;
     }
+  }
+
+  if (accion === "render" && metodo === "POST") {
+    const r = await pedirRender(env, acceso, cliente, fila, { version: b.version, usuario, por: firma(usuario, req) });
+    return json(r, 202);
   }
 
   if (accion === "aprobar" && metodo === "POST") {

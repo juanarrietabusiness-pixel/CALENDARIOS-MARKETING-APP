@@ -688,6 +688,7 @@ export const retirado = (id) => (DE_GOOGLE.has(id)
  * también se nombra, o la galería decía «gemini-2.5-flash-image» donde era Nano Banana.
  */
 export const nombreDelModelo = (id) => modeloPorId(id)?.nombre
+  ?? (id === "video-animado" ? "Animado con código" : null)
   ?? (id && MODELOS.find((m) => m.gid === id && (m.motor === "gemini" || m.motor === "meta"))?.nombre)
   ?? (MODELOS_RETIRADOS[id] ? `${MODELOS_RETIRADOS[id]} (retirado)` : id || "");
 

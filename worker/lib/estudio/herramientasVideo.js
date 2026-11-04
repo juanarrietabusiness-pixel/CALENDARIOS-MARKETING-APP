@@ -12,13 +12,14 @@
 //   · ver_escenas      una sola imagen con un cuadro de cada escena, numerados: el video entero de un vistazo
 //   · revisar_video    la revisión antes de renderizar: subtítulos que tapan, texto que se sale o se parte, fuera de la
 //                      zona segura, capas encimadas (con las fuentes reales)
+//   · renderizar_video el mp4 (voz, escenas, subtítulos, -14 LUFS) en el Container: a la galería y a su publicación
 //
 // Las tres de mirar devuelven { texto, imagenes } (no un texto): el MCP las manda como bloques de imagen y el
 // asistente como imagen en su tool_result. No gastan IA: es cómputo del Container.
 //
 // Van por el MISMO camino que la pantalla (worker/lib/videosProyectos.js): el guion se valida en el servidor, un error
-// vuelve con su sitio, y la versión que se leyó evita pisar lo que otra persona cambió. Ninguna gasta: lo único que
-// cuesta es la voz (generar_locucion, que se confirma siempre).
+// vuelve con su sitio, y la versión que se leyó evita pisar lo que otra persona cambió. Ninguna gasta IA: lo único que
+// cuesta es la voz (generar_locucion, que se confirma siempre). El render es cómputo del Container (céntimos de céntimo).
 //
 // APROBAR ES DE UNA PERSONA. La herramienta existe para que Claude no tenga que mandar a nadie a la pantalla, pero la
 // descripción le dice que sólo apruebe cuando la persona lo pida o lo confirme, igual que con el costo.
@@ -34,6 +35,7 @@ import { formatoParaLaIA } from "../../../src/lib/videoFormatoIA.js";
 import { textoDeSubtitulo } from "../../../src/lib/subtitulos.js";
 import { instanteLleno } from "../../../src/lib/revisionEscenas.js";
 import { pedidoDelVideo, alContenedor, respuestaEnBase64 } from "./cuadros.js";
+import { pedirRender, renderAlDia } from "./render.js";
 
 const clienteParam = { cliente: { type: "string", description: "Nombre del cliente. En el asistente de un cliente se puede omitir: es ese cliente." } };
 const videoParam = { video_id: { type: "string", description: "ID del proyecto de video (de listar_videos o crear_video)." } };
@@ -132,10 +134,15 @@ export const DEFINICIONES_VIDEO = Object.freeze([
       required: ["video_id"],
     },
   },
+  {
+    name: "renderizar_video",
+    description: "RENDERIZA el video a mp4 (1080 de ancho, 30 cuadros por segundo): las escenas con el mismo motor de la vista previa, la voz con sus silencios, los subtítulos por palabra y el volumen a -14 LUFS. Sólo con el guion aprobado y su locución lista de esa versión. Tarda menos de un minuto: el mp4 queda en la galería del cliente y, si el video va ligado a una publicación, en sus medios (en el sitio del anterior). Mira el resultado después con ver_video. Revisa antes con revisar_video. No gasta IA.",
+    input_schema: { type: "object", properties: { ...clienteParam, ...videoParam, ...versionParam }, required: ["video_id", "version"] },
+  },
 ]);
 
 /** Las que escriben (en el MCP van como escritura; las demás, de sólo lectura). */
-export const ESCRIBEN_VIDEO = Object.freeze(["crear_video", "guardar_video", "editar_escena", "aprobar_video"]);
+export const ESCRIBEN_VIDEO = Object.freeze(["crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video"]);
 
 /** Lo que falta para el siguiente paso, en una frase para el modelo. Pura. */
 /** ¿La locución es de la versión aprobada? (un video «aprobado» con voz de esa versión ya no la necesita otra vez). */
@@ -147,14 +154,14 @@ export function siguientePaso(video) {
   switch (video.estado) {
     case "borrador": return "Que la persona revise el guion y lo apruebe (aprobar_video con esta versión, sólo con su sí).";
     case "aprobado":
-      if (vozDeEstaVersion(video)) return "Ya tiene la locución de esta versión. Siguiente: el render a mp4 (todavía no está disponible).";
+      if (vozDeEstaVersion(video)) return "Ya tiene la locución de esta versión. Siguiente: revisar_video y, si está bien, renderizar_video.";
       return video.locucion?.estado === "generando"
         ? "La voz se está generando: vuelve a mirar en un minuto."
         : "Generar la voz con generar_locucion (siempre pide confirmar el costo).";
-    case "con_voz": return "Tiene guion aprobado y voz. Siguiente: el render a mp4 (todavía no está disponible).";
-    case "renderizando": return "Se está renderizando: espera.";
-    case "renderizado": return "Listo.";
-    case "fallido": return "Falló el render: mira la nota.";
+    case "con_voz": return "Tiene guion aprobado y voz. Siguiente: revisar_video y, si está bien, renderizar_video.";
+    case "renderizando": return "Se está renderizando (menos de un minuto): vuelve a mirar con ver_video.";
+    case "renderizado": return video.render?.adjunto ? "Listo: el mp4 está en la galería y en su publicación." : "Listo: el mp4 está en la galería del cliente.";
+    case "fallido": return "Falló el render (el motivo, arriba): corrígelo y vuelve a pedirlo con renderizar_video.";
     default: return "";
   }
 }
@@ -175,9 +182,15 @@ function textoDelVideo(video, { conGuion = true } = {}) {
     ? `Locución lista: ${loc.voz?.nombre ?? "?"} (${loc.modelo ?? "?"}), ${Number(loc.duracion ?? 0).toFixed(1)} s, tiempos ${loc.fuente === "motor" ? "del motor" : loc.fuente === "verificado" ? "verificados al oírla" : "estimados"}${loc.revisar ? " · OJO: no se oyó todo el guion tal cual" : ""}${mudasDe(video)}${loc.desfasada ? " · es de una versión anterior del guion" : ""}.`
     : loc.estado === "generando" ? `La voz se está generando (pedido ${loc.trabajoId}).`
       : loc.estado === "fallida" ? `La voz falló: ${loc.error ?? "sin motivo"}.` : "Sin locución todavía.";
+  const r = video.render ?? {};
+  const render = r.estado === "listo"
+    ? `Render: mp4 de ${Number(r.duracion ?? 0).toFixed(1)} s, ${r.ancho}×${r.alto}, ${(Number(r.bytes ?? 0) / 1048576).toFixed(1)} MB${r.lufs !== null && r.lufs !== undefined ? `, ${r.lufs} LUFS` : ""}, de la versión ${r.version} (en /api/media/${r.clave})${r.adjunto ? ", puesto en su publicación" : ""}${r.aviso ? ` · ${r.aviso}` : ""}.`
+    : r.estado === "en_curso" ? `Render en curso desde ${String(r.pedidoAt ?? "").slice(11, 19)} (UTC).`
+      : r.estado === "fallido" ? `El render falló: ${r.error ?? "sin motivo"}.` : "";
   return [
     `Video «${video.titulo}» (ID ${video.id}) — ${NOMBRE_ESTADO_VIDEO[video.estado] ?? video.estado}, versión ${video.version}${video.aprobadaVersion ? ` (aprobada la ${video.aprobadaVersion})` : ""}.`,
     video.postId ? `Ligado a la publicación ${video.postId}.` : "Sin publicación ligada.",
+    render,
     linea ? `Duración: ${linea.total.toFixed(1)} s${linea.estimado ? " (estimada: aún no hay voz)" : ""}, ${linea.escenas.length} escenas.` : "Sin escenas válidas.",
     voz,
     `Siguiente paso: ${siguientePaso(video)}`,
@@ -228,7 +241,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
     async ver_video({ cliente, video_id: id }) {
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
-        const video = deFila(await proyectoDe(acceso, c.id, id));
+        const video = deFila(await renderAlDia(acceso, await proyectoDe(acceso, c.id, id)));
         return textoDelVideo({ ...video, locucion: await locucionAlDia(acceso, video.locucion) });
       });
     },
@@ -289,6 +302,15 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
           ? "Ya se puede generar la voz con generar_locucion (pide confirmar el costo)." : ""}`.trim();
       });
     },
+    async renderizar_video({ cliente, video_id: id, version }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        const fila = await renderAlDia(acceso, await proyectoDe(acceso, c.id, id));
+        const r = await pedirRender(env, acceso, c, fila, { version, usuario, por });
+        return `Render encargado: «${r.video.titulo}» (versión ${r.video.version}) se está renderizando; tarda menos de un minuto. Míralo con ver_video.${fila.post_id ? " Al terminar, el mp4 se pone en su publicación." : ""}`;
+      });
+    },
+
     async ver_cuadro({ cliente, video_id: id, escena, segundo, formato }) {
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
