@@ -113,6 +113,7 @@ Ahora que el Worker existe, ya tiene dónde guardarlas.
 | `FAL_KEY` | Tu llave de fal.ai *(opcional)* | fal.ai → Dashboard → Keys. Activa en el Estudio los modelos de fal (Seedream, Flux, Kling, Seedance, Hailuo, Veo 3). Sin ella se ven apagados, con «sin llave» |
 | `HF_KEY` | Tu llave de Higgsfield, `id:secreto` *(opcional)* | cloud.higgsfield.ai → API Keys. Activa en el Estudio los modelos de Higgsfield (Soul, Kling 3, Seedance, Wan, Ideogram…). También vale `HF_API_KEY` + `HF_API_SECRET` por separado. Sin ella se ven apagados |
 | `KIE_API_KEY` | Tu llave de Kie.ai *(opcional)* | kie.ai → API Key. Activa en el Estudio GPT Image 2, Nano Banana Pro y Nano Banana 2 por Kie (más baratos que directos; las imágenes de apoyo se suben a su almacén). Sin ella se ven apagados |
+| `ELEVENLABS_API_KEY` | Tu llave oficial de ElevenLabs *(opcional)* | elevenlabs.io → Developers → API Keys. Con ella la VOZ del video animado sale directo por ElevenLabs (las voces de la cuenta, con el tiempo de cada palabra); sin ella, por Kie.ai. Para que la lista enseñe las voces de la cuenta, la llave necesita el permiso de leer voces |
 | `META_API_KEY` | Tu llave de la API de Meta (Muse) *(opcional)* | dev.meta.ai → API keys (la documentación de Meta la llama `MODEL_API_KEY`; vale cualquiera de los dos nombres). Activa **Muse Spark** como modelo de texto en Ajustes → IA —y en cuanto está, **redacción y guiones pasan a Muse Spark 1.2 Contributor**, salvo que elijas otro— y **Muse Image** en el Estudio y para adaptar a 4:5. Ojo: con el modelo *Contributor*, Meta puede usar lo que se le manda para entrenar sus modelos |
 | `GITHUB_TOKEN` | Un token de **sólo lectura** | GitHub → Settings → Developer settings → Personal access tokens |
 | `GOOGLE_CLIENT_ID` | El ID de cliente OAuth de Google | Ver «Google Drive» abajo |
@@ -582,6 +583,7 @@ despliegue (`EspacioHub`, migración `v1` de `wrangler.jsonc`).
 | `GOOGLE_AI_KEY` | **Cloudflare** | Idem (imágenes y lectura de video) |
 | `GOOGLE_AI_KEY_GRATIS` | **Cloudflare** | Ver videos con el nivel gratuito de Gemini (opcional) |
 | `FAL_KEY` / `HF_KEY` / `KIE_API_KEY` | **Cloudflare** | El Estudio: fal.ai, Higgsfield y Kie.ai (opcionales, cada una activa sus modelos) |
+| `ELEVENLABS_API_KEY` | **Cloudflare** | La voz del video animado directo por ElevenLabs (opcional; sin ella, por Kie.ai) |
 | `META_API_KEY` | **Cloudflare** | Muse Spark (texto) y Muse Image (Estudio, adaptar a 4:5); opcional |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | **Cloudflare** | Google Drive y YouTube |
 | `META_APP_ID` / `META_APP_SECRET` / `META_CONFIG_ID` | **Cloudflare** | Instagram y Facebook |

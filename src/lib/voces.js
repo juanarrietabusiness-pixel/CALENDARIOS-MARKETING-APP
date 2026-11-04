@@ -1,8 +1,11 @@
 // ============================================================
 // La VOZ del video animado: modelos, voces, costo y los tiempos de cada palabra (puro)
 //
-// La locución es UNA toma de ElevenLabs por Kie.ai (el cliente de Kie que ya tiene el Estudio,
-// worker/lib/estudio/kie.js). Dos modelos:
+// La locución es UNA toma de ElevenLabs. Por DOS caminos (`viaDeVoz`):
+//   · DIRECTO con la llave oficial (`ELEVENLABS_API_KEY`, worker/lib/estudio/elevenlabs.js) cuando el servidor la tiene:
+//     contesta en el acto con el audio y el tiempo de cada carácter, y vale cualquier voz de la cuenta.
+//   · por Kie.ai (worker/lib/estudio/kie.js), el respaldo sin llave oficial: sólo las voces de su lista.
+// Dos modelos:
 //
 //   · v3 (`elevenlabs/text-to-dialogue-v3`): el principal. Entiende las etiquetas de emoción
 //     entre corchetes del guion («[preocupada] ¿Las toallitas…»). Va por `dialogue: [{ text, voice }]`.
@@ -34,16 +37,30 @@ import { palabrasDe, sinEtiquetas, textoDeLocucion } from "./videoEscenas.js";
 export const USD_POR_CREDITO = 0.005;
 
 /** Los modelos de voz. `creditos` por cada 1.000 caracteres (su página de precios, octubre de 2026). */
+// `idDirecto` y `elevenlabs` (su `model_id`) son los del camino directo; `max` es el menor de los dos caminos (v3 directo
+// admite 5.000 caracteres por petición).
 export const MODELOS_VOZ = Object.freeze({
   v3: Object.freeze({
-    id: "elevenlabs-v3-kie", clave: "v3", nombre: "ElevenLabs v3 (expresiva)", kie: "elevenlabs/text-to-dialogue-v3",
-    creditos: 14, max: 5000, etiquetas: true,
+    id: "elevenlabs-v3-kie", idDirecto: "elevenlabs-v3", elevenlabs: "eleven_v3", clave: "v3", nombre: "ElevenLabs v3 (expresiva)",
+    kie: "elevenlabs/text-to-dialogue-v3", creditos: 14, max: 5000, etiquetas: true,
   }),
   v2: Object.freeze({
-    id: "elevenlabs-v2-kie", clave: "v2", nombre: "ElevenLabs Multilingual v2 (respaldo)", kie: "elevenlabs/text-to-speech-multilingual-v2",
-    creditos: 12, max: 5000, etiquetas: false,
+    id: "elevenlabs-v2-kie", idDirecto: "elevenlabs-v2", elevenlabs: "eleven_multilingual_v2", clave: "v2", nombre: "ElevenLabs Multilingual v2 (respaldo)",
+    kie: "elevenlabs/text-to-speech-multilingual-v2", creditos: 12, max: 5000, etiquetas: false,
   }),
 });
+
+/** Por dónde sale la voz: «elevenlabs» (la llave oficial) o «kie». Lo decide el SERVIDOR por sus llaves. */
+export const VIAS_VOZ = Object.freeze({
+  elevenlabs: Object.freeze({ nombre: "ElevenLabs (llave oficial)", unidad: "créditos de ElevenLabs" }),
+  kie: Object.freeze({ nombre: "Kie.ai", unidad: "créditos de Kie.ai" }),
+});
+
+/**
+ * ElevenLabs cobra 1 crédito por carácter en v3 y en Multilingual v2, de los que trae el plan de la cuenta. En dólares
+ * depende del plan: se estima con el de Creator (unos 22 $ por 100.000 créditos) y se rotula «aproximado».
+ */
+export const USD_POR_CARACTER_ELEVENLABS = 0.00022;
 export const MODELO_VOZ_POR_DEFECTO = "v3";
 
 /**
@@ -51,12 +68,20 @@ export const MODELO_VOZ_POR_DEFECTO = "v3";
  * cola. `costo` no es el precio (depende del texto: va en el trabajo, `costo_estimado`); sólo dice que gasta. Pura.
  */
 export function modeloDelEstudio(id) {
-  const m = Object.values(MODELOS_VOZ).find((x) => x.id === id);
-  return m ? { id: m.id, nombre: m.nombre, motor: "kie", tipo: "audio", cola: true, costo: 0.001, estimado: true } : null;
+  const m = Object.values(MODELOS_VOZ).find((x) => x.id === id || x.idDirecto === id);
+  if (!m) return null;
+  const directo = m.idDirecto === id;
+  return {
+    id, clave: m.clave, nombre: m.nombre, motor: directo ? "elevenlabs" : "kie", tipo: "audio", cola: true, costo: 0.001, estimado: true,
+    ...(directo ? { elevenlabs: m.elevenlabs } : {}),
+  };
 }
 
-/** El modelo de voz por su clave («v3», «v2») o por su id del Estudio. */
-export const modeloDeVoz = (valor) => MODELOS_VOZ[valor] ?? Object.values(MODELOS_VOZ).find((m) => m.id === valor) ?? null;
+/** El id del trabajo para ese modelo y esa vía. Pura. */
+export const idDeModeloVoz = (clave, via) => (via === "elevenlabs" ? MODELOS_VOZ[clave]?.idDirecto : MODELOS_VOZ[clave]?.id);
+
+/** El modelo de voz por su clave («v3», «v2») o por su id del Estudio (de cualquiera de las dos vías). */
+export const modeloDeVoz = (valor) => MODELOS_VOZ[valor] ?? Object.values(MODELOS_VOZ).find((m) => m.id === valor || m.idDirecto === valor) ?? null;
 
 /**
  * Las voces que ACEPTA Kie, con su id de ElevenLabs. Kie no deja escoger cualquier voz de ElevenLabs: sólo las de su
@@ -64,7 +89,7 @@ export const modeloDeVoz = (valor) => MODELOS_VOZ[valor] ?? Object.values(MODELO
  * ElevenLabs y no está en la de Kie). Los mismos ids valen para v3 y v2. Kie tiene 66; aquí van las que se han
  * comprobado en su formulario. Una que falte se añade aquí con su id tal cual lo da Kie.
  */
-export const VOCES_DE_SERIE = Object.freeze([
+export const VOCES_KIE = Object.freeze([
   { id: "Z3R5wn05IrDiVCyEkUrK", nombre: "Arabella", genero: "femenina", nota: "" },
   { id: "hpp4J3VqNfWAUOO0d1Us", nombre: "Bella", genero: "femenina", nota: "" },
   { id: "iCrDUkL56s3C8sCRl7wb", nombre: "Esperanza", genero: "femenina", nota: "" },
@@ -74,9 +99,50 @@ export const VOCES_DE_SERIE = Object.freeze([
   { id: "EkK5I93UQWFDigLMpZcX", nombre: "James", genero: "masculina", nota: "" },
   { id: "TX3LPaxmHKxFdv7VOQHJ", nombre: "Liam", genero: "masculina", nota: "" },
 ]);
+/** El nombre de antes (lo importan pantallas y pruebas): las de Kie. */
+export const VOCES_DE_SERIE = VOCES_KIE;
+
+/**
+ * Las voces de serie («premade») de ElevenLabs, que tiene toda cuenta: el respaldo del camino DIRECTO cuando la llave no
+ * deja leer la lista de la cuenta (`/v1/voices` pide el permiso de leer voces). Multilingües: hablan español con su acento.
+ */
+export const VOCES_ELEVENLABS = Object.freeze([
+  { id: "EXAVITQu4vr4xnSDxMaL", nombre: "Sarah", genero: "femenina", nota: "joven, suave y segura" },
+  { id: "FGY2WhTYpPnrIDTdsKH5", nombre: "Laura", genero: "femenina", nota: "joven, con energía" },
+  { id: "Xb7hH8MSUJpSbSDYk0k2", nombre: "Alice", genero: "femenina", nota: "clara, didáctica" },
+  { id: "XrExE9yKIg1WjnnlVkGX", nombre: "Matilda", genero: "femenina", nota: "cálida, cercana" },
+  { id: "cgSgspJ2msm6clMCkdW9", nombre: "Jessica", genero: "femenina", nota: "joven, expresiva" },
+  { id: "pFZP5JQG7iQjIQuC4Bku", nombre: "Lily", genero: "femenina", nota: "cálida, pausada" },
+  { id: "CwhRBWXzGAHq8TQ4Fs17", nombre: "Roger", genero: "masculina", nota: "seguro, cercano" },
+  { id: "IKne3meq5aSn9XLyUdCD", nombre: "Charlie", genero: "masculina", nota: "joven, conversacional" },
+  { id: "JBFqnCBsd6RMkjVDRZzb", nombre: "George", genero: "masculina", nota: "cálido, narrador" },
+  { id: "TX3LPaxmHKxFdv7VOQHJ", nombre: "Liam", genero: "masculina", nota: "joven, articulado" },
+  { id: "cjVigY5qzO86Huf0OWal", nombre: "Eric", genero: "masculina", nota: "suave, confiable" },
+  { id: "nPczCjzI2devNBz1zQrb", nombre: "Brian", genero: "masculina", nota: "grave, narrador" },
+]);
+
+const GENERO_ELEVENLABS = { female: "femenina", male: "masculina", neutral: "neutra" };
+
+/**
+ * Una voz de la lista de la cuenta de ElevenLabs (`/v1/voices`) como la ve la pantalla: id, nombre, género y una nota con
+ * su acento, su descripción y para qué sirve. Null si no trae id válido. Pura.
+ */
+export function vozDeLaCuenta(v) {
+  const id = String(v?.voice_id ?? "").trim();
+  if (!ID_VOZ.test(id)) return null;
+  const l = v?.labels && typeof v.labels === "object" ? v.labels : {};
+  const nota = [l.accent, l.descriptive ?? l.description, l.use_case ?? l["use case"], l.language]
+    .filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().replace(/_/g, " ")).join(", ");
+  return {
+    id, nombre: String(v?.name ?? "").replace(/\s+/g, " ").trim().slice(0, 40) || id,
+    genero: GENERO_ELEVENLABS[String(l.gender ?? "").toLowerCase()] ?? "neutra", nota: nota.slice(0, 80),
+    ...(v?.category ? { categoria: String(v.category).slice(0, 20) } : {}),
+  };
+}
 
 /** Un id de voz de ElevenLabs: letras y números, sin espacios. */
 const ID_VOZ = /^[A-Za-z0-9]{12,40}$/;
+export const esIdDeVoz = (id) => ID_VOZ.test(String(id ?? ""));
 export const MAX_VOCES_PROPIAS = 12;
 const GENEROS = ["femenina", "masculina", "neutra"];
 
@@ -100,15 +166,18 @@ export function limpiarLocucion(l) {
   return { voz, modelo: MODELOS_VOZ[l?.modelo] ? l.modelo : MODELO_VOZ_POR_DEFECTO, voces };
 }
 
-/** Las voces que se pueden escoger para un cliente: las suyas primero, luego las de serie. Pura. */
-export function vocesDisponibles(locucion) {
+/**
+ * Las voces que se pueden escoger para un cliente: las suyas primero, luego las de la vía (`base`: las de Kie por
+ * defecto; con la llave oficial, las de la cuenta de ElevenLabs). Pura.
+ */
+export function vocesDisponibles(locucion, base = VOCES_KIE) {
   const propias = limpiarLocucion(locucion).voces;
   const ids = new Set(propias.map((v) => v.id));
-  return [...propias, ...VOCES_DE_SERIE.filter((v) => !ids.has(v.id)).map((v) => ({ ...v, propia: false }))];
+  return [...propias, ...base.filter((v) => !ids.has(v.id)).map((v) => ({ ...v, propia: false }))];
 }
 
 /** Una voz por su id, entre las disponibles del cliente. Null si no está (no se manda un id cualquiera). */
-export const vozPorId = (locucion, id) => vocesDisponibles(locucion).find((v) => v.id === id) ?? null;
+export const vozPorId = (locucion, id, base = VOCES_KIE) => vocesDisponibles(locucion, base).find((v) => v.id === id) ?? null;
 
 // ------------------------------------------------------------
 // Texto y costo
@@ -121,12 +190,18 @@ export function textoParaVoz(guion, modelo = MODELO_VOZ_POR_DEFECTO) {
   return (m?.etiquetas ? texto : sinEtiquetas(texto)).replace(/\s+/g, " ").trim();
 }
 
-/** Lo que cuesta una toma de `caracteres` con ese modelo: { creditos, usd } (usd redondeado hacia arriba al milésimo). */
-export function costoDeVoz(modelo, caracteres) {
+/**
+ * Lo que cuesta una toma de `caracteres` con ese modelo y por esa vía: { creditos, usd, unidad } (usd redondeado hacia
+ * arriba al milésimo). Por Kie, sus créditos por cada 1.000 caracteres; directo, un crédito de ElevenLabs por carácter.
+ */
+export function costoDeVoz(modelo, caracteres, via = "kie") {
   const m = modeloDeVoz(modelo);
-  if (!m) return { creditos: 0, usd: 0 };
-  const creditos = Math.round(((Math.max(0, caracteres) / 1000) * m.creditos) * 1000) / 1000;
-  return { creditos, usd: Math.ceil(creditos * USD_POR_CREDITO * 1000) / 1000 };
+  const unidad = VIAS_VOZ[via]?.unidad ?? VIAS_VOZ.kie.unidad;
+  if (!m) return { creditos: 0, usd: 0, unidad };
+  const n = Math.max(0, caracteres);
+  if (via === "elevenlabs") return { creditos: n, usd: Math.ceil(n * USD_POR_CARACTER_ELEVENLABS * 1000) / 1000, unidad };
+  const creditos = Math.round(((n / 1000) * m.creditos) * 1000) / 1000;
+  return { creditos, usd: Math.ceil(creditos * USD_POR_CREDITO * 1000) / 1000, unidad };
 }
 
 /** La frase de la muestra de una voz: corta (unos 120 caracteres) y con una emoción, para oírla en v3. */
@@ -156,7 +231,7 @@ export function textoDeMuestra(modelo, propio = "") {
  * momento de cada palabra y qué campos llegaron con el audio, que es lo que hay que mirar si la forma no es la
  * esperada. → { delMotor, palabras, campos, frase }. Pura.
  */
-export function tiemposQueLlegaron(resultado) {
+export function tiemposQueLlegaron(resultado, quien = "Kie") {
   const dichas = palabrasDelResultado(resultado);
   let r = resultado?.resultJson ?? resultado?.result ?? resultado;
   if (typeof r === "string") { try { r = JSON.parse(r); } catch { r = null; } }
@@ -165,8 +240,8 @@ export function tiemposQueLlegaron(resultado) {
   return {
     delMotor, palabras: dichas?.length ?? 0, campos,
     frase: delMotor
-      ? `Kie devolvió el tiempo de cada palabra (${dichas.length} palabras).`
-      : `Kie NO devolvió tiempos por palabra${campos.length ? ` (llegó: ${campos.join(", ")})` : ""}.`,
+      ? `${quien} devolvió el tiempo de cada palabra (${dichas.length} palabras).`
+      : `${quien} NO devolvió tiempos por palabra${campos.length ? ` (llegó: ${campos.join(", ")})` : ""}.`,
   };
 }
 
