@@ -28,9 +28,12 @@
 
 import { FORMATOS_VIDEO, FPS, tiempoDeCapa } from "./videoEscenas.js";
 import { gruposDeSubtitulos, grupoEn, estadoDePalabras } from "./subtitulos.js";
+import {
+  dibujarIcono, dibujarFormas, dibujarEstrellas, dibujarLineas, formatearCifra, avanceDeCuenta, logoNecesitaPlaca,
+} from "./motorPiezas.js";
 
 /** Los componentes que este motor ya dibuja. El resto sale como marcador hasta que se escriban. */
-export const COMPONENTES_LISTOS = Object.freeze(["texto", "sello", "imagen", "forma", "logo", "llamado"]);
+export const COMPONENTES_LISTOS = Object.freeze(["texto", "sello", "imagen", "forma", "logo", "llamado", "cifra", "icono", "anillo", "dibujo"]);
 
 export const FUENTE_RESPALDO = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
@@ -232,11 +235,29 @@ export const AIRE = Object.freeze({ junto: 0.022, minimo: 0.035 });
 /** Lo que mide como mínimo el logo del CIERRE (fracción del lado corto): es la firma del video, no un sello. */
 export const MIN_LOGO_CIERRE = 0.5;
 
-/** El ancho que pide una capa (su `tam` por el lado corto; el logo del cierre, al menos `MIN_LOGO_CIERRE`). */
-function anchoPedido(capa, c) {
+/**
+ * Lo ancho que va el texto como mínimo, en fracción de su columna. El `tam` de una capa de texto lo escribe una IA y
+ * casi siempre es corto (0,6): los titulares salían en una columna estrecha, pequeños, con media pantalla vacía. Un
+ * texto usa todo el ancho que le toca; el `tam` sólo manda si pide más. La etiqueta, el sello y el llamado, menos.
+ */
+export const ANCHO_TEXTO = Object.freeze({ texto: 0.94, cifra: 0.94, llamado: 0.82, sello: 0.6 });
+
+/**
+ * El ancho que pide una capa: su `tam` por el lado corto; el logo del cierre, al menos `MIN_LOGO_CIERRE`; el texto, al
+ * menos lo que le toca de su columna (`ANCHO_TEXTO`, si se sabe `anchoMax`).
+ */
+function anchoPedido(capa, c, anchoMax = 0) {
   const tam = capa.tipo === "logo" && c.tipoEscena === "cierre" ? Math.max(capa.tam, MIN_LOGO_CIERRE) : capa.tam;
-  return tam * c.lado;
+  const minimo = capa.tipo === "texto" && capa.rol === "etiqueta" ? 0 : (ANCHO_TEXTO[capa.tipo] ?? 0) * anchoMax;
+  return Math.max(tam * c.lado, minimo);
 }
+
+/**
+ * Cuánto de su columna llena una escena, como poco: si lo que hay ocupa menos, CRECE (hasta `CRECER_MAX` y sin pasar
+ * del ancho), en vez de quedarse pequeño en medio de un cuadro vacío.
+ */
+export const LLENADO = 0.68;
+export const CRECER_MAX = 1.35;
 
 /** Hasta dónde se encoge lo visual antes de encoger todo (fracción de su tamaño). */
 const MIN_VISUAL = 0.45;
@@ -285,7 +306,8 @@ function repartirColumna(ctx, items, caja, c, sitio) {
   // 2. Medidas en el ancho de la columna (la mitad en una fila de dos).
   for (const f of filas) {
     const anchoMax = f.par ? (caja.w - lado * AIRE.minimo) / 2 : caja.w;
-    for (const it of f.items) { it.ancho = Math.min(anchoPedido(it.capa, c), anchoMax); it.m = medirCapa(ctx, it.capa, c, it.ancho); }
+    for (const it of f.items) { it.ancho = Math.min(anchoPedido(it.capa, c, anchoMax), anchoMax); it.m = medirCapa(ctx, it.capa, c, it.ancho); }
+    f.anchoMax = anchoMax;
     // Lo que se pasa de ancho (un sello girado, una placa con su aire) se encoge hasta caber.
     f.base = Math.min(1, ...f.items.map((it) => anchoMax / Math.max(1, it.m.w)));
     f.h = Math.max(...f.items.map((it) => it.m.h)) * f.base;
@@ -307,6 +329,15 @@ function repartirColumna(ctx, items, caja, c, sitio) {
     }
     const total = alto(filas);
     if (total > caja.h) { const e = caja.h / total; filas.forEach((f) => { f.escala *= e; }); }
+  }
+  // 4b. Si sobra mucho alto, todo crece por igual (cada fila, sin pasar de su ancho).
+  const ocupadoAntes = alto(filas);
+  if (ocupadoAntes > 0 && ocupadoAntes < caja.h * LLENADO) {
+    const crecer = Math.min(CRECER_MAX, (caja.h * LLENADO) / ocupadoAntes);
+    for (const f of filas) {
+      const tope = Math.min(...f.items.map((it) => f.anchoMax / Math.max(1, it.m.w * f.base * f.escala)));
+      f.escala *= Math.max(1, Math.min(crecer, tope));
+    }
   }
   // 5. Lo que sobra se reparte por igual arriba, abajo y entre bloques: nada se queda amontonado arriba con el
   //    tercio de abajo vacío, y una escena de una sola cosa la deja en el centro.
@@ -351,7 +382,7 @@ export function repartirEscena(ctx, capas, tiempos, c) {
     if (c.subtitulos.pos === "arriba") { caja.y += sub.h; caja.h -= sub.h; } else caja.h -= sub.h;
   }
   const lista = capas.map((capa, i) => ({ capa, i, zona: zonaDe(capa.pos), lado: ladoDe(capa.pos), cuando: tiempos.get(capa.id) }));
-  for (const it of lista) if (it.capa.pos && typeof it.capa.pos === "object") sitio.set(it.capa.id, { ...centroDe(it.capa.pos, c.ancho, c.alto), escala: 1, ancho: anchoPedido(it.capa, c) });
+  for (const it of lista) if (it.capa.pos && typeof it.capa.pos === "object") sitio.set(it.capa.id, { ...centroDe(it.capa.pos, c.ancho, c.alto), escala: 1, ancho: anchoPedido(it.capa, c, caja.w) });
   const repartidas = lista.filter((it) => !(it.capa.pos && typeof it.capa.pos === "object") && it.capa.tipo !== "forma")
     .sort((p, q) => ORDEN_ZONA[p.zona] - ORDEN_ZONA[q.zona] || p.i - q.i);
   const apaisado = c.ancho > c.alto * 1.2;
@@ -435,7 +466,8 @@ export function estadoDeCapa(capa, momento, t, { ritmo = "medio", lado = 1080 } 
   if (t < desde || t > hasta + (conSalida ? 0 : 1e-6)) return null;
   const dEntra = DURACION_ENTRADA[ritmo] ?? DURACION_ENTRADA.medio;
   const pe = limitar((t - desde) / dEntra);
-  const e = { alfa: 1, dx: 0, dy: 0, escala: 1, giro: 0, revelado: 1 };
+  // `vida`: los segundos desde que entró (la cifra cuenta y el dibujo saca sus formas con eso).
+  const e = { alfa: 1, dx: 0, dy: 0, escala: 1, giro: 0, revelado: 1, vida: t - desde };
   const desp = lado * 0.08;
   switch (capa.animacion?.entrada ?? "aparece") {
     case "aparece": e.alfa = limitar((t - desde) / 0.12); break;
@@ -542,10 +574,10 @@ export function partirEquilibrado(ctx, texto, ancho, n) {
 }
 
 export const TIPO_POR_ROL = Object.freeze({
-  titular: { tam: 0.092, peso: 800, lineas: 3, fuente: "titular", alto: 1.08 },
-  apoyo: { tam: 0.052, peso: 500, lineas: 4, fuente: "cuerpo", alto: 1.25 },
-  dato: { tam: 0.13, peso: 900, lineas: 2, fuente: "titular", alto: 1.0 },
-  etiqueta: { tam: 0.036, peso: 700, lineas: 2, fuente: "cuerpo", alto: 1.2, mayusculas: true },
+  titular: { tam: 0.105, peso: 800, lineas: 3, fuente: "titular", alto: 1.08 },
+  apoyo: { tam: 0.06, peso: 500, lineas: 4, fuente: "cuerpo", alto: 1.25 },
+  dato: { tam: 0.16, peso: 900, lineas: 2, fuente: "titular", alto: 1.0 },
+  etiqueta: { tam: 0.042, peso: 700, lineas: 2, fuente: "cuerpo", alto: 1.2, mayusculas: true },
 });
 
 /**
@@ -787,11 +819,111 @@ function dibujarCapa(ctx, capa, estado, c, ancho = capa.tam * c.lado) {
     }
     case "logo": {
       const img = recursos?.logo ?? null;
+      // Una placa detrás si el guion la pide o si el logo no contrasta con el fondo de la escena (un logo azul oscuro
+      // sobre el azul de la marca no se ve). Clara sobre fondo oscuro; oscura sobre claro.
+      const placa = capa.placa ? colorDe(capa.placa, paleta)
+        : img && logoNecesitaPlaca(recursos?.logoTono, c.luzFondo) ? colorDe(c.luzFondo < 0.4 ? "claro" : "oscuro", paleta) : "";
+      const pad = placa ? lado * 0.045 : 0;
       // En el cierre el logo puede ocupar más alto: es lo último que se ve.
-      const { w: lw, h: lh } = cajaDeImagen(img, w, maxAlto * (c.tipoEscena === "cierre" ? 0.75 : 0.5), "contener");
+      const { w: lw, h: lh } = cajaDeImagen(img, w - pad * 2, maxAlto * (c.tipoEscena === "cierre" ? 0.75 : 0.5) - pad * 2, "contener");
       if (!img) { marcador(ctx, "Logo", lw, lh, paleta, cuerpo); return { w: lw, h: lh }; }
+      if (placa) {
+        ctx.fillStyle = placa;
+        rectRedondo(ctx, -lw / 2 - pad, -lh / 2 - pad, lw + pad * 2, lh + pad * 2, lado * 0.03);
+        ctx.fill();
+      }
       dibujarImagenEn(ctx, img, lw, lh, "contener");
-      return { w: lw, h: lh };
+      return { w: lw + pad * 2, h: lh + pad * 2 };
+    }
+    case "cifra": {
+      // El número con el ancho de su valor FINAL: mientras cuenta no cambia de tamaño. El sufijo, más pequeño, al lado;
+      // la etiqueta, debajo.
+      const numero = (v) => `${capa.prefijo ?? ""}${formatearCifra(v, capa.decimales)}`;
+      const final = numero(capa.valor);
+      const sufijo = capa.sufijo ? ` ${capa.sufijo}` : "";
+      let tam = Math.min(lado * 0.36, maxAlto * 0.8);
+      const medir = (t) => {
+        ctx.font = `900 ${Math.round(t)}px ${titular}`;
+        const a = ctx.measureText(final).width;
+        ctx.font = `800 ${Math.round(t * 0.42)}px ${titular}`;
+        return a + (sufijo ? ctx.measureText(sufijo).width : 0);
+      };
+      for (let i = 0; i < 24 && medir(tam) > w; i++) tam *= 0.94;
+      const avance = avanceDeCuenta(estado.vida, capa.contar);
+      const texto = numero(avance >= 1 ? capa.valor : capa.valor * avance);
+      ctx.font = `900 ${Math.round(tam)}px ${titular}`;
+      const anFinal = ctx.measureText(final).width;
+      ctx.font = `800 ${Math.round(tam * 0.42)}px ${titular}`;
+      const anSuf = sufijo ? ctx.measureText(sufijo).width : 0;
+      const etiqueta = capa.etiqueta ? String(capa.etiqueta).toUpperCase() : "";
+      const tamEt = Math.max(lado * 0.045, tam * 0.16);
+      const alto = tam * 0.92 + (etiqueta ? tamEt * 1.5 : 0);
+      const linea = -alto / 2 + tam * 0.8;
+      const x0 = -(anFinal + anSuf) / 2;
+      ctx.textBaseline = "alphabetic";
+      ctx.fillStyle = colorDe(capa.color, paleta);
+      ctx.font = `900 ${Math.round(tam)}px ${titular}`;
+      ctx.textAlign = "right";
+      ctx.fillText(texto, x0 + anFinal, linea);
+      if (sufijo) {
+        ctx.textAlign = "left";
+        ctx.font = `800 ${Math.round(tam * 0.42)}px ${titular}`;
+        ctx.fillText(sufijo, x0 + anFinal, linea);
+      }
+      if (etiqueta) {
+        ctx.textAlign = "center";
+        ctx.fillStyle = colorDe("texto", paleta);
+        ctx.font = `700 ${Math.round(tamEt)}px ${cuerpo}`;
+        ctx.fillText(etiqueta, 0, linea + tamEt * 1.45, w);
+      }
+      return { w: Math.min(w, anFinal + anSuf), h: alto };
+    }
+    case "icono": {
+      const s = Math.min(w, maxAlto);
+      if (capa.fondo) {
+        ctx.fillStyle = colorDe(capa.fondo, paleta);
+        ctx.beginPath(); ctx.arc(0, 0, s / 2, 0, Math.PI * 2); ctx.fill();
+        dibujarIcono(ctx, capa.nombre, s * 0.56, colorLegible(capa.color, capa.fondo, paleta), 2);
+      } else dibujarIcono(ctx, capa.nombre, s * 0.92, colorDe(capa.color, paleta), 1.9);
+      return { w: s, h: s };
+    }
+    case "anillo": {
+      const s = Math.min(w, maxAlto);
+      const grueso = s * 0.085;
+      const r = (s - grueso) / 2;
+      const valor = capa.valor * avanceDeCuenta(estado.vida, capa.contar);
+      ctx.lineCap = "round";
+      ctx.lineWidth = grueso;
+      ctx.strokeStyle = colorDe(capa.pista, paleta);
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+      if (valor > 0.2) {
+        ctx.strokeStyle = colorDe(capa.color, paleta);
+        ctx.beginPath(); ctx.arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + (Math.PI * 2 * valor) / 100); ctx.stroke();
+      }
+      // En medio, su texto o el porcentaje (que cuenta con el anillo); medido con «100%» para no cambiar de tamaño.
+      const centro = capa.texto || `${Math.round(valor)}%`;
+      const dentro = (r - grueso) * 2 * 0.82;
+      let tam = s * 0.26;
+      ctx.font = `900 ${Math.round(tam)}px ${titular}`;
+      const anCentro = ctx.measureText(capa.texto || "100%").width;
+      if (anCentro > dentro) tam *= dentro / anCentro;
+      ctx.font = `900 ${Math.round(tam)}px ${titular}`;
+      ctx.fillStyle = colorDe("texto", paleta);
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      const etiqueta = capa.etiqueta ? String(capa.etiqueta).toUpperCase() : "";
+      ctx.fillText(centro, 0, etiqueta ? -s * 0.05 : 0);
+      if (etiqueta) {
+        ctx.font = `700 ${Math.round(Math.max(lado * 0.034, s * 0.06))}px ${cuerpo}`;
+        ctx.fillText(etiqueta, 0, s * 0.13, dentro);
+      }
+      return { w: s, h: s };
+    }
+    case "dibujo": {
+      // La caja del dibujo: `tam` de ancho y `proporcion` de alto; si no cabe de alto, se encoge entera.
+      let dw = w; let dh = w * (capa.proporcion ?? 1);
+      if (dh > maxAlto) { dw *= maxAlto / dh; dh = maxAlto; }
+      dibujarFormas(ctx, capa.formas, { ancho: dw, alto: dh, vida: estado.vida, colorDe: (t) => colorDe(t, paleta) });
+      return { w: dw, h: dh };
     }
     case "llamado": {
       const { fuente, lineas, tam } = encajarTexto(ctx, capa.texto, { ancho: w * 0.84, lado, rol: "apoyo", familia: titular });
@@ -821,7 +953,7 @@ function dibujarCapa(ctx, capa, estado, c, ancho = capa.tam * c.lado) {
 // Fondo, grano y escenas
 // ------------------------------------------------------------
 
-function dibujarFondo(ctx, fondo, ancho, alto, paleta, id) {
+function dibujarFondo(ctx, fondo, ancho, alto, paleta, id, t = 0) {
   const a = colorDe(fondo?.color ?? "fondo", paleta);
   const b = colorDe(fondo?.color2 ?? "superficie", paleta);
   ctx.save();
@@ -839,6 +971,11 @@ function dibujarFondo(ctx, fondo, ancho, alto, paleta, id) {
     ctx.fillStyle = b; ctx.globalAlpha = 0.28;
     const paso = lado * 0.06;
     for (let y = paso / 2; y < alto; y += paso) for (let x = paso / 2; x < ancho; x += paso) { ctx.beginPath(); ctx.arc(x, y, lado * 0.006, 0, Math.PI * 2); ctx.fill(); }
+  } else if (fondo?.tipo === "estrellas" || fondo?.tipo === "lineas") {
+    // Del color2 si el guion lo escogió; si no, el claro u oscuro que se vea sobre el fondo.
+    const color = fondo?.color2 && fondo.color2 !== "superficie" ? b : contraste(a, colorDe("claro", paleta), colorDe("oscuro", paleta));
+    if (fondo.tipo === "estrellas") dibujarEstrellas(ctx, { ancho, alto, color, semilla: semilla(`estrellas:${id}`), t });
+    else dibujarLineas(ctx, { ancho, alto, color, semilla: semilla(`lineas:${id}`) });
   } else if (fondo?.tipo === "papel") {
     // Fibras del papel: la semilla es la escena, así no «hierven» de un fotograma a otro.
     const al = aleatorio(semilla(`papel:${id}`));
@@ -897,9 +1034,12 @@ export function capasDe(escena) {
 }
 
 /** Una escena entera en el instante `t` (fondo y capas), sin transición ni grano. */
+/** La luz del fondo de una escena (para decidir si el logo necesita placa). */
+const luzDelFondo = (escena, paleta) => { const f = colorDe(escena?.fondo?.color ?? "fondo", paleta); return HEX.test(f) ? luminancia(f) : 0.5; };
+
 function dibujarEscena(ctx, escena, momento, t, cGuion, primera = false) {
-  const c = { ...cGuion, tipoEscena: escena.tipo };
-  dibujarFondo(ctx, escena.fondo, c.ancho, c.alto, c.paleta, escena.id);
+  const c = { ...cGuion, tipoEscena: escena.tipo, luzFondo: luzDelFondo(escena, cGuion.paleta) };
+  dibujarFondo(ctx, escena.fondo, c.ancho, c.alto, c.paleta, escena.id, t);
   const capas = capasDe(escena);
   const tiempos = tiemposDeEscena(capas, momento, primera);
   const sitio = repartirEscena(ctx, capas, tiempos, c);
@@ -1057,7 +1197,8 @@ function contextoDe({ guion, formato, paleta, recursos = {}, fuentes = {} }) {
 export function cajasDeEscena(ctx, { guion, linea, indice = 0, formato, recursos = {}, fuentes = {} }) {
   const escena = guion?.escenas?.[indice];
   if (!escena) return [];
-  const c = { ...contextoDe({ guion, formato, recursos, fuentes }), tipoEscena: escena.tipo };
+  const base = contextoDe({ guion, formato, recursos, fuentes });
+  const c = { ...base, tipoEscena: escena.tipo, luzFondo: luzDelFondo(escena, base.paleta) };
   const capas = capasDe(escena);
   const tiempos = tiemposDeEscena(capas, linea.escenas[indice], indice === 0);
   const sitio = repartirEscena(ctx, capas, tiempos, c);

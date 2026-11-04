@@ -17,6 +17,7 @@ import { readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { ruidoDeGrano, cajaOpaca } from "../src/lib/motorVideo.js";
+import { quitarFondoLiso, tonoDeImagen } from "../src/lib/motorPiezas.js";
 
 /**
  * La letra de RESPALDO (la que usa un kit sin fuente): Roboto, que el motor nombra en `FUENTE_RESPALDO`. Llega por npm
@@ -57,6 +58,26 @@ function sinBordeTransparente(img) {
   const lienzo = createCanvas(cw, ch);
   lienzo.getContext("2d").drawImage(img, x, y, cw, ch, 0, 0, cw, ch);
   return lienzo;
+}
+
+/** El logo sin su fondo liso y sin borde, con su tono (como `prepararLogo` del navegador) → { img, tono }. */
+async function cargarLogo(base64) {
+  if (!base64) return { img: null, tono: null };
+  const bytes = Buffer.from(base64, "base64");
+  const k = `logo:${huella(bytes)}`;
+  if (!imagenes.has(k)) {
+    imagenes.set(k, loadImage(bytes).then((img) => {
+      const f = Math.min(1, 1024 / Math.max(img.width, img.height));
+      const lienzo = createCanvas(Math.max(1, Math.round(img.width * f)), Math.max(1, Math.round(img.height * f)));
+      const ctx = lienzo.getContext("2d");
+      ctx.drawImage(img, 0, 0, lienzo.width, lienzo.height);
+      const datos = ctx.getImageData(0, 0, lienzo.width, lienzo.height);
+      const r = quitarFondoLiso(datos.data, lienzo.width, lienzo.height);
+      if (r.quitado) ctx.putImageData(datos, 0, 0);
+      return { img: sinBordeTransparente(r.quitado ? lienzo : img), tono: tonoDeImagen(datos.data) };
+    }).catch(() => { imagenes.delete(k); return { img: null, tono: null }; }));
+  }
+  return imagenes.get(k);
 }
 
 /** Una imagen en base64 → lista para el motor (sin borde), o null si no se pudo leer. */
@@ -105,7 +126,7 @@ export async function prepararRecursos({ imagenes: imgs = {}, logo = null, fuent
   const ids = Object.keys(imgs);
   const [cargadas, logoImg] = await Promise.all([
     Promise.all(ids.map(async (id) => [id, await cargarImagen(imgs[id])])),
-    cargarImagen(logo),
+    cargarLogo(logo),
   ]);
   const mapa = new Map(cargadas);
   const titular = registrarFuente(fs.titular);
@@ -113,7 +134,7 @@ export async function prepararRecursos({ imagenes: imgs = {}, logo = null, fuent
   // La de respaldo del motor nombra Roboto (registrada al arrancar): el texto sale aunque el kit no tenga letra.
   const familia = (f) => (f ? `"${f}", Roboto, sans-serif` : "");
   return {
-    recursos: { imagen: (id) => mapa.get(id) ?? null, logo: logoImg, grano: texturaDeGrano() },
+    recursos: { imagen: (id) => mapa.get(id) ?? null, logo: logoImg.img, logoTono: logoImg.tono, grano: texturaDeGrano() },
     fuentes: { titular: familia(titular), cuerpo: familia(cuerpo) },
     faltan: cargadas.filter(([, img]) => !img).map(([id]) => id),
   };

@@ -166,6 +166,8 @@ src/
     motorVideo.js         El MOTOR del video animado: dibuja el instante t de un guion en un Canvas 2D (paleta del kit,
                           posiciones, entradas, salidas, bucles, transiciones, fondo, grano). Puro y determinista: lo
                           comparten la vista previa y el render del Container
+    motorPiezas.js        Las PIEZAS del motor: iconos dibujados, cifra que cuenta, el dibujo libre (formas), los fondos de
+                          estrellas y líneas, quitar el fondo liso del logo y su tono (puro: navegador y Container)
     motorVideoNavegador.js  Lo que ese motor necesita en el navegador: las imágenes de la galería, el logo, la letra del kit
                           y la textura del grano (no es puro)
     videosApi.js          Cliente de /api/videos/<cliente>
@@ -4150,6 +4152,27 @@ son del servidor.
   · **Sólo se aprueba un BORRADOR** (`aprobarProyecto`, y el botón): «aprobar» otra vez un video con locución lo
   devolvía a «Guion aprobado» y parecía sin voz. Uno que quedó así con la voz de su versión no la pide otra vez
   (`siguientePaso`).
+  · **Las piezas del paso 3** (`src/lib/motorPiezas.js`, puro: lo comparten la vista previa y el Container): la CIFRA
+  gigante (cuenta hasta su valor en `DURACION_CUENTA`, con el ancho del valor final para no bailar; coma decimal y punto
+  de miles), el ANILLO (un porcentaje que se llena), 22 ICONOS dibujados con primitivas (un test exige uno por cada
+  nombre de `ICONOS_VIDEO`; con `fondo`, en un círculo) y el DIBUJO, el lienzo libre: hasta 24 formas en fracciones de su
+  caja, cada una con su `retraso` y su `entrada` (`dibuja` traza las líneas; lo relleno se descubre con un recorte puesto
+  ANTES de trazarlo, o rellenaría el recorte). Fondos `estrellas` (titilan con t) y `lineas`, sembrados. Sin `Path2D`:
+  no existe en el Container.
+  · **El logo se recorta de su fondo liso** (`quitarFondoLiso`): si las cuatro esquinas son opacas y del mismo color,
+  ese color se borra DESDE EL BORDE (el blanco dentro de una «O» se queda), sólo si es entre el 5 y el 97 % de la
+  imagen. Y lleva PLACA (clara sobre oscuro, oscura sobre claro) cuando más del 20 % de lo que se ve de él no llega a 2 a
+  1 con el fondo de la escena (`logoNecesitaPlaca` sobre los cuantiles de su luz, `tonoDeImagen`): con la media, un logo
+  rojo con letras azul marino «contrastaba» con un fondo azul y las letras desaparecían. Lo prepara quien carga
+  (`prepararLogo` en el navegador, `cargarLogo` en el Container): el motor sólo lee `recursos.logoTono`.
+  · **El reparto llena el cuadro** (el video de Feria salía con el texto pequeño y media pantalla vacía): los textos
+  piden un ancho mínimo de su columna (`ANCHO_TEXTO`) y, si la escena ocupa menos del `LLENADO` (68 %) de su alto,
+  todo crece hasta `CRECER_MAX` (×1,35) sin pasar del ancho. Los tamaños por rol subieron (titular 0,105 del lado).
+  · **La revisión también mira el DISEÑO** en el instante «lleno» de cada escena (que espera a que una cifra o un anillo
+  terminen de contar): `texto_pequeno` (menos del 3,5 % del lado, ~38 px), `espacio_vacio` (lo que se ve ocupa menos
+  del 12 % del cuadro, o cabe en una franja de menos del 35 % del alto) y `desequilibrio` (el centro de lo que OCUPA la
+  escena —no pesado por área: un titular ancho abajo y una cifra arriba no están «abajo»— se va más del 15 % del alto o
+  del 12 % del ancho). Son avisos, no graves.
   · **El ejemplo de `formato_video` sólo usa componentes que el motor ya dibuja** (un test lo exige): uno con marcadores
   enseñaba a Claude justo lo que hay que evitar.
   · **Nada de esto se ha probado contra Kie real** (los tests hablan con un `fetch` de mentira): los nombres de los campos

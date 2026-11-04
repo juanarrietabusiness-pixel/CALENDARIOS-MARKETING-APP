@@ -45,16 +45,17 @@ export const EJEMPLO_GUION = Object.freeze({
       id: "e1", tipo: "gancho", habla: "[intrigada] ¿Sabías que casi todos cometen estos tres errores?", pantalla: "3 errores",
       fondo: { tipo: "degradado", color: "fondo", color2: "superficie" }, transicion: { tipo: "corte" },
       capas: [
-        { tipo: "texto", id: "n", texto: "3", rol: "dato", color: "acento", pos: "centro", tam: 0.5, entra: { palabra: 0 }, animacion: { entrada: "escala" } },
+        { tipo: "cifra", id: "n", valor: 3, etiqueta: "errores", color: "acento", pos: "centro", entra: { palabra: 0 }, animacion: { entrada: "escala" } },
         { tipo: "texto", id: "t", texto: "errores que casi todos cometen", rol: "titular", pos: "abajo", entra: { palabra: 5 }, animacion: { entrada: "sube" } },
       ],
     },
     {
       id: "e2", tipo: "explicacion", habla: "El primero: decidir sólo por el precio y no por lo que de verdad necesitas.", pantalla: "No sólo el precio",
-      fondo: { tipo: "plano", color: "fondo" }, transicion: { tipo: "deslizar", dur: 0.4 },
+      fondo: { tipo: "puntos", color: "fondo" }, transicion: { tipo: "deslizar", dur: 0.4 },
       capas: [
         { tipo: "sello", id: "s", texto: "Error 1", pos: "arriba", entra: { palabra: 1 }, animacion: { entrada: "rebote" } },
-        { tipo: "texto", id: "l", texto: "Mira lo que necesitas, no sólo el precio", rol: "apoyo", placa: "superficie", pos: "centro", entra: { palabra: 3 }, animacion: { entrada: "sube" } },
+        { tipo: "texto", id: "l", texto: "Mira lo que necesitas, no sólo el precio", rol: "apoyo", placa: "superficie", pos: "abajo", entra: { palabra: 3 }, animacion: { entrada: "sube" } },
+        { tipo: "icono", id: "i", nombre: "dinero", fondo: "superficie", pos: "centro", tam: 0.3, entra: { palabra: 2 }, animacion: { entrada: "escala" } },
       ],
     },
     {
@@ -65,6 +66,17 @@ export const EJEMPLO_GUION = Object.freeze({
         { tipo: "llamado", id: "cta", texto: "Escríbenos", pos: "abajo", entra: { palabra: 4 }, animacion: { entrada: "rebote" } },
       ],
     },
+  ],
+});
+
+/** Un dibujo de ejemplo (una taza de café con su vapor): lo que se pide con formas simples, sin tocar el código. */
+export const EJEMPLO_DIBUJO = Object.freeze({
+  tipo: "dibujo", id: "taza", pos: "centro", tam: 0.5, proporcion: 1, entra: { palabra: 0 },
+  formas: [
+    { figura: "rect", x: 0.45, y: 0.62, w: 0.5, h: 0.42, radio: 0.12, color: "claro", entrada: "sube" },
+    { figura: "arco", x: 0.74, y: 0.6, w: 0.2, inicio: 270, fin: 90, relleno: false, grosor: 0.05, color: "claro", retraso: 0.2, entrada: "dibuja" },
+    { figura: "curva", x: 0.38, y: 0.36, x2: 0.4, y2: 0.1, cx: 0.3, cy: 0.22, relleno: false, grosor: 0.025, color: "acento", retraso: 0.4, entrada: "dibuja" },
+    { figura: "curva", x: 0.52, y: 0.36, x2: 0.54, y2: 0.1, cx: 0.62, cy: 0.22, relleno: false, grosor: 0.025, color: "acento", retraso: 0.55, entrada: "dibuja" },
   ],
 });
 
@@ -98,6 +110,10 @@ export function formatoParaLaIA() {
     ...componentes,
     "",
     "CONSEJOS: el gancho dice lo importante en el primer segundo y su texto entra en la palabra 0; una idea por escena; texto en pantalla corto (lo largo va en el habla); las imágenes son IDs de la galería del cliente (ver_estudio), nunca inventadas; la escena de cierre lleva el logo y un llamado.",
+    "LLENA EL CUADRO: cada escena con una pieza visual grande (cifra, anillo, icono, dibujo o imagen) y su texto; una escena con sólo una frase se ve vacía. revisar_video avisa de texto pequeño, escena vacía y escena cargada a un lado.",
+    "PIEZAS: «cifra» es un número gigante que cuenta hasta su valor (prefijo «$», sufijo «%» o «años», etiqueta debajo); «anillo» un porcentaje que se llena (o su texto en medio); «icono» uno de la lista, con «fondo» si va en un círculo de color; el logo se recorta solo de su fondo liso y lleva placa si no contrasta (o «placa» con un color).",
+    "DIBUJO (lienzo libre): para un objeto propio del video (una taza, una casa, un gráfico) sin imagen. Formas en FRACCIONES de su caja (0,0 arriba a la izquierda; 1,1 abajo a la derecha): circulo, elipse, rect (con radio), triangulo, estrella, corazon, gota (x, y = el centro; w, h = el tamaño; h 0 = tan alto como ancho), linea y curva (de x,y a x2,y2; la curva dobla hacia cx,cy) y arco (inicio y fin en grados). relleno false = sólo el trazo (grosor). Cada forma entra con su «retraso» (s) y su «entrada»; «dibuja» traza las líneas. Pocas formas y grandes: es un icono, no una ilustración. Ejemplo: " + JSON.stringify(EJEMPLO_DIBUJO),
+    "FONDOS: plano, degradado, papel, rayas, puntos, estrellas (que titilan) y lineas; color2 elige el color del adorno.",
     "",
     "EJEMPLO (neutro, valida):",
     JSON.stringify(EJEMPLO_GUION),

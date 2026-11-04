@@ -86,7 +86,7 @@ Duración total: **de 5 s a 150 s**.
 | `habla` | Lo que se dice (≤ 400). Las indicaciones de emoción de ElevenLabs v3 van entre corchetes: `[emocionada]`. No cuentan como palabras |
 | `pantalla` | El texto principal en pantalla, para leer el guion de un vistazo y aprobarlo (≤ 80) |
 | `pausa` | Segundos de silencio **detrás** del habla (0–3). Una escena muda necesita `pausa`. El render inserta ese silencio en el audio |
-| `fondo` | `{ tipo: plano/degradado/papel/rayas/puntos, color, color2 }` |
+| `fondo` | `{ tipo: plano/degradado/papel/rayas/puntos/estrellas/lineas, color, color2 }`. En `puntos`, `estrellas` (titilan) y `lineas` (curvas suaves), `color2` es el del adorno; vacío, el claro u oscuro que contraste |
 | `transicion` | Cómo ENTRA la escena: `{ tipo: corte/fundido/barrido/zoom/deslizar, dur: 0–1 }` |
 | `capas` | Hasta 8 componentes, en orden de dibujo (el primero, al fondo) |
 
@@ -96,13 +96,13 @@ Todas llevan:
 
 | Campo | Qué es |
 |---|---|
-| `tipo` | Uno de los 14 componentes |
+| `tipo` | Uno de los 16 componentes |
 | `id` | Único dentro de la escena |
 | `pos`, `tam` | Dónde y de qué ancho (ver reglas) — `centro`, `0.6` |
 | `entra`, `sale` | `{ "palabra": n }` (la n-ésima palabra que se dice en la escena, desde 0) o `{ "s": segundos }` desde que empieza. `sale` vacío = hasta el final |
 | `animacion` | `entrada` (aparece, fundido, sube, baja, escala, rebote, escribe, barrido, dibuja), `salida` (ninguna, fundido, baja, escala), `bucle` (ninguno, flota, pulso, gira, late) |
 
-Los 14 componentes de la librería v1 y lo propio de cada uno:
+Los 16 componentes de la librería v1 y lo propio de cada uno:
 
 | Componente | Propiedades |
 |---|---|
@@ -112,16 +112,42 @@ Los 14 componentes de la librería v1 y lo propio de cada uno:
 | `burbuja` | `texto`*, `lado` (izq/der), `color` |
 | `imagen` | `archivo`* (id de la galería: la foto REAL del producto), `rol` (producto/foto/persona), `recorte` (contener/cubrir), `marco` |
 | `personaje` | `variante` (adulto/nino/bebe), `pose` (de-pie/saluda/senala/piensa/celebra/preocupado), `color` — figura genérica de la casa |
-| `icono` | `nombre` (check, cruz, corazon, estrella, rayo, reloj, bolsa, carrito, chat, telefono, ubicacion, regalo, escudo, hoja, gota, bebe, casa, flecha, alerta, sonrisa, dinero, camion), `color` |
-| `cifra` | `valor`*, `prefijo`, `sufijo`, `contar` (sube desde 0), `decimales`, `color` |
+| `icono` | `nombre` (check, cruz, corazon, estrella, rayo, reloj, bolsa, carrito, chat, telefono, ubicacion, regalo, escudo, hoja, gota, bebe, casa, flecha, alerta, sonrisa, dinero, camion), `color`, `fondo` (un círculo de ese color detrás; el icono toma el color que más contraste) |
+| `cifra` | La **cifra gigante**: `valor`*, `prefijo` («$»), `sufijo` («%», «años»; más pequeño, al lado), `etiqueta` (≤ 30, debajo), `contar` (sube desde 0 en 1,2 s), `decimales`, `color`. Coma decimal y punto de miles desde 5 cifras; el ancho es el del valor final (no baila mientras cuenta) |
+| `anillo` | Un porcentaje que se llena: `valor`* (0–100), `texto` (≤ 10, en medio; vacío, el porcentaje que cuenta), `etiqueta` (≤ 30), `contar`, `color`, `pista` (el aro de fondo) |
+| `dibujo` | El **lienzo libre**: `proporcion` (alto ÷ ancho, 0,2–3) y `formas` (1–24). Ver «El dibujo» abajo |
 | `lista` | `items`* (1–6, ≤ 40 cada uno), `numerada`, `color` |
 | `reloj` | `modo` (reloj/contador/cuenta_atras), `desde`, `hasta`, `color` |
 | `forma` | `figura` (circulo/rect/ola/estrella/flecha/linea/mancha), `color`, `relleno` |
-| `logo` | — (el del kit de marca del cliente) |
+| `logo` | `placa` (opcional). El del kit de marca: el motor le quita el fondo liso (el blanco de un JPG o un PNG sin transparencia) y, si aun así no contrasta con el fondo de la escena, le pone una placa clara u oscura. Con `placa` se fuerza ese color |
 | `llamado` | `texto`* (≤ 30), `color`, `fondo` |
 | `antes_despues` | `modo` (lado: pantalla partida; deslizador: una línea que barre de un lado al otro; secuencia: primero uno y luego el otro), `textoAntes`, `textoDespues` (≤ 40), `archivoAntes`, `archivoDespues` (ids de la galería), `etiquetaAntes`, `etiquetaDespues` (≤ 16; «Antes» y «Después» si van vacías), `color`. Cada lado necesita su texto o su imagen |
 
-`*` = obligatorio. Los subtítulos y el grano **no** son capas: los pone el motor en
+`*` = obligatorio.
+
+### El dibujo
+
+Para dibujar un objeto propio del video (una taza, una casa, un gráfico) sin una
+imagen y sin tocar el código. Cada forma va en **fracciones de la caja del dibujo**
+(0,0 arriba a la izquierda; 1,1 abajo a la derecha; la caja mide `tam` de ancho y
+`proporcion` × eso de alto):
+
+| Campo | Qué es |
+|---|---|
+| `figura` | `circulo`, `elipse`, `rect`, `triangulo`, `estrella`, `corazon`, `gota` (x, y = el centro; w, h = el tamaño; `h` 0 = tan alto como ancho), `linea` y `curva` (de x,y a x2,y2; la curva dobla hacia cx,cy), `arco` (centro x,y, diámetro w, de `inicio` a `fin` en grados, 0 = a la derecha) |
+| `color`, `relleno`, `grosor` | Token o #RRGGBB; `relleno: false` = sólo el trazo, de `grosor` (fracción del ancho) |
+| `giro`, `radio` | Grados (−180 a 180); las esquinas del `rect` (0–0,5) |
+| `retraso`, `entrada` | Segundos desde que entra el dibujo hasta que aparece esa forma; `escala`, `aparece`, `fundido`, `sube` o `dibuja` (traza las líneas de a poco; lo relleno se descubre de izquierda a derecha) |
+
+```jsonc
+{ "tipo": "dibujo", "id": "taza", "pos": "centro", "tam": 0.5, "proporcion": 1, "formas": [
+  { "figura": "rect", "x": 0.45, "y": 0.62, "w": 0.5, "h": 0.42, "radio": 0.12, "color": "claro", "entrada": "sube" },
+  { "figura": "arco", "x": 0.74, "y": 0.6, "w": 0.2, "inicio": 270, "fin": 90, "relleno": false, "grosor": 0.05, "color": "claro", "retraso": 0.2, "entrada": "dibuja" },
+  { "figura": "curva", "x": 0.38, "y": 0.36, "x2": 0.4, "y2": 0.1, "cx": 0.3, "cy": 0.22, "relleno": false, "grosor": 0.025, "color": "acento", "retraso": 0.4, "entrada": "dibuja" }
+] }
+```
+
+Los subtítulos y el grano **no** son capas: los pone el motor en
 todo el video con `subtitulos` y `estilo.grano`.
 
 **Cómo salen los subtítulos** (`src/lib/subtitulos.js`): palabra por palabra, con los
@@ -132,6 +158,20 @@ de hasta `maxPalabras` palabras y `maxCaracteres` letras. La palabra clave de ca
 va en `acento`: un número si lo hay; si no, la más larga que no sea de relleno. Lo dicho
 se ve entero, lo que se dice da un salto y lo que falta va atenuado. No hace falta
 escribir nada más en el guion: si un corte queda mal, se cambia una coma en el `habla`.
+
+## La revisión antes de renderizar
+
+`revisarEscenas()` (`src/lib/revisionEscenas.js`; `revisar_video` y debajo de la vista
+previa) mide con el mismo reparto que dibuja. **Graves**: subtítulos que tapan, texto
+que se sale o se parte, fuera de la zona segura, capas encimadas. **Avisos**: texto
+apretado o con una palabra sola, y el diseño de cada escena en su instante «lleno»:
+
+- `texto_pequeno` — un texto que sale a menos del 3,5 % del lado corto (unos 38 px en
+  1080): en el teléfono no se lee.
+- `espacio_vacio` — lo que se ve ocupa menos del 12 % del cuadro (sin la franja de los
+  subtítulos), o cabe en una franja de menos del 35 % del alto ocupando poco.
+- `desequilibrio` — el centro de lo que ocupa la escena (de lo más alto a lo más bajo,
+  de un lado al otro) se va más del 15 % del alto, o del 12 % del ancho, del centro.
 
 ## Qué es error y qué es aviso
 
