@@ -63,3 +63,26 @@ describe("cuándo se puede renderizar", () => {
     expect(esMp4(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0, 0, 0, 0, 0, 0]))).toBe(false);
   });
 });
+
+import { publicacionesParaVideo } from "./renderVideo.js";
+
+describe("a qué publicación va el video", () => {
+  const cal = (id, days) => ({ id, days });
+  const calendars = [
+    cal("oct", [{ date: "2026-10-01", posts: [{ id: "vieja", format: "reel", title: "De hace un mes" }] }]),
+    cal("nov", [
+      { date: "2026-11-20", posts: [{ id: "p-post", format: "post", title: "Un post" }, { id: "p-reel", format: "reel", idea: "Lentes en 40 minutos" }] },
+      { date: "2026-11-02", posts: [{ id: "p-antes", format: "historia", title: "Hace dos días" }] },
+    ]),
+  ];
+  it("desde una semana antes de hoy, por fecha, y en cada día primero lo que lleva video", () => {
+    const l = publicacionesParaVideo(calendars, { hoy: "2026-11-04" });
+    expect(l.map((x) => x.postId)).toEqual(["p-antes", "p-reel", "p-post"]);
+    expect(l[1]).toEqual({ postId: "p-reel", calendarId: "nov", fecha: "2026-11-20", etiqueta: "20 nov · Reel · Lentes en 40 minutos" });
+  });
+  it("la ya ligada sale siempre, aunque sea vieja", () => {
+    expect(publicacionesParaVideo(calendars, { hoy: "2026-11-04", ligada: "vieja" })[0].postId).toBe("vieja");
+    // Aunque no quepa en el tope, entra (delante).
+    expect(publicacionesParaVideo(calendars, { hoy: "2026-11-04", ligada: "p-post", max: 1 }).map((x) => x.postId)).toEqual(["p-post", "p-antes"]);
+  });
+});
