@@ -169,6 +169,8 @@ src/
     motorVideoNavegador.js  Lo que ese motor necesita en el navegador: las imágenes de la galería, el logo, la letra del kit
                           y la textura del grano (no es puro)
     videosApi.js          Cliente de /api/videos/<cliente>
+    videoFormatoIA.js     El formato de escenas v1 contado a una IA (`formato_video`), sacado del mismo vocabulario que valida,
+                          con un ejemplo NEUTRO que un test exige que valide (puro)
     voces.js              La VOZ del video animado: ElevenLabs v3 (principal) y v2, directo o por Kie, las voces de serie y las propias
                           del kit, el costo exacto, el texto que se manda y los tiempos de cada palabra en tres capas (del
                           motor, verificados al oírla, estimados sobre la duración del MP3) (puro; también el Worker)
@@ -569,6 +571,8 @@ worker/
                           web, el cerebro (notas cortas enteras), calendarios, tareas, ideas
     equipo.js             Avisos (guardar y anunciar), historial y asignaciones
     ids.js                UUID, testigos, huellas
+  videosProyectos.js    Los proyectos de video animado: crear, guardar, editar UNA escena y aprobar (la ruta y las
+                          herramientas van por aquí)
     bandeja/              La Bandeja: webhook.js (la firma del webhook de Meta y qué dice un aviso;
                           puro), almacen.js (de quién es cada aviso y guardarlo fundiendo lo que
                           había), graph.js (suscribir la página, «Actualizar», responder, ocultar,
@@ -4058,6 +4062,12 @@ son del servidor.
   la primera prueba real de v3 se quedó en `waiting` (en su panel, `running` y cobrada) y la pantalla cargaba media hora.
   El error dice en qué estado se quedó. Un 408 (sin resultado en 10 min) o un 501 (falló la generación) de Kie, en
   cualquier modelo, terminan el trabajo con su motivo y ya no se reintentan (`errorDeKie`).
+  · **Claude trabaja el video por MCP** (`worker/lib/estudio/herramientasVideo.js`, también en el asistente):
+  `formato_video`, `listar_videos`, `ver_video`, `crear_video` (con `publicacion_id`), `guardar_video`, `editar_escena`
+  (cambia, mueve, añade o quita UNA escena) y `aprobar_video`. Van por `worker/lib/videosProyectos.js`, el MISMO camino
+  que la pantalla: el guion se valida en el servidor, la `version` leída evita pisar, editar devuelve a borrador.
+  Aprobar es de la persona: la descripción le dice a Claude que sólo con su sí. Con eso `generar_locucion` ya tiene un
+  video aprobado que nombrar. Ninguna gasta.
   · **Nada de esto se ha probado contra Kie real** (los tests hablan con un `fetch` de mentira): los nombres de los campos
   de v3 y v2, si la voz va por id o por nombre (`vozParaKie`), si devuelven tiempos y en qué forma, y el redondeo real de
   los créditos salen de la documentación pública y se comprueban con la primera toma de verdad.

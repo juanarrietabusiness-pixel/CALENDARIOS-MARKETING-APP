@@ -26,6 +26,7 @@ import { aprobadasSinProgramar, fechaHora } from "../../src/lib/cola.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 import { obtenerOCrearMes, moverDeMes, ErrorMes } from "./meses.js";
 import { DEFINICIONES_ESTUDIO, crearHerramientasEstudio, ErrorHerramientaEstudio } from "./estudio/herramientas.js";
+import { ESCRIBEN_VIDEO } from "./estudio/herramientasVideo.js";
 
 const FORMATOS = ["post", "reel", "carrusel", "historia", "live"];
 const REDES = ["instagram", "facebook", "tiktok", "youtube"];
@@ -98,8 +99,8 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   ...DEFINICIONES_ESTUDIO.map(({ name, description, input_schema: inputSchema }) => ({
     name,
     description,
-    inputSchema: { ...inputSchema, required: [...new Set([...(inputSchema.required ?? []), ...(name === "estado_trabajo" ? [] : ["cliente"])])] },
-    annotations: ["crear_en_estudio", "previsualizar_voz", "generar_locucion"].includes(name) ? escribe() : soloLectura,
+    inputSchema: { ...inputSchema, required: [...new Set([...(inputSchema.required ?? []), ...(["estado_trabajo", "formato_video"].includes(name) ? [] : ["cliente"])])] },
+    annotations: ["crear_en_estudio", "previsualizar_voz", "generar_locucion", ...ESCRIBEN_VIDEO].includes(name) ? escribe() : soloLectura,
   })),
 ]);
 
