@@ -119,7 +119,7 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
   {
     name: "listar_voces",
     description:
-      "Las voces con las que se puede hacer la LOCUCIÓN de un video animado de un cliente (ElevenLabs v3 por Kie.ai, con emociones; v2 de " +
+      "Las voces con las que se puede hacer la LOCUCIÓN de un video animado de un cliente (ElevenLabs v3 con emociones, por la llave oficial o por Kie.ai; v2 de " +
       "respaldo): su ID, nombre, género y tono, cuál es la de la marca y si su muestra ya está hecha (oírla entonces es gratis). No gasta nada.",
     input_schema: { type: "object", properties: { ...clienteParam } },
   },
@@ -127,7 +127,7 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
     name: "previsualizar_voz",
     description:
       "La MUESTRA de una voz para escucharla antes de escogerla: una frase fija o, con `texto`, el texto que se quiera oír (hasta 500 caracteres, " +
-      "con [emociones] en v3). Si ya está hecha, da la dirección para oírla y no cuesta nada. Al terminar, estado_trabajo dice si Kie devolvió " +
+      "con [emociones] en v3). Si ya está hecha, da la dirección para oírla y no cuesta nada. Al terminar, estado_trabajo dice si el motor devolvió " +
       "el tiempo de cada palabra. " +
       "Si no, CUESTA dinero (centavos) y NO se crea hasta confirmarlo: la respuesta trae la cifra; díselo al usuario y sólo si dice que sí vuelve " +
       "a llamarla con confirmado=true. Nunca pongas confirmado=true por tu cuenta. Es un pedido: no espera, se hace solo en un minuto.",
@@ -401,7 +401,7 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
           `${v.escogida ? " · LA DE LA MARCA" : ""}${oidas.length ? ` · muestra hecha (${oidas.join(", ")}): oírla es gratis` : ""}`;
       });
       return [
-        `Voces para la locución de ${c.name}. Modelos: ${precios}.`,
+        `Voces para la locución de ${c.name} (salen por ${l.viaNombre ?? "Kie.ai"}). Modelos: ${precios}.`,
         l.voz ? `La de la marca: ${l.voces.find((v) => v.escogida)?.nombre ?? l.voz} con ${MODELOS_VOZ[l.modelo]?.nombre ?? l.modelo}.` : "La marca todavía no tiene voz escogida (se escoge en el kit de marca).",
         lineas.join("\n"),
       ].join("\n\n");

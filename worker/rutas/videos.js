@@ -30,8 +30,8 @@ import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { uuid, ahora } from "../lib/ids.js";
 import { difundir, firma } from "../lib/vivo.js";
 import { validarGuion, lineaDeTiempo, estadoTrasEditar, puedePasar, NOMBRE_ESTADO_VIDEO } from "../../src/lib/videoEscenas.js";
-import { listarVoces, locucionDe, pedirMuestra, pedirLocucion, locucionAlDia, claveDeMuestra, HUELLA, ErrorVoz } from "../lib/estudio/locucion.js";
-import { costoDeVoz, fraseDeMuestra, modeloDeVoz, vozPorId } from "../../src/lib/voces.js";
+import { listarVoces, pedirMuestra, pedirLocucion, locucionAlDia, claveDeMuestra, HUELLA, ErrorVoz, viaDeVoz } from "../lib/estudio/locucion.js";
+import { costoDeVoz, fraseDeMuestra, modeloDeVoz, esIdDeVoz } from "../../src/lib/voces.js";
 
 const ID = /^[\w-]{1,80}$/;
 const MAX_PROYECTOS = 200;
@@ -69,14 +69,16 @@ async function rutasVoces(req, env, { acceso, usuario, cliente, sub, metodo }) {
     if (metodo === "GET") {
       const url = new URL(req.url);
       const modelo = modeloDeVoz(url.searchParams.get("modelo") ?? "v3");
-      const voz = modelo ? vozPorId(locucionDe(cliente), url.searchParams.get("voz") ?? "") : null;
-      if (!modelo || !voz) return noEncontrado("Voz");
+      // Sólo se OYE lo ya hecho: basta con que el id tenga la forma de uno de ElevenLabs (la clave de R2 no sale de ahí).
+      // Con la llave oficial valen las voces de la cuenta, y preguntarle la lista para cada audio sería una llamada más.
+      const vozId = url.searchParams.get("voz") ?? "";
+      if (!modelo || !esIdDeVoz(vozId)) return noEncontrado("Voz");
       // `huella`: la de un texto propio (la da el POST); sin ella, la muestra de la frase fija.
       const huella = url.searchParams.get("huella") ?? "";
       if (huella && !HUELLA.test(huella)) return noEncontrado("Muestra");
-      const obj = await env.MEDIA.get(claveDeMuestra(modelo.clave, voz.id, huella));
+      const obj = await env.MEDIA.get(claveDeMuestra(modelo.clave, vozId, huella));
       if (!obj) {
-        return json({ error: "Esa muestra aún no está hecha.", codigo: "sin_muestra", costo: costoDeVoz(modelo.clave, fraseDeMuestra(modelo.clave).length).usd }, 404);
+        return json({ error: "Esa muestra aún no está hecha.", codigo: "sin_muestra", costo: costoDeVoz(modelo.clave, fraseDeMuestra(modelo.clave).length, viaDeVoz(env) ?? "kie").usd }, 404);
       }
       return new Response(obj.body, { headers: { "Content-Type": obj.httpMetadata?.contentType ?? "audio/mpeg", "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
     }

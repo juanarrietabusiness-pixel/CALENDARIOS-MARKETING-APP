@@ -37,6 +37,7 @@ import { MOTOR_FAL } from "./fal.js";
 import { MOTOR_HIGGSFIELD } from "./higgsfield.js";
 import { MOTOR_META } from "./meta.js";
 import { MOTOR_KIE } from "./kie.js";
+import { MOTOR_ELEVENLABS } from "./elevenlabs.js";
 
 const escapar = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -246,6 +247,8 @@ export const MOTORES = Object.freeze({
   fal: MOTOR_FAL,
   higgsfield: MOTOR_HIGGSFIELD,
   kie: MOTOR_KIE,
+  // La voz con la llave oficial (sólo audio: no tiene modelos en el catálogo de imagen y video).
+  elevenlabs: MOTOR_ELEVENLABS,
   meta: MOTOR_META,
 });
 

@@ -169,7 +169,7 @@ src/
     motorVideoNavegador.js  Lo que ese motor necesita en el navegador: las imágenes de la galería, el logo, la letra del kit
                           y la textura del grano (no es puro)
     videosApi.js          Cliente de /api/videos/<cliente>
-    voces.js              La VOZ del video animado: ElevenLabs v3 (principal) y v2 por Kie, las voces de serie y las propias
+    voces.js              La VOZ del video animado: ElevenLabs v3 (principal) y v2, directo o por Kie, las voces de serie y las propias
                           del kit, el costo exacto, el texto que se manda y los tiempos de cada palabra en tres capas (del
                           motor, verificados al oírla, estimados sobre la duración del MP3) (puro; también el Worker)
     videoProductoEstudio.js  La receta en el Estudio: qué modelo, los dos fotogramas por el camino de una pieza, el video
@@ -546,7 +546,8 @@ worker/
                           papelera), archivos.js (claves de R2, tipo por bytes), descarga.js (bajar un
                           resultado a R2 por flujo, con topes), herramientas.js (ver_estudio,
                           crear_en_estudio y estado_trabajo: las mismas para el asistente y el MCP),
-                          higgsfield-schemas.json (SU documentación: campos, valores, obligatorios), ideas.js
+                          higgsfield-schemas.json (SU documentación: campos, valores, obligatorios), elevenlabs.js (la voz
+                          directo con la llave oficial), ideas.js
                           («Dame ideas»), lote.js (la producción en lote: niveles, matriz, tipos y mes), encargos.js
                           (la cadena del lote que sigue en el servidor) y bomba.js (lo avanza sin pantalla)
     cerebro/              El cerebro de un cliente: conocimiento.js (BM25 por pasajes) y
@@ -4014,6 +4015,22 @@ son del servidor.
   formulario). La primera prueba real con Matilda —de serie en ElevenLabs— volvió «Invalid voice parameter». La voz va por
   el ID en v3 y en v2 (`vozParaKie`); v3 lleva `language_code: "es"` (con «auto», una voz de acento inglés lee el español
   como extranjera) y v2 no (según Kie, sólo Turbo y Flash lo admiten). Una voz propia del kit tiene que estar en esa lista.
+  · **Con la llave oficial (`ELEVENLABS_API_KEY`) la voz sale DIRECTO por ElevenLabs y Kie queda de respaldo**
+  (`viaDeVoz` en locucion.js, worker/lib/estudio/elevenlabs.js): Kie dejó las tomas de v3 en espera hasta cortarlas («The
+  upstream API service timed out»). La vía la decide el servidor por sus llaves y queda en el trabajo (`motor: "elevenlabs"`,
+  `modelo: "elevenlabs-v3"`; por Kie, `elevenlabs-v3-kie`). Cosas que no se ven:
+  · **ElevenLabs contesta en el acto, pero va por el contrato de COLA** para no tocar la cola: `enviar` genera la toma
+  (`/v1/text-to-speech/<voz>/with-timestamps`) y la deja en R2 bajo `voces/pendientes/` (fuera de `clientes/`) con su
+  alineación por carácter; `sondear` la entrega y `terminarAudio` la guarda (de los bytes, sin bajarla) y borra lo pendiente.
+  · **Las voces son las de la CUENTA** (`/v1/voices`, `vozDeLaCuenta`): también las de la biblioteca añadidas a «My Voices».
+  Si la llave no deja leerlas, las de serie (`VOCES_ELEVENLABS`). Oír una muestra hecha sólo pide un id con forma de
+  ElevenLabs (`esIdDeVoz`): preguntar la lista en cada audio sería una llamada más.
+  · **El costo es un crédito de ElevenLabs por carácter**, en dólares aproximado con el plan Creator
+  (`USD_POR_CARACTER_ELEVENLABS`), y la confirmación lo dice. Sigue confirmándose SIEMPRE.
+  · **Lo que no se puede comprobar sin gastar se pide con tolerancia** (`generarToma`): si rechaza `language_code: "es"` en
+  v3, otra vez sin él; si rechaza los tiempos, el audio solo (los tiempos los pone la verificación o la estimación). Un
+  rechazo no cobra. Sin créditos ElevenLabs contesta 401 `quota_exceeded`: se mira antes que la llave.
+  · **Nada de ElevenLabs directo se ha probado contra el servicio real**: los tests hablan con un `fetch` de mentira.
   · **Una voz que Kie deja «en espera» se da por fallida a los 12 minutos** (`PLAZO_AUDIO_MS`; el resto de trabajos, 30):
   la primera prueba real de v3 se quedó en `waiting` (en su panel, `running` y cobrada) y la pantalla cargaba media hora.
   El error dice en qué estado se quedó. Un 408 (sin resultado en 10 min) o un 501 (falló la generación) de Kie, en

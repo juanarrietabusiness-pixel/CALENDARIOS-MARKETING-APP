@@ -40,11 +40,13 @@ describe("los modelos, el costo y el texto", () => {
   });
 
   it("el costo: 14 créditos por 1.000 caracteres en v3 y 12 en v2, a 0,005 $ el crédito", () => {
-    expect(costoDeVoz("v3", 1000)).toEqual({ creditos: 14, usd: 0.07 });
-    expect(costoDeVoz("v2", 198)).toEqual({ creditos: 2.376, usd: 0.012 });
+    expect(costoDeVoz("v3", 1000)).toEqual({ creditos: 14, usd: 0.07, unidad: "créditos de Kie.ai" });
+    expect(costoDeVoz("v2", 198)).toMatchObject({ creditos: 2.376, usd: 0.012 });
     // Una toma de 198 caracteres en v3: 2,772 créditos (las tres voces de la prueba, 0,042 $).
-    expect(costoDeVoz("v3", 198)).toEqual({ creditos: 2.772, usd: 0.014 });
-    expect(costoDeVoz("nada", 100)).toEqual({ creditos: 0, usd: 0 });
+    expect(costoDeVoz("v3", 198)).toMatchObject({ creditos: 2.772, usd: 0.014 });
+    // Con la llave oficial: un crédito de ElevenLabs por carácter, en dólares aproximado (plan Creator).
+    expect(costoDeVoz("v3", 215, "elevenlabs")).toEqual({ creditos: 215, usd: 0.048, unidad: "créditos de ElevenLabs" });
+    expect(costoDeVoz("nada", 100)).toMatchObject({ creditos: 0, usd: 0 });
   });
 
   it("la frase de muestra cabe, con su emoción en v3 y sin ella en v2", () => {

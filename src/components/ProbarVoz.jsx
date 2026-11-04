@@ -91,11 +91,13 @@ export default function ProbarVoz({ client }) {
       <label htmlFor={`${ids}-texto`}>Lo que dirá (vacío: la frase fija de muestra)</label>
       <textarea id={`${ids}-texto`} className="input" rows={3} maxLength={MAX_TEXTO_MUESTRA} value={texto} onChange={(e) => setTexto(e.target.value)}
         placeholder="[preocupada] ¿Las toallitas le dejan la piel roja a tu bebé?" />
-      <p className="hint">{texto.length} de {MAX_TEXTO_MUESTRA}. En v3 van las emociones entre corchetes; en v2 se quitan. Sólo salen las voces que acepta Kie; una voz propia del kit tiene que estar también en su lista.</p>
+      <p className="hint">{texto.length} de {MAX_TEXTO_MUESTRA}. En v3 van las emociones entre corchetes; en v2 se quitan. {datos.via === "elevenlabs"
+        ? "La voz sale por ElevenLabs con la llave oficial: están las voces de la cuenta (las que añadas a «My Voices» también salen aquí)."
+        : "La voz sale por Kie.ai: sólo están las voces de su lista."}</p>
 
       {precio ? (
         <div className="va-voz-precio" role="status">
-          <p>La muestra de <strong>{escogida?.nombre}</strong> ({precio.caracteres} caracteres) cuesta <strong>{dolares(precio.costo)}</strong> ({String(precio.creditos).replace(".", ",")} créditos de Kie.ai).</p>
+          <p>La muestra de <strong>{escogida?.nombre}</strong> ({precio.caracteres} caracteres) cuesta <strong>{dolares(precio.costo)}</strong> ({String(precio.creditos).replace(".", ",")} {precio.unidad ?? "créditos de Kie.ai"}){precio.unidad === "créditos de ElevenLabs" ? ", precio aproximado: depende del plan" : ""}.</p>
           <div className="va-acciones">
             <button type="button" className="btn btn-primary" disabled={estado === "generando"} onClick={generar}>Generar por {dolares(precio.costo)}</button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPrecio(null)}>No, gracias</button>

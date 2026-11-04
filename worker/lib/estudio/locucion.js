@@ -2,9 +2,14 @@
 // La VOZ del video animado: las voces, la muestra y la locución, como TRABAJOS del Estudio
 //
 // Lo puro (modelos, voces, costo, los tiempos de cada palabra) vive en src/lib/voces.js; aquí lo que toca la base,
-// R2 y Kie. Cada toma es un trabajo de `estudio_trabajos` con `tipo: "audio"`: va por la MISMA cola que un video de
-// Kie (enviar una vez, mirar, bajar), lo avanza la bomba del espacio aunque nadie mire, y su costo se apunta al
-// ENTREGARLO. `trabajos.js` llama a `terminarAudio` cuando Kie lo tiene listo.
+// R2 y el motor. Cada toma es un trabajo de `estudio_trabajos` con `tipo: "audio"`: va por la MISMA cola que un video
+// (enviar una vez, mirar, entregar), lo avanza la bomba del espacio aunque nadie mire, y su costo se apunta al
+// ENTREGARLO. `trabajos.js` llama a `terminarAudio` cuando la toma está lista.
+//
+// DOS VÍAS (`viaDeVoz`): con la llave oficial (`ELEVENLABS_API_KEY`) la toma la hace ElevenLabs mismo
+// (worker/lib/estudio/elevenlabs.js: contesta en el acto con el tiempo de cada carácter, y valen las voces de la CUENTA);
+// sin ella, por Kie.ai como antes (sólo las voces de su lista). La vía la decide el servidor por sus llaves, nunca la
+// pantalla; cada trabajo apunta la suya en el modelo (`elevenlabs-v3` o `elevenlabs-v3-kie`).
 //
 // LA VOZ SIEMPRE SE CONFIRMA (decisión de la agencia): toda toma pagada —la locución y la muestra de una voz—
 // contesta 409 `confirmar` con el costo exacto hasta que llega `confirmado: true`, aunque cueste centavos. El
@@ -30,11 +35,13 @@ import { claveDeArchivo } from "./archivos.js";
 import { kitDe } from "./kit.js";
 import { validarGuion, puedeGenerarVoz, puedePasar, NOMBRE_ESTADO_VIDEO } from "../../../src/lib/videoEscenas.js";
 import {
-  MODELOS_VOZ, modeloDeVoz, limpiarLocucion, vocesDisponibles, vozPorId, VOCES_DE_SERIE, textoParaVoz, costoDeVoz,
+  MODELOS_VOZ, modeloDeVoz, limpiarLocucion, vocesDisponibles, vozPorId, VOCES_KIE, VOCES_ELEVENLABS, VIAS_VOZ, idDeModeloVoz,
+  textoParaVoz, costoDeVoz,
   fraseDeMuestra, textoDeMuestra, tiemposQueLlegaron, problemaDelTexto, palabrasDelResultado, tiemposDeLocucion, duracionMp3,
   PEDIDO_TRANSCRIPCION_TIEMPOS, leerTranscripcionConTiempos, COINCIDENCIA_MINIMA, MODELO_VOZ_POR_DEFECTO,
 } from "../../../src/lib/voces.js";
 import { textoCosto } from "../../../src/lib/estudioCatalogo.js";
+import { vocesDeLaCuenta } from "./elevenlabs.js";
 
 /** Lo más que pesa una toma que se baja (una locución de 2 minutos en MP3 son ~2 MB). */
 export const TOPE_AUDIO = 25 * 1024 * 1024;
@@ -73,41 +80,60 @@ export function vozParaKie(_modelo, voz) {
 /** La locución del kit de un cliente (voz escogida, modelo, voces propias). */
 export const locucionDe = (cliente) => limpiarLocucion(kitDe(cliente)?.locucion);
 
+/** Por dónde sale la voz: «elevenlabs» con la llave oficial, si no «kie»; null si no hay ninguna de las dos. */
+export function viaDeVoz(env) {
+  if (MOTORES.elevenlabs?.activo(env)) return "elevenlabs";
+  if (MOTORES.kie?.activo(env)) return "kie";
+  return null;
+}
+
+/** Las voces de esa vía: con la llave oficial, las de la cuenta (o las de serie si la llave no deja leerlas). */
+export async function vocesDeLaVia(env, via) {
+  if (via === "elevenlabs") return (await vocesDeLaCuenta(env)) ?? VOCES_ELEVENLABS;
+  return VOCES_KIE;
+}
+
 /** La lista de voces de un cliente, con si su muestra ya está hecha (y entonces es gratis oírla). */
 export async function listarVoces(env, cliente) {
   const loc = locucionDe(cliente);
-  const voces = vocesDisponibles(loc);
+  const via = viaDeVoz(env) ?? "kie";
+  const voces = vocesDisponibles(loc, await vocesDeLaVia(env, via));
   const conMuestra = await Promise.all(voces.map(async (v) => {
     const muestras = {};
     for (const clave of Object.keys(MODELOS_VOZ)) muestras[clave] = Boolean(await env.MEDIA?.head(claveDeMuestra(clave, v.id)).catch(() => null));
     return { ...v, muestras, escogida: v.id === loc.voz };
   }));
-  const muestra = (clave) => costoDeVoz(clave, fraseDeMuestra(clave).length).usd;
+  const muestra = (clave) => costoDeVoz(clave, fraseDeMuestra(clave).length, via).usd;
   return {
-    voces: conMuestra, voz: loc.voz, modelo: loc.modelo,
+    voces: conMuestra, voz: loc.voz, modelo: loc.modelo, via, viaNombre: VIAS_VOZ[via].nombre, unidad: VIAS_VOZ[via].unidad,
     modelos: Object.values(MODELOS_VOZ).map((m) => ({ clave: m.clave, nombre: m.nombre, creditos: m.creditos, muestra: muestra(m.clave) })),
   };
 }
 
-/** El modelo de voz del Estudio (`tipo: "audio"`) que va en la fila del trabajo. */
-const modeloDelTrabajo = (clave) => MODELOS_VOZ[clave];
+/** Sin ninguna llave de voz: 503 sin crear nada. */
+function sinLlaveDeVoz() {
+  return new ErrorVoz(
+    "La voz necesita la llave oficial de ElevenLabs (ELEVENLABS_API_KEY) o la de Kie.ai (KIE_API_KEY), y este servidor no tiene ninguna. El administrador la pone como secreto del Worker.",
+    503, { codigo: "sin_llave" },
+  );
+}
 
 /**
  * Crea el trabajo de una toma. Comprueba la llave y el presupuesto; la confirmación la pide quien llama (siempre).
- * `ajustes`: la voz como se manda a Kie y lo que hace falta para terminarla (para qué es, el video y su versión).
+ * `ajustes`: la voz como se manda al motor y lo que hace falta para terminarla (para qué es, el video y su versión).
  */
-async function crearToma(env, acceso, cliente, { modelo, texto, voz, costo, ajustes, usuario = null, origen = "persona" }) {
-  if (!MOTORES.kie?.activo(env)) {
-    throw new ErrorVoz("La voz necesita la llave de Kie.ai (KIE_API_KEY), que este servidor no tiene. El administrador la pone como secreto del Worker.", 503, { codigo: "sin_llave" });
-  }
+async function crearToma(env, acceso, cliente, { modelo, via, texto, voz, costo, ajustes, usuario = null, origen = "persona" }) {
+  if (!via) throw sinLlaveDeVoz();
   const bloqueo = await bloqueoPorPresupuesto(acceso);
   if (bloqueo) throw new ErrorVoz(bloqueo, 402, { codigo: "presupuesto" });
-  const m = modeloDelTrabajo(modelo);
+  const m = MODELOS_VOZ[modelo];
   const ahora = new Date().toISOString();
   const fila = await acceso.insertar("estudio_trabajos", {
-    id: uuid(), client_id: cliente.id, estado: "en_cola", tipo: "audio", motor: "kie", modelo: m.id,
+    id: uuid(), client_id: cliente.id, estado: "en_cola", tipo: "audio", motor: via, modelo: idDeModeloVoz(m.clave, via),
     prompt: texto, n: 1,
-    ajustes: JSON.stringify({ ...ajustes, voz: vozParaKie(modelo, voz), vozId: voz.id, vozNombre: voz.nombre, modeloVoz: m.clave }),
+    ajustes: JSON.stringify({
+      ...ajustes, voz: via === "kie" ? vozParaKie(modelo, voz) : voz.id, vozId: voz.id, vozNombre: voz.nombre, modeloVoz: m.clave, via,
+    }),
     medios: "{}", remoto: "[]", archivos: "[]", nota: "", intentos: 0, bloqueado_hasta: "",
     costo_estimado: costo, costo: 0, error: "", origen, creado_por: usuario?.id ?? null,
     calendar_id: null, post_id: null, carpeta_id: null, created_at: ahora, updated_at: ahora, terminado_at: null,
@@ -119,8 +145,9 @@ async function crearToma(env, acceso, cliente, { modelo, texto, voz, costo, ajus
 
 /** El 409 de la confirmación: la cifra exacta y lo que se va a decir. */
 function pedirConfirmacion(que, costo, extra = {}) {
-  return new ErrorVoz(`${que} cuesta ${textoCosto(costo.usd)} (${costo.creditos} créditos de Kie.ai). Confírmalo para generarla.`, 409, {
-    codigo: "confirmar", costo: costo.usd, creditos: costo.creditos, ...extra,
+  const aprox = costo.unidad === VIAS_VOZ.elevenlabs.unidad ? " aproximadamente (depende del plan de la cuenta)" : "";
+  return new ErrorVoz(`${que} cuesta ${textoCosto(costo.usd)}${aprox} (${costo.creditos} ${costo.unidad}). Confírmalo para generarla.`, 409, {
+    codigo: "confirmar", costo: costo.usd, creditos: costo.creditos, unidad: costo.unidad, ...extra,
   });
 }
 
@@ -131,7 +158,9 @@ function pedirConfirmacion(que, costo, extra = {}) {
 export async function pedirMuestra(env, acceso, cliente, { modelo = MODELO_VOZ_POR_DEFECTO, vozId, texto: propio = "", confirmado = false, usuario = null, origen = "persona" } = {}) {
   const m = modeloDeVoz(modelo);
   if (!m) throw new ErrorVoz("Ese modelo de voz no existe: v3 o v2.");
-  const voz = vozPorId(locucionDe(cliente), String(vozId ?? ""));
+  const via = viaDeVoz(env);
+  if (!via) throw sinLlaveDeVoz();
+  const voz = vozPorId(locucionDe(cliente), String(vozId ?? ""), await vocesDeLaVia(env, via));
   if (!voz) throw new ErrorVoz("Esa voz no está entre las del cliente: escoge una de la lista (o añádela como voz propia en el kit).", 404);
   const t = textoDeMuestra(m.clave, propio);
   if (t.error) throw new ErrorVoz(t.error);
@@ -139,11 +168,11 @@ export async function pedirMuestra(env, acceso, cliente, { modelo = MODELO_VOZ_P
   const clave = claveDeMuestra(m.clave, voz.id, huella);
   const base = { clave, huella, voz, modelo: m.clave, caracteres: t.texto.length };
   if (await env.MEDIA.head(clave).catch(() => null)) return { lista: true, ...base, costo: 0 };
-  const costo = costoDeVoz(m.clave, t.texto.length);
+  const costo = costoDeVoz(m.clave, t.texto.length, via);
   if (confirmado !== true) {
     throw pedirConfirmacion(`La muestra de ${voz.nombre} con ${m.nombre} (${t.texto.length} caracteres)`, costo, { voz: voz.nombre, modelo: m.clave, caracteres: t.texto.length, huella });
   }
-  const fila = await crearToma(env, acceso, cliente, { modelo: m.clave, texto: t.texto, voz, costo: costo.usd, ajustes: { para: "muestra", huella }, usuario, origen });
+  const fila = await crearToma(env, acceso, cliente, { modelo: m.clave, via, texto: t.texto, voz, costo: costo.usd, ajustes: { para: "muestra", huella }, usuario, origen });
   return { lista: false, trabajoId: fila.id, ...base, costo: costo.usd };
 }
 
@@ -166,17 +195,21 @@ export async function pedirLocucion(env, acceso, cliente, video, { modelo, vozId
   const loc = locucionDe(cliente);
   const m = modeloDeVoz(modelo ?? loc.modelo);
   if (!m) throw new ErrorVoz("Ese modelo de voz no existe: v3 o v2.");
-  const voz = vozPorId(loc, String(vozId ?? loc.voz ?? ""));
-  if (!voz) throw new ErrorVoz(loc.voz ? "Esa voz no está entre las del cliente." : "Escoge la voz de la marca (en el kit o para este video).", 400, { codigo: "sin_voz" });
+  const via = viaDeVoz(env);
+  if (!via) throw sinLlaveDeVoz();
+  const voz = vozPorId(loc, String(vozId ?? loc.voz ?? ""), await vocesDeLaVia(env, via));
+  if (!voz) {
+    throw new ErrorVoz(loc.voz ? `Esa voz no está entre las del cliente${via === "elevenlabs" ? " ni en la cuenta de ElevenLabs" : ""}: escoge otra.` : "Escoge la voz de la marca (en el kit o para este video).", 400, { codigo: "sin_voz" });
+  }
   const texto = textoParaVoz(v.guion, m.clave);
   const problema = problemaDelTexto(texto, m.clave);
   if (problema) throw new ErrorVoz(problema, 400);
-  const costo = costoDeVoz(m.clave, texto.length);
+  const costo = costoDeVoz(m.clave, texto.length, via);
   if (confirmado !== true) {
     throw pedirConfirmacion(`La locución (${texto.length} caracteres, voz ${voz.nombre}, ${m.nombre})`, costo, { voz: voz.nombre, modelo: m.clave, caracteres: texto.length });
   }
   const fila = await crearToma(env, acceso, cliente, {
-    modelo: m.clave, texto, voz, costo: costo.usd, ajustes: { para: "locucion", videoId: video.id, version: video.version }, usuario, origen,
+    modelo: m.clave, via, texto, voz, costo: costo.usd, ajustes: { para: "locucion", videoId: video.id, version: video.version }, usuario, origen,
   });
   const locucion = {
     estado: "generando", trabajoId: fila.id, modelo: m.clave, voz: { id: voz.id, nombre: voz.nombre }, version: video.version,
@@ -187,7 +220,7 @@ export async function pedirLocucion(env, acceso, cliente, video, { modelo, vozId
     locucion: JSON.stringify(locucion), updated_at: new Date().toISOString(),
   });
   difundir(env, acceso.ownerId, { tipo: "videos", clienteId: cliente.id, id: video.id, por: por ?? { userId: "sistema", nombre: "Estudio", color: "", tab: null } });
-  return { trabajoId: fila.id, costo: costo.usd, creditos: costo.creditos, caracteres: texto.length, voz, modelo: m.clave };
+  return { trabajoId: fila.id, costo: costo.usd, creditos: costo.creditos, unidad: costo.unidad, caracteres: texto.length, voz, modelo: m.clave, via };
 }
 
 /**
@@ -223,24 +256,31 @@ async function oirConTiempos(env, acceso, { bytes, mime, clienteId }) {
  */
 export async function terminarAudio(env, acceso, fila, { listo, modelo }) {
   const ajustes = leerJSON(fila.ajustes, {});
-  const descarga = await abrirDescarga(listo.url, { headers: listo.headers, nombre: modelo.nombre, tope: TOPE_AUDIO, tipos: TIPOS_AUDIO });
+  const directo = modelo.motor === "elevenlabs";
+  // Directo, la toma ya llega en bytes (ElevenLabs contesta en el acto); por Kie, se baja de su dirección.
+  const descarga = listo.bytes
+    ? { cuerpo: new Response(listo.bytes).body, largo: listo.bytes.byteLength, mime: listo.mime || "audio/mpeg" }
+    : await abrirDescarga(listo.url, { headers: listo.headers, nombre: modelo.nombre, tope: TOPE_AUDIO, tipos: TIPOS_AUDIO });
   const costo = Number(fila.costo_estimado) || 0;
-  const apuntar = () => registrarConsumoFijo(acceso, { proveedor: "kie", funcion: "estudio-voz", modelo: modelo.id, costo, clienteId: fila.client_id });
+  const apuntar = () => registrarConsumoFijo(acceso, { proveedor: directo ? "elevenlabs" : "kie", funcion: "estudio-voz", modelo: modelo.id, costo, clienteId: fila.client_id });
+  const limpiar = () => Promise.all((listo.pendientes ?? []).map((k) => env.MEDIA.delete(k).catch(() => null)));
   const cerrar = (extra = {}) => ({ estado: "hecho", intentos: 0, error: "", costo, terminado_at: new Date().toISOString(), ...extra });
 
-  // Lo que Kie trajo con el audio: si dio el tiempo de cada palabra y qué campos llegaron (un extracto queda en el
+  // Lo que trajo el motor con el audio: si dio el tiempo de cada palabra y qué campos llegaron (un extracto queda en el
   // trabajo, para ver su forma real sin adivinarla). Es lo que dice si hace falta la verificación posterior.
-  const llegaron = tiemposQueLlegaron(listo.resultado ?? null);
+  const llegaron = tiemposQueLlegaron(listo.resultado ?? null, directo ? "ElevenLabs" : "Kie");
+  const avisos = (listo.notas ?? []).join(" ");
   const crudo = (() => { try { return JSON.stringify(listo.resultado?.resultJson ?? listo.resultado ?? null).slice(0, 1500); } catch { return ""; } })();
 
   if (ajustes.para === "muestra") {
     const clave = claveDeMuestra(ajustes.modeloVoz, ajustes.vozId, ajustes.huella ?? "");
     const guardado = await guardarDescarga(env, clave, descarga);
     await apuntar();
+    await limpiar();
     const obj = descarga.mime === "audio/mpeg" ? await env.MEDIA.get(clave).catch(() => null) : null;
     const duracion = obj ? duracionMp3(new Uint8Array(await obj.arrayBuffer())) : 0;
     return cerrar({
-      nota: `Muestra de ${ajustes.vozNombre ?? "la voz"} lista${duracion ? ` (${duracion.toFixed(1)} s)` : ""}. ${llegaron.frase}`.slice(0, 400),
+      nota: `Muestra de ${ajustes.vozNombre ?? "la voz"} lista${duracion ? ` (${duracion.toFixed(1)} s)` : ""}. ${llegaron.frase}${avisos ? ` ${avisos}` : ""}`.slice(0, 400),
       ajustes: JSON.stringify({ ...ajustes, duracion, bytes: guardado?.bytes ?? 0, tiempos: { delMotor: llegaron.delMotor, palabras: llegaron.palabras, campos: llegaron.campos }, crudo }),
     });
   }
@@ -259,6 +299,7 @@ export async function terminarAudio(env, acceso, fila, { listo, modelo }) {
     origen: "estudio", costo, favorito: 0, subido: 0, usado_en: "[]", borrado_at: null, created_at: ahora, updated_at: ahora,
   });
   await apuntar();
+  await limpiar();
 
   // Los tiempos: los del motor; si no trae, la verificación posterior; si no, estimados sobre la duración real.
   const resultado = listo.resultado ?? null;
@@ -289,6 +330,7 @@ export async function terminarAudio(env, acceso, fila, { listo, modelo }) {
     `· ${llegaron.frase}`,
     { motor: "con los tiempos del motor", verificado: "con los tiempos verificados al oírla", estimado: "con tiempos estimados" }[t.fuente],
     revisar ? `· OJO: sólo se oyó el ${Math.round(t.coincidencia * 100)} % del guion tal cual; escúchala` : "",
+    avisos ? `· ${avisos}` : "",
   ].filter(Boolean).join(" ");
   return cerrar({
     archivos: JSON.stringify([archivoId]), nota: nota.slice(0, 400),
