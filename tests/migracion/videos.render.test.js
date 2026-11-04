@@ -285,3 +285,67 @@ describe("Claude lo pide por MCP", () => {
     expect(v.content[0].text).toMatch(/Listo: el mp4 está en la galería y en su publicación/);
   });
 });
+
+describe("ligar el video a una publicación cuando se quiera", () => {
+  /** Un video SIN publicación, aprobado y con su locución. */
+  async function suelto() {
+    const r = await pedir("/videos/bc", { method: "POST", body: JSON.stringify({ guion: EJEMPLO_GUION }) });
+    const { video: v } = await r.json();
+    db.sqlite.prepare("update videos_proyectos set estado = 'aprobado', aprobada_version = 1, locucion = ? where id = ?")
+      .run(JSON.stringify({ estado: "lista", clave: CLAVE_VOZ, version: 1 }), v.id);
+    return v.id;
+  }
+  const ligar = (id, postId) => pedir(`/videos/bc/${id}/publicacion`, { method: "POST", body: JSON.stringify({ postId }) });
+
+  it("ya renderizado: ligarlo pone el mp4 en el post al momento, sin renderizar otra vez", async () => {
+    const id = await suelto();
+    await renderizar(id);
+    await ejecutarRender(env, encargos.at(-1).cuerpo, container([]));
+    let render = JSON.parse(fila(id).render);
+    expect(render.adjunto).toBeNull();
+    expect(dias()[0].posts[0].medios).toHaveLength(1);
+
+    const r = await ligar(id, "p1");
+    expect(r.status).toBe(200);
+    expect((await r.json()).puesto).toEqual({ calendarId: "cal1", postId: "p1" });
+    expect(dias()[0].posts[0].medios[0]).toMatchObject({ src: `/api/media/${render.clave}`, videoAnimado: id });
+    render = JSON.parse(fila(id).render);
+    expect(render.adjunto).toEqual({ calendarId: "cal1", postId: "p1" });
+    const archivo = db.sqlite.prepare("select usado_en from estudio_archivos where id = ?").get(render.archivoId);
+    expect(JSON.parse(archivo.usado_en)[0]).toMatchObject({ calendarId: "cal1", postId: "p1" });
+    expect(encargos).toHaveLength(1); // no se volvió a renderizar
+  });
+
+  it("sin mp4 todavía, sólo queda ligado (se pondrá al terminar); desligar no saca nada del post", async () => {
+    const id = await suelto();
+    const r = await (await ligar(id, "p1")).json();
+    expect(r.puesto).toBeNull();
+    expect(fila(id)).toMatchObject({ calendar_id: "cal1", post_id: "p1" });
+    await renderizar(id);
+    await ejecutarRender(env, encargos.at(-1).cuerpo, container([]));
+    expect(dias()[0].posts[0].medios[0].videoAnimado).toBe(id);
+    await ligar(id, "");
+    expect(fila(id)).toMatchObject({ calendar_id: null, post_id: null });
+    expect(dias()[0].posts[0].medios[0].videoAnimado).toBe(id);
+  });
+
+  it("una publicación que no es de este cliente no se liga; mientras renderiza, tampoco se cambia", async () => {
+    const id = await suelto();
+    expect((await ligar(id, "no-existe")).status).toBe(404);
+    await renderizar(id);
+    expect((await ligar(id, "p1")).status).toBe(409);
+  });
+
+  it("Claude: ligar_video, y renderizar_video con publicacion_id liga antes de renderizar", async () => {
+    const id = await suelto();
+    const h = crearHerramientasMCP({ env, acceso: crearAcceso(db, JEFE), usuario: { id: JEFE, nombre: "Juan" } });
+    const r = await h.llamar("renderizar_video", { cliente: "Cliente Uno", video_id: id, version: 1, publicacion_id: "p1" });
+    expect(r.content[0].text).toMatch(/se pone en la publicación p1/);
+    await ejecutarRender(env, encargos.at(-1).cuerpo, container([]));
+    expect(dias()[0].posts[0].medios[0].videoAnimado).toBe(id);
+    const fuera = await h.llamar("ligar_video", { cliente: "Cliente Uno", video_id: id, publicacion_id: "" });
+    expect(fuera.content[0].text).toMatch(/ya no va ligado/);
+    const otra = await h.llamar("ligar_video", { cliente: "Cliente Uno", video_id: id, publicacion_id: "p1" });
+    expect(otra.content[0].text).toMatch(/ya está puesto/);
+  });
+});

@@ -13,6 +13,7 @@
 //   · revisar_video    la revisión antes de renderizar: subtítulos que tapan, texto que se sale o se parte, fuera de la
 //                      zona segura, capas encimadas (con las fuentes reales)
 //   · renderizar_video el mp4 (voz, escenas, subtítulos, -14 LUFS) en el Container: a la galería y a su publicación
+//   · ligar_video      a qué publicación va (o ninguna); si el mp4 ya está hecho, se pone en ella ya
 //
 // Las tres de mirar devuelven { texto, imagenes } (no un texto): el MCP las manda como bloques de imagen y el
 // asistente como imagen en su tool_result. No gastan IA: es cómputo del Container.
@@ -35,7 +36,7 @@ import { formatoParaLaIA } from "../../../src/lib/videoFormatoIA.js";
 import { textoDeSubtitulo } from "../../../src/lib/subtitulos.js";
 import { instanteLleno } from "../../../src/lib/revisionEscenas.js";
 import { pedidoDelVideo, alContenedor, respuestaEnBase64 } from "./cuadros.js";
-import { pedirRender, renderAlDia } from "./render.js";
+import { pedirRender, renderAlDia, ligarAPublicacion } from "./render.js";
 
 const clienteParam = { cliente: { type: "string", description: "Nombre del cliente. En el asistente de un cliente se puede omitir: es ese cliente." } };
 const videoParam = { video_id: { type: "string", description: "ID del proyecto de video (de listar_videos o crear_video)." } };
@@ -137,12 +138,28 @@ export const DEFINICIONES_VIDEO = Object.freeze([
   {
     name: "renderizar_video",
     description: "RENDERIZA el video a mp4 (1080 de ancho, 30 cuadros por segundo): las escenas con el mismo motor de la vista previa, la voz con sus silencios, los subtítulos por palabra y el volumen a -14 LUFS. Sólo con el guion aprobado y su locución lista de esa versión. Tarda menos de un minuto: el mp4 queda en la galería del cliente y, si el video va ligado a una publicación, en sus medios (en el sitio del anterior). Mira el resultado después con ver_video. Revisa antes con revisar_video. No gasta IA.",
-    input_schema: { type: "object", properties: { ...clienteParam, ...videoParam, ...versionParam }, required: ["video_id", "version"] },
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam, ...videoParam, ...versionParam,
+        publicacion_id: { type: "string", description: "Opcional: la publicación del calendario donde se pone el mp4 al salir (de ver_calendario). Si se omite, la que ya tenga ligada." },
+      },
+      required: ["video_id", "version"],
+    },
+  },
+  {
+    name: "ligar_video",
+    description: "Liga el video animado a una publicación del calendario del cliente (de ver_calendario), o lo desliga con publicacion_id vacío. Si el mp4 ya está renderizado, se pone en esa publicación YA (primero en sus medios, o en el sitio del mp4 anterior de este video); si no, se pondrá al terminar el render. Desligar no quita el mp4 del post de antes. No gasta nada.",
+    input_schema: {
+      type: "object",
+      properties: { ...clienteParam, ...videoParam, publicacion_id: { type: "string", description: "ID de la publicación; vacío para desligarlo." } },
+      required: ["video_id", "publicacion_id"],
+    },
   },
 ]);
 
 /** Las que escriben (en el MCP van como escritura; las demás, de sólo lectura). */
-export const ESCRIBEN_VIDEO = Object.freeze(["crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video"]);
+export const ESCRIBEN_VIDEO = Object.freeze(["crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video"]);
 
 /** Lo que falta para el siguiente paso, en una frase para el modelo. Pura. */
 /** ¿La locución es de la versión aprobada? (un video «aprobado» con voz de esa versión ya no la necesita otra vez). */
@@ -302,12 +319,29 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
           ? "Ya se puede generar la voz con generar_locucion (pide confirmar el costo)." : ""}`.trim();
       });
     },
-    async renderizar_video({ cliente, video_id: id, version }) {
+    async renderizar_video({ cliente, video_id: id, version, publicacion_id: postId }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        let fila = await renderAlDia(acceso, await proyectoDe(acceso, c.id, id));
+        // Primero a qué publicación va (si se pidió otra), luego el render.
+        if (postId && postId !== fila.post_id) {
+          await ligarAPublicacion(env, acceso, c, fila, { postId, por });
+          fila = await proyectoDe(acceso, c.id, id);
+        }
+        const r = await pedirRender(env, acceso, c, fila, { version, usuario, por });
+        return `Render encargado: «${r.video.titulo}» (versión ${r.video.version}) se está renderizando; tarda menos de un minuto. Míralo con ver_video.${fila.post_id ? ` Al terminar, el mp4 se pone en la publicación ${fila.post_id}.` : " No va ligado a ninguna publicación: queda en la galería (ligar_video para ponerlo en una)."}`;
+      });
+    },
+
+    async ligar_video({ cliente, video_id: id, publicacion_id: postId }) {
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
         const fila = await renderAlDia(acceso, await proyectoDe(acceso, c.id, id));
-        const r = await pedirRender(env, acceso, c, fila, { version, usuario, por });
-        return `Render encargado: «${r.video.titulo}» (versión ${r.video.version}) se está renderizando; tarda menos de un minuto. Míralo con ver_video.${fila.post_id ? " Al terminar, el mp4 se pone en su publicación." : ""}`;
+        const r = await ligarAPublicacion(env, acceso, c, fila, { postId: postId || null, por });
+        if (!postId) return `«${fila.titulo}» ya no va ligado a ninguna publicación${fila.post_id ? ` (el mp4 que ya estuviera en ${fila.post_id} se queda ahí)` : ""}.`;
+        if (r.puesto) return `Ligado a la publicación ${postId} y el mp4 ya está puesto en ella.`;
+        if (r.aviso) return `Ligado a la publicación ${postId}, pero no se pudo poner el mp4: ${r.aviso}`;
+        return `Ligado a la publicación ${postId}. Aún no hay mp4: se pondrá en ella al terminar el render (renderizar_video).`;
       });
     },
 

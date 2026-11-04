@@ -4,12 +4,16 @@
 // El render lo hace el Container (worker/lib/estudio/render.js): aquí sólo se pide y, mientras dura, se relee el video
 // cada pocos segundos (además del aviso del espacio, que puede no llegar si el socket está caído). Al terminar se ve el
 // mp4, se descarga y se dice si quedó puesto en su publicación.
+//
+// «Va en la publicación»: a qué post del calendario va el mp4. Se escoge cuando se quiera —antes del render (el mp4 se
+// pondrá al terminar) o después (se pone ya, sin renderizar otra vez)—. Quitarla no saca el mp4 del post de antes.
 // ============================================================
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import Icon from "./Icon";
-import { leerVideo, renderizarVideo } from "../lib/videosApi";
-import { puedeRenderizar } from "../lib/renderVideo";
+import { leerVideo, renderizarVideo, ligarVideo } from "../lib/videosApi";
+import { puedeRenderizar, publicacionesParaVideo } from "../lib/renderVideo";
+import { fmtDate } from "../utils";
 
 const CADA_MS = 4000;
 const mb = (b) => `${(Number(b ?? 0) / 1048576).toFixed(1).replace(".", ",")} MB`;
@@ -29,6 +33,26 @@ export default function RenderVideo({ client, video, sucio, onCambio }) {
     }, CADA_MS);
     return () => clearInterval(t);
   }, [renderizando, client.id, video.id, onCambio]);
+
+  const idSelector = useId();
+  const [ligando, setLigando] = useState(false);
+  const [dicho, setDicho] = useState("");
+  const opciones = useMemo(
+    () => publicacionesParaVideo(client.calendars ?? [], { hoy: fmtDate(new Date()), ligada: video.postId }),
+    [client.calendars, video.postId],
+  );
+  const ligar = async (postId) => {
+    const o = opciones.find((x) => x.postId === postId);
+    setLigando(true); setError(""); setDicho("");
+    try {
+      const r = await ligarVideo(client.id, video.id, { postId, calendarId: o?.calendarId ?? "" });
+      if (r?.video) onCambio(r.video);
+      setDicho(!postId ? "Ya no va en ninguna publicación (si el mp4 ya estaba en una, se queda ahí)."
+        : r?.puesto ? "Listo: el mp4 ya está en esa publicación."
+          : r?.aviso ? `Ligado, pero no se pudo poner el mp4: ${r.aviso}`
+            : "Ligado: el mp4 se pondrá en esa publicación al terminar el render.");
+    } catch (e) { setError(e.message); } finally { setLigando(false); }
+  };
 
   const puede = puedeRenderizar({ ...video, aprobada_version: video.aprobadaVersion });
   const pedirlo = async () => {
@@ -53,6 +77,16 @@ export default function RenderVideo({ client, video, sucio, onCambio }) {
           </a>
         </>
       )}
+      <div className="va-ligar">
+        <label htmlFor={idSelector}>Va en la publicación</label>
+        <select id={idSelector} className="input" value={video.postId ?? ""} disabled={ligando || renderizando}
+          onChange={(e) => ligar(e.target.value)}>
+          <option value="">Ninguna (sólo en la galería)</option>
+          {video.postId && !opciones.some((o) => o.postId === video.postId) && <option value={video.postId}>La de antes (no está en los meses cargados)</option>}
+          {opciones.map((o) => <option key={o.postId} value={o.postId}>{o.etiqueta}</option>)}
+        </select>
+        {dicho && <p className="hint" role="status">{dicho}</p>}
+      </div>
       {renderizando && <p className="va-msg" role="status">Renderizando: la voz, las escenas y los subtítulos. Tarda menos de un minuto; puedes cerrar esta pantalla.</p>}
       {video.estado === "fallido" && <p className="va-msg va-error" role="alert">Falló el render: {render.error || "sin motivo"}</p>}
       {error && <p className="va-msg va-error" role="alert">{error}</p>}

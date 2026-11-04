@@ -386,6 +386,7 @@ export function describirUso(nombre, entrada = {}) {
     case "ver_escenas": return "Miró todas las escenas del video animado";
     case "revisar_video": return "Revisó el video animado antes de renderizar";
     case "renderizar_video": return "Pidió el render a mp4 de un video animado";
+    case "ligar_video": return entrada.publicacion_id ? "Ligó un video animado a una publicación" : "Desligó un video animado de su publicación";
     default: return nombre;
   }
 }

@@ -118,3 +118,38 @@ export function puedeRenderizar(p) {
 
 /** Los bytes de un mp4 de verdad: la caja «ftyp» al principio. Puro. */
 export const esMp4 = (b) => b?.length > 12 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70;
+
+const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const FORMATO_CORTO = { post: "Post", reel: "Reel", carrusel: "Carrusel", historia: "Historia", live: "Directo" };
+
+/**
+ * Las publicaciones de un cliente a las que se puede ligar un video (`calendars`: los de `client.calendars`, con sus
+ * días): desde una semana antes de `hoy` («AAAA-MM-DD») en adelante, por fecha, primero los reels y las historias de
+ * cada día (lo que lleva video), como mucho `max`; la ya ligada (`ligada`: su id) siempre está. → [{ postId,
+ * calendarId, fecha, etiqueta }]. Pura.
+ */
+export function publicacionesParaVideo(calendars = [], { hoy = "", ligada = null, max = 60 } = {}) {
+  const desde = hoy ? new Date(`${hoy}T12:00:00`) : null;
+  if (desde) desde.setDate(desde.getDate() - 7);
+  const limite = desde ? `${desde.getFullYear()}-${String(desde.getMonth() + 1).padStart(2, "0")}-${String(desde.getDate()).padStart(2, "0")}` : "";
+  const todas = [];
+  for (const cal of calendars ?? []) {
+    for (const d of cal?.days ?? []) {
+      for (const p of d?.posts ?? []) {
+        if (!p?.id || !d.date) continue;
+        if (d.date < limite && p.id !== ligada) continue;
+        const [, m, dia] = d.date.split("-").map(Number);
+        const titulo = String(p.title || p.idea || "sin título").replace(/\s+/g, " ").trim().slice(0, 50);
+        todas.push({
+          postId: p.id, calendarId: cal.id, fecha: d.date, video: ["reel", "historia"].includes(p.format) ? 0 : 1,
+          etiqueta: `${dia} ${MESES_CORTOS[m - 1] ?? ""} · ${FORMATO_CORTO[p.format] ?? "Post"} · ${titulo}`,
+        });
+      }
+    }
+  }
+  todas.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.video - b.video);
+  const lista = todas.slice(0, max);
+  const suya = todas.find((x) => x.postId === ligada);
+  if (suya && !lista.includes(suya)) lista.unshift(suya);
+  return lista.map(({ video: _, ...x }) => x);
+}
