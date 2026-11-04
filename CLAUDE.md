@@ -4098,6 +4098,10 @@ son del servidor.
   Fase 1 y la limpieza, implementadas; fases 2 a 4, pendientes.
 - `docs/hub-cloudflare.md` — plan del hub donde este calendario pasa a ser una
   herramienta más, junto al bot y la tienda que ya están en Cloudflare.
+- `docs/propuesta-higgsfield-con-claude.md` — lo que el MCP de Higgsfield hace «con Claude» (recetas, flujos,
+  galerías, modelos), qué es exclusivo suyo, qué ya tiene el calendario y la estructura para hacerlo aquí: recetas como
+  dato, «Crear con Claude» con handoff, imágenes en el resultado del MCP y el render del video animado. Investigación
+  hecha (sólo lectura, sin gastar créditos); nada implementado.
 - `docs/propuesta-cerebro-por-cliente.md` — un cerebro por cliente (notas en D1, índice
   en R2, ficha técnica y cifras, búsqueda por pasajes) en lugar de volcar el ADN entero
   en cada llamada. Fases 0 y 1 implementadas; memoria de decisiones, visualización,
