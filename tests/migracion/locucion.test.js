@@ -237,6 +237,29 @@ describe("las voces y su muestra", () => {
     expect((await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "no-existe", confirmado: true } })).status).toBe(404);
   });
 
+  it("una voz que Kie deja «en espera» se da por fallida a los 12 minutos, con lo que decía, sin cobrar", async () => {
+    kie({ estados: ["waiting"] });
+    const { trabajoId } = await (await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "hpp4J3VqNfWAUOO0d1Us", texto: "Hola, mamá.", confirmado: true } })).json();
+    expect((await hastaElFinal(trabajoId, 2)).estado).toBe("en_marcha");
+    db.sqlite.prepare("update estudio_trabajos set created_at = ? where id = ?").run(new Date(Date.now() - 13 * 60_000).toISOString(), trabajoId);
+    const fin = await hastaElFinal(trabajoId, 1);
+    expect(fin).toMatchObject({ estado: "fallido", costo: 0 });
+    expect(fin.error).toMatch(/no terminó la voz en 12 minutos \(se quedó en «En espera en Kie.ai»\)/);
+  });
+
+  it("un 408 o un 501 de Kie al mirar terminan la voz con su motivo, sin reintentar", async () => {
+    for (const [code, frase] of [[408, /no tuvo resultado en 10 minutos/], [501, /no pudo generarlo: falló/]]) {
+      db.sqlite.prepare("delete from estudio_trabajos").run();
+      kie();
+      const real = globalThis.fetch;
+      globalThis.fetch = vi.fn(async (url, init) => (String(url).includes("/recordInfo") ? json({ code, msg: "falló" }) : real(url, init)));
+      const { trabajoId } = await (await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "hpp4J3VqNfWAUOO0d1Us", texto: "Hola, mamá.", confirmado: true } })).json();
+      const fin = await hastaElFinal(trabajoId, 2);
+      expect(fin.estado).toBe("fallido");
+      expect(fin.error).toMatch(frase);
+    }
+  });
+
   it("sin la llave de Kie, 503 sin llamar a nadie", async () => {
     const { llamadas } = kie();
     delete env.KIE_API_KEY;
