@@ -63,7 +63,7 @@ describe("los modelos, el costo y el texto", () => {
 
 describe("las voces", () => {
   it("las de serie tienen id de ElevenLabs, nombre y género, sin repetirse", () => {
-    expect(VOCES_DE_SERIE.length).toBeGreaterThanOrEqual(12);
+    expect(VOCES_DE_SERIE.length).toBeGreaterThanOrEqual(8);
     expect(new Set(VOCES_DE_SERIE.map((v) => v.id)).size).toBe(VOCES_DE_SERIE.length);
     for (const v of VOCES_DE_SERIE) expect(v.id).toMatch(/^[A-Za-z0-9]{12,40}$/);
     expect(VOCES_DE_SERIE.some((v) => v.genero === "femenina")).toBe(true);

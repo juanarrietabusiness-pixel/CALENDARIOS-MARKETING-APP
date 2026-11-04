@@ -347,7 +347,12 @@ function veo(nivel, { prompt, ajustes, refs, inicio, fin }) {
 export const MODELOS_VOZ_KIE = Object.freeze({
   "elevenlabs-v3-kie": ({ prompt, ajustes }) => ({
     model: "elevenlabs/text-to-dialogue-v3",
-    input: { dialogue: [{ text: prompt, voice: String(ajustes.voz ?? "") }], stability: Number(ajustes.estabilidad ?? 0.5) },
+    // `language_code: "es"`: con «auto» (su valor por defecto) una voz de acento inglés lee el español como extranjera.
+    // v2 NO lo lleva: según Kie, sólo lo admiten Turbo y Flash.
+    input: {
+      dialogue: [{ text: prompt, voice: String(ajustes.voz ?? "") }], stability: Number(ajustes.estabilidad ?? 0.5),
+      language_code: "es",
+    },
   }),
   "elevenlabs-v2-kie": ({ prompt, ajustes }) => ({
     model: "elevenlabs/text-to-speech-multilingual-v2",
