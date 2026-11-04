@@ -91,7 +91,7 @@ export default function ProbarVoz({ client }) {
       <label htmlFor={`${ids}-texto`}>Lo que dirá (vacío: la frase fija de muestra)</label>
       <textarea id={`${ids}-texto`} className="input" rows={3} maxLength={MAX_TEXTO_MUESTRA} value={texto} onChange={(e) => setTexto(e.target.value)}
         placeholder="[preocupada] ¿Las toallitas le dejan la piel roja a tu bebé?" />
-      <p className="hint">{texto.length} de {MAX_TEXTO_MUESTRA}. En v3 van las emociones entre corchetes; en v2 se quitan. Las voces de serie son de ElevenLabs y hablan español con su propio acento: para una latina, añádela como voz propia en el kit.</p>
+      <p className="hint">{texto.length} de {MAX_TEXTO_MUESTRA}. En v3 van las emociones entre corchetes; en v2 se quitan. Sólo salen las voces que acepta Kie; una voz propia del kit tiene que estar también en su lista.</p>
 
       {precio ? (
         <div className="va-voz-precio" role="status">

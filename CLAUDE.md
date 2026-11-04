@@ -4010,6 +4010,10 @@ son del servidor.
   · **El audio va a `estudio_archivos` con tipo «audio»** y la galería NO lo enseña (`leerGaleria`). `tipoPorBytes`
   reconoce MP3 (ID3 o cuadro) y WAV. La voz de la marca vive en `kit.locucion` (voz, modelo, hasta 12 voces propias por
   su id de ElevenLabs) y `fundirKit` la conserva.
+  · **Kie sólo acepta las voces de SU lista** (66, por su id de ElevenLabs; `VOCES_DE_SERIE` lleva las comprobadas en su
+  formulario). La primera prueba real con Matilda —de serie en ElevenLabs— volvió «Invalid voice parameter». La voz va por
+  el ID en v3 y en v2 (`vozParaKie`); v3 lleva `language_code: "es"` (con «auto», una voz de acento inglés lee el español
+  como extranjera) y v2 no (según Kie, sólo Turbo y Flash lo admiten). Una voz propia del kit tiene que estar en esa lista.
   · **Nada de esto se ha probado contra Kie real** (los tests hablan con un `fetch` de mentira): los nombres de los campos
   de v3 y v2, si la voz va por id o por nombre (`vozParaKie`), si devuelven tiempos y en qué forma, y el redondeo real de
   los créditos salen de la documentación pública y se comprueban con la primera toma de verdad.

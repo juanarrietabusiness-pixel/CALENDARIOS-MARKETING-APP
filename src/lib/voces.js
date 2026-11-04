@@ -59,27 +59,20 @@ export function modeloDelEstudio(id) {
 export const modeloDeVoz = (valor) => MODELOS_VOZ[valor] ?? Object.values(MODELOS_VOZ).find((m) => m.id === valor) ?? null;
 
 /**
- * Las voces DE SERIE de ElevenLabs (las que tiene toda cuenta), con su id. Son multilingües: hablan español, pero su
- * acento de origen se puede notar. Las nativas en español de su biblioteca no tienen un id fijo que se conozca de
- * antemano: la agencia las escoge en el panel de Kie y las añade como voces propias (`kit.locucion.voces`).
+ * Las voces que ACEPTA Kie, con su id de ElevenLabs. Kie no deja escoger cualquier voz de ElevenLabs: sólo las de su
+ * lista (el formulario de su panel), y con otra contesta «Invalid voice parameter» (pasó con Matilda, que es de serie en
+ * ElevenLabs y no está en la de Kie). Los mismos ids valen para v3 y v2. Kie tiene 66; aquí van las que se han
+ * comprobado en su formulario. Una que falte se añade aquí con su id tal cual lo da Kie.
  */
 export const VOCES_DE_SERIE = Object.freeze([
-  { id: "EXAVITQu4vr4xnSDxMaL", nombre: "Sarah", genero: "femenina", nota: "joven, suave y segura" },
-  { id: "FGY2WhTYpPnrIDTdsKH5", nombre: "Laura", genero: "femenina", nota: "joven, con energía" },
-  { id: "Xb7hH8MSUJpSbSDYk0k2", nombre: "Alice", genero: "femenina", nota: "clara, didáctica" },
-  { id: "XrExE9yKIg1WjnnlVkGX", nombre: "Matilda", genero: "femenina", nota: "cálida, cercana" },
-  { id: "cgSgspJ2msm6clMCkdW9", nombre: "Jessica", genero: "femenina", nota: "joven, expresiva" },
-  { id: "pFZP5JQG7iQjIQuC4Bku", nombre: "Lily", genero: "femenina", nota: "cálida, pausada" },
-  { id: "9BWtsMINqrJLrRacOk9x", nombre: "Aria", genero: "femenina", nota: "madura, expresiva" },
-  { id: "XB0fDUnXU5powFXDhCwa", nombre: "Charlotte", genero: "femenina", nota: "natural, conversacional" },
-  { id: "CwhRBWXzGAHq8TQ4Fs17", nombre: "Roger", genero: "masculina", nota: "seguro, cercano" },
-  { id: "IKne3meq5aSn9XLyUdCD", nombre: "Charlie", genero: "masculina", nota: "joven, conversacional" },
-  { id: "JBFqnCBsd6RMkjVDRZzb", nombre: "George", genero: "masculina", nota: "cálido, narrador" },
-  { id: "TX3LPaxmHKxFdv7VOQHJ", nombre: "Liam", genero: "masculina", nota: "joven, articulado" },
-  { id: "bIHbv24MWmeRgasZH58o", nombre: "Will", genero: "masculina", nota: "amable, relajado" },
-  { id: "cjVigY5qzO86Huf0OWal", nombre: "Eric", genero: "masculina", nota: "suave, confiable" },
-  { id: "iP95p4xoKVk53GoZ742B", nombre: "Chris", genero: "masculina", nota: "natural, casual" },
-  { id: "nPczCjzI2devNBz1zQrb", nombre: "Brian", genero: "masculina", nota: "grave, narrador" },
+  { id: "Z3R5wn05IrDiVCyEkUrK", nombre: "Arabella", genero: "femenina", nota: "" },
+  { id: "hpp4J3VqNfWAUOO0d1Us", nombre: "Bella", genero: "femenina", nota: "" },
+  { id: "iCrDUkL56s3C8sCRl7wb", nombre: "Esperanza", genero: "femenina", nota: "" },
+  { id: "LruHrtVF6PSyGItzMNHS", nombre: "Benjamín", genero: "masculina", nota: "" },
+  { id: "NNl6r8mD7vthiJatiJt1", nombre: "Bradford", genero: "masculina", nota: "" },
+  { id: "qXpMhyvQqiRxWQs4qSSB", nombre: "Horacio", genero: "masculina", nota: "" },
+  { id: "EkK5I93UQWFDigLMpZcX", nombre: "James", genero: "masculina", nota: "" },
+  { id: "TX3LPaxmHKxFdv7VOQHJ", nombre: "Liam", genero: "masculina", nota: "" },
 ]);
 
 /** Un id de voz de ElevenLabs: letras y números, sin espacios. */

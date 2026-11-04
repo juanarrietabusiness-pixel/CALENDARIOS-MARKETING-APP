@@ -232,7 +232,7 @@ Una sola toma con `textoDeLocucion(guion)`: ElevenLabs v3 por Kie.ai (con las
 
 ```json
 {
-  "estado": "lista", "modelo": "v3", "voz": { "id": "EXAVITQu4vr4xnSDxMaL", "nombre": "Sarah" },
+  "estado": "lista", "modelo": "v3", "voz": { "id": "hpp4J3VqNfWAUOO0d1Us", "nombre": "Bella" },
   "clave": "clientes/<c>/estudio/…/locucion.mp3", "duracion": 19.4,
   "palabras": [{ "desde": 0.12, "hasta": 0.38 }],
   "fuente": "motor | verificado | estimado", "coincidencia": 0.97, "revisar": false,

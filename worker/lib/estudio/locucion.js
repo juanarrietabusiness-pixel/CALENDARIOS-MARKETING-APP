@@ -63,13 +63,10 @@ export const HUELLA = /^[0-9a-f]{16}$/;
 export const huellaDeMuestra = async (modelo, texto) => (await sha256(`${modelo}|${texto}`)).slice(0, 16);
 
 /**
- * Cómo se nombra la voz ante Kie: v3 por su id de ElevenLabs (el ejemplo de su documentación); v2, a las de serie
- * por su nombre (como las enumeran los servicios que lo envuelven) y a las propias por su id. NO PROBADO contra Kie:
- * si v2 quiere el id, se cambia aquí y nada más.
+ * Cómo se nombra la voz ante Kie: por su id de ElevenLabs, en v3 y en v2 (es lo que pide su formulario; antes v2 iba
+ * por el nombre). `modelo` se queda en la firma por si un modelo nuevo la quiere de otra forma.
  */
-export function vozParaKie(modelo, voz) {
-  const m = modeloDeVoz(modelo);
-  if (m?.clave === "v2" && !voz.propia && VOCES_DE_SERIE.some((v) => v.id === voz.id)) return voz.nombre;
+export function vozParaKie(_modelo, voz) {
   return voz.id;
 }
 

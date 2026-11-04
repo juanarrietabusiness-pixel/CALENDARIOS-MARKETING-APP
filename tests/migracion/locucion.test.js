@@ -8,6 +8,7 @@ import { tipoPorBytes } from "../../worker/lib/estudio/archivos.js";
 import { verVideo } from "../../worker/lib/geminiVideo.js";
 import { crearHerramientasEstudio, DEFINICIONES_ESTUDIO } from "../../worker/lib/estudio/herramientas.js";
 import { crearAcceso } from "../../worker/lib/acceso.js";
+import { VOCES_DE_SERIE } from "../../src/lib/voces.js";
 import { HERRAMIENTAS_MCP } from "../../worker/lib/mcp.js";
 import { limpiarKit, fundirKit } from "../../src/lib/kitMarca.js";
 import { palabrasDe, textoDeLocucion, lineaDeTiempo } from "../../src/lib/videoEscenas.js";
@@ -139,10 +140,10 @@ afterEach(() => { globalThis.fetch = fetchReal; });
 describe("las voces y su muestra", () => {
   it("la lista trae las de serie, la de la marca y el precio de la muestra; no llama a nadie", async () => {
     const { llamadas } = kie();
-    kitConVoz({ voz: "EXAVITQu4vr4xnSDxMaL", modelo: "v3" });
+    kitConVoz({ voz: "hpp4J3VqNfWAUOO0d1Us", modelo: "v3" });
     const r = await (await pedir("/videos/bc/voces")).json();
-    expect(r.voces.length).toBeGreaterThanOrEqual(16);
-    expect(r.voces.find((v) => v.escogida)?.nombre).toBe("Sarah");
+    expect(r.voces.length).toBe(VOCES_DE_SERIE.length);
+    expect(r.voces.find((v) => v.escogida)?.nombre).toBe("Bella");
     expect(r.modelos.map((m) => m.clave)).toEqual(["v3", "v2"]);
     expect(r.modelos[0].muestra).toBeGreaterThan(0);
     expect(llamadas).toHaveLength(0);
@@ -150,17 +151,17 @@ describe("las voces y su muestra", () => {
 
   it("sin confirmar es 409 con el costo y no crea nada; confirmada, un trabajo de audio que deja la muestra para toda la agencia", async () => {
     const { llamadas } = kie();
-    const sin = await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "EXAVITQu4vr4xnSDxMaL" } });
+    const sin = await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "hpp4J3VqNfWAUOO0d1Us" } });
     expect(sin.status).toBe(409);
     const j = await sin.json();
-    expect(j).toMatchObject({ codigo: "confirmar", voz: "Sarah", modelo: "v3" });
+    expect(j).toMatchObject({ codigo: "confirmar", voz: "Bella", modelo: "v3" });
     expect(j.costo).toBeGreaterThan(0);
     expect(j.costo).toBeLessThan(0.05);
     expect(trabajos()).toHaveLength(0);
     // «true» como texto no confirma: sólo el booleano.
-    expect((await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "EXAVITQu4vr4xnSDxMaL", confirmado: "true" } })).status).toBe(409);
+    expect((await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "hpp4J3VqNfWAUOO0d1Us", confirmado: "true" } })).status).toBe(409);
 
-    const con = await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "EXAVITQu4vr4xnSDxMaL", confirmado: true } });
+    const con = await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "hpp4J3VqNfWAUOO0d1Us", confirmado: true } });
     expect(con.status).toBe(202);
     const { trabajoId } = await con.json();
     const fin = await hastaElFinal(trabajoId);
@@ -169,17 +170,17 @@ describe("las voces y su muestra", () => {
     const crear = llamadas.find((l) => l.url.endsWith("/createTask"));
     expect(JSON.parse(crear.init.body)).toEqual({
       model: "elevenlabs/text-to-dialogue-v3",
-      input: { dialogue: [{ text: expect.stringContaining("así suena la voz"), voice: "EXAVITQu4vr4xnSDxMaL" }], stability: 0.5 },
+      input: { dialogue: [{ text: expect.stringContaining("así suena la voz"), voice: "hpp4J3VqNfWAUOO0d1Us" }], stability: 0.5, language_code: "es" },
     });
-    expect(env.MEDIA.objetos.has("voces/elevenlabs/v3/EXAVITQu4vr4xnSDxMaL.mp3")).toBe(true);
+    expect(env.MEDIA.objetos.has("voces/elevenlabs/v3/hpp4J3VqNfWAUOO0d1Us.mp3")).toBe(true);
     expect(db.sqlite.prepare("select funcion, costo_usd from consumo_ia").all()).toEqual([{ funcion: "estudio-voz", costo_usd: expect.any(Number) }]);
 
     // La segunda vez sale gratis: ni trabajo nuevo ni llamada.
     const antes = llamadas.length;
-    const otra = await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "EXAVITQu4vr4xnSDxMaL" } });
+    const otra = await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "hpp4J3VqNfWAUOO0d1Us" } });
     expect(otra.status).toBe(200);
     expect(await otra.json()).toMatchObject({ lista: true, costo: 0 });
-    const oir = await pedir("/videos/bc/voces/muestra?modelo=v3&voz=EXAVITQu4vr4xnSDxMaL");
+    const oir = await pedir("/videos/bc/voces/muestra?modelo=v3&voz=hpp4J3VqNfWAUOO0d1Us");
     expect(oir.status).toBe(200);
     expect(oir.headers.get("content-type")).toBe("audio/mpeg");
     expect(trabajos()).toHaveLength(1);
@@ -189,15 +190,15 @@ describe("las voces y su muestra", () => {
   it("con TEXTO propio: su costo por su largo, se manda tal cual a v3, queda aparte y la nota dice si llegaron los tiempos", async () => {
     const TEXTO = "[preocupada] ¿Las toallitas le dejan la piel roja a tu bebé? [pause] Muchas traen alcohol y perfume que irritan. [tranquila] Nateen limpia suave: hipoalergénicas, sin alcohol y sin perfume. Pídelas hoy por WhatsApp.";
     const { llamadas } = kie({ resultado: { words: [{ text: "¿Las", start: 0.1, end: 0.3 }, { text: "toallitas", start: 0.3, end: 0.8 }] } });
-    const sin = await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "XrExE9yKIg1WjnnlVkGX", texto: TEXTO } });
+    const sin = await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "iCrDUkL56s3C8sCRl7wb", texto: TEXTO } });
     expect(sin.status).toBe(409);
     const precio = await sin.json();
-    expect(precio).toMatchObject({ codigo: "confirmar", voz: "Matilda", caracteres: TEXTO.length });
+    expect(precio).toMatchObject({ codigo: "confirmar", voz: "Esperanza", caracteres: TEXTO.length });
     expect(precio.creditos).toBeCloseTo((TEXTO.length * 14) / 1000, 5);
     expect(precio.huella).toMatch(/^[0-9a-f]{16}$/);
     expect(trabajos()).toHaveLength(0);
 
-    const r = await (await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "XrExE9yKIg1WjnnlVkGX", texto: TEXTO, confirmado: true } })).json();
+    const r = await (await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "iCrDUkL56s3C8sCRl7wb", texto: TEXTO, confirmado: true } })).json();
     expect(r.huella).toBe(precio.huella);
     const fin = await hastaElFinal(r.trabajoId);
     expect(fin.estado).toBe("hecho");
@@ -205,31 +206,31 @@ describe("las voces y su muestra", () => {
     expect(fin.ajustes.tiempos).toMatchObject({ delMotor: true, palabras: 2 });
     expect(fin.ajustes.crudo).toMatch(/words/);
     const cuerpo = JSON.parse(llamadas.find((l) => l.url.endsWith("/createTask")).init.body);
-    expect(cuerpo.input.dialogue[0]).toEqual({ text: TEXTO, voice: "XrExE9yKIg1WjnnlVkGX" });
+    expect(cuerpo.input.dialogue[0]).toEqual({ text: TEXTO, voice: "iCrDUkL56s3C8sCRl7wb" });
     // Aparte de la frase fija: la de serie sigue sin hacer, la propia suena por su huella y el mismo texto ya es gratis.
-    expect(env.MEDIA.objetos.has(`voces/elevenlabs/v3/XrExE9yKIg1WjnnlVkGX-${r.huella}.mp3`)).toBe(true);
-    expect(env.MEDIA.objetos.has("voces/elevenlabs/v3/XrExE9yKIg1WjnnlVkGX.mp3")).toBe(false);
-    expect((await pedir(`/videos/bc/voces/muestra?modelo=v3&voz=XrExE9yKIg1WjnnlVkGX&huella=${r.huella}`)).status).toBe(200);
-    expect((await pedir("/videos/bc/voces/muestra?modelo=v3&voz=XrExE9yKIg1WjnnlVkGX&huella=../../x")).status).toBe(404);
-    const otra = await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "XrExE9yKIg1WjnnlVkGX", texto: TEXTO } });
+    expect(env.MEDIA.objetos.has(`voces/elevenlabs/v3/iCrDUkL56s3C8sCRl7wb-${r.huella}.mp3`)).toBe(true);
+    expect(env.MEDIA.objetos.has("voces/elevenlabs/v3/iCrDUkL56s3C8sCRl7wb.mp3")).toBe(false);
+    expect((await pedir(`/videos/bc/voces/muestra?modelo=v3&voz=iCrDUkL56s3C8sCRl7wb&huella=${r.huella}`)).status).toBe(200);
+    expect((await pedir("/videos/bc/voces/muestra?modelo=v3&voz=iCrDUkL56s3C8sCRl7wb&huella=../../x")).status).toBe(404);
+    const otra = await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "iCrDUkL56s3C8sCRl7wb", texto: TEXTO } });
     expect(otra.status).toBe(200);
     expect(await otra.json()).toMatchObject({ lista: true, costo: 0 });
   });
 
   it("si Kie no trae tiempos, la nota lo dice con los campos que sí llegaron; un texto de más de 500 no se pide", async () => {
     kie();
-    const { trabajoId } = await (await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "EXAVITQu4vr4xnSDxMaL", texto: "Hola, mamá.", confirmado: true } })).json();
+    const { trabajoId } = await (await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "hpp4J3VqNfWAUOO0d1Us", texto: "Hola, mamá.", confirmado: true } })).json();
     const fin = await hastaElFinal(trabajoId);
     expect(fin.nota).toMatch(/Kie NO devolvió tiempos por palabra \(llegó: resultUrls\)/);
     expect(fin.ajustes.tiempos.delMotor).toBe(false);
-    const largo = await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "EXAVITQu4vr4xnSDxMaL", texto: "a".repeat(501), confirmado: true } });
+    const largo = await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "hpp4J3VqNfWAUOO0d1Us", texto: "a".repeat(501), confirmado: true } });
     expect(largo.status).toBe(400);
     expect(trabajos()).toHaveLength(1);
   });
 
   it("una muestra que no está hecha dice su costo; una voz que no es del cliente no existe", async () => {
     kie();
-    const r = await pedir("/videos/bc/voces/muestra?modelo=v2&voz=EXAVITQu4vr4xnSDxMaL");
+    const r = await pedir("/videos/bc/voces/muestra?modelo=v2&voz=hpp4J3VqNfWAUOO0d1Us");
     expect(r.status).toBe(404);
     expect(await r.json()).toMatchObject({ codigo: "sin_muestra" });
     expect((await pedir("/videos/bc/voces/muestra?modelo=v3&voz=no-existe")).status).toBe(404);
@@ -239,7 +240,7 @@ describe("las voces y su muestra", () => {
   it("sin la llave de Kie, 503 sin llamar a nadie", async () => {
     const { llamadas } = kie();
     delete env.KIE_API_KEY;
-    const r = await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "EXAVITQu4vr4xnSDxMaL", confirmado: true } });
+    const r = await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "hpp4J3VqNfWAUOO0d1Us", confirmado: true } });
     expect(r.status).toBe(503);
     expect(await r.json()).toMatchObject({ codigo: "sin_llave" });
     expect(llamadas).toHaveLength(0);
@@ -263,13 +264,13 @@ describe("la locución de un video", () => {
 
   it("SIEMPRE se confirma: la primera vez es 409 con el costo exacto y no crea nada", async () => {
     const { llamadas } = kie();
-    kitConVoz({ voz: "EXAVITQu4vr4xnSDxMaL", modelo: "v3" });
+    kitConVoz({ voz: "hpp4J3VqNfWAUOO0d1Us", modelo: "v3" });
     const v = await videoAprobado();
     const r = await pedir(`/videos/bc/${v.id}/locucion`, { method: "POST", body: { version: v.version } });
     expect(r.status).toBe(409);
     const j = await r.json();
     const caracteres = textoDeLocucion(ejemplo()).length;
-    expect(j).toMatchObject({ codigo: "confirmar", voz: "Sarah", modelo: "v3", caracteres });
+    expect(j).toMatchObject({ codigo: "confirmar", voz: "Bella", modelo: "v3", caracteres });
     expect(j.creditos).toBeCloseTo((caracteres * 14) / 1000, 5);
     expect(j.costo).toBeLessThan(0.5);
     expect(trabajos()).toHaveLength(0);
@@ -279,7 +280,7 @@ describe("la locución de un video", () => {
   it("v3 sin tiempos: la verificación posterior con Gemini da uno por palabra y el video queda «Con voz»", async () => {
     const { llamadas, gemini } = kie();
     env.GOOGLE_AI_KEY = "g-secreta";
-    kitConVoz({ voz: "EXAVITQu4vr4xnSDxMaL", modelo: "v3" });
+    kitConVoz({ voz: "hpp4J3VqNfWAUOO0d1Us", modelo: "v3" });
     const v = await videoAprobado();
     const r = await pedir(`/videos/bc/${v.id}/locucion`, { method: "POST", body: { version: v.version, confirmado: true } });
     expect(r.status).toBe(202);
@@ -299,7 +300,7 @@ describe("la locución de un video", () => {
     expect(fila.estado).toBe("con_voz");
     const loc = JSON.parse(fila.locucion);
     const esperadas = palabrasDe(textoDeLocucion(ejemplo()));
-    expect(loc).toMatchObject({ estado: "lista", fuente: "verificado", modelo: "v3", revisar: false, voz: { nombre: "Sarah" } });
+    expect(loc).toMatchObject({ estado: "lista", fuente: "verificado", modelo: "v3", revisar: false, voz: { nombre: "Bella" } });
     expect(loc.palabras).toHaveLength(esperadas.length);
     expect(loc.duracion).toBeGreaterThan(5);
     // Con estos tiempos la línea de tiempo deja de estimar.
@@ -318,13 +319,15 @@ describe("la locución de un video", () => {
     const esperadas = palabrasDe(textoDeLocucion(ejemplo()));
     const { llamadas, gemini } = kie({ resultado: { words: esperadas.map((w, n) => ({ text: w, start: n * 0.32, end: n * 0.32 + 0.3 })) } });
     env.GOOGLE_AI_KEY = "g-secreta";
-    kitConVoz({ voz: "EXAVITQu4vr4xnSDxMaL", modelo: "v2" });
+    kitConVoz({ voz: "hpp4J3VqNfWAUOO0d1Us", modelo: "v2" });
     const v = await videoAprobado();
     const { trabajoId } = await (await pedir(`/videos/bc/${v.id}/locucion`, { method: "POST", body: { version: v.version, confirmado: true } })).json();
     await hastaElFinal(trabajoId);
     const cuerpo = JSON.parse(llamadas.find((l) => l.url.endsWith("/createTask")).init.body);
     expect(cuerpo.model).toBe("elevenlabs/text-to-speech-multilingual-v2");
-    expect(cuerpo.input).toMatchObject({ voice: "Sarah", timestamps: true });
+    // v2 también por el id (Kie lo pide así) y SIN language_code (v2 no lo admite).
+    expect(cuerpo.input).toMatchObject({ voice: "hpp4J3VqNfWAUOO0d1Us", timestamps: true });
+    expect(cuerpo.input).not.toHaveProperty("language_code");
     expect(cuerpo.input.text).not.toMatch(/\[/);
     expect(gemini).toHaveLength(0);
     const loc = JSON.parse(video(v.id).locucion);
@@ -334,7 +337,7 @@ describe("la locución de un video", () => {
 
   it("sin tiempos y sin Gemini, los estima sobre la duración real del MP3", async () => {
     kie();
-    kitConVoz({ voz: "EXAVITQu4vr4xnSDxMaL", modelo: "v3" });
+    kitConVoz({ voz: "hpp4J3VqNfWAUOO0d1Us", modelo: "v3" });
     const v = await videoAprobado();
     const { trabajoId } = await (await pedir(`/videos/bc/${v.id}/locucion`, { method: "POST", body: { version: v.version, confirmado: true } })).json();
     const fin = await hastaElFinal(trabajoId);
@@ -347,7 +350,7 @@ describe("la locución de un video", () => {
 
   it("si el guion cambió mientras se generaba, la toma se guarda pero el video no pasa a «Con voz»", async () => {
     kie();
-    kitConVoz({ voz: "EXAVITQu4vr4xnSDxMaL", modelo: "v3" });
+    kitConVoz({ voz: "hpp4J3VqNfWAUOO0d1Us", modelo: "v3" });
     const v = await videoAprobado();
     const { trabajoId } = await (await pedir(`/videos/bc/${v.id}/locucion`, { method: "POST", body: { version: v.version, confirmado: true } })).json();
     const g = ejemplo();
@@ -361,7 +364,7 @@ describe("la locución de un video", () => {
 
   it("si Kie falla, el video dice que la voz falló y por qué", async () => {
     kie({ estados: ["fail"] });
-    kitConVoz({ voz: "EXAVITQu4vr4xnSDxMaL", modelo: "v3" });
+    kitConVoz({ voz: "hpp4J3VqNfWAUOO0d1Us", modelo: "v3" });
     const v = await videoAprobado();
     const { trabajoId } = await (await pedir(`/videos/bc/${v.id}/locucion`, { method: "POST", body: { version: v.version, confirmado: true } })).json();
     expect((await hastaElFinal(trabajoId)).estado).toBe("fallido");
@@ -388,7 +391,7 @@ describe("el asistente y Claude (MCP)", () => {
 
   it("generar_locucion sin confirmar devuelve la cifra y la orden de preguntar; con confirmado=true, crea el pedido", async () => {
     kie();
-    kitConVoz({ voz: "EXAVITQu4vr4xnSDxMaL", modelo: "v3" });
+    kitConVoz({ voz: "hpp4J3VqNfWAUOO0d1Us", modelo: "v3" });
     const v = await videoAprobado();
     const h = herramientas();
     const sin = await h.generar_locucion({ video_id: v.id });
@@ -407,12 +410,12 @@ describe("el asistente y Claude (MCP)", () => {
   it("listar_voces no gasta; previsualizar_voz se confirma y, hecha, da dónde oírla", async () => {
     const { llamadas } = kie();
     const h = herramientas();
-    expect(await h.listar_voces({})).toMatch(/Sarah/);
-    expect(await h.previsualizar_voz({ voz: "EXAVITQu4vr4xnSDxMaL" })).toMatch(/^NO SE CREÓ NADA/);
+    expect(await h.listar_voces({})).toMatch(/Bella/);
+    expect(await h.previsualizar_voz({ voz: "hpp4J3VqNfWAUOO0d1Us" })).toMatch(/^NO SE CREÓ NADA/);
     expect(llamadas).toHaveLength(0);
-    env.MEDIA.objetos.set("voces/elevenlabs/v3/EXAVITQu4vr4xnSDxMaL.mp3", { bytes: mp3(1), tipo: "audio/mpeg" });
-    expect(await h.previsualizar_voz({ voz: "EXAVITQu4vr4xnSDxMaL" })).toMatch(/ya está hecha: se oye en \/api\/videos\/bc\/voces\/muestra\?modelo=v3/);
-    expect(await h.previsualizar_voz({ voz: "EXAVITQu4vr4xnSDxMaL", texto: "[cálida] Hola, mamá." })).toMatch(/^NO SE CREÓ NADA.*\(20 caracteres\)/);
+    env.MEDIA.objetos.set("voces/elevenlabs/v3/hpp4J3VqNfWAUOO0d1Us.mp3", { bytes: mp3(1), tipo: "audio/mpeg" });
+    expect(await h.previsualizar_voz({ voz: "hpp4J3VqNfWAUOO0d1Us" })).toMatch(/ya está hecha: se oye en \/api\/videos\/bc\/voces\/muestra\?modelo=v3/);
+    expect(await h.previsualizar_voz({ voz: "hpp4J3VqNfWAUOO0d1Us", texto: "[cálida] Hola, mamá." })).toMatch(/^NO SE CREÓ NADA.*\(20 caracteres\)/);
     await expect(h.generar_locucion({ video_id: "no-existe", confirmado: true })).rejects.toThrow(/No encontré el video/);
   });
 });
@@ -435,8 +438,8 @@ describe("lo que no se ve", () => {
   });
 
   it("el kit guarda la voz de la marca y «Volver a preparar» no se la lleva", () => {
-    const kit = limpiarKit({ locucion: { voz: "EXAVITQu4vr4xnSDxMaL", modelo: "v2", voces: [{ id: "JuanVozPropia2026", nombre: "Juan", genero: "masculina" }] } });
-    expect(kit.locucion).toMatchObject({ voz: "EXAVITQu4vr4xnSDxMaL", modelo: "v2" });
+    const kit = limpiarKit({ locucion: { voz: "hpp4J3VqNfWAUOO0d1Us", modelo: "v2", voces: [{ id: "JuanVozPropia2026", nombre: "Juan", genero: "masculina" }] } });
+    expect(kit.locucion).toMatchObject({ voz: "hpp4J3VqNfWAUOO0d1Us", modelo: "v2" });
     expect(kit.locucion.voces[0]).toMatchObject({ id: "JuanVozPropia2026", nombre: "Juan", propia: true });
     expect(fundirKit(kit, limpiarKit({})).locucion).toEqual(kit.locucion);
     expect(limpiarKit({ locucion: { modelo: "v9" } }).locucion.modelo).toBe("v3");
