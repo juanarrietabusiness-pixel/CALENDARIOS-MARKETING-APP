@@ -42,6 +42,18 @@ function ffmpeg(args, { conEntrada = false } = {}) {
   return { proc, fin };
 }
 
+/**
+ * Espera a que la tubería hacia ffmpeg se vacíe (o a que ffmpeg se cierre: entonces no se vaciará nunca). Quita la
+ * escucha que no saltó: dejarla colgada en cada cuadro acumulaba cientos de escuchas en el proceso.
+ */
+function vaciada(proc) {
+  return new Promise((ok) => {
+    const fin = () => { proc.stdin.off("drain", fin); proc.off("close", fin); ok(); };
+    proc.stdin.once("drain", fin);
+    proc.once("close", fin);
+  });
+}
+
 const falla = (que, r) => new Error(`${que} (ffmpeg ${r.codigo}): ${r.error.trim().split("\n").slice(-4).join(" | ")}`);
 
 /** El audio del video en `salida` (AAC) → { lufs, pico } medidos tras normalizar, o null sin voz. */
@@ -107,7 +119,7 @@ export async function renderizar(base, { audio = null, fps = RENDER.fps } = {}) 
     for (let i = 0; i < cuadros && !roto; i++) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       dibujarFrame(ctx, { guion: base.guion, linea: base.linea, t: i / fps, formato: base.formato, paleta: base.paleta, recursos: base.recursos, fuentes: base.fuentes });
-      if (!proc.stdin.write(lienzo.data())) await new Promise((ok) => { proc.stdin.once("drain", ok); proc.once("close", ok); });
+      if (!proc.stdin.write(lienzo.data())) await vaciada(proc);
     }
     proc.stdin.end();
     const r = await fin;
