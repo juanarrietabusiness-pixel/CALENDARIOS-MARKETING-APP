@@ -2,8 +2,8 @@
 // El RENDER a mp4 del video animado, dentro del Container (Node + @napi-rs/canvas + ffmpeg de Debian)
 //
 //   1. El AUDIO: la toma de la locución decodificada a PCM, con los silencios de las escenas insertados y rellenada
-//      hasta el último cuadro (`armarPcm`, src/lib/renderVideo.js), medida con loudnorm y vuelta a pasar en lineal hasta
-//      -14 LUFS. Queda en AAC.
+//      hasta el último cuadro (`armarPcm`, src/lib/renderVideo.js), medida con loudnorm y llevada a -14 LUFS con una
+//      ganancia fija (y un limitador si el pico se pasaría). Queda en AAC.
 //   2. El VIDEO: cada cuadro lo dibuja el MISMO motor que la vista previa (dibujarFrame) en las medidas del formato y
 //      sus píxeles van EN CRUDO (RGBA) a ffmpeg por una tubería, que los pasa a H.264 mientras el motor dibuja el
 //      siguiente. Se probó mandar cada cuadro como JPEG (menos bytes por la tubería): costaba un 40 % más de CPU,
@@ -23,7 +23,7 @@ import { Buffer } from "node:buffer";
 import { createCanvas } from "@napi-rs/canvas";
 import { FORMATOS_VIDEO } from "../src/lib/videoEscenas.js";
 import { dibujarFrame } from "../src/lib/motorVideo.js";
-import { RENDER, cuadrosDelVideo, tramosDeAudio, armarPcm, filtroDeNormalizar, leerLoudnorm } from "../src/lib/renderVideo.js";
+import { RENDER, cuadrosDelVideo, tramosDeAudio, armarPcm, FILTRO_MEDIR, filtroDeNormalizar, leerLoudnorm } from "../src/lib/renderVideo.js";
 
 const FFMPEG = process.env.FFMPEG || "ffmpeg";
 
@@ -62,10 +62,12 @@ const falla = (que, r) => new Error(`${que} (ffmpeg ${r.codigo}): ${r.error.trim
  *   1. La toma se DECODIFICA sola, con una cadena simple (MP3 mono a 44,1 kHz → PCM estéreo a 48 kHz). Una cadena simple
  *      sí sabe rehacerse si el archivo cambia de parámetros a la mitad.
  *   2. Los silencios de las escenas se meten copiando muestras (`armarPcm`), hasta el último cuadro exacto.
- *   3. loudnorm en dos pasadas sobre ese PCM: mide y aplica en lineal.
+ *   3. El volumen: loudnorm MIDE, la segunda pasada aplica una ganancia fija (y un limitador si el pico se pasaría) y
+ *      una tercera mide lo que quedó.
  *
- * Con el `-filter_complex` de antes, las tomas de ElevenLabs v4 hacían morir al ffmpeg 5.1 de la imagen con «Error
- * reinitializing filters! | Failed to inject frame into filter network: Invalid argument».
+ * La segunda pasada de loudnorm (`measured_*`, en lineal) hacía morir al ffmpeg 5.1 de la imagen con «Error
+ * reinitializing filters! | Failed to inject frame into filter network: Invalid argument» cada vez que no podía ir en
+ * lineal y pasaba a su modo dinámico: con una voz de verdad, casi siempre.
  */
 export async function audioDelVideo(carpeta, { audio, linea, total, salida }) {
   const muestreo = String(RENDER.muestreo);
@@ -88,14 +90,17 @@ export async function audioDelVideo(carpeta, { audio, linea, total, salida }) {
     return null;
   }
   // Primera pasada: medir.
-  const m = await ffmpeg([...leer, "-af", filtroDeNormalizar({ medir: true }), "-f", "null", "-"]).fin;
+  const m = await ffmpeg([...leer, "-af", FILTRO_MEDIR, "-f", "null", "-"]).fin;
   if (m.codigo !== 0) throw falla("No se pudo medir el audio de la locución", m);
   const medido = leerLoudnorm(m.error);
-  // Una toma muda (o ilegible) no se normaliza: se codifica tal cual.
+  // Segunda: la ganancia (y el limitador). Una toma muda (o ilegible) no se normaliza: se codifica tal cual.
   const r = await ffmpeg([...leer, ...(medido ? ["-af", filtroDeNormalizar(medido)] : []), ...codificar]).fin;
   if (r.codigo !== 0) throw falla("No se pudo armar el audio", r);
-  const final = medido ? leerLoudnorm(r.error) : null;
-  return final ? { lufs: final.output_i ?? null, pico: final.output_tp ?? null, antes: medido?.input_i ?? null } : null;
+  if (!medido) return null;
+  // Tercera: lo que quedó (lo que se apunta en el render y vigila la prueba). Si no se puede medir, el audio vale igual.
+  const f = await ffmpeg(["-i", salida, "-af", FILTRO_MEDIR, "-f", "null", "-"]).fin;
+  const final = f.codigo === 0 ? leerLoudnorm(f.error) : null;
+  return { lufs: final?.input_i ?? null, pico: final?.input_tp ?? null, antes: medido.input_i };
 }
 
 /**

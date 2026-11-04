@@ -4111,13 +4111,15 @@ son del servidor.
   `ejecutarRender` (worker/lib/estudio/render.js). Cosas que no se ven:
   · **En el Container** (container/render.mjs): primero el AUDIO —la toma DECODIFICADA sola a PCM estéreo de 48 kHz
   (una cadena simple), cortada en el segundo del AUDIO de cada silencio de las escenas, con silencio metido y rellenada
-  hasta el último cuadro COPIANDO MUESTRAS en JS (`tramosDeAudio`, `armarPcm`), loudnorm en DOS pasadas sobre ese PCM
-  (`filtroDeNormalizar`: mide y aplica en lineal: -14 LUFS, pico -1,5) y a AAC—. **Nada de `-filter_complex` con la
-  toma:** con asplit → atrim → aevalsrc → concat → loudnorm, el ffmpeg 5.1 de la imagen moría con «Error reinitializing
-  filters! | Failed to inject frame into filter network: Invalid argument» en tomas de ElevenLabs de ~47 s (sin pausas,
-  con una al principio o justo al final), y el de Ubuntu 6.1 no: en local todo pasaba. `container/probarAudio.mjs` lo
-  prueba DENTRO de la imagen (CI y «Desplegar»): MP3 mono a 44,1 kHz con y sin pausas, una después del final del archivo
-  y una toma que cambia de muestreo, y mira que el silencio caiga en su sitio; luego cada cuadro con el MISMO
+  hasta el último cuadro COPIANDO MUESTRAS en JS (`tramosDeAudio`, `armarPcm`); loudnorm sólo MIDE (`FILTRO_MEDIR`), la
+  segunda pasada es una GANANCIA fija con un limitador a -2 dB si el pico se pasaría (`gananciaDe`, `filtroDeNormalizar`)
+  y una tercera mide lo que quedó; y a AAC—. **Nunca la segunda pasada de loudnorm (`measured_*`):** cuando no puede ir
+  en lineal pasa a su modo dinámico, y el ffmpeg 5.1 de la imagen muere ahí con «Error reinitializing filters! | Failed
+  to inject frame into filter network: Invalid argument». Una voz de verdad (picos altos) casi nunca va en lineal; el tono
+  de la prueba de humo y Feria, sí: por eso pasaban. El ffmpeg 6.1 de Ubuntu no falla: en local todo pasaba.
+  `container/probarAudio.mjs` lo prueba DENTRO de la imagen (CI y «Desplegar»): MP3 mono a 44,1 kHz con y sin pausas,
+  una después del final del archivo, una voz con picos (limitador) y una toma que cambia de muestreo; mira el volumen,
+  el pico y que el silencio caiga en su sitio; luego cada cuadro con el MISMO
   `dibujarFrame` y sus píxeles EN CRUDO por una tubería a ffmpeg (H.264 crf 20, BT.709 dicho en el archivo,
   `+faststart`). Mandar cada cuadro como JPEG costaba un 40 % más de CPU: codificar un JPEG de 1080 × 1920 con grano
   (30 ms) es más caro que dibujar el cuadro (1,3 ms). Medido aquí con la toma de Feria del Lente (31,8 s): 20 s de

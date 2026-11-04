@@ -19,10 +19,10 @@ const carpeta = await mkdtemp(join(tmpdir(), "probar-audio-"));
 let mal = 0;
 
 /** Un MP3 de `segundos` de un tono que sube y baja (como una voz), mono, al muestreo dado. */
-function mp3(nombre, segundos, muestreo = 44100) {
+function mp3(nombre, segundos, muestreo = 44100, volumen = "0.3+0.2*sin(2*PI*3*t)") {
   const salida = join(carpeta, nombre);
   const r = spawnSync(FFMPEG, ["-hide_banner", "-y", "-f", "lavfi", "-i",
-    `sine=frequency=220:sample_rate=${muestreo}:duration=${segundos},volume='0.3+0.2*sin(2*PI*3*t)':eval=frame`,
+    `sine=frequency=220:sample_rate=${muestreo}:duration=${segundos},volume='${volumen}':eval=frame`,
     "-ac", "1", "-c:a", "libmp3lame", "-b:a", "128k", salida], { encoding: "utf8" });
   if (r.status !== 0) throw new Error(`no se pudo hacer ${nombre}: ${r.stderr.slice(-400)}`);
   return salida;
@@ -51,10 +51,11 @@ async function caso(titulo, audio, silencios, total, { callado = null, suena = n
     const dur = duracion(salida);
     if (!(Math.abs(dur - total) < 0.06)) throw new Error(`el audio dura ${dur} s, no ${total}`);
     if (audio && !(Math.abs((m?.lufs ?? NaN) - RENDER.lufs) <= 1)) throw new Error(`quedó en ${m?.lufs} LUFS`);
+    if (audio && !(m?.pico <= RENDER.pico + 0.5)) throw new Error(`el pico quedó en ${m?.pico} dB`);
     // La pausa está donde tiene que estar: callada en su sitio y con voz justo antes (sin contar lo que AAC emborrona).
     if (callado && nivel(salida, ...callado) > 0.003) throw new Error(`entre ${callado.join(" y ")} s debería haber silencio`);
     if (suena && nivel(salida, ...suena) < 0.02) throw new Error(`entre ${suena.join(" y ")} s debería sonar la voz`);
-    console.log(`✓ ${titulo} (${dur.toFixed(2)} s${m ? `, ${m.lufs} LUFS` : ""})`);
+    console.log(`✓ ${titulo} (${dur.toFixed(2)} s${m ? `, ${m.lufs} LUFS, pico ${m.pico} dB` : ""})`);
   } catch (e) {
     mal++;
     console.error(`✗ ${titulo}: ${e.message}`);
@@ -69,6 +70,10 @@ try {
   await caso("MP3 con pausa justo al final", voz, [{ en: 47.6, dur: 0.5 }], 48.15);
   await caso("MP3 con pausa al principio", voz, [{ en: 0, dur: 0.6 }], 48.3, { callado: [0.05, 0.55], suena: [0.7, 1] });
   await caso("MP3 con muchas pausas", voz, [0.4, 0.8, 0.3, 1.2, 0.5].map((dur, i) => ({ en: 5 + i * 8, dur })), 50.9);
+  // Como una voz de verdad: bajita y con golpes fuertes (la ganancia sola llevaría el pico por encima de -1,5 dB, así
+  // que entra el limitador).
+  const conPicos = await readFile(mp3("picos.mp3", 20, 44100, "if(lt(mod(t,0.7),0.03),0.9,0.04)"));
+  await caso("Voz con picos (limitador) y una pausa", conPicos, [{ en: 6, dur: 0.5 }], 20.6, { callado: [6.05, 6.45] });
   // Dos MP3 pegados con muestreos distintos: el decodificador cambia de parámetros a la mitad.
   const pegado = Buffer.concat([await readFile(mp3("a.mp3", 6, 44100)), await readFile(mp3("b.mp3", 6, 22050))]);
   await caso("MP3 que cambia de muestreo a la mitad", pegado, [{ en: 3, dur: 0.5 }], 12.6);

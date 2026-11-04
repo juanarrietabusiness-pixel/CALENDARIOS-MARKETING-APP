@@ -6,9 +6,9 @@
 //   · cuántos cuadros salen (`cuadrosDelVideo`): los del tiempo del VIDEO, con los silencios ya insertados;
 //   · el AUDIO del video (`tramosDeAudio`, `armarPcm`): la locución es una sola toma y los silencios de las escenas
 //     (`pausa`) no existen en ella; se corta en su segundo del audio y se mete silencio, y al final se rellena hasta el
-//     último cuadro, copiando muestras (sin cadena de filtros). Luego `loudnorm` (`filtroDeNormalizar`) lo deja en -14
-//     LUFS (lo que piden Instagram, TikTok y YouTube): dos pasadas, la primera mide y la segunda aplica en lineal, para
-//     no «bombear» la voz;
+//     último cuadro, copiando muestras (sin cadena de filtros). Luego se deja en -14 LUFS (lo que piden Instagram, TikTok y
+//     YouTube): loudnorm MIDE y la segunda pasada aplica una ganancia fija con un limitador si hace falta
+//     (`gananciaDe`, `filtroDeNormalizar`), para no «bombear» la voz;
 //   · cuándo se puede renderizar (`puedeRenderizar`): el guion APROBADO y la locución lista de ESA versión. Sin voz no
 //     hay render: los subtítulos irían con tiempos inventados.
 // ============================================================
@@ -76,16 +76,31 @@ export function armarPcm(toma, tramos, total, muestreo = RENDER.muestreo) {
   return salida;
 }
 
+/** El `-af` de la primera pasada: loudnorm sólo MIDE (imprime sus medidas en JSON). Puro. */
+export const FILTRO_MEDIR = `loudnorm=I=${RENDER.lufs}:TP=${RENDER.pico}:LRA=${RENDER.rango}:print_format=json`;
+
 /**
- * El `-af` de ffmpeg que normaliza el audio ya armado: { medir: true } (la primera pasada de loudnorm) o las medidas de
- * esa pasada (la segunda, lineal, y de vuelta al muestreo del render: loudnorm puede subirlo a 192 kHz). Puro.
+ * La ganancia que deja el audio en -14 LUFS a partir de lo medido (`leerLoudnorm` de la primera pasada) → { db,
+ * limitar }: `limitar` cuando, subido así, el pico pasaría de -1,5 dB (una voz de verdad casi siempre: sus picos van muy
+ * por encima de su volumen medio). Puro.
+ *
+ * No se usa la SEGUNDA pasada de loudnorm (`measured_*`): cuando no puede ir en lineal pasa a su modo dinámico, y el
+ * ffmpeg 5.1 de la imagen muere ahí con «Error reinitializing filters! | Failed to inject frame into filter network:
+ * Invalid argument». Con una voz de ElevenLabs pasaba siempre; con el tono de la prueba de humo, nunca.
  */
-export function filtroDeNormalizar(normalizar, muestreo = RENDER.muestreo) {
-  const base = `loudnorm=I=${RENDER.lufs}:TP=${RENDER.pico}:LRA=${RENDER.rango}`;
-  if (normalizar?.medir) return `${base}:print_format=json`;
-  const m = normalizar;
-  return `${base}:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}`
-    + `:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true:print_format=json,aresample=${muestreo}`;
+export function gananciaDe(medido) {
+  const db = Math.round((RENDER.lufs - medido.input_i) * 100) / 100;
+  return { db, limitar: medido.input_tp + db > RENDER.pico };
+}
+
+/**
+ * El `-af` de la segunda pasada: la ganancia y, si hace falta, un limitador justo por debajo del pico permitido (sin
+ * su «nivel automático», que volvería a subir el volumen). Termina en el muestreo del render. Puro.
+ */
+export function filtroDeNormalizar(medido, muestreo = RENDER.muestreo) {
+  const { db, limitar } = gananciaDe(medido);
+  const techo = Math.round(10 ** ((RENDER.pico - 0.5) / 20) * 1000) / 1000; // -2 dB: el limitador mira muestras, no el pico verdadero
+  return `volume=${db}dB${limitar ? `,alimiter=limit=${techo}:attack=5:release=50:level=disabled` : ""},aresample=${muestreo}`;
 }
 
 /**

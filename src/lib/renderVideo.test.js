@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cuadrosDelVideo, tramosDeAudio, armarPcm, filtroDeNormalizar, BYTES_MUESTRA, leerLoudnorm, puedeRenderizar, esMp4, RENDER } from "./renderVideo.js";
+import { cuadrosDelVideo, tramosDeAudio, armarPcm, FILTRO_MEDIR, gananciaDe, filtroDeNormalizar, BYTES_MUESTRA, leerLoudnorm, puedeRenderizar, esMp4, RENDER } from "./renderVideo.js";
 
 // ============================================================
 // Lo que se decide antes de dibujar el mp4: los cuadros, el audio con los silencios, el volumen y cuándo se puede.
@@ -56,14 +56,18 @@ describe("los cuadros y el audio", () => {
     expect(fuera.every((x) => x === 0)).toBe(true);
   });
 
-  it("el filtro de volumen mide o aplica en lineal y vuelve al muestreo del render", () => {
-    expect(filtroDeNormalizar({ medir: true })).toBe(`loudnorm=I=${RENDER.lufs}:TP=${RENDER.pico}:LRA=${RENDER.rango}:print_format=json`);
-    const medidas = { input_i: -30.1, input_tp: -12, input_lra: 2, input_thresh: -40, target_offset: 0.3 };
-    const aplicar = filtroDeNormalizar(medidas);
-    expect(aplicar).toContain("measured_I=-30.1:measured_TP=-12:measured_LRA=2:measured_thresh=-40:offset=0.3:linear=true");
-    expect(aplicar).toMatch(/,aresample=48000$/);
-    // Ya no hay cadena compleja: nada de asplit, concat ni etiquetas.
-    expect(aplicar).not.toMatch(/asplit|concat|\[/);
+  it("el volumen: loudnorm sólo mide; la segunda pasada es una ganancia fija y, si el pico se pasaría, un limitador", () => {
+    expect(FILTRO_MEDIR).toBe(`loudnorm=I=${RENDER.lufs}:TP=${RENDER.pico}:LRA=${RENDER.rango}:print_format=json`);
+    // Una toma tranquila: sube 16,1 dB y el pico queda en -9,9: sin limitador.
+    const tranquila = { input_i: -30.1, input_tp: -26, input_lra: 2, input_thresh: -40, target_offset: 0.3 };
+    expect(gananciaDe(tranquila)).toEqual({ db: 16.1, limitar: false });
+    expect(filtroDeNormalizar(tranquila)).toBe("volume=16.1dB,aresample=48000");
+    // Una voz de verdad: el pico pasaría a +2 dB → limitador a -2 dB, sin nivel automático.
+    const voz = { input_i: -24, input_tp: -8, input_lra: 6, input_thresh: -34, target_offset: 0 };
+    expect(gananciaDe(voz)).toEqual({ db: 10, limitar: true });
+    expect(filtroDeNormalizar(voz)).toBe("volume=10dB,alimiter=limit=0.794:attack=5:release=50:level=disabled,aresample=48000");
+    // Nunca la segunda pasada de loudnorm (su modo dinámico con medidas rompía el ffmpeg 5.1 de la imagen), ni cadena compleja.
+    for (const f of [filtroDeNormalizar(tranquila), filtroDeNormalizar(voz)]) expect(f).not.toMatch(/loudnorm|measured|asplit|concat|\[/);
   });
 
   it("lee lo que mide loudnorm (el último bloque); el silencio («-inf») no se normaliza", () => {
