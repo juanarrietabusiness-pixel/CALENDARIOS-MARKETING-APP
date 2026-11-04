@@ -127,7 +127,7 @@ export const ENTRADAS = Object.freeze(["aparece", "fundido", "sube", "baja", "es
 export const SALIDAS = Object.freeze(["ninguna", "fundido", "baja", "escala"]);
 export const BUCLES = Object.freeze(["ninguno", "flota", "pulso", "gira", "late"]);
 export const TRANSICIONES = Object.freeze(["corte", "fundido", "barrido", "zoom", "deslizar"]);
-export const FONDOS = Object.freeze(["plano", "degradado", "papel", "rayas", "puntos"]);
+export const FONDOS = Object.freeze(["plano", "degradado", "papel", "rayas", "puntos", "estrellas", "lineas"]);
 export const RITMOS = Object.freeze(["calmado", "medio", "rapido"]);
 export const ILUSTRACIONES = Object.freeze(["plana", "papel", "linea", "poster"]);
 export const ICONOS_VIDEO = Object.freeze([
@@ -141,6 +141,28 @@ const E = (lista, def) => ({ t: "enum", lista, def });
 const N = (min, max, def, req = false) => ({ t: "num", min, max, def, req });
 const C = (def) => ({ t: "color", def });
 const B = (def = false) => ({ t: "bool", def });
+
+/** Lo más que lleva un dibujo (lienzo libre). */
+export const MAX_FORMAS = 24;
+export const FIGURAS_DIBUJO = Object.freeze(["circulo", "elipse", "rect", "triangulo", "estrella", "corazon", "gota", "linea", "curva", "arco"]);
+export const ENTRADAS_FORMA = Object.freeze(["escala", "aparece", "fundido", "sube", "dibuja"]);
+
+/**
+ * Una forma de un DIBUJO: todo en fracciones de la caja del dibujo (0,0 arriba a la izquierda; 1,1 abajo a la derecha).
+ *   x, y   — el centro (en línea y curva, el punto de partida)
+ *   w, h   — el ancho y el alto (fracción del ancho y del alto de la caja); h 0 = igual de alto que de ancho (un círculo)
+ *   x2, y2 — el punto final de la línea y la curva; cx, cy — el punto que dobla la curva
+ *   inicio, fin — los grados del arco (0 = a la derecha, en el sentido del reloj)
+ *   retraso — segundos desde que entra el dibujo hasta que aparece ESTA forma; entrada — cómo aparece
+ */
+const FORMA_DIBUJO = Object.freeze({
+  figura: E(FIGURAS_DIBUJO, "circulo"),
+  x: N(0, 1, 0.5), y: N(0, 1, 0.5), w: N(0, 1, 0.3), h: N(0, 1, 0),
+  x2: N(0, 1, 0.5), y2: N(0, 1, 0.5), cx: N(0, 1, 0.5), cy: N(0, 1, 0.5),
+  inicio: N(0, 360, 0), fin: N(0, 360, 270),
+  color: C("acento"), relleno: B(true), grosor: N(0.002, 0.15, 0.03), giro: N(-180, 180, 0), radio: N(0, 0.5, 0),
+  retraso: N(0, 10, 0), entrada: E(ENTRADAS_FORMA, "escala"),
+});
 
 /**
  * La librería de componentes v1. El motor (paso 2) dibuja EXACTAMENTE estos; uno nuevo se añade aquí y en el motor a la
@@ -160,12 +182,27 @@ export const COMPONENTES = Object.freeze({
   burbuja: { nombre: "Burbuja de chat", props: { texto: T(90, true), lado: E(["izq", "der"], "izq"), color: C("superficie") } },
   imagen: { nombre: "Imagen de la galería", props: { archivo: T(64, true), rol: E(["producto", "foto", "persona"], "producto"), recorte: E(["contener", "cubrir"], "contener"), marco: B(false) } },
   personaje: { nombre: "Personaje", props: { variante: E(["adulto", "nino", "bebe"], "adulto"), pose: E(["de-pie", "saluda", "senala", "piensa", "celebra", "preocupado"], "de-pie"), color: C("apoyo") } },
-  icono: { nombre: "Icono", props: { nombre: E(ICONOS_VIDEO, "check"), color: C("acento") } },
-  cifra: { nombre: "Cifra", props: { valor: N(-1e9, 1e9, 0, true), prefijo: T(6), sufijo: T(12), contar: B(true), decimales: N(0, 2, 0), color: C("acento") } },
+  icono: { nombre: "Icono", props: { nombre: E(ICONOS_VIDEO, "check"), color: C("acento"), fondo: { t: "color", def: "" } } },
+  cifra: {
+    nombre: "Cifra gigante",
+    props: { valor: N(-1e9, 1e9, 0, true), prefijo: T(6), sufijo: T(12), etiqueta: T(30), contar: B(true), decimales: N(0, 2, 0), color: C("acento") },
+  },
+  anillo: {
+    nombre: "Anillo de progreso",
+    props: { valor: N(0, 100, 75, true), texto: T(10), etiqueta: T(30), contar: B(true), color: C("acento"), pista: C("superficie") },
+  },
+  dibujo: {
+    nombre: "Dibujo (lienzo libre)",
+    props: {
+      proporcion: N(0.2, 3, 1),
+      formas: { t: "lista", max: MAX_FORMAS, def: [], item: FORMA_DIBUJO },
+    },
+    comprobar: (p) => (p.formas?.length ? [] : [{ campo: "formas", mensaje: "Un dibujo necesita al menos una forma." }]),
+  },
   lista: { nombre: "Lista o pasos", props: { items: { t: "textos", max: 6, maxTexto: 40, req: true }, numerada: B(false), color: C("texto") } },
   reloj: { nombre: "Reloj o contador", props: { modo: E(["reloj", "contador", "cuenta_atras"], "reloj"), desde: N(0, 86400, 0), hasta: N(0, 86400, 0), color: C("texto") } },
   forma: { nombre: "Forma", props: { figura: E(["circulo", "rect", "ola", "estrella", "flecha", "linea", "mancha"], "circulo"), color: C("apoyo"), relleno: B(true) } },
-  logo: { nombre: "Logo del kit", props: {} },
+  logo: { nombre: "Logo del kit", props: { placa: { t: "color", def: "" } } },
   llamado: { nombre: "Llamado a la acción", props: { texto: T(30, true), color: C("claro"), fondo: C("acento") } },
   antes_despues: {
     nombre: "Antes y después",

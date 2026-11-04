@@ -79,12 +79,48 @@ describe("la revisión de las escenas", () => {
     });
     expect(revisar(g).find((q) => q.tipo === "encimadas")).toMatchObject({ grave: true, escena: "e2" });
     const turnos = con((x) => {
+      x.escenas[1].capas.splice(2); // sin el icono del ejemplo, que va en su zona
       x.escenas[1].capas[0].pos = { x: 0.5, y: 0.45 };
       x.escenas[1].capas[0].sale = { palabra: 2 };
       x.escenas[1].capas[1].pos = { x: 0.5, y: 0.45 };
       x.escenas[1].capas[1].entra = { palabra: 4 };
     });
     expect(tipos(revisar(turnos))).not.toContain("encimadas");
+  });
+
+  it("el diseño de cada escena: texto pequeño, escena vacía y todo cargado a un lado (avisos, no graves)", () => {
+    const una = (capas) => {
+      const v = validarGuion({ escenas: [{ tipo: "dato", habla: "uno dos tres cuatro cinco seis siete ocho nueve diez once doce trece catorce quince", capas }] });
+      expect(v.errores).toEqual([]);
+      return v.guion;
+    };
+    // Una etiqueta sola: la escena se ve vacía.
+    const sola = revisar(una([{ tipo: "texto", id: "e", texto: "nuevo", rol: "etiqueta", tam: 0.2 }]));
+    expect(tipos(sola)).toContain("espacio_vacio");
+    // Demasiado en una escena: el motor encoge todo para que quepa y las etiquetas quedan por debajo de lo que se lee.
+    const llena = revisar(una([
+      { tipo: "texto", id: "t", texto: "Lo que incluye tu plan de este mes", rol: "titular", pos: "arriba" },
+      ...[1, 2, 3, 4, 5, 6].map((n) => ({ tipo: "texto", id: `e${n}`, texto: `La ventaja número ${n} que trae el plan completo de este mes`, rol: "etiqueta", pos: "abajo" })),
+    ]), "16:9");
+    const p = llena.find((q) => q.tipo === "texto_pequeno");
+    expect(p.mensaje).toMatch(/px/);
+    expect(p.grave).toBe(false);
+    expect(sola.filter((p) => ["texto_pequeno", "espacio_vacio"].includes(p.tipo)).every((p) => !p.grave)).toBe(true);
+    // Todo puesto arriba con coordenadas: carga la escena arriba.
+    const arriba = revisar(una([
+      { tipo: "texto", id: "t", texto: "Un titular", rol: "titular", pos: { x: 0.5, y: 0.2 } },
+      { tipo: "cifra", id: "c", valor: 90, sufijo: "%", pos: { x: 0.5, y: 0.33 } },
+    ]));
+    const d = arriba.find((p) => p.tipo === "desequilibrio");
+    expect(d.mensaje).toMatch(/arriba/);
+    // Repartido por zonas, con una pieza visual grande: nada de eso.
+    const bien = revisar(una([
+      { tipo: "cifra", id: "c", valor: 90, sufijo: "%", etiqueta: "lo recomiendan", pos: "centro" },
+      { tipo: "texto", id: "t", texto: "Nueve de cada diez", rol: "titular", pos: "arriba" },
+    ]));
+    expect(tipos(bien)).not.toEqual(expect.arrayContaining(["espacio_vacio"]));
+    expect(tipos(bien)).not.toContain("desequilibrio");
+    expect(tipos(bien)).not.toContain("texto_pequeno");
   });
 
   it("el texto de la revisión pone los graves primero, con escena y segundo", () => {

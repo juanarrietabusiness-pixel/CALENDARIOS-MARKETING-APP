@@ -11,11 +11,14 @@
 //     galería se queda sin cargar y el motor pinta su marcador.
 //   · Las imágenes llegan SIN su borde transparente (`sinBordeTransparente`, con `cajaOpaca` del
 //     motor): un logo exportado con mucho aire se dibujaba diminuto dentro de su caja.
+//   · El LOGO llega además sin su fondo liso (`quitarFondoLiso`: el blanco de un JPEG se veía como una tarjeta) y con
+//     su tono (`logoTono`: las luces de lo que se ve), para que el motor sepa si necesita una placa detrás.
 //   · La letra es la del kit (`kit.fuente`), registrada con `cargarFuente`; un guion
 //     puede pedir otra con su clave del kit.
 // ============================================================
 
 import { ruidoDeGrano, cajaOpaca } from "./motorVideo";
+import { quitarFondoLiso, tonoDeImagen } from "./motorPiezas";
 import { archivosDelGuion } from "./videoEscenas";
 import { cargarFuente } from "./muestraFuente";
 
@@ -55,19 +58,43 @@ function sinBordeTransparente(img) {
   }
 }
 
+/**
+ * El logo: sin su fondo liso (a 1024 px de lado como mucho: basta para el video) y sin el borde que quede → { img,
+ * tono }. Si no se puede leer, la imagen tal cual y sin tono.
+ */
+function prepararLogo(img) {
+  try {
+    const w = img.naturalWidth || img.width; const h = img.naturalHeight || img.height;
+    if (!w || !h || typeof document === "undefined") return { img, tono: null };
+    const k = Math.min(1, 1024 / Math.max(w, h));
+    const lienzo = document.createElement("canvas");
+    lienzo.width = Math.max(1, Math.round(w * k)); lienzo.height = Math.max(1, Math.round(h * k));
+    const ctx = lienzo.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return { img, tono: null };
+    ctx.drawImage(img, 0, 0, lienzo.width, lienzo.height);
+    const datos = ctx.getImageData(0, 0, lienzo.width, lienzo.height);
+    const r = quitarFondoLiso(datos.data, lienzo.width, lienzo.height);
+    if (r.quitado) ctx.putImageData(datos, 0, 0);
+    return { img: r.quitado ? sinBordeTransparente(lienzo) : sinBordeTransparente(img), tono: tonoDeImagen(datos.data) };
+  } catch {
+    return { img, tono: null };
+  }
+}
+
 /** Una imagen de /api/media/<clave>, una sola vez por clave → sin su borde transparente, o null si no carga. */
-function cargarImagen(clave) {
-  if (!clave) return Promise.resolve(null);
-  if (!imagenes.has(clave)) {
-    imagenes.set(clave, new Promise((resolver) => {
+function cargarImagen(clave, { logo = false } = {}) {
+  if (!clave) return Promise.resolve(logo ? { img: null, tono: null } : null);
+  const k = logo ? `logo:${clave}` : clave;
+  if (!imagenes.has(k)) {
+    imagenes.set(k, new Promise((resolver) => {
       const img = new Image();
       img.decoding = "async";
-      img.onload = () => resolver(sinBordeTransparente(img));
-      img.onerror = () => { imagenes.delete(clave); resolver(null); };
+      img.onload = () => resolver(logo ? prepararLogo(img) : sinBordeTransparente(img));
+      img.onerror = () => { imagenes.delete(k); resolver(logo ? { img: null, tono: null } : null); };
       img.src = `/api/media/${clave}`;
     }));
   }
-  return imagenes.get(clave);
+  return imagenes.get(k);
 }
 
 /** Los ids de la galería que nombra un guion: vive en videoEscenas.js (lo usa también el Worker). */
@@ -99,13 +126,13 @@ export async function prepararRecursos(guion, { archivos = [], kit = {} } = {}) 
   const faltan = ids.filter((id) => !porId.has(id));
   const [cargadas, logo, titular, cuerpo] = await Promise.all([
     Promise.all(ids.map(async (id) => [id, await cargarImagen(porId.get(id)?.clave)])),
-    cargarImagen(kit?.logo || ""),
+    cargarImagen(kit?.logo || "", { logo: true }),
     familiaDe(guion?.estilo?.fuentes?.titular, kit),
     familiaDe(guion?.estilo?.fuentes?.cuerpo, kit),
   ]);
   const mapa = new Map(cargadas);
   return {
-    recursos: { imagen: (id) => mapa.get(id) ?? null, logo, grano: texturaDeGrano() },
+    recursos: { imagen: (id) => mapa.get(id) ?? null, logo: logo.img, logoTono: logo.tono, grano: texturaDeGrano() },
     fuentes: { titular: titular ? `"${titular}", system-ui, sans-serif` : "", cuerpo: cuerpo ? `"${cuerpo}", system-ui, sans-serif` : "" },
     faltan: [...faltan, ...cargadas.filter(([id, img]) => porId.has(id) && !img).map(([id]) => id)],
   };
