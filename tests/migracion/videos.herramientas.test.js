@@ -5,7 +5,7 @@ import { crearHerramientasMCP, HERRAMIENTAS_MCP } from "../../worker/lib/mcp.js"
 import { DEFINICIONES_ESTUDIO } from "../../worker/lib/estudio/herramientas.js";
 import { DEFINICIONES, NOMBRES } from "../../worker/lib/herramientasServidor.js";
 import { EJEMPLO_GUION, formatoParaLaIA } from "../../src/lib/videoFormatoIA.js";
-import { validarGuion, COMPONENTES, TIPOS_ESCENA } from "../../src/lib/videoEscenas.js";
+import { validarGuion, COMPONENTES, TIPOS_ESCENA, palabrasDe, textoDeLocucion } from "../../src/lib/videoEscenas.js";
 
 // ============================================================
 // El video animado desde Claude (MCP) y el asistente, contra una D1 de verdad
@@ -171,6 +171,20 @@ describe("crear, editar, aprobar y la voz", () => {
     const t = await llamar("guardar_video", { cliente: "Baby Caleb", video_id: id, version: 2, titulo: "Nuevo nombre" });
     expect(t.texto).toMatch(/versión 2 \(Borrador\)/);
     expect(fila(id)).toMatchObject({ titulo: "Nuevo nombre", version: 2 });
+  });
+
+  it("«aprobado» con la voz de esa versión no pide otra locución, y avisa de las palabras que la voz no dijo", async () => {
+    const id = idDe((await llamar("crear_video", { cliente: "Baby Caleb", guion: copia(EJEMPLO_GUION) })).texto);
+    await llamar("aprobar_video", { cliente: "Baby Caleb", video_id: id, version: 1 });
+    const total = palabrasDe(textoDeLocucion(EJEMPLO_GUION)).length;
+    // Las dos últimas, sin duración y pegadas al final: la voz se las comió.
+    const palabras = Array.from({ length: total }, (_, i) => (i < total - 2 ? { desde: i * 0.4, hasta: i * 0.4 + 0.3 } : { desde: (total - 3) * 0.4 + 0.3, hasta: (total - 3) * 0.4 + 0.3 }));
+    db.sqlite.prepare("update videos_proyectos set locucion = ? where id = ?")
+      .run(JSON.stringify({ estado: "lista", clave: "clientes/bc/estudio/x.mp3", palabras, version: 1, fuente: "motor", voz: { nombre: "Sarah" }, modelo: "v3", duracion: 10 }), id);
+    const t = (await llamar("ver_video", { cliente: "Baby Caleb", video_id: id })).texto;
+    expect(t).toMatch(/Ya tiene la locución de esta versión/);
+    const dichas = palabrasDe(textoDeLocucion(EJEMPLO_GUION));
+    expect(t).toContain(`la voz NO dijo «${dichas.slice(-2).join(" ").replace(/[.,]$/, "")}»`);
   });
 
   it("un cliente o un video de otro espacio no existen", async () => {

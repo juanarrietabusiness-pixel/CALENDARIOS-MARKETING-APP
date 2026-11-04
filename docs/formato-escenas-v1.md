@@ -124,6 +124,15 @@ Los 14 componentes de la librería v1 y lo propio de cada uno:
 `*` = obligatorio. Los subtítulos y el grano **no** son capas: los pone el motor en
 todo el video con `subtitulos` y `estilo.grano`.
 
+**Cómo salen los subtítulos** (`src/lib/subtitulos.js`): palabra por palabra, con los
+tiempos de la locución (o los estimados si aún no hay voz). Se parte el `habla` de cada
+escena en trozos de frase —puntos, interrogaciones, comas—, una palabra suelta se junta
+con el trozo siguiente y cada trozo se reparte en los menos grupos posibles, parejos,
+de hasta `maxPalabras` palabras y `maxCaracteres` letras. La palabra clave de cada grupo
+va en `acento`: un número si lo hay; si no, la más larga que no sea de relleno. Lo dicho
+se ve entero, lo que se dice da un salto y lo que falta va atenuado. No hace falta
+escribir nada más en el guion: si un corte queda mal, se cambia una coma en el `habla`.
+
 ## Qué es error y qué es aviso
 
 `validarGuion()` **no arregla nada en silencio**: un texto largo, un color que no

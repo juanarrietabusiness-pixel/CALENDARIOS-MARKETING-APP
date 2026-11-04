@@ -431,7 +431,7 @@ describe("dibujar un fotograma", () => {
   });
 
   it("«escribe» revela las letras en orden", () => {
-    const g = validarGuion({ escenas: [{ tipo: "gancho", habla: QUINCE, capas: [{ tipo: "texto", texto: "Hola mamá", animacion: { entrada: "escribe" } }] }] }).guion;
+    const g = validarGuion({ subtitulos: { activo: false }, escenas: [{ tipo: "gancho", habla: QUINCE, capas: [{ tipo: "texto", texto: "Hola mamá", animacion: { entrada: "escribe" } }] }] }).guion;
     const a = textos(pintar(g, 0.05)).join("");
     expect(a.length).toBeGreaterThan(0);
     expect(a.length).toBeLessThan("Hola mamá".length);

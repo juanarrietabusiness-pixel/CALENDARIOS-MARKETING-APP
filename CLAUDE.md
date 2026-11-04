@@ -169,6 +169,8 @@ src/
     motorVideoNavegador.js  Lo que ese motor necesita en el navegador: las imágenes de la galería, el logo, la letra del kit
                           y la textura del grano (no es puro)
     videosApi.js          Cliente de /api/videos/<cliente>
+    subtitulos.js         Los SUBTÍTULOS por palabra: grupos por trozos de frase y parejos, la palabra clave, qué está dicho,
+                          diciéndose o falta en cada instante (puro: lo leen el motor, la vista previa y el render)
     revisionEscenas.js    La revisión antes de renderizar: subtítulos que tapan, texto que se sale o se parte, fuera de la zona
                           segura, capas encimadas; el instante «lleno» de cada escena (puro: mide con el lienzo que le dan)
     videoFormatoIA.js     El formato de escenas v1 contado a una IA (`formato_video`), sacado del mismo vocabulario que valida,
@@ -4093,6 +4095,22 @@ son del servidor.
   en uno más grande.
   · **`wrangler deploy` publica el Worker ANTES de subir la imagen**: sin el permiso `Containers: Edit` en el token, el
   Worker queda publicado y sólo el cuadro falla (503). Migración de Durable Objects `v2` (`ContenedorVideo`), no de D1.
+  · **Los subtítulos los dibuja el MOTOR** (`dibujarSubtitulos` en motorVideo.js; los grupos y la clave, en
+  `src/lib/subtitulos.js`), así salen iguales en la vista previa, en `ver_cuadro` y en el render. Van con los tiempos de
+  la línea de tiempo, que ya son del VIDEO (con los silencios insertados): en un silencio no se ve ninguno (el último se
+  apaga a los `COLA_GRUPO` segundos). Un grupo nunca cruza una coma ni un punto: «de Panamá y La | Chorrera» salía
+  cortando por letras. Borde oscuro y el claro de la paleta, para leerse sobre cualquier fondo.
+  · **La voz suena en la vista previa** (VideoAnimado, `tramoDeAudio` en videoEscenas.js): mientras se habla manda el
+  reloj del AUDIO (si se atasca cargando, la animación lo espera); en un silencio insertado el audio se calla y manda el
+  del navegador. Así suena como sonará el mp4. Sólo con la locución de ESTE guion (si sus tiempos no cuadran, la línea
+  es estimada y no suena). El audio arranca dentro del toque de «Reproducir»: Safari en el iPhone no deja sonar lo que
+  no empieza con un gesto. Probado en Chromium con un audio de la duración real; en un iPhone, no.
+  · **La voz puede comerse el final** (`palabrasMudas`): ElevenLabs v3 cortó «tu cita por WhatsApp» en Feria del Lente y
+  la alineación dejó esas palabras sin duración, pegadas al último instante. La vista previa y `ver_video` lo dicen con
+  las palabras: no se pueden subtitular ni se arreglan solas (otra toma, o acortar el cierre).
+  · **Sólo se aprueba un BORRADOR** (`aprobarProyecto`, y el botón): «aprobar» otra vez un video con locución lo
+  devolvía a «Guion aprobado» y parecía sin voz. Uno que quedó así con la voz de su versión no la pide otra vez
+  (`siguientePaso`).
   · **El ejemplo de `formato_video` sólo usa componentes que el motor ya dibuja** (un test lo exige): uno con marcadores
   enseñaba a Claude justo lo que hay que evitar.
   · **Nada de esto se ha probado contra Kie real** (los tests hablan con un `fetch` de mentira): los nombres de los campos
