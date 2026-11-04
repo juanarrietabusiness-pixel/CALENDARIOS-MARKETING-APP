@@ -22,6 +22,7 @@ import { revisarEscenas } from "../lib/revisionEscenas";
 import { textoDeSubtitulo } from "../lib/subtitulos";
 import { listarVideos, leerVideo, crearVideo, guardarVideo, aprobarVideo, borrarVideo } from "../lib/videosApi";
 import { limpiarKit } from "../lib/kitMarca";
+import RenderVideo from "./RenderVideo";
 import "./VideoAnimado.css";
 
 // «Probar una voz» va en su propio chunk: sólo lo carga quien lo abre.
@@ -217,6 +218,7 @@ export default function VideoAnimado({ client, estudio }) {
             )}
           </div>
           {sucio && <p className="hint">Hay cambios sin guardar.</p>}
+          {!abierto.nuevo && <RenderVideo client={client} video={abierto} sucio={sucio} onCambio={setAbierto} />}
         </div>
       </div>
     </div>

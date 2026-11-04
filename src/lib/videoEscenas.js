@@ -54,7 +54,7 @@ export const NOMBRE_ESTADO_VIDEO = Object.freeze({
 });
 const PASOS = Object.freeze({
   borrador: ["aprobado"],
-  aprobado: ["borrador", "con_voz"],
+  aprobado: ["borrador", "con_voz", "renderizando"],
   con_voz: ["borrador", "aprobado", "renderizando"],
   renderizando: ["renderizado", "fallido"],
   renderizado: ["borrador", "renderizando"],

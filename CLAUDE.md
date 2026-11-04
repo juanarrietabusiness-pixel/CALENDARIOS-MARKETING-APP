@@ -171,6 +171,8 @@ src/
     videosApi.js          Cliente de /api/videos/<cliente>
     subtitulos.js         Los SUBTÍTULOS por palabra: grupos por trozos de frase y parejos, la palabra clave, qué está dicho,
                           diciéndose o falta en cada instante (puro: lo leen el motor, la vista previa y el render)
+    renderVideo.js        El RENDER a mp4: los cuadros, la voz en tramos con los silencios insertados, el filtro de ffmpeg y
+                          loudnorm a -14 LUFS, cuándo se puede renderizar (puro: lo leen el Container, el Worker y la pantalla)
     revisionEscenas.js    La revisión antes de renderizar: subtítulos que tapan, texto que se sale o se parte, fuera de la zona
                           segura, capas encimadas; el instante «lleno» de cada escena (puro: mide con el lienzo que le dan)
     videoFormatoIA.js     El formato de escenas v1 contado a una IA (`formato_video`), sacado del mismo vocabulario que valida,
@@ -428,6 +430,7 @@ src/
     BibliotecaVoces.jsx   «Buscar voces en español»: la biblioteca de ElevenLabs (gratis), escuchar y «Añadir a mis voces»
     VideoAnimado.jsx      «Animado con código»: los videos animados del cliente, el guion (errores con su sitio), la vista
                           previa en el lienzo y «Aprobar el guion» (lazy; dentro de FlujoReel)
+    RenderVideo.jsx       «Renderizar a mp4»: pedirlo, esperarlo (relee cada 4 s), verlo, descargarlo y si quedó en su post
     ReferenciasGaleria.jsx  Ejemplos de la galería al corregir (y referencias del reel), cada uno con qué se toma
     GuardarRegla.jsx      «Guardar como regla» junto a cada corrección
     calendario/RevisionMes.jsx  «Revisar el mes» antes de enviarlo: reglas, IA opcional e imágenes contra el kit (lazy)
@@ -581,7 +584,9 @@ worker/
                           puro), almacen.js (de quién es cada aviso y guardarlo fundiendo lo que
                           había), graph.js (suscribir la página, «Actualizar», responder, ocultar,
                           borrar y el mensaje privado)
-  contenedor.js           El Durable Object del CONTAINER del video animado: lo arranca, espera a /salud, lo duerme a los 2 min
+  contenedor.js           Los Durable Objects de los CONTAINERS del video animado: el de los cuadros (lo arranca, espera a /salud,
+                          lo duerme a los 2 min) y el del RENDER (uno por video, más grande: apunta el encargo y lo hace en su
+                          alarma con lib/estudio/render.js)
   rutas/
     datos.js              CRUD: clientes, calendarios, chat, tareas, banco
     equipo.js             Miembros e invitaciones; la ruta pública del enlace
@@ -622,8 +627,8 @@ worker/
     inspiracion.js        /api/inspiracion/<cliente>: el feed, actualizar, traer un archivo, el resumen
     historiasAuto.js      /api/historias-auto/<cliente>: ajustes, pendientes de preparar, piezas
     videos.js             /api/videos/<cliente>: los videos animados (listar, crear, guardar el guion, aprobar, borrar)
-container/                El Container del video animado (Node + @napi-rs/canvas, Dockerfile): /cuadro, /hoja, /revisar con el
-                          MISMO motor de src/lib; probar.mjs es su prueba de humo (job «contenedor» de CI)
+container/                El Container del video animado (Node + @napi-rs/canvas + ffmpeg, Dockerfile): /cuadro, /hoja, /revisar y
+                          /render (render.mjs) con el MISMO motor de src/lib; probar.mjs es su prueba de humo (job «contenedor»)
 migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
@@ -4088,13 +4093,42 @@ son del servidor.
   · **En local no hay Container** (`dev.enable_containers: false`): `wrangler dev` y `test:vivo` no necesitan Docker, y
   la ruta contesta 503 diciéndolo. La imagen se prueba de verdad en CI (job «contenedor») y en «Desplegar» ANTES de
   publicar: se construye, se arranca y `container/probar.mjs` le pide un cuadro, la hoja y la revisión.
-  · **La imagen no usa apt ni Docker Hub**: la base sale del espejo oficial en ECR (Docker Hub limita las descargas
-  anónimas) y la letra de respaldo (Roboto, la que nombra `FUENTE_RESPALDO`) llega por npm y se registra al arrancar.
+  · **La imagen no usa Docker Hub**: la base sale del espejo oficial en ECR (Docker Hub limita las descargas anónimas),
+  la letra de respaldo (Roboto, la que nombra `FUENTE_RESPALDO`) llega por npm y se registra al arrancar, y ffmpeg sale
+  de los repositorios de DEBIAN (`apt`, sin los recomendados): un binario suelto de npm o de GitHub sería de un tercero.
   · **`basic` (¼ vCPU, 1 GiB) y se duerme a los 2 min**: la memoria se paga despierta, la CPU sólo al dibujar; una
-  sesión de cuadros son ~120 GiB-s, unas 750 al mes dentro de lo que trae Workers Paid. El render del mp4 (paso 3) irá
-  en uno más grande.
+  sesión de cuadros son ~120 GiB-s, unas 750 al mes dentro de lo que trae Workers Paid.
   · **`wrangler deploy` publica el Worker ANTES de subir la imagen**: sin el permiso `Containers: Edit` en el token, el
-  Worker queda publicado y sólo el cuadro falla (503). Migración de Durable Objects `v2` (`ContenedorVideo`), no de D1.
+  Worker queda publicado y sólo el cuadro falla (503). Migraciones de Durable Objects `v2` (`ContenedorVideo`) y `v3`
+  (`RenderVideo`), no de D1.
+  · **El RENDER a mp4 es OTRO Container, con la misma imagen** (`RenderVideo` en worker/contenedor.js, binding `RENDER`,
+  a medida: 2 vCPU, 6 GiB —el mínimo de memoria para 2 vCPU—, 6 GB; se duerme a los 30 s). Uno por video
+  (`idFromName(<id>)`). `POST /api/videos/<c>/<id>/render` (y `renderizar_video` para Claude y el asistente) sólo con
+  el guion aprobado y SU locución (`puedeRenderizar`, src/lib/renderVideo.js); deja el video «Renderizando» con un
+  `intento` y el objeto contesta ya: lo hace en su ALARMA (hasta 15 min, sigue aunque se cierre la pantalla), con
+  `ejecutarRender` (worker/lib/estudio/render.js). Cosas que no se ven:
+  · **En el Container** (container/render.mjs): primero el AUDIO —la toma cortada en el segundo del AUDIO de cada
+  silencio de las escenas, con silencio metido y rellenada hasta el último cuadro (`tramosDeAudio`, `filtroDeAudio`),
+  loudnorm en DOS pasadas (mide y aplica en lineal: -14 LUFS, pico -1,5) y a AAC—; luego cada cuadro con el MISMO
+  `dibujarFrame` y sus píxeles EN CRUDO por una tubería a ffmpeg (H.264 crf 20, BT.709 dicho en el archivo,
+  `+faststart`). Mandar cada cuadro como JPEG costaba un 40 % más de CPU: codificar un JPEG de 1080 × 1920 con grano
+  (30 ms) es más caro que dibujar el cuadro (1,3 ms). Medido aquí con la toma de Feria del Lente (31,8 s): 20 s de
+  reloj, el silencio de 0,8 s exacto en 3,04 s y -14,0 LUFS medido aparte con ebur128.
+  · **El costo**: un video de ~30 s despierta el Container ~1 min y usa ~50 vCPU-s: unos 360 GiB-s de memoria. Lo
+  incluido en Workers Paid (25 GiB-h, 375 vCPU-min) da para ~200 renders al mes; pasado eso, ~0,3 céntimos de dólar por
+  video (precios de la documentación de Cloudflare, octubre de 2026). No gasta IA: no pide confirmación de costo.
+  · **El encargo se BORRA antes de empezar**: si el objeto muere a la mitad, la alarma no repite el render; el video se
+  queda «Renderizando» y al leerlo pasado `PLAZO_RENDER_MS` (15 min) pasa a «Falló el render» (`renderAlDia`). Un
+  encargo con otro `intento` no toca nada: el proyecto ya espera otro.
+  · **El mp4 va a R2, a la galería** (`estudio_archivos`, tipo «video», modelo `video-animado` «Animado con código»,
+  costo 0) **y a su PUBLICACIÓN** si el video va ligado a una: primero en sus medios, o en el sitio del render anterior
+  de ESTE video (`videoAnimado` en el medio), con `mediosCambiadosAt` y `usado_en`. El calendario se escribe con su
+  `updated_at` como condición (si otra persona guardaba a la vez, se relee una vez; si no, queda en la galería y se
+  dice) y luego `resincronizarCalendario` + `calendario:recargar`, como el MCP. Una publicación ya PUBLICADA no se toca.
+  · **La voz se manda dentro del pedido** (base64, ≤ 20 MB): el Container no tiene llaves ni internet.
+  · **Lo probado**: el render de verdad en este equipo con el ffmpeg del sistema (Ubuntu 6.1) y en CI con la imagen
+  (ffmpeg de Debian 5.1, `probar.mjs` pide un render con una voz sintética y exige el mp4, sus dos pistas, los cuadros y
+  -14 LUFS ±1). El Durable Object y la alarma, con dobles: el primer render en Cloudflare es la prueba de verdad.
   · **Los subtítulos los dibuja el MOTOR** (`dibujarSubtitulos` en motorVideo.js; los grupos y la clave, en
   `src/lib/subtitulos.js`), así salen iguales en la vista previa, en `ver_cuadro` y en el render. Van con los tiempos de
   la línea de tiempo, que ya son del VIDEO (con los silencios insertados): en un silencio no se ve ninguno (el último se

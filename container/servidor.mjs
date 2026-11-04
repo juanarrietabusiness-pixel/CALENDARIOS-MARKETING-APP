@@ -9,6 +9,8 @@
 //   POST /cuadro    { …, t, ancho?, tipo? }  → la imagen del instante t (JPEG por defecto; X-Escena: su id)
 //   POST /hoja      { …, ancho? }            → una hoja con un cuadro de cada escena en su instante «lleno», numerados
 //   POST /revisar   { …, formatos? }         → JSON { problemas, texto }: la revisión con las fuentes reales
+//   POST /render    { …, audio? (base64) }   → el MP4 entero (voz con los silencios, -14 LUFS, subtítulos), y en
+//                                              cabeceras lo que tardó, la duración y el volumen medido
 //
 // Todo pedido lleva { guion, palabras, formato, paleta, imagenes, logo, fuentes } (ver recursos.mjs). El guion se
 // valida aquí también: lo que no valida no se dibuja.
@@ -22,10 +24,13 @@ import { validarGuion, lineaDeTiempo, FORMATOS_VIDEO } from "../src/lib/videoEsc
 import { dibujarFrame, paletaDelGuion, escenaEn } from "../src/lib/motorVideo.js";
 import { revisarEscenas, textoDeRevision, instanteLleno } from "../src/lib/revisionEscenas.js";
 import { prepararRecursos, registrarRespaldo } from "./recursos.mjs";
+import { renderizar } from "./render.mjs";
 
 const PUERTO = Number(process.env.PORT || 8080);
 /** Un pedido trae imágenes y fuentes en base64: más que esto no es un video animado. */
 const TOPE_PEDIDO = 40 * 1024 * 1024;
+/** Un render a la vez (ver render.mjs): el siguiente espera al anterior. */
+let renderEnCurso = Promise.resolve();
 
 class ErrorPedido extends Error {
   constructor(mensaje, estado = 400) { super(mensaje); this.estado = estado; }
@@ -104,6 +109,22 @@ async function atender(ruta, p) {
       ctx.fillText(`${i + 1} · ${e.id} · ${t.toFixed(1)} s`, x + 4, y + altoCelda + rotulo / 2);
     });
     return { cuerpo: await codificar(hoja, p.tipo), tipo: p.tipo === "png" ? "image/png" : "image/jpeg", cabeceras: { "X-Total": total.toFixed(2), "X-Faltan": base.faltan.join(",") } };
+  }
+  if (ruta === "/render") {
+    const audio = typeof p.audio === "string" && p.audio ? Buffer.from(p.audio, "base64") : null;
+    const turno = renderEnCurso.then(() => renderizar(base, { audio }));
+    renderEnCurso = turno.catch(() => {});
+    const r = await turno;
+    return {
+      cuerpo: r.mp4, tipo: "video/mp4",
+      cabeceras: {
+        "X-Duracion": r.duracion.toFixed(3), "X-Cuadros": String(r.cuadros), "X-Ancho": String(r.ancho), "X-Alto": String(r.alto),
+        "X-Ms-Audio": String(r.ms.audio), "X-Ms-Video": String(r.ms.video),
+        "X-Lufs": r.audio?.lufs === null || r.audio?.lufs === undefined ? "" : String(r.audio.lufs),
+        "X-Lufs-Antes": r.audio?.antes === null || r.audio?.antes === undefined ? "" : String(r.audio.antes),
+        "X-Faltan": base.faltan.join(","),
+      },
+    };
   }
   if (ruta === "/revisar") {
     const formatos = (Array.isArray(p.formatos) && p.formatos.length ? p.formatos : [base.formato]).filter((f) => FORMATOS_VIDEO[f]);

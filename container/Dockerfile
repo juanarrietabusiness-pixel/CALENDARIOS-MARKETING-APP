@@ -4,8 +4,15 @@
 # así el motor del Container no puede quedarse atrás del de la pantalla.
 # ============================================================
 # La imagen oficial de Node desde su espejo en ECR: Docker Hub limita las descargas anónimas y un despliegue no puede
-# depender de eso. Sin apt: la letra de respaldo (Roboto) llega por npm y la registra el propio servidor.
+# depender de eso. La letra de respaldo (Roboto) llega por npm y la registra el propio servidor.
 FROM public.ecr.aws/docker/library/node:22-bookworm-slim
+
+# ffmpeg para el RENDER a mp4 (libx264, AAC y loudnorm), de los repositorios oficiales de Debian: un binario suelto de
+# npm o de GitHub sería código de un tercero sin firma. Sin los paquetes «recomendados» (no hacen falta y engordan la
+# imagen, que el Container baja al arrancar en frío).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ffmpeg \
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 # Los .js de src/lib son módulos ES (en el repositorio lo dice el package.json de la raíz).

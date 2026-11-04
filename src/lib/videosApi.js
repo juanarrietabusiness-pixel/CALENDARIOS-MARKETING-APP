@@ -95,3 +95,10 @@ export async function anadirVozDeBiblioteca(clienteId, { publico, voz, nombre })
 
 /** La dirección para oír GRATIS la muestra que publica ElevenLabs de una voz. */
 export const urlPreviaVoz = (clienteId, previa) => `/api${base(clienteId)}/voces/previa?u=${encodeURIComponent(previa)}`;
+
+/** Pide el RENDER a mp4 (guion aprobado y su locución). Contesta ya: el video queda «Renderizando». → el video. */
+export async function renderizarVideo(clienteId, id, version) {
+  const r = await pedir(`${base(clienteId)}/${encodeURIComponent(id)}/render`, json("POST", { version }));
+  avisar(clienteId, id);
+  return r?.video ?? null;
+}
