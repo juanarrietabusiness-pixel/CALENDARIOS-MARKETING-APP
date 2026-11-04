@@ -49,6 +49,8 @@ import { pack } from "../cerebro/memoria.js";
 import { kitDe } from "./kit.js";
 import { pedidoConMarca, ponerLogo, kitVacio, IDS_PRESET, TIPOS_PRESET } from "../../../src/lib/kitMarca.js";
 import { productosActivos } from "../../../src/lib/estudioMercado.js";
+import { listarVoces, pedirMuestra, pedirLocucion, ErrorVoz } from "./locucion.js";
+import { MODELOS_VOZ } from "../../../src/lib/voces.js";
 
 /** Lo más que puede pedir una IA de una vez. La pantalla admite más (8 imágenes, 2 videos): ahí lo ve una persona. */
 // 15 s: lo que dura un clip de MiniMax H3 o Kling 3.0 (la receta «Video del producto»). El gasto lo frena la confirmación.
@@ -114,6 +116,49 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
     description: "Cómo va un pedido del Estudio (el ID lo dio crear_en_estudio o sale en ver_estudio): si sigue en marcha, si falló y por qué, y qué archivos dio (con sus IDs).",
     input_schema: { type: "object", properties: { trabajo_id: { type: "string" } }, required: ["trabajo_id"] },
   },
+  {
+    name: "listar_voces",
+    description:
+      "Las voces con las que se puede hacer la LOCUCIÓN de un video animado de un cliente (ElevenLabs v3 por Kie.ai, con emociones; v2 de " +
+      "respaldo): su ID, nombre, género y tono, cuál es la de la marca y si su muestra ya está hecha (oírla entonces es gratis). No gasta nada.",
+    input_schema: { type: "object", properties: { ...clienteParam } },
+  },
+  {
+    name: "previsualizar_voz",
+    description:
+      "La MUESTRA de una voz (una frase fija) para escucharla antes de escogerla. Si ya está hecha, da la dirección para oírla y no cuesta nada. " +
+      "Si no, CUESTA dinero (centavos) y NO se crea hasta confirmarlo: la respuesta trae la cifra; díselo al usuario y sólo si dice que sí vuelve " +
+      "a llamarla con confirmado=true. Nunca pongas confirmado=true por tu cuenta. Es un pedido: no espera, se hace solo en un minuto.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam,
+        voz: { type: "string", description: "ID de una voz de listar_voces." },
+        modelo: { type: "string", enum: ["v3", "v2"], description: "v3 (por defecto, con emociones) o v2." },
+        confirmado: { type: "boolean", description: "Sólo tras oír «sí» del usuario a la cifra exacta que le dijiste." },
+      },
+      required: ["voz"],
+    },
+  },
+  {
+    name: "generar_locucion",
+    description:
+      "Genera la LOCUCIÓN de un video animado: una sola toma con todo lo que dicen sus escenas, del guion APROBADO (si no está aprobado, no se " +
+      "puede). Usa la voz de la marca si no se dice otra. SIEMPRE cuesta y SIEMPRE se confirma: la primera llamada devuelve la cifra y NO crea " +
+      "nada; díselo al usuario y sólo si dice que sí vuelve a llamarla con los MISMOS datos y confirmado=true. Nunca pongas confirmado=true por " +
+      "tu cuenta. No espera: queda en cola y el video pasa a «Con voz» cuando termina (estado_trabajo con el ID para saber cómo va).",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam,
+        video_id: { type: "string", description: "ID del proyecto de video animado." },
+        voz: { type: "string", description: "ID de una voz de listar_voces. Si se omite, la de la marca." },
+        modelo: { type: "string", enum: ["v3", "v2"], description: "Si se omite, el del kit (v3)." },
+        confirmado: { type: "boolean", description: "Sólo tras oír «sí» del usuario a la cifra exacta que le dijiste." },
+      },
+      required: ["video_id"],
+    },
+  },
 ]);
 
 export const NOMBRES_ESTUDIO = new Set(DEFINICIONES_ESTUDIO.map((d) => d.name));
@@ -167,6 +212,19 @@ export function textoDelCatalogo(catalogo, kit, archivos) {
   }
   if (catalogo.some((p) => p.fotos.some((k) => idDe.has(k)))) partes.push(RECETA_VIDEO_PRODUCTO);
   return partes.join("\n\n");
+}
+
+/**
+ * Lo que devuelve la voz al asistente: la confirmación NO es un fallo (es la respuesta correcta a un pedido que cuesta),
+ * así que vuelve como texto con la cifra y la orden de preguntar; lo demás, como error que el modelo pueda leer.
+ */
+function confirmacionDeVoz(e) {
+  if (!(e instanceof ErrorVoz)) throw e;
+  if (e.codigo === "confirmar") {
+    return (`NO SE CREÓ NADA. ${e.message.replace(/ Confírmalo para generarla\.$/, "")}. ` +
+      "Díselo al usuario con esa cifra y pregúntale si lo hago. Sólo si responde que sí, vuelve a llamar con los MISMOS datos y confirmado=true.");
+  }
+  throw new ErrorHerramientaEstudio(e.message);
 }
 
 /**
@@ -328,6 +386,51 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         archivos.length ? `Archivos:\n${archivos.join("\n")}` : "",
         estaVivo(t.estado) ? "Sigue en marcha: se hace solo." : "",
       ].filter(Boolean).join("\n");
+    },
+
+    async listar_voces({ cliente }) {
+      const c = await resolverCliente(cliente);
+      const l = await listarVoces(env, c);
+      const precios = l.modelos.map((m) => `${m.nombre} (muestra ${textoCosto(m.muestra)})`).join(" · ");
+      const lineas = l.voces.map((v) => {
+        const oidas = Object.entries(v.muestras).filter(([, si]) => si).map(([k]) => k);
+        return `· ${v.id} — ${v.nombre}${v.genero ? ` · ${v.genero}` : ""}${v.nota ? ` · ${v.nota}` : ""}${v.propia ? " · propia" : ""}` +
+          `${v.escogida ? " · LA DE LA MARCA" : ""}${oidas.length ? ` · muestra hecha (${oidas.join(", ")}): oírla es gratis` : ""}`;
+      });
+      return [
+        `Voces para la locución de ${c.name}. Modelos: ${precios}.`,
+        l.voz ? `La de la marca: ${l.voces.find((v) => v.escogida)?.nombre ?? l.voz} con ${MODELOS_VOZ[l.modelo]?.nombre ?? l.modelo}.` : "La marca todavía no tiene voz escogida (se escoge en el kit de marca).",
+        lineas.join("\n"),
+      ].join("\n\n");
+    },
+
+    async previsualizar_voz({ cliente, voz, modelo, confirmado }) {
+      const c = await resolverCliente(cliente);
+      try {
+        const r = await pedirMuestra(env, acceso, c, { modelo: modelo ?? "v3", vozId: voz, confirmado: confirmado === true, usuario, origen });
+        const oir = `/api/videos/${c.id}/voces/muestra?modelo=${r.modelo}&voz=${encodeURIComponent(r.voz.id)}`;
+        if (r.lista) return `La muestra de ${r.voz.nombre} (${r.modelo}) ya está hecha: se oye en ${oir}. No costó nada.`;
+        return `Pedido creado: ${r.trabajoId} (muestra de ${r.voz.nombre}, ${r.modelo}, ${textoCosto(r.costo)}). Tarda menos de un minuto; ` +
+          `después se oye en ${oir} y en la pestaña del video. Para saber cómo va: estado_trabajo con el ID ${r.trabajoId}.`;
+      } catch (e) {
+        return confirmacionDeVoz(e);
+      }
+    },
+
+    async generar_locucion({ cliente, video_id: id, voz, modelo, confirmado }) {
+      const c = await resolverCliente(cliente);
+      const video = await acceso.leerUno("videos_proyectos", { id: String(id ?? ""), client_id: c.id });
+      if (!video) throw new ErrorHerramientaEstudio(`No encontré el video «${id}» de ${c.name}.`);
+      try {
+        const r = await pedirLocucion(env, acceso, c, video, { modelo, vozId: voz, confirmado: confirmado === true, usuario, origen, por });
+        return [
+          `Pedido creado: ${r.trabajoId} (locución de «${video.titulo || "el video"}», voz ${r.voz.nombre}, ${r.modelo}, ${r.caracteres} caracteres, ${textoCosto(r.costo)}).`,
+          "Tarda uno o dos minutos y sigue solo. Al terminar, el video pasa a «Con voz» con los tiempos de cada palabra.",
+          `Para saber cómo va: estado_trabajo con el ID ${r.trabajoId}.`,
+        ].join("\n");
+      } catch (e) {
+        return confirmacionDeVoz(e);
+      }
     },
   };
 

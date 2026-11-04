@@ -222,3 +222,27 @@ renderizado / fallido), `version` (sube con cada cambio del guion),
 por palabra y la versión para la que se hizo), `render` (fase 2), quién y cuándo
 aprobó. **La locución sólo se genera si `version` = `aprobada_version`**; editar el
 guion lo devuelve a borrador.
+
+## La locución (paso 3)
+
+Una sola toma con `textoDeLocucion(guion)`: ElevenLabs v3 por Kie.ai (con las
+`[emociones]`) o v2 de respaldo (sin ellas). Es un trabajo del Estudio
+(`tipo: "audio"`) y **siempre** pide confirmar el costo. Al terminar,
+`locucion` queda así:
+
+```json
+{
+  "estado": "lista", "modelo": "v3", "voz": { "id": "EXAVITQu4vr4xnSDxMaL", "nombre": "Sarah" },
+  "clave": "clientes/<c>/estudio/…/locucion.mp3", "duracion": 19.4,
+  "palabras": [{ "desde": 0.12, "hasta": 0.38 }],
+  "fuente": "motor | verificado | estimado", "coincidencia": 0.97, "revisar": false,
+  "version": 3, "costo": 0.014
+}
+```
+
+`palabras` lleva una entrada por palabra del guion, en orden: es lo que recibe
+`lineaDeTiempo`. `fuente` dice de dónde salieron: del motor, de oír la toma
+(Gemini, alineado con el guion) o estimados sobre la duración real. Con
+`coincidencia` por debajo de 0,85 la voz no dijo lo que dice el guion y queda
+`revisar`. Si el guion cambió mientras se generaba, va `desfasada: true` y el
+proyecto no pasa a «Con voz».

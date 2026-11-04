@@ -362,6 +362,9 @@ export function describirUso(nombre, entrada = {}) {
     case "ver_estudio": return `Miró el Estudio${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "crear_en_estudio": return `Pidió al Estudio ${entrada.tipo === "video" ? "un video" : "una imagen"}: «${String(entrada.prompt ?? "").slice(0, 80)}»`;
     case "estado_trabajo": return "Miró cómo va un pedido del Estudio";
+    case "listar_voces": return `Miró las voces${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
+    case "previsualizar_voz": return `Pidió la muestra de una voz${entrada.confirmado === true ? "" : " (sin confirmar)"}`;
+    case "generar_locucion": return `Pidió la locución de un video animado${entrada.confirmado === true ? "" : " (sin confirmar)"}`;
     default: return nombre;
   }
 }

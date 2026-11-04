@@ -112,7 +112,8 @@ async function fallo(paso, res, gratis = false) {
  * @param fotogramas  [{ segundo, base64 }] JPEG que saca el navegador: los usa Meta.
  */
 export async function verVideo(env, acceso, { bytes, mime: tipo, nombre = "video", clienteId = null, prompt, funcion = "análisis de video", json = false, fotogramas = null, youtube = "" }) {
-  if (!youtube && !String(tipo ?? "").startsWith("video/")) throw new ErrorVideo("Ese archivo no es un video", 400);
+  // También un AUDIO: la verificación posterior de la locución del video animado (Gemini la oye y da los tiempos).
+  if (!youtube && !/^(video|audio)\//.test(String(tipo ?? ""))) throw new ErrorVideo("Ese archivo no es un video", 400);
   const config = acceso ? await leerConfigIA(acceso).catch(() => null) : null;
   const { motor, llave } = motorDeVideo(config, env);
   if (!motor) throw new ErrorVideo("El servidor no tiene ninguna llave que pueda ver videos (Google AI o Meta).", 503);

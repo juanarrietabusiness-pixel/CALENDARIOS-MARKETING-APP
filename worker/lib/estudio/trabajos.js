@@ -36,6 +36,8 @@ import { ErrorMotor, aBase64 } from "./gemini.js";
 import { abrirDescarga, guardarDescarga, TOPE_VIDEO, TOPE_IMAGEN } from "./descarga.js";
 import { claveDeArchivo, claveDelCliente, medidasDe, medidasDeVideo, tipoPorBytes } from "./archivos.js";
 import { crearAcceso, estudioPendiente } from "../acceso.js";
+import { terminarAudio } from "./locucion.js";
+import { modeloDelEstudio as modeloDeVozDelEstudio } from "../../../src/lib/voces.js";
 import {
   modeloPorId, MODELOS_RETIRADOS, retirado, validarPedido, pideConfirmar, textoCosto, estaVivo, MEDIDAS, proporcionDe, estimar, enCola,
 } from "../../../src/lib/estudioCatalogo.js";
@@ -314,7 +316,8 @@ export async function avanzarTrabajo(env, acceso, id, { por = null } = {}) {
 
 /** El paso en sí. Devuelve los cambios que hay que escribir en el trabajo. */
 async function paso(env, acceso, fila) {
-  const modelo = modeloPorId(fila.modelo);
+  // Una toma de voz (la locución del video animado) no es del catálogo de imagen y video: va por su modelo de Kie.
+  const modelo = modeloPorId(fila.modelo) ?? modeloDeVozDelEstudio(fila.modelo);
   const motor = modelo ? MOTORES[modelo.motor] : null;
   if (!modelo || !motor) return cerrada("fallido", { error: MODELOS_RETIRADOS[fila.modelo] ? retirado(fila.modelo) : "Ese modelo ya no está en el Estudio." });
   if (!motor.activo(env)) {
@@ -507,7 +510,19 @@ async function pasoDeCola(env, acceso, fila, { modelo, motor, hechos, termina, f
     r.proximo = en(listo.cada ?? CADA_POR_DEFECTO);
     return { remoto: escribirRemoto(), nota: listo.nota ?? "Generando…", intentos: 0 };
   }
-  if (listo.estado === "fallido") return perder(listo.error || `${modelo.nombre} no pudo hacer ${esVideo ? "el video" : "la imagen"}.`);
+  if (listo.estado === "fallido") return perder(listo.error || `${modelo.nombre} no pudo hacer ${esVideo ? "el video" : modelo.tipo === "audio" ? "la voz" : "la imagen"}.`);
+
+  // Una toma de voz: la baja, la apunta y la entrega su propio módulo (la muestra de una voz o la locución de un video).
+  if (modelo.tipo === "audio") {
+    try {
+      const cambios = await terminarAudio(env, acceso, fila, { listo, modelo });
+      r.hecho = true;
+      return { remoto: escribirRemoto(), ...cambios };
+    } catch (e) {
+      if (!(e instanceof ErrorMotor)) throw e;
+      return e.reintentable && fila.intentos < MAX_INTENTOS ? falloDelMotor(e) : perder(e.message);
+    }
+  }
 
   // Listo: se baja a R2 por flujo, sin cargarlo en memoria.
   const mimeVideo = listo.bytes && motor === MOTORES.prueba ? "image/svg+xml" : null;

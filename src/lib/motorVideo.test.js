@@ -398,6 +398,11 @@ describe("el texto cabe en su sitio", () => {
     expect(Math.abs(l[0].length - l[1].length)).toBeLessThanOrEqual(8);
   });
 
+  it("«+» e «=» empiezan la línea siguiente: nunca se quedan al final", () => {
+    expect(partirEquilibrado(conFuente(40), "Alcohol + perfume = irritación", 400, 2)).toEqual(["Alcohol + perfume", "= irritación"]);
+    expect(partirEquilibrado(conFuente(40), "Alcohol + perfume = irritación", 280, 3)).toEqual(["Alcohol", "+ perfume", "= irritación"]);
+  });
+
   it("si en esas líneas no cabe, dice null; con una línea que cabe, la deja", () => {
     expect(partirEquilibrado(conFuente(40), "Una frase demasiado larga para dos", 200, 2)).toBe(null);
     expect(partirEquilibrado(conFuente(40), "Hola", 400, 1)).toEqual(["Hola"]);

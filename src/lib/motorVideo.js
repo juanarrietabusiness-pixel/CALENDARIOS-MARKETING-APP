@@ -482,8 +482,10 @@ export function partirEnLineas(ctx, texto, ancho) {
   return lineas;
 }
 
-/** Un separador suelto («·», «|», «—», «/», «+», «=») o una palabra que acaba en «,», «.», «:», «;»: buen sitio para cortar. */
-const SEPARADOR_SUELTO = /^[·•|—–/+=]$/;
+/** Un separador suelto («·», «|», «—», «/»): buen sitio para cortar, y se quita del borde de la línea. */
+const SEPARADOR_SUELTO = /^[·•|—–/]$/;
+/** Un signo de una cuenta («+», «=», «×», «→»): se corta ANTES y empieza la línea siguiente («= irritación»). */
+const OPERADOR = /^[+=×÷→]$/;
 const CIERRA_FRASE = /[,.;:!?…]$/;
 /** Lo que sobra en un borde de línea al cortar en un separador suelto (el «·» no empieza ni acaba una línea). */
 const sinSeparadorEnBorde = (linea) => linea.replace(/^\s*[·•|—–/]\s+/, "").replace(/\s+[·•|—–/]\s*$/, "").trim();
@@ -508,8 +510,11 @@ export function partirEquilibrado(ctx, texto, ancho, n) {
     if (!medida.has(k)) medida.set(k, ctx.measureText(linea(i, j)).width);
     return medida.get(k);
   };
-  // Cortar DESPUÉS de la palabra j-1: bueno si ella cierra frase o es un separador suelto, o si la siguiente lo es.
-  const buenCorte = (j) => CIERRA_FRASE.test(palabras[j - 1]) || SEPARADOR_SUELTO.test(palabras[j - 1]) || SEPARADOR_SUELTO.test(palabras[j] ?? "");
+  // Cortar DESPUÉS de la palabra j-1: bueno si ella cierra frase o es un separador suelto, o si la siguiente es un
+  // separador o un signo de cuenta (que así empieza la línea). Después de un signo de cuenta no se corta.
+  const buenCorte = (j) => CIERRA_FRASE.test(palabras[j - 1]) || SEPARADOR_SUELTO.test(palabras[j - 1])
+    || SEPARADOR_SUELTO.test(palabras[j] ?? "") || OPERADOR.test(palabras[j] ?? "");
+  const prohibido = (j) => OPERADOR.test(palabras[j - 1]);
   const N = palabras.length;
   // costo[k][j]: lo mejor para las primeras j palabras en k líneas. Cada línea paga lo que le falta para llenar el
   // ancho (al cuadrado: castiga una línea muy corta) y un corte fuera de un separador paga un recargo.
@@ -523,6 +528,7 @@ export function partirEquilibrado(ctx, texto, ancho, n) {
         if (costo[k - 1][i] === Infinity) continue;
         const w = mide(i, j);
         if (w > ancho && j - i > 1) continue;
+        if (j < N && prohibido(j)) continue;
         const c = costo[k - 1][i] + (ancho - Math.min(w, ancho)) ** 2 + (j < N && !buenCorte(j) ? RECARGO : 0);
         if (c < costo[k][j]) { costo[k][j] = c; desde[k][j] = i; }
       }

@@ -31,6 +31,7 @@
 //
 // ============================================================
 
+import { limpiarLocucion } from "./voces.js";
 import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
 
 import { limpiarAprendido, lineasAprendidas } from "./aprendizajeVisual.js";
@@ -238,6 +239,9 @@ export function limpiarKit(guardado) {
     // La VOZ de la marca en los videos con locución: una de las voces fijas de Google (VOCES_OMNI en el catálogo del
     // Estudio; Omni por Kie la registra). Vacía: la que escoja el modelo.
     voz: /^[a-z]{3,20}$/.test(String(g.voz ?? "")) ? String(g.voz) : "",
+    // La LOCUCIÓN del video animado (ElevenLabs por Kie, src/lib/voces.js): la voz escogida, v3 o v2 y las voces
+    // propias que la agencia escogió en el panel de Kie. Otra cosa que la de Omni de arriba.
+    locucion: limpiarLocucion(g.locucion),
     // Las PLANTILLAS: piezas que quedaron muy bien, guardadas con su sistema de diseño para repetir el diseño con otro
     // contenido (post fijo, historia, portada o lámina de carrusel). Claves de la galería de ESTE cliente.
     plantillas: limpiarPlantillas(g.plantillas),
@@ -670,7 +674,7 @@ export function fundirKit(guardado, propuesto, ahora = new Date().toISOString())
   return limpiarKit({
     ...propuesto, logo: antes.logo, propios: antes.propios, estilos: antes.estilos, estiloPorTipo: antes.estiloPorTipo, personajes: antes.personajes,
     aprendido: antes.aprendido, referencias: antes.referencias, modelos: antes.modelos, reglas: antes.reglas,
-    logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, fuente: antes.fuente, voz: antes.voz, plantillas: antes.plantillas, preparadoAt: ahora,
+    logoModo: antes.logoModo, logoPosicion: antes.logoPosicion, fuente: antes.fuente, voz: antes.voz, locucion: antes.locucion, plantillas: antes.plantillas, preparadoAt: ahora,
   });
 }
 

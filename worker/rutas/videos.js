@@ -8,6 +8,12 @@
 //                                           devuelve el proyecto a borrador (la aprobación era de otro texto)
 //   POST   /api/videos/<c>/<id>/aprobar     { version }: aprobar el guion de ESA versión (con él se podrá pagar la voz)
 //   DELETE /api/videos/<c>/<id>             Borrarlo
+//   POST   /api/videos/<c>/<id>/locucion    { version, modelo?, voz?, confirmado }: la VOZ del guion aprobado (un trabajo
+//                                           del Estudio). Siempre pide confirmar: sin `confirmado: true`, 409 con el costo
+//   GET    /api/videos/<c>/voces            Las voces del cliente (las propias del kit y las de serie), los modelos y
+//                                           si la muestra de cada una ya está hecha
+//   GET    /api/videos/<c>/voces/muestra?modelo=&voz=   La muestra hecha (audio), o 404 `sin_muestra` con su costo
+//   POST   /api/videos/<c>/voces/muestra    { modelo, voz, confirmado }: hacerla (un trabajo; también pide confirmar)
 //
 // El guion lo valida `validarGuion` (src/lib/videoEscenas.js) aquí, en el servidor: lo que llega del navegador, del
 // asistente o de Claude por MCP no se cree. Un guion con errores NO se guarda: vuelve 400 con la lista de errores,
@@ -16,13 +22,15 @@
 // `version` en el PUT y en aprobar es la que se leyó: si otra persona guardó entremedias, 409 en vez de pisarla (dos
 // personas del equipo pueden tener el mismo video abierto).
 //
-// Aquí no se gasta nada: generar la voz y renderizar van por sus rutas, con su confirmación de costo.
+// Lo único que gasta aquí es la voz (worker/lib/estudio/locucion.js), y siempre con su confirmación de costo.
 // ============================================================
 
 import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { uuid, ahora } from "../lib/ids.js";
 import { difundir, firma } from "../lib/vivo.js";
 import { validarGuion, lineaDeTiempo, estadoTrasEditar, puedePasar, NOMBRE_ESTADO_VIDEO } from "../../src/lib/videoEscenas.js";
+import { listarVoces, locucionDe, pedirMuestra, pedirLocucion, locucionAlDia, claveDeMuestra, ErrorVoz } from "../lib/estudio/locucion.js";
+import { costoDeVoz, fraseDeMuestra, modeloDeVoz, vozPorId } from "../../src/lib/voces.js";
 
 const ID = /^[\w-]{1,80}$/;
 const MAX_PROYECTOS = 200;
@@ -44,6 +52,40 @@ function deFila(f) {
     aprobadoPor: f.aprobado_por ?? null, aprobadoAt: f.aprobado_at ?? null,
     creado: f.created_at, actualizado: f.updated_at,
   };
+}
+
+/** Un ErrorVoz como respuesta: su mensaje, su estado y lo que la pantalla necesita (`codigo`, `costo`…). */
+function respuestaDeVoz(e) {
+  const { message, estado, ...extra } = e;
+  return json({ error: message, ...extra }, estado ?? 400);
+}
+
+/** Las voces de un cliente y su muestra: la lista, oír una ya hecha y pedir una nueva. */
+async function rutasVoces(req, env, { acceso, usuario, cliente, sub, metodo }) {
+  try {
+    if (!sub && metodo === "GET") return json(await listarVoces(env, cliente));
+    if (sub !== "muestra") return noEncontrado("Voces");
+    if (metodo === "GET") {
+      const url = new URL(req.url);
+      const modelo = modeloDeVoz(url.searchParams.get("modelo") ?? "v3");
+      const voz = modelo ? vozPorId(locucionDe(cliente), url.searchParams.get("voz") ?? "") : null;
+      if (!modelo || !voz) return noEncontrado("Voz");
+      const obj = await env.MEDIA.get(claveDeMuestra(modelo.clave, voz.id));
+      if (!obj) {
+        return json({ error: "Esa muestra aún no está hecha.", codigo: "sin_muestra", costo: costoDeVoz(modelo.clave, fraseDeMuestra(modelo.clave).length).usd }, 404);
+      }
+      return new Response(obj.body, { headers: { "Content-Type": obj.httpMetadata?.contentType ?? "audio/mpeg", "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
+    }
+    if (metodo === "POST") {
+      const b = (await cuerpo(req)) ?? {};
+      const r = await pedirMuestra(env, acceso, cliente, { modelo: b.modelo, vozId: b.voz, confirmado: b.confirmado === true, usuario });
+      return json(r, r.lista ? 200 : 202);
+    }
+    return error("Método no permitido.", 405);
+  } catch (e) {
+    if (e instanceof ErrorVoz) return respuestaDeVoz(e);
+    throw e;
+  }
 }
 
 const avisar = (env, acceso, usuario, req, clienteId, id) =>
@@ -96,11 +138,17 @@ export async function rutasVideos(req, env, { acceso, usuario, partes, metodo })
     return error("Método no permitido.", 405);
   }
 
+  if (id === "voces") return rutasVoces(req, env, { acceso, usuario, cliente, sub: accion, metodo });
+
   if (!ID.test(String(id))) return noEncontrado("Video");
   const fila = await acceso.leerUno("videos_proyectos", { id, client_id: clienteId });
   if (!fila) return noEncontrado("Video");
 
-  if (!accion && metodo === "GET") return json({ video: deFila(fila) });
+  // Si la voz se estaba generando y el pedido acabó mal, se dice al abrirlo.
+  if (!accion && metodo === "GET") {
+    const video = deFila(fila);
+    return json({ video: { ...video, locucion: await locucionAlDia(acceso, video.locucion) } });
+  }
 
   if (!accion && metodo === "DELETE") {
     if (fila.estado === "renderizando") return error("Se está renderizando: espera a que termine para borrarlo.", 409);
@@ -138,6 +186,18 @@ export async function rutasVideos(req, env, { acceso, usuario, partes, metodo })
     if (!n) return json({ error: "Otra persona cambió este video mientras lo guardabas. Vuelve a abrirlo." }, 409);
     avisar(env, acceso, usuario, req, clienteId, id);
     return json({ video: deFila({ ...fila, ...cambios }), avisos });
+  }
+
+  if (accion === "locucion" && metodo === "POST") {
+    try {
+      const r = await pedirLocucion(env, acceso, cliente, fila, {
+        modelo: b.modelo, vozId: b.voz, confirmado: b.confirmado === true, usuario, por: firma(usuario, req),
+      });
+      return json(r, 202);
+    } catch (e) {
+      if (e instanceof ErrorVoz) return respuestaDeVoz(e);
+      throw e;
+    }
   }
 
   if (accion === "aprobar" && metodo === "POST") {

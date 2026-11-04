@@ -169,6 +169,9 @@ src/
     motorVideoNavegador.js  Lo que ese motor necesita en el navegador: las imágenes de la galería, el logo, la letra del kit
                           y la textura del grano (no es puro)
     videosApi.js          Cliente de /api/videos/<cliente>
+    voces.js              La VOZ del video animado: ElevenLabs v3 (principal) y v2 por Kie, las voces de serie y las propias
+                          del kit, el costo exacto, el texto que se manda y los tiempos de cada palabra en tres capas (del
+                          motor, verificados al oírla, estimados sobre la duración del MP3) (puro; también el Worker)
     videoProductoEstudio.js  La receta en el Estudio: qué modelo, los dos fotogramas por el camino de una pieza, el video
     temporada.js          Las fechas especiales del cliente que se acercan (sin las delicadas) y cuál merece el aviso del mes (puro)
     modosFoto.js          Los atajos de «¿Qué quieres?»: modos de foto de producto y la versión de temporada (puro)
@@ -3979,6 +3982,29 @@ son del servidor.
   está en su tope. `rendimiento.bundle.test.js` le pone 25 kB y prohíbe Remotion, Lottie y PixiJS: una librería del
   navegador aquí rompería el render, no sólo el peso. La vista previa es GRATIS: tiempos estimados hasta que haya voz,
   sin sonido ni subtítulos todavía (pasos 3 y 4).
+  · **La voz (paso 3) es un TRABAJO del Estudio de `tipo: "audio"`** (`worker/lib/estudio/locucion.js`, `src/lib/voces.js`;
+  rutas `/api/videos/<c>/voces`, `…/voces/muestra` y `…/<id>/locucion`; herramientas `listar_voces`, `previsualizar_voz` y
+  `generar_locucion` para el asistente y el MCP). Va por la MISMA cola de Kie que un video (createTask → recordInfo →
+  bajar), la avanza la bomba y se cobra al entregarla. `estudio_trabajos.tipo` no tiene CHECK: no hizo falta migración.
+  Cosas que no se ven:
+  · **SIEMPRE se confirma** (decisión de la agencia), aunque cueste centavos: la locución y la muestra contestan 409
+  `confirmar` con el costo y los créditos hasta `confirmado: true` (el booleano). En el asistente vuelve como texto «NO SE
+  CREÓ NADA…» con la cifra, como `crear_en_estudio`. Un segundo pedido mientras va el primero: 409 `en_curso`.
+  · **Sólo del guion aprobado** (`puedeGenerarVoz`) y con la versión aprobada en el trabajo: si el guion cambia mientras
+  se genera, la toma se guarda con `desfasada` y el video NO pasa a «Con voz».
+  · **Los tiempos, en tres capas** (`tiemposDeLocucion`): los que traiga Kie (`palabrasDelResultado` lee listas de
+  palabras y la alineación POR CARÁCTER de ElevenLabs; v2 se pide con `timestamps: true`); si no trae, Gemini OYE la toma
+  y la transcribe con tiempos (`verVideo` acepta audio; se ALINEA con el guion por distancia de edición, y por debajo del
+  85 % de coincidencia queda `revisar`); si no, se estiman sobre la duración REAL del MP3 (`duracionMp3`). Siempre UNA
+  por palabra de `palabrasDe(textoDeLocucion(guion))`: con eso `lineaDeTiempo` deja de estimar.
+  · **La muestra de una voz se paga UNA vez para toda la agencia** (`voces/elevenlabs/<v3|v2>/<id>.mp3`, fuera de
+  `clientes/`): la segunda vez sale gratis y `listar_voces` dice cuáles ya están hechas.
+  · **El audio va a `estudio_archivos` con tipo «audio»** y la galería NO lo enseña (`leerGaleria`). `tipoPorBytes`
+  reconoce MP3 (ID3 o cuadro) y WAV. La voz de la marca vive en `kit.locucion` (voz, modelo, hasta 12 voces propias por
+  su id de ElevenLabs) y `fundirKit` la conserva.
+  · **Nada de esto se ha probado contra Kie real** (los tests hablan con un `fetch` de mentira): los nombres de los campos
+  de v3 y v2, si la voz va por id o por nombre (`vozParaKie`), si devuelven tiempos y en qué forma, y el redondeo real de
+  los créditos salen de la documentación pública y se comprueban con la primera toma de verdad.
 
 ## Documentos relacionados
 

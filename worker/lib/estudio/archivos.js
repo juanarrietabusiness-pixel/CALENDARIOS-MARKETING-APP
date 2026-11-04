@@ -7,6 +7,7 @@
 const EXTENSIONES = Object.freeze({
   "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/svg+xml": "svg",
   "video/mp4": "mp4", "video/webm": "webm",
+  "audio/mpeg": "mp3", "audio/wav": "wav",
 });
 
 /** La extensión de un tipo; nunca la que traiga el proveedor por su cuenta. */
@@ -82,6 +83,10 @@ export function tipoPorBytes(bytes) {
   if (b.length > 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45) return "image/webp";
   if (b.length > 12 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) return "video/mp4";
   if (b.length > 4 && b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return "video/webm";
+  // Audio (la locución del video animado): MP3 con su etiqueta ID3 o empezando por un cuadro, y WAV.
+  if (b.length > 3 && b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) return "audio/mpeg";
+  if (b.length > 2 && b[0] === 0xff && (b[1] & 0xe6) === 0xe2) return "audio/mpeg";
+  if (b.length > 12 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x41 && b[10] === 0x56 && b[11] === 0x45) return "audio/wav";
   return null;
 }
 

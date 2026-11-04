@@ -338,9 +338,29 @@ function veo(nivel, { prompt, ajustes, refs, inicio, fin }) {
   return { model: "veo-3-1", input: { ...input, generation_type: "TEXT_2_VIDEO" } };
 }
 
+/**
+ * La VOZ de la locución (ElevenLabs por Kie; src/lib/voces.js): v3 por diálogo con la voz por su id de ElevenLabs (el
+ * ejemplo de su documentación) y v2 con `timestamps`, por si devuelve los tiempos de cada palabra. `ajustes.voz` es lo
+ * que se manda como voz (lo decide worker/lib/estudio/locucion.js). Va aparte de MODELOS_KIE: no son modelos del
+ * catálogo de imagen y video.
+ */
+export const MODELOS_VOZ_KIE = Object.freeze({
+  "elevenlabs-v3-kie": ({ prompt, ajustes }) => ({
+    model: "elevenlabs/text-to-dialogue-v3",
+    input: { dialogue: [{ text: prompt, voice: String(ajustes.voz ?? "") }], stability: Number(ajustes.estabilidad ?? 0.5) },
+  }),
+  "elevenlabs-v2-kie": ({ prompt, ajustes }) => ({
+    model: "elevenlabs/text-to-speech-multilingual-v2",
+    input: {
+      text: prompt, voice: String(ajustes.voz ?? ""), stability: Number(ajustes.estabilidad ?? 0.5),
+      similarity_boost: 0.75, style: 0, speed: 1, timestamps: true,
+    },
+  }),
+});
+
 /** El pedido a Kie: { model, input } para ese modelo, o lanza si no lo conoce. Pura. */
 export function pedidoKie(modelo, { prompt, ajustes = {}, refs = [], inicio = [], fin = [], videos = [], audios = [] }) {
-  const armar = MODELOS_KIE[modelo.id];
+  const armar = MODELOS_KIE[modelo.id] ?? MODELOS_VOZ_KIE[modelo.id];
   if (!armar) throw new ErrorMotor(`El Estudio no sabe pedir «${modelo.nombre}» a Kie.ai.`, 500);
   return armar({ prompt, ajustes, refs, inicio, fin, videos, audios });
 }
@@ -465,7 +485,7 @@ export const MOTOR_KIE = {
     });
     const id = d?.taskId ?? d?.task_id;
     if (!id) throw new ErrorMotor("Kie.ai no devolvió el número de la tarea.", 502);
-    return { id: String(id), cada: esVideo ? 10_000 : 4000 };
+    return { id: String(id), cada: esVideo ? 10_000 : modelo.tipo === "audio" ? 3000 : 4000 };
   },
 
   async sondear(env, { modelo, item }) {
@@ -484,7 +504,9 @@ export const MOTOR_KIE = {
     }
     if (estado !== "success") return { estado: "pendiente", nota: NOTAS[estado] ?? "Kie.ai lo está preparando…", cada: esVideo ? 10_000 : 4000 };
     const [url] = urlsDelResultado(d);
-    if (!url) return { estado: "fallido", error: `${modelo.nombre}: Kie.ai terminó sin ${esVideo ? "ningún video" : "ninguna imagen"}.` };
-    return { estado: "listo", url };
+    const nada = esVideo ? "ningún video" : modelo.tipo === "audio" ? "ningún audio" : "ninguna imagen";
+    if (!url) return { estado: "fallido", error: `${modelo.nombre}: Kie.ai terminó sin ${nada}.` };
+    // Un audio devuelve también lo que vino con él: puede traer los tiempos de cada palabra.
+    return { estado: "listo", url, ...(modelo.tipo === "audio" ? { resultado: d } : {}) };
   },
 };
