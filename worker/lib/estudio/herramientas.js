@@ -126,7 +126,9 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
   {
     name: "previsualizar_voz",
     description:
-      "La MUESTRA de una voz (una frase fija) para escucharla antes de escogerla. Si ya está hecha, da la dirección para oírla y no cuesta nada. " +
+      "La MUESTRA de una voz para escucharla antes de escogerla: una frase fija o, con `texto`, el texto que se quiera oír (hasta 500 caracteres, " +
+      "con [emociones] en v3). Si ya está hecha, da la dirección para oírla y no cuesta nada. Al terminar, estado_trabajo dice si Kie devolvió " +
+      "el tiempo de cada palabra. " +
       "Si no, CUESTA dinero (centavos) y NO se crea hasta confirmarlo: la respuesta trae la cifra; díselo al usuario y sólo si dice que sí vuelve " +
       "a llamarla con confirmado=true. Nunca pongas confirmado=true por tu cuenta. Es un pedido: no espera, se hace solo en un minuto.",
     input_schema: {
@@ -135,6 +137,7 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
         ...clienteParam,
         voz: { type: "string", description: "ID de una voz de listar_voces." },
         modelo: { type: "string", enum: ["v3", "v2"], description: "v3 (por defecto, con emociones) o v2." },
+        texto: { type: "string", description: "Lo que dirá la muestra (opcional, hasta 500 caracteres). Sin él, la frase fija." },
         confirmado: { type: "boolean", description: "Sólo tras oír «sí» del usuario a la cifra exacta que le dijiste." },
       },
       required: ["voz"],
@@ -404,11 +407,13 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       ].join("\n\n");
     },
 
-    async previsualizar_voz({ cliente, voz, modelo, confirmado }) {
+    async previsualizar_voz({ cliente, voz, modelo, texto, confirmado }) {
       const c = await resolverCliente(cliente);
       try {
-        const r = await pedirMuestra(env, acceso, c, { modelo: modelo ?? "v3", vozId: voz, confirmado: confirmado === true, usuario, origen });
-        const oir = `/api/videos/${c.id}/voces/muestra?modelo=${r.modelo}&voz=${encodeURIComponent(r.voz.id)}`;
+        const r = await pedirMuestra(env, acceso, c, {
+          modelo: modelo ?? "v3", vozId: voz, texto: typeof texto === "string" ? texto : "", confirmado: confirmado === true, usuario, origen,
+        });
+        const oir = `/api/videos/${c.id}/voces/muestra?modelo=${r.modelo}&voz=${encodeURIComponent(r.voz.id)}${r.huella ? `&huella=${r.huella}` : ""}`;
         if (r.lista) return `La muestra de ${r.voz.nombre} (${r.modelo}) ya está hecha: se oye en ${oir}. No costó nada.`;
         return `Pedido creado: ${r.trabajoId} (muestra de ${r.voz.nombre}, ${r.modelo}, ${textoCosto(r.costo)}). Tarda menos de un minuto; ` +
           `después se oye en ${oir} y en la pestaña del video. Para saber cómo va: estado_trabajo con el ID ${r.trabajoId}.`;

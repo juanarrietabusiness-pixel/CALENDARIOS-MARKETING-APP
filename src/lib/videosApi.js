@@ -45,3 +45,34 @@ export async function borrarVideo(clienteId, id) {
   await pedir(`${base(clienteId)}/${encodeURIComponent(id)}`, { method: "DELETE" });
   avisar(clienteId, id);
 }
+
+// ------------------------------------------------------------
+// La voz: las voces del cliente y la MUESTRA de una (siempre pide confirmar el costo)
+// ------------------------------------------------------------
+
+/** → { voces, voz, modelo, modelos }: las voces de serie y las propias del kit, y si su muestra ya está hecha. */
+export async function listarVoces(clienteId) {
+  return pedir(`${base(clienteId)}/voces`);
+}
+
+/**
+ * Pide la muestra de una voz (`texto` propio, opcional). Sin `confirmado` el servidor contesta 409 con el costo: aquí
+ * vuelve como `{ confirmar: { costo, creditos, caracteres } }`, no como error. → { lista, trabajoId, huella, … }.
+ */
+export async function pedirMuestraVoz(clienteId, { modelo, voz, texto = "", confirmado = false }) {
+  try {
+    return await pedir(`${base(clienteId)}/voces/muestra`, json("POST", { modelo, voz, texto, confirmado }));
+  } catch (e) {
+    if (e.estado === 409 && e.datos?.codigo === "confirmar") return { confirmar: e.datos };
+    throw e;
+  }
+}
+
+/** La dirección para oír una muestra ya hecha. */
+export const urlMuestraVoz = (clienteId, { modelo, voz, huella = "" }) =>
+  `/api${base(clienteId)}/voces/muestra?modelo=${encodeURIComponent(modelo)}&voz=${encodeURIComponent(voz)}${huella ? `&huella=${huella}` : ""}`;
+
+/** Un paso del trabajo de la voz (lo avanza también la bomba del espacio): → el trabajo, con su `nota`. */
+export async function avanzarTrabajoVoz(clienteId, trabajoId) {
+  return (await pedir(`/estudio/${encodeURIComponent(clienteId)}/trabajos/${encodeURIComponent(trabajoId)}/avanzar`, { method: "POST" }))?.trabajo ?? null;
+}

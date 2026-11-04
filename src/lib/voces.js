@@ -142,6 +142,41 @@ export const FRASE_MUESTRA_VOZ = "[cálida] Hola, así suena la voz de tu marca:
 /** El texto de la muestra para un modelo (v2 no lleva la etiqueta). Pura. */
 export const fraseDeMuestra = (modelo) => (modeloDeVoz(modelo)?.etiquetas ? FRASE_MUESTRA_VOZ : sinEtiquetas(FRASE_MUESTRA_VOZ));
 
+/** Lo más largo que puede ser el texto PROPIO de una muestra (un anuncio corto): más es ya una locución. */
+export const MAX_TEXTO_MUESTRA = 500;
+
+/**
+ * El texto de una muestra: el propio si se escribió uno (para oír cómo suena un anuncio de verdad con esa voz) o la
+ * frase fija. En v2 sin las etiquetas de emoción, como la locución. → { texto, propio } o { error }. Pura.
+ */
+export function textoDeMuestra(modelo, propio = "") {
+  const m = modeloDeVoz(modelo);
+  const limpio = String(propio ?? "").replace(/\s+/g, " ").trim();
+  if (!limpio) return { texto: fraseDeMuestra(modelo), propio: false };
+  if (limpio.length > MAX_TEXTO_MUESTRA) return { error: `El texto de la muestra tiene ${limpio.length} caracteres y admite ${MAX_TEXTO_MUESTRA}: para algo más largo, la locución de un video.` };
+  const texto = (m?.etiquetas ? limpio : sinEtiquetas(limpio)).replace(/\s+/g, " ").trim();
+  return texto ? { texto, propio: true } : { error: "El texto de la muestra no dice nada sin las etiquetas de emoción." };
+}
+
+/**
+ * Lo que la toma trajo de tiempos, dicho para la nota del trabajo (la muestra y la locución): si Kie devolvió el
+ * momento de cada palabra y qué campos llegaron con el audio, que es lo que hay que mirar si la forma no es la
+ * esperada. → { delMotor, palabras, campos, frase }. Pura.
+ */
+export function tiemposQueLlegaron(resultado) {
+  const dichas = palabrasDelResultado(resultado);
+  let r = resultado?.resultJson ?? resultado?.result ?? resultado;
+  if (typeof r === "string") { try { r = JSON.parse(r); } catch { r = null; } }
+  const campos = r && typeof r === "object" ? Object.keys(r).slice(0, 12) : [];
+  const delMotor = Boolean(dichas?.length);
+  return {
+    delMotor, palabras: dichas?.length ?? 0, campos,
+    frase: delMotor
+      ? `Kie devolvió el tiempo de cada palabra (${dichas.length} palabras).`
+      : `Kie NO devolvió tiempos por palabra${campos.length ? ` (llegó: ${campos.join(", ")})` : ""}.`,
+  };
+}
+
 /** Por qué no se puede hacer esa toma (texto vacío o largo de más). Null si se puede. Pura. */
 export function problemaDelTexto(texto, modelo) {
   const m = modeloDeVoz(modelo);

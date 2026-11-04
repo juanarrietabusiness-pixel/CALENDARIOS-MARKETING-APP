@@ -12,8 +12,9 @@
 //                                           del Estudio). Siempre pide confirmar: sin `confirmado: true`, 409 con el costo
 //   GET    /api/videos/<c>/voces            Las voces del cliente (las propias del kit y las de serie), los modelos y
 //                                           si la muestra de cada una ya está hecha
-//   GET    /api/videos/<c>/voces/muestra?modelo=&voz=   La muestra hecha (audio), o 404 `sin_muestra` con su costo
-//   POST   /api/videos/<c>/voces/muestra    { modelo, voz, confirmado }: hacerla (un trabajo; también pide confirmar)
+//   GET    /api/videos/<c>/voces/muestra?modelo=&voz=&huella=   La muestra hecha (audio), o 404 `sin_muestra` con su costo
+//   POST   /api/videos/<c>/voces/muestra    { modelo, voz, texto?, confirmado }: hacerla (un trabajo; también pide
+//                                           confirmar). `texto` propio (≤ 500): queda aparte, con su `huella`
 //
 // El guion lo valida `validarGuion` (src/lib/videoEscenas.js) aquí, en el servidor: lo que llega del navegador, del
 // asistente o de Claude por MCP no se cree. Un guion con errores NO se guarda: vuelve 400 con la lista de errores,
@@ -29,7 +30,7 @@ import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { uuid, ahora } from "../lib/ids.js";
 import { difundir, firma } from "../lib/vivo.js";
 import { validarGuion, lineaDeTiempo, estadoTrasEditar, puedePasar, NOMBRE_ESTADO_VIDEO } from "../../src/lib/videoEscenas.js";
-import { listarVoces, locucionDe, pedirMuestra, pedirLocucion, locucionAlDia, claveDeMuestra, ErrorVoz } from "../lib/estudio/locucion.js";
+import { listarVoces, locucionDe, pedirMuestra, pedirLocucion, locucionAlDia, claveDeMuestra, HUELLA, ErrorVoz } from "../lib/estudio/locucion.js";
 import { costoDeVoz, fraseDeMuestra, modeloDeVoz, vozPorId } from "../../src/lib/voces.js";
 
 const ID = /^[\w-]{1,80}$/;
@@ -70,7 +71,10 @@ async function rutasVoces(req, env, { acceso, usuario, cliente, sub, metodo }) {
       const modelo = modeloDeVoz(url.searchParams.get("modelo") ?? "v3");
       const voz = modelo ? vozPorId(locucionDe(cliente), url.searchParams.get("voz") ?? "") : null;
       if (!modelo || !voz) return noEncontrado("Voz");
-      const obj = await env.MEDIA.get(claveDeMuestra(modelo.clave, voz.id));
+      // `huella`: la de un texto propio (la da el POST); sin ella, la muestra de la frase fija.
+      const huella = url.searchParams.get("huella") ?? "";
+      if (huella && !HUELLA.test(huella)) return noEncontrado("Muestra");
+      const obj = await env.MEDIA.get(claveDeMuestra(modelo.clave, voz.id, huella));
       if (!obj) {
         return json({ error: "Esa muestra aún no está hecha.", codigo: "sin_muestra", costo: costoDeVoz(modelo.clave, fraseDeMuestra(modelo.clave).length).usd }, 404);
       }
@@ -78,7 +82,9 @@ async function rutasVoces(req, env, { acceso, usuario, cliente, sub, metodo }) {
     }
     if (metodo === "POST") {
       const b = (await cuerpo(req)) ?? {};
-      const r = await pedirMuestra(env, acceso, cliente, { modelo: b.modelo, vozId: b.voz, confirmado: b.confirmado === true, usuario });
+      const r = await pedirMuestra(env, acceso, cliente, {
+        modelo: b.modelo, vozId: b.voz, texto: typeof b.texto === "string" ? b.texto : "", confirmado: b.confirmado === true, usuario,
+      });
       return json(r, r.lista ? 200 : 202);
     }
     return error("Método no permitido.", 405);

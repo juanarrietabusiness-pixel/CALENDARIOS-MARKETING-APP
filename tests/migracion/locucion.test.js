@@ -186,6 +186,47 @@ describe("las voces y su muestra", () => {
     expect(llamadas.length).toBe(antes);
   });
 
+  it("con TEXTO propio: su costo por su largo, se manda tal cual a v3, queda aparte y la nota dice si llegaron los tiempos", async () => {
+    const TEXTO = "[preocupada] ¿Las toallitas le dejan la piel roja a tu bebé? [pause] Muchas traen alcohol y perfume que irritan. [tranquila] Nateen limpia suave: hipoalergénicas, sin alcohol y sin perfume. Pídelas hoy por WhatsApp.";
+    const { llamadas } = kie({ resultado: { words: [{ text: "¿Las", start: 0.1, end: 0.3 }, { text: "toallitas", start: 0.3, end: 0.8 }] } });
+    const sin = await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "XrExE9yKIg1WjnnlVkGX", texto: TEXTO } });
+    expect(sin.status).toBe(409);
+    const precio = await sin.json();
+    expect(precio).toMatchObject({ codigo: "confirmar", voz: "Matilda", caracteres: TEXTO.length });
+    expect(precio.creditos).toBeCloseTo((TEXTO.length * 14) / 1000, 5);
+    expect(precio.huella).toMatch(/^[0-9a-f]{16}$/);
+    expect(trabajos()).toHaveLength(0);
+
+    const r = await (await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "XrExE9yKIg1WjnnlVkGX", texto: TEXTO, confirmado: true } })).json();
+    expect(r.huella).toBe(precio.huella);
+    const fin = await hastaElFinal(r.trabajoId);
+    expect(fin.estado).toBe("hecho");
+    expect(fin.nota).toMatch(/Kie devolvió el tiempo de cada palabra \(2 palabras\)/);
+    expect(fin.ajustes.tiempos).toMatchObject({ delMotor: true, palabras: 2 });
+    expect(fin.ajustes.crudo).toMatch(/words/);
+    const cuerpo = JSON.parse(llamadas.find((l) => l.url.endsWith("/createTask")).init.body);
+    expect(cuerpo.input.dialogue[0]).toEqual({ text: TEXTO, voice: "XrExE9yKIg1WjnnlVkGX" });
+    // Aparte de la frase fija: la de serie sigue sin hacer, la propia suena por su huella y el mismo texto ya es gratis.
+    expect(env.MEDIA.objetos.has(`voces/elevenlabs/v3/XrExE9yKIg1WjnnlVkGX-${r.huella}.mp3`)).toBe(true);
+    expect(env.MEDIA.objetos.has("voces/elevenlabs/v3/XrExE9yKIg1WjnnlVkGX.mp3")).toBe(false);
+    expect((await pedir(`/videos/bc/voces/muestra?modelo=v3&voz=XrExE9yKIg1WjnnlVkGX&huella=${r.huella}`)).status).toBe(200);
+    expect((await pedir("/videos/bc/voces/muestra?modelo=v3&voz=XrExE9yKIg1WjnnlVkGX&huella=../../x")).status).toBe(404);
+    const otra = await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "XrExE9yKIg1WjnnlVkGX", texto: TEXTO } });
+    expect(otra.status).toBe(200);
+    expect(await otra.json()).toMatchObject({ lista: true, costo: 0 });
+  });
+
+  it("si Kie no trae tiempos, la nota lo dice con los campos que sí llegaron; un texto de más de 500 no se pide", async () => {
+    kie();
+    const { trabajoId } = await (await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "EXAVITQu4vr4xnSDxMaL", texto: "Hola, mamá.", confirmado: true } })).json();
+    const fin = await hastaElFinal(trabajoId);
+    expect(fin.nota).toMatch(/Kie NO devolvió tiempos por palabra \(llegó: resultUrls\)/);
+    expect(fin.ajustes.tiempos.delMotor).toBe(false);
+    const largo = await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v3", voz: "EXAVITQu4vr4xnSDxMaL", texto: "a".repeat(501), confirmado: true } });
+    expect(largo.status).toBe(400);
+    expect(trabajos()).toHaveLength(1);
+  });
+
   it("una muestra que no está hecha dice su costo; una voz que no es del cliente no existe", async () => {
     kie();
     const r = await pedir("/videos/bc/voces/muestra?modelo=v2&voz=EXAVITQu4vr4xnSDxMaL");
@@ -371,6 +412,7 @@ describe("el asistente y Claude (MCP)", () => {
     expect(llamadas).toHaveLength(0);
     env.MEDIA.objetos.set("voces/elevenlabs/v3/EXAVITQu4vr4xnSDxMaL.mp3", { bytes: mp3(1), tipo: "audio/mpeg" });
     expect(await h.previsualizar_voz({ voz: "EXAVITQu4vr4xnSDxMaL" })).toMatch(/ya está hecha: se oye en \/api\/videos\/bc\/voces\/muestra\?modelo=v3/);
+    expect(await h.previsualizar_voz({ voz: "EXAVITQu4vr4xnSDxMaL", texto: "[cálida] Hola, mamá." })).toMatch(/^NO SE CREÓ NADA.*\(20 caracteres\)/);
     await expect(h.generar_locucion({ video_id: "no-existe", confirmado: true })).rejects.toThrow(/No encontré el video/);
   });
 });
