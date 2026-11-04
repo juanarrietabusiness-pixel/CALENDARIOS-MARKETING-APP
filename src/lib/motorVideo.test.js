@@ -4,7 +4,8 @@ import { validarGuion, lineaDeTiempo } from "./videoEscenas.js";
 import {
   dibujarFrame, paletaDelKit, paletaDelGuion, colorDe, contraste, centroDe, estadoDeCapa, encajarTexto, escenaEn,
   ruidoDeGrano, semilla, aleatorio, COMPONENTES_LISTOS, framesDe, areaSegura, bandaDeSubtitulos, cajasDeEscena,
-  tiemposDeEscena, medirCapa, razonDeContraste, ZONA_SEGURA, PRIMERO_ANTES_DE, colorLegible,
+  tiemposDeEscena, medirCapa, razonDeContraste, ZONA_SEGURA, PRIMERO_ANTES_DE, colorLegible, partirEquilibrado,
+  cajaOpaca, textoPrincipal, capasDe, MIN_LOGO_CIERRE, DESPUES_DEL_GANCHO,
 } from "./motorVideo.js";
 
 // ============================================================
@@ -272,8 +273,62 @@ describe("dónde va cada capa: el motor reparte por zonas", () => {
   });
 });
 
+describe("el borde transparente de una imagen", () => {
+  it("cajaOpaca encuentra lo que se ve", () => {
+    const w = 10; const h = 8; const d = new Uint8ClampedArray(w * h * 4);
+    for (let y = 2; y <= 4; y++) for (let x = 3; x <= 6; x++) d[(y * w + x) * 4 + 3] = 255;
+    expect(cajaOpaca(d, w, h)).toEqual({ x: 3, y: 2, w: 4, h: 3 });
+    expect(cajaOpaca(new Uint8ClampedArray(w * h * 4), w, h)).toBe(null);
+  });
+});
+
+describe("el texto de cada escena", () => {
+  it("una escena sin texto, sello ni llamado enseña su «pantalla» como titular, la primera", () => {
+    const g = guionDelEjemplo();
+    const problema = g.escenas[1];
+    const capas = capasDe(problema);
+    expect(capas[0]).toMatchObject({ tipo: "texto", texto: problema.pantalla, rol: "titular" });
+    expect(textos(pintar(g, lineaDeTiempo(g).escenas[1].hasta - 0.2)).join(" ")).toContain("irritación");
+  });
+
+  it("una escena con su texto no repite la «pantalla»", () => {
+    const g = guionDelEjemplo();
+    expect(capasDe(g.escenas[2]).some((c) => c.id.endsWith("-pantalla"))).toBe(false);
+    expect(capasDe(g.escenas[3]).some((c) => c.id.endsWith("-pantalla"))).toBe(false);
+  });
+
+  it("el texto principal: titular, si no sello, si no texto, si no llamado", () => {
+    expect(textoPrincipal([{ id: "a", tipo: "imagen" }, { id: "b", tipo: "sello" }]).id).toBe("b");
+    expect(textoPrincipal([{ id: "a", tipo: "llamado" }, { id: "b", tipo: "texto", rol: "apoyo" }]).id).toBe("b");
+    expect(textoPrincipal([{ id: "a", tipo: "imagen" }])).toBe(null);
+  });
+});
+
+describe("el logo del cierre", () => {
+  it(`mide al menos ${MIN_LOGO_CIERRE * 100} % del lado corto aunque el guion pida menos`, () => {
+    const g = guionDelEjemplo();
+    const { ctx } = lienzo();
+    const logo = { width: 800, height: 400 };
+    const [caja] = cajasDeEscena(ctx, { guion: g, linea: lineaDeTiempo(g), indice: 3, formato: "9:16", recursos: { logo } });
+    expect(g.escenas[3].capas[0].tam).toBeLessThan(MIN_LOGO_CIERRE);
+    expect(caja.w).toBeGreaterThanOrEqual(1080 * MIN_LOGO_CIERRE - 1);
+  });
+});
+
 describe("el primer segundo", () => {
-  it(`en la primera escena algo empieza a entrar antes de ${PRIMERO_ANTES_DE} s`, () => {
+  it("en el gancho lo primero que entra es su texto principal; lo demás, después", () => {
+    const g = guionDelEjemplo();
+    const l = lineaDeTiempo(g);
+    const [personaje, sello] = g.escenas[0].capas;
+    const t = tiemposDeEscena(g.escenas[0].capas, l.escenas[0], true);
+    expect(t.get(sello.id).desde).toBe(0);
+    expect(t.get(personaje.id).desde).toBeCloseTo(DESPUES_DEL_GANCHO, 5);
+    const a015 = pintar(g, 0.15);
+    expect(textos(a015).join(" ")).toMatch(/PIEL ROJA/);
+    expect(textos(a015).join(" ")).not.toMatch(/Personaje/);
+  });
+
+  it(`sin texto en la primera escena, algo empieza a entrar antes de ${PRIMERO_ANTES_DE} s`, () => {
     const g = validarGuion({ escenas: [{ tipo: "gancho", habla: QUINCE, capas: [{ tipo: "texto", texto: "Tarde", entra: { palabra: 10 } }] }, { tipo: "cierre", habla: QUINCE, capas: [{ tipo: "texto", texto: "Luego", entra: { palabra: 10 } }] }] }).guion;
     const l = lineaDeTiempo(g);
     expect(tiemposDeEscena(g.escenas[0].capas, l.escenas[0], true).get(g.escenas[0].capas[0].id).desde).toBe(0);
@@ -324,6 +379,36 @@ describe("la animación de una capa", () => {
 });
 
 describe("el texto cabe en su sitio", () => {
+  const conFuente = (px) => { const { ctx } = lienzo(); ctx.font = `800 ${px}px x`; return ctx; };
+
+  it("«Sin alcohol · sin perfume» en dos líneas corta en el «·» y lo quita", () => {
+    // 22 px por letra: «Sin alcohol · sin perfume» (25) no cabe en 400; en dos líneas, sí.
+    expect(partirEquilibrado(conFuente(40), "Sin alcohol · sin perfume", 400, 2)).toEqual(["Sin alcohol", "sin perfume"]);
+  });
+
+  it("corta después de una coma antes que en mitad de la frase, si el reparto queda parecido", () => {
+    expect(partirEquilibrado(conFuente(40), "Sin perfume, sin alcohol ni cloro", 480, 2)).toEqual(["Sin perfume,", "sin alcohol ni cloro"]);
+    // Muy desparejo, gana el equilibrio: una palabra sola arriba se ve peor que cortar sin coma.
+    expect(partirEquilibrado(conFuente(40), "Suaves, sin perfume ni alcohol", 500, 2)[0]).not.toBe("Suaves,");
+  });
+
+  it("sin separadores, reparte las líneas parejas (no deja una palabra sola abajo)", () => {
+    const l = partirEquilibrado(conFuente(40), "Pañales de bambú para piel sensible", 520, 2);
+    expect(l).toHaveLength(2);
+    expect(Math.abs(l[0].length - l[1].length)).toBeLessThanOrEqual(8);
+  });
+
+  it("si en esas líneas no cabe, dice null; con una línea que cabe, la deja", () => {
+    expect(partirEquilibrado(conFuente(40), "Una frase demasiado larga para dos", 200, 2)).toBe(null);
+    expect(partirEquilibrado(conFuente(40), "Hola", 400, 1)).toEqual(["Hola"]);
+  });
+
+  it("la placa del producto del ejemplo sale en dos líneas parejas, sin el «·» colgando", () => {
+    const g = guionDelEjemplo();
+    const lineas = textos(pintar(g, lineaDeTiempo(g).escenas[2].hasta - 0.2)).filter((t) => /alcohol|perfume/i.test(t));
+    expect(lineas.some((t) => /·\s*$|^\s*·/.test(t))).toBe(false);
+  });
+
   it("un titular largo baja de tamaño hasta caber en sus tres líneas", () => {
     const { ctx } = lienzo();
     const corto = encajarTexto(ctx, "Hola", { ancho: 900, lado: 1080 });

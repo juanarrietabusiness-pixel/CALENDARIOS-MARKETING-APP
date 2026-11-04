@@ -29,8 +29,17 @@ Container (fase 2) lo consume **tal cual**. Se guarda en `videos_proyectos.guion
      lados; 1:1, 7 % arriba, 10 % abajo y 7 % a los lados; 16:9, 8 %, 12 % y 6 %.
    - **Los subtítulos** tienen su franja dentro del área segura (abajo, o arriba si
      `subtitulos.pos` lo dice; con `centro` van encima del contenido) y nada entra en ella.
-   - **El primer segundo:** si en la primera escena nada entra en sus primeros 0,3 s, la
-     capa que antes entra se adelanta al principio.
+   - **El primer segundo:** en la primera escena (el gancho) lo primero que entra, al
+     empezar, es su **texto principal** (un titular; si no, el sello, otro texto o el
+     llamado); lo demás entra 0,3 s después si iba a entrar antes. Sin texto en la escena,
+     la capa que antes entra se adelanta al principio.
+   - **La `pantalla` se ve:** si una escena no trae ninguna capa con letras (texto, sello o
+     llamado), su `pantalla` se dibuja como titular, la primera y arriba.
+   - **Las líneas van parejas:** un texto que ocupa varias líneas se reparte con líneas
+     parecidas y prefiere cortar en un separador («·», coma, punto); un «·» no empieza ni
+     acaba una línea.
+   - **El logo y las imágenes se miden sin su borde transparente**, y el logo del cierre
+     mide al menos la mitad del lado corto.
    - **Se lee siempre:** un texto sobre su placa (o un llamado sobre su fondo) que no
      llegue a 3 a 1 de contraste usa el claro u oscuro de la paleta que más contraste.
 3. **Los colores son del estilo.** Un token (`fondo`, `superficie`, `texto`, `acento`,

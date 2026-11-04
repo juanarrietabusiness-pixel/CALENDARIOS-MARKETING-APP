@@ -9,23 +9,59 @@
 //   · Las imágenes se piden por /api/media (mismo origen: la CSP dice `img-src 'self'`).
 //     Un `archivo` del guion es el id de la galería del cliente; uno que no está en la
 //     galería se queda sin cargar y el motor pinta su marcador.
+//   · Las imágenes llegan SIN su borde transparente (`sinBordeTransparente`, con `cajaOpaca` del
+//     motor): un logo exportado con mucho aire se dibujaba diminuto dentro de su caja.
 //   · La letra es la del kit (`kit.fuente`), registrada con `cargarFuente`; un guion
 //     puede pedir otra con su clave del kit.
 // ============================================================
 
-import { ruidoDeGrano } from "./motorVideo";
+import { ruidoDeGrano, cajaOpaca } from "./motorVideo";
 import { cargarFuente } from "./muestraFuente";
 
 const imagenes = new Map();
 
-/** Una imagen de /api/media/<clave>, una sola vez por clave → HTMLImageElement, o null si no carga. */
+/** Lo que se recorta como mínimo para que valga la pena una copia (fracción del lado). */
+const MIN_RECORTE = 0.02;
+
+/**
+ * La imagen sin su borde transparente: un lienzo con sólo lo que se ve, o la misma imagen si no hay borde (o no se
+ * pudo leer). Se mide sobre una copia de como mucho 1024 px de lado; el recorte se hace sobre el original.
+ */
+function sinBordeTransparente(img) {
+  try {
+    const w = img.naturalWidth || img.width; const h = img.naturalHeight || img.height;
+    if (!w || !h || typeof document === "undefined") return img;
+    const k = Math.min(1, 1024 / Math.max(w, h));
+    const mw = Math.max(1, Math.round(w * k)); const mh = Math.max(1, Math.round(h * k));
+    const prueba = document.createElement("canvas");
+    prueba.width = mw; prueba.height = mh;
+    const pc = prueba.getContext("2d", { willReadFrequently: true });
+    if (!pc) return img;
+    pc.drawImage(img, 0, 0, mw, mh);
+    const caja = cajaOpaca(pc.getImageData(0, 0, mw, mh).data, mw, mh);
+    if (!caja || (caja.w >= mw * (1 - MIN_RECORTE) && caja.h >= mh * (1 - MIN_RECORTE))) return img;
+    // De la copia reducida al original, con un píxel de margen por el redondeo.
+    const x = Math.max(0, Math.floor(caja.x / k) - 1); const y = Math.max(0, Math.floor(caja.y / k) - 1);
+    const cw = Math.min(w - x, Math.ceil(caja.w / k) + 2); const ch = Math.min(h - y, Math.ceil(caja.h / k) + 2);
+    const lienzo = document.createElement("canvas");
+    lienzo.width = cw; lienzo.height = ch;
+    const lc = lienzo.getContext("2d");
+    if (!lc) return img;
+    lc.drawImage(img, x, y, cw, ch, 0, 0, cw, ch);
+    return lienzo;
+  } catch {
+    return img;
+  }
+}
+
+/** Una imagen de /api/media/<clave>, una sola vez por clave → sin su borde transparente, o null si no carga. */
 function cargarImagen(clave) {
   if (!clave) return Promise.resolve(null);
   if (!imagenes.has(clave)) {
     imagenes.set(clave, new Promise((resolver) => {
       const img = new Image();
       img.decoding = "async";
-      img.onload = () => resolver(img);
+      img.onload = () => resolver(sinBordeTransparente(img));
       img.onerror = () => { imagenes.delete(clave); resolver(null); };
       img.src = `/api/media/${clave}`;
     }));

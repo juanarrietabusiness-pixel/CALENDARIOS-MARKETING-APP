@@ -3963,6 +3963,14 @@ son del servidor.
   de abajo en los tres formatos. En la primera escena algo entra antes de 0,3 s (`tiemposDeEscena`). La vista previa
   tiene «Zonas seguras» (lo pinta ENCIMA, no va en el video). Medido en Chromium (sin GPU): ~5,5 ms por fotograma a
   1080 × 1920.
+  · **Lo que ve primero quien abre el video, y cómo se leen las placas** (ajustes del paso 2). En el gancho entra
+  PRIMERO su texto principal (`textoPrincipal`, `tiemposDeEscena`: lo demás, `DESPUES_DEL_GANCHO` después): entraba el
+  marcador del personaje y el titular a los dos segundos. Una escena sin texto, sello ni llamado dibuja su `pantalla`
+  como titular (`capasDe`): la del problema enseñaba sólo un icono y una lista. Las líneas se reparten parejas y cortan
+  en «·», comas y puntos (`partirEquilibrado`, recargo por cortar fuera de un separador): «Sin alcohol · sin / perfume»
+  cortaba mal. Las imágenes se cargan SIN su borde transparente (`cajaOpaca` en el motor, puro; el recorte lo hace
+  `motorVideoNavegador.js` y lo hará el gemelo del Container) y el logo del cierre mide al menos `MIN_LOGO_CIERRE` (la
+  mitad del lado corto): un logo con mucho aire se veía diminuto.
   · **El guion se valida también en el SERVIDOR** (`worker/rutas/videos.js`): lo que llega del navegador o de Claude no
   se cree, y con errores no se guarda (400 con cada error y su sitio). Guardar y aprobar llevan la `version` que se
   leyó: si otra persona guardó entremedias, 409 (`actualizar` con la versión como condición). Aprobar fija

@@ -228,6 +228,15 @@ const seCruzan = (a, b) => a.desde < b.hasta && b.desde < a.hasta;
 
 /** Aire entre dos cosas del mismo bloque (un titular y su apoyo) y el mínimo entre dos bloques, en fracción del lado. */
 export const AIRE = Object.freeze({ junto: 0.022, minimo: 0.035 });
+/** Lo que mide como mínimo el logo del CIERRE (fracción del lado corto): es la firma del video, no un sello. */
+export const MIN_LOGO_CIERRE = 0.5;
+
+/** El ancho que pide una capa (su `tam` por el lado corto; el logo del cierre, al menos `MIN_LOGO_CIERRE`). */
+function anchoPedido(capa, c) {
+  const tam = capa.tipo === "logo" && c.tipoEscena === "cierre" ? Math.max(capa.tam, MIN_LOGO_CIERRE) : capa.tam;
+  return tam * c.lado;
+}
+
 /** Hasta dónde se encoge lo visual antes de encoger todo (fracción de su tamaño). */
 const MIN_VISUAL = 0.45;
 
@@ -275,7 +284,7 @@ function repartirColumna(ctx, items, caja, c, sitio) {
   // 2. Medidas en el ancho de la columna (la mitad en una fila de dos).
   for (const f of filas) {
     const anchoMax = f.par ? (caja.w - lado * AIRE.minimo) / 2 : caja.w;
-    for (const it of f.items) { it.ancho = Math.min(it.capa.tam * lado, anchoMax); it.m = medirCapa(ctx, it.capa, c, it.ancho); }
+    for (const it of f.items) { it.ancho = Math.min(anchoPedido(it.capa, c), anchoMax); it.m = medirCapa(ctx, it.capa, c, it.ancho); }
     // Lo que se pasa de ancho (un sello girado, una placa con su aire) se encoge hasta caber.
     f.base = Math.min(1, ...f.items.map((it) => anchoMax / Math.max(1, it.m.w)));
     f.h = Math.max(...f.items.map((it) => it.m.h)) * f.base;
@@ -341,7 +350,7 @@ export function repartirEscena(ctx, capas, tiempos, c) {
     if (c.subtitulos.pos === "arriba") { caja.y += sub.h; caja.h -= sub.h; } else caja.h -= sub.h;
   }
   const lista = capas.map((capa, i) => ({ capa, i, zona: zonaDe(capa.pos), lado: ladoDe(capa.pos), cuando: tiempos.get(capa.id) }));
-  for (const it of lista) if (it.capa.pos && typeof it.capa.pos === "object") sitio.set(it.capa.id, { ...centroDe(it.capa.pos, c.ancho, c.alto), escala: 1, ancho: it.capa.tam * c.lado });
+  for (const it of lista) if (it.capa.pos && typeof it.capa.pos === "object") sitio.set(it.capa.id, { ...centroDe(it.capa.pos, c.ancho, c.alto), escala: 1, ancho: anchoPedido(it.capa, c) });
   const repartidas = lista.filter((it) => !(it.capa.pos && typeof it.capa.pos === "object") && it.capa.tipo !== "forma")
     .sort((p, q) => ORDEN_ZONA[p.zona] - ORDEN_ZONA[q.zona] || p.i - q.i);
   const apaisado = c.ancho > c.alto * 1.2;
@@ -370,17 +379,44 @@ export function repartirEscena(ctx, capas, tiempos, c) {
 /** Cuánto puede tardar en aparecer algo en la primera escena: un video que empieza vacío pierde a quien lo ve. */
 export const PRIMERO_ANTES_DE = 0.3;
 
+/** Lo que entra detrás del texto principal del gancho, como mucho: lo bastante para que se lea primero. */
+export const DESPUES_DEL_GANCHO = 0.3;
+
 /**
- * Cuándo entra y sale cada capa de una escena (`Map(id → { desde, hasta })`). En la PRIMERA escena, si nada entra en
- * sus primeros `PRIMERO_ANTES_DE` segundos, la que antes entra se adelanta al inicio (sin cambiar cuándo sale). Pura.
+ * El TEXTO PRINCIPAL de una escena: un titular, si no un sello, si no cualquier texto, si no el llamado. Null si la
+ * escena no trae ninguno. Pura.
+ */
+export function textoPrincipal(capas) {
+  return capas.find((c) => c.tipo === "texto" && (c.rol ?? "titular") === "titular")
+    ?? capas.find((c) => c.tipo === "sello")
+    ?? capas.find((c) => c.tipo === "texto")
+    ?? capas.find((c) => c.tipo === "llamado")
+    ?? null;
+}
+
+/**
+ * Cuándo entra y sale cada capa de una escena (`Map(id → { desde, hasta })`). En la PRIMERA escena (el gancho) lo
+ * primero que entra es su TEXTO PRINCIPAL, al empezar: lo demás (la imagen, el personaje, un marcador) entra
+ * `DESPUES_DEL_GANCHO` segundos después si iba a entrar antes. Sin texto en la escena, la capa que antes entra se
+ * adelanta al inicio si nada entraba en sus primeros `PRIMERO_ANTES_DE` segundos. Cuándo sale cada una no cambia. Pura.
  */
 export function tiemposDeEscena(capas, momento, primera = false) {
   const t = new Map(capas.map((capa) => [capa.id, tiempoDeCapa(capa, momento)]));
-  if (primera && capas.length) {
-    let id = null; let antes = Infinity;
-    for (const capa of capas) { const d = t.get(capa.id).desde; if (d < antes) { antes = d; id = capa.id; } }
-    if (antes > momento.desde + PRIMERO_ANTES_DE) t.set(id, { ...t.get(id), desde: momento.desde });
+  if (!primera || !capas.length) return t;
+  const principal = textoPrincipal(capas);
+  if (principal) {
+    t.set(principal.id, { ...t.get(principal.id), desde: momento.desde });
+    const luego = momento.desde + DESPUES_DEL_GANCHO;
+    for (const capa of capas) {
+      if (capa.id === principal.id) continue;
+      const v = t.get(capa.id);
+      if (v.desde < luego) t.set(capa.id, { desde: luego, hasta: Math.max(v.hasta, luego) });
+    }
+    return t;
   }
+  let id = null; let antes = Infinity;
+  for (const capa of capas) { const d = t.get(capa.id).desde; if (d < antes) { antes = d; id = capa.id; } }
+  if (antes > momento.desde + PRIMERO_ANTES_DE) t.set(id, { ...t.get(id), desde: momento.desde });
   return t;
 }
 
@@ -446,6 +482,58 @@ export function partirEnLineas(ctx, texto, ancho) {
   return lineas;
 }
 
+/** Un separador suelto («·», «|», «—», «/», «+», «=») o una palabra que acaba en «,», «.», «:», «;»: buen sitio para cortar. */
+const SEPARADOR_SUELTO = /^[·•|—–/+=]$/;
+const CIERRA_FRASE = /[,.;:!?…]$/;
+/** Lo que sobra en un borde de línea al cortar en un separador suelto (el «·» no empieza ni acaba una línea). */
+const sinSeparadorEnBorde = (linea) => linea.replace(/^\s*[·•|—–/]\s+/, "").replace(/\s+[·•|—–/]\s*$/, "").trim();
+
+/**
+ * El texto en `n` líneas que caben en `ancho`, EQUILIBRADAS: se escogen los cortes que dejan las líneas más
+ * parecidas entre sí y, a igualdad, los que caen en un separador («·», coma, punto…). «Sin alcohol · sin perfume»
+ * en dos líneas da «Sin alcohol» / «sin perfume», no «Sin alcohol · sin» / «perfume». Un separador suelto no empieza
+ * ni acaba una línea. Null si en `n` líneas no cabe. Pura (sólo mide con la fuente que ya tiene `ctx`).
+ */
+export function partirEquilibrado(ctx, texto, ancho, n) {
+  const palabras = String(texto ?? "").split(/\s+/).filter(Boolean);
+  if (!palabras.length) return [];
+  if (n <= 1 || palabras.length === 1) {
+    const l = palabras.join(" ");
+    return ctx.measureText(l).width <= ancho || palabras.length === 1 ? [l] : null;
+  }
+  const medida = new Map();
+  const linea = (i, j) => sinSeparadorEnBorde(palabras.slice(i, j).join(" "));
+  const mide = (i, j) => {
+    const k = `${i}:${j}`;
+    if (!medida.has(k)) medida.set(k, ctx.measureText(linea(i, j)).width);
+    return medida.get(k);
+  };
+  // Cortar DESPUÉS de la palabra j-1: bueno si ella cierra frase o es un separador suelto, o si la siguiente lo es.
+  const buenCorte = (j) => CIERRA_FRASE.test(palabras[j - 1]) || SEPARADOR_SUELTO.test(palabras[j - 1]) || SEPARADOR_SUELTO.test(palabras[j] ?? "");
+  const N = palabras.length;
+  // costo[k][j]: lo mejor para las primeras j palabras en k líneas. Cada línea paga lo que le falta para llenar el
+  // ancho (al cuadrado: castiga una línea muy corta) y un corte fuera de un separador paga un recargo.
+  const RECARGO = (ancho * 0.3) ** 2;
+  const costo = Array.from({ length: n + 1 }, () => new Array(N + 1).fill(Infinity));
+  const desde = Array.from({ length: n + 1 }, () => new Array(N + 1).fill(-1));
+  costo[0][0] = 0;
+  for (let k = 1; k <= n; k++) {
+    for (let j = k; j <= N; j++) {
+      for (let i = k - 1; i < j; i++) {
+        if (costo[k - 1][i] === Infinity) continue;
+        const w = mide(i, j);
+        if (w > ancho && j - i > 1) continue;
+        const c = costo[k - 1][i] + (ancho - Math.min(w, ancho)) ** 2 + (j < N && !buenCorte(j) ? RECARGO : 0);
+        if (c < costo[k][j]) { costo[k][j] = c; desde[k][j] = i; }
+      }
+    }
+  }
+  if (costo[n][N] === Infinity) return null;
+  const lineas = [];
+  for (let k = n, j = N; k > 0; k--) { const i = desde[k][j]; lineas.unshift(linea(i, j)); j = i; }
+  return lineas.filter(Boolean);
+}
+
 const TIPO_POR_ROL = Object.freeze({
   titular: { tam: 0.092, peso: 800, lineas: 3, fuente: "titular", alto: 1.08 },
   apoyo: { tam: 0.052, peso: 500, lineas: 4, fuente: "cuerpo", alto: 1.25 },
@@ -469,6 +557,8 @@ export function encajarTexto(ctx, texto, { ancho, lado, rol = "titular", familia
     if (lineas.length <= r.lineas && anchoMax <= ancho) break;
     tam *= 0.94;
   }
+  // Con las mismas líneas que pide el corte simple, repartidas parejas y cortando en los separadores.
+  if (lineas.length > 1) lineas = partirEquilibrado(ctx, cuerpo, ancho, lineas.length) ?? lineas;
   return { fuente: `${r.peso} ${Math.round(tam)}px ${familia}`, tam, lineas, altoLinea: tam * r.alto };
 }
 
@@ -531,6 +621,33 @@ function trazarFigura(ctx, figura, w, h, id) {
     }
     default: ctx.arc(0, 0, w / 2, 0, Math.PI * 2); ctx.closePath();
   }
+}
+
+// ------------------------------------------------------------
+// El borde transparente de una imagen
+// ------------------------------------------------------------
+
+/**
+ * La caja de lo que SE VE de una imagen RGBA (`datos` de `getImageData`, `ancho` × `alto`): los píxeles con alfa por
+ * encima de `umbral`. Un logo exportado con mucho aire transparente se dibujaría diminuto dentro de su caja; con esto
+ * quien carga la imagen la recorta (en el navegador, `motorVideoNavegador.js`; en el Container, su gemelo) y el motor
+ * mide lo que se ve. `null` si es toda transparente; la imagen entera si no hay nada que recortar. Pura.
+ */
+export function cajaOpaca(datos, ancho, alto, umbral = 8) {
+  let x0 = ancho; let y0 = alto; let x1 = -1; let y1 = -1;
+  for (let y = 0; y < alto; y++) {
+    const fila = y * ancho * 4;
+    for (let x = 0; x < ancho; x++) {
+      if (datos[fila + x * 4 + 3] > umbral) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        y1 = y;
+      }
+    }
+  }
+  if (x1 < 0) return null;
+  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
 
 // ------------------------------------------------------------
@@ -663,7 +780,8 @@ function dibujarCapa(ctx, capa, estado, c, ancho = capa.tam * c.lado) {
     }
     case "logo": {
       const img = recursos?.logo ?? null;
-      const { w: lw, h: lh } = cajaDeImagen(img, w, maxAlto * 0.5, "contener");
+      // En el cierre el logo puede ocupar más alto: es lo último que se ve.
+      const { w: lw, h: lh } = cajaDeImagen(img, w, maxAlto * (c.tipoEscena === "cierre" ? 0.75 : 0.5), "contener");
       if (!img) { marcador(ctx, "Logo", lw, lh, paleta, cuerpo); return { w: lw, h: lh }; }
       dibujarImagenEn(ctx, img, lw, lh, "contener");
       return { w: lw, h: lh };
@@ -755,16 +873,25 @@ function dibujarGrano(ctx, tile, intensidad, frame, ancho, alto) {
   ctx.restore();
 }
 
-/** Las capas de una escena: las suyas o, si no trae ninguna, su `pantalla` como titular. */
-function capasDe(escena) {
-  if (escena.capas?.length) return escena.capas;
-  return escena.pantalla
-    ? [{ id: `${escena.id}-pantalla`, tipo: "texto", texto: escena.pantalla, rol: "titular", color: "texto", placa: "", alinear: "centro", pos: "centro", tam: 0.84, entra: { s: 0 }, sale: null, animacion: { entrada: "sube", salida: "ninguna", bucle: "ninguno" } }]
-    : [];
+/**
+ * Las capas de una escena. Si ninguna dice algo con letras (texto, sello o llamado) y la escena tiene `pantalla`, se
+ * añade como titular, la PRIMERA y arriba: el texto en pantalla del guion es el mensaje de la escena, y una escena con
+ * sólo un icono y una lista no lo decía.
+ */
+export function capasDe(escena) {
+  const propias = escena.capas ?? [];
+  const conLetras = propias.some((c) => ["texto", "sello", "llamado"].includes(c.tipo));
+  if (conLetras || !escena.pantalla) return propias;
+  return [{
+    id: `${escena.id}-pantalla`, tipo: "texto", texto: escena.pantalla, rol: "titular", color: "texto", placa: "",
+    alinear: "centro", pos: "arriba", tam: 0.84, entra: { s: 0 }, sale: null,
+    animacion: { entrada: "sube", salida: "ninguna", bucle: "ninguno" },
+  }, ...propias];
 }
 
 /** Una escena entera en el instante `t` (fondo y capas), sin transición ni grano. */
-function dibujarEscena(ctx, escena, momento, t, c, primera = false) {
+function dibujarEscena(ctx, escena, momento, t, cGuion, primera = false) {
+  const c = { ...cGuion, tipoEscena: escena.tipo };
   dibujarFondo(ctx, escena.fondo, c.ancho, c.alto, c.paleta, escena.id);
   const capas = capasDe(escena);
   const tiempos = tiemposDeEscena(capas, momento, primera);
@@ -818,9 +945,9 @@ function contextoDe({ guion, formato, paleta, recursos = {}, fuentes = {} }) {
  * quiera ver el reparto sin dibujar. Pura.
  */
 export function cajasDeEscena(ctx, { guion, linea, indice = 0, formato, recursos = {}, fuentes = {} }) {
-  const c = contextoDe({ guion, formato, recursos, fuentes });
   const escena = guion?.escenas?.[indice];
   if (!escena) return [];
+  const c = { ...contextoDe({ guion, formato, recursos, fuentes }), tipoEscena: escena.tipo };
   const capas = capasDe(escena);
   const tiempos = tiemposDeEscena(capas, linea.escenas[indice], indice === 0);
   const sitio = repartirEscena(ctx, capas, tiempos, c);
