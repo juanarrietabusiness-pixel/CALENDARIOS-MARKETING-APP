@@ -1,0 +1,141 @@
+// ============================================================
+// El servidor del CONTAINER del video animado (Node + @napi-rs/canvas)
+//
+// Dibuja con el MISMO motor que la vista previa del navegador (src/lib/motorVideo.js, copiado tal cual en la imagen):
+// lo que ve Claude en un cuadro es lo que verá la persona y lo que saldrá en el mp4. Sin llaves y sin internet: el
+// Worker le manda el guion, los tiempos, la paleta, las imágenes y las fuentes dentro del pedido.
+//
+//   GET  /salud     → 200 «ok» (el Worker espera esto antes del primer pedido)
+//   POST /cuadro    { …, t, ancho?, tipo? }  → la imagen del instante t (JPEG por defecto; X-Escena: su id)
+//   POST /hoja      { …, ancho? }            → una hoja con un cuadro de cada escena en su instante «lleno», numerados
+//   POST /revisar   { …, formatos? }         → JSON { problemas, texto }: la revisión con las fuentes reales
+//
+// Todo pedido lleva { guion, palabras, formato, paleta, imagenes, logo, fuentes } (ver recursos.mjs). El guion se
+// valida aquí también: lo que no valida no se dibuja.
+// ============================================================
+
+import { createServer } from "node:http";
+import { Buffer } from "node:buffer";
+import process from "node:process";
+import { createCanvas } from "@napi-rs/canvas";
+import { validarGuion, lineaDeTiempo, FORMATOS_VIDEO } from "../src/lib/videoEscenas.js";
+import { dibujarFrame, paletaDelGuion, escenaEn } from "../src/lib/motorVideo.js";
+import { revisarEscenas, textoDeRevision, instanteLleno } from "../src/lib/revisionEscenas.js";
+import { prepararRecursos, registrarRespaldo } from "./recursos.mjs";
+
+const PUERTO = Number(process.env.PORT || 8080);
+/** Un pedido trae imágenes y fuentes en base64: más que esto no es un video animado. */
+const TOPE_PEDIDO = 40 * 1024 * 1024;
+
+class ErrorPedido extends Error {
+  constructor(mensaje, estado = 400) { super(mensaje); this.estado = estado; }
+}
+
+function leerCuerpo(req) {
+  return new Promise((ok, mal) => {
+    const trozos = [];
+    let n = 0;
+    req.on("data", (t) => {
+      n += t.length;
+      if (n > TOPE_PEDIDO) { mal(new ErrorPedido("El pedido es demasiado grande.", 413)); req.destroy(); return; }
+      trozos.push(t);
+    });
+    req.on("end", () => ok(Buffer.concat(trozos)));
+    req.on("error", mal);
+  });
+}
+
+/** Lo común a todo pedido: el guion validado, su línea de tiempo, la paleta, el formato y lo que el motor necesita. */
+async function preparar(p) {
+  const v = validarGuion(p.guion);
+  if (!v.ok) throw new ErrorPedido(`El guion tiene errores: ${v.errores.slice(0, 3).map((e) => `${e.donde}: ${e.mensaje}`).join("; ")}`);
+  const guion = v.guion;
+  const formato = FORMATOS_VIDEO[p.formato] ? p.formato : guion.formatos[0];
+  const linea = lineaDeTiempo(guion, Array.isArray(p.palabras) ? p.palabras : null);
+  const paleta = paletaDelGuion(guion, Array.isArray(p.paleta) ? p.paleta : []);
+  const prep = await prepararRecursos(p);
+  return { guion, formato, linea, paleta, ...prep };
+}
+
+/** Un lienzo de `ancho` px con el cuadro del instante t (el motor dibuja en las medidas del formato y se escala). */
+function cuadro(base, t, ancho) {
+  const { ancho: W, alto: H } = FORMATOS_VIDEO[base.formato];
+  const w = Math.max(64, Math.min(W, Math.round(ancho)));
+  const h = Math.round((w * H) / W);
+  const lienzo = createCanvas(w, h);
+  const ctx = lienzo.getContext("2d");
+  ctx.scale(w / W, h / H);
+  dibujarFrame(ctx, { guion: base.guion, linea: base.linea, t, formato: base.formato, paleta: base.paleta, recursos: base.recursos, fuentes: base.fuentes });
+  return lienzo;
+}
+
+const codificar = (lienzo, tipo) => (tipo === "png" ? lienzo.encode("png") : lienzo.encode("jpeg", 84));
+
+async function atender(ruta, p) {
+  const base = await preparar(p);
+  const total = base.linea.total;
+  if (ruta === "/cuadro") {
+    const t = Math.max(0, Math.min(Number(p.t) || 0, Math.max(0, total - 1 / 30)));
+    const lienzo = cuadro(base, t, Number(p.ancho) || 540);
+    const k = escenaEn(base.linea, t);
+    return {
+      cuerpo: await codificar(lienzo, p.tipo), tipo: p.tipo === "png" ? "image/png" : "image/jpeg",
+      cabeceras: { "X-Escena": String(base.guion.escenas[k]?.id ?? ""), "X-Segundo": t.toFixed(2), "X-Total": total.toFixed(2), "X-Faltan": base.faltan.join(",") },
+    };
+  }
+  if (ruta === "/hoja") {
+    const escenas = base.guion.escenas;
+    const n = escenas.length;
+    const columnas = n <= 4 ? n : n <= 9 ? 3 : 4;
+    const filas = Math.ceil(n / columnas);
+    const anchoCelda = Math.max(160, Math.min(360, Math.round((Number(p.ancho) || 1080) / columnas)));
+    const { ancho: W, alto: H } = FORMATOS_VIDEO[base.formato];
+    const altoCelda = Math.round((anchoCelda * H) / W);
+    const rotulo = 34;
+    const hoja = createCanvas(columnas * anchoCelda + (columnas + 1) * 8, filas * (altoCelda + rotulo) + (filas + 1) * 8);
+    const ctx = hoja.getContext("2d");
+    ctx.fillStyle = "#1c1c1c"; ctx.fillRect(0, 0, hoja.width, hoja.height);
+    escenas.forEach((e, i) => {
+      const t = instanteLleno(base.guion, base.linea, i);
+      const x = 8 + (i % columnas) * (anchoCelda + 8);
+      const y = 8 + Math.floor(i / columnas) * (altoCelda + rotulo + 8);
+      ctx.drawImage(cuadro(base, t, anchoCelda), x, y, anchoCelda, altoCelda);
+      ctx.fillStyle = "#ffffff"; ctx.font = "700 20px Roboto, sans-serif"; ctx.textBaseline = "middle";
+      ctx.fillText(`${i + 1} · ${e.id} · ${t.toFixed(1)} s`, x + 4, y + altoCelda + rotulo / 2);
+    });
+    return { cuerpo: await codificar(hoja, p.tipo), tipo: p.tipo === "png" ? "image/png" : "image/jpeg", cabeceras: { "X-Total": total.toFixed(2), "X-Faltan": base.faltan.join(",") } };
+  }
+  if (ruta === "/revisar") {
+    const formatos = (Array.isArray(p.formatos) && p.formatos.length ? p.formatos : [base.formato]).filter((f) => FORMATOS_VIDEO[f]);
+    const ctx = createCanvas(16, 16).getContext("2d");
+    const porFormato = formatos.map((formato) => {
+      const problemas = revisarEscenas(ctx, { guion: base.guion, linea: base.linea, formato, recursos: base.recursos, fuentes: base.fuentes });
+      return { formato, problemas, texto: textoDeRevision(problemas, { formato }) };
+    });
+    const json = JSON.stringify({ formatos: porFormato, faltan: base.faltan, total });
+    return { cuerpo: Buffer.from(json), tipo: "application/json", cabeceras: {} };
+  }
+  throw new ErrorPedido("No existe esa ruta.", 404);
+}
+
+const servidor = createServer(async (req, res) => {
+  try {
+    if (req.method === "GET" && req.url === "/salud") { res.writeHead(200, { "Content-Type": "text/plain" }); res.end("ok"); return; }
+    if (req.method !== "POST") throw new ErrorPedido("Método no permitido.", 405);
+    const crudo = await leerCuerpo(req);
+    let p;
+    try { p = JSON.parse(crudo.toString("utf8")); } catch { throw new ErrorPedido("El pedido no es JSON."); }
+    const inicio = Date.now();
+    const r = await atender(new URL(req.url, "http://x").pathname, p);
+    res.writeHead(200, { "Content-Type": r.tipo, "X-Ms": String(Date.now() - inicio), ...r.cabeceras });
+    res.end(r.cuerpo);
+  } catch (e) {
+    const estado = e instanceof ErrorPedido ? e.estado : 500;
+    if (estado === 500) console.error("contenedor:", e);
+    res.writeHead(estado, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: estado === 500 ? `El dibujo falló: ${e?.message ?? e}` : e.message }));
+  }
+});
+
+const letras = registrarRespaldo();
+servidor.listen(PUERTO, () => console.log(`contenedor del video animado en :${PUERTO} (${letras} archivos de Roboto)`));

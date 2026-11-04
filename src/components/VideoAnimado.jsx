@@ -14,6 +14,7 @@ import Icon from "./Icon";
 import { validarGuion, lineaDeTiempo, FORMATOS_VIDEO, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, puedePasar } from "../lib/videoEscenas";
 import { dibujarFrame, paletaDelGuion, escenaEn, COMPONENTES_LISTOS, areaSegura, bandaDeSubtitulos } from "../lib/motorVideo";
 import { prepararRecursos } from "../lib/motorVideoNavegador";
+import { revisarEscenas } from "../lib/revisionEscenas";
 import { listarVideos, leerVideo, crearVideo, guardarVideo, aprobarVideo, borrarVideo } from "../lib/videosApi";
 import { limpiarKit } from "../lib/kitMarca";
 import "./VideoAnimado.css";
@@ -338,6 +339,19 @@ function VistaPrevia({ guion, palabras, kit, archivos }) {
     return () => o.disconnect();
   }, [pintar, t]);
 
+  // La revisión antes de renderizar, con las letras ya cargadas: lo mismo que mira Claude con `revisar_video`.
+  const problemas = useMemo(() => {
+    if (typeof document === "undefined") return [];
+    const ctx = document.createElement("canvas").getContext("2d");
+    if (!ctx) return [];
+    try {
+      return revisarEscenas(ctx, { guion, linea, formato: f, recursos: prep.recursos, fuentes: prep.fuentes })
+        .sort((a, b) => Number(b.grave) - Number(a.grave) || a.en - b.en);
+    } catch {
+      return [];
+    }
+  }, [guion, linea, f, prep]);
+
   const k = escenaEn(linea, t);
   const alternar = () => { if (!reproduciendo && t >= linea.total - 0.01) setT(0); setReproduciendo((r) => !r); };
   const paso = (d) => { setReproduciendo(false); setT((x) => Math.min(linea.total, Math.max(0, x + d))); };
@@ -368,6 +382,25 @@ function VistaPrevia({ guion, palabras, kit, archivos }) {
         {" "}Sin sonido ni subtítulos todavía.
         {prep.faltan.length > 0 && ` ${prep.faltan.length === 1 ? "Una imagen no está" : `${prep.faltan.length} imágenes no están`} en la galería: sale su marcador.`}
       </p>
+      <section className="va-revision" aria-labelledby={`${ids}-rev`}>
+        <h4 id={`${ids}-rev`} className="va-revision-titulo">
+          Revisión antes de renderizar ({f}): {problemas.length
+            ? `${problemas.filter((p) => p.grave).length} grave${problemas.filter((p) => p.grave).length === 1 ? "" : "s"}, ${problemas.filter((p) => !p.grave).length} aviso${problemas.filter((p) => !p.grave).length === 1 ? "" : "s"}`
+            : "todo en orden"}
+        </h4>
+        {problemas.length > 0 && (
+          <ul className="va-revision-lista">
+            {problemas.map((p, i) => (
+              <li key={`${p.escena}-${p.capa}-${p.tipo}-${i}`} className={p.grave ? "va-rev-grave" : "va-rev-aviso"}>
+                <span className="va-rev-tipo">{p.grave ? "Grave" : "Aviso"}</span>
+                <span>Escena {p.n} · {fmtSeg(p.en)} — {p.mensaje}</span>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setReproduciendo(false); setT(Math.min(linea.total, p.en + 0.5)); }}
+                  aria-label={`Ver la escena ${p.n} en ${fmtSeg(p.en)}`}>Ver</button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }

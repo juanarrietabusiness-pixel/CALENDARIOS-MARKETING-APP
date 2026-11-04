@@ -20,6 +20,11 @@
 //                                           ElevenLabs (gratis; sólo con la llave oficial)
 //   POST   /api/videos/<c>/voces/biblioteca { publico, voz, nombre }: añadirla a la cuenta (sólo administración)
 //   GET    /api/videos/<c>/voces/previa?u=  La muestra GRATIS que publica ElevenLabs de una voz (sólo de sus almacenes)
+//   GET    /api/videos/<c>/<id>/cuadro?t=&formato=&ancho=   La imagen de un instante, dibujada por el Container con el
+//                                           MISMO motor que la vista previa (JPEG; X-Escena dice cuál)
+//   GET    /api/videos/<c>/<id>/hoja?formato=   Un cuadro de cada escena, en su instante «lleno», en una sola imagen
+//   GET    /api/videos/<c>/<id>/revision?formatos=9:16,1:1   La revisión antes de renderizar (subtítulos que tapan,
+//                                           texto que se sale, fuera de la zona segura…), con las fuentes reales
 //
 // El guion lo valida `validarGuion` (src/lib/videoEscenas.js) aquí, en el servidor: lo que llega del navegador, del
 // asistente o de Claude por MCP no se cree. Un guion con errores NO se guarda: vuelve 400 con la lista de errores,
@@ -39,6 +44,7 @@ import {
 import { listarVoces, pedirMuestra, pedirLocucion, locucionAlDia, claveDeMuestra, HUELLA, ErrorVoz, viaDeVoz, fijarVozDeMarca } from "../lib/estudio/locucion.js";
 import { buscarEnBiblioteca, anadirDeLaBiblioteca, previaGratis, ACENTOS_BIBLIOTECA } from "../lib/estudio/elevenlabs.js";
 import { ErrorMotor } from "../lib/estudio/gemini.js";
+import { pedidoDelVideo, alContenedor } from "../lib/estudio/cuadros.js";
 import { costoDeVoz, fraseDeMuestra, modeloDeVoz, esIdDeVoz } from "../../src/lib/voces.js";
 
 /** Un ErrorVoz como respuesta: su mensaje, su estado y lo que la pantalla necesita (`codigo`, `costo`…). */
@@ -157,6 +163,20 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
     await acceso.borrar("videos_proyectos", { id, client_id: clienteId });
     avisar(env, acceso, usuario, req, clienteId, id);
     return json({ ok: true });
+  }
+
+  // Ver el video antes de renderizar: un cuadro, la hoja de escenas o la revisión (el Container dibuja; no gasta IA).
+  if (["cuadro", "hoja", "revision"].includes(accion) && metodo === "GET") {
+    const u = new URL(req.url).searchParams;
+    const { pedido } = await pedidoDelVideo(env, acceso, cliente, fila, { formato: u.get("formato") ?? "" });
+    if (accion === "revision") {
+      const formatos = (u.get("formatos") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+      return json(await (await alContenedor(env, "/revisar", { ...pedido, formatos })).json());
+    }
+    const r = await alContenedor(env, `/${accion}`, { ...pedido, t: Number(u.get("t")) || 0, ancho: Number(u.get("ancho")) || (accion === "hoja" ? 1080 : 540) });
+    const cabeceras = { "Content-Type": r.headers.get("Content-Type") ?? "image/jpeg", "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" };
+    for (const k of ["X-Escena", "X-Segundo", "X-Total", "X-Faltan"]) if (r.headers.get(k) !== null) cabeceras[k] = r.headers.get(k);
+    return new Response(r.body, { headers: cabeceras });
   }
 
   const b = (await cuerpo(req)) ?? {};

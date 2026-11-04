@@ -63,6 +63,11 @@
       {
         "name": "HUB",
         "class_name": "EspacioHub"
+      },
+      // El Container del video animado (worker/contenedor.js): dibuja los cuadros con el mismo motor que la vista previa.
+      {
+        "name": "VIDEO",
+        "class_name": "ContenedorVideo"
       }
     ]
   },
@@ -71,8 +76,37 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["EspacioHub"]
+    },
+    // v2: el Durable Object del Container del video animado. No toca D1 ni a EspacioHub.
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["ContenedorVideo"]
     }
   ],
+
+  // ============================================================
+  // El CONTAINER del video animado (container/: Node + @napi-rs/canvas).
+  //
+  // `basic` (1/4 de vCPU, 1 GiB): un cuadro son milisegundos. Se duerme a los 2 minutos sin pedidos
+  // (worker/contenedor.js): la memoria se paga despierto, la CPU sólo al dibujar. Requiere Workers Paid.
+  // La imagen se construye desde la RAÍZ (image_build_context): copia src/lib, el MISMO motor de la vista previa.
+  // `wrangler deploy` la construye con Docker (GitHub Actions lo trae) y la sube al registro de Cloudflare.
+  // ============================================================
+  "containers": [
+    {
+      "class_name": "ContenedorVideo",
+      "image": "./container/Dockerfile",
+      "image_build_context": ".",
+      "instance_type": "basic",
+      "max_instances": 2
+    }
+  ],
+
+  // En local (`wrangler dev`, las pruebas en vivo) el Container no se arranca: necesitaría Docker. La ruta del cuadro
+  // contesta 503 diciéndolo; el Container se prueba aparte (container/probar.mjs, job «contenedor» de CI).
+  "dev": {
+    "enable_containers": false
+  },
 
   // Los secretos NO van aquí. Se ponen con `wrangler secret put`:
   //   ANTHROPIC_API_KEY, GITHUB_TOKEN, GOOGLE_AI_KEY,

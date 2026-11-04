@@ -16,6 +16,7 @@
 // ============================================================
 
 import { ruidoDeGrano, cajaOpaca } from "./motorVideo";
+import { archivosDelGuion } from "./videoEscenas";
 import { cargarFuente } from "./muestraFuente";
 
 const imagenes = new Map();
@@ -69,14 +70,8 @@ function cargarImagen(clave) {
   return imagenes.get(clave);
 }
 
-/** Los ids de la galería que nombra un guion (imágenes, teléfonos, antes y después). Pura. */
-export function archivosDelGuion(guion) {
-  const ids = new Set();
-  for (const e of guion?.escenas ?? []) {
-    for (const c of e.capas ?? []) for (const k of ["archivo", "archivoAntes", "archivoDespues"]) if (c[k]) ids.add(c[k]);
-  }
-  return [...ids];
-}
+/** Los ids de la galería que nombra un guion: vive en videoEscenas.js (lo usa también el Worker). */
+export { archivosDelGuion };
 
 let grano = null;
 /** La textura del grano (256 × 256), hecha una vez. */

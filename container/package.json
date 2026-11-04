@@ -1,0 +1,13 @@
+{
+  "name": "contenedor-video-animado",
+  "private": true,
+  "type": "module",
+  "description": "El servidor del Container que dibuja los cuadros del video animado con el mismo motor que la vista previa.",
+  "scripts": {
+    "start": "node servidor.mjs"
+  },
+  "dependencies": {
+    "@expo-google-fonts/roboto": "0.4.3",
+    "@napi-rs/canvas": "1.1.0"
+  }
+}

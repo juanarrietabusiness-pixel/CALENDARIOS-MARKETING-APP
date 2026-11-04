@@ -513,6 +513,15 @@ export function lineaDeTiempo(guion, palabras = null) {
   return { total: redondo(reloj), estimado, escenas: salida, silencios };
 }
 
+/** Los ids de la galería que nombra un guion (imágenes, teléfonos, antes y después). Pura. */
+export function archivosDelGuion(guion) {
+  const ids = new Set();
+  for (const e of guion?.escenas ?? []) {
+    for (const c of e.capas ?? []) for (const k of ["archivo", "archivoAntes", "archivoDespues"]) if (c[k]) ids.add(c[k]);
+  }
+  return [...ids];
+}
+
 /** Cuándo se ve una capa, en segundos del video, dentro de su escena ya colocada (`lineaDeTiempo().escenas[k]`). Pura. */
 export function tiempoDeCapa(capa, escena) {
   const momento = (m, def) => {

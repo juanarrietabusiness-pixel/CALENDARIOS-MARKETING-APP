@@ -75,6 +75,30 @@ jobs:
           if-no-files-found: ignore
 
   # ------------------------------------------------------------
+  # La imagen del CONTAINER del video animado (container/), construida y
+  # PROBADA: que se construya y arranque no basta, tiene que dibujar. La
+  # prueba de humo (container/probar.mjs) le pide un cuadro, la hoja de
+  # escenas y la revisión del guion de ejemplo. Es un job aparte para no
+  # alargar «verificar» ni tocar el nombre que exige el ruleset.
+  # ------------------------------------------------------------
+  contenedor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Construir la imagen
+        run: docker build -f container/Dockerfile -t video-animado .
+      - name: Arrancarla
+        run: docker run -d -p 8080:8080 --name video video-animado
+      - name: Prueba de humo
+        run: node container/probar.mjs http://localhost:8080
+      - name: Lo que dijo el contenedor
+        if: always()
+        run: docker logs video || true
+
+  # ------------------------------------------------------------
   # Comentario en el PR cuando algo falla.
   #
   # Va en un job aparte con permiso de escritura, para que el job que

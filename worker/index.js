@@ -75,6 +75,7 @@ import { rutasBandeja, rutaWebhookMeta } from "./rutas/bandeja.js";
 // exportara sólo desde hub.js, el despliegue moriría con «class not
 // found» y el síntoma no diría de qué clase habla.
 export { EspacioHub } from "./hub.js";
+export { ContenedorVideo } from "./contenedor.js";
 
 /** Los errores del enlace público son de quien lo usa, no del servidor. */
 function comoRespuesta(e) {

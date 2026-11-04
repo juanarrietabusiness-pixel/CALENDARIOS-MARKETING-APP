@@ -30,7 +30,10 @@ function propiedad(nombre, def) {
   }
 }
 
-/** Un guion de ejemplo, neutro, que valida. Tres escenas: gancho, explicación y cierre. */
+/**
+ * Un guion de ejemplo, neutro, que valida y que el motor ya dibuja entero (sólo componentes de `COMPONENTES_LISTOS`: un
+ * ejemplo con marcadores enseñaría justo lo que hay que evitar). Tres escenas: gancho, explicación y cierre.
+ */
 export const EJEMPLO_GUION = Object.freeze({
   version: 1,
   titulo: "Tres errores al elegir",
@@ -42,7 +45,7 @@ export const EJEMPLO_GUION = Object.freeze({
       id: "e1", tipo: "gancho", habla: "[intrigada] ¿Sabías que casi todos cometen estos tres errores?", pantalla: "3 errores",
       fondo: { tipo: "degradado", color: "fondo", color2: "superficie" }, transicion: { tipo: "corte" },
       capas: [
-        { tipo: "cifra", id: "n", valor: 3, pos: "centro", tam: 0.5, entra: { palabra: 0 }, animacion: { entrada: "escala" } },
+        { tipo: "texto", id: "n", texto: "3", rol: "dato", color: "acento", pos: "centro", tam: 0.5, entra: { palabra: 0 }, animacion: { entrada: "escala" } },
         { tipo: "texto", id: "t", texto: "errores que casi todos cometen", rol: "titular", pos: "abajo", entra: { palabra: 5 }, animacion: { entrada: "sube" } },
       ],
     },
@@ -51,7 +54,7 @@ export const EJEMPLO_GUION = Object.freeze({
       fondo: { tipo: "plano", color: "fondo" }, transicion: { tipo: "deslizar", dur: 0.4 },
       capas: [
         { tipo: "sello", id: "s", texto: "Error 1", pos: "arriba", entra: { palabra: 1 }, animacion: { entrada: "rebote" } },
-        { tipo: "lista", id: "l", items: ["Sólo el precio", "Lo que necesitas"], pos: "centro", entra: { palabra: 3 }, animacion: { entrada: "sube" } },
+        { tipo: "texto", id: "l", texto: "Mira lo que necesitas, no sólo el precio", rol: "apoyo", placa: "superficie", pos: "centro", entra: { palabra: 3 }, animacion: { entrada: "sube" } },
       ],
     },
     {

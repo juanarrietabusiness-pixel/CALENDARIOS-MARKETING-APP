@@ -67,3 +67,11 @@
 .va-bib-voz { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2); background: var(--surface-2); border-radius: var(--radius-sm); }
 .va-bib-voz p { margin: 0; }
 .va-probar summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; font-weight: 600; }
+
+/* La revisión antes de renderizar, debajo de la vista previa. */
+.va-revision { margin-top: var(--sp-2); padding: var(--sp-2) var(--sp-3); background: var(--surface-2); border-radius: var(--radius); }
+.va-revision-titulo { margin: 0; font-size: var(--fs-sm); }
+.va-revision-lista { list-style: none; margin: var(--sp-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); }
+.va-revision-lista li { display: grid; grid-template-columns: auto 1fr auto; gap: var(--sp-2); align-items: center; font-size: var(--fs-sm); }
+.va-rev-tipo { font-size: var(--fs-3xs); font-weight: 700; text-transform: uppercase; padding: 2px var(--sp-2); border-radius: var(--radius-pill); background: var(--surface-3); }
+.va-rev-grave .va-rev-tipo { background: var(--danger-soft); color: var(--danger); }

@@ -169,6 +169,8 @@ src/
     motorVideoNavegador.js  Lo que ese motor necesita en el navegador: las imágenes de la galería, el logo, la letra del kit
                           y la textura del grano (no es puro)
     videosApi.js          Cliente de /api/videos/<cliente>
+    revisionEscenas.js    La revisión antes de renderizar: subtítulos que tapan, texto que se sale o se parte, fuera de la zona
+                          segura, capas encimadas; el instante «lleno» de cada escena (puro: mide con el lienzo que le dan)
     videoFormatoIA.js     El formato de escenas v1 contado a una IA (`formato_video`), sacado del mismo vocabulario que valida,
                           con un ejemplo NEUTRO que un test exige que valide (puro)
     voces.js              La VOZ del video animado: ElevenLabs v3 (principal) y v2, directo o por Kie, las voces de serie y las propias
@@ -577,6 +579,7 @@ worker/
                           puro), almacen.js (de quién es cada aviso y guardarlo fundiendo lo que
                           había), graph.js (suscribir la página, «Actualizar», responder, ocultar,
                           borrar y el mensaje privado)
+  contenedor.js           El Durable Object del CONTAINER del video animado: lo arranca, espera a /salud, lo duerme a los 2 min
   rutas/
     datos.js              CRUD: clientes, calendarios, chat, tareas, banco
     equipo.js             Miembros e invitaciones; la ruta pública del enlace
@@ -617,6 +620,8 @@ worker/
     inspiracion.js        /api/inspiracion/<cliente>: el feed, actualizar, traer un archivo, el resumen
     historiasAuto.js      /api/historias-auto/<cliente>: ajustes, pendientes de preparar, piezas
     videos.js             /api/videos/<cliente>: los videos animados (listar, crear, guardar el guion, aprobar, borrar)
+container/                El Container del video animado (Node + @napi-rs/canvas, Dockerfile): /cuadro, /hoja, /revisar con el
+                          MISMO motor de src/lib; probar.mjs es su prueba de humo (job «contenedor» de CI)
 migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
@@ -4068,6 +4073,28 @@ son del servidor.
   que la pantalla: el guion se valida en el servidor, la `version` leída evita pisar, editar devuelve a borrador.
   Aprobar es de la persona: la descripción le dice a Claude que sólo con su sí. Con eso `generar_locucion` ya tiene un
   video aprobado que nombrar. Ninguna gasta.
+  · **«Ver un cuadro» es el CONTAINER, no el Worker** (el Worker no tiene lienzo; `container/`, `worker/contenedor.js`,
+  `worker/lib/estudio/cuadros.js`). Dibuja con el MISMO motor (la imagen copia `src/lib` desde la raíz, así no se queda
+  atrás de la vista previa) y lo que no se puede leer desde dentro —imágenes de la galería, logo, letra del kit— va en el
+  pedido, leído de R2 y sólo de ESE cliente. Herramientas `ver_cuadro` (una escena ya «llena» o un segundo), `ver_escenas`
+  (una hoja con todas) y `revisar_video` (`revisarEscenas`, con las fuentes reales); devuelven `{ texto, imagenes }` y el
+  MCP y el asistente las pasan como bloques de imagen. Rutas GET `/api/videos/<c>/<id>/cuadro|hoja|revision`. La misma
+  revisión sale GRATIS debajo de la vista previa (navegador). Cosas que no se ven:
+  · **Sin `@cloudflare/containers`**: importa `cloudflare:workers` y las pruebas cargan el Worker en Node. Se usa la API
+  nativa (`ctx.container.start`, `getTcpPort`, `setInactivityTimeout`); el cuerpo se pasa como bytes (como flujo pide
+  `duplex` fuera de Workers).
+  · **En local no hay Container** (`dev.enable_containers: false`): `wrangler dev` y `test:vivo` no necesitan Docker, y
+  la ruta contesta 503 diciéndolo. La imagen se prueba de verdad en CI (job «contenedor») y en «Desplegar» ANTES de
+  publicar: se construye, se arranca y `container/probar.mjs` le pide un cuadro, la hoja y la revisión.
+  · **La imagen no usa apt ni Docker Hub**: la base sale del espejo oficial en ECR (Docker Hub limita las descargas
+  anónimas) y la letra de respaldo (Roboto, la que nombra `FUENTE_RESPALDO`) llega por npm y se registra al arrancar.
+  · **`basic` (¼ vCPU, 1 GiB) y se duerme a los 2 min**: la memoria se paga despierta, la CPU sólo al dibujar; una
+  sesión de cuadros son ~120 GiB-s, unas 750 al mes dentro de lo que trae Workers Paid. El render del mp4 (paso 3) irá
+  en uno más grande.
+  · **`wrangler deploy` publica el Worker ANTES de subir la imagen**: sin el permiso `Containers: Edit` en el token, el
+  Worker queda publicado y sólo el cuadro falla (503). Migración de Durable Objects `v2` (`ContenedorVideo`), no de D1.
+  · **El ejemplo de `formato_video` sólo usa componentes que el motor ya dibuja** (un test lo exige): uno con marcadores
+  enseñaba a Claude justo lo que hay que evitar.
   · **Nada de esto se ha probado contra Kie real** (los tests hablan con un `fetch` de mentira): los nombres de los campos
   de v3 y v2, si la voz va por id o por nombre (`vozParaKie`), si devuelven tiempos y en qué forma, y el redondeo real de
   los créditos salen de la documentación pública y se comprueban con la primera toma de verdad.
