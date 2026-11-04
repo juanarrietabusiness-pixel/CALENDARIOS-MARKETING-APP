@@ -5,6 +5,7 @@ import { d1EnMemoria } from "../utils/d1Memoria.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
 import { tipoPorBytes } from "../../worker/lib/estudio/archivos.js";
+import { verVideo } from "../../worker/lib/geminiVideo.js";
 import { crearHerramientasEstudio, DEFINICIONES_ESTUDIO } from "../../worker/lib/estudio/herramientas.js";
 import { crearAcceso } from "../../worker/lib/acceso.js";
 import { HERRAMIENTAS_MCP } from "../../worker/lib/mcp.js";
@@ -375,6 +376,13 @@ describe("el asistente y Claude (MCP)", () => {
 });
 
 describe("lo que no se ve", () => {
+  it("el análisis de video de siempre sigue rechazando un audio: sólo la locución lo pide expresamente", async () => {
+    env.GOOGLE_AI_KEY = "g-secreta";
+    const { llamadas } = kie();
+    await expect(verVideo(env, null, { bytes: mp3(1), mime: "audio/mpeg", prompt: "x" })).rejects.toThrow(/no es un video/);
+    expect(llamadas).toHaveLength(0);
+  });
+
   it("el audio se reconoce por sus bytes", () => {
     expect(tipoPorBytes(mp3(1))).toBe("audio/mpeg");
     expect(tipoPorBytes(new Uint8Array([0xff, 0xfb, 0x90, 0x44, 0, 0, 0, 0, 0, 0, 0, 0]))).toBe("audio/mpeg");

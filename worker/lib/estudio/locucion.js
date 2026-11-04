@@ -197,7 +197,7 @@ async function oirConTiempos(env, acceso, { bytes, mime, clienteId }) {
   try {
     if (await bloqueoPorPresupuesto(acceso)) return null;
     const texto = await verVideo(env, acceso, {
-      bytes, mime, nombre: "locucion", clienteId, prompt: PEDIDO_TRANSCRIPCION_TIEMPOS, funcion: "verificar locución", json: true,
+      bytes, mime, nombre: "locucion", clienteId, prompt: PEDIDO_TRANSCRIPCION_TIEMPOS, funcion: "verificar locución", json: true, audio: true,
     });
     return leerTranscripcionConTiempos(texto);
   } catch (e) {
