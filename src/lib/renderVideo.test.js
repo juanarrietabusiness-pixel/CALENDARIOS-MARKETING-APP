@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cuadrosDelVideo, tramosDeAudio, filtroDeAudio, leerLoudnorm, puedeRenderizar, esMp4, RENDER } from "./renderVideo.js";
+import { cuadrosDelVideo, tramosDeAudio, armarPcm, FILTRO_MEDIR, gananciaDe, filtroDeNormalizar, BYTES_MUESTRA, leerLoudnorm, puedeRenderizar, esMp4, RENDER } from "./renderVideo.js";
 
 // ============================================================
 // Lo que se decide antes de dibujar el mp4: los cuadros, el audio con los silencios, el volumen y cuándo se puede.
@@ -22,20 +22,52 @@ describe("los cuadros y el audio", () => {
     expect(tramosDeAudio([])).toEqual([{ tipo: "voz", desde: 0, hasta: null }]);
   });
 
-  it("el filtro corta la voz, mete el silencio, rellena hasta el final y mide o aplica el volumen", () => {
-    const tramos = tramosDeAudio([{ en: 3.05, dur: 0.8 }]);
-    const medir = filtroDeAudio(tramos, 31.833, { normalizar: { medir: true } });
-    expect(medir).toContain("asplit=2[v0][v1]");
-    expect(medir).toContain("[v0]atrim=start=0:end=3.05");
-    expect(medir).toContain("[v1]atrim=start=3.05,");
-    expect(medir).toContain("aevalsrc=0|0:c=stereo:s=48000:d=0.8");
-    expect(medir).toContain("concat=n=3:v=0:a=1,apad,atrim=end=31.833");
-    expect(medir).toContain(`loudnorm=I=${RENDER.lufs}:TP=${RENDER.pico}`);
-    expect(medir).toMatch(/\[mezcla\]$/);
-    const medidas = { input_i: -30.1, input_tp: -12, input_lra: 2, input_thresh: -40, target_offset: 0.3 };
-    const aplicar = filtroDeAudio(tramos, 31.833, { normalizar: medidas });
-    expect(aplicar).toContain("measured_I=-30.1:measured_TP=-12:measured_LRA=2:measured_thresh=-40:offset=0.3:linear=true");
-    expect(filtroDeAudio(tramos, 5, { conVoz: false })).toBe("aevalsrc=0|0:c=stereo:s=48000:d=5,aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[mezcla]");
+  // Una toma de mentira a 10 muestras por segundo: cada muestra lleva su número (canal izquierdo), así se ve qué trozo
+  // de la toma acabó en cada sitio.
+  const M = 10;
+  const toma = (segundos) => {
+    const b = new Uint8Array(segundos * M * BYTES_MUESTRA);
+    const v = new DataView(b.buffer);
+    for (let i = 0; i < segundos * M; i++) { v.setInt16(i * BYTES_MUESTRA, i + 1, true); v.setInt16(i * BYTES_MUESTRA + 2, i + 1, true); }
+    return b;
+  };
+  const muestras = (b) => Array.from({ length: b.length / BYTES_MUESTRA }, (_, i) => new DataView(b.buffer).getInt16(i * BYTES_MUESTRA, true));
+
+  it("arma el audio copiando la toma, mete el silencio en su sitio y mide justo el total", () => {
+    const fuera = armarPcm(toma(3), tramosDeAudio([{ en: 1, dur: 0.5 }]), 4, M);
+    expect(muestras(fuera)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 0, 0, 0, 0, 0]);
+    // Sin pausas: la toma tal cual, cortada al total.
+    expect(muestras(armarPcm(toma(3), tramosDeAudio([]), 2, M))).toEqual(Array.from({ length: 20 }, (_, i) => i + 1));
+  });
+
+  it("una pausa DESPUÉS del final de la toma (la alineación acaba más tarde que el archivo) no rompe nada", () => {
+    // La toma dura 3 s y la pausa cae en 3,2 s: el trozo de voz que va detrás está vacío.
+    const fuera = armarPcm(toma(3), tramosDeAudio([{ en: 1, dur: 0.2 }, { en: 3.2, dur: 0.5 }]), 4, M);
+    const m = muestras(fuera);
+    expect(m).toHaveLength(40);
+    expect(m.slice(0, 12)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0]);
+    expect(m[31]).toBe(30); // la última muestra de la toma
+    expect(m.slice(32).every((x) => x === 0)).toBe(true); // y el resto, silencio
+  });
+
+  it("sin voz, todo silencio del largo pedido", () => {
+    const fuera = armarPcm(new Uint8Array(0), tramosDeAudio([]), 5, M);
+    expect(fuera.length).toBe(5 * M * BYTES_MUESTRA);
+    expect(fuera.every((x) => x === 0)).toBe(true);
+  });
+
+  it("el volumen: loudnorm sólo mide; la segunda pasada es una ganancia fija y, si el pico se pasaría, un limitador", () => {
+    expect(FILTRO_MEDIR).toBe(`loudnorm=I=${RENDER.lufs}:TP=${RENDER.pico}:LRA=${RENDER.rango}:print_format=json`);
+    // Una toma tranquila: sube 16,1 dB y el pico queda en -9,9: sin limitador.
+    const tranquila = { input_i: -30.1, input_tp: -26, input_lra: 2, input_thresh: -40, target_offset: 0.3 };
+    expect(gananciaDe(tranquila)).toEqual({ db: 16.1, limitar: false });
+    expect(filtroDeNormalizar(tranquila)).toBe("volume=16.1dB,aresample=48000");
+    // Una voz de verdad: el pico pasaría a +2 dB → limitador a -2 dB, sin nivel automático.
+    const voz = { input_i: -24, input_tp: -8, input_lra: 6, input_thresh: -34, target_offset: 0 };
+    expect(gananciaDe(voz)).toEqual({ db: 10, limitar: true });
+    expect(filtroDeNormalizar(voz)).toBe("volume=10dB,alimiter=limit=0.794:attack=5:release=50:level=disabled,aresample=48000");
+    // Nunca la segunda pasada de loudnorm (su modo dinámico con medidas rompía el ffmpeg 5.1 de la imagen), ni cadena compleja.
+    for (const f of [filtroDeNormalizar(tranquila), filtroDeNormalizar(voz)]) expect(f).not.toMatch(/loudnorm|measured|asplit|concat|\[/);
   });
 
   it("lee lo que mide loudnorm (el último bloque); el silencio («-inf») no se normaliza", () => {

@@ -4,10 +4,11 @@
 // El Container (container/render.mjs) dibuja cada cuadro con el MISMO motor de la vista previa y se lo pasa a ffmpeg;
 // aquí está lo que no depende de tener un lienzo ni un proceso:
 //   · cuántos cuadros salen (`cuadrosDelVideo`): los del tiempo del VIDEO, con los silencios ya insertados;
-//   · el AUDIO del video (`tramosDeAudio`, `filtroDeAudio`): la locución es una sola toma y los silencios de las
-//     escenas (`pausa`) no existen en ella; se cortan en su segundo del audio y se mete silencio, y al final se rellena
-//     hasta el último cuadro. Luego `loudnorm` lo deja en -14 LUFS (lo que piden Instagram, TikTok y YouTube): dos
-//     pasadas, la primera mide y la segunda aplica en lineal, para no «bombear» la voz;
+//   · el AUDIO del video (`tramosDeAudio`, `armarPcm`): la locución es una sola toma y los silencios de las escenas
+//     (`pausa`) no existen en ella; se corta en su segundo del audio y se mete silencio, y al final se rellena hasta el
+//     último cuadro, copiando muestras (sin cadena de filtros). Luego se deja en -14 LUFS (lo que piden Instagram, TikTok y
+//     YouTube): loudnorm MIDE y la segunda pasada aplica una ganancia fija con un limitador si hace falta
+//     (`gananciaDe`, `filtroDeNormalizar`), para no «bombear» la voz;
 //   · cuándo se puede renderizar (`puedeRenderizar`): el guion APROBADO y la locución lista de ESA versión. Sin voz no
 //     hay render: los subtítulos irían con tiempos inventados.
 // ============================================================
@@ -40,43 +41,66 @@ export function tramosDeAudio(silencios = []) {
   return tramos;
 }
 
-const FORMATO = (m) => `aformat=sample_fmts=fltp:sample_rates=${m}:channel_layouts=stereo`;
+/** Bytes de una muestra del audio armado: PCM de 16 bits en estéreo (dos canales × dos bytes). */
+export const BYTES_MUESTRA = 4;
 
 /**
- * El `-filter_complex` de ffmpeg que arma el audio del video desde la toma (entrada 0) → termina en [mezcla], de
- * `total` segundos exactos. Sin voz (`conVoz: false`), silencio entero. `normalizar`: null (no), { medir: true } (la
- * primera pasada de loudnorm) o las medidas de esa pasada (la segunda, lineal). Puro.
+ * El audio del video armado A MANO, sin cadena de filtros: `toma` es la locución ya decodificada (PCM s16le estéreo a
+ * `muestreo`; vacía = sin voz) y `tramos` los de `tramosDeAudio`. Cada tramo de voz se copia de la toma (lo que caiga
+ * después de su final, nada: la alineación puede acabar unos milisegundos más tarde que el archivo), cada silencio va
+ * en ceros, y el resultado mide EXACTAMENTE `total` segundos (se rellena con silencio o se corta). → Uint8Array. Puro.
+ *
+ * Antes lo hacía un `-filter_complex` (asplit → atrim → aevalsrc → concat → apad → loudnorm) y con las tomas de
+ * ElevenLabs v4 el ffmpeg 5.1 de la imagen moría con «Error reinitializing filters!»: copiar bytes no tiene parámetros
+ * que se puedan desajustar.
  */
-export function filtroDeAudio(tramos, total, { conVoz = true, normalizar = null, muestreo = RENDER.muestreo } = {}) {
-  const fin = r3(Math.max(0.04, Number(total) || 0));
-  const partes = [];
-  let mezcla;
-  if (!conVoz) {
-    partes.push(`aevalsrc=0|0:c=stereo:s=${muestreo}:d=${fin},${FORMATO(muestreo)}[mezcla]`);
-    return partes.join(";");
-  }
-  const voces = tramos.filter((t) => t.tipo === "voz");
-  partes.push(`[0:a]aresample=${muestreo},${FORMATO(muestreo)},asplit=${voces.length}${voces.map((_, i) => `[v${i}]`).join("")}`);
-  let iv = 0;
-  const salidas = tramos.map((t, i) => {
-    if (t.tipo === "voz") {
-      const corte = t.hasta === null ? `start=${t.desde}` : `start=${t.desde}:end=${t.hasta}`;
-      partes.push(`[v${iv++}]atrim=${corte},asetpts=PTS-STARTPTS[t${i}]`);
-    } else {
-      partes.push(`aevalsrc=0|0:c=stereo:s=${muestreo}:d=${t.dur},${FORMATO(muestreo)}[t${i}]`);
+export function armarPcm(toma, tramos, total, muestreo = RENDER.muestreo) {
+  const fuente = toma instanceof Uint8Array ? toma : new Uint8Array(0);
+  const muestrasToma = Math.floor(fuente.length / BYTES_MUESTRA);
+  const muestras = Math.max(1, Math.round(Math.max(0, Number(total) || 0) * muestreo));
+  const salida = new Uint8Array(muestras * BYTES_MUESTRA); // en ceros: silencio
+  const en = (seg) => Math.max(0, Math.round((Number(seg) || 0) * muestreo));
+  let cursor = 0;
+  for (const t of tramos ?? []) {
+    if (cursor >= muestras) break;
+    if (t.tipo === "silencio") {
+      cursor += en(t.dur);
+      continue;
     }
-    return `[t${i}]`;
-  });
-  mezcla = `${salidas.join("")}concat=n=${salidas.length}:v=0:a=1,apad,atrim=end=${fin}`;
-  if (normalizar?.medir) mezcla += `,loudnorm=I=${RENDER.lufs}:TP=${RENDER.pico}:LRA=${RENDER.rango}:print_format=json`;
-  else if (normalizar) {
-    const m = normalizar;
-    mezcla += `,loudnorm=I=${RENDER.lufs}:TP=${RENDER.pico}:LRA=${RENDER.rango}:measured_I=${m.input_i}:measured_TP=${m.input_tp}`
-      + `:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true:print_format=json`
-      + `,aresample=${muestreo}`;
+    const desde = Math.min(en(t.desde), muestrasToma);
+    const hasta = t.hasta === null || t.hasta === undefined ? muestrasToma : Math.min(en(t.hasta), muestrasToma);
+    const cuantas = Math.min(Math.max(0, hasta - desde), muestras - cursor);
+    if (cuantas > 0) salida.set(fuente.subarray(desde * BYTES_MUESTRA, (desde + cuantas) * BYTES_MUESTRA), cursor * BYTES_MUESTRA);
+    cursor += cuantas;
   }
-  partes.push(`${mezcla}[mezcla]`);
-  return partes.join(";");
+  return salida;
+}
+
+/** El `-af` de la primera pasada: loudnorm sólo MIDE (imprime sus medidas en JSON). Puro. */
+export const FILTRO_MEDIR = `loudnorm=I=${RENDER.lufs}:TP=${RENDER.pico}:LRA=${RENDER.rango}:print_format=json`;
+
+/**
+ * La ganancia que deja el audio en -14 LUFS a partir de lo medido (`leerLoudnorm` de la primera pasada) → { db,
+ * limitar }: `limitar` cuando, subido así, el pico pasaría de -1,5 dB (una voz de verdad casi siempre: sus picos van muy
+ * por encima de su volumen medio). Puro.
+ *
+ * No se usa la SEGUNDA pasada de loudnorm (`measured_*`): cuando no puede ir en lineal pasa a su modo dinámico, y el
+ * ffmpeg 5.1 de la imagen muere ahí con «Error reinitializing filters! | Failed to inject frame into filter network:
+ * Invalid argument». Con una voz de ElevenLabs pasaba siempre; con el tono de la prueba de humo, nunca.
+ */
+export function gananciaDe(medido) {
+  const db = Math.round((RENDER.lufs - medido.input_i) * 100) / 100;
+  return { db, limitar: medido.input_tp + db > RENDER.pico };
+}
+
+/**
+ * El `-af` de la segunda pasada: la ganancia y, si hace falta, un limitador justo por debajo del pico permitido (sin
+ * su «nivel automático», que volvería a subir el volumen). Termina en el muestreo del render. Puro.
+ */
+export function filtroDeNormalizar(medido, muestreo = RENDER.muestreo) {
+  const { db, limitar } = gananciaDe(medido);
+  const techo = Math.round(10 ** ((RENDER.pico - 0.5) / 20) * 1000) / 1000; // -2 dB: el limitador mira muestras, no el pico verdadero
+  return `volume=${db}dB${limitar ? `,alimiter=limit=${techo}:attack=5:release=50:level=disabled` : ""},aresample=${muestreo}`;
 }
 
 /**
