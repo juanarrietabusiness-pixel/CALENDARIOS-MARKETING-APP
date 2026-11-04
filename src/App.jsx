@@ -658,6 +658,11 @@ function Workspace({ session, ruta }) {
           window.dispatchEvent(new CustomEvent("formulas-ugc", { detail: ev }));
           break;
 
+        // Los videos animados de un cliente: quien tenga la lista o el video abierto lo relee.
+        case "videos":
+          window.dispatchEvent(new CustomEvent("videos", { detail: ev }));
+          break;
+
         // Inspiración: el feed de un cliente se puso al día (el cron, otra persona): quien lo tenga abierto lo relee.
         case "inspiracion":
           window.dispatchEvent(new CustomEvent("inspiracion", { detail: ev }));

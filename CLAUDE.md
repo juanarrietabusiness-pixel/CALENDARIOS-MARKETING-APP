@@ -160,6 +160,18 @@ src/
                           al modelo sin texto largo ni logo (puro; también lo importa el Worker)
     videoProducto.js      La receta «Video del producto» (10–15 s): tramos, el guion con la voz en español, las escenas del
                           primer fotograma y del cierre, el prompt corto del video (puro; también el Worker)
+    videoEscenas.js       El VIDEO ANIMADO (escenas dibujadas con código): el formato de escenas v1, `validarGuion`, la línea
+                          de tiempo anclada a palabras (`lineaDeTiempo`, `tiempoDeCapa`) y el ciclo del proyecto (puro;
+                          lo leerán el motor de Canvas, el Worker y el render del Container). Ver docs/formato-escenas-v1.md
+    motorVideo.js         El MOTOR del video animado: dibuja el instante t de un guion en un Canvas 2D (paleta del kit,
+                          posiciones, entradas, salidas, bucles, transiciones, fondo, grano). Puro y determinista: lo
+                          comparten la vista previa y el render del Container
+    motorVideoNavegador.js  Lo que ese motor necesita en el navegador: las imágenes de la galería, el logo, la letra del kit
+                          y la textura del grano (no es puro)
+    videosApi.js          Cliente de /api/videos/<cliente>
+    voces.js              La VOZ del video animado: ElevenLabs v3 (principal) y v2 por Kie, las voces de serie y las propias
+                          del kit, el costo exacto, el texto que se manda y los tiempos de cada palabra en tres capas (del
+                          motor, verificados al oírla, estimados sobre la duración del MP3) (puro; también el Worker)
     videoProductoEstudio.js  La receta en el Estudio: qué modelo, los dos fotogramas por el camino de una pieza, el video
     temporada.js          Las fechas especiales del cliente que se acercan (sin las delicadas) y cuál merece el aviso del mes (puro)
     modosFoto.js          Los atajos de «¿Qué quieres?»: modos de foto de producto y la versión de temporada (puro)
@@ -404,6 +416,8 @@ src/
                           «Modelo» de la galería (`FiltroDeModelo`)
     IdeasDeFormato.jsx    «Dame ideas» en el paso 1 del carrusel y del reel IA
     FlujoVideoProducto.jsx  «Video del producto»: producto, guion, los dos fotogramas y el video (lazy; dentro de FlujoReel)
+    VideoAnimado.jsx      «Animado con código»: los videos animados del cliente, el guion (errores con su sitio), la vista
+                          previa en el lienzo y «Aprobar el guion» (lazy; dentro de FlujoReel)
     ReferenciasGaleria.jsx  Ejemplos de la galería al corregir (y referencias del reel), cada uno con qué se toma
     GuardarRegla.jsx      «Guardar como regla» junto a cada corrección
     calendario/RevisionMes.jsx  «Revisar el mes» antes de enviarlo: reglas, IA opcional e imágenes contra el kit (lazy)
@@ -488,7 +502,7 @@ worker/
     vivo.js               Difundir un cambio al espacio; la firma de quién lo hizo
     publico.js            El enlace de aprobación, sin sesión
     meses.js              Calendario siempre activo: obtener o crear el mes; mover una
-                          publicación a otro mes (todo o nada, con las seis tablas)
+                          publicación a otro mes (todo o nada, con las siete tablas)
     respuesta.js          Cabeceras y errores de la API
     flujoAnthropic.js     El SSE de Anthropic, reconstruido en mensaje (puro)
     anthropic.js          La llamada a Anthropic: streaming, reintento, rechazo con motivo
@@ -593,7 +607,8 @@ worker/
     formulasUgc.js        /api/formulas-ugc: las fórmulas UGC de la agencia (listar, guardar, corregir, quitar, proponer)
     inspiracion.js        /api/inspiracion/<cliente>: el feed, actualizar, traer un archivo, el resumen
     historiasAuto.js      /api/historias-auto/<cliente>: ajustes, pendientes de preparar, piezas
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators)
+    videos.js             /api/videos/<cliente>: los videos animados (listar, crear, guardar el guion, aprobar, borrar)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -3132,13 +3147,13 @@ son del servidor.
   con la fecha vieja y parecía que no se había movido. El eco propio de `publicacion` sube el `pulso` (sin aviso).
   Arrastrar lo que ya salió o está saliendo no se deja, y a un momento que ya pasó pregunta (saldría en el minuto).
 - **Mover a otro mes es del servidor, y todo o nada**
-  (`moverDeMes`, worker/lib/meses.js). Seis tablas señalan cada publicación
+  (`moverDeMes`, worker/lib/meses.js). Siete tablas señalan cada publicación
   por «calendario + publicación» (approvals, comentarios_aprobacion,
-  publicaciones_programadas, client_tasks, notas_equipo, historial): mover
+  publicaciones_programadas, client_tasks, notas_equipo, historial, videos_proyectos): mover
   sólo el JSON las dejaría apuntando al mes viejo. D1 no aborta un lote por
   una sentencia que no toca filas, así que `trasladarPublicacion()` encadena
   condiciones: el origen se escribe sólo si ni él ni el destino cambiaron,
-  el destino sólo si el origen lleva la marca nueva, y las seis tablas sólo
+  el destino sólo si el origen lleva la marca nueva, y las siete tablas sólo
   si el destino la lleva. No se mueve lo publicado, lo que se está
   publicando, ni lo programado a un momento pasado. El navegador guarda YA
   lo pendiente del mes antes de pedirlo (`guardarYa`): un guardado agrupado
@@ -3909,6 +3924,87 @@ son del servidor.
   src/lib/historiasAuto.js): la primera a su hora y las demás cada 2 horas; si la última pasaría de las 22:00 se juntan (no
   menos de 30 min). Cada una es una publicación DISTINTA con la misma regla de siempre; si no hay bastantes, pone las que
   hay y la nota dice cuántas faltaron. Cambiar «cuántas al día» no reinicia `ultima_fecha` (pondría otra tanda hoy).
+
+- **El video animado: un guion de ESCENAS en JSON, anclado a PALABRAS** (`src/lib/videoEscenas.js`, `videos_proyectos`,
+  0059; el formato con su ejemplo, en `docs/formato-escenas-v1.md`). Fase 1: formato, validador y tabla; el motor de
+  Canvas 2D, la voz (ElevenLabs v3 por KIE, v2 de respaldo) y la pantalla vienen después. Cosas que no se ven:
+  · **El habla de todas las escenas, en orden, ES la locución** (una toma). La escena empieza en su primera palabra y una
+  capa entra «en la palabra n» de su escena: cambiar de voz vuelve a cuadrar todo. `palabrasDe` cuenta las palabras igual
+  que la alineación (sin las `[emociones]` de v3 ni los signos sueltos); si los tiempos de la toma no cuadran con esa
+  cuenta, `lineaDeTiempo` estima (2,5 palabras/s) y lo dice (`estimado`).
+  · **Una `pausa` es un silencio que el render INSERTA en el audio** (`silencios`, en tiempo del audio): con una sola
+  toma, una escena muda no existe de otra forma. Una escena de menos de `MIN_ESCENA` también se alarga con silencio.
+  · **`validarGuion` no arregla en silencio**: un texto largo, un color que no es token ni #RRGGBB o una palabra que la
+  escena no dice son errores con `donde`; lo que no es del formato se quita con aviso. Un test valida el ejemplo del
+  documento: si cambia el formato y no el documento, falla.
+  · **El CHECK de `estado` es `ESTADOS_VIDEO`, con los de la fase 2 ya dentro** (cambiar un CHECK es reconstruir la
+  tabla). La locución sólo se genera con `version` = `aprobada_version` (`puedeGenerarVoz`): editar después de aprobar
+  vuelve a borrador.
+  · **`videos_proyectos` señala la publicación por «calendario + publicación»**, así que viaja con ella al moverla de mes
+  (`trasladarPublicacion`, ya son siete tablas).
+  · **El MOTOR es uno para la vista previa y el render** (`src/lib/motorVideo.js`, paso 2). No crea lienzos, no carga
+  nada y no lee la hora: lo de cada entorno entra por `recursos` (imágenes ya cargadas, logo, textura del grano) y
+  `fuentes` (familias ya registradas); en el navegador lo prepara `motorVideoNavegador.js`. Es DETERMINISTA —lo
+  aleatorio sale de `semilla`, y el grano cambia por FOTOGRAMA, no por reloj— y dibuja en las medidas del formato (1080
+  × 1920): quien llama escala el contexto. Un test con un lienzo de mentira lo vigila, y otro busca `document.`,
+  `Math.random` o `Date` en el archivo: con ellos el render del Container no daría lo mismo que la pantalla. Lo que aún
+  no dibuja (teléfono, burbuja, personaje, icono, cifra, lista, reloj, antes y después: paso 7) sale como MARCADOR con
+  su nombre (`COMPONENTES_LISTOS`), así un guion válido nunca rompe la vista previa.
+  · **La paleta sale del KIT por PUNTAJE, no por la primera palabra que case** (`paletaDelKit`, `PISTAS`). La primera
+  versión buscaba «texto» en el papel y, con el kit REAL de Baby Caleb, el texto salía BEIGE («Fondo principal alterno —
+  base limpia para texto») y el acento SAGE («acento natural suave» le ganaba a «…CTA»). Ahora lo que el papel dice
+  antes de la primera raya o barra pesa el triple, un CTA gana a un «acento» a secas y el texto TIENE que leerse sobre
+  el fondo (4,5 a 1). Un test lleva los 7 papeles reales tal cual. Lo que fija el guion manda encima (`paletaDelGuion`),
+  y un texto sobre su placa que no llegue a 3 a 1 usa el claro u oscuro que más contraste (`colorLegible`).
+  · **El MOTOR reparte por zonas; el guion no pone coordenadas** (`repartirEscena`, `areaSegura`, `bandaDeSubtitulos`).
+  Con puntos fijos por nombre, la placa del texto tapaba la foto del producto y el tercio de abajo quedaba vacío. La
+  zona de una capa dice su ORDEN; el motor la mide con el MISMO código que la dibuja (`medirCapa` pasa `dibujarCapa`
+  por un lienzo que sólo mide: no pueden discrepar) y reparte el alto del área segura (9:16: 12 % arriba y 20 % abajo
+  libres) menos la franja de subtítulos. Una `forma` va detrás de la capa que la sigue; dos que no se ven a la vez
+  comparten sitio; en 16:9 (el LIENZO, no la caja: en 1:1 la caja sin subtítulos es más ancha que alta) lo visual va en
+  su columna. `cajasDeEscena` da las cajas para los tests, que exigen sin encimarse, dentro del área y usando el tercio
+  de abajo en los tres formatos. En la primera escena algo entra antes de 0,3 s (`tiemposDeEscena`). La vista previa
+  tiene «Zonas seguras» (lo pinta ENCIMA, no va en el video). Medido en Chromium (sin GPU): ~5,5 ms por fotograma a
+  1080 × 1920.
+  · **Lo que ve primero quien abre el video, y cómo se leen las placas** (ajustes del paso 2). En el gancho entra
+  PRIMERO su texto principal (`textoPrincipal`, `tiemposDeEscena`: lo demás, `DESPUES_DEL_GANCHO` después): entraba el
+  marcador del personaje y el titular a los dos segundos. Una escena sin texto, sello ni llamado dibuja su `pantalla`
+  como titular (`capasDe`): la del problema enseñaba sólo un icono y una lista. Las líneas se reparten parejas y cortan
+  en «·», comas y puntos (`partirEquilibrado`, recargo por cortar fuera de un separador): «Sin alcohol · sin / perfume»
+  cortaba mal. Las imágenes se cargan SIN su borde transparente (`cajaOpaca` en el motor, puro; el recorte lo hace
+  `motorVideoNavegador.js` y lo hará el gemelo del Container) y el logo del cierre mide al menos `MIN_LOGO_CIERRE` (la
+  mitad del lado corto): un logo con mucho aire se veía diminuto.
+  · **El guion se valida también en el SERVIDOR** (`worker/rutas/videos.js`): lo que llega del navegador o de Claude no
+  se cree, y con errores no se guarda (400 con cada error y su sitio). Guardar y aprobar llevan la `version` que se
+  leyó: si otra persona guardó entremedias, 409 (`actualizar` con la versión como condición). Aprobar fija
+  `aprobada_version`. Evento `videos` → `window`.
+  · **La pantalla vive DENTRO de FlujoReel** («Video» → «Guiado» → «Animado con código»), en su chunk: el del Estudio
+  está en su tope. `rendimiento.bundle.test.js` le pone 25 kB y prohíbe Remotion, Lottie y PixiJS: una librería del
+  navegador aquí rompería el render, no sólo el peso. La vista previa es GRATIS: tiempos estimados hasta que haya voz,
+  sin sonido ni subtítulos todavía (pasos 3 y 4).
+  · **La voz (paso 3) es un TRABAJO del Estudio de `tipo: "audio"`** (`worker/lib/estudio/locucion.js`, `src/lib/voces.js`;
+  rutas `/api/videos/<c>/voces`, `…/voces/muestra` y `…/<id>/locucion`; herramientas `listar_voces`, `previsualizar_voz` y
+  `generar_locucion` para el asistente y el MCP). Va por la MISMA cola de Kie que un video (createTask → recordInfo →
+  bajar), la avanza la bomba y se cobra al entregarla. `estudio_trabajos.tipo` no tiene CHECK: no hizo falta migración.
+  Cosas que no se ven:
+  · **SIEMPRE se confirma** (decisión de la agencia), aunque cueste centavos: la locución y la muestra contestan 409
+  `confirmar` con el costo y los créditos hasta `confirmado: true` (el booleano). En el asistente vuelve como texto «NO SE
+  CREÓ NADA…» con la cifra, como `crear_en_estudio`. Un segundo pedido mientras va el primero: 409 `en_curso`.
+  · **Sólo del guion aprobado** (`puedeGenerarVoz`) y con la versión aprobada en el trabajo: si el guion cambia mientras
+  se genera, la toma se guarda con `desfasada` y el video NO pasa a «Con voz».
+  · **Los tiempos, en tres capas** (`tiemposDeLocucion`): los que traiga Kie (`palabrasDelResultado` lee listas de
+  palabras y la alineación POR CARÁCTER de ElevenLabs; v2 se pide con `timestamps: true`); si no trae, Gemini OYE la toma
+  y la transcribe con tiempos (`verVideo` acepta audio; se ALINEA con el guion por distancia de edición, y por debajo del
+  85 % de coincidencia queda `revisar`); si no, se estiman sobre la duración REAL del MP3 (`duracionMp3`). Siempre UNA
+  por palabra de `palabrasDe(textoDeLocucion(guion))`: con eso `lineaDeTiempo` deja de estimar.
+  · **La muestra de una voz se paga UNA vez para toda la agencia** (`voces/elevenlabs/<v3|v2>/<id>.mp3`, fuera de
+  `clientes/`): la segunda vez sale gratis y `listar_voces` dice cuáles ya están hechas.
+  · **El audio va a `estudio_archivos` con tipo «audio»** y la galería NO lo enseña (`leerGaleria`). `tipoPorBytes`
+  reconoce MP3 (ID3 o cuadro) y WAV. La voz de la marca vive en `kit.locucion` (voz, modelo, hasta 12 voces propias por
+  su id de ElevenLabs) y `fundirKit` la conserva.
+  · **Nada de esto se ha probado contra Kie real** (los tests hablan con un `fetch` de mentira): los nombres de los campos
+  de v3 y v2, si la voz va por id o por nombre (`vozParaKie`), si devuelven tiempos y en qué forma, y el redondeo real de
+  los créditos salen de la documentación pública y se comprueban con la primera toma de verdad.
 
 ## Documentos relacionados
 

@@ -237,6 +237,34 @@ describe("el Estudio", () => {
   });
 });
 
+describe("el video animado", () => {
+  // El motor de escenas es código propio sobre Canvas 2D (src/lib/motorVideo.js). La tentación es una librería de
+  // animación o de video (Remotion, Lottie, PixiJS…): el render del Container usa el MISMO motor, así que una
+  // librería del navegador aquí rompería la fase 2, no sólo el peso.
+  const animado = () => js().find((a) => a.nombre.startsWith("VideoAnimado-"));
+
+  it("va en su propio chunk y no se descarga hasta que se abre", () => {
+    expect(animado(), "no hay chunk «VideoAnimado»: la pantalla se metió en otro o dejó de existir").toBeDefined();
+    expect(jsInicial().map((a) => a.nombre)).not.toContain(animado().nombre);
+  });
+
+  it("cabe en 25 kB comprimidos: si pasa de ahí, se coló una librería", () => {
+    expect(
+      Math.round(animado().gzip / 1024),
+      fallo({
+        que: `la pantalla del video animado pesa ${kb(animado().gzip)} kB comprimidos, por encima de 25`,
+        donde: `dist/assets/${animado().nombre}`,
+        porque: "El formato, el motor, la vista previa y el cliente de la API son código propio y pesan unos 16 kB. Más que eso quiere decir que entró una librería que el render del Container no podrá usar igual.",
+        arreglo: "Quita la importación y dibújalo en src/lib/motorVideo.js, que es puro y lo comparten la pantalla y el render.",
+      }),
+    ).toBeLessThanOrEqual(25);
+  });
+
+  it("no lleva Remotion, Lottie ni PixiJS dentro", () => {
+    expect(animado().buf.toString("utf8")).not.toMatch(/@remotion|lottie|PIXI\.|pixi\.js/i);
+  });
+});
+
 describe("la caché puede hacer su trabajo", () => {
   it("todo recurso lleva hash de contenido en el nombre", () => {
     const sinHash = archivos.filter((a) => !/-[A-Za-z0-9_-]{8,}\.(js|css|png|jpg|svg|woff2?)$/.test(a.nombre));

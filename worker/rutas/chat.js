@@ -96,6 +96,9 @@ OTRAS HERRAMIENTAS QUE TIENES ADEMÁS DE LAS DEL CALENDARIO:
   en la galería del cliente y tú dices el ID del pedido. Cuesta dinero: si la respuesta trae un costo y
   dice que no se creó nada, díselo al usuario con la cifra y sólo con su «sí» repites con confirmado=true.
   Para una imagen o un video que deba verse aquí mismo (con el kit de la marca), usa generar_imagen.
+· listar_voces, previsualizar_voz y generar_locucion: la voz de un video animado. La locución sale sólo del
+  guion APROBADO. La voz SIEMPRE se confirma, aunque cueste centavos: la primera llamada trae la cifra y no
+  crea nada; díselo al usuario y sólo con su «sí» repites con confirmado=true.
 Antes de decir que no tienes un dato, mira si alguna de estas herramientas lo trae.`;
 
 const NOMBRES_WEB = new Set(HERRAMIENTAS_WEB.map((h) => h.name));

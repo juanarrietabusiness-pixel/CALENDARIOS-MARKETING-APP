@@ -39,6 +39,7 @@ beforeEach(() => {
   s.prepare("insert into client_tasks (id, client_id, owner_id, title, calendar_id, post_id) values (?,?,?,?,?,?)").run("t1", "c1", "u1", "Diseñar", "oct", "p1");
   s.prepare("insert into notas_equipo (id, owner_id, calendar_id, post_id, autor_id, texto) values (?,?,?,?,?,?)").run("n1", "u1", "oct", "p1", "u1", "Ojo al logo");
   s.prepare("insert into historial (id, owner_id, calendar_id, post_id, accion) values (?,?,?,?,?)").run("h1", "u1", "oct", "p1", "creó");
+  s.prepare("insert into videos_proyectos (id, owner_id, client_id, calendar_id, post_id) values (?,?,?,?,?)").run("v1", "u1", "c1", "oct", "p1");
   acceso = crearAcceso(db, "u1");
 });
 
@@ -78,12 +79,12 @@ describe("un solo mes por cliente", () => {
 });
 
 describe("mover de mes: todo o nada", () => {
-  it("la publicación y las SEIS tablas que la señalan cambian de mes", async () => {
+  it("la publicación y las SIETE tablas que la señalan cambian de mes", async () => {
     const r = await moverDeMes(acceso, { calId: "oct", postId: "p1", fecha: "2026-11-03", ahoraMs: AHORA });
     const nov = r.destino.id;
     expect(posts("oct")).toEqual(["p2"]);
     expect(posts(nov)).toEqual(["p1"]);
-    for (const [tabla, id] of [["approvals", "a1"], ["comentarios_aprobacion", "k1"], ["publicaciones_programadas", "q1"], ["client_tasks", "t1"], ["notas_equipo", "n1"], ["historial", "h1"]]) {
+    for (const [tabla, id] of [["approvals", "a1"], ["comentarios_aprobacion", "k1"], ["publicaciones_programadas", "q1"], ["client_tasks", "t1"], ["notas_equipo", "n1"], ["historial", "h1"], ["videos_proyectos", "v1"]]) {
       expect(calDe(tabla, id), tabla).toBe(nov);
     }
   });
@@ -101,6 +102,7 @@ describe("mover de mes: todo o nada", () => {
     expect(posts(destino.id)).toEqual([]);
     expect(calDe("approvals", "a1")).toBe("oct");
     expect(calDe("publicaciones_programadas", "q1")).toBe("oct");
+    expect(calDe("videos_proyectos", "v1")).toBe("oct");
   });
 
   it("lo publicado no se mueve", async () => {

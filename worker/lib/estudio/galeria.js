@@ -132,10 +132,12 @@ export async function leerGaleria(env, acceso, clientId, { protegidas = null } =
   ]);
   const vivos = await usosVivos(acceso, clientId, enPapelera);
   const papelera = await purgarPapelera(env, acceso, enPapelera, Date.now(), protegidas, vivos);
+  // La voz del video animado (tipo «audio») no se enseña en la galería: se oye en su proyecto.
+  const visible = (f) => f.tipo !== "audio";
   return {
-    archivos: activas.map((f) => conProteccion(f, protegidas, null)),
-    papelera: papelera.map((f) => conProteccion(f, protegidas, vivos)),
-    trabajos: trabajos.map(trabajoPublico),
+    archivos: activas.filter(visible).map((f) => conProteccion(f, protegidas, null)),
+    papelera: papelera.filter(visible).map((f) => conProteccion(f, protegidas, vivos)),
+    trabajos: trabajos.filter(visible).map(trabajoPublico),
     carpetas: carpetas.map(carpetaPublica),
   };
 }

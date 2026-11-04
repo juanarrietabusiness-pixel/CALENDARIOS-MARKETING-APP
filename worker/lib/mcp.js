@@ -94,12 +94,12 @@ export const HERRAMIENTAS_MCP = Object.freeze([
   { name: "crear_tarea", description: "Crea una tarea para un cliente (o una tarea rápida sin cliente).", inputSchema: { type: "object", properties: { ...clienteParam, titulo: { type: "string" }, fecha_limite: { type: "string", description: "AAAA-MM-DD" }, para_hoy: { type: "boolean" } }, required: ["titulo"] }, annotations: escribe() },
   { name: "completar_tarea", description: "Marca una tarea como hecha. El id sale de ver_tareas.", inputSchema: { type: "object", properties: { tarea_id: { type: "string" } }, required: ["tarea_id"] }, annotations: escribe() },
   { name: "anadir_idea", description: "Guarda una idea o una referencia (el enlace de un video de Instagram, TikTok, YouTube…) en el banco de ideas. Sin cliente queda GENERAL: sale en el banco de todos hasta que se le asigne uno.", inputSchema: { type: "object", properties: { ...clienteParam, idea: { type: "string", description: "La idea, o qué tiene de bueno la referencia." }, enlace: { type: "string", description: "El enlace de la referencia, si lo hay." }, formato: { type: "string", enum: FORMATOS }, descripcion: { type: "string" } } }, annotations: escribe() },
-  // El Estudio: las mismas tres herramientas que el asistente (worker/lib/estudio/herramientas.js). Aquí el cliente siempre se indica.
+  // El Estudio (y la voz del video animado): las mismas herramientas que el asistente (worker/lib/estudio/herramientas.js). Aquí el cliente siempre se indica.
   ...DEFINICIONES_ESTUDIO.map(({ name, description, input_schema: inputSchema }) => ({
     name,
     description,
     inputSchema: { ...inputSchema, required: [...new Set([...(inputSchema.required ?? []), ...(name === "estado_trabajo" ? [] : ["cliente"])])] },
-    annotations: name === "crear_en_estudio" ? escribe() : soloLectura,
+    annotations: ["crear_en_estudio", "previsualizar_voz", "generar_locucion"].includes(name) ? escribe() : soloLectura,
   })),
 ]);
 

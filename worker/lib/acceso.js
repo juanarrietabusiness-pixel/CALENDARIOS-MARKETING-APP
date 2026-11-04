@@ -94,6 +94,8 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "estudio_carpetas",
   // Los encargos: una cadena de piezas (el lote) que sigue en el servidor con la aplicación cerrada (encargos.js).
   "estudio_encargos",
+  // Los videos animados (escenas dibujadas con código): el guion, su locución y su render (src/lib/videoEscenas.js).
+  "videos_proyectos",
   // La bandeja: comentarios y mensajes de Facebook e Instagram, y el
   // interruptor de cada cliente (worker/lib/bandeja.js).
   "bandeja_clientes",
@@ -152,7 +154,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "inspiracion_cuentas", "inspiracion_publicaciones",
   "cerebro_notas", "cerebro_senales", "cerebro_usos", "cerebro_memoria", "cerebro_propuestas",
   "mercado_clientes",
-  "estudio_trabajos", "estudio_archivos", "estudio_carpetas", "estudio_encargos",
+  "estudio_trabajos", "estudio_archivos", "estudio_carpetas", "estudio_encargos", "videos_proyectos",
   "bandeja_clientes", "bandeja_comentarios", "bandeja_hilos", "bandeja_mensajes",
   "biblioteca_filtros",
   "cuentas_anuncios", "campanas_anuncios", "historial_anuncios",
@@ -421,10 +423,10 @@ export function crearAcceso(db, ownerId, { clientes = null } = {}) {
     /**
      * Mueve una publicación de un calendario (mes) a otro, TODO O NADA.
      *
-     * Con ella viajan las seis tablas que la señalan por «calendario +
+     * Con ella viajan las siete tablas que la señalan por «calendario +
      * publicación»: la respuesta del cliente, su conversación, la cola,
-     * sus tareas, el hilo interno y el historial. Si sólo se moviera el
-     * JSON, esas seis se quedarían apuntando al mes viejo.
+     * sus tareas, el hilo interno, el historial y su video animado. Si
+     * sólo se moviera el JSON, esas siete se quedarían apuntando al mes viejo.
      *
      * D1 ejecuta el lote en una transacción, pero una sentencia que no
      * toca ninguna fila no la aborta. Así que cada paso se CONDICIONA al
@@ -432,7 +434,7 @@ export function crearAcceso(db, ownerId, { clientes = null } = {}) {
      *   1. el origen se escribe sólo si ni él ni el destino cambiaron
      *      desde que se leyeron;
      *   2. el destino, sólo si el origen ya lleva la marca;
-     *   3. las seis tablas, sólo si el destino ya la lleva.
+     *   3. las siete tablas, sólo si el destino ya la lleva.
      * Si alguien guardó cualquiera de los dos meses entre la lectura y el
      * lote, no se escribe nada y devuelve false.
      */
@@ -449,7 +451,7 @@ export function crearAcceso(db, ownerId, { clientes = null } = {}) {
         ).bind(JSON.stringify(diasDestino), marca, destino.id, ownerId, destino.updated_at, origen.id, ownerId, marca),
       ];
       const hecho = "(select updated_at from calendars where id = ? and owner_id = ?) = ?";
-      for (const tabla of ["approvals", "comentarios_aprobacion", "publicaciones_programadas", "client_tasks", "notas_equipo", "historial"]) {
+      for (const tabla of ["approvals", "comentarios_aprobacion", "publicaciones_programadas", "client_tasks", "notas_equipo", "historial", "videos_proyectos"]) {
         const dueno = CON_DUENO.has(tabla) ? " and owner_id = ?" : "";
         sentencias.push(
           db.prepare(`update ${tabla} set calendar_id = ? where calendar_id = ? and post_id = ?${dueno} and ${hecho}`)
