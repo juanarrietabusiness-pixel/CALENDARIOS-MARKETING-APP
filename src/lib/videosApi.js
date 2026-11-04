@@ -76,3 +76,22 @@ export const urlMuestraVoz = (clienteId, { modelo, voz, huella = "" }) =>
 export async function avanzarTrabajoVoz(clienteId, trabajoId) {
   return (await pedir(`/estudio/${encodeURIComponent(clienteId)}/trabajos/${encodeURIComponent(trabajoId)}/avanzar`, { method: "POST" }))?.trabajo ?? null;
 }
+
+/** Fija la voz (y el modelo) de la marca en el kit del cliente (gratis). → { locucion, voz, modelo }. */
+export async function fijarVozDeMarca(clienteId, { voz, modelo }) {
+  return pedir(`${base(clienteId)}/voces/marca`, json("PUT", { voz, modelo }));
+}
+
+/** Voces en ESPAÑOL de la biblioteca de ElevenLabs (gratis). → { voces, mas, acentos }. */
+export async function buscarVocesEnEspanol(clienteId, { q = "", genero = "", acento = "", pagina = 0 } = {}) {
+  const p = new URLSearchParams({ q, genero, acento, pagina: String(pagina) });
+  return pedir(`${base(clienteId)}/voces/biblioteca?${p}`);
+}
+
+/** Añade una voz de la biblioteca a la cuenta de ElevenLabs de la agencia (sólo administración). → { voz }. */
+export async function anadirVozDeBiblioteca(clienteId, { publico, voz, nombre }) {
+  return pedir(`${base(clienteId)}/voces/biblioteca`, json("POST", { publico, voz, nombre }));
+}
+
+/** La dirección para oír GRATIS la muestra que publica ElevenLabs de una voz. */
+export const urlPreviaVoz = (clienteId, previa) => `/api${base(clienteId)}/voces/previa?u=${encodeURIComponent(previa)}`;

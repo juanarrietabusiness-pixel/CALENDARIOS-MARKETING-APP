@@ -10,6 +10,7 @@ import { crearHerramientasEstudio, DEFINICIONES_ESTUDIO } from "../../worker/lib
 import { crearAcceso } from "../../worker/lib/acceso.js";
 import { VOCES_DE_SERIE } from "../../src/lib/voces.js";
 import { HERRAMIENTAS_MCP } from "../../worker/lib/mcp.js";
+import { olvidarModelos } from "../../worker/lib/estudio/elevenlabs.js";
 import { limpiarKit, fundirKit } from "../../src/lib/kitMarca.js";
 import { palabrasDe, textoDeLocucion, lineaDeTiempo } from "../../src/lib/videoEscenas.js";
 
@@ -465,7 +466,7 @@ describe("lo que no se ve", () => {
     expect(kit.locucion).toMatchObject({ voz: "hpp4J3VqNfWAUOO0d1Us", modelo: "v2" });
     expect(kit.locucion.voces[0]).toMatchObject({ id: "JuanVozPropia2026", nombre: "Juan", propia: true });
     expect(fundirKit(kit, limpiarKit({})).locucion).toEqual(kit.locucion);
-    expect(limpiarKit({ locucion: { modelo: "v9" } }).locucion.modelo).toBe("v3");
+    expect(limpiarKit({ locucion: { modelo: "v9" } }).locucion.modelo).toBe("v4");
   });
 });
 
@@ -483,7 +484,7 @@ const alineacion = (texto) => {
 /** ElevenLabs de mentira. `voces`: lo que da /v1/voices (null = la llave no deja leerlas); `rechazos`: estados por llamada de voz. */
 function elevenlabs({ voces = [{ voice_id: "XrExE9yKIg1WjnnlVkGX", name: "Matilda", labels: { gender: "female", accent: "american", descriptive: "warm" } },
   { voice_id: "VaLeNtInA1234567890a", name: "Valentina", category: "professional", labels: { gender: "female", accent: "latin american", language: "es" } }],
-rechazos = [] } = {}) {
+rechazos = [], modelos = null, biblioteca = [] } = {}) {
   const llamadas = [];
   let n = 0;
   globalThis.fetch = vi.fn(async (url, init = {}) => {
@@ -491,6 +492,13 @@ rechazos = [] } = {}) {
     llamadas.push({ url: u, init, cuerpo: init.body ? JSON.parse(init.body) : null });
     if (u.startsWith(API)) throw new Error("Kie no se debe llamar con la llave oficial");
     if (u === `${ELEVEN}/v1/voices`) return voces ? json({ voices: voces }) : json({ detail: { status: "missing_permissions", message: "voices_read" } }, 401);
+    // `modelos`: los model_id de la cuenta (null = /v1/models no contesta: no se sabe).
+    if (u === `${ELEVEN}/v1/models`) {
+      return modelos ? json(modelos.map((m) => (typeof m === "string" ? { model_id: m, can_do_text_to_speech: true } : m))) : json({ detail: "no" }, 404);
+    }
+    if (u.startsWith(`${ELEVEN}/v1/shared-voices?`)) return json({ voices: biblioteca, has_more: false });
+    if (u.startsWith(`${ELEVEN}/v1/voices/add/`)) return json({ voice_id: u.split("/").pop() });
+    if (u.startsWith("https://storage.googleapis.com/")) return new Response(mp3(1), { status: 200, headers: { "content-type": "audio/mpeg" } });
     if (u.startsWith(`${ELEVEN}/v1/text-to-speech/`)) {
       const r = rechazos[n++];
       if (r) return json(r.cuerpo, r.estado);
@@ -508,14 +516,17 @@ rechazos = [] } = {}) {
 }
 
 describe("con la llave oficial de ElevenLabs", () => {
-  beforeEach(() => { env.ELEVENLABS_API_KEY = "el-secreta"; });
+  beforeEach(() => { env.ELEVENLABS_API_KEY = "el-secreta"; olvidarModelos(); });
 
   it("la lista sale de la CUENTA (también una voz que Kie no tiene), por la llave oficial y sin tocar Kie", async () => {
     const { llamadas } = elevenlabs();
     const r = await (await pedir("/videos/bc/voces")).json();
     expect(r).toMatchObject({ via: "elevenlabs", unidad: "créditos de ElevenLabs" });
-    expect(r.voces.map((v) => v.nombre)).toEqual(["Matilda", "Valentina"]);
-    expect(r.voces[1]).toMatchObject({ id: "VaLeNtInA1234567890a", genero: "femenina", nota: expect.stringContaining("latin american") });
+    // Las nativas en español primero, y lo que dice ElevenLabs, en español.
+    expect(r.voces.map((v) => v.nombre)).toEqual(["Valentina", "Matilda"]);
+    expect(r.voces[0]).toMatchObject({ id: "VaLeNtInA1234567890a", genero: "femenina", espanol: true, nota: expect.stringContaining("acento latinoamericano") });
+    expect(r.voces[1]).toMatchObject({ espanol: false, nota: "acento estadounidense, cálida" });
+    expect(r.espanol).toBe(1);
     expect(llamadas[0].init.headers["xi-api-key"]).toBe("el-secreta");
     expect(JSON.stringify(r)).not.toContain("el-secreta");
   });
@@ -606,5 +617,112 @@ describe("con la llave oficial de ElevenLabs", () => {
     expect(r.status).toBe(503);
     expect((await r.json()).error).toMatch(/ELEVENLABS_API_KEY/);
     expect(llamadas).toHaveLength(0);
+  });
+});
+
+// ------------------------------------------------------------
+// Eleven v4 y las voces en ESPAÑOL (biblioteca, muestra gratis, voz de la marca)
+// ------------------------------------------------------------
+const PREVIA = "https://storage.googleapis.com/eleven-public-prod/voces/lucia/muestra.mp3";
+const LUCIA = {
+  voice_id: "LuCiAvozEspanol12345", public_owner_id: "duenoPublico987654", name: "Lucía - cálida y cercana", language: "es",
+  accent: "latin american", gender: "female", descriptive: "warm", use_case: "advertisement", preview_url: PREVIA, cloned_by_count: 1200,
+};
+
+describe("Eleven v4 y las voces en español", () => {
+  beforeEach(() => { env.ELEVENLABS_API_KEY = "el-secreta"; olvidarModelos(); });
+
+  it("si la cuenta tiene v4, es el de partida: la muestra sale con eleven_v4 en español y su costo con el factor de la cuenta", async () => {
+    const { voz, llamadas } = elevenlabs({ modelos: [{ model_id: "eleven_v4", model_rates: { character_cost_multiplier: 1 } }, "eleven_v3", "eleven_multilingual_v2"] });
+    const l = await (await pedir("/videos/bc/voces")).json();
+    expect(l.modelos.map((m) => m.clave)).toEqual(["v4", "v3", "v2"]);
+    expect(l.modelo).toBe("v4");
+    // /v1/models se recuerda: la lista y el pedido no lo preguntan dos veces.
+    const sin = await (await pedir("/videos/bc/voces/muestra", { method: "POST", body: { voz: "VaLeNtInA1234567890a" } })).json();
+    expect(sin).toMatchObject({ codigo: "confirmar", modelo: "v4", unidad: "créditos de ElevenLabs" });
+    expect(sin.error).toMatch(/ElevenLabs v4/);
+    const { trabajoId } = await (await pedir("/videos/bc/voces/muestra", { method: "POST", body: { voz: "VaLeNtInA1234567890a", confirmado: true } })).json();
+    expect(trabajos()[0]).toMatchObject({ motor: "elevenlabs", modelo: "elevenlabs-v4" });
+    const fin = await hastaElFinal(trabajoId);
+    expect(fin.estado).toBe("hecho");
+    expect(voz()[0].cuerpo).toMatchObject({ model_id: "eleven_v4", language_code: "es" });
+    expect(env.MEDIA.objetos.has("voces/elevenlabs/v4/VaLeNtInA1234567890a.mp3")).toBe(true);
+    expect(llamadas.filter((x) => x.url.endsWith("/v1/models"))).toHaveLength(1);
+  });
+
+  it("si la cuenta NO tiene v4, no se ofrece y quien lo pide sale con v3; por Kie, v4 tampoco existe", async () => {
+    elevenlabs({ modelos: ["eleven_v3", "eleven_multilingual_v2"] });
+    const l = await (await pedir("/videos/bc/voces")).json();
+    expect(l.modelos.map((m) => m.clave)).toEqual(["v3", "v2"]);
+    expect(l.modelo).toBe("v3");
+    const sin = await (await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v4", voz: "VaLeNtInA1234567890a" } })).json();
+    expect(sin).toMatchObject({ codigo: "confirmar", modelo: "v3" });
+
+    delete env.ELEVENLABS_API_KEY;
+    kie();
+    const k = await (await pedir("/videos/bc/voces")).json();
+    expect(k.modelos.map((m) => m.clave)).toEqual(["v3", "v2"]);
+    const m = await (await pedir("/videos/bc/voces/muestra", { method: "POST", body: { modelo: "v4", voz: "hpp4J3VqNfWAUOO0d1Us" } })).json();
+    expect(m).toMatchObject({ codigo: "confirmar", modelo: "v3" });
+  });
+
+  it("la biblioteca: sólo voces en español y sin tarifa propia, todo en español, gratis y sin la llave en la respuesta", async () => {
+    const { llamadas } = elevenlabs({ biblioteca: [LUCIA, { voice_id: "sinDuenoValido123456", name: "X" }] });
+    const r = await (await pedir("/videos/bc/voces/biblioteca?q=c%C3%A1lida&genero=female&acento=mexican")).json();
+    const pedido = new URL(llamadas.find((x) => x.url.includes("/v1/shared-voices")).url);
+    expect(Object.fromEntries(pedido.searchParams)).toMatchObject({ language: "es", include_custom_rates: "false", search: "cálida", gender: "female", accent: "mexican" });
+    expect(r.voces).toHaveLength(1);
+    expect(r.voces[0]).toMatchObject({ id: "LuCiAvozEspanol12345", nombre: "Lucía", espanol: true, publico: "duenoPublico987654", usos: 1200 });
+    expect(r.voces[0].nota).toMatch(/acento latinoamericano.*cálida y cercana.*cálida.*publicidad/);
+    expect(r.acentos).toMatchObject({ "latin american": "Latinoamericano" });
+    expect(JSON.stringify(r)).not.toContain("el-secreta");
+    expect(trabajos()).toHaveLength(0);
+    // Un acento que no está en la lista no se manda.
+    await pedir("/videos/bc/voces/biblioteca?acento=klingon");
+    expect(new URL(llamadas.filter((x) => x.url.includes("/v1/shared-voices")).at(-1).url).searchParams.has("accent")).toBe(false);
+  });
+
+  it("añadir una voz de la biblioteca: sólo administración, con su nombre; sin la llave oficial, 409", async () => {
+    const { llamadas } = elevenlabs();
+    const r = await pedir("/videos/bc/voces/biblioteca", { method: "POST", body: { publico: "duenoPublico987654", voz: "LuCiAvozEspanol12345", nombre: "Lucía" } });
+    expect(r.status).toBe(201);
+    expect(await r.json()).toEqual({ voz: "LuCiAvozEspanol12345" });
+    const add = llamadas.find((x) => x.url.includes("/v1/voices/add/"));
+    expect(add.url).toBe(`${ELEVEN}/v1/voices/add/duenoPublico987654/LuCiAvozEspanol12345`);
+    expect(add.cuerpo).toEqual({ new_name: "Lucía" });
+    // Un id raro no sale hacia ElevenLabs.
+    expect((await pedir("/videos/bc/voces/biblioteca", { method: "POST", body: { publico: "../x", voz: "LuCiAvozEspanol12345" } })).status).toBe(400);
+    // Un editor no ocupa huecos de la cuenta.
+    db.sqlite.prepare("update memberships set rol = 'editor' where user_id = ?").run(JEFE);
+    expect((await pedir("/videos/bc/voces/biblioteca", { method: "POST", body: { publico: "duenoPublico987654", voz: "LuCiAvozEspanol12345" } })).status).toBe(403);
+    delete env.ELEVENLABS_API_KEY;
+    expect((await pedir("/videos/bc/voces/biblioteca")).status).toBe(409);
+  });
+
+  it("la muestra GRATIS de ElevenLabs se sirve desde aquí, sólo de sus almacenes", async () => {
+    const { llamadas } = elevenlabs();
+    const ok = await pedir(`/videos/bc/voces/previa?u=${encodeURIComponent(PREVIA)}`);
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get("content-type")).toBe("audio/mpeg");
+    // La muestra pública se pide SIN la llave.
+    expect(llamadas.find((x) => x.url === PREVIA).init.headers?.["xi-api-key"]).toBeUndefined();
+    for (const u of ["https://malo.example/x.mp3", "http://storage.googleapis.com/x.mp3", "javascript:alert(1)"]) {
+      expect((await pedir(`/videos/bc/voces/previa?u=${encodeURIComponent(u)}`)).status).toBe(400);
+    }
+    expect(trabajos()).toHaveLength(0);
+  });
+
+  it("fijar la voz de la marca guarda sólo eso en el kit guardado; una voz que no es de la cuenta, 404", async () => {
+    elevenlabs({ modelos: ["eleven_v4", "eleven_v3"] });
+    db.sqlite.prepare("update clients set kit_marca = ? where id = 'bc'").run(JSON.stringify({ reglas: ["El logo abajo"], locucion: { voz: "", modelo: "v3" } }));
+    const r = await pedir("/videos/bc/voces/marca", { method: "PUT", body: { voz: "VaLeNtInA1234567890a", modelo: "v4" } });
+    expect(r.status).toBe(200);
+    expect(await r.json()).toMatchObject({ voz: { id: "VaLeNtInA1234567890a", nombre: "Valentina" }, modelo: "v4" });
+    const kit = JSON.parse(db.sqlite.prepare("select kit_marca from clients where id = 'bc'").get().kit_marca);
+    expect(kit.locucion).toMatchObject({ voz: "VaLeNtInA1234567890a", modelo: "v4" });
+    expect(kit.reglas).toEqual(["El logo abajo"]);
+    const l = await (await pedir("/videos/bc/voces")).json();
+    expect(l.voces.find((v) => v.escogida)?.nombre).toBe("Valentina");
+    expect((await pedir("/videos/bc/voces/marca", { method: "PUT", body: { voz: "NoEstaEnLaCuenta1234" } })).status).toBe(404);
   });
 });

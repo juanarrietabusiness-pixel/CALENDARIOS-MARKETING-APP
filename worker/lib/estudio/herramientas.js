@@ -119,15 +119,16 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
   {
     name: "listar_voces",
     description:
-      "Las voces con las que se puede hacer la LOCUCIÓN de un video animado de un cliente (ElevenLabs v3 con emociones, por la llave oficial o por Kie.ai; v2 de " +
-      "respaldo): su ID, nombre, género y tono, cuál es la de la marca y si su muestra ya está hecha (oírla entonces es gratis). No gasta nada.",
+      "Las voces con las que se puede hacer la LOCUCIÓN de un video animado de un cliente (ElevenLabs v4 con emociones por la llave oficial; v3 " +
+      "por Kie.ai o si la cuenta no tiene v4; v2 de respaldo): su ID, nombre, género y tono en español, si es NATIVA en español (van primero: " +
+      "prefiérelas para la marca), cuál es la de la marca y si su muestra ya está hecha (oírla entonces es gratis). No gasta nada.",
     input_schema: { type: "object", properties: { ...clienteParam } },
   },
   {
     name: "previsualizar_voz",
     description:
       "La MUESTRA de una voz para escucharla antes de escogerla: una frase fija o, con `texto`, el texto que se quiera oír (hasta 500 caracteres, " +
-      "con [emociones] en v3). Si ya está hecha, da la dirección para oírla y no cuesta nada. Al terminar, estado_trabajo dice si el motor devolvió " +
+      "con [emociones] en v4 y v3). Si ya está hecha, da la dirección para oírla y no cuesta nada. Al terminar, estado_trabajo dice si el motor devolvió " +
       "el tiempo de cada palabra. " +
       "Si no, CUESTA dinero (centavos) y NO se crea hasta confirmarlo: la respuesta trae la cifra; díselo al usuario y sólo si dice que sí vuelve " +
       "a llamarla con confirmado=true. Nunca pongas confirmado=true por tu cuenta. Es un pedido: no espera, se hace solo en un minuto.",
@@ -136,7 +137,7 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
       properties: {
         ...clienteParam,
         voz: { type: "string", description: "ID de una voz de listar_voces." },
-        modelo: { type: "string", enum: ["v3", "v2"], description: "v3 (por defecto, con emociones) o v2." },
+        modelo: { type: "string", enum: ["v4", "v3", "v2"], description: "v4 (por defecto, la más expresiva; si la cuenta no lo tiene, v3), v3 o v2." },
         texto: { type: "string", description: "Lo que dirá la muestra (opcional, hasta 500 caracteres). Sin él, la frase fija." },
         confirmado: { type: "boolean", description: "Sólo tras oír «sí» del usuario a la cifra exacta que le dijiste." },
       },
@@ -156,7 +157,7 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
         ...clienteParam,
         video_id: { type: "string", description: "ID del proyecto de video animado." },
         voz: { type: "string", description: "ID de una voz de listar_voces. Si se omite, la de la marca." },
-        modelo: { type: "string", enum: ["v3", "v2"], description: "Si se omite, el del kit (v3)." },
+        modelo: { type: "string", enum: ["v4", "v3", "v2"], description: "Si se omite, el del kit (v4 por defecto)." },
         confirmado: { type: "boolean", description: "Sólo tras oír «sí» del usuario a la cifra exacta que le dijiste." },
       },
       required: ["video_id"],
@@ -397,11 +398,12 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       const precios = l.modelos.map((m) => `${m.nombre} (muestra ${textoCosto(m.muestra)})`).join(" · ");
       const lineas = l.voces.map((v) => {
         const oidas = Object.entries(v.muestras).filter(([, si]) => si).map(([k]) => k);
-        return `· ${v.id} — ${v.nombre}${v.genero ? ` · ${v.genero}` : ""}${v.nota ? ` · ${v.nota}` : ""}${v.propia ? " · propia" : ""}` +
+        return `· ${v.id} — ${v.nombre}${v.genero ? ` · ${v.genero}` : ""}${v.espanol ? " · NATIVA EN ESPAÑOL" : ""}${v.nota ? ` · ${v.nota}` : ""}${v.propia ? " · propia" : ""}` +
           `${v.escogida ? " · LA DE LA MARCA" : ""}${oidas.length ? ` · muestra hecha (${oidas.join(", ")}): oírla es gratis` : ""}`;
       });
       return [
         `Voces para la locución de ${c.name} (salen por ${l.viaNombre ?? "Kie.ai"}). Modelos: ${precios}.`,
+        l.espanol ? `${l.espanol} nativas en español (van primero).` : "Ninguna es nativa en español: hablan español con el acento de su idioma. Se añaden desde «Probar una voz» → «Buscar voces en español» (biblioteca de ElevenLabs, gratis).",
         l.voz ? `La de la marca: ${l.voces.find((v) => v.escogida)?.nombre ?? l.voz} con ${MODELOS_VOZ[l.modelo]?.nombre ?? l.modelo}.` : "La marca todavía no tiene voz escogida (se escoge en el kit de marca).",
         lineas.join("\n"),
       ].join("\n\n");
@@ -411,7 +413,7 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       const c = await resolverCliente(cliente);
       try {
         const r = await pedirMuestra(env, acceso, c, {
-          modelo: modelo ?? "v3", vozId: voz, texto: typeof texto === "string" ? texto : "", confirmado: confirmado === true, usuario, origen,
+          modelo: modelo ?? "v4", vozId: voz, texto: typeof texto === "string" ? texto : "", confirmado: confirmado === true, usuario, origen,
         });
         const oir = `/api/videos/${c.id}/voces/muestra?modelo=${r.modelo}&voz=${encodeURIComponent(r.voz.id)}${r.huella ? `&huella=${r.huella}` : ""}`;
         if (r.lista) return `La muestra de ${r.voz.nombre} (${r.modelo}) ya está hecha: se oye en ${oir}. No costó nada.`;

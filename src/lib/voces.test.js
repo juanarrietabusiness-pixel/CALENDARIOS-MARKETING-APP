@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { validarGuion, lineaDeTiempo, palabrasDe, textoDeLocucion } from "./videoEscenas.js";
 import {
+  modeloParaVia, modelosDeLaVia, vozDeLaCuenta, vozDeLaBiblioteca, previaDeVoz, enEspanolPrimero, partirNombreDeVoz,
   MODELOS_VOZ, modeloDeVoz, VOCES_DE_SERIE, limpiarLocucion, vocesDisponibles, vozPorId, textoParaVoz, costoDeVoz,
   fraseDeMuestra, problemaDelTexto, palabrasDelResultado, alinearPalabras, palabrasEstimadas, duracionMp3,
   tiemposDeLocucion, leerTranscripcionConTiempos, normalizarPalabra, MAX_VOCES_PROPIAS,
@@ -58,7 +59,7 @@ describe("los modelos, el costo y el texto", () => {
   it("un texto vacío o largo de más se dice antes de pagar", () => {
     expect(problemaDelTexto("", "v3")).toMatch(/nada que decir/);
     expect(problemaDelTexto("a".repeat(5001), "v3")).toMatch(/5001 caracteres/);
-    expect(problemaDelTexto("Hola", "v4")).toMatch(/no existe/);
+    expect(problemaDelTexto("Hola", "v9")).toMatch(/no existe/);
     expect(problemaDelTexto("Hola", "v3")).toBeNull();
   });
 });
@@ -77,7 +78,7 @@ describe("las voces", () => {
       voz: "abcDEF1234567890", modelo: "v9",
       voces: [{ id: "abcDEF1234567890", nombre: " Valentina   MX ", genero: "femenina" }, { id: "abcDEF1234567890" }, { id: "no vale" }, { id: "<script>" }],
     });
-    expect(l).toEqual({ voz: "abcDEF1234567890", modelo: "v3", voces: [{ id: "abcDEF1234567890", nombre: "Valentina MX", genero: "femenina", nota: "", propia: true }] });
+    expect(l).toEqual({ voz: "abcDEF1234567890", modelo: "v4", voces: [{ id: "abcDEF1234567890", nombre: "Valentina MX", genero: "femenina", nota: "", propia: true, espanol: false }] });
     const muchas = limpiarLocucion({ voces: Array.from({ length: 20 }, (_, i) => ({ id: `vozpropia${String(i).padStart(6, "0")}` })) });
     expect(muchas.voces).toHaveLength(MAX_VOCES_PROPIAS);
     const lista = vocesDisponibles(l);
@@ -178,5 +179,63 @@ describe("los tiempos de cada palabra", () => {
     expect(normalizarPalabra("¿Mamá?")).toBe("mama");
     expect(normalizarPalabra("Año,")).toBe("ano");
     expect(MODELOS_VOZ.v3.id).not.toBe(MODELOS_VOZ.v2.id);
+  });
+});
+
+describe("Eleven v4 y las voces en español", () => {
+  it("v4 es el de partida, sólo directo y sólo si la cuenta lo tiene; si no, v3", () => {
+    expect(modeloParaVia("v4", "elevenlabs", null)).toBe("v4");
+    expect(modeloParaVia("v4", "elevenlabs", new Set(["eleven_v4"]))).toBe("v4");
+    expect(modeloParaVia("v4", "elevenlabs", new Set(["eleven_v3"]))).toBe("v3");
+    expect(modeloParaVia("v4", "kie")).toBe("v3");
+    expect(modeloParaVia("v2", "kie")).toBe("v2");
+    expect(modeloParaVia(undefined, "elevenlabs")).toBe("v4");
+    expect(modelosDeLaVia("kie").map((m) => m.clave)).toEqual(["v3", "v2"]);
+    expect(modelosDeLaVia("elevenlabs").map((m) => m.clave)).toEqual(["v4", "v3", "v2"]);
+    expect(MODELOS_VOZ.v4.etiquetas).toBe(true);
+    expect(textoParaVoz({ escenas: [{ habla: "[cálida] Hola" }] }, "v4")).toMatch(/\[cálida\]/);
+  });
+
+  it("el costo directo usa el factor de la cuenta (1 si no lo dice)", () => {
+    expect(costoDeVoz("v4", 1000, "elevenlabs")).toMatchObject({ creditos: 1000 });
+    expect(costoDeVoz("v4", 1000, "elevenlabs", 0.5)).toMatchObject({ creditos: 500 });
+    expect(costoDeVoz("v4", 1000, "elevenlabs", "raro")).toMatchObject({ creditos: 1000 });
+  });
+
+  it("las voces de serie de ElevenLabs llegan en ESPAÑOL: sin el lema en inglés y lo que no se sabe traducir, fuera", () => {
+    const roger = vozDeLaCuenta({
+      voice_id: "CwhRBWXzGAHq8TQ4Fs17", name: "Roger - Laid-Back, Casual, Resonant",
+      labels: { gender: "male", accent: "american", descriptive: "classy", use_case: "conversational", language: "en" },
+      preview_url: "https://storage.googleapis.com/eleven-public-prod/premade/voices/roger.mp3",
+    });
+    expect(roger).toMatchObject({ nombre: "Roger", genero: "masculina", espanol: false, acento: "estadounidense" });
+    expect(roger.nota).toBe("acento estadounidense, relajada, casual, resonante, elegante, conversacional");
+    expect(roger.previa).toMatch(/^https:\/\/storage\.googleapis\.com\//);
+    const brian = vozDeLaCuenta({ voice_id: "nPczCjzI2devNBz1zQrb", name: "Brian - Deep, Resonant and Comforting", labels: { gender: "male", use_case: "social media" } });
+    expect(brian.nota).toBe("grave, resonante y reconfortante, redes sociales");
+    // Una palabra en inglés que no está en el diccionario no se cuela.
+    expect(vozDeLaCuenta({ voice_id: "XXXXXXXXXXXXXXXXXXXX", name: "Zed - Gravelly Wizard", labels: { gender: "male" } }).nota).toBe("");
+    expect(partirNombreDeVoz("Lily | Velvety Actress")).toEqual({ nombre: "Lily", lema: "Velvety Actress" });
+  });
+
+  it("una voz NATIVA en español se marca, conserva su descripción y va primero", () => {
+    const lucia = vozDeLaCuenta({ voice_id: "LuCiAvozEspanol12345", name: "Lucía - Voz cálida para anuncios", labels: { gender: "female", accent: "colombian", language: "es" } });
+    expect(lucia).toMatchObject({ nombre: "Lucía", espanol: true, acento: "colombiano" });
+    expect(lucia.nota).toBe("acento colombiano, Voz cálida para anuncios");
+    // Sin etiqueta de idioma: nativa sólo si su ÚNICO idioma verificado es el español (las de serie traen varios).
+    expect(vozDeLaCuenta({ voice_id: "AAAAAAAAAAAAAAAAAAAA", name: "A", verified_languages: [{ language: "es" }] }).espanol).toBe(true);
+    expect(vozDeLaCuenta({ voice_id: "BBBBBBBBBBBBBBBBBBBB", name: "B", verified_languages: [{ language: "en" }, { language: "es" }] }).espanol).toBe(false);
+    expect(enEspanolPrimero([{ id: 1, espanol: false }, { id: 2, espanol: true }, { id: 3, espanol: false }]).map((v) => v.id)).toEqual([2, 1, 3]);
+  });
+
+  it("la de la biblioteca necesita quién la publicó; la muestra gratis sólo de los almacenes de ElevenLabs, por https", () => {
+    expect(vozDeLaBiblioteca({ voice_id: "LuCiAvozEspanol12345", name: "Lucía" })).toBeNull();
+    expect(vozDeLaBiblioteca({ voice_id: "LuCiAvozEspanol12345", name: "Lucía", public_owner_id: "duenoPublico987654", language: "es" }))
+      .toMatchObject({ publico: "duenoPublico987654", espanol: true });
+    expect(previaDeVoz("https://storage.googleapis.com/eleven-public-prod/x.mp3")).toBeTruthy();
+    expect(previaDeVoz("https://cdn.elevenlabs.io/x.mp3")).toBeTruthy();
+    for (const u of ["http://storage.googleapis.com/x.mp3", "https://storage.googleapis.com.malo.example/x.mp3", "https://malo.example/x.mp3", "javascript:alert(1)", ""]) {
+      expect(previaDeVoz(u)).toBe("");
+    }
   });
 });

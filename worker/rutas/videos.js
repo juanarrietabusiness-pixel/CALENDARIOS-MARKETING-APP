@@ -15,6 +15,11 @@
 //   GET    /api/videos/<c>/voces/muestra?modelo=&voz=&huella=   La muestra hecha (audio), o 404 `sin_muestra` con su costo
 //   POST   /api/videos/<c>/voces/muestra    { modelo, voz, texto?, confirmado }: hacerla (un trabajo; también pide
 //                                           confirmar). `texto` propio (≤ 500): queda aparte, con su `huella`
+//   PUT    /api/videos/<c>/voces/marca      { voz, modelo }: fijar la voz de la MARCA en el kit guardado (gratis)
+//   GET    /api/videos/<c>/voces/biblioteca?q=&genero=&acento=&pagina=   Voces en ESPAÑOL de la biblioteca de
+//                                           ElevenLabs (gratis; sólo con la llave oficial)
+//   POST   /api/videos/<c>/voces/biblioteca { publico, voz, nombre }: añadirla a la cuenta (sólo administración)
+//   GET    /api/videos/<c>/voces/previa?u=  La muestra GRATIS que publica ElevenLabs de una voz (sólo de sus almacenes)
 //
 // El guion lo valida `validarGuion` (src/lib/videoEscenas.js) aquí, en el servidor: lo que llega del navegador, del
 // asistente o de Claude por MCP no se cree. Un guion con errores NO se guarda: vuelve 400 con la lista de errores,
@@ -30,7 +35,9 @@ import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { uuid, ahora } from "../lib/ids.js";
 import { difundir, firma } from "../lib/vivo.js";
 import { validarGuion, lineaDeTiempo, estadoTrasEditar, puedePasar, NOMBRE_ESTADO_VIDEO } from "../../src/lib/videoEscenas.js";
-import { listarVoces, pedirMuestra, pedirLocucion, locucionAlDia, claveDeMuestra, HUELLA, ErrorVoz, viaDeVoz } from "../lib/estudio/locucion.js";
+import { listarVoces, pedirMuestra, pedirLocucion, locucionAlDia, claveDeMuestra, HUELLA, ErrorVoz, viaDeVoz, fijarVozDeMarca } from "../lib/estudio/locucion.js";
+import { buscarEnBiblioteca, anadirDeLaBiblioteca, previaGratis, ACENTOS_BIBLIOTECA } from "../lib/estudio/elevenlabs.js";
+import { ErrorMotor } from "../lib/estudio/gemini.js";
 import { costoDeVoz, fraseDeMuestra, modeloDeVoz, esIdDeVoz } from "../../src/lib/voces.js";
 
 const ID = /^[\w-]{1,80}$/;
@@ -65,10 +72,35 @@ function respuestaDeVoz(e) {
 async function rutasVoces(req, env, { acceso, usuario, cliente, sub, metodo }) {
   try {
     if (!sub && metodo === "GET") return json(await listarVoces(env, cliente));
+    // La voz de la marca: sobre el kit GUARDADO (no el que tenga abierto otra pantalla).
+    if (sub === "marca" && metodo === "PUT") {
+      const b = (await cuerpo(req)) ?? {};
+      const r = await fijarVozDeMarca(env, acceso, cliente, { vozId: typeof b.voz === "string" ? b.voz : "", modelo: b.modelo });
+      difundir(env, acceso.ownerId, { tipo: "estudio", clientId: cliente.id, por: firma(usuario, req) });
+      return json(r);
+    }
+    // La biblioteca de ElevenLabs (voces en español): sólo con la llave oficial.
+    if (sub === "biblioteca") {
+      if (viaDeVoz(env) !== "elevenlabs") return error("La biblioteca de voces necesita la llave oficial de ElevenLabs (ELEVENLABS_API_KEY).", 409);
+      if (metodo === "GET") {
+        const u = new URL(req.url).searchParams;
+        const r = await buscarEnBiblioteca(env, { q: u.get("q") ?? "", genero: u.get("genero") ?? "", acento: u.get("acento") ?? "", pagina: u.get("pagina") ?? 0 });
+        return json({ ...r, acentos: ACENTOS_BIBLIOTECA });
+      }
+      if (metodo === "POST") {
+        // Ocupa un hueco de voces de la cuenta de la agencia: lo decide quien la administra.
+        if (usuario?.rol !== "admin") return error("Sólo quien administra añade voces a la cuenta de ElevenLabs.", 403);
+        const b = (await cuerpo(req)) ?? {};
+        const id = await anadirDeLaBiblioteca(env, { publico: b.publico, voz: b.voz, nombre: b.nombre });
+        return json({ voz: id }, 201);
+      }
+      return error("Método no permitido.", 405);
+    }
+    if (sub === "previa" && metodo === "GET") return await previaGratis(new URL(req.url).searchParams.get("u") ?? "");
     if (sub !== "muestra") return noEncontrado("Voces");
     if (metodo === "GET") {
       const url = new URL(req.url);
-      const modelo = modeloDeVoz(url.searchParams.get("modelo") ?? "v3");
+      const modelo = modeloDeVoz(url.searchParams.get("modelo") ?? "v4");
       // Sólo se OYE lo ya hecho: basta con que el id tenga la forma de uno de ElevenLabs (la clave de R2 no sale de ahí).
       // Con la llave oficial valen las voces de la cuenta, y preguntarle la lista para cada audio sería una llamada más.
       const vozId = url.searchParams.get("voz") ?? "";
@@ -92,6 +124,7 @@ async function rutasVoces(req, env, { acceso, usuario, cliente, sub, metodo }) {
     return error("Método no permitido.", 405);
   } catch (e) {
     if (e instanceof ErrorVoz) return respuestaDeVoz(e);
+    if (e instanceof ErrorMotor) return error(e.message, e.estado >= 400 && e.estado < 600 ? e.estado : 502);
     throw e;
   }
 }

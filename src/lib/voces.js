@@ -5,9 +5,10 @@
 //   · DIRECTO con la llave oficial (`ELEVENLABS_API_KEY`, worker/lib/estudio/elevenlabs.js) cuando el servidor la tiene:
 //     contesta en el acto con el audio y el tiempo de cada carácter, y vale cualquier voz de la cuenta.
 //   · por Kie.ai (worker/lib/estudio/kie.js), el respaldo sin llave oficial: sólo las voces de su lista.
-// Dos modelos:
+// Tres modelos:
 //
-//   · v3 (`elevenlabs/text-to-dialogue-v3`): el principal. Entiende las etiquetas de emoción
+//   · v4 (`eleven_v4`, sólo DIRECTO): el principal con la llave oficial; si la cuenta no lo tiene, v3 (`modeloParaVia`).
+//   · v3 (`elevenlabs/text-to-dialogue-v3`): el principal por Kie. Entiende las etiquetas de emoción
 //     entre corchetes del guion («[preocupada] ¿Las toallitas…»). Va por `dialogue: [{ text, voice }]`.
 //   · v2 (`elevenlabs/text-to-speech-multilingual-v2`): el de respaldo. Sin etiquetas (se quitan),
 //     y se le pide `timestamps`.
@@ -36,19 +37,43 @@ import { palabrasDe, sinEtiquetas, textoDeLocucion } from "./videoEscenas.js";
 /** Un crédito de Kie en dólares (su página de precios: 1 crédito ≈ 0,005 $). */
 export const USD_POR_CREDITO = 0.005;
 
-/** Los modelos de voz. `creditos` por cada 1.000 caracteres (su página de precios, octubre de 2026). */
+/** Los modelos de voz. `creditos` por cada 1.000 caracteres por Kie (su página de precios, octubre de 2026). */
 // `idDirecto` y `elevenlabs` (su `model_id`) son los del camino directo; `max` es el menor de los dos caminos (v3 directo
-// admite 5.000 caracteres por petición).
+// admite 5.000 caracteres por petición). v4 sólo existe por el camino DIRECTO (`kie: null`): Kie no lo ofrece.
 export const MODELOS_VOZ = Object.freeze({
+  v4: Object.freeze({
+    id: null, idDirecto: "elevenlabs-v4", elevenlabs: "eleven_v4", clave: "v4", nombre: "ElevenLabs v4 (la más expresiva)",
+    kie: null, creditos: null, max: 5000, etiquetas: true, soloDirecto: true,
+  }),
   v3: Object.freeze({
     id: "elevenlabs-v3-kie", idDirecto: "elevenlabs-v3", elevenlabs: "eleven_v3", clave: "v3", nombre: "ElevenLabs v3 (expresiva)",
     kie: "elevenlabs/text-to-dialogue-v3", creditos: 14, max: 5000, etiquetas: true,
   }),
   v2: Object.freeze({
-    id: "elevenlabs-v2-kie", idDirecto: "elevenlabs-v2", elevenlabs: "eleven_multilingual_v2", clave: "v2", nombre: "ElevenLabs Multilingual v2 (respaldo)",
+    id: "elevenlabs-v2-kie", idDirecto: "elevenlabs-v2", elevenlabs: "eleven_multilingual_v2", clave: "v2", nombre: "ElevenLabs Multilingüe v2 (respaldo)",
     kie: "elevenlabs/text-to-speech-multilingual-v2", creditos: 12, max: 5000, etiquetas: false,
   }),
 });
+
+/** Las claves que entiende la pantalla, el asistente y el MCP. */
+export const CLAVES_MODELO_VOZ = Object.freeze(Object.keys(MODELOS_VOZ));
+
+/**
+ * El modelo que de verdad se usa por esa vía: v4 sólo va directo y sólo si la cuenta lo tiene (`disponibles`: el
+ * conjunto de `model_id` que dio `/v1/models`, o null si no se pudo saber: entonces se intenta y un rechazo no cobra).
+ * Lo que no se puede, baja a v3. Pura.
+ */
+export function modeloParaVia(clave, via, disponibles = null) {
+  const m = modeloDeVoz(clave) ?? MODELOS_VOZ[MODELO_VOZ_POR_DEFECTO];
+  if (!m.soloDirecto) return m.clave;
+  if (via !== "elevenlabs") return "v3";
+  if (disponibles && !disponibles.has(m.elevenlabs)) return "v3";
+  return m.clave;
+}
+
+/** Los modelos que se pueden escoger por esa vía (v4 fuera si no va directo o la cuenta no lo tiene). Pura. */
+export const modelosDeLaVia = (via, disponibles = null) =>
+  Object.values(MODELOS_VOZ).filter((m) => modeloParaVia(m.clave, via, disponibles) === m.clave);
 
 /** Por dónde sale la voz: «elevenlabs» (la llave oficial) o «kie». Lo decide el SERVIDOR por sus llaves. */
 export const VIAS_VOZ = Object.freeze({
@@ -57,18 +82,19 @@ export const VIAS_VOZ = Object.freeze({
 });
 
 /**
- * ElevenLabs cobra 1 crédito por carácter en v3 y en Multilingual v2, de los que trae el plan de la cuenta. En dólares
+ * ElevenLabs cobra 1 crédito por carácter en v4, v3 y Multilingüe v2 (salvo que `/v1/models` diga otro factor), de los que trae el plan de la cuenta. En dólares
  * depende del plan: se estima con el de Creator (unos 22 $ por 100.000 créditos) y se rotula «aproximado».
  */
 export const USD_POR_CARACTER_ELEVENLABS = 0.00022;
-export const MODELO_VOZ_POR_DEFECTO = "v3";
+/** El modelo de partida: v4 (si la vía o la cuenta no lo tienen, `modeloParaVia` lo baja a v3). */
+export const MODELO_VOZ_POR_DEFECTO = "v4";
 
 /**
  * El modelo de voz como lo ve la cola del Estudio (worker/lib/estudio/trabajos.js): motor Kie, tipo «audio», por la
  * cola. `costo` no es el precio (depende del texto: va en el trabajo, `costo_estimado`); sólo dice que gasta. Pura.
  */
 export function modeloDelEstudio(id) {
-  const m = Object.values(MODELOS_VOZ).find((x) => x.id === id || x.idDirecto === id);
+  const m = id ? Object.values(MODELOS_VOZ).find((x) => x.id === id || x.idDirecto === id) : null;
   if (!m) return null;
   const directo = m.idDirecto === id;
   return {
@@ -81,7 +107,8 @@ export function modeloDelEstudio(id) {
 export const idDeModeloVoz = (clave, via) => (via === "elevenlabs" ? MODELOS_VOZ[clave]?.idDirecto : MODELOS_VOZ[clave]?.id);
 
 /** El modelo de voz por su clave («v3», «v2») o por su id del Estudio (de cualquiera de las dos vías). */
-export const modeloDeVoz = (valor) => MODELOS_VOZ[valor] ?? Object.values(MODELOS_VOZ).find((m) => m.id === valor || m.idDirecto === valor) ?? null;
+export const modeloDeVoz = (valor) =>
+  (valor ? MODELOS_VOZ[valor] ?? Object.values(MODELOS_VOZ).find((m) => m.id === valor || m.idDirecto === valor) : null) ?? null;
 
 /**
  * Las voces que ACEPTA Kie, con su id de ElevenLabs. Kie no deja escoger cualquier voz de ElevenLabs: sólo las de su
@@ -123,22 +150,151 @@ export const VOCES_ELEVENLABS = Object.freeze([
 
 const GENERO_ELEVENLABS = { female: "femenina", male: "masculina", neutral: "neutra" };
 
+// ------------------------------------------------------------
+// Las voces en ESPAÑOL: lo que dice ElevenLabs de cada voz, traducido
+// ------------------------------------------------------------
+//
+// ElevenLabs describe sus voces en inglés («Roger - Laid-Back, Casual, Resonant», acento «american», uso
+// «social media»). La agencia trabaja en español: se traduce con un diccionario (frases antes que palabras) y lo que no
+// está en él se QUITA, salvo en una voz nativa en español, cuya descripción ya suele venir en español. Así la pantalla
+// nunca enseña una mezcla de idiomas.
+
+/** Frases y palabras de las etiquetas y descripciones de ElevenLabs → español. Las frases van primero. */
+const TRADUCCION = Object.freeze({
+  // usos
+  "social media creator": "creador de redes", "social media": "redes sociales", "entertainment tv": "televisión",
+  "narrative story": "narración", "narrative & story": "narración", "characters animation": "personajes y animación",
+  "characters & animation": "personajes y animación", "informative educational": "educativa", "informative & educational": "educativa",
+  "news": "noticias", "advertisement": "publicidad", "conversational": "conversacional", "audiobook": "audiolibro",
+  "meditation": "meditación", "video games": "videojuegos", "asmr": "ASMR",
+  // frases de los nombres
+  "engaging educator": "educadora cercana", "captivating storyteller": "narrador cautivador", "steady broadcaster": "locutor estable",
+  "velvety actress": "actriz aterciopelada", "fierce warrior": "guerrero feroz", "husky trickster": "pícaro de voz ronca",
+  "relaxed optimist": "optimista relajado", "quirky attitude": "actitud peculiar", "down-to-earth": "sencillo",
+  "laid-back": "relajada", "well-rounded": "equilibrada", "middle aged": "de mediana edad", "middle-aged": "de mediana edad",
+  // acentos
+  "latin american": "latinoamericano", "latin-american": "latinoamericano", "latino": "latino", "mexican": "mexicano",
+  "colombian": "colombiano", "argentine": "argentino", "argentinian": "argentino", "venezuelan": "venezolano",
+  "chilean": "chileno", "peruvian": "peruano", "panamanian": "panameño", "caribbean": "caribeño", "cuban": "cubano",
+  "puerto rican": "puertorriqueño", "dominican": "dominicano", "castilian": "español de España", "peninsular": "español de España",
+  "spanish": "español", "american": "estadounidense", "british": "británico", "australian": "australiano", "irish": "irlandés",
+  "canadian": "canadiense", "indian": "indio", "african": "africano", "standard": "neutro", "neutral": "neutra",
+  // tonos
+  "professional": "profesional", "confident": "segura", "warm": "cálida", "calm": "tranquila", "casual": "casual",
+  "classy": "elegante", "sassy": "atrevida", "hyped": "muy animada", "mature": "madura", "rough": "áspera", "chill": "relajada",
+  "cute": "tierna", "formal": "formal", "upbeat": "animada", "crisp": "nítida", "resonant": "resonante", "reassuring": "tranquilizadora",
+  "enthusiast": "entusiasta", "enthusiastic": "entusiasta", "deep": "grave", "energetic": "enérgica", "relaxed": "relajada",
+  "informative": "informativa", "clear": "clara", "knowledgable": "experta", "knowledgeable": "experta", "playful": "juguetona",
+  "bright": "luminosa", "smooth": "suave", "trustworthy": "confiable", "charming": "encantadora", "comforting": "reconfortante",
+  "dominant": "dominante", "firm": "firme", "wise": "sabia", "balanced": "equilibrada", "soft": "suave", "gentle": "delicada",
+  "friendly": "amigable", "young": "joven", "old": "mayor", "raspy": "rasposa", "husky": "ronca", "strong": "fuerte",
+  "expressive": "expresiva", "natural": "natural", "pleasant": "agradable", "serious": "seria", "authoritative": "con autoridad",
+  "articulate": "articulada", "excited": "emocionada", "seductive": "seductora", "whispery": "susurrante", "breathy": "aireada",
+  "storyteller": "narradora", "narrator": "narradora", "educator": "educadora", "broadcaster": "locutora", "actress": "actriz",
+  "creator": "creadora", "sweet": "dulce", "cheerful": "alegre", "happy": "alegre", "emotive": "emotiva", "dramatic": "dramática",
+  "intense": "intensa", "low": "grave", "high": "aguda", "fast": "rápida", "slow": "pausada", "kind": "amable", "loud": "potente",
+  "modulated": "modulada", "engaging": "cercana", "captivating": "cautivadora", "steady": "estable",
+});
+
+/** Las palabras que, solas, delatan un texto en inglés (si quedan sin traducir, el trozo se quita). */
+const PALABRAS_ESPANOL = /[áéíóúñ¿¡]|\b(de|del|la|el|y|con|para|voz|joven|mujer|hombre|cálid|suave|clara|narrador|locutor|neutr|latin)/i;
+
+/** Un trozo de descripción en español: por el diccionario; si no, null (o él mismo si se fía de su idioma). */
+function traducirTrozo(trozo, { fiarse = false } = {}) {
+  const t = String(trozo ?? "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
+  if (!t) return null;
+  const k = t.toLowerCase();
+  if (TRADUCCION[k]) return TRADUCCION[k];
+  // «Deep, Resonant and Comforting» → por palabras; todas tienen que estar en el diccionario.
+  const palabras = k.split(/\s+(?:and|&|y)\s+|\s+/).filter((p) => p && !["a", "an", "the", "voice", "with"].includes(p));
+  if (palabras.length && palabras.every((p) => TRADUCCION[p])) return palabras.map((p) => TRADUCCION[p]).join(" y ");
+  return fiarse || PALABRAS_ESPANOL.test(t) ? t : null;
+}
+
+/** Una lista de trozos traducidos, sin repetir, separados por comas. Pura. */
+function descripcionEnEspanol(trozos, opciones) {
+  const vistos = new Set();
+  return trozos.flatMap((x) => String(x ?? "").split(/\s*[,;/·]\s*/)).map((x) => traducirTrozo(x, opciones))
+    .filter((x) => x && !vistos.has(x.toLowerCase()) && vistos.add(x.toLowerCase())).join(", ");
+}
+
+/** El nombre de una voz sin el lema en inglés de ElevenLabs («Roger - Laid-Back, Casual» → «Roger» y el lema aparte). */
+export function partirNombreDeVoz(nombre) {
+  const n = String(nombre ?? "").replace(/\s+/g, " ").trim();
+  const m = n.match(/^(.+?)\s+[-–—|]\s+(.+)$/);
+  return m ? { nombre: m[1].trim(), lema: m[2].trim() } : { nombre: n, lema: "" };
+}
+
+/** Si el idioma que dice ElevenLabs es español («es», «es-419», «spanish»). */
+export const esIdiomaEspanol = (x) => /^(es)([-_].*)?$|^spanish$|^español$/i.test(String(x ?? "").trim());
+
+/** El acento en español: «latinoamericano», «mexicano», «español de España»… o "" si no se sabe. Pura. */
+export const acentoEnEspanol = (x) => traducirTrozo(x, { fiarse: false }) ?? "";
+
 /**
- * Una voz de la lista de la cuenta de ElevenLabs (`/v1/voices`) como la ve la pantalla: id, nombre, género y una nota con
- * su acento, su descripción y para qué sirve. Null si no trae id válido. Pura.
+ * ¿Es una voz NATIVA en español? Lo dice su etiqueta de idioma; sin etiqueta, que su único idioma verificado sea el
+ * español (las de serie traen varios verificados y su etiqueta dice «en»). Pura.
+ */
+function nativaEnEspanol(v, l) {
+  if (l.language) return esIdiomaEspanol(l.language);
+  if (v?.language) return esIdiomaEspanol(v.language);
+  const ver = Array.isArray(v?.verified_languages) ? v.verified_languages.map((x) => x?.language).filter(Boolean) : [];
+  return ver.length > 0 && ver.every(esIdiomaEspanol);
+}
+
+/** La dirección de la muestra GRATIS que da ElevenLabs de una voz (sólo https de sus almacenes). Pura. */
+export function previaDeVoz(url) {
+  try {
+    const u = new URL(String(url ?? ""));
+    if (u.protocol !== "https:") return "";
+    return HOSTS_PREVIA.some((h) => u.hostname === h || u.hostname.endsWith(`.${h}`)) ? u.href.slice(0, 600) : "";
+  } catch {
+    return "";
+  }
+}
+/** Dónde guarda ElevenLabs las muestras de sus voces (las de serie y las de la biblioteca). */
+export const HOSTS_PREVIA = Object.freeze(["storage.googleapis.com", "elevenlabs.io"]);
+
+/**
+ * Una voz (de la cuenta, `/v1/voices`, o de la biblioteca, `/v1/shared-voices`) como la ve la pantalla, TODO en español:
+ * id, nombre (sin el lema en inglés), género, una nota con su acento, su tono y para qué sirve, si es nativa en
+ * español y la dirección de su muestra gratis. Null si no trae id válido. Pura.
  */
 export function vozDeLaCuenta(v) {
   const id = String(v?.voice_id ?? "").trim();
   if (!ID_VOZ.test(id)) return null;
   const l = v?.labels && typeof v.labels === "object" ? v.labels : {};
-  const nota = [l.accent, l.descriptive ?? l.description, l.use_case ?? l["use case"], l.language]
-    .filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().replace(/_/g, " ")).join(", ");
+  const espanol = nativaEnEspanol(v, l);
+  const { nombre, lema } = partirNombreDeVoz(v?.name);
+  const acento = acentoEnEspanol(l.accent ?? v?.accent);
+  const nota = descripcionEnEspanol([
+    lema, l.descriptive ?? l.description ?? v?.descriptive, l.use_case ?? l["use case"] ?? v?.use_case, l.age ?? v?.age,
+    ...(espanol && typeof v?.description === "string" ? [v.description.slice(0, 120)] : []),
+  ], { fiarse: espanol });
+  const previa = previaDeVoz(v?.preview_url);
   return {
-    id, nombre: String(v?.name ?? "").replace(/\s+/g, " ").trim().slice(0, 40) || id,
-    genero: GENERO_ELEVENLABS[String(l.gender ?? "").toLowerCase()] ?? "neutra", nota: nota.slice(0, 80),
+    id, nombre: nombre.slice(0, 40) || id,
+    genero: GENERO_ELEVENLABS[String(l.gender ?? v?.gender ?? "").toLowerCase()] ?? "neutra",
+    nota: [acento && `acento ${acento}`, nota].filter(Boolean).join(", ").slice(0, 100),
+    espanol, ...(acento ? { acento } : {}), ...(previa ? { previa } : {}),
     ...(v?.category ? { categoria: String(v.category).slice(0, 20) } : {}),
   };
 }
+
+/**
+ * Una voz de la BIBLIOTECA de ElevenLabs (`/v1/shared-voices`), lista para «Añadir a mis voces»: lo de `vozDeLaCuenta`
+ * más quién la publicó (`publico`, hace falta para añadirla) y cuánta gente la usa. Null si le falta algo. Pura.
+ */
+export function vozDeLaBiblioteca(v) {
+  const base = vozDeLaCuenta(v);
+  const publico = String(v?.public_owner_id ?? "").trim();
+  if (!base || !/^[A-Za-z0-9]{8,80}$/.test(publico)) return null;
+  const usos = Number(v?.cloned_by_count ?? v?.usage_character_count_1y ?? 0);
+  return { ...base, publico, ...(Number.isFinite(usos) && usos > 0 ? { usos } : {}) };
+}
+
+/** Las voces en español primero (luego las demás), sin cambiar el orden dentro de cada grupo. Pura. */
+export const enEspanolPrimero = (voces) => [...voces.filter((v) => v.espanol), ...voces.filter((v) => !v.espanol)];
 
 /** Un id de voz de ElevenLabs: letras y números, sin espacios. */
 const ID_VOZ = /^[A-Za-z0-9]{12,40}$/;
@@ -153,7 +309,7 @@ export function limpiarVozPropia(v) {
   const nombre = String(v?.nombre ?? "").replace(/\s+/g, " ").trim().slice(0, 40) || id;
   return {
     id, nombre, genero: GENEROS.includes(v?.genero) ? v.genero : "neutra",
-    nota: String(v?.nota ?? "").replace(/\s+/g, " ").trim().slice(0, 80), propia: true,
+    nota: String(v?.nota ?? "").replace(/\s+/g, " ").trim().slice(0, 80), propia: true, espanol: v?.espanol === true,
   };
 }
 
@@ -192,15 +348,21 @@ export function textoParaVoz(guion, modelo = MODELO_VOZ_POR_DEFECTO) {
 
 /**
  * Lo que cuesta una toma de `caracteres` con ese modelo y por esa vía: { creditos, usd, unidad } (usd redondeado hacia
- * arriba al milésimo). Por Kie, sus créditos por cada 1.000 caracteres; directo, un crédito de ElevenLabs por carácter.
+ * arriba al milésimo). Por Kie, sus créditos por cada 1.000 caracteres; directo, un crédito de ElevenLabs por carácter
+ * por el `factor` del modelo en la cuenta (`/v1/models` lo dice: `character_cost_multiplier`; 1 si no se sabe).
  */
-export function costoDeVoz(modelo, caracteres, via = "kie") {
+export function costoDeVoz(modelo, caracteres, via = "kie", factor = 1) {
   const m = modeloDeVoz(modelo);
   const unidad = VIAS_VOZ[via]?.unidad ?? VIAS_VOZ.kie.unidad;
   if (!m) return { creditos: 0, usd: 0, unidad };
   const n = Math.max(0, caracteres);
-  if (via === "elevenlabs") return { creditos: n, usd: Math.ceil(n * USD_POR_CARACTER_ELEVENLABS * 1000) / 1000, unidad };
-  const creditos = Math.round(((n / 1000) * m.creditos) * 1000) / 1000;
+  if (via === "elevenlabs") {
+    const f = Number.isFinite(Number(factor)) && Number(factor) > 0 ? Number(factor) : 1;
+    const creditos = Math.ceil(n * f);
+    return { creditos, usd: Math.ceil(creditos * USD_POR_CARACTER_ELEVENLABS * 1000) / 1000, unidad };
+  }
+  const porMil = m.creditos ?? MODELOS_VOZ.v3.creditos;
+  const creditos = Math.round(((n / 1000) * porMil) * 1000) / 1000;
   return { creditos, usd: Math.ceil(creditos * USD_POR_CREDITO * 1000) / 1000, unidad };
 }
 

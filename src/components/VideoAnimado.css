@@ -59,4 +59,11 @@
 .va-voz-precio { padding: var(--sp-3); background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: var(--radius); }
 .va-voz-precio p { margin: 0 0 var(--sp-2); }
 .va-voz-audio { width: 100%; }
+.va-voz-biblioteca { border-top: 1px solid var(--border); padding-top: var(--sp-2); display: flex; flex-direction: column; gap: var(--sp-2); }
+.va-bib { display: flex; flex-direction: column; gap: var(--sp-2); }
+.va-bib-filtros { display: grid; gap: var(--sp-2); grid-template-columns: 1fr; }
+@media (min-width: 640px) { .va-bib-filtros { grid-template-columns: auto 1fr auto auto auto auto auto; align-items: center; } }
+.va-bib-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); max-height: 22rem; overflow: auto; }
+.va-bib-voz { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2); background: var(--surface-2); border-radius: var(--radius-sm); }
+.va-bib-voz p { margin: 0; }
 .va-probar summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; font-weight: 600; }

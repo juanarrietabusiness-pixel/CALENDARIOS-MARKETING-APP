@@ -32,16 +32,17 @@ import { verVideo } from "../geminiVideo.js";
 import { MOTORES } from "./motores.js";
 import { abrirDescarga, guardarDescarga } from "./descarga.js";
 import { claveDeArchivo } from "./archivos.js";
-import { kitDe } from "./kit.js";
+import { kitDe, guardarKit } from "./kit.js";
 import { validarGuion, puedeGenerarVoz, puedePasar, NOMBRE_ESTADO_VIDEO } from "../../../src/lib/videoEscenas.js";
 import {
   MODELOS_VOZ, modeloDeVoz, limpiarLocucion, vocesDisponibles, vozPorId, VOCES_KIE, VOCES_ELEVENLABS, VIAS_VOZ, idDeModeloVoz,
   textoParaVoz, costoDeVoz,
   fraseDeMuestra, textoDeMuestra, tiemposQueLlegaron, problemaDelTexto, palabrasDelResultado, tiemposDeLocucion, duracionMp3,
   PEDIDO_TRANSCRIPCION_TIEMPOS, leerTranscripcionConTiempos, COINCIDENCIA_MINIMA, MODELO_VOZ_POR_DEFECTO,
+  modeloParaVia, modelosDeLaVia, enEspanolPrimero,
 } from "../../../src/lib/voces.js";
 import { textoCosto } from "../../../src/lib/estudioCatalogo.js";
-import { vocesDeLaCuenta } from "./elevenlabs.js";
+import { vocesDeLaCuenta, modelosDeLaCuenta } from "./elevenlabs.js";
 
 /** Lo más que pesa una toma que se baja (una locución de 2 minutos en MP3 son ~2 MB). */
 export const TOPE_AUDIO = 25 * 1024 * 1024;
@@ -93,21 +94,59 @@ export async function vocesDeLaVia(env, via) {
   return VOCES_KIE;
 }
 
-/** La lista de voces de un cliente, con si su muestra ya está hecha (y entonces es gratis oírla). */
+/**
+ * Lo que la cuenta dice de sus modelos (sólo por la vía directa): los que tiene y cuánto cobra cada uno por carácter.
+ * null si no se pudo saber (entonces v4 se intenta: un rechazo no cobra).
+ */
+async function cuentaDeLaVia(env, via) {
+  return via === "elevenlabs" ? await modelosDeLaCuenta(env) : null;
+}
+
+/** El modelo que se usa (v4 → v3 si la vía o la cuenta no lo tienen) y su factor de costo. */
+async function modeloYFactor(env, via, pedido) {
+  const cuenta = await cuentaDeLaVia(env, via);
+  const clave = modeloParaVia(pedido ?? MODELO_VOZ_POR_DEFECTO, via, cuenta?.ids ?? null);
+  return { m: MODELOS_VOZ[clave], factor: cuenta?.factores?.[MODELOS_VOZ[clave].elevenlabs] ?? 1, cuenta };
+}
+
+/** La lista de voces de un cliente (las nativas en español primero), con si su muestra ya está hecha (y entonces es gratis oírla). */
 export async function listarVoces(env, cliente) {
   const loc = locucionDe(cliente);
   const via = viaDeVoz(env) ?? "kie";
-  const voces = vocesDisponibles(loc, await vocesDeLaVia(env, via));
+  const cuenta = await cuentaDeLaVia(env, via);
+  const modelos = modelosDeLaVia(via, cuenta?.ids ?? null);
+  const voces = vocesDisponibles(loc, enEspanolPrimero(await vocesDeLaVia(env, via)));
   const conMuestra = await Promise.all(voces.map(async (v) => {
     const muestras = {};
-    for (const clave of Object.keys(MODELOS_VOZ)) muestras[clave] = Boolean(await env.MEDIA?.head(claveDeMuestra(clave, v.id)).catch(() => null));
+    for (const m of modelos) muestras[m.clave] = Boolean(await env.MEDIA?.head(claveDeMuestra(m.clave, v.id)).catch(() => null));
     return { ...v, muestras, escogida: v.id === loc.voz };
   }));
-  const muestra = (clave) => costoDeVoz(clave, fraseDeMuestra(clave).length, via).usd;
+  const factor = (m) => cuenta?.factores?.[m.elevenlabs] ?? 1;
+  const muestra = (m) => costoDeVoz(m.clave, fraseDeMuestra(m.clave).length, via, factor(m)).usd;
   return {
-    voces: conMuestra, voz: loc.voz, modelo: loc.modelo, via, viaNombre: VIAS_VOZ[via].nombre, unidad: VIAS_VOZ[via].unidad,
-    modelos: Object.values(MODELOS_VOZ).map((m) => ({ clave: m.clave, nombre: m.nombre, creditos: m.creditos, muestra: muestra(m.clave) })),
+    voces: conMuestra, voz: loc.voz, modelo: modeloParaVia(loc.modelo, via, cuenta?.ids ?? null), via,
+    viaNombre: VIAS_VOZ[via].nombre, unidad: VIAS_VOZ[via].unidad, espanol: conMuestra.filter((v) => v.espanol).length,
+    biblioteca: via === "elevenlabs",
+    modelos: modelos.map((m) => ({ clave: m.clave, nombre: m.nombre, creditos: m.creditos, muestra: muestra(m) })),
   };
+}
+
+/**
+ * Fija la voz (y el modelo) de la MARCA en el kit guardado del cliente, sin tocar nada más del kit: los videos con
+ * locución salen con ella. La voz tiene que estar entre las del cliente (las de la cuenta por la vía directa). Gratis.
+ */
+export async function fijarVozDeMarca(env, acceso, cliente, { vozId = "", modelo } = {}) {
+  const via = viaDeVoz(env);
+  if (!via) throw sinLlaveDeVoz();
+  const actual = kitDe(cliente);
+  const loc = limpiarLocucion(actual.locucion);
+  const id = String(vozId ?? "");
+  const voz = id ? vozPorId(loc, id, await vocesDeLaVia(env, via)) : null;
+  if (id && !voz) throw new ErrorVoz("Esa voz no está entre las del cliente: escoge una de la lista.", 404);
+  const m = modeloDeVoz(modelo ?? loc.modelo);
+  if (!m) throw new ErrorVoz("Ese modelo de voz no existe: v4, v3 o v2.");
+  const kit = await guardarKit(env, acceso, cliente, { ...actual, locucion: { ...loc, voz: voz?.id ?? "", modelo: m.clave } });
+  return { locucion: kit.locucion, voz: voz ? { id: voz.id, nombre: voz.nombre } : null, modelo: m.clave };
 }
 
 /** Sin ninguna llave de voz: 503 sin crear nada. */
@@ -156,10 +195,10 @@ function pedirConfirmacion(que, costo, extra = {}) {
  * `confirmado: true` contesta 409 con el costo, y con él crea el trabajo.
  */
 export async function pedirMuestra(env, acceso, cliente, { modelo = MODELO_VOZ_POR_DEFECTO, vozId, texto: propio = "", confirmado = false, usuario = null, origen = "persona" } = {}) {
-  const m = modeloDeVoz(modelo);
-  if (!m) throw new ErrorVoz("Ese modelo de voz no existe: v3 o v2.");
+  if (!modeloDeVoz(modelo)) throw new ErrorVoz("Ese modelo de voz no existe: v4, v3 o v2.");
   const via = viaDeVoz(env);
   if (!via) throw sinLlaveDeVoz();
+  const { m, factor } = await modeloYFactor(env, via, modelo);
   const voz = vozPorId(locucionDe(cliente), String(vozId ?? ""), await vocesDeLaVia(env, via));
   if (!voz) throw new ErrorVoz("Esa voz no está entre las del cliente: escoge una de la lista (o añádela como voz propia en el kit).", 404);
   const t = textoDeMuestra(m.clave, propio);
@@ -168,7 +207,7 @@ export async function pedirMuestra(env, acceso, cliente, { modelo = MODELO_VOZ_P
   const clave = claveDeMuestra(m.clave, voz.id, huella);
   const base = { clave, huella, voz, modelo: m.clave, caracteres: t.texto.length };
   if (await env.MEDIA.head(clave).catch(() => null)) return { lista: true, ...base, costo: 0 };
-  const costo = costoDeVoz(m.clave, t.texto.length, via);
+  const costo = costoDeVoz(m.clave, t.texto.length, via, factor);
   if (confirmado !== true) {
     throw pedirConfirmacion(`La muestra de ${voz.nombre} con ${m.nombre} (${t.texto.length} caracteres)`, costo, { voz: voz.nombre, modelo: m.clave, caracteres: t.texto.length, huella });
   }
@@ -193,10 +232,10 @@ export async function pedirLocucion(env, acceso, cliente, video, { modelo, vozId
     if (t && ["en_cola", "en_marcha"].includes(t.estado)) throw new ErrorVoz("Ya se está generando la voz de este video: espera a que termine.", 409, { codigo: "en_curso" });
   }
   const loc = locucionDe(cliente);
-  const m = modeloDeVoz(modelo ?? loc.modelo);
-  if (!m) throw new ErrorVoz("Ese modelo de voz no existe: v3 o v2.");
+  if (!modeloDeVoz(modelo ?? loc.modelo)) throw new ErrorVoz("Ese modelo de voz no existe: v4, v3 o v2.");
   const via = viaDeVoz(env);
   if (!via) throw sinLlaveDeVoz();
+  const { m, factor } = await modeloYFactor(env, via, modelo ?? loc.modelo);
   const voz = vozPorId(loc, String(vozId ?? loc.voz ?? ""), await vocesDeLaVia(env, via));
   if (!voz) {
     throw new ErrorVoz(loc.voz ? `Esa voz no está entre las del cliente${via === "elevenlabs" ? " ni en la cuenta de ElevenLabs" : ""}: escoge otra.` : "Escoge la voz de la marca (en el kit o para este video).", 400, { codigo: "sin_voz" });
@@ -204,7 +243,7 @@ export async function pedirLocucion(env, acceso, cliente, video, { modelo, vozId
   const texto = textoParaVoz(v.guion, m.clave);
   const problema = problemaDelTexto(texto, m.clave);
   if (problema) throw new ErrorVoz(problema, 400);
-  const costo = costoDeVoz(m.clave, texto.length, via);
+  const costo = costoDeVoz(m.clave, texto.length, via, factor);
   if (confirmado !== true) {
     throw pedirConfirmacion(`La locución (${texto.length} caracteres, voz ${voz.nombre}, ${m.nombre})`, costo, { voz: voz.nombre, modelo: m.clave, caracteres: texto.length });
   }

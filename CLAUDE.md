@@ -416,8 +416,10 @@ src/
                           «Modelo» de la galería (`FiltroDeModelo`)
     IdeasDeFormato.jsx    «Dame ideas» en el paso 1 del carrusel y del reel IA
     FlujoVideoProducto.jsx  «Video del producto»: producto, guion, los dos fotogramas y el video (lazy; dentro de FlujoReel)
-    ProbarVoz.jsx         «Probar una voz»: voz, modelo y texto propio, el costo antes de pagar, la nota (¿tiempos por
-                          palabra?) y el audio (lazy; dentro de VideoAnimado)
+    ProbarVoz.jsx         «Probar una voz»: voz (las nativas en español primero), modelo y texto propio, el costo antes de
+                          pagar, la nota (¿tiempos por palabra?), el audio, «Escuchar gratis» y «Fijar como voz de la marca»
+                          (lazy; dentro de VideoAnimado)
+    BibliotecaVoces.jsx   «Buscar voces en español»: la biblioteca de ElevenLabs (gratis), escuchar y «Añadir a mis voces»
     VideoAnimado.jsx      «Animado con código»: los videos animados del cliente, el guion (errores con su sitio), la vista
                           previa en el lienzo y «Aprobar el guion» (lazy; dentro de FlujoReel)
     ReferenciasGaleria.jsx  Ejemplos de la galería al corregir (y referencias del reel), cada uno con qué se toma
@@ -4031,6 +4033,27 @@ son del servidor.
   v3, otra vez sin él; si rechaza los tiempos, el audio solo (los tiempos los pone la verificación o la estimación). Un
   rechazo no cobra. Sin créditos ElevenLabs contesta 401 `quota_exceeded`: se mira antes que la llave.
   · **Nada de ElevenLabs directo se ha probado contra el servicio real**: los tests hablan con un `fetch` de mentira.
+  (Las primeras muestras reales de v3 con la llave oficial sí salieron, con el tiempo de cada palabra.)
+  · **Eleven v4 (`eleven_v4`) es el modelo de partida, SÓLO por la vía directa** (`MODELOS_VOZ.v4`, `kie: null`). Si la
+  cuenta lo tiene lo dice `/v1/models` (gratis, `modelosDeLaCuenta`, recordado 10 min por instancia; también da el
+  factor de costo por carácter, `character_cost_multiplier`, que entra en la confirmación). `modeloParaVia` lo baja a v3
+  por Kie o si la cuenta no lo tiene; si `/v1/models` no contesta, se intenta (un rechazo no cobra). Lleva
+  `language_code: "es"` como v3, con el mismo reintento sin él. Su id salió de la documentación (octubre de 2026): la
+  primera muestra real lo confirma.
+  · **Las voces, en ESPAÑOL** (`vozDeLaCuenta`): ElevenLabs las describe en inglés («Roger - Laid-Back, Casual»); se quita
+  el lema del nombre y se traduce con un diccionario (`TRADUCCION`, frases antes que palabras). Lo que no está en él se
+  QUITA —salvo en una voz nativa en español, cuya descripción ya viene en español—: así no sale una mezcla de idiomas.
+  Si una voz nueva sale sin nota, falta su palabra en el diccionario. Nativa = etiqueta de idioma «es», o que su ÚNICO
+  idioma verificado sea el español (las de serie traen varios). Van primero (`enEspanolPrimero`).
+  · **La biblioteca en español** (`/api/videos/<c>/voces/biblioteca`, `buscarEnBiblioteca`): `/v1/shared-voices` con
+  `language=es` e `include_custom_rates=false` (una voz con tarifa propia costaría más de lo que dice la confirmación).
+  «Añadir a mis voces» (`/v1/voices/add/<publico>/<voz>`) ocupa un hueco de la cuenta: sólo admin. Desde entonces sale en
+  `/v1/voices` sola. Buscar, escuchar y añadir son gratis.
+  · **«Escuchar gratis»** es la `preview_url` que publica ElevenLabs, servida por el Worker (`previaGratis`: la CSP no deja
+  oír audio de otro origen) y sólo de `storage.googleapis.com` / `elevenlabs.io` por https (`previaDeVoz`), sin la llave.
+  Las de serie suelen estar en inglés: para oírlas en español, la muestra pagada de siempre.
+  · **La voz de la marca se fija desde «Probar una voz»** (`PUT …/voces/marca`, `fijarVozDeMarca`): sobre el kit GUARDADO,
+  sólo `kit.locucion` (voz y modelo). No confundir con `kit.voz`, la voz de Google de los reels de Omni (VozDeMarca.jsx).
   · **Una voz que Kie deja «en espera» se da por fallida a los 12 minutos** (`PLAZO_AUDIO_MS`; el resto de trabajos, 30):
   la primera prueba real de v3 se quedó en `waiting` (en su panel, `running` y cobrada) y la pantalla cargaba media hora.
   El error dice en qué estado se quedó. Un 408 (sin resultado en 10 min) o un 501 (falló la generación) de Kie, en
