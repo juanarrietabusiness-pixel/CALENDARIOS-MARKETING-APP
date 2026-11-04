@@ -27,7 +27,7 @@ otro del que éste dependa: así no hay forma de saltárselo.
 3. Pestaña **API Tokens** → **Create Token**.
 4. Abajo del todo, **Create Custom Token** → *Get started*.
 5. Ponle un nombre: `despliegue-calendarios`.
-6. En **Permissions**, añade estas cinco filas. Todas son de tipo
+6. En **Permissions**, añade seis filas. Estas cinco son de tipo
    **Account** (la primera columna del desplegable):
 
    | Permiso | Nivel |
@@ -43,7 +43,7 @@ otro del que éste dependa: así no hay forma de saltárselo.
    nada; sin este permiso el Worker nuevo queda publicado igual y sólo «ver un cuadro» contesta 503 hasta que el
    token lo tenga y se despliegue otra vez. Los Containers piden el plan Workers Paid.
 
-   Y una quinta de tipo **Zone** (no Account), para el dominio propio de la
+   Y una sexta de tipo **Zone** (no Account), para el dominio propio de la
    parte 8:
 
    | Permiso | Nivel |
