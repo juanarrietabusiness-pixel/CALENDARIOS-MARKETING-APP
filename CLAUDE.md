@@ -432,7 +432,7 @@ src/
     BibliotecaVoces.jsx   «Buscar voces en español»: la biblioteca de ElevenLabs (gratis), escuchar y «Añadir a mis voces»
     VideoAnimado.jsx      «Animado con código»: los videos animados del cliente, el guion (errores con su sitio), la vista
                           previa en el lienzo y «Aprobar el guion» (lazy; dentro de FlujoReel)
-    RenderVideo.jsx       «Renderizar a mp4»: pedirlo, esperarlo (relee cada 4 s), verlo, descargarlo y si quedó en su post
+    RenderVideo.jsx       «Renderizar a mp4»: pedirlo, esperarlo (relee cada 4 s), verlo, descargarlo y a qué publicación va
     ReferenciasGaleria.jsx  Ejemplos de la galería al corregir (y referencias del reel), cada uno con qué se toma
     GuardarRegla.jsx      «Guardar como regla» junto a cada corrección
     calendario/RevisionMes.jsx  «Revisar el mes» antes de enviarlo: reglas, IA opcional e imágenes contra el kit (lazy)
@@ -4128,6 +4128,11 @@ son del servidor.
   `updated_at` como condición (si otra persona guardaba a la vez, se relee una vez; si no, queda en la galería y se
   dice) y luego `resincronizarCalendario` + `calendario:recargar`, como el MCP. Una publicación ya PUBLICADA no se toca.
   · **La voz se manda dentro del pedido** (base64, ≤ 20 MB): el Container no tiene llaves ni internet.
+  · **A qué publicación va se escoge cuando se quiera** (`ligarAPublicacion` en render.js; `POST
+  /api/videos/<c>/<id>/publicacion`, `ligar_video` y `publicacion_id` en `renderizar_video`; «Va en la publicación» del
+  panel del mp4, con `publicacionesParaVideo`: desde una semana atrás, primero reels e historias). Antes sólo se ligaba al
+  CREAR el video y sólo Claude podía. Con el mp4 ya hecho se pone en el post al momento, sin otro render (y apunta su
+  `usado_en`); sin mp4, al terminar. Desligar NO saca el mp4 del post de antes. No se cambia mientras renderiza (409).
   · **Lo probado**: el render de verdad en este equipo con el ffmpeg del sistema (Ubuntu 6.1) y en CI con la imagen
   (ffmpeg de Debian 5.1, `probar.mjs` pide un render con una voz sintética y exige el mp4, sus dos pistas, los cuadros y
   -14 LUFS ±1). El Durable Object y la alarma, con dobles: el primer render en Cloudflare es la prueba de verdad.

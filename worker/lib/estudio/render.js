@@ -11,12 +11,15 @@
 //     Sólo si el proyecto sigue «Renderizando» con ESE intento: un encargo viejo no pisa uno nuevo.
 //   · `renderAlDia`: un render que no terminó en `PLAZO_RENDER_MS` (el objeto murió a la mitad) se da por fallido al
 //     leerlo, para que se pueda pedir otra vez y el guion se pueda editar.
+//   · `ligarAPublicacion`: liga el video a una publicación del cliente (o lo desliga) en cualquier momento; si el mp4 ya
+//     salió, lo pone en ella YA (sin volver a renderizar). Desligar no quita el mp4 del post de antes: eso se hace en él.
 // ============================================================
 
 import { uuid, ahora } from "../ids.js";
 import { crearAcceso } from "../acceso.js";
 import { difundir } from "../vivo.js";
-import { ErrorVideo, deFila } from "../videosProyectos.js";
+import { ErrorVideo, deFila, publicacionDelCliente, ID_VIDEO } from "../videosProyectos.js";
+import { marcarUso } from "./galeria.js";
 import { resincronizarCalendario } from "../publicador.js";
 import { pedidoDelVideo, aBase64 } from "./cuadros.js";
 import { claveDeArchivo, claveDelCliente, slugCorto } from "./archivos.js";
@@ -78,7 +81,7 @@ async function terminar(acceso, clienteId, id, intento, estado, render) {
  * Pone el mp4 en la publicación ligada (en el sitio del render anterior de ESTE video, o el primero). → { calendarId,
  * postId } si quedó puesto, o { aviso } si no se pudo (la publicación ya no está, o ya se publicó).
  */
-async function ponerEnPublicacion(env, acceso, fila, medio) {
+export async function ponerEnPublicacion(env, acceso, fila, medio) {
   if (!fila.calendar_id || !fila.post_id) return null;
   for (let vuelta = 0; vuelta < 2; vuelta++) {
     const cal = await acceso.leerUno("calendars", { id: fila.calendar_id, client_id: fila.client_id });
@@ -101,6 +104,43 @@ async function ponerEnPublicacion(env, acceso, fila, medio) {
     return { calendarId: cal.id, postId: fila.post_id };
   }
   return { aviso: "El calendario se estaba guardando a la vez: el video quedó en la galería; ponlo desde ahí." };
+}
+
+/** El medio de la publicación con el mp4 de un video (`videoAnimado` dice de qué video es: el siguiente render lo cambia). */
+const medioDelRender = (fila, { clave, ancho, alto, duracion }) => ({
+  src: `/api/media/${clave}`, tipo: "video", nombre: `${slugCorto(fila.titulo, 60)}.mp4`, ancho, alto, duracion, videoAnimado: fila.id,
+});
+
+/**
+ * Liga el video a una publicación de ESE cliente (`postId`, en cualquiera de sus meses; `calendarId` si se sabe) o lo
+ * desliga (`postId` vacío). Si su mp4 ya está hecho, lo pone en ella ya. → { video, puesto, aviso }.
+ */
+export async function ligarAPublicacion(env, acceso, cliente, fila, { calendarId = null, postId = null, por = SISTEMA }) {
+  if (fila.estado === "renderizando") throw new ErrorVideo("Se está renderizando: espera a que termine para cambiar su publicación.", 409);
+  let liga = null;
+  if (postId) {
+    if (!ID_VIDEO.test(String(postId))) throw new ErrorVideo("Esa publicación no existe.", 400);
+    liga = await publicacionDelCliente(acceso, cliente.id, String(postId));
+    if (!liga || (calendarId && liga.calendarId !== String(calendarId))) throw new ErrorVideo("No encontré esa publicación en los calendarios de este cliente.", 404);
+  }
+  const momento = ahora();
+  const cambios = { calendar_id: liga?.calendarId ?? null, post_id: liga?.postId ?? null, updated_at: momento };
+  await acceso.actualizar("videos_proyectos", { id: fila.id, client_id: cliente.id }, cambios);
+  let actual = { ...fila, ...cambios };
+  let puesto = null;
+  let aviso = null;
+  const render = leerJSON(fila.render, {});
+  if (liga && render.estado === "listo" && render.clave) {
+    const r = await ponerEnPublicacion(env, acceso, actual, medioDelRender(actual, render));
+    puesto = r?.postId ? r : null;
+    aviso = r?.aviso ?? null;
+    if (puesto && render.archivoId) await marcarUso(acceso, cliente.id, render.archivoId, puesto).catch(() => null);
+    const nuevo = { ...render, adjunto: puesto ? { calendarId: puesto.calendarId, postId: puesto.postId } : render.adjunto ?? null, aviso };
+    await acceso.actualizar("videos_proyectos", { id: fila.id, client_id: cliente.id }, { render: JSON.stringify(nuevo) });
+    actual = { ...actual, render: JSON.stringify(nuevo) };
+  }
+  avisar(env, acceso.ownerId, cliente.id, fila.id, por);
+  return { video: deFila(actual), puesto, aviso };
 }
 
 /**
@@ -139,10 +179,7 @@ export async function ejecutarRender(env, { ownerId, clienteId, videoId, intento
 
     const clave = claveDeArchivo(clienteId, `video ${fila.titulo}`, "video/mp4");
     await env.MEDIA.put(clave, bytes, { httpMetadata: { contentType: "video/mp4" } });
-    const medio = {
-      src: `/api/media/${clave}`, tipo: "video", nombre: `${slugCorto(fila.titulo, 60)}.mp4`, ancho, alto, duracion,
-      videoAnimado: fila.id,
-    };
+    const medio = medioDelRender(fila, { clave, ancho, alto, duracion });
     const puesto = await ponerEnPublicacion(env, acceso, fila, medio);
     const momento = ahora();
     const archivoId = uuid();

@@ -102,3 +102,10 @@ export async function renderizarVideo(clienteId, id, version) {
   avisar(clienteId, id);
   return r?.video ?? null;
 }
+
+/** Liga el video a una publicación (`postId` vacío: lo desliga). Si el mp4 ya está, se pone en ella. → { video, puesto, aviso }. */
+export async function ligarVideo(clienteId, id, { postId = "", calendarId = "" } = {}) {
+  const r = await pedir(`${base(clienteId)}/${encodeURIComponent(id)}/publicacion`, json("POST", { postId, calendarId }));
+  avisar(clienteId, id);
+  return r;
+}

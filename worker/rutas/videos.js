@@ -28,6 +28,8 @@
 //   POST   /api/videos/<c>/<id>/render      { version }: el RENDER a mp4 (voz, escenas y subtítulos, -14 LUFS). Sólo
 //                                           con el guion aprobado y su locución; contesta ya (202) y el Durable Object
 //                                           del render lo hace (worker/lib/estudio/render.js). No gasta IA
+//   POST   /api/videos/<c>/<id>/publicacion { postId, calendarId? }: ligarlo a una publicación del cliente (postId vacío:
+//                                           desligarlo). Si el mp4 ya está hecho, se pone en ella ya
 //
 // El guion lo valida `validarGuion` (src/lib/videoEscenas.js) aquí, en el servidor: lo que llega del navegador, del
 // asistente o de Claude por MCP no se cree. Un guion con errores NO se guarda: vuelve 400 con la lista de errores,
@@ -48,7 +50,7 @@ import { listarVoces, pedirMuestra, pedirLocucion, locucionAlDia, claveDeMuestra
 import { buscarEnBiblioteca, anadirDeLaBiblioteca, previaGratis, ACENTOS_BIBLIOTECA } from "../lib/estudio/elevenlabs.js";
 import { ErrorMotor } from "../lib/estudio/gemini.js";
 import { pedidoDelVideo, alContenedor } from "../lib/estudio/cuadros.js";
-import { pedirRender, renderAlDia } from "../lib/estudio/render.js";
+import { pedirRender, renderAlDia, ligarAPublicacion } from "../lib/estudio/render.js";
 import { costoDeVoz, fraseDeMuestra, modeloDeVoz, esIdDeVoz } from "../../src/lib/voces.js";
 
 /** Un ErrorVoz como respuesta: su mensaje, su estado y lo que la pantalla necesita (`codigo`, `costo`…). */
@@ -189,6 +191,14 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
     const r = await guardarProyecto(acceso, cliente, fila, { guion: b.guion, titulo: b.titulo, version: b.version });
     if (r.cambio) avisar(env, acceso, usuario, req, clienteId, id);
     return json({ video: r.video, avisos: r.avisos });
+  }
+
+  // A qué publicación va: no toca el guion, así que no pide la versión.
+  if (accion === "publicacion" && metodo === "POST") {
+    const r = await ligarAPublicacion(env, acceso, cliente, fila, {
+      postId: typeof b.postId === "string" ? b.postId : null, calendarId: typeof b.calendarId === "string" ? b.calendarId : null, por: firma(usuario, req),
+    });
+    return json(r);
   }
 
   // La versión que se leyó: si alguien guardó después, no se pisa.
