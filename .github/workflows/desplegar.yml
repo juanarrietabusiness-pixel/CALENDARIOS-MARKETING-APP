@@ -64,6 +64,7 @@ jobs:
           docker build -f container/Dockerfile -t video-animado .
           docker run -d -p 8080:8080 --name video video-animado
           node container/probar.mjs http://localhost:8080 || { docker logs video; exit 1; }
+          docker exec video node container/probarAudio.mjs || { docker logs video; exit 1; }
 
       # Las migraciones van ANTES que el código. Al revés, el Worker
       # nuevo pide columnas que la base todavía no tiene.

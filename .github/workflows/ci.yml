@@ -94,6 +94,8 @@ jobs:
         run: docker run -d -p 8080:8080 --name video video-animado
       - name: Prueba de humo
         run: node container/probar.mjs http://localhost:8080
+      - name: El audio del render, con el ffmpeg de la imagen
+        run: docker exec video node container/probarAudio.mjs
       - name: Lo que dijo el contenedor
         if: always()
         run: docker logs video || true

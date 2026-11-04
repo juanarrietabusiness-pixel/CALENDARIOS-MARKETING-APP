@@ -57,7 +57,7 @@ function vaciada(proc) {
 const falla = (que, r) => new Error(`${que} (ffmpeg ${r.codigo}): ${r.error.trim().split("\n").slice(-4).join(" | ")}`);
 
 /** El audio del video en `salida` (AAC) → { lufs, pico } medidos tras normalizar, o null sin voz. */
-async function audioDelVideo(carpeta, { audio, linea, total, salida }) {
+export async function audioDelVideo(carpeta, { audio, linea, total, salida }) {
   const conVoz = Boolean(audio?.length);
   const entrada = join(carpeta, "voz");
   if (conVoz) await writeFile(entrada, audio);
