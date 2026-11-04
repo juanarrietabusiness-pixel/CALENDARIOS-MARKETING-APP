@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   validarGuion, lineaDeTiempo, tiempoDeCapa, palabrasDe, sinEtiquetas, etiquetasDe, textoDeLocucion,
-  puedePasar, estadoTrasEditar, puedeGenerarVoz, ESTADOS_VIDEO, COMPONENTES, VERSION_GUION, MIN_ESCENA, COLA_FINAL, FPS,
+  puedePasar, estadoTrasEditar, puedeGenerarVoz, ESTADOS_VIDEO, NOMBRE_TIPO_ESCENA, TIPOS_ESCENA, COMPONENTES, VERSION_GUION, MIN_ESCENA, COLA_FINAL, FPS,
 } from "./videoEscenas.js";
 
 // ============================================================
@@ -134,6 +134,14 @@ describe("validar", () => {
     expect(g({}, { clave: "turnos/x.json" }).ok).toBe(false);
   });
 
+  it("el antes y después necesita algo en cada lado", () => {
+    const ad = (extra) => validarGuion(minimo([escena(QUINCE, { capas: [{ tipo: "antes_despues", ...extra }] })]));
+    expect(ad({ textoAntes: "Piel roja", textoDespues: "Piel tranquila", modo: "deslizador" }).ok).toBe(true);
+    expect(ad({ archivoAntes: "a1", textoDespues: "Después" }).ok).toBe(true);
+    expect(ad({ textoAntes: "Piel roja" }).errores[0].donde).toBe("escenas[0].capas[0].textoDespues");
+    expect(ad({ textoAntes: "x", textoDespues: "y", modo: "giro" }).ok).toBe(false);
+  });
+
   it("los ids repetidos son un error", () => {
     expect(validarGuion(minimo([escena(QUINCE, { id: "a" }), escena(QUINCE, { id: "a" })])).ok).toBe(false);
     expect(validarGuion(minimo([escena(QUINCE, { capas: [{ tipo: "logo", id: "x" }, { tipo: "logo", id: "x" }] })])).ok).toBe(false);
@@ -213,6 +221,10 @@ describe("el ciclo del proyecto", () => {
     expect(puedeGenerarVoz({ estado: "aprobado", version: 4, aprobada_version: 3 })).toBe(false);
     expect(puedeGenerarVoz({ estado: "borrador", version: 3, aprobada_version: 3 })).toBe(false);
     expect(puedeGenerarVoz({ estado: "con_voz", version: 2, aprobada_version: null })).toBe(false);
+  });
+
+  it("cada tipo de escena tiene su nombre corto para la pantalla", () => {
+    expect(Object.keys(NOMBRE_TIPO_ESCENA).sort()).toEqual(Object.keys(TIPOS_ESCENA).sort());
   });
 
   it("los estados son los mismos que el CHECK de D1", () => {

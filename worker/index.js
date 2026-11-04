@@ -38,6 +38,7 @@ import { rutaChat, rutaResumenChat, rutaTurnoChat } from "./rutas/chat.js";
 import { rutasConversaciones } from "./rutas/conversaciones.js";
 import { rutasBancoIdeas } from "./rutas/bancoIdeas.js";
 import { rutasFormulasUgc } from "./rutas/formulasUgc.js";
+import { rutasVideos } from "./rutas/videos.js";
 import { rutasInspiracion } from "./rutas/inspiracion.js";
 import { inspiracionPendiente } from "./lib/inspiracion.js";
 import { rutaModelos, rutaConsumo, rutaGasto } from "./rutas/iaEspacio.js";
@@ -390,6 +391,10 @@ export default {
       // Las fórmulas UGC de la agencia (la receta de un video, sin su contenido).
       if (partes[0] === "formulas-ugc") {
         return await rutasFormulasUgc(req, env, { acceso, usuario, partes, metodo });
+      }
+      // Los videos animados de un cliente: el guion por escenas, su aprobación (la voz y el render, aparte).
+      if (partes[0] === "videos") {
+        return await rutasVideos(req, env, { acceso, usuario, partes, metodo });
       }
       if (partes[0] === "ia" && partes[1] === "chat" && partes[2] === "turno" && metodo === "GET") {
         return await rutaTurnoChat(req, env, { acceso, partes });

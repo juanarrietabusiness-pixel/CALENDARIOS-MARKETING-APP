@@ -64,13 +64,13 @@ Todas llevan:
 
 | Campo | Qué es |
 |---|---|
-| `tipo` | Uno de los 13 componentes |
+| `tipo` | Uno de los 14 componentes |
 | `id` | Único dentro de la escena |
 | `pos`, `tam` | Dónde y de qué ancho (ver reglas) — `centro`, `0.6` |
 | `entra`, `sale` | `{ "palabra": n }` (la n-ésima palabra que se dice en la escena, desde 0) o `{ "s": segundos }` desde que empieza. `sale` vacío = hasta el final |
 | `animacion` | `entrada` (aparece, fundido, sube, baja, escala, rebote, escribe, barrido, dibuja), `salida` (ninguna, fundido, baja, escala), `bucle` (ninguno, flota, pulso, gira, late) |
 
-Los 13 componentes de la librería v1 y lo propio de cada uno:
+Los 14 componentes de la librería v1 y lo propio de cada uno:
 
 | Componente | Propiedades |
 |---|---|
@@ -87,6 +87,7 @@ Los 13 componentes de la librería v1 y lo propio de cada uno:
 | `forma` | `figura` (circulo/rect/ola/estrella/flecha/linea/mancha), `color`, `relleno` |
 | `logo` | — (el del kit de marca del cliente) |
 | `llamado` | `texto`* (≤ 30), `color`, `fondo` |
+| `antes_despues` | `modo` (lado: pantalla partida; deslizador: una línea que barre de un lado al otro; secuencia: primero uno y luego el otro), `textoAntes`, `textoDespues` (≤ 40), `archivoAntes`, `archivoDespues` (ids de la galería), `etiquetaAntes`, `etiquetaDespues` (≤ 16; «Antes» y «Después» si van vacías), `color`. Cada lado necesita su texto o su imagen |
 
 `*` = obligatorio. Los subtítulos y el grano **no** son capas: los pone el motor en
 todo el video con `subtitulos` y `estilo.grano`.

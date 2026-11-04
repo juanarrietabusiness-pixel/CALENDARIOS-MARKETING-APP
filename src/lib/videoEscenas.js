@@ -110,6 +110,13 @@ export const TIPOS_ESCENA = Object.freeze({
   cierre: "El llamado a la acción y la marca",
 });
 
+/** El nombre corto de cada tipo, para la pantalla. */
+export const NOMBRE_TIPO_ESCENA = Object.freeze({
+  gancho: "Gancho", problema: "Problema", agitacion: "Agitación", solucion: "Solución", producto: "Producto",
+  beneficio: "Beneficio", pasos: "Pasos", dato: "Dato", prueba: "Prueba", comparacion: "Comparación",
+  explicacion: "Explicación", cierre: "Cierre",
+});
+
 /** Los colores con nombre que da el estilo (la paleta del kit de marca de cada cliente). */
 export const TOKENS_COLOR = Object.freeze(["fondo", "superficie", "texto", "acento", "apoyo", "claro", "oscuro"]);
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -160,6 +167,17 @@ export const COMPONENTES = Object.freeze({
   forma: { nombre: "Forma", props: { figura: E(["circulo", "rect", "ola", "estrella", "flecha", "linea", "mancha"], "circulo"), color: C("apoyo"), relleno: B(true) } },
   logo: { nombre: "Logo del kit", props: {} },
   llamado: { nombre: "Llamado a la acción", props: { texto: T(30, true), color: C("claro"), fondo: C("acento") } },
+  antes_despues: {
+    nombre: "Antes y después",
+    props: {
+      modo: E(["lado", "deslizador", "secuencia"], "lado"),
+      textoAntes: T(40), textoDespues: T(40), archivoAntes: T(64), archivoDespues: T(64),
+      etiquetaAntes: T(16), etiquetaDespues: T(16), color: C("acento"),
+    },
+    // Cada lado necesita algo que enseñar: su texto o su imagen.
+    comprobar: (p) => ["Antes", "Despues"].filter((l) => !p[`texto${l}`] && !p[`archivo${l}`])
+      .map((l) => ({ campo: `texto${l}`, mensaje: `El lado «${l === "Antes" ? "antes" : "después"}» necesita texto${l} o archivo${l}.` })),
+  },
 });
 
 /** Lo que tiene toda capa además de sus propiedades. */
@@ -277,6 +295,7 @@ function validarCapa(capa, donde, nPalabras, errores, avisos, ids) {
   ids.add(id);
   const props = {};
   for (const [k, d] of Object.entries(def.props)) props[k] = validarProp(d, capa[k], `${donde}.${k}`, errores);
+  for (const f of def.comprobar?.(props) ?? []) errores.push({ donde: `${donde}.${f.campo}`, mensaje: f.mensaje });
   for (const k of Object.keys(capa)) {
     if (!COMUNES.has(k) && !(k in def.props)) avisos.push({ donde: `${donde}.${k}`, mensaje: `«${k}» no es de un ${capa.tipo}: se quitó.` });
   }
