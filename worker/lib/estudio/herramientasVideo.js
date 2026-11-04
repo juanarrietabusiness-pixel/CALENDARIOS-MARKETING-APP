@@ -1,0 +1,235 @@
+// ============================================================
+// El VIDEO ANIMADO desde el asistente y desde Claude (MCP)
+//
+//   · formato_video    el formato de escenas v1 contado a la IA (sale del mismo vocabulario que valida)
+//   · listar_videos    los proyectos de un cliente, con su estado y su versión
+//   · ver_video        uno entero: estado, qué falta, la línea de tiempo por escena, la locución y el guion (JSON)
+//   · crear_video      un proyecto nuevo (borrador), ligado o no a una publicación
+//   · guardar_video    reescribe el guion y/o el título (con la versión que se leyó)
+//   · editar_escena    cambia, añade, mueve o quita UNA escena sin reescribir el resto
+//   · aprobar_video    aprueba el guion de esa versión: con eso generar_locucion ya puede hacer la voz
+//
+// Van por el MISMO camino que la pantalla (worker/lib/videosProyectos.js): el guion se valida en el servidor, un error
+// vuelve con su sitio, y la versión que se leyó evita pisar lo que otra persona cambió. Ninguna gasta: lo único que
+// cuesta es la voz (generar_locucion, que se confirma siempre).
+//
+// APROBAR ES DE UNA PERSONA. La herramienta existe para que Claude no tenga que mandar a nadie a la pantalla, pero la
+// descripción le dice que sólo apruebe cuando la persona lo pida o lo confirme, igual que con el costo.
+// ============================================================
+
+import { difundir } from "../vivo.js";
+import {
+  deFila, listarProyectos, proyectoDe, crearProyecto, guardarProyecto, editarEscena, aprobarProyecto, publicacionDelCliente, ErrorVideo,
+} from "../videosProyectos.js";
+import { locucionAlDia } from "./locucion.js";
+import { lineaDeTiempo, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, puedeGenerarVoz, sinEtiquetas } from "../../../src/lib/videoEscenas.js";
+import { formatoParaLaIA } from "../../../src/lib/videoFormatoIA.js";
+
+const clienteParam = { cliente: { type: "string", description: "Nombre del cliente. En el asistente de un cliente se puede omitir: es ese cliente." } };
+const videoParam = { video_id: { type: "string", description: "ID del proyecto de video (de listar_videos o crear_video)." } };
+const versionParam = { version: { type: "integer", description: "La versión que leíste con ver_video (o la que devolvió el último cambio). Si otra persona lo cambió después, no se pisa." } };
+const guionParam = { type: "object", description: "El guion entero en el formato de escenas v1 (formato_video). Se valida en el servidor." };
+
+export const DEFINICIONES_VIDEO = Object.freeze([
+  {
+    name: "formato_video",
+    description: "El FORMATO de escenas v1 del video animado: las reglas, los tipos de escena, los componentes con sus propiedades y un ejemplo que valida. Léelo antes de escribir o editar un guion. No gasta nada.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "listar_videos",
+    description: "Los videos animados de un cliente: ID, título, estado (borrador, guion aprobado, con locución…), versión y si va ligado a una publicación. No gasta nada.",
+    input_schema: { type: "object", properties: { ...clienteParam } },
+  },
+  {
+    name: "ver_video",
+    description: "Un video animado entero: su estado, qué falta para el siguiente paso, la duración y cuándo empieza cada escena (estimado a 2,5 palabras por segundo hasta que haya voz; con la locución, los tiempos reales), la locución y el guion en JSON con su versión. Úsalo antes de editarlo. No gasta nada.",
+    input_schema: { type: "object", properties: { ...clienteParam, ...videoParam }, required: ["video_id"] },
+  },
+  {
+    name: "crear_video",
+    description: "Crea un video animado (borrador) para un cliente con su guion en el formato de escenas v1 (lee formato_video antes). Opcional: publicacion_id para ligarlo a su post del calendario. Si el guion tiene errores no se crea y la respuesta dice cada uno con su sitio. No gasta nada.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam, guion: guionParam,
+        titulo: { type: "string", description: "Nombre del video (si se omite, el del guion)." },
+        publicacion_id: { type: "string", description: "ID de la publicación del calendario a la que va (de ver_calendario)." },
+      },
+      required: ["guion"],
+    },
+  },
+  {
+    name: "guardar_video",
+    description: "Reescribe el guion entero y/o el título de un video. Un guion distinto sube la versión y lo devuelve a BORRADOR (si estaba aprobado, hay que aprobarlo otra vez). Para tocar una sola escena, mejor editar_escena. No gasta nada.",
+    input_schema: {
+      type: "object",
+      properties: { ...clienteParam, ...videoParam, ...versionParam, guion: guionParam, titulo: { type: "string" } },
+      required: ["video_id", "version"],
+    },
+  },
+  {
+    name: "editar_escena",
+    description: "Cambia UNA escena sin reescribir el guion: «escena» con el id de una que existe la reemplaza (con «posicion», además la mueve); con un id nuevo la añade en «posicion» (1 = la primera) o al final. «quitar» con un id la borra. El guion entero se valida y, si cambia, vuelve a borrador con la versión siguiente. No gasta nada.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam, ...videoParam, ...versionParam,
+        escena: { type: "object", description: "La escena completa (con su id), en el formato de escenas v1." },
+        posicion: { type: "integer", description: "Dónde va: 1 = la primera." },
+        quitar: { type: "string", description: "El id de la escena que se borra (en vez de «escena»)." },
+      },
+      required: ["video_id", "version"],
+    },
+  },
+  {
+    name: "aprobar_video",
+    description: "Aprueba el guion de esa versión: desde ahí generar_locucion puede hacer la voz. APROBAR ES DE LA PERSONA: llámala sólo si te lo pidió o lo confirmó después de ver el guion; nunca por tu cuenta. Sólo se aprueba un borrador sin errores. No gasta nada.",
+    input_schema: { type: "object", properties: { ...clienteParam, ...videoParam, ...versionParam }, required: ["video_id", "version"] },
+  },
+]);
+
+/** Las que escriben (en el MCP van como escritura; las demás, de sólo lectura). */
+export const ESCRIBEN_VIDEO = Object.freeze(["crear_video", "guardar_video", "editar_escena", "aprobar_video"]);
+
+/** Lo que falta para el siguiente paso, en una frase para el modelo. Pura. */
+export function siguientePaso(video) {
+  if (!video.valido) return "Corregir los errores del guion (abajo) con guardar_video o editar_escena.";
+  switch (video.estado) {
+    case "borrador": return "Que la persona revise el guion y lo apruebe (aprobar_video con esta versión, sólo con su sí).";
+    case "aprobado":
+      return video.locucion?.estado === "generando"
+        ? "La voz se está generando: vuelve a mirar en un minuto."
+        : "Generar la voz con generar_locucion (siempre pide confirmar el costo).";
+    case "con_voz": return "Tiene guion aprobado y voz. Siguiente: el render a mp4 (todavía no está disponible).";
+    case "renderizando": return "Se está renderizando: espera.";
+    case "renderizado": return "Listo.";
+    case "fallido": return "Falló el render: mira la nota.";
+    default: return "";
+  }
+}
+
+/** El resumen que ve el modelo de un video. */
+function textoDelVideo(video, { conGuion = true } = {}) {
+  const linea = video.guion?.escenas?.length ? lineaDeTiempo(video.guion, video.locucion?.palabras ?? null) : null;
+  const loc = video.locucion ?? {};
+  const voz = loc.estado === "lista"
+    ? `Locución lista: ${loc.voz?.nombre ?? "?"} (${loc.modelo ?? "?"}), ${Number(loc.duracion ?? 0).toFixed(1)} s, tiempos ${loc.fuente === "motor" ? "del motor" : loc.fuente === "verificado" ? "verificados al oírla" : "estimados"}${loc.revisar ? " · OJO: no se oyó todo el guion tal cual" : ""}${loc.desfasada ? " · es de una versión anterior del guion" : ""}.`
+    : loc.estado === "generando" ? `La voz se está generando (pedido ${loc.trabajoId}).`
+      : loc.estado === "fallida" ? `La voz falló: ${loc.error ?? "sin motivo"}.` : "Sin locución todavía.";
+  return [
+    `Video «${video.titulo}» (ID ${video.id}) — ${NOMBRE_ESTADO_VIDEO[video.estado] ?? video.estado}, versión ${video.version}${video.aprobadaVersion ? ` (aprobada la ${video.aprobadaVersion})` : ""}.`,
+    video.postId ? `Ligado a la publicación ${video.postId}.` : "Sin publicación ligada.",
+    linea ? `Duración: ${linea.total.toFixed(1)} s${linea.estimado ? " (estimada: aún no hay voz)" : ""}, ${linea.escenas.length} escenas.` : "Sin escenas válidas.",
+    voz,
+    `Siguiente paso: ${siguientePaso(video)}`,
+    video.errores?.length ? `ERRORES:\n${video.errores.map((e) => `· ${e.donde}: ${e.mensaje}`).join("\n")}` : "",
+    linea ? `Escenas:\n${linea.escenas.map((e, i) => {
+      const esc = video.guion.escenas[i];
+      return `${i + 1}. ${e.id} · ${NOMBRE_TIPO_ESCENA[esc.tipo] ?? esc.tipo} · ${e.desde.toFixed(1)}–${e.hasta.toFixed(1)} s · «${sinEtiquetas(esc.habla ?? "").slice(0, 90)}»${esc.pantalla ? ` · en pantalla: «${esc.pantalla}»` : ""}`;
+    }).join("\n")}` : "",
+    conGuion ? `Guion (JSON, versión ${video.version}):\n${JSON.stringify(video.guion)}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+/** Un ErrorVideo dicho para el modelo: el motivo y, si los hay, los errores con su sitio. */
+function textoDelError(e) {
+  const errores = e.extra?.errores ?? [];
+  return `${e.message}${errores.length ? `\n${errores.map((x) => `· ${x.donde}: ${x.mensaje}`).join("\n")}` : ""}`;
+}
+
+/**
+ * Las acciones. `Fallo` es la clase de error que quien llama sabe devolver al modelo (la del Estudio). `por`: la firma
+ * del aviso al espacio, para que la pantalla de quien lo tenga abierto se ponga al día.
+ */
+export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, por, Fallo }) {
+  const avisar = (clienteId, id) => difundir(env, acceso.ownerId, { tipo: "videos", clienteId, id, por });
+  /** Corre una acción y devuelve un ErrorVideo como error legible (con sus errores). */
+  const conErrores = async (f) => {
+    try {
+      return await f();
+    } catch (e) {
+      if (e instanceof ErrorVideo) throw new Fallo(textoDelError(e));
+      throw e;
+    }
+  };
+
+  return {
+    async formato_video() {
+      return formatoParaLaIA();
+    },
+
+    async listar_videos({ cliente }) {
+      const c = await resolverCliente(cliente);
+      const lista = await listarProyectos(acceso, c.id);
+      if (!lista.length) return `${c.name} no tiene videos animados todavía. Para crear uno: formato_video y después crear_video.`;
+      return [`Videos animados de ${c.name}:`, ...lista.map((v) =>
+        `· ${v.id} — «${v.titulo}» · ${v.nombreEstado} · versión ${v.version}${v.post_id ? ` · publicación ${v.post_id}` : ""} · ${String(v.updated_at).slice(0, 10)}`)].join("\n");
+    },
+
+    async ver_video({ cliente, video_id: id }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        const video = deFila(await proyectoDe(acceso, c.id, id));
+        return textoDelVideo({ ...video, locucion: await locucionAlDia(acceso, video.locucion) });
+      });
+    },
+
+    async crear_video({ cliente, guion, titulo, publicacion_id: postId }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        let liga = null;
+        if (postId) {
+          liga = await publicacionDelCliente(acceso, c.id, postId);
+          if (!liga) throw new ErrorVideo(`No encontré la publicación «${postId}» en los calendarios de ${c.name} (los IDs salen de ver_calendario).`, 404);
+        }
+        const r = await crearProyecto(acceso, c, { guion, titulo, calendarId: liga?.calendarId, postId: liga?.postId, usuario });
+        avisar(c.id, r.video.id);
+        return [
+          `Creado el video «${r.video.titulo}» (ID ${r.video.id}), versión 1, en borrador. Se ve en el Estudio de ${c.name} → Video → Animado con código.`,
+          r.avisos.length ? `Avisos: ${r.avisos.map((a) => `${a.donde}: ${a.mensaje}`).join("; ")}` : "",
+          textoDelVideo(r.video, { conGuion: false }),
+        ].filter(Boolean).join("\n");
+      });
+    },
+
+    async guardar_video({ cliente, video_id: id, version, guion, titulo }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        const fila = await proyectoDe(acceso, c.id, id);
+        const r = await guardarProyecto(acceso, c, fila, { guion, titulo, version });
+        if (r.cambio) avisar(c.id, id);
+        return [
+          r.cambio ? `Guardado: ahora es la versión ${r.video.version} (${NOMBRE_ESTADO_VIDEO[r.video.estado]}).` : "No había nada que cambiar.",
+          r.avisos.length ? `Avisos: ${r.avisos.map((a) => `${a.donde}: ${a.mensaje}`).join("; ")}` : "",
+          textoDelVideo(r.video, { conGuion: false }),
+        ].filter(Boolean).join("\n");
+      });
+    },
+
+    async editar_escena({ cliente, video_id: id, version, escena, posicion, quitar }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        const fila = await proyectoDe(acceso, c.id, id);
+        const r = await editarEscena(acceso, c, fila, { version, escena, posicion, quitar });
+        if (r.cambio) avisar(c.id, id);
+        return [
+          r.cambio ? `${r.que} Ahora es la versión ${r.video.version} (${NOMBRE_ESTADO_VIDEO[r.video.estado]}).` : "La escena ya estaba así: no cambió nada.",
+          r.avisos.length ? `Avisos: ${r.avisos.map((a) => `${a.donde}: ${a.mensaje}`).join("; ")}` : "",
+          textoDelVideo(r.video, { conGuion: false }),
+        ].filter(Boolean).join("\n");
+      });
+    },
+
+    async aprobar_video({ cliente, video_id: id, version }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        const fila = await proyectoDe(acceso, c.id, id);
+        const r = await aprobarProyecto(acceso, c, fila, { version, usuario });
+        avisar(c.id, id);
+        return `Guion aprobado (versión ${r.video.version}). ${puedeGenerarVoz({ ...fila, estado: "aprobado", aprobada_version: r.video.version, version: r.video.version })
+          ? "Ya se puede generar la voz con generar_locucion (pide confirmar el costo)." : ""}`.trim();
+      });
+    },
+  };
+}

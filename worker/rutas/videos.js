@@ -32,35 +32,14 @@
 // ============================================================
 
 import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
-import { uuid, ahora } from "../lib/ids.js";
 import { difundir, firma } from "../lib/vivo.js";
-import { validarGuion, lineaDeTiempo, estadoTrasEditar, puedePasar, NOMBRE_ESTADO_VIDEO } from "../../src/lib/videoEscenas.js";
+import {
+  deFila, listarProyectos, crearProyecto, guardarProyecto, aprobarProyecto, ErrorVideo, ID_VIDEO as ID,
+} from "../lib/videosProyectos.js";
 import { listarVoces, pedirMuestra, pedirLocucion, locucionAlDia, claveDeMuestra, HUELLA, ErrorVoz, viaDeVoz, fijarVozDeMarca } from "../lib/estudio/locucion.js";
 import { buscarEnBiblioteca, anadirDeLaBiblioteca, previaGratis, ACENTOS_BIBLIOTECA } from "../lib/estudio/elevenlabs.js";
 import { ErrorMotor } from "../lib/estudio/gemini.js";
 import { costoDeVoz, fraseDeMuestra, modeloDeVoz, esIdDeVoz } from "../../src/lib/voces.js";
-
-const ID = /^[\w-]{1,80}$/;
-const MAX_PROYECTOS = 200;
-const COLUMNAS_LISTA = ["id", "titulo", "estado", "version", "aprobada_version", "calendar_id", "post_id", "nota", "created_at", "updated_at"];
-
-const leerJSON = (t, def) => { try { return JSON.parse(t); } catch { return def; } };
-
-/** La fila como la ve la pantalla: el guion y la locución como objetos, y la duración estimada. */
-function deFila(f) {
-  const guion = leerJSON(f.guion, {});
-  const locucion = leerJSON(f.locucion, {});
-  const v = validarGuion(guion);
-  return {
-    id: f.id, titulo: f.titulo, estado: f.estado, version: f.version, aprobadaVersion: f.aprobada_version ?? null,
-    calendarId: f.calendar_id ?? null, postId: f.post_id ?? null, nota: f.nota ?? "",
-    guion: v.guion ?? guion, valido: v.ok, errores: v.errores,
-    segundos: v.guion?.escenas?.length ? lineaDeTiempo(v.guion, locucion.palabras ?? null).total : 0,
-    locucion, render: leerJSON(f.render, {}),
-    aprobadoPor: f.aprobado_por ?? null, aprobadoAt: f.aprobado_at ?? null,
-    creado: f.created_at, actualizado: f.updated_at,
-  };
-}
 
 /** Un ErrorVoz como respuesta: su mensaje, su estado y lo que la pantalla necesita (`codigo`, `costo`…). */
 function respuestaDeVoz(e) {
@@ -132,49 +111,31 @@ async function rutasVoces(req, env, { acceso, usuario, cliente, sub, metodo }) {
 const avisar = (env, acceso, usuario, req, clienteId, id) =>
   difundir(env, acceso.ownerId, { tipo: "videos", clienteId, id, por: firma(usuario, req) });
 
-/** Un guion que llega: validado, o el 400 con sus errores. */
-function guionDe(b) {
-  const v = validarGuion(b?.guion);
-  if (!v.ok) return { respuesta: json({ error: "El guion tiene errores: corrígelos y vuelve a guardarlo.", errores: v.errores, avisos: v.avisos }, 400) };
-  return { guion: v.guion, avisos: v.avisos };
+/** Un ErrorVideo como respuesta: su mensaje, su estado y lo que la pantalla necesita (`errores`, `video`…). */
+const respuestaDeVideo = (e) => json({ error: e.message, ...e.extra }, e.estado);
+
+export async function rutasVideos(req, env, ctx) {
+  try {
+    return await rutasDelCliente(req, env, ctx);
+  } catch (e) {
+    if (e instanceof ErrorVideo) return respuestaDeVideo(e);
+    throw e;
+  }
 }
 
-export async function rutasVideos(req, env, { acceso, usuario, partes, metodo }) {
+async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
   const [, clienteId, id, accion] = partes;
   if (!ID.test(String(clienteId ?? ""))) return noEncontrado("Cliente");
   const cliente = await acceso.leerUno("clients", { id: clienteId });
   if (!cliente) return noEncontrado("Cliente");
 
   if (!id) {
-    if (metodo === "GET") {
-      const filas = await acceso.leerColumnas("videos_proyectos", COLUMNAS_LISTA, { client_id: clienteId }, "updated_at desc", MAX_PROYECTOS);
-      return json({ videos: filas.map((f) => ({ ...f, nombreEstado: NOMBRE_ESTADO_VIDEO[f.estado] ?? f.estado })) });
-    }
+    if (metodo === "GET") return json({ videos: await listarProyectos(acceso, clienteId) });
     if (metodo === "POST") {
       const b = (await cuerpo(req)) ?? {};
-      const { guion, avisos, respuesta } = guionDe(b);
-      if (respuesta) return respuesta;
-      let calendarId = null;
-      let postId = null;
-      if (b.calendarId) {
-        const cal = await acceso.leerUno("calendars", { id: String(b.calendarId), client_id: clienteId });
-        if (!cal) return error("Ese calendario no es de este cliente.", 400);
-        calendarId = cal.id;
-        postId = ID.test(String(b.postId ?? "")) ? String(b.postId) : null;
-      }
-      if ((await acceso.leerColumnas("videos_proyectos", ["id"], { client_id: clienteId })).length >= MAX_PROYECTOS) {
-        return error(`Como mucho ${MAX_PROYECTOS} videos por cliente: borra los que ya no sirvan.`, 409);
-      }
-      const momento = ahora();
-      const fila = await acceso.insertar("videos_proyectos", {
-        id: uuid(), client_id: clienteId, calendar_id: calendarId, post_id: postId,
-        titulo: String(b.titulo ?? guion.titulo ?? "").replace(/\s+/g, " ").trim().slice(0, 120) || "Video sin título",
-        // Los valores por defecto van escritos: `insertar` devuelve lo que se le dio, no la fila releída.
-        estado: "borrador", version: 1, locucion: "{}", render: "{}", nota: "",
-        guion: JSON.stringify(guion), creado_por: usuario.id, created_at: momento, updated_at: momento,
-      });
-      avisar(env, acceso, usuario, req, clienteId, fila.id);
-      return json({ video: deFila(fila), avisos }, 201);
+      const r = await crearProyecto(acceso, cliente, { guion: b.guion, titulo: b.titulo, calendarId: b.calendarId, postId: b.postId, usuario });
+      avisar(env, acceso, usuario, req, clienteId, r.video.id);
+      return json(r, 201);
     }
     return error("Método no permitido.", 405);
   }
@@ -199,35 +160,15 @@ export async function rutasVideos(req, env, { acceso, usuario, partes, metodo })
   }
 
   const b = (await cuerpo(req)) ?? {};
+  if (!accion && metodo === "PUT") {
+    const r = await guardarProyecto(acceso, cliente, fila, { guion: b.guion, titulo: b.titulo, version: b.version });
+    if (r.cambio) avisar(env, acceso, usuario, req, clienteId, id);
+    return json({ video: r.video, avisos: r.avisos });
+  }
+
   // La versión que se leyó: si alguien guardó después, no se pisa.
   if (!Number.isInteger(b.version)) return error("Falta la versión que tenías abierta.");
   if (b.version !== fila.version) return json({ error: "Otra persona cambió este video mientras lo tenías abierto. Vuelve a abrirlo.", video: deFila(fila) }, 409);
-
-  if (!accion && metodo === "PUT") {
-    const cambios = {};
-    let avisos = [];
-    if (b.guion !== undefined) {
-      const r = guionDe(b);
-      if (r.respuesta) return r.respuesta;
-      avisos = r.avisos;
-      if (JSON.stringify(r.guion) !== fila.guion) {
-        const estado = estadoTrasEditar(fila.estado);
-        if (!estado) return error("Se está renderizando: no se puede cambiar el guion hasta que termine.", 409);
-        Object.assign(cambios, { guion: JSON.stringify(r.guion), version: fila.version + 1, estado });
-      }
-    }
-    if (b.titulo !== undefined) {
-      const t = String(b.titulo).replace(/\s+/g, " ").trim().slice(0, 120);
-      if (!t) return error("El título no puede quedar vacío.");
-      if (t !== fila.titulo) cambios.titulo = t;
-    }
-    if (!Object.keys(cambios).length) return json({ video: deFila(fila), avisos });
-    cambios.updated_at = ahora();
-    const n = await acceso.actualizar("videos_proyectos", { id, client_id: clienteId, version: fila.version }, cambios);
-    if (!n) return json({ error: "Otra persona cambió este video mientras lo guardabas. Vuelve a abrirlo." }, 409);
-    avisar(env, acceso, usuario, req, clienteId, id);
-    return json({ video: deFila({ ...fila, ...cambios }), avisos });
-  }
 
   if (accion === "locucion" && metodo === "POST") {
     try {
@@ -242,14 +183,9 @@ export async function rutasVideos(req, env, { acceso, usuario, partes, metodo })
   }
 
   if (accion === "aprobar" && metodo === "POST") {
-    if (!puedePasar(fila.estado, "aprobado")) return error(`Está en «${NOMBRE_ESTADO_VIDEO[fila.estado] ?? fila.estado}»: sólo se aprueba un borrador.`, 409);
-    const v = validarGuion(leerJSON(fila.guion, null));
-    if (!v.ok) return json({ error: "El guion tiene errores: corrígelos antes de aprobarlo.", errores: v.errores }, 400);
-    const cambios = { estado: "aprobado", aprobada_version: fila.version, aprobado_por: usuario.id, aprobado_at: ahora(), updated_at: ahora() };
-    const n = await acceso.actualizar("videos_proyectos", { id, client_id: clienteId, version: fila.version }, cambios);
-    if (!n) return json({ error: "Otra persona cambió este video mientras lo aprobabas. Vuelve a abrirlo." }, 409);
+    const r = await aprobarProyecto(acceso, cliente, fila, { version: b.version, usuario });
     avisar(env, acceso, usuario, req, clienteId, id);
-    return json({ video: deFila({ ...fila, ...cambios }) });
+    return json(r);
   }
 
   return error("Método no permitido.", 405);

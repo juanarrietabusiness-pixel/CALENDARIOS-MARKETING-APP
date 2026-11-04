@@ -51,6 +51,7 @@ import { pedidoConMarca, ponerLogo, kitVacio, IDS_PRESET, TIPOS_PRESET } from ".
 import { productosActivos } from "../../../src/lib/estudioMercado.js";
 import { listarVoces, pedirMuestra, pedirLocucion, ErrorVoz } from "./locucion.js";
 import { MODELOS_VOZ } from "../../../src/lib/voces.js";
+import { DEFINICIONES_VIDEO, crearHerramientasVideo } from "./herramientasVideo.js";
 
 /** Lo más que puede pedir una IA de una vez. La pantalla admite más (8 imágenes, 2 videos): ahí lo ve una persona. */
 // 15 s: lo que dura un clip de MiniMax H3 o Kling 3.0 (la receta «Video del producto»). El gasto lo frena la confirmación.
@@ -163,6 +164,8 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
       required: ["video_id"],
     },
   },
+  // El video animado: crear, ver, editar y aprobar el guion (worker/lib/estudio/herramientasVideo.js).
+  ...DEFINICIONES_VIDEO,
 ]);
 
 export const NOMBRES_ESTUDIO = new Set(DEFINICIONES_ESTUDIO.map((d) => d.name));
@@ -439,6 +442,7 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         return confirmacionDeVoz(e);
       }
     },
+    ...crearHerramientasVideo({ env, acceso, resolverCliente, usuario, por, Fallo: ErrorHerramientaEstudio }),
   };
 
   return acciones;
