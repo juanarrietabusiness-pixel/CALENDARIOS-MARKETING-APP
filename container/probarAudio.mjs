@@ -13,6 +13,9 @@ import process from "node:process";
 import { Buffer } from "node:buffer";
 import { audioDelVideo } from "./render.mjs";
 import { RENDER } from "../src/lib/renderVideo.js";
+import { validarGuion, lineaDeTiempo } from "../src/lib/videoEscenas.js";
+import { EJEMPLO_GUION } from "../src/lib/videoFormatoIA.js";
+import { momentosDeEfectos } from "../src/lib/efectosSonido.js";
 
 const FFMPEG = process.env.FFMPEG || "ffmpeg";
 const carpeta = await mkdtemp(join(tmpdir(), "probar-audio-"));
@@ -44,10 +47,10 @@ function nivel(archivo, desde, hasta) {
   return b.length ? Math.sqrt(suma / (b.length / 2)) : 0;
 }
 
-async function caso(titulo, audio, silencios, total, { callado = null, suena = null } = {}) {
+async function caso(titulo, audio, silencios, total, { callado = null, suena = null, guion = null, linea = null, efectos = false, musica = null } = {}) {
   const salida = join(carpeta, `${titulo.replace(/\W+/g, "-")}.m4a`);
   try {
-    const m = await audioDelVideo(carpeta, { audio, linea: { silencios }, total, salida });
+    const m = await audioDelVideo(carpeta, { audio, linea: linea ?? { silencios }, total, salida, guion, efectos, musica });
     const dur = duracion(salida);
     if (!(Math.abs(dur - total) < 0.06)) throw new Error(`el audio dura ${dur} s, no ${total}`);
     if (audio && !(Math.abs((m?.lufs ?? NaN) - RENDER.lufs) <= 1)) throw new Error(`quedó en ${m?.lufs} LUFS`);
@@ -78,6 +81,16 @@ try {
   const pegado = Buffer.concat([await readFile(mp3("a.mp3", 6, 44100)), await readFile(mp3("b.mp3", 6, 22050))]);
   await caso("MP3 que cambia de muestreo a la mitad", pegado, [{ en: 3, dur: 0.5 }], 12.6);
   await caso("Sin voz", null, [], 5);
+  // El guion de ejemplo con los efectos y una música corta (se repite) por debajo: sigue en -14 LUFS y en su duración;
+  // en el silencio de la pausa ya no hay silencio total (suena la música) pero sí mucho menos que la voz.
+  const g = validarGuion(JSON.parse(JSON.stringify(EJEMPLO_GUION))).guion;
+  const l = lineaDeTiempo(g, null);
+  const vozEjemplo = await readFile(mp3("voz-ejemplo.mp3", Math.max(1, l.total - 1)));
+  const tema = await readFile(mp3("tema.mp3", 4, 44100, "0.5"));
+  if (!momentosDeEfectos(g, l).length) { mal++; console.error("✗ el ejemplo debería tener efectos (transiciones o sellos)"); }
+  await caso("Con efectos y música de fondo (ducking y fundido)", vozEjemplo, l.silencios, l.total, {
+    guion: g, linea: l, efectos: true, musica: { audio: tema, volumen: 0 },
+  });
 } finally {
   await rm(carpeta, { recursive: true, force: true });
 }

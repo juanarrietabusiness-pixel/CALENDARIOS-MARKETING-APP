@@ -96,6 +96,8 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "estudio_encargos",
   // Los videos animados (escenas dibujadas con código): el guion, su locución y su render (src/lib/videoEscenas.js).
   "videos_proyectos",
+  // El guion de antes de cada cambio de un video animado, para volver a él (worker/lib/videosProyectos.js).
+  "videos_versiones",
   // La bandeja: comentarios y mensajes de Facebook e Instagram, y el
   // interruptor de cada cliente (worker/lib/bandeja.js).
   "bandeja_clientes",
@@ -154,7 +156,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "inspiracion_cuentas", "inspiracion_publicaciones",
   "cerebro_notas", "cerebro_senales", "cerebro_usos", "cerebro_memoria", "cerebro_propuestas",
   "mercado_clientes",
-  "estudio_trabajos", "estudio_archivos", "estudio_carpetas", "estudio_encargos", "videos_proyectos",
+  "estudio_trabajos", "estudio_archivos", "estudio_carpetas", "estudio_encargos", "videos_proyectos", "videos_versiones",
   "bandeja_clientes", "bandeja_comentarios", "bandeja_hilos", "bandeja_mensajes",
   "biblioteca_filtros",
   "cuentas_anuncios", "campanas_anuncios", "historial_anuncios",

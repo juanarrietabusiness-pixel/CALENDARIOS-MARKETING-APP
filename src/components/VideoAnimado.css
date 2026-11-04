@@ -82,3 +82,13 @@
 .va-revision-lista li { display: grid; grid-template-columns: auto 1fr auto; gap: var(--sp-2); align-items: center; font-size: var(--fs-sm); }
 .va-rev-tipo { font-size: var(--fs-3xs); font-weight: 700; text-transform: uppercase; padding: 2px var(--sp-2); border-radius: var(--radius-pill); background: var(--surface-3); }
 .va-rev-grave .va-rev-tipo { background: var(--danger-soft); color: var(--danger); }
+
+/* Sonido e historial (VideoSonido.jsx) */
+.va-sonido, .va-historial { border-top: 1px solid var(--border); padding-top: var(--sp-2); display: grid; gap: var(--sp-2); }
+.va-sonido summary, .va-historial summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; font-weight: 600; }
+.va-check { display: flex; gap: var(--sp-2); align-items: flex-start; min-height: var(--tap-sm); }
+.va-check input { margin-top: 3px; }
+.va-audio { width: 100%; }
+.va-versiones { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
+.va-versiones li { display: flex; gap: var(--sp-2); justify-content: space-between; align-items: flex-start; background: var(--surface-2); border-radius: var(--radius-sm); padding: var(--sp-2); }
+.va-versiones li p { margin: var(--sp-1) 0 0; }

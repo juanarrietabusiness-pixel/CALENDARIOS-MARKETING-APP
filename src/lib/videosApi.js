@@ -38,7 +38,8 @@ export async function guardarVideo(clienteId, id, { guion, titulo, version }) {
 export async function aprobarVideo(clienteId, id, version) {
   const r = await pedir(`${base(clienteId)}/${encodeURIComponent(id)}/aprobar`, json("POST", { version }));
   avisar(clienteId, id);
-  return r?.video ?? null;
+  // `vozReutilizada`: lo que se dice no cambió y la locución de antes sirve para esta versión.
+  return r?.video ? { ...r.video, vozReutilizada: r.vozReutilizada === true } : null;
 }
 
 export async function borrarVideo(clienteId, id) {

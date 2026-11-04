@@ -14,6 +14,10 @@
 //                      zona segura, capas encimadas (con las fuentes reales)
 //   · renderizar_video el mp4 (voz, escenas, subtítulos, -14 LUFS) en el Container: a la galería y a su publicación
 //   · ligar_video      a qué publicación va (o ninguna); si el mp4 ya está hecho, se pone en ella ya
+//   · sonido_video     lo que suena debajo de la voz: efectos (whoosh y pop) y la música de fondo con su volumen; no toca
+//                      el guion ni la voz (gratis)
+//   · musicas          las músicas de fondo del cliente (audio de su galería)
+//   · versiones_video  el historial del guion; volver_a_version vuelve a una (versión nueva, en borrador)
 //
 // Las tres de mirar devuelven { texto, imagenes } (no un texto): el MCP las manda como bloques de imagen y el
 // asistente como imagen en su tool_result. No gastan IA: es cómputo del Container.
@@ -29,7 +33,10 @@
 import { difundir } from "../vivo.js";
 import {
   deFila, listarProyectos, proyectoDe, crearProyecto, guardarProyecto, editarEscena, aprobarProyecto, publicacionDelCliente, ErrorVideo,
+  guardarSonido, versionesDe, volverAVersion,
 } from "../videosProyectos.js";
+import { musicasDe } from "./galeria.js";
+import { VOLUMEN_MUSICA } from "../../../src/lib/sonidoVideo.js";
 import { locucionAlDia } from "./locucion.js";
 import { lineaDeTiempo, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, puedeGenerarVoz, sinEtiquetas, palabrasMudas, palabrasDe, textoDeLocucion } from "../../../src/lib/videoEscenas.js";
 import { formatoParaLaIA } from "../../../src/lib/videoFormatoIA.js";
@@ -148,6 +155,39 @@ export const DEFINICIONES_VIDEO = Object.freeze([
     },
   },
   {
+    name: "sonido_video",
+    description: `Lo que suena DEBAJO de la voz del video animado: «efectos» (un whoosh suave en cada transición que no es un corte y un pop cuando entra un sello o el llamado; bajitos, encendidos por defecto) y la MÚSICA de fondo («musica_id», de musicas; vacío para quitarla) con su «volumen» en dB (${VOLUMEN_MUSICA.min} a +${VOLUMEN_MUSICA.max}; 0 por defecto). La música baja sola mientras se habla y sube en los huecos (ducking), entra y sale con fundido y se repite si es corta. Va APARTE del guion: no sube la versión ni pide otra voz. Para oírlo hay que volver a renderizar (renderizar_video, no gasta IA). Sin parámetros, dice cómo está. No gasta nada.`,
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam, ...videoParam,
+        efectos: { type: "boolean", description: "Encender o apagar los efectos." },
+        musica_id: { type: "string", description: "El id de una música de musicas; vacío («») para quitarla." },
+        volumen: { type: "number", description: "El volumen de la música en dB respecto a lo normal (-12 a 12)." },
+      },
+      required: ["video_id"],
+    },
+  },
+  {
+    name: "musicas",
+    description: "Las músicas de fondo de un cliente que se pueden poner en sus videos animados (audio subido a su galería desde la pantalla del video: «Sonido» → «Subir música»). No gasta nada.",
+    input_schema: { type: "object", properties: { ...clienteParam } },
+  },
+  {
+    name: "versiones_video",
+    description: "El HISTORIAL del guion de un video animado: cada versión de antes con su número, cuándo, quién, cuántas escenas, cuánto dura y el principio de lo que se dice. Para volver a una, volver_a_version. No gasta nada.",
+    input_schema: { type: "object", properties: { ...clienteParam, ...videoParam }, required: ["video_id"] },
+  },
+  {
+    name: "volver_a_version",
+    description: "Vuelve el guion de un video animado a una versión de antes (de versiones_video): se crea una versión NUEVA con ese guion, en BORRADOR (la de ahora queda en el historial). Si lo que se DICE es igual que en la locución que ya tiene, al aprobarla otra vez la voz sigue valiendo y no se paga otra. Sólo con el sí de la persona. No gasta nada.",
+    input_schema: {
+      type: "object",
+      properties: { ...clienteParam, ...videoParam, ...versionParam, a_version: { type: "integer", description: "El número de la versión a la que se vuelve." } },
+      required: ["video_id", "version", "a_version"],
+    },
+  },
+  {
     name: "ligar_video",
     description: "Liga el video animado a una publicación del calendario del cliente (de ver_calendario), o lo desliga con publicacion_id vacío. Si el mp4 ya está renderizado, se pone en esa publicación YA (primero en sus medios, o en el sitio del mp4 anterior de este video); si no, se pondrá al terminar el render. Desligar no quita el mp4 del post de antes. No gasta nada.",
     input_schema: {
@@ -159,7 +199,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
 ]);
 
 /** Las que escriben (en el MCP van como escritura; las demás, de sólo lectura). */
-export const ESCRIBEN_VIDEO = Object.freeze(["crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video"]);
+export const ESCRIBEN_VIDEO = Object.freeze(["crear_video", "guardar_video", "editar_escena", "aprobar_video", "renderizar_video", "ligar_video", "sonido_video", "volver_a_version"]);
 
 /** Lo que falta para el siguiente paso, en una frase para el modelo. Pura. */
 /** ¿La locución es de la versión aprobada? (un video «aprobado» con voz de esa versión ya no la necesita otra vez). */
@@ -207,6 +247,7 @@ function textoDelVideo(video, { conGuion = true } = {}) {
   return [
     `Video «${video.titulo}» (ID ${video.id}) — ${NOMBRE_ESTADO_VIDEO[video.estado] ?? video.estado}, versión ${video.version}${video.aprobadaVersion ? ` (aprobada la ${video.aprobadaVersion})` : ""}.`,
     video.postId ? `Ligado a la publicación ${video.postId}.` : "Sin publicación ligada.",
+    `Sonido: efectos ${video.sonido?.efectos === false ? "apagados" : "encendidos"}; ${video.sonido?.musica ? `música «${video.sonido.musica.nombre}»` : "sin música"} (sonido_video).`,
     render,
     linea ? `Duración: ${linea.total.toFixed(1)} s${linea.estimado ? " (estimada: aún no hay voz)" : ""}, ${linea.escenas.length} escenas.` : "Sin escenas válidas.",
     voz,
@@ -285,7 +326,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
         const fila = await proyectoDe(acceso, c.id, id);
-        const r = await guardarProyecto(acceso, c, fila, { guion, titulo, version });
+        const r = await guardarProyecto(acceso, c, fila, { guion, titulo, version, por: por?.nombre ?? null });
         if (r.cambio) avisar(c.id, id);
         return [
           r.cambio ? `Guardado: ahora es la versión ${r.video.version} (${NOMBRE_ESTADO_VIDEO[r.video.estado]}).` : "No había nada que cambiar.",
@@ -299,7 +340,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
         const fila = await proyectoDe(acceso, c.id, id);
-        const r = await editarEscena(acceso, c, fila, { version, escena, posicion, quitar });
+        const r = await editarEscena(acceso, c, fila, { version, escena, posicion, quitar, por: por?.nombre ?? null });
         if (r.cambio) avisar(c.id, id);
         return [
           r.cambio ? `${r.que} Ahora es la versión ${r.video.version} (${NOMBRE_ESTADO_VIDEO[r.video.estado]}).` : "La escena ya estaba así: no cambió nada.",
@@ -315,6 +356,7 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
         const fila = await proyectoDe(acceso, c.id, id);
         const r = await aprobarProyecto(acceso, c, fila, { version, usuario });
         avisar(c.id, id);
+        if (r.vozReutilizada) return `Guion aprobado (versión ${r.video.version}). Lo que se dice no cambió: la locución que ya tenía sirve para esta versión (no hace falta pagar otra). Siguiente: revisar_video y renderizar_video.`;
         return `Guion aprobado (versión ${r.video.version}). ${puedeGenerarVoz({ ...fila, estado: "aprobado", aprobada_version: r.video.version, version: r.video.version })
           ? "Ya se puede generar la voz con generar_locucion (pide confirmar el costo)." : ""}`.trim();
       });
@@ -330,6 +372,55 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
         }
         const r = await pedirRender(env, acceso, c, fila, { version, usuario, por });
         return `Render encargado: «${r.video.titulo}» (versión ${r.video.version}) se está renderizando; tarda menos de un minuto. Míralo con ver_video.${fila.post_id ? ` Al terminar, el mp4 se pone en la publicación ${fila.post_id}.` : " No va ligado a ninguna publicación: queda en la galería (ligar_video para ponerlo en una)."}`;
+      });
+    },
+
+    async sonido_video({ cliente, video_id: id, efectos, musica_id: musicaId, volumen }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        const fila = await proyectoDe(acceso, c.id, id);
+        const antes = deFila(fila).sonido;
+        const cambia = efectos !== undefined || musicaId !== undefined || volumen !== undefined;
+        let ahora = antes;
+        if (cambia) {
+          const musica = musicaId === undefined ? antes.musica : musicaId ? { archivoId: musicaId, volumen: volumen ?? (antes.musica?.archivoId === musicaId ? antes.musica.volumen : 0) } : null;
+          if (musica && volumen !== undefined) musica.volumen = volumen;
+          ahora = (await guardarSonido(acceso, c, fila, { efectos: efectos ?? antes.efectos, musica })).video.sonido;
+          avisar(c.id, id);
+        }
+        const m = ahora.musica;
+        return [
+          `${cambia ? "Guardado. " : ""}Sonido de «${fila.titulo}»: efectos ${ahora.efectos ? "encendidos" : "apagados"}; ${m ? `música «${m.nombre}» (${m.volumen > 0 ? "+" : ""}${m.volumen} dB)` : "sin música"}.`,
+          cambia && fila.estado === "renderizado" ? "El mp4 que ya hay es de antes: renderizar_video para oírlo (no gasta IA ni pide otra voz)." : "",
+        ].filter(Boolean).join(" ");
+      });
+    },
+
+    async musicas({ cliente }) {
+      const c = await resolverCliente(cliente);
+      const lista = await musicasDe(acceso, c.id);
+      if (!lista.length) return `${c.name} no tiene músicas de fondo en su galería. Se suben desde la pantalla del video (Sonido → Subir música: MP3 o WAV de hasta 15 MB, con derechos para usarla).`;
+      return [`Músicas de fondo de ${c.name}:`, ...lista.map((m) => `· ${m.id} — «${m.nombre}» · ${(m.bytes / 1048576).toFixed(1)} MB · ${String(m.fecha).slice(0, 10)}`)].join("\n");
+    },
+
+    async versiones_video({ cliente, video_id: id }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        const fila = await proyectoDe(acceso, c.id, id);
+        const lista = await versionesDe(acceso, c.id, fila);
+        if (!lista.length) return `«${fila.titulo}» está en su versión ${fila.version} y no tiene versiones de antes guardadas (el historial empieza con el primer cambio).`;
+        return [`Historial de «${fila.titulo}» (ahora: versión ${fila.version}):`, ...lista.map((v) =>
+          `· v${v.version} · ${String(v.fecha).slice(0, 16).replace("T", " ")} UTC${v.por ? ` · ${v.por}` : ""} · ${v.escenas} escenas · ${v.segundos.toFixed(1)} s · «${v.habla.slice(0, 90)}»`)].join("\n");
+      });
+    },
+
+    async volver_a_version({ cliente, video_id: id, version, a_version: aVersion }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        const fila = await proyectoDe(acceso, c.id, id);
+        const r = await volverAVersion(acceso, c, fila, { version, aVersion, por: por?.nombre ?? null });
+        avisar(c.id, id);
+        return `Listo: el guion de la versión ${aVersion} es ahora la versión ${r.video.version}, en borrador (la ${fila.version} quedó en el historial). Hay que aprobarla otra vez; si lo que se dice coincide con la locución que ya hay, la voz sigue valiendo.\n${textoDelVideo(r.video, { conGuion: false })}`;
       });
     },
 

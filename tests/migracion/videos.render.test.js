@@ -170,6 +170,37 @@ describe("hacer el render (la alarma del objeto)", () => {
     expect(medios[1].src).toBe("/api/media/clientes/bc/otra.jpg");
   });
 
+  it("manda el sonido: los efectos (encendidos por defecto) y la música de la galería con su volumen; sin ella, avisa", async () => {
+    const { encargo } = await encargado();
+    const recibidos = [];
+    await ejecutarRender(env, encargo, container(recibidos));
+    expect(recibidos[0].cuerpo.efectos).toBe(true);
+    expect(recibidos[0].cuerpo.musica).toBeUndefined();
+
+    // Con música (y los efectos apagados).
+    const id2 = await video();
+    const MUSICA = new Uint8Array([0x49, 0x44, 0x33, 4, 0, 0, 1, 2, 3, 4]);
+    env.MEDIA.objetos.set("clientes/bc/estudio/tema.mp3", MUSICA);
+    db.sqlite.prepare("insert into estudio_archivos (id, owner_id, client_id, clave, tipo, mime, modelo, prompt) values (?,?,?,?,?,?,?,?)")
+      .run("m1", JEFE, "bc", "clientes/bc/estudio/tema.mp3", "audio", "audio/mpeg", "musica-subida", "Tema.mp3");
+    expect((await pedir(`/videos/bc/${id2}/sonido`, { method: "PUT", body: JSON.stringify({ efectos: false, musica: { archivoId: "m1", volumen: 4 } }) })).status).toBe(200);
+    await renderizar(id2);
+    const otros = [];
+    await ejecutarRender(env, encargos.at(-1).cuerpo, container(otros));
+    expect(otros[0].cuerpo.efectos).toBe(false);
+    expect(otros[0].cuerpo.musica).toEqual({ audio: Buffer.from(MUSICA).toString("base64"), volumen: 4 });
+    expect(JSON.parse(fila(id2).render)).toMatchObject({ estado: "listo", efectos: false, musica: "Tema" });
+
+    // La música se borró de R2: sale igual, sin ella, y lo dice.
+    env.MEDIA.objetos.delete("clientes/bc/estudio/tema.mp3");
+    db.sqlite.prepare("update videos_proyectos set estado = 'con_voz' where id = ?").run(id2);
+    await renderizar(id2);
+    const sin = [];
+    expect((await ejecutarRender(env, encargos.at(-1).cuerpo, container(sin))).estado).toBe("listo");
+    expect(sin[0].cuerpo.musica).toBeUndefined();
+    expect(JSON.parse(fila(id2).render).aviso).toMatch(/música de fondo ya no está/);
+  });
+
   it("otro render del mismo video ocupa el sitio del anterior en la publicación", async () => {
     const { id, encargo } = await encargado();
     await ejecutarRender(env, encargo, container([]));

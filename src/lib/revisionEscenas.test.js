@@ -72,6 +72,14 @@ describe("la revisión de las escenas", () => {
     expect(tipos(revisar(mucho))).toContain("texto_apretado");
   });
 
+  it("un sello que se parte en dos líneas avisa (un sello se lee de un vistazo en UNA); el corto, no", () => {
+    expect(tipos(revisar(validarGuion(copia(EJEMPLO_GUION)).guion))).not.toContain("sello_partido");
+    const largo = con((x) => { x.escenas[1].capas[0].texto = "Oferta de lanzamiento"; });
+    const p = revisar(largo).find((q) => q.tipo === "sello_partido");
+    expect(p).toMatchObject({ grave: false, escena: "e2", capa: "s" });
+    expect(p.mensaje).toMatch(/UNA/);
+  });
+
   it("dos capas encimadas mientras se ven las dos; si una sale antes de que entre la otra, no", () => {
     const g = con((x) => {
       x.escenas[1].capas[0].pos = { x: 0.5, y: 0.45 };
