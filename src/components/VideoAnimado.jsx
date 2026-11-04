@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import { validarGuion, lineaDeTiempo, FORMATOS_VIDEO, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, puedePasar } from "../lib/videoEscenas";
-import { dibujarFrame, paletaDelGuion, escenaEn, COMPONENTES_LISTOS } from "../lib/motorVideo";
+import { dibujarFrame, paletaDelGuion, escenaEn, COMPONENTES_LISTOS, areaSegura, bandaDeSubtitulos } from "../lib/motorVideo";
 import { prepararRecursos } from "../lib/motorVideoNavegador";
 import { listarVideos, leerVideo, crearVideo, guardarVideo, aprobarVideo, borrarVideo } from "../lib/videosApi";
 import { limpiarKit } from "../lib/kitMarca";
@@ -232,12 +232,42 @@ function Escenas({ guion }) {
 }
 
 /** La vista previa: el lienzo, reproducir, la línea de tiempo y el formato. */
+/**
+ * Encima de la vista previa (NO va en el video): lo que tapan los botones de la red, en gris, y la franja de los
+ * subtítulos, punteada. Así se ve por qué abajo queda aire.
+ */
+function pintarZonas(ctx, guion, formato, ancho, alto) {
+  const a = areaSegura(formato, ancho, alto);
+  ctx.save();
+  ctx.fillStyle = "rgba(20, 24, 32, 0.38)";
+  ctx.fillRect(0, 0, ancho, a.y);
+  ctx.fillRect(0, a.y + a.h, ancho, alto - a.y - a.h);
+  ctx.fillRect(0, a.y, a.x, a.h);
+  ctx.fillRect(a.x + a.w, a.y, ancho - a.x - a.w, a.h);
+  const lado = Math.min(ancho, alto);
+  ctx.font = `600 ${Math.round(lado * 0.03)}px system-ui, sans-serif`;
+  ctx.fillStyle = "#FFFFFF"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("Barra de la red", ancho / 2, a.y / 2);
+  ctx.fillText("Texto del post y botones", ancho / 2, a.y + a.h + (alto - a.y - a.h) / 2);
+  if (guion.subtitulos?.activo) {
+    const b = bandaDeSubtitulos(formato, ancho, alto, guion.subtitulos.pos);
+    ctx.setLineDash([lado * 0.02, lado * 0.012]);
+    ctx.lineWidth = Math.max(2, lado * 0.004);
+    ctx.strokeStyle = "rgba(20, 24, 32, 0.6)";
+    ctx.strokeRect(a.x, b.y, a.w, b.h);
+    ctx.fillStyle = "rgba(20, 24, 32, 0.7)";
+    ctx.fillText("Subtítulos (paso 4)", ancho / 2, b.y + b.h / 2);
+  }
+  ctx.restore();
+}
+
 function VistaPrevia({ guion, palabras, kit, archivos }) {
   const ids = useId();
   const lienzo = useRef(null);
   const [formato, setFormato] = useState(guion.formatos[0]);
   const [t, setT] = useState(0);
   const [reproduciendo, setReproduciendo] = useState(false);
+  const [zonas, setZonas] = useState(false);
   const [prep, setPrep] = useState({ recursos: {}, fuentes: {}, faltan: [] });
   const linea = useMemo(() => lineaDeTiempo(guion, palabras), [guion, palabras]);
   const paleta = useMemo(() => paletaDelGuion(guion, kit.paleta), [guion, kit.paleta]);
@@ -266,7 +296,8 @@ function VistaPrevia({ guion, palabras, kit, archivos }) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(w / ancho, h / alto);
     dibujarFrame(ctx, { guion, linea, t: tiempo, formato: f, paleta, recursos: prep.recursos, fuentes: prep.fuentes });
-  }, [guion, linea, f, paleta, prep, ancho, alto]);
+    if (zonas) pintarZonas(ctx, guion, f, ancho, alto);
+  }, [guion, linea, f, paleta, prep, ancho, alto, zonas]);
 
   useEffect(() => { pintar(t); }, [pintar, t]);
   useEffect(() => { setT((x) => Math.min(x, linea.total)); }, [linea.total]);
@@ -305,11 +336,10 @@ function VistaPrevia({ guion, palabras, kit, archivos }) {
 
   return (
     <div className="va-vista">
-      {guion.formatos.length > 1 && (
-        <div className="va-formatos" role="group" aria-label="Formato de la vista previa">
-          {guion.formatos.map((x) => <button key={x} type="button" className="filter-chip" aria-pressed={x === f} onClick={() => setFormato(x)}>{x}</button>)}
-        </div>
-      )}
+      <div className="va-formatos" role="group" aria-label="Formato de la vista previa">
+        {guion.formatos.length > 1 && guion.formatos.map((x) => <button key={x} type="button" className="filter-chip" aria-pressed={x === f} onClick={() => setFormato(x)}>{x}</button>)}
+        <button type="button" className="filter-chip" aria-pressed={zonas} onClick={() => setZonas((z) => !z)}>Zonas seguras</button>
+      </div>
       <div className={`va-marco va-marco-${f.replace(":", "x")}`}>
         <canvas ref={lienzo} className="va-lienzo" role="img"
           aria-label={`Vista previa, escena ${k + 1} de ${guion.escenas.length}: ${guion.escenas[k]?.pantalla || guion.escenas[k]?.habla || ""}`} />

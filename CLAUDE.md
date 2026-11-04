@@ -3947,8 +3947,22 @@ son del servidor.
   `Math.random` o `Date` en el archivo: con ellos el render del Container no daría lo mismo que la pantalla. Lo que aún
   no dibuja (teléfono, burbuja, personaje, icono, cifra, lista, reloj, antes y después: paso 7) sale como MARCADOR con
   su nombre (`COMPONENTES_LISTOS`), así un guion válido nunca rompe la vista previa.
-  · **La paleta sale del KIT** (`paletaDelKit`): por el papel de cada color («fondos», «tipografía», «CTA»…) y, si no lo
-  dice, por la luz; lo que fija el guion manda encima (`paletaDelGuion`).
+  · **La paleta sale del KIT por PUNTAJE, no por la primera palabra que case** (`paletaDelKit`, `PISTAS`). La primera
+  versión buscaba «texto» en el papel y, con el kit REAL de Baby Caleb, el texto salía BEIGE («Fondo principal alterno —
+  base limpia para texto») y el acento SAGE («acento natural suave» le ganaba a «…CTA»). Ahora lo que el papel dice
+  antes de la primera raya o barra pesa el triple, un CTA gana a un «acento» a secas y el texto TIENE que leerse sobre
+  el fondo (4,5 a 1). Un test lleva los 7 papeles reales tal cual. Lo que fija el guion manda encima (`paletaDelGuion`),
+  y un texto sobre su placa que no llegue a 3 a 1 usa el claro u oscuro que más contraste (`colorLegible`).
+  · **El MOTOR reparte por zonas; el guion no pone coordenadas** (`repartirEscena`, `areaSegura`, `bandaDeSubtitulos`).
+  Con puntos fijos por nombre, la placa del texto tapaba la foto del producto y el tercio de abajo quedaba vacío. La
+  zona de una capa dice su ORDEN; el motor la mide con el MISMO código que la dibuja (`medirCapa` pasa `dibujarCapa`
+  por un lienzo que sólo mide: no pueden discrepar) y reparte el alto del área segura (9:16: 12 % arriba y 20 % abajo
+  libres) menos la franja de subtítulos. Una `forma` va detrás de la capa que la sigue; dos que no se ven a la vez
+  comparten sitio; en 16:9 (el LIENZO, no la caja: en 1:1 la caja sin subtítulos es más ancha que alta) lo visual va en
+  su columna. `cajasDeEscena` da las cajas para los tests, que exigen sin encimarse, dentro del área y usando el tercio
+  de abajo en los tres formatos. En la primera escena algo entra antes de 0,3 s (`tiemposDeEscena`). La vista previa
+  tiene «Zonas seguras» (lo pinta ENCIMA, no va en el video). Medido en Chromium (sin GPU): ~5,5 ms por fotograma a
+  1080 × 1920.
   · **El guion se valida también en el SERVIDOR** (`worker/rutas/videos.js`): lo que llega del navegador o de Claude no
   se cree, y con errores no se guarda (400 con cada error y su sitio). Guardar y aprobar llevan la `version` que se
   leyó: si otra persona guardó entremedias, 409 (`actualizar` con la versión como condición). Aprobar fija

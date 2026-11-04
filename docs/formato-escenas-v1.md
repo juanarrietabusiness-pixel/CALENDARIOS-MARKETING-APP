@@ -13,12 +13,35 @@ Container (fase 2) lo consume **tal cual**. Se guarda en `videos_proyectos.guion
    empieza su primera palabra; una capa aparece «en la palabra 3» de su escena.
    Si se cambia de voz, todo se vuelve a cuadrar solo. Antes de que haya voz, los
    tiempos se estiman a 2,5 palabras por segundo.
-2. **Las posiciones son relativas.** Por nombre (`centro`, `arriba`, `abajo`, `izq`,
-   `der`, `arriba-izq`, `arriba-der`, `abajo-izq`, `abajo-der`) o `{ "x": 0.5, "y": 0.3 }`
-   (0–1, desde arriba a la izquierda). `tam` es el ancho en fracción del **lado corto**.
-   El mismo guion sale en 9:16, 1:1 y 16:9.
+2. **Las posiciones son zonas, y el motor reparte.** Con nombre (`arriba`, `centro`,
+   `abajo`; con `izq`/`der` para ir lado a lado) la posición dice el **orden** de arriba
+   abajo, no un punto: el motor mide cada capa con el mismo código que la dibuja y
+   reparte el alto del **área segura** entre todas (lo que sobra, por igual arriba,
+   abajo y entre bloques; un titular y su apoyo van juntos). Nada se encima: una placa
+   de texto y una imagen tienen cada una su sitio. Si no cabe, se encoge primero lo
+   visual. Una `forma` es un fondo: va detrás de la capa que la sigue. Dos capas que no
+   se ven a la vez comparten sitio. En 16:9 lo visual va en una columna y el resto en
+   otra. `{ "x": 0.5, "y": 0.3 }` (0–1) pone una capa en ese punto y la saca del
+   reparto. `tam` es el ancho en fracción del **lado corto** (como mucho, el de su
+   columna). El mismo guion sale en 9:16, 1:1 y 16:9, sin tocar coordenadas.
+   - **Área segura** (sin texto ni botones fuera): 9:16 deja el 12 % de arriba (la barra
+     de la red) y el 20 % de abajo (el texto del post y los botones), con 6 % a los
+     lados; 1:1, 7 % arriba, 10 % abajo y 7 % a los lados; 16:9, 8 %, 12 % y 6 %.
+   - **Los subtítulos** tienen su franja dentro del área segura (abajo, o arriba si
+     `subtitulos.pos` lo dice; con `centro` van encima del contenido) y nada entra en ella.
+   - **El primer segundo:** si en la primera escena nada entra en sus primeros 0,3 s, la
+     capa que antes entra se adelanta al principio.
+   - **Se lee siempre:** un texto sobre su placa (o un llamado sobre su fondo) que no
+     llegue a 3 a 1 de contraste usa el claro u oscuro de la paleta que más contraste.
 3. **Los colores son del estilo.** Un token (`fondo`, `superficie`, `texto`, `acento`,
    `apoyo`, `claro`, `oscuro`) o `#RRGGBB`. Cambiar el estilo recolorea el video.
+   Sin `estilo.paleta`, los tokens salen del **kit** por el papel de cada color (lo que
+   el papel dice ANTES de la primera raya o barra es lo que el color es y pesa el
+   triple): `fondo` lo que se llama fondo; `texto` lo que se llama texto o título y se
+   lee sobre ese fondo (4,5 a 1); `acento` un CTA, botón o «highlight» antes que un
+   «acento» a secas; `superficie` un fondo de apoyo claro; `apoyo` el color de marca que
+   queda. Con el kit de Baby Caleb: fondo #EFFFED, superficie #F2EFE5, texto #1B3246,
+   acento #EE924A, apoyo #91C9A2.
 
 ## Raíz
 
