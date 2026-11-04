@@ -51,3 +51,12 @@
 .va-texto { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--fs-xs); line-height: 1.45; resize: vertical; }
 @media (max-width: 599px) { .va-texto { font-size: 16px; } }
 .va-acciones { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+/* «Probar una voz» (ProbarVoz.jsx, su chunk): voz, modelo, texto, el precio y el audio. */
+.va-voz { display: flex; flex-direction: column; gap: var(--sp-2); }
+.va-voz-fila { display: grid; gap: var(--sp-2); grid-template-columns: 1fr; }
+@media (min-width: 640px) { .va-voz-fila { grid-template-columns: auto 1fr auto minmax(8rem, 12rem); align-items: center; } }
+.va-voz-precio { padding: var(--sp-3); background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: var(--radius); }
+.va-voz-precio p { margin: 0 0 var(--sp-2); }
+.va-voz-audio { width: 100%; }
+.va-probar summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; font-weight: 600; }

@@ -9,7 +9,7 @@
 // sólo mientras se ve: pausada no repinta nada. Con «reducir movimiento» no arranca sola.
 // ============================================================
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
 import { validarGuion, lineaDeTiempo, FORMATOS_VIDEO, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, puedePasar } from "../lib/videoEscenas";
 import { dibujarFrame, paletaDelGuion, escenaEn, COMPONENTES_LISTOS, areaSegura, bandaDeSubtitulos } from "../lib/motorVideo";
@@ -17,6 +17,9 @@ import { prepararRecursos } from "../lib/motorVideoNavegador";
 import { listarVideos, leerVideo, crearVideo, guardarVideo, aprobarVideo, borrarVideo } from "../lib/videosApi";
 import { limpiarKit } from "../lib/kitMarca";
 import "./VideoAnimado.css";
+
+// «Probar una voz» va en su propio chunk: sólo lo carga quien lo abre.
+const ProbarVoz = lazy(() => import("./ProbarVoz"));
 
 /** Un guion de arranque: tres escenas que se ven bien con cualquier kit. Se edita antes de guardar. */
 const ARRANQUE = {
@@ -50,6 +53,7 @@ export default function VideoAnimado({ client, estudio }) {
   const [msg, setMsg] = useState(null);
   const [ocupado, setOcupado] = useState("");
   const [errServidor, setErrServidor] = useState([]);
+  const [probar, setProbar] = useState(false);
 
   const recargarLista = useCallback(async () => {
     try { setLista(await listarVideos(client.id)); } catch (e) { setMsg({ error: true, texto: e.message }); setLista([]); }
@@ -103,7 +107,7 @@ export default function VideoAnimado({ client, estudio }) {
     try {
       const v = await aprobarVideo(client.id, abierto.id, abierto.version);
       setAbierto(v);
-      setMsg({ texto: "Guion aprobado. El siguiente paso es la locución (llega en el paso 3)." });
+      setMsg({ texto: "Guion aprobado. El siguiente paso es la locución (Claude la genera con generar_locucion, con su costo y tu confirmación)." });
       recargarLista();
     } catch (e) { setMsg({ error: true, texto: e.message }); } finally { setOcupado(""); }
   };
@@ -125,6 +129,10 @@ export default function VideoAnimado({ client, estudio }) {
         <div className="va-barra">
           <button type="button" className="btn btn-primary" onClick={nuevo}><Icon name="plus" /> Video nuevo</button>
         </div>
+        <details className="va-probar" onToggle={(e) => setProbar(e.currentTarget.open)}>
+          <summary>Probar una voz</summary>
+          {probar && <Suspense fallback={<p className="hint">Cargando…</p>}><ProbarVoz client={client} /></Suspense>}
+        </details>
         {lista === null ? <p className="hint">Cargando…</p> : !lista.length ? (
           <p className="hint">Este cliente aún no tiene videos animados. Pídele uno a Claude o empieza con «Video nuevo».</p>
         ) : (

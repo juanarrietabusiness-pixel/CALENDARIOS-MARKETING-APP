@@ -416,6 +416,8 @@ src/
                           «Modelo» de la galería (`FiltroDeModelo`)
     IdeasDeFormato.jsx    «Dame ideas» en el paso 1 del carrusel y del reel IA
     FlujoVideoProducto.jsx  «Video del producto»: producto, guion, los dos fotogramas y el video (lazy; dentro de FlujoReel)
+    ProbarVoz.jsx         «Probar una voz»: voz, modelo y texto propio, el costo antes de pagar, la nota (¿tiempos por
+                          palabra?) y el audio (lazy; dentro de VideoAnimado)
     VideoAnimado.jsx      «Animado con código»: los videos animados del cliente, el guion (errores con su sitio), la vista
                           previa en el lienzo y «Aprobar el guion» (lazy; dentro de FlujoReel)
     ReferenciasGaleria.jsx  Ejemplos de la galería al corregir (y referencias del reel), cada uno con qué se toma
@@ -3999,6 +4001,12 @@ son del servidor.
   por palabra de `palabrasDe(textoDeLocucion(guion))`: con eso `lineaDeTiempo` deja de estimar.
   · **La muestra de una voz se paga UNA vez para toda la agencia** (`voces/elevenlabs/<v3|v2>/<id>.mp3`, fuera de
   `clientes/`): la segunda vez sale gratis y `listar_voces` dice cuáles ya están hechas.
+  · **La muestra puede decir un texto PROPIO** (`texto`, hasta `MAX_TEXTO_MUESTRA` 500; `textoDeMuestra`): queda aparte de la
+  frase fija con la huella del texto (`…/<voz>-<huella>.mp3`, `huellaDeMuestra`; el GET la pide con `huella`), y el mismo
+  texto otra vez sale gratis. Toda toma —muestra y locución— apunta en la nota del trabajo si Kie devolvió el tiempo de cada
+  palabra (`tiemposQueLlegaron`) y en `ajustes.tiempos` y `ajustes.crudo` (un extracto de lo que contestó Kie): es como se
+  sabe la forma real de su respuesta sin adivinarla. «Probar una voz» (`ProbarVoz.jsx`, lazy, en «Animado con código»)
+  escoge voz, modelo y texto, enseña el costo (el 409) y sólo con «Generar» la paga; luego la nota y el audio.
   · **El audio va a `estudio_archivos` con tipo «audio»** y la galería NO lo enseña (`leerGaleria`). `tipoPorBytes`
   reconoce MP3 (ID3 o cuadro) y WAV. La voz de la marca vive en `kit.locucion` (voz, modelo, hasta 12 voces propias por
   su id de ElevenLabs) y `fundirKit` la conserva.
