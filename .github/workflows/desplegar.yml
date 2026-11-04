@@ -56,6 +56,15 @@ jobs:
       - name: Verificar
         run: npm run verificar
 
+      # La imagen del Container del video animado, construida y probada
+      # ANTES de publicar: `wrangler deploy` la construye otra vez y la sube,
+      # pero si no dibuja, mejor saberlo aquí que con el Worker ya cambiado.
+      - name: Probar la imagen del Container
+        run: |
+          docker build -f container/Dockerfile -t video-animado .
+          docker run -d -p 8080:8080 --name video video-animado
+          node container/probar.mjs http://localhost:8080 || { docker logs video; exit 1; }
+
       # Las migraciones van ANTES que el código. Al revés, el Worker
       # nuevo pide columnas que la base todavía no tiene.
       - name: Aplicar migraciones de D1

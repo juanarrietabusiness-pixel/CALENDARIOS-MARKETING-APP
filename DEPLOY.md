@@ -27,7 +27,7 @@ otro del que éste dependa: así no hay forma de saltárselo.
 3. Pestaña **API Tokens** → **Create Token**.
 4. Abajo del todo, **Create Custom Token** → *Get started*.
 5. Ponle un nombre: `despliegue-calendarios`.
-6. En **Permissions**, añade estas cuatro filas. Todas son de tipo
+6. En **Permissions**, añade estas cinco filas. Todas son de tipo
    **Account** (la primera columna del desplegable):
 
    | Permiso | Nivel |
@@ -36,6 +36,12 @@ otro del que éste dependa: así no hay forma de saltárselo.
    | `D1` | **Edit** |
    | `Workers R2 Storage` | **Edit** |
    | `Account Settings` | **Read** |
+   | `Containers` | **Edit** |
+
+   `Containers` es para el Container del video animado (`container/`): `wrangler deploy` construye su imagen y la
+   sube al registro de Cloudflare. Ojo: el despliegue publica el Worker ANTES de subir la imagen y no es todo o
+   nada; sin este permiso el Worker nuevo queda publicado igual y sólo «ver un cuadro» contesta 503 hasta que el
+   token lo tenga y se despliegue otra vez. Los Containers piden el plan Workers Paid.
 
    Y una quinta de tipo **Zone** (no Account), para el dominio propio de la
    parte 8:

@@ -181,3 +181,11 @@ describe("crear, editar, aprobar y la voz", () => {
     expect((await llamar("ver_video", { cliente: "Baby Caleb", video_id: ajeno })).texto).toMatch(/No encontré ese video/);
   });
 });
+
+describe("el ejemplo se dibuja entero", () => {
+  it("sólo usa componentes que el motor ya dibuja (nada de marcadores)", async () => {
+    const { COMPONENTES_LISTOS } = await import("../../src/lib/motorVideo.js");
+    const usados = EJEMPLO_GUION.escenas.flatMap((e) => e.capas.map((c) => c.tipo));
+    for (const t of usados) expect(COMPONENTES_LISTOS).toContain(t);
+  });
+});

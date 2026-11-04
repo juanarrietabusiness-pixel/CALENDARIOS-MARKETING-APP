@@ -339,6 +339,16 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
     try {
       if (!accion) throw new Error(`Herramienta desconocida: ${bloque.name}`);
       const contenido = await accion(bloque.input ?? {});
+      // Las que MIRAN el video devuelven { texto, imagenes }: el modelo recibe la imagen en el mismo tool_result.
+      if (contenido && typeof contenido === "object" && Array.isArray(contenido.imagenes)) {
+        return {
+          type: "tool_result", tool_use_id: bloque.id,
+          content: [
+            { type: "text", text: contenido.texto ?? "" },
+            ...contenido.imagenes.map((i) => ({ type: "image", source: { type: "base64", media_type: i.mime, data: i.datos } })),
+          ],
+        };
+      }
       return { type: "tool_result", tool_use_id: bloque.id, content: contenido };
     } catch (e) {
       return { type: "tool_result", tool_use_id: bloque.id, content: e?.message || "Error al consultar.", is_error: true };
@@ -365,6 +375,16 @@ export function describirUso(nombre, entrada = {}) {
     case "listar_voces": return `Miró las voces${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
     case "previsualizar_voz": return `Pidió la muestra de una voz${entrada.confirmado === true ? "" : " (sin confirmar)"}`;
     case "generar_locucion": return `Pidió la locución de un video animado${entrada.confirmado === true ? "" : " (sin confirmar)"}`;
+    case "formato_video": return "Leyó el formato de escenas del video animado";
+    case "listar_videos": return `Miró los videos animados${entrada.cliente ? ` de ${entrada.cliente}` : ""}`;
+    case "ver_video": return "Miró un video animado";
+    case "crear_video": return "Creó un video animado (borrador)";
+    case "guardar_video": return "Guardó el guion de un video animado";
+    case "editar_escena": return entrada.quitar ? `Quitó la escena «${entrada.quitar}» de un video animado` : "Editó una escena de un video animado";
+    case "aprobar_video": return "Aprobó el guion de un video animado";
+    case "ver_cuadro": return `Miró un cuadro del video animado${entrada.escena ? ` (escena ${entrada.escena})` : ""}`;
+    case "ver_escenas": return "Miró todas las escenas del video animado";
+    case "revisar_video": return "Revisó el video animado antes de renderizar";
     default: return nombre;
   }
 }

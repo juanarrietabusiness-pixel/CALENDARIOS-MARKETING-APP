@@ -31,7 +31,7 @@ import { FORMATOS_VIDEO, FPS, tiempoDeCapa } from "./videoEscenas.js";
 /** Los componentes que este motor ya dibuja. El resto sale como marcador hasta que se escriban. */
 export const COMPONENTES_LISTOS = Object.freeze(["texto", "sello", "imagen", "forma", "logo", "llamado"]);
 
-const FUENTE_RESPALDO = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+export const FUENTE_RESPALDO = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
 // ------------------------------------------------------------
 // Semillas y suavizados
@@ -540,7 +540,7 @@ export function partirEquilibrado(ctx, texto, ancho, n) {
   return lineas.filter(Boolean);
 }
 
-const TIPO_POR_ROL = Object.freeze({
+export const TIPO_POR_ROL = Object.freeze({
   titular: { tam: 0.092, peso: 800, lineas: 3, fuente: "titular", alto: 1.08 },
   apoyo: { tam: 0.052, peso: 500, lineas: 4, fuente: "cuerpo", alto: 1.25 },
   dato: { tam: 0.13, peso: 900, lineas: 2, fuente: "titular", alto: 1.0 },
@@ -946,7 +946,8 @@ function contextoDe({ guion, formato, paleta, recursos = {}, fuentes = {} }) {
 }
 
 /**
- * Las cajas de las capas de la escena `indice` tal como las reparte el motor: `[{ id, tipo, x, y, w, h, detras }]`
+ * Las cajas de las capas de la escena `indice` tal como las reparte el motor: `[{ id, tipo, x, y, w, h, detras, ancho,
+ * escala, cuando }]`
  * en píxeles del lienzo (x, y: la esquina de arriba a la izquierda; ya con su escala). Para las pruebas y para quien
  * quiera ver el reparto sin dibujar. Pura.
  */
@@ -961,7 +962,11 @@ export function cajasDeEscena(ctx, { guion, linea, indice = 0, formato, recursos
     const s = sitio.get(capa.id);
     const m = medirCapa(ctx, capa, c, s.ancho);
     const w = m.w * s.escala; const h = m.h * s.escala;
-    return { id: capa.id, tipo: capa.tipo, x: s.x - w / 2, y: s.y - h / 2, w, h, detras: Boolean(s.detras) };
+    return {
+      id: capa.id, tipo: capa.tipo, x: s.x - w / 2, y: s.y - h / 2, w, h, detras: Boolean(s.detras),
+      // Lo que necesita la revisión (src/lib/revisionEscenas.js): el ancho que se le dio, cuánto se encogió y cuándo se ve.
+      ancho: s.ancho, escala: s.escala, cuando: tiempos.get(capa.id),
+    };
   });
 }
 

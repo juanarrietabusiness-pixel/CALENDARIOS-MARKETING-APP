@@ -8,6 +8,13 @@
 //   · guardar_video    reescribe el guion y/o el título (con la versión que se leyó)
 //   · editar_escena    cambia, añade, mueve o quita UNA escena sin reescribir el resto
 //   · aprobar_video    aprueba el guion de esa versión: con eso generar_locucion ya puede hacer la voz
+//   · ver_cuadro       la IMAGEN de un instante (o de una escena, ya llena), dibujada por el Container con el mismo motor
+//   · ver_escenas      una sola imagen con un cuadro de cada escena, numerados: el video entero de un vistazo
+//   · revisar_video    la revisión antes de renderizar: subtítulos que tapan, texto que se sale o se parte, fuera de la
+//                      zona segura, capas encimadas (con las fuentes reales)
+//
+// Las tres de mirar devuelven { texto, imagenes } (no un texto): el MCP las manda como bloques de imagen y el
+// asistente como imagen en su tool_result. No gastan IA: es cómputo del Container.
 //
 // Van por el MISMO camino que la pantalla (worker/lib/videosProyectos.js): el guion se valida en el servidor, un error
 // vuelve con su sitio, y la versión que se leyó evita pisar lo que otra persona cambió. Ninguna gasta: lo único que
@@ -24,6 +31,8 @@ import {
 import { locucionAlDia } from "./locucion.js";
 import { lineaDeTiempo, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, puedeGenerarVoz, sinEtiquetas } from "../../../src/lib/videoEscenas.js";
 import { formatoParaLaIA } from "../../../src/lib/videoFormatoIA.js";
+import { instanteLleno } from "../../../src/lib/revisionEscenas.js";
+import { pedidoDelVideo, alContenedor, respuestaEnBase64 } from "./cuadros.js";
 
 const clienteParam = { cliente: { type: "string", description: "Nombre del cliente. En el asistente de un cliente se puede omitir: es ese cliente." } };
 const videoParam = { video_id: { type: "string", description: "ID del proyecto de video (de listar_videos o crear_video)." } };
@@ -86,6 +95,41 @@ export const DEFINICIONES_VIDEO = Object.freeze([
     name: "aprobar_video",
     description: "Aprueba el guion de esa versión: desde ahí generar_locucion puede hacer la voz. APROBAR ES DE LA PERSONA: llámala sólo si te lo pidió o lo confirmó después de ver el guion; nunca por tu cuenta. Sólo se aprueba un borrador sin errores. No gasta nada.",
     input_schema: { type: "object", properties: { ...clienteParam, ...videoParam, ...versionParam }, required: ["video_id", "version"] },
+  },
+  {
+    name: "ver_cuadro",
+    description: "Una IMAGEN del video animado en un instante, dibujada con el mismo motor que la vista previa y el render: para revisar cómo queda antes de renderizar. Con «escena» (su id) da esa escena ya llena (cuando entró todo); con «segundo», ese instante. Sin ninguno, la primera escena. No gasta IA.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam, ...videoParam,
+        escena: { type: "string", description: "El id de una escena (de ver_video)." },
+        segundo: { type: "number", description: "El instante en segundos del video." },
+        formato: { type: "string", enum: ["9:16", "1:1", "16:9"], description: "Si se omite, el principal del guion." },
+      },
+      required: ["video_id"],
+    },
+  },
+  {
+    name: "ver_escenas",
+    description: "Una sola IMAGEN con un cuadro de cada escena (cada una ya llena), numeradas con su segundo: el video entero de un vistazo. Úsala para revisar el ritmo y el diseño de todo el guion; luego ver_cuadro para mirar de cerca una. No gasta IA.",
+    input_schema: {
+      type: "object",
+      properties: { ...clienteParam, ...videoParam, formato: { type: "string", enum: ["9:16", "1:1", "16:9"] } },
+      required: ["video_id"],
+    },
+  },
+  {
+    name: "revisar_video",
+    description: "Revisa el video antes de renderizar, con las fuentes reales: subtítulos que tapan un texto, texto que no cabe y se sale o se parte de más, texto encogido hasta no leerse, cosas fuera de la zona segura (donde las tapan los botones de la red) y capas encimadas. Cada problema dice la escena, el segundo y qué cambiar. Corrígelos con editar_escena y vuelve a revisar. No gasta IA.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam, ...videoParam,
+        formatos: { type: "array", items: { type: "string", enum: ["9:16", "1:1", "16:9"] }, description: "Si se omite, los del guion." },
+      },
+      required: ["video_id"],
+    },
   },
 ]);
 
@@ -229,6 +273,59 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
         avisar(c.id, id);
         return `Guion aprobado (versión ${r.video.version}). ${puedeGenerarVoz({ ...fila, estado: "aprobado", aprobada_version: r.video.version, version: r.video.version })
           ? "Ya se puede generar la voz con generar_locucion (pide confirmar el costo)." : ""}`.trim();
+      });
+    },
+    async ver_cuadro({ cliente, video_id: id, escena, segundo, formato }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        const fila = await proyectoDe(acceso, c.id, id);
+        const { pedido, guion, palabras, faltan } = await pedidoDelVideo(env, acceso, c, fila, { formato });
+        const linea = lineaDeTiempo(guion, palabras);
+        let t = Number.isFinite(Number(segundo)) && segundo !== undefined && segundo !== null ? Number(segundo) : null;
+        if (t === null) {
+          const k = escena ? guion.escenas.findIndex((e) => e.id === escena) : 0;
+          if (k < 0) throw new ErrorVideo(`No hay ninguna escena «${escena}». Las que hay: ${guion.escenas.map((e) => e.id).join(", ")}.`, 404);
+          t = instanteLleno(guion, linea, k);
+        }
+        const r = await alContenedor(env, "/cuadro", { ...pedido, t, ancho: 540 });
+        const cual = r.headers.get("X-Escena");
+        return {
+          texto: [
+            `Cuadro de «${fila.titulo}» en el segundo ${Number(r.headers.get("X-Segundo") ?? t).toFixed(1)} de ${linea.total.toFixed(1)} (escena ${cual}, ${pedido.formato}${palabras ? "" : ", tiempos estimados: aún no hay voz"}).`,
+            faltan.length ? `OJO: estas imágenes no están en la galería del cliente y salen como marcador: ${faltan.join(", ")}.` : "",
+          ].filter(Boolean).join("\n"),
+          imagenes: [{ mime: r.headers.get("Content-Type") ?? "image/jpeg", datos: await respuestaEnBase64(r) }],
+        };
+      });
+    },
+
+    async ver_escenas({ cliente, video_id: id, formato }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        const fila = await proyectoDe(acceso, c.id, id);
+        const { pedido, guion, palabras, faltan } = await pedidoDelVideo(env, acceso, c, fila, { formato });
+        const r = await alContenedor(env, "/hoja", { ...pedido, ancho: 1080 });
+        return {
+          texto: [
+            `Las ${guion.escenas.length} escenas de «${fila.titulo}» (${pedido.formato}), cada una ya llena, con su número, id y segundo${palabras ? "" : " (tiempos estimados: aún no hay voz)"}.`,
+            faltan.length ? `OJO: estas imágenes no están en la galería y salen como marcador: ${faltan.join(", ")}.` : "",
+          ].filter(Boolean).join("\n"),
+          imagenes: [{ mime: r.headers.get("Content-Type") ?? "image/jpeg", datos: await respuestaEnBase64(r) }],
+        };
+      });
+    },
+
+    async revisar_video({ cliente, video_id: id, formatos }) {
+      const c = await resolverCliente(cliente);
+      return conErrores(async () => {
+        const fila = await proyectoDe(acceso, c.id, id);
+        const { pedido, guion, faltan } = await pedidoDelVideo(env, acceso, c, fila);
+        const lista = (Array.isArray(formatos) && formatos.length ? formatos : guion.formatos);
+        const j = await (await alContenedor(env, "/revisar", { ...pedido, formatos: lista })).json();
+        return [
+          ...(j.formatos ?? []).map((f) => f.texto),
+          faltan.length ? `Imágenes que no están en la galería (salen como marcador): ${faltan.join(", ")}.` : "",
+        ].filter(Boolean).join("\n\n");
       });
     },
   };

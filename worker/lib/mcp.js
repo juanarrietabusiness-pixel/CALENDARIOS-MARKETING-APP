@@ -354,7 +354,14 @@ export function crearHerramientasMCP({ env, acceso, usuario }) {
   /** Ejecuta una herramienta. Devuelve SIEMPRE el resultado de MCP: `content` y, si falló, `isError`. */
   async function llamar(nombre, entrada = {}) {
     try {
-      if (acciones[nombre]) return { content: [{ type: "text", text: await acciones[nombre](entrada ?? {}) }] };
+      if (acciones[nombre]) {
+        const r = await acciones[nombre](entrada ?? {});
+        // Las que MIRAN el video devuelven { texto, imagenes }: van como bloques de imagen del MCP.
+        if (r && typeof r === "object" && Array.isArray(r.imagenes)) {
+          return { content: [{ type: "text", text: r.texto ?? "" }, ...r.imagenes.map((i) => ({ type: "image", data: i.datos, mimeType: i.mime }))] };
+        }
+        return { content: [{ type: "text", text: r }] };
+      }
       if (["ver_calendario", "ver_tareas", "ver_banco_ideas", "ver_resultados", "buscar_cerebro", "leer_nota_cerebro"].includes(nombre)) {
         const r = await consultas.ejecutar({ id: "mcp", name: nombre, input: entrada ?? {} });
         return { content: [{ type: "text", text: String(r.content) }], ...(r.is_error ? { isError: true } : {}) };

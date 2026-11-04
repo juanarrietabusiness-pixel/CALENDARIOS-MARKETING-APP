@@ -1,0 +1,7 @@
+# Lo único que necesita la imagen del Container: container/ y src/lib (ver container/Dockerfile).
+*
+!container/package.json
+!container/package-lock.json
+!container/*.mjs
+!src/lib/**
+src/lib/**/*.test.js
