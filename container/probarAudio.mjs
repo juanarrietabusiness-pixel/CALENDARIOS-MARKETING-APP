@@ -35,13 +35,25 @@ function duracion(archivo) {
   return t ? Number(t[1]) * 3600 + Number(t[2]) * 60 + Number(t[3]) : NaN;
 }
 
-async function caso(titulo, audio, silencios, total) {
+/** El nivel (RMS, 0–1) del audio de `archivo` entre `desde` y `hasta` segundos. */
+function nivel(archivo, desde, hasta) {
+  const r = spawnSync(FFMPEG, ["-hide_banner", "-i", archivo, "-ss", String(desde), "-t", String(hasta - desde), "-ac", "1", "-f", "s16le", "-"], { maxBuffer: 1 << 26 });
+  const b = Buffer.from(r.stdout ?? []);
+  let suma = 0;
+  for (let i = 0; i + 1 < b.length; i += 2) suma += (b.readInt16LE(i) / 32768) ** 2;
+  return b.length ? Math.sqrt(suma / (b.length / 2)) : 0;
+}
+
+async function caso(titulo, audio, silencios, total, { callado = null, suena = null } = {}) {
   const salida = join(carpeta, `${titulo.replace(/\W+/g, "-")}.m4a`);
   try {
     const m = await audioDelVideo(carpeta, { audio, linea: { silencios }, total, salida });
     const dur = duracion(salida);
     if (!(Math.abs(dur - total) < 0.06)) throw new Error(`el audio dura ${dur} s, no ${total}`);
     if (audio && !(Math.abs((m?.lufs ?? NaN) - RENDER.lufs) <= 1)) throw new Error(`quedó en ${m?.lufs} LUFS`);
+    // La pausa está donde tiene que estar: callada en su sitio y con voz justo antes (sin contar lo que AAC emborrona).
+    if (callado && nivel(salida, ...callado) > 0.003) throw new Error(`entre ${callado.join(" y ")} s debería haber silencio`);
+    if (suena && nivel(salida, ...suena) < 0.02) throw new Error(`entre ${suena.join(" y ")} s debería sonar la voz`);
     console.log(`✓ ${titulo} (${dur.toFixed(2)} s${m ? `, ${m.lufs} LUFS` : ""})`);
   } catch (e) {
     mal++;
@@ -52,10 +64,10 @@ async function caso(titulo, audio, silencios, total) {
 try {
   const voz = await readFile(mp3("voz.mp3", 47.647));
   await caso("MP3 sin pausas", voz, [], 47.7);
-  await caso("MP3 con una pausa en medio", voz, [{ en: 4.2, dur: 0.4 }], 48.1);
-  await caso("MP3 con pausa en medio y al final (después del archivo)", voz, [{ en: 4.2, dur: 0.4 }, { en: 47.68, dur: 0.5 }], 48.6);
+  await caso("MP3 con una pausa en medio", voz, [{ en: 4.2, dur: 0.4 }], 48.1, { suena: [3.9, 4.15], callado: [4.25, 4.55] });
+  await caso("MP3 con pausa en medio y al final (después del archivo)", voz, [{ en: 4.2, dur: 0.4 }, { en: 47.68, dur: 0.5 }], 48.6, { callado: [48.15, 48.55] });
   await caso("MP3 con pausa justo al final", voz, [{ en: 47.6, dur: 0.5 }], 48.15);
-  await caso("MP3 con pausa al principio", voz, [{ en: 0, dur: 0.6 }], 48.3);
+  await caso("MP3 con pausa al principio", voz, [{ en: 0, dur: 0.6 }], 48.3, { callado: [0.05, 0.55], suena: [0.7, 1] });
   await caso("MP3 con muchas pausas", voz, [0.4, 0.8, 0.3, 1.2, 0.5].map((dur, i) => ({ en: 5 + i * 8, dur })), 50.9);
   // Dos MP3 pegados con muestreos distintos: el decodificador cambia de parámetros a la mitad.
   const pegado = Buffer.concat([await readFile(mp3("a.mp3", 6, 44100)), await readFile(mp3("b.mp3", 6, 22050))]);
