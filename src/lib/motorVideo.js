@@ -27,6 +27,7 @@
 // ============================================================
 
 import { FORMATOS_VIDEO, FPS, tiempoDeCapa } from "./videoEscenas.js";
+import { gruposDeSubtitulos, grupoEn, estadoDePalabras } from "./subtitulos.js";
 
 /** Los componentes que este motor ya dibuja. El resto sale como marcador hasta que se escriban. */
 export const COMPONENTES_LISTOS = Object.freeze(["texto", "sello", "imagen", "forma", "logo", "llamado"]);
@@ -925,6 +926,108 @@ function dibujarEscena(ctx, escena, momento, t, cGuion, primera = false) {
   }
 }
 
+// ------------------------------------------------------------
+// Los subtítulos por palabra (src/lib/subtitulos.js decide los grupos y la palabra clave; aquí sólo se dibujan)
+// ------------------------------------------------------------
+
+/** Los grupos se calculan una vez por línea de tiempo (cada fotograma los pide). */
+const GRUPOS = new WeakMap();
+function gruposDe(linea, sub) {
+  const clave = `${sub.maxPalabras}|${sub.maxCaracteres}`;
+  const guardado = GRUPOS.get(linea);
+  if (guardado?.clave === clave) return guardado.grupos;
+  const grupos = gruposDeSubtitulos(linea, { maxPalabras: sub.maxPalabras, maxCaracteres: sub.maxCaracteres });
+  GRUPOS.set(linea, { clave, grupos });
+  return grupos;
+}
+
+/** Tamaño de los subtítulos (fracción del lado corto): el de partida, el mínimo y la altura de línea. */
+export const TIPO_SUBTITULOS = Object.freeze({ tam: 0.082, minimo: 0.052, alto: 1.14, peso: 800 });
+
+/**
+ * Las líneas de un grupo (una o dos) y su tamaño: se empieza en el de partida y se baja hasta que entra a lo ancho y en
+ * la altura de su franja. Dos líneas se parten parejas por palabras. Pura salvo medir.
+ */
+export function encajarSubtitulo(ctx, palabras, { ancho, alto, lado, familia }) {
+  const T = TIPO_SUBTITULOS;
+  const mide = (lista) => ctx.measureText(lista.join(" ")).width;
+  let tam = lado * T.tam;
+  let lineas = [palabras];
+  for (let i = 0; i < 14; i++) {
+    ctx.font = `${T.peso} ${Math.round(tam)}px ${familia}`;
+    lineas = [palabras];
+    if (mide(palabras) > ancho && palabras.length > 1) {
+      // El corte que deja las dos líneas más parejas.
+      let mejor = null;
+      for (let k = 1; k < palabras.length; k++) {
+        const a = palabras.slice(0, k); const b = palabras.slice(k);
+        const peor = Math.max(mide(a), mide(b));
+        if (!mejor || peor < mejor.peor) mejor = { peor, lineas: [a, b] };
+      }
+      lineas = mejor.lineas;
+    }
+    const cabe = Math.max(...lineas.map(mide)) <= ancho && lineas.length * tam * T.alto <= alto;
+    if (cabe || tam <= lado * T.minimo) break;
+    tam = Math.max(lado * T.minimo, tam * 0.93);
+  }
+  return { tam, lineas, fuente: `${T.peso} ${Math.round(tam)}px ${familia}` };
+}
+
+/**
+ * Los subtítulos del instante `t`, en su franja (`bandaDeSubtitulos`): las palabras ya dichas en el claro de la paleta,
+ * la clave en el acento de los subtítulos, la que se dice con un salto y las que faltan atenuadas. Con un borde oscuro
+ * para que se lean sobre cualquier fondo.
+ */
+function dibujarSubtitulos(ctx, c, linea, t) {
+  const sub = c.subtitulos;
+  if (!sub?.activo || !linea) return;
+  const g = grupoEn(gruposDe(linea, sub), t);
+  if (!g) return;
+  const area = areaSegura(c.formato, c.ancho, c.alto);
+  const banda = bandaDeSubtitulos(c.formato, c.ancho, c.alto, sub.pos);
+  const familia = c.fuentes?.cuerpo || c.fuentes?.titular || FUENTE_RESPALDO;
+  const palabras = g.palabras.map((p) => p.texto.toUpperCase());
+  const { tam, lineas, fuente } = encajarSubtitulo(ctx, palabras, { ancho: area.w * 0.94, alto: banda.h, lado: c.lado, familia });
+  const estados = estadoDePalabras(g, t);
+  const claro = colorDe("claro", c.paleta);
+  const oscuro = colorDe("oscuro", c.paleta);
+  const acento = colorDe(sub.acento || "acento", c.paleta);
+  const altoLinea = tam * TIPO_SUBTITULOS.alto;
+  const entrada = suave.sale(limitar((t - g.desde) / 0.08));
+
+  ctx.save();
+  ctx.font = fuente;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "center";
+  ctx.lineJoin = "round";
+  ctx.globalAlpha *= entrada;
+  const espacio = ctx.measureText(" ").width;
+  let i = 0;
+  lineas.forEach((fila, n) => {
+    const anchos = fila.map((p) => ctx.measureText(p).width);
+    const total = anchos.reduce((a, b) => a + b, 0) + espacio * (fila.length - 1);
+    let x = c.ancho / 2 - total / 2;
+    const y = banda.y + banda.h / 2 + (n - (lineas.length - 1) / 2) * altoLinea;
+    fila.forEach((p, j) => {
+      const e = estados[i];
+      const centro = x + anchos[j] / 2;
+      ctx.save();
+      if (e.estado === "falta") ctx.globalAlpha *= 0.38;
+      ctx.translate(centro, y);
+      if (e.estado === "diciendo") { const s = 1 + 0.14 * (1 - suave.sale(e.salto)); ctx.scale(s, s); }
+      ctx.lineWidth = tam * 0.17;
+      ctx.strokeStyle = oscuro;
+      ctx.strokeText(p, 0, 0);
+      ctx.fillStyle = i === g.clave ? acento : claro;
+      ctx.fillText(p, 0, 0);
+      ctx.restore();
+      x += anchos[j] + espacio;
+      i++;
+    });
+  });
+  ctx.restore();
+}
+
 /** La escena que se ve en `t` (la última que empezó). Pura. */
 export function escenaEn(linea, t) {
   const es = linea?.escenas ?? [];
@@ -1010,6 +1113,7 @@ export function dibujarFrame(ctx, { guion, linea, t = 0, formato, paleta, recurs
     dibujarEscena(ctx, escena, momento, t, c, k === 0);
     ctx.restore();
   } else dibujarEscena(ctx, escena, momento, t, c, k === 0);
+  dibujarSubtitulos(ctx, c, linea, t);
   dibujarGrano(ctx, recursos.grano, guion?.estilo?.grano ?? 0, Math.round(t * FPS), ancho, alto);
   ctx.restore();
 }

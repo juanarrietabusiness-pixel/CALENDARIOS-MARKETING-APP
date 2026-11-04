@@ -118,6 +118,15 @@ describe("los proyectos de video animado", () => {
     expect((await pedir(`/videos/bc/${video.id}/aprobar`, "t-jefe", { method: "POST", body: { version: 1 } })).status).toBe(409);
   });
 
+  it("un video con locución no se «aprueba» otra vez (lo devolvía a «Guion aprobado», como si no tuviera voz)", async () => {
+    const { video } = await crear();
+    await pedir(`/videos/bc/${video.id}/aprobar`, "t-jefe", { method: "POST", body: { version: 1 } });
+    db.sqlite.prepare("update videos_proyectos set estado = 'con_voz' where id = ?").run(video.id);
+    expect((await pedir(`/videos/bc/${video.id}/aprobar`, "t-jefe", { method: "POST", body: { version: 1 } })).status).toBe(409);
+    const leido = await (await pedir(`/videos/bc/${video.id}`, "t-jefe")).json();
+    expect(leido.video.estado).toBe("con_voz");
+  });
+
   it("el cliente de otro espacio no existe, y quien es de sólo lectura no escribe", async () => {
     const { video } = await crear();
     expect((await pedir("/videos/bc", "t-otro")).status).toBe(404);

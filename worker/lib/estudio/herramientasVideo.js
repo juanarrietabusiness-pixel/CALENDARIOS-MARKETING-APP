@@ -29,8 +29,9 @@ import {
   deFila, listarProyectos, proyectoDe, crearProyecto, guardarProyecto, editarEscena, aprobarProyecto, publicacionDelCliente, ErrorVideo,
 } from "../videosProyectos.js";
 import { locucionAlDia } from "./locucion.js";
-import { lineaDeTiempo, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, puedeGenerarVoz, sinEtiquetas } from "../../../src/lib/videoEscenas.js";
+import { lineaDeTiempo, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, puedeGenerarVoz, sinEtiquetas, palabrasMudas, palabrasDe, textoDeLocucion } from "../../../src/lib/videoEscenas.js";
 import { formatoParaLaIA } from "../../../src/lib/videoFormatoIA.js";
+import { textoDeSubtitulo } from "../../../src/lib/subtitulos.js";
 import { instanteLleno } from "../../../src/lib/revisionEscenas.js";
 import { pedidoDelVideo, alContenedor, respuestaEnBase64 } from "./cuadros.js";
 
@@ -137,11 +138,16 @@ export const DEFINICIONES_VIDEO = Object.freeze([
 export const ESCRIBEN_VIDEO = Object.freeze(["crear_video", "guardar_video", "editar_escena", "aprobar_video"]);
 
 /** Lo que falta para el siguiente paso, en una frase para el modelo. Pura. */
+/** ¿La locución es de la versión aprobada? (un video «aprobado» con voz de esa versión ya no la necesita otra vez). */
+const vozDeEstaVersion = (video) => video.locucion?.estado === "lista" && !video.locucion.desfasada
+  && video.locucion.version === video.version && video.version === video.aprobadaVersion;
+
 export function siguientePaso(video) {
   if (!video.valido) return "Corregir los errores del guion (abajo) con guardar_video o editar_escena.";
   switch (video.estado) {
     case "borrador": return "Que la persona revise el guion y lo apruebe (aprobar_video con esta versión, sólo con su sí).";
     case "aprobado":
+      if (vozDeEstaVersion(video)) return "Ya tiene la locución de esta versión. Siguiente: el render a mp4 (todavía no está disponible).";
       return video.locucion?.estado === "generando"
         ? "La voz se está generando: vuelve a mirar en un minuto."
         : "Generar la voz con generar_locucion (siempre pide confirmar el costo).";
@@ -153,12 +159,20 @@ export function siguientePaso(video) {
   }
 }
 
+/** Las palabras del final que la voz no dijo (`palabrasMudas`), dichas para el modelo. */
+function mudasDe(video) {
+  const mudas = palabrasMudas(video.locucion?.palabras);
+  if (!mudas.length || !video.guion) return "";
+  const dichas = palabrasDe(textoDeLocucion(video.guion));
+  return ` · OJO: la voz NO dijo «${mudas.map((i) => textoDeSubtitulo(dichas[i] ?? "")).filter(Boolean).join(" ")}» (sin tiempo al final): hay que generar la locución otra vez o acortar el cierre`;
+}
+
 /** El resumen que ve el modelo de un video. */
 function textoDelVideo(video, { conGuion = true } = {}) {
   const linea = video.guion?.escenas?.length ? lineaDeTiempo(video.guion, video.locucion?.palabras ?? null) : null;
   const loc = video.locucion ?? {};
   const voz = loc.estado === "lista"
-    ? `Locución lista: ${loc.voz?.nombre ?? "?"} (${loc.modelo ?? "?"}), ${Number(loc.duracion ?? 0).toFixed(1)} s, tiempos ${loc.fuente === "motor" ? "del motor" : loc.fuente === "verificado" ? "verificados al oírla" : "estimados"}${loc.revisar ? " · OJO: no se oyó todo el guion tal cual" : ""}${loc.desfasada ? " · es de una versión anterior del guion" : ""}.`
+    ? `Locución lista: ${loc.voz?.nombre ?? "?"} (${loc.modelo ?? "?"}), ${Number(loc.duracion ?? 0).toFixed(1)} s, tiempos ${loc.fuente === "motor" ? "del motor" : loc.fuente === "verificado" ? "verificados al oírla" : "estimados"}${loc.revisar ? " · OJO: no se oyó todo el guion tal cual" : ""}${mudasDe(video)}${loc.desfasada ? " · es de una versión anterior del guion" : ""}.`
     : loc.estado === "generando" ? `La voz se está generando (pedido ${loc.trabajoId}).`
       : loc.estado === "fallida" ? `La voz falló: ${loc.error ?? "sin motivo"}.` : "Sin locución todavía.";
   return [

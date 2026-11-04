@@ -14,7 +14,7 @@
 // ============================================================
 
 import { uuid, ahora } from "./ids.js";
-import { validarGuion, lineaDeTiempo, estadoTrasEditar, puedePasar, NOMBRE_ESTADO_VIDEO } from "../../src/lib/videoEscenas.js";
+import { validarGuion, lineaDeTiempo, estadoTrasEditar, NOMBRE_ESTADO_VIDEO } from "../../src/lib/videoEscenas.js";
 
 export const ID_VIDEO = /^[\w-]{1,80}$/;
 export const MAX_PROYECTOS = 200;
@@ -176,7 +176,8 @@ export async function editarEscena(acceso, cliente, fila, { version, escena, pos
 /** Aprueba el guion de ESA versión: fija `aprobada_version`, la única de la que saldrá la voz. → { video }. */
 export async function aprobarProyecto(acceso, cliente, fila, { version, usuario }) {
   comprobarVersion(fila, version);
-  if (!puedePasar(fila.estado, "aprobado")) throw new ErrorVideo(`Está en «${NOMBRE_ESTADO_VIDEO[fila.estado] ?? fila.estado}»: sólo se aprueba un borrador.`, 409);
+  // Sólo un borrador: «aprobar» otra vez un video con locución lo devolvía a «Guion aprobado» y parecía sin voz.
+  if (fila.estado !== "borrador") throw new ErrorVideo(`Está en «${NOMBRE_ESTADO_VIDEO[fila.estado] ?? fila.estado}»: sólo se aprueba un borrador.`, 409);
   const v = validarGuion(leerJSON(fila.guion, null));
   if (!v.ok) throw new ErrorVideo("El guion tiene errores: corrígelos antes de aprobarlo.", 400, { errores: v.errores });
   const momento = ahora();

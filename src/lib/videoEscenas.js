@@ -533,3 +533,38 @@ export function tiempoDeCapa(capa, escena) {
   const hasta = Math.max(desde, momento(capa.sale, escena.hasta));
   return { desde: redondo(desde), hasta: redondo(hasta) };
 }
+
+/**
+ * Qué se oye en el instante `t` del VIDEO: el segundo del AUDIO que suena (`a`) o que está en un silencio insertado
+ * (`mudo`, con `a` en el punto donde se para). `desplazado` es lo que va de silencio (tiempo del video = audio +
+ * desplazado) y `finTramo` el segundo del audio donde empieza el siguiente silencio. Lo usa la vista previa para que la
+ * voz suene con la animación, y lo usará el render para montar el audio. Pura.
+ */
+export function tramoDeAudio(linea, t) {
+  let desplazado = 0;
+  for (const s of linea?.silencios ?? []) {
+    const inicio = s.en + desplazado; // dónde empieza el silencio, en tiempo del video
+    if (t < inicio) return { a: Math.max(0, t - desplazado), mudo: false, desplazado, finTramo: s.en };
+    if (t < inicio + s.dur) return { a: s.en, mudo: true, desplazado, finTramo: s.en };
+    desplazado += s.dur;
+  }
+  return { a: Math.max(0, t - desplazado), mudo: false, desplazado, finTramo: Infinity };
+}
+
+/**
+ * Las palabras de una locución que la voz NO dijo: las del final que la alineación deja sin duración pegadas al último
+ * instante (ElevenLabs v3 a veces corta la frase final y marca lo que falta así). → los índices, en orden. Un subtítulo
+ * de esas palabras saldría de golpe al final, y lo que no se dijo no se puede subtitular. Pura.
+ */
+export function palabrasMudas(palabras) {
+  const lista = Array.isArray(palabras) ? palabras : [];
+  const fin = lista.at(-1)?.hasta;
+  if (!Number.isFinite(fin)) return [];
+  const mudas = [];
+  for (let i = lista.length - 1; i >= 0; i--) {
+    const p = lista[i];
+    if (!(p.hasta - p.desde < 0.02 && fin - p.desde < 0.05)) break;
+    mudas.unshift(i);
+  }
+  return mudas;
+}

@@ -7,14 +7,19 @@
 //
 // La vista previa se dibuja a la medida del lienzo en pantalla (el motor dibuja en 1080 × 1920 y aquí se escala), y
 // sólo mientras se ve: pausada no repinta nada. Con «reducir movimiento» no arranca sola.
+//
+// Con locución, la VOZ suena con la animación: el reloj es el del audio mientras se habla (si el audio se atasca
+// cargando, la animación lo espera) y el del navegador en los silencios que el render inserta (`tramoDeAudio`), así
+// la vista previa suena como sonará el mp4. Los subtítulos los dibuja el motor con los mismos tiempos.
 // ============================================================
 
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import Icon from "./Icon";
-import { validarGuion, lineaDeTiempo, FORMATOS_VIDEO, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, puedePasar } from "../lib/videoEscenas";
+import { validarGuion, lineaDeTiempo, FORMATOS_VIDEO, NOMBRE_ESTADO_VIDEO, NOMBRE_TIPO_ESCENA, tramoDeAudio, palabrasMudas } from "../lib/videoEscenas";
 import { dibujarFrame, paletaDelGuion, escenaEn, COMPONENTES_LISTOS, areaSegura, bandaDeSubtitulos } from "../lib/motorVideo";
 import { prepararRecursos } from "../lib/motorVideoNavegador";
 import { revisarEscenas } from "../lib/revisionEscenas";
+import { textoDeSubtitulo } from "../lib/subtitulos";
 import { listarVideos, leerVideo, crearVideo, guardarVideo, aprobarVideo, borrarVideo } from "../lib/videosApi";
 import { limpiarKit } from "../lib/kitMarca";
 import "./VideoAnimado.css";
@@ -154,7 +159,8 @@ export default function VideoAnimado({ client, estudio }) {
   }
 
   const estado = abierto.nuevo ? "borrador" : abierto.estado;
-  const puedeAprobar = !abierto.nuevo && !sucio && validacion.ok && puedePasar(estado, "aprobado");
+  // Sólo se aprueba un borrador: «aprobar» otra vez un video con voz lo devolvía a «Guion aprobado».
+  const puedeAprobar = !abierto.nuevo && !sucio && validacion.ok && estado === "borrador";
   const errores = validacion.ok ? errServidor : validacion.errores;
 
   return (
@@ -169,12 +175,12 @@ export default function VideoAnimado({ client, estudio }) {
       <div className="va-cuerpo">
         <div className="va-previa">
           {validacion.guion?.escenas?.length
-            ? <VistaPrevia guion={validacion.guion} palabras={abierto.locucion?.palabras ?? null} kit={kit} archivos={archivos} />
+            ? <VistaPrevia guion={validacion.guion} locucion={abierto.locucion ?? null} kit={kit} archivos={archivos} />
             : <p className="hint">Sin escenas válidas no hay vista previa.</p>}
         </div>
 
         <div className="va-lado">
-          {validacion.guion?.escenas?.length > 0 && <Escenas guion={validacion.guion} />}
+          {validacion.guion?.escenas?.length > 0 && <Escenas guion={validacion.guion} palabras={abierto.locucion?.estado === "lista" ? abierto.locucion.palabras ?? null : null} />}
 
           {errores.length > 0 && (
             <div className="va-errores" role="alert">
@@ -217,9 +223,9 @@ export default function VideoAnimado({ client, estudio }) {
   );
 }
 
-/** Las escenas en orden: tipo, lo que se dice y lo que se ve, con sus tiempos estimados. */
-function Escenas({ guion }) {
-  const linea = useMemo(() => lineaDeTiempo(guion), [guion]);
+/** Las escenas en orden: tipo, lo que se dice y lo que se ve, con sus tiempos (los de la voz si la hay). */
+function Escenas({ guion, palabras }) {
+  const linea = useMemo(() => lineaDeTiempo(guion, palabras), [guion, palabras]);
   const pendientes = [...new Set(guion.escenas.flatMap((e) => e.capas.map((c) => c.tipo)).filter((t) => !COMPONENTES_LISTOS.includes(t)))];
   return (
     <div className="va-escenas">
@@ -265,14 +271,18 @@ function pintarZonas(ctx, guion, formato, ancho, alto) {
     ctx.strokeStyle = "rgba(20, 24, 32, 0.6)";
     ctx.strokeRect(a.x, b.y, a.w, b.h);
     ctx.fillStyle = "rgba(20, 24, 32, 0.7)";
-    ctx.fillText("Subtítulos (paso 4)", ancho / 2, b.y + b.h / 2);
+    ctx.fillText("Subtítulos", ancho / 2, b.y - lado * 0.025);
   }
   ctx.restore();
 }
 
-function VistaPrevia({ guion, palabras, kit, archivos }) {
+function VistaPrevia({ guion, locucion, kit, archivos }) {
   const ids = useId();
   const lienzo = useRef(null);
+  const audio = useRef(null);
+  const [sonido, setSonido] = useState(true);
+  const [falloVoz, setFalloVoz] = useState(false);
+  const palabras = locucion?.estado === "lista" ? locucion.palabras ?? null : null;
   const [formato, setFormato] = useState(guion.formatos[0]);
   const [t, setT] = useState(0);
   const [reproduciendo, setReproduciendo] = useState(false);
@@ -311,24 +321,58 @@ function VistaPrevia({ guion, palabras, kit, archivos }) {
   useEffect(() => { pintar(t); }, [pintar, t]);
   useEffect(() => { setT((x) => Math.min(x, linea.total)); }, [linea.total]);
 
-  // Reproducir: el reloj del navegador sólo mueve `t`; el dibujo es el mismo que con la barra.
+  // La voz suena sólo si sus tiempos son los de ESTE guion (si no, la línea de tiempo es estimada y no casarían).
+  const conVoz = Boolean(palabras && locucion?.clave && !linea.estimado);
+  const voz = conVoz && sonido && !falloVoz;
+  const mudas = useMemo(() => {
+    if (!conVoz) return [];
+    const dichas = linea.escenas.flatMap((e) => e.palabras.map((p) => p.texto));
+    return palabrasMudas(palabras).map((i) => textoDeSubtitulo(dichas[i] ?? "")).filter(Boolean);
+  }, [conVoz, palabras, linea]);
+  const tAhora = useRef(t);
+  tAhora.current = t;
+
+  /** Pone el audio en el segundo que toca para el instante `x` del video y lo hace sonar (o lo calla en un silencio). */
+  const sonarDesde = useCallback((x) => {
+    const au = audio.current;
+    if (!au || !voz) return;
+    const r = tramoDeAudio(linea, x);
+    if (r.mudo) { au.pause(); return; }
+    au.currentTime = r.a;
+    au.play().catch(() => {});
+  }, [linea, voz]);
+
+  // Reproducir: con voz, el reloj del audio mientras habla; sin ella (o en un silencio), el del navegador.
   useEffect(() => {
-    if (!reproduciendo) return undefined;
+    const el = audio.current;
+    if (!reproduciendo) { el?.pause(); return undefined; }
     let pedido = 0;
     let antes = performance.now();
+    let x = tAhora.current;
     const paso = (ahora) => {
-      const dt = (ahora - antes) / 1000;
+      const dt = Math.min(0.1, (ahora - antes) / 1000);
       antes = ahora;
-      setT((x) => {
-        const n = x + dt;
-        if (n >= linea.total) { setReproduciendo(false); return linea.total; }
-        return n;
-      });
+      let n = x + dt;
+      const au = audio.current;
+      if (au && voz) {
+        const r = tramoDeAudio(linea, n);
+        if (r.mudo || (au.duration && r.a >= au.duration)) { if (!au.paused) au.pause(); }
+        else if (au.paused) sonarDesde(n);
+        else if (au.readyState < 3) n = x; // el audio se está cargando: la animación lo espera
+        else {
+          const segunAudio = au.currentTime + r.desplazado;
+          if (Math.abs(segunAudio - n) > 0.25) au.currentTime = r.a;
+          else if (au.currentTime < r.finTramo) n = Math.max(x, segunAudio);
+        }
+      }
+      if (n >= linea.total) { setT(linea.total); setReproduciendo(false); return; }
+      x = n;
+      setT(n);
       pedido = requestAnimationFrame(paso);
     };
     pedido = requestAnimationFrame(paso);
-    return () => cancelAnimationFrame(pedido);
-  }, [reproduciendo, linea.total]);
+    return () => { cancelAnimationFrame(pedido); el?.pause(); };
+  }, [reproduciendo, linea, voz, sonarDesde]);
 
   // Repintar si cambia el ancho (girar el teléfono, abrir el panel).
   useEffect(() => {
@@ -353,7 +397,14 @@ function VistaPrevia({ guion, palabras, kit, archivos }) {
   }, [guion, linea, f, prep]);
 
   const k = escenaEn(linea, t);
-  const alternar = () => { if (!reproduciendo && t >= linea.total - 0.01) setT(0); setReproduciendo((r) => !r); };
+  // Arrancar el audio DENTRO del toque: Safari en el iPhone sólo deja sonar lo que empieza con un gesto.
+  const alternar = () => {
+    if (reproduciendo) { setReproduciendo(false); return; }
+    const desde = t >= linea.total - 0.01 ? 0 : t;
+    if (desde !== t) setT(desde);
+    sonarDesde(desde);
+    setReproduciendo(true);
+  };
   const paso = (d) => { setReproduciendo(false); setT((x) => Math.min(linea.total, Math.max(0, x + d))); };
 
   return (
@@ -361,7 +412,10 @@ function VistaPrevia({ guion, palabras, kit, archivos }) {
       <div className="va-formatos" role="group" aria-label="Formato de la vista previa">
         {guion.formatos.length > 1 && guion.formatos.map((x) => <button key={x} type="button" className="filter-chip" aria-pressed={x === f} onClick={() => setFormato(x)}>{x}</button>)}
         <button type="button" className="filter-chip" aria-pressed={zonas} onClick={() => setZonas((z) => !z)}>Zonas seguras</button>
+        {conVoz && <button type="button" className="filter-chip" aria-pressed={sonido} onClick={() => { setSonido((v) => !v); audio.current?.pause(); setReproduciendo(false); }}>Voz</button>}
       </div>
+      {conVoz && <audio ref={audio} src={`/api/media/${locucion.clave}`} preload="auto" onError={() => setFalloVoz(true)} />}
+      {conVoz && falloVoz && <p className="va-msg va-error" role="alert">No se pudo cargar el audio de la locución: la vista previa sigue sin sonido.</p>}
       <div className={`va-marco va-marco-${f.replace(":", "x")}`}>
         <canvas ref={lienzo} className="va-lienzo" role="img"
           aria-label={`Vista previa, escena ${k + 1} de ${guion.escenas.length}: ${guion.escenas[k]?.pantalla || guion.escenas[k]?.habla || ""}`} />
@@ -377,9 +431,16 @@ function VistaPrevia({ guion, palabras, kit, archivos }) {
       <label htmlFor={`${ids}-t`} className="sr-only">Momento del video</label>
       <input id={`${ids}-t`} type="range" className="va-barra-t" min={0} max={linea.total} step={1 / 30} value={t}
         onChange={(e) => { setReproduciendo(false); setT(Number(e.target.value)); }} />
+      {mudas.length > 0 && (
+        <p className="va-msg va-error" role="alert">
+          La voz no dijo {mudas.length === 1 ? "la última palabra" : `las últimas ${mudas.length} palabras`} del guion: «{mudas.join(" ")}». Escúchala:
+          si es así, hay que generar la locución otra vez (o acortar el cierre).
+        </p>
+      )}
       <p className="hint">
-        {linea.estimado ? "Tiempos estimados (2,5 palabras por segundo): con la locución se cuadran a la voz real." : "Tiempos de la locución."}
-        {" "}Sin sonido ni subtítulos todavía.
+        {linea.estimado
+          ? "Tiempos estimados (2,5 palabras por segundo): con la locución se cuadran a la voz real."
+          : `Con la voz de la locución (${locucion?.voz?.nombre ?? "la voz"}): las escenas y los subtítulos van con sus palabras.`}
         {prep.faltan.length > 0 && ` ${prep.faltan.length === 1 ? "Una imagen no está" : `${prep.faltan.length} imágenes no están`} en la galería: sale su marcador.`}
       </p>
       <section className="va-revision" aria-labelledby={`${ids}-rev`}>
