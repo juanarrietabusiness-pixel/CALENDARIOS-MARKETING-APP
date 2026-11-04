@@ -9,6 +9,11 @@
 //           → { audio_base64, alignment: { characters, character_start_times_seconds, character_end_times_seconds },
 //               normalized_alignment }
 //   Voces   GET  https://api.elevenlabs.io/v1/voices → { voices: [{ voice_id, name, labels: { gender, accent… } }] }
+//   Modelos GET  https://api.elevenlabs.io/v1/models → [{ model_id, model_rates: { character_cost_multiplier } }]
+//           (gratis: dice si la cuenta tiene `eleven_v4` y cuánto cobra cada modelo por carácter)
+//   Biblioteca  GET  /v1/shared-voices?language=es&… → { voices: [{ voice_id, public_owner_id, name, accent… }] }
+//               POST /v1/voices/add/<public_owner_id>/<voice_id> { new_name } → { voice_id }  (gratis: ocupa un hueco
+//               de voces de la cuenta; desde entonces sale en /v1/voices)
 //
 // Contesta EN EL ACTO (una toma de un video son segundos), pero va con el contrato de COLA del Estudio para no tocar
 // nada de lo que ya funciona: `enviar` genera la toma y la deja en R2 bajo `voces/pendientes/` (fuera de `clientes/`:
@@ -27,7 +32,7 @@
 import { ErrorMotor } from "./gemini.js";
 import { tipoPorBytes } from "./archivos.js";
 import { uuid } from "../ids.js";
-import { MODELOS_VOZ, vozDeLaCuenta } from "../../../src/lib/voces.js";
+import { MODELOS_VOZ, vozDeLaCuenta, vozDeLaBiblioteca, enEspanolPrimero, previaDeVoz } from "../../../src/lib/voces.js";
 
 const BASE = "https://api.elevenlabs.io";
 const PLAZO_MS = 90_000;
@@ -82,14 +87,14 @@ async function llamar(env, ruta, { method = "GET", cuerpo, crudo = false } = {})
   return res;
 }
 
-/** El cuerpo de la toma para ese modelo (v3 con el idioma forzado si se pide). Pura. */
+/** El cuerpo de la toma para ese modelo (v4 y v3 con el idioma forzado si se pide). Pura. */
 export function cuerpoDeToma(modelo, { prompt, ajustes = {} }, { conIdioma = true } = {}) {
   const m = MODELOS_VOZ[modelo.clave] ?? Object.values(MODELOS_VOZ).find((x) => x.idDirecto === modelo.id);
   const estabilidad = Number(ajustes.estabilidad ?? 0.5);
   return {
     text: String(prompt ?? ""),
     model_id: m?.elevenlabs ?? modelo.elevenlabs,
-    ...(conIdioma && m?.clave === "v3" ? { language_code: "es" } : {}),
+    ...(conIdioma && (m?.clave === "v3" || m?.clave === "v4") ? { language_code: "es" } : {}),
     voice_settings: { stability: Number.isFinite(estabilidad) ? estabilidad : 0.5, similarity_boost: 0.75 },
   };
 }
@@ -163,12 +168,107 @@ export async function vocesDeLaCuenta(env) {
   try {
     const res = await llamar(env, "/v1/voices");
     const j = await res.json().catch(() => null);
-    const voces = (Array.isArray(j?.voices) ? j.voices : []).map(vozDeLaCuenta).filter(Boolean).slice(0, 80);
+    const voces = enEspanolPrimero((Array.isArray(j?.voices) ? j.voices : []).map(vozDeLaCuenta).filter(Boolean)).slice(0, 80);
     return voces.length ? voces : null;
   } catch (e) {
     console.warn("elevenlabs: no se pudo leer la lista de voces", e?.message);
     return null;
   }
+}
+
+/**
+ * Los modelos de la CUENTA (`/v1/models`, gratis): → { ids: Set<model_id>, factores: { model_id: multiplicador } } o null
+ * si no se pudo saber. Se recuerda 10 minutos por instancia: lo preguntan la lista de voces y cada pedido.
+ */
+let modelosRecordados = null;
+const RECORDAR_MODELOS_MS = 10 * 60_000;
+export async function modelosDeLaCuenta(env, { ahora = Date.now() } = {}) {
+  if (modelosRecordados && modelosRecordados.llave === env.ELEVENLABS_API_KEY && ahora - modelosRecordados.at < RECORDAR_MODELOS_MS) {
+    return modelosRecordados.valor;
+  }
+  try {
+    const res = await llamar(env, "/v1/models");
+    const j = await res.json().catch(() => null);
+    const lista = Array.isArray(j) ? j : Array.isArray(j?.models) ? j.models : [];
+    const ids = new Set();
+    const factores = {};
+    for (const m of lista) {
+      const id = String(m?.model_id ?? "");
+      if (!id || m?.can_do_text_to_speech === false) continue;
+      ids.add(id);
+      const f = Number(m?.model_rates?.character_cost_multiplier ?? m?.token_cost_factor);
+      if (Number.isFinite(f) && f > 0) factores[id] = f;
+    }
+    const valor = ids.size ? { ids, factores } : null;
+    modelosRecordados = { llave: env.ELEVENLABS_API_KEY, at: ahora, valor };
+    return valor;
+  } catch (e) {
+    console.warn("elevenlabs: no se pudo leer la lista de modelos", e?.message);
+    return null;
+  }
+}
+/** Para las pruebas: olvidar lo recordado. */
+export const olvidarModelos = () => { modelosRecordados = null; };
+
+/** Los acentos de las voces en español que se pueden buscar en la biblioteca (su valor en ElevenLabs → en pantalla). */
+export const ACENTOS_BIBLIOTECA = Object.freeze({
+  "latin american": "Latinoamericano", mexican: "Mexicano", colombian: "Colombiano", argentine: "Argentino",
+  venezuelan: "Venezolano", chilean: "Chileno", peruvian: "Peruano", caribbean: "Caribeño", peninsular: "España",
+});
+
+/**
+ * Busca voces en ESPAÑOL en la biblioteca de ElevenLabs (gratis). Sin las que cobran una tarifa propia
+ * (`include_custom_rates=false`): costarían más que lo que dice la confirmación. → { voces, mas }.
+ */
+export async function buscarEnBiblioteca(env, { q = "", genero = "", acento = "", pagina = 0 } = {}) {
+  const p = new URLSearchParams({ page_size: "24", language: "es", include_custom_rates: "false", sort: "trending" });
+  const busqueda = String(q ?? "").replace(/\s+/g, " ").trim().slice(0, 60);
+  if (busqueda) p.set("search", busqueda);
+  if (["female", "male", "neutral"].includes(genero)) p.set("gender", genero);
+  if (Object.hasOwn(ACENTOS_BIBLIOTECA, acento)) p.set("accent", acento);
+  const n = Math.max(0, Math.min(20, Math.floor(Number(pagina) || 0)));
+  if (n) p.set("page", String(n));
+  const res = await llamar(env, `/v1/shared-voices?${p}`);
+  const j = await res.json().catch(() => null);
+  const voces = (Array.isArray(j?.voices) ? j.voices : [])
+    .map((v) => vozDeLaBiblioteca({ ...v, labels: { ...(v?.labels ?? {}), language: v?.language ?? v?.labels?.language ?? "es" } }))
+    .filter(Boolean);
+  return { voces: enEspanolPrimero(voces), mas: Boolean(j?.has_more) };
+}
+
+/** Añade una voz de la biblioteca a la cuenta («My Voices»). → el id con el que queda. */
+export async function anadirDeLaBiblioteca(env, { publico, voz, nombre }) {
+  if (!/^[A-Za-z0-9]{8,80}$/.test(String(publico ?? "")) || !/^[A-Za-z0-9]{12,40}$/.test(String(voz ?? ""))) {
+    throw new ErrorMotor("Esa voz de la biblioteca no tiene un id válido.", 400);
+  }
+  const nuevo = String(nombre ?? "").replace(/\s+/g, " ").trim().slice(0, 40) || "Voz en español";
+  const res = await llamar(env, `/v1/voices/add/${encodeURIComponent(publico)}/${encodeURIComponent(voz)}`, { method: "POST", cuerpo: { new_name: nuevo } });
+  const j = await res.json().catch(() => null);
+  return String(j?.voice_id ?? voz);
+}
+
+/** Lo más que pesa la muestra gratis de una voz (unos segundos de MP3). */
+const TOPE_PREVIA = 3 * 1024 * 1024;
+
+/**
+ * La muestra GRATIS de una voz que publica ElevenLabs (`preview_url`), servida desde aquí: la CSP no deja oír audio de
+ * otro origen, y así tampoco sale al navegador ninguna llave (no lleva). Sólo de sus almacenes (`previaDeVoz`). → Response.
+ */
+export async function previaGratis(url) {
+  const limpia = previaDeVoz(url);
+  if (!limpia) throw new ErrorMotor("Esa muestra no es de ElevenLabs.", 400);
+  let res;
+  try {
+    res = await fetch(limpia, { signal: AbortSignal.timeout(15_000) });
+  } catch {
+    throw new ErrorMotor("No se pudo traer la muestra de ElevenLabs.", 502);
+  }
+  if (!res.ok) throw new ErrorMotor(`ElevenLabs no dio la muestra (${res.status}).`, 502);
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (!bytes.byteLength || bytes.byteLength > TOPE_PREVIA) throw new ErrorMotor("La muestra de ElevenLabs no es válida.", 502);
+  const mime = tipoPorBytes(bytes);
+  if (mime !== "audio/mpeg" && mime !== "audio/wav") throw new ErrorMotor("Lo que dio ElevenLabs no es un audio.", 502);
+  return new Response(bytes, { headers: { "Content-Type": mime, "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff" } });
 }
 
 export const MOTOR_ELEVENLABS = {
