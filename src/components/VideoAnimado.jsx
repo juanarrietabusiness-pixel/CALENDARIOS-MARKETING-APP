@@ -28,6 +28,10 @@ import "./VideoAnimado.css";
 // «Probar una voz» va en su propio chunk: sólo lo carga quien lo abre.
 const ProbarVoz = lazy(() => import("./ProbarVoz"));
 const VideoSonido = lazy(() => import("./VideoSonido"));
+// El paso 4 (crear sin Claude): cada pieza en su chunk.
+const CrearVideoAnimado = lazy(() => import("./CrearVideoAnimado"));
+const EditorEscenas = lazy(() => import("./EditorEscenas"));
+const LocucionVideo = lazy(() => import("./LocucionVideo"));
 
 /** Un guion de arranque: tres escenas que se ven bien con cualquier kit. Se edita antes de guardar. */
 const ARRANQUE = {
@@ -51,7 +55,7 @@ const ARRANQUE = {
 const fmtSeg = (s) => { const m = Math.floor(s / 60); const r = s - m * 60; return `${m}:${r.toFixed(1).padStart(4, "0")}`; };
 const fecha = (iso) => { try { return new Date(iso).toLocaleDateString("es-PA", { day: "numeric", month: "short" }); } catch { return ""; } };
 
-export default function VideoAnimado({ client, estudio }) {
+export default function VideoAnimado({ client, estudio, publicacion = null }) {
   const ids = useId();
   const kit = useMemo(() => limpiarKit(estudio?.kit), [estudio?.kit]);
   const archivos = useMemo(() => estudio?.archivos ?? [], [estudio?.archivos]);
@@ -62,6 +66,9 @@ export default function VideoAnimado({ client, estudio }) {
   const [ocupado, setOcupado] = useState("");
   const [errServidor, setErrServidor] = useState([]);
   const [probar, setProbar] = useState(false);
+  // «Video nuevo»: la idea y la IA (o la plantilla). Desde una publicación del calendario arranca abierto.
+  const [creando, setCreando] = useState(Boolean(publicacion?.postId));
+  const [editarTextos, setEditarTextos] = useState(false);
 
   const recargarLista = useCallback(async () => {
     try { setLista(await listarVideos(client.id)); } catch (e) { setMsg({ error: true, texto: e.message }); setLista([]); }
@@ -89,7 +96,12 @@ export default function VideoAnimado({ client, estudio }) {
       setAbierto(v); setTexto(JSON.stringify(v.guion, null, 2));
     } catch (e) { setMsg({ error: true, texto: e.message }); }
   };
-  const nuevo = () => { setMsg(null); setErrServidor([]); setAbierto({ nuevo: true }); setTexto(JSON.stringify(ARRANQUE, null, 2)); };
+  const nuevo = (guion = ARRANQUE, { publicacion: destino = null, aviso = "" } = {}) => {
+    setMsg(aviso ? { texto: aviso } : guion === ARRANQUE ? null : { texto: "Guion escrito: revísalo y guárdalo como borrador." });
+    setErrServidor([]); setCreando(false); setEditarTextos(guion !== ARRANQUE);
+    setAbierto({ nuevo: true, calendarId: destino?.calendarId ?? null, postId: destino?.postId ?? null });
+    setTexto(JSON.stringify(guion, null, 2));
+  };
 
   // La validación va en vivo con el MISMO validador que el servidor.
   const validacion = useMemo(() => validarGuion(texto), [texto]);
@@ -99,7 +111,7 @@ export default function VideoAnimado({ client, estudio }) {
     setOcupado("guardar"); setMsg(null); setErrServidor([]);
     try {
       const r = abierto.nuevo
-        ? await crearVideo(client.id, { guion: validacion.guion })
+        ? await crearVideo(client.id, { guion: validacion.guion, calendarId: abierto.calendarId ?? undefined, postId: abierto.postId ?? undefined })
         : await guardarVideo(client.id, abierto.id, { guion: validacion.guion, version: abierto.version });
       setAbierto(r.video); setTexto(JSON.stringify(r.video.guion, null, 2));
       setMsg({ texto: abierto.nuevo ? "Guardado como borrador." : r.video.version > abierto.version ? "Guardado. El guion cambió: hay que aprobarlo otra vez." : "Guardado." });
@@ -117,7 +129,7 @@ export default function VideoAnimado({ client, estudio }) {
       setAbierto(v);
       setMsg({ texto: v.vozReutilizada
         ? "Guion aprobado. Lo que se dice no cambió: la voz que ya tenía sirve (no hace falta pagar otra). Ya se puede renderizar."
-        : "Guion aprobado. El siguiente paso es la locución (Claude la genera con generar_locucion, con su costo y tu confirmación)." });
+        : "Guion aprobado. El siguiente paso es la voz: «Generar la voz» te dice el costo antes de pagarla." });
       recargarLista();
     } catch (e) { setMsg({ error: true, texto: e.message }); } finally { setOcupado(""); }
   };
@@ -136,15 +148,21 @@ export default function VideoAnimado({ client, estudio }) {
       <div className="va">
         <p className="hint">Escenas dibujadas con código, una sola locución y subtítulos por palabra. La vista previa es gratis: sólo la locución cuesta.</p>
         {aviso}
-        <div className="va-barra">
-          <button type="button" className="btn btn-primary" onClick={nuevo}><Icon name="plus" /> Video nuevo</button>
-        </div>
+        {creando ? (
+          <Suspense fallback={<p className="hint">Cargando…</p>}>
+            <CrearVideoAnimado client={client} publicacion={publicacion} onListo={nuevo} onPlantilla={() => nuevo()} onCancelar={() => setCreando(false)} />
+          </Suspense>
+        ) : (
+          <div className="va-barra">
+            <button type="button" className="btn btn-primary" onClick={() => { setMsg(null); setCreando(true); }}><Icon name="plus" /> Video nuevo</button>
+          </div>
+        )}
         <details className="va-probar" onToggle={(e) => setProbar(e.currentTarget.open)}>
           <summary>Probar una voz</summary>
           {probar && <Suspense fallback={<p className="hint">Cargando…</p>}><ProbarVoz client={client} /></Suspense>}
         </details>
         {lista === null ? <p className="hint">Cargando…</p> : !lista.length ? (
-          <p className="hint">Este cliente aún no tiene videos animados. Pídele uno a Claude o empieza con «Video nuevo».</p>
+          <p className="hint">Este cliente aún no tiene videos animados. Empieza con «Video nuevo» (la IA escribe el guion) o pídeselo a Claude.</p>
         ) : (
           <ul className="va-lista" aria-label="Videos animados del cliente">
             {lista.map((v) => (
@@ -184,7 +202,16 @@ export default function VideoAnimado({ client, estudio }) {
         </div>
 
         <div className="va-lado">
-          {validacion.guion?.escenas?.length > 0 && <Escenas guion={validacion.guion} palabras={abierto.locucion?.estado === "lista" ? abierto.locucion.palabras ?? null : null} />}
+          {validacion.guion?.escenas?.length > 0 && (
+            <div className="va-barra">
+              <button type="button" className="btn btn-ghost btn-sm" aria-pressed={editarTextos} onClick={() => setEditarTextos((x) => !x)}>
+                <Icon name="pencil" /> {editarTextos ? "Ver las escenas" : "Editar los textos"}
+              </button>
+            </div>
+          )}
+          {validacion.guion?.escenas?.length > 0 && (editarTextos
+            ? <Suspense fallback={<p className="hint">Cargando…</p>}><EditorEscenas guion={validacion.guion} onCambiar={(g) => setTexto(JSON.stringify(g, null, 2))} /></Suspense>
+            : <Escenas guion={validacion.guion} palabras={abierto.locucion?.estado === "lista" ? abierto.locucion.palabras ?? null : null} />)}
 
           {errores.length > 0 && (
             <div className="va-errores" role="alert">
@@ -198,9 +225,9 @@ export default function VideoAnimado({ client, estudio }) {
             </details>
           )}
 
-          <details className="va-json" open={abierto.nuevo || !validacion.ok}>
+          <details className="va-json" open={!validacion.ok}>
             <summary>El guion (JSON)</summary>
-            <label htmlFor={`${ids}-json`} className="hint">Lo escribe Claude; aquí se corrige a mano. Se valida mientras escribes.</label>
+            <label htmlFor={`${ids}-json`} className="hint">Lo escribe la IA (o Claude); las capas se corrigen aquí a mano. Se valida mientras escribes.</label>
             <textarea id={`${ids}-json`} className="input va-texto" spellCheck={false} value={texto} onChange={(e) => setTexto(e.target.value)} rows={16} />
           </details>
 
@@ -221,6 +248,7 @@ export default function VideoAnimado({ client, estudio }) {
             )}
           </div>
           {sucio && <p className="hint">Hay cambios sin guardar.</p>}
+          {!abierto.nuevo && <Suspense fallback={null}><LocucionVideo client={client} video={abierto} sucio={sucio} onCambio={setAbierto} /></Suspense>}
           {!abierto.nuevo && <RenderVideo client={client} video={abierto} sucio={sucio} onCambio={setAbierto} />}
           {!abierto.nuevo && (
             <Suspense fallback={null}>
