@@ -1,9 +1,13 @@
 import { useEffect, useId, useMemo, useState, useRef } from "react";
 import { PLANS, FORMATS, FORMAT_ICONS, MONTHS, DAYS, DAYS_SHORT } from "../constants";
-import { uid, daysInMonth, fmtDate, getWeekNumber, dayName } from "../utils";
-import { callAI, buildClientContext, buildDescripcionesPrompt, buildScriptPrompt, loadADN, parseAIResponse, pasajesDeLaTanda } from "../api";
-import { loadClientMemories } from "../lib/db";
+import { uid, daysInMonth, fmtDate, dayName } from "../utils";
+import { callAI, buildClientContext } from "../api";
 import { useDialogA11y } from "../hooks/useDialogA11y";
+import { semanaDelMes } from "../lib/semanas";
+import { llevaGuion, llevaTextoPieza } from "../lib/reglasFormato";
+import {
+  claveBorrador, leerBorrador, guardarBorrador, borrarBorrador, semanasDelPlan, unoPorSemana, diasOcupados, publicacionDelPlan,
+} from "../lib/planMes";
 import { casillasDelPlan, ideasDelPlan, rellenarConIdea } from "../lib/ideaPublicacion";
 import { avisoDeLoQueFalta } from "../lib/materialTipo";
 import { objetivoDe, semanasConEtapa, embudoDelMes, limpiarEstrategia } from "../lib/estrategiaMes";
@@ -16,16 +20,17 @@ import { leerPlantillas } from "../lib/plantillasApi";
 import { conNotasDelDia } from "../lib/notasSemana";
 import { plantillaDelCliente, configDeFormatos, resumenPlantilla, OBJETIVOS_PLAN } from "../lib/plantillasPlan";
 import {
-  PILARES, limpiarRitmo, ritmoDelMes, sugerenciasDeTemporada, asignarMatriz, lineasDeContenido,
+  PILARES, limpiarRitmo, ritmoDelMes, sugerenciasDeTemporada, asignarMatriz,
   nombreDePilar, resumenRitmo, fechaCorta, CAMPOS_MATRIZ, pilarDe,
 } from "../lib/pilares";
 
 // Sin paso de categorías: se quitaron del calendario. Las que haya en la
 // ficha del cliente (Semanal) siguen informando a la IA sin preguntarse aquí.
-const STEP_LABELS = ["Plan", "Fechas y ritmo", "Estrategia", "Conceptos", "Ofertas", "Ideas"];
+// Las Ofertas van ANTES de la Estrategia: «Proponer la estrategia con IA» las
+// lee, y en el orden de antes le llegaban vacías.
+const STEP_LABELS = ["Plan", "Fechas y ritmo", "Ofertas", "Estrategia", "Conceptos", "Ideas"];
+const PASO = Object.freeze({ plan: 0, fechas: 1, ofertas: 2, estrategia: 3, conceptos: 4, ideas: 5 });
 
-/** Los formatos que llevan guion además de descripción (los demás, sólo caption). */
-const FORMATOS_CON_GUION = new Set(["reel", "carrusel", "historia", "live"]);
 
 const TEMPLATES_KEY = "jads-templates";
 function loadTemplates() {
@@ -55,18 +60,26 @@ function StepBar({ step, setStep }) {
 }
 
 export default function PlanWizard({ client, onGenerate, onClose, mesInicial = null }) {
-  const [step, setStep] = useState(0);
-  const [month, setMonth] = useState(mesInicial?.month ?? new Date().getMonth());
-  const [year, setYear] = useState(mesInicial?.year ?? new Date().getFullYear());
-  const [plan, setPlan] = useState("standard");
+  const clienteId = client?.dbId || client?.id;
+  const almacen = typeof localStorage === "undefined" ? null : localStorage;
+  const mes0 = { month: mesInicial?.month ?? new Date().getMonth(), year: mesInicial?.year ?? new Date().getFullYear() };
+  // El BORRADOR de este cliente y este mes (lib/planMes.js): lo escrito y las ideas ya pagadas no se pierden al cerrar.
+  const [borrador] = useState(() => leerBorrador(almacen, claveBorrador(clienteId, mes0.year, mes0.month)));
+  const b = borrador ?? {};
+  const [recuperado, setRecuperado] = useState(borrador?.guardadoAt ?? null);
+  const [step, setStep] = useState(Number.isInteger(b.step) ? b.step : 0);
+  const [month, setMonth] = useState(mes0.month);
+  const [year, setYear] = useState(mes0.year);
+  const [plan, setPlan] = useState(b.plan || "standard");
   const [formatConfig, setFormatConfig] = useState(() => {
+    if (b.formatConfig && typeof b.formatConfig === "object") return b.formatConfig;
     const cfg = {};
     for (let dow = 0; dow < 7; dow++) {
       cfg[dow] = [{ format: "post" }, { format: "reel" }];
     }
     return cfg;
   });
-  const [importantDates, setImportantDates] = useState([]);
+  const [importantDates, setImportantDates] = useState(() => (Array.isArray(b.importantDates) ? b.importantDates.filter((d) => !d.auto) : []));
   // Las fechas especiales del mes entran solas (feriados, comerciales y lo
   // que eligió este cliente, lib/fechasEspeciales.js); las añadidas a mano
   // se quedan al cambiar de mes si son de ese mes.
@@ -79,12 +92,18 @@ export default function PlanWizard({ client, onGenerate, onClose, mesInicial = n
   }, [year, month, client?.fechasEspeciales]);
   // El ritmo de contenido del cliente (lunes Anuncio … sábado 7 maletas) y los cambios de temporada aceptados.
   const ritmo = limpiarRitmo(client?.ritmoContenido);
-  const [aceptadas, setAceptadas] = useState([]);
+  const [aceptadas, setAceptadas] = useState(Array.isArray(b.aceptadas) ? b.aceptadas : []);
   const sugerencias = useMemo(
     () => sugerenciasDeTemporada({ year, month, ritmo: client?.ritmoContenido, fechas: fechasDelMes(year, month, client?.fechasEspeciales) }),
     [year, month, client?.ritmoContenido, client?.fechasEspeciales],
   );
-  useEffect(() => { setAceptadas([]); }, [year, month]);
+  // Al cambiar de mes se olvidan los cambios de temporada del otro (no al abrir: los del borrador se quedan).
+  const mesVisto = useRef(`${year}-${month}`);
+  useEffect(() => {
+    if (mesVisto.current === `${year}-${month}`) return;
+    mesVisto.current = `${year}-${month}`;
+    setAceptadas([]);
+  }, [year, month]);
   const ritmoMes = ritmoDelMes(year, month, ritmo, aceptadas);
   // El catálogo y el estudio de mercado: de ahí salen el producto, el deseo y el perfil de cada publicación.
   const [mercado, setMercado] = useState(null);
@@ -93,26 +112,32 @@ export default function PlanWizard({ client, onGenerate, onClose, mesInicial = n
     if (client?.id) leerMercado(client.dbId || client.id).then((m) => { if (vivo) setMercado(m); }).catch(() => {});
     return () => { vivo = false; };
   }, [client?.id, client?.dbId]);
-  const [campaign, setCampaign] = useState("");
-  const [weekConcepts, setWeekConcepts] = useState(["", "", "", "", ""]);
+  const [campaign, setCampaign] = useState(b.campaign || "");
+  // Un concepto por SEMANA del mes, y la semana es la FILA de la rejilla (lunes a domingo): 5 o 6 según el mes.
+  const numSemanas = semanasDelPlan(year, month).length;
+  const [weekConcepts, setWeekConcepts] = useState(() => unoPorSemana(b.weekConcepts, numSemanas));
+  useEffect(() => { setWeekConcepts((prev) => (prev.length === numSemanas ? prev : unoPorSemana(prev, numSemanas))); }, [numSemanas]);
   const [dayCategories, setDayCategories] = useState(() => {
     const cats = {};
     for (let dow = 0; dow < 7; dow++) cats[dow] = "";
     return cats;
   });
-  const [offers, setOffers] = useState("");
-  const [promoCode, setPromoCode] = useState("");
+  const [offers, setOffers] = useState(b.offers || "");
+  const [promoCode, setPromoCode] = useState(b.promoCode || "");
   // La estrategia del mes: objetivo, producto foco y la etapa del embudo de cada semana (src/lib/estrategiaMes.js).
-  const [objetivo, setObjetivo] = useState("");
-  const [focoId, setFocoId] = useState("");
-  const [etapas, setEtapas] = useState([]);
-  const [propuesta, setPropuesta] = useState(null); // { razon, ofertas, mejores, antes }
-  const [ideas, setIdeas] = useState({});
+  const [objetivo, setObjetivo] = useState(b.objetivo || "");
+  const [focoId, setFocoId] = useState(b.focoId || "");
+  const [etapas, setEtapas] = useState(Array.isArray(b.etapas) ? b.etapas : []);
+  const [propuesta, setPropuesta] = useState(b.propuesta ? { ...b.propuesta, antes: null } : null); // { razon, ofertas, mejores, antes }
+  const [ideas, setIdeas] = useState(b.ideas && typeof b.ideas === "object" ? b.ideas : {});
+  // Si el mes ya tiene publicaciones, esos días NO reciben nuevas (salvo que se pida): no se ponen encima.
+  const [llenarOcupados, setLlenarOcupados] = useState(Boolean(b.llenarOcupados));
+  const ocupados = useMemo(() => diasOcupados(client?.calendars, year, month), [client?.calendars, year, month]);
   const [ideaMode, setIdeaMode] = useState("day");
   // Qué trozo del mes se genera: «mes» o el número de una semana. El mes
   // entero son treinta días por siete tandas; una semana cabe en una, y es
   // lo que se quiere cuando el calendario se va aprobando por partes.
-  const [alcance, setAlcance] = useState("mes");
+  const [alcance, setAlcance] = useState(b.alcance || "mes");
   const [descLoading, setDescLoading] = useState(false);
   const [dowIdeas, setDowIdeas] = useState({});
   const [aiLoading, setAiLoading] = useState(false);
@@ -129,7 +154,7 @@ export default function PlanWizard({ client, onGenerate, onClose, mesInicial = n
   const allDays = daysInMonth(year, month);
   // Las plantillas de plan de la agencia: «Planificar mes» abre con la del cliente (la personalizada si la tiene).
   const [plantillas, setPlantillas] = useState(null);
-  const [plantillaElegida, setPlantillaElegida] = useState("");
+  const [plantillaElegida, setPlantillaElegida] = useState(b.plantillaElegida || "");
   const aplicarPlantilla = (t) => {
     setPlan("custom");
     const cfg = configDeFormatos(t);
@@ -141,7 +166,8 @@ export default function PlanWizard({ client, onGenerate, onClose, mesInicial = n
       if (!vivo) return;
       setPlantillas(lista);
       const delCliente = plantillaDelCliente(client?.planContenido, lista);
-      if (delCliente) {
+      // Con un borrador, sus formatos se quedan: la plantilla del cliente ya se aplicó cuando se empezó.
+      if (delCliente && !borrador) {
         setPlantillaElegida(delCliente.personalizada ? "cliente" : delCliente.id);
         aplicarPlantilla(delCliente);
       }
@@ -157,6 +183,45 @@ export default function PlanWizard({ client, onGenerate, onClose, mesInicial = n
     if (t) aplicarPlantilla(t);
   };
   const plantillaActual = plantillaElegida === "cliente" ? plantillaDelClienteActual : (plantillas ?? []).find((p) => p.id === plantillaElegida);
+
+  // El borrador se guarda en cada cambio, con la clave del mes que se mira. Al cambiar de mes se recupera el de ese
+  // mes si lo hay (y se espera a pintarlo antes de guardar: si no, se guardaría lo del otro mes con su clave).
+  const clave = claveBorrador(clienteId, year, month);
+  const claveCargada = useRef(clave);
+  const restaurando = useRef(false);
+  useEffect(() => {
+    if (claveCargada.current === clave) return;
+    claveCargada.current = clave;
+    const otro = leerBorrador(almacen, clave);
+    if (!otro) return;
+    restaurando.current = true;
+    setIdeas(otro.ideas ?? {});
+    setCampaign(otro.campaign || "");
+    setWeekConcepts(unoPorSemana(otro.weekConcepts, semanasDelPlan(year, month).length));
+    setOffers(otro.offers || "");
+    setPromoCode(otro.promoCode || "");
+    setObjetivo(otro.objetivo || "");
+    setFocoId(otro.focoId || "");
+    setEtapas(Array.isArray(otro.etapas) ? otro.etapas : []);
+    setAceptadas(Array.isArray(otro.aceptadas) ? otro.aceptadas : []);
+    setRecuperado(otro.guardadoAt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clave]);
+  useEffect(() => {
+    if (restaurando.current) { restaurando.current = false; return; }
+    guardarBorrador(almacen, clave, {
+      step, plan, formatConfig, plantillaElegida, aceptadas, importantDates: importantDates.filter((d) => !d.auto),
+      campaign, weekConcepts, offers, promoCode, objetivo, focoId, etapas,
+      propuesta: propuesta ? { razon: propuesta.razon, ofertas: propuesta.ofertas, mejores: propuesta.mejores } : null,
+      ideas, alcance, llenarOcupados,
+    });
+  }, [almacen, clave, step, plan, formatConfig, plantillaElegida, aceptadas, importantDates, campaign, weekConcepts, offers, promoCode, objetivo, focoId, etapas, propuesta, ideas, alcance, llenarOcupados]);
+  /** «Empezar de cero»: fuera el borrador y lo que traía (el plan y las fechas se quedan). */
+  const empezarDeCero = () => {
+    borrarBorrador(almacen, clave);
+    setIdeas({}); setCampaign(""); setWeekConcepts(unoPorSemana([], numSemanas)); setOffers(""); setPromoCode("");
+    setObjetivo(""); setFocoId(""); setEtapas([]); setPropuesta(null); setRecuperado(null);
+  };
 
   // Las referencias de video de la competencia con su estructura: un guion puede seguir la misma forma.
   const estructuras = (mercado?.referencias ?? []).filter((r) => r.analisis?.estructura?.tramos?.length);
@@ -234,12 +299,13 @@ Solo el JSON, nada mas.`;
     setAiStatus("Generando conceptos semanales...");
     try {
       const ctx = buildClientContext(client, { campaign });
-      const numWeeks = Math.ceil(allDays.length / 7);
+      // Las semanas son las filas de la rejilla (lunes a domingo): 5 o 6 según el mes.
+      const numWeeks = numSemanas;
       const prompt = `${ctx}\n\nGenera ${numWeeks} conceptos semanales para el calendario de ${MONTHS[month]} ${year}.
 Campana: ${campaign || "N/A"}
 Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
       const txt = await callAI(prompt, { funcion: "calendario", clienteId: client?.id });
-      const lines = txt.split("\n").filter(Boolean).slice(0, 5);
+      const lines = txt.split("\n").filter(Boolean).slice(0, numWeeks);
       setWeekConcepts((prev) => prev.map((c, i) => c || lines[i] || ""));
     } catch (e) {
       setAiStatus("Error: " + e.message);
@@ -255,6 +321,7 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
       const dow = d.getDay();
       const dowIdeaList = dowIdeas[dow];
       if (!dowIdeaList || dowIdeaList.length === 0) return;
+      if (ocupados.has(date) && !llenarOcupados) return;
       const formats = isCustom ? (formatConfig[dow] || []) : (formatConfig[dow] || []).slice(0, postsPerDay);
       const existing = newIdeas[date] || [];
       newIdeas[date] = formats.map((f, j) => {
@@ -287,13 +354,16 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
     allDays.map((d) => {
       const date = fmtDate(d);
       const dow = d.getDay();
-      const wk = getWeekNumber(date, fmtDate(allDays[0]));
+      // La semana es la FILA de la rejilla (lunes a domingo): la de la tarjeta de la campaña.
+      const wk = semanaDelMes(date);
       const pilar = ritmoMes[date] || "";
       const cat = nombreDePilar(pilar) || dayCategories[dow] || "";
       const impDate = importantDates.find((id) => id.date === date);
-      const formats = isCustom ? (formatConfig[dow] || []) : (formatConfig[dow] || []).slice(0, postsPerDay);
+      // Un día que ya tiene publicaciones en el calendario no recibe nuevas (salvo «Añadir también ahí»).
+      const ocupado = ocupados.has(date) && !llenarOcupados;
+      const formats = ocupado ? [] : isCustom ? (formatConfig[dow] || []) : (formatConfig[dow] || []).slice(0, postsPerDay);
       const existingIdeas = ideas[date] || [];
-      return { date, dow, wk, cat, pilar, impDate, formats, existingIdeas };
+      return { date, dow, wk, cat, pilar, impDate, formats, existingIdeas, ocupado };
     });
 
   /**
@@ -326,16 +396,8 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
   const productosPlan = productosParaPlan(mercado?.catalogo ?? [], mercado?.inventario);
   const focoNombre = productosPlan.find((p) => p.id === focoId)?.nombre ?? "";
 
-  /** Las semanas del plan con sus fechas (bloques de siete días desde el 1, como `weekNumber`). */
-  const semanasPlan = () => {
-    const por = new Map();
-    for (const d of estructuraDelMes()) {
-      const s = por.get(d.wk) ?? { n: d.wk, desde: d.date, hasta: d.date };
-      s.hasta = d.date;
-      por.set(d.wk, s);
-    }
-    return [...por.values()].sort((a, b) => a.n - b.n);
-  };
+  /** Las semanas del plan con sus fechas: las FILAS de la rejilla (lib/planMes.js). */
+  const semanasPlan = () => semanasDelPlan(year, month);
 
   /** La estrategia que va al motor de ideas: campaña, ofertas, código, objetivo, foco y cada semana con su etapa. */
   const estrategiaParaElMotor = () => {
@@ -478,113 +540,61 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
   };
 
   /**
-   * Escribe los guiones y las descripciones de las ideas que ya están definidas.
+   * Escribe lo que les falta a las ideas que ya están definidas: el guion (reel, carrusel, directo), el caption, el
+   * texto de la pieza y los hashtags, según su formato (lib/reglasFormato.js: una historia no lleva guion ni caption).
    *
-   * Es el segundo paso del asistente: primero se acuerdan las ideas —y se
-   * revisan a mano, que para eso están en pantalla—, y sólo después se
-   * escribe. Un reel, carrusel, historia o directo sin guion pide guion Y
-   * descripción en la misma llamada (`buildScriptPrompt`); lo que sólo
-   * necesita caption va por `buildDescripcionesPrompt`, que gasta la mitad.
-   * Trabaja sobre el mismo alcance que las ideas: el mes entero o una semana.
-   *
-   * Salta lo que ya está escrito, para que volver a pulsar el botón complete
-   * lo que faltó en vez de reescribir el mes: rellenar no es reescribir.
+   * Es el segundo paso del asistente: primero se acuerdan las ideas —y se revisan a mano, que para eso están en
+   * pantalla—, y sólo después se escribe. Va por el MISMO motor que todo lo demás (modo «campos» del servidor,
+   * lib/escribirTextos.js): con lo ya escrito delante, la ficha del cliente y la estrategia del mes. Trabaja sobre el
+   * mismo alcance que las ideas: el mes entero o una semana. Rellenar no es reescribir: lo escrito se queda.
    */
+  const calendarioDelPlan = () => ({
+    year, month, campaign, offers, promoCode, weekConcepts,
+    opciones: { estrategia: limpiarEstrategia({ objetivo, focoId, foco: focoNombre, etapas }) },
+    days: Object.entries(ideas).map(([date, posts]) => ({ date, posts })),
+  });
   const generarDescripciones = async () => {
     if (generating.current) return;
     generating.current = true;
     setDescLoading(true);
     setAiStatus("Preparando guiones y descripciones…");
     try {
-      if (!client.githubContext && client.githubRepo) setAiStatus("Cargando ADN desde GitHub…");
-      const [adn, wizMems] = await Promise.all([
-        loadADN(client),
-        loadClientMemories(client.dbId || client.id).catch(() => []),
-      ]);
-      const adnExtra = adn.content;
-
-      // Se aplana a lista de publicaciones: la tanda se mide en
-      // publicaciones, no en días, porque un día premium lleva tres.
-      const conGuion = [];
-      const soloDescripcion = [];
+      const textos = await import("../lib/escribirTextos");
       const matriz = matrizDelMes();
+      const pedidos = [];
       for (const d of enAlcance(estructuraDelMes())) {
         (ideas[d.date] || []).forEach((p, j) => {
           if (!p?.idea?.trim()) return;
-          const format = p.format || d.formats[j]?.format || "post";
-          const faltaGuion = FORMATOS_CON_GUION.has(format) && !p.guion?.trim();
-          if (!faltaGuion && p.descripcion?.trim()) return;
-          (faltaGuion ? conGuion : soloDescripcion).push({
-            ...matriz.get(`${d.date}|${j}`),
-            ...p,
-            _date: d.date,
-            _dayName: DAYS[d.dow],
-            _weekNumber: d.wk,
-            _concept: weekConcepts[d.wk - 1] || "",
-            _indice: j,
-            format,
-            category: p.category || d.cat,
-          });
+          const post = { ...matriz.get(`${d.date}|${j}`), ...p, format: p.format || d.formats[j]?.format || "post" };
+          if (textos.camposQueFaltan(post).length) pedidos.push({ post, day: { date: d.date, specialDate: d.impDate?.name ?? "" } });
         });
       }
-      const total = conGuion.length + soloDescripcion.length;
-
-      if (!total) {
+      if (!pedidos.length) {
         setAiStatus(`No hay nada sin escribir en ${etiquetaAlcance}.`);
         setTimeout(() => setAiStatus(""), 3000);
         return;
       }
-
-      const calendarioParcial = { campaign, offers, promoCode, weekConcepts };
-      const BATCH = 6;
-      const escritas = { ...ideas };
-      let hechas = 0;
-
-      for (const [lista, conGuiones] of [[conGuion, true], [soloDescripcion, false]]) {
-        for (let i = 0; i < lista.length; i += BATCH) {
-          const tanda = lista.slice(i, i + BATCH);
-          setAiStatus(`${conGuiones ? "Guiones" : "Descripciones"} ${hechas + 1}-${hechas + tanda.length} de ${total}…`);
-
-          const pasajes = await pasajesDeLaTanda(client, adn, calendarioParcial, tanda);
-          const cerebro = adn.cerebro ? { pasajes } : null;
-          const prompt = conGuiones
-            ? buildScriptPrompt(client, calendarioParcial, tanda, adnExtra, wizMems, cerebro)
-            : buildDescripcionesPrompt(client, calendarioParcial, tanda, adnExtra, wizMems, cerebro);
-          // `tolerarCorte` porque una tanda que se corta en la última
-          // publicación trae las cinco anteriores enteras: rechazarla entera
-          // obligaba a repetir el mes por una descripción.
-          const { texto } = await callAI([{ type: "text", text: prompt }], { maxTokens: 8000, tolerarCorte: true, funcion: conGuiones ? "guiones" : "descripciones", clienteId: client?.id });
-          const leidas = parseAIResponse(texto);
-
-          for (const p of tanda) {
-            const r = leidas[p.id];
-            if (!r?.descripcion && !r?.guion) continue;
-            const dia = [...(escritas[p._date] || [])];
-            const actual = dia[p._indice] || {};
-            dia[p._indice] = {
-              ...actual,
-              // Lo que ya tenía texto gana sobre lo que devuelve el modelo.
-              guion: actual.guion?.trim() || !conGuiones ? (actual.guion || "") : (r.guion || ""),
-              descripcion: actual.descripcion?.trim() ? actual.descripcion : (r.descripcion || ""),
-              hashtagsFinales: r.hashtagsFinales || actual.hashtagsFinales || "",
-              textoPieza: actual.textoPieza?.trim() ? actual.textoPieza : (r.textoPieza || ""),
-            };
-            escritas[p._date] = dia;
-          }
-          hechas += tanda.length;
-          setIdeas({ ...escritas });
-        }
+      let porId = new Map();
+      let error = null;
+      try {
+        porId = await textos.escribirLoQueFalta(clienteId, calendarioDelPlan(), pedidos, {
+          alProgresar: (i, total) => setAiStatus(`Textos ${i + 1}-${Math.min(i + 6, total)} de ${total}…`),
+        });
+      } catch (e) {
+        // Lo que ya llegó se pone igual: está pagado.
+        porId = e.parcial ?? porId;
+        error = e;
       }
-
-      const sinEscribir = [...conGuion, ...soloDescripcion].filter((p) => {
-        const x = escritas[p._date]?.[p._indice];
-        return !x?.descripcion?.trim() || (FORMATOS_CON_GUION.has(p.format) && !x?.guion?.trim());
-      });
-      setAiStatus(
-        sinEscribir.length
-          ? `Listo, pero ${sinEscribir.length} de ${total} se quedaron a medias. Vuelve a pulsar para completarlas.`
-          : `Listo: ${total} ${total === 1 ? "publicación escrita" : "publicaciones escritas"}${conGuion.length ? ` (${conGuion.length} con guion)` : ""}.`
-      );
+      setIdeas((prev) => Object.fromEntries(Object.entries(prev).map(([date, dia]) => [date, (dia || []).map((x) => {
+        const t = x && porId.get(x.id);
+        return t ? { ...x, ...textos.aplicarCampos(x, t).cambios } : x;
+      })])));
+      const quedan = pedidos.filter(({ post }) => !porId.has(post.id)).length;
+      setAiStatus(error && !porId.size
+        ? `Error: ${error.message}`
+        : quedan
+          ? `Listo, pero ${quedan} de ${pedidos.length} se quedaron a medias. Vuelve a pulsar para completarlas.`
+          : `Listo: ${pedidos.length} ${pedidos.length === 1 ? "publicación escrita" : "publicaciones escritas"}.`);
       setTimeout(() => setAiStatus(""), 4000);
     } catch (e) {
       setAiStatus("Error: " + e.message);
@@ -608,19 +618,13 @@ Formato: una linea por semana, solo el concepto. ${numWeeks} lineas exactas.`;
     generating.current = true;
     setMejorando(`${date}|${j}`);
     try {
-      const adn = await loadADN(client);
+      // Por el motor (modo «campos»): la idea que había va como «la que tiene ahora: escribe una mejor que conserve su
+      // intención», con su tipo, su producto, el estudio de mercado, la ficha del cliente y la estrategia del mes.
+      const { textoDeUnCampo } = await import("../lib/escribirTextos");
       const d = estructuraDelMes().find((x) => x.date === date);
-      const tipo = lineasDeContenido({ ...matrizDelMes().get(`${date}|${j}`), ...Object.fromEntries(CAMPOS_MATRIZ.filter((k) => p[k]).map((k) => [k, p[k]])) });
-      const pasajes = await pasajesDeLaTanda(client, adn, { campaign }, [{ idea: p.idea, category: d?.cat, format: p.format, _concept: weekConcepts[(d?.wk ?? 1) - 1] || "" }]);
-      const ctx = buildClientContext(client, { campaign }, adn.content, adn.cerebro ? { pasajes } : null);
-      const prompt = `${ctx}
-
-Una persona de la agencia escribió esta idea (a veces es una breve explicación de lo que quiere) para el ${date} (${DAYS[d?.dow ?? 0]}), formato ${p.format}:
-«${p.idea.trim()}»
-${tipo ? `\n${tipo}\n` : ""}${d?.impDate ? `FECHA ESPECIAL: ${d.impDate.name}\n` : ""}${weekConcepts[(d?.wk ?? 1) - 1] ? `CONCEPTO DE LA SEMANA: ${weekConcepts[(d?.wk ?? 1) - 1]}\n` : ""}
-Mejórala con ojo de marketing profesional: conserva su intención (el mismo tema, producto y enfoque), dale un gancho claro y una razón para actuar. Sin inventar precios, descuentos, garantías ni testimonios.
-Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicación.`;
-      const texto = String(await callAI(prompt, { funcion: "calendario", clienteId: client?.id }) ?? "").trim().replace(/^[«"]|[»"]$/g, "");
+      const post = { ...matrizDelMes().get(`${date}|${j}`), ...p, format: p.format || d?.formats[j]?.format || "post" };
+      const t = await textoDeUnCampo(clienteId, { post, day: { date, specialDate: d?.impDate?.name ?? "" }, cal: calendarioDelPlan(), campo: "idea" });
+      const texto = String(t.campos.idea ?? "").trim().replace(/^[«"]|[»"]$/g, "");
       if (texto && texto !== p.idea.trim()) {
         setIdeas((prev) => {
           const dia = [...(prev[date] || [])];
@@ -650,60 +654,28 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
     });
   };
 
-  const handleGenerate = () => {
+  const [creando, setCreando] = useState(false);
+  const handleGenerate = async () => {
+    if (creando) return;
     const matriz = matrizDelMes();
-    const calDays = allDays.map((d) => {
-      const date = fmtDate(d);
-      const dow = d.getDay();
-      const wk = getWeekNumber(date, fmtDate(allDays[0]));
-      const cat = nombreDePilar(ritmoMes[date]) || dayCategories[dow] || "";
-      const impDate = importantDates.find((id) => id.date === date);
-      const formats = isCustom ? (formatConfig[dow] || []) : (formatConfig[dow] || []).slice(0, postsPerDay);
-      const dayIdeas = ideas[date] || [];
-
-      const posts = formats.map((f, j) => {
-        const idea = dayIdeas[j];
-        const m = matriz.get(`${date}|${j}`) ?? {};
-        return {
-          ...Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, idea?.[k] || m[k] || ""])),
-          id: idea?.id || uid(),
-          format: f.format,
-          // Un video con rostro (UGC) del plan del cliente: lo graba una persona.
-          ...(f.format === "reel" && f.rostro ? { rostro: true } : {}),
-          idea: idea?.idea || "",
-          // Lo que escribió el motor de ideas: el título, qué se ve y la forma (composición y gancho) de la pieza.
-          ...(idea?.title ? { title: idea.title } : {}),
-          ...(idea?.escena ? { escena: idea.escena } : {}),
-          ...(idea?.composicion ? { composicion: idea.composicion } : {}),
-          ...(idea?.tactica ? { tactica: idea.tactica } : {}),
-          ...(f.format === "carrusel" && idea?.estructura ? { estructura: idea.estructura } : {}),
-          referenceLink: idea?.referenceLink || "",
-          image: idea?.image || null,
-          guion: idea?.guion || "",
-          ...(idea?.estructuraRef ? { estructuraRef: idea.estructuraRef } : {}),
-          descripcion: idea?.descripcion || "",
-          hashtagsFinales: idea?.hashtagsFinales || "",
-          ...(idea?.textoPieza ? { textoPieza: idea.textoPieza } : {}),
-          script: idea?.descripcion || idea?.script || "",
-          status: idea?.status || "pending",
-          category: nombreDePilar(idea?.pilar || m.pilar) || cat,
-          comment: "",
-          publishTime: f.publishTime || "",
-        };
-      });
-
+    const calDays = estructuraDelMes().map((d) => {
+      const dayIdeas = ideas[d.date] || [];
+      // Todo lo que escribió el motor llega al calendario, también la ficha de diseño ya pagada (lib/planMes.js). Los
+      // días ocupados no traen publicaciones nuevas (`formats` vacío).
+      const posts = d.formats.map((f, j) => publicacionDelPlan(dayIdeas[j], f, matriz.get(`${d.date}|${j}`) ?? {}, { id: uid(), cat: d.cat }));
       return {
-        date,
-        dayName: dayName(date),
-        weekNumber: wk,
-        concept: weekConcepts[wk - 1] || "",
-        category: cat,
-        specialDate: impDate?.name || "",
+        date: d.date,
+        dayName: dayName(d.date),
+        weekNumber: d.wk,
+        concept: weekConcepts[d.wk - 1] || "",
+        category: d.cat,
+        specialDate: d.impDate?.name || "",
         posts,
       };
     });
 
-    onGenerate({
+    setCreando(true);
+    const ok = await onGenerate({
       month,
       year,
       // El objetivo, el foco y las etapas viajan en `opciones.estrategia` del calendario (no las ve el cliente).
@@ -714,6 +686,9 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
       promoCode: promoCode || "",
       days: calDays,
     });
+    setCreando(false);
+    // Ya está en el calendario: el borrador sobra. Si falló, se queda (y lo escrito también).
+    if (ok !== false) borrarBorrador(almacen, clave);
   };
 
   return (
@@ -728,6 +703,14 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
 
         <div className="sheet-body">
           <div role="status" aria-live="polite" className="sr-only">{aiLoading ? aiStatus : ""}</div>
+          {recuperado && (
+            <div className="notice" style={{ marginBottom: "var(--sp-3)", display: "flex", alignItems: "center", gap: "var(--sp-2)", flexWrap: "wrap" }}>
+              <span style={{ flex: 1, minWidth: 180 }}>
+                <Icon name="check" size={14} /> Seguimos donde lo dejaste ({new Date(recuperado).toLocaleString("es-PA", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}): las ideas ya escritas no se pierden al cerrar.
+              </span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={empezarDeCero}>Empezar de cero</button>
+            </div>
+          )}
           {/* Step 0: Plan selection */}
           {step === 0 && (
             <div>
@@ -1037,8 +1020,8 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
             </div>
           )}
 
-          {/* Step 2: Campaign theme */}
-          {step === 2 && (
+          {/* La estrategia, DESPUÉS de las ofertas: la propuesta de la IA las lee. */}
+          {step === PASO.estrategia && (
             <PasoEstrategia
               client={client} month={month} year={year}
               objetivo={objetivo} setObjetivo={setObjetivo} focoId={focoId} setFocoId={setFocoId} productos={productosPlan}
@@ -1048,8 +1031,8 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
             />
           )}
 
-          {/* Step 3: Weekly concepts */}
-          {step === 3 && (
+          {/* Los conceptos de cada semana (la FILA de la rejilla, lunes a domingo) y su etapa del embudo. */}
+          {step === PASO.conceptos && (
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "var(--sp-3)", marginBottom: "var(--sp-3)" }}>
                 <h3 className="label" style={{ margin: 0 }}>Conceptos semanales</h3>
@@ -1061,7 +1044,9 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
               <div style={{ display: "flex", flexDirection: "column", gap: "var(--sp-3)" }}>
                 {weekConcepts.map((c, i) => (
                   <div key={i}>
-                    <label className="label" htmlFor={`${ids}-wc-${i}`}>Semana {i + 1}</label>
+                    <label className="label" htmlFor={`${ids}-wc-${i}`}>
+                      Semana {i + 1}{semanasPlan()[i] ? ` · del ${+semanasPlan()[i].desde.slice(8)} al ${+semanasPlan()[i].hasta.slice(8)}` : ""}
+                    </label>
                     <div className="estrategia-semana">
                       <input
                         id={`${ids}-wc-${i}`}
@@ -1083,7 +1068,7 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
             </div>
           )}
 
-          {step === 4 && (
+          {step === PASO.ofertas && (
             <div>
               <h3 className="label">Descuentos y ofertas del mes</h3>
               <p className="hint" style={{ marginBottom: "var(--sp-3)" }}>
@@ -1114,8 +1099,8 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
             </div>
           )}
 
-          {/* Step 6: Ideas review */}
-          {step === 5 && (
+          {/* Las ideas del mes */}
+          {step === PASO.ideas && (
             <div>
               <h3 className="label" style={{ marginBottom: "var(--sp-3)" }}>Ideas por día</h3>
 
@@ -1133,11 +1118,25 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
                   <option value="mes">Todo el mes — {allDays.length} días</option>
                   {semanas.map((w) => (
                     <option key={w} value={String(w)}>
-                      Semana {w}{weekConcepts[w - 1] ? ` · ${weekConcepts[w - 1]}` : ""} — {diasDeSemana(w)} días
+                      Semana {w}{weekConcepts[w - 1] ? ` · ${weekConcepts[w - 1]}` : ""} — {diasDeSemana(w)} {diasDeSemana(w) === 1 ? "día" : "días"}
                     </option>
                   ))}
                 </select>
               </div>
+
+              {/* El mes ya tiene publicaciones: esos días no reciben nuevas (no se ponen encima). */}
+              {ocupados.size > 0 && (
+                <div className="notice" style={{ marginBottom: "var(--sp-2)", display: "block" }}>
+                  <p style={{ margin: 0 }}>
+                    {MONTHS[month]} ya tiene publicaciones en {ocupados.size} {ocupados.size === 1 ? "día" : "días"}
+                    {llenarOcupados ? ": también se añaden ahí." : ": esos días no se tocan y el plan va en los demás."}
+                  </p>
+                  <label htmlFor={`${ids}-ocupados`} style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", minHeight: "var(--tap-sm)", fontSize: "var(--fs-xs)" }}>
+                    <input id={`${ids}-ocupados`} type="checkbox" checked={llenarOcupados} onChange={(e) => setLlenarOcupados(e.target.checked)} />
+                    Añadir también en los días que ya tienen publicaciones
+                  </label>
+                </div>
+              )}
 
               <div style={{ display: "flex", gap: "var(--sp-2)", flexWrap: "wrap", marginBottom: "var(--sp-2)" }}>
                 <button className="btn btn-accent btn-sm" style={{ flex: 1, minWidth: 160 }} onClick={generateIdeas} disabled={ocupado}>
@@ -1158,6 +1157,7 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
                 publicación sale con su idea, qué se ve, el texto de la pieza (o el guion, en carruseles y reels), el caption
                 y los hashtags, con la campaña y el concepto de su semana. Donde escribiste tú, la propuesta de la IA sale al
                 lado y eliges. «Escribir guiones y descripciones» completa lo que haya quedado vacío; lo escrito no se reescribe.
+                Todo se guarda en este navegador mientras planificas: cerrar no tira nada.
               </p>
               {aiStatus && <p role="status" style={{ fontSize: "var(--fs-2xs)", color: "var(--accent)", marginBottom: "var(--sp-2)" }}>{aiStatus}</p>}
 
@@ -1257,7 +1257,9 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
                         }}
                       >
                         <div style={{ fontSize: "var(--fs-2xs)", fontWeight: 700 }}>{d.getDate()}</div>
-                        <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>{(ideas[date] || []).filter((p) => p.idea).length}/{isCustom ? (formatConfig[d.getDay()] || []).length : postsPerDay}</div>
+                        <div style={{ fontSize: "var(--fs-3xs)", color: "var(--text-dim)" }}>
+                          {ocupados.has(date) && !llenarOcupados ? "ya tiene" : `${(ideas[date] || []).filter((p) => p.idea).length}/${isCustom ? (formatConfig[d.getDay()] || []).length : postsPerDay}`}
+                        </div>
                       </div>
                     );
                   });
@@ -1265,7 +1267,7 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
                 })()}
               </div>
               <p role="status" className="hint" style={{ marginBottom: "var(--sp-4)" }}>
-                {Object.values(ideas).flat().filter((p) => p?.idea).length} ideas definidas de {isCustom ? allDays.reduce((t, d) => t + (formatConfig[d.getDay()] || []).length, 0) : allDays.length * postsPerDay} publicaciones
+                {Object.values(ideas).flat().filter((p) => p?.idea).length} ideas definidas de {estructuraDelMes().reduce((t, d) => t + d.formats.length, 0)} publicaciones
                 {" · "}
                 {Object.values(ideas).flat().filter((p) => p?.descripcion).length} con descripción escrita
                 {Object.values(ideas).flat().some((p) => p?.guion) ? ` · ${Object.values(ideas).flat().filter((p) => p?.guion).length} con guion` : ""}.
@@ -1311,7 +1313,7 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
                                 <Icon name="sparkles" size={14} /> {mejorando === `${date}|${j}` ? "Mejorando…" : "Mejorar"}
                               </button>
                             </div>
-                            {estructuras.length > 0 && FORMATOS_CON_GUION.has(p.format) && (
+                            {estructuras.length > 0 && llevaGuion(p.format) && (
                               <select className="input" style={{ marginTop: "var(--sp-1)", fontSize: "var(--fs-2xs)" }}
                                 aria-label={`Estructura para el guion del ${d.getDate()}, ${FORMATS[p.format]?.label || "publicación"} ${j + 1}`}
                                 value={p.referenciaId || ""}
@@ -1340,7 +1342,7 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
                                 <summary style={{ fontSize: "var(--fs-2xs)", color: "var(--text-dim)", cursor: "pointer", minHeight: "var(--tap-sm)", display: "flex", alignItems: "center" }}>
                                   {p.title ? `«${p.title}» · ` : ""}qué se ve{p.textoPieza ? " y texto de la pieza" : ""}
                                 </summary>
-                                {[["escena", "Qué se ve"], ["textoPieza", "Texto en la pieza"]].filter(([k]) => p[k] !== undefined && (k !== "textoPieza" || !FORMATOS_CON_GUION.has(p.format))).map(([k, nombre]) => (
+                                {[["escena", "Qué se ve"], ["textoPieza", "Texto en la pieza"]].filter(([k]) => p[k] !== undefined && (k !== "textoPieza" || llevaTextoPieza(p.format))).map(([k, nombre]) => (
                                   <div key={k} className="field" style={{ marginTop: "var(--sp-1)" }}>
                                     <label className="label" style={{ textTransform: "none", color: "var(--text-dim)" }} htmlFor={`${ids}-${k}-${date}-${j}`}>{nombre}</label>
                                     <textarea id={`${ids}-${k}-${date}-${j}`} className="textarea" style={{ minHeight: 56, fontSize: "var(--fs-2xs)" }} value={p[k] || ""}
@@ -1429,8 +1431,8 @@ Responde SOLO con la idea mejorada, en 1-2 oraciones, sin comillas ni explicaci�
               Siguiente
             </button>
           ) : (
-            <button className="btn btn-accent" style={{ flex: 2 }} onClick={handleGenerate}>
-              Crear calendario
+            <button className="btn btn-accent" style={{ flex: 2 }} onClick={handleGenerate} disabled={creando}>
+              {creando ? "Creando…" : "Crear calendario"}
             </button>
           )}
         </div>

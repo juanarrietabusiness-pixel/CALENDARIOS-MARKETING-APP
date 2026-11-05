@@ -1213,8 +1213,11 @@ function Workspace({ session, ruta }) {
       calendarioGuardado(selectedClientId, guardado);
       irAMes(selectedClientId, mes);
       setShowWizard(false);
+      // «Planificar mes» borra su borrador sólo si se creó (lib/planMes.js): si falló, lo escrito se queda.
+      return true;
     } catch (e) {
       fallo("planificar el mes")(e);
+      return false;
     }
   };
 

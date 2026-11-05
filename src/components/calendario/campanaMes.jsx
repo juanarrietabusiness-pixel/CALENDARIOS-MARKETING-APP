@@ -3,6 +3,7 @@ import { MONTHS } from "../../constants";
 import { semanasDelMes } from "../../lib/campanas";
 import { rangoSemana } from "../../lib/semanas";
 import { TIPOS_FECHA } from "../../lib/fechasEspeciales";
+import { limpiarEstrategia, resumenEstrategia, etapaDe } from "../../lib/embudo";
 
 // ============================================================
 // La campaña del mes, a la vista
@@ -13,6 +14,10 @@ import { TIPOS_FECHA } from "../../lib/fechasEspeciales";
 // fila con la campaña de cada semana (la de hoy resaltada) y las fechas
 // especiales del mes. Sin nombre, la tarjeta invita a ponerlo o a que la
 // IA lo proponga.
+//
+// La ESTRATEGIA del mes (objetivo, producto foco, la etapa del embudo de cada
+// semana) también se ve aquí y se edita en «Editar el mes» → Estrategia: antes
+// sólo existía dentro de «Planificar mes» y, al cerrarlo, nadie la volvía a ver.
 // ============================================================
 
 const corta = (f) => `${+f.slice(8, 10)} ${MONTHS[+f.slice(5, 7) - 1].slice(0, 3).toLowerCase()}`;
@@ -22,6 +27,8 @@ export function CampanaMes({ cal, conceptos, fechas, hoy, soloLectura = false, s
   const nombre = (cal.campaign || "").trim();
   const faltan = !nombre || conceptos.some((c) => !c);
   const destacadas = fechas.filter((f) => f.destacada || f.tipo !== "internacional");
+  const estrategia = limpiarEstrategia(cal.opciones?.estrategia);
+  const resumen = resumenEstrategia(estrategia);
 
   return (
     <section className="campana-mes" data-vacia={!nombre || undefined} aria-label={`Campaña de ${MONTHS[cal.month].toLowerCase()}`}>
@@ -34,6 +41,16 @@ export function CampanaMes({ cal, conceptos, fechas, hoy, soloLectura = false, s
             <p className="campana-mes-ofertas">
               {cal.offers && <span><Icon name="star" size={12} /> {cal.offers}</span>}
               {cal.promoCode && <span className="campana-mes-codigo">Código <strong>{cal.promoCode}</strong></span>}
+            </p>
+          )}
+          {(resumen || !soloLectura) && (
+            <p className="campana-mes-ofertas">
+              <span><Icon name="rocket" size={12} /> {resumen ? `Estrategia: ${resumen}` : "Sin estrategia del mes"}</span>
+              {!soloLectura && (
+                <button type="button" className="btn btn-ghost btn-sm" style={{ minHeight: "var(--tap-sm)", padding: "0 var(--sp-2)" }} onClick={() => onEditar("estrategia")}>
+                  {resumen ? "Ver y cambiar" : "Ponerla"}
+                </button>
+              )}
             </p>
           )}
         </div>
@@ -58,7 +75,7 @@ export function CampanaMes({ cal, conceptos, fechas, hoy, soloLectura = false, s
           const actual = s.desde <= hoy && hoy <= s.hasta;
           const contenido = (
             <>
-              <span className="campana-semana-cuando">S{s.numero} · {rangoSemana(s.desde, s.hasta)}</span>
+              <span className="campana-semana-cuando">S{s.numero} · {rangoSemana(s.desde, s.hasta)}{etapaDe(estrategia?.etapas?.[i]) ? ` · ${etapaDe(estrategia.etapas[i])}` : ""}</span>
               <span className="campana-semana-nombre" data-vacio={!conceptos[i] || undefined}>{conceptos[i] || "Sin nombre"}</span>
             </>
           );

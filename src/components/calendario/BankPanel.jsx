@@ -12,9 +12,9 @@
 import { useId, useRef, useState } from "react";
 import { FORMATS, FORMAT_ICONS } from "../../constants";
 import { uid, compressImage } from "../../utils";
-import { generateFieldForPost } from "../../api";
 import Icon from "../Icon";
 import { TimePicker } from "./primitivas";
+import { llevaGuion, llevaCaption } from "../../lib/reglasFormato";
 import { nombreDelDia } from "../../lib/meses";
 import { abrirGuardarReferencia } from "../../lib/bancoIdeasApi";
 import { VISTAS_BANCO, PLATAFORMAS, filtrarBanco, nuevaIdea, esReferencia, plataformaDe, tituloDeIdea } from "../../lib/bancoIdeas";
@@ -179,16 +179,18 @@ export function BankPostCard({ post, isEditing, onToggleEdit, onSave, onRemove, 
   const cardId = useId();
   const sf = (k, v) => { setForm((p) => { const next = { ...p, [k]: v }; onSave(next); return next; }); };
   const f = FORMATS[form.format] || FORMATS.post;
-  const isPost = form.format === "post";
   const title = tituloDeIdea(form);
 
+  // Por el MOTOR de ideas del servidor (modo «campos», src/lib/escribirTextos.js, en diferido), como el panel de una
+  // publicación: con lo que la idea ya tiene escrito delante, y sólo ese campo.
   const generateField = async (field) => {
     setFieldError("");
     setFieldLoading((p) => ({ ...p, [field]: true }));
     try {
       const mockDay = { date: form._originDate || "", dayName: "", concept: "", category: form.category || "" };
-      const result = await generateFieldForPost(client, form, mockDay, cal, field);
-      sf(field, result);
+      const { textoDeUnCampo, aplicarCampos } = await import("../../lib/escribirTextos");
+      const t = await textoDeUnCampo(client?.dbId || client?.id, { post: form, day: mockDay, cal, campo: field });
+      setForm((p) => { const next = { ...p, ...aplicarCampos(p, t, { reemplazar: [field] }).cambios }; onSave(next); return next; });
     } catch (e) {
       setFieldError(`Error: ${e.message}`);
     } finally {
@@ -304,13 +306,15 @@ export function BankPostCard({ post, isEditing, onToggleEdit, onSave, onRemove, 
         <TimePicker id={`${cardId}-time`} value={form.publishTime || ""} onChange={(v) => sf("publishTime", v)} />
       </div>
 
-      {!isPost && (
+      {(llevaGuion(form.format) || String(form.guion ?? "").trim()) && (
         <div style={{ marginBottom: "var(--sp-2)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
             <label className="label" style={{ margin: 0, fontSize: "var(--fs-3xs)", color: "#FF7BA8" }} htmlFor={`${cardId}-guion`}>Guion</label>
-            <button type="button" className="btn-ai" style={{ fontSize: "var(--fs-3xs)", padding: "1px 6px" }} onClick={() => generateField("guion")} disabled={fieldLoading.guion}>
-              {fieldLoading.guion ? "…" : <><Icon name="sparkles" size={11} /> IA</>}
-            </button>
+            {llevaGuion(form.format) && (
+              <button type="button" className="btn-ai" style={{ fontSize: "var(--fs-3xs)", padding: "1px 6px" }} onClick={() => generateField("guion")} disabled={fieldLoading.guion}>
+                {fieldLoading.guion ? "…" : <><Icon name="sparkles" size={11} /> IA</>}
+              </button>
+            )}
           </div>
           <textarea id={`${cardId}-guion`} className="textarea" style={{ minHeight: 64, fontSize: "var(--fs-2xs)" }} value={form.guion || ""} onChange={(e) => sf("guion", e.target.value)} placeholder="Guion…" />
         </div>
@@ -319,9 +323,11 @@ export function BankPostCard({ post, isEditing, onToggleEdit, onSave, onRemove, 
       <div style={{ marginBottom: "var(--sp-2)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
           <label className="label" style={{ margin: 0, fontSize: "var(--fs-3xs)" }} htmlFor={`${cardId}-desc`}>Descripción</label>
-          <button type="button" className="btn-ai" style={{ fontSize: "var(--fs-3xs)", padding: "1px 6px" }} onClick={() => generateField("descripcion")} disabled={fieldLoading.descripcion}>
-            {fieldLoading.descripcion ? "…" : <><Icon name="sparkles" size={11} /> IA</>}
-          </button>
+          {llevaCaption(form.format) && (
+            <button type="button" className="btn-ai" style={{ fontSize: "var(--fs-3xs)", padding: "1px 6px" }} onClick={() => generateField("descripcion")} disabled={fieldLoading.descripcion}>
+              {fieldLoading.descripcion ? "…" : <><Icon name="sparkles" size={11} /> IA</>}
+            </button>
+          )}
         </div>
         <textarea id={`${cardId}-desc`} className="textarea" style={{ minHeight: 64, fontSize: "var(--fs-2xs)" }} value={form.descripcion || form.script || ""} onChange={(e) => sf("descripcion", e.target.value)} placeholder="Descripción…" />
       </div>
