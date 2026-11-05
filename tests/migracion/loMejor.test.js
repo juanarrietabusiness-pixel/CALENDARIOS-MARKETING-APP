@@ -5,6 +5,8 @@ import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
 import { cifrarMeta } from "../../worker/lib/meta.js";
 import { loMejorPendiente } from "../../worker/lib/loMejor.js";
+import { crearHerramientasMCP, HERRAMIENTAS_MCP } from "../../worker/lib/mcp.js";
+import { crearAcceso } from "../../worker/lib/acceso.js";
 import { fechaEnZona, sumarDias } from "../../src/lib/agenda.js";
 import { semanaDe } from "../../src/lib/loMejor.js";
 
@@ -318,5 +320,29 @@ describe("el video, por el proxy", () => {
     expect(r.status).toBe(206);
     expect(r.headers.get("content-type")).toBe("video/mp4");
     expect(r.headers.get("content-security-policy")).toBe("sandbox");
+  });
+});
+
+describe("Claude (MCP)", () => {
+  const mcp = () => crearHerramientasMCP({ env, acceso: crearAcceso(db, DUENO), usuario: { id: DUENO, nombre: "Juan" } });
+
+  it("ver_lo_mejor da la lista con sus claves, las miniaturas como imágenes y la vista previa", async () => {
+    const def = HERRAMIENTAS_MCP.find((h) => h.name === "ver_lo_mejor");
+    expect(def._meta.ui.resourceUri).toMatch(/^ui:\/\//);
+    const r = await mcp().llamar("ver_lo_mejor", { cliente: "Dcasa" });
+    expect(r.isError).toBeUndefined();
+    expect(r.content[0].text).toContain("[ig:PEGO01]");
+    expect(r.content.some((b) => b.type === "image")).toBe(true);
+    expect(r.structuredContent.piezas.length).toBeGreaterThan(0);
+  });
+
+  it("recrear sin el sí no crea nada y dice el costo; con el sí, crea", async () => {
+    const r = await mcp().llamar("recrear", { clave: "ig:NORM02", cliente: "Dcasa", camino: "imagen" });
+    expect(r.content[0].text).toMatch(/^NO SE CREÓ NADA/);
+    expect(r.structuredContent.tipo).toBe("plan");
+    expect(db.sqlite.prepare("select count(*) as n from estudio_encargos").get().n).toBe(0);
+    const hecho = await mcp().llamar("recrear", { clave: "ig:NORM02", cliente: "Dcasa", camino: "imagen", confirmado: true });
+    expect(hecho.content[0].text).toMatch(/^Hecho para Dcasa/);
+    expect(db.sqlite.prepare("select count(*) as n from estudio_encargos").get().n).toBe(1);
   });
 });

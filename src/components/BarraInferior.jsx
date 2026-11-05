@@ -7,17 +7,18 @@ import ContadorAtrasadas from "./ContadorAtrasadas";
 // En el teléfono lo que se usa todo el día —Mi día, el calendario del
 // cliente, el asistente— quedaba detrás del menú hamburguesa o en un
 // botón flotante que tapaba la última publicación. Aquí está al alcance
-// del pulgar —también «Referencia»: guardar el enlace de un video bueno en
-// el banco de ideas en dos toques—. «Más» abre el cajón con el resto de secciones y los
-// clientes. Sólo se ve por debajo de 1024 px (index.css).
+// del pulgar —también «Lo mejor»: lo que mejor está funcionando para
+// recrearlo, con «Pegar un enlace» dentro (era el botón «Enlace»: guardar el
+// enlace de un video bueno en el banco de ideas)—. «Más» abre el cajón con el
+// resto de secciones y los clientes. Sólo se ve por debajo de 1024 px (index.css).
 // ============================================================
 
-export default function BarraInferior({ ruta, hayCliente, chatAbierto, pulso = 0, onMiDia, onCalendario, onChat, onSubir, onReferencia = null, onMas }) {
+export default function BarraInferior({ ruta, hayCliente, chatAbierto, pulso = 0, onMiDia, onCalendario, onChat, onSubir, onLoMejor = null, onMas }) {
   const item = (props) => (
     <button type="button" className="barra-inferior-item" {...props} />
   );
   return (
-    <nav className="barra-inferior" aria-label="Accesos rápidos" style={{ gridTemplateColumns: `repeat(${onReferencia ? 6 : 5}, 1fr)` }}>
+    <nav className="barra-inferior" aria-label="Accesos rápidos" style={{ gridTemplateColumns: `repeat(${onLoMejor ? 6 : 5}, 1fr)` }}>
       {item({
         onClick: onMiDia,
         "aria-current": ruta.vista === "tareas" ? "page" : undefined,
@@ -32,10 +33,10 @@ export default function BarraInferior({ ruta, hayCliente, chatAbierto, pulso = 0
         onClick: onSubir,
         children: (<><Icon name="upload" size={22} /><span>Subir</span></>),
       })}
-      {onReferencia && item({
-        onClick: onReferencia,
-        "aria-label": "Guardar una referencia en el banco de ideas",
-        children: (<><Icon name="link" size={22} /><span aria-hidden="true">Enlace</span></>),
+      {onLoMejor && item({
+        onClick: onLoMejor,
+        "aria-current": ruta.vista === "lo-mejor" ? "page" : undefined,
+        children: (<><Icon name="trending" size={22} /><span>Lo mejor</span></>),
       })}
       {item({
         onClick: onChat,

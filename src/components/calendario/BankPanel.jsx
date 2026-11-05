@@ -217,9 +217,11 @@ export function BankPostCard({ post, isEditing, onToggleEdit, onSave, onRemove, 
             aria-label={`Editar: ${title}`}
           >
             <span className="bank-card-titulo">{title}</span>
-            {(etiqueta || form.publishTime) && (
+            {(etiqueta || form.publishTime || post.cifra) && (
               <span className="bank-card-meta">
                 {etiqueta && <span className="bank-card-etiqueta" data-general={etiqueta === "General" || undefined}>{etiqueta}</span>}
+                {/* La cifra que traía de «Lo mejor» («rinde 4,1×», «63 días activo»): viaja con la idea. */}
+                {post.cifra && <span><Icon name="trending" size={10} /> {post.cifra}</span>}
                 {form.publishTime && <span><Icon name="clock" size={10} /> {form.publishTime}</span>}
               </span>
             )}

@@ -1,96 +1,82 @@
-import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Icon from "./Icon";
-import SelectorFecha from "./SelectorFecha";
 import CuentasReferencia from "./CuentasReferencia";
-import { leerInspiracion, actualizarInspiracion, traerDeInspiracion, proponerResumen } from "../lib/inspiracionApi";
-import { FORMATOS_FEED, REDES_INSPIRACION, TIPOS_CUENTA, filtrarFeed, etiquetaRinde, ideaDeInspiracion, enlaceDePerfil, formatoDePublicacion, UMBRAL_AVISO } from "../lib/inspiracion";
-import { haceCuanto } from "../lib/competencia";
-import { fechaEnZona } from "../lib/agenda";
+import LoMejorTarjetas from "./LoMejorTarjetas";
+import { useLoMejor } from "../hooks/useLoMejor";
+import { leerInspiracion, actualizarInspiracion, proponerResumen } from "../lib/inspiracionApi";
+import { enlaceDePerfil } from "../lib/inspiracion";
+import { VENTANAS, FUENTES, FORMATOS_LO_MEJOR } from "../lib/loMejor";
+import { abrirGuardarReferencia } from "../lib/bancoIdeasApi";
+import { navegar } from "../lib/rutas";
 import "./Inspiracion.css";
-
-// Sólo al usarlos: el guion (y la fórmula) y el editor de la nota del cerebro.
-const ExtraerUgc = lazy(() => import("./calendario/ExtraerUgc"));
+import "./LoMejor.css";
 
 // ============================================================
-// Inspiración: lo que publican las cuentas que sigue cada cliente
+// Inspiración de un cliente = «Lo mejor del momento» FILTRADO por él
 //
-// Las hasta 10 cuentas fijas del cliente (competencia e inspiración,
-// `clients.competidores`) y lo que publican, guardado por el Worker
-// (worker/lib/inspiracion.js) y medido contra su propia cuenta: «rinde 3,2×
-// su promedio». Va como panel junto al calendario (`modo="panel"`, se puede
-// ARRASTRAR una publicación a un día) y como pestaña del cliente
-// (`/cliente/<slug>/inspiracion`).
+// La misma vista que /lo-mejor (las mismas tarjetas, el mismo orden por
+// percentil, el mismo «Recrear para…»), con lo que es sólo de este cliente:
+// sus hasta 10 cuentas fijas (competencia e inspiración, `clients.competidores`),
+// «Actualizar» (leerlas otra vez) y «Lo que funciona en tu competencia» (la
+// nota del cerebro). Va como pestaña del cliente (`/cliente/<slug>/inspiracion`)
+// y como panel junto al calendario (el ojo, `modo="panel"`): ahí cada tarjeta se
+// puede ARRASTRAR a un día.
 //
-// Desde cada publicación: llevarla a un día (con su archivo como
-// REFERENCIA, nunca como lo que se publica), guardarla en el banco,
-// analizarla (queda en el cerebro como interna), extraer su guion UGC, sacar
-// su fórmula o recrearla con la marca. Los videos se bajan sólo al pulsar
-// algo. Un reel con música de Instagram no trae video (Meta no lo da): se
-// trabaja con su miniatura y su texto. TikTok no deja ver lo de otros.
+// Un aviso de «esto rinde 3×» trae `?pieza=<clave>`: esa tarjeta va primero y
+// se señala.
 // ============================================================
 
-const fmt = (n) => (n == null ? "—" : Number(n).toLocaleString("es-PA"));
-/** «2026-10-15» → «15 de octubre». */
-const diaEnPalabras = (f) => new Date(`${f}T12:00:00`).toLocaleDateString("es-PA", { day: "numeric", month: "long" });
-const visto = (clienteId) => `inspiracion-visto:${clienteId}`;
+const piezaDeLaDireccion = () => {
+  try { return new URLSearchParams(window.location.search).get("pieza") ?? ""; } catch { return ""; }
+};
 
-function leerVisto(clienteId) {
-  try { return localStorage.getItem(visto(clienteId)) || ""; } catch { return ""; }
-}
-function guardarVisto(clienteId) {
-  try { localStorage.setItem(visto(clienteId), new Date().toISOString()); } catch { /* sin almacenamiento */ }
-}
-
-export default function Inspiracion({ client, modo = "panel", lectura = false, onCerrar = null, onPersistClient = null, onLlevar = null, llevarRef = null }) {
+export default function Inspiracion({ client, clientes = null, modo = "panel", lectura = false, onCerrar = null, onPersistClient = null, onLlevar = null, llevarRef = null }) {
   const ids = useId();
   const clienteId = client.dbId || client.id;
-  const [datos, setDatos] = useState(null);
-  const [cargando, setCargando] = useState(true);
+  const [feed, setFeed] = useState(null);
   const [actualizando, setActualizando] = useState(false);
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
-  const [cuenta, setCuenta] = useState("");
+  const [ventana, setVentana] = useState("semana");
+  const [fuente, setFuente] = useState("");
   const [formato, setFormato] = useState("");
-  const [orden, setOrden] = useState("rinde");
-  // Lo publicado desde la última visita de ESTA persona en este navegador (no se avisa a nadie más).
-  const [ultimaVisita] = useState(() => leerVisto(clienteId));
-  const [soloNuevo, setSoloNuevo] = useState(false);
   const [editandoCuentas, setEditandoCuentas] = useState(false);
-  const [trabajando, setTrabajando] = useState("");
-  const [llevando, setLlevando] = useState(null); // la publicación a la que se le escoge día
-  const [fecha, setFecha] = useState(fechaEnZona());
-  const [extraer, setExtraer] = useState(null); // { inicial, formula }
   const [resumen, setResumen] = useState(null);
+  const [trabajando, setTrabajando] = useState("");
+  const [pieza] = useState(piezaDeLaDireccion);
+  const [pulsoLocal, setPulsoLocal] = useState(0);
   const pidioFaltan = useRef(false);
+  const { datos, cargando, error: errorLista } = useLoMejor({ ventana, cliente: clienteId, fuente, formato, pieza, pulso: pulsoLocal, lectura });
 
-  useEffect(() => () => guardarVisto(clienteId), [clienteId]);
+  // La pieza de un aviso se señala una vez: la dirección queda limpia.
+  useEffect(() => {
+    if (pieza && modo !== "panel") navegar(window.location.pathname, { reemplazar: true });
+  }, [pieza, modo]);
 
-  const cargar = useCallback(async () => {
+  const cargarFeed = useCallback(async () => {
     try {
       const d = await leerInspiracion(clienteId);
-      setDatos(d);
-      setError("");
+      setFeed(d);
       // Las cuentas que nunca se leyeron (recién añadidas) se leen solas, una vez por apertura.
       if (d.faltan?.length && !lectura && !pidioFaltan.current) {
         pidioFaltan.current = true;
         setActualizando(true);
-        try { setDatos(await actualizarInspiracion(clienteId, d.faltan)); } catch (e) { setError(e.message); }
+        try { setFeed(await actualizarInspiracion(clienteId, d.faltan)); setPulsoLocal((n) => n + 1); } catch (e) { setError(e.message); }
         setActualizando(false);
       }
     } catch (e) {
       setError(e.message);
     }
-    setCargando(false);
   }, [clienteId, lectura]);
 
   // Al cambiar las cuentas (la ficha del cliente) se vuelve a leer; y cuando otra persona (o el cron) lo pone al día.
   const firmaCuentas = JSON.stringify(client.competidores ?? []);
-  useEffect(() => { pidioFaltan.current = false; void cargar(); }, [cargar, firmaCuentas]);
+  useEffect(() => { pidioFaltan.current = false; void cargarFeed(); }, [cargarFeed, firmaCuentas]);
   useEffect(() => {
-    const alCambiar = (e) => { if (!e.detail?.clientId || e.detail.clientId === clienteId) void cargar(); };
+    const alCambiar = (e) => { if (!e.detail?.clientId || e.detail.clientId === clienteId) void cargarFeed(); };
     window.addEventListener("inspiracion", alCambiar);
     return () => window.removeEventListener("inspiracion", alCambiar);
-  }, [cargar, clienteId]);
+  }, [cargarFeed, clienteId]);
 
   const actualizar = async () => {
     setActualizando(true);
@@ -98,7 +84,8 @@ export default function Inspiracion({ client, modo = "panel", lectura = false, o
     setAviso("");
     try {
       const d = await actualizarInspiracion(clienteId);
-      setDatos(d);
+      setFeed(d);
+      setPulsoLocal((n) => n + 1);
       setAviso(d.errores?.length ? `Puesto al día, salvo ${d.errores.length === 1 ? "una cuenta" : `${d.errores.length} cuentas`} (abajo dice por qué).` : "Puesto al día.");
     } catch (e) {
       setError(e.message);
@@ -106,95 +93,14 @@ export default function Inspiracion({ client, modo = "panel", lectura = false, o
     setActualizando(false);
   };
 
-  const cuentas = useMemo(() => datos?.cuentas ?? [], [datos]);
-  const porClave = useMemo(() => new Map(cuentas.map((c) => [c.clave, c])), [cuentas]);
-  const lista = useMemo(
-    () => filtrarFeed(datos?.publicaciones ?? [], { cuenta, formato, orden, desde: soloNuevo ? ultimaVisita : "" }),
-    [datos, cuenta, formato, orden, soloNuevo, ultimaVisita],
-  );
-  const formatos = useMemo(() => [...new Set((datos?.publicaciones ?? []).map((p) => p.formato))], [datos]);
-  const nuevas = useMemo(() => (ultimaVisita ? filtrarFeed(datos?.publicaciones ?? [], { desde: ultimaVisita }).length : 0), [datos, ultimaVisita]);
-
-  /** Su archivo a la galería: el video (o la imagen); de un reel con música, la miniatura. null si no se puede (YouTube). */
-  const traer = async (p) => (p.red === "instagram" ? (await traerDeInspiracion(clienteId, p.id, { miniatura: p.sinArchivo })).archivo : null);
-
   const conTrabajo = (id, hacer) => async () => {
     if (trabajando) return;
     setTrabajando(id);
     setError("");
-    setAviso("");
     try { await hacer(); } catch (e) { setError(e.message); }
     setTrabajando("");
   };
-
-  /** Llevarla a un día: la idea con su archivo como REFERENCIA (no se publica). → si entró. */
-  const llevar = async (p, dia) => {
-    if (!onLlevar) return false;
-    let archivo = null;
-    try { archivo = await traer(p); } catch (e) { setAviso(`Va sin el archivo: ${e.message}`); }
-    const ok = await onLlevar(ideaDeInspiracion(p, archivo, crypto.randomUUID().slice(0, 8)), dia);
-    if (ok) setAviso(`En el calendario el ${diaEnPalabras(dia)}: ${archivo ? "con el archivo como referencia (no se publica)" : "con el enlace de referencia"}. Ábrela para recrearla o sacarle el guion.`);
-    return ok;
-  };
-  // Lo que se suelta en un día del calendario (MonthGrid) llega por aquí.
-  useEffect(() => {
-    if (!llevarRef) return undefined;
-    llevarRef.current = (id, dia) => {
-      const p = (datos?.publicaciones ?? []).find((x) => x.id === id);
-      if (!p) return;
-      setTrabajando(p.id);
-      setError("");
-      void llevar(p, dia).finally(() => setTrabajando(""));
-    };
-    return () => { llevarRef.current = null; };
-  });
-
-  const alBanco = (p) => conTrabajo(p.id, async () => {
-    const [{ anadirAlBanco }, { nuevaIdea }] = await Promise.all([import("../lib/bancoIdeasApi"), import("../lib/bancoIdeas")]);
-    const idea = ideaDeInspiracion(p, null);
-    await anadirAlBanco(nuevaIdea({ id: crypto.randomUUID(), idea: idea.idea, format: idea.format, referenceLink: p.enlace }), clienteId);
-    setAviso("Guardada en el banco de ideas de este cliente.");
-  })();
-
-  const analizar = (p) => conTrabajo(p.id, async () => {
-    const archivo = await traer(p);
-    if (!archivo) throw new Error("De YouTube no se puede bajar el video: usa «Extraer guion» (Gemini lo ve por el enlace).");
-    const { agregarReferencia } = await import("../lib/mercado");
-    const r = await agregarReferencia(clienteId, {
-      archivoId: archivo.id, competidor: `@${p.usuario}`, enlace: p.enlace, origen: "organico",
-      nota: [
-        `${fmt(p.meGusta)} me gusta y ${fmt(p.comentarios)} comentarios${Number.isFinite(p.rinde) ? `; rinde ${etiquetaRinde(p.rinde)} su promedio` : ""}`,
-        p.sinArchivo ? `es un reel con música de Instagram: se analiza su miniatura. Su texto: ${String(p.texto ?? "").slice(0, 400)}` : "",
-      ].filter(Boolean).join("; "),
-    }, archivo.tipo === "video" ? archivo.src : "");
-    setAviso(r.aviso ? `Guardada, pero sin analizar: ${r.aviso}` : "Analizada: está en las referencias del estudio de mercado (pestaña Cerebro), como nota interna.");
-  })();
-
-  const guion = (p, formula = false) => conTrabajo(p.id, async () => {
-    if (p.red === "youtube") {
-      setExtraer({ formula, inicial: { youtube: p.enlace, nombre: `«${String(p.texto ?? "").slice(0, 60)}» de ${p.nombre || `@${p.usuario}`}`, cuenta: `@${p.usuario}`, enlace: p.enlace } });
-      return;
-    }
-    const archivo = await traer(p);
-    setExtraer({ formula, inicial: { id: archivo.id, src: archivo.src, nombre: `Reel de @${p.usuario}`, cuenta: `@${p.usuario}`, enlace: p.enlace } });
-  })();
-
-  const recrear = (p) => conTrabajo(p.id, async () => {
-    const archivo = await traer(p);
-    if (!archivo) throw new Error("De YouTube no se puede bajar el video para recrearlo: llévalo a un día o saca su guion.");
-    const { recrearConLaMarca } = await import("../lib/otraVersion");
-    const borrador = { id: "", format: formatoDePublicacion(p.formato), idea: ideaDeInspiracion(p).idea };
-    const nueva = await recrearConLaMarca({
-      client, post: borrador, medio: { src: archivo.src, tipo: archivo.tipo }, alProgresar: setAviso,
-      confirmar: (costo) => window.confirm(`Recrearla cuesta unos ${costo.toFixed(2).replace(".", ",")} $. ¿Sigo?`),
-    });
-    if (nueva) setAviso("Lista: la versión con la marca está en la galería del Estudio. Desde ahí se lleva a una publicación.");
-    else setAviso("");
-  })();
-
-  const pedirResumen = conTrabajo("resumen", async () => {
-    setResumen(await proponerResumen(clienteId));
-  });
+  const pedirResumen = conTrabajo("resumen", async () => { setResumen(await proponerResumen(clienteId)); });
   const guardarResumen = conTrabajo("resumen", async () => {
     const { guardarNota } = await import("../lib/cerebro");
     await guardarNota(clienteId, { ...(resumen.existente ? { id: resumen.existente.id } : {}), titulo: resumen.titulo, texto: resumen.texto, tipo: "nota", interna: false });
@@ -202,13 +108,15 @@ export default function Inspiracion({ client, modo = "panel", lectura = false, o
     setAviso("Guardada en el cerebro: el motor de ideas la tiene en cuenta cuando escribe.");
   });
 
-  const panel = modo === "panel";
+  const cuentas = feed?.cuentas ?? [];
   const conFeed = cuentas.some((c) => c.feed);
+  const piezas = datos?.piezas ?? [];
+  const panel = modo === "panel";
 
   return (
     <section className={`bank-panel inspiracion${panel ? "" : " bank-panel-pagina"}`} aria-labelledby={`${ids}-t`}>
       <div className="bank-panel-cabecera">
-        <h3 id={`${ids}-t`} className="bank-panel-titulo"><Icon name="eye" size={18} /> Inspiración</h3>
+        <h3 id={`${ids}-t`} className="bank-panel-titulo"><Icon name="trending" size={18} /> Lo mejor · {client.name}</h3>
         <div style={{ display: "flex", gap: "var(--sp-1)" }}>
           {!lectura && conFeed && (
             <button type="button" className="btn btn-secondary btn-sm" onClick={actualizar} disabled={actualizando} aria-busy={actualizando || undefined}>
@@ -220,11 +128,16 @@ export default function Inspiracion({ client, modo = "panel", lectura = false, o
               <Icon name="users" size={14} /> Cuentas ({cuentas.length})
             </button>
           )}
-          {onCerrar && <button type="button" className="btn-icon" onClick={onCerrar} aria-label="Cerrar Inspiración"><Icon name="close" size={18} /></button>}
+          {!lectura && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => abrirGuardarReferencia(clienteId)}>
+              <Icon name="link" size={14} /> Pegar un enlace
+            </button>
+          )}
+          {onCerrar && <button type="button" className="btn-icon" onClick={onCerrar} aria-label="Cerrar Lo mejor"><Icon name="close" size={18} /></button>}
         </div>
       </div>
 
-      {(editandoCuentas || (!cargando && !cuentas.length)) && (
+      {(editandoCuentas || (feed && !cuentas.length)) && (
         <div id={`${ids}-cuentas`} className="inspiracion-cuentas">
           {!cuentas.length && <p className="hint" style={{ margin: 0 }}>Añade hasta 10 cuentas que sigue {client.name}: su competencia y las que le inspiran (Instagram de empresa o creador, YouTube o TikTok).</p>}
           {onPersistClient && !lectura
@@ -233,38 +146,25 @@ export default function Inspiracion({ client, modo = "panel", lectura = false, o
         </div>
       )}
 
-      {cuentas.length > 0 && (
-        <div className="bank-panel-filtros" role="group" aria-label="Qué ver">
-          <button type="button" className="filter-chip" aria-pressed={!cuenta} onClick={() => setCuenta("")}>Todas</button>
-          {cuentas.map((c) => (
-            <button key={c.clave} type="button" className="filter-chip" aria-pressed={cuenta === c.clave} onClick={() => setCuenta(cuenta === c.clave ? "" : c.clave)}
-              title={`${REDES_INSPIRACION[c.red].nombre} · ${TIPOS_CUENTA[c.tipo]}${c.nota ? ` · ${c.nota}` : ""}`}>
-              <Icon name={REDES_INSPIRACION[c.red].icono} size={12} /> @{c.usuario}
-            </button>
-          ))}
-        </div>
-      )}
-      {(datos?.publicaciones ?? []).length > 0 && (
-        <div className="bank-panel-filtros inspiracion-orden">
-          <label className="sr-only" htmlFor={`${ids}-orden`}>Orden</label>
-          <select id={`${ids}-orden`} className="input" value={orden} onChange={(e) => setOrden(e.target.value)}>
-            <option value="rinde">Lo que más rindió</option>
-            <option value="nuevo">Lo más nuevo</option>
-          </select>
-          <label className="sr-only" htmlFor={`${ids}-formato`}>Formato</label>
-          <select id={`${ids}-formato`} className="input" value={formato} onChange={(e) => setFormato(e.target.value)}>
-            <option value="">Todos los formatos</option>
-            {formatos.map((f) => <option key={f} value={f}>{FORMATOS_FEED[f] ?? f}</option>)}
-          </select>
-          {ultimaVisita && (
-            <button type="button" className="filter-chip" aria-pressed={soloNuevo} onClick={() => setSoloNuevo((v) => !v)}>
-              Nuevo desde tu última visita ({nuevas})
-            </button>
-          )}
-        </div>
-      )}
+      <div className="bank-panel-filtros" role="group" aria-label="Qué ventana">
+        {VENTANAS.map((v) => (
+          <button key={v.id} type="button" className="filter-chip" aria-pressed={ventana === v.id} onClick={() => setVentana(v.id)}>{v.nombre}</button>
+        ))}
+      </div>
+      <div className="bank-panel-filtros inspiracion-orden">
+        <label className="sr-only" htmlFor={`${ids}-fuente`}>De dónde</label>
+        <select id={`${ids}-fuente`} className="input" value={fuente} onChange={(e) => setFuente(e.target.value)}>
+          <option value="">De todas partes</option>
+          {Object.entries(FUENTES).map(([id, f]) => <option key={id} value={id}>{f.nombre}</option>)}
+        </select>
+        <label className="sr-only" htmlFor={`${ids}-formato`}>Formato</label>
+        <select id={`${ids}-formato`} className="input" value={formato} onChange={(e) => setFormato(e.target.value)}>
+          <option value="">Todos los formatos</option>
+          {Object.entries(FORMATOS_LO_MEJOR).map(([id, nombre]) => <option key={id} value={id}>{nombre}</option>)}
+        </select>
+      </div>
 
-      {error && <p role="alert" className="inspiracion-error">{error}</p>}
+      {(error || errorLista) && <p role="alert" className="inspiracion-error">{error || errorLista}</p>}
       <div role="status" aria-live="polite" className={aviso ? "hint inspiracion-aviso" : "sr-only"}>{aviso}</div>
 
       {cuentas.some((c) => c.error) && (
@@ -275,7 +175,7 @@ export default function Inspiracion({ client, modo = "panel", lectura = false, o
         </ul>
       )}
 
-      {!lectura && (datos?.publicaciones ?? []).length >= 3 && (
+      {!lectura && (feed?.publicaciones ?? []).length >= 3 && (
         <div className="inspiracion-resumen">
           {!resumen ? (
             <button type="button" className="btn btn-ghost btn-sm" onClick={pedirResumen} disabled={Boolean(trabajando)} aria-busy={trabajando === "resumen" || undefined}
@@ -300,98 +200,15 @@ export default function Inspiracion({ client, modo = "panel", lectura = false, o
       )}
 
       <div className="bank-panel-lista inspiracion-lista">
-        {cargando && <p className="hint" style={{ textAlign: "center", padding: "var(--sp-4) 0" }}>Cargando…</p>}
-        {!cargando && cuentas.length > 0 && !lista.length && (
+        {cargando && !datos && <p className="hint" style={{ textAlign: "center", padding: "var(--sp-4) 0" }}>Cargando…</p>}
+        {!cargando && datos && !piezas.length && (
           <p className="hint" style={{ textAlign: "center", padding: "var(--sp-4) var(--sp-2)" }}>
-            {actualizando ? "Leyendo sus publicaciones…" : (datos?.publicaciones ?? []).length ? "Nada con estos filtros." : "Todavía no hay publicaciones leídas. Pulsa «Actualizar»."}
+            {actualizando ? "Leyendo sus publicaciones…" : cuentas.length ? `Nada ${ventana === "semana" ? "esta semana" : "en el último mes"} con estos filtros.` : "Añade sus cuentas o pega el enlace de una referencia."}
           </p>
         )}
-        <ul className="inspiracion-items">
-          {lista.map((p) => {
-            const c = porClave.get(`${p.red}:${String(p.usuario).toLowerCase()}`);
-            const ocupado = trabajando === p.id;
-            return (
-              <li key={p.id} className="inspiracion-item" data-tipo={p.tipoCuenta}
-                draggable={Boolean(llevarRef) && !lectura}
-                onDragStart={(e) => { e.dataTransfer.effectAllowed = "copy"; e.dataTransfer.setData("text/plain", JSON.stringify({ inspiracionId: p.id })); }}>
-                <div className="inspiracion-vista">
-                  {p.miniatura ? <img src={p.miniatura} alt="" loading="lazy" /> : <span className="hint">Sin vista</span>}
-                  <span className="inspiracion-formato">{p.video && <Icon name="play" size={11} />} {FORMATOS_FEED[p.formato] ?? p.formato}</span>
-                  {Number.isFinite(p.rinde) && (
-                    <span className="inspiracion-rinde" data-alto={p.rinde >= UMBRAL_AVISO || undefined} title="Interacciones frente a la mediana de su cuenta">
-                      {etiquetaRinde(p.rinde)}
-                    </span>
-                  )}
-                </div>
-                <div className="inspiracion-cuerpo">
-                  <p className="inspiracion-de">
-                    <Icon name={REDES_INSPIRACION[p.red]?.icono ?? "link"} size={12} /> <strong>@{p.usuario}</strong>
-                    <span className="inspiracion-tipo">{TIPOS_CUENTA[p.tipoCuenta] ?? ""}</span>
-                    <span className="hint">{haceCuanto(p.fecha)}</span>
-                  </p>
-                  <p className="inspiracion-cifras">
-                    <span><Icon name="heart" size={11} /> {fmt(p.meGusta)}</span>
-                    <span><Icon name="message" size={11} /> {fmt(p.comentarios)}</span>
-                    {p.vistas > 0 && <span><Icon name="eye" size={11} /> {fmt(p.vistas)}</span>}
-                    {Number.isFinite(p.rinde) && <span className="hint">rinde {etiquetaRinde(p.rinde)} su promedio{c?.mediana ? ` (${fmt(Math.round(c.mediana))})` : ""}</span>}
-                  </p>
-                  {p.texto && <p className="inspiracion-texto">{p.texto}</p>}
-                  {p.sinArchivo && p.red === "instagram" && <p className="hint" style={{ margin: 0 }}>Con música de Instagram: Meta no da su video. Se trabaja con su miniatura y su texto.</p>}
-                  <div className="inspiracion-acciones">
-                    {!lectura && onLlevar && (
-                      <button type="button" className="btn btn-secondary btn-sm" disabled={Boolean(trabajando)} aria-expanded={llevando === p.id} onClick={() => setLlevando(llevando === p.id ? null : p.id)}>
-                        <Icon name="calendar" size={13} /> Llevar a un día
-                      </button>
-                    )}
-                    {!lectura && p.video && !(p.red === "instagram" && p.sinArchivo) && (
-                      <button type="button" className="btn btn-secondary btn-sm" disabled={Boolean(trabajando)} onClick={() => guion(p)}>
-                        <Icon name="user" size={13} /> Extraer guion
-                      </button>
-                    )}
-                    {!lectura && p.red === "instagram" && (
-                      <button type="button" className="btn btn-ghost btn-sm" disabled={Boolean(trabajando)} onClick={() => analizar(p)}>
-                        <Icon name="sparkles" size={13} /> Analizar
-                      </button>
-                    )}
-                    {!lectura && p.red === "instagram" && (
-                      <button type="button" className="btn btn-ghost btn-sm" disabled={Boolean(trabajando)} onClick={() => recrear(p)}>
-                        <Icon name="wand" size={13} /> Recrear con mi marca
-                      </button>
-                    )}
-                    {!lectura && p.video && !(p.red === "instagram" && p.sinArchivo) && (
-                      <button type="button" className="btn btn-ghost btn-sm" disabled={Boolean(trabajando)} onClick={() => guion(p, true)} title="La receta del video, sin su contenido, para la biblioteca de fórmulas UGC de la agencia">
-                        <Icon name="list" size={13} /> Fórmula
-                      </button>
-                    )}
-                    {!lectura && (
-                      <button type="button" className="btn btn-ghost btn-sm" disabled={Boolean(trabajando)} onClick={() => alBanco(p)}>
-                        <Icon name="bulb" size={13} /> Al banco
-                      </button>
-                    )}
-                    {p.enlace && <a className="btn btn-ghost btn-sm" href={p.enlace} target="_blank" rel="noopener noreferrer"><Icon name="external" size={13} /> Ver</a>}
-                  </div>
-                  {ocupado && <p className="hint" role="status" style={{ margin: 0 }}>Trabajando…</p>}
-                  {llevando === p.id && (
-                    <div className="inspiracion-llevar">
-                      <SelectorFecha value={fecha} onChange={(f) => setFecha(f || fechaEnZona())} etiqueta="Día" vacio="Escoge el día" prefijo="El" />
-                      <button type="button" className="btn btn-primary btn-sm" disabled={Boolean(trabajando)}
-                        onClick={() => { setLlevando(null); void conTrabajo(p.id, () => llevar(p, fecha))(); }}>
-                        Llevar
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        <LoMejorTarjetas piezas={piezas} clientes={clientes?.length ? clientes : [client]} clienteFijo={clienteId} lectura={lectura}
+          onLlevar={onLlevar} llevarRef={llevarRef} destacada={pieza} onAviso={setAviso} onError={setError} />
       </div>
-
-      {extraer && (
-        <Suspense fallback={null}>
-          <ExtraerUgc client={client} inicial={extraer.inicial} formula={extraer.formula} onCerrar={() => setExtraer(null)} />
-        </Suspense>
-      )}
     </section>
   );
 }

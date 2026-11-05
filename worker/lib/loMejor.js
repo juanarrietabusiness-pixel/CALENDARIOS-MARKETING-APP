@@ -219,9 +219,10 @@ async function clasificacionesDe(acceso, claves) {
  * Todas las piezas del espacio (o de un cliente) de los últimos DIAS_MAX días, sin repetir, con lo que se sabe de cada
  * una. Sin ordenar: la ventana la pone quien llama.
  */
-export async function piezasDelEspacio(env, acceso, { cliente = "" } = {}) {
+export async function piezasDelEspacio(env, acceso, { cliente = "", sinFecha = false } = {}) {
   const hoy = fechaEnZona();
-  const desde = sumarDias(hoy, -DIAS_MAX);
+  // `sinFecha`: para buscar UNA pieza por su clave (recrear, traer), también lo más viejo (una referencia de hace meses).
+  const desde = sinFecha ? "" : sumarDias(hoy, -DIAS_MAX);
   const opciones = { cliente: cliente || "", desde, hoy };
   const listas = await Promise.all([deInspiracion(acceso, opciones), deAnuncios(acceso, opciones), dePropias(acceso, opciones), deReferencias(acceso, opciones)]);
   const piezas = unirRepetidas(listas.flat().filter((p) => p.clave && !p.clave.endsWith(":undefined")));
@@ -579,7 +580,7 @@ function referenciaDe(p, archivo) {
 export async function recrear(env, acceso, usuario, { clave, clienteId, camino: pedido = "", productoId = "", confirmado = false }) {
   const cliente = await acceso.leerUno("clients", { id: String(clienteId ?? "") });
   if (!cliente) throw new ErrorLoMejor("Escoge para qué cliente.", 404);
-  const todas = await piezasDelEspacio(env, acceso, {});
+  const todas = await piezasDelEspacio(env, acceso, { sinFecha: true });
   const p = todas.find((x) => x.clave === String(clave ?? ""));
   if (!p) throw new ErrorLoMejor("Esa pieza ya no está en «Lo mejor»: vuelve a cargarlo.", 404);
   const posibles = caminosPosibles(p);

@@ -102,7 +102,7 @@ export async function rutasLoMejor(req, env, { acceso, usuario, partes, metodo }
       const b = (await cuerpo(req)) ?? {};
       const cliente = ID.test(String(b.clienteId ?? "")) ? await acceso.leerUno("clients", { id: String(b.clienteId) }) : null;
       if (!cliente) return noEncontrado("Cliente");
-      const p = (await piezasDelEspacio(env, acceso, {})).find((x) => x.clave === String(b.clave ?? ""));
+      const p = (await piezasDelEspacio(env, acceso, { sinFecha: true })).find((x) => x.clave === String(b.clave ?? ""));
       if (!p) return noEncontrado("Pieza");
       const archivo = await traerArchivo(env, acceso, cliente, p, { miniatura: b.miniatura === true }).catch((e) => {
         if (accion === "claude") return null; // Claude puede trabajar con el enlace y la idea
