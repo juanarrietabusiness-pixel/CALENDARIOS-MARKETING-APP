@@ -30,10 +30,20 @@ import { metaConfigurado } from "../lib/meta.js";
 import { buscarAnuncios, ErrorBiblioteca } from "../lib/biblioteca.js";
 import { normalizarConsulta, filtroDeFila } from "../../src/lib/biblioteca.js";
 import { consultaSC } from "../../src/lib/scrapeCreators.js";
-import { scConfigurado, buscarEmpresas, buscarAnunciosSC, detalleAnuncio, traerAnuncio, ErrorSC } from "../lib/scrapeCreators.js";
+import { scConfigurado, buscarEmpresas, buscarAnunciosSC, detalleAnuncio, traerAnuncio, ErrorSC, creditosDeLaSemana } from "../lib/scrapeCreators.js";
 import { ErrorCompetencia } from "../lib/competencia.js";
 
 const nombreLimpio = (s) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
+
+/**
+ * Lo que va de la semana en el tope de créditos (el mismo de «Lo mejor»: anuncios y TikTok): lo buscado a mano no se
+ * bloquea, pero la pantalla avisa si se pasó. Sólo cuando la búsqueda gastó (no salió de la caché).
+ */
+async function conSemana(acceso, r) {
+  if (r?.cache) return r;
+  const c = await creditosDeLaSemana(acceso).catch(() => null);
+  return c ? { ...r, semana: { total: c.total, tope: c.tope } } : r;
+}
 
 /** El cliente de un filtro: null (de la agencia) o uno de este espacio. `undefined` si no existe. */
 async function clienteDelFiltro(acceso, clientId) {
@@ -77,14 +87,14 @@ export async function rutasBiblioteca(req, env, { acceso, usuario, partes, metod
     // ---- Scrape Creators ----
     if (grupo === "sc") {
       const url = new URL(req.url);
-      if (id === "empresas" && metodo === "GET") return json(await buscarEmpresas(env, acceso, url.searchParams.get("q")));
+      if (id === "empresas" && metodo === "GET") return json(await conSemana(acceso, await buscarEmpresas(env, acceso, url.searchParams.get("q"))));
       if (id === "anuncios" && metodo === "GET") {
         let entrada;
         try { entrada = JSON.parse(url.searchParams.get("c") ?? "{}"); } catch { return error("La búsqueda no se entiende."); }
-        return json(await buscarAnunciosSC(env, acceso, entrada, url.searchParams.get("cursor") ?? ""));
+        return json(await conSemana(acceso, await buscarAnunciosSC(env, acceso, entrada, url.searchParams.get("cursor") ?? "")));
       }
       if (id === "anuncio" && partes[3] && metodo === "GET") {
-        return json(await detalleAnuncio(env, acceso, partes[3], { transcripcion: url.searchParams.get("transcripcion") === "1" }));
+        return json(await conSemana(acceso, await detalleAnuncio(env, acceso, partes[3], { transcripcion: url.searchParams.get("transcripcion") === "1" })));
       }
       if (id === "traer" && metodo === "POST") {
         const b = (await cuerpo(req)) ?? {};

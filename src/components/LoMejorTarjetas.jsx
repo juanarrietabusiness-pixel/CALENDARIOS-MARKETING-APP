@@ -32,6 +32,8 @@ function Tarjeta({ p, clientes, clienteFijo, lectura, onLlevar, arrastrable, ocu
   const ref = useRef(null);
   const [llevando, setLlevando] = useState(false);
   const [fecha, setFecha] = useState(fechaEnZona());
+  // Si el video no se puede reproducir (su dirección caducó, o TikTok no lo sirve sin su web), queda la miniatura.
+  const [sinVideo, setSinVideo] = useState(false);
   const cliente = clienteDe(p, clientes, clienteFijo);
   const nombres = (p.clientes ?? []).map((id) => clientes.find((c) => idDe(c) === id)?.name).filter(Boolean);
   const alto = (p.percentil ?? 0) >= 90;
@@ -45,8 +47,8 @@ function Tarjeta({ p, clientes, clienteFijo, lectura, onLlevar, arrastrable, ocu
       draggable={arrastrable && !lectura}
       onDragStart={(e) => { e.dataTransfer.effectAllowed = "copy"; e.dataTransfer.setData("text/plain", JSON.stringify({ inspiracionId: p.clave })); }}>
       <div className="lo-mejor-vista">
-        {p.video ? (
-          <video src={p.video} poster={p.miniatura || undefined} controls playsInline preload="none" aria-label={`Video de ${p.cuenta || "la pieza"}`} />
+        {p.video && !sinVideo ? (
+          <video src={p.video} poster={p.miniatura || undefined} controls playsInline preload="none" aria-label={`Video de ${p.cuenta || "la pieza"}`} onError={() => setSinVideo(true)} />
         ) : p.miniatura ? (
           <img src={p.miniatura} alt="" loading="lazy" />
         ) : (
@@ -67,6 +69,8 @@ function Tarjeta({ p, clientes, clienteFijo, lectura, onLlevar, arrastrable, ocu
         {!clienteFijo && nombres.length > 0 && <p className="lo-mejor-clientes hint">Para: {nombres.join(", ")}</p>}
         {p.idea ? <p className="lo-mejor-idea">{p.idea}</p> : p.texto ? <p className="lo-mejor-texto">{p.texto}</p> : null}
         {p.sinArchivo && p.red === "instagram" && <p className="hint" style={{ margin: 0 }}>Con música de Instagram: Meta no da su video (se trabaja con su miniatura y su texto).</p>}
+        {p.sinArchivo && p.red === "tiktok" && p.formato === "video" && <p className="hint" style={{ margin: 0 }}>TikTok no da su video sin Scrape Creators: se trabaja con su miniatura y su texto.</p>}
+        {sinVideo && <p className="hint" style={{ margin: 0 }}>El video no se puede ver aquí (su dirección caducó): «Ver el original».</p>}
 
         {!lectura && (
           <div className="lo-mejor-acciones">

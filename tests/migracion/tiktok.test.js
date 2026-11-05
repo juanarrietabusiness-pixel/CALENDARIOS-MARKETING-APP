@@ -1,459 +1,373 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import worker from "../../worker/index.js";
 import { d1EnMemoria } from "../utils/d1Memoria.js";
-import { crearAcceso, cuentasSinFoto } from "../../worker/lib/acceso.js";
 import { COOKIE } from "../../worker/lib/sesion.js";
 import { sha256 } from "../../worker/lib/ids.js";
-import { programar, procesarCola } from "../../worker/lib/publicador.js";
-import { cuerpoPublicacion, cuerpoFotos, leerPublicacion, firmaWebhook } from "../../worker/lib/postpeer.js";
+import { inspiracionPendiente } from "../../worker/lib/inspiracion.js";
+import { loMejorPendiente } from "../../worker/lib/loMejor.js";
+import { semanaDe } from "../../src/lib/loMejor.js";
+import { fechaEnZona } from "../../src/lib/agenda.js";
 
 // ============================================================
-// TikTok por PostPeer, contra una D1 de verdad y un PostPeer de mentira
+// TikTok por Scrape Creators contra una D1 de verdad y un Scrape Creators de
+// mentira que contesta como su documentación (NADA se ha probado contra el
+// servicio real: gasta créditos).
 //
-// Lo que importa: que salga PÚBLICO y en el acto (draft: false,
-// publishNow), que nunca se mande dos veces la misma publicación (gasta
-// créditos y saldría repetida en el perfil), que lo que la cuenta no deja
-// se diga ANTES de gastar, que la llave no se vea en ningún sitio, y que
-// el webhook sólo valga con su firma.
-//
-// Nada de esto se ha probado contra PostPeer real: el `fetch` contesta
-// con la forma de su documentación.
+// Lo que importa, por orden:
+//   1. Nunca se pasa del tope semanal en lo automático: las cuentas de TikTok,
+//      las tendencias y los anuncios comparten el MISMO tope, lo más viejo va
+//      primero y lo que no cabe espera al lunes (sin mirarlo cada minuto).
+//   2. Una cuenta se lee como mucho una vez por semana; el cron de cada 20 h de
+//      Inspiración no la lee (y no borra lo leído).
+//   3. Lo de a mano cuenta y NO se bloquea, pero se avisa.
+//   4. «rinde» en vistas, la misma pieza es UNA, y las tendencias salen en «Lo
+//      mejor» con su cifra («1,2 M de vistas»).
+//   5. El archivo se baja SIN la llave y sólo de los dominios de TikTok, sin
+//      pagar dos veces; si TikTok no lo da, se dice.
 // ============================================================
 
 const DUENO = "u-jefe";
-const TESTIGO = "testigo-de-sesion-de-prueba";
-const LLAVE = "pp_llave_secreta_123";
-const VIDEO = "/api/media/clientes/c1/posts/v.mp4";
+const TESTIGO = "testigo-tiktok";
+const LLAVE = "sc-llave-secreta";
+const DIA = 86_400_000;
+const MP4 = new Uint8Array([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0, 0, 0, 0, 1, 2, 3, 4]);
+const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 2, 3]);
+
 let db;
 let env;
-let llamadas;
-let respuestas;
+let pedidosSC;
+let bajadas;
+let caducado;
 
-const post = (extra = {}) => ({
-  id: "p1", format: "reel", descripcion: "Receta de otoño", hashtagsFinales: "#cafe", publishTime: "10:00",
-  redes: ["tiktok"], medios: [{ src: VIDEO, tipo: "video", duracion: 20 }], ...extra,
+const hace = (dias) => Math.floor((Date.now() - dias * DIA) / 1000);
+
+function r2() {
+  const objetos = new Map();
+  return {
+    objetos,
+    async get(clave) { return objetos.has(clave) ? { arrayBuffer: async () => objetos.get(clave), httpMetadata: { contentType: "image/jpeg" } } : null; },
+    async head(clave) { return objetos.has(clave) ? {} : null; },
+    async put(clave, valor) { objetos.set(clave, valor instanceof ReadableStream ? new Uint8Array(await new Response(valor).arrayBuffer()) : valor); },
+    async delete(clave) { for (const k of [].concat(clave)) objetos.delete(k); },
+  };
+}
+
+/** Un video de TikTok como lo da su app («aweme»). */
+const aweme = (id, vistas, { usuario = "latienda", dias = 2, video = true } = {}) => ({
+  aweme_id: id, desc: `Video ${id} #bebe`, create_time: hace(dias),
+  author: { unique_id: usuario, nickname: usuario === "latienda" ? "La Tienda" : "Alguien" },
+  statistics: { play_count: vistas, digg_count: Math.round(vistas / 20), comment_count: 10, share_count: 5 },
+  video: {
+    cover: { url_list: [`https://p16-sign-va.tiktokcdn.com/${id}.jpeg`] },
+    ...(video ? { play_addr: { url_list: [`https://v16m.tiktokcdn.com/${id}.mp4`] } } : {}),
+    duration: 20000,
+  },
 });
 
-const datosPostPeer = (extra = {}) => JSON.stringify({ via: "postpeer", profileId: "perfil-1", origen: "https://calendario.test", ...extra });
-
-async function sembrar({ cuenta = "postpeer", posts = [post()] } = {}) {
+async function sembrar() {
   const s = db.sqlite;
   s.prepare("insert into users (id, email, password_hash, salt) values (?,?,?,?)").run(DUENO, "jefe@a.com", "x", "x");
   s.prepare("insert into memberships (user_id, owner_id, rol, nombre, color) values (?,?,?,?,?)").run(DUENO, DUENO, "admin", "Juan", "#1E90FF");
   s.prepare("insert into sessions (token_hash, user_id, created_at, expires_at) values (?,?,?,?)")
     .run(await sha256(TESTIGO), DUENO, "2026-01-01T00:00:00.000Z", "2099-01-01T00:00:00.000Z");
-  s.prepare("insert into clients (id, owner_id, name) values (?,?,?)").run("c1", DUENO, "Dcasa");
-  s.prepare("insert into calendars (id, client_id, owner_id, name, month, year, days) values (?,?,?,?,?,?,?)")
-    .run("cal1", "c1", DUENO, "Octubre", 9, 2026, JSON.stringify([{ date: "2026-10-05", posts }]));
-  if (cuenta === "postpeer") {
-    s.prepare("insert into cuentas_sociales (id, owner_id, red, externo_id, usuario, client_id, datos) values (?,?,?,?,?,?,?)")
-      .run("tk", DUENO, "tiktok", "acc-1", "dcasa", "c1", datosPostPeer());
-  } else if (cuenta === "anterior") {
-    s.prepare("insert into cuentas_sociales (id, owner_id, red, externo_id, usuario, token_cifrado, client_id, datos) values (?,?,?,?,?,?,?,?)")
-      .run("tk", DUENO, "tiktok", "open-1", "dcasa", "cifrado", "c1", JSON.stringify({ modo: "borrador" }));
-  }
+  s.prepare("insert into clients (id, owner_id, name, competidores) values (?,?,?,?)")
+    .run("c1", DUENO, "Baby Caleb", JSON.stringify([{ red: "tiktok", usuario: "latienda", tipo: "competencia" }]));
 }
 
-const CREADOR = { privacyLevelOptions: ["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS", "SELF_ONLY"], commentDisabled: false, duetDisabled: true, stitchDisabled: false, maxVideoPostDurationSec: 600 };
+const pedir = (ruta, opciones = {}) => worker.fetch(new Request(`https://calendarios.test${ruta}`, {
+  ...opciones, headers: { Cookie: `${COOKIE}=${TESTIGO}`, "Content-Type": "application/json" },
+  body: opciones.body === undefined ? undefined : JSON.stringify(opciones.body),
+}), env, { waitUntil() {} });
 
-beforeEach(() => {
-  vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(new Date("2026-10-01T12:00:00.000Z"));
+const creditos = () => db.sqlite.prepare("select fuente, ruta from creditos_sc order by created_at").all();
+
+beforeEach(async () => {
   db = d1EnMemoria();
-  env = {
-    DB: db, POSTPEER_API_KEY: LLAVE, META_APP_SECRET: "meta",
-    MEDIA: { async head(clave) { return ["clientes/c1/posts/v.mp4", "clientes/c1/posts/a.jpg", "clientes/c1/posts/b.jpg", "clientes/c1/posts/grande-tiktok.jpg"].includes(clave) ? { size: 1000 } : null; } },
-  };
-  llamadas = [];
-  respuestas = {
-    "GET /v1/health/auth": { success: true },
-    "GET /v1/tiktok/creator-info": { data: CREADOR },
-    "POST /v1/posts": { postId: "pp-1", status: "processing", platforms: [{ platform: "tiktok", status: "processing" }] },
-    "GET /v1/posts/pp-1": { post: { id: "pp-1", status: "published" }, platforms: [{ platform: "tiktok", status: "published", platformPostUrl: "https://www.tiktok.com/@dcasa/video/777" }] },
-    "POST /v1/profiles": { profile: { id: "perfil-9" } },
-    "GET /v1/connect/tiktok": { url: "https://www.tiktok.com/v2/auth/authorize/?client_key=postpeer" },
-    "GET /v1/connect/integrations": { integrations: [{ id: "acc-9", platform: "tiktok", username: "dcasa.pa", name: "Dcasa" }] },
-  };
-  vi.stubGlobal("fetch", vi.fn(async (url, init = {}) => {
-    const u = new URL(String(url));
-    const metodo = init.method ?? "GET";
-    const cuerpo = typeof init.body === "string" ? JSON.parse(init.body) : null;
-    llamadas.push({ metodo, ruta: u.pathname, params: Object.fromEntries(u.searchParams), cuerpo, cabeceras: init.headers ?? {} });
-    const clave = `${metodo} ${u.pathname}`;
-    if (!(clave in respuestas)) return new Response(JSON.stringify({ error: `no existe ${clave}` }), { status: 404 });
-    const r = typeof respuestas[clave] === "function" ? respuestas[clave](cuerpo) : respuestas[clave];
-    if (r instanceof Error) throw r;
-    if (r.__estado) return new Response(JSON.stringify(r.cuerpo), { status: r.__estado });
-    return new Response(JSON.stringify(r), { status: 200 });
+  env = { DB: db, MEDIA: r2(), SCRAPECREATORS_API_KEY: LLAVE };
+  pedidosSC = [];
+  bajadas = [];
+  caducado = false;
+  vi.stubGlobal("fetch", vi.fn(async (entrada, init = {}) => {
+    const u = new URL(String(entrada));
+    const cabeceras = new Headers(init.headers ?? {});
+    if (u.hostname === "api.scrapecreators.com") {
+      pedidosSC.push({ ruta: u.pathname, params: Object.fromEntries(u.searchParams), llave: cabeceras.get("x-api-key") });
+      if (u.pathname === "/v3/tiktok/profile/videos") {
+        return Response.json({ success: true, aweme_list: [aweme("7300000000000000001", 90000), aweme("7300000000000000002", 3000), aweme("7300000000000000003", 2000), aweme("7300000000000000004", 1000, { video: false })] });
+      }
+      if (u.pathname === "/v1/tiktok/search/keyword") {
+        if (u.searchParams.has("date_posted")) return Response.json({ success: false, message: "date_posted no vale" }, { status: 400 });
+        return Response.json({ search_item_list: [{ aweme_info: aweme("7400000000000000001", 1234567, { usuario: "alguien" }) }, { aweme_info: aweme("7400000000000000002", 5000, { usuario: "alguien" }) }] });
+      }
+      if (u.pathname === "/v1/tiktok/search/hashtag") {
+        return Response.json({ aweme_list: [aweme("7500000000000000001", 800000, { usuario: "alguien" })] });
+      }
+      if (u.pathname === "/v2/tiktok/video") {
+        return Response.json({ aweme_detail: { ...aweme("7300000000000000001", 90000), video: { download_no_watermark_addr: { url_list: ["https://v19.tiktokcdn-us.com/nuevo.mp4"] } } } });
+      }
+      if (u.pathname.startsWith("/v1/facebook/adLibrary")) return Response.json({ results: [], credits_remaining: 9 });
+      return new Response("no", { status: 404 });
+    }
+    if (u.hostname === "api.anthropic.com") return Response.json({ data: [{ id: "claude-sonnet-5" }] });
+    if (/(^|\.)tiktokcdn(-us)?\.com$/.test(u.hostname)) {
+      // Lo de TikTok se baja SIN la llave de Scrape Creators.
+      expect(cabeceras.get("x-api-key")).toBeNull();
+      bajadas.push(u.pathname);
+      if (u.pathname.endsWith(".mp4")) {
+        if (caducado && !u.pathname.endsWith("nuevo.mp4")) return new Response("caducó", { status: 403 });
+        return new Response(MP4, { headers: { "content-type": "video/mp4" } });
+      }
+      return new Response(JPEG, { headers: { "content-type": "image/jpeg" } });
+    }
+    throw new Error(`fetch inesperado a ${u}`);
   }));
+  await sembrar();
 });
 
-afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
-});
+afterEach(() => vi.unstubAllGlobals());
 
-const acceso = () => crearAcceso(db, DUENO);
-const filas = () => db.sqlite.prepare("select * from publicaciones_programadas").all().map((f) => ({ ...f }));
-const rutas = () => llamadas.map((l) => `${l.metodo} ${l.ruta}`);
-const envios = () => llamadas.filter((l) => l.metodo === "POST" && l.ruta === "/v1/posts");
-const conSesion = (ruta, opciones = {}) => new Request(`https://calendario.test${ruta}`, {
-  ...opciones, headers: { Cookie: `${COOKIE}=${TESTIGO}`, "Content-Type": "application/json", ...(opciones.headers ?? {}) },
-});
+const actualizar = async (body = {}) => {
+  const r = await pedir("/api/inspiracion/c1/actualizar", { method: "POST", body });
+  expect(r.status).toBe(200);
+  return r.json();
+};
 
-describe("el cuerpo que se manda", () => {
-  it("público, en el acto, sin borrador, con el video por su dirección", () => {
-    expect(cuerpoPublicacion({ texto: "Hola #x", accountId: "acc-1", urlVideo: "https://a.test/v.mp4", info: { sinDuo: true } })).toEqual({
-      content: "Hola #x",
-      platforms: [{
-        platform: "tiktok", accountId: "acc-1",
-        platformSpecificData: { privacyLevel: "PUBLIC_TO_EVERYONE", disableComment: false, disableDuet: true, disableStitch: false, draft: false },
-      }],
-      mediaItems: [{ type: "video", url: "https://a.test/v.mp4" }],
-      publishNow: true,
+describe("las cuentas de TikTok de Inspiración", () => {
+  it("«Actualizar» la lee por Scrape Creators (un crédito a mano), con «rinde» en vistas, y no otra vez en la semana", async () => {
+    const d = await actualizar();
+    expect(pedidosSC).toHaveLength(1);
+    expect(pedidosSC[0]).toMatchObject({ ruta: "/v3/tiktok/profile/videos", llave: LLAVE });
+    expect(pedidosSC[0].params).toMatchObject({ handle: "latienda", sort_by: "latest" });
+    const cuenta = d.cuentas.find((c) => c.clave === "tiktok:latienda");
+    expect(cuenta).toMatchObject({ nombre: "La Tienda", error: "", feed: true });
+    expect(cuenta.leidaAt).toBeTruthy();
+    const tt = d.publicaciones.filter((p) => p.red === "tiktok");
+    expect(tt).toHaveLength(4);
+    // Vistas 90.000, 3.000, 2.000 y 1.000 → mediana 2.500: rinde 36×, 1,2×, 0,8× y 0,4×.
+    expect(Object.fromEntries(tt.map((p) => [p.id.split(":").at(-1), p.rinde]))).toEqual({
+      "7300000000000000001": 36, "7300000000000000002": 1.2, "7300000000000000003": 0.8, "7300000000000000004": 0.4,
     });
+    expect(creditos()).toEqual([{ fuente: "manual", ruta: "/v3/tiktok/profile/videos" }]);
+    expect(d.avisoSC).toMatch(/TikTok gastó 1 crédito.*van 1 de 10/);
+    // Lo que rinde 3× o más y es nuevo avisa al equipo, como en Instagram.
+    expect(db.sqlite.prepare("select enlace from avisos").all().map((a) => a.enlace)).toEqual(["/cliente/c1/inspiracion?pieza=tt%3A7300000000000000001"]);
+
+    // Dentro de la semana no se vuelve a pedir: ni a mano.
+    await actualizar();
+    expect(pedidosSC).toHaveLength(1);
   });
 
-  it("fotos: el título en content, el texto en description, música de TikTok, portada la primera", () => {
-    expect(cuerpoFotos({ titulo: "Cinco paradas", descripcion: "Cinco paradas\n\n#viaje", accountId: "acc-1", urls: ["https://a.test/1.jpg", "https://a.test/2.jpg"] })).toEqual({
-      content: "Cinco paradas",
-      platforms: [{
-        platform: "tiktok", accountId: "acc-1",
-        platformSpecificData: {
-          description: "Cinco paradas\n\n#viaje", privacyLevel: "PUBLIC_TO_EVERYONE", disableComment: false,
-          autoAddMusic: true, photoCoverIndex: 0, draft: false,
-        },
-      }],
-      mediaItems: [{ type: "image", url: "https://a.test/1.jpg" }, { type: "image", url: "https://a.test/2.jpg" }],
-      publishNow: true,
-    });
+  it("el cron de cada 20 h de Inspiración NO la lee, y conserva lo leído", async () => {
+    await actualizar();
+    db.sqlite.prepare("update inspiracion_cuentas set actualizada_at = ?").run(new Date(Date.now() - 2 * DIA).toJSON());
+    expect(await inspiracionPendiente(env)).toBe(1);
+    expect(pedidosSC).toHaveLength(1);
+    expect(db.sqlite.prepare("select count(*) as n from inspiracion_publicaciones where red = 'tiktok'").get().n).toBe(4);
+    // Y no se queda en bucle: la vuelta siguiente ya no tiene nada.
+    expect(await inspiracionPendiente(env)).toBe(0);
   });
 
-  it("lee el estado de la plataforma por encima del del post, venga el sobre que venga", () => {
-    expect(leerPublicacion({ data: { post: { id: "x", status: "partial" }, platforms: [{ platform: "tiktok", status: "failed", errorMessage: "Video muy corto" }] } }))
-      .toMatchObject({ postId: "x", estado: "fallida", error: "Video muy corto" });
-    expect(leerPublicacion({ postId: "y", status: "published" })).toMatchObject({ postId: "y", estado: "publicada" });
-    expect(leerPublicacion({ id: "z", status: "scheduled" })).toMatchObject({ postId: "z", estado: "en-curso" });
+  it("la primera lectura de una cuenta recién añadida respeta el tope; si no cabe, espera y se dice", async () => {
+    await pedir("/api/lo-mejor/creditos", { method: "PUT", body: { tope: 0 } });
+    const d = await actualizar({ cuentas: ["tiktok:latienda"] });
+    expect(pedidosSC).toHaveLength(0);
+    expect(d.faltan).toEqual([]);
+    expect(d.cuentas[0].nota).toMatch(/en cuanto quepa/);
+    expect(d.avisoSC).toMatch(/espera a que haya créditos/);
+  });
+
+  it("sin la llave, la cuenta dice cómo leerla y no se llama a nadie", async () => {
+    delete env.SCRAPECREATORS_API_KEY;
+    const d = await actualizar();
+    expect(pedidosSC).toHaveLength(0);
+    expect(d.cuentas[0].error).toMatch(/TikTok no deja ver.*Scrape Creators/);
+    expect(d.cuentas[0].feed).toBe(false);
+  });
+
+  it("sale en «Lo mejor» con su clave tt:, «rinde 36× en vistas» y se puede recrear para grabar", async () => {
+    await actualizar();
+    const lm = await (await pedir("/api/lo-mejor?ventana=semana")).json();
+    const p = lm.piezas.find((x) => x.clave === "tt:7300000000000000001");
+    expect(p).toMatchObject({ fuente: "inspiracion", red: "tiktok", formato: "video", conVideo: true });
+    expect(p.cifra.texto).toBe("rinde 36× en vistas");
+    expect(p.caminos).toContain("grabar");
+    expect(p.miniatura).toMatch(/^\/api\/metricas\/miniatura\?u=/);
+    expect(p.video).toMatch(/^\/api\/lo-mejor\/video\?u=/);
   });
 });
 
-describe("publicar en TikTok por PostPeer", () => {
-  it("pregunta a la cuenta, manda una vez y queda publicada con su enlace", async () => {
-    await sembrar();
-    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
-    await procesarCola(env);
-    expect(rutas()).toEqual(["GET /v1/tiktok/creator-info", "POST /v1/posts"]);
-    expect(llamadas[0].params).toEqual({ accountId: "acc-1" });
-    for (const l of llamadas) expect(l.cabeceras["x-access-key"]).toBe(LLAVE);
-    const [envio] = envios();
-    expect(envio.cuerpo).toMatchObject({
-      content: "Receta de otoño\n\n#cafe", publishNow: true,
-      platforms: [{ platform: "tiktok", accountId: "acc-1", platformSpecificData: { privacyLevel: "PUBLIC_TO_EVERYONE", draft: false, disableDuet: true } }],
-    });
-    expect(envio.cuerpo.mediaItems[0].url).toMatch(/^https:\/\/calendario\.test\/api\/medio-publico\/[^/]+\/v\.mp4$/);
-    expect(filas()[0]).toMatchObject({ estado: "procesando", contenedor_id: "pp-1" });
-
-    vi.setSystemTime(new Date("2026-10-01T12:01:00.000Z"));
-    await procesarCola(env);
-    expect(filas()[0]).toMatchObject({ estado: "publicada", externo_id: "pp-1", enlace: "https://www.tiktok.com/@dcasa/video/777" });
-    expect(envios()).toHaveLength(1);
+describe("el video de TikTok a la galería", () => {
+  it("se baja sin la llave y sólo una vez", async () => {
+    await actualizar();
+    const traer = () => pedir("/api/lo-mejor/traer", { method: "POST", body: { clave: "tt:7300000000000000001", clienteId: "c1" } });
+    const r = await traer();
+    expect(r.status).toBe(201);
+    const { archivo } = await r.json();
+    expect(archivo.tipo).toBe("video");
+    expect(env.MEDIA.objetos.has(archivo.clave)).toBe(true);
+    const otra = await (await traer()).json();
+    expect(otra.archivo.repetido).toBe(true);
+    expect(bajadas.filter((b) => b.endsWith(".mp4"))).toHaveLength(1);
   });
 
-  it("si PostPeer contesta ya publicada, queda publicada sin preguntar más", async () => {
-    await sembrar();
-    respuestas["POST /v1/posts"] = { postId: "pp-1", status: "published", platforms: [{ platform: "tiktok", status: "published", platformPostUrl: "https://www.tiktok.com/@dcasa/video/1" }] };
-    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
-    await procesarCola(env);
-    expect(filas()[0]).toMatchObject({ estado: "publicada", enlace: "https://www.tiktok.com/@dcasa/video/1" });
-    expect(rutas()).not.toContain("GET /v1/posts/pp-1");
+  it("si la dirección guardada caducó, el detalle del video da otra (un crédito)", async () => {
+    await actualizar();
+    caducado = true;
+    const r = await pedir("/api/lo-mejor/traer", { method: "POST", body: { clave: "tt:7300000000000000001", clienteId: "c1" } });
+    expect(r.status).toBe(201);
+    expect(pedidosSC.map((p) => p.ruta)).toEqual(["/v3/tiktok/profile/videos", "/v2/tiktok/video"]);
+    expect(pedidosSC[1].params.url).toBe("https://www.tiktok.com/@latienda/video/7300000000000000001");
+    expect(bajadas.at(-1)).toBe("/nuevo.mp4");
   });
 
-  it("si TikTok la deja con otra privacidad, lo avisa", async () => {
-    await sembrar();
-    respuestas["GET /v1/posts/pp-1"] = { post: { id: "pp-1", status: "published" }, platforms: [{ platform: "tiktok", status: "published", privacyLevel: "SELF_ONLY" }] };
-    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
-    await procesarCola(env);
-    vi.setSystemTime(new Date("2026-10-01T12:01:00.000Z"));
-    await procesarCola(env);
-    expect(JSON.parse(filas()[0].carga).aviso).toMatch(/«SELF_ONLY», no pública/);
+  it("«Recrear para…» con IA: el director mira su miniatura SÓLO de inspiración y el original va de referencia", async () => {
+    env.ANTHROPIC_API_KEY = "k";
+    await actualizar();
+    const r = await pedir("/api/lo-mejor/recrear", { method: "POST", body: { clave: "tt:7300000000000000001", clienteId: "c1", camino: "imagen", confirmado: true } });
+    expect(r.status).toBe(201);
+    const d = await r.json();
+    const post = JSON.parse(db.sqlite.prepare("select days from calendars where id = ?").get(d.calendarId).days).flatMap((x) => x.posts).find((p) => p.id === d.postId);
+    expect(post.referencias).toHaveLength(1);
+    expect(post.medios).toBeUndefined();
+    expect(post.recreadoDe).toMatchObject({ clave: "tt:7300000000000000001", fuente: "inspiracion" });
+    const encargo = db.sqlite.prepare("select datos, pasos from estudio_encargos where id = ?").get(d.encargoId);
+    expect(JSON.parse(encargo.datos).especiales[0].papel).toBe("inspiracion");
+    // La imagen de otra cuenta no va al motor de imagen.
+    expect(JSON.stringify(JSON.parse(encargo.pasos)[0].pedido.medios ?? {})).not.toContain("tiktok-latienda");
   });
 
-  it("una cuenta que no deja publicar en público falla ANTES de gastar un crédito", async () => {
-    await sembrar();
-    respuestas["GET /v1/tiktok/creator-info"] = { data: { ...CREADOR, privacyLevelOptions: ["SELF_ONLY"] } };
-    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
-    await procesarCola(env);
-    expect(filas()[0]).toMatchObject({ estado: "error", error: expect.stringMatching(/no deja publicar en público/) });
-    expect(envios()).toHaveLength(0);
+  it("si TikTok no da el archivo, se dice y se trabaja con la miniatura", async () => {
+    await actualizar();
+    delete env.SCRAPECREATORS_API_KEY;
+    const r = await pedir("/api/lo-mejor/traer", { method: "POST", body: { clave: "tt:7300000000000000004", clienteId: "c1" } });
+    expect(r.status).toBe(409);
+    const d = await r.json();
+    expect(d.codigo).toBe("sin_archivo");
+    expect(d.error).toMatch(/miniatura y su texto/);
+    const mini = await pedir("/api/lo-mejor/traer", { method: "POST", body: { clave: "tt:7300000000000000004", clienteId: "c1", miniatura: true } });
+    expect(mini.status).toBe(201);
+    expect((await mini.json()).archivo.tipo).toBe("imagen");
   });
+});
 
-  it("un video más largo de lo que admite la cuenta, tampoco", async () => {
-    await sembrar({ posts: [post({ medios: [{ src: VIDEO, tipo: "video", duracion: 900 }] })] });
-    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
-    await procesarCola(env);
-    expect(filas()[0].error).toMatch(/dura 900 s.*hasta 600 s/);
-    expect(envios()).toHaveLength(0);
-  });
-
-  it("sin respuesta al mandarla no se vuelve a mandar sola; «Reintentar» (una persona) sí", async () => {
-    await sembrar();
-    respuestas["POST /v1/posts"] = new TypeError("network down");
-    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
-    await procesarCola(env);
-    expect(filas()[0]).toMatchObject({ estado: "error", error: expect.stringMatching(/no se sabe si la recibió/) });
-    vi.setSystemTime(new Date("2026-10-01T13:00:00.000Z"));
-    await procesarCola(env);
-    expect(envios()).toHaveLength(1);
-
-    respuestas["POST /v1/posts"] = { postId: "pp-1", status: "processing" };
-    const r = await worker.fetch(conSesion(`/api/publicar/${filas()[0].id}/reintentar`, { method: "POST" }), env, {});
+describe("las tendencias por palabra", () => {
+  it("se guardan limpias por cliente y salen en el feed", async () => {
+    const r = await pedir("/api/inspiracion/c1/tendencias", { method: "PUT", body: { palabras: ["#BabyShower", "cuna para bebé", "x", "#babyshower"] } });
     expect(r.status).toBe(200);
-    expect(envios()).toHaveLength(2);
-    expect(filas()[0]).toMatchObject({ estado: "procesando", contenedor_id: "pp-1" });
+    const d = await r.json();
+    expect(d.palabras.map((p) => p.palabra)).toEqual(["#babyshower", "cuna para bebé"]);
+    expect(d.activas).toBe(true);
+    const feed = await (await pedir("/api/inspiracion/c1")).json();
+    expect(feed.tendencias.palabras).toHaveLength(2);
+    expect(feed.sc).toBe(true);
+    // Quitar una se lleva sus videos.
+    await pedir("/api/inspiracion/c1/tendencias", { method: "PUT", body: { palabras: ["cuna para bebé"] } });
+    expect(db.sqlite.prepare("select palabra from tendencias_palabras").all()).toEqual([{ palabra: "cuna para bebé" }]);
   });
 
-  it("un rechazo claro de PostPeer queda en error con su motivo, y la llave no aparece en él", async () => {
-    await sembrar();
-    respuestas["POST /v1/posts"] = { __estado: 400, cuerpo: { error: "Invalid media URL" } };
-    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
-    await procesarCola(env);
-    expect(filas()[0]).toMatchObject({ estado: "error", error: "PostPeer: Invalid media URL" });
-    expect(JSON.stringify(filas())).not.toContain(LLAVE);
+  it("el cron las lee una por vuelta (por palabra; sin la fecha si no la entiende) y salen en «Lo mejor» con sus vistas", async () => {
+    // Sin cuentas de TikTok: sólo las palabras.
+    db.sqlite.prepare("update clients set competidores = '[]'").run();
+    await pedir("/api/inspiracion/c1/tendencias", { method: "PUT", body: { palabras: ["cuna para bebé"] } });
+    expect(await loMejorPendiente(env)).toBe(1);
+    // La primera vez con la fecha de esta semana (la API la rechaza con 400, que no cobra) y luego sin ella.
+    expect(pedidosSC.map((p) => p.ruta)).toEqual(["/v1/tiktok/search/keyword", "/v1/tiktok/search/keyword"]);
+    expect(pedidosSC[0].params).toMatchObject({ query: "cuna para bebé", date_posted: "this-week" });
+    expect(creditos()).toEqual([{ fuente: "auto", ruta: "/v1/tiktok/search/keyword" }]);
+    const lm = await (await pedir("/api/lo-mejor?ventana=semana")).json();
+    const t = lm.piezas.filter((p) => p.fuente === "tendencia");
+    expect(t.map((p) => p.clave)).toEqual(["tt:7400000000000000001", "tt:7400000000000000002"]);
+    expect(t[0].cifra.texto).toBe("1,2 M de vistas");
+    expect(t[0].cifra.detalle).toContain("por cuna para bebé");
+    expect(t[0].percentil).toBeGreaterThan(t[1].percentil);
+    expect((await (await pedir("/api/lo-mejor?ventana=semana&fuente=tendencia")).json()).piezas).toHaveLength(2);
+    // Ya leída esta semana: el cron no la repite (sin IA de texto no hay nada más que hacer).
+    expect(await loMejorPendiente(env)).toBe(0);
+    expect(pedidosSC).toHaveLength(2);
   });
 
-  it("si PostPeer dice que falló, queda en error con lo que dijo", async () => {
-    await sembrar();
-    respuestas["GET /v1/posts/pp-1"] = { post: { id: "pp-1", status: "failed" }, platforms: [{ platform: "tiktok", status: "failed", errorMessage: "Video too short" }] };
-    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
-    await procesarCola(env);
-    vi.setSystemTime(new Date("2026-10-01T12:01:00.000Z"));
-    await procesarCola(env);
-    expect(filas()[0]).toMatchObject({ estado: "error", error: expect.stringMatching(/Video too short/) });
-    expect(envios()).toHaveLength(1);
-  });
-
-  it("si nunca termina, a los 30 minutos queda en error sin mandar otra", async () => {
-    await sembrar();
-    respuestas["GET /v1/posts/pp-1"] = { post: { id: "pp-1", status: "processing" } };
-    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
-    await procesarCola(env);
-    vi.setSystemTime(new Date("2026-10-01T12:10:00.000Z"));
-    await procesarCola(env);
-    expect(filas()[0].estado).toBe("procesando");
-    vi.setSystemTime(new Date("2026-10-01T12:31:00.000Z"));
-    await procesarCola(env);
-    expect(filas()[0]).toMatchObject({ estado: "error", error: expect.stringMatching(/más de 30 minutos.*processing/s) });
-    expect(envios()).toHaveLength(1);
-  });
-
-  it("un TikTok de la app anterior no se programa: hay que conectarlo con PostPeer", async () => {
-    await sembrar({ cuenta: "anterior" });
-    await expect(programar(env, acceso(), { calendarId: "cal1", postId: "p1" })).rejects.toThrow(/app anterior.*PostPeer/);
-  });
-
-  it("…ni bloquea las demás redes del cliente: sin redes elegidas, sale en las que sí publican", async () => {
-    await sembrar({ cuenta: "anterior", posts: [post({ redes: undefined })] });
-    db.sqlite.prepare("insert into cuentas_sociales (id, owner_id, red, externo_id, token_cifrado, client_id) values (?,?,?,?,?,?)")
-      .run("ig", DUENO, "instagram", "ig-1", "cifrado", "c1");
-    db.sqlite.prepare("insert into integracion_meta (id, owner_id, usuario_meta, token_cifrado) values (?,?,?,?)").run(DUENO, DUENO, "m", "cifrado");
-    const nuevas = await programar(env, acceso(), { calendarId: "cal1", postId: "p1" });
-    expect(nuevas.map((f) => f.red)).toEqual(["instagram"]);
-  });
-
-  it("un carrusel de fotos sale en TikTok: las dos firmadas, título y descripción, una sola vez", async () => {
-    const fotos = [
-      { src: "/api/media/clientes/c1/posts/a.jpg", ancho: 1080, alto: 1350 },
-      { src: "/api/media/clientes/c1/posts/b.jpg", ancho: 1080, alto: 1350 },
-    ];
-    await sembrar({ posts: [post({ format: "carrusel", descripcion: "Cinco paradas\nPara tu próximo viaje", medios: fotos })] });
-    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
-    await procesarCola(env);
-    expect(rutas()).toEqual(["GET /v1/tiktok/creator-info", "POST /v1/posts"]);
-    const [envio] = envios();
-    expect(envio.cuerpo).toMatchObject({
-      content: "Cinco paradas", publishNow: true,
-      platforms: [{ platform: "tiktok", accountId: "acc-1", platformSpecificData: {
-        description: "Cinco paradas\nPara tu próximo viaje\n\n#cafe", autoAddMusic: true, photoCoverIndex: 0, privacyLevel: "PUBLIC_TO_EVERYONE", draft: false,
-      } }],
-    });
-    expect(envio.cuerpo.mediaItems.map((m) => m.type)).toEqual(["image", "image"]);
-    expect(envio.cuerpo.mediaItems[0].url).toMatch(/^https:\/\/calendario\.test\/api\/medio-publico\/[^/]+\/a\.jpg$/);
-    expect(envio.cuerpo.mediaItems[1].url).toMatch(/\/b\.jpg$/);
-    vi.setSystemTime(new Date("2026-10-01T12:01:00.000Z"));
-    await procesarCola(env);
-    expect(filas()[0]).toMatchObject({ estado: "publicada", externo_id: "pp-1" });
-    expect(envios()).toHaveLength(1);
-  });
-
-  it("una foto en 2K (o PNG) sale por su copia para TikTok de 1080p, la que hizo el navegador al programar", async () => {
-    const grande = "/api/media/clientes/c1/posts/grande.png";
-    await sembrar({ posts: [post({ format: "post", medios: [{ src: grande, ancho: 2048, alto: 2560 }],
-      adaptados: { [`tiktok|${grande}`]: { src: "/api/media/clientes/c1/posts/grande-tiktok.jpg", ancho: 1080, alto: 1350 } } })] });
-    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
-    await procesarCola(env);
-    const [envio] = envios();
-    expect(envio.cuerpo.mediaItems.map((m) => m.url)).toEqual([expect.stringMatching(/\/grande-tiktok\.jpg$/)]);
-  });
-
-  it("un 202 con «success: false» y sin motivo es «aceptada», no un error (el carrusel de Dcasa)", async () => {
-    const fotos = [
-      { src: "/api/media/clientes/c1/posts/a.jpg", ancho: 1080, alto: 1350 },
-      { src: "/api/media/clientes/c1/posts/b.jpg", ancho: 1080, alto: 1350 },
-    ];
-    await sembrar({ posts: [post({ format: "carrusel", medios: fotos })] });
-    respuestas["POST /v1/posts"] = { __estado: 202, cuerpo: { success: false, data: { post: { id: "pp-1", status: "processing" } } } };
-    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
-    await procesarCola(env);
-    expect(filas()[0]).toMatchObject({ estado: "procesando", contenedor_id: "pp-1" });
-    vi.setSystemTime(new Date("2026-10-01T12:01:00.000Z"));
-    await procesarCola(env);
-    expect(filas()[0]).toMatchObject({ estado: "publicada", externo_id: "pp-1" });
-    expect(envios()).toHaveLength(1);
-  });
-
-  it("un 202 sin id no se manda otra vez sola: se dice qué llegó", async () => {
-    await sembrar();
-    respuestas["POST /v1/posts"] = { __estado: 202, cuerpo: { success: false, queued: true } };
-    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
-    await procesarCola(env);
-    expect(filas()[0]).toMatchObject({ estado: "error", error: expect.stringMatching(/no devolvió su id \(llegó: success, queued\)/) });
-    vi.setSystemTime(new Date("2026-10-01T13:00:00.000Z"));
-    await procesarCola(env);
-    expect(envios()).toHaveLength(1);
-  });
-
-  it("un 200 con «success: false» y su motivo sigue siendo un rechazo", async () => {
-    await sembrar();
-    respuestas["POST /v1/posts"] = { success: false, error: "Invalid media URL" };
-    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
-    await procesarCola(env);
-    expect(filas()[0]).toMatchObject({ estado: "error", error: "PostPeer: Invalid media URL" });
-  });
-
-  it("una foto que ya no está en el almacenamiento falla ANTES de gastar un crédito", async () => {
-    await sembrar({ posts: [post({ format: "post", medios: [{ src: "/api/media/clientes/c1/posts/borrada.jpg" }] })] });
-    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
-    await procesarCola(env);
-    expect(filas()[0].error).toMatch(/Una de las fotos ya no está/);
-    expect(envios()).toHaveLength(0);
-  });
-
-  it("fotos con proporciones distintas no se programan para TikTok", async () => {
-    await sembrar({ posts: [post({ format: "carrusel", medios: [
-      { src: "/api/media/clientes/c1/posts/a.jpg", ancho: 1080, alto: 1350 },
-      { src: "/api/media/clientes/c1/posts/b.jpg", ancho: 1080, alto: 1920 },
-    ] })] });
-    await expect(programar(env, acceso(), { calendarId: "cal1", postId: "p1" })).rejects.toThrow(/misma proporción/);
-  });
-
-  it("sin nada que publicar no se programa para TikTok", async () => {
-    await sembrar({ posts: [post({ format: "post", medios: [] })] });
-    await expect(programar(env, acceso(), { calendarId: "cal1", postId: "p1" })).rejects.toThrow(/TikTok necesita un video o al menos una foto/);
-  });
-
-  it("sin la llave en el Worker, error que dice qué falta", async () => {
-    await sembrar();
-    delete env.POSTPEER_API_KEY;
-    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
-    await procesarCola(env);
-    expect(filas()[0].error).toMatch(/Falta POSTPEER_API_KEY/);
-    expect(llamadas).toHaveLength(0);
+  it("con el interruptor apagado ni se leen ni se enseñan", async () => {
+    db.sqlite.prepare("update clients set competidores = '[]'").run();
+    await pedir("/api/inspiracion/c1/tendencias", { method: "PUT", body: { palabras: ["#babyshower"] } });
+    expect(await loMejorPendiente(env)).toBe(1);
+    expect(pedidosSC.map((p) => p.ruta)).toEqual(["/v1/tiktok/search/hashtag"]);
+    const apagar = await pedir("/api/lo-mejor/creditos", { method: "PUT", body: { tendencias: false } });
+    expect((await apagar.json()).tendencias).toBe(false);
+    expect((await (await pedir("/api/lo-mejor?ventana=semana")).json()).piezas.some((p) => p.fuente === "tendencia")).toBe(false);
+    db.sqlite.prepare("update tendencias_palabras set leida_at = ?").run(new Date(Date.now() - 8 * DIA).toJSON());
+    expect(await loMejorPendiente(env)).toBe(0);
+    expect(pedidosSC).toHaveLength(1);
   });
 });
 
-describe("el webhook", () => {
-  const SECRETO = "whsec_prueba";
-  async function avisar(cuerpo, { marca = String(Math.floor(Date.now() / 1000)), firma = null } = {}) {
-    const crudo = JSON.stringify(cuerpo);
-    return worker.fetch(new Request("https://calendario.test/api/webhooks/postpeer", {
-      method: "POST", body: crudo,
-      headers: { "X-PostPeer-Timestamp": marca, "X-PostPeer-Signature": firma ?? await firmaWebhook(SECRETO, marca, crudo) },
-    }), env, {});
-  }
-  const publicado = { id: "evt-1", type: "post.published", data: { post: { id: "pp-1", status: "published" }, platforms: [{ platform: "tiktok", status: "published", platformPostUrl: "https://www.tiktok.com/@dcasa/video/5" }] } };
+describe("el reparto del tope", () => {
+  const filtro = () => db.sqlite.prepare("insert into biblioteca_filtros (id, owner_id, client_id, nombre, consulta) values (?,?,?,?,?)")
+    .run("f1", DUENO, "c1", "Competidor", JSON.stringify({ fuente: "sc", modo: "empresa", empresa: "Competidor" }));
 
-  beforeEach(async () => {
-    env.POSTPEER_WEBHOOK_SECRET = SECRETO;
-    await sembrar();
-    await programar(env, acceso(), { calendarId: "cal1", postId: "p1", ahoraMismo: true });
-    await procesarCola(env);
+  it("lo más viejo primero, nunca se pasa y lo que no cabe espera al lunes (sin mirarlo cada minuto)", async () => {
+    filtro();
+    // Los anuncios se releyeron hace 8 días; la cuenta y la palabra no se han leído nunca.
+    db.sqlite.prepare("insert into lo_mejor_ajustes (id, owner_id, sc_tope_semana, sc_releido_at) values (?,?,?,?)")
+      .run(DUENO, DUENO, 2, new Date(Date.now() - 8 * DIA).toJSON());
+    // La fila de la cuenta la crea el cron de 20 h (sin leerla por Scrape Creators).
+    expect(await inspiracionPendiente(env)).toBe(1);
+    await pedir("/api/inspiracion/c1/tendencias", { method: "PUT", body: { palabras: ["#bebe"] } });
+    expect(pedidosSC).toHaveLength(0);
+
+    expect(await loMejorPendiente(env)).toBe(1);
+    expect(await loMejorPendiente(env)).toBe(1);
+    // Las dos que nunca se leyeron, antes que los anuncios (que se releyeron hace 8 días).
+    expect(pedidosSC.map((p) => p.ruta).sort()).toEqual(["/v1/tiktok/search/hashtag", "/v3/tiktok/profile/videos"]);
+    // El tope (2) ya está: la tercera vuelta marca el espacio lleno y NO llama.
+    expect(await loMejorPendiente(env)).toBe(1);
+    expect(pedidosSC).toHaveLength(2);
+    expect(db.sqlite.prepare("select sc_lleno from lo_mejor_ajustes").get().sc_lleno).toBe(semanaDe(fechaEnZona()));
+    // Y ya no lo mira: los anuncios esperan a la semana que viene.
+    expect(await loMejorPendiente(env)).toBe(0);
+    const c = await (await pedir("/api/lo-mejor/creditos")).json();
+    expect(c).toMatchObject({ total: 2, auto: 2, tope: 2, lleno: true, libres: 0 });
+    expect(c.espera).toMatchObject({ tiktok: 0, palabras: 0, anuncios: true, busquedas: 1 });
+
+    // La semana que viene, con su tope entero, van los anuncios (lo más viejo).
+    const lunes = new Date(Date.now() + 8 * DIA);
+    expect(await loMejorPendiente(env, lunes)).toBe(1);
+    expect(pedidosSC.at(-1).ruta).toBe("/v1/facebook/adLibrary/company/ads");
   });
 
-  it("con su firma, cierra la publicación sin esperar al cron", async () => {
-    const r = await avisar(publicado);
-    expect(await r.json()).toEqual({ ok: true, aplicadas: 1 });
-    expect(filas()[0]).toMatchObject({ estado: "publicada", externo_id: "pp-1", enlace: "https://www.tiktok.com/@dcasa/video/5" });
+  it("subir el tope deja leer lo que esperaba esa misma semana", async () => {
+    await pedir("/api/lo-mejor/creditos", { method: "PUT", body: { tope: 0 } });
+    expect(await inspiracionPendiente(env)).toBe(1);
+    expect(await loMejorPendiente(env)).toBe(1);
+    expect(pedidosSC).toHaveLength(0);
+    expect(db.sqlite.prepare("select sc_lleno from lo_mejor_ajustes").get().sc_lleno).toBeTruthy();
+    const r = await (await pedir("/api/lo-mejor/creditos", { method: "PUT", body: { tope: 5 } })).json();
+    expect(r.lleno).toBe(false);
+    expect(r.espera.tiktok).toBe(1);
+    expect(await loMejorPendiente(env)).toBe(1);
+    expect(pedidosSC.map((p) => p.ruta)).toEqual(["/v3/tiktok/profile/videos"]);
+    expect(creditos()).toEqual([{ fuente: "auto", ruta: "/v3/tiktok/profile/videos" }]);
   });
 
-  it("sin firma buena, viejo o repetido, no toca nada", async () => {
-    expect((await avisar(publicado, { firma: "sha256=00" })).status).toBe(403);
-    expect((await avisar(publicado, { marca: String(Math.floor(Date.now() / 1000) - 600) })).status).toBe(403);
-    expect(filas()[0].estado).toBe("procesando");
-    const enCurso = { id: "evt-0", type: "post.scheduled", data: { post: { id: "pp-1", status: "scheduled" } } };
-    await avisar(enCurso);
-    expect(await (await avisar(enCurso)).json()).toEqual({ ok: true, aplicadas: 0 });
+  it("lo de a mano no se bloquea aunque se pase del tope, y se avisa", async () => {
+    await pedir("/api/lo-mejor/creditos", { method: "PUT", body: { tope: 0 } });
+    const d = await actualizar();
+    expect(pedidosSC).toHaveLength(1);
+    expect(d.avisoSC).toMatch(/se pasó del tope/);
   });
 
-  it("un fallo deja la fila en error con el motivo", async () => {
-    await avisar({ id: "evt-2", type: "post.failed", data: { post: { id: "pp-1", status: "failed" }, platforms: [{ platform: "tiktok", status: "failed", errorMessage: "Spam risk" }] } });
-    expect(filas()[0]).toMatchObject({ estado: "error", error: expect.stringMatching(/Spam risk/) });
-  });
-});
-
-describe("conectar la cuenta de un cliente", () => {
-  it("crea su perfil en PostPeer y da la dirección del permiso", async () => {
-    await sembrar({ cuenta: null });
-    const r = await worker.fetch(conSesion("/api/redes/postpeer/conectar", { method: "POST", body: JSON.stringify({ clientId: "c1" }) }), env, {});
-    expect(await r.json()).toEqual({ url: "https://www.tiktok.com/v2/auth/authorize/?client_key=postpeer", profileId: "perfil-9" });
-    expect(llamadas.find((l) => l.ruta === "/v1/profiles").cuerpo).toEqual({ name: "Dcasa" });
-    expect(llamadas.find((l) => l.ruta === "/v1/connect/tiktok").params).toEqual({ profileId: "perfil-9" });
+  it("lo buscado a mano en la Biblioteca tampoco se bloquea, y dice cómo va la semana", async () => {
+    await pedir("/api/lo-mejor/creditos", { method: "PUT", body: { tope: 0 } });
+    const r = await pedir(`/api/biblioteca/sc/anuncios?c=${encodeURIComponent(JSON.stringify({ modo: "palabra", q: "cunas" }))}`);
+    expect(r.status).toBe(200);
+    expect((await r.json()).semana).toEqual({ total: 1, tope: 0 });
   });
 
-  it("con un perfil ya creado no crea otro", async () => {
-    await sembrar({ cuenta: null });
-    await worker.fetch(conSesion("/api/redes/postpeer/conectar", { method: "POST", body: JSON.stringify({ clientId: "c1", profileId: "perfil-1" }) }), env, {});
-    expect(rutas()).toEqual(["GET /v1/connect/tiktok"]);
-  });
-
-  it("«Ya la conecté» guarda la cuenta del perfil como la del cliente y suelta la de la app anterior", async () => {
-    await sembrar({ cuenta: "anterior" });
-    const r = await worker.fetch(conSesion("/api/redes/postpeer/vincular", { method: "POST", body: JSON.stringify({ clientId: "c1", profileId: "perfil-9" }) }), env, {});
-    expect(await r.json()).toMatchObject({ red: "tiktok", externoId: "acc-9", usuario: "dcasa.pa", clientId: "c1", via: "postpeer" });
-    const nueva = db.sqlite.prepare("select * from cuentas_sociales where externo_id = 'acc-9'").get();
-    expect(JSON.parse(nueva.datos)).toEqual({ via: "postpeer", profileId: "perfil-9", origen: "https://calendario.test" });
-    expect(nueva.token_cifrado).toBeNull();
-    expect(db.sqlite.prepare("select client_id from cuentas_sociales where id = 'tk'").get().client_id).toBeNull();
-  });
-
-  it("pegando el id, se comprueba con PostPeer antes de guardarlo", async () => {
-    await sembrar({ cuenta: null });
-    respuestas["GET /v1/tiktok/creator-info"] = { __estado: 404, cuerpo: { error: "Account not found" } };
-    const mal = await worker.fetch(conSesion("/api/redes/postpeer/vincular", { method: "POST", body: JSON.stringify({ clientId: "c1", accountId: "otra" }) }), env, {});
-    expect(mal.status).toBe(502);
-    expect(db.sqlite.prepare("select count(*) n from cuentas_sociales").get().n).toBe(0);
-  });
-
-  it("la llave mala se dice sin enseñarla", async () => {
-    await sembrar({ cuenta: null });
-    respuestas["GET /v1/health/auth"] = { __estado: 401, cuerpo: { error: "Unauthorized" } };
-    const r = await worker.fetch(conSesion("/api/redes/postpeer/llave"), env, {});
-    const texto = await r.text();
-    expect(r.status).toBe(502);
-    expect(texto).toMatch(/no aceptó la llave/);
-    expect(texto).not.toContain(LLAVE);
-  });
-
-  it("el estado de Ajustes no lleva la llave, y sí la dirección del webhook", async () => {
-    await sembrar();
-    const texto = await (await worker.fetch(conSesion("/api/redes/estado"), env, {})).text();
-    expect(texto).not.toContain(LLAVE);
-    expect(JSON.parse(texto).tiktok).toEqual({ configurado: true, webhook: false, urlWebhook: "https://calendario.test/api/webhooks/postpeer" });
-  });
-});
-
-describe("medir", () => {
-  it("TikTok ya no entra en la foto diaria de métricas", async () => {
-    await sembrar();
-    expect(await cuentasSinFoto(db, "2026-09-30", 5)).toEqual([]);
+  it("la cuenta que el cliente ya no sigue no se lee: se borra", async () => {
+    expect(await inspiracionPendiente(env)).toBe(1);
+    // Se quita de la lista sin que el cron de 20 h haya pasado todavía.
+    db.sqlite.prepare("update clients set competidores = '[]'").run();
+    expect(await loMejorPendiente(env)).toBe(1);
+    expect(pedidosSC).toHaveLength(0);
+    expect(db.sqlite.prepare("select count(*) as n from inspiracion_cuentas").get().n).toBe(0);
   });
 });

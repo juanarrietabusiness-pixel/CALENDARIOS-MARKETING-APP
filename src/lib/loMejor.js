@@ -10,7 +10,11 @@
 //   · lo mejor PROPIO de cada cliente (sus métricas: interacciones, guardados,
 //     compartidos);
 //   · los ANUNCIOS de las búsquedas guardadas de Scrape Creators (cuántos días
-//     llevan, si siguen activos, cuántas versiones tienen).
+//     llevan, si siguen activos, cuántas versiones tienen);
+//   · las TENDENCIAS de TikTok de las palabras de cada cliente, por Scrape
+//     Creators (los videos con más vistas de la semana: «1,2 M de vistas»).
+//     Las cuentas de TikTok que sigue un cliente entran como inspiración, con
+//     «rinde X×» en VISTAS contra la mediana de esa cuenta.
 //
 // CÓMO SE ORDENA. Cada fuente mide distinto («4,1×» no es «63 días»), así que
 // cada una tiene su SEÑAL y la señal se pasa a PERCENTIL dentro de su fuente y de
@@ -26,6 +30,7 @@
 // ============================================================
 
 import { fechaEnZona, sumarDias, diasEntre } from "./agenda.js";
+import { cifraCorta } from "./scrapeCreators.js";
 
 export const VENTANAS = Object.freeze([
   { id: "semana", nombre: "Esta semana", dias: 7 },
@@ -36,6 +41,7 @@ export const VENTANAS = Object.freeze([
 export const FUENTES = Object.freeze({
   inspiracion: { nombre: "Inspiración", icono: "eye" },
   anuncio: { nombre: "Anuncio", icono: "megaphone" },
+  tendencia: { nombre: "Tendencia de TikTok", icono: "trending" },
   propia: { nombre: "Lo tuyo", icono: "star" },
   referencia: { nombre: "Guardada por el equipo", icono: "bookmark" },
 });
@@ -147,10 +153,14 @@ export function claveDeEnlace(enlace) {
 export function claveDeInspiracion(p) {
   if (p?.red === "youtube") return `yt:${p.externo_id ?? p.externoId}`;
   if (p?.red === "instagram") return `ig:${p.codigo || p.externo_id || p.externoId}`;
+  // TikTok, como su enlace (`claveDeEnlace`): el mismo video seguido, en tendencia y guardado en el banco es UNO.
+  if (p?.red === "tiktok") return `tt:${p.externo_id ?? p.externoId}`;
   return `${p?.red}:${p?.externo_id ?? p?.externoId}`;
 }
 
 export const claveDeAnuncio = (a) => `fb-ad:${a?.anuncio_id ?? a?.id}`;
+/** La de un video de tendencia de TikTok (la misma regla que la consulta del cron en acceso.js). Pura. */
+export const claveDeTendencia = (v) => `tt:${v?.externo_id ?? v?.externoId ?? v?.id}`;
 
 /** La de una publicación propia (de sus métricas): por su enlace si se reconoce, si no por la red y su id. Pura. */
 export function claveDePropia(p) {
@@ -246,11 +256,11 @@ export function filtrarLoMejor(items = [], { cliente = "", red = "", formato = "
     && (!fuente || it.fuente === fuente || (it.tambien ?? []).includes(fuente)));
 }
 
-const PRIORIDAD_FUENTE = { inspiracion: 0, anuncio: 1, propia: 2, referencia: 3 };
+const PRIORIDAD_FUENTE = { inspiracion: 0, tendencia: 1, anuncio: 2, propia: 3, referencia: 4 };
 
 /**
- * Una pieza que sale en varias fuentes o de varios clientes es UNA: se queda la que mide mejor (inspiración, anuncio,
- * propia, referencia), con los clientes de todas y las fuentes en `tambien`. Pura.
+ * Una pieza que sale en varias fuentes o de varios clientes es UNA: se queda la que mide mejor (inspiración, tendencia,
+ * anuncio, propia, referencia), con los clientes de todas y las fuentes en `tambien`. Pura.
  */
 export function unirRepetidas(items = []) {
   const porClave = new Map();
@@ -283,6 +293,13 @@ const veces = (r) => `${String(Math.round(r * 10) / 10).replace(".", ",")}×`;
  */
 export function cifraDe(it) {
   const c = it?.cifras ?? {};
+  if (it?.fuente === "tendencia") {
+    const vistas = numero(c.vistas);
+    return {
+      texto: vistas >= 1e6 ? `${cifraCorta(vistas)} de vistas` : `${cifraCorta(vistas)} vistas`,
+      detalle: [`${cifraCorta(c.meGusta)} me gusta`, numero(c.compartidos) ? `${cifraCorta(c.compartidos)} compartidos` : "", c.palabra ? `por ${c.palabra}` : ""].filter(Boolean).join(" · "),
+    };
+  }
   if (it?.fuente === "anuncio") {
     const dias = numero(c.dias);
     return {
@@ -298,7 +315,8 @@ export function cifraDe(it) {
   if (it?.fuente === "referencia") {
     return { texto: Number.isFinite(it.rinde) ? `rinde ${veces(it.rinde)}` : "Guardada por el equipo", detalle: it.cuenta ? `de ${it.cuenta}` : "" };
   }
-  const detalle = [numero(c.vistas) ? `${numero(c.vistas).toLocaleString("es-PA")} vistas` : "", `${numero(c.meGusta).toLocaleString("es-PA")} me gusta`, `${numero(c.comentarios).toLocaleString("es-PA")} comentarios`].filter(Boolean).join(" · ");
+  const detalle = [numero(c.vistas) ? `${numero(c.vistas).toLocaleString("es-PA")} vistas` : "", `${numero(c.meGusta).toLocaleString("es-PA")} me gusta`, `${numero(c.comentarios).toLocaleString("es-PA")} comentarios`,
+    numero(c.compartidos) ? `${numero(c.compartidos).toLocaleString("es-PA")} compartidos` : ""].filter(Boolean).join(" · ");
   if (Number.isFinite(it?.rindeVistas)) return { texto: `rinde ${veces(it.rindeVistas)} en vistas`, detalle };
   return { texto: Number.isFinite(it?.rinde) ? `rinde ${veces(it.rinde)}` : "Sin medir", detalle };
 }
@@ -436,8 +454,10 @@ export function nombreDelTipo(it) {
 // Del servidor a la pantalla y al banco
 // ------------------------------------------------------------
 
-const HOSTS_MINIATURA = /(^|\.)(cdninstagram\.com|fbcdn\.net|tiktokcdn\.com|tiktokcdn-us\.com|ytimg\.com)$/;
-const HOSTS_VIDEO = /(^|\.)(cdninstagram\.com|fbcdn\.net)$/;
+const HOSTS_MINIATURA = /(^|\.)(cdninstagram\.com|fbcdn\.net|tiktokcdn\.com|tiktokcdn-us\.com|tiktokcdn-eu\.com|ytimg\.com)$/;
+// TikTok también: su dirección caduca en horas y puede no contestar sin su cookie; si no se reproduce, la tarjeta
+// enseña la miniatura y «Ver el original».
+const HOSTS_VIDEO = /(^|\.)(cdninstagram\.com|fbcdn\.net|tiktokcdn\.com|tiktokcdn-us\.com|tiktokcdn-eu\.com|tiktokv\.com|tiktokv\.us)$/;
 
 /** ¿Una miniatura que se puede pedir por el proxy de miniaturas (y mirar desde el Worker)? Pura. */
 export function miniaturaPermitida(url) {
@@ -449,7 +469,7 @@ export function miniaturaPermitida(url) {
   }
 }
 
-/** ¿Un video del CDN de Meta, que se puede reproducir por el proxy de videos? Pura. */
+/** ¿Un video del CDN de Meta (o de TikTok), que se puede reproducir por el proxy de videos? Pura. */
 export function videoPermitido(url) {
   try {
     const u = new URL(String(url ?? ""));

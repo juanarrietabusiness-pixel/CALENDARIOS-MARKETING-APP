@@ -202,3 +202,197 @@ export function claveDeCache(ruta, params = {}) {
   const orden = Object.keys(params).sort().map((k) => `${k}=${params[k]}`).join("&");
   return `${ruta}?${orden}`;
 }
+
+// ------------------------------------------------------------
+// TikTok por Scrape Creators (las cuentas de cada cliente y las tendencias)
+// ------------------------------------------------------------
+//
+// La agencia lo usa SÓLO para anuncios y para TikTok (Instagram sigue por la
+// API de Meta, gratis): TikTok no deja ver lo de otras cuentas por su API. Cada
+// petición es un crédito y entra en el MISMO tope semanal que los anuncios.
+//
+// Las rutas salen de la documentación pública de Scrape Creators (sus
+// tutoriales: /v3/tiktok/profile/videos con `handle`, /v1/tiktok/search/keyword
+// con `query`, /v1/tiktok/search/hashtag con `hashtag` y /v2/tiktok/video con
+// `url`). La respuesta es la de la app de TikTok («aweme»), y se lee con
+// TOLERANCIA: `aweme_list` o `search_item_list[].aweme_info`, `statistics` o
+// `stats`, `url_list` o la dirección suelta. Nada de esto se ha probado contra
+// el servicio real.
+
+export const RUTAS_TIKTOK = Object.freeze({
+  perfil: "/v3/tiktok/profile/videos",
+  palabra: "/v1/tiktok/search/keyword",
+  hashtag: "/v1/tiktok/search/hashtag",
+  video: "/v2/tiktok/video",
+});
+
+/** Las palabras de tendencia que puede tener un cliente. */
+export const MAX_PALABRAS = 5;
+
+/** El pedido de los últimos videos de una cuenta de TikTok (sin @). Pura. */
+export function pedidoPerfilTikTok(usuario) {
+  return { ruta: RUTAS_TIKTOK.perfil, params: { handle: String(usuario ?? "").replace(/^@+/, ""), sort_by: "latest", trim: "true" } };
+}
+
+/**
+ * Una palabra de tendencia limpia: «#BabyShower» → { tipo: "hashtag", valor: "babyshower", texto: "#babyshower" }; «cuna
+ * para bebé» → { tipo: "palabra", valor: "cuna para bebé", texto: "cuna para bebé" }. null si no vale. Pura.
+ */
+export function palabraDeTendencia(entrada) {
+  const t = String(entrada ?? "").replace(/\s+/g, " ").trim().toLowerCase().slice(0, 60);
+  if (!t) return null;
+  if (t.startsWith("#")) {
+    const valor = t.replace(/^#+/, "").replace(/[^\p{L}\p{N}_]/gu, "").slice(0, 40);
+    return valor.length >= 2 ? { tipo: "hashtag", valor, texto: `#${valor}` } : null;
+  }
+  const valor = t.replace(/[<>"'`{}[\]\\]/g, "").trim().slice(0, 50);
+  return valor.length >= 2 ? { tipo: "palabra", valor, texto: valor } : null;
+}
+
+/** Las palabras de un cliente, limpias, sin repetir y con tope (una lista o un texto separado por comas). Pura. */
+export function limpiarPalabras(lista) {
+  const vistas = new Set();
+  const salida = [];
+  for (const x of Array.isArray(lista) ? lista : String(lista ?? "").split(/[,\n]/)) {
+    const p = palabraDeTendencia(x);
+    if (!p || vistas.has(p.texto)) continue;
+    vistas.add(p.texto);
+    salida.push(p.texto);
+    if (salida.length >= MAX_PALABRAS) break;
+  }
+  return salida;
+}
+
+/**
+ * El pedido de las tendencias de una palabra: un #hashtag por su búsqueda de hashtag; lo demás, por palabra clave con
+ * lo publicado esta semana. `sinFiltros`: el mismo pedido sin la fecha ni el orden (si la API no los entiende). Pura.
+ */
+export function pedidoDeTendencia(palabra, { sinFiltros = false } = {}) {
+  const p = palabraDeTendencia(palabra);
+  if (!p) return null;
+  if (p.tipo === "hashtag") return { ruta: RUTAS_TIKTOK.hashtag, params: { hashtag: p.valor, trim: "true" } };
+  return {
+    ruta: RUTAS_TIKTOK.palabra,
+    params: sinFiltros ? { query: p.valor, trim: "true" } : { query: p.valor, date_posted: "this-week", sort_by: "relevance", trim: "true" },
+  };
+}
+
+/** El pedido del detalle de un video (de ahí sale una dirección nueva de su archivo). Pura. */
+export const pedidoDeVideoTikTok = (enlace) => ({ ruta: RUTAS_TIKTOK.video, params: { url: String(enlace ?? "").slice(0, 300) } });
+
+export const HOSTS_TIKTOK = /(^|\.)(tiktokcdn\.com|tiktokcdn-us\.com|tiktokcdn-eu\.com|tiktokv\.com|tiktokv\.us|tiktokv\.eu|tiktok\.com|ibyteimg\.com|muscdn\.com)$/;
+
+/** ¿Una dirección https de TikTok (su CDN)? Sólo eso se baja a la galería (sin la llave). Pura. */
+export function esDeTikTok(v) {
+  try {
+    const u = new URL(String(v ?? ""));
+    return u.protocol === "https:" && HOSTS_TIKTOK.test(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+const numeroDe = (...v) => {
+  for (const x of v) {
+    const n = Number(x);
+    if (x !== undefined && x !== null && x !== "" && Number.isFinite(n) && n >= 0) return Math.round(n);
+  }
+  return 0;
+};
+
+/** La primera dirección https de un campo de TikTok: una cadena, `{ url_list: [] }`, `{ url }` o una lista. Pura. */
+export function direccionDe(v) {
+  if (!v) return "";
+  if (typeof v === "string") return https(v);
+  if (Array.isArray(v)) {
+    for (const x of v) { const d = direccionDe(x); if (d) return d; }
+    return "";
+  }
+  if (typeof v === "object") return direccionDe(v.url_list ?? v.urlList ?? v.url ?? "");
+  return "";
+}
+
+const segundosDe = (d) => {
+  const n = Number(d);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  // La app de TikTok da milisegundos; la web, segundos.
+  return Math.round(n > 600 ? n / 1000 : n);
+};
+
+const fechaUnix = (s) => {
+  const n = Number(s);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return new Date(n > 1e12 ? n : n * 1000).toJSON();
+};
+
+/**
+ * Un video de TikTok de la respuesta, en la forma de la aplicación. `null` si no tiene id. El archivo prefiere la
+ * dirección SIN marca de agua (`download_no_watermark_addr`), luego la de reproducir y la de descarga. Un video de
+ * fotos (el carrusel de TikTok) sale como «carrusel» con la primera foto de miniatura y sin archivo. Pura.
+ */
+export function videoTikTok(crudo = {}) {
+  const a = crudo?.aweme_info ?? crudo?.aweme_detail ?? crudo?.itemStruct ?? crudo ?? {};
+  const id = String(a.aweme_id ?? a.awemeId ?? a.id ?? a.video_id ?? "").replace(/\D/g, "").slice(0, 30);
+  if (!id) return null;
+  const autor = a.author ?? a.authorInfo ?? {};
+  const usuario = String(autor.unique_id ?? autor.uniqueId ?? autor.username ?? a.author_unique_id ?? "").replace(/^@+/, "").toLowerCase().slice(0, 40);
+  const st = a.statistics ?? a.stats ?? a.statsV2 ?? {};
+  const v = a.video ?? {};
+  const fotos = (a.image_post_info?.images ?? a.imagePost?.images ?? []).map((i) => direccionDe(i?.display_image ?? i?.imageURL ?? i?.thumbnail ?? i)).filter(Boolean);
+  const miniatura = direccionDe(v.cover) || direccionDe(v.origin_cover ?? v.originCover) || direccionDe(v.dynamic_cover ?? v.dynamicCover) || fotos[0] || "";
+  const archivo = direccionDe(v.download_no_watermark_addr)
+    || direccionDe(v.play_addr ?? v.playAddr) || direccionDe(v.download_addr ?? v.downloadAddr) || direccionDe(v.bit_rate?.[0]?.play_addr);
+  // El enlace canónico (sin los parámetros de compartir): con él, la misma pieza es la misma clave venga de donde venga.
+  const enlace = usuario ? `https://www.tiktok.com/@${usuario}/video/${id}` : https(a.share_url ?? a.shareUrl).replace(/[?#].*$/, "");
+  return {
+    id,
+    usuario,
+    nombre: texto(autor.nickname ?? autor.nickName, 80),
+    texto: texto(a.desc ?? a.description ?? a.title, 2200),
+    publicada: fechaUnix(a.create_time ?? a.createTime),
+    vistas: numeroDe(st.play_count, st.playCount, a.play_count),
+    meGusta: numeroDe(st.digg_count, st.diggCount, a.digg_count),
+    comentarios: numeroDe(st.comment_count, st.commentCount, a.comment_count),
+    compartidos: numeroDe(st.share_count, st.shareCount, a.share_count),
+    guardados: numeroDe(st.collect_count, st.collectCount, a.collect_count),
+    duracion: segundosDe(v.duration ?? a.duration),
+    formato: fotos.length ? "carrusel" : "video",
+    miniatura,
+    video: fotos.length || !esDeTikTok(archivo) ? "" : archivo,
+    enlace,
+  };
+}
+
+/** La lista de videos de una respuesta de TikTok (perfil, palabra, hashtag), sin repetir. Pura. */
+export function videosDeRespuesta(datos = {}) {
+  const lista = datos?.aweme_list ?? datos?.search_item_list ?? datos?.videos ?? datos?.items ?? datos?.itemList ?? datos?.data ?? [];
+  const vistos = new Set();
+  return (Array.isArray(lista) ? lista : []).map(videoTikTok).filter((v) => v && !vistos.has(v.id) && vistos.add(v.id));
+}
+
+/** La cuenta según la respuesta de su perfil (`author`/`user` sueltos o el autor del primer video). Pura. */
+export function cuentaTikTok(datos = {}) {
+  const lista = datos?.aweme_list ?? datos?.videos ?? [];
+  const autor = datos?.author ?? datos?.user ?? (Array.isArray(lista) ? lista[0]?.author : null) ?? {};
+  const st = datos?.stats ?? autor.stats ?? {};
+  return {
+    nombre: texto(autor.nickname ?? autor.nickName, 120),
+    foto: direccionDe(autor.avatar_thumb ?? autor.avatarThumb ?? autor.avatar_medium ?? autor.avatarMedium),
+    seguidores: numeroDe(autor.follower_count, autor.followerCount, st.followerCount, st.follower_count) || null,
+    publicaciones: numeroDe(autor.aweme_count, autor.videoCount, st.videoCount) || null,
+  };
+}
+
+/** El video del detalle (`/v2/tiktok/video`): lo mismo que en una lista, con la dirección de su archivo al día. Pura. */
+export const videoDelDetalle = (datos = {}) => videoTikTok(datos?.aweme_detail ?? datos?.aweme ?? datos?.itemInfo?.itemStruct ?? datos);
+
+/**
+ * Una cifra grande, corta y en español: 1.234.567 → «1,2 M», 45.300 → «45 mil», 4.500 → «4,5 mil», 850 → «850». Pura.
+ */
+export function cifraCorta(n) {
+  const v = Math.max(0, Number(n) || 0);
+  const decimal = (x) => (x < 10 ? String(Math.round(x * 10) / 10).replace(".", ",") : String(Math.round(x)));
+  if (v >= 1e6) return `${decimal(v / 1e6)} M`;
+  if (v >= 1e3) return `${decimal(v / 1e3)} mil`;
+  return String(Math.round(v));
+}

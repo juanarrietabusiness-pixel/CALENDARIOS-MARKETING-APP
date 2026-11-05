@@ -40,7 +40,11 @@ export default function BibliotecaSC({ clients = [], filtros = [], lectura = fal
   const [cliente, setCliente] = useState(clients[0]?.id ?? "");
   const cambiar = (k, v) => setConsulta((c) => ({ ...c, [k]: v }));
   const avisar = (texto, error = false) => setAviso({ texto, error });
-  const conCreditos = (r, base) => `${base}${r.cache ? " (de la caché: no gastó créditos)" : ""}${r.creditos !== null && r.creditos !== undefined ? ` · Te quedan ${r.creditos} créditos.` : ""}`;
+  // Lo buscado a mano no se bloquea, pero suma al tope semanal (el de «Lo mejor»: anuncios y TikTok): si se pasó, se dice.
+  const pasado = (r) => (r.semana && r.semana.total > r.semana.tope
+    ? ` Esta semana van ${r.semana.total} créditos de ${r.semana.tope}: lo automático (anuncios guardados y TikTok) espera al lunes.`
+    : "");
+  const conCreditos = (r, base) => `${base}${r.cache ? " (de la caché: no gastó créditos)" : ""}${r.creditos !== null && r.creditos !== undefined ? ` · Te quedan ${r.creditos} créditos.` : ""}${pasado(r)}`;
 
   const buscarEmpresa = async (e) => {
     e?.preventDefault();

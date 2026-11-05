@@ -10,8 +10,10 @@
 //   POST /traer                 { clave, clienteId, miniatura? }: el archivo del original a la galería del cliente
 //                               (para «Extraer guion», «Fórmula»…); lo ya bajado no se baja otra vez
 //   POST /claude                { clave, clienteId, recetaId? }: «Crear con Claude» con la pieza de referencia
-//   GET  /creditos              El tope de créditos de Scrape Creators por semana y lo gastado
-//   PUT  /creditos              { tope }: sólo quien administra
+//   GET  /creditos              El tope de créditos de Scrape Creators por semana, lo gastado y lo que ESPERA su
+//                               lectura (cuentas de TikTok, palabras de tendencia, anuncios)
+//   PUT  /creditos              { tope?, tendencias? }: el tope y el interruptor de las tendencias de TikTok; sólo
+//                               quien administra
 //   POST /anuncios              Releer YA los anuncios de las búsquedas guardadas (dentro del tope)
 //   GET  /video?u=              El video de una pieza del CDN de Meta, por trozos (la CSP no deja verlo de fuera)
 //
@@ -25,9 +27,11 @@ import { scConfigurado } from "../lib/scrapeCreators.js";
 import { crearHandoff } from "../lib/recetas.js";
 import { recetasDelEspacio } from "../lib/recetas.js";
 import {
-  loMejor, clasificarPendientes, recrear, traerArchivo, piezasDelEspacio, creditosDeLaSemana, guardarTope, releerAnuncios, ErrorLoMejor,
+  loMejor, clasificarPendientes, recrear, traerArchivo, piezasDelEspacio, creditosDeLaSemana, guardarTope, releerAnuncios, esperaDelEspacio,
+  ErrorLoMejor,
 } from "../lib/loMejor.js";
 import { videoPermitido, cifraDe, nombreDelTipo } from "../../src/lib/loMejor.js";
+import { esDeTikTok } from "../../src/lib/scrapeCreators.js";
 
 const ID = /^[\w-]{1,80}$/;
 const CLAVE = /^[\w:.-]{3,120}$/;
@@ -41,17 +45,20 @@ function fallo(e) {
   throw e;
 }
 
-/** El video de una pieza (sólo del CDN de Meta), pasando el `Range` del navegador: sin trozos, el iPhone no lo reproduce. */
+/**
+ * El video de una pieza (sólo del CDN de Meta o de TikTok), pasando el `Range` del navegador: sin trozos, el iPhone no
+ * lo reproduce. A TikTok se le pide como lo pediría su web (sin eso, su CDN suele negarse).
+ */
 async function servirVideo(req, url) {
   const u = url.searchParams.get("u") ?? "";
   if (!videoPermitido(u)) return noEncontrado("Video");
-  const cabeceras = {};
+  const cabeceras = esDeTikTok(u) ? { Referer: "https://www.tiktok.com/", "User-Agent": "Mozilla/5.0 (compatible; JuancitoAdsCalendario/1.0)" } : {};
   const rango = req.headers.get("range");
   if (rango && /^bytes=\d*-\d*$/.test(rango)) cabeceras.Range = rango;
   const r = await fetch(u, { headers: cabeceras, redirect: "follow" }).catch(() => null);
   const tipo = (r?.headers.get("content-type") ?? "").split(";")[0];
   if (!r || !(r.status === 200 || r.status === 206) || !/^video\/(mp4|quicktime|webm)$/.test(tipo)) {
-    return error("El video ya no está disponible (Meta caduca sus direcciones): ábrelo en su red.", 404);
+    return error("El video ya no está disponible (Meta y TikTok caducan sus direcciones): ábrelo en su red.", 404);
   }
   const largo = Number(r.headers.get("content-length") ?? 0);
   if (largo > MAX_VIDEO) return error("El video es demasiado grande para verlo aquí.", 413);
@@ -127,13 +134,14 @@ export async function rutasLoMejor(req, env, { acceso, usuario, partes, metodo }
     }
 
     if (accion === "creditos") {
-      if (metodo === "GET") return json({ ...(await creditosDeLaSemana(acceso)), sc: scConfigurado(env) });
+      if (metodo === "GET") return json({ ...(await creditosDeLaSemana(acceso)), espera: await esperaDelEspacio(acceso), sc: scConfigurado(env) });
       if (metodo === "PUT") {
         if (usuario?.rol !== "admin") return error("Sólo quien administra cambia el tope de créditos.", 403);
         const b = (await cuerpo(req)) ?? {};
-        const r = await guardarTope(acceso, b.tope);
+        if (b.tope === undefined && typeof b.tendencias !== "boolean") return error("Falta qué cambiar.");
+        const r = await guardarTope(acceso, b.tope, typeof b.tendencias === "boolean" ? { tendencias: b.tendencias } : {});
         difundir(env, acceso.ownerId, { tipo: "lo-mejor", que: "creditos", por: firma(usuario, req) });
-        return json({ ...r, sc: scConfigurado(env) });
+        return json({ ...r, espera: await esperaDelEspacio(acceso), sc: scConfigurado(env) });
       }
     }
 

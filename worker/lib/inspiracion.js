@@ -13,17 +13,28 @@
 //     un canal conectado del espacio o la llave `YOUTUBE_API_KEY`: tres
 //     llamadas por canal. Un video de YouTube no se baja (sus condiciones no
 //     lo dejan): su guion lo saca Gemini por el enlace.
-//   · TikTok no deja ver lo de otras cuentas: se guarda la fila (para que el
-//     cron no la repita) sin publicaciones.
+//   · TikTok no deja ver lo de otras cuentas por su API: va por SCRAPE
+//     CREATORS (un crédito por cuenta), como mucho UNA vez por semana por
+//     cuenta (`leida_sc_at`) y dentro del tope semanal del espacio, que
+//     comparte con los anuncios. «rinde» se mide por VISTAS. Quién lo lee:
+//       - el cron de «Lo mejor» (worker/lib/loMejor.js), una cuenta por vuelta,
+//         lo más viejo primero y sin pasarse del tope (`tiktok: "auto"`);
+//       - la primera lectura de una cuenta recién añadida (la pantalla pide
+//         las que faltan), también dentro del tope (`auto`);
+//       - «Actualizar» a mano, la que lleve una semana sin leerse (`manual`:
+//         cuenta para el tope y NO se bloquea; se avisa si se pasa).
+//     El cron de cada 20 h NO la lee (`no`): sólo pone al día su fecha y
+//     conserva lo leído. Sin la llave, la fila queda con su aviso.
 //
 // Lo pone al día el cron (un cliente por vuelta, cada 20 h, sólo si la vuelta
 // no tuvo nada más) y «Actualizar» en la pantalla. Una cuenta que falla deja
 // su error y su fecha: no bloquea a las demás ni se repite cada minuto. Una
 // publicación nueva que rinde 3× su promedio avisa al equipo, una vez.
-// Nada de esto se ha probado contra Meta ni Google reales.
+// Nada de esto se ha probado contra Meta, Google ni Scrape Creators reales.
 // ============================================================
 
 import { cuentaDesde, descubrirCon, ErrorCompetencia, traerPublicacion } from "./competencia.js";
+import { scConfigurado, leerCuentaTikTok, creditosDeLaSemana, traerTikTok, ErrorSC, DIAS_SC } from "./scrapeCreators.js";
 import { tokenYouTube, canalPublicoYouTube, videosPublicosYouTube } from "./youtube.js";
 import { avisar, miembrosDe } from "./equipo.js";
 import { difundir } from "./vivo.js";
@@ -34,9 +45,10 @@ import { publicacionesDeGraph } from "../../src/lib/competencia.js";
 import { claveDeInspiracion } from "../../src/lib/loMejor.js";
 import { fechaEnZona } from "../../src/lib/agenda.js";
 import {
-  cuentasDeReferencia, claveCuenta, idDeCuenta, conRendimiento, debeAvisar, etiquetaRinde, FORMATOS_FEED, REDES_INSPIRACION,
+  cuentasDeReferencia, claveCuenta, idDeCuenta, conRendimiento, campoDeRendimiento, debeAvisar, etiquetaRinde, FORMATOS_FEED, REDES_INSPIRACION,
   paraResumen, pedidoDeResumen, leerResumen, tituloDelResumen,
 } from "../../src/lib/inspiracion.js";
+import { tendenciasDe } from "./tendencias.js";
 
 /** Cada cuánto el cron pone al día el feed de un cliente. */
 export const CADA_HORAS = 20;
@@ -108,15 +120,38 @@ async function leerYouTube(cred, cuenta) {
   };
 }
 
+/** Lo que dice una cuenta de TikTok sin la llave de Scrape Creators (empieza como antes: un test lo busca). */
+export const MENSAJE_TIKTOK_SIN_SC = "TikTok no deja ver el contenido de otras cuentas sin Scrape Creators: pon su llave (Ajustes → Integraciones) o abre su perfil.";
+
+/** ¿Le toca a una cuenta de TikTok leerse por Scrape Creators? Nunca leída, o hace más de una semana. */
+export const tiktokLeToca = (fila, ahora = Date.now()) => !fila?.leida_sc_at || ahora - Date.parse(fila.leida_sc_at) >= DIAS_SC * 86_400_000;
+
+/** Un video de TikTok (de src/lib/scrapeCreators.js) como fila de `inspiracion_publicaciones` (sin dueño ni cuenta). */
+export function filaDeVideoTikTok(v) {
+  return {
+    externo_id: v.id, codigo: "", formato: v.formato === "carrusel" ? "carrusel" : "video", enlace: v.enlace,
+    texto: v.texto, miniatura: v.miniatura, publicada_at: v.publicada, me_gusta: v.meGusta, comentarios: v.comentarios,
+    vistas: v.vistas, compartidos: v.compartidos,
+    // Como en Instagram, un comentario (y aquí un compartido) pesa el doble que un «me gusta». «rinde» va por vistas.
+    interacciones: v.meGusta + (v.comentarios + v.compartidos) * 2,
+    // Un video de fotos no tiene archivo de video; uno de video sí, aunque su dirección caduque (se pide otra al traerlo).
+    sin_archivo: v.formato === "carrusel" ? 1 : 0,
+    video: String(v.video ?? "").slice(0, 1500),
+  };
+}
+
 /**
  * Pone al día el feed de un cliente: lee sus cuentas (o sólo las de `solo`, claves «red:usuario»), guarda lo que
  * publican con su rendimiento, borra lo que ya no está entre las últimas y avisa al equipo de lo nuevo que rinde mucho.
- * Cada cuenta que falla deja su error. → { cuentas: n, publicaciones: n, avisos: n, errores: [{ cuenta, error }] }.
+ * Cada cuenta que falla deja su error. `tiktok`: cómo se leen las de TikTok por Scrape Creators —«no» (sólo se
+ * conserva lo leído: el cron de cada 20 h), «auto» (dentro del tope de la semana) o «manual» (cuenta y no se bloquea)—;
+ * en los dos últimos, sólo la que lleva una semana sin leerse.
+ * → { cuentas: n, publicaciones: n, avisos: n, errores: [{ cuenta, error }], creditos: n, esperan: n }.
  */
-export async function actualizarInspiracion(env, acceso, cliente, { solo = null } = {}) {
+export async function actualizarInspiracion(env, acceso, cliente, { solo = null, tiktok = "no" } = {}) {
   const todas = cuentasDe(cliente);
   const cuentas = solo ? todas.filter((c) => solo.includes(claveCuenta(c))) : todas;
-  if (!cuentas.length) return { cuentas: 0, publicaciones: 0, avisos: 0, errores: [] };
+  if (!cuentas.length) return { cuentas: 0, publicaciones: 0, avisos: 0, errores: [], creditos: 0, esperan: 0 };
   const t = new Date().toJSON();
 
   // Lo que ya había: para conservar `avisado` y borrar lo que ya no está.
@@ -128,37 +163,78 @@ export async function actualizarInspiracion(env, acceso, cliente, { solo = null 
   if (cuentas.some((c) => c.red === "instagram")) {
     try { desdeIG = await cuentaDesde(env, acceso, cliente.id); } catch (e) { errorIG = e.message; }
   }
+  // TikTok: lo leído antes (se conserva si no le toca) y lo que queda del tope de la semana.
+  const conTikTok = cuentas.some((c) => c.red === "tiktok");
+  const sc = scConfigurado(env);
+  const filasPrevias = conTikTok ? new Map((await acceso.leer("inspiracion_cuentas", { client_id: cliente.id, red: "tiktok" }, "id asc")).map((f) => [f.id, f])) : new Map();
+  let libres = conTikTok && sc && tiktok === "auto" ? (await creditosDeLaSemana(acceso)).libres : Infinity;
+  let creditos = 0;
+  let esperan = 0;
   let credYT;
   const filasCuentas = [];
   const filasPubs = [];
   const errores = [];
   const ahora = Date.now();
+  const leidas = new Set();
 
   for (const c of cuentas) {
     const cuentaId = idDeCuenta(cliente.id, c);
     let leido = null;
     let error = "";
-    try {
-      if (c.red === "instagram") {
-        if (!desdeIG) throw new ErrorInspiracion(errorIG || "Hace falta un Instagram conectado (Ajustes → Integraciones).", 409);
-        leido = await leerInstagram(env, desdeIG, c);
-      } else if (c.red === "youtube") {
-        if (credYT === undefined) credYT = await credencialYouTube(env, acceso);
-        if (!credYT) throw new ErrorInspiracion("Para ver canales de YouTube hace falta un canal conectado (Ajustes → Integraciones → YouTube).", 409);
-        leido = await leerYouTube(credYT, c);
-      } else {
-        error = "TikTok no deja ver el contenido de otras cuentas: abre su perfil.";
+    // `actualizada_at` dice cuándo pasó por aquí el cliente (el cron de cada 20 h lo mira): la lectura semanal de UNA
+    // cuenta de TikTok no la mueve, o retrasaría la de su Instagram y su YouTube.
+    let fechaFila = t;
+    if (c.red === "tiktok") {
+      const previa = filasPrevias.get(cuentaId);
+      if (solo && previa?.actualizada_at) fechaFila = previa.actualizada_at;
+      const toca = sc && tiktok !== "no" && tiktokLeToca(previa, ahora) && libres > 0;
+      if (!toca) {
+        // No se lee ahora: se conserva lo leído (y sus publicaciones), y su fecha de «leída por Scrape Creators».
+        if (sc && tiktok !== "no" && tiktokLeToca(previa, ahora)) esperan++;
+        filasCuentas.push({
+          id: cuentaId, client_id: cliente.id, red: c.red, usuario: c.usuario,
+          nombre: previa?.nombre ?? "", foto: previa?.foto ?? "", seguidores: previa?.seguidores ?? null,
+          publicaciones: previa?.publicaciones ?? null, mediana: previa?.mediana ?? null,
+          error: !sc ? MENSAJE_TIKTOK_SIN_SC : previa?.error === MENSAJE_TIKTOK_SIN_SC || /^TikTok no deja ver/.test(previa?.error ?? "") ? "" : previa?.error ?? "",
+          leida_sc_at: previa?.leida_sc_at ?? null, actualizada_at: fechaFila,
+        });
+        continue;
       }
-    } catch (e) {
-      error = String(e?.message ?? e).slice(0, 300);
-      errores.push({ cuenta: claveCuenta(c), error });
+      try {
+        const r = await leerCuentaTikTok(env, acceso, c.usuario, { fuente: tiktok === "auto" ? "auto" : "manual" });
+        if (!r.cache) { creditos++; libres--; }
+        leido = { datos: r.cuenta, publicaciones: r.videos.slice(0, POR_CUENTA).map(filaDeVideoTikTok) };
+      } catch (e) {
+        error = String(e?.message ?? e).slice(0, 300);
+        errores.push({ cuenta: claveCuenta(c), error });
+        // Sin créditos en Scrape Creators no se sigue con las demás: también fallarían.
+        if (e instanceof ErrorSC && e.status === 402) libres = 0;
+      }
+      leidas.add(cuentaId);
+    } else {
+      try {
+        if (c.red === "instagram") {
+          if (!desdeIG) throw new ErrorInspiracion(errorIG || "Hace falta un Instagram conectado (Ajustes → Integraciones).", 409);
+          leido = await leerInstagram(env, desdeIG, c);
+        } else if (c.red === "youtube") {
+          if (credYT === undefined) credYT = await credencialYouTube(env, acceso);
+          if (!credYT) throw new ErrorInspiracion("Para ver canales de YouTube hace falta un canal conectado (Ajustes → Integraciones → YouTube).", 409);
+          leido = await leerYouTube(credYT, c);
+        }
+      } catch (e) {
+        error = String(e?.message ?? e).slice(0, 300);
+        errores.push({ cuenta: claveCuenta(c), error });
+      }
+      leidas.add(cuentaId);
     }
-    const { mediana, publicaciones } = conRendimiento(leido?.publicaciones ?? []);
+    const { mediana, publicaciones } = conRendimiento(leido?.publicaciones ?? [], { campo: campoDeRendimiento(c.red) });
     filasCuentas.push({
       id: cuentaId, client_id: cliente.id, red: c.red, usuario: c.usuario,
       nombre: String(leido?.datos.nombre ?? "").slice(0, 120), foto: String(leido?.datos.foto ?? "").slice(0, 1000),
       seguidores: leido?.datos.seguidores ?? null, publicaciones: leido?.datos.publicaciones ?? null, mediana,
-      error, actualizada_at: t,
+      error, actualizada_at: fechaFila,
+      // Una de TikTok leída (bien o con error) no se vuelve a pedir hasta dentro de una semana.
+      ...(c.red === "tiktok" ? { leida_sc_at: t } : {}),
     });
     for (const p of publicaciones) {
       const id = `${cuentaId}:${p.externo_id}`;
@@ -177,8 +253,9 @@ export async function actualizarInspiracion(env, acceso, cliente, { solo = null 
 
   await acceso.guardarVarios("inspiracion_cuentas", filasCuentas);
   await acceso.guardarVarios("inspiracion_publicaciones", filasPubs.map(({ tipoCuenta: _t, ...fila }) => fila));
-  // Lo de las cuentas leídas BIEN que ya no está entre sus últimas (o de cuentas que se quitaron de la lista).
-  const leidasBien = new Set(filasCuentas.filter((f) => !f.error).map((f) => f.id));
+  // Lo de las cuentas leídas BIEN que ya no está entre sus últimas (o de cuentas que se quitaron de la lista). Una de
+  // TikTok que no se leyó ahora (no le tocaba) conserva lo suyo.
+  const leidasBien = new Set(filasCuentas.filter((f) => leidas.has(f.id) && !f.error).map((f) => f.id));
   const actuales = new Set(filasPubs.map((p) => p.id));
   const vigentes = new Set(todas.map((c) => idDeCuenta(cliente.id, c)));
   const sobran = previas.filter((p) => (leidasBien.has(p.cuenta_id) && !actuales.has(p.id)) || !vigentes.has(p.cuenta_id)).map((p) => p.id);
@@ -199,25 +276,36 @@ export async function actualizarInspiracion(env, acceso, cliente, { solo = null 
     }
   }
   difundir(env, acceso.ownerId, { tipo: "inspiracion", clientId: cliente.id });
-  return { cuentas: filasCuentas.length, publicaciones: filasPubs.length, avisos: paraAvisar.length, errores };
+  return { cuentas: filasCuentas.length, publicaciones: filasPubs.length, avisos: paraAvisar.length, errores, creditos, esperan };
+}
+
+/** Lo que se le dice de una cuenta de TikTok que espera su lectura ("" si no espera: se leyó esta semana). Pura. */
+function notaTikTok(f, sc, ahora = Date.now()) {
+  if (!sc) return "";
+  if (!f?.leida_sc_at) return "Se lee por Scrape Creators en cuanto quepa en el tope de créditos de la semana.";
+  return tiktokLeToca(f, ahora) ? "Le toca leerse otra vez: va en cuanto quepa en el tope de créditos de la semana." : "";
 }
 
 /**
  * El feed guardado de un cliente: sus cuentas con su estado y lo que publican, con miniaturas por el proxy. Sólo lo de
  * las cuentas que sigue AHORA. `faltan`: las cuentas que todavía no se han leído nunca (la pantalla pide leerlas).
+ * `sc`: si hay llave de Scrape Creators (TikTok tiene feed sólo con ella). `tendencias`: las palabras del cliente.
  */
-export async function feedDe(acceso, cliente) {
+export async function feedDe(acceso, cliente, { sc = false } = {}) {
   const lista = cuentasDe(cliente);
   const filasCuentas = await acceso.leer("inspiracion_cuentas", { client_id: cliente.id }, "usuario asc");
   const porId = new Map(filasCuentas.map((f) => [f.id, f]));
   const pubs = await acceso.leer("inspiracion_publicaciones", { client_id: cliente.id }, "publicada_at desc");
   const tipo = new Map(lista.map((c) => [idDeCuenta(cliente.id, c), c.tipo]));
+  const ahora = Date.now();
   const cuentas = lista.map((c) => {
     const f = porId.get(idDeCuenta(cliente.id, c));
+    const tt = c.red === "tiktok";
     return {
-      ...c, clave: claveCuenta(c), feed: REDES_INSPIRACION[c.red].feed,
+      ...c, clave: claveCuenta(c), feed: tt ? sc : REDES_INSPIRACION[c.red].feed,
       nombre: f?.nombre ?? "", foto: proxy(f?.foto ?? ""), seguidores: f?.seguidores ?? null, publicaciones: f?.publicaciones ?? null,
       mediana: f?.mediana ?? null, error: f?.error ?? "", actualizadaAt: f?.actualizada_at ?? null,
+      ...(tt ? { leidaAt: f?.leida_sc_at ?? null, nota: f?.error ? "" : notaTikTok(f, sc, ahora) } : {}),
     };
   });
   return {
@@ -227,15 +315,26 @@ export async function feedDe(acceso, cliente) {
       id: p.id, red: p.red, usuario: p.usuario, tipoCuenta: tipo.get(p.cuenta_id), nombre: porId.get(p.cuenta_id)?.nombre ?? "",
       formato: p.formato, video: ["reel", "short", "video"].includes(p.formato), texto: p.texto, fecha: p.publicada_at,
       enlace: p.enlace, codigo: p.codigo, miniatura: proxy(p.miniatura), meGusta: p.me_gusta, comentarios: p.comentarios,
-      vistas: p.vistas, interacciones: p.interacciones, rinde: p.rinde, sinArchivo: Boolean(p.sin_archivo),
+      vistas: p.vistas, compartidos: p.compartidos ?? 0, interacciones: p.interacciones, rinde: p.rinde, sinArchivo: Boolean(p.sin_archivo),
     })),
+    tendencias: await tendenciasDe(acceso, cliente.id),
+    sc,
   };
 }
 
-/** El archivo de una publicación del feed a la galería del cliente (sólo Instagram). → lo de `traerPublicacion`. */
+/** El archivo de una publicación del feed a la galería del cliente (Instagram, o TikTok por Scrape Creators). */
 export async function traerDeInspiracion(env, acceso, cliente, id, { miniatura = false } = {}) {
   const p = await acceso.leerUno("inspiracion_publicaciones", { id, client_id: cliente.id });
   if (!p) throw new ErrorInspiracion("Esa publicación ya no está en el feed: actualízalo.", 404);
+  if (p.red === "tiktok") {
+    try {
+      const archivo = await traerTikTok(env, acceso, cliente, { id: p.externo_id, usuario: p.usuario, video: p.video, miniatura: p.miniatura, enlace: p.enlace, formato: p.formato }, { miniatura });
+      return { archivo, usuario: p.usuario };
+    } catch (e) {
+      if (e instanceof ErrorSC || e instanceof ErrorCompetencia) throw Object.assign(new ErrorInspiracion(e.message, e.estado ?? e.status ?? 409), e.codigo ? { codigo: e.codigo } : {});
+      throw e;
+    }
+  }
   if (p.red !== "instagram") throw new ErrorInspiracion("YouTube no deja bajar sus videos: su guion se saca por el enlace («Extraer guion»).", 409);
   try {
     return await traerPublicacion(env, acceso, cliente, { usuario: p.usuario, id: p.externo_id, miniatura });
@@ -243,6 +342,23 @@ export async function traerDeInspiracion(env, acceso, cliente, id, { miniatura =
     if (e instanceof ErrorCompetencia) throw Object.assign(new ErrorInspiracion(e.message, e.estado), e.codigo ? { codigo: e.codigo } : {});
     throw e;
   }
+}
+
+/**
+ * Una cuenta de TikTok, leída por el cron de «Lo mejor» (una por vuelta, dentro del tope). `cuentaId`: la fila de
+ * `inspiracion_cuentas`. Si el cliente ya no la sigue, se borra. → 1.
+ */
+export async function leerCuentaTikTokDelCron(env, acceso, cuentaId) {
+  const fila = await acceso.leerUno("inspiracion_cuentas", { id: cuentaId, red: "tiktok" });
+  if (!fila) return 0;
+  const cliente = await acceso.leerUno("clients", { id: fila.client_id });
+  const cuenta = cliente ? cuentasDe(cliente).find((c) => idDeCuenta(cliente.id, c) === cuentaId) : null;
+  if (!cuenta) {
+    await acceso.borrarVarios("inspiracion_cuentas", [cuentaId]);
+    return 1;
+  }
+  await actualizarInspiracion(env, acceso, cliente, { solo: [claveCuenta(cuenta)], tiktok: "auto" });
+  return 1;
 }
 
 /**
