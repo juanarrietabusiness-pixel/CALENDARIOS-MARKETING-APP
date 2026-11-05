@@ -108,6 +108,7 @@ beforeEach(async () => {
       if (u.pathname.startsWith("/v1/facebook/adLibrary")) return Response.json({ results: [], credits_remaining: 9 });
       return new Response("no", { status: 404 });
     }
+    if (u.hostname === "api.anthropic.com") return Response.json({ data: [{ id: "claude-sonnet-5" }] });
     if (/(^|\.)tiktokcdn(-us)?\.com$/.test(u.hostname)) {
       // Lo de TikTok se baja SIN la llave de Scrape Creators.
       expect(cabeceras.get("x-api-key")).toBeNull();
@@ -217,6 +218,22 @@ describe("el video de TikTok a la galería", () => {
     expect(pedidosSC.map((p) => p.ruta)).toEqual(["/v3/tiktok/profile/videos", "/v2/tiktok/video"]);
     expect(pedidosSC[1].params.url).toBe("https://www.tiktok.com/@latienda/video/7300000000000000001");
     expect(bajadas.at(-1)).toBe("/nuevo.mp4");
+  });
+
+  it("«Recrear para…» con IA: el director mira su miniatura SÓLO de inspiración y el original va de referencia", async () => {
+    env.ANTHROPIC_API_KEY = "k";
+    await actualizar();
+    const r = await pedir("/api/lo-mejor/recrear", { method: "POST", body: { clave: "tt:7300000000000000001", clienteId: "c1", camino: "imagen", confirmado: true } });
+    expect(r.status).toBe(201);
+    const d = await r.json();
+    const post = JSON.parse(db.sqlite.prepare("select days from calendars where id = ?").get(d.calendarId).days).flatMap((x) => x.posts).find((p) => p.id === d.postId);
+    expect(post.referencias).toHaveLength(1);
+    expect(post.medios).toBeUndefined();
+    expect(post.recreadoDe).toMatchObject({ clave: "tt:7300000000000000001", fuente: "inspiracion" });
+    const encargo = db.sqlite.prepare("select datos, pasos from estudio_encargos where id = ?").get(d.encargoId);
+    expect(JSON.parse(encargo.datos).especiales[0].papel).toBe("inspiracion");
+    // La imagen de otra cuenta no va al motor de imagen.
+    expect(JSON.stringify(JSON.parse(encargo.pasos)[0].pedido.medios ?? {})).not.toContain("tiktok-latienda");
   });
 
   it("si TikTok no da el archivo, se dice y se trabaja con la miniatura", async () => {
