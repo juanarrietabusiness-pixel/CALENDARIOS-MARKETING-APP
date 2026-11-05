@@ -18,6 +18,8 @@ import { limpiarKit, estiloDeMarca, referenciaDePlantilla, lineaDePlantillaEnPed
 import { coloresPlantilla, PLANTILLAS_TEXTO } from "./carrusel";
 import { componerLamina } from "./textoSobreImagen";
 import { segundosParaModelo } from "./videoCorto";
+import { lanzarReel, seguirEncargo, leerEncargo } from "./encargosApi";
+import { resultadoDeReel } from "./encargoReelPuro";
 import { textoDeIdea, plantillaDeIdea, composicionDe, FORMATOS_LOTE } from "./loteAnuncios";
 import { ideaSinMejorar, apoyosDePieza, pedidoDePieza, lineaSinTexto } from "./pieza";
 
@@ -138,8 +140,6 @@ export async function crearReelDeIdea({ clienteId, idea, kit, preset = "", estil
   });
   const estiloTexto = estiloDeMarca(limpiarKit(kit), preset, { marca, rubro, estilo });
   const lineaPersonajes = [...new Set(personajes.map((p) => `Personaje: ${p.nota}.`))].join(" ");
-  const { lanzarReel, seguirEncargo } = await import("./encargosApi");
-  const { resultadoDeReel } = await import("./encargoReelPuro");
   const r = await lanzarReel(clienteId, {
     titulo: String(idea.titulo || idea.titular || temaDeIdea(idea) || "Reel").slice(0, 120),
     reel: { ...guion, segundos }, carpetaId, salida: "uno", revisar: false, video: { modelo: modeloVideo.id },
@@ -158,7 +158,7 @@ export async function crearReelDeIdea({ clienteId, idea, kit, preset = "", estil
     },
   });
   if (!fin) throw new Error("Se dejó de mirar: el reel sigue en el servidor y queda en la galería.");
-  const leido = await (await import("./encargosApi")).leerEncargo(clienteId, fin.id);
+  const leido = await leerEncargo(clienteId, fin.id);
   const res = resultadoDeReel(leido.encargo, new Map((leido.archivos ?? []).map((a) => [a.id, a])));
   const fotogramas = res.fotos.map((f) => f?.archivo).filter(Boolean);
   if (!res.video) throw new Error(leido.encargo.error || res.videoError || (fotogramas.length ? "El video no salió." : "No salió ningún fotograma."));

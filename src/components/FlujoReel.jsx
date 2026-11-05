@@ -488,7 +488,7 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
       <section className="card flujo-carrusel flujo-reel" aria-label="Video animado con código">
         {cabecera}
         {selectorForma}
-        {abrirVideoId && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setForma("guion"); setAbrirVideoId(null); }}><Icon name="chevron-left" size={14} /> Volver al reel</button>}
+        {abrirVideoId && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setForma("guion"); setAbrirVideoId(null); }}><Icon name="chevronLeft" size={14} /> Volver al reel</button>}
         <Suspense fallback={<p className="hint">Cargando…</p>}>
           <VideoAnimado client={client?.dbId ? { ...client, id: client.dbId } : client} estudio={estudio} abrirId={abrirVideoId}
             publicacion={inicial.postId && !abrirVideoId ? { postId: inicial.postId, calendarId: inicial.calendarId ?? null, idea: inicial.idea ?? "" } : null} />
