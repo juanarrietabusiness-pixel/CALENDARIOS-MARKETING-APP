@@ -1,10 +1,13 @@
-import { useId, useState } from "react";
+import { lazy, Suspense, useId, useState } from "react";
 import Icon from "./Icon";
 import { Pieza } from "./EstudioVisor";
 import { useDialogA11y } from "../hooks/useDialogA11y";
 import { textoDeGrupo, nombresParaZip, estaUsado, moverEnOrden } from "../lib/estudio";
 import { crearZip } from "../lib/zip";
 import "./VisorGrupo.css";
+
+// «Poner en una publicación…»: el carrusel entero (o el video del reel), a un post de cualquier mes.
+const PonerEnPublicacion = lazy(() => import("./PonerEnPublicacion"));
 
 /** El nombre del ZIP a partir del de la carpeta («Carrusel · Caleb · 14 oct» → «carrusel-caleb-14-oct.zip»). */
 const nombreZip = (carpeta) =>
@@ -20,8 +23,9 @@ const nombreZip = (carpeta) =>
  *   onPapelera  (ids) => Promise: «Mandar el carrusel a la papelera», con un segundo toque que dice qué se va
  *   onOrdenar   (ids) => Promise: guardar el orden nuevo (las flechas de cada lámina)
  *   onDesagrupar () => Promise: las piezas vuelven a la galería sueltas
+ *   cliente     desde la pestaña Estudio (sin `onUsar`): «Poner en una publicación…» de cualquier mes
  */
-export default function VisorGrupo({ grupo, todas = null, onCerrar, onAbrir, onSueltas, onUsar = null, onPapelera = null, onOrdenar = null, onDesagrupar = null }) {
+export default function VisorGrupo({ grupo, todas = null, onCerrar, onAbrir, onSueltas, onUsar = null, onPapelera = null, onOrdenar = null, onDesagrupar = null, cliente = null }) {
   const ids = useId();
   const ref = useDialogA11y(onCerrar);
   const { carpeta } = grupo;
@@ -38,6 +42,7 @@ export default function VisorGrupo({ grupo, todas = null, onCerrar, onAbrir, onS
   const [error, setError] = useState("");
   const [confirmando, setConfirmando] = useState(false);
   const [quitando, setQuitando] = useState(false);
+  const [poniendo, setPoniendo] = useState(false);
   const reel = carpeta.tipo === "reel";
   const cuales = todas?.length ? todas : piezas;
   const usadas = cuales.filter(estaUsado).length;
@@ -146,9 +151,23 @@ export default function VisorGrupo({ grupo, todas = null, onCerrar, onAbrir, onS
                 <Icon name="check" size={18} /> {reel ? "Usar el video en la publicación" : `Usar el carrusel en la publicación (${paraUsar.length})`}
               </button>
             )}
+            {!onUsar && cliente && paraUsar.length > 0 && (
+              <button type="button" className="btn btn-primary" onClick={() => setPoniendo(true)}>
+                <Icon name="send" size={18} /> {reel ? "Poner el video en una publicación…" : "Poner el carrusel en una publicación…"}
+              </button>
+            )}
           </div>
         )}
       </div>
+      {poniendo && (
+        <Suspense fallback={null}>
+          <PonerEnPublicacion
+            cliente={cliente} carpetaId={carpeta.id} tipo={reel ? "video" : "carrusel"}
+            descripcion={reel ? "el video de este reel" : `este carrusel (${paraUsar.length} lámina${paraUsar.length === 1 ? "" : "s"}, en su orden)`}
+            onCerrar={() => setPoniendo(false)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

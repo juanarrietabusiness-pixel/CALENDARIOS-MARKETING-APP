@@ -98,6 +98,7 @@ import {
   vaciarPapelera, crearCarpeta, renombrarCarpeta, ordenarCarpeta, borrarCarpeta, archivoPublico, clavesPerdidas,
 } from "../lib/estudio/galeria.js";
 import { crearEncargo, avanzarEncargo, cancelarEncargo, finalesDePaso, encargoPublico, encargoConArchivos, accionDeReel } from "../lib/estudio/encargos.js";
+import { ponerPiezasEnPost, ErrorPoner } from "../lib/estudio/ponerPiezas.js";
 
 const ID = /^[\w-]{1,80}$/;
 
@@ -247,6 +248,21 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
     if (b === "revisar" && !c && metodo === "POST") {
       const datos = await cuerpo(req);
       return json(await revisarPieza(env, acceso, cliente, datos?.archivoId, { clave: typeof datos?.clave === "string" ? datos.clave : null }));
+    }
+
+    // ---------- «Poner en una publicación…»: lo que ya está en la galería, a un post de cualquier mes (no cobra) ----------
+    if (b === "poner" && !c && metodo === "POST") {
+      const datos = await cuerpo(req);
+      if (!datos) return error("JSON inválido");
+      try {
+        return json(await ponerPiezasEnPost(env, acceso, cliente, {
+          postId: datos.postId, calendarId: datos.calendarId ?? null, carpetaId: datos.carpetaId ?? "",
+          archivoIds: datos.archivoIds ?? [], modo: datos.modo,
+        }));
+      } catch (e) {
+        if (e instanceof ErrorPoner) return fallo(e);
+        throw e;
+      }
     }
 
     // ---------- Los encargos: la cadena de piezas que sigue en el servidor ----------
