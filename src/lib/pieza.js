@@ -18,7 +18,7 @@
 // Un test exige que la misma idea dé el mismo pedido por todas las puertas.
 // ============================================================
 
-import { textoDeLaPieza, fotosDeVariosProductos } from "./estudio.js";
+import { textoDeLaPieza, fotosDeVariosProductos } from "./galeriaPura.js";
 import { productosNombrados } from "./referencias.js";
 import { deMisGustos } from "./aprendizajeVisual.js";
 import { ajustesDe, MAX_PROMPT, modeloQueRespeta } from "./estudioCatalogo.js";
