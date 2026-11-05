@@ -24,7 +24,8 @@
 // ============================================================
 
 import { graph, descifrarMeta, mensajeMeta, ErrorMeta } from "./meta.js";
-import { subirArchivo } from "./estudio/galeria.js";
+import { subirArchivo, archivoPublico } from "./estudio/galeria.js";
+import { NULO } from "./acceso.js";
 import { carpetaCompetencia } from "./mercado.js";
 import { usuarioInstagram } from "../../src/lib/auditoria.js";
 import { publicacionesDeGraph, ordenarPorRendimiento, codigoDeInstagram, formatoDeMedia, usuarioDelEmbed } from "../../src/lib/competencia.js";
@@ -100,8 +101,17 @@ async function recordar(acceso, codigo, usuario) {
   await acceso.guardar("instagram_enlaces", { id: `${acceso.ownerId}:${codigo}`, codigo, usuario }).catch(() => {});
 }
 
-/** Baja de una dirección del CDN de Meta (con tope) y lo sube a la galería del cliente, carpeta «Competencia». */
+/**
+ * Baja de una dirección del CDN de Meta (con tope) y lo sube a la galería del cliente, carpeta «Competencia». Lo que ya
+ * se bajó antes (el mismo nombre: la cuenta y el id de la publicación, o el del anuncio) NO se vuelve a bajar: se
+ * devuelve la ficha que había (`repetido`). Un video no tiene huella, y cada «Analizar», «Extraer guion» o «Recrear»
+ * de la misma publicación lo bajaba otra vez.
+ */
 export async function bajarALaGaleria(env, acceso, cliente, url, nombre, tipoPorDefecto) {
+  const previa = nombre
+    ? (await acceso.leer("estudio_archivos", { client_id: cliente.id, prompt: String(nombre).slice(0, 200), borrado_at: NULO }, "created_at desc", 1).catch(() => []))[0]
+    : null;
+  if (previa && (!env.MEDIA?.head || await env.MEDIA.head(previa.clave))) return { ...archivoPublico(previa), repetido: true };
   let host = "";
   try { host = new URL(url).hostname; } catch { /* sin dirección */ }
   if (!url || !CDN.test(host)) throw new ErrorCompetencia("Instagram no da el archivo de esa publicación.", 409);

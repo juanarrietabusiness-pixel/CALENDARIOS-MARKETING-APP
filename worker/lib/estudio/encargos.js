@@ -35,7 +35,7 @@ import { difundir } from "../vivo.js";
 import { despertar } from "../despertar.js";
 import { crearTrabajo, ErrorEstudio } from "./trabajos.js";
 import { estadoMotores } from "./motores.js";
-import { fichasDeDiseno, limpiarVistas } from "./fichas.js";
+import { fichasDeDiseno, limpiarVistas, limpiarEspeciales } from "./fichas.js";
 import { mejorarIdea } from "./prompt.js";
 import { controlarPieza, sistemaDePortada } from "./control.js";
 import { propuestaDeCarrusel } from "./carrusel.js";
@@ -194,6 +194,10 @@ export async function crearEncargo(env, acceso, cliente, cuerpo = {}, { usuario 
     paralelo: tipo === "carrusel" ? 1 : Math.max(1, Math.min(3, Math.floor(Number(cuerpo.paralelo)) || 2)),
     carpetaId: cuerpo.carpetaId ? texto(cuerpo.carpetaId, 80) : null,
     vistas: limpiarVistas(cuerpo.vistas), concepto: "",
+    // Las imágenes ESPECIALES que mira el director (la pieza de otra marca de «Recrear para…» de «Lo mejor», como
+    // inspiración): crudas, como las pide `fichasDeDiseno`; nunca van al motor de imagen.
+    especiales: (Array.isArray(cuerpo.especiales) ? cuerpo.especiales : []).filter((e) => limpiarEspeciales([e]).bloques.length)
+      .slice(0, 2).map((e) => ({ papel: e.papel, media_type: e.media_type, data: e.data })),
   };
   let pasos;
   if (tipo === "carrusel") {
@@ -351,7 +355,7 @@ async function paso(env, acceso, fila, pasos, datos) {
       const tanda = faltan.slice(0, datos.concepto ? TANDA_FICHAS : 1);
       try {
         const r = await fichasDeDiseno(env, acceso, cliente, {
-          concepto: datos.concepto ?? "", vistas: datos.vistas ?? [], previas: datos.serie ?? [], serie: pasos.length,
+          concepto: datos.concepto ?? "", vistas: datos.vistas ?? [], especiales: datos.especiales ?? [], previas: datos.serie ?? [], serie: pasos.length,
           piezas: tanda.map((p, j) => ({ n: j + 1, ...p.encargo })),
         });
         datos.concepto ||= String(r?.concepto ?? "");
@@ -372,7 +376,7 @@ async function paso(env, acceso, fila, pasos, datos) {
       }
       for (const p of tanda) p.fichaIntentada = true;
       // Las vistas sólo las usa el director: no se reescriben en cada paso.
-      if (!pasos.some((p) => p.fase === "nuevo" && p.encargo && !p.escena && !p.fichaIntentada)) { delete datos.vistas; delete datos.serie; }
+      if (!pasos.some((p) => p.fase === "nuevo" && p.encargo && !p.escena && !p.fichaIntentada)) { delete datos.vistas; delete datos.serie; delete datos.especiales; }
       return { hizo: true, datos, nota: `El director diseñó ${Math.min(pasos.length, pasos.filter((p) => p.fichaIntentada).length)} de ${pasos.length}.` };
     }
   }
