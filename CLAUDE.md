@@ -3483,7 +3483,8 @@ son del servidor.
   presets, aquí con los métodos de la AGENCIA (escritos con sus palabras: los de Higgsfield no tienen licencia) y lo del
   cliente dentro. Cosas que no se ven:
   · **Una receta es texto, no código**: el método lo lee quien diseña (el director de la aplicación o Claude por el
-  conector) y usa las herramientas que ya existen. Las de la casa en el código; una fila de `recetas` con su id la
+  conector) y usa las herramientas que ya existen. Hay 15 de la casa (imagen, carrusel, video con IA, video animado y
+  guion); una nueva de la casa es añadir un objeto a `RECETAS_CASA`, sin migración ni pantalla. Las de la casa en el código; una fila de `recetas` con su id la
   sustituye (con `oculta`, la saca) y borrarla la restaura; las propias van detrás. Las cambian admin y editores (403 a un
   colaborador), como las plantillas de plan.
   · **«Crear con Claude» guarda el pedido UN día** (`handoffs`: el cliente, la publicación, las referencias de ESA galería
