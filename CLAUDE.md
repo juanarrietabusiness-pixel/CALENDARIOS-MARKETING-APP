@@ -4678,6 +4678,14 @@ son del servidor.
   `opciones.estrategia` como la de «Planificar mes», y el motor la lee. La tarjeta lee `embudo.js` (pequeño) y no
   estrategiaMes.js, que arrastra pilares: va en la carga inicial.
 
+- **El control contaba el titular dos veces y daba por buena la pieza con el titular REPETIDO** (prueba real de Feria del
+  Lente por `crear_en_estudio`, 5-nov). Sin texto dicho, el que debía decir la pieza salía de TODO lo citado en la escena
+  (`textoDelPedido`), y la ficha del director nombra el titular en «Composición» y otra vez en «Texto exacto»: el control
+  esperaba tres líneas, la corrección pidió «EXACTAMENTE así, en 3 líneas» y el motor dibujó el titular dos veces, que
+  entonces sí casaba. Tres guardas: `textoDelPedido` cuenta cada texto UNA vez y, en una ficha, manda su línea «Texto
+  exacto»; el encargo pone `p.texto` con `textoDeLaFicha` en cuanto el director escribe la ficha (si nadie dijo el
+  texto); y `compararTexto` marca una LÍNEA esperada que sale en dos renglones (`repetido`; lo que sobra suelto, como el
+  logo, sigue sin contar) y la corrección pide quitar la copia.
 ## Documentos relacionados
 
 - `docs/propuesta-estudio-y-meta.md` — el Estudio de Agents Office —imagen y video por trabajos,

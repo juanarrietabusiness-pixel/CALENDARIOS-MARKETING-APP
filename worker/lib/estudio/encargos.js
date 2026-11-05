@@ -46,7 +46,7 @@ import {
 import { pedidoDeCorreccion, modeloParaCorregir, proporcionDeMedidas } from "../../../src/lib/edicion.js";
 import { correccionDelDirector, mejoro } from "../../../src/lib/control.js";
 import { armarLamina } from "../../../src/lib/laminaPedido.js";
-import { ajustarFicha } from "../../../src/lib/director.js";
+import { ajustarFicha, textoDeLaFicha } from "../../../src/lib/director.js";
 import { ESCENA, MAX_PASOS, MAX_LAMINAS, TANDA_FICHAS, TIPOS_ENCARGO } from "../../../src/lib/encargos.js";
 import { referenciaDePlantilla, lineaDePlantillaEnPedido } from "../../../src/lib/kitMarca.js";
 import { lineaDeReferencia } from "../../../src/lib/referencias.js";
@@ -448,6 +448,9 @@ async function paso(env, acceso, fila, pasos, datos) {
           if (!f?.ficha) return;
           p.escena = String(f.ficha);
           p.deDirector = true;
+          // Sin texto dicho (un pedido de Claude o del asistente), el que debe decir la pieza es el de SU ficha: el control
+          // lo compara con eso y no con todo lo citado en la escena (el titular sale en «Composición» y en «Texto exacto»).
+          if (!p.texto && !p.encargo?.sinTexto) p.texto = textoDeLaFicha(p.escena);
           // La plantilla que escogió el director: su imagen va de referencia, como en la pantalla.
           if (f.plantilla && kit) p.pedido = conPlantillaDelDirector(p.pedido, kit, f.plantilla);
         });
@@ -591,6 +594,7 @@ async function iniciar(ctx, p) {
     }
   }
   p.escena = escena || p.sinMejorar || "";
+  if (!p.texto && !p.encargo?.sinTexto && escena) p.texto = textoDeLaFicha(escena);
   try {
     const t = await crearTrabajo(env, acceso, cliente, {
       ...p.pedido, prompt: conEscena(p.pedido.prompt, p.escena), confirmado: true, ...(datos.carpetaId ? { carpetaId: datos.carpetaId } : {}),

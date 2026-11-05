@@ -19,6 +19,20 @@ describe("el control de calidad de una pieza", () => {
     expect(textoDelPedido("Escena: una sala sin texto")).toBe("");
   });
 
+  it("de una FICHA cuenta cada texto UNA vez y manda su línea «Texto exacto»", () => {
+    // La prueba real de Feria del Lente (5-nov): el titular en «Composición» y otra vez en «Texto exacto». Contado dos
+    // veces, la corrección pidió «3 líneas» y dibujó el titular repetido.
+    const ficha = [
+      "Pieza: Post feed 4:5 — lentes con filtro de luz azul.",
+      "Composición: Titular «Tus ojos descansan» entre 10 y 19 % de la altura; apoyo debajo.",
+      "Texto exacto: titular «Tus ojos descansan», apoyo «Filtro de luz azul en todos tus lentes».",
+      "Evitar: «Oferta» y precios.",
+    ].join("\n");
+    expect(textoDelPedido(`Escena: ${ficha}\n\nTipo de pieza: …`)).toBe("Tus ojos descansan\nFiltro de luz azul en todos tus lentes");
+    // Sin línea «Texto exacto», lo citado en la escena, sin repetir.
+    expect(textoDelPedido("Escena: El titular «Duerme mejor» arriba y otra vez «Duerme mejor» en la taza.")).toBe("Duerme mejor");
+  });
+
   it("el pedido dice el texto exacto, los precios del catálogo y si el logo tenía que ir", () => {
     const p = pedidoDeControl({ marca: "Dcasa", texto: "Sofá cama $399", precios: ["$399", "$120"], logo: true, reglas: ["el logo abajo a la derecha"] });
     expect(p).toMatch(/Transcribe EXACTAMENTE/);
@@ -145,5 +159,17 @@ describe("la revisión del director", async () => {
     expect(mejoro(antes, { estado: "revisar", errores: [{ esperado: "a" }], puntajeDiseno: 9 })).toBe(false);
     expect(mejoro({ errores: [{ esperado: "a" }] }, { estado: "revisar", errores: [] })).toBe(true);
     expect(mejoro(antes, null)).toBe(false);
+  });
+
+  it("una línea que sale dos veces es un error, aunque no falte ninguna palabra", () => {
+    const esperado = "Tus ojos descansan\nFiltro de luz azul en todos tus lentes";
+    const leido = "Tus ojos descansan\nTus ojos descansan\nFiltro de luz azul en todos tus lentes\nFERIA DEL LENTE\nÓPTICA";
+    const errores = compararTexto(esperado, leido);
+    expect(errores).toEqual([{ esperado: "tus ojos descansan", escrito: "tus ojos descansan", repetido: 2 }]);
+    expect(correccionDeTexto({ errores }, esperado)).toContain("sale 2 veces y debe salir UNA sola vez");
+    expect(resumenControl({ estado: "revisar", errores })).toBe("Revisar: «tus ojos descansan» sale 2 veces");
+    // Lo que sobra sin repetir una línea (el logo) no cuenta, ni una línea que va DENTRO de otra.
+    expect(compararTexto(esperado, "Tus ojos descansan\nFiltro de luz azul en todos tus lentes\nFERIA DEL LENTE")).toEqual([]);
+    expect(compararTexto("Tus lentes\nFiltro en todos tus lentes", "Tus lentes\nFiltro en todos tus lentes")).toEqual([]);
   });
 });
