@@ -132,3 +132,34 @@ export function mezclarMusica(pcm, musica, { muestreo = RENDER.muestreo, volumen
   }
   return pcm;
 }
+
+/** El fundido del sonido de un clip al entrar y al salir (s): sin él, el corte se oye como un chasquido. */
+export const FUNDIDO_CLIP = 0.04;
+
+/**
+ * Mezcla el SONIDO de un clip de video (una capa `video` con `sonido`) en el audio del video: `clip` es su tramo ya
+ * decodificado (PCM s16le estéreo a `muestreo`), que entra en el segundo `en` del video a `volumen` (0–1), con un fundido
+ * muy corto al entrar y al salir (si no, el corte se oye como un chasquido). No pasa de `hasta` (segundos del video) ni
+ * del final del audio. → las muestras mezcladas. Puro.
+ */
+export function mezclarClip(pcm, clip, { en = 0, hasta = Infinity, volumen = 1, muestreo = RENDER.muestreo } = {}) {
+  const total = Math.floor(pcm.byteLength / BYTES_MUESTRA);
+  const mc = Math.floor((clip?.byteLength ?? 0) / BYTES_MUESTRA);
+  const inicio = Math.max(0, Math.round((Number(en) || 0) * muestreo));
+  const fin = Math.min(total, inicio + mc, Number.isFinite(hasta) ? Math.round(hasta * muestreo) : Infinity);
+  const g = Math.max(0, Math.min(1, Number.isFinite(volumen) ? volumen : 1));
+  if (!(fin > inicio) || g === 0) return 0;
+  const fundido = Math.max(1, Math.round(FUNDIDO_CLIP * muestreo));
+  const v = new DataView(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+  const c = new DataView(clip.buffer, clip.byteOffset, clip.byteLength);
+  for (let i = inicio; i < fin; i++) {
+    const k = i - inicio;
+    const f = g * Math.min(1, k / fundido, (fin - 1 - i) / fundido);
+    for (const canal of [0, 2]) {
+      const o = i * BYTES_MUESTRA + canal;
+      const x = v.getInt16(o, true) + Math.round(c.getInt16(k * BYTES_MUESTRA + canal, true) * f);
+      v.setInt16(o, Math.max(-32768, Math.min(32767, x)), true);
+    }
+  }
+  return fin - inicio;
+}

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import {
   validarGuion, lineaDeTiempo, tiempoDeCapa, palabrasDe, sinEtiquetas, etiquetasDe, textoDeLocucion,
   puedePasar, estadoTrasEditar, puedeGenerarVoz, ESTADOS_VIDEO, NOMBRE_TIPO_ESCENA, TIPOS_ESCENA, COMPONENTES, VERSION_GUION, MIN_ESCENA, COLA_FINAL, FPS, ANTICIPO,
+  archivosDelGuion, videosDelGuion, tieneHabla, duracionMinimaDeEscena, segundoDelClip, MAX_TRAMO_VIDEO,
 } from "./videoEscenas.js";
 
 // ============================================================
@@ -235,5 +236,58 @@ describe("el ciclo del proyecto", () => {
     const sql = readFileSync(new URL("../../migraciones/d1/0059_videos_animados.sql", import.meta.url), "utf8");
     const enSql = /estado in \(([^)]+)\)/.exec(sql)[1].split(",").map((s) => s.trim().replace(/'/g, ""));
     expect(enSql).toEqual([...ESTADOS_VIDEO]);
+  });
+});
+
+
+describe("la capa VIDEO (un clip de la galería)", () => {
+  const conVideo = (capa, escena = {}) => validarGuion({
+    version: 1, formatos: ["9:16"],
+    escenas: [
+      { id: "a", tipo: "gancho", habla: "", capas: [{ tipo: "video", id: "v", archivo: "clip1", ...capa }], ...escena },
+      { id: "b", tipo: "cierre", habla: "Escríbenos hoy mismo por WhatsApp", capas: [{ tipo: "imagen", id: "i", archivo: "foto1" }] },
+    ],
+  });
+
+  it("valida con sus valores por defecto: a sangre, cubrir, con un velo de 0,3 y sin sonido", () => {
+    const v = conVideo({ hasta: 5 });
+    expect(v.ok).toBe(true);
+    expect(v.guion.escenas[0].capas[0]).toMatchObject({ encuadre: "completo", recorte: "cubrir", desde: 0, hasta: 5, sonido: false, volumen: 1, oscurecer: 0.3 });
+  });
+
+  it("una escena sin habla dura el TRAMO de su video (lo que falta va como silencio en la locución)", () => {
+    const v = conVideo({ desde: 2, hasta: 6.5 });
+    const linea = lineaDeTiempo(v.guion);
+    expect(linea.escenas[0].hasta - linea.escenas[0].desde).toBeCloseTo(4.5, 3);
+    expect(linea.silencios[0]).toMatchObject({ en: 0, dur: 4.5 });
+    expect(duracionMinimaDeEscena(v.guion.escenas[0])).toBe(4.5);
+    // Con su entrada en segundos, el tramo empieza después.
+    expect(duracionMinimaDeEscena({ capas: [{ tipo: "video", desde: 0, hasta: 3, entra: { s: 1 } }] })).toBe(4);
+  });
+
+  it("sin habla, sin pausa y sin tramo, es un error que dice las dos salidas", () => {
+    const v = conVideo({});
+    expect(v.ok).toBe(false);
+    expect(v.errores[0].mensaje).toMatch(/pausa.*video con su tramo/);
+  });
+
+  it("«hasta» tiene que pasar de «desde» y el tramo no pasa de 60 s", () => {
+    expect(conVideo({ desde: 3, hasta: 2 }).errores.some((e) => e.donde === "escenas[0].capas[0].hasta")).toBe(true);
+    const largo = conVideo({ desde: 0, hasta: MAX_TRAMO_VIDEO + 1 });
+    expect(largo.errores.some((e) => /como mucho 60 s/.test(e.mensaje))).toBe(true);
+  });
+
+  it("los ids de video van aparte de los de imagen; un guion sin habla no tiene locución", () => {
+    const v = conVideo({ hasta: 5 });
+    expect(archivosDelGuion(v.guion)).toEqual(["foto1"]);
+    expect(videosDelGuion(v.guion)).toEqual(["clip1"]);
+    expect(tieneHabla(v.guion)).toBe(true);
+    expect(tieneHabla({ escenas: [{ habla: "" }, { habla: "[ríe]" }] })).toBe(false);
+  });
+
+  it("el segundo del clip: desde su «desde», a velocidad normal, y quieto en su «hasta»", () => {
+    expect(segundoDelClip({ desde: 2 }, 10, 11.5)).toBe(3.5);
+    expect(segundoDelClip({ desde: 2 }, 10, 9)).toBe(2);
+    expect(segundoDelClip({ desde: 2, hasta: 4 }, 10, 20)).toBe(4);
   });
 });

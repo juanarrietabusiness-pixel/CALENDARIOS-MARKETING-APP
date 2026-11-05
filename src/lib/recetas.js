@@ -262,6 +262,22 @@ export const RECETAS_CASA = Object.freeze([
     ].join("\n"),
   },
   {
+    id: "montaje-ugc",
+    titulo: "Montar el video que grabó el cliente",
+    descripcion: "El UGC o los clips que grabó el cliente, cortados y con gancho escrito, textos, logo y música: a mp4, sin pagar voz.",
+    salida: "animado",
+    tipos: ["humano", "maletas", "anuncio"],
+    preguntas: ["¿Qué clips de la galería (o de Drive) van, y en qué orden?", "¿Cuál es el gancho que va escrito en el primer segundo?"],
+    controles: ["Cada clip existe en la galería del cliente", "El texto se lee sobre el video (velo o placa)", "La revisión sin problemas graves"],
+    instrucciones: [
+      "1. ver_estudio: los IDs de los videos del cliente en la galería (si están en Drive, que primero los traigan a la galería). formato_video.",
+      "2. crear_video con una escena por clip: capa «video» a sangre con su «desde» y «hasta» (el tramo bueno, sin las pausas del principio), «sonido» true si habla la persona, y encima el gancho escrito, un dato o un sello; sin «habla» (no lleva locución). El cierre con el logo y el llamado.",
+      "3. ver_escenas y revisar_video: que el texto se lea sobre el video (oscurecer 0,3–0,5 o placa) y que nada tape la cara de quien habla.",
+      "4. Si va música, musicas o generar_musica (cuesta: confirma la cifra) y sonido_video; la música baja sola cuando habla el clip.",
+      "5. Enséñaselo a la persona: aprobar_video sólo con su «sí»; luego renderizar_video (no gasta IA). Dile dónde quedó el mp4.",
+    ].join("\n"),
+  },
+  {
     id: "guion-ugc",
     titulo: "Guion UGC para grabar",
     descripcion: "El guion de un video que graba una persona: voz palabra por palabra, tomas y texto en pantalla, por tramos.",

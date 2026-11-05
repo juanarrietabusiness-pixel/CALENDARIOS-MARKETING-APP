@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { limpiarSonido, nivelDe, hablandoPorVentana, curvaDeDucking, mezclarMusica, MUSICA_BAJO_LA_VOZ, FUNDIDO_MUSICA } from "./sonidoVideo.js";
+import { limpiarSonido, nivelDe, hablandoPorVentana, curvaDeDucking, mezclarMusica, mezclarClip, MUSICA_BAJO_LA_VOZ, FUNDIDO_MUSICA, FUNDIDO_CLIP } from "./sonidoVideo.js";
 import { momentosDeEfectos, sintetizar, mezclarEfectos, DURACION_EFECTO } from "./efectosSonido.js";
 import { BYTES_MUESTRA } from "./renderVideo.js";
 import { validarGuion, lineaDeTiempo } from "./videoEscenas.js";
@@ -111,5 +111,43 @@ describe("los efectos de sonido", () => {
     const efecto = rmsEntre(fuera, 2, 2 + DURACION_EFECTO.whoosh);
     expect(db(efecto / nivelDe(voz))).toBeGreaterThan(-15);
     expect(db(efecto / nivelDe(voz))).toBeLessThan(-9);
+  });
+});
+
+
+describe("el SONIDO de un clip (mezclarClip)", () => {
+  const MUESTREO = 1000;
+  /** PCM estéreo de `n` muestras con el valor `v` en los dos canales. */
+  const pcm = (n, v = 0) => {
+    const b = new Uint8Array(n * BYTES_MUESTRA);
+    const d = new DataView(b.buffer);
+    for (let i = 0; i < n; i++) { d.setInt16(i * 4, v, true); d.setInt16(i * 4 + 2, v, true); }
+    return b;
+  };
+  const muestra = (b, i) => new DataView(b.buffer).getInt16(i * BYTES_MUESTRA, true);
+
+  it("entra en su segundo, a su volumen, con un fundido corto, y no pasa de su «hasta»", () => {
+    const destino = pcm(3000);
+    const n = mezclarClip(destino, pcm(5000, 1000), { en: 1, hasta: 2.5, volumen: 0.5, muestreo: MUESTREO });
+    expect(n).toBe(1500);
+    expect(muestra(destino, 999)).toBe(0);
+    expect(muestra(destino, 1000)).toBe(0); // el fundido arranca en 0 (sin chasquido)
+    const fundido = FUNDIDO_CLIP * MUESTREO;
+    expect(muestra(destino, 1000 + fundido + 10)).toBe(500);
+    expect(muestra(destino, 2500)).toBe(0);
+  });
+
+  it("se suma a lo que ya suena (la voz) sin pasarse del tope de 16 bits", () => {
+    const destino = pcm(500, 30000);
+    mezclarClip(destino, pcm(500, 30000), { en: 0, muestreo: MUESTREO });
+    expect(muestra(destino, 250)).toBe(32767);
+  });
+
+  it("un clip mudo, a volumen 0 o fuera del audio no toca nada", () => {
+    const destino = pcm(100, 7);
+    expect(mezclarClip(destino, new Uint8Array(0), { muestreo: MUESTREO })).toBe(0);
+    expect(mezclarClip(destino, pcm(100, 9), { volumen: 0, muestreo: MUESTREO })).toBe(0);
+    expect(mezclarClip(destino, pcm(100, 9), { en: 5, muestreo: MUESTREO })).toBe(0);
+    expect(muestra(destino, 50)).toBe(7);
   });
 });

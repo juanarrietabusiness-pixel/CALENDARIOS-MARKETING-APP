@@ -172,3 +172,24 @@ describe("la zona estricta del texto esencial y lo que entra por partes", async 
     expect(tardaEnLlenarse({ tipo: "texto" })).toBe(0);
   });
 });
+
+describe("la revisión con un video a sangre", () => {
+  const conClip = (oscurecer, placa = "") => con((g) => {
+    g.escenas[0].capas = [
+      { tipo: "video", id: "v", archivo: "clip1", oscurecer },
+      { tipo: "texto", id: "t", texto: "Mira esto", pos: "arriba", ...(placa ? { placa } : {}) },
+    ];
+  });
+
+  it("casi sin velo y con texto sin placa avisa (sin ser grave); con velo o placa, no", () => {
+    const sin = revisar(conClip(0.1)).filter((p) => p.escena === "e1");
+    expect(tipos(sin)).toContain("video_sin_velo");
+    expect(sin.find((p) => p.tipo === "video_sin_velo").grave).toBe(false);
+    expect(tipos(revisar(conClip(0.4)))).not.toContain("video_sin_velo");
+    expect(tipos(revisar(conClip(0, "oscuro")))).not.toContain("video_sin_velo");
+  });
+
+  it("una escena con su video a sangre no se ve «vacía» aunque sólo lleve un texto", () => {
+    expect(revisar(conClip(0.4)).filter((p) => p.escena === "e1" && p.tipo === "espacio_vacio")).toEqual([]);
+  });
+});

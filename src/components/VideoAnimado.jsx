@@ -336,7 +336,8 @@ function VistaPrevia({ guion, locucion, kit, archivos }) {
   const clavePrep = JSON.stringify([guion.escenas.map((e) => e.capas.map((c) => c.archivo ?? "")), guion.estilo.fuentes, kit.logo, kit.fuente?.clave, archivos.length]);
   useEffect(() => {
     let vivo = true;
-    prepararRecursos(guion, { archivos, kit }).then((p) => { if (vivo) setPrep(p); });
+    // Cuando llega el cuadro de un clip que se buscó, se repinta el instante de ahora.
+    prepararRecursos(guion, { archivos, kit, alCambiar: () => repintar.current() }).then((p) => { if (vivo) setPrep(p); });
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clavePrep]);
@@ -370,6 +371,8 @@ function VistaPrevia({ guion, locucion, kit, archivos }) {
   }, [conVoz, palabras, linea]);
   const tAhora = useRef(t);
   tAhora.current = t;
+  const repintar = useRef(() => {});
+  repintar.current = () => pintar(tAhora.current);
 
   /** Pone el audio en el segundo que toca para el instante `x` del video y lo hace sonar (o lo calla en un silencio). */
   const sonarDesde = useCallback((x) => {

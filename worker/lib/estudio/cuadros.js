@@ -6,7 +6,9 @@
 //   · el guion validado y los tiempos de la locución (si la hay; si no, el motor estima a 2,5 palabras por segundo);
 //   · la paleta del kit del cliente;
 //   · las imágenes que nombra el guion —ids de la GALERÍA de ESE cliente, nunca una clave que llegue de fuera—, el
-//     logo del kit y la letra (la del kit, o la que pida el guion si es de ese cliente), leídas de R2 y en base64.
+//     logo del kit y la letra (la del kit, o la que pida el guion si es de ese cliente), leídas de R2 y en base64;
+//   · los CLIPS de video (capas `video`) NO van en el pedido: pesan decenas de MB y el Worker tiene 128. Se suben antes,
+//     por flujo desde R2, con `PUT /clip/<id>` (`subirClips`), y el pedido sólo los nombra (`videos`).
 // No gasta dinero de IA: es cómputo del Container (céntimos de céntimo; ver CLAUDE.md).
 // ============================================================
 
@@ -14,7 +16,7 @@ import { ErrorVideo } from "../videosProyectos.js";
 import { kitDe } from "./kit.js";
 import { conPersonajeDelKit } from "../../../src/lib/personajeVideo.js";
 import { claveDelCliente } from "./archivos.js";
-import { validarGuion, archivosDelGuion, FORMATOS_VIDEO } from "../../../src/lib/videoEscenas.js";
+import { validarGuion, archivosDelGuion, videosDelGuion, FORMATOS_VIDEO } from "../../../src/lib/videoEscenas.js";
 
 /** Lo más que pesa lo que se manda (imágenes y fuentes): el Container lo tiene en memoria. */
 const TOPE_TOTAL = 24 * 1024 * 1024;
@@ -67,6 +69,15 @@ export async function pedidoDelVideo(env, acceso, cliente, fila, { formato } = {
   }
   const logo = await deR2(env, claveDelCliente(kit.logo ?? "", cliente.id), cuenta);
 
+  // Los clips: los ids que ESTÁN en la galería de este cliente como video (lo demás sale con su «Video» de espera).
+  const idsVideo = videosDelGuion(guion);
+  const clips = [];
+  for (const id of idsVideo) {
+    const f = await acceso.leerUno("estudio_archivos", { id: String(id), client_id: cliente.id }).catch(() => null);
+    const clave = f && !f.borrado_at && String(f.mime ?? "").startsWith("video/") ? claveDelCliente(f.clave, cliente.id) : null;
+    if (clave) clips.push({ id: String(id), clave });
+  }
+
   // La letra: la que pida el guion (si es de este cliente) o la del kit.
   const claveDe = (f) => (f && typeof f === "object" && f.clave ? claveDelCliente(f.clave, cliente.id) : claveDelCliente(kit.fuente?.clave ?? "", cliente.id));
   const titularClave = claveDe(guion.estilo?.fuentes?.titular);
@@ -79,9 +90,55 @@ export async function pedidoDelVideo(env, acceso, cliente, fila, { formato } = {
     pedido: {
       guion, palabras, formato: FORMATOS_VIDEO[formato] ? formato : guion.formatos[0], paleta: kit.paleta ?? [],
       imagenes, logo, fuentes: { titular: titular ? { datos: titular } : null, cuerpo: cuerpo ? { datos: cuerpo } : null },
+      videos: clips.map((c) => c.id),
     },
-    faltan: ids.filter((id) => !imagenes[id]),
+    clips,
+    faltan: [...ids.filter((id) => !imagenes[id]), ...idsVideo.filter((id) => !clips.some((c) => c.id === String(id)))],
   };
+}
+
+/**
+ * Sube al Container los clips que aún no tiene (`HEAD /clip/<id>` primero: se quedan en su disco mientras está
+ * despierto). `pedir(ruta, init)` → la Response del Container (el de los cuadros o el del render). El cuerpo va por FLUJO
+ * desde R2: el Worker nunca tiene el video entero en memoria. → los ids que NO se pudieron subir (salen con su «Video» de
+ * espera; el resto del video sale igual).
+ */
+export async function subirClips(env, clips, pedir) {
+  const fallaron = [];
+  for (const c of clips ?? []) {
+    try {
+      const h = await pedir(`/clip/${c.id}`, { method: "HEAD" });
+      if (h.ok) continue;
+      const obj = await env.MEDIA.get(c.clave);
+      if (!obj) { fallaron.push(c.id); continue; }
+      const r = await pedir(`/clip/${c.id}`, { method: "PUT", body: obj.body, duplex: "half", headers: { "Content-Length": String(obj.size) } });
+      if (!r.ok) fallaron.push(c.id);
+      await r.body?.cancel?.().catch(() => {});
+    } catch (e) {
+      console.error("subir clip:", e?.message ?? e);
+      fallaron.push(c.id);
+    }
+  }
+  return fallaron;
+}
+
+/** Un pedido CRUDO al Container de los cuadros (para `subirClips`). */
+export function pedirAlContenedor(env) {
+  if (!env.VIDEO) throw new ErrorVideo("El Container del video no está disponible aquí (en local no se arranca: se prueba con container/probar.mjs).", 503);
+  const stub = env.VIDEO.get(env.VIDEO.idFromName(NOMBRE));
+  return (ruta, init) => stub.fetch(new Request(`https://contenedor${ruta}`, init));
+}
+
+/**
+ * Lo de `pedidoDelVideo` con los clips YA en el Container de los cuadros: para /cuadro, /hoja y /revisar. Un clip que no
+ * se pudo subir se quita de `videos` (sale su «Video» de espera) y va en `faltan`.
+ */
+export async function pedidoConClips(env, acceso, cliente, fila, opciones = {}) {
+  const r = await pedidoDelVideo(env, acceso, cliente, fila, opciones);
+  if (!r.clips.length) return r;
+  const fallaron = await subirClips(env, r.clips, pedirAlContenedor(env));
+  if (!fallaron.length) return r;
+  return { ...r, pedido: { ...r.pedido, videos: r.pedido.videos.filter((id) => !fallaron.includes(id)) }, faltan: [...new Set([...r.faltan, ...fallaron])] };
 }
 
 /** Pide algo al Container del espacio → la Response. Sin Container (en local), 503 diciendo por qué. */

@@ -96,6 +96,8 @@ jobs:
         run: node container/probar.mjs http://localhost:8080
       - name: El audio del render, con el ffmpeg de la imagen
         run: docker exec video node container/probarAudio.mjs
+      - name: Los clips de video (capas «video»), dentro de la imagen
+        run: docker exec video node container/probarClips.mjs
       - name: Lo que dijo el contenedor
         if: always()
         run: docker logs video || true

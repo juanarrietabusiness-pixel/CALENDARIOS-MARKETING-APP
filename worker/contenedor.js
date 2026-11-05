@@ -85,7 +85,11 @@ export class ContenedorVideo extends ConContenedor {
     try {
       const puerto = await this.puerto();
       const url = new URL(req.url);
-      // El cuerpo como bytes (un pedido son pocos MB): pasarlo como flujo exige `duplex` fuera de Workers.
+      // Un CLIP (PUT /clip/<id>) pasa por flujo: pesa decenas de MB y el objeto tiene 128. Lo demás, como bytes (un
+      // pedido son pocos MB): pasarlo como flujo exige `duplex` fuera de Workers.
+      if (req.method === "PUT") {
+        return await puerto.fetch(new Request(`http://contenedor${url.pathname}`, { method: "PUT", headers: req.headers, body: req.body, duplex: "half" }));
+      }
       const cuerpo = req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer();
       return await puerto.fetch(new Request(`http://contenedor${url.pathname}`, { method: req.method, headers: req.headers, body: cuerpo }));
     } catch (e) {
@@ -130,6 +134,10 @@ export class RenderVideo extends ConContenedor {
       return puerto.fetch(new Request(`http://contenedor${ruta}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo),
       }));
+    }, async (ruta, init) => {
+      // Crudo: los clips de video (`subirClips`), por flujo desde R2.
+      const puerto = await this.puerto();
+      return puerto.fetch(new Request(`http://contenedor${ruta}`, init));
     });
   }
 }

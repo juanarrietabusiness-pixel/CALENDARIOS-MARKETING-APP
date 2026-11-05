@@ -64,6 +64,8 @@ import { miniaturasDe, MAX_PIEZAS_VISTAS } from "./miniaturas.js";
 export const LIMITES = Object.freeze({ imagenes: 4, videos: MAX_VIDEOS_POR_PEDIDO, segundos: 15 });
 
 const GALERIA_A_MOSTRAR = 12;
+/** Los videos más viejos que se enseñan además (para las capas «video» de un video animado). */
+const VIDEOS_A_MOSTRAR = 10;
 const MAX_GUIA = 1_800;
 const CONSULTA_VISUAL = "estilo visual identidad paleta colores fotografía iluminación composición tipografía evitar negativos";
 
@@ -365,6 +367,9 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         acceso.leerUno("mercado_clientes", { client_id: c.id }).catch(() => null),
       ]);
       const galeria = filas.filter((f) => !f.borrado_at).slice(0, GALERIA_A_MOSTRAR);
+      // Los VIDEOS aparte (los que grabó el cliente, los de Kie, los de Drive): un clip de hace semanas no sale entre lo
+      // último, y es lo que necesita una capa «video» del video animado.
+      const videos = filas.filter((f) => !f.borrado_at && f.tipo === "video" && !galeria.includes(f)).slice(0, VIDEOS_A_MOSTRAR);
       const vivos = trabajos.filter((t) => estaVivo(t.estado));
       const catalogo = textoDelCatalogo(catalogoDeLaFila(mercado), kitDe(c), filas);
 
@@ -383,6 +388,9 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         galeria.length
           ? `GALERÍA (lo último; el ID sirve de imagen_inicial o referencia):\n${galeria.map((f) => `· ${f.id} · ${f.tipo} · ${f.modelo || "subida"} · «${String(f.prompt).slice(0, 90)}»`).join("\n")}`
           : "GALERÍA: todavía no hay nada.",
+        videos.length
+          ? `MÁS VIDEOS DE LA GALERÍA (para una capa «video» de un video animado, o de referencia):\n${videos.map((f) => `· ${f.id} · ${f.modelo || "subido"}${f.ancho && f.alto ? ` · ${f.ancho}×${f.alto}` : ""} · «${String(f.prompt || "").slice(0, 70)}»`).join("\n")}`
+          : "",
         vivos.length ? `EN MARCHA:\n${vivos.map((t) => `· ${t.id} · ${t.tipo} · ${NOMBRE_ESTADO[t.estado]} · «${String(t.prompt).slice(0, 70)}»`).join("\n")}` : "",
       ].filter(Boolean).join("\n\n");
     },

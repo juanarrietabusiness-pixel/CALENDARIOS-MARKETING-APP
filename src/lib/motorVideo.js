@@ -27,7 +27,7 @@
 // ============================================================
 
 import { dibujarPersonaje, expresionDe, PROPORCION_PERSONAJE } from "./personajeVideo.js";
-import { FORMATOS_VIDEO, FPS, tiempoDeCapa } from "./videoEscenas.js";
+import { FORMATOS_VIDEO, FPS, tiempoDeCapa, segundoDelClip } from "./videoEscenas.js";
 import { gruposDeSubtitulos, grupoEn, estadoDePalabras } from "./subtitulos.js";
 import {
   dibujarIcono, dibujarFormas, dibujarEstrellas, dibujarLineas, formatearCifra, avanceDeCuenta, logoNecesitaPlaca,
@@ -37,8 +37,11 @@ import { dibujarLista, dibujarBurbuja, dibujarReloj, dibujarAntesDespues, dibuja
 /** Los componentes que este motor ya dibuja (todos los del formato v1). Uno desconocido sale como marcador. */
 export const COMPONENTES_LISTOS = Object.freeze([
   "texto", "sello", "imagen", "forma", "logo", "llamado", "cifra", "icono", "anillo", "dibujo", "personaje",
-  "lista", "burbuja", "reloj", "antes_despues", "telefono",
+  "lista", "burbuja", "reloj", "antes_despues", "telefono", "video",
 ]);
+
+/** Una capa de video a sangre (`encuadre` «completo»): va detrás de todo, a todo el cuadro, y no entra en el reparto. */
+export const esVideoCompleto = (capa) => capa?.tipo === "video" && capa.encuadre !== "caja";
 
 export const FUENTE_RESPALDO = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
@@ -230,7 +233,7 @@ export function centroDe(pos, ancho, alto) {
 
 const ORDEN_ZONA = Object.freeze({ arriba: 0, centro: 1, abajo: 2 });
 /** Lo que se ve grande y manda en la escena: en 16:9 va en su columna. */
-const VISUALES = new Set(["imagen", "personaje", "telefono", "antes_despues"]);
+const VISUALES = new Set(["imagen", "video", "personaje", "telefono", "antes_despues"]);
 const zonaDe = (pos) => { const v = String(pos ?? "centro").split("-")[0]; return v in ORDEN_ZONA ? v : "centro"; };
 const ladoDe = (pos) => { const p = String(pos ?? "").split("-"); const h = p[1] ?? p[0]; return h === "izq" || h === "der" ? h : null; };
 const seCruzan = (a, b) => a.desde < b.hasta && b.desde < a.hasta;
@@ -400,7 +403,8 @@ export function repartirEscena(ctx, capas, tiempos, c) {
   if (sub?.aparta) {
     if (c.subtitulos.pos === "arriba") { caja.y += sub.h; caja.h -= sub.h; } else caja.h -= sub.h;
   }
-  const lista = capas.map((capa, i) => ({ capa, i, zona: zonaDe(capa.pos), lado: ladoDe(capa.pos), cuando: tiempos.get(capa.id) }));
+  const lista = capas.filter((capa) => !esVideoCompleto(capa))
+    .map((capa, i) => ({ capa, i, zona: zonaDe(capa.pos), lado: ladoDe(capa.pos), cuando: tiempos.get(capa.id) }));
   for (const it of lista) if (it.capa.pos && typeof it.capa.pos === "object") sitio.set(it.capa.id, { ...centroDe(it.capa.pos, c.ancho, c.alto), escala: 1, ancho: anchoPedido(it.capa, c, caja.w) });
   const repartidas = lista.filter((it) => !(it.capa.pos && typeof it.capa.pos === "object") && it.capa.tipo !== "forma")
     .sort((p, q) => ORDEN_ZONA[p.zona] - ORDEN_ZONA[q.zona] || p.i - q.i);
@@ -465,7 +469,8 @@ export function tiemposDeEscena(capas, momento, primera = false) {
     t.set(principal.id, { ...t.get(principal.id), desde: momento.desde });
     const luego = momento.desde + DESPUES_DEL_GANCHO;
     for (const capa of capas) {
-      if (capa.id === principal.id) continue;
+      // Un video a sangre es el FONDO del gancho: no se retrasa (si no, el primer cuadro saldría sin él).
+      if (capa.id === principal.id || esVideoCompleto(capa)) continue;
       const v = t.get(capa.id);
       if (v.desde < luego) t.set(capa.id, { desde: luego, hasta: Math.max(v.hasta, luego) });
     }
@@ -752,6 +757,47 @@ function marcador(ctx, nombre, w, h, paleta, familia) {
   ctx.restore();
 }
 
+/** El id de un USO de video (una capa en su escena): el Container lleva un decodificador por uso. */
+const usoDeVideo = (c, capa) => `${c.escenaId ?? ""}/${capa.id}`;
+
+/** Lo que se ve de un video cuyo cuadro aún no llegó (o no se pudo leer): oscuro, con el triángulo de reproducir. */
+function sinCuadro(ctx, w, h, familia) {
+  ctx.save();
+  ctx.fillStyle = "#1F1F1F";
+  ctx.fillRect(-w / 2, -h / 2, w, h);
+  const r = Math.min(w, h) * 0.09;
+  ctx.fillStyle = "rgba(255,255,255,0.75)";
+  ctx.beginPath(); ctx.moveTo(-r * 0.6, -r); ctx.lineTo(r, 0); ctx.lineTo(-r * 0.6, r); ctx.closePath(); ctx.fill();
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  ctx.font = `600 ${Math.round(Math.max(26, Math.min(w, h) * 0.05))}px ${familia}`;
+  ctx.fillText("Video", 0, r * 1.6, w * 0.9);
+  ctx.restore();
+}
+
+/**
+ * Un video A SANGRE: el cuadro del clip a todo el lienzo (cubrir o contener; lo que no cubre deja ver el fondo de la
+ * escena), con su entrada (alfa, escala, desplazamiento) y el velo `oscurecer` encima para que se lea el texto.
+ */
+function dibujarVideoCompleto(ctx, capa, estado, c) {
+  const { ancho: W, alto: H, recursos } = c;
+  const cuadro = recursos?.video?.({ id: usoDeVideo(c, capa), archivo: capa.archivo }, segundoDelClip(capa, 0, estado.vida)) ?? null;
+  ctx.save();
+  ctx.globalAlpha *= estado.alfa;
+  ctx.translate(W / 2 + estado.dx, H / 2 + estado.dy);
+  if (estado.escala !== 1) ctx.scale(estado.escala, estado.escala);
+  if (!cuadro) sinCuadro(ctx, W, H, c.fuentes?.cuerpo || FUENTE_RESPALDO);
+  else if (capa.recorte === "contener" && cuadro.width && cuadro.height) {
+    const k = Math.min(W / cuadro.width, H / cuadro.height);
+    ctx.drawImage(cuadro, (-cuadro.width * k) / 2, (-cuadro.height * k) / 2, cuadro.width * k, cuadro.height * k);
+  } else dibujarImagenEn(ctx, cuadro, W, H, "cubrir");
+  if (capa.oscurecer > 0) {
+    ctx.fillStyle = "#000000";
+    ctx.globalAlpha *= capa.oscurecer;
+    ctx.fillRect(-W / 2, -H / 2, W, H);
+  }
+  ctx.restore();
+}
+
 const NOMBRES_MARCADOR = Object.freeze({
   telefono: "Teléfono", burbuja: "Burbuja", personaje: "Personaje", icono: "Icono", cifra: "Cifra", lista: "Lista",
   reloj: "Reloj", antes_despues: "Antes / después",
@@ -830,6 +876,25 @@ function dibujarCapa(ctx, capa, estado, c, ancho = capa.tam * c.lado) {
         ctx.restore();
       }
       dibujarImagenEn(ctx, img, iw, ih, capa.recorte);
+      return { w: iw + m * 2, h: ih + m * 2 };
+    }
+    case "video": {
+      // En su caja, como una imagen. La forma sale de lo que mide el clip (no del cuadro, que al medir no se pide).
+      const info = recursos?.videoInfo?.(capa.archivo) ?? null;
+      const forma = info?.ancho && info?.alto ? { width: info.ancho, height: info.alto } : { width: 9, height: 16 };
+      const { w: iw, h: ih } = cajaDeImagen(forma, w, maxAlto, capa.recorte);
+      const cuadro = Number.isFinite(estado.vida) ? recursos?.video?.({ id: usoDeVideo(c, capa), archivo: capa.archivo }, segundoDelClip(capa, 0, estado.vida)) ?? null : null;
+      const m = capa.marco ? lado * 0.02 : 0;
+      if (capa.marco) {
+        ctx.save();
+        ctx.fillStyle = colorDe("superficie", paleta);
+        ctx.shadowColor = "rgba(0,0,0,0.18)"; ctx.shadowBlur = lado * 0.03; ctx.shadowOffsetY = lado * 0.01;
+        rectRedondo(ctx, -iw / 2 - m, -ih / 2 - m, iw + m * 2, ih + m * 2, lado * 0.02);
+        ctx.fill();
+        ctx.restore();
+      }
+      if (cuadro) dibujarImagenEn(ctx, cuadro, iw, ih, capa.recorte);
+      else if (Number.isFinite(estado.vida)) sinCuadro(ctx, iw, ih, cuerpo);
       return { w: iw + m * 2, h: ih + m * 2 };
     }
     case "forma": {
@@ -1085,10 +1150,16 @@ export function capasDe(escena) {
 const luzDelFondo = (escena, paleta) => { const f = colorDe(escena?.fondo?.color ?? "fondo", paleta); return HEX.test(f) ? luminancia(f) : 0.5; };
 
 function dibujarEscena(ctx, escena, momento, t, cGuion, primera = false) {
-  const c = { ...cGuion, tipoEscena: escena.tipo, luzFondo: luzDelFondo(escena, cGuion.paleta) };
+  const c = { ...cGuion, tipoEscena: escena.tipo, luzFondo: luzDelFondo(escena, cGuion.paleta), escenaId: escena.id };
   dibujarFondo(ctx, escena.fondo, c.ancho, c.alto, c.paleta, escena.id, t);
-  const capas = capasDe(escena);
-  const tiempos = tiemposDeEscena(capas, momento, primera);
+  const todas = capasDe(escena);
+  const tiempos = tiemposDeEscena(todas, momento, primera);
+  // Los videos a sangre, encima del fondo y detrás de todo lo demás.
+  for (const capa of todas.filter(esVideoCompleto)) {
+    const estado = estadoDeCapa(capa, tiempos.get(capa.id), t, { ritmo: c.ritmo, lado: c.lado });
+    if (estado) dibujarVideoCompleto(ctx, capa, estado, c);
+  }
+  const capas = todas.filter((capa) => !esVideoCompleto(capa));
   const sitio = repartirEscena(ctx, capas, tiempos, c);
   // Las formas van detrás de lo que acompañan: se dibujan primero.
   const orden = [...capas].sort((p, q) => Number(Boolean(sitio.get(q.id)?.detras)) - Number(Boolean(sitio.get(p.id)?.detras)));
@@ -1223,6 +1294,59 @@ export function escenaEn(linea, t) {
   return k;
 }
 
+/**
+ * Los cuadros de VIDEO que pide el fotograma del instante `t`: `[{ id, archivo, segundo }]`, uno por capa de video que
+ * se ve (también la de la escena anterior mientras dura la transición, quieta en su último cuadro). El `id` es el del
+ * uso (escena/capa) y el `segundo`, el del clip: lo MISMO que pedirá el motor al dibujar. El Container los decodifica
+ * antes de dibujar el cuadro (el motor no espera nada). Puede sobrar alguno (no se dibuja si su alfa es 0). Pura.
+ */
+export function videosEnInstante(guion, linea, t) {
+  const escenas = guion?.escenas ?? [];
+  if (!escenas.length || !linea?.escenas?.length) return [];
+  const k = escenaEn(linea, t);
+  const momento = linea.escenas[k];
+  const tr = escenas[k].transicion ?? { tipo: "corte", dur: 0 };
+  const dibujadas = [[k, t]];
+  if (k > 0 && tr.tipo !== "corte" && tr.dur > 0 && t < momento.desde + tr.dur) dibujadas.unshift([k - 1, linea.escenas[k - 1].hasta - 1 / FPS]);
+  const salida = [];
+  for (const [i, tt] of dibujadas) {
+    const capas = capasDe(escenas[i]);
+    if (!capas.some((capa) => capa.tipo === "video")) continue;
+    const tiempos = tiemposDeEscena(capas, linea.escenas[i], i === 0);
+    for (const capa of capas) {
+      if (capa.tipo !== "video") continue;
+      const v = tiempos.get(capa.id);
+      if (tt < v.desde - 1e-6 || tt > v.hasta + DURACION_SALIDA + 1e-6) continue;
+      salida.push({ id: `${escenas[i].id}/${capa.id}`, archivo: capa.archivo, segundo: segundoDelClip(capa, v.desde, tt) });
+    }
+  }
+  return salida;
+}
+
+/**
+ * Todos los USOS de video de un guion, con su ventana en el video y su tramo del clip: `[{ id, archivo, desde, hasta,
+ * clipDesde, sonido, volumen }]` (desde/hasta en segundos del VIDEO, como los dibuja el motor). Para el audio del
+ * render (el sonido de cada clip) y para saber qué clips mandar. Pura.
+ */
+export function usosDeVideo(guion, linea) {
+  const salida = [];
+  (guion?.escenas ?? []).forEach((e, i) => {
+    const capas = capasDe(e);
+    if (!capas.some((capa) => capa.tipo === "video") || !linea?.escenas?.[i]) return;
+    const tiempos = tiemposDeEscena(capas, linea.escenas[i], i === 0);
+    for (const capa of capas) {
+      if (capa.tipo !== "video") continue;
+      const v = tiempos.get(capa.id);
+      const tramo = Number(capa.hasta) > Number(capa.desde) ? Number(capa.hasta) - Number(capa.desde) : Infinity;
+      salida.push({
+        id: `${e.id}/${capa.id}`, archivo: capa.archivo, desde: v.desde, hasta: Math.min(v.hasta, v.desde + tramo),
+        clipDesde: Number(capa.desde) || 0, sonido: capa.sonido === true, volumen: Number.isFinite(capa.volumen) ? capa.volumen : 1,
+      });
+    }
+  });
+  return salida;
+}
+
 /** Lo que necesitan el reparto y el dibujo de cada capa: medidas, paleta, ritmo, recursos, fuentes, subtítulos. */
 function contextoDe({ guion, formato, paleta, recursos = {}, fuentes = {} }) {
   const f = FORMATOS_VIDEO[formato] ? formato : (guion?.formatos?.[0] ?? "9:16");
@@ -1245,9 +1369,11 @@ export function cajasDeEscena(ctx, { guion, linea, indice = 0, formato, recursos
   const escena = guion?.escenas?.[indice];
   if (!escena) return [];
   const base = contextoDe({ guion, formato, recursos, fuentes });
-  const c = { ...base, tipoEscena: escena.tipo, luzFondo: luzDelFondo(escena, base.paleta) };
-  const capas = capasDe(escena);
-  const tiempos = tiemposDeEscena(capas, linea.escenas[indice], indice === 0);
+  const c = { ...base, tipoEscena: escena.tipo, luzFondo: luzDelFondo(escena, base.paleta), escenaId: escena.id };
+  const todas = capasDe(escena);
+  const tiempos = tiemposDeEscena(todas, linea.escenas[indice], indice === 0);
+  // Un video a sangre no tiene caja: es el fondo.
+  const capas = todas.filter((capa) => !esVideoCompleto(capa));
   const sitio = repartirEscena(ctx, capas, tiempos, c);
   return capas.map((capa) => {
     const s = sitio.get(capa.id);
