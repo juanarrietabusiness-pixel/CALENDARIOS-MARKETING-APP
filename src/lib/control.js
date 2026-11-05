@@ -75,6 +75,14 @@ export function compararTexto(esperado, leido) {
     fuera.push({ esperado: p, escrito: cerca ? libres[mejor] : "" });
     if (cerca) libres.splice(mejor, 1);
   }
+  // Una LÍNEA entera que sale dos veces (el titular repetido) es un error aunque no falte ninguna palabra: las que
+  // sobran no cuentan (el logo o la etiqueta del producto también traen letras), una línea repetida sí.
+  // Por renglones enteros (el control transcribe una línea por renglón): «tus lentes» dentro de otra línea no cuenta.
+  const renglones = String(leido ?? "").split("\n").map((l) => palabras(l).join(" ")).filter(Boolean);
+  for (const linea of new Set(String(esperado ?? "").split("\n").map((l) => palabras(l).join(" ")).filter((l) => l.split(" ").length >= 2))) {
+    const veces = renglones.filter((r) => r === linea).length;
+    if (veces > 1) fuera.push({ esperado: linea, escrito: linea, repetido: veces });
+  }
   return fuera;
 }
 
@@ -84,11 +92,24 @@ export function compararTexto(esperado, leido) {
  */
 export function textoDelPedido(prompt) {
   const t = String(prompt ?? "");
-  const comillas = (trozo) => [...String(trozo).matchAll(/["“«]([^"”»]+)["”»]/g)].map((x) => x[1].trim()).filter(Boolean).join("\n");
+  // Cada texto UNA vez: la ficha del director nombra el titular en «Composición» y otra vez en «Texto exacto». Contado
+  // dos veces, el control pedía «3 líneas» y la corrección dibujaba el titular repetido (y el control lo daba por bueno).
+  const comillas = (trozo) => {
+    const vistos = new Set();
+    return [...String(trozo).matchAll(/["“«]([^"”»]+)["”»]/g)].map((x) => x[1].trim()).filter((s) => {
+      const k = s.toLowerCase().replace(/\s+/g, " ");
+      if (!s || vistos.has(k)) return false;
+      vistos.add(k);
+      return true;
+    }).join("\n");
+  };
   const m = t.match(/(?:Texto en la imagen[^:]*|Escribe en la lámina este texto[^:]*):\s*([\s\S]*?)(?:\.\s*Ningún otro texto|\n\n|$)/i);
   if (m) return comillas(m[1]);
   // «Mejorar idea» integra el texto en la escena, entre comillas: se toma lo citado DENTRO de la escena.
   const escena = t.match(/(?:^|\n\n)Escena: ([\s\S]*?)(?:\n\n|$)/)?.[1] ?? (t.includes("\n\n") ? "" : t);
+  // Una FICHA dice el texto en su línea «Texto exacto»: ésa manda (lo citado en «Composición» o «Evitar» no se escribe).
+  const exacto = escena.match(/(?:^|\n)\s*Texto exacto[^:\n]*:\s*([^\n]*)/i)?.[1];
+  if (exacto && comillas(exacto)) return comillas(exacto);
   return comillas(escena);
 }
 
@@ -217,7 +238,8 @@ export function mejoro(antes, despues) {
  */
 export function correccionDeTexto(control, textoEsperado = "") {
   const cambios = (control?.errores ?? [])
-    .map((e) => (e.escrito ? `donde dice "${e.escrito}" debe decir "${e.esperado}"` : e.esperado ? `falta la palabra "${e.esperado}"` : ""))
+    .map((e) => (e.repetido ? `el texto "${e.esperado}" sale ${e.repetido} veces y debe salir UNA sola vez: quita la copia`
+      : e.escrito ? `donde dice "${e.escrito}" debe decir "${e.esperado}"` : e.esperado ? `falta la palabra "${e.esperado}"` : ""))
     .filter(Boolean);
   if (!cambios.length) return "";
   // Varias líneas (titular, apoyo, botón) se dicen como líneas, cada una en su sitio: juntas en una frase, la edición
@@ -238,7 +260,7 @@ export function resumenControl(control) {
   if (!control) return "";
   if (control.estado === "ok") return "Revisada";
   const e = control.errores?.[0];
-  if (e) return e.escrito ? `Revisar: dice «${e.escrito}» (debía decir «${e.esperado}»)` : `Revisar: falta «${e.esperado}»`;
+  if (e) return e.repetido ? `Revisar: «${e.esperado}» sale ${e.repetido} veces` : e.escrito ? `Revisar: dice «${e.escrito}» (debía decir «${e.esperado}»)` : `Revisar: falta «${e.esperado}»`;
   if (control.precios?.length) return `Revisar: precio que no está en el catálogo (${control.precios[0]})`;
   if (control.logo === "falta") return "Revisar: falta el logo";
   if (control.logo === "deformado") return "Revisar: el logo está deformado";
