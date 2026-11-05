@@ -7,7 +7,7 @@
 
 /** Donde va la escena en el pedido de cada pieza: la pone el servidor cuando el director (o la mejora) la escribe. */
 export const ESCENA = "{{ESCENA}}";
-export const TIPOS_ENCARGO = Object.freeze(["lote", "carrusel"]);
+export const TIPOS_ENCARGO = Object.freeze(["lote", "carrusel", "reel"]);
 /** Piezas por encargo (un lote de 30 ideas cabe entero). */
 export const MAX_PASOS = 40;
 /** Láminas de un carrusel (Instagram admite 10). */

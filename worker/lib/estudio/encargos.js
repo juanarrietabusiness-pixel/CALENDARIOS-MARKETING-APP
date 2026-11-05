@@ -52,6 +52,14 @@ import { referenciaDePlantilla, lineaDePlantillaEnPedido } from "../../../src/li
 import { lineaDeReferencia } from "../../../src/lib/referencias.js";
 import { kitDe } from "./kit.js";
 import { acabarPieza } from "./acabado.js";
+import {
+  prepararReel, iniciarFotograma, pasoReel, reelTerminado, estadoDelReel, notaDelReel, cerrarReelPorPlazo, archivosDelReel, reelPublico,
+  continuarReel, montarReel,
+} from "./encargoReel.js";
+import { cambiarPublicacion } from "./ponerEnPost.js";
+import { marcarUso } from "./galeria.js";
+import { conHistoriaEncajada } from "../redesServidor.js";
+import { postConPiezas } from "../../../src/lib/galeriaPura.js";
 
 /**
  * La plantilla del kit que escogió el DIRECTOR (o la de su tipo) en el pedido de una pieza, como lo hace la pantalla
@@ -165,12 +173,19 @@ export function encargoPublico(f, { conPedidos = false } = {}) {
     id: p.id, titulo: p.titulo, fase: p.fase, error: p.error, trabajoId: p.trabajoId, escena: p.escena, deDirector: Boolean(p.deDirector),
     opciones: (p.opciones ?? []).map((o) => ({ id: o.id, fase: o.fase, control: o.control ?? null, corregida: Boolean(o.corregida) })),
     finales: p.finales ?? null, navegador: p.navegador ?? null, ...(p.lamina ? { lamina: p.lamina } : {}),
+    // Un fotograma del reel: su plano y, si ya va, su clip limpio.
+    ...(p.plano ? { plano: p.plano } : {}),
+    ...(p.clip ? { clip: { fase: p.clip.fase, archivoId: p.clip.archivoId ?? null, error: p.clip.error ?? "", segundos: p.clip.segundos ?? null } } : {}),
   }));
   return {
     id: f.id, clientId: f.client_id, tipo: f.tipo, titulo: f.titulo, estado: f.estado, pasos, nota: f.nota, error: f.error,
     creadoPor: f.creado_por, creado: f.created_at, actualizado: f.updated_at, terminado: f.terminado_at,
     // El sistema de la portada (lo siguen las demás láminas): la pantalla lo usa para rehacer una sola.
     ...(f.tipo === "carrusel" ? { sistema: leerJSON(f.datos, {}).sistema ?? null } : {}),
+    // El reel: el guion, qué sale (video o clips), el montaje y dónde quedó puesto.
+    ...(f.tipo === "reel" ? { reel: reelPublico(leerJSON(f.datos, {})) } : {}),
+    // Lo que quedó puesto solo en las publicaciones (las piezas que pidió Claude con su post_id).
+    ...(leerJSON(f.datos, {}).puestos ? { puestos: leerJSON(f.datos, {}).puestos } : {}),
   };
 }
 
@@ -189,9 +204,11 @@ export async function crearEncargo(env, acceso, cliente, cuerpo = {}, { usuario 
   const tipo = TIPOS_ENCARGO.includes(cuerpo.tipo) ? cuerpo.tipo : null;
   if (!tipo) throw new ErrorEstudio("Ese encargo no existe.", 400);
   const datos = {
-    mejorar: tipo === "lote" && cuerpo.mejorar !== false, controlar: cuerpo.controlar === true,
-    // Un carrusel va en ORDEN: cada lámina lleva la anterior de referencia.
-    paralelo: tipo === "carrusel" ? 1 : Math.max(1, Math.min(3, Math.floor(Number(cuerpo.paralelo)) || 2)),
+    mejorar: tipo === "lote" && cuerpo.mejorar !== false, controlar: tipo !== "reel" && cuerpo.controlar === true,
+    // Un carrusel y el storyboard de un reel van en ORDEN: cada lámina (o fotograma) lleva la anterior de referencia.
+    paralelo: tipo === "carrusel" || tipo === "reel" ? 1 : Math.max(1, Math.min(3, Math.floor(Number(cuerpo.paralelo)) || 2)),
+    // Lo que sale se pone SOLO en su publicación al terminar (las piezas que pide Claude con `post_id`).
+    poner: cuerpo.poner === true,
     carpetaId: cuerpo.carpetaId ? texto(cuerpo.carpetaId, 80) : null,
     vistas: limpiarVistas(cuerpo.vistas), concepto: "",
     // Quién lo pidió por dentro (el asistente o Claude por MCP): queda en cada trabajo, como cuando pedían a pelo.
@@ -202,7 +219,12 @@ export async function crearEncargo(env, acceso, cliente, cuerpo = {}, { usuario 
       .slice(0, 2).map((e) => ({ papel: e.papel, media_type: e.media_type, data: e.data })),
   };
   let pasos;
-  if (tipo === "carrusel") {
+  if (tipo === "reel") {
+    // El reel por planos: el storyboard en orden, y luego el video o los clips y el montaje (encargoReel.js).
+    const r = prepararReel(cuerpo);
+    Object.assign(datos, r.datos);
+    pasos = r.pasos;
+  } else if (tipo === "carrusel") {
     datos.comun = limpiarComun(cuerpo.comun);
     if (!datos.comun.modelo) throw new ErrorEstudio("Falta el modelo de las láminas.", 400);
     datos.logoEstampado = cuerpo.logoEstampado === true;
@@ -275,25 +297,37 @@ export async function avanzarEncargo(env, acceso, id) {
   let r;
   try {
     r = t - Date.parse(fila.created_at) > PLAZO_ENCARGO_MS
-      ? cerrarPorPlazo(pasos)
+      ? cerrarPorPlazo(pasos, fila.tipo === "reel" ? datos : null)
       : await paso(env, acceso, fila, pasos, datos);
   } catch (e) {
     console.error("estudio: encargo", id, e);
     r = { hizo: false, nota: "Algo falló; se vuelve a intentar." };
   }
-  const listos = pasos.length > 0 && pasos.every(terminado) && !pasos.some((p) => porAcabar(env, p));
+  const listos = fila.tipo === "reel"
+    ? reelTerminado(datos, pasos)
+    : pasos.length > 0 && pasos.every(terminado) && !pasos.some((p) => porAcabar(env, p));
   // Un carrusel terminado queda ORDENADO en su carpeta (la galería lo enseña como una tarjeta, en este orden). Si la
   // pantalla pone después el texto de la plantilla, vuelve a ordenarlo con las finales.
   if (listos && r.estado == null && fila.tipo === "carrusel" && datos.carpetaId) {
     const orden = pasos.filter((p) => p.fase === "hecho").map((p) => p.finales?.[0] ?? p.opciones?.[0]?.id).filter(Boolean);
     await ordenarCarpeta(acceso, fila.client_id, datos.carpetaId, orden).catch(() => null);
   }
-  const estado = r.estado ?? (listos ? (pasos.every((p) => p.fase === "fallido") ? "fallido" : "hecho") : "en_marcha");
+  // Un reel terminado, también: el video (o los clips) primero y luego el storyboard (una tarjeta en la galería).
+  if (listos && fila.tipo === "reel" && datos.carpetaId) {
+    const orden = [...archivosDelReel(datos, pasos), ...pasos.map((p) => (p.fase === "hecho" ? p.finales?.[0] ?? p.opciones?.[0]?.id : null))].filter(Boolean);
+    if (orden.length) await ordenarCarpeta(acceso, fila.client_id, datos.carpetaId, orden).catch(() => null);
+  }
+  const delReel = fila.tipo === "reel" && listos && r.estado == null ? estadoDelReel(datos, pasos) : null;
+  const estado = r.estado ?? delReel?.estado ?? (listos ? (pasos.every((p) => p.fase === "fallido") ? "fallido" : "hecho") : "en_marcha");
+  // Las piezas que pidió Claude con su post_id se ponen solas en su publicación, una vez, al terminar.
+  if (estado === "hecho" && datos.poner && fila.tipo !== "reel" && !datos.puestos) {
+    try { datos.puestos = await ponerResultados(env, acceso, fila, pasos, datos); } catch (e) { console.error("encargo: poner en la publicación", e); datos.puestos = []; }
+  }
   const cambios = {
     bloqueado_hasta: "", updated_at: ahora(), pasos: JSON.stringify(pasos), datos: JSON.stringify(datos),
-    nota: texto(r.nota ?? notaDe(pasos), 300), estado,
+    nota: texto(r.nota ?? (fila.tipo === "reel" ? notaDelReel(datos, pasos) : notaDe(pasos)), 300), estado,
     ...(estado !== "en_marcha" ? { terminado_at: ahora() } : {}),
-    ...(estado === "fallido" ? { error: texto(r.error ?? pasos.find((p) => p.error)?.error ?? "No salió ninguna pieza.", 400) } : {}),
+    ...(estado === "fallido" ? { error: texto(r.error ?? delReel?.error ?? pasos.find((p) => p.error)?.error ?? "No salió ninguna pieza.", 400) } : {}),
   };
   await acceso.actualizar("estudio_encargos", { id, bloqueado_hasta: permiso }, cambios);
   const actual = await acceso.leerUno("estudio_encargos", { id });
@@ -301,7 +335,54 @@ export async function avanzarEncargo(env, acceso, id) {
   return { encargo: actual, hizo: Boolean(r.hizo), ocupado: false };
 }
 
-function cerrarPorPlazo(pasos) {
+/**
+ * Lo que pidió Claude con su `post_id` (disenar_piezas), puesto SOLO en cada publicación al terminar: un carrusel
+ * entero en su orden, o las piezas de cada post (si son dos o más, el post pasa a carrusel), en lugar de lo que tenía
+ * (lo de antes sigue en la galería). Si el post recibe su primera imagen, su historia encajada, como el panel.
+ * → [{ postId, archivos } | { postId, aviso }].
+ */
+async function ponerResultados(env, acceso, fila, pasos, datos) {
+  const cliente = await acceso.leerUno("clients", { id: fila.client_id });
+  if (!cliente) return [];
+  const finales = (p) => (p.fase === "hecho" ? (p.finales?.length ? p.finales : (p.opciones ?? []).map((o) => o.id)).filter(Boolean) : []);
+  const grupos = new Map();
+  if (fila.tipo === "carrusel") {
+    const c = datos.comun ?? {};
+    if (c.postId) grupos.set(c.postId, { calendarId: c.calendarId ?? null, ids: pasos.flatMap((p) => finales(p).slice(0, 1)) });
+  } else {
+    for (const p of pasos) {
+      const postId = p.pedido?.postId;
+      if (!postId) continue;
+      const g = grupos.get(postId) ?? { calendarId: p.pedido.calendarId ?? null, ids: [] };
+      g.ids.push(...finales(p).slice(0, 1));
+      grupos.set(postId, g);
+    }
+  }
+  const salida = [];
+  for (const [postId, g] of grupos) {
+    if (!g.ids.length) continue;
+    const filas = new Map((await acceso.leerVarios("estudio_archivos", COLUMNAS_ARCHIVO, "id", g.ids, { client_id: cliente.id })).map((f) => [f.id, archivoPublico(f)]));
+    const piezas = g.ids.map((id) => filas.get(id)).filter(Boolean);
+    if (!piezas.length) continue;
+    const r = await cambiarPublicacion(env, acceso, {
+      clienteId: cliente.id, calendarId: g.calendarId, postId,
+      cambiar: async (post) => {
+        const con = postConPiezas(post, piezas, "reemplazar").post;
+        return conHistoriaEncajada(env, { antes: post, despues: con, clienteId: cliente.id, colorMarca: cliente.primary_color }).catch(() => con);
+      },
+    });
+    if (r?.postId) {
+      for (const a of piezas) await marcarUso(acceso, cliente.id, a.id, { calendarId: r.calendarId, postId }).catch(() => null);
+      salida.push({ postId, archivos: piezas.map((a) => a.id) });
+    } else {
+      salida.push({ postId, aviso: r?.aviso ?? "No se pudo poner." });
+    }
+  }
+  return salida;
+}
+
+function cerrarPorPlazo(pasos, datosReel = null) {
+  if (datosReel) cerrarReelPorPlazo(datosReel, pasos);
   for (const p of pasos) {
     // Lo que esperaba al Container se queda para la pantalla: con el plazo vencido no se da ni un paso más.
     if (p.fase === "hecho" && p.navegador && !p.finales) p.acabadoIntentado = true;
@@ -468,12 +549,18 @@ async function paso(env, acceso, fila, pasos, datos) {
 
   if (pasos.filter(vivo).length < (datos.paralelo ?? 2)) {
     // La siguiente que ya tiene su diseño (o no lo espera): una que aún espera al director no se pide sin él.
-    const siguiente = pasos.find((p) => p.fase === "nuevo" && (fila.tipo === "carrusel" || listaParaCrear(p, datos)));
+    const siguiente = pasos.find((p) => p.fase === "nuevo" && (fila.tipo !== "lote" || listaParaCrear(p, datos)));
     if (siguiente) {
-      const r = fila.tipo === "carrusel" ? await iniciarLamina(ctx, siguiente) : await iniciar(ctx, siguiente);
+      const r = fila.tipo === "carrusel" ? await iniciarLamina(ctx, siguiente)
+        : fila.tipo === "reel" ? await iniciarFotograma(ctx, siguiente) : await iniciar(ctx, siguiente);
       if (r?.presupuesto) return pararTodo(pasos, r.presupuesto);
       return { hizo: true };
     }
+  }
+  // El reel, con el storyboard hecho: el video o los clips, y el montaje.
+  if (fila.tipo === "reel") {
+    const r = await pasoReel(ctx, fila);
+    if (r) return { ...r, hizo: Boolean(r.hizo) || cambio };
   }
   return { hizo: cambio };
 }
@@ -663,7 +750,10 @@ export const COLUMNAS_ARCHIVO = [
 /** Un encargo como lo ve la pantalla, con las imágenes que ya salieron (las de sus opciones y sus finales). */
 export async function encargoConArchivos(acceso, fila) {
   const e = encargoPublico(fila);
-  const ids = [...new Set(e.pasos.flatMap((p) => [...p.opciones.map((o) => o.id), ...(p.finales ?? [])]).filter(Boolean))];
+  const ids = [...new Set([
+    ...e.pasos.flatMap((p) => [...p.opciones.map((o) => o.id), ...(p.finales ?? [])]),
+    ...(fila.tipo === "reel" ? archivosDelReel(leerJSON(fila.datos, {}), leerJSON(fila.pasos, [])) : []),
+  ].filter(Boolean))];
   const archivos = ids.length ? await acceso.leerVarios("estudio_archivos", COLUMNAS_ARCHIVO, "id", ids, { client_id: fila.client_id }) : [];
   return { encargo: e, archivos: archivos.map(archivoPublico) };
 }
@@ -677,6 +767,20 @@ export async function encargosPorTerminar(acceso) {
   const filas = (await acceso.leer("estudio_encargos", {}, "updated_at desc", 30)).filter((f) => f.updated_at >= desde);
   const pendientes = filas.filter((f) => leerJSON(f.pasos, []).some((p) => p.fase === "hecho" && p.navegador && !p.finales));
   return Promise.all(pendientes.slice(0, 10).map((f) => encargoConArchivos(acceso, f)));
+}
+
+/**
+ * Lo que la persona hace sobre un REEL ya lanzado: seguir tras revisar el storyboard (`continuar`: el video o los
+ * clips) o montarlo («Montarlo aquí», o confirmar la voz del montaje). Lo vuelve a poner en marcha y da enseguida un
+ * paso (así «Montarlo aquí» devuelve ya el proyecto si no hay nada más que esperar). → { encargo, ocupado }.
+ */
+export async function accionDeReel(env, acceso, cliente, fila, accion, cuerpo = {}) {
+  const r = accion === "montar" ? await montarReel(env, acceso, cliente, fila, cuerpo) : await continuarReel(env, acceso, cliente, fila, cuerpo);
+  if (r.ocupado) return { encargo: fila, ocupado: true };
+  anunciar(env, acceso, r.fila);
+  await despertar(env, acceso.ownerId);
+  const paso1 = await avanzarEncargo(env, acceso, fila.id).catch(() => null);
+  return { encargo: paso1?.encargo ?? r.fila, ocupado: false };
 }
 
 export async function cancelarEncargo(env, acceso, id) {

@@ -7,6 +7,8 @@
 // Lo usan la pestaña Subir de una publicación con video y el visor del Estudio (components/VideoListo.jsx).
 // ============================================================
 
+import { tieneHabla } from "./videoEscenas.js";
+
 /** Lo que se mira, en el orden en que se enseña. `grave`: un no aquí y el video no está listo. */
 export const CRITERIOS_VIDEO = [
   { id: "gancho", nombre: "Engancha en los primeros 2 segundos", grave: true },
@@ -25,7 +27,7 @@ const corto = (s, n) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, n);
  * El pedido al motor que VE el video. `formato`: «reel», «historia» o «youtube» (cambia el encuadre que se espera).
  * `producto`: la línea del catálogo (nombre y precio) si se sabe de qué es; `idea`: lo que la publicación quiere decir.
  */
-export function pedidoDeRevisionVideo({ marca = "", producto = "", idea = "", formato = "reel", conLogo = false } = {}) {
+export function pedidoDeRevisionVideo({ marca = "", producto = "", idea = "", formato = "reel", conLogo = false, acabado = null } = {}) {
   const encuadre = formato === "youtube" ? "horizontal 16:9" : "vertical 9:16, con lo importante lejos del 14 % de arriba y del 20 % de abajo (ahí van los botones de la red)";
   return [
     `Eres el director comercial de una agencia de redes sociales. Revisa este video de ${marca || "la marca"} ANTES de publicarlo y di si está listo. Sé estricto y concreto: es lo último que se mira.`,
@@ -33,6 +35,8 @@ export function pedidoDeRevisionVideo({ marca = "", producto = "", idea = "", fo
     producto ? `El producto: ${corto(producto, 300)}. Si se dice un precio distinto, es un defecto.` : "",
     conLogo ? "La marca tiene logo: debería verse en algún momento (mejor al final), sin deformar." : "",
     `Formato: ${encuadre}.`,
+    // El mp4 MONTADO en la aplicación: el texto, los subtítulos, el logo y el llamado los puso el código (exactos).
+    lineaDeAcabado(acabado),
     "",
     "Mira, uno por uno:",
     "- gancho: ¿los primeros 2 segundos hacen que alguien deje de deslizar? (movimiento, una pregunta, algo inesperado; no un logo ni un fundido lento)",
@@ -50,6 +54,55 @@ export function pedidoDeRevisionVideo({ marca = "", producto = "", idea = "", fo
     "Responde SOLO con JSON, sin texto alrededor:",
     '{"puntaje":0-10,"resumen":"una frase","criterios":{"gancho":{"ok":true,"nota":"…"},"sinSonido":{"ok":true,"nota":"…"},"voz":{"ok":null,"nota":"…"},"producto":{"ok":true,"nota":"…"},"marca":{"ok":true,"nota":"…"},"cierre":{"ok":false,"nota":"…"},"defectos":{"ok":true,"nota":"…"},"encuadre":{"ok":true,"nota":"…"}},"arreglos":["…"]}',
   ].filter((l) => l !== "").join("\n");
+}
+
+/**
+ * Lo que la APLICACIÓN puso encima de un video montado (el render del video animado), sacado de su guion: los
+ * subtítulos, el gancho y los textos, el logo y el llamado. Lo escribe el código, no el modelo de video: está bien
+ * escrito por construcción. → { subtitulos, logo, llamado, textos, voz } o null si no hay guion. Pura.
+ */
+export function acabadoDelGuion(guion, { conLogo = true } = {}) {
+  const escenas = Array.isArray(guion?.escenas) ? guion.escenas : [];
+  if (!escenas.length) return null;
+  const capas = escenas.flatMap((e) => e.capas ?? []);
+  const voz = tieneHabla(guion);
+  return {
+    subtitulos: voz && guion.subtitulos?.activo !== false,
+    logo: conLogo && capas.some((c) => c.tipo === "logo"),
+    llamado: capas.find((c) => c.tipo === "llamado")?.texto ?? "",
+    textos: capas.filter((c) => ["texto", "sello", "llamado"].includes(c.tipo)).map((c) => String(c.texto ?? "")).filter(Boolean).slice(0, 8),
+    voz,
+  };
+}
+
+/** Lo que se le dice al motor que VE el video de lo que puso la aplicación (para que no lo cuente como defecto). Pura. */
+export function lineaDeAcabado(acabado) {
+  if (!acabado) return "";
+  return [
+    "IMPORTANTE: este video está MONTADO en la aplicación. Lo que se lee encima lo escribió el código, no el modelo de video, y está bien escrito:",
+    acabado.textos.length ? `los textos «${acabado.textos.join("», «")}»` : "",
+    acabado.subtitulos ? "los subtítulos de la voz" : "",
+    acabado.logo ? "el logo original de la marca (al cierre)" : "",
+    acabado.llamado ? `el llamado «${acabado.llamado}»` : "",
+    "No los cuentes como texto mal escrito ni como logo deformado; sí di si tapan algo o no se leen.",
+  ].filter(Boolean).join(" ");
+}
+
+/**
+ * La revisión con lo que la aplicación GARANTIZA de un video montado: se entiende sin sonido si lleva subtítulos, se
+ * ve la marca si lleva el logo y cierra con un llamado si lo lleva. Antes el revisor reprobaba los videos con IA por
+ * faltarles justo eso; el montaje se lo pone. El veredicto se vuelve a calcular. Pura.
+ */
+export function conAcabado(revision, acabado) {
+  if (!revision || !acabado) return revision;
+  const garantiza = {
+    sinSonido: acabado.subtitulos ? "Lleva subtítulos de la voz (los pone la aplicación)." : "",
+    marca: acabado.logo ? "Lleva el logo original al cierre (lo pone la aplicación)." : "",
+    cierre: acabado.llamado ? `Cierra con «${acabado.llamado}» (lo pone la aplicación).` : "",
+  };
+  const criterios = revision.criterios.map((c) => (garantiza[c.id] && c.ok !== true ? { ...c, ok: true, nota: garantiza[c.id] } : c));
+  const r = { ...revision, criterios, montado: true };
+  return { ...r, veredicto: veredictoVideo(r) };
 }
 
 /** «listo», «casi» o «no». Un no en un criterio grave manda sobre el puntaje. Pura. */

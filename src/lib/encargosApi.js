@@ -185,3 +185,22 @@ export function resultadoDeCarrusel(e, archivos) {
 }
 
 export const terminado = terminadoEncargo;
+
+// ------------------------------------------------------------
+// El REEL por planos como encargo (worker/lib/estudio/encargoReel.js): el servidor lo lleva y se retoma
+// ------------------------------------------------------------
+
+/**
+ * Un reel al servidor: el guion por planos (`reel`), lo común de sus fotogramas (`comun`: modelo, estilo, personajes,
+ * fotos, referencias), qué sale (`salida`: «fotogramas» para revisar primero, «uno» o «clips»), el modelo del video y,
+ * si se quiere, el montaje. Con `postId`, lo que sale se pone solo en ella. → { encargo, archivos }.
+ */
+export const lanzarReel = (clienteId, datos) => crearEncargo(clienteId, { tipo: "reel", ...datos });
+/** Tras revisar el storyboard: { salida, video, montaje?, finales? } (finales: { pasoId: archivoId } corregidos a mano). */
+export const continuarReel = (clienteId, id, datos) => pedir(ruta(clienteId, `/${encodeURIComponent(id)}/continuar`), post(datos));
+/** «Montarlo aquí»: { automatico?, confirmadoVoz? } (también para confirmar la voz del montaje). */
+export const montarReel = (clienteId, id, datos) => pedir(ruta(clienteId, `/${encodeURIComponent(id)}/montar`), post(datos));
+/** El archivo de un fotograma corregido a mano, como final de su paso (el video y los clips salen de él). */
+export const fotogramaFinal = (clienteId, id, pasoId, archivoId) => finalesDePaso(clienteId, id, pasoId, [archivoId]);
+/** Los encargos de un cliente (los en marcha y los de las últimas 48 h): para retomar un reel. */
+export const listarEncargos = (clienteId) => pedir(ruta(clienteId)).then((r) => r?.encargos ?? []);
