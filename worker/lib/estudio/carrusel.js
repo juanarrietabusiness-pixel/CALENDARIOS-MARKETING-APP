@@ -46,7 +46,7 @@ export async function propuestaDeCarrusel(env, acceso, cliente, datos = {}) {
   const pautas = bloqueDePautas(await pautasDe(env, acceso, cliente.id));
   const imagenes = limpiarVistas(datos.vistas);
   const pedido = [pedidoDeCarrusel({ conLogo: Boolean(kit?.logo),
-    cliente: cliente.name, rubro: cliente.industry ?? "", laminas, tema, producto, personajes,
+    cliente: cliente.name, rubro: cliente.industry ?? "", laminas, tema, producto, personajes, indicacion: String(datos.indicacion ?? "").slice(0, 300),
     tipo: preset ? nombreDePreset(preset, kit) : "",
     estilo: lineaDeEstilo(kit, estiloDeLaPieza(kit, preset, String(datos.estilo ?? ""))),
     marca: kitVacio(kit) ? "" : bloqueDeMarca(kit), guia: ctx.guia, sobreLaMarca: ctx.sobreLaMarca, catalogo: ctx.catalogo,

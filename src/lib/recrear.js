@@ -9,11 +9,13 @@
 // cliente, una persona la corrige, y se crea en el Estudio con el kit, el
 // logo y las fotos REALES del producto.
 //
-// Lo que va al compositor lo arma `pedidoParaElCompositor`: el anuncio
-// original va de referencia diciendo QUÉ se toma de él (composición y
-// estilo; nunca su producto, su texto ni su logo), las fotos del producto
-// delante, y la escena con el texto exacto si lo lleva. En video hay dos
-// modos (`MODOS_RECREAR`) y el motor lo propone una regla (motorRecrear.js).
+// Una IMAGEN la diseña el DIRECTOR mirando el anuncio (papel «inspiración»)
+// y va por el servidor con el control y el logo (`recrearAnuncioConLaMarca` en
+// lib/otraVersion.js): el anuncio de otra marca NUNCA va al motor de imagen
+// (decisión de la agencia: con él delante, el motor lo copiaba y la otra marca
+// lo reconocería). Lo que va al compositor (`pedidoParaElCompositor`) es para
+// el VIDEO: dos modos (`MODOS_RECREAR`) y el motor lo propone una regla entre
+// los que tienen llave (motorRecrear.js).
 // ============================================================
 
 import { SIN_TEXTO_VIDEO } from "./videoLimpio.js";
@@ -83,9 +85,10 @@ export function pedidoParaElCompositor({ archivo, fotos = [], version = {}, vide
       ].filter(Boolean).join(" ").slice(0, 2500),
     };
   }
+  // En imagen, sólo las fotos del producto: el anuncio de otra marca no va al motor (lo mira el director, no el motor).
   return {
     tipo: "imagen", proporcion: "4:5", preset: "anuncio",
-    referencias: [...fotos, { ...archivo, toma: [...TOMA_DE_OTRA_MARCA], nota: NOTA_OTRA_MARCA }],
+    referencias: [...fotos],
     prompt: [idea || "Una pieza nueva con la misma composición que la de referencia, con nuestro producto.",
       texto ? `Texto en la imagen, exacto y legible: "${texto}".` : ""].filter(Boolean).join(" ").slice(0, 1500),
   };

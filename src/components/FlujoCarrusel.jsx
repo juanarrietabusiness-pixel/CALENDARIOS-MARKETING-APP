@@ -4,7 +4,6 @@ import { textoCosto, costoDePieza, CONFIRMAR_DESDE } from "../lib/estudioCatalog
 import * as api from "../lib/estudio";
 import { AJUSTES_DE_TEXTO, IGUALAR_TEXTO, ejemploParaIgualar } from "../lib/estudio";
 import { TIPOS_PRESET, ESTILOS_VISUALES, estiloDeMarca, limpiarKit, referenciasDePersonajes, referenciaDeTipografia } from "../lib/kitMarca";
-import { controlEncendido } from "../lib/controlEstudio";
 import { partirGuion, MODOS_TEXTO, PLANTILLAS_TEXTO, MAX_LAMINAS, coloresPlantilla, costoCarrusel } from "../lib/carrusel";
 import { productosDelPost } from "../lib/pilares";
 import { crearLamina, corregirLamina, modelosParaCarrusel, modeloParaCarrusel, sistemaDeLaPortada } from "../lib/carruselEstudio";
@@ -94,14 +93,14 @@ export default function FlujoCarrusel({ client, estudio, inicial = {}, onPoner =
     logo: estampaSola(kit) ? "" : kit.logo, estampar: estampaSola(kit) ? kit : null, colores: coloresPlantilla(kit), familia: kit.tipografia, fuente: kit.fuente, carpetaId: carpeta.current,
     calendarId: inicial.calendarId ?? null, postId: inicial.postId ?? null, seguir: () => vivo.current,
     // La tipografía de la marca de referencia y el control de calidad de cada lámina (corrige solo una letra mal).
-    tipografia: referenciaDeTipografia(kit), controlar: controlEncendido(), activos: estudio?.activos ?? {},
+    tipografia: referenciaDeTipografia(kit), controlar: true, activos: estudio?.activos ?? {},
   });
 
   const proponer = async () => {
     setProponiendo(true);
     setAviso(null);
     try {
-      const r = await api.proponerCarrusel(clienteId, { guion, tema, preset, estilo, productoId: productoId || undefined, productoIds, personajes });
+      const r = await api.proponerCarrusel(clienteId, { guion, tema, preset, estilo, productoId: productoId || undefined, productoIds, personajes, indicacion: inicial.indicacion ?? "" });
       setHilo(r.hilo ?? "");
       setLaminas(r.laminas);
       setPaso("propuesta");

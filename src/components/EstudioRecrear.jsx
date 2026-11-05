@@ -19,9 +19,10 @@ import "./EstudioLote.css";
 //   2. La IA lo analiza —Claude mira la imagen, Gemini ve el video— y queda en
 //      el cerebro como referencia INTERNA. Luego propone la versión para el
 //      cliente con la misma forma; una persona la corrige.
-//   3. «Crear con mi marca» la pone en el compositor del Estudio con el kit, el
-//      logo y las fotos del producto (también en video): el costo se ve allí
-//      antes de pedir.
+//   3. «Crear con mi marca»: una IMAGEN la diseña el DIRECTOR mirando el
+//      anuncio (que nunca va al motor) y la crea el servidor con el kit, el logo,
+//      las fotos del producto y el control (lib/otraVersion.js); un VIDEO va al
+//      compositor del Estudio, donde se ve el costo antes de pedir.
 //
 // En VIDEO hay dos modos (`MODOS_RECREAR`): el mismo video con nuestro producto
 // (se edita el original) u otra versión que transmita lo mismo; el motor lo
@@ -52,6 +53,7 @@ export default function EstudioRecrear({ client, archivos = [], productosConFoto
   const [referencia, setReferencia] = useState(null);
   const [version, setVersion] = useState(null); // { idea, texto, descripcion }
   const [aviso, setAviso] = useState(null);
+  const [progreso, setProgreso] = useState("");
   const entrada = useRef(null);
   const ocupado = Boolean(trabajando);
   const ref = useDialogA11y(() => { if (!ocupado) onCerrar(); });
@@ -144,10 +146,30 @@ export default function EstudioRecrear({ client, archivos = [], productosConFoto
     }
   };
 
-  const crear = () => {
-    // Las fotos REALES del producto van también en video (antes se vaciaban y el video salía con otro producto).
-    const fotos = api.fotosDelProducto(productosConFotos, productoId);
-    onCrear(pedidoParaElCompositor({ archivo, fotos, version, video, modo, modelo: motor?.modelo ?? null, segundos: motor?.segundos ?? 0 }));
+  const crear = async () => {
+    if (video) {
+      // Las fotos REALES del producto van también en video (antes se vaciaban y el video salía con otro producto).
+      const fotos = api.fotosDelProducto(productosConFotos, productoId);
+      onCrear(pedidoParaElCompositor({ archivo, fotos, version, video, modo, modelo: motor?.modelo ?? null, segundos: motor?.segundos ?? 0 }));
+      return;
+    }
+    // Una imagen: el director mira el anuncio (que no va al motor) y el servidor la crea con el control y el logo.
+    setTrabajando("crear");
+    setAviso(null);
+    try {
+      const { recrearAnuncioConLaMarca } = await import("../lib/otraVersion");
+      const creada = await recrearAnuncioConLaMarca({
+        client, archivo, version, productoId, alProgresar: setProgreso,
+        confirmar: (costo) => window.confirm(`Recrearlo cuesta unos ${costo.toFixed(2).replace(".", ",")} $. ¿Sigo?`),
+      });
+      if (creada) onCrear({ creada });
+    } catch (e) {
+      setAviso({ ok: false, texto: e.message });
+    } finally {
+      setTrabajando("");
+      setProgreso("");
+      window.dispatchEvent(new Event("ia:gasto"));
+    }
   };
 
   return (
@@ -276,6 +298,7 @@ export default function EstudioRecrear({ client, archivos = [], productosConFoto
           )}
 
           <div aria-live="polite">
+            {progreso && <p role="status" className="hint">{progreso}</p>}
             {aviso && <p role={aviso.ok ? "status" : "alert"} className={aviso.ok ? "cerebro-aviso" : "cerebro-error"}>{aviso.texto}</p>}
           </div>
         </div>
@@ -290,7 +313,7 @@ export default function EstudioRecrear({ client, archivos = [], productosConFoto
             <>
               <button type="button" className="btn btn-ghost" disabled={ocupado} onClick={() => setPaso(0)}>Volver</button>
               <button type="button" className="btn btn-primary" disabled={ocupado || !version?.idea.trim() || (video && !motor)} onClick={crear}>
-                <Icon name={video ? "video" : "imageAi"} size={18} /> Crear con mi marca
+                <Icon name={video ? "video" : "imageAi"} size={18} /> {trabajando === "crear" ? "Creando…" : "Crear con mi marca"}
               </button>
             </>
           )}

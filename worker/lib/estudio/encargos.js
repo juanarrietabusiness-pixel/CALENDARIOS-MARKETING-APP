@@ -194,6 +194,8 @@ export async function crearEncargo(env, acceso, cliente, cuerpo = {}, { usuario 
     paralelo: tipo === "carrusel" ? 1 : Math.max(1, Math.min(3, Math.floor(Number(cuerpo.paralelo)) || 2)),
     carpetaId: cuerpo.carpetaId ? texto(cuerpo.carpetaId, 80) : null,
     vistas: limpiarVistas(cuerpo.vistas), concepto: "",
+    // Quién lo pidió por dentro (el asistente o Claude por MCP): queda en cada trabajo, como cuando pedían a pelo.
+    ...(["asistente", "claude"].includes(cuerpo.origen) ? { origen: cuerpo.origen } : {}),
   };
   let pasos;
   if (tipo === "carrusel") {
@@ -501,7 +503,7 @@ async function iniciar(ctx, p) {
   try {
     const t = await crearTrabajo(env, acceso, cliente, {
       ...p.pedido, prompt: conEscena(p.pedido.prompt, p.escena), confirmado: true, ...(datos.carpetaId ? { carpetaId: datos.carpetaId } : {}),
-    }, { usuario });
+    }, { usuario, ...(datos.origen ? { origen: datos.origen } : {}) });
     p.trabajoId = t.id;
     p.fase = "generando";
   } catch (e) {

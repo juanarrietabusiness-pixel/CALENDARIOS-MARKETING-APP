@@ -13,7 +13,10 @@
 //
 // En un carrusel cada imagen que no cabe tiene su FILA: se ve cómo queda,
 // con qué modelo se generó y se regenera sola, sin tocar las demás.
-// El motor (Muse Image o Nano Banana) se puede escoger para esta vez.
+// El motor (Muse Image o Nano Banana) se puede escoger para esta vez; si no, el
+// modelo del cliente (o el que lo releva en esa proporción). Va por el SERVIDOR
+// con el control de calidad, como toda pieza (`recomponerEnProporcion` en
+// lib/otraVersion.js), y la recompuesta queda también en la galería.
 //
 // Lo usan el panel de la publicación y «Subir»: por eso recibe
 // `alCambiar(fn)` —un `setForm`/`setPost`— y no un `sf`.
@@ -23,7 +26,7 @@ import { useEffect, useId, useState } from "react";
 import Icon from "../Icon";
 import { AJUSTES, claveAdaptado, mediosDe, necesitaAjuste, reemplazarMedio } from "../../lib/publicacion";
 import { vistaAjuste, ampliarConIA } from "../../lib/medios";
-import { generateImage, getContentBankUrl, subirImagenPublicacion, feedbackImage } from "../../lib/db";
+import { subirImagenPublicacion } from "../../lib/db";
 import { leerMotores } from "../../lib/estudio";
 import { nombreDelModelo } from "../../lib/estudioCatalogo";
 
@@ -46,7 +49,7 @@ export default function AjusteImagen({ post, alCambiar, clientId, objetivo, colo
   const faltan = fuera.filter((m) => !conIADe(m));
   const [vista, setVista] = useState(null);
   const [ampliando, setAmpliando] = useState(null); // { src } de la que se está generando, o { todas }
-  const [motor, setMotor] = useState(""); // "" = el que escoja el espacio
+  const [motor, setMotor] = useState(""); // "" = el del cliente
   const [motores, setMotores] = useState(null);
 
   useEffect(() => {
@@ -75,12 +78,12 @@ export default function AjusteImagen({ post, alCambiar, clientId, objetivo, colo
       setAmpliando({ src: m.src, todas, texto: lista.length > 1 ? `Generando ${i + 1} de ${lista.length}…` : "Generando con IA…" });
       try {
         const copiaNueva = await ampliarConIA(m.src, objetivo, {
+          // La recompuesta va por el servidor (el modelo del cliente y el control) y se queda en la galería: no se descarta.
           generar: async (proporcion) => {
-            const r = await generateImage({ clientId, adaptarDe: { src: m.src, proporcion, ...(motor ? { motor } : {}) } });
-            return { clave: r.clave, src: getContentBankUrl(r.clave) };
+            const { recomponerEnProporcion } = await import("../../lib/otraVersion");
+            return { src: (await recomponerEnProporcion({ clienteId: clientId, src: m.src, proporcion, motor })).src };
           },
           subir: (f) => subirImagenPublicacion(clientId, f),
-          descartar: (clave) => feedbackImage(clientId, clave, false).catch(() => {}),
         });
         // Cada una se pone en cuanto sale, EN SU SITIO: si la siguiente falla, la anterior no se pierde.
         alCambiar((p) => reemplazarMedio(p, m.src, { ...copiaNueva, nombre: m.nombre ? `${m.nombre.replace(/\.[a-z0-9]+$/i, "")}-${destinoDe(objetivo).replace(":", "x")}.jpg` : "" }));

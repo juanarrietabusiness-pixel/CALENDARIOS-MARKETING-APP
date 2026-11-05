@@ -25,7 +25,8 @@ vi.mock("./carruselEstudio", () => ({
     return datos.laminas.map((l) => { const r = { final: { id: `l${l.n}`, clave: `clientes/c1/l${l.n}.png` } }; datos.alAvanzar(l.n - 1, r); return r; });
   }),
 }));
-vi.mock("./controlEstudio", () => ({ controlEncendido: () => false, controlarYCorregir: vi.fn(), modeloParaCorregir: () => null }));
+// El control va siempre: aquí deja la pieza como estaba (lo que se comprueba es el pedido).
+vi.mock("./controlEstudio", () => ({ controlarYCorregir: vi.fn(async ({ archivo }) => ({ archivo, control: null, corregida: false })), modeloParaCorregir: () => null }));
 
 const { planDePiezas, crearPlan, costoDelPlan, textoDeLaFicha, modeloFinal, loQueFunciona, formatoDe, piezasParaPoner, postConPiezas } = await import("./disenoChat.js");
 const { conFichas } = await import("./loteEstudio.js");

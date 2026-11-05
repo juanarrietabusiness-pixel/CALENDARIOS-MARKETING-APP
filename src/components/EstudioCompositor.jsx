@@ -227,7 +227,7 @@ function TipoDePieza({ ids, preset, onPreset, kit, sinIdea = false }) {
  * gusta», el logo, las fotos de productos). Lo que se suma a la idea se ve antes de pedir.
  */
 function EstiloDeMarca({
-  ids, preset, kitListo, kit, marca = "", textoPreset, bloqueMarca = "", usarKit = true, onUsarKit,
+  ids, preset, kitListo, kit, marca = "", textoPreset, bloqueMarca = "",
   estilo = "", estiloResuelto = "", nombreEstilo = "", lineaEstilo = "", onEstilo, fijadoTipo = "", onFijarEstilo = null,
   conLogo, onConLogo, puedeLogo, estampa = false, esVideo, angulos = [], onAngulo, productos = [], onProducto, gustos = null, refsTipo = [], personajes = null, plantillas = null,
 }) {
@@ -248,13 +248,7 @@ function EstiloDeMarca({
             </span>
           )}
         </span>
-        {kitListo ? (
-          <label className="est-marca-usar">
-            <input type="checkbox" checked={usarKit} onChange={(e) => onUsarKit(e.target.checked)} /> Usar el kit en esta pieza
-          </label>
-        ) : (
-          <span className="hint">Prepáralo en la pestaña Estudio del cliente: sin kit, la IA no conoce sus colores ni su estilo.</span>
-        )}
+        {!kitListo && <span className="hint">Prepáralo en la pestaña Estudio del cliente: sin kit, la IA no conoce sus colores ni su estilo.</span>}
       </div>
 
       <div className="est-tipos" role="group" aria-labelledby={`${ids}-estilo`}>
@@ -359,7 +353,7 @@ function EstiloDeMarca({
           <input type="checkbox" checked={conLogo} onChange={(e) => onConLogo(e.target.checked)} /> Estampar el logo encima al terminar (el original, en su esquina)
         </label>
       )}
-      {usarKit && kitListo && esVideo && <p className="hint">En video el logo no va de referencia: el video empezaría en él.</p>}
+      {kitListo && esVideo && <p className="hint">En video el logo no va de referencia: el video empezaría en él.</p>}
     </div>
   );
 }
@@ -435,7 +429,7 @@ function DameIdeas({ ids, generando, lista = [], deTipo = "", conTema = false, o
  * «Diseñar con el director»: en una imagen, el director de arte escribe la ficha de diseño completa en el mismo campo
  * (en un video, la idea más clara); «Volver a mi idea» la deshace.
  */
-function MejorarIdea({ mejorando, onMejorar, onVolverIdea, mejorarSolo = null }) {
+function MejorarIdea({ mejorando, onMejorar, onVolverIdea }) {
   return (
     <div className="est-mejorar">
       <button type="button" className="btn btn-accent btn-sm" disabled={mejorando} onClick={onMejorar}>
@@ -447,11 +441,6 @@ function MejorarIdea({ mejorando, onMejorar, onVolverIdea, mejorarSolo = null })
         </button>
       )}
       <p className="hint">La convierte en una ficha de diseño (composición, colores, texto exacto). No crea nada todavía.</p>
-      {mejorarSolo && (
-        <label className="est-logo-casilla">
-          <input type="checkbox" checked={mejorarSolo.activo} onChange={(e) => mejorarSolo.onCambiar(e.target.checked)} /> Diseñarla sola al abrir desde una publicación
-        </label>
-      )}
     </div>
   );
 }
@@ -460,7 +449,7 @@ export default function Compositor({
   ids, form, setForm, modelo, motores, costo, confirmando, enviando, subiendo,
   onEnviar, onConfirmar, onNo, onModelo, onTipo, onQuitarMedio, onMarcarReferencia, onSubirArchivos, onDrive = null, onGaleria = null, promptRef, etiquetaPrompt = "¿Qué quieres crear?",
   nombrado = null,
-  mejorando = false, onMejorar = null, onVolverIdea = null, mejorarSolo = null,
+  mejorando = false, onMejorar = null, onVolverIdea = null,
   estilo = null,
   guionCorto = null,
   fijado = "", onFijar = null,
@@ -516,7 +505,7 @@ export default function Compositor({
 
       {ideas && <DameIdeas ids={ids} {...ideas} />}
 
-      {onMejorar && <MejorarIdea mejorando={mejorando} onMejorar={onMejorar} onVolverIdea={onVolverIdea} mejorarSolo={mejorarSolo} />}
+      {onMejorar && <MejorarIdea mejorando={mejorando} onMejorar={onMejorar} onVolverIdea={onVolverIdea} />}
 
       {esVideo && guionCorto && <Suspense fallback={null}><GuionCorto {...guionCorto} /></Suspense>}
 

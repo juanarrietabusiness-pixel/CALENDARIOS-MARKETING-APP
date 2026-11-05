@@ -18,6 +18,9 @@
 //
 // Si el control mismo falla (sin saldo, sin red), la pieza sigue su camino
 // sin control: nunca se pierde una pieza por no poder revisarla.
+//
+// Va SIEMPRE (decisión de la agencia): antes era una casilla recordada por
+// navegador, y dos personas que pulsaban lo mismo sacaban piezas distintas.
 // ============================================================
 
 import * as api from "./estudio";
@@ -25,15 +28,6 @@ import { correccionDelDirector, mejoro } from "./control";
 import { esperarArchivos } from "./carruselEstudio";
 import { ajustesDe } from "./estudioCatalogo";
 import { modeloParaCorregir, modeloDeEdicion } from "./edicion";
-
-/** ¿Revisar y corregir solo? Se recuerda por navegador; encendido por defecto. */
-const CLAVE = "estudio-control";
-export function controlEncendido() {
-  try { return localStorage.getItem(CLAVE) !== "0"; } catch { return true; }
-}
-export function encenderControl(si) {
-  try { localStorage.setItem(CLAVE, si ? "1" : "0"); } catch { /* sin almacenamiento */ }
-}
 
 export { modeloParaCorregir } from "./edicion";
 
@@ -88,8 +82,8 @@ export async function corregirTexto({ clienteId, archivo, control, activos = nul
 }
 
 /**
- * Lo que se hace al terminar un trabajo del compositor: el control (y la corrección del texto) de cada imagen, si está
- * encendido, y el logo estampado si el kit lo pide. → true si cambió algo en la galería (hay que releerla).
+ * Lo que se hace al terminar un trabajo del compositor: el control (y la corrección del texto) de cada imagen, siempre, y
+ * el logo estampado si el kit lo pide. → true si cambió algo en la galería (hay que releerla).
  */
 export async function terminarTrabajo({ clienteId, trabajo, kit, estampar = false, conLogo = null }) {
   if (!trabajo?.archivos?.length || trabajo.tipo === "video" || trabajo.estado !== "hecho") return false;
@@ -98,11 +92,9 @@ export async function terminarTrabajo({ clienteId, trabajo, kit, estampar = fals
   for (const id of trabajo.archivos) {
     let a = g?.archivos?.find((x) => x.id === id);
     if (!a) continue;
-    if (controlEncendido()) {
-      const r = await controlarYCorregir({ clienteId, archivo: a });
-      cambios ||= Boolean(r.control);
-      a = r.archivo;
-    }
+    const r = await controlarYCorregir({ clienteId, archivo: a });
+    cambios ||= Boolean(r.control);
+    a = r.archivo;
     // También si el motor dejó fuera el logo que pedía (`logoFuera`): se le estampa el original.
     if ((estampar || a.ajustes?.logoFuera) && conLogo && (await conLogo({ clienteId, archivo: a, kit })) !== a) cambios = true;
   }
@@ -110,13 +102,14 @@ export async function terminarTrabajo({ clienteId, trabajo, kit, estampar = fals
 }
 
 /**
- * «Rehacer con lo que dijo el cliente»: EDITA la imagen de la publicación con su comentario (la misma pieza, sólo
- * ese cambio) en vez de pedir otra desde cero, que perdería lo que sí le gustó. `src`: la imagen puesta (tiene que
- * estar en el almacén de ESTE cliente); `medida`: sus { ancho, alto } para la proporción; `texto`: lo que debe decir
- * (se controla si el control está encendido); `modelo`, el escogido para esta vez. → el archivo nuevo de la galería; la
- * imagen de antes se queda allí.
+ * «Rehacer con lo que dijo el cliente» y «Corregir esta»: EDITA la imagen de la publicación con su comentario (la misma
+ * pieza, sólo ese cambio) en vez de pedir otra desde cero, que perdería lo que sí le gustó. `src`: la imagen puesta
+ * (tiene que estar en el almacén de ESTE cliente); `medida`: sus { ancho, alto } para la proporción; `texto`: lo que debe
+ * decir (el control lo compara); `modelo`, el escogido para esta vez. Va por el SERVIDOR (lib/piezaServidor.js): la
+ * proporción, el control con su corrección y, si Muse dejó fuera el logo, el estampado. El logo no se estampa por el
+ * kit: una edición conserva lo que la imagen ya tenía. → el archivo nuevo de la galería; la de antes se queda allí.
  */
-export async function rehacerConComentario({ clienteId, src, indicacion, medida = {}, texto = "", activos = null, modelo = "", seguir = () => true }) {
+export async function rehacerConComentario({ clienteId, src, indicacion, medida = {}, texto = "", activos = null, modelo = "", seguir = () => true, alProgresar = () => {} }) {
   const archivo = api.archivoDesdeSrc(src, clienteId);
   if (!archivo) throw new Error("Esa imagen no está en el almacén de este cliente: súbela de nuevo y prueba otra vez.");
   if (!String(indicacion ?? "").trim()) throw new Error("Escribe qué hay que cambiar.");
@@ -125,11 +118,12 @@ export async function rehacerConComentario({ clienteId, src, indicacion, medida 
   const m = modelo ? modeloDeEdicion(llaves, modelo, proporcion(medida)) : modeloParaCorregir(llaves, "", proporcion(medida));
   if (!m) throw new Error("No hay ningún modelo que edite imágenes con llave puesta (Ajustes → IA).");
   const { prompt, medios } = api.pedidoDeCorreccion({ clave: archivo.clave, instruccion: indicacion, modelo: m });
-  const { trabajo } = await api.pedirImagenes(clienteId, {
-    modelo: m.id, prompt, n: 1, ajustes: ajustesDe(m, { aspectRatio: proporcion(medida) }, medios), medios, confirmado: true,
+  const { crearUnaEnServidor, pasoListo } = await import("./piezaServidor");
+  const paso = pasoListo({
+    titulo: "Corrección", texto, estampar: false,
+    pedido: { modelo: m.id, prompt, n: 1, ajustes: ajustesDe(m, { aspectRatio: proporcion(medida) }, medios), medios },
   });
-  const [nueva] = await esperarArchivos(clienteId, trabajo, { seguir });
+  const nueva = await crearUnaEnServidor({ clienteId, paso, alProgresar, seguir });
   if (!nueva) throw new Error("La imagen nueva no llegó. Prueba otra vez.");
-  if (!controlEncendido()) return nueva;
-  return (await controlarYCorregir({ clienteId, archivo: nueva, texto: texto || null, activos })).archivo;
+  return nueva;
 }

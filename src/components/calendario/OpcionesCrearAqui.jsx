@@ -7,8 +7,9 @@ import { NOMBRES_USO } from "../../lib/director";
 // «Crear la imagen aquí»: escoger el tipo, el estilo y la plantilla
 //
 // Por defecto sale como siempre: el tipo de la publicación, el estilo de ese
-// tipo y ninguna plantilla. Aquí se cambia lo que se quiera; se recuerda por
-// cliente en el navegador (lo guarda quien lo usa: seccionPublicar). El modelo
+// tipo y ninguna plantilla. Aquí se cambia lo que se quiera, sólo para esa
+// publicación (ya no se recuerda por navegador: cambiaba el resultado de la
+// siguiente sin que nadie lo viera). El modelo
 // se escoge aparte, a la vista y sólo para esa vez («Con qué modelo»,
 // components/SelectorModelo.jsx): vale también para otra versión y corregir.
 // ============================================================

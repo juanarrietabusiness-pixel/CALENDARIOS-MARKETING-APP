@@ -42,7 +42,10 @@
 
 import {
   MODELOS, modeloPorId, modeloPorDefecto, nombreDelModelo, textoCosto, MAX_VIDEOS_POR_PEDIDO, NOMBRE_ESTADO, estaVivo, MAX_PROMPT,
+  modeloQueRespeta, validarPedido, pideConfirmar,
 } from "../../../src/lib/estudioCatalogo.js";
+import { bloqueoPorPresupuesto } from "../configIA.js";
+import { ESCENA } from "../../../src/lib/encargos.js";
 import { estadoMotores } from "./motores.js";
 import { crearTrabajo, trabajoPublico, ErrorEstudio } from "./trabajos.js";
 import { buscar as buscarCerebro } from "../cerebro/cerebro.js";
@@ -51,7 +54,7 @@ import { kitDe } from "./kit.js";
 import { pedidoConMarca, ponerLogo, kitVacio, IDS_PRESET, TIPOS_PRESET } from "../../../src/lib/kitMarca.js";
 import { productosActivos } from "../../../src/lib/estudioMercado.js";
 import { lineasDeReferencias } from "../../../src/lib/referencias.js";
-import { ajustarFicha } from "../../../src/lib/director.js";
+import { ajustarFicha, esFicha, textoDeLaFicha } from "../../../src/lib/director.js";
 import { listarVoces, pedirMuestra, pedirLocucion, ErrorVoz } from "./locucion.js";
 import { pedirMusica, ErrorMusica } from "./musica.js";
 import { DURACION_MUSICA } from "../../../src/lib/musica.js";
@@ -74,6 +77,12 @@ const CONSULTA_VISUAL = "estilo visual identidad paleta colores fotografía ilum
 /** Un error de lo pedido: vuelve al modelo como resultado, no como fallo del servidor. */
 export class ErrorHerramientaEstudio extends Error {}
 
+/** El modelo de imagen del cliente: el fijado en su kit si tiene llave; si no, el predeterminado. Pura. */
+export function modeloFijado(activos, kit) {
+  const m = kit?.modelos?.imagen ? modeloPorId(kit.modelos.imagen) : null;
+  return m && m.tipo === "imagen" && (m.motor === "prueba" || activos[m.motor]) ? m : modeloPorDefecto(activos, "imagen");
+}
+
 const clienteParam = {
   cliente: { type: "string", description: "Nombre del cliente. En el asistente de un cliente se puede omitir: es ese cliente." },
 };
@@ -95,6 +104,8 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
     description:
       "Pide una IMAGEN o un VIDEO al Estudio de un cliente. NO espera el resultado: queda en cola, se hace solo (un video tarda de 1 a 10 minutos) " +
       "y aparece en la galería del cliente. Devuelve el ID del pedido para consultarlo con estado_trabajo. " +
+      "Una IMAGEN sale como las del lote: con el modelo fijado del cliente (si no pides otro), diseñada por el director de arte " +
+      "de la agencia si el prompt no es ya una ficha de diseño, revisada por el control de calidad y con el logo del kit. " +
       "Para una imagen suelta que deba verse aquí mismo en el chat, usa generar_imagen; esta es para video, para varias variantes, para elegir modelo " +
       "o para partir de imágenes de la galería. Cuesta dinero: si el pedido sale caro, la respuesta trae el costo y NO se crea nada hasta confirmarlo. " +
       "Entonces pregúntale al usuario, con la cifra, y sólo si dice que sí vuelve a llamarla con confirmado=true. Nunca pongas confirmado=true por tu cuenta. " +
@@ -347,6 +358,86 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
     return bloques.length ? pack(bloques, MAX_GUIA) : "";
   }
 
+  /**
+   * `crear_en_estudio` de una IMAGEN: un encargo del servidor de `n` piezas (encargos.js), como `disenar_piezas`. Si llega
+   * una ficha de diseño, va tal cual; si no, la diseña el DIRECTOR de la agencia (con el kit, el catálogo y el cerebro).
+   * Luego, en el servidor: el trabajo, la proporción, el control con UNA corrección y el logo estampado si el kit lo pide.
+   * El costo se confirma ANTES (el mismo «NO SE CREÓ NADA» de siempre) y el presupuesto se mira antes de crear.
+   */
+  async function imagenPorEncargo({ c, modelo, n, ajustes, medios, idea, prompt, armar, acortada, estampar, estilo, confirmado }) {
+    if (!idea.trim()) throw new ErrorHerramientaEstudio("Escribe qué quieres crear.");
+    if (!(modelo.motor === "prueba" || activos()[modelo.motor])) {
+      throw new ErrorHerramientaEstudio(`${modelo.nombre} no tiene su llave en este servidor: usa ver_estudio para ver los que sí.`);
+    }
+    const v = validarPedido({ modelo: modelo.id, prompt, n: 1, ajustes, medios });
+    if (!v.ok) throw new ErrorHerramientaEstudio(v.error);
+    const costo = Math.round(v.pedido.costoEstimado * n * 1000) / 1000;
+    if (pideConfirmar(costo) && !confirmado) {
+      return `NO SE CREÓ NADA. Este pedido cuesta ${textoCosto(costo)} (${modelo.nombre}, ${n} imagen${n > 1 ? "es" : ""}). ` +
+        "Díselo al usuario con esa cifra y pregúntale si lo hago. Sólo si responde que sí, vuelve a llamar con los MISMOS datos y confirmado=true.";
+    }
+    const bloqueo = costo > 0 ? await bloqueoPorPresupuesto(acceso) : null;
+    if (bloqueo) throw new ErrorHerramientaEstudio(bloqueo);
+    const ficha = esFicha(idea);
+    const proporcion = v.pedido.ajustes.aspectRatio ?? "";
+    const tipoPieza = TIPOS_PRESET[String(estilo).split("-")[0]]?.nombre ?? "";
+    const encargo = ficha ? null : {
+      formato: proporcion === "9:16" ? "historia" : proporcion === "16:9" ? "anuncio" : "post", proporcion, tipo: tipoPieza,
+      idea: idea.slice(0, 900), escena: "", texto: "", sinTexto: false, producto: "", indicacion: "",
+    };
+    const pasos = Array.from({ length: n }, (_, i) => ({
+      id: `p${i + 1}`, titulo: n > 1 ? `Imagen ${i + 1}` : "Imagen",
+      pedido: { modelo: modelo.id, prompt: armar(ESCENA), n: 1, ajustes: v.pedido.ajustes, medios },
+      // Con ficha, la escena va lista (el servidor la acorta si no cabe, nunca por el final); sin ella, el director.
+      escena: ficha ? idea : "", sinMejorar: ficha ? "" : idea,
+      encargo, mejora: encargo ? { ...encargo, idea, tipo: "imagen", pieza: tipoPieza } : null,
+      texto: ficha ? textoDeLaFicha(idea) : "", controlar: true,
+      navegador: estampar ? { plantilla: null, logo: true } : null,
+    }));
+    // Aparte (import en el momento): encargos.js lee fichas.js → mercado.js → herramientasServidor.js, que vuelve aquí.
+    const [{ crearEncargo }, { vistaDeEncargo }] = await Promise.all([import("./encargos.js"), import("./vistaEstudio.js")]);
+    let fila;
+    try {
+      fila = await crearEncargo(env, acceso, c, {
+        tipo: "lote", titulo: `${origen === "claude" ? "Claude" : "Asistente"} · ${n} imagen${n > 1 ? "es" : ""}`, mejorar: !ficha, controlar: true,
+        paralelo: Math.min(2, n), pasos, origen,
+      }, { usuario });
+    } catch (e) {
+      if (e instanceof ErrorEstudio) throw new ErrorHerramientaEstudio(e.message);
+      throw e;
+    }
+    const texto = [
+      acortada ? `Ojo: con la marca y el logo del kit tu ficha no cabía en ${MAX_PROMPT} caracteres; se acortará quitando primero «Marca», «Evitar» y «Fondo» (el texto exacto va entero). Para la próxima, cada línea más corta.` : "",
+      `Pedido creado: ${fila.id} (${modelo.nombre}, ${n} imagen${n > 1 ? "es" : ""}, costo ${textoCosto(costo)}${modelo.estimado ? ", aprox." : ""}).`,
+      ficha ? "Va con tu ficha tal cual." : "La diseña primero el director de arte de la agencia (con el kit, el catálogo y el cerebro del cliente).",
+      `Se hace en el servidor, como el lote: la proporción, el control de calidad (corrige sola una letra mal escrita y se queda con la mejor)${estampar ? " y el logo estampado" : ""}. Tarda de uno a pocos minutos; no hace falta esperar aquí.`,
+      `Va a la galería de ${c.name} (pestaña Estudio). Para saber cómo va: estado_trabajo con el ID ${fila.id}.`,
+    ].filter(Boolean).join("\n");
+    return { texto, imagenes: [], vista: (await vistaDeEncargo(env, acceso, fila)).vista };
+  }
+
+  /** estado_trabajo de un ENCARGO (lo que crea crear_en_estudio de una imagen): cada pieza y, de las listas, las imágenes. */
+  async function estadoDeEncargo(fila) {
+    const { vistaDeEncargo } = await import("./vistaEstudio.js");
+    const { e, imagenes, vista } = await vistaDeEncargo(env, acceso, fila);
+    const FASE = { nuevo: "esperando", generando: "creándose", opciones: "revisándose", hecho: "lista", fallido: "no salió" };
+    const lineas = e.pasos.map((p, i) => {
+      const finales = p.fase === "hecho" ? (p.finales?.length ? p.finales : p.opciones.map((o) => o.id)) : [];
+      const control = p.opciones?.[0]?.control;
+      const nota = control ? ` · control: ${control.estado === "ok" ? "bien" : "revisar"}${control.puntajeDiseno ? `, diseño ${control.puntajeDiseno}/10` : ""}${p.opciones?.[0]?.corregida ? " (corregida)" : ""}` : "";
+      return `${i + 1}. ${p.titulo || p.id} — ${FASE[p.fase] ?? p.fase}${finales.length ? ` · archivo ${finales.join(", ")}` : ""}${nota}${p.error ? ` · ${p.error}` : ""}`;
+    });
+    const vivo = e.estado === "en_marcha";
+    const texto = [
+      `Pedido ${e.id}: ${vivo ? "en marcha" : e.estado === "hecho" ? "terminado" : e.estado}. ${e.nota ?? ""}`.trim(),
+      e.error ? `Motivo: ${e.error}` : "",
+      ...lineas,
+      imagenes.length ? `Van ${imagenes.length === 1 ? "la imagen lista" : `las ${imagenes.length} imágenes listas`}, en el orden de arriba: míralas.` : "",
+      vivo ? "Sigue en marcha: se hace solo." : "",
+    ].filter(Boolean).join("\n");
+    return { texto, imagenes, vista };
+  }
+
   const acciones = {
     async ver_estudio({ cliente }) {
       const c = await resolverCliente(cliente);
@@ -362,17 +453,20 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
           `${porDefecto[m.tipo]?.id === m.id ? " · PREDETERMINADO" : ""}${valores ? ` · ${valores}` : ""}${apoyo ? ` · admite ${apoyo}` : ""}`;
       };
 
-      const [filas, trabajos, guia, mercado] = await Promise.all([
+      const [filas, trabajos, guia, mercado, encargos] = await Promise.all([
         acceso.leer("estudio_archivos", { client_id: c.id }, "created_at desc"),
         acceso.leer("estudio_trabajos", { client_id: c.id }, "created_at desc", 20),
         guiaVisual(c.id),
         acceso.leerUno("mercado_clientes", { client_id: c.id }).catch(() => null),
+        // Lo que lleva el servidor (las imágenes de crear_en_estudio, el lote, los carruseles): también está en marcha.
+        acceso.leer("estudio_encargos", { client_id: c.id, estado: "en_marcha" }, "created_at desc", 10).catch(() => []),
       ]);
       const galeria = filas.filter((f) => !f.borrado_at).slice(0, GALERIA_A_MOSTRAR);
       // Los VIDEOS aparte (los que grabó el cliente, los de Kie, los de Drive): un clip de hace semanas no sale entre lo
       // último, y es lo que necesita una capa «video» del video animado.
       const videos = filas.filter((f) => !f.borrado_at && f.tipo === "video" && !galeria.includes(f)).slice(0, VIDEOS_A_MOSTRAR);
       const vivos = trabajos.filter((t) => estaVivo(t.estado));
+      const deEncargo = (f) => { try { const p = JSON.parse(f.pasos)[0]; return String(p?.escena || p?.sinMejorar || p?.titulo || f.titulo || "").slice(0, 70); } catch { return f.titulo; } };
       const catalogo = textoDelCatalogo(catalogoDeLaFila(mercado), kitDe(c), filas);
 
       return [
@@ -393,7 +487,9 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         videos.length
           ? `MÁS VIDEOS DE LA GALERÍA (para una capa «video» de un video animado, o de referencia):\n${videos.map((f) => `· ${f.id} · ${f.modelo || "subido"}${f.ancho && f.alto ? ` · ${f.ancho}×${f.alto}` : ""} · «${String(f.prompt || "").slice(0, 70)}»`).join("\n")}`
           : "",
-        vivos.length ? `EN MARCHA:\n${vivos.map((t) => `· ${t.id} · ${t.tipo} · ${NOMBRE_ESTADO[t.estado]} · «${String(t.prompt).slice(0, 70)}»`).join("\n")}` : "",
+        vivos.length || encargos.length
+          ? `EN MARCHA:\n${[...vivos.map((t) => `· ${t.id} · ${t.tipo} · ${NOMBRE_ESTADO[t.estado]} · «${String(t.prompt).slice(0, 70)}»`), ...encargos.map((f) => `· ${f.id} · encargo · ${f.nota || "en marcha"} · «${deEncargo(f)}»`)].join("\n")}`
+          : "",
       ].filter(Boolean).join("\n\n");
     },
 
@@ -401,7 +497,12 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       const c = await resolverCliente(entrada.cliente);
       const tipo = entrada.tipo === "video" ? "video" : "imagen";
       const motores = activos();
-      const modelo = entrada.modelo ? modeloPorId(entrada.modelo) : modeloPorDefecto(motores, tipo);
+      // Una IMAGEN sale con el modelo del CLIENTE (el fijado en su kit) salvo que se pida otro, y si ése no hace el formato
+      // pedido con sus referencias, con el que lo releva (como la pantalla y el lote). Un video, como siempre.
+      let modelo = entrada.modelo ? modeloPorId(entrada.modelo) : tipo === "imagen" ? modeloFijado(motores, kitDe(c)) : modeloPorDefecto(motores, tipo);
+      if (!entrada.modelo && modelo && tipo === "imagen" && entrada.formato) {
+        modelo = modeloQueRespeta(modelo, motores, String(entrada.formato), (entrada.referencias?.length ?? 0) + (kitDe(c).logo ? 1 : 0));
+      }
       if (!modelo) throw new ErrorHerramientaEstudio(`No existe el modelo «${entrada.modelo}». Usa ver_estudio para ver cuáles hay.`);
       if (modelo.tipo !== tipo) throw new ErrorHerramientaEstudio(`${modelo.nombre} es un modelo de ${modelo.tipo}, no de ${tipo}.`);
 
@@ -457,6 +558,12 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         acortada = true;
       }
 
+      // Una IMAGEN, con las mismas reglas que el lote: un ENCARGO del servidor (el director si no llega una ficha, la
+      // proporción, el control con su corrección y el logo estampado si el kit lo pide).
+      if (tipo === "imagen") {
+        return imagenPorEncargo({ c, modelo, n, ajustes, medios, idea, prompt, armar, acortada, estampar: entrada.sin_logo !== true && kit.logoModo === "estampado" && Boolean(kit.logo), estilo: entrada.estilo ?? "", confirmado: entrada.confirmado === true });
+      }
+
       let fila;
       try {
         fila = await crearTrabajo(env, acceso, c, {
@@ -488,7 +595,12 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
 
     async estado_trabajo({ trabajo_id: id }) {
       const fila = await acceso.leerUno("estudio_trabajos", { id: String(id ?? "") });
-      if (!fila) throw new ErrorHerramientaEstudio(`No encontré el pedido «${id}».`);
+      if (!fila) {
+        // Una imagen de crear_en_estudio es un ENCARGO (con su control): su ID también vale aquí.
+        const encargo = await acceso.leerUno("estudio_encargos", { id: String(id ?? "") });
+        if (encargo) return estadoDeEncargo(encargo);
+        throw new ErrorHerramientaEstudio(`No encontré el pedido «${id}».`);
+      }
       const t = trabajoPublico(fila);
       const fichas = t.archivos.length
         ? (await Promise.all(t.archivos.map((a) => acceso.leerUno("estudio_archivos", { id: String(a), client_id: fila.client_id })))).filter(Boolean)
