@@ -354,7 +354,8 @@ export default function FlujoReel({ client, estudio, inicial = {}, onPoner = nul
         {cabecera}
         {selectorForma}
         <Suspense fallback={<p className="hint">Cargando…</p>}>
-          <VideoAnimado client={client} estudio={estudio} />
+          <VideoAnimado client={client?.dbId ? { ...client, id: client.dbId } : client} estudio={estudio}
+            publicacion={inicial.postId ? { postId: inicial.postId, calendarId: inicial.calendarId ?? null, idea: inicial.idea ?? "" } : null} />
         </Suspense>
       </section>
     );

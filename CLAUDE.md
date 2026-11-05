@@ -440,6 +440,9 @@ src/
     BibliotecaVoces.jsx   «Buscar voces en español»: la biblioteca de ElevenLabs (gratis), escuchar y «Añadir a mis voces»
     VideoAnimado.jsx      «Animado con código»: los videos animados del cliente, el guion (errores con su sitio), la vista
                           previa en el lienzo y «Aprobar el guion» (lazy; dentro de FlujoReel)
+    CrearVideoAnimado.jsx «Video nuevo»: idea o publicación, duración y formato → la IA escribe el guion (lazy)
+    EditorEscenas.jsx     «Editar los textos»: lo que se dice, lo que se lee, tipo, pausa, orden de las escenas (lazy)
+    LocucionVideo.jsx     «La voz» del video en su pantalla: ver el costo y generarla (lazy)
     RenderVideo.jsx       «Renderizar a mp4»: pedirlo, esperarlo (relee cada 4 s), verlo, descargarlo y a qué publicación va
     VideoSonido.jsx       «Sonido» (efectos y música de la galería, con su volumen) e «Historial de versiones» del video
                           animado (lazy: el chunk de VideoAnimado está en su tope)
@@ -4236,6 +4239,15 @@ son del servidor.
   en UNA línea.
   · **El ejemplo de `formato_video` sólo usa componentes que el motor ya dibuja** (un test lo exige): uno con marcadores
   enseñaba a Claude justo lo que hay que evitar.
+  · **El PASO 4: crear un video sin Claude** (`CrearVideoAnimado.jsx`, `EditorEscenas.jsx`, `LocucionVideo.jsx`, lazy los tres:
+  el chunk de VideoAnimado está cerca de su tope). «Video nuevo» pide la idea (o la publicación del calendario), la
+  duración (15–60 s) y el formato, y `POST /api/videos/<c>/escribir` (`worker/lib/estudio/guionAnimado.js`, lo puro en
+  `src/lib/guionAnimadoIA.js`) le pide el guion a la IA de texto con el MISMO `formatoParaLaIA` que lee Claude, el cerebro
+  para escribir, el catálogo con los IDs de la galería de sus fotos y el personaje del kit. Se VALIDA; con errores, UNA
+  vuelta de corrección y si no, 502. NO guarda: se abre como borrador sin guardar (y ligado a la publicación si salió de
+  una). «Editar los textos» cambia lo que se dice y se lee sin tocar el JSON. «La voz» pide la locución con el 409 de
+  siempre (ver el costo → «Generar por …»). En el panel de un reel o una historia, «Video animado» abre todo esto
+  (`ReelIA` con `forma="animado"`). Función «guion de video»: texto, sin confirmación, como «Dame ideas».
   · **Nada de esto se ha probado contra Kie real** (los tests hablan con un `fetch` de mentira): los nombres de los campos
   de v3 y v2, si la voz va por id o por nombre (`vozParaKie`), si devuelven tiempos y en qué forma, y el redondeo real de
   los créditos salen de la documentación pública y se comprueban con la primera toma de verdad.

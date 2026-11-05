@@ -34,6 +34,9 @@
 //                                           voz. Va aparte del guion: no sube la versión ni pide otra voz (gratis)
 //   GET    /api/videos/<c>/<id>/versiones   El historial: las versiones de antes del guion
 //   POST   /api/videos/<c>/<id>/versiones   { version, aVersion }: volver a una (crea una versión nueva con su guion)
+//   POST   /api/videos/<c>/escribir         { idea, segundos?, formato?, postId? }: la IA de texto ESCRIBE el guion (formato
+//                                           v1, validado; si sale con errores se le devuelven una vez). No guarda nada:
+//                                           la pantalla lo abre como borrador sin guardar. Texto, sin confirmación
 //   GET    /api/videos/<c>/musicas          Las músicas de fondo del cliente (audio de su galería)
 //   POST   /api/videos/<c>/musicas          Subir una (multipart: archivo; MP3 o WAV, ≤ 15 MB)
 //   POST   /api/videos/<c>/musicas/generar  { estilo, instrumental?, letra?, duracion?, titulo?, evitar?, modelo?, videoId?,
@@ -57,13 +60,15 @@ import { json, error, cuerpo, noEncontrado } from "../lib/respuesta.js";
 import { difundir, firma } from "../lib/vivo.js";
 import {
   deFila, listarProyectos, crearProyecto, guardarProyecto, aprobarProyecto, ErrorVideo, ID_VIDEO as ID,
-  guardarSonido, versionesDe, volverAVersion,
+  guardarSonido, versionesDe, volverAVersion, publicacionDelCliente,
 } from "../lib/videosProyectos.js";
 import { musicasDe, subirArchivo } from "../lib/estudio/galeria.js";
 import { ErrorEstudio } from "../lib/estudio/trabajos.js";
 import { listarVoces, pedirMuestra, pedirLocucion, locucionAlDia, claveDeMuestra, HUELLA, ErrorVoz, viaDeVoz, fijarVozDeMarca } from "../lib/estudio/locucion.js";
 import { buscarEnBiblioteca, anadirDeLaBiblioteca, previaGratis, ACENTOS_BIBLIOTECA } from "../lib/estudio/elevenlabs.js";
 import { ErrorMotor } from "../lib/estudio/gemini.js";
+import { escribirGuion, ErrorGuion } from "../lib/estudio/guionAnimado.js";
+import { ErrorIA } from "../lib/cerebro/ia.js";
 import { pedirMusica, ErrorMusica } from "../lib/estudio/musica.js";
 import { pedidoDelVideo, alContenedor } from "../lib/estudio/cuadros.js";
 import { pedirRender, renderAlDia, ligarAPublicacion } from "../lib/estudio/render.js";
@@ -166,6 +171,20 @@ async function rutasDelCliente(req, env, { acceso, usuario, partes, metodo }) {
       return json(r, 201);
     }
     return error("Método no permitido.", 405);
+  }
+
+  // Escribir el guion con IA (no guarda: lo revisa la persona en la pantalla).
+  if (id === "escribir" && !accion) {
+    if (metodo !== "POST") return error("Método no permitido.", 405);
+    const b = (await cuerpo(req)) ?? {};
+    try {
+      const r = await escribirGuion(env, acceso, cliente, { idea: b.idea, segundos: b.segundos, formato: b.formato, postId: typeof b.postId === "string" ? b.postId : "" });
+      const publicacion = r.postId ? await publicacionDelCliente(acceso, clienteId, r.postId) : null;
+      return json({ guion: r.guion, avisos: r.avisos, corregido: r.corregido, aviso: r.aviso, publicacion });
+    } catch (e) {
+      if (e instanceof ErrorGuion || e instanceof ErrorIA) return error(e.message, e.estado ?? 502);
+      throw e;
+    }
   }
 
   if (id === "voces") return rutasVoces(req, env, { acceso, usuario, cliente, sub: accion, metodo });

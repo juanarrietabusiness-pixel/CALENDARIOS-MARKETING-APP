@@ -32,7 +32,7 @@ const esVideoArchivo = (f) => f?.type?.startsWith("video/");
 // Medios
 // ------------------------------------------------------------
 
-export function EditorMedios({ post, clientId, client = null, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null, onCrearReel = null, onVideoProducto = null, onDeLaGaleria = null, onOtraVersion = null, onRecrear = null, onCrearAqui = null, onCorregir = null, versionando = null }) {
+export function EditorMedios({ post, clientId, client = null, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null, onCrearReel = null, onVideoProducto = null, onVideoAnimado = null, onDeLaGaleria = null, onOtraVersion = null, onRecrear = null, onCrearAqui = null, onCorregir = null, versionando = null }) {
   const ids = useId();
   const [eligiendoPortada, setEligiendoPortada] = useState(null);
   const propia = useRef(null);
@@ -347,6 +347,11 @@ export function EditorMedios({ post, clientId, client = null, driveFolder, onCha
         {onVideoProducto && (
           <button type="button" className="btn btn-secondary btn-sm" onClick={onVideoProducto} disabled={!!subiendo} title="10–15 s que terminan en la foto real del producto y el logo">
             <Icon name="video" size={16} /> Video del producto
+          </button>
+        )}
+        {onVideoAnimado && (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onVideoAnimado} disabled={!!subiendo} title="Escenas dibujadas con código, una locución y subtítulos: la IA escribe el guion de esta publicación">
+            <Icon name="sparkles" size={16} /> Video animado
           </button>
         )}
       </div>

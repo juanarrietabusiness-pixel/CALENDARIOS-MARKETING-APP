@@ -440,6 +440,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           onCrearCarrusel={post.format === "carrusel" && clientId ? () => setCarrusel(true) : null}
           onCrearReel={post.format === "reel" && clientId ? () => setReel("guion") : null}
           onVideoProducto={(post.format === "reel" || post.format === "historia") && clientId ? () => setReel("producto") : null}
+          onVideoAnimado={(post.format === "reel" || post.format === "historia") && clientId ? () => setReel("animado") : null}
           onDeLaGaleria={clientId ? () => setGaleria(true) : null}
         />
         {client && (puedeCrearAqui || conImagen) && (

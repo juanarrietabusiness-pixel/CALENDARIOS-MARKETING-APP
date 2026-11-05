@@ -94,3 +94,16 @@
 .va-versiones { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
 .va-versiones li { display: flex; gap: var(--sp-2); justify-content: space-between; align-items: flex-start; background: var(--surface-2); border-radius: var(--radius-sm); padding: var(--sp-2); }
 .va-versiones li p { margin: var(--sp-1) 0 0; }
+
+/* Paso 4: crear (idea → guion con IA), editar los textos y la voz */
+.va-crear { display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.va-crear h3 { margin: 0; font-size: var(--fs-md); }
+.va-opciones { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: var(--sp-1); align-items: center; }
+.va-opciones legend { font-size: var(--fs-sm); margin-bottom: var(--sp-1); }
+.va-editor { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-2); }
+.va-editor-escena { display: grid; gap: var(--sp-1); padding: var(--sp-2); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+.va-editor-cab { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.va-editor-cab select { width: auto; flex: 1 1 140px; }
+.va-editor-botones { display: flex; gap: 2px; margin-left: auto; }
+.va-editor-pausa { max-width: 7rem; }
+.va-locucion { display: grid; gap: var(--sp-1); border-top: 1px solid var(--border); padding-top: var(--sp-2); }

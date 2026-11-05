@@ -42,6 +42,29 @@ export async function aprobarVideo(clienteId, id, version) {
   return r?.video ? { ...r.video, vozReutilizada: r.vozReutilizada === true } : null;
 }
 
+/**
+ * La IA ESCRIBE el guion (no guarda nada): { idea, segundos, formato, postId? } → { guion, avisos, corregido, aviso,
+ * publicacion: { calendarId, postId } | null }.
+ */
+export async function escribirGuionVideo(clienteId, { idea = "", segundos, formato, postId = "" } = {}) {
+  return pedir(`${base(clienteId)}/escribir`, json("POST", { idea, segundos, formato, postId }));
+}
+
+/**
+ * La LOCUCIÓN del guion aprobado. Sin `confirmado` el servidor contesta 409 con el costo: aquí vuelve como
+ * `{ confirmar: { costo, creditos, unidad, voz, modelo, caracteres, error } }` y no se crea nada.
+ */
+export async function pedirLocucionVideo(clienteId, id, { version, confirmado = false, voz, modelo } = {}) {
+  try {
+    const r = await pedir(`${base(clienteId)}/${encodeURIComponent(id)}/locucion`, json("POST", { version, confirmado, voz, modelo }));
+    avisar(clienteId, id);
+    return r;
+  } catch (e) {
+    if (e.estado === 409 && e.datos?.codigo === "confirmar") return { confirmar: { ...e.datos } };
+    throw e;
+  }
+}
+
 export async function borrarVideo(clienteId, id) {
   await pedir(`${base(clienteId)}/${encodeURIComponent(id)}`, { method: "DELETE" });
   avisar(clienteId, id);
