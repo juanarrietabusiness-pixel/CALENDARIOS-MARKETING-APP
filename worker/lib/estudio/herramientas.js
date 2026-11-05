@@ -50,6 +50,8 @@ import { kitDe } from "./kit.js";
 import { pedidoConMarca, ponerLogo, kitVacio, IDS_PRESET, TIPOS_PRESET } from "../../../src/lib/kitMarca.js";
 import { productosActivos } from "../../../src/lib/estudioMercado.js";
 import { listarVoces, pedirMuestra, pedirLocucion, ErrorVoz } from "./locucion.js";
+import { pedirMusica, ErrorMusica } from "./musica.js";
+import { DURACION_MUSICA } from "../../../src/lib/musica.js";
 import { MODELOS_VOZ } from "../../../src/lib/voces.js";
 import { DEFINICIONES_VIDEO, crearHerramientasVideo } from "./herramientasVideo.js";
 
@@ -162,6 +164,32 @@ export const DEFINICIONES_ESTUDIO = Object.freeze([
         confirmado: { type: "boolean", description: "Sólo tras oír «sí» del usuario a la cifra exacta que le dijiste." },
       },
       required: ["video_id"],
+    },
+  },
+  {
+    name: "generar_musica",
+    description:
+      "Genera una MÚSICA de fondo con Suno (por Kie.ai) y la guarda en la galería del cliente (Suno entrega DOS versiones; las dos quedan en " +
+      "musicas). Con video_id, el estilo y la duración salen del campo «musica» de su guion si no se dicen, y la primera versión queda puesta " +
+      "en el sonido del video (va debajo de la voz con ducking y fundido; cambiarla no pide otra voz: sólo volver a renderizar). Describe la " +
+      "música en «estilo»: género, instrumentos, ánimo, tempo (en inglés suele salir mejor), sin nombrar artistas ni canciones. Instrumental por " +
+      "defecto; con voz cantada, la letra va en «letra». SIEMPRE cuesta y SIEMPRE se confirma: la primera llamada devuelve la cifra y NO crea " +
+      "nada; díselo al usuario y sólo si dice que sí vuelve a llamarla con los MISMOS datos y confirmado=true. Nunca pongas confirmado=true por " +
+      "tu cuenta. No espera: tarda unos minutos (estado_trabajo con el ID para saber cómo va).",
+    input_schema: {
+      type: "object",
+      properties: {
+        ...clienteParam,
+        estilo: { type: "string", description: "Qué música: género, instrumentos, ánimo, tempo (≤ 1000). Con video_id se puede omitir si su guion lo dice." },
+        instrumental: { type: "boolean", description: "Sin voz cantada (por defecto sí)." },
+        letra: { type: "string", description: "La letra, sólo si instrumental=false (≤ 5000; con [Verse], [Chorus]…)." },
+        duracion: { type: "integer", description: `Segundos (${DURACION_MUSICA.min}–${DURACION_MUSICA.max}). Con video_id, lo que dura el video.` },
+        titulo: { type: "string", description: "Nombre de la música en la galería (≤ 80)." },
+        evitar: { type: "string", description: "Estilos o instrumentos a evitar (opcional)." },
+        modelo: { type: "string", enum: ["v6", "mini", "wild"], description: "v6 (por defecto), mini (rápida) o wild (más experimental)." },
+        video_id: { type: "string", description: "ID de un proyecto de video animado (opcional): la música queda puesta en él." },
+        confirmado: { type: "boolean", description: "Sólo tras oír «sí» del usuario a la cifra exacta que le dijiste." },
+      },
     },
   },
   // El video animado: crear, ver, editar y aprobar el guion (worker/lib/estudio/herramientasVideo.js).
@@ -440,6 +468,34 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         ].join("\n");
       } catch (e) {
         return confirmacionDeVoz(e);
+      }
+    },
+    async generar_musica({ cliente, estilo, instrumental, letra, duracion, titulo, evitar, modelo, video_id: id, confirmado }) {
+      const c = await resolverCliente(cliente);
+      let video = null;
+      if (id) {
+        video = await acceso.leerUno("videos_proyectos", { id: String(id), client_id: c.id });
+        if (!video) throw new ErrorHerramientaEstudio(`No encontré el video «${id}» de ${c.name}.`);
+      }
+      try {
+        const r = await pedirMusica(env, acceso, c, {
+          estilo, instrumental: typeof instrumental === "boolean" ? instrumental : undefined, letra, duracion, titulo, evitar, modelo,
+          video, confirmado: confirmado === true, usuario, origen,
+        });
+        return [
+          `Pedido creado: ${r.trabajoId} (música «${r.pedido.titulo}», ${r.pedido.duracion} s, ${r.pedido.instrumental ? "instrumental" : "con voz"}, ${textoCosto(r.costo)} aprox.).`,
+          `Tarda unos minutos y sigue solo. Las versiones quedan en la galería (musicas)${video ? " y la primera, puesta en el video: para oírla, renderizar_video otra vez" : ""}.`,
+          `Para saber cómo va: estado_trabajo con el ID ${r.trabajoId}.`,
+        ].join("\n");
+      } catch (e) {
+        if (e instanceof ErrorMusica) {
+          if (e.codigo === "confirmar") {
+            return `NO SE CREÓ NADA. ${e.message.replace(/ Confírmalo para generarla\.$/, "")}. ` +
+              "Díselo al usuario con esa cifra y pregúntale si lo hago. Sólo si responde que sí, vuelve a llamar con los MISMOS datos y confirmado=true.";
+          }
+          throw new ErrorHerramientaEstudio(e.message);
+        }
+        throw e;
       }
     },
     ...crearHerramientasVideo({ env, acceso, resolverCliente, usuario, por, Fallo: ErrorHerramientaEstudio }),

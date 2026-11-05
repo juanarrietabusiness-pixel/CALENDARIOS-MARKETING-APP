@@ -100,7 +100,7 @@ export const HERRAMIENTAS_MCP = Object.freeze([
     name,
     description,
     inputSchema: { ...inputSchema, required: [...new Set([...(inputSchema.required ?? []), ...(["estado_trabajo", "formato_video"].includes(name) ? [] : ["cliente"])])] },
-    annotations: ["crear_en_estudio", "previsualizar_voz", "generar_locucion", ...ESCRIBEN_VIDEO].includes(name) ? escribe() : soloLectura,
+    annotations: ["crear_en_estudio", "previsualizar_voz", "generar_locucion", "generar_musica", ...ESCRIBEN_VIDEO].includes(name) ? escribe() : soloLectura,
   })),
 ]);
 
