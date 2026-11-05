@@ -61,6 +61,7 @@ const InformeAnuncios = lazy(() => import("./pages/InformeAnuncios"));
 const AuditoriaPublica = lazy(() => import("./pages/AuditoriaPublica"));
 const Auditorias = lazy(() => import("./pages/Auditorias"));
 const Biblioteca = lazy(() => import("./pages/Biblioteca"));
+const LoMejor = lazy(() => import("./pages/LoMejor"));
 const Campanas = lazy(() => import("./pages/Campanas"));
 const ConectarClaude = lazy(() => import("./pages/ConectarClaude"));
 const PublicarAMano = lazy(() => import("./pages/PublicarAMano"));
@@ -668,6 +669,11 @@ function Workspace({ session, ruta }) {
           window.dispatchEvent(new CustomEvent("inspiracion", { detail: ev }));
           break;
 
+        // «Lo mejor»: el cron releyó los anuncios o clasificó piezas, o cambió el tope de créditos: quien lo vea relee.
+        case "lo-mejor":
+          window.dispatchEvent(new CustomEvent("lo-mejor", { detail: ev }));
+          break;
+
         case "editando":
           // Se guarda por publicación, no por persona: lo que hace falta
           // saber al abrir una es si alguien más la tiene delante.
@@ -1207,8 +1213,11 @@ function Workspace({ session, ruta }) {
       calendarioGuardado(selectedClientId, guardado);
       irAMes(selectedClientId, mes);
       setShowWizard(false);
+      // «Planificar mes» borra su borrador sólo si se creó (lib/planMes.js): si falló, lo escrito se queda.
+      return true;
     } catch (e) {
       fallo("planificar el mes")(e);
+      return false;
     }
   };
 
@@ -1556,6 +1565,10 @@ function Workspace({ session, ruta }) {
               <Suspense fallback={<Cargando />}>
                 <Biblioteca clients={clients} pulso={pulso} />
               </Suspense>
+            ) : ruta.vista === "lo-mejor" ? (
+              <Suspense fallback={<Cargando />}>
+                <LoMejor clients={clients} pulso={pulso} yo={yo} />
+              </Suspense>
             ) : ruta.vista === "campanas" ? (
               <Suspense fallback={<Cargando />}>
                 <Campanas clients={clients} pulso={pulso} yo={yo} onClienteNuevo={async (datos) => {
@@ -1648,7 +1661,7 @@ function Workspace({ session, ruta }) {
                 )}
 
                 {pestana === "inspiracion" && (
-                  <Inspiracion key={client.id} client={client} modo="pestana" lectura={Boolean(yo.soloLectura)} onPersistClient={persistClient} onLlevar={ideaAlCalendario} />
+                  <Inspiracion key={client.id} client={client} clientes={clients} modo="pestana" lectura={Boolean(yo.soloLectura)} onPersistClient={persistClient} onLlevar={ideaAlCalendario} />
                 )}
 
                 {pestana === "estudio" && <Estudio key={client.id} client={client} pulso={pulso} onLlevarAlCalendario={llevarAlCalendario} />}
@@ -1734,7 +1747,7 @@ function Workspace({ session, ruta }) {
         onCalendario={() => (client ? irA(client.id, selectedCalId) : navegar("/"))}
         onChat={() => setShowChat((v) => !v)}
         onSubir={() => setShowSubir(true)}
-        onReferencia={yo.soloLectura ? null : () => setGuardarRef({ clienteId: selectedClientId || null })}
+        onLoMejor={() => navegar("/lo-mejor")}
         onMas={() => setShowDrawer(true)}
       />
 

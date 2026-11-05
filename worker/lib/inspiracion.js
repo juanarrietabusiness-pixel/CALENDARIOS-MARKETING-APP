@@ -31,6 +31,7 @@ import { llamarIA, ErrorIA } from "./cerebro/ia.js";
 import { slug } from "./cerebro/notas.js";
 import { clientesConInspiracionVieja, crearAcceso } from "./acceso.js";
 import { publicacionesDeGraph } from "../../src/lib/competencia.js";
+import { claveDeInspiracion } from "../../src/lib/loMejor.js";
 import { fechaEnZona } from "../../src/lib/agenda.js";
 import {
   cuentasDeReferencia, claveCuenta, idDeCuenta, conRendimiento, debeAvisar, etiquetaRinde, FORMATOS_FEED, REDES_INSPIRACION,
@@ -74,12 +75,16 @@ async function credencialYouTube(env, acceso) {
 async function leerInstagram(env, desde, cuenta) {
   const bd = await descubrirCon(env, desde, cuenta.usuario, POR_CUENTA);
   const pubs = publicacionesDeGraph(bd.media?.data ?? []);
+  // La dirección del VIDEO de un reel (caduca en unos días; el feed se relee cada 20 h): «Lo mejor» lo reproduce por su
+  // proxy. No va al navegador tal cual: la CSP sólo deja ver lo de este origen.
+  const crudos = new Map((bd.media?.data ?? []).map((m) => [String(m.id), m]));
   return {
     datos: { nombre: bd.name ?? "", foto: bd.profile_picture_url ?? "", seguidores: bd.followers_count ?? null, publicaciones: bd.media_count ?? null },
     publicaciones: pubs.map((p) => ({
       externo_id: p.id, codigo: p.codigo, formato: p.formato, enlace: p.enlace, texto: p.texto, miniatura: p.miniatura,
       publicada_at: p.fecha ? new Date(p.fecha).toJSON() : null, me_gusta: p.meGusta, comentarios: p.comentarios, vistas: 0,
       interacciones: p.interacciones, sin_archivo: p.sinArchivo ? 1 : 0,
+      video: p.formato === "reel" ? String(crudos.get(p.id)?.media_url ?? "").slice(0, 1500) : "",
     })),
   };
 }
@@ -96,7 +101,7 @@ async function leerYouTube(cred, cuenta) {
     },
     publicaciones: videos.map((v) => ({
       externo_id: v.externo_id, codigo: "", formato: v.tipo === "short" ? "short" : "video", enlace: v.enlace, texto: v.texto,
-      miniatura: v.miniatura, publicada_at: v.publicada_at, me_gusta: v.me_gusta, comentarios: v.comentarios, vistas: v.vistas,
+      miniatura: v.miniatura, publicada_at: v.publicada_at, me_gusta: v.me_gusta, comentarios: v.comentarios, vistas: v.vistas, video: "",
       // Como en Instagram: un comentario pesa el doble que un «me gusta».
       interacciones: (v.me_gusta ?? 0) + (v.comentarios ?? 0) * 2, sin_archivo: 1,
     })),
@@ -189,7 +194,7 @@ export async function actualizarInspiracion(env, acceso, cliente, { solo = null 
       await avisar(env, acceso, {
         para, tipo: "inspiracion",
         texto: `@${p.usuario} publicó ${p.formato === "imagen" ? "una imagen" : `un ${FORMATOS_FEED[p.formato]?.toLowerCase() ?? "contenido"}`} que rinde ${etiquetaRinde(p.rinde)} su promedio (lo sigue ${cliente.name}).`,
-        enlace: `/cliente/${encodeURIComponent(cliente.id)}/inspiracion`,
+        enlace: `/cliente/${encodeURIComponent(cliente.id)}/inspiracion?pieza=${encodeURIComponent(claveDeInspiracion(p))}`,
       });
     }
   }

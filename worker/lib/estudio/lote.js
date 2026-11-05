@@ -20,6 +20,13 @@
 //                su `clave` para ponerla en su sitio.
 //   · publicacion { publicacion: { fecha?, pilar?, pilarSub?, productoId?, nivel?, deseo?, perfil?, rostro? }, nota? }: UNA pieza,
 //     la de una publicación del calendario («Generar» de su Idea / Brief), con lo que ya trae y la misma calidad del lote
+//   · campos     { publicaciones: [casilla + { escrito, campos, antes, formulaUgc?, duracionUgc? }] }: lo que LE FALTA a
+//     publicaciones que ya están en el calendario (los botones «IA» de cada campo, «Completar los textos que faltan»,
+//     «Generar con IA» de la lista, el banco de ideas, «Escribir guiones y descripciones» de «Planificar mes»): sólo los
+//     campos pedidos, con lo ya escrito delante (src/lib/camposTexto.js). Vuelve `textos` en vez de `ideas`.
+// En TODOS los modos van la ficha del cliente (sus instrucciones obligatorias, su estilo, sus hashtags y su contacto:
+// `textoDelCliente`) y la estrategia del mes: la que manda la pantalla o, si no la manda, la guardada en el calendario
+// de ese mes (`estrategiaDelCalendario`).
 // Comunes: { formato, semilla?, usados?, composiciones? } (las que funcionan con este cliente).
 // Por TANDAS: { desde, tamano } escribe sólo esas piezas del plan (el plan sale igual con la misma semilla), y la
 // pantalla las pide una tras otra pasando lo que ya salió en `usados`. Escribir 30 en una sola llamada daba ideas
@@ -30,17 +37,21 @@
 // ============================================================
 
 import { llamarIA } from "../cerebro/ia.js";
+import { pedidoDeCampos, leerCampos, FORMATOS_CAMPOS, ORDEN_CAMPOS, MAX_ESCRITO, MAX_PUBLICACIONES_CAMPOS } from "../../../src/lib/camposTexto.js";
+import { llevaCampo } from "../../../src/lib/reglasFormato.js";
+import { estrategiaDelCalendario } from "../../../src/lib/estrategiaMes.js";
+import { duracionUgc } from "../../../src/lib/ugc.js";
 import { aprenderComposiciones } from "../../../src/lib/loteAnuncios.js";
 import { contexto as contextoCerebro, textoParaEscribir, buscar as buscarCerebro, leerNota as leerNotaCerebro } from "../cerebro/cerebro.js";
 import { consultaDelPlan, materialDelPlan, conEducativo, lineaDeLoQueFalta, MATERIAL, RUTA_RUBRO, TITULO_RUBRO } from "../../../src/lib/materialTipo.js";
 import { leerMercado } from "../mercado.js";
 import { vozUgcDe } from "../cerebro/vozUgc.js";
 import { lineaDeVozUgc } from "../../../src/lib/ugc.js";
-import { limpiarFormula, bloqueDeFormulas, formulaUsada, MAX_FORMULAS } from "../../../src/lib/formulasUgc.js";
+import { limpiarFormula, bloqueDeFormulas, formulaUsada, lineaDeFormula, MAX_FORMULAS } from "../../../src/lib/formulasUgc.js";
 import { productosActivos, productosParaPlan, lineaDeProducto, notaDeProducto, resumenGeneral, limpiarEstudio } from "../../../src/lib/estudioMercado.js";
 import {
   pedidoDeProduccion, leerProduccion, limpiarCuantas, totalDeCuantas, celdasPorNiveles, celdasMatriz, celdasPorTipos, darForma, estructurasDeCalendarios,
-  textoDeIdea, FORMATOS_LOTE, COMPOSICIONES,
+  textoDeIdea, FORMATOS_LOTE, COMPOSICIONES, TACTICAS, estructuraDe, textoDelCliente,
 } from "../../../src/lib/loteAnuncios.js";
 import { asignarMatriz, pilarDe, idDePilar } from "../../../src/lib/pilares.js";
 import { diasDelLote, planDelMes, mesDe, textoMes } from "../../../src/lib/loteMes.js";
@@ -58,7 +69,7 @@ const leerJSON = (t) => {
   if (t && typeof t === "object") return t;
   try { return JSON.parse(t); } catch { return null; }
 };
-const MODOS = ["niveles", "matriz", "tipos", "mes", "publicacion", "plan"];
+const MODOS = ["niveles", "matriz", "tipos", "mes", "publicacion", "plan", "campos"];
 /** Cuántas casillas puede traer un plan como mucho (un mes de cuatro por día). */
 export const MAX_CASILLAS = 124;
 const corto = (t, max = 80) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, max);
@@ -67,10 +78,10 @@ const corto = (t, max = 80) => String(t ?? "").replace(/\s+/g, " ").trim().slice
  * Las casillas del plan que manda la pantalla, limpias: sólo fechas, formatos, tipos, niveles y productos que existen;
  * el producto, sólo si está activo. Pura salvo por `activos`.
  */
-export function limpiarCasillas(lista, activos = []) {
+export function limpiarCasillas(lista, activos = [], { formatos = null } = {}) {
   return (Array.isArray(lista) ? lista : []).slice(0, MAX_CASILLAS).flatMap((c) => {
     if (!c || typeof c !== "object") return [];
-    const formato = FORMATOS_LOTE[c.formato] ? c.formato : "";
+    const formato = (formatos ? formatos.includes(c.formato) : FORMATOS_LOTE[c.formato]) ? c.formato : "";
     if (!formato) return [];
     const fecha = FECHA.test(String(c.fecha ?? "")) ? String(c.fecha) : "";
     const pilar = pilarDe(c.pilar) ? idDePilar(c.pilar) : "";
@@ -88,6 +99,8 @@ export function limpiarCasillas(lista, activos = []) {
       ...(corto(c.semana, 160) ? { semana: corto(c.semana, 160) } : {}),
       ...(corto(c.especial, 120) ? { especial: corto(c.especial, 120) } : {}),
       ...(corto(c.idea, 400) ? { ideaPersona: corto(c.idea, 400) } : {}),
+      // La estructura de un video de la competencia que sigue su guion («Planificar mes»: «Estructura del guion»).
+      ...((formato === "reel" || formato === "carrusel" || formato === "live") && corto(c.estructuraRef, 900) ? { estructuraRef: corto(c.estructuraRef, 900) } : {}),
       // «Otra»: lo que pide la agencia para esta (y la que había, para no repetirla).
       ...(corto(c.pide, 300) ? { pide: corto(c.pide, 300) } : {}),
       ...(corto(c.antes, 200) ? { antes: corto(c.antes, 200) } : {}),
@@ -96,6 +109,57 @@ export function limpiarCasillas(lista, activos = []) {
       ...(formato === "reel" && c.rostro === true ? { rostro: true } : {}),
     }];
   });
+}
+
+/** Un objeto de textos { campo → texto } limpio: sólo campos que existen, en texto y con tope. Pura. */
+const textosLimpios = (o, campos = ORDEN_CAMPOS) => Object.fromEntries((o && typeof o === "object" ? Object.entries(o) : [])
+  .filter(([k, v]) => campos.includes(k) && typeof v === "string" && v.trim())
+  .map(([k, v]) => [k, v.trim().slice(0, MAX_ESCRITO)]));
+
+/**
+ * Las publicaciones del modo «campos», limpias: la casilla de siempre (limpiarCasillas, también un directo) más lo ya
+ * escrito, los campos que se piden (sólo los que su formato lleva: lib/reglasFormato.js), lo que había en ellos, su
+ * forma (estructura, composición y gancho, si ya la tiene) y, en una UGC, su duración y su fórmula. Fuera las que no
+ * piden nada. Pura salvo por `activos`.
+ */
+export function limpiarParaCampos(lista, activos = []) {
+  const crudas = (Array.isArray(lista) ? lista : []).slice(0, MAX_CASILLAS).filter((c) => c && typeof c === "object");
+  const limpias = limpiarCasillas(crudas, activos, { formatos: FORMATOS_CAMPOS });
+  return limpias.flatMap((c) => {
+    const o = crudas.find((x) => corto(x.clave, 40) === c.clave) ?? {};
+    const campos = ORDEN_CAMPOS.filter((k) => Array.isArray(o.campos) && o.campos.includes(k) && llevaCampo(c.formato, k));
+    if (!campos.length) return [];
+    return [{
+      ...c, campos,
+      escrito: textosLimpios(o.escrito, [...ORDEN_CAMPOS, "escena"]),
+      antes: textosLimpios(o.antes, campos),
+      ...(estructuraDe(o.estructura) ? { estructura: estructuraDe(o.estructura).id } : {}),
+      ...(COMPOSICIONES.some((x) => x.id === o.composicion) ? { composicionPost: o.composicion } : {}),
+      ...(TACTICAS.some(([x]) => x === o.tactica) ? { tacticaPost: o.tactica } : {}),
+      ...(c.rostro ? { duracionUgc: duracionUgc(o.duracionUgc), ...(corto(o.formulaUgc, 80) ? { formulaUgc: corto(o.formulaUgc, 80) } : {}) } : {}),
+    }];
+  });
+}
+
+/**
+ * La estrategia guardada del mes (`AAAA-MM`) de este cliente, para el motor, cuando la pantalla no la manda (el lote del
+ * mes del Estudio, una publicación suelta): la campaña, las ofertas, el código, el concepto de cada semana con su etapa,
+ * el objetivo y el foco. Una consulta sin los días. Null si no hay mes o falla.
+ */
+async function estrategiaGuardada(acceso, clientId, mes) {
+  const m = /^(\d{4})-(\d{2})$/.exec(String(mes ?? ""));
+  if (!m) return null;
+  try {
+    const [fila] = await acceso.leerColumnas("calendars", ["campaign", "week_concepts", "offers", "promo_code", "opciones"],
+      { client_id: clientId, year: Number(m[1]), month: Number(m[2]) - 1 }, null, 1);
+    if (!fila) return null;
+    return estrategiaDelCalendario({
+      campaign: fila.campaign, weekConcepts: leerJSON(fila.week_concepts) ?? [], offers: fila.offers, promoCode: fila.promo_code,
+      opciones: leerJSON(fila.opciones) ?? {},
+    });
+  } catch {
+    return null;
+  }
 }
 
 /** Qué composiciones funcionan con este cliente, leído de su galería (una consulta): para quien no lo manda. */
@@ -134,6 +198,7 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
   if (modo === "niveles" && !totalDeCuantas(datos.cuantas)) throw fallo("Escoge al menos un nivel con una idea.");
   if (modo === "tipos" && !celdasPorTipos(datos.tipos).length) throw fallo("Escoge al menos un tipo de pieza con una idea.");
   if (modo === "plan" && !(Array.isArray(datos.casillas) && datos.casillas.length)) throw fallo("El plan no trae publicaciones.");
+  if (modo === "campos" && !(Array.isArray(datos.publicaciones) && datos.publicaciones.length)) throw fallo("No hay publicaciones que escribir.");
   const mes = modo === "mes" ? mesDe(datos.mes) : null;
   const hoy = fechaEnZona();
   if (modo === "mes") {
@@ -156,7 +221,8 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
   // Sin las composiciones aprendidas de la pantalla, se leen de la galería (lo hace también «Planificar mes»).
   if (!Array.isArray(datos.composiciones)) orden = await composicionesAprendidas(acceso, cliente.id);
   // Los carruseles rotan de estructura sin repetir las últimas de ese tipo (errores, mitos, paso a paso…).
-  const puedeCarrusel = formato === "carrusel" || modo === "mes" || (modo === "plan" && datos.casillas.some((c) => c?.formato === "carrusel"));
+  const puedeCarrusel = formato === "carrusel" || modo === "mes" || (modo === "plan" && datos.casillas.some((c) => c?.formato === "carrusel"))
+    || (modo === "campos" && datos.publicaciones.some((c) => c?.formato === "carrusel" && !c?.estructura));
   const estructuras = puedeCarrusel ? await estructurasRecientes(acceso, cliente.id) : [];
 
   let plan;
@@ -192,6 +258,20 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
     const foco = typeof datos.estrategia?.focoId === "string" ? datos.estrategia.focoId : "";
     const conMatriz = asignarMatriz(celdas, { productos: rotan, deseos, perfiles, foco }).map((c) => (c.pilar ? { ...c, tipo: c.pilar } : c));
     plan = darForma(conMatriz, { productos: rotan, semilla: datos.semilla, formato, orden, estructuras });
+  } else if (modo === "campos") {
+    // Lo que le falta a publicaciones que ya están en el calendario: la misma forma que el plan (la matriz y darForma
+    // completan lo que no traen, para el pedido), y lo que ya traen se respeta: su estructura, su composición y su gancho.
+    const celdas = conNotasDelDia(limpiarParaCampos(datos.publicaciones, productosActivos(catalogo)).slice(0, MAX_PUBLICACIONES_CAMPOS), notas, rotan);
+    if (!celdas.length) throw fallo("No hay nada que escribir: esas publicaciones ya tienen sus textos o su formato no los lleva.");
+    const meses = [...new Set(celdas.map((c) => c.fecha?.slice(0, 7)).filter(Boolean))];
+    for (const m of meses) {
+      const [y, mm] = m.split("-").map(Number);
+      fechas.push(...fechasDelMes(y, mm - 1, leerJSON(cliente.fechas_especiales)));
+    }
+    const foco = typeof datos.estrategia?.focoId === "string" ? datos.estrategia.focoId : "";
+    const conMatriz = asignarMatriz(celdas, { productos: rotan, deseos, perfiles, foco }).map((c) => (c.pilar ? { ...c, tipo: c.pilar } : c));
+    plan = darForma(conMatriz, { productos: rotan, semilla: datos.semilla, formato, orden, estructuras })
+      .map(({ composicionPost, tacticaPost, ...r }) => ({ ...r, ...(composicionPost ? { composicion: composicionPost } : {}), ...(tacticaPost ? { tactica: tacticaPost } : {}) }));
   } else if (modo === "publicacion") {
     // Una sola pieza con lo que la publicación ya decidió (su tipo, producto, nivel, deseo y perfil); lo que falte, lo
     // pone la forma del lote. La fecha especial del día también va.
@@ -247,13 +327,18 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
   const desde = Math.max(0, Math.floor(Number(datos.desde) || 0));
   const tamano = Math.floor(Number(datos.tamano) || 0);
   if (tamano > 0) plan = plan.slice(desde, desde + Math.min(tamano, TANDA_MAX));
-  if (!plan.length) return { ideas: [], total, productos: rotan.map((p) => ({ id: p.id, nombre: p.nombre })), conEstudio: Boolean(general) };
+  if (!plan.length) return { ideas: [], ...(modo === "campos" ? { textos: [] } : {}), total, productos: rotan.map((p) => ({ id: p.id, nombre: p.nombre })), conEstudio: Boolean(general) };
 
   const usadosProd = new Set(plan.map((r) => r.productoId).filter(Boolean));
   const textoEstudio = [
     general ? resumenGeneral(general) : "",
     ...rotan.filter((p) => usadosProd.has(p.id) && estudio?.productos?.[p.id]).slice(0, 3).map((p) => notaDeProducto(estudio.productos[p.id], p)),
   ].filter(Boolean).join("\n\n");
+
+  // La estrategia del mes: la que manda la pantalla («Planificar mes» la tiene a medias, sin guardar) o, si no la manda,
+  // la guardada en el calendario de ese mes. Así la lee TODO modo, también el lote del Estudio y una publicación suelta.
+  const mesDelPlan = mes ? textoMes(mes.year, mes.month) : (plan.find((r) => r.fecha)?.fecha ?? "").slice(0, 7);
+  const estrategia = datos.estrategia && typeof datos.estrategia === "object" ? datos.estrategia : await estrategiaGuardada(acceso, cliente.id, mesDelPlan);
 
   // El cerebro, buscado con las palabras de los TIPOS de esta tanda (lib/materialTipo.js): un educativo y un testimonio
   // no necesitan los mismos pasajes. Lo que un tipo necesita de verdad (testimonios, garantía, equipo…) se busca aparte:
@@ -281,12 +366,45 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
   // Las UGC: la voz de ESTA marca en sus videos (nota «Voz UGC») y las fórmulas de la agencia, para que la IA escoja.
   let ugc = "";
   let formulas = [];
-  if (plan.some((c) => c.rostro)) {
+  const conUgc = modo === "campos" ? plan.filter((c) => c.rostro && c.campos.includes("guion")) : plan.filter((c) => c.rostro);
+  if (conUgc.length) {
     formulas = await acceso.leer("formulas_ugc", {}, "created_at desc", MAX_FORMULAS)
       .then((filas) => filas.map((f) => limpiarFormula({ ...leerJSONSeguro(f.datos), id: f.id })).filter(Boolean))
       .catch(() => []);
     const voz = await vozUgcDe(env, acceso, cliente.id);
-    ugc = [lineaDeVozUgc(voz?.texto), bloqueDeFormulas(formulas, 30).replace(/\nEmpieza tu respuesta[^\n]*$/, "")].filter(Boolean).join("\n\n");
+    // La fórmula que la agencia escogió en la publicación (`formulaUgc`) manda: va en su línea, en su duración.
+    if (modo === "campos") {
+      plan = plan.map((r) => {
+        const f = r.rostro && r.formulaUgc ? formulas.find((x) => x.id === r.formulaUgc) : null;
+        return f ? { ...r, formulaLinea: lineaDeFormula(f, r.duracionUgc) } : r;
+      });
+    }
+    const escoge = modo !== "campos" || plan.some((r) => r.rostro && r.campos.includes("guion") && !r.formulaLinea);
+    const d = modo === "campos" ? conUgc[0].duracionUgc ?? 30 : 30;
+    ugc = [lineaDeVozUgc(voz?.texto), escoge ? bloqueDeFormulas(formulas, d).replace(/\nEmpieza tu respuesta[^\n]*$/, "") : ""].filter(Boolean).join("\n\n");
+  }
+
+  if (modo === "campos") {
+    const pidenGuion = plan.some((r) => r.campos.includes("guion"));
+    const salida = plan.reduce((t, r) => t + r.campos.reduce((u, c) => u + ({ guion: 700, descripcion: 350, idea: 150, textoPieza: 80, hashtags: 80, titulo: 30 }[c] ?? 100), 0), 0) + 600;
+    const r = await llamarIA(env, acceso, cliente, {
+      prompt: pedidoDeCampos({
+        marca: cliente.name, plan, contexto, estudio: textoEstudio,
+        productos: Object.fromEntries(rotan.filter((p) => usadosProd.has(p.id)).map((p) => [p.id, lineaDeProducto(p, { inventario }).slice(2)])),
+        perfiles: Object.fromEntries(perfiles.map((p) => [p.nombre, [p.quien, p.dolor && `le duele: ${p.dolor}`, p.aspiracion && `quiere: ${p.aspiracion}`].filter(Boolean).join("; ")])),
+        fechasEspeciales: fechas.map((f) => `${f.fecha} · ${f.nombre}${f.delicada ? " (delicada: sin promociones)" : ""}`),
+        usados: (Array.isArray(datos.usados) ? datos.usados : []).map((t) => String(t ?? "").slice(0, 80)).filter(Boolean).slice(0, 30),
+        estrategia, falta: lineaDeLoQueFalta(faltan), ugc, cliente: textoDelCliente(cliente),
+      }),
+      salida,
+      funcion: pidenGuion ? "guiones" : plan.length === 1 ? "publicación" : "descripciones",
+    });
+    const textos = leerCampos(r.texto, plan).map(({ formula, ...t }) => {
+      const id = formula ? formulaUsada(`FÓRMULA: ${formula}`, formulas) : "";
+      return id ? { ...t, formulaUgc: id } : t;
+    });
+    if (!textos.length && !tamano) throw fallo("La IA no devolvió textos que se puedan leer. Inténtalo otra vez.", 502);
+    return { textos, total, ...(faltan.length ? { faltan } : {}), modelo: r.modelo, aviso: r.aviso ?? null };
   }
 
   const r = await llamarIA(env, acceso, cliente, {
@@ -297,10 +415,11 @@ export async function produccionDeLote(env, acceso, cliente, datos = {}) {
       fechasEspeciales: fechas.map((f) => `${f.fecha} · ${f.nombre}${f.delicada ? " (delicada: sin promociones)" : ""}`),
       usados: (Array.isArray(datos.usados) ? datos.usados : []).map((t) => String(t ?? "").slice(0, 80)).filter(Boolean).slice(0, 30),
       nota: modo === "publicacion" ? String(datos.nota ?? "").slice(0, 600) : "",
-      estrategia: datos.estrategia && typeof datos.estrategia === "object" ? datos.estrategia : null,
+      estrategia,
       falta: lineaDeLoQueFalta(faltan),
       ugc,
       identidad: identidadParaFichas(cliente, plan, await manualDelEspacio(acceso).catch(() => null)),
+      cliente: textoDelCliente(cliente),
     }),
     // Las de una imagen escriben además su ficha de diseño (unas 350 palabras más cada una).
     salida: plan.reduce((t, r) => t + (FORMATOS_LOTE[r.formato ?? formato]?.guiado ? 850 : 950), 0) + 800,

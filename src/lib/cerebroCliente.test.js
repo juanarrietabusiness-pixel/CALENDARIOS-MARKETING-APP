@@ -6,7 +6,7 @@ import {
 import { sinCapaMaquetacion } from "./contextoADN";
 import { guardarNota, borrarNota, importarAlCerebro, listarCerebro } from "./cerebro";
 import { contextoEnBloques, MIN_CARACTERES_CACHE } from "./contextoADN";
-import { buildClientContext, buildScriptPrompt, loadADN, contextoDelCerebro, pasajesDeLaTanda, adnParaElChat } from "../api";
+import { buildClientContext, loadADN, contextoDelCerebro, pasajesDeLaTanda, adnParaElChat } from "../api";
 
 // ============================================================
 // La generación con el cerebro del cliente
@@ -105,9 +105,10 @@ describe("el contexto en modo cerebro", () => {
     expect(a[1].text).not.toBe(b[1].text);
   });
 
-  it("también con el prompt de guiones completo: la caché sigue intacta y el pedido va detrás", () => {
-    const post = { id: "p1", format: "reel", idea: "Sofás", _date: "2026-10-05", _dayName: "lunes" };
-    const p = buildScriptPrompt(cliente, { campaign: "Octubre" }, [post], adn, [], { pasajes: "PASAJE" });
+  // Los guiones y los captions ya los escribe el motor del servidor (src/lib/camposTexto.js); lo que sigue llamando aquí
+  // (las sugerencias de «Planificar mes», los nombres de la campaña) pega su pedido DETRÁS del contexto, igual.
+  it("también con un pedido completo detrás: la caché sigue intacta y el pedido va detrás", () => {
+    const p = `${buildClientContext(cliente, { campaign: "Octubre" }, adn, { pasajes: "PASAJE" })}\n\n---\n\nPUBLICACIONES:\n<<<PUBLICACION_ID:p1>>>\nFORMATO: reel`;
     const b = contextoEnBloques(p);
     expect(b[0].text.length).toBeGreaterThan(MIN_CARACTERES_CACHE);
     expect(b[1].text).toContain("PUBLICACION_ID:p1");

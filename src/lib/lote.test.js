@@ -45,13 +45,14 @@ describe("poner la misma hora a muchas publicaciones", () => {
     expect(porId(r, "p4").publishTime).toBe("10:00");
   });
 
-  it("el filtro por semana usa la misma numeración que los conceptos semanales", () => {
-    // La semana 1 arranca en el primer día del calendario, no en el lunes.
-    const r = aplicarLote(cal, { filtro_semana: 1, aplicar_a_todas: { hora: "09:00" } });
-    expect(r.count).toBe(2); // 1 y 5 de octubre
-    expect(porId(r, "p1").publishTime).toBe("09:00");
+  it("el filtro por semana usa la FILA de la rejilla (lunes a domingo): la misma de la campaña y del asistente", () => {
+    // Octubre de 2026 empieza en jueves: la semana 1 va del 1 al 4 y la 2, del 5 al 11.
+    const r = aplicarLote(cal, { filtro_semana: 2, aplicar_a_todas: { hora: "09:00" } });
+    expect(r.count).toBe(2); // 5 y 8 de octubre
     expect(porId(r, "p2").publishTime).toBe("09:00");
-    expect(porId(r, "p3").publishTime).toBe("08:00");
+    expect(porId(r, "p3").publishTime).toBe("09:00");
+    expect(porId(r, "p1").publishTime).toBe("");
+    expect(aplicarLote(cal, { filtro_semana: 1, aplicar_a_todas: { hora: "09:00" } }).count).toBe(1);
   });
 });
 

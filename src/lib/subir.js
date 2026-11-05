@@ -116,11 +116,12 @@ export function ponerEnDia(cal, fecha, post) {
     // La semana y el concepto, los de sus vecinos si los hay: así cae en su
     // semana de la lista y no en una suelta.
     const semana = semanaDelMes(fecha);
-    const vecino = days.find((d) => (Number(d.weekNumber) || semanaDelMes(d.date)) === semana);
+    // La semana es la FILA de la rejilla (lib/semanas.js), la misma para todos.
+    const vecino = days.find((d) => d?.date && semanaDelMes(d.date) === semana);
     days.push({
       date: fecha,
       dayName: DIAS[new Date(`${fecha}T12:00:00Z`).getUTCDay()],
-      weekNumber: Number(vecino?.weekNumber) || semana,
+      weekNumber: semana,
       concept: vecino?.concept ?? "",
       category: "",
       posts: [post],

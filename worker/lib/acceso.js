@@ -108,6 +108,12 @@ export const TABLAS_CON_DUENO = Object.freeze([
   "biblioteca_filtros",
   // Lo que ya contestó Scrape Creators, para no pagar dos veces la misma búsqueda (worker/lib/scrapeCreators.js).
   "biblioteca_cache",
+  // «Lo mejor del momento» (worker/lib/loMejor.js): lo que se sabe de cada pieza (su tipo, una vez), los anuncios de las
+  // búsquedas guardadas releídos cada semana, cada crédito de Scrape Creators gastado y el tope semanal del espacio.
+  "lo_mejor_piezas",
+  "lo_mejor_anuncios",
+  "creditos_sc",
+  "lo_mejor_ajustes",
   // Las plantillas de plan que la agencia cambió o creó (worker/rutas/plantillas.js).
   "plantillas_plan",
   // Las recetas que la agencia cambió o creó y los pedidos de «Crear con Claude» (worker/rutas/recetas.js).
@@ -166,6 +172,7 @@ export const TABLAS_CON_CLIENTE = Object.freeze([
   "planes_campana", "informes_anuncios", "anuncios_clientes",
   "historias_auto", "historias_auto_piezas",
   "handoffs",
+  "lo_mejor_anuncios",
 ]);
 
 /** Las que cuelgan de un calendario sin llevar el cliente: se acotan por el calendario. */
@@ -726,6 +733,49 @@ export async function colaPorPostPeer(db, postId) {
   const { results } = await db
     .prepare(`select id, owner_id from publicaciones_programadas where red = 'tiktok' and contenedor_id = ? limit 5`)
     .bind(id)
+    .all();
+  return results ?? [];
+}
+
+/**
+ * Los espacios con búsquedas guardadas de Scrape Creators (`biblioteca_filtros` con `"fuente":"sc"`) cuyos anuncios no
+ * se releen desde `antesDe`, de TODOS los espacios: para la relectura semanal de «Lo mejor», uno por vuelta. Igual que
+ * `colaPendiente`: sólo el dueño; lo demás se lee después con `crearAcceso(db, owner_id)`.
+ */
+export async function espaciosConAnunciosPorReleer(db, antesDe, limite = 1) {
+  const { results } = await db
+    .prepare(
+      `select distinct f.owner_id from biblioteca_filtros f
+        where f.consulta like '%"fuente":"sc"%'
+          and not exists (select 1 from lo_mejor_ajustes a where a.id = f.owner_id and a.sc_releido_at > ?)
+        limit ?`,
+    )
+    .bind(antesDe, limite)
+    .all();
+  return results ?? [];
+}
+
+/**
+ * Los espacios con piezas de «Lo mejor» SIN clasificar (la inspiración publicada desde `desde` y los anuncios vistos
+ * desde entonces), de TODOS los espacios: el cron clasifica unas pocas por vuelta. La clave se arma como
+ * `claveDeInspiracion` y `claveDeAnuncio` (src/lib/loMejor.js). Sólo el dueño, como las demás.
+ */
+export async function espaciosPorClasificar(db, desde, limite = 1) {
+  const { results } = await db
+    .prepare(
+      `select owner_id from (
+         select p.owner_id from inspiracion_publicaciones p
+          where p.publicada_at >= ? and p.red in ('instagram','youtube')
+            and not exists (select 1 from lo_mejor_piezas l where l.owner_id = p.owner_id and l.clave =
+              (case when p.red = 'youtube' then 'yt:' || p.externo_id
+                    when p.codigo != '' then 'ig:' || p.codigo else 'ig:' || p.externo_id end))
+         union
+         select a.owner_id from lo_mejor_anuncios a
+          where a.visto_at >= ?
+            and not exists (select 1 from lo_mejor_piezas l where l.owner_id = a.owner_id and l.clave = 'fb-ad:' || a.anuncio_id)
+       ) limit ?`,
+    )
+    .bind(desde, desde, limite)
     .all();
   return results ?? [];
 }

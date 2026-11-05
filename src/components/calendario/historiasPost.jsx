@@ -20,8 +20,9 @@
 // como historia»; si la imagen del post cambia (otra versión, corregida…), la
 // encajada se rehace con la nueva, así la historia es la del post que se
 // aprueba. Las tres con IA, SÓLO con su botón (cuestan: un post que no gusta
-// no las paga), con el modelo que se escoja aquí para el cliente. Se apaga
-// por navegador.
+// no las paga), con el modelo que se escoja aquí para el cliente: el botón
+// enseña lo que cuestan y hay que confirmarlo; «¿Qué quieres?» del post
+// (`indicacion`) manda también en ellas. La encajada sola se apaga por navegador.
 //
 // Lo que no se escoge va a la papelera del Estudio.
 // ============================================================
@@ -38,12 +39,14 @@ const RETRASOS = [0, 5, 15, 30, 60, 120];
 const CLAVE_SOLAS = "historias-solas";
 const leerSolas = () => { try { return localStorage.getItem(CLAVE_SOLAS) !== "0"; } catch { return true; } };
 
-export default function HistoriasDelPost({ post, sf, clientId, cliente = null, calendarId = null, colorMarca, onError }) {
+export default function HistoriasDelPost({ post, sf, clientId, cliente = null, calendarId = null, colorMarca, onError, indicacion = "" }) {
   const ids = useId();
   const [trabajando, setTrabajando] = useState("");
   const [candidatas, setCandidatas] = useState([]);
   const [solas, setSolasEstado] = useState(leerSolas);
   const setSolas = (v) => { setSolasEstado(v); try { localStorage.setItem(CLAVE_SOLAS, v ? "1" : "0"); } catch { /* sin almacenamiento */ } };
+  // Las opciones del modelo de las 3 con IA y lo que cuestan con cada uno (lib/historiasEstudio.js).
+  const [modelos, setModelos] = useState(null);
   const historias = historiasDe(post);
   const base = mediosDe(post).find((m) => m.tipo === "imagen" && m.src.startsWith("/api/media/clientes/"));
   const maximo = LIMITES.instagram.carruselMax;
@@ -67,8 +70,13 @@ export default function HistoriasDelPost({ post, sf, clientId, cliente = null, c
     setTrabajando("");
   };
 
+  // Lo que cuestan las tres con el modelo escogido: se enseña y se confirma ANTES de crear (segundo toque).
+  const [confirmando, setConfirmando] = useState(false);
+  const costo = modelos?.costos?.[modelos?.fijado ?? ""] ?? null;
+  const textoCosto = costo != null ? `${costo.toFixed(2).replace(".", ",")} $` : "";
   const crearConIA = async () => {
     if (!cliente) return;
+    setConfirmando(false);
     setTrabajando("ia");
     // Las de una tanda anterior que no se escogieron se quedan; las nuevas van detrás, cada una con su id.
     const tanda = Date.now();
@@ -78,7 +86,7 @@ export default function HistoriasDelPost({ post, sf, clientId, cliente = null, c
     const poner1 = (variante, cambio) => setCandidatas((c) => c.map((x) => (x.id === `${tanda}-${variante}` ? { ...x, ...cambio } : x)));
     try {
       await crearHistorias({
-        client: cliente, post, base: base.src,
+        client: cliente, post, base: base.src, indicacion,
         alAvanzar: (variante, r) => poner1(variante, r.archivo ? { estado: "lista", archivo: r.archivo, src: r.archivo.src } : r.error ? { estado: "error", error: r.error } : { paso: r.paso }),
       });
     } catch (e) {
@@ -103,7 +111,6 @@ export default function HistoriasDelPost({ post, sf, clientId, cliente = null, c
   }, [base?.src]);
 
   // El modelo de las tres con IA: el fijado para las historias de este cliente (lo comparte el equipo) o el de siempre.
-  const [modelos, setModelos] = useState(null);
   useEffect(() => {
     if (!cliente || !base || formatoSinHistoria) return;
     let vivo = true;
@@ -200,10 +207,23 @@ export default function HistoriasDelPost({ post, sf, clientId, cliente = null, c
         <button type="button" className="btn btn-secondary btn-sm" disabled={!base || !!trabajando || historias.length >= maximo} onClick={() => usarLaDelPost()}>
           <Icon name="image" size={16} /> {trabajando === "post" ? "Preparando…" : "Usar la imagen del post"}
         </button>
-        <button type="button" className="btn btn-secondary btn-sm" disabled={!base || !cliente || !!trabajando || historias.length >= maximo} onClick={crearConIA}>
-          <Icon name="sparkles" size={16} /> {trabajando === "ia" ? "Creando 3 propuestas…" : candidatas.length ? "Otras 3 con IA" : "Crear 3 con IA"}
-        </button>
+        {!confirmando && (
+          <button type="button" className="btn btn-secondary btn-sm" disabled={!base || !cliente || !!trabajando || historias.length >= maximo} onClick={() => setConfirmando(true)}>
+            <Icon name="sparkles" size={16} /> {trabajando === "ia" ? "Creando 3 propuestas…" : `${candidatas.length ? "Otras 3 con IA" : "Crear 3 con IA"}${textoCosto ? ` · unos ${textoCosto}` : ""}`}
+          </button>
+        )}
       </div>
+      {confirmando && (
+        <div className="historias-post-botones" role="group" aria-label="Confirmar las 3 historias con IA">
+          <p className="hint" style={{ margin: 0, flexBasis: "100%" }}>
+            Las 3 historias cuestan {textoCosto ? `unos ${textoCosto}` : "lo de tres imágenes"} ({modelos?.fijado ? modelos.opciones.find((x) => x.id === modelos.fijado)?.nombre : modelos?.porDefecto || "el modelo del cliente"}), revisadas y con el logo.{indicacion.trim() ? " Van con lo que escribiste en «¿Qué quieres?»." : ""}
+          </p>
+          <button type="button" className="btn btn-primary btn-sm" onClick={crearConIA}>
+            <Icon name="check" size={16} /> Crear las 3{textoCosto ? ` por unos ${textoCosto}` : ""}
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setConfirmando(false)}>Cancelar</button>
+        </div>
+      )}
       <label className="casilla">
         <input type="checkbox" checked={solas} onChange={(e) => setSolas(e.target.checked)} />
         Al poner la imagen del post, preparar sola su historia (la misma imagen en vertical, sin costo)

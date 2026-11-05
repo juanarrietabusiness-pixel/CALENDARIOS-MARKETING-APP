@@ -196,25 +196,14 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
   // «De temporada»: las fechas especiales del cliente que vienen (sin las delicadas), para reutilizar la pieza en ellas.
   const temporada = useMemo(() => fechasQueVienen(client?.fechasEspeciales, fechaEnZona()), [client?.fechasEspeciales]);
   const campoIndicacion = useRef(null);
-  // Lo escogido para «Crear la imagen aquí» (vacío: lo de la publicación y del cliente), recordado por cliente.
-  const claveOpciones = `crear-aqui:${clientId ?? ""}`;
-  const [opcionesCrear, setOpcionesCrearEstado] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(claveOpciones) || "{}") ?? {}; } catch { return {}; }
-  });
-  const setOpcionesCrear = (v) => {
-    setOpcionesCrearEstado(v);
-    try { localStorage.setItem(claveOpciones, JSON.stringify(v)); } catch { /* sin almacenamiento */ }
-  };
+  // Lo escogido para «Crear la imagen aquí» (vacío: lo de la publicación y del cliente), SÓLO para esta publicación:
+  // recordado por navegador, la siguiente salía con la plantilla o el estilo de otra sin que nadie lo viera.
+  const [opcionesCrear, setOpcionesCrear] = useState({});
   const [verOpciones, setVerOpciones] = useState(false);
   // El modelo se escoge aparte («Con qué modelo»): lo de antes guardado aquí ya no cuenta.
   const opcionesPuestas = ["preset", "estilo", "plantilla"].filter((k) => opcionesCrear[k]).length;
   // «Con qué modelo» para lo que se hace AQUÍ (crear, otra versión, corregir, recrear): sólo esta vez, no fija nada.
   const [modeloAccion, setModeloAccion] = useState("");
-  // Dónde se hacen «Otra versión», «Corregir esta» y «Recrear con mi marca»: en el Estudio (con propuestas, comentario y
-  // ejemplos de la galería; lo escogido vuelve a su sitio) o aquí, rápido. Se recuerda por navegador.
-  const claveDonde = "post-acciones-donde";
-  const [donde, setDondeEstado] = useState(() => { try { return localStorage.getItem(claveDonde) === "aqui" ? "aqui" : "estudio"; } catch { return "estudio"; } });
-  const setDonde = (v) => { setDondeEstado(v); try { localStorage.setItem(claveDonde, v); } catch { /* sin almacenamiento */ } };
   const conModelo = (a) => (a?.modelo ? ` con ${nombreDelModelo(a.modelo)}` : "");
   const uso = cal && post.id ? cal.dbId || cal.id : null;
   const costoDe = (costo) => costo.toFixed(2).replace(".", ",");
@@ -308,13 +297,12 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
     setProgresoVersion("");
   };
   /**
-   * «Otra versión», «Corregir esta» y «Recrear con mi marca» EN EL ESTUDIO: la imagen se abre en el visor de la galería
-   * (sus versiones, «Editar» con comentario y ejemplos, el modelo para esa vez) o en el recreador, que propone antes de
-   * crear; lo que se escoja allí vuelve al sitio de esta imagen (en un carrusel, a su lámina). Si la imagen no estaba
-   * en la galería (subida al post, de Drive), se sube; una que no salió del Estudio no tiene pedido que repetir, y su
-   * «Otra versión» abre el compositor con ella de referencia.
+   * «Ver en el Estudio»: la imagen se abre en el visor de la galería (sus versiones, «Editar» con comentario y ejemplos,
+   * el modelo para esa vez); lo que se escoja allí vuelve al sitio de esta imagen (en un carrusel, a su lámina). Si no
+   * estaba en la galería (subida al post, de Drive), se sube. «Otra versión», «Corregir esta» y «Recrear con mi marca» ya
+   * no van allí: se hacen AQUÍ, por el director y el servidor (decisión de la agencia: fuera el «En el Estudio / Aquí»).
    */
-  const abrirEnEstudio = async (medio, accion) => {
+  const verEnEstudio = async (medio) => {
     if (versionando || !clientId) return;
     setVersionando(medio.src);
     setDeshacer(null);
@@ -323,15 +311,13 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
     setProgresoVersion("Abriendo el Estudio con esta imagen…");
     try {
       const archivo = await archivoEnGaleria(clientId, medio.src);
-      if (accion === "version" && (archivo.subido || !archivo.modelo)) abrirCreacion({ tipo: "imagen", version: medio, reemplaza: medio });
-      else abrirCreacion({ abrir: archivo, accion, reemplaza: medio, indicacion });
+      abrirCreacion({ abrir: archivo, accion: "ver", reemplaza: medio });
     } catch (e) {
       onError?.(`No se pudo abrir en el Estudio: ${e.message}`);
     }
     setVersionando(null);
     setProgresoVersion("");
   };
-  const enEstudio = donde === "estudio";
 
   const volverALaAnterior = () => {
     if (!deshacer) return;
@@ -435,11 +421,12 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           onError={onError}
           entradaRef={entrada}
           onPortada={conPortada ? (c) => setForm((p) => ({ ...p, ...c })) : null}
-          onCrearConIA={abrirCreacion}
-          onOtraVersion={client ? (m) => (enEstudio ? abrirEnEstudio(m, "version") : otraVersion(m)) : null}
-          onRecrear={client ? (m) => (enEstudio ? abrirEnEstudio(m, "recrear") : otraVersion(m, { recrear: true })) : null}
+          onCrearConIA={(o) => abrirCreacion({ ...o, indicacion })}
+          onOtraVersion={client ? (m) => otraVersion(m) : null}
+          onRecrear={client ? (m) => otraVersion(m, { recrear: true }) : null}
           onCrearAqui={puedeCrearAqui ? crearAqui : null}
-          onCorregir={clientId ? (m) => (enEstudio ? abrirEnEstudio(m, "editar") : corregir(m)) : null}
+          onCorregir={clientId ? (m) => corregir(m) : null}
+          onVerEnEstudio={clientId ? verEnEstudio : null}
           versionando={versionando}
           onCrearCarrusel={post.format === "carrusel" && clientId ? () => setCarrusel(true) : null}
           onCrearReel={post.format === "reel" && clientId ? () => setReel("guion") : null}
@@ -508,27 +495,9 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
             <p id={`${ids}-quiero-ayuda`} className="hint" style={{ margin: 0 }}>
               {!conImagen
                 ? "Manda sobre todo lo demás: el director de arte rediseña la pieza con ello."
-                : enEstudio
-                  ? "«Corregir esta» lo lleva escrito al Estudio, donde puedes sumar ejemplos de la galería antes de editar."
-                  : "Manda sobre todo lo demás en «Otra versión» y «Recrear con mi marca». «Corregir esta» cambia sólo esto en la misma imagen."}
+                : "Manda sobre todo lo demás en «Otra versión» y «Recrear con mi marca» (el director mira la imagen y la rediseña). «Corregir esta» cambia sólo esto en la misma imagen. Todo sale revisado y ocupa su sitio, con «Deshacer»; «Ver en el Estudio» abre la pieza con sus versiones."}
             </p>
-            {conImagen && (
-              <div className="donde-se-hace" role="group" aria-labelledby={`${ids}-donde`}>
-                <span className="label" id={`${ids}-donde`}>«Otra versión», «Corregir esta» y «Recrear»:</span>
-                <button type="button" className="filter-chip" aria-pressed={enEstudio} onClick={() => setDonde("estudio")}>
-                  <Icon name="imageAi" size={13} /> En el Estudio
-                </button>
-                <button type="button" className="filter-chip" aria-pressed={!enEstudio} onClick={() => setDonde("aqui")}>
-                  <Icon name="sparkles" size={13} /> Aquí, rápido
-                </button>
-                <p className="hint" style={{ margin: 0, flexBasis: "100%" }}>
-                  {enEstudio
-                    ? "Se abre la imagen en el Estudio: propuestas, comentario, ejemplos de la galería y el modelo. Lo que escojas vuelve a su sitio (en un carrusel, a su lámina)."
-                    : "Se hace aquí mismo, sin revisar antes, y ocupa su sitio (con «Deshacer»)."}
-                </p>
-              </div>
-            )}
-            {(puedeCrearAqui || (conImagen && !enEstudio)) && (
+            {(puedeCrearAqui || conImagen) && (
               <SelectorModeloDelEspacio
                 valor={modeloAccion} onCambiar={setModeloAccion} conReferencias
                 proporcion={post.format === "historia" || post.format === "reel" ? "9:16" : "4:5"}
@@ -573,7 +542,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
         )}
         {carrusel && (
           <Suspense fallback={null}>
-            <CarruselIA client={client} post={post} cal={cal} onPoner={ponerCarrusel} onCerrar={() => setCarrusel(false)} />
+            <CarruselIA client={client} post={post} cal={cal} onPoner={ponerCarrusel} onCerrar={() => setCarrusel(false)} indicacion={indicacion} />
           </Suspense>
         )}
         {reel && (
@@ -648,7 +617,7 @@ export default function PestanaPublicar({ post, sf, setForm, client, clientId, d
           )}
           {post.format !== "live" && (
             <Plegable titulo="También en historias" icono="formatHistoria" resumen={resumenHistoria}>
-              <HistoriasDelPost post={post} sf={sf} clientId={clientId} cliente={client} calendarId={uso} colorMarca={client?.primaryColor} onError={onError} />
+              <HistoriasDelPost post={post} sf={sf} clientId={clientId} cliente={client} calendarId={uso} colorMarca={client?.primaryColor} onError={onError} indicacion={indicacion} />
             </Plegable>
           )}
         </div>

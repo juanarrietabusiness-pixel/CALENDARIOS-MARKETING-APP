@@ -19,7 +19,8 @@
 // descartar en silencio lo que se pidió a propósito.
 // ============================================================
 
-import { dayName, getWeekNumber } from "../utils";
+import { dayName } from "../utils";
+import { semanaDelMes } from "./semanas";
 import { normalizarHora } from "./horas";
 
 /** Lo que devuelve `leerHora` cuando la hora no se entiende. */
@@ -84,13 +85,12 @@ export function aplicarLote(cal, entrada = {}) {
   }
 
   const dias = cal?.days ?? [];
-  const primerDia = dias[0]?.date;
 
   const alcanza = (fecha, post) => {
     if (!comun) return false;
     if (puesto(filtros.dia) && !igual(dayName(fecha), filtros.dia)) return false;
-    if (puesto(filtros.semana) && primerDia
-        && getWeekNumber(fecha, primerDia) !== Number(filtros.semana)) return false;
+    // La semana es la FILA de la rejilla (lib/semanas.js): la misma que lee el asistente en su calendario.
+    if (puesto(filtros.semana) && semanaDelMes(fecha) !== Number(filtros.semana)) return false;
     if (puesto(filtros.formato) && !igual(post.format, filtros.formato)) return false;
     if (puesto(filtros.categoria) && !igual(post.category, filtros.categoria)) return false;
     return true;

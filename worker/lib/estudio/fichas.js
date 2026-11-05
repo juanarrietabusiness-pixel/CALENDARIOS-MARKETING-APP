@@ -61,6 +61,9 @@ const MAX_VISTA = 700_000; // caracteres de base64 por imagen (~500 kB): copias 
 /** Las imágenes que manda el navegador, limpias: sólo JPEG, PNG o WEBP en base64 y de tamaño razonable. */
 export function limpiarVistas(vistas) {
   return (Array.isArray(vistas) ? vistas : [])
+    // Las ya limpias (bloques de imagen: lo que guarda un encargo) valen igual. Si no, el encargo las guardaba
+    // limpias, el director las volvía a limpiar y las descartaba todas: nunca veía las plantillas ni los «Me gusta».
+    .map((v) => (v?.type === "image" && v.source?.type === "base64" ? { ...v, media_type: v.source.media_type, data: v.source.data } : v))
     .filter((v) => /^image\/(jpeg|png|webp)$/.test(String(v?.media_type ?? "")) && typeof v?.data === "string" && v.data.length > 0 && v.data.length <= MAX_VISTA && /^[A-Za-z0-9+/=]+$/.test(v.data.slice(0, 200)))
     .slice(0, MAX_VISTAS)
     .map((v) => ({ type: "image", source: { type: "base64", media_type: v.media_type, data: v.data } }));

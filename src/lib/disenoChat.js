@@ -26,7 +26,7 @@ import { productosNombrados } from "./referencias";
 import { esperarArchivos, crearCarrusel } from "./carruselEstudio";
 import { referenciaDePlantilla, lineaDePlantillaEnPedido, limpiarKit, kitVacio, estiloDeMarca, referenciaDeTipografia } from "./kitMarca";
 import { coloresPlantilla } from "./carrusel";
-import { controlEncendido, controlarYCorregir, modeloParaCorregir } from "./controlEstudio";
+import { controlarYCorregir, modeloParaCorregir } from "./controlEstudio";
 import { conLogoSiToca, estampaSola } from "./logoEstudio";
 import { imagenParaModelo } from "./medios";
 import { limpiarFicha, textoDeLaFicha, MAX_FICHAS } from "./director";
@@ -151,7 +151,7 @@ export async function crearPlan(ctx, plan, { alAvanzar = () => {}, seguir = () =
       try {
         const { trabajo } = await api.pedirImagenes(clienteId, { ...p.pedido, confirmado: true, ...(calendarId && p.postId ? { calendarId, postId: p.postId } : {}) });
         let [archivo] = await esperarArchivos(clienteId, trabajo, { seguir });
-        if (controlEncendido()) archivo = (await controlarYCorregir({ clienteId, archivo, texto: textoDeLaFicha(p.ficha) || null, activos, seguir })).archivo;
+        archivo = (await controlarYCorregir({ clienteId, archivo, texto: textoDeLaFicha(p.ficha) || null, activos, seguir })).archivo;
         archivo = await conLogoSiToca({ clienteId, archivo, kit });
         salida[p.n] = { n: p.n, archivo };
         alAvanzar(p.n, { archivo });
@@ -194,7 +194,7 @@ async function crearCarruselDelPlan(ctx, plan, { alAvanzar, seguir, titulo }) {
     clienteId, modelo: validas[0].modelo, modo: "ia", plantilla: "banda", hilo: titulo, idea: titulo, laminas,
     preset: estiloDeMarca(kit, validas[0].estilo, { marca: cliente.name, rubro: cliente.industry ?? "" }), fotos, personajes: [],
     logo: estampaSola(kit) ? "" : kit.logo, estampar: estampaSola(kit) ? kit : null, colores: coloresPlantilla(kit), familia: kit.tipografia, fuente: kit.fuente,
-    carpetaId, seguir, tipografia: referenciaDeTipografia(kit), controlar: controlEncendido(), activos,
+    carpetaId, seguir, tipografia: referenciaDeTipografia(kit), controlar: true, activos,
     alAvanzar: (i, r) => {
       alAvanzar(validas[i].n, r?.final ? { archivo: r.final } : { error: r?.error || "No salió." });
       if (validas[i + 1]) alAvanzar(validas[i + 1].n, { cargando: true });
@@ -250,7 +250,7 @@ export async function corregirPieza(ctx, { archivoId, indicacion, igualA = "", s
     ...(a.carpetaId ? { carpetaId: a.carpetaId } : {}),
   });
   let [nueva] = await esperarArchivos(ctx.clienteId, trabajo, { seguir });
-  if (controlEncendido()) nueva = (await controlarYCorregir({ clienteId: ctx.clienteId, archivo: nueva, activos: ctx.activos, seguir })).archivo;
+  nueva = (await controlarYCorregir({ clienteId: ctx.clienteId, archivo: nueva, activos: ctx.activos, seguir })).archivo;
   return { archivo: nueva, antes: a };
 }
 
@@ -272,7 +272,7 @@ export async function versionFinal(ctx, { archivoId, seguir = () => true }) {
   const base = { ...(valores.includes(prop) ? { aspectRatio: prop } : {}), ...((m.ajustes?.imageSize?.valores ?? []).includes("2K") ? { imageSize: "2K" } : {}) };
   const { trabajo: nuevo } = await api.pedirImagenes(ctx.clienteId, { modelo: m.id, prompt: a.prompt, n: 1, ajustes: ajustesDe(m, base, medios), medios, confirmado: true, ...(a.carpetaId ? { carpetaId: a.carpetaId } : {}) });
   let [archivo] = await esperarArchivos(ctx.clienteId, nuevo, { seguir });
-  if (controlEncendido()) archivo = (await controlarYCorregir({ clienteId: ctx.clienteId, archivo, texto: textoDeLaFicha(a.prompt) || null, activos: ctx.activos, seguir })).archivo;
+  archivo = (await controlarYCorregir({ clienteId: ctx.clienteId, archivo, texto: textoDeLaFicha(a.prompt) || null, activos: ctx.activos, seguir })).archivo;
   archivo = await conLogoSiToca({ clienteId: ctx.clienteId, archivo, kit: ctx.kit });
   return { archivo, antes: a, modelo: m };
 }

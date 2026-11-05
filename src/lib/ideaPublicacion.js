@@ -17,12 +17,15 @@
 // «Planificar mes» va por el MISMO motor, todo el mes de una vez (modo «plan»,
 // `ideasDelPlan`): cada casilla con su formato, su tipo y su matriz, más la
 // estrategia del mes (campaña, ofertas, el concepto de cada semana).
-// Con una idea ya escrita, «Completar» sigue en api.js (instruccionIdea): mejora
-// la de la persona, no la cambia por otra.
+// Con una idea ya escrita, «Completar» va por el mismo motor en su modo
+// «campos» (src/lib/escribirTextos.js): mejora la de la persona, no la cambia
+// por otra. Lo mismo el guion, el caption y el texto de la pieza.
 // ============================================================
 
 import { pedir } from "./db";
-import { limpiarEstrategia, objetivoDe, semanasConEtapa } from "./estrategiaMes.js";
+import { estrategiaDelCalendario } from "./estrategiaMes.js";
+import { semanaDelMes } from "./semanas.js";
+import { llevaCaption } from "./reglasFormato.js";
 import { camposDePromptListo } from "./promptImagen.js";
 
 /** Los formatos que se escriben por este camino; un directo sigue con el de siempre. */
@@ -66,6 +69,8 @@ export async function ideaParaPublicacion(clienteId, { post, day, cal }) {
         ...(post.format === "reel" && post.rostro ? { rostro: true } : {}),
       },
       nota: notaDePublicacion(post, day, cal), usados: usadosDelMes(cal, post.id), semilla: Date.now() % 997,
+      // La estrategia del mes entera (objetivo, foco, ofertas, código, cada semana con su etapa), no sólo la campaña.
+      ...(cal ? { estrategia: estrategiaDelCalendario(cal) } : {}),
     }),
   });
   const idea = r?.ideas?.[0];
@@ -97,6 +102,7 @@ export function casillasDelPlan(dias = [], { matriz = new Map(), semanas = [], i
         ...(semanas[(d.wk ?? 1) - 1] ? { semana: semanas[(d.wk ?? 1) - 1] } : {}),
         ...(d.impDate?.name ? { especial: d.impDate.name } : {}),
         ...(String(previa.idea ?? "").trim() ? { idea: String(previa.idea).trim() } : {}),
+        ...(String(previa.estructuraRef ?? "").trim() ? { estructuraRef: String(previa.estructuraRef).trim() } : {}),
         ...(formato === "reel" && f.rostro ? { rostro: true } : {}),
       });
     });
@@ -112,13 +118,15 @@ export function casillasDelPlan(dias = [], { matriz = new Map(), semanas = [], i
 export function casillasSinIdea(cal) {
   const fuera = [];
   for (const d of cal?.days ?? []) {
+    // La semana es la FILA de la rejilla (lunes a domingo, la de la tarjeta de la campaña); el concepto del día, respaldo.
+    const semana = String((cal?.weekConcepts ?? [])[semanaDelMes(d.date) - 1] || d.concept || "").trim();
     for (const p of d.posts ?? []) {
       const formato = formatoDelPlan(p.format);
       if (!formato || String(p.idea ?? "").trim() || p.status === "published") continue;
       fuera.push({
         clave: p.id, fecha: d.date, formato,
         ...Object.fromEntries(["pilar", "pilarSub", "productoId", "nivel", "deseo", "perfil"].map((k) => [k, p[k] || ""]).filter(([, v]) => v)),
-        ...(d.concept ? { semana: d.concept } : {}),
+        ...(semana ? { semana } : {}),
         ...(d.specialDate ? { especial: d.specialDate } : {}),
         ...(formato === "reel" && p.rostro ? { rostro: true } : {}),
       });
@@ -127,21 +135,9 @@ export function casillasSinIdea(cal) {
   return fuera;
 }
 
-/**
- * La estrategia del mes que va al motor, sacada del calendario: campaña, ofertas, código, el concepto de cada semana
- * (con su etapa del embudo) y, si se planeó con estrategia (`opciones.estrategia`), el objetivo y el producto foco. Pura.
- */
-export function estrategiaDelCalendario(cal) {
-  const e = limpiarEstrategia(cal?.opciones?.estrategia);
-  const obj = objetivoDe(e?.objetivo);
-  const conceptos = Array.isArray(cal?.weekConcepts) ? cal.weekConcepts : [];
-  return {
-    campana: cal?.campaign ?? "", ofertas: cal?.offers ?? "", codigo: cal?.promoCode ?? "",
-    semanas: e?.etapas?.length ? semanasConEtapa(conceptos, e.etapas) : conceptos,
-    ...(obj ? { objetivo: `${obj.nombre} — ${obj.ayuda}` } : {}),
-    ...(e?.foco ? { foco: e.foco, focoId: e.focoId } : {}),
-  };
-}
+// La estrategia del mes que va al motor vive en estrategiaMes.js (la lee también el Worker): se reexporta aquí, donde
+// la buscan las pantallas.
+export { estrategiaDelCalendario };
 
 /** Pide al motor las ideas de una tanda del plan → { ideas (cada una con su `clave`), total, aviso }. */
 /** «Proponer la estrategia con IA» → { estrategia, mejores, semanas, aviso }. Propone: no guarda nada. */
@@ -156,6 +152,8 @@ export function rellenarConIdea(post = {}, idea = {}) {
   const vacio = (k) => !String(post[k] ?? "").trim();
   const video = post.format === "reel";
   const carrusel = post.format === "carrusel";
+  // La regla de cada formato (lib/reglasFormato.js): una historia no lleva caption ni hashtags.
+  const conCaption = llevaCaption(post.format);
   const propuesta = {
     title: idea.titulo || idea.titular || "",
     idea: idea.brief || idea.escena || "",
@@ -163,8 +161,8 @@ export function rellenarConIdea(post = {}, idea = {}) {
     // El texto encima del diseño: en un carrusel va lámina por lámina (en el guion) y a un video no se le pide.
     textoPieza: carrusel || video ? "" : idea.textoPieza || "",
     guion: carrusel || video ? idea.guion || "" : "",
-    descripcion: idea.descripcion || "",
-    hashtagsFinales: idea.hashtags || "",
+    descripcion: conCaption ? idea.descripcion || "" : "",
+    hashtagsFinales: conCaption ? idea.hashtags || "" : "",
     composicion: idea.composicion || "",
     tactica: idea.tactica || "",
     ...(carrusel && idea.estructura ? { estructura: idea.estructura } : {}),

@@ -20,6 +20,8 @@
 // También lo importa el Worker («Extraer guion y adaptar»).
 // ============================================================
 
+import { separarHashtags } from "./reglasFormato.js";
+
 export const DURACIONES_UGC = Object.freeze([15, 30, 45, 60]);
 export const DURACION_UGC = 30;
 /** Palabras por segundo de una voz natural a cámara. */
@@ -159,7 +161,7 @@ export function pedidoDeTranscripcion() {
   return [
     "Mira y escucha este video entero. Transcribe lo que se DICE palabra por palabra (voz a cámara o voz en off, en su idioma) y describe lo que se VE, por tramos de tiempo.",
     "Responde SOLO con JSON, así:",
-    '{"tramos":[{"desde":0,"hasta":3,"voz":"lo que se dice, tal cual","seVe":"la toma: quién, dónde, qué hace, el encuadre","texto":"el texto en pantalla, si hay"}],"duracion":30,"gancho":"qué hace que alguien se quede en los primeros segundos","porQue":"por qué funciona, en una frase","estructura":"la forma del video en pocas palabras (p. ej. problema → demostración → oferta)"}',
+    '{"tramos":[{"desde":0,"hasta":3,"voz":"lo que se dice, tal cual","seVe":"la toma: quién, dónde, qué hace, el encuadre","texto":"el texto en pantalla, si hay"}],"duracion":30,"gancho":"qué hace que alguien se quede en los primeros segundos","porQue":"por qué funciona, en una frase","estructura":"la forma del video en pocas palabras (p. ej. problema → demostración → oferta)","audio":"lo que suena debajo: música (género y ritmo; si es una canción o un audio conocido o en tendencia, cuál), voz en off o sonido ambiente"}',
     "- Los tramos siguen al video (de 2 a 6 segundos cada uno), seguidos y sin huecos. Si no se dice nada en un tramo, «voz» va vacía.",
     "- No inventes lo que no se oye ni se ve.",
   ].join("\n");
@@ -185,6 +187,7 @@ export function leerTranscripcion(texto) {
     tramos,
     duracion: num(d?.duracion) || tramos[tramos.length - 1].hasta || null,
     gancho: limpio(d?.gancho, 300), porQue: limpio(d?.porQue, 300), estructura: limpio(d?.estructura, 200),
+    ...(limpio(d?.audio, 300) ? { audio: limpio(d?.audio, 300) } : {}),
   };
 }
 
@@ -202,6 +205,7 @@ export function pedidoDeAdaptacionUgc({ marca = "la marca", original, duracion =
     original?.estructura ? `Su estructura: ${original.estructura}.` : "",
     original?.gancho ? `Su gancho: ${original.gancho}.` : "",
     original?.porQue ? `Por qué funciona: ${original.porQue}.` : "",
+    original?.audio ? `Lo que suena en el original: ${original.audio}.` : "",
     "",
     `EL VIDEO ORIGINAL, TRAMO A TRAMO:\n${transcripcionATexto(original).slice(0, 4000)}`,
     "",
@@ -217,6 +221,7 @@ export function pedidoDeAdaptacionUgc({ marca = "la marca", original, duracion =
     "GANCHOS:",
     "- (3 ganchos alternativos para el primer tramo, lo que se dice)",
     "DESCRIPCION: el caption, de 2 a 4 frases con un llamado a la acción y de 5 a 10 hashtags al final",
+    "AUDIO: qué audio usar al publicarlo en Instagram o TikTok (la API no lo pone: lo escoge quien publica): el del original si es un audio en tendencia que se puede usar, uno parecido por género y ritmo, o voz a cámara sin música. Una línea.",
     "",
     contexto ? `LO QUE SE SABE DE LA MARCA:\n${String(contexto).slice(0, 8000)}` : "",
   ].filter((l, i, t) => l !== "" || t[i - 1] !== "").join("\n");
@@ -233,13 +238,14 @@ export function leerAdaptacionUgc(texto) {
     const fin = resto.search(new RegExp(`^\\s*(${siguientes})\\s*:`, "im"));
     return (fin >= 0 ? resto.slice(0, fin) : resto).trim();
   };
-  const titulo = limpio(tramo("T[IÍ]TULO", "GUION|GANCHOS?|DESCRIPCI[OÓ]N").split("\n")[0], 80);
-  const cuerpo = tramo("GUION", "GANCHOS?|DESCRIPCI[OÓ]N|T[IÍ]TULO");
-  const ganchos = limpiarGanchos(tramo("GANCHOS?", "DESCRIPCI[OÓ]N|T[IÍ]TULO|GUION").split(/\n+/).map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "")));
-  const descripcion = tramo("DESCRIPCI[OÓ]N", "T[IÍ]TULO|GUION|GANCHOS?").slice(0, 2200);
+  const titulo = limpio(tramo("T[IÍ]TULO", "GUION|GANCHOS?|DESCRIPCI[OÓ]N|AUDIO").split("\n")[0], 80);
+  const cuerpo = tramo("GUION", "GANCHOS?|DESCRIPCI[OÓ]N|T[IÍ]TULO|AUDIO");
+  const ganchos = limpiarGanchos(tramo("GANCHOS?", "DESCRIPCI[OÓ]N|T[IÍ]TULO|GUION|AUDIO").split(/\n+/).map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "")));
+  const descripcion = tramo("DESCRIPCI[OÓ]N", "T[IÍ]TULO|GUION|GANCHOS?|AUDIO").slice(0, 2200);
+  const audio = limpio(tramo("AUDIO", "T[IÍ]TULO|GUION|GANCHOS?|DESCRIPCI[OÓ]N").split("\n")[0], 300);
   const tramos = partirGuionUgc(cuerpo);
   if (tramos.length < 2) return null;
-  return { titulo, guion: guionUgcATexto(tramos), ganchos, descripcion };
+  return { titulo, guion: guionUgcATexto(tramos), ganchos, descripcion, ...(audio ? { audio } : {}) };
 }
 
 /**
@@ -247,6 +253,8 @@ export function leerAdaptacionUgc(texto) {
  * caption. Sólo lo que trae; lo demás (fecha, medios) es de quien la recibe. Pura.
  */
 export function publicacionDeUgc(adaptado = {}, { duracion = DURACION_UGC, productoId = "", producto = "" } = {}) {
+  // Los hashtags del final del caption, APARTE (lib/reglasFormato.js): en los dos sitios saldrían dos veces.
+  const { texto: caption, hashtags } = separarHashtags(adaptado.descripcion ?? "");
   return {
     format: "reel", rostro: true,
     ...(adaptado.titulo ? { title: adaptado.titulo } : {}),
@@ -254,8 +262,11 @@ export function publicacionDeUgc(adaptado = {}, { duracion = DURACION_UGC, produ
     guion: adaptado.guion ?? "",
     ...(adaptado.ganchos?.length ? { ganchosUgc: adaptado.ganchos } : {}),
     duracionUgc: duracionUgc(duracion),
-    ...(adaptado.descripcion ? { descripcion: adaptado.descripcion } : {}),
+    ...(caption ? { descripcion: caption } : {}),
+    ...(hashtags ? { hashtagsFinales: hashtags } : {}),
     ...(productoId ? { productoId, producto } : {}),
+    // Qué audio usar al publicarlo (la API no lo pone: lo escoge quien publica en Instagram o TikTok).
+    ...(adaptado.audio ? { audioUgc: adaptado.audio } : {}),
   };
 }
 
@@ -355,6 +366,7 @@ export function textoParaGrabar({ cliente = "", cuando = "", piezas = [] }) {
       `*${i + 1}. ${titulo}*${dur}`,
       voz ? `_Lo que dices:_\n${voz}` : "",
       tomas ? `_Tomas:_\n${tomas}` : "",
+      p.audioUgc ? `_Audio al publicar:_ ${limpio(p.audioUgc, 300)}` : "",
       !voz && !tomas && String(p.guion ?? "").trim() ? String(p.guion).trim() : "",
     ].filter(Boolean).join("\n");
   });

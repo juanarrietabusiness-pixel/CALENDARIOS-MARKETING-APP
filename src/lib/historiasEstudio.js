@@ -16,20 +16,24 @@
 //      fotos de su producto y la imagen del post de referencia (su producto y su
 //      estilo, nunca de base), en 9:16.
 //   3. El control mira cada una y, si una letra salió mal, edita esa misma
-//      imagen. Y el logo estampado, si el kit lo pide.
+//      imagen. Y el logo estampado, si el kit lo pide. Lo hace el SERVIDOR (un
+//      encargo de tres piezas: lib/piezaServidor.js), aunque se cierre la pantalla.
+//
+// Cuestan: el panel enseña lo que valen las tres ANTES de crear, y crearlas es la
+// confirmación (antes salían con `confirmado: true` sin enseñar nada). «¿Qué
+// quieres?» del post manda también aquí.
 //
 // Se carga aparte: arrastra el catálogo.
 // ============================================================
 
 import * as api from "./estudio";
 import { apoyosDePieza, pedidoDePieza } from "./pieza";
-import { esperarArchivos } from "./carruselEstudio";
-import { controlEncendido, controlarYCorregir } from "./controlEstudio";
-import { conLogoSiToca } from "./logoEstudio";
+import { pasoListo, lanzarEnServidor, esperarEnServidor } from "./piezaServidor";
+import { lineaDeIndicacion } from "./otraVersion";
 import { presetDePilar, productosDelPost } from "./pilares";
 import { nombreDePreset, referenciaDePlantilla, lineaDePlantillaEnPedido } from "./kitMarca";
 import { textoDeLaFicha, modeloFinal } from "./disenoChat";
-import { modeloPorId, MODELOS, porPrecio, etiquetaDeCosto } from "./estudioCatalogo";
+import { modeloPorId, MODELOS, porPrecio, etiquetaDeCosto, estimar, ajustesDe } from "./estudioCatalogo";
 
 /** Las tres, con lo que cuenta cada una (los mismos ids que VARIANTES_HISTORIA de worker/rutas/imagen.js). */
 export const VARIANTES = Object.freeze([
@@ -79,13 +83,19 @@ export function opcionesParaHistorias(activos) {
     .map((m) => ({ id: m.id, nombre: m.nombre, costo: etiquetaDeCosto(m) }));
 }
 
-/** Lo que pinta el selector del panel: las opciones, la fijada («» = la de siempre) y cuál sale sin fijar. */
+/**
+ * Lo que pinta el selector del panel: las opciones, la fijada («» = la de siempre), cuál sale sin fijar y lo que cuestan
+ * las tres con cada una (`costos`: id → $; «» = la de siempre).
+ */
 export async function modelosParaHistorias(clienteId) {
   const [g, m] = await Promise.all([api.leerEstudio(clienteId), api.leerMotores()]);
   const activos = Object.fromEntries(Object.entries(m?.motores ?? {}).map(([k, v]) => [k, Boolean(v.activo)]));
   const kit = g?.kit ?? {};
   const fijado = sirveParaHistorias(modeloPorId(kit.modelos?.historias), activos) ? kit.modelos.historias : "";
-  return { opciones: opcionesParaHistorias(activos), fijado, porDefecto: modeloDeHistorias(activos, { ...kit, modelos: { ...(kit.modelos ?? {}), historias: "" } })?.nombre ?? "" };
+  const deSiempre = modeloDeHistorias(activos, { ...kit, modelos: { ...(kit.modelos ?? {}), historias: "" } });
+  const opciones = opcionesParaHistorias(activos);
+  const costos = Object.fromEntries([["", costoDeHistorias(deSiempre)], ...opciones.map((o) => [o.id, costoDeHistorias(modeloPorId(o.id))])]);
+  return { opciones, fijado, porDefecto: deSiempre?.nombre ?? "", costos };
 }
 
 /**
@@ -101,8 +111,21 @@ export async function fijarModeloHistorias(clienteId, id) {
 }
 
 /**
- * Crea las tres. `base`: la ruta de la imagen del post (de ESTE cliente); `indicacion`: lo que pidió la persona.
- * `alAvanzar(id, { cargando } | { archivo } | { error })`. → [{ id, nombre, archivo | error }].
+ * Lo que cuestan las TRES con un modelo (aproximado: el pedido real puede ir con el relevo si el modelo no hace 9:16 con
+ * las referencias). Lo enseña el panel ANTES de crear, y es la confirmación. Pura.
+ */
+export function costoDeHistorias(modelo) {
+  if (!modelo) return 0;
+  const valores = modelo.ajustes?.aspectRatio?.valores ?? [];
+  const ajustes = ajustesDe(modelo, valores.includes("9:16") ? { aspectRatio: "9:16", imageSize: "2K" } : {}, { reference: ["post"] });
+  return Math.round(estimar(modelo, 1, ajustes) * VARIANTES.length * 1000) / 1000;
+}
+
+/**
+ * Crea las tres. `base`: la ruta de la imagen del post (de ESTE cliente); `indicacion`: lo que pidió la persona en «¿Qué
+ * quieres?» (manda en las tres). `alAvanzar(id, { cargando, paso } | { archivo } | { error })`. Van por el SERVIDOR (lib/
+ * piezaServidor.js) en un solo encargo de tres piezas: la proporción, el control con su corrección y el logo estampado,
+ * aunque se cierre la pantalla. → [{ id, nombre, archivo | error }].
  */
 export async function crearHistorias({ client, post, base, indicacion = "", alAvanzar = () => {}, seguir = () => true }) {
   const clienteId = client.dbId || client.id;
@@ -117,7 +140,7 @@ export async function crearHistorias({ client, post, base, indicacion = "", alAv
   const info = informacionDelPost(post);
   VARIANTES.forEach((v) => alAvanzar(v.id, { cargando: true, paso: "Diseñando…" }));
 
-  // 1. El director de arte diseña las tres y escribe su texto exacto.
+  // 1. El director de arte diseña las tres y escribe su texto exacto (con lo que pidió la agencia delante).
   let fichas = {};
   try {
     const r = await api.fichasDeDiseno(clienteId, {
@@ -131,35 +154,33 @@ export async function crearHistorias({ client, post, base, indicacion = "", alAv
     fichas = r?.fichas ?? {};
   } catch { /* sin director: con el pedido de cada variante, como antes */ }
 
-  // 2 y 3. Cada historia por el camino de UNA pieza, con el control y el logo.
+  // 2. Cada historia por el camino de UNA pieza; 3. las tres al servidor, que las crea, las revisa y les pone el logo.
   const fotos = api.fotosDelPost(g?.productos ?? [], post);
   const delPost = { clave: imagenDelPost.clave, src: imagenDelPost.src, toma: ["producto", "estilo"], nota: "es la imagen del POST que esta historia acompaña: toma de ella el producto, los colores y el estilo; NO la repitas ni la encojas, esta historia es otra pieza con otra composición" };
-  return Promise.all(VARIANTES.map(async (v, i) => {
-    try {
-      const ficha = fichas[i + 1]?.ficha || [v.pedido, info ? `LO QUE DICE EL POST (sólo estos datos):\n${info}` : "", "Todo texto, en español y sin errores."].filter(Boolean).join("\n");
-      // Si el director escogió una plantilla de historia del kit, su imagen va de referencia (por su diseño).
-      const idPlantilla = fichas[i + 1]?.plantilla ?? "";
-      const plantilla = idPlantilla ? referenciaDePlantilla(kit, idPlantilla, g?.archivos ?? []) : null;
-      const apoyos = apoyosDePieza({ kit, preset, archivos: g?.archivos ?? [], fotos, manuales: [delPost, ...(plantilla ? [plantilla] : [])], modelo });
-      const valores = modelo.ajustes?.aspectRatio?.valores ?? [];
-      const pedido = pedidoDePieza({
-        kit, idea: ficha, preset, apoyos, modelo, marca: client.name, rubro: client.industry ?? "",
-        aspectRatio: valores.includes("9:16") ? "9:16" : "", proporcion: "9:16", activos, extra: [ZONAS, plantilla ? lineaDePlantillaEnPedido(kit, idPlantilla) : ""].filter(Boolean).join(" "),
-      });
-      alAvanzar(v.id, { cargando: true, paso: "Creando…" });
-      const { trabajo } = await api.pedirImagenes(clienteId, { ...pedido, confirmado: true });
-      let [archivo] = await esperarArchivos(clienteId, trabajo, { seguir });
-      const texto = textoDeLaFicha(ficha);
-      if (controlEncendido()) {
-        alAvanzar(v.id, { cargando: true, paso: "Revisando…" });
-        archivo = (await controlarYCorregir({ clienteId, archivo, texto: texto || null, activos, seguir })).archivo;
-      }
-      archivo = await conLogoSiToca({ clienteId, archivo, kit });
-      alAvanzar(v.id, { archivo });
-      return { id: v.id, nombre: v.nombre, archivo };
-    } catch (e) {
-      alAvanzar(v.id, { error: e.message || "No salió." });
-      return { id: v.id, nombre: v.nombre, error: e.message };
-    }
-  }));
+  const pasos = VARIANTES.map((v, i) => {
+    const ficha = fichas[i + 1]?.ficha || [lineaDeIndicacion(indicacion), v.pedido, info ? `LO QUE DICE EL POST (sólo estos datos):\n${info}` : "", "Todo texto, en español y sin errores."].filter(Boolean).join("\n");
+    // Si el director escogió una plantilla de historia del kit, su imagen va de referencia (por su diseño).
+    const idPlantilla = fichas[i + 1]?.plantilla ?? "";
+    const plantilla = idPlantilla ? referenciaDePlantilla(kit, idPlantilla, g?.archivos ?? []) : null;
+    const apoyos = apoyosDePieza({ kit, preset, archivos: g?.archivos ?? [], fotos, manuales: [delPost, ...(plantilla ? [plantilla] : [])], modelo });
+    const valores = modelo.ajustes?.aspectRatio?.valores ?? [];
+    const pedido = pedidoDePieza({
+      kit, idea: ficha, preset, apoyos, modelo, marca: client.name, rubro: client.industry ?? "",
+      aspectRatio: valores.includes("9:16") ? "9:16" : "", proporcion: "9:16", activos, extra: [ZONAS, plantilla ? lineaDePlantillaEnPedido(kit, idPlantilla) : ""].filter(Boolean).join(" "),
+    });
+    return pasoListo({ id: v.id, titulo: `Historia: ${v.nombre}`, pedido, texto: textoDeLaFicha(ficha), kit });
+  });
+  VARIANTES.forEach((v) => alAvanzar(v.id, { cargando: true, paso: "Creando…" }));
+  const encargo = await lanzarEnServidor({ clienteId, pasos, titulo: `Historias de «${String(post.title || post.idea || "la publicación").slice(0, 60)}»` });
+  const r = await esperarEnServidor({
+    clienteId, encargo, kit, seguir,
+    alPaso: (id, x) => { if (x?.cargando) alAvanzar(id, { cargando: true, paso: x.paso || "Creando…" }); },
+  });
+  return VARIANTES.map((v) => {
+    const x = r?.find((y) => y.id === v.id);
+    if (x?.archivo) { alAvanzar(v.id, { archivo: x.archivo }); return { id: v.id, nombre: v.nombre, archivo: x.archivo }; }
+    const error = x?.error || "No salió.";
+    alAvanzar(v.id, { error });
+    return { id: v.id, nombre: v.nombre, error };
+  });
 }

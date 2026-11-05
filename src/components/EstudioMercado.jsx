@@ -13,11 +13,11 @@ import { urlBibliotecaWeb } from "../lib/biblioteca";
 import {
   ELEMENTOS_MERCADO, DESEOS_REISS, NIVELES_CONSCIENCIA, LIMITES_ANUNCIO, MAX_MATERIAL, MAX_PRODUCTOS, MAX_FOTOS_PRODUCTO, NIVELES_STOCK,
   limpiarCatalogo, productosActivos, pasosDelEstudio, nombreDeNivel, fraseActivo, mensajePedirDatos,
-  ideaParaRecrear, ideaParaSeguirVideo,
 } from "../lib/estudioMercado";
+import { claveDeEnlace, caminosPosibles, caminoPorDefecto } from "../lib/loMejor";
 
-// El Estudio en un diálogo, para «Recrear con mi marca» y «Seguir este video»: sólo se descarga al abrirlo.
-const Estudio = lazy(() => import("./Estudio"));
+// «Recrear para [cliente]»: el MISMO recreador que «Lo mejor» (sólo se descarga al abrirlo).
+const RecrearLoMejor = lazy(() => import("./RecrearLoMejor"));
 // «Su contenido en Instagram»: las publicaciones de un competidor, las mejores primero (sólo se descarga al abrir la pestaña).
 const ContenidoCompetencia = lazy(() => import("./ContenidoCompetencia"));
 import "./EstudioMercado.css";
@@ -810,7 +810,7 @@ function PanelCompetencia({ client, datos, lectura, onOcupado, onDatos, onCambio
   const entrada = useRef(null);
   const [archivo, setArchivo] = useState(null);
   const [f, setF] = useState({ competidor: "", enlace: "", desde: null, nota: "", origen: "anuncio" });
-  const [creando, setCreando] = useState(null); // el Estudio abierto con una referencia: { inicial }
+  const [creando, setCreando] = useState(null); // «Recrear para…» abierto con una referencia: { pieza }
   const esVideo = Boolean(archivo?.type?.startsWith("video/"));
   const [trabajando, setTrabajando] = useState("");
   const [aviso, setAviso] = useState(null);
@@ -979,7 +979,7 @@ function PanelCompetencia({ client, datos, lectura, onOcupado, onDatos, onCambio
               ) : <p className="hint">Sin analizar.</p>}
               {!lectura && r.analisis && (
                 <AccionesReferencia client={client} referencia={r} productos={productosActivos(datos.catalogo)} ocupado={Boolean(trabajando)} onOcupado={ocupar}
-                  onCrear={(inicial) => setCreando({ inicial })} onError={(texto) => setAviso({ ok: false, texto })} />
+                  onCrear={(pieza) => setCreando({ pieza })} onError={(texto) => setAviso({ ok: false, texto })} />
               )}
               {!lectura && (
                 <div className="mercado-acciones">
@@ -995,16 +995,34 @@ function PanelCompetencia({ client, datos, lectura, onOcupado, onDatos, onCambio
           </li>
         ))}
       </ul>
-      {creando && <EstudioConReferencia client={client} inicial={creando.inicial} onCerrar={() => setCreando(null)} />}
+      {creando && (
+        <Suspense fallback={null}>
+          <RecrearLoMejor pieza={creando.pieza} clientes={[client]} clienteInicial={client.dbId || client.id} onCerrar={() => setCreando(null)} />
+        </Suspense>
+      )}
     </div>
   );
 }
 
 /**
  * Lo que se hace con una referencia ya analizada: «Adaptar a la marca» (un guion con su misma estructura, para un
- * producto) y llevarla al Estudio: una captura se RECREA con la marca (va de imagen de referencia) y un video se
- * SIGUE con Kling Omni (va de video de referencia).
+ * producto) y «Recrear para [cliente]», que es el MISMO recreador de «Lo mejor»: el director diseña con la marca
+ * mirando la referencia SÓLO como inspiración (la imagen de otra marca no va al motor), o un video animado, o el guion
+ * para grabar. Antes iba al Estudio: una captura de referencia al motor (prohibido) y un video con Kling Omni de
+ * Higgsfield, un modelo que la cuenta no tiene.
  */
+/** Una referencia del estudio de mercado como pieza de «Lo mejor» (su clave es la misma que allí). */
+function piezaDeReferencia(r) {
+  const video = r.medio === "video";
+  const base = { formato: video ? "video" : "imagen", conVideo: video };
+  return {
+    clave: r.enlace ? claveDeEnlace(r.enlace) : `ref:${String(r.id ?? r.clave).slice(0, 60)}`,
+    cifra: { texto: r.origen === "organico" ? "Referencia orgánica" : "Anuncio de la competencia" },
+    tipoNombre: "", cuenta: r.competidor ?? "", idea: r.analisis?.porQueFunciona ?? "",
+    miniatura: video ? "" : `/api/media/${r.clave}`, caminos: caminosPosibles(base), caminoSugerido: caminoPorDefecto(base),
+  };
+}
+
 function AccionesReferencia({ client, referencia: r, productos, ocupado, onOcupado, onCrear, onError }) {
   const ids = useId();
   const [productoId, setProductoId] = useState("");
@@ -1012,9 +1030,6 @@ function AccionesReferencia({ client, referencia: r, productos, ocupado, onOcupa
   const [adaptacion, setAdaptacion] = useState(null);
   const [trabajando, setTrabajando] = useState(false);
   const [copiado, setCopiado] = useState(false);
-  const producto = productos.find((p) => p.id === productoId) ?? null;
-  const archivo = { id: r.archivoId, clave: r.clave, src: `/api/media/${r.clave}`, tipo: r.medio === "video" ? "video" : "imagen", prompt: `Referencia: ${r.competidor || "competencia"}` };
-
   const adaptar = async () => {
     setTrabajando(true);
     onOcupado(`adaptar-${r.id}`);
@@ -1054,17 +1069,9 @@ function AccionesReferencia({ client, referencia: r, productos, ocupado, onOcupa
         <button type="button" className="btn btn-secondary btn-sm" disabled={ocupado} onClick={adaptar}>
           <Icon name="sparkles" size={14} /> {trabajando ? "Escribiendo…" : `Adaptar a ${client.name}`}
         </button>
-        {r.medio === "video" ? (
-          <button type="button" className="btn btn-secondary btn-sm" disabled={ocupado}
-            onClick={() => onCrear({ tipo: "video", modelo: "kling-omni-video", video: archivo, proporcion: "9:16", preset: "anuncio", prompt: ideaParaSeguirVideo(r, producto) })}>
-            <Icon name="video" size={14} /> Seguir este video con mi marca
-          </button>
-        ) : (
-          <button type="button" className="btn btn-secondary btn-sm" disabled={ocupado}
-            onClick={() => onCrear({ tipo: "imagen", referencias: [archivo], proporcion: "4:5", preset: "anuncio", prompt: ideaParaRecrear(r, producto) })}>
-            <Icon name="imageAi" size={14} /> Recrear con mi marca
-          </button>
-        )}
+        <button type="button" className="btn btn-secondary btn-sm" disabled={ocupado} onClick={() => onCrear(piezaDeReferencia(r))}>
+          <Icon name="wand" size={14} /> Recrear para {client.name}
+        </button>
       </div>
       {adaptacion && (
         <div className="mercado-pedir" role="group" aria-label="Guion adaptado">
@@ -1081,16 +1088,3 @@ function AccionesReferencia({ client, referencia: r, productos, ocupado, onOcupa
   );
 }
 
-/** El Estudio del cliente en un diálogo, arrancando con la referencia puesta. Lo creado queda en su galería. */
-function EstudioConReferencia({ client, inicial, onCerrar }) {
-  const ref = useDialogA11y(onCerrar);
-  return (
-    <div className="overlay overlay-sheet">
-      <div ref={ref} role="dialog" aria-modal="true" aria-label="Crear con la referencia" className="sheet mercado-estudio">
-        <Suspense fallback={<p role="status" className="est-nota" style={{ padding: "var(--sp-5)" }}>Abriendo el Estudio…</p>}>
-          <Estudio client={client} modo="dialogo" inicial={inicial} onCerrar={onCerrar} />
-        </Suspense>
-      </div>
-    </div>
-  );
-}

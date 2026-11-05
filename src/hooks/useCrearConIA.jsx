@@ -16,6 +16,9 @@ const NOTA_VERSION = "es la pieza actual: haz OTRA versión con la misma informa
  * archivo)`, no al final. `version` con `reemplaza`: el compositor con la pieza de referencia (una imagen que no salió
  * del Estudio no tiene pedido que repetir), y lo creado también va a su sitio.
  *
+ * `abrir({ tipo, indicacion })`: lo que la persona escribió en «¿Qué quieres?» llega al director que diseña al abrir (y
+ * entonces el pedido listo de la publicación no se usa: se rediseña con ello).
+ *
  * `onMejorada(idea)`: la idea que dejó «Mejorar idea» al abrir (la publicación la guarda como su pedido listo).
  * `onUsar(archivo)` recibe lo escogido; `onUsarVarias(archivos)`, un carrusel entero de la galería. El diálogo se cierra solo. Si la imagen a animar no está en el
  * almacén de ESTE cliente (una vieja en base64, una de otro cliente), no hay de dónde tomarla: se dice.
@@ -31,7 +34,7 @@ export function useCrearConIA({ client, clientId, post, uso = null, onUsar, onUs
   /** `version`: una imagen ya puesta de la que se quiere OTRA versión (va de referencia, con la nota de qué hacer). */
   const abrir = ({ tipo, desde = null, version = null, abrir: pieza = null, accion = "", reemplaza = null, indicacion = "" }) => {
     if (pieza) { setCreando({ tipo: "imagen", inicio: null, referencias: null, abrir: pieza, accion, reemplaza, indicacion }); return; }
-    if (!desde && !version) { setCreando({ tipo, inicio: null, referencias: null }); return; }
+    if (!desde && !version) { setCreando({ tipo, inicio: null, referencias: null, indicacion }); return; }
     const archivo = archivoDesdeSrc((desde ?? version).src, clientId, promptDePublicacion(post));
     if (!archivo) {
       onError?.(`No se puede ${version ? "versionar" : "animar"} esa imagen: no está en el almacén de este cliente. Súbela de nuevo y prueba otra vez.`);

@@ -50,11 +50,13 @@ export class ErrorIA extends Error {
  * (y decide el modelo: ver FUNCIONES_IA). `salida` es lo que se pide para escribir; el razonamiento va aparte.
  * @returns {{ texto: string, modelo: string, aviso: string|null, segundos: number, busquedas: number, conWeb: boolean, fuentes: string[] }}
  */
-export async function llamarIA(env, acceso, cliente, { prompt, salida = 6000, funcion = "cerebro", herramientas = null, modelo: forzado = null }) {
+export async function llamarIA(env, acceso, cliente, { prompt, salida = 6000, funcion = "cerebro", herramientas = null, modelo: forzado = null, esfuerzo: esfuerzoForzado = null }) {
   if (sinIADeTexto(env)) throw new ErrorIA("El servidor no tiene configurada ninguna llave de IA de texto (Anthropic o Meta)", 503);
   const ia = await prepararIA(env, acceso, { funcion });
   if (ia.bloqueo) throw new ErrorIA(ia.bloqueo, 402);
-  const maxTokens = Math.min(salida + (MARGEN_RAZONAMIENTO[ia.esfuerzo] ?? 16_000), MAX_TOKENS_CAP);
+  // `esfuerzo`: quien llama sabe que no hace falta razonar (clasificar una pieza con Haiku, «low»: responde directo).
+  const esfuerzo = esfuerzoForzado || ia.esfuerzo;
+  const maxTokens = Math.min(salida + (MARGEN_RAZONAMIENTO[esfuerzo] ?? 16_000), MAX_TOKENS_CAP);
   // `modelo`: quien llama ya sabe con cuál (el análisis de video con Meta); el presupuesto se respeta igual.
   let modelo = forzado || ia.modelo;
   let aviso = ia.aviso ?? null;
@@ -75,7 +77,7 @@ export async function llamarIA(env, acceso, cliente, { prompt, salida = 6000, fu
           model: modelo,
           max_tokens: maxTokens,
           thinking: { type: "adaptive" },
-          output_config: { effort: ia.esfuerzo },
+          output_config: { effort: esfuerzo },
           messages: mensajes,
           ...(tools ? { tools } : {}),
         }, { signal: abortar.signal });

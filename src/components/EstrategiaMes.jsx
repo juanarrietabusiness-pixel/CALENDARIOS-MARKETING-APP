@@ -1,6 +1,6 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import Icon from "./Icon";
-import { OBJETIVOS_MES, ETAPAS, objetivoDe, balanceDelMes, resumenFormatos } from "../lib/estrategiaMes";
+import { OBJETIVOS_MES, ETAPAS, objetivoDe, balanceDelMes, resumenFormatos, embudoDelMes } from "../lib/estrategiaMes";
 import { estrategiaConIA } from "../lib/ideaPublicacion";
 import "./EstrategiaMes.css";
 
@@ -14,6 +14,9 @@ import "./EstrategiaMes.css";
 //   · EtapaSemana: la etapa del embudo junto al concepto de cada semana.
 //   · BalanceDelMes: cuántas de cada formato, tipo y nivel, y los avisos
 //     (src/lib/estrategiaMes.js). Lo usan «Planificar mes» y «Revisar el mes».
+//   · EditorEstrategia: la estrategia DESPUÉS de planificar («Editar el mes» →
+//     Estrategia, desde la tarjeta de la campaña): objetivo, foco y la etapa de
+//     cada semana. Antes sólo vivía dentro del asistente.
 // ============================================================
 
 export function PasoEstrategia({
@@ -125,5 +128,74 @@ export function BalanceDelMes({ days = [], semanas = [], objetivo = "", foco = "
         <p className="hint" style={{ margin: 0 }}><Icon name="check" size={14} /> Bien repartido.</p>
       )}
     </section>
+  );
+}
+
+/**
+ * La estrategia del mes, después de planificar («Editar el mes» → Estrategia): el objetivo, el producto foco y la etapa
+ * del embudo de cada semana (la FILA de la rejilla). `valor`: la guardada (`opciones.estrategia`); `onCambiar(nueva)`.
+ * El catálogo se lee al abrirla (el foco sale de los productos del plan).
+ */
+export function EditorEstrategia({ client, valor = null, semanas = [], conceptos = [], onCambiar }) {
+  const ids = useId();
+  const e = { objetivo: "", focoId: "", foco: "", razon: "", etapas: [], ...(valor ?? {}) };
+  const [productos, setProductos] = useState(null);
+  const clienteId = client?.dbId || client?.id;
+  useEffect(() => {
+    let vivo = true;
+    if (!clienteId) return undefined;
+    Promise.all([import("../lib/mercado"), import("../lib/estudioMercado")])
+      .then(([{ leerMercado }, { productosParaPlan }]) => leerMercado(clienteId)
+        .then((m) => { if (vivo) setProductos(productosParaPlan(m?.catalogo ?? [], m?.inventario)); }))
+      .catch(() => { if (vivo) setProductos([]); });
+    return () => { vivo = false; };
+  }, [clienteId]);
+  const poner = (cambios) => onCambiar({ ...e, ...cambios });
+  const etapas = semanas.map((_, i) => e.etapas?.[i] ?? "");
+  const opciones = [...(productos ?? [])];
+  if (e.focoId && !opciones.some((p) => p.id === e.focoId)) opciones.unshift({ id: e.focoId, nombre: e.foco || "El de antes" });
+  const obj = objetivoDe(e.objetivo);
+  return (
+    <div className="estrategia-mes">
+      <p className="hint" style={{ marginTop: 0 }}>
+        La estrategia del mes la lee el motor de ideas cada vez que escribe para este mes (las ideas, los guiones, los
+        captions): el objetivo, el foco y la etapa de cada semana.
+      </p>
+      <div className="field">
+        <span className="label" id={`${ids}-obj`}>Objetivo del mes</span>
+        <div className="est-tipos" role="radiogroup" aria-labelledby={`${ids}-obj`}>
+          {OBJETIVOS_MES.map((o) => (
+            <button key={o.id} type="button" role="radio" aria-checked={e.objetivo === o.id} className={`filter-chip${e.objetivo === o.id ? " active" : ""}`}
+              onClick={() => poner({ objetivo: e.objetivo === o.id ? "" : o.id })}>{o.nombre}</button>
+          ))}
+        </div>
+        <p className="hint" style={{ margin: 0 }}>{obj ? obj.ayuda : "Sin objetivo escogido."}</p>
+      </div>
+      <div className="field">
+        <label className="label" htmlFor={`${ids}-foco`}>Producto foco</label>
+        <select id={`${ids}-foco`} className="input" value={e.focoId} disabled={productos === null}
+          onChange={(ev) => poner({ focoId: ev.target.value, foco: opciones.find((p) => p.id === ev.target.value)?.nombre ?? "" })}>
+          <option value="">{productos === null ? "Leyendo el catálogo…" : "Toda la marca (rotan todos)"}</option>
+          {opciones.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+        </select>
+      </div>
+      <fieldset style={{ border: "none" }}>
+        <legend className="label">Etapa del embudo de cada semana</legend>
+        {semanas.map((s, i) => (
+          <div key={s.numero ?? i} className="estrategia-semana" style={{ alignItems: "center", marginBottom: "var(--sp-2)" }}>
+            <span style={{ fontSize: "var(--fs-xs)", flex: 1, minWidth: 0 }}>
+              <strong>Semana {s.numero ?? i + 1}</strong>{conceptos[i] ? ` · ${conceptos[i]}` : ""}
+            </span>
+            <EtapaSemana semana={s.numero ?? i + 1} valor={etapas[i]} onCambiar={(v) => poner({ etapas: etapas.map((x, j) => (j === i ? v : x)) })} />
+          </div>
+        ))}
+        {!etapas.some(Boolean) && semanas.length > 0 && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => poner({ etapas: embudoDelMes(e.objetivo, semanas.length) })}>
+            Repartir las etapas según el objetivo
+          </button>
+        )}
+      </fieldset>
+      {e.razon && <p className="hint" style={{ margin: 0 }}><strong>Por qué (de la propuesta):</strong> {e.razon}</p>}
+    </div>
   );
 }

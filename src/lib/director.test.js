@@ -153,6 +153,9 @@ describe("lo que la agencia corrige y el carrusel del director", () => {
     expect(p).toMatch(/plantilla-a · «Portada azul»/);
     expect(p).not.toMatch(/plantilla-b/);
     expect(pedidoDeCarrusel({ tema: "Colchones" })).toMatch(/escribe de 5 a 7 láminas sobre este tema: Colchones/);
+    // «¿Qué quieres?» de la publicación llega también al carrusel, y manda.
+    expect(pedidoDeCarrusel({ tema: "Colchones", indicacion: "que salga una mamá" })).toMatch(/LO QUE PIDE LA AGENCIA \(manda sobre todo lo demás\): que salga una mamá/);
+    expect(pedidoDeCarrusel({ tema: "Colchones" })).not.toMatch(/LO QUE PIDE LA AGENCIA/);
     const r = leerCarrusel('{"sistema":"titular arriba","laminas":[{"n":1,"texto":"Uno","ficha":"Pieza: a.\\n\\nComposición: b."},{"n":2,"texto":"Dos","ficha":"Pieza: c."}]}');
     expect(r.hilo).toBe("titular arriba");
     expect(r.laminas[0]).toMatchObject({ n: 1, rol: "portada", texto: "Uno" });

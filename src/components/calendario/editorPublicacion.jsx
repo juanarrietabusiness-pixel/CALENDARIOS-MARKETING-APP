@@ -32,7 +32,7 @@ const esVideoArchivo = (f) => f?.type?.startsWith("video/");
 // Medios
 // ------------------------------------------------------------
 
-export function EditorMedios({ post, clientId, client = null, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null, onCrearReel = null, onVideoProducto = null, onVideoAnimado = null, onDeLaGaleria = null, onOtraVersion = null, onRecrear = null, onCrearAqui = null, onCorregir = null, versionando = null }) {
+export function EditorMedios({ post, clientId, client = null, driveFolder, onChange, onError, entradaRef = null, onPortada = null, onCrearConIA = null, onCrearCarrusel = null, onCrearReel = null, onVideoProducto = null, onVideoAnimado = null, onDeLaGaleria = null, onOtraVersion = null, onRecrear = null, onCrearAqui = null, onCorregir = null, onVerEnEstudio = null, versionando = null }) {
   const ids = useId();
   const [eligiendoPortada, setEligiendoPortada] = useState(null);
   const propia = useRef(null);
@@ -232,9 +232,9 @@ export function EditorMedios({ post, clientId, client = null, driveFolder, onCha
                     </button>
                   </>
                 )}
-                {/* «Otra versión», «Corregir esta» y «Recrear con mi marca» abren el Estudio con ESTA imagen (o se hacen aquí,
-                    rápido, si así se escogió en «¿Qué quieres?»: seccionPublicar) y lo escogido vuelve a su sitio. Sin
-                    quien lo haga (en «Subir»), el compositor de siempre. «Animar» se quitó: la agencia no lo usaba. */}
+                {/* «Otra versión», «Corregir esta» y «Recrear con mi marca» se hacen AQUÍ, por el director y el servidor, y
+                    ocupan su sitio (seccionPublicar); «Ver en el Estudio» abre la pieza con sus versiones. Sin quien lo
+                    haga (en «Subir»), el compositor de siempre. «Animar» se quitó: la agencia no lo usaba. */}
                 {m.tipo === "imagen" && (onOtraVersion || onCrearConIA) && (
                   <button type="button" className="btn btn-sm editor-medios-version"
                     disabled={Boolean(versionando)} aria-busy={versionando === m.src || undefined}
@@ -255,6 +255,12 @@ export function EditorMedios({ post, clientId, client = null, driveFolder, onCha
                   <button type="button" className="editor-medios-portada-btn" disabled={Boolean(versionando)} onClick={() => onRecrear(m)}
                     title="Usar esto de referencia: su idea, con el producto, el texto y la marca de este cliente. Sale en su sitio.">
                     <Icon name="wand" size={13} /> Recrear con mi marca
+                  </button>
+                )}
+                {m.tipo === "imagen" && onVerEnEstudio && (
+                  <button type="button" className="editor-medios-portada-btn" disabled={Boolean(versionando)} onClick={() => onVerEnEstudio(m)}
+                    title="Abrir esta pieza en el Estudio, con sus versiones; la que escojas vuelve a este sitio">
+                    <Icon name="imageAi" size={13} /> Ver en el Estudio
                   </button>
                 )}
                 {m.tipo === "video" && i === 0 && onPortada && (

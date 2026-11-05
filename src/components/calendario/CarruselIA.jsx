@@ -20,7 +20,7 @@ const FlujoCarrusel = lazy(() => import("../FlujoCarrusel"));
 // botón. Nada se pone solo.
 // ============================================================
 
-export default function CarruselIA({ client, post, cal = null, onPoner, onCerrar }) {
+export default function CarruselIA({ client, post, cal = null, onPoner, onCerrar, indicacion = "" }) {
   const ids = useId();
   const clienteId = client?.dbId || client?.id;
   const [estudio, setEstudio] = useState(null); // { kit, productos, activos, archivos }
@@ -63,6 +63,8 @@ export default function CarruselIA({ client, post, cal = null, onPoner, onCerrar
                 inicial={{
                   guion: post.guion ?? "", tema: post.idea || post.title || "", preset: presetDePilar(post.pilar, post.pilarSub) || "",
                   productoId: post.productoId ?? "", productoIds: productosDelPost(post), postId: post.id ?? null, calendarId: cal ? cal.dbId || cal.id : null,
+                  // «¿Qué quieres?» del post: lo lee el director al diseñar la serie.
+                  indicacion,
                 }}
                 onPoner={(finales, opciones) => { onPoner(finales, opciones); onCerrar(); }}
                 onListo={onCerrar}

@@ -108,6 +108,7 @@ src/
   hooks/useEquipo.js      Los miembros del espacio (para «Lo lleva», menciones, carga)
   hooks/useTareas.js      Todas las tareas y sus acciones (marcar, pasar a hoy, mover, convertir notas):
                           las comparten Mi día y el panel lateral
+  hooks/useLoMejor.js     Leer una ventana de «Lo mejor», releer con los avisos y clasificar sólo lo que se ve sin tipo
   hooks/useRepaso.js      ¿Toca el repaso de la mañana? (una vez al día por persona)
   hooks/useBancoIdeas.js  El banco de ideas único: leerlo entero, añadir, cambiar (agrupado), asignar empresa, quitar
   hooks/useArrastrarOrden.js  Ordenar una lista arrastrando y con flechas (Hoy de Mi día y del panel de tareas)
@@ -148,6 +149,10 @@ src/
                           antes), «rinde X× su promedio» (mediana de la cuenta), filtrar el feed, avisos, de una publicación a una
                           idea con REFERENCIA, YouTube por enlace, el resumen «Lo que funciona en tu competencia» (puro; también el Worker)
     inspiracionApi.js     Cliente de /api/inspiracion
+    loMejor.js            «Lo mejor del momento»: la clave de una pieza, la señal de cada fuente y su PERCENTIL, la ventana, la cifra
+                          de la tarjeta, los tipos (sin limitarse) y cómo se recrea cada uno, la clasificación, el próximo día libre
+                          (puro; también el Worker)
+    loMejorApi.js         Cliente de /api/lo-mejor (leer, clasificar, recrear con su costo, traer, «Crear con Claude», créditos)
     referenciasPost.js    Los archivos de REFERENCIA de una publicación (`post.referencias`): aparte de `medios`, no se publican
     consciencia.js        Niveles de consciencia (Schwartz) y deseos de Reiss: pequeño, para el bundle principal
     ugc.js                UGC · guion para grabar: tramos «[0–3 s] VOZ: «…» | SE VE: … | TEXTO: …», duración (15–60 s, 2,5
@@ -246,6 +251,16 @@ src/
                           el motor de ideas y «Crear con IA» / «Crear la imagen aquí» no esperan a «Mejorar idea» (puro)
     ideaPublicacion.js    «Generar» la idea de UNA publicación vacía por el camino del lote (modo «publicacion»): el pedido y
                           `rellenarConIdea` (sólo lo vacío)
+    reglasFormato.js      QUÉ LLEVA CADA FORMATO, una sola regla (historia: ni guion, ni caption, ni hashtags; reel: sin texto en
+                          la pieza; hashtags siempre aparte): la leen el motor, la completitud y el panel (puro, carga inicial)
+    camposTexto.js        Lo que le FALTA a una publicación por el motor (modo «campos»): la casilla, el pedido, su lectura y
+                          ponerlo (sólo rellena; el campo de su botón se reescribe) (puro; también el Worker)
+    escribirTextos.js     El cliente del modo «campos»: un campo («IA» del panel y del banco), lo que falta del mes
+                          («Completar», «Generar con IA» de la lista, «Planificar mes») (en diferido)
+    planMes.js            «Planificar mes» sin trampas: semanas = filas de la rejilla, el borrador por cliente y mes, los días
+                          ocupados y la publicación que sale del plan con la ficha de diseño ya pagada (puro)
+    embudo.js             Los objetivos del mes, las etapas del embudo y la estrategia guardada (pequeño: lo lee la tarjeta de
+                          la campaña; estrategiaMes.js lo reexporta) (puro)
     control.js            El CONTROL DE CALIDAD de una pieza: el pedido a la IA (que la mira), comparar el texto palabra por
                           palabra (con tildes), el veredicto, la corrección quirúrgica del texto (puro; también el Worker)
     controlEstudio.js     Controlar y corregir: la pieza al terminar (lote, carrusel, «Producir el mes», compositor), editar
@@ -262,8 +277,15 @@ src/
     recrear.js            «Recrear un anuncio»: el análisis en pocas líneas, la versión de partida y lo que va al
                           compositor (el anuncio sólo por su forma, las fotos del producto delante) (puro)
     otraVersion.js        «Otra versión» y «Recrear con mi marca» de un medio de la PUBLICACIÓN: se hacen ahí y ocupan
-                          su sitio (lazy)
-    piezaChat.js          La imagen o el video que pide el asistente, por el Estudio con el kit del cliente (lazy)
+                          su sitio; «Recrear un anuncio» en imagen y «Generar en 4:5 con IA» (todo por el servidor) (lazy)
+    piezaServidor.js      UNA pieza (o unas pocas) con las reglas del lote: el pedido listo como encargo del servidor
+                          (proporción, control con su corrección, logo estampado), seguirlo y devolver la final
+    marcaDeHoy.js         Un pedido de antes con la MARCA DE HOY: cambia el bloque de la marca, el acabado y el logo por los
+                          del kit actual y acorta la escena, nunca el final (puro)
+    visorEstudio.js       «Otra igual», «Otra versión distinta» y «Editar» del visor, por el servidor (lazy: el chunk del
+                          Estudio está en su tope)
+    piezaChat.js          La imagen o el video que pide el asistente, por el Estudio con el kit del cliente; la imagen, con el
+                          director y por el servidor (lazy)
     referencias.js        Qué se toma de cada imagen de referencia (estilo, composición, producto…), la foto
                           REAL del producto (y si es de otra marca), el producto que nombra la idea (puro)
     galeriaPura.js        Lo PURO de la galería que necesitan la pantalla y el Worker: fotos de un producto, piezas de un
@@ -425,8 +447,13 @@ src/
                           y «Revisar marca»
     ContenidoCompetencia.jsx  «Su contenido en Instagram» (pestaña Competencia del estudio de mercado): las publicaciones de
                           un competidor, las mejores primero; analizar como referencia o extraer su guion UGC (lazy)
-    Inspiracion.jsx       Inspiración: lo que publican las cuentas del cliente, junto al calendario (se arrastra a un día) y como
-                          pestaña; llevar a un día, banco, analizar, guion, fórmula, recrear, el resumen al cerebro (lazy)
+    Inspiracion.jsx       La pestaña Inspiración = «Lo mejor» FILTRADO por el cliente (y el ojo del calendario, donde se arrastra
+                          a un día): sus cuentas, «Actualizar» y el resumen al cerebro, con las tarjetas de «Lo mejor» (lazy)
+    LoMejorTarjetas.jsx   Las tarjetas de «Lo mejor»: vista previa (el video se reproduce), la cifra de verdad, el tipo, «Recrear
+                          para [cliente]», guardar en ideas, extraer guion, fórmula, «Crear con Claude», llevar a un día
+    RecrearLoMejor.jsx    «Recrear para [cliente]»: UN recreador (también el del estudio de mercado): camino, producto, el costo
+                          y el día antes de crear (lazy)
+    SeccionScrapeCreators.jsx  Ajustes → Integraciones: la llave de Scrape Creators, el tope de créditos por semana y lo gastado
     CuentasReferencia.jsx Las cuentas fijas de un cliente (red, @, tipo, nota): en Resultados y en Inspiración
     BibliotecaSC.jsx      La Biblioteca por Scrape Creators: empresa o palabra, filtros, cada anuncio con analizar, traer,
                           al banco de ideas y transcribir (lazy)
@@ -533,6 +560,7 @@ src/
     Informe.jsx           Lo que ve el cliente al abrir su informe mensual (sin sesión)
     InformeAnuncios.jsx   Lo que ve el cliente al abrir su informe de anuncios (sin sesión)
     Ajustes.jsx           IA, presupuesto y consumo, integraciones, tareas, copia
+    LoMejor.jsx           /lo-mejor: «Lo mejor del momento» de todos los clientes (Esta semana · Este mes · Nuevo, filtros) (lazy)
     Campanas.jsx          /campanas («Anuncios»): cuenta publicitaria, cifras, campañas, crear (lazy)
 worker/
   index.js                Enrutado, sesión y cabeceras de /api/*
@@ -578,6 +606,11 @@ worker/
                           página pública) y la miniatura de un reel con música
     inspiracion.js        Inspiración: leer las cuentas de un cliente (Instagram y YouTube), guardar lo que publican con su
                           «rinde», borrar lo que ya no está, avisar de lo que rinde 3×, el cron y el resumen con IA
+    loMejor.js            «Lo mejor»: reunir las cuatro fuentes sin repetir, clasificar (la IA barata, una vez), releer los anuncios de
+                          las búsquedas guardadas cada semana con su tope de créditos, traer el original sin pagar dos veces,
+                          recrear para un cliente (la publicación en su próximo día libre + el encargo, el guion animado o para
+                          grabar) y su paso del cron
+    herramientasLoMejor.js  `ver_lo_mejor` y `recrear` para Claude (MCP), con la vista previa del chat
     mercado.js            El estudio de mercado: catálogo (y su nota de cifras), el estudio por pasos con búsqueda
                           web, aprobar (notas del cerebro + documento en Drive), referencias de la competencia
     estudio/              El Estudio: meta.js (Muse Image: generar y editar, 0,01 $), prompt.js («Mejorar
@@ -662,12 +695,14 @@ worker/
     recetas.js            /api/recetas: listar, guardar (cambiar una de la casa o crear), borrar/restaurar y el handoff
     formulasUgc.js        /api/formulas-ugc: las fórmulas UGC de la agencia (listar, guardar, corregir, quitar, proponer)
     inspiracion.js        /api/inspiracion/<cliente>: el feed, actualizar, traer un archivo, el resumen
+    loMejor.js            /api/lo-mejor: la ventana, clasificar, recrear (409 «confirmar» con el costo), traer, «Crear con Claude»,
+                          el tope de créditos, releer los anuncios y el proxy de los videos del CDN de Meta
     historiasAuto.js      /api/historias-auto/<cliente>: ajustes, pendientes de preparar, piezas
     videos.js             /api/videos/<cliente>: los videos animados (listar, crear, guardar el guion, aprobar, borrar)
 container/                El Container del video animado (Node + @napi-rs/canvas + ffmpeg, Dockerfile): /cuadro, /hoja, /revisar y
                           /render (render.mjs) con el MISMO motor de src/lib; los clips de video (clips.mjs, PUT /clip/<id>);
                           probar.mjs, probarAudio.mjs y probarClips.mjs son sus pruebas (job «contenedor»)
-migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude»)
+migraciones/d1/           Esquema de D1 (0001 base … 0012 aprobación, 0013 redes, 0014 métricas, 0015 informes, 0016 variantes, 0017 auditorías, 0018 mcp, 0019 tipo de aprobación, 0020 equipo, 0021 permisos de Meta, 0022 Haiku, 0023 un mes por cliente, 0024 cerebro, 0025 memoria de decisiones, 0026 estudio, 0027 modelo por función, 0028 youtube, 0029 comentarios y mensajes, 0030 biblioteca de anuncios, 0031 anuncios, 0032 fechas especiales, 0033 kit de marca, 0034 estudio de mercado, 0035 ritmo de contenido, 0036 inventario, 0037 plantillas de plan, 0038 campañas con varios conjuntos y anuncios, 0039 estratega, 0040 historial de anuncios, 0041 informe de anuncios, 0042 galería agrupada y repetidos, 0043 conversaciones del asistente, 0044 banco de ideas único, 0045 fórmulas UGC, 0046 inspiración, 0047 conversaciones de diseño, 0048 historias automáticas, 0049 encargos del Estudio: lote y carrusel, 0050 historias apartadas, 0051 notas fijas de los días, 0052 programar al aprobar por cliente, 0053 qué se le cambió a una nota, 0054 qué redes entran en el informe, 0055 hasta 5 historias automáticas al día, 0056 los días fijos de cada empresa, 0057 la lista aplicada de una auditoría, 0058 la caché de Scrape Creators, 0059 proyectos de video animado, 0060 sonido e historial de los videos, 0061 recetas y «Crear con Claude», 0062 «Lo mejor del momento»)
 scripts/migracion/        Volcado desde Supabase, conversión e importación
 tests/
   utils/                  Lector de wrangler.jsonc y _headers, fallos e informe
@@ -695,6 +730,7 @@ tests/
 | `/bandeja` | Comentarios y mensajes de Facebook e Instagram de los clientes con la bandeja encendida |
 | `/auditorias` | Auditorías de perfil de clientes y prospectos |
 | `/biblioteca` | Biblioteca de anuncios: todos por Scrape Creators (con llave) o los de política por la API de Meta; filtros guardados, CSV |
+| `/lo-mejor` | «Lo mejor del momento»: lo que mejor funciona de la competencia, la inspiración, los anuncios y lo propio, para recrearlo (`?pieza=<clave>` la señala) |
 | `/campanas` | Anuncios de Meta: campañas, cifras y crear (en pausa) |
 | `/auditoria?t=<testigo>` | Auditoría compartida (sin sesión) |
 | `/conectar-claude?…` | El permiso de Claude (OAuth: `authorization_endpoint`) |
@@ -1619,8 +1655,8 @@ son del servidor.
   del tono, no se copian). Una persona lo revisa y guarda; «Corregir antes»
   abre el formulario. Los presets PROPIOS (hasta 6) no los toca la IA.
   · **La marca va en TODA pieza, no dentro del preset** (`bloqueDeMarca`: paleta,
-  estilo, luz, tipografía, «nunca»), mientras el kit tenga algo y no se apague
-  «Usar el kit en esta pieza». Antes sólo viajaba dentro del preset: con «Sin
+  estilo, luz, tipografía, «nunca»), SIEMPRE que el kit tenga algo (la casilla «Usar el kit
+  en esta pieza» se quitó: cambiaba el resultado por navegador). Antes sólo viajaba dentro del preset: con «Sin
   preset» —lo que salía desde un post sin tipo— la imagen no sabía nada de la
   marca, el logo tampoco iba, y «Revisar marca» daba 4 de 10.
   · **Un preset por TIPO DE CONTENIDO** (`TIPOS_PRESET`, mismos ids que
@@ -1708,9 +1744,10 @@ son del servidor.
   con IA: van al calendario como idea con su guion (`conRostro` en EstudioLote). El servidor sólo acepta el booleano
   (`limpiarCasillas`; también en el modo «publicacion», que ahora lo recibe). En el panel (`GuionUgc.jsx`), la tabla, la
   duración, «Copiar la voz» y «Copiar la lista de tomas» y los ganchos; el texto se edita en su campo de siempre.
-  · **El botón «IA» del guion aplica la regla UGC** (`reglaUgc` + `LINEA_GANCHOS` por `generateFieldForPost(…, {
-  reglaGuion })`: ugc.js NO va al arranque, la regla la pasa el panel). Sin idea, primero el motor de ideas (que ya trae
-  el guion para grabar); con idea, el guion sobre ella, y lo que la idea cita entre comillas se dice TAL CUAL.
+  · **El botón «IA» del guion aplica la regla UGC** (en el SERVIDOR: el modo «campos» del motor pone `reglaUgc` en la
+  duración de la publicación, pide 3 `ganchos`, la fórmula escogida o las de la agencia y la voz UGC; ver «Un solo motor
+  de texto»). Sin idea, primero el motor de ideas (que ya trae el guion para grabar); con idea, el guion sobre ella, y lo
+  que la idea cita entre comillas se dice TAL CUAL.
   · **«Extraer guion y adaptar»** (`ExtraerUgc.jsx`, `POST /api/mercado/<c>/ugc`, `extraerUgc` en worker/lib/mercado.js):
   Gemini VE el video (de la galería por `archivoId` o puesto en la publicación por `clave`, siempre de ESE cliente) y lo
   transcribe —voz palabra por palabra y tomas— (`pedidoDeTranscripcion`); la IA de texto lo ADAPTA a la marca con el
@@ -1824,8 +1861,8 @@ son del servidor.
   aspecto: `limpiarKit` los pasa a ESTILOS propios (`kit.estilos`, ids `estilo-…`) con sus referencias. Las líneas
   visuales de las 7 maletas son «composición sugerida (si la escena no dice otra)». El `acabado` de antes (mismos
   ids) se sigue aceptando.
-- **«Mejorar idea» se lanza SOLA al abrir «Crear con IA» desde una publicación** (apagable, se recuerda por
-  navegador): la idea + el texto de la pieza + el contexto llegan juntos y largos; en una imagen la reescribe el
+- **«Mejorar idea» se lanza SOLA al abrir «Crear con IA» desde una publicación** (siempre: la casilla que la apagaba
+  por navegador se quitó; con «¿Qué quieres?» escrito, el director rediseña aunque haya pedido listo): la idea + el texto de la pieza + el contexto llegan juntos y largos; en una imagen la reescribe el
   director de arte como FICHA DE DISEÑO (ver «Mejorar idea ya NO resume», más abajo). El texto entre comillas se conserva EXACTO (lo dice el pedido de la mejora). «Volver a mi idea».
   **Salvo que el post ya traiga su pedido LISTO** (`src/lib/promptImagen.js`): el motor de ideas (lote, «Planificar
   mes», «Completar los textos», «Generar», «Otra») escribe por cada pieza de una imagen el campo `imagen` —la escena
@@ -1844,16 +1881,15 @@ son del servidor.
   «Corregir esta» lo NECESITA y EDITA la misma imagen (`rehacerConComentario`, como «Rehacer con lo que pidió el
   cliente») en su sitio. Se vacía al salir bien. CalendarView importa el motor de ideas EN DIFERIDO (al pulsar
   «Completar los textos»): con la huella dentro, la carga inicial pasaba de 180 kB.
-- **«Otra versión», «Corregir esta» y «Recrear con mi marca» de una imagen del post se hacen EN EL ESTUDIO por defecto**
-  (decisión de la agencia: lo hecho a ciegas en el post, sobre todo una lámina suelta de un carrusel, salía peor que en
-  la galería). `abrirEnEstudio` (seccionPublicar) pasa la imagen por `archivoEnGaleria` (lib/estudio.js: la ficha que
-  ya había por ruta o clave; si se subió directo al post o vino de Drive, la SUBE —la huella evita la copia doble—) y
-  abre el diálogo del Estudio con `inicial.abrir`: el visor (sus versiones; «Editar» ya abierto con lo escrito en «¿Qué
-  quieres?») o el recreador. Lo escogido —esa pieza o cualquiera de la galería— va al SITIO de la imagen tocada
-  (`onReemplazar` de `useCrearConIA`; el botón dice «Poner en la lámina N»), no al final. «Otra versión» de una imagen
-  que no salió del Estudio (subida: no hay pedido que repetir) abre el compositor con ella de referencia. Con
-  `inicial.abrir` el diálogo NO lanza «Mejorar idea» (`listo`): se viene a corregir, no a crear. «Aquí, rápido» (se
-  recuerda por navegador, `post-acciones-donde`) es el camino de antes. «Animar» se quitó del post.
+- **«Otra versión», «Corregir esta» y «Recrear con mi marca» de una imagen del post se hacen EN EL POST, por el director
+  y el servidor** (decisión de la agencia del 5 de noviembre: fuera el interruptor «En el Estudio / Aquí, rápido», que se
+  recordaba por navegador como `post-acciones-donde`). Lo «a ciegas» de antes ya no lo es: el director MIRA la original
+  (papel «original») y la pieza sale revisada (lib/piezaServidor.js); ocupa su sitio con «Deshacer». Al lado de cada
+  imagen, «Ver en el Estudio» (`verEnEstudio` en seccionPublicar) pasa la imagen por `archivoEnGaleria` (lib/estudio.js:
+  la ficha que ya había por ruta o clave; si se subió directo al post o vino de Drive, la SUBE —la huella evita la copia
+  doble—) y abre el visor con `inicial.abrir` (`accion: "ver"`): sus versiones, «Editar» con ejemplos de la galería; lo
+  escogido va al SITIO de la imagen tocada (`onReemplazar` de `useCrearConIA`; el botón dice «Poner en la lámina N»). Con
+  `inicial.abrir` el diálogo NO lanza «Mejorar idea» (`listo`): se viene a corregir, no a crear. «Animar» se quitó del post.
 - **La papelera no borra lo que usa la MARCA** (`clavesDeLaMarca`, `sinClavesPerdidas` en kitMarca.js; `clavesPerdidas` en
   worker/lib/estudio/galeria.js). El logo, la muestra de la tipografía, los personajes, las plantillas, las referencias
   de cada tipo y las fotos del catálogo son archivos de la galería sin `usado_en`: vaciar la papelera (o la purga de 30
@@ -1902,10 +1938,11 @@ son del servidor.
   post» sin decir qué es un post: salían ideas planas, y para un post a veces un carrusel o un reel. Ahora es UNA casilla
   de `darForma` con lo que ya trae la publicación (tipo, producto, nivel, deseo, perfil, la fecha especial de su día), la
   campaña y la semana como `nota`, y lo que ya hay en el mes en `usados`; el estudio de mercado, el catálogo y el cerebro,
-  como el lote. `REGLA_FORMATO` (loteAnuncios.js) dice con todas sus letras qué es cada formato, también en el lote, y
-  `instruccionIdea` (api.js, el camino de una idea ya escrita y del banco) nombra el formato y prohíbe cambiarlo.
+  como el lote. `REGLA_FORMATO` (loteAnuncios.js) dice con todas sus letras qué es cada formato, también en el lote y en
+  el modo «campos» (el camino de una idea ya escrita, del banco y de un directo), que pide «mejórala conservando su tema…;
+  no la cambies por otra idea ni por otro formato».
   `rellenarConIdea` SÓLO rellena: título, idea (el brief), qué se ve, el texto de la pieza (no en carrusel ni en reel) y
-  el guion (sólo carrusel y reel); el producto va con su nombre o no va. Un directo sigue por el camino de siempre.
+  el guion (sólo carrusel y reel); el producto va con su nombre o no va. Un directo va por el modo «campos».
 - **El motor de ideas busca en el cerebro según los TIPOS de la tanda y dice qué material falta** (`src/lib/materialTipo.js`,
   `produccionDeLote` en worker/lib/estudio/lote.js). Antes la consulta era siempre «beneficios objeciones público
   contenido»: un educativo y un testimonio recibían los mismos pasajes. Ahora `consultaDelPlan` junta las palabras de los
@@ -1973,7 +2010,7 @@ son del servidor.
   diseño que salió bien. Un precio, el logo o una deformación no se corrigen solos: «Revisar», y decide una persona.
   · **Va solo** al terminar cada pieza del lote, cada lámina del carrusel (ANTES de que vaya de referencia a la
   siguiente: si no, el error se copiaría en la serie), «Diseñar las que ya hay» y el compositor (`terminarTrabajo`, que
-  también estampa el logo). Se apaga por navegador («Revisar cada pieza…», `controlEncendido`). Con la plantilla, el
+  también estampa el logo). Va SIEMPRE: la casilla «Revisar cada pieza…» (`controlEncendido`, por navegador) se quitó. Con la plantilla, el
   texto lo pone la aplicación: no se controla. Si el control falla (sin saldo, sin red), la pieza sigue sin él.
   · En el visor, `ControlDeCalidad` (EstudioVisor.jsx): lo leído, lo mal escrito, «Corregir el texto» y «Revisar otra vez».
 - **La tipografía REAL de la marca** (`kit.fuente`: { clave, nombre, muestra }; `FuenteDeMarca.jsx`, `POST
@@ -2181,6 +2218,57 @@ son del servidor.
   en el cerebro» con PUT /nota, una por mes (la del mes se reemplaza por su ruta).
   · «Fórmula» abre «Extraer guion» en modo fórmula (`formula`): sólo transcribe (`soloTranscribir`, sin la llamada de texto de
   adaptar) y propone la receta. **Nada de esto se ha probado contra Meta, Google ni Instagram reales.**
+- **«Lo mejor del momento»: una galería de lo que MEJOR funciona, de cuatro fuentes, para recrearlo** (`src/lib/loMejor.js`,
+  `worker/lib/loMejor.js`, `worker/rutas/loMejor.js`, `LoMejorTarjetas.jsx`, `/lo-mejor`, 0062). La pestaña Inspiración de
+  cada cliente (y el ojo del calendario) es ESTA vista filtrada por él; en el teléfono ocupa el sitio de «Enlace» en la barra
+  de abajo («Pegar un enlace» va dentro). Cosas que no se ven en la pantalla:
+  · **Cuatro fuentes, cada una con su señal, y el orden es el PERCENTIL dentro de su fuente** (`conPercentiles`, calculado
+  sobre la ventana: esta semana, este mes): «4,1×» y «63 días» no se comparan. Inspiración: «rinde» CORREGIDO con pocas
+  publicaciones (`rindeAjustado`: se acerca a 1× con poca muestra; YouTube, las vistas contra las del canal); anuncios: días
+  activo, más si sigue y si tiene versiones (`senalDeAnuncio`); lo propio: interacciones + guardados + compartidos contra la
+  mediana de su cuenta; lo guardado por el equipo: el «rinde» que traía o lo reciente. La tarjeta enseña la cifra de verdad
+  (`cifraDe`), nunca el percentil.
+  · **Una pieza es UNA** (`clave`: «ig:<código>», «yt:<video>», «fb-ad:<anuncio>», «tt:<video>», o «ref:<hash>» del enlace;
+  `claveDeEnlace`): la misma seguida por dos clientes y guardada en el banco sale una vez, con los clientes de todas y las
+  otras fuentes en `tambien` (`unirRepetidas`). La consulta del cron (`espaciosPorClasificar` en acceso.js) arma la clave
+  con la MISMA regla en SQL: si cambia `claveDeInspiracion`, cambia también ahí.
+  · **El tipo lo clasifica la IA UNA vez y se guarda** (`lo_mejor_piezas`, función «clasificar lo mejor», hueco «análisis»):
+  Haiku sin razonar si hay llave de Anthropic (`llamarIA` acepta ahora `esfuerzo`), mirando la miniatura (del CDN o de R2) y
+  el texto, de 6 en 6. Los tipos NO se limitan: lo que no encaja va como «otro» con su nombre (`etiqueta`). La pantalla pide
+  clasificar lo que ve sin tipo (una vez por ventana abierta) y el cron, lo de la inspiración y los anuncios. Lo que falla
+  queda apuntado con su motivo (sin `clasificada_at`): el cron no lo repite cada minuto y la pantalla lo reintenta pasadas 6 h.
+  · **El cron va ÚLTIMO y sólo si nada más hizo algo** (`loMejorPendiente`, detrás de Inspiración): primero los anuncios de un
+  espacio que lleva una semana sin releerlos; si no, una tanda de clasificación.
+  · **Anuncios por Scrape Creators una vez por semana, con TOPE** (`lo_mejor_ajustes.sc_tope_semana`, 10 por defecto, en
+  Ajustes → Integraciones; 0 la apaga): se releen las búsquedas guardadas con `fuente: "sc"` (una página por búsqueda, lo
+  de la caché no gasta). CADA crédito gastado se apunta en `creditos_sc` (`apuntarCredito` en worker/lib/scrapeCreators.js),
+  también lo buscado a mano: el automático se para antes. Sin créditos, la relectura se apunta igual (no se repite cada
+  minuto). Instagram NO gasta créditos: sigue por la API de Meta (la inspiración).
+  · **«Recrear para [cliente]» es UN recreador** (`recrear`, `RecrearLoMejor.jsx`; también lo usan las referencias del
+  estudio de mercado, cuyo «Seguir este video» fijaba Kling Omni de Higgsfield —sin llave— y cuyo «Recrear con mi marca»
+  mandaba la imagen de otra marca al motor). Primero el costo: sin `confirmado: true`, 409 `codigo: "confirmar"` con el
+  costo, el próximo día libre (`proximoDiaLibre`, desde mañana) y el camino. Con el sí: la publicación en ese día con el
+  original en `referencias` (NUNCA en `medios`) y `recreadoDe`, y según el camino: «imagen» o «carrusel», un ENCARGO del
+  servidor con el director (el original va como imagen ESPECIAL `papel: "inspiracion"` en `datos.especiales` del encargo,
+  que `fichasDeDiseno` mira y el motor de imagen nunca recibe); «animado», el guion de un video animado unido al post
+  (`escribirGuion` + `crearProyecto`); «grabar», `extraerUgc` (paga ANTES de crear nada: si falla, no queda un post
+  vacío) con `audioUgc`, qué audio usar al publicarlo (la API no lo pone). El servidor escribe el mes y avisa con
+  `calendario:recargar` SIN pestaña: también la que lo pidió relee. La pieza que sale NO se pone sola en el post todavía
+  (eso es de la fase 5): queda en la galería con el post apuntado.
+  · **No se paga dos veces**: `bajarALaGaleria` devuelve lo ya bajado por su nombre (la cuenta y el id: un video no tiene
+  huella); `agregarReferencia` devuelve la referencia ya analizada del mismo archivo o del mismo enlace (`repetida`); la
+  transcripción de un video de YouTube se recuerda en `lo_mejor_piezas.datos` (por «yt:<id>»), porque no tiene ficha en la
+  galería.
+  · **La cifra viaja**: al banco van `cifra`, `rinde`, la miniatura y el archivo como referencia (`ideaDeLoMejor`; también
+  desde la Biblioteca); «Guardar en el banco» de «Extraer guion» guarda el enlace y el video.
+  · **El video se reproduce por un proxy** (`GET /api/lo-mejor/video?u=`, sólo `cdninstagram.com`/`fbcdn.net`, pasa el
+  `Range`: sin trozos el iPhone no lo reproduce; con `sandbox` y `nosniff`). La dirección del video de un reel la guarda la
+  inspiración (`inspiracion_publicaciones.video`, la `media_url` que caduca: el feed se relee cada 20 h).
+  · **El aviso «rinde 3×» lleva a la TARJETA** (`/cliente/<id>/inspiracion?pieza=<clave>`): va primero y se señala.
+  · **Claude**: `ver_lo_mejor` (las claves, las miniaturas como imágenes y la vista previa) y `recrear` (costo y «sí», como
+  las demás); «Crear con Claude» desde una tarjeta guarda en el handoff la pieza (`referencia`: enlace, cuenta, cifra, tipo,
+  por qué funciona) y el original de la galería, y `receta` se lo da a Claude.
+  · **Nada de esto se ha probado contra Scrape Creators, Meta ni la IA reales**: los tests usan `fetch` de mentira.
 - **El estudio de mercado: catálogo, estudio y competencia, por cliente** (`mercado_clientes`, 0034; lo puro
   en `src/lib/estudioMercado.js`, lo que toca base/IA/Drive en `worker/lib/mercado.js`). Va en su TABLA y no
   en `clients`: pesa decenas de miles de caracteres y `clients` viaja entero en cada carga y cada aviso.
@@ -2208,7 +2296,7 @@ son del servidor.
   escribe un guion con la misma forma para un producto del catálogo; «Recrear con mi marca» (captura) y «Seguir
   este video con mi marca» abren el Estudio con la referencia puesta y un pedido armado SIN IA
   (`ideaParaRecrear`, `ideaParaSeguirVideo`). En «Planificar mes», un reel o carrusel puede llevar «Estructura del
-  guion: como el video de…» (`post.estructuraRef`, el texto; `buildScriptPrompt` lo lee).
+  guion: como el video de…» (`post.estructuraRef`, el texto; el motor lo lee en los modos «plan» y «campos»).
   · **El Estudio ofrece los ganchos del estudio** con el preset de anuncio (`angulos` en GET /api/estudio):
   la idea pide el gancho y el precio EXACTOS del catálogo. El kit de marca lee el estudio aprobado.
   · **Los siete elementos** son genéricos (`ELEMENTOS_MERCADO`); si la agencia usa otros nombres, se cambian
@@ -2224,8 +2312,7 @@ son del servidor.
 - **«Mejorar» no pisa lo que escribió una persona.** En «Planificar mes» el prompt pedía «si ya hay idea, mejórala»
   y el código se quedaba con la de la persona: la mejora se pagaba y se tiraba. Ahora la de la IA queda en
   `sugerencia` al lado («Usar esta» / «Quedarme con la mía»); `sugerencia` no viaja al calendario. «Escribir guiones
-  y descripciones» manda reel, carrusel, historia y directo sin guion por `buildScriptPrompt` y lo demás por
-  `buildDescripcionesPrompt`, y sólo rellena.
+  y descripciones» y «Mejorar» van por el modo «campos» del motor (lib/escribirTextos.js) y sólo rellenan.
 - **Antes de enviar al cliente: revisar y producir** (`lib/revisionMes.js`, `calendario/RevisionMes.jsx`,
   `calendario/ProducirMes.jsx`). Las REGLAS no cuestan nada y salen al abrir; la IA (función «revisión de textos»)
   y la revisión de las imágenes contra el kit (`POST /api/estudio/<c>/revisar` con `{ clave }`: la imagen de una
@@ -2239,7 +2326,7 @@ son del servidor.
   catálogo entero de modelos y no puede entrar en `CalendarView`.
 - **El texto en la pieza y las fotos del producto** (`post.textoPieza`, `fotos` de cada producto del catálogo).
   · **`textoPieza` es lo que va ESCRITO encima del diseño, no el caption.** La IA lo escribe con el estudio delante
-  (`REGLA_TEXTO_PIEZA` en api.js: titular, apoyo y el precio EXACTO del catálogo) junto con guiones y descripciones,
+  (el motor: titular, apoyo y el precio EXACTO del catálogo; `"textoPieza"` en camposTexto.js) junto con guiones y descripciones,
   y tiene su botón en el panel; se escribe a mano igual. Sólo RELLENA, como lo demás. En un carrusel no existe (va
   lámina por lámina en el guion) y a un VIDEO no se le pide (`promptDePublicacion(post, { conTexto: false })`: los
   modelos de video escriben mal). Al motor va entre comillas y «exacto» (`textoDeLaPieza`). El cliente lo ve en su
@@ -2358,8 +2445,8 @@ son del servidor.
   navegador pega el original al terminar: en el compositor (al acabar el trabajo, `paraEstampar` en Estudio.jsx), en
   cada lámina del carrusel (la CRUDA sigue sin logo: es la que va de referencia y la que se corrige), en el lote y en
   «Producir el mes». Sale como pieza NUEVA con `origenId` (la original se queda). «Estampar el logo» del visor funciona
-  en cualquier modo. El asistente y Claude por MCP no pueden estampar (no hay lienzo en el Worker): con «estampado»
-  piden sin logo.
+  en cualquier modo. Lo que piden el asistente y Claude por MCP va por un encargo del servidor y el logo lo estampa el
+  Container (`acabarPieza`); sin Container, la pantalla al abrirse (`terminarPendientes`).
 - **Los personajes de la marca** (`kit.personajes`, hasta 4: nombre, descripción, retrato y cuerpo de la galería): el
   bebé de Baby Caleb tiene que ser EL MISMO en cada lámina y cada pieza. Van de referencia con `toma: ["persona"]` y una
   nota de quién son (`referenciasDePersonajes`), en el compositor («Personajes de la marca») y en el carrusel; el
@@ -3683,8 +3770,9 @@ son del servidor.
   equipo); vacío, el del cliente si admite referencias o el mejor que sí (`modeloDeHistorias`).
   La ruta vieja (`historiaDe` en /api/generar-imagen) sigue, pero ya no la llama la pantalla.
 - **«Crear la imagen aquí» escoge tipo, estilo, modelo y plantilla** (`OpcionesCrearAqui.jsx`, lazy: arrastra el
-  catálogo; se recuerda por cliente en `crear-aqui:<cliente>`). Vacío es lo de siempre: el tipo del post, el estilo de ese
-  tipo, el modelo fijado y ninguna plantilla.
+  catálogo; sólo para esa publicación: recordado por navegador en `crear-aqui:<cliente>`, la siguiente salía con la
+  plantilla o el estilo de otra sin que nadie lo viera). Vacío es lo de siempre: el tipo del post, el estilo de ese tipo, el
+  modelo fijado y ninguna plantilla (o la que escoja el director, que ahora también llega al motor).
 - **El texto bien colocado** (donde más se equivoca el diseño no es la ortografía: es dónde va el texto y de qué tamaño).
   · **La ficha lleva medidas:** `FORMATO_FICHA` pide la composición y el tamaño del texto en % de la pieza («titular entre
   el 8 y el 22 % de la altura, 80 % del ancho») y el manual de la casa lo exige («arriba» o «grande» no le dicen nada al
@@ -3747,8 +3835,9 @@ son del servidor.
   delante, aunque se dijera «sólo la composición», el motor la calcaba. Ahora el DIRECTOR la mira (`papel: "inspiracion"`:
   la idea, el gancho y el tipo de composición, en una versión propia ligeramente distinta) y escribe la ficha con el
   catálogo; la imagen de otra marca NO va al motor de imagen. Si la publicación no dice qué producto, el director escoge
-  del catálogo y van las fotos de los que nombra (`fotosDeLaPieza`). Sin director (sin saldo), la de antes, con
-  `NOTA_OTRA_MARCA` («ligeramente distinta… que no se reconozca como copia»).
+  del catálogo y van las fotos de los que nombra (`fotosDeLaPieza`). Sin director (sin saldo, caído) NO se recrea y se
+  dice por qué: la referencia ya no va al motor ni de respaldo. Lo mismo en «Recrear un anuncio» del Estudio en imagen
+  (`recrearAnuncioConLaMarca`); en video sigue el camino de video (`motorParaRecrear`, sólo modelos con llave).
 - **Una publicación puede llevar VARIOS productos** (`post.productoIds`; `productosDelPost`, `conProductos` en pilares.js;
   `fotosDelPost` en estudio.js). `productoId` sigue siendo el principal —el primero que se escoge; lo usa la matriz— y
   `producto` junta los nombres («Sofá cama + Mesa»), que es lo que lee la IA al escribir. En «Tipo de contenido» se
@@ -3760,6 +3849,50 @@ son del servidor.
   cada pieza) y sus fotos REALES van de referencia también en un carrusel (`fotosDeLaPiezaDelChat`); antes sólo se
   buscaban por el nombre en la ficha y, si no lo nombraba igual, el motor se inventaba el producto y la marca. Si no sabe
   de qué producto va, se le pide que PREGUNTE (con las opciones del catálogo); sin catálogo, que pregunte cuál y cómo es.
+- **Toda pieza NUEVA de imagen de un cliente pasa por las mismas reglas que el lote** (fase 1 de
+  docs/propuesta-lo-mejor-y-creacion.md; en producción, 151 de 430 piezas salían sin control). Lo que va por el servidor
+  (lote, «Producir el mes», carrusel, `disenar_piezas`) ya lo hacía; ahora también el visor, «Otra versión», «Crear la
+  imagen aquí», «Corregir esta», «Recrear con mi marca», «Recrear un anuncio», las historias con IA, «Generar en 4:5 con
+  IA», `generar_imagen` del asistente y `crear_en_estudio`. Cosas que no se ven:
+  · **El pedido listo va como un ENCARGO de una pieza** (`pasoListo`/`crearUnaEnServidor` en src/lib/piezaServidor.js,
+  `mejorar: false`, la escena ya dentro, sin «{{ESCENA}}»): la proporción (se recompone si no casa), el control con UNA
+  corrección (con el `texto` que debe decir) y el logo estampado si el kit lo pide (`navegador.logo`), aunque se cierre la
+  pantalla. Lo que necesita lienzo lo pone la pantalla SÓLO con el encargo ya cerrado (`esperarEnServidor`): si hay
+  Container, el servidor no lo cierra sin intentarlo, y así no se estampa dos veces. Una EDICIÓN (corregir, editar,
+  recomponer) no se estampa otra vez (`estampar: false`, o si la pieza ya lleva `plantilla: "logo"`).
+  · **La versión de una pieza va con la MARCA DE HOY** (src/lib/marcaDeHoy.js): «Otra igual» y «Otra versión»
+  repetían el bloque de la marca, el logo y el acabado del día de la original (con el logo pasado a «estampado», salían
+  dos) y cortaban el pedido con `slice(0, MAX_PROMPT)`, que se llevaba la marca y el logo. `conMarcaDeHoy` parte el
+  pedido por sus trozos (los separa una línea en blanco), quita el logo de antes (la última referencia), las líneas de las
+  referencias que ya no caben y pone el kit actual; si no cabe, `ajustarFicha` acorta la escena.
+  · **«Versión distinta» la diseña el director también sin ficha** (`versionesDeIdea` en worker/lib/estudio/prompt.js: en
+  imagen siempre por `encargoDeVersion`, «LA ESCENA DE LA PIEZA ORIGINAL»; sólo un video o el director caído van por las
+  escenas cortas). El texto que se manda: el de la ficha, el del control o el del pedido (`textoDePieza` en
+  lib/visorEstudio.js). Tras «Editar», el control compara el texto que debe QUEDAR (`textoTrasEditar`: con «X» → «Y», el
+  cambio; si no se sabe, el del pedido).
+  · **`crear_en_estudio` de una imagen es un encargo** (`imagenPorEncargo` en worker/lib/estudio/herramientas.js) con el
+  modelo FIJADO del cliente si no se pide otro (y su relevo si no hace el formato con las referencias), el director si no
+  llega una ficha, el control y el logo estampado. La confirmación de 0,50 $ y el presupuesto se miran ANTES de crear. El
+  ID que devuelve es del encargo: `estado_trabajo` lo acepta (y `ver_estudio` lo enseña en marcha); su `origen`
+  («asistente», «claude») llega a cada trabajo (`datos.origen` en encargos.js). encargos.js y vistaEstudio.js se importan
+  en el momento (`import()`): estáticos cerrarían el ciclo con herramientasServidor.js. Un video, sin cambios.
+  · **Las historias con IA enseñan el costo y piden el sí** (`costoDeHistorias`, `modelosParaHistorias` → `costos`; el
+  botón dice «· unos X $» y un segundo toque las crea) y van en UN encargo de tres piezas. «¿Qué quieres?» del post les
+  llega, y también al diálogo «Crear con IA» (que entonces no usa el pedido listo) y al director del carrusel
+  (`indicacion` en `pedidoDeCarrusel`). «Crear con IA» lleva los productos secundarios (`inicial.post.productoIds`) y la
+  plantilla que escoge el director va al motor (compositor, «Crear la imagen aquí», «Otra versión», «Recrear»).
+  · **«Generar en 4:5 con IA»** (ajusteImagen.jsx) ya no va por /api/generar-imagen: `recomponerEnProporcion`
+  (pedidoDeRecomponer, el modelo del cliente si edita y hace la proporción, si no el relevo) por el servidor con el
+  control; el navegador sigue recortando a la medida exacta (Instagram no admite 896×1152).
+  · **Fuera las preferencias por navegador que cambiaban el resultado** (decisión de la agencia): el control
+  (`controlEncendido`, `estudio-control`), «Usar el kit en esta pieza» (`estudio-usar-kit:<cliente>`), «Diseñarla sola
+  al abrir» (`estudio-mejorar-solo`), «En el Estudio / Aquí, rápido» (`post-acciones-donde`) y las opciones recordadas
+  de «Crear la imagen aquí» (`crear-aqui:<cliente>`). Las claves viejas se quedan en los navegadores sin que nadie las
+  lea. Las comodidades (pestaña, plegados, `historias-solas`) siguen.
+  · **El visor del Estudio no espera**: manda el encargo, cierra y avisa si una pieza no salió (`alFallo`); la galería la
+  enseña al llegar el aviso del encargo. La lógica vive en lib/visorEstudio.js (lazy): el chunk del Estudio estaba en
+  20,3 de 20 kB y quedó en 19,7.
+  · **Nada de esto se ha probado contra los servicios reales**: los tests hablan con dobles del servidor y de los motores.
 - **Dos carruseles no se parecen: la ESTRUCTURA la pone el código** (`src/lib/estructurasCarrusel.js`). Todas las ideas
   salían «Portada / Slide 1…5 / CTA», y las de un mismo tipo, casi iguales. Hay 14 estructuras propias (errores comunes,
   mito o realidad, paso a paso, antes y después, comparación, lista, señales, preguntas, caso real, qué incluye, guía para
@@ -4425,6 +4558,65 @@ son del servidor.
   · **Nada de esto se ha probado contra Kie real** (los tests hablan con un `fetch` de mentira): los nombres de los campos
   de v3 y v2, si la voz va por id o por nombre (`vozParaKie`), si devuelven tiempos y en qué forma, y el redondeo real de
   los créditos salen de la documentación pública y se comprueban con la primera toma de verdad.
+
+- **UN solo motor de texto: todo texto de una publicación va por el motor del servidor** (decisión de la agencia, fase 2
+  de docs/propuesta-lo-mejor-y-creacion.md). Había siete caminos y no todos pasaban por el mismo motor: los botones «IA»
+  de cada campo del panel y del banco, «Completar los textos que faltan», «Generar con IA» de la vista Lista y «Escribir
+  guiones y descripciones» / «Mejorar» de «Planificar mes» usaban pedidos propios de api.js (`buildScriptPrompt`,
+  `buildDescripcionesPrompt`, `generateSinglePost`, `generateFieldForPost`, `instruccionIdea`), con OTRAS reglas: el
+  guion del reel en «Hook → Desarrollo → CTA», los hashtags dentro del caption, un caption a la historia. Se QUITARON.
+  Ahora van por el modo «campos» de `POST /api/estudio/<c>/lote/ideas` (src/lib/camposTexto.js, worker/lib/estudio/lote.js;
+  el cliente, src/lib/escribirTextos.js, en diferido). Cosas que no se ven:
+  · **Cada publicación viaja con lo que YA tiene escrito** (`escrito`: manda; lo nuevo encaja con eso) y los `campos` que
+  se le piden (sólo los que su formato lleva). Un campo pedido que ya tenía texto va en `antes` («escribe una versión
+  mejor que conserve su intención»): es el botón «IA» de ese campo (y «Completar» de la idea escrita). La respuesta es
+  `{ textos: [{ clave, campos, ganchos?, formulaUgc? }] }`; `aplicarCampos` sólo RELLENA lo vacío salvo el campo del botón.
+  · **Pasa por todo lo del motor**: el catálogo (precio exacto), el estudio de mercado, el cerebro por tipo, «Saber del
+  rubro», las fechas especiales, la nota fija del día, la matriz (lo que la publicación no trae lo pone `asignarMatriz`,
+  sólo para el pedido), la estructura del carrusel y la forma que ya tiene (composición, gancho), la estructura de un
+  video de la competencia (`estructuraRef`) y, en una UGC, su duración, la fórmula ESCOGIDA (`formulaLinea`) o las de la
+  agencia para que escoja, la voz UGC y 3 ganchos. El botón de un caption sin hashtags pide también los hashtags.
+  · **La ficha del cliente va en TODOS los modos** (`textoDelCliente` en loteAnuncios.js: instrucciones obligatorias —
+  mandan—, estilo de los textos y de la locución, hashtags de la marca, WhatsApp, Instagram, teléfono y sucursales). El
+  motor bueno no los leía y los caminos viejos sí.
+  · **La estrategia del mes también en todos**: la que manda la pantalla («Planificar mes» la tiene sin guardar) o, si no
+  la manda (el lote del Estudio, una publicación suelta), la GUARDADA en el calendario de ese mes (`estrategiaGuardada`, una
+  consulta sin los días; `estrategiaDelCalendario` vive ahora en estrategiaMes.js para que la lea el Worker).
+  · «Generar con IA» de la lista con un archivo subido primero lo MIRA (`escribirDesdeContenido`: el motor no ve
+  imágenes) y luego el motor completa lo que siga vacío. «Reintentar» lo incompleto es «Completar» otra vez.
+  · La carga inicial bajó de 180,5 a ~175 kB al salir esos pedidos de api.js: lo nuevo va EN DIFERIDO. Nada de esto se ha
+  probado contra Anthropic real (los tests usan un `fetch` de mentira).
+- **Qué lleva cada formato es UNA regla** (`src/lib/reglasFormato.js`, en la carga inicial y sin dependencias): post
+  (caption, texto en la pieza, hashtags), carrusel (guion por láminas, caption, hashtags), reel (guion por planos —una
+  sola forma—, caption, hashtags; SIN texto en la pieza), historia (sólo el texto en la pieza: ni guion, ni caption, ni
+  hashtags) y directo (temas, caption, hashtags). La leen el motor (pedido y lectura: `captionYHashtags`), la completitud
+  (`camposDe`, `faltaParaEnviar`: ya no se le exige guion ni caption a una historia), «Completar» (`camposQueFaltan`),
+  `rellenarConIdea` y el panel (un campo que el formato no lleva no se enseña ni tiene botón «IA», salvo que ya tenga
+  texto: no se esconde lo escrito). **Los hashtags van SIEMPRE aparte** (`hashtagsFinales`): los que la IA deja al final
+  del caption se pasan a su campo (`separarHashtags`; también en `publicacionDeUgc`), porque `textoPara` los junta al
+  publicar y salían dos veces. Los hashtags de antes, dentro de un caption, cuentan como puestos (`tieneHashtags`).
+- **La semana es UNA: la FILA de la rejilla** (lunes a domingo, `semanaDelMes`/`semanasDelMes`). «Planificar mes»
+  numeraba bloques de siete días desde el 1 (`getWeekNumber`): en noviembre de 2026 su «Semana 1» tenía siete días y la
+  de la rejilla, uno, y el concepto de la semana caía en otros días. Ahora la usan el asistente de planificar (un concepto
+  por fila: 5 o 6), la lista por semanas (`agruparPorSemana` ya no lee `weekNumber`), el filtro de semana del calendario,
+  `conceptoDeSemana`, `casillasSinIdea`, `ponerEnDia`, el calendario que lee el asistente y `editar_publicaciones_lote`
+  (lib/lote.js), que tienen que coincidir. Lo guardado de antes se sigue leyendo: el `weekNumber` de los días se ignora y
+  `weekConcepts` se lee por fila.
+- **«Planificar mes» sin trampas** (PlanWizard.jsx, src/lib/planMes.js):
+  · **Las Ofertas van ANTES de la Estrategia** (pasos Plan · Fechas y ritmo · Ofertas · Estrategia · Conceptos · Ideas,
+  `PASO`): «Proponer la estrategia con IA» las lee y antes le llegaban vacías.
+  · **Borrador por cliente y mes** (`plan-mes-borrador:<cliente>:<AAAA-MM>`, 7 días, como el del lote): lo escrito y las
+  ideas ya PAGADAS se guardan en cada cambio y se recuperan al abrir («Seguimos donde lo dejaste» · «Empezar de cero»).
+  Al cambiar de mes se recupera el de ese mes, y el guardado espera a pintarlo (`restaurando`): si no, guardaría lo del
+  otro mes con su clave. Se borra sólo si el calendario se creó (`handleWizardGenerate` devuelve true/false).
+  · **No se pone encima**: los días del mes que ya tienen publicaciones (`diasOcupados` sobre `client.calendars`) no
+  reciben nuevas, salvo «Añadir también en los días que ya tienen publicaciones».
+  · **La ficha de diseño ya pagada llega al calendario** (`publicacionDelPlan`: `promptImagen`, su huella y quién la
+  escribió, más la fórmula UGC): antes `handleGenerate` la tiraba y «Crear la imagen aquí» la volvía a pagar.
+- **La estrategia del mes se ve y se edita después** (la tarjeta de la campaña: «Estrategia: Vender · foco: …» y la etapa
+  de cada semana; «Editar el mes» → Estrategia, `EditorEstrategia` en EstrategiaMes.jsx, en su chunk). Se guarda en
+  `opciones.estrategia` como la de «Planificar mes», y el motor la lee. La tarjeta lee `embudo.js` (pequeño) y no
+  estrategiaMes.js, que arrastra pilares: va en la carga inicial.
 
 ## Documentos relacionados
 

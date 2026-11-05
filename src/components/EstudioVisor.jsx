@@ -249,7 +249,7 @@ export default function Visor({
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditando(false); setCambio(""); }}>Cancelar</button>
                 {clienteId && !lectura && <GuardarRegla clienteId={clienteId} texto={cambio} />}
               </div>
-              <p className="hint" style={{ margin: 0 }}>Sale una imagen NUEVA en la galería; esta se queda como está.</p>
+              <p className="hint" style={{ margin: 0 }}>Sale una imagen NUEVA en la galería, ya revisada; esta se queda como está.</p>
             </form>
           )}
           {puedeOtra && (
@@ -273,7 +273,7 @@ export default function Visor({
               </div>
               {!editando && selector(`El de esta pieza (${nombreDelModelo(a.modelo) || "el mismo"})`)}
               <p className="hint" style={{ margin: 0 }}>
-                «Otra igual» repite el pedido. «Versión distinta»: la misma información con otra escena (la IA la escribe); se quedan el tipo, la marca y las referencias.
+                «Otra igual» repite el pedido con la marca de hoy. «Versión distinta»: el director la rediseña mirando esta, con la misma información y el mismo texto. Salen revisadas por el control y con el logo.
                 {" "}{textoCosto(costoVersion)} cada una{(elegido ?? m)?.estimado ? ", aprox." : ""}.
               </p>
             </div>

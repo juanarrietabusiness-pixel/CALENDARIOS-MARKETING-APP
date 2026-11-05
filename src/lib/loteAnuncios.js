@@ -47,6 +47,7 @@ import { PILARES, pilarDe, nombreDePilar } from "./pilares.js";
 import { estructuraDe, estructuraPara, limpiarEstructurasRecientes, lineaDeEstructura } from "./estructurasCarrusel.js";
 import { camposDePromptListo } from "./promptImagen.js";
 import { FORMATO_FICHA, limpiarFicha, asegurarTexto, ajustarFicha } from "./director.js";
+import { llevaCaption, llevaHashtags, separarHashtags } from "./reglasFormato.js";
 
 export const POR_NIVEL = 5;
 export const MAX_POR_NIVEL = 10;
@@ -79,15 +80,18 @@ export const FORMATOS_LOTE = Object.freeze({
 export const REGLA_FORMATO = Object.freeze({
   post: "Es un POST de UNA sola imagen fija (4:5): la idea se resuelve en una imagen. No propongas carrusel, video ni reel.",
   cuadrado: "Es un POST de UNA sola imagen fija cuadrada: la idea se resuelve en una imagen. No propongas carrusel, video ni reel.",
-  historia: "Es una HISTORIA de Instagram: una sola imagen vertical 9:16 que se ve unos segundos; una idea rápida y directa. No propongas carrusel ni reel.",
+  historia: "Es una HISTORIA de Instagram: una sola imagen vertical 9:16 que se ve unos segundos; una idea rápida y directa. No lleva caption ni hashtags (no se publican en una historia): lo que dice va en la pieza. No propongas carrusel ni reel.",
   carrusel: "Es un CARRUSEL de varias láminas que se deslizan: la idea se desarrolla lámina a lámina. No propongas una sola imagen ni un video.",
   reel: "Es un REEL: un video vertical de 10 segundos con varios planos. No propongas una imagen fija ni un carrusel.",
+  // Sólo en el modo «campos» (lo que le falta a una publicación ya en el calendario): un directo no se diseña ni se idea en lote.
+  live: "Es un DIRECTO (live) en vivo: los temas de la transmisión y el caption que la anuncia. No propongas una imagen ni un carrusel.",
 });
 
 /** El guion que se le pide a la IA en un formato guiado (vacío en los de una imagen). */
-const GUION_DE_FORMATO = Object.freeze({
+export const GUION_DE_FORMATO = Object.freeze({
   carrusel: '- "guion": las láminas del carrusel siguiendo SU estructura (la que dice cada pieza) y su número de láminas, una por línea: «Portada: …», «Slide 1: …», …, «CTA: …». La portada promete algo concreto de esa estructura (no un título genérico); cada lámina, una idea corta que se lee en dos segundos; el precio, EXACTO. Dos carruseles no se parecen.',
   reel: '- "guion": el reel de 10 s por planos, una línea por plano con su tiempo: «[0–2 s] qué se ve · cámara», …, y el último cierra con el producto o el resultado. SIN texto en pantalla: el video va limpio (los modelos de video escriben mal).',
+  live: '- "guion": los temas del directo en viñetas, uno por línea («- …»), en el orden en que se hablan, con el llamado a la acción al final.',
 });
 export const MAX_GUION = 2000;
 
@@ -261,12 +265,15 @@ export const planDeLote = (cuantas, opciones = {}) => darForma(celdasPorNiveles(
 
 const fechaLegible = (fecha) => new Date(`${fecha}T12:00:00Z`).toLocaleDateString("es-PA", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
 
+/** El nombre de cada formato en el pedido (el directo sólo existe en el modo «campos»). */
+const nombreDeFormato = (f) => FORMATOS_LOTE[f]?.nombre ?? (f === "live" ? "Directo" : "");
+
 /** La línea de una pieza en el pedido: todo lo que ya está decidido. Pura. */
-function lineaDePieza(r, productos = {}) {
+export function lineaDePieza(r, productos = {}) {
   const p = pilarDe(r.tipo ?? r.pilar);
   const nv = NIVELES_CONSCIENCIA.find((n) => n.clave === r.nivel);
   const prod = r.productoId && productos[r.productoId] ? productos[r.productoId] : "";
-  const fmt = r.formato && FORMATOS_LOTE[r.formato] ? `[${FORMATOS_LOTE[r.formato].nombre}] ` : "";
+  const fmt = nombreDeFormato(r.formato) ? `[${nombreDeFormato(r.formato)}] ` : "";
   return [
     `${r.n}. ${fmt}${r.fecha ? `${fechaLegible(r.fecha)} · ` : ""}${nombreDePilar(r.tipo ?? r.pilar, r.pilarSub)}: ${p?.regla ?? ""}`,
     `   ${nv ? `nivel: ${nv.nombre} (${nv.ayuda}; por ${nv.angulo === "dolor" ? "el DOLOR, lo que quiere evitar" : "la GANANCIA, lo que quiere lograr"})` : "nivel: —"} · gancho: ${lineaDe(TACTICAS, r.tactica)} · composición: ${composicionDe(r.composicion)?.nombre ?? ""}`,
@@ -277,6 +284,7 @@ function lineaDePieza(r, productos = {}) {
     r.especial ? `   fecha especial ese día: ${corto(r.especial, 120)}` : "",
     r.notaDia ? `   ${lineaDeNotaDelDia(r.notaDia)}` : "",
     r.ideaPersona ? `   idea de la agencia (desarróllala conservando su intención, su tema y su producto): «${corto(r.ideaPersona, 400)}»` : "",
+    r.estructuraRef ? `   estructura a seguir en el guion (de una referencia de la competencia: la MISMA forma, tramos y ritmo; el contenido es de la marca y no se copia nada): ${corto(r.estructuraRef, 900)}` : "",
     r.antes ? `   la que había y NO sirvió (escribe OTRA distinta, con otro enfoque): «${corto(r.antes, 200)}»` : "",
     r.pide ? `   lo que pide la agencia para esta: ${corto(r.pide, 300)}` : "",
     r.cambio ? `   ojo: ${r.cambio}` : "",
@@ -311,6 +319,41 @@ export function textoEstrategiaDelMes(mes = null) {
   return lineas.length ? `ESTRATEGIA DEL MES (cada pieza la sigue; su semana manda en el tono):\n${lineas.join("\n")}` : "";
 }
 
+/** Un texto largo de la ficha (las instrucciones pueden ir en varias líneas): sin espacios de más y con tope. */
+const largo = (t, max) => String(t ?? "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, max).trim();
+
+/**
+ * Lo de la FICHA DEL CLIENTE que el motor sigue SIEMPRE, en todos sus modos: sus instrucciones obligatorias (mandan), el
+ * estilo de sus textos y de su locución, sus hashtags de marca y su contacto para el llamado a la acción (WhatsApp,
+ * Instagram, teléfono, sucursales). Los caminos de antes (api.js) los leían y el motor del servidor no: ahora los lee
+ * él. Acepta la fila de D1 (snake_case) o el cliente de la pantalla (camelCase). Vacío si no hay nada. Pura.
+ */
+export function textoDelCliente(c = null) {
+  if (!c || typeof c !== "object") return "";
+  const de = (a, b, max = 300) => largo(c[a] ?? c[b], max);
+  const instrucciones = de("ai_instructions", "aiInstructions", 2500);
+  const ig = de("instagram", "instagram", 80).replace(/^@?/, "@");
+  const contacto = [
+    de("whatsapp", "whatsapp", 60) ? `WhatsApp ${de("whatsapp", "whatsapp", 60)}` : "",
+    ig.length > 1 ? `Instagram ${ig}` : "",
+    de("phone", "phone", 60) ? `teléfono ${de("phone", "phone", 60)}` : "",
+  ].filter(Boolean).join(" · ");
+  const lugares = [de("sucursales", "sucursales", 300), de("direcciones", "direcciones", 300)].filter(Boolean).join(" · ");
+  const lineas = [
+    de("estilo_guion", "estiloGuion") ? `- Estilo de sus textos: ${de("estilo_guion", "estiloGuion")}` : "",
+    de("estilo_locucion", "estiloLocucion") ? `- Estilo de su locución (lo que se dice en voz en un video): ${de("estilo_locucion", "estiloLocucion")}` : "",
+    de("hashtags", "hashtags") ? `- Hashtags de la marca: ${de("hashtags", "hashtags")} (van SIEMPRE en «hashtags», junto a los del tema; nunca dentro del caption)` : "",
+    contacto ? `- Contacto para el llamado a la acción: ${contacto} (el que encaje; no inventes otro)` : "",
+    lugares ? `- Dónde está: ${lugares}` : "",
+  ].filter(Boolean);
+  if (!instrucciones && !lineas.length) return "";
+  return [
+    "LA FICHA DEL CLIENTE (se sigue SIEMPRE):",
+    ...lineas,
+    instrucciones ? `INSTRUCCIONES OBLIGATORIAS DEL CLIENTE (mandan sobre cualquier otra regla de estilo de este pedido):\n${instrucciones}` : "",
+  ].filter(Boolean).join("\n");
+}
+
 /**
  * Lo que se le pide a la IA: una pieza por casilla del plan, con todo ya decidido. `productos`: { id → línea del
  * catálogo (precio EXACTO) }; `estudio`: el estudio de mercado; `contexto`: el cerebro para escribir (sin lo interno);
@@ -318,7 +361,7 @@ export function textoEstrategiaDelMes(mes = null) {
  */
 export function pedidoDeProduccion({
   marca = "la marca", plan = [], productos = {}, perfiles = {}, estudio = "", contexto = "", usados = [], formato = "post", fechasEspeciales = [], mes = false,
-  nota = "", estrategia = null, falta = "", ugc = "", identidad = "",
+  nota = "", estrategia = null, falta = "", ugc = "", identidad = "", cliente = "",
 }) {
   const perfilesUsados = [...new Set(plan.map((r) => r.perfil).filter(Boolean))].filter((n) => perfiles[n]);
   const cuantas = plan.length === 1 ? "UNA publicación" : `${plan.length} publicaciones`;
@@ -333,9 +376,13 @@ export function pedidoDeProduccion({
   // «Mejorar idea» (lib/promptImagen.js).
   const deUnaImagen = mixto ? formatos.some((f) => !esGuiado(f)) : !esGuiado(formato);
   const guionLineas = guiados.map((f) => (mixto ? GUION_DE_FORMATO[f].replace('- "guion":', `- "guion" (SÓLO en las de formato ${FORMATOS_LOTE[f].nombre}):`) : GUION_DE_FORMATO[f]));
+  // El caption y los hashtags, sólo en los formatos que los llevan (lib/reglasFormato.js): una historia no.
+  const conCaption = mixto ? formatos.some((f) => llevaCaption(FORMATOS_LOTE[f].format)) : llevaCaption(FORMATOS_LOTE[formato]?.format ?? "post");
+  const sinCaption = mixto && formatos.some((f) => !llevaCaption(FORMATOS_LOTE[f].format)) ? " (vacía en las historias: no llevan caption)" : "";
   return [
     encabezado,
     ...(mixto ? formatos.map((f) => `- ${FORMATOS_LOTE[f].nombre}: ${REGLA_FORMATO[f]}`) : [REGLA_FORMATO[formato] ?? ""]),
+    cliente ? String(cliente).slice(0, 4000) : "",
     nota ? `Contexto de esta publicación: ${corto(nota, 600)}` : "",
     textoEstrategiaDelMes(estrategia),
     perfilesUsados.length ? `Los perfiles:\n${perfilesUsados.map((n) => `- ${n}: ${perfiles[n]}`).join("\n")}` : "",
@@ -351,8 +398,8 @@ export function pedidoDeProduccion({
     `- "escena": qué se VE, en una o dos frases sencillas (sujeto, acción, lugar, luz), con su composición. SIN texto dentro. Si sale una persona, descríbela distinta de las de las demás piezas (edad, rasgos, ropa, lugar).`,
     deUnaImagen && identidad ? `- (Para la ficha «imagen») LA MARCA Y CÓMO SE DISEÑA CADA TIPO: ${String(identidad).trim().slice(0, 3000)}` : "",
     deUnaImagen ? `- "imagen"${mixto ? " (SÓLO en las de una imagen: post o historia)" : ""}: la FICHA DE DISEÑO de la pieza, como la escribiría un director creativo y diseñador gráfico, lista para el generador de imágenes. Una línea por apartado, separadas por \\n: ${FORMATO_FICHA.split("\n").map((l) => l.split(":")[0]).join(", ")}. En «Texto», el titular y el apoyo EXACTOS entre «», tal cual los escribiste, con su tamaño y su posición; en «Fondo», los colores de la marca con su código. Concreta y completa: quien genera la imagen sólo sabe lo que dice la ficha.` : "",
-    `- "descripcion": el texto de la publicación (caption), de 2 a 4 frases, con un llamado a la acción si el tipo lo pide; sin hashtags (${MAX_DESCRIPCION} caracteres).`,
-    '- "hashtags": de 5 a 10 hashtags útiles para esa publicación (del tema, del rubro y de la zona; ninguno inventado de otra marca), separados por espacios.',
+    conCaption ? `- "descripcion"${sinCaption}: el texto de la publicación (caption), de 2 a 4 frases, con un llamado a la acción si el tipo lo pide; SIN hashtags (van aparte) (${MAX_DESCRIPCION} caracteres).` : "",
+    conCaption ? `- "hashtags"${sinCaption ? " (vacíos en las historias)" : ""}: de 5 a 10 hashtags útiles para esa publicación (del tema, del rubro y de la zona; los de la marca si la ficha los trae; ninguno inventado de otra marca), separados por espacios.` : "",
     ...guionLineas,
     ugc && plan.some((r) => r.rostro) ? '- "formula" (SÓLO en las UGC): el nombre exacto de la fórmula de la agencia que sigue su guion.' : "",
     "",
@@ -369,7 +416,7 @@ export function pedidoDeProduccion({
     contexto ? `LO QUE SE SABE DE LA MARCA:\n${String(contexto).slice(0, 6000)}\n` : "",
     // Las UGC: la voz de esta marca en sus videos y las fórmulas de la agencia (lib/ugc.js, lib/formulasUgc.js).
     ugc && plan.some((r) => r.rostro) ? `PARA LAS UGC:\n${String(ugc).slice(0, 7000)}\n` : "",
-    `Responde SOLO con JSON, una por número, así: {"ideas":[{"n":1,"titulo":"…","brief":"…","titular":"…","apoyo":"…","escena":"…"${deUnaImagen ? ',"imagen":"…"' : ""},"descripcion":"…","hashtags":"#… #…"${guiados.length ? ',"guion":"…"' : ""}}]}`,
+    `Responde SOLO con JSON, una por número, así: {"ideas":[{"n":1,"titulo":"…","brief":"…","titular":"…","apoyo":"…","escena":"…"${deUnaImagen ? ',"imagen":"…"' : ""}${conCaption ? ',"descripcion":"…","hashtags":"#… #…"' : ""}${guiados.length ? ',"guion":"…"' : ""}}]}`,
   ].filter((l, i, t) => l !== "" || t[i - 1] !== "").join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
@@ -389,6 +436,18 @@ export function limpiarHashtags(t) {
 
 /** Un titular limpio: sin comillas alrededor, sin «·» (los motores lo dibujan como «¿») y con tope. Pura. */
 export const limpiarTitular = (t) => corto(String(t ?? "").replace(/\s*·\s*/g, ". "), 80).replace(/^["«“]|["»”]$/g, "").slice(0, 60).trim();
+
+/**
+ * El caption y los hashtags de una respuesta de la IA, con la regla de su formato: sin caption ni hashtags en una
+ * historia, y los hashtags que vengan al final del caption, aparte. → { descripcion, hashtags? }. Pura.
+ */
+export function captionYHashtags(x = {}, format = "post") {
+  if (!llevaCaption(format)) return { descripcion: "" };
+  const { texto, hashtags: delCaption } = separarHashtags(String(x?.descripcion ?? ""));
+  const sueltos = Array.isArray(x?.hashtags) ? x.hashtags.join(" ") : String(x?.hashtags ?? "");
+  const hashtags = llevaHashtags(format) ? limpiarHashtags(`${sueltos} ${delCaption}`) : "";
+  return { descripcion: texto.slice(0, MAX_DESCRIPCION), ...(hashtags ? { hashtags } : {}) };
+}
 
 /** La respuesta de la IA → una idea por casilla del plan (por su número; si no lo trae, por orden). Pura. */
 export function leerProduccion(texto, plan = [], formato = "post") {
@@ -420,8 +479,9 @@ export function leerProduccion(texto, plan = [], formato = "post") {
       brief: corto(x?.brief, MAX_BRIEF),
       apoyo,
       ...(imagenValida ? { imagen } : {}),
-      descripcion: String(x?.descripcion ?? "").trim().slice(0, MAX_DESCRIPCION),
-      ...(limpiarHashtags(x?.hashtags) ? { hashtags: limpiarHashtags(x.hashtags) } : {}),
+      // El caption y los hashtags sólo donde el formato los lleva (una historia no), y los hashtags SIEMPRE aparte: si la
+      // IA los dejó al final del caption, se pasan a «hashtags» (si no, saldrían dos veces).
+      ...captionYHashtags(x, FORMATOS_LOTE[r.formato ?? formato]?.format ?? "post"),
       // El guion sólo en un carrusel o un reel: en un post sobra, y la pieza lo leería como láminas.
       ...(String(x?.guion ?? "").trim() && esGuiado(r.formato ?? formato) ? { guion: String(x.guion).replace(/\\n/g, "\n").trim().slice(0, MAX_GUION) } : {}),
       // La fórmula UGC por su nombre (el Worker la pasa a su id).

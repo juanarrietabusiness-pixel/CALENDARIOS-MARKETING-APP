@@ -14,6 +14,7 @@
 
 import { MONTHS } from "../constants";
 import { fechasParaLaIA } from "./fechasEspeciales";
+import { semanaDelMes } from "./semanas";
 
 const dos = (n) => String(n).padStart(2, "0");
 const iso = (a, m0, d) => `${a}-${dos(m0 + 1)}-${dos(d)}`;
@@ -32,11 +33,11 @@ export function semanasDelMes(year, month) {
   return semanas;
 }
 
-/** El nombre de la campaña de una semana: el del mes guardado o, si no, el que lleven sus días. */
+/** El nombre de la campaña de una semana (la FILA de la rejilla): el del mes guardado o, si no, el que lleven sus días. */
 export function conceptoDeSemana(cal, numero) {
   const propio = (cal?.weekConcepts ?? [])[numero - 1];
   if (propio && String(propio).trim()) return String(propio).trim();
-  const dia = (cal?.days ?? []).find((d) => Number(d.weekNumber) === numero && d.concept);
+  const dia = (cal?.days ?? []).find((d) => d?.date && semanaDelMes(d.date) === numero && d.concept);
   return dia ? String(dia.concept).trim() : "";
 }
 

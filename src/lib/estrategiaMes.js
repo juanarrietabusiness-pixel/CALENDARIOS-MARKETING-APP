@@ -21,32 +21,14 @@
 
 import { nombreDePilar, pilarDe } from "./pilares.js";
 import { nombreDeNivel } from "./consciencia.js";
+import { OBJETIVOS_MES, objetivoDe, ETAPAS, embudoDelMes, limpiarEstrategia } from "./embudo.js";
 
 const corto = (t, max) => String(t ?? "").replace(/\s+/g, " ").trim().slice(0, max).trim();
 
-/** Lo que el mes persigue. `embudo`: cómo se reparten las semanas por defecto (la IA puede cambiarlo). */
-export const OBJETIVOS_MES = Object.freeze([
-  { id: "ventas", nombre: "Vender", ayuda: "Llevar a la compra: más piezas que convierten, con precio y llamado a la acción.", embudo: ["atraer", "considerar", "convertir", "convertir", "fidelizar"] },
-  { id: "seguidores", nombre: "Crecer en seguidores", ayuda: "Alcance y comunidad: contenido que se comparte y que trae gente nueva.", embudo: ["atraer", "atraer", "considerar", "atraer", "fidelizar"] },
-  { id: "lanzamiento", nombre: "Lanzar un producto", ayuda: "Expectativa, presentación y primeras ventas de algo nuevo.", embudo: ["atraer", "considerar", "convertir", "convertir", "fidelizar"] },
-  { id: "marca", nombre: "Marca y confianza", ayuda: "Que la conozcan y confíen: diferenciador, proceso, garantías, testimonios.", embudo: ["atraer", "considerar", "fidelizar", "considerar", "fidelizar"] },
-]);
-export const objetivoDe = (id) => OBJETIVOS_MES.find((o) => o.id === id) ?? null;
-
-/** Las etapas del embudo y los niveles de consciencia que tocan. */
-export const ETAPAS = Object.freeze({
-  atraer: { nombre: "Atraer", niveles: ["inconsciente", "problema"], ayuda: "gente nueva: el problema, curiosidad, contenido que se comparte" },
-  considerar: { nombre: "Considerar", niveles: ["solucion", "producto"], ayuda: "la solución y por qué esta marca: beneficios, diferenciador, prueba" },
-  convertir: { nombre: "Convertir", niveles: ["producto", "decision"], ayuda: "la compra: oferta, precio exacto, garantía, llamado a la acción" },
-  fidelizar: { nombre: "Fidelizar", niveles: ["producto", "decision"], ayuda: "quien ya compró o ya sigue: testimonios, comunidad, detrás de cámaras" },
-});
+// Los objetivos, las etapas del embudo y la estrategia guardada viven en embudo.js (pequeño: lo lee la tarjeta de la
+// campaña del mes, que va en la carga inicial). Se reexportan aquí, donde los buscan los demás.
+export { OBJETIVOS_MES, objetivoDe, ETAPAS, embudoDelMes, limpiarEstrategia, resumenEstrategia, etapaDe } from "./embudo.js";
 const IDS_ETAPA = Object.keys(ETAPAS);
-
-/** El reparto por defecto de las semanas según el objetivo (sin objetivo, el de vender). Pura. */
-export function embudoDelMes(objetivo, semanas = 5) {
-  const base = (objetivoDe(objetivo) ?? OBJETIVOS_MES[0]).embudo;
-  return Array.from({ length: Math.max(0, semanas) }, (_, i) => base[Math.min(i, base.length - 1)]);
-}
 
 /**
  * Lo que mejor funcionó en un periodo, de las filas de `metricas_publicacion`: las `n` con más interacciones
@@ -117,22 +99,26 @@ export function leerEstrategia(texto, { semanas = 5, productos = [], objetivo = 
   };
 }
 
-/** La estrategia guardada en el calendario (`opciones.estrategia`), limpia. Pura. */
-export function limpiarEstrategia(e) {
-  if (!e || typeof e !== "object") return null;
-  const salida = {
-    objetivo: objetivoDe(e.objetivo)?.id ?? "",
-    focoId: corto(e.focoId, 80),
-    foco: corto(e.foco, 160),
-    razon: corto(e.razon, 500),
-    etapas: (Array.isArray(e.etapas) ? e.etapas : []).slice(0, 6).map((x) => (IDS_ETAPA.includes(x) ? x : "")),
-  };
-  return salida.objetivo || salida.focoId || salida.etapas.some(Boolean) ? salida : null;
-}
-
 /** Las líneas de la semana con su etapa para el motor: «Semana 2 (Considerar): …». Pura. */
 export const semanasConEtapa = (conceptos = [], etapas = []) =>
   conceptos.map((c, i) => (corto(c, 160) && etapas[i] ? `${corto(c, 160)} (etapa: ${ETAPAS[etapas[i]].nombre} — ${ETAPAS[etapas[i]].ayuda})` : corto(c, 160)));
+
+/**
+ * La estrategia del mes que va al motor, sacada del calendario: campaña, ofertas, código, el concepto de cada semana
+ * (con su etapa del embudo) y, si se planeó con estrategia (`opciones.estrategia`), el objetivo y el producto foco. La
+ * usan la pantalla (lib/ideaPublicacion.js) y el Worker, que la lee del calendario guardado cuando no se la mandan. Pura.
+ */
+export function estrategiaDelCalendario(cal) {
+  const e = limpiarEstrategia(cal?.opciones?.estrategia);
+  const obj = objetivoDe(e?.objetivo);
+  const conceptos = Array.isArray(cal?.weekConcepts) ? cal.weekConcepts : [];
+  return {
+    campana: cal?.campaign ?? "", ofertas: cal?.offers ?? "", codigo: cal?.promoCode ?? "",
+    semanas: e?.etapas?.length ? semanasConEtapa(conceptos, e.etapas) : conceptos,
+    ...(obj ? { objetivo: `${obj.nombre} — ${obj.ayuda}` } : {}),
+    ...(e?.foco ? { foco: e.foco, focoId: e.focoId } : {}),
+  };
+}
 
 // ---------- El balance ----------
 

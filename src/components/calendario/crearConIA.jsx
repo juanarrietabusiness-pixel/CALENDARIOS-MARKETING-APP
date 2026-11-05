@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from "react";
 import { useDialogA11y } from "../../hooks/useDialogA11y";
 import { promptDePublicacion, proporcionParaFormato } from "../../lib/estudio";
-import { presetDePilar, CAMPOS_MATRIZ } from "../../lib/pilares";
+import { presetDePilar, productosDelPost, CAMPOS_MATRIZ } from "../../lib/pilares";
 import { promptListo } from "../../lib/promptImagen";
 
 // ============================================================
@@ -34,11 +34,13 @@ const Estudio = lazy(() => import("../Estudio"));
 export default function CrearConIA({ client, post, tipo = "imagen", inicio = null, referencias = null, uso = null, abrir = null, accion = "", indicacion = "", etiquetaUsar = null, onUsar, onUsarVarias = null, onMejorada = null, onCerrar }) {
   const ref = useDialogA11y(onCerrar);
   // El pedido de la imagen que ya escribió el motor de ideas (o una mejora anterior): no hace falta mejorarlo otra vez.
-  const listo = tipo === "imagen" && !inicio ? promptListo(post) : "";
+  // Con «¿Qué quieres?» escrito, sí: el director la rediseña con ello (como «Crear la imagen aquí»).
+  const conIndicacion = Boolean(String(indicacion ?? "").trim()) && !abrir;
+  const listo = tipo === "imagen" && !inicio && !conIndicacion ? promptListo(post) : "";
   // Sólo cuenta al abrir: el compositor no se reinicia si la publicación cambia detrás.
   const [inicial] = useState(() => ({
     ...(listo || abrir ? { listo: true } : {}),
-    ...(abrir ? { abrir, accion, indicacion } : {}),
+    ...(abrir ? { abrir, accion, indicacion } : conIndicacion ? { indicacion } : {}),
     ...(etiquetaUsar ? { etiquetaUsar } : {}),
     ...(onMejorada ? { alMejorar: onMejorada } : {}),
     tipo,
@@ -47,8 +49,9 @@ export default function CrearConIA({ client, post, tipo = "imagen", inicio = nul
     proporcion: proporcionParaFormato(post.format, tipo),
     // El preset de su tipo de contenido (Anuncio, Beneficios, Producto / Servicio…; en las 7 maletas, el de la suya).
     preset: presetDePilar(post.pilar, post.pilarSub),
-    // Su tipo de contenido y su producto, para el guion de un video corto.
-    post: Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, post[k] ?? ""])),
+    // Su tipo de contenido y sus productos (el principal y los que salen con él: sus fotos van de referencia y el
+    // director los diseña juntos), también para el guion de un video corto.
+    post: { ...Object.fromEntries(CAMPOS_MATRIZ.map((k) => [k, post[k] ?? ""])), productoIds: productosDelPost(post) },
     prompt: inicio
       ? `Anima esta imagen con un movimiento suave y natural: ${promptDePublicacion(post, { conTexto: false })}`.slice(0, 1500)
       : listo || promptDePublicacion(post, { conTexto: tipo !== "video" }),
