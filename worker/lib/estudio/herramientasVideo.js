@@ -6,7 +6,7 @@
 //   · ver_video        uno entero: estado, qué falta, la línea de tiempo por escena, la locución y el guion (JSON)
 //   · crear_video      un proyecto nuevo (borrador), ligado o no a una publicación
 //   · guardar_video    reescribe el guion y/o el título (con la versión que se leyó)
-//   · editar_escena    cambia, añade, mueve o quita UNA escena sin reescribir el resto
+//   · editar_escena    cambia, añade, mueve o quita escenas sin reescribir el resto: una, o varias en una versión (`cambios`)
 //   · aprobar_video    aprueba el guion de esa versión: con eso generar_locucion ya puede hacer la voz
 //   · ver_cuadro       la IMAGEN de un instante (o de una escena, ya llena), dibujada por el Container con el mismo motor
 //   · ver_escenas      una sola imagen con un cuadro de cada escena, numerados: el video entero de un vistazo
@@ -90,7 +90,7 @@ export const DEFINICIONES_VIDEO = Object.freeze([
   },
   {
     name: "editar_escena",
-    description: "Cambia UNA escena sin reescribir el guion: «escena» con el id de una que existe la reemplaza (con «posicion», además la mueve); con un id nuevo la añade en «posicion» (1 = la primera) o al final. «quitar» con un id la borra. El guion entero se valida y, si cambia, vuelve a borrador con la versión siguiente. No gasta nada.",
+    description: "Cambia escenas sin reescribir el guion. UNA: «escena» con el id de una que existe la reemplaza (con «posicion», además la mueve); con un id nuevo la añade en «posicion» (1 = la primera) o al final; «quitar» con un id la borra; «id» + «cambiar» cambia SÓLO esos campos (habla, pantalla, pausa, fondo, transicion, tipo, capas) sin mandar la escena entera. VARIAS A LA VEZ: «cambios», una lista de esos mismos cambios ({escena, posicion} | {quitar} | {id, cambiar, posicion}), hasta 20, que se aplican en orden y todos o ninguno: queda UNA versión nueva. El guion entero se valida y, si cambia, vuelve a borrador. No gasta nada.",
     input_schema: {
       type: "object",
       properties: {
@@ -98,6 +98,13 @@ export const DEFINICIONES_VIDEO = Object.freeze([
         escena: { type: "object", description: "La escena completa (con su id), en el formato de escenas v1." },
         posicion: { type: "integer", description: "Dónde va: 1 = la primera." },
         quitar: { type: "string", description: "El id de la escena que se borra (en vez de «escena»)." },
+        id: { type: "string", description: "El id de una escena que existe, para «cambiar» sólo algunos campos (o sólo moverla con «posicion»)." },
+        cambiar: { type: "object", description: "Los campos que cambian de la escena «id»: habla, pantalla, pausa, fondo, transicion, tipo o capas (capas va entera)." },
+        cambios: {
+          type: "array", maxItems: 20,
+          description: "Varios cambios en una sola versión, en orden. Cada uno: {escena, posicion?} | {quitar} | {id, cambiar?, posicion?}.",
+          items: { type: "object" },
+        },
       },
       required: ["video_id", "version"],
     },
@@ -336,14 +343,14 @@ export function crearHerramientasVideo({ env, acceso, resolverCliente, usuario, 
       });
     },
 
-    async editar_escena({ cliente, video_id: id, version, escena, posicion, quitar }) {
+    async editar_escena({ cliente, video_id: id, version, escena, posicion, quitar, id: escenaId, cambiar, cambios }) {
       const c = await resolverCliente(cliente);
       return conErrores(async () => {
         const fila = await proyectoDe(acceso, c.id, id);
-        const r = await editarEscena(acceso, c, fila, { version, escena, posicion, quitar, por: por?.nombre ?? null });
+        const r = await editarEscena(acceso, c, fila, { version, escena, posicion, quitar, id: escenaId, cambiar, cambios, por: por?.nombre ?? null });
         if (r.cambio) avisar(c.id, id);
         return [
-          r.cambio ? `${r.que} Ahora es la versión ${r.video.version} (${NOMBRE_ESTADO_VIDEO[r.video.estado]}).` : "La escena ya estaba así: no cambió nada.",
+          r.cambio ? `${r.que} Ahora es la versión ${r.video.version} (${NOMBRE_ESTADO_VIDEO[r.video.estado]}).` : "Ya estaba así: no cambió nada.",
           r.avisos.length ? `Avisos: ${r.avisos.map((a) => `${a.donde}: ${a.mensaje}`).join("; ")}` : "",
           textoDelVideo(r.video, { conGuion: false }),
         ].filter(Boolean).join("\n");
