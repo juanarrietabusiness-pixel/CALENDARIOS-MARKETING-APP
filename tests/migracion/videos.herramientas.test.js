@@ -61,7 +61,8 @@ describe("el formato contado a la IA", () => {
     for (const tipo of Object.keys(TIPOS_ESCENA)) expect(t).toContain(`  ${tipo}: `);
     expect(t).toContain(JSON.stringify(EJEMPLO_GUION));
     // Los componentes que el motor todavía no dibuja se dicen.
-    expect(t).toMatch(/personaje — .*MARCADOR/);
+    expect(t).toMatch(/telefono — .*MARCADOR/);
+    expect(t).not.toMatch(/personaje — .*MARCADOR/);
     // Neutro: ningún cliente de la agencia en el ejemplo.
     expect(JSON.stringify(EJEMPLO_GUION)).not.toMatch(/Baby|Caleb|D'CASA|Rofer|toallita/i);
   });
@@ -185,6 +186,17 @@ describe("crear, editar, aprobar y la voz", () => {
     expect(t).toMatch(/Ya tiene la locución de esta versión/);
     const dichas = palabrasDe(textoDeLocucion(EJEMPLO_GUION));
     expect(t).toContain(`la voz NO dijo «${dichas.slice(-2).join(" ").replace(/[.,]$/, "")}»`);
+  });
+
+  it("personaje_video: sin datos dice cómo es; con ellos lo guarda en el kit (sólo eso) y la vista previa lo usa", async () => {
+    expect((await llamar("personaje_video", { cliente: "Baby Caleb" })).texto).toMatch(/no tiene personaje propio/);
+    const r = await llamar("personaje_video", { cliente: "Baby Caleb", ropa: "acento", accesorio: "chupete", pelo: "ninguno", nombre: "Caleb" });
+    expect(r.texto).toMatch(/Guardado en el kit de Baby Caleb \(«Caleb»\): piel #F3C7A6, sin pelo, ropa acento, accesorio chupete/);
+    const kit = JSON.parse(db.sqlite.prepare("select kit_marca from clients where name = 'Baby Caleb'").get().kit_marca);
+    expect(kit.personajeVideo).toEqual({ piel: "#F3C7A6", pelo: "", ropa: "acento", accesorio: "chupete", nombre: "Caleb" });
+    // Un valor que no vale vuelve al de partida en vez de guardarse.
+    await llamar("personaje_video", { cliente: "Baby Caleb", accesorio: "espada" });
+    expect(JSON.parse(db.sqlite.prepare("select kit_marca from clients where name = 'Baby Caleb'").get().kit_marca).personajeVideo.accesorio).toBe("ninguno");
   });
 
   it("un cliente o un video de otro espacio no existen", async () => {

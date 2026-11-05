@@ -34,6 +34,7 @@
 // La documentación con ejemplos está en docs/formato-escenas-v1.md.
 // ============================================================
 
+import { EXPRESIONES_PERSONAJE, limpiarPersonaje } from "./personajeVideo.js";
 import { PALABRAS_POR_SEGUNDO } from "./reel.js";
 
 export const VERSION_GUION = 1;
@@ -181,7 +182,13 @@ export const COMPONENTES = Object.freeze({
   },
   burbuja: { nombre: "Burbuja de chat", props: { texto: T(90, true), lado: E(["izq", "der"], "izq"), color: C("superficie") } },
   imagen: { nombre: "Imagen de la galería", props: { archivo: T(64, true), rol: E(["producto", "foto", "persona"], "producto"), recorte: E(["contener", "cubrir"], "contener"), marco: B(false) } },
-  personaje: { nombre: "Personaje", props: { variante: E(["adulto", "nino", "bebe"], "adulto"), pose: E(["de-pie", "saluda", "senala", "piensa", "celebra", "preocupado"], "de-pie"), color: C("apoyo") } },
+  personaje: {
+    nombre: "Personaje",
+    props: {
+      variante: E(["adulto", "nino", "bebe"], "adulto"), pose: E(["de-pie", "saluda", "senala", "piensa", "celebra", "preocupado"], "de-pie"),
+      expresion: E(["auto", ...EXPRESIONES_PERSONAJE], "auto"), color: C("apoyo"),
+    },
+  },
   icono: { nombre: "Icono", props: { nombre: E(ICONOS_VIDEO, "check"), color: C("acento"), fondo: { t: "color", def: "" } } },
   cifra: {
     nombre: "Cifra gigante",
@@ -416,6 +423,8 @@ function validarEstilo(s = {}, errores) {
     grano: validarProp(N(0, 1, 0.25), est.grano, "estilo.grano", errores),
     ritmo: validarProp(E(RITMOS, "medio"), est.ritmo, "estilo.ritmo", errores),
     ilustracion: validarProp(E(ILUSTRACIONES, "plana"), est.ilustracion, "estilo.ilustracion", errores),
+    // El aspecto del personaje (piel, pelo, ropa, accesorio): si no lo trae, sale el del kit del cliente.
+    ...(esObjeto(est.personaje) ? { personaje: limpiarPersonaje(est.personaje) } : {}),
   };
 }
 
