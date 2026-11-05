@@ -140,6 +140,11 @@ export async function rutasEstudio(req, env, { acceso, usuario, partes, metodo }
         angulos: mercado ? angulosDeAnuncio(mercado.estudio, mercado.catalogo) : [],
         // Las fotos de cada producto, para ponerlas de referencia (las de una publicación de ese producto, solas).
         productos: limpio.productos,
+        // Los productos activos SIN fotos (o con todas perdidas): el semáforo del kit (fase 7) avisa de ellos, sin pedir
+        // el catálogo aparte.
+        sinFotos: mercado
+          ? productosActivos(mercado.catalogo).filter((p) => !limpio.productos.some((x) => x.id === p.id)).slice(0, 30).map((p) => ({ id: p.id, nombre: p.nombre }))
+          : [],
         ...(perdidas.size ? { perdidas: [...perdidas].map((c) => ({ clave: c, ...protegidas.get(c) })) } : {}),
       });
     }

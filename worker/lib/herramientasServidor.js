@@ -268,7 +268,7 @@ export function crearEjecutor({ env, acceso, clienteActual = null, estudio = nul
     const q = String(consulta ?? "").trim().slice(0, 500);
     if (!q) throw new Error("Falta lo que buscar.");
     const hits = await buscarCerebro(env, acceso, c.id, q, { para: usoDe(para_publicar), n: 6, enteras: NOTA_ENTERA });
-    if (!hits.length) return `El cerebro de ${c.name} no tiene nada sobre «${q}». Prueba con otras palabras antes de decir que no lo sabes; si de verdad no está, dilo y sugiere añadirlo como nota en la pestaña Cerebro.`;
+    if (!hits.length) return `El cerebro de ${c.name} no tiene nada sobre «${q}». Prueba con otras palabras antes de decir que no lo sabes; si de verdad no está, dilo y sugiere añadirlo como nota en Marca → Cerebro.`;
     const bloques = hits.map((h) => ({
       head: cabecera(h) + (h.texto ? " (entera)" : " (pasajes: pide el resto con leer_nota_cerebro)"),
       body: h.texto || h.pasajes.join("\n…\n"),

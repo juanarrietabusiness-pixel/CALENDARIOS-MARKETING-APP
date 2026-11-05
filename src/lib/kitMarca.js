@@ -730,7 +730,7 @@ export function leerRevision(texto) {
 // Las imágenes que la MARCA sigue usando
 // ------------------------------------------------------------
 
-const ARREGLO_KIT = "Cámbiala en el kit de marca (pestaña Estudio).";
+const ARREGLO_KIT = "Cámbiala en el kit de marca (Marca → Kit y voz).";
 const ARREGLO_CATALOGO = "Quítala o súbela otra vez en el catálogo (Cerebro → Estudio de mercado).";
 
 /**

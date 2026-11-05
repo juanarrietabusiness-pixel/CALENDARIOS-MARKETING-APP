@@ -248,7 +248,7 @@ function EstiloDeMarca({
             </span>
           )}
         </span>
-        {!kitListo && <span className="hint">Prepáralo en la pestaña Estudio del cliente: sin kit, la IA no conoce sus colores ni su estilo.</span>}
+        {!kitListo && <span className="hint">Prepáralo en Marca → Kit y voz: sin kit, la IA no conoce sus colores ni su estilo.</span>}
       </div>
 
       <div className="est-tipos" role="group" aria-labelledby={`${ids}-estilo`}>

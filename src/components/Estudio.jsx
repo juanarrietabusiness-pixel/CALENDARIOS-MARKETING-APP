@@ -30,10 +30,10 @@ import { FiltroDeModelo } from "./SelectorModelo";
 import "./Estudio.css";
 
 const EstudioLote = lazy(() => import("./EstudioLote"));
+// La tarjeta «Muchas de una vez» (casi todo texto): aparte, el chunk del Estudio está en su tope.
+const EstudioMuchas = lazy(() => import("./EstudioMuchas"));
 // Sólo cuando una imagen de la galería cabe en más de un sitio: aparte, el chunk del Estudio está en su tope.
 const EleccionRanura = lazy(() => import("./EleccionRanura"));
-// El kit va plegado y sólo en la pestaña: en su chunk (el del Estudio tiene tope, rendimiento.bundle.test.js).
-const EstudioKit = lazy(() => import("./EstudioKit"));
 const EstudioRecrear = lazy(() => import("./EstudioRecrear"));
 const FlujoCarrusel = lazy(() => import("./FlujoCarrusel"));
 const FlujoReel = lazy(() => import("./FlujoReel"));
@@ -73,7 +73,7 @@ const EstudioPapelera = lazy(() => import("./EstudioPapelera"));
 
 const reemplazar = (lista = [], t) => (lista.some((x) => x.id === t.id) ? lista.map((x) => (x.id === t.id ? t : x)) : [t, ...lista]);
 
-export default function Estudio({ client, pulso = 0, modo = "pestana", inicial = null, uso = null, onUsar = null, onUsarVarias = null, onCerrar = null, onLlevarAlCalendario = null }) {
+export default function Estudio({ client, pulso = 0, modo = "pestana", inicial = null, uso = null, onUsar = null, onUsarVarias = null, onCerrar = null, onLlevarAlCalendario = null, onDatos = null, onIrAlKit = null }) {
   const ids = useId();
   const lectura = soloLectura();
   const dialogo = modo === "dialogo";
@@ -161,6 +161,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
     if (loteAbierto?.alcance) window.history.replaceState(window.history.state, "", window.location.pathname);
   }, [loteAbierto]);
   const [recrear, setRecrear] = useState(null); // null, o { archivo }: «Recrear un anuncio» abierto (con uno ya escogido)
+  // En la pestaña Crear, lo manual (el compositor, los flujos, muchas de una vez) va plegado en «Avanzado»: arriba está
+  // el director. Se abre solo cuando algo pone una pieza en el compositor (`enfocarPrompt`).
+  const [avanzado, setAvanzado] = useState(false);
   const [carpetaNueva, setCarpetaNueva] = useState(null);
   const [renombrando, setRenombrando] = useState(null);
   const [borrando, setBorrando] = useState(null);
@@ -190,6 +193,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   }, [client.id]);
 
   useEffect(() => { cargar(); }, [cargar, pulso]);
+  // Crear calcula con esto el semáforo del kit (el logo, las fotos del catálogo) sin pedirlo otra vez.
+  useEffect(() => { if (datos) onDatos?.(datos); }, [datos, onDatos]);
 
   // Desde una publicación («Corregir esta», «Otra versión», «Recrear con mi marca»): la pieza que se tocó ya abierta en
   // el visor, o en el recreador. Una vez: cerrarla deja la galería del diálogo, con «Usar» en cada pieza.
@@ -273,8 +278,11 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
   // ---------- El compositor ----------
   const avisar = (ok, textoAviso) => setAviso({ ok, texto: textoAviso });
   const enfocarPrompt = () => {
-    promptRef.current?.focus();
-    promptRef.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    setAvanzado(true);
+    requestAnimationFrame(() => {
+      promptRef.current?.focus();
+      promptRef.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    });
   };
 
   const cambiarTipo = (tipo) => {
@@ -875,7 +883,7 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           <p className="est-sub">
             {dialogo
               ? "Crea una imagen o un video para esta publicación, o escoge uno que ya hayas hecho."
-              : `Crea imágenes y videos para ${client.name}. Cada uno queda aquí, con su pedido y lo que costó.`}
+              : `Lo creado para ${client.name}, con su pedido y lo que costó. A mano, en «Avanzado».`}
           </p>
         </div>
         {dialogo && onCerrar && <button type="button" className="btn-icon" aria-label="Cerrar" onClick={onCerrar}><Icon name="close" size={18} /></button>}
@@ -898,7 +906,13 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
         </p>
       )}
 
-      {/* ---------- Pedir ---------- */}
+      {/* ---------- Pedir: en la pestaña, plegado en «Avanzado» ---------- */}
+      {!dialogo && !lectura && (
+        <button type="button" className="btn btn-secondary est-avanzado" aria-expanded={avanzado} aria-controls={`${ids}-av`} onClick={() => setAvanzado((v) => !v)}>
+          <Icon name={avanzado ? "chevronDown" : "chevronRight"} size={16} /> Avanzado: crear a mano (imagen, video, carrusel), varias de una vez o recrear
+        </button>
+      )}
+      <div id={`${ids}-av`} className="est-av" hidden={!dialogo && !avanzado}>
       {!lectura && form && modelo && guiado && (
         <Suspense fallback={<p className="hint">Cargando…</p>}>
           {(() => {
@@ -962,17 +976,9 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
 
       {/* ---------- Muchas de una vez (anuncios en matriz, por tipo o el mes) y recrear un anuncio de otra cuenta ---------- */}
       {!lectura && !dialogo && motores && (
-        <div className="card est-lote-entrada">
-          <div>
-            <strong>Muchas de una vez</strong>
-            <p className="hint">Anuncios en matriz (deseos × perfiles × niveles), por tipo de pieza o el MES completo con el ritmo del cliente. La IA escribe cada pieza, tú revisas y ves el costo, y cada una llega al calendario lista para revisión. O recrea con tu marca un anuncio de otra cuenta que te guste.</p>
-          </div>
-          <div className="est-lote-botones">
-            <button type="button" className="btn btn-secondary" onClick={() => setLoteAbierto(true)}><Icon name="megaphone" size={16} /> Producir varias piezas</button>
-            <button type="button" className="btn btn-secondary" onClick={() => setRecrear({ archivo: null })}><Icon name="refresh" size={16} /> Recrear con mi marca</button>
-          </div>
-        </div>
+        <Suspense fallback={null}><EstudioMuchas onLote={() => setLoteAbierto(true)} onRecrear={() => setRecrear({ archivo: null })} /></Suspense>
       )}
+      </div>
       {recrear && (
         <Suspense fallback={null}>
           <EstudioRecrear
@@ -1233,21 +1239,8 @@ export default function Estudio({ client, pulso = 0, modo = "pestana", inicial =
           />
         </Suspense>
       )}
-      {/* ---------- El kit de marca: al final (arriba, crear y la galería) ---------- */}
-      {!dialogo && datos && (
-        <Suspense fallback={null}>
-          <EstudioKit
-            client={client}
-            kit={kit}
-            archivos={archivos}
-            perdidas={datos.perdidas}
-            onCambio={cargar}
-            lectura={lectura}
-            onPreparar={() => api.prepararKit(client.id)}
-            onGuardar={guardarKitDeMarca}
-          />
-        </Suspense>
-      )}
+      {/* El kit de marca (paleta, logo, plantillas, voz) vive en Marca → Kit y voz. */}
+      {onIrAlKit && <button type="button" className="btn btn-ghost btn-sm" onClick={onIrAlKit}><Icon name="palette" size={16} /> El kit de marca, en Marca</button>}
 
       {driveRol && (
         <BancoSelector

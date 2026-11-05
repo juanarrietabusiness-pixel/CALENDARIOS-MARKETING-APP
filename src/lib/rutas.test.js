@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   aSlug, slugsUnicos, slugsDeClientes, slugsDeCalendarios,
   porRuta, analizarRuta, construirRuta, rutaDeOtroCliente,
+  PESTANAS_DEL_CLIENTE, SECCIONES_DEL_CLIENTE, PESTANAS_VIEJAS, PESTANAS_CLIENTE, pestanaYSeccion,
 } from "./rutas.js";
 
 // ============================================================
@@ -96,37 +97,80 @@ describe("analizar y construir son inversas", () => {
   const url = (pathname, hash = "") => ({ pathname, hash });
 
   it("la raíz es el panel sin nada seleccionado", () => {
-    expect(analizarRuta(url("/"))).toEqual({ vista: "panel", cliente: null, calendario: null, pestana: "calendario" });
+    expect(analizarRuta(url("/"))).toEqual({ vista: "panel", cliente: null, calendario: null, pestana: "calendario", seccion: null });
   });
 
   it("un cliente", () => {
     expect(analizarRuta(url("/cliente/baby-caleb"))).toEqual({
-      vista: "panel", cliente: "baby-caleb", calendario: null, pestana: "calendario",
+      vista: "panel", cliente: "baby-caleb", calendario: null, pestana: "calendario", seccion: null,
     });
   });
 
   it("un cliente y un calendario", () => {
     expect(analizarRuta(url("/cliente/baby-caleb/agosto-2026"))).toEqual({
-      vista: "panel", cliente: "baby-caleb", calendario: "agosto-2026", pestana: "calendario",
+      vista: "panel", cliente: "baby-caleb", calendario: "agosto-2026", pestana: "calendario", seccion: null,
     });
   });
 
   it("las pestañas del cliente van donde iría el mes, y no son un mes", () => {
-    for (const pestana of ["tareas", "contenido", "ideas", "ficha"]) {
+    for (const pestana of ["crear", "referencias", "marca", "resultados", "tareas"]) {
       const r = analizarRuta(url(`/cliente/baby-caleb/${pestana}`));
-      expect(r).toEqual({ vista: "panel", cliente: "baby-caleb", calendario: null, pestana });
+      expect(r).toEqual({ vista: "panel", cliente: "baby-caleb", calendario: null, pestana, seccion: null });
       expect(construirRuta(r)).toBe(`/cliente/baby-caleb/${pestana}`);
     }
+  });
+
+  it("son cinco, con el calendario primero", () => {
+    expect(PESTANAS_DEL_CLIENTE.map(([id]) => id)).toEqual(["calendario", "crear", "referencias", "marca", "resultados"]);
+  });
+
+  it("cada sub-sección tiene su dirección y se vuelve a leer igual", () => {
+    for (const [pestana, secciones] of Object.entries(SECCIONES_DEL_CLIENTE)) {
+      for (const seccion of secciones) {
+        const r = analizarRuta(url(`/cliente/dcasa/${pestana}/${seccion}`));
+        expect(r).toEqual({ vista: "panel", cliente: "dcasa", calendario: null, pestana, seccion });
+        expect(construirRuta(r)).toBe(`/cliente/dcasa/${pestana}/${seccion}`);
+      }
+    }
+  });
+
+  it("una sub-sección que no existe abre la pestaña en la de entrada", () => {
+    expect(analizarRuta(url("/cliente/dcasa/marca/no-existe"))).toMatchObject({ pestana: "marca", seccion: null });
+    expect(pestanaYSeccion("resultados", "kit")).toEqual({ pestana: "resultados", seccion: null });
+  });
+
+  it("las direcciones de antes abren la pestaña nueva en su sub-sección (no una página vacía)", () => {
+    const esperado = {
+      estudio: ["crear", "galeria"], diseno: ["crear", "director"],
+      ideas: ["referencias", "ideas"], inspiracion: ["referencias", "inspiracion"],
+      cerebro: ["marca", "cerebro"], ficha: ["marca", "ficha"], contenido: ["marca", "drive"],
+    };
+    expect(PESTANAS_VIEJAS).toEqual(esperado);
+    for (const [vieja, [pestana, seccion]] of Object.entries(esperado)) {
+      expect(analizarRuta(url(`/cliente/baby-caleb/${vieja}`))).toEqual({ vista: "panel", cliente: "baby-caleb", calendario: null, pestana, seccion });
+      // Construir con el nombre de antes da la dirección nueva (lo pide quien aún no se cambió).
+      expect(construirRuta({ cliente: "baby-caleb", pestana: vieja })).toBe(`/cliente/baby-caleb/${pestana}/${seccion}`);
+    }
+  });
+
+  it("los nombres nuevos y los de antes quedan reservados para los calendarios", () => {
+    for (const n of ["crear", "referencias", "marca", "resultados", "tareas", "estudio", "diseno", "ideas", "inspiracion", "cerebro", "ficha", "contenido"]) {
+      expect(PESTANAS_CLIENTE).toContain(n);
+    }
+    const slugs = slugsDeCalendarios([{ id: "abcdef123", name: "Marca" }, { id: "b2", name: "Crear" }]);
+    expect(slugs.get("abcdef123")).not.toBe("marca");
+    expect(slugs.get("b2")).not.toBe("crear");
   });
 
   it("Ajustes tiene su dirección", () => {
     expect(analizarRuta(url("/ajustes"))).toEqual({ vista: "ajustes" });
     expect(construirRuta({ vista: "ajustes" })).toBe("/ajustes");
-    expect(analizarRuta(url("/programacion"))).toEqual({ vista: "programacion" });
-    expect(construirRuta({ vista: "programacion" })).toBe("/programacion");
+    expect(analizarRuta(url("/produccion"))).toEqual({ vista: "programacion" });
+    expect(construirRuta({ vista: "programacion" })).toBe("/produccion");
+    expect(analizarRuta(url("/programacion")), "su nombre de antes sigue abriendo Producción").toEqual({ vista: "programacion" });
     expect(analizarRuta(url("/auditorias"))).toEqual({ vista: "auditorias" });
     expect(construirRuta({ vista: "auditorias" })).toBe("/auditorias");
-    expect(analizarRuta(url("/tablero")), "el tablero se quitó: un enlace viejo va a Programación").toEqual({ vista: "programacion" });
+    expect(analizarRuta(url("/tablero")), "el tablero se quitó: un enlace viejo va a Producción").toEqual({ vista: "programacion" });
     expect(analizarRuta(url("/bandeja"))).toEqual({ vista: "bandeja" });
     expect(construirRuta({ vista: "bandeja" })).toBe("/bandeja");
     expect(analizarRuta(url("/biblioteca"))).toEqual({ vista: "biblioteca" });
@@ -181,9 +225,17 @@ describe("analizar y construir son inversas", () => {
 describe("cambiar de cliente", () => {
   const en = (pathname) => analizarRuta({ pathname, hash: "" });
   it("se queda en la misma pestaña", () => {
-    for (const p of ["resultados", "estudio", "contenido", "tareas", "ideas", "cerebro", "ficha"]) {
+    for (const p of ["resultados", "crear", "referencias", "marca", "tareas"]) {
       expect(rutaDeOtroCliente(en(`/cliente/dcasa/${p}`), "baby-caleb")).toBe(`/cliente/baby-caleb/${p}`);
     }
+  });
+  it("y en la misma sub-sección", () => {
+    expect(rutaDeOtroCliente(en("/cliente/dcasa/marca/kit"), "baby-caleb")).toBe("/cliente/baby-caleb/marca/kit");
+    expect(rutaDeOtroCliente(en("/cliente/dcasa/referencias/competencia"), "baby-caleb")).toBe("/cliente/baby-caleb/referencias/competencia");
+  });
+  it("desde una dirección de antes, a lo mismo en la nueva", () => {
+    expect(rutaDeOtroCliente(en("/cliente/dcasa/estudio"), "baby-caleb")).toBe("/cliente/baby-caleb/crear/galeria");
+    expect(rutaDeOtroCliente(en("/cliente/dcasa/cerebro"), "baby-caleb")).toBe("/cliente/baby-caleb/marca/cerebro");
   });
   it("en el calendario, el mismo mes", () => {
     expect(rutaDeOtroCliente(en("/cliente/dcasa/octubre-2026"), "baby-caleb")).toBe("/cliente/baby-caleb/octubre-2026");

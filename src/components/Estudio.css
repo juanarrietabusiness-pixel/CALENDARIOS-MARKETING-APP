@@ -12,6 +12,11 @@
   gap: var(--sp-4);
 }
 
+/* En la pestaña Crear lo manual va plegado en «Avanzado» (arriba está el director). */
+.est-avanzado { align-self: flex-start; }
+.est-av { display: flex; flex-direction: column; gap: var(--sp-4); }
+.est-av[hidden] { display: none; }
+
 .est-cabecera { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
 .est-titulo { font-size: var(--fs-xl); font-weight: 700; line-height: var(--lh-tight); margin: 0; }
 .est-sub { margin: 0; color: var(--text-dim); font-size: var(--fs-sm); }

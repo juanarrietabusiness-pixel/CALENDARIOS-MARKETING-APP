@@ -49,7 +49,7 @@ export default function SeccionManualCampanas({ pulso = 0 }) {
   return (
     <section id="manual-campanas" className="ajustes-seccion" aria-labelledby="ajustes-manual">
       <h2 className="ajustes-titulo" id="ajustes-manual">
-        <Icon name="megaphone" size={18} /> Manual de campañas
+        <Icon name="megaphone" size={18} /> Manuales de la agencia
       </h2>
       <p className="ajustes-intro">
         Las reglas de la agencia para los anuncios, los videos y el diseño de las piezas. El estratega de campañas (en

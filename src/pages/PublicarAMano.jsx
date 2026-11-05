@@ -68,7 +68,7 @@ export default function PublicarAMano({ clients = [], ruta, onGuardado }) {
     return (
       <div className="a-mano">
         <p role="alert" className="notice notice-error">No encuentro esa publicación: puede que la hayan movido o borrado.</p>
-        <button type="button" className="btn btn-secondary" onClick={() => navegar("/programacion")}>Ir a Programación</button>
+        <button type="button" className="btn btn-secondary" onClick={() => navegar("/produccion")}>Ir a Producción</button>
       </div>
     );
   }

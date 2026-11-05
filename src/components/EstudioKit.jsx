@@ -1,7 +1,6 @@
 import { useId, useState } from "react";
 import Icon from "./Icon";
 import FuenteDeMarca from "./FuenteDeMarca";
-import VozDeMarca from "./VozDeMarca";
 import { NOMBRES_USO, DISENO_POR_TIPO } from "../lib/director";
 import {
   TIPOS_PRESET, MAX_PROPIOS, MAX_ESTILOS, MAX_PERSONAJES, MAX_REFS_PRESET, ESTILOS_VISUALES, ESTILO_POR_TIPO, limpiarKit, kitVacio, textoPreset, fundirKit, bloqueDeMarca, nombreDeEstilo,
@@ -9,9 +8,11 @@ import {
 } from "../lib/kitMarca";
 import { MODOS_LOGO, ESQUINAS_LOGO, TAMANO_LOGO, MARGEN_LOGO, posicionDelKit } from "../lib/logoEncima";
 import { quitarPerdidasDelKit } from "../lib/estudio";
+// Sus estilos son los del Estudio (est-kit-*): ahora vive en Marca, donde el Estudio no se ha cargado.
+import "./Estudio.css";
 
 // ============================================================
-// El kit de marca del cliente, en el Estudio
+// El kit de marca del cliente, en Marca → Kit y voz (fase 7; antes, al final del Estudio)
 //
 // Lo que en Flow era un texto por marca, aquí: la paleta con el papel de
 // cada color, la tipografía, el estilo, la luz, lo que nunca sale, el logo
@@ -25,6 +26,8 @@ import { quitarPerdidasDelKit } from "../lib/estudio";
 // Cada tipo (y cada propio) puede llevar hasta dos imágenes de la galería
 // como REFERENCIA VISUAL: enseñan el estilo de ese tipo de pieza mejor que
 // cualquier párrafo, y van con cada pedido de ese tipo.
+//
+// La voz de la marca (VozDeMarca) va aparte, en su tarjeta de Marca: con el kit vacío también se escoge.
 // ============================================================
 
 /** Hasta dos imágenes de la galería como referencia visual de un tipo de pieza. */
@@ -178,7 +181,7 @@ export default function EstudioKit({ client, kit: guardado, archivos = [], perdi
             vacio
               ? <p className="hint">Prepáralo con la IA desde el cerebro de {client.name}, o escríbelo a mano. Con el kit, cada idea sale con la paleta, el estilo y el logo de la marca.</p>
               : <><VistaKit kit={kit} marca={marca} logo={logo} onQuitarPlantilla={lectura || ocupado ? null : (id) => guardar({ ...kit, plantillas: kit.plantillas.filter((x) => x.id !== id) })}
-                onTiposPlantilla={lectura || ocupado ? null : (id, tipos) => guardar({ ...kit, plantillas: kit.plantillas.map((x) => (x.id === id ? { ...x, tipos } : x)) })} /><div className="field"><span className="label">Fuente de la marca</span><FuenteDeMarca client={client} kit={kit} lectura={lectura} onGuardar={onGuardar} /></div><VozDeMarca client={client} kit={kit} lectura={lectura} onGuardar={onGuardar} /></>
+                onTiposPlantilla={lectura || ocupado ? null : (id, tipos) => guardar({ ...kit, plantillas: kit.plantillas.map((x) => (x.id === id ? { ...x, tipos } : x)) })} /><div className="field"><span className="label">Fuente de la marca</span><FuenteDeMarca client={client} kit={kit} lectura={lectura} onGuardar={onGuardar} /></div></>
           )}
 
           {!propuesta && !borrador && vacio && !lectura && (

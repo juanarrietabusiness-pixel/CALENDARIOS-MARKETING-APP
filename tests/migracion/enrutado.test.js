@@ -471,6 +471,19 @@ describe("la puerta, en general", () => {
     expect(res.headers.get("content-type")).toContain("text/html");
   });
 
+  it("las direcciones de la fase 7 (y las de antes) las sirve el frontend: ninguna da un 404 ni JSON", async () => {
+    const env = await entorno();
+    for (const ruta of [
+      "/cliente/baby-caleb/crear", "/cliente/baby-caleb/crear/galeria", "/cliente/baby-caleb/referencias/competencia",
+      "/cliente/baby-caleb/marca/kit", "/cliente/baby-caleb/estudio?lote=mes&mes=2026-12", "/cliente/baby-caleb/inspiracion?pieza=ig%3Aabc",
+      "/cliente/baby-caleb/diseno?receta=foto-heroe", "/cliente/baby-caleb/cerebro", "/cliente/baby-caleb/tareas",
+      "/produccion", "/programacion", "/biblioteca", "/campanas", "/tareas?empresa=c1",
+    ]) {
+      const res = await worker.fetch(new Request(`https://calendarios.test${ruta}`), env);
+      expect(res.headers.get("content-type"), ruta).toContain("text/html");
+    }
+  });
+
   it("sin sesión, 401 y no 404", async () => {
     // Un 404 en /api/yo significaría que el Worker no atiende /api/* y
     // que la API entera está muerta aunque el sitio se vea perfecto.

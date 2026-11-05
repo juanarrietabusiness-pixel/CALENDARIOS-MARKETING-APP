@@ -411,7 +411,7 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       `Pedido creado: ${fila.id} (${modelo.nombre}, ${n} imagen${n > 1 ? "es" : ""}, costo ${textoCosto(costo)}${modelo.estimado ? ", aprox." : ""}).`,
       ficha ? "Va con tu ficha tal cual." : "La diseña primero el director de arte de la agencia (con el kit, el catálogo y el cerebro del cliente).",
       `Se hace en el servidor, como el lote: la proporción, el control de calidad (corrige sola una letra mal escrita y se queda con la mejor)${estampar ? " y el logo estampado" : ""}. Tarda de uno a pocos minutos; no hace falta esperar aquí.`,
-      `Va a la galería de ${c.name} (pestaña Estudio). Para saber cómo va: estado_trabajo con el ID ${fila.id}.`,
+      `Va a la galería de ${c.name} (pestaña Crear). Para saber cómo va: estado_trabajo con el ID ${fila.id}.`,
     ].filter(Boolean).join("\n");
     return { texto, imagenes: [], vista: (await vistaDeEncargo(env, acceso, fila)).vista };
   }
@@ -475,11 +475,11 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         `IMÁGENES:\n${porTipo("imagen").map(linea).join("\n") || "(ninguno)"}`,
         `VIDEO:\n${porTipo("video").map(linea).join("\n") || "(ninguno)"}`,
         kitVacio(kitDe(c))
-          ? "KIT DE MARCA: no está preparado (se prepara en la pestaña Estudio). Sin él, pon la guía visual en el prompt."
+          ? "KIT DE MARCA: no está preparado (se prepara en la pestaña Marca → Kit y voz). Sin él, pon la guía visual en el prompt."
           : `KIT DE MARCA: preparado${kitDe(c).logo ? ", con logo" : ""}. La paleta, el estilo y el logo los pone el kit en cada pieza. Usa estilo=<tipo de contenido> en crear_en_estudio (${Object.keys(TIPOS_PRESET).join("|")}) y escribe en el prompt sólo la escena.`,
         guia
           ? `GUÍA VISUAL DE LA MARCA (del cerebro; ponla en el prompt, con tus palabras):\n${guia}`
-          : `GUÍA VISUAL: el cerebro de ${c.name} no tiene notas de identidad visual. Pregunta al usuario por colores, estilo y qué evitar, o pídele que las añada en la pestaña Cerebro.`,
+          : `GUÍA VISUAL: el cerebro de ${c.name} no tiene notas de identidad visual. Pregunta al usuario por colores, estilo y qué evitar, o pídele que las añada en Marca → Cerebro.`,
         catalogo,
         galeria.length
           ? `GALERÍA (lo último; el ID sirve de imagen_inicial o referencia):\n${galeria.map((f) => `· ${f.id} · ${f.tipo} · ${f.modelo || "subida"} · «${String(f.prompt).slice(0, 90)}»`).join("\n")}`
@@ -586,7 +586,7 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
         tipo === "video"
           ? "Un video tarda de 1 a 10 minutos. Sigue solo: no hace falta esperar aquí."
           : "Las imágenes tardan unos segundos a un par de minutos. Siguen solas: no hace falta esperar aquí.",
-        `Va a la galería de ${c.name} (pestaña Estudio). Para saber cómo va: estado_trabajo con el ID ${t.id}.`,
+        `Va a la galería de ${c.name} (pestaña Crear). Para saber cómo va: estado_trabajo con el ID ${t.id}.`,
       ].filter(Boolean).join("\n");
       // La vista previa del chat de Claude (MCP Apps) lo enseña según sale; el asistente de la aplicación sólo lee el texto.
       const { vista } = await vistaDeTrabajo(env, acceso, fila, { titulo: tipo === "video" ? "Video" : "Imagen" });

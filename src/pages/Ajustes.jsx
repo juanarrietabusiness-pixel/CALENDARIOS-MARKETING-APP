@@ -9,6 +9,7 @@ import SeccionTikTok from "../components/SeccionTikTok";
 import SeccionYouTube from "../components/SeccionYouTube";
 import SeccionScrapeCreators from "../components/SeccionScrapeCreators";
 import SeccionClaude from "../components/SeccionClaude";
+import SeccionComoTrabajamos from "../components/SeccionComoTrabajamos";
 import SeccionPlantillas from "../components/SeccionPlantillas";
 import SeccionManualCampanas from "../components/SeccionManualCampanas";
 import LimpiezaTerminadas from "../components/LimpiezaTerminadas";
@@ -29,8 +30,8 @@ const INDICE = [
   ["presupuesto", "Presupuesto y consumo"],
   ["integraciones", "Integraciones"],
   ["claude", "Claude"],
-  ["plantillas", "Plantillas de plan"],
-  ["manual-campanas", "Manual de campañas"],
+  // Recetas, fórmulas UGC, plantillas de plan y manuales, juntos (fase 7).
+  ["como-trabajamos", "Cómo trabajamos"],
   ["tareas", "Tareas"],
   ["copia", "Copia de seguridad"],
 ];
@@ -81,6 +82,7 @@ export default function Ajustes({ yo, clients = [], pulso = 0, onVolver, onExpor
           <SeccionScrapeCreators esAdmin={esAdmin} pulso={pulso} />
         </SeccionDrive>
         <SeccionClaude pulso={pulso} />
+        <SeccionComoTrabajamos />
         <SeccionPlantillas pulso={pulso} />
         <SeccionManualCampanas pulso={pulso} />
 

@@ -85,11 +85,48 @@ export function slugsUnicos(items = [], porDefecto = "sin-nombre", reservados = 
 }
 
 /**
- * Las pestañas del cliente que no son el calendario. Van en el mismo
- * sitio de la dirección que el mes —`/cliente/baby-caleb/contenido`—, así
- * que sus nombres quedan reservados para los slugs de los calendarios.
+ * Las pestañas de un cliente: CINCO (fase 7, docs/propuesta-lo-mejor-y-creacion.md). Eran diez —Calendario, Tareas,
+ * Contenido, Ideas, Inspiración, Resultados, Estudio, Diseño, Cerebro, Ficha— que en el teléfono se desplazaban de
+ * lado, y varias eran dos puertas para lo mismo. Ninguna función se quitó: se agruparon. [id, nombre, icono].
  */
-export const PESTANAS_CLIENTE = Object.freeze(["tareas", "contenido", "ideas", "inspiracion", "resultados", "estudio", "diseno", "cerebro", "ficha"]);
+export const PESTANAS_DEL_CLIENTE = Object.freeze([
+  ["calendario", "Calendario", "calendar"],
+  ["crear", "Crear", "sparkles"],
+  ["referencias", "Referencias", "bulb"],
+  ["marca", "Marca", "palette"],
+  ["resultados", "Resultados", "chart"],
+]);
+
+/** Las sub-secciones de cada pestaña que las tiene; la primera es la de entrada. Van detrás: `/cliente/x/marca/kit`. */
+export const SECCIONES_DEL_CLIENTE = Object.freeze({
+  crear: ["director", "galeria"],
+  referencias: ["ideas", "inspiracion", "competencia"],
+  marca: ["ficha", "kit", "cerebro", "plan", "fechas", "drive"],
+});
+
+/**
+ * Las direcciones de antes, una pestaña por cosa: a qué pestaña y sub-sección llevan ahora. Siguen abriendo lo suyo
+ * —hay avisos guardados con `/estudio` o `/inspiracion?pieza=`, y enlaces pegados en mensajes—, y la dirección NO se
+ * reescribe: lo que trae detrás (`?lote=`, `?receta=`, `?pieza=`) lo lee la pantalla al montarse.
+ */
+export const PESTANAS_VIEJAS = Object.freeze({
+  estudio: ["crear", "galeria"], diseno: ["crear", "director"],
+  ideas: ["referencias", "ideas"], inspiracion: ["referencias", "inspiracion"],
+  cerebro: ["marca", "cerebro"], ficha: ["marca", "ficha"], contenido: ["marca", "drive"],
+});
+
+/**
+ * Lo que va en el sitio de la dirección del mes y NO es un mes: las pestañas, «tareas» (las del cliente, que ya no es
+ * pestaña: se llega desde su cabecera) y los nombres de antes. Quedan reservados para los slugs de los calendarios: uno
+ * llamado «Ideas» no puede quedarse `/ideas`.
+ */
+export const PESTANAS_CLIENTE = Object.freeze([...PESTANAS_DEL_CLIENTE.slice(1).map(([id]) => id), "tareas", ...Object.keys(PESTANAS_VIEJAS)]);
+
+/** Una pestaña (también con su nombre de antes) y su sub-sección → { pestana, seccion }. La sub-sección que no existe, null. */
+export function pestanaYSeccion(pestana, seccion = null) {
+  const [p, s] = PESTANAS_VIEJAS[pestana] ?? [pestana, seccion];
+  return { pestana: p, seccion: SECCIONES_DEL_CLIENTE[p]?.includes(s) ? s : null };
+}
 
 export const slugsDeClientes = (clientes = []) => slugsUnicos(clientes, "cliente");
 export const slugsDeCalendarios = (cals = []) => slugsUnicos(cals, "calendario", PESTANAS_CLIENTE);
@@ -159,7 +196,8 @@ export function analizarRuta(url = window.location) {
   if (partes[0] === "tareas") return { vista: "tareas" };
   if (partes[0] === "ajustes") return { vista: "ajustes" };
   if (partes[0] === "resultados") return { vista: "resultados" };
-  if (partes[0] === "programacion") return { vista: "programacion" };
+  // «Producción»: lo que está por producir y la cola. `/programacion` (su nombre de antes) sigue abriéndola.
+  if (partes[0] === "produccion" || partes[0] === "programacion") return { vista: "programacion" };
   // El tablero se quitó (las etapas salen solas en cada publicación): un enlace viejo va a Programación.
   if (partes[0] === "tablero") return { vista: "programacion" };
   if (partes[0] === "bandeja") return { vista: "bandeja" };
@@ -168,25 +206,20 @@ export function analizarRuta(url = window.location) {
   if (partes[0] === "lo-mejor") return { vista: "lo-mejor" };
 
   if (partes[0] === "cliente" && partes[1]) {
-    const pestana = PESTANAS_CLIENTE.includes(partes[2]) ? partes[2] : "calendario";
-    return {
-      vista: "panel",
-      cliente: partes[1],
-      calendario: pestana === "calendario" ? partes[2] ?? null : null,
-      pestana,
-    };
+    if (!PESTANAS_CLIENTE.includes(partes[2])) return { vista: "panel", cliente: partes[1], calendario: partes[2] ?? null, pestana: "calendario", seccion: null };
+    return { vista: "panel", cliente: partes[1], calendario: null, ...pestanaYSeccion(partes[2], partes[3] ?? null) };
   }
 
-  return { vista: "panel", cliente: null, calendario: null, pestana: "calendario" };
+  return { vista: "panel", cliente: null, calendario: null, pestana: "calendario", seccion: null };
 }
 
 /** La dirección de una vista. El inverso exacto de `analizarRuta`. */
-export function construirRuta({ vista = "panel", cliente = null, calendario = null, pestana = "calendario", testigo = "", publicacion = null } = {}) {
+export function construirRuta({ vista = "panel", cliente = null, calendario = null, pestana = "calendario", seccion = null, testigo = "", publicacion = null } = {}) {
   if (vista === "equipo") return "/equipo";
   if (vista === "tareas") return "/tareas";
   if (vista === "ajustes") return "/ajustes";
   if (vista === "resultados") return "/resultados";
-  if (vista === "programacion") return "/programacion";
+  if (vista === "programacion") return "/produccion";
   if (vista === "bandeja") return "/bandeja";
   if (vista === "campanas") return "/campanas";
   if (vista === "auditorias") return "/auditorias";
@@ -196,13 +229,16 @@ export function construirRuta({ vista = "panel", cliente = null, calendario = nu
   if (vista === "invitacion") return `/invitacion/${encodeURIComponent(testigo)}`;
   if (!cliente) return "/";
   const base = `/cliente/${encodeURIComponent(cliente)}`;
-  if (PESTANAS_CLIENTE.includes(pestana)) return `${base}/${pestana}`;
+  if (PESTANAS_CLIENTE.includes(pestana)) {
+    const p = pestanaYSeccion(pestana, seccion);
+    return `${base}/${p.pestana}${p.seccion ? `/${p.seccion}` : ""}`;
+  }
   return calendario ? `${base}/${encodeURIComponent(calendario)}` : base;
 }
 
 /**
  * A dónde se va al escoger OTRO cliente estando dentro de uno: a la misma
- * pestaña (Resultados, Estudio, Contenido…) y, en el calendario, al mismo
+ * pestaña y sub-sección (Resultados, Crear, Marca → Kit…) y, en el calendario, al mismo
  * mes. Antes siempre se volvía al calendario, y para comparar los
  * resultados de dos clientes había que volver a buscar la pestaña cada vez.
  * Un calendario viejo nombrado por su nombre no vale para otro cliente: ahí,
@@ -210,7 +246,7 @@ export function construirRuta({ vista = "panel", cliente = null, calendario = nu
  */
 export function rutaDeOtroCliente(ruta, slugCliente) {
   if (ruta?.vista !== "panel" || !ruta.cliente) return construirRuta({ cliente: slugCliente });
-  if (PESTANAS_CLIENTE.includes(ruta.pestana)) return construirRuta({ cliente: slugCliente, pestana: ruta.pestana });
+  if (PESTANAS_CLIENTE.includes(ruta.pestana)) return construirRuta({ cliente: slugCliente, pestana: ruta.pestana, seccion: ruta.seccion });
   return construirRuta({ cliente: slugCliente, calendario: mesDeSlug(ruta.calendario) ? ruta.calendario : null });
 }
 

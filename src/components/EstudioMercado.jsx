@@ -50,10 +50,12 @@ const PESTANAS = [
 
 const fecha = (iso) => (iso ? new Date(iso).toLocaleDateString("es-PA", { day: "numeric", month: "short", year: "numeric" }) : "");
 
-export default function EstudioMercado({ client, onCambio }) {
+/** `abrir` ({ tab, n }): abre el diálogo en esa pestaña (el semáforo del kit de Marca: «Subir las fotos» → el catálogo). */
+export default function EstudioMercado({ client, onCambio, abrir = null }) {
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState("");
   const [abierto, setAbierto] = useState(null); // la pestaña con la que se abre, o null
+  useEffect(() => { if (abrir?.tab && PESTANAS.some(([k]) => k === abrir.tab)) setAbierto(abrir.tab); }, [abrir]);
 
   const cargar = useCallback(async () => {
     try {
@@ -109,6 +111,29 @@ export default function EstudioMercado({ client, onCambio }) {
           onCerrar={() => { setAbierto(null); cargar(); }}
         />
       )}
+    </section>
+  );
+}
+
+/**
+ * La competencia del estudio de mercado, EN LA PÁGINA (Referencias → Competencia, fase 7): las referencias analizadas
+ * de anuncios y videos de la competencia, y «Su contenido en Instagram». Lo mismo que la pestaña Competencia del
+ * diálogo, sin abrirlo.
+ */
+export function CompetenciaDeMercado({ client, lectura = false }) {
+  const [datos, setDatos] = useState(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let vivo = true;
+    setDatos(null);
+    leerMercado(client.id).then((d) => { if (vivo) setDatos(d); }).catch((e) => { if (vivo) setError(e.message); });
+    return () => { vivo = false; };
+  }, [client.id]);
+  if (error) return <p role="alert" className="cerebro-error">{error}</p>;
+  if (!datos) return <p role="status" className="hint">Cargando la competencia…</p>;
+  return (
+    <section className="card" aria-label={`Competencia de ${client.name}`}>
+      <PanelCompetencia client={client} datos={datos} lectura={lectura} onOcupado={() => {}} onDatos={(d) => setDatos((x) => ({ ...x, ...d }))} />
     </section>
   );
 }
