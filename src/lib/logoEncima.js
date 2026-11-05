@@ -83,6 +83,7 @@ export async function estamparLogo({ src, logoSrc, posicion, mime = "image/png" 
   lienzo.height = alto;
   const ctx = lienzo.getContext("2d");
   ctx.drawImage(img, 0, 0, ancho, alto);
+  // Lo mismo que hace el Container (acabadoLienzo.js → dibujarLogo), aquí sin importarlo: acabadoLienzo importa este archivo.
   const { x, y, w, h } = posicionLogo({ ancho, alto, logoAncho: logo.naturalWidth || logo.width, logoAlto: logo.naturalHeight || logo.height, ...posicion });
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(logo, x, y, w, h);

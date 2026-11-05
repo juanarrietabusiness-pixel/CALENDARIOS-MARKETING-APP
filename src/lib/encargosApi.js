@@ -3,8 +3,9 @@
 //
 // El servidor lleva la cadena (worker/lib/estudio/encargos.js) aunque se cierre
 // la aplicación. Lo que necesita un LIENZO —el texto de la plantilla encima y el
-// logo estampado— lo pone el navegador cuando vuelve a ver la pieza hecha
-// (`terminarPaso`) y se lo dice al servidor (`finales`) para no hacerlo dos
+// logo estampado— lo pone el Container en el servidor (worker/lib/estudio/acabado.js).
+// Si no pudo (en local, o falló), lo pone el navegador cuando vuelve a ver la pieza
+// hecha (`terminarPaso`) y se lo dice al servidor (`finales`) para no hacerlo dos
 // veces: lo hace la pantalla que lo sigue y, si nadie la tenía abierta, la
 // aplicación al abrirse (`terminarPendientes`).
 // ============================================================

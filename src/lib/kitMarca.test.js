@@ -150,6 +150,10 @@ describe("el pedido", () => {
     expect(pedidoConMarca({ kit: KIT, idea: "x", usarKit: false })).toBe("x");
     // No prohíbe la placa o la banda que pida el diseño: sólo la que no pide.
     expect(LINEA_OFICIO).toMatch(/que el diseño no pida/);
+    // Un «10%» diminuto en la esquina salió de «logo … 10 % del ancho» de la ficha: las medidas no se escriben.
+    expect(LINEA_OFICIO).toMatch(/porcentajes son instrucciones de diseño: no se escriben/);
+    // No impone una luz: hay kits que piden luz pareja y la marca manda.
+    expect(LINEA_OFICIO).not.toMatch(/luz con dirección/);
   });
 
   it("ningún estilo de la casa pide «espacio negativo» (el motor dibujaba una franja plana) ni luz pareja", () => {

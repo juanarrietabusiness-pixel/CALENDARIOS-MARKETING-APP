@@ -92,7 +92,7 @@ async function cargarImagen(base64) {
 }
 
 /** Registra una fuente (base64) una vez y devuelve su familia, o "" si no se pudo. */
-function registrarFuente(f) {
+export function registrarFuente(f) {
   if (!f?.datos) return "";
   const bytes = Buffer.from(f.datos, "base64");
   const k = huella(bytes);

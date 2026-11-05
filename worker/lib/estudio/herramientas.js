@@ -41,7 +41,7 @@
 // ============================================================
 
 import {
-  MODELOS, modeloPorId, modeloPorDefecto, nombreDelModelo, textoCosto, MAX_VIDEOS_POR_PEDIDO, NOMBRE_ESTADO, estaVivo,
+  MODELOS, modeloPorId, modeloPorDefecto, nombreDelModelo, textoCosto, MAX_VIDEOS_POR_PEDIDO, NOMBRE_ESTADO, estaVivo, MAX_PROMPT,
 } from "../../../src/lib/estudioCatalogo.js";
 import { estadoMotores } from "./motores.js";
 import { crearTrabajo, trabajoPublico, ErrorEstudio } from "./trabajos.js";
@@ -51,6 +51,7 @@ import { kitDe } from "./kit.js";
 import { pedidoConMarca, ponerLogo, kitVacio, IDS_PRESET, TIPOS_PRESET } from "../../../src/lib/kitMarca.js";
 import { productosActivos } from "../../../src/lib/estudioMercado.js";
 import { lineasDeReferencias } from "../../../src/lib/referencias.js";
+import { ajustarFicha } from "../../../src/lib/director.js";
 import { listarVoces, pedirMuestra, pedirLocucion, ErrorVoz } from "./locucion.js";
 import { pedirMusica, ErrorMusica } from "./musica.js";
 import { DURACION_MUSICA } from "../../../src/lib/musica.js";
@@ -432,10 +433,19 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
       const referencias = tipo === "imagen" && entrada.referencias?.length
         ? lineasDeReferencias(await refsDelCatalogo(c.id, medios.reference.slice(0, entrada.referencias.length)), { cliente: c.name })
         : "";
-      const prompt = pedidoConMarca({
-        kit, idea: entrada.prompt, preset: entrada.estilo ?? "", marca: c.name, rubro: c.industry ?? "",
+      const armar = (idea) => pedidoConMarca({
+        kit, idea, preset: entrada.estilo ?? "", marca: c.name, rubro: c.industry ?? "",
         video: tipo === "video", logo: conLogo, usarKit: !kitVacio(kit), referencias,
       });
+      let prompt = armar(entrada.prompt);
+      // Con la marca, el acabado y el logo detrás, una ficha completa puede no caber: se acorta la ficha (lo prescindible
+      // primero; el texto exacto se queda) en vez de rechazar el pedido, y se dice.
+      let acortada = false;
+      const idea = String(entrada.prompt ?? "");
+      if (prompt.length > MAX_PROMPT && idea.length > 200) {
+        prompt = armar(ajustarFicha(idea, Math.max(200, idea.length - (prompt.length - MAX_PROMPT))));
+        acortada = true;
+      }
 
       let fila;
       try {
@@ -454,12 +464,13 @@ export function crearHerramientasEstudio({ env, acceso, resolverCliente, usuario
 
       const t = trabajoPublico(fila);
       return [
+        acortada ? `Ojo: con la marca y el logo del kit tu ficha no cabía en ${MAX_PROMPT} caracteres; se acortó quitando primero «Marca», «Evitar» y «Fondo» (el texto exacto va entero). Para la próxima, cada línea más corta.` : "",
         `Pedido creado: ${t.id} (${modelo.nombre}, ${n} ${tipo === "video" ? `video${n > 1 ? "s" : ""}` : `imagen${n > 1 ? "es" : ""}`}, costo ${textoCosto(t.costoEstimado)}${modelo.estimado ? ", aprox." : ""}).`,
         tipo === "video"
           ? "Un video tarda de 1 a 10 minutos. Sigue solo: no hace falta esperar aquí."
           : "Las imágenes tardan unos segundos a un par de minutos. Siguen solas: no hace falta esperar aquí.",
         `Va a la galería de ${c.name} (pestaña Estudio). Para saber cómo va: estado_trabajo con el ID ${t.id}.`,
-      ].join("\n");
+      ].filter(Boolean).join("\n");
     },
 
     async estado_trabajo({ trabajo_id: id }) {

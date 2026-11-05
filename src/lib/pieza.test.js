@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { ideaParaMejorar, ideaSinMejorar, apoyosDePieza, pedidoDePieza, conAltaResolucion, lineaDeTexto, lineaSinTexto } from "./pieza";
 import { modeloPorId } from "./estudioCatalogo";
-import { ESTILOS_VISUALES } from "./kitMarca";
+import { ESTILOS_VISUALES, LINEA_LOGO } from "./kitMarca";
+import { MAX_PROMPT } from "./estudioCatalogo";
 
 const kit = { paleta: [{ hex: "#112233", nombre: "azul" }], logo: "clientes/c1/logo.png", referencias: { anuncio: ["clientes/c1/ref-tipo.png"] } };
 const archivos = [{ id: "a1", clave: "clientes/c1/ref-tipo.png", src: "/api/media/clientes/c1/ref-tipo.png" }];
@@ -76,3 +77,32 @@ describe("la proporción pedida es la que sale", () => {
     expect(pedidoDePieza({ kit, idea: "Una sala", modelo: muse, aspectRatio: "4:5" }).modelo).toBe("muse-image");
   });
 });
+
+describe("una ficha larga con un kit grande", () => {
+  it("no se corta por el final (donde van la marca y el logo): se acorta la ficha y el texto exacto va entero", () => {
+    const grande = {
+      ...kit, estilo: "Fotografía cálida y cercana, luz natural, ".repeat(12), nunca: "colores fuera de la paleta, ".repeat(10),
+      reglas: Array.from({ length: 12 }, (_, i) => `Regla ${i + 1}: el titular siempre en mayúsculas y con el rojo de la marca, nunca sobre la cara.`),
+    };
+    const ficha = [
+      "Pieza: post 4:5 — anuncio.",
+      `Composición: ${"titular arriba del 6 al 20 %; ".repeat(12)}`,
+      `Fondo: ${"pared crema #F2EDE4; ".repeat(10)}`,
+      `Imagen principal: ${"una sala luminosa; ".repeat(12)}`,
+      `Fotografía: ${"ventana a la izquierda, 4500 K, 85 mm a f/2.8; ".repeat(8)}`,
+      "Texto (exacto, sin cambiar una letra): titular «Tus lentes en 40 minutos» (11 %).",
+      `Marca: ${"logo abajo a la derecha; ".repeat(6)}`,
+      `Evitar: ${"manos raras; ".repeat(10)}`,
+    ].join("\n");
+    const modelo = modeloPorId("nano-banana");
+    const p = pedidoDePieza({ kit: grande, idea: ficha, preset: "anuncio", modelo, marca: "Feria", aspectRatio: "4:5" });
+    // Sin acortar, no cabría: la ficha más la marca pasan del tope.
+    expect(ficha.length + pedidoDePieza({ kit: grande, idea: "x", preset: "anuncio", modelo, marca: "Feria" }).prompt.length).toBeGreaterThan(MAX_PROMPT);
+    expect(p.prompt.length).toBeLessThanOrEqual(MAX_PROMPT);
+    expect(p.prompt).toContain("«Tus lentes en 40 minutos»");
+    expect(p.prompt.endsWith(LINEA_LOGO)).toBe(true);
+    // Lo primero que se va es «Marca»: la paleta ya la dice el kit.
+    expect(p.prompt).not.toMatch(/^Marca:/m);
+  });
+});
+

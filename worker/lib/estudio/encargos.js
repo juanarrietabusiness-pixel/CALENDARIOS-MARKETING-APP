@@ -23,10 +23,11 @@
 // trabajos) hace que dos no den el mismo paso. Los TRABAJOS de cada pieza
 // los avanza la bomba como cualquier otro; el encargo sólo mira si acabaron.
 //
-// LO QUE NO SE HACE AQUÍ. Poner el texto de la plantilla encima y estampar el
-// logo necesitan un lienzo: los hace el navegador al volver a abrir el lote
-// (`finales` de cada paso). Si el director escoge una plantilla del kit, su
-// imagen se suma aquí al pedido (`conPlantillaDelDirector`), como en la pantalla.
+// EL LIENZO. Poner el texto de la plantilla encima y estampar el logo necesitan
+// un lienzo: los hace el Container (`acabarPieza`, acabado.js) y, si no hay o
+// falla, el navegador al volver a abrir el lote (`finales` de cada paso). Si el
+// director escoge una plantilla del kit, su imagen se suma aquí al pedido
+// (`conPlantillaDelDirector`), como en la pantalla.
 // ============================================================
 
 import { uuid } from "../ids.js";
@@ -45,10 +46,12 @@ import {
 import { pedidoDeCorreccion, modeloParaCorregir, proporcionDeMedidas } from "../../../src/lib/edicion.js";
 import { correccionDelDirector, mejoro } from "../../../src/lib/control.js";
 import { armarLamina } from "../../../src/lib/laminaPedido.js";
+import { ajustarFicha } from "../../../src/lib/director.js";
 import { ESCENA, MAX_PASOS, MAX_LAMINAS, TANDA_FICHAS, TIPOS_ENCARGO } from "../../../src/lib/encargos.js";
 import { referenciaDePlantilla, lineaDePlantillaEnPedido } from "../../../src/lib/kitMarca.js";
 import { lineaDeReferencia } from "../../../src/lib/referencias.js";
 import { kitDe } from "./kit.js";
+import { acabarPieza } from "./acabado.js";
 
 /**
  * La plantilla del kit que escogió el DIRECTOR (o la de su tipo) en el pedido de una pieza, como lo hace la pantalla
@@ -228,19 +231,24 @@ export async function crearEncargo(env, acceso, cliente, cuerpo = {}, { usuario 
 // Avanzar
 // ------------------------------------------------------------
 
-/** El pedido con su escena puesta, sin pasar del tope (lo que sobra se quita de la escena, no del final). */
+/**
+ * El pedido con su escena puesta, sin pasar del tope: lo que sobra se quita de la escena, no del final (donde van la
+ * marca y el logo), y de una ficha lo prescindible primero (`ajustarFicha`: el texto exacto se queda).
+ */
 export function conEscena(prompt, escena) {
   const p = String(prompt ?? "");
   const e = String(escena ?? "").trim();
   if (!p.includes(ESCENA)) return p.slice(0, MAX_PROMPT);
   const sobra = p.length - ESCENA.length + e.length - MAX_PROMPT;
-  return p.replace(ESCENA, () => (sobra > 0 ? e.slice(0, Math.max(200, e.length - sobra)) : e)).slice(0, MAX_PROMPT);
+  return p.replace(ESCENA, () => (sobra > 0 ? ajustarFicha(e, Math.max(200, e.length - sobra)) : e)).slice(0, MAX_PROMPT);
 }
 
 const vivo = (p) => p.fase === "generando" || p.fase === "opciones";
 /** ¿Esta pieza ya se puede pedir? Con su escena, sin director que esperar, o con el director ya intentado (va la mejora). */
 const listaParaCrear = (p, datos) => Boolean(p.escena) || !datos.mejorar || !p.encargo || Boolean(p.fichaIntentada);
 const terminado = (p) => p.fase === "hecho" || p.fase === "fallido";
+/** Hecha pero con lienzo pendiente que el Container todavía no intentó: el encargo no se cierra hasta intentarlo. */
+const porAcabar = (env, p) => Boolean(env?.VIDEO) && p.fase === "hecho" && Boolean(p.navegador) && !p.finales && !p.acabadoIntentado;
 
 /**
  * Da UN paso del encargo `id`. → { encargo, hizo, ocupado } o null si no existe. Lo barato (mirar si un trabajo
@@ -267,7 +275,7 @@ export async function avanzarEncargo(env, acceso, id) {
     console.error("estudio: encargo", id, e);
     r = { hizo: false, nota: "Algo falló; se vuelve a intentar." };
   }
-  const listos = pasos.length > 0 && pasos.every(terminado);
+  const listos = pasos.length > 0 && pasos.every(terminado) && !pasos.some((p) => porAcabar(env, p));
   // Un carrusel terminado queda ORDENADO en su carpeta (la galería lo enseña como una tarjeta, en este orden). Si la
   // pantalla pone después el texto de la plantilla, vuelve a ordenarlo con las finales.
   if (listos && r.estado == null && fila.tipo === "carrusel" && datos.carpetaId) {
@@ -289,9 +297,11 @@ export async function avanzarEncargo(env, acceso, id) {
 
 function cerrarPorPlazo(pasos) {
   for (const p of pasos) {
+    // Lo que esperaba al Container se queda para la pantalla: con el plazo vencido no se da ni un paso más.
+    if (p.fase === "hecho" && p.navegador && !p.finales) p.acabadoIntentado = true;
     if (terminado(p)) continue;
     const salieron = (p.opciones ?? []).filter((o) => o.id);
-    if (salieron.length) { p.fase = "hecho"; for (const o of salieron) o.fase = "hecho"; } else { p.fase = "fallido"; p.error = "No terminó a tiempo."; }
+    if (salieron.length) { p.fase = "hecho"; p.acabadoIntentado = true; for (const o of salieron) o.fase = "hecho"; } else { p.fase = "fallido"; p.error = "No terminó a tiempo."; }
   }
   return { hizo: true, nota: "Se cerró con lo que había salido: llevaba demasiado tiempo." };
 }
@@ -416,6 +426,26 @@ async function paso(env, acceso, fila, pasos, datos) {
       }
     }
     cerrarPieza(p);
+  }
+
+  // 3b. Lo que necesitaba LIENZO (el texto de la plantilla, el logo estampado), en el Container: así lo pedido desde el
+  //     teléfono o desde claude.ai queda terminado sin que nadie abra la aplicación. Una pieza por paso; si no hay
+  //     Container o falla, se queda como estaba y lo pone la pantalla (`terminarPaso`), como antes.
+  const acabar = pasos.find((p) => porAcabar(env, p));
+  if (acabar) {
+    acabar.acabadoIntentado = true;
+    const ids = acabar.opciones.map((o) => o.id).filter(Boolean);
+    const filas = new Map((await acceso.leerVarios("estudio_archivos", ["id", "clave", "mime", "tipo", "carpeta_id"], "id", ids, { client_id: cliente.id })).map((f) => [f.id, f]));
+    const finales = [];
+    for (const o of acabar.opciones) {
+      const crudo = filas.get(o.id);
+      const hecha = crudo ? await acabarPieza(env, acceso, cliente, crudo, acabar.navegador, { carpetaId: crudo.carpeta_id ?? null }) : null;
+      finales.push(hecha?.id ?? null);
+    }
+    // Con alguna terminada, las demás se quedan en su cruda (como hace la pantalla si no puede dibujar): si no, la
+    // pantalla volvería a poner el texto en todas y saldrían dos veces.
+    if (finales.some(Boolean)) acabar.finales = finales.map((f, i) => f ?? acabar.opciones[i]?.id ?? null);
+    return { hizo: true };
   }
 
   // El SISTEMA DE DISEÑO de la portada, antes de la segunda lámina: las demás lo reciben en su pedido y en su control.

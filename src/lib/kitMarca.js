@@ -485,9 +485,10 @@ export const LINEA_VIDEO = `Video corto: movimiento de cámara suave y natural, 
  */
 /**
  * El acabado profesional que va en TODA imagen (no en video): lo que delata una pieza hecha por IA sin oficio. Dicho
- * según el estilo (una ilustración no lleva «piel creíble») y sin prohibir la placa o la banda que pida el diseño.
+ * según el estilo (una ilustración no lleva «piel creíble»), sin imponer una luz (la de la marca manda: hay kits que
+ * piden luz pareja) y sin prohibir la placa o la banda que pida el diseño.
  */
-export const LINEA_OFICIO = "Acabado profesional, según el estilo pedido: en una foto, luz con dirección y materiales y piel creíbles; nunca aspecto plástico, brillo artificial, HDR exagerado ni de foto de banco. Ningún texto, letra ni logo que no se haya pedido, y ninguna franja de color plana que el diseño no pida.";
+export const LINEA_OFICIO = "Acabado profesional, según el estilo pedido y la luz de la marca: materiales y piel creíbles; nunca aspecto plástico, brillo artificial, HDR exagerado ni de foto de banco. Ningún texto, letra ni logo que no se haya pedido (las medidas y los porcentajes son instrucciones de diseño: no se escriben), y ninguna franja de color plana que el diseño no pida.";
 
 export const LINEA_LOGO = "La ÚLTIMA imagen de referencia es el logo REAL de la marca: la firma de la pieza es ése, copiado tal cual (forma, colores y letras), pequeño y nítido, sin redibujarlo, sin cambiarle nada y sin inventar otro.";
 /** La de antes: sigue en los pedidos guardados en la galería («Otra igual» los repite tal cual). */

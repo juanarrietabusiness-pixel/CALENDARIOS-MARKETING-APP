@@ -5,7 +5,8 @@
 // arranque no basta, tiene que dibujar. Con el guion de ejemplo neutro comprueba:
 //   · /salud contesta;
 //   · /cuadro da un JPEG de 540 px de ancho en la proporción del formato, con su escena;
-//   · /miniatura reduce una imagen a JPEG (y una que no lo es, 400); /hoja da una imagen; /revisar da la revisión en JSON;
+//   · /miniatura reduce una imagen a JPEG (y una que no lo es, 400); /acabado pone el texto de la plantilla y el logo
+//     encima; /hoja da una imagen; /revisar da la revisión en JSON;
 //   · /render da un mp4 de verdad, de la duración de la línea de tiempo, con el volumen en -14 LUFS (±1) aunque la voz
 //     llegue mucho más baja (una voz sintética: un tono que sube y baja, en WAV);
 //   · un guion roto es un 400 con el motivo, no un 500.
@@ -68,6 +69,21 @@ if (!mm || mm.alto !== 256) falla(`/miniatura no devolvió un JPEG de 256 de alt
 const malo = await fetch(`${base}/miniatura`, { method: "POST", body: JSON.stringify({ imagen: "bm8gZXMgdW5hIGltYWdlbg==" }) });
 if (malo.status !== 400) falla(`/miniatura con algo que no es imagen debería ser 400, fue ${malo.status}`);
 console.log("✓ /miniatura");
+
+// El ACABADO de una pieza sin pantalla: el texto de la plantilla encima y el logo estampado (el cuadro hace de logo).
+const acab = await fetch(`${base}/acabado`, { method: "POST", body: JSON.stringify({
+  imagen: Buffer.from(c.bytes).toString("base64"),
+  texto: { texto: "Tus lentes en 40 minutos\nCiudad de Panamá y La Chorrera", plantilla: "banda", colores: { fondo: "#D91B19", texto: "#FFFFFF", acento: "#C5A059" } },
+  logo: { datos: mj.datos, posicion: { esquina: "abajo-derecha", tamano: 0.16 } },
+}) });
+const aj = await acab.json().catch(() => ({}));
+if (acab.status !== 200 || aj.mime !== "image/jpeg" || aj.ancho !== 540 || aj.alto !== 960) falla(`/acabado devolvió ${acab.status}: ${JSON.stringify({ ...aj, datos: undefined })}`);
+const am = medidasJpeg(Buffer.from(aj.datos, "base64"));
+if (!am || am.ancho !== 540) falla(`/acabado no devolvió un JPEG de 540 de ancho (${JSON.stringify(am)})`);
+if (Buffer.from(aj.datos, "base64").equals(Buffer.from(c.bytes))) falla("/acabado devolvió la misma imagen: no dibujó nada");
+const malColor = await fetch(`${base}/acabado`, { method: "POST", body: JSON.stringify({ imagen: Buffer.from(c.bytes).toString("base64"), texto: { texto: "x", colores: { fondo: "rojo" } } }) });
+if (malColor.status !== 400) falla(`/acabado con colores que no son #RRGGBB debería ser 400, fue ${malColor.status}`);
+console.log("✓ /acabado");
 
 const h = await post("/hoja");
 if (h.estado !== 200 || !medidasJpeg(h.bytes)) falla(`/hoja devolvió ${h.estado}`);
